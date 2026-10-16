@@ -9,6 +9,7 @@ export const PHYSICS = {
   groundFriction: 4100,
   airFriction: 580,
   jumpVelocity: 900,
+  jumpCutVelocity: 330,
   coyoteTime: 0.11,
   jumpBuffer: 0.13,
   maxFall: 1280,
@@ -18,9 +19,23 @@ export const PHYSICS = {
   playerWidth: 34,
   playerHeight: 62,
   requiredLandingWidth: 42,
+  dashSpeed: 930,
+  dashDuration: 0.16,
+  dashCooldown: 0.55,
+  wallSlideSpeed: 170,
+  wallJumpX: 440,
+  wallJumpY: 820,
+  wallJumpLock: 0.16,
+  collisionSkin: 0.01,
 };
 
 export const COLORS = {
+  countryside: { sky: "#ccecff", far: "#8bc9ca", ground: "#8a6d42", accent: "#f4d98b" },
+  desert: { sky: "#f5d9bf", far: "#c89779", ground: "#bd905b", accent: "#f8dc91" },
+  city: { sky: "#f5d9bf", far: "#c89779", ground: "#725b50", accent: "#d6af5e" },
+  mountains: { sky: "#bfdbe4", far: "#7898a8", ground: "#707b79", accent: "#d5e8df" },
+  ruins: { sky: "#d8dbbc", far: "#809d8c", ground: "#737b65", accent: "#e9dca1" },
+  storm: { sky: "#566b85", far: "#3b526c", ground: "#52616a", accent: "#b5dbf7" },
   galilee: { sky: "#ccecff", far: "#8bc9ca", ground: "#8a6d42", accent: "#f4d98b" },
   rome: { sky: "#f5d9bf", far: "#c89779", ground: "#725b50", accent: "#d6af5e" },
   jerusalem: { sky: "#f7e6bf", far: "#c6a36f", ground: "#8c704f", accent: "#ece0b7" },
@@ -47,4 +62,5 @@ export const FIREBASE_CONFIG = {
   appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
   measurementId: "G-8PR6LVKSH3",
 };
+
 

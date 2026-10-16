@@ -1,51 +1,13 @@
-import { POWER_LABELS } from "../config.js";
-
-export class HUD {
-  constructor(root = document) {
-    this.region = root.getElementById("regionText");
-    this.level = root.getElementById("levelText");
-    this.distance = root.getElementById("distanceText");
-    this.hearts = root.getElementById("heartsText");
-    this.powers = root.getElementById("powerList");
-    this.bossHud = root.getElementById("bossHud");
-    this.bossName = root.getElementById("bossName");
-    this.bossFill = root.getElementById("bossFill");
-    this.bossPercent = root.getElementById("bossPercent");
-    this.bossPhase = root.getElementById("bossPhase");
-    this.banner = root.getElementById("banner");
-    this.bannerTimer = 0;
-  }
-
-  showBanner(title, subtitle = "", duration = 2) {
-    this.banner.innerHTML = `<strong>${title}</strong><span>${subtitle}</span>`;
-    this.banner.classList.add("show");
-    this.bannerTimer = duration;
-  }
-
-  update(game, dt) {
-    if (this.bannerTimer > 0) {
-      this.bannerTimer -= dt;
-      if (this.bannerTimer <= 0) this.banner.classList.remove("show");
-    }
-    this.region.textContent = game.world?.regionName || game.world?.region || "—";
-    this.level.textContent = game.mode === "journey" ? (game.journeyNode?.name || "Journey") : `Depth ${game.depth + 1}`;
-    this.distance.textContent = Math.floor(game.score);
-    this.hearts.textContent = `${"♥".repeat(game.player.hearts)}${"♡".repeat(Math.max(0, game.player.maxHearts - game.player.hearts))}`;
-    this.powers.innerHTML = Object.entries(game.player.powers)
-      .filter(([, value]) => Boolean(value))
-      .map(([key, value]) => `<span>${POWER_LABELS[key] || key}${typeof value === "number" ? ` ×${value}` : ""}</span>`)
-      .join("");
-
-    const boss = game.bossController?.boss;
-    const visible = Boolean(boss && !boss.defeatHandled);
-    this.bossHud.classList.toggle("visible", visible);
-    if (visible) {
-      const ratio = Math.max(0, boss.health / boss.maxHealth);
-      this.bossName.textContent = boss.definition.name;
-      this.bossFill.style.width = `${ratio * 100}%`;
-      this.bossPercent.textContent = `${Math.round(ratio * 100)}%`;
-      this.bossPhase.textContent = `${boss.phase.name} · ${boss.state}${boss.currentAttack ? ` · ${boss.currentAttack.name}` : ""}`;
-    }
+const byId=id=>document.getElementById(id);
+export const formatTime=seconds=>{const n=Math.max(0,Math.floor(Number(seconds)||0));return`${Math.floor(n/60)}:${String(n%60).padStart(2,"0")}`;};
+export class HUD{
+  constructor(assets){this.assets=assets;this.bannerTime=0;this.lastHearts="";this.updateTimer=0;}
+  showBanner(title,detail="",duration=2.5){const element=byId("banner");element.querySelector("strong").textContent=title;element.querySelector("span").textContent=detail;this.bannerTime=duration;element.classList.add("visible");}
+  update(game,dt){if(this.bannerTime>0){this.bannerTime-=dt;if(this.bannerTime<=0)byId("banner").classList.remove("visible");}this.updateTimer-=dt;if(this.updateTimer>0)return;this.updateTimer=.08;
+    const p=game.player,key=`${p.hearts}/${p.maxHearts}`;if(key!==this.lastHearts){this.lastHearts=key;const hearts=byId("hearts");hearts.replaceChildren();for(let i=0;i<p.maxHearts;i++){const img=new Image();img.src=this.assets.getURL(i<p.hearts?"ui-heart-full":"ui-heart-empty");img.alt="";hearts.append(img);}hearts.setAttribute("aria-label",`${p.hearts} of ${p.maxHearts} hearts`);}
+    byId("faithCount").textContent=`✦ ${game.runStats?.collectibles||0}`;byId("regionText").textContent=game.world.regionName||game.world.name||"";
+    const progress=game.world.bossArena?100:Math.min(100,Math.floor((game.world.furthestX||p.x)/game.world.width*100));byId("progressFill").style.width=`${progress}%`;byId("progressTrack").setAttribute("aria-valuenow",progress);
+    const light=Number(p.powers.holyLight)||0,rain=Number(p.powers.fireRain)||0;byId("abilityBtn").hidden=light+rain<=0;byId("abilityCount").textContent=light+rain;
+    const boss=game.bossController.boss;byId("bossHud").classList.toggle("hidden",!boss||game.screen!=="playing");if(boss){byId("bossName").textContent=boss.definition.name;byId("bossFill").style.width=`${boss.health/boss.maxHealth*100}%`;byId("bossHint").textContent=boss.state==="VULNERABLE"?"Now — stomp or use light":boss.state==="TELL"?"Watch the warning":boss.phase?.name||"";}
   }
 }
-

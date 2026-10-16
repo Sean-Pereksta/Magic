@@ -1,7 +1,7 @@
 export const BOSS_ARENAS = {
   romanArena: {
     id: "romanArena",
-    region: "rome",
+    region: "city",
     width: 1500,
     left: 0,
     right: 1500,
@@ -19,12 +19,12 @@ export const BOSS_ARENAS = {
   },
   templeArena: {
     id: "templeArena",
-    region: "jerusalem",
+    region: "ruins",
     width: 1440,
     left: 0,
     right: 1440,
     spawn: { x: 150, y: 406 },
-    bossSpawn: { x: 1080, y: 220 },
+    bossSpawn: { x: 1080, y: 240 },
     platforms: [
       { x: 0, y: 468, w: 1440, h: 90, kind: "ground", oneWay: false },
       { x: 240, y: 370, w: 220, h: 18, kind: "platform", oneWay: true },
@@ -35,25 +35,25 @@ export const BOSS_ARENAS = {
   },
   pitArena: {
     id: "pitArena",
-    region: "hell",
+    region: "desert",
     width: 1500,
     left: 0,
     right: 1500,
     spawn: { x: 150, y: 406 },
     bossSpawn: { x: 1130, y: 364 },
     platforms: [
-      { x: 0, y: 468, w: 330, h: 90, kind: "ground", oneWay: false },
+      { x: 0, y: 468, w: 1500, h: 90, kind: "obsidian", oneWay: false },
       { x: 420, y: 410, w: 230, h: 18, kind: "obsidian", oneWay: true },
       { x: 735, y: 330, w: 210, h: 18, kind: "obsidian", oneWay: true },
       { x: 1030, y: 410, w: 210, h: 18, kind: "obsidian", oneWay: true },
       { x: 1320, y: 468, w: 180, h: 90, kind: "ground", oneWay: false },
     ],
-    hazards: [{ type: "lava", x: 330, y: 476, w: 990, h: 64, always: true }],
+    hazards: [{ type: "lava", x: 330, y: 486, w: 990, h: 64, always: true }],
     props: [],
   },
   celestialArena: {
     id: "celestialArena",
-    region: "heaven",
+    region: "storm",
     width: 1450,
     left: 0,
     right: 1450,
@@ -73,7 +73,7 @@ export const BOSS_DEFINITIONS = {
   warBeast: {
     id: "warBeast",
     name: "THE WAR BEAST",
-    region: "rome",
+    region: "city",
     arena: "romanArena",
     size: { w: 90, h: 94 },
     health: 18,
@@ -88,8 +88,9 @@ export const BOSS_DEFINITIONS = {
   },
   templeJudge: {
     id: "templeJudge",
+    flying: true,
     name: "THE TEMPLE JUDGE",
-    region: "jerusalem",
+    region: "ruins",
     arena: "templeArena",
     size: { w: 76, h: 98 },
     health: 20,
@@ -105,7 +106,7 @@ export const BOSS_DEFINITIONS = {
   pitLord: {
     id: "pitLord",
     name: "THE PIT LORD",
-    region: "hell",
+    region: "desert",
     arena: "pitArena",
     size: { w: 92, h: 104 },
     health: 24,
@@ -120,8 +121,9 @@ export const BOSS_DEFINITIONS = {
   },
   celestialTrial: {
     id: "celestialTrial",
+    flying: true,
     name: "THE CELESTIAL TRIAL",
-    region: "heaven",
+    region: "storm",
     arena: "celestialArena",
     size: { w: 78, h: 92 },
     health: 28,
@@ -137,6 +139,9 @@ export const BOSS_DEFINITIONS = {
 };
 
 export function bossForRegion(region) {
-  return Object.values(BOSS_DEFINITIONS).find((boss) => boss.region === region)?.id || "warBeast";
+  const canonical = { galilee: "countryside", rome: "city", jerusalem: "ruins", hell: "desert", heaven: "storm" }[region] || region;
+  return Object.values(BOSS_DEFINITIONS).find((boss) => boss.region === canonical)?.id || "warBeast";
 }
+
+
 

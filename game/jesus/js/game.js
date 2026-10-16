@@ -1,489 +1,134 @@
-import { VIEW, PHYSICS } from "./config.js";
-import { InputController } from "./input.js";
-import { Camera } from "./camera.js";
-import { createPlayer, damagePlayer, updateMovers, updatePlayer } from "./physics.js";
-import { generateRoom } from "./world/generator.js";
-import { REGIONS, regionForDepth } from "./world/regions.js";
-import { JOURNEY_BY_ID, JOURNEY_NODES, completeJourneyNode, reachableNodes } from "./world/journey.js";
-import { createCheckpoint, restoreCheckpoint } from "./world/checkpoints.js";
-import { BossController } from "./bosses/boss-controller.js";
-import { bossForRegion } from "./bosses/boss-data.js";
-import { updateEnemies } from "./enemies/enemies.js";
-import { collectPickups, grantBlessing, useFireRain, useHolyLight } from "./powers/blessings.js";
-import { GameStorage } from "./save/storage.js";
-import { Renderer } from "./render/renderer.js";
-import { HUD } from "./render/hud.js";
-import { overlaps } from "./common.js";
+import {VIEW,PHYSICS,POWER_LABELS} from "./config.js";
+import {InputController} from "./input.js";
+import {Camera} from "./camera.js";
+import {createPlayer,damagePlayer,updateMovers,updatePlayer,updateWorldEnvironment} from "./physics.js";
+import {createLevel,updateWorldStreaming,persistWorldState,restoreWorldState,CHUNK_WIDTH} from "./world/generator.js";
+import {REGIONS,BIOME_ORDER} from "./world/regions.js";
+import {JOURNEY_NODES,JOURNEY_BY_ID,completeJourneyNode,reachableNodes} from "./world/journey.js";
+import {BossController} from "./bosses/boss-controller.js";
+import {updateEnemies,emitCombatEffect} from "./enemies/enemies.js";
+import {collectPickups,grantBlessing,updateBlessings,useAbility} from "./powers/blessings.js";
+import {GameStorage} from "./save/storage.js";
+import {AssetManager} from "./assets/asset-manager.js";
+import {Renderer} from "./render/renderer.js";
+import {HUD,formatTime} from "./render/hud.js";
 
-function emptyWorld() {
-  return {
-    id: "menu",
-    name: "Galilee Shore",
-    region: "galilee",
-    regionName: "Galilee",
-    width: 1980,
-    platforms: [{ id: "menu-ground", x: 0, y: VIEW.floorY, w: 1980, h: 90, kind: "ground", oneWay: false }],
-    movers: [], hazards: [], enemies: [], pickups: [], props: [], bossHazards: [],
-    routeValid: true,
-  };
-}
+const byId=id=>document.getElementById(id);
+const SCREEN_IDS={menu:"mainMenu",worlds:"worldScreen",loading:"loadingScreen",paused:"pauseScreen",dead:"deathScreen",complete:"completeScreen",info:"infoScreen"};
+const UI_ART=["ui-heart-full","ui-heart-empty","ui-touch-jump","ui-touch-dash","ui-touch-blessing","ui-hud-faith"];
+const clone=value=>JSON.parse(JSON.stringify(value));
+const newStats=()=>({time:0,collectibles:0,secrets:0,damage:0,deaths:0,totalSecrets:0});
+const randomSeed=()=>{const n=new Uint32Array(1);if(globalThis.crypto?.getRandomValues)crypto.getRandomValues(n);else n[0]=Date.now();return n[0]||1;};
+function menuWorld(){return{id:"menu",name:"Galilee Countryside",region:"countryside",biome:"countryside",width:5000,height:1000,platforms:[],movers:[],hazards:[],enemies:[],pickups:[],props:[],scenery:[],checkpoints:[],effects:[],bossHazards:[],enemyProjectiles:[],weather:{disabled:true}};}
 
-function surfaceAt(world, x) {
-  return [...world.platforms, ...world.movers]
-    .filter((surface) => x >= surface.x && x <= surface.x + surface.w)
-    .sort((a, b) => a.y - b.y)[0] || null;
-}
-
-export class JesusRunGame {
-  constructor() {
-    this.canvas = document.getElementById("gameCanvas");
-    this.canvas.width = VIEW.width;
-    this.canvas.height = VIEW.height;
-    this.storage = new GameStorage();
-    this.input = new InputController();
-    this.camera = new Camera();
-    this.renderer = new Renderer(this.canvas);
-    this.hud = new HUD();
-    this.player = createPlayer();
-    this.world = emptyWorld();
-    this.bossController = new BossController((boss) => this.handleBossDefeated(boss));
-    this.mode = null;
-    this.running = false;
-    this.paused = false;
-    this.debug = false;
-    this.depth = 0;
-    this.score = 0;
-    this.distanceBank = 0;
-    this.difficulty = 1;
-    this.time = 0;
-    this.fps = 60;
-    this.lastFrame = performance.now();
-    this.accumulator = 0;
-    this.journeySave = this.storage.loadJourney();
-    this.journeyNode = null;
-    this.checkpointActivated = false;
-    this.deathLock = false;
-    this.bindUI();
-    this.showMainMenu();
-    requestAnimationFrame((time) => this.frame(time));
+export class JesusRunGame{
+  constructor(){
+    this.canvas=byId("gameCanvas");this.input=new InputController();this.storage=new GameStorage();this.assets=new AssetManager();this.camera=new Camera();this.renderer=new Renderer(this.canvas,this.assets);this.hud=new HUD(this.assets);
+    this.player=createPlayer();this.world=menuWorld();this.bossController=new BossController(boss=>this.handleBossDefeated(boss));this.journeySave=this.storage.loadJourney();
+    this.mode=null;this.screen="menu";this.running=false;this.paused=false;this.initialized=false;this.debug=false;this.time=0;this.fps=60;this.accumulator=0;this.loadGeneration=0;this.lastFrame=performance.now();this.runStats=newStats();this.score=0;this.depth=0;this.retryTask=null;this.checkpoint=null;this.prefetchedBoss=false;this.journeyNode=null;this.challenge=false;
+    this.bindUI();this.resize();window.addEventListener("resize",()=>this.resize());window.addEventListener("blur",()=>{if(this.screen==="playing")this.pause();});document.addEventListener("visibilitychange",()=>{if(document.hidden&&this.screen==="playing")this.pause();});
+    window.addEventListener("pagehide",()=>this.saveCurrentProgress());requestAnimationFrame(t=>this.frame(t));this.boot();
   }
-
-  bindUI() {
-    const byId = (id) => document.getElementById(id);
-    byId("continueJourneyBtn").addEventListener("click", () => this.startJourney(false));
-    byId("newJourneyBtn").addEventListener("click", () => this.startJourney(true));
-    byId("endlessBtn").addEventListener("click", () => this.startEndless());
-    byId("howBtn").addEventListener("click", () => this.showHowToPlay());
-    byId("scoresBtn").addEventListener("click", () => this.showScores());
-    byId("fullscreenBtn").addEventListener("click", () => this.toggleFullscreen());
-    byId("pauseBtn").addEventListener("click", () => this.togglePause());
-    byId("menuBtn").addEventListener("click", () => this.showMainMenu());
-    byId("overlayClose").addEventListener("click", () => this.hidePanel());
-    byId("gameOverMenu").addEventListener("click", () => this.showMainMenu());
-    byId("gameOverRestart").addEventListener("click", () => this.startEndless());
-    byId("saveScoreBtn").addEventListener("click", () => this.saveScore());
-    this.input.bindMobile(byId("joystick"), byId("stick"), byId("jumpBtn"), byId("lightBtn"), byId("rainBtn"));
+  resize(){const r=this.canvas.getBoundingClientRect(),aspect=Math.max(.3,r.width/Math.max(1,r.height));VIEW.width=Math.round(Math.max(360,Math.min(1440,540*aspect)));VIEW.height=Math.round(VIEW.width/aspect);this.canvas.width=VIEW.width;this.canvas.height=VIEW.height;this.renderer.clearCache();if(this.initialized)this.camera.reset(this.player,this.world);}
+  bindUI(){
+    const bind=(id,fn)=>byId(id).addEventListener("click",fn);
+    bind("journeyBtn",()=>this.showWorlds());bind("endlessBtn",()=>this.startEndless());bind("controlsBtn",()=>this.showControls("menu"));bind("recordsBtn",()=>this.showRecords());bind("worldBack",()=>this.showMainMenu());
+    bind("continueBtn",()=>this.resumeSaved());bind("pauseBtn",()=>this.pause());bind("resumeBtn",()=>this.resume());bind("restartBtn",()=>this.restartLevel());bind("pauseMenu",()=>this.showMainMenu());bind("pauseControls",()=>this.showControls("paused"));
+    bind("retryBtn",()=>this.retryCheckpoint());bind("deathMenu",()=>this.showMainMenu());bind("completeWorlds",()=>this.mode==="endless"?this.showMainMenu():this.showWorlds());
+    bind("nextBtn",()=>{if(this.mode==="endless")this.startEndless();else{const node=JOURNEY_NODES[Math.min(5,(this.journeyNode?.index||0)+1)];if(this.journeyNode?.index===5)this.showWorlds();else this.startLevel(node.id);}});
+    bind("infoBack",()=>{this.input.cancelRebind();this.setScreen(this.infoReturn||"menu");});bind("loadRetry",()=>this.retryTask?.());bind("loadBack",()=>{this.loadGeneration++;this.assets.cancelLoads();this.initialized=false;this.showMainMenu();});
+    this.input.bindMobile(byId("joystick"),byId("stick"),byId("jumpBtn"),byId("dashBtn"),byId("abilityBtn"));
   }
-
-  toggleFullscreen() {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
-    else document.exitFullscreen?.();
+  setScreen(screen){this.screen=screen;this.running=screen==="playing";this.paused=screen==="paused";this.input.enabled=this.running;if(!this.running)this.input.reset();this.accumulator=0;
+    for(const[name,id]of Object.entries(SCREEN_IDS))byId(id).classList.toggle("visible",name===screen);
+    byId("gameHud").classList.toggle("hidden",!["playing","paused","dead"].includes(screen));byId("mobileControls").classList.toggle("hidden",screen!=="playing");byId("bossHud").classList.toggle("hidden",screen!=="playing"||!this.bossController.boss);byId("shell").classList.toggle("playing",screen==="playing");byId("rotateHint").hidden=screen!=="playing"||this.runStats.time>8;
+    if(this.running){this.lastFrame=performance.now();this.canvas.focus({preventScroll:true});}
   }
-
-  togglePause() {
-    if (!this.mode || !this.running) return;
-    this.paused = !this.paused;
-    document.getElementById("pauseShade").classList.toggle("visible", this.paused);
+  async boot(){
+    const generation=++this.loadGeneration;this.retryTask=()=>this.boot();this.setScreen("loading");this.loadingTitle("Preparing the journey");
+    const ids=["countryside-background-sky","countryside-background-far","countryside-background-near","player.jesus.idle",...UI_ART];
+    try{await this.assets.initialize();let loaded=0;await Promise.all(ids.map(async id=>{await this.assets.ensure(id,{pin:id.startsWith("ui-")});if(generation===this.loadGeneration)this.loadingProgress({loaded:++loaded,total:ids.length,ratio:loaded/ids.length,label:"Preparing artwork"});}));if(generation!==this.loadGeneration)return;this.initialized=true;this.configureUIArt();this.showMainMenu();}catch(error){if(generation===this.loadGeneration)this.loadingFailure(error);}
   }
-
-  setGameplayVisible(visible) {
-    document.getElementById("gameHud").classList.toggle("hidden", !visible);
-    document.getElementById("topControls").classList.toggle("in-game", visible);
-    document.getElementById("mobileControls").classList.toggle("active", visible);
+  configureUIArt(){for(const[id,art]of[["jumpBtn","ui-touch-jump"],["dashBtn","ui-touch-dash"],["abilityBtn","ui-touch-blessing"]]){const e=byId(id);e.style.backgroundImage=`url("${this.assets.getURL(art)}")`;e.style.backgroundSize="100% 100%";e.style.backgroundColor="transparent";e.style.borderColor="transparent";if(id==="abilityBtn")e.querySelector("span").style.visibility="hidden";else e.textContent="";}}
+  loadingTitle(title){byId("loadTitle").textContent=title;byId("loadError").hidden=true;byId("loadProgress").value=0;byId("loadLabel").textContent="Loading this world's artwork…";byId("loadStatus").textContent="";}
+  loadingProgress(p){byId("loadProgress").value=p.ratio;byId("loadStatus").textContent=`${p.loaded} / ${p.total}`;}
+  loadingFailure(error){this.lastLoadError={message:error.message,assets:error.failedIDs||[]};byId("loadError").hidden=false;byId("loadLabel").textContent="The world is waiting for its artwork.";byId("loadStatus").textContent="Your checkpoint is safe.";this.setScreen("loading");}
+  showMainMenu(){this.saveCurrentProgress();this.setScreen("menu");this.mode=null;this.input.cancelRebind();}
+  showWorlds(){this.saveCurrentProgress();this.mode="journey";this.setScreen("worlds");const container=byId("worldList"),reachable=new Set(reachableNodes(this.journeySave));container.replaceChildren();
+    for(const node of JOURNEY_NODES){const done=this.journeySave.completed.includes(node.id),button=document.createElement("button"),img=new Image(),name=document.createElement("b"),detail=document.createElement("small");button.className=`world-option${done?" complete":""}`;button.disabled=!reachable.has(node.id);button.dataset.world=node.id;img.src=this.assets.getURL(`ui-world-${node.id}`);img.alt="";name.textContent=node.name;const record=this.journeySave.records[node.id];detail.textContent=done?(record?`Best ${formatTime(record.bestTime)}${record.noHit?" · No hit":""}`:"Complete"):reachable.has(node.id)?"Explore":"Locked";button.append(img,name,detail);button.addEventListener("click",()=>this.startLevel(node.id,{challenge:byId("challengeMode").checked}));container.append(button);}
+    const checkpoint=this.journeySave.checkpoint;byId("continueBtn").hidden=!checkpoint;byId("challengeChoice").hidden=!this.journeySave.completed.length;byId("challengeMode").checked=false;
   }
-
-  showMainMenu() {
-    this.mode = null;
-    this.running = false;
-    this.paused = false;
-    this.bossController.boss = null;
-    this.camera.focusArena(null);
-    this.world = emptyWorld();
-    this.player = createPlayer();
-    this.setGameplayVisible(false);
-    this.hidePanel();
-    document.getElementById("gameOver").classList.remove("visible");
-    document.getElementById("journeyMap").classList.remove("visible");
-    const menu = document.getElementById("mainMenu");
-    menu.classList.add("visible");
-    const hasProgress = (this.journeySave.completed || []).length > 0;
-    document.getElementById("continueJourneyBtn").hidden = !hasProgress;
+  createRunPlayer(saved=null){const p=createPlayer();p.maxHearts=this.challenge?3:4;p.hearts=p.maxHearts;for(const power of this.journeySave.permanentPowers)grantBlessing(p,power);updateBlessings(p,{effects:[]},0);
+    if(saved){p.powers={...p.powers,...saved.powers};p.shieldUnlocked=Boolean(saved.shieldUnlocked||p.shieldUnlocked);p.holyLightCapacity=Math.max(3,Math.min(5,Number(saved.holyLightCapacity)||3));p.powers.holyLight=Math.min(p.holyLightCapacity,Math.max(0,Number(p.powers.holyLight)||0));p.hearts=Math.min(p.maxHearts,Math.max(1,Number(saved.hearts)||p.maxHearts));}return p;
   }
-
-  startJourney(fresh) {
-    if (fresh && (this.journeySave.completed || []).length && !window.confirm("Start a new Journey and replace the current Journey save?")) return;
-    if (fresh) this.journeySave = this.storage.clearJourney();
-    this.mode = "journey";
-    this.score = (this.journeySave.completed || []).length * 500;
-    this.player = createPlayer();
-    this.player.maxHearts = this.journeySave.maxHearts || 4;
-    for (const power of this.journeySave.permanentPowers || []) grantBlessing(this.player, power);
-    document.getElementById("mainMenu").classList.remove("visible");
-    this.setGameplayVisible(false);
-    this.showJourneyMap();
+  playerSnapshot(){const p=this.player;return{powers:{...p.powers},hearts:p.hearts,shieldUnlocked:p.shieldUnlocked,holyLightCapacity:p.holyLightCapacity};}
+  async startLevel(nodeId,{checkpoint=null,challenge=false,seed=null,keepStats=false,carryPlayer=null}={}){
+    const node=JOURNEY_BY_ID[nodeId];if(!node)return;const generation=++this.loadGeneration;this.mode=this.mode==="endless"?"endless":"journey";this.journeyNode=node;this.challenge=checkpoint?.challenge??challenge;this.setScreen("loading");this.loadingTitle(node.name);this.retryTask=()=>this.startLevel(nodeId,{checkpoint,challenge:this.challenge,seed,keepStats,carryPlayer});
+    if(!keepStats)this.runStats=checkpoint?.stats?clone(checkpoint.stats):newStats();this.checkpoint=checkpoint?clone(checkpoint):null;this.prefetchedBoss=false;this.bossController.boss=null;this.bossController.arena=null;
+    this.player=this.createRunPlayer(checkpoint?.player||carryPlayer);const chosenSeed=checkpoint?.seed??seed??randomSeed();
+    await new Promise(resolve=>requestAnimationFrame(resolve));if(generation!==this.loadGeneration)return;
+    try{
+      if(checkpoint?.boss){await this.loadBossWorld(nodeId,checkpoint.bossId||REGIONS[nodeId].bossId,generation);return;}
+      const level=createLevel({biome:nodeId,seed:chosenSeed,difficulty:Math.min(6,node.difficulty+(this.challenge?1:0)),mode:this.mode,abilities:this.player.powers,chunkCount:this.mode==="endless"?Math.min(48,12+this.depth*4):null});
+      if(!level.routeValid)throw new Error("This route could not be validated.");this.world=level;this.world.playerPowers={...this.player.powers};this.world.endingBoss=this.mode==="journey"||((this.depth+1)%3===0)?level.bossId:null;this.world.exitOpen=!this.world.endingBoss;
+      if(checkpoint?.worldState)restoreWorldState(level,checkpoint.worldState,checkpoint.x);
+      this.player.x=checkpoint?.x??level.spawn.x;this.player.y=checkpoint?.y??level.spawn.y;this.player.previousX=this.player.x;this.player.previousY=this.player.y;this.player.lastSafe={x:this.player.x,y:this.player.y};this.player.invulnerable=1.5;
+      this.runStats.totalSecrets=level.totalSecrets||0;this.camera.focusArena(null);this.camera.reset(this.player,level);
+      await this.assets.loadLevel(level,p=>{if(generation===this.loadGeneration)this.loadingProgress(p);});await this.assets.ensure(UI_ART,{pin:true});for(const[power,value]of Object.entries(this.player.powers))if(value||power==="holyLight"||power==="shield"&&this.player.shieldUnlocked)await this.assets.ensurePlayerPower(power);
+      if(generation!==this.loadGeneration)return;this.initialized=true;this.configureUIArt();this.setScreen("playing");if(!this.checkpoint)this.activateCheckpoint(level.checkpoints[0],false,null,!carryPlayer);this.hud.showBanner(node.name,checkpoint?"Checkpoint restored":REGIONS[nodeId].lesson,2.8);
+      if(this.mode==="journey"){this.journeySave.currentNode=nodeId;this.storage.saveJourney(this.journeySave);}
+    }catch(error){if(generation===this.loadGeneration)this.loadingFailure(error);}
   }
-
-  showJourneyMap() {
-    this.running = false;
-    this.bossController.boss = null;
-    this.setGameplayVisible(false);
-    const overlay = document.getElementById("journeyMap");
-    const roads = overlay.querySelector("svg");
-    const nodes = overlay.querySelector(".map-nodes");
-    roads.innerHTML = "";
-    nodes.innerHTML = "";
-    const completed = new Set(this.journeySave.completed || []);
-    const reachable = new Set(reachableNodes(this.journeySave));
-
-    for (const node of JOURNEY_NODES) {
-      for (const nextId of node.next) {
-        const next = JOURNEY_BY_ID[nextId];
-        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-        line.setAttribute("x1", `${node.x}%`);
-        line.setAttribute("y1", `${node.y}%`);
-        line.setAttribute("x2", `${next.x}%`);
-        line.setAttribute("y2", `${next.y}%`);
-        line.classList.toggle("complete", completed.has(node.id) && completed.has(next.id));
-        roads.appendChild(line);
-      }
-      const button = document.createElement("button");
-      button.dataset.node = node.id;
-      button.className = `map-node ${completed.has(node.id) ? "complete" : reachable.has(node.id) ? "reachable" : "locked"} ${node.type}`;
-      button.style.left = `${node.x}%`;
-      button.style.top = `${node.y}%`;
-      button.innerHTML = `<b>${completed.has(node.id) ? "✓" : node.type === "boss" ? "♜" : node.type === "trial" ? "✦" : "●"}</b><span>${node.name}</span>`;
-      button.disabled = !reachable.has(node.id);
-      button.addEventListener("click", () => this.startJourneyNode(node.id));
-      nodes.appendChild(button);
+  startJourneyNode(nodeId,retry=false){return this.startLevel(nodeId,{checkpoint:retry?this.checkpoint:null});}
+  resumeSaved(){const c=this.journeySave.checkpoint;if(!c)return;this.mode="journey";return this.startLevel(c.nodeId,{checkpoint:c});}
+  startEndless(){this.mode="endless";this.depth=0;this.endlessSeed=randomSeed();this.endlessDistance=0;this.runStats=newStats();this.checkpoint=null;return this.startLevel("countryside",{seed:this.endlessSeed});}
+  async enterBoss(){if(this.screen!=="playing"||!this.world.endingBoss)return;const bossId=this.world.endingBoss;if(this.mode==="endless")this.endlessDistance=(this.endlessDistance||0)+this.world.width;this.activateCheckpoint(this.world.checkpoints.at(-1),true,bossId);const generation=++this.loadGeneration;this.setScreen("loading");this.loadingTitle("The guardian trial");this.retryTask=()=>this.startLevel(this.journeyNode.id,{checkpoint:this.checkpoint,keepStats:true});try{await this.loadBossWorld(this.journeyNode.id,bossId,generation);}catch(error){if(generation===this.loadGeneration)this.loadingFailure(error);}}
+  async loadBossWorld(nodeId,bossId,generation){
+    const originalCheckpoint=this.checkpoint;const world={...menuWorld(),biome:nodeId,region:nodeId,checkpoints:[],enemyPool:[],bossId,loadBossNow:true,bossArena:true,endingBoss:bossId};this.bossController.start(bossId,Math.min(6,this.journeyNode.difficulty+(this.challenge?1:0)),world,this.player);
+    world.bounds={left:0,right:world.width,top:-300,bottom:1000};world.deathY=1000;world.regionName=this.journeyNode.name;world.playerPowers={...this.player.powers};world.hazardTypes=(world.hazards||[]).map(h=>h.type);world.weather=REGIONS[world.biome]?.weather||{disabled:true};this.world=world;this.player.previousX=this.player.x;this.player.previousY=this.player.y;this.camera.focusArena(this.bossController.arena);this.camera.reset(this.player,world);
+    await this.assets.loadLevel(world,p=>{if(generation===this.loadGeneration)this.loadingProgress(p);});for(const[power,value]of Object.entries(this.player.powers))if(value||power==="holyLight"||power==="shield"&&this.player.shieldUnlocked)await this.assets.ensurePlayerPower(power);if(generation!==this.loadGeneration)return;this.initialized=true;this.checkpoint=originalCheckpoint;this.setScreen("playing");this.hud.showBanner(this.bossController.boss.definition.name,"Read the warning. Strike during the opening.",3);
+  }
+  activateCheckpoint(c,boss=false,bossId=null,heal=true){if(!c)return;c.activated=true;if(heal)this.player.hearts=this.player.maxHearts;const checkpoint={nodeId:this.journeyNode.id,seed:this.world.seed??this.checkpoint?.seed??1,x:boss?160:c.x,y:boss?406:c.y,boss,bossId,challenge:this.challenge,player:this.playerSnapshot(),stats:clone(this.runStats),worldState:boss?this.checkpoint?.worldState??persistWorldState(this.world):persistWorldState(this.world)};this.checkpoint=checkpoint;
+    if(this.mode==="journey"){this.journeySave.checkpoint=clone(checkpoint);this.storage.saveJourney(this.journeySave);}if(this.runStats.time>2)emitCombatEffect(this.world,"fx-checkpoint-activation",c.x+(c.w||48)/2,c.floorY??c.y+this.player.h,{duration:.8,scale:.35});if(this.runStats.time>2)this.hud.showBanner("Checkpoint lit","A safe place to return",1.5);
+  }
+  saveCurrentProgress(){if(this.mode!=="journey"||!this.checkpoint||["complete","worlds"].includes(this.screen))return;this.checkpoint.stats.time=this.runStats.time;this.checkpoint.stats.damage=this.runStats.damage;this.checkpoint.stats.deaths=this.runStats.deaths;this.journeySave.checkpoint=clone(this.checkpoint);this.storage.saveJourney(this.journeySave);}
+  pause(){if(this.screen!=="playing")return;this.saveCurrentProgress();this.setScreen("paused");}
+  resume(){if(this.screen!=="paused")return;this.setScreen("playing");}
+  restartLevel(){if(this.mode==="endless")return this.startEndless();const seed=this.world.seed??this.checkpoint?.seed;this.checkpoint=null;this.journeySave.checkpoint=null;this.storage.saveJourney(this.journeySave);return this.startLevel(this.journeyNode.id,{challenge:this.challenge,seed});}
+  retryCheckpoint(){if(this.mode==="endless")return this.startEndless();const c=this.checkpoint||this.journeySave.checkpoint;if(!c)return this.restartLevel();const stats={...c.stats,time:this.runStats.time+5,damage:this.runStats.damage,deaths:this.runStats.deaths};this.runStats=stats;return this.startLevel(c.nodeId,{checkpoint:c,keepStats:true});}
+  handleDeath(){if(this.screen!=="playing")return;this.runStats.deaths++;this.player.state="death";this.player.animTime=0;this.setScreen("dead");if(this.mode==="endless"){this.score=Math.floor((this.endlessDistance||0)+((this.world.bossArena?0:this.world.furthestX||0)));byId("deathDetail").textContent=`${Math.floor(this.score/10)} m · ${formatTime(this.runStats.time)}`;byId("retryBtn").textContent="Run again";this.storage.saveScore("Traveler",this.score);}else{byId("deathDetail").textContent="Your checkpoint is safe.";byId("retryBtn").textContent="Return to checkpoint";}this.saveCurrentProgress();}
+  handleBossDefeated(){this.world.exitOpen=true;this.completeLevel();}
+  completeLevel(){if(this.screen!=="playing")return;
+    if(this.mode==="endless"){this.endlessDistance=(this.endlessDistance||0)+(this.world.bossArena?0:this.world.width);this.depth++;const carryPlayer=this.playerSnapshot();this.startLevel(BIOME_ORDER[this.depth%6],{seed:(this.endlessSeed+this.depth*1291)>>>0,keepStats:true,carryPlayer});return;}
+    const node=this.journeyNode,key=node.id+(this.challenge?":challenge":""),record=this.storage.updateRecord(this.journeySave,key,{...this.runStats,targetTime:node.targetTime});this.journeySave=completeJourneyNode(this.journeySave,node.id);const powers=new Set(this.journeySave.permanentPowers);powers.add(node.reward);this.journeySave.permanentPowers=[...powers];this.storage.saveJourney(this.journeySave);this.checkpoint=null;
+    byId("completeKicker").textContent=node.index===5?"JOURNEY COMPLETE":"WORLD COMPLETE";byId("completeTitle").textContent=node.name;byId("completeStats").textContent=`${formatTime(this.runStats.time)} · ${this.runStats.secrets} secrets · Best ${formatTime(record.bestTime)}${this.runStats.damage===0?" · No hit":""}${this.runStats.time<=node.targetTime?" · Time target met":""}`;byId("completeReward").textContent=`${POWER_LABELS[node.reward]} unlocked`;byId("nextBtn").textContent=node.index===5?"Return to worlds":"Next world";this.setScreen("complete");
+  }
+  showControls(returnTo=this.screen){this.infoReturn=returnTo;this.setScreen("info");byId("infoTitle").textContent="Controls";const body=byId("infoBody");body.replaceChildren();const copy=document.createElement("p");copy.className="help-copy";copy.textContent="Move, jump, and dash. Hold jump for height; push into a wall to slide, then jump away. On touch screens use the left pad and the two right buttons. A single blessing button appears when ready. Drag the pad down while jumping to drop through a ledge.";body.append(copy);const list=document.createElement("div");list.className="key-list";for(const[action,label]of[["left","Move left"],["right","Move right"],["jump","Jump"],["dash","Dash"],["ability","Blessing"]]){const text=document.createElement("span"),button=document.createElement("button");text.textContent=label;const name=()=>this.input.bindings[action]===" "?"Space":this.input.bindings[action].toUpperCase();button.textContent=name();button.addEventListener("click",()=>{button.textContent="Press a key…";this.input.rebind(action,()=>this.showControls(returnTo));});list.append(text,button);}body.append(list);const notes=document.createElement("p");notes.className="help-copy";notes.textContent="Stomp enemies, attack from their weak side, and read their tells. Guardians become vulnerable after marked attacks. Light recharges; a cast outside range costs nothing. Checkpoints save your journey. Revisit worlds for secrets, faster times, and no-hit records. Challenge mode gives you three hearts.";body.append(notes);}
+  async showRecords(){this.infoReturn="menu";this.setScreen("info");byId("infoTitle").textContent="Your records";const body=byId("infoBody");body.replaceChildren();for(const node of JOURNEY_NODES){const r=this.journeySave.records[node.id],row=document.createElement("div"),name=document.createElement("span"),detail=document.createElement("b");row.className="record-row";name.textContent=node.name;detail.textContent=r?`${formatTime(r.bestTime)}${r.noHit?" · No hit":""}`:"—";row.append(name,detail);body.append(row);}const row=document.createElement("div");row.className="record-row";const score=this.storage.localScores()[0]?.score||0;row.textContent=`Endless best · ${Math.floor(score/10)} m`;body.append(row);}
+  update(dt){
+    if(this.screen!=="playing")return;this.time+=dt;this.runStats.time+=dt;this.world.time=this.time;this.world.playerX=this.player.x;
+    if(!this.world.bossArena)updateWorldStreaming(this.world,this.player.x,this.camera.x);
+    const beforeHearts=this.player.hearts,oldState=this.player.state;
+    updateMovers(this.world,this.time,dt);updatePlayer(this.player,this.world,this.input,dt);updateWorldEnvironment(this.world,this.player,dt,this.time);
+    if(this.bossController.boss)this.bossController.update(this.world,this.player,dt,this.camera);else updateEnemies(this.world,this.player,dt);if(this.screen!=="playing")return;
+    this.runStats.damage+=Math.max(0,beforeHearts-this.player.hearts);updateBlessings(this.player,this.world,dt);if(this.input.abilityPressed())useAbility(this.player,this.world,this.bossController);
+    const pending=this.world.pickups.filter(p=>!p.collected);const collected=collectPickups(this.world,this.player);if(collected.length){this.runStats.collectibles+=collected.length;this.runStats.secrets+=pending.filter(p=>p.collected&&p.secret).length;for(const power of collected)if(["shield","sandals","bread","holyLight","fireRain","wings"].includes(power))this.assets.ensurePlayerPower(power).catch(error=>this.recoverGraphics(error));}
+    if(oldState!=="dash"&&this.player.state==="dash")emitCombatEffect(this.world,"fx-dash-trail",this.player.x+this.player.w/2,this.player.y+this.player.h,{duration:.25,scale:.35,facing:this.player.facing});
+    if(this.player.y>(this.world.deathY||1000)){this.player.invulnerable=0;this.player.powers.shield=false;this.player.hearts=0;this.runStats.damage++;}
+    if(this.player.hearts<=0){this.handleDeath();return;}
+    if(!this.world.bossArena){if(this.lastPowerChunk!==this.world.streaming?.start){this.lastPowerChunk=this.world.streaming?.start;this.assets.prefetchPowers(this.world.pickups.filter(p=>!p.collected).map(p=>p.type)).catch(()=>{});}for(const c of this.world.checkpoints)if(!c.activated&&this.player.x>=c.x&&Math.abs(this.player.y-c.y)<150)this.activateCheckpoint(c);
+      if(this.world.endingBoss&&!this.prefetchedBoss&&this.world.width-this.player.x<CHUNK_WIDTH*2){this.prefetchedBoss=true;this.assets.prefetchBoss(this.world.endingBoss).catch(()=>{this.prefetchedBoss=false;});}
+      if(this.world.endingBoss&&this.player.x>=this.world.bossTriggerX){this.enterBoss();return;}if(!this.world.endingBoss&&this.player.x>=this.world.width-120){this.completeLevel();return;}
     }
-    overlay.classList.add("visible");
+    this.camera.update(this.player,dt,this.world);this.score=Math.floor((this.endlessDistance||0)+((this.world.bossArena?0:this.world.furthestX||this.player.x)));
   }
-
-  startJourneyNode(nodeId, retry = false) {
-    const node = JOURNEY_BY_ID[nodeId];
-    if (!node) return;
-    this.journeyNode = node;
-    this.journeySave.currentNode = nodeId;
-    this.storage.saveJourney(this.journeySave);
-    document.getElementById("journeyMap").classList.remove("visible");
-    this.setGameplayVisible(true);
-    this.running = true;
-    this.paused = false;
-    this.deathLock = false;
-    this.checkpointActivated = false;
-    this.bossController.boss = null;
-    const seed = this.journeySave.checkpoint?.nodeId === node.id
-      ? this.journeySave.checkpoint.roomSeed
-      : [...node.id].reduce((sum, char) => sum + char.charCodeAt(0), 0) * 97;
-
-    if (node.boss) {
-      this.startBoss(node.boss, node.difficulty);
-    } else {
-      this.loadRoom(generateRoom({ region: node.region, seed, journeyDifficulty: node.difficulty }));
-      if (retry) restoreCheckpoint(this);
-      this.hud.showBanner(node.name.toUpperCase(), `${node.type.toUpperCase()} · DIFFICULTY ${node.difficulty}`);
-    }
-  }
-
-  startEndless() {
-    this.mode = "endless";
-    this.running = true;
-    this.paused = false;
-    this.depth = 0;
-    this.score = 0;
-    this.distanceBank = 0;
-    this.player = createPlayer();
-    this.journeyNode = null;
-    this.bossController.boss = null;
-    document.getElementById("mainMenu").classList.remove("visible");
-    document.getElementById("gameOver").classList.remove("visible");
-    this.hidePanel();
-    this.setGameplayVisible(true);
-    this.loadEndlessRoom();
-  }
-
-  loadEndlessRoom() {
-    const region = regionForDepth(this.depth);
-    this.loadRoom(generateRoom({ region, depth: this.depth, seed: Date.now() + this.depth * 1291 }));
-    this.hud.showBanner(`DEPTH ${this.depth + 1}`, `${REGIONS[region].name.toUpperCase()} · TIER ${this.world.tier}`);
-  }
-
-  loadRoom(room) {
-    this.bossController.boss = null;
-    this.bossController.arena = null;
-    this.world = {
-      ...room,
-      regionName: REGIONS[room.region]?.name || room.region,
-      bossHazards: [],
-      props: room.props || [],
-    };
-    for (const enemy of this.world.enemies) {
-      const surface = surfaceAt(this.world, enemy.x + enemy.w / 2);
-      if (surface) enemy.y = surface.y - enemy.h;
-    }
-    for (const pickup of this.world.pickups) {
-      const surface = surfaceAt(this.world, pickup.x + pickup.w / 2);
-      if (surface) pickup.y = surface.y - 58;
-    }
-    this.player.x = 76;
-    this.player.y = VIEW.floorY - this.player.h;
-    this.player.vx = 0;
-    this.player.vy = 0;
-    this.camera.x = 0;
-    this.camera.y = 0;
-    this.camera.focusArena(null);
-  }
-
-  startBoss(kind, difficulty) {
-    this.world = emptyWorld();
-    const encounter = this.bossController.start(kind, difficulty, this.world, this.player);
-    this.world.regionName = REGIONS[this.world.region]?.name || this.world.region;
-    this.world.routeValid = true;
-    this.world.tier = difficulty;
-    this.world.props = encounter.arena.props || [];
-    this.camera.x = 0;
-    this.camera.focusArena(encounter.arena);
-    this.hud.showBanner(encounter.boss.definition.name, "READ THE TELL · SURVIVE · STRIKE WHEN GOLD");
-  }
-
-  finishRoom() {
-    if (this.mode === "journey") {
-      this.journeySave = completeJourneyNode(this.journeySave, this.journeyNode.id);
-      if (this.journeyNode.type === "blessing") this.addPermanentPower("shield");
-      if (this.journeyNode.type === "trial") this.addPermanentPower(this.journeyNode.region === "heaven" ? "wings" : "bread");
-      this.score += 500;
-      this.storage.saveJourney(this.journeySave);
-      if (this.journeyNode.id === "heaven") this.showJourneyVictory();
-      else this.showJourneyMap();
-    } else {
-      this.distanceBank += this.world.width;
-      this.score += 180 + this.world.tier * 40;
-      this.depth++;
-      if (this.depth % 4 === 0) this.startBoss(bossForRegion(regionForDepth(this.depth - 1)), Math.min(6, 1 + Math.floor(this.depth / 2)));
-      else this.loadEndlessRoom();
-    }
-  }
-
-  addPermanentPower(power) {
-    const powers = new Set(this.journeySave.permanentPowers || []);
-    powers.add(power);
-    this.journeySave.permanentPowers = [...powers];
-    grantBlessing(this.player, power);
-  }
-
-  handleBossDefeated(boss) {
-    grantBlessing(this.player, boss.definition.reward);
-    this.score += 750;
-    this.camera.focusArena(null);
-    if (this.mode === "journey") {
-      this.addPermanentPower(boss.definition.reward);
-      this.journeySave = completeJourneyNode(this.journeySave, this.journeyNode.id);
-      this.storage.saveJourney(this.journeySave);
-      if (this.journeyNode.id === "heaven") this.showJourneyVictory();
-      else this.showJourneyMap();
-    } else {
-      this.depth++;
-      this.loadEndlessRoom();
-    }
-  }
-
-  updateHazards(dt) {
-    for (const hazard of this.world.hazards) {
-      hazard.timer = (hazard.timer || 0) + dt * (this.world.hazardSpeed || 1);
-      if (hazard.type === "fireJet") hazard.active = (hazard.timer % 2.4) > 1.45;
-      const hitbox = hazard.type === "fireJet" && hazard.active
-        ? { x: hazard.x + 4, y: hazard.y - 100, w: hazard.w - 8, h: hazard.h + 100 }
-        : hazard;
-      if ((hazard.always || hazard.active) && overlaps(this.player, hitbox)) {
-        damagePlayer(this.player, 1, { x: -this.player.facing * 260, y: -480 });
-      }
-    }
-  }
-
-  update(dt) {
-    if (!this.running || this.paused || this.deathLock) return;
-    this.time += dt;
-    if (this.input.consume("f1")) this.debug = !this.debug;
-    if (this.input.consume("f2")) this.debugNextRoom();
-    if (this.input.consume("f3")) this.debugBoss();
-    if (this.input.consume("f4")) this.debugDeepEndless();
-    if (this.input.consume("escape") || this.input.consume("p")) this.togglePause();
-
-    updateMovers(this.world, this.time, dt);
-    updatePlayer(this.player, this.world, this.input, dt);
-    if (!this.bossController.boss) updateEnemies(this.world, this.player, dt);
-    this.updateHazards(dt);
-    const collected = collectPickups(this.world, this.player);
-    if (collected.length) this.hud.showBanner("BLESSING RECEIVED", collected[0].replace(/([A-Z])/g, " $1").toUpperCase(), 1.25);
-
-    if (this.input.consume("q")) useHolyLight(this.player, this.bossController);
-    if (this.input.consume("e")) useFireRain(this.player, this.bossController);
-    if (this.bossController.boss) this.bossController.update(this.world, this.player, dt, this.camera);
-
-    if (this.mode === "journey" && this.world.checkpointX && !this.checkpointActivated && this.player.x >= this.world.checkpointX) {
-      this.checkpointActivated = true;
-      const checkpointSurface = surfaceAt(this.world, this.world.checkpointX + 28);
-      const checkpointY = (checkpointSurface?.y || VIEW.floorY) - this.player.h;
-      createCheckpoint(this, this.world.checkpointX + 28, checkpointY);
-      this.hud.showBanner("CHECKPOINT LIT", "Journey progress secured", 1.4);
-    }
-
-    if (!this.bossController.boss && this.player.x >= this.world.width - 76) this.finishRoom();
-    if (this.player.y > VIEW.height + 150) {
-      damagePlayer(this.player, 1);
-      if (this.player.hearts > 0) {
-        this.player.x = this.player.lastSafe.x;
-        this.player.y = this.player.lastSafe.y - 20;
-        this.player.vx = 0;
-        this.player.vy = 0;
-      }
-    }
-    if (this.player.hearts <= 0) this.handleDeath();
-
-    this.score = Math.max(this.score, this.distanceBank + this.player.x);
-    this.camera.update(this.player, dt, this.world.width);
-    this.hud.update(this, dt);
-  }
-
-  handleDeath() {
-    if (this.deathLock) return;
-    this.deathLock = true;
-    if (this.mode === "journey") {
-      this.hud.showBanner("RETURNING TO THE SHRINE", this.journeySave.checkpoint ? "Checkpoint restored" : "Restarting encounter", 1.25);
-      setTimeout(() => {
-        this.player.hearts = Math.max(2, this.player.maxHearts - 1);
-        this.startJourneyNode(this.journeyNode.id, true);
-      }, 850);
-    } else {
-      this.running = false;
-      this.showGameOver();
-    }
-  }
-
-  async showGameOver() {
-    const overlay = document.getElementById("gameOver");
-    document.getElementById("finalScore").textContent = Math.floor(this.score);
-    overlay.classList.add("visible");
-    const scores = await this.storage.scores();
-    const cutoff = scores.length < 10 ? 0 : scores[scores.length - 1].score;
-    document.getElementById("scoreEntry").hidden = this.score < cutoff && scores.length >= 10;
-    this.renderScores(scores, document.getElementById("gameOverScores"));
-  }
-
-  async saveScore() {
-    const input = document.getElementById("scoreName");
-    const source = await this.storage.saveScore(input.value.trim() || "Anonymous", this.score);
-    document.getElementById("scoreSaveStatus").textContent = `Saved to ${source}.`;
-    this.renderScores(await this.storage.scores(), document.getElementById("gameOverScores"));
-  }
-
-  async showScores() {
-    this.showPanel("ENDLESS HIGH SCORES", "Loading…");
-    const scores = await this.storage.scores();
-    const list = document.createElement("ol");
-    list.className = "score-list";
-    this.renderScores(scores, list);
-    document.getElementById("overlayBody").replaceChildren(list);
-  }
-
-  renderScores(scores, target) {
-    target.replaceChildren();
-    const rows = scores.length ? scores : [{ name: "No scores yet", score: "—" }];
-    for (const row of rows) {
-      const item = document.createElement("li");
-      const name = document.createElement("span");
-      const score = document.createElement("b");
-      name.textContent = row.name;
-      score.textContent = row.score;
-      item.append(name, score);
-      target.appendChild(item);
-    }
-  }
-
-  showHowToPlay() {
-    this.showPanel("HOW TO PLAY", `
-      <div class="help-grid">
-        <section><b>Move</b><p>A/D or arrow keys. Mobile uses the left stick.</p></section>
-        <section><b>Jump</b><p>W, Up, or Space. Hold for height. Coyote time and jump buffering are built in.</p></section>
-        <section><b>Bosses</b><p>Red warnings are danger. Survive the pattern; strike while the boss glows gold. Stomp, Q Holy Light, or E Fire Rain.</p></section>
-        <section><b>Journey</b><p>Choose routes, light midpoint shrines, defeat location-specific bosses, and reach Heaven.</p></section>
-        <section><b>Endless</b><p>Death ends the run. Rooms stay physically valid while enemies, modifiers, and bosses intensify.</p></section>
-        <section><b>Debug</b><p>F1 HUD · F2 next room · F3 boss · F4 deep Endless test.</p></section>
-      </div>`);
-  }
-
-  showPanel(title, body) {
-    document.getElementById("overlayTitle").textContent = title;
-    document.getElementById("overlayBody").innerHTML = body;
-    document.getElementById("infoOverlay").classList.add("visible");
-  }
-
-  hidePanel() {
-    document.getElementById("infoOverlay").classList.remove("visible");
-  }
-
-  showJourneyVictory() {
-    this.running = false;
-    this.showPanel("JOURNEY COMPLETE", `<p class="victory-copy">The final trial is complete. Every route remains available from the Journey map, and your permanent blessings are preserved.</p><button class="primary" id="victoryMapBtn">Return to Journey Map</button>`);
-    requestAnimationFrame(() => document.getElementById("victoryMapBtn")?.addEventListener("click", () => {
-      this.hidePanel();
-      this.showJourneyMap();
-    }));
-  }
-
-  debugNextRoom() {
-    if (!this.mode) return;
-    this.bossController.boss = null;
-    if (this.mode === "endless") {
-      this.depth++;
-      this.loadEndlessRoom();
-    } else {
-      this.loadRoom(generateRoom({ region: this.journeyNode?.region || "galilee", journeyDifficulty: Math.min(6, (this.world.tier || 1) + 1), seed: Date.now() }));
-    }
-  }
-
-  debugBoss() {
-    if (!this.mode) return;
-    this.startBoss(bossForRegion(this.world.region), Math.max(1, this.world.tier || 1));
-  }
-
-  debugDeepEndless() {
-    this.mode = "endless";
-    this.depth = 14;
-    this.score = 8000;
-    this.running = true;
-    this.setGameplayVisible(true);
-    this.loadEndlessRoom();
-  }
-
-  frame(now) {
-    const elapsed = Math.min(0.06, Math.max(0, (now - this.lastFrame) / 1000));
-    this.lastFrame = now;
-    this.fps += ((elapsed > 0 ? 1 / elapsed : 60) - this.fps) * 0.08;
-    if (this.running && this.paused && (this.input.consume("escape") || this.input.consume("p"))) {
-      this.togglePause();
-    }
-    if (this.running && !this.paused) this.accumulator += elapsed;
-    let steps = 0;
-    while (this.accumulator >= PHYSICS.fixedStep && steps < PHYSICS.maxSteps) {
-      this.update(PHYSICS.fixedStep);
-      this.accumulator -= PHYSICS.fixedStep;
-      steps++;
-    }
-    if (steps) this.input.clearFrame();
-    this.renderer.draw(this);
-    requestAnimationFrame((time) => this.frame(time));
+  recoverGraphics(error){if(this.screen!=="playing")return;const generation=++this.loadGeneration;this.setScreen("loading");this.loadingTitle("Preparing artwork");const ids=error.failedIDs||[...this.renderer.missingAssets];this.retryTask=async()=>{this.loadingTitle("Preparing artwork");try{await this.assets.ensure(ids);if(generation!==this.loadGeneration)return;this.setScreen("playing");}catch(e){if(generation===this.loadGeneration)this.loadingFailure(e);}};this.retryTask();}
+  frame(now){const elapsed=Math.min(.08,Math.max(0,(now-this.lastFrame)/1000));this.lastFrame=now;if(elapsed>0)this.fps+=(1/elapsed-this.fps)*.05;
+    if(!Object.values(this.input.bindings).includes("f1")&&this.input.consume("f1"))this.debug=!this.debug;if(this.input.consume("escape")||!Object.values(this.input.bindings).includes("p")&&this.input.consume("p")){if(this.screen==="playing")this.pause();else if(this.screen==="paused")this.resume();}
+    if(this.screen==="playing"){this.accumulator=Math.min(this.accumulator+elapsed,PHYSICS.fixedStep*PHYSICS.maxSteps);let steps=0;while(this.accumulator>=PHYSICS.fixedStep&&steps++<PHYSICS.maxSteps&&this.screen==="playing"){this.update(PHYSICS.fixedStep);this.input.clearFrame();this.accumulator-=PHYSICS.fixedStep;}}
+    if(this.screen==="dead")this.player.animTime=Math.min(2,(this.player.animTime||0)+elapsed);
+    if(this.initialized&&this.screen!=="loading"){this.renderStats=this.renderer.draw(this,this.accumulator/PHYSICS.fixedStep);if(this.renderer.error&&this.screen==="playing")this.recoverGraphics(this.renderer.error);}
+    this.hud.update(this,elapsed);if(this.runStats.time>8)byId("rotateHint").hidden=true;requestAnimationFrame(t=>this.frame(t));
   }
 }
-
-window.jesusRunGame = new JesusRunGame();
+window.jesusRunGame=new JesusRunGame();

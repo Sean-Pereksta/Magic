@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import {createJourneySave,completeJourneyNode,reachableNodes,migrateJourney} from '../js/world/journey.js';
+import {GameStorage} from '../js/save/storage.js';
+import {InputController} from '../js/input.js';
+import {createLevel,restoreWorldState,persistWorldState} from '../js/world/generator.js';
+const values=new Map(),listeners=new Map();
+globalThis.localStorage={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};
+globalThis.window={addEventListener:(name,fn)=>{const list=listeners.get(name)||[];list.push(fn);listeners.set(name,list);}};
+globalThis.document={addEventListener(){},hidden:false};
+const dispatch=(name,key)=>{for(const fn of listeners.get(name)||[])fn({key,target:{matches:()=>false},repeat:false,preventDefault(){}});};
+const storage=new GameStorage();let save=createJourneySave();assert.deepEqual(reachableNodes(save),['countryside']);save=completeJourneyNode(save,'countryside');assert.equal(save.unlocked,1);assert.deepEqual(reachableNodes(save),['countryside','desert']);
+storage.updateRecord(save,'countryside',{time:800,secrets:3,totalSecrets:5,damage:0,targetTime:900});storage.updateRecord(save,'countryside',{time:820,secrets:5,totalSecrets:5,damage:1,targetTime:900});assert.equal(save.records.countryside.bestTime,800);assert.equal(save.records.countryside.noHit,true);assert.equal(save.records.countryside.allSecrets,true);assert.equal(save.records.countryside.runs,2);assert.equal(storage.saveJourney(save),true);assert.deepEqual(storage.loadJourney().completed,['countryside']);
+const legacy=migrateJourney({completed:['galilee','capernaum','rome','heaven'],permanentPowers:['shield','wings','unknown']});assert.equal(legacy.unlocked,5);assert.deepEqual(legacy.permanentPowers,['shield','wings']);assert.doesNotThrow(()=>migrateJourney({completed:'bad',permanentPowers:'bad'}));
+values.set('jesusRunnerJourneyV3','{bad json');assert.equal(storage.loadJourney().version,3);values.set('jesusRunnerJourneyV3',JSON.stringify({version:3,checkpoint:{nodeId:'countryside',x:Infinity,y:406,seed:1},unlocked:999}));assert.equal(storage.loadJourney().checkpoint,null);assert.equal(storage.loadJourney().unlocked,5);
+const validCheckpoint={nodeId:'countryside',x:100,y:406,seed:123};
+const readCheckpoint=(checkpoint,permanentPowers=[])=>{values.set('jesusRunnerJourneyV3',JSON.stringify({version:3,checkpoint,permanentPowers}));return storage.loadJourney().checkpoint;};
+let recovered=readCheckpoint(validCheckpoint);
+assert.deepEqual(recovered.stats,{time:0,collectibles:0,secrets:0,damage:0,deaths:0,totalSecrets:0},'a coordinate-valid old checkpoint needs complete mutable stats');
+assert.equal(recovered.player,null);assert.equal(recovered.worldState,null);
+assert.doesNotThrow(()=>{recovered.stats.time=15;recovered.stats.damage++;storage.saveJourney({...createJourneySave(),checkpoint:recovered});},'pause/pagehide can update a recovered checkpoint');
+recovered=readCheckpoint({...validCheckpoint,challenge:true,stats:{time:-2,collectibles:1.9,secrets:'7',damage:1e12,deaths:'bad',totalSecrets:null},player:{hearts:-20,holyLightCapacity:99,shieldUnlocked:'false',powers:{shield:'false',wings:true,sandals:[],bread:false,holyLight:99,fireRain:-2,unknown:true}}});
+assert.deepEqual(recovered.stats,{time:0,collectibles:1,secrets:7,damage:1000000,deaths:0,totalSecrets:0});
+assert.deepEqual(recovered.player,{hearts:1,holyLightCapacity:5,shieldUnlocked:false,powers:{wings:true,bread:false,holyLight:5,fireRain:0}},'malformed player fields cannot become truthy powers or infinite resources');
+for(const malformed of ['bad',[],42,null]){
+  recovered=readCheckpoint({...validCheckpoint,stats:malformed,player:malformed});
+  assert.equal(recovered.stats.time,0);assert.equal(recovered.stats.damage,0);assert.equal(recovered.player,null);
+}
+recovered=readCheckpoint({...validCheckpoint,player:{powers:{holyLight:0,shield:false},holyLightCapacity:5,shieldUnlocked:true,hearts:2}},['holyLight','shield']);
+assert.equal(recovered.player.powers.holyLight,0,'a spent reserve remains spent after normalization');assert.equal(recovered.player.holyLightCapacity,5);assert.equal(recovered.player.shieldUnlocked,true);assert.equal(recovered.player.hearts,2);
+const restorable=createLevel({biome:'countryside',seed:123,chunkCount:4});
+restorable.pickups[0].collected=true;const worldSnapshot=persistWorldState(restorable);
+recovered=readCheckpoint({...validCheckpoint,worldState:worldSnapshot});
+assert.deepEqual(recovered.worldState,worldSnapshot,'valid persistent content IDs must survive unchanged');
+const resumed=createLevel({biome:'countryside',seed:123,chunkCount:4});
+assert.doesNotThrow(()=>restoreWorldState(resumed,recovered.worldState,recovered.x));
+assert.equal(resumed.pickups.find(p=>p.id===restorable.pickups[0].id)?.collected,true);
+for(const field of ['collected','dead','activated'])for(const malformed of [{bad:true},42,'abc']){
+  recovered=readCheckpoint({...validCheckpoint,worldState:{...worldSnapshot,[field]:malformed}});
+  assert.equal(recovered.worldState,null,`reject non-array ${field} before generator Set construction`);
+  assert.doesNotThrow(()=>restoreWorldState(resumed,recovered.worldState,recovered.x));
+}
+recovered=readCheckpoint({...validCheckpoint,worldState:{collected:['valid','valid',1,null,{},'', 'x'.repeat(201)],furthestX:1e12}});
+assert.deepEqual(recovered.worldState.collected,['valid']);assert.deepEqual(recovered.worldState.dead,[]);assert.equal(recovered.worldState.furthestX,360000);
+assert.equal(readCheckpoint({...validCheckpoint,worldState:{...worldSnapshot,seed:999}}).worldState,null,'cross-seed state cannot restore into this route');
+assert.equal(readCheckpoint({...validCheckpoint,worldState:{...worldSnapshot,biome:'storm'}}).worldState,null,'cross-world state cannot restore into this route');
+assert.equal(readCheckpoint({...validCheckpoint,boss:true,bossId:'unknown'}).bossId,null,'invalid guardian IDs fall back to the world guardian');
+const input=new InputController(document);input.enabled=true;input.rebind('left');dispatch('keydown','d');assert.equal(input.bindings.left,'d');assert.equal(input.bindings.right,'a');assert.equal(new Set(Object.values(input.bindings)).size,5);dispatch('keydown','d');assert.equal(input.horizontal(),-1);dispatch('keyup','d');input.reset();input.rebind('ability');dispatch('keydown','w');dispatch('keydown','w');assert.equal(input.jumpPressed(),false,'LegacyW must not steal a remapped blessing');assert.equal(input.jumpHeld(),false);assert.equal(input.abilityPressed(),true);input.reset();input.rebind('left');dispatch('keydown','q');dispatch('keydown','q');assert.equal(input.horizontal(),-1);assert.equal(input.abilityPressed(),false,'LegacyQ must not cast when assigned to movement');input.reset();
+input.rebind('jump');dispatch('keydown','s');dispatch('keydown','s');assert.equal(input.downHeld(),false,'LegacyS must not drop through when remapped to jump');assert.equal(input.jumpPressed(),true);input.reset();
+Object.defineProperty(globalThis,'localStorage',{configurable:true,get(){throw new Error('Storage unavailable');}});assert.equal(storage.loadJourney().version,3);assert.equal(storage.saveJourney(save),false);assert.deepEqual(storage.localScores(),[]);assert.doesNotThrow(()=>new InputController(document));
+console.log('Progression, legacy save migration, personal records, blocked/corrupt storage, and collision-free configurable keys passed.');
