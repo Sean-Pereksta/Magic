@@ -1,5 +1,5 @@
 import {LOBBY_MAP_CATALOG} from './battle-config.mjs';
-import {firebase, getProfile, rankFor, rankEmblem} from './profile.mjs';
+import {firebase, getProfile, saveLobbyResult, rememberLobby, forgetLobby, rankFor, rankEmblem} from './profile.mjs';
 import {createLobbyStore} from './lobby-store.mjs';
 import {assetUrl, loadManifest} from './assets.mjs';
 
@@ -7,8 +7,8 @@ const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const FACTIONS = {frontier: 'Frontier Directorate', ascendant: 'Ascendant Conclave', brood: 'Brood Dominion'};
 const STRENGTHS = {frontier: 'Ranged firepower · Repairs · Bunkers · Siege', ascendant: 'Shields · Elite range · Battlefield control', brood: 'Rapid reinforcement · Creep regeneration · Flanking'};
-const RANKED_NOTICE = 'Ranked matches are currently unavailable. Custom multiplayer works normally and your existing saved rank remains visible.';
 let identity = null, store = null, room = null, unsubscribe = null, busy = false, launched = false;
+const resultSaves = new Map();
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 
 function status(message, error = false) {
@@ -44,14 +44,15 @@ function gameLink() {
   url.searchParams.set('returnTo', '/game/turncraft-lobby.html?mode=browse');
   return url.href;
 }
-function launch() {
+async function launch() {
   if (launched || !room?.members[identity.uid] || room.status !== 'started') return;
   launched = true;
+  await rememberLobby(room.id, room.members[identity.uid]);
   $('loadingPlayers').innerHTML = room.turncraftSeats.map(uid => {
     const player = room.turncraftPlayers[uid];
     return `<article class="launch-card"><img class="factionSplash" src="./turncraft/assets/factions/${player.factionId}.webp" alt="${escape(FACTIONS[player.factionId])}"><img src="${escape(rankEmblem(player))}" alt="${escape(rankFor(player.mmr, player.rankedMatches))}"><h3>${escape(player.name)}</h3><p>${escape(FACTIONS[player.factionId])}</p><small>${escape(rankFor(player.mmr, player.rankedMatches))}${player.rankedMatches ? ' · '+Math.round(player.mmr)+' MMR' : ''}</small></article>`;
   }).join('');
-  $('loadingStatus').textContent = `${$('map').selectedOptions[0]?.textContent || room.settings.mapId} · Custom multiplayer · Connecting to the shared battlefield…`;
+  $('loadingStatus').textContent = `${$('map').selectedOptions[0]?.textContent || room.settings.mapId} · ${room.ranked ? 'Ranked duel' : 'Custom multiplayer'} · Connecting to the shared battlefield…`;
   $('loadingDialog').showModal();
   setTimeout(() => location.assign(gameLink()), 700);
 }
@@ -62,7 +63,7 @@ function renderRoom() {
   panels('room');
   const host = room.hostUid === identity.uid, started = room.status === 'started', finished = room.status === 'finished', waiting = room.status === 'waiting';
   $('roomName').textContent = room.name;
-  $('roomVisibility').textContent = `${room.visibility} lobby · Custom multiplayer`;
+  $('roomVisibility').textContent = `${room.visibility} lobby · ${room.ranked ? 'Ranked duel' : 'Custom multiplayer'}`;
   $('inviteCode').textContent = room.inviteCode || 'Loading…';
   $('players').innerHTML = room.turncraftSeats.map(uid => {
     const p = room.turncraftPlayers[uid], rank = rankFor(p.mmr, p.rankedMatches);
@@ -76,6 +77,7 @@ function renderRoom() {
   $('resume').hidden = !started; $('leave').disabled = started;
   $('roomNote').textContent = finished ? 'Battle complete. The host can open a fresh rematch room; every commander readies again.' : started ? 'This match has started. Reconnect with the same CatnMice browser identity.' : host ? 'Launch when every commander is ready. At least two human players are required.' : 'Waiting for the host to launch after everyone is ready.';
   for (const id of ['map', 'gameMode', 'maxPlayers', 'visibility', 'fillAi', 'aiDifficulty', 'aiStyle']) $(id).disabled = !host || !waiting;
+  if (room.ranked) for (const id of ['maxPlayers', 'visibility', 'fillAi', 'aiDifficulty', 'aiStyle']) $(id).disabled = true;
   $('map').value = room.settings.mapId; $('gameMode').value = room.settings.gameMode;
   $('maxPlayers').value = String(room.settings.maxPlayers); $('visibility').value = room.visibility; $('fillAi').value = String(room.settings.fillAi || false); $('aiDifficulty').value = room.settings.aiDifficulty || 'medium'; $('aiStyle').value = room.settings.aiStyle || 'balanced';refreshCompatibleMaps();
   let report = $('roomResult');
@@ -83,14 +85,21 @@ function renderRoom() {
   report.innerHTML = '';
   if (finished) {
     const result = room.turncraftResult || {}, players = result.players || room.players.map(name => ({name})), winner = result.winnerIdx == null ? 'Draw' : players[result.winnerIdx]?.name || 'Commander';
-    report.innerHTML = `<div class="notice"><h3>${escape(winner)}${result.winnerIdx == null ? '' : ' wins'}</h3><p>${escape(result.reason || 'The battlefield is secure.')}</p><small>${Math.max(0, Math.floor(result.durationSeconds || 0))} seconds · Custom match · Saved rank unchanged</small></div>`;
+    report.innerHTML = `<div class="notice"><h3>${escape(winner)}${result.winnerIdx == null ? '' : ' wins'}</h3><p>${escape(result.reason || 'The battlefield is secure.')}</p><small>${Math.max(0, Math.floor(result.durationSeconds || 0))} seconds · ${room.ranked ? 'Ranked duel · Saving MMR and history' : 'Custom match · Saving history'}</small></div>`;
+    if (!resultSaves.has(room.id)) {
+      const id = room.id, name = room.members[identity.uid];
+      resultSaves.set(id, saveLobbyResult(id, name).then(value => {
+        if (room?.id === id) status(`Battle saved to ${name}'s history.${room.ranked ? ` ${value.history.mmrAfter} MMR.` : ''}`);
+      }).catch(error => { resultSaves.delete(id); status(`Result sync pending: ${error.message}`, true); }));
+    }
   }
-  status(finished ? 'Battle complete. Your result is saved.' : started ? 'Your match is ready. Reconnecting to the battlefield…' : 'Lobby synchronized. Choose your faction, then mark yourself ready.');
+  status(finished ? 'Battle complete. Syncing your profile history…' : started ? 'Your match is ready. Reconnecting to the battlefield…' : 'Lobby synchronized. Choose your faction, then mark yourself ready.');
   if (started) launch();
 }
 async function openRoom(data) {
   if (data.nextLobbyId) return openRoom(await store.get(data.nextLobbyId));
   unsubscribe?.(); launched = false; room = data;
+  if (data.members?.[identity.uid]) await rememberLobby(data.id, data.members[identity.uid]);
   sessionStorage.setItem('turncraft.lastLobby', data.id);
   history.replaceState({}, '', `?lobbyId=${encodeURIComponent(data.id)}`);
   renderRoom();
@@ -129,14 +138,16 @@ async function browse(quick = false) {
 async function rankings() {
   panels('rank');
   const result = await store.leaderboard();
-  $('rankNotice').textContent = 'Existing saved TurnCraft ranks are shown below. Custom matches do not change ratings.';
+  $('rankNotice').textContent = 'Ranked duels update your profile MMR. Custom, campaign and survival games keep separate records.';
   $('leaderboard').innerHTML = result.players.length ? `<table class="rank-table"><thead><tr><th>Rank</th><th>Commander</th><th>MMR</th><th>Wins / Losses</th></tr></thead><tbody>${result.players.map((p, i) => `<tr><td>${i+1}</td><td><img class="emblem" src="${escape(rankEmblem(p))}" alt="${escape(rankFor(p.mmr, p.rankedMatches))}"> ${p.username === displayName() ? '<a href="./turncraft.html?view=profile">'+escape(p.username)+'</a>' : escape(p.username)}</td><td>${Math.round(p.mmr)}</td><td>${p.rankedWins || 0} / ${p.rankedLosses || 0}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No saved TurnCraft ranked profiles yet.</p>';
 }
-function ranked() {
-  panels('rank'); $('rankNotice').textContent = RANKED_NOTICE;
-  $('leaderboard').innerHTML = '<p class="muted">Campaign, survival and custom games never change MMR.</p><button id="browseCustom" class="primary">Browse Custom Matches</button>';
-  $('browseCustom').onclick = () => action(() => browse());
-  status('Custom multiplayer is ready to play. Ranked results are not enabled.');
+async function ranked() {
+  status('Finding a ranked opponent…');
+  const response = await store.browse(true);
+  const existing = response.lobbies.find(row => row.members?.[identity.uid]) || response.lobbies.find(row => !row.members?.[identity.uid]);
+  const result = existing ? existing.members?.[identity.uid] ? await store.get(existing.id) : await store.join({lobbyId: existing.id}) : await store.create({name: 'Ranked Duel', ranked: true, settings: {maxPlayers: 2, fillAi: false}});
+  await openRoom(result);
+  status(result.players.length === 2 ? 'Ranked opponent found. Choose your faction and ready up.' : 'Ranked room ready. Waiting for a human opponent.');
 }
 function refreshCompatibleMaps() {
   const count = Number($('maxPlayers').value) || 3;
@@ -155,7 +166,7 @@ $('create').onclick = () => $('createDialog').showModal();
 $('code').onclick = () => $('codeDialog').showModal();
 $('cancelCreate').onclick = () => $('createDialog').close();
 $('cancelCode').onclick = () => $('codeDialog').close();
-$('rankings').onclick = () => action(rankings); $('ranked').onclick = ranked;
+$('rankings').onclick = () => action(rankings); $('ranked').onclick = () => action(ranked);
 $('createForm').onsubmit = event => {
   event.preventDefault(); void action(async () => {
     const requestId = sessionStorage.getItem('turncraft.pendingLobbyRequest') || crypto.randomUUID();
@@ -175,7 +186,8 @@ $('start').onclick = () => action(async () => {
 });
 $('resume').onclick = launch;
 $('leave').onclick = () => action(async () => {
-  await store.leave(room.id); unsubscribe?.(); room = null; sessionStorage.removeItem('turncraft.lastLobby');
+  const id = room.id;
+  await store.leave(id); await forgetLobby(id, identity.username); unsubscribe?.(); room = null; sessionStorage.removeItem('turncraft.lastLobby');
   history.replaceState({}, '', '?mode=browse'); await browse();
 });
 for (const id of ['map', 'gameMode', 'maxPlayers', 'visibility', 'fillAi', 'aiDifficulty', 'aiStyle']) $(id).onchange = () => action(configure);
@@ -194,9 +206,16 @@ async function boot() {
     catch (error) {if (error.code !== 'INVITE_REQUIRED') throw error; $('codeDialog').showModal(); status('Enter the private invite code to claim your seat.'); return;}
   }
   const mode = params.get('mode');
+  const previous = sessionStorage.getItem('turncraft.lastLobby');
+  if (previous && !['create','code','leaderboard'].includes(mode)) {
+    try {
+      const saved = await store.get(previous);
+      if (saved.members?.[identity.uid] === identity.username && saved.status !== 'closed' && (mode !== 'ranked' || saved.ranked)) {await openRoom(saved); return;}
+    } catch { sessionStorage.removeItem('turncraft.lastLobby'); }
+  }
   if (mode === 'create') $('createDialog').showModal();
   if (mode === 'code') $('codeDialog').showModal();
-  if (mode === 'ranked') {ranked(); return;}
+  if (mode === 'ranked') {await ranked(); return;}
   if (mode === 'leaderboard') {await rankings(); return;}
   await browse(mode === 'quick');
 

@@ -36,7 +36,7 @@ test('offline campaign and survival results remain queued after reloading local 
   });
 
   const restored = readProgress(key);
-  assert.deepEqual(restored.pendingResults, [campaign, survival]);
+  assert.deepEqual(restored.pendingResults, [campaign, {...campaign, won: false}, survival]);
   assert.equal(restored.campaign.completedMissions[campaign.missionId].stars, 3);
   assert.equal(restored.survival.recordsByMap[`${survival.arenaId}:medium`].wave, 12);
 
@@ -238,6 +238,43 @@ function harness() {
     }
   };
 }
+
+test('switching profiles keeps an active run with its owner and starts/resumes the next run under the new profile', () => {
+  const h = harness(); let selected = 'ProfileA';
+  h.adapter.getIdentity = () => ({username: selected});
+  h.engine.startCampaign(MISSIONS[0].id, {factionId: 'frontier'});
+  const old = h.engine.checkpoint();
+  assert.equal(old.username, 'ProfileA');
+  selected = 'ProfileB';
+  const oldResult = h.engine.finish(false, 'Defeat after account switch');
+  assert.equal(oldResult.username, 'ProfileA');
+  h.engine.startCampaign(MISSIONS[0].id, {factionId: 'brood', username: selected});
+  const current = h.engine.checkpoint();
+  assert.equal(current.username, 'ProfileB');
+  assert.notEqual(current.resultId, old.resultId);
+  assert.equal(JSON.parse(h.storage.getItem(`${CHECKPOINT_KEY}.ProfileB`)).username, 'ProfileB');
+  h.engine.abandon(); selected = 'ProfileA';
+  assert.throws(() => h.engine.resume(current), /another Game Hub profile/);
+  selected = 'ProfileB';
+  h.engine.resume(current);
+  assert.equal(h.engine.checkpoint().username, 'ProfileB');
+});
+
+test('Continue restores the selected profile checkpoint while another profile has an active simulation', () => {
+  const h = harness(); let selected = 'ProfileB';
+  h.adapter.getIdentity = () => ({username: selected});
+  h.engine.startCampaign(MISSIONS[0].id, {factionId: 'brood'});
+  const savedB = h.engine.checkpoint();
+  h.engine.abandon(); selected = 'ProfileA';
+  h.engine.startCampaign(MISSIONS[0].id, {factionId: 'frontier'});
+  const savedA = h.engine.checkpoint();
+  selected = 'ProfileB';
+  assert.throws(() => h.engine.resume(savedA), /another Game Hub profile/);
+  h.engine.resume(savedB);
+  assert.equal(h.engine.getState().factionId, 'brood');
+  assert.equal(h.engine.checkpoint().resultId, savedB.resultId);
+  assert.equal(h.engine.checkpoint().username, 'ProfileB');
+});
 
 test('actual mission objective, rewards, results and defeat lifecycle', () => {
   const h = harness();

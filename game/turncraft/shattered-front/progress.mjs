@@ -1,4 +1,5 @@
 export const CHECKPOINT_KEY = 'turncraft.shattered-front.checkpoint.v1';
+export const checkpointKey = name => name ? `${CHECKPOINT_KEY}.${encodeURIComponent(name)}` : CHECKPOINT_KEY;
 const empty = () => ({
   campaign: { completedMissions: {} },
   survival: { recordsByMap: {} },
@@ -14,7 +15,6 @@ export function readProgress(key) {
             return false;
           if (result.mode === 'campaign')
             return (
-              result.won !== false &&
               typeof result.missionId === 'string' &&
               result.missionId.length > 0
             );

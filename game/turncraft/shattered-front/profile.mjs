@@ -1,6 +1,7 @@
 import { firebaseConfig } from '../../../lobby/firebase-config.mjs';
 import { assetUrl } from './assets.mjs';
 import { createProfileStore } from './profile-store.mjs';
+import { saveMatchResult } from './result-store.mjs';
 
 export const RANKS = Object.freeze([
   { name: 'Bronze', min: 0 }, { name: 'Silver', min: 900 },
@@ -24,15 +25,21 @@ export function defaultProfile() {
   };
 }
 const capabilities = {
-  custom: true, ranked: false, globalSurvival: false,
-  reason: 'Custom lobbies and account saves are available. Ranked matches are unavailable.'
+  custom: true, ranked: true, globalSurvival: false,
+  reason: 'Ranked duels, custom lobbies and profile saves use Firestore.'
 };
 let firebasePromise, authUnsubscribe, profileUnsubscribe, rebindProfile, watchStarting = false, watchRevision = 0;
 let last = { identity: null, profile: defaultProfile(), capabilities };
 const listeners = new Set();
-const username = () => {
-  try { return localStorage.getItem('gh.username') || null; } catch { return null; }
-};
+let sawSelectedProfile = false;
+export function selectedUsername() {
+  let selected = null;
+  try { selected = localStorage.getItem('gh.username'); } catch {}
+  if (selected) sawSelectedProfile = true;
+  const value = selected || (!sawSelectedProfile ? new URLSearchParams(globalThis.location?.search || '').get('username') : null);
+  return typeof value === 'string' && value.trim() && !value.includes('/') ? value.trim() : null;
+}
+const username = selectedUsername;
 export async function firebase() {
   if (!firebasePromise) firebasePromise = (async () => {
     const [appApi, authApi, storeApi] = await Promise.all([
@@ -61,6 +68,7 @@ function update(user, name, snapshot) {
     profile: { ...defaultProfile(), ...(account?.gameStats?.turncraft || {}) }, capabilities
   };
   emit();
+  if (last.identity?.linked) void flushMatchResults(name);
   return last;
 }
 function failed(error) {
@@ -104,6 +112,7 @@ function accountChanged(event) {
   if (event?.type === 'storage' && event.key && event.key !== 'gh.username') return;
   if (rebindProfile) rebindProfile();
   else void startWatch();
+  if (last.identity?.linked) void flushMatchResults(username());
 }
 export function watchProfile(callback) {
   listeners.add(callback);
@@ -143,3 +152,97 @@ async function save(mode, result, options = {}) {
 }
 export function saveCampaign(result, options) { return save('campaign', result, options); }
 export function saveSurvival(result, options) { return save('survival', result, options); }
+
+export async function saveLobbyResult(lobbyId, name = username()) {
+  if (name !== username()) throw new Error('Return with the Game Hub profile that played this match to save its result.');
+  const connection = await firebase();
+  const uid = connection.auth.currentUser?.uid;
+  const value = await saveMatchResult({...connection, api: connection.storeApi, isCurrentAccount: () => username() === name && connection.auth.currentUser?.uid === uid}, lobbyId, name);
+  try { localStorage.setItem(pendingMatchKey(name), JSON.stringify(pendingMatches(name).filter(id => id !== lobbyId))); } catch {}
+  try { await connection.storeApi.deleteDoc(connection.storeApi.doc(connection.db, 'users', name, 'turncraftPending', lobbyId)); } catch {}
+  return value;
+}
+
+const pendingMatchKey = name => `turncraft.pendingMatches.${encodeURIComponent(name)}`;
+function pendingMatches(name) {
+  try { const saved = JSON.parse(localStorage.getItem(pendingMatchKey(name)) || '[]'); return Array.isArray(saved) ? saved.filter(id => typeof id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(id)) : []; } catch { return []; }
+}
+export async function rememberLobby(lobbyId, name = username()) {
+  if (!name || name !== username() || !/^[A-Za-z0-9_-]{1,100}$/.test(lobbyId)) return;
+  try { localStorage.setItem(pendingMatchKey(name), JSON.stringify([...new Set([...pendingMatches(name), lobbyId])].slice(-100))); } catch {}
+  try {
+    const {db, storeApi} = await firebase(), ref = storeApi.doc(db, 'users', name, 'turncraftPending', lobbyId);
+    await storeApi.runTransaction(db, async tx => {
+      const existing = await tx.get(ref);
+      if (name !== username()) return;
+      if (!existing.exists()) tx.set(ref, {lobbyId, username: name, createdAt: Date.now()});
+    });
+  } catch { /* The profile-scoped local queue remains available while offline. */ }
+}
+export async function forgetLobby(lobbyId, name = username()) {
+  if (!name || name !== username()) return;
+  try {
+    const {db, storeApi} = await firebase();
+    await storeApi.deleteDoc(storeApi.doc(db, 'users', name, 'turncraftPending', lobbyId));
+    localStorage.setItem(pendingMatchKey(name), JSON.stringify(pendingMatches(name).filter(id => id !== lobbyId)));
+  } catch { /* Finished matches remain queued until their receipt is saved. */ }
+}
+let flushingMatches = false;
+async function flushMatchResults(name) {
+  if (flushingMatches || !name || name !== username()) return;
+  flushingMatches = true;
+  try {
+    let ids = pendingMatches(name);
+    try {
+      const {db, storeApi} = await firebase();
+      const snapshot = await storeApi.getDocs(storeApi.query(storeApi.collection(db, 'users', name, 'turncraftPending'), storeApi.limit(100)));
+      ids = [...new Set([...ids, ...snapshot.docs.map(doc => doc.id)])];
+    } catch {}
+    for (const id of ids) {
+      if (name !== username()) break;
+      try {
+        const {db, storeApi} = await firebase();
+        const room = await storeApi.getDoc(storeApi.doc(db, 'lobbies', id));
+        if (name !== username()) break;
+        if (!room.exists() || room.data().status === 'closed' || !room.data().players?.includes(name)) await forgetLobby(id, name);
+        else await saveLobbyResult(id, name);
+      } catch {}
+    }
+  }
+  finally { flushingMatches = false; if (name !== username()) void flushMatchResults(username()); }
+}
+
+export async function getHistory(name = username()) {
+  if (!name || name !== username()) return [];
+  const {db, storeApi} = await firebase();
+  const snapshots = await Promise.all(['turncraftHistory', 'turncraftSoloHistory'].map(collection => storeApi.getDocs(storeApi.query(storeApi.collection(db, 'users', name, collection), storeApi.orderBy('completedAt', 'desc'), storeApi.limit(30)))));
+  return name === username() ? snapshots.flatMap(snapshot => snapshot.docs.map(doc => doc.data())).sort((a, b) => b.completedAt - a.completedAt).slice(0, 30) : [];
+}
+
+export async function getCheckpoint(name = username()) {
+  if (!name || name !== username()) return null;
+  const {db, storeApi} = await firebase();
+  const snapshot = await storeApi.getDoc(storeApi.doc(db, 'users', name, 'turncraftSaves', 'active'));
+  const saved = snapshot.data();
+  if (!saved || saved.username !== name || name !== username()) return null;
+  if (saved.packed === null) return {cleared: true, savedAt: saved.savedAt, completedRunId: saved.completedRunId || null, username: name};
+  if (!saved.packed) return null;
+  return JSON.parse(saved.packed);
+}
+
+export async function saveCheckpoint(checkpoint, name = username(), completedRunId = null) {
+  if (!name || name !== username()) throw new Error('This checkpoint belongs to the profile that started the mission.');
+  const {db, storeApi} = await firebase();
+  const packed = checkpoint ? JSON.stringify(checkpoint) : null;
+  if (packed && packed.length > 850000) throw new Error('The battlefield is too large for a cloud checkpoint.');
+  const ref = storeApi.doc(db, 'users', name, 'turncraftSaves', 'active');
+  // A slow write from an older checkpoint cannot overwrite a newer checkpoint.
+  const savedAt = checkpoint?.savedAt || Date.now();
+  await storeApi.runTransaction(db, async tx => {
+    const existing = await tx.get(ref);
+    if (name !== username()) throw new Error('Your selected profile changed before this checkpoint synced.');
+    if (!checkpoint && completedRunId && existing.data()?.packed && JSON.parse(existing.data().packed).resultId !== completedRunId) return;
+    if ((existing.data()?.savedAt || 0) > savedAt) return;
+    tx.set(ref, {username: name, packed, savedAt, completedRunId: checkpoint ? null : completedRunId});
+  });
+}

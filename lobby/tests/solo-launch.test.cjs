@@ -8,6 +8,7 @@ const core = library.upgradeHtml(fs.readFileSync(process.env.LOBBY_CORE_PATH || 
 const registry = vm.runInNewContext(core.match(/const GAMES = (\[[\s\S]*?\n\s*\]);/)[1]);
 const apes = registry.find(game => game.key === 'apestogetherstrong');
 const forge = registry.find(game => game.key === 'crowncouncil');
+const turncraft = registry.find(game => game.key === 'turncraft');
 
 function harness({username = '', write = () => new Promise(() => {}), rememberedLobby = null} = {}) {
   const saved = new Map(), launches = [], modals = [], warnings = [], lobbyCalls = [];
@@ -82,6 +83,13 @@ test('solo route parameters and cloud stats still work when online', async () =>
   assert.equal(h.context.gamePlayCounts[apes.key], 1);
   assert.equal(h.context.currentUserData.gamePlayCounts[apes.key], 1);
   assert.equal(h.renders(), 2);
+});
+
+test('TurnCraft solo launch carries the exact selected profile without creating a lobby', async () => {
+  const h = harness({username: 'Forge & Commander'});
+  await h.context.playSingle(turncraft, true);
+  assert.deepEqual(h.launches, [{url: '/game/turncraft.html?username=Forge%20%26%20Commander', reason: 'single-play'}]);
+  assert.deepEqual(h.lobbyCalls, []);
 });
 
 for (const [username, status] of [['', 'waiting'], ['Forge & Commander', 'started']]) {

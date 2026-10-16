@@ -14,13 +14,17 @@ export function onAuthStateChanged(auth,next){const row={active:true,next};windo
 const storeModule=`
 export const getFirestore=()=>({});
 export const doc=(db,...parts)=>({path:parts.join('/')});
+export const collection=doc,orderBy=(field,direction)=>({field,direction}),limit=count=>({count}),query=(ref,...clauses)=>({...ref,clauses});
+export async function getDocs(ref){return {docs:Object.entries(window.sdk.accounts).filter(([path])=>path.startsWith(ref.path+'/')).map(([path,data])=>({id:path.split('/').at(-1),data:()=>structuredClone(data)}))};}
 export async function getDoc(ref){window.sdk.reads.push(ref.path);return window.sdk.snapshot(ref.path);}
+export async function deleteDoc(ref){delete window.sdk.accounts[ref.path];}
 export function onSnapshot(ref,next,error){const row={path:ref.path,next,error,active:true};window.sdk.docListeners.push(row);queueMicrotask(()=>{if(row.active)next(window.sdk.snapshot(row.path));});return()=>{if(row.active){row.active=false;window.sdk.docUnsubscribes++;}};}
 export async function runTransaction(db,operation){
- const row={reads:[],updates:[]};window.sdk.transactions.push(row);
+ const row={reads:[],updates:[],sets:[]};window.sdk.transactions.push(row);
  if(window.sdk.blockTransactions)await new Promise(resolve=>window.sdk.releaseTransactions.push(resolve));
- const value=await operation({get:async ref=>{row.reads.push(ref.path);return window.sdk.snapshot(ref.path);},update(ref,patch){row.updates.push({path:ref.path,patch:structuredClone(patch)});}});
+ const value=await operation({get:async ref=>{row.reads.push(ref.path);return window.sdk.snapshot(ref.path);},update(ref,patch){row.updates.push({path:ref.path,patch:structuredClone(patch)});},set(ref,data){row.sets.push({path:ref.path,data:structuredClone(data)});}});
  for(const {path,patch} of row.updates){const account=window.sdk.accounts[path];for(const [field,value] of Object.entries(patch)){const segments=field.split('.');let target=account;for(const segment of segments.slice(0,-1))target=target[segment]||=( {} );target[segments.at(-1)]=structuredClone(value);}}
+ for(const {path,data} of row.sets)window.sdk.accounts[path]=data;
  return value;
 }
 `;
@@ -88,5 +92,63 @@ test('queued menu saves keep their account and automatically flush the new accou
   const owner=await page.evaluate(()=>({reads:sdk.transactions.flatMap(row=>row.reads),a:sdk.accounts['users/AccountA'].gameStats.turncraft.survival.highestWave,b:sdk.accounts['users/AccountB'].gameStats.turncraft.survival.highestWave,bPending:JSON.parse(localStorage.getItem('turncraft.shattered-front.progress.AccountB.v1')).pendingResults}));assert.deepEqual(owner.reads,['users/AccountA']);assert.equal(owner.a,19);assert.equal(owner.b,4);assert.equal(owner.bPending[0].wave,8);
   await page.evaluate(()=>{sdk.blockTransactions=false;sdk.releaseTransactions.shift()();});await page.waitForFunction(()=>JSON.parse(localStorage.getItem('turncraft.shattered-front.progress.AccountB.v1')).pendingResults.length===0);
   const synced=await page.evaluate(()=>({reads:sdk.transactions.flatMap(row=>row.reads),a:sdk.accounts['users/AccountA'].gameStats.turncraft.survival.highestWave,b:sdk.accounts['users/AccountB'].gameStats.turncraft.survival.highestWave}));assert.deepEqual(synced.reads,['users/AccountA','users/AccountB']);assert.equal(synced.a,19);assert.equal(synced.b,8);assert.deepEqual(apiRequests,[]);assert.equal((await counts(page)).intervals,0);assert.deepEqual(errors,[]);
+ }finally{await browser.close();}
+});
+
+test('logout cannot restore a stale URL profile or save a late checkpoint',async()=>{
+ const {browser,page,errors}=await setup();try{
+  await page.waitForFunction(()=>profileEvents.at(-1)?.identity?.linked);
+  await page.evaluate(()=>{history.replaceState({},'', '?username=AccountA');localStorage.removeItem('gh.username');dispatchEvent(new StorageEvent('storage',{key:'gh.username',oldValue:'AccountA',newValue:null}));});
+  await page.waitForFunction(()=>profileEvents.at(-1)?.identity?.username===null);
+  const saved=await page.evaluate(async()=>{const before=sdk.transactions.length;try{await profile.saveCheckpoint({savedAt:100,username:'AccountA',resultId:'old'},'AccountA');return {accepted:true};}catch(error){return {before,after:sdk.transactions.length,selected:profile.selectedUsername()};}});
+  assert.equal(saved.selected,null);assert.equal(saved.after,saved.before);assert.deepEqual(errors,[]);
+ }finally{await browser.close();}
+});
+
+test('cloud checkpoints and history reload under their profile and an older result cannot clear a new run',async()=>{
+ const {browser,page,errors}=await setup();try{
+  await page.waitForFunction(()=>profileEvents.at(-1)?.identity?.linked);
+  const saved=await page.evaluate(async()=>{
+    const checkpoint={version:1,savedAt:200,username:'AccountA',resultId:'new-run',simulation:{players:[{name:'AccountA'}]}};
+    await profile.saveCheckpoint(checkpoint,'AccountA');
+    await profile.saveCheckpoint(null,'AccountA','old-run');
+    await profile.saveCheckpoint({...checkpoint,savedAt:100,resultId:'stale'},'AccountA');
+    sdk.accounts['users/AccountA/turncraftHistory/match-one']={id:'match-one',completedAt:300,mode:'ranked',outcome:'win',mmrDelta:25};
+    sdk.accounts['users/AccountB/turncraftHistory/other']={id:'other',completedAt:400,mode:'ranked',outcome:'loss'};
+    const reopened=await import('/game/turncraft/shattered-front/profile.mjs?reopen');
+    const restored=await reopened.getCheckpoint();
+    await reopened.saveCheckpoint(null,'AccountA','new-run');
+    return {checkpoint:restored,cleared:await reopened.getCheckpoint(),history:await reopened.getHistory(),profile:(await reopened.getProfile()).profile};
+  });
+  assert.equal(saved.checkpoint.resultId,'new-run');assert.equal(saved.checkpoint.savedAt,200);
+  assert.equal(saved.cleared.cleared,true);assert.equal(saved.cleared.completedRunId,'new-run');
+  assert.deepEqual(saved.history.map(row=>row.id),['match-one']);assert.equal(saved.profile.survival.highestWave,17);assert.deepEqual(errors,[]);
+ }finally{await browser.close();}
+});
+
+test('a fresh browser auth session settles cloud-pending history under the same hub profile',async()=>{
+ const {browser,page,errors}=await setup();try{
+  await page.waitForFunction(()=>profileEvents.at(-1)?.identity?.linked);
+  await page.evaluate(async()=>{
+    sdk.auth.currentUser={uid:'replacement-auth-uid'};
+    sdk.accounts['lobbies/recovered-duel']={gameType:'turncraft',turncraftVersion:1,status:'finished',ranked:true,finishedAt:500,members:{original:'AccountA',peer:'Opponent'},turncraftSeats:['original','peer'],turncraftPlayers:{original:{name:'AccountA',factionId:'frontier'},peer:{name:'Opponent',factionId:'brood'}},settings:{maxPlayers:2,fillAi:false,mapId:'classic',gameMode:'annihilation'},turncraftResult:{winnerIdx:0,players:[{name:'AccountA',factionId:'frontier'},{name:'Opponent',factionId:'brood'}],durationSeconds:100}};
+    sdk.accounts['users/AccountA/turncraftPending/recovered-duel']={lobbyId:'recovered-duel',username:'AccountA',createdAt:100};
+    localStorage.removeItem('turncraft.pendingMatches.AccountA');
+    await profile.getProfile();
+  });
+  await page.waitForFunction(()=>sdk.accounts['users/AccountA/turncraftHistory/recovered-duel']&&!sdk.accounts['users/AccountA/turncraftPending/recovered-duel']);
+  const saved=await page.evaluate(()=>({history:sdk.accounts['users/AccountA/turncraftHistory/recovered-duel'],profile:sdk.accounts['users/AccountA'].gameStats.turncraft}));
+  assert.equal(saved.history.uid,'original');assert.equal(saved.history.outcome,'win');assert.equal(saved.profile.mmr,1225);assert.equal(saved.profile.rankedMatches,10);assert.deepEqual(errors,[]);
+ }finally{await browser.close();}
+});
+
+test('a cached back-navigation page keeps the menu profile listener and follows the selected account',async()=>{
+ const {browser,page,errors}=await setup({menu:true});try{
+  await page.waitForFunction(()=>sdk.transactions.length===1&&sdk.releaseTransactions.length===1);
+  await page.evaluate(()=>{sdk.blockTransactions=false;sdk.releaseTransactions.shift()();});
+  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('turncraft.shattered-front.progress.AccountA.v1')).pendingResults.length===0);
+  await page.evaluate(()=>{dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));localStorage.setItem('gh.username','AccountB');dispatchEvent(new StorageEvent('storage',{key:'gh.username',newValue:'AccountB'}));});
+  await page.waitForFunction(()=>document.querySelector('.sf-account')?.textContent.includes('AccountB'));
+  assert.deepEqual((await counts(page)).docs,['users/AccountB']);assert.equal((await counts(page)).auth,1);assert.deepEqual(errors,[]);
  }finally{await browser.close();}
 });

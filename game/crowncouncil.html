@@ -982,6 +982,8 @@ const params   = new URLSearchParams(location.search);
 const gameId   = params.get("mode") === "solo" ? null : (params.get("gameId")?.trim() || null);
 let requestedRanked=params.get("ranked")!=="0";
 const username = resolveForgeUsername({params,solo:!gameId});
+const storedHubUsername=()=>{try{return localStorage.getItem("gh.username")?.trim()||"";}catch{return "";}};
+const launchHubUsername=storedHubUsername();
 let executionMode = gameId ? "legacy-online" : "menu";
 let secureSession = null, securePoll = null, securePlayback = null;
 let expansionUI = null, progression = null, forgeProfile = null, spriteRenderer = null;
@@ -4540,7 +4542,7 @@ function connectForgeProgress(account){
   progression?.dispose();
   progression=FACTION_FORGE_CONFIG.progressionApiUrl?
     createProgressionService({auth,db,apiBaseUrl:FACTION_FORGE_CONFIG.progressionApiUrl,firestoreApi:{doc,onSnapshot}}):
-    createFirebaseProgress({auth,db,username:account.username,troops:TROOPS,api:{doc,onSnapshot,runTransaction},profilePath:account.profilePath,queueNamespace:account.queueNamespace,isActiveMatch:()=>!!S&&S.phase!=="game-over"});
+    createFirebaseProgress({auth,db,...account,troops:TROOPS,api:{doc,getDoc,onSnapshot,runTransaction},isActiveMatch:()=>!!S&&S.phase!=="game-over",isCurrentAccount:()=>storedHubUsername()===launchHubUsername});
   progression.subscribeProfile(profile=>{forgeProfile=profile||defaultForgeProfile();expansionUI?.updateProfile();});
 }
 function initializeBattleSettings(){
@@ -4574,7 +4576,7 @@ function initializeExpansion(){
     onUpgrade:async(key,options)=>{if(S&&S.phase!=="game-over")throw new Error("Finish your match before upgrading.");const response=await progression.upgradeTroop(key,options);forgeProfile=response.profile||response;expansionUI.showForge();return response;},
     onBuyPack:async(packId,options)=>{if(S&&S.phase!=="game-over")throw new Error("Finish your match before buying packs.");if(!progression?.buyPack)throw new Error("Your Forge profile is still connecting. Try again shortly.");const response=await progression.buyPack(packId,options);forgeProfile=response.profile;return response;},
     onTargetReward:async key=>{const response=await progression.setRewardTarget(key);forgeProfile=response.profile||response;},
-    getConnectionStatus:()=>FACTION_FORGE_CONFIG.progressionApiUrl?(forgeProfile?.uid?"Profile connected":"Profile verification required"):(progression?.connectionStatus||authConnectionStatus)+(auth.currentUser?.isAnonymous?" · This browser's guest profile":"")
+    getConnectionStatus:()=>FACTION_FORGE_CONFIG.progressionApiUrl?(forgeProfile?.uid?"Profile connected":"Profile verification required"):(progression?.connectionStatus||authConnectionStatus)
   });
   await spriteRenderer.paintTerrain?.(cellsEl,viewport,'contested-forge');ensureVisualLoop();
   // Solo navigation opens as soon as graphics are ready, independently of Firebase.
@@ -4593,7 +4595,7 @@ async function restoreExpansionProfile(user){
   await initializeExpansion();
   if(disposed||auth.currentUser?.uid!==user.uid)return;
   try{
-    const account=FACTION_FORGE_CONFIG.progressionApiUrl?null:await selectSoloAccount({auth,db,api:{doc,runTransaction},username,troops:TROOPS});
+    const account=FACTION_FORGE_CONFIG.progressionApiUrl?null:await selectSoloAccount({auth,db,api:{doc,getDoc,runTransaction},username,troops:TROOPS,useHubProfile:!!(launchHubUsername||params.get("username")?.trim())});
     if(disposed||auth.currentUser?.uid!==user.uid||progressIdentity!==user.uid)return;
     connectForgeProgress(account);
     const connected=progression,loaded=await connected.loadProfile();
@@ -4658,15 +4660,19 @@ onAuthStateChanged(auth, (user) => {
 });
 
 // A login/logout in the hub must never keep the previous account's open game.
-window.addEventListener("storage",event=>{
-  if(event.key!=="gh.username"||event.newValue===event.oldValue)return;
+function refreshHubProfile(event){
+  if(event.type==="storage"&&event.key!=="gh.username")return;
+  const selected=storedHubUsername();if(selected===launchHubUsername)return;
   progression?.dispose();progression=null;resetActiveRuntime();
   const target=new URL(location.href);
-  if(event.newValue?.trim())target.searchParams.set("username",event.newValue.trim());
+  if(selected)target.searchParams.set("username",selected);
   else target.searchParams.delete("username");
   target.searchParams.set("mode","solo");target.searchParams.delete("gameId");
   location.replace(target.href);
-});
+}
+window.addEventListener("storage",refreshHubProfile);
+window.addEventListener("focus",refreshHubProfile);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshHubProfile({type:"visibilitychange"});});
 
 const cardInfoModal = $("cardInfoModal");
 if (cardInfoModal){

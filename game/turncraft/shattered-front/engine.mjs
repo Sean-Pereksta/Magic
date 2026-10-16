@@ -7,6 +7,7 @@ import {
   campaignLayout
 } from './campaign.mjs';
 import { WaveDirector } from './waves.mjs';
+import { checkpointKey } from './progress.mjs';
 export { CATALOG, campaignLayout };
 export const CHECKPOINT_KEY = 'turncraft.shattered-front.checkpoint.v1';
 const copy = (value) => JSON.parse(JSON.stringify(value));
@@ -28,7 +29,7 @@ export function createExpansion(
     objectiveClock = 0;
   const readSaved = () => {
     try {
-      return JSON.parse(storage?.getItem(CHECKPOINT_KEY) || 'null');
+      return JSON.parse(storage?.getItem(checkpointKey(adapter.getIdentity?.()?.username)) || 'null');
     } catch {
       return null;
     }
@@ -88,6 +89,8 @@ export function createExpansion(
       seed = Number(options.seed ?? Date.now()) >>> 0,
       enemyFaction = ['brood', 'frontier', 'ascendant'][region.index % 3];
     run = {
+      username: options.username || adapter.getIdentity?.()?.username || null,
+      resultId: options.resultId || globalThis.crypto?.randomUUID?.() || `run-${seed}-${Date.now()}`,
       mode,
       mission,
       arena,
@@ -309,6 +312,7 @@ export function createExpansion(
         ((stats.unitsLost || 0) < Math.max(8, s.wave * 2) ? 1 : 0)
       : 0;
     const result = {
+      username: run.username, resultId: run.resultId, completedAt: Date.now(),
       mode: run.mode,
       missionId: run.mission?.id || null,
       arenaId: run.arena?.id || null,
@@ -333,7 +337,7 @@ export function createExpansion(
     };
     run.result = result;
     try {
-      storage?.removeItem(CHECKPOINT_KEY);
+      storage?.removeItem(checkpointKey(run.username));
     } catch {}
     adapter.finish?.(result);
     notify();
@@ -349,6 +353,7 @@ export function createExpansion(
   function checkpoint() {
     if (!run || run.result) return null;
     const checkpoint = {
+      username: run.username, resultId: run.resultId,
       version: 1,
       savedAt: Date.now(),
       mode: run.mode,
@@ -364,13 +369,16 @@ export function createExpansion(
       hazardClock: run.hazardClock
     };
     try {
-      storage?.setItem(CHECKPOINT_KEY, JSON.stringify(checkpoint));
+      storage?.setItem(checkpointKey(run.username), JSON.stringify(checkpoint));
     } catch {}
     emit('turncraft:checkpoint', { checkpoint });
     return checkpoint;
   }
   function resume(saved = readSaved()) {
-    if (run && !run.result && adapter.isStarted?.()) {
+    const owner = adapter.getIdentity?.()?.username || null;
+    if (saved?.username && saved.username !== owner)
+      throw new Error('This checkpoint belongs to another Game Hub profile.');
+    if (run && !run.result && adapter.isStarted?.() && run.username === owner && saved?.resultId === run.resultId) {
       adapter.unpause?.();
       notify();
       return getState();

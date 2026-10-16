@@ -9,8 +9,8 @@ let chromium;try{({chromium}=require('playwright'));}catch{({chromium}=require(p
 const root=path.resolve(import.meta.dirname,'../../..');
 const firebaseMocks={
 'firebase-app.js':`export const initializeApp=()=>({});export const getApp=()=>({});export const getApps=()=>[];`,
-'firebase-auth.js':`const auth={currentUser:{uid:'owner-uid',getIdToken:async()=> 'test-token'}};export const getAuth=()=>auth;export const signInAnonymously=async()=>({user:auth.currentUser});export const signInWithEmailAndPassword=async()=>({user:auth.currentUser});export const onAuthStateChanged=(a,fn)=>{setTimeout(()=>fn(a.currentUser),0);return ()=>{}};`,
-'firebase-firestore.js':`const docs=new Map(JSON.parse(localStorage.getItem('__forgeMockDocs')||'[]'));export const getFirestore=()=>({});export const doc=(...parts)=>({path:parts.slice(1).join('/')});export const collection=doc;export const query=(...x)=>x;export const where=(...x)=>x;export const getDoc=async ref=>({exists:()=>docs.has(ref.path),data:()=>docs.get(ref.path)||{}});export const setDoc=(ref,data)=>{if(globalThis.__denySolo&&ref.path.startsWith('factionForgeSoloProfiles/'))throw Object.assign(new Error('Denied'),{code:'permission-denied'});if(ref.path.startsWith('lobbies/'))globalThis.__fireWrites=(globalThis.__fireWrites||0)+1;else globalThis.__soloWrites=(globalThis.__soloWrites||0)+1;docs.set(ref.path,data);localStorage.setItem('__forgeMockDocs',JSON.stringify([...docs]));};export const updateDoc=setDoc;export const runTransaction=async(db,fn)=>fn({get:getDoc,set:setDoc,update:updateDoc});export const onSnapshot=(ref,fn)=>{setTimeout(()=>ref instanceof Array?fn({docs:[]}):fn({exists:()=>docs.has(ref.path),data:()=>docs.get(ref.path)||{}}),0);return ()=>{}};`
+'firebase-auth.js':`const auth={currentUser:{uid:localStorage.getItem('__forgeAuthUid')||'owner-uid',getIdToken:async()=> 'test-token'}};export const getAuth=()=>auth;export const signInAnonymously=async()=>({user:auth.currentUser});export const signInWithEmailAndPassword=async()=>({user:auth.currentUser});export const onAuthStateChanged=(a,fn)=>{setTimeout(()=>fn(a.currentUser),0);return ()=>{}};`,
+'firebase-firestore.js':`const docs=new Map(JSON.parse(localStorage.getItem('__forgeMockDocs')||'[]'));export const getFirestore=()=>({});export const doc=(...parts)=>({path:parts.slice(1).join('/')});export const collection=doc;export const query=(...x)=>x;export const where=(...x)=>x;export const getDoc=async ref=>({exists:()=>docs.has(ref.path),data:()=>docs.get(ref.path)||{}});export const setDoc=(ref,data)=>{if(globalThis.__denySolo&&(ref.path.startsWith('factionForgeSoloProfiles/')||ref.path.includes('/factionForge/')))throw Object.assign(new Error('Denied'),{code:'permission-denied'});if(ref.path.startsWith('lobbies/'))globalThis.__fireWrites=(globalThis.__fireWrites||0)+1;else globalThis.__soloWrites=(globalThis.__soloWrites||0)+1;docs.set(ref.path,data);localStorage.setItem('__forgeMockDocs',JSON.stringify([...docs]));};export const updateDoc=setDoc;export const runTransaction=async(db,fn)=>fn({get:getDoc,set:setDoc,update:updateDoc});export const onSnapshot=(ref,fn)=>{setTimeout(()=>ref instanceof Array?fn({docs:[]}):fn({exists:()=>docs.has(ref.path),data:()=>docs.get(ref.path)||{}}),0);return ()=>{}};`
 };
 async function server(){
  const app=http.createServer(async(req,res)=>{try{const pathname=new URL(req.url,'http://localhost').pathname;const file=path.join(root,pathname);if(!file.startsWith(root+path.sep))throw Error('bad path');const data=await fs.readFile(file);res.setHeader('Content-Type',file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':'text/javascript');res.end(data);}catch{res.writeHead(404);res.end('missing');}});
@@ -29,7 +29,7 @@ test('Sean reclaims the legacy Commander save without losing dust and other hub 
   await context.addInitScript(()=>{
    if(!localStorage.getItem('__forgeMockDocs')){
     localStorage.setItem('gh.username','Sean');
-    localStorage.setItem('__forgeMockDocs',JSON.stringify([['factionForgeSoloProfiles/owner-uid',{schemaVersion:1,uid:'owner-uid',username:'Commander',forgeDust:940,troops:{rifleman:{cards:75,forgeTier:2,unlocked:true},vguard:{cards:0,forgeTier:1,unlocked:true},medic:{cards:0,forgeTier:1,unlocked:true}},campaign:{missions:{'forge-01':{completed:true,stars:3,clears:4}},endlessUnlocked:false,endlessBest:0},wins:4,losses:1,rewardTarget:null,rewardDay:'',rewardCounts:{},updatedAt:1}]]));
+    localStorage.setItem('__forgeMockDocs',JSON.stringify([['users/Sean',{username:'Sean'}],['users/Other',{username:'Other'}],['factionForgeSoloProfiles/owner-uid',{schemaVersion:1,uid:'owner-uid',username:'Commander',forgeDust:940,troops:{rifleman:{cards:75,forgeTier:2,unlocked:true},vguard:{cards:0,forgeTier:1,unlocked:true},medic:{cards:0,forgeTier:1,unlocked:true}},campaign:{missions:{'forge-01':{completed:true,stars:3,clears:4}},endlessUnlocked:false,endlessBest:0},wins:4,losses:1,rewardTarget:null,rewardDay:'',rewardCounts:{},updatedAt:1}]]));
    }
   });
   await context.route('**/game/crowncouncil.html*',async route=>{
@@ -66,6 +66,14 @@ test('Sean reclaims the legacy Commander save without losing dust and other hub 
   await page.waitForFunction(()=>__forgeAccount.state.phase==='battle');await page.evaluate(()=>__forgeAccount.finishRound());
   await page.waitForFunction(()=>__forgeAccount.profile.troops.rifleman.cards===83);
   assert.equal(await page.evaluate(()=>__forgeAccount.state.lives[1]),3);
+  await page.evaluate(()=>localStorage.setItem('__forgeAuthUid','replacement-anonymous-uid'));await page.reload();
+  await page.waitForFunction(()=>__forgeAccount.profile?.uid==='replacement-anonymous-uid');
+  assert.deepEqual(await page.evaluate(()=>({dust:__forgeAccount.profile.forgeDust,cards:__forgeAccount.profile.troops.rifleman.cards,tier:__forgeAccount.profile.troops.rifleman.forgeTier,stars:__forgeAccount.profile.campaign.missions['forge-01'].stars})),{dust:890,cards:83,tier:2,stars:3});
+  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('__forgeMockDocs')).some(([path])=>path.startsWith('lobbies/'))),false);
+  await page.evaluate(()=>{const docs=JSON.parse(localStorage.getItem('__forgeMockDocs'));docs.push(['users/Guest',{username:'Guest'}],['users/Guest/factionForge/profile',{...__forgeAccount.profile,username:'Guest',forgeDust:999}]);localStorage.setItem('__forgeMockDocs',JSON.stringify(docs));localStorage.removeItem('gh.username');dispatchEvent(new Event('focus'));});
+  await page.waitForFunction(()=>globalThis.__forgeAccount?.profile?.username==='Guest');
+  assert.equal(await page.evaluate(()=>new URL(location.href).searchParams.has('username')),false);
+  assert.equal(await page.evaluate(()=>__forgeAccount.profile.forgeDust),0);
   assert.deepEqual(errors,[]);await context.close();
  }finally{await browser.close();await new Promise(resolve=>app.close(resolve));}
 });
@@ -74,7 +82,7 @@ test('profile selection failures stay visible and can reconnect without reloadin
  const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
  try{
   const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
-  await context.addInitScript(()=>{localStorage.setItem('gh.username','Sean');globalThis.__denySolo=true;});
+  await context.addInitScript(()=>{localStorage.setItem('gh.username','Sean');localStorage.setItem('__forgeMockDocs',JSON.stringify([['users/Sean',{username:'Sean'}]]));globalThis.__denySolo=true;});
   await page.goto(url+'/game/crowncouncil.html?mode=solo');
   await page.getByRole('button',{name:'Retry profile connection',exact:true}).waitFor();
   assert.match(await page.locator('.ff-connection').textContent(),/permissions need updating/);

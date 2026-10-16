@@ -145,8 +145,8 @@ service cloud.firestore {
     }
 
     function turncraftType(data) { return data.get('gameType','') == 'turncraft'; }
-    // Retired competitive collections remain read-only. Personal progress lives
-    // on the existing users/{username}.gameStats.turncraft profile below.
+    // Previous server-owned competitive collections remain read-only. Account
+    // progress and immutable match receipts use the existing username profile.
     match /turncraftProfiles/{uid} {
       allow get: if isAuthed() && request.auth.uid == uid;
       allow list, write: if false;
@@ -157,36 +157,10 @@ service cloud.firestore {
     }
     match /turncraftRankings/{uid} { allow read: if isAuthed(); allow write: if false; }
     match /turncraftMatches/{id} { allow read, write: if false; match /{sub=**} { allow read, write: if false; } }
-    match /turncraftInvites/{code} {
-      allow get: if isAuthed();
-      allow list, update, delete: if false;
-      allow create: if isAuthed() && code.matches('^[A-F0-9]{12}$')
-        && request.resource.data.keys().hasOnly(['lobbyId','createdAt','expiresAt'])
-        && request.resource.data.lobbyId is string && request.resource.data.createdAt is int
-        && request.resource.data.expiresAt is int && request.resource.data.expiresAt > request.time.toMillis()
-        && request.resource.data.expiresAt <= request.time.toMillis()+86460000
-        && getAfter(/databases/$(database)/documents/lobbies/$(request.resource.data.lobbyId)).data.hostUid == request.auth.uid
-        && getAfter(/databases/$(database)/documents/turncraftLobbySecrets/$(request.resource.data.lobbyId)).data.inviteCode == code;
-    }
-    match /turncraftLobbySecrets/{id} {
-      allow get: if isAuthed() && request.auth.uid in get(/databases/$(database)/documents/lobbies/$(id)).data.members;
-      allow list, update, delete: if false;
-      allow create: if isAuthed() && request.resource.data.keys().hasOnly(['inviteCode'])
-        && request.resource.data.inviteCode.matches('^[A-F0-9]{12}$')
-        && getAfter(/databases/$(database)/documents/lobbies/$(id)).data.hostUid == request.auth.uid
-        && getAfter(/databases/$(database)/documents/turncraftInvites/$(request.resource.data.inviteCode)).data.lobbyId == id;
-    }
-    match /turncraftLobbyJoins/{id}/members/{uid} {
-      allow get: if isAuthed() && request.auth.uid == uid;
-      allow list, delete: if false;
-      allow create, update: if isAuthed() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['uid','lobbyId','code','createdAt'])
-        && request.resource.data.uid == uid && request.resource.data.lobbyId == id
-        && request.resource.data.code is string && request.resource.data.createdAt is int
-        && get(/databases/$(database)/documents/turncraftInvites/$(request.resource.data.code)).data.lobbyId == id
-        && get(/databases/$(database)/documents/turncraftInvites/$(request.resource.data.code)).data.expiresAt > request.time.toMillis()
-        && uid in getAfter(/databases/$(database)/documents/lobbies/$(id)).data.members;
-    }
+    // Old invitation paths are retired; all live match infrastructure is lobby-scoped.
+    match /turncraftInvites/{code} { allow read, write: if false; }
+    match /turncraftLobbySecrets/{id} { allow read, write: if false; }
+    match /turncraftLobbyJoins/{id}/members/{uid} { allow read, write: if false; }
     match /turncraftLobbyRequests/{id} { allow read, write: if false; }
     match /turncraftRatingPairs/{id} { allow read, write: if false; }
     match /turncraftRankedQueue/{uid} { allow read, write: if false; }
@@ -214,13 +188,222 @@ service cloud.firestore {
       return next is map && next.keys().hasOnly(['campaign','survival','achievements'])
         && turncraftPersonalProgress(next);
     }
-    function turncraftProfileUpdate() {
+    function turncraftRank(mmr) {
+      return mmr >= 1750 ? 'Master' : mmr >= 1500 ? 'Diamond' : mmr >= 1300 ? 'Platinum'
+        : mmr >= 1100 ? 'Gold' : mmr >= 900 ? 'Silver' : 'Bronze';
+    }
+    function turncraftParticipant(lobby,username) {
+      let seats=lobby.turncraftSeats;
+      return lobby.members[seats[0]] == username ? seats[0]
+        : seats.size() > 1 && lobby.members[seats[1]] == username ? seats[1]
+        : seats.size() > 2 && lobby.members[seats[2]] == username ? seats[2]
+        : seats.size() > 3 && lobby.members[seats[3]] == username ? seats[3] : '';
+    }
+    function turncraftOutcome(lobby,username) {
+      let winner=lobby.turncraftResult.winnerIdx;
+      return winner == null ? 'draw' : winner < lobby.turncraftSeats.size() && lobby.members[lobby.turncraftSeats[winner]] == username ? 'win' : 'loss';
+    }
+    function turncraftOpponents(lobby,username) {
+      let players=lobby.turncraftResult.players;
+      let own=lobby.members[lobby.turncraftSeats[0]] == username ? 0 : lobby.members[lobby.turncraftSeats[1]] == username ? 1
+        : lobby.turncraftSeats.size() > 2 && lobby.members[lobby.turncraftSeats[2]] == username ? 2 : 3;
+      return (own == 0 ? [] : [players[0].name])
+        .concat(own == 1 ? [] : [players[1].name])
+        .concat(players.size() <= 2 || own == 2 ? [] : [players[2].name])
+        .concat(players.size() <= 3 || own == 3 ? [] : [players[3].name]);
+    }
+    function turncraftReceipt(username,id,data) {
+      let lobby=get(/databases/$(database)/documents/lobbies/$(id)).data;
+      let old=get(/databases/$(database)/documents/users/$(username)).data.get('gameStats',{}).get('turncraft',{});
+      let before=old.get('mmr',1000);
+      let outcome=turncraftOutcome(lobby,username);
+      let ranked=lobby.ranked;
+      let raw=before+(ranked ? (outcome == 'win' ? 25 : outcome == 'loss' ? -25 : 0) : 0);
+      let after=raw < 0 ? 0 : raw;
+      let uid=turncraftParticipant(lobby,username);
+      return isAuthed() && lobby.gameType == 'turncraft' && lobby.turncraftVersion == 1 && lobby.status == 'finished'
+        && uid != '' && lobby.members[uid] == username
+        && lobby.turncraftPlayers[uid].name == username
+        && (!ranked || lobby.turncraftSeats.size() == 2 && lobby.turncraftResult.players.size() == 2
+          && lobby.settings.maxPlayers == 2 && lobby.settings.get('fillAi',false) == false)
+        && data.keys().hasOnly(['id','lobbyId','uid','username','mode','outcome','winnerIdx','factionId','opponents','mapId','gameMode','durationSeconds','completedAt','mmrBefore','mmrAfter','mmrDelta'])
+        && data.id == id && data.lobbyId == id && data.uid == uid && data.username == username
+        && data.mode == (ranked ? 'ranked' : 'custom') && data.outcome == outcome
+        && data.winnerIdx == lobby.turncraftResult.winnerIdx && data.factionId == lobby.turncraftPlayers[uid].factionId
+        && data.opponents == turncraftOpponents(lobby,username) && data.mapId == lobby.settings.mapId && data.gameMode == lobby.settings.gameMode
+        && data.durationSeconds == lobby.turncraftResult.durationSeconds && data.completedAt == lobby.finishedAt
+        && data.mmrBefore == before && data.mmrAfter == after && data.mmrDelta == after-before;
+    }
+    function turncraftStatsDelta(old,next,receipt) {
+      let ranked=receipt.mode == 'ranked';let won=receipt.outcome == 'win';let lost=receipt.outcome == 'loss';let draw=receipt.outcome == 'draw';
+      let matches=old.get('rankedMatches',0)+(ranked ? 1 : 0);
+      let highest=old.get('highestMMR',1000) > old.get('mmr',1000) ? old.get('highestMMR',1000) : old.get('mmr',1000);
+      return next.diff(old).affectedKeys().hasOnly(['campaign','survival','achievements','lastMatchId','multiplayerMatches','multiplayerWins','multiplayerLosses','multiplayerDraws','mmr','rank','rankedMatches','rankedWins','rankedLosses','rankedDraws','highestMMR','provisionalMatchesRemaining'])
+        && turncraftPersonalProgress(next)
+        && next.multiplayerMatches == old.get('multiplayerMatches',0)+1
+        && next.multiplayerWins == old.get('multiplayerWins',0)+(won ? 1 : 0)
+        && next.multiplayerLosses == old.get('multiplayerLosses',0)+(lost ? 1 : 0)
+        && next.multiplayerDraws == old.get('multiplayerDraws',0)+(draw ? 1 : 0)
+        && (ranked ? next.mmr == receipt.mmrAfter && next.rank == turncraftRank(receipt.mmrAfter)
+          && next.rankedMatches == matches && next.rankedWins == old.get('rankedWins',0)+(won ? 1 : 0)
+          && next.rankedLosses == old.get('rankedLosses',0)+(lost ? 1 : 0)
+          && next.rankedDraws == old.get('rankedDraws',0)+(draw ? 1 : 0)
+          && next.highestMMR == (highest > receipt.mmrAfter ? highest : receipt.mmrAfter)
+          && next.provisionalMatchesRemaining == (matches < 10 ? 10-matches : 0)
+          : next.get('mmr',1000) == old.get('mmr',1000) && next.get('rank','Unranked') == old.get('rank','Unranked')
+            && next.get('rankedMatches',0) == old.get('rankedMatches',0) && next.get('rankedWins',0) == old.get('rankedWins',0)
+            && next.get('rankedLosses',0) == old.get('rankedLosses',0) && next.get('rankedDraws',0) == old.get('rankedDraws',0)
+            && next.get('highestMMR',1000) == old.get('highestMMR',1000)
+            && next.get('provisionalMatchesRemaining',10) == old.get('provisionalMatchesRemaining',10));
+    }
+    function turncraftMatchProfileUpdate(username,old,next) {
+      let id=next.get('lastMatchId','');
+      let path=/databases/$(database)/documents/users/$(username)/turncraftHistory/$(id);
+      let receipt=getAfter(path).data;
+      return id is string && id.size() >= 1 && id.size() <= 100 && !exists(path)
+        && turncraftReceipt(username,id,receipt) && turncraftStatsDelta(old,next,receipt);
+    }
+    function turncraftProfileUpdate(username) {
       let old = resource.data.get('gameStats', {}).get('turncraft', {});
       let next = request.resource.data.get('gameStats', {}).get('turncraft', {});
       return next is map && old is map
         && (next == old || (next.diff(old).affectedKeys().hasOnly(['campaign','survival','achievements'])
-          && turncraftPersonalProgress(next)));
+          && turncraftPersonalProgress(next)) || turncraftMatchProfileUpdate(username,old,next));
     }
+
+    function isGridboundPersistentCreate() {
+      return request.resource.data.keys().hasOnly([
+          'persistentState',
+          'persistentUpdatedAt',
+          'activeCombatMigratedToRTDB',
+          'activeCombatDatabase',
+          'activeCombatSchemaVersion',
+          'migratedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'activeCombatMigratedToRTDB',
+          'activeCombatDatabase',
+          'activeCombatSchemaVersion'
+        ])
+        && request.resource.data.activeCombatMigratedToRTDB == true
+        && request.resource.data.activeCombatDatabase == 'realtime-database'
+        && request.resource.data.activeCombatSchemaVersion == 3
+        && request.resource.data.get('persistentState', {}) is map
+        && request.resource.data.get('persistentUpdatedAt', request.time) is timestamp
+        && request.resource.data.get('migratedAt', request.time) is timestamp;
+    }
+
+    function isGridboundPersistentUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'persistentState',
+          'persistentUpdatedAt',
+          'activeCombatMigratedToRTDB',
+          'activeCombatDatabase',
+          'activeCombatSchemaVersion',
+          'migratedAt'
+        ])
+        && request.resource.data.activeCombatMigratedToRTDB == true
+        && request.resource.data.activeCombatDatabase == 'realtime-database'
+        && request.resource.data.activeCombatSchemaVersion == 3
+        && request.resource.data.get('persistentState', {}) is map
+        && request.resource.data.get('persistentUpdatedAt', request.time) is timestamp
+        && request.resource.data.get('migratedAt', request.time) is timestamp;
+    }
+
+    function validRewardCreate(rewardId) {
+      return request.resource.data.keys().hasOnly([
+          'id',
+          'uid',
+          'username',
+          'realmId',
+          'roomId',
+          'activeRoomKey',
+          'controllerUid',
+          'sourceAttackId',
+          'enemyId',
+          'enemyType',
+          'eliteAffix',
+          'isBoss',
+          'xp',
+          'gold',
+          'restoredStolenGold',
+          'item',
+          'materials',
+          'relicId',
+          'claimed',
+          'createdAtMs',
+          'createdAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'id',
+          'uid',
+          'username',
+          'realmId',
+          'roomId',
+          'activeRoomKey',
+          'controllerUid',
+          'sourceAttackId',
+          'enemyId',
+          'enemyType',
+          'isBoss',
+          'xp',
+          'gold',
+          'restoredStolenGold',
+          'materials',
+          'claimed',
+          'createdAtMs',
+          'createdAt'
+        ])
+        && request.resource.data.id == rewardId
+        && request.resource.data.controllerUid == request.auth.uid
+        && request.resource.data.uid is string
+        && request.resource.data.uid.size() > 0
+        && request.resource.data.username is string
+        && request.resource.data.username.size() <= 64
+        && request.resource.data.realmId is string
+        && request.resource.data.realmId.size() <= 128
+        && request.resource.data.roomId is string
+        && request.resource.data.roomId.size() <= 128
+        && request.resource.data.activeRoomKey is string
+        && request.resource.data.activeRoomKey.size() <= 260
+        && request.resource.data.sourceAttackId is string
+        && request.resource.data.sourceAttackId.size() <= 192
+        && request.resource.data.enemyId is string
+        && request.resource.data.enemyId.size() <= 192
+        && request.resource.data.enemyType is string
+        && request.resource.data.enemyType.size() <= 96
+        && (request.resource.data.get('eliteAffix', null) == null
+            || request.resource.data.get('eliteAffix', null) is string);
+    }
+
+    function validRewardNumbersAndPayload() {
+      return request.resource.data.isBoss is bool
+        && request.resource.data.xp is int
+        && request.resource.data.xp >= 0
+        && request.resource.data.xp <= 100000
+        && request.resource.data.gold is int
+        && request.resource.data.gold >= 0
+        && request.resource.data.gold <= 100000
+        && request.resource.data.restoredStolenGold is int
+        && request.resource.data.restoredStolenGold >= 0
+        && request.resource.data.restoredStolenGold <= 100000
+        && (request.resource.data.get('item', null) == null
+            || request.resource.data.get('item', null) is map);
+    }
+
+    function validRewardOptionalPayload() {
+      return request.resource.data.materials is map
+        && request.resource.data.materials.size() <= 16
+        && (request.resource.data.get('relicId', null) == null
+            || request.resource.data.get('relicId', null) is string)
+        && request.resource.data.claimed == false
+        && request.resource.data.createdAtMs is int
+        && request.resource.data.createdAtMs >= request.time.toMillis() - 10000
+        && request.resource.data.createdAtMs <= request.time.toMillis() + 10000
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.createdAt == request.time;
+    }
+
 
     function validCountryQuestScore() {
       return isAuthed()
@@ -368,13 +551,112 @@ service cloud.firestore {
         && turncraftProfileCreate()
         && !request.resource.data.keys().hasAny(forgeProtectedProfileFields());
       allow update: if isAuthed() && forgeBoundOwner(userId)
-        && turncraftProfileUpdate()
+        && turncraftProfileUpdate(userId)
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(forgeProtectedProfileFields());
       allow delete: if false;
 
       // Read the old per-device location only for that Firebase Auth identity.
       match /tiny_troops_profiles/{saveName} {
         allow get: if isAuthed() && request.auth.uid == userId;
+      }
+      // Game Hub usernames are the stable account identity. Anonymous Auth UIDs
+      // may change between browsers; they are not the owner key for these saves.
+      match /factionForge/{saveId} {
+        function forgeProfilePath() { return /databases/$(database)/documents/users/$(userId)/factionForge/profile; }
+        function validForgeAccountSave() {
+          let d=request.resource.data;
+          return isAuthed() && saveId == 'profile' && d.schemaVersion == 1
+            && d.username == userId && d.uid is string && d.uid.size() >= 1 && d.uid.size() <= 128
+            && d.forgeDust is int && d.forgeDust >= 0 && d.troops is map && d.troops.size() == 32
+            && d.campaign is map && d.campaign.missions is map && d.campaign.missions.size() <= 30
+            && d.campaign.endlessUnlocked is bool && d.campaign.endlessBest is int && d.campaign.endlessBest >= 0
+            && d.wins is int && d.wins >= 0 && d.losses is int && d.losses >= 0
+            && (d.rewardTarget == null || d.rewardTarget is string)
+            && d.rewardDay is string && d.rewardCounts is map && d.updatedAt is int && d.updatedAt >= 0
+            && d.keys().hasOnly(['schemaVersion','uid','username','forgeDust','troops','campaign','wins','losses','rewardTarget','rewardDay','rewardCounts','updatedAt']);
+        }
+        function validForgeAccountReceipt(kind,id) {
+          let d=request.resource.data;
+          return isAuthed() && saveId == 'profile' && d.uid == getAfter(forgeProfilePath()).data.uid && (
+            (kind == 'results' && d.id == id && d.mode in ['campaign','bot','endless'] && d.won is bool
+              && d.completedAt is int && d.completedAt >= 0 && d.forgeDust is int && d.forgeDust >= 0
+              && d.cards is list && d.unlocks is list && d.stars is int && d.stars >= 0 && d.stars <= 3
+              && d.keys().hasOnly(['id','uid','mode','won','missionId','stars','cards','forgeDust','unlocks','completedAt']))
+            || (kind == 'upgrades' && d.requestId == id && d.troopKey is string
+              && d.fromTier is int && d.fromTier >= 1 && d.toTier == d.fromTier+1 && d.toTier <= 3
+              && d.cardsSpent is int && d.cardsSpent >= 0 && d.dustSpent is int && d.dustSpent >= 0
+              && d.completedAt is int && d.completedAt >= 0
+              && d.keys().hasOnly(['uid','requestId','troopKey','fromTier','toTier','cardsSpent','dustSpent','completedAt']))
+            || (kind == 'purchases' && d.requestId == id && d.packId in ['vanir','aesir','helions','war-chest']
+              && d.dustSpent == (d.packId == 'war-chest' ? 90 : 50)
+              && d.cards is list && d.cards.size() == (d.packId == 'war-chest' ? 6 : 3)
+              && d.completedAt is int && d.completedAt >= 0
+              && d.keys().hasOnly(['uid','requestId','packId','dustSpent','cards','completedAt']))
+            || (kind == 'rounds' && d.id == id && d.matchId is string && d.mode in ['campaign','bot','endless']
+              && d.round is int && d.round >= 1 && d.round <= 7 && d.cards is list && d.cards.size() <= 1
+              && d.completedAt is int && d.completedAt >= 0
+              && d.keys().hasOnly(['id','matchId','uid','mode','missionId','round','cards','completedAt']))
+          );
+        }
+        allow get: if isAuthed() && saveId == 'profile';
+        allow create, update: if validForgeAccountSave();
+        allow list, delete: if false;
+        match /{kind}/{id} {
+          allow read: if isAuthed() && saveId == 'profile' && kind in ['results','upgrades','purchases','rounds'];
+          allow create: if validForgeAccountReceipt(kind,id);
+          allow update, delete: if false;
+        }
+      }
+      match /turncraftHistory/{id} {
+        allow read: if isAuthed();
+        allow create: if turncraftReceipt(userId,id,request.resource.data)
+          && getAfter(/databases/$(database)/documents/users/$(userId)).data.gameStats.turncraft.lastMatchId == id
+          && turncraftStatsDelta(get(/databases/$(database)/documents/users/$(userId)).data.get('gameStats',{}).get('turncraft',{}),
+            getAfter(/databases/$(database)/documents/users/$(userId)).data.gameStats.turncraft,request.resource.data);
+        allow update, delete: if false;
+      }
+      match /turncraftPending/{id} {
+        allow read: if isAuthed();
+        allow create: if isAuthed() && request.resource.data.lobbyId == id && request.resource.data.username == userId
+          && request.resource.data.createdAt is int && request.resource.data.createdAt >= 0
+          && request.resource.data.keys().hasOnly(['lobbyId','username','createdAt'])
+          && get(/databases/$(database)/documents/lobbies/$(id)).data.gameType == 'turncraft'
+          && get(/databases/$(database)/documents/lobbies/$(id)).data.turncraftVersion == 1
+          && get(/databases/$(database)/documents/lobbies/$(id)).data.status in ['waiting','started','finished']
+          && turncraftParticipant(get(/databases/$(database)/documents/lobbies/$(id)).data,userId) != '';
+        allow update: if false;
+        allow delete: if isAuthed() && (existsAfter(/databases/$(database)/documents/users/$(userId)/turncraftHistory/$(id))
+          || !exists(/databases/$(database)/documents/lobbies/$(id))
+          || get(/databases/$(database)/documents/lobbies/$(id)).data.status == 'closed'
+          || turncraftParticipant(get(/databases/$(database)/documents/lobbies/$(id)).data,userId) == '');
+      }
+      match /turncraftSoloHistory/{id} {
+        allow read: if isAuthed();
+        allow create: if isAuthed() && request.resource.data.username == userId && request.resource.data.id == id
+          && request.resource.data.mode in ['campaign','survival'] && request.resource.data.outcome in ['win','loss']
+          && request.resource.data.factionId in ['frontier','ascendant','brood']
+          && request.resource.data.difficulty in ['easy','medium','hard','pro']
+          && request.resource.data.stars is int && request.resource.data.stars >= 0 && request.resource.data.stars <= 3
+          && request.resource.data.wave is int && request.resource.data.wave >= 0 && request.resource.data.wave <= 100000
+          && request.resource.data.durationSeconds is int && request.resource.data.durationSeconds >= 0 && request.resource.data.durationSeconds <= 604800
+          && request.resource.data.completedAt is int && request.resource.data.completedAt >= 0
+          && request.resource.data.keys().hasOnly(['id','username','mode','outcome','missionId','arenaId','factionId','difficulty','stars','wave','durationSeconds','completedAt']);
+        allow update, delete: if false;
+      }
+      match /turncraftSaves/{id} {
+        allow get: if isAuthed() && id == 'active';
+        allow create, update: if isAuthed() && id == 'active' && request.resource.data.username == userId
+          && (request.resource.data.packed == null || request.resource.data.packed is string && request.resource.data.packed.size() <= 850000)
+          && request.resource.data.savedAt is int && request.resource.data.savedAt >= 0
+          && (request.resource.data.get('completedRunId',null) == null || request.resource.data.completedRunId is string && request.resource.data.completedRunId.size() <= 100)
+          && request.resource.data.keys().hasOnly(['username','packed','savedAt','completedRunId']);
+        allow list, delete: if false;
+      }
+      // Preserve legacy username-scoped saves for the other hub games. The
+      // explicitly validated game paths are excluded because allows combine by OR.
+      match /{subcollection}/{document=**} {
+        allow read, write: if isAuthed()
+          && !(subcollection in ['factionForge','turncraftHistory','turncraftSoloHistory','turncraftSaves','turncraftPending','tiny_troops_profiles']);
       }
     }
 
@@ -438,6 +720,60 @@ service cloud.firestore {
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostUid','host','updatedAt']))
         )))));
       allow delete: if isAuthed() && (!turncraftType(resource.data) || resource.data.get('turncraftVersion',0) != 1) && ((forgeLobbyType(resource.data)) ? forgeLobbyDelete() : (resource.data.get('gameType','') != 'ironthrone' || resource.data.hostUid == request.auth.uid && resource.data.status == 'waiting'));
+      // Gridbound durable room documents. Active combat is not allowed here.
+      match /rpg_rooms/{roomId} {
+        allow read: if isAuthed();
+        allow create: if isAuthed()
+          && isGridboundPersistentCreate();
+        allow update: if isAuthed()
+          && isGridboundPersistentUpdate();
+        allow delete: if false;
+
+        // The migrated client no longer uses Firestore room subcollections.
+        match /{document=**} {
+          allow read, write: if false;
+        }
+      }
+
+
+      match /invites/{code} {
+        allow get: if isAuthed() && gameId == 'turncraft';
+        allow create: if isAuthed() && gameId == 'turncraft' && code.matches('^[A-F0-9]{12}$')
+          && request.resource.data.keys().hasOnly(['lobbyId','createdAt','expiresAt'])
+          && request.resource.data.lobbyId is string && request.resource.data.createdAt is int
+          && request.resource.data.expiresAt is int && request.resource.data.expiresAt > request.time.toMillis()
+          && request.resource.data.expiresAt <= request.time.toMillis()+86460000
+          && getAfter(/databases/$(database)/documents/lobbies/$(request.resource.data.lobbyId)).data.hostUid == request.auth.uid
+          && getAfter(/databases/$(database)/documents/lobbies/$(request.resource.data.lobbyId)/turncraft_private/invite).data.inviteCode == code;
+        allow list, update, delete: if false;
+      }
+      match /turncraft_private/{id} {
+        allow get: if isAuthed() && id == 'invite' && turncraftMember();
+        allow create: if isAuthed() && id == 'invite' && request.resource.data.keys().hasOnly(['inviteCode'])
+          && request.resource.data.inviteCode.matches('^[A-F0-9]{12}$')
+          && getAfter(/databases/$(database)/documents/lobbies/$(gameId)).data.hostUid == request.auth.uid
+          && getAfter(/databases/$(database)/documents/lobbies/turncraft/invites/$(request.resource.data.inviteCode)).data.lobbyId == gameId;
+        allow list, update, delete: if false;
+      }
+      match /turncraft_joins/{uid} {
+        allow get: if isAuthed() && request.auth.uid == uid;
+        allow create, update: if isAuthed() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['uid','lobbyId','code','createdAt'])
+          && request.resource.data.uid == uid && request.resource.data.lobbyId == gameId
+          && request.resource.data.code is string && request.resource.data.createdAt is int
+          && get(/databases/$(database)/documents/lobbies/turncraft/invites/$(request.resource.data.code)).data.lobbyId == gameId
+          && get(/databases/$(database)/documents/lobbies/turncraft/invites/$(request.resource.data.code)).data.expiresAt > request.time.toMillis()
+          && uid in getAfter(/databases/$(database)/documents/lobbies/$(gameId)).data.members;
+        allow list, delete: if false;
+      }
+      match /turncraft_forfeits/{uid} {
+        allow read: if turncraftMember();
+        allow create: if turncraftMember() && uid == request.auth.uid && ironLobby().status == 'started'
+          && request.resource.data.uid == uid && request.resource.data.username == ironLobby().members[uid]
+          && request.resource.data.createdAt is int
+          && request.resource.data.keys().hasOnly(['uid','username','createdAt']);
+        allow update, delete: if false;
+      }
       function turncraftMember() { return isAuthed() && turncraftType(ironLobby()) && request.auth.uid in ironLobby().get('members',{}); }
       function tcPlayer(d, index) {
         let seats=d.turncraftSeats;let uid=seats.size()>index ? seats[index] : '';let player=d.turncraftPlayers.get(uid,{});let name=d.members.get(uid,'');
@@ -462,7 +798,7 @@ service cloud.firestore {
       }
       function tcSchemaShape(d) {
         let seats=d.turncraftSeats;let seatSet=seats.toSet();let members=d.members;let commanders=d.turncraftPlayers;let names=d.players;
-        return turncraftType(d) && d.turncraftVersion == 1 && d.ranked == false
+        return turncraftType(d) && d.turncraftVersion == 1 && d.ranked is bool
           && d.keys().hasOnly(['name','gameType','turncraftVersion','status','visibility','ranked','host','hostUid','members','players','turncraftSeats','turncraftPlayers','settings','createdAt','updatedAt','startedAt','chessStarfrontReady','chessStarfrontController','finishedAt','turncraftResult','nextLobbyId','rematchOf'])
           && d.name is string && d.name.size() >= 1 && d.name.size() <= 80
           && d.visibility in ['public','private'] && d.status in ['waiting','started','finished','closed']
@@ -471,6 +807,7 @@ service cloud.firestore {
           && members is map && members.keys().toSet() == seatSet
           && commanders is map && commanders.keys().toSet() == seatSet
           && names is list && names.size() == seats.size() && names.toSet().size() == names.size()
+          && (!d.ranked || d.settings.maxPlayers == 2 && d.settings.get('fillAi',false) == false && seats.size() <= 2)
           && (d.status == 'closed' && seats.size() == 0 || seats.size() >= 1 && seats.size() <= d.settings.maxPlayers && d.hostUid == seats[0] && d.host == members[d.hostUid])
 ;
       }
@@ -493,23 +830,23 @@ service cloud.firestore {
       }
       function tcRematchCreate(d) {
         let before=get(/databases/$(database)/documents/lobbies/$(d.rematchOf)).data;
-        return before.turncraftVersion == 1 && before.ranked == false && before.status == 'finished'
+        return before.turncraftVersion == 1 && d.ranked == before.ranked && before.status == 'finished'
           && before.hostUid == request.auth.uid && d.settings == before.settings && d.name == before.name && d.visibility == before.visibility
           && d.players == before.players && tcResetPlayers(before,d)
           && getAfter(/databases/$(database)/documents/lobbies/$(d.rematchOf)).data.nextLobbyId == gameId;
       }
       function turncraftLobbyCreate() {
-        let d=request.resource.data;let secret=getAfter(/databases/$(database)/documents/turncraftLobbySecrets/$(gameId)).data;
+        let d=request.resource.data;let secret=getAfter(/databases/$(database)/documents/lobbies/$(gameId)/turncraft_private/invite).data;
         return tcSchema(d) && d.status == 'waiting' && d.hostUid == request.auth.uid
           && !d.keys().hasAny(['startedAt','chessStarfrontReady','chessStarfrontController','finishedAt','turncraftResult','nextLobbyId'])
-          && secret.inviteCode is string && getAfter(/databases/$(database)/documents/turncraftInvites/$(secret.inviteCode)).data.lobbyId == gameId
+          && secret.inviteCode is string && getAfter(/databases/$(database)/documents/lobbies/turncraft/invites/$(secret.inviteCode)).data.lobbyId == gameId
           && (d.get('rematchOf','') != '' ? tcRematchCreate(d) : d.turncraftSeats == [request.auth.uid] && d.turncraftPlayers[request.auth.uid].ready == false);
       }
       function tcJoinProof(a) {
-        let proof=getAfter(/databases/$(database)/documents/turncraftLobbyJoins/$(gameId)/members/$(request.auth.uid)).data;
+        let proof=getAfter(/databases/$(database)/documents/lobbies/$(gameId)/turncraft_joins/$(request.auth.uid)).data;
         return proof.uid == request.auth.uid && proof.lobbyId == gameId
-          && get(/databases/$(database)/documents/turncraftInvites/$(proof.code)).data.lobbyId == gameId
-          && get(/databases/$(database)/documents/turncraftInvites/$(proof.code)).data.expiresAt > request.time.toMillis();
+          && get(/databases/$(database)/documents/lobbies/turncraft/invites/$(proof.code)).data.lobbyId == gameId
+          && get(/databases/$(database)/documents/lobbies/turncraft/invites/$(proof.code)).data.expiresAt > request.time.toMillis();
       }
       function tcAppend(a,b,index) { return a.turncraftSeats.size() <= index || a.turncraftSeats[index] == b.turncraftSeats[index]; }
       function tcJoin(a,b,fields) {
@@ -523,7 +860,8 @@ service cloud.firestore {
           && (a.visibility == 'public' || tcJoinProof(a));
       }
       function tcLeave(a,b,fields) {
-        return a.status in ['waiting','finished'] && request.auth.uid in a.members && !(request.auth.uid in b.members)
+        // Finished participants remain frozen so either player can claim history after reconnecting.
+        return a.status == 'waiting' && request.auth.uid in a.members && !(request.auth.uid in b.members)
           && fields.hasOnly(['members','players','turncraftSeats','turncraftPlayers','host','hostUid','status','updatedAt'])
           && b.members.diff(a.members).affectedKeys().hasOnly([request.auth.uid])
           && b.turncraftPlayers.diff(a.turncraftPlayers).affectedKeys().hasOnly([request.auth.uid])
@@ -564,9 +902,16 @@ service cloud.firestore {
           && state.controllerUid == a.chessStarfrontController.ownerUid && state.controllerEpoch == a.chessStarfrontController.epoch
           && tcBattleState(state,a)
           && b.finishedAt is int && b.turncraftResult.keys().hasOnly(['winnerIdx','reason','players','durationSeconds'])
-          && b.turncraftResult.winnerIdx == state.matchResult.winnerIdx && b.turncraftResult.reason is string && b.turncraftResult.reason.size() <= 200
+          && b.turncraftResult.winnerIdx == state.matchResult.winnerIdx
+          && (b.turncraftResult.winnerIdx == null || b.turncraftResult.winnerIdx is int && b.turncraftResult.winnerIdx >= 0 && b.turncraftResult.winnerIdx < state.players.size())
+          && b.turncraftResult.reason is string && b.turncraftResult.reason.size() <= 200
           && b.turncraftResult.players is list && b.turncraftResult.players.size() == state.players.size()
+          && tcResultPlayer(b.turncraftResult.players,state.players,0) && tcResultPlayer(b.turncraftResult.players,state.players,1)
+          && tcResultPlayer(b.turncraftResult.players,state.players,2) && tcResultPlayer(b.turncraftResult.players,state.players,3)
           && b.turncraftResult.durationSeconds is int && b.turncraftResult.durationSeconds >= 0;
+      }
+      function tcResultPlayer(result,players,index) {
+        return result.size() <= index || result[index] == {'name':players[index].name,'factionId':players[index].factionId};
       }
       function tcLease(a,b,fields) {
         let old=a.get('chessStarfrontController',{});let lease=b.get('chessStarfrontController',{});
@@ -579,14 +924,14 @@ service cloud.firestore {
       }
       function turncraftController() {
         let lobby=ironLobby();let lease=lobby.get('chessStarfrontController',{});
-        return turncraftMember() && lobby.status == 'started' && lobby.get('ranked',false) == false
+        return turncraftMember() && lobby.status == 'started'
           && lease.get('ownerUid','') == request.auth.uid && lease.get('expiresAtMs',0) > request.time.toMillis();
       }
       function turncraftLobbyUpdate() {
         let a=resource.data;let b=request.resource.data;let fields=b.diff(a).affectedKeys();
         return a.get('turncraftVersion',0) == 0
           ? b.gameType == a.gameType && b.get('turncraftVersion',0) == 0 && !fields.hasAny(['ranked','hostUid','members','turncraftSeats','turncraftPlayers'])
-          : a.turncraftVersion == 1 && a.ranked == false && b.turncraftVersion == 1 && b.gameType == a.gameType && b.ranked == false
+          : a.turncraftVersion == 1 && a.ranked is bool && b.turncraftVersion == 1 && b.gameType == a.gameType && b.ranked == a.ranked
           && (b.updatedAt is int || b.updatedAt is timestamp) && (
             (request.auth.uid in a.members && (
               (a.status == 'waiting' && fields.hasOnly(['turncraftPlayers','updatedAt'])
@@ -594,7 +939,8 @@ service cloud.firestore {
                 && b.turncraftPlayers[request.auth.uid].diff(a.turncraftPlayers[request.auth.uid]).affectedKeys().hasOnly(['factionId','ready'])
                 && b.turncraftPlayers[request.auth.uid].factionId in ['frontier','ascendant','brood'] && b.turncraftPlayers[request.auth.uid].ready is bool)
               || (a.status == 'waiting' && a.hostUid == request.auth.uid && fields.hasOnly(['settings','visibility','name','turncraftPlayers','updatedAt'])
-                && tcSettings(b) && b.settings.maxPlayers >= b.turncraftSeats.size() && b.visibility in ['public','private']
+                && tcSettings(b) && (!b.ranked || b.settings.maxPlayers == 2 && b.settings.get('fillAi',false) == false)
+                && b.settings.maxPlayers >= b.turncraftSeats.size() && b.visibility in ['public','private']
                 && b.name is string && b.name.size() >= 1 && b.name.size() <= 80 && tcResetPlayers(a,b))
               || (a.status == 'waiting' && b.status == 'started' && tcStart(a,b,fields))
               || (a.status == 'started' && fields.hasOnly(['chessStarfrontController','updatedAt']) && tcLease(a,b,fields))
@@ -615,7 +961,7 @@ service cloud.firestore {
       }
       match /chess_starfront_presence/{presenceId} {
         allow read: if turncraftMember();
-        allow create, update: if turncraftMember() && ironLobby().get('ranked',false) == false && request.resource.data.uid == request.auth.uid
+        allow create, update: if turncraftMember() && request.resource.data.uid == request.auth.uid
           && request.resource.data.username == ironLobby().members[request.auth.uid]
           && request.resource.data.slot is int && request.resource.data.slot >= 0
           && ironLobby().turncraftSeats[request.resource.data.slot] == request.auth.uid;
@@ -623,7 +969,7 @@ service cloud.firestore {
       }
       match /chess_starfront_commands/{commandId} {
         allow read: if turncraftMember();
-        allow create: if turncraftMember() && ironLobby().get('ranked',false) == false && ironLobby().status == 'started'
+        allow create: if turncraftMember() && ironLobby().status == 'started'
           && request.resource.data.by == ironLobby().members[request.auth.uid]
           && request.resource.data.slot is int && request.resource.data.slot >= 0
           && ironLobby().turncraftSeats[request.resource.data.slot] == request.auth.uid;
@@ -817,8 +1163,48 @@ service cloud.firestore {
       match /{subcollection}/{document=**} {
         allow read, write: if isAuthed() && gameId != 'world_quest'
           && (!turncraftType(ironLobby()) || ironLobby().get('turncraftVersion',0) != 1)
+          && subcollection != 'rpg_rooms'
+          && !(gameId == 'turncraft' && subcollection == 'invites')
           && !(subcollection in ['crowncouncil','iron_throne','iron_throne_private','iron_throne_presence','iron_throne_commands','iron_throne_snapshots','iron_throne_threads']);
       }
+    }
+
+    match /rewards/{rewardId} {
+      // The game queries this collection with where('uid', '==', auth.uid).
+      allow read: if isAuthed()
+        && resource.data.uid == request.auth.uid;
+
+      // The elected room controller creates rewards. Firestore rules cannot
+      // independently verify an RTDB controller lease; a trusted backend is
+      // required for fully cheat-resistant reward issuance.
+      allow create: if isAuthed()
+        && validRewardCreate(rewardId)
+        && validRewardNumbersAndPayload()
+        && validRewardOptionalPayload();
+
+      // A recipient may only mark their own reward claimed.
+      allow update: if isAuthed()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'claimed',
+          'claimedAt'
+        ])
+        && request.resource.data.claimed == true
+        && request.resource.data.claimedAt is timestamp
+        && request.resource.data.claimedAt == request.time;
+
+      // The game deletes the document after the successful profile transaction.
+      allow delete: if isAuthed()
+        && resource.data.uid == request.auth.uid
+        && resource.data.claimed == true;
+    }
+
+
+    // Keep the existing hub's username-based invitations for other games.
+    match /lobbyInvites/{inviteId} {
+      allow read, create, update, delete: if isAuthed();
     }
 
     match /gameStats/{gameId} {

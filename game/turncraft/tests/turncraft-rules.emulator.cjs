@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('node:fs'),
   path = require('node:path');
+const assert = require('node:assert/strict');
 const {
   initializeTestEnvironment,
   assertFails,
@@ -14,7 +15,8 @@ const {
   deleteDoc,
   collection,
   getDocs,
-  serverTimestamp
+  serverTimestamp,
+  writeBatch
 } = require('firebase/firestore');
 (async () => {
   if (!process.env.FIRESTORE_EMULATOR_HOST)
@@ -31,6 +33,7 @@ const {
     }
   });
   try {
+    await env.clearFirestore();
     await env.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
       for (const [id, ranked] of [
@@ -56,6 +59,7 @@ const {
             mapId: 'classic',
             gameMode: 'annihilation',
             maxPlayers: 2,
+            fillAi: false,
             startingResources: 'standard'
           },
           chessStarfrontController: {
@@ -139,8 +143,7 @@ const {
           verified: true
         })
       );
-      if (name !== 'turncraftInvites') await assertFails(getDoc(doc(owner, name, 'forged')));
-      else await assertSucceeds(getDoc(doc(owner, name, 'forged')));
+      await assertFails(getDoc(doc(owner, name, 'forged')));
     }
     await assertFails(
       updateDoc(doc(owner, 'users', 'Owner'), {
@@ -213,7 +216,7 @@ const {
         }
       })
     );
-    await assertFails(
+    await assertSucceeds(
       updateDoc(doc(owner, 'lobbies', 'ranked'), {
         chessStarfrontController: {
           ownerUid: 'owner',
@@ -246,7 +249,7 @@ const {
         controllerUid: 'peer'
       })
     );
-    await assertFails(
+    await assertSucceeds(
       setDoc(doc(owner, 'lobbies', 'ranked', 'chess_starfront', 'state'), state)
     );
     await assertSucceeds(
@@ -303,7 +306,7 @@ const {
         { by: 'Peer', slot: 1, type: 'move' }
       )
     );
-    await assertFails(
+    await assertSucceeds(
       setDoc(
         doc(owner, 'lobbies', 'ranked', 'chess_starfront_commands', 'forged'),
         { by: 'Owner', slot: 0, type: 'move' }
@@ -372,8 +375,69 @@ const {
     await assertSucceeds(
       updateDoc(doc(stranger, 'lobbies', 'other'), { status: 'started' })
     );
+    // The finished lobby and participant identity, rather than a free-standing
+    // browser winner claim, determine every atomic profile/history increment.
+    const {pathToFileURL}=require('node:url');
+    const {completeCustomMatch}=await import(pathToFileURL(path.resolve(__dirname,'../shattered-front/lobby-store.mjs')).href);
+    const {saveMatchResult}=await import(pathToFileURL(path.resolve(__dirname,'../shattered-front/result-store.mjs')).href);
+    const ownerAuth={currentUser:{uid:'owner'}};
+    await assert.rejects(saveMatchResult({db:owner,auth:ownerAuth,api:require('firebase/firestore')},'ranked','Owner'),/still syncing/);
+    await updateDoc(doc(owner,'lobbies','ranked'),{chessStarfrontController:{ownerUid:'owner',ownerName:'Owner',epoch:1,expiresAtMs:Date.now()+16000},updatedAt:serverTimestamp()});
+    await setDoc(doc(owner,'lobbies','ranked','chess_starfront','state'),{...state,gameOver:true,matchStartedAt:Date.now()-120000,matchResult:{winnerIdx:0,reason:'Every opposing command base fell.',finishedAt:Date.now()}});
+    const finished=await completeCustomMatch({db:owner,auth:ownerAuth,api:require('firebase/firestore')},'ranked');
+    const receipt={id:'ranked',lobbyId:'ranked',uid:'owner',username:'Owner',mode:'ranked',outcome:'win',winnerIdx:0,factionId:'frontier',opponents:['Peer'],mapId:'classic',gameMode:'annihilation',durationSeconds:finished.turncraftResult.durationSeconds,completedAt:finished.finishedAt,mmrBefore:1500,mmrAfter:1525,mmrDelta:25};
+    await assertFails(setDoc(doc(owner,'users','Owner','turncraftHistory','ranked'),receipt));
+    const forged=writeBatch(owner);
+    forged.set(doc(owner,'users','Owner','turncraftHistory','ranked'),{...receipt,mmrAfter:9999,mmrDelta:8499});
+    forged.update(doc(owner,'users','Owner'),{'gameStats.turncraft.mmr':9999,'gameStats.turncraft.lastMatchId':'ranked','gameStats.turncraft.multiplayerMatches':1});
+    await assertFails(forged.commit());
+    await assertFails(setDoc(doc(stranger,'users','Stranger','turncraftHistory','ranked'),{...receipt,uid:'stranger',username:'Stranger'}));
+    await assertFails(updateDoc(doc(owner,'lobbies','ranked'),{turncraftResult:{...finished.turncraftResult,winnerIdx:1}}));
+    await assertFails(updateDoc(doc(peer,'lobbies','ranked'),{members:{owner:'Owner'},players:['Owner'],turncraftSeats:['owner'],turncraftPlayers:{owner:finished.turncraftPlayers.owner}}));
+    await saveMatchResult({db:owner,auth:ownerAuth,api:require('firebase/firestore')},'ranked','Owner');
+    assert.equal((await saveMatchResult({db:owner,auth:ownerAuth,api:require('firebase/firestore')},'ranked','Owner')).wrote,false);
+    const savedProfile=(await getDoc(doc(owner,'users','Owner'))).data();
+    assert.equal(savedProfile.gameStats.turncraft.mmr,1525);
+    assert.equal(savedProfile.gameStats.turncraft.highestMMR,1525);
+    assert.equal(savedProfile.gameStats.turncraft.rankedMatches,11);
+    assert.equal(savedProfile.gameStats.otherGame.wins,10);
+    await assertFails(updateDoc(doc(owner,'users','Owner','turncraftHistory','ranked'),{mmrDelta:500}));
+    await assertFails(deleteDoc(doc(owner,'users','Owner','turncraftHistory','ranked')));
+    await assertFails(updateDoc(doc(owner,'users','Owner'),{'gameStats.turncraft.mmr':1550,'gameStats.turncraft.rankedMatches':12}));
+    // Preserve the deployed Gridbound migration contract while preventing the
+    // generic lobby grant from reopening Firestore active-combat documents.
+    const room=doc(owner,'lobbies','other','rpg_rooms','durable');
+    const durable={persistentState:{chests:{opened:true}},persistentUpdatedAt:serverTimestamp(),activeCombatMigratedToRTDB:true,activeCombatDatabase:'realtime-database',activeCombatSchemaVersion:3,migratedAt:serverTimestamp()};
+    await assertSucceeds(setDoc(room,durable));
+    await assertSucceeds(updateDoc(room,{persistentState:{chests:{opened:false}},persistentUpdatedAt:serverTimestamp()}));
+    await assertFails(setDoc(doc(owner,'lobbies','other','rpg_rooms','active'),{...durable,enemies:[{hp:100}]}));
+    await assertFails(updateDoc(room,{activeCombatDatabase:'firestore'}));
+    await assertFails(updateDoc(room,{enemies:[{hp:100}]}));
+    await assertFails(setDoc(doc(owner,'lobbies','other','rpg_rooms','durable','enemies','one'),{hp:100}));
+    await assertFails(getDoc(doc(owner,'lobbies','other','rpg_rooms','durable','enemies','one')));
+    await assertFails(deleteDoc(room));
+    const reward=doc(owner,'rewards','gridbound-reward');
+    const rewardData={id:'gridbound-reward',uid:'peer',username:'Peer',realmId:'realm',roomId:'room',activeRoomKey:'realm/room',controllerUid:'owner',sourceAttackId:'attack',enemyId:'enemy',enemyType:'slime',eliteAffix:null,isBoss:false,xp:10,gold:5,restoredStolenGold:0,item:null,materials:{},relicId:null,claimed:false,createdAtMs:Date.now(),createdAt:serverTimestamp()};
+    await assertSucceeds(setDoc(reward,rewardData));
+    await assertFails(getDoc(reward));
+    await assertSucceeds(getDoc(doc(peer,'rewards','gridbound-reward')));
+    await assertFails(getDoc(doc(stranger,'rewards','gridbound-reward')));
+    await assertFails(setDoc(doc(owner,'rewards','oversized'),{...rewardData,id:'oversized',xp:100001}));
+    await assertFails(setDoc(doc(owner,'rewards','wrong-controller'),{...rewardData,id:'wrong-controller',controllerUid:'peer'}));
+    await assertFails(updateDoc(reward,{claimed:true,claimedAt:serverTimestamp()}));
+    await assertFails(updateDoc(doc(peer,'rewards','gridbound-reward'),{xp:100,claimed:true,claimedAt:serverTimestamp()}));
+    await assertFails(deleteDoc(doc(peer,'rewards','gridbound-reward')));
+    await assertSucceeds(updateDoc(doc(peer,'rewards','gridbound-reward'),{claimed:true,claimedAt:serverTimestamp()}));
+    await assertSucceeds(deleteDoc(doc(peer,'rewards','gridbound-reward')));
+    await assertSucceeds(setDoc(doc(owner,'users','Unmigrated','otherGame','save'),{round:8}));
+    await assertSucceeds(setDoc(doc(owner,'users','Unmigrated','otherGame','save','history','one'),{round:7}));
+    await assertSucceeds(setDoc(doc(owner,'lobbies','other','invites','ordinary-game-invite'),{invite:'compatible'}));
+    await assertSucceeds(setDoc(doc(owner,'lobbyInvites','ordinary-hub-invite'),{username:'Owner',lobbyId:'other'}));
+    await assertSucceeds(getDoc(doc(peer,'lobbyInvites','ordinary-hub-invite')));
+    await assertSucceeds(deleteDoc(doc(owner,'lobbyInvites','ordinary-hub-invite')));
+    await assertFails(setDoc(doc(owner,'users','Owner','factionForge','profile'),{forgeDust:-1}));
     console.log(
-      'TurnCraft rules emulator: profile/MMR authority, UID lobby controls, private records, ranked isolation and legacy compatibility passed.'
+      'TurnCraft/shared rules emulator: participant-only atomic rating/history receipts, immutable finished results, ranked gameplay, private records, Gridbound durable rooms/reward claims, legacy game saves and compatibility passed.'
     );
   } finally {
     await env.cleanup();
