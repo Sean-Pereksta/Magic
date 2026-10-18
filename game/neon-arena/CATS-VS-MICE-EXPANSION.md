@@ -15,6 +15,12 @@ faction, soldier appearance, starting weapon, and difficulty. The character
 preview renders the actual GLB and can be rotated by dragging. The equipment
 cards use previews generated from the same model geometry.
 
+The faction setup now includes large Cat/Mouse selection cards, remembered
+soldier choices for each faction, weapon magazine/reload/noise information, chapter
+progress and checkpoint status. Conquest offers Skirmish, Balanced and Full
+battle presets, with a clear explanation of starting soldiers, flag bonuses
+and the shared active-bot cap. Custom settings remain available.
+
 Team Deathmatch uses the selected faction against the opposing faction, matching
 teammate/enemy appearances, opposite-side spawns, spawn protection, and the
 existing score/time rules. Local split-screen remains available in Team
@@ -30,6 +36,7 @@ setting. Existing controller bindings and original mode controls remain in place
 | Aim down sights in faction modes | `G` toggles | Hold **Reload** for approximately 450 ms; tap retains reload |
 | Campaign objective / optional alarm relay | `F` near the marker | Contextual pickup/interact button |
 | Campaign automatic-fire safety | Manual keyboard shooting is unchanged | Tap **WEAPON SAFE / WEAPON LIVE** |
+| Expand / collapse Conquest tactical map | `M`; `Escape` closes it | Tap the small map; tap again or outside to close |
 
 Start an interaction while near the objective and remain close, on the correct
 floor, with a clear physical line to it until the action finishes. A short touch
@@ -62,8 +69,15 @@ Character selection is cosmetic and does not change competitive health or damage
 The new weapons have different damage, range, rate of fire, spread, capacity,
 reload duration, and predictable recoil sequences. Movement and airborne fire
 increase spread; aiming and crouching reduce it. Recoil recovers between bursts.
-They use the existing hit, tracer, impact, muzzle, reload, and sound systems, with
-new mechanical-part motion and bounded casing effects. Existing arsenal entries
+They use the existing physical hit and material-impact system, with weapon-specific
+recoil, muzzle shapes, rotating casings and short traveling tracers that end at
+the resolved collision. The shotgun has a broad flash and heavier kick; the
+suppressed carbine has a small flash, no muzzle-smoke plume and quieter audio.
+Gun flashes follow the imported model's actual barrel tip during aiming and
+recoil. Timed bolt/pump cycles and a short local light pulse reuse the model's
+existing buffers and draw calls. Single-player gunfire pans with the listener's
+facing; split-screen audio stays centered. Effects respect the existing quality
+and particle limits. Existing arsenal entries
 remain available to the original modes. Campaign and Conquest use the bundled
 new arsenal so their model loading does not depend on the old remote gun pack.
 
@@ -94,6 +108,14 @@ accurate tactical SVG diagrams, not rendered landscape screenshots.
 
 See [battlefield artwork and geometry notes](assets/campaign/maps/README.md).
 
+The detail pass adds freight cranes and rail sleepers, fortress crenellations,
+pipe galleries and sluice structures, refrigeration racks and roof vents,
+foundry conveyors and a crane, plus illuminated market gates and awnings.
+Each layout has authored clear fighting areas and a distinct lighting profile.
+Ambient/directional light improves character and wall readability; up to six
+cached local light pools illuminate routes and landmarks without adding shadow
+passes. The tactical map shows the main physical building/cover footprints.
+
 ## Conquest rules
 
 Each battlefield has two headquarters and five sectors linked by a branching
@@ -121,6 +143,27 @@ score rule awards points for owned territory toward 300. The compact HUD shows
 sector ownership/contests, capture progress, score or tickets, the next wave,
 friendly positions, connected sector links and recent reported enemy sightings.
 Sightings expire; the tactical map is not a continuous enemy-location feed.
+
+A centered 30 px strip at the top of each player's view shows both faction
+totals, five compact flag indicators and the reinforcement countdown. It is
+at most 326 px wide on mobile. Capture/neutralization progress or a contested
+warning appears only while relevant; secured territory adds no status banner.
+The collapsed mobile map is 76–84 px wide, and expands within the player's view. It blocks
+touch movement/automatic fire until closed. It shows friendlies and recent
+reported sightings only. A personal elimination card appears briefly on the
+side, identifies headshots, and expires after 3.2 seconds; split-screen players
+receive their own cards.
+
+Squads commit most available soldiers to one reachable frontier, keep a smaller
+group on exposed friendly territory, and counterattack recently lost flags.
+Stable flank approaches converge on the same objective. Larger assault groups
+briefly assemble, then alternate advancing and visible-target covering teams;
+heavy losses can trigger one short regroup. Rally deadlines prevent indefinite
+waiting, and active captures and urgent counterattacks take priority. All firing
+still requires the individual soldier's own line of sight. Soldiers hold capture
+areas and avoid chasing distant distractions. Team Deathmatch squads advance
+from their own side when a friendly majority physically reaches the current
+position; another floor or a blocked approach does not count as arrival.
 
 ## Campaigns
 
@@ -241,12 +284,14 @@ node --test game/neon-arena/tests/conquest.test.cjs game/neon-arena/tests/war-ma
 node game/neon-arena/tests/model-renderer.cjs
 node tests/neon-factions-browser.cjs
 node tests/neon-war-browser.cjs
+node tests/neon-frontline-ai-browser.cjs
 npm run test:neon:war-browser
 ```
 
 Browser harnesses require Playwright and Chrome/Chromium. The asset harness accepts
 `CHROME_PATH` and `NEON_QA_OUTPUT`; the game harness accepts `CHROMIUM_PATH` (or
-`CHROME_PATH`) and `NEON_WAR_REPORT`. `NEON_WAR_GAMEPLAY_ONLY=1` narrows the latter
+`CHROME_PATH`) and `NEON_WAR_REPORT`. `NEON_WAR_DEVICE` accepts `desktop`, `mobile`,
+`split` or `mobile-landscape`; `NEON_WAR_GAMEPLAY_ONLY=1` narrows the latter
 to its desktop gameplay run. The browser tests serve their own local files and do not add a
 production server dependency.
 
@@ -254,11 +299,11 @@ The recorded validation snapshot during implementation was:
 
 | Check | Completed evidence |
 | --- | --- |
-| Full unit/regression suite | 258 checks: 257 passed, one optional original raptor-fixture check skipped; zero failures |
+| Full unit/regression suite | 315 checks: 314 passed, one optional original raptor-fixture check skipped; zero failures |
 | Existing standalone model renderer suite | 13 checks passed; optional uncommitted legacy art-pack validation skipped |
 | New actual-model browser test | Twelve character GLBs, six weapon GLBs, eight animation states, magazine motion and all 44 catalog asset URLs passed without browser/loading errors |
 | Original browser compatibility suites | All ten passed with real Chrome/WebGL and verified original model fixtures: baseline, menu, tiles, Survival, slide, UI, allies, overhaul, projectile and explosion |
-| Expansion runtime browser matrix | All 30 cases passed: six Conquest maps on desktop, touch viewport and local split-screen; all ten scripted campaign objective chains; and both factions' first missions using actual touch taps/holds for weapon safety, crouch and aiming. All ten mission graphics decoded successfully; zero browser or WebGL errors |
+| Expansion runtime browser matrix | All 38 cases passed: six Conquest maps on desktop, touch portrait, touch landscape and local split-screen; all ten scripted campaign objective chains; and both factions' first missions using actual touch taps/holds in both phone orientations. Includes 24 actual firing/render checks across the six new weapons, compact HUD dimensions, expanding maps, mouse-aim restoration, capture feedback and personal kill notices. All ten mission graphics decoded; zero browser or WebGL errors |
 
 Compatibility coverage includes 51 map rendering cases, 2,052 ramp traversals,
 twelve HUD layouts, all eight Survival arenas, original save/unlock behavior,

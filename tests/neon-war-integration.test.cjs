@@ -39,6 +39,44 @@ test('real Conquest startup maps UI budget to its simulation and both factions r
   }
 });
 
+test('TDM commits to faction-oriented ground until a friendly majority arrives instead of advancing on the clock alone', () => {
+  for(const team of [1,2]){
+    const {c}=harness({mode:'tdm',team});
+    c.warMap.sectors=[{id:'A',x:-20,y:1.86,z:0},{id:'B',x:0,y:1.86,z:0},{id:'C',x:20,y:1.86,z:0}];
+    const friendly=Array.from({length:4},(_,i)=>({...actor(team),entityId:'friend-'+i,x:team===1?-50:50,z:i}));
+    c.bots=[...friendly,{...actor(3-team),x:team===1?-20:20}];
+    const first=c.warObjective(friendly[1]);assert.equal(first.x,team===1?-20:20);assert.equal(first.strategic,true);
+    c.warClock=120;assert.equal(c.warObjective(friendly[1]).x,first.x,'neither elapsed time nor an enemy at the marker advances the friendly plan');
+    Object.assign(friendly[0],{x:first.x,z:0});assert.equal(c.warObjective(friendly[1]).x,first.x,'one isolated soldier cannot pull the whole squad onward');
+    for(const a of friendly.slice(1,3))Object.assign(a,{x:first.x,z:0});
+    const forward=c.warObjective(friendly[1]);assert.equal(forward.x,0);assert.equal(forward.intent,'capture');
+    const rear=c.warObjective(friendly[0]);assert.equal(rear.x,first.x);assert.equal(rear.intent,'hold');
+    const yaw=forward.approachYaw;friendly[1].x+=3;friendly[1].z+=4;
+    assert.equal(c.warObjective(friendly[1]).approachYaw,yaw,'approach bearing is anchored to territory, not recomputed from a moving soldier');
+  }
+});
+
+test('TDM arrival requires the objective floor and a clear route to the marker', () => {
+  const {c,blocks}=harness({mode:'tdm',team:1});
+  c.warMap.sectors=[{id:'A',x:10,y:1.86,z:0},{id:'B',x:30,y:1.86,z:0}];
+  c.bots=Array.from({length:4},(_,i)=>({...actor(1),entityId:'friend-'+i,x:6,y:5.86}));
+  c.warObjective(c.bots[1]);c.warClock=60;
+  assert.equal(c.warObjective(c.bots[1]).x,10,'an upper floor cannot count as occupied ground');
+  for(const a of c.bots)a.y=1.86;
+  blocks.push({x:8,y:1.5,z:0,w:.3,h:3,d:8,kind:'wall',structure:{active:true}});
+  assert.equal(c.warObjective(c.bots[1]).x,10,'a squad behind the barrier has not reached the marker');
+  blocks.at(-1).structure.active=false;assert.equal(c.warObjective(c.bots[1]).x,30);
+});
+
+test('small TDM squads keep advancing instead of reserving the only needed attacker', () => {
+  for(const count of [1,2]){
+    const {c}=harness({mode:'tdm',team:1});c.warMap.sectors=[{id:'A',x:0,y:1.86,z:0},{id:'B',x:30,y:1.86,z:0}];
+    c.bots=Array.from({length:count},(_,i)=>({...actor(1),entityId:'friend-'+i}));
+    c.warObjective(c.bots[0]);c.warClock=10;
+    for(const a of c.bots){const order=c.warObjective(a);assert.equal(order.x,30);assert.equal(order.intent,'capture');}
+  }
+});
+
 test('Conquest bot casualties cost a ticket and wait for a wave before reuse', () => {
   const h = harness(), c = h.c; c.initWarMatch(); const victim = c.bots.find(a => a.team === 1), size = c.bots.length;
   victim.dead = true; c.warCasualty(victim, c.player); assert.equal(c.conquest.tickets[1], 249);

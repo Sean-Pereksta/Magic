@@ -18,13 +18,29 @@
 
   function createLayout(id) {
     const meta=get(id); if(!meta)throw new RangeError('Unknown battlefield: '+id);
-    const l={...meta,version:1,walls:[],platforms:[],decks:[],ramps:[],props:[],ambient:[],buildings:[],windows:[],doors:[],cover:[],landmarks:[],overwatch:[],navPoints:[],patrolRoutes:[],missionSites:{}};
+    const l={...meta,version:2,walls:[],platforms:[],decks:[],ramps:[],props:[],ambient:[],buildings:[],windows:[],doors:[],cover:[],landmarks:[],overwatch:[],navPoints:[],patrolRoutes:[],missionSites:{},features:[],combatSpaces:[]};
     const wall=(x,z,w,d,h=5.4,tile='wall_01',y=0,extra={})=>{const p={x,z,w,d,h,tile,y,...extra};l.walls.push(p);return p;};
     const slab=(x,z,w,d,top,tile='floor_04',roof=false,accessible=false)=>l.platforms.push({x,z,w,d,y:top-.4,h:.4,tile,architecturalRoof:roof,authoredDeck:accessible});
     const deck=(x,z,w,d,top=5.4)=>l.decks.push({x,z,w,d,top,tile:'floor_04'});
     const ramp=(x,z,w,d,axis,fromHeight,toHeight)=>l.ramps.push({x,z,w,d,axis,fromHeight,toHeight,tile:'floor_03'});
     const prop=(prefab,x,z,w,d,h,tile='prop_02',y=0)=>l.props.push({prefab,x,z,w,d,h,tile,y,material:'metal'});
     const cover=(x,z,w,d,h=1.2,tile='wall_04')=>{wall(x,z,w,d,h,tile,0,{cover:true});l.cover.push(point(x,z,'Field barricade'));};
+    const detail=(x,z,w,d,h,y=0,tile='trim_00')=>wall(x,z,w,d,h,tile,y,{detail:true});
+    const feature=(label,x,z)=>l.features.push({label,x,z});
+    const clearSpace=(label,x,z,w,d)=>l.combatSpaces.push({label,x,z,w,d});
+    const light=(label,x,z,color,radius=9,intensity=.5,y=4.2)=>({label,x,y,z,color,radius,intensity});
+    function lighting(ambient,sky,sunColor,zones,exposure=1.08){
+      l.theme.sky=sky;l.theme.lighting={ambient,exposure,sunColor,sunDirection:[.45,.82,-.35],fogDensity:.0014,zones};
+    }
+    // Details use the same physical/render batches as architecture. Furniture
+    // never substitutes an invisible collider, and light fixtures sit overhead.
+    function ceilingStrip(x,z,w=4,y=4.8,tile='trim_01'){detail(x,z,w,.24,.12,y,tile);}
+    function vent(x,z,w=3,d=2,y=5.8){detail(x,z,w,d,1.05,y,'prop_02');for(const dz of [-.6,0,.6])detail(x,z+dz,w+.12,.1,.12,y+1.05,'trim_01');}
+    function rack(x,z){
+      for(const dx of [-.6,.6])for(const dz of [-1.35,1.35])detail(x+dx,z+dz,.12,.12,3.7,0,'trim_00');
+      for(const y of [.15,1.65,3.15])detail(x,z,1.4,3,.14,y,'prop_01');
+      detail(x,z,1.05,2.3,1.15,.29,'prop_03');
+    }
     // Each opening is assembled from real jambs, a sill and a lintel. There is
     // deliberately no invisible wall across a window or doorway.
     function face(x,z,length,axis,height,tile,openings,y=0){
@@ -104,7 +120,7 @@
       room('Frozen Cargo A',-23,-22,22,18,{tile:'wall_01',doors:'xz'});room('Frozen Cargo B',22,22,22,18,{tile:'wall_02',doors:'xz'});
       room('Dispatch Offices',24,-23,18,16,{tile:'wall_03',doors:'xz'});room('Cold Chain Annex',-24,23,18,16,{tile:'wall_04',doors:'xz'});
       deck(0,0,45,7,5.6);ramp(-31,0,17,7,'x',0,5.6);ramp(31,0,17,7,'x',5.6,0);
-      for(const p of [[-29,-27],[28,27]])prop('refrigeration_tank',...p,2.8,2.8,3.9);
+      for(const p of [[-39,-22],[39,22]])prop('refrigeration_tank',...p,2.8,2.8,3.9);
       prop('research_console',28,-27,2.5,1.2,1.3);prop('coolant_pipe',-31,28,1.6,1.6,4.4);
       for(const c of [[-9,-24,2,7],[9,24,2,7],[-3,-15,6,1.5],[3,15,6,1.5],[-20,9,7,2],[20,-9,7,2]])cover(...c);
       l.ambient.push({kind:'steam',x:-29,z:-27,y:4.2},{kind:'spore',x:22,z:22,y:2},{kind:'flicker',x:24,z:-23,y:4.8});
@@ -136,6 +152,65 @@
       l.ambient.push({kind:'flicker',x:0,z:-23,y:4.8},{kind:'spark',x:36,z:16,y:3.6},{kind:'dust',x:6,z:0,y:.6});
       sectors(['West Arcade','North Exchange','Market Square','South Exchange','East Arcade'],[[-25,-23],[0,-23],[0,8],[0,23],[25,23]]);
       anchors({entry:[-38,-37],intel:[0,-23,'Recon operative trail'],security:[-25,23],prison:[25,-23],escort:[-25,23],defend:[0,8],vault:[25,23],sabotage:[0,23],extract:[38,37],alarm:[-25,27],communications:[0,-23],reinforce:[39,-34],command:[25,23]});
+    }
+    // Each battlefield has a different skyline, interior rhythm and light
+    // palette. Reserved combat spaces are checked against production collision.
+    if(id==='rail_yard_nine'){
+      for(const x of [16,37]){detail(x,-8,.85,1.25,9.5);detail(x,-8,2,2.4,.5);}
+      detail(26.5,-8,22,.95,.85,9.2,'wall_05');detail(26.5,-8,3,1.8,.7,8.5,'prop_03');detail(26.5,-8,.18,.18,2.3,6.2);detail(26.5,-8,1.1,.25,.25,6.1);
+      for(const x of [-9,9])for(let z=-35;z<=35;z+=7)detail(x,z,10,.45,.045,0,'floor_04');
+      for(const [x,z] of [[-9,-9],[9,28]])for(const side of [-1,1])for(const dz of [-7,0,7]){detail(x+side*1.7,z+dz,1.1,1.8,.55,0,'prop_03');detail(x+side*2.3,z+dz,.18,1.8,.85,.55,'wall_03');}
+      for(const x of [-9,9])for(const z of [-40,40]){detail(x,z,5,.65,.9,0,'wall_05');detail(x,z,2,.8,.3,.9,'trim_01');}
+      ceilingStrip(-25,-24,9);ceilingStrip(25,28,9);ceilingStrip(28,-24,7);ceilingStrip(-9,-9,2,4.45);ceilingStrip(9,28,2,4.45);
+      feature('Freight gantry',26.5,-8);feature('Furnished passenger cars',-9,-9);feature('Signal crossing',0,12);
+      clearSpace('Track crossing',0,4,6,6);clearSpace('Depot loading apron',-25,-35,8,4);clearSpace('Freight forecourt',25,-14,8,4);
+      lighting(.70,[.30,.34,.39],[1,.92,.78],[light('Depot work lights',-25,-24,[1,.87,.62]),light('Freight floodlights',26,-9,[.75,.87,1],11,.6,5),light('Track crossing',0,4,[.80,.93,1],11,.52),light('Dispatch lights',25,28,[1,.89,.69]),light('Communications office',28,-24,[.77,.9,1])]);
+    }else if(id==='whiskerhold'){
+      for(const z of [-29.5,29.5])for(let x=-24;x<=24;x+=4)detail(x,z,1.8,.65,1,5.4,'wall_02');
+      for(const x of [-26.9,26.9])for(const z of [-23,-9,9,23])detail(x,z,1.2,1.5,5.8,0,'wall_03');
+      for(const [x,z] of [[-14,-14],[-14,14]])for(const side of [-1,1]){detail(x+side*3.7,z-3.3,2,2.5,.55,0,'prop_03');detail(x+side*3.7,z-3.3,2,2.5,.25,1.4,'prop_01');}
+      for(const [x,z] of [[14,-14],[14,14]]){detail(x-3.7,z-3.2,2.2,2,1.05,0,'prop_02');detail(x+3.7,z+3.2,2.2,2,1.05,0,'prop_02');}
+      for(const x of [-4.9,4.9])for(const z of [-27,27])detail(x,z,.5,.4,1.6,3.6,'trim_01');
+      for(const [x,z] of [[-14,-14],[14,-14],[-14,14],[14,14]])ceilingStrip(x,z,6);
+      feature('Crenellated ramparts',0,-27);feature('Command compound',14,-14);feature('Prison barracks',-14,14);
+      clearSpace('Parade ground',0,0,10,12);clearSpace('West gate apron',-33,0,8,8);clearSpace('East gate apron',33,0,8,8);
+      lighting(.73,[.46,.48,.47],[1,.91,.75],[light('Parade floodlights',0,0,[1,.93,.78],12,.46,5),light('Prison lighting',-14,14,[.8,.88,1],8,.55),light('Command lighting',14,-14,[1,.88,.61],8,.5),light('Barracks lighting',-14,-14,[1,.92,.77],8,.42),light('Armoury lighting',14,14,[.82,.95,1],8,.5)]);
+    }else if(id==='floodgate'){
+      for(const z of [-20,0,20]){for(const x of [-5.1,5.1])detail(x,z,.8,.9,3.8,0,'wall_02');detail(0,z,11,.9,.4,3.8,'trim_00');}
+      for(const x of [-40.7,40.7]){detail(x,0,.8,53,.8,5.5,'prop_02');for(const z of [-18,18])detail(x,z,.6,.8,5.5,0,'trim_00');}
+      prop('pump',-30,7,3,3,4.8);detail(12,28,4,.85,2.1,0,'wall_04');detail(-12,-28,4,.85,2.1,0,'wall_04');
+      for(const z of [-20,0,20])ceilingStrip(0,z,4,3.62);
+      for(const [x,z] of [[-26,-27],[26,27],[-27,27],[27,-27]])ceilingStrip(x,z,8);
+      feature('Ribbed aqueduct',0,0);feature('Service pipe galleries',-40.7,4);feature('Paired sluice controls',12,28);
+      clearSpace('Lower aqueduct passage',0,0,5,8);clearSpace('West sluice apron',-15,-20,4,4);clearSpace('East sluice apron',15,20,4,4);
+      lighting(.70,[.10,.18,.20],[.71,.89,1],[light('Lower gallery lamps',0,0,[.76,.95,1],11,.72,3.5),light('West sluice lamps',-15,-20,[.74,1,.90],9,.55),light('East sluice lamps',15,20,[.74,1,.90],9,.55),light('Pump control',-26,-27,[1,.87,.66],8,.6),light('Flood control',26,27,[1,.87,.66],8,.6),light('Service hub',-27,27,[.76,.94,1],8,.6)],1.11);
+    }else if(id==='cold_storage'){
+      for(const [cx,cz] of [[-23,-22],[22,22]])for(const dx of [-5,5])for(const dz of [-4.5,4.5])rack(cx+dx,cz+dz);
+      for(const [x,z] of [[-23,-22],[22,22],[24,-23],[-24,23]]){vent(x-4,z-3);vent(x+4,z+3);ceilingStrip(x,z,9,4.9);}
+      for(const [x,z] of [[-23,-32.5],[22,32.5]]){detail(x,z,12,2.7,.3,4.5,'upper_00');for(const dx of [-5,5])detail(x+dx,z+(z<0?1:-1),.3,1.4,.5,4,'trim_00');}
+      detail(19,-27,2.5,2,1.05,0,'prop_02');detail(-29,19,2.2,1.8,1.05,0,'prop_02');
+      feature('Refrigerated rack aisles',-23,-22);feature('Condensing roof banks',24,-23);feature('Loading canopy',22,32.5);
+      clearSpace('Cargo avenue',0,0,8,12);clearSpace('North loading apron',-30,-34,6,4);clearSpace('South loading apron',30,34,6,4);
+      lighting(.73,[.42,.51,.59],[.85,.94,1],[light('Cargo aisle A',-23,-22,[.78,.93,1],11,.68),light('Cargo aisle B',22,22,[.78,.93,1],11,.68),light('Cargo avenue',0,0,[.88,.96,1],12,.4,5),light('Dispatch office',24,-23,[1,.92,.78],9,.52),light('Cold chain annex',-24,23,[1,.92,.78],9,.52)],1.06);
+    }else if(id==='clockwork'){
+      for(const x of [-19,19]){for(const z of [-14,14]){detail(x,z,.9,.9,12.5,0,'wall_04');detail(x,z,1.8,1.8,.5,0,'wall_05');}detail(x,0,.8,30,.8,12.5,'wall_05');}
+      detail(0,14,40,1.3,1,12.5,'wall_05');detail(0,14,3,2.3,.7,11.8,'prop_03');detail(0,14,.25,.25,2.5,9.3);detail(0,14,2.3,2.3,.75,8.55,'prop_02');
+      for(const [x,z] of [[-13,29],[14,-28]]){detail(x,z,4.6,10,1.1,0,'wall_05');for(const dz of [-3.5,0,3.5])detail(x,z+dz,3.6,1.2,.35,1.1,'prop_02');for(const dx of [-2.2,2.2])detail(x+dx,z,.15,10,.25,1.1,'trim_01');}
+      for(const [x,z] of [[-26,-27],[26,27],[0,28]]){vent(x-4,z-3);ceilingStrip(x,z,8);}
+      feature('Traveling furnace crane',0,14);feature('Assembly conveyors',14,-28);feature('Reactor chimney',0,4);
+      clearSpace('Furnace counterattack yard',0,-15,10,8);clearSpace('West assembly lane',-17,5,4,5);
+      lighting(.67,[.22,.16,.13],[1,.82,.65],[light('Furnace glow',0,4,[1,.49,.20],12,.58,5),light('Machine shop',-26,-27,[.79,.89,1],9,.63),light('Furnace yard work lamps',0,-15,[.80,.91,1],11,.6,5),light('Production vault',26,27,[.86,.94,1],9,.6),light('Assembly control',0,28,[1,.88,.65],8,.52),light('West work lights',-17,5,[.88,.95,1],8,.48)],1.10);
+    }else{
+      for(const z of [-12,12]){for(const x of [-5.5,5.5])detail(x,z,.5,.8,4.6,0,'wall_03');detail(0,z,11.5,.8,.35,4.4,'trim_01');for(const x of [-3,0,3])detail(x,z,.6,.65,.7,3.65,'prop_03');}
+      detail(0,0,.8,.8,3.8,1.2,'wall_02');detail(0,0,2.2,1,.8,5,'trim_01');
+      for(const z of [-23,23])for(const x of [-25,0,25]){
+        detail(x+5,z+(z<0?-4:4),1.2,1.2,2.2,5.4,'wall_03');detail(x-5,z+(z<0?-4:4),2.6,1,.65,5.4,'prop_02');ceilingStrip(x,z,6,4.5);
+        if(!(x===-25&&z<0)&&!(x===25&&z>0)){const faceZ=z+(z<0?8.3:-8.3);detail(x,faceZ,10,2,.25,3.5,'upper_00');detail(x-4,faceZ,.2,1.8,.2,3.25);detail(x+4,faceZ,.2,1.8,.2,3.25);}
+      }
+      prop('floodlight',-36,3,1.4,1.4,5.5);prop('floodlight',36,-3,1.4,1.4,5.5);
+      feature('Lantern street gates',0,-12);feature('Shattered clock monument',0,0);feature('Arcade rooftops',25,23);
+      clearSpace('Market square',0,8,7,6);clearSpace('North market street',0,-8,7,6);
+      lighting(.67,[.10,.12,.20],[.65,.76,1],[light('South lantern gate',0,12,[1,.69,.42],10,.68),light('North lantern gate',0,-12,[.94,.56,1],10,.64),light('North exchange',0,-23,[.75,.89,1],8,.7),light('South exchange',0,23,[1,.89,.72],8,.65),light('West arcade',-25,-23,[.69,.94,1],9,.66),light('East arcade',25,23,[.85,.72,1],9,.65)],1.12);
     }
     l.pickups=[...l.sectors.map(s=>point(s.x,s.z)),...l.landmarks.map(p=>({...p})),point(-38,0),point(38,0),point(0,-38),point(0,38)].slice(0,13);
     const common=[l.headquarters.cats,l.sectors[0],l.sectors[1],l.sectors[2],l.sectors[3],l.sectors[4],l.headquarters.mice];
@@ -169,9 +244,13 @@
     const headquarters=Object.fromEntries(Object.entries(l.headquarters).map(([k,v])=>[k,{...p(v),spawns:v.spawns.map(p)}]));
     const sectors=l.sectors.map((v,i)=>({...p(v),radius:v.radius*scale,owner:0,links:[...v.neighbors,...(i===0?['cat_hq']:i===4?['mouse_hq']:[])],spawn:p(v)}));
     const missionSites=Object.fromEntries(Object.keys(l.missionSites).map(k=>[k,{anchors:JSON.parse(JSON.stringify(anchors)),patrolRoutes:JSON.parse(JSON.stringify(patrolRoutes)),reinforcements:[p(l.anchors.reinforce)],optional:p(l.anchors.security)}]));
-    return {id,headquarters,hq:{1:headquarters.cats,2:headquarters.mice},factionSpawns:{1:headquarters.cats.spawns,2:headquarters.mice.spawns},sectors,anchors,patrolRoutes,missionSites,cover:l.cover.map(p),overwatch:l.overwatch.map(p),bounds:44.9*scale};
+    const lighting={...l.theme.lighting,zones:l.theme.lighting.zones.map(v=>({...v,x:v.x*scale,z:v.z*scale,radius:v.radius*scale}))};
+    const footprint=v=>({x:v.x*scale,z:v.z*scale,w:v.w*scale,d:v.d*scale,...(v.name?{label:v.name}:{})});
+    const buildings=l.buildings.filter(v=>v.base<1),outsideBuildings=v=>!buildings.some(b=>Math.abs(v.x-b.x)<b.w/2+.35&&Math.abs(v.z-b.z)<b.d/2+.35);
+    const minimap=[...buildings,...l.props.filter(v=>v.y<1),...l.walls.filter(v=>v.y<1&&v.h>=.75&&v.w*v.d>=1.5&&outsideBuildings(v))].slice(0,140).map(footprint);
+    return {id,headquarters,hq:{1:headquarters.cats,2:headquarters.mice},factionSpawns:{1:headquarters.cats.spawns,2:headquarters.mice.spawns},sectors,anchors,patrolRoutes,missionSites,cover:l.cover.map(p),overwatch:l.overwatch.map(p),lighting,minimap,features:l.features.map(p),combatSpaces:l.combatSpaces.map(v=>({...footprint(v),label:v.label,y:EYE})),bounds:44.9*scale};
   }
-  const api={VERSION:1,SCALE,EYE,BODY,IDS,catalog:()=>CATALOG.slice(),get,createLayout,build,worldMetadata};
+  const api={VERSION:2,SCALE,EYE,BODY,IDS,catalog:()=>CATALOG.slice(),get,createLayout,build,worldMetadata};
   if(typeof module==='object'&&module.exports)module.exports=api;
   root.NeonWarMaps=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

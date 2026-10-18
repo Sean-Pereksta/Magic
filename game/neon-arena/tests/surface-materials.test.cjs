@@ -23,7 +23,7 @@ function fakeGL(){
   gl.createShader=()=>({});gl.shaderSource=(shader,source)=>{shader.source=source};gl.compileShader=()=>{};gl.getShaderParameter=()=>true;gl.deleteShader=()=>{};
   gl.createProgram=()=>({id:++gl.created.programs});gl.attachShader=()=>{};gl.linkProgram=()=>{};gl.getProgramParameter=()=>true;gl.deleteProgram=program=>gl.deleted.programs.push(program);
   gl.createTexture=()=>({id:++gl.created.textures});gl.bindTexture=(type,texture)=>gl.state.textures.set(gl.state.active,texture);gl.activeTexture=unit=>{gl.state.active=unit};gl.pixelStorei=()=>{};gl.texImage2D=()=>{};gl.texParameteri=()=>{};gl.deleteTexture=texture=>gl.deleted.textures.push(texture);
-  gl.getUniformLocation=(program,name)=>name;gl.getAttribLocation=(program,name)=>['aPos','aUV','aNormal','aEffects','aTint'].indexOf(name);gl.uniform1i=()=>{};gl.uniform1f=()=>{};gl.uniform3fv=()=>{};gl.useProgram=program=>{gl.state.program=program};
+  gl.uniforms={};gl.getUniformLocation=(program,name)=>name;gl.getAttribLocation=(program,name)=>['aPos','aUV','aNormal','aEffects','aTint'].indexOf(name);gl.uniform1i=()=>{};gl.uniform1f=(name,value)=>{assert.ok(Number.isFinite(value));gl.uniforms[name]=value;};gl.uniform3fv=gl.uniform4fv=(name,value)=>{assert.ok([...value].every(Number.isFinite));gl.uniforms[name]=Array.from(value);};gl.useProgram=program=>{gl.state.program=program};
   gl.createBuffer=()=>({id:++gl.created.buffers});gl.bindBuffer=(type,buffer)=>{gl.state.buffer=buffer};gl.bufferData=(type,data)=>{gl.state.buffer.data=new Float32Array(data);gl.uploads.push(gl.state.buffer)};gl.deleteBuffer=buffer=>gl.deleted.buffers.push(buffer);
   gl.getVertexAttrib=(index,parameter)=>{const a=gl.attrs[index],keys=new Map([[gl.VERTEX_ATTRIB_ARRAY_ENABLED,'enabled'],[gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,'buffer'],[gl.VERTEX_ATTRIB_ARRAY_SIZE,'size'],[gl.VERTEX_ATTRIB_ARRAY_TYPE,'type'],[gl.VERTEX_ATTRIB_ARRAY_NORMALIZED,'normalized'],[gl.VERTEX_ATTRIB_ARRAY_STRIDE,'stride'],[gl.CURRENT_VERTEX_ATTRIB,'value']]);return a[keys.get(parameter)];};
   gl.getVertexAttribOffset=index=>gl.attrs[index].offset;gl.enableVertexAttribArray=index=>{gl.attrs[index].enabled=true};gl.disableVertexAttribArray=index=>{gl.attrs[index].enabled=false};gl.vertexAttribPointer=(index,size,type,normalized,stride,offset)=>Object.assign(gl.attrs[index],{buffer:gl.state.buffer,size,type,normalized,stride,offset});gl.vertexAttrib3f=(index,x,y,z)=>{gl.attrs[index].value=[x,y,z,1]};gl.vertexAttrib4fv=(index,value)=>{gl.attrs[index].value=Array.from(value)};
@@ -71,6 +71,15 @@ test('all eight atlas themes render the same engine-space building geometry',()=
 test('unloaded atlas returns a safe fallback without modifying WebGL state',()=>{
   maps.dispose();const gl=fakeGL();assert.equal(maps.canRenderSurfaces,false);assert.equal(maps.hasSurfaceMaterials,false);
   assert.equal(maps.renderSurfaces(gl,camera,[wall(1)]),false);assert.equal(gl.created.programs,0);assert.equal(gl.uploads.length,0);
+});
+
+test('battlefield lighting caps local pools and resets to the legacy profile for the next view',()=>{
+  fixture('breach_ring',{width:2048,height:2048});const gl=fakeGL(),pieces=[wall(1)],lighting={ambient:.7,exposure:1.1,sunColor:[1,.9,.8],sunDirection:[0,1,0],fogDensity:.08,zones:Array.from({length:8},(_,i)=>({x:i,y:4,z:2,radius:12,color:[1,.5,.25],intensity:.6}))};
+  maps.renderSurfaces(gl,camera,pieces,{lighting});
+  assert.equal(gl.uniforms.uAmbient,.7);assert.equal(gl.uniforms.uExposure,1.1);assert.deepEqual(gl.uniforms.uSunDirection,[0,1,0]);assert.equal(gl.uniforms.uFogDensity,.08);
+  assert.equal(gl.uniforms.uLightCount,6);assert.equal(gl.uniforms['uLightZones[0]'].length,24);assert.deepEqual(gl.uniforms['uLightZones[0]'].slice(-4),[5,4,2,12]);near(gl.uniforms['uLightColors[0]'][0],.6);
+  const uploads=gl.uploads.length;maps.renderSurfaces(gl,camera,pieces,{});
+  assert.equal(gl.uniforms.uAmbient,.5);assert.equal(gl.uniforms.uExposure,1);assert.equal(gl.uniforms.uLightCount,0);assert.deepEqual(gl.uniforms.uSunColor,[1,1,1]);assert(gl.uniforms['uLightColors[0]'].every(v=>v===0));assert.equal(gl.uploads.length,uploads,'changing lights reuses cached geometry');
 });
 
 test('generic rendering groups nearby pieces and caches both split-screen views',()=>{
