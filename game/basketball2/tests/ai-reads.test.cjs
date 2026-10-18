@@ -55,6 +55,44 @@ test('paint help can close a finish even when the nearest defender trails the ha
   assert.equal(clear.finishOpen,true);assert.ok(clear.quality>contested.quality+.2);
 });
 
+test('a body-clear shoulder edge keeps a direct drive open for both sides and different builds',()=>{
+  for(const side of [-1,1]) for(const [radius,profile] of [[.5,{archetype:'slasher',layup:1.35}],[.55,{archetype:'sharpshooter',shot:1.4}],[.66,{archetype:'interior',height:1.2,layup:1.3}]]){
+    const {ctx,add}=fixture(),handler=add('handler',0,0,-4.8,profile);
+    handler.bodyRadius=radius;handler.velocity.set(0,0,-3.2);
+    const guard=add('shoulder',1,side*(radius*2+.14),-4.65);
+    guard.bodyRadius=radius;guard.velocity.set(0,0,-3.2);
+    const before=JSON.stringify(handler.profile);
+    const lane=ctx.aiFindDriveLane(handler,precise);
+    assert.equal(lane.direct,true);assert.equal(lane.drive,true);assert.equal(lane.angleAdvantage,true);
+    assert.ok(lane.openness>.85);assert.equal(lane.blocked,false);
+    assert.equal(JSON.stringify(handler.profile),before,'boldness never changes physical player attributes');
+  }
+});
+
+test('a running finish commits past a trailing shoulder but recognizes front bodies, rotating help and timed blocks',()=>{
+  for(const side of [-1,1]){
+    const {ctx,add}=fixture(),handler=add('handler',0,0,-7.75);
+    handler.velocity.set(0,0,-3.2);
+    const guard=add('shoulder',1,side*1.25,-7.6);guard.velocity.set(0,0,-3.2);
+    const edge=ctx.aiAssessShot(handler,precise);
+    assert.ok(edge.space<1.55,'the nearby body remains observable');
+    assert.equal(edge.finishOpen,true,'an already beaten shoulder does not cancel a real gather opportunity');
+    const target=new Vector3(0,0,-9.15);
+    assert.ok(ctx.aiReadDrivePath(handler,target,target,precise).openness>.8);
+    guard.velocity.set(-side*3,0,-3.2);
+    assert.equal(ctx.aiAssessShot(handler,precise).finishOpen,false,'visible recovery across the lane closes the angle');
+    guard.velocity.set(0,0,-3.2);guard.blockTime=.3;guard.onGround=false;
+    assert.equal(ctx.aiAssessShot(handler,precise).finishOpen,false,'a live timed block remains a real contest');
+    guard.blockTime=0;guard.onGround=true;guard.group.position.set(0,0,-8.85);guard.velocity.set(0,0,0);
+    const front=ctx.aiReadDrivePath(handler,target,target,precise);
+    assert.equal(front.blocked,true);assert.equal(ctx.aiAssessShot(handler,precise).finishOpen,false);
+    guard.group.position.set(side*1.25,0,-7.6);guard.velocity.set(0,0,-3.2);
+    add('rim_help',1,0,-10.0);
+    assert.equal(ctx.aiAssessShot(handler,precise).finishOpen,false,'beating one defender does not erase a second rim protector');
+    assert.ok(ctx.aiReadDrivePath(handler,target,target,precise).openness<.5);
+  }
+});
+
 test('drive reads choose a clear direct lane, route around a primary defender, and reject crowded paint',()=>{
   const {ctx,add}=fixture(),handler=add('handler',0,0,-2.8);
   const open=ctx.aiFindDriveLane(handler,precise);

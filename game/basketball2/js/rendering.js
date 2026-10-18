@@ -902,18 +902,20 @@ function createCharacter(profile,pos,id,assignedTeam=null){
   group.position.copy(pos);
 
   const inferredTeam=assignedTeam ?? (id==="p1"||id==="p2"&&twoPlayerMode&&teamSize>1&&localTeamMode==="cooperative"?0:1);
-  const jerseyKey = inferredTeam===0 ? selectedP1Jersey : selectedP2Jersey;
+  const jerseyKey = id==="p2" && twoPlayerMode ? selectedP2Jersey : inferredTeam===0 ? selectedP1Jersey : selectedP2Jersey;
   const selectedStyle = jerseys[jerseyKey] || jerseys.classicBlue;
-  const jerseyStyle = teamSize>1?{...selectedStyle,primary:inferredTeam===0?0x258fcd:0xe45939,secondary:inferredTeam===0?0x123656:0x59241c,accent:0xffffff}:selectedStyle;
+  const equipment=id==="p2" && twoPlayerMode ? (typeof selectedP2Equipment!=="undefined" ? selectedP2Equipment : {}) : inferredTeam===0 ? (typeof selectedP1Equipment!=="undefined" ? selectedP1Equipment : {}) : (typeof selectedP2Equipment!=="undefined" ? selectedP2Equipment : {});
+  const sneakerKey = id==="p2" && twoPlayerMode ? selectedP2Sneaker : inferredTeam===0 ? selectedP1Sneaker : selectedP2Sneaker;
+  const selectedSneaker=sneakers[sneakerKey] || sneakers.classic;
+  const appearance=resolveBasketballEquipment(profile,selectedStyle,selectedSneaker,equipment);
+  const jerseyStyle=appearance.jerseyStyle,sneaker=appearance.sneakerStyle;
   const skin = new THREE.MeshStandardMaterial({color:profile.skin,roughness:.62});
   const jerseyTex = makeJerseyTexture(jerseyStyle,profile.number || "23");
-  const shortsTex = makeShortsTexture(jerseyStyle);
-  const jersey = new THREE.MeshStandardMaterial({color:jerseyStyle.primary,map:jerseyTex,roughness:.55});
-  const shorts = new THREE.MeshStandardMaterial({color:jerseyStyle.secondary,map:shortsTex,roughness:.65});
-  const sneakerKey = id === "p1" ? selectedP1Sneaker : selectedP2Sneaker;
-  const sneaker = sneakers[sneakerKey] || sneakers.classic;
+  const shortsTex = makeShortsTexture(appearance.shortsStyle);
+  const jersey = new THREE.MeshStandardMaterial({color:0xffffff,map:jerseyTex,roughness:.55});jersey.name="jersey";
+  const shorts = new THREE.MeshStandardMaterial({color:0xffffff,map:shortsTex,roughness:.65});shorts.name="shorts";
   const shoeTex = makeShoeTexture(sneaker);
-  const shoeMat = new THREE.MeshStandardMaterial({color:sneaker.primary,map:shoeTex,roughness:.35});
+  const shoeMat = new THREE.MeshStandardMaterial({color:0xffffff,map:shoeTex,roughness:.35});shoeMat.name="sneaker";
 
   const h = profile.height;
   const w = profile.width;
@@ -960,7 +962,7 @@ function createCharacter(profile,pos,id,assignedTeam=null){
   const browL = new THREE.Mesh(new THREE.BoxGeometry(.09*w,.012*h,.03*w),browMat); browL.position.set(-.08*w,2.16*h,.23*w); browL.rotation.x = -.15; group.add(browL);
   const browR = browL.clone(); browR.position.x = .08*w; group.add(browR);
 
-  const hair = createHair(profile.hairStyle || "shortFade",profile.hair,w,h);
+  const hair = createHair(profile.hairStyle==="headband" ? "shortFade" : profile.hairStyle || "shortFade",profile.hair,w,h);
   hair.position.y = 2.06*h;
   group.add(hair);
 
@@ -1028,8 +1030,8 @@ function createCharacter(profile,pos,id,assignedTeam=null){
   group.add(hookIndicator);
 
   addShoeDetails({profile,group,leftShoe,rightShoe,sneaker});
-  addJerseyTrim({profile,group,w,h,jerseyStyle});
-  addPlayerAccessories({profile,group,w,h,leftArm,rightArm,leftLeg,rightLeg});
+  addJerseyTrim({profile,group,w,h,jerseyStyle,appearance});
+  const equipmentNodes=addPlayerAccessories({profile,group,w,h,leftArm,rightArm,leftForearm,rightForearm,leftCalf,rightCalf,head,appearance});
 
   const shadow = new THREE.Mesh(
     new THREE.CircleGeometry(.82*w,36),
@@ -1040,7 +1042,8 @@ function createCharacter(profile,pos,id,assignedTeam=null){
   group.add(shadow);
 
   const player = {
-    id, group, profile, sneaker, jerseyStyle, hookIndicator,
+    id, group, profile, sneaker, jerseyStyle, hookIndicator,teamId:inferredTeam,
+    equipment,appearance,equipmentNodes,baseJerseyStyle:selectedStyle,baseSneakerStyle:selectedSneaker,
     velocity:new THREE.Vector3(),
     angle:Math.PI,
     yVel:0,
@@ -1109,6 +1112,12 @@ function createCharacter(profile,pos,id,assignedTeam=null){
   if(sneaker.sprintRecover) player.movement.recoverySpeed *= (1 + sneaker.sprintRecover);
   if(sneaker.defense) player.movement.defensiveWidth *= (1 + sneaker.defense);
   if(sneaker.jump) player.profile.jump *= (1 + sneaker.jump);
+  player.equipmentMaterials=[];
+  group.traverse(node=>{
+    for(const material of Array.isArray(node.material) ? node.material : [node.material]){
+      if(material && ["jersey","shorts","sneaker","sole","sneaker_accent","trim","shorts_trim","sock","sock_trim","headband","sleeve","wristband","accessory"].includes(material.name) && !player.equipmentMaterials.includes(material)) player.equipmentMaterials.push(material);
+    }
+  });
   player.legacyVisualNodes=group.children.filter(node=>
     ![shadow,hookIndicator,player.shotIndicator,player.defenseIndicator,player.staminaIndicator].includes(node));
   if(typeof attachPlayerModel==="function") attachPlayerModel(player);
@@ -1167,8 +1176,6 @@ function createHair(style,color,w,h){
   }else if(style === "headband"){
     const cap = new THREE.Mesh(new THREE.SphereGeometry(.23*w,14,14),mat);
     cap.scale.set(.98,.45,.98); group.add(cap);
-    const band = new THREE.Mesh(new THREE.TorusGeometry(.23*w,.022*w,8,30),new THREE.MeshStandardMaterial({color:0xffffff,roughness:.28}));
-    band.rotation.x = Math.PI/2; band.position.y = -.025*h; group.add(band);
   }else{
     const cap = new THREE.Mesh(new THREE.SphereGeometry(.27*w,16,16),mat);
     cap.scale.set(.94,.42,.94); group.add(cap);
@@ -1254,37 +1261,38 @@ function drawStaminaIndicator(char){
 }
 
 function addPlayerAccessories(char){
-  const {profile,group,w,h,leftArm,rightArm,leftLeg,rightLeg} = char;
-  const bandMat = new THREE.MeshStandardMaterial({color:0xffffff,roughness:.35});
-  const leftBand = new THREE.Mesh(new THREE.TorusGeometry(.12*w,.03*w,8,24),bandMat);
-  leftBand.position.set(-.48*w,1.2*h,0); leftBand.rotation.y = Math.PI/2; group.add(leftBand);
-  const rightBand = leftBand.clone(); rightBand.position.x = .48*w; group.add(rightBand);
-  const sockMat = new THREE.MeshStandardMaterial({color:profile.name.includes("Sky")||profile.name.includes("Tower")?0xe8f6ff:0xdadada,roughness:.55});
-  const lSock = new THREE.Mesh(new THREE.CylinderGeometry(.11*w,.11*w,.22*h,10),sockMat);
-  lSock.position.set(-.18*w,.24*h,.02); group.add(lSock);
-  const rSock = lSock.clone(); rSock.position.x=.18*w; group.add(rSock);
-  if(profile.name.includes("Flash")){
-    const headband = new THREE.Mesh(new THREE.TorusGeometry(.24*w,.03*w,8,28),new THREE.MeshStandardMaterial({color:0xffffff}));
-    headband.position.y = 2.14*h; headband.rotation.x = Math.PI/2; group.add(headband);
+  const {group,w,h,head,leftForearm,rightForearm,leftCalf,rightCalf,appearance} = char,nodes=[];
+  function add(region,parent,geometry,position,side=null){
+    const spec=appearance.regions[region];
+    const material=new THREE.MeshStandardMaterial({color:spec.color,roughness:.58});material.name=region==="socks" ? "sock" : region;
+    const node=new THREE.Mesh(geometry,material);node.position.set(...position);
+    node.visible=spec.enabled && (!side || spec.side==="both" || spec.side===side);
+    parent.add(node);nodes.push({node,region,side});return node;
   }
-  if(profile.name.includes("Claw") || profile.name.includes("Crafty") || profile.name.includes("Smooth")){
-    const sleeveMat = new THREE.MeshStandardMaterial({color:0x111820,roughness:.48});
-    const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(.1*w,.1*w,.35*h,10),sleeveMat);
-    sleeve.position.set(profile.name.includes("Crafty")?- .46*w:.46*w,1.18*h,0); group.add(sleeve);
+  for(const [side,arm,calf] of [["left",leftForearm,leftCalf],["right",rightForearm,rightCalf]]){
+    add("wristband",arm,new THREE.CylinderGeometry(.096*w,.096*w,.065*h,10),[0,-.17*h,0],side);
+    add("sleeve",arm,new THREE.CylinderGeometry(.102*w,.087*w,.34*h,10),[0,.025*h,0],side);
+    add("accessory",arm,new THREE.CylinderGeometry(.112*w,.112*w,.09*h,10),[0,.2*h,0],side);
+    add("socks",calf,new THREE.CylinderGeometry(.109*w,.096*w,.22*h,10),[0,-.05*h,0]);
   }
+  const band=add("headband",head,new THREE.TorusGeometry(.27*w,.022*w,6,24),[0,.055*h,0]);band.rotation.x=Math.PI/2;
   addPlayerRimLight({group});
+  return nodes;
 }
 
 function addShoeDetails(char){
-  const accent = char.sneaker && char.sneaker.accent ? char.sneaker.accent : 0xffffff;
-  const soleColor = char.sneaker && char.sneaker.sole ? char.sneaker.sole : 0x111111;
+  const accent = char.sneaker?.accent ?? 0xffffff;
+  const soleColor = char.sneaker?.sole ?? 0x111111;
   const highTop = char.sneaker && (char.sneaker.type === "high" || char.sneaker.type === "boost");
   [char.leftShoe,char.rightShoe].forEach((s)=>{
     const sole = new THREE.Mesh(new THREE.BoxGeometry(.32*char.profile.width,.04 + (char.sneaker.type==="boost"?0.02:0),.48*char.profile.width),new THREE.MeshStandardMaterial({color:soleColor}));
+    sole.material.name="sole";
     sole.position.y = -.07; s.add(sole);
     const stripe = new THREE.Mesh(new THREE.BoxGeometry(.3*char.profile.width,.03,.08),new THREE.MeshStandardMaterial({color:accent,emissive:accent,emissiveIntensity:.2}));
+    stripe.material.name="sneaker_accent";
     stripe.position.set(0,.05,.1); s.add(stripe);
     const sideStripe = new THREE.Mesh(new THREE.BoxGeometry(.03,.08,.3*char.profile.width),new THREE.MeshStandardMaterial({color:accent,roughness:.25}));
+    sideStripe.material.name="sneaker_accent";
     sideStripe.position.set(.12*char.profile.width,.03,.02); s.add(sideStripe);
     const sideStripe2 = sideStripe.clone(); sideStripe2.position.x = -.12*char.profile.width; s.add(sideStripe2);
     const toe = new THREE.Mesh(new THREE.SphereGeometry(.1*char.profile.width,10,10),new THREE.MeshStandardMaterial({color:0xffffff,roughness:.25}));
@@ -1292,19 +1300,23 @@ function addShoeDetails(char){
     const laces = new THREE.Mesh(new THREE.BoxGeometry(.18*char.profile.width,.01,.16*char.profile.width),new THREE.MeshStandardMaterial({color:0xf5f5f5}));
     laces.position.set(0,.07,.02); s.add(laces);
     const heel = new THREE.Mesh(new THREE.BoxGeometry(.08*char.profile.width,.07,.05),new THREE.MeshStandardMaterial({color:accent,emissive:accent,emissiveIntensity:char.sneaker.type==="boost"?.35:.14}));
+    heel.material.name="sneaker_accent";
     heel.position.set(0,.04,-.18); s.add(heel);
     if(highTop){
       const collar = new THREE.Mesh(new THREE.CylinderGeometry(.14*char.profile.width,.14*char.profile.width,.09,10),new THREE.MeshStandardMaterial({color:accent,roughness:.4}));
+      collar.material.name="sneaker_accent";
       collar.position.y = .12;
       s.add(collar);
     }
     if(char.sneaker.type === "glow"){
       const glow = new THREE.Mesh(new THREE.PlaneGeometry(.18*char.profile.width,.22*char.profile.width),new THREE.MeshBasicMaterial({color:accent,transparent:true,opacity:.6,side:THREE.DoubleSide}));
+      glow.material.name="sneaker_accent";
       glow.position.set(0,.09,.05);
       s.add(glow);
     }
     if(char.sneaker.type === "boost"){
       const pod = new THREE.Mesh(new THREE.BoxGeometry(.2*char.profile.width,.03,.08),new THREE.MeshStandardMaterial({color:0x9ffcff,emissive:0x6fefff,emissiveIntensity:.4}));
+      pod.material.name="sneaker_accent";
       pod.position.set(0,-.055,.12);
       s.add(pod);
     }
@@ -1312,8 +1324,9 @@ function addShoeDetails(char){
 }
 
 function addJerseyTrim(char){
-  const accent = (char.jerseyStyle && char.jerseyStyle.trim) || char.profile.accent || 0xfff1b5;
+  const accent = char.jerseyStyle?.trim ?? char.profile.accent ?? 0xfff1b5;
   const trimMat = new THREE.MeshStandardMaterial({color:accent,emissive:accent,emissiveIntensity:.1});
+  trimMat.name="trim";
   const secondary = (char.jerseyStyle && char.jerseyStyle.secondary) || 0xffffff;
   const pattern = char.jerseyStyle && char.jerseyStyle.pattern;
   const ring = new THREE.Mesh(new THREE.TorusGeometry(.35*char.w,.03,8,26),trimMat);
@@ -1326,7 +1339,8 @@ function addJerseyTrim(char){
   const sideStripeR = sideStripeL.clone(); sideStripeR.position.x = .36*char.w; char.group.add(sideStripeR);
   const chestStripe = new THREE.Mesh(new THREE.BoxGeometry(.58*char.w,.05*char.h,.05),new THREE.MeshStandardMaterial({color:secondary,roughness:.3}));
   chestStripe.position.set(0,1.34*char.h,.38*char.w); char.group.add(chestStripe);
-  const shortsTrim = new THREE.Mesh(new THREE.TorusGeometry(.26*char.w,.018,8,24),trimMat);
+  const shortsTrimMat=new THREE.MeshStandardMaterial({color:char.appearance?.regions.shorts.accent ?? accent,roughness:.62});shortsTrimMat.name="shorts_trim";
+  const shortsTrim = new THREE.Mesh(new THREE.TorusGeometry(.26*char.w,.018,8,24),shortsTrimMat);
   shortsTrim.position.set(0,.84*char.h,.01); shortsTrim.rotation.x = Math.PI/2; char.group.add(shortsTrim);
   if(pattern === "neonLines" || pattern === "stars"){
     for(let i=0;i<3;i++){

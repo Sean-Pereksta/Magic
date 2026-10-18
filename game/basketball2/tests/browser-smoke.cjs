@@ -79,7 +79,7 @@ const root=path.resolve(__dirname,'../../..');
     assert.ok(motion.phases.includes('cut')&&motion.phases.includes('fill'),'motion runs cut/fill phases');
     assert.ok(screen.phases.includes('screen')&&screen.phases.includes('roll'),'pick and roll advances coordinated phases');
     assert.ok(drive.phases.includes('drive')&&drive.phases.includes('kick'),'drive and kick advances coordinated phases');
-    console.log('PASS: all four playbooks run distinct coordinated actions in the real simulation');
+    console.log('PASS: all '+playbooks.length+' offense selections remain finite; motion, screen/roll and drive/kick phases execute in the real simulation');
     const autoplay=await page.evaluate(()=>{
       teamSize=3;twoPlayerMode=false;startGame();countdownTimer=0;possessionFrozen=false;
       const originalControls=updateHumanControls;

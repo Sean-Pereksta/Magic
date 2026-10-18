@@ -118,6 +118,7 @@ function createNationalTourState(){
     playerProfileKey:selectedP1,
     playerSneakerKey:selectedP1Sneaker,
     playerJerseyKey:selectedP1Jersey,
+    playerEquipment:JSON.parse(JSON.stringify(selectedP1Equipment)),
     round:1,
     currentStopIndex:0,
     maxRounds:NATIONAL_TOUR_STOPS.length,

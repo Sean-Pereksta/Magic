@@ -144,7 +144,7 @@ async function touchSwipe(page,x,startY,endY){
     const settings=await page.evaluate(()=>localStorage.getItem(SETTINGS_KEY));
     await page.locator('#controlsBackBtn').click();
     await page.locator('#primary3v3Btn').click();
-    const styles=['balanced','motion','pick_roll','drive_kick'];
+    const styles=await page.evaluate(()=>Object.keys(OFFENSIVE_STYLES));
     for(let index=0;index<styles.length;index++){
       const selected=[styles[index],styles[(index+1)%styles.length]];
       await page.locator('#blueOffenseSelect').selectOption(selected[0]);
@@ -177,7 +177,7 @@ async function touchSwipe(page,x,startY,endY){
     assert.equal(tour.settings,settings,'menu and Tour preserve control settings');
     assert.deepEqual(tour.styles,JSON.parse(quick).offensiveStyles,'team style choices restored after Tour');
     assert.deepEqual(errors,[],'no browser exceptions');
-    console.log('PASS: all four offensive styles persist; 1v1, National Tour and controls remain independent');
+    console.log('PASS: all '+styles.length+' offense selections persist; 1v1, National Tour and controls remain independent');
 
     const touchPage=await browser.newPage({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
     touchPage.on('pageerror',error=>errors.push(error.stack));

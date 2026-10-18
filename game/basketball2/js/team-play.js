@@ -51,7 +51,7 @@ function setupMatchPlayers(){
   for(let team=0;team<2;team++){
     let count=matchPlayers.filter(player=>player.teamId===team).length;
     while(count<teamSize){
-      const key=keys[(count*2+team+2)%keys.length];
+      const key=basketballComplementaryProfile(team,count,keys);
       const profile={...profiles[key]};
       const player=createCharacter(profile,new THREE.Vector3(),`team${team}_${count}`,team);
       player.teamId=team; player.controllerSlot=null;
@@ -86,6 +86,25 @@ function setupMatchPlayers(){
   }
   simulationAccumulator=0; simulationTime=0;
   passFlight.active=false;
+}
+
+function basketballComplementaryProfile(team,count,keys=Object.keys(profiles)){
+  const captain=matchPlayers.find(player=>player.teamId===team);
+  const identity=captain?.profile.archetype||"all_rounder";
+  const style=teamOffensiveStyles[team]||"balanced";
+  const combinations={
+    motion:["playmaker","sharpshooter"],pick_roll:["interior","sharpshooter"],
+    pick_pop:["sharpshooter","interior"],drive_kick:["sharpshooter","slasher"],
+    isolation:["sharpshooter","defender"],give_go:["playmaker","slasher"],
+    post_up:["interior","sharpshooter"],fast_break:["slasher","defender"]
+  };
+  const balanced=identity==="interior"?["playmaker","sharpshooter"]:
+    identity==="sharpshooter"?["playmaker","interior"]:["interior","sharpshooter"];
+  let desired=(combinations[style]||balanced)[Math.max(0,count-1)%2];
+  if(desired===identity&&count===1) desired=identity==="sharpshooter"?"playmaker":"sharpshooter";
+  const used=new Set(matchPlayers.filter(player=>player.teamId===team).map(player=>player.profile.name));
+  return keys.find(key=>profiles[key].archetype===desired&&!used.has(profiles[key].name))||
+    keys.find(key=>!used.has(profiles[key].name))||keys[(count*2+team+2)%keys.length];
 }
 
 function takePossession(char,options={}){
@@ -183,7 +202,10 @@ function tryDirectionalPass(char,intendedTarget=null){
   const alignment=forward.dot(passFlight.end.clone().sub(start).setY(0).normalize());
   const defender=getNearestOpponent(char);
   const pressure=defender?Math.max(0,1-flatDistance(defender.group.position,char.group.position)/2):0;
-  const error=(1-alignment)*.28+pressure*.2+Math.max(0,distance-8)*.018;
+  const passing=THREE.MathUtils.clamp(char.profile.passing||char.profile.handle||1,.55,1.5);
+  const movementError=Math.min(.16,char.velocity.length()*.012)*(1.2-Math.min(1,passing)*.35);
+  const fatigueError=Math.max(0,.55-(char.stamina??1))*.12;
+  const error=((1-alignment)*.28+pressure*.2+Math.max(0,distance-8)*.018+movementError+fatigueError)/passing;
   // Repeatable pressure/angle error rather than a hidden successful-pass roll.
   passFlight.end.x+=forward.z*error; passFlight.end.z-=forward.x*error;
   passFlight.duration=duration; passFlight.elapsed=0;

@@ -161,6 +161,12 @@ function aiCoordinateOffBall(char,brain,handler,settings,plan){
   const iq=aiCoordIQ(settings);
   if(!handler||handler===char||handler.teamId!==char.teamId||aiIsHuman(char)||iq<.62||!plan) return false;
   if(brain.role==="screen"||brain.role==="screen_setup") return false;
+  const action=plan.action||plan.style;
+  if(["pick_pop","post_up","isolation","fast_break","drive_kick"].includes(action)&&
+    ["pop","post","clear","break","outlet"].includes(brain.role)){
+    if(brain.role==="post") return aiCoordYieldClearDrive(char,brain,handler,settings,brain.target);
+    return false;
+  }
   // Reserve one receiving pocket for the team for a short read interval. A
   // different update order cannot create two cutters on opposite sides.
   if(!plan.receivingRead||plan.receivingRead.handlerId!==handler.id||plan.receivingRead.until<=teamAITime){
@@ -203,6 +209,7 @@ function aiCoordDriveRead(observer,handler,settings){
 }
 
 function aiCoordinateDefense(char,brain,handler,settings){
+  if(typeof aiUseTeamDefense==="function"&&aiUseTeamDefense(settings)) return aiTeamDefense(char,brain,handler,settings);
   const iq=aiCoordIQ(settings,true);
   if(!handler||handler.teamId===char.teamId||aiIsHuman(char)||iq<.62) return false;
   const assigned=aiAssignedOpponent(char);

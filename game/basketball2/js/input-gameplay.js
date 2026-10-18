@@ -6,6 +6,18 @@ function onKeyDown(e){
   keys[e.code] = true;
   keys[e.key.toLowerCase()] = true;
 
+  if(!e.repeat&&gameStarted&&!gamePaused&&!possessionFrozen&&teamSize>1&&e.code==="KeyB"){
+    if(typeof aiRequestOffensiveAction==="function"){
+      const caller=getHumanPlayer(e.altKey?"p2":"p1");
+      if(caller&&getBallHandler()?.teamId===caller.teamId){
+        if(aiRequestOffensiveAction(caller.teamId,e.shiftKey?"cut":"screen")){
+          e.preventDefault?.();
+          flash(e.shiftKey?"Cut to the basket":"Set a screen");
+        }
+      }
+    }
+  }
+
   if(e.key.toLowerCase() === "h" && gameStarted){
     toggleUI();
     return;
@@ -375,14 +387,16 @@ function updateCountdown(dt){
 }
 
 function updateHumanControls(dt,processActions=true){
-  const p1State = inputManager.getState("p1");
-  if(processActions) processUnifiedInputActions(p1,p1State);
-  updatePlayerControl(p1, {
-    state:p1State,
-    left:"KeyA", right:"KeyD", forward:"KeyW", back:"KeyS", sprint:"ShiftLeft", handLeft:"KeyQ", handRight:"KeyE"
-  }, dt);
+  if(p1?.controllerSlot==="p1"){
+    const p1State = inputManager.getState("p1");
+    if(processActions) processUnifiedInputActions(p1,p1State);
+    updatePlayerControl(p1, {
+      state:p1State,
+      left:"KeyA", right:"KeyD", forward:"KeyW", back:"KeyS", sprint:"ShiftLeft", handLeft:"KeyQ", handRight:"KeyE"
+    }, dt);
+  }
 
-  if(twoPlayerMode){
+  if(twoPlayerMode&&p2?.controllerSlot==="p2"){
     const p2State = inputManager.getState("p2");
     if(processActions) processUnifiedInputActions(p2,p2State);
     updatePlayerControl(p2, {

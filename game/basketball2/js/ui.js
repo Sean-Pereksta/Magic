@@ -7,6 +7,7 @@ function buildMenu(){
   buildCharacterCards("tourP1Cards","tournamentP1");
   setupSneakerSelectors();
   setupJerseySelectors();
+  buildEquipmentSelectors();
   setupCourtSelector();
   setupTournamentSelectors();
 
@@ -146,6 +147,10 @@ function showQuickPlaySetup(size=null,local=null){
   if(local!==null) twoPlayerMode=local;
   if(teamSize===1) localTeamMode="competitive";
   refreshMatchSetup();
+  refreshSneakerSelectorUI();
+  refreshJerseySelectorUI();
+  document.querySelectorAll(".equipment-picker").forEach(picker=>picker.remove());
+  buildEquipmentSelectors();
   saveMatchSetup();
   showMenuScreen("quickPlayScreen");
 }
@@ -159,6 +164,17 @@ function loadMatchSetup(){
     localTeamMode=saved.localTeamMode==="cooperative"&&teamSize>1?"cooperative":"competitive";
     splitLayout=saved.splitLayout==="horizontal"?"horizontal":"vertical";
     if(difficultySettings[saved.difficulty]) selectedDifficulty=saved.difficulty;
+    for(const [key,items] of [["p1Jersey",jerseys],["p2Jersey",jerseys],["p1Sneaker",sneakers],["p2Sneaker",sneakers]]){
+      if(!Object.hasOwn(items,saved[key])) continue;
+      if(key==="p1Jersey") selectedP1Jersey=saved[key];
+      else if(key==="p2Jersey") selectedP2Jersey=saved[key];
+      else if(key==="p1Sneaker") selectedP1Sneaker=saved[key];
+      else selectedP2Sneaker=saved[key];
+    }
+    if(Object.hasOwn(profiles,saved.p1Profile)) selectedP1=saved.p1Profile;
+    if(Object.hasOwn(profiles,saved.p2Profile)) selectedP2=saved.p2Profile;
+    selectedP1Equipment=sanitizeBasketballEquipment(saved.p1Equipment);
+    selectedP2Equipment=sanitizeBasketballEquipment(saved.p2Equipment);
     if(Array.isArray(saved.offensiveStyles)){
       teamOffensiveStyles=teamOffensiveStyles.map((fallback,index)=>
         Object.hasOwn(OFFENSIVE_STYLES,saved.offensiveStyles[index])?saved.offensiveStyles[index]:fallback);
@@ -168,7 +184,7 @@ function loadMatchSetup(){
 
 function saveMatchSetup(){
   try{
-    localStorage.setItem("basketball2MatchV1",JSON.stringify({teamSize,twoPlayerMode,localTeamMode,splitLayout,difficulty:selectedDifficulty,offensiveStyles:[...teamOffensiveStyles]}));
+    localStorage.setItem("basketball2MatchV1",JSON.stringify({teamSize,twoPlayerMode,localTeamMode,splitLayout,difficulty:selectedDifficulty,offensiveStyles:[...teamOffensiveStyles],p1Profile:selectedP1,p2Profile:selectedP2,p1Jersey:selectedP1Jersey,p2Jersey:selectedP2Jersey,p1Sneaker:selectedP1Sneaker,p2Sneaker:selectedP2Sneaker,p1Equipment:selectedP1Equipment,p2Equipment:selectedP2Equipment}));
   }catch(error){ /* Private browsing can disallow persistent settings. */ }
 }
 
@@ -237,7 +253,12 @@ function offensiveStyleDiagram(key,team){
     balanced:'<path d="M24 61 60 73 96 54"/><path d="M60 68V43"/>',
     motion:'<path d="M24 61Q26 29 54 24M96 54Q73 46 60 73M60 73Q30 80 24 61"/>',
     pick_roll:'<path d="M24 61Q43 46 60 55T75 25"/><path d="M59 54 62 26"/><path class="tactic-screen" d="m49 49 13 8"/>',
-    drive_kick:'<path d="M60 73V38M60 38 26 54M60 38 96 54"/>'
+    drive_kick:'<path d="M60 73V38M60 38 26 54M60 38 96 54"/>',
+    pick_pop:'<path d="M24 61Q43 46 60 55T75 25M59 54 98 61"/><path class="tactic-screen" d="m49 49 13 8"/>',
+    isolation:'<path d="M60 73Q84 60 65 28M24 61 15 46M96 54 105 40"/>',
+    give_go:'<path d="M24 61 96 54M24 61Q30 30 60 24M96 54 60 24"/>',
+    post_up:'<path d="M24 61 63 32M63 32 63 20M96 54 103 65"/>',
+    fast_break:'<path d="M24 75 35 28M60 73 60 23M96 75 85 28M60 62 85 28"/>'
   };
   return `<svg viewBox="0 0 120 88" focusable="false"><defs><marker id="tactic-arrow-${team}" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 6 3 0 6"/></marker></defs><path class="tactic-court" d="M8 81V7h104v74M38 7v28h44V7M38 35a22 22 0 0 0 44 0M18 7v10a42 42 0 0 0 84 0V7"/><path class="tactic-hoop" d="M51 14h18m-9 0v5"/><g class="tactic-routes" style="marker-end:url(#tactic-arrow-${team})">${routes[key]||routes.balanced}</g><circle cx="24" cy="61" r="5"/><circle cx="60" cy="73" r="5"/><circle cx="96" cy="54" r="5"/><circle class="tactic-ball" cx="28" cy="59" r="2"/></svg>`;
 }
@@ -266,6 +287,7 @@ function setupSneakerSelectors(){
       selectedP2Sneaker = sneakerKeys[(i + dir + sneakerKeys.length) % sneakerKeys.length];
     }
     refreshSneakerSelectorUI();
+    saveMatchSetup();
   };
   document.getElementById("p1SneakerPrev").onclick = ()=>rotate("p1",-1);
   document.getElementById("p1SneakerNext").onclick = ()=>rotate("p1",1);
@@ -294,6 +316,7 @@ function setupJerseySelectors(){
       selectedP2Jersey = jerseyKeys[(i + dir + jerseyKeys.length) % jerseyKeys.length];
     }
     refreshJerseySelectorUI();
+    saveMatchSetup();
   };
   document.getElementById("p1JerseyPrev").onclick = ()=>rotate("p1",-1);
   document.getElementById("p1JerseyNext").onclick = ()=>rotate("p1",1);
@@ -357,10 +380,12 @@ function refreshCharacterCardPreviews(){
   document.querySelectorAll("#p1Cards .card").forEach((card)=>{
     const key = card.querySelector(".cardPreview")?.dataset.profile;
     if(key && profiles[key]) drawProfileCardPreview(card.querySelector(".cardPreview"),profiles[key],selectedP1Jersey,selectedP1Sneaker);
+    card.classList.toggle("selected",key===selectedP1);card.setAttribute("aria-pressed",String(key===selectedP1));
   });
   document.querySelectorAll("#p2Cards .card").forEach((card)=>{
     const key = card.querySelector(".cardPreview")?.dataset.profile;
     if(key && profiles[key]) drawProfileCardPreview(card.querySelector(".cardPreview"),profiles[key],selectedP2Jersey,selectedP2Sneaker);
+    card.classList.toggle("selected",key===selectedP2);card.setAttribute("aria-pressed",String(key===selectedP2));
   });
 }
 
@@ -752,6 +777,8 @@ function makeShoeTexture(shoeDef){
 }
 
 function drawSneakerPreview(canvas,sneaker,time=0){
+  const slot=canvas.id.startsWith("p2")?"p2":"p1";
+  sneaker=resolveBasketballEquipment({}, {},sneaker,basketballEquipmentForSlot(slot)).sneakerStyle;
   const ctx = canvas.getContext("2d"); const w = canvas.width, h = canvas.height;
   ctx.clearRect(0,0,w,h); ctx.fillStyle = "rgba(8,14,26,.86)"; ctx.fillRect(0,0,w,h);
   const swing = Math.sin(time*2.1)*6; const x = w*.52 + swing; const y = h*.58;
@@ -772,12 +799,16 @@ function drawSneakerPreview(canvas,sneaker,time=0){
 }
 
 function drawJerseyPreview(canvas,jersey){
+  const slot=canvas.id.startsWith("p2")?"p2":"p1";
+  const appearance=resolveBasketballEquipment({},jersey,{},basketballEquipmentForSlot(slot));
+  jersey=appearance.jerseyStyle;
   const ctx = canvas.getContext("2d"); const w = canvas.width, h = canvas.height;
   ctx.clearRect(0,0,w,h); ctx.fillStyle="rgba(8,14,26,.8)"; ctx.fillRect(0,0,w,h);
   const tex = makeJerseyTexture(jersey,"23");
   ctx.drawImage(tex.image,78,10,100,56);
-  const shorts = makeShortsTexture(jersey);
+  const shorts = makeShortsTexture(appearance.shortsStyle);
   ctx.drawImage(shorts.image,184,20,56,44);
+  tex.dispose();shorts.dispose();
 }
 function drawCourtPreview(canvas,court){
   const ctx = canvas.getContext("2d"); const w = canvas.width, h = canvas.height;
@@ -810,20 +841,27 @@ function drawProfileCardPreview(canvas,profile,jerseyKey,sneakerKey){
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0,0,w,h);
   ctx.fillStyle = "rgba(8,14,24,.9)"; ctx.fillRect(0,0,w,h);
-  const jersey = jerseys[jerseyKey] || jerseys.classicBlue;
-  const shoe = sneakers[sneakerKey] || sneakers.classic;
+  const slot=canvas.closest("#p2Cards")?"p2":"p1";
+  const resolved=resolveBasketballEquipment(profile,jerseys[jerseyKey]||jerseys.classicBlue,sneakers[sneakerKey]||sneakers.classic,basketballEquipmentForSlot(slot));
+  const jersey = resolved.jerseyStyle;
+  const shoe = resolved.sneakerStyle;
   const scale = THREE.MathUtils.clamp(profile.height,0.9,1.24);
   const bw = 26*profile.width, bh = 34*scale;
   ctx.fillStyle = toHex(profile.skin); ctx.beginPath(); ctx.arc(40,24,10*scale,0,Math.PI*2); ctx.fill();
   ctx.fillStyle = toHex(profile.hair); ctx.fillRect(30,13,20,6);
   ctx.fillStyle = toHex(jersey.primary); ctx.fillRect(28,34,bw,bh);
-  ctx.fillStyle = toHex(jersey.secondary); ctx.fillRect(30,58,bw-4,18*scale);
+  ctx.fillStyle = toHex(resolved.regions.shorts.color); ctx.fillRect(30,58,bw-4,18*scale);
   ctx.fillStyle = toHex(jersey.trim); ctx.fillRect(28,34,bw,4);
   ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.font = "bold 11px Arial"; ctx.fillText(profile.number || "0",40,52);
   ctx.fillStyle = toHex(shoe.primary); ctx.fillRect(24,76,18,7); ctx.fillRect(46,76,18,7);
   ctx.fillStyle = toHex(shoe.sole); ctx.fillRect(24,82,18,3); ctx.fillRect(46,82,18,3);
+  const regions=resolved.regions;
+  if(regions.socks){ ctx.fillStyle=toHex(regions.socks.color);ctx.fillRect(29,70,10,6);ctx.fillRect(47,70,10,6); }
+  if(regions.headband?.enabled){ctx.fillStyle=toHex(regions.headband.color);ctx.fillRect(30,20,20,3);}
+  if(regions.sleeve?.enabled){ctx.fillStyle=toHex(regions.sleeve.color);ctx.fillRect(22,36,5,22);}
+  if(regions.wristband?.enabled){ctx.fillStyle=toHex(regions.wristband.color);ctx.fillRect(21,56,6,4);}
   ctx.fillStyle = "rgba(255,255,255,.75)"; ctx.font = "bold 10px Arial"; ctx.fillText(profile.bodyType || "",104,18);
-  ctx.fillStyle = toHex(jersey.primary); ctx.fillRect(84,30,56,20); ctx.fillStyle = toHex(jersey.secondary); ctx.fillRect(84,50,56,12);
+  ctx.fillStyle = toHex(jersey.primary); ctx.fillRect(84,30,56,20); ctx.fillStyle = toHex(resolved.regions.shorts.color); ctx.fillRect(84,50,56,12);
   ctx.fillStyle = toHex(shoe.primary); ctx.fillRect(84,66,26,10); ctx.fillStyle = toHex(shoe.sole); ctx.fillRect(84,76,26,4);
 }
 
@@ -849,6 +887,7 @@ function buildCharacterCards(containerId, which){
       div.classList.add("selected");
       div.setAttribute("aria-pressed","true");
       if(which === "tournamentP1") refreshTournamentSelectorUI();
+      else saveMatchSetup();
     };
     box.appendChild(div);
     const canvas = div.querySelector(".cardPreview");
@@ -871,6 +910,7 @@ function startGame(){
       selectedP1 = tournamentState.playerProfileKey;
       selectedP1Sneaker = tournamentState.playerSneakerKey;
       selectedP1Jersey = tournamentState.playerJerseyKey;
+      selectedP1Equipment=sanitizeBasketballEquipment(tournamentState.playerEquipment||selectedP1Equipment);
       selectedP2 = enemy.profileKey;
       selectedP2Sneaker = enemy.sneakerKey;
       selectedP2Jersey = enemy.jerseyKey;

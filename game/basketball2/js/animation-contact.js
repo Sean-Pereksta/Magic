@@ -1,5 +1,8 @@
 function updateJumpPhysics(char,dt){
   char.jumpCooldown -= dt;
+  // The dunk solver owns its gather/rise/landing. Integrating a second jump
+  // during the gather dip falsely grounded the player before the actual rise.
+  if(dunkActive && dunkOwner===char.id){char.onGround=false;char.yVel=0;return;}
   if(!char.onGround){
     char.yVel += GRAVITY * .76 * dt;
     char.group.position.y += char.yVel * dt;
@@ -602,8 +605,9 @@ function animateCharacter(char,dt){
     return;
   }
   if(dunkActive && dunkOwner === char.id){
-    const pct = THREE.MathUtils.clamp(dunkTimer/Math.max(0.001,dunkDuration),0,1);
+    const pct = char.moveMeta?.dunk?.posePhase ?? THREE.MathUtils.clamp(dunkTimer/Math.max(0.001,dunkDuration),0,1);
     poseDunkArms(char,pct);
+    if(!char.playerModel && typeof poseBasketballDunkHands==="function") poseBasketballDunkHands(char);
     return;
   }
 
@@ -636,6 +640,21 @@ function animateCharacter(char,dt){
       char.stumbledTimer=Math.max(char.stumbledTimer || 0,.15);
     }
     if(char.swipeTime<=0) char.swipeConnected=false;
+    return;
+  }
+  if(!char.hasBall && char.velocity.length()<1.5 && (char.aiScreen || char.aiBrain?.role==="screen")){
+    // Braced arms and a wider stance make a planted screen recognizable on
+    // the procedural fallback as well as the articulated player model.
+    char.leftArm.rotation.x=-.55;char.rightArm.rotation.x=-.55;
+    char.leftArm.rotation.z=-.16;char.rightArm.rotation.z=.16;
+    char.leftForearm.rotation.x=-.55;char.rightForearm.rotation.x=-.55;
+    char.leftLeg.rotation.z=-.16;char.rightLeg.rotation.z=.16;
+    return;
+  }
+  if(!char.hasBall && char.velocity.length()<1.5 && char.aiBrain?.role==="box_out" && ["shot","loose"].includes(ballState)){
+    char.leftArm.rotation.z=-.95;char.rightArm.rotation.z=.95;
+    char.leftForearm.rotation.x=-.25;char.rightForearm.rotation.x=-.25;
+    char.leftLeg.rotation.z=-.2;char.rightLeg.rotation.z=.2;
     return;
   }
   if(char.defensiveShadeSide && teamOf(possession)!==char.teamId && ballState === "dribble"){

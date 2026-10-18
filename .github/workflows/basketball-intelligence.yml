@@ -1,0 +1,57 @@
+name: Basketball intelligence regressions
+
+on:
+  pull_request:
+    paths:
+      - 'game/basketball2/**'
+      - '.github/workflows/basketball-intelligence.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'game/basketball2/**'
+      - '.github/workflows/basketball-intelligence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  basketball:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: game/basketball2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser test dependencies
+        run: |
+          npm install --prefix "$RUNNER_TEMP/basketball-deps" --no-save --ignore-scripts playwright@1.62.1 three@0.160.0
+          node "$RUNNER_TEMP/basketball-deps/node_modules/playwright/cli.js" install --with-deps chromium
+          echo "NODE_PATH=$RUNNER_TEMP/basketball-deps/node_modules" >> "$GITHUB_ENV"
+          echo "THREE_BUNDLE=$RUNNER_TEMP/basketball-deps/node_modules/three/build/three.min.js" >> "$GITHUB_ENV"
+      - name: Syntax and deterministic regressions
+        run: |
+          find game/basketball2/js -name '*.js' -print0 | xargs -0 -n1 node --check
+          node --test game/basketball2/tests/*.test.cjs
+      - name: Gameplay and controls
+        run: |
+          node game/basketball2/tests/browser-smoke.cjs
+          node game/basketball2/tests/player-gameplay-browser.cjs
+          node game/basketball2/tests/controller-browser.cjs
+          node game/basketball2/tests/menu-layout.cjs
+      - name: Basketball decisions and driving exploit
+        run: |
+          node game/basketball2/tests/ai-gameplay-browser.cjs
+          node game/basketball2/tests/ai-mismatch-browser.cjs
+          node game/basketball2/tests/ai-angle-drive-browser.cjs
+          node game/basketball2/tests/ai-defense-browser.cjs
+          node game/basketball2/tests/offensive-autoplay-browser.cjs
+          BASKETBALL_AUTOPLAY_DIFFICULTY=hard node game/basketball2/tests/offensive-autoplay-browser.cjs
+      - name: Equipment and profile compatibility
+        run: |
+          node game/basketball2/tests/equipment-browser.cjs
+          node game/basketball2/tests/equipment-ui-browser.cjs
+          node game/basketball2/tests/dunk-finish-browser.cjs
