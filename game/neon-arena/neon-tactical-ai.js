@@ -211,13 +211,14 @@
       }
       return chosen;
     }
-    function findCover(a, threat) {
+    function findCover(a, threat, objective = null) {
       let best = null, bestScore = Infinity;
       const nearby = (host.coverBlocks?.(a) || []).filter(b => b.structure?.active !== false && b.y + b.h / 2 >= a.y - 1.1 && b.y - b.h / 2 <= a.y + .4 && distance(a, b) <= 23).sort((p, q) => distance(a, p) - distance(a, q)).slice(0, 18);
       for (const b of nearby) {
         if (b.structure?.active === false || b.y + b.h / 2 < a.y - 1.1 || b.y - b.h / 2 > a.y + .4 || distance(a, b) > 23) continue;
         const dx = b.x - threat.x, dz = b.z - threat.z, len = Math.hypot(dx, dz) || 1, r = (a.r || .52) + .45;
         const hide = { x: b.x + dx / len * (b.w / 2 + r), y: a.y, z: b.z + dz / len * (b.d / 2 + r) };
+        if (objective && distance(hide, objective) > distance(a, objective) + 5) continue;
         const crouch = sight(threat, hide), hideView = crouch ? { ...hide, y: hide.y - .65 } : hide;
         if (!walkable(hide, a) || sight(threat, hideView)) continue;
         // An oblique angle can remain occluded just beyond the near corner;
@@ -225,14 +226,67 @@
         const corners = [r, r + 1.1, r + 2.2].flatMap(offset => [{ x: b.x - b.w / 2 - offset, z: hide.z }, { x: b.x + b.w / 2 + offset, z: hide.z }, { x: hide.x, z: b.z - b.d / 2 - offset }, { x: hide.x, z: b.z + b.d / 2 + offset }]);
         const peek = corners.map(p => ({ ...p, y: a.y })).filter(p => walkable(p, a) && sight(p, threat) && traverse(hide, p, a)).sort((p, q) => distance(hide, p) - distance(hide, q))[0];
         if (!peek) continue;
-        const score = distance(a, hide) + distance(hide, peek) * .6;
+        const score = distance(a, hide) + distance(hide, peek) * .6 + (objective ? (distance(hide, objective) - distance(a, objective)) * .45 : 0);
         if (score < bestScore) { bestScore = score; best = { hide, peek, crouch, block: b.structure, until: clock() + 2.5 + random() * 1.5 }; }
       }
       return best;
     }
+    function objectiveGoal(a,s,order){
+      const radius=order.radius||6,slot=order.slot??s.seed,key=[order.squad||'',order.sector||'',order.x,order.z,order.role].join(':');
+      if(s.orderKey!==key){s.orderKey=key;s.approachComplete=false;}
+      // Soldiers already in a usable capture area keep their ground instead of orbiting a marker.
+      if(distance(a,order)<radius*.72&&Math.abs(a.y-(order.y??a.y))<1.5&&sight(a,order))return {x:a.x,y:a.y,z:a.z};
+      if(['assemble','regroup'].includes(order.phase)&&clock()<order.phaseUntil&&order.rally&&distance(a,order)>radius+2){
+        const yaw=order.approachYaw||0,side=(order.fireteam??slot%2)?1:-1;
+        const rally={x:order.rally.x+Math.cos(yaw)*side*(2+Math.floor(slot/2)%2),y:order.rally.y??a.y,z:order.rally.z-Math.sin(yaw)*side*(2+Math.floor(slot/2)%2)};
+        if(walkable(rally,a))return distance(a,rally)<1.4?{x:a.x,y:a.y,z:a.z}:rally;
+      }
+      if(order.role==='flank'&&!s.approachComplete&&distance(a,order)>radius+4){
+        const yaw=order.approachYaw??Math.atan2(order.x-a.x,order.z-a.z),side=Math.floor(slot/3)%2?-1:1;
+        const approach={x:order.x-Math.sin(yaw)*(radius+3)+Math.cos(yaw)*(radius+5)*side,y:order.y??a.y,z:order.z-Math.cos(yaw)*(radius+3)-Math.sin(yaw)*(radius+5)*side};
+        if(distance(a,approach)>3&&walkable(approach,a))return approach;
+        s.approachComplete=true;
+      }
+      const angle=slot*2.399963+(order.approachYaw||0),offset=Math.min(3.5,radius*.45);
+      return {x:order.x+Math.cos(angle)*offset,y:order.y??a.y,z:order.z+Math.sin(angle)*offset};
+    }
+    function squadContext(a,s,order,now){
+      if(!order?.strategic||!order.squad){s.squadOrder=null;return null;}
+      const fireteam=order.fireteam??Math.abs(order.slot||0)%2;
+      s.squadOrder={squad:order.squad,operation:order.operation,fireteam,x:order.x,z:order.z,time:now};
+      const peers=(host.actors?.()||[]).filter(other=>{
+        const known=states.get(other)?.squadOrder;
+        return other!==a&&alive(other)&&host.sameTeam?.(a,other)&&known?.squad===order.squad&&known.operation===order.operation&&now-known.time<1.5&&distance(a,other)<30&&Math.abs(a.y-other.y)<3;
+      });
+      // Two fireteams alternate short bounds. Only one's own visible contact can
+      // authorize covering fire; squadmates never supply a live hidden target.
+      const opposite=peers.filter(other=>states.get(other).squadOrder.fireteam!==fireteam&&other.hp/(other.maxHp||100)>.4&&!(other.reload>0));
+      const staging=['assemble','regroup'].includes(order.phase)&&now<order.phaseUntil;
+      const active=peers.length>=2&&opposite.length>0&&!['defend','overwatch'].includes(order.role)&&!staging;
+      const beat=Math.floor(now/3.2)%2;
+      return {peers,active,support:active&&fireteam===beat,advancing:active&&fireteam!==beat};
+    }
+    function friendlyInFireLane(a,target){
+      const origin=eye(a),dx=target.x-origin.x,dz=target.z-origin.z,lengthSq=dx*dx+dz*dz;
+      if(lengthSq<1)return false;
+      for(const ally of host.actors?.()||[]){
+        if(ally===a||!alive(ally)||!host.sameTeam?.(a,ally))continue;
+        const t=((ally.x-origin.x)*dx+(ally.z-origin.z)*dz)/lengthSq;
+        if(t<=0||t>=1)continue;
+        const y=origin.y+(aimHeight(target)-origin.y)*t;
+        if(y<ally.y-1.7||y>ally.y+.45)continue;
+        if(Math.hypot(ally.x-origin.x-dx*t,ally.z-origin.z-dz*t)<(ally.r||.52)+.22)return true;
+      }
+      return false;
+    }
     function choose(a, s, now) {
-      const p = PROFILES[profileName(a)] || PROFILES.balanced, cfg = settings(), threat = s.enemy || s.memory, ideal = (host.idealRange?.(a) || 27) * p.range, learned = adaptation(a);
+      const p = PROFILES[profileName(a)] || PROFILES.balanced, cfg = settings(), ideal = (host.idealRange?.(a) || 27) * p.range, learned = adaptation(a);
       const order = host.objective?.(a) || null;
+      const strategic=order?.strategic&&Number.isFinite(order.x+order.z);
+      const squad=squadContext(a,s,order,now);
+      let threat=s.enemy||s.memory;
+      // Last-known contacts remain honest memories, but distant distractions do not cancel a ground order.
+      if(strategic&&!s.enemy&&threat&&distance(threat,order)>(order.radius||6)+12&&distance(a,threat)>10)threat=null;
       s.squadRole = order?.role || null;
       a.tacticalLearning = learned;
       let goal = null, tactic = 'patrol', cover = s.decision?.cover;
@@ -242,8 +296,15 @@
         const friends = (host.actors?.() || []).filter(o => o !== a && alive(o) && host.sameTeam?.(a, o) && distance(a, o) < 20);
         const overwhelmed = s.visibleContacts > friends.length + 2 && a.hp / (a.maxHp || 100) < .7;
         if (!cover || cover.block?.active === false || now > cover.until || !walkable(cover.hide, a) || sight(threat, cover.crouch ? { ...cover.hide, y: cover.hide.y - .65 } : cover.hide)) cover = null;
-        if (!cover && now >= (s.coverSearchAt || 0) && (injured || reloading || (s.exposed > 2.2 || cautious) && random() < clamp(p.cover - learned.confidence * .4, .2, 1))) { cover = findCover(a, threat); s.coverSearchAt = now + .8; }
-        if (cover) {
+        const supporting=squad?.support&&s.enemy&&!injured&&!reloading&&!overwhelmed&&d>12&&d<52&&distance(a,order)>(order.radius||6)+2;
+        if (!cover && now >= (s.coverSearchAt || 0) && (injured || reloading || supporting || (s.exposed > 2.2 || cautious) && random() < clamp(p.cover - learned.confidence * .4, .2, 1))) { cover = findCover(a, threat, supporting?order:null); s.coverSearchAt = now + .8; }
+        const objectiveCover=strategic&&cover&&distance(cover.hide,order)<(order.radius||6)*.85&&distance(cover.peek,order)<(order.radius||6)*.85;
+        if(supporting){
+          const hiding=cover&&now<s.pauseUntil;
+          goal=cover?(hiding?cover.hide:cover.peek):{x:a.x,y:a.y,z:a.z};tactic=hiding?'cover':'suppress';
+        } else if(strategic&&s.enemy&&!injured&&!reloading&&!overwhelmed&&!objectiveCover&&(d>12||distance(threat,order)>(order.radius||6)+12)){
+          goal=objectiveGoal(a,s,order);tactic=distance(a,goal)<.7?'hold-route':['defend','overwatch'].includes(order.role)?order.role:squad?.advancing?'bound':'push';cover=null;
+        } else if (cover) {
           const cycle = (now + s.seed) % 2.1, hiding = injured || reloading || cycle < .8 || now < s.pauseUntil;
           goal = hiding ? cover.hide : cover.peek; tactic = injured ? 'retreat' : hiding ? 'cover' : 'peek';
         } else if (injured || reloading || overwhelmed) {
@@ -272,7 +333,8 @@
         }
       } else {
         const pickup = host.pickupGoal?.(a);
-        if (s.guardState === 'suspicious' && s.glimpse) { goal = { ...s.glimpse }; tactic = 'suspicious'; }
+        if(strategic){goal=objectiveGoal(a,s,order);tactic=order.role||'attack';}
+        else if (s.guardState === 'suspicious' && s.glimpse) { goal = { ...s.glimpse }; tactic = 'suspicious'; }
         else if (s.searchOrigin && ['investigate', 'search'].includes(s.guardState)) {
           const angle = s.seed + Math.floor((now - s.stateAt) / 1.4) * 2.4;
           goal = { x: s.searchOrigin.x + Math.cos(angle) * 5, y: s.searchOrigin.y, z: s.searchOrigin.z + Math.sin(angle) * 5 }; tactic = s.guardState;
@@ -292,17 +354,32 @@
         else if (s.decision?.tactic === 'patrol' && distance(a, s.decision.goal) > 3) goal = s.decision.goal;
         else { const choices = navigation().nodes.filter(n => distance(a, n) > 8 && walkable(n, a)); goal = choices.length ? choices[Math.floor(random() * choices.length)] : { x: a.x, y: a.y, z: a.z }; }
       }
+      if(strategic&&['assemble','regroup'].includes(order.phase)&&now<order.phaseUntil&&order.rally&&distance(a,order)>(order.radius||6)+2&&distance(goal,order.rally)<6&&!['retreat','cover','peek'].includes(tactic))tactic=order.phase==='assemble'?'rally':'regroup';
+      // An advance team keeps its spacing even if a teammate crosses the muzzle.
+      // Reposition within captured ground instead of firing through a friendly body.
+      if(strategic&&s.enemy&&!injured&&!reloading&&s.blockedSince!=null&&now-s.blockedSince>.5){
+        const d=distance(a,s.enemy)||1,dx=(s.enemy.x-a.x)/d,dz=(s.enemy.z-a.z)/d;
+        const candidates=[-1,1].map(side=>({x:a.x+dz*side*2.4,y:a.y,z:a.z-dx*side*2.4}));
+        const lane=candidates.find(point=>walkable(point,a)&&traverse(a,point,a)&&(distance(a,order)>(order.radius||6)||distance(point,order)<(order.radius||6)*.8));
+        if(lane){goal=lane;tactic='clear-lane';cover=null;}
+      }
+      if(strategic&&s.enemy&&distance(a,order)<(order.radius||6)*.85&&distance(goal,order)>(order.radius||6)*.75&&tactic!=='retreat'){
+        const d=distance(goal,order)||1,scale=(order.radius||6)*.75/d;
+        goal={x:order.x+(goal.x-order.x)*scale,y:order.y??a.y,z:order.z+(goal.z-order.z)*scale};
+      }
       if (!walkable(goal, a)) {
         const fallback = navigation().nodes.filter(n => distance(n, goal) < 15 && walkable(n, a)).sort((x, y) => distance(x, goal) - distance(y, goal))[0];
         goal = fallback || { x: a.x, y: a.y, z: a.z };
       }
-      let route = findPath(a, goal, ['flank', 'crossfire', 'retreat'].includes(tactic) ? threat : null);
+      const previous=s.decision,routeRevision=String(host.revision?.()??''),keepRoute=!s.routeRefresh&&previous?.route.length&&distance(previous.goal,goal)<.35&&Math.abs((previous.goal.y??a.y)-(goal.y??a.y))<.35&&s.routeRevision===routeRevision&&traverse(a,previous.route[previous.routeIndex],a);
+      let route = keepRoute?previous.route:findPath(a, goal, ['flank', 'crossfire', 'retreat'].includes(tactic) ? threat : null);
       if (!route.length) {
         // Do not drive into an unreachable target. Investigate a reachable nearby branch.
         const branches = navigation().nodes.filter(n => distance(a, n) > 3 && distance(a, n) < 16 && walkable(n, a) && traverse(a, n, a)).sort((x, y) => distance(x, goal) - distance(y, goal));
-        if (branches.length) { route = [branches[Math.min(branches.length - 1, Math.floor(random() * 3))]]; if (tactic === 'patrol') goal = route[0]; }
+        if (branches.length) { route = [branches[strategic?0:Math.min(branches.length - 1, Math.floor(random() * 3))]]; if (tactic === 'patrol') goal = route[0]; }
       }
-      s.decision = { goal, route, routeIndex: 0, tactic, cover, threatId: threat?.id || threat?.entityId };
+      s.routeRefresh=false;s.routeRevision=routeRevision;
+      s.decision = { goal, route, routeIndex: keepRoute?previous.routeIndex:0, tactic, cover, threatId: threat?.id || threat?.entityId };
       s.nextThink = now + cfg.decision * (.85 + random() * .3);
       return s.decision;
     }
@@ -314,13 +391,13 @@
       const visible = s.enemy;
       s.exposed = visible ? s.exposed + dt : Math.max(0, s.exposed - dt * 2);
       if (distance(a, s.anchor) > 1.5) { s.anchor = { x: a.x, z: a.z }; s.lastProgress = now; }
-      else if (now - s.lastProgress > 1.8 && s.decision?.route.length) { s.nextThink = 0; s.side *= -1; s.lastProgress = now; paths.clear(); }
+      else if (now - s.lastProgress > 1.8 && s.decision?.route.length&&distance(a,s.decision.route[s.decision.routeIndex])>.8) { s.nextThink = 0; s.routeRefresh=true; s.side *= -1; s.lastProgress = now; paths.clear(); }
       const decision = !s.decision || now >= s.nextThink ? choose(a, s, now) : s.decision;
       while (decision.routeIndex < decision.route.length - 1 && distance(a, decision.route[decision.routeIndex]) < 1.35 && Math.abs(a.y - decision.route[decision.routeIndex].y) < .8) decision.routeIndex++;
       const waypoint = decision.route[decision.routeIndex];
-      if (waypoint && !traverse(a, waypoint, a)) { s.nextThink = 0; }
+      if (waypoint && !traverse(a, waypoint, a)) { s.nextThink = 0;s.routeRefresh=true; }
       const d = waypoint ? distance(a, waypoint) : 0, move = waypoint && d > .65 && traverse(a, waypoint, a) ? { x: (waypoint.x - a.x) / d, z: (waypoint.z - a.z) / d } : { x: 0, z: 0 };
-      const speedMultiplier = (['flank', 'crossfire', 'retreat', 'resupply', 'reinforce'].includes(decision.tactic) ? p.sprint * 1.12 : decision.tactic === 'suspicious' ? .3 : .86) * (d < 2 ? clamp(d / 2, .25, 1) : 1);
+      const speedMultiplier = (['flank', 'crossfire', 'retreat', 'resupply', 'reinforce','bound'].includes(decision.tactic) ? p.sprint * 1.12 : ['attack','push'].includes(decision.tactic)?p.sprint:decision.tactic === 'suspicious' ? .3 : .86) * (d < 2 ? clamp(d / 2, .25, 1) : 1);
       const wantSlide = a.onGround && d > 4 && visible && now >= (s.slideAt || 0) && (decision.tactic === 'retreat' || decision.tactic === 'crossfire' || profileName(a) === 'aggressor' && distance(a, visible) < 18);
       if (wantSlide) s.slideAt = now + 4 + random() * 3;
       s.recoil = Math.max(0, s.recoil - dt * .07);
@@ -332,18 +409,22 @@
         const targetPitch = Math.atan2(eye(a).y - aimHeight(visible), Math.max(.01, range)) + Math.cos(now * 3.4 + s.seed) * error * .5 - s.recoil;
         s.yaw += clamp(angleDelta(desiredYaw, s.yaw), -cfg.turn * dt, cfg.turn * dt); s.pitch += (targetPitch - s.pitch) * clamp(dt * cfg.turn * 2, 0, 1);
         const aligned = Math.abs(angleDelta(targetYaw, s.yaw)) < Math.max(.06, .65 / Math.max(4, range)) + cfg.error;
-        aim = { yaw: s.yaw, pitch: s.pitch, error, reactionReady: now >= s.acquired, fire: now >= s.acquired && now >= s.pauseUntil && aligned && !['cover', 'retreat'].includes(decision.tactic), target: visible };
+        const blocked=friendlyInFireLane(a,visible);
+        if(blocked){if(s.blockedSince==null)s.blockedSince=now;}else s.blockedSince=null;
+        aim = { yaw: s.yaw, pitch: s.pitch, error, reactionReady: now >= s.acquired, fire: now >= s.acquired && now >= s.pauseUntil && aligned && !blocked && !['cover', 'retreat'].includes(decision.tactic), target: visible };
       } else if (move.x || move.z) { s.yaw += clamp(angleDelta(Math.atan2(move.x, move.z), s.yaw), -cfg.turn * dt, cfg.turn * dt); s.pitch *= Math.max(0, 1 - dt * 8); }
       else if (['search', 'suspicious', 'defend', 'overwatch'].includes(decision.tactic)) s.yaw += Math.sin(now * .7 + s.seed) * dt * .8;
+      if(!visible)s.blockedSince=null;
       if (visible && decision.tactic === 'retreat') setGuardState(a, s, 'regroup', now);
       a.tacticalState = decision.tactic; a.tacticLabel = p.label; a.guardState = s.guardState; a.suspicion = s.suspicion; a.squadRole = s.squadRole;
       return { enemy: visible, memory: s.memory ? { ...s.memory } : null, goal: decision.goal, waypoint, move, speedMultiplier, wantSlide, wantCrouch: !!decision.cover && ['cover', 'retreat'].includes(decision.tactic), aim, yaw: s.yaw, pitch: s.pitch, tactic: decision.tactic, guardState: s.guardState, suspicion: s.suspicion, squadRole: s.squadRole };
     }
     function recordShot(a) {
       const s = state(a), cfg = settings();
-      if (s.burstLeft <= 0) s.burstLeft = Math.max(2, cfg.burst + Math.floor(random() * 3) - 1);
+      const supporting=s.decision?.tactic==='suppress';
+      if (s.burstLeft <= 0) s.burstLeft = Math.max(2, cfg.burst + (supporting?2:0) + Math.floor(random() * 3) - 1);
       s.burstLeft--; s.recoil = Math.min(.035, s.recoil + .006);
-      if (s.burstLeft <= 0) { s.pauseUntil = clock() + cfg.pause * (.75 + random() * .5); s.nextThink = Math.min(s.nextThink, clock() + .12); s.side = random() < .25 ? -s.side : s.side; }
+      if (s.burstLeft <= 0) { s.pauseUntil = clock() + cfg.pause * (supporting ? .65 : 1) * (.75 + random() * .5); s.nextThink = Math.min(s.nextThink, clock() + .12); s.side = random() < .25 ? -s.side : s.side; }
     }
     return { update, hear, reset, clear, recordOutcome, adaptation, recordShot, findPath, findCover, stats: () => ({ cachedPaths: paths.size, pathSearches: searches, deferredSearches, sounds: sounds.length }) };
   }

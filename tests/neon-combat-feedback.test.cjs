@@ -15,6 +15,43 @@ test('sound fades to silence at range and each weapon has a bounded firing profi
   assert.equal(feedback.attenuation(52),0);assert.equal(feedback.attenuation(0),1);assert(feedback.attenuation(25)<.3);
   assert.equal(Object.keys(feedback.FIRING).length,20);for(const p of Object.values(feedback.FIRING)){assert(p.decay<=.24);assert(p.smoke<=3);assert(p.halo<=1)}
 });
+
+test('six ballistic weapons have distinct recoil and flashes, with subdued suppressor effects',()=>{
+  const p=feedback.BALLISTICS;assert.equal(Object.keys(p).length,6);
+  assert(p.clawbreaker.kick[0]>p.whisker.kick[0]);assert(p.purr90.kick[0]<p.whisker.kick[0]);
+  assert(p.burrower.flash<p.whisker.flash*.4);assert(p.burrower.life<p.whisker.life);
+  assert(p.squeakshot.speed>p.whisker.speed);assert(p.thunderpaw.tail>p.purr90.tail);
+  for(const v of Object.values(p)){assert(v.life<=.1);assert(v.tail<=10);assert(v.width<=2.1);}
+});
+
+test('traveling tracers advance, stay within the physical hit and disappear at the endpoint',()=>{
+  const shot={ballistic:true,len:50,speed:500,tail:5,maxLife:.13,life:.13};
+  let last=0;
+  for(const life of [.13,.11,.08,.05,.02,0]){const w=feedback.tracerWindow({...shot,life});assert(w.start>=last);assert(w.end<=50);assert(w.start>=0);assert(w.end>=w.start);assert(w.end-w.start<=5.000001);last=w.start;}
+  assert.equal(feedback.tracerWindow({...shot,life:0}).alpha,0);
+  assert.deepEqual(feedback.tracerWindow({len:50,life:.1}),{start:0,end:50,alpha:1},'energy beams retain their complete span');
+  assert.equal(feedback.tracerWindow({...shot,len:0}).alpha,0);
+  assert(feedback.tracerWindow({...shot,len:.25}).end<=.25,'close cover is not overshot');
+});
+
+test('gunfire stereo follows facing and stays centered for the firing player',()=>{
+  const listener={x:0,z:0,yaw:0};
+  assert(feedback.stereoPan(listener,{x:10,z:0})>.7);
+  assert(feedback.stereoPan(listener,{x:-10,z:0})<-.7);
+  assert.equal(feedback.stereoPan(listener,{x:0,z:15}),0);
+  assert.equal(feedback.stereoPan(listener,{x:.1,z:.2}),0);
+  assert.equal(feedback.stereoPan(listener,{x:.28,z:.58}),0,'the nearby first-person muzzle remains centered');
+  assert(feedback.stereoPan({...listener,yaw:Math.PI},{x:10,z:0})<-.7);
+});
+
+test('close shots survive their first frame at 30 or 60 Hz and expire even if never visible',()=>{
+  for(const dt of [1/30,1/60])for(const p of Object.values(feedback.BALLISTICS)){
+    const life=5/p.speed+.025,context=vm.createContext({shots:[{ballistic:true,firstFrame:true,len:5,speed:p.speed,tail:p.tail,life,maxLife:life}]});
+    vm.runInContext(getFunction('ageShotTrails')+';this.age=ageShotTrails',context);
+    context.age(dt);assert.equal(context.shots.length,1);assert(feedback.tracerWindow(context.shots[0]).alpha>0);
+    for(let i=0;i<30;i++)context.age(dt);assert.equal(context.shots.length,0,'offscreen shots do not accumulate');
+  }
+});
 test('rays beginning inside physical cover stop immediately rather than hitting behind it',()=>{
   const context=vm.createContext({Math});vm.runInContext(getFunction('rayBox')+';this.rayBox=rayBox',context);
   const box={x:0,y:1,z:2,w:2,h:2,d:2};
