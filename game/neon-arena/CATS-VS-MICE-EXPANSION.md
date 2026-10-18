@@ -304,6 +304,7 @@ The recorded validation snapshot during implementation was:
 | New actual-model browser test | Twelve character GLBs, six weapon GLBs, eight animation states, magazine motion and all 44 catalog asset URLs passed without browser/loading errors |
 | Original browser compatibility suites | All ten passed with real Chrome/WebGL and verified original model fixtures: baseline, menu, tiles, Survival, slide, UI, allies, overhaul, projectile and explosion |
 | Expansion runtime browser matrix | All 38 cases passed: six Conquest maps on desktop, touch portrait, touch landscape and local split-screen; all ten scripted campaign objective chains; and both factions' first missions using actual touch taps/holds in both phone orientations. Includes 24 actual firing/render checks across the six new weapons, compact HUD dimensions, expanding maps, mouse-aim restoration, capture feedback and personal kill notices. All ten mission graphics decoded; zero browser or WebGL errors |
+| Live territory AI browser checks | Both factions physically captured flags on Cold Storage and Floodgate, reaching the check in 9 and 15 simulated seconds respectively; real collision, navigation and capture rules, without moving actors to objectives |
 
 Compatibility coverage includes 51 map rendering cases, 2,052 ramp traversals,
 twelve HUD layouts, all eight Survival arenas, original save/unlock behavior,
@@ -315,7 +316,8 @@ checks for all ten missions, including defense orders at transitions. It moves
 the player to objective sites, removes opponents to isolate stage transitions,
 and positions escorts at their destinations. The runtime matrix does not
 demonstrate unscripted combat completion,
-natural escort pacing or campaign balance.
+natural escort pacing or campaign balance. The separate territory AI harness
+demonstrates autonomous movement and initial captures, not full-match balance.
 
 The following remain explicit limits and manual verification work:
 
