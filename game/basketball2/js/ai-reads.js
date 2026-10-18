@@ -40,6 +40,31 @@ function aiReadSegment(point,start,end){
   return {t,rawT,distance:Math.hypot(point.x-start.x-dx*t,point.z-start.z-dz*t)};
 }
 
+// Read the race at the attacker's shoulder, rather than treating a nearby
+// pursuing body as an obstacle along every metre of the lane. A defender who
+// can visibly cross back in front still owns the angle.
+function aiReadDriveEdge(char,defender,position,point,direction){
+  const body=(char.bodyRadius || .55)+(defender.bodyRadius || .55);
+  const dx=point.x-position.x,dz=point.z-position.z;
+  const forward=dx*direction.x+dz*direction.z;
+  const lateral=Math.abs(dx*direction.z-dz*direction.x);
+  if(forward>.35||Math.hypot(dx,dz)<body+.08) return false;
+  if(forward>-.35&&lateral<body+.08) return false;
+  if(defender.blockTime>0&&defender.onGround===false&&Math.hypot(dx,dz)<2.4) return false;
+  const velocity=aiReadVelocity(char),guardVelocity=aiReadVelocity(defender);
+  const speed=Math.hypot(velocity.x,velocity.z),progress=velocity.x*direction.x+velocity.z*direction.z;
+  if(speed>1.2&&progress<speed*.5) return false;
+  // A stationary handler can start a normal drive; an existing runner uses
+  // their actual forward momentum. This forecast never changes movement stats.
+  const attackSpeed=Math.min(8,Math.max(2.8,progress)),horizon=.26;
+  const guardSpeed=Math.hypot(guardVelocity.x,guardVelocity.z),guardScale=guardSpeed>8?8/guardSpeed:1;
+  const futureX=dx+(guardVelocity.x*guardScale-direction.x*attackSpeed)*horizon;
+  const futureZ=dz+(guardVelocity.z*guardScale-direction.z*attackSpeed)*horizon;
+  const futureForward=futureX*direction.x+futureZ*direction.z;
+  const futureLateral=Math.abs(futureX*direction.z-futureZ*direction.x);
+  return !(futureForward>-.35&&futureLateral<body+.02);
+}
+
 function aiReadFinishMatchup(char,position,contests){
   const distance=aiReadDistance(position,HOOP_POS),stamina=char.stamina ?? 1;
   const nearby=contests.filter(read=>read.gap<2.35&&(read.pressure>.2||read.rimPressure>.3));
@@ -75,13 +100,14 @@ function aiReadFinishMatchup(char,position,contests){
 }
 
 function aiReadShotAt(char,observer,position,settings,horizon=0){
+  const view=aiReadSettings(settings);
   const velocity=aiReadVelocity(char),speed=Math.hypot(velocity.x,velocity.z);
   const distance=aiReadDistance(position,HOOP_POS);
   const toRim=HOOP_POS.clone().sub(position).setY(0).normalize();
   const toward=speed>.01?(velocity.x*toRim.x+velocity.z*toRim.z)/speed:0;
   const running=speed>1.2;
   const closeFinish=distance<2.9 || distance<3.6&&running;
-  let space=8,rimPressure=0,pressure=0;
+  let space=8,finishingSpace=8,rimPressure=0,pressure=0;
   const contests=[];
   for(const defender of aiReadOpponents(char)){
     const point=aiReadPosition(observer,defender,settings,horizon);
@@ -89,12 +115,19 @@ function aiReadShotAt(char,observer,position,settings,horizon=0){
     space=Math.min(space,gap);
     const towardDefender=point.clone().sub(position).setY(0);
     const alignment=gap>.01?towardDefender.dot(toRim)/gap:1;
+    // A current running gather advances with its pursuer. Forecasting only
+    // the defender makes an equally fast trailer appear to jump in front.
+    const motionTime=Math.min(Math.max(0,horizon),view.ahead)*(.3+view.vision*.7)*(speed>8?8/speed:1);
+    const edgePoint=closeFinish&&running&&aiReadDistance(position,char.group.position)<.05
+      ?point.clone().addScaledVector(velocity,-motionTime) :point;
+    const driveEdge=closeFinish&&running&&toward>.35&&aiReadDriveEdge(char,defender,position,edgePoint,toRim);
+    if(!driveEdge) finishingSpace=Math.min(finishingSpace,gap);
     const reach=aiReadClamp((defender.profile?.block || 1)-1,-.4,.8)*.18;
-    const front=closeFinish?(alignment<-.3?.68:1):1;
+    const front=closeFinish?(driveEdge?.38:alignment<-.3?.68:1):1;
     const defenderPressure=aiReadClamp((2.45+reach-gap)/2.15)*front;
     pressure=Math.max(pressure,defenderPressure);
     let defenderRimPressure=0;
-    if(closeFinish){
+    if(closeFinish&&!driveEdge){
       const line=aiReadSegment(point,position,HOOP_POS);
       if(line.t>.05&&(line.t<1||aiReadDistance(point,HOOP_POS)<1.6)&&aiReadDistance(point,HOOP_POS)<3.1){
         defenderRimPressure=aiReadClamp((1.75+reach-line.distance)/1.75)*(1-line.t*.22);
@@ -109,7 +142,7 @@ function aiReadShotAt(char,observer,position,settings,horizon=0){
   const momentum=closeFinish?Math.max(0,speed-4)*.025+Math.max(0,-toward)*speed*.025:Math.min(.28,speed*.045);
   const fatigue=Math.max(0,1-(char.stamina ?? 1))*.13;
   const rangePenalty=Math.max(0,distance-preferredRange)*.15;
-  const finishOpen=closeFinish&&space>1.55&&pressure<.38&&rimPressure<.42;
+  const finishOpen=closeFinish&&finishingSpace>1.55&&pressure<.38&&rimPressure<.42;
   const matchup=aiReadFinishMatchup(char,position,contests);
   const contactScale=matchup.finishFavorable?1-Math.min(.36,matchup.mismatchAdvantage*.52):1;
   let quality=closeFinish?.91+(finishing-1)*.10:.79+(shooting-1)*.16;
@@ -122,7 +155,7 @@ function aiReadShotAt(char,observer,position,settings,horizon=0){
   // The extra point matters only after the shooter has earned a clean look.
   // Quality stays a feasibility grade so a bad three never gains an excuse.
   const value=aiReadClamp(quality+(points===3&&inRange&&quality>.7&&space>2.05?.065:0));
-  return {quality,value,points,distance,closeFinish,finishOpen,space,inRange,preferredRange,momentum,rimPressure,pressure,running,...matchup};
+  return {quality,value,points,distance,closeFinish,finishOpen,space,finishingSpace,inRange,preferredRange,momentum,rimPressure,pressure,running,...matchup};
 }
 
 function aiAssessShot(char,settings,positionOverride){
@@ -136,7 +169,9 @@ function aiReadDrivePath(char,waypoint,finish,settings){
   const start=char.group.position,read=aiReadSettings(settings);
   const first=aiReadDistance(start,waypoint),second=aiReadDistance(waypoint,finish);
   const speed=Math.max(3.5,Math.hypot(aiReadVelocity(char).x,aiReadVelocity(char).z));
-  let clearance=8,finishSpace=8,immediateBlocked=false;
+  const departure=waypoint.clone().sub(start).setY(0).normalize();
+  const finishDirection=HOOP_POS.clone().sub(finish).setY(0).normalize();
+  let clearance=8,finishSpace=8,immediateBlocked=false,angleAdvantage=false;
   for(const defender of aiReadOpponents(char)){
     const current=aiReadPosition(char,defender,settings);
     const firstProjection=aiReadSegment(current,start,waypoint);
@@ -146,16 +181,19 @@ function aiReadDrivePath(char,waypoint,finish,settings){
     const help=aiReadPosition(char,defender,settings,(first+second*twoProjection.t)/speed);
     const two=aiReadSegment(help,waypoint,finish);
     const body=(char.bodyRadius || .55)+(defender.bodyRadius || .55);
+    const shoulder=aiReadDriveEdge(char,defender,start,current,departure);
+    angleAdvantage=angleAdvantage||shoulder;
     // A defender behind the departure direction does not close the lane ahead.
     const movingAway=one.t<.06&&aiReadDistance(waypoint,future)>aiReadDistance(start,future)+.25;
-    if(!movingAway) clearance=Math.min(clearance,one.distance-body);
+    if(!movingAway&&!shoulder) clearance=Math.min(clearance,one.distance-body);
     // The run ends at the takeoff spot. A defender beyond it belongs to the
     // finish read; a clamped segment endpoint must not turn that distant body
     // into an obstacle along an otherwise empty driving corridor.
     const beyondFinish=two.rawT>1&&aiReadDistance(help,finish)>body+.18;
     const behindSecond=two.rawT<0&&aiReadDistance(finish,help)>aiReadDistance(waypoint,help)+.25;
-    if(!beyondFinish&&!behindSecond) clearance=Math.min(clearance,two.distance-body);
-    finishSpace=Math.min(finishSpace,aiReadDistance(help,finish));
+    const finishEdge=shoulder&&aiReadDriveEdge(char,defender,finish,help,finishDirection);
+    if(!beyondFinish&&!behindSecond&&!finishEdge) clearance=Math.min(clearance,two.distance-body);
+    if(!finishEdge) finishSpace=Math.min(finishSpace,aiReadDistance(help,finish));
     // Physical bodies cannot be ignored by a noisy read in the immediate step.
     const nearEnd=start.clone().addScaledVector(waypoint.clone().sub(start).setY(0).normalize(),Math.min(1.45,first));
     const actual=aiReadSegment(defender.group.position,start,nearEnd);
@@ -169,10 +207,10 @@ function aiReadDrivePath(char,waypoint,finish,settings){
   }
   const pathOpen=aiReadClamp(clearance/1.05);
   const finishOpen=aiReadClamp((finishSpace-1.1)/1.55);
-  const finishRead=aiReadShotAt(char,char,finish,settings,read.ahead);
+  const finishRead=aiReadShotAt(char,char,finish,settings,Math.min(read.ahead,(first+second)/speed));
   const finishSafety=Math.min(finishOpen,aiReadClamp((.9-finishRead.rimPressure)/.65));
   const openness=immediateBlocked?0:pathOpen*(.42+.58*finishSafety);
-  return {openness,finishSpace,clearance,blocked:immediateBlocked,clearCorridor:!immediateBlocked&&clearance>.48,
+  return {openness,finishSpace,clearance,angleAdvantage,blocked:immediateBlocked,clearCorridor:!immediateBlocked&&clearance>.48,
     finishRisk:finishRead.finishRisk,finishFavorable:finishRead.finishFavorable};
 }
 

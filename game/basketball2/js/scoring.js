@@ -200,12 +200,26 @@ function startDunk(char){
   const style =
     (char.profile.width > 1.1 || char.profile.height > 1.07) ? "twohand" :
     (char.profile.jump > 1.08 || char.profile.sprint > 1.13) ? "tomahawk" : "quick";
-  const rimFront = HOOP_POS.clone().add(new THREE.Vector3(0,0,RIM_RADIUS + char.bodyRadius + 0.1));
+  // The path moves the player's feet. A rim-height root puts their knees above
+  // the hoop; solve the rise from the actual shoulder and extended arm instead.
+  const rimFront = new THREE.Vector3(HOOP_POS.x,char.group.position.y,HOOP_POS.z+RIM_RADIUS+char.bodyRadius*.25);
   const takeoff = char.group.position.clone().add(toRimDir.clone().multiplyScalar(Math.min(1.05,toRim.length()*0.38)));
-  const jumpBoost = THREE.MathUtils.clamp((char.profile.jump - 1) * 0.5,0,0.24);
-  const profileLift = style === "twohand" ? 0.76 : style === "tomahawk" ? 0.84 : 0.68;
-  const peak = rimFront.clone().add(new THREE.Vector3(sideSign*0.1,profileLift + jumpBoost,0.03));
-  const attack = rimFront.clone().add(new THREE.Vector3(sideSign*0.03,0.36 + jumpBoost*0.35,-0.01));
+  const handTargets={},handStarts={};
+  const attackSide=sideSign>0?"right":"left";
+  let rootHeight=0,rootMaxY=Infinity;
+  for(const side of ["left","right"]){
+    handTargets[side]=HOOP_POS.clone().add(new THREE.Vector3(style==="twohand"?(side==="left"?-.12:.12):0,.16,.26));
+    if(char.group.worldToLocal) handStarts[side]=char.group.worldToLocal(getWorldHand(char,side).clone());
+    if(style!=="twohand"&&side!==attackSide) continue;
+    const reach=typeof getBasketballDunkReach==="function"&&getBasketballDunkReach(char,side) ||
+      {shoulder:new THREE.Vector3(0,1.58*char.profile.height,0),length:.72*char.profile.height,knee:.75*char.profile.height};
+    const horizontal=Math.hypot(handTargets[side].x-rimFront.x-reach.shoulder.x,handTargets[side].z-rimFront.z-reach.shoulder.z);
+    const vertical=Math.sqrt(Math.max(.04,Math.pow(reach.length*.97,2)-horizontal*horizontal));
+    rootHeight=Math.max(rootHeight,handTargets[side].y-reach.shoulder.y-vertical);
+    rootMaxY=Math.min(rootMaxY,HOOP_POS.y-reach.knee-.28);
+  }
+  const peak = rimFront.clone();peak.y=THREE.MathUtils.clamp(rootHeight,char.group.position.y,rootMaxY);
+  const attack = peak.clone();
   const landing = rimFront.clone().add(new THREE.Vector3(-sideSign*0.1,0,-0.36));
   char.moveMeta.dunk = {
     start: char.group.position.clone(),
@@ -217,7 +231,8 @@ function startDunk(char){
     startFacing: char.angle,
     style,
     baseY: char.group.position.y,
-    rootMaxY: HOOP_POS.y - (0.6 + 0.08*char.profile.height),
+    rootMaxY,handTargets,handStarts:Object.keys(handStarts).length===2?handStarts:null,posePhase:0,
+    landingTime:0,landingDuration:.38,landingProgress:0,
     gatherSink: 0.1 + (style === "twohand" ? 0.03 : 0),
     forwardBlend: style === "quick" ? 0.3 : 0.24
   };
@@ -240,13 +255,16 @@ function updateDunk(dt){
   gatherPos.y = meta.baseY - Math.sin(gather*Math.PI) * meta.gatherSink;
   const flightPos = meta.takeoff.clone().lerp(meta.peak,smoothstep(flight));
   const rimPos = meta.peak.clone().lerp(meta.attack,smoothstep(rimPhase));
-  const slamPos = meta.attack.clone().lerp(meta.landing,smoothstep(slam));
+  if(dunkScored&&!rimHangActive) meta.landingTime+=dt;
+  meta.landingProgress=THREE.MathUtils.clamp(meta.landingTime/meta.landingDuration,0,1);
+  meta.posePhase=dunkScored?.79+.21*meta.landingProgress:t;
+  const slamPos = meta.attack.clone().lerp(meta.landing,smoothstep(dunkScored?meta.landingProgress:0));
   if(t < 0.2) owner.group.position.copy(gatherPos);
   else if(t < 0.54) owner.group.position.copy(flightPos);
   else if(t < 0.76) owner.group.position.copy(rimPos);
   else owner.group.position.copy(slamPos);
   owner.group.position.y = THREE.MathUtils.clamp(owner.group.position.y,meta.baseY-0.12,meta.rootMaxY);
-  owner.group.position.z = Math.max(owner.group.position.z, HOOP_POS.z + RIM_RADIUS + owner.bodyRadius + 0.04);
+  owner.group.position.z = Math.max(owner.group.position.z, HOOP_POS.z + RIM_RADIUS + owner.bodyRadius*.2);
   owner.group.rotation.x = -0.16 * Math.sin(gather*Math.PI) - 0.06 * Math.sin(flight*Math.PI) + 0.05 * Math.sin(slam*Math.PI);
   owner.group.rotation.y = THREE.MathUtils.lerp(owner.group.rotation.y,meta.startFacing,0.18);
   const knee = Math.sin((flight+rimPhase*0.5)*Math.PI);
@@ -268,9 +286,13 @@ function updateDunk(dt){
     owner.rightLeg.rotation.x = 0.22 * Math.sin(slam*Math.PI);
   }
   keepInCourt(owner.group.position);
+  // The root just moved; refresh this pose at zero animation time before using
+  // its hand for the real ball and block-contact point.
+  if(typeof updatePlayerModel==="function"&&owner.playerModel) updatePlayerModel(owner,0);
+  else if(typeof poseBasketballDunkHands==="function"){poseDunkArms(owner,meta.posePhase);poseBasketballDunkHands(owner);}
   if(t < 0.54){
-    if(meta.style === "twohand") attachBallBetweenHands(owner,new THREE.Vector3(0,0.36,-0.2));
-    else attachBallToHand(owner,meta.side,new THREE.Vector3(0,0.4,-0.2));
+    if(meta.style === "twohand") attachBallBetweenHands(owner,new THREE.Vector3(0,.1,-.12));
+    else attachBallToHand(owner,meta.side,new THREE.Vector3(0,.1,-.12));
     ballVelocity.set(0,0,0);
   }else if(t < 0.76){
     const handBias = meta.side === "right" ? "right" : "left";
@@ -343,11 +365,11 @@ function updateDunk(dt){
   }
   if(rimHangActive){
     rimHangTimer -= dt;
-    owner.group.position.y = Math.min(meta.rootMaxY - 0.04,Math.max(owner.group.position.y,HOOP_POS.y - 0.62));
     if(rimHangTimer <= 0) rimHangActive = false;
   }
-  if(t >= 1 && !rimHangActive){
+  if(t >= 1 && !rimHangActive && (!dunkScored || meta.landingProgress>=1)){
     dunkActive = false;
+    owner.group.position.y=meta.baseY;owner.yVel=0;owner.onGround=true;
     if(dunkScored){
       ballState = "dead";
       ballVelocity.set(0,-2.8,0);
@@ -557,6 +579,10 @@ function scheduleDeadPossession(ownerId,delay=420){
 
 function updateScoredPossession(dt){
   if(!pendingInbound) return false;
+  if(typeof gamePaused!=="undefined"&&gamePaused) return true;
+  // A scored dunk keeps its brief hang and landing while the authoritative
+  // inbound timer runs. The main simulation returns here, so these advance once.
+  if(dunkActive){updateDunk(dt);updateCharacters(dt);}
   pendingInbound.remaining-=dt;
   if(pendingInbound.remaining<=0 && gameStarted && !gameOver){
     const ownerId=pendingInbound.ownerId || nextPossessionAfterScore(pendingInbound.scorerId);

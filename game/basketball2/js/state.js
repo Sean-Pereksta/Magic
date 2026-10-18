@@ -51,6 +51,8 @@ let selectedP1Sneaker = "classic";
 let selectedP2Sneaker = "classic";
 let selectedP1Jersey = "classicBlue";
 let selectedP2Jersey = "firestorm";
+let selectedP1Equipment = {};
+let selectedP2Equipment = {};
 let selectedCourt = "classicArena";
 let selectedDifficulty = "normal";
 
@@ -249,6 +251,12 @@ const profiles = {
     height:.94,width:.86,speed:1.04,sprint:1.0,jump:.78,layup:.74,handle:1.2,shot:1.78,block:.45,steal:.82,hook:.45,number:"30",hairStyle:"shortFade"
   }
 };
+
+// Identity affects choices and team combinations; physical ratings stay shared.
+for(const [key,archetype] of Object.entries({sky:"all_rounder",flash:"slasher",smooth:"sharpshooter",bruiser:"interior",claw:"defender",rocket:"slasher",crafty:"playmaker",tower:"interior",rimreaper:"slasher",deeprange:"sharpshooter"})){
+  profiles[key].archetype=archetype;
+  profiles[key].passing=archetype==="playmaker"?1.45:archetype==="all_rounder"?1.1:THREE.MathUtils.clamp(.7+profiles[key].handle*.3,.85,1.2);
+}
 
 const jerseys = {
   classicBlue:{name:"Classic Blue",primary:0x1d6cff,secondary:0xffffff,trim:0xffd56a,pattern:"wave",style:"Legacy"},

@@ -256,3 +256,23 @@ test('a clear direct drive is kept over a lateral midrange pass, then kicked out
   ctx.decideAIHandler(handler,handler.aiBrain,ctx.difficultySettings.impossible);
   assert.equal(handler.aiBrain.decision,'pass');assert.equal(handler.aiBrain.passTargetId,ctx.p1.id);
 });
+
+test('a beaten shoulder commits to the drive and gather instead of surrendering to a routine outlet',()=>{
+  for(const side of [-1,1]) for(const profile of [
+    {archetype:'slasher',layup:1.4},{archetype:'sharpshooter',shot:1.4},{archetype:'interior',height:1.2,width:1.2,layup:1.3}]){
+    const ctx=harness(2);ctx.selectedDifficulty='impossible';
+    const handler=ctx.getTeammates(ctx.p1)[0];Object.assign(handler.profile,profile);
+    handler.group.position.set(0,0,ctx.HOOP_POS.z+5.8);handler.velocity.set(0,0,-3.2);
+    ctx.p1.group.position.set(4,0,ctx.HOOP_POS.z+5);ctx.p1.profile.shot=1.3;
+    const defenders=ctx.getOpponents(handler),shoulder=defenders[0];
+    shoulder.group.position.set(side*1.3,0,ctx.HOOP_POS.z+5.95);shoulder.velocity.set(0,0,-3.2);
+    defenders[1].group.position.set(8,0,ctx.HOOP_POS.z+10);
+    ctx.ballOwner=handler.id;ctx.possession=handler.id;handler.aiBrain.actionCooldown=0;handler.aiBrain.possessionAge=1;
+    ctx.decideAIHandler(handler,handler.aiBrain,ctx.difficultySettings.impossible);
+    assert.equal(handler.aiBrain.decision,'drive');assert.equal(handler.aiBrain.passTargetId,null);
+    handler.group.position.set(0,0,ctx.HOOP_POS.z+2.9);
+    shoulder.group.position.set(side*1.3,0,ctx.HOOP_POS.z+3.05);
+    ctx.decideAIHandler(handler,handler.aiBrain,ctx.difficultySettings.impossible);
+    assert.equal(handler.aiBrain.decision,'finish');assert.equal(ctx.chargingPlayer,handler);
+  }
+});
