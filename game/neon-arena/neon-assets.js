@@ -12,13 +12,32 @@
   const baseURL = normalizeRoot(config.ASSET_BASE_URL);
   const uiBaseURL = Object.prototype.hasOwnProperty.call(config, 'UI_ASSET_BASE_URL') ? normalizeRoot(config.UI_ASSET_BASE_URL, true) : baseURL;
   const weapons = Object.fromEntries(['pistol','assault','sniper','smg','shotgun','burst','arc','rocket','mortar','punch','harpoon','plasma','laser','mender'].map(key => [key, 'weapons/' + key + '.glb']));
+  const expansionWeapons=['whisker','clawbreaker','purr90','burrower','squeakshot','thunderpaw'];
+  const factionCharacters={cats:['cat_assault','cat_heavy','cat_scout','cat_marksman','cat_stalker','cat_officer'],mice:['mouse_rifleman','mouse_runner','mouse_engineer','mouse_sniper','mouse_shieldbearer','mouse_commander']};
+  for(const key of expansionWeapons)weapons[key]='weapons/new/'+key+'.glb';
   const humanKeys = ['player_one','player_two','bot_breacher','bot_sentinel','bot_vanguard','bot_flanker','bot_demolisher','character_bulwark','character_ronin','character_warden','character_revenant','character_praetorian','character_overlord'];
   const characterKeys = [...humanKeys, ...['blue','yellow','red','green','stripe','purple','flyer','climber','rammerBoss','spitterBoss','matriarchBoss','shieldBoss','burrowerBoss','commanderBoss'].map(key => 'alien_' + key)];
   const characters = Object.fromEntries(characterKeys.map(key => [key, 'characters/' + key + '.glb']));
+  for(const [faction,ids] of Object.entries(factionCharacters))for(const id of ids)characters[id]='factions/'+faction+'/'+id+'.glb';
+  const expansionPaths=new Set([
+    ...Object.entries(factionCharacters).flatMap(([faction,ids])=>[...ids.flatMap(id=>['glb','svg'].map(ext=>'factions/'+faction+'/'+id+'.'+ext)),'factions/'+faction+'/icon.svg']),
+    ...expansionWeapons.flatMap(id=>['glb','svg'].map(ext=>'weapons/new/'+id+'.'+ext)),
+    'campaign/ui/faction-war.svg',...'abcde'.split('').map(id=>'conquest/objectives/sector-'+id+'.svg')
+  ]);
+  const expansionRoot=normalizeRoot(config.EXPANSION_ASSET_BASE_URL||'./assets',true),expansionFallbackRoot=normalizeRoot(config.EXPANSION_FALLBACK_BASE_URL||'./assets',true);
+  function expansionPath(path){
+    if(typeof path!=='string')return '';
+    const alias=/^weapons\/([\w]+)\.glb$/.exec(path);
+    if(alias&&expansionWeapons.includes(alias[1]))path='weapons/new/'+alias[1]+'.glb';
+    return expansionPaths.has(path)?path:'';
+  }
   const localCharacterRoot = normalizeRoot(config.CHARACTER_FALLBACK_BASE_URL || './assets', true);
   const isHumanPath = path => /^characters\/[\w]+\.(glb|webp)$/.test(path) && humanKeys.includes(path.split('/').pop().replace(/\.[^.]+$/, ''));
   function localCharacterURL(path) { return isHumanPath(path) && localCharacterRoot ? localCharacterRoot + '/' + path : ''; }
+  function localModelURL(path){const bundled=expansionPath(path);return bundled&&expansionFallbackRoot?expansionFallbackRoot+'/'+bundled:localCharacterURL(path);}
   function url(path) {
+    const bundled=expansionPath(path);
+    if(bundled)return expansionRoot?expansionRoot+'/'+bundled+'?v='+encodeURIComponent(root.NeonFactions?.version||'dominion-resistance-2026-10-18.1'):localModelURL(path);
     if (typeof path !== 'string' || !/^(weapons|characters|ui)\/[\w/.-]+$/.test(path) || path.split('/').some(part => part === '..' || part === '.')) return '';
     const rootURL = path.startsWith('ui/') ? uiBaseURL : baseURL;
     if (!rootURL) return localCharacterURL(path);
@@ -48,7 +67,7 @@
     }
     root.dispatchEvent?.(new Event('neonassetsready'));
   }
-  root.NeonAssets = Object.freeze({baseURL, uiBaseURL, weapons: Object.freeze(weapons), characters: Object.freeze(characters), url, localCharacterURL, bindImages});
+  root.NeonAssets = Object.freeze({baseURL, uiBaseURL, weapons: Object.freeze(weapons), characters: Object.freeze(characters), url, localCharacterURL, localModelURL, bindImages});
   if (typeof module !== 'undefined' && module.exports) module.exports = root.NeonAssets;
   if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => bindImages(), {once:true});

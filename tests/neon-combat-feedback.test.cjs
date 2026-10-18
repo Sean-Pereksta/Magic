@@ -13,7 +13,7 @@ test('shield, armor, health, headshot and defeat feedback remain distinguishable
 });
 test('sound fades to silence at range and each weapon has a bounded firing profile',()=>{
   assert.equal(feedback.attenuation(52),0);assert.equal(feedback.attenuation(0),1);assert(feedback.attenuation(25)<.3);
-  assert.equal(Object.keys(feedback.FIRING).length,14);for(const p of Object.values(feedback.FIRING)){assert(p.decay<=.24);assert(p.smoke<=3);assert(p.halo<=1)}
+  assert.equal(Object.keys(feedback.FIRING).length,20);for(const p of Object.values(feedback.FIRING)){assert(p.decay<=.24);assert(p.smoke<=3);assert(p.halo<=1)}
 });
 test('rays beginning inside physical cover stop immediately rather than hitting behind it',()=>{
   const context=vm.createContext({Math});vm.runInContext(getFunction('rayBox')+';this.rayBox=rayBox',context);
