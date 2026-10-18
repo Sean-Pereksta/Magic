@@ -342,3 +342,31 @@ A block requires useful leverage, contact and the blocker facing the opponent. B
 Carrier lane decisions use the same tackle reach as live contact checks, forecast crossing defenders and distinguish a physically protected block side from an exposed shoulder. Sidelines, pursuit, extra tacklers, and the existing retreat limits remain dangerous/authoritative. Existing screen outlet, burst and catching improvements are retained.
 
 Validation: run `node --test game/receiver-window-qb/*.test.cjs`. With Playwright installed, run `node game/receiver-window-qb/tactics-browser.cjs`; `QB_CHROMIUM_PATH` optionally selects the browser executable. This exercises desktop and mobile-touch layouts.
+
+### Next-generation asset preparation
+
+`player-assets.js` provides an optional loader module for the forthcoming football
+asset pack. **Status: preparation only.** It is not included by the game page and
+does not replace any current player, animation, contact shape or saved measurement.
+No Cloudflare URL is configured, and an empty base URL performs no requests.
+
+After the ZIP is uploaded and its public directory URL is supplied, integration can
+create `QBPlayerAssets.create({baseURL, fetch, loadGLTF, clone})`. The injected
+`loadGLTF(url)` must return a parsed GLTF with a scene; `clone(scene)` must perform
+a skeleton-safe clone such as `SkeletonUtils.clone` from the matching Three.js
+version. The module deliberately supplies no graphics-library imports. Its
+`getManifest()` reads schema version 1 with `assets: [{id, path, lods: {high, low}}]`;
+paths are relative GLB filenames contained beneath the configured directory.
+`load(id, {lod: 'high'})` returns `{scene, animations, asset, lod, release}`. Each
+instance owns its material colors, bones, morph weights and animation clips so
+physique adaptation can safely rebase translation tracks. Geometry and textures
+remain shared. Call `release()` when removing an instance and
+`dispose()` when retiring the loader. The default template cache holds eight
+entries (configurable from 1 to 32); eviction defers shared-resource disposal until
+live instances release. Failed manifest and GLB loads can be retried.
+
+Phase 1 asset delivery, Phase 2 gameplay changes, Phase 3 activation after the R2
+URL is supplied, and Phase 4 compatibility/performance validation remain distinct
+milestones. This module does not establish model rendering, physical alignment,
+replay compatibility or device performance. Its isolated tests cover disabled
+loading, URL containment, retries, resource ownership and instance independence.
