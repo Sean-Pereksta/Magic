@@ -9,6 +9,9 @@
     shield:{color:'#68cfff',kind:'ring',count:2,life:.22,speed:0,sound:840}
   });
   const FIRING=Object.freeze({
+    whisker:{frequency:118,decay:.095,smoke:1,halo:.72},clawbreaker:{frequency:54,decay:.22,smoke:3,halo:1},
+    purr90:{frequency:205,decay:.055,smoke:1,halo:.46},burrower:{frequency:285,decay:.045,smoke:1,halo:.25},
+    squeakshot:{frequency:85,decay:.17,smoke:2,halo:.8},thunderpaw:{frequency:66,decay:.14,smoke:2,halo:.9},
     pistol:{frequency:150,decay:.10,smoke:1,halo:.7},assault:{frequency:110,decay:.09,smoke:1,halo:.7},
     smg:{frequency:190,decay:.06,smoke:0,halo:.5},burst:{frequency:170,decay:.08,smoke:1,halo:.65},
     shotgun:{frequency:62,decay:.18,smoke:3,halo:1},sniper:{frequency:72,decay:.20,smoke:2,halo:.95},

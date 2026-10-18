@@ -25,7 +25,8 @@ if(progress&&username&&username.length<=32&&!username.includes('/')){
           read:async()=>data.neonSurvival||null,
           write:async state=>{
             if(auth.currentUser?.uid!==uid||localStorage.getItem('gh.username')!==username)return;
-            // updateDoc preserves all profile fields and cannot recreate a deleted profile.
+            // Campaign checkpoints/rewards travel inside the same versioned neonSurvival
+            // payload; updateDoc preserves unrelated profile fields and cannot recreate a deleted profile.
             await firestore.updateDoc(profile,{neonSurvival:state});
           }
         });

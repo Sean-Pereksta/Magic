@@ -49,7 +49,7 @@ async function main() {
       await page.waitForFunction(()=>!!window.__NEON_TEST__,null,{timeout:8000}).catch(error=>{throw new Error(device.name+' failed to initialize: '+errors.join('; ')+' '+error.message)});
       await page.waitForFunction(()=>document.querySelector('.menuLogo').classList.contains('asset-loaded'));assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('.menuLogo img')).display),'block');
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,device.name+' overflow');
-      assert.equal(await page.locator('[data-mode]').count(),5,'five selectable modes');
+      assert.equal(await page.locator('[data-mode]').count(),7,'seven selectable modes');
       for (const mode of ['dm','tdm','frag','siege','survivor']) {
         await page.locator('[data-mode="'+mode+'"]').click();
         await page.locator('#start').click();
@@ -85,14 +85,14 @@ async function main() {
         await cdp.detach();
       }
       const weapons = await page.evaluate(()=>{const t=__NEON_TEST__;for(const key of Object.keys(t.WEAPONS)){t.player.weapon=key;t.draw();}return {count:Object.keys(t.WEAPONS).length,error:t.gl.getError()}});
-      assert.equal(weapons.count,14);assert.equal(weapons.error,0);
+      assert.equal(weapons.count,20);assert.equal(weapons.error,0);
       if(fixtures){
         const requiredModels=await page.evaluate(async()=>{const paths=[...Object.values(NeonAssets.weapons),...Object.values(NeonAssets.characters)];await __NEON_TEST__.models.preload(paths);return paths.length;});
         const stats=await page.evaluate(()=>{const t=__NEON_TEST__;t.game.over=true;for(const key of Object.keys(t.WEAPONS)){t.player.weapon=key;t.draw();}return t.models.stats()});
-        assert.ok(stats.parsed>=requiredModels,'all catalog models loaded');assert.equal(stats.failed,0);assert.ok(stats.gpuModels>=14,'cached GPU weapon resources');
+        assert.ok(stats.parsed>=requiredModels,'all catalog models loaded');assert.equal(stats.failed,0);assert.ok(stats.gpuModels>=20,'cached GPU weapon resources');
       }
       assert.deepEqual(errors,[],device.name+' runtime errors');
-      reports.push({device:device.name,modes:5,splitMaps:standardMaps.length,weapons:14,errors:0});
+      reports.push({device:device.name,modes:5,splitMaps:standardMaps.length,weapons:20,errors:0});
       await context.close();
     }
     console.log(JSON.stringify({passed:reports,assets:fixtures?'local supplied GLBs':'hosted GLBs',webgl:process.env.NEON_MOCK_WEBGL==='1'?'mock (DOM/input/simulation only)':'real'},null,2));

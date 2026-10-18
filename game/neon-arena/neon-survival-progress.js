@@ -6,6 +6,8 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
   'use strict';
   const VERSION = 2, KEY = 'neon-breach.survival.v2', BACKUP = KEY + '.backup';
+  const campaignRules = () => root.NeonCampaign || (typeof require === 'function' ? require('./neon-campaign.js') : null);
+  const campaignState = raw => campaignRules()?.sanitizeProgress(raw) || (raw && typeof raw === 'object' ? JSON.parse(JSON.stringify(raw)) : {version:1,updatedAt:0,completed:{},rewards:[],checkpoints:{},selectedFaction:'mice',selectedMission:'mice_broken_convoy'});
   const maps = Object.freeze([
     {id:'breach_ring',name:'Breach Ring',unlockWave:0,tag:'FORTIFY & DEFEND',description:'Hold the military perimeter, build a stronghold, and answer every breach.',accent:'#50d9ef'},
     {id:'derelict_station',name:'Derelict Station',unlockWave:5,tag:'TUNNELS & FLANKS',description:'Abandoned trains divide the platforms. Watch the maintenance routes.',accent:'#ef69da'},
@@ -68,7 +70,7 @@
   const knownList = (list, ids) => Array.isArray(list) ? [...new Set(list.filter(id=>ids.has(id)))] : [];
   const characterEarned = (character,state) => character.unlockWave<=state.highestWave||!!(character.unlockAchievement&&state.achievements.includes(character.unlockAchievement));
   function fresh() {
-    return {version:VERSION,revision:0,updatedAt:0,selectedUpdatedAt:0,characterUpdatedAt:0,highestWave:0,stats:emptyStats(),arenas:Object.fromEntries(maps.map(m=>[m.id,{highestWave:0,kills:0,bosses:0,seconds:0,runs:0}])),unlockedMaps:['breach_ring'],unlockedRewards:[],unlockedCharacters:['player_one','player_two'],achievements:[],selected:{finish:'default',armor:'default',title:'default',effect:'default',character:'player_one'},recentRuns:[]};
+    return {version:VERSION,revision:0,updatedAt:0,selectedUpdatedAt:0,characterUpdatedAt:0,highestWave:0,stats:emptyStats(),arenas:Object.fromEntries(maps.map(m=>[m.id,{highestWave:0,kills:0,bosses:0,seconds:0,runs:0}])),unlockedMaps:['breach_ring'],unlockedRewards:[],unlockedCharacters:['player_one','player_two'],achievements:[],selected:{finish:'default',armor:'default',title:'default',effect:'default',character:'player_one'},recentRuns:[],campaign:campaignState(null)};
   }
   function sanitize(raw) {
     const state=fresh();
@@ -89,6 +91,7 @@
     for(const kind of ['finish','armor','title','effect']){const id=raw.selected?.[kind];if(id==='default'||rewards.some(r=>r.id===id&&r.kind===kind&&state.unlockedRewards.includes(id)))state.selected[kind]=id;}
     if(state.unlockedCharacters.includes(raw.selected?.character))state.selected.character=raw.selected.character;
     state.recentRuns=Array.isArray(raw.recentRuns)?raw.recentRuns.slice(-12).filter(r=>r&&mapIds.has(r.mapId)).map(r=>({id:String(r.id||'').slice(0,80),mapId:r.mapId,waves:integer(r.waves),kills:integer(r.kills),bosses:integer(r.bosses),seconds:number(r.seconds),endedAt:integer(r.endedAt)})):[];
+    state.campaign=campaignState(raw.campaign);
     return state;
   }
   function createStore(options={}) {
@@ -164,6 +167,8 @@
     function isCharacterUnlocked(id){return characterIds.has(id)&&state.unlockedCharacters.includes(id);}
     function equipCharacter(id){if(!isCharacterUnlocked(id))return false;if(state.selected.character===id)return true;state.selected.character=id;state.characterUpdatedAt=now();persist();return true;}
     function getEquippedCharacterModelPath(){return getEquippedCharacter().modelPath;}
+    function getCampaign(){return clone(state.campaign)}
+    function saveCampaign(progress){state.campaign=campaignState(progress);state.campaign.updatedAt=now();persist();return getCampaign()}
     function mergeRemote(raw){
       const incoming=sanitize(raw);
       for(const field of fields)state.stats[field]=Math.max(state.stats[field],incoming.stats[field]);
@@ -172,10 +177,11 @@
       for(const key of ['unlockedMaps','unlockedRewards','achievements','unlockedCharacters'])state[key]=[...new Set([...state[key],...incoming[key]])];
       if(incoming.selectedUpdatedAt>state.selectedUpdatedAt){for(const kind of ['finish','armor','title','effect'])state.selected[kind]=incoming.selected[kind];state.selectedUpdatedAt=incoming.selectedUpdatedAt;}
       if(incoming.characterUpdatedAt>state.characterUpdatedAt){state.selected.character=incoming.selected.character;state.characterUpdatedAt=incoming.characterUpdatedAt;}
+      state.campaign=campaignRules()?.mergeProgress(state.campaign,incoming.campaign)||(incoming.campaign.updatedAt>state.campaign.updatedAt?incoming.campaign:state.campaign);
       const earned=batch();earn(earned);persist();return snapshot();
     }
     async function attachProfileAdapter(adapter){if(!adapter||typeof adapter.read!=='function'||typeof adapter.write!=='function')return false;remote=adapter;try{const loaded=await adapter.read();if(loaded)mergeRemote(loaded);else queueSync();return true}catch(_){return false}}
-    return {beginRun,getRun,recordEvent,addTime,checkpoint,clearWave,finishRun,getState:snapshot,isUnlocked:id=>state.unlockedMaps.includes(id),setSelection,getSelection:()=>clone(state.selected),getCharacterCatalog,getEquippedCharacter,isCharacterUnlocked,equipCharacter,getEquippedCharacterModelPath,isEquipmentUnlocked:id=>equipment.some(e=>e.id===id&&e.unlockWave<=state.highestWave),subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn)},mergeRemote,attachProfileAdapter,detachProfileAdapter(){remote=null;syncAgain=false},syncProfile:queueSync,get persistenceAvailable(){return persistenceAvailable}};
+    return {beginRun,getRun,recordEvent,addTime,checkpoint,clearWave,finishRun,getState:snapshot,getCampaign,saveCampaign,isUnlocked:id=>state.unlockedMaps.includes(id),setSelection,getSelection:()=>clone(state.selected),getCharacterCatalog,getEquippedCharacter,isCharacterUnlocked,equipCharacter,getEquippedCharacterModelPath,isEquipmentUnlocked:id=>equipment.some(e=>e.id===id&&e.unlockWave<=state.highestWave),subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn)},mergeRemote,attachProfileAdapter,detachProfileAdapter(){remote=null;syncAgain=false},syncProfile:queueSync,get persistenceAvailable(){return persistenceAvailable}};
   }
   const store=createStore();
   return {VERSION,KEY,BACKUP,maps,rewards,achievements,characters,equipment,createStore,sanitize,store,getCharacterCatalog:()=>store.getCharacterCatalog(),getEquippedCharacter:()=>store.getEquippedCharacter(),isCharacterUnlocked:id=>store.isCharacterUnlocked(id),equipCharacter:id=>store.equipCharacter(id),getEquippedCharacterModelPath:()=>store.getEquippedCharacterModelPath()};

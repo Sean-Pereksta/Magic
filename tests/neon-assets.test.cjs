@@ -23,8 +23,8 @@ test('one configured root preserves nested folder paths and versions all assets'
   const api = assets({ASSET_BASE_URL:'https://assets.example.test/neon-breach/', version:'2 beta'});
   assert.equal(api.url(api.weapons.assault), 'https://assets.example.test/neon-breach/weapons/assault.glb?v=2%20beta');
   assert.equal(api.url(api.characters.alien_rammerBoss), 'https://assets.example.test/neon-breach/characters/alien_rammerBoss.glb?v=2%20beta');
-  assert.equal(Object.keys(api.weapons).length, 14);
-  assert.equal(Object.keys(api.characters).length, 27);
+  assert.equal(Object.keys(api.weapons).length, 20);
+  assert.equal(Object.keys(api.characters).length, 39);
 });
 test('malformed roots and paths are rejected without a download', () => {
   for (const root of ['javascript:alert(1)', 'https://user:secret@example.test/', 'https://example.test/?x=1', 'https://example.test/#hash']) assert.equal(assets({ASSET_BASE_URL:root}).baseURL, '');
