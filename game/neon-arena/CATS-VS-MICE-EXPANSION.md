@@ -245,9 +245,9 @@ npm run test:neon:war-browser
 ```
 
 Browser harnesses require Playwright and Chrome/Chromium. The asset harness accepts
-`CHROME_PATH` and `NEON_QA_OUTPUT`; the game harness accepts `CHROMIUM_PATH` and
-`NEON_WAR_REPORT`. `NEON_WAR_GAMEPLAY_ONLY=1` narrows the latter to its desktop
-gameplay run. The browser tests serve their own local files and do not add a
+`CHROME_PATH` and `NEON_QA_OUTPUT`; the game harness accepts `CHROMIUM_PATH` (or
+`CHROME_PATH`) and `NEON_WAR_REPORT`. `NEON_WAR_GAMEPLAY_ONLY=1` narrows the latter
+to its desktop gameplay run. The browser tests serve their own local files and do not add a
 production server dependency.
 
 The recorded validation snapshot during implementation was:
@@ -257,13 +257,19 @@ The recorded validation snapshot during implementation was:
 | Full unit/regression suite | 258 checks: 257 passed, one optional original raptor-fixture check skipped; zero failures |
 | Existing standalone model renderer suite | 13 checks passed; optional uncommitted legacy art-pack validation skipped |
 | New actual-model browser test | Twelve character GLBs, six weapon GLBs, eight animation states, magazine motion and all 44 catalog asset URLs passed without browser/loading errors |
-| Game startup/configuration browser matrix | 28 configurations: six Conquest maps on desktop, touch viewport and local split-screen, plus ten campaign mission starts |
+| Original browser compatibility suites | All ten passed with real Chrome/WebGL and verified original model fixtures: baseline, menu, tiles, Survival, slide, UI, allies, overhaul, projectile and explosion |
+| Expansion runtime browser matrix | All 30 cases passed: six Conquest maps on desktop, touch viewport and local split-screen; all ten scripted campaign objective chains; and both factions' first missions using actual touch taps/holds for weapon safety, crouch and aiming. All ten mission graphics decoded successfully; zero browser or WebGL errors |
+
+Compatibility coverage includes 51 map rendering cases, 2,052 ramp traversals,
+twelve HUD layouts, all eight Survival arenas, original save/unlock behavior,
+all twenty weapons, split-screen allies, and projectile/explosion wall occlusion.
+The original browser suites ran serially to avoid software-renderer contention.
 
 The game harness also passed scripted objective-chain completion and persistence
 checks for all ten missions, including defense orders at transitions. It moves
 the player to objective sites, removes opponents to isolate stage transitions,
-and positions escorts at their destinations. Neither
-that harness nor the startup matrix demonstrates unscripted combat completion,
+and positions escorts at their destinations. The runtime matrix does not
+demonstrate unscripted combat completion,
 natural escort pacing or campaign balance.
 
 The following remain explicit limits and manual verification work:
