@@ -61,6 +61,65 @@ test("Xbox defaults preserve every action and contextual RB without changing key
   key(m,"Space",true);m.touch.buttons.pass=true;m.tick();assert.equal(m.getState("p1").shoot,true);assert.equal(m.getState("p1").pass,true);
 });
 
+test("input mode is validated, additive to old saves, and persists independently for both players",()=>{
+  const legacy=harness(JSON.stringify({version:1,players:{p1:{assignment:"none"},p2:{inputMode:"invalid"}}}));
+  assert.equal(legacy.config.getPlayer("p1").inputMode,"auto");assert.equal(legacy.config.getPlayer("p1").assignment,"none");
+  assert.equal(legacy.config.getPlayer("p2").inputMode,"auto");
+  assert.equal(legacy.config.setInputMode("__proto__","controller"),false);assert.equal(legacy.config.setInputMode("p1","bogus"),false);
+  legacy.config.setInputMode("p1","controller");legacy.config.setInputMode("p2","keyboard");
+  const restored=harness(legacy.storage.get("basketball2.controllerSettings.v1"));
+  assert.equal(restored.config.getPlayer("p1").inputMode,"controller");assert.equal(restored.config.getPlayer("p2").inputMode,"keyboard");
+  restored.config.resetPlayer("p1");assert.equal(restored.config.getPlayer("p1").inputMode,"auto");assert.equal(restored.config.getPlayer("p2").inputMode,"keyboard");
+});
+
+test("Controller mode accepts the mapped pad and excludes keyboard, touch and disabled-source skills",()=>{
+  const ctx=harness(),m=ctx.manager,a=pad();ctx.pads.push(a);ctx.config.setInputMode("p1","controller");m.tick();
+  assert.equal(m.onKeyDown({code:"KeyW",key:"w"}),false);key(m,"Space",true);
+  m.touch.moveY=1;m.touch.buttons.pass=true;m.queueFlick("p1",1,0,"touch");m.pulse("p1","steal");
+  a.axes[0]=.8;button(a,2,true);m.tick();const state=m.getState("p1");
+  assert.ok(state.moveX>.7);assert.equal(Math.abs(state.moveY),0);assert.equal(state.shoot,true);assert.equal(state.pass,false);assert.equal(state.steal,false);
+  assert.equal(m.consumeFlick("p1"),null);assert.equal(m.readTouch("p1").moveY,0);assert.equal(m.readKeyboard("p1").shoot,false);
+  key(m,"Escape",true);m.tick();assert.equal(m.getState("p1").pressed.pause,true);
+  key(m,"KeyI",true);m.tick();assert.equal(m.getState("p2").moveY,1,'the other keyboard player remains independent');
+});
+
+test("Keyboard mode leaves a connected controller available while excluding pad gameplay",()=>{
+  const ctx=harness(),m=ctx.manager,a=pad();ctx.pads.push(a);ctx.config.setInputMode("p1","keyboard");
+  a.axes[0]=1;a.axes[2]=1;button(a,2,true);key(m,"KeyW",true);m.tick();
+  assert.equal(m.getAssignments().p1,null);assert.equal(m.getState("p1").moveX,0);assert.equal(m.getState("p1").moveY,1);assert.equal(m.getState("p1").shoot,false);
+  m.queueFlick("p1",1,0,"gamepad");assert.equal(m.consumeFlick("p1"),null);
+  m.setConfigurationMode(true);assert.equal(m.getAssignments().p1,a,'settings can still configure and test the connected pad');
+  m.setConfigurationMode(false);m.touch.moveX=.6;m.pulse("p1","pass");m.tick();assert.equal(m.getState("p1").moveX,.6);assert.equal(m.getState("p1").pass,true);
+});
+
+test("explicit Controller mode takes the one local pad ahead of Automatic and Keyboard slots",()=>{
+  const ctx=harness(),m=ctx.manager,a=pad();ctx.twoPlayerMode=true;ctx.pads.push(a);
+  assert.equal(m.getAssignments().p2,a,'legacy automatic local assignment remains unchanged');
+  ctx.config.setInputMode("p1","controller");assert.equal(m.getAssignments().p1,a);assert.equal(m.getAssignments().p2,null);
+  ctx.config.setInputMode("p1","keyboard");ctx.config.setInputMode("p2","controller");assert.equal(m.getAssignments().p1,null);assert.equal(m.getAssignments().p2,a);
+});
+
+test("switching input mode cancels a charge without a release and requires fresh input",()=>{
+  const ctx=harness(),m=ctx.manager,a=pad();ctx.pads.push(a);m.tick();ctx.gameStarted=true;
+  key(m,"Space",true);button(a,2,true);m.tick();ctx.shotCharging=true;ctx.chargingPlayer={id:"p1"};ctx.shotPower=.7;
+  ctx.config.setInputMode("p1","controller");m.tick();
+  assert.equal(ctx.shotCharging,false);assert.equal(ctx.chargingPlayer,null);assert.equal(ctx.shotPower,0);assert.equal(ctx.gamePaused,true);
+  assert.equal(m.getState("p1").shoot,false);assert.equal(m.getState("p1").released.shoot,false);
+  button(a,2,false);m.tick();button(a,2,true);m.tick();assert.equal(m.getState("p1").pressed.shoot,true);
+  ctx.config.setInputMode("p1","keyboard");key(m,"Space",true);m.tick();assert.equal(m.getState("p1").shoot,false,'held disabled keys cannot reappear when reenabled');
+  key(m,"Space",false);key(m,"Space",true);m.tick();assert.equal(m.getState("p1").pressed.shoot,true);
+});
+
+test("Controller mode waits for hotplug without falling back and preserves disconnected charge safety",()=>{
+  const ctx=harness(),m=ctx.manager,a=pad();ctx.config.setInputMode("p1","controller");key(m,"KeyW",true);m.tick();
+  assert.equal(m.getState("p1").moveY,0);assert.equal(m.getAssignments().p1,null);
+  button(a,2,true);ctx.pads.push(a);m.tick();assert.equal(m.getState("p1").shoot,false);
+  button(a,2,false);m.tick();button(a,2,true);m.tick();assert.equal(m.getState("p1").pressed.shoot,true);
+  ctx.gameStarted=true;ctx.shotCharging=true;ctx.chargingPlayer={id:"p1"};ctx.pads.length=0;m.tick();
+  assert.equal(ctx.gamePaused,true);assert.equal(ctx.shotCharging,false);assert.equal(m.getState("p1").released.shoot,false);
+  assert.equal(ctx.config.getPlayer("p1").inputMode,"controller");assert.equal(m.getState("p1").moveY,0);
+});
+
 test("rebinding contextual actions swaps controls without hiding other actions in 1v1",()=>{
   const ctx=harness(),m=ctx.manager,a=pad();
   ctx.config.setBinding("p1","switchPlayer",{type:"button",index:0});ctx.teamSize=1;
