@@ -22,11 +22,14 @@ function releaseShot(shooter,shotType,options={}){
   const releasePoint = options.releasePoint || getShotReleasePoint(shooter,shotType);
   ball.position.copy(releasePoint);
   const releaseDist = flatDistance(releasePoint,HOOP_POS);
-  lastShotValue = releaseDist > THREE_RADIUS ? 3 : 2;
+  // The player's feet define the scoring/rating zone. A normal forward hand
+  // extension must not turn a legal arc jumper into a two-point attempt.
+  const groundDist = flatDistance(shooter.group.position,HOOP_POS);
+  lastShotValue = groundDist > THREE_RADIUS ? 3 : 2;
   if(shotType === "hook") lastShotValue = 2;
   lastShotReleasePos.copy(releasePoint);
   lastShotWasHook = shotType === "hook";
-  const dist = flatDistance(releasePoint,HOOP_POS);
+  const dist = releaseDist;
   const held = shooter.moveMeta.chargeHeld || 0;
   const contest = calculateShotContest(shooter);
   const timing = calculateShotTiming(held,shotType,shooter,contest);
@@ -61,7 +64,7 @@ function releaseShot(shooter,shotType,options={}){
   let developmentShot=null;
   if(typeof BasketballDevelopment!=="undefined"){
     const clutch=Math.abs(scoreP1-scoreP2)<=3&&Math.max(scoreP1,scoreP2)>=targetScore-4;
-    developmentShot=BasketballDevelopment.shotProfile(shooter,{distance:dist,type:shotType,contest:contest.value,
+    developmentShot=BasketballDevelopment.shotProfile(shooter,{distance:groundDist,type:shotType,contest:contest.value,
       timingError:releaseError,halfWindow,now:simulationTime,clutch});
     const aim=BasketballDevelopment.sampleAim(developmentShot.spread*(assistedFinish?.45:1),options.random || Math.random);
     // Dispersion is applied at release. Rim/backboard contacts, blocks and the

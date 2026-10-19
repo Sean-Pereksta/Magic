@@ -36,16 +36,51 @@ function aiPlayerIdentity(char){
     defense:stat("block")*.5+stat("steal")*.5};
 }
 
+// Assignments and learned skills bias decisions, never movement or make odds.
+// Keep secondary options: even a specialist takes a free layup or finds help.
+function aiPlayerTendencies(char){
+  const p=char.profile||{},r=p.ratings,role=p.role||'balanced',identity=aiPlayerIdentity(char);
+  const rank=id=>THREE.MathUtils.clamp(Number(p.abilities?.[id])||0,0,3);
+  const three=r?.threePoint??60+((p.shot||1)-1)*60;
+  const mid=r?.midrange??three,strength=r?.strength??60+((p.width||1)-1)*80;
+  const perimeter=THREE.MathUtils.clamp((identity.type==='sharpshooter'?.42:0)+(role==='shooter'?.65:0)+
+    Math.max(0,three-60)*.008+rank('catchAndShoot')*.08+rank('deepRange')*.06+rank('cornerSpecialist')*.06,0,1);
+  const post=THREE.MathUtils.clamp((identity.type==='interior'?.52:0)+(role==='anchor'?.4:0)+
+    Math.max(0,strength-65)*.006+rank('powerFinisher')*.07+rank('contactSpecialist')*.045-perimeter*.24,0,1);
+  return {perimeter,post,midrange:THREE.MathUtils.clamp(Math.max(0,mid-three-5)*.018+
+      rank('midrangeAssassin')*.12+rank('pullUpSpecialist')*.1,0,1),
+    drive:THREE.MathUtils.clamp((identity.type==='slasher'?.5:0)+(role==='slasher'?.5:0)+
+      (rank('highFlyer')+rank('aerialAcrobat')+rank('posterizer'))*.05,0,1),
+    creation:THREE.MathUtils.clamp((identity.type==='playmaker'?.45:0)+(role==='playmaker'?.45:0)+rank('floorGeneral')*.09,0,1),
+    screening:rank('screenSetter')*.12+(role==='anchor'?.25:0),catchShoot:rank('catchAndShoot'),quickRelease:rank('quickRelease')};
+}
+
+function aiRecentCatch(char){
+  const now=typeof simulationTime==='number'?simulationTime:teamAITime;
+  return Number.isFinite(char.lastCatchTime)&&now-char.lastCatchTime>=0&&now-char.lastCatchTime<1.35;
+}
+
+function aiQuickShotLook(char,read,lane,tendencies){
+  if(read.closeFinish||!read.inRange||read.space<2.15||(read.pressure??0)>.2||read.quality<.68) return false;
+  const speed=char.velocity.length(),toRim=HOOP_POS.clone().sub(char.group.position).setY(0).normalize();
+  // Do not turn an established sprint to the basket into an off-balance three.
+  if(speed>2.2&&char.velocity.dot(toRim)>1.8&&!aiRecentCatch(char)) return false;
+  const three=read.points===3||read.distance>(typeof THREE_RADIUS==='number'?THREE_RADIUS:7.15);
+  const specialty=three?tendencies.perimeter:tendencies.midrange;
+  const closeLane=read.distance<4.7&&lane.direct&&lane.drive&&lane.openness>.86&&lane.finishSpace>2.5&&!lane.blocked;
+  return !closeLane&&(specialty>.38||aiRecentCatch(char)&&tendencies.catchShoot>0&&tendencies.perimeter>.25);
+}
+
 function aiTeamChemistry(handler){
   const players=aiRoster().filter(player=>player.teamId===handler.teamId);
   const identities=players.map(player=>({player,...aiPlayerIdentity(player)}));
   const best=(score)=>identities.reduce((a,b)=>!a||score(b)>score(a)?b:a,null);
-  const shooter=best(p=>p.shooting+(p.player.profile.role==='shooter'?.12:0)),interior=best(p=>p.screening+p.finishing*.25+(p.player.profile.role==='anchor'?.15:0)),
+  const shooter=best(p=>p.shooting+aiPlayerTendencies(p.player).perimeter*.22),interior=best(p=>p.screening+p.finishing*.25+aiPlayerTendencies(p.player).post*.2),
     creator=best(p=>p.passing+(p.type==="playmaker"?.4:0)+(p.player.profile.role==='playmaker'?.2:0)),runner=best(p=>p.speed+p.finishing*.2+(p.player.profile.role==='slasher'?.15:0));
   const count=type=>identities.filter(p=>p.type===type).length;
   return {identities,shooterId:shooter?.player.id,interiorId:interior?.player.id,creatorId:creator?.player.id,
-    runnerId:runner?.player.id,shooters:count("sharpshooter"),playmakers:count("playmaker"),
-    slashers:count("slasher"),bigs:count("interior"),defenders:count("defender"),
+    runnerId:runner?.player.id,shooters:identities.filter(p=>p.type==='sharpshooter'||p.player.profile.role==='shooter').length,playmakers:identities.filter(p=>p.type==='playmaker'||p.player.profile.role==='playmaker').length,
+    slashers:identities.filter(p=>p.type==='slasher'||p.player.profile.role==='slasher').length,bigs:identities.filter(p=>p.type==='interior'||p.player.profile.role==='anchor').length,defenders:count("defender"),
     perimeter:Math.max(0,(shooter?.shooting||1)-1),size:Math.max(0,(interior?.screening||1)-1)};
 }
 
@@ -181,11 +216,12 @@ function aiGetTeamPlan(handler){
     const action=aiPlanAction(plan);
     const preference=player=>{
       const identity=aiPlayerIdentity(player);
-      if(action==="pick_roll"||action==="post_up") return identity.screening+identity.finishing*.25;
-      if(action==="pick_pop") return identity.shooting+.1*identity.screening;
-      if(action==="give_go") return plan.phase==="cut"&&!plan.passerId?identity.speed+identity.finishing*.2:identity.passing;
-      if(action==="fast_break") return identity.speed+identity.finishing*.2;
-      return 1;
+      const t=aiPlayerTendencies(player);
+      if(action==="pick_roll"||action==="post_up") return identity.screening+identity.finishing*.25+t.post*.18+t.screening;
+      if(action==="pick_pop") return identity.shooting+.1*identity.screening+t.perimeter*.2+t.screening*.4;
+      if(action==="give_go") return plan.phase==="cut"&&!plan.passerId?identity.speed+identity.finishing*.2+t.drive*.2:identity.passing+t.creation*.25;
+      if(action==="fast_break") return identity.speed+identity.finishing*.2+t.drive*.25;
+      return 1+t.drive*.2-t.perimeter*.15;
     };
     const ordered=support.slice(plan.cycle%support.length).concat(support.slice(0,plan.cycle%support.length));
     const actor=ordered.reduce((best,player)=>preference(player)>preference(best)?player:best,ordered[0]);
@@ -387,6 +423,8 @@ function updateTeamAI(dt,options={}){
       brain.thinkIn=0;
       brain.passTargetId=null;
       brain.driveUntil=0;
+      // Receiving a teammate's pass is a new read, not the passer's cooldown.
+      if(handler===char&&aiRecentCatch(char)) brain.actionCooldown=Math.min(brain.actionCooldown,.08);
     }else if(handler===char&&ballState==="dribble"&&!frozen){
       brain.possessionAge+=dt;
     }
@@ -526,7 +564,7 @@ function aiPassLaneClearance(passer,receiver){
 
 function aiPassingPurpose(char,teammate,pass,shot,lane,plan,settings){
   if(!pass.safe) return null;
-  const action=aiPlanAction(plan),identity=aiPlayerIdentity(char);
+  const action=aiPlanAction(plan),identity=aiPlayerIdentity(char),tendencies=aiPlayerTendencies(char);
   const shotValue=shot.value??shot.quality,driveValue=aiDriveOpportunity(char,lane,shot.distance);
   const role=teammate.aiBrain?.role;
   const movingToRim=["cut","roll","dump_off","break"].includes(role)&&
@@ -538,6 +576,10 @@ function aiPassingPurpose(char,teammate,pass,shot,lane,plan,settings){
   let reason=null,bonus=0;
   // Each reason describes an observable advantage, not elapsed possession age.
   if(pass.rimFeed&&(pass.finishOpen||pass.finishFavorable)&&pass.value>shotValue-.04){reason=pass.finishFavorable?"mismatch":"rim_feed";bonus=.1;}
+  else if(tendencies.post>.45&&shot.distance<5.5&&pressure>=2&&pass.catchSpace>2.25&&
+    pass.catchValue>shotValue+.015){reason="inside_out";bonus=.09;}
+  else if(pass.points===3&&pass.catchSpace>2.5&&pass.catchQuality>.73&&
+    aiPlayerTendencies(teammate).perimeter>.45&&pass.catchValue>shotValue+.025){reason="shooter_window";bonus=.045;}
   else if(pass.catchValue>shotValue+(settings.passAdvantage??.1)){reason="better_shot";}
   else if(movingToRim&&pass.value>Math.max(shotValue,driveValue)-.06&&pass.catchSpace>1.65){reason="timed_cut";bonus=.1;}
   else if((action==="drive_kick"||role==="pop")&&pressure>=1&&pass.catchSpace>2.3&&
@@ -563,13 +605,13 @@ function aiPassingPurpose(char,teammate,pass,shot,lane,plan,settings){
     !(pass.points===3&&pass.catchQuality>.82&&pass.value>driveValue+.06)&&pass.value<driveValue+.16) return null;
   const priority=teammate.profile.offensivePriority;
   const preference=priority===undefined?0:(priority-2)*.025+(teammate.profile.role==='primary'?.025:0);
-  return {reason,value:pass.value+bonus+(identity.type==="playmaker"?.025:0)+preference,pass};
+  return {reason,value:pass.value+bonus+(identity.type==="playmaker"?.025:0)+tendencies.creation*.035+preference,pass};
 }
 
 function decideAIHandler(char,brain,settings){
   brain.role="handle";
   const plan=aiGetTeamPlan(char);
-  const action=aiPlanAction(plan),identity=aiPlayerIdentity(char);
+  const action=aiPlanAction(plan),identity=aiPlayerIdentity(char),tendencies=aiPlayerTendencies(char);
   const position=char.group.position;
   const read=aiAssessShot(char,settings);
   const lane=aiFindDriveLane(char,settings);
@@ -579,7 +621,7 @@ function decideAIHandler(char,brain,settings){
   const toRim=HOOP_POS.clone().sub(position).setY(0).normalize();
   const committed=brain.driveUntil>teamAITime||char.velocity.dot(toRim)>2.2;
   const driveValue=aiDriveOpportunity(char,lane,distance);
-  const driveBias=identity.type==="slasher"?.055:identity.type==="sharpshooter"?-.045:0;
+  const driveBias=(identity.type==="slasher"?.055:identity.type==="sharpshooter"?-.045:0)+tendencies.drive*.055-tendencies.perimeter*.045;
   const waitingForScreen=(action==="pick_roll"||action==="pick_pop")&&plan.phase==="setup"&&plan.screenTarget&&space<3;
   const drivePreferred=lane.drive&&distance>2.5&&!waitingForScreen&&
     (committed||driveValue+driveBias>shotValue+.025||!read.inRange);
@@ -597,13 +639,24 @@ function decideAIHandler(char,brain,settings){
     const purpose=aiPassingPurpose(char,teammate,pass,read,lane,plan,settings);
     if(purpose&&purpose.value>bestValue){bestValue=purpose.value;receiver=teammate;bestRead=pass;bestPurpose=purpose;}
   }
-  const ready=brain.actionCooldown<=0&&brain.possessionAge>(settings.quickReadTime??.4);
+  const quickLook=aiQuickShotLook(char,read,lane,tendencies);
+  const catchReady=quickLook&&aiRecentCatch(char);
+  const readTime=(settings.quickReadTime??.4)*(catchReady?Math.max(.25,.55-tendencies.catchShoot*.055-tendencies.quickRelease*.035):1);
+  const ready=brain.actionCooldown<=0&&brain.possessionAge>Math.max(.085,readTime);
   // Take the easy basket immediately rather than waiting for a scripted play.
   if(ready&&read.closeFinish&&(read.finishOpen||read.finishFavorable)){
     brain.decision="finish";brain.role="finish";
     brain.finishRead=read.finishFavorable&&!read.finishOpen?"size_advantage":"open";
     brain.target.copy(position).addScaledVector(toRim,2);
     beginAIShot(char,brain);
+    return;
+  }
+  // A specialist's clean window is worth taking before a long drive or a
+  // scripted action. The normal meter, feet settling and shot physics remain.
+  if(quickLook&&(!bestPurpose||bestValue<shotValue+.16)){
+    brain.decision="shoot";brain.shotRead=catchReady?"catch_and_shoot":"specialty_window";
+    brain.driveUntil=0;brain.sprint=false;brain.target.copy(position);
+    if(ready&&char.velocity.length()<1.6) beginAIShot(char,brain);
     return;
   }
   const quickCatch=identity.type==="playmaker"||identity.type==="sharpshooter";
@@ -627,6 +680,7 @@ function decideAIHandler(char,brain,settings){
     brain.target.copy(position);
     return;
   }
+  if(aiTryPostPlay(char,brain,read,lane,plan,tendencies)) return;
   if(drivePreferred){
     brain.decision="drive";brain.role="drive";brain.target.copy(lane.target);
     if((action==="pick_roll"||action==="pick_pop")&&plan.phase==="screen"&&!clearRun){
@@ -679,6 +733,31 @@ function decideAIHandler(char,brain,settings){
   brain.sprint=lane.drive&&!waitingForScreen&&space>1.7&&distance>3.7&&char.stamina>.45;
   brain.protect=space<1.25;
   keepInCourt(brain.target);
+}
+
+function aiTryPostPlay(char,brain,read,lane,plan,tendencies){
+  if(tendencies.post<.45||read.distance<2.15||read.distance>6.1||plan.stalled>3.2||brain.possessionAge>4.5||
+    lane.direct&&lane.drive&&lane.openness>.86&&lane.finishSpace>2.5&&!lane.blocked) return false;
+  const defender=getNearestOpponent(char);
+  if(!defender) return false;
+  const pressure=getOpponents(char).filter(player=>flatDistance(player.group.position,char.group.position)<2.5);
+  if(pressure.length>1) return false;
+  const p=char.profile,g=defender.profile;
+  const strength=p.ratings?.strength??60+((p.width||1)-1)*80;
+  const guardStrength=g.ratings?.strength??60+((g.width||1)-1)*80;
+  // Settle a seal against a single manageable defender; equal rim protection
+  // and help still require a normal reset, pass or an actual open finish.
+  const edge=strength-guardStrength+(p.height-g.height)*60;
+  if(edge<-8||char.stamina<.35) return false;
+  const side=char.group.position.x<0?-1:char.group.position.x>0?1:brain.driveSide;
+  brain.decision='post';brain.role='post';brain.protect=true;brain.sprint=false;brain.driveUntil=0;
+  brain.target.set(side*1.35,0,HOOP_POS.z+2.1);
+  const near=flatDistance(char.group.position,defender.group.position)<1.9;
+  if(near&&edge>4&&brain.moveCooldown<=0&&char.moveState==='normal'&&typeof startPostUp==='function'){
+    startPostUp(char);brain.moveCooldown=1.05;brain.postRead='backdown';
+  }else brain.postRead=near?'protect_seal':'establish_post';
+  keepInCourt(brain.target);
+  return true;
 }
 
 function aiDriveOpportunity(char,lane,distance){
@@ -861,6 +940,7 @@ function decideAIOffBall(char,brain,handler,settings){
   const action=aiPlanAction(plan),identity=aiPlayerIdentity(char);
   if(action==="balanced"){
     decideAIBalancedOffBall(char,brain,handler,settings);
+    if(typeof risePreferredSpot==='function') risePreferredSpot(char,brain,plan,false);
     aiCoordinateOffBall(char,brain,handler,settings,plan);
     return;
   }
@@ -982,6 +1062,7 @@ function aiAdaptOffBallRoute(char,brain,handler,plan,settings){
 
 function decideAIBalancedOffBall(char,brain,handler,settings){
   const teammates=getTeammates(char);
+  const tendencies=aiPlayerTendencies(char);
   const otherRoles=teammates.filter(player=>player!==handler&&player.aiBrain);
   const cutters=otherRoles.some(player=>player.aiBrain.role==="cut"&&player.aiBrain.roleUntil>teamAITime);
   const screeners=otherRoles.some(player=>player.aiBrain.role==="screen"&&player.aiBrain.roleUntil>teamAITime);
@@ -1019,13 +1100,14 @@ function decideAIBalancedOffBall(char,brain,handler,settings){
     brain.target.z+=defender.group.position.z>position.z?-1.2:1.2;
     brain.target.x+=side*.65;
   }
-  if(!cutters&&brain.moveCooldown<=0&&flatDistance(handler.group.position,HOOP_POS)>4&&handlerPressure>1.2&&Math.random()<.1+settings.spacingIQ*.22){
+  if(!cutters&&brain.moveCooldown<=0&&flatDistance(handler.group.position,HOOP_POS)>4&&handlerPressure>1.2&&Math.random()<
+    (.1+settings.spacingIQ*.22)*(1+tendencies.drive*.7-tendencies.perimeter*.7)){
     brain.role="cut";
     brain.roleUntil=teamAITime+1.35;
     brain.moveCooldown=4.5;
     brain.target.set(-side*1.1,0,HOOP_POS.z+2.2);
     brain.sprint=true;
-  }else if(!screeners&&brain.moveCooldown<=0&&handlerPressure<2&&flatDistance(handler.group.position,HOOP_POS)>4.4&&Math.random()<settings.spacingIQ*.2){
+  }else if(!screeners&&brain.moveCooldown<=0&&handlerPressure<2&&flatDistance(handler.group.position,HOOP_POS)>4.4&&Math.random()<settings.spacingIQ*(.2+tendencies.screening*.3+tendencies.post*.1)){
     const onBallDefender=getNearestOpponent(handler);
     if(onBallDefender){
       brain.role="screen";
@@ -1087,8 +1169,10 @@ function decideAIDefense(char,brain,handler,settings){
   const gathering=shotCharging&&chargingPlayer===handler&&(handler.moveMeta.chargeHeld||0)>.42;
   const finishing=layupActive&&layupOwner===handler.id||dunkActive&&dunkOwner===handler.id;
   const fake=handler.moveState==="pumpfake";
-  if(range<2.5&&brain.actionCooldown<=0&&(gathering||finishing||fake&&Math.random()<settings.fakeBiteChance)){
-    const jump=finishing||gathering&&Math.random()<.25+settings.contestTiming*.45||fake;
+  const guardian=Number(char.profile.abilities?.rimGuardian)||0;
+  const discipline=Math.min(.65,guardian*.12+(char.profile.role==='anchor'?.2:0));
+  if(range<2.5&&brain.actionCooldown<=0&&(gathering||finishing||fake&&Math.random()<settings.fakeBiteChance*(1-discipline))){
+    const jump=finishing||gathering&&Math.random()<.25+settings.contestTiming*.45+guardian*.035||fake;
     if(jump&&char.onGround){ tryJumpBlock(char,false); brain.actionCooldown=.8; }
     else raiseHands(char);
   }else if(range<2.7&&(gathering||finishing)){
@@ -1096,8 +1180,10 @@ function decideAIDefense(char,brain,handler,settings){
   }
   if(range<1.35&&ballState==="dribble"&&brain.actionCooldown<=0){
     const exposed=handler.dribbleStyle==="sprint"||handler.dribbleStyle==="crossover"||handler.moveState==="sidehop";
-    const reachMistake=Math.random()<settings.mistakeChance*.12;
-    if(exposed&&Math.random()<settings.stealDiscipline*.25||reachMistake){
+    const pickpocket=Number(char.profile.abilities?.pickpocket)||0;
+    const visibleBall=pickpocket&&ball?.position&&flatDistance(char.group.position,ball.position)<1.2;
+    const reachMistake=Math.random()<settings.mistakeChance*.12*(1-discipline*.5-pickpocket*.07);
+    if(exposed&&Math.random()<settings.stealDiscipline*.25+(visibleBall?pickpocket*.035:0)||reachMistake){
       handleHandAction(char,ballSideValue<0?"left":"right","ai-steal");
       brain.actionCooldown=.85;
       if(reachMistake) punishBadReach(char);

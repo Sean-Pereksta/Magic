@@ -71,6 +71,30 @@ function setup(){
 
 const run=(ctx,source)=>vm.runInContext(source,ctx);
 
+test('feet determine the three-point and development zone while the hand still launches the physical ball',()=>{
+  for(const [ground,hand,expected] of [[7.6,6.9,3],[6.9,7.6,2]]){
+    const ctx=setup();
+    vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/player-development.js'),'utf8'),ctx);
+    const result=run(ctx,`
+      for(const other of matchPlayers)if(other.teamId===1)other.group.position.set(8,0,8);
+      p1.group.position.set(0,0,HOOP_POS.z+${ground});
+      p1.profile.ratings={threePoint:92,midrange:30,releaseStability:75,consistency:75};
+      p1.profile.abilities={deepRange:2,catchAndShoot:1};
+      simulationTime=10;takePossession(p1,{silent:true});p1.lastCatchTime=9.9;p1.lastPassQuality=1;
+      p1.moveMeta.chargeHeld=.8;
+      const handPoint=new THREE.Vector3(.1,2.4,HOOP_POS.z+${hand});
+      releaseShot(p1,'setshot',{releasePoint:handPoint,random:()=>.5});
+      ({value:lastShotValue,threes:p1.stats.tpa,attempts:p1.stats.fga,active:p1.moveMeta.activeAbilities,
+        releaseError:ball.position.distanceTo(handPoint),releaseRecordError:lastShotReleasePos.distanceTo(handPoint),
+        flight:[ballVelocity.x,ballVelocity.y,ballVelocity.z]});
+    `);
+    assert.equal(result.value,expected);assert.equal(result.threes,expected===3?1:0);assert.equal(result.attempts,1);
+    assert.equal(result.active.includes('deepRange'),expected===3,'rating/perk zone follows the same legal foot location');
+    assert.equal(result.active.includes('catchAndShoot'),true);
+    assert.equal(result.releaseError,0);assert.equal(result.releaseRecordError,0);assert.ok(result.flight.every(Number.isFinite));
+  }
+});
+
 test('a fresh possession reset clears old contact, catch and drive advantages while retaining match stats',()=>{
   const ctx=setup();
   run(ctx,`p1.contactTimer=.5;p1.contactCooldown=.2;p1.contactStrength=1.4;p1.bodyUpTimer=.3;

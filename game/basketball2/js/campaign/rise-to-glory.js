@@ -6,6 +6,7 @@
 })(typeof globalThis!=="undefined"?globalThis:this,function(){
   "use strict";
   const VERSION=3, SAVE_KEY="basketballRiseToGloryV3", BACKUP_KEY=SAVE_KEY+"Backup", ROSTER_LIMIT=10;
+  const SAVE_FORMAT="basketball2-campaign-save", TRANSFER_VERSION=1, MAX_SAVE_BYTES=8*1024*1024;
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
   const integer=(n,a=0,b=1000000)=>clamp(Math.round(Number(n)||0),a,b);
   const clone=value=>JSON.parse(JSON.stringify(value));
@@ -582,7 +583,69 @@
     }
     return null;
   }
-  return {VERSION,SAVE_KEY,BACKUP_KEY,ROSTER_LIMIT,ATTRIBUTES,ATTRIBUTE_LIST,ATTRIBUTE_KEYS,ARCHETYPES,ABILITIES,DIVISIONS,TRAINING,ROLES,OFFENSES,DEFENSES,LOGOS,JERSEYS,
+  function saveSummary(state){
+    return {teamName:state.team.name,captainName:player(state,state.captainId).name,season:state.season.number,
+      division:DIVISIONS[state.season.division].name,wins:state.record.wins,losses:state.record.losses,currency:state.currency,
+      completedGames:state.season.completed.length,roster:roster(state).map(athlete=>({name:athlete.name,overall:athlete.overall,level:athlete.level,role:athlete.role}))};
+  }
+  const recordObject=value=>!!value&&typeof value==="object"&&!Array.isArray(value);
+  function validateTransferState(raw){
+    if(!recordObject(raw)||raw.mode!=="rise-to-glory")return fail("Choose a Rise to Glory campaign save.");
+    if(!Number.isInteger(raw.version)||raw.version<1||raw.version>VERSION)return fail("This campaign save version is not supported. Update the game if the save is newer.");
+    if(!recordObject(raw.team)||typeof raw.team.name!=="string"||!raw.team.name.trim()||!recordObject(raw.players)||
+      !recordObject(raw.season)||!Number.isInteger(raw.seed)||raw.seed<1||!Number.isInteger(raw.season.number)||raw.season.number<1||raw.season.number>999||
+      !Number.isInteger(raw.season.division)||raw.season.division<0||raw.season.division>=DIVISIONS.length||
+      !Array.isArray(raw.roster)||raw.roster.length<3||raw.roster.length>ROSTER_LIMIT||new Set(raw.roster).size!==raw.roster.length||
+      !Array.isArray(raw.starters)||raw.starters.length!==3||new Set(raw.starters).size!==3||!raw.roster.includes(raw.captainId)||
+      raw.starters.some(id=>!raw.roster.includes(id))||Object.keys(raw.players).length>1200)return fail("This file is missing valid team, roster or season information.");
+    for(const id of raw.roster){
+      const athlete=own(raw.players,id)?raw.players[id]:null;
+      if(typeof id!=="string"||!/^(rtg-\d+-\d+|prospect-\d+-\d+)$/.test(id)||!recordObject(athlete)||
+        !recordObject(athlete.ratings)||!recordObject(athlete.caps)||ATTRIBUTE_KEYS.some(key=>!Number.isFinite(athlete.ratings[key])||!Number.isFinite(athlete.caps[key])))
+        return fail("This file contains an incomplete player in its roster.");
+    }
+    const normalized=normalize(raw);
+    if(!normalized||normalized.roster.length!==raw.roster.length||raw.roster.some(id=>!normalized.roster.includes(id)))return fail("This campaign could not be restored safely.");
+    return ok("Campaign checked. Review the team before importing.",{state:normalized,summary:saveSummary(normalized)});
+  }
+  function inspectSave(serialized){
+    if(typeof serialized!=="string")return fail("Choose a JSON campaign save file.");
+    if(serialized.length>MAX_SAVE_BYTES||new TextEncoder().encode(serialized).length>MAX_SAVE_BYTES)return fail("This save file is too large. The limit is 8 MB.");
+    try{
+      const parsed=JSON.parse(serialized,(key,value)=>{if(["__proto__","constructor","prototype"].includes(key))throw new Error("Unsafe key");return value;});
+      if(recordObject(parsed)&&own(parsed,"format")){
+        if(parsed.format!==SAVE_FORMAT||parsed.transferVersion!==TRANSFER_VERSION||parsed.mode!=="rise-to-glory")return fail("This save file format or version is not supported.");
+        return validateTransferState(parsed.save);
+      }
+      return validateTransferState(parsed);
+    }catch(_error){return fail("This file is not valid campaign JSON. Your current save has not changed.");}
+  }
+  function exportSave(state){
+    const validated=validateTransferState(state);if(!validated.ok)return validated;
+    const exportedAt=new Date().toISOString(),safeName=validated.state.team.name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"franchise";
+    const serialized=JSON.stringify({format:SAVE_FORMAT,transferVersion:TRANSFER_VERSION,mode:"rise-to-glory",exportedAt,save:validated.state},null,2);
+    if(new TextEncoder().encode(serialized).length>MAX_SAVE_BYTES)return fail("This campaign is too large to export as a supported save file.");
+    return ok("Campaign export ready.",{serialized,filename:`basketball2-${safeName}-season-${validated.state.season.number}.json`,summary:validated.summary});
+  }
+  function importSave(serialized,storage){
+    const checked=inspectSave(serialized);if(!checked.ok)return checked;
+    const target=storageOrDefault(storage);if(!target)return fail("Browser storage is unavailable. Your current team has not changed.");
+    let previous,backup,backupWritten=false,saveWritten=false;
+    try{
+      previous=target.getItem(SAVE_KEY);backup=target.getItem(BACKUP_KEY);
+      // Keep the last campaign before replacement; do not replace a good backup with corrupt data.
+      const oldValid=previous&&(()=>{try{return !!normalize(JSON.parse(previous));}catch(_error){return false;}})();
+      if(oldValid){target.setItem(BACKUP_KEY,previous);backupWritten=true;}
+      checked.state.updatedAt=Date.now();target.setItem(SAVE_KEY,JSON.stringify(checked.state));saveWritten=true;
+      return ok(oldValid?"Campaign imported. Your previous campaign is kept as a backup.":"Campaign imported. Your franchise is ready to continue.",{state:checked.state,summary:checked.summary,backedUp:!!oldValid});
+    }catch(_error){
+      // localStorage has no transaction API: undo any completed write before reporting failure.
+      const restore=(key,value)=>{if(value===null)target.removeItem(key);else target.setItem(key,value);};
+      try{if(saveWritten)restore(SAVE_KEY,previous);if(backupWritten)restore(BACKUP_KEY,backup);}catch(_rollbackError){}
+      return fail("The browser could not store this import. Your current team has not changed. Export it before trying again.");
+    }
+  }
+  return {VERSION,SAVE_KEY,BACKUP_KEY,ROSTER_LIMIT,SAVE_FORMAT,TRANSFER_VERSION,MAX_SAVE_BYTES,ATTRIBUTES,ATTRIBUTE_LIST,ATTRIBUTE_KEYS,ARCHETYPES,ABILITIES,DIVISIONS,TRAINING,ROLES,OFFENSES,DEFENSES,LOGOS,JERSEYS,
     create,generateMarket,rookiePool,player,roster,market,sign,release,setStarters,setRole,setStrategy,upgradePreview,upgrade,abilityPreview,learnAbility,xpRequired,addXP,contributionXP,
-    getStandings,nextGame,opponent,prepareMatch,recordGame,advanceSeason,trainingPlan,awardTraining,chemistry,compare,toProfile,overall,tier,normalize,save,load};
+    getStandings,nextGame,opponent,prepareMatch,recordGame,advanceSeason,trainingPlan,awardTraining,chemistry,compare,toProfile,overall,tier,normalize,save,load,saveSummary,exportSave,inspectSave,importSave};
 });

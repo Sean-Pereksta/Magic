@@ -139,7 +139,13 @@ function aiReadShotAt(char,observer,position,settings,horizon=0){
   const ratings=char.profile?.ratings;
   const areaRating=ratings?(distance>7.15?ratings.threePoint:distance>3?ratings.midrange:ratings.closeShot):null;
   const shooting=areaRating!==null ? .52+areaRating*.009 : char.profile?.shot || 1,finishing=char.profile?.layup || 1;
-  const preferredRange=ratings?(ratings.midrange>ratings.threePoint+8?6.3:ratings.threePoint>68?8:5.5):aiReadClamp(5.9+(shooting-1)*4.8,4.2,8.5);
+  // A developing shooter can recognize a normal arc attempt. Low ratings
+  // still affect the real launch; they must not make the three-point line
+  // categorically unreachable until an arbitrary rating threshold is crossed.
+  const three=distance>(typeof THREE_RADIUS!=="undefined"?THREE_RADIUS:7.15);
+  const deep=Number(char.profile?.abilities?.deepRange)||0;
+  const preferredRange=ratings?(three?aiReadClamp(7.05+(ratings.threePoint-50)*.035+deep*.25,6.5,8.8):
+    ratings.midrange>ratings.threePoint+8?6.3:5.5):aiReadClamp(5.9+(shooting-1)*4.8,4.2,8.5);
   const inRange=distance<preferredRange+.6;
   const momentum=closeFinish?Math.max(0,speed-4)*.025+Math.max(0,-toward)*speed*.025:Math.min(.28,speed*.045);
   const fatigue=Math.max(0,1-(char.stamina ?? 1))*.13;

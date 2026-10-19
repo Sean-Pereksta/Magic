@@ -51,6 +51,8 @@ In team games, **B** requests a screen and **Shift+B** requests a cut. Hold **Al
 
 Quick Play supports 1v1, 2v2, and 3v3, with one or two humans. Local team matches can be cooperative or competitive, with side-by-side or top/bottom views. Teams have distinct blue and coral jerseys/indicators. The National Tour and tutorial remain 1v1; existing tour saves, settings, courts, characters, and cosmetic selections retain their storage keys. Team setup preferences use a separate `basketball2MatchV1` key.
 
+Enable **OVR-capped custom rosters** in Quick Play to select every player on both teams. Each side has the same total OVR limit, initially 250, and the displayed totals update as picks change. Every slot must be filled, each athlete can appear once in the matchup, and both totals must be at most the chosen limit before starting. Available franchise athletes retain their developed ratings, signature skills and assignments in this exhibition; playing it does not award campaign progression. Standard Quick Play continues to choose complementary teammates when custom rosters are off.
+
 `matchPlayers` holds individual players with immutable IDs, `teamId`, and optional `controllerSlot`. `p1`/`p2` refer to the current controlled characters, so systems must resolve ball ownership by ID rather than assuming those two characters are opponents. `takePossession` grants exactly one player ownership. Passes lead a moving receiver, travel through space, and can be intercepted. `lastTouchPlayerId` controls out-of-bounds possession separately from shot credit.
 
 Gameplay runs at a fixed 60 Hz, with position/rotation interpolation for rendering. Cameras translate with the action using a constant court-relative angle and distance, including both split views. Split rendering shares the shadow update. AI uses the same movement, stamina, collision, and shooting systems as humans; difficulty changes reaction and tactical decisions. Off-ball roles include spacing, cutting, screens/rolls, assignments/help, and rebounding/outlets.
@@ -70,6 +72,8 @@ Each difficulty has separate court vision, stable spatial read error, bounded ve
 Each team can choose **Motion**, **Pick & Roll**, **Pick & Pop**, **Drive & Kick**, **Isolation**, **Give & Go**, **Post Up**, or **Fast Break** in Quick Play. **Balanced** selects actions from the lineup's chemistry and current defense. Plays have separate setup/action/recovery stages: screen actions wait for the screener, pop actions seek an outside catch, isolation clears space, post actions find a size matchup, and transition opportunities lead faster runners. Blocked cuts change route; stalled actions reset. These are small-team actions for 2v2/3v3. Human teammates retain control and AI teammates respond to the human handler.
 
 Profiles identify playmakers, sharpshooters, slashers, interior players, defenders and all-rounders. Decisions still use actual shooting, handling, finishing, size, stamina and passing ratings. Complementary AI roster choices support the selected offense. The director compares passes with the handler's shot/drive, checks both lane and catch pressure, remembers recent exchanges, and revalidates purpose before release. Give-and-go returns require a developed cut; a safe pass alone does not justify a repetitive return. Passing error uses the same deterministic flight physics with rating, movement, pressure and fatigue effects for humans and bots.
+
+Player assignments and earned signature ranks also guide those reads. A shooter spaces for outside catches and prefers an open, in-range three to a long drive for two; Catch & Shoot, Corner Specialist and Quick Release strengthen that catch-and-shoot intent. A covered or off-balance catch still needs a new angle or pass, and a nearby open finish remains an option. Interior players establish seals and backdowns, then finish or find an outlet when help commits. Playmakers look for advantageous catches and cuts, slashers attack available lanes, and defensive assignments influence matchups. These are preferences among real opportunities, rather than forced actions or guaranteed baskets.
 
 Defenders maintain separate matchups and distinct target reservations. Higher settings cache a shared coverage plan with an on-ball defender, basket-side help, receiver tags/denial, and recovery assignments. Mobile defenders can switch real matchups on a planted screen; a slower big drops while the guard navigates it. A beaten defender hands off only after a teammate reaches the ball, then recovers to that teammate's opponent. Priority-based route steering forecasts nearby teammate movement before the shared acceleration/collision solver runs. It yields and changes routes without teleporting bodies. Situational traps retain the two-defender limit, respect open rim threats and human help, and release on a pass, escape or timeout with recovery cooldown.
 
@@ -103,6 +107,10 @@ node game/basketball2/tests/ai-gameplay-browser.cjs
 node game/basketball2/tests/ai-mismatch-browser.cjs
 node game/basketball2/tests/ai-angle-drive-browser.cjs
 node game/basketball2/tests/controller-browser.cjs
+node game/basketball2/tests/role-playstyle-browser.cjs
+node game/basketball2/tests/side-midrange-browser.cjs
+node game/basketball2/tests/custom-rosters-browser.cjs
+node game/basketball2/tests/rise-save-transfer-browser.cjs
 node game/basketball2/tests/equipment-ui-browser.cjs
 node game/basketball2/tests/equipment-browser.cjs
 node game/basketball2/tests/ai-defense-browser.cjs

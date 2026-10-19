@@ -10,6 +10,7 @@ function buildMenu(){
   buildEquipmentSelectors();
   setupCourtSelector();
   setupTournamentSelectors();
+  buildCustomRosterSetup();
 
   document.getElementById("onePlayerBtn").onclick = () => {
     twoPlayerMode = false;
@@ -27,6 +28,10 @@ function buildMenu(){
     button.onclick=()=>{
       teamSize=Number(button.dataset.teamSize);
       if(teamSize===1) localTeamMode="competitive";
+      if(customRosterDraft.enabled){
+        customRosterDraft=BasketballCustomRosters.fill(customRosterDraft,teamSize,customRosterCatalog(),[`classic:${selectedP1}`,`classic:${selectedP2}`]);
+        saveCustomRosterDraft();
+      }
       refreshMatchSetup();
       saveMatchSetup();
     };
@@ -120,6 +125,7 @@ function showMenuScreen(id){
 }
 function showPrimaryMenu(message=""){
   if(typeof leaveRiseMatch==="function") leaveRiseMatch();
+  customMatchRoster=null;
   inputManager.clearAll();
   resetPlayerShotFeedback();
   gameStarted = false;
@@ -135,6 +141,7 @@ function showPrimaryMenu(message=""){
 }
 function showQuickPlaySetup(size=null,local=null){
   if(typeof leaveRiseMatch==="function") leaveRiseMatch();
+  customMatchRoster=null;
   gameStarted=false;
   gamePaused=false;
   tutorialMode=false;
@@ -148,6 +155,7 @@ function showQuickPlaySetup(size=null,local=null){
   if(size!==null) teamSize=size;
   if(local!==null) twoPlayerMode=local;
   if(teamSize===1) localTeamMode="competitive";
+  loadCustomRosterDraft();
   refreshMatchSetup();
   refreshSneakerSelectorUI();
   refreshJerseySelectorUI();
@@ -215,6 +223,7 @@ function refreshMatchSetup(){
   document.getElementById("quickPlayTitle").textContent=`${teamSize}v${teamSize} · ${twoPlayerMode?"Local Split Screen":"Quick Play"}`;
   document.getElementById("modeText").textContent=`${teamSize}v${teamSize}${twoPlayerMode?" · Local":""}`;
   refreshTeamTacticsSelectors();
+  refreshCustomRosterSetup();
   updateInputDeviceUI();
 }
 
@@ -908,6 +917,8 @@ function buildCharacterCards(containerId, which){
 
 function startGame(){
   if(typeof stopRisePreview==="function") stopRisePreview();
+  if(riseMatch||isTournamentGame||tutorialMode) customMatchRoster=null;
+  else if(!prepareCustomMatchRoster()) return false;
   inputManager.clearAll();
   resetPlayerShotFeedback();
   if(tutorialMode){ teamSize=1; localTeamMode="competitive"; twoPlayerMode=false; }
@@ -938,9 +949,10 @@ function startGame(){
     debugDirHelpers = null;
   }
 
-  const p1Profile = riseMatch ? riseRuntimeProfile(riseMatch.home[0],0) : JSON.parse(JSON.stringify(profiles[selectedP1]));
+  const p1Profile = riseMatch ? riseRuntimeProfile(riseMatch.home[0],0) : customMatchProfile(0,0)||JSON.parse(JSON.stringify(profiles[selectedP1]));
   p1 = createCharacter(p1Profile, P1_OFFENSE_START, "p1");
-  let p2Profile = riseMatch ? riseRuntimeProfile(riseMatch.away[0],1) : JSON.parse(JSON.stringify(profiles[selectedP2]));
+  const cooperative=twoPlayerMode&&teamSize>1&&localTeamMode==='cooperative';
+  let p2Profile = riseMatch ? riseRuntimeProfile(riseMatch.away[0],1) : customMatchProfile(cooperative?0:1,cooperative?1:0)||JSON.parse(JSON.stringify(profiles[selectedP2]));
   if(isTournamentGame && currentTournamentEnemy){
     p2Profile = createTournamentBoostedProfile(currentTournamentEnemy,isChampionshipGame);
   }

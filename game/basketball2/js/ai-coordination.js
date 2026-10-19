@@ -123,7 +123,9 @@ function aiCoordFindReceivingRead(handler,settings,plan){
   const clearDrive=driving&&aiCoordLaneSpace(handler,position,HOOP_POS,settings)>1.55;
   const candidates=rimActors.length?rimActors:bots.filter(player=>{
     const brain=player.aiBrain;
+    const specialist=typeof aiPlayerTendencies==='function'&&aiPlayerTendencies(player).perimeter>.55;
     return brain&&brain.role!=="screen"&&brain.role!=="screen_setup"&&
+      (!specialist||flatDistance(player.group.position,HOOP_POS)<4.2)&&
       (brain.moveCooldown<=0||plan.receivingRead?.selected?.playerId===player.id);
   });
   let best=null;
