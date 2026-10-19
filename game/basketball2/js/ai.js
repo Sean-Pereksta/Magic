@@ -459,7 +459,7 @@ function decideTeamPlayer(char,brain,handler,settings,frozen){
     brain.target.copy(char.group.position);
     if(handler&&handler.teamId!==char.teamId){
       const assigned=aiAssignedOpponent(char);
-      if(assigned) brain.target.copy(getBetweenPlayerAndRimTarget(char,assigned,2.5));
+      if(assigned) brain.target.copy(getBetweenPlayerAndRimTarget(char,assigned,COUNTDOWN_DEFENDER_MIN_DISTANCE));
     }
     return;
   }
@@ -1144,6 +1144,7 @@ function decideAIDefense(char,brain,handler,settings){
   const guardingHandler=assigned===handler;
   const spacing=guardingHandler?THREE.MathUtils.lerp(1.9,1.25,settings.defensiveIQ):1.8;
   brain.target.copy(getBetweenPlayerAndRimTarget(char,assigned,spacing));
+  if(typeof aiDefenseAdaptiveTarget==='function') aiDefenseAdaptiveTarget(char,assigned,settings,brain.target,guardingHandler?'drive':'cut');
   const assignedRimDistance=flatDistance(assigned.group.position,HOOP_POS);
   if(!guardingHandler&&handler){
     const trap=aiGetDefensePlan(char.teamId,handler,settings).trap;

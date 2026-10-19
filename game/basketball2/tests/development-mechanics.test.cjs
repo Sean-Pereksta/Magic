@@ -66,3 +66,18 @@ test('signature dunk styles and contact resistance follow earned approach advant
   assert.ok(poster.force>normal.force);
   assert.ok(poster.resistance<1,'abilities never remove defender counterplay');
 });
+
+test('qualified dunkers retain open gathers while fatigue and weak approaches still require earned reach',()=>{
+  const hoop={x:0,y:3.28,z:-10.8};
+  const average=player({dunking:70,jumping:75,strength:65,standingDunk:65,contactFinishing:65,aerialControl:70});
+  const elite=player({dunking:92,jumping:94,strength:90,standingDunk:90,contactFinishing:92,aerialControl:92},
+    {posterizer:3,powerFinisher:3,contactSpecialist:3,highFlyer:3});
+  assert.equal(D.canDunk(average,hoop,null),true);assert.equal(D.canDunk(elite,hoop,null),true);
+  const fresh=D.dunkProfile(elite,{momentum:4.2,angle:1});
+  average.stamina=elite.stamina=.35;
+  assert.equal(D.canDunk(average,hoop,null),false,'an ordinary tired gather cannot invent rim reach');
+  assert.equal(D.canDunk(elite,hoop,null),true,'an elite vertical can retain an earned open gather');
+  const tired=D.dunkProfile(elite,{momentum:4.2,angle:1});
+  assert.ok(tired.finish<fresh.finish);assert.ok(tired.reach<fresh.reach);assert.ok(tired.resistance<1);
+  elite.group.position.z=-7;assert.equal(D.canDunk(elite,hoop,null),false,'finishing abilities do not authorize a distant launch');
+});

@@ -135,6 +135,25 @@ test('finishing elevation rewards both vertical and touch without granting immun
   assert.equal(result.blockable,true,'a higher timed hand can still meet the elevated finish');
 });
 
+test('a planted rim wall uses court position and yields to an off-lane, turned or mistimed defender',()=>{
+  const ctx=setup();
+  const result=run(ctx,`
+    const start=new THREE.Vector3(0,0,HOOP_POS.z+1.3);
+    p1.group.position.set(0,1.3,HOOP_POS.z+.6);p2.group.position.set(0,0,HOOP_POS.z-.4);p2.angle=0;
+    const oldHeightTest=isDefenderBetweenBallAndRim(p2,start),planted=isDunkRimWall(p2,p1,start);
+    p2.group.position.x=1;const side=isDunkRimWall(p2,p1,start);p2.group.position.x=0;
+    p2.group.position.z=HOOP_POS.z+2.4;const trailing=isDunkRimWall(p2,p1,start);
+    p2.group.position.z=HOOP_POS.z-.4;p2.angle=Math.PI;const turned=isDunkRimWall(p2,p1,start);p2.angle=0;
+    p2.onGround=false;const airborne=isDunkRimWall(p2,p1,start);p2.onGround=true;
+    p2.stumbledTimer=.1;const beaten=isDunkRimWall(p2,p1,start);p2.stumbledTimer=0;
+    p2.group.position.z=HOOP_POS.z-.8;const behindRim=isDunkRimWall(p2,p1,start);
+    ({oldHeightTest,planted,side,trailing,turned,airborne,beaten,behindRim});
+  `);
+  assert.equal(result.oldHeightTest,false,'the old diagonal height check missed this actual close wall');
+  assert.equal(result.planted,true);
+  for(const key of ['side','trailing','turned','airborne','beaten','behindRim'])assert.equal(result[key],false,key);
+});
+
 test('a torso ricochet with distant hands stays a body deflection and earns no block',()=>{
   const ctx=setup();
   const result=run(ctx,`

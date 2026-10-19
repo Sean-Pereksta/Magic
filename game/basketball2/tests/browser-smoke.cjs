@@ -58,6 +58,39 @@ const root=path.resolve(__dirname,'../../..');
       if(mode.ballState==='dribble') assert.deepEqual(mode.ownership,[mode.ballOwner]);
     }
     console.log('PASS: eight solo/local/team configurations, AI simulation and single ownership');
+    const startingSpace=await page.evaluate(()=>{
+      const rows=[];
+      for(const style of ['modern','classic'])for(const size of [1,2,3])for(const startingSlot of ['p1','p2']){
+        inputManager.clearAll();gameSettings.set('controlStyle',style);
+        teamSize=size;twoPlayerMode=true;localTeamMode='competitive';startGame();
+        const owner=matchPlayers.find(player=>player.controllerSlot===startingSlot);
+        const defender=matchPlayers.find(player=>player.controllerSlot&&player.teamId!==owner.teamId);
+        resetPossession(owner.id,true);
+        const slot=defender.controllerSlot;
+        const move=style==='classic'?(slot==='p1'?'KeyW':'KeyI'):(slot==='p1'?'KeyS':'KeyK');
+        const sprint=slot==='p1'?'ShiftLeft':'ShiftRight',hand=slot==='p1'?'KeyE':'KeyO';
+        const key=(type,code)=>{window.dispatchEvent(new KeyboardEvent(type,{code,bubbles:true,cancelable:true}));inputManager.tick();};
+        for(const code of [move,sprint,hand])key('keydown',code);
+        let minimum=Infinity;
+        for(let frame=0;frame<59;frame++){
+          processUnifiedInputActions(defender,inputManager.getState(slot));
+          simulateBasketball(1/60);
+          minimum=Math.min(minimum,...getOpponents(owner).map(player=>flatDistance(player.group.position,owner.group.position)));
+        }
+        const toOwner=owner.group.position.clone().sub(defender.group.position).setY(0).normalize();
+        const inward=defender.velocity.dot(toOwner),queued=defender.swipeTime;
+        for(const code of [move,sprint,hand])key('keyup',code);
+        inputManager.clearAll();simulateBasketball(1/60);simulateBasketball(1/60);
+        rows.push({style,size,startingSlot,minimum,inward,queued,owner:ballOwner,expectedOwner:owner.id,steals:matchPlayers.reduce((sum,player)=>sum+player.stats.steals,0)});
+      }
+      gameSettings.set('controlStyle','modern');return rows;
+    });
+    for(const row of startingSpace){
+      assert.ok(row.minimum>=3.2-1e-7,JSON.stringify(row));
+      assert.ok(row.inward<=1e-7,JSON.stringify(row));assert.equal(row.queued,0);
+      assert.equal(row.owner,row.expectedOwner);assert.equal(row.steals,0);
+    }
+    console.log('PASS: both starting slots in 1v1/2v2/3v3 keep a few steps of space through held sprint/steal inputs in modern and classic controls');
     const playbooks=await page.evaluate(()=>{
       const results=[];
       for(const style of Object.keys(OFFENSIVE_STYLES)){

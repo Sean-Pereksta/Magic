@@ -150,7 +150,7 @@ function resetTeamPositions(ownerId){
   others.forEach((player,index)=>player.group.position.set((index===0?-1:1)*spacing,0,teamSize===3?-2.4:-1.5));
   defense.forEach((player,index)=>{
     const mark=index===0?owner:others[index-1];
-    if(mark) player.group.position.copy(mark.group.position).add(new THREE.Vector3(0,0,-2.2));
+    if(mark) player.group.position.copy(mark.group.position).add(new THREE.Vector3(0,0,-(mark===owner?COUNTDOWN_DEFENDER_MIN_DISTANCE:2.2)));
   });
   for(const player of matchPlayers){
     player.velocity.set(0,0,0); player.yVel=0; player.onGround=true;

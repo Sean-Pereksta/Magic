@@ -83,6 +83,105 @@ function aiDefenseEvent(memory,key,amount=1){
     for(const id of Object.keys(values || {})) values[id]*=.97;
   memory[key]+=amount;
 }
+function aiDefenseRouteMemory(plan,id){
+  const memory=aiDefenseMemory(plan,id),now=teamAITime;
+  if(!memory.scoringRoutes) memory.scoringRoutes=Object.create(null);
+  const elapsed=Math.max(0,now-(memory.routeUpdatedAt??now));
+  if(elapsed>0){
+    const decay=Math.exp(-elapsed/75);
+    for(const route of Object.values(memory.scoringRoutes)) route.successes*=decay;
+  }
+  memory.routeUpdatedAt=now;
+  return memory.scoringRoutes;
+}
+function aiDefenseRouteSide(start,end){
+  const side=start.x-HOOP_POS.x,change=end.x-start.x;
+  return Math.abs(side)>1.4?(side<0?-1:1):Math.abs(change)>.6?(change<0?-1:1):0;
+}
+function aiObserveScoringRoutes(plan,handler,state,dt){
+  const now=teamAITime;
+  if(!handler){plan.scoringTracks=Object.create(null);plan.routeObservedAt=now;return;}
+  const tracks=plan.scoringTracks||(plan.scoringTracks=Object.create(null));
+  // A possession reset moves the lineup discontinuously. It is never evidence
+  // of a cut, and a previous possession cannot supply the next basket's route.
+  if(plan.routeObservedAt!==undefined&&now-plan.routeObservedAt>.5)
+    for(const id of Object.keys(tracks)) delete tracks[id];
+  plan.routeObservedAt=now;
+  for(const player of aiRoster().filter(player=>player.teamId!==plan.teamId)){
+    aiDefenseRouteMemory(plan,player.id);
+    const position=player.group.position,hasBall=player===handler&&state==='dribble';
+    let track=tracks[player.id];
+    const releasing=player===handler&&['shot','layup','dunk'].includes(state);
+    if(releasing){
+      if(track?.active&&!track.release) track.release={at:now,position:position.clone(),
+        side:aiDefenseRouteSide(track.start,position),kind:track.kind};
+      continue;
+    }
+    if(!['dribble','pass'].includes(state)){delete tracks[player.id];continue;}
+    const fresh=()=>({start:position.clone(),last:position.clone(),startedAt:now,
+      hasBall,kind:hasBall?'drive':'cut',travel:0,quiet:0,active:false,awarded:false});
+    let moved=track?flatDistance(track.last,position):0;
+    if(!track||track.awarded||track.release||moved>2.5||
+      track.hasBall&&!hasBall||!track.hasBall&&hasBall&&!track.active){track=tracks[player.id]=fresh();moved=0;}
+    const speed=Math.hypot(player.velocity.x,player.velocity.z);
+    track.quiet=speed<.75?track.quiet+dt:0;
+    if(track.quiet>.65){track=tracks[player.id]=fresh();moved=0;}
+    track.hasBall=hasBall;track.travel+=moved;track.last.copy(position);
+    const toward=HOOP_POS.clone().sub(position).setY(0).normalize();
+    const progress=flatDistance(track.start,HOOP_POS)-flatDistance(position,HOOP_POS);
+    if(!track.active&&now-track.startedAt>.18&&track.travel>1.05&&progress>.8&&
+      speed>1.3&&player.velocity.dot(toward)>.6) track.active=true;
+  }
+}
+function aiRecordScoredPossession(shooter,points){
+  if(!shooter||!(points>0)) return;
+  for(const plan of Object.values(aiDefensePlans)){
+    if(plan.teamId===shooter.teamId) continue;
+    const track=plan.scoringTracks?.[shooter.id],release=track?.release;
+    if(!track?.active||track.awarded||!release||teamAITime-release.at>3||
+      flatDistance(release.position,HOOP_POS)>4.1) continue;
+    track.awarded=true;
+    const routes=aiDefenseRouteMemory(plan,shooter.id),key=`${release.kind}:${release.side}`;
+    // Only made baskets reinforce this lane. Several successes are needed;
+    // successful counters reduce the old overplay rather than stacking forever.
+    for(const [other,route] of Object.entries(routes)) if(other!==key) route.successes*=.68;
+    const route=routes[key]||(routes[key]={kind:release.kind,side:release.side,successes:0});
+    route.successes=Math.min(5,route.successes+1);
+    if(plan.coverage) plan.coverage.until=0;
+  }
+}
+function aiDefenseRouteRead(plan,attacker,settings,kind){
+  if(!plan||!attacker) return null;
+  const routes=Object.values(aiDefenseRouteMemory(plan,attacker.id)).filter(route=>route.kind===kind);
+  const best=routes.sort((a,b)=>b.successes-a.successes)[0];
+  if(!best||best.successes<2.35) return null;
+  const other=routes.slice(1).reduce((sum,route)=>sum+route.successes,0);
+  const confidence=THREE.MathUtils.clamp((best.successes-1.5)/3.5,0,.8)*
+    THREE.MathUtils.clamp(.45+(settings.defensiveIQ-.32)*.8,.35,1)*
+    THREE.MathUtils.clamp(1-other/Math.max(1,best.successes),.2,1);
+  return {kind,side:best.side,confidence};
+}
+function aiDefenseAdaptiveTarget(defender,attacker,settings,target,kind='drive'){
+  if(!defender||aiIsHuman(defender)) return null;
+  const read=aiDefenseRouteRead(aiDefensePlans[defender.teamId],attacker,settings,kind);
+  if(!read) return null;
+  const toward=HOOP_POS.clone().sub(attacker.group.position).setY(0),distance=toward.length();
+  if(distance<1.25||distance>11) return null;
+  toward.normalize();
+  const charging=typeof shotCharging!=='undefined'&&shotCharging&&chargingPlayer===attacker;
+  const wing=attacker.group.position.x-HOOP_POS.x;
+  const counterCut=kind==='cut'&&read.side&&Math.abs(wing)>1.4&&Math.sign(wing)!==read.side;
+  const control=read.confidence*(charging?.2:1)*(counterCut?.25:1);
+  // Reserve the rimward lane earlier; ordinary acceleration and collisions
+  // still decide whether the defender can actually arrive at that position.
+  target.addScaledVector(toward,control*(kind==='cut'?.95:.85));
+  if(kind==='drive'&&read.side){
+    const counter=Math.abs(attacker.velocity.x)>1.3&&Math.sign(attacker.velocity.x)!==read.side;
+    target.x+=read.side*control*.4*(counter?.15:1);
+  }
+  keepInCourt(target);
+  return read;
+}
 function aiObserveTeamDefense(handler,dt){
   const roster=aiRoster(),state=typeof ballState!=="undefined"?ballState:"dribble";
   for(const teamId of new Set(roster.map(player=>player.teamId))){
@@ -90,6 +189,7 @@ function aiObserveTeamDefense(handler,dt){
     const offense=handler&&handler.teamId!==teamId?handler:null;
     if(!plan&&!offense) continue;
     if(!plan) plan=aiDefensePlans[teamId]={teamId,handlerId:offense.id,handlerAge:0,cooldownUntil:0,trap:null,lastTime:-1};
+    aiObserveScoringRoutes(plan,offense,state,dt);
     if(offense&&state==="dribble"){
       const memory=aiDefenseMemory(plan,offense.id),position=offense.group.position;
       const velocity=offense.velocity,speed=Math.hypot(velocity.x,velocity.z);
@@ -285,6 +385,7 @@ function aiGetCoordinatedDefensePlan(teamId,handler,settings,dt=0){
   }
   const primaryTarget=primaryRead.position.clone().addScaledVector(primaryRead.toward,cushion);
   primaryTarget.x+=aiDefenseShade(plan,handler,settings);
+  aiDefenseAdaptiveTarget(primary,handler,settings,primaryTarget,'drive');
   coverage.targets[primary.id]=primaryTarget;
   coverage.roles[primary.id]=primaryRead.driving?"contain":charging?"closeout":"guard";
   const remaining=defense.filter(player=>player!==primary),danger=primaryRead.driving&&distance<8.5;
@@ -337,6 +438,7 @@ function aiGetCoordinatedDefensePlan(teamId,handler,settings,dt=0){
         if(helperMan&&helperMan!==assigned){target.lerp(helperMan.group.position,trap?.36:.22);role="pass_lane";}
       }
     }
+    if(['guard','tag','deny','recover'].includes(role)) aiDefenseAdaptiveTarget(defender,assigned,settings,target,'cut');
     coverage.targets[defender.id]=target;coverage.roles[defender.id]=role;
   }
   // Reserve actual distinct destinations. Priority is ball, rim, then recovery;
