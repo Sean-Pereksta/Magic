@@ -15,7 +15,12 @@
     [2,0x704327,['curlyTop'],'athletic'],[2,0x704327,['braids'],'broad'],
     [3,0x8f5737,['shortFade'],'lean'],[3,0x8f5737,['buzz'],'broad'],
     [4,0xc8845b,['curlyTop'],'athletic'],[4,0xc8845b,['shortFade'],'broad'],
-    [5,0xe1aa7a,['spiky'],'lean'],[5,0xd49a6a,['shortFade','straight'],'athletic']
+    [5,0xe1aa7a,['spiky'],'lean'],[5,0xd49a6a,['shortFade','straight'],'athletic'],
+    [0,0x3d2418,['afro'],'athletic'],[0,0x3d2418,['shortFade'],'athletic'],
+    [1,0x5d3425,['braids'],'broad'],[2,0x704327,['buzz'],'lean'],
+    [2,0x704327,['afro'],'lean'],[3,0x8f5737,['braids'],'athletic'],
+    [4,0xc8845b,['buzz'],'lean'],[4,0xc8845b,['afro'],'broad'],
+    [5,0xe1aa7a,['buzz'],'broad'],[5,0xd49a6a,['curlyTop'],'athletic']
   ];
   const catalog=Object.freeze(definitions.map(([family,skin,hairStyles,build],i)=>{
     const id='player-'+String(i+1).padStart(2,'0');
@@ -48,16 +53,27 @@
     if(!Number.isFinite(height)||!Number.isFinite(weight)||height<140||weight<40)return 'athletic';
     const mass=weight/Math.pow(height/100,2);return mass<23?'lean':mass>27?'broad':'athletic';
   }
-  function select(player={}){
+  function signature(player={}){
     player=player&&typeof player==='object'?player:{};
+    return [skinValue(player.appearance?.skin)??'',player.appearance?.hairStyle||'',buildValue(player)].join('|');
+  }
+  function get(id){return catalog.find(portrait=>portrait.id===id)||null;}
+  function select(player={},options={}){
+    player=player&&typeof player==='object'?player:{};
+    const assigned=!options.legacy&&get(player.appearance?.portraitId);
     const identity=String(player.id??'unknown-athlete'),skin=skinValue(player.appearance?.skin),hair=player.appearance?.hairStyle,build=buildValue(player);
     let family=hash(identity)%families.length;
     if(skin!==null){
       let closest=Infinity;families.forEach((tones,i)=>{const distance=Math.min(...tones.map(tone=>skinDistance(skin,tone)));if(distance<closest){closest=distance;family=i;}});
     }
+    if(assigned&&assigned.family===family&&player.appearance.portraitSignature===signature(player))return assigned;
     // Every available portrait depicts an adult. Age stays out of the tie-breaker so season birthdays keep the same face.
     const score=portrait=>hairDistance(hair,portrait.hairStyles)*4+(portrait.build===build?0:.4)+hash(identity+'|'+portrait.id)/4294967295*.3;
-    return catalog.filter(portrait=>portrait.family===family).sort((a,b)=>score(a)-score(b))[0];
+    const pool=options.legacy?catalog.slice(0,12):catalog;
+    return pool.filter(portrait=>portrait.family===family).sort((a,b)=>score(a)-score(b))[0];
+  }
+  function assignment(player,options={}){
+    return {portraitId:select(player,options).id,portraitSignature:signature(player)};
   }
   const boundDocuments=new WeakSet();
   function bindFallbacks(document){
@@ -72,5 +88,5 @@
     };
     document.addEventListener('load',handle,true);document.addEventListener('error',handle,true);
   }
-  return Object.freeze({catalog,select,bindFallbacks});
+  return Object.freeze({catalog,get,select,signature,assignment,bindFallbacks});
 });

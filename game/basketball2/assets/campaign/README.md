@@ -12,7 +12,7 @@ The three static WebP files total 286,428 bytes. Dark negative space protects li
 
 ## Player portraits
 
-`portraits/player-01.webp` through `portraits/player-12.webp` form a coordinated set of twelve original fictional adult athlete headshots. Each image is 512 × 512 with transparent alpha; the complete set totals 645,432 bytes. The portraits load lazily in rookie selection, roster cards, scouting, comparisons and opponent previews. A skin/hair/build match with a stable athlete-ID tie-breaker keeps each face consistent across recruitment, upgrades, saving, reloading and season birthdays. An accessible jersey portrait remains available if an image cannot load.
+`portraits/player-01.webp` through `portraits/player-22.webp` form a coordinated set of twenty-two original fictional adult athlete headshots. Each image is 512 × 512 with transparent alpha. The portraits load lazily in rookie selection, roster cards, scouting, comparisons and opponent previews. New markets and future recruiting classes use the expanded skin/hair/build pool. Validated portrait IDs remain attached to each athlete across recruitment, upgrades, saving, reloading and season birthdays; older saves retain the face selected from the original twelve portraits. An explicit skin or hairstyle change still updates the appearance match. An accessible jersey portrait remains available if an image cannot load.
 
 The complete portrait prompt set is in `portraits/prompts.txt`. The portraits were generated with the built-in image generation tool; no external runtime image service is needed.
 

@@ -12,13 +12,13 @@ const memoryStorage=()=>{
 };
 
 test('the portrait catalog contains immutable, distinct, locally bundled athlete images',()=>{
-  assert.equal(Portraits.catalog.length,12);
+  assert.equal(Portraits.catalog.length,22);
   assert.ok(Object.isFrozen(Portraits.catalog));
-  assert.equal(new Set(Portraits.catalog.map(portrait=>portrait.id)).size,12);
-  assert.equal(new Set(Portraits.catalog.map(portrait=>portrait.src)).size,12);
+  assert.equal(new Set(Portraits.catalog.map(portrait=>portrait.id)).size,22);
+  assert.equal(new Set(Portraits.catalog.map(portrait=>portrait.src)).size,22);
   for(const portrait of Portraits.catalog){
     assert.ok(Object.isFrozen(portrait));
-    assert.match(portrait.id,/^player-(?:0[1-9]|1[0-2])$/);
+    assert.match(portrait.id,/^player-(?:0[1-9]|1[0-9]|2[0-2])$/);
     assert.equal(portrait.src,`assets/campaign/portraits/${portrait.id}.webp`);
     assert.ok(Number.isInteger(portrait.skin)&&portrait.skin>=0&&portrait.skin<=0xffffff);
     assert.ok(portrait.hairStyles.length>0);
@@ -148,4 +148,53 @@ test('the browser library automatically installs image recovery once for its doc
   assert.deepEqual(events.map(event=>event[0]),['load','error']);
   browser.RisePortraits.bindFallbacks(document);
   assert.equal(events.length,2);
+});
+
+test('legacy saved athletes retain their original twelve-face identities after the catalog expands',()=>{
+  const raw=Rise.create({seed:47}),styles=['shortFade','braids','buzz','afro','spiky'];
+  for(const player of Object.values(raw.players)){
+    const index=Number(player.id.split('-').pop());player.appearance.hairStyle=styles[index%5];
+    delete player.appearance.portraitId;delete player.appearance.portraitSignature;
+  }
+  const expected={2:'player-05',3:'player-11',8:'player-09',17:'player-11',18:'player-01',21:'player-03',22:'player-10',23:'player-05',25:'player-02',26:'player-08'};
+  for(const opponent of raw.season.opponents)for(const player of opponent.players){
+    player.appearance.skin=0x3d2418;player.appearance.hairStyle='braids';delete player.appearance.portraitId;delete player.appearance.portraitSignature;
+  }
+  const restored=Rise.normalize(raw);assert.ok(restored);
+  for(const [index,id] of Object.entries(expected)){
+    const player=restored.players['rtg-47-'+index];assert.equal(player.appearance.portraitId,id);assert.equal(Portraits.select(player).id,id);
+  }
+  for(const opponent of restored.season.opponents)for(const player of opponent.players)assert.equal(Portraits.select(player).id,'player-01','saved opponent appearance also keeps its original face');
+  const storage=memoryStorage();assert.equal(Rise.save(restored,storage).ok,true);const twice=Rise.load(storage);
+  for(const player of Object.values(restored.players))assert.equal(Portraits.select(twice.players[player.id]).id,player.appearance.portraitId);
+});
+
+test('all twenty-two faces are reachable by generated markets and future recruiting classes',()=>{
+  const reached=new Set();
+  for(let seed=1;seed<=8;seed++)for(const player of Rise.generateMarket(seed)){
+    const portrait=Portraits.select(player);reached.add(portrait.id);
+    assert.equal(player.appearance.portraitId,portrait.id);
+    assert.equal(player.appearance.portraitSignature,Portraits.signature(player));
+  }
+  assert.deepEqual([...reached].sort(),Portraits.catalog.map(portrait=>portrait.id).sort());
+  const state=Rise.create({seed:47}),oldFaces=new Map(Object.values(state.players).map(player=>[player.id,player.appearance.portraitId]));
+  const future=new Set();
+  for(let season=0;season<8;season++){
+    state.season.phase='offseason';assert.equal(Rise.advanceSeason(state).ok,true);
+    for(const player of Object.values(state.players).filter(player=>player.id.startsWith('prospect-'))){
+      assert.equal(Portraits.select(player).id,player.appearance.portraitId);future.add(player.appearance.portraitId);
+    }
+  }
+  assert.ok([...future].some(id=>Number(id.slice(-2))>12),'new season recruits use the expanded catalog');
+  for(const [id,portraitId] of oldFaces)assert.equal(Portraits.select(state.players[id]).id,portraitId,'season advancement does not reassign existing faces');
+});
+
+test('saved portrait IDs are validated and deliberate appearance changes still choose an appropriate face',()=>{
+  const state=Rise.create({seed:47}),player=state.players[state.captainId];
+  player.appearance.portraitId='../../unsafe';player.appearance.portraitSignature=Portraits.signature(player);
+  const restored=Rise.normalize(state);assert.ok(restored);assert.ok(Portraits.get(restored.players[player.id].appearance.portraitId));
+  const assigned=restored.players[player.id],old=Portraits.select(assigned).id;
+  assigned.appearance.skin=0x3d2418;assigned.appearance.hairStyle='afro';
+  const changed=Portraits.select(assigned);assert.notEqual(changed.id,old);assert.equal(changed.skin,0x3d2418);assert.ok(changed.hairStyles.includes('afro'));
+  assert.ok(Rise.normalize({...state,season:{...state.season,opponents:'ignore malformed derived data'}}));
 });
