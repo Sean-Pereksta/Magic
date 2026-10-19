@@ -1,9 +1,10 @@
 /* Rise to Glory: deterministic campaign data and progression, independent of Tour saves. */
 (function(root,factory){
-  const api=factory();
+  const portraits=typeof module==="object"&&module.exports?require('./rise-portraits.js'):null;
+  const api=factory(()=>portraits||root?.RisePortraits);
   if(typeof module==="object" && module.exports) module.exports=api;
   if(root) root.RiseToGlory=api;
-})(typeof globalThis!=="undefined"?globalThis:this,function(){
+})(typeof globalThis!=="undefined"?globalThis:this,function(portraitLibrary){
   "use strict";
   const VERSION=3, SAVE_KEY="basketballRiseToGloryV3", BACKUP_KEY=SAVE_KEY+"Backup", ROSTER_LIMIT=10;
   const SAVE_FORMAT="basketball2-campaign-save", TRANSFER_VERSION=1, MAX_SAVE_BYTES=8*1024*1024;
@@ -106,6 +107,23 @@
   const LAST=["Cole","Reyes","Ward","Monroe","King","Price","Bell","Grant","Harris","Vale","Stone","Cross","Vaughn","Brooks","Hayes","Fox","Banks","West","Lane","Carter","Santos","Park","Young","Reed"];
   const ARCHETYPE_KEYS=Object.keys(ARCHETYPES);
   const skinTones=[0x5d3425,0xc8845b,0x704327,0xe1aa7a,0x3d2418,0x8f5737,0xd49a6a];
+  const portraitHairStyles=["shortFade","braids","buzz","afro","spiky","curlyTop","headband"];
+  function assignPortrait(athlete,legacy=false){
+    const portraits=portraitLibrary();
+    if(portraits)Object.assign(athlete.appearance,portraits.assignment(athlete,{legacy}));
+    return athlete;
+  }
+  function restorePortrait(athlete,raw){
+    const portraits=portraitLibrary();if(!portraits)return;
+    const saved=raw?.appearance,valid=!!portraits.get(saved?.portraitId);
+    if(portraitHairStyles.includes(saved?.hairStyle))athlete.appearance.hairStyle=saved.hairStyle;
+    if(skinTones.includes(Number(saved?.skin)))athlete.appearance.skin=Number(saved.skin);
+    delete athlete.appearance.portraitId;delete athlete.appearance.portraitSignature;
+    if(valid&&saved.portraitSignature===portraits.signature(athlete)){
+      athlete.appearance.portraitId=saved.portraitId;athlete.appearance.portraitSignature=saved.portraitSignature;
+      assignPortrait(athlete);
+    }else assignPortrait(athlete,!valid);
+  }
   function random(seed){let n=integer(seed,1,2147483647);return ()=>{n=(Math.imul(n,1664525)+1013904223)>>>0;return n/4294967296;};}
   function average(values){return values.reduce((sum,n)=>sum+n,0)/Math.max(1,values.length);}
   function overall(player){
@@ -138,7 +156,7 @@
     const abilityPotential=[...new Set([...definition.abilities,...secondary.abilities.slice(0,2)])];
     const player={id:`rtg-${seed}-${index}`,name:`${FIRST[index%FIRST.length]} ${LAST[(Math.floor(index/FIRST.length)*7+index*7)%LAST.length]}`,
       age:18+Math.floor(rng()*(index<15?4:13)),position:definition.position,archetype,secondaryArchetype,profileKey:definition.profileKey,
-      physical:{heightCm,weightKg},appearance:{skin:skinTones[index%skinTones.length],hair:0x1b110c,hairStyle:["shortFade","braids","buzz","afro","spiky"][index%5],number:String(1+index%98)},equipment:{},
+      physical:{heightCm,weightKg},appearance:{skin:skinTones[index%skinTones.length],hair:0x1b110c,hairStyle:portraitHairStyles[index%6],number:String(1+index%98)},equipment:{},
       ratings,caps,potential,abilityPotential,abilities:{},branches:[],xp:0,level:1,upgradePoints:index<15?2:0,invested:0,
       role:"balanced",priority:1,signingCost:0,unlockDivision:band,availableSeason:1,training:{},trainingTokens:{},stats:emptyStats(),development:{levels:0,ratingGains:0,trainingSessions:0},
       strengths:definition.strengths.slice(0,3),weaknesses:definition.weaknesses.slice(0,2),
@@ -149,7 +167,7 @@
       for(const key of abilityPotential){if(Object.entries(ABILITIES[key].requirements).every(([stat,value])=>ratings[stat]>=value)&&!ABILITIES[key].requires&&!ABILITIES[key].requiresAny) player.abilities[key]=band>=4?2:1;}
       player.level=1+band*2;
     }
-    return player;
+    return assignPortrait(player);
   }
   function label(key){return ATTRIBUTE_LIST.find(attribute=>attribute.key===key)?.name||key;}
   function generateMarket(seed=24,count=96){return Array.from({length:integer(count,15,160)},(_,index)=>generatePlayer(index,seed));}
@@ -164,9 +182,10 @@
     const captain=players[selected[0]];
     captain.name=text(options.captainName,captain.name);captain.captain=true;captain.upgradePoints=4;
     captain.appearance.number=String(integer(options.captainNumber??captain.appearance.number,0,99));
-    if(["shortFade","braids","buzz","afro","spiky","headband"].includes(options.captainHairStyle)) captain.appearance.hairStyle=options.captainHairStyle;
+    if(portraitHairStyles.includes(options.captainHairStyle)) captain.appearance.hairStyle=options.captainHairStyle;
     if(skinTones.includes(Number(options.captainSkin))) captain.appearance.skin=Number(options.captainSkin);
     if(options.captainPosition && ["PG","SG","SF","PF","C"].includes(options.captainPosition)) captain.position=options.captainPosition;
+    assignPortrait(captain);
     const state={version:VERSION,mode:"rise-to-glory",seed,createdAt:Date.now(),updatedAt:Date.now(),
       team:{name:text(options.name,"Neighborhood Hoops"),primaryColor:color(options.primaryColor,"#ff6b35"),secondaryColor:color(options.secondaryColor,"#15253f"),
         jerseyStyle:JERSEYS.includes(options.jerseyStyle)?options.jerseyStyle:"classic",logo:LOGOS.includes(options.logo)?options.logo:"comet",
@@ -219,14 +238,22 @@
     state.currency-=recruit.signingCost;state.roster.push(id);touch(state);
     return ok(`${recruit.name} signed.`,{player:recruit,cost:recruit.signingCost});
   }
+  function releasePreview(state,id){
+    const athlete=player(state,id);
+    const reason=!athlete||!state.roster.includes(id)?"This player is not on your roster.":
+      id===state.captainId?"Your captain stays with the franchise.":
+      state.roster.length<=3?"Keep at least three players. Sign a replacement before cutting anyone.":"";
+    return {available:!reason,reason,refund:athlete?Math.round(athlete.signingCost*.3):0,
+      replacementId:state.starters.includes(id)?state.roster.find(candidate=>!state.starters.includes(candidate))||null:null};
+  }
   function release(state,id){
-    if(!state.roster.includes(id)) return fail("This player is not on your roster.");
-    if(state.roster.length<=3) return fail("Keep at least three athletes on your roster.");
-    if(id===state.captainId) return fail("Your captain stays with the franchise.");
-    const athlete=player(state,id),refund=Math.round(athlete.signingCost*.3);
+    const preview=releasePreview(state,id);
+    if(!preview.available) return fail(preview.reason);
+    const athlete=player(state,id),refund=preview.refund;
     state.roster=state.roster.filter(value=>value!==id);state.starters=state.starters.filter(value=>value!==id);
     for(const candidate of state.roster) if(state.starters.length<3&&!state.starters.includes(candidate)) state.starters.push(candidate);
-    state.currency+=refund;touch(state);return ok(`${athlete.name} released.`,{refund});
+    if(state.team.matchups) delete state.team.matchups[id];
+    state.currency+=refund;touch(state);return ok(`${athlete.name} cut from the roster. ${refund} C returned to club funds.`,{refund,replacementId:preview.replacementId});
   }
   function setStarters(state,ids){
     if(!Array.isArray(ids)||ids.length!==3||new Set(ids).size!==3||!ids.every(id=>state.roster.includes(id))) return fail("Choose three different roster players.");
@@ -492,8 +519,9 @@
     athlete.name=text(raw.name,athlete.name);athlete.age=integer(raw.age||athlete.age,18,55);
     for(const key of ATTRIBUTE_KEYS){athlete.caps[key]=integer(raw.caps?.[key]??athlete.caps[key],25,athlete.caps[key]);athlete.ratings[key]=integer(raw.ratings?.[key]??athlete.ratings[key],25,athlete.caps[key]);}
     athlete.appearance.number=String(integer(raw.appearance?.number??athlete.appearance.number,0,99));
-    if(["shortFade","braids","buzz","afro","spiky","headband"].includes(raw.appearance?.hairStyle)) athlete.appearance.hairStyle=raw.appearance.hairStyle;
+    if(portraitHairStyles.includes(raw.appearance?.hairStyle)) athlete.appearance.hairStyle=raw.appearance.hairStyle;
     if(skinTones.includes(Number(raw.appearance?.skin))) athlete.appearance.skin=Number(raw.appearance.skin);
+    restorePortrait(athlete,raw);
     athlete.equipment=sanitizeEquipment(raw.equipment);
     athlete.xp=integer(raw.xp,0,2000);athlete.level=integer(raw.level||1,1,35);athlete.upgradePoints=integer(raw.upgradePoints,0,250);athlete.invested=integer(raw.invested,0,240);
     athlete.abilities={};for(const key of Object.keys(ABILITIES)) if(athlete.abilityPotential.includes(key)&&raw.abilities?.[key]) athlete.abilities[key]=integer(raw.abilities[key],1,3);
@@ -537,6 +565,10 @@
       state.team.substitution=["balanced","fresh_legs","matchup","starters"].includes(raw.team.substitution)?raw.team.substitution:"balanced";
       state.team.matchups=raw.team.matchups&&typeof raw.team.matchups==="object"?Object.fromEntries(Object.entries(raw.team.matchups).filter(([id,target])=>state.roster.includes(id)&&typeof target==="string").slice(0,10)):{};
       state.season=createSeason(state,division,number);
+      for(const opponent of state.season.opponents){
+        const saved=Array.isArray(raw.season.opponents)?raw.season.opponents.find(entry=>entry?.id===opponent.id):null;
+        for(const athlete of opponent.players)restorePortrait(athlete,Array.isArray(saved?.players)?saved.players.find(entry=>entry?.id===athlete.id):null);
+      }
       const completed=Array.isArray(raw.season.completed)?raw.season.completed.slice(0,11):[];
       // Replay results to rebuild schedule/standings without trusting malformed or stale derived data.
       for(const result of completed){
@@ -646,6 +678,6 @@
     }
   }
   return {VERSION,SAVE_KEY,BACKUP_KEY,ROSTER_LIMIT,SAVE_FORMAT,TRANSFER_VERSION,MAX_SAVE_BYTES,ATTRIBUTES,ATTRIBUTE_LIST,ATTRIBUTE_KEYS,ARCHETYPES,ABILITIES,DIVISIONS,TRAINING,ROLES,OFFENSES,DEFENSES,LOGOS,JERSEYS,
-    create,generateMarket,rookiePool,player,roster,market,sign,release,setStarters,setRole,setStrategy,upgradePreview,upgrade,abilityPreview,learnAbility,xpRequired,addXP,contributionXP,
+    create,generateMarket,rookiePool,player,roster,market,sign,releasePreview,release,setStarters,setRole,setStrategy,upgradePreview,upgrade,abilityPreview,learnAbility,xpRequired,addXP,contributionXP,
     getStandings,nextGame,opponent,prepareMatch,recordGame,advanceSeason,trainingPlan,awardTraining,chemistry,compare,toProfile,overall,tier,normalize,save,load,saveSummary,exportSave,inspectSave,importSave};
 });

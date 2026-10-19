@@ -8,7 +8,8 @@ Build a franchise from three rookies, recruit specialists, develop a captain, an
 - The clubhouse shows the captain's existing animated GLB model, team overall, chemistry, record, available points, next opponent, standings and recent results.
 - Each division has seven league opponents, 1v1 rivalry and 2v2 tournament fixtures, standings, playoff qualification, a semifinal and a championship. Winning promotes the club; losing permits another season. Elite clubs can defend their title in subsequent seasons.
 - Match results award team credits and contribution XP. Wins, assists, good shots, screens, stops, rebounds, steals and blocks all support development. A player does not need to lead scoring to develop effectively.
-- The initial generated pool contains 96 distinct athletes, with more prospects arriving each offseason. Availability expands by division. Sign specialists, compare strengths and weaknesses, choose three starters and maintain up to ten athletes. Releases retain the athlete's career history and provide a partial contract refund. No purchases or backend service are involved.
+- The initial generated pool contains 96 distinct athletes, with more prospects arriving each offseason. Availability expands by division. Sign specialists, compare strengths and weaknesses, choose three starters and maintain up to ten athletes. Use **Cut player** from Roster or Development to review a named confirmation, the 30% signing-price refund and any replacement starter before confirming. Cut athletes return to Scouting with their career history. The captain stays, and a franchise must keep at least three players. No purchases or backend service are involved.
+- Twenty-two original player portraits provide variety across skin tones, hairstyles and builds. New recruits use the expanded set; existing saves retain their assigned faces through recruitment, development, birthdays and reloads.
 
 ## Development and on-court effects
 

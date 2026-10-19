@@ -82,6 +82,40 @@ test('market signing and releases respect money, progression, roster size and ca
   assert.equal(state.roster.length,10);assert.equal(Rise.sign(state,Rise.market(state)[0].id).ok,false);
 });
 
+test('cut previews and confirmed cuts preserve captain, lineup, matchup and saved roster invariants',()=>{
+  const state=Rise.create();state.currency=10000;
+  const [paid,bench]=Rise.market(state,{sort:'cost'}).slice(0,2);
+  Rise.sign(state,paid.id);Rise.sign(state,bench.id);
+  const replacement=state.starters[2];Rise.setStarters(state,[state.captainId,state.starters[1],paid.id]);
+  state.team.matchups={[paid.id]:'rival-center',[state.captainId]:'rival-guard'};
+  paid.stats.points=12;const before=JSON.stringify(state),preview=Rise.releasePreview(state,paid.id);
+  assert.equal(preview.available,true);assert.equal(preview.refund,Math.round(paid.signingCost*.3));
+  assert.equal(preview.replacementId,replacement);assert.equal(JSON.stringify(state),before,'preview never mutates the club');
+  assert.equal(Rise.releasePreview(state,bench.id).replacementId,null);
+  assert.match(Rise.releasePreview(state,state.captainId).reason,/captain/);
+  assert.equal(Rise.release(state,state.captainId).ok,false);assert.equal(JSON.stringify(state),before);
+  const credits=state.currency,result=Rise.release(state,paid.id);
+  assert.equal(result.ok,true);assert.equal(result.replacementId,replacement);
+  assert.equal(state.currency,credits+preview.refund);assert.ok(!state.roster.includes(paid.id));
+  assert.equal(state.starters.length,3);assert.equal(new Set(state.starters).size,3);
+  assert.ok(state.starters.includes(replacement));assert.ok(state.starters.every(id=>state.roster.includes(id)));
+  assert.equal(state.team.matchups[paid.id],undefined);assert.equal(state.team.matchups[state.captainId],'rival-guard');
+  assert.equal(Rise.release(state,paid.id).ok,false);assert.equal(state.currency,credits+preview.refund,'duplicate cuts cannot award credits');
+  const storage=memoryStorage();assert.equal(Rise.save(state,storage).ok,true);const loaded=Rise.load(storage);
+  assert.deepEqual(loaded.roster,state.roster);assert.deepEqual(loaded.starters,state.starters);
+  assert.equal(loaded.currency,state.currency);assert.equal(loaded.captainId,state.captainId);
+  assert.equal(loaded.team.matchups[paid.id],undefined);assert.equal(loaded.players[paid.id].stats.points,12);
+  assert.ok(Rise.market(loaded).some(player=>player.id===paid.id),'cut athlete returns to scouting without losing their development');
+  assert.ok(Rise.prepareMatch(loaded).home.every(player=>player.id!==paid.id),'the next match cannot field the cut starter');
+  Rise.release(state,bench.id);const minimum=JSON.stringify(state);
+  assert.equal(state.roster.length,3);
+  for(const id of state.roster.filter(id=>id!==state.captainId)){
+    assert.equal(Rise.releasePreview(state,id).available,false);assert.match(Rise.releasePreview(state,id).reason,/at least three/);
+    assert.equal(Rise.release(state,id).ok,false);
+  }
+  assert.equal(JSON.stringify(state),minimum,'minimum-roster protection cannot mutate the club');
+});
+
 test('rating upgrades are visible in live profile multipliers and keep physical tradeoffs',()=>{
   const state=Rise.create(),athlete=state.players[state.captainId];
   athlete.upgradePoints=100;
