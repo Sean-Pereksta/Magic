@@ -342,3 +342,76 @@ A block requires useful leverage, contact and the blocker facing the opponent. B
 Carrier lane decisions use the same tackle reach as live contact checks, forecast crossing defenders and distinguish a physically protected block side from an exposed shoulder. Sidelines, pursuit, extra tacklers, and the existing retreat limits remain dangerous/authoritative. Existing screen outlet, burst and catching improvements are retained.
 
 Validation: run `node --test game/receiver-window-qb/*.test.cjs`. With Playwright installed, run `node game/receiver-window-qb/tactics-browser.cjs`; `QB_CHROMIUM_PATH` optionally selects the browser executable. This exercises desktop and mobile-touch layouts.
+
+### R2 players, placement and expanded football modes
+
+Opening the game starts loading the uploaded manifest and all 16 low-LOD athlete
+templates, four downloads at a time, from
+`https://pub-d799b6ea742b40eda80627485e6b234a.r2.dev/`.
+The menu reports progress; Play waits for the load attempt. Actual GLBs replace
+the normal player visuals. A failed individual model retains its lightweight
+fallback; a failed manifest leaves the game playable and reports that failure.
+`r2-cors.json` is the read-only public-asset policy for the R2 dashboard.
+The configured address is in the page bootstrap and `player-runtime.mjs`.
+
+Each athlete has independently owned bones, inverse binds, morphs, materials and
+animation clips. Movement and catch/defense clips blend through a mixer. Bounded
+arm IK follows hand targets. All possession and ball tips use the imported rig's
+actual palms, fingers and arm segments: 34 contact anchors per athlete. Two
+fingers on one glove cannot count as two hands. The carried ball follows the
+actual palms. Detached replays own their skeletons and bind matrices.
+Height, weight, strength, wingspan and hand proportions modify the displayed
+athlete; glove contacts move with that same skeleton. The historical field and
+camera scale is retained: the asset adapter uses 2.27/1.88 world units per metre,
+while field yardage remains two units per yard. This preserves controls and old
+replays rather than establishing a new metric simulation scale.
+
+Pass Placement provides nine optional shoulder/lead techniques while retaining
+the user's aiming error. V cycles placement and B cycles target; the selects
+work on touch. The optional clean/tight/danger read considers only defenders in
+the QB's visible cone. A well-placed away-side throw improves separation from
+defensive reach; a pass outside actual hands still misses. QB depth selections
+affect arm power and release quality. Defenders must see the throw and wait for
+their reaction before committing. Swats, snatches, undercuts, trailing breakups,
+late disruption and tip attempts retain actual-contact authority. A launched
+dive locks its direction and must finish recovery after the ball is dead.
+
+Football Modes adds six academies, alternating receiver/defender battles,
+three-possession red-zone challenges, a two-minute drive with timeouts, survival,
+7v7, seasons and a multi-season career. These are explicitly passing-football
+rules, not 11v11 simulation. 7v7 uses an actual QB, six eligible targets including
+the snapper, and seven assigned defenders. League games have four two-minute
+periods, ten-yard markers, turnovers, automatic PATs and equal-possession
+overtime; no field goals or punts. The eight-team schedule has seven regular
+weeks, semifinals and a championship. Interrupted plays resume conservatively
+at their saved line of scrimmage with consumed game time retained.
+
+Receiver/defender roles use arrows or the touch direction pad; Space or REACH
+jumps and reaches. Their QB throws through the shared ball simulation. All
+modes reuse the same movement and glove physics. Academy precision displays a
+moving target and scores measured placement/timing. Bronze/silver/gold thresholds
+are 60/80/95. Personal bests persist, while development rewards pay only medal
+improvements in the current training cycle. Mode results cannot award another
+campaign victory or overwrite the campaign's drive checkpoint.
+
+The Team Laboratory has 48 listings backed by 256 persistent prospects, position
+and physical/rating filters, detailed profiles, a 32-player bench, named lineups,
+QB/defensive depth assignments, a player builder and actual GLB team/comparison
+previews. Specialized programs have athlete ceilings and cycle limits. Realistic
+adult height stays fixed; optional arcade vertical training permits at most 3 cm
+of lifetime growth. Legacy five-listing saves migrate without rerolling their
+existing prospects, IDs, prices, progression or chemistry. Local slots and the
+existing encrypted cloud format include the new fields.
+
+Run `node --test game/receiver-window-qb/*.test.cjs game/receiver-window-qb/player-runtime.test.mjs`.
+The actual-GLB test needs the extracted asset ZIP: set `QB_FOOTBALL_ASSET_PACK`
+to its root. Without that external fixture it reports an explicit skip.
+The authored pack's separate validator reports 0 errors and 334 documented
+nonfatal warnings. Browser checks use the real R2 files, not replacement meshes.
+
+Current limits: low LODs are used on the field without distance-based swapping;
+the delivered ZIP also contains high LODs. Jersey digits/nameplates are baked in
+the GLBs, so arbitrary number/name customization is not yet implemented for
+those meshes. The original uniform/equipment designer does not yet expose every
+GLB equipment variation. Device-specific 30–60/60 FPS targets and a live Firebase
+save/load round trip still require testing on the intended devices/deployment.

@@ -5,10 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <title>Receiver Window QB — Franchise</title>
 <link rel="stylesheet" href="receiver-window-qb/style.css">
+<link rel="stylesheet" href="receiver-window-qb/experience.css">
+<link rel="stylesheet" href="receiver-window-qb/modes.css">
+<link rel="stylesheet" href="receiver-window-qb/development.css">
+<script type="importmap">{"imports":{"three":"./receiver-window-qb/asset-tools/preview/vendor/three.module.js","three/addons/":"./receiver-window-qb/asset-tools/preview/vendor/addons/"}}</script>
 </head>
 <body>
 <canvas id="game"></canvas>
 <div id="hud">
+  <div id="placementPanel"></div><div id="modeHud" hidden></div>
+  <div id="roleControls" hidden><button data-move="up" aria-label="Move forward">↑</button><button data-move="left" aria-label="Move left">←</button><button data-move="down" aria-label="Move backward">↓</button><button data-move="right" aria-label="Move right">→</button><button id="roleAction">REACH / JUMP</button></div>
   <div class="topbar">
     <div id="scorePanel" class="panel"><div id="score">0–0</div><div id="tournamentLine">Best of 5 · Opponent 1/8</div><div id="subscore">1st & 25 · Ball: 50 · Goal: 25 yards</div></div>
     <div id="defensePanel" class="panel"><div id="defenseName">Defense loading…</div><div id="defenseDesc"></div></div>
@@ -22,12 +28,14 @@
   <div id="controls" class="panel"><b>Mouse</b> look · <b>Tap Space</b> start play · <b>Hold Space</b> charge · <b>Release</b> throw<br><b>Pre-snap:</b> <b>X / H / Y / Z</b> opens that receiver's audible menu → <b>route letter</b> assigns · <b>1–8</b> play · <b>R</b> reset<br><b>Live:</b> <b>W</b> loft · <b>S</b> bullet</div>
   <div id="playCallPanel" class="panel"><div class="playMenuContent"><div class="playCallTitle">PLAYBOOK · Arrow keys to browse · Enter to select</div><div id="schemeHint" class="schemeHint"></div><div id="playTabs" class="playTabs" role="tablist" aria-label="Playbook categories"></div><div id="playGrid" class="playGrid"></div><details class="selectedPlayPanel"><summary>Selected play · diagram &amp; reads</summary><div id="selectedPlayDetail"></div></details></div><div class="playActions"><button id="snapBtn" class="snap">START PLAY</button><div class="hint">Mobile: tap a receiver on the field, then choose any route</div></div></div>
   <div id="audiblePanel" class="panel"><div class="audibleTop"><div><div id="audibleTitle" class="audibleTitle">AUDIBLE</div><div class="audibleSub">Desktop: press X, H, Y, or Z to open that receiver, then press the route letter.</div></div><button id="audibleClose" class="audibleClose">✕</button></div><div id="audibleReceivers" class="audibleReceivers"></div><div class="formationActions"><button id="formationwide">Widen</button><button id="formationtight">Tighten</button><button id="formationmotion">Motion</button></div><div id="audibleRouteGrid" class="audibleRouteGrid"></div></div>
-  <div id="toolbar"><button id="menuBtn">MENU</button><button id="teamBtn">TEAM</button><button id="newPlayBtn">RESET SNAP</button><button id="watchReplayBtn" disabled title="Rewatch the last completed play">WATCH REPLAY</button><button id="cameraBtn">RESET AIM</button></div>
+  <div id="toolbar"><button id="menuBtn">MENU</button><button id="teamBtn">TEAM</button><button id="fieldModesBtn">MODES</button><button id="newPlayBtn">RESET SNAP</button><button id="watchReplayBtn" disabled title="Rewatch the last completed play">WATCH REPLAY</button><button id="cameraBtn">RESET AIM</button></div>
 </div>
 <div id="startLayer">
   <div id="startCard" class="panel">
     <div class="brandLine"><h1>RECEIVER WINDOW <span>QB</span></h1><span>FRANCHISE</span></div>
     <p class="hubIntro">Choose your play. Read the defense. Build your legacy.</p>
+    <p id="graphicsStatus" role="status" aria-live="polite">Loading football graphics…</p>
+    <div class="buttons"><button id="modesBtn" class="primary">FOOTBALL MODES & ACADEMY</button><button id="developmentBtn" class="ghost">ROSTER & PLAYER BUILDER</button></div>
     <div id="franchiseHub"></div>
     <div id="menuSummary" class="menuSummary"></div><div class="buttons" style="margin-top:18px"><button class="primary" id="startBtn">PLAY GAME</button><button class="ghost" id="watchReplayMenu" disabled>WATCH REPLAY</button><button class="ghost" id="startTeamBtn">TEAM & OPPONENTS</button><button class="ghost" id="menuPlaybookBtn">PLAYBOOK</button><button class="ghost" id="opponentsBtn">OPPONENTS</button><button class="ghost" id="uniformBtn">UNIFORM DESIGNER</button><button class="ghost" id="trainingBtn">TRAINING</button><button class="ghost" id="recruitBtn">FREE AGENTS</button><button class="ghost" id="recordsBtn">FRANCHISE RECORDS</button><button class="ghost" id="newGameBtn">NEW GAME</button><button class="ghost" id="savesBtn">SAVED GAMES</button><button class="ghost" id="qualityBtn">GRAPHICS · AUTO</button><a class="menuLink" href="/lobby/lobby.html">Catnmice lobby</a></div>
     <p id="mobileTip">Mobile: drag the LEFT half to look around. Hold the RIGHT half to charge the throw; while holding, slide up for more loft or down for a faster bullet. Release the right side to throw. The two sides work independently.</p>
@@ -54,7 +62,7 @@
     <div class="ratingLegend"><span>SPD = top speed</span><span>CUT = speed through cuts</span><span>TRN = redirect/comebacks</span><span>EVA = YAC avoidance</span><span>CAT = catch radius/hands</span><span>STR = contact</span><span>ATH = jumping + diving</span><span>SIZE = reach + body leverage</span><span>TRICK = jukes + head fakes</span></div>
     <div class="sectionTitle">Starting Four — click a receiver to choose who a signing replaces</div>
     <div id="rosterGrid" class="rosterGrid"></div>
-    <div class="sectionTitle">Receiver Market — five new prospects after every completed best-of-5</div>
+    <div class="sectionTitle">Recruitment Market — 48 prospects with more players in the scouting pool</div>
     <div id="marketGrid" class="marketGrid"></div>
     <div class="managerActions"><button id="watchReplayTeam" class="ghost" disabled>WATCH REPLAY</button><button id="refreshMarketBtn" class="ghost">REFRESH MARKET · $175</button><button id="resetFranchiseBtn" class="ghost">NEW FRANCHISE</button><button id="continueBtn" class="continue">CONTINUE TO FIELD</button></div>
     <div class="tinyNote">Training costs rise as each attribute grows. Each attribute can be trained 5 times. STR matters only in physical moments: press/release contact, shoves, body-to-body movement, and contested catches. It does not make a receiver faster in open space. Market players can be better, worse, or simply different from your starters.</div>
@@ -66,6 +74,18 @@
 <div id="replayBar" hidden><span aria-live="polite">REPLAY · QB VIEW</span><button id="replayPreviousCamera" aria-label="Previous replay camera">← VIEW</button><button id="replayNextCamera" aria-label="Next replay camera">VIEW →</button><button id="skipReplay">SKIP REPLAY</button></div><button id="pumpBtn" class="pumpBtn" hidden>PUMP · F</button><button id="jukeBtn" hidden>JUKE · J</button>
 <script src="receiver-window-qb/vendor/three.min.js"></script>
 <script src="receiver-window-qb/progression.js"></script>
+<script src="receiver-window-qb/development.js"></script>
+<script src="receiver-window-qb/development-ui.js"></script>
+<script src="receiver-window-qb/modes.js"></script>
+<script src="receiver-window-qb/modes-ui.js"></script>
+<script src="receiver-window-qb/mode-runtime.js"></script>
+<script src="receiver-window-qb/football-simulation.js"></script>
+<script src="receiver-window-qb/football-experience.js"></script>
+<script src="receiver-window-qb/player-assets.js"></script>
+<script>
+globalThis.QBGraphics={status:'loading'};
+QBGraphics.ready=import('./receiver-window-qb/player-runtime.mjs').then(m=>m.boot(QBGraphics,{baseURL:'https://pub-d799b6ea742b40eda80627485e6b234a.r2.dev/'})).catch(error=>{QBGraphics.status='failed';document.getElementById('graphicsStatus').textContent='Football graphics could not load. Lightweight graphics are available. Reload to retry.';console.warn('Football graphics failed:',error);});
+</script>
 <script src="receiver-window-qb/cloud-save.js"></script>
 <script src="receiver-window-qb/tactics.js"></script>
 <script src="receiver-window-qb/variety.js"></script>
