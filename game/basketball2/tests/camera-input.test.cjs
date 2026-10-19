@@ -343,6 +343,47 @@ test("movement remains court-relative after a turn or possession change and acce
   assert.ok(ctx.p1.velocity.x<0);assert.equal(ctx.p1.velocity.z,0);
 });
 
+test("shot and loose-ball chases give both teams equal running speed, direction and sprint controls",()=>{
+  for(const state of ["shot","loose"])for(const sprint of [false,true]){
+    const ctx=context();loadMovement(ctx);ctx.ballState=state;
+    ctx.p1.teamId=0;ctx.p2.teamId=1;ctx.getBallHandler=()=>ctx.p1;
+    // The player with poor lateral defense should still run normally to a
+    // rebound, using the same speed and acceleration as an identical opponent.
+    for(const player of [ctx.p1,ctx.p2]){
+      player.profile.ratings={lateralMovement:20,acceleration:50,stamina:50};
+      player.group.position.set(player===ctx.p1?-4:4,0,0);player.angle=0;
+    }
+    const animations=new Map();ctx.setAnimationState=(player,name)=>animations.set(player.id,name);
+    for(let frame=0;frame<45;frame++)for(const player of [ctx.p1,ctx.p2]) ctx.updateModernPlayerControl(player,{moveX:0,moveY:1,sprint},1/60);
+    assert.ok(Math.abs(ctx.p1.velocity.length()-ctx.p2.velocity.length())<1e-12);
+    assert.ok(ctx.p2.velocity.length()>(sprint?6:4));
+    assert.ok(Math.abs(ctx.p1.angle-ctx.p2.angle)<1e-12,"both turn toward their run instead of facing a stale owner");
+    assert.equal(animations.get(ctx.p2.id),sprint?"sprint":"run");
+  }
+});
+
+test("live defenders still use lateral movement and face the actual handler",()=>{
+  const ctx=context();loadMovement(ctx);ctx.p1.teamId=0;ctx.p2.teamId=1;
+  ctx.p1.group.position.set(0,0,-4);ctx.p2.group.position.set(0,0,0);ctx.p2.angle=0;
+  ctx.p2.profile.ratings={lateralMovement:20,acceleration:50};
+  let animation;ctx.setAnimationState=(_,name)=>animation=name;
+  ctx.updateModernPlayerControl(ctx.p2,{moveX:1,moveY:0},1/60);
+  assert.equal(ctx.isDefendingLiveBall(ctx.p2),true);assert.equal(animation,"defense");
+  assert.ok(Math.abs(ctx.p2.angle)>0,"the defender turns toward the handler while shuffling");
+  ctx.ballState="shot";assert.equal(ctx.isDefendingLiveBall(ctx.p2),false);
+});
+
+test("human and AI movement motors leave active block flight to jump physics until landing",()=>{
+  const ctx=context();loadMovement(ctx);ctx.activeBlockJumpOwnsMovement=player=>!player.onGround&&!!player.moveMeta.blockFlight;
+  ctx.p1.onGround=false;ctx.p1.moveMeta.blockFlight={};ctx.p1.velocity.set(1,0,-2);
+  const before=JSON.stringify({position:ctx.p1.group.position,velocity:ctx.p1.velocity});
+  ctx.updateModernPlayerControl(ctx.p1,{moveX:1,moveY:1,sprint:true},1/60);
+  ctx.updatePlayerControl(ctx.p1,{state:{source:"keyboard"}},1/60);
+  assert.equal(JSON.stringify({position:ctx.p1.group.position,velocity:ctx.p1.velocity}),before);
+  ctx.p1.onGround=true;ctx.updateModernPlayerControl(ctx.p1,{moveX:1,moveY:0},1/60);
+  assert.notEqual(JSON.stringify({position:ctx.p1.group.position,velocity:ctx.p1.velocity}),before,"landing restores ordinary movement");
+});
+
 test("render frame rates consume equal fixed simulation time and restore authoritative transforms",()=>{
   const positions=[];
   for(const fps of [30,60,120]){

@@ -85,13 +85,14 @@ test('feet determine the three-point and development zone while the hand still l
       const handPoint=new THREE.Vector3(.1,2.4,HOOP_POS.z+${hand});
       releaseShot(p1,'setshot',{releasePoint:handPoint,random:()=>.5});
       ({value:lastShotValue,threes:p1.stats.tpa,attempts:p1.stats.fga,active:p1.moveMeta.activeAbilities,
-        releaseError:ball.position.distanceTo(handPoint),releaseRecordError:lastShotReleasePos.distanceTo(handPoint),
+        releaseError:ball.position.distanceTo(handPoint),sweepError:previousBallPosition.distanceTo(handPoint),releaseRecordError:lastShotReleasePos.distanceTo(handPoint),
         flight:[ballVelocity.x,ballVelocity.y,ballVelocity.z]});
     `);
     assert.equal(result.value,expected);assert.equal(result.threes,expected===3?1:0);assert.equal(result.attempts,1);
     assert.equal(result.active.includes('deepRange'),expected===3,'rating/perk zone follows the same legal foot location');
     assert.equal(result.active.includes('catchAndShoot'),true);
     assert.equal(result.releaseError,0);assert.equal(result.releaseRecordError,0);assert.ok(result.flight.every(Number.isFinite));
+    assert.equal(result.sweepError,0,'the first shot sweep starts at the actual release, never a previous pickup');
   }
 });
 
@@ -114,6 +115,31 @@ test('settled-shot contest previews ignore a prior fadeaway and match the actual
   assert.equal(result.preview,result.released,'meter and launch see the same current contest');
 });
 
+test('close contests reward the defender holding the rimward lane rather than a beaten trailing position',()=>{
+  const ctx=setup();
+  const result=run(ctx,`
+    p1.group.position.set(0,0,HOOP_POS.z+2.5);p1.angle=Math.PI;p1.velocity.set(0,0,-4);p1.moveState='normal';
+    for(const other of matchPlayers)if(other.teamId===1)other.group.position.set(8,0,8);
+    takePossession(p1,{silent:true});
+    const defender=matchPlayers[3];defender.handsUpTime=.4;defender.blockTime=.3;
+    function pressure(x,z){
+      defender.group.position.copy(p1.group.position).add(new THREE.Vector3(x,0,z));
+      defender.angle=angleToward(defender.group.position,p1.group.position);
+      return calculateShotContest(p1).value;
+    }
+    const front=pressure(0,-1.15),trailing=pressure(0,1.15),hip=pressure(1.15,0),distant=pressure(0,-2.7);
+    defender.handsUpTime=0;defender.blockTime=0;const down=pressure(0,-1.15);
+    defender.handsUpTime=.4;defender.blockTime=.3;
+    ballState='layup';layupOwner=p1.id;p1.moveMeta.lastShotType='fadeaway';const gather=pressure(0,-1.15);
+    ({front,trailing,hip,distant,down,gather});
+  `);
+  assert.ok(result.front>.4,'square hands-up defense still pressures the finish: '+JSON.stringify(result));
+  assert.ok(result.trailing<.16&&result.hip<.24,'getting a step earns a real shooting advantage: '+JSON.stringify(result));
+  assert.ok(result.distant<.1,'a remote defender cannot contest the close release: '+JSON.stringify(result));
+  assert.ok(result.front>result.down*1.3,'disciplined active hands are more useful than proximity alone');
+  assert.equal(result.gather,result.front,'the active gather uses close positioning rather than an old shot type');
+});
+
 test('open running layup launch trajectories stay continuous across a quarter-second button release',()=>{
   const ctx=setup();
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/player-development.js'),'utf8'),ctx);
@@ -129,13 +155,19 @@ test('open running layup launch trajectories stay continuous across a quarter-se
       return {velocity:ballVelocity.clone(),grade:p1.moveMeta.lastTimingGrade};
     }
     const a=gatherLaunch(.24),b=gatherLaunch(.25),c=gatherLaunch(.35),covered=gatherLaunch(.25,.7),overheld=gatherLaunch(1.6);
+    const light=gatherLaunch(.25,.2),moderate=gatherLaunch(.25,.3),edgeA=gatherLaunch(.25,.249),edgeB=gatherLaunch(.25,.251);
     ({boundaryJump:a.velocity.distanceTo(b.velocity),laterChange:b.velocity.distanceTo(c.velocity),
       pressureDifference:b.velocity.distanceTo(covered.velocity),lateDifference:b.velocity.distanceTo(overheld.velocity),
+      moderateDifference:b.velocity.distanceTo(moderate.velocity),pressureEdge:edgeA.velocity.distanceTo(edgeB.velocity),
+      lightDifference:b.velocity.distanceTo(light.velocity),heavyDifference:moderate.velocity.distanceTo(covered.velocity),
       openGrade:b.grade,finite:[a,b,c,covered,overheld].every(shot=>[shot.velocity.x,shot.velocity.y,shot.velocity.z].every(Number.isFinite))});
   `);
   assert.ok(result.boundaryJump<.08,JSON.stringify(result));
   assert.ok(result.laterChange<.6,'ordinary short holds change touch gradually: '+JSON.stringify(result));
   assert.ok(result.pressureDifference>.1,'real pressure still changes the launch: '+JSON.stringify(result));
+  assert.ok(result.moderateDifference<.65,'a nearby defender does not discard all gather touch: '+JSON.stringify(result));
+  assert.ok(result.lightDifference<result.moderateDifference&&result.heavyDifference>.1,'pressure has a continuous meaningful cost');
+  assert.ok(result.pressureEdge<.03,'crossing quarter pressure cannot abruptly spoil a finish');
   assert.ok(result.lateDifference>.6,'overholding still pays the normal timing penalty: '+JSON.stringify(result));
   assert.equal(result.openGrade,'Open Finish');assert.ok(result.finite);
 });

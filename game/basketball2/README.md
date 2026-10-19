@@ -59,9 +59,13 @@ Gameplay runs at a fixed 60 Hz, with position/rotation interpolation for renderi
 
 Bots assess the entire route to a finish, including help at the rim and moving defenders. An open rimward drive continues into a short running layup gather; a settled shooting specialist can take a good open jumper instead. A covered paint leads to an open teammate, a clear receiving pocket beside the rim, or a safe lateral/backout setup. Passes are checked again before release so a rotating defender can close the window. A guarded catch is not treated as an open rim feed. The finish owner leaves movement to the gather solver, and defenders continue contesting the gather rather than prematurely chasing a rebound.
 
-Human running finishes retain their layup intent during the same Shoot hold when the player settles inside finishing range. Entering the paint during a hold can establish that intent; leaving range, losing the ball or starting a new charge clears it. Modern and classic movement both yield to an active layup/dunk gather so held directions cannot add a second running motor. Open layup touch fades continuously into ordinary timing instead of dropping abruptly after a 0.24-second tap. Defensive pressure still removes that assistance, and the physical release and collisions decide the basket.
+Human running finishes retain their layup intent during the same Shoot hold when the player settles inside finishing range. Entering the paint during a hold can establish that intent; leaving range, losing the ball or starting a new charge clears it. Modern and classic movement both yield to an active layup/dunk gather so held directions cannot add a second running motor. Layup touch fades continuously with the hold and defensive pressure. A defender beside or behind a driver applies less close-shot pressure than one holding the rimward lane with active hands. The physical release and collisions decide the basket.
 
 The shot meter paints the current player's actual early/green/late windows, including signature, movement and contest effects. Its green strip and overlay match release grading; an unchanged window reuses the texture. Contest previews read the current shot rather than a previous fadeaway or step-back.
+
+Blocks require contact between the ball and a visible hand, using the ball radius and a small palm radius rather than a rating-scaled reach halo. The same contact rule applies to layup gathers, released shots and dunks; a protected ball cannot be swatted through the finisher's torso. Real torso/head collisions can still deflect a ball, without awarding a block for hands that never touched it. Block jumps commit takeoff momentum and facing, with a short sprint boost, bounded travel and a landing recovery before the next jump.
+
+After release, both teams use normal run/sprint movement and face their travel direction when chasing the shot or a loose rebound. The former defensive team is no longer held in lateral movement or defensive-shuffle animation by the last shooter's possession ID. Live dribbles, passes and gathers retain the normal defensive movement, and AI box-outs still compete for rebound position.
 
 Within 2.2 meters, a strong finisher can attack a smaller single defender using the actual height, width, finishing skill and defender reach matchup. Equal-sized rim protection, a well-timed airborne block, extra paint help or fatigue can remove that opportunity. These reads change the attempt decision; the existing release height, ball flight and collisions still decide the outcome. A clear pass to a big player sealing a smaller guard is a viable feed even when the catch is not completely unguarded, but actual passing-corridor clearance remains mandatory.
 
@@ -111,9 +115,11 @@ node game/basketball2/tests/ai-gameplay-browser.cjs
 node game/basketball2/tests/ai-mismatch-browser.cjs
 node game/basketball2/tests/ai-angle-drive-browser.cjs
 node game/basketball2/tests/controller-browser.cjs
+node game/basketball2/tests/rebound-movement-browser.cjs
 node game/basketball2/tests/role-playstyle-browser.cjs
 node game/basketball2/tests/side-midrange-browser.cjs
 node game/basketball2/tests/side-layups-browser.cjs
+node game/basketball2/tests/layup-defense-browser.cjs
 node game/basketball2/tests/side-shot-input-browser.cjs
 node game/basketball2/tests/shot-meter-browser.cjs
 node game/basketball2/tests/custom-rosters-browser.cjs

@@ -53,7 +53,7 @@
     clutchShooter:{name:"Clutch Shooter",branch:"shotCreation",requirements:{clutchShooting:65,composure:65},description:"Reduce late-game timing penalties by 10% per rank in close games."},
     quickRelease:{name:"Quick Release",branch:"shotCreation",requirements:{releaseStability:72,consistency:62},description:"Release 6% faster per rank with a slightly tighter timing requirement."},
     floorGeneral:{name:"Floor General",branch:"playmaking",requirements:{passing:65,courtVision:65},description:"Earlier cutting reads and +5% pass reception stability per rank."},
-    rimGuardian:{name:"Rim Guardian",branch:"defense",requirements:{blocking:65,interiorDefense:62},description:"Better vertical contest discipline and +5% well-timed block control per rank."},
+    rimGuardian:{name:"Rim Guardian",branch:"defense",requirements:{blocking:65,interiorDefense:62},description:"Jump 5% higher on blocks per rank, with better rim protection and fewer bites on fakes."},
     pickpocket:{name:"Pickpocket",branch:"defense",requirements:{steals:65,perimeterDefense:60},description:"+5% controlled steal reach per rank when the ball is exposed."},
     screenSetter:{name:"Screen Setter",branch:"playmaking",requirements:{screening:62,strength:58},description:"Stable screen angles and +6% teammate route awareness per rank."}
   };
@@ -73,7 +73,7 @@
     deepRange:"Extend effective three-point range by 0.7 court units per rank before additional distance dispersion applies.",
     clutchShooter:"Increase timing tolerance by 13% per rank in close late-game situations.",
     quickRelease:"Fill the shot meter 13% faster and shorten follow-through by 55 ms per rank. The green timing half-window narrows by 0.007.",
-    rimGuardian:"Increase well-timed block contact reach by 5% per rank; positioning and timing remain essential.",
+    rimGuardian:"Jump 5% higher on blocks per rank, bite on fewer fakes and prioritize rim help. Blocks still require hand contact.",
     pickpocket:"Increase controlled steal reach against an exposed ball by 5% per rank. Protected dribbles remain difficult."
   };
   for(const [key,description] of Object.entries(ABILITY_EFFECTS)) ABILITIES[key].description=description;

@@ -115,6 +115,24 @@ test('dribble IK and head look remain finite over time and world hand points fol
   assert.ok(ctx.getModelHandWorld(player,'right').x<3);
 });
 
+test('both teams run to rebounds while live-ball defenders retain their shuffle',{skip:!hasThree},()=>{
+  const ctx=harness(),asset=ctx.parseBasketballPlayerGLB(bytes('wing')),player=character(ctx);instantiate(ctx,asset,player);
+  player.teamId=1;player.velocity.set(3.8,0,0);ctx.possession='p1';ctx.teamOf=()=>0;
+  ctx.ballState='dribble';ctx.updatePlayerModel(player,1/60);
+  assert.equal(player.playerModel.current.getClip().name,'defensive_shuffle');
+  for(const state of ['shot','loose']){
+    ctx.ballState=state;player.aiBrain={role:'rebound'};ctx.updatePlayerModel(player,1/60);
+    assert.equal(player.playerModel.current.getClip().name,'run');
+    player.velocity.set(7,0,0);ctx.updatePlayerModel(player,1/60);
+    assert.equal(player.playerModel.current.getClip().name,'sprint');
+    player.velocity.set(3.8,0,0);player.aiBrain={role:'box_out'};ctx.updatePlayerModel(player,1/60);
+    assert.equal(player.playerModel.current.getClip().name,'run','a box-out assignment only plants a player who has actually stopped');
+    player.velocity.set(0,0,0);ctx.updatePlayerModel(player,1/60);
+    assert.equal(player.playerModel.mode,'box_out','stationary positioning remains a meaningful rebound action');
+    player.velocity.set(3.8,0,0);
+  }
+});
+
 test('malformed buffer views, joint indices, hierarchy and clips are rejected',{skip:!hasThree},()=>{
   const ctx=harness(),source=bytes('wing');
   const edits=[
