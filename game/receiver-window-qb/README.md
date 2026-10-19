@@ -361,10 +361,22 @@ actual palms, fingers and arm segments: 34 contact anchors per athlete. Two
 fingers on one glove cannot count as two hands. The carried ball follows the
 actual palms. Detached replays own their skeletons and bind matrices.
 Height, weight, strength, wingspan and hand proportions modify the displayed
-athlete; glove contacts move with that same skeleton. The historical field and
-camera scale is retained: the asset adapter uses 2.27/1.88 world units per metre,
-while field yardage remains two units per yard. This preserves controls and old
-replays rather than establishing a new metric simulation scale.
+athlete; glove contacts move with that same skeleton. Players are displayed 40%
+larger: the asset adapter uses (2.27/1.88) × 1.4 world units per metre, and the
+fallback rig receives the same multiplier. Field yardage remains two units per
+yard. The QB eye and release height rise to 3.15 units with the larger athletes.
+
+After release, the live camera smoothly trails the actual ball, including tips,
+then follows the carrier through the catch and run. Camera positions remain
+inside the field boundary and above the turf. Aiming resumes at the next snap;
+replay cameras retain their own controls. The follow helper owns no animation
+loop and does not alter the football's velocity or contact decisions.
+
+The field uses shared, seeded turf texture, a yard-number atlas, one-yard hashes,
+painted sidelines, team accents, pylons and a cylindrical goalpost. Existing
+five-yard lines, stands and crowd remain. Theme changes reuse textures and
+geometry; low graphics removes finishing details while keeping the essential
+markings. The new dressing adds eight draws on low and eleven on high.
 
 Pass Placement provides nine optional shoulder/lead techniques while retaining
 the user's aiming error. V cycles placement and B cycles target; the selects

@@ -97,14 +97,14 @@ function create(ctx){
     const solution=root.QBFootball.throwSolution({origin,target:point,qb:{accuracy:ownQB?.specialties?.accuracy||70+c.difficulty*20,strength:ownQB?.strength||75,footwork:ownQB?.turning||75,releaseTiming:.9},power:.8,type:'touch',random:()=>.5});
     return new T.Vector3(solution.velocity.x,solution.velocity.y,solution.velocity.z);
   }
-  function passOrigin(){const s=ctx.state();return new T.Vector3(0,2.25,ctx.worldZ(s.snapSpotYards)+10);}
+  function passOrigin(){const s=ctx.state();return new T.Vector3(0,root.QBPlayerScale?.eyeHeight||2.25,ctx.worldZ(s.snapSpotYards)+10);}
   function tick(dt){
     if(!active())return;const s=ctx.state(),c=config();if(!['live','thrown','run','tackle','call'].includes(s.playState))return;
     dispatch({type:'tick',seconds:dt});
     if(s.playState==='live'&&s.defenders.some(d=>d.assignment==='rush'&&Math.hypot(d.mesh.position.x,d.mesh.position.z-passOrigin().z)<.8)){endPlay('sack',s.snapSpotYards-5);return;}
     if(c.autoQB&&s.playState==='live'){autoElapsed+=dt;if(autoElapsed>=releaseAt)ctx.throwBall();}
-    if(c.controlledRole!=='qb'&&['live','thrown'].includes(s.playState)){
-      const a=actor();if(a){const eye=a.mesh.position.clone().add(new T.Vector3(0,6,10));s.camera.position.lerp(eye,Math.min(1,dt*8));s.camera.lookAt(a.mesh.position.clone().add(new T.Vector3(0,1.3,-3)));}
+    if(c.controlledRole!=='qb'&&s.playState==='live'){
+      const a=actor();if(a){const eye=a.mesh.position.clone().add(new T.Vector3(0,6,10));s.camera.position.lerp(eye,Math.min(1,dt*8));s.camera.lookAt(a.mesh.position.clone().add(new T.Vector3(0,1.3*(root.QBPlayerScale?.actorScale||1),-3)));}
     }
     ctx.hud(c);
     const plan=c.targetZone&&!s.ballLive?targetPlan():null;ctx.drawTarget?.(plan?.target||null);

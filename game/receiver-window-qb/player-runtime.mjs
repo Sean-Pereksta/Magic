@@ -4,11 +4,12 @@ import {clone as cloneSkeleton} from 'three/addons/utils/SkeletonUtils.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {createPhysiqueController} from './asset-tools/preview/physique.js';
 import './player-assets.js';
+import './player-scale.js';
 
-// This conversion preserves the existing game's player/camera scale while the
-// field still uses its historical two world units per yard. Geometry, bones,
-// glove surfaces and contact anchors all receive this same visible conversion.
-export const WORLD_UNITS_PER_METRE=2.27/1.88;
+// Imported surfaces, bones and contact anchors share the fallback's larger
+// display scale. Root appearance scale is still cancelled to avoid applying
+// either stature or the presentation multiplier twice.
+export const WORLD_UNITS_PER_METRE=globalThis.QBPlayerScale.worldUnitsPerMetre;
 export const DEFAULT_ASSET_BASE_URL='https://pub-d799b6ea742b40eda80627485e6b234a.r2.dev';
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,Number(n)||0));
 const originalName=b=>b.userData.name||b.name;
@@ -237,8 +238,8 @@ export function createPlayerRuntime(options={}){
       const help=document.createElement('p');help.textContent='Drag to rotate. Scroll or pinch to zoom. All athletes use the same scale.';host.replaceChildren(canvas,labels,help);
       const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio||1,1.5));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;
       const scene=new THREE.Scene();scene.background=new THREE.Color(0x101c2c);scene.add(new THREE.HemisphereLight(0xe9f6ff,0x29333e,2.5));const light=new THREE.DirectionalLight(0xffffff,3);light.position.set(3,6,5);scene.add(light);
-      const spacing=1.45,width=Math.max(3,list.length*spacing),camera=new THREE.PerspectiveCamera(33,1,.05,100);camera.position.set(.4,1.6,Math.max(4,width*.95));
-      const controls=new OrbitControls(camera,canvas);controls.target.set(0,1.25,0);controls.enableDamping=true;controls.minDistance=2;controls.maxDistance=24;controls.maxPolarAngle=Math.PI*.51;
+      const spacing=1.45*globalThis.QBPlayerScale.actorScale,width=Math.max(3,list.length*spacing),camera=new THREE.PerspectiveCamera(33,1,.05,100);camera.position.set(.4,2.1,Math.max(4,width*.95));
+      const controls=new OrbitControls(camera,canvas);controls.target.set(0,1.25*globalThis.QBPlayerScale.actorScale,0);controls.enableDamping=true;controls.minDistance=2.8;controls.maxDistance=32;controls.maxPolarAngle=Math.PI*.51;
       const floor=new THREE.Mesh(new THREE.PlaneGeometry(width+3,6),new THREE.MeshStandardMaterial({color:0x233342,roughness:.9}));floor.rotation.x=-Math.PI/2;floor.position.y=-.015;scene.add(floor);
       const actors=[];for(let i=0;i<list.length;i++){const p=list[i],root=new THREE.Group();root.position.x=(i-(list.length-1)/2)*spacing;root.userData.appearance=p.appearance||{};scene.add(root);const controller=attach(root,p,{offense:!['CB','S','LB'].includes(p.position)});if(controller)actors.push({mesh:root,profile:p,runIntensity:0,controller});}
       const resize=()=>{const w=Math.max(1,host.clientWidth||600);renderer.setSize(w,340,false);camera.aspect=w/340;camera.position.z=Math.max(4.8,width/(2*Math.tan(33*Math.PI/360)*camera.aspect)*1.12);camera.updateProjectionMatrix();};resize();const observer=typeof ResizeObserver==='function'?new ResizeObserver(resize):null;observer?.observe(host);
