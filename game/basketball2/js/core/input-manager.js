@@ -40,7 +40,7 @@ class BasketballInputManager {
     window.addEventListener("gamepadconnected",event=>this.handleGamepadConnection(event,true));
     window.addEventListener("gamepaddisconnected",event=>this.handleGamepadConnection(event,false));
     window.addEventListener("basketball-controller-config",event=>{
-      if(event.detail?.reason==="assignment" || event.detail?.reason==="reset") this.autoAssignments={p1:null,p2:null};
+      if(["assignment","reset","inputMode"].includes(event.detail?.reason)) this.autoAssignments={p1:null,p2:null};
       this.clearAll();
       this.pauseUnfocusedGame();
     });
@@ -94,13 +94,14 @@ class BasketballInputManager {
 
   onKeyDown(event){
     this.physicalKeys.add(event.code);
-    if(this.configurationMode || this.suspended || this.blockedKeys.has(event.code)) return;
+    if(this.configurationMode || this.suspended || this.blockedKeys.has(event.code) || !this.allowsKeyboardEvent(event)) return false;
     this.keys[event.code] = true;
     this.keys[event.key?.toLowerCase()] = true;
     if(this.isGameplayKey(event.code)){
       this.markDevice("keyboard");
       if(gameStarted) event.preventDefault();
     }
+    return true;
   }
 
   onKeyUp(event){
@@ -114,8 +115,21 @@ class BasketballInputManager {
   isGameplayKey(code){
     return [
       "KeyW","KeyA","KeyS","KeyD","ShiftLeft","Space","KeyC","KeyV","KeyF","KeyG","KeyQ","KeyE","KeyR","ControlLeft",
-      "KeyI","KeyJ","KeyK","KeyL","ShiftRight","Enter","Comma","Period","Numpad0","Numpad1","Numpad2","NumpadAdd","KeyU","KeyO","ControlRight","Escape"
+      "KeyI","KeyJ","KeyK","KeyL","ShiftRight","Enter","Comma","Period","Numpad0","Numpad1","Numpad2","Numpad4","Numpad6","NumpadAdd","KeyU","KeyO","ControlRight","Escape"
     ].includes(code);
+  }
+
+  acceptsInput(playerId,device){
+    const mode=controllerConfig.getPlayer(playerId)?.inputMode || "auto";
+    return mode==="auto" || (mode==="keyboard" ? device==="keyboard"||device==="touch" : device==="gamepad"||device==="playstation");
+  }
+
+  allowsKeyboardEvent(event){
+    // Escape always permits recovery to the pause menu. UI/debug shortcuts
+    // remain available; gameplay keys follow the selected local player.
+    if(event.code==="Escape" || !this.isGameplayKey(event.code)&&event.code!=="KeyB") return true;
+    const playerTwo=["KeyI","KeyJ","KeyK","KeyL","ShiftRight","Enter","Comma","Period","Numpad0","Numpad1","Numpad2","Numpad4","Numpad6","NumpadAdd","KeyU","KeyO","ControlRight"].includes(event.code) || event.code==="KeyB"&&event.altKey;
+    return this.acceptsInput(playerTwo?"p2":"p1","keyboard");
   }
 
   markDevice(device){
@@ -159,7 +173,7 @@ class BasketballInputManager {
       this.assignmentGameMode=mode;
     }
     const result={p1:null,p2:null},reserved=new Set();
-    const slots=mode || this.configurationMode?["p1","p2"]:["p1"];
+    const slots=(mode || this.configurationMode?["p1","p2"]:["p1"]).filter(slot=>this.configurationMode || controllerConfig.getPlayer(slot).inputMode!=="keyboard");
     for(const slot of slots){
       const assignment=controllerConfig.getPlayer(slot).assignment;
       if(assignment && typeof assignment==="object"){
@@ -174,7 +188,8 @@ class BasketballInputManager {
       if(pad && !reserved.has(pad.index)){ result[slot]=pad;reserved.add(pad.index); }
       else this.autoAssignments[slot]=null;
     }
-    const autoOrder=mode && pads.length===1?["p2","p1"]:slots;
+    const autoOrder=(mode && pads.length===1?["p2","p1"].filter(slot=>slots.includes(slot)):[...slots])
+      .sort((a,b)=>Number(controllerConfig.getPlayer(b).inputMode==="controller")-Number(controllerConfig.getPlayer(a).inputMode==="controller"));
     for(const slot of autoOrder){
       if(result[slot] || controllerConfig.getPlayer(slot).assignment!=="auto") continue;
       const pad=pads.find(candidate=>!reserved.has(candidate.index));
@@ -203,6 +218,9 @@ class BasketballInputManager {
   }
 
   readKeyboard(playerId){
+    if(!this.acceptsInput(playerId,"keyboard")){
+      const result=createInputFrame();result.source="gamepad";result.pause=!!this.keys.Escape;return result;
+    }
     const p1Keys = playerId === "p1";
     const left = this.keys[p1Keys?"KeyA":"KeyJ"] ? 1 : 0;
     const right = this.keys[p1Keys?"KeyD":"KeyL"] ? 1 : 0;
@@ -289,7 +307,7 @@ class BasketballInputManager {
 
   readTouch(playerId){
     const result = createInputFrame();
-    if(playerId !== "p1") return result;
+    if(playerId !== "p1" || !this.acceptsInput(playerId,"touch")) return result;
     result.moveX = this.touch.moveX;
     result.moveY = this.touch.moveY;
     result.skillX = this.touch.skillX;
@@ -325,13 +343,13 @@ class BasketballInputManager {
       const previous = this.players[playerId];
       const frames = [this.readKeyboard(playerId)];
       const assignedPad = assignments[playerId];
-      if(assignedPad){
+      if(assignedPad && this.acceptsInput(playerId,"gamepad")){
         const key=this.gamepadKey(assignedPad);
         if(this.gamepadNeutralRequired.has(key)){
           if(this.gamepadIsNeutral(assignedPad,playerId)) this.gamepadNeutralRequired.delete(key);
         }else frames.push(this.readGamepad(assignedPad,playerId));
       }
-      if(playerId === "p1") frames.push(this.readTouch(playerId));
+      if(playerId === "p1" && this.acceptsInput(playerId,"touch")) frames.push(this.readTouch(playerId));
       const next = this.mergeFrames(frames);
       for(const action of INPUT_ACTIONS){
         if(this.pulses[playerId][action]) next[action] = true;
@@ -345,12 +363,12 @@ class BasketballInputManager {
 
   getState(playerId){ return this.players[playerId] || this.idleFrame; }
 
-  pulse(playerId,action){
-    if((playerId==="p1" || playerId==="p2") && INPUT_ACTIONS.includes(action)) this.pulses[playerId][action] = true;
+  pulse(playerId,action,source="touch"){
+    if((playerId==="p1" || playerId==="p2") && INPUT_ACTIONS.includes(action) && this.acceptsInput(playerId,source)) this.pulses[playerId][action] = true;
   }
 
   queueFlick(playerId,x,y,source="touch"){
-    if(playerId!=="p1" && playerId!=="p2") return;
+    if(playerId!=="p1" && playerId!=="p2" || !this.acceptsInput(playerId,source)) return;
     const direction = Math.abs(x) > Math.abs(y) ? (x < 0 ? "left" : "right") : (y < 0 ? "back" : "forward");
     const now = performance.now() * 0.001;
     const previous=this.lastFlick[playerId];
@@ -363,7 +381,7 @@ class BasketballInputManager {
   consumeFlick(playerId){
     const flick = this.flicks[playerId];
     this.flicks[playerId] = null;
-    return flick;
+    return flick?.source&&!this.acceptsInput(playerId,flick.source)?null:flick;
   }
 
   attachTouchControls(){
@@ -412,6 +430,7 @@ class BasketballInputManager {
         event.preventDefault();
       };
       element.addEventListener("pointerdown",event=>{
+        if(this.configurationMode || this.suspended || !this.acceptsInput("p1","touch")) return;
         const pointerKey = type === "move" ? "movePointer" : "skillPointer";
         if(this.touch[pointerKey] !== null) return;
         this.touch[pointerKey] = event.pointerId;
@@ -441,6 +460,7 @@ class BasketballInputManager {
         event.preventDefault();
       };
       button.addEventListener("pointerdown",event=>{
+        if(this.configurationMode || this.suspended || !this.acceptsInput("p1","touch")) return;
         const action = button.dataset.touchAction;
         if(!INPUT_ACTIONS.includes(action) || this.touchButtonPointers.has(event.pointerId)) return;
         // Capture the action now, since possession can change the label while
@@ -461,7 +481,7 @@ class BasketballInputManager {
 
   vibrate(playerId,strength=0.35,duration=70){
     const slot = typeof getPlayerById === "function" ? getPlayerById(playerId)?.controllerSlot : playerId;
-    if(slot!=="p1" && slot!=="p2") return;
+    if(slot!=="p1" && slot!=="p2" || !this.acceptsInput(slot,"gamepad")) return;
     const pads = this.getConnectedGamepads();
     const pad = this.getAssignedGamepad(slot,pads);
     const actuator = pad?.vibrationActuator || pad?.hapticActuators?.[0];

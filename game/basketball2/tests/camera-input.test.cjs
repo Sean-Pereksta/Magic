@@ -274,6 +274,46 @@ test("desktop touch hardware stays hidden until touch input is used",()=>{
   assert.equal(ctx.document.body.classList.contains("touch-controls-active"),false);
 });
 
+test("controller play mode prevents raw keyboard movement, shot modifiers and tactical requests",()=>{
+  const ctx=context();ctx.possessionFrozen=false;
+  vm.runInContext(fs.readFileSync(path.join(__dirname,"../js/input-gameplay.js"),"utf8"),ctx);
+  vm.runInContext('controllerConfig.setInputMode("p1","controller")',ctx);
+  let requests=0,uiToggles=0;
+  ctx.getHumanPlayer=()=>({teamId:0});ctx.getBallHandler=()=>({teamId:0});
+  ctx.aiRequestOffensiveAction=()=>{requests++;return true;};ctx.flash=()=>{};ctx.toggleUI=()=>{uiToggles++;};
+  const press=(code,key,extra={})=>ctx.onKeyDown({code,key,repeat:false,preventDefault(){},...extra});
+  for(const [code,key]of [["KeyW","w"],["KeyS","s"],["KeyQ","q"],["KeyE","e"],["KeyB","b"]]){
+    press(code,key);assert.equal(!!ctx.keys[code],false,`${code} cannot reach legacy controls`);
+  }
+  assert.equal(requests,0);
+  press("KeyI","i");assert.equal(ctx.keys.KeyI,true,"the other player's keyboard stays independent");
+  press("Escape","Escape");ctx.manager.tick();assert.equal(ctx.manager.getState("p1").pause,true,"keyboard pause remains available for recovery");
+  press("KeyH","h");assert.equal(uiToggles,1,"UI shortcuts remain available");
+  ctx.onKeyUp({code:"KeyI",key:"i",preventDefault(){}});assert.equal(ctx.keys.KeyI,false);
+  vm.runInContext('controllerConfig.setInputMode("p2","controller")',ctx);
+  for(const code of ["Numpad4","Numpad6"]){press(code,code.endsWith("4")?"4":"6");assert.equal(!!ctx.keys[code],false,"legacy Player 2 skill aliases are blocked too");}
+});
+
+test("controller play mode hides touch controls on touch hardware and keyboard mode restores them",()=>{
+  const ctx=context();loadPresentation(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname,"../js/core/integrations.js"),"utf8"),ctx);
+  vm.runInContext('controllerConfig.setInputMode("p1","controller"); updateTouchPresentation()',ctx);
+  assert.equal(ctx.document.body.classList.contains("touch-controls-active"),false);
+  vm.runInContext('controllerConfig.setInputMode("p1","keyboard"); updateTouchPresentation()',ctx);
+  assert.equal(ctx.document.body.classList.contains("touch-controls-active"),true);
+});
+
+test("device assignment status names the chosen play mode even without a controller",()=>{
+  const ctx=context();ctx.nodes.deviceAssignmentStatus=element("deviceAssignmentStatus");
+  vm.runInContext(fs.readFileSync(path.join(__dirname,"../js/core/integrations.js"),"utf8"),ctx);
+  vm.runInContext('controllerConfig.setInputMode("p1","controller"); updateInputDeviceUI()',ctx);
+  assert.match(ctx.nodes.deviceAssignmentStatus.textContent,/Player 1: Controller · waiting for connection/);
+  vm.runInContext('controllerConfig.setInputMode("p1","keyboard"); updateInputDeviceUI()',ctx);
+  assert.match(ctx.nodes.deviceAssignmentStatus.textContent,/Player 1: Keyboard \/ touch/);
+  vm.runInContext('controllerConfig.setInputMode("p1","auto"); updateInputDeviceUI()',ctx);
+  assert.match(ctx.nodes.deviceAssignmentStatus.textContent,/Player 1: Automatic · Keyboard \/ touch/);
+});
+
 test("cooperative HUD identifies teams, keeps slot labels in their views, and skips unchanged score writes",()=>{
   const ctx=context();loadPresentation(ctx);ctx.twoPlayerMode=true;
   ctx.p2.teamId=0;ctx.matchPlayers.push(character("opponent",0,0,"ai"));

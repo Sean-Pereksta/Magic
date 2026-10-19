@@ -27,7 +27,7 @@ function mountControllerSettings(host){
       <div><span class="controller-eyebrow">MAKE IT YOURS</span><h2>Controller setup</h2></div>
       <span id="controllerConnectionBadge" class="controller-connection-badge">Waiting for a controller</span>
     </div>
-    <p class="controller-intro">Connect one or two controllers by USB or Bluetooth, then press a button so your browser can find them.</p>
+    <p class="controller-intro">Connect a controller by USB or Bluetooth, then press a button so your browser can find it. Choose how each player plays and set their inputs below.</p>
     <div id="controllerDevices" class="controller-devices" aria-label="Connected controllers"></div>
     <div class="controller-player-tabs" role="tablist" aria-label="Choose a player to configure">
       <button type="button" id="controllerTabP1" role="tab" aria-controls="controllerPlayerPanel" aria-selected="true" data-controller-player="p1">Player 1</button>
@@ -35,11 +35,17 @@ function mountControllerSettings(host){
     </div>
     <section id="controllerPlayerPanel" role="tabpanel" aria-labelledby="controllerTabP1">
       <p class="controller-local-note">Player 2 controls are used in Local 2-player matches. Set up both players here before you start.</p>
+      <div class="controller-mode-card">
+        <label class="controller-field" for="controllerInputMode">Play using
+          <select id="controllerInputMode" aria-describedby="controllerModeHint"><option value="auto">Automatic</option><option value="keyboard">Keyboard &amp; touch</option><option value="controller">Controller</option></select>
+        </label>
+        <div class="controller-mode-state"><strong id="controllerModeState">Automatic input</strong><p id="controllerModeHint" class="controller-muted"></p></div>
+      </div>
       <div class="controller-assignment-row">
         <label class="controller-field" for="controllerAssignment">Controller for <span id="controllerSelectedPlayer">Player 1</span>
-          <select id="controllerAssignment"><option value="auto">Automatic</option><option value="none">Keyboard / touch only</option></select>
+          <select id="controllerAssignment" aria-describedby="controllerAssignmentHint"><option value="auto">Choose automatically</option><option value="none">No controller</option></select>
         </label>
-        <div><p id="controllerAssignmentHint" class="controller-muted"></p><p class="controller-small">Keyboard controls stay available. Each controller belongs to one player.</p></div>
+        <div><p id="controllerAssignmentHint" class="controller-muted"></p><p class="controller-small">Each controller belongs to one player. You can change its inputs in any play mode.</p></div>
       </div>
       <div class="controller-content-grid">
         <div class="controller-bindings-card">
@@ -88,7 +94,7 @@ function mountControllerSettings(host){
     <p id="controllerLiveStatus" class="controller-live-status" role="status" aria-live="polite" aria-atomic="true"></p>`;
   const find = selector => host.querySelector(selector);
   const all = selector => Array.from(host.querySelectorAll(selector));
-  const assignment = find("#controllerAssignment"), capturePanel = find("#controllerCapturePanel");
+  const assignment = find("#controllerAssignment"), inputMode = find("#controllerInputMode"), capturePanel = find("#controllerCapturePanel");
   const config = () => controllerConfig.getPlayer(player);
   const pads = () => inputManager.getConnectedGamepads();
   const assignedPad = () => inputManager.getAssignments()[player];
@@ -112,7 +118,7 @@ function mountControllerSettings(host){
   }
   function updateDevices(force=false){
     const connected = pads(), assignments = inputManager.getAssignments();
-    const fingerprint = JSON.stringify({pads:connected.map(pad=>[pad.index,pad.id,pad.mapping,pad.buttons.length,pad.axes.length]),assignments:Object.values(assignments).map(pad=>pad?.index??null),player,assignment:config().assignment});
+    const fingerprint = JSON.stringify({pads:connected.map(pad=>[pad.index,pad.id,pad.mapping,pad.buttons.length,pad.axes.length]),assignments:Object.values(assignments).map(pad=>pad?.index??null),player,assignment:config().assignment,inputMode:config().inputMode});
     if(!force && fingerprint===padFingerprint) return;
     padFingerprint = fingerprint;
     const devices = find("#controllerDevices"); devices.replaceChildren();
@@ -129,20 +135,25 @@ function mountControllerSettings(host){
       const detail = document.createElement("span");
       const owner = Object.keys(assignments).find(slot=>assignments[slot]?.index===pad.index);
       detail.textContent=owner ? `Connected · ${playerName(owner)}` : "Connected · Available";
-      copy.append(title,detail); card.append(number,copy); devices.appendChild(card);
+      const use=document.createElement("button");use.type="button";use.className="controller-use-device";use.dataset.useController=String(pad.index);
+      const selected=assignments[player]?.index===pad.index && config().inputMode==="controller";
+      use.textContent=selected?`Using for ${playerName(player)}`:`Use for ${playerName(player)}`;
+      use.disabled=selected;use.setAttribute("aria-label",`${selected?"Using":"Use"} Controller ${pad.index+1} for ${playerName(player)}`);
+      copy.append(title,detail); card.append(number,copy,use); devices.appendChild(card);
     }
     const badge = find("#controllerConnectionBadge");
     badge.textContent=connected.length ? `${connected.length} controller${connected.length===1?"":"s"} connected` : "Waiting for a controller";
     badge.classList.toggle("is-connected",connected.length>0);
     const setting = config().assignment;
-    assignment.replaceChildren(); option(assignment,"auto","Automatic"); option(assignment,"none","Keyboard / touch only");
+    assignment.replaceChildren(); option(assignment,"auto","Choose automatically"); option(assignment,"none","No controller");
     for(const pad of connected) option(assignment,`pad:${pad.index}`,`Controller ${pad.index+1} · ${padName(pad)}`);
     if(setting && typeof setting==="object" && !connected.some(pad=>pad.index===setting.index && pad.id===setting.id)){
       option(assignment,"disconnected",`Disconnected · ${setting.id || "Saved controller"}`);
       assignment.value="disconnected";
     }else assignment.value=typeof setting==="object"?`pad:${setting.index}`:setting;
     const active = assignments[player];
-    find("#controllerAssignmentHint").textContent = active ? `${playerName(player)} is using Controller ${active.index+1}.` : setting==="none" ? `${playerName(player)} uses keyboard or touch.` : "Waiting for an available controller.";
+    find("#controllerAssignmentHint").textContent = active ? `Controller ${active.index+1} is assigned to ${playerName(player)}.` : setting==="none" ? "No controller is assigned. Choose one to test or set its inputs." : "Waiting for the selected controller.";
+    refreshInputMode(active);
     const maxAxes=Math.max(4,...connected.map(pad=>pad.axes.length));
     for(const select of all("[data-axis-kind]")){
       const current = select.value; select.replaceChildren(); option(select,"-1","Disabled");
@@ -160,6 +171,7 @@ function mountControllerSettings(host){
   }
   function refreshValues(){
     const settings=config();
+    inputMode.value=settings.inputMode || "auto";
     find("#controllerSelectedPlayer").textContent=playerName(player);
     find("#controllerReset").textContent=`Reset ${playerName(player)} controls`;
     for(const tab of all("[data-controller-player]")){
@@ -185,6 +197,21 @@ function mountControllerSettings(host){
     }
     find("#controllerDeadzone").value=String(settings.deadzone);
     find("#controllerDeadzoneValue").textContent=`${Math.round(settings.deadzone*100)}%`;
+  }
+  function refreshInputMode(pad){
+    const mode=config().inputMode || "auto",state=find("#controllerModeState"),hint=find("#controllerModeHint");
+    inputMode.value=mode;
+    if(mode==="keyboard"){
+      state.textContent="Keyboard & touch active";
+      hint.textContent="Play with keyboard or touch. Controller inputs below can still be tested and changed.";
+    }else if(mode==="controller"){
+      state.textContent=pad?`Controller ${pad.index+1} active`:"Waiting for a controller";
+      hint.textContent=pad?"Keyboard and touch gameplay are off; Esc still pauses. Use the inputs below or choose your own.":"Connect a controller, press a button, then choose it below. Esc still pauses while you wait.";
+    }else{
+      state.textContent=pad?`Controller ${pad.index+1} ready`:"Keyboard & touch ready";
+      hint.textContent="Automatic accepts keyboard, touch, and your assigned controller. Connect a controller at any time.";
+    }
+    state.parentElement.classList.toggle("is-waiting",mode==="controller"&&!pad);
   }
   function refresh(){ if(disposed) return; updateDevices(true); updateTester(); }
   function readStick(pad,axes,deadzone){
@@ -317,6 +344,15 @@ function mountControllerSettings(host){
   function onClick(event){
     const tab=event.target.closest("[data-controller-player]");
     if(tab){cancelCapture("",false);player=tab.dataset.controllerPlayer;customAxesRequested={move:false,skill:false};lastTester="";refresh();return;}
+    const use=event.target.closest("[data-use-controller]");
+    if(use){
+      const pad=pads().find(item=>item.index===Number(use.dataset.useController));
+      if(!pad) return;
+      cancelCapture("",false);
+      controllerConfig.setAssignment(player,{index:pad.index,id:pad.id});
+      controllerConfig.setInputMode(player,"controller");
+      refresh();say(`${playerName(player)} is set to play with Controller ${pad.index+1}. Saved.`);return;
+    }
     const bind=event.target.closest("[data-bind-action]");
     if(bind){startCapture(bind.dataset.bindAction,bind);return;}
     if(event.target.closest("#controllerCancelCapture")){cancelCapture("Input change cancelled.");return;}
@@ -332,7 +368,13 @@ function mountControllerSettings(host){
   }
   function onChange(event){
     const target=event.target;
-    if(target===assignment){
+    if(target===inputMode){
+      const mode=target.value;
+      cancelCapture("",false);
+      if(mode==="controller" && config().assignment==="none") controllerConfig.setAssignment(player,"auto");
+      controllerConfig.setInputMode(player,mode);
+      refresh();say(`${playerName(player)} play mode saved: ${target.selectedOptions[0].textContent}.`);
+    }else if(target===assignment){
       cancelCapture("",false);
       if(target.value.startsWith("pad:")){
         const pad=pads().find(item=>item.index===Number(target.value.slice(4)));

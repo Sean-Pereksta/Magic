@@ -5,7 +5,7 @@ const CONTROLLER_BUTTON_NAMES = ["A","B","X","Y","LB","RB","LT","RT","View","Men
 
 function defaultControllerProfile(){
   return {
-    assignment:"auto",deadzone:.16,
+    inputMode:"auto",assignment:"auto",deadzone:.16,
     axes:{move:{x:0,y:1,invertX:false,invertY:true},skill:{x:2,y:3,invertX:false,invertY:true}},
     bindings:{
       sprint:{type:"button",index:7,threshold:.25},shoot:{type:"button",index:2,threshold:.25},
@@ -82,6 +82,7 @@ class BasketballControllerConfiguration {
           const value=saved.players?.[slot];
           if(!value || typeof value!=="object") continue;
           const profile=this.players[slot];
+          if(["auto","keyboard","controller"].includes(value.inputMode)) profile.inputMode=value.inputMode;
           const assignment=validateControllerAssignment(value.assignment);
           if(assignment!==undefined) profile.assignment=assignment;
           if(Number.isFinite(value.deadzone)) profile.deadzone=Math.max(.05,Math.min(.5,value.deadzone));
@@ -121,6 +122,11 @@ class BasketballControllerConfiguration {
     this.players[slot].assignment=assignment;
     this.preventDuplicateAssignments(slot);
     return this.changed(slot,"assignment");
+  }
+  setInputMode(slot,value){
+    if(!["p1","p2"].includes(slot) || !["auto","keyboard","controller"].includes(value)) return false;
+    this.players[slot].inputMode=value;
+    return this.changed(slot,"inputMode");
   }
   setBinding(slot,action,value){
     const binding=validateControllerBinding(value);

@@ -125,15 +125,22 @@ function updateInputDeviceUI(){
   const assignment = document.getElementById("deviceAssignmentStatus");
   if(assignment){
     const assigned=inputManager.getAssignments();
-    const label=slot=>assigned[slot]?`Controller ${assigned[slot].index+1}`:slot==="p1"?"Keyboard / touch":"Keyboard";
+    const label=slot=>{
+      const mode=controllerConfig.getPlayer(slot).inputMode || "auto";
+      const keyboard=slot==="p1"?"Keyboard / touch":"Keyboard";
+      if(mode==="keyboard") return keyboard;
+      if(mode==="controller") return assigned[slot]?`Controller ${assigned[slot].index+1}`:"Controller · waiting for connection";
+      return assigned[slot]?`Automatic · Controller ${assigned[slot].index+1}`:`Automatic · ${keyboard}`;
+    };
     assignment.textContent=`Player 1: ${label("p1")}${twoPlayerMode?` · Player 2: ${label("p2")}`:" · Solo match"}`;
   }
 }
 
 function updateTouchPresentation(){
   const touchCapable = matchMedia("(pointer: coarse)").matches || inputManager.lastDevice==="touch";
+  const touchAllowed = inputManager.acceptsInput("p1","touch");
   document.body.classList.toggle("touch-capable",touchCapable);
-  document.body.classList.toggle("touch-controls-active",touchCapable&&gameStarted&&!gameOver&&!gamePaused);
+  document.body.classList.toggle("touch-controls-active",touchAllowed&&touchCapable&&gameStarted&&!gameOver&&!gamePaused);
   const controlled = typeof getHumanPlayer === "function" ? getHumanPlayer("p1") : p1;
   const possessionPlayer = typeof getPlayerById === "function" ? getPlayerById(possession) : (possession==="p1" ? p1 : p2);
   const owner = getOwner() || possessionPlayer;
