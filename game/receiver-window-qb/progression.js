@@ -19,6 +19,7 @@
     const cost=90+p.trainingByStat[stat]*55;
     if(cash<cost)return {ok:false,reason:`You need $${cost-cash} more.`};
     const before=p[stat];p[stat]=rating(p[stat]+clamp(gain,4,8));p.trainingByStat[stat]++;p.trainings++;
+    if(root.QBDevelopment&&p.physical)root.QBDevelopment.refreshPhysical(p);
     return {ok:true,cash:cash-cost,gain:p[stat]-before,cost};
   }
 
@@ -81,7 +82,7 @@
   }
   function validateSave(raw){
     const f=typeof raw==='string'?JSON.parse(raw):JSON.parse(JSON.stringify(raw));
-    if(!f||!Array.isArray(f.team)||f.team.length!==4||!Array.isArray(f.market)||f.market.length!==5)throw new Error('This save is missing its roster or market.');
+    if(!f||!Array.isArray(f.team)||f.team.length!==4||!Array.isArray(f.market)||!(f.market.length===5||f.market.length===48))throw new Error('This save is missing its roster or market.');
     for(const p of [...f.team,...f.market]){
       if(!p||typeof p.name!=='string'||p.name.length>80)throw new Error('Invalid receiver in save.');
       for(const k of stats.slice(0,6))if(!Number.isFinite(p[k])||p[k]<1||!Number.isSafeInteger(p[k]))throw new Error('Invalid receiver ratings.');
@@ -90,7 +91,9 @@
     for(const k of ['cash','round','wins'])if(!Number.isSafeInteger(f[k])||f[k]<(k==='round'?1:0))throw new Error('Invalid franchise progress.');
     if(f.checkpoint){const c=f.checkpoint;for(const k of ['seriesOffense','seriesDefense','ballSpotYards','down','lineToGainYards'])if(!Number.isFinite(c[k]))throw new Error('Invalid drive checkpoint.');
       if(c.seriesOffense<0||c.seriesOffense>2||c.seriesDefense<0||c.seriesDefense>2||!Number.isInteger(c.down)||c.down<1||c.down>4||c.ballSpotYards<0||c.ballSpotYards>=50||c.lineToGainYards<=c.ballSpotYards||c.lineToGainYards>50)throw new Error('Invalid drive checkpoint.');}
-    return normalizeCompetition(f);
+    normalizeCompetition(f);
+    if(root.QBDevelopment){root.QBDevelopment.validate(f);root.QBDevelopment.normalize(f);}
+    return f;
   }
   const api={matchRound,matchPayout,normalizeCompetition,stats,rating,effective,signingPrice,recruit,prestigeCost,prestige,defenseProgress,migratePlayer,train,payout,traits,validateSave};
   if(typeof module!=='undefined')module.exports=api;root.QBProgression=api;

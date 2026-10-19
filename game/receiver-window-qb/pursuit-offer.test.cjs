@@ -46,7 +46,7 @@ test('contact still slows an in-stride receiver',()=>{
   assert.ok(r.velocity.length()<8);
 });
 function matchContext(overrides={}){
-  const els={cloudOffer:{hidden:true}};const c=vm.createContext({P,F,franchise:F.normalize(P.normalizeCompetition({round:1,wins:0,cash:0,team:[],market:[],...overrides})),
+  const els={cloudOffer:{hidden:true}};const c=vm.createContext({P,F,D:null,franchise:F.normalize(P.normalizeCompetition({round:1,wins:0,cash:0,team:[],market:[],...overrides})),
     seriesOffense:1,seriesDefense:3,tournamentStage:0,opponentForRound:()=>({name:'Test'}),
     resetDrive:()=>{},freshMarket:()=>[],checkpoint:()=>{},saveFranchise:()=>{},openManager:()=>{},
     $:id=>els[id]});c.activeRound=()=>P.matchRound(c.franchise);c.scheduleResult=fn=>c.pending=fn;vm.runInContext(extract('endMatchup'),c);return {c,els};
