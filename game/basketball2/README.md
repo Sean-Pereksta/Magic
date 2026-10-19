@@ -59,6 +59,10 @@ Gameplay runs at a fixed 60 Hz, with position/rotation interpolation for renderi
 
 Bots assess the entire route to a finish, including help at the rim and moving defenders. An open rimward drive continues into a short running layup gather; a settled shooting specialist can take a good open jumper instead. A covered paint leads to an open teammate, a clear receiving pocket beside the rim, or a safe lateral/backout setup. Passes are checked again before release so a rotating defender can close the window. A guarded catch is not treated as an open rim feed. The finish owner leaves movement to the gather solver, and defenders continue contesting the gather rather than prematurely chasing a rebound.
 
+Human running finishes retain their layup intent during the same Shoot hold when the player settles inside finishing range. Entering the paint during a hold can establish that intent; leaving range, losing the ball or starting a new charge clears it. Modern and classic movement both yield to an active layup/dunk gather so held directions cannot add a second running motor. Open layup touch fades continuously into ordinary timing instead of dropping abruptly after a 0.24-second tap. Defensive pressure still removes that assistance, and the physical release and collisions decide the basket.
+
+The shot meter paints the current player's actual early/green/late windows, including signature, movement and contest effects. Its green strip and overlay match release grading; an unchanged window reuses the texture. Contest previews read the current shot rather than a previous fadeaway or step-back.
+
 Within 2.2 meters, a strong finisher can attack a smaller single defender using the actual height, width, finishing skill and defender reach matchup. Equal-sized rim protection, a well-timed airborne block, extra paint help or fatigue can remove that opportunity. These reads change the attempt decision; the existing release height, ball flight and collisions still decide the outcome. A clear pass to a big player sealing a smaller guard is a viable feed even when the catch is not completely unguarded, but actual passing-corridor clearance remains mandatory.
 
 Direct drives compare the quality of the finish with the current jumper and nearby passing options. A committed clear run continues instead of stopping for a similar lateral midrange pass, while a useful rim feed or superior clean three can still win the decision. Help closing the lane triggers a new pass or setup read. Off-ball players prioritize a single useful seal and preserve the handler's driving corridor. Defenders beyond the takeoff point no longer falsely count as bodies occupying an empty lane; real rim protection and rotating help remain threats.
@@ -109,6 +113,9 @@ node game/basketball2/tests/ai-angle-drive-browser.cjs
 node game/basketball2/tests/controller-browser.cjs
 node game/basketball2/tests/role-playstyle-browser.cjs
 node game/basketball2/tests/side-midrange-browser.cjs
+node game/basketball2/tests/side-layups-browser.cjs
+node game/basketball2/tests/side-shot-input-browser.cjs
+node game/basketball2/tests/shot-meter-browser.cjs
 node game/basketball2/tests/custom-rosters-browser.cjs
 node game/basketball2/tests/rise-save-transfer-browser.cjs
 node game/basketball2/tests/equipment-ui-browser.cjs

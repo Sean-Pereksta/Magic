@@ -129,6 +129,11 @@ function handleActionButton(char){
       return;
     }
     if(!shotCharging){
+      // Keep the close finish the player started while their feet settle.
+      // A stop during the hold must not silently turn a layup into a jumper.
+      char.moveMeta.shotGatherIntent=null;
+      const gatherType=chooseShotType(char);
+      if(gatherType==='layup'||gatherType==='dunk') char.moveMeta.shotGatherIntent=gatherType;
       shotCharging = true;
       chargingPlayer = char;
       shotPower = .08;
@@ -454,13 +459,14 @@ function updateShotMeterVisuals(dt){
   const contest = calculateShotContest(chargingPlayer);
   const timing = calculateShotTiming(held,shotType,chargingPlayer,contest);
   const profile = timing.profile;
+  paintShotMeterProfile(profile);
   shotMeter.group.visible = true;
   shotMeter.group.position.copy(chargingPlayer.group.position.clone().add(new THREE.Vector3(0, 2.65 * chargingPlayer.profile.height, 0)));
   const cam = getActiveCameraForChar(chargingPlayer);
   shotMeter.group.lookAt(cam.position);
   shotMeter.fill.position.x = -0.6 + timing.pct * 1.2;
   shotMeter.greenRegion.position.x = -0.6 + ((profile.greenStart + profile.greenEnd)*.5) * 1.2;
-  shotMeter.greenRegion.scale.x = Math.max(.15,(profile.greenEnd-profile.greenStart)*6.2);
+  shotMeter.greenRegion.scale.x = Math.max(.001,(profile.greenEnd-profile.greenStart)*6);
   shotMeter.fill.material.color.setHex(timing.color);
   shotMeter.glow.position.x = shotMeter.fill.position.x;
   const inGreen = timing.grade === "Green Release";
@@ -482,7 +488,15 @@ function isKeyDown(codeOrCodes){
   return !!keys[codeOrCodes];
 }
 
+function activeFinishOwnsMovement(char){
+  return typeof layupActive!=='undefined'&&layupActive&&typeof layupOwner!=='undefined'&&layupOwner===char.id||
+    typeof dunkActive!=='undefined'&&dunkActive&&typeof dunkOwner!=='undefined'&&dunkOwner===char.id;
+}
+
 function updateModernPlayerControl(char,input,dt){
+  // The gather solver advances the finish from its real approach velocity.
+  // Applying the human running motor as well moves a side layup past the rim.
+  if(activeFinishOwnsMovement(char)) return;
   const profile = char.profile;
   const tuning = getGameplayTuning();
   if(char.stumbledTimer>0) char.stumbledTimer=Math.max(0,char.stumbledTimer-dt);
@@ -583,6 +597,7 @@ function updateModernPlayerControl(char,input,dt){
 }
 
 function updatePlayerControl(char,ctrl,dt){
+  if(activeFinishOwnsMovement(char)) return;
   const input=ctrl.state||(char.controllerSlot?inputManager.getState(char.controllerSlot):char.aiInput||createInputFrame());
   if(gameSettings.get("controlStyle")==="modern"||input.source!=="keyboard"){
     updateModernPlayerControl(char,input,dt);

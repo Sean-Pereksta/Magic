@@ -36,11 +36,13 @@ function releaseShot(shooter,shotType,options={}){
   const meterProfile = timing.profile;
   const center=(meterProfile.greenStart+meterProfile.greenEnd)*.5;
   const halfWindow=Math.max(.025,(meterProfile.greenEnd-meterProfile.greenStart)*.5);
-  // An open close gather supplies the touch on a tapped layup. It still launches
-  // a real ball, and defenders can contest or block the gather and its flight.
-  const assistedFinish=shotType==="layup" && dist<=3.6 && contest.value<.25 && held<=.24;
-  if(assistedFinish) timing.grade="Open Finish";
-  const releaseError=(assistedFinish ? center : timing.pct)-center;
+  // Short close gathers supply touch continuously. An extra frame of button
+  // hold must not abruptly turn an open layup into an early full-meter miss.
+  // Timing takes over as the hold lengthens; visible pressure removes the help.
+  const tapBlend=1-smoothstep(THREE.MathUtils.clamp((held-.20)/.40,0,1));
+  const gatherTouch=shotType==="layup"&&dist<=3.6 ? tapBlend*THREE.MathUtils.clamp((.25-contest.value)/.13,0,1) : 0;
+  if(gatherTouch>.9) timing.grade="Open Finish";
+  const releaseError=(timing.pct-center)*(1-gatherTouch);
   const rangePenalty=Math.max(0,dist-(shotType==="layup" ? 2.5 : 4.8))*.037;
   const movementPenalty=shotType==="layup" ? Math.max(0,shooter.velocity.length()-4)*.018 : shooter.velocity.length()*.047;
   const fatiguePenalty=(1-shooter.stamina)*.24;
@@ -66,7 +68,7 @@ function releaseShot(shooter,shotType,options={}){
     const clutch=Math.abs(scoreP1-scoreP2)<=3&&Math.max(scoreP1,scoreP2)>=targetScore-4;
     developmentShot=BasketballDevelopment.shotProfile(shooter,{distance:groundDist,type:shotType,contest:contest.value,
       timingError:releaseError,halfWindow,now:simulationTime,clutch});
-    const aim=BasketballDevelopment.sampleAim(developmentShot.spread*(assistedFinish?.45:1),options.random || Math.random);
+    const aim=BasketballDevelopment.sampleAim(developmentShot.spread*(1-gatherTouch*.55),options.random || Math.random);
     // Dispersion is applied at release. Rim/backboard contacts, blocks and the
     // downward swept crossing decide the result; there is no make/miss roll.
     target.copy(HOOP_POS);

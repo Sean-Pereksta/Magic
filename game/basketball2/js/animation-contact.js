@@ -541,8 +541,12 @@ function calculateShotContest(shooter){
     else help+=pressure;
   }
   let value=strongest+help*.14;
-  if(shooter.moveMeta && shooter.moveMeta.lastShotType === "stepback") value *= .82;
-  if(shooter.moveMeta && shooter.moveMeta.lastShotType === "fadeaway") value *= .72;
+  // A previous attempt must not widen the next meter. On the ball, preview
+  // the currently selected shot; after release, keep the actual launch kind.
+  const selectedType=typeof playerHasBall==='function'&&playerHasBall(shooter)&&typeof chooseShotType==='function'
+    ?chooseShotType(shooter):shooter.moveMeta?.lastShotType;
+  if(selectedType === "stepback") value *= .82;
+  if(selectedType === "fadeaway") value *= .72;
   if(shooter.contactTimer > 0.02) value *= 1.08 + Math.max(0,shooter.contactStrength||0)*0.12;
   if(shooter.bodyUpTimer > 0.05) value *= 1.06;
   value=THREE.MathUtils.clamp(value,0,1);

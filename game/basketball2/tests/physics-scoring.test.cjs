@@ -26,7 +26,7 @@ class Vector3 {
 
 function setup(){
   const ctx=vm.createContext({
-    THREE:{Vector3,MathUtils:{clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),lerp:(a,b,t)=>a+(b-a)*t}},
+    THREE:{Vector3,MathUtils:{clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),lerp:(a,b,t)=>a+(b-a)*t,degToRad:d=>d*Math.PI/180}},
     console,performance:{now:()=>5000}
   });
   for(const file of ["state","rendering","team-play","animation-contact","ball-physics","scoring","presentation"]){
@@ -93,6 +93,51 @@ test('feet determine the three-point and development zone while the hand still l
     assert.equal(result.active.includes('catchAndShoot'),true);
     assert.equal(result.releaseError,0);assert.equal(result.releaseRecordError,0);assert.ok(result.flight.every(Number.isFinite));
   }
+});
+
+test('settled-shot contest previews ignore a prior fadeaway and match the actual release',()=>{
+  const ctx=setup();
+  const result=run(ctx,`
+    p1.group.position.set(0,0,HOOP_POS.z+5.8);p1.angle=Math.PI;p1.moveState='normal';
+    for(const other of matchPlayers)if(other.teamId===1)other.group.position.set(8,0,8);
+    const defender=matchPlayers[3];defender.group.position.copy(p1.group.position).add(new THREE.Vector3(0,0,-1.7));
+    defender.handsUpTime=.5;defender.angle=0;
+    takePossession(p1,{silent:true});shotCharging=true;chargingPlayer=p1;
+    p1.moveMeta.lastShotType='fadeaway';p1.moveMeta.fadeawayArmed=false;
+    const preview=calculateShotContest(p1).value;
+    const selected=chooseShotType(p1);
+    p1.moveMeta.chargeHeld=.8;releaseShot(p1,selected);
+    const released=calculateShotContest(p1).value;
+    ({selected,preview,released});
+  `);
+  assert.equal(result.selected,'setshot');assert.ok(result.preview>.4);
+  assert.equal(result.preview,result.released,'meter and launch see the same current contest');
+});
+
+test('open running layup launch trajectories stay continuous across a quarter-second button release',()=>{
+  const ctx=setup();
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/player-development.js'),'utf8'),ctx);
+  const result=run(ctx,`
+    function gatherLaunch(held,pressure=0){
+      for(const other of matchPlayers)if(other.teamId===1)other.group.position.set(8,0,8);
+      p1.group.position.set(2.3,.7,HOOP_POS.z);p1.velocity.set(-5.8,0,0);p1.profile.height=.95;
+      p1.profile.ratings={layups:41,closeShot:43,releaseStability:43,consistency:45,aerialControl:45};
+      p1.profile.abilities={};p1.stamina=.85;takePossession(p1,{silent:true});
+      p1.moveMeta.chargeHeld=held;
+      calculateShotContest=()=>({value:pressure,label:pressure?'Heavy Contest':'Open'});
+      releaseShot(p1,'layup',{releasePoint:new THREE.Vector3(1.98,3,HOOP_POS.z),random:()=>.5});
+      return {velocity:ballVelocity.clone(),grade:p1.moveMeta.lastTimingGrade};
+    }
+    const a=gatherLaunch(.24),b=gatherLaunch(.25),c=gatherLaunch(.35),covered=gatherLaunch(.25,.7),overheld=gatherLaunch(1.6);
+    ({boundaryJump:a.velocity.distanceTo(b.velocity),laterChange:b.velocity.distanceTo(c.velocity),
+      pressureDifference:b.velocity.distanceTo(covered.velocity),lateDifference:b.velocity.distanceTo(overheld.velocity),
+      openGrade:b.grade,finite:[a,b,c,covered,overheld].every(shot=>[shot.velocity.x,shot.velocity.y,shot.velocity.z].every(Number.isFinite))});
+  `);
+  assert.ok(result.boundaryJump<.08,JSON.stringify(result));
+  assert.ok(result.laterChange<.6,'ordinary short holds change touch gradually: '+JSON.stringify(result));
+  assert.ok(result.pressureDifference>.1,'real pressure still changes the launch: '+JSON.stringify(result));
+  assert.ok(result.lateDifference>.6,'overholding still pays the normal timing penalty: '+JSON.stringify(result));
+  assert.equal(result.openGrade,'Open Finish');assert.ok(result.finite);
 });
 
 test('a fresh possession reset clears old contact, catch and drive advantages while retaining match stats',()=>{
