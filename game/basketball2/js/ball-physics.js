@@ -608,6 +608,12 @@ function checkLayupDefenderCollision(owner,defender,prevBallPos,currentBallPos){
   const from=prevBallPos.distanceTo(currentBallPos)>.48?currentBallPos:prevBallPos;
   const handContact=getShotBlockContact(defender,owner,from,currentBallPos);
   if(handContact) return {hit:true,type:"hand",point:handContact.hand,radius:handContact.radius};
+  const toRim=HOOP_POS.clone().sub(owner.group.position).setY(0).normalize();
+  const offset=defender.group.position.clone().sub(owner.group.position).setY(0);
+  const separation=offset.length(),rimward=offset.dot(toRim);
+  // Incidental side/trailing body overlap should not cancel a gathered finish.
+  // A defender must square up close in the driving lane to form a body wall.
+  if(separation>1.4||rimward<.18||rimward/Math.max(.001,separation)<.55||!isFacingTarget(defender,owner.group.position,.2)) return {hit:false};
   if(segmentSphereIntersect(from,currentBallPos,bodyCenter,bodyRadius + BALL_RADIUS)) return {hit:true,type:"body",point:bodyCenter,radius:bodyRadius+BALL_RADIUS};
   if(segmentSphereIntersect(from,currentBallPos,headCenter,headRadius + BALL_RADIUS)) return {hit:true,type:"body",point:headCenter,radius:headRadius+BALL_RADIUS};
   return {hit:false};
@@ -676,7 +682,8 @@ function updateLayup(dt){
   if(contactLayup){ owner.group.rotation.z = THREE.MathUtils.lerp(owner.group.rotation.z,-0.12 * (owner.contactSide || 1),0.12); }
   ball.position.copy(hand).add(new THREE.Vector3(0,Math.sin(progress*Math.PI)*.32,0));
   const lift=smoothstep(THREE.MathUtils.clamp(progress/.52,0,1));
-  ball.position.y=Math.max(ball.position.y,owner.group.position.y+(1.25+1.1*lift)*owner.profile.height);
+  const elevation=owner.moveMeta.finishElevation||0;
+  ball.position.y=Math.max(ball.position.y,owner.group.position.y+(1.25+1.1*lift)*owner.profile.height+elevation*lift);
   for(const defender of getOpponents(owner)){
     const collision=checkLayupDefenderCollision(owner,defender,prevBallPos,ball.position);
     if(collision.hit && (defender.blockTime>0 || defender.handsUpTime>0 || collision.type==="body")){
@@ -686,7 +693,7 @@ function updateLayup(dt){
   }
   if(progress>=.52){
     const releasePoint=ball.position.clone();
-    releasePoint.y=Math.max(releasePoint.y,owner.group.position.y+2.4*owner.profile.height);
+    releasePoint.y=Math.max(releasePoint.y,owner.group.position.y+2.4*owner.profile.height+elevation);
     // Release on the basket side of the body so the rising ball clears its
     // shooter's torso instead of immediately deflecting off the same player.
     const bodyDistance=flatDistance(owner.group.position,HOOP_POS);

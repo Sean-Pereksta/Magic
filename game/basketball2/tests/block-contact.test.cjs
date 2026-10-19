@@ -79,6 +79,62 @@ test('a trailing defender can block an exposed high ball but cannot reach throug
   assert.equal(result.protectedBall,false);assert.equal(result.exposed,true);
 });
 
+test('chase-down layup and dunk blocks need the middle of an airborne reach, including just after layup release',()=>{
+  const ctx=setup();
+  const results=run(ctx,`
+    p1.group.position.set(0,0,HOOP_POS.z+2.5);p2.group.position.copy(p1.group.position).add(new THREE.Vector3(0,0,1.1));
+    p2.hands.left.copy(p1.group.position).add(new THREE.Vector3(.1,2.65,-.2));p2.hands.right.set(5,2.65,0);
+    const exposed=p1.group.position.clone().add(new THREE.Vector3(0,2.65,-.2));
+    ['layup','dunk','shot'].map(state=>{
+      ballState=state;p1.moveMeta.lastShotType='layup';p2.handsUpTime=.4;p2.onGround=false;
+      function reach(elapsed,ground=false){p2.moveMeta.blockFlight={elapsed};p2.blockTime=.42-elapsed;p2.onGround=ground;return !!getShotBlockContact(p2,p1,exposed,exposed);}
+      return {state,early:reach(.03),timed:reach(.18),late:reach(.36),grounded:reach(.18,true),heldHands:reach(.42)};
+    });
+  `);
+  for(const result of results){
+    assert.equal(result.early,false,result.state);assert.equal(result.timed,true,result.state);
+    assert.equal(result.late,false,result.state);assert.equal(result.grounded,false,result.state);assert.equal(result.heldHands,false,result.state);
+  }
+});
+
+test('front hand contact remains effective throughout a real reach while side and trailing bodies cannot cancel the gather',()=>{
+  const ctx=setup();
+  const result=run(ctx,`
+    p1.group.position.set(0,0,0);p2.group.position.set(0,0,-1.1);p2.angle=0;ballState='layup';
+    p2.blockTime=.39;p2.onGround=false;p2.moveMeta.blockFlight={elapsed:.03};
+    const high=new THREE.Vector3(0,2.65,-.2);p2.hands.left.copy(high);p2.hands.right.set(5,2.65,0);
+    const earlyFront=!!getShotBlockContact(p2,p1,high,high);
+    p2.hands.left.set(5,2.5,0);p2.hands.right.set(5,2.5,0);
+    function body(x,z,angle){p2.group.position.set(x,0,z);p2.angle=angle;const point=p2.group.position.clone().add(new THREE.Vector3(.1,1.15,0));return checkLayupDefenderCollision(p1,p2,point,point);}
+    ({earlyFront,front:body(0,-1.1,0).type,trailing:body(0,1.1,Math.PI).hit,side:body(1.1,0,-Math.PI/2).hit,distant:body(0,-1.6,0).hit});
+  `);
+  assert.equal(result.earlyFront,true);assert.equal(result.front,'body');
+  assert.equal(result.trailing,false);assert.equal(result.side,false);assert.equal(result.distant,false);
+});
+
+test('finishing elevation rewards both vertical and touch without granting immunity to a high hand',()=>{
+  const ctx=setup();
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/player-development.js'),'utf8'),ctx);
+  const result=run(ctx,`
+    p1.moveMeta.chargeHeld=.72;p1.profile.ratings={jumping:45,layups:45,dunking:45};
+    const low=getFinishingElevation(p1),lowDunk=getFinishingElevation(p1,'dunk');
+    p1.profile.ratings.jumping=95;const jumpOnly=getFinishingElevation(p1);
+    p1.profile.ratings.layups=p1.profile.ratings.dunking=95;
+    const high=getFinishingElevation(p1),highDunk=getFinishingElevation(p1,'dunk');
+    p1.moveMeta.chargeHeld=1.25;const mistimed=getFinishingElevation(p1);
+    ballState='layup';p1.group.position.set(0,0,0);p2.group.position.set(0,0,-1.1);p2.blockTime=.2;p2.onGround=false;
+    p2.hands.left.set(0,2.13,0);p2.hands.right.set(5,3,0);
+    const lowBall=new THREE.Vector3(0,2.4+low,0),exposed=new THREE.Vector3(0,2.4+high,0);
+    const lowBlocked=!!getShotBlockContact(p2,p1,lowBall,lowBall),highEscapes=!getShotBlockContact(p2,p1,exposed,exposed);
+    p2.hands.left.copy(exposed);const blockable=!!getShotBlockContact(p2,p1,exposed,exposed);
+    ({low,lowDunk,jumpOnly,high,highDunk,mistimed,lowBlocked,highEscapes,blockable});
+  `);
+  assert.ok(result.low<result.jumpOnly&&result.jumpOnly<result.high);
+  assert.ok(result.high>result.mistimed);assert.ok(result.high<=.14);assert.equal(result.highDunk,result.high);
+  assert.ok(result.lowDunk<result.highDunk);assert.equal(result.lowBlocked,true);assert.equal(result.highEscapes,true);
+  assert.equal(result.blockable,true,'a higher timed hand can still meet the elevated finish');
+});
+
 test('a torso ricochet with distant hands stays a body deflection and earns no block',()=>{
   const ctx=setup();
   const result=run(ctx,`
@@ -92,7 +148,7 @@ test('a torso ricochet with distant hands stays a body deflection and earns no b
 test('layup gathers ignore phantom long pose sweeps while retaining nearby actual body and hand contact',()=>{
   const ctx=setup();
   const result=run(ctx,`
-    p1.group.position.set(0,0,2);p2.group.position.set(0,0,0);p2.hands.left.set(5,2.5,0);p2.hands.right.set(5,2.5,0);
+    p1.group.position.set(0,0,1.2);p2.group.position.set(0,0,0);p2.hands.left.set(5,2.5,0);p2.hands.right.set(5,2.5,0);
     const low=new THREE.Vector3(0,.25,0),high=new THREE.Vector3(0,3,0);
     const poseJump=checkLayupDefenderCollision(p1,p2,low,high);
     const torso=new THREE.Vector3(.2,1.2,0),wall=checkLayupDefenderCollision(p1,p2,torso,torso);

@@ -44,9 +44,11 @@ function releaseShot(shooter,shotType,options={}){
   // Timing takes over as the hold lengthens. Pressure reduces touch smoothly:
   // light coverage must not turn an ordinary running gather into an early jumper.
   const tapBlend=1-smoothstep(THREE.MathUtils.clamp((held-.20)/.40,0,1));
-  const pressureTouch=1-smoothstep(THREE.MathUtils.clamp((contest.value-.10)/.75,0,1));
+  // A short gather retains touch through ordinary coverage. Pressure also
+  // widens aim below; only smothering defense should strongly spoil tap timing.
+  const pressureTouch=1-.92*smoothstep(THREE.MathUtils.clamp((contest.value-.12)/.83,0,1));
   const gatherTouch=shotType==="layup"&&dist<=3.6 ? tapBlend*pressureTouch : 0;
-  if(gatherTouch>.9) timing.grade="Open Finish";
+  if(gatherTouch>.9) timing.grade=contest.value<.12?"Open Finish":"Controlled Finish";
   const releaseError=(timing.pct-center)*(1-gatherTouch);
   const rangePenalty=Math.max(0,dist-(shotType==="layup" ? 2.5 : 4.8))*.037;
   const movementPenalty=shotType==="layup" ? Math.max(0,shooter.velocity.length()-4)*.018 : shooter.velocity.length()*.047;
@@ -174,6 +176,18 @@ function botShoot(char=getBallHandler()){
   shootBall(char);
 }
 
+function getFinishingElevation(char,type="layup"){
+  const development=typeof BasketballDevelopment!=="undefined";
+  const jump=development ? BasketballDevelopment.rating(char,"jumping",BasketballDevelopment.legacyRating(char,"jump")) : 60+(char.profile.jump-1)*65;
+  const touch=development ? BasketballDevelopment.rating(char,type==="dunk"?"dunking":"layups",BasketballDevelopment.legacyRating(char,"layup")) : 60+((char.profile.layup||1)-1)*65;
+  const held=char.moveMeta.chargeHeld||0;
+  const tap=1-smoothstep(THREE.MathUtils.clamp((held-.20)/.40,0,1));
+  const timing=.9*tap+THREE.MathUtils.clamp(1-Math.abs(held-.72)*.9,.55,1)*(1-tap);
+  // A few centimetres of real elevation reward touch and vertical together.
+  // This moves the release/hand path, leaving an exposed ball blockable.
+  return .14*THREE.MathUtils.clamp((jump-35)/60,0,1)*THREE.MathUtils.clamp((touch-35)/60,0,1)*timing;
+}
+
 function startLayup(char){
   if(!char || possession!==char.id || ballOwner!==char.id || ballState !== "dribble") return;
   shotCharging = false;
@@ -192,8 +206,9 @@ function startLayup(char){
   layupBlocked = false;
   layupBlockWindow = .34;
   char.moveMeta.gatherType = "layup";
+  char.moveMeta.finishElevation=getFinishingElevation(char,"layup");
   char.stats.fga+=1;
-  char.yVel = 3.9 * char.profile.jump;
+  char.yVel = 3.9 * char.profile.jump+char.moveMeta.finishElevation;
   char.onGround = false;
   flash(`${char.id.toUpperCase()} layup!`);
 }
@@ -236,6 +251,7 @@ function startDunk(char){
     ((char.profile.width > 1.1 || char.profile.height > 1.07) ? "twohand" :
     (char.profile.jump > 1.08 || char.profile.sprint > 1.13) ? "tomahawk" : "quick");
   const twoHands=["twohand","poster","standing","contact"].includes(style);
+  const finishElevation=getFinishingElevation(char,"dunk");
   // The path moves the player's feet. A rim-height root puts their knees above
   // the hoop; solve the rise from the actual shoulder and extended arm instead.
   const rimFront = new THREE.Vector3(HOOP_POS.x,char.group.position.y,HOOP_POS.z+RIM_RADIUS+char.bodyRadius*.25);
@@ -244,7 +260,7 @@ function startDunk(char){
   const attackSide=sideSign>0?"right":"left";
   let rootHeight=0,rootMaxY=Infinity;
   for(const side of ["left","right"]){
-    handTargets[side]=HOOP_POS.clone().add(new THREE.Vector3(twoHands?(side==="left"?-.12:.12):0,.16,.26));
+    handTargets[side]=HOOP_POS.clone().add(new THREE.Vector3(twoHands?(side==="left"?-.12:.12):0,.16+finishElevation,.26));
     if(char.group.worldToLocal) handStarts[side]=char.group.worldToLocal(getWorldHand(char,side).clone());
     if(!twoHands&&side!==attackSide) continue;
     const reach=typeof getBasketballDunkReach==="function"&&getBasketballDunkReach(char,side) ||
@@ -266,7 +282,7 @@ function startDunk(char){
     side: sideSign > 0 ? "right" : "left",
     startFacing: char.angle,
     style,
-    twoHands,finishProfile,
+    twoHands,finishProfile,finishElevation,
     gatherTiming:char.moveMeta.chargeHeld>.25?Math.max(.25,1-Math.abs(char.moveMeta.chargeHeld-.72)*1.15):.78,
     baseY: char.group.position.y,
     rootMaxY,handTargets,handStarts:Object.keys(handStarts).length===2?handStarts:null,posePhase:0,
@@ -337,7 +353,7 @@ function updateDunk(dt){
   }else if(t < 0.76){
     const handBias = meta.side === "right" ? "right" : "left";
     const rimHand = getWorldHand(owner,handBias);
-    const targetAboveRim = HOOP_POS.clone().add(new THREE.Vector3(0,0.2,0));
+    const targetAboveRim = HOOP_POS.clone().add(new THREE.Vector3(0,0.2+meta.finishElevation*.5,0));
     ball.position.copy(rimHand.lerp(targetAboveRim,0.58));
     ballVelocity.set(0,-0.25,-0.05);
   }else{
@@ -469,9 +485,22 @@ function isFacingTarget(char,target,minDot=.25){
 
 function getShotBlockContact(blocker,shooter,from,to){
   if(blocker.blockTime<=0 && blocker.handsUpTime<=0) return null;
+  if(shooter){
+    const finishing=ballState==="layup"||ballState==="dunk"||
+      (ballState==="shot"&&shooter.moveMeta?.lastShotType==="layup"&&flatDistance(to,shooter.group.position)<2);
+    if(finishing){
+      const toRim=HOOP_POS.clone().sub(shooter.group.position).setY(0).normalize();
+      const behind=blocker.group.position.clone().sub(shooter.group.position).setY(0).dot(toRim)<-.18;
+      const leapTime=blocker.moveMeta?.blockFlight?.elapsed ?? .42-blocker.blockTime;
+      // A chase-down needs a committed leap meeting the exposed ball near the
+      // middle of the reach. Holding hands up or arriving after the swipe does
+      // not erase a finisher who has already earned a step toward the basket.
+      if(behind&&(blocker.onGround||blocker.blockTime<=0||leapTime<.075||leapTime>.31)) return null;
+    }
+  }
   // The ball and the visible palm set contact size. Blocking ratings improve
   // the jump and defensive decisions, never an invisible halo around the hand.
-  const radius=BALL_RADIUS+THREE.MathUtils.clamp(.085*blocker.profile.width,.07,.105);
+  const radius=BALL_RADIUS+THREE.MathUtils.clamp(.07*blocker.profile.width,.06,.09);
   const path=to.clone().sub(from),lengthSq=path.lengthSq();
   for(const side of ["left","right"]){
     const hand=getWorldHand(blocker,side);
@@ -801,7 +830,7 @@ function gainPossession(who){
   takePossession(newOwner);
 }
 
-function resetPossession(who,reposition){
+function resetPossession(who,reposition,countdown=1){
   if(gameOver) return;
   pendingInbound=null;
   const owner=getPlayerById(who) || matchPlayers[0];
@@ -815,7 +844,7 @@ function resetPossession(who,reposition){
   lastShotReleasePos.set(0,0,0);
   loosePickupDelay = 0;
   botStrategy=owner.controllerSlot ? "defense" : chooseBotStrategy();
-  startCountdown();
+  startCountdown(countdown);
 }
 
 function rematchSamePlayers(){
@@ -832,7 +861,7 @@ function rematchSamePlayers(){
     char.sideHopCooldown=0; char.pumpFakeCooldown=0; char.reachRecovery=0;
     for(const key of Object.keys(char.stats)) char.stats[key]=0;
   }
-  resetPossession(matchPlayers[0].id,true);
+  resetPossession(matchPlayers[0].id,true,3);
 }
 function returnToCharacterMenu(){
   if(typeof riseMatch!=="undefined"&&riseMatch){showRiseCampaign();return;}
@@ -898,7 +927,7 @@ function chooseBotStrategy(){
   return "crossover";
 }
 
-function startCountdown(){
-  countdownTimer = 3;
+function startCountdown(duration=3){
+  countdownTimer = duration;
   possessionFrozen = true;
 }

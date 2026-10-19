@@ -40,7 +40,7 @@ const BasketballDevelopment=(()=>{
     const deep=use('deepRange',three);
     const clutchTier=use('clutchShooter',clutch);
     const quick=use('quickRelease',!close);
-    const contestSkill=rating(char,'contestedShooting',r)*.006;
+    const contestSkill=rating(char,close?'contactFinishing':'contestedShooting',r)*.006;
     const pressure=contest*(1-clamp(contestSkill*.23+deadeye*.13,0,.42));
     const movement=Math.max(0,speed-(pullup?.95:0))*(stepback?.48:1);
     const contact=char.contactTimer>.02?Math.max(0,.08-(rating(char,'contactFinishing',r)-50)*.001):0;
@@ -48,10 +48,12 @@ const BasketballDevelopment=(()=>{
     const offBalance=(type==='fadeaway'?.085:type==='hook'?.035:type==='stepback'?.045:0)*(1-stepback*.2)+(char.stumbledTimer>0?.2:0);
     // Gaussian aim dispersion in court metres. These values are calibrated by
     // stepping the real rim, backboard and swept scoring collisions in tests.
-    let spread=(close?.115:.375)-(r-60)*(close?.0009:.001);
+    let spread=(close?.115:.36)-(r-60)*(close?.0009:.001);
     spread+=(60-stability)*.0003+(60-consistency)*.0002;
     spread-=mid*.012+catchShoot*.014*catchQuality+pullup*.012+stepback*.013+corners*.018;
-    spread+=pressure*.32+Math.max(0,pressure-.6)*.55+movement*.031+fatigue*.13+offBalance+contact;
+    // Ordinary coverage disrupts touch less than a hand smothering the release.
+    // Running close finishes keep more control than running jumpers.
+    spread+=pressure*(close?.30:.29)+Math.max(0,pressure-.6)*.50+movement*(close?.029:.031)+fatigue*(close?.12:.13)+offBalance+contact;
     spread+=Math.max(0,distance-(three?7.15+deep*.7:6.5))*(three?.058:.012);
     if(close)spread+=(60-control)*.0006;
     const timingTolerance=1+(stability-60)*.004+(composure-60)*.002+clutchTier*.13+(clutch?(rating(char,'clutchShooting',r)-60)*.003:0);
@@ -65,7 +67,7 @@ const BasketballDevelopment=(()=>{
       clamp(((char.stamina??1)-.35)/.5,0,1)*clamp(1-outside/.08,0,1);
     spread+=outside*.24;
     return {rating:r,spread:clamp(spread,close?.035:.135,.95),timingBias,pressure,
-      movementBias:movement*.012,depthBias:-pressure*.17-fatigue*.055,
+      movementBias:movement*.012,depthBias:-pressure*.15-fatigue*.055,
       active,quickRelease:quick>0,releaseDuration:quick?Math.max(.28,.46-.055*quick):.46};
   }
   function meterProfile(type,char,contest,base){

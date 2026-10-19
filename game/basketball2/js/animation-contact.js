@@ -573,10 +573,12 @@ function calculateShotContest(shooter){
     const development=typeof BasketballDevelopment!=="undefined"?BasketballDevelopment:null;
     const defenseRating=development?development.rating(defender,flatDistance(shooter.group.position,HOOP_POS)<3.6?'interiorDefense':'perimeterDefense',60):60;
     const reachScale=THREE.MathUtils.clamp((defender.profile.height||1)/(shooter.profile.height||1),.8,1.2);
-    const pressureRange=(closeFinish?2.35:2.9)*reachScale;
+    const pressureRange=(closeFinish?2.1:2.55)*reachScale;
     let pressure=THREE.MathUtils.clamp((pressureRange-d)/pressureRange,0,1)*THREE.MathUtils.clamp(defender.profile.block*.55+defender.profile.steal*.35,.35,1.35);
     pressure*=1+(defenseRating-60)*.006;
-    pressure*=getGameplayTuning().contestStrength*(closeFinish?(.42+facing*.26+(active?.38:0)):(.55+facing*.3+(active?.24:0)));
+    // Closing space and facing the release earn pressure. Raised hands while
+    // turned away do not supply the same contest as a squared closeout.
+    pressure*=getGameplayTuning().contestStrength*(closeFinish?(.28+facing*.42+(active?.36:0)*facing):(.38+facing*.47+(active?.24:0)*facing));
     if(closeFinish){
       // A beaten defender on the hip or behind the drive cannot apply the
       // same pressure as one holding the lane between the finisher and rim.

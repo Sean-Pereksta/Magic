@@ -158,12 +158,15 @@ function aiReadShotAt(char,observer,position,settings,horizon=0){
   if(matchup.finishFavorable) quality+=Math.min(.095,matchup.mismatchAdvantage*.15);
   if(closeFinish&&matchup.activeBlockThreat) quality-=.14;
   if(closeFinish&&toward>.35&&running&&finishOpen) quality+=.055;
+  // A moving handler can recognize a shot worth stopping for. Only remove
+  // its own motion penalty; current defense, fatigue and range still apply.
+  const settledQuality=aiReadClamp(quality+(closeFinish?0:momentum));
   quality=aiReadClamp(quality);
   const points=distance>(typeof THREE_RADIUS!=="undefined"?THREE_RADIUS:7.15)?3:2;
   // The extra point matters only after the shooter has earned a clean look.
   // Quality stays a feasibility grade so a bad three never gains an excuse.
   const value=aiReadClamp(quality+(points===3&&inRange&&quality>.7&&space>2.05?.065:0));
-  return {quality,value,points,distance,closeFinish,finishOpen,space,finishingSpace,inRange,preferredRange,momentum,rimPressure,pressure,running,...matchup};
+  return {quality,settledQuality,value,points,distance,closeFinish,finishOpen,space,finishingSpace,inRange,preferredRange,momentum,rimPressure,pressure,running,...matchup};
 }
 
 function aiAssessShot(char,settings,positionOverride){

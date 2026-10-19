@@ -111,8 +111,29 @@ test('settled-shot contest previews ignore a prior fadeaway and match the actual
     const released=calculateShotContest(p1).value;
     ({selected,preview,released});
   `);
-  assert.equal(result.selected,'setshot');assert.ok(result.preview>.4);
+  assert.equal(result.selected,'setshot');assert.ok(result.preview>.28&&result.preview<.48,'a hands-up defender at 1.7m earns a moderate contest');
   assert.equal(result.preview,result.released,'meter and launch see the same current contest');
+});
+
+test('jump-shot pressure needs a close squared defender to become smothering',()=>{
+  const ctx=setup();
+  const result=run(ctx,`(()=>{
+    p1.group.position.set(0,0,HOOP_POS.z+5.8);p1.angle=Math.PI;p1.moveState='normal';
+    for(const other of matchPlayers)if(other.teamId===1)other.group.position.set(8,0,8);
+    takePossession(p1,{silent:true});
+    const defender=matchPlayers[3];defender.handsUpTime=.5;
+    function pressure(distance,angle=0){
+      defender.group.position.copy(p1.group.position).add(new THREE.Vector3(0,0,-distance));
+      defender.angle=angle;return calculateShotContest(p1).value;
+    }
+    const close=pressure(.5),moderate=pressure(1.7),distant=pressure(2.65),turned=pressure(.5,Math.PI);
+    defender.handsUpTime=0;const passive=pressure(.5);
+    return {close,moderate,distant,turned,passive};
+  })()`);
+  assert.ok(result.close>.7,JSON.stringify(result));
+  assert.ok(result.moderate>.28&&result.moderate<.48,JSON.stringify(result));
+  assert.equal(result.distant,0);
+  assert.ok(result.turned<result.close*.4&&result.passive<result.close,JSON.stringify(result));
 });
 
 test('close contests reward the defender holding the rimward lane rather than a beaten trailing position',()=>{
@@ -333,6 +354,45 @@ test("layup gathers release a real shot and count exactly one attempt",()=>{
   assert.ok(run(ctx,"ballVelocity.y")>0);
 });
 
+test('vertical and layup touch raise the actual gathered release while preserving one physical shot',()=>{
+  const results=[];
+  for(const rating of [45,95]){
+    const ctx=setup();
+    vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/player-development.js'),'utf8'),ctx);
+    results.push(run(ctx,`
+      for(const other of matchPlayers)if(other!==p1)other.group.position.set(9,0,9);
+      p1.group.position.set(0,0,HOOP_POS.z+2.7);p1.profile.ratings={jumping:${rating},layups:${rating}};
+      takePossession(p1,{silent:true});p1.moveMeta.chargeHeld=.72;startLayup(p1);
+      const launch=p1.yVel;
+      for(let i=0;i<22;i++){updateJumpPhysics(p1,1/60);updateLayup(1/60);}
+      ({launch,height:ball.position.y,feet:p1.group.position.y,state:ballState,attempts:p1.stats.fga,elevation:p1.moveMeta.finishElevation});
+    `));
+  }
+  assert.equal(results[0].state,'shot');assert.equal(results[1].state,'shot');
+  assert.equal(results[0].attempts,1);assert.equal(results[1].attempts,1);
+  assert.ok(results[1].launch>results[0].launch);assert.ok(results[1].feet>results[0].feet);
+  assert.ok(results[1].height>results[0].height+.1);assert.ok(results[1].height-results[0].height<.25,JSON.stringify(results));
+});
+
+test('finishing elevation changes continuously between taps and longer holds',()=>{
+  const ctx=setup();
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/player-development.js'),'utf8'),ctx);
+  const results=run(ctx,`(()=>{
+    p1.profile.ratings={jumping:95,layups:95,dunking:95};
+    return ['layup','dunk'].map(type=>{
+      const samples=[];
+      for(let held=.20;held<=.61;held+=.001){
+        p1.moveMeta.chargeHeld=held;samples.push(getFinishingElevation(p1,type));
+      }
+      return samples;
+    });
+  })()`);
+  for(const samples of results){
+    for(let i=1;i<samples.length;i++)assert.ok(Math.abs(samples[i]-samples[i-1])<.001,'an extra millisecond cannot abruptly change the reachable ball height');
+    assert.ok(samples.every(value=>value>0&&value<=.14));
+  }
+});
+
 test("inbounds select teams correctly for standard, make-it-take-it and losers-ball rules",()=>{
   const ctx=setup();
   assert.equal(run(ctx,"teamOf(nextPossessionAfterScore('a1'))"),1);
@@ -354,6 +414,19 @@ test("score and out-of-bounds delays advance only with simulation and resets can
   run(ctx,"scheduleDeadPossession('b3',420);updateScoredPossession(.5)");
   assert.equal(run(ctx,"ballOwner"),"b3");
   assert.equal(run(ctx,"matchPlayers.filter(p=>p.hasBall).length"),1);
+});
+
+test('live possession restarts use a short ready beat while new games keep their full countdown',()=>{
+  const ctx=setup();
+  run(ctx,'startCountdown()');
+  assert.equal(run(ctx,'countdownTimer'),3);
+  run(ctx,"scheduleScoredPossession('a1',850);updateScoredPossession(.86)");
+  assert.equal(run(ctx,'pendingInbound'),null);
+  assert.equal(run(ctx,'countdownTimer'),1,'each basket no longer repeats the opening three-second count');
+  assert.equal(run(ctx,'possessionFrozen'),true,'both teams still get a visible ready beat');
+  assert.equal(run(ctx,"teamOf(ballOwner)"),1);
+  run(ctx,"resetPossession('a1',true,3)");
+  assert.equal(run(ctx,'countdownTimer'),3,'new-match callers can retain the full opening countdown');
 });
 
 test("a defender blocking the ball out returns possession to offense without changing the shot scorer",()=>{
