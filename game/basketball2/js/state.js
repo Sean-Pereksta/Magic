@@ -4,6 +4,10 @@ let p1, p2, ball, ballShadow, rim, backboard;
 // Human control slots are separate from individual player IDs and team ownership.
 let matchPlayers = [];
 let teamSize = 1;
+// Rise to Glory uses its own save and roster; exhibition and Tour remain isolated.
+let riseState = null;
+let riseMatch = null;
+let riseTraining = null;
 let teamOffensiveStyles = ["motion","pick_roll"];
 let localTeamMode = "competitive";
 let splitLayout = "vertical";

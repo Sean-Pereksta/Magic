@@ -24,7 +24,7 @@ const root=path.resolve(__dirname,'../../..');
     if(process.env.THREE_BUNDLE) await page.route('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',route=>route.fulfill({path:process.env.THREE_BUNDLE,contentType:'text/javascript'}));
     await page.route('https://pub-b956b47cfcfd467d9f678959c08a5781.r2.dev/*.glb',route=>route.fulfill({path:path.join(root,'game/basketball2/assets/models',new URL(route.request().url()).pathname.split('/').pop()),contentType:'model/gltf-binary',headers:{'Access-Control-Allow-Origin':'*'}}));
     await page.goto('http://basketball.local/game/basketball2/');
-    await page.waitForFunction(()=>basketballPlayerModels.assets.size===3);
+    await page.waitForFunction(()=>basketballPlayerModels.assets.size===3).catch(error=>{console.error('Page errors:',errors);throw error;});
 
     const results=await page.evaluate(()=>{
       const results=[],savedRandom=Math.random,assets=new Map(basketballPlayerModels.assets);
@@ -33,7 +33,8 @@ const root=path.resolve(__dirname,'../../..');
         if(fallback)basketballPlayerModels.assets.clear();
         Math.random=()=>hang?0:.99;
         teamSize=1;twoPlayerMode=false;selectedP1=profile;startGame();countdownTimer=0;possessionFrozen=false;
-        p1.group.position.set(0,0,HOOP_POS.z+1.8);p1.angle=Math.PI;p1.group.rotation.set(0,Math.PI,0);p2.group.position.set(8,0,8);
+        p1.profile.ratings={dunking:82,jumping:90,strength:78,standingDunk:80,contactFinishing:82,aerialControl:85};
+        p1.group.position.set(0,0,HOOP_POS.z+1.3);p1.velocity.set(0,0,-4.2);p1.angle=Math.PI;p1.group.rotation.set(0,Math.PI,0);p2.group.position.set(8,0,8);
         takePossession(p1,{silent:true});updateCharacters(0);startDunk(p1);
         const samples=[];let scoreSeen=false,pauseStable=false,landedBeforeInbound=false,hangFrames=0,lastRoot=p1.group.position.y,maxStep=0,peakKnee=-Infinity,peakHand=-Infinity,release=null;
         for(let frame=0;frame<150;frame++){
@@ -76,23 +77,108 @@ const root=path.resolve(__dirname,'../../..');
     }
     console.log('PASS: '+results.length+' real guard/wing/center and procedural dunks: knees below rim, hand/ball just above it, smooth landing, optional rim hang, one score, pause and inbound lifecycle');
     console.log(JSON.stringify(results.filter(result=>!result.fallback&&!result.hang).map(({profile,peakKnee,peakHand,release,maxStep})=>({profile,peakKnee,peakHand,release,maxStep}))));
+    const signatures=await page.evaluate(()=>{
+      const signatures=[];
+      for(const variant of [
+        {name:'power',profile:'tower',abilities:{powerFinisher:2},style:'twohand'},
+        {name:'flight',profile:'flash',abilities:{highFlyer:2},style:'tomahawk'},
+        {name:'reverse',profile:'flash',abilities:{highFlyer:2,aerialAcrobat:2},angle:Math.PI-.95,style:'reverse'},
+        {name:'windmill',profile:'flash',abilities:{highFlyer:2,aerialAcrobat:2},style:'windmill'},
+        {name:'contact',profile:'tower',abilities:{contactSpecialist:2},defender:true,style:'contact'},
+        {name:'poster',profile:'flash',abilities:{posterizer:2,powerFinisher:2},defender:true,style:'poster'}
+      ]){
+        selectedP1=variant.profile;startGame();countdownTimer=0;possessionFrozen=false;
+        p1.profile.ratings={dunking:90,jumping:94,strength:86,standingDunk:85,contactFinishing:90,aerialControl:92};p1.profile.abilities=variant.abilities;
+        p1.group.position.set(0,0,HOOP_POS.z+1.3);p1.velocity.set(0,0,-4.2);p1.angle=variant.angle||Math.PI;p1.group.rotation.set(0,p1.angle,0);
+        p2.group.position.set(variant.defender?1.7:8,0,variant.defender?HOOP_POS.z+.8:8);
+        takePossession(p1,{silent:true});updateCharacters(0);startDunk(p1);
+        const style=p1.moveMeta.dunk?.style;
+        let finite=true;
+        for(let frame=0;frame<90&&!dunkScored;frame++){
+          simulateBasketball(1/60);
+          const hand=getWorldHand(p1,p1.moveMeta.dunk.side);
+          finite=finite&&Number.isFinite(hand.x)&&Number.isFinite(hand.y)&&Number.isFinite(hand.z);
+        }
+        signatures.push({name:variant.name,style,expected:variant.style,finite,score:scoreP1,dunks:p1.stats.dunks});
+      }
+      return signatures;
+    });
+    for(const signature of signatures){
+      assert.equal(signature.style,signature.expected,JSON.stringify(signature));
+      assert.equal(signature.finite,true,JSON.stringify(signature));
+      assert.equal(signature.score,2,JSON.stringify(signature));
+      assert.equal(signature.dunks,1,JSON.stringify(signature));
+    }
+    console.log('PASS: six signature finishes execute on real GLB rigs:',JSON.stringify(signatures));
     const blocked=await page.evaluate(()=>{
       teamSize=1;twoPlayerMode=false;selectedP1='flash';selectedP2='tower';startGame();countdownTimer=0;possessionFrozen=false;
-      p1.group.position.set(0,0,HOOP_POS.z+1.8);p1.angle=Math.PI;p1.group.rotation.set(0,Math.PI,0);
+      p1.profile.ratings={dunking:86,jumping:90,strength:78,standingDunk:80,contactFinishing:82,aerialControl:85};
+      p1.profile.abilities={posterizer:3,powerFinisher:3};
+      p1.group.position.set(0,0,HOOP_POS.z+1.3);p1.velocity.set(0,0,-4.2);p1.angle=Math.PI;p1.group.rotation.set(0,Math.PI,0);
       p2.group.position.set(0,0,HOOP_POS.z+.68);p2.angle=0;p2.group.rotation.set(0,0,0);
       takePossession(p1,{silent:true});updateCharacters(0);startDunk(p1);let jumped=false;
       for(let frame=0;frame<70&&dunkActive;frame++){
         if(!jumped&&dunkTimer>=.2){tryJumpBlock(p2,false);jumped=true;}
         simulateBasketball(1/60);
       }
-      return {blocks:p2.stats.blocks,score:scoreP1,attempts:p1.stats.fga,active:dunkActive,state:ballState};
+      return {blocks:p2.stats.blocks,score:scoreP1,attempts:p1.stats.fga,active:dunkActive,state:ballState,style:p1.moveMeta.dunk?.style};
     });
-    assert.deepEqual(blocked,{blocks:1,score:0,attempts:1,active:false,state:'loose'},'a live timed defender can still physically block the finish');
+    assert.deepEqual(blocked,{blocks:1,score:0,attempts:1,active:false,state:'loose',style:'poster'},'a live timed defender can still physically block an elite Posterizer');
     console.log('PASS: real timed defender hand contact still blocks the dunk without awarding a basket');
+    const calibrationSamples=Math.max(300,Math.min(2000,Number(process.env.BASKETBALL_SHOT_SAMPLES)||300));
+    const calibration=await page.evaluate(samples=>{
+      selectedP1='smooth';startGame();countdownTimer=0;possessionFrozen=false;targetScore=100000;
+      const savedRandom=Math.random;
+      function measure({specialist=false,pressure=0,pct=null,speed=0,stamina=1}={}){
+        let seed=42871,made=0;Math.random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+        for(let attempt=0;attempt<samples;attempt++){
+          pendingInbound=null;possessionFrozen=false;resetBody(p1);resetBody(p2);
+          p1.profile.ratings=specialist?{midrange:88,releaseStability:84,consistency:82}:{midrange:60,releaseStability:60,consistency:60};
+          p1.profile.abilities=specialist?{midrangeAssassin:1}:{};p1.stamina=stamina;
+          p1.group.position.set(0,0,HOOP_POS.z+5.8);p1.angle=Math.PI;p1.group.rotation.set(0,Math.PI,0);p1.velocity.set(0,0,-speed);
+          p2.group.position.set(8,0,8);p2.angle=0;
+          // This real tall rim protector needs more spacing than the average
+          // test defender for its reach to grade as a moderate (.28-.48) contest.
+          if(pressure){p2.group.position.copy(p1.group.position).add(new THREE.Vector3(0,0,pressure===1?-.72:-2.25));p2.handsUpTime=.5;}
+          takePossession(p1,{silent:true});updateCharacters(0);
+          if(pressure===.5){
+            let near=.8,far=3.08;
+            for(let step=0;step<12;step++){
+              const spacing=(near+far)*.5;p2.group.position.z=p1.group.position.z-spacing;
+              if(calculateShotContest(p1).value>.4)near=spacing;else far=spacing;
+            }
+            p2.group.position.z=p1.group.position.z-(near+far)*.5;
+            updatePlayerModel(p2,0);scene.updateMatrixWorld(true);
+          }
+          const contest=calculateShotContest(p1),meter=getShotMeterProfile('setshot',p1,contest);
+          if(pressure===.5&&(contest.value<.28||contest.value>.48))throw new Error('Expected moderate real-rig coverage, got '+contest.value);
+          p1.moveMeta.chargeHeld=(pct??(meter.greenStart+meter.greenEnd)*.5)*1.35/meter.meterFillSpeed;
+          shotPower=.65;shootBall(p1,'setshot');
+          for(let frame=0;frame<150&&!lastScored;frame++){
+            updateBall(1/60);loosePickupDelay=Math.max(0,loosePickupDelay-1/60);
+            ballCollisionCooldown=Math.max(0,ballCollisionCooldown-1/60);backboardCollisionCooldown=Math.max(0,backboardCollisionCooldown-1/60);
+          }
+          if(lastScored)made++;
+        }
+        return made/samples;
+      }
+      const result={average:measure(),specialist:measure({specialist:true}),moderate:measure({pressure:.5}),heavy:measure({pressure:1}),
+        poorTiming:measure({pct:.15}),moving:measure({speed:5}),fatigued:measure({stamina:.25})};
+      Math.random=savedRandom;return result;
+    },calibrationSamples);
+    console.log('Real GLB release / full physical-flight calibration ('+calibrationSamples+' attempts/condition):',JSON.stringify(calibration));
+    assert.ok(calibration.average>=.5&&calibration.average<=.6,JSON.stringify(calibration));
+    assert.ok(calibration.specialist>=.6&&calibration.specialist<=.7,JSON.stringify(calibration));
+    assert.ok(calibration.moderate<calibration.average-.08);
+    assert.ok(calibration.heavy<calibration.moderate-.05);
+    assert.ok(calibration.poorTiming<.12);
+    assert.ok(calibration.moving<calibration.average-.1);
+    assert.ok(calibration.fatigued<calibration.average-.06);
     if(process.env.BASKETBALL_SCREENSHOTS){
       await page.evaluate(()=>{
         teamSize=1;twoPlayerMode=false;selectedP1='flash';startGame();countdownTimer=0;possessionFrozen=false;
-        p1.group.position.set(0,0,HOOP_POS.z+1.8);p1.angle=Math.PI;p1.group.rotation.set(0,Math.PI,0);p2.group.position.set(8,0,8);takePossession(p1,{silent:true});updateCharacters(0);startDunk(p1);
+        p1.profile.ratings={dunking:86,jumping:90,strength:78,standingDunk:80,contactFinishing:82,aerialControl:85};
+        p1.group.position.set(0,0,HOOP_POS.z+1.3);p1.velocity.set(0,0,-4.2);p1.angle=Math.PI;p1.group.rotation.set(0,Math.PI,0);p2.group.position.set(8,0,8);takePossession(p1,{silent:true});updateCharacters(0);startDunk(p1);
         for(let frame=0;frame<30;frame++)simulateBasketball(1/60);
         camMain.position.set(4.7,3.6,-5.3);camMain.lookAt(0,2.1,HOOP_POS.z+.1);renderScene();
       });

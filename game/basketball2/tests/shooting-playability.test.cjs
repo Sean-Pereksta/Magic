@@ -26,7 +26,7 @@ class Vector3 {
 
 function setup(){
   const ctx=vm.createContext({THREE:{Vector3,MathUtils:{clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),lerp:(a,b,t)=>a+(b-a)*t,degToRad:d=>d*Math.PI/180}},performance:{now:()=>5000},console});
-  for(const file of ['state','rendering','team-play','animation-contact','ball-physics','scoring','presentation']){
+  for(const file of ['state','rendering','player-development','team-play','animation-contact','ball-physics','scoring','presentation']){
     vm.runInContext(fs.readFileSync(path.join(__dirname,`../js/${file}.js`),'utf8'),ctx);
   }
   vm.runInContext(`
@@ -42,6 +42,8 @@ function setup(){
     function playRimSound(){} function spawnParticle(){} function createShotTrail(){}
     function showShotFeedback(){} function showMoveFeedback(){} function applyCameraShake(){}
     function playBlockSound(){} function addTakeover(){}
+    let randomSeed=42871;
+    Math.random=()=>{randomSeed=(Math.imul(randomSeed,1664525)+1013904223)>>>0;return randomSeed/4294967296;};
     function getWorldHand(p,side){
       return p.testHand ? p.testHand.clone() : p.group.position.clone().add(new THREE.Vector3(side==='left'?-.3:.3,.95*p.profile.height,0));
     }
@@ -64,14 +66,15 @@ function setup(){
     ball={position:new THREE.Vector3(),rotation:new THREE.Vector3(),scale:new THREE.Vector3(1,1,1)};
     ballShadow=null;backboard={};graphicsQuality='low';gameStarted=true;targetScore=99999;
     function playAttempt(config={}){
-      const {distance=2.5,angle=0,held=.08,meterPct=null,speed=0,dt=1/60,pressure=0}=config;
+      const {distance=2.5,angle=0,held=.08,meterPct=null,speed=0,dt=1/60,pressure=0,ratings=null,abilities=[]}=config;
+      p1.profile.ratings=ratings||{};p1.profile.abilities=abilities;p1.stamina=config.stamina??1;
       pendingInbound=null;possessionFrozen=false;
       p1.group.position.set(Math.sin(angle)*distance,0,HOOP_POS.z+Math.cos(angle)*distance);
       p1.angle=angleToward(p1.group.position,HOOP_POS);
       p1.velocity.copy(HOOP_POS).sub(p1.group.position).setY(0).normalize().multiplyScalar(speed);
       p1.moveState='normal';p1.moveMeta={};p1.onGround=true;p1.yVel=0;p1.testHand=null;
       p2.group.position.set(8,0,8);p2.handsUpTime=0;p2.blockTime=0;
-      if(pressure){p2.group.position.copy(p1.group.position).addScaledVector(getForward(p1.angle),.72);p2.angle=p1.angle+Math.PI;p2.handsUpTime=.5;}
+      if(pressure){p2.group.position.copy(p1.group.position).addScaledVector(getForward(p1.angle),pressure===1?.72:1.7);p2.angle=p1.angle+Math.PI;p2.handsUpTime=.5;}
       takePossession(p1,{silent:true});
       const expectedType=chooseShotType(p1);
       const meter=getShotMeterProfile(expectedType,p1,calculateShotContest(p1));
@@ -90,7 +93,7 @@ function setup(){
         maxHeight=Math.max(maxHeight,ball.position.y);elapsed+=dt;
         if(ballState==='dribble' && elapsed>.6)break;
       }
-      return {made:p1.stats.fgm>previousMakes,attempts:p1.stats.fga-previousAttempts,grade:p1.moveMeta.lastTimingGrade,type:expectedType,releaseHeight,maxHeight,lastTouch:lastTouchPlayerId,shooter:lastShotShooter,state:ballState};
+      return {made:p1.stats.fgm>previousMakes,attempts:p1.stats.fga-previousAttempts,grade:p1.moveMeta.lastTimingGrade,type:expectedType,releaseHeight,maxHeight,lastTouch:lastTouchPlayerId,shooter:lastShotShooter,state:ballState,spread:p1.moveMeta.lastAimSpread};
     }
   `,ctx);
   return ctx;
@@ -114,27 +117,32 @@ test('tapped open layups use the complete choose, gather, release and physical f
   }
 });
 
-test('standing close finishes and both edges of the open jumper green band remain playable',()=>{
+test('standing close finishes and open jumper timing bands remain playable without automatic makes',()=>{
   const ctx=setup();
   for(const distance of [.4,.8,1.2,1.7,2.7]){
     const result=attempt(ctx,{distance,speed:0,held:.08});
     assert.equal(result.type,'layup');assert.equal(result.made,true,JSON.stringify(result));
   }
+  let made=0,total=0;
   for(const distance of [4.2,5.8,7.6])for(const degrees of [-65,0,65])for(const meterPct of ['start','center','end',.5,.8]){
     const config={distance,angle:degrees*Math.PI/180,meterPct};
     const result=attempt(ctx,config);
     assert.equal(result.type,'setshot');
-    assert.equal(result.made,true,JSON.stringify({config,result}));
+    total++;if(result.made)made++;
     assert.equal(result.attempts,1);
     assert.ok(result.releaseHeight>=2.2);
   }
+  assert.ok(made/total>.35&&made/total<.85,`physical make rate ${made}/${total}`);
 });
 
 test('open finishes are stable across frame intervals while smothered tap finishes can fail',()=>{
   const ctx=setup();
   for(const dt of [1/30,1/60,1/120]){
     assert.equal(attempt(ctx,{distance:2.5,speed:2,held:.08,dt}).made,true);
-    assert.equal(attempt(ctx,{distance:5.8,meterPct:'center',dt}).made,true);
+    run(ctx,'randomSeed=42871');
+    const shot=attempt(ctx,{distance:5.8,meterPct:'center',dt});
+    assert.equal(shot.attempts,1);
+    assert.equal(shot.grade,'Green Release');
   }
   const crowded=attempt(ctx,{distance:2.5,speed:2,held:.08,pressure:1});
   assert.equal(crowded.made,false,JSON.stringify(crowded));
@@ -142,6 +150,26 @@ test('open finishes are stable across frame intervals while smothered tap finish
   assert.notEqual(crowded.grade,'Open Finish');
   assert.equal(attempt(ctx,{distance:5.8,meterPct:.05}).made,false);
   assert.equal(attempt(ctx,{distance:5.8,meterPct:1}).made,false);
+});
+
+test('seeded full-flight calibration rewards midrange skill, space, timing and balance',()=>{
+  const ctx=setup();
+  const results=run(ctx,`
+    function measure(config,n=900){randomSeed=42871;let made=0;for(let i=0;i<n;i++)made+=playAttempt({...config,distance:5.8,meterPct:config.meterPct??'center'}).made;return made/n;}
+    const average={ratings:{midrange:60,releaseStability:60,consistency:60}};
+    const specialist={ratings:{midrange:88,releaseStability:84,consistency:82},abilities:['midrangeAssassin']};
+    ({average:measure(average),specialist:measure(specialist),moderate:measure({...average,pressure:.5}),
+      heavy:measure({...average,pressure:1}),poorTiming:measure({...average,meterPct:.15}),
+      moving:measure({...average,speed:5}),fatigued:measure({...average,stamina:.25})});
+  `);
+  console.log('Midrange physical calibration:',JSON.stringify(results));
+  assert.ok(results.average>=.5&&results.average<=.6,JSON.stringify(results));
+  assert.ok(results.specialist>=.6&&results.specialist<=.7,JSON.stringify(results));
+  assert.ok(results.moderate<results.average-.09,JSON.stringify(results));
+  assert.ok(results.heavy<results.moderate-.08,JSON.stringify(results));
+  assert.ok(results.poorTiming<.12,JSON.stringify(results));
+  assert.ok(results.moving<results.average-.12,JSON.stringify(results));
+  assert.ok(results.fatigued<results.average-.08,JSON.stringify(results));
 });
 
 test('a fast ball scores only on a downward swept hoop crossing with full ball clearance',()=>{

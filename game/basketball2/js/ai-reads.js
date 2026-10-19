@@ -136,8 +136,10 @@ function aiReadShotAt(char,observer,position,settings,horizon=0){
     }
     contests.push({defender,gap,pressure:defenderPressure,rimPressure:defenderRimPressure});
   }
-  const shooting=char.profile?.shot || 1,finishing=char.profile?.layup || 1;
-  const preferredRange=aiReadClamp(5.9+(shooting-1)*4.8,4.2,8.5);
+  const ratings=char.profile?.ratings;
+  const areaRating=ratings?(distance>7.15?ratings.threePoint:distance>3?ratings.midrange:ratings.closeShot):null;
+  const shooting=areaRating!==null ? .52+areaRating*.009 : char.profile?.shot || 1,finishing=char.profile?.layup || 1;
+  const preferredRange=ratings?(ratings.midrange>ratings.threePoint+8?6.3:ratings.threePoint>68?8:5.5):aiReadClamp(5.9+(shooting-1)*4.8,4.2,8.5);
   const inRange=distance<preferredRange+.6;
   const momentum=closeFinish?Math.max(0,speed-4)*.025+Math.max(0,-toward)*speed*.025:Math.min(.28,speed*.045);
   const fatigue=Math.max(0,1-(char.stamina ?? 1))*.13;

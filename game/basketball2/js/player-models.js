@@ -487,7 +487,7 @@ function chooseBasketballPlayerAnimation(char){
   if(typeof layupActive!=="undefined" && layupActive && layupOwner===char.id) return {name:"layup",mode:"layup",phase:Math.min(1,layupTimer/Math.max(.001,layupDuration))};
   if(charging) return {name:"jump_shot",mode:"charge",phase:Math.min(.49,.14+(char.moveMeta?.chargeHeld || 0)*.45)};
   if(char.moveState==="pumpfake") return {name:"jump_shot",mode:"pumpfake",phase:.1+.24*Math.sin(Math.min(1,(char.moveTimer || 0)/Math.max(.001,char.moveDuration || .4))*Math.PI)};
-  if(char.shotMotionTime>0) return {name:"jump_shot",mode:"release",phase:.52+.48*(1-Math.min(1,char.shotMotionTime/.46))};
+  if(char.shotMotionTime>0) return {name:"jump_shot",mode:"release",phase:.52+.48*(1-Math.min(1,char.shotMotionTime/(char.moveMeta?.shotReleaseDuration||.46)))};
   if(char.passMotionTime>0) return {name:"pass",phase:1-Math.min(1,char.passMotionTime/.32)};
   if(char.blockTime>0 || char.handsUpTime>0 || !char.onGround && char.blockBoost) return {name:"block",mode:char.aiBrain?.role==="rebound" ? "rebound" : "block",phase:char.onGround && char.handsUpTime>0 ? .48 : 1-Math.min(1,Math.max(char.blockTime || 0,char.handsUpTime || 0)/.42)};
   if(typeof ballState!=="undefined" && ballState==="pass" && typeof passFlight!=="undefined" && passFlight.active && passFlight.targetId===char.id) return {name:"catch",phase:.35};
@@ -496,7 +496,7 @@ function chooseBasketballPlayerAnimation(char){
   if(typeof crossover!=="undefined" && crossover.active && crossover.player===char) return {name:"crossover",phase:Math.min(1,crossover.progress)};
   const speed=char.velocity?.length() || 0;
   const role=char.aiBrain?.role;
-  if(!char.hasBall && speed<1.5 && (char.aiScreen || role==="screen")) return {name:"idle",mode:"screen",speed:1};
+  if(!char.hasBall && speed<1.5 && (char.aiScreen || char.plantedScreen || role==="screen")) return {name:"idle",mode:"screen",speed:1};
   if(!char.hasBall && speed<1.5 && role==="box_out" && ["shot","loose"].includes(typeof ballState!=="undefined" ? ballState : "")) return {name:"idle",mode:"box_out",speed:1};
   const defending=typeof teamOf==="function" && typeof possession!=="undefined" && teamOf(possession)!==char.teamId;
   if(defending){
@@ -636,11 +636,19 @@ function poseBasketballDunkHands(char){
   const t=meta.posePhase ?? 0,gather=THREE.MathUtils.clamp(t/.2,0,1),lift=THREE.MathUtils.clamp((t-.2)/.34,0,1);
   const landing=meta.landingProgress || 0;
   for(const side of ["left","right"]){
-    if(meta.style!=="twohand"&&side!==meta.side) continue;
+    if(!meta.twoHands&&meta.style!=="twohand"&&side!==meta.side) continue;
     const sign=side==="left"?-1:1;
-    const ready=new THREE.Vector3(sign*.13*char.profile.width,1.28*char.profile.height,.32*char.profile.width);
+    const ready=new THREE.Vector3(sign*(meta.twoHands?.19:.13)*char.profile.width,1.28*char.profile.height,.32*char.profile.width);
+    if(meta.style==="tomahawk"||meta.style==="poster") {ready.y+=.33;ready.z=-.22;}
+    if(meta.style==="contact") {ready.y-=.14;ready.z+=.12;}
+    if(meta.style==="reverse") {ready.x+=sign*.28;ready.z=-.24;}
+    if(meta.style==="windmill") {ready.x+=sign*.45;ready.y-=.25;}
     const local=meta.handStarts[side].clone().lerp(ready,gather*gather*(3-2*gather));
     const target=char.group.localToWorld(local).lerp(meta.handTargets[side],lift*lift*(3-2*lift));
+    if(meta.style==="windmill"&&lift>0&&lift<1){
+      const wheel=Math.sin(lift*Math.PI)*.35;
+      target.x+=sign*wheel;target.y-=wheel*.7;
+    }
     if(landing>0) target.lerp(char.group.localToWorld(meta.handStarts[side].clone()),landing*landing*(3-2*landing));
     if(char.playerModel){solveBasketballArmIK(char.playerModel,char.playerModel.sideBones[side],target);continue;}
     // The procedural player has independent limb meshes rather than bones.

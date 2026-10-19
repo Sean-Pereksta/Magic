@@ -94,27 +94,31 @@ const root=path.resolve(__dirname,'../../..');
         const result=await page.evaluate(()=>runAIFixture(420));
         attempts.push({...config,...result});
         assert.ok(result.finite,JSON.stringify(attempts.at(-1)));
-        assert.equal(result.firstShot?.type,'layup','open bot should seek the rim: '+JSON.stringify(attempts.at(-1)));
+        assert.ok(['layup','dunk'].includes(result.firstShot?.type),'open bot should seek the rim with a legal finish: '+JSON.stringify(attempts.at(-1)));
         assert.ok(result.made,'open bot layup should physically score: '+JSON.stringify(attempts.at(-1)));
         if(config.handler[1]>4){
           assert.ok(result.firstShot.travel>1.5,'bot attacks clear lane before shooting: '+JSON.stringify(attempts.at(-1)));
-          assert.ok(result.gather?.speed>1,'running layup retains actual movement: '+JSON.stringify(attempts.at(-1)));
+          assert.ok((result.gather?.speed||result.firstShot?.speed)>1,'running finish retains actual movement: '+JSON.stringify(attempts.at(-1)));
         }
     }
-    console.log('PASS: '+attempts.length+' actual bot layups across all three GLB builds, with running clear-lane drives and physical scores');
+    console.log('PASS: '+attempts.length+' actual bot rim finishes across all three GLB builds, with running clear-lane drives and physical scores');
 
-    await page.evaluate(()=>aiFixture({profile:'smooth',handler:[0,6],seed:42}));
-    const goodJumper=await page.evaluate(()=>runAIFixture(200));
-    assert.equal(goodJumper.firstShot?.type,'setshot','settled shooting specialist selects the good open jumper: '+JSON.stringify(goodJumper));
-    assert.ok(goodJumper.made,'a wise open bot jumper uses real scoring physics');
-    console.log('PASS: settled shooting specialist takes and makes a wise open jumper');
-
-    await page.evaluate(()=>aiFixture({profile:'smooth',handler:[0,7.8],seed:42}));
-    const goodThree=await page.evaluate(()=>runAIFixture(200));
-    assert.equal(goodThree.firstShot?.type,'setshot','settled shooting specialist recognizes the open three: '+JSON.stringify(goodThree));
-    assert.equal(goodThree.threeAttempts,1,'open three counts as a three-point attempt');
-    assert.equal(goodThree.points,3,'the actual open three physically scores three points');
-    console.log('PASS: open settled shooter takes and physically makes a three-pointer');
+    // Open, green shots intentionally retain launch variance. Validate a seeded
+    // sample rather than requiring an arbitrary single attempt to always score.
+    for(const distance of [6,7.8]){
+      const samples=await page.evaluate(distance=>Array.from({length:24},(_,index)=>{
+        aiFixture({profile:'smooth',handler:[0,distance],seed:42+index*109});
+        return runAIFixture(200);
+      }),distance);
+      assert.ok(samples.every(result=>result.firstShot?.type==='setshot'&&result.finite),'settled specialist recognizes open jumper');
+      const makes=samples.filter(result=>result.made).length;
+      assert.ok(makes>=6&&makes<24,'open shooting creates real, nonautomatic makes: '+makes+'/24');
+      if(distance>7.15){
+        assert.ok(samples.every(result=>result.threeAttempts===1),'open threes count as three-point attempts');
+        assert.ok(samples.filter(result=>result.made).every(result=>result.points===3),'made threes physically score three points');
+      }
+      console.log('PASS: open settled specialist '+(distance>7.15?'threes':'midrange')+' physically scores '+makes+'/24 seeded attempts');
+    }
 
     for(const config of [
       {profile:'smooth',handler:[0,7.8],defense:[[0,6.5]]},

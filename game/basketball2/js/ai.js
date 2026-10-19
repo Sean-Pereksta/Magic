@@ -40,8 +40,8 @@ function aiTeamChemistry(handler){
   const players=aiRoster().filter(player=>player.teamId===handler.teamId);
   const identities=players.map(player=>({player,...aiPlayerIdentity(player)}));
   const best=(score)=>identities.reduce((a,b)=>!a||score(b)>score(a)?b:a,null);
-  const shooter=best(p=>p.shooting),interior=best(p=>p.screening+p.finishing*.25),
-    creator=best(p=>p.passing+(p.type==="playmaker"?.4:0)),runner=best(p=>p.speed+p.finishing*.2);
+  const shooter=best(p=>p.shooting+(p.player.profile.role==='shooter'?.12:0)),interior=best(p=>p.screening+p.finishing*.25+(p.player.profile.role==='anchor'?.15:0)),
+    creator=best(p=>p.passing+(p.type==="playmaker"?.4:0)+(p.player.profile.role==='playmaker'?.2:0)),runner=best(p=>p.speed+p.finishing*.2+(p.player.profile.role==='slasher'?.15:0));
   const count=type=>identities.filter(p=>p.type===type).length;
   return {identities,shooterId:shooter?.player.id,interiorId:interior?.player.id,creatorId:creator?.player.id,
     runnerId:runner?.player.id,shooters:count("sharpshooter"),playmakers:count("playmaker"),
@@ -399,8 +399,12 @@ function updateTeamAI(dt,options={}){
     }
     if(brain.thinkIn<=0){
       // A visible reaction delay remains even at the top difficulty.
-      brain.thinkIn=THREE.MathUtils.clamp(THREE.MathUtils.randFloat(settings.reactionMin,settings.reactionMax),.075,.7);
-      decideTeamPlayer(char,brain,handler,settings,frozen);
+      const iq=char.profile.ratings?.basketballIQ;
+      const mental=iq===undefined?1:.65+iq*.007;
+      brain.thinkIn=THREE.MathUtils.clamp(THREE.MathUtils.randFloat(settings.reactionMin,settings.reactionMax)/mental,.075,.7);
+      const reads=iq===undefined?settings:{...settings,lookAhead:Math.min(.6,(settings.lookAhead||.2)*mental),
+        spacingIQ:Math.min(1,settings.spacingIQ*mental),offensiveIQ:Math.min(1,(settings.offensiveIQ||settings.spacingIQ)*mental)};
+      decideTeamPlayer(char,brain,handler,reads,frozen);
     }
     char.aiScreen=brain.role==="screen"&&brain.roleUntil>teamAITime&&char.onGround&&char.moveState==="normal"&&char.velocity.length()<1&&flatDistance(char.group.position,brain.target)<.65;
     moveAIPlayer(char,brain,dt);
@@ -482,6 +486,11 @@ function moveAIPlayer(char,brain,dt){
 function aiAssignedOpponent(char){
   const coverage=typeof aiDefenseAssignment==="function"?aiDefenseAssignment(char):null;
   if(coverage) return coverage;
+  if(typeof riseMatch!=="undefined"&&riseMatch&&char.teamId===0){
+    const target=riseState?.team?.matchups?.[char.campaignPlayerId];
+    const marked=target&&getOpponents(char).find(p=>p.campaignPlayerId===target);
+    if(marked) return marked;
+  }
   const roster=aiRoster();
   const team=roster.filter(player=>player.teamId===char.teamId);
   const opponents=getOpponents(char);
@@ -552,7 +561,9 @@ function aiPassingPurpose(char,teammate,pass,shot,lane,plan,settings){
   if(lane.direct&&lane.drive&&lane.openness>.82&&lane.finishSpace>2.65&&!lane.blocked&&
     !(pass.rimFeed&&pass.value>driveValue-.02)&&
     !(pass.points===3&&pass.catchQuality>.82&&pass.value>driveValue+.06)&&pass.value<driveValue+.16) return null;
-  return {reason,value:pass.value+bonus+(identity.type==="playmaker"?.025:0),pass};
+  const priority=teammate.profile.offensivePriority;
+  const preference=priority===undefined?0:(priority-2)*.025+(teammate.profile.role==='primary'?.025:0);
+  return {reason,value:pass.value+bonus+(identity.type==="playmaker"?.025:0)+preference,pass};
 }
 
 function decideAIHandler(char,brain,settings){
@@ -736,6 +747,7 @@ function aiAdvanceToFrontcourt(char,toRim){
 }
 
 function aiPlayHandlerTarget(char,brain,plan,toRim){
+  if(typeof risePreferredSpot==='function'&&risePreferredSpot(char,brain,plan,true)) return true;
   const action=aiPlanAction(plan);
   if(plan.phase==="solo"||action==="balanced") return false;
   if((action==="pick_roll"||action==="pick_pop")&&plan.screenTarget){
@@ -929,6 +941,7 @@ function decideAIOffBall(char,brain,handler,settings){
     }else{brain.role="outlet";brain.target.set(-side*5.4,0,HOOP_POS.z+6.8);brain.sprint=true;}
   }
   aiAdaptOffBallRoute(char,brain,handler,plan,settings);
+  if(typeof risePreferredSpot==='function') risePreferredSpot(char,brain,plan,false);
   aiCoordinateOffBall(char,brain,handler,settings,plan);
   keepInCourt(brain.target);
 }
@@ -1100,7 +1113,8 @@ function decideAIRebound(char,brain,settings){
   if(ballState!=="loose"&&ball.position.y>HOOP_POS.y+.5) brain.target.lerp(HOOP_POS,.4);
   keepInCourt(brain.target);
   const team=aiRoster().filter(player=>player.teamId===char.teamId);
-  const chaser=team.reduce((best,player)=>!best||flatDistance(player.group.position,brain.target)<flatDistance(best.group.position,brain.target)?player:best,null);
+  const reboundValue=player=>flatDistance(player.group.position,brain.target)-(player.profile.ratings?((player.profile.ratings.rebounding??50)-50)*.012:0);
+  const chaser=team.reduce((best,player)=>!best||reboundValue(player)<reboundValue(best)?player:best,null);
   if(chaser!==char){
     const assigned=aiAssignedOpponent(char);
     if(assigned&&flatDistance(assigned.group.position,brain.target)<4.5){

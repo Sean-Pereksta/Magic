@@ -73,6 +73,7 @@ class TutorialCoach {
 const tutorialCoach = new TutorialCoach();
 
 function startTutorial(){
+  if(typeof leaveRiseMatch==='function') leaveRiseMatch();
   tutorialMode = true;
   isTournamentGame = false;
   isChampionshipGame = false;

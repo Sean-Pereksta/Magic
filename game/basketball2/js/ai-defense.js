@@ -3,9 +3,53 @@
 // Destinations still use the common acceleration, collision and stamina solver.
 function aiUseTeamDefense(settings){ return (settings?.defensiveIQ || 0)>=.62; }
 function aiDefenseDefaultAssignment(char){
+  if(typeof riseMatch!=='undefined'&&riseMatch&&char.teamId===0){
+    const target=riseState?.team?.matchups?.[char.campaignPlayerId];
+    const marked=target&&getOpponents(char).find(p=>p.campaignPlayerId===target);
+    if(marked) return marked;
+  }
   const roster=aiRoster(),team=roster.filter(player=>player.teamId===char.teamId);
   const opponents=roster.filter(player=>player.teamId!==char.teamId);
   return opponents[team.indexOf(char)%opponents.length] || null;
+}
+function aiDefenseResolveAssignments(defense,teamId,previous,plan){
+  const assignments=Object.create(null);
+  const campaign=typeof riseMatch!=='undefined'&&riseMatch;
+  if(!campaign){
+    for(const defender of defense){const old=previous?.assignments[defender.id];assignments[defender.id]=(old&&getPlayerById(old)?.teamId!==teamId)?old:aiDefenseDefaultAssignment(defender)?.id;}
+    return assignments;
+  }
+  const opponents=aiRoster().filter(player=>player.teamId!==teamId),used=new Set();
+  const manual=teamId===0?riseState?.team?.matchups||{}:{};
+  const signature=JSON.stringify(manual);
+  const reserve=(defender,target)=>{
+    if(!target||used.has(target.id)||target.teamId===teamId) return false;
+    assignments[defender.id]=target.id;used.add(target.id);return true;
+  };
+  // Preserve a real screen exchange until the next possession's coverage read.
+  // A changed game plan deliberately replaces old assignments once.
+  if(previous&&plan.assignmentSignature===signature){
+    for(const defender of defense) reserve(defender,getPlayerById(previous.assignments[defender.id]));
+  }else{
+    for(const defender of defense){const target=manual[defender.campaignPlayerId];if(target) reserve(defender,opponents.find(player=>player.campaignPlayerId===target));}
+    const threat=player=>{
+      const r=player.profile.ratings;
+      return r?(r.threePoint||0)+(r.midrange||0)*.55+(r.dribbling||0)*.2:(player.profile.shot||1)*100;
+    };
+    for(const defender of defense.filter(player=>!assignments[player.id]&&player.profile.role==='stopper')){
+      const target=opponents.filter(player=>!used.has(player.id)).sort((a,b)=>threat(b)-threat(a)||String(a.id).localeCompare(String(b.id)))[0];
+      reserve(defender,target);
+    }
+  }
+  for(const defender of defense){
+    if(assignments[defender.id]) continue;
+    const previousTarget=previous?.assignments[defender.id];
+    if(previousTarget&&reserve(defender,getPlayerById(previousTarget))) continue;
+    if(reserve(defender,aiDefenseDefaultAssignment(defender))) continue;
+    reserve(defender,opponents.find(player=>!used.has(player.id)));
+  }
+  plan.assignmentSignature=signature;
+  return assignments;
 }
 function aiDefenseAssignment(char){
   const plan=aiDefensePlans[char.teamId];
@@ -175,11 +219,7 @@ function aiGetCoordinatedDefensePlan(teamId,handler,settings,dt=0){
   const defense=aiRoster().filter(player=>player.teamId===teamId);
   if(!defense.length) return plan;
   const previous=plan.coverage;
-  const assignments=Object.create(null);
-  for(const defender of defense){
-    const old=previous?.assignments[defender.id];
-    assignments[defender.id]=(old&&getPlayerById(old)?.teamId!==teamId)?old:aiDefenseDefaultAssignment(defender)?.id;
-  }
+  const assignments=aiDefenseResolveAssignments(defense,teamId,previous,plan);
   let primary=defense.find(player=>assignments[player.id]===handler.id);
   if(!primary) primary=defense[0];
   if(plan.screenSwitch){
@@ -194,8 +234,10 @@ function aiGetCoordinatedDefensePlan(teamId,handler,settings,dt=0){
     const partner=screen.partner;
     // Mobile defenders exchange the two real assignments. A slow center stays
     // below the screen and tags the roll while the guard navigates over it.
-    const mobile=(partner.profile.speed || 1)>.95&&(partner.profile.width || 1)<1.2;
-    if(mobile&&flatDistance(partner.group.position,handler.group.position)<3.25){
+    const focus=typeof riseMatch!=='undefined'&&riseMatch?(teamId===0?riseMatch.defense:riseMatch.awayDefense):'balanced';
+    const switchFocus=focus==='switch',paintFocus=focus==='protect_paint';
+    const mobile=(partner.profile.speed || 1)>(switchFocus?.82:paintFocus?1.02:.95)&&(partner.profile.width || 1)<(switchFocus?1.27:paintFocus?1.08:1.2);
+    if(mobile&&flatDistance(partner.group.position,handler.group.position)<(switchFocus?3.75:3.25)){
       assignments[primary.id]=screen.screener.id;assignments[partner.id]=handler.id;
       primary=partner;switched=true;plan.screenSwitch={screenerId:screen.screener.id,handlerId:handler.id};
     }else screenDrop=partner;
@@ -225,7 +267,12 @@ function aiGetCoordinatedDefensePlan(teamId,handler,settings,dt=0){
   // buys a normal-speed defender time to turn against a sprinting attacker.
   const memory=plan.tendencies?.[handler.id];
   const expectsJumper=(memory?.outsideShots || 0)>2&&(memory.outsideShots/(memory.shots || 1))>.55;
-  const cushion=primaryRead.driving?THREE.MathUtils.clamp(distance*.29,.62,2.0):charging?.78:expectsJumper?.9:1.25;
+  let cushion=primaryRead.driving?THREE.MathUtils.clamp(distance*.29,.62,2.0):charging?.78:expectsJumper?.9:1.25;
+  if(typeof riseMatch!=='undefined'&&riseMatch){
+    const focus=teamId===0?riseMatch.defense:riseMatch.awayDefense;
+    if(focus==='protect_paint'&&!charging) cushion+=.35;
+    if(focus==='perimeter'||focus==='pressure') cushion=Math.max(.65,cushion-.3);
+  }
   const primaryTarget=primaryRead.position.clone().addScaledVector(primaryRead.toward,cushion);
   primaryTarget.x+=aiDefenseShade(plan,handler,settings);
   coverage.targets[primary.id]=primaryTarget;

@@ -58,10 +58,28 @@ function releaseShot(shooter,shotType,options={}){
   target.addScaledVector(shotLine,THREE.MathUtils.clamp(timingOffset,-2.4,2.4));
   const motionSide=shooter.velocity.dot(shotSide);
   const sideSign=motionSide<-.15 ? -1 : 1;
-  target.addScaledVector(shotSide,sideSign*difficulty*.62+motionSide*(shotType==="layup" ? .008 : .025));
-  target.addScaledVector(shotLine,-difficulty*.38);
+  let developmentShot=null;
+  if(typeof BasketballDevelopment!=="undefined"){
+    const clutch=Math.abs(scoreP1-scoreP2)<=3&&Math.max(scoreP1,scoreP2)>=targetScore-4;
+    developmentShot=BasketballDevelopment.shotProfile(shooter,{distance:dist,type:shotType,contest:contest.value,
+      timingError:releaseError,halfWindow,now:simulationTime,clutch});
+    const aim=BasketballDevelopment.sampleAim(developmentShot.spread*(assistedFinish?.45:1),options.random || Math.random);
+    // Dispersion is applied at release. Rim/backboard contacts, blocks and the
+    // downward swept crossing decide the result; there is no make/miss roll.
+    target.copy(HOOP_POS);
+    target.addScaledVector(shotSide,aim.side+motionSide*developmentShot.movementBias);
+    target.addScaledVector(shotLine,aim.depth+developmentShot.timingBias+developmentShot.depthBias);
+    shooter.shotMotionTime=developmentShot.releaseDuration;
+    shooter.moveMeta.shotReleaseDuration=developmentShot.releaseDuration;
+    shooter.moveMeta.activeAbilities=developmentShot.active;
+    shooter.moveMeta.lastAimSpread=developmentShot.spread;
+    if(contest.value<.28&&Math.abs(releaseError)<halfWindow*1.4) shooter.stats.goodShots=(shooter.stats.goodShots||0)+1;
+  }else{
+    target.addScaledVector(shotSide,sideSign*difficulty*.62+motionSide*(shotType==="layup" ? .008 : .025));
+    target.addScaledVector(shotLine,-difficulty*.38);
+  }
   const contestDefender = contest.defender;
-  if(contestDefender&&contest.value>.1){
+  if(contestDefender&&contest.value>.1&&!developmentShot){
     const contestPush = shooter.group.position.clone().sub(contestDefender.group.position).setY(0);
     if(contestPush.lengthSq()>.001) target.addScaledVector(contestPush.normalize(),contest.value*.16);
   }
@@ -92,9 +110,10 @@ function releaseShot(shooter,shotType,options={}){
     triggerCrowdReaction("green",0.8);
   }
   const shotLabel = shotType === "layup" ? "Layup" : shotType === "hook" ? "Hook Shot" : shotType === "fadeaway" ? "Fadeaway" : shotType === "jumper" ? "High Jumper" : shotType === "setshot" ? "Set Shot" : (shotType === "pullup" ? "Pull-Up" : shotType === "stepback" ? "Step-Back" : "Jumper");
-  showShotBreakdown(timing.grade,shotLabel,contest.label,"In Flight",shooter.id);
+  const abilityLabel=developmentShot?.active.length ? developmentShot.active[0].replace(/([A-Z])/g," $1").replace(/^./,s=>s.toUpperCase()) : "";
+  showShotBreakdown(timing.grade,shotLabel,contest.label,abilityLabel?`In Flight • ${abilityLabel}`:"In Flight",shooter.id);
   playShotSound();
-  flash(`${shooter.id.toUpperCase()} ${shotLabel.toLowerCase()}!`);
+  flash(`${shooter.id.toUpperCase()} ${shotLabel.toLowerCase()}${abilityLabel?` • ${abilityLabel}`:""}!`);
   return true;
 }
 
@@ -171,6 +190,7 @@ function startLayup(char){
 
 function startDunk(char){
   if(!char || possession!==char.id || ballOwner!==char.id || ballState !== "dribble") return;
+  if(typeof BasketballDevelopment!=="undefined"&&!BasketballDevelopment.canDunk(char,HOOP_POS,getNearestOpponent(char))) return startLayup(char);
   shotCharging = false;
   chargingPlayer = null;
   hasShotThisPossession = true;
@@ -197,9 +217,15 @@ function startDunk(char){
   const toRimDir = toRim.lengthSq() > 0.0001 ? toRim.clone().normalize() : getForward(char.angle).clone().normalize();
   const right = getBodyRightVector(char).normalize();
   const sideSign = right.dot(toRimDir) > 0 ? 1 : -1;
-  const style =
-    (char.profile.width > 1.1 || char.profile.height > 1.07) ? "twohand" :
-    (char.profile.jump > 1.08 || char.profile.sprint > 1.13) ? "tomahawk" : "quick";
+  const momentum=char.velocity.dot(toRimDir);
+  const gatherAngle=getForward(char.angle).dot(toRimDir);
+  const nearbyDefender=getNearestOpponent(char);
+  const finishProfile=typeof BasketballDevelopment!=="undefined" ? BasketballDevelopment.dunkProfile(char,{momentum,angle:gatherAngle,
+    defender:nearbyDefender&&flatDistance(nearbyDefender.group.position,char.group.position)<2.1?nearbyDefender:null}) : null;
+  const style = finishProfile?.style ||
+    ((char.profile.width > 1.1 || char.profile.height > 1.07) ? "twohand" :
+    (char.profile.jump > 1.08 || char.profile.sprint > 1.13) ? "tomahawk" : "quick");
+  const twoHands=["twohand","poster","standing","contact"].includes(style);
   // The path moves the player's feet. A rim-height root puts their knees above
   // the hoop; solve the rise from the actual shoulder and extended arm instead.
   const rimFront = new THREE.Vector3(HOOP_POS.x,char.group.position.y,HOOP_POS.z+RIM_RADIUS+char.bodyRadius*.25);
@@ -208,9 +234,9 @@ function startDunk(char){
   const attackSide=sideSign>0?"right":"left";
   let rootHeight=0,rootMaxY=Infinity;
   for(const side of ["left","right"]){
-    handTargets[side]=HOOP_POS.clone().add(new THREE.Vector3(style==="twohand"?(side==="left"?-.12:.12):0,.16,.26));
+    handTargets[side]=HOOP_POS.clone().add(new THREE.Vector3(twoHands?(side==="left"?-.12:.12):0,.16,.26));
     if(char.group.worldToLocal) handStarts[side]=char.group.worldToLocal(getWorldHand(char,side).clone());
-    if(style!=="twohand"&&side!==attackSide) continue;
+    if(!twoHands&&side!==attackSide) continue;
     const reach=typeof getBasketballDunkReach==="function"&&getBasketballDunkReach(char,side) ||
       {shoulder:new THREE.Vector3(0,1.58*char.profile.height,0),length:.72*char.profile.height,knee:.75*char.profile.height};
     const horizontal=Math.hypot(handTargets[side].x-rimFront.x-reach.shoulder.x,handTargets[side].z-rimFront.z-reach.shoulder.z);
@@ -230,13 +256,16 @@ function startDunk(char){
     side: sideSign > 0 ? "right" : "left",
     startFacing: char.angle,
     style,
+    twoHands,finishProfile,
+    gatherTiming:char.moveMeta.chargeHeld>.25?Math.max(.25,1-Math.abs(char.moveMeta.chargeHeld-.72)*1.15):.78,
     baseY: char.group.position.y,
     rootMaxY,handTargets,handStarts:Object.keys(handStarts).length===2?handStarts:null,posePhase:0,
     landingTime:0,landingDuration:.38,landingProgress:0,
     gatherSink: 0.1 + (style === "twohand" ? 0.03 : 0),
     forwardBlend: style === "quick" ? 0.3 : 0.24
   };
-  flash(`${char.id.toUpperCase()} dunk!`);
+  char.moveMeta.activeAbilities=finishProfile ? ["powerFinisher","highFlyer","contactSpecialist","aerialAcrobat","posterizer"].filter(id=>BasketballDevelopment.ability(char,id)>0) : [];
+  flash(`${char.id.toUpperCase()} ${style==="quick"?"dunk":style+" dunk"}!`);
 }
 
 function updateDunk(dt){
@@ -267,6 +296,7 @@ function updateDunk(dt){
   owner.group.position.z = Math.max(owner.group.position.z, HOOP_POS.z + RIM_RADIUS + owner.bodyRadius*.2);
   owner.group.rotation.x = -0.16 * Math.sin(gather*Math.PI) - 0.06 * Math.sin(flight*Math.PI) + 0.05 * Math.sin(slam*Math.PI);
   owner.group.rotation.y = THREE.MathUtils.lerp(owner.group.rotation.y,meta.startFacing,0.18);
+  if(meta.style==="reverse"||meta.style==="windmill") owner.group.rotation.y=meta.startFacing+(meta.style==="reverse"?Math.PI:Math.PI*.65)*Math.sin(Math.min(1,flight)*Math.PI*.5)*(1-slam);
   const knee = Math.sin((flight+rimPhase*0.5)*Math.PI);
   owner.leftLeg.rotation.x = -0.24;
   owner.rightLeg.rotation.x = -0.24;
@@ -291,7 +321,7 @@ function updateDunk(dt){
   if(typeof updatePlayerModel==="function"&&owner.playerModel) updatePlayerModel(owner,0);
   else if(typeof poseBasketballDunkHands==="function"){poseDunkArms(owner,meta.posePhase);poseBasketballDunkHands(owner);}
   if(t < 0.54){
-    if(meta.style === "twohand") attachBallBetweenHands(owner,new THREE.Vector3(0,.1,-.12));
+    if(meta.twoHands || meta.style === "twohand") attachBallBetweenHands(owner,new THREE.Vector3(0,.1,-.12));
     else attachBallToHand(owner,meta.side,new THREE.Vector3(0,.1,-.12));
     ballVelocity.set(0,0,0);
   }else if(t < 0.76){
@@ -303,13 +333,19 @@ function updateDunk(dt){
   }else{
     const punch = smoothstep(slam);
     ball.position.copy(HOOP_POS.clone().add(new THREE.Vector3(0,0.2 - punch*0.62,0)));
-    ballVelocity.set(0,-4.4 - punch*0.5,-0.08);
+    ballVelocity.set(0,(-4.4 - punch*0.5)*(meta.finishProfile?.force||1),-0.08);
   }
   if(t>.28 && t<.79 && !dunkScored){
     for(const defender of getOpponents(owner)){
       if(defender.blockTime<=0 && defender.handsUpTime<=0) continue;
       const near=Math.min(getWorldHand(defender,"left").distanceTo(ball.position),getWorldHand(defender,"right").distanceTo(ball.position));
-      if(near<.54*defender.profile.block){
+      const blockRating=typeof BasketballDevelopment!=="undefined"?BasketballDevelopment.rating(defender,'blocking',BasketballDevelopment.legacyRating(defender,'block')):60;
+      const timedJump=!defender.onGround&&defender.blockTime>.055&&defender.blockTime<.36;
+      const guardian=typeof BasketballDevelopment!=="undefined"?BasketballDevelopment.ability(defender,'rimGuardian'):0;
+      const blockReach=((timedJump?.49:.31)*defender.profile.block+(blockRating-60)*.0012)*(timedJump?1+guardian*.05:1);
+      // Finishing ability can protect the ball during a gather; a timed hand
+      // reaching the actual ball still stops even the strongest Posterizer.
+      if(near<blockReach){
         applyBlockDeflection(defender,owner);
         addBlockStat(defender,12);
         showMoveFeedback("DUNK BLOCKED!",.8);
@@ -321,7 +357,14 @@ function updateDunk(dt){
   if(t >= .79 && !dunkScored){
     const contest=calculateShotContest(owner);
     const finishStrength=owner.profile.layup*.55+owner.profile.jump*.25+owner.profile.width*.2;
-    if(contest.value>.72 && finishStrength<1.14 && owner.stamina<.65){
+    const rimProtector=contest.defender;
+    const development=meta.finishProfile;
+    const defense=development&&rimProtector ? (BasketballDevelopment.rating(rimProtector,'interiorDefense',60)*.55+
+      BasketballDevelopment.rating(rimProtector,'strength',60)*.25+BasketballDevelopment.rating(rimProtector,'blocking',60)*.2)/100 : 0;
+    const positioned=!!rimProtector&&isDefenderBetweenBallAndRim(rimProtector,meta.start)&&flatDistance(rimProtector.group.position,HOOP_POS)<1.45;
+    const wall=development&&positioned&&contest.value>.45&&defense+contest.value*.26>development.finish+development.resistance*.23+meta.gatherTiming*.1;
+    const spoiled=development&&contest.value>.68&&development.finish+development.resistance*.18<.79;
+    if(wall||spoiled||(!development&&contest.value>.72 && finishStrength<1.14 && owner.stamina<.65)){
       dunkActive=false;
       owner.hasBall=false;
       ballOwner=null;
@@ -333,15 +376,16 @@ function updateDunk(dt){
       return;
     }
     dunkScored = true;
+    owner.stats.dunks=(owner.stats.dunks||0)+1;
     shotHasHitRimOrBoard = true;
     const points = 2;
     awardBasket(owner,points,"Dunk");
-    showShotBreakdown("Power Finish","Dunk",contest.label,"Made");
+    showShotBreakdown(meta.style==="reverse"?"Aerial Acrobat":meta.style==="poster"?"Posterizer":"Power Finish","Dunk",contest.label,"Made");
     animateNetSwish();
-    triggerNetWobble(meta.style === "twohand" ? 1.55 : 1.35,HOOP_POS.clone().add(new THREE.Vector3(0,-0.1,0)),new THREE.Vector3(0.02,-1,-0.06));
+    triggerNetWobble((meta.twoHands?1.55:1.35)*(development?.force||1),HOOP_POS.clone().add(new THREE.Vector3(0,-0.1,0)),new THREE.Vector3(0.02,-1,-0.06));
     playCrowdPulse();
     triggerShotSplash(HOOP_POS.clone(),"orange");
-    showMoveFeedback(Math.random() < 0.5 ? "POSTER DUNK!" : "SLAM!",0.9);
+    showMoveFeedback(meta.style==="poster"?"POSTERIZER!":meta.style==="reverse"?"REVERSE SLAM!":meta.style==="windmill"?"WINDMILL!":meta.style==="contact"?"CONTACT FINISH!":"SLAM!",0.9);
     crowdWave = Math.max(crowdWave,1.1);
     triggerCrowdReaction("dunk",1.05);
     inputManager.vibrate(owner.id,1,120);
@@ -455,7 +499,9 @@ function checkSteals(){
     if(!isFacingTarget(defender,ball.position,.35)) continue;
     if(!hasCleanStealPath(defender,ballHandler,hand,ball.position)) continue;
     const exposed=ball.position.y<1.05 || (crossover.active && crossover.player===ballHandler && crossover.riskWindow>0);
-    const reachWindow=(exposed ? .48 : .34)*defender.profile.steal*getGameplayTuning().stealWindow;
+    const security=typeof BasketballDevelopment!=="undefined"?BasketballDevelopment.rating(ballHandler,'ballSecurity',60):60;
+    const pickpocket=exposed&&typeof BasketballDevelopment!=="undefined"?BasketballDevelopment.ability(defender,'pickpocket'):0;
+    const reachWindow=(exposed ? .48 : .34)*defender.profile.steal*getGameplayTuning().stealWindow*THREE.MathUtils.clamp(1-(security-60)*.003,.86,1.15)*(1+pickpocket*.05);
     if(reachDist>=reachWindow) continue;
     defender.swipeConnected=true;
     gainPossession(defender.id);
@@ -490,6 +536,7 @@ function checkBlocksAndCatches(){
   const blockProgress=1-THREE.MathUtils.clamp(blocker.blockTime/.42,0,1);
   const timedJump=!blocker.onGround && blockProgress>.12 && blockProgress<.86;
   let threshold = (timedJump ? .47 : .29) * blocker.profile.block + (blocker.blockBoost ? .09 : 0);
+  if(timedJump&&typeof BasketballDevelopment!=="undefined") threshold*=1+BasketballDevelopment.ability(blocker,'rimGuardian')*.05;
   if(ballState === "shot" && shooter && shooter.moveMeta && shooter.moveMeta.lastShotType === "jumper") threshold *= .86;
 
   if(ballState === "layup"){
@@ -553,7 +600,13 @@ function awardBasket(shooter,points,kind="Jumper"){
   if(shooter.teamId===0) scoreP1+=points;
   else scoreP2+=points;
   shooter.stats.fgm+=1;
+  shooter.stats.points=(shooter.stats.points||0)+points;
   if(points===3) shooter.stats.tpm+=1;
+  if(shooter.assistPasserId&&simulationTime-(shooter.assistCatchTime||0)<5){
+    const passer=getPlayerById(shooter.assistPasserId);
+    if(passer&&passer!==shooter&&passer.teamId===shooter.teamId) passer.stats.assists=(passer.stats.assists||0)+1;
+  }
+  shooter.assistPasserId=null;
   for(const char of matchPlayers) char.hasBall=false;
   ballOwner=null;
   ballState="dead";
@@ -726,6 +779,7 @@ function nextPossessionAfterScore(scorer){
 function endGame(winner){
   gameOver = true;
   possessionFrozen = true;
+  if(typeof finishRiseMatch==='function' && finishRiseMatch(winner)) return;
   if(isTournamentGame){
     finishTournamentGame(winner);
     return;
@@ -764,6 +818,7 @@ function resetPossession(who,reposition){
 }
 
 function rematchSamePlayers(){
+  if(typeof riseMatch!=="undefined"&&riseMatch){showRiseCampaign();return;}
   if(!gameStarted) return;
   inputManager.clearAll();
   resetPlayerShotFeedback();
@@ -779,6 +834,7 @@ function rematchSamePlayers(){
   resetPossession(matchPlayers[0].id,true);
 }
 function returnToCharacterMenu(){
+  if(typeof riseMatch!=="undefined"&&riseMatch){showRiseCampaign();return;}
   gameOver = false;
   hideWinnerOverlay();
   showQuickPlaySetup();
@@ -820,9 +876,13 @@ function resetBody(char){
   char.moveTimer = 0;
   char.moveDuration = 0;
   char.stumbledTimer = 0;
+  char.contactTimer=0;char.contactCooldown=0;char.contactStrength=0;char.bodyUpTimer=0;
+  char.screenSetTime=0;char.plantedScreen=false;
   char.reachRecovery=0;
   char.swipeConnected=false;
   char.passMotionTime=0;
+  if(char.moveMeta){char.moveMeta.approachSpeed=0;char.moveMeta.activeAbilities=[];}
+  char.lastCatchTime=-Infinity;char.lastPassQuality=0;
   char.velocity.set(0,0,0);
   }
 

@@ -2,6 +2,8 @@
 
 `index.html` is the full game entry point. The legacy `game/Basketball 2.html` URL redirects here so existing lobby links continue to work.
 
+**Rise to Glory** adds a separate franchise campaign, 96 generated recruits, player development, signature abilities and live skills training. See [campaign mechanics, save compatibility and repeatable validation](RISE-TO-GLORY.md).
+
 ## Structure
 
 - `styles/main.css` — menus, clean score presentation, tour map, touch controls, and responsive layouts.

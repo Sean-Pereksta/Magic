@@ -145,12 +145,13 @@ const root=path.resolve(__dirname,'../../..');
     }
     console.log('PASS: four builds decisively drive open 6-8m lanes, sustain the approach, and physically make running layups');
 
-    await page.evaluate(()=>aiFixture({profile:'deeprange',handler:[0,7.8],seed:42}));
-    const cleanThree=await page.evaluate(()=>runAIFixture(220));
-    assert.equal(cleanThree.firstShot?.type,'setshot','settled elite shooter still recognizes a valuable open three: '+JSON.stringify(cleanThree));
-    assert.equal(cleanThree.threeAttempts,1,'wise deep jumper remains a three-point attempt');
-    assert.equal(cleanThree.points,3,'the actual clean three physically scores');
-    console.log('PASS: a settled elite shooter still takes and makes the valuable clean three');
+    const cleanThrees=await page.evaluate(()=>Array.from({length:24},(_,index)=>{
+      aiFixture({profile:'deeprange',handler:[0,7.8],seed:42+index*109});return runAIFixture(220);
+    }));
+    assert.ok(cleanThrees.every(result=>result.firstShot?.type==='setshot'&&result.threeAttempts===1),'settled elite shooter recognizes a valuable open three');
+    const madeThrees=cleanThrees.filter(result=>result.points===3).length;
+    assert.ok(madeThrees>=6&&madeThrees<24,'physical threes remain valuable and nonautomatic: '+madeThrees+'/24');
+    console.log('PASS: settled elite shooter recognizes clean threes and physically scores '+madeThrees+'/24 seeded attempts');
 
     await page.evaluate(()=>{
       aiFixture({profile:'tower',defenderProfile:'flash',handler:[0,1.9],defense:[[-.5,.6]],seed:42});
