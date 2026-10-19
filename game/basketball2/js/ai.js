@@ -659,10 +659,25 @@ function decideAIHandler(char,brain,settings){
     if(ready&&char.velocity.length()<1.6) beginAIShot(char,brain);
     return;
   }
+  const settledQuality=read.settledQuality??quality;
+  const settledValue=shotValue+settledQuality-quality;
+  const cleanSettle=plan.age>1.4&&space>2.05&&settledQuality>THREE.MathUtils.lerp(.66,.76,settings.shotDiscipline);
+  const developedSettle=plan.age>6.5&&space>1.45&&(read.pressure??0)<.46&&settledQuality>.58;
+  const betterDrive=clearRun&&lane.drive&&driveValue+driveBias>settledValue+.05;
+  if(ready&&!read.closeFinish&&read.inRange&&(cleanSettle||developedSettle)&&!betterDrive&&
+    (!bestPurpose||bestValue<settledValue+.12)){
+    // Stop for a real playable window before cycling the play again. The next
+    // read can cancel the stop if coverage closes, and charging still waits for
+    // normal deceleration; elapsed time never removes a defender's pressure.
+    brain.decision="shoot";brain.shotRead=cleanSettle?"settle_window":"developed_window";
+    brain.driveUntil=0;brain.sprint=false;brain.target.copy(position);
+    if(char.velocity.length()<1.6) beginAIShot(char,brain);
+    return;
+  }
   const quickCatch=identity.type==="playmaker"||identity.type==="sharpshooter";
   const patient=brain.possessionAge>(settings.quickReadTime??.4)*(quickCatch?.8:1);
   const lateRisk=plan.age>16&&distance<8.2&&space>.95&&quality>.1;
-  const forced=(brain.possessionAge>10||plan.age>14)&&space>.85&&quality>.3||lateRisk;
+  const forced=(brain.possessionAge>7||plan.age>10)&&space>.85&&quality>.3||lateRisk;
   // A completed catch does not give a stalled team a fresh possession budget.
   // After several unsuccessful actions, settle for a playable look unless a
   // clearly better receiver is already available. Normal shot physics apply.
@@ -712,8 +727,9 @@ function decideAIHandler(char,brain,settings){
   // Bringing the ball to the arc does not require an already open layup all
   // the way to the rim. Otherwise a set defense makes local spacing reads
   // retreat indefinitely, moving every new screen farther from the basket.
-  if(distance>7.2){
-    const advance=aiAdvanceToFrontcourt(char,toRim);
+  const frontcourtRange=Math.min(7.2,(read.preferredRange??6.1)+.35);
+  if(distance>frontcourtRange){
+    const advance=aiAdvanceToFrontcourt(char,toRim,Math.min(6.1,read.preferredRange??6.1));
     if(advance) brain.target.copy(advance);
     else if(flatDistance(brain.target,HOOP_POS)>distance+.1) brain.target.copy(position);
   }
@@ -778,10 +794,10 @@ function aiRouteBlocked(char,target){
   return false;
 }
 
-function aiAdvanceToFrontcourt(char,toRim){
+function aiAdvanceToFrontcourt(char,toRim,targetRange=6.1){
   const position=char.group.position,distance=flatDistance(position,HOOP_POS);
   const across=new THREE.Vector3(-toRim.z,0,toRim.x);
-  const advance=THREE.MathUtils.clamp(distance-6.1,1,3.1);
+  const advance=THREE.MathUtils.clamp(distance-targetRange,1,3.1);
   const preferred=char.aiBrain?.driveSide||1;
   let best=null,bestScore=-Infinity;
   for(const lateral of [0,preferred*1.8,-preferred*1.8,preferred*2.8,-preferred*2.8]){

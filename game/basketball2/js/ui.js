@@ -988,6 +988,6 @@ function startGame(){
     updateLEDBoards(`${stop.city.toUpperCase()} · NATIONAL TOUR`);
   }
   initBotBrain();
-  resetPossession("p1", true);
+  resetPossession("p1", true,3);
   if(riseMatch) initializeRisePlayers();
 }

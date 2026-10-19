@@ -42,6 +42,22 @@ test('a clear running layup grades above an equally open moving jumper; stationa
   assert.equal(ctx.aiAssessShot(handler,precise).closeFinish,true);
 });
 
+test('a settled-feet read removes only motion and still recognizes coverage, fatigue and range',()=>{
+  const {ctx,add}=fixture(),handler=add('handler',0,0,-4.8);
+  handler.velocity.set(3.8,0,0);
+  const moving=ctx.aiAssessShot(handler,precise);
+  handler.velocity.set(0,0,0);const stationary=ctx.aiAssessShot(handler,precise);
+  assert.ok(moving.quality<stationary.quality-.15);
+  assert.ok(Math.abs(moving.settledQuality-stationary.quality)<1e-9);
+  handler.velocity.set(3.8,0,0);add('guard',1,0,-5.8);
+  const covered=ctx.aiAssessShot(handler,precise);
+  assert.ok(covered.settledQuality<moving.settledQuality-.3);
+  handler.stamina=.2;const tired=ctx.aiAssessShot(handler,precise);
+  assert.ok(tired.settledQuality<covered.settledQuality-.09);
+  handler.group.position.z=1;const deep=ctx.aiAssessShot(handler,precise);
+  assert.equal(deep.inRange,false);assert.ok(deep.settledQuality<.1);
+});
+
 test('paint help can close a finish even when the nearest defender trails the handler',()=>{
   const {ctx,add}=fixture(),handler=add('handler',0,0,-8.0);
   handler.velocity.set(0,0,-3);

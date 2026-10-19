@@ -115,7 +115,7 @@ const root=path.resolve(__dirname,'../../..');
           if(frame%300===0) trace.push({seconds:frame/60,attempts:currentAttempts,passes:totals.passes,state:ballState,
             owner:getBallHandler()?.id,phase:aiTeamPlans[getBallHandler()?.teamId]?.phase,
             age:aiTeamPlans[getBallHandler()?.teamId]?.age,handlerAge:getBallHandler()?.aiBrain?.possessionAge,
-            read:getBallHandler()?(()=>{const r=aiAssessShot(getBallHandler(),aiSettings());return {space:r.space,quality:r.quality,value:r.value,distance:r.distance,inRange:r.inRange};})():null,
+            read:getBallHandler()?(()=>{const r=aiAssessShot(getBallHandler(),aiSettings());return {space:r.space,quality:r.quality,settledQuality:r.settledQuality,pressure:r.pressure,speed:getBallHandler().velocity.length(),value:r.value,distance:r.distance,inRange:r.inRange};})():null,
             players:matchPlayers.map(char=>({id:char.id,role:char.aiBrain.role,decision:char.aiBrain.decision,x:+char.group.position.x.toFixed(1),z:+(char.group.position.z-HOOP_POS.z).toFixed(1)}))});
           previousState=ballState;
         }
@@ -131,11 +131,13 @@ const root=path.resolve(__dirname,'../../..');
       },{size,lineup,difficulty});
       results.push(result);
       console.log('AUTOPLAY '+JSON.stringify({...result,trace:undefined}));
+      if(process.env.BASKETBALL_AUTOPLAY_TRACE) console.log('TRACE '+JSON.stringify(result.trace));
     }
     for(const result of results){
       assert.ok(result.finite,'all positions and ball states stay finite');
-      assert.ok(result.attempts>=3,'every full active minute produces at least three actual shot attempts: '+JSON.stringify(result));
-      assert.ok(result.maxTeamPossessionSeconds<25,'no 25-second same-team no-shot possession: '+JSON.stringify(result));
+      assert.ok(result.attempts>=4,'every full active minute produces at least four actual shot attempts: '+JSON.stringify(result));
+      assert.ok(result.maxTeamPossessionSeconds<18,'offense develops a decision without an 18-second same-team hold: '+JSON.stringify(result));
+      assert.ok(result.maxNoShotSeconds<18,'active play keeps producing attempts rather than repeated empty resets: '+JSON.stringify(result));
       assert.ok(result.maxLooseSeconds<10,'loose balls do not create a new kind of no-shot stall: '+JSON.stringify(result));
       assert.ok(result.maxConsecutivePasses<10,'passes must develop into a shot: '+JSON.stringify(result));
       assert.equal(result.passReasons.unrecorded,undefined,'every actual AI pass retains its offensive purpose');

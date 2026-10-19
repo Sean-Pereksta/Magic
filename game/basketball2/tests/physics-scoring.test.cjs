@@ -416,6 +416,19 @@ test("score and out-of-bounds delays advance only with simulation and resets can
   assert.equal(run(ctx,"matchPlayers.filter(p=>p.hasBall).length"),1);
 });
 
+test('live possession restarts use a short ready beat while new games keep their full countdown',()=>{
+  const ctx=setup();
+  run(ctx,'startCountdown()');
+  assert.equal(run(ctx,'countdownTimer'),3);
+  run(ctx,"scheduleScoredPossession('a1',850);updateScoredPossession(.86)");
+  assert.equal(run(ctx,'pendingInbound'),null);
+  assert.equal(run(ctx,'countdownTimer'),1,'each basket no longer repeats the opening three-second count');
+  assert.equal(run(ctx,'possessionFrozen'),true,'both teams still get a visible ready beat');
+  assert.equal(run(ctx,"teamOf(ballOwner)"),1);
+  run(ctx,"resetPossession('a1',true,3)");
+  assert.equal(run(ctx,'countdownTimer'),3,'new-match callers can retain the full opening countdown');
+});
+
 test("a defender blocking the ball out returns possession to offense without changing the shot scorer",()=>{
   const ctx=setup();
   run(ctx,`

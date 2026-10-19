@@ -199,6 +199,81 @@ test('a late team possession settles for a playable shot after a catch, while co
   assert.equal(shots,2,'after prolonged failed actions, a physically playable marginal look is preferable to an endless reset');
 });
 
+test('an ordinary moving handler stops for a clean window and rechecks defense before charging',()=>{
+  const ctx=fixture('motion',2),char=ctx.owner,brain=char.aiBrain,plan=ctx.aiGetTeamPlan(char);
+  let shots=0;ctx.handleActionButton=()=>shots++;
+  ctx.aiAssessShot=()=>({value:.6,quality:.6,settledQuality:.79,space:2.5,pressure:0,distance:5.8,inRange:true,closeFinish:false});
+  ctx.aiAssessPass=()=>({safe:false});
+  ctx.aiFindDriveLane=()=>({openness:.35,drive:false,direct:false,finishSpace:1.2,blocked:false,target:new Vector3(3,0,-6)});
+  brain.possessionAge=.6;brain.actionCooldown=0;plan.age=2;plan.phase='cut';char.velocity.set(3.8,0,0);
+  const originalProfile=JSON.stringify(char.profile),originalPosition=char.group.position.clone();
+  ctx.decideAIHandler(char,brain,ctx.settings);
+  assert.equal(brain.decision,'shoot');assert.equal(brain.shotRead,'settle_window');assert.equal(shots,0);
+  assert.deepEqual(brain.target,originalPosition);assert.equal(char.velocity.x,3.8,'only the normal movement motor may decelerate');
+  ctx.aiAssessShot=()=>({value:.3,quality:.3,settledQuality:.49,space:1.1,pressure:.65,distance:5.8,inRange:true,closeFinish:false});
+  ctx.decideAIHandler(char,brain,ctx.settings);
+  assert.notEqual(brain.decision,'shoot');assert.equal(shots,0,'closing defense cancels the stop before charging');
+  char.velocity.set(0,0,0);
+  ctx.aiAssessShot=()=>({value:.79,quality:.79,settledQuality:.79,space:2.5,pressure:0,distance:5.8,inRange:true,closeFinish:false});
+  ctx.decideAIHandler(char,brain,ctx.settings);
+  assert.equal(shots,1);assert.equal(JSON.stringify(char.profile),originalProfile);
+});
+
+test('live team age makes a developed playable window decisive after a catch without overriding strong coverage',()=>{
+  const ctx=fixture('pick_roll',2),char=ctx.owner,brain=char.aiBrain,plan=ctx.aiGetTeamPlan(char);
+  let shots=0;ctx.handleActionButton=()=>shots++;
+  ctx.aiAssessShot=()=>({value:.63,quality:.63,settledQuality:.63,space:1.8,pressure:.3,distance:5,inRange:true,closeFinish:false});
+  ctx.aiAssessPass=()=>({safe:false});
+  ctx.aiFindDriveLane=()=>({openness:.6,drive:true,direct:false,finishSpace:1.2,blocked:false,target:new Vector3(3,0,-6)});
+  brain.possessionAge=.6;brain.actionCooldown=0;plan.age=2;plan.phase='roll';
+  ctx.decideAIHandler(char,brain,ctx.settings);assert.equal(shots,0);
+  plan.age=7;ctx.decideAIHandler(char,brain,ctx.settings);
+  assert.equal(brain.shotRead,'developed_window');assert.equal(shots,1);
+  ctx.aiAssessShot=()=>({value:.45,quality:.45,settledQuality:.45,space:1.1,pressure:.6,distance:5,inRange:true,closeFinish:false});
+  ctx.decideAIHandler(char,brain,ctx.settings);assert.equal(shots,1,'team age retains a real minimum shot window');
+});
+
+test('settling for pace still gives an excellent receiver or clear rim run priority',()=>{
+  const ctx=fixture('motion',2),char=ctx.owner,brain=char.aiBrain,plan=ctx.aiGetTeamPlan(char);
+  let shots=0;ctx.handleActionButton=()=>shots++;
+  const receiver=ctx.getTeammates(char)[0];
+  ctx.aiAssessShot=()=>({value:.6,quality:.6,settledQuality:.77,space:2.5,pressure:0,distance:5.8,inRange:true,closeFinish:false});
+  ctx.aiAssessPass=()=>({safe:true,value:.95,catchValue:.95,catchSpace:3,rimFeed:false});
+  ctx.aiFindDriveLane=()=>({openness:.35,drive:false,direct:false,finishSpace:1.2,blocked:false,target:new Vector3(3,0,-6)});
+  brain.possessionAge=.6;brain.actionCooldown=0;plan.age=2;plan.phase='cut';
+  ctx.decideAIHandler(char,brain,ctx.settings);assert.equal(brain.passTargetId,receiver.id);assert.equal(shots,0);
+  brain.passTargetId=null;ctx.aiAssessPass=()=>({safe:false});
+  ctx.aiFindDriveLane=()=>({openness:1,drive:true,direct:true,finishSpace:4,blocked:false,target:new Vector3(0,0,-8)});
+  ctx.decideAIHandler(char,brain,ctx.settings);assert.equal(brain.decision,'drive');assert.equal(shots,0);
+});
+
+test('early settling preserves fatigue, shooting range and strong pressure limits',()=>{
+  for(const override of [{quality:.2,settledQuality:.5},{inRange:false},{space:1.1,pressure:.7,quality:.25,settledQuality:.45}]){
+    const ctx=fixture('motion',2),char=ctx.owner,brain=char.aiBrain,plan=ctx.aiGetTeamPlan(char);
+    let shots=0;ctx.handleActionButton=()=>shots++;
+    ctx.aiAssessShot=()=>({value:.6,quality:.6,settledQuality:.78,space:2.5,pressure:.1,distance:5.8,inRange:true,closeFinish:false,...override});
+    ctx.aiAssessPass=()=>({safe:false});
+    ctx.aiFindDriveLane=()=>({openness:.3,drive:false,direct:false,finishSpace:1.1,blocked:false,target:new Vector3(3,0,-6)});
+    brain.possessionAge=.6;brain.actionCooldown=0;plan.age=7;plan.phase='cut';
+    ctx.decideAIHandler(char,brain,ctx.settings);
+    assert.notEqual(brain.decision,'shoot',JSON.stringify(override));assert.equal(shots,0);
+  }
+});
+
+test('a stalled team starts its existing guarded fallback sooner and still waits for real feet settling',()=>{
+  const ctx=fixture('pick_roll',2),char=ctx.owner,brain=char.aiBrain,plan=ctx.aiGetTeamPlan(char);
+  let shots=0;ctx.handleActionButton=()=>shots++;
+  ctx.aiAssessShot=()=>({value:.45,quality:.45,settledQuality:.55,space:1.25,pressure:.5,distance:5,inRange:true,closeFinish:false});
+  ctx.aiAssessPass=()=>({safe:false});
+  ctx.aiFindDriveLane=()=>({openness:.6,drive:true,direct:false,finishSpace:1.2,blocked:false,target:new Vector3(3,0,-6)});
+  brain.possessionAge=.6;brain.actionCooldown=0;plan.age=9;plan.phase='roll';char.velocity.set(3,0,0);
+  ctx.decideAIHandler(char,brain,ctx.settings);assert.notEqual(brain.decision,'shoot');
+  plan.age=10.5;ctx.decideAIHandler(char,brain,ctx.settings);
+  assert.equal(brain.decision,'shoot');assert.equal(shots,0);
+  ctx.aiAssessShot=()=>({value:.15,quality:.15,settledQuality:.25,space:.7,pressure:.85,distance:5,inRange:true,closeFinish:false});
+  ctx.decideAIHandler(char,brain,ctx.settings);assert.notEqual(brain.decision,'shoot');assert.equal(shots,0);
+});
+
 test('a safe authored screen turn can create a lane before a complete open finish exists',()=>{
   const ctx=fixture('pick_roll',2),char=ctx.owner,brain=char.aiBrain,plan=ctx.aiGetTeamPlan(char);
   plan.phase='screen';plan.screenTarget.set(0,0,-3);
@@ -234,6 +309,21 @@ test('frontcourt advance gains ground around a set defender without assuming an 
   assert.ok(escape,'large bodies retain a lateral escape beyond the comfortable shot range');
   assert.ok(ctx.flatDistance(escape,char.group.position)>.7);
   assert.equal(ctx.aiRouteBlocked(char,escape),false);
+});
+
+test('a handler just inside the arc safely advances into its own range instead of waiting for emergency range',()=>{
+  const ctx=fixture('pick_roll',2,['interior','playmaker']),char=ctx.owner,brain=char.aiBrain;
+  char.group.position.set(0,0,ctx.HOOP_POS.z+6.2);
+  ctx.matchPlayers.filter(player=>player!==char).forEach((player,index)=>player.group.position.set(index%2?-8:8,0,2+index));
+  ctx.aiAssessShot=()=>({value:.35,quality:.35,settledQuality:.4,space:2,pressure:.25,distance:6.2,preferredRange:4.8,inRange:false,closeFinish:false});
+  ctx.aiAssessPass=()=>({safe:false});
+  ctx.aiFindDriveLane=()=>({openness:.3,drive:false,direct:false,finishSpace:1,blocked:false,target:new Vector3(3,0,-3),setupTarget:new Vector3(3,0,-3)});
+  brain.possessionAge=.6;brain.actionCooldown=0;
+  const original=char.group.position.clone(),profile=JSON.stringify(char.profile);
+  ctx.decideAIHandler(char,brain,ctx.settings);
+  assert.equal(brain.decision,'setup');assert.ok(ctx.flatDistance(brain.target,ctx.HOOP_POS)<5);
+  assert.equal(ctx.aiRouteBlocked(char,brain.target),false);
+  assert.deepEqual(char.group.position,original);assert.equal(JSON.stringify(char.profile),profile);
 });
 
 test('a bobbled pass keeps the team clock and history, while a shot starts a fresh rebound possession',()=>{

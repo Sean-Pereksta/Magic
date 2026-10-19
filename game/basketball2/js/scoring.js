@@ -830,7 +830,7 @@ function gainPossession(who){
   takePossession(newOwner);
 }
 
-function resetPossession(who,reposition){
+function resetPossession(who,reposition,countdown=1){
   if(gameOver) return;
   pendingInbound=null;
   const owner=getPlayerById(who) || matchPlayers[0];
@@ -844,7 +844,7 @@ function resetPossession(who,reposition){
   lastShotReleasePos.set(0,0,0);
   loosePickupDelay = 0;
   botStrategy=owner.controllerSlot ? "defense" : chooseBotStrategy();
-  startCountdown();
+  startCountdown(countdown);
 }
 
 function rematchSamePlayers(){
@@ -861,7 +861,7 @@ function rematchSamePlayers(){
     char.sideHopCooldown=0; char.pumpFakeCooldown=0; char.reachRecovery=0;
     for(const key of Object.keys(char.stats)) char.stats[key]=0;
   }
-  resetPossession(matchPlayers[0].id,true);
+  resetPossession(matchPlayers[0].id,true,3);
 }
 function returnToCharacterMenu(){
   if(typeof riseMatch!=="undefined"&&riseMatch){showRiseCampaign();return;}
@@ -927,7 +927,7 @@ function chooseBotStrategy(){
   return "crossover";
 }
 
-function startCountdown(){
-  countdownTimer = 3;
+function startCountdown(duration=3){
+  countdownTimer = duration;
   possessionFrozen = true;
 }
