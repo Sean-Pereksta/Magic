@@ -493,10 +493,18 @@ function activeFinishOwnsMovement(char){
     typeof dunkActive!=='undefined'&&dunkActive&&typeof dunkOwner!=='undefined'&&dunkOwner===char.id;
 }
 
+function isDefendingLiveBall(char){
+  // Possession retains the shooter until a rebound is secured. A released or
+  // loose ball has no defending team: everyone can turn and run to it.
+  if(!["dribble","pass","layup","dunk"].includes(ballState)) return false;
+  const handler=getBallHandler();
+  return !!handler&&handler.teamId!==char.teamId;
+}
+
 function updateModernPlayerControl(char,input,dt){
-  // The gather solver advances the finish from its real approach velocity.
-  // Applying the human running motor as well moves a side layup past the rim.
-  if(activeFinishOwnsMovement(char)) return;
+  // Finish and block solvers own their captured approach until landing.
+  // A second running motor would overshoot gathers or steer airborne blocks.
+  if(activeFinishOwnsMovement(char)||typeof activeBlockJumpOwnsMovement==="function"&&activeBlockJumpOwnsMovement(char)) return;
   const profile = char.profile;
   const tuning = getGameplayTuning();
   if(char.stumbledTimer>0) char.stumbledTimer=Math.max(0,char.stumbledTimer-dt);
@@ -528,12 +536,13 @@ function updateModernPlayerControl(char,input,dt){
   const balancedSprint=THREE.MathUtils.lerp(1,profile.sprint,.76);
   const offense=isBallHandler&&ballState==="dribble";
   const handler=getBallHandler();
-  const defenderTarget=handler&&handler.teamId!==char.teamId?handler:getNearestOpponent(char);
+  const defending=isDefendingLiveBall(char);
+  const defenderTarget=defending?handler:null;
   const wantsSprint=input.sprint&&amount>.18&&char.sprint>SPRINT_MIN;
   const baseSpeed=4.3*balancedSpeed*tuning.lateralSpeed;
   const sprintSpeed=7.05*balancedSpeed*balancedSprint*tuning.sprintSpeed;
   const defensiveSpeed=4.05*balancedSpeed*tuning.lateralSpeed*(profile.ratings?(.7+(profile.ratings.lateralMovement??50)*.006):1);
-  let targetSpeed=(offense?baseSpeed:defensiveSpeed)*amount;
+  let targetSpeed=(defending?defensiveSpeed:baseSpeed)*amount;
   if(wantsSprint) targetSpeed=sprintSpeed*amount;
   if(input.protect) targetSpeed*=offense ? .72 : .82;
   if(char.stamina<.2) targetSpeed*=.82;
@@ -567,10 +576,10 @@ function updateModernPlayerControl(char,input,dt){
     char.stamina=Math.min(1,char.stamina+(amount>.15?.11:.24)*dt*(profile.width>1.1?.78:1.05));
   }
 
-  if((offense||handler?.teamId===char.teamId)&&amount>.08){
+  if(!defending&&amount>.08){
     const targetAngle=Math.atan2(desiredDirection.x,desiredDirection.z);
     char.angle=lerpAngle(char.angle,targetAngle,dt*(wantsSprint?9.2:11.5)*sizeAgility);
-  }else if(!offense&&defenderTarget){
+  }else if(defenderTarget){
     const toHandler=defenderTarget.group.position.clone().sub(char.group.position).setY(0);
     if(toHandler.lengthSq()>.001){
       const targetAngle=Math.atan2(toHandler.x,toHandler.z);
@@ -584,7 +593,7 @@ function updateModernPlayerControl(char,input,dt){
   char.inputZ=input.moveY;
   char.sprintMul=wantsSprint?1.35:1;
   const relativeForward=char.velocity.lengthSq()>.02?char.velocity.clone().normalize().dot(getForward(char.angle)):0;
-  const animationState=!amount?"idle":(!offense&&Math.abs(input.moveX)>.25?"defense":relativeForward<-.28?"backpedal":wantsSprint?"sprint":"run");
+  const animationState=!amount?"idle":(defending&&Math.abs(input.moveX)>.25&&!wantsSprint?"defense":relativeForward<-.28?"backpedal":wantsSprint?"sprint":"run");
   setAnimationState(char,animationState);
 
   char.group.position.addScaledVector(char.velocity,dt);
@@ -597,7 +606,7 @@ function updateModernPlayerControl(char,input,dt){
 }
 
 function updatePlayerControl(char,ctrl,dt){
-  if(activeFinishOwnsMovement(char)) return;
+  if(activeFinishOwnsMovement(char)||typeof activeBlockJumpOwnsMovement==="function"&&activeBlockJumpOwnsMovement(char)) return;
   const input=ctrl.state||(char.controllerSlot?inputManager.getState(char.controllerSlot):char.aiInput||createInputFrame());
   if(gameSettings.get("controlStyle")==="modern"||input.source!=="keyboard"){
     updateModernPlayerControl(char,input,dt);
@@ -670,7 +679,7 @@ function updatePlayerControl(char,ctrl,dt){
       }
     }
   }
-  setAnimationState(char, isKeyDown(ctrl.back) ? "backpedal" : (isKeyDown(ctrl.forward) ? "run" : "idle"));
+  setAnimationState(char, isKeyDown(ctrl.back) ? "backpedal" : (isKeyDown(ctrl.forward) ? wantsSprint&&char.sprint>SPRINT_MIN?"sprint":"run" : "idle"));
   if(char.stumbledTimer > 0) char.velocity.multiplyScalar(.45);
   if(char.stamina < .2) char.velocity.multiplyScalar(.82);
   if(char.hasBall && ballState === "dribble"){

@@ -21,6 +21,9 @@ function releaseShot(shooter,shotType,options={}){
 
   const releasePoint = options.releasePoint || getShotReleasePoint(shooter,shotType);
   ball.position.copy(releasePoint);
+  // An attached gather/dribble has no free-flight history. Starting the sweep
+  // at an old pickup position could let a trailing hand block the entire drive.
+  previousBallPosition.copy(ball.position);
   const releaseDist = flatDistance(releasePoint,HOOP_POS);
   // The player's feet define the scoring/rating zone. A normal forward hand
   // extension must not turn a legal arc jumper into a two-point attempt.
@@ -38,9 +41,11 @@ function releaseShot(shooter,shotType,options={}){
   const halfWindow=Math.max(.025,(meterProfile.greenEnd-meterProfile.greenStart)*.5);
   // Short close gathers supply touch continuously. An extra frame of button
   // hold must not abruptly turn an open layup into an early full-meter miss.
-  // Timing takes over as the hold lengthens; visible pressure removes the help.
+  // Timing takes over as the hold lengthens. Pressure reduces touch smoothly:
+  // light coverage must not turn an ordinary running gather into an early jumper.
   const tapBlend=1-smoothstep(THREE.MathUtils.clamp((held-.20)/.40,0,1));
-  const gatherTouch=shotType==="layup"&&dist<=3.6 ? tapBlend*THREE.MathUtils.clamp((.25-contest.value)/.13,0,1) : 0;
+  const pressureTouch=1-smoothstep(THREE.MathUtils.clamp((contest.value-.10)/.75,0,1));
+  const gatherTouch=shotType==="layup"&&dist<=3.6 ? tapBlend*pressureTouch : 0;
   if(gatherTouch>.9) timing.grade="Open Finish";
   const releaseError=(timing.pct-center)*(1-gatherTouch);
   const rangePenalty=Math.max(0,dist-(shotType==="layup" ? 2.5 : 4.8))*.037;
@@ -343,15 +348,11 @@ function updateDunk(dt){
   if(t>.28 && t<.79 && !dunkScored){
     for(const defender of getOpponents(owner)){
       if(defender.blockTime<=0 && defender.handsUpTime<=0) continue;
-      const near=Math.min(getWorldHand(defender,"left").distanceTo(ball.position),getWorldHand(defender,"right").distanceTo(ball.position));
-      const blockRating=typeof BasketballDevelopment!=="undefined"?BasketballDevelopment.rating(defender,'blocking',BasketballDevelopment.legacyRating(defender,'block')):60;
-      const timedJump=!defender.onGround&&defender.blockTime>.055&&defender.blockTime<.36;
-      const guardian=typeof BasketballDevelopment!=="undefined"?BasketballDevelopment.ability(defender,'rimGuardian'):0;
-      const blockReach=((timedJump?.49:.31)*defender.profile.block+(blockRating-60)*.0012)*(timedJump?1+guardian*.05:1);
       // Finishing ability can protect the ball during a gather; a timed hand
       // reaching the actual ball still stops even the strongest Posterizer.
-      if(near<blockReach){
-        applyBlockDeflection(defender,owner);
+      const contact=getShotBlockContact(defender,owner,ball.position,ball.position);
+      if(contact){
+        applyBlockDeflection(defender,owner,contact);
         addBlockStat(defender,12);
         showMoveFeedback("DUNK BLOCKED!",.8);
         triggerCrowdReaction("block",.8);
@@ -466,11 +467,35 @@ function isFacingTarget(char,target,minDot=.25){
   return forward.dot(toTarget) >= minDot;
 }
 
-function applyBlockDeflection(blocker,shooter){
+function getShotBlockContact(blocker,shooter,from,to){
+  if(blocker.blockTime<=0 && blocker.handsUpTime<=0) return null;
+  // The ball and the visible palm set contact size. Blocking ratings improve
+  // the jump and defensive decisions, never an invisible halo around the hand.
+  const radius=BALL_RADIUS+THREE.MathUtils.clamp(.085*blocker.profile.width,.07,.105);
+  const path=to.clone().sub(from),lengthSq=path.lengthSq();
+  for(const side of ["left","right"]){
+    const hand=getWorldHand(blocker,side);
+    const t=THREE.MathUtils.clamp(hand.clone().sub(from).dot(path)/Math.max(.00001,lengthSq),0,1);
+    const point=from.clone().addScaledVector(path,t),distance=hand.distanceTo(point);
+    if(distance>radius) continue;
+    if(shooter){
+      // A hand reaching through the finisher's torso cannot touch a protected
+      // ball on the far side. High, genuinely exposed releases stay blockable.
+      const shielded=[{y:1.16,r:.34},{y:1.58,r:.29}].some(shield=>
+        segmentSphereIntersect(hand,point,shooter.group.position.clone().add(new THREE.Vector3(0,shield.y*shooter.profile.height,0)),shield.r*shooter.profile.width));
+      if(shielded) continue;
+    }
+    return {point,hand,side,distance,radius};
+  }
+  return null;
+}
+
+function applyBlockDeflection(blocker,shooter,contact=null){
   lastTouchPlayerId=blocker.id;
   const blockerForward = getForward(blocker.angle);
-  const handSide = getWorldHand(blocker,"left").distanceToSquared(ball.position)<getWorldHand(blocker,"right").distanceToSquared(ball.position) ? "left" : "right";
-  const handPoint = getWorldHand(blocker,handSide);
+  const handSide = contact?.side || (getWorldHand(blocker,"left").distanceToSquared(ball.position)<getWorldHand(blocker,"right").distanceToSquared(ball.position) ? "left" : "right");
+  const handPoint = contact?.hand || getWorldHand(blocker,handSide);
+  if(contact) ball.position.copy(contact.point);
   const away = ball.position.clone().sub(handPoint);
   if(away.lengthSq() < 0.0001) away.copy(ball.position).sub(blocker.group.position);
   away.normalize();
@@ -524,54 +549,25 @@ function checkSteals(){
 }
 
 function checkBlocksAndCatches(){
-  if(ballState !== "shot" && ballState !== "layup") return;
+  // Attached gathers test their current hand motion in updateLayup. The global
+  // flight segment is stale during a dribble/gather and must not sweep a block
+  // across the whole drive from the previous possession pickup point.
+  if(ballState !== "shot") return;
 
-  const shooterId = ballState === "layup" ? layupOwner : lastShotShooter;
-  const shooter=getPlayerById(shooterId);
+  const shooter=getPlayerById(lastShotShooter);
   if(!shooter) return;
   for(const blocker of getOpponents(shooter)){
   if(blocker.blockTime <= 0 && blocker.handsUpTime <= 0) continue;
 
-  const handL = getWorldHand(blocker,"left");
-  const handR = getWorldHand(blocker,"right");
-  const handRadius = .14 + blocker.profile.block*.045;
-  const sweptHandContact = segmentSphereIntersect(previousBallPosition,ball.position,handL,handRadius) ||
-    segmentSphereIntersect(previousBallPosition,ball.position,handR,handRadius);
-  const near = sweptHandContact ? 0 : Math.min(handL.distanceTo(ball.position),handR.distanceTo(ball.position));
-  const blockProgress=1-THREE.MathUtils.clamp(blocker.blockTime/.42,0,1);
-  const timedJump=!blocker.onGround && blockProgress>.12 && blockProgress<.86;
-  let threshold = (timedJump ? .47 : .29) * blocker.profile.block + (blocker.blockBoost ? .09 : 0);
-  if(timedJump&&typeof BasketballDevelopment!=="undefined") threshold*=1+BasketballDevelopment.ability(blocker,'rimGuardian')*.05;
-  if(ballState === "shot" && shooter && shooter.moveMeta && shooter.moveMeta.lastShotType === "jumper") threshold *= .86;
-
-  if(ballState === "layup"){
-    const perfect = layupBlockWindow > 0 && layupTimer > .17 && layupTimer < .58;
-    if(near < threshold && perfect && timedJump){
-      layupBlocked = true;
-      layupScored = false;
-      layupActive = false;
-      ballState = "loose";
-      layupOwner = null;
-      applyBlockDeflection(blocker,shooter);
-      flash("LAYUP BLOCKED!");
-      showShotFeedback("Blocked");
-      addBlockStat(blocker,12);
-      triggerCrowdReaction("block",0.95);
-      playBlockSound();
-      inputManager.vibrate(blocker.id,.86,105);
-      inputManager.vibrate(shooter.id,.46,85);
-      return;
-    }
-    continue;
-  }
-
-  if(near < threshold){
+  const contact=getShotBlockContact(blocker,shooter,previousBallPosition,ball.position);
+  if(!contact) continue;
+  if(contact){
     const catchQuality=getLooseBallPickupQuality(blocker);
-    if(ballVelocity.length()<4.2 && ballVelocity.y<0 && ball.position.y<HOOP_POS.y-.18 && catchQuality>.72 && near<threshold*.65){
+    if(ballVelocity.length()<4.2 && ballVelocity.y<0 && ball.position.y<HOOP_POS.y-.18 && catchQuality>.72 && contact.distance<contact.radius*.65){
       gainPossession(blocker.id);
       flash(`${blocker.id.toUpperCase()} caught the shot!`);
     }else{
-      applyBlockDeflection(blocker,shooter);
+      applyBlockDeflection(blocker,shooter,contact);
       flash(`${blocker.id.toUpperCase()} blocked it!`);
       showShotFeedback("Blocked");
       addBlockStat(blocker,10);
@@ -873,6 +869,7 @@ function resetBody(char){
   char.yVel = 0;
   char.onGround = true;
   char.blockBoost = false;
+  if(char.moveMeta) delete char.moveMeta.blockFlight;
   char.blockTime = 0;
   char.handsUpTime = 0;
   char.swipeTime = 0;

@@ -1,3 +1,7 @@
+function activeBlockJumpOwnsMovement(char){
+  return !char.onGround && !!char.moveMeta?.blockFlight;
+}
+
 function updateJumpPhysics(char,dt){
   if(char.moveMeta&&typeof BasketballDevelopment!=="undefined"){
     // Keep a short record of a real drive so stopping smoothly into a jumper
@@ -9,17 +13,35 @@ function updateJumpPhysics(char,dt){
   // during the gather dip falsely grounded the player before the actual rise.
   if(dunkActive && dunkOwner===char.id){char.onGround=false;char.yVel=0;return;}
   if(!char.onGround){
+    const flight=char.moveMeta?.blockFlight;
+    if(flight){
+      // A block commits its takeoff momentum. The running motor must not add a
+      // second movement or steer this leap after the defender leaves the floor.
+      const boostTime=Math.max(0,Math.min(dt,.18-flight.elapsed));
+      const boostTravel=Math.min(.55-flight.boostTravel,boostTime*(.55/.18));
+      const drift=flight.velocity.clone().multiplyScalar(dt);
+      if(boostTravel>0){drift.addScaledVector(flight.direction,boostTravel);flight.boostTravel+=boostTravel;}
+      const driftLength=drift.length(),remaining=Math.max(0,flight.maxTravel-flight.travel);
+      if(driftLength>remaining) drift.multiplyScalar(remaining/Math.max(.0001,driftLength));
+      const next=char.group.position.clone().add(drift);
+      char.group.position.copy(moveWithCollisionDampen(char,next));
+      keepInCourt(char.group.position);
+      flight.travel+=drift.length();
+      flight.elapsed+=dt;
+      char.velocity.copy(flight.velocity);
+      if(flight.travel>=flight.maxTravel-.0001) char.velocity.set(0,0,0);
+      char.angle=flight.angle;char.group.rotation.y=flight.angle;
+    }
     char.yVel += GRAVITY * .76 * dt;
     char.group.position.y += char.yVel * dt;
-    if(char.blockBoost){
-      char.group.position.add(getForward(char.angle).multiplyScalar(3.6*dt));
-    }
     if(char.group.position.y <= 0){
       char.group.position.y = 0;
       char.yVel = 0;
       char.onGround = true;
       char.blockBoost = false;
       char.handsUpTime = 0;
+      if(flight) char.jumpCooldown=Math.max(char.jumpCooldown,.18);
+      if(char.moveMeta) delete char.moveMeta.blockFlight;
     }
   }
 }
@@ -27,13 +49,26 @@ function updateJumpPhysics(char,dt){
 function tryJumpBlock(char,sprintBlock){
   if(char.jumpCooldown > 0 || !char.onGround) return;
   let jumpPower = 4.9 * char.profile.jump;
-  if(typeof BasketballDevelopment!=="undefined") jumpPower*=1+(BasketballDevelopment.rating(char,'blocking',60)-60)*.0014;
+  if(typeof BasketballDevelopment!=="undefined"){
+    jumpPower*=1+(BasketballDevelopment.rating(char,'blocking',60)-60)*.0014;
+    // Height follows launch speed squared. The perk raises the real hands by
+    // 5% per rank without enlarging contact or extending lateral recovery.
+    jumpPower*=Math.sqrt(1+BasketballDevelopment.ability(char,'rimGuardian')*.05);
+  }
 
+  char.blockBoost=false;
   if(sprintBlock && char.sprint > .22){
     char.sprint = Math.max(0,char.sprint - .24);
     jumpPower *= 1.12;
     char.blockBoost = true;
   }
+
+  const launchVelocity=char.velocity.clone().setY(0).multiplyScalar(.36);
+  const launchSpeed=launchVelocity.length();
+  if(launchSpeed>1.85) launchVelocity.multiplyScalar(1.85/launchSpeed);
+  if(!char.moveMeta) char.moveMeta={};
+  char.moveMeta.blockFlight={velocity:launchVelocity,direction:getForward(char.angle).normalize(),angle:char.angle,
+    elapsed:0,travel:0,maxTravel:char.blockBoost?1.8:1.45,boostTravel:char.blockBoost?0:.55};
 
   char.yVel = jumpPower;
   char.onGround = false;
@@ -521,6 +556,12 @@ function startCloseout(defender){ defender.velocity.add(getForward(defender.angl
 function startRecoveryStep(defender){ defender.stumbledTimer = Math.max(defender.stumbledTimer,.18); }
 function punishBadReach(defender){ defender.stumbledTimer = .45; defender.stamina = Math.max(0,defender.stamina-.1); }
 function calculateShotContest(shooter){
+  const gatherType=typeof ballState!=='undefined'&&ballState==='layup'&&layupOwner===shooter.id?'layup':
+    typeof ballState!=='undefined'&&ballState==='dunk'&&dunkOwner===shooter.id?'dunk':null;
+  const selectedType=gatherType||(typeof playerHasBall==='function'&&playerHasBall(shooter)&&typeof chooseShotType==='function'
+    ?chooseShotType(shooter):shooter.moveMeta?.lastShotType);
+  const closeFinish=selectedType==='layup'||selectedType==='dunk';
+  const rimward=closeFinish?HOOP_POS.clone().sub(shooter.group.position).setY(0).normalize():null;
   let strongest=0, help=0, contestDefender=null;
   for(const defender of getOpponents(shooter)){
     const d=flatDistance(shooter.group.position,defender.group.position);
@@ -532,9 +573,18 @@ function calculateShotContest(shooter){
     const development=typeof BasketballDevelopment!=="undefined"?BasketballDevelopment:null;
     const defenseRating=development?development.rating(defender,flatDistance(shooter.group.position,HOOP_POS)<3.6?'interiorDefense':'perimeterDefense',60):60;
     const reachScale=THREE.MathUtils.clamp((defender.profile.height||1)/(shooter.profile.height||1),.8,1.2);
-    let pressure=THREE.MathUtils.clamp((2.9*reachScale-d)/(2.9*reachScale),0,1)*THREE.MathUtils.clamp(defender.profile.block*.55+defender.profile.steal*.35,.35,1.35);
+    const pressureRange=(closeFinish?2.35:2.9)*reachScale;
+    let pressure=THREE.MathUtils.clamp((pressureRange-d)/pressureRange,0,1)*THREE.MathUtils.clamp(defender.profile.block*.55+defender.profile.steal*.35,.35,1.35);
     pressure*=1+(defenseRating-60)*.006;
-    pressure*=getGameplayTuning().contestStrength*(.55+facing*.3+(active?.24:0));
+    pressure*=getGameplayTuning().contestStrength*(closeFinish?(.42+facing*.26+(active?.38:0)):(.55+facing*.3+(active?.24:0)));
+    if(closeFinish){
+      // A beaten defender on the hip or behind the drive cannot apply the
+      // same pressure as one holding the lane between the finisher and rim.
+      // A genuine hand reaching the ball can still block from any direction.
+      const laneAlignment=-toShooter.dot(rimward);
+      const lane=THREE.MathUtils.clamp((laneAlignment+.15)/.9,0,1);
+      pressure*=.12+.88*(lane*lane*(3-2*lane));
+    }
     if(between) pressure*=1.14;
     if(defender.stumbledTimer>0 || defender.reachRecovery>0) pressure*=.55;
     if(pressure>strongest){ help+=strongest; strongest=pressure; contestDefender=defender; }
@@ -543,8 +593,6 @@ function calculateShotContest(shooter){
   let value=strongest+help*.14;
   // A previous attempt must not widen the next meter. On the ball, preview
   // the currently selected shot; after release, keep the actual launch kind.
-  const selectedType=typeof playerHasBall==='function'&&playerHasBall(shooter)&&typeof chooseShotType==='function'
-    ?chooseShotType(shooter):shooter.moveMeta?.lastShotType;
   if(selectedType === "stepback") value *= .82;
   if(selectedType === "fadeaway") value *= .72;
   if(shooter.contactTimer > 0.02) value *= 1.08 + Math.max(0,shooter.contactStrength||0)*0.12;

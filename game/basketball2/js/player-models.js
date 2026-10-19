@@ -498,7 +498,10 @@ function chooseBasketballPlayerAnimation(char){
   const role=char.aiBrain?.role;
   if(!char.hasBall && speed<1.5 && (char.aiScreen || char.plantedScreen || role==="screen")) return {name:"idle",mode:"screen",speed:1};
   if(!char.hasBall && speed<1.5 && role==="box_out" && ["shot","loose"].includes(typeof ballState!=="undefined" ? ballState : "")) return {name:"idle",mode:"box_out",speed:1};
-  const defending=typeof teamOf==="function" && typeof possession!=="undefined" && teamOf(possession)!==char.teamId;
+  // The last shooter's possession ID survives a miss. Rebounders on both
+  // teams need normal running clips instead of facing that stale ball owner.
+  const liveBall=typeof ballState!=="undefined" && ["dribble","pass","layup","dunk"].includes(ballState);
+  const defending=liveBall && typeof teamOf==="function" && typeof possession!=="undefined" && teamOf(possession)!==char.teamId;
   if(defending){
     if(speed>4.1 && ["closeout","recover","recovery","switch"].includes(role)) return {name:"run",mode:role==="closeout" ? "closeout" : "recover",speed:speed/3.8};
     return {name:"defensive_shuffle",speed:Math.max(.18,speed/3.5)};

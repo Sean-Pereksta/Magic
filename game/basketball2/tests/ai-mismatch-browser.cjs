@@ -154,11 +154,23 @@ const root=path.resolve(__dirname,'../../..');
     console.log('PASS: settled elite shooter recognizes clean threes and physically scores '+madeThrees+'/24 seeded attempts');
 
     await page.evaluate(()=>{
-      aiFixture({profile:'tower',defenderProfile:'flash',handler:[0,1.9],defense:[[-.5,.6]],seed:42});
+      // The small defender's actual head intersects the exposed gather side;
+      // standing merely near the protected ball no longer earns a deflection.
+      aiFixture({profile:'tower',defenderProfile:'flash',handler:[0,1.9],defense:[[-.3,.7]],seed:42});
       beginAIShot(p2,p2.aiBrain);
     });
-    const contactBlock=await page.evaluate(()=>runAIFixture(18));
+    const contactBlock=await page.evaluate(()=>{
+      const deflect=deflectLayupBall;let contact=null;
+      deflectLayupBall=(owner,defender,hit)=>{
+        contact={type:hit.type,distance:ball.position.distanceTo(hit.point),radius:hit.radius};
+        return deflect(owner,defender,hit);
+      };
+      const result=runAIFixture(18);deflectLayupBall=deflect;
+      return {...result,contact};
+    });
     assert.ok(contactBlock.blocked,'size must not bypass a real ball-head/body collision: '+JSON.stringify(contactBlock));
+    assert.equal(contactBlock.contact?.type,'body');
+    assert.ok(contactBlock.contact.distance<=contactBlock.contact.radius,'actual ball contact, not a nearby defender: '+JSON.stringify(contactBlock.contact));
     assert.equal(contactBlock.points,0,'collision does not force a make');
     console.log('PASS: real gather contact still deflects a big player; size advantage never bypasses basketball physics');
     assert.deepEqual(errors,[]);

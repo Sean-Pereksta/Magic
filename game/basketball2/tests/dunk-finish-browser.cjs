@@ -115,16 +115,23 @@ const root=path.resolve(__dirname,'../../..');
       p1.profile.ratings={dunking:86,jumping:90,strength:78,standingDunk:80,contactFinishing:82,aerialControl:85};
       p1.profile.abilities={posterizer:3,powerFinisher:3};
       p1.group.position.set(0,0,HOOP_POS.z+1.3);p1.velocity.set(0,0,-4.2);p1.angle=Math.PI;p1.group.rotation.set(0,Math.PI,0);
-      p2.group.position.set(0,0,HOOP_POS.z+.68);p2.angle=0;p2.group.rotation.set(0,0,0);
+      p2.group.position.set(0,0,HOOP_POS.z+.68);p2.velocity.set(0,0,0);p2.jumpCooldown=0;p2.angle=0;p2.group.rotation.set(0,0,0);
+      const apply=applyBlockDeflection;let contactDistance=null;
+      applyBlockDeflection=(defender,shooter,contact)=>{contactDistance=contact?.distance;return apply(defender,shooter,contact);};
       takePossession(p1,{silent:true});updateCharacters(0);startDunk(p1);let jumped=false;
       for(let frame=0;frame<70&&dunkActive;frame++){
-        if(!jumped&&dunkTimer>=.2){tryJumpBlock(p2,false);jumped=true;}
+        // Meet the low, exposed gather before the dunker has protected it above
+        // the rim. A later dive no longer gets an enlarged invisible reach.
+        if(!jumped&&dunkTimer>=.12){tryJumpBlock(p2,false);jumped=true;}
         simulateBasketball(1/60);
       }
-      return {blocks:p2.stats.blocks,score:scoreP1,attempts:p1.stats.fga,active:dunkActive,state:ballState,style:p1.moveMeta.dunk?.style};
+      applyBlockDeflection=apply;
+      return {blocks:p2.stats.blocks,score:scoreP1,attempts:p1.stats.fga,active:dunkActive,state:ballState,style:p1.moveMeta.dunk?.style,contactDistance};
     });
-    assert.deepEqual(blocked,{blocks:1,score:0,attempts:1,active:false,state:'loose',style:'poster'},'a live timed defender can still physically block an elite Posterizer');
-    console.log('PASS: real timed defender hand contact still blocks the dunk without awarding a basket');
+    const {contactDistance,...blockedOutcome}=blocked;
+    assert.deepEqual(blockedOutcome,{blocks:1,score:0,attempts:1,active:false,state:'loose',style:'poster'},'a live timed defender can still physically block an elite Posterizer');
+    assert.ok(contactDistance>=0&&contactDistance<=.335,'the visible hand actually touches the ball: '+contactDistance);
+    console.log('PASS: real timed defender hand contact still blocks the dunk without awarding a basket; palm distance '+contactDistance.toFixed(3)+'m');
     const calibrationSamples=Math.max(300,Math.min(2000,Number(process.env.BASKETBALL_SHOT_SAMPLES)||300));
     const calibration=await page.evaluate(samples=>{
       selectedP1='smooth';startGame();countdownTimer=0;possessionFrozen=false;targetScore=100000;

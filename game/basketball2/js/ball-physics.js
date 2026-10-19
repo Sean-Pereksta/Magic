@@ -410,20 +410,22 @@ function reflectVelocity(normal,bounce=.65,friction=.88){
 function checkBallPlayerBodyCollision(char){
   if(!char || ballCollisionCooldown > 0) return;
   if(ballState !== "shot" && ballState !== "loose") return;
-  const bodyCenter = char.group.position.clone().add(new THREE.Vector3(0,1.12*char.profile.height,0));
-  const radius = 0.42*char.profile.width + BALL_RADIUS;
-  const diff = ball.position.clone().sub(bodyCenter);
-  if(diff.length() < radius){
-    lastTouchPlayerId=char.id;
-    const shooter = getPlayerById(lastShotShooter);
-    const isBlocking = (char.blockTime>.06 && char.blockTime<.37) || char.handsUpTime>0;
-    if(ballState === "shot" && shooter && char.teamId!==shooter.teamId && isBlocking && ball.position.y>bodyCenter.y+.25){
-      applyBlockDeflection(char,shooter);
+  const shooter = getPlayerById(lastShotShooter);
+  if(ballState === "shot" && shooter && char.teamId!==shooter.teamId){
+    const contact=getShotBlockContact(char,shooter,previousBallPosition,ball.position);
+    if(contact){
+      applyBlockDeflection(char,shooter,contact);
       addBlockStat(char,10);
       showShotFeedback("BLOCKED");
       triggerCrowdReaction("block",0.85);
       return;
     }
+  }
+  const bodyCenter = char.group.position.clone().add(new THREE.Vector3(0,1.12*char.profile.height,0));
+  const radius = 0.36*char.profile.width + BALL_RADIUS;
+  const diff = ball.position.clone().sub(bodyCenter);
+  if(diff.length() < radius){
+    lastTouchPlayerId=char.id;
     const n = diff.lengthSq() < 0.0001 ? getForward(char.angle).clone().multiplyScalar(-1) : diff.normalize();
     ball.position.copy(bodyCenter.clone().add(n.clone().multiplyScalar(radius + 0.02)));
     ballVelocity.copy(reflectVelocity(n,.58,.88));
@@ -520,7 +522,10 @@ function bobbleLooseBall(char){
   char.moveState = "bobble";
   char.moveTimer = 0;
   char.moveDuration = 0.32;
-  char.moveMeta = {};
+  // A failed rebound does not cancel the committed jump or restore steering
+  // before this player lands. Clear offensive move metadata, keep the flight.
+  const blockFlight=char.moveMeta?.blockFlight;
+  char.moveMeta = blockFlight ? {blockFlight} : {};
   flash(`${char.id.toUpperCase()} bobbled it!`);
 }
 
@@ -594,15 +599,17 @@ function segmentSphereIntersect(a,b,center,radius){
 
 function checkLayupDefenderCollision(owner,defender,prevBallPos,currentBallPos){
   const bodyCenter = defender.group.position.clone().add(new THREE.Vector3(0,1.15*defender.profile.height,0));
-  const bodyRadius = 0.48*defender.profile.width;
+  const bodyRadius = 0.36*defender.profile.width;
   const headCenter = defender.group.position.clone().add(new THREE.Vector3(0,2.05*defender.profile.height,0));
-  const headRadius = 0.28*defender.profile.width;
-  const leftHand = getWorldHand(defender,"left");
-  const rightHand = getWorldHand(defender,"right");
-  if(segmentSphereIntersect(prevBallPos,currentBallPos,bodyCenter,bodyRadius + BALL_RADIUS)) return {hit:true,type:"body",point:bodyCenter};
-  if(segmentSphereIntersect(prevBallPos,currentBallPos,headCenter,headRadius + BALL_RADIUS)) return {hit:true,type:"body",point:headCenter};
-  if(segmentSphereIntersect(prevBallPos,currentBallPos,leftHand,0.28*defender.profile.block + BALL_RADIUS)) return {hit:true,type:"hand",point:leftHand};
-  if(segmentSphereIntersect(prevBallPos,currentBallPos,rightHand,0.28*defender.profile.block + BALL_RADIUS)) return {hit:true,type:"hand",point:rightHand};
+  const headRadius = 0.22*defender.profile.width;
+  // The dribble-to-gather animation may place the ball in its raised hand in
+  // one tick. That pose change is not a real flight through every body between
+  // the low dribble and high hand; actual nearby gather travel remains swept.
+  const from=prevBallPos.distanceTo(currentBallPos)>.48?currentBallPos:prevBallPos;
+  const handContact=getShotBlockContact(defender,owner,from,currentBallPos);
+  if(handContact) return {hit:true,type:"hand",point:handContact.hand,radius:handContact.radius};
+  if(segmentSphereIntersect(from,currentBallPos,bodyCenter,bodyRadius + BALL_RADIUS)) return {hit:true,type:"body",point:bodyCenter,radius:bodyRadius+BALL_RADIUS};
+  if(segmentSphereIntersect(from,currentBallPos,headCenter,headRadius + BALL_RADIUS)) return {hit:true,type:"body",point:headCenter,radius:headRadius+BALL_RADIUS};
   return {hit:false};
 }
 
