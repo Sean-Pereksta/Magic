@@ -15,13 +15,14 @@ function aiDefenseDefaultAssignment(char){
 function aiDefenseResolveAssignments(defense,teamId,previous,plan){
   const assignments=Object.create(null);
   const campaign=typeof riseMatch!=='undefined'&&riseMatch;
-  if(!campaign){
+  const roleAssignments=defense.some(player=>['stopper','anchor'].includes(player.profile.role));
+  if(!campaign&&!roleAssignments){
     for(const defender of defense){const old=previous?.assignments[defender.id];assignments[defender.id]=(old&&getPlayerById(old)?.teamId!==teamId)?old:aiDefenseDefaultAssignment(defender)?.id;}
     return assignments;
   }
   const opponents=aiRoster().filter(player=>player.teamId!==teamId),used=new Set();
-  const manual=teamId===0?riseState?.team?.matchups||{}:{};
-  const signature=JSON.stringify(manual);
+  const manual=campaign&&teamId===0?riseState?.team?.matchups||{}:{};
+  const signature=JSON.stringify([manual,defense.map(player=>[player.id,player.profile.role])]);
   const reserve=(defender,target)=>{
     if(!target||used.has(target.id)||target.teamId===teamId) return false;
     assignments[defender.id]=target.id;used.add(target.id);return true;
@@ -38,6 +39,15 @@ function aiDefenseResolveAssignments(defense,teamId,previous,plan){
     };
     for(const defender of defense.filter(player=>!assignments[player.id]&&player.profile.role==='stopper')){
       const target=opponents.filter(player=>!used.has(player.id)).sort((a,b)=>threat(b)-threat(a)||String(a.id).localeCompare(String(b.id)))[0];
+      reserve(defender,target);
+    }
+    for(const defender of defense.filter(player=>!assignments[player.id]&&player.profile.role==='anchor')){
+      const interior=player=>{
+        const p=player.profile,r=p.ratings;
+        return r?(r.strength||50)*.6+(r.closeShot||50)*.5+(r.standingDunk||50)*.4-(r.threePoint||50)*.25:
+          (p.width||1)*45+(p.height||1)*35+(p.layup||1)*25-(p.shot||1)*15;
+      };
+      const target=opponents.filter(player=>!used.has(player.id)).sort((a,b)=>interior(b)-interior(a)||String(a.id).localeCompare(String(b.id)))[0];
       reserve(defender,target);
     }
   }
@@ -290,6 +300,7 @@ function aiGetCoordinatedDefensePlan(teamId,handler,settings,dt=0){
     });
     helper=eligible.sort((a,b)=>{
       const value=player=>flatDistance(player.group.position,gap)+(player.profile.block>1.3?-.65:0)+
+        (player.profile.role==='anchor'?-.65:0)-(Number(player.profile.abilities?.rimGuardian)||0)*.12+
         Math.max(0,(getPlayerById(assignments[player.id])?.profile.shot || 1)-1)*2;
       return value(a)-value(b)||String(a.id).localeCompare(String(b.id));
     })[0] || null;

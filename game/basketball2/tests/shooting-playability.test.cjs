@@ -163,13 +163,40 @@ test('seeded full-flight calibration rewards midrange skill, space, timing and b
       moving:measure({...average,speed:5}),fatigued:measure({...average,stamina:.25})});
   `);
   console.log('Midrange physical calibration:',JSON.stringify(results));
-  assert.ok(results.average>=.5&&results.average<=.6,JSON.stringify(results));
-  assert.ok(results.specialist>=.6&&results.specialist<=.7,JSON.stringify(results));
+  assert.ok(results.average>=.58&&results.average<=.7,JSON.stringify(results));
+  assert.ok(results.specialist>=.68&&results.specialist<=.82,JSON.stringify(results));
   assert.ok(results.moderate<results.average-.09,JSON.stringify(results));
   assert.ok(results.heavy<results.moderate-.08,JSON.stringify(results));
   assert.ok(results.poorTiming<.12,JSON.stringify(results));
   assert.ok(results.moving<results.average-.12,JSON.stringify(results));
   assert.ok(results.fatigued<results.average-.08,JSON.stringify(results));
+});
+
+test('settled side midrange shots reward good timing and skill on both wings and baselines',()=>{
+  const ctx=setup();
+  const results=run(ctx,`(()=>{
+    const rows=[];
+    for(const degrees of [-85,-60,0,60,85]){
+      const row={degrees};
+      for(const specialist of [false,true]){
+        randomSeed=42871;let made=0;
+        for(let i=0;i<360;i++)made+=playAttempt({distance:5.8,angle:degrees*Math.PI/180,meterPct:'center',
+          ratings:specialist?{midrange:88,releaseStability:84,consistency:82}:{midrange:60,releaseStability:60,consistency:60},
+          abilities:specialist?{midrangeAssassin:1}:{}}).made;
+        row[specialist?'specialist':'average']=made/360;
+      }
+      rows.push(row);
+    }
+    return rows;
+  })()`);
+  console.log('Side midrange physical calibration:',JSON.stringify(results));
+  const front=results.find(row=>row.degrees===0);
+  for(const row of results){
+    assert.ok(row.average>=.54&&row.average<.8,JSON.stringify(row));
+    assert.ok(row.specialist>=.64&&row.specialist<.9,JSON.stringify(row));
+    assert.ok(row.specialist>row.average+.035,JSON.stringify(row));
+    assert.ok(row.average>=front.average-.12&&row.specialist>=front.specialist-.12,JSON.stringify({row,front}));
+  }
 });
 
 test('a fast ball scores only on a downward swept hoop crossing with full ball clearance',()=>{

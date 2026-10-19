@@ -55,15 +55,8 @@ function createShotMeter(){
   const stripCanvas = document.createElement("canvas");
   stripCanvas.width = 384; stripCanvas.height = 36;
   const sctx = stripCanvas.getContext("2d");
-  const grad = sctx.createLinearGradient(0,0,stripCanvas.width,0);
-  grad.addColorStop(0,"#ff3333");
-  grad.addColorStop(0.2,"#ffcc33");
-  grad.addColorStop(0.55,"#35ff6b");
-  grad.addColorStop(0.78,"#ffb13b");
-  grad.addColorStop(1,"#ff3333");
-  sctx.fillStyle = grad;
-  sctx.fillRect(0,0,stripCanvas.width,stripCanvas.height);
-  const strip = new THREE.Mesh(new THREE.PlaneGeometry(1.2,.07),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(stripCanvas),transparent:true,opacity:.85,side:THREE.DoubleSide}));
+  const stripTexture=new THREE.CanvasTexture(stripCanvas);
+  const strip = new THREE.Mesh(new THREE.PlaneGeometry(1.2,.07),new THREE.MeshBasicMaterial({map:stripTexture,transparent:true,opacity:.95,side:THREE.DoubleSide}));
   strip.position.z = .002; strip.position.y = .016;
   group.add(strip);
   const fill = new THREE.Mesh(new THREE.PlaneGeometry(.01,.095),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.95,side:THREE.DoubleSide}));
@@ -76,8 +69,26 @@ function createShotMeter(){
   const greenRegion = new THREE.Mesh(new THREE.PlaneGeometry(.2,.082),new THREE.MeshBasicMaterial({color:0x35ff6b,transparent:true,opacity:.38,side:THREE.DoubleSide}));
   greenRegion.position.z = .003;
   group.add(greenRegion);
-  shotMeter = {group,fill,glow,stripCanvas,sctx,greenRegion,lastProfile:null};
+  shotMeter = {group,fill,glow,stripCanvas,sctx,stripTexture,greenRegion,lastProfile:null};
   scene.add(group);
+}
+
+function paintShotMeterProfile(profile){
+  if(!shotMeter||!profile)return false;
+  const fields=['slightlyEarlyStart','greenStart','greenEnd','slightlyLateEnd'];
+  const values=fields.map(key=>profile[key]);
+  if(values.some(value=>!Number.isFinite(value)))return false;
+  if(shotMeter.lastProfile&&values.every((value,index)=>value===shotMeter.lastProfile[index]))return false;
+  const {stripCanvas,sctx,stripTexture}=shotMeter,w=stripCanvas.width,h=stripCanvas.height;
+  const edge=value=>Math.max(0,Math.min(w,Math.round(value*w)));
+  // Inward pixel rounding keeps every bright-green pixel inside the true band.
+  const greenStart=Math.ceil(profile.greenStart*w),greenEnd=Math.floor(profile.greenEnd*w);
+  sctx.fillStyle='#b13b45';sctx.fillRect(0,0,w,h);
+  sctx.fillStyle='#e4b85d';sctx.fillRect(edge(profile.slightlyEarlyStart),0,Math.max(0,greenStart-edge(profile.slightlyEarlyStart)),h);
+  sctx.fillStyle='#e79b4b';sctx.fillRect(greenEnd,0,Math.max(0,edge(profile.slightlyLateEnd)-greenEnd),h);
+  sctx.fillStyle='#35ff6b';sctx.fillRect(greenStart,0,Math.max(0,greenEnd-greenStart),h);
+  sctx.strokeStyle='#ecfff2';sctx.lineWidth=2;sctx.strokeRect(greenStart+1,1,Math.max(0,greenEnd-greenStart-2),h-2);
+  shotMeter.lastProfile=values.slice();stripTexture.needsUpdate=true;return true;
 }
 
 function addSpotLight(x,y,z){
@@ -1457,12 +1468,21 @@ function playerHasBall(char){
   return ballOwner === char.id && ballState === "dribble";
 }
 function canLayup(player){
-  if(!player.hasBall || ballState !== "dribble") return false;
+  if(!player.hasBall || ballState !== "dribble"){
+    if(player.moveMeta) player.moveMeta.shotGatherIntent=null;
+    return false;
+  }
   const dist = flatDistance(player.group.position,HOOP_POS);
   const defender = getNearestOpponent(player);
   const hasBodyUp = !!(defender && defender.bodyUpTimer > 0.05 && flatDistance(defender.group.position,player.group.position) < 1.28);
   if(hasBodyUp) player.contactFinishBonusOrPenalty = THREE.MathUtils.clamp((player.profile.layup-1)*0.18 + (player.profile.width-defender.profile.width)*0.2,-0.22,0.12);
-  return dist < 2.9 || dist < 3.6 && player.velocity.length() > (hasBodyUp ? .85 : 1.2);
+  const charging=typeof shotCharging!=='undefined'&&shotCharging&&typeof chargingPlayer!=='undefined'&&chargingPlayer===player;
+  if((!charging||dist>=3.6)&&player.moveMeta) player.moveMeta.shotGatherIntent=null;
+  const eligible=dist<2.9||dist<3.6&&player.velocity.length()>(hasBodyUp?.85:1.2);
+  // A drive can enter finishing range after the button was first pressed.
+  if(eligible&&charging&&player.moveMeta) player.moveMeta.shotGatherIntent='layup';
+  const intent=player.moveMeta?.shotGatherIntent;
+  return eligible||dist<3.6&&charging&&(intent==='layup'||intent==='dunk');
 }
 function chooseShotType(player){
   if(!playerHasBall(player) && player.moveMeta){

@@ -52,7 +52,8 @@ function setupMatchPlayers(){
     let count=matchPlayers.filter(player=>player.teamId===team).length;
     while(count<teamSize){
       const key=basketballComplementaryProfile(team,count,keys);
-      const profile=typeof riseMatch!=="undefined"&&riseMatch ? riseRuntimeProfile((team===0?riseMatch.home:riseMatch.away)[count],team) : {...profiles[key]};
+      const profile=typeof riseMatch!=="undefined"&&riseMatch ? riseRuntimeProfile((team===0?riseMatch.home:riseMatch.away)[count],team) :
+        (typeof customMatchProfile==='function'?customMatchProfile(team,count):null)||{...profiles[key]};
       const player=createCharacter(profile,new THREE.Vector3(),`team${team}_${count}`,team);
       player.teamId=team; player.controllerSlot=null;
       matchPlayers.push(player); scene.add(player.group); count++;

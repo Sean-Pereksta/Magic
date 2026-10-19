@@ -58,6 +58,11 @@ const BasketballDevelopment=(()=>{
     const error=timingError/Math.max(.65,timingTolerance);
     const outside=Math.max(0,Math.abs(error)-halfWindow);
     const timingBias=-Math.sign(error)*(Math.min(Math.abs(error),halfWindow)*.23+outside*(1.1+Math.max(0,outside-.035)*24))*(close?.45:1);
+    // A settled, well-timed midrange release should reward the created space.
+    // Apply the same control at either wing/baseline; contested, tired or
+    // running attempts keep their existing dispersion instead of an angle bonus.
+    if(!close&&!three) spread-=.06*clamp(1-pressure/.45,0,1)*clamp(1-speed/2.5,0,1)*
+      clamp(((char.stamina??1)-.35)/.5,0,1)*clamp(1-outside/.08,0,1);
     spread+=outside*.24;
     return {rating:r,spread:clamp(spread,close?.035:.135,.95),timingBias,pressure,
       movementBias:movement*.012,depthBias:-pressure*.17-fatigue*.055,
