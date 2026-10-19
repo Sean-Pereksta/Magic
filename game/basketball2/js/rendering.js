@@ -904,7 +904,7 @@ function createCharacter(profile,pos,id,assignedTeam=null){
   const inferredTeam=assignedTeam ?? (id==="p1"||id==="p2"&&twoPlayerMode&&teamSize>1&&localTeamMode==="cooperative"?0:1);
   const jerseyKey = id==="p2" && twoPlayerMode ? selectedP2Jersey : inferredTeam===0 ? selectedP1Jersey : selectedP2Jersey;
   const selectedStyle = jerseys[jerseyKey] || jerseys.classicBlue;
-  const equipment=id==="p2" && twoPlayerMode ? (typeof selectedP2Equipment!=="undefined" ? selectedP2Equipment : {}) : inferredTeam===0 ? (typeof selectedP1Equipment!=="undefined" ? selectedP1Equipment : {}) : (typeof selectedP2Equipment!=="undefined" ? selectedP2Equipment : {});
+  const equipment=profile.equipment || (id==="p2" && twoPlayerMode ? (typeof selectedP2Equipment!=="undefined" ? selectedP2Equipment : {}) : inferredTeam===0 ? (typeof selectedP1Equipment!=="undefined" ? selectedP1Equipment : {}) : (typeof selectedP2Equipment!=="undefined" ? selectedP2Equipment : {}));
   const sneakerKey = id==="p2" && twoPlayerMode ? selectedP2Sneaker : inferredTeam===0 ? selectedP1Sneaker : selectedP2Sneaker;
   const selectedSneaker=sneakers[sneakerKey] || sneakers.classic;
   const appearance=resolveBasketballEquipment(profile,selectedStyle,selectedSneaker,equipment);
@@ -1106,6 +1106,15 @@ function createCharacter(profile,pos,id,assignedTeam=null){
     }
   };
   player.shotIndicator = createFloatingIndicator(player,"SHOT","#ffffff",.42);
+  if(profile.ratings){
+    const r=profile.ratings;
+    player.movement.acceleration=3.2+(r.acceleration||50)*.04;
+    player.movement.lateralSpeed=2.2+(r.lateralMovement||50)*.025;
+    player.movement.contactStrength=.55+(r.strength||50)*.009;
+    player.movement.turnSpeed=1.7+(r.agility||50)*.018;
+    player.movement.stopSpeed=.6+(r.agility||50)*.008;
+    player.movement.recoverySpeed=.6+(r.stamina||50)*.008;
+  }
   player.defenseIndicator = createFloatingIndicator(player,"CONTAIN","#a5e4ff",.4);
   player.staminaIndicator = createStaminaIndicator();
   player.group.add(player.staminaIndicator);
@@ -1486,7 +1495,7 @@ function getShotMeterProfile(shotType,shooter,contest){
   const shrink = movePenalty + contestPenalty;
   const greenCenter = (base.greenStart + base.greenEnd) * .5;
   const half = Math.max(.05,(base.greenEnd - base.greenStart)*.5 - shrink*.45);
-  return {
+  const profile={
     greenStart:THREE.MathUtils.clamp(greenCenter - half,0.08,0.9),
     greenEnd:THREE.MathUtils.clamp(greenCenter + half,0.1,0.95),
     slightlyEarlyStart:Math.max(0.04,base.slightlyEarlyStart - shrink*.3),
@@ -1495,6 +1504,7 @@ function getShotMeterProfile(shotType,shooter,contest){
     baseMakeBonus:base.baseMakeBonus,
     meterFillSpeed:base.meterFillSpeed
   };
+  return typeof BasketballDevelopment!=="undefined" ? BasketballDevelopment.meterProfile(shotType,shooter,contest,profile) : profile;
 }
 
 function calculateShotTiming(held,shotType="setshot",shooter=null,contest=null){
@@ -1659,6 +1669,7 @@ function getHookReleasePoint(player){
   return player.group.position.clone().add(sideOffset).add(forwardOffset).add(new THREE.Vector3(0,releaseHeight,0));
 }
 function canDunk(player){
+  if(typeof BasketballDevelopment!=="undefined") return BasketballDevelopment.canDunk(player,HOOP_POS,getNearestOpponent(player));
   if(!player.hasBall) return false;
   const defender = getNearestOpponent(player);
   const toRim = HOOP_POS.clone().sub(player.group.position).setY(0);

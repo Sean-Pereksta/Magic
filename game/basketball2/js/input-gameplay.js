@@ -336,6 +336,7 @@ function restoreSimulationTransforms(){
 }
 function simulateBasketball(dt){
   simulationTime+=dt;
+  if(typeof updateRiseRuntime==="function") updateRiseRuntime(dt);
   if(updateScoredPossession(dt)){
     updateHoopReaction(dt); updateParticles(dt); updateConfetti(dt);
     return;
@@ -517,7 +518,7 @@ function updateModernPlayerControl(char,input,dt){
   const wantsSprint=input.sprint&&amount>.18&&char.sprint>SPRINT_MIN;
   const baseSpeed=4.3*balancedSpeed*tuning.lateralSpeed;
   const sprintSpeed=7.05*balancedSpeed*balancedSprint*tuning.sprintSpeed;
-  const defensiveSpeed=4.05*balancedSpeed*tuning.lateralSpeed;
+  const defensiveSpeed=4.05*balancedSpeed*tuning.lateralSpeed*(profile.ratings?(.7+(profile.ratings.lateralMovement??50)*.006):1);
   let targetSpeed=(offense?baseSpeed:defensiveSpeed)*amount;
   if(wantsSprint) targetSpeed=sprintSpeed*amount;
   if(input.protect) targetSpeed*=offense ? .72 : .82;
@@ -538,14 +539,15 @@ function updateModernPlayerControl(char,input,dt){
 
   const targetVelocity=amount>.04?desiredDirection.clone().multiplyScalar(targetSpeed):new THREE.Vector3();
   const sizeAgility=THREE.MathUtils.clamp(1.12-(profile.width-1)*.55+(profile.handle-1)*.2,.7,1.35);
-  const response=amount>.04?(5.4*sizeAgility*tuning.acceleration):(7.2*char.movement.stopSpeed*tuning.deceleration);
+  const ratedAcceleration=profile.ratings?(.65+(profile.ratings.acceleration??50)*.007):1;
+  const response=amount>.04?(5.4*sizeAgility*tuning.acceleration*ratedAcceleration):(7.2*char.movement.stopSpeed*tuning.deceleration);
   const blend=1-Math.exp(-response*dt);
   char.velocity.lerp(targetVelocity,blend);
   if(char.plantTimer>0) char.velocity.multiplyScalar(1-dt*(profile.width>1.08?3.8:2.7));
 
   if(wantsSprint){
     char.sprint=Math.max(0,char.sprint-SPRINT_DRAIN*tuning.staminaDrain*dt);
-    char.stamina=Math.max(0,char.stamina-(.29+(profile.width-1)*.09)*tuning.staminaDrain*dt);
+    char.stamina=Math.max(0,char.stamina-(.29+(profile.width-1)*.09)*tuning.staminaDrain*dt*(profile.ratings?1.5-(profile.ratings.stamina??50)*.01:1));
   }else{
     char.sprint=Math.min(1,char.sprint+SPRINT_RECOVER*char.movement.recoverySpeed*dt);
     char.stamina=Math.min(1,char.stamina+(amount>.15?.11:.24)*dt*(profile.width>1.1?.78:1.05));

@@ -119,6 +119,7 @@ function showMenuScreen(id){
   }
 }
 function showPrimaryMenu(message=""){
+  if(typeof leaveRiseMatch==="function") leaveRiseMatch();
   inputManager.clearAll();
   resetPlayerShotFeedback();
   gameStarted = false;
@@ -133,6 +134,7 @@ function showPrimaryMenu(message=""){
   updateSavedMatchSummary();
 }
 function showQuickPlaySetup(size=null,local=null){
+  if(typeof leaveRiseMatch==="function") leaveRiseMatch();
   gameStarted=false;
   gamePaused=false;
   tutorialMode=false;
@@ -613,7 +615,14 @@ function drawPattern(ctx,patternName,palette,area={x:0,y:0,w:256,h:256}){
   const c1 = toHex(palette.primary || 0x222222);
   const c2 = toHex(palette.secondary || 0xffffff);
   const trim = toHex(palette.trim || palette.accent || 0xffd56a);
-  if(patternName === "flames"){
+  if(patternName === "stripe"){
+    ctx.fillStyle=toHex(palette.secondary);ctx.fillRect(x+w*.4,y,w*.2,h);
+    ctx.fillStyle=toHex(palette.trim);ctx.fillRect(x+w*.37,y,w*.025,h);ctx.fillRect(x+w*.605,y,w*.025,h);
+  }else if(patternName === "split"){
+    ctx.fillStyle=toHex(palette.secondary);ctx.fillRect(x+w*.5,y,w*.5,h);
+  }else if(patternName === "chevron"){
+    ctx.strokeStyle=toHex(palette.secondary);ctx.lineWidth=w*.13;ctx.beginPath();ctx.moveTo(x,y+h*.22);ctx.lineTo(x+w*.5,y+h*.45);ctx.lineTo(x+w,y+h*.22);ctx.stroke();
+  }else if(patternName === "flames"){
     for(let i=0;i<8;i++){ ctx.fillStyle = i%2?"rgba(255,210,120,.5)":"rgba(255,90,40,.5)"; ctx.beginPath(); ctx.moveTo(x+i*w/8,y+h); ctx.quadraticCurveTo(x+i*w/8+w/18,y+h*.35-Math.random()*h*.2,x+i*w/8+w/10,y+h); ctx.fill(); }
   }else if(patternName === "lightning"){
     ctx.strokeStyle = trim; ctx.lineWidth = 3;
@@ -898,6 +907,7 @@ function buildCharacterCards(containerId, which){
 }
 
 function startGame(){
+  if(typeof stopRisePreview==="function") stopRisePreview();
   inputManager.clearAll();
   resetPlayerShotFeedback();
   if(tutorialMode){ teamSize=1; localTeamMode="competitive"; twoPlayerMode=false; }
@@ -928,9 +938,9 @@ function startGame(){
     debugDirHelpers = null;
   }
 
-  const p1Profile = JSON.parse(JSON.stringify(profiles[selectedP1]));
+  const p1Profile = riseMatch ? riseRuntimeProfile(riseMatch.home[0],0) : JSON.parse(JSON.stringify(profiles[selectedP1]));
   p1 = createCharacter(p1Profile, P1_OFFENSE_START, "p1");
-  let p2Profile = JSON.parse(JSON.stringify(profiles[selectedP2]));
+  let p2Profile = riseMatch ? riseRuntimeProfile(riseMatch.away[0],1) : JSON.parse(JSON.stringify(profiles[selectedP2]));
   if(isTournamentGame && currentTournamentEnemy){
     p2Profile = createTournamentBoostedProfile(currentTournamentEnemy,isChampionshipGame);
   }
@@ -967,4 +977,5 @@ function startGame(){
   }
   initBotBrain();
   resetPossession("p1", true);
+  if(riseMatch) initializeRisePlayers();
 }

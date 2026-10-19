@@ -52,7 +52,11 @@ const root=path.resolve(__dirname,'../../..');
 
     // Keep the actual input, animation, gather, collision and scoring systems.
     // Hold opponents outside the shot so open-shot results measure shot mechanics.
-    await page.evaluate(()=>{globalThis.savedTeamAI=updateTeamAI;updateTeamAI=()=>{};gameSettings.set('controlStyle','modern');});
+    await page.evaluate(()=>{
+      globalThis.savedTeamAI=updateTeamAI;updateTeamAI=()=>{};gameSettings.set('controlStyle','modern');
+      globalThis.savedKeyboardRandom=Math.random;let seed=42871;
+      Math.random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+    });
     const attempts=[];
     for(const profile of ['flash','smooth','tower']){
       await page.evaluate(key=>{selectedP1=key;teamSize=1;twoPlayerMode=false;isTournamentGame=false;startGame();},profile);
@@ -79,19 +83,27 @@ const root=path.resolve(__dirname,'../../..');
         await page.keyboard.up('Space');
         const result=await page.evaluate(()=>{
           inputManager.tick();processUnifiedInputActions(p1,inputManager.getState('p1'));
-          for(let i=0;i<240&&!lastScored;i++)simulateBasketball(1/60);
-          return {made:scoreP1>0,attempts:p1.stats.fga,grade:p1.moveMeta.lastTimingGrade,type:p1.moveMeta.lastShotType,ballState,
+          let releasedType=p1.moveMeta.lastShotType;
+          for(let i=0;i<240&&!lastScored;i++){
+            simulateBasketball(1/60);
+            if(!releasedType&&p1.moveMeta.lastShotType)releasedType=p1.moveMeta.lastShotType;
+          }
+          return {made:scoreP1>0,attempts:p1.stats.fga,grade:p1.moveMeta.lastTimingGrade,type:releasedType,ballState,
             finite:ball.position.toArray().every(Number.isFinite),model:getBasketballPlayerModelKind(p1)};
         });
         attempts.push({profile,...config,...result});
         assert.ok(result.finite,JSON.stringify(attempts.at(-1)));
         assert.equal(result.type,config.expected,JSON.stringify(attempts.at(-1)));
         assert.equal(result.attempts,1,JSON.stringify(attempts.at(-1)));
-        assert.ok(result.made,'open real-keyboard shot should score: '+JSON.stringify(attempts.at(-1)));
+        if(config.expected==='layup') assert.ok(result.made,'a clean close gather should finish: '+JSON.stringify(attempts.at(-1)));
       }
     }
-    console.log('PASS: '+attempts.length+' real-keyboard open layups/jumpers across all three player builds and both green edges');
-    await page.evaluate(()=>{updateTeamAI=globalThis.savedTeamAI;teamSize=3;twoPlayerMode=true;localTeamMode='competitive';selectedP1='smooth';startGame();countdownTimer=0;possessionFrozen=false;for(let i=0;i<180;i++)simulateBasketball(1/60);for(let i=0;i<90;i++)updateCameras(1/60);onResize();updateHUD();renderScene();});
+    const jumpers=attempts.filter(attempt=>attempt.expected==='setshot'),madeJumpers=jumpers.filter(attempt=>attempt.made).length;
+    // The expansion intentionally replaces guaranteed green jumpers with
+    // calibrated physical dispersion; close gathers retain their old contract.
+    assert.ok(madeJumpers>=8&&madeJumpers<=23,'real-keyboard jumpers include makes and physical misses: '+JSON.stringify({madeJumpers,attempts:jumpers.length}));
+    console.log('PASS: '+attempts.length+' real-keyboard open layups/jumpers across all three player builds and both green edges; '+madeJumpers+'/'+jumpers.length+' jumpers made');
+    await page.evaluate(()=>{Math.random=globalThis.savedKeyboardRandom;updateTeamAI=globalThis.savedTeamAI;teamSize=3;twoPlayerMode=true;localTeamMode='competitive';selectedP1='smooth';startGame();countdownTimer=0;possessionFrozen=false;for(let i=0;i<180;i++)simulateBasketball(1/60);for(let i=0;i<90;i++)updateCameras(1/60);onResize();updateHUD();renderScene();});
     if(process.env.BASKETBALL_SCREENSHOTS)await page.screenshot({path:path.join(process.env.BASKETBALL_SCREENSHOTS,'basketball2-glb-gameplay.png')});
     for(const layout of ['vertical','horizontal']){
       await page.setViewportSize({width:1281,height:801});

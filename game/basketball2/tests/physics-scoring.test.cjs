@@ -71,6 +71,60 @@ function setup(){
 
 const run=(ctx,source)=>vm.runInContext(source,ctx);
 
+test('a fresh possession reset clears old contact, catch and drive advantages while retaining match stats',()=>{
+  const ctx=setup();
+  run(ctx,`p1.contactTimer=.5;p1.contactCooldown=.2;p1.contactStrength=1.4;p1.bodyUpTimer=.3;
+    p1.lastCatchTime=simulationTime;p1.lastPassQuality=1;p1.moveMeta.approachSpeed=5;p1.moveMeta.activeAbilities=['catchAndShoot'];
+    p1.stats.fga=3;resetBody(p1);`);
+  assert.equal(run(ctx,'p1.contactTimer+p1.contactCooldown+p1.contactStrength+p1.bodyUpTimer'),0);
+  assert.equal(run(ctx,'p1.lastCatchTime'),-Infinity);
+  assert.equal(run(ctx,'p1.lastPassQuality'),0);
+  assert.equal(run(ctx,'p1.moveMeta.approachSpeed'),0);
+  assert.equal(run(ctx,'p1.moveMeta.activeAbilities.length'),0);
+  assert.equal(run(ctx,'p1.stats.fga'),3);
+});
+
+test('stationary humans and AI use the same upgraded screen anchor and earn screens only from real defender contact',()=>{
+  const ctx=setup();
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/player-development.js'),'utf8'),ctx);
+  const result=run(ctx,`
+    function screenPush(rating,rank,human){
+      const screener=matchPlayers[1],defender=matchPlayers[3];
+      matchPlayers=[p1,screener,defender];
+      p1.group.position.set(4,0,-2);screener.group.position.set(0,0,-2);defender.group.position.set(9,0,-2);
+      for(const player of matchPlayers){player.velocity.set(0,0,0);player.moveState='normal';player.onGround=true;player.contactTimer=0;player.contactCooldown=0;}
+      screener.profile.ratings={screening:rating};screener.profile.abilities={screenSetter:rank};
+      screener.controllerSlot=human?'p2':null;screener.aiScreen=!human;screener.screenSetTime=0;screener.stats.screens=0;screener.lastScreenCreditTime=-10;
+      simulationTime=10;takePossession(p1,{silent:true});
+      for(let i=0;i<13;i++)resolveBodyCollisions(1/60);
+      const beforeContact=screener.stats.screens;
+      defender.group.position.set(.96,0,-2);defender.velocity.set(-2,0,0);
+      resolveBodyCollisions(1/60);
+      const pushed=Math.abs(screener.group.position.x),screens=screener.stats.screens,planted=screener.plantedScreen;
+      defender.group.position.set(screener.group.position.x+.96,0,-2);defender.velocity.set(-2,0,0);screener.velocity.set(0,0,0);
+      resolveBodyCollisions(1/60);
+      const afterRepeated=screener.stats.screens;
+      screener.velocity.set(2,0,0);resolveBodyCollisions(1/60);
+      const movingPlanted=screener.plantedScreen;
+      return {pushed,screens,beforeContact,afterRepeated,planted,movingPlanted};
+    }
+    const originalPlayers=matchPlayers;
+    const rookie=screenPush(40,0,true);matchPlayers=originalPlayers;
+    const expert=screenPush(88,3,true);matchPlayers=originalPlayers;
+    const bot=screenPush(88,3,false);matchPlayers=originalPlayers;
+    ({rookie,expert,bot});
+  `);
+  assert.ok(result.expert.pushed<result.rookie.pushed*.65,JSON.stringify(result));
+  assert.ok(Math.abs(result.expert.pushed-result.bot.pushed)<1e-10,JSON.stringify(result));
+  for(const state of [result.rookie,result.expert,result.bot]){
+    assert.equal(state.beforeContact,0,'standing near a handler does not earn XP');
+    assert.equal(state.screens,1,'a planted screen stopping a real defender earns credit');
+    assert.equal(state.afterRepeated,1,'repeated bumps share the screen-credit cooldown');
+    assert.equal(state.movingPlanted,false,'moving players cannot retain a human screen anchor');
+  }
+  assert.equal(result.expert.planted,true);
+});
+
 test('an AI intended pass keeps its validated recipient and rejects an opponent or unfaced target',()=>{
   const ctx=setup();
   const result=run(ctx,`

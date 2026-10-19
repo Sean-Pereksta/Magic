@@ -482,6 +482,7 @@ function getLooseBallPickupQuality(char){
   quality += (char.profile.jump - 1) * 0.08;
   quality += (char.profile.block - 1) * 0.06;
   quality += (char.profile.steal - 1) * 0.14;
+  if(char.profile.ratings) quality+=((char.profile.ratings.rebounding??50)-50)*.003;
   quality -= Math.max(0,char.profile.width - 1) * 0.08;
   if(char.velocity && char.velocity.length() > 5.5) quality -= 0.12;
   return THREE.MathUtils.clamp(quality,0.15,0.98);
@@ -498,6 +499,7 @@ function getPickupPriorityScore(char){
   score += (1.5 - handDist) * 1.2;
   score += char.profile.handle * 0.35;
   score += char.profile.jump * 0.12;
+  if(char.profile.ratings) score+=((char.profile.ratings.rebounding??50)-50)*.012;
   score += Math.max(0,char.group.position.y)*.22;
   return score;
 }

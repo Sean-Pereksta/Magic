@@ -1,4 +1,9 @@
 function updateJumpPhysics(char,dt){
+  if(char.moveMeta&&typeof BasketballDevelopment!=="undefined"){
+    // Keep a short record of a real drive so stopping smoothly into a jumper
+    // earns Pull-Up Specialist without requiring an extra button or shot mode.
+    char.moveMeta.approachSpeed=Math.max(char.velocity.length(),(char.moveMeta.approachSpeed||0)-dt*3);
+  }
   char.jumpCooldown -= dt;
   // The dunk solver owns its gather/rise/landing. Integrating a second jump
   // during the gather dip falsely grounded the player before the actual rise.
@@ -22,6 +27,7 @@ function updateJumpPhysics(char,dt){
 function tryJumpBlock(char,sprintBlock){
   if(char.jumpCooldown > 0 || !char.onGround) return;
   let jumpPower = 4.9 * char.profile.jump;
+  if(typeof BasketballDevelopment!=="undefined") jumpPower*=1+(BasketballDevelopment.rating(char,'blocking',60)-60)*.0014;
 
   if(sprintBlock && char.sprint > .22){
     char.sprint = Math.max(0,char.sprint - .24);
@@ -46,7 +52,17 @@ function resolveBodyCollisions(dt=1/60){
   for(const char of matchPlayers){
     char.contactTimer = Math.max(0,(char.contactTimer || 0) - dt);
     char.contactCooldown = Math.max(0,(char.contactCooldown || 0) - dt);
+    const canPlant=handler&&handler!==char&&handler.teamId===char.teamId&&char.onGround&&char.velocity.length()<.35&&char.moveState==="normal";
+    char.screenSetTime=canPlant?Math.min(.5,(char.screenSetTime||0)+dt):0;
+    char.plantedScreen=!!(char.controllerSlot&&char.screenSetTime>.18);
   }
+  const isPlanted=player=>(player.aiScreen||player.plantedScreen)&&player.onGround&&player.velocity.length()<1.5;
+  const anchor=player=>{
+    if(!isPlanted(player))return 1;
+    if(typeof BasketballDevelopment==="undefined")return .14;
+    const skill=BasketballDevelopment.rating(player,'screening',60),rank=BasketballDevelopment.ability(player,'screenSetter');
+    return THREE.MathUtils.clamp(.22-(skill-60)*.0025-rank*.02,.08,.32);
+  };
   // Teammates occupy space as well: a planted teammate can create a real screen.
   for(let i=0;i<matchPlayers.length;i++) for(let j=i+1;j<matchPlayers.length;j++){
     const a = matchPlayers[i], b = matchPlayers[j];
@@ -60,8 +76,9 @@ function resolveBodyCollisions(dt=1/60){
     const penetration = minDist-dist;
     const relative = a.velocity.clone().sub(b.velocity);
     const closing = Math.max(0,-relative.dot(delta));
-    const invA = (a.aiScreen ? .14 : 1)/Math.max(.65,a.profile.width*.95+a.profile.block*.25);
-    const invB = (b.aiScreen ? .14 : 1)/Math.max(.65,b.profile.width*.95+b.profile.block*.25);
+    const plantedA=isPlanted(a),plantedB=isPlanted(b);
+    const invA = anchor(a)/Math.max(.65,a.profile.width*.95+a.profile.block*.25);
+    const invB = anchor(b)/Math.max(.65,b.profile.width*.95+b.profile.block*.25);
     const splitA=invA/(invA+invB), splitB=1-splitA;
     const correction = Math.min(.16,penetration*.72);
     a.group.position.addScaledVector(delta,correction*splitA);
@@ -70,6 +87,13 @@ function resolveBodyCollisions(dt=1/60){
     a.velocity.addScaledVector(delta,closing*splitA);
     b.velocity.addScaledVector(delta,-closing*splitB);
     keepInCourt(a.group.position); keepInCourt(b.group.position);
+    const screener=handler&&a.teamId===handler.teamId&&a!==handler&&plantedA&&b.teamId!==a.teamId?a:
+      handler&&b.teamId===handler.teamId&&b!==handler&&plantedB&&a.teamId!==b.teamId?b:null;
+    if(screener&&closing>.35&&penetration>.015&&flatDistance(screener.group.position,handler.group.position)<7.5&&
+      simulationTime-(screener.lastScreenCreditTime??-10)>5){
+      screener.stats.screens=(screener.stats.screens||0)+1;
+      screener.lastScreenCreditTime=simulationTime;
+    }
     if(a.teamId===b.teamId || (handler!==a && handler!==b)) continue;
     const offense=handler, defense=handler===a ? b : a;
     if(offense.contactCooldown<=0 && defense.contactCooldown<=0){
@@ -256,11 +280,14 @@ function startStepBack(char){
   if(char.moveState !== "normal" || char.sprint < .15) return;
   char.moveState = "stepback"; char.moveTimer = 0; char.moveDuration = 0.42;
   char.stepBackQuality = THREE.MathUtils.clamp(char.stamina*.65+char.profile.handle*.25-char.velocity.length()*.025,.2,1);
+  if(typeof BasketballDevelopment!=="undefined") char.stepBackQuality=THREE.MathUtils.clamp(char.stepBackQuality+BasketballDevelopment.ability(char,'stepBackCreator')*.075,0,1);
   char.sprint = Math.max(0,char.sprint - .18); showMoveFeedback("Step-back!");
 }
 function updateStepBack(char,dt,pct){
-  const back = getForward(char.angle).multiplyScalar(-2.9 * (1-pct*.55));
-  char.group.position.add(back.multiplyScalar(dt));
+  const creation=typeof BasketballDevelopment!=="undefined"?BasketballDevelopment.ability(char,'stepBackCreator'):0;
+  const back = getForward(char.angle).multiplyScalar(-(2.9+creation*.38) * (1-pct*.55));
+  // Separation is still blocked by actual bodies and the court boundary.
+  char.group.position.copy(moveWithCollisionDampen(char,char.group.position.clone().add(back.multiplyScalar(dt))));
   keepInCourt(char.group.position);
   if(pct > .72 && !char.moveMeta.stepShotReleased){ char.moveMeta.stepShotReleased = true; shotPower = Math.max(.42,shotPower); shootBall(char,"stepback"); }
   if(pct >= 1){ char.moveMeta.stepShotReleased = false; }
@@ -502,7 +529,11 @@ function calculateShotContest(shooter){
     const toShooter=shooter.group.position.clone().sub(defender.group.position).setY(0).normalize();
     const facing=Math.max(0,getForward(defender.angle).dot(toShooter));
     const active=defender.blockTime>0 || defender.handsUpTime>0;
-    let pressure=THREE.MathUtils.clamp((2.9-d)/2.9,0,1)*THREE.MathUtils.clamp(defender.profile.block*.55+defender.profile.steal*.35,.35,1.35);
+    const development=typeof BasketballDevelopment!=="undefined"?BasketballDevelopment:null;
+    const defenseRating=development?development.rating(defender,flatDistance(shooter.group.position,HOOP_POS)<3.6?'interiorDefense':'perimeterDefense',60):60;
+    const reachScale=THREE.MathUtils.clamp((defender.profile.height||1)/(shooter.profile.height||1),.8,1.2);
+    let pressure=THREE.MathUtils.clamp((2.9*reachScale-d)/(2.9*reachScale),0,1)*THREE.MathUtils.clamp(defender.profile.block*.55+defender.profile.steal*.35,.35,1.35);
+    pressure*=1+(defenseRating-60)*.006;
     pressure*=getGameplayTuning().contestStrength*(.55+facing*.3+(active?.24:0));
     if(between) pressure*=1.14;
     if(defender.stumbledTimer>0 || defender.reachRecovery>0) pressure*=.55;
@@ -600,7 +631,7 @@ function animateCharacter(char,dt){
       releaseShot(char,"jumper",{forced:true});
     }
     char.shotMotionTime -= dt;
-    const pct = THREE.MathUtils.clamp(1 - char.shotMotionTime/.46,0,1);
+    const pct = THREE.MathUtils.clamp(1 - char.shotMotionTime/(char.moveMeta?.shotReleaseDuration||.46),0,1);
     animateShotTimeline(char,pct,char.moveMeta.lastShotType || "jumper");
     return;
   }
@@ -642,7 +673,7 @@ function animateCharacter(char,dt){
     if(char.swipeTime<=0) char.swipeConnected=false;
     return;
   }
-  if(!char.hasBall && char.velocity.length()<1.5 && (char.aiScreen || char.aiBrain?.role==="screen")){
+  if(!char.hasBall && char.velocity.length()<1.5 && (char.aiScreen || char.plantedScreen || char.aiBrain?.role==="screen")){
     // Braced arms and a wider stance make a planted screen recognizable on
     // the procedural fallback as well as the articulated player model.
     char.leftArm.rotation.x=-.55;char.rightArm.rotation.x=-.55;

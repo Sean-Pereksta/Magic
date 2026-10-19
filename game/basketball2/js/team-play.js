@@ -52,7 +52,7 @@ function setupMatchPlayers(){
     let count=matchPlayers.filter(player=>player.teamId===team).length;
     while(count<teamSize){
       const key=basketballComplementaryProfile(team,count,keys);
-      const profile={...profiles[key]};
+      const profile=typeof riseMatch!=="undefined"&&riseMatch ? riseRuntimeProfile((team===0?riseMatch.home:riseMatch.away)[count],team) : {...profiles[key]};
       const player=createCharacter(profile,new THREE.Vector3(),`team${team}_${count}`,team);
       player.teamId=team; player.controllerSlot=null;
       matchPlayers.push(player); scene.add(player.group); count++;
@@ -193,8 +193,11 @@ function tryDirectionalPass(char,intendedTarget=null){
   const start=getWorldHand(char,ballSideValue<0?"left":"right");
   start.y=Math.max(1.25,start.y);
   const distance=flatDistance(start,target.group.position);
-  const duration=THREE.MathUtils.clamp(distance/14,.22,.85);
-  const lead=target.velocity.clone().multiplyScalar(duration*.72);
+  const passingSpeed=char.profile.ratings?10+(char.profile.ratings.passing??50)*.08:14;
+  const duration=THREE.MathUtils.clamp(distance/passingSpeed,.22,.85);
+  const vision=char.profile.ratings?.courtVision;
+  const general=Number(char.profile.abilities?.floorGeneral)||0;
+  const lead=target.velocity.clone().multiplyScalar(duration*(vision!==undefined ? .3+vision*.0084+general*.02 : .72));
   passFlight.start.copy(start);
   passFlight.end.copy(target.group.position).add(lead); keepInCourt(passFlight.end);
   passFlight.end.y=1.35*target.profile.height;
@@ -205,10 +208,12 @@ function tryDirectionalPass(char,intendedTarget=null){
   const passing=THREE.MathUtils.clamp(char.profile.passing||char.profile.handle||1,.55,1.5);
   const movementError=Math.min(.16,char.velocity.length()*.012)*(1.2-Math.min(1,passing)*.35);
   const fatigueError=Math.max(0,.55-(char.stamina??1))*.12;
-  const error=((1-alignment)*.28+pressure*.2+Math.max(0,distance-8)*.018+movementError+fatigueError)/passing;
+  const accuracy=char.profile.ratings?(.55+(char.profile.ratings.passingAccuracy??50)*.009):1;
+  const error=((1-alignment)*.28+pressure*.2+Math.max(0,distance-8)*.018+movementError+fatigueError)/(passing*accuracy);
   // Repeatable pressure/angle error rather than a hidden successful-pass roll.
   passFlight.end.x+=forward.z*error; passFlight.end.z-=forward.x*error;
   passFlight.duration=duration; passFlight.elapsed=0;
+  passFlight.quality=THREE.MathUtils.clamp(1-error,0,1);
   passFlight.passerId=char.id; passFlight.targetId=target.id; passFlight.active=true;
   passFlight.previous.copy(start);
   ball.position.copy(start); ballState="pass"; ballOwner=null;
@@ -216,6 +221,7 @@ function tryDirectionalPass(char,intendedTarget=null){
   matchPlayers.forEach(player=>player.hasBall=false);
   shotCharging=false; chargingPlayer=null; shotPower=0;
   char.passAnimation=.32; char.passMotionTime=.32; char.passCooldown=.42;
+  char.stats.passAttempts=(char.stats.passAttempts||0)+1;
   ballVelocity.copy(passFlight.end).sub(start).multiplyScalar(1/duration);
   playShotSound();
   return true;
@@ -246,7 +252,15 @@ function updatePassBall(dt){
     const passer=getPlayerById(passFlight.passerId);
     takePossession(player,{silent:true});
     if(isOpponent){ player.stats.steals++; if(passer) passer.stats.turnovers++; flash("INTERCEPTED"); }
-    else { player.catchAnimation=.34; flash("Good pass"); }
+    else {
+      player.catchAnimation=.34;
+      player.lastCatchTime=simulationTime;
+      player.lastPassQuality=Math.min(1,(passFlight.quality??1)+(Number(passer?.profile.abilities?.floorGeneral)||0)*.05);
+      player.assistPasserId=passer?.id;
+      player.assistCatchTime=simulationTime;
+      if(passer) passer.stats.passes=(passer.stats.passes||0)+1;
+      flash("Good pass");
+    }
     return;
   }
   if(t>=1){
