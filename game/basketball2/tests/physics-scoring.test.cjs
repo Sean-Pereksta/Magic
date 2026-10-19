@@ -327,6 +327,7 @@ test("the live ball integrator carries an open green release through the hoop an
 
 test("every scorer credits their own team and basket awards cannot duplicate",()=>{
   const ctx=setup();
+  run(ctx,"globalThis.scoredOutcomes=[];globalThis.aiRecordScoredPossession=(shooter,points)=>scoredOutcomes.push({id:shooter.id,points})");
   run(ctx,"awardBasket(matchPlayers[2],3)");
   assert.equal(run(ctx,"scoreP1"),3);
   assert.equal(run(ctx,"scoreP2"),0);
@@ -337,6 +338,7 @@ test("every scorer credits their own team and basket awards cannot duplicate",()
   assert.equal(run(ctx,"scoreP2"),2);
   assert.equal(run(ctx,"matchPlayers.filter(p=>p.hasBall).length"),0);
   assert.equal(run(ctx,"ballOwner"),null);
+  assert.equal(run(ctx,"JSON.stringify(scoredOutcomes)"),JSON.stringify([{id:'a1',points:3},{id:'b3',points:2}]),'defenses learn each made basket exactly once, with its actual scorer');
 });
 
 test("layup gathers release a real shot and count exactly one attempt",()=>{
@@ -429,6 +431,26 @@ test('live possession restarts use a short ready beat while new games keep their
   assert.equal(run(ctx,'countdownTimer'),3,'new-match callers can retain the full opening countdown');
 });
 
+test('every starting ball handler gets a few steps of defensive separation in every team size',()=>{
+  for(const size of [1,2,3]){
+    const ctx=setup();
+    const results=run(ctx,`(()=>{
+      teamSize=${size};
+      matchPlayers=[0,1].flatMap(team=>matchPlayers.filter(player=>player.teamId===team).slice(0,teamSize));
+      return matchPlayers.map(owner=>{
+        resetPossession(owner.id,true);
+        return {owner:ballOwner,expected:owner.id,minimum:Math.min(...getOpponents(owner).map(defender=>flatDistance(defender.group.position,owner.group.position))),
+          required:COUNTDOWN_DEFENDER_MIN_DISTANCE,stationary:matchPlayers.every(player=>player.velocity.length()===0)};
+      });
+    })()`);
+    for(const result of results){
+      assert.equal(result.owner,result.expected);assert.ok(result.required>=3.2);
+      assert.ok(result.minimum>=result.required-1e-9,JSON.stringify({size,result}));
+      assert.equal(result.stationary,true);
+    }
+  }
+});
+
 test("a defender blocking the ball out returns possession to offense without changing the shot scorer",()=>{
   const ctx=setup();
   run(ctx,`
@@ -483,6 +505,11 @@ test("a steal needs an opponent, exposed ball, facing direction and the live swi
     checkSteals();
   `);
   assert.equal(run(ctx,"ballOwner"),"p1");
+  run(ctx,"matchPlayers[5].swipeTime=.18;possessionFrozen=true;checkSteals()");
+  assert.equal(run(ctx,"ballOwner"),"p1",'a prepared swipe cannot steal during the ready countdown');
+  run(ctx,"possessionFrozen=false;globalThis.gamePaused=true;checkSteals()");
+  assert.equal(run(ctx,"ballOwner"),"p1",'a paused frame cannot resolve a steal');
+  run(ctx,"globalThis.gamePaused=false");
   run(ctx,"matchPlayers[5].swipeTime=.18;matchPlayers[5].reachRecovery=.2;checkSteals()");
   assert.equal(run(ctx,"ballOwner"),"p1");
   run(ctx,"matchPlayers[5].reachRecovery=0;checkSteals()");

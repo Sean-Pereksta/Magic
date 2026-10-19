@@ -37,6 +37,21 @@ function fixture(size=3){
   ctx.read=()=>ctx.aiGetCoordinatedDefensePlan(1,ctx.handler,ctx.settings).coverage;
   return ctx;
 }
+function observeMadeRoute(c,{kind='drive',side=1,made=true,endDistance=2.6}={}){
+  const passer=c.offense[0],player=kind==='cut'?c.offense[1]:passer;
+  const start=new Vector3(kind==='cut'?side*5:0,0,kind==='cut'?6.5:8);
+  const end=new Vector3(side*1.4,0,endDistance);
+  c.handler=passer;c.ballState='dribble';player.group.position.copy(start);
+  player.velocity.set((end.x-start.x)/.6,0,(end.z-start.z)/.6);
+  for(let frame=0;frame<=6;frame++){
+    player.group.position.copy(start).lerp(end,frame/6);c.teamAITime+=.1;c.aiObserveTeamDefense(c.handler,.1);
+  }
+  if(kind==='cut'){c.handler=player;c.teamAITime+=.05;c.aiObserveTeamDefense(player,.05);}
+  c.ballState='layup';c.teamAITime+=.05;c.aiObserveTeamDefense(player,.05);
+  if(made)c.aiRecordScoredPossession(player,2);
+  player.velocity.set(0,0,0);c.ballState='dead';c.teamAITime+=.1;c.aiObserveTeamDefense(player,.1);
+  c.handler=passer;c.ballState='dribble';return player;
+}
 
 test('shared coverage elects one helper, preserves distinct spots and does not depend on update order',()=>{
   for(const size of [2,3]) for(const reverse of [false,true]){
@@ -157,4 +172,71 @@ test('teammate steering yields to human routes and never mutates human input or 
   const speed=c.aiSteerTeammates(bot,bot.aiBrain,direction);
   assert.ok(Math.abs(direction.x)>.1);assert.ok(speed<1);assert.deepEqual(human.group.position,before);
   assert.equal(c.aiMovementPriority(human,human.aiBrain),100);
+});
+
+test('several visibly completed scoring cuts earn earlier rimward coverage, while fakes and one make do not',()=>{
+  const c=fixture(2);c.read();const plan=c.aiDefensePlans[1],cutter=c.offense[1];
+  for(let i=0;i<5;i++)observeMadeRoute(c,{kind:'cut',side:-1,made:false});
+  assert.equal(c.aiDefenseRouteRead(plan,cutter,c.settings,'cut'),null);
+  observeMadeRoute(c,{kind:'cut',side:-1});
+  assert.equal(c.aiDefenseRouteRead(plan,cutter,c.settings,'cut'),null);
+  observeMadeRoute(c,{kind:'cut',side:-1});
+  assert.equal(c.aiDefenseRouteRead(plan,cutter,c.settings,'cut'),null);
+  observeMadeRoute(c,{kind:'cut',side:-1});
+  const read=c.aiDefenseRouteRead(plan,cutter,c.settings,'cut');assert.equal(read.side,-1);assert.ok(read.confidence>0);
+  cutter.group.position.set(-5,0,6.5);cutter.velocity.set(0,0,0);
+  const defender=c.defense[1],position=defender.group.position.clone(),profile=JSON.stringify(defender.profile);
+  const target=cutter.group.position.clone(),before=target.clone();
+  c.aiDefenseAdaptiveTarget(defender,cutter,c.settings,target,'cut');
+  assert.ok(c.flatDistance(target,c.HOOP_POS)<c.flatDistance(before,c.HOOP_POS));
+  assert.ok(c.flatDistance(target,before)>.2&&c.flatDistance(target,before)<1);
+  assert.deepEqual(defender.group.position,position);assert.equal(JSON.stringify(defender.profile),profile);
+  cutter.group.position.set(5,0,6.5);const opposite=cutter.group.position.clone(),oppositeStart=opposite.clone();
+  c.aiDefenseAdaptiveTarget(defender,cutter,c.settings,opposite,'cut');
+  assert.ok(c.flatDistance(opposite,oppositeStart)<c.flatDistance(target,before)*.3,'switching wings visibly reduces overplay of a learned cut lane');
+  cutter.group.position.set(-5,0,6.5);
+  const successes=plan.tendencies[cutter.id].scoringRoutes['cut:-1'].successes;
+  c.aiRecordScoredPossession(cutter,2);
+  assert.equal(plan.tendencies[cutter.id].scoringRoutes['cut:-1'].successes,successes,'one basket is never recorded twice');
+  const learned=c.read().targets[defender.id].clone();
+  plan.tendencies[cutter.id].scoringRoutes=Object.create(null);plan.coverage=null;
+  assert.ok(c.flatDistance(learned,c.HOOP_POS)<c.flatDistance(c.read().targets[defender.id],c.HOOP_POS),'the coordinated target uses the learned cut lane');
+});
+
+test('scored drive learning works at normal difficulty, relaxes against a counter and follows successful opposite routes',()=>{
+  const c=fixture(1);c.read();const plan=c.aiDefensePlans[1],normal={...c.settings,defensiveIQ:.58};
+  for(let i=0;i<4;i++)observeMadeRoute(c,{side:1});
+  c.handler.group.position.set(0,0,8);c.handler.velocity.set(3,0,-3);
+  const target=new Vector3(0,0,6.4),repeat=target.clone();
+  const read=c.aiDefenseAdaptiveTarget(c.defense[0],c.handler,normal,repeat,'drive');
+  assert.equal(read.side,1);assert.ok(repeat.z<target.z-.2&&repeat.x>0);
+  c.handler.velocity.set(-3,0,-3);const counter=target.clone();
+  c.aiDefenseAdaptiveTarget(c.defense[0],c.handler,normal,counter,'drive');
+  assert.ok(counter.x<repeat.x*.2,'visible opposite momentum reduces lateral overplay without reading input');
+  observeMadeRoute(c,{side:-1});observeMadeRoute(c,{side:-1});
+  assert.equal(c.aiDefenseRouteRead(plan,c.handler,normal,'drive'),null,'successful counters erase stale confidence before learning the new lane');
+  observeMadeRoute(c,{side:-1});observeMadeRoute(c,{side:-1});
+  assert.equal(c.aiDefenseRouteRead(plan,c.handler,normal,'drive').side,-1);
+  c.teamAITime+=180;
+  assert.equal(c.aiDefenseRouteRead(plan,c.handler,normal,'drive'),null,'unused confidence fades with live game time');
+});
+
+test('route adaptation ignores distant makes and does not move or control a human defender',()=>{
+  const c=fixture(2);c.read();const plan=c.aiDefensePlans[1];
+  for(let i=0;i<4;i++)observeMadeRoute(c,{endDistance:6.5});
+  assert.equal(c.aiDefenseRouteRead(plan,c.handler,c.settings,'drive'),null,'a perimeter make is not evidence of a successful rim drive');
+  for(let i=0;i<4;i++)observeMadeRoute(c,{side:1});
+  const human=c.defense[0];human.controllerSlot='p2';human.aiInput={moveX:.5,sprint:true};
+  const before=JSON.stringify({position:human.group.position,input:human.aiInput,profile:human.profile}),target=new Vector3(0,0,5);
+  assert.equal(c.aiDefenseAdaptiveTarget(human,c.handler,c.settings,target),null);
+  assert.deepEqual(target,new Vector3(0,0,5));assert.equal(JSON.stringify({position:human.group.position,input:human.aiInput,profile:human.profile}),before);
+});
+
+test('defensive recovery travel cannot become a learned offensive cut after a turnover',()=>{
+  const c=fixture(1);c.read();const plan=c.aiDefensePlans[1],player=c.offense[0];
+  c.handler=c.defense[0];c.ballState='dribble';player.velocity.set(0,0,-5);
+  for(let i=0;i<8;i++){player.group.position.set(0,0,8-i*.7);c.teamAITime+=.1;c.aiObserveTeamDefense(c.handler,.1);}
+  assert.equal(Object.keys(plan.scoringTracks).length,0);
+  c.handler=player;c.ballState='layup';c.teamAITime+=.1;c.aiObserveTeamDefense(player,.1);c.aiRecordScoredPossession(player,2);
+  assert.equal(c.aiDefenseRouteRead(plan,player,c.settings,'cut'),null);
 });

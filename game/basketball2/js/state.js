@@ -136,7 +136,8 @@ let messageTimer = 0;
 let lastScored = false;
 
 let countdownTimer = 0;
-const COUNTDOWN_DEFENDER_MIN_DISTANCE = 1.9;
+// A few steps of space at the check-in prevent a free swipe on the first tick.
+const COUNTDOWN_DEFENDER_MIN_DISTANCE = 3.2;
 let possessionFrozen = false;
 
 let botStrategy = "drive";

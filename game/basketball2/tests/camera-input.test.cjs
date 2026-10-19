@@ -383,6 +383,24 @@ test("movement remains court-relative after a turn or possession change and acce
   assert.ok(ctx.p1.velocity.x<0);assert.equal(ctx.p1.velocity.z,0);
 });
 
+test('the ready gap prevents inward sprint momentum and queued swipes, then releases normal defense',()=>{
+  const ctx=context();loadMovement(ctx);
+  const constant=fs.readFileSync(path.join(__dirname,'../js/state.js'),'utf8').match(/const COUNTDOWN_DEFENDER_MIN_DISTANCE = [\d.]+;/)[0];
+  vm.runInContext(constant,ctx);
+  ctx.p1.group.position.set(0,0,4.8);ctx.p2.group.position.set(0,0,1.6);
+  ctx.possessionFrozen=true;ctx.countdownTimer=1;ctx.p2.velocity.set(0,0,8);
+  for(let frame=0;frame<60;frame++)ctx.updateModernPlayerControl(ctx.p2,{moveX:1,moveY:0,worldDirection:new Vector3(0,0,1),sprint:true},1/60);
+  const gap=ctx.p1.group.position.clone().sub(ctx.p2.group.position).length();
+  assert.ok(gap>=3.2-1e-9);assert.ok(Math.abs(ctx.p2.velocity.z)<1e-9,'ready movement cannot bank an inward sprint');
+  ctx.handleHandAction(ctx.p2,'right','test-ready');
+  assert.equal(ctx.p2.swipeTime,undefined,'no steal wind-up is queued while frozen');
+  ctx.p2.velocity.set(1,0,4);ctx.enforceCountdownDefenderGap(ctx.p2,ctx.p1,3.2);
+  assert.equal(ctx.p2.velocity.x,1,'lateral repositioning stays available');assert.equal(ctx.p2.velocity.z,0);
+  ctx.possessionFrozen=false;ctx.countdownTimer=0;
+  ctx.updateModernPlayerControl(ctx.p2,{moveX:1,moveY:0,worldDirection:new Vector3(0,0,1)},1/60);
+  assert.ok(ctx.p2.velocity.z>0);assert.ok(ctx.p1.group.position.clone().sub(ctx.p2.group.position).length()<gap,'normal defense can close the gap once play starts');
+});
+
 test("shot and loose-ball chases give both teams equal running speed, direction and sprint controls",()=>{
   for(const state of ["shot","loose"])for(const sprint of [false,true]){
     const ctx=context();loadMovement(ctx);ctx.ballState=state;

@@ -147,7 +147,7 @@ function handleActionButton(char){
 }
 
 function handleHandAction(char,screenSide,inputKey){
-  if(gameOver) return;
+  if(gameOver||gamePaused||possessionFrozen) return;
   const handSide = getBestHandForScreenSide(char,screenSide);
   if(screenSide === "left") char.debugLeftInputTimer = .2;
   else char.debugRightInputTimer = .2;
@@ -442,10 +442,16 @@ function enforceCountdownDefenderGap(defender,ballHandler,minDistance){
   }
   if(push.lengthSq() < 0.0001) push.set(1,0,0);
   const dist = push.length();
-  if(dist >= minDistance) return;
-  push.normalize().multiplyScalar(minDistance);
-  defender.group.position.copy(ballHandler.group.position.clone().add(push));
-  keepInCourt(defender.group.position);
+  if(dist>minDistance+.001) return;
+  push.normalize();
+  if(dist<minDistance){
+    defender.group.position.copy(ballHandler.group.position.clone().addScaledVector(push,minDistance));
+    keepInCourt(defender.group.position);
+  }
+  // Keep tangential movement, but do not bank inward sprint momentum against
+  // the ready boundary and carry it into an immediate steal when play begins.
+  const inward=defender.velocity.dot(push);
+  if(inward<0) defender.velocity.addScaledVector(push,-inward);
 }
 
 function updateShotMeterVisuals(dt){

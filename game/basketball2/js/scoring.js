@@ -294,6 +294,22 @@ function startDunk(char){
   flash(`${char.id.toUpperCase()} ${style==="quick"?"dunk":style+" dunk"}!`);
 }
 
+function isDunkRimWall(defender,owner,start){
+  if(!defender||!defender.onGround||defender.stumbledTimer>0||defender.reachRecovery>0||
+    flatDistance(defender.group.position,owner.group.position)>1.55) return false;
+  const lane=start.clone().sub(HOOP_POS).setY(0),length=lane.length();
+  if(length<.1) return false;
+  lane.normalize();
+  const offset=defender.group.position.clone().sub(HOOP_POS).setY(0),progress=offset.dot(lane);
+  const laneGap=offset.clone().addScaledVector(lane,-progress).length();
+  const facing=getForward(defender.angle).dot(start.clone().sub(defender.group.position).setY(0).normalize());
+  // Feet-to-rim height is irrelevant to a planted body wall. Keep this check
+  // on the court plane, including the close space directly under the hoop.
+  // A defender leaving that lane or missing an airborne reach gives it up.
+  return progress>=-.55&&progress<length-.08&&laneGap<(defender.bodyRadius||.55)+(owner.bodyRadius||.55)*.35&&
+    flatDistance(defender.group.position,HOOP_POS)<1.45&&facing>.35;
+}
+
 function updateDunk(dt){
   if(!dunkActive) return;
   const owner = getPlayerById(dunkOwner);
@@ -383,7 +399,7 @@ function updateDunk(dt){
     const development=meta.finishProfile;
     const defense=development&&rimProtector ? (BasketballDevelopment.rating(rimProtector,'interiorDefense',60)*.55+
       BasketballDevelopment.rating(rimProtector,'strength',60)*.25+BasketballDevelopment.rating(rimProtector,'blocking',60)*.2)/100 : 0;
-    const positioned=!!rimProtector&&isDefenderBetweenBallAndRim(rimProtector,meta.start)&&flatDistance(rimProtector.group.position,HOOP_POS)<1.45;
+    const positioned=isDunkRimWall(rimProtector,owner,meta.start);
     const wall=development&&positioned&&contest.value>.45&&defense+contest.value*.26>development.finish+development.resistance*.23+meta.gatherTiming*.1;
     const spoiled=development&&contest.value>.68&&development.finish+development.resistance*.18<.79;
     if(wall||spoiled||(!development&&contest.value>.72 && finishStrength<1.14 && owner.stamina<.65)){
@@ -543,7 +559,7 @@ function applyBlockDeflection(blocker,shooter,contact=null){
 }
 
 function checkSteals(){
-  if(ballState !== "dribble") return;
+  if(ballState !== "dribble"||possessionFrozen||(typeof gamePaused!=="undefined"&&gamePaused)) return;
   const ballHandler=getBallHandler();
   if(!ballHandler) return;
   for(const defender of getOpponents(ballHandler)){
@@ -631,6 +647,7 @@ function awardBasket(shooter,points,kind="Jumper"){
   else scoreP2+=points;
   shooter.stats.fgm+=1;
   shooter.stats.points=(shooter.stats.points||0)+points;
+  if(typeof aiRecordScoredPossession==='function') aiRecordScoredPossession(shooter,points);
   if(points===3) shooter.stats.tpm+=1;
   if(shooter.assistPasserId&&simulationTime-(shooter.assistCatchTime||0)<5){
     const passer=getPlayerById(shooter.assistPasserId);
