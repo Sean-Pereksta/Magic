@@ -135,7 +135,7 @@ test('standing close finishes and open jumper timing bands remain playable witho
   assert.ok(made/total>.35&&made/total<.85,`physical make rate ${made}/${total}`);
 });
 
-test('open finishes are stable across frame intervals while smothered tap finishes can fail',()=>{
+test('open finishes are stable across frame intervals while coverage and poor timing remain visible',()=>{
   const ctx=setup();
   for(const dt of [1/30,1/60,1/120]){
     assert.equal(attempt(ctx,{distance:2.5,speed:2,held:.08,dt}).made,true);
@@ -145,11 +145,34 @@ test('open finishes are stable across frame intervals while smothered tap finish
     assert.equal(shot.grade,'Green Release');
   }
   const crowded=attempt(ctx,{distance:2.5,speed:2,held:.08,pressure:1});
-  assert.equal(crowded.made,false,JSON.stringify(crowded));
   assert.equal(crowded.attempts,1);
   assert.notEqual(crowded.grade,'Open Finish');
   assert.equal(attempt(ctx,{distance:5.8,meterPct:.05}).made,false);
   assert.equal(attempt(ctx,{distance:5.8,meterPct:1}).made,false);
+});
+
+test('bot-length layup taps retain touch under coverage while smothering and finishing skill still matter',()=>{
+  const ctx=setup();
+  const results=run(ctx,`(()=>{
+    // Hold pressure fixed through the gather to isolate release control from
+    // the attacker moving past a stationary defender. Every shot flies normally.
+    let pressure=0;
+    calculateShotContest=()=>({value:pressure,label:'Calibration'});
+    function measure(contest,ratings=null,n=240){
+      pressure=contest;randomSeed=42871;let made=0;
+      for(let i=0;i<n;i++)made+=playAttempt({distance:2.5,speed:3.6,held:.10,ratings}).made;
+      return made/n;
+    }
+    return {open:measure(0),light:measure(.3),moderate:measure(.5),heavy:measure(.7),smothered:measure(1),
+      skilledSmothered:measure(1,{layups:88,contactFinishing:88,aerialControl:88,releaseStability:84,consistency:82})};
+  })()`);
+  console.log('Contested layup physical calibration:',JSON.stringify(results));
+  assert.ok(results.open>=.95&&results.light>=.90,JSON.stringify(results));
+  assert.ok(results.moderate>=.75&&results.moderate<.99,JSON.stringify(results));
+  assert.ok(results.heavy>=.48&&results.heavy<=.82,JSON.stringify(results));
+  assert.ok(results.smothered>=.18&&results.smothered<=.50,JSON.stringify(results));
+  assert.ok(results.smothered<results.heavy-.15,JSON.stringify(results));
+  assert.ok(results.skilledSmothered>results.smothered+.08&&results.skilledSmothered<.65,JSON.stringify(results));
 });
 
 test('seeded full-flight calibration rewards midrange skill, space, timing and balance',()=>{

@@ -175,7 +175,9 @@ const root=path.resolve(__dirname,'../../..');
     },calibrationSamples);
     console.log('Real GLB release / full physical-flight calibration ('+calibrationSamples+' attempts/condition):',JSON.stringify(calibration));
     assert.ok(calibration.average>=.58&&calibration.average<=.7,JSON.stringify(calibration));
-    assert.ok(calibration.specialist>=.68&&calibration.specialist<=.82,JSON.stringify(calibration));
+    // The modest accuracy lift also rewards a specialist's settled green
+    // release; pressure, movement and fatigue must still lower makes below.
+    assert.ok(calibration.specialist>=.68&&calibration.specialist<=.88,JSON.stringify(calibration));
     assert.ok(calibration.moderate<calibration.average-.08);
     assert.ok(calibration.heavy<calibration.moderate-.05);
     assert.ok(calibration.poorTiming<.12);
