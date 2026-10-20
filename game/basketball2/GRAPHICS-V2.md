@@ -52,4 +52,6 @@ node game/basketball2/tests/graphics-v2-browser.cjs
 
 That test uses the configured Cloudflare URL by default and covers all four environments, profile colors, unchanged camera, shadow limits, Low on the next match, mobile assets and a simulated CDN outage. `GRAPHICS_ASSET_DIR` can point to a local copy of the uploaded root for offline runs. `THREE_BUNDLE` can point to a Three r160 UMD bundle. `GRAPHICS_REPORT` and `GRAPHICS_SCREENSHOT` optionally write a JSON report and an actual-game screenshot.
 
+CI also runs `graphics-v2-lifecycle-browser.cjs` and `graphics-v2-runtime-browser.cjs` with controlled offline environment fixtures and real bundled player rigs. The full gameplay smoke test exercises the enabled graphics integration with bundled fallback assets. Focused gameplay/controller/equipment suites keep their original model fixtures and explicitly disable the optional graphics adapter; their existing assertions remain unchanged.
+
 The vendored GLTFLoader comes from Three.js r160 and uses the game's existing Three global. Its MIT license is included beside it. Environment GLBs have embedded textures and require no compression extensions or extra decoders. Player GLBs keep the custom loader's uncompressed contract.

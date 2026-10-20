@@ -4,6 +4,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {chromium}=require('playwright');
+const {installLegacyGraphicsFixture}=require('./legacy-graphics-fixture.cjs');
 const root=path.resolve(__dirname,'../../..');
 const samples=Math.max(3,Math.min(40,Number(process.env.SIDE_LAYUP_SAMPLES)||12));
 (async()=>{
@@ -21,6 +22,8 @@ const samples=Math.max(3,Math.min(40,Number(process.env.SIDE_LAYUP_SAMPLES)||12)
   });
   if(process.env.THREE_BUNDLE)await page.route('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',route=>route.fulfill({path:process.env.THREE_BUNDLE,contentType:'text/javascript'}));
   await page.route('https://pub-b956b47cfcfd467d9f678959c08a5781.r2.dev/*.glb',route=>route.fulfill({path:path.join(root,'game/basketball2/assets/models',new URL(route.request().url()).pathname.split('/').pop()),contentType:'model/gltf-binary',headers:{'Access-Control-Allow-Origin':'*'}}));
+  await installLegacyGraphicsFixture(page);
+
   await page.goto('http://basketball.local/game/basketball2/');await page.waitForFunction(()=>basketballPlayerModels.assets.size===3);
   await page.evaluate(()=>{
    updateTeamAI=()=>{};customRosterDraft.enabled=false;gameSettings.set('controlStyle','modern');gameSettings.set('gameplayPreset','simulation');
