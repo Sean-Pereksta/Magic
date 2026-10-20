@@ -20,6 +20,7 @@ async function installRoutes(page){
     return route.fulfill({path:file,contentType:contentTypes[path.extname(file)]||'application/octet-stream'});
   });
   if(process.env.THREE_BUNDLE) await page.route('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',route=>route.fulfill({path:process.env.THREE_BUNDLE,contentType:'text/javascript'}));
+  await installLegacyGraphicsFixture(page);
 }
 
 async function assertNoHorizontalOverflow(page,label){
@@ -81,7 +82,6 @@ async function touchSwipe(page,x,startY,endY){
     const errors=[];
     page.on('pageerror',error=>errors.push(error.stack));
     await installRoutes(page);
-    await installLegacyGraphicsFixture(page);
 
     await page.goto('http://basketball.local/game/basketball2/');
     await page.waitForFunction(()=>!!window.THREE&&!!renderer);
