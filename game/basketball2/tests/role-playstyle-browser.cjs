@@ -30,7 +30,10 @@ const root=path.resolve(__dirname,'../../..');
     await page.evaluate(()=>{
       globalThis.roleFixture=(kind='open',seed=42)=>{
         selectedDifficulty='impossible';selectedP1='crafty';selectedP2='bruiser';
-        showQuickPlaySetup(3,false);startGame();inputManager.clearAll();
+        showQuickPlaySetup(3,false);
+        customRosterDraft.cap=250;
+        customRosterDraft.teams=[['classic:crafty','classic:deeprange','classic:tower'],['classic:bruiser','classic:claw','classic:rocket']];
+        startGame();inputManager.clearAll();
         gameOver=false;gamePaused=false;pendingInbound=null;countdownTimer=0;possessionFrozen=false;scoreP1=0;scoreP2=0;
         gameSettings.set('controlStyle','modern');gameSettings.set('gameplayPreset','simulation');
         matchPlayers.forEach((p,i)=>{resetBody(p);p.controllerSlot='fixture';p.group.position.set(i%2?8:-8,0,5+i);p.stamina=1;p.sprint=1;Object.keys(p.stats).forEach(k=>p.stats[k]=0);});
