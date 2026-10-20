@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {BIOME_ORDER,REGIONS,endlessChunkCount,regionForDepth} from '../js/world/regions.js';
 import {JOURNEY_NODES,createJourneySave} from '../js/world/journey.js';
-import {createLevel,updateWorldStreaming,persistWorldState,restoreWorldState,finalTemplate,CHUNK_WIDTH} from '../js/world/generator.js';
-import {ROOM_LIBRARY,DYNAMIC_ROOM_LIBRARY} from '../js/world/rooms.js';
+import {createLevel,updateWorldStreaming,persistWorldState,restoreWorldState,finalTemplate,layoutTemplate,CHUNK_WIDTH} from '../js/world/generator.js';
+import {ROOM_LIBRARY,DYNAMIC_ROOM_LIBRARY,EXPLORATION_ROOM_LIBRARY} from '../js/world/rooms.js';
 import {routeProofKey} from '../js/world/route-proof-key.js';
 import {ROUTE_PROOFS} from '../js/world/route-proofs.js';
 import {syncMovers,syncHazards,sampleMover,updateMovers} from '../js/physics.js';
@@ -21,16 +21,19 @@ changedPhysics=changedPhysics.replace('function enabled(platform) { return ','fu
 const changedPhysicsURL='data:text/javascript;base64,'+Buffer.from(changedPhysics).toString('base64');
 const keySource=(await readFile(new URL('../js/world/route-proof-key.js',import.meta.url),'utf8'))
  .replace("'../config.js'",JSON.stringify(new URL('../js/config.js',import.meta.url).href))
- .replace("'../physics.js'",JSON.stringify(changedPhysicsURL));
+ .replace("'../physics.js'",JSON.stringify(changedPhysicsURL))
+ .replace("'./room-validator.js'",JSON.stringify(new URL('../js/world/room-validator.js',import.meta.url).href))
+ .replace("'./gate-progress.js'",JSON.stringify(new URL('../js/world/gate-progress.js',import.meta.url).href))
+ .replace("'../powers/blessings.js'",JSON.stringify(new URL('../js/powers/blessings.js',import.meta.url).href));
 const changedKey=await import('data:text/javascript;base64,'+Buffer.from(keySource).toString('base64'));
 assert.notEqual(changedKey.routeProofKey(DYNAMIC_ROOM_LIBRARY[0]),routeProofKey(DYNAMIC_ROOM_LIBRARY[0]),'private enabled collision policy is part of proof identity');
-for(const room of [...ROOM_LIBRARY,...DYNAMIC_ROOM_LIBRARY,...ROOM_LIBRARY.map(finalTemplate)])assert.ok(ROUTE_PROOFS[routeProofKey(room)]?.valid,`${room.id}: runtime proof must match current controller and geometry`);
+for(const room of [...ROOM_LIBRARY,...DYNAMIC_ROOM_LIBRARY,...DYNAMIC_ROOM_LIBRARY.filter(r=>r.platforms.some(p=>p.pressureGate)).map(r=>layoutTemplate(r)),...EXPLORATION_ROOM_LIBRARY,...ROOM_LIBRARY.map(finalTemplate)])assert.ok(ROUTE_PROOFS[routeProofKey(room)]?.valid,`${room.id}: runtime proof must match current controller and geometry`);
 assert.deepEqual(Array.from({length:22},(_,i)=>endlessChunkCount(i)),[6,6,6,7,7,7,8,8,8,9,9,9,10,10,10,11,11,11,12,12,12,12]);
 for(let depth=0;depth<100;depth++){assert.equal(regionForDepth(depth),BIOME_ORDER[depth%6]);assert.ok(endlessChunkCount(depth)<=12);}
-assert.deepEqual(JOURNEY_NODES.map(n=>n.targetTime),[450,525,600,675,725,775]);
+assert.deepEqual(JOURNEY_NODES.map(n=>n.targetTime),[225,263,300,338,363,388]);
 for(const biome of BIOME_ORDER){
  const modern=createLevel({biome,seed:1512,difficulty:4});
- assert.equal(modern.chunkCount,REGIONS[biome].legacyChunks/2);
+ assert.equal(modern.chunkCount,REGIONS[biome].legacyChunks/4);
  assert.ok(modern.chunkPlan.filter(c=>c.requiresDynamic).length>=Math.floor(modern.chunkCount/5),'mandatory encounters recur throughout each region');
  assert.ok(modern.checkpoints.every(c=>c.chunkIndex%5===0||c.arena));
  assert.ok(modern.chunkPlan.at(-1).final&&!modern.chunkPlan.at(-1).requiresDynamic,'guardian seam remains statically safe');

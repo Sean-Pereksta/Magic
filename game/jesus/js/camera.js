@@ -20,7 +20,7 @@ export class Camera {
       const right = center + (lookDown || direction > 0 ? ahead : 90);
       const lower = [...(world.platforms || []), ...(world.movers || [])]
         .filter(p => !p.dead && !p.open && !p.hidden && p.kind !== 'wall' && p.kind !== 'gate'
-          && p.x + p.w > left && p.x < right && p.y >= feet + 56)
+          && p.x + p.w > left && p.x < right && p.y >= feet + 56 && p.y < feet + VIEW.height * .85)
         .sort((a, b) => a.y - b.y)[0];
       if (lower) target = Math.max(target, lower.y + 100 - VIEW.height);
     }
@@ -31,6 +31,15 @@ export class Camera {
         const upper=(lift.baseY??lift.y)-(lift.range||0);
         target=Math.min(target,Math.max(upper-140,feet-VIEW.height+100));
       }
+      // Reveal the next climbing landing before takeoff. Restrict the search to
+      // nearby exploration shelves so a distant chamber cannot pull the camera.
+      const center=player.x+player.w/2;
+      const upper=[...(world.platforms||[]),...(world.movers||[])]
+        .filter(p=>!p.dead&&!p.open&&!p.hidden&&p.kind!=="wall"&&p.kind!=="gate"
+          && (p.exploration || p.chamber || player.wall || player.vy < -100)
+          && p.x+p.w>center-210&&p.x<center+270&&p.y<feet-48&&p.y>feet-290)
+        .sort((a,b)=>b.y-a.y)[0];
+      if(upper)target=Math.min(target,upper.y-112);
     }
     // Looking down reveals landings while keeping the player's head in view.
     return Math.min(target, player.y - 64);
@@ -46,6 +55,9 @@ export class Camera {
     this.x = lerp(this.x, targetX, 1 - Math.exp(-7.5 * dt));
     const deadZone = lookDown ? 4 : 12;
     if (Math.abs(targetY - this.y) > deadZone) this.y = lerp(this.y, targetY - Math.sign(targetY - this.y) * deadZone, 1 - Math.exp(-6 * dt));
+    // Fast descents into caves still retain both the player and space below the
+    // feet; the ordinary follow remains smooth through lift transfers.
+    this.y=clamp(this.y,player.y+player.h-VIEW.height+72,player.y-64);
     const left = this.arena?.left ?? 0, right = this.arena?.right ?? world.width;
     this.x = clamp(this.x, left, Math.max(left, right - VIEW.width));
     this.y = clamp(this.y, this.arena?.top ?? world.bounds?.top ?? -700, (this.arena?.bottom ?? world.bounds?.bottom ?? 1000) - VIEW.height);

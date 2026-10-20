@@ -6,11 +6,28 @@ import { validateRoom, validateLevel } from "./room-validator.js";
 import { surfaceY, syncMovers, syncHazards } from "../physics.js";
 import { routeProofKey } from "./route-proof-key.js";
 import { ROUTE_PROOFS } from "./route-proofs.js";
+import { explorationRoomsFor } from "./exploration-rooms.js";
 
-export const LAYOUT_VERSION=2;
+export const LAYOUT_VERSION=3;
 
 const clone=value=>JSON.parse(JSON.stringify(value));
 const validationCache=new Map();
+const modernTemplates=new WeakMap();
+// Old saves continue to use the untouched pressure-gate room. New worlds use
+// the same moving route with a sealed, animated version of that progression door.
+export function layoutTemplate(template,layoutVersion=LAYOUT_VERSION) {
+  if(layoutVersion<3||!template.platforms.some(p=>p.pressureGate))return template;
+  if(modernTemplates.has(template))return modernTemplates.get(template);
+  const result=clone(template);result.id+="-sealed";result.progressionGates=true;
+  for(const p of result.platforms)if(p.pressureGate) {
+    Object.assign(p,{y:-700,h:1700,frameTop:-700,frameBottom:1000,mandatory:true,exploration:true,appearance:"temple",unlockLocals:[p.switchLocal]});
+    Object.assign(result.switches[p.switchLocal],{exploration:true,kind:"pressure"});
+    result.platforms.push({x:p.x-130,y:-700,w:300,h:100,kind:"ceiling",oneWay:false});
+    result.platforms.push({x:p.x,y:VIEW.floorY-25,w:p.w,h:1000-VIEW.floorY+25,kind:"ground",oneWay:false});
+  }
+  result.props=result.props.filter(p=>p.switchLocal==null);
+  modernTemplates.set(template,result);return result;
+}
 function numericSeed(value) {
   if(typeof value==="number")return (value>>>0)||1;
   let n=2166136261;for(const char of String(value)){n^=char.charCodeAt(0);n=Math.imul(n,16777619);}return n>>>0;
@@ -65,11 +82,11 @@ export function finalTemplate(template) {
 
 export function createLevel({biome,region="countryside",seed=1,difficulty=1,mode="journey",abilities={},chunkCount=null,layoutVersion=LAYOUT_VERSION}={}) {
   biome=normalizeBiome(biome||region);const definition=REGIONS[biome],runSeed=numericSeed(seed);
-  const legacy=layoutVersion===1;
-  const count=Math.max(3,Math.min(112,Math.floor(chunkCount||(legacy?definition.legacyChunks:definition.chunks))));
+  const legacy=layoutVersion===1,oldLayout=layoutVersion<=2;
+  const count=Math.max(3,Math.min(112,Math.floor(chunkCount||(legacy?definition.legacyChunks:oldLayout?(definition.previousChunks||definition.chunks):definition.chunks))));
   const width=count*CHUNK_WIDTH;
   const world={
-    id:`${biome}-${runSeed}`,layoutVersion:legacy?1:LAYOUT_VERSION,name:definition.name,regionName:definition.name,biome,region:biome,seed:runSeed,
+    id:`${biome}-${runSeed}`,layoutVersion:oldLayout?(legacy?1:2):LAYOUT_VERSION,name:definition.name,regionName:definition.name,biome,region:biome,seed:runSeed,
     tier:Math.max(1,Math.min(6,difficulty)),mode,width,height:1700,chunkWidth:CHUNK_WIDTH,chunkCount:count,
     bounds:{left:0,right:width,top:-700,bottom:1000},deathY:1000,
     spawn:{x:80,y:VIEW.floorY-PHYSICS.playerHeight},exit:{x:width-170,y:VIEW.floorY-92,w:110,h:92},
@@ -80,13 +97,20 @@ export function createLevel({biome,region="countryside",seed=1,difficulty=1,mode
     _resident:new Map(),_state:{collected:new Set(),dead:new Set(),activated:new Set(),dynamics:new Map()},_streamStart:-1,
   };
   const random=seededRandom(runSeed),used=new Map(),checked=new Map();let previous="";
+  const gateIndices=new Set();
+  if(!oldLayout)for(const fraction of count>=8?[.3,.68]:[.5]) {
+    let index=Math.max(1,Math.min(count-2,Math.floor(count*fraction)));
+    if(index%5===0)index=Math.min(count-2,index+1);
+    gateIndices.add(index);
+  }
   const proof=template=>{if(!checked.has(template))checked.set(template,validationFor(template,world.abilities));return checked.get(template);};
   for(let index=0;index<count;index++) {
     const progress=index/(count-1);
     const effectiveTier=Math.max(2,Math.min(6,world.tier+Math.floor(progress*2)));
-    let candidates=roomsFor(biome,effectiveTier,{legacy}).filter(r=>r.id!==previous&&proof(r).valid);
+    let candidates=roomsFor(biome,effectiveTier,{legacy}).filter(r=>r.id!==previous&&proof(layoutTemplate(r,world.layoutVersion)).valid);
     const beat=index%5;
-    const rest=index%(legacy?8:5)===0;
+    const gateEncounter=gateIndices.has(index);
+    const rest=!gateEncounter&&index%(legacy?8:5)===0;
     if(!legacy){
       const dynamic=candidates.filter(r=>r.requiresDynamic);
       const staticRooms=candidates.filter(r=>!r.requiresDynamic);
@@ -95,19 +119,23 @@ export function createLevel({biome,region="countryside",seed=1,difficulty=1,mode
       else candidates=staticRooms.length?staticRooms:candidates;
     }
     if(index===0)candidates=[SAFE_FALLBACK_ROOM];
+    if(gateEncounter)candidates=explorationRoomsFor(biome).filter(r=>r.id!==previous&&proof(r).valid);
+    if(gateEncounter&&!candidates.length)throw new Error("No physically validated exploration chamber is available");
     if(!candidates.length)candidates=[SAFE_FALLBACK_ROOM];
     // Select among least-used eligible modules, then shuffle ties deterministically.
     const least=Math.min(...candidates.map(r=>used.get(r.id)||0));
     const pool=candidates.filter(r=>(used.get(r.id)||0)<=least);
     const chosen=pool[Math.floor(random()*pool.length)];used.set(chosen.id,(used.get(chosen.id)||0)+1);previous=chosen.id;
-    const actualTemplate=index===count-1?finalTemplate(chosen):chosen;
+    const actualTemplate=index===count-1?finalTemplate(chosen):layoutTemplate(chosen,world.layoutVersion);
     const secretCount=actualTemplate.pickupSpawns.filter(isSecretPickup).length;
     world.totalSecrets+=secretCount;
     world.chunkPlan.push({index,x:index*CHUNK_WIDTH,width:CHUNK_WIDTH,moduleId:chosen.id,name:chosen.name,tags:[...actualTemplate.tags],rest,final:index===count-1,
       tier:effectiveTier,seed:numericSeed(runSeed+Math.imul(index+1,2654435761)),entryY:VIEW.floorY,exitY:VIEW.floorY,
       rhythm:rest?"breather":beat===1?"challenge":beat===3?"variation":"flow",requiresDynamic:Boolean(actualTemplate.requiresDynamic),
       timeOffset:legacy?0:(numericSeed(runSeed+index*7919)%1200)/100,
-      secretCount,validation:proof(actualTemplate)});
+      secretCount,validation:proof(actualTemplate),...(!oldLayout?{gateEncounter,chamberStyle:actualTemplate.chamberStyle,
+        guardian:gateEncounter&&actualTemplate.guardianEligible!==false&&(numericSeed(runSeed+index*1367)%10<6),
+        requiredGuardian:gateEncounter&&actualTemplate.guardianEligible!==false&&(numericSeed(runSeed+index*1367)%10<6)&&(numericSeed(runSeed+index*1367)%3===0)}:{})});
     if(rest)world.checkpoints.push({id:`${world.id}:checkpoint:${index}`,x:index*CHUNK_WIDTH+100,y:VIEW.floorY-PHYSICS.playerHeight,
       w:48,h:68,floorY:VIEW.floorY,chunkIndex:index,rest:true,activated:false});
   }
@@ -122,7 +150,7 @@ export function createLevel({biome,region="countryside",seed=1,difficulty=1,mode
 
 function stampChunk(world,descriptor) {
   const source=roomForId(descriptor.moduleId)||SAFE_FALLBACK_ROOM;
-  const template=clone(descriptor.final?finalTemplate(source):source),random=seededRandom(descriptor.seed);
+  const template=clone(descriptor.final?finalTemplate(source):layoutTemplate(source,world.layoutVersion)),random=seededRandom(descriptor.seed);
   const offset=descriptor.x,prefix=`${world.id}:chunk:${descriptor.index}`;
   const chunk={...descriptor,platforms:[],movers:[],hazards:[],enemies:[],pickups:[],props:[],scenery:[],switches:[],tags:[...template.tags]};
   const assign=(items,type)=>items.map((item,index)=>({...item,id:`${prefix}:${type}:${index}`,x:item.x+offset,chunkIndex:descriptor.index}));
@@ -141,14 +169,23 @@ function stampChunk(world,descriptor) {
   chunk.movers.forEach((p,index)=>dressPlatform(p,index,descriptor,world.biome,styleTags));
   chunk.switches=assign(template.switches||[],"switch");
   for(const p of chunk.platforms)if(p.switchLocal!=null)p.switchId=chunk.switches[p.switchLocal]?.id;
+  for(const p of chunk.platforms)if(p.unlockLocals)p.unlockIds=p.unlockLocals.map(i=>chunk.switches[i]?.id);
   chunk.props=assign(template.props||[],"prop");
   for(const p of chunk.props)if(p.switchLocal!=null)p.switchId=chunk.switches[p.switchLocal]?.id;
-  chunk.enemies=descriptor.rest||descriptor.final?[]:template.enemySpawns.map((spawn,index)=>({
+  chunk.enemies=descriptor.rest||descriptor.final?[]:template.enemySpawns.filter(spawn=>!spawn.guardian||descriptor.guardian).map((spawn,index)=>({
     ...spawn,id:`${prefix}:enemy:${index}`,chunkIndex:descriptor.index,type:world.enemyPool[(index+descriptor.index)%world.enemyPool.length],
-    x:spawn.x+offset,y:spawn.y,w:40,h:52,vx:0,vy:0,patrol:index%2?-1:1,facing:index%2?-1:1,hp:spawn.elite?3:2,
+    x:spawn.x+offset,y:spawn.y,w:spawn.w||40,h:spawn.h||52,vx:0,vy:0,patrol:index%2?-1:1,facing:index%2?-1:1,hp:spawn.hp||(spawn.elite?3:2),
     elite:Boolean(spawn.elite),dead:false,homeX:spawn.x+offset,homeY:spawn.y,patrolLeft:spawn.x+offset-45,patrolRight:spawn.x+offset+90,
   }));
+  for(const enemy of chunk.enemies)if(enemy.guardBounds)enemy.guardBounds={left:enemy.guardBounds.left+offset,right:enemy.guardBounds.right+offset};
   chunk.pickups=template.pickupSpawns.map((spawn,index)=>({...spawn,secret:isSecretPickup(spawn),id:`${prefix}:pickup:${index}`,chunkIndex:descriptor.index,x:spawn.x+offset,w:28,h:28,collected:false}));
+  const gate=chunk.platforms.find(p=>p.mandatory);
+  for(const sw of chunk.switches)if(sw.exploration){
+    sw.gateId=gate?.id;
+    if(descriptor.requiredGuardian)sw.guardianId=chunk.enemies.find(e=>e.guardian)?.id;
+  }
+  for(const pickup of chunk.pickups)if(pickup.unlockLocal!=null){pickup.unlockId=chunk.switches[pickup.unlockLocal]?.id;pickup.gateId=gate?.id;}
+  for(const prop of chunk.props)if(prop.targetX!=null)prop.targetX+=offset;
   if(descriptor.rest)chunk.pickups.push({id:`${prefix}:pickup:rest`,chunkIndex:descriptor.index,x:offset+165,y:VIEW.floorY-52,w:28,h:28,type:"bread",collected:false});
   // Append new IDs so existing checkpoints keep the same collected-item IDs.
   // Supplies sit on the ordinary route, before jumps and combat, in every biome.
@@ -165,7 +202,7 @@ function stampChunk(world,descriptor) {
     chunk.scenery.push({id:`${prefix}:scenery:${i}`,chunkIndex:descriptor.index,x:p.x+p.w*0.55,y:p.y,w:90,h:110,artFrame,kind:artFrame,
       scale:0.7+random()*0.5,depth:i%3===0?"far":"near",flip:random()<0.5});
   }
-  if(!descriptor.rest&&!descriptor.final&&!template.requiresDynamic){
+  if(!descriptor.rest&&!descriptor.final&&!template.requiresDynamic&&!template.authoredHazards){
     const tags=new Set(template.tags);
     if(tags.has("river"))chunk.hazards.push({id:`${prefix}:hazard:water`,type:"water",x:offset+305,y:790,w:2550,h:110,active:true});
     if(tags.has("wind"))chunk.hazards.push({id:`${prefix}:hazard:wind`,type:"wind",x:offset+550,y:-170,w:1850,h:760,force:100+world.tier*10,phase:random()*6});
@@ -200,6 +237,10 @@ function stampChunk(world,descriptor) {
   for(const p of [...chunk.platforms,...chunk.props])if(p.switchId){
     p.open=chunk.switches.some(sw=>sw.id===p.switchId&&sw.activated);
     if(p.open&&p.artFrame)p.artFrame="gate-open";
+  }
+  for(const p of chunk.platforms)if(p.unlockIds){
+    p.open=p.unlockIds.length>0&&p.unlockIds.every(id=>chunk.switches.some(sw=>sw.id===id&&sw.activated));
+    if(p.open)p.openProgress=1;
   }
   for(const checkpoint of world.checkpoints.filter(c=>c.chunkIndex===descriptor.index)){
     checkpoint.activated=world._state.activated.has(checkpoint.id)||checkpoint.activated;

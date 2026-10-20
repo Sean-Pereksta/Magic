@@ -43,7 +43,7 @@ function checkpointWorld(value,checkpoint){
   const ids=key=>[...new Set((value[key]||[]).filter(id=>typeof id==="string"&&id.length>0&&id.length<=200))].slice(0,10000);
   const result={version:value.version===2?2:1,seed:checkpoint.seed,biome:checkpoint.nodeId,collected:ids("collected"),dead:ids("dead"),activated:ids("activated"),furthestX:bounded(value.furthestX,0,0,360000)};
   if(value.version===2){
-    result.layoutVersion=value.layoutVersion===2?2:1;result.time=bounded(value.time,0,0,604800);
+    result.layoutVersion=[2,3].includes(value.layoutVersion)?value.layoutVersion:1;result.time=bounded(value.time,0,0,604800);
     result.dynamics=(Array.isArray(value.dynamics)?value.dynamics:[]).slice(0,2048).flatMap(entry=>{
       if(!Array.isArray(entry)||entry.length!==2||typeof entry[0]!=="string"||entry[0].length>200||!record(entry[1])||!record(entry[1].values))return[];
       const values={};
@@ -70,6 +70,16 @@ export class GameStorage{
   loadJourney(){const raw=get(JOURNEY_KEY);if(!raw||raw.version!==3)return migrateJourney(get(LEGACY_KEY));const fresh=createJourneySave();const completed=(Array.isArray(raw.completed)?raw.completed:[]).filter(id=>JOURNEY_BY_ID[id]);const powers=(Array.isArray(raw.permanentPowers)?raw.permanentPowers:[]).filter(p=>POWERS.includes(p));const save={...fresh,...raw,completed,permanentPowers:powers,maxHearts:4,unlocked:Math.min(5,Math.max(0,Math.floor(Number(raw.unlocked)||0))),records:record(raw.records)?raw.records:{}};if(!JOURNEY_BY_ID[save.currentNode])save.currentNode="countryside";save.checkpoint=normalizeCheckpoint(raw.checkpoint,powers);return save;}
   saveJourney(save){return put(JOURNEY_KEY,{...save,version:3,updatedAt:Date.now()});}
   clearJourney(){const fresh=createJourneySave();this.saveJourney(fresh);return fresh;}
+  endlessBest(save){return Math.max(bounded(save?.records?.endless?.bestDistance,0,0,Number.MAX_SAFE_INTEGER),(this.localScores()[0]?.score||0)/10);}
+  updateEndlessRecord(save,run){
+    save.records ||= {};
+    const previousBest=this.endlessBest(save),distance=bounded(run.distance,0,0,Number.MAX_SAFE_INTEGER),old=record(save.records.endless)?save.records.endless:{};
+    const result={previousBest,bestDistance:Math.max(previousBest,distance),newPersonalBest:distance>previousBest};
+    save.records.endless={...old,bestDistance:result.bestDistance,runs:(Number(old.runs)||0)+1,
+      bestRegions:Math.max(Number(old.bestRegions)||0,Number(run.regionsReached)||1),
+      lastRun:{distance,regionsReached:run.regionsReached,enemiesDefeated:run.enemiesDefeated,collectibles:run.collectibles,time:run.time},updatedAt:Date.now()};
+    this.saveJourney(save);return result;
+  }
   localScores(){return scores(get(SCORE_KEY,[]));}
   async scores(){const local=this.localScores();try{const db=window.firebase?.apps?.length?window.firebase.firestore():null;if(!db)return local;const result=await db.collection("highscores").orderBy("score","desc").limit(10).get();return scores([...local,...result.docs.map(doc=>doc.data())]);}catch{return local;}}
   async saveScore(name,score){const row={name:String(name||"Traveler").slice(0,20),score:Math.floor(score),createdAt:Date.now()};put(SCORE_KEY,scores([row,...this.localScores()]));try{const db=window.firebase?.apps?.length?window.firebase.firestore():null;if(db){await db.collection("highscores").add(row);return"cloud";}}catch{}return"browser";}

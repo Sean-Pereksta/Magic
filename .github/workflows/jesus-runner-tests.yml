@@ -1,0 +1,30 @@
+name: Jesus Runner regression tests
+
+on:
+  pull_request:
+    paths:
+      - 'game/jesus/**'
+      - '.github/workflows/jesus-runner-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'game/jesus/**'
+      - '.github/workflows/jesus-runner-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  platformer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: game/jesus
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate routes, collisions, saves, controls and endurance
+        run: npm test

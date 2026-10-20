@@ -8,6 +8,7 @@ const CELL=512, TILE=64, PLATFORM_CONTACT_INSET=8;
 const EFFECT_ALIASES={'fx-impact':'fx-gold-impact','fx-enemy-death':'fx-damage-burst','hit-spark':'fx-gold-impact',jump:'fx-jump-dust',land:'fx-landing-dust',dash:'fx-dash-trail',pickup:'fx-pickup-collect',checkpoint:'fx-checkpoint-activation',hurt:'fx-damage-burst',attack:'fx-blessing-attack-arc'};
 const PROJECTILE_ART={orb:'fx-radial-orb',fire:'fx-fire-meteor',shockwave:'fx-ground-shockwave',javelin:'projectile-javelin',light:'projectile-lightning',lightning:'projectile-lightning',debris:'projectile-stone',stone:'projectile-stone',tablet:'projectile-tablet',thorn:'projectile-thorn',sweep:'fx-boss-sweep-slam',judgment:'fx-holy-light-judgment',eruption:'fx-fire-eruption',attackZone:'fx-boss-sweep-slam'};
 const PICKUP_ART={faith:'faith-light',light:'faith-light',coin:'faith-light',bread:'bread',fish:'fish',scroll:'scroll',relic:'sun-relic',sunRelic:'sun-relic',shield:'ability-shield',sandals:'ability-sandals',wings:'ability-wings',holyLight:'ability-holy-light',fireRain:'ability-fire-rain',chest:'secret-chest-closed',secret:'secret-chest-closed'};
+const GATE_PALETTES={countryside:['#525d49','#a4ad87','#f5d68d'],desert:['#805d42','#c5a16b','#ffe2a0'],city:['#4c4847','#9f8b70','#e9c474'],mountains:['#46545d','#91a1aa','#c6edf5'],ruins:['#4b5650','#94a58b','#c7f0b1'],storm:['#333f55','#7c98b3','#c1deff'],hell:['#35252a','#865044','#ffb36c'],heaven:['#8897af','#e6edf5','#ffe7a0']};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const mix=(a,b,t)=>a+(b-a)*t;
 function position(e,alpha) {return {x:mix(e.prevX??e.previousX??e.x,e.x,alpha),y:mix(e.prevY??e.previousY??e.y,e.y,alpha)};}
@@ -76,14 +77,16 @@ export class Renderer {
     this._background(biome,cam);
     ctx.save();const shake=camera.shake||0;ctx.translate(-cam.x+Math.sin(time*117)*shake*.4,-cam.y+Math.sin(time*93)*shake*.25);
     for(const e of world.scenery||[])if(visible(e,view,220))this._decoration(e,biome,time,true);
+    for(const e of world.props||[])if(e.kind==='chamberBackdrop'&&visible(e,view,100))this._chamber(e,biome,view,time);
     this._terrain(world,biome,view);
+    for(const p of world.platforms||[])if(p.kind==='gate'&&p.mandatory&&visible(p,view,100))this._gate(p,biome,view,time,world);
     for(const p of world.platforms||[])if(['collapsing','collapse'].includes(p.kind)&&visible(p,view))this._dynamicPlatform(p,biome,time,alpha);
     for(const p of world.movers||[])if(!p.dead&&visible(p,view))this._dynamicPlatform(p,biome,time,alpha,true);
-    for(const e of world.props||[])if(!e.dead&&visible(e,view,180))this._decoration(e,biome,time,false);
-    for(const e of world.switches||[])if(visible(e,view,60))this._switch(e,time);
+    for(const e of world.props||[])if(e.kind!=='chamberBackdrop'&&!e.dead&&visible(e,view,180))this._decoration(e,biome,time,false);
+    for(const e of world.switches||[])if(visible(e,view,60))this._switch(e,time,world);
     for(const e of world.hazards||[])if(!e.dead&&visible(e,view,180))this._hazard(e,time,alpha);
     this._checkpoints(game,view,time);this._telegraphs(game,view,time);this._navigation(game,view,time);
-    for(const p of world.pickups||[])if(!p.collected&&visible(p,view,50))this._pickup(p,time);
+    for(const p of world.pickups||[])if(!p.collected&&visible(p,view,50))this._pickup(p,time,world);
     for(const e of world.enemies||[])if(visible(e,view,180)&&(!e.dead||(e.fade??1)>0))this._enemy(e,time,alpha);
     const boss=game.bossController?.boss;if(boss&&visible(boss,view,300))this._boss(boss,time,alpha);
     for(const e of [...(world.enemyProjectiles||[]),...(world.bossHazards||[])])if(visible(e,view,160))this._projectile(e,time,alpha);
@@ -108,7 +111,7 @@ export class Renderer {
     }
   }
   _terrain(world,biome,view) {
-    const platforms=(world.platforms||[]).filter(p=>!p.dead&&!p.open&&!['collapsing','collapse'].includes(p.kind));
+    const platforms=(world.platforms||[]).filter(p=>!p.dead&&!p.open&&!(p.kind==='gate'&&p.mandatory)&&!['collapsing','collapse'].includes(p.kind));
     for(let gy=Math.floor((view.y-32)/CELL);gy<=Math.floor((view.y+view.h)/CELL);gy++)for(let gx=Math.floor(view.x/CELL);gx<=Math.floor((view.x+view.w)/CELL);gx++) {
       const x=gx*CELL,y=gy*CELL,parts=platforms.filter(p=>p.x+p.w>x-18&&p.x<x+CELL+18&&Math.max(p.y+(p.oneWay?100:p.h||64),p.supportBottom||0)>y-32&&p.y<y+CELL+100);
       if(!parts.length)continue;
@@ -204,6 +207,122 @@ export class Renderer {
       const source=INTERIOR_TEXTURE_RECTS[`${entry.meta.id}:${frame.index}`]||content(frame),tw=Math.min(TILE+1,w-col*TILE),th=Math.min(TILE+1,h-row*TILE);
       imageRect(this.ctx,entry.image,{...source,width:source.width*tw/(TILE+1),height:source.height*th/(TILE+1)},x+col*TILE,y+row*TILE,tw,th);
     }
+  }
+  _chamber(room,biome,view,time) {
+    const ctx=this.ctx,palette=GATE_PALETTES[biome]||GATE_PALETTES.ruins,cave=room.chamberStyle==='cave';
+    ctx.save();ctx.beginPath();ctx.rect(room.x,room.y,room.w,room.h);ctx.clip();
+    const shade=ctx.createLinearGradient(0,room.y,0,room.y+room.h);
+    shade.addColorStop(0,cave?'rgba(10,19,28,.88)':'rgba(24,36,42,.52)');shade.addColorStop(1,cave?'rgba(17,28,32,.75)':'rgba(28,42,45,.12)');
+    ctx.fillStyle=shade;ctx.fillRect(room.x,room.y,room.w,room.h);
+    const blocks=this._asset(`${biome}-blocks`,false);
+    if(blocks){ctx.globalAlpha=cave?.17:.11;this._fillTiles(blocks,room.x,room.y,room.w,room.h,view);ctx.globalAlpha=1;}
+    // Large, low contrast arches and ledges establish depth behind the actual
+    // collision shelves. Their subdued palette leaves landing edges readable.
+    const start=Math.max(0,Math.floor((view.x-room.x)/240));
+    ctx.lineWidth=14;ctx.strokeStyle=cave?'rgba(112,135,137,.14)':'rgba(191,203,173,.13)';
+    for(let i=start;i*240<room.w&&room.x+i*240<view.x+view.w+240;i++){
+      const x=room.x+i*240+24;
+      ctx.beginPath();ctx.moveTo(x,room.y+room.h);ctx.lineTo(x,room.y+145);
+      ctx.quadraticCurveTo(x+90,room.y+12,x+180,room.y+145);ctx.lineTo(x+180,room.y+room.h);ctx.stroke();
+    }
+    ctx.globalAlpha=cave?.12:.08;ctx.fillStyle=palette[2];
+    for(let i=0;i<3;i++){
+      const x=room.x+room.w*(i+.3)/3;
+      ctx.beginPath();ctx.moveTo(x,room.y);ctx.lineTo(x+80,room.y);ctx.lineTo(x+230,room.y+room.h);ctx.lineTo(x-70,room.y+room.h);ctx.fill();
+    }
+    ctx.globalAlpha=.3;ctx.fillStyle=palette[2];
+    for(let i=0;i<Math.round(8*this.quality);i++){
+      const x=room.x+((i*193+Math.sin(time*.2+i)*22)%room.w),y=room.y+((i*127-time*5+room.h*2)%room.h);
+      if(x>view.x&&x<view.x+view.w&&y>view.y&&y<view.y+view.h)ctx.fillRect(x,y,2,2);
+    }
+    ctx.restore();
+  }
+  _gate(gate,biome,view,time,world) {
+    const ctx=this.ctx,palette=GATE_PALETTES[biome]||GATE_PALETTES.ruins;
+    const progress=gate.open?1:clamp(gate.openProgress??gate.openingProgress??0,0,1),ease=progress*progress*(3-2*progress);
+    const kind=gate.appearance||'slab',crumble=['boulder','rubble','cave'].includes(kind),iron=kind==='iron',seal=kind==='seal';
+    const top=gate.frameTop??gate.y,bottom=gate.frameBottom??gate.y+gate.h;
+    const y=Math.max(top,view.y-70),height=Math.max(0,Math.min(bottom,view.y+view.h+70)-y);
+    if(!height)return;
+    ctx.save();ctx.beginPath();ctx.rect(gate.x-45,y-30,gate.w+90,height+60);ctx.clip();
+    // The stone jambs stay after opening and visibly join the ceiling and floor.
+    ctx.fillStyle=palette[0];ctx.fillRect(gate.x-15,y,15,height);ctx.fillRect(gate.x+gate.w,y,15,height);
+    ctx.strokeStyle=palette[1];ctx.lineWidth=2;
+    for(const x of [gate.x-13,gate.x+gate.w+12]){ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y+height);ctx.stroke();}
+    if(progress<1){
+      ctx.save();ctx.beginPath();ctx.rect(gate.x,top,gate.w,bottom-top);ctx.clip();
+      const shake=gate.opening?Math.sin(time*47)*(1-progress)*2:0;
+      ctx.translate(shake,0);
+      if(crumble){
+        const step=kind==='cave'?96:kind==='rubble'?43:74,columns=kind==='rubble'?3:2,half=gate.w/columns/2;
+        const first=Math.floor((y-top)/step),last=Math.ceil((y+height-top)/step);
+        for(let row=first;row<last;row++)for(let col=0;col<columns;col++){
+          const direction=col<(columns/2)?-1:1,phase=clamp((progress-(row%4)*.045)/.8,0,1);
+          const x=gate.x+col*gate.w/columns+direction*phase*55,by=top+row*step+phase*phase*170;
+          ctx.save();ctx.globalAlpha=1-phase;ctx.translate(x+half,by+step/2);ctx.rotate(direction*phase*.9);
+          ctx.fillStyle=(row+col)%3?palette[0]:palette[1];ctx.strokeStyle='#263332';ctx.lineWidth=3;
+          ctx.beginPath();ctx.moveTo(-half+2,-step*.35);ctx.lineTo(-5,-step/2);ctx.lineTo(half+3,-step*.28);ctx.lineTo(half-1,step*.36);ctx.lineTo(-3,step/2);ctx.lineTo(-half-3,step*.27);ctx.closePath();ctx.fill();ctx.stroke();
+          ctx.strokeStyle=palette[1];ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-half+6,-step*.24);ctx.lineTo(-3,-step*.36);ctx.lineTo(half-4,-step*.19);ctx.stroke();ctx.restore();
+        }
+      }else{
+        const lift=ease*(bottom-top+40),segmentTop=Math.max(top,y+lift),segmentBottom=Math.min(bottom,y+height+lift),segmentHeight=Math.max(0,segmentBottom-segmentTop);
+        ctx.translate(0,-lift);ctx.fillStyle=palette[0];ctx.fillRect(gate.x,segmentTop,gate.w,segmentHeight);
+        const blocks=this._asset(`${biome}-blocks`,false);
+        if(blocks&&!iron){ctx.globalAlpha=.75;this._fillTiles(blocks,gate.x,top,gate.w,bottom-top,{...view,y:view.y+lift});ctx.globalAlpha=1;}
+        if(iron){
+          ctx.fillStyle='#19232b';ctx.fillRect(gate.x,segmentTop,gate.w,segmentHeight);ctx.strokeStyle=palette[1];ctx.lineWidth=5;
+          for(let x=gate.x+7;x<gate.x+gate.w;x+=13){ctx.beginPath();ctx.moveTo(x,segmentTop);ctx.lineTo(x,segmentBottom);ctx.stroke();}
+        }
+        ctx.strokeStyle=kind==='fortress'?'#302e2b':palette[1];ctx.lineWidth=kind==='fortress'?7:3;
+        for(let by=Math.floor(segmentTop/64)*64;by<segmentBottom;by+=64){ctx.beginPath();ctx.moveTo(gate.x,by);ctx.lineTo(gate.x+gate.w,by);ctx.stroke();}
+        if(kind==='fortress'){
+          ctx.strokeStyle=palette[2];ctx.lineWidth=2;
+          for(let by=Math.floor(segmentTop/64)*64;by<segmentBottom;by+=64)for(const x of [gate.x+9,gate.x+gate.w-9]){ctx.beginPath();ctx.arc(x,by,2,0,Math.PI*2);ctx.stroke();}
+        }
+        if(seal){ctx.globalAlpha=.22+.1*Math.sin(time*3);ctx.fillStyle=palette[2];ctx.fillRect(gate.x+8,segmentTop,gate.w-16,segmentHeight);ctx.globalAlpha=1;}
+        if(kind==='temple'){
+          ctx.strokeStyle=palette[2];ctx.lineWidth=2;
+          for(let by=Math.floor(segmentTop/120)*120;by<segmentBottom;by+=120){ctx.beginPath();ctx.moveTo(gate.x+gate.w/2,by+14);ctx.lineTo(gate.x+gate.w-10,by+42);ctx.lineTo(gate.x+gate.w/2,by+70);ctx.lineTo(gate.x+10,by+42);ctx.closePath();ctx.stroke();}
+        }
+        if(kind==='slab'){
+          ctx.strokeStyle='rgba(18,28,28,.7)';ctx.lineWidth=3;
+          for(let by=Math.floor(segmentTop/190)*190;by<segmentBottom;by+=190){ctx.beginPath();ctx.moveTo(gate.x+4,by);ctx.lineTo(gate.x+gate.w*.7,by+30);ctx.lineTo(gate.x+gate.w*.5,by+55);ctx.stroke();}
+        }
+        ctx.strokeStyle=palette[2];ctx.lineWidth=2;ctx.strokeRect(gate.x+6,top+5,gate.w-12,bottom-top-10);
+      }
+      ctx.restore();
+    }
+    // Gate and unlock objects carry the same glyph; one item cannot be mistaken
+    // for another seal when adjacent streamed encounters overlap.
+    const crestY=gate.markerY??gate.passageY??VIEW.floorY-112;
+    if(!gate.open&&crestY>view.y-60&&crestY<view.y+view.h+60){
+      ctx.globalAlpha=1-ease;this._lockGlyph(gate.id,gate.x+gate.w/2,crestY,18,palette[2]);
+      if(progress>0){ctx.globalAlpha=(1-progress)*.6;ctx.strokeStyle=palette[2];ctx.lineWidth=2;ctx.beginPath();ctx.arc(gate.x+gate.w/2,crestY,22+progress*40,0,Math.PI*2);ctx.stroke();}
+    }
+    ctx.restore();
+    if(!gate.open&&!gate.opening){
+      const clue=(world?.switches||[]).find(s=>gate.unlockIds?.includes(s.id)&&!s.activated);
+      if(clue){
+        ctx.save();
+        const dx=clue.x-gate.x,dy=clue.y-crestY,length=Math.max(1,Math.hypot(dx,dy));
+        ctx.globalAlpha=.4+.16*Math.sin(time*2);ctx.strokeStyle=palette[2];ctx.lineWidth=2;ctx.setLineDash([3,8]);ctx.lineDashOffset=-time*14;
+        ctx.beginPath();ctx.moveTo(gate.x-24,crestY);ctx.lineTo(gate.x-24+dx/length*78,crestY+dy/length*78);ctx.stroke();ctx.setLineDash([]);
+        ctx.translate(gate.x-24+dx/length*78,crestY+dy/length*78);ctx.rotate(Math.atan2(dy,dx));
+        ctx.beginPath();ctx.moveTo(-11,-6);ctx.lineTo(0,0);ctx.lineTo(-11,6);ctx.stroke();
+        ctx.restore();
+      }
+    }
+    this.drawnSprites++;
+  }
+  _lockGlyph(identity,x,y,size,color) {
+    const ctx=this.ctx,variant=[...String(identity||'seal')].reduce((n,c)=>(n+c.charCodeAt(0))%4,0);
+    ctx.save();ctx.translate(x,y);ctx.strokeStyle=color;ctx.fillStyle='rgba(16,25,31,.9)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(0,-size);ctx.lineTo(size,0);ctx.lineTo(0,size);ctx.lineTo(-size,0);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.arc(0,-3,size*.26,0,Math.PI*2);ctx.moveTo(0,2);ctx.lineTo(0,size*.65);
+    ctx.moveTo(0,size*.4);ctx.lineTo(size*.33,size*.4);
+    if(variant&1){ctx.moveTo(-size*.52,0);ctx.lineTo(-size*.52,size*.33);}
+    if(variant&2){ctx.moveTo(size*.48,-size*.4);ctx.lineTo(size*.48,-size*.12);}
+    ctx.stroke();ctx.restore();
   }
   _dynamicPlatform(p,biome,time,alpha,moving=false) {
     if(this._upgradePlatform(p,biome,time,alpha,moving))return;
@@ -366,7 +485,26 @@ export class Renderer {
       budget--;
     }
   }
-  _pickup(p,time) {
+  _pickup(p,time,world=null) {
+    if(p.type==='gateKey'||p.type==='gateRelic') {
+      const ctx=this.ctx,x=p.x+(p.w||28)/2,y=p.y+(p.h||28)/2+Math.sin(time*3+p.x*.02)*4;
+      const gate=world?.platforms?.find(g=>g.id===p.gateId),palette=GATE_PALETTES[biomeKey(world?.biome||'ruins')]||GATE_PALETTES.ruins;
+      const mechanism=world?.switches?.find(s=>s.id===p.unlockId),guardian=mechanism?.guardianId&&world?.enemies?.find(e=>e.id===mechanism.guardianId);
+      const locked=Boolean(p.locked || guardian&&!guardian.dead&&mechanism.requiredGuardian);
+      ctx.save();ctx.translate(x,y);ctx.globalAlpha=locked?.55:1;
+      ctx.shadowColor=palette[2];ctx.shadowBlur=locked?3:14;
+      if(p.type==='gateRelic'){
+        ctx.fillStyle=palette[1];ctx.strokeStyle=palette[2];ctx.lineWidth=2;
+        ctx.beginPath();ctx.moveTo(0,-25);ctx.lineTo(17,-5);ctx.lineTo(12,18);ctx.lineTo(0,25);ctx.lineTo(-12,18);ctx.lineTo(-17,-5);ctx.closePath();ctx.fill();ctx.stroke();
+      }else{
+        ctx.strokeStyle=palette[2];ctx.lineWidth=7;ctx.lineCap='round';
+        ctx.beginPath();ctx.arc(-7,-10,10,0,Math.PI*2);ctx.moveTo(0,-2);ctx.lineTo(16,15);ctx.moveTo(12,10);ctx.lineTo(18,4);ctx.moveTo(17,15);ctx.lineTo(23,9);ctx.stroke();
+      }
+      ctx.shadowBlur=0;ctx.restore();
+      this._lockGlyph(gate?.id||p.gateId,x,y-43,9,palette[2]);
+      if(locked){ctx.save();ctx.strokeStyle='#d4a68e';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x-19,y+8);ctx.lineTo(x+19,y-8);ctx.stroke();ctx.restore();}
+      this.drawnSprites++;return;
+    }
     if(p.type==='water') {
       const ctx=this.ctx,x=p.x+(p.w||28)/2,y=p.y+(p.h||28)/2+Math.sin(time*3.4+p.x*.02)*3;
       ctx.save();ctx.translate(x,y);ctx.shadowColor='#65dfff';ctx.shadowBlur=12;
@@ -385,7 +523,17 @@ export class Renderer {
     const bob=p.type==='chest'?0:Math.sin(time*3.4+p.x*.02)*4;
     imageRect(this.ctx,entry.image,frame.rect,p.x+(p.w||28)/2-size/2,p.y+(p.h||28)/2-size/2+bob,size,size);this.drawnSprites++;
   }
-  _switch(s,time) {
+  _switch(s,time,world=null) {
+    if(s.exploration){
+      if(s.kind==='key'||s.kind==='relic')return;
+      const ctx=this.ctx,gate=world?.platforms?.find(g=>g.unlockIds?.includes(s.id)),palette=GATE_PALETTES[biomeKey(world?.biome||'ruins')]||GATE_PALETTES.ruins;
+      ctx.save();ctx.fillStyle=s.activated?palette[2]:palette[0];ctx.strokeStyle=palette[1];ctx.lineWidth=3;
+      const y=s.y+s.h-(s.kind==='pressure'?10:6);ctx.fillRect(s.x-8,y,s.w+16,10);ctx.strokeRect(s.x-8,y,s.w+16,10);
+      if(s.kind==='switch'){
+        ctx.strokeStyle=palette[2];ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(s.x+s.w/2,y);ctx.lineTo(s.x+s.w/2+(s.activated?13:-13),y-30);ctx.stroke();
+      }
+      ctx.restore();this._lockGlyph(gate?.id,s.x+s.w/2,s.y-23,11,palette[2]);this.drawnSprites++;return;
+    }
     const entry=this._asset('collectibles-atlas');if(!entry)return;
     const frame=namedFrame(entry.meta,s.activated?'sun-relic':'checkpoint-lantern');
     const at=groundedArtPlacement(entry.meta,frame,s.x+s.w/2,s.groundY??s.y+s.h,s.w+16);
@@ -422,6 +570,13 @@ export class Renderer {
     let state=e.animState||e.state||(Math.abs(e.vx||0)>2?'move':'idle');if(state==='attack2')state='attack';
     if(!['idle','move','attack','hurt','death'].includes(state))state=e.dead?'death':'move';
     this._sprite(`enemy-${e.spriteType||e.type}-${state}`,e,e.animTime??time,alpha,e.dead?clamp((e.fade??.6)/.6,0,1):1);
+    if(e.elite&&!e.dead){
+      const ctx=this.ctx,point=position(e,alpha),x=point.x+e.w/2,y=point.y-22,width=Math.max(40,e.w);
+      ctx.save();ctx.strokeStyle=e.requiredGuardian?'#ffc397':'#f5db8d';ctx.fillStyle='rgba(27,32,39,.8)';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(x-11,y-4);ctx.lineTo(x-12,y-13);ctx.lineTo(x-5,y-9);ctx.lineTo(x,y-18);ctx.lineTo(x+5,y-9);ctx.lineTo(x+12,y-13);ctx.lineTo(x+11,y-4);ctx.closePath();ctx.fill();ctx.stroke();
+      ctx.fillStyle='#25303b';ctx.fillRect(x-width/2,y+2,width,5);ctx.fillStyle=e.requiredGuardian?'#f7b18c':'#ebce7a';ctx.fillRect(x-width/2,y+2,width*clamp((e.hp??1)/(e.maxHp??e.hp??1),0,1),5);
+      ctx.globalAlpha=.18+.08*Math.sin(time*3);ctx.strokeStyle='#f5d68d';ctx.beginPath();ctx.ellipse(x,point.y+e.h,Math.max(26,e.w*.7),8,0,0,Math.PI*2);ctx.stroke();ctx.restore();
+    }
   }
   _boss(b,time,alpha) {
     const state=b.animState||({INTRO:'idle',IDLE:'idle',TELL:'attack',ACTIVE:'attack2',RECOVER:'idle',VULNERABLE:'hurt',HURT:'hurt',DEFEATED:'death'}[b.state]||'idle');

@@ -1,6 +1,7 @@
 import { VIEW } from "../config.js";
 import { normalizeBiome } from "./regions.js";
 import { DYNAMIC_ROOM_LIBRARY, dynamicRoomsFor } from "./dynamic-rooms.js";
+import { EXPLORATION_ROOM_LIBRARY } from "./exploration-rooms.js";
 export const CHUNK_WIDTH = 3200;
 const floor = VIEW.floorY;
 const pad = (x, y, w, extra = {}) => ({ x, y, w, h: 28, kind: "platform", oneWay: true, ...extra });
@@ -133,5 +134,5 @@ export function roomsFor(region, maxDifficulty = 6, {legacy = false} = {}) {
   const staticRooms=matching.length?matching:all;
   return legacy?staticRooms:[...staticRooms,...dynamicRoomsFor(biome,maxDifficulty)];
 }
-export function roomForId(id) { return ROOM_LIBRARY.find(room=>room.id===id)||DYNAMIC_ROOM_LIBRARY.find(room=>room.id===id); }
-export { DYNAMIC_ROOM_LIBRARY };
+export function roomForId(id) { return ROOM_LIBRARY.find(room=>room.id===id)||DYNAMIC_ROOM_LIBRARY.find(room=>room.id===id)||EXPLORATION_ROOM_LIBRARY.find(room=>room.id===id); }
+export { DYNAMIC_ROOM_LIBRARY, EXPLORATION_ROOM_LIBRARY };

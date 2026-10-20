@@ -80,7 +80,7 @@ export function updateBlessings(player, world, dt) {
 export function collectPickups(world, player) {
   const collected = [];
   for (const pickup of world.pickups || []) {
-    if (pickup.collected || !overlaps(player, pickup)) continue;
+    if (pickup.collected || pickup.locked || !overlaps(player, pickup)) continue;
     pickup.collected = true;
     grantBlessing(player, pickup.type);
     collected.push(pickup.type);
