@@ -1,6 +1,7 @@
 /* Real keyboard approaches preserve a running finish while the player stops
  * to release. Covers both human control styles and an actual low-rated rookie. */
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{chromium}=require('playwright');
+const {installLegacyGraphicsFixture}=require('./legacy-graphics-fixture.cjs');
 const root=path.resolve(__dirname,'../../..');
 (async()=>{
  const options={headless:true,args:['--use-gl=angle','--use-angle=swiftshader','--enable-webgl']};
