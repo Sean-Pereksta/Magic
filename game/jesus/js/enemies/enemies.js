@@ -117,7 +117,8 @@ function initializeEnemy(enemy) {
     enemy.y += previousHeight - d.h;
     enemy.w = d.w; enemy.h = d.h;
   } else { enemy.w ||= d.w; enemy.h ||= d.h; }
-  enemy.hp = enemy.customHealth ? (enemy.hp || d.hp) : d.hp + (enemy.elite ? 1 : 0);
+  enemy.hp = enemy.customHealth ? (enemy.hp || d.hp) : enemy.guardian
+    ? Math.max(enemy.hp || 0, d.hp + 3) : d.hp + (enemy.elite ? 2 : 0);
   enemy.maxHp = enemy.hp;
   enemy.vx ||= 0; enemy.vy ||= 0;
   enemy.facing = enemy.patrol || 1; enemy.patrol ||= 1;
@@ -228,7 +229,9 @@ function startAttack(enemy, world) {
   setState(enemy, "attack", d.style === "combo" ? .95 : d.style === "dive" ? (enemy.type === "vulture" ? .9 : .64) : .48);
   if (d.style === "ranged") {
     const dx = enemy.targetX - cx(enemy), dy = enemy.targetY - cy(enemy), distance = Math.max(1, Math.hypot(dx, dy));
-    spawnCombatProjectile(world, { type: d.projectile, x: cx(enemy), y: cy(enemy), vx: dx / distance * 300, vy: dy / distance * 300, life: 2.6, terrain: true, owner: enemy.id });
+    const angle=Math.atan2(dy,dx);
+    for(const spread of enemy.elite?[-.18,0,.18]:[0])
+      spawnCombatProjectile(world, { type: d.projectile, x: cx(enemy), y: cy(enemy), vx:Math.cos(angle+spread)*300, vy:Math.sin(angle+spread)*300, life: 2.6, terrain: true, owner: enemy.id });
   } else if (["pounce", "ambush", "bound"].includes(d.style)) {
     enemy.vx = enemy.facing * (d.style === "ambush" ? 300 : 270); enemy.vy = -(d.jump || 600) * .65; enemy.onGround = false;
   } else if (["dive", "phase"].includes(d.style)) {
@@ -236,7 +239,7 @@ function startAttack(enemy, world) {
     enemy.vx = dx / distance * 350; enemy.vy = dy / distance * 350;
   } else if (d.style === "slam") {
     const radius = d.range;
-    if (enemy.type === "stone-guardian") {
+    if (enemy.type === "stone-guardian" || enemy.elite) {
       for (const direction of [-1, 1]) spawnCombatProjectile(world, { type: "shockwave", x: cx(enemy) - 18, y: enemy.y + enemy.h - 21, w: 36, h: 21, vx: direction * 220, life: 1.35, owner: enemy.id });
     } else spawnCombatProjectile(world, { type: "shockwave", x: cx(enemy) - radius, y: enemy.y + enemy.h - 22, w: radius * 2, h: 22, life: .22, owner: enemy.id });
     emitCombatEffect(world, "fx-ground-shockwave", cx(enemy), enemy.y + enemy.h, { scale: radius / 100 });
@@ -281,7 +284,7 @@ export function updateEnemies(world, player, dt) {
           spawnCombatProjectile(world, { type: "eruption", x: enemy.originX, y: enemy.originY + enemy.h - 20, w: enemy.w, h: 20, warning: .3, life: .65, owner: enemy.id });
         }
         enemy.vx = 0; enemy.comboFired = false; enemy.stingFired = false;
-        setState(enemy, "recover", d.style === "slam" || d.style === "combo" ? 1.25 : .85); enemy.cooldown = 1.15;
+        setState(enemy, "recover", d.style === "slam" || d.style === "combo" ? 1.25 : .85); enemy.cooldown = enemy.elite ? .95 : 1.15;
       }
     } else if (["recover", "hurt"].includes(enemy.aiState)) {
       enemy.vx *= Math.max(0, 1 - dt * 12);
@@ -302,9 +305,20 @@ export function updateEnemies(world, player, dt) {
       }
     }
     if (d.flying) {
-      enemy.x += enemy.vx * dt; enemy.y += enemy.vy * dt; enemy.y = clamp(enemy.y, 32, (world.height || 720) - enemy.h - 60);
+      enemy.x += enemy.vx * dt; enemy.y += enemy.vy * dt;
+      const upperBound=world.layoutVersion>=3||enemy.guardian ? (world.bounds?.top??-700)+32 : 32;
+      enemy.y = clamp(enemy.y, upperBound, (world.bounds?.bottom??world.height??720) - enemy.h - 60);
     } else moveGround(world, enemy, dt, chasing);
-    if (enemy.y > Math.max(world.height || 720, player.y + 900)) { enemy.dead = true; enemy.fade = 0; continue; }
+    if (enemy.guardian && enemy.guardBounds) {
+      // Keep the encounter on its broad combat shelf, clear of the jump entry.
+      const left=enemy.guardBounds.left,right=enemy.guardBounds.right-enemy.w;
+      enemy.x=clamp(enemy.x,left,Math.max(left,right));
+    }
+    if (enemy.y > Math.max(world.height || 720, player.y + 900)) {
+      enemy.dead = true; enemy.fade = 0;
+      world?.deadEnemyIds?.add?.(enemy.id);world?.persistent?.dead?.add?.(enemy.id);world?._state?.dead?.add?.(enemy.id);
+      continue;
+    }
     if (!overlaps(enemy, player) && !(enemy.aiState === "attack" && overlaps(attackHitbox(enemy), player))) continue;
     const stomp = player.vy > 100 && player.y + player.h < enemy.y + enemy.h * .62;
     if (stomp) {

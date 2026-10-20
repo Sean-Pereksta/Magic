@@ -1,15 +1,15 @@
 import {writeFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {PHYSICS} from '../js/config.js';
-import {ROOM_LIBRARY,DYNAMIC_ROOM_LIBRARY} from '../js/world/rooms.js';
-import {finalTemplate} from '../js/world/generator.js';
+import {ROOM_LIBRARY,DYNAMIC_ROOM_LIBRARY,EXPLORATION_ROOM_LIBRARY} from '../js/world/rooms.js';
+import {finalTemplate,layoutTemplate} from '../js/world/generator.js';
 import {routeProofKey} from '../js/world/route-proof-key.js';
 import {validateRoom} from '../js/world/room-validator.js';
 
 // Developer-only: preserve the real fixed-step results in a browser-readable
 // catalog so loading a new biome does not run seconds of simulations on mobile.
 const proofs={};
-for(const template of [...ROOM_LIBRARY,...DYNAMIC_ROOM_LIBRARY,...ROOM_LIBRARY.map(finalTemplate)]){
+for(const template of [...ROOM_LIBRARY,...DYNAMIC_ROOM_LIBRARY,...DYNAMIC_ROOM_LIBRARY.filter(r=>r.platforms.some(p=>p.pressureGate)).map(r=>layoutTemplate(r)),...EXPLORATION_ROOM_LIBRARY,...ROOM_LIBRARY.map(finalTemplate)]){
  const proof=validateRoom(template,PHYSICS,{dash:false,wallJump:false,wings:false,sandals:false});
  assert.ok(proof.valid,`${template.id}: ${proof.reason}`);proofs[routeProofKey(template)]=proof;
 }

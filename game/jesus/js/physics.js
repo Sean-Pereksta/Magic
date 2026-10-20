@@ -26,6 +26,15 @@ export function surfaceY(surface, x) {
 }
 
 function enabled(platform) { return !platform.dead && !platform.open && !platform.hidden && platform.solid !== false; }
+// Mandatory barriers remain a single continuous solid through the whole live
+// passage. Opening artwork never shrinks this collider before the lock finishes.
+export function mandatoryGateCollider(gate, world) {
+  if (gate.kind !== "gate" || !gate.mandatory || gate.open) return gate;
+  const top = Math.min(gate.y, gate.frameTop ?? world.bounds?.top ?? gate.y);
+  const bottom = Math.max(gate.y + gate.h, gate.frameBottom ?? world.bounds?.bottom ?? gate.y + gate.h,
+    (world.deathY ?? world.bounds?.bottom ?? gate.y + gate.h) + PHYSICS.playerHeight);
+  return {...gate, y:top, h:bottom-top, oneWay:false, solid:true, hidden:false, dead:false};
+}
 function emit(world,type,x,y,scale=.4,duration=.4) {
   world.effects ||= [];if(world.effects.length>=96)return;
   world._motionEffectId=(world._motionEffectId||0)+1;
@@ -103,7 +112,11 @@ export function updateMovers(world, time, dt) {
 export function updatePlayer(player, world, input, dt) {
   if (!(dt > 0)) return;
   const platforms = world.platforms || [], movers = world.movers || [];
-  const surfaces = platforms.concat(movers,(world.hazards || []).filter(h => h.type === "timedGate" && h.active));
+  const surfaces = platforms.map(p => mandatoryGateCollider(p, world)).concat(movers,(world.hazards || []).filter(h => h.type === "timedGate" && h.active));
+  // New exploration rooms have a physical world ceiling. Keeping the head on
+  // its lower side also closes the top edge against repeated wall jumps.
+  const ceilingY = (world.layoutVersion >= 3 || platforms.some(p => p.mandatory)) ? world.bounds?.top : null;
+  if (Number.isFinite(ceilingY) && player.y < ceilingY) { player.y=ceilingY; player.vy=Math.max(0,player.vy); }
   let grounded = player.onGround;
   const airJumps = Number(Boolean(player.powers.wings)) + Number(player.boosts?.water > 0);
   const wind = player.boosts?.wind > 0;
@@ -132,11 +145,12 @@ export function updatePlayer(player, world, input, dt) {
       player.x=ridden.startX+(ridden.endX-ridden.startX)*fraction-player.w/2;
       player.y=surfaceY(ridden,player.x+player.w/2)-player.h;
     } else { player.x += ridden.dx || 0; player.y += ridden.dy || 0; }
+    if (Number.isFinite(ceilingY)) player.y=Math.max(ceilingY,player.y);
     // Carrying participates in solid collisions too. A ferry cannot force a
     // passenger through a raised bank, and a lift cannot push through a ceiling.
     for(const solid of surfaces) {
       if(solid===ridden || solid.oneWay || solid.kind === "slope" || !enabled(solid))continue;
-      if(player.y+player.h>solid.y+.01 && player.y<solid.y+solid.h-.01) {
+      if(solid.mandatory || player.y+player.h>solid.y+.01 && player.y<solid.y+solid.h-.01) {
         if(player.x>carryFromX && carryFromX+player.w<=solid.x+.01 && player.x+player.w>solid.x)player.x=solid.x-player.w;
         if(player.x<carryFromX && carryFromX>=solid.x+solid.w-.01 && player.x<solid.x+solid.w)player.x=solid.x+solid.w;
       }
@@ -254,7 +268,8 @@ export function updatePlayer(player, world, input, dt) {
     }
     }
   }
-  player.y = nextY;
+  player.y = Number.isFinite(ceilingY) ? Math.max(ceilingY,nextY) : nextY;
+  if (player.y !== nextY && player.vy < 0) player.vy=0;
   if (player.jumpBuffer > 0 && player.onGround && !jumpPressed) {
     player.vy = -PHYSICS.jumpVelocity; player.onGround = false; player.coyote = 0; player.jumpBuffer = 0;
     player.airAction="jump";player.jumpStateTimer=.24;emit(world,"fx-jump-dust",player.x+player.w/2,player.y+player.h,.28,.35);
@@ -406,9 +421,10 @@ export function updateWorldEnvironment(world, player, dt, time = world.time || 0
         if (platform.collapseTimer <= 0) { platform.dead = true; platform.resetTimer = 4; emit(world,"fx-rubble-destruction",platform.x+platform.w/2,platform.y,.5,.55); }
       }
     }
-    if (platform.switchId) platform.open = (world.switches || []).some(s => s.id === platform.switchId && s.activated);
+    if (platform.switchId && !platform.exploration) platform.open = (world.switches || []).some(s => s.id === platform.switchId && s.activated);
   }
   for (const sw of world.switches || []) {
+    if (sw.exploration) continue; // Identity checks, guardians and opening animation live in gate-progress.
     if (!sw.activated && overlaps(player, sw)) {
       sw.activated = true;
       emit(world,"fx-platform-activation",sw.x+sw.w/2,sw.y+sw.h,.3,.47);
@@ -443,7 +459,7 @@ export function updateWorldEnvironment(world, player, dt, time = world.time || 0
 // Offline route proofs are valid only for this complete controller dependency
 // set. Add every new helper here when extending the physics implementation.
 export const PHYSICS_PROOF_SIGNATURE = [
-  createPlayer,surfaceY,enabled,emit,setState,modulo,sampleMover,syncMovers,
+  createPlayer,surfaceY,enabled,mandatoryGateCollider,emit,setState,modulo,sampleMover,syncMovers,
   updateMovers,updatePlayer,damagePlayer,sampleHazard,syncHazards,segmentHitsBox,
   pointSegmentDistanceSquared,capsuleHitsBox,hazardHitsPlayer,updateWorldEnvironment,
   approach,clamp,overlaps,

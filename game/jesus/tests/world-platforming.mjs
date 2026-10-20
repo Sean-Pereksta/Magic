@@ -45,7 +45,7 @@ const fingerprint=w=>JSON.stringify({plan:w.chunkPlan.map(c=>[c.moduleId,c.seed,
 for(const biome of BIOME_ORDER){
  const a=createLevel({biome,seed:123456,difficulty:4}),b=createLevel({biome,seed:123456,difficulty:4});
  assert.equal(fingerprint(a),fingerprint(b),`${biome} generation and IDs are deterministic`);assert.ok(a.routeValid);
- assert.equal(a.chunkCount,[34,38,48,50,52,54][BIOME_ORDER.indexOf(biome)],"Journey budgets are halved");
+ assert.equal(a.chunkCount,[17,19,24,25,26,27][BIOME_ORDER.indexOf(biome)],"Journey budgets are halved again");
  assert.ok(a.checkpoints.length>=Math.ceil(a.chunkCount/5));assert.ok(new Set(a.chunkPlan.map(c=>c.moduleId)).size>=10,"worlds rotate distinct layouts");
  assert.ok(a.chunkPlan.some(c=>c.requiresDynamic),"each region requires moving-platform traversal");
  const secretIds=new Set(),platformStyles=new Set();
