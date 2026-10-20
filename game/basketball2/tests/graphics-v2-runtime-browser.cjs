@@ -20,7 +20,8 @@ const mockLoader=`export class GLTFLoader { async parseAsync(bytes) {
     await page.addInitScript(()=>localStorage.setItem('basketball2SettingsV2',JSON.stringify({quality:'medium'})));
     await page.route('http://basketball.local/**',route=>{
       const url=new URL(route.request().url());
-      if(url.pathname.endsWith('/assets/graphics-v2-config.js'))return route.fulfill({contentType:'text/javascript',body:'window.BASKETBALL2_GRAPHICS={enabled:true,baseURL:"https://graphics.fixture/",loadingTimeoutMs:250};'});
+      // Ordinary parses must not race the explicit timeout scenario on busy CI.
+      if(url.pathname.endsWith('/assets/graphics-v2-config.js'))return route.fulfill({contentType:'text/javascript',body:'window.BASKETBALL2_GRAPHICS={enabled:true,baseURL:"https://graphics.fixture/",loadingTimeoutMs:5000};'});
       if(url.pathname.endsWith('/vendor/GLTFLoader.mjs'))return route.fulfill({contentType:'text/javascript',body:mockLoader});
       let file=path.join(root,url.pathname);
       if(fs.existsSync(file)&&fs.statSync(file).isDirectory())file=path.join(file,'index.html');
@@ -83,6 +84,7 @@ const mockLoader=`export class GLTFLoader { async parseAsync(bytes) {
     await page.evaluate(()=>{gameSettings.values.quality='low';setGraphicsQuality('low');startGame();window.__deadlineRig=p1.playerModel;});
     await page.waitForFunction(()=>!Basketball2Graphics.loading);
     assert.equal(held.length,3);
+    assert.equal(await page.evaluate(()=>Basketball2Graphics.errors.some(error=>error.includes('Startup timed out'))),true,'held responses exercise the startup deadline');
     await Promise.all(held.splice(0).map(finish=>finish()));holdLow=false;
     await page.waitForFunction(()=>[...basketballPlayerModels.assets.values()].every(asset=>asset.label.endsWith('-low.glb')));
     assert.equal(await page.evaluate(()=>p1.playerModel===__deadlineRig),true,'late asset results do not replace active skeletons');
