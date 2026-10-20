@@ -357,7 +357,20 @@ function setGraphicsQuality(level){
   if(!renderer) return;
   renderer.shadowMap.enabled = graphicsQuality !== "low";
   renderer.shadowMap.type = graphicsQuality === "high" || graphicsQuality === "ultra" ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
-  crowdMembers.forEach(member=>{ member.visible=qualitySettings[graphicsQuality].crowd; });
+  setBasketballCrowdQuality();
+  const shadowSize={low:512,medium:1024,high:1536,ultra:2048}[graphicsQuality];
+  scene.traverse(light=>{
+    if(!light.isLight || !light.shadow) return;
+    light.castShadow=!!light.userData.basketballKeyLight && graphicsQuality!=="low";
+    if(!light.userData.basketballKeyLight) return;
+    if(light.shadow.mapSize.x!==shadowSize || light.shadow.mapSize.y!==shadowSize){
+      if(light.shadow.map){light.shadow.map.dispose();light.shadow.map=null;}
+      if(light.shadow.mapPass){light.shadow.mapPass.dispose();light.shadow.mapPass=null;}
+      light.shadow.mapSize.set(shadowSize,shadowSize);
+    }
+    light.shadow.needsUpdate=true;
+  });
+  renderer.shadowMap.needsUpdate=true;
   renderer.domElement.style.imageRendering=graphicsQuality==="low"?"auto":"";
   const roster = typeof matchPlayers !== "undefined" && matchPlayers.length ? matchPlayers : [p1,p2];
   [...roster,ball,rim,backboard].forEach(obj=>{

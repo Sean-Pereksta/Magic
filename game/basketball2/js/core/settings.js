@@ -93,13 +93,14 @@ class AdaptiveQualityManager {
     const maxDimension = Math.max(screen.width || 0,screen.height || 0);
     if(mobile && (memory <= 4 || cores <= 4)) return "low";
     if(mobile || memory <= 6 || cores <= 6 || maxDimension < 1500) return "medium";
-    if(memory >= 12 && cores >= 10) return "ultra";
+    // Device hints do not measure GPU speed; Ultra remains an explicit choice.
     return "high";
   }
 
   applyRequestedLevel(){
     const requested = gameSettings.get("quality");
     this.actualLevel = requested === "auto" ? this.chooseInitialLevel() : requested;
+    this.samples.length=0;this.elapsed=0;this.cooldown=0;
     setGraphicsQuality(this.actualLevel);
     this.applyPixelRatio();
     this.updateLabel();
@@ -112,7 +113,8 @@ class AdaptiveQualityManager {
   }
 
   sample(dt){
-    if(gameSettings.get("quality") !== "auto" || !gameStarted) return;
+    if(gameSettings.get("quality") !== "auto" || !gameStarted || gamePaused || gameOver || document.hidden) return;
+    if(!Number.isFinite(dt) || dt<=0 || dt>1) return;
     this.cooldown = Math.max(0,this.cooldown-dt);
     this.elapsed += dt;
     this.samples.push(dt);
@@ -124,7 +126,7 @@ class AdaptiveQualityManager {
     const levels = ["low","medium","high","ultra"];
     let index = levels.indexOf(this.actualLevel);
     if(fps < 48 && index > 0) index -= 1;
-    else if(fps > 58 && index < levels.length-1) index += 1;
+    // Keep recovered frame time during the match instead of spending it on upgrades.
     else return;
     this.actualLevel = levels[index];
     setGraphicsQuality(this.actualLevel);
