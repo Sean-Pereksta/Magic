@@ -34,14 +34,26 @@ function checkpointPlayer(value,challenge,permanentPowers){
 }
 function checkpointWorld(value,checkpoint){
   if(!record(value))return null;
-  if(value.version!=null&&value.version!==1)return null;
+  if(value.version!=null&&value.version!==1&&value.version!==2)return null;
   if(value.seed!=null&&value.seed!==checkpoint.seed)return null;
   if(value.biome!=null&&value.biome!==checkpoint.nodeId)return null;
   // The generator builds Sets from these arrays. Reject a malformed snapshot
   // while retaining its valid checkpoint, rather than throwing during resume.
   for(const key of ["collected","dead","activated"])if(value[key]!=null&&!Array.isArray(value[key]))return null;
   const ids=key=>[...new Set((value[key]||[]).filter(id=>typeof id==="string"&&id.length>0&&id.length<=200))].slice(0,10000);
-  return{version:1,seed:checkpoint.seed,biome:checkpoint.nodeId,collected:ids("collected"),dead:ids("dead"),activated:ids("activated"),furthestX:bounded(value.furthestX,0,0,360000)};
+  const result={version:value.version===2?2:1,seed:checkpoint.seed,biome:checkpoint.nodeId,collected:ids("collected"),dead:ids("dead"),activated:ids("activated"),furthestX:bounded(value.furthestX,0,0,360000)};
+  if(value.version===2){
+    result.layoutVersion=value.layoutVersion===2?2:1;result.time=bounded(value.time,0,0,604800);
+    result.dynamics=(Array.isArray(value.dynamics)?value.dynamics:[]).slice(0,2048).flatMap(entry=>{
+      if(!Array.isArray(entry)||entry.length!==2||typeof entry[0]!=="string"||entry[0].length>200||!record(entry[1])||!record(entry[1].values))return[];
+      const values={};
+      for(const key of ["dead","shaking","triggered","active"])if(typeof entry[1].values[key]==="boolean")values[key]=entry[1].values[key];
+      for(const key of ["collapseTimer","resetTimer"])if(entry[1].values[key]===null)values[key]=null;else if(Number.isFinite(entry[1].values[key]))values[key]=bounded(entry[1].values[key],0,-1,10);
+      if(Number.isFinite(entry[1].values.x))values.x=bounded(entry[1].values.x,0,-1000,360000);
+      return[[entry[0],{time:bounded(entry[1].time,result.time,0,result.time),values}]];
+    });
+  }
+  return result;
 }
 function normalizeCheckpoint(value,permanentPowers){
   if(!record(value)||!JOURNEY_BY_ID[value.nodeId]||![value.x,value.y,value.seed].every(Number.isFinite)||value.x<0||value.x>360000||value.y< -700||value.y>1000||value.seed<1||value.seed>4294967295||!Number.isInteger(value.seed))return null;

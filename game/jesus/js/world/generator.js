@@ -3,7 +3,11 @@ import { VIEW, PHYSICS } from "../config.js";
 import { REGIONS, normalizeBiome, BIOME_ORDER } from "./regions.js";
 import { roomsFor, roomForId, SAFE_FALLBACK_ROOM, CHUNK_WIDTH } from "./rooms.js";
 import { validateRoom, validateLevel } from "./room-validator.js";
-import { surfaceY } from "../physics.js";
+import { surfaceY, syncMovers, syncHazards } from "../physics.js";
+import { routeProofKey } from "./route-proof-key.js";
+import { ROUTE_PROOFS } from "./route-proofs.js";
+
+export const LAYOUT_VERSION=2;
 
 const clone=value=>JSON.parse(JSON.stringify(value));
 const validationCache=new Map();
@@ -12,8 +16,9 @@ function numericSeed(value) {
   let n=2166136261;for(const char of String(value)){n^=char.charCodeAt(0);n=Math.imul(n,16777619);}return n>>>0;
 }
 function validationFor(template,abilities) {
-  const key=template.id+":"+Boolean(abilities.wings)+":"+Boolean(abilities.sandals);
-  if(!validationCache.has(key))validationCache.set(key,validateRoom(template,PHYSICS,{...abilities,dash:false,wallJump:false}));
+  const key=routeProofKey(template);
+  // Mandatory paths are proved without permanent or temporary power upgrades.
+  if(!validationCache.has(key))validationCache.set(key,ROUTE_PROOFS[key]||validateRoom(template,PHYSICS,{dash:false,wallJump:false,wings:false,sandals:false}));
   return validationCache.get(key);
 }
 const stateFields=["platforms","movers","hazards","enemies","pickups","props","scenery","switches"];
@@ -32,9 +37,9 @@ function groundPickup(pickup,platforms) {
 }
 function dressPlatform(platform,index,descriptor,biome,tags) {
   if(!platform.oneWay)return;
-  if(platform.kind==="collapsing"){platform.visualKind="ledge";return;}
+  if(platform.kind==="collapsing"){platform.visualKind||="ledge";return;}
   if(platform.kind==="moving"){
-    platform.visualKind="ledge";platform.supportTop=platform.baseY-(platform.axis==="y"?platform.range:0)-160;return;
+    platform.visualKind||="ledge";platform.supportTop=platform.baseY-(platform.axis==="y"?platform.range:0)-160;return;
   }
   const rhythm=(index+descriptor.index)%3;
   platform.visualKind=tags.has("river")&&rhythm===1?"bridge":
@@ -45,7 +50,7 @@ function dressPlatform(platform,index,descriptor,biome,tags) {
     platform.supportStyle=["city","ruins"].includes(biome)?"arch":["mountains","storm"].includes(biome)?"rock":"posts";
   }
 }
-function finalTemplate(template) {
+export function finalTemplate(template) {
   const result=clone(template);result.id+="-arena";
   result.platforms=result.platforms.filter(p=>!p.branch&&p.x<1520).map(p=>({...p,w:Math.min(p.w,1660-p.x)}));
   const lastRoute=result.platforms.filter(p=>p.route||p.entry).sort((a,b)=>a.x-b.x).at(-1);
@@ -58,12 +63,13 @@ function finalTemplate(template) {
   return result;
 }
 
-export function createLevel({biome,region="countryside",seed=1,difficulty=1,mode="journey",abilities={},chunkCount=null}={}) {
+export function createLevel({biome,region="countryside",seed=1,difficulty=1,mode="journey",abilities={},chunkCount=null,layoutVersion=LAYOUT_VERSION}={}) {
   biome=normalizeBiome(biome||region);const definition=REGIONS[biome],runSeed=numericSeed(seed);
-  const count=Math.max(3,Math.min(112,Math.floor(chunkCount||definition.chunks)));
+  const legacy=layoutVersion===1;
+  const count=Math.max(3,Math.min(112,Math.floor(chunkCount||(legacy?definition.legacyChunks:definition.chunks))));
   const width=count*CHUNK_WIDTH;
   const world={
-    id:`${biome}-${runSeed}`,name:definition.name,regionName:definition.name,biome,region:biome,seed:runSeed,
+    id:`${biome}-${runSeed}`,layoutVersion:legacy?1:LAYOUT_VERSION,name:definition.name,regionName:definition.name,biome,region:biome,seed:runSeed,
     tier:Math.max(1,Math.min(6,difficulty)),mode,width,height:1700,chunkWidth:CHUNK_WIDTH,chunkCount:count,
     bounds:{left:0,right:width,top:-700,bottom:1000},deathY:1000,
     spawn:{x:80,y:VIEW.floorY-PHYSICS.playerHeight},exit:{x:width-170,y:VIEW.floorY-92,w:110,h:92},
@@ -71,26 +77,37 @@ export function createLevel({biome,region="countryside",seed=1,difficulty=1,mode
     platforms:[],movers:[],hazards:[],enemies:[],pickups:[],props:[],scenery:[],switches:[],bossHazards:[],effects:[],enemyProjectiles:[],
     chunks:[],chunkPlan:[],checkpoints:[],residentLimit:4,furthestX:0,time:0,totalSecrets:0,
     abilities:{dash:true,wallJump:true,wings:false,sandals:false,...abilities},
-    _resident:new Map(),_state:{collected:new Set(),dead:new Set(),activated:new Set()},_streamStart:-1,
+    _resident:new Map(),_state:{collected:new Set(),dead:new Set(),activated:new Set(),dynamics:new Map()},_streamStart:-1,
   };
-  const random=seededRandom(runSeed),used=new Map();let previous="";
+  const random=seededRandom(runSeed),used=new Map(),checked=new Map();let previous="";
+  const proof=template=>{if(!checked.has(template))checked.set(template,validationFor(template,world.abilities));return checked.get(template);};
   for(let index=0;index<count;index++) {
     const progress=index/(count-1);
     const effectiveTier=Math.max(2,Math.min(6,world.tier+Math.floor(progress*2)));
-    let candidates=roomsFor(biome,effectiveTier).filter(r=>r.id!==previous&&validationFor(r,world.abilities).valid);
+    let candidates=roomsFor(biome,effectiveTier,{legacy}).filter(r=>r.id!==previous&&proof(r).valid);
+    const beat=index%5;
+    const rest=index%(legacy?8:5)===0;
+    if(!legacy){
+      const dynamic=candidates.filter(r=>r.requiresDynamic);
+      const staticRooms=candidates.filter(r=>!r.requiresDynamic);
+      if(index===count-1)candidates=staticRooms;
+      else if(beat===1||beat===3)candidates=dynamic.length?dynamic:staticRooms;
+      else candidates=staticRooms.length?staticRooms:candidates;
+    }
     if(index===0)candidates=[SAFE_FALLBACK_ROOM];
     if(!candidates.length)candidates=[SAFE_FALLBACK_ROOM];
     // Select among least-used eligible modules, then shuffle ties deterministically.
     const least=Math.min(...candidates.map(r=>used.get(r.id)||0));
     const pool=candidates.filter(r=>(used.get(r.id)||0)<=least);
     const chosen=pool[Math.floor(random()*pool.length)];used.set(chosen.id,(used.get(chosen.id)||0)+1);previous=chosen.id;
-    const rest=index%8===0;
     const actualTemplate=index===count-1?finalTemplate(chosen):chosen;
     const secretCount=actualTemplate.pickupSpawns.filter(isSecretPickup).length;
     world.totalSecrets+=secretCount;
     world.chunkPlan.push({index,x:index*CHUNK_WIDTH,width:CHUNK_WIDTH,moduleId:chosen.id,name:chosen.name,tags:[...actualTemplate.tags],rest,final:index===count-1,
       tier:effectiveTier,seed:numericSeed(runSeed+Math.imul(index+1,2654435761)),entryY:VIEW.floorY,exitY:VIEW.floorY,
-      secretCount,validation:validationFor(actualTemplate,world.abilities)});
+      rhythm:rest?"breather":beat===1?"challenge":beat===3?"variation":"flow",requiresDynamic:Boolean(actualTemplate.requiresDynamic),
+      timeOffset:legacy?0:(numericSeed(runSeed+index*7919)%1200)/100,
+      secretCount,validation:proof(actualTemplate)});
     if(rest)world.checkpoints.push({id:`${world.id}:checkpoint:${index}`,x:index*CHUNK_WIDTH+100,y:VIEW.floorY-PHYSICS.playerHeight,
       w:48,h:68,floorY:VIEW.floorY,chunkIndex:index,rest:true,activated:false});
   }
@@ -110,7 +127,15 @@ function stampChunk(world,descriptor) {
   const chunk={...descriptor,platforms:[],movers:[],hazards:[],enemies:[],pickups:[],props:[],scenery:[],switches:[],tags:[...template.tags]};
   const assign=(items,type)=>items.map((item,index)=>({...item,id:`${prefix}:${type}:${index}`,x:item.x+offset,chunkIndex:descriptor.index}));
   chunk.platforms=assign(template.platforms,"platform");chunk.movers=assign(template.movers,"mover");
-  for(const p of chunk.movers){p.baseX+=offset;p.dx=0;p.dy=0;}
+  chunk.hazards=assign(template.hazards||[],"hazard");
+  for(const p of [...chunk.movers,...chunk.hazards]){
+    if(p.baseX!=null)p.baseX+=offset;
+    if(p.pivotX!=null)p.pivotX+=offset;
+    if(p.anchorX!=null)p.anchorX+=offset;
+    if(p.safeWaitX!=null)p.safeWaitX+=offset;
+    p.timeOffset=descriptor.timeOffset||0;
+  }
+  syncMovers({movers:chunk.movers},world.time);
   const styleTags=new Set(template.tags);
   chunk.platforms.forEach((p,index)=>dressPlatform(p,index,descriptor,world.biome,styleTags));
   chunk.movers.forEach((p,index)=>dressPlatform(p,index,descriptor,world.biome,styleTags));
@@ -140,7 +165,7 @@ function stampChunk(world,descriptor) {
     chunk.scenery.push({id:`${prefix}:scenery:${i}`,chunkIndex:descriptor.index,x:p.x+p.w*0.55,y:p.y,w:90,h:110,artFrame,kind:artFrame,
       scale:0.7+random()*0.5,depth:i%3===0?"far":"near",flip:random()<0.5});
   }
-  if(!descriptor.rest&&!descriptor.final){
+  if(!descriptor.rest&&!descriptor.final&&!template.requiresDynamic){
     const tags=new Set(template.tags);
     if(tags.has("river"))chunk.hazards.push({id:`${prefix}:hazard:water`,type:"water",x:offset+305,y:790,w:2550,h:110,active:true});
     if(tags.has("wind"))chunk.hazards.push({id:`${prefix}:hazard:wind`,type:"wind",x:offset+550,y:-170,w:1850,h:760,force:100+world.tier*10,phase:random()*6});
@@ -156,10 +181,25 @@ function stampChunk(world,descriptor) {
     if(tags.has("chase"))chunk.hazards.push({id:`${prefix}:hazard:chase`,type:"chase",x:offset-180,y:-300,w:100,h:1050,
       triggerX:offset+500,endX:offset+2760,speed:315+world.tier*4,active:false,triggered:false});
   }
+  syncHazards({hazards:chunk.hazards},world.time);
   for(const field of stateFields)for(const item of chunk[field]){
     if(world._state.collected.has(item.id))item.collected=true;
     if(world._state.dead.has(item.id))item.dead=true;
     if(world._state.activated.has(item.id))item.activated=true;
+    const state=world._state.dynamics.get(item.id);
+    if(state){
+      Object.assign(item,state.values);
+      // A collapsing path always recovers even while its chunk is unloaded.
+      const elapsed=Math.max(0,world.time-state.time);
+      if(item.kind==="collapsing"){
+        if(item.dead){item.resetTimer=Math.max(0,(item.resetTimer||4)-elapsed);if(item.resetTimer===0){item.dead=false;item.collapseTimer=null;item.shaking=false;}}
+        else if(item.collapseTimer!=null&&elapsed>0){const remaining=item.collapseTimer-elapsed;if(remaining<=-4){item.collapseTimer=null;item.shaking=false;}else if(remaining<=0){item.dead=true;item.resetTimer=4+remaining;item.collapseTimer=0;}else item.collapseTimer=remaining;}
+      }
+    }
+  }
+  for(const p of [...chunk.platforms,...chunk.props])if(p.switchId){
+    p.open=chunk.switches.some(sw=>sw.id===p.switchId&&sw.activated);
+    if(p.open&&p.artFrame)p.artFrame="gate-open";
   }
   for(const checkpoint of world.checkpoints.filter(c=>c.chunkIndex===descriptor.index)){
     checkpoint.activated=world._state.activated.has(checkpoint.id)||checkpoint.activated;
@@ -175,6 +215,11 @@ function captureChunk(world,chunk) {
     if(item.collected)world._state.collected.add(item.id);
     if(item.dead&&field!=="platforms")world._state.dead.add(item.id);
     if(item.activated)world._state.activated.add(item.id);
+    if(item.kind==="collapsing"||item.type==="chase"){
+      const values={};
+      for(const key of item.kind==="collapsing"?["dead","collapseTimer","resetTimer","shaking"]:["triggered","active","x"])if(item[key]!=null)values[key]=item[key];
+      if(Object.keys(values).length)world._state.dynamics.set(item.id,{time:world.time,values});
+    }
   }
   for(const checkpoint of world.checkpoints)if(checkpoint.activated)world._state.activated.add(checkpoint.id);
 }
@@ -196,12 +241,14 @@ export function updateWorldStreaming(world,playerX=0,cameraX=playerX) {
 export function persistWorldState(world) {
   if(!world._state)return null;
   for(const chunk of world._resident.values())captureChunk(world,chunk);
-  return{version:1,seed:world.seed,biome:world.biome,collected:[...world._state.collected].sort(),dead:[...world._state.dead].sort(),activated:[...world._state.activated].sort(),furthestX:world.furthestX||0};
+  return{version:2,layoutVersion:world.layoutVersion,seed:world.seed,biome:world.biome,time:world.time||0,collected:[...world._state.collected].sort(),dead:[...world._state.dead].sort(),activated:[...world._state.activated].sort(),dynamics:[...world._state.dynamics.entries()].sort(([a],[b])=>a.localeCompare(b)),furthestX:world.furthestX||0};
 }
 export function restoreWorldState(world,snapshot,playerX=world.spawn.x) {
   if(!snapshot||!world._resident)return world;
   if(snapshot.seed!=null&&snapshot.seed!==world.seed)return world;
-  world._state={collected:new Set(snapshot.collected||[]),dead:new Set(snapshot.dead||[]),activated:new Set(snapshot.activated||[])};
+  if(snapshot.biome!=null&&snapshot.biome!==world.biome)return world;
+  world.time=snapshot.time||0;
+  world._state={collected:new Set(snapshot.collected||[]),dead:new Set(snapshot.dead||[]),activated:new Set(snapshot.activated||[]),dynamics:new Map(snapshot.dynamics||[])};
   world.furthestX=snapshot.furthestX||0;
   for(const c of world.checkpoints)c.activated=world._state.activated.has(c.id);
   world._resident.clear();world._streamStart=-1;updateWorldStreaming(world,playerX,playerX);return world;

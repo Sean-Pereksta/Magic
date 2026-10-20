@@ -1,6 +1,6 @@
 import { VIEW } from '../config.js';
 import { telegraphShapes } from '../bosses/boss-attacks.js';
-import { biomeKey, HAZARD_ART, sampleFrame, namedFrame, AssetLoadError } from '../assets/asset-manager.js';
+import { biomeKey, HAZARD_ART, DYNAMIC_HAZARD_ART, sampleFrame, namedFrame, AssetLoadError } from '../assets/asset-manager.js';
 import { INTERIOR_TEXTURE_RECTS } from '../assets/terrain-textures.js';
 import { ART_ALPHA_BOUNDS, PLATFORM_SURFACES } from '../assets/art-anchors.js';
 
@@ -14,6 +14,41 @@ function position(e,alpha) {return {x:mix(e.prevX??e.previousX??e.x,e.x,alpha),y
 function visible(e,v,pad=100) {return e.x+(e.w||180)>v.x-pad&&e.x<v.x+v.w+pad&&e.y+(e.h||180)>v.y-pad&&e.y<v.y+v.h+pad;}
 function imageRect(ctx,image,r,x,y,w,h) {if(w>0&&h>0)ctx.drawImage(image,r.x,r.y,r.width,r.height,x,y,w,h);}
 function content(frame) {const c=frame.tile?.drawContentRect||frame.contentBounds;return c?{x:frame.rect.x+c.x,y:frame.rect.y+c.y,width:c.width,height:c.height}:frame.rect;}
+export function platformArtFrame(meta,p,time,moving=true) {
+  let name;
+  if(!moving)name=p.dead?(p.resetTimer>3.75?'breaking':p.resetTimer<.7?'reforming':'fallen'):p.shaking?(p.collapseTimer>.4?'warning':'cracking'):'stable';
+  else name=p.hidden||p.retracting?'inactive-cue':p.motion==='timed'&&p.warning?'warning':p.warning?'activation':Math.abs(p.vx||p.vy||p.dx||p.dy||0)>.01?'travel':'idle';
+  if(meta.kind==='bridge')name=({cracking:'sagging',breaking:'broken',fallen:'broken'})[name]||name;
+  return namedFrame(meta,name)||sampleFrame(meta,time+(p.timeOffset||0),name)||meta.frames[0];
+}
+export function mechanismArtFrame(meta,h,time) {
+  const period=h.period||5.8,cycle=((time+(h.timeOffset||0)+(h.phase||0))%period+period)%period,warn=h.warningDuration??1.2;
+  let name=h.warning?(cycle<warn/2?'warning-a':'warning-b'):h.active?'active':cycle<warn+(h.activeDuration??1)+.6?'recovery':'idle-restored';
+  if(h.type==='crusher'&&h.active)name='impact';
+  if(h.type==='rotatingBeam'&&h.warning)name='warning';
+  if(h.type==='retractSpikes')name=h.warning?'warning':h.active?(h.progress<1/6?'emerging':h.progress>5/6?'returning':'extended'):'retracted';
+  // The gameplay gate is fully passable during its warning; a closed warning
+  // drawing would conceal that safe interval. Amber telegraphs announce closure.
+  if(h.type==='timedGate')name=h.active?'closed':'open';
+  return namedFrame(meta,name)||meta.frames[0];
+}
+function hazardArtTime(meta,h,time) {
+  if(h.active===false)return 0;
+  if(['fallingRock','fireJet','flameJet','lightning'].includes(h.type)) {
+    const period=h.period||3.6,cycle=((time+(h.timeOffset||0)+(h.phase||0))%period+period)%period;
+    const progress=clamp(h.progress??(cycle-(h.warningDuration||.8))/(h.activeDuration||.65),0,.999);
+    return progress*(meta.animations?.[meta.defaultAnimation]?.durationMs||600)/1000;
+  }
+  return time+(h.timeOffset||0)+(h.phase||0);
+}
+function colliderArtPlacement(frame,collider,x,y,w,h) {
+  if(collider?.type==='circle') {
+    const sx=w/(collider.radius*2),sy=h/(collider.radius*2);
+    return {x:x+w/2-collider.x*sx,y:y+h/2-collider.y*sy,w:frame.rect.width*sx,h:frame.rect.height*sy};
+  }
+  const sx=w/(collider?.width||frame.rect.width),sy=h/(collider?.height||frame.rect.height);
+  return {x:x-(collider?.x||0)*sx,y:y-(collider?.y||0)*sy,w:frame.rect.width*sx,h:frame.rect.height*sy};
+}
 export function groundedArtPlacement(meta,frame,centerX,groundY,frameSize,visualWidth=null,visualHeight=null) {
   const b=ART_ALPHA_BOUNDS[`${meta.id}:${frame.index}`]||frame.contentBounds||{x:0,y:0,width:frame.rect.width,height:frame.rect.height};
   const scale=frameSize/frame.rect.width,sx=visualWidth?visualWidth/b.width:scale,sy=visualHeight?visualHeight/b.height:sx;
@@ -32,22 +67,22 @@ export class Renderer {
   _asset(id,required=true){const e=this.assets?.get(id);if(!e&&required)this.missingAssets.add(id);return e;}
   draw(game,alpha=1) {
     if(!game.world||!game.player||!this.assets)return;
-    const started=performance.now(),ctx=this.ctx,world=game.world,time=game.time||0;
+    const started=performance.now(),ctx=this.ctx,world=game.world,time=world.time??game.time??0;
     alpha=clamp(alpha,0,1);this.missingAssets.clear();this.drawnSprites=0;
     const biome=biomeKey(world.biome||world.region),camera=game.camera||{x:0,y:0},cam=position(camera,alpha),view={x:cam.x,y:cam.y,w:VIEW.width,h:VIEW.height};
-    if(this.lastWorld!==world){this.clearCache();this.lastWorld=world;}
+    if(this.lastWorld!==world||this.lastAssetRevision!==this.assets.revision){this.clearCache();this.lastWorld=world;this.lastAssetRevision=this.assets.revision;}
     ctx.setTransform(this.canvas.width/VIEW.width,0,0,this.canvas.height/VIEW.height,0,0);
     ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';ctx.clearRect(0,0,VIEW.width,VIEW.height);
     this._background(biome,cam);
     ctx.save();const shake=camera.shake||0;ctx.translate(-cam.x+Math.sin(time*117)*shake*.4,-cam.y+Math.sin(time*93)*shake*.25);
     for(const e of world.scenery||[])if(visible(e,view,220))this._decoration(e,biome,time,true);
     this._terrain(world,biome,view);
-    for(const p of world.platforms||[])if(!p.dead&&['collapsing','collapse'].includes(p.kind)&&visible(p,view))this._dynamicPlatform(p,biome,time,alpha);
+    for(const p of world.platforms||[])if(['collapsing','collapse'].includes(p.kind)&&visible(p,view))this._dynamicPlatform(p,biome,time,alpha);
     for(const p of world.movers||[])if(!p.dead&&visible(p,view))this._dynamicPlatform(p,biome,time,alpha,true);
     for(const e of world.props||[])if(!e.dead&&visible(e,view,180))this._decoration(e,biome,time,false);
     for(const e of world.switches||[])if(visible(e,view,60))this._switch(e,time);
-    for(const e of world.hazards||[])if(!e.dead&&visible(e,view,180))this._hazard(e,time);
-    this._checkpoints(game,view,time);this._telegraphs(game,view,time);
+    for(const e of world.hazards||[])if(!e.dead&&visible(e,view,180))this._hazard(e,time,alpha);
+    this._checkpoints(game,view,time);this._telegraphs(game,view,time);this._navigation(game,view,time);
     for(const p of world.pickups||[])if(!p.collected&&visible(p,view,50))this._pickup(p,time);
     for(const e of world.enemies||[])if(visible(e,view,180)&&(!e.dead||(e.fade??1)>0))this._enemy(e,time,alpha);
     const boss=game.bossController?.boss;if(boss&&visible(boss,view,300))this._boss(boss,time,alpha);
@@ -73,7 +108,7 @@ export class Renderer {
     }
   }
   _terrain(world,biome,view) {
-    const platforms=(world.platforms||[]).filter(p=>!p.dead&&!['collapsing','collapse'].includes(p.kind));
+    const platforms=(world.platforms||[]).filter(p=>!p.dead&&!p.open&&!['collapsing','collapse'].includes(p.kind));
     for(let gy=Math.floor((view.y-32)/CELL);gy<=Math.floor((view.y+view.h)/CELL);gy++)for(let gx=Math.floor(view.x/CELL);gx<=Math.floor((view.x+view.w)/CELL);gx++) {
       const x=gx*CELL,y=gy*CELL,parts=platforms.filter(p=>p.x+p.w>x-18&&p.x<x+CELL+18&&Math.max(p.y+(p.oneWay?100:p.h||64),p.supportBottom||0)>y-32&&p.y<y+CELL+100);
       if(!parts.length)continue;
@@ -115,6 +150,7 @@ export class Renderer {
     ctx.restore();
   }
   _oneWayPlatform(p,biome,terrain) {
+    if(p.visualKind==='bridge'&&this._upgradePlatform(p,biome,0,1,false,'platform-unstable-bridge'))return;
     const ctx=this.ctx,structures=this._asset(`${biome}-structures`);if(!structures)return;
     // Feet rest inside the illustrated top plane rather than on its rear edge.
     const top=p.y-PLATFORM_CONTACT_INSET;
@@ -170,15 +206,48 @@ export class Renderer {
     }
   }
   _dynamicPlatform(p,biome,time,alpha,moving=false) {
+    if(this._upgradePlatform(p,biome,time,alpha,moving))return;
+    if(p.dead)return;
     const entry=this._asset(`${biome}-structures`);if(!entry)return;
     const frame=namedFrame(entry.meta,moving?'moving-platform':'collapse-platform');if(!frame)return;
+    if(p.hidden) {
+      const ctx=this.ctx;ctx.save();ctx.globalAlpha=.3;ctx.strokeStyle='#b8e3d0';ctx.lineWidth=2;ctx.setLineDash([6,7]);
+      ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+p.w,p.y);ctx.stroke();ctx.restore();return;
+    }
+    if(p.motion==='pivot'&&Number.isFinite(p.startX)&&Number.isFinite(p.endX)) {
+      const ctx=this.ctx,deck=PLATFORM_SURFACES[`${entry.meta.id}:${frame.index}`];
+      const x=mix(p.prevStartX??p.startX,p.startX,alpha),y=mix(p.prevStartY??p.startY,p.startY,alpha);
+      const ex=mix(p.prevEndX??p.endX,p.endX,alpha),ey=mix(p.prevEndY??p.endY,p.endY,alpha),length=Math.hypot(ex-x,ey-y);
+      // Only the measured load-bearing deck rotates; its upper edge is the exact contact line.
+      const crop={x:frame.rect.x+deck.spanX,y:frame.rect.y+deck.y,width:deck.spanWidth,height:deck.bottomY-deck.y};
+      ctx.save();ctx.translate(x,y);ctx.rotate(Math.atan2(ey-y,ex-x));
+      imageRect(ctx,entry.image,crop,0,-PLATFORM_CONTACT_INSET,length,Math.max(18,p.h||28));ctx.restore();this.drawnSprites++;return;
+    }
     const point=position(p,alpha),crop=content(frame),b=frame.contentBounds,c=frame.collider;
     const surface=PLATFORM_SURFACES[`${entry.meta.id}:${frame.index}`],surfaceY=surface?.y??c.y,sx=p.w/c.width;
     const above=surfaceY-b.y,below=b.y+b.height-surfaceY;
     const sy=moving?Math.max(.35,Math.min(2,(p.supportTop?point.y-p.supportTop:above*sx)/Math.max(1,above))):Math.min(.75,70/Math.max(1,below));
     const shake=p.collapseTimer>0?Math.sin(time*65)*2.2:0;
-    this.ctx.save();this.ctx.globalAlpha=p.falling?Math.max(.2,1-(p.fallTime||0)):1;
+    this.ctx.save();this.ctx.globalAlpha=p.retracting?.3:p.falling?Math.max(.2,1-(p.fallTime||0)):1;
     imageRect(this.ctx,entry.image,crop,point.x+(b.x-c.x)*sx+shake,point.y-PLATFORM_CONTACT_INSET+(b.y-surfaceY)*sy,b.width*sx,b.height*sy);this.ctx.restore();
+    if(p.warning||p.shaking) {
+      const ctx=this.ctx;ctx.save();ctx.globalAlpha=.45+.3*Math.sin(time*14)**2;ctx.strokeStyle='#ffe3a0';ctx.lineWidth=3;
+      ctx.beginPath();ctx.moveTo(point.x,point.y-4);ctx.lineTo(point.x+p.w,point.y-4);ctx.stroke();ctx.restore();
+    }
+  }
+  _upgradePlatform(p,biome,time,alpha,moving=true,artId=null) {
+    const id=artId||(moving?`platform-${biome}`:p.visualKind==='bridge'?'platform-unstable-bridge':'platform-collapsing-stone');
+    const entry=this._asset(id,false);if(!entry)return false;
+    const frame=platformArtFrame(entry.meta,p,time,moving),guide=frame.collisionGuide;
+    if(guide?.type!=='oneWaySegment')return false;
+    const point=position(p,alpha),pivot=p.motion==='pivot'&&Number.isFinite(p.startX)&&Number.isFinite(p.endX);
+    const x=pivot?mix(p.prevStartX??p.startX,p.startX,alpha):point.x,y=pivot?mix(p.prevStartY??p.startY,p.startY,alpha):point.y;
+    const ex=pivot?mix(p.prevEndX??p.endX,p.endX,alpha):x+p.w,ey=pivot?mix(p.prevEndY??p.endY,p.endY,alpha):y;
+    const span=Math.hypot(guide.to.x-guide.from.x,guide.to.y-guide.from.y),scale=Math.hypot(ex-x,ey-y)/Math.max(1,span),ctx=this.ctx;
+    ctx.save();if(pivot){ctx.translate(x,y);ctx.rotate(Math.atan2(ey-y,ex-x));}
+    ctx.globalAlpha=p.hidden?.16:p.retracting?.3:p.dead&&frame.name==='fallen'?.5:1;
+    imageRect(ctx,entry.image,frame.rect,(pivot?0:x)-guide.from.x*scale,(pivot?0:y)-guide.from.y*scale-PLATFORM_CONTACT_INSET,frame.rect.width*scale,frame.rect.height*scale);
+    ctx.restore();if(!artId)this.drawnSprites++;return true;
   }
   _decoration(e,biome,time,background) {
     if(e.kind==='checkpoint')return;
@@ -196,19 +265,106 @@ export class Renderer {
     if(/grass|wheat|reeds|flowers|fern|shrub/.test(name))ctx.transform(1,0,Math.sin(time*1.7+(e.phase||e.x))*.025,1,0,0);
     imageRect(ctx,entry.image,crop,0,0,w,h);ctx.restore();this.drawnSprites++;
   }
-  _hazard(h,time) {
+  _hazard(h,time,alpha=1) {
+    const upgrade=this._asset(DYNAMIC_HAZARD_ART[h.type],false);
+    if(upgrade){this._upgradeMechanism(h,time,alpha,upgrade);return;}
     const id=h.artId||HAZARD_ART[h.type]||(h.type?.startsWith('hazard-')?h.type:null);if(!id)return;
     const entry=this._asset(id);if(!entry)return;
-    const frame=sampleFrame(entry.meta,h.active===false?0:time+(h.phase||0)),ctx=this.ctx;
+    if(['pendulum','crusher','retractSpikes','rotatingBeam','timedGate'].includes(h.type)) {this._mechanism(h,time,entry,alpha);return;}
+    const frame=sampleFrame(entry.meta,hazardArtTime(entry.meta,h,time)),ctx=this.ctx;
     ctx.save();ctx.globalAlpha=['wind','chase','windGust'].includes(h.type)?.3:h.active===false?.42:1;
     if(id==='hazard-water-surface') {
       ctx.beginPath();ctx.rect(h.x,h.y,h.w,Math.max(h.h,32));ctx.clip();
       for(let x=h.x;x<h.x+h.w;x+=128)imageRect(ctx,entry.image,frame.rect,x,h.y-22,128,72);
     } else {
-      const c=frame.collider||entry.meta.collider,sx=(h.w||64)/(c?.width||frame.rect.width),sy=(h.h||50)/(c?.height||frame.rect.height);
-      imageRect(ctx,entry.image,frame.rect,h.x-(c?.x||0)*sx,h.y-(c?.y||0)*sy,frame.rect.width*sx,frame.rect.height*sy);
+      const point=position(h,alpha),at=colliderArtPlacement(frame,frame.collider||entry.meta.collider,point.x,point.y,h.w||64,h.h||50);
+      imageRect(ctx,entry.image,frame.rect,at.x,at.y,at.w,at.h);
     }
     ctx.restore();this.drawnSprites++;
+  }
+  _mechanism(h,time,entry,alpha=1) {
+    const ctx=this.ctx,clip=entry.meta.animations?.[entry.meta.defaultAnimation];
+    const seconds=h.active?Math.min(.999,h.progress??0)*(clip?.durationMs||1000)/1000:0;
+    const frame=sampleFrame(entry.meta,seconds),c=frame.collider||entry.meta.collider;
+    const sprite=(x,y,w,height)=>{
+      if(w<=0||height<=0)return;
+      const at=colliderArtPlacement(frame,c,x,y,w,height);
+      imageRect(ctx,entry.image,frame.rect,at.x,at.y,at.w,at.h);
+    };
+    ctx.save();ctx.globalAlpha=h.warning?.75+.25*Math.sin(time*14)**2:h.active===false?.38:1;
+    if(h.type==='pendulum') {
+      const x=mix(h.prevTipX??h.tipX??h.x+h.w/2,h.tipX??h.x+h.w/2,alpha),y=mix(h.prevTipY??h.tipY??h.y+h.h/2,h.tipY??h.y+h.h/2,alpha),r=h.ballRadius??Math.min(h.w,h.h)/2;
+      ctx.strokeStyle='#8e8b78';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(h.anchorX??x,h.anchorY??y-(h.length||120));ctx.lineTo(x,y);ctx.stroke();
+      sprite(x-r,y-r,r*2,r*2);
+    } else if(h.type==='rotatingBeam'&&Number.isFinite(h.startX)&&Number.isFinite(h.endX)) {
+      const x=mix(h.prevStartX??h.startX,h.startX,alpha),y=mix(h.prevStartY??h.startY,h.startY,alpha),ex=mix(h.prevEndX??h.endX,h.endX,alpha),ey=mix(h.prevEndY??h.endY,h.endY,alpha);
+      const length=Math.hypot(ex-x,ey-y),thickness=h.thickness||h.beamThickness||(h.radius||10)*2;
+      ctx.translate(x,y);ctx.rotate(Math.atan2(ey-y,ex-x));sprite(0,-thickness/2,length,thickness);
+    } else {
+      const point=position(h,alpha);sprite(point.x,point.y,h.w,h.h);
+      if(h.type==='crusher') {
+        ctx.strokeStyle='#8e8b78';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(point.x+h.w/2,h.baseY??point.y-90);ctx.lineTo(point.x+h.w/2,point.y);ctx.stroke();
+      }
+      if(h.type==='retractSpikes') {
+        const base=h.baseY??h.y+h.h;ctx.strokeStyle=h.warning?'#ffe3a0':'#8e8b78';ctx.lineWidth=4;
+        ctx.beginPath();ctx.moveTo(h.x,base);ctx.lineTo(h.x+h.w,base);ctx.stroke();
+        if(h.warning){ctx.lineWidth=2;ctx.setLineDash([5,5]);ctx.strokeRect(h.x,base-(h.maxHeight||46),h.w,h.maxHeight||46);}
+      }
+      if(h.type==='timedGate'&&h.active===false) {
+        ctx.strokeStyle='#b8e3d0';ctx.lineWidth=2;ctx.setLineDash([6,7]);ctx.strokeRect(h.x,h.baseY??h.y,h.w,h.fullHeight??h.h);
+      }
+    }
+    ctx.restore();this.drawnSprites++;
+  }
+  _upgradeMechanism(h,time,alpha,entry) {
+    const ctx=this.ctx,frame=mechanismArtFrame(entry.meta,h,time),guide=frame.collisionGuide,point=position(h,alpha);
+    ctx.save();ctx.globalAlpha=h.active?1:h.warning?.92:.55;
+    if(h.type==='pendulum') {
+      const x=mix(h.prevTipX??h.tipX,h.tipX,alpha),y=mix(h.prevTipY??h.tipY,h.tipY,alpha),scale=h.ballRadius/guide.radius;
+      const angle=-Math.atan2(x-h.anchorX,y-h.anchorY),attach=frame.anchors.chainAttach,origin=guide.center;
+      const ax=(attach.x-origin.x)*scale,ay=(attach.y-origin.y)*scale;
+      const attachX=x+ax*Math.cos(angle)-ay*Math.sin(angle),attachY=y+ax*Math.sin(angle)+ay*Math.cos(angle);
+      ctx.strokeStyle='#8e8b78';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(h.anchorX,h.anchorY);ctx.lineTo(attachX,attachY);ctx.stroke();
+      ctx.translate(x,y);ctx.rotate(angle);imageRect(ctx,entry.image,frame.rect,-origin.x*scale,-origin.y*scale,frame.rect.width*scale,frame.rect.height*scale);
+    } else if(h.type==='rotatingBeam') {
+      const x=mix(h.prevStartX??h.startX,h.startX,alpha),y=mix(h.prevStartY??h.startY,h.startY,alpha),ex=mix(h.prevEndX??h.endX,h.endX,alpha),ey=mix(h.prevEndY??h.endY,h.endY,alpha);
+      const sx=Math.hypot(ex-x,ey-y)/Math.hypot(guide.to.x-guide.from.x,guide.to.y-guide.from.y),sy=(h.radius||10)/guide.radius;
+      ctx.translate(x,y);ctx.rotate(Math.atan2(ey-y,ex-x));imageRect(ctx,entry.image,frame.rect,-guide.from.x*sx,-guide.from.y*sy,frame.rect.width*sx,frame.rect.height*sy);
+    } else if(h.type==='retractSpikes') {
+      const points=guide.polygons.flat(),left=Math.min(...points.map(p=>p[0])),right=Math.max(...points.map(p=>p[0])),slotY=frame.anchors.slotCenters[0].y,tipY=Math.min(...points.map(p=>p[1]));
+      const sx=h.w/(right-left),extended=entry.meta.frames[3].collisionGuide.polygons.flat(),fullTip=Math.min(...extended.map(p=>p[1]));
+      const sy=(h.maxHeight||46)/(slotY-fullTip),base=h.baseY??h.y+h.h,x=h.x-left*sx;
+      const plate={x:frame.rect.x,y:frame.rect.y+slotY,width:frame.rect.width,height:frame.rect.height-slotY};
+      imageRect(ctx,entry.image,plate,x,base,frame.rect.width*sx,plate.height*sy);
+      const spikeScale=h.active&&h.h>0?h.h/Math.max(1,slotY-tipY):sy;
+      const spikes={x:frame.rect.x,y:frame.rect.y,width:frame.rect.width,height:slotY};
+      imageRect(ctx,entry.image,spikes,x,base-slotY*spikeScale,frame.rect.width*sx,slotY*spikeScale);
+    } else if(h.type==='timedGate') {
+      const closed=entry.meta.frames[0].collisionGuide,sx=h.w/guide.width,sy=h.h/closed.height,origin=frame.origin;
+      imageRect(ctx,entry.image,frame.rect,h.x+h.w/2-origin.x*sx,h.y+h.h-origin.y*sy,frame.rect.width*sx,frame.rect.height*sy);
+    } else {
+      const sx=h.w/guide.width,sy=h.h/guide.height,attach=frame.anchors?.shaftAttach;
+      if(attach){const x=point.x+(attach.x-guide.x)*sx,y=point.y+(attach.y-guide.y)*sy;ctx.strokeStyle='#8e8b78';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(x,h.baseY-40);ctx.lineTo(x,y);ctx.stroke();}
+      imageRect(ctx,entry.image,frame.rect,point.x-guide.x*sx,point.y-guide.y*sy,frame.rect.width*sx,frame.rect.height*sy);
+    }
+    ctx.restore();this.drawnSprites++;
+  }
+  _navigationIcon(name,x,y,size=26,flip=false) {
+    const entry=this._asset('ui-navigation',false);if(!entry)return;
+    const frame=namedFrame(entry.meta,name);if(!frame)return;
+    const b=frame.contentBounds,scale=size/Math.max(b.width,b.height),ctx=this.ctx;
+    ctx.save();ctx.translate(x,y);ctx.scale(flip?-scale:scale,scale);
+    imageRect(ctx,entry.image,frame.rect,-frame.origin.x,-frame.origin.y,frame.rect.width,frame.rect.height);ctx.restore();this.drawnSprites++;
+  }
+  _navigation(game,view,time) {
+    let budget=2;
+    for(const p of game.world.movers||[]) {
+      if(!budget||!p.route||!visible(p,view,30)||Math.abs(p.x-game.player.x)>600)continue;
+      const wait=p.hidden||p.retracting||p.warning&&p.warningMode==='retraction';
+      this._navigationIcon(wait?'wait':p.axis==='y'?'move-up':'move-right',p.x+p.w/2,p.y-64,25,p.axis==='x'&&(p.vx||0)<0);
+      if(!wait)this._navigationIcon('safe-landing',p.x+p.w/2,p.y-28,20);
+      budget--;
+    }
   }
   _pickup(p,time) {
     if(p.type==='water') {
@@ -234,7 +390,7 @@ export class Renderer {
     const frame=namedFrame(entry.meta,s.activated?'sun-relic':'checkpoint-lantern');
     const at=groundedArtPlacement(entry.meta,frame,s.x+s.w/2,s.groundY??s.y+s.h,s.w+16);
     imageRect(this.ctx,entry.image,at.source,at.x,at.y,at.w,at.h);
-    if(s.activated)this._effect({type:'fx-gold-impact',x:s.x+s.w/2,y:s.y+s.h,time:time%.7,scale:.24},false);
+    if(s.activated)this._effect({type:'fx-platform-activation',x:s.x+s.w/2,y:s.y+s.h,time:time%.7,scale:.24},false);
   }
   _checkpoints(game,view,time) {
     if(!game.world.checkpoints?.length)return;
@@ -283,7 +439,7 @@ export class Renderer {
     for(let i=effects.length-1;i>=0&&budget>0;i--) {const e=effects[i];if(e.time>e.duration||!visible({...e,x:e.x-100,y:e.y-200,w:200,h:240},view,50))continue;this._effect(e);budget--;}
   }
   _effect(e,required=true) {
-    const entry=this._asset(EFFECT_ALIASES[e.type]||e.type,required);if(!entry)return;
+    const entry=e.type==='fx-platform-activation'?(this._asset(e.type,false)||this._asset('fx-landing-dust',required)):this._asset(EFFECT_ALIASES[e.type]||e.type,required);if(!entry)return;
     const frame=sampleFrame(entry.meta,e.time||0),pivot=frame.origin||entry.meta.origin,scale=e.scale??.6,ctx=this.ctx;
     ctx.save();ctx.translate(e.x,e.y);ctx.scale((e.facing||1)*scale,scale);ctx.globalAlpha=e.opacity??1;
     imageRect(ctx,entry.image,frame.rect,-pivot.x,-pivot.y,frame.rect.width,frame.rect.height);ctx.restore();this.drawnSprites++;

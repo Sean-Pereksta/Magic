@@ -1,19 +1,21 @@
-# Jesus Runner — Stage Two
+# Jesus Runner — Dynamic Platforming
 
-A static browser platformer using the completed Stage One artwork. Journey follows six long worlds, with automatic checkpoint saves and one guardian trial at each world's end. Endless rotates the same biomes through shorter, growing runs and adds a guardian every third segment. Challenge revisits use three hearts. The menus and HUD keep the active controls, health, collectibles, and progress visible.
+A static browser platformer retaining the original artwork, powers and guardians while adding the uploaded moving-platform and hazard graphics. Journey follows six compact worlds, with automatic checkpoint saves and one guardian trial at each world's end. Endless changes biome after each 6–12 chunk segment and adds a guardian every third segment. Challenge revisits use three hearts.
 
 | Journey world | Generated width | Permanent reward | Guardian |
 | --- | ---: | --- | --- |
-| Galilee Countryside | 217,600 px | Sandals | War Beast |
-| Judean Wilderness | 243,200 px | Shield | Pit Lord |
-| Ancient City | 307,200 px | Holy Light | War Beast |
-| Mountain Pass | 320,000 px | Angel Wings | Celestial Trial |
-| Ancient Ruins | 332,800 px | Bread | Temple Judge |
-| Storm Highlands | 345,600 px | Fire Rain | Celestial Trial |
+| Galilee Countryside | 108,800 px (34 chunks) | Sandals | War Beast |
+| Judean Wilderness | 121,600 px (38 chunks) | Shield | Pit Lord |
+| Ancient City | 153,600 px (48 chunks) | Holy Light | War Beast |
+| Mountain Pass | 160,000 px (50 chunks) | Angel Wings | Celestial Trial |
+| Ancient Ruins | 166,400 px (52 chunks) | Bread | Temple Judge |
+| Storm Highlands | 172,800 px (54 chunks) | Fire Rain | Celestial Trial |
 
-Worlds combine 36 authored traversal modules with deterministic seeded selection. Critical routes work with base movement; powers open optional opportunities. Modules include upper branches, lower secret chambers with return stairs, combat courts, pressure switches and reward gates, slopes, moving lifts, recovering collapse platforms, and chase sections. Biome hazards include brambles, water, flame jets, descending rocks, wind, and lightning. Sixteen enemy species use detection, patrol/pursuit, readable attack tells, projectiles, and differing weaknesses. The four guardians have three phases and guaranteed vulnerability windows.
+Worlds combine the original 36 traversal modules with 12 new authored encounters: two for each biome. Required ferries, vertical lifts, opposite-phase transfers, pivoting bridges and restoring platforms interrupt the static route. Critical routes work with base movement; powers open optional rewards and shortcuts. Pendulums, crushers, retracting spikes, rotating beams and timed gates join the existing environmental hazards. Broad combat landings, pressure switches, recovering collapsing bridges, secrets and calm checkpoint approaches vary the rhythm. Sixteen enemy species and all four three-phase guardians are retained.
 
-The length budget aims for roughly 10–15 minutes in early worlds and 15–25 minutes later. These are design estimates, not measured human completion times; exploration, upgrades, combat, retries, and player skill change duration. Record time targets are configured separately in `js/world/journey.js`.
+Journey length budgets are halved; time-record targets are halved to match. Checkpoints occur every five chunks and at the guardian approach. Existing records and unlocks retain their storage keys. Endless starts at six chunks, adds one chunk every three completed segments, and caps at twelve; difficulty also grows through mechanics and timing. Duration still depends on exploration, waiting, combat, retries and player skill.
+
+Each authored dynamic route is replayed using the shipped fixed-step controller at four initial mechanism phases, including waiting, riding, hazards and transfers. Removing movers must break its route even when a basic dash is available. Generation selects among validated modules; stable shared seams connect them. Controller/geometry-fingerprinted proof data avoids running long simulations while a biome loads; changed content falls back to live validation. Rebuild that development-only catalog with `node tests/build-route-proofs.mjs` after changing physics or rooms, then run the suites below.
 
 **Controls**
 
@@ -34,7 +36,9 @@ Water pickups grant one extra air jump for 45 seconds (in addition to Wings, if 
 
 **Artwork and streaming**
 
-The public image base is [Cloudflare R2](https://pub-3219e1df016149619783f45bf63280c8.r2.dev). `js/assets/catalog.js` contains compact local metadata for all 263 Stage One assets, including 1,429 exact source frames, 301 animation clips, timings, pivots, and colliders. `art-anchors.js` and `terrain-textures.js` contain measured source content/placement data. Runtime images come from R2; local metadata avoids fetching cross-origin manifest JSON. Preserve the uploaded directory structure when changing `ASSET_BASE_URL`.
+The public image base is [Cloudflare R2](https://pub-3219e1df016149619783f45bf63280c8.r2.dev). The original catalog retains 263 assets, 1,429 frames and 301 clips. `js/assets/dynamic-catalog.js` adds all 15 uploaded PNGs and 88 explicitly cropped frames with measured origins/contact anchors. The six biome moving-platform PNGs are **directly under `platforms/`**, alongside collapsing stone and unstable wooden bridge sheets; there is no `platforms/moving/` URL. Other new sheets remain in `hazards/`, `effects/` and `ui/`. Native source sizes are preserved, including the 2,171-pixel-wide mountain sheet; frame widths must not be inferred from a generic grid.
+
+New hazard frames are selected from the same simulation state that drives warnings, motion and damage. Platform placement uses its actual standing plane, including pivot endpoints. Original artwork remains available as a fallback if an upgrade image cannot load. The new sheets load in the background and cannot trap the player on an artwork-loading screen. Runtime uses local metadata rather than fetching a cross-origin JSON manifest.
 
 The loader requests the current biome, its enemy pool, required actions/effects, and applicable hazards. Guardian art is prefetched near the final approach and loaded for its arena. New pickup actions are prepared as chunks enter residency. Loading screens report progress and allow retries after image failures. Shared player/UI/power images are retained; previous biome and unused enemy images are released during level changes. The renderer culls distant objects, caches a bounded set of terrain cells, and adjusts visual quality to frame cost. Four world chunks remain resident regardless of logical level length. Checkpoint shrines, ground pickups, and props use actual surface heights and source alpha bounds. Stone, bridge, moving, and collapsing platform artwork meets the landing plane with a small contact inset; bridges and rear supports dress ledges without changing collision routes.
 
@@ -48,17 +52,20 @@ python -m http.server 8080
 
 Open `http://localhost:8080/`. For production, publish this directory's `index.html`, `styles.css`, and `js/` tree together on a static host, preserving relative paths and JavaScript module MIME types. The graphics URL must remain publicly reachable. The default game stores progress and records in the browser; the existing score adapter can use Firebase only if a host already provides an initialized Firebase instance. Firebase is not loaded or required by this application.
 
-Journey checkpoints preserve the seeded world, checkpoint player resources, collected pickup IDs, defeated enemy IDs, activated switches/checkpoints, and run statistics. Death returns to the saved checkpoint. Browser storage uses `jesusRunnerJourneyV3`; existing `jesusRunJourneyV2` progress and recognized permanent powers migrate to the six-world campaign. Old checkpoint geometry is discarded during migration. Key bindings and Endless scores use separate local storage keys. Saves are local to the browser and origin; blocked or corrupt storage falls back safely, with no account synchronization.
+Journey checkpoints preserve the seeded world, checkpoint player resources, collected pickup IDs, defeated enemy IDs, activated switches/checkpoints, mechanism clock, collapse/recovery states and run statistics. Streamed movers are sampled at that clock without a first-frame teleport. Collapsed paths recover while unloaded. Existing V3 checkpoints resume the original long layout so late saved coordinates retain their support; new runs use the shorter layout. Death returns to the saved checkpoint. Browser storage still uses `jesusRunnerJourneyV3`; existing `jesusRunJourneyV2` progress and recognized permanent powers migrate to the six-world campaign. Old V2 checkpoint geometry is discarded during that migration. Key bindings and Endless scores retain their separate keys. Saves remain local to the browser and origin.
 
 **Verification**
 
-With a recent Node.js installation, run all nine dependency-free core suites:
+With a recent Node.js installation, run all twelve dependency-free core suites:
 
 ```sh
 npm test
 ```
 
 - `validate-content.mjs`: authored routes, generated region/tier combinations, guardian phases and exposure, preserved attack targets.
+- `dynamic-modules.mjs`: all twelve new routes at four initial phases, rejection of static dash bypasses, calm seams, combat landings, pressure gate and recovering wooden bridge.
+- `dynamic-platforming.mjs`: required platform riding, pivot contact, timed solidity, swept collisions, hazard state/damage synchronization and controller regressions.
+- `pacing-streaming.mjs`: Journey/Endless lengths, proof-catalog fingerprints, late legacy checkpoint support, saved clocks, streamed mover continuity and unloaded collapse recovery.
 - `world-platforming.mjs`: real-controller reachability, ability availability, all six world lengths, deterministic IDs, 1,440 biome/seed/difficulty/power combinations including final arena joins, bounded residency, secret totals, support/ground alignment, checkpoint serialization, movement and environmental mechanics.
 - `assets-runtime.mjs`: exact frame geometry/timing, alpha-ground anchors, biome-selective plans, request deduplication/retry/cancellation, texture retention, rendered source rectangles, and visible culling. When Stage One source files exist in the authoring workspace, it additionally compares manifests and verifies PNG alpha measurements using the bundled Sharp runtime; these optional authoring files are not deployment dependencies.
 - `combat-overhaul.mjs`: all enemy species, telegraphs, weaknesses, projectiles, blessings, guardian attack routines, and vulnerability behavior.

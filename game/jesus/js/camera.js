@@ -25,13 +25,22 @@ export class Camera {
       if (lower) target = Math.max(target, lower.y + 100 - VIEW.height);
     }
     if (lookDown) target += Math.min(190, VIEW.height * .32);
+    if(!lookDown&&!world.bossArena){
+      const lift=(world.movers||[]).find(p=>!p.dead&&!p.hidden&&p.id===player.groundId&&(p.axis==="y"||p.motion==="lift"));
+      if(lift){
+        const upper=(lift.baseY??lift.y)-(lift.range||0);
+        target=Math.min(target,Math.max(upper-140,feet-VIEW.height+100));
+      }
+    }
     // Looking down reveals landings while keeping the player's head in view.
     return Math.min(target, player.y - 64);
   }
   update(player, dt, worldOrWidth, {lookDown = false} = {}) {
     const world = typeof worldOrWidth === "number" ? { width: worldOrWidth } : worldOrWidth;
     this.previousX = this.x; this.previousY = this.y;
-    this.look = lerp(this.look, clamp(player.vx / 430, -1, 1) * 125, 1 - Math.exp(-4 * dt));
+    const upcoming=(world.movers||[]).some(p=>p.required&&p.x+p.w>player.x&&p.x<player.x+650);
+    const anticipation=upcoming&&player.onGround&&Math.abs(player.vx)<60?(player.facing||1)*95:clamp(player.vx / 430, -1, 1)*125;
+    this.look = lerp(this.look, anticipation, 1 - Math.exp(-4 * dt));
     const targetX = player.x + player.w / 2 - VIEW.width * 0.42 + this.look;
     const targetY = this.verticalTarget(player, world, lookDown);
     this.x = lerp(this.x, targetX, 1 - Math.exp(-7.5 * dt));

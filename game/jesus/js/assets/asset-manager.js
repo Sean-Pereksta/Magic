@@ -1,6 +1,8 @@
-import { ASSET_BASE_URL, ASSET_CATALOG } from './catalog.js';
+import { ASSET_BASE_URL, ASSET_CATALOG as LEGACY_ASSET_CATALOG } from './catalog.js';
+import { DYNAMIC_ASSET_CATALOG, DYNAMIC_HAZARD_ART } from './dynamic-catalog.js';
 
-export { ASSET_CATALOG };
+export const ASSET_CATALOG = {...LEGACY_ASSET_CATALOG,...DYNAMIC_ASSET_CATALOG};
+export { DYNAMIC_ASSET_CATALOG, DYNAMIC_HAZARD_ART };
 export const BIOME_ALIASES = { galilee:'countryside', rome:'city', jerusalem:'ruins', hell:'desert', heaven:'storm' };
 export const biomeKey = value => BIOME_ALIASES[value] || value || 'countryside';
 export const HAZARD_ART = {
@@ -9,6 +11,9 @@ export const HAZARD_ART = {
   flameJet:'hazard-flame-jet', fireJet:'hazard-flame-jet', fire:'hazard-flame-jet', lava:'hazard-flame-jet',
   lightning:'hazard-lightning-strike', water:'hazard-water-surface', river:'hazard-water-surface',
   waterfall:'hazard-waterfall', wind:'hazard-wind-gust', windGust:'hazard-wind-gust', chase:'hazard-wind-gust',
+  // Existing artwork remains a working fallback until optional upgrade sheets load.
+  pendulum:'hazard-falling-rock', crusher:'hazard-falling-rock', retractSpikes:'hazard-spike-trap',
+  rotatingBeam:'hazard-spike-trap', timedGate:'hazard-spike-trap',
 };
 const PLAYER_CORE = ['idle','walk','run','accelerate','stop','jump','double-jump','fall','land','wall-slide','wall-jump','dash','dodge','attack','hurt','death','recover','interact','victory'];
 const CORE_FX = ['jump-dust','landing-dust','dash-trail','blessing-attack-arc','gold-impact','damage-burst','pickup-collect','checkpoint-activation','rubble-destruction','radial-orb','shield-pulse','bread-healing-aura'];
@@ -66,6 +71,7 @@ export class AssetManager {
     this.concurrency=concurrency; this.timeoutMs=timeoutMs;
     this.cache=new Map(); this.pending=new Map(); this.pinned=new Set(); this.levelIDs=new Set();
     this.errors=new Map(); this.queue=[]; this.active=0; this.biome=null; this.levelKey=null; this.revision=0; this.aborters=new Map(); this.cancelEpoch=0;
+    this.optionalUnavailable=new Set();this.optionalLoad=Promise.resolve();this.loadEpoch=0;
   }
   async initialize() { return this; }
   getURL(id) { const m=ASSET_CATALOG[id]; if(!m) throw new Error(`Unknown graphics asset: ${id}`); return `${this.baseURL}/${m.path}`; }
@@ -88,10 +94,15 @@ export class AssetManager {
       if(tags.includes('wind')||tags.includes('chase'))hazardTypes.add('wind');
       if(tags.includes('rockfall'))hazardTypes.add('fallingRock');
       if(tags.includes('lightning'))hazardTypes.add('lightning');
+      for(const type of ['pendulum','crusher','retractSpikes','rotatingBeam','timedGate'])if(tags.includes(type))hazardTypes.add(type);
     }
     // Mountain/desert/storm route families contain gusts even when the first chunks are calm.
     if(['mountains','desert','storm'].includes(biome))hazardTypes.add('wind');
-    for(const h of hazardTypes) ids.push(HAZARD_ART[h] || h);
+    for(const h of hazardTypes) {
+      ids.push(HAZARD_ART[h] || h);
+      if(DYNAMIC_HAZARD_ART[h])ids.push(DYNAMIC_HAZARD_ART[h]);
+    }
+    if(!world.bossArena)ids.push(`platform-${biome}`,'platform-collapsing-stone','platform-unstable-bridge','fx-platform-activation','ui-navigation');
     // Water is also decorative; its ripple animation is shared by all six worlds.
     ids.push('hazard-water-surface','fx-water-splash');
     if(biome==='storm') ids.push('fx-weather-rain','hazard-lightning-strike','projectile-lightning');
@@ -107,6 +118,7 @@ export class AssetManager {
     return unique;
   }
   async loadLevel(world, onProgress=()=>{}) {
+    const loadEpoch=++this.loadEpoch;
     const nextBiome=biomeKey(world.biome || world.region);
     const levelKey=world.id || nextBiome;
     const ids=this.planLevel(world);
@@ -118,15 +130,25 @@ export class AssetManager {
     const keep=new Set([...this.pinned,...ids]);
     this._retainOnly(keep);
     this.biome=nextBiome; this.levelKey=levelKey;
+    const required=ids.filter(id=>!ASSET_CATALOG[id].optional),optional=ids.filter(id=>ASSET_CATALOG[id].optional);
+    for(const id of optional)this.optionalUnavailable.delete(id);
     let loaded=0;
-    onProgress({loaded,total:ids.length,ratio:0,label:'Preparing world graphics'});
-    const results=await Promise.allSettled(ids.map(async id=>{
+    onProgress({loaded,total:required.length,ratio:0,label:'Preparing world graphics'});
+    const results=await Promise.allSettled(required.map(async id=>{
       const entry=await this._load(id);
-      onProgress({loaded:++loaded,total:ids.length,ratio:loaded/ids.length,label:ASSET_CATALOG[id].kind});
+      loaded++;
+      if(loadEpoch===this.loadEpoch)onProgress({loaded,total:required.length,ratio:loaded/required.length,label:ASSET_CATALOG[id].kind});
       return entry;
     }));
-    const failed=ids.filter((id,i)=>results[i].status==='rejected');
+    const failed=required.filter((id,i)=>results[i].status==='rejected');
     if(failed.length) throw new AssetLoadError(failed,results.find(r=>r.status==='rejected').reason);
+    if(loadEpoch!==this.loadEpoch) {
+      const error=new Error('Previous-world graphics loading cancelled');error.name='AbortError';
+      throw new AssetLoadError(required,error);
+    }
+    // Upgrades arrive in the background. Original art is ready before play starts,
+    // so a missing optional sheet cannot hold the loading screen or hide a route.
+    this.optionalLoad=this.ensure(optional).catch(()=>null);
     this.revision++;
     return this.stats();
   }
@@ -161,8 +183,10 @@ export class AssetManager {
     for(const [id,abort] of [...this.aborters]) if(!keep.has(id)) {abort();this.pending.delete(id);}
     for(const [id,entry] of this.cache) if(!keep.has(id)) {entry.image.src='';this.cache.delete(id);}
     for(const id of this.errors.keys()) if(!keep.has(id))this.errors.delete(id);
+    for(const id of this.optionalUnavailable)if(!keep.has(id))this.optionalUnavailable.delete(id);
   }
   cancelLoads() {
+    this.loadEpoch++;
     this.cancelEpoch++;
     const error=new Error('Graphics loading cancelled'); error.name='AbortError';
     for(const task of this.queue.splice(0)) {this.pending.delete(task.id);task.reject(error);}
@@ -171,19 +195,22 @@ export class AssetManager {
     this.releaseLevel();
   }
   releaseLevel() {
+    this.loadEpoch++;
     this.levelIDs.clear(); this.biome=null;this.levelKey=null;
     for(const [id,entry] of this.cache) if(!this.pinned.has(id)) {
       entry.image.src=''; this.cache.delete(id);
     }
     this.errors.clear(); this.revision++;
+    this.optionalUnavailable.clear();
   }
   stats() {
     let decodedBytes=0,networkBytes=0;
     for(const {meta} of this.cache.values()) { decodedBytes+=meta.width*meta.height*4; networkBytes+=meta.bytes || 0; }
-    return {images:this.cache.size,pending:this.pending.size,decodedBytes,networkBytes,biome:this.biome,failed:[...this.errors.keys()]};
+    return {images:this.cache.size,pending:this.pending.size,decodedBytes,networkBytes,biome:this.biome,failed:[...this.errors.keys()],optionalUnavailable:[...this.optionalUnavailable]};
   }
   _load(id) {
     if(this.cache.has(id)) return Promise.resolve(this.cache.get(id));
+    if(this.optionalUnavailable.has(id))return Promise.resolve(null);
     if(this.pending.has(id)) return this.pending.get(id);
     if(!ASSET_CATALOG[id]) return Promise.reject(new Error(`Unknown graphics asset: ${id}`));
     let resolve,reject;
@@ -198,22 +225,28 @@ export class AssetManager {
       this._download(task.id).then(entry=>{
         // A late completion from the previous world must not repopulate its released cache.
         if(this.levelIDs.has(task.id)||this.pinned.has(task.id)) this.cache.set(task.id,entry);
+        if(entry.meta.optional)this.revision++;
         this.errors.delete(task.id); task.resolve(entry);
-      },err=>{if(this.levelIDs.has(task.id)||this.pinned.has(task.id))this.errors.set(task.id,err);task.reject(err);}).finally(()=>{
+      },err=>{
+        if(ASSET_CATALOG[task.id]?.optional) {
+          if(this.levelIDs.has(task.id))this.optionalUnavailable.add(task.id);
+          this.errors.delete(task.id);task.resolve(null);
+        } else {if(this.levelIDs.has(task.id)||this.pinned.has(task.id))this.errors.set(task.id,err);task.reject(err);}
+      }).finally(()=>{
         if(this.pending.get(task.id)===task.promise)this.pending.delete(task.id);
         this.active--; this._drain();
       });
     }
   }
   async _download(id) {
-    let lastError; const epoch=this.cancelEpoch;
-    for(let attempt=0;attempt<2;attempt++) {
+    let lastError; const epoch=this.cancelEpoch,optional=ASSET_CATALOG[id]?.optional;
+    for(let attempt=0;attempt<(optional?1:2);attempt++) {
       try {
         const image=this.imageFactory(); image.decoding='async';
         const meta=ASSET_CATALOG[id];
         await new Promise((resolve,reject)=>{
           const clean=()=>{clearTimeout(timer);image.onload=image.onerror=null;this.aborters.delete(id);};
-          const timer=setTimeout(()=>{clean();image.src='';reject(new Error(`Graphics request timed out: ${id}`));},this.timeoutMs);
+          const timer=setTimeout(()=>{clean();image.src='';reject(new Error(`Graphics request timed out: ${id}`));},optional?Math.min(4000,this.timeoutMs):this.timeoutMs);
           image.onload=()=>{clean();resolve();};
           image.onerror=()=>{clean();reject(new Error(`Graphics request failed: ${id}`));};
           this.aborters.set(id,()=>{clean();image.src='';const error=new Error('Graphics loading cancelled');error.name='AbortError';reject(error);});
