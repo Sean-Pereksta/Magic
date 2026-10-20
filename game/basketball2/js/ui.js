@@ -2,8 +2,6 @@ function buildMenu(){
   loadMatchSetup();
   buildPrimaryMenu();
   buildTeamTacticsSelectors();
-  buildCharacterCards("p1Cards","p1");
-  buildCharacterCards("p2Cards","p2");
   buildCharacterCards("tourP1Cards","tournamentP1");
   setupSneakerSelectors();
   setupJerseySelectors();
@@ -28,6 +26,7 @@ function buildMenu(){
     button.onclick=()=>{
       teamSize=Number(button.dataset.teamSize);
       if(teamSize===1) localTeamMode="competitive";
+      syncCustomRosterBudget();
       if(customRosterDraft.enabled){
         customRosterDraft=BasketballCustomRosters.fill(customRosterDraft,teamSize,customRosterCatalog(),[`classic:${selectedP1}`,`classic:${selectedP2}`]);
         saveCustomRosterDraft();
@@ -150,12 +149,22 @@ function showQuickPlaySetup(size=null,local=null){
   resetPlayerShotFeedback();
   document.body.classList.remove("tutorial-active","touch-controls-active");
   loadMatchSetup();
+  const previousTeamSize=teamSize;
   isTournamentGame=false;
   isChampionshipGame=false;
   if(size!==null) teamSize=size;
   if(local!==null) twoPlayerMode=local;
   if(teamSize===1) localTeamMode="competitive";
-  loadCustomRosterDraft();
+  const budgetChanged=loadCustomRosterDraft();
+  customRosterDraft.enabled=true;
+  const pool=customRosterCatalog();
+  const hasPicks=customRosterDraft.teams.some(ids=>ids.some(Boolean));
+  if(!hasPicks){
+    customRosterDraft=BasketballCustomRosters.rollRandom(customRosterDraft,teamSize,pool.filter(entry=>entry.source==='Quick Play'));
+  }else if(previousTeamSize!==teamSize||budgetChanged){
+    customRosterDraft=BasketballCustomRosters.fill(customRosterDraft,teamSize,pool);
+  }
+  saveCustomRosterDraft();
   refreshMatchSetup();
   refreshSneakerSelectorUI();
   refreshJerseySelectorUI();

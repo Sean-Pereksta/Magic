@@ -980,11 +980,20 @@ function createCharacter(profile,pos,id,assignedTeam=null){
   group.position.copy(pos);
 
   const inferredTeam=assignedTeam ?? (id==="p1"||id==="p2"&&twoPlayerMode&&teamSize>1&&localTeamMode==="cooperative"?0:1);
-  const jerseyKey = id==="p2" && twoPlayerMode ? selectedP2Jersey : inferredTeam===0 ? selectedP1Jersey : selectedP2Jersey;
+  const teamUniform=typeof customMatchRoster!=='undefined'&&!!customMatchRoster;
+  const individualP2=id==="p2"&&twoPlayerMode&&!teamUniform;
+  const jerseyKey = individualP2 ? selectedP2Jersey : inferredTeam===0 ? selectedP1Jersey : selectedP2Jersey;
   const selectedStyle = jerseys[jerseyKey] || jerseys.classicBlue;
-  const equipment=profile.equipment || (id==="p2" && twoPlayerMode ? (typeof selectedP2Equipment!=="undefined" ? selectedP2Equipment : {}) : inferredTeam===0 ? (typeof selectedP1Equipment!=="undefined" ? selectedP1Equipment : {}) : (typeof selectedP2Equipment!=="undefined" ? selectedP2Equipment : {}));
-  const sneakerKey = id==="p2" && twoPlayerMode ? selectedP2Sneaker : inferredTeam===0 ? selectedP1Sneaker : selectedP2Sneaker;
+  const teamEquipment=individualP2 ? (typeof selectedP2Equipment!=="undefined" ? selectedP2Equipment : {}) : inferredTeam===0 ? (typeof selectedP1Equipment!=="undefined" ? selectedP1Equipment : {}) : (typeof selectedP2Equipment!=="undefined" ? selectedP2Equipment : {});
+  const sneakerKey = individualP2 ? selectedP2Sneaker : inferredTeam===0 ? selectedP1Sneaker : selectedP2Sneaker;
   const selectedSneaker=sneakers[sneakerKey] || sneakers.classic;
+  // Quick Play outfits belong to teams, including the second human in co-op.
+  // Imported athletes keep their accessories while the chosen kit takes priority.
+  const equipment=teamUniform ? {...profile.equipment,...teamEquipment,
+    jersey:{color:selectedStyle.primary,secondary:selectedStyle.secondary,accent:selectedStyle.trim??selectedStyle.accent,...teamEquipment.jersey},
+    shorts:{color:selectedStyle.secondary??selectedStyle.primary,accent:selectedStyle.trim??selectedStyle.accent,...teamEquipment.shorts},
+    shoes:{color:selectedSneaker.primary,accent:selectedSneaker.accent,sole:selectedSneaker.sole,...teamEquipment.shoes}
+  } : profile.equipment||teamEquipment;
   const appearance=resolveBasketballEquipment(profile,selectedStyle,selectedSneaker,equipment);
   const jerseyStyle=appearance.jerseyStyle,sneaker=appearance.sneakerStyle;
   const skin = new THREE.MeshStandardMaterial({color:profile.skin,roughness:.62});

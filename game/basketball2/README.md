@@ -53,7 +53,11 @@ In team games, **B** requests a screen and **Shift+B** requests a cut. Hold **Al
 
 Quick Play supports 1v1, 2v2, and 3v3, with one or two humans. Local team matches can be cooperative or competitive, with side-by-side or top/bottom views. Teams have distinct blue and coral jerseys/indicators. The National Tour and tutorial remain 1v1; existing tour saves, settings, courts, characters, and cosmetic selections retain their storage keys. Team setup preferences use a separate `basketball2MatchV1` key.
 
-Enable **OVR-capped custom rosters** in Quick Play to select every player on both teams. Each side has the same total OVR limit, initially 250, and the displayed totals update as picks change. Every slot must be filled, each athlete can appear once in the matchup, and both totals must be at most the chosen limit before starting. Available franchise athletes retain their developed ratings, signature skills and assignments in this exhibition; playing it does not award campaign progression. Standard Quick Play continues to choose complementary teammates when custom rosters are off.
+Quick Play opens directly into a team builder. Choose from nine roles, including Shooter, Playmaker, Slasher and Rim Protector, at **60, 70, 80 or 90 OVR**. The 108 role/tier options have calibrated ratings that are used on the court. Classic characters and owned franchise athletes remain available in the same picker. Every slot must be filled, an athlete can appear once per matchup, and each team's total must stay at or below the selected maximum.
+
+**Roll random** replaces both lineups with unique players and uses the full team budget whenever a valid combination exists. If an exact total is impossible, it chooses the strongest valid combination under the limit and shows the remaining OVR. Fresh suggested budgets are 80 for 1v1, 160 for 2v2 and 250 for 3v3; entering a custom maximum preserves it across format changes. Only selected IDs are stored, and exhibition games preserve campaign progression.
+
+The main setup shows the team builder and a **Uniforms** section using the existing jerseys, shoes and equipment colors. Quick Play uniforms apply to every member of that team, including both humans in co-op. Court, difficulty, score and team tactics are in the collapsed **Match settings** section. The picker uses lightweight cards rather than additional animated player previews.
 
 `matchPlayers` holds individual players with immutable IDs, `teamId`, and optional `controllerSlot`. `p1`/`p2` refer to the current controlled characters, so systems must resolve ball ownership by ID rather than assuming those two characters are opponents. `takePossession` grants exactly one player ownership. Passes lead a moving receiver, travel through space, and can be intercepted. `lastTouchPlayerId` controls out-of-bounds possession separately from shot credit.
 
@@ -138,6 +142,7 @@ node game/basketball2/tests/layup-defense-browser.cjs
 node game/basketball2/tests/side-shot-input-browser.cjs
 node game/basketball2/tests/shot-meter-browser.cjs
 node game/basketball2/tests/custom-rosters-browser.cjs
+node game/basketball2/tests/quickplay-ovr-browser.cjs
 node game/basketball2/tests/rise-save-transfer-browser.cjs
 node game/basketball2/tests/equipment-ui-browser.cjs
 node game/basketball2/tests/equipment-browser.cjs

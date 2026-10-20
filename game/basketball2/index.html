@@ -48,39 +48,112 @@
 
     <div id="quickPlayScreen" class="menuScreen">
       <button id="quickPlayBackBtn" class="menuBackBtn">← Main Menu</button>
-      <div class="setup-heading"><div class="menu-eyebrow">BUILD YOUR MATCHUP</div><h1 id="quickPlayTitle">Quick Play Setup</h1><div class="sub">Choose your squad. Set your style. Take the court.</div></div>
+      <div class="setup-heading quickplay-heading"><div class="menu-eyebrow">YOUR COURT. YOUR LINEUP.</div><h1 id="quickPlayTitle">Quick Play</h1><div class="sub">Build two teams. Set their MAX. Hit the court.</div></div>
 
-      <div class="matchSetupCard">
-        <div class="setup-section-label"><span>01</span><h2>Who’s playing?</h2></div>
-        <div class="sectionTitle">Players per team</div>
-        <div class="optionRow teamSizeRow" aria-label="Players per team">
+      <section class="quickplay-format" aria-label="Match format">
+        <div class="quickplay-format-group"><span>Players per team</span><div class="optionRow teamSizeRow" aria-label="Players per team">
           <button class="optionBtn selected" data-team-size="1" aria-pressed="true">1v1</button>
           <button class="optionBtn" data-team-size="2" aria-pressed="false">2v2</button>
           <button class="optionBtn" data-team-size="3" aria-pressed="false">3v3</button>
+        </div></div>
+        <div class="quickplay-format-group"><span>Play with</span><div class="modeRow">
+          <button id="onePlayerBtn" class="modeBtn selected">Solo</button>
+          <button id="twoPlayerBtn" class="modeBtn">Local two-player</button>
+        </div></div>
+        <div id="localSetupOptions" class="localSetupOptions" hidden>
+          <label>Human assignments<select id="localTeamModeSelect"><option value="competitive">Opposing teams</option><option value="cooperative">Same team · Cooperative</option></select></label>
+          <label>Split screen<select id="splitLayoutSelect"><option value="vertical">Side by side</option><option value="horizontal">Top and bottom</option></select></label>
         </div>
+        <p id="matchSetupSummary" class="matchSetupSummary">You against one AI opponent.</p>
+      </section>
 
-      <div class="modeRow">
-      <button id="onePlayerBtn" class="modeBtn selected">One Human</button>
-      <button id="twoPlayerBtn" class="modeBtn">Two Humans · Local</button>
-      </div>
-      <div id="localSetupOptions" class="localSetupOptions" hidden>
-        <label>Human assignments<select id="localTeamModeSelect"><option value="competitive">Opposing teams</option><option value="cooperative">Same team · Cooperative</option></select></label>
-        <label>Split screen<select id="splitLayoutSelect"><option value="vertical">Side by side</option><option value="horizontal">Top and bottom</option></select></label>
-      </div>
-      <p id="matchSetupSummary" class="matchSetupSummary">You against one AI opponent.</p>
-      </div>
       <section class="custom-roster-card" aria-labelledby="customRosterHeading">
-        <label class="custom-roster-toggle"><input id="customRosterEnabled" type="checkbox"><span><strong id="customRosterHeading">OVR-capped custom rosters</strong><small>Pick every athlete. Give both teams the same budget.</small></span></label>
-        <div id="customRosterBuilder" hidden>
-          <div class="custom-roster-budget"><label>Maximum total OVR per team<input id="customRosterCap" type="number" min="25" max="297" step="1" value="250" inputmode="numeric" aria-describedby="customRosterHelp"></label><button id="customRosterFill" type="button" class="optionBtn">Fill within budget</button></div>
-          <p id="customRosterHelp">At most 250 OVR means three players rated 90 + 85 + 75 fit exactly. Each athlete can appear once. Your developed Rise to Glory roster is available here too.</p>
+        <input id="customRosterEnabled" type="checkbox" checked hidden aria-hidden="true" tabindex="-1">
+        <div class="custom-roster-heading"><div><span class="custom-roster-eyebrow">TEAM BUILDER</span><h2 id="customRosterHeading">Build your matchup.</h2><p>108 players · 9 roles · 60, 70, 80 &amp; 90 OVR</p></div></div>
+        <div id="customRosterBuilder">
+          <div class="custom-roster-budget">
+            <label for="customRosterCap">MAX OVR <span>per team</span><input id="customRosterCap" type="number" min="25" max="297" step="1" value="250" inputmode="numeric" aria-describedby="customRosterHelp"></label>
+            <button id="customRosterFill" type="button" class="optionBtn"><span aria-hidden="true">↻</span> Roll random</button>
+          </div>
+          <p id="customRosterHelp">Each team’s total must stay at or below MAX. Roll random fills it exactly when possible, or gets as close as the available players allow.</p>
           <div id="customRosterTeams" class="custom-roster-teams"></div>
+          <section id="customRosterPicker" class="custom-roster-picker" hidden aria-labelledby="customRosterPickerTitle">
+            <div class="custom-roster-picker-heading"><div><h3 id="customRosterPickerTitle">Choose a player</h3><p id="customRosterPickerSubtitle"></p></div><button id="customRosterPickerClose" type="button" aria-label="Close player browser">Done</button></div>
+            <div class="custom-roster-filters">
+              <label>Role<select id="customRosterRoleFilter"><option value="all">All roles</option></select></label>
+              <label>OVR<select id="customRosterOverallFilter"><option value="all">All ratings</option><option value="60">60 OVR</option><option value="70">70 OVR</option><option value="80">80 OVR</option><option value="90">90 OVR</option></select></label>
+              <label class="custom-roster-search">Find a player<input id="customRosterPlayerSearch" type="search" placeholder="Name, role or club" autocomplete="off"></label>
+            </div>
+            <div id="customRosterPickerResults" class="custom-roster-picker-results"></div>
+            <div class="custom-roster-pagination"><button id="customRosterPickerPrev" type="button" aria-label="Previous players">← Back</button><span id="customRosterPickerCount" role="status" aria-live="polite"></span><button id="customRosterPickerNext" type="button" aria-label="Next players">Next →</button></div>
+          </section>
           <p id="customRosterStatus" class="custom-roster-status" role="status" aria-live="polite"></p>
-          <p class="custom-roster-note">Difficulty changes AI decisions, not the selected athletes’ ratings. Custom games keep campaign progress unchanged.</p>
+          <p class="custom-roster-note">Classic players and your Rise to Glory roster are included. Each athlete can appear once. Campaign progress stays unchanged.</p>
         </div>
       </section>
+
+      <details id="quickPlayUniforms" class="quickplay-disclosure">
+        <summary><span><strong>Uniforms</strong><small>Team jerseys, sneakers &amp; accessories</small></span><span class="quickplay-disclosure-mark" aria-hidden="true">+</span></summary>
+        <div class="quickplay-disclosure-body">
+    <div class="selectGrid quickplay-uniform-grid">
+      <div class="selectPanel">
+        <h3 class="quickplay-uniform-heading">Blue team</h3>
+        <div class="cards classic-roster-control" hidden id="p1Cards"></div>
+        <div class="sneakerBox">
+          <div class="sneakerTitle">Blue team sneakers</div>
+          <div class="sneakerRow">
+            <button id="p1SneakerPrev" class="sneakerArrow">&#9664;</button>
+            <canvas id="p1SneakerPreview" class="sneakerPreview" width="260" height="74"></canvas>
+            <button id="p1SneakerNext" class="sneakerArrow">&#9654;</button>
+          </div>
+          <div id="p1SneakerName" class="sneakerName"></div>
+          <div id="p1SneakerStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
+        </div>
+        <div class="sneakerBox">
+          <div class="sneakerTitle">Blue team jersey</div>
+          <div class="sneakerRow">
+            <button id="p1JerseyPrev" class="sneakerArrow">&#9664;</button>
+            <canvas id="p1JerseyPreview" class="sneakerPreview" width="260" height="74"></canvas>
+            <button id="p1JerseyNext" class="sneakerArrow">&#9654;</button>
+          </div>
+          <div id="p1JerseyName" class="sneakerName"></div>
+          <div id="p1JerseyStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
+        </div>
+      </div>
+
+      <div class="selectPanel">
+        <h3 class="quickplay-uniform-heading coral">Coral team</h3><span id="p2Title" hidden></span>
+        <div class="cards classic-roster-control" hidden id="p2Cards"></div>
+        <div class="sneakerBox">
+          <div class="sneakerTitle">Coral team sneakers</div>
+          <div class="sneakerRow">
+            <button id="p2SneakerPrev" class="sneakerArrow">&#9664;</button>
+            <canvas id="p2SneakerPreview" class="sneakerPreview" width="260" height="74"></canvas>
+            <button id="p2SneakerNext" class="sneakerArrow">&#9654;</button>
+          </div>
+          <div id="p2SneakerName" class="sneakerName"></div>
+          <div id="p2SneakerStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
+        </div>
+        <div class="sneakerBox">
+          <div class="sneakerTitle">Coral team jersey</div>
+          <div class="sneakerRow">
+            <button id="p2JerseyPrev" class="sneakerArrow">&#9664;</button>
+            <canvas id="p2JerseyPreview" class="sneakerPreview" width="260" height="74"></canvas>
+            <button id="p2JerseyNext" class="sneakerArrow">&#9654;</button>
+          </div>
+          <div id="p2JerseyName" class="sneakerName"></div>
+          <div id="p2JerseyStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
+        </div>
+      </div>
+    </div>
+
+        </div>
+      </details>
+      <details id="quickPlayMatchSettings" class="quickplay-disclosure">
+        <summary><span><strong>Match settings</strong><small id="quickPlaySettingsSummary">Court, score, difficulty &amp; team style</small></span><span class="quickplay-disclosure-mark" aria-hidden="true">+</span></summary>
+        <div class="quickplay-disclosure-body">
       <section id="teamTacticsCard" class="team-tactics-card" hidden aria-labelledby="teamTacticsTitle">
-        <div class="setup-section-label"><span>02</span><h2 id="teamTacticsTitle">Give your team an identity.</h2></div>
+        <h3 id="teamTacticsTitle">Team style</h3>
         <p class="tactics-intro">AI teammates run your offense. Defenders match up, help at the rim, and trap in tight spaces.</p>
         <div class="tactics-select-grid">
           <label class="team-style blue-style"><span id="blueOffenseLabel" class="team-style-label"><i></i> Blue team offense</span><select id="blueOffenseSelect" aria-labelledby="blueOffenseLabel" aria-describedby="blueOffenseDescription"></select><span id="blueOffenseDiagram" class="offense-diagram" aria-hidden="true"></span><span id="blueOffenseDescription" class="offense-description"></span></label>
@@ -98,59 +171,7 @@
       <div id="courtStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
     </div>
 
-    <div class="selectGrid">
-      <div class="selectPanel">
-        <div class="sectionTitle classic-roster-control">Player 1 Character</div>
-        <div class="cards classic-roster-control" id="p1Cards"></div>
-        <div class="sneakerBox">
-          <div class="sneakerTitle">Player 1 Sneakers</div>
-          <div class="sneakerRow">
-            <button id="p1SneakerPrev" class="sneakerArrow">&#9664;</button>
-            <canvas id="p1SneakerPreview" class="sneakerPreview" width="260" height="74"></canvas>
-            <button id="p1SneakerNext" class="sneakerArrow">&#9654;</button>
-          </div>
-          <div id="p1SneakerName" class="sneakerName"></div>
-          <div id="p1SneakerStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
-        </div>
-        <div class="sneakerBox">
-          <div class="sneakerTitle">Player 1 Jersey</div>
-          <div class="sneakerRow">
-            <button id="p1JerseyPrev" class="sneakerArrow">&#9664;</button>
-            <canvas id="p1JerseyPreview" class="sneakerPreview" width="260" height="74"></canvas>
-            <button id="p1JerseyNext" class="sneakerArrow">&#9654;</button>
-          </div>
-          <div id="p1JerseyName" class="sneakerName"></div>
-          <div id="p1JerseyStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
-        </div>
-      </div>
-
-      <div class="selectPanel">
-        <div class="sectionTitle classic-roster-control" id="p2Title">Bot / Player 2 Character</div>
-        <div class="cards classic-roster-control" id="p2Cards"></div>
-        <div class="sneakerBox">
-          <div class="sneakerTitle">Bot / Player 2 Sneakers</div>
-          <div class="sneakerRow">
-            <button id="p2SneakerPrev" class="sneakerArrow">&#9664;</button>
-            <canvas id="p2SneakerPreview" class="sneakerPreview" width="260" height="74"></canvas>
-            <button id="p2SneakerNext" class="sneakerArrow">&#9654;</button>
-          </div>
-          <div id="p2SneakerName" class="sneakerName"></div>
-          <div id="p2SneakerStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
-        </div>
-        <div class="sneakerBox">
-          <div class="sneakerTitle">Bot / Player 2 Jersey</div>
-          <div class="sneakerRow">
-            <button id="p2JerseyPrev" class="sneakerArrow">&#9664;</button>
-            <canvas id="p2JerseyPreview" class="sneakerPreview" width="260" height="74"></canvas>
-            <button id="p2JerseyNext" class="sneakerArrow">&#9654;</button>
-          </div>
-          <div id="p2JerseyName" class="sneakerName"></div>
-          <div id="p2JerseyStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
-        </div>
-      </div>
-    </div>
-
-    <section class="match-rules-card"><div class="setup-section-label"><span>03</span><h2>Make it your game.</h2></div>
+    <section class="match-rules-card">
     <div class="sectionTitle">Bot Difficulty</div>
     <div id="difficultyButtons"></div>
 
@@ -161,11 +182,13 @@
     <div class="sectionTitle">Graphics Quality</div>
     <div id="qualityButtons" class="optionRow"></div>
     <div id="qualityStatus" class="quality-status">AUTO · MEDIUM</div>
-    </section><div id="deviceAssignmentStatus" class="device-assignment">Player 1: WASD · Player 2: IJKL</div>
+    </section>
 
-    <button id="startBtn">START GAME</button>
-
-    <button class="menuBackBtn controls-shortcut" type="button" onclick="showControlsScreen('quickPlayScreen')">View controls</button>
+        </div>
+      </details>
+      <div id="deviceAssignmentStatus" class="device-assignment">Player 1: WASD · Player 2: IJKL</div>
+      <button id="startBtn">START GAME</button>
+      <button class="menuBackBtn controls-shortcut" type="button" onclick="showControlsScreen('quickPlayScreen')">View controls</button>
     </div>
 
     <div id="tournamentSetupScreen" class="menuScreen">
