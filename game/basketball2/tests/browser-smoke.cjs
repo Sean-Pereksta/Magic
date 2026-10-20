@@ -1,6 +1,9 @@
 /* Run with node game/basketball2/tests/browser-smoke.cjs.
  * Optional: THREE_BUNDLE points to the game's existing Three 0.160 UMD bundle
  * for offline execution; BASKETBALL_CHROME selects a system Chrome executable.
+ * BASKETBALL_GRAPHICS_ASSETS may point to a complete basketball2-v2 asset folder.
+ * Otherwise remote graphics use the bundled fallback folder. Set
+ * BASKETBALL_LIVE_MODELS=1 only when an explicit live CDN check is desired.
  */
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -15,6 +18,15 @@ const root=path.resolve(__dirname,'../../..');
   try{
     const page=await browser.newPage({viewport:{width:1280,height:800},hasTouch:false});
     const errors=[];
+    await page.addInitScript(()=>{
+      window.waitForBasketballGraphicsForTest=async()=>{
+        const deadline=performance.now()+35000;
+        while(window.Basketball2Graphics?.loading){
+          if(performance.now()>deadline)throw new Error('Graphics startup did not settle within 35 seconds');
+          await new Promise(resolve=>setTimeout(resolve,16));
+        }
+      };
+    });
     page.on('pageerror',error=>errors.push(error.stack));
     await page.route('http://basketball.local/**',route=>{
       let file=path.join(root,new URL(route.request().url()).pathname);
@@ -26,10 +38,18 @@ const root=path.resolve(__dirname,'../../..');
       return route.fulfill({path:file,contentType:file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':file.endsWith('.webp')?'image/webp':file.endsWith('.glb')?'model/gltf-binary':'text/javascript'});
     });
     if(process.env.THREE_BUNDLE) await page.route('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',route=>route.fulfill({path:process.env.THREE_BUNDLE,contentType:'text/javascript'}));
-    if(process.env.BASKETBALL_LIVE_MODELS!=='1') await page.route('https://pub-b956b47cfcfd467d9f678959c08a5781.r2.dev/*.glb',route=>route.fulfill({
-      path:path.join(root,'game/basketball2/assets/models',new URL(route.request().url()).pathname.split('/').pop()),
-      contentType:'model/gltf-binary',headers:{'Access-Control-Allow-Origin':'*'}
-    }));
+    if(process.env.BASKETBALL_LIVE_MODELS!=='1'){
+      const graphicsAssets=path.resolve(process.env.BASKETBALL_GRAPHICS_ASSETS || path.join(root,'game/basketball2/assets/graphics-v2'));
+      await page.route('https://pub-b956b47cfcfd467d9f678959c08a5781.r2.dev/**',route=>{
+        const relative=decodeURIComponent(new URL(route.request().url()).pathname).replace(/^\/+/, '').replace(/^basketball2-v2\//,'');
+        const legacy=/^player-(guard|wing|center)\.glb$/.test(relative);
+        const directory=legacy?path.join(root,'game/basketball2/assets/models'):graphicsAssets;
+        const file=path.resolve(directory,relative);
+        const headers={'Access-Control-Allow-Origin':'*'};
+        if(!file.startsWith(directory+path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile())return route.fulfill({status:404,body:'Graphics fixture not found',headers});
+        return route.fulfill({path:file,headers,contentType:file.endsWith('.glb')?'model/gltf-binary':file.endsWith('.json')?'application/json':undefined});
+      });
+    }
     await page.goto('http://basketball.local/game/basketball2/');
     await page.waitForFunction(()=>!!window.THREE&&!!renderer);
     await page.waitForFunction(()=>basketballPlayerModels.assets.size===3);
@@ -38,10 +58,10 @@ const root=path.resolve(__dirname,'../../..');
     }
     await page.locator('#primary3v3Btn').click();
     assert.equal(await page.evaluate(()=>teamSize),3);
-    const modes=await page.evaluate(()=>{
+    const modes=await page.evaluate(async()=>{
       const results=[];
       for(const [size,local,assignment] of [[1,false,'competitive'],[1,true,'competitive'],[2,false,'competitive'],[2,true,'cooperative'],[2,true,'competitive'],[3,false,'competitive'],[3,true,'cooperative'],[3,true,'competitive']]){
-        teamSize=size;twoPlayerMode=local;localTeamMode=assignment;startGame();
+        teamSize=size;twoPlayerMode=local;localTeamMode=assignment;startGame();await waitForBasketballGraphicsForTest();
         for(let i=0;i<720&&!gameOver;i++) simulateBasketball(1/60);
         const finite=matchPlayers.every(player=>player.group.position.toArray().every(Number.isFinite)&&player.velocity.toArray().every(Number.isFinite))&&ball.position.toArray().every(Number.isFinite);
         const ownership=matchPlayers.filter(player=>player.hasBall).map(player=>player.id);
@@ -58,11 +78,11 @@ const root=path.resolve(__dirname,'../../..');
       if(mode.ballState==='dribble') assert.deepEqual(mode.ownership,[mode.ballOwner]);
     }
     console.log('PASS: eight solo/local/team configurations, AI simulation and single ownership');
-    const startingSpace=await page.evaluate(()=>{
+    const startingSpace=await page.evaluate(async()=>{
       const rows=[];
       for(const style of ['modern','classic'])for(const size of [1,2,3])for(const startingSlot of ['p1','p2']){
         inputManager.clearAll();gameSettings.set('controlStyle',style);
-        teamSize=size;twoPlayerMode=true;localTeamMode='competitive';startGame();
+        teamSize=size;twoPlayerMode=true;localTeamMode='competitive';startGame();await waitForBasketballGraphicsForTest();
         const owner=matchPlayers.find(player=>player.controllerSlot===startingSlot);
         const defender=matchPlayers.find(player=>player.controllerSlot&&player.teamId!==owner.teamId);
         resetPossession(owner.id,true);
@@ -91,10 +111,10 @@ const root=path.resolve(__dirname,'../../..');
       assert.equal(row.owner,row.expectedOwner);assert.equal(row.steals,0);
     }
     console.log('PASS: both starting slots in 1v1/2v2/3v3 keep a few steps of space through held sprint/steal inputs in modern and classic controls');
-    const playbooks=await page.evaluate(()=>{
+    const playbooks=await page.evaluate(async()=>{
       const results=[];
       for(const style of Object.keys(OFFENSIVE_STYLES)){
-        teamSize=3;twoPlayerMode=false;teamOffensiveStyles=[style,'balanced'];startGame();
+        teamSize=3;twoPlayerMode=false;teamOffensiveStyles=[style,'balanced'];startGame();await waitForBasketballGraphicsForTest();
         countdownTimer=0;possessionFrozen=false;
         getOpponents(p1).forEach(player=>player.aiBrain.actionCooldown=99);
         const phases=new Set(),roles=new Set();
@@ -113,8 +133,8 @@ const root=path.resolve(__dirname,'../../..');
     assert.ok(screen.phases.includes('screen')&&screen.phases.includes('roll'),'pick and roll advances coordinated phases');
     assert.ok(drive.phases.includes('drive')&&drive.phases.includes('kick'),'drive and kick advances coordinated phases');
     console.log('PASS: all '+playbooks.length+' offense selections remain finite; motion, screen/roll and drive/kick phases execute in the real simulation');
-    const autoplay=await page.evaluate(()=>{
-      teamSize=3;twoPlayerMode=false;startGame();countdownTimer=0;possessionFrozen=false;
+    const autoplay=await page.evaluate(async()=>{
+      teamSize=3;twoPlayerMode=false;startGame();await waitForBasketballGraphicsForTest();countdownTimer=0;possessionFrozen=false;
       const originalControls=updateHumanControls;
       matchPlayers.forEach(player=>player.controllerSlot=null);
       updateHumanControls=dt=>{if(shotCharging&&chargingPlayer) chargingPlayer.moveMeta.chargeHeld=(chargingPlayer.moveMeta.chargeHeld||0)+dt;};
@@ -130,8 +150,8 @@ const root=path.resolve(__dirname,'../../..');
     });
     assert.ok(autoplay.finite);assert.ok(autoplay.attempts>4,'AI creates shots');assert.ok(autoplay.points>0,'physical shots can score');assert.ok(autoplay.passes>0,'AI shares possession');
     console.log('PASS: continuous 3v3 AI possessions, passes, physical shots and scoring',autoplay);
-    const pass=await page.evaluate(()=>{
-      teamSize=3;twoPlayerMode=true;localTeamMode='cooperative';startGame();countdownTimer=0;possessionFrozen=false;
+    const pass=await page.evaluate(async()=>{
+      teamSize=3;twoPlayerMode=true;localTeamMode='cooperative';startGame();await waitForBasketballGraphicsForTest();countdownTimer=0;possessionFrozen=false;
       const teammate=getTeammates(p1).find(player=>player!==p2);
       p1.group.position.set(0,0,0);p1.angle=Math.PI/2;p1.group.rotation.y=p1.angle;
       p2.group.position.set(4,0,0);teammate.group.position.set(-4,0,0);
@@ -154,7 +174,7 @@ const root=path.resolve(__dirname,'../../..');
     assert.ok(pass.started);assert.equal(pass.immediateOwner,null);assert.equal(pass.selected,pass.p2);assert.equal(pass.caught,pass.p2);
     assert.equal(pass.opposite,pass.teammate);assert.ok(pass.intercepted,'defender intercepts exposed lane');assert.equal(pass.ownership,1);
     console.log('PASS: facing selects receivers, travel-time catches and defender interception');
-    const transitions=await page.evaluate(()=>{
+    const transitions=await page.evaluate(async()=>{
       const teammate=getTeammates(p1).find(player=>!player.controllerSlot);
       takePossession(teammate,{silent:true});const oldP1=p1;
       shotCharging=true;chargingPlayer=teammate;teammate.moveMeta.chargeHeld=.4;
@@ -166,13 +186,13 @@ const root=path.resolve(__dirname,'../../..');
       const stable=gamePaused&&pendingInbound.remaining===remaining;
       setPaused(false);for(let i=0;i<13;i++) simulateBasketball(1/60);
       const inbound=ballState==='dribble'&&teamOf(ballOwner)===1;
-      rematchSamePlayers();const reset=scoreP1===0&&scoreP2===0&&!gameOver&&pendingInbound===null;
+      rematchSamePlayers();await waitForBasketballGraphicsForTest();const reset=scoreP1===0&&scoreP2===0&&!gameOver&&pendingInbound===null;
       return {switched,chargeCleared,scored,stable,inbound,reset};
     });
     assert.deepEqual(transitions,{switched:true,chargeCleared:true,scored:true,stable:true,inbound:true,reset:true});
     console.log('PASS: optional switching, AI teammate team score, paused inbound and rematch');
     // Exercise real keyboard events with independent movement/control frames.
-    await page.evaluate(()=>{teamSize=2;twoPlayerMode=true;localTeamMode='competitive';startGame();countdownTimer=0;possessionFrozen=false;});
+    await page.evaluate(async()=>{teamSize=2;twoPlayerMode=true;localTeamMode='competitive';startGame();await waitForBasketballGraphicsForTest();countdownTimer=0;possessionFrozen=false;});
     await page.keyboard.down('d');
     const input=await page.evaluate(()=>{inputManager.tick();const first=inputManager.getState('p1').moveX,second=inputManager.getState('p2').moveX;for(let i=0;i<30;i++) simulateBasketball(1/60);return {first,second,x:p1.group.position.x};});
     await page.keyboard.up('d');
@@ -183,20 +203,20 @@ const root=path.resolve(__dirname,'../../..');
       const aspects=await page.evaluate(layout=>{splitLayout=layout;onResize();updateCameras(1);updateHUD();renderScene();return [camP1.aspect,camP2.aspect];},split);
       assert.ok(aspects.every(Number.isFinite));
     }
-    await page.evaluate(()=>{teamSize=3;twoPlayerMode=true;localTeamMode='cooperative';splitLayout='vertical';startGame();countdownTimer=0;possessionFrozen=false;for(let i=0;i<50;i++)simulateBasketball(1/60);updateCameras(1);updateHUD();renderScene();});
+    await page.evaluate(async()=>{teamSize=3;twoPlayerMode=true;localTeamMode='cooperative';splitLayout='vertical';startGame();await waitForBasketballGraphicsForTest();countdownTimer=0;possessionFrozen=false;for(let i=0;i<50;i++)simulateBasketball(1/60);updateCameras(1);updateHUD();renderScene();});
     if(process.env.BASKETBALL_SCREENSHOTS) await page.screenshot({path:path.join(process.env.BASKETBALL_SCREENSHOTS,'basketball2-desktop.png')});
     await page.setViewportSize({width:844,height:390});
     await page.emulateMedia({reducedMotion:'reduce'});
-    const touch=await page.evaluate(()=>{teamSize=3;twoPlayerMode=false;startGame();document.body.classList.add('touch-controls-active');countdownTimer=0;possessionFrozen=false;onResize();updateCameras(1);updateHUD();renderScene();return {buttons:document.querySelectorAll('.touch-actions button').length,stick:!!document.querySelector('#moveStick'),skill:!!document.querySelector('#skillStick')};});
+    const touch=await page.evaluate(async()=>{teamSize=3;twoPlayerMode=false;startGame();await waitForBasketballGraphicsForTest();document.body.classList.add('touch-controls-active');countdownTimer=0;possessionFrozen=false;onResize();updateCameras(1);updateHUD();renderScene();return {buttons:document.querySelectorAll('.touch-actions button').length,stick:!!document.querySelector('#moveStick'),skill:!!document.querySelector('#skillStick')};});
     assert.deepEqual(touch,{buttons:2,stick:true,skill:false});
     if(process.env.BASKETBALL_SCREENSHOTS) await page.screenshot({path:path.join(process.env.BASKETBALL_SCREENSHOTS,'basketball2-mobile.png')});
     await page.evaluate(()=>{setPaused(true);document.getElementById('pauseMenuBtn').click();});
     assert.ok(await page.locator('#primaryMenuScreen').isVisible());
     assert.deepEqual(errors,[],'no browser runtime exceptions');
     console.log('PASS: split resize, landscape touch layout, pause/menu lifecycle; no browser exceptions');
-    const tour=await page.evaluate(()=>{
+    const tour=await page.evaluate(async()=>{
       const quick=localStorage.getItem('basketball2MatchV1');
-      startNewTournament();startTournamentRound();
+      startNewTournament();startTournamentRound();await waitForBasketballGraphicsForTest();
       const oneOnOne=teamSize===1&&!twoPlayerMode&&matchPlayers.length===2;
       scoreP1=11;scoreP2=4;endGame('p1');
       const saved=JSON.parse(localStorage.getItem(TOURNAMENT_SAVE_KEY));

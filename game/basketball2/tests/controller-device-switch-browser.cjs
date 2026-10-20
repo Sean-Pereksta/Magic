@@ -7,6 +7,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {chromium}=require('playwright');
+const {installLegacyGraphicsFixture}=require('./legacy-graphics-fixture.cjs');
 const root=path.resolve(__dirname,'../../..');
 
 (async()=>{
@@ -52,6 +53,8 @@ const root=path.resolve(__dirname,'../../..');
       contentType:'model/gltf-binary',headers:{'Access-Control-Allow-Origin':'*'}
     }));
     const open=async()=>{
+      await installLegacyGraphicsFixture(page);
+
       await page.goto('http://basketball.local/game/basketball2/');
       await page.waitForFunction(()=>typeof controllerConfig!=='undefined'&&basketballPlayerModels.assets.size===3);
       await page.evaluate(()=>{

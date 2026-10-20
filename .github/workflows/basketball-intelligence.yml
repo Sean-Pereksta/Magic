@@ -35,7 +35,13 @@ jobs:
       - name: Syntax and deterministic regressions
         run: |
           find game/basketball2/js -name '*.js' -print0 | xargs -0 -n1 node --check
+          node --check game/basketball2/assets/graphics-v2/graphics-v2.js
+          node --check game/basketball2/assets/graphics-v2/player-equipment-v2.js
           node --test game/basketball2/tests/*.test.cjs
+      - name: Graphics lifecycle and runtime (offline fixtures)
+        run: |
+          node game/basketball2/tests/graphics-v2-lifecycle-browser.cjs
+          node game/basketball2/tests/graphics-v2-runtime-browser.cjs
       - name: Gameplay and controls
         run: |
           node game/basketball2/tests/browser-smoke.cjs

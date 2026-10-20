@@ -1,6 +1,7 @@
 /* Real board collision followed by public keyboard/controller and AI rebound
  * movement. The last shooter's possession ID deliberately remains in place. */
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{chromium}=require('playwright');
+const {installLegacyGraphicsFixture}=require('./legacy-graphics-fixture.cjs');
 const root=path.resolve(__dirname,'../../..');
 (async()=>{
  const options={headless:true,args:['--use-gl=angle','--use-angle=swiftshader','--enable-webgl']};
@@ -24,6 +25,8 @@ const root=path.resolve(__dirname,'../../..');
   });
   if(process.env.THREE_BUNDLE)await page.route('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',route=>route.fulfill({path:process.env.THREE_BUNDLE,contentType:'text/javascript'}));
   await page.route('https://pub-b956b47cfcfd467d9f678959c08a5781.r2.dev/*.glb',route=>route.fulfill({path:path.join(root,'game/basketball2/assets/models',new URL(route.request().url()).pathname.split('/').pop()),contentType:'model/gltf-binary',headers:{'Access-Control-Allow-Origin':'*'}}));
+  await installLegacyGraphicsFixture(page);
+
   await page.goto('http://basketball.local/game/basketball2/');await page.waitForFunction(()=>basketballPlayerModels.assets.size===3);
   const result=await page.evaluate(()=>{
    const rows=[],realAI=updateTeamAI,random=Math.random;Math.random=()=>.5;customRosterDraft.enabled=false;

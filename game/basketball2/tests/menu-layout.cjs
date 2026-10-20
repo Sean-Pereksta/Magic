@@ -6,6 +6,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {chromium}=require('playwright');
+const {installLegacyGraphicsFixture}=require('./legacy-graphics-fixture.cjs');
 const root=path.resolve(__dirname,'../../..');
 const primaryActions=['primaryQuickPlayBtn','primary1v1Btn','primary2v2Btn','primary3v3Btn','primaryLocalBtn','primaryTournamentBtn','primaryTutorialBtn','primaryControlsBtn'];
 const contentTypes={'.html':'text/html','.css':'text/css','.js':'text/javascript','.webp':'image/webp','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml'};
@@ -19,6 +20,7 @@ async function installRoutes(page){
     return route.fulfill({path:file,contentType:contentTypes[path.extname(file)]||'application/octet-stream'});
   });
   if(process.env.THREE_BUNDLE) await page.route('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',route=>route.fulfill({path:process.env.THREE_BUNDLE,contentType:'text/javascript'}));
+  await installLegacyGraphicsFixture(page);
 }
 
 async function assertNoHorizontalOverflow(page,label){
@@ -80,6 +82,7 @@ async function touchSwipe(page,x,startY,endY){
     const errors=[];
     page.on('pageerror',error=>errors.push(error.stack));
     await installRoutes(page);
+
     await page.goto('http://basketball.local/game/basketball2/');
     await page.waitForFunction(()=>!!window.THREE&&!!renderer);
     const art=await page.locator('.menu-hero-art').evaluate(async element=>{
@@ -93,8 +96,8 @@ async function touchSwipe(page,x,startY,endY){
       return {url:match[1],status:response.status,type:response.headers.get('content-type'),loaded:image.naturalWidth>0&&image.naturalHeight>0,width:image.naturalWidth,height:image.naturalHeight};
     });
     assert.ok(art.loaded,'menu artwork decodes '+JSON.stringify(art));
-    assert.ok(art.url.endsWith('/assets/menu-hero.webp'),'menu uses authored artwork');
-    assert.equal(art.type,'image/webp');
+    assert.ok(art.url.endsWith('/assets/graphics-v2/ui/on-court.jpg'),'menu uses the rendered on-court artwork');
+    assert.equal(art.type,'image/jpeg');
     console.log('PASS: authored menu artwork loads and decodes',art.width+'x'+art.height);
 
     for(const [label,width,height] of [['desktop',1440,900],['landscape',844,390],['portrait',390,844],['narrow',320,640]]){

@@ -25,7 +25,13 @@ function init(){
   const sun = new THREE.DirectionalLight(0xffffff,1.9);
   sun.position.set(7,16,8);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048,2048);
+  sun.userData.basketballKeyLight = true;
+  sun.shadow.mapSize.set(1024,1024);
+  sun.shadow.camera.left = -16; sun.shadow.camera.right = 16;
+  sun.shadow.camera.top = 18; sun.shadow.camera.bottom = -18;
+  sun.shadow.camera.near = .5; sun.shadow.camera.far = 65;
+  sun.shadow.bias = -.0002;
+  sun.target.position.set(0,0,-2); scene.add(sun.target);
   scene.add(sun);
 
   addSpotLight(-6,10,-2);
@@ -95,7 +101,8 @@ function addSpotLight(x,y,z){
   const s = new THREE.SpotLight(0xfff0d8,1.22,62,Math.PI/5.8,.4);
   s.position.set(x,y,z);
   s.target.position.set(0,0,-3);
-  s.castShadow = true;
+  // Fill lights illuminate players without four additional shadow passes.
+  s.castShadow = false;
   const shadowSize=graphicsQuality === "ultra" ? 1536 : graphicsQuality === "high" ? 1024 : 512;
   s.shadow.mapSize.set(shadowSize,shadowSize);
   s.shadow.bias = -0.00018;
@@ -196,6 +203,7 @@ function buildArena(){
     buildCrowdSection("left",theme);
     buildCrowdSection("right",theme);
   }
+  batchBasketballCrowd();
   buildArenaBanners();
 
   // Side bleacher hints so the world feels less empty.
@@ -346,12 +354,59 @@ function createCrowdSection(side,rowCount,colCount){
 }
 
 function buildCrowdSection(side,theme=courts[selectedCourt]){
-  const density = graphicsQuality === "high" ? 1 : graphicsQuality === "medium" ? 0.72 : 0;
-  const baseRows = side === "back" ? 6 : 4;
-  const baseCols = side === "back" ? 28 : 22;
-  const rows = Math.max(1,Math.floor(baseRows * density));
-  const cols = Math.max(6,Math.floor(baseCols * density));
-  createCrowdSection(side,rows,cols);
+  // One bounded crowd pool supports quality changes without rebuilding meshes.
+  createCrowdSection(side,side === "back" ? 4 : 2,side === "back" ? 20 : 15);
+}
+
+let basketballCrowdBatches = [];
+let basketballCrowdVisualElapsed = 0;
+
+function batchBasketballCrowd(){
+  const buckets=new Map();
+  for(const fan of crowdMembers){
+    fan.updateMatrixWorld(true);
+    fan.traverse(part=>{
+      if(!part.isMesh || !part.geometry || !part.material) return;
+      const mat=part.material;
+      const key=JSON.stringify([part.geometry.type,part.geometry.parameters,mat.type,mat.roughness,mat.metalness,mat.side]);
+      let bucket=buckets.get(key);
+      if(!bucket){bucket={geometry:part.geometry,material:mat,entries:[]};buckets.set(key,bucket);}
+      else if(part.geometry!==bucket.geometry){part.geometry.dispose();part.geometry=bucket.geometry;}
+      bucket.entries.push({fan,part});
+      // Keep the hierarchy for the existing crowd pose code; only batches draw.
+      part.visible=false;
+    });
+  }
+  basketballCrowdBatches=Array.from(buckets.values(),bucket=>{
+    const material=bucket.material.clone();material.color.setHex(0xffffff);
+    const mesh=new THREE.InstancedMesh(bucket.geometry,material,bucket.entries.length);
+    mesh.name="basketball_crowd_batch";mesh.castShadow=false;mesh.receiveShadow=false;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;
+    scene.add(mesh);return {mesh,entries:bucket.entries};
+  });
+  setBasketballCrowdQuality();
+}
+
+function setBasketballCrowdQuality(){
+  const fraction={low:0,medium:.5,high:.75,ultra:1}[graphicsQuality] ?? .5;
+  crowdMembers.forEach((fan,index)=>{
+    fan.visible=fraction>0 && Math.floor((index+1)*fraction)>Math.floor(index*fraction);
+  });
+  refreshBasketballCrowdInstances();
+}
+
+function refreshBasketballCrowdInstances(){
+  for(const fan of crowdMembers) if(fan.visible) fan.updateMatrixWorld(true);
+  for(const {mesh,entries} of basketballCrowdBatches){
+    let count=0;
+    for(const {fan,part} of entries){
+      if(!fan.visible) continue;
+      mesh.setMatrixAt(count,part.matrixWorld);mesh.setColorAt(count,part.material.color);count++;
+    }
+    mesh.count=count;mesh.visible=count>0;
+    mesh.instanceMatrix.needsUpdate=true;
+    if(mesh.instanceColor) mesh.instanceColor.needsUpdate=true;
+  }
 }
 
 function animateCrowdPerson(person,dt,excitement){
@@ -374,21 +429,29 @@ function animateCrowdPerson(person,dt,excitement){
     person.userData.armL.rotation.z = hype ? -0.45 - clap*(0.7+react*0.5) : -0.2 - clap*0.2;
     person.userData.armR.rotation.z = hype ? 0.45 + clap*(0.7+react*0.5) : 0.2 + clap*0.2;
   }
-  person.traverse(o=>{ if(o.material && o.material.emissive){ o.material.emissive.setHex(0x000000); o.material.emissiveIntensity = .03 + react*.18; } });
+  // Per-fan materials provide instance colors; shared batches handle lighting.
 }
 
 function updateCrowd(dt){
   if(!qualitySettings[graphicsQuality].crowd) return;
+  // A loaded graphics pack may hide this legacy arena under a parent group.
+  const visibleBatch=basketballCrowdBatches.some(({mesh})=>{
+    for(let node=mesh;node;node=node.parent) if(!node.visible) return false;
+    return true;
+  });
+  if(!visibleBatch) return;
   crowdReactionTimer = Math.max(0,crowdReactionTimer - dt);
   crowdReactionStrength = Math.max(0,crowdReactionStrength - dt*0.9);
   if(crowdReactionTimer <= 0 && crowdReactionState !== "normal") crowdReactionState = "normal";
   crowdWave = Math.max(0,crowdWave - dt*.62);
   arenaExcitement = Math.max(0,arenaExcitement - dt*.22);
+  basketballCrowdVisualElapsed+=dt;
+  const interval=1/({medium:12,high:20,ultra:24}[graphicsQuality] || 12);
+  if(basketballCrowdVisualElapsed<interval) return;
+  const visualDt=basketballCrowdVisualElapsed;basketballCrowdVisualElapsed=0;
   const excit = THREE.MathUtils.clamp(arenaExcitement + crowdWave*.35,0,1);
-  crowdMembers.forEach((fan,i)=>{
-    if(graphicsQuality === "low" && i%3!==0) return;
-    animateCrowdPerson(fan,dt,excit);
-  });
+  for(const fan of crowdMembers) if(fan.visible) animateCrowdPerson(fan,visualDt,excit);
+  refreshBasketballCrowdInstances();
 }
 
 function buildArenaBanners(){
@@ -623,7 +686,10 @@ function addGlowingCourtLines(){
 function applyCourtTheme(courtKey){
   const theme = courts[courtKey] || courts.classicArena;
   if(arenaThemeRefs.court && arenaThemeRefs.court.material){
-    arenaThemeRefs.court.material.map = makeImprovedCourtTexture(theme);
+    const previousCourtMap=arenaThemeRefs.court.material.map;
+    const nextCourtMap=makeImprovedCourtTexture(theme);
+    arenaThemeRefs.court.material.map=nextCourtMap;
+    if(previousCourtMap && previousCourtMap!==nextCourtMap) previousCourtMap.dispose();
     const glossy = graphicsQuality === "high" ? {roughness:.2,metalness:.24} : graphicsQuality === "medium" ? {roughness:.26,metalness:.18} : {roughness:.4,metalness:.1};
     arenaThemeRefs.court.material.roughness = glossy.roughness;
     arenaThemeRefs.court.material.metalness = glossy.metalness;
@@ -644,6 +710,7 @@ function applyCourtTheme(courtKey){
   arenaThemeRefs.crowdMats.forEach((m,i)=>{
     if(m.color && i%7===0) m.color.setHex(theme.trimColor);
   });
+  refreshBasketballCrowdInstances();
   if(scene && scene.fog) scene.fog.color.setHex(theme.fog || 0x08111c);
   if(scene && scene.background) scene.background.setHex(theme.fog || 0x08111c);
   if(arenaMoodLight){
