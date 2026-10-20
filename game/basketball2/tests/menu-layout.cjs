@@ -23,6 +23,11 @@ async function installRoutes(page){
   await installLegacyGraphicsFixture(page);
 }
 
+async function openMatchSettings(page){
+  if(!await page.locator('#quickPlayMatchSettings').evaluate(details=>details.open))
+    await page.locator('#quickPlayMatchSettings > summary').click();
+}
+
 async function assertNoHorizontalOverflow(page,label){
   const bounds=await page.evaluate(()=>{
     const menu=document.getElementById('menuBox');
@@ -121,6 +126,7 @@ async function touchSwipe(page,x,startY,endY){
       await page.keyboard.press('Enter');
       assert.ok(await page.locator('#quickPlayScreen').isVisible(),label+' keyboard activates team mode');
       await assertNoHorizontalOverflow(page,label+' setup');
+      await openMatchSettings(page);
       for(const id of ['blueOffenseSelect','coralOffenseSelect','startBtn','quickPlayBackBtn']) await assertReachable(page,id,label+' setup');
       await page.locator('#quickPlayBackBtn').click();
       if(process.env.BASKETBALL_SCREENSHOTS&&(label==='desktop'||label==='portrait')){
@@ -149,6 +155,7 @@ async function touchSwipe(page,x,startY,endY){
     await page.locator('#primary3v3Btn').click();
     const styles=await page.evaluate(()=>Object.keys(OFFENSIVE_STYLES));
     for(let index=0;index<styles.length;index++){
+      await openMatchSettings(page);
       const selected=[styles[index],styles[(index+1)%styles.length]];
       await page.locator('#blueOffenseSelect').selectOption(selected[0]);
       await page.locator('#coralOffenseSelect').selectOption(selected[1]);

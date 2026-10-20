@@ -35,14 +35,12 @@ const root=path.resolve(__dirname,'../../..');
       RiseToGlory.save(riseState);
       showQuickPlaySetup(3,false);
     });
-    assert.equal(await page.locator('#customRosterEnabled').isChecked(),false,'standard Quick Play remains the default');
-    await page.locator('#customRosterEnabled').check();
+    assert.equal(await page.locator('#customRosterEnabled').isChecked(),true,'Quick Play opens the team builder');
+    assert.equal(await page.locator('#customRosterEnabled').isVisible(),false,'the compatibility toggle is not a second setup choice');
     assert.equal(await page.locator('#customRosterCap').inputValue(),'250');
     assert.equal(await page.locator('#customRosterTeams select').count(),6);
     assert.equal(await page.locator('#p1Cards').isVisible(),false);
     const captainId=await page.evaluate(()=>riseState.captainId);
-    await page.locator('#customRosterTeam0Slot0').selectOption(`rise:${captainId}`);
-    await page.locator('#customRosterTeam0Slot1').selectOption('classic:smooth');
     // Set each slot directly, then verify the actual fielded identities below.
     const expected={blue:[`rise:${captainId}`,'classic:smooth','classic:bruiser'],coral:['classic:claw','classic:crafty','classic:deeprange']};
     await page.evaluate(expected=>{
@@ -62,11 +60,11 @@ const root=path.resolve(__dirname,'../../..');
       await page.setViewportSize({width,height});
       const sizes=await page.evaluate(()=>({viewport:innerWidth,doc:document.documentElement.scrollWidth,menu:document.getElementById('menuBox').clientWidth,content:document.getElementById('menuBox').scrollWidth}));
       assert.ok(sizes.doc<=sizes.viewport+1&&sizes.content<=sizes.menu+1,'responsive custom setup '+JSON.stringify(sizes));
-      for(const id of ['customRosterCap','customRosterTeam0Slot0','customRosterTeam1Slot2','startBtn']){
-        await page.locator('#'+id).scrollIntoViewIfNeeded();
-        const r=await page.locator('#'+id).boundingBox();assert.ok(r&&r.x>=0&&r.x+r.width<=width+1&&r.height>=44,'usable mobile control '+id);
+      for(const selector of ['#customRosterCap','[data-roster-browse][data-team="0"][data-slot="0"]','[data-roster-browse][data-team="1"][data-slot="2"]','#startBtn']){
+        await page.locator(selector).scrollIntoViewIfNeeded();
+        const r=await page.locator(selector).boundingBox();assert.ok(r&&r.x>=0&&r.x+r.width<=width+1&&r.height>=44,'usable mobile control '+selector);
       }
-      if(width===390&&process.env.BASKETBALL_SCREENSHOTS){await page.locator('#customRosterTeam0Slot0').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(process.env.BASKETBALL_SCREENSHOTS,'custom-rosters-mobile.png')});}
+      if(width===390&&process.env.BASKETBALL_SCREENSHOTS){await page.locator('[data-roster-browse][data-team="0"][data-slot="0"]').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(process.env.BASKETBALL_SCREENSHOTS,'custom-rosters-mobile.png')});}
     }
     console.log('PASS: both team totals, exact cap, blocked invalid start and responsive roster controls');
     const campaignBefore=await page.evaluate(()=>JSON.stringify(riseState));
