@@ -16,12 +16,16 @@ export function createPlayer(x = 80, y = VIEW.floorY - PHYSICS.playerHeight) {
 }
 
 export function surfaceY(surface, x) {
+  if (surface.motion === "pivot" && Number.isFinite(surface.startX) && Number.isFinite(surface.endX)) {
+    const span = surface.endX - surface.startX;
+    return surface.startY + (surface.endY - surface.startY) * clamp(span ? (x - surface.startX) / span : 0, 0, 1);
+  }
   if (surface.kind !== "slope") return surface.y;
   const u = clamp((x - surface.x) / surface.w, 0, 1);
   return surface.y + (surface.slopeDirection === "up" ? 1 - u : u) * (surface.rise || 48);
 }
 
-function enabled(platform) { return !platform.dead && !platform.open && !platform.hidden; }
+function enabled(platform) { return !platform.dead && !platform.open && !platform.hidden && platform.solid !== false; }
 function emit(world,type,x,y,scale=.4,duration=.4) {
   world.effects ||= [];if(world.effects.length>=96)return;
   world._motionEffectId=(world._motionEffectId||0)+1;
@@ -32,14 +36,66 @@ function setState(player, state, dt) {
   else { player.stateTime = (player.stateTime || 0) + dt; player.animTime = (player.animTime || 0) + dt; }
 }
 
-export function updateMovers(world, time, dt) {
+const TAU = Math.PI * 2;
+const modulo = (value, period) => ((value % period) + period) % period;
+
+// The renderer, streamed chunks, and route prover all use this same clock sampler.
+// phase remains radians for movers, including the original sinusoidal platforms.
+export function sampleMover(mover, time) {
+  const period = mover.period || TAU / (mover.speed || 1.2);
+  const phase = (time + (mover.timeOffset || 0)) * TAU / period + (mover.phase || 0);
+  const x = mover.baseX ?? mover.x, y = mover.baseY ?? mover.y;
+  if (mover.motion === "pivot") {
+    const length = mover.length || mover.w;
+    const pivotX = mover.pivotX ?? x + length / 2, pivotY = mover.pivotY ?? y;
+    const angle = (mover.baseAngle || 0) + Math.sin(phase) * (mover.angleRange ?? .35);
+    const halfX = Math.cos(angle) * length / 2, halfY = Math.sin(angle) * length / 2;
+    return { x:pivotX-halfX, y:pivotY-Math.abs(halfY), w:halfX*2,
+      startX:pivotX-halfX, startY:pivotY-halfY, endX:pivotX+halfX, endY:pivotY+halfY,
+      angle, solid:true, hidden:false, warning:Math.abs(Math.cos(phase)) < .12, active:true };
+  }
+  if (mover.motion === "timed") {
+    const warning = mover.warningDuration ?? .9, active = mover.activeDuration ?? 3.5;
+    const retract = mover.retractDuration ?? .45;
+    const cycle = modulo(time + (mover.timeOffset || 0) + (mover.phase || 0) * period / TAU, period);
+    const retracting = cycle >= warning + active && cycle < warning + active + retract;
+    const beforeRetraction=cycle>=warning+active-(mover.retractWarningDuration ?? .9) && cycle<warning+active;
+    return {x,y,warning:cycle < warning || beforeRetraction,warningMode:beforeRetraction ? "retraction" : "appearance",active:cycle >= warning && cycle < warning + active,
+      retracting,solid:cycle < warning + active,hidden:cycle >= warning + active + retract,
+      cycleProgress:cycle/period,activeProgress:clamp((cycle-warning)/Math.max(.01,active),0,1),
+      progress:clamp((cycle-warning-active)/Math.max(.01,retract),0,1)};
+  }
+  return { x:x+Math.sin(phase)*(mover.axis === "x" ? mover.range || 0 : 0),
+    y:y+Math.sin(phase)*(mover.axis === "y" ? mover.range || 0 : 0),
+    solid:true,hidden:false,active:true,warning:Math.abs(Math.cos(phase)) < .12 };
+}
+
+export function syncMovers(world, time = world.time || 0) {
   for (const mover of world.movers || []) {
-    const oldX = mover.x, oldY = mover.y;
-    const phase = time * (mover.speed || 1.2) + (mover.phase || 0);
-    mover.x = (mover.baseX ?? mover.x) + Math.sin(phase) * (mover.axis === "x" ? mover.range : 0);
-    mover.y = (mover.baseY ?? mover.y) + Math.sin(phase) * (mover.axis === "y" ? mover.range : 0);
-    mover.dx = mover.x - oldX; mover.dy = mover.y - oldY;
-    mover.vx = mover.dx / Math.max(dt, 0.0001); mover.vy = mover.dy / Math.max(dt, 0.0001);
+    mover.baseX ??= mover.x; mover.baseY ??= mover.y;
+    Object.assign(mover,sampleMover(mover,time));
+    mover.previousX=mover.x;mover.previousY=mover.y;
+    mover.prevStartX=mover.startX;mover.prevStartY=mover.startY;
+    mover.prevEndX=mover.endX;mover.prevEndY=mover.endY;mover.prevAngle=mover.angle;
+    mover.dx=0;mover.dy=0;mover.vx=0;mover.vy=0;
+  }
+  return world;
+}
+
+export function updateMovers(world, time, dt) {
+  syncHazards(world,time);
+  for (const mover of world.movers || []) {
+    mover.baseX ??= mover.x; mover.baseY ??= mover.y;
+    const oldX=mover.x,oldY=mover.y,oldDirection=mover._direction,wasSolid=mover.solid;
+    mover.previousX=oldX;mover.previousY=oldY;
+    mover.prevStartX=mover.startX;mover.prevStartY=mover.startY;
+    mover.prevEndX=mover.endX;mover.prevEndY=mover.endY;mover.prevAngle=mover.angle;
+    Object.assign(mover,sampleMover(mover,time));
+    mover.dx=mover.x-oldX;mover.dy=mover.y-oldY;
+    mover.vx=mover.dx/Math.max(dt,.0001);mover.vy=mover.dy/Math.max(dt,.0001);
+    mover._direction=Math.sign(mover.axis === "y" ? mover.dy : mover.dx);
+    if(oldDirection && mover._direction && oldDirection !== mover._direction || wasSolid === false && mover.solid)
+      emit(world,"fx-platform-activation",mover.x+mover.w/2,surfaceY(mover,mover.x+mover.w/2),.22,.47);
   }
 }
 
@@ -47,8 +103,8 @@ export function updateMovers(world, time, dt) {
 export function updatePlayer(player, world, input, dt) {
   if (!(dt > 0)) return;
   const platforms = world.platforms || [], movers = world.movers || [];
-  const surfaces = platforms.concat(movers);
-  const grounded = player.onGround;
+  const surfaces = platforms.concat(movers,(world.hazards || []).filter(h => h.type === "timedGate" && h.active));
+  let grounded = player.onGround;
   const airJumps = Number(Boolean(player.powers.wings)) + Number(player.boosts?.water > 0);
   const wind = player.boosts?.wind > 0;
   const oldGround = player.groundId;
@@ -67,7 +123,29 @@ export function updatePlayer(player, world, input, dt) {
   if (grounded) { player.airDashUsed = false; player.extraJumps = airJumps; }
 
   const ridden = grounded && oldGround ? movers.find(mover => mover.id === oldGround) : null;
-  if (ridden && enabled(ridden)) { player.x += ridden.dx || 0; player.y += ridden.dy || 0; }
+  if (ridden && !enabled(ridden)) { grounded=false;player.onGround=false;player.coyote=0; }
+  if (ridden && enabled(ridden)) {
+    const carryFromX=player.x,carryFromY=player.y;
+    if(ridden.motion === "pivot" && Number.isFinite(ridden.prevStartX)) {
+      const span=ridden.prevEndX-ridden.prevStartX;
+      const fraction=clamp(span ? (player.x+player.w/2-ridden.prevStartX)/span : .5,0,1);
+      player.x=ridden.startX+(ridden.endX-ridden.startX)*fraction-player.w/2;
+      player.y=surfaceY(ridden,player.x+player.w/2)-player.h;
+    } else { player.x += ridden.dx || 0; player.y += ridden.dy || 0; }
+    // Carrying participates in solid collisions too. A ferry cannot force a
+    // passenger through a raised bank, and a lift cannot push through a ceiling.
+    for(const solid of surfaces) {
+      if(solid===ridden || solid.oneWay || solid.kind === "slope" || !enabled(solid))continue;
+      if(player.y+player.h>solid.y+.01 && player.y<solid.y+solid.h-.01) {
+        if(player.x>carryFromX && carryFromX+player.w<=solid.x+.01 && player.x+player.w>solid.x)player.x=solid.x-player.w;
+        if(player.x<carryFromX && carryFromX>=solid.x+solid.w-.01 && player.x<solid.x+solid.w)player.x=solid.x+solid.w;
+      }
+      if(player.x+player.w>solid.x+.01 && player.x<solid.x+solid.w-.01) {
+        if(player.y<carryFromY && carryFromY>=solid.y+solid.h-.01 && player.y<solid.y+solid.h)player.y=solid.y+solid.h;
+        if(player.y>carryFromY && carryFromY+player.h<=solid.y+.01 && player.y+player.h>solid.y)player.y=solid.y-player.h;
+      }
+    }
+  }
 
   if (input.downHeld?.() && grounded && jumpPressed && surfaces.find(p => p.id === oldGround)?.oneWay) {
     player.dropTimer = PHYSICS.dropThroughTime; player.onGround = false;
@@ -139,29 +217,41 @@ export function updatePlayer(player, world, input, dt) {
   const oldY = player.y, oldBottom = oldY + player.h;
   let nextY = oldY + player.vy * dt;
   player.onGround = false; player.groundId = null;
-  if (player.vy >= 0) {
+  {
     let highest = Infinity, landing = null;
     for (const platform of surfaces) {
       if (!enabled(platform) || (platform.oneWay && player.dropTimer > 0)) continue;
       if (player.x + player.w <= platform.x + 1 || player.x >= platform.x + platform.w - 1) continue;
       const footX = clamp(player.x + player.w * 0.5, platform.x, platform.x + platform.w);
       const top = surfaceY(platform, footX);
-      const slopeSnap = platform.kind === "slope" && grounded && Math.abs(oldBottom - top) <= 24;
-      const moverSlack = Math.max(0, platform.dy || 0) + 1;
-      if ((oldBottom <= top + moverSlack || slopeSnap) && (nextY + player.h >= top || slopeSnap) && top < highest) { highest = top; landing = platform; }
+      const slopeSnap = (platform.kind === "slope" || platform.motion === "pivot" && oldGround === platform.id) && grounded && player.vy>=0 && Math.abs(oldBottom - top) <= 24;
+      // Test crossing relative to the previous contact plane. This catches a
+      // rising lift overtaking an upward jumper, without catching a player who
+      // began below a descending one-way deck.
+      let previousTop=top-(platform.dy || 0);
+      if(platform.motion === "pivot" && Number.isFinite(platform.prevStartX)) {
+        const span=platform.prevEndX-platform.prevStartX;
+        const u=clamp(span ? (oldX+player.w/2-platform.prevStartX)/span : .5,0,1);
+        previousTop=platform.prevStartY+(platform.prevEndY-platform.prevStartY)*u;
+      }
+      if(grounded && oldGround===platform.id)previousTop=top;
+      const relativeFall=(nextY-oldY)+(previousTop-top);
+      if(relativeFall<-.001 && !slopeSnap)continue;
+      const keepsContact=Math.abs(top-highest)<.01 && platform.id===oldGround;
+      if ((oldBottom <= previousTop + 1 || slopeSnap) && (nextY + player.h >= top || slopeSnap) && (top < highest || keepsContact)) { highest = top; landing = platform; }
     }
     if (landing) {
       if(!grounded&&player.vy>300){player.landTimer=.1;emit(world,"fx-landing-dust",player.x+player.w/2,highest,.3,.35);}
       nextY = highest - player.h; player.vy = 0; player.onGround = true; player.groundId = landing.id;
       player.extraJumps = airJumps; player.airDashUsed = false;
       if (!landing.temporary && landing.kind !== "collapsing") player.lastSafe = { x: player.x, y: nextY };
-    }
-  } else {
+    } else if(player.vy<0) {
     for (const platform of surfaces) {
       if (!enabled(platform) || platform.oneWay || platform.kind === "slope") continue;
       if (player.x + player.w <= platform.x + 1 || player.x >= platform.x + platform.w - 1) continue;
       const bottom = platform.y + platform.h;
       if (oldY >= bottom - 0.1 && nextY <= bottom) { nextY = Math.max(nextY, bottom); player.vy = 0; }
+    }
     }
   }
   player.y = nextY;
@@ -187,6 +277,122 @@ export function damagePlayer(player, amount = 1, knockback = null) {
   return true;
 }
 
+const MECHANISM_HAZARDS = new Set(["pendulum","crusher","retractSpikes","rotatingBeam","timedGate"]);
+const LEGACY_TIMED_HAZARDS = new Set(["fireJet","flameJet","lightning","fallingRock"]);
+export function sampleHazard(hazard,time) {
+  const legacy=LEGACY_TIMED_HAZARDS.has(hazard.type);
+  const period=hazard.period || (legacy ? 3.6 : 5.8),warning=hazard.warningDuration ?? (legacy ? .8 : 1.2),active=hazard.activeDuration ?? (legacy ? .65 : 1);
+  const cycle=modulo(time+(hazard.timeOffset || 0)+(hazard.phase || 0),period);
+  const progress=clamp((cycle-warning)/Math.max(active,.01),0,1);
+  const state={warning:cycle<warning,active:cycle>=warning && cycle<warning+active,progress};
+  if(hazard.type === "pendulum") {
+    const anchorX=hazard.pivotX ?? hazard.anchorX ?? hazard.x+hazard.w/2;
+    const anchorY=hazard.pivotY ?? hazard.anchorY ?? hazard.baseY ?? hazard.y;
+    const angle=(hazard.baseAngle || 0)-Math.cos(progress*TAU)*(hazard.angleRange ?? .65);
+    const radius=hazard.ballRadius || 22,length=hazard.length || 145;
+    const tipX=anchorX+Math.sin(angle)*length,tipY=anchorY+Math.cos(angle)*length;
+    return {...state,anchorX,anchorY,tipX,tipY,angle,ballRadius:radius,x:tipX-radius,y:tipY-radius,w:radius*2,h:radius*2};
+  }
+  if(hazard.type === "rotatingBeam") {
+    const pivotX=hazard.pivotX ?? hazard.x+hazard.w/2,pivotY=hazard.pivotY ?? hazard.baseY ?? hazard.y;
+    const angle=(hazard.baseAngle || 0)+progress*TAU,length=hazard.length || 160,radius=hazard.radius || 10;
+    const halfX=Math.cos(angle)*length/2,halfY=Math.sin(angle)*length/2;
+    return {...state,angle,startX:pivotX-halfX,startY:pivotY-halfY,endX:pivotX+halfX,endY:pivotY+halfY,
+      x:pivotX-Math.abs(halfX)-radius,y:pivotY-Math.abs(halfY)-radius,w:Math.abs(halfX)*2+radius*2,h:Math.abs(halfY)*2+radius*2,radius};
+  }
+  if(hazard.type === "crusher") {
+    const stroke=Math.sin(progress*Math.PI),baseY=hazard.baseY ?? hazard.y;
+    return {...state,y:baseY+stroke*(hazard.travel ?? 120)};
+  }
+  if(hazard.type === "retractSpikes") {
+    const maxHeight=hazard.maxHeight || 46,baseY=hazard.baseY ?? hazard.y;
+    const height=state.active ? maxHeight*Math.min(1,progress*6,(1-progress)*6) : 0;
+    return {...state,y:baseY-height,h:height,maxHeight};
+  }
+  if(hazard.type === "fallingRock") {
+    const targetY=hazard.targetY ?? (hazard.baseY ?? hazard.y)+(hazard.baseHeight ?? hazard.h)-44;
+    return {...state,targetY,x:hazard.x,y:targetY-440+progress*progress*440,w:44,h:44,
+      telegraph:state.warning ? {x:hazard.x-12,y:targetY+32,w:68,h:12} : null};
+  }
+  if(legacy)return state;
+  return {...state,kind:"gate",oneWay:false,solid:state.active};
+}
+
+export function syncHazards(world,time=world.time || 0) {
+  for(const hazard of world.hazards || []) {
+    if(!MECHANISM_HAZARDS.has(hazard.type) && !LEGACY_TIMED_HAZARDS.has(hazard.type))continue;
+    const first=!hazard._clockSynced;
+    hazard.baseY ??= hazard.y;
+    hazard.baseHeight ??= hazard.h;
+    hazard.pivotX ??= hazard.anchorX ?? hazard.x+hazard.w/2;
+    hazard.pivotY ??= hazard.anchorY ?? hazard.y;
+    hazard.previousX=hazard.x;hazard.previousY=hazard.y;
+    hazard.prevStartX=hazard.startX;hazard.prevStartY=hazard.startY;
+    hazard.prevEndX=hazard.endX;hazard.prevEndY=hazard.endY;
+    hazard.prevTipX=hazard.tipX;hazard.prevTipY=hazard.tipY;
+    Object.assign(hazard,sampleHazard(hazard,time));
+    if(first) {
+      hazard.previousX=hazard.x;hazard.previousY=hazard.y;
+      hazard.prevStartX=hazard.startX;hazard.prevStartY=hazard.startY;
+      hazard.prevEndX=hazard.endX;hazard.prevEndY=hazard.endY;
+      hazard.prevTipX=hazard.tipX;hazard.prevTipY=hazard.tipY;
+    }
+    hazard._clockSynced=true;
+  }
+  return world;
+}
+
+function segmentHitsBox(x1,y1,x2,y2,box,radius=0) {
+  let low=0,high=1;
+  for(const [origin,delta,min,max] of [[x1,x2-x1,box.x-radius,box.x+box.w+radius],[y1,y2-y1,box.y-radius,box.y+box.h+radius]]) {
+    if(Math.abs(delta)<1e-9) { if(origin<min || origin>max)return false;continue; }
+    const a=(min-origin)/delta,b=(max-origin)/delta;
+    low=Math.max(low,Math.min(a,b));high=Math.min(high,Math.max(a,b));
+    if(low>high)return false;
+  }
+  return true;
+}
+
+function pointSegmentDistanceSquared(x,y,x1,y1,x2,y2) {
+  const dx=x2-x1,dy=y2-y1,length=dx*dx+dy*dy;
+  const t=clamp(length ? ((x-x1)*dx+(y-y1)*dy)/length : 0,0,1);
+  return (x-x1-t*dx)**2+(y-y1-t*dy)**2;
+}
+
+function capsuleHitsBox(hazard,box) {
+  const {startX:x1,startY:y1,endX:x2,endY:y2}=hazard,radius=hazard.radius || 10;
+  if(segmentHitsBox(x1,y1,x2,y2,box))return true;
+  for(const [x,y] of [[x1,y1],[x2,y2]]) {
+    const nearX=clamp(x,box.x,box.x+box.w),nearY=clamp(y,box.y,box.y+box.h);
+    if((x-nearX)**2+(y-nearY)**2<=radius*radius)return true;
+  }
+  for(const x of [box.x,box.x+box.w])for(const y of [box.y,box.y+box.h])
+    if(pointSegmentDistanceSquared(x,y,x1,y1,x2,y2)<=radius*radius)return true;
+  return false;
+}
+
+export function hazardHitsPlayer(hazard,player) {
+  if(!hazard.active)return false;
+  if(hazard.type === "retractSpikes") {
+    if(!(hazard.h>0) || !overlaps(player,hazard))return false;
+    // The supplied strip has three triangular prongs. At the lowest overlapping
+    // row each triangle is widest, so testing that section is an exact triangle
+    // versus axis-aligned player test rather than the trap's empty outer box.
+    const bottom=Math.min(player.y+player.h,hazard.y+hazard.h);
+    const half=hazard.w*(hazard.spikeWidthFraction ?? .25)*.5*clamp((bottom-hazard.y)/hazard.h,0,1);
+    return (hazard.spikeCenters || [.125,.5,.875]).some(u=>{
+      const x=hazard.x+hazard.w*u;return player.x<x+half && player.x+player.w>x-half;
+    });
+  }
+  if(hazard.type === "pendulum") {
+    const x=clamp(hazard.tipX,player.x,player.x+player.w),y=clamp(hazard.tipY,player.y,player.y+player.h);
+    return (x-hazard.tipX)**2+(y-hazard.tipY)**2<=(hazard.ballRadius || 22)**2;
+  }
+  if(hazard.type === "rotatingBeam")
+    return capsuleHitsBox(hazard,player);
+  return hazard.h>0 && overlaps(player,hazard);
+}
+
 // Timed hazards always show a warning interval; wind never exceeds normal air control.
 export function updateWorldEnvironment(world, player, dt, time = world.time || 0) {
   world.time = time;
@@ -205,7 +411,7 @@ export function updateWorldEnvironment(world, player, dt, time = world.time || 0
   for (const sw of world.switches || []) {
     if (!sw.activated && overlaps(player, sw)) {
       sw.activated = true;
-      emit(world,"fx-gold-impact",sw.x+sw.w/2,sw.y+sw.h,.3,.4);
+      emit(world,"fx-platform-activation",sw.x+sw.w/2,sw.y+sw.h,.3,.47);
       for (const gate of world.platforms || []) if (gate.switchId === sw.id) gate.open = true;
       for (const prop of world.props || []) if (prop.switchId === sw.id) { prop.open = true; prop.artFrame = "gate-open"; }
     }
@@ -215,26 +421,32 @@ export function updateWorldEnvironment(world, player, dt, time = world.time || 0
     hazard.animTime = (hazard.animTime || 0) + dt;
     if (hazard.type === "wind") {
       hazard.active = true;
-      if (overlaps(player, hazard) && !player.onGround && !player.dashTimer) player.vx += Math.sin(time * 1.4 + (hazard.phase || 0)) * (hazard.force || 170) * dt;
+      if (overlaps(player, hazard) && !player.onGround && !player.dashTimer) player.vx += Math.sin((time + (hazard.timeOffset || 0)) * 1.4 + (hazard.phase || 0)) * (hazard.force || 170) * dt;
       continue;
     }
-    if (hazard.type === "fireJet" || hazard.type === "flameJet" || hazard.type === "lightning" || hazard.type === "fallingRock") {
-      const cycle = (time + (hazard.phase || 0)) % (hazard.period || 3.6);
-      const warn = hazard.warningDuration || 0.8, active = hazard.activeDuration || 0.65;
-      hazard.warning = cycle < warn; hazard.active = cycle >= warn && cycle < warn + active;
-      if (hazard.type === "fallingRock") {
-        hazard.targetY ??= hazard.y + hazard.h - 44;
-        hazard.w = 44; hazard.h = 44;
-        const progress = clamp((cycle - warn) / active, 0, 1);
-        hazard.y = hazard.targetY - 440 + progress * progress * 440;
-        hazard.telegraph = hazard.warning ? { x:hazard.x-12, y:hazard.targetY+32, w:68, h:12 } : null;
-      }
+    if (MECHANISM_HAZARDS.has(hazard.type) || LEGACY_TIMED_HAZARDS.has(hazard.type)) {
+      hazard.baseY ??= hazard.y;
+      hazard.baseHeight ??= hazard.h;
+      hazard.pivotX ??= hazard.anchorX ?? hazard.x+hazard.w/2;
+      hazard.pivotY ??= hazard.anchorY ?? hazard.y;
+      Object.assign(hazard,sampleHazard(hazard,time));
     } else if (hazard.type === "chase") {
       if (!hazard.triggered && player.x > hazard.triggerX) { hazard.triggered = true; hazard.x = player.x - 560; }
       hazard.active = Boolean(hazard.triggered && player.x < hazard.endX);
       if (hazard.active) hazard.x = Math.min(player.x - 75, hazard.x + (hazard.speed || 335) * dt);
     } else hazard.active = true;
-    if (hazard.active && overlaps(player, hazard)) damagePlayer(player, hazard.damage || 1, { x: player.x < hazard.x + hazard.w / 2 ? -240 : 240, y: -400 });
+    if (hazardHitsPlayer(hazard, player)) damagePlayer(player, hazard.damage || 1, { x: player.x < hazard.x + hazard.w / 2 ? -240 : 240, y: -400 });
   }
   world.furthestX = Math.max(world.furthestX || 0, player.x);
 }
+
+// Offline route proofs are valid only for this complete controller dependency
+// set. Add every new helper here when extending the physics implementation.
+export const PHYSICS_PROOF_SIGNATURE = [
+  createPlayer,surfaceY,enabled,emit,setState,modulo,sampleMover,syncMovers,
+  updateMovers,updatePlayer,damagePlayer,sampleHazard,syncHazards,segmentHitsBox,
+  pointSegmentDistanceSquared,capsuleHitsBox,hazardHitsPlayer,updateWorldEnvironment,
+  approach,clamp,overlaps,
+].map(fn=>fn.toString().replace(/\s+/g," ")).join("\n")+JSON.stringify({
+  TAU,VIEW,mechanisms:[...MECHANISM_HAZARDS],legacyTimed:[...LEGACY_TIMED_HAZARDS],
+});

@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {ASSET_CATALOG,AssetManager,AssetLoadError,sampleFrame,namedFrame} from '../js/assets/asset-manager.js';
+import {ASSET_CATALOG,DYNAMIC_ASSET_CATALOG,AssetManager,AssetLoadError,sampleFrame,namedFrame} from '../js/assets/asset-manager.js';
+import {ASSET_CATALOG as LEGACY_CATALOG} from '../js/assets/catalog.js';
 import {REGIONS} from '../js/world/regions.js';
-import {Renderer,groundedArtPlacement} from '../js/render/renderer.js';
+import {Renderer,groundedArtPlacement,platformArtFrame,mechanismArtFrame} from '../js/render/renderer.js';
 import {ART_ALPHA_BOUNDS,PLATFORM_SURFACES} from '../js/assets/art-anchors.js';
 import {createRequire} from 'node:module';
+import {sampleMover,sampleHazard} from '../js/physics.js';
 
 const byPath=new Map(Object.values(ASSET_CATALOG).map(meta=>[meta.path,meta]));
-assert.equal(Object.keys(ASSET_CATALOG).length,263);
+assert.equal(Object.keys(LEGACY_CATALOG).length,263);
+assert.equal(Object.keys(DYNAMIC_ASSET_CATALOG).length,15);
+assert.equal(Object.keys(ASSET_CATALOG).length,278);
 let frames=0,clips=0;
 for(const meta of Object.values(ASSET_CATALOG)) {
   for(const frame of meta.frames) {
@@ -22,7 +26,19 @@ for(const meta of Object.values(ASSET_CATALOG)) {
   }
   for(const name of Object.keys(meta.namedFrames||{}))assert(namedFrame(meta,name),meta.id+name);
 }
-assert.equal(frames,1429);assert.equal(clips,301);
+assert.equal(Object.values(LEGACY_CATALOG).reduce((n,m)=>n+m.frames.length,0),1429);
+assert.equal(Object.values(LEGACY_CATALOG).reduce((n,m)=>n+Object.keys(m.animations||{}).length,0),301);
+assert.equal(frames,1517);
+for(const meta of Object.values(DYNAMIC_ASSET_CATALOG))assert(!meta.path.includes('platforms/moving/'),'Uploaded biome graphics use flat platform paths.');
+try {
+  const manifest=JSON.parse(await readFile(new URL('../../../../../outputs/jesus-runner-platform-hazard-pack/_docs/assets.json',import.meta.url),'utf8'));
+  for(const source of manifest.assets) {
+    const packed=DYNAMIC_ASSET_CATALOG[source.id];
+    assert.deepEqual(packed.frames,source.frames,'Preserve every measured source rectangle, origin and collision guide: '+source.id);
+    assert.deepEqual(packed.animations,source.animations,source.id);
+    assert.equal(packed.sha256,source.sha256);assert.equal(packed.path,source.path.replace(/^platforms\/moving\//,'platforms/'));
+  }
+} catch(error) {if(error.code!=='ENOENT')throw error;}
 const idle=ASSET_CATALOG['player.jesus.idle'];
 assert.equal(sampleFrame(idle,0).index,0);
 assert.equal(sampleFrame(idle,.139999).index,0);
@@ -116,7 +132,7 @@ for(const [biome,region]of Object.entries(REGIONS)) {
   await manager.loadLevel({...region,biome},progress=>{
     if(progress.loaded===0){started=true;assert(![...manager.cache.values()].some(e=>e.meta.biome&&e.meta.biome!==biome),'Release the old biome before downloading the next.');}
   });
-  assert(started);assert.equal(manager.stats().pending,0);
+  await manager.optionalLoad;assert(started);assert.equal(manager.stats().pending,0);
   await manager.prefetchBoss(region.bossId);
   assert(manager.has(`enemy-${region.bossId}-attack2`));
   assert(manager.stats().decodedBytes<192*1048576,`${biome} exceeds the bounded current-world texture budget`);
@@ -156,21 +172,118 @@ assert(await previousLoad instanceof AssetLoadError,'Obsolete queued enemy reque
 assert(transitioning.has('enemy-pitLord-idle'));assert(!transitioning.has('enemy-hound-idle'));
 assert(!transitioning.stats().failed.length,'Cancelled obsolete requests must not surface as failures in the new world.');
 transitioning.releaseLevel();
+const raced=new AssetManager({imageFactory:()=>new FakeImage(),concurrency:3});
+await raced.loadLevel({biome:'countryside',enemyPool:[]});await raced.optionalLoad;
+const beforeRace=requests.length;
+const staleLoad=raced.loadLevel({biome:'countryside',enemyPool:[]}).catch(error=>error);
+await raced.loadLevel({biome:'desert',enemyPool:[]});await raced.optionalLoad;
+assert(await staleLoad instanceof AssetLoadError,'A superseded plan must not finish by starting old-biome optional requests.');
+assert(!raced.levelIDs.has('platform-countryside')&&!raced.has('platform-countryside'));
+assert(!requests.slice(beforeRace).some(url=>url.endsWith('/platforms/countryside-moving-platform.png')),'Late optional work must not reload the previous biome.');
+const cachedCancellation=raced.loadLevel({biome:'desert',enemyPool:[]}).catch(error=>error);raced.cancelLoads();
+assert(await cachedCancellation instanceof AssetLoadError);
+await raced.optionalLoad;assert(!raced.levelIDs.size&&!raced.pending.size,'Cancellation must also invalidate a cached required phase.');
+assert(!manager.planLevel({biome:'desert',enemyPool:[],bossArena:true}).includes('platform-desert'),'Guardian arenas should release unused traversal upgrade sheets.');
 
 // An integration render exercises the selected graphics for every biome, enemy
 // and boss. The recording context rejects any source rectangle outside its real
 // sheet and confirms that culling avoids drawing distant actors.
-let draws=0;
+let draws=0;const drawnDynamic=new Set();
 const context=()=>new Proxy({}, {get(target,key){
   if(key==='createLinearGradient')return()=>({addColorStop(){}});
   if(key==='drawImage')return(image,...args)=>{
     draws++;
-    if(args.length===8){const [sx,sy,sw,sh]=args;assert(sx>=0&&sy>=0&&sw>0&&sh>0);assert(sx+sw<=image.naturalWidth+.001&&sy+sh<=image.naturalHeight+.001);}
+    if(args.length===8){const [sx,sy,sw,sh]=args;assert(args.every(Number.isFinite));assert(sx>=0&&sy>=0&&sw>0&&sh>0);assert(sx+sw<=image.naturalWidth+.001&&sy+sh<=image.naturalHeight+.001);}
+    const meta=image.src&&byPath.get(new URL(image.src).pathname.slice(1));
+    if(meta?.optional) {
+      drawnDynamic.add(meta.id);const [sx,sy,sw,sh]=args;
+      assert(meta.frames.some(f=>sx>=f.rect.x-.001&&sy>=f.rect.y-.001&&sx+sw<=f.rect.x+f.rect.width+.001&&sy+sh<=f.rect.y+f.rect.height+.001),'An upgrade draw must stay inside one measured frame: '+meta.id);
+    }
   };
   return target[key] || (()=>{});
 },set(target,key,value){target[key]=value;return true;}});
 globalThis.document={createElement:()=>({width:512,height:512,getContext:context})};
 const canvas={width:960,height:540,getContext:context},renderer=new Renderer(canvas,manager);
+const mechanismTypes=['pendulum','crusher','retractSpikes','rotatingBeam','timedGate'];
+const failureManager=new AssetManager({imageFactory:()=>new FakeImage(),concurrency:2});
+const failureWorld={biome:'countryside',enemyPool:[],hazardTypes:mechanismTypes};
+for(const id of failureManager.planLevel(failureWorld))if(ASSET_CATALOG[id].optional)failureCounts.set(id,1);
+await failureManager.loadLevel(failureWorld);
+assert(failureManager.has('countryside-structures'),'Original artwork must be available before optional requests settle.');
+assert(failureManager.stats().pending>0,'Optional upgrades must load after the playable base world is ready.');
+await failureManager.optionalLoad;
+assert(!failureManager.stats().failed.length,'Unavailable upgrade sheets must not become blocking graphics errors.');
+assert(failureManager.stats().optionalUnavailable.includes('platform-countryside'));
+const fallbackRenderer=new Renderer(canvas,failureManager);
+fallbackRenderer._dynamicPlatform({x:200,y:300,w:200,h:28},'countryside',0,1,true);
+for(const type of mechanismTypes){const h={type,x:300,y:300,w:90,h:65,baseY:300,pivotX:345,pivotY:200};Object.assign(h,sampleHazard(h,1.5));fallbackRenderer._hazard(h,1.5);}
+assert.equal(fallbackRenderer.error,null,'Every unavailable new mechanism must retain a visible original-art fallback.');
+failureManager.releaseLevel();
+const mechanismPlan=manager.planLevel({biome:'countryside',enemyPool:[],chunkPlan:[{tags:mechanismTypes}]});
+assert(mechanismPlan.includes('hazard-falling-rock')&&mechanismPlan.includes('hazard-spike-trap'),'Streamed mechanism fallback art must be prepared before its chunk arrives.');
+await manager.loadLevel({biome:'countryside',enemyPool:[],hazardTypes:mechanismTypes});await manager.optionalLoad;
+const geometryCalls=[];let matrix=[1,0,0,1,0,0];const matrixStack=[];
+const geometryContext=new Proxy({
+  save(){matrixStack.push([...matrix]);},restore(){matrix=matrixStack.pop();},
+  translate(x,y){matrix[4]+=matrix[0]*x+matrix[2]*y;matrix[5]+=matrix[1]*x+matrix[3]*y;},
+  rotate(angle){const [a,b,c,d]=matrix,co=Math.cos(angle),si=Math.sin(angle);matrix[0]=a*co+c*si;matrix[1]=b*co+d*si;matrix[2]=c*co-a*si;matrix[3]=d*co-b*si;},
+  drawImage(image,...args){geometryCalls.push({image,args,matrix:[...matrix]});},
+},{get:(target,key)=>target[key]||(()=>{}),set:(target,key,value)=>(target[key]=value,true)});
+const geometryRenderer=new Renderer({width:960,height:540,getContext:()=>geometryContext},manager);
+function sourcePoint(call,frame,point) {
+  const [sx,sy,sw,sh,x,y,w,h]=call.args,m=call.matrix,dx=x+(frame.rect.x+point.x-sx)*w/sw,dy=y+(frame.rect.y+point.y-sy)*h/sh;
+  return {x:m[0]*dx+m[2]*dy+m[4],y:m[1]*dx+m[3]*dy+m[5]};
+}
+const near=(a,b,message)=>assert.ok(Math.abs(a-b)<.001,message);
+const rock={type:'fallingRock',x:80,y:250,w:44,h:44,active:true,period:4.2,warningDuration:.9,activeDuration:.65,timeOffset:1.0625-20};
+geometryRenderer._hazard(rock,20);
+const rockCall=geometryCalls.at(-1),rockFrame=ASSET_CATALOG['hazard-falling-rock'].frames[1],rockCenter=sourcePoint(rockCall,rockFrame,{x:128,y:128});
+assert.equal(rockCall.args[0],rockFrame.rect.x,'Legacy timed art follows active progress including a restored clock offset.');
+near(rockCenter.x,102,'Falling rock art center matches its physical box');near(rockCenter.y,272,'Falling rock art center matches its physical box');
+near(rockCall.args[6]*68/rockCall.args[2],22,'Falling rock circle radius matches the physical half-width');
+for(const type of mechanismTypes)for(const time of [1.25,1.5,2.12]) {
+  const hazard={type,x:300,y:300,w:46,h:58,baseY:300,pivotX:323,pivotY:200,period:5.8,warningDuration:1.2,activeDuration:1,maxHeight:24};
+  Object.assign(hazard,sampleHazard(hazard,time));geometryCalls.length=0;geometryRenderer._hazard(hazard,time);
+  const frame=mechanismArtFrame(DYNAMIC_ASSET_CATALOG[({pendulum:'hazard-pendulum',crusher:'hazard-crusher',retractSpikes:'hazard-retracting-spikes',rotatingBeam:'hazard-rotating-beam',timedGate:'hazard-timed-gate'})[type]],hazard,time),guide=frame.collisionGuide,call=geometryCalls.at(-1);
+  if(type==='pendulum') {
+    const center=sourcePoint(call,frame,guide.center);near(center.x,hazard.tipX);near(center.y,hazard.tipY);
+    const edge=sourcePoint(call,frame,{x:guide.center.x+guide.radius,y:guide.center.y});near(Math.hypot(edge.x-center.x,edge.y-center.y),hazard.ballRadius);
+  } else if(type==='rotatingBeam') {
+    const from=sourcePoint(call,frame,guide.from),to=sourcePoint(call,frame,guide.to);near(from.x,hazard.startX);near(from.y,hazard.startY);near(to.x,hazard.endX);near(to.y,hazard.endY);
+  } else if(type==='crusher') {
+    const corner=sourcePoint(call,frame,{x:guide.x,y:guide.y});near(corner.x,hazard.x);near(corner.y,hazard.y);
+    const bottom=sourcePoint(call,frame,{x:guide.x+guide.width,y:guide.y+guide.height});near(bottom.x,hazard.x+hazard.w);near(bottom.y,hazard.y+hazard.h);
+  } else if(type==='retractSpikes') {
+    const tip=Math.min(...guide.polygons.flat().map(p=>p[1])),at=sourcePoint(call,frame,{x:guide.polygons[1][1][0],y:tip});
+    near(at.y,hazard.y,'Emerging/full/returning visible tips must track the exact damage height');
+    near(geometryCalls[0].args[5],hazard.baseY,'The spike plate remains fixed while tips extend');
+  }
+}
+// Exercise the renderer with the simulation's actual warning, damage, recovery,
+// pivot and disappearance geometry. No duplicated movement formulas or art cells.
+for(const seconds of [0,1.45,2.3,4.9]) {
+  for(const type of mechanismTypes) {
+    const hazard={type,x:300,y:300,w:90,h:65,baseY:300,pivotX:345,pivotY:200,period:5.8,warningDuration:1.2,activeDuration:1};
+    Object.assign(hazard,sampleHazard(hazard,seconds));renderer._hazard(hazard,seconds,.5);
+  }
+  for(const motion of ['pivot','timed']) {
+    const mover={motion,x:200,y:300,baseX:200,baseY:300,w:240,h:28,length:240,period:5.8};
+    Object.assign(mover,sampleMover(mover,seconds));renderer._dynamicPlatform(mover,'countryside',seconds,.5,true);
+  }
+}
+assert.equal(renderer.error,null,'Mechanisms must retain working artwork before optional replacement sheets are available.');
+const timedMeta=DYNAMIC_ASSET_CATALOG['platform-countryside'],gateMeta=DYNAMIC_ASSET_CATALOG['hazard-timed-gate'];
+assert.equal(platformArtFrame(timedMeta,{hidden:true},0).collisionGuide.solid,false);
+assert.equal(platformArtFrame(DYNAMIC_ASSET_CATALOG['platform-collapsing-stone'],{dead:true,resetTimer:3.9},0,false).collisionGuide.solid,false);
+assert.equal(platformArtFrame(DYNAMIC_ASSET_CATALOG['platform-unstable-bridge'],{dead:true,resetTimer:3.9},0,false).collisionGuide.solid,false);
+for(const time of [0,1.5,3]) {
+  const gate={type:'timedGate',x:0,y:0,w:60,h:180};Object.assign(gate,sampleHazard(gate,time));
+  assert.equal(mechanismArtFrame(gateMeta,gate,time).collisionGuide.solid,gate.active,'Displayed gate passage must agree with the physics blocker.');
+  const spikes={type:'retractSpikes',x:0,y:0,w:100,h:46};Object.assign(spikes,sampleHazard(spikes,time));
+  assert.equal(mechanismArtFrame(DYNAMIC_ASSET_CATALOG['hazard-retracting-spikes'],spikes,time).collisionGuide.dangerous,spikes.active,'Spike warning/recovery drawings must not display damaging tips.');
+}
+for(const name of ['move-right','move-up','wait','safe-landing'])renderer._navigationIcon(name,200,200);
+renderer._effect({type:'fx-platform-activation',x:200,y:300,time:.15,scale:.3});
 await manager.loadLevel({biome:'countryside',enemyPool:[],pickups:[{type:'bread',grounded:true,groundY:468}]});
 const staticCalls=[],groundContext={drawImage:(image,...args)=>staticCalls.push(args)};
 const groundedRenderer=new Renderer({width:960,height:540,getContext:()=>groundContext},manager);
@@ -179,7 +292,7 @@ groundedRenderer._pickup({type:'bread',x:165,y:440,w:28,h:28,grounded:true,groun
 assert.deepEqual(staticCalls[0],staticCalls[1],'A grounded collectible must not bob with animation time.');
 assert.equal(staticCalls[0][5]+staticCalls[0][7],468,'The rendered bread alpha bottom must touch its physical supporting surface.');
 for(const [biome,region]of Object.entries(REGIONS)) {
-  await manager.loadLevel({...region,biome});await manager.prefetchBoss(region.bossId);
+  await manager.loadLevel({...region,biome});await manager.optionalLoad;await manager.prefetchBoss(region.bossId);
   const surfaceCalls=[];
   const contactContext=new Proxy({drawImage:(image,...args)=>surfaceCalls.push({image,args})},{get:(target,key)=>target[key]||(()=>{}),set:(target,key,value)=>(target[key]=value,true)});
   const contactRenderer=new Renderer({width:960,height:540,getContext:()=>contactContext},manager);
@@ -187,15 +300,24 @@ for(const [biome,region]of Object.entries(REGIONS)) {
   for(const visualKind of ['bridge','supported','ledge']){
     surfaceCalls.length=0;contactRenderer._oneWayPlatform({...p,visualKind},biome,manager.get(`${biome}-terrain`));
     const {args}=surfaceCalls.at(-1),[sx,sy,sw,sh,dx,dy,dw,dh]=args;
-    const meta=manager.metadata(`${biome}-${visualKind==='bridge'?'structures':'terrain'}`),frame=namedFrame(meta,visualKind==='bridge'?'bridge':'ledge');
-    const deck=PLATFORM_SURFACES[`${meta.id}:${frame.index}`];
-    const renderedContact=dy+(frame.rect.y+deck.y-sy)*dh/sh;
+    const meta=manager.metadata(visualKind==='bridge'?'platform-unstable-bridge':`${biome}-terrain`),frame=namedFrame(meta,visualKind==='bridge'?'stable':'ledge');
+    const contactY=visualKind==='bridge'?frame.collisionGuide.from.y:PLATFORM_SURFACES[`${meta.id}:${frame.index}`].y;
+    const renderedContact=dy+(frame.rect.y+contactY-sy)*dh/sh;
     assert.ok(Math.abs(renderedContact-(p.y-8))<.001,`${biome}/${visualKind} top plane must extend above feet, never hang below them`);
   }
   for(const moving of [true,false]){
     surfaceCalls.length=0;contactRenderer._dynamicPlatform({...p,supportTop:100},biome,0,1,moving);
-    const [sx,sy,sw,sh,dx,dy,dw,dh]=surfaceCalls.at(-1).args,meta=manager.metadata(`${biome}-structures`),frame=namedFrame(meta,moving?'moving-platform':'collapse-platform'),deck=PLATFORM_SURFACES[`${meta.id}:${frame.index}`];
-    assert.ok(Math.abs(dy+(frame.rect.y+deck.y-sy)*dh/sh-(p.y-8))<.001,`${biome} moving/collapsing deck meets its rider`);
+    const [sx,sy,sw,sh,dx,dy,dw,dh]=surfaceCalls.at(-1).args,meta=manager.metadata(moving?`platform-${biome}`:'platform-collapsing-stone'),frame=namedFrame(meta,moving?'idle':'stable'),contact=frame.collisionGuide.from;
+    assert.ok(Math.abs(dy+(frame.rect.y+contact.y-sy)*dh/sh-(p.y-8))<.001,`${biome} moving/collapsing deck meets its rider`);
+    assert.ok(Math.abs(dx+(frame.rect.x+contact.x-sx)*dw/sw-p.x)<.001,`${biome} measured deck left meets its collision surface`);
+  }
+  for(const [state,seconds]of [[{},0],[{warning:true},0],[{vx:80},0],[{vx:80},.14],[{motion:'timed',warning:true},0],[{hidden:true},0]]) {
+    surfaceCalls.length=0;const platform={...p,...state};contactRenderer._dynamicPlatform(platform,biome,seconds,1,true);
+    const frame=platformArtFrame(DYNAMIC_ASSET_CATALOG[`platform-${biome}`],platform,seconds),[sx,sy,sw,sh,dx,dy,dw,dh]=surfaceCalls.at(-1).args,guide=frame.collisionGuide;
+    assert.deepEqual([sx,sy,sw,sh],[frame.rect.x,frame.rect.y,frame.rect.width,frame.rect.height]);
+    assert.ok(Math.abs(dx+guide.from.x*dw/sw-p.x)<.001,`${biome}/${frame.name} left remains registered`);
+    assert.ok(Math.abs(dx+guide.to.x*dw/sw-p.x-p.w)<.001,`${biome}/${frame.name} right remains registered`);
+    assert.ok(Math.abs(dy+guide.from.y*dh/sh-p.y+8)<.001,`${biome}/${frame.name} landing plane remains registered`);
   }
   for(const name of region.props){
     surfaceCalls.length=0;contactRenderer._decoration({x:100,y:400,w:90,h:110,artFrame:name},biome,0,true);
@@ -214,6 +336,7 @@ for(const [biome,region]of Object.entries(REGIONS)) {
   renderer.draw(game,.5);assert.equal(renderer.error,null);assert.equal(renderer.drawnSprites,before);
 }
 assert(draws>100,'The integration scenes should draw actual image rectangles.');
+for(const id of Object.keys(DYNAMIC_ASSET_CATALOG))assert(drawnDynamic.has(id),'The renderer must use every supplied sheet: '+id);
 delete globalThis.document;
 
 const cancelled=new AssetManager({imageFactory:()=>new FakeImage(),concurrency:1});

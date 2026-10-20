@@ -45,8 +45,9 @@ const fingerprint=w=>JSON.stringify({plan:w.chunkPlan.map(c=>[c.moduleId,c.seed,
 for(const biome of BIOME_ORDER){
  const a=createLevel({biome,seed:123456,difficulty:4}),b=createLevel({biome,seed:123456,difficulty:4});
  assert.equal(fingerprint(a),fingerprint(b),`${biome} generation and IDs are deterministic`);assert.ok(a.routeValid);
- assert.ok(a.width>=(BIOME_ORDER.indexOf(biome)<2?200000:300000)&&a.width<=350000,"long travel budgets");
- assert.ok(a.checkpoints.length>=9);assert.ok(new Set(a.chunkPlan.map(c=>c.moduleId)).size>=10,"worlds rotate distinct layouts");
+ assert.equal(a.chunkCount,[34,38,48,50,52,54][BIOME_ORDER.indexOf(biome)],"Journey budgets are halved");
+ assert.ok(a.checkpoints.length>=Math.ceil(a.chunkCount/5));assert.ok(new Set(a.chunkPlan.map(c=>c.moduleId)).size>=10,"worlds rotate distinct layouts");
+ assert.ok(a.chunkPlan.some(c=>c.requiresDynamic),"each region requires moving-platform traversal");
  const secretIds=new Set(),platformStyles=new Set();
  for(let x=0;x<a.width;x+=CHUNK_WIDTH/2){
   updateWorldStreaming(a,x,x-400);assert.ok(a.chunks.length<=4&&a._resident.size<=4,"resident chunks bounded");assert.ok(a.platforms.length<110&&a.enemies.length<=30&&a.hazards.length<=20,"resident entities bounded");
@@ -158,4 +159,4 @@ assert.ok(apex(90)>140&&apex(1)<75,"variable jump height reacts to release");
   assert.ok(p.y-look.y>=60&&lower.y-look.y<VIEW.height-60,'Portrait look-down retains both player and landing');
  }finally{Object.assign(VIEW,original);}
 }
-console.log(`Validated ${ROOM_LIBRARY.length} modules with real base movement, six deterministic long worlds, ${fuzzedWorlds} seeded world/power/difficulty combinations, bounded streaming, state restoration, long moving-platform rides, and downward camera framing.`);
+console.log(`Validated ${ROOM_LIBRARY.length} original modules with real base movement, six shorter worlds, ${fuzzedWorlds} seeded world/power/difficulty combinations, bounded streaming, state restoration, moving-platform rides, and downward camera framing.`);

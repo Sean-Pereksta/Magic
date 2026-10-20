@@ -1,5 +1,6 @@
 import { VIEW } from "../config.js";
 import { normalizeBiome } from "./regions.js";
+import { DYNAMIC_ROOM_LIBRARY, dynamicRoomsFor } from "./dynamic-rooms.js";
 export const CHUNK_WIDTH = 3200;
 const floor = VIEW.floorY;
 const pad = (x, y, w, extra = {}) => ({ x, y, w, h: 28, kind: "platform", oneWay: true, ...extra });
@@ -125,10 +126,12 @@ function buildModule(spec, index) {
 
 export const ROOM_LIBRARY = SCORES.map(buildModule);
 export const SAFE_FALLBACK_ROOM = ROOM_LIBRARY[0];
-export function roomsFor(region, maxDifficulty = 6) {
+export function roomsFor(region, maxDifficulty = 6, {legacy = false} = {}) {
   const biome=normalizeBiome(region), preferred=BIOME_TAGS[biome];
   const all=ROOM_LIBRARY.filter(room=>room.difficulty<=Math.max(2,maxDifficulty));
   const matching=all.filter(room=>room.tags.some(tag=>preferred.includes(tag)));
-  return matching.length?matching:all;
+  const staticRooms=matching.length?matching:all;
+  return legacy?staticRooms:[...staticRooms,...dynamicRoomsFor(biome,maxDifficulty)];
 }
-export function roomForId(id) { return ROOM_LIBRARY.find(room=>room.id===id); }
+export function roomForId(id) { return ROOM_LIBRARY.find(room=>room.id===id)||DYNAMIC_ROOM_LIBRARY.find(room=>room.id===id); }
+export { DYNAMIC_ROOM_LIBRARY };
