@@ -1,0 +1,204 @@
+/*__DW_LIVING_MOUNTAIN__*/
+// Runs inside the existing game closure, after Fortress Command. Equipment,
+// currencies, progression and cloud encryption continue to use the original core.
+const LM_ROOMS=window.DwarfLivingSimulation.ROOMS;
+const LM_ROLES=window.DwarfLivingSimulation.ROLES;
+// A fresh fortress opens close enough to read its inhabitants. Loading restores
+// the player's saved camera below, including their preferred zoom.
+cam.zoom=matchMedia('(max-width:820px),(pointer:coarse)').matches?1.45:2;
+const lmEngine=window.DwarfLivingSimulation.create({
+  width:W,height:H,base:()=>fortress,dwarves:()=>dwarves,
+  explored:(x,y)=>inBounds(x,y)&&!!tSeen[idx(x,y)],
+  walkable:(x,y)=>inBounds(x,y)&&isWalkable(tType[idx(x,y)]),
+  diggable:(x,y)=>inBounds(x,y)&&isDiggable(tType[idx(x,y)]),
+  occupied:(x,y)=>x===fortress.x&&y===fortress.y||forge&&forge.x===x&&forge.y===y||depots.some(b=>b.x===x&&b.y===y)||towers.some(b=>b.x===x&&b.y===y)||dwx.buildings.some(b=>b.x===x&&b.y===y),
+  route:(sx,sy,tx,ty)=>typeof bfsToPoint==='function'?bfsToPoint(sx,sy,tx,ty):bfsPath(sx,sy,(x,y)=>x===tx&&y===ty,12000),
+  spend:n=>{if(gold<n)return false;gold-=n;markUI('hud');return true},
+  changed:()=>markUI('all'),
+  terrainChanged:(x,y)=>window.dispatchEvent(new CustomEvent('dwarfworld:terrain',{detail:{x,y}})),
+  threat:(x,y,r)=>lmNearbyEnemies(x,y,r).some(e=>e.hp>0&&dist2(e.x,e.y,x,y)<r*r&&lmSight(x,y,e.x,e.y)),
+  mine:(x,y,power,d)=>{const r=mineTile(x,y,power+(d.pickaxe?.effect==='quake'?2:0));if(r?.ok)grantXp(d,1);if(r?.destroyed){if(r.currency)groundLoot.push({id:uuid(),x,y,payload:r.currency});markUI('hud','dwarves')}},
+  equip:d=>{if(!d.weapon)d.weapon=mkItemWeapon('uncommon');else if(!d.armor)d.armor=mkItemArmor('uncommon');else return false;applyDwarfStats(d);markUI('all');return true}
+});
+let lm=lmEngine.state;
+function lmDesignate(...args){return lmEngine.designate(...args)}
+function lmPreview(...args){return lmEngine.preview(...args)}
+function lmDigArea(...args){return lmEngine.digArea(...args)}
+function lmSetProfession(...args){return lmEngine.setProfession(...args)}
+function lmSetPriority(...args){return lmEngine.setPriority(...args)}
+function lmSetReadiness(...args){return lmEngine.setReadiness(...args)}
+function lmPlaceInfrastructure(...args){return lmEngine.placeInfrastructure(...args)}
+function lmRemoveInfrastructure(...args){return lmEngine.removeInfrastructure(...args)}
+function lmRemoveRoom(...args){return lmEngine.removeRoom(...args)}
+function lmUpgradeRoom(...args){return lmEngine.upgrade(...args)}
+function lmChronicle(text){lmEngine.log(text)}
+const lmBaseCanBuildAt=canBuildAt;
+canBuildAt=function(x,y){return !lmEngine.roomAt(x,y)&&!lmEngine.infraAt(x,y)&&lmBaseCanBuildAt(x,y)};
+const lmBaseCivicPlacement=dwxPlacement;
+dwxPlacement=function(type,x,y){if(lmEngine.roomAt(x,y)||lmEngine.infraAt(x,y))return{quality:'INVALID',reason:'That floor belongs to a designated room or corridor structure.'};return lmBaseCivicPlacement(type,x,y)};
+function lmSight(ax,ay,bx,by){
+  let x=Math.round(ax),y=Math.round(ay),tx=Math.round(bx),ty=Math.round(by);
+  const dx=Math.abs(tx-x),dy=-Math.abs(ty-y),sx=x<tx?1:-1,sy=y<ty?1:-1;let err=dx+dy;
+  for(let n=0;n<96;n++){
+    if(x===tx&&y===ty)return true;
+    const e=err*2;if(e>=dy){err+=dy;x+=sx}if(e<=dx){err+=dx;y+=sy}
+    if(!inBounds(x,y)||!isWalkable(tType[idx(x,y)]))return false;
+    // Arrow slits allow sight, solid walls and shut gates do not.
+    const v=lmEngine.infraAt(x,y);if(v&&(v.type==='wall'||v.type==='gate'&&lm.readiness==='lockdown'))return false;
+  }return false;
+}
+const lmBaseMine=mineTile;
+let lmCapacityNotice=-Infinity;
+mineTile=function(x,y,power){const before=inBounds(x,y)?tType[idx(x,y)]:null,contents={stone:before===TILE_ROCK?3:1};if(before>=TILE_GOLD&&before<=TILE_DIAMOND)contents.ore=3;else if(before===TILE_ROCK&&(x*17+y*31)%7===0)contents.ore=1;if(!lmEngine.canDeposit(x,y,contents)){if(lm.time-lmCapacityNotice>20){toast('Loose supplies are at capacity. Assign haulers to clear piles.');lmCapacityNotice=lm.time}return{ok:false}}const r=lmBaseMine(x,y,power);if(r?.destroyed)for(const[resource,amount]of Object.entries(contents))lmEngine.deposit(x,y,resource,amount);return r};
+const lmBaseDwarf=updateDwarf;
+const lmBaseBeforeTeleport=dwxBeforeTeleport;
+dwxBeforeTeleport=function(d){if(lmBaseBeforeTeleport(d)===false)return false;if(lmEngine.dropCargo(d)===false||d.living?.cargo)return false;if(lmEngine.cancel(d)===false)return false;return true};
+updateDwarf=function(d,dt){
+  if(d.hp<=0)return;
+  dwxDwarfPassives(d,dt);tickDwarfPassives(d,dt);
+  const xp0=d.xp||0,g0=gold,speed=d.speed;let managed;
+  // Profession routes use the same existing haste fields as legacy movement.
+  d.speed*=getHasteMultAt(d.x,d.y)*(d._speedBoostLeft>0?1.10:1);
+  try{managed=lmEngine.updateDwarf(d,dt)}finally{d.speed=speed}
+  if(managed)dwxDwarfRewards(d,xp0,g0);else lmBaseDwarf(d,dt,true);
+};
+const lmBaseActivity=dwxActivity;
+dwxActivity=function(d){return d.living?.job?d.living.activity:lmBaseActivity(d)};
+const lmBaseVision=refreshVisibility;
+refreshVisibility=function(dt=0){const previous=visMark;lmBaseVision(dt);if(dt&&previous===visMark)return;for(const v of lm.infrastructure)if(v.type==='watch')stampVision(v.x,v.y,14)};
+const lmBaseGuardMaintenance=tickGuardMaintenance;
+tickGuardMaintenance=function(dt){
+  // Existing armed miners remain eligible until explicitly assigned another role.
+  const excluded=[];for(const d of dwarves)if(d.living&&!['soldier','miner'].includes(d.living.profession)&&d.weapon){excluded.push([d,d.weapon]);d.weapon=null}
+  try{return lmBaseGuardMaintenance(dt)}finally{for(const[d,weapon]of excluded)d.weapon=weapon}
+};
+const lmBaseDead=removeDead;
+removeDead=function(){
+  // Keep a dead carrier's real position/cargo in the save if the pile cap is
+  // full. It is inert, consumes its existing population slot, and cannot be
+  // repeatedly resurrected by the legacy death wrapper while awaiting space.
+  const held=[],dying=[];
+  for(let i=dwarves.length-1;i>=0;i--){const d=dwarves[i];if(d._livingRemains){dwarves.splice(i,1);const dropped=lmEngine.dropCargo(d),canceled=lmEngine.cancel(d);if(!dropped||!canceled)held.push(d)}else if(d.hp<=0){lmEngine.dropCargo(d);lmEngine.cancel(d);dying.push(d)}}
+  lmBaseDead();
+  for(const d of dying)if(d.hp<=0&&(d.living?.cargo||d.living?.job?.started)&&!dwarves.includes(d)){d._livingRemains=true;d.living.activity='Cargo waiting for storage space';held.push(d)}
+  dwarves.push(...held);
+};
+const lmBaseCombat=updateSpawnersAndCombat;
+updateSpawnersAndCombat=function(dt){lmEngine.begin(dt);lmWorldTick(dt);lmBaseCombat(dt)};
+
+function lmDrawFloor(){
+  const ts=BASE_TILE_PX*cam.zoom;
+  ctx.save();
+  for(const r of lm.rooms){const p=worldToScreen(r.x,r.y),w=r.w*ts,h=r.h*ts;if(p.x+w<0||p.y+h<0||p.x>innerWidth||p.y>innerHeight)continue;
+    ctx.fillStyle=LM_ROOMS[r.type].color;ctx.globalAlpha=r.active?.16:.08;ctx.fillRect(p.x,p.y,w,h);ctx.globalAlpha=.7;ctx.strokeStyle=LM_ROOMS[r.type].color;ctx.lineWidth=Math.max(1,ts*.035);ctx.setLineDash(r.active?[]:[4,4]);ctx.strokeRect(p.x+1,p.y+1,w-2,h-2);ctx.setLineDash([]);ctx.globalAlpha=1;
+    const c=worldToScreen(r.x+Math.floor(r.w/2),r.y+Math.floor(r.h/2));
+    if(r.active&&!window.DWARF_ART?.drawInterior?.(ctx,r,c,ts)){ctx.fillStyle=LM_ROOMS[r.type].color;ctx.globalAlpha=.55;ctx.fillRect(c.x+ts*.18,c.y+ts*.30,ts*.64,ts*.38);ctx.globalAlpha=1}
+    if(ts>13){ctx.font=Math.max(9,Math.min(12,ts*.4))+'px system-ui';ctx.fillStyle='#eedab1';ctx.textAlign='left';ctx.fillText(LM_ROOMS[r.type].name,p.x+4,p.y+12,w-8)}
+    if(!r.active){ctx.fillStyle='#1e2525';ctx.fillRect(p.x+4,p.y+h-7,w-8,3);ctx.fillStyle='#e3bd75';ctx.fillRect(p.x+4,p.y+h-7,(w-8)*r.progress,3)}
+  }
+  for(const v of lm.infrastructure){const p=worldToScreen(v.x,v.y),s=p.s;if(p.x< -s||p.y< -s||p.x>innerWidth||p.y>innerHeight)continue;if(window.DWARF_ART?.drawInfrastructure?.(ctx,v,p,s))continue;ctx.strokeStyle=v.type==='rail'?'#b9a387':'#8c8778';ctx.lineWidth=Math.max(1,s*.1);
+    if(v.type==='rail'){ctx.beginPath();ctx.moveTo(p.x,p.y+s*.3);ctx.lineTo(p.x+s,p.y+s*.3);ctx.moveTo(p.x,p.y+s*.7);ctx.lineTo(p.x+s,p.y+s*.7);ctx.stroke();for(let i=0;i<3;i++){ctx.fillStyle='#745c46';ctx.fillRect(p.x+i*s/3,p.y+s*.15,s*.1,s*.7)}}
+    else if(v.type==='road'){ctx.fillStyle='#a19879';ctx.globalAlpha=.30;ctx.fillRect(p.x+1,p.y+1,s-2,s-2);ctx.globalAlpha=1}
+    else {ctx.fillStyle=v.type==='gate'?'#ac834e':v.type==='trap'?'#84677a':'#6b7378';if(v.type==='gate'&&lm.readiness==='normal'){ctx.fillRect(p.x+s*.12,p.y+s*.15,s*.2,s*.7);ctx.fillRect(p.x+s*.68,p.y+s*.15,s*.2,s*.7)}else{ctx.fillRect(p.x+s*.12,p.y+s*.15,s*.76,s*.7);ctx.strokeRect(p.x+s*.12,p.y+s*.15,s*.76,s*.7)}}
+  }
+  for(const v of lm.designations){const p=worldToScreen(v.x,v.y);if(p.x< -ts||p.y< -ts||p.x>innerWidth||p.y>innerHeight)continue;ctx.strokeStyle='#d7b164';ctx.lineWidth=1;ctx.strokeRect(p.x+3,p.y+3,ts-6,ts-6)}
+  for(const v of lm.deposits){const p=worldToScreen(v.x,v.y);if(p.x< -ts||p.y< -ts||p.x>innerWidth||p.y>innerHeight||!tSeen[idx(v.x,v.y)])continue;ctx.fillStyle=v.inventory.ore?'#d2a765':'#8e9294';ctx.fillRect(p.x+ts*.55,p.y+ts*.6,ts*.22,ts*.16)}
+  ctx.restore();
+}
+function lmDrawOverlay(){ctx.save();for(const d of dwarves){if(!d.living?.cargo)continue;const point=typeof livingRenderPosition==='function'?livingRenderPosition(d):d,p=worldToScreen(point.x,point.y);if(p.x<0||p.y<0||p.x>innerWidth||p.y>innerHeight)continue;ctx.fillStyle='#d6aa67';ctx.fillRect(p.x+p.s*.68,p.y+p.s*.2,p.s*.22,p.s*.3)}lmDrawWorld();ctx.restore()}
+
+// One atomic compressed payload. localStorage.setItem leaves the previous save
+// intact if quota is exceeded. No remove-first or second expansion write.
+let lmSaving=null,lmLoading=false;
+saveGameAsync=function(){
+  if(lmLoading){toast('Save failed: the world is still loading.');return Promise.resolve(false)}
+  if(lmSaving)return lmSaving;
+  lmSaving=(async()=>{try{
+    const cleanDwarf=d=>{const v=pruneEntity(d);if(v.living){v.living={...v.living};delete v.living.path;delete v.living.retry;delete v.living.nextThink}return v};
+    const save={v:2,W,H,fortress:{...fortress},cam:{...cam},gold,recruitCount,dwarfCounter,forge:forge?{...forge}:null,depots:depots.map(pruneEntity),towers:towers.map(pruneEntity),spawners:spawners.map(pruneEntity),enemies:enemies.map(pruneEntity),groundLoot:groundLoot.map(L=>({id:L.id,x:L.x,y:L.y,payload:L.payload})),loot:loot.map(pruneEntity),dwarves:dwarves.map(cleanDwarf),tTypeB64:_u8ToB64(new Uint8Array(tType.buffer)),tHpB64:_u8ToB64(new Uint8Array(tHp.buffer)),tSeenB64:_u8ToB64(new Uint8Array(tSeen.buffer)),fortressExpansion:JSON.parse(JSON.stringify(dwx)),livingMountain:lmEngine.serialize()};
+    const packed=SAVE_MAGIC+await gzipStrToB64(JSON.stringify(save));localStorage.setItem(SAVE_KEY,packed);toast('Saved locally. (~'+Math.round(packed.length/1024)+' KB)');return true;
+  }catch(error){console.error('[Living Mountain save]',error);toast('Save failed; previous local save was preserved.');return false}finally{lmSaving=null}})();return lmSaving;
+};
+const lmBaseLoad=loadGameAsync;
+// Validate nested state before the legacy loader commits its tile/entity arrays.
+// Routes are transient; persisted cargo and unfinished production remain intact.
+function lmValidateRestore(save,mountain){
+  const record=v=>!!v&&typeof v==='object'&&!Array.isArray(v),ref=v=>typeof v==='string'&&v.length>0||Number.isFinite(v);
+  const fail=part=>{throw new Error('Save corrupted ('+part+').')};
+  const point=v=>record(v)&&Number.isFinite(v.x)&&Number.isFinite(v.y)&&inBounds(Math.round(v.x),Math.round(v.y));
+  const material=v=>window.DwarfLivingSimulation.MATERIALS.includes(v);
+  const quantity=n=>Number.isFinite(n)&&n>0&&n<=1000000;
+  const item=(v,part)=>{if(!record(v)||!['armor','weapon','pickaxe'].includes(v.category)||typeof v.name!=='string'||v.rarity!==undefined&&!['string','number'].includes(typeof v.rarity))fail(part)};
+  const locations=new Map([...mountain.rooms,...mountain.stores,...mountain.infrastructure,...mountain.deposits,...mountain.settlements].map(v=>[v.id,v]));
+  if(save.cam!==undefined&&(!record(save.cam)||!point(save.cam)||!Number.isFinite(save.cam.zoom)||save.cam.zoom<=0))fail('camera');
+  for(const v of save.loot||[])item(v,'inventory item');
+  for(const d of save.dwarves){
+    for(const slot of ['armor','weapon','pickaxe'])if(d[slot]!=null)item(d[slot],'dwarf equipment');
+    const p=d.living;if(p==null)continue;if(!record(p))fail('dwarf living state');
+    if(p.history!==undefined&&(!Array.isArray(p.history)||p.history.some(v=>typeof v!=='string')))fail('dwarf history');
+    if(p.relationships!==undefined&&(!record(p.relationships)||Object.values(p.relationships).some(v=>!Number.isFinite(v))))fail('dwarf relationships');
+    if(p.cargo!=null&&(!record(p.cargo)||!material(p.cargo.resource)||!quantity(p.cargo.amount)))fail('dwarf cargo');
+    const j=p.job;if(j==null)continue;
+    if(!record(j)||!['haul','deliver','dig','construct','produce','eat','sleep','social','recover','equip','patrol','rescue','explore','shelter'].includes(j.kind)||!point(j.goal)||!Number.isInteger(j.goal.x)||!Number.isInteger(j.goal.y))fail('dwarf job');
+    if(j.elapsed!==undefined&&(!Number.isFinite(j.elapsed)||j.elapsed<0)||j.claim!==undefined&&typeof j.claim!=='string')fail('dwarf job progress');
+    if(j.kind==='rescue'){if(!ref(j.patient))fail('rescue target')}else if(!ref(j.dest))fail('job destination');
+    if(j.kind==='haul'&&(!ref(j.source)||!material(j.resource)||!quantity(j.amount)))fail('hauling job');
+    // A legitimately removed target is canceled by the simulation; an existing
+    // target of the wrong kind must not reach inventory/recipe consumers.
+    const destination=locations.get(j.dest),source=locations.get(j.source);
+    if(destination&&!['dig','rescue','explore'].includes(j.kind)&&!record(destination.inventory))fail('job destination inventory');
+    if(j.kind==='haul'&&source&&!record(source.inventory))fail('job source inventory');
+    if(j.kind==='produce'&&destination&&!LM_ROOMS[destination.type]?.recipe)fail('production workplace');
+    if(j.kind==='construct'&&destination&&!mountain.rooms.includes(destination))fail('construction room');
+    for(const k of ['started','completed'])if(j[k]!==undefined&&typeof j[k]!=='boolean')fail('production progress');
+    if(j.inputs!==undefined&&(!record(j.inputs)||Object.entries(j.inputs).some(([k,n])=>!material(k)||!quantity(n))))fail('production ingredients');
+  }
+  if(!mountain.stores.length)fail('missing fortress stockpile');
+  for(const name of ['rooms','infrastructure','deposits','stores','designations','settlements'])for(const v of mountain[name])if(!record(v)||!ref(v.id))fail(name+' identity');
+  for(const name of ['deposits','stores'])for(const v of mountain[name])if(!record(v.inventory))fail(name+' inventory');
+  for(const v of mountain.chronicle)if(!record(v)||typeof v.text!=='string')fail('chronicle entry');
+  for(const v of mountain.factions)if(!point(v)||!ref(v.id)||!LM_FACTIONS[v.type]||v.knowledge!=null&&!point(v.knowledge))fail('faction');
+  for(const c of mountain.caravans){
+    if(!point(c)||!point(c.goal)||!ref(c.id)||!ref(c.source)||!ref(c.dest)||!material(c.resource)||!quantity(c.amount)||!Number.isFinite(c.hp)||!Number.isFinite(c.speed)||c.speed<=0)fail('caravan');
+    c.path=null;c.retry=0;
+  }
+  const extension=save.fortressExpansion;if(extension!=null){
+    if(!record(extension))fail('fortress extension');
+    for(const v of extension.surveys||[])if(!point(v)||!Number.isFinite(v.expires)||!Number.isFinite(v.radius)||v.radius<0)fail('survey');
+    if(extension.stats!==undefined&&!record(extension.stats))fail('fortress statistics');
+    for(const b of extension.buildings||[])if(!point(b)||b.stats!==undefined&&!record(b.stats))fail('civic building statistics');
+  }
+}
+loadGameAsync=async function(){if(lmLoading)return false;if(lmSaving)await lmSaving;lmLoading=true;const announce=toast;let loaded=false;try{
+  const raw=localStorage.getItem(SAVE_KEY);if(!raw){announce('No local save found.');return false}
+  const save=JSON.parse(raw.startsWith(SAVE_MAGIC)?await gunzipB64ToStr(raw.slice(SAVE_MAGIC.length)):raw);
+  if(!save||![1,2].includes(save.v??1)||save.W!==W||save.H!==H)throw new Error('Save incompatible with this world size.');
+  const migrated=window.DwarfLivingSimulation.migrate(save.livingMountain,fortress,W,H);
+  // Validate the tile lengths before permitting any core state mutation.
+  for(const[name,expected]of [[save.v===2?'tTypeB64':'tType',tType.byteLength],[save.v===2?'tHpB64':'tHp',tHp.byteLength]])if(_b64ToU8(save[name]).length!==expected)throw new Error('Save corrupted (tile data size mismatch).');
+  if(!save.fortress||!Number.isFinite(save.fortress.hp)||!Number.isFinite(save.fortress.maxHp)||!Array.isArray(save.dwarves))throw new Error('Save corrupted (fortress data).');
+  for(const name of ['depots','towers','spawners','enemies','groundLoot','loot','dwarves']){
+    const list=save[name];if(list!==undefined&&!Array.isArray(list))throw new Error('Save corrupted ('+name+').');
+    for(const item of list||[]){if(!item||typeof item!=='object'||Array.isArray(item))throw new Error('Save corrupted ('+name+' entry).');if(name!=='loot'&&(!Number.isFinite(item.x)||!Number.isFinite(item.y)||!inBounds(Math.round(item.x),Math.round(item.y))))throw new Error('Save corrupted ('+name+' coordinates).')}
+  }
+  if(save.forge&&(!Number.isFinite(save.forge.x)||!Number.isFinite(save.forge.y)))throw new Error('Save corrupted (forge).');
+  if(save.fortressExpansion){for(const name of ['buildings','protectedIds','relicsFound','presentedRelics','surveys'])if(save.fortressExpansion[name]!==undefined&&!Array.isArray(save.fortressExpansion[name]))throw new Error('Save corrupted (fortress '+name+').');for(const b of save.fortressExpansion.buildings||[])if(!b||!DWX_BUILDINGS[b.type]||!Number.isFinite(b.x)||!Number.isFinite(b.y))throw new Error('Save corrupted (civic building).')}
+  lmValidateRestore(save,migrated);
+  toast=function(message){if(/^Loaded local save/i.test(String(message)))loaded=true;else announce(message)};
+  // Call the original core directly; the former wrapper announced success even
+  // when its inner loader rejected a payload. Expansion state is restored here.
+  await dwxBaseLoadAsync();
+  if(!loaded)return false;
+  dwx=Object.assign(dwxFresh(),save.fortressExpansion||{});for(const k of ['buildings','protectedIds','relicsFound','presentedRelics','surveys'])if(!Array.isArray(dwx[k]))dwx[k]=[];
+  for(const b of dwx.buildings)if(!b.stats)b.stats={serviced:0,goldReturned:0};
+  lm=lmEngine.restore(migrated);lmWorldReset();dwxRefreshBuild();for(const it of loot)if(it.relicId)dwxProtect(it.id,true);window.dispatchEvent(new CustomEvent('dwarfworld:terrain',{detail:{}}));markUI('all');announce('Loaded local save.');return true;
+}catch(error){console.error('[Living Mountain load]',error);announce('Load failed: '+error.message);return false}finally{toast=announce;lmLoading=false}};
+window.DwarfWorldLiving={
+  get state(){return lm},get dwarves(){return dwarves},get enemies(){return enemies},get fortress(){return fortress},
+  rooms:LM_ROOMS,roles:LM_ROLES,infrastructure:window.DwarfLivingSimulation.INFRA,
+  preview:lmPreview,designate:lmDesignate,digArea:lmDigArea,setProfession:lmSetProfession,setPriority:lmSetPriority,setReadiness:lmSetReadiness,placeInfrastructure:lmPlaceInfrastructure,removeInfrastructure:lmRemoveInfrastructure,removeRoom:lmRemoveRoom,upgradeRoom:lmUpgradeRoom,
+  canWalk:(x,y,enemy)=>lmEngine.canWalk(x,y,enemy),drawFloor:lmDrawFloor,drawOverlay:lmDrawOverlay,save:()=>saveGameAsync(),load:()=>loadGameAsync(),
+  populationBonus:()=>{const meals=lmEngine.stores().reduce((n,s)=>n+(s.inventory.meal||0),0);return meals>=dwarves.length?Math.min(64,lm.rooms.filter(r=>r.active&&r.type==='quarters').reduce((n,r)=>n+Math.floor(r.w*r.h/6)*r.level,0)):0},
+  get metrics(){return {rooms:lm.rooms.length,production:lm.stats.produced,haulDeliveries:lm.stats.hauled,activeJobs:dwarves.filter(d=>d.living?.job).length}}
+};
+lmChronicle('The Living Mountain begins. Designate rooms, assign professions, and connect workshops with clear tunnels.');

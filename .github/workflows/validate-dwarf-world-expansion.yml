@@ -1,4 +1,4 @@
-name: Validate Dwarf World fortress expansion
+name: Validate Dwarf World Living Mountain
 
 on:
   pull_request:
@@ -10,6 +10,7 @@ on:
   push:
     branches:
       - feature/dwarf-world-fortress-command-expansion
+      - main
     paths:
       - 'game/DwarfWorld.html'
       - 'game/DwarfWorld-core.html'
@@ -22,10 +23,11 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run Dwarf World save and expansion tests
-        run: node --test game/dwarf-world/cloud-save.test.mjs game/dwarf-world/fortress-command-expansion.test.mjs
+      - name: Check saves, production, navigation, world behavior and loaders
+        run: node --test game/dwarf-world/*.test.mjs

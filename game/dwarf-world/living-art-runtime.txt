@@ -1,0 +1,241 @@
+/*__DW_LIVING_ART__*/
+// Optional illustrated artwork. The original drawing functions remain available
+// for unconfigured R2, failed requests, unknown entity types, and older saves.
+(function dwarfWorldIllustratedArt(){
+  let loader = window.DwarfWorldArtLoader;
+  try { loader ||= window.parent?.DwarfWorldArtLoader; } catch (_) {}
+  const phases = new WeakMap();
+  const BIOMES = ['ancient','ruins','fungal','crystal','volcanic','abyssal'];
+  const thresholds = [0,120,260,420,620,860];
+  const requested = new Set();
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const smallDevice = matchMedia('(pointer: coarse)').matches;
+  let effectEpoch = -1, effectCount = 0, lightCount = 0;
+  function request(id){
+    if(!loader?.enabled || requested.has(id)) return;
+    requested.add(id); loader.request(id);
+  }
+  function frame(name){
+    const f = loader?.manifest?.frames[name];
+    if(!f)return null;
+    const image = loader.images.get(f.atlas);
+    if(!image){request(f.atlas);return null}
+    return {image,rect:f.rect};
+  }
+  function paint(g,name,x,y,w,h=w){
+    const f=frame(name);if(!f)return false;
+    const r=f.rect;g.drawImage(f.image,r[0],r[1],r[2],r[3],x,y,w,h);return true;
+  }
+  function visible(p,s){return p.x>-s*3&&p.y>-s*3&&p.x<innerWidth+s*2&&p.y<innerHeight+s*2}
+  function phase(entity){
+    if(phases.has(entity))return phases.get(entity);
+    let n=2166136261;for(const c of String(entity.id||'dwarf'))n=Math.imul(n^c.charCodeAt(0),16777619);
+    n=(n>>>0)%1000/1000;phases.set(entity,n);return n;
+  }
+  function pose(action,entity,atlas='dwarves'){
+    const a=loader?.manifest?.animations[atlas+'.'+action];
+    const index=reduced?0:Math.floor(performance.now()*.001*(a?.fps||5)+phase(entity)*3)%(a?.frames.length||3);
+    return a?.frames[index]||atlas+'.'+action+'_'+index;
+  }
+  function budget(){
+    const epoch=(performance.now()/16)|0;
+    if(epoch!==effectEpoch){effectEpoch=epoch;effectCount=0;lightCount=0}
+  }
+  function light(g,name,x,y,s){
+    budget();if(lightCount>=(smallDevice?6:16))return;
+    if(!loader?.images.has('lighting')){request('lighting');return}
+    lightCount++;g.save();g.globalAlpha*=.17;
+    paint(g,'lighting.'+name,x-s*.6,y-s*.55,s*2.2);g.restore();
+  }
+  function activityEffect(g,name,p,s){
+    if(reduced)return;
+    budget();if(effectCount>=(smallDevice?4:10))return;
+    if(!loader?.images.has('effects')){request('effects');return}
+    effectCount++;const n=Math.floor(performance.now()*.006)%4;
+    g.save();g.globalAlpha*=.65;paint(g,'effects.'+name+'_'+n,p.x+s*.35,p.y-s*.12,s*.75);g.restore();
+  }
+  function biome(x,y){
+    const depth=depthAt(x,y);let n=0;
+    for(let i=1;i<thresholds.length;i++)if(depth>=thresholds[i])n=i;
+    return BIOMES[n];
+  }
+  function drawTerrain(g,tt,x,y,s,px,py){
+    if(!loader?.enabled || tt===TILE_SPAWNER_SEALED)return false;
+    if(tt===TILE_FORTRESS){
+      if(!frame('buildings.fortress'))return false;
+      paint(g,'terrain_ancient.floor_a',px,py,s);paint(g,'buildings.fortress',px,py,s);return true;
+    }
+    const id='terrain_'+biome(x,y);
+    if(!loader.images.has(id)){request(id);return false}
+    const hash=(Math.imul(x+11,374761393)^Math.imul(y+17,668265263))>>>0;
+    let name='wall',rotation=0;
+    if(tt===TILE_EMPTY){name=hash%137===0?'detail':hash%3===0?'floor_b':'floor_a';rotation=(hash>>>8)%4}
+    else if(tt===TILE_GOLD)name='gold';
+    else if(tt>=TILE_SAPPHIRE&&tt<=TILE_DIAMOND)name='gem';
+    else if(tt===TILE_ROCK){
+      const air=(xx,yy)=>inBounds(xx,yy)&&isWalkable(tType[idx(xx,yy)]);
+      const south=air(x,y+1),east=air(x+1,y),north=air(x,y-1),west=air(x-1,y);
+      if(south&&east){name='corner_nw';rotation=0}
+      else if(east&&north){name='corner_nw';rotation=3}
+      else if(north&&west){name='corner_nw';rotation=2}
+      else if(west&&south){name='corner_nw';rotation=1}
+      else if(south||east||north||west){name='edge_n';rotation=south?0:east?3:north?2:1}
+    }
+    if(rotation){g.save();g.translate(px+s*.5,py+s*.5);g.rotate(rotation*Math.PI*.5);paint(g,id+'.'+name,-s*.5,-s*.5,s+.25);g.restore()}
+    else paint(g,id+'.'+name,px,py,s+.25);
+    // Preserve ore readability even in biomes whose painted crystals share color.
+    if(tt>=TILE_SAPPHIRE&&tt<=TILE_DIAMOND){
+      g.fillStyle=tt===TILE_EMERALD?'#72f5a5':tt===TILE_DIAMOND?'#e9faff':'#70ccff';
+      g.fillRect(px+s*.69,py+s*.18,Math.max(1,s*.11),Math.max(1,s*.11));
+    }
+    // Decorations are static and therefore rendered only when a terrain chunk
+    // is rebuilt; no per-frame procedural rock, light, or mushroom geometry.
+    if(tt===TILE_EMPTY&&hash%97===0){
+      request('decorations');const b=biome(x,y);
+      const deco={ancient:'stalagmites',ruins:'arch',fungal:'moss',crystal:'crystal',volcanic:'fissure',abyssal:'crystal_shrine'}[b];
+      paint(g,'decorations.'+deco,px+s*.07,py+s*.03,s*.87);
+    }
+    return true;
+  }
+  function dwarfAction(d){
+    const l=d.living,activity=l?.activity||'',moving=!!(l?.path?.length||d.path?.length);
+    if(d.state==='fight'||activity==='Defending')return[d.weapon?.ranged?'shoot':'fight','dwarves'];
+    if(l?.cargo||d.carrying)return['haul','dwarves'];
+    if(moving)return[l?.profession==='soldier'?'soldier_walk':'walk',l?.profession==='soldier'?'professions':'dwarves'];
+    if(/sleep/i.test(activity))return['sleep','dwarves'];
+    if(/Eating/.test(activity))return['eat','dwarves'];
+    if(/Socializing/.test(activity))return['drink','dwarves'];
+    if(/Recovering|Sheltering/.test(activity))return['rest','dwarves'];
+    if(/Constructing|Stoneworking/.test(activity))return['construct','dwarves'];
+    if(/Smithing|Smelting/.test(activity))return['smith','dwarves'];
+    if(/Farming/.test(activity))return['farm','professions'];
+    if(/Cooking/.test(activity))return['cook','professions'];
+    if(/medicine|Rescu|Tending wounded/i.test(activity))return['heal','professions'];
+    if(/Studying/.test(activity))return['engineer','professions'];
+    if(/Explor/.test(activity))return['explore','professions'];
+    if(/Celebrat/.test(activity))return['celebrate','dwarves'];
+    if(/Mining/.test(activity)||d.state==='mine'||d.state==='mineOre')return['mine','dwarves'];
+    return['idle','professions'];
+  }
+  function armorFrame(d){
+    const tier=d.armor?.relicId?'relic':d.armor?.armorTier||'cloth';
+    const mapped={none:'cloth',iron:'chain',bronze:'chain',mithril:'titanium',gold:'relic'}[tier]||tier;
+    return 'professions.armor_'+(['cloth','leather','chain','steel','titanium','relic'].includes(mapped)?mapped:'steel');
+  }
+  function drawEquipment(g,d,p,s,action){
+    request('equipment');
+    if(!loader?.images.has('equipment')||['sleep','eat','drink','rest'].includes(action))return;
+    if(d.armor){const armor=armorFrame(d).replace('professions.','equipment.');paint(g,armor,p.x+s*.29,p.y+s*.46,s*.38,s*.30)}
+    let tool=null;
+    if(d.weapon){const relic=!!d.weapon.relicId||d.weapon.rarity==='legendary';
+      tool=d.weapon.ranged?'bow_'+(relic?'relic':'wood'):d.weapon.weaponType==='axe'?'axe_'+(relic?'relic':'iron'):'sword_'+(relic?'relic':'steel');
+    }else if(d.pickaxe){tool='pickaxe_'+(d.pickaxe.relicId?'relic':(d.pickaxe.miningPower||0)>15?'steel':'iron')}
+    if(tool&&['walk','soldier_walk','idle','fight','shoot','mine','explore'].includes(action))paint(g,'equipment.'+tool,p.x+s*.57,p.y+s*.24,s*.48);
+  }
+  const baseDwarf=drawDwarfSprite;
+  drawDwarfSprite=function(d,p,s){
+    if(!visible(p,s))return;
+    const [action,atlas]=dwarfAction(d),name=action==='idle'?armorFrame(d):pose(action,d,atlas);
+    if(!frame(name)){baseDwarf(d,p,s);return}
+    const route=d.living?.path?.length?d.living.path:d.path;
+    const reverse=route?.[0]&&route[0].x<d.x-.05;
+    ctx.save();ctx.shadowBlur=0;
+    // Stable personal cloak ribbon follows the dwarf's saved ID, so miners
+    // remain distinguishable across sessions without per-frame tint filters.
+    ctx.fillStyle=['#d98962','#6dc0bc','#ad93d9','#d8b761','#8cb57c','#c57c96'][Math.floor(phase(d)*6)];
+    ctx.beginPath();ctx.moveTo(p.x+s*.22,p.y+s*.32);ctx.lineTo(p.x+s*.04,p.y+s*.76);ctx.lineTo(p.x+s*.32,p.y+s*.66);ctx.closePath();ctx.fill();
+    if(reverse){ctx.translate(p.x+s*.5,0);ctx.scale(-1,1);paint(ctx,name,-s*.57,p.y-s*.15,s*1.14)}
+    else paint(ctx,name,p.x-s*.07,p.y-s*.15,s*1.14);
+    ctx.restore();drawEquipment(ctx,d,p,s,action);
+    if(action==='smith')activityEffect(ctx,'sparks',p,s);
+    else if(action==='construct')activityEffect(ctx,'dust',p,s);
+  };
+  const bossNames={'Goblin King':'goblin_king','Stone Colossus':'stone_colossus','Brood Mother':'brood_mother','Ancient Lich':'ancient_lich','Deepfire Wyrm':'deepfire_wyrm'};
+  const baseEnemy=drawEnemySprite;
+  drawEnemySprite=function(e,p,s){
+    if(!visible(p,s))return;
+    const key=bossNames[e.lmBoss]||({minion:'skeleton',tank:'armored'}[e.type]||e.type);
+    const name='enemies.'+key;
+    if(!frame(name)){baseEnemy(e,p,s);return}
+    const scale=Math.min(1.85,Math.max(.8,(e.size||1)*(e.lmBoss?1.2:1)));
+    const bob=reduced?0:Math.sin(performance.now()*.004+phase(e)*8)*s*.025;
+    ctx.save();ctx.shadowBlur=0;
+    if(e.type==='phaser'&&e.phasedLeft>0)ctx.globalAlpha*=.55;
+    paint(ctx,name,p.x+s*(1-scale)*.5,p.y+s*(1-scale)-s*.1+bob,s*scale);ctx.restore();
+  };
+  function drawBuilding(g,type,b,p,s){
+    if(!visible(p,s))return true;
+    const rank=b?.level||1,key=type==='great_hall'&&rank>=2?'great_hall_upgraded':type;
+    if(!frame('buildings.'+key))return false;
+    g.save();g.shadowBlur=0;
+    light(g,type==='frost'?'crystal':type==='forge'?'forge':'torch',p.x,p.y,s);
+    const scale=1.38+Math.min(.1,(rank-1)*.025);
+    paint(g,'buildings.'+key,p.x+(1-scale)*s*.5,p.y+(1-scale)*s-s*.03,s*scale);
+    if(rank>1){g.fillStyle='#eec15b';for(let n=0;n<Math.min(5,rank);n++)g.fillRect(p.x+s*(.18+n*.13),p.y+s*.92,s*.08,Math.max(1,s*.05))}
+    if(type==='forge'||type==='workshop')activityEffect(g,'sparks',p,s);
+    else if(type==='mushroom_farm')activityEffect(g,'spores',p,s);
+    g.restore();return true;
+  }
+  const baseTower=drawTowerSprite;
+  drawTowerSprite=function(t,p,s){if(!drawBuilding(ctx,t.type,t,p,s))baseTower(t,p,s)};
+  function drawInterior(g,room,p,s){
+    if(!visible(p,s))return true;
+    const name='interiors.'+room.type;if(!frame(name))return false;
+    const size=Math.min(2.5,Math.max(1.2,Math.min(room.w||3,room.h||3)*.55))*s;
+    paint(g,name,p.x+s*.5-size*.5,p.y+s*.5-size*.6,size);
+    if(['quarters','dining','throne','library'].includes(room.type))light(g,'torch',p.x,p.y,s);
+    if(room.progress>0&&room.progress<1)activityEffect(g,'dust',p,s);
+    return true;
+  }
+  function drawInfrastructure(g,infra,p,s){
+    if(!visible(p,s))return true;
+    const t=typeof infra==='string'?infra:infra.type;
+    const building={gate:'gate',barricade:'barricade',depot:'depot',watch:'guard',lift:'lift_shaft',slit:'barricade'}[t];
+    if(building)return drawBuilding(g,building,infra,p,s);
+    const interior={road:'road',rail:'rail',hauling:'hauling'}[t];
+    if(interior)return paint(g,'interiors.'+interior,p.x,p.y,s);
+    if(t==='wall')return paint(g,'terrain_ruins.wall',p.x,p.y,s);
+    if(t==='trap')return paint(g,'decorations.stalagmites',p.x,p.y,s);
+    return false;
+  }
+  const baseCivic=dwxDrawBuildings;
+  dwxDrawBuildings=function(){
+    if(!loader?.images.has('buildings')){baseCivic();return}
+    for(const b of dwx.buildings){
+      if(!inBounds(b.x,b.y)||!tSeen[idx(b.x,b.y)])continue;
+      const p=worldToScreen(b.x,b.y);if(!visible(p,p.s))continue;
+      ctx.save();if(tVis[idx(b.x,b.y)]!==visMark)ctx.globalAlpha=.45;
+      drawBuilding(ctx,b.type,b,p,p.s);ctx.restore();
+    }
+    if(dwxBuildType){
+      const x=Math.round(mouseWorld.x),y=Math.round(mouseWorld.y);
+      if(!inBounds(x,y))return;
+      const q=dwxPlacement(dwxBuildType,x,y),p=worldToScreen(x,y),s=p.s;
+      ctx.save();ctx.globalAlpha=.65;ctx.fillStyle=q.quality==='INVALID'?'#c74252':'#51b5c9';ctx.fillRect(p.x,p.y,s,s);
+      drawBuilding(ctx,dwxBuildType,{level:1},p,s);ctx.globalAlpha=.25;
+      ctx.strokeStyle=DWX_BUILD_COL[dwxBuildType]||'#78dcff';ctx.lineWidth=1;ctx.beginPath();ctx.arc(p.x+s*.5,p.y+s*.5,DWX_BUILDINGS[dwxBuildType].range*s,0,Math.PI*2);ctx.stroke();ctx.restore();
+    }
+  };
+  function decorateIcons(root=document){
+    if(!loader?.images.has('ui')){request('ui');return}
+    const data=loader.manifest,atlas=data.atlases.ui,url=loader.images.get('ui').src;
+    root.querySelectorAll('[data-dw-art-icon]').forEach(el=>{
+      const f=data.frames['ui.'+el.dataset.dwArtIcon];if(!f)return;
+      el.style.backgroundImage=`url("${url}")`;el.style.backgroundSize='400% 400%';
+      el.style.backgroundPosition=`${f.rect[0]/(atlas.width-128)*100}% ${f.rect[1]/(atlas.height-128)*100}%`;
+      el.style.backgroundRepeat='no-repeat';el.style.fontSize='0';
+      el.setAttribute('aria-hidden','true');
+    });
+  }
+  const ready=loader?.preloadEssentials()||Promise.resolve({mode:'fallback',loaded:0});
+  window.DWARF_ART={drawTerrain,drawBuilding,drawInterior,drawInfrastructure,drawFrame:paint,decorateIcons,
+    request,ready,preloadEssentials:()=>ready,
+    get revision(){return loader?.revision||0},
+    status:()=>loader?.status()||{enabled:false,loaded:[],failed:[]}
+  };
+  loader?.subscribe(id=>{if(id==='ui')decorateIcons()});
+  ready.then(()=>{
+    requestAnimationFrame(()=>decorateIcons());
+    if(loader?.enabled){request('professions');request('equipment');request('interiors');request('lighting');request('effects')}
+  });
+})();

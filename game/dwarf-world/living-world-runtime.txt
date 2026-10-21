@@ -1,0 +1,100 @@
+// Living Mountain world: known locations, capped camp populations, visible
+// caravans, sight-based tactical memory and telegraphed boss abilities.
+const LM_FACTIONS={goblin:{name:'Goblin Warren',units:['goblin','runner','bomber','shaman'],boss:'Goblin King'},orc:{name:'Orc Warband',units:['orc','armored','bomber','troll'],boss:'Stone Colossus'},undead:{name:'Undead Crypt',units:['skeleton','necromancer','armored'],boss:'Ancient Lich'},brood:{name:'Deepwild Brood',units:['bat','splitter','troll'],boss:'Brood Mother'},abyss:{name:'Abyssal Enclave',units:['phaser','shaman','troll'],boss:'Deepfire Wyrm'}};
+let lmWorldClock=0,lmWorldCursor=0;
+function lmNearbyDwarves(x,y,r){return typeof dwarfSpatial!=='undefined'?dwarfSpatial.query(x,y,r):dwarves}
+function lmNearbyEnemies(x,y,r){return typeof enemySpatial!=='undefined'?enemySpatial.query(x,y,r):enemies}
+function lmWorldReset(){lmWorldClock=0;lmWorldCursor=0;for(const e of enemies){e.lmMemory=null;e.lmTacticalClock=0}}
+function lmSetEnemyType(e,type){const t=ENEMY_TYPES.find(v=>v.type===type);if(!t)return;const scale=1+Math.min(4,(e.sourceDepth||0)*.005);e.type=type;e.hp=e.maxHp=Math.round(t.hp*scale);e.dmg=Math.max(1,Math.round(t.dmg*(1+Math.min(2,(e.sourceDepth||0)*.002))));e.speed=e.baseSpeed=t.speed;e.size=t.size;for(const k of ['armorPct','auraRegen','auraRange','phaseEvery','phaseDur','summonEvery','summonCount','summonCap','splitCount'])e[k]=t[k]||0;e.phaseCd=e.phaseEvery;e.summonCd=e.summonEvery;e.summonType=t.summonType||null;e.splitsInto=t.splitsInto||null;e.explodeOnDeath=t.explodeOnDeath||null;e.isMinion=!!t.isMinion;e.noLoot=!!t.noLoot}
+function lmCamp(s){let camp=lm.factions.find(v=>v.id===s.id);if(camp)return camp;const depth=depthAt(s.x,s.y),names=depth>620?['abyss','undead','orc']:depth>260?['orc','undead','brood']:['goblin','brood'];const type=names[Math.abs(s.x*13+s.y*7)%names.length];camp={id:s.id,type,x:s.x,y:s.y,phase:'gathering',population:0,stock:0,nextRaid:lm.time+18,raids:0,discovered:true,knowledge:null};if(lm.factions.length<256)lm.factions.push(camp);lmChronicle(LM_FACTIONS[type].name+' uncovered at depth '+depth+'. Listen for its raid warning.');return camp}
+// Preserve spawner health/progression, but schedule ecology rather than unlimited
+// per-frame births. The first wave is always announced and delayed.
+updateSpawners=function(dt){
+  for(let i=spawners.length-1;i>=0;i--){const s=spawners[i];if(s.hp<=0){const camp=lm.factions.find(v=>v.id===s.id);if(camp){camp.phase='defeated';lmChronicle(LM_FACTIONS[camp.type].name+' stronghold defeated.')}spawners.splice(i,1);continue}}
+};
+function lmSpawnCamp(camp,s){const def=LM_FACTIONS[camp.type],members=enemies.filter(e=>e.lmCamp===camp.id&&e.hp>0);if(members.length>=18||enemies.length>=240)return;
+  const count=Math.min(3+Math.floor(camp.raids/3),6,18-members.length,240-enemies.length);
+  for(let n=0;n<count;n++){const e=makeEnemy(s.x,s.y,depthAt(s.x,s.y));lmSetEnemyType(e,def.units[(camp.raids+n)%def.units.length]);e.lmCamp=camp.id;e.lmHome={x:s.x,y:s.y};e.lmRole=n===0?'scout':e.type==='bomber'?'sapper':e.type==='shaman'?'healer':n===count-1?'commander':'raider';e.lmMemory=camp.knowledge?{...camp.knowledge,until:lm.time+45}:null;enemies.push(e)}
+  camp.raids++;camp.population=members.length+count;camp.phase='raiding';camp.nextRaid=lm.time+45+Math.min(45,camp.raids*3);
+  if(camp.raids===4&&!camp.bossSpawned&&enemies.length<240){const e=makeEnemy(s.x,s.y,depthAt(s.x,s.y));lmSetEnemyType(e,camp.type==='undead'?'necromancer':camp.type==='brood'?'splitter':camp.type==='abyss'?'phaser':camp.type==='orc'?'troll':'goblin');e.lmCamp=camp.id;e.lmHome={x:s.x,y:s.y};e.lmBoss=def.boss;e.name=def.boss;e.maxHp=Math.round(e.maxHp*1.7);e.hp=e.maxHp;e.size=1.7;e.lmAbilityAt=lm.time+10;e.lmRole='commander';enemies.push(e);camp.bossSpawned=true;lmChronicle(def.boss+' has emerged. Watch the marked ground before its attacks.');toast(def.boss+' approaches!')}
+}
+function lmSeedSettlement(){if(lm.settlements.length>=12)return;const n=lm.settlements.length,attempt=lm.settlementSearch||0;lm.settlementSearch=attempt+1;const a=attempt*2.399963,r=45+Math.floor((attempt%48)/3)*20;const cx=Math.round(fortress.x+Math.cos(a)*r),cy=Math.round(fortress.y+Math.sin(a)*r);let spot=null;
+  for(let dy=-12;dy<=12&&!spot;dy++)for(let dx=-12;dx<=12;dx++){const x=cx+dx,y=cy+dy;if(inBounds(x,y)&&isWalkable(tType[idx(x,y)])&&depthAt(x,y)>35&&!lm.settlements.some(s=>dist2(x,y,s.x,s.y)<400)){spot={x,y};break}}
+  if(!spot)return;
+  const names=['Copperhearth','Mossdeep','The Lost Anvil','Stonewake','Lantern Rest','Amber Gate','Frostvein','Old Kings Hall','Cinderhold','Glimmer Cairn','Deepmarket','The Last Hearth'];const type=n%4===2?'ruin':'settlement';lm.settlements.push({id:'settlement-'+n,name:names[n],...spot,w:1,h:1,type,discovered:false,relation:'neutral',trade:n%3===0?'ore':n%3===1?'mushroom':'block',cooldown:0,visits:0});
+}
+function lmTrade(settlementId){const s=lm.settlements.find(v=>v.id===settlementId);if(!s||!s.discovered)return{ok:false,reason:'Discover the settlement first.'};if(s.type==='ruin'){if(s.recovered)return{ok:false,reason:'The vault has already been recovered.'};const d=dwarves.find(d=>d.living?.profession==='explorer'&&dist2(d.x,d.y,s.x,s.y)<9);if(!d)return{ok:false,reason:'An explorer must reach the ruin to recover its vault.'};s.recovered=true;lmEngine.deposit(s.x,s.y,'ore',12);lmEngine.deposit(s.x,s.y,'block',8);addLootItem(mkItemWeapon('rare'));lmChronicle(d.name+' recovered the vault of '+s.name+'.');return{ok:true,reason:'Ancient supplies recovered on site.'}}
+  if(s.cooldown>lm.time||lm.caravans.some(c=>c.source===s.id))return{ok:false,reason:'This caravan is still traveling or preparing.'};if(lm.caravans.length>=24)return{ok:false,reason:'All caravan routes are occupied.'};if(gold<20)return{ok:false,reason:'Trade requires 20 gold.'};
+  const dst=lm.rooms.find(r=>r.type==='market'&&r.active)||lm.stores[0];gold-=20;const goal=window.DwarfLivingSimulation.center(dst);lm.caravans.push({id:'caravan-'+lm.nextId++,source:s.id,x:s.x,y:s.y,goal,dest:dst.id,speed:2.4,hp:80,maxHp:80,resource:s.trade,amount:12,path:null,retry:0,age:0});s.cooldown=lm.time+90;lmChronicle('A caravan from '+s.name+' is finding a traversable route to the fortress.');markUI('hud');return{ok:true,reason:'Caravan ordered. Supplies arrive only when it reaches your stockpile.'};
+}
+function lmWorldTick(dt){
+  for(const c of lm.caravans){c.age+=dt;
+    if(!lmEngine.stores().some(s=>s.id===c.dest)){const fallback=lm.stores[0];c.dest=fallback.id;c.goal=window.DwarfLivingSimulation.center(fallback);c.path=null;c.retry=0}
+    const danger=lmNearbyEnemies(c.x,c.y,2).find(e=>e.hp>0&&dist2(e.x,e.y,c.x,c.y)<2&&lmSight(e.x,e.y,c.x,c.y));if(danger)c.hp-=dt*Math.max(1,danger.dmg*.5);if(c.hp<=0){if(!c.waitingForSpace)lmChronicle('A caravan was lost in the tunnels. Its cargo remains at the ambush site.');c.waitingForSpace=true;c.failed=!!lmEngine.deposit(Math.round(c.x),Math.round(c.y),c.resource,c.amount);continue}
+    if(Math.hypot(c.x-c.goal.x,c.y-c.goal.y)<.1){const dest=lmEngine.stores().find(s=>s.id===c.dest)||lm.stores[0];dest.inventory[c.resource]+=c.amount;c.arrived=true;const s=lm.settlements.find(s=>s.id===c.source);if(s){s.visits++;if(s.visits>=3){s.relation='allied';dwx.visitorReady=true}}lmChronicle('Caravan delivered '+c.amount+' '+c.resource+'.');continue}
+    if(!c.path?.length&&lm.time>=c.retry){c.retry=lm.time+2;c.path=typeof bfsToPoint==='function'?bfsToPoint(Math.round(c.x),Math.round(c.y),c.goal.x,c.goal.y):null;if(c.path?.length===0&&Math.round(c.x)===c.goal.x&&Math.round(c.y)===c.goal.y)c.path=[{...c.goal}]}
+    if(c.path?.length){const p=c.path[0];if(!lmEngine.canWalk(p.x,p.y)||!isWalkable(tType[idx(p.x,p.y)])){c.path=null;continue}const dx=p.x-c.x,dy=p.y-c.y,len=Math.hypot(dx,dy),step=c.speed*dt;if(len<=step){c.x=p.x;c.y=p.y;c.path.shift()}else{c.x+=dx/len*step;c.y+=dy/len*step}}
+    if(c.age>300&&!c.path?.length){c.failed=true;gold+=20;lmChronicle('An unreachable caravan route was canceled and its 20 gold refunded.')}
+  }
+  lm.caravans=lm.caravans.filter(c=>!c.arrived&&!c.failed);
+  lmWorldClock+=dt;if(lmWorldClock<2)return;lmWorldClock=0;
+  // A small stable slice of distant populations per update, no full-world scan.
+  if(lm.settlements.length<12)lmSeedSettlement();
+  for(const s of lm.settlements){if(!s.discovered&&tSeen[idx(s.x,s.y)]){s.discovered=true;lmChronicle('Discovered '+s.name+(s.type==='ruin'?' — an ancient dwarven ruin.':' — merchants offer '+s.trade+'.'));toast('Discovered '+s.name)} }
+  const count=Math.min(8,spawners.length);
+  for(let n=0;n<count;n++){if(!spawners.length)break;const s=spawners[lmWorldCursor++%spawners.length],camp=lmCamp(s);if(!dwarves.some(d=>dist2(d.x,d.y,s.x,s.y)<90*90)){camp.stock=Math.min(20,(camp.stock||0)+1);continue}if(lm.time<camp.nextRaid)continue;if(camp.phase!=='warning'){camp.phase='warning';camp.nextRaid=lm.time+9;lmChronicle('Drums from '+LM_FACTIONS[camp.type].name+': a raid is gathering.');toast('Raid warning: '+LM_FACTIONS[camp.type].name)}else lmSpawnCamp(camp,s)}
+  for(const s of lm.factions)if(!spawners.some(p=>p.id===s.id))s.phase='defeated';
+}
+// Enemies know only what they or their scouts have observed along clear sight.
+nearestEnemyTarget=function(e){
+  const range=e.lmRole==='scout'?18:13,r2=range*range;
+  const candidates=[...lmNearbyDwarves(e.x,e.y,range+1).filter(d=>d.hp>0).map(ref=>({kind:'dwarf',x:Math.round(ref.x),y:Math.round(ref.y),ref})),...towers.map(ref=>({kind:'tower',x:ref.x,y:ref.y,ref})),...depots.map(ref=>({kind:'depot',x:ref.x,y:ref.y,ref})),{kind:'fortress',x:fortress.x,y:fortress.y,ref:fortress}];
+  let best=null,bd=Infinity;for(const t of candidates){const q=dist2(e.x,e.y,t.x,t.y);if(q>r2||!lmSight(e.x,e.y,t.x,t.y))continue;const score=q*(e.lmRole==='sapper'&&t.kind!=='dwarf'?.5:1);if(score<bd){bd=score;best=t}}
+  if(best){e.lmMemory={x:best.x,y:best.y,until:lm.time+25};const camp=lm.factions.find(c=>c.id===e.lmCamp);if(camp&&e.lmRole==='scout')camp.knowledge={x:best.x,y:best.y,until:lm.time+60};return best}
+  if(e.lmMemory?.until>lm.time)return{kind:'memory',x:e.lmMemory.x,y:e.lmMemory.y,ref:null};
+  if(e.lmHome){const dx=((Math.floor(lm.time/8)+String(e.id).length)%3)-1,dy=dx===0?1:0;const x=e.lmHome.x+dx,y=e.lmHome.y+dy;if(inBounds(x,y)&&isWalkable(tType[idx(x,y)]))return{kind:'patrol',x,y,ref:null}}
+  return null;
+};
+const lmBaseEnemy=updateEnemy;
+updateEnemy=function(e,dt){if(!e||e.hp<=0)return;
+  const infra=lmEngine.infraAt(Math.round(e.x),Math.round(e.y));if(infra?.type==='trap'&&(infra.readyAt||0)<lm.time){infra.readyAt=lm.time+12;applyEnemyDamage(e,Math.max(10,e.maxHp*.15));e.stunLeft=Math.max(e.stunLeft||0,1.2)}
+  if(e.lmRole==='sapper'){const gate=lm.infrastructure.find(v=>['gate','wall','barricade','slit'].includes(v.type)&&Math.abs(v.x-Math.round(e.x))+Math.abs(v.y-Math.round(e.y))<=1);if(gate){e.path=null;gate.hp-=dt*e.dmg*1.4;if(gate.hp<=0){lm.infrastructure=lm.infrastructure.filter(v=>v!==gate);lmEngine.reindex();window.dispatchEvent(new CustomEvent('dwarfworld:terrain',{detail:{x:gate.x,y:gate.y}}));lmChronicle('A sapper breached a '+gate.type+'.')}return}}
+  // Scouts retreat from unfavorable fights and carry observations back home.
+  e.lmTacticalClock=(e.lmTacticalClock||0)-dt;
+  if(e.lmTacticalClock<=0){e.lmTacticalClock=1.5;const nearby=lmNearbyDwarves(e.x,e.y,7).filter(d=>d.hp>0&&dist2(e.x,e.y,d.x,d.y)<49&&lmSight(e.x,e.y,d.x,d.y));if(e.lmHome&&(e.hp<e.maxHp*.25||e.lmRole==='scout'&&nearby.length>=3))e.lmRetreatUntil=lm.time+5;
+    if(e.lmRole==='commander')for(const ally of lmNearbyEnemies(e.x,e.y,6))if(ally!==e&&dist2(e.x,e.y,ally.x,ally.y)<36&&lmSight(e.x,e.y,ally.x,ally.y))ally.lmCommandUntil=lm.time+2;
+  }
+  if(e.lmRetreatUntil>lm.time&&e.lmHome){if(!e.path?.length)e.path=typeof bfsToPoint==='function'?bfsToPoint(Math.round(e.x),Math.round(e.y),e.lmHome.x,e.lmHome.y,0,true):null;stepAlongPath(e,dt);if(dist2(e.x,e.y,e.lmHome.x,e.lmHome.y)<2)e.hp=Math.min(e.maxHp,e.hp+dt*2);return}
+  if(e.lmBoss)lmBossTick(e,dt);
+  // Ranged support takes a clear firing position and spends time charging;
+  // the sight test is repeated at impact so a newly shut gate protects dwarves.
+  if(e.type==='shaman'||e.type==='phaser'){
+    e.lmShotAt=e.lmShotAt||lm.time+3;
+    if(e.lmShot){if(lm.time>=e.lmShot.until){const d=dwarves.find(d=>d.id===e.lmShot.id);if(d&&d.hp>0&&dist2(e.x,e.y,d.x,d.y)<64&&lmSight(e.x,e.y,d.x,d.y)){d.hp-=Math.max(1,Math.round(e.dmg*(1-(d.defense||0))));fxBeam(e.x,e.y,d.x,d.y,'rgba(166,190,255,.9)');markUI('selected','dwarves')}e.lmShot=null;e.lmShotAt=lm.time+4}}
+    else if(lm.time>=e.lmShotAt){const d=dwarves.find(d=>d.hp>0&&dist2(e.x,e.y,d.x,d.y)>5&&dist2(e.x,e.y,d.x,d.y)<64&&lmSight(e.x,e.y,d.x,d.y));if(d){e.lmShot={id:d.id,until:lm.time+1};e.path=null;fxBurst(e.x,e.y,'rgba(166,190,255,.7)',.7)}else e.lmShotAt=lm.time+1}
+  }
+  const dmg=e.dmg;if(e.lmCommandUntil>lm.time)e.dmg=Math.round(dmg*1.15);try{lmBaseEnemy(e,dt)}finally{e.dmg=dmg}
+};
+// Reuse existing enemy special types, with solid-wall checks and a global cap.
+const lmBaseSpecial=tickEnemySpecials;
+tickEnemySpecials=function(e,dt){const aura=e.auraRegen,cap=e.summonCap,start=enemies.length;e.auraRegen=0;e.summonCap=Math.min(cap||0,Math.max(0,240-enemies.length+countMinionsOwnedBy(e.id)));try{lmBaseSpecial(e,dt)}finally{e.auraRegen=aura;e.summonCap=cap}for(let n=start;n<enemies.length;n++){enemies[n].lmCamp=e.lmCamp;enemies[n].lmHome=e.lmHome}if(aura>0)for(const ally of enemies)if(ally!==e&&ally.hp<ally.maxHp&&dist2(e.x,e.y,ally.x,ally.y)<e.auraRange**2&&lmSight(e.x,e.y,ally.x,ally.y))ally.hp=Math.min(ally.maxHp,ally.hp+aura*dt)};
+function lmBossTick(e,dt){
+  if(e.lmTell){const tell=e.lmTell;if(lm.time<tell.until)return;e.lmTell=null;e.lmAbilityAt=lm.time+11;
+    if(e.lmBoss==='Brood Mother'||e.lmBoss==='Ancient Lich'){for(let i=0;i<2&&enemies.length<240&&countMinionsOwnedBy(e.id)<6;i++){const child=makeEnemy(Math.round(e.x),Math.round(e.y),e.sourceDepth);lmSetEnemyType(child,e.lmBoss==='Ancient Lich'?'skeleton':'imp');child.summonerId=e.id;child.isMinion=true;child.noLoot=true;child.lmHome=e.lmHome;child.lmCamp=e.lmCamp;enemies.push(child)}}
+    else for(const d of dwarves)if(dist2(d.x,d.y,tell.x,tell.y)<tell.r**2&&lmSight(e.x,e.y,d.x,d.y)){d.hp-=Math.max(1,Math.round(e.dmg*1.4*(1-(d.defense||0))));fxText(d.x,d.y,'IMPACT','#ffb06c')}
+    return;
+  }
+  if(lm.time<(e.lmAbilityAt||0))return;const target=nearestEnemyTarget(e);if(!target||target.kind==='patrol')return;e.lmTell={x:target.x,y:target.y,r:e.lmBoss==='Deepfire Wyrm'?3:2,until:lm.time+2.5};e.path=null;
+}
+const lmBaseEnemyDeath=handleEnemyDeath;
+handleEnemyDeath=function(e){if(!e||e.deadHandled)return;lmBaseEnemyDeath(e);if(e.lmBoss){lmChronicle(e.lmBoss+' was defeated. Its hoard has been recovered.');const def=DWX_RELICS.find(r=>!dwx.relicsFound.includes(r.id));if(def){const it=dwxMakeRelic(def);dwx.relicsFound.push(def.id);groundLoot.push({id:uuid(),x:Math.round(e.x),y:Math.round(e.y),payload:{kind:'item',item:it}})}lmEngine.deposit(Math.round(e.x),Math.round(e.y),'ingot',12)}};
+const lmBaseOnEnemyDeath=onEnemyDeath;
+onEnemyDeath=function(e){const count=e.splitCount,blast=e.explodeOnDeath,start=enemies.length;e.splitCount=Math.min(count||0,Math.max(0,240-enemies.length));e.explodeOnDeath=null;try{lmBaseOnEnemyDeath(e)}finally{e.splitCount=count;e.explodeOnDeath=blast}for(let n=start;n<enemies.length;n++){enemies[n].lmCamp=e.lmCamp;enemies[n].lmHome=e.lmHome}
+  if(blast){for(const actor of [...dwarves,...towers])if(dist2(e.x,e.y,actor.x,actor.y)<=blast.radius**2&&lmSight(e.x,e.y,actor.x,actor.y))actor.hp-=blast.dmg;markUI('hud','dwarves','selected')}
+};
+function lmDrawWorld(){
+  for(const s of lm.settlements){if(!s.discovered)continue;const p=worldToScreen(s.x,s.y);if(p.x<-p.s*2||p.y<-p.s*2||p.x>innerWidth||p.y>innerHeight)continue;const art=s.type==='ruin'?'decorations.arch':s.type==='outpost'?'buildings.depot':'interiors.market';if(!window.DWARF_ART?.drawFrame?.(ctx,art,p.x-p.s*.25,p.y-p.s*.65,p.s*1.5)){ctx.strokeStyle=s.type==='ruin'?'#c0b6a7':'#75cdb7';ctx.lineWidth=2;ctx.strokeRect(p.x,p.y,p.s,p.s)}ctx.fillStyle=s.type==='ruin'?'#c0b6a7':'#75cdb7';ctx.font='10px system-ui';ctx.fillText(s.name,p.x,p.y-p.s*.65-4)}
+  for(const c of lm.caravans){const p=worldToScreen(c.x,c.y);if(p.x<-p.s||p.y<-p.s||p.x>innerWidth||p.y>innerHeight||!tSeen[idx(Math.round(c.x),Math.round(c.y))])continue;if(window.DWARF_ART?.drawFrame?.(ctx,'interiors.hauling',p.x-p.s*.1,p.y-p.s*.3,p.s*1.2))continue;ctx.fillStyle='#c8a36e';ctx.fillRect(p.x+p.s*.1,p.y+p.s*.2,p.s*.8,p.s*.55);ctx.fillStyle='#403b36';ctx.fillRect(p.x+p.s*.2,p.y+p.s*.65,p.s*.15,p.s*.2);ctx.fillRect(p.x+p.s*.65,p.y+p.s*.65,p.s*.15,p.s*.2)}
+  for(const e of enemies){if(!e.lmBoss)continue;const p=worldToScreen(e.x,e.y);if(p.x<-p.s||p.y<-p.s||p.x>innerWidth||p.y>innerHeight||tVis[idx(Math.round(e.x),Math.round(e.y))]!==visMark)continue;ctx.fillStyle='#f0bb85';ctx.font='bold 11px system-ui';ctx.fillText(e.lmBoss,p.x,p.y-6);if(e.lmTell){const q=worldToScreen(e.lmTell.x,e.lmTell.y);ctx.fillStyle='rgba(240,110,55,.18)';ctx.strokeStyle='#ffae73';ctx.lineWidth=2;ctx.beginPath();ctx.arc(q.x+q.s*.5,q.y+q.s*.5,e.lmTell.r*q.s,0,Math.PI*2);ctx.fill();ctx.stroke()}}
+}
+window.DwarfWorldLiving.trade=lmTrade;
