@@ -1,4 +1,4 @@
-"""Repack generated source sheets into small, named WebP atlases for R2.
+"""Repack generated source sheets into small, repository-hosted WebP atlases.
 
 Usage: python scripts/package-dwarf-world-art.py SOURCE_INDEX.json OUTPUT_DIR
 SOURCE_INDEX maps atlas names to absolute source PNG paths. Pillow is an authoring
@@ -26,7 +26,7 @@ def main():
     source_index = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8-sig'))
     target = Path(sys.argv[2]).resolve()
     target.mkdir(parents=True, exist_ok=True)
-    manifest = {'version': 1, 'pack': 'living-mountain-v1', 'prefix': 'dwarf-world/living-mountain-v1/', 'frameSize': [CELL, CELL], 'atlases': {}, 'frames': {}, 'animations': {}, 'essential': ['terrain_ancient', 'dwarves', 'buildings', 'enemies', 'ui'], 'provenance': {'method': 'OpenAI built-in image generation; original illustrated poses; normalized and WebP packed with Pillow', 'date': '2026-10-21'}}
+    manifest = {'version': 1, 'pack': 'living-mountain-v1', 'prefix': 'living-mountain-v1/', 'frameSize': [CELL, CELL], 'atlases': {}, 'frames': {}, 'animations': {}, 'essential': ['terrain_ancient', 'dwarves', 'buildings', 'enemies', 'ui'], 'provenance': {'method': 'OpenAI built-in image generation; original illustrated poses; normalized and WebP packed with Pillow', 'date': '2026-10-21'}}
     def sheet(key, source_key, path, cols, rows, names, source_row=None, terrain=False):
         src = Image.open(source_index[source_key]).convert('RGBA')
         if source_row is not None:
@@ -88,7 +88,7 @@ def main():
             manifest['animations'][f'{atlas}.{action}']={'frames':[f'{atlas}.{action}_{i}' for i in range(count)],'fps':fps,'loop':True}
     manifest['limitations']=['Characters use one painted view with horizontal facing, not eight authored directions.', 'Equipment tier idle silhouettes and active equipment overlays are distinct; every action does not have a fully repainted armor and weapon permutation.', 'Enemy art has single poses; movement is interpolated and bobbed, not a complete authored enemy animation set.', 'Only the Great Hall has an authored upgraded silhouette; other upgrades use visible rank accents.', 'Illustrated terrain has edge and corner variants but is not an exhaustive 47-tile Wang atlas.']
     (target/'art-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
-    (target/'UPLOAD.txt').write_text('Upload the CONTENTS of this folder under the exact R2 object prefix:\ndwarf-world/living-mountain-v1/\n\nThen configure DWARF_ART_CONFIG.assetBase in game/dwarf-world/config.js to the public R2/custom-domain origin. No public URL has been provisioned by this pack. See ART.md for cache/CORS instructions.\n',encoding='utf-8')
+    (target/'UPLOAD.txt').write_text('Copy the atlas directories into game/dwarf-world/assets/living-mountain-v1/ and copy art-manifest.json into game/dwarf-world/. Commit them together. The shipped config loads these repository assets automatically; no separate upload is required. See docs/dwarf-world/ART.md.\n',encoding='utf-8')
     print(json.dumps({'files':len(manifest['atlases']),'frames':len(manifest['frames']),'animations':len(manifest['animations']),'bytes':sum(a['bytes'] for a in manifest['atlases'].values()),'manifest':str(target/'art-manifest.json')}))
 
 if __name__=='__main__':main()

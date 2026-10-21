@@ -155,13 +155,13 @@ external services and never write production cloud slots. Live account/cloud
 roundtrips remain a rollout check. Keep an exported pre-upgrade save until that
 check and device testing are complete.
 
-Upload and configure the artwork using [ART.md](ART.md). A blank `assetBase`
-deliberately uses the fallback graphics, so deploying the code alone does not
-activate the illustrated pack. Test the configured public origin for CORS and
-cache headers before rollout. See [QA.md](QA.md) for reproducible tests,
+Artwork is included in `game/dwarf-world/assets/living-mountain-v1/` and loads
+automatically from the same site as the game. Deploying the repository includes
+the illustrated pack without additional setup. [ART.md](ART.md) documents the
+asset paths and optional overrides. See [QA.md](QA.md) for reproducible tests,
 measurements, and the remaining validation boundaries.
 
-This draft provides the connected fortress and living-world foundation. It does
+This release provides the connected fortress and living-world foundation. It does
 not yet include a full quest/technology tree, elaborate rivalry storylines,
 individually editable furniture placement, a multi-level elevator simulation,
 or a complete hierarchical navigation graph. Artwork scope and authored-motion

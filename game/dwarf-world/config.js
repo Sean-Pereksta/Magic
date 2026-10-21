@@ -1,16 +1,16 @@
-/* DwarfWorld artwork deployment configuration. Code is hosted with the game;
- * the WebP files belong in R2 under assetPrefix. A blank assetBase deliberately
- * keeps the complete legacy renderer available until artwork is uploaded. */
+/* DwarfWorld artwork ships in this repository beside the game. Resolve from
+ * this script so root-domain and project-subdirectory hosting both work.
+ * An explicit blank assetBase or enabled:false retains the legacy renderer. */
 (() => {
   'use strict';
+  const scriptURL = document.currentScript?.src || new URL('./dwarf-world/config.js', document.baseURI).href;
   const supplied = window.DWARF_ART_CONFIG || {};
   const config = window.DWARF_ART_CONFIG = Object.freeze(Object.assign({
-    assetBase: '',
-    assetPrefix: 'dwarf-world/living-mountain-v1/',
+    assetBase: new URL('./assets/', scriptURL).href,
+    assetPrefix: 'living-mountain-v1/',
     timeoutMs: 4500,
     enabled: true
   }, supplied));
-  const scriptURL = document.currentScript?.src || new URL('./dwarf-world/config.js', document.baseURI).href;
   const manifestURL = new URL('./art-manifest.json', scriptURL).href;
   const timeout = Math.max(500, Math.min(8000, Number(config.timeoutMs) || 4500));
   const images = new Map(), pending = new Map(), failures = new Set();

@@ -9,7 +9,9 @@ const require=createRequire(import.meta.url);
 const {chromium}=require('playwright');
 const base=process.env.DWARF_TEST_URL||'http://127.0.0.1:8768/game/DwarfWorld.html';
 const repository=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
-const assetDirectory=process.env.DWARF_ART_DIR||path.resolve(repository,'../../outputs/dwarf-world-assets');
+// Exercise the shipped artwork configuration by default. A custom pack is an
+// explicit opt-in and retains its isolated test URL without changing game code.
+const assetDirectory=process.env.DWARF_ART_DIR?path.resolve(process.env.DWARF_ART_DIR):null;
 const screenshotDirectory=process.env.DWARF_STRESS_OUTPUT_DIR;
 const diagnostic=`
 window.__livingStress={start:()=>{
@@ -56,13 +58,14 @@ const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CH
 const results=[];
 try{
   for(const viewport of [{width:1280,height:800},{width:390,height:844}].slice(0,process.env.DWARF_STRESS_DESKTOP_ONLY==='1'?1:2)){
-    const context=await browser.newContext({viewport,isMobile:viewport.width<600,hasTouch:viewport.width<600});const page=await context.newPage(),errors=[];
-    await context.addInitScript(({origin})=>{window.DWARF_ART_CONFIG={assetBase:origin,assetPrefix:'art-test/'};},{origin:new URL(base).origin});
+    const context=await browser.newContext({viewport,isMobile:viewport.width<600,hasTouch:viewport.width<600});const page=await context.newPage(),errors=[],artRequests=[];
+    if(assetDirectory)await context.addInitScript(({origin})=>{window.DWARF_ART_CONFIG={assetBase:origin,assetPrefix:'art-test/'};},{origin:new URL(base).origin});
     page.on('pageerror',error=>errors.push(error.message));
     await page.route('**/*',async route=>{
       const url=new URL(route.request().url());
       if(url.origin!==new URL(base).origin)return route.abort();
-      const asset=url.pathname.startsWith('/art-test/'),root=asset?assetDirectory:repository;
+      if(url.pathname.endsWith('.webp'))artRequests.push(url.pathname);
+      const asset=!!assetDirectory&&url.pathname.startsWith('/art-test/'),root=asset?assetDirectory:repository;
       const target=path.resolve(root,asset?decodeURIComponent(url.pathname.slice('/art-test/'.length)):'.'+decodeURIComponent(url.pathname));
       if(!target.startsWith(root+path.sep))return route.fulfill({status:403,body:''});
       try{
@@ -91,7 +94,13 @@ try{
     assert.deepEqual(errors,[],'full shell runtime errors');
     assert.ok(result.simulation.samples>50,'simulation continues under stress');
     assert.ok(result.rooms>=20);assert.ok(result.activeJobs>0,'production/hauling/construction jobs remain active');
-    if(process.env.REQUIRE_DWARF_ART==='1'){assert.equal(result.art?.enabled,true);assert.deepEqual(result.art?.failed,[]);assert.ok(result.art?.loaded.includes('dwarves'));}
+    if(process.env.REQUIRE_DWARF_ART==='1'){
+      assert.equal(result.art?.enabled,true);assert.deepEqual(result.art?.failed,[]);assert.ok(result.art?.loaded.includes('dwarves'));
+      const expectedPrefix=assetDirectory?'/art-test/':new URL('./dwarf-world/assets/living-mountain-v1/',base).pathname;
+      assert.ok(artRequests.length>0,'the test must request real artwork');
+      assert.ok(artRequests.every(url=>url.startsWith(expectedPrefix)),`artwork must load from ${expectedPrefix}`);
+    }
+    result.artSource=assetDirectory?'custom-pack':'repository';
     assert.ok(result.queued<=96);assert.ok(result.terrainChunks<=112);assert.ok(result.effects<=180);
     results.push({measuredAt:new Date().toISOString(),browserVersion:browser.version(),platform:process.platform,architecture:process.arch,rendererComponentProfiling:process.env.DWARF_PROFILE_RENDER==='1',viewport,coarsePointer:viewport.width<600,...result,note:'Headless desktop Chrome: 100 dwarves, 20 rooms, production/construction, and 100 enemies. Narrow/coarse-pointer emulation is not a physical mobile-device benchmark. Heap excludes native image/canvas/GPU memory; panel response is click-to-second-animation-frame, not hardware latency. Component profiling, when enabled, adds per-call timing overhead; durations measure CPU drawing work rather than isolated GPU time.'});
     await context.close();

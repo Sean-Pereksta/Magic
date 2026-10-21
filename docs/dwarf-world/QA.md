@@ -1,6 +1,6 @@
 # Living Mountain verification
 
-Validation date: 2026-10-21. This is a draft implementation with measured desktop
+Validation date: 2026-10-21. This implementation has measured desktop
 browser results, not a certified mobile performance release.
 
 ## Automated checks
@@ -22,7 +22,7 @@ the integration and interface scripts also accept `PLAYWRIGHT_MODULE_PATH`
 for an externally installed Playwright package. The stress harness uses ordinary
 Node module resolution.
 
-The unit suite passes **59 tests** across existing save/expansion tests and new
+The unit suite passes **61 tests** across existing save/expansion tests and new
 simulation, world, art, loader and navigation tests. The existing GitHub Actions
 workflow now runs the entire DwarfWorld suite on relevant pull requests and main
 updates. A passing local run does not imply a completed hosted CI run.
@@ -45,8 +45,9 @@ Covered behaviors include:
   shared routes and rejection of incomplete shared-route suffixes.
 - Boss hoards awarded once, splitter population cap, wall-blocked explosions,
   sight-based enemy memory, and physically rerouted/restored caravans.
-- Atlas rectangles and animation references, disabled or failed asset origins,
-  request coalescing, essential preload and timeout fallback.
+- Atlas rectangles and animation references, committed-image SHA-256 integrity,
+  default root/subdirectory hosting, disabled or failed asset origins, request
+  coalescing, essential preload and timeout fallback.
 - Complete runtime injection under LF/CRLF line endings and missing-file failure.
 
 ## Browser integration and controls
@@ -96,10 +97,10 @@ industries, two unfinished construction projects, designated mining and physical
 hauling. Synthetic health protection keeps the actor counts stable. These are
 deliberately artificial workload fixtures, not a balance or survival test.
 
-The harness loads the real unpacked WebP pack through an intercepted local
-route. Set `DWARF_ART_DIR` to the unpacked pack directory; the local workspace
-default points at the supplied output pack. `REQUIRE_DWARF_ART=1` requires actual
-loaded images. `DWARF_STRESS_MS` changes the sample duration. Optional component
+The harness loads the committed WebP atlases through the game's default relative
+URLs. No config override or separate pack is needed. Set `DWARF_ART_DIR` only to
+test a different unpacked pack. `REQUIRE_DWARF_ART=1` requires actual loaded images
+from the expected source. `DWARF_STRESS_MS` changes the sample duration. Optional component
 timing and screenshot flags are documented in the harness itself.
 
 Simulation, render, frame-interval and navigation measurements are separated.
@@ -137,10 +138,11 @@ terrain setup clears the fortress tile as part of the fixture, so its central
 legacy icon is not a missing fortress atlas in a normally generated world.
 These results are not a controlled causal comparison with earlier builds.
 
-## Release checks still required
+## Remaining validation boundaries
 
-- Upload the packaged images and set the real R2 public origin in `config.js`;
-  verify CORS and image loading on the actual deployed game origin.
+- Artwork is committed under `game/dwarf-world/assets/living-mountain-v1/`
+  and enabled by default. The game and its images deploy together; no separate
+  upload, public bucket, or cross-origin configuration is required.
 - Run the large-fortress workload and normal gameplay on supported midrange
   phones, including pinch/pan, thermal throttling and a prolonged session. The
   target remains 60 FPS desktop and at least 30 FPS supported mobile; browser
@@ -152,6 +154,6 @@ These results are not a controlled causal comparison with earlier builds.
   room presets rather than arbitrary furniture editing, and lightweight
   settlement/alliance mechanics rather than a full quest/technology system.
 
-The PR is intentionally a draft while those release checks remain. See
+These device and live-account checks remain outside the automated coverage. See
 [LIVING-MOUNTAIN.md](LIVING-MOUNTAIN.md) for gameplay and implementation boundaries
-and [ART.md](ART.md) for exact asset upload paths and artistic scope.
+and [ART.md](ART.md) for repository asset paths and artistic scope.
