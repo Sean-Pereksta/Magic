@@ -768,6 +768,7 @@ display:none !important;
 	</div>
   </div>
 
+<script src="./dwarf-world/living-performance.js"></script>
 <script>
 (() => {
   // ============================================================
@@ -1037,7 +1038,7 @@ eqWrap.remove();
   // Canvas
   // ============================================================
   const canvas = document.getElementById("game");
-  const ctx = canvas.getContext("2d", { alpha: false });
+  let ctx = canvas.getContext("2d", { alpha: false });
 
   function resize(){
 	const dpr = window.devicePixelRatio || 1;
@@ -1205,6 +1206,7 @@ eqWrap.remove();
   const tSeen = new Uint8Array(W*H);
   const tVis  = new Uint16Array(W*H);
   let visMark = 1;
+  let previousVisMark = 0;
   const FORT_VIS_R = 12;
   const DW_VIS_R = 10;
   let visTimer = 0;
@@ -1236,8 +1238,12 @@ eqWrap.remove();
       const x=cx+dx,y=cy+dy;
       if(!inBounds(x,y)) continue;
       const ii=idx(x,y);
+      if(tVis[ii]===visMark) continue;
+      if(tVis[ii]!==previousVisMark || !tSeen[ii]) invalidateFog(x,y);
       tVis[ii]=visMark;
       tSeen[ii]=1;
+      visibleTiles.push(ii);
+      exploredChunks.add(`${Math.floor(x/TERRAIN_CHUNK)},${Math.floor(y/TERRAIN_CHUNK)}`);
     }
   }
 
@@ -1245,6 +1251,8 @@ eqWrap.remove();
     visTimer -= dt;
     if(visTimer > 0) return;
     visTimer = 0.20;
+    const formerlyVisible=visibleTiles.splice(0);
+    previousVisMark=visMark;
     visMark++;
     if(visMark===0 || visMark>65534){
       visMark=1;
@@ -1255,6 +1263,7 @@ eqWrap.remove();
       const bonus = (d.trait?.id==="keen_eye") ? 2 : 0;
       stampVision(Math.round(d.x), Math.round(d.y), DW_VIS_R + bonus);
     }
+    for(const ii of formerlyVisible) if(tVis[ii]!==visMark) invalidateFog(ii%W,Math.floor(ii/W));
   }
 
   function isDiggable(tt){
@@ -1263,6 +1272,57 @@ eqWrap.remove();
   function isWalkable(tt){
 	return tt===TILE_EMPTY || tt===TILE_FORTRESS;
   }
+
+  function canTraverse(x,y,enemy=false){
+    return inBounds(x,y) && isWalkable(tType[idx(x,y)]) &&
+      (window.DwarfWorldLiving?.canWalk?.(x,y,enemy) !== false);
+  }
+  const livingNav = new DwarfWorldPerformance.NavigationQueue(W,H,canTraverse);
+  const enemySpatial = new DwarfWorldPerformance.SpatialHash(12);
+  const dwarfSpatial = new DwarfWorldPerformance.SpatialHash(12);
+  let renderPrevious = new WeakMap();
+  function snapshotLivingPositions(){
+    for(const group of [dwarves,enemies]) for(const entity of group){
+      let previous=renderPrevious.get(entity);
+      if(!previous){previous={};renderPrevious.set(entity,previous);}
+      previous.x=entity.x;previous.y=entity.y;
+    }
+  }
+  function livingRenderPosition(entity){
+    return DwarfWorldPerformance.interpolatePosition(entity,renderPrevious.get(entity),
+      paused||isGameOver?1:simulationClock.accumulator/simulationClock.step);
+  }
+  let oreScansLeft = 1;
+  const oreScanCache = new Map();
+  const terrainChunks = new Map();
+  const TERRAIN_CHUNK = 16, TERRAIN_PX = 16, TERRAIN_CACHE_LIMIT = 112;
+  const exploredChunks = new Set();
+  let terrainArtRevision = -1, terrainDetail = -1;
+  const visibleTiles = [];
+  function invalidateFog(x,y){
+    const chunk=terrainChunks.get(`${Math.floor(x/TERRAIN_CHUNK)},${Math.floor(y/TERRAIN_CHUNK)}`);
+    if(chunk) chunk.dirty=true;
+  }
+  function invalidateTerrain(x,y){
+    for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+      const key=`${Math.floor((x+dx)/TERRAIN_CHUNK)},${Math.floor((y+dy)/TERRAIN_CHUNK)}`;
+      const chunk=terrainChunks.get(key); if(chunk) chunk.dirty=true;
+    }
+  }
+  function resetLivingCaches(){
+    renderPrevious = new WeakMap();
+    terrainChunks.clear(); livingNav.invalidate(); oreScanCache.clear();
+    enemySpatial.rebuild(enemies); dwarfSpatial.rebuild(dwarves);
+    visibleTiles.length=0; visTimer=0;
+    exploredChunks.clear();
+    for(let ii=0;ii<tSeen.length;ii++) if(tSeen[ii]) exploredChunks.add(`${Math.floor((ii%W)/TERRAIN_CHUNK)},${Math.floor(Math.floor(ii/W)/TERRAIN_CHUNK)}`);
+  }
+  window.addEventListener("dwarfworld:terrain", event=>{
+    const {x,y}=event.detail||{};
+    if(Number.isFinite(x)&&Number.isFinite(y)) invalidateTerrain(x,y); else terrainChunks.clear();
+    livingNav.invalidate(); oreScanCache.clear();
+    for(const entity of [...dwarves,...enemies]) entity.path=null;
+  });
 
 
   function strataHp(depth){
@@ -1286,6 +1346,7 @@ eqWrap.remove();
   }
 
   function generateWorld(){
+    resetLivingCaches();
 	for(let y=0;y<H;y++) for(let x=0;x<W;x++){
 	  const d = depthAt(x,y);
 	  tType[idx(x,y)] = TILE_ROCK;
@@ -1362,6 +1423,7 @@ eqWrap.remove();
 	enemies.length = 0;
 	groundLoot.length = 0;
     tSeen.fill(0);
+    exploredChunks.clear();
     tVis.fill(0);
     visMark = 1;
     refreshVisibility(0);
@@ -1482,72 +1544,21 @@ eqWrap.remove();
   // ============================================================
   // Pathfinding (BFS)
   // ============================================================
-  const visited = new Int32Array(W*H);
-  const prev = new Int32Array(W*H);
-  let visitMark = 1;
-
-  function bfsPath(sx,sy, isGoal, maxNodes=220000){
-	if(!inBounds(sx,sy)) return null;
-	visitMark++;
-	if(visitMark===0x7fffffff){ visitMark=1; visited.fill(0); }
-
-	const qx = new Int16Array(maxNodes);
-	const qy = new Int16Array(maxNodes);
-	let qh=0, qt=0;
-
-	const si = idx(sx,sy);
-	visited[si]=visitMark;
-	prev[si]=-1;
-	qx[qt]=sx; qy[qt]=sy; qt++;
-
-	const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-	let nodes=0;
-
-	while(qh<qt){
-	  const x=qx[qh], y=qy[qh]; qh++;
-	  const ii = idx(x,y);
-
-	  if(isGoal(x,y,ii)){
-		let cur=ii;
-		const out=[];
-		while(cur!==-1){
-		  const cx=cur%W, cy=(cur/W)|0;
-		  out.push({x:cx,y:cy});
-		  cur=prev[cur];
-		}
-		out.reverse();
-		if(out.length>1) out.shift();
-		return out;
-	  }
-
-	  for(const [dx,dy] of dirs){
-		const nx=x+dx, ny=y+dy;
-		if(!inBounds(nx,ny)) continue;
-		const ni = idx(nx,ny);
-		if(visited[ni]===visitMark) continue;
-		if(!isWalkable(tType[ni])) continue;
-
-		visited[ni]=visitMark;
-		prev[ni]=ii;
-		if(qt>=maxNodes-1) break;
-		qx[qt]=nx; qy[qt]=ny; qt++;
-	  }
-
-	  if(++nodes>maxNodes-10) break;
-	}
-	return null;
+  function bfsPath(sx,sy,isGoal,maxNodes=220000,key="frontier",enemy=false,closest=null){
+    return livingNav.request(sx,sy,key,isGoal,{maxNodes,enemy,closest});
   }
-
-  function bfsToNearestFrontier(sx,sy, maxNodes=220000){
-	const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
-	return bfsPath(sx,sy,(x,y)=>{
-	  for(const [dx,dy] of dirs){
-		const nx=x+dx, ny=y+dy;
-		if(!inBounds(nx,ny)) continue;
-		if(isDiggable(tType[idx(nx,ny)])) return true;
-	  }
-	  return false;
-	}, maxNodes);
+  function bfsToPoint(sx,sy,tx,ty,reach=0,enemy=false){
+    return bfsPath(sx,sy,(x,y)=>manhattan(x,y,tx,ty)<=reach,220000,
+      `point:${tx},${ty}:${reach}`,enemy);
+  }
+  function bfsToNearestFrontier(sx,sy,maxNodes=220000){
+    return bfsPath(sx,sy,(x,y)=>{
+      for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx=x+dx,ny=y+dy;
+        if(inBounds(nx,ny)&&isDiggable(tType[idx(nx,ny)])) return true;
+      }
+      return false;
+    },maxNodes,`frontier:${livingNav.revision}`);
   }
   // ============================================================
 // Pathable Ore Targeting (miners prefer reachable ore nearby)
@@ -1556,7 +1567,10 @@ const ORE_SCAN_RANGE = 28;          // <-- adjust range here (tiles)
 const ORE_Q_MAX = 30000;            // BFS queue cap for ore scan (safe for range ~40)
 const oreQx = new Int16Array(ORE_Q_MAX);
 const oreQy = new Int16Array(ORE_Q_MAX);
-const oreDist = new Int16Array(W * H); // valid only when visited==visitMark
+const oreDist = new Int16Array(ORE_Q_MAX);
+const orePrevious = new Int32Array(ORE_Q_MAX);
+let oreVisited = new Uint32Array((2*(ORE_SCAN_RANGE+10)+1)**2);
+let oreVisitMark = 1;
 
 function isOre(tt){
   return tt===TILE_GOLD || tt===TILE_SAPPHIRE || tt===TILE_EMERALD || tt===TILE_DIAMOND;
@@ -1568,26 +1582,34 @@ function isOre(tt){
  */
 function findPathableOreTargetAndPath(sx, sy, rangeTiles, oreFilter=null){
   if(!inBounds(sx,sy) || !isWalkable(tType[idx(sx,sy)])) return null;
+  rangeTiles=Math.max(0,Math.min(Math.max(W,H),Math.floor(rangeTiles)));
+  const side=rangeTiles*2+1,originX=sx-rangeTiles,originY=sy-rangeTiles;
+  if(oreVisited.length<side*side) oreVisited=new Uint32Array(side*side);
+  const scanKey=`${sx},${sy}:${rangeTiles}:${oreFilter ? `${focusOrder.x},${focusOrder.y}` : "all"}`;
+  const cached=oreScanCache.get(scanKey);
+  if(cached && cached.until>livingNav.time) return cached.value ? {
+    ...cached.value,path:cached.value.path.map(p=>({...p}))
+  } : null;
+  if(oreScansLeft<=0) return null;
+  oreScansLeft--;
 
-  visitMark++;
-  if(visitMark===0x7fffffff){ visitMark=1; visited.fill(0); }
-
-  const si = idx(sx,sy);
+  if(++oreVisitMark===0xffffffff){ oreVisitMark=1; oreVisited.fill(0); }
   let qh=0, qt=0;
-  visited[si]=visitMark;
-  prev[si]=-1;
-  oreDist[si]=0;
+  oreVisited[rangeTiles+rangeTiles*side]=oreVisitMark;
+  orePrevious[0]=-1;
+  oreDist[0]=0;
   oreQx[qt]=sx; oreQy[qt]=sy; qt++;
 
   const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
   let bestStand = -1;
+  let bestNode = -1;
   let bestOre = null;
   let bestScore = -1e18;
 
   while(qh<qt){
-	const x=oreQx[qh], y=oreQy[qh]; qh++;
+	const node=qh,x=oreQx[qh], y=oreQy[qh]; qh++;
 	const ii = idx(x,y);
-	const d = oreDist[ii];
+	const d = oreDist[node];
 
 	// Any ore adjacent to this reachable stand-tile?
 	for(const [dx,dy] of dirs){
@@ -1606,6 +1628,7 @@ function findPathableOreTargetAndPath(sx, sy, rangeTiles, oreFilter=null){
 	  if(score > bestScore){
 		bestScore = score;
 		bestStand = ii;
+		bestNode = node;
 		bestOre = { x:ox, y:oy, tt };
 	  }
 	}
@@ -1616,36 +1639,41 @@ function findPathableOreTargetAndPath(sx, sy, rangeTiles, oreFilter=null){
 	for(const [dx,dy] of dirs){
 	  const nx=x+dx, ny=y+dy;
 	  if(!inBounds(nx,ny)) continue;
-	  const ni = idx(nx,ny);
-	  if(visited[ni]===visitMark) continue;
-	  if(!isWalkable(tType[ni])) continue;
-
-	  visited[ni]=visitMark;
-	  prev[ni]=ii;
-	  oreDist[ni]=(d+1)|0;
-
+	  const local=(nx-originX)+(ny-originY)*side;
+	  if(oreVisited[local]===oreVisitMark) continue;
+	  if(!canTraverse(nx,ny)) continue;
 	  if(qt >= ORE_Q_MAX-1) break;
+	  oreVisited[local]=oreVisitMark;
+	  orePrevious[qt]=node;
+	  oreDist[qt]=(d+1)|0;
 	  oreQx[qt]=nx; oreQy[qt]=ny; qt++;
 	}
   }
 
-  if(!bestOre) return null;
+  if(!bestOre){
+    if(oreScanCache.size>=128) oreScanCache.delete(oreScanCache.keys().next().value);
+    oreScanCache.set(scanKey,{until:livingNav.time+0.8,value:null});
+    return null;
+  }
 
-  // reconstruct path to best stand tile using prev[]
+  // Parent indices address the small reusable queue, not the 2-million-tile world.
   const path = [];
-  let cur = bestStand;
+  let cur = bestNode;
   while(cur !== -1){
-	path.push({ x: cur % W, y: (cur / W) | 0 });
-	cur = prev[cur];
+	path.push({ x:oreQx[cur], y:oreQy[cur] });
+	cur = orePrevious[cur];
   }
   path.reverse();
   if(path.length>1) path.shift(); else path.length=0;
 
-  return {
+  const result = {
 	ore: bestOre,
 	stand: { x: bestStand % W, y: (bestStand / W) | 0 },
 	path
   };
+  if(oreScanCache.size>=128) oreScanCache.delete(oreScanCache.keys().next().value);
+  oreScanCache.set(scanKey,{until:livingNav.time+0.8,value:{...result,path:path.map(p=>({...p}))}});
+  return result;
 }
 
 
@@ -2563,6 +2591,7 @@ function addTower(type,x,y){
 	const ii = idx(tx,ty);
 	const tt = tType[ii];
 	if(!isDiggable(tt)) return { ok:false };
+    invalidateTerrain(tx,ty);
 
 	const hp = tHp[ii];
 	if(hp > power){
@@ -2571,6 +2600,8 @@ function addTower(type,x,y){
 	}
 
 	const d = depthAt(tx,ty);
+    livingNav.invalidate(false);
+    oreScanCache.clear();
 
 	gold += 1 + (tt===TILE_GOLD ? 2 : 0);
 
@@ -2604,7 +2635,7 @@ function addTower(type,x,y){
 	if(!ent.path || ent.path.length===0) return;
 	const tx = ent.path[0].x;
 	const ty = ent.path[0].y;
-	if(!inBounds(tx,ty) || !isWalkable(tType[idx(tx,ty)])){ ent.path=null; return; }
+	if(!canTraverse(tx,ty,!!ent.type)){ ent.path=null; return; }
 
 	const dx = tx - ent.x;
 	const dy = ty - ent.y;
@@ -2638,7 +2669,7 @@ function stepAlongPathScaled(ent, dt, mult){
   if(!ent.path || ent.path.length===0) return;
   const tx = ent.path[0].x;
   const ty = ent.path[0].y;
-  if(!inBounds(tx,ty) || !isWalkable(tType[idx(tx,ty)])){ ent.path=null; return; }
+  if(!canTraverse(tx,ty,!!ent.type)){ ent.path=null; return; }
 
   const dx = tx - ent.x;
   const dy = ty - ent.y;
@@ -2657,7 +2688,8 @@ function stepAlongPathScaled(ent, dt, mult){
 
   function nearestVisibleEnemy(x,y, maxR=13){
 	let best=null, bestD=1e9;
-	for(const e of enemies){
+	for(const e of enemySpatial.query(x,y,maxR+1)){
+      if(e.hp<=0) continue;
       const ex=Math.round(e.x), ey=Math.round(e.y);
       if(!inBounds(ex,ey) || tVis[idx(ex,ey)]!==visMark) continue;
 	  const d = manhattan(x,y, ex, ey);
@@ -2761,7 +2793,7 @@ function nearestHealingTower(x,y){
   function dwarfWander(d){
 	const gx=Math.round(d.x), gy=Math.round(d.y);
 	if(manhattan(gx,gy, fortress.x, fortress.y) > 26){
-	  d.path = bfsPath(gx,gy,(x,y)=>x===fortress.x && y===fortress.y, 220000) || null;
+	  d.path = bfsToPoint(gx,gy,fortress.x,fortress.y) || null;
 	  return;
 	}
 
@@ -2824,18 +2856,19 @@ function nearestTargetForGuard(gx, gy, post, patrolR){
   return best;
 }
 
-function guardWanderNearPost(d, post){
-  const r = post.stationR ?? GUARD_STATION_R_DEFAULT;
-  for(let tries=0; tries<14; tries++){
-    const tx = post.x + (Math.random()*(2*r+1)|0) - r;
-    const ty = post.y + (Math.random()*(2*r+1)|0) - r;
-    if(!inBounds(tx,ty)) continue;
-    if(!isWalkable(tType[idx(tx,ty)])) continue;
-
-    const p = bfsPath(Math.round(d.x), Math.round(d.y), (x,y)=>x===tx && y===ty, 220000) || null;
-    if(p){ d.path = p; return; }
+const guardWanderGoals = new WeakMap();
+function guardWanderNearPost(d,post){
+  const r=post.stationR ?? GUARD_STATION_R_DEFAULT;
+  let target=guardWanderGoals.get(d);
+  if(target && (manhattan(d.x,d.y,target.x,target.y)<1 || livingNav.time>target.until)) target=null;
+  if(!target){
+    for(let tries=0;tries<14;tries++){
+      const x=post.x+(Math.random()*(2*r+1)|0)-r,y=post.y+(Math.random()*(2*r+1)|0)-r;
+      if(canTraverse(x,y)){ target={x,y,until:livingNav.time+4}; break; }
+    }
+    if(target) guardWanderGoals.set(d,target);
   }
-  d.path = null;
+  d.path=target ? bfsToPoint(Math.round(d.x),Math.round(d.y),target.x,target.y) : null;
 }
 
 
@@ -2849,8 +2882,8 @@ function dealDwarfEnemyDamage(d, e, baseDmg){
   if(d.weapon?.effect === "burn"){ e.burnLeft = Math.max(e.burnLeft||0, 2.4); fxText(e.x,e.y,"BURN","rgba(255,140,70,.95)"); }
   if(d.weapon?.effect === "cleave" && !(d.weapon?.ranged)) fxBurst(e.x,e.y,"rgba(255,220,120,.9)",1.05);
   if(hasPerk(d,"cleave") && !(d.weapon?.ranged)){
-    for(const o of enemies){
-      if(o===e) continue;
+    for(const o of enemySpatial.query(e.x,e.y,2.2)){
+      if(o===e || o.hp<=0) continue;
       if(dist2(e.x,e.y,o.x,o.y) <= 2.2*2.2){
         applyEnemyDamage(o, Math.round(out*0.35));
         o.lastHit = { kind:"dwarf", id:d.id };
@@ -2862,12 +2895,16 @@ function dealDwarfEnemyDamage(d, e, baseDmg){
 // ===============================
 // UPDATED: updateDwarf (with guard logic fully wired)
 // ===============================
-function updateDwarf(d, dt){
+function tickDwarfPassives(d, dt){
   // timers
   d.think    -= dt;
   d.atkTimer -= dt;
   if(d.armor?.effect === "regen" && d.hp < d.maxHp){ d.hp = Math.min(d.maxHp, d.hp + dt*1.4); }
   if(d._speedBoostLeft > 0){ d._speedBoostLeft -= dt; }
+}
+
+function updateDwarf(d, dt, passivesApplied=false){
+  if(!passivesApplied)tickDwarfPassives(d,dt);
 
   // move
   const personalHaste = d._speedBoostLeft > 0 ? 1.10 : 1;
@@ -2924,7 +2961,7 @@ function updateDwarf(d, dt){
 
         // Path to tower (if unreachable, fall back to normal AI)
         if(!d.path || d.path.length === 0){
-          const p = bfsPath(gx, gy, (x,y)=>x===ht.x && y===ht.y, 220000) || null;
+          const p = bfsToPoint(gx,gy,ht.x,ht.y) || null;
           if(p){
             d.path = p;
             return;
@@ -2980,7 +3017,7 @@ function updateDwarf(d, dt){
       d.state = "idle";
       d.path  = null;
     }else if(!d.path || d.path.length === 0){
-      d.path = bfsPath(gx, gy, (x,y)=>x===dp.x && y===dp.y, 220000) || null;
+      d.path = bfsToPoint(gx,gy,dp.x,dp.y) || null;
     }
     return;
   }
@@ -3095,17 +3132,14 @@ if(d.state === "fight" && d.weapon){
         // Goal is ANY tile within weapon range of target (works for unwalkable spawner tiles)
         const goal = (x,y)=> manhattan(x,y,tx,ty) <= reach;
 
-        let p = bfsPath(gx, gy, goal, 220000) || null;
+        let p = bfsPath(gx,gy,goal,220000,`fight:${tx},${ty}:${reach}`,false,{x:tx,y:ty}) || null;
 
-        // If goal is blocked/unreachable (e.g., walled off), walk to closest reachable approach tile
-        if(!p && typeof bfsPathClosestApproach === "function"){
-          p = bfsPathClosestApproach(gx, gy, tx, ty, 220000) || null;
-        }
+        // Closest reachable approach is computed by the same budgeted search.
 
-        d.path = p;
+        d.path = p || d.path;
 
         // If we still couldn't path, retry soon (keeps "pursue no matter what" behavior)
-        if(!d.path) d.think = 0.05;
+        if(!d.path) d.think = 0.25;
       }else{
         // Close enough to attack (don’t jitter onto target tile)
         d.path = null;
@@ -3123,7 +3157,7 @@ else if(d.state === "guard"){
     const stationR = post.stationR ?? GUARD_STATION_R_DEFAULT;
 
     if(dd > stationR){
-      d.path = bfsPath(gx, gy, (x,y)=>x===post.x && y===post.y, 220000) || null;
+      d.path = bfsToPoint(gx,gy,post.x,post.y) || null;
     }else{
       if(!d.path || d.path.length === 0){
         guardWanderNearPost(d, post);
@@ -3142,7 +3176,7 @@ else if(d.state === "mineOre"){
 else if(d.state === "focusPatrol"){
   if(!focusOrder.active){ d.state = "idle"; d.path = null; }
   else if(!d.path || d.path.length===0){
-    d.path = bfsPath(gx, gy, (x,y)=>manhattan(x,y,focusOrder.x,focusOrder.y)<=2, 220000) || null;
+    d.path = bfsToPoint(gx,gy,focusOrder.x,focusOrder.y,2) || null;
   }
 }
 else if(d.state === "idle"){
@@ -3317,7 +3351,7 @@ if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
     // get adjacent to the ore
     if(gx !== t.standX || gy !== t.standY){
       if(!d.path || d.path.length === 0){
-        d.path = bfsPath(gx, gy, (x,y)=>x===t.standX && y===t.standY, 220000) || null;
+        d.path = bfsToPoint(gx,gy,t.standX,t.standY) || null;
         // if still null, just rethink next tick
         if(!d.path) d.think = 0;
       }
@@ -3467,11 +3501,7 @@ if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
 
 	if(dd > stopDist){
 	  // path to "within stopDist of target" (not necessarily adjacent)
-	  e.path = bfsPath(
-		gx, gy,
-		(x,y)=>manhattan(x,y, t.x,t.y) <= stopDist,
-		220000
-	  ) || null;
+	  e.path = bfsToPoint(gx,gy,t.x,t.y,stopDist,true) || e.path || null;
 	}else{
 	  e.path = null;
 	}
@@ -3489,8 +3519,8 @@ if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
 	e.atkTimer = 1 / atkRate;
 
 	// Prefer hitting dwarves if adjacent (same as you had)
-	for(const d of dwarves){
-	  if(manhattan(gx,gy, Math.round(d.x),Math.round(d.y))<=1){
+	for(const d of dwarfSpatial.query(gx,gy,2)){
+	  if(d.hp>0 && manhattan(gx,gy, Math.round(d.x),Math.round(d.y))<=1){
 		const dealt = Math.max(1, Math.round(e.dmg * (1 - (d.defense||0))));
 		d.hp -= dealt;
         fxSlash(e.x,e.y,d.x,d.y,"rgba(255,95,110,.9)");
@@ -3630,63 +3660,8 @@ function nearestThreatGlobal(gx, gy){
  * If a goal is unreachable (e.g., spawner behind walls), return a path to the
  * reachable tile that gets us *closest* to (tx,ty).
  */
-function bfsPathClosestApproach(sx, sy, tx, ty, limit){
-  const W_ = W, H_ = H;
-  const qx = new Int32Array(Math.min(limit, W_*H_));
-  const qy = new Int32Array(Math.min(limit, W_*H_));
-  let qh=0, qt=0;
-
-  const seen = new Uint8Array(W_*H_);
-  const prev = new Int32Array(W_*H_);
-  prev.fill(-1);
-
-  const startI = idx(sx, sy);
-  seen[startI]=1;
-  qx[qt]=sx; qy[qt]=sy; qt++;
-
-  let bestI = startI;
-  let bestScore = manhattan(sx, sy, tx, ty);
-
-  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-
-  let steps=0;
-  while(qh<qt && steps < limit && qt < qx.length){
-    const x=qx[qh], y=qy[qh]; qh++; steps++;
-
-    const score = manhattan(x,y,tx,ty);
-    if(score < bestScore){
-      bestScore = score;
-      bestI = idx(x,y);
-      if(bestScore === 0) break;
-    }
-
-    for(const [dx,dy] of dirs){
-      const nx=x+dx, ny=y+dy;
-      if(nx<0||ny<0||nx>=W_||ny>=H_) continue;
-      const ii = idx(nx,ny);
-      if(seen[ii]) continue;
-      if(!isWalkable(tType[ii])) continue;
-
-      seen[ii]=1;
-      prev[ii]=idx(x,y);
-      qx[qt]=nx; qy[qt]=ny; qt++;
-      if(qt>=qx.length) break;
-    }
-  }
-
-  if(bestI === startI) return null;
-
-  // rebuild path from bestI back to start
-  const path = [];
-  let cur = bestI;
-  while(cur !== startI && cur !== -1){
-    const x = cur % W_;
-    const y = (cur / W_) | 0;
-    path.push({x,y});
-    cur = prev[cur];
-  }
-  path.reverse();
-  return path.length ? path : null;
+function bfsPathClosestApproach(sx,sy,tx,ty,limit=220000){
+  return bfsPath(sx,sy,(x,y)=>x===tx&&y===ty,limit,`approach:${tx},${ty}`,false,{x:tx,y:ty});
 }
 
 
@@ -3718,8 +3693,8 @@ function bfsPathClosestApproach(sx, sy, tx, ty, limit){
     const dx = target.x - fromX, dy = target.y - fromY;
     const mag = Math.hypot(dx,dy) || 1;
     const nx = dx / mag, ny = dy / mag;
-    target.x += nx * tiles;
-    target.y += ny * tiles;
+    const tx=target.x+nx*tiles,ty=target.y+ny*tiles;
+    if(canTraverse(Math.round(tx),Math.round(ty),true)){ target.x=tx; target.y=ty; enemySpatial.update(target); }
   }
 
   for(const t of towers){
@@ -3776,7 +3751,8 @@ function bfsPathClosestApproach(sx, sy, tx, ty, limit){
     const r2 = t.range*t.range;
     let best=null, bestD=1e18;
 
-    for(const e of enemies){
+    for(const e of enemySpatial.query(t.x,t.y,t.range)){
+      if(e.hp<=0) continue;
       const d2 = dist2(t.x,t.y, e.x,e.y);
       if(d2 <= r2 && d2 < bestD){ bestD=d2; best=e; }
     }
@@ -3795,8 +3771,8 @@ function bfsPathClosestApproach(sx, sy, tx, ty, limit){
       fxBeam(t.x,t.y,best.x,best.y,"rgba(255,170,90,.92)"); fxBurst(best.x,best.y,"rgba(255,170,90,.9)",1.4);
       best.lastHit = { kind:"tower", id:t.id };
       const splash2 = t.splash*t.splash;
-      for(const e of enemies){
-        if(e===best) continue;
+      for(const e of enemySpatial.query(best.x,best.y,t.splash)){
+        if(e===best || e.hp<=0) continue;
         if(dist2(best.x,best.y,e.x,e.y) <= splash2){
           applyEnemyDamage(e, Math.round(t.dmg*0.65));
           e.lastHit = { kind:"tower", id:t.id };
@@ -4219,8 +4195,7 @@ async function saveGameAsync(){
     const payloadB64 = await gzipStrToB64(json);
     const packed = SAVE_MAGIC + payloadB64;
 
-    // IMPORTANT: remove first to avoid "old+new" temporary quota spike
-    localStorage.removeItem(SAVE_KEY);
+    // A failed atomic replacement must retain the player's previous save.
     localStorage.setItem(SAVE_KEY, packed);
 
     const approxBytes = new Blob([packed]).size;
@@ -4322,6 +4297,7 @@ async function loadGameAsync(){
 
     setSelected(null,null);
     setBuildMode(BUILD_NONE);
+    resetLivingCaches();
     tVis.fill(0);
     visMark = 1;
     refreshVisibility(0);
@@ -4834,18 +4810,20 @@ UI.dwarfList.appendChild(btn);
 	  lastHudStamp = nowMs;
 	}
 
-	if(DIRTY.forge){
+    const forgeSignature=`${forge?.level||0}:${!!isGameOver}:${forge ? gold>=forgeUpgradeCost(forge.level+1) : false}`;
+    if(UI._forgeSignature!==forgeSignature){ UI._forgeSignature=forgeSignature; DIRTY.forge=true; }
+	if(DIRTY.forge && !UI.tabForge.closest("[hidden]")){
 	  updateForgeUI();
 	  DIRTY.forge=false;
 	}
 
 	// dwarf list and selected info: update on dirty OR a small cadence
-	if(DIRTY.dwarves || nowMs - lastDwStamp > 260){
+	if(!UI.tabDwarves.closest("[hidden]") && (DIRTY.dwarves || nowMs - lastDwStamp > 260)){
 	  updateDwarfListUI();
 	  DIRTY.dwarves=false;
 	  lastDwStamp = nowMs;
 	}
-	if(DIRTY.selected || nowMs - lastSelStamp > 140){
+	if(!UI.selInfo.closest("[hidden]") && (DIRTY.selected || nowMs - lastSelStamp > 140)){
 	  updateSelectedUI();
 	  DIRTY.selected=false;
 	  lastSelStamp = nowMs;
@@ -4973,6 +4951,7 @@ UI.dwarfList.appendChild(btn);
   }
 
   function drawTile(px,py,ts, tt, x,y, ii){
+	if(window.DWARF_ART?.drawTerrain?.(ctx,tt,x,y,ts,px,py)) return;
 	// subtle tile border when zoomed in
 	const border = cam.zoom > 0.7;
 
@@ -4992,7 +4971,7 @@ UI.dwarfList.appendChild(btn);
         const sparkle = hash01(x+99,y-31);
         if(sparkle > 0.965){
           ctx.fillStyle = L2.color;
-          ctx.globalAlpha = 0.25 + 0.25*Math.sin(performance.now()*0.002 + sparkle*20);
+          ctx.globalAlpha = 0.4;
           ctx.beginPath(); ctx.arc(px+ts*(0.25+sparkle*0.5%0.5), py+ts*(0.25+sparkle*0.37%0.5), ts*0.08, 0, Math.PI*2); ctx.fill();
           ctx.globalAlpha = 1;
         }
@@ -5780,6 +5759,52 @@ function drawDwarfSprite(d, p, ts){
 // ============================================================
 // Rebuilt draw() (drop-in replacement)
 // ============================================================
+function drawCachedTerrain(minX,minY,maxX,maxY,s){
+  const artRevision=window.DWARF_ART?.revision || 0;
+  const detail=cam.zoom>0.8?3:cam.zoom>0.75?2:cam.zoom>0.7?1:0;
+  const pixels=cam.zoom<0.5?4:cam.zoom<0.7?8:TERRAIN_PX;
+  const detailKey=`${detail}:${pixels}`;
+  if(artRevision!==terrainArtRevision || detailKey!==terrainDetail){
+    terrainChunks.clear(); terrainArtRevision=artRevision; terrainDetail=detailKey;
+  }
+  const screenContext=ctx;
+  let rebuilt=0;
+  for(let cy=Math.floor(minY/TERRAIN_CHUNK);cy<=Math.floor(maxY/TERRAIN_CHUNK);cy++){
+    for(let cx=Math.floor(minX/TERRAIN_CHUNK);cx<=Math.floor(maxX/TERRAIN_CHUNK);cx++){
+      const key=`${cx},${cy}`,wx=cx*TERRAIN_CHUNK,wy=cy*TERRAIN_CHUNK;
+      const px=(wx-cam.x)*s+window.innerWidth/2,py=(wy-cam.y)*s+window.innerHeight/2;
+      if(!exploredChunks.has(key)){
+        ctx.fillStyle="#030507"; ctx.fillRect(px,py,TERRAIN_CHUNK*s+0.5,TERRAIN_CHUNK*s+0.5); continue;
+      }
+      let chunk=terrainChunks.get(key);
+      if(!chunk){
+        const surface=document.createElement("canvas"); surface.width=surface.height=TERRAIN_CHUNK*pixels;
+        chunk={surface,dirty:true,ready:false}; terrainChunks.set(key,chunk);
+      }
+      if(chunk.dirty && rebuilt<8){
+        rebuilt++;
+        ctx=chunk.surface.getContext("2d",{alpha:false});
+        try{
+          ctx.fillStyle="#030507"; ctx.fillRect(0,0,chunk.surface.width,chunk.surface.height);
+          for(let y=wy;y<Math.min(H,wy+TERRAIN_CHUNK);y++) for(let x=wx;x<Math.min(W,wx+TERRAIN_CHUNK);x++){
+            const ii=idx(x,y),tx=(x-wx)*pixels,ty=(y-wy)*pixels;
+            if(!tSeen[ii]) continue;
+            drawTile(tx,ty,pixels,tType[ii],x,y,ii);
+            if(tVis[ii]!==visMark){ ctx.fillStyle="rgba(0,0,0,0.60)"; ctx.fillRect(tx,ty,pixels,pixels); }
+          }
+          chunk.dirty=false; chunk.ready=true;
+        }finally{ ctx=screenContext; }
+      }
+      terrainChunks.delete(key); terrainChunks.set(key,chunk);
+      if(chunk.ready) ctx.drawImage(chunk.surface,px,py,TERRAIN_CHUNK*s+0.5,TERRAIN_CHUNK*s+0.5);
+      else {ctx.fillStyle="#030507";ctx.fillRect(px,py,TERRAIN_CHUNK*s+0.5,TERRAIN_CHUNK*s+0.5);}
+    }
+  }
+  // At most 28 MiB of terrain pixels, independent of world exploration or zoom.
+  const cacheLimit=Math.min(1024,Math.floor(TERRAIN_CACHE_LIMIT*(TERRAIN_PX/pixels)**2));
+  while(terrainChunks.size>cacheLimit) terrainChunks.delete(terrainChunks.keys().next().value);
+}
+
 function draw(){
   // background responds to depth identity
   const activeLayer = currentDepthLayer();
@@ -5798,29 +5823,12 @@ function draw(){
   const minY = clamp(Math.floor(cam.y - halfTilesY) - 2, 0, H-1);
   const maxY = clamp(Math.ceil (cam.y + halfTilesY) + 2, 0, H-1);
 
-  // tiles + fog
-  for(let y=minY;y<=maxY;y++){
-	for(let x=minX;x<=maxX;x++){
-	  const ii = idx(x,y);
-	  const tt = tType[ii];
-	  const p = worldToScreen(x,y);
-      const seen = tSeen[ii]===1;
-      const vis = tVis[ii]===visMark;
-      if(!seen){
-        ctx.fillStyle = "#030507";
-        ctx.fillRect(p.x,p.y,p.s,p.s);
-        continue;
-      }
-	  drawTile(p.x,p.y,p.s, tt, x,y, ii);
-      if(!vis){
-        ctx.fillStyle = "rgba(0,0,0,0.60)";
-        ctx.fillRect(p.x,p.y,p.s,p.s);
-      }
-	}
-  }
+  const inView=o=>o.x>=minX-3&&o.x<=maxX+3&&o.y>=minY-3&&o.y<=maxY+3;
+  drawCachedTerrain(minX,minY,maxX,maxY,s);
+  window.DwarfWorldLiving?.drawFloor?.(ctx);
 
   // fortress (NOW actually drawn like a fortress)
-  if(fortress){
+  if(fortress && inView(fortress)){
 	const p = worldToScreen(fortress.x, fortress.y), ts=p.s;
 	ctx.save();
 	ctx.shadowColor="rgba(127,215,255,.22)";
@@ -5830,7 +5838,7 @@ function draw(){
   }
 
   // forge (kept, slight polish)
-  if(forge){
+  if(forge && inView(forge) && !window.DWARF_ART?.drawBuilding?.(ctx,"forge",forge,worldToScreen(forge.x,forge.y),s)){
 	const p = worldToScreen(forge.x,forge.y), ts=p.s;
 	ctx.save();
 	ctx.shadowColor="rgba(255,160,110,.28)";
@@ -5865,7 +5873,12 @@ function draw(){
 
   // depots (unchanged)
   for(const d of depots){
+    if(!inView(d)) continue;
 	const p=worldToScreen(d.x,d.y), ts=p.s;
+    if(window.DWARF_ART?.drawBuilding?.(ctx,"depot",d,p,ts)){
+      if(tVis[idx(d.x,d.y)]===visMark) drawHealthBarWorld(d.x,d.y,1.1,d.hp,d.maxHp,"rgba(160,255,205,.92)");
+      continue;
+    }
 	ctx.save();
     const vis = tVis[idx(d.x,d.y)]===visMark;
     if(!vis) ctx.globalAlpha = 0.45;
@@ -5882,6 +5895,7 @@ function draw(){
 
   // towers (NOW look like towers)
   for(const t of towers){
+    if(!inView(t)) continue;
 	const p=worldToScreen(t.x,t.y), ts=p.s;
 	ctx.save();
     const vis = tVis[idx(t.x,t.y)]===visMark;
@@ -5895,6 +5909,7 @@ function draw(){
 
   // spawners
   for(const s2 of spawners){
+    if(!inView(s2)) continue;
     if(tVis[idx(s2.x,s2.y)]!==visMark) continue;
 	const p=worldToScreen(s2.x,s2.y), ts=p.s;
 	ctx.save();
@@ -5911,6 +5926,7 @@ function draw(){
 
   // ground loot markers
   for(const L of groundLoot){
+    if(!inView(L)) continue;
     if(tVis[idx(L.x,L.y)]!==visMark) continue;
 	const p=worldToScreen(L.x,L.y), ts=p.s;
 	ctx.save();
@@ -5937,7 +5953,10 @@ function draw(){
 
   // dwarves (NOW little people)
   for(const d of dwarves){
-	const p=worldToScreen(d.x,d.y), ts=p.s;
+    if(d.hp<=0) continue;
+    if(!inView(d)) continue;
+    const rendered=livingRenderPosition(d);
+	const p=worldToScreen(rendered.x,rendered.y), ts=p.s;
 
 	ctx.save();
 	drawDwarfSprite(d, p, ts);
@@ -5950,22 +5969,24 @@ function draw(){
 	}
 	ctx.restore();
 
-	drawHealthBarWorld(d.x,d.y,1.2,d.hp,d.maxHp,"rgba(120,255,170,0.85)");
+	drawHealthBarWorld(rendered.x,rendered.y,1.2,d.hp,d.maxHp,"rgba(120,255,170,0.85)");
   }
 
   // enemies (SPRITES)
 for(const e of enemies){
+    if(!inView(e)) continue;
   const ex = Math.round(e.x), ey = Math.round(e.y);
   if(!inBounds(ex,ey) || tVis[idx(ex,ey)]!==visMark) continue;
-  const p = worldToScreen(e.x, e.y), ts = p.s;
+  const rendered=livingRenderPosition(e);
+  const p = worldToScreen(rendered.x, rendered.y), ts = p.s;
 
   drawEnemySprite(e, p, ts);
-  drawHealthBarWorld(e.x, e.y, 1.15, e.hp, e.maxHp, "rgba(255,180,180,0.85)");
+  drawHealthBarWorld(rendered.x, rendered.y, 1.15, e.hp, e.maxHp, "rgba(255,180,180,0.85)");
 }
 
 
   // fortress HP bar (kept)
-  if(fortress){
+  if(fortress && inView(fortress)){
 	drawHealthBarWorld(fortress.x, fortress.y, 1.7, fortress.hp, fortress.maxHp, "rgba(127,215,255,0.90)");
   }
 
@@ -5998,6 +6019,7 @@ for(const e of enemies){
     ctx.restore();
   }
 
+  window.DwarfWorldLiving?.drawOverlay?.(ctx);
   drawCombatFx();
 
   // depth identity label when zoomed into a new band
@@ -6040,11 +6062,16 @@ for(const e of enemies){
   // Enemy/structure targeting
   // ============================================================
   function updateSpawnersAndCombat(dt){
+	oreScansLeft=1;
+	livingNav.tick(6000,dt);
 	updateSpawners(dt);
+	enemySpatial.rebuild(enemies);
+	dwarfSpatial.rebuild(dwarves);
 	updateTowers(dt);
-	for(const d of dwarves) updateDwarf(d, dt);
-	for(const e of enemies) updateEnemy(e, dt);
+	for(const d of dwarves){ updateDwarf(d, dt); dwarfSpatial.update(d); }
+	for(const e of enemies){ updateEnemy(e, dt); enemySpatial.update(e); }
 	removeDead();
+	updateFx(dt);
   }
 
   // ============================================================
@@ -6055,6 +6082,7 @@ for(const e of enemies){
 	setBuildMode(BUILD_NONE);
 	markUI("all");
 	initInventoryUI();
+    initForgeUI();
   }
 
   // ============================================================
@@ -6071,6 +6099,9 @@ for(const e of enemies){
   // Game Loop
   // ============================================================
   let last = performance.now();
+  const simulationClock = new DwarfWorldPerformance.FixedClock(1/30,3);
+  let simulationWasActive=true;
+  window.addEventListener("visibilitychange",()=>{ last=performance.now(); simulationClock.accumulator=0; keys={}; });
 // ============================================================
 // Guard Post maintenance (auto-assign guards to guard towers)
 // ============================================================
@@ -6155,9 +6186,9 @@ function tickGuardMaintenance(dt){
 }
 
   function tick(now){
-	const dt = Math.min(0.033, (now-last)/1000);
+	const elapsed = Math.max(0,(now-last)/1000);
+	const dt = Math.min(0.05,elapsed);
 	last = now;
-tickGuardMaintenance(dt);
 	// camera
 	if(!paused){
 	  const camSpeed = 28/(BASE_TILE_PX*cam.zoom)*60*dt;
@@ -6169,12 +6200,16 @@ tickGuardMaintenance(dt);
 	  cam.y = clamp(cam.y, 0, H-1);
 	}
 
-	if(!paused && !isGameOver){
+    const simulationActive=!paused && !isGameOver && !document.hidden;
+    if(simulationActive!==simulationWasActive){snapshotLivingPositions();simulationWasActive=simulationActive;}
+    simulationClock.advance(elapsed,step=>{
+      snapshotLivingPositions();
+      tickGuardMaintenance(step);
       const n = nowSec();
       if(focusOrder.active && n >= focusOrder.until) focusOrder.active = false;
-	  updateSpawnersAndCombat(dt);
-      refreshVisibility(dt);
-	}
+	  updateSpawnersAndCombat(step);
+      refreshVisibility(step);
+	},simulationActive);
 
 	// UI + toast cadence
 	flushUI(now);
@@ -6182,8 +6217,6 @@ tickGuardMaintenance(dt);
 
 	// render
 	draw();
-	initForgeUI();
-updateForgeUI();
 
 	requestAnimationFrame(tick);
   }
