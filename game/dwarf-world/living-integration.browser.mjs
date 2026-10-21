@@ -9,6 +9,33 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE_PATH||'playwright');
 const root=path.resolve(new URL('../../',import.meta.url).pathname.replace(/^\/([A-Za-z]:)/,'$1'));
 const bridge=`
 window.__livingQA={
+  workContinuity:()=>{
+    towers.length=0;dwarves.length=0;enemies.length=0;spawners.length=0;dwx.buildings=[];
+    pendingPerkDwarfId=null;pendingPerkQueue.length=0;UI.perkModal.style.display='none';
+    lm=lmEngine.restore(DwarfLivingSimulation.fresh(fortress));
+    const x=fortress.x+24,y=fortress.y+24;
+    for(let yy=y-2;yy<=y+8;yy++)for(let xx=x-2;xx<=x+14;xx++){
+      const edge=xx===x-2||xx===x+14||yy===y-2||yy===y+8;
+      tType[idx(xx,yy)]=edge?TILE_ROCK:TILE_EMPTY;tHp[idx(xx,yy)]=edge?20:0;tSeen[idx(xx,yy)]=1;
+    }
+    const miner=makeDwarf(),farmer=makeDwarf();dwarves.push(miner,farmer);
+    for(const d of dwarves){d.x=x;d.y=y;d.level=2;d.xp=0;d.nextXp=1;d.weapon=mkItemWeapon('common');d.pickaxe=mkItemPickaxe('common');applyDwarfStats(d);d.hp=d.maxHp;}
+    lmEngine.setProfession(miner.id,'miner');lmEngine.setProfession(farmer.id,'farmer');
+    addTower('guard',x+4,y+5);miner.guardPostId=towers.at(-1).id;
+    enemySpatial.rebuild(enemies);dwarfSpatial.rebuild(dwarves);
+    const garden=lmEngine.designate('garden',x+6,y+2,3,3).room;garden.active=true;garden.progress=1;lmEngine.reindex();
+    tType[idx(x+2,y)]=TILE_GOLD;tHp[idx(x+2,y)]=3;
+    window.dispatchEvent(new CustomEvent('dwarfworld:terrain',{detail:{}}));
+    paused=false;const weapon=miner.weapon;grantXp(miner,1);grantXp(farmer,1);
+    const running=!paused,first=pendingPerkDwarfId,queued=pendingPerkQueue.length,start=lm.time;
+    const clock=new DwarfWorldPerformance.FixedClock();
+    for(let n=0;n<600;n++)clock.advance(1/30,dt=>{livingNav.tick(6000,dt);oreScansLeft=1;lmEngine.begin(dt);for(const d of dwarves)updateDwarf(d,dt)},!paused);
+    const progress={running,advanced:lm.time-start,mined:tType[idx(x+2,y)]===TILE_EMPTY,produced:garden.produced,weaponRetained:miner.weapon===weapon,queued,firstMatches:first===miner.id};
+    UI.perkChoices.firstElementChild.click();progress.nextMatches=pendingPerkDwarfId===farmer.id;progress.stillRunning=!paused;
+    document.getElementById('perkPause').click();progress.manuallyPaused=paused;
+    UI.perkChoices.firstElementChild.click();progress.pausePreserved=paused;progress.choicesApplied=miner.perks.length>0&&farmer.perks.length>0;
+    progress.queueEmpty=pendingPerkQueue.length===0&&pendingPerkDwarfId===null;return progress;
+  },
   pause:()=>paused=true,
   snapshot:()=>({gold,dwarves:dwarves.map(d=>({id:d.id,name:d.name,level:d.level,weapon:d.weapon,pickaxe:d.pickaxe,armor:d.armor,perks:d.perks})),buildings:JSON.parse(JSON.stringify(dwx.buildings)),rooms:JSON.parse(JSON.stringify(lm.rooms))}),
   legacy:async compressed=>{await saveGameAsync();const raw=localStorage.getItem(SAVE_KEY);const s=JSON.parse(await gunzipB64ToStr(raw.slice(SAVE_MAGIC.length)));delete s.livingMountain;for(const d of s.dwarves)delete d.living;if(compressed){localStorage.setItem(SAVE_KEY,SAVE_MAGIC+await gzipStrToB64(JSON.stringify(s)));return loadGameAsync()}const get=Storage.prototype.getItem;Storage.prototype.getItem=function(k){return k===SAVE_KEY?JSON.stringify(s):get.call(this,k)};try{return await loadGameAsync()}finally{Storage.prototype.getItem=get}},
@@ -74,6 +101,11 @@ try{
   assert.deepEqual(await game.evaluate(()=>__livingQA.miningProgression()),{level:3,perkPending:true,perkVisible:true,excavated:true});
   assert.deepEqual(await game.evaluate(()=>__livingQA.blockingSight()),{blocked:false,clear:true});
   const camp=await game.evaluate(()=>__livingQA.society());assert.ok(camp.count<=19);assert.ok(camp.all<=240);assert.equal(camp.origins,true);
+  const continuity=await game.evaluate(()=>__livingQA.workContinuity());
+  assert.equal(continuity.running,true);assert.ok(continuity.advanced>19);assert.equal(continuity.mined,true);assert.ok(continuity.produced>0);
+  for(const key of ['weaponRetained','firstMatches','nextMatches','stillRunning','manuallyPaused','pausePreserved','choicesApplied','queueEmpty'])assert.equal(continuity[key],true,key);
+  assert.equal(continuity.queued,1);
+  console.log(JSON.stringify({workContinuity:continuity},null,2));
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({passed:['compressed legacy migration','plain legacy migration','relics,perks,progression,buildings preserved','cargo roundtrip','quota preserves previous save','future save rejected before mutation','malformed collections rejected before mutation',...malformedCases.map(k=>k+' rejected before mutation'),'guards respect professions while miners retain designated jobs','managed and legacy passive effects apply exactly once','teleport relic leaves physical cargo at its origin','designated mining levels and offers earned perks','wall blocks sight','capped enemies retain camp origins'],camp},null,2));
 }finally{await browser.close()}
