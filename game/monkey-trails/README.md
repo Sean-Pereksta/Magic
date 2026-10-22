@@ -22,6 +22,38 @@ Ultra sightings preserve species, difficulty and identity. Their random markers 
 
 ## Art and assets
 
+The Walk screen follows your monkey across a north-up terrain map. Accepted
+GPS displacement moves east/right, west/left, north/up and south/down through
+the selected land; the camera follows your saved position. Nearby rivers,
+paths, bridges, trees, rocks and landmarks are deterministic world features,
+so returning to a position shows the same terrain. Only nearby terrain is drawn.
+A short exploration trail and the facing marker show where you have walked.
+Zoom changes the view without changing distance or position.
+
+The small compass stays on the map. Tap it to inspect the existing encounter
+radar and Ultra direction. **Regions** opens a popup containing all ten original
+land illustrations and previews, from Emerald Jungle to Ancient Monkey Kingdom.
+There is no region gallery on the front screen. Unlocked lands can be revisited
+between encounters. Accepted walking adds
+to a persistent total (500 m, 1.5 km, 3 km, 5 km, 8 km, 12 km, 18 km, 25 km and
+35 km unlocks), independent of expedition restarts. Practice uses its separate
+save. Existing saves retain their furthest recorded expedition as a conservative
+starting total; older versions did not record lifetime walking distance.
+
+`terrain.mjs` renders local vector terrain around the player's coordinates.
+`lands-art.mjs` preserves the ten illustrated landscapes in the region picker.
+Reduced motion, battery saving, hidden-page state and the system motion setting
+stop ambient motion. `lands.mjs` stores only relative fantasy-world positions
+and a bounded virtual trail; it contains no absolute GPS coordinates. Fantasy
+terrain never blocks accepted physical movement. The compass retains the existing
+encounter direction and Ultra approach rules. Region-specific habitats and
+encounter tables are a separate gameplay change.
+
+Run `node --test game/monkey-trails/lands-tests.mjs` for progression checks or
+`npm run test:monkey-trails:lands-browser` for phone layouts, previews, travel,
+reloads, four-direction movement, popup selection, terrain and motion preferences. The
+browser check accepts the same Playwright/browser overrides as existing checks.
+
 All 90 companions use original lightweight SVG rigs, with bespoke silhouettes, faces and details. The 30 new species each have individually authored body proportions; the four new Ultras have exclusive animated signature effects. The package contains 654 animation scenes (idle, walk, attack, cast, hit, knockout and victory, plus Ultra arrival/signature scenes), 270 evolution appearances, environments and interface art. Only visible creatures are rendered; reduced-motion and battery modes stop articulated motion.
 
 The actual SVG files and complete manifest are saved in `game/monkey-trails/assets/` in GitHub. The reproducible Cloudflare upload ZIP is also committed at `game/monkey-trails/art-pack/monkey-trails-wild-companions-v3.zip` (about 2.8 MiB). No external art service or asset build is needed to play. Inline rigs always provide the first render. When `window.MONKEY_TRAILS_ASSET_BASE` is configured before the game module loads, mounted portraits load the corresponding hosted SVG, fall back to the committed local file if the host fails, and keep the inline rig if neither file loads. Non-native elemental evolution branches and active evolved battle poses retain their correctly typed modular inline art; reduced-motion and battery modes retain inline art so those preferences remain effective.
@@ -30,7 +62,7 @@ The actual SVG files and complete manifest are saved in `game/monkey-trails/asse
 
 The existing foreground tracker retains its 10 mph cap, accuracy and drift gates, two-fix warmup, explicit pause/resume and rejection of movement gaps. Location is requested only after Start walking; backgrounding or locking the screen pauses tracking without backfilling distance. Screen wake lock is optional and never grants background tracking. References: [MDN Geolocation](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API), [MDN Screen Wake Lock](https://developer.mozilla.org/en-US/docs/Web/API/Screen_Wake_Lock_API).
 
-Version-one checkpoints migrate their existing monkey into slot one, preserving health, energy, evolution, training, equipment and history. The encrypted save namespace and Firebase configuration stay the same. Pinned absolute Ultra coordinates live in a separate encrypted device slot, excluded from cloud checkpoints and portable exports. A different device recalibrates the same sighting with no free approach progress. No route history is retained.
+Version-one checkpoints migrate their existing monkey into slot one, preserving health, energy, evolution, training, equipment and history. The encrypted save namespace and Firebase configuration stay the same. Pinned absolute Ultra coordinates live in a separate encrypted device slot, excluded from cloud checkpoints and portable exports. A different device recalibrates the same sighting with no free approach progress. Only relative virtual positions and a short exploration trail are retained.
 
 ## Existing Firebase integration
 
@@ -78,7 +110,7 @@ readable save content, not deletion/replacement by another authenticated client.
 Weak passwords remain vulnerable to offline guessing. Final creature names and
 scores are readable by authenticated visitors, and scores/GPS are client-reported,
 unverified casual results, not authoritative competitive or fitness records.
-No latitude, longitude or route history is included in any cloud checkpoint, portable export, or score. The optional single Ultra anchor is encrypted separately on its originating device.
+No latitude or longitude is included in cloud checkpoints, portable exports or scores. Encrypted checkpoints and exports include relative land positions and a bounded exploration trail. The optional single Ultra anchor is encrypted separately on its originating device.
 
 ## Verification and release status
 
