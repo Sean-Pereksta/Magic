@@ -59,6 +59,52 @@ async function checkClean(page,errors){
   const browser=await chromium.launch({headless:true,...(process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE?{executablePath:process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE}:{})}),report=[];
   const run=async(name,options,test)=>{const {page,context,errors}=await setup(browser,options);try{await test(page);await checkClean(page,errors);report.push({scenario:name,errors:0});}finally{await context.close();}};
   try{
+    await run('menus retain walking, discoveries fade, and encounters still pause',{},async page=>{
+      await page.clock.install();await openGPS(page);await page.locator('#tracking-button').click();
+      let step=0;
+      const walk=async(count=1)=>{let found=false;for(let i=0;i<count;i++){
+        await page.clock.fastForward(8000);
+        await page.evaluate(step=>__geo.watches.at(-1).success({coords:{latitude:40+step*10/111195,longitude:-74,accuracy:8,speed:1.25},timestamp:Date.now()}),step++);
+        found ||= await page.locator('#discovery-popup').evaluate(el=>el.matches(':popover-open'));
+      }return found;};
+      await walk(2); // Tracker warmup; subsequent samples earn ten metres each.
+      await page.locator('[data-action="tab"][data-id="sanctuary"]').click();
+      await page.locator('[data-action="collection-filter"][data-id="all"]').click();
+      const search=page.locator('#collection-search');
+      await search.fill('cap');await search.focus();
+      await walk(8);
+      assert.equal((await counts(page)).cleared,0,'A menu must not stop the GPS watch');
+      assert.equal(await search.inputValue(),'cap');assert.equal(await search.evaluate(el=>el===document.activeElement),true);
+      const popup=page.locator('#discovery-popup');await popup.waitFor({state:'visible'});
+      assert.match(await popup.innerText(),/YOU FOUND/);assert.match(await popup.innerText(),/×[12]/);
+      assert.equal(await popup.evaluate(el=>getComputedStyle(el).pointerEvents),'none');
+      await page.clock.fastForward(3601);await popup.waitFor({state:'hidden'});
+      for(const tab of ['team','pack','walk']){
+        await page.locator(`[data-action="tab"][data-id="${tab}"]`).click();await walk();
+        assert.equal((await counts(page)).cleared,0,`${tab} must keep the watch`);
+      }
+      assert.ok(parseInt((await page.locator('.distance-block strong').innerText()).replace(/[^0-9]/g,''))>300);
+      // Each modal keeps the same watch and permits a discovery above its top layer.
+      for(const action of ['settings','records','lands','compass','inspect']){
+        if(action==='records')await page.locator('[data-action="settings"]').click();
+        await page.locator(`[data-action="${action}"]`).first().click();const found=await walk(8);
+        assert.equal(await page.locator('#inspect-dialog').evaluate(el=>el.open),true);
+        assert.equal((await counts(page)).cleared,0,`${action} must keep the watch`);
+        assert.equal(found,true,'A discovery is visible above the open menu');
+        await page.locator('.dialog-close').click();
+      }
+      await page.locator('[data-action="tab"][data-id="team"]').click();
+      await page.locator('[data-action="ability-open"]').first().click();await walk();
+      assert.equal((await counts(page)).cleared,0,'Ability editing must keep walking');
+      await page.locator('.dialog-close').click();
+      await page.locator('[data-action="tab"][data-id="walk"]').click();
+      await page.locator('#tracking-button').click();assert.equal((await counts(page)).cleared,1,'Manual pause still works');
+      await page.locator('#tracking-button').click();await walk(2);
+      await page.locator('[data-action="settings"]').click();await walk(20);
+      assert.ok((await counts(page)).cleared>=2,'The encounter milestone pauses tracking from a menu');
+      assert.equal(await page.locator('#inspect-dialog').evaluate(el=>el.open),false);
+      assert.equal(await page.locator('[data-action="ready"]').count(),1,'Encounter returns to the Walk screen');
+    });
     await run('explicit setup verifies location without starting or adding distance',{},async page=>{
       assert.equal((await counts(page)).requests,0,'Opening the page must not request location');assert.equal((await counts(page)).watches,0);
       await page.locator('#welcome-location [data-action="enable-location"]').click();

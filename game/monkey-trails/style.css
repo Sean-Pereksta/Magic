@@ -243,3 +243,13 @@ dialog.lands-dialog{width:min(94vw,730px);max-height:88dvh;padding:26px;backgrou
 @media(max-width:800px){.collection-card>img.monkey-art{height:115px}.fighter>img.monkey-art{height:185px}.starter>img.monkey-art{height:75px}}
 @media(max-width:400px){.collection-card>img.monkey-art{height:100px}.team-slot>img.monkey-art{height:47px}.fighter>img.monkey-art{height:150px}.profile-art>img.monkey-art{height:150px}.restart-party>label>img.monkey-art{height:80px}}
 
+
+/* Manual popover keeps discoveries above menus without a backdrop or focus trap. */
+#discovery-popup{position:fixed;inset:auto auto calc(86px + env(safe-area-inset-bottom)) 50%;margin:0;transform:translateX(-50%);width:max-content;max-width:min(88vw,360px);padding:10px 14px;display:flex;align-items:center;gap:10px;background:#f4f3de;color:#365d45;border:1px solid #b7c996;border-radius:15px;box-shadow:0 6px 24px #102c3538;pointer-events:none;font:500 14px system-ui,sans-serif}
+#discovery-popup[hidden]{display:none}#discovery-popup::backdrop{background:transparent;pointer-events:none}
+#discovery-popup:popover-open{animation:discovery-notice 3.6s ease both}
+#discovery-popup small{display:block;font-size:9px;letter-spacing:.12em;color:#71835c;margin-bottom:3px}#discovery-popup strong{display:block;font-size:14px;overflow-wrap:anywhere}.discovery-popup-icon{flex:0 0 32px}.discovery-popup-icon svg{display:block;width:32px;height:32px}
+@keyframes discovery-notice{0%{opacity:0;translate:0 8px}8%,80%{opacity:1;translate:0 0}100%{opacity:0;translate:0 -4px}}
+@keyframes discovery-notice-still{0%{opacity:0}8%,80%{opacity:1}100%{opacity:0}}
+.reduce-motion #discovery-popup:popover-open,.battery-saver #discovery-popup:popover-open{animation-name:discovery-notice-still}
+@media(prefers-reduced-motion:reduce){#discovery-popup:popover-open{animation-name:discovery-notice-still}}

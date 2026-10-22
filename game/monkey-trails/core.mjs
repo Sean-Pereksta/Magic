@@ -115,10 +115,10 @@ function cache(s){
   else if(roll<w.essence+w.fruit+w.item){const id=choose(s,['berry','tonic','salve','bondCharm','trailRibbon','treasureScent','scoutFeather','campfireSeed']);r.items[id]++;say(s,`Discovery: ${ITEMS[id].name}.`);r.lastDiscovery={category:'item',id,amount:1};}
   else{const id=choose(s,Object.keys(GEAR));s.meta.fragments[id]=(s.meta.fragments[id]||0)+1;say(s,`Discovery: a ${GEAR[id].name} fragment (${s.meta.fragments[id]}/${CONFIG.fragmentCost}).`);r.lastDiscovery={category:'fragment',id,amount:1};}
 }
-function acceptedDiscoveries(s,meters){
+function acceptedDiscoveries(s,meters,onDiscovery){
   const r=s.run;let remaining=meters;while(remaining>1e-8){const interval=discoveryInterval(s),untilDiscovery=(1-r.discoveryProgress)*interval,untilBonus=r.bonuses.ribbon>0?r.bonuses.ribbon:Infinity;
     const chunk=Math.min(remaining,untilDiscovery,untilBonus);r.discoveryProgress+=chunk/interval;remaining-=chunk;if(r.bonuses.ribbon>0)r.bonuses.ribbon=Math.max(0,r.bonuses.ribbon-chunk);
-    if(r.discoveryProgress>=1-1e-9){r.discoveryProgress=Math.max(0,r.discoveryProgress-1);cache(s);}if(chunk<1e-10&&r.discoveryProgress<1-1e-9)break;
+    if(r.discoveryProgress>=1-1e-9){r.discoveryProgress=Math.max(0,r.discoveryProgress-1);cache(s);onDiscovery?.({...r.lastDiscovery});}if(chunk<1e-10&&r.discoveryProgress<1-1e-9)break;
   }
 }
 export function activateBonus(s,id){id=itemId(id);const r=s.run;if(!['trail','camp'].includes(r.phase)||!(r.items[id]>0))throw Error('That walking supply is unavailable.');
@@ -139,11 +139,11 @@ function pump(s){
   const event=r.events.shift();if(!event){maybeUltra(s);return;}if(event.type==='encounter')encounter(s);else if(event.type==='ultra')encounter(s,true);else if(event.type==='camp'){
     r.phase='camp';r.camp={id:event.id,heals:2+(r.bonuses.campSeed?1:0),seedBoost:!!r.bonuses.campSeed};r.bonuses.campSeed=0;say(s,'Trail camp: limited recovery, crafting, and conscious teammate changes. Revive fallen teammates before replacing them.');}
 }
-export function advance(s,meters,east=0,north=0){
+export function advance(s,meters,east=0,north=0,onDiscovery){
   const r=s.run;if(r.phase!=='trail'||![meters,east,north].every(Number.isFinite)||meters<=0)return 0;
   const next=Math.min(r.nextEncounter,r.nextCamp),used=Math.max(0,Math.min(meters,next-r.distance)),ratio=used/meters;
   advanceLand(s,used,east*ratio,north*ratio);
-  r.vector.east+=east*ratio;r.vector.north+=north*ratio;r.direction=direction(r.vector.east,r.vector.north,r.direction);r.weights[r.direction]+=used;acceptedDiscoveries(s,used);r.distance+=used;
+  r.vector.east+=east*ratio;r.vector.north+=north*ratio;r.direction=direction(r.vector.east,r.vector.north,r.direction);r.weights[r.direction]+=used;acceptedDiscoveries(s,used,onDiscovery);r.distance+=used;
   if(r.ultra?.safeAlternative&&r.ultra.status==='challenge'){r.ultra.challengeRemaining=Math.max(0,r.ultra.challengeRemaining-used);if(r.ultra.challengeRemaining<=1e-7){r.ultra.status='ready';say(s,'Your safe-route Ultra challenge is complete. Stop somewhere safe and begin when ready.');}}
   if(r.distance+1e-6>=r.nextEncounter){const milestone=r.nextEncounter;enqueue(s,{type:'encounter',id:`encounter-${milestone}`});r.nextEncounter+=CONFIG.encounterFeet*FEET;}
   if(r.distance+1e-6>=r.nextCamp){const milestone=r.nextCamp;enqueue(s,{type:'camp',id:`camp-${milestone}`});r.nextCamp+=CONFIG.campFeet*FEET;}

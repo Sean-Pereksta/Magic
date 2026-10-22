@@ -48,3 +48,17 @@ test('latest checkpoint wins local coalescing',async()=>{const c=cloud(),v=new V
 test('storage failure is reported while cloud saving can still succeed',async()=>{const c=cloud(),messages=[],v=new Vault(m=>messages.push(m),{getItem:()=>null,setItem:()=>{throw Error('quota');}},async()=>c);await v.open('Mossfoot','a-unique-password',{create:true});await flush(v);assert.equal(v.localOK,false);assert.ok(messages.some(m=>m.kind==='error'));assert.equal(v.dirty,false);assert.ok(messages.at(-1).text.includes('Cloud saved'));});
 
 test('portable encrypted backups restore after password verification',async()=>{const m=memory(),v=new Vault(()=>{},m,async()=>{throw Error('offline');});const s=await v.open('Backup Monkey','backup-password',{create:true,mode:'practice'});s.run.fruit=64;await v.checkpoint(s);const text=await v.export(),other=memory();await assert.rejects(importBackup('Backup Monkey','wrong',text,other));assert.equal(other.map.size,0);assert.equal(await importBackup('Backup Monkey','backup-password',text,other),'practice');const w=new Vault(()=>{},other);const r=await w.open('Backup Monkey','backup-password',{mode:'practice'});assert.equal(r.run.fruit,64);});
+
+test('accepted walking reports each exact discovery once without changing rewards',()=>{
+  const categories=new Set();
+  for(let seed=1;seed<=100;seed++){
+    const s=C.newSave('Finds','capuchin','gps',seed),control=structuredClone(s),found=[];
+    const used=C.advance(s,C.RESOURCE_STEP*3,0,C.RESOURCE_STEP*3,d=>found.push(d));
+    assert.equal(used,C.advance(control,C.RESOURCE_STEP*3,0,C.RESOURCE_STEP*3));
+    assert.deepEqual(s,control,'Notifications must not alter rolls, rewards or saved progress');
+    assert.equal(found.length,3);assert.deepEqual(found.at(-1),s.run.lastDiscovery);
+    for(const d of found){categories.add(d.category);assert.ok(d.amount>0);}
+    C.advance(s,0,0,0,d=>found.push(d));assert.equal(found.length,3);
+  }
+  assert.deepEqual([...categories].sort(),['essence','fragment','fruit','item']);
+});
