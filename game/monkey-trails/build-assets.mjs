@@ -34,6 +34,11 @@ for(const t of Object.keys(ELEMENTS)){
 for(const [id,src] of Object.entries(manifest.pickups))add(src,pickupIcon(id));
 add('interface/loading.svg',await readFile(resolve(gameDir,'assets/interface/loading.svg'),'utf8'));
 add('lobby/tile.svg',await readFile(resolve(gameDir,'tile.svg'),'utf8'));
+// The library cover ships locally so the lobby never waits for a bucket upload.
+// Include the same optimized artwork in the optional hosted asset package.
+const cover=await readFile(resolve(gameDir,'assets/cover-v2.webp'));
+add('lobby/cover-v2.webp',cover);
+manifest.lobby={tile:'lobby/tile.svg',cover:'lobby/cover-v2.webp',coverSize:[1536,1024],coverContentType:'image/webp',coverBytes:cover.length};
 const readme=`Monkey Trails: Wild Companions — version 2 vector asset package
 
 Upload the contents of this ZIP preserving the object prefix:
@@ -46,6 +51,7 @@ bucket base followed by ${prefix}. One base controls every packaged asset URL.
 The source game's finished inline SVG rigs remain the dependable local default.
 
 SVG response Content-Type: image/svg+xml
+Cover response Content-Type: image/webp
 JSON response Content-Type: application/json
 Versioned asset Cache-Control: public, max-age=31536000, immutable
 Use a new prefix for subsequent art revisions so cached files stay consistent.
@@ -58,6 +64,7 @@ All 60 species have seven animation scenes. The eight Ultras add arrival and
 unique signature scenes. Three evolution variants per species add silhouette
 attachments while preserving species identity. Reduced-motion media queries
 and runtime preference classes stop the vector motion.
+The library cover is an original generated illustration, packaged as WebP.
 
 Regenerate from source: node game/monkey-trails/build-assets.mjs --output FILE
 Art source: game/monkey-trails/art.mjs. Catalogue: data.mjs.
