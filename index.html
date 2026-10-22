@@ -662,11 +662,13 @@
 
   <main class="viewport">
     <div class="frame-wrap">
+      <!-- Keep the lobby on this origin and permit both site aliases, so a
+           bare-domain redirect to www cannot silently block location requests. -->
       <iframe
         id="contentFrame"
-        src="https://catnmice.com/lobby/lobby.html"
+        src="/lobby/lobby.html"
         title="Cat’N Mice Game Hub Lobby"
-        allow="fullscreen *; autoplay https://catnmice.com https://www.iheart.com; microphone https://catnmice.com; geolocation https://catnmice.com https://www.iheart.com"
+        allow="fullscreen *; autoplay https://catnmice.com https://www.iheart.com; microphone https://catnmice.com; geolocation 'self' https://catnmice.com https://www.catnmice.com https://www.iheart.com"
         allowfullscreen="true"
         webkitallowfullscreen="true"
       ></iframe>
@@ -898,7 +900,7 @@
     const avatarCache = new Map();
     const CHAT_RETENTION_MS = 24*60*60*1000;
 
-    const LOBBY_URL = "https://catnmice.com/lobby/lobby.html";
+    const LOBBY_URL = new URL("/lobby/lobby.html", location.origin).href;
     const GAME_INFO = {
       cat:{title:"Cat & Mouse",emoji:"🐭"},
       catmobile:{title:"Cat vs Mouse Mobile",emoji:"🐭📱",maxPlayers:8},
@@ -1483,3 +1485,4 @@
   </script>
 </body>
 </html>
+
