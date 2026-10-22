@@ -22,6 +22,28 @@ Ultra sightings preserve species, difficulty and identity. Their random markers 
 
 ## Art and assets
 
+The Walk screen now features ten original illustrated lands, from Emerald Jungle
+to Ancient Monkey Kingdom. Open **All lands** or tap a thumbnail to preview any
+land; unlocked lands can be revisited between encounters. Accepted walking adds
+to a persistent total (500 m, 1.5 km, 3 km, 5 km, 8 km, 12 km, 18 km, 25 km and
+35 km unlocks), independent of expedition restarts. Practice uses its separate
+save. Existing saves retain their furthest recorded expedition as a conservative
+starting total; older versions did not record lifetime walking distance.
+
+`lands-art.mjs` renders the ten lightweight vector scenes locally, with unique
+landmarks, palettes, gently animated scenery and a companion on the trail.
+Reduced motion, battery saving, hidden-page state and the system motion setting
+stop ambient motion. `lands.mjs` stores only relative fantasy-world positions
+and a bounded virtual trail; it contains no absolute GPS coordinates. These
+scenes are landscape art; the expandable encounter compass retains the existing
+encounter direction and Ultra approach rules. Region-specific habitats and
+encounter tables are a separate gameplay change.
+
+Run `node --test game/monkey-trails/lands-tests.mjs` for progression checks or
+`npm run test:monkey-trails:lands-browser` for phone layouts, previews, travel,
+reloads, compass persistence, every landscape and motion preferences. The
+browser check accepts the same Playwright/browser overrides as existing checks.
+
 All 90 companions use original lightweight SVG rigs, with bespoke silhouettes, faces and details. The 30 new species each have individually authored body proportions; the four new Ultras have exclusive animated signature effects. The package contains 654 animation scenes (idle, walk, attack, cast, hit, knockout and victory, plus Ultra arrival/signature scenes), 270 evolution appearances, environments and interface art. Only visible creatures are rendered; reduced-motion and battery modes stop articulated motion.
 
 The actual SVG files and complete manifest are saved in `game/monkey-trails/assets/` in GitHub. The reproducible Cloudflare upload ZIP is also committed at `game/monkey-trails/art-pack/monkey-trails-wild-companions-v3.zip` (about 2.8 MiB). No external art service or asset build is needed to play. Inline rigs always provide the first render. When `window.MONKEY_TRAILS_ASSET_BASE` is configured before the game module loads, mounted portraits load the corresponding hosted SVG, fall back to the committed local file if the host fails, and keep the inline rig if neither file loads. Non-native elemental evolution branches and active evolved battle poses retain their correctly typed modular inline art; reduced-motion and battery modes retain inline art so those preferences remain effective.

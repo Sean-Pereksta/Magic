@@ -1,6 +1,8 @@
 // DOM-free expedition rules. Distances use accepted tracker meters exclusively.
 import {ELEMENTS,DIRECTIONS,TYPE_CHART,SPECIES,MOVES,HYBRIDS,GEAR,ITEMS,STARTERS} from './data.mjs';
+import {normalizeLands,advanceLand} from './lands.mjs';
 export {ELEMENTS,DIRECTIONS,TYPE_CHART,SPECIES,MOVES,HYBRIDS,GEAR,ITEMS,STARTERS};
+export {LANDS,landProgress,selectLand} from './lands.mjs';
 export const VERSION=2, FEET=.3048, RESOURCE_STEP=250*FEET, ENCOUNTER_STEP=2000*FEET;
 export const CONFIG={partySize:3,discoveryFeet:250,maxDiscoveryAcceleration:.20,encounterFeet:2000,campFeet:6000,
   captureAttempts:3,capturePity:4,ultraFirstFeet:5000,ultraRepeatFeet:18000,ultraPityFeet:24000,
@@ -89,6 +91,7 @@ export function newSave(name,species='capuchin',mode='gps',seed=Date.now()>>>0){
 }
 export function restart(s,species=s.run?.monkey.species||'capuchin'){
   if(s.run&&s.run.phase!=='dead')throw Error('Your expedition is still active.');
+  normalizeLands(s);
   const oldParty=s.run?.party?.filter(id=>s.collection[id])||[Object.keys(s.collection)[0]];for(const p of sanctuary(s))resetExpeditionMonkey(p);
   s.meta.runs++;const id=uid(s,'run'),bonus=Math.min(20,s.meta.legacy||0);
   s.run={id,phase:'trail',distance:0,nextCache:RESOURCE_STEP,nextEncounter:ENCOUNTER_STEP,nextCamp:CONFIG.campFeet*FEET,
@@ -139,6 +142,7 @@ function pump(s){
 export function advance(s,meters,east=0,north=0){
   const r=s.run;if(r.phase!=='trail'||![meters,east,north].every(Number.isFinite)||meters<=0)return 0;
   const next=Math.min(r.nextEncounter,r.nextCamp),used=Math.max(0,Math.min(meters,next-r.distance)),ratio=used/meters;
+  advanceLand(s,used,east*ratio,north*ratio);
   r.vector.east+=east*ratio;r.vector.north+=north*ratio;r.direction=direction(r.vector.east,r.vector.north,r.direction);r.weights[r.direction]+=used;acceptedDiscoveries(s,used);r.distance+=used;
   if(r.ultra?.safeAlternative&&r.ultra.status==='challenge'){r.ultra.challengeRemaining=Math.max(0,r.ultra.challengeRemaining-used);if(r.ultra.challengeRemaining<=1e-7){r.ultra.status='ready';say(s,'Your safe-route Ultra challenge is complete. Stop somewhere safe and begin when ready.');}}
   if(r.distance+1e-6>=r.nextEncounter){const milestone=r.nextEncounter;enqueue(s,{type:'encounter',id:`encounter-${milestone}`});r.nextEncounter+=CONFIG.encounterFeet*FEET;}
@@ -363,5 +367,5 @@ export function validate(s){
   if(!r.essence||Object.keys(ELEMENTS).some(t=>!finite(r.essence[t]))||!r.items||Object.keys(ITEMS).some(t=>!finite(r.items[t])))throw Error('Invalid inventory.');if(!r.vector||!Object.values(r.vector).every(Number.isFinite)||!r.weights||!Object.values(r.weights).every(finite)||!r.bonuses||!Object.values(r.bonuses).every(finite))throw Error('Invalid walking checkpoint.');
   if(['battle','replacement'].includes(r.phase)){const b=r.battle;if(!b||!Array.isArray(b.enemies)||b.enemies.length<1||b.enemies.length>3||!b.enemies.every(p=>SPECIES[p.species]&&finite(p.hp)&&finite(p.energy))||!b.enemies.some(e=>e.id===b.enemy?.id)||!MOVES[b.intent]||!finite(b.round))throw Error('Invalid battle checkpoint.');b.enemy=b.enemies.find(e=>e.id===b.enemy.id);}
   if(r.phase==='befriend'&&(!r.capture?.id||!r.capture.candidates?.length||!finite(r.capture.attempts)||r.capture.attempts>CONFIG.captureAttempts))throw Error('Invalid recruitment checkpoint.');if(r.ultra&&(!SPECIES[r.ultra.species]||!r.ultra.id||!finite(r.ultra.challengeRemaining)||!finite(r.ultra.spawnDistance)))throw Error('Invalid Ultra sighting.');
-  if(!s.meta.gear||!s.meta.equipped||!Array.isArray(s.meta.history)||s.meta.history.length>25||Object.entries(s.meta.gear).some(([id,n])=>!GEAR[id]||!Number.isInteger(n)||n<1||n>12)||!s.meta.claims)throw Error('Invalid persistent inventory.');if(!Array.isArray(s.log)||s.log.length>16||JSON.stringify(s).length>650000)throw Error('Save is too large.');return s;
+  if(!s.meta.gear||!s.meta.equipped||!Array.isArray(s.meta.history)||s.meta.history.length>25||Object.entries(s.meta.gear).some(([id,n])=>!GEAR[id]||!Number.isInteger(n)||n<1||n>12)||!s.meta.claims)throw Error('Invalid persistent inventory.');normalizeLands(s);if(!Array.isArray(s.log)||s.log.length>16||JSON.stringify(s).length>650000)throw Error('Save is too large.');return s;
 }
