@@ -60,7 +60,14 @@ updateDwarf=function(d,dt){
   // Profession routes use the same existing haste fields as legacy movement.
   d.speed*=getHasteMultAt(d.x,d.y)*(d._speedBoostLeft>0?1.10:1);
   try{managed=lmEngine.updateDwarf(d,dt)}finally{d.speed=speed}
-  if(managed)dwxDwarfRewards(d,xp0,g0);else lmBaseDwarf(d,dt,true);
+  if(managed)dwxDwarfRewards(d,xp0,g0);else {
+    // A miner's weapon is equipment, not a change of profession. Keep nearby
+    // self-defense, but do not send miners to distant enemies or guard posts.
+    const mining=d.living?.profession==='miner'&&d.pickaxe&&!d.carrying&&!lmNearbyEnemies(d.x,d.y,8).some(e=>e.hp>0&&dist2(e.x,e.y,d.x,d.y)<64&&lmSight(d.x,d.y,e.x,e.y));
+    const weapon=d.weapon,post=d.guardPostId;
+    if(mining){d.weapon=null;d.guardPostId=null}
+    try{lmBaseDwarf(d,dt,true)}finally{if(mining){d.weapon=weapon;d.guardPostId=post;applyDwarfStats(d)}}
+  }
 };
 const lmBaseActivity=dwxActivity;
 dwxActivity=function(d){return d.living?.job?d.living.activity:lmBaseActivity(d)};

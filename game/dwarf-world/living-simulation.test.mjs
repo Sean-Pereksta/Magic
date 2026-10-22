@@ -59,6 +59,31 @@ test('fractional position inside a destination tile finishes its route and start
   const f=fixture(['farmer']);const r=f.room('garden',7,5);f.dwarves[0].x=8.3;f.dwarves[0].y=6.2;
   f.tick(15);assert.ok(r.inventory.mushroom>0,'empty point route still centers the dwarf');assert.equal(f.dwarves[0].x,8);assert.equal(f.dwarves[0].y,6);
 });
+
+test('a miner tries another side when the closest side of designated rock is unreachable',()=>{
+  const f=fixture(['miner']);const d=f.dwarves[0];d.x=3;d.y=7;
+  for(const tile of ['9,7','7,7','8,6','8,8'])f.wall.add(tile);
+  assert.equal(f.engine.digArea(9,7,1,1).ok,true);
+  f.tick(30);
+  assert.equal(f.wall.has('9,7'),false,'the accessible far side is tried after the isolated near side fails');
+});
+
+test('a stale route through a blocked tile releases a workshop so other work can proceed',()=>{
+  const f=fixture(['farmer']);const first=f.room('garden',7,5),second=f.room('garden',14,5),route=f.host.route;
+  f.wall.add('6,5');
+  f.host.route=(sx,sy,tx,ty)=>tx===8&&ty===6?[{x:6,y:5}]:route(sx,sy,tx,ty);
+  f.tick(30);
+  assert.equal(first.produced,0);assert.ok(second.produced>0,'a repeatedly returned blocked route cannot retain the worker forever');
+});
+
+test('sheltering workers resume during an alert once local danger clears, while lockdown still holds',()=>{
+  const f=fixture(['farmer']);const garden=f.room('garden',7,5);f.room('quarters',13,5);
+  let danger=true;f.host.threat=()=>danger;f.engine.setReadiness('alert');f.tick(1);
+  assert.equal(f.dwarves[0].living.job.kind,'shelter');
+  danger=false;f.tick(15);assert.ok(garden.produced>0,'the worker returns even before reaching the shelter');
+  f.engine.setReadiness('lockdown');f.tick(15);assert.equal(f.dwarves[0].living.job.kind,'shelter');
+  f.engine.setReadiness('normal');const before=garden.produced;f.tick(15);assert.ok(garden.produced>before);
+});
 test('interrupting production refunds ingredients once, while completed work consumes them',()=>{
   const f=fixture(['smith']);const r=f.room('smelter',7,5);r.inventory.ore=3;f.dwarves[0].x=8;f.dwarves[0].y=6;
   f.tick(1);assert.equal(r.inventory.ore,0);assert.equal(f.dwarves[0].living.job.started,true);

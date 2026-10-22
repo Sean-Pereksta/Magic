@@ -764,6 +764,7 @@ display:none !important;
   <div id="perkModal" style="display:none; position:fixed; inset:0; z-index:90; background:rgba(3,6,10,.72); align-items:center; justify-content:center;">
 	<div style="width:min(560px, calc(100vw - 24px)); border-radius:12px; border:1px solid rgba(255,255,255,.18); background:linear-gradient(180deg, rgba(18,22,30,.96), rgba(10,12,16,.96)); padding:14px; box-shadow:0 12px 28px rgba(0,0,0,.45);">
 	  <div id="perkTitle" style="font-weight:1000; margin-bottom:10px;">Choose a perk</div>
+      <div class="tiny" style="margin-bottom:10px;">Your fortress keeps working while you choose. <button id="perkPause" class="btn" type="button">Pause world</button></div>
 	  <div id="perkChoices" style="display:grid; grid-template-columns:1fr; gap:8px;"></div>
 	</div>
   </div>
@@ -1930,6 +1931,7 @@ function findPathableOreTargetAndPath(sx, sy, rangeTiles, oreFilter=null){
     general:["tough_skin","steady_hands","pathfinder"],
   };
   let pendingPerkDwarfId = null;
+  const pendingPerkQueue = [];
 
   function levelXpNeed(level){
 	return Math.round(20 + level*level*14);
@@ -2049,10 +2051,14 @@ function findPathableOreTargetAndPath(sx, sy, rangeTiles, oreFilter=null){
   }
 
   function showPerkModal(d){
+    // Several dwarves can level in one simulation step. Keep every earned
+    // choice without interrupting mining, hauling or workshop production.
+    if(pendingPerkDwarfId !== null){ pendingPerkQueue.push(d.id); return; }
     const choices = choosePerkOptions(d);
     pendingPerkDwarfId = d.id;
-    paused = true;
-    UI.btnPause.textContent = "Resume";
+    const perkPause=document.getElementById('perkPause');
+    perkPause.textContent=paused?'Resume world':'Pause world';
+    perkPause.onclick=()=>{UI.btnPause.click();perkPause.textContent=paused?'Resume world':'Pause world'};
     UI.perkTitle.textContent = `Choose a perk for ${d.name}`;
     UI.perkChoices.innerHTML = "";
     for(const perk of choices){
@@ -2063,14 +2069,17 @@ function findPathableOreTargetAndPath(sx, sy, rangeTiles, oreFilter=null){
       b.style.textAlign = "left";
       b.innerHTML = `<b>${perk.name}</b><div class="tiny" style="margin-top:4px">${perk.desc}</div>`;
       b.addEventListener("click", ()=>{
-        const dd = dwarves.find(x=>x.id===pendingPerkDwarfId);
+        const dd = dwarves.find(x=>x.id===d.id);
         if(dd && !hasPerk(dd, perk.id)) dd.perks.push(perk.id);
         if(dd) applyDwarfStats(dd);
         pendingPerkDwarfId = null;
         UI.perkModal.style.display = "none";
-        paused = false;
-        UI.btnPause.textContent = "Pause";
         markUI("dwarves","selected","hud");
+        while(pendingPerkQueue.length){
+          const nextId = pendingPerkQueue.shift();
+          const next = dwarves.find(x=>x.id===nextId);
+          if(next && next.hp>0){ showPerkModal(next); break; }
+        }
       });
       UI.perkChoices.appendChild(b);
     }
@@ -4361,7 +4370,6 @@ async function loadGameAsync(){
   updateFullscreenButton();
 
   UI.btnPause.addEventListener("click", ()=>{
-    if(UI.perkModal.style.display === "flex") return;
 	paused=!paused;
 	UI.btnPause.textContent = paused ? "Resume" : "Pause";
   });

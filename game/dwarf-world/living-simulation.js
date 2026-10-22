@@ -207,7 +207,7 @@
       if(!best){const r=bestStore(d,s=>['vault','granary','depot','hauling'].includes(s.type));if(r)for(const [res,entries]of byResource)for(const {source,goal,travel,amount}of entries){if(depositTiles.get(key(source.x,source.y))!==source)continue;const c=source.id+'>'+r.id+':'+res;if(own(c,d)&&(blocked.get(c)||0)<=state.time&&travel<score){score=travel;best={kind:'haul',source:source.id,dest:r.id,resource:res,amount:Math.min(amount,8),goal,claim:c}}}}
       return best&&claim(d,best);
     }
-    function digJob(d){for(const v of state.designations){if(!own('dig:'+v.id,d)||(blocked.get(d.id+':'+v.id)||0)>state.time)continue;const stands=[[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dy])=>({x:v.x+dx,y:v.y+dy})).filter(s=>open(s.x,s.y)).sort((a,b)=>distance(d,a)-distance(d,b));if(stands.length)return claim(d,{kind:'dig',dest:v.id,goal:stands[0],claim:'dig:'+v.id})}return false}
+    function digJob(d){for(const v of state.designations){if(!own('dig:'+v.id,d)||(blocked.get(d.id+':'+v.id)||0)>state.time)continue;const stands=[[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dy])=>({x:v.x+dx,y:v.y+dy})).filter(s=>open(s.x,s.y)&&(blocked.get(d.id+':'+v.id+':'+key(s.x,s.y))||0)<=state.time).sort((a,b)=>distance(d,a)-distance(d,b));if(stands.length)return claim(d,{kind:'dig',dest:v.id,goal:stands[0],claim:'dig:'+v.id})}return false}
     function choose(d){const p=person(d);if(needJobs(d))return true;
       if(p.profession==='miner'&&d.pickaxe&&state.priorities.mining>state.priorities.construction&&digJob(d))return true;
       const builders=p.profession==='mason'||p.profession==='engineer'||p.profession==='miner';
@@ -227,16 +227,25 @@
       if(p.profession==='explorer'&&state.priorities.exploration){const target=state.settlements.find(s=>!s.discovered&&host.explored(s.x,s.y)&&(blocked.get(d.id+':'+s.id)||0)<state.time);if(target)return claim(d,{kind:'explore',dest:target.id,goal:center(target)})}
       return false;
     }
-    function walk(d,dt,j){const p=person(d),goal=j.goal;if(distance(d,goal)<.08){d.x=goal.x;d.y=goal.y;return true}
+    function stalled(d,j){
+      if(j.stalledSince===undefined)j.stalledSince=state.time;
+      if(state.time-j.stalledSince<=12)return;
+      // Try another side of the same rock before giving up the designation.
+      // Other workers can still reach it from their side of the fortress.
+      if(j.kind==='dig')blocked.set(d.id+':'+j.dest+':'+key(j.goal.x,j.goal.y),state.time+60);
+      else {blocked.set(j.claim||d.id+':'+j.dest,state.time+12);blocked.set(d.id+':'+j.dest,state.time+12)}
+      cancel(d);
+    }
+    function walk(d,dt,j){const p=person(d),goal=j.goal;if(distance(d,goal)<.08){d.x=goal.x;d.y=goal.y;delete j.stalledSince;return true}
       p.activity=p.cargo?'Hauling '+p.cargo.resource:'Traveling to '+j.kind;
-      if(!p.path?.length){if(p.retry>state.time)return false;p.retry=state.time+.4;const route=host.route(Math.round(d.x),Math.round(d.y),goal.x,goal.y);if(!route){j.wait=(j.wait||0)+.4;if(j.wait>12){blocked.set(j.claim||d.id+':'+j.dest,state.time+12);blocked.set(d.id+':'+j.dest,state.time+12);cancel(d)}return false}p.path=route.map(v=>({x:v.x,y:v.y}));j.wait=0;
+      if(!p.path?.length){if(p.retry>state.time)return false;p.retry=state.time+.4;const route=host.route(Math.round(d.x),Math.round(d.y),goal.x,goal.y);if(!route){stalled(d,j);return false}p.path=route.map(v=>({x:v.x,y:v.y}));
         // A point route excludes its starting cell. A dwarf inherited from the
         // base movement can be off-center within the destination tile, so finish
         // the last fraction of a tile instead of repeatedly requesting [].
-        if(!p.path.length){if(Math.round(d.x)===goal.x&&Math.round(d.y)===goal.y&&open(goal.x,goal.y))p.path=[{x:goal.x,y:goal.y}];else return false;}
+        if(!p.path.length){if(Math.round(d.x)===goal.x&&Math.round(d.y)===goal.y&&open(goal.x,goal.y))p.path=[{x:goal.x,y:goal.y}];else {stalled(d,j);return false}}
       }
-      const next=p.path[0];if(!open(next.x,next.y)){p.path=null;p.retry=state.time+.2;return false}
-      const k=key(next.x,next.y),claimant=tileClaims.get(k);if(claimant&&claimant!==d.id){p.congestion=(p.congestion||0)+dt;if(p.congestion>2){p.path=null;p.congestion=0}return false}tileClaims.set(k,d.id);p.congestion=0;
+      const next=p.path[0];if(!open(next.x,next.y)){p.path=null;p.retry=state.time+.2;stalled(d,j);return false}
+      const k=key(next.x,next.y),claimant=tileClaims.get(k);if(claimant&&claimant!==d.id){p.congestion=(p.congestion||0)+dt;if(p.congestion>2){p.path=null;p.congestion=0}stalled(d,j);return false}tileClaims.set(k,d.id);p.congestion=0;delete j.stalledSince;
       const track=infraMap.get(key(Math.round(d.x),Math.round(d.y))),boost=track?.type==='rail'&&p.cargo?2.1:track?.type==='road'?1.35:track?.type==='lift'?1.5:1;
       const dx=next.x-d.x,dy=next.y-d.y,len=Math.hypot(dx,dy),speed=Math.max(.5,d.speed||2)*(1+p.skill*.0005)*boost*(p.hunger>90?.8:1),step=speed*dt;
       if(len<=step){d.x=next.x;d.y=next.y;p.path.shift()}else {d.x+=dx/len*step;d.y+=dy/len*step}return false;
@@ -244,6 +253,7 @@
     function updateDwarf(d,dt){const p=person(d);p.hunger=Math.min(100,p.hunger+dt*.10);p.fatigue=Math.min(100,p.fatigue+dt*.055);
       const hardship=(p.hunger>85?.12:0)+(p.fatigue>85?.10:0)+(d.hp<d.maxHp*.5?.08:0);if(hardship)p.morale=Math.max(0,p.morale-dt*hardship);
       const danger=host.threat?.(d.x,d.y,8);if(danger&&p.profession==='soldier'){if(p.job)cancel(d);p.activity='Defending';return false}
+      if(p.job?.kind==='shelter'&&!danger&&state.readiness!=='lockdown')cancel(d);
       if(danger&&p.profession!=='soldier'&&state.readiness!=='normal'&&p.job?.kind!=='shelter'){cancel(d);const r=bestStore(d,s=>s.type==='quarters')||state.stores[0];if(r)claim(d,{kind:'shelter',dest:r.id,goal:center(r)})}
       if(d.carrying){p.activity='Returning treasure';return false}
       if(!danger&&!p.job&&(p.celebrateUntil||0)>state.time){p.activity='Celebrating';return true}
@@ -272,7 +282,7 @@
       if(j.kind==='patrol'){p.activity='Patrolling';if(j.elapsed>4)cancel(d);return true}
       if(j.kind==='rescue'){const patient=dwarves().find(v=>v.id===j.patient);if(!patient||distance(d,patient)>2){cancel(d);return true}p.activity='Tending wounded';if(j.elapsed>4){patient.hp=Math.min(patient.maxHp,patient.hp+patient.maxHp*.2);state.stats.rescues++;remember(d,'Stabilized '+patient.name+' in the tunnels.');cancel(d)}return true}
       if(j.kind==='explore'){if(dst&&!dst.discovered){dst.discovered=true;remember(d,'Discovered '+dst.name+'.')}cancel(d);return true}
-      if(j.kind==='shelter'){p.activity='Sheltering';p.fatigue=Math.max(0,p.fatigue-dt);if(state.readiness==='normal'&&!danger)cancel(d);return true}
+      if(j.kind==='shelter'){p.activity='Sheltering';p.fatigue=Math.max(0,p.fatigue-dt);if(state.readiness!=='lockdown'&&!danger)cancel(d);return true}
       cancel(d);return true;
     }
     function begin(dt){state.time+=Math.min(.25,Math.max(0,dt));tileClaims.clear();schedule+=dt;if(schedule<1)return;schedule=0;
