@@ -1,47 +1,28 @@
-# Monkey Trails · Compass Wilds
+# Monkey Trails · Wild Companions
 
-Entry: `/game/monkey-trails.html`. The game is linked from `lobby/lobby.html`.
-Static HTML, CSS, native JavaScript modules and inline SVG portraits; no build
-step, Node game server, Cloud Functions, map service, or paid assets required.
-Keep these files in the existing Magic repository. The shared
-`lobby/firebase-config.mjs` is deliberately imported rather than duplicated.
+Entry: `/game/monkey-trails.html`; the existing `lobby/lobby.html` card remains the launch point. Static HTML, CSS and native modules require no game build step, paid map service, or game server.
 
-## Gameplay
+## Game systems
 
-Six starters (Capuchin, Macaque, Langur, Mandrill, Spider Monkey and Howler) have
-different stats and traits. Accepted walking earns a cache every 250 feet and
-an encounter every 2,000 feet. North favors Leaf, south Fire, east Storm, and
-west Water. Resources use net accepted displacement from the previous fight;
-the next enemy's elemental odds weight the distance credited in each sector.
-The relative compass resets after victory. No absolute coordinates are saved.
+A permanent Sanctuary keeps individually named companions, learned techniques, bonds, equipment and discovered evolution branches. An expedition carries up to three; camps permit controlled roster changes and retain the injuries of companions already used in the expedition. A knockout requires a conscious replacement. Full-party defeat preserves ownership and permanent progress while a new expedition re-earns levels, supplies and active evolution stages.
 
-Fruit buys levels; battle training discounts the cost. Evolve at levels 3, 6,
-and 10. Choose a pure element or one of six hybrids: Wildfire, Steam, Plasma,
-Monsoon, Tempest or Typhoon. Dual defensive multipliers combine; hybrid attacks
-choose their better matchup. There are 17 abilities, four equipped slots,
-energy, initiative, guarding, healing, status effects and consumables. The
-first slot retains a free attack so an empty energy bar cannot soft-lock combat.
+`data.mjs` defines sixty species, their curated ability pools, eight elements, the authoritative matchup chart, items and equipment. `core.mjs` owns deterministic game rules and configurable balancing constants. Every creature retains a free Palm Strike. Hybrid attacks average their elemental damage components; mixed defensive weaknesses and resistances multiply.
 
-Every fifth rival is a guardian. Defeat ends the run, preserves all found
-weapon/armor/charm equipment and grants legacy starting supplies. The last 25
-completed runs are retained. Practice is an isolated device-only save with
-simulated direction buttons; it never connects to Firestore or posts scores.
+Only accepted tracker distance advances discoveries, encounter milestones, distance bonuses, camps and safe alternative Ultra challenges. Discoveries roll one category at a time (60% essence, 25% two fruit, 12% utilities, 3% fragments). The 250-foot base interval cannot fall below 200 feet. Battle experience is one shared pool; training also spends a growing fruit cost. Direction favors Leaf north, Fire south, Storm east and Water west. Secondary essence rolls and resource exchange make all eight elements available from one safe route.
 
-## Browser location and safety
+Ordinary encounters begin near every 2,000 feet; camps near every 6,000 feet. Encounter composition depends on depth and difficulty. Post-battle befriending normally recruits one defeated opponent, with limited attempts, visible odds and persistent failure protection. The first two ordinary victories supply guaranteed recruitment opportunities.
 
-Open the deployed HTTPS page, allow location and tap Start walking. This is
-foreground-only tracking: hiding the page, locking the phone, using game menus,
-pausing, or entering battle stops it. Resume manually with a new GPS baseline.
-No hidden, paused or missing interval is backfilled. A safe-stop confirmation is
-required before combat, including after reloading an encounter.
+Ultra sightings preserve species, difficulty and identity. Their random markers are an encounter radar, with no invented roads or access claims. A normal approach needs a fresh accepted GPS fix within 100 feet, followed by a deliberate safe-stop confirmation. “Cannot safely reach this location” substitutes accepted walking distance on a route the player chooses, with the same opponent and rewards. New Ultras defeated in battle offer guaranteed recruitment. Claimed encounter IDs prevent repeat rewards.
 
-The filter rejects reported/derived speeds above 4.4704 m/s (10 mph), accuracy
-worse than 25 m, stale readings, jumps and gaps over 15 seconds. Drift gates and
-two-fix warmup intentionally undercount uncertain movement. GPS is approximate;
-a browser cannot certify actual speed or prevent location spoofing. Optional
-screen wake-lock is only a convenience, not background location permission.
-Never play while driving or crossing roads. Compass sectors are resource hints,
-not instructions to enter unsafe or private places.
+## Art and assets
+
+The roster uses lightweight illustrated SVG rigs with species-specific silhouettes, details and animation states. Evolution adds structures and changes proportions. Only visible creatures are rendered; inactive screens have no animation loop. Reduced-motion and battery modes limit effects. Asset configuration and the animation manifest provide a single hosting base, with local vector artwork available offline once code is loaded. See the asset packaging script and manifest for the Cloudflare upload layout.
+
+## Tracking and migration
+
+The existing foreground tracker retains its 10 mph cap, accuracy and drift gates, two-fix warmup, explicit pause/resume and rejection of movement gaps. Location is requested only after Start walking; backgrounding or locking the screen pauses tracking without backfilling distance. Screen wake lock is optional and never grants background tracking. References: [MDN Geolocation](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API), [MDN Screen Wake Lock](https://developer.mozilla.org/en-US/docs/Web/API/Screen_Wake_Lock_API).
+
+Version-one checkpoints migrate their existing monkey into slot one, preserving health, energy, evolution, training, equipment and history. The encrypted save namespace and Firebase configuration stay the same. Pinned absolute Ultra coordinates live in a separate encrypted device slot, excluded from cloud checkpoints and portable exports. A different device recalibrates the same sighting with no free approach progress. No route history is retained.
 
 ## Existing Firebase integration
 
@@ -89,29 +70,22 @@ readable save content, not deletion/replacement by another authenticated client.
 Weak passwords remain vulnerable to offline guessing. Final creature names and
 scores are readable by authenticated visitors, and scores/GPS are client-reported,
 unverified casual results, not authoritative competitive or fitness records.
-No latitude, longitude or route history is included in any checkpoint or score.
+No latitude, longitude or route history is included in any cloud checkpoint, portable export, or score. The optional single Ultra anchor is encrypted separately on its originating device.
 
-## Verification
+## Verification and release status
 
-From the repository root, with Node 22 or newer for development tests only:
+Run from the repository root with Node 22 or newer:
 
 ```sh
-node --test game/monkey-trails/test.mjs
+npm run test:monkey-trails
+npm run test:monkey-trails:browser
+npm run test:monkey-trails:motion
 ```
 
-24 tests passed with Node 22: milestone boundaries, evolution paths, battle
-recovery, death/reward idempotency, GPS speed/drift/gap filtering, real WebCrypto
-roundtrips, incorrect passwords, tampering, offline retries, revision conflicts,
-practice isolation, storage quota failures and encrypted backup restoration.
-Firebase integration tests use a deterministic adapter, not production writes.
-All modules also pass `node --check`.
+Tracker, real WebCrypto, local saving, offline retry, revision-conflict, backup and practice isolation regressions remain covered. Expansion tests cover the new collection, battle, rewards and hunt rules. The v1 fixture checks migration of an evolved, injured companion with permanent equipment and completed-run history. Tutorial simulations cover all six starters, three difficulties and 48 seeds using basic attacks and forced replacements. Art checks verify distinct geometry, every animation state, evolution variants and manifest coverage.
 
-A full end-to-end browser pass was not completed: the available Chromium
-blocked navigation by administrator policy. Real phone GPS, live Firestore,
-and full mobile/desktop layout behavior still need deployment smoke testing.
+The browser harness requires the repository's Playwright development dependency and its Chromium installation. Optional `MONKEY_TRAILS_PLAYWRIGHT` and `MONKEY_TRAILS_BROWSER_EXECUTABLE` environment variables select an existing local runtime. Routed local fixtures exercise capture, collection pagination, camp revival, forced replacement after reload and defeat/restart at 360 pixels, without production network writes. The motion harness checks real browser animations and reduced-motion behavior.
 
-Before release: open from the lobby on Android Chrome and iOS Safari; verify
-permission allow/deny, a measured outdoor walk, stationary drift, screen locking
-and resume, each game tab, a complete battle, death/restart, encrypted export
-and restore, offline recovery, and two-device conflicting saves. Do not test
-speed rejection by playing while driving; use simulated GPS in development.
+Rebuild the separate Cloudflare art ZIP with `node game/monkey-trails/build-assets.mjs --output /absolute/path/monkey-trails-assets.zip`. Preserve the ZIP's `monkey-trails/wild-companions-v2/` object prefix. The generated manifest and `HOSTING.txt` specify hosting and cache headers; the source game's finished inline vector art remains the local default.
+
+Automated browser checks use phone-sized viewports and simulated interactions; they cannot demonstrate real phone GPS, operating-system screen locking, or production Firestore behavior. Those checks remain release gates. Do not describe the expansion as release-complete until Android Chrome and iOS Safari have demonstrated permission allow/deny, GPS interruption and resume, screen lock, asset loading, mobile layout, a full expedition, offline reopening and a two-device cloud conflict.

@@ -30,19 +30,20 @@ export class MotionFilter {
     if(rawStep.meters>jitter&&rawStep.meters/dt>MAX_MPS+1e-7){this.reset();return result('GPS jump or excess speed · no distance credited',{mph:rawStep.meters/dt*2.236936292});}
     this.raw=p;
     if(this.warm<2){this.warm++;this.anchor=p;return result('GPS ready · start walking');}
-    if(speed!==null&&speed<.4){this.anchor=p;return result('Stationary · filtering GPS drift',{mph:speed*2.236936292});}
+    const trustedPosition={positionValid:true,lat:p.lat,lon:p.lon,timestamp:t};
+    if(speed!==null&&speed<.4){this.anchor=p;return result('Stationary · filtering GPS drift',{mph:speed*2.236936292,...trustedPosition});}
     const elapsed=(t-this.anchor.t)/1000,step=delta(this.anchor,p),gate=Math.max(5,(p.accuracy+this.anchor.accuracy)*.6);
-    if(elapsed>25){this.anchor=p;return result('Filtering slow GPS drift');}
-    if(step.meters<gate)return result('Tracking · smoothing GPS',{mph:speed===null?null:speed*2.236936292});
+    if(elapsed>25){this.anchor=p;return result('Filtering slow GPS drift',trustedPosition);}
+    if(step.meters<gate)return result('Tracking · smoothing GPS',{mph:speed===null?null:speed*2.236936292,...trustedPosition});
     const computed=step.meters/elapsed;
     if(computed>MAX_MPS+1e-7){this.reset();return result('Above 10 mph · no distance credited',{mph:computed*2.236936292});}
-    if(computed<.55){this.anchor=p;return result('Stationary · filtering GPS drift');}
-    this.anchor=p;return result('Walking · distance accepted',{...step,mph:(speed??computed)*2.236936292});
+    if(computed<.55){this.anchor=p;return result('Stationary · filtering GPS drift',trustedPosition);}
+    this.anchor=p;return result('Walking · distance accepted',{...step,mph:(speed??computed)*2.236936292,...trustedPosition});
   }
 }
 export class TrailGPS {
-  constructor(onFix,onStatus){this.filter=new MotionFilter();this.onFix=onFix;this.onStatus=onStatus;this.watch=null;this.lock=null;this.active=false;this.generation=0;}
-  async start(){
+  constructor(onFix,onStatus,onPosition=()=>{}){this.filter=new MotionFilter();this.onFix=onFix;this.onStatus=onStatus;this.onPosition=onPosition;this.watch=null;this.lock=null;this.active=false;this.generation=0;}
+  async start({wakeLock=true}={}){
     if(this.active)return;
     if(!globalThis.isSecureContext)throw Error('Open the HTTPS-hosted game. Browser location is not available on this insecure page.');
     if(!navigator.geolocation)throw Error('This browser does not provide geolocation.');
@@ -52,7 +53,7 @@ export class TrailGPS {
     try{
       this.watch=navigator.geolocation.watchPosition(p=>{
         if(!this.active||generation!==this.generation||document.hidden)return;
-        const fix=this.filter.accept(p);this.onStatus(fix);if(fix.meters>0)this.onFix(fix);
+        const fix=this.filter.accept(p);this.onStatus(fix);if(fix.meters>0)this.onFix(fix);else if(fix.positionValid)this.onPosition(fix);
       },error=>{
         if(generation!==this.generation)return;
         this.filter.reset();
@@ -61,7 +62,7 @@ export class TrailGPS {
       },{enableHighAccuracy:true,maximumAge:0,timeout:12000});
     }catch(error){this.stop();throw error;}
     // Optional convenience, not background-location permission. Failure is harmless.
-    if(navigator.wakeLock)try{const lock=await navigator.wakeLock.request('screen');if(this.active&&generation===this.generation)this.lock=lock;else await lock.release();}catch{}
+    if(wakeLock&&navigator.wakeLock)try{const lock=await navigator.wakeLock.request('screen');if(this.active&&generation===this.generation)this.lock=lock;else await lock.release();}catch{}
   }
   stop(){
     this.generation++;this.active=false;

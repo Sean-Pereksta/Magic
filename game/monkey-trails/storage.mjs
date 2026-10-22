@@ -1,7 +1,7 @@
 import {validate,newSave} from './core.mjs';
 export const ROOT=['games_rogueduel','monkey_trails_v1'],ITERATIONS=310000;
 const enc=new TextEncoder(),dec=new TextDecoder(),PREFIX='monkey-trails.v1.';
-const b64=a=>btoa(String.fromCharCode(...a));
+const b64=a=>{let text='';for(let i=0;i<a.length;i+=8192)text+=String.fromCharCode(...a.subarray(i,i+8192));return btoa(text);};
 const bytes=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 export const normalize=name=>String(name).trim().toLowerCase();
 export async function identity(name,mode='gps'){
@@ -17,7 +17,7 @@ export async function seal(state,key,salt,id){
   return {format:1,salt,iv:b64(iv),cipher:b64(new Uint8Array(ciphertext))};
 }
 export async function unseal(e,key,id){
-  if(!e||e.format!==1||typeof e.cipher!=='string'||e.cipher.length>180000||bytes(e.iv).length!==12||bytes(e.salt).length!==16)throw Error('Invalid encrypted save.');
+  if(!e||e.format!==1||typeof e.cipher!=='string'||e.cipher.length>1000000||bytes(e.iv).length!==12||bytes(e.salt).length!==16)throw Error('Invalid encrypted save.');
   const plaintext=await crypto.subtle.decrypt({name:'AES-GCM',iv:bytes(e.iv),additionalData:enc.encode(id)},key,bytes(e.cipher));
   return validate(JSON.parse(dec.decode(plaintext)));
 }
@@ -156,11 +156,28 @@ export class Vault {
     this.put(this.envelope,false);this.status('Cloud checkpoint loaded; previous device copy retained.','saved');return structuredClone(state);
   }
   async export(){if(this.localTask)await this.localTask;if(!this.envelope)throw Error('No encrypted checkpoint is available.');return JSON.stringify({game:'monkey-trails',id:this.id,...this.envelope,baseRevision:this.base,dirty:this.dirty},null,2);}
+  // A pinned GPS target is encrypted on this device only. It is never part of
+  // snapshot/envelope/cloud transactions, portable exports, or route history.
+  async saveDeviceData(label,data){
+    if(!this.key||!this.id||label!=='radar')return;
+    const key=PREFIX+this.id+'.private.'+label;
+    if(data===null){try{this.storage?.removeItem(key);}catch{}return;}
+    const raw=JSON.stringify(data);if(raw.length>4096)throw Error('Device map data is too large.');
+    const iv=crypto.getRandomValues(new Uint8Array(12));
+    const cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:enc.encode(this.id+':device:'+label)},this.key,enc.encode(raw));
+    try{this.storage?.setItem(key,JSON.stringify({iv:b64(iv),cipher:b64(new Uint8Array(cipher))}));}catch{/* Tracking still works in memory. */}
+  }
+  async loadDeviceData(label){
+    if(!this.key||!this.id||label!=='radar')return null;
+    try{const e=JSON.parse(this.get(PREFIX+this.id+'.private.'+label));if(!e||e.cipher.length>8192)return null;
+      const raw=await crypto.subtle.decrypt({name:'AES-GCM',iv:bytes(e.iv),additionalData:enc.encode(this.id+':device:'+label)},this.key,bytes(e.cipher));return JSON.parse(dec.decode(raw));
+    }catch{return null;}
+  }
   async leaderboard(){this.adapter=this.adapter||await timeout(this.connect());return timeout(this.adapter.leaderboard());}
 }
 // Restore a portable backup without granting it authority to overwrite a newer cloud revision.
 export async function importBackup(name,password,text,storage=defaultStorage()){
-  if(typeof text!=='string'||text.length>200000)throw Error('Backup file is too large.');
+  if(typeof text!=='string'||text.length>1100000)throw Error('Backup file is too large.');
   let e;try{e=JSON.parse(text);}catch{throw Error('This is not a readable JSON backup.');}
   if(e.game!=='monkey-trails'||e.format!==1||!Number.isInteger(e.baseRevision)||e.baseRevision<0)throw Error('Unsupported backup format.');
   const key=await derive(password,e.salt),s=await unseal(e,key,e.id),id=await identity(name,s.mode);

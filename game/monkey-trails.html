@@ -4,20 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0b1918">
-  <meta name="description" content="Walk the compass wilds, gather elemental resources, and evolve a monkey companion in a location-powered roguelite.">
+  <meta name="description" content="Turn your walk into an adventure. Collect 60 monkeys, lead a three-monkey team, discover supplies, and hunt extraordinary Ultras.">
   <meta name="referrer" content="same-origin">
-  <title>Monkey Trails · Compass Wilds</title>
+  <title>Monkey Trails · Wild Companions</title>
   <link rel="stylesheet" href="./monkey-trails/style.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="back-link" href="../lobby/lobby.html" aria-label="Back to the game library">← Library</a>
-    <div class="wordmark">MONKEY <span>TRAILS</span><small>COMPASS WILDS</small></div>
-    <span id="mode-label" class="tag">WALK · EVOLVE · SURVIVE</span>
+    <a class="back-link" href="../lobby/lobby.html" aria-label="Back to the game library"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6M8 12h12"/></svg><span>Library</span></a>
+    <div class="wordmark">MONKEY <span>TRAILS</span><small id="creature-label">WILD COMPANIONS</small></div>
+    <span id="mode-label" class="tag">WALK · COLLECT · ADVENTURE</span>
+    <button data-action="settings" class="icon-button header-settings" aria-label="Settings, backups and records"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 6h4m4 0h10M3 12h11m4 0h3M3 18h2m4 0h12"/><circle cx="9" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="7" cy="18" r="2"/></svg></button>
   </header>
   <main>
     <section id="welcome" class="welcome">
-      <div class="intro"><span class="eyebrow">A LITTLE WALK. A WILD ADVENTURE.</span><h1>Your next evolution<br>is out there.</h1><p>Choose a companion. Walk the four winds. Gather elemental supplies and face rivals in tactical, turn-based battles.</p><div class="facts"><span><b>250 ft</b>trail caches</span><span><b>2,000 ft</b>rival encounters</span><span><b>10 mph</b>maximum credited speed</span></div></div>
+      <div class="intro"><span class="eyebrow">A LITTLE WALK. A WILD ADVENTURE.</span><h1>Your next friend<br>is out there.</h1><p>Collect extraordinary monkeys. Bring three companions on the trail, discover supplies, and chase a little wonder on your own safe route.</p><div class="facts"><span><b>60</b>monkey species</span><span><b>3</b>team companions</span><span><b>8</b>legendary Ultras</span></div><p class="intro-foot">Every 250 accepted feet brings a discovery. Tactical rival battles await roughly every 2,000 feet.</p></div>
       <div class="panel login-panel">
         <h2>Meet your first monkey</h2><div id="starters" class="starters"></div>
         <p id="starter-trait" class="muted"></p>
@@ -26,7 +27,7 @@
           <input id="creature-name" autocomplete="username" maxlength="24" placeholder="e.g. Mossfoot" required>
           <label for="creature-password">Save password <small>10+ characters for a new creature</small></label>
           <input id="creature-password" type="password" autocomplete="current-password" maxlength="200" placeholder="A unique password" required>
-          <p class="fine">Use the same name and password to reopen on another device. There is no password reset. Creature names and final scores appear on the casual leaderboard.</p>
+        <p class="fine">Use the same name and password to reopen your encrypted sanctuary on another device. There is no password reset. Save names and final scores appear on the casual leaderboard.</p>
           <div class="button-row"><button type="submit" class="primary" name="action" value="create">Begin a new trail</button><button type="submit" name="action" value="open">Reopen save</button></div>
         </form>
         <button type="button" id="import-button" class="text-button">Restore an encrypted backup</button><input type="file" id="backup-file" accept=".json,application/json" hidden>
@@ -35,18 +36,24 @@
       </div>
     </section>
     <section id="game" hidden>
-      <div class="session-bar"><span id="creature-label"></span><button data-action="export" class="small">Export encrypted backup</button><button data-action="sync" class="small">Sync now</button><button data-action="cloud" id="cloud-restore" class="small" hidden>Load cloud copy</button></div>
-      <nav class="tabs" aria-label="Game screens"><button data-action="tab" data-id="trail" aria-current="page">◉ Trail</button><button data-action="tab" data-id="monkey">❧ Monkey</button><button data-action="tab" data-id="pack">◇ Pack</button><button data-action="tab" data-id="records">☆ Records</button></nav>
+      <div class="session-bar"><button data-action="cloud" id="cloud-restore" class="small" hidden>Load cloud copy</button></div>
       <div id="view"></div>
       <div class="save-strip"><span id="save-dot" class="save-dot"></span><span id="save-status" role="status" aria-live="polite">Preparing save…</span></div>
+      <nav class="tabs" aria-label="Game screens">
+        <button data-action="tab" data-id="walk" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5L16 8ZM12 3v2m0 14v2M3 12h2m14 0h2"/></svg>Walk</button>
+        <button data-action="tab" data-id="team"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="2.5"/><circle cx="5" cy="10" r="2"/><circle cx="19" cy="10" r="2"/><path d="M7 21v-5a5 5 0 0 1 10 0v5H7ZM2 20v-4a3 3 0 0 1 4-2.8M22 20v-4a3 3 0 0 0-4-2.8"/></svg>Team</button>
+        <button data-action="tab" data-id="sanctuary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V11a7 7 0 0 1 14 0v10M9 21v-6a3 3 0 0 1 6 0v6M10 8h4"/></svg>Sanctuary</button>
+        <button data-action="tab" data-id="pack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M5 7h14l1 14H4L5 7ZM5 8v4l7 3 7-3V8M10 15v3h4v-3"/></svg>Pack</button>
+      </nav>
     </section>
     <details class="field-guide"><summary>Field guide · location, compass, saves & safety</summary><div class="guide-grid">
-      <div><h3>Walk the compass</h3><p>North gives Leaf, south Fire, east Storm, and west Water. Your net accepted movement from the previous fight determines each cache. Travel in each direction also weights the next rival’s element. The compass origin resets after a victory; turns along a winding path still count toward distance.</p></div>
+      <div><h3>Walk your own compass</h3><p>North favors Leaf, south Fire, east Storm, and west Water. Earth, Ice, Light and Shadow also arrive through discoveries and resource exchange, so one safe route can complete the collection. Radar rings show relative encounters, not roads or accessible land. Select “Cannot safely reach this location” to hunt the same Ultra along a route you choose.</p></div>
       <div><h3>Foreground location only</h3><p>Use the HTTPS-hosted game, allow location, and tap Start walking. Only accepted readings at 10 mph or below count. Weak GPS, jumps, stale readings, long gaps, and stationary drift are discarded. Background tabs, a locked screen, battles, and other game tabs pause tracking. Resume manually; untracked gaps never earn distance. GPS is approximate, not cheat-proof.</p></div>
-      <div><h3>Your progress, not your route</h3><p>Coordinates stay in memory on this device. Neither coordinates nor a route history are included in saves. Local and cloud checkpoints contain encrypted game progress. The existing shared Firestore rules do not make these saves owner-only: encryption protects readable content, but it cannot prevent another authenticated client from altering or deleting a record. Use a unique password and keep backups. Scores are casual and unverified.</p></div>
+      <div><h3>Your progress, not your route</h3><p>Neither coordinates nor route history are included in cloud checkpoints or backups. A short-lived Ultra map anchor is separately encrypted on this device; reopening elsewhere recalibrates without changing the Ultra. Local and cloud checkpoints contain encrypted game progress. Existing shared Firestore rules do not make these saves owner-only: encryption protects readable content, but cannot stop another authenticated client from altering or deleting a record. Use a unique password and keep backups. Scores are casual and unverified.</p></div>
       <div><h3>Look up, then level up</h3><p>Walk only in safe, permitted places. Never use the game while driving or crossing roads. Stop somewhere safe for battles and menus. The compass is a resource guide, not a navigation instruction. You never need to enter private or unsafe areas. Optional screen wake-lock may keep the display awake; otherwise keep it unlocked yourself.</p></div>
     </div></details>
   </main>
+  <dialog id="inspect-dialog" aria-label="Trail details"><button class="dialog-close" data-action="close-dialog" aria-label="Close details">×</button><div id="dialog-content"></div></dialog>
   <div id="toast" role="status" aria-live="polite" hidden></div>
   <noscript>This game needs JavaScript enabled. Real walking also needs location permission and an HTTPS connection.</noscript>
   <script type="module" src="./monkey-trails/app.mjs"></script>
