@@ -18,10 +18,11 @@ export const collection=doc,orderBy=(field,direction)=>({field,direction}),limit
 export async function getDocs(ref){return {docs:Object.entries(window.sdk.accounts).filter(([path])=>path.startsWith(ref.path+'/')).map(([path,data])=>({id:path.split('/').at(-1),data:()=>structuredClone(data)}))};}
 export async function getDoc(ref){window.sdk.reads.push(ref.path);return window.sdk.snapshot(ref.path);}
 export async function deleteDoc(ref){delete window.sdk.accounts[ref.path];}
-export function onSnapshot(ref,next,error){const row={path:ref.path,next,error,active:true};window.sdk.docListeners.push(row);queueMicrotask(()=>{if(row.active)next(window.sdk.snapshot(row.path));});return()=>{if(row.active){row.active=false;window.sdk.docUnsubscribes++;}};}
+export function onSnapshot(ref,options,next,error){if(typeof options==='function'){error=next;next=options;options={}}const row={path:ref.path,options,next,error,active:true};window.sdk.docListeners.push(row);queueMicrotask(()=>{if(row.active)next(window.sdk.snapshot(row.path));});return()=>{if(row.active){row.active=false;window.sdk.docUnsubscribes++;}};}
 export async function runTransaction(db,operation){
  const row={reads:[],updates:[],sets:[]};window.sdk.transactions.push(row);
  if(window.sdk.blockTransactions)await new Promise(resolve=>window.sdk.releaseTransactions.push(resolve));
+ if(window.sdk.failTransactions)throw Object.assign(new Error('Missing permissions'),{code:'permission-denied'});
  const value=await operation({get:async ref=>{row.reads.push(ref.path);return window.sdk.snapshot(ref.path);},update(ref,patch){row.updates.push({path:ref.path,patch:structuredClone(patch)});},set(ref,data){row.sets.push({path:ref.path,data:structuredClone(data)});}});
  for(const {path,patch} of row.updates){const account=window.sdk.accounts[path];for(const [field,value] of Object.entries(patch)){const segments=field.split('.');let target=account;for(const segment of segments.slice(0,-1))target=target[segment]||=( {} );target[segments.at(-1)]=structuredClone(value);}}
  for(const {path,data} of row.sets)window.sdk.accounts[path]=data;
@@ -35,12 +36,12 @@ ${menu?`const {CATALOG}=await import('/game/turncraft/shattered-front/campaign.m
 window.fixtureReady=true;
 </script>`;
 
-async function setup({deferAuth=false,menu=false}={}){
+async function setup({deferAuth=false,menu=false,queued=true}={}){
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE_PATH||undefined,args:['--no-sandbox']}),page=await browser.newPage(),errors=[],apiRequests=[];
  page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(new URL(request.url()).pathname.startsWith('/api/'))apiRequests.push(request.url());});
- await page.addInitScript(({deferAuth,menu})=>{
+ await page.addInitScript(({deferAuth,menu,queued})=>{
   const account=(wave)=>({avatar:'',gameStats:{anotherGame:{wins:41},turncraft:{mmr:1200,rankedMatches:9,survival:{highestWave:wave,recordsByMap:{}},campaign:{completedMissions:{}},achievements:{}}}});
-  window.sdk={accounts:{'users/AccountA':account(17),'users/AccountB':account(4)},docListeners:[],authListeners:[],docUnsubscribes:0,authUnsubscribes:0,signIns:0,reads:[],transactions:[],releaseTransactions:[],blockTransactions:menu,fetchCalls:[],intervalCalls:0,handlers:{storage:new Set(),focus:new Set(),visibilitychange:new Set()}};
+  window.sdk={accounts:{'users/AccountA':account(17),'users/AccountB':account(4)},docListeners:[],authListeners:[],docUnsubscribes:0,authUnsubscribes:0,signIns:0,reads:[],transactions:[],releaseTransactions:[],blockTransactions:menu&&queued,fetchCalls:[],intervalCalls:0,handlers:{storage:new Set(),focus:new Set(),visibilitychange:new Set()}};
   sdk.snapshot=path=>({exists:()=>!!sdk.accounts[path],data:()=>structuredClone(sdk.accounts[path])});
   sdk.auth={currentUser:{uid:'existing-auth-uid',displayName:'Existing account'},authStateReady:()=>{sdk.authReadyCalls=(sdk.authReadyCalls||0)+1;return deferAuth?new Promise(resolve=>sdk.releaseAuth=resolve):Promise.resolve();}};
   localStorage.setItem('gh.username','AccountA');
@@ -48,8 +49,8 @@ async function setup({deferAuth=false,menu=false}={}){
   const nativeInterval=window.setInterval;window.setInterval=(...args)=>{sdk.intervalCalls++;return nativeInterval(...args);};
   const add=window.addEventListener.bind(window),remove=window.removeEventListener.bind(window);window.addEventListener=(name,callback,...args)=>{if(sdk.handlers[name])sdk.handlers[name].add(callback);return add(name,callback,...args);};window.removeEventListener=(name,callback,...args)=>{sdk.handlers[name]?.delete(callback);return remove(name,callback,...args);};
   const docAdd=document.addEventListener.bind(document),docRemove=document.removeEventListener.bind(document);document.addEventListener=(name,callback,...args)=>{if(name==='visibilitychange')sdk.handlers[name].add(callback);return docAdd(name,callback,...args);};document.removeEventListener=(name,callback,...args)=>{if(name==='visibilitychange')sdk.handlers[name].delete(callback);return docRemove(name,callback,...args);};
-  if(menu){for(const [name,wave,difficulty]of [['AccountA',19,'easy'],['AccountB',8,'hard']])localStorage.setItem(`turncraft.shattered-front.progress.${name}.v1`,JSON.stringify({campaign:{completedMissions:{}},survival:{recordsByMap:{}},achievements:{},pendingResults:[{mode:'survival',arenaId:'amber-wastes',wave,durationSeconds:90,enemiesDefeated:24,factionId:'frontier',difficulty}]}));}
- },{deferAuth,menu});
+  if(menu&&queued){for(const [name,wave,difficulty]of [['AccountA',19,'easy'],['AccountB',8,'hard']])localStorage.setItem(`turncraft.shattered-front.progress.${name}.v1`,JSON.stringify({campaign:{completedMissions:{}},survival:{recordsByMap:{}},achievements:{},pendingResults:[{mode:'survival',arenaId:'amber-wastes',wave,durationSeconds:90,enemiesDefeated:24,factionId:'frontier',difficulty}]}));}
+ },{deferAuth,menu,queued});
  await page.route('**/*',route=>{
   const url=new URL(route.request().url());
   if(url.hostname==='www.gstatic.com')return route.fulfill({contentType:'text/javascript',body:url.pathname.endsWith('firebase-app.js')?appModule:url.pathname.endsWith('firebase-auth.js')?authModule:storeModule});
@@ -89,9 +90,9 @@ test('queued menu saves keep their account and automatically flush the new accou
   await page.waitForFunction(()=>sdk.transactions.length===1&&sdk.releaseTransactions.length===1);
   await page.evaluate(()=>{localStorage.setItem('gh.username','AccountB');dispatchEvent(new StorageEvent('storage',{key:'gh.username',newValue:'AccountB'}));});await page.waitForFunction(()=>profileEvents.at(-1)?.identity?.username==='AccountB'&&profileEvents.at(-1).identity.linked);
   await page.evaluate(()=>sdk.releaseTransactions.shift()());await page.waitForFunction(()=>sdk.transactions.length===2&&sdk.releaseTransactions.length===1);
-  const owner=await page.evaluate(()=>({reads:sdk.transactions.flatMap(row=>row.reads),a:sdk.accounts['users/AccountA'].gameStats.turncraft.survival.highestWave,b:sdk.accounts['users/AccountB'].gameStats.turncraft.survival.highestWave,bPending:JSON.parse(localStorage.getItem('turncraft.shattered-front.progress.AccountB.v1')).pendingResults}));assert.deepEqual(owner.reads,['users/AccountA']);assert.equal(owner.a,19);assert.equal(owner.b,4);assert.equal(owner.bPending[0].wave,8);
+  const owner=await page.evaluate(()=>({reads:sdk.transactions.flatMap(row=>row.reads),a:sdk.accounts['users/AccountA'].gameStats.turncraft.survival.highestWave,b:sdk.accounts['users/AccountB'].gameStats.turncraft.survival.highestWave,bPending:JSON.parse(localStorage.getItem('turncraft.shattered-front.progress.AccountB.v1')).pendingResults}));assert.deepEqual(owner.reads,['users/AccountA']);assert.equal(owner.a,17,'account switch cancels a late write');assert.equal(owner.b,4);assert.equal(owner.bPending[0].wave,8);
   await page.evaluate(()=>{sdk.blockTransactions=false;sdk.releaseTransactions.shift()();});await page.waitForFunction(()=>JSON.parse(localStorage.getItem('turncraft.shattered-front.progress.AccountB.v1')).pendingResults.length===0);
-  const synced=await page.evaluate(()=>({reads:sdk.transactions.flatMap(row=>row.reads),a:sdk.accounts['users/AccountA'].gameStats.turncraft.survival.highestWave,b:sdk.accounts['users/AccountB'].gameStats.turncraft.survival.highestWave}));assert.deepEqual(synced.reads,['users/AccountA','users/AccountB']);assert.equal(synced.a,19);assert.equal(synced.b,8);assert.deepEqual(apiRequests,[]);assert.equal((await counts(page)).intervals,0);assert.deepEqual(errors,[]);
+  const synced=await page.evaluate(()=>({reads:sdk.transactions.flatMap(row=>row.reads),a:sdk.accounts['users/AccountA'].gameStats.turncraft.survival.highestWave,b:sdk.accounts['users/AccountB'].gameStats.turncraft.survival.highestWave}));assert.deepEqual(synced.reads,['users/AccountA','users/AccountB']);assert.equal(synced.a,17);assert.equal(synced.b,8);await page.evaluate(()=>{localStorage.setItem('gh.username','AccountA');dispatchEvent(new Event('focus'));});await page.waitForFunction(()=>sdk.accounts['users/AccountA'].gameStats.turncraft.survival.highestWave===19&&JSON.parse(localStorage.getItem('turncraft.shattered-front.progress.AccountA.v1')).pendingResults.length===0);assert.deepEqual(apiRequests,[]);assert.equal((await counts(page)).intervals,0);assert.deepEqual(errors,[]);
  }finally{await browser.close();}
 });
 
@@ -131,7 +132,7 @@ test('a fresh browser auth session settles cloud-pending history under the same 
   await page.waitForFunction(()=>profileEvents.at(-1)?.identity?.linked);
   await page.evaluate(async()=>{
     sdk.auth.currentUser={uid:'replacement-auth-uid'};
-    sdk.accounts['lobbies/recovered-duel']={gameType:'turncraft',turncraftVersion:1,status:'finished',ranked:true,finishedAt:500,members:{original:'AccountA',peer:'Opponent'},turncraftSeats:['original','peer'],turncraftPlayers:{original:{name:'AccountA',factionId:'frontier'},peer:{name:'Opponent',factionId:'brood'}},settings:{maxPlayers:2,fillAi:false,mapId:'classic',gameMode:'annihilation'},turncraftResult:{winnerIdx:0,players:[{name:'AccountA',factionId:'frontier'},{name:'Opponent',factionId:'brood'}],durationSeconds:100}};
+    sdk.accounts['lobbies/recovered-duel']={gameType:'turncraft',turncraftVersion:1,status:'finished',ranked:true,finishedAt:500,players:['AccountA','Opponent'],members:{original:'AccountA',peer:'Opponent'},turncraftSeats:['original','peer'],turncraftPlayers:{original:{name:'AccountA',factionId:'frontier'},peer:{name:'Opponent',factionId:'brood'}},settings:{maxPlayers:2,fillAi:false,mapId:'classic',gameMode:'annihilation'},turncraftResult:{winnerIdx:0,players:[{name:'AccountA',factionId:'frontier'},{name:'Opponent',factionId:'brood'}],durationSeconds:100}};
     sdk.accounts['users/AccountA/turncraftPending/recovered-duel']={lobbyId:'recovered-duel',username:'AccountA',createdAt:100};
     localStorage.removeItem('turncraft.pendingMatches.AccountA');
     await profile.getProfile();
@@ -150,5 +151,38 @@ test('a cached back-navigation page keeps the menu profile listener and follows 
   await page.evaluate(()=>{dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));localStorage.setItem('gh.username','AccountB');dispatchEvent(new StorageEvent('storage',{key:'gh.username',newValue:'AccountB'}));});
   await page.waitForFunction(()=>document.querySelector('.sf-account')?.textContent.includes('AccountB'));
   assert.deepEqual((await counts(page)).docs,['users/AccountB']);assert.equal((await counts(page)).auth,1);assert.deepEqual(errors,[]);
+ }finally{await browser.close();}
+});
+
+test('a denied profile listener preserves the saved profile and reattaches on reconnect',async()=>{
+ const {browser,page,errors}=await setup();try{
+  await page.waitForFunction(()=>profileEvents.at(-1)?.identity?.linked);
+  await page.evaluate(()=>sdk.docListeners.at(-1).error(Object.assign(new Error('Denied'),{code:'permission-denied'})));
+  const denied=await current(page);assert.equal(denied.profile.survival.highestWave,17);assert.match(denied.error,/verify the deployed rules match/);
+  await page.evaluate(()=>dispatchEvent(new Event('online')));
+  await page.waitForFunction(()=>sdk.docListeners.length===2&&profileEvents.at(-1)?.connectionStatus==='connected'&&!profileEvents.at(-1).error);
+  assert.equal((await current(page)).profile.survival.highestWave,17);
+  assert.equal(await page.evaluate(()=>sdk.docListeners.at(-1).options.includeMetadataChanges),true);
+  assert.deepEqual(errors,[]);
+ }finally{await browser.close();}
+});
+
+test('failed checkpoint uploads retain a retry action until the checkpoint itself saves',async()=>{
+ const {browser,page,errors}=await setup({menu:true,queued:false});try{
+  await page.waitForFunction(()=>profileEvents.at(-1)?.identity?.linked&&document.querySelector('.sf-account'));
+  await page.evaluate(()=>{
+   sdk.failTransactions=true;
+   const checkpoint={version:1,username:'AccountA',savedAt:900,resultId:'offline-checkpoint',simulation:{players:[]}};
+   localStorage.setItem('turncraft.shattered-front.checkpoint.v1.AccountA',JSON.stringify(checkpoint));
+   dispatchEvent(new CustomEvent('turncraft:checkpoint',{detail:{checkpoint}}));
+  });
+  await page.getByRole('button',{name:'Retry account sync',exact:true}).waitFor();
+  assert.match(await page.locator('#sfStatus').textContent(),/Firestore denied/);
+  await page.evaluate(()=>sdk.docListeners.find(row=>row.active).next(sdk.snapshot('users/AccountA')));
+  assert.equal(await page.getByRole('button',{name:'Retry account sync',exact:true}).count(),1,'an unrelated profile snapshot does not acknowledge a checkpoint');
+  await page.evaluate(()=>{sdk.failTransactions=false;dispatchEvent(new Event('online'));});
+  await page.waitForFunction(()=>sdk.accounts['users/AccountA/turncraftSaves/active']?.savedAt===900);
+  assert.equal(await page.getByRole('button',{name:'Retry account sync',exact:true}).count(),0);
+  assert.equal(await page.evaluate(()=>JSON.parse(sdk.accounts['users/AccountA/turncraftSaves/active'].packed).resultId),'offline-checkpoint');assert.deepEqual(errors,[]);
  }finally{await browser.close();}
 });

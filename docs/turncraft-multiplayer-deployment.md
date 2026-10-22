@@ -10,13 +10,11 @@ profiles cannot give another profile its progress or result.
 Publish the updated website, including `game/turncraft.html`,
 `game/turncraft-lobby.html`, `game/turncraft/` and the hub launch settings.
 
-The Firestore rules supplied with the bug report already allow the new account
-and lobby paths through recursive `users` and `lobbies` grants. The complete
-positive save/ranked integration passed against those exact rules, so no new
-permissions are needed if they are the deployed rules. The repository's stricter
-rules also support these flows and enforce atomic ranked receipts and immutable
-completed results. If the stricter repository rules are deployed, publish the
-updated version with the website:
+The current shared Firestore rules and the supplied TurnCraft rules accept the
+game's profile saves, checkpoints, lobby presence, commands and snapshots. All
+four emulator suites pass with the actual client payloads. This repair does not
+require a new permission grant or a rules change. If the deployed rules differ
+from the current shared file, publish that complete file with the website:
 
 ```sh
 npx firebase deploy --project bible-game-246c0 --config firebase.rules.json --only firestore:rules
@@ -29,10 +27,31 @@ supplied Gridbound durable-room and reward validators, as well as existing
 username-scoped saves for other games. Merging website code alone does not
 publish Firebase rules.
 
-The supplied broad recursive grants permit more writes than the repository
-rules. Firestore combines matching allow statements with OR, so adding a
-restrictive block beside a broad grant does not enforce receipt protections.
-Adopt the updated stricter ruleset to enforce those checks.
+Do not add a broad authenticated-write rule to repair connection errors. The
+rules correctly deny a replacement anonymous UID access to an existing
+commander's lobby seat; the browser must preserve the restored Auth identity.
+
+## Firebase startup and reconnect repair
+
+The published game initialized the default Firebase app with different options
+from the profile module. If the profile initialized first, the game could throw
+`app/duplicate-app` before starting. Both paths now use compatible settings and
+reuse an existing app. The game waits for persisted Firebase Auth state before
+creating an anonymous identity, so reloading does not replace a valid lobby
+commander. Firebase Authentication provides identity; Firestore remains the
+only game database. No Realtime Database, Cloud Functions or external game
+server is required.
+
+A failed Firestore profile subscription previously stayed stopped when the
+same account returned online. It now rebinds on reconnect and provides a
+**Retry account sync** action. Rules, network and sign-in errors are shown in
+the command center instead of being hidden behind a generic local-save notice.
+Checkpoint upload failures remain visible while the profile-scoped local
+checkpoint and pending results are retained for retry.
+
+Publish all changed modules with `game/turncraft.html`, including the new
+`game/turncraft/shattered-front/firebase-connection.mjs`. Publishing only the
+HTML leaves its new dependency unavailable. No artwork upload is needed.
 
 ## Profile data
 

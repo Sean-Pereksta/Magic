@@ -69,6 +69,9 @@ window.TurncraftPreload={
 const profileMock = `
 export function rankFor(){return 'Unranked'}
 export function watchProfile(callback){callback({identity:{uid:'test-user',displayName:'Test Commander'},profile:{}});return()=>{}}
+export async function saveLobbyResult(){return {}}
+export async function rememberLobby(){}
+export function selectedUsername(){return localStorage.getItem('gh.username')}
 `;
 
 function source() {
@@ -329,7 +332,7 @@ test('a real Cloudflare terrain 404 opens multiplayer with fallbacks and retries
 });
 
 test('an unavailable multiplayer lobby keeps the loading screen open and can retry the same match', async () => {
-  const {browser,page,errors} = await setup({query:'?gameId=shared-match&turncraftLobby=1',failLobby:true});
+  const {browser,page,errors} = await setup({query:multiplayerQuery,failLobby:true});
   try {
     await page.evaluate(() => preloadAttempts[0].resolve());
     await page.locator('#loadingRetry').waitFor({state:'visible'});

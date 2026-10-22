@@ -122,6 +122,7 @@ export function createLobbyStore({db, auth, api, getIdentity, now = Date.now}) {
       fail(snap.exists() && snap.data().turncraftVersion === 1, 'This room has closed.', 'NOT_FOUND');
       const row = clone(snap.data());
       fail(row.members[user.uid], 'Join this room first.', 'NOT_A_MEMBER');
+      fail(row.members[user.uid] === user.name, 'Reopen the Game Hub profile that joined this room.', 'PROFILE_CHANGED');
       if (action === 'leave') {
         if (row.status === 'finished') return; // Retain participants for delayed history claims.
         fail(['waiting', 'finished'].includes(row.status), 'Finish the active battle before leaving its room.', 'MATCH_STARTED');
@@ -163,6 +164,7 @@ export function createLobbyStore({db, auth, api, getIdentity, now = Date.now}) {
       fail(snap.exists(), 'This room has closed.', 'NOT_FOUND');
       const row = snap.data();
       fail(row.hostUid === user.uid, 'Only the host can request a rematch.', 'HOST_ONLY');
+      fail(row.members[user.uid] === user.name, 'Reopen the Game Hub profile that joined this room.', 'PROFILE_CHANGED');
       fail(row.status === 'finished', 'Finish this match first.', 'MATCH_NOT_FINISHED');
       if (row.nextLobbyId) return row.nextLobbyId;
       const fresh = {name: row.name, gameType: 'turncraft', turncraftVersion: 1, status: 'waiting', visibility: row.visibility, ranked: row.ranked, host: row.host, hostUid: row.hostUid, members: row.members, players: row.players, turncraftSeats: row.turncraftSeats, turncraftPlayers: Object.fromEntries(Object.entries(row.turncraftPlayers).map(([uid, player]) => [uid, {...player, ready: false}])), settings: row.settings, rematchOf: value, createdAt: stamp, updatedAt: stamp};

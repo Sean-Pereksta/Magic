@@ -2,6 +2,7 @@ import { firebaseConfig } from '../../../lobby/firebase-config.mjs';
 import { assetUrl } from './assets.mjs';
 import { createProfileStore } from './profile-store.mjs';
 import { saveMatchResult } from './result-store.mjs';
+import { restoreFirebaseUser, firebaseError, withFirebaseTimeout } from './firebase-connection.mjs';
 
 export const RANKS = Object.freeze([
   { name: 'Bronze', min: 0 }, { name: 'Silver', min: 900 },
@@ -49,11 +50,12 @@ export async function firebase() {
     ]);
     const app = appApi.getApps().length ? appApi.getApp() : appApi.initializeApp(firebaseConfig);
     const auth = authApi.getAuth(app), db = storeApi.getFirestore(app);
-    await auth.authStateReady();
-    if (!auth.currentUser) await authApi.signInAnonymously(auth);
+    await restoreFirebaseUser(auth, authApi);
     return { app, auth, db, authApi, storeApi };
-  })().catch((error) => { firebasePromise = null; throw error; });
-  return firebasePromise;
+  })().catch((error) => { firebasePromise = null; throw firebaseError(error); });
+  const connection = await firebasePromise;
+  if (!connection.auth.currentUser) await restoreFirebaseUser(connection.auth, connection.authApi);
+  return connection;
 }
 function emit() { for (const callback of listeners) callback(last); }
 function update(user, name, snapshot) {
@@ -65,21 +67,25 @@ function update(user, name, snapshot) {
       avatar: account?.photoURL || account?.avatar || user.photoURL || null,
       linked: Boolean(account)
     } : null,
-    profile: { ...defaultProfile(), ...(account?.gameStats?.turncraft || {}) }, capabilities
+    profile: { ...defaultProfile(), ...(account?.gameStats?.turncraft || {}) }, capabilities,
+    connectionStatus: snapshot ? snapshot.metadata?.fromCache ? 'cached' : 'connected' : user && name ? 'connecting' : 'local'
   };
   emit();
   if (last.identity?.linked) void flushMatchResults(name);
   return last;
 }
 function failed(error) {
-  last = { ...last, error: error.message };
+  const failure = firebaseError(error);
+  last = { ...last, error: failure.message, errorCode: failure.code, connectionStatus: 'error' };
   emit();
 }
 export async function getProfile() {
-  const { auth, db, storeApi } = await firebase(), name = username();
-  const snapshot = name ? await storeApi.getDoc(storeApi.doc(db, 'users', name)) : null;
-  if (name !== username()) return last;
-  return update(auth.currentUser, name, snapshot);
+  try {
+    const { auth, db, storeApi } = await firebase(), name = username(), uid = auth.currentUser?.uid;
+    const snapshot = name ? await withFirebaseTimeout(storeApi.getDoc(storeApi.doc(db, 'users', name))) : null;
+    if (name !== username() || uid !== auth.currentUser?.uid) return last;
+    return update(auth.currentUser, name, snapshot);
+  } catch (error) { failed(error); throw firebaseError(error); }
 }
 export async function getIdentity() { return (await getProfile()).identity; }
 export async function getCapabilities() { return capabilities; }
@@ -90,29 +96,36 @@ async function startWatch() {
     const { auth, authApi, db, storeApi } = await firebase();
     if (!listeners.size) return;
     let observedUid, observedName;
-    rebindProfile = () => {
+    rebindProfile = (force = false) => {
       const user = auth.currentUser, name = username();
-      if (observedUid === user?.uid && observedName === name) return;
+      const sameAccount = observedUid === user?.uid && observedName === name;
+      if (sameAccount && force !== true) return;
       observedUid = user?.uid; observedName = name;
       const revision = ++watchRevision;
       profileUnsubscribe?.();
       profileUnsubscribe = null;
-      update(user, name, null);
+      if (!sameAccount) update(user, name, null);
+      else { last = {...last, error: undefined, errorCode: undefined, connectionStatus: 'connecting'}; emit(); }
       if (user && name) profileUnsubscribe = storeApi.onSnapshot(
-        storeApi.doc(db, 'users', name),
+        storeApi.doc(db, 'users', name), {includeMetadataChanges: true},
         (snapshot) => { if (revision === watchRevision) update(user, name, snapshot); },
         (error) => { if (revision === watchRevision) failed(error); }
       );
     };
-    authUnsubscribe = authApi.onAuthStateChanged(auth, rebindProfile);
+    authUnsubscribe = authApi.onAuthStateChanged(auth, () => rebindProfile());
   } catch (error) { failed(error); }
   finally { watchStarting = false; }
 }
 function accountChanged(event) {
   if (event?.type === 'storage' && event.key && event.key !== 'gh.username') return;
-  if (rebindProfile) rebindProfile();
+  if (rebindProfile) rebindProfile(Boolean(last.error));
   else void startWatch();
   if (last.identity?.linked) void flushMatchResults(username());
+}
+export async function retryConnection() {
+  if (rebindProfile) rebindProfile(true);
+  else await startWatch();
+  return getProfile();
 }
 export function watchProfile(callback) {
   listeners.add(callback);
@@ -146,8 +159,11 @@ async function save(mode, result, options = {}) {
     rebindProfile?.();
     throw new Error('Your account changed. Progress is kept with the account that played this run.');
   }
-  const value = await createProfileStore({ db, api: storeApi }).save(name, mode, result);
-  if (name !== username()) { rebindProfile?.(); return last; }
+  const uid = auth.currentUser.uid;
+  let value;
+  try { value = await createProfileStore({ db, api: storeApi, isCurrentAccount: () => name === username() && auth.currentUser?.uid === uid }).save(name, mode, result); }
+  catch (error) { if (name === username() && auth.currentUser?.uid === uid) failed(error); throw firebaseError(error); }
+  if (name !== username() || auth.currentUser?.uid !== uid) { rebindProfile?.(); return last; }
   return update(auth.currentUser, name, { exists: () => true, data: () => ({ ...value.account, gameStats: { ...value.account.gameStats, turncraft: value.profile } }) });
 }
 export function saveCampaign(result, options) { return save('campaign', result, options); }

@@ -58,7 +58,7 @@ export function mergePersonalResult(previous = {}, mode, input, now = new Date()
   return next;
 }
 
-export function createProfileStore({ db, api }) {
+export function createProfileStore({ db, api, isCurrentAccount = () => true }) {
   return {
     async save(username, mode, result) {
       if (!username || username.includes('/')) throw new Error('Sign into your CatnMice account to sync progress.');
@@ -70,6 +70,7 @@ export function createProfileStore({ db, api }) {
         const historyRef = result.resultId && /^[A-Za-z0-9_-]{1,100}$/.test(result.resultId)
           ? api.doc(db, 'users', username, 'turncraftSoloHistory', result.resultId) : null;
         const receipt = historyRef ? await transaction.get(historyRef) : null;
+        if (!isCurrentAccount()) throw Object.assign(new Error('Your account changed. This run remains queued for the profile that played it.'), {code: 'ACCOUNT_CHANGED'});
         if (receipt?.exists()) return {account, profile: previous, wrote: false};
         const next = mergePersonalResult(previous, mode, result);
         const patch = {};

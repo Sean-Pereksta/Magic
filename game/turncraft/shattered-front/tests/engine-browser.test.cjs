@@ -33,7 +33,7 @@ async function setup(viewport = { width: 1360, height: 900 }) {
     if (pathname === '/game/turncraft/shattered-front/profile.mjs')
       return route.fulfill({
         contentType: 'text/javascript',
-        body: 'export function rankFor(mmr,matches){return matches?(mmr>=1500?"Diamond":mmr>=1100?"Gold":"Silver"):"Unranked";}'
+        body: 'export function rankFor(mmr,matches){return matches?(mmr>=1500?"Diamond":mmr>=1100?"Gold":"Silver"):"Unranked";} export const selectedUsername=()=>localStorage.getItem("gh.username")||null; export const rememberLobby=async()=>{}; export const saveLobbyResult=async()=>({});'
       });
     if (pathname === '/game/turncraft/shattered-front/lobby-store.mjs')
       return route.fulfill({contentType:'text/javascript',body:'export async function completeCustomMatch(context,id){return window.sfCompleteFirestore(context,id);}'});

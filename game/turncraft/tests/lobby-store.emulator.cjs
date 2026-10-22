@@ -44,11 +44,31 @@ const api = require('firebase/firestore');
     await assert.rejects(stranger.join({lobbyId: room.id}), {code: 'MATCH_STARTED'});
     await assertFails(api.updateDoc(api.doc(peerDb, 'lobbies', room.id), {settings: {...started.settings, mapId: 'classic'}}));
 
+    // The battlefield must retain the Auth identity that claimed its lobby seat.
+    // Replacing persisted Auth with a new anonymous UID reproduces the startup
+    // permission failure; the original identity accepts the actual HTML payloads.
+    const replacementDb=env.authenticatedContext('replacement-anonymous').firestore();
+    const presence={username:'Peer',uid:'peer',slot:1,lastSeenMs:Date.now(),lastSeenAt:api.serverTimestamp()};
+    await assertSucceeds(api.setDoc(api.doc(peerDb,'lobbies',room.id,'chess_starfront_presence','Peer'),presence,{merge:true}));
+    await assertFails(api.setDoc(api.doc(replacementDb,'lobbies',room.id,'chess_starfront_presence','Peer'),{...presence,uid:'replacement-anonymous'},{merge:true}));
+    await assertFails(api.getDoc(api.doc(replacementDb,'lobbies',room.id,'chess_starfront','state')));
+    const commandId='Peer_1_1700000000000_17';
+    const command={type:'groupMove',entityIds:[11,12],x:12,y:15,by:'Peer',slot:1,createdAtMs:Date.now(),clientCommandId:commandId,clientSeq:1,controllerEpochKnown:0,id:commandId};
+    await assertSucceeds(api.setDoc(api.doc(peerDb,'lobbies',room.id,'chess_starfront_commands',commandId),command));
+    await assertFails(api.setDoc(api.doc(replacementDb,'lobbies',room.id,'chess_starfront_commands','replaced-identity'),{...command,id:'replaced-identity'}));
+    await assertFails(api.deleteDoc(api.doc(peerDb,'lobbies',room.id,'chess_starfront_commands',commandId)));
+
     const lease = {ownerUid: 'owner', ownerName: 'Owner', epoch: 1, expiresAtMs: Date.now() + 16000};
     await api.updateDoc(api.doc(ownerDb, 'lobbies', room.id), {chessStarfrontController: lease, updatedAt: api.serverTimestamp()});
+    await assertSucceeds(api.getDocs(api.collection(ownerDb,'lobbies',room.id,'chess_starfront_commands')));
+    await assertSucceeds(api.deleteDoc(api.doc(ownerDb,'lobbies',room.id,'chess_starfront_commands',commandId)));
     await assertFails(api.updateDoc(api.doc(peerDb, 'lobbies', room.id), {chessStarfrontController: {...lease, ownerUid: 'peer', ownerName: 'Peer', epoch: 2}}));
     await assert.rejects(completeCustomMatch({db: ownerDb, auth: ownerAuth, api}, room.id), {code: 'RESULT_NOT_READY'});
     const finalState = {gameKey: 'chess_starfront', gameOver: true, controllerUid: 'owner', controllerEpoch: 1, players: [{name: 'Owner', factionId: 'frontier'}, {name: 'Peer', factionId: 'brood'}], matchStartedAt: started.startedAt, matchResult: {winnerIdx: 0, reason: 'Every opposing command base fell.', finishedAt: started.startedAt + 120000}};
+    const liveState={...finalState,version:1,stateVersion:1,simulationTick:1,updatedAtMs:Date.now(),updatedBy:'Owner',controller:'Owner',acks:[commandId],boardWidth:42,boardHeight:30,mapSeed:77164,activeMapSeed:77164,players:finalState.players.map((player,idx)=>({...player,idx,ai:false,minerals:500,gas:100,eliminated:false})),entities:[{id:11,kind:'unit',type:'rifleman',faction:1,x:12,y:15,alive:true,hp:45}],resourceNodes:[],areaEffects:[],pendingImpacts:[],temporaryObstacles:[],scanEffects:[],modeState:{},terrainCode:'g'.repeat(42*30),gameOver:false,matchResult:null,chosenDifficulty:'medium',chosenAiStyle:'balanced',chosenGameMode:'annihilation',chosenMapId:'ember-rift',serverUpdatedAt:api.serverTimestamp()};
+    await assertSucceeds(api.setDoc(api.doc(ownerDb,'lobbies',room.id,'chess_starfront','state'),liveState,{merge:false}));
+    assert.equal((await api.getDoc(api.doc(peerDb,'lobbies',room.id,'chess_starfront','state'))).data().entities[0].id,11);
+    await assertFails(api.setDoc(api.doc(replacementDb,'lobbies',room.id,'chess_starfront','state'),{...liveState,controllerUid:'replacement-anonymous'}));
     await assertFails(api.setDoc(api.doc(peerDb, 'lobbies', room.id, 'chess_starfront', 'state'), finalState));
     await api.setDoc(api.doc(ownerDb, 'lobbies', room.id, 'chess_starfront', 'state'), finalState);
     await assert.rejects(completeCustomMatch({db: peerDb, auth: peerAuth, api}, room.id), {code: 'HOST_ONLY'});
@@ -126,6 +146,6 @@ const api = require('firebase/firestore');
 
     const saved = (await api.getDoc(api.doc(ownerDb, 'users', 'Owner'))).data();
     assert.equal(saved.gameStats.turncraft.mmr, 1500); assert.equal(saved.gameStats.turncraft.rankedMatches, 10); assert.equal(saved.gameStats.otherGame.wins, 9);
-    console.log('Direct Firestore lobby emulator passed: create/join/invites, readiness, frozen host start, controller completion, fresh rematch, host departure, four-human authored-terrain synchronization, mixed human/AI synchronization, invalid-capacity rejection and unchanged ratings.');
+    console.log('Direct Firestore lobby emulator passed: create/join/invites, readiness, frozen host start, real battlefield presence/command/snapshot payloads, preserved Auth seat identity, controller completion, fresh rematch, host departure, four-human authored-terrain synchronization, mixed human/AI synchronization, invalid-capacity rejection and unchanged ratings.');
   } finally {await env.cleanup();}
 })().catch(error => {console.error(error); process.exitCode = 1;});

@@ -1,4 +1,5 @@
 import { artwork, assetUrl, loadManifest } from './assets.mjs';
+import { firebaseError } from './firebase-connection.mjs';
 import {
   CHECKPOINT_KEY,
   checkpointKey,
@@ -28,13 +29,15 @@ let identity = {
 let progressKey = `turncraft.shattered-front.progress.${encodeURIComponent(identity.username || 'local')}.v1`,
   progress = readProgress(progressKey);
 let historyName = null, matchHistory = [], checkpointLoadedFor = null;
+const pendingCheckpointUploads = new Set();
+let checkpointSyncBusy = false;
 let activeView = 'home',
   returnView = 'home',
   selectedRegion = '',
   pendingLaunch = null,
   lastResult = null,
   busy = false;
-let message = '',
+let message = '', syncError = '',
   factionReturn = 'home',
   profileUnsub,
   initialized = false,
@@ -109,10 +112,11 @@ async function flushSaves() {
       historyName = null;
       saveProgress();
     }
-  } catch {
-    status(
-      'Saved on this device. Account sync will retry when your connection returns.'
-    );
+    if (startedFor === progressKey && !progress.pendingResults?.length && !pendingCheckpointUploads.has(identity.username) && syncError) {
+      syncError = ''; status('Progress saved to Firestore.'); if (!root.hidden) render();
+    }
+  } catch (error) {
+    if (startedFor === progressKey) reportSyncFailure(error);
   } finally {
     syncing = false;
     if (startedFor !== progressKey) void flushSaves();
@@ -155,6 +159,38 @@ function status(text) {
   message = text;
   const box = root.querySelector('#sfStatus');
   if (box) box.textContent = text;
+}
+function reportSyncFailure(error) {
+  syncError = firebaseError(error).message;
+  status(`Progress sync pending. ${syncError}`);
+  if (!root.hidden) render();
+}
+async function retryAccountSync() {
+  status('Reconnecting your Firestore profile…');
+  try {
+    await cloud.retryConnection();
+    await flushSaves();
+    const current = checkpoint();
+    if (identity.linked && current?.username === identity.username) {pendingCheckpointUploads.add(identity.username);await flushCheckpointSaves();}
+    if (!syncError) status('Profile connected to Firestore.');
+  } catch (error) { reportSyncFailure(error); }
+}
+async function flushCheckpointSaves() {
+  const owner = identity.username;
+  if (checkpointSyncBusy || !cloud || !identity.linked || !pendingCheckpointUploads.has(owner)) return;
+  const saved = checkpoint();
+  if (!saved || saved.username !== owner) {pendingCheckpointUploads.delete(owner);return;}
+  checkpointSyncBusy = true;
+  let succeeded = false;
+  try {
+    await cloud.saveCheckpoint(saved, owner);succeeded = true;
+    if (identity.username === owner && checkpoint()?.savedAt === saved.savedAt) pendingCheckpointUploads.delete(owner);
+    if (identity.username === owner && !pendingCheckpointUploads.has(owner) && !progress.pendingResults?.length) {syncError = '';status('Battle checkpoint saved to Firestore.');if (!root.hidden) render();}
+  } catch (error) {if (identity.username === owner) reportSyncFailure(error);}
+  finally {
+    checkpointSyncBusy = false;
+    if (identity.username !== owner || succeeded && pendingCheckpointUploads.has(owner)) void flushCheckpointSaves();
+  }
 }
 function shell() {
   root.replaceChildren();
@@ -223,6 +259,7 @@ function shell() {
     ),
     button('Settings', () => show('settings'), 'sf-link')
   );
+  if (syncError && cloud?.retryConnection) footer.append(button('Retry account sync', retryAccountSync, 'sf-button sf-sync-retry'));
   root.append(footer);
   const note = el('p', 'sf-status', message);
   note.id = 'sfStatus';
@@ -1215,25 +1252,30 @@ async function initialize() {
         const name = identity.username;
         checkpointLoadedFor = name;
         void cloud.getCheckpoint(name).then(saved => {
-          if (!saved || name !== identity.username) return;
+          if (name !== identity.username) return;
           const current = checkpoint();
-          if (saved.cleared) {
+          if (saved?.cleared) {
             if (current && saved.savedAt >= current.savedAt && (!saved.completedRunId || saved.completedRunId === current.resultId)) localStorage.removeItem(checkpointKey(name));
+            if (checkpoint()?.savedAt > saved.savedAt) pendingCheckpointUploads.add(name);
+            void flushCheckpointSaves();
             if (!root.hidden) render();
             return;
           }
-          if (!current || saved.savedAt > current.savedAt) localStorage.setItem(checkpointKey(name), JSON.stringify(saved));
+          if (saved && (!current || saved.savedAt > current.savedAt)) localStorage.setItem(checkpointKey(name), JSON.stringify(saved));
+          if (current?.username === name && (!saved || current.savedAt > saved.savedAt)) pendingCheckpointUploads.add(name);
+          void flushCheckpointSaves();
           if (!root.hidden) render();
-        }).catch(() => { checkpointLoadedFor = null; });
+        }).catch(error => { checkpointLoadedFor = null; reportSyncFailure(error); });
       }
-      if (data.error)
-        message =
-          'Account sync is unavailable. Progress continues to save on this device.';
+      if (data.error) { syncError = data.error; message = `Progress sync pending. ${data.error}`; }
+      else if (data.connectionStatus === 'connected' && syncError && !progress.pendingResults?.length && !pendingCheckpointUploads.has(identity.username)) { syncError = ''; message = 'Profile connected to Firestore.'; }
+      else if (data.connectionStatus === 'cached') message = 'Using your downloaded profile. Pending progress will sync to Firestore when connected.';
       if (!root.hidden) render();
       void flushSaves();
+      if (data.connectionStatus === 'connected') void flushCheckpointSaves();
     });
-  } catch {
-    /* Local campaign and survival remain playable during a connection outage. */
+  } catch (error) {
+    reportSyncFailure(error);
   }
 }
 window.addEventListener('turncraft:expansion-ready', initialize, {
@@ -1270,10 +1312,11 @@ window.addEventListener('turncraft:expansion-result', async (event) => {
 });
 window.addEventListener('turncraft:checkpoint', event => {
   const saved = event.detail?.checkpoint;
-  if (cloud && identity.linked && saved?.username === identity.username)
-    void cloud.saveCheckpoint(saved, saved.username).catch(() => {});
+  if (saved?.username) pendingCheckpointUploads.add(saved.username);
+  if (saved?.username === identity.username) void flushCheckpointSaves();
 });
 window.addEventListener('online', flushSaves);
+window.addEventListener('online', flushCheckpointSaves);
 window.addEventListener('pagehide', event => { if (!event.persisted) profileUnsub?.(); });
 window.addEventListener('keydown', (event) => {
   if (!root.hidden && event.key === 'Escape' && activeView !== 'home') {

@@ -1,5 +1,6 @@
 import {LOBBY_MAP_CATALOG} from './battle-config.mjs';
 import {firebase, getProfile, saveLobbyResult, rememberLobby, forgetLobby, rankFor, rankEmblem} from './profile.mjs';
+import {firebaseError} from './firebase-connection.mjs';
 import {createLobbyStore} from './lobby-store.mjs';
 import {assetUrl, loadManifest} from './assets.mjs';
 
@@ -18,7 +19,7 @@ function status(message, error = false) {
 async function action(fn) {
   if (busy) return;
   busy = true;
-  try { await fn(); } catch (error) { status(error.message, true); }
+  try { await fn(); } catch (error) { status(firebaseError(error).message, true); }
   finally { busy = false; }
 }
 function displayName() { return identity?.username || localStorage.getItem('gh.username') || identity?.displayName || 'Commander'; }
@@ -198,7 +199,7 @@ async function boot() {
   await loadManifest(); document.body.style.backgroundImage = `linear-gradient(120deg,#08111be8,#111f34dc),url("${assetUrl('menu.background', 'ui/main_menu/battlefield.webp')}")`;
   const response = await getProfile(); identity = response.identity;
   const {db, auth, storeApi} = await firebase();
-  store = createLobbyStore({db, auth, api: storeApi, getIdentity: () => ({...identity, username: displayName()})});
+  store = createLobbyStore({db, auth, api: storeApi, getIdentity: async () => {identity = (await getProfile()).identity;return {...identity, username: displayName()};}});
   const value = params.get('lobbyId') || params.get('gameId'), code = params.get('code');
   if (code) {$('joinCode').value = code; $('codeDialog').showModal(); status('Invitation found. Press Join Lobby to claim your seat.'); return;}
   if (value) {
