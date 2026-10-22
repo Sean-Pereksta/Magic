@@ -41,7 +41,7 @@ test('enemy AI never throws for a rooted planned retreat',()=>{const s=battle(),
 test('all-player knockout ends only once and preserves sanctuary identities and discoveries',()=>{const s=battle(),ids=Object.keys(s.collection),p=s.run.monkey;p.discovered=['2:fire+leaf'];p.highestForm={stage:2,types:['fire','leaf']};p.bond=7;for(const member of C.team(s))member.hp=0;p.hp=1;C.turn(s,'breathe');assert.equal(s.run.phase,'dead');assert.equal(s.meta.history.length,1);assert.deepEqual(Object.keys(s.collection),ids);assert.equal(p.bond,7);assert.equal(p.level,1);assert.equal(p.stage,0);assert.deepEqual(p.discovered,['2:fire+leaf']);C.restart(s);assert.ok(C.team(s).every(m=>m.hp>0));assert.deepEqual(Object.keys(s.collection),ids);});
 test('simultaneous last-opponent and last-teammate knockout grants no duplicate win',()=>{const s=battle(save());s.run.monkey.hp=1;s.run.monkey.status.poison=1;s.run.battle.enemy.hp=1;C.turn(s,'strike');assert.equal(s.run.phase,'dead');assert.equal(s.run.wins,0);assert.equal(s.meta.history.length,1);});
 test('simultaneous active and last-enemy knockout asks replacement before granting victory once',()=>{let s=battle();s.run.monkey.hp=1;s.run.monkey.status.poison=1;s.run.battle.enemy.hp=1;C.turn(s,'strike');assert.equal(s.run.phase,'replacement');assert.equal(s.run.wins,0);assert.equal(s.run.battle.pendingVictory,true);s=C.validate(structuredClone(s));const next=C.team(s)[1],hp=next.hp;C.chooseReplacement(s,next.id);assert.equal(next.hp,hp);assert.equal(s.run.phase,'befriend');assert.equal(s.run.wins,1);C.skipBefriend(s);assert.equal(s.run.phase,'trail');assert.equal(s.run.activeId,next.id);assert.ok(s.run.monkey.hp>0);assert.throws(()=>C.chooseReplacement(s,next.id));assert.equal(s.run.wins,1);});
-test('encounter experience is one pool shared with reserves and never multiplied',()=>{const s=battle(),sum=C.team(s).reduce((n,p)=>n+p.training,0),b=s.run.battle,pool=18+b.enemies.reduce((n,e)=>n+e.level*2,0)+b.enemies.length*4;win(s);assert.equal(C.team(s).reduce((n,p)=>n+p.training,0)-sum,pool);assert.ok(C.team(s).every(p=>p.training>0));});
+test('victory experience is split once with level bonuses and added to contribution XP',()=>{const s=battle(),before=C.team(s).map(p=>p.training),b=s.run.battle,pool=18+b.enemies.reduce((n,e)=>n+e.level*2,0)+b.enemies.length*4;for(const p of C.team(s))p.level=60;win(s);assert.equal(C.team(s).reduce((n,p,i)=>n+p.training-before[i],0),pool);assert.ok(C.team(s).every((p,i)=>p.training>before[i]));});
 test('fruit alone cannot buy levels and experience alone cannot buy levels',()=>{const s=save(),p=s.run.monkey;s.run.fruit=100;assert.throws(()=>C.train(s));p.training=100;s.run.fruit=0;assert.throws(()=>C.train(s));s.run.fruit=100;C.train(s);assert.equal(p.level,2);assert.equal(p.training,78);});
 test('knockouts cannot be bypassed by training, evolving, or camp replacement',()=>{const s=party(),p=s.run.monkey,reserve=add(s);s.run.phase='camp';s.run.camp={heals:2};p.hp=0;p.level=3;p.training=999;s.run.fruit=999;s.run.essence.leaf=99;assert.throws(()=>C.train(s,p.id));assert.throws(()=>C.evolve(s,'leaf',p.id));assert.equal(p.hp,0);assert.throws(()=>C.setParty(s,[reserve.id,...s.run.party.slice(1)]));s.run.items.revive=1;C.useItem(s,'revive',p.id);C.setParty(s,[reserve.id,...s.run.party.slice(1)]);assert.ok(p.hp>0);});
 test('camp swapping preserves prior expedition injuries and camp healing is limited',()=>{const s=party(),p=s.run.monkey,reserve=add(s);p.hp=17;s.run.phase='camp';s.run.camp={heals:2,seedBoost:false};C.setParty(s,[reserve.id,...s.run.party.slice(1)]);C.setParty(s,[p.id,...s.run.party.slice(1)]);assert.equal(p.hp,17);C.campHeal(s,p.id);C.campHeal(s,p.id);assert.equal(s.run.camp.heals,0);assert.throws(()=>C.campHeal(s,p.id));});
@@ -64,3 +64,65 @@ test('new Ultra requires no charm, strips boss multipliers and can be recruited 
 test('Ultra support cannot consume the guaranteed boss invitation',()=>{const s=party();s.run.ordinaryWins=2;s.run.distance=5000*C.FEET;s.run.nextEncounter=6000*C.FEET;s.run.nextCamp=6000*C.FEET;C.advance(s,1,0,0);s.run.ultra.plan.size=2;C.beginUltra(s,{gpsFresh:true,withinRadius:true});const boss=s.run.battle.enemies[0],support=s.run.battle.enemies[1];assert.notEqual(support.species,s.run.ultra.species);win(s);assert.equal(s.run.capture.candidates.length,1);assert.equal(s.run.capture.candidates[0].id,boss.id);assert.equal(C.captureChance(s,support.id),0);assert.throws(()=>C.befriend(s,support.id));assert.equal(s.run.capture.attempts,0);s.run.items.bondCharm=0;const result=C.befriend(s,boss.id);assert.equal(result.success,true);assert.equal(result.monkey.species,s.run.ultra.species);});
 test('compound shield, attack, cleanse, healing and energy effects all execute',()=>{for(const move of['clearMind','glacierflow','auroraReversal','renewalChorus','worldrootSanctuary']){const s=battle(),p=s.run.monkey;if(C.MOVES[move].signature){p.species=Object.values(C.SPECIES).find(s=>s.signature===move).id;p.types=[...C.SPECIES[p.species].types];}p.learned.push(move);p.loadout=['strike',move,'brace','breathe'];p.level=10;p.hp=20;p.energy=12;p.status.poison=2;C.team(s)[1].hp=20;quiet(s);const enemyHp=s.run.battle.enemy.hp;C.turn(s,move);if(C.MOVES[move].shield)assert.ok(p.shield>0,move);if(C.MOVES[move].power)assert.ok(s.run.battle.enemy.hp<enemyHp,move);if(C.MOVES[move].cleanse)assert.equal(p.status.poison,undefined,move);if(C.MOVES[move].teamHeal)assert.ok(C.team(s)[1].hp>20,move);}});
 test('all abilities have an executable effect and all 90 species have curated pools',()=>{assert.equal(Object.keys(C.SPECIES).length,90);assert.ok(Object.keys(C.MOVES).length>=80);for(const[id,m]of Object.entries(C.MOVES)){assert.ok(['power','guard','energy','heal','shield','switch','rally','root','prepare','counter','cleanse','teamHeal','teamShield','statusSelf'].some(k=>m[k]),id);const s=battle(),p=s.run.monkey;if(m.signature){p.species=Object.values(C.SPECIES).find(s=>s.signature===id).id;p.types=[...C.SPECIES[p.species].types];}p.stage=3;p.learned.push(id);p.loadout=id==='strike'?['strike','brace','breathe']:['strike',id,'brace','breathe'].filter((v,i,a)=>a.indexOf(v)===i);p.energy=18;p.hp=20;quiet(s);assert.doesNotThrow(()=>C.turn(s,id),id);}for(const[id,p]of Object.entries(C.SPECIES)){assert.ok(p.learnset.length>=4,id);assert.ok(p.learnset.every(id=>C.MOVES[id]),id);}});
+
+test('walking awards all three combined XP, with faster early levels and no sanctuary XP',()=>{
+  const s=party(),reserve=add(s),[a,b,c]=C.team(s);b.level=4;c.level=6;
+  C.advance(s,100*C.FEET,0,0);
+  assert.equal(a.training,2);assert.equal(b.training,1);assert.equal(b.xpRemainder,.5);assert.equal(c.training,1);assert.equal(reserve.training,0);
+  C.advance(s,100*C.FEET,0,0);assert.equal(a.training,4);assert.equal(b.training,3);assert.equal(c.training,2);
+  const before=a.training;assert.equal(C.advance(s,0),0);assert.equal(C.advance(s,-10),0);assert.equal(a.training,before);
+});
+test('fractional walking XP and injury recovery survive reload without depending on GPS chunk size',()=>{
+  const a=party(),b=structuredClone(a);for(const p of C.team(a))p.hp=10;for(const p of C.team(b))p.hp=10;
+  C.advance(a,100*C.FEET);for(let i=0;i<10;i++){C.advance(b,10*C.FEET);C.validate(b);}
+  for(let i=0;i<3;i++){assert.equal(C.team(a)[i].training,C.team(b)[i].training);assert.ok(Math.abs(C.team(a)[i].hp-C.team(b)[i].hp)<1e-8);}
+  assert.ok(Math.abs(a.run.monkey.hp-(10+C.playerStats(a).hp*.01))<1e-8);
+});
+test('walking recovery caps at full health and excludes knockouts and sanctuary',()=>{
+  const s=party(),[a,b,c]=C.team(s),reserve=add(s);a.hp=C.stats(a).hp-.1;b.hp=0;c.hp=10;reserve.hp=10;
+  C.advance(s,100*C.FEET);assert.equal(a.hp,C.stats(a).hp);assert.equal(b.hp,0);assert.equal(reserve.hp,10);assert.ok(c.hp>10);
+  const hp=c.hp;s.run.phase='battle';assert.equal(C.advance(s,500*C.FEET),0);assert.equal(c.hp,hp);
+});
+test('upgrades spend both fruit and general XP with cheaper early fruit costs',()=>{
+  const s=save(),p=s.run.monkey;s.run.fruit=3;p.training=C.trainingCost(p).xp;
+  C.train(s,p.id);assert.equal(p.level,2);assert.equal(p.training,0);assert.equal(s.run.fruit,0);
+  assert.ok(C.trainingCost(p).fruit>C.trainingCost({...p,level:1}).fruit);
+  const copy=structuredClone(s);assert.throws(()=>C.train(s,p.id));assert.deepEqual(s,copy);
+});
+test('battle supplies preserve attack, enemy intent and round, enforce one per round across reload',()=>{
+  let s=battle(),p=s.run.monkey,b=s.run.battle;quiet(s);p.hp=10;s.run.items.berry=3;
+  const round=b.round,enemyHP=b.enemy.hp,energy=b.enemy.energy,intent=structuredClone(b.enemyAction),xp=p.training;
+  C.useItem(s,'berry',p.id);assert.ok(p.hp>10);assert.equal(b.round,round);assert.equal(b.enemy.hp,enemyHP);assert.equal(b.enemy.energy,energy);assert.deepEqual(b.enemyAction,intent);assert.equal(p.training,xp);
+  const after=structuredClone(s);assert.throws(()=>C.useItem(s,'berry',p.id),/One supply/);assert.deepEqual(s,after);
+  s=C.validate(structuredClone(s));assert.throws(()=>C.turn(s,'berry',true),/One supply/);
+  C.turn(s,'strike');assert.equal(s.run.battle.round,round+1);assert.ok(s.run.battle.enemy.hp<enemyHP);
+  s.run.monkey.hp=10;C.useItem(s,'berry',p.id);assert.equal(s.run.items.berry,1);
+});
+test('unneeded or unready items do not spend stock or the free item allowance; reserve revival still permits attack',()=>{
+  const s=battle(),p=s.run.monkey,b=s.run.battle;quiet(s);p.hp=C.playerStats(s).hp;
+  assert.throws(()=>C.useItem(s,'berry',p.id),/not needed/);assert.equal(b.itemUsedRound,undefined);
+  b.ready=false;p.hp=10;assert.throws(()=>C.useItem(s,'berry',p.id),/begin/);b.ready=true;
+  const reserve=C.team(s)[1];reserve.hp=0;s.run.items.revive=1;C.useItem(s,'revive',reserve.id);assert.ok(reserve.hp>0);const round=b.round;C.turn(s,'strike');assert.equal(b.round,round+1);
+});
+test('actual damage and effective healing award extra XP without overkill, overheal or item XP',()=>{
+  const s=battle(),p=s.run.monkey,b=s.run.battle;quiet(s);p.hp=10;
+  p.learned.push('fieldMend');p.loadout=['strike','fieldMend','brace','breathe'];
+  const before=p.training,hp=p.hp;C.turn(s,'fieldMend');const c=b.contributions[p.id];assert.ok(p.hp>hp);assert.equal(c.healing,p.hp-hp);assert.ok(p.training>before);
+  quiet(s);p.hp=C.playerStats(s).hp;p.cooldowns.fieldMend=0;C.turn(s,'fieldMend');assert.equal(c.healing,Math.round(C.playerStats(s).hp*C.MOVES.fieldMend.heal));
+  quiet(s);const enemyHP=b.enemy.hp;C.turn(s,'strike');assert.equal(c.damage,enemyHP-b.enemy.hp);assert.ok(c.xp>0);
+  // A shielded hit and a full-health heal never manufacture contribution HP.
+  quiet(s);b.enemy.shield=9999;b.enemy.status.shield=2;const damage=c.damage;C.turn(s,'strike');assert.equal(c.damage,damage);
+});
+test('walking recovery is exactly 1% for healing species too, with no banking while full',()=>{
+  const s=save(),p=s.run.monkey;p.species='langur';p.types=[];p.hp=C.playerStats(s).hp;
+  C.advance(s,100*C.FEET);p.hp=10;const before=p.hp,max=C.playerStats(s).hp;C.advance(s,100*C.FEET);
+  assert.ok(Math.abs(p.hp-before-max*.01)<1e-8);
+});
+test('combat XP ignores overkill and caps repeated effective healing in a single encounter',()=>{
+  const s=battle(),p=s.run.monkey,b=s.run.battle;quiet(s);p.loadout=['strike','fieldMend','brace','breathe'];p.learned.push('fieldMend');
+  for(let i=0;i<20;i++){quiet(s);p.hp=1;p.energy=12;p.cooldowns.fieldMend=0;C.turn(s,'fieldMend');}
+  const c=b.contributions[p.id],xp=p.training,cap=c.base;
+  for(let i=0;i<3;i++){quiet(s);p.hp=1;p.energy=12;p.cooldowns.fieldMend=0;C.turn(s,'fieldMend');}
+  assert.equal(c.base,cap);assert.equal(p.training,xp,'Healing repeatedly cannot farm unlimited XP');
+  quiet(s);b.enemy.hp=1;const damage=c.damage;C.turn(s,'strike');assert.equal(c.damage-damage,1,'Only remaining HP counts, even on a lethal hit');
+});
