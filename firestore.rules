@@ -1610,6 +1610,280 @@ service cloud.firestore {
       }
     }
 
+    // Monkey Trails social play is isolated from permissive legacy save rules.
+    // Browser simulation is deterministic and checked by both participants;
+    // these rules protect ownership, transactions, membership and replay bounds.
+    match /monkeyTrailsSocial/{version} {
+      function mtEnabled() { return version == 'v1' && isAuthed(); }
+      function mtFresh(value) { return value is int && value >= request.time.toMillis()-120000 && value <= request.time.toMillis()+120000; }
+      function mtPlayer(uid) { return get(/databases/$(database)/documents/monkeyTrailsSocial/v1/players/$(uid)).data; }
+      function mtPlayerAfter(uid) { return getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/players/$(uid)).data; }
+      function mtTribe(id) { return get(/databases/$(database)/documents/monkeyTrailsSocial/v1/tribes/$(id)).data; }
+      function mtTribeAfter(id) { return getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/tribes/$(id)).data; }
+      function mtOp(id) { return getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/operations/$(id)).data; }
+      function mtAsset(id) { return id in ['fruit','berry','tonic','salve','revive','bondCharm','trailRibbon','treasureScent','scoutFeather','campfireSeed','charmMaterial']; }
+      function mtQuantity(n) { return n is int && n > 0 && n <= 100000; }
+      function mtWallet(w) { return w is map && w.keys().hasOnly(['fruit','items']) && w.fruit is int && w.fruit >= 0 && w.fruit <= 1000000000 && w.items is map && w.items.size() <= 16 && w.items.keys().hasOnly(['berry','tonic','salve','revive','bondCharm','trailRibbon','treasureScent','scoutFeather','campfireSeed','charmMaterial']); }
+      function mtPair(a) { return a is map && a.keys().hasOnly(['asset','amount']) && mtAsset(a.asset) && mtQuantity(a.amount); }
+      function mtMove(before,after,asset,amount) {
+        return mtAsset(asset)
+          && (asset == 'fruit' ? after.items == before.items && after.fruit == before.fruit+amount
+            : after.fruit == before.fruit && after.items.diff(before.items).affectedKeys().hasOnly([asset])
+              && after.items.get(asset,0) == before.items.get(asset,0)+amount && after.items.get(asset,0) >= 0);
+      }
+      function mtSwap(before,after,give,want) {
+        return mtPair(give) && mtPair(want)
+          && after.fruit == before.fruit-(give.asset == 'fruit' ? give.amount : 0)+(want.asset == 'fruit' ? want.amount : 0)
+          && after.items.diff(before.items).affectedKeys().hasOnly([give.asset,want.asset])
+          && (give.asset == 'fruit' || after.items.get(give.asset,0) == before.items.get(give.asset,0)-give.amount+(want.asset == give.asset ? want.amount : 0))
+          && (want.asset == 'fruit' || after.items.get(want.asset,0) == before.items.get(want.asset,0)+want.amount-(give.asset == want.asset ? give.amount : 0))
+          && (give.asset == 'fruit' || after.items.get(give.asset,0) >= 0) && (want.asset == 'fruit' || after.items.get(want.asset,0) >= 0);
+      }
+      function mtSameTribe(a,b) { return mtPlayer(a).tribeId is string && mtPlayer(a).tribeId == mtPlayer(b).tribeId && a in mtTribe(mtPlayer(a).tribeId).members && b in mtTribe(mtPlayer(a).tribeId).members; }
+      function mtChange(op,uid,before,after) {
+        let d=op.details;
+        return uid in op.participants && d.wallets[uid].before == before && d.wallets[uid].after == after
+          && ((op.kind == 'deposit' && op.actor == uid && d.uid == uid && mtMove(before,after,d.asset,d.amount))
+            || (op.kind == 'withdraw' && op.actor == uid && d.uid == uid && mtMove(before,after,d.asset,-d.amount))
+            || (op.kind == 'gift' && mtMove(before,after,d.asset,uid == d.from ? -d.amount : d.amount))
+            || (op.kind == 'trade-offer' && uid == op.actor && mtMove(before,after,d.give.asset,-d.give.amount))
+            || (op.kind == 'trade-cancel' && uid == d.from && mtMove(before,after,d.give.asset,d.give.amount))
+            || (op.kind == 'trade' && uid in [d.from,d.to] && (uid == d.from ? mtMove(before,after,d.want.asset,d.want.amount) : mtSwap(before,after,d.want,d.give)))
+            || (op.kind == 'duel-start' && mtMove(before,after,'fruit',-d.escrow[uid]))
+            || (op.kind == 'duel' && mtMove(before,after,'fruit',d.winner == null ? d.escrow[uid] : d.winner == uid ? d.escrow[op.participants[0]]+d.escrow[op.participants[1]] : 0))
+            || (op.kind == 'raid' && after.fruit == before.fruit+d.reward.fruit && after.items.diff(before.items).affectedKeys().hasOnly(['berry','bondCharm']) && after.items.get('berry',0) == before.items.get('berry',0)+1 && after.items.get('bondCharm',0) == before.items.get('bondCharm',0)+(d.level%3 == 0 ? 1 : 0)));
+      }
+      function mtPlayerShape(d,uid) {
+        return d.keys().hasOnly(['uid','saveId','name','team','averageLevel','tribeId','wallet','activeDuel','activeRaid','lastRaidAt','version','lastOp','createdAt','updatedAt'])
+          && d.uid == uid && d.saveId is string && d.saveId.size() >= 1 && d.saveId.size() <= 100
+          && d.name is string && d.name.size() >= 1 && d.name.size() <= 30 && d.team is list && d.team.size() >= 1 && d.team.size() <= 3
+          && d.averageLevel is int && d.averageLevel >= 1 && d.averageLevel <= 60 && mtWallet(d.wallet)
+          && (d.tribeId == null || d.tribeId is string) && (d.activeDuel == null || d.activeDuel is string) && (d.activeRaid == null || d.activeRaid is string)
+          && d.lastRaidAt is int && d.lastRaidAt >= 0 && d.version is int && d.version >= 0 && d.lastOp is string && mtFresh(d.updatedAt);
+      }
+      match /players/{uid} {
+        allow read: if mtEnabled();
+        allow create: if mtEnabled() && request.auth.uid == uid && mtPlayerShape(request.resource.data,uid)
+          && request.resource.data.version == 0 && request.resource.data.tribeId == null && request.resource.data.activeDuel == null && request.resource.data.activeRaid == null
+          && request.resource.data.wallet == {'fruit':0,'items':{}} && request.resource.data.lastRaidAt == 0 && mtFresh(request.resource.data.createdAt);
+        allow update: if mtEnabled() && mtPlayerShape(request.resource.data,uid)
+          && request.resource.data.uid == resource.data.uid && request.resource.data.saveId == resource.data.saveId && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.version == resource.data.version+1
+          && (request.resource.data.tribeId == resource.data.tribeId || request.auth.uid == uid && (request.resource.data.tribeId == null ? !(uid in mtTribeAfter(resource.data.tribeId).members) : resource.data.tribeId == null && uid in mtTribeAfter(request.resource.data.tribeId).members))
+          && (request.auth.uid == uid || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['wallet','activeDuel','version','lastOp','updatedAt']))
+          && (request.resource.data.lastRaidAt == resource.data.lastRaidAt || request.auth.uid == uid && resource.data.activeRaid == null && resource.data.lastRaidAt <= request.time.toMillis()-3600000 && request.resource.data.activeRaid is string && mtFresh(request.resource.data.lastRaidAt)
+            && getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/raids/$(request.resource.data.activeRaid)).data.uid == uid)
+          && (request.resource.data.activeRaid == resource.data.activeRaid || request.auth.uid == uid && (request.resource.data.activeRaid == null || resource.data.activeRaid == null && request.resource.data.lastRaidAt != resource.data.lastRaidAt))
+          && (request.resource.data.activeDuel == resource.data.activeDuel || (request.resource.data.activeDuel == null ? request.auth.uid == uid && get(/databases/$(database)/documents/monkeyTrailsSocial/v1/duels/$(resource.data.activeDuel)).data.settled == true
+            : resource.data.activeDuel == null && mtOp(request.resource.data.lastOp).kind == 'duel-start' && mtOp(request.resource.data.lastOp).details.duelId == request.resource.data.activeDuel && uid in getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/duels/$(request.resource.data.activeDuel)).data.players))
+          && (request.resource.data.wallet == resource.data.wallet && request.auth.uid == uid
+            || !exists(/databases/$(database)/documents/monkeyTrailsSocial/v1/operations/$(request.resource.data.lastOp)) && mtOp(request.resource.data.lastOp).actor == request.auth.uid && mtFresh(mtOp(request.resource.data.lastOp).createdAt)
+              && mtChange(mtOp(request.resource.data.lastOp),uid,resource.data.wallet,request.resource.data.wallet));
+        allow delete: if false;
+      }
+      match /presence/{uid} {
+        allow read: if mtEnabled();
+        allow create, update: if mtEnabled() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['uid','name','tribeId','online','busy','discoverable','location','seenAt','expiresAt'])
+          && request.resource.data.uid == uid && request.resource.data.name is string && request.resource.data.name.size() <= 30
+          && request.resource.data.online is bool && request.resource.data.busy is bool && request.resource.data.discoverable is bool
+          && request.resource.data.tribeId == mtPlayer(uid).tribeId && mtFresh(request.resource.data.seenAt)
+          && request.resource.data.expiresAt is int && request.resource.data.expiresAt >= request.resource.data.seenAt && request.resource.data.expiresAt <= request.resource.data.seenAt+90000
+          && (request.resource.data.location == null || request.resource.data.discoverable == true && request.resource.data.location.keys().hasOnly(['lat','lon','accuracy','at'])
+            && request.resource.data.location.lat is number && request.resource.data.location.lat >= -90 && request.resource.data.location.lat <= 90
+            && request.resource.data.location.lon is number && request.resource.data.location.lon >= -180 && request.resource.data.location.lon <= 180
+            && request.resource.data.location.accuracy is number && request.resource.data.location.accuracy >= 0 && request.resource.data.location.accuracy <= 500 && mtFresh(request.resource.data.location.at));
+        allow delete: if mtEnabled() && request.auth.uid == uid;
+      }
+      function mtEmblem(e) { return e is map && e.keys().hasOnly(['shape','color','symbol']) && e.shape is string && e.shape.size() <= 24 && e.color is string && e.color.matches('^#[0-9A-Fa-f]{6}$') && e.symbol is string && e.symbol.size() <= 24; }
+      function mtTribeShape(d,id) { return d.keys().hasOnly(['id','code','name','ownerId','emblem','members','boss','createdAt','updatedAt']) && d.id == id && d.code == id && d.name is string && d.name.size() >= 3 && d.name.size() <= 32 && mtEmblem(d.emblem) && d.members is list && d.members.size() >= 0 && d.members.size() <= 10 && d.members.toSet().size() == d.members.size() && (d.members.size() == 0 ? d.ownerId == null : d.ownerId in d.members) && d.boss is map && d.boss.level is int && d.boss.level >= 1 && d.boss.hp is number && d.boss.hp >= 0 && d.boss.maxHp is number && d.boss.hp <= d.boss.maxHp && d.boss.revision is int && d.boss.revision >= 0 && mtFresh(d.updatedAt); }
+      function mtBossHealth(level) { return math.round(1500+850*(level-1)+150*math.pow(level-1,1.6)); }
+      function mtBossAdvance(id,before,after) {
+        let rid=mtPlayer(request.auth.uid).activeRaid;
+        let attempt=get(/databases/$(database)/documents/monkeyTrailsSocial/v1/raids/$(rid)).data;
+        let completed=getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/raids/$(rid)).data;
+        let op=mtOp('raid-'+rid);
+        let applied=completed.damage < before.hp ? completed.damage : before.hp;
+        return rid is string && attempt.uid == request.auth.uid && attempt.tribeId == id && attempt.bossLevel == before.level && attempt.submitted == false && completed.submitted == true && completed.actions.size() == 10
+          && op.kind == 'raid' && op.details.attemptId == rid && op.details.tribeId == id && op.details.level == before.level && op.details.damage == completed.damage && op.details.damageApplied == applied
+          && after.revision == before.revision+1 && (applied < before.hp ? op.details.defeated == false && after.level == before.level && after.maxHp == before.maxHp && after.hp == before.hp-applied
+            : op.details.defeated == true && after.level == before.level+1 && after.maxHp == mtBossHealth(after.level) && after.hp == after.maxHp);
+      }
+      match /tribes/{id} {
+        allow read: if mtEnabled();
+        allow create: if mtEnabled() && mtTribeShape(request.resource.data,id) && request.resource.data.ownerId == request.auth.uid && mtPlayer(request.auth.uid).tribeId == null && request.resource.data.members == [request.auth.uid]
+          && mtPlayerAfter(request.auth.uid).tribeId == id && request.resource.data.boss.level == 1 && request.resource.data.boss.hp == mtBossHealth(1) && request.resource.data.boss.maxHp == mtBossHealth(1) && request.resource.data.boss.revision == 0 && mtFresh(request.resource.data.createdAt);
+        allow update: if mtEnabled() && mtTribeShape(request.resource.data,id) && request.resource.data.createdAt == resource.data.createdAt && (
+          ! (request.auth.uid in resource.data.members) && mtPlayer(request.auth.uid).tribeId == null && request.resource.data.members.toSet() == resource.data.members.toSet().union([request.auth.uid].toSet())
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(resource.data.members.size() == 0 ? ['members','ownerId','updatedAt'] : ['members','updatedAt']) && (resource.data.members.size() != 0 || request.resource.data.ownerId == request.auth.uid) && mtPlayerAfter(request.auth.uid).tribeId == id
+          || request.auth.uid in resource.data.members && !(request.auth.uid in request.resource.data.members)
+            && request.resource.data.members.toSet() == resource.data.members.toSet().difference([request.auth.uid].toSet())
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members','ownerId','updatedAt']) && mtPlayerAfter(request.auth.uid).tribeId == null
+          || request.auth.uid == resource.data.ownerId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','emblem','updatedAt'])
+          || request.auth.uid in resource.data.members && request.resource.data.members == resource.data.members && request.resource.data.ownerId == resource.data.ownerId
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['boss','updatedAt']) && request.resource.data.boss.revision == resource.data.boss.revision+1
+            && mtBossAdvance(id,resource.data.boss,request.resource.data.boss));
+        allow delete: if mtEnabled() && resource.data.members == [request.auth.uid] && mtPlayerAfter(request.auth.uid).tribeId == null;
+      }
+      function mtParties(d) { return d.participants is list && d.participants.size() >= 1 && d.participants.size() <= 10 && d.actor == request.auth.uid && d.actor in d.participants && d.participants.toSet().size() == d.participants.size(); }
+      function mtProof(d,uid) {
+        let before=mtPlayer(uid);
+        let after=mtPlayerAfter(uid);
+        return after.lastOp == d.id && after.version == before.version+1 && d.details.wallets[uid].before == before.wallet && d.details.wallets[uid].after == after.wallet;
+      }
+      function mtSourceOffer(d) {
+        let o=get(/databases/$(database)/documents/monkeyTrailsSocial/v1/offers/$(d.details.offerId)).data;
+        return o.from == d.details.from && o.to == d.details.to && o.give == d.details.give && o.want == d.details.want && o.status == 'pending';
+      }
+      function mtStake(uid,value) {
+        let p=mtPlayer(uid);
+        let cap=p.averageLevel*2 > 10 ? 10 : p.averageLevel*2;
+        return value is int && value >= 0 && value == (p.wallet.fruit < cap ? p.wallet.fruit : cap);
+      }
+      function mtDuelStart(d) {
+        let c=get(/databases/$(database)/documents/monkeyTrailsSocial/v1/challenges/$(d.details.challengeId)).data;
+        let duel=getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/duels/$(d.details.duelId)).data;
+        return c.status == 'pending' && c.to == d.actor && d.participants == [c.from,c.to]
+          && getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/challenges/$(d.details.challengeId)).data.status == 'accepted'
+          && duel.players == d.participants && duel.escrow == d.details.escrow
+          && mtStake(c.from,d.details.escrow[c.from]) && mtStake(c.to,d.details.escrow[c.to])
+          && mtProof(d,c.from) && mtProof(d,c.to);
+      }
+      function mtDuelReward(d) {
+        let before=get(/databases/$(database)/documents/monkeyTrailsSocial/v1/duels/$(d.details.duelId)).data;
+        let after=getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/duels/$(d.details.duelId)).data;
+        return d.participants == before.players && d.actor in before.players && before.settled == false && after.settled == true && after.state.status == 'finished'
+          && d.details.winner == after.state.winner && d.details.escrow == before.escrow
+          && mtProof(d,before.players[0]) && mtProof(d,before.players[1]);
+      }
+      function mtRaidReward(d) {
+        let a=get(/databases/$(database)/documents/monkeyTrailsSocial/v1/raids/$(d.details.attemptId)).data;
+        let after=getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/raids/$(d.details.attemptId)).data;
+        let tribe=mtTribe(d.details.tribeId);
+        return d.id == 'raid-'+a.id && a.uid == d.actor && a.submitted == false && after.submitted == true && mtPlayer(d.actor).activeRaid == a.id
+          && d.actor in tribe.members && d.participants == tribe.members && a.bossLevel == d.details.level && a.tribeId == d.details.tribeId
+          && (d.details.defeated == true ? d.details.level == tribe.boss.level && mtTribeAfter(tribe.id).boss.level == d.details.level+1
+              && d.details.reward.fruit == (8+d.details.level*2 > 100 ? 100 : 8+d.details.level*2)
+              && d.details.reward.xp == (25+d.details.level*5 > 500 ? 500 : 25+d.details.level*5) && mtProof(d,d.actor)
+            : d.details.reward == null && d.details.wallets.size() == 0);
+      }
+      function mtOperation(d,id) {
+        return d.keys().hasOnly(['id','kind','actor','participants','details','createdAt']) && d.id == id && mtFresh(d.createdAt) && mtParties(d)
+          && d.details is map && d.details.wallets is map && d.details.wallets.size() <= 10 && (
+          (d.kind in ['deposit','withdraw'] && d.participants == [d.actor] && d.details.uid == d.actor && mtAsset(d.details.asset) && mtQuantity(d.details.amount) && mtProof(d,d.actor))
+          || (d.kind == 'gift' && d.actor == d.details.from && d.participants.toSet() == [d.details.from,d.details.to].toSet() && d.details.from != d.details.to && mtSameTribe(d.details.from,d.details.to) && mtAsset(d.details.asset) && mtQuantity(d.details.amount) && mtProof(d,d.details.from) && mtProof(d,d.details.to))
+          || (d.kind == 'trade-offer' && d.participants.toSet() == [d.details.from,d.details.to].toSet() && d.actor == d.details.from && d.details.from != d.details.to && mtSameTribe(d.details.from,d.details.to) && mtPair(d.details.give) && mtPair(d.details.want) && mtProof(d,d.actor))
+          || (d.kind == 'trade-cancel' && d.participants.toSet() == [d.details.from,d.details.to].toSet() && d.actor in [d.details.from,d.details.to] && mtSourceOffer(d) && getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/offers/$(d.details.offerId)).data.status == 'cancelled' && mtProof(d,d.details.from))
+          || (d.kind == 'trade' && d.participants.toSet() == [d.details.from,d.details.to].toSet() && d.actor == d.details.to && mtSourceOffer(d) && mtSameTribe(d.details.from,d.details.to) && getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/offers/$(d.details.offerId)).data.status == 'accepted' && mtProof(d,d.details.from) && mtProof(d,d.details.to))
+          || (d.kind == 'duel-start' && mtDuelStart(d)) || (d.kind == 'duel' && mtDuelReward(d)) || (d.kind == 'raid' && mtRaidReward(d)));
+      }
+      match /operations/{id} { allow get: if mtEnabled() && (resource == null || request.auth.uid in resource.data.participants); allow list: if mtEnabled() && request.auth.uid in resource.data.participants; allow create: if mtEnabled() && mtOperation(request.resource.data,id); allow update, delete: if false; }
+      match /offers/{id} {
+        allow read: if mtEnabled() && request.auth.uid in [resource.data.from,resource.data.to];
+        allow create: if mtEnabled() && request.resource.data.id == id && mtOp(id).kind == 'trade-offer' && mtOp(id).actor == request.auth.uid && mtOp(id).details.offerId == id && request.resource.data.from == mtOp(id).details.from && request.resource.data.to == mtOp(id).details.to && request.resource.data.give == mtOp(id).details.give && request.resource.data.want == mtOp(id).details.want && request.resource.data.from == request.auth.uid && request.resource.data.to != request.auth.uid
+          && mtSameTribe(request.resource.data.from,request.resource.data.to) && request.resource.data.tribeId == mtPlayer(request.auth.uid).tribeId && mtPair(request.resource.data.give) && mtPair(request.resource.data.want)
+          && request.resource.data.status == 'pending' && mtFresh(request.resource.data.createdAt) && mtFresh(request.resource.data.updatedAt);
+        allow update: if mtEnabled() && resource.data.status == 'pending' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt']) && mtFresh(request.resource.data.updatedAt)
+          && (request.auth.uid == resource.data.to && request.resource.data.status == 'accepted' && mtOp('accept-'+id).kind == 'trade' && mtOp('accept-'+id).actor == request.auth.uid || request.auth.uid in [resource.data.from,resource.data.to] && request.resource.data.status == 'cancelled' && mtOp('cancel-'+id).kind == 'trade-cancel' && mtOp('cancel-'+id).actor == request.auth.uid);
+        allow delete: if false;
+      }
+      function mtNearby(a,b) {
+        let x=get(/databases/$(database)/documents/monkeyTrailsSocial/v1/presence/$(a)).data;
+        let y=get(/databases/$(database)/documents/monkeyTrailsSocial/v1/presence/$(b)).data;
+        let lat=(x.location.lat+y.location.lat)*0.008726646259971648;
+        let scale=1 - lat*lat / 2 + lat*lat*lat*lat / 24;
+        let dlon=x.location.lon-y.location.lon;
+        let wrapped=dlon > 180 ? dlon-360 : dlon < -180 ? dlon+360 : dlon;
+        let north=(x.location.lat-y.location.lat)*111320;
+        let east=wrapped*111320*scale;
+        let radius=1609.344-x.location.accuracy-y.location.accuracy;
+        return x.discoverable == true && y.discoverable == true && radius >= 0
+          && x.location.at >= request.time.toMillis()-90000 && y.location.at >= request.time.toMillis()-90000
+          && north*north+east*east <= radius*radius;
+      }
+      function mtAvailable(uid) { let p=get(/databases/$(database)/documents/monkeyTrailsSocial/v1/presence/$(uid)).data; return p.online == true && p.busy == false && p.expiresAt > request.time.toMillis() && mtPlayer(uid).activeDuel == null && mtPlayer(uid).activeRaid == null; }
+      match /challenges/{id} {
+        allow read: if mtEnabled() && request.auth.uid in [resource.data.from,resource.data.to];
+        allow create: if mtEnabled() && request.resource.data.id == id && request.resource.data.from == request.auth.uid && request.resource.data.from != request.resource.data.to
+          && request.resource.data.status == 'pending' && request.resource.data.eligibility in ['tribe','nearby'] && mtAvailable(request.resource.data.from) && mtAvailable(request.resource.data.to)
+          && (request.resource.data.eligibility == 'tribe' ? mtSameTribe(request.resource.data.from,request.resource.data.to) : mtNearby(request.resource.data.from,request.resource.data.to))
+          && mtFresh(request.resource.data.createdAt) && mtFresh(request.resource.data.updatedAt) && request.resource.data.expiresAt is int && request.resource.data.expiresAt <= request.resource.data.createdAt+120000 && request.resource.data.expiresAt > request.time.toMillis();
+        allow update: if mtEnabled() && resource.data.status == 'pending' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt']) && mtFresh(request.resource.data.updatedAt)
+          && (request.auth.uid == resource.data.to && request.resource.data.status == 'accepted' && resource.data.expiresAt > request.time.toMillis() && mtAvailable(resource.data.from) && mtAvailable(resource.data.to)
+            || request.auth.uid in [resource.data.from,resource.data.to] && request.resource.data.status == 'declined');
+        allow delete: if false;
+      }
+      match /raids/{id} {
+        allow read: if mtEnabled() && request.auth.uid == resource.data.uid;
+        allow create: if mtEnabled() && request.resource.data.id == id && request.resource.data.uid == request.auth.uid && request.auth.uid in mtTribe(request.resource.data.tribeId).members
+          && mtPlayer(request.auth.uid).activeDuel == null && mtPlayer(request.auth.uid).activeRaid == null && mtPlayer(request.auth.uid).lastRaidAt <= request.time.toMillis()-3600000
+          && mtPlayerAfter(request.auth.uid).activeRaid == id && mtFresh(mtPlayerAfter(request.auth.uid).lastRaidAt) && request.resource.data.bossLevel == mtTribe(request.resource.data.tribeId).boss.level
+          && request.resource.data.submitted == false && request.resource.data.damage == 0 && request.resource.data.actions == [] && request.resource.data.team is list && request.resource.data.team.size() >= 1 && request.resource.data.team.size() <= 3 && mtFresh(request.resource.data.startedAt);
+        allow update: if mtEnabled() && request.auth.uid == resource.data.uid && resource.data.submitted == false && request.resource.data.submitted == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['submitted','damage','actions','completedAt']) && request.resource.data.damage is number && request.resource.data.damage >= 0 && request.resource.data.damage <= 1000000
+          && request.resource.data.actions is list && request.resource.data.actions.size() in [0,10] && mtFresh(request.resource.data.completedAt) && mtPlayerAfter(request.auth.uid).activeRaid == null;
+        allow delete: if false;
+      }
+      match /duels/{id} {
+        allow read: if mtEnabled() && request.auth.uid in resource.data.players;
+        allow create: if mtEnabled() && request.resource.data.id == id && request.resource.data.players is list && request.resource.data.players.size() == 2 && request.resource.data.players[0] != request.resource.data.players[1] && request.auth.uid == request.resource.data.players[1]
+          && request.resource.data.revision == 0 && request.resource.data.actions == [] && request.resource.data.status == 'active' && request.resource.data.settled == false && mtFresh(request.resource.data.createdAt) && mtFresh(request.resource.data.updatedAt)
+          && mtPlayerAfter(request.resource.data.players[0]).activeDuel == id && mtPlayerAfter(request.resource.data.players[1]).activeDuel == id;
+        allow update: if mtEnabled() && request.auth.uid in resource.data.players && request.resource.data.id == resource.data.id && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state','actions','revision','updatedAt','status','settled']) && request.resource.data.players == resource.data.players && request.resource.data.initialProfiles == resource.data.initialProfiles && request.resource.data.seed == resource.data.seed && request.resource.data.escrow == resource.data.escrow && request.resource.data.createdAt == resource.data.createdAt && mtFresh(request.resource.data.updatedAt)
+          && request.resource.data.state.sequence == request.resource.data.revision
+          && (request.resource.data.state.winner == null || request.resource.data.state.winner in resource.data.players)
+          && (request.resource.data.actions.size() == resource.data.actions.size() || request.resource.data.actions[request.resource.data.actions.size()-1].action.type != 'surrender'
+            || request.resource.data.status == 'finished' && request.resource.data.state.winner == (request.resource.data.actions[request.resource.data.actions.size()-1].uid == resource.data.players[0] ? resource.data.players[1] : resource.data.players[0]))
+          && (request.resource.data.status == 'active' ? request.resource.data.state.status == 'active' && request.resource.data.state.winner == null && request.resource.data.state.turn == 1-resource.data.state.turn : request.resource.data.status == 'finished' && request.resource.data.state.status == 'finished')
+          && (resource.data.status == 'active' && request.resource.data.revision == resource.data.revision+1 && request.resource.data.actions.size() == resource.data.actions.size()+1 && request.resource.data.actions == resource.data.actions.concat([request.resource.data.actions[request.resource.data.actions.size()-1]])
+              && (request.resource.data.actions[request.resource.data.actions.size()-1].uid == request.auth.uid
+                && (resource.data.players[resource.data.state.turn] == request.auth.uid || request.resource.data.actions[request.resource.data.actions.size()-1].action.type == 'surrender')
+                || request.resource.data.actions[request.resource.data.actions.size()-1].get('timeout',false) == true
+                  && request.resource.data.actions[request.resource.data.actions.size()-1].claimedBy == request.auth.uid
+                  && request.resource.data.actions[request.resource.data.actions.size()-1].uid == resource.data.players[resource.data.state.turn]
+                  && request.resource.data.actions[request.resource.data.actions.size()-1].uid != request.auth.uid
+                  && resource.data.updatedAt <= request.time.toMillis()-90000)
+            || resource.data.settled == false && request.resource.data.settled == true && request.resource.data.status == 'finished' && request.resource.data.revision == resource.data.revision && request.resource.data.actions == resource.data.actions && request.resource.data.state == resource.data.state);
+        allow delete: if false;
+      }
+      function mtAssetPayload(p,asset,amount) {
+        return p.keys().hasOnly(['fruit','xp','items']) && p.xp == 0
+          && (asset == 'fruit' ? p.fruit == amount && p.items == {} : p.fruit == 0 && p.items.keys().hasOnly([asset]) && p.items.get(asset,0) == amount);
+      }
+      function mtTeamIds(members) { return members.size() == 1 ? [members[0].id] : members.size() == 2 ? [members[0].id,members[1].id] : [members[0].id,members[1].id,members[2].id]; }
+      function mtDuelReceipt(op,uid,p) {
+        let d=getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/duels/$(op.details.duelId)).data;
+        let other=d.players[0] == uid ? d.players[1] : d.players[0];
+        let base=12+mtPlayer(uid).averageLevel*2;
+        let xp=(base > 120 ? 120 : base)+(d.state.winner == uid ? 8 : 0);
+        let payout=d.state.winner == null ? d.escrow[uid] : d.state.winner == uid ? d.escrow[d.players[0]]+d.escrow[d.players[1]] : 0;
+        return p.keys().hasOnly(['fruit','xp','items','teamIds','payoutFruit']) && p.xp == xp && p.items == {}
+          && p.fruit == (d.state.winner == uid ? d.escrow[other] : 0) && p.payoutFruit == payout && p.teamIds == mtTeamIds(mtPlayer(uid).team);
+      }
+      function mtReceiptPayload(op,uid,p,credited) {
+        return (op.kind == 'withdraw' && uid == op.actor && credited == false && mtAssetPayload(p,op.details.asset,op.details.amount))
+          || (op.kind == 'gift' && uid == op.details.to && credited == true && mtAssetPayload(p,op.details.asset,op.details.amount))
+          || (op.kind == 'trade' && credited == true && (uid == op.details.from ? mtAssetPayload(p,op.details.want.asset,op.details.want.amount) : mtAssetPayload(p,op.details.give.asset,op.details.give.amount)))
+          || (op.kind == 'raid' && credited == true && p.keys().hasOnly(['fruit','xp','items','teamIds']) && p.fruit == op.details.reward.fruit && p.xp == op.details.reward.xp
+            && p.items == (op.details.level%3 == 0 ? {'berry':1,'bondCharm':1} : {'berry':1}) && p.teamIds == mtTeamIds(mtPlayer(uid).team))
+          || (op.kind == 'duel' && credited == true && mtDuelReceipt(op,uid,p));
+      }
+      match /receipts/{uid}/entries/{id} {
+        allow read: if mtEnabled() && request.auth.uid == uid;
+        allow create: if mtEnabled() && request.resource.data.id == id && id == request.resource.data.sourceId && request.resource.data.uid == uid && request.resource.data.seen == false
+          && mtFresh(request.resource.data.createdAt) && mtOp(request.resource.data.sourceId).actor == request.auth.uid && uid in mtOp(request.resource.data.sourceId).participants
+          && mtPlayerAfter(uid).lastOp == request.resource.data.sourceId && mtOp(request.resource.data.sourceId).details.wallets[uid].after == mtPlayerAfter(uid).wallet
+          && mtReceiptPayload(mtOp(request.resource.data.sourceId),uid,request.resource.data.payload,request.resource.data.walletCredited)
+          && request.resource.data.type == mtOp(request.resource.data.sourceId).details.receipts[uid].type
+          && request.resource.data.title == mtOp(request.resource.data.sourceId).details.receipts[uid].title
+          && request.resource.data.payload == mtOp(request.resource.data.sourceId).details.receipts[uid].payload
+          && request.resource.data.walletCredited == mtOp(request.resource.data.sourceId).details.receipts[uid].walletCredited
+          && request.resource.data.payload is map && request.resource.data.payload.fruit is int && request.resource.data.payload.fruit >= 0 && request.resource.data.payload.fruit <= 1000000 && request.resource.data.payload.xp is int && request.resource.data.payload.xp >= 0 && request.resource.data.payload.xp <= 10000 && request.resource.data.payload.items is map;
+        allow update: if mtEnabled() && request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['seen','seenAt']) && request.resource.data.seen == true;
+        allow delete: if false;
+      }
+    }
+
     match /games_basewar/{gameId} {
       allow read, write: if isAuthed();
 

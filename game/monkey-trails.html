@@ -8,6 +8,7 @@
   <meta name="referrer" content="same-origin">
   <title>Monkey Trails · Wild Companions</title>
   <link rel="stylesheet" href="./monkey-trails/style.css">
+  <link rel="stylesheet" href="./monkey-trails/social.css">
 </head>
 <body>
   <header class="topbar">
@@ -37,6 +38,8 @@
     </section>
     <section id="game" hidden>
       <div class="session-bar"><button data-action="cloud" id="cloud-restore" class="small" hidden>Load cloud copy</button></div>
+      <div id="social-banner" aria-live="polite"></div>
+      <div id="social-notices" aria-live="polite"></div>
       <div id="view"></div>
       <div class="save-strip"><span id="save-dot" class="save-dot"></span><span id="save-status" role="status" aria-live="polite">Preparing save…</span></div>
       <nav class="tabs" aria-label="Game screens">
@@ -44,17 +47,19 @@
         <button data-action="tab" data-id="team"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="2.5"/><circle cx="5" cy="10" r="2"/><circle cx="19" cy="10" r="2"/><path d="M7 21v-5a5 5 0 0 1 10 0v5H7ZM2 20v-4a3 3 0 0 1 4-2.8M22 20v-4a3 3 0 0 0-4-2.8"/></svg>Team</button>
         <button data-action="tab" data-id="sanctuary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V11a7 7 0 0 1 14 0v10M9 21v-6a3 3 0 0 1 6 0v6M10 8h4"/></svg>Sanctuary</button>
         <button data-action="tab" data-id="pack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M5 7h14l1 14H4L5 7ZM5 8v4l7 3 7-3V8M10 15v3h4v-3"/></svg>Pack</button>
+        <button data-action="tab" data-id="social"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m12 2 9 4v6c0 5-6 8-9 10-3-2-9-5-9-10V6l9-4Z"/><path d="m8 12 3 3 5-6"/></svg>Tribe</button>
       </nav>
     </section>
     <details class="field-guide"><summary>Field guide · location, compass, saves & safety</summary><div class="guide-grid">
       <div><h3>Explore your land</h3><p>Walking north, south, east or west moves you the same way through the fantasy terrain. Map north stays up. Regions opens the illustrated region picker. The terrain is fictional; choose your own physical route. North favors Leaf, south Fire, east Storm, and west Water. Earth, Ice, Light and Shadow also arrive through discoveries and resource exchange, so one safe route can complete the collection. Radar rings show relative encounters, not roads or accessible land. Select “Cannot safely reach this location” to hunt the same Ultra along a route you choose.</p></div>
-      <div><h3>Foreground location only</h3><p>Use the HTTPS-hosted game, allow location, and tap Start walking. Only accepted readings at 10 mph or below count. Weak GPS, jumps, stale readings, long gaps, and stationary drift are discarded. Background tabs, a locked screen, battles, and other game tabs pause tracking. Resume manually; untracked gaps never earn distance. GPS is approximate, not cheat-proof.</p></div>
+      <div><h3>Foreground location only</h3><p>Use the HTTPS-hosted game, allow location, and tap Start walking. Only accepted readings at 10 mph or below count. Weak GPS, jumps, stale readings, long gaps, and stationary drift are discarded. Background tabs, a locked screen, battles pause tracking. The Team, Tribe and other menus keep walking active. Resume manually; untracked gaps never earn distance. GPS is approximate, not cheat-proof.</p></div>
       <div><h3>Saved exploration</h3><p>Cloud checkpoints and backups include your relative land position and a short exploration trail, with no latitude or longitude. A short-lived Ultra map anchor is separately encrypted on this device; reopening elsewhere recalibrates without changing the Ultra. Local and cloud checkpoints contain encrypted game progress. Existing shared Firestore rules do not make these saves owner-only: encryption protects readable content, but cannot stop another authenticated client from altering or deleting a record. Use a unique password and keep backups. Scores are casual and unverified.</p></div>
       <div><h3>Look up, then level up</h3><p>Walk only in safe, permitted places. Never use the game while driving or crossing roads. Stop somewhere safe for battles and menus. The compass is a resource guide, not a navigation instruction. You never need to enter private or unsafe areas. Optional screen wake-lock may keep the display awake; otherwise keep it unlocked yourself.</p></div>
     </div></details>
   </main>
   <dialog id="inspect-dialog" aria-label="Trail details"><button class="dialog-close" data-action="close-dialog" aria-label="Close details">×</button><div id="dialog-content"></div></dialog>
   <div id="discovery-popup" popover="manual" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+  <div id="social-menu-overlay" popover="manual" aria-live="polite"></div>
   <div id="toast" role="status" aria-live="polite" hidden></div>
   <noscript>This game needs JavaScript enabled. Real walking also needs location permission and an HTTPS connection.</noscript>
   <script type="module" src="./monkey-trails/app.mjs"></script>

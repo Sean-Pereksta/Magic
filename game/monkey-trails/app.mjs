@@ -1,4 +1,6 @@
 import * as C from './core.mjs';
+import {SocialController} from './social-controller.mjs';
+import {renderSocialView,renderSocialBanner,renderRewardNotices} from './social-ui.mjs';
 import {TrailGPS} from './gps.mjs';
 import {LocationAccess} from './location.mjs';
 import {Vault,importBackup} from './storage.mjs';
@@ -15,6 +17,37 @@ let collectionSearch='',collectionElement='all',collectionRarity='all',collectio
 let mapZoom=1,practiceMotionTimer=null,menuProgressPending=false;
 const discoveryQueue=[];
 let discoveryTimer=null;
+const social=new SocialController({getState:()=>state,getVault:()=>vault,
+  persist:async()=>{if(!vault||!state)throw Error('Open your saved trail first.');await vault.checkpoint(state,true);if(!vault.localOK)throw Error('Save your device checkpoint before moving online supplies.');},
+  onUpdate:()=>updateSocialSurfaces(),
+  onBattle:()=>{if(!state)return;pause('Friendly battle · your expedition is preserved.');closeModal();tab='social';render();},
+  onReturn:()=>{tab='walk';render();window.scrollTo(0,0);}
+});
+function updateSocialSurfaces(){
+  if(!$('social-banner'))return;
+  $('social-banner').innerHTML=state?renderSocialBanner(social.model):'';
+  const applied=state?.social?.applied||{};
+  $('social-notices').innerHTML=state?renderRewardNotices(social.model.receipts.filter(r=>applied[`${r.uid}:${r.id}`])):'';
+  syncSocialOverlay();
+  if(state&&tab==='social'){
+    // Snapshot listeners must not erase a half-written tribe name or trade offer.
+    const focused=document.activeElement,fields=[...$('view').querySelectorAll('[data-social-form] input,[data-social-form] select')].map(el=>({form:el.closest('form').dataset.socialForm,name:el.name,value:el.value,focused:el===focused,start:el.selectionStart,end:el.selectionEnd}));
+    const disclosureKey=d=>d.querySelector('[data-social-form]')?.dataset.socialForm||d.querySelector('summary')?.textContent||'';
+    const open=new Map([...$('view').querySelectorAll('details')].map(d=>[disclosureKey(d),d.open]));
+    $('view').innerHTML=renderSocialView(social.model);
+    [...$('view').querySelectorAll('details')].forEach(d=>{if(open.has(disclosureKey(d)))d.open=open.get(disclosureKey(d));});
+    for(const f of fields){const el=[...$('view').querySelectorAll('[data-social-form] input,[data-social-form] select')].find(el=>el.name===f.name&&el.closest('form').dataset.socialForm===f.form);if(el){el.value=f.value;if(f.focused){el.focus({preventScroll:true});if(f.start!==null&&['text','search','tel','url','password'].includes(el.type))el.setSelectionRange(f.start,f.end);}}}
+    hydrateHostedPortraits($('view'),{reducedMotion:prefs.reducedMotion||prefs.battery});
+  }
+}
+function syncSocialOverlay(){
+  const overlay=$('social-menu-overlay');if(!overlay)return;
+  const applied=state?.social?.applied||{},receipts=social.model.receipts.filter(r=>applied[`${r.uid}:${r.id}`]);
+  const content=state?renderSocialBanner(social.model)+renderRewardNotices(receipts):'';
+  const visible=$('inspect-dialog').open&&(receipts.length||Boolean(renderSocialBanner(social.model)));
+  if(visible){if(overlay.parentElement!==$('inspect-dialog'))$('inspect-dialog').append(overlay);overlay.innerHTML=content;if(!overlay.matches(':popover-open'))overlay.showPopover();}
+  else{if(overlay.matches(':popover-open'))overlay.hidePopover();if(overlay.parentElement!==document.body)document.body.append(overlay);}
+}
 const preferenceKey='monkey-trails-display-v2';
 let prefs={reducedMotion:false,battery:false,sound:false,vibration:false,keepAwake:true};
 try{prefs={...prefs,...JSON.parse(localStorage.getItem(preferenceKey)||'{}')};}catch{}
@@ -28,6 +61,7 @@ const gps=new TrailGPS(fix=>{
   if(!state||state.run.phase!=='trail')return pause();
   if(ultraConfirm){radar.observe(fix,state);renderGPS();return;}
   const oldCache=state.run.discoveries??state.run.nextCache,oldPhase=state.run.phase;
+  social.observeLocation(fix);
   C.advance(state,fix.meters,fix.east,fix.north,notifyDiscovery);radar.observe(fix,state);animation='walk';
   const discovered=(state.run.discoveries??state.run.nextCache)!==oldCache;
   if(state.run.phase!=='trail'){pause('Encounter ready · tracking paused. Stop somewhere safe.');closeModal();tab='walk';}
@@ -36,6 +70,7 @@ const gps=new TrailGPS(fix=>{
   if(tab==='walk'&&!$('inspect-dialog').open)render();else{menuProgressPending=true;renderGPS();}
 },info=>{gpsInfo=info;if(info.accuracy!=null&&locationAccess.status!=='ready')locationAccess.update('ready');renderGPS();},fix=>{
   if(!state||state.run.phase!=='trail')return;
+  social.observeLocation(fix);
   const before=radar.view(state).withinRadius;radar.observe(fix,state);
   if(before!==radar.view(state).withinRadius){if(tab==='walk'&&!$('inspect-dialog').open)render();else menuProgressPending=true;}
 },error=>locationAccess.reportError(error));
@@ -82,7 +117,7 @@ function saveStatus({text,kind}){$('save-status').textContent=text;$('save-dot')
 function starters(){$('starters').innerHTML=STARTERS.map(id=>{const p=C.SPECIES[id];return `<button type="button" class="starter ${selected===id?'selected':''}" data-starter="${id}" aria-pressed="${selected===id}">${portrait({species:id,types:[],stage:0})}<span>${esc(p.name)}</span></button>`;}).join('');$('starter-trait').textContent=`${C.SPECIES[selected].role||C.SPECIES[selected].title} · ${C.SPECIES[selected].trait}`;}
 starters();$('starters').addEventListener('click',e=>{const b=e.target.closest('[data-starter]');if(b){selected=b.dataset.starter;starters();}});
 function loginBusy(value){busy=value;document.querySelectorAll('#save-form button,#practice-button,#import-button').forEach(b=>b.disabled=value);}
-async function showGame(next,nextVault){locationAccess.cancel();vault=nextVault;state=next;tab='walk';selectedId=active().id;await radar.bind(vault);$('creature-password').value='';$('welcome').hidden=true;$('game').hidden=false;$('login-message').textContent='';$('mode-label').textContent=state.mode==='practice'?'PRACTICE · UNRANKED':'GPS · FOREGROUND ONLY';if(state.run.battle)state.run.battle.ready=false;render();window.scrollTo(0,0);}
+async function showGame(next,nextVault){locationAccess.cancel();vault=nextVault;state=next;tab='walk';selectedId=active().id;await radar.bind(vault);$('creature-password').value='';$('welcome').hidden=true;$('game').hidden=false;$('login-message').textContent='';$('mode-label').textContent=state.mode==='practice'?'PRACTICE · UNRANKED':'GPS · FOREGROUND ONLY';if(state.run.battle)state.run.battle.ready=false;render();void social.start();window.scrollTo(0,0);}
 async function enter(name,password,options){loginBusy(true);$('login-message').textContent='Opening your encrypted sanctuary…';const nextVault=new Vault(saveStatus);try{await showGame(await nextVault.open(name,password,options),nextVault);}catch(error){$('login-message').textContent=error.message;}finally{loginBusy(false);}}
 $('save-form').addEventListener('submit',e=>{e.preventDefault();if(!busy)void enter($('creature-name').value,$('creature-password').value,{create:e.submitter?.value!=='open',species:selected,mode:'gps'});});
 $('practice-button').addEventListener('click',async()=>{if(busy)return;loginBusy(true);$('login-message').textContent='Opening the separate practice sanctuary…';const v=new Vault(saveStatus),name='Trail Practice',password='practice-only-not-ranked';try{let s;try{s=await v.open(name,password,{mode:'practice'});}catch(e){if(!e.message.startsWith('No save found'))throw e;s=await v.open(name,password,{create:true,species:selected,mode:'practice'});}await showGame(s,v);}catch(e){$('login-message').textContent=e.message;}finally{loginBusy(false);}});
@@ -262,11 +297,11 @@ function recordRows(records){return records?.length?records.map((h,i)=>`<div cla
 function records(){return `<h2>Your trail stories</h2><div class="stat-grid"><span><b>${state.meta.best.toLocaleString()}</b>Best score</span><span><b>${state.meta.runs}</b>Expeditions</span><span><b>${state.meta.legacy}</b>Legacy</span><span><b>${collection().length}</b>Companions</span></div>${recordRows(state.meta.history)}<h3 class="section-gap">Wild Companions leaderboard</h3><p class="fine">GPS expeditions only. Casual client-reported scores; no coordinates are published.</p><button class="wide" data-action="scores" ${state.mode==='practice'?'disabled':''}>Refresh leaderboard</button>${scores?recordRows(scores):''}`;}
 function settings(){return `<h2>Make the trail yours</h2><p class="muted">Effects are optional. Tracking runs only in the foreground.</p><label for="difficulty-setting">Expedition difficulty<select id="difficulty-setting" ${state.run.distance>0&&state.run.phase!=='dead'?'disabled':''}>${[['relaxed','Relaxed'],['standard','Standard'],['challenging','Challenging']].map(([id,label])=>`<option value="${id}" ${state.difficulty===id?'selected':''}>${label}</option>`).join('')}</select><small>Choose before walking or after an expedition ends. Enemy depth stays tied to distance.</small></label>${[['reducedMotion','Reduced motion','Still portraits and simpler transitions.'],['battery','Battery saving','Limit ambient animations and effects.'],['sound','Sound effects','Quiet discovery and battle notes.'],['vibration','Vibration','A short tap when supplies arrive.'],['keepAwake','Keep screen awake','Optional while tracking; your browser may release it.']].map(([id,label,desc])=>`<label class="setting-row"><span><strong>${label}</strong><small>${desc}</small></span><input type="checkbox" data-pref="${id}" ${prefs[id]?'checked':''}></label>`).join('')}<div class="button-row section-gap"><button data-action="export">Export encrypted backup</button><button data-action="sync">Sync now</button></div><button class="text-button wide" data-action="records">Trail stories & leaderboard</button>`;}
 function death(){const h=state.meta.history[0];return `<section class="panel run-end"><span class="eyebrow">EVERY COMPANION COMES HOME</span><div class="end-art">${team().map(p=>portrait(p,{state:'knockout'})).join('')}</div><h1>A brave expedition.</h1><p>${feet(state.run.distance)} feet · ${state.run.wins} victories · ${h?.score?.toLocaleString()||0} points</p><div class="notice">Your ${collection().length} companions, equipment, bonds and evolution discoveries remain safe. The next expedition earns levels and active forms anew.</div><h3>Choose up to three for your next trail</h3><div class="restart-party">${collection().map((p,i)=>`<label><input type="checkbox" name="restart-member" value="${p.id}" ${i<3?'checked':''}>${portrait(p)}<span>${esc(name(p))}</span></label>`).join('')}</div><button class="primary wide" data-action="restart">Begin the next expedition</button><p class="fine">Temporary supplies and expedition injuries reset on a new expedition.</p></section>${journal()}`;}
-function renderGPS(){refreshTrainingProgress();updateLandMotion();renderLocation();if($('gps-status'))$('gps-status').textContent=state?.mode==='practice'?'':gpsInfo.reason;if($('gps-meta'))$('gps-meta').textContent=gpsInfo.mph==null?'':`${gpsInfo.mph.toFixed(1)} mph`;if($('tracking-button'))$('tracking-button').textContent=gps.active?'Pause walking':'Start walking';if($('walking-state'))$('walking-state').textContent=state?.mode==='practice'?'Practice':gps.active?'Walking':'Paused';if($('gps-quality'))$('gps-quality').textContent=state?.mode==='practice'?'Unranked trail':gpsInfo.accuracy==null?'GPS waiting':`GPS ±${Math.round(gpsInfo.accuracy)} m`;}
+function renderGPS(){refreshTrainingProgress();if(state)void social.heartbeat();updateLandMotion();renderLocation();if($('gps-status'))$('gps-status').textContent=state?.mode==='practice'?'':gpsInfo.reason;if($('gps-meta'))$('gps-meta').textContent=gpsInfo.mph==null?'':`${gpsInfo.mph.toFixed(1)} mph`;if($('tracking-button'))$('tracking-button').textContent=gps.active?'Pause walking':'Start walking';if($('walking-state'))$('walking-state').textContent=state?.mode==='practice'?'Practice':gps.active?'Walking':'Paused';if($('gps-quality'))$('gps-quality').textContent=state?.mode==='practice'?'Unranked trail':gpsInfo.accuracy==null?'GPS waiting':`GPS ±${Math.round(gpsInfo.accuracy)} m`;}
 function render(){
   const oldMap=$('view').querySelector('.terrain-map'),camera=oldMap?{id:oldMap.dataset.land,east:Number(oldMap.dataset.mapEast),north:Number(oldMap.dataset.mapNorth),scale:Number(oldMap.dataset.mapScale)}:null;
   if(!state)return;menuProgressPending=false;document.body.classList.add('in-game');document.body.classList.toggle('is-walk',tab==='walk');$('creature-label').textContent=`${state.name} · ${state.mode==='practice'?'Practice sanctuary':'Expedition '+state.meta.runs}`;document.querySelectorAll('[data-action="tab"]').forEach(b=>b.setAttribute('aria-current',b.dataset.id===tab?'page':'false'));
-  $('view').innerHTML=tab==='walk'?walk():tab==='team'?teamView():tab==='sanctuary'?sanctuaryView():pack();
+  $('view').innerHTML=tab==='walk'?walk():tab==='team'?teamView():tab==='sanctuary'?sanctuaryView():tab==='social'?renderSocialView(social.model):pack();
   document.querySelectorAll('#view [data-action="craft"]').forEach(b=>{const recipe=b.dataset.id==='charm'?{fruit:2,material:1}:b.dataset.id==='revive'?{fruit:8,material:4}:null;b.disabled=state.run.phase!=='camp'||(recipe?state.run.fruit<recipe.fruit||(state.run.items.charmMaterial||0)<recipe.material:(state.meta.fragments[b.dataset.id]||0)<C.CONFIG.fragmentCost);});
   if(state.run.phase==='battle'&&(!state.run.battle.ready||state.run.battle.itemUsedRound===state.run.battle.round))document.querySelectorAll('#view [data-action="item"]').forEach(b=>b.disabled=true);
   document.querySelectorAll('#view [data-action="item"][data-id="bondCharm"]').forEach(b=>{b.disabled=true;b.textContent='Befriend';});
@@ -279,9 +314,9 @@ function render(){
 }
 function modal(content,label='Trail details',className=''){
   const dialog=$('inspect-dialog');if(!dialog.open){const el=document.activeElement;modalReturnFocus={element:el,monkeyId:el?.dataset?.monkey,slot:el?.dataset?.abilitySlot};}
-  dialog.className=className;$('dialog-content').innerHTML=content;dialog.setAttribute('aria-label',label);if(!dialog.open)dialog.showModal();const popup=$('discovery-popup');if(popup.matches(':popover-open')){popup.hidePopover();popup.showPopover();}hydrateHostedPortraits($('dialog-content'),{reducedMotion:prefs.reducedMotion||prefs.battery});
+  dialog.className=className;$('dialog-content').innerHTML=content;dialog.setAttribute('aria-label',label);if(!dialog.open)dialog.showModal();syncSocialOverlay();const popup=$('discovery-popup');if(popup.matches(':popover-open')){popup.hidePopover();popup.showPopover();}hydrateHostedPortraits($('dialog-content'),{reducedMotion:prefs.reducedMotion||prefs.battery});
 }
-function closeModal(){const landscapeDialog=$('inspect-dialog').classList.contains('lands-dialog')||$('inspect-dialog').classList.contains('compass-dialog');const stopped=ultraConfirm;ultraConfirm=false;$('inspect-dialog').close();pendingMove=null;abilityEditor=null;if(menuProgressPending)render();const focus=modalReturnFocus;modalReturnFocus=null;if(focus?.element?.isConnected)focus.element.focus();else if(focus?.monkeyId&&focus.slot!==undefined)document.querySelector(`[data-action="ability-open"][data-monkey="${CSS.escape(focus.monkeyId)}"][data-ability-slot="${focus.slot}"]`)?.focus();if(landscapeDialog&&!focus?.element?.isConnected)document.querySelector('[data-action="lands"]')?.focus();if(stopped&&gps.active)pause('Ultra confirmation closed · Start walking to resume.');}
+function closeModal(){const landscapeDialog=$('inspect-dialog').classList.contains('lands-dialog')||$('inspect-dialog').classList.contains('compass-dialog');const stopped=ultraConfirm;ultraConfirm=false;$('inspect-dialog').close();syncSocialOverlay();pendingMove=null;abilityEditor=null;if(menuProgressPending)render();const focus=modalReturnFocus;modalReturnFocus=null;if(focus?.element?.isConnected)focus.element.focus();else if(focus?.monkeyId&&focus.slot!==undefined)document.querySelector(`[data-action="ability-open"][data-monkey="${CSS.escape(focus.monkeyId)}"][data-ability-slot="${focus.slot}"]`)?.focus();if(landscapeDialog&&!focus?.element?.isConnected)document.querySelector('[data-action="lands"]')?.focus();if(stopped&&gps.active)pause('Ultra confirmation closed · Start walking to resume.');}
 function switchPreview(id){const p=state.collection[id],e=state.run.battle.enemy;modal(`<span class="eyebrow">${pendingMove?'RELAY TARGET':'SWITCH PREVIEW'}</span>${profile(p)}<div class="notice">${pendingMove?`${esc(C.MOVES[pendingMove].name)} will bring this teammate in.`:'Switching spends this turn. The incoming teammate may receive the enemy attack.'} Status effects remain attached.</div><h3>Incoming matchup</h3><div class="matchups">${e.types.map(t=>`<span style="color:${C.ELEMENTS[t].color}">${C.ELEMENTS[t].name} ×${C.effectiveness(t,p.types)}</span>`).join('')}</div><p class="fine">${state.run.battle.hazard?`Entry hazard: ${esc(state.run.battle.hazard.name||state.run.battle.hazard)}`:'No entry hazard is visible.'}</p><button class="primary wide" data-action="switch-confirm" data-id="${id}">${pendingMove?'Use relay ability':'Confirm switch · uses turn'}</button>`,'Switch teammate');}
 function openEvolution(type,id){const p=state.collection[id],o=C.evolutionPreview(state,type,id);if(!o)return;const preview=o.monkey||o.preview||{...p,types:o.types||[type],stage:p.stage+1};modal(`<span class="eyebrow">EVOLUTION PREVIEW</span>${profile(preview)}<h3>${esc(o.specialization||C.ELEMENTS[type].name+' path')}</h3><p>${esc(o.desc||o.passive||'A new combat specialization, silhouette and elemental techniques.')}</p><div class="matchups">${Object.keys(C.ELEMENTS).map(t=>`<span style="color:${C.ELEMENTS[t].color}">${C.ELEMENTS[t].name} ×${C.effectiveness(t,preview.types)}</span>`).join('')}</div><h3 class="section-gap">New ability decisions</h3><p>${(o.moves||o.abilities||C.unlocked(preview).filter(x=>!C.unlocked(p).includes(x))).map(x=>esc(C.MOVES[typeof x==='string'?x:x.id]?.name||x)).join(' · ')||'Deepen this role and review your loadout.'}</p><p>Requires level ${o.level??o.requiredLevel??3} · ${Object.entries(o.cost||{}).map(([x,n])=>`${n} ${C.ELEMENTS[x]?.name||x} essence`).join(' + ')}</p><button class="primary wide" data-action="evolve" data-id="${type}" data-monkey="${id}" ${!canPrepare()?'disabled':''}>Commit to this evolution</button>`,'Evolution preview');}
 document.addEventListener('input',e=>{if(e.target.id==='collection-search'&&state){const cursor=e.target.selectionStart;collectionSearch=e.target.value;collectionPage=0;render();const field=$('collection-search');field.focus();if(cursor!==null)field.setSelectionRange(cursor,cursor);}});
@@ -291,6 +326,7 @@ document.addEventListener('pointerover',e=>{if(e.pointerType==='touch')return;co
 document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-action]');if(!b||b.disabled)return;const a=b.dataset.action,id=b.dataset.id;if(a==='close-dialog'){closeModal();return;}if(a==='enable-location'){locationAccess.request();return;}if(!state)return;
   try{
+    if(social.locked&&!(a==='tab'&&id==='social')){toast('Return from your friendly battle before changing your expedition.');return;}
     if(combatBusy&&['move','switch-menu','switch-confirm','battle-heal','battle-item','ready','replace'].includes(a))return;
     if(a==='compass'){modal(`<span class="eyebrow">YOUR POCKET COMPASS</span><h2>Find your bearings</h2>${radarView()}<p class="fine">North stays up on the terrain map. The gold marker tracks an Ultra sighting when one is active.</p>`,'Encounter compass','compass-dialog');return;}
     if(a==='map-zoom'){mapZoom=C.clamp(Math.round((mapZoom+(id==='in'?.25:-.25))*100)/100,.75,1.5);render();document.querySelector(`[data-action="map-zoom"][data-id="${id}"]`)?.focus();return;}
@@ -303,11 +339,11 @@ document.addEventListener('click',async e=>{
     if(a==='collection-detail-close'){selectedSpecies=null;render();return;}
     if(a==='collection-individual'){selectedId=id;render();return;}
     if(a==='tab'||['team','pack'].includes(a)){const next=a==='tab'?id:a;tab=next;closeModal();render();window.scrollTo(0,0);return;}
-    if(a==='gps-setup'){pause();await checkpoint(true);locationAccess.cancel();closeModal();state=null;vault=null;document.body.classList.remove('in-game','is-walk');$('game').hidden=true;$('welcome').hidden=false;$('mode-label').textContent='WALK · COLLECT · ADVENTURE';$('creature-label').textContent='WILD COMPANIONS';renderLocation();void locationAccess.refresh();window.scrollTo(0,0);return;}
+    if(a==='gps-setup'){await social.stop();pause();await checkpoint(true);locationAccess.cancel();closeModal();state=null;vault=null;document.body.classList.remove('in-game','is-walk');$('game').hidden=true;$('welcome').hidden=false;$('mode-label').textContent='WALK · COLLECT · ADVENTURE';$('creature-label').textContent='WILD COMPANIONS';renderLocation();void locationAccess.refresh();window.scrollTo(0,0);return;}
     if(a==='tracking'){if(gps.active){pause();await checkpoint(true);}else if(state.mode==='gps'&&state.run.phase==='trail'&&tab==='walk'){locationAccess.cancel();try{await gps.start({wakeLock:prefs.keepAwake&&!prefs.battery});}catch(error){locationAccess.reportError(error);gpsInfo={reason:error.message,mph:null,accuracy:null};}}renderGPS();return;}
     if(a==='sync'){await checkpoint(true);void vault.sync();toast('Encrypted checkpoint queued. See save status below.');return;}
     if(a==='export'){await checkpoint(false);const data=await vault.export(),url=URL.createObjectURL(new Blob([data],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download=`monkey-trails-${state.name.replace(/[^A-Za-z0-9_-]/g,'-')}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);return;}
-    if(a==='cloud'){pause();if(!confirm('Load the cloud checkpoint? An encrypted recovery copy of device progress will be kept.'))return;state=await vault.loadCloud();await radar.bind(vault);if(state.run.battle)state.run.battle.ready=false;render();return;}
+    if(a==='cloud'){pause();if(!confirm('Load the cloud checkpoint? An encrypted recovery copy of device progress will be kept.'))return;state=await vault.loadCloud();await radar.bind(vault);void social.start();if(state.run.battle)state.run.battle.ready=false;render();return;}
     if(a==='settings'){modal(settings(),'Settings');return;}
     if(a==='records'){modal(records(),'Trail stories');return;}
     if(a==='scores'){b.disabled=true;b.textContent='Reading scores…';scores=await vault.leaderboard();modal(records(),'Trail stories');return;}
@@ -353,7 +389,7 @@ document.addEventListener('click',async e=>{
     else if(a==='ultra-begin'){C.beginUltra(state,radar.view(state)||{});pause('Ultra encounter · tracking paused.');C.readyBattle(state);closeModal();}
     else if(a==='craft'){C.craft(state,id);toast('Crafting complete.');}
     else if(a==='exchange'){C.exchangeEssence(state,$('exchange-from').value,$('exchange-to').value);toast('Essence exchanged.');}
-    else if(a==='restart'){const ids=[...document.querySelectorAll('[name="restart-member"]:checked')].map(x=>x.value);if(!ids.length)throw Error('Choose at least one companion.');C.restart(state);C.setParty(state,ids);radar.clear();tab='walk';selectedId=active().id;pause();}
+    else if(a==='restart'){const ids=[...document.querySelectorAll('[name="restart-member"]:checked')].map(x=>x.value);if(!ids.length)throw Error('Choose at least one companion.');C.restart(state);C.setParty(state,ids);await social.queueReceipts();radar.clear();tab='walk';selectedId=active().id;pause();}
     else return;
     if(state.run.phase!=='trail'&&gps.active)pause('Tracking paused for the encounter.');render();if(a==='map-step')document.querySelector(`[data-action="map-step"][data-id="${id}"]`)?.focus({preventScroll:true});if(a==='restart')window.scrollTo(0,0);await checkpoint(true);
   }catch(error){toast(error.message);}
@@ -362,9 +398,9 @@ $('inspect-dialog').addEventListener('click',e=>{if(e.target===$('inspect-dialog
 document.addEventListener('toggle',e=>{if(e.target.matches('.practice-tools'))practiceExpanded=e.target.open;},true);
 $('inspect-dialog').addEventListener('cancel',e=>{e.preventDefault();closeModal();});
 document.addEventListener('visibilitychange',()=>{document.body.classList.toggle('app-inactive',document.hidden);if(document.hidden){locationAccess.cancel();pause('Tracking paused while hidden. Resume manually; the gap earns no distance.');closeModal();void checkpoint(true);}else{renderGPS();void locationAccess.refresh();}});
-window.addEventListener('pagehide',()=>{locationAccess.cancel();gps.stop();void checkpoint(true);});
+window.addEventListener('pagehide',()=>{void social.stop();locationAccess.cancel();gps.stop();void checkpoint(true);});
 window.addEventListener('focus',()=>{void locationAccess.refresh();});
-window.addEventListener('online',()=>{if(vault)void vault.sync();});
+window.addEventListener('online',()=>{if(vault)void vault.sync();if(state&&social.model.status==='offline')void social.start();});
 window.addEventListener('offline',()=>{if(state)saveStatus({text:'Offline · encrypted device saves continue; Firestore will retry.',kind:'offline'});});
 setInterval(()=>{if(vault&&state?.mode==='gps'&&vault.dirty&&!document.hidden)void vault.sync();},20000);
 
@@ -373,3 +409,44 @@ setInterval(()=>{if(vault&&state?.mode==='gps'&&vault.dirty&&!document.hidden)vo
 
 
 
+
+function socialFailure(error){social.model.error=error.message;social.emit();toast(error.message);}
+document.addEventListener('submit',async e=>{
+ const form=e.target.closest('[data-social-form]');if(!form||!state)return;e.preventDefault();const values=Object.fromEntries(new FormData(form)),kind=form.dataset.socialForm;
+ try{await social.run(async()=>{
+  if(!social.store)throw Error('Connect multiplayer first.');
+  if(kind==='create-tribe')await social.store.createTribe({name:values.name,emblem:{shape:values.shape,symbol:values.symbol,color:values.color}});
+  else if(kind==='join-tribe')await social.store.joinTribe(values.code);
+  else if(kind==='update-emblem')await social.store.updateTribe({emblem:{shape:values.shape,symbol:values.symbol,color:values.color}});
+  else if(kind==='deposit')await social.deposit(values.asset,Number(values.amount));
+  else if(kind==='withdraw')await social.withdraw(values.asset,Number(values.amount));
+  else if(kind==='gift'){await social.fund(values.asset,Number(values.amount));await social.store.gift(values.toId,values.asset,Number(values.amount));}
+  else if(kind==='offer-trade'){await social.fund(values.giveAsset,Number(values.giveAmount));await social.store.offerTrade(values.toId,{asset:values.giveAsset,amount:Number(values.giveAmount)},{asset:values.wantAsset,amount:Number(values.wantAmount)});}
+ });}catch(error){socialFailure(error);}
+});
+document.addEventListener('change',e=>{if(e.target.matches('[data-social-action="discoverability"]'))void social.run(()=>social.shareNearby(e.target.checked)).catch(socialFailure);});
+document.addEventListener('click',async e=>{
+ const b=e.target.closest('[data-social-action]');if(!b||b.disabled||!state)return;const a=b.dataset.socialAction,id=b.dataset.id;if(a==='discoverability')return;
+ if(a==='open-social'){tab='social';closeModal();render();window.scrollTo(0,0);return;}
+ try{await social.run(async()=>{
+  if(a==='connect'){await social.start();return;}
+  if(!social.store)throw Error('Connect multiplayer first.');
+  if(a==='leave-tribe')await social.store.leaveTribe();
+  else if(a==='challenge')await social.challenge(id);
+  else if(a==='accept-challenge')await social.accept(id);
+  else if(a==='decline-challenge')await social.store.declineChallenge(id);
+  else if(a==='accept-trade'){const offer=social.model.offers.find(o=>o.id===id);if(!offer)throw Error('That trade is no longer available.');await social.fund(offer.want.asset,offer.want.amount);await social.store.acceptTrade(id);}
+  else if(a==='decline-trade')await social.store.cancelTrade(id);
+  else if(a==='start-raid')await social.startRaid();
+  else if(a==='raid-move')await social.raidMove({type:'move',id,expectedSequence:Number(b.dataset.sequence)});
+  else if(a==='raid-switch')await social.raidMove({type:'switch',index:Number(b.dataset.index),expectedSequence:Number(b.dataset.sequence)});
+  else if(a==='submit-raid')await social.submitRaid();
+  else if(a==='duel-move'||a==='duel-switch'){const d=social.model.duel;await social.store.act(d.id,a==='duel-move'?{type:'move',id}:{type:'switch',index:Number(b.dataset.index)},Number(b.dataset.sequence));}
+  else if(a==='surrender')await social.store.surrender(social.model.duel.id,social.model.duel.revision);
+  else if(a==='duel-timeout')await social.store.claimTimeout(social.model.duel.id);
+  else if(a==='return')await social.returnToTrail();
+  else if(a==='dismiss-reward')await social.dismissReceipt(id);
+ });}catch(error){socialFailure(error);}
+});
+
+window.addEventListener('pageshow',event=>{if(event.persisted&&state){void social.start();renderGPS();}});

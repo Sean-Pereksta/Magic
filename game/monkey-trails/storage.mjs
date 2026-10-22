@@ -35,6 +35,7 @@ export function connectFirebase(){
     const auth=authSDK.getAuth(app);await auth.authStateReady();if(!auth.currentUser)await authSDK.signInAnonymously(auth);
     const db=f.getFirestore(app),ref=id=>f.doc(db,...ROOT,'saves',id);
     return {
+      context:{db,f,auth},
       async read(id){const d=await f.getDocFromServer(ref(id));return d.exists()?d.data():null;},
       async commit(id,base,envelope,history){
         return f.runTransaction(db,async tx=>{
@@ -54,6 +55,7 @@ export function connectFirebase(){
   })().catch(e=>{firebasePromise=null;throw e;});
   return firebasePromise;
 }
+export async function socialFirebaseContext(){return (await connectFirebase()).context;}
 function defaultStorage(){try{return globalThis.localStorage;}catch{return null;}}
 function parse(raw){try{const d=JSON.parse(raw);return d&&d.format===1&&typeof d.salt==='string'&&typeof d.cipher==='string'?d:null;}catch{return null;}}
 export class Vault {
