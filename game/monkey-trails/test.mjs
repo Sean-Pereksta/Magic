@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as C from './core.mjs';
-import {MotionFilter,MAX_MPS,delta} from './gps.mjs';
+import {MotionFilter,MAX_MPS,delta,TrailGPS} from './gps.mjs';
 import {Vault,identity,derive,seal,unseal,importBackup} from './storage.mjs';
 const start=(species='capuchin')=>C.newSave('Mossfoot',species,'gps',12345);
 const fight=s=>{C.advance(s,C.ENCOUNTER_STEP,0,C.ENCOUNTER_STEP);C.readyBattle(s);};
@@ -9,17 +9,7 @@ const flush=async v=>{if(v.localTask)await v.localTask;if(v.inflight)await v.inf
 const memory=()=>{const map=new Map();return {getItem:k=>map.get(k)||null,setItem:(k,v)=>map.set(k,v),map};};
 function cloud(){const docs=new Map(),scores=new Map();let available=true;return {docs,scores,set online(v){available=v;},async read(id){if(!available)throw Error('offline');return structuredClone(docs.get(id)||null);},async commit(id,base,e,history){if(!available)throw Error('offline');const old=docs.get(id);if((old?.revision||0)!==base||old&&old.salt!==e.salt){const err=Error('Cloud changed');err.code='save-conflict';throw err;}for(const h of history)if(h.mode==='gps')scores.set(`${id}_${h.id}`,structuredClone(h));docs.set(id,{...structuredClone(e),revision:base+1});return base+1;},async leaderboard(){return [...scores.values()].sort((a,b)=>b.score-a.score);}};}
 
-test('exact 250 ft caches and encounter cap; no movement in battle',()=>{const s=start();assert.equal(C.advance(s,C.RESOURCE_STEP-1,0,C.RESOURCE_STEP-1),C.RESOURCE_STEP-1);assert.equal(s.run.essence.leaf,0);C.advance(s,1,0,1);assert.ok(s.run.essence.leaf>=2);C.advance(s,10000,0,10000);assert.equal(s.run.distance,C.ENCOUNTER_STEP);assert.equal(s.run.phase,'battle');assert.ok(Math.abs(s.run.nextCache-C.RESOURCE_STEP*9)<1e-6);const before=JSON.stringify(s);assert.equal(C.advance(s,100,0,100),0);assert.equal(JSON.stringify(s),before);});
-test('net displacement sets resources and straight travel gives 70% favored odds',()=>{const s=start();C.advance(s,C.RESOURCE_STEP,C.RESOURCE_STEP,0);assert.equal(s.run.direction,'E');assert.ok(s.run.essence.storm>0);assert.equal(C.odds(s).storm,.7);assert.equal(C.odds(s).fire,.1);assert.equal(C.direction(-10,2),'W');assert.equal(C.direction(1,-10),'S');});
-test('dual element matchups multiply and hybrid moves choose best matchup',()=>{assert.equal(C.effectiveness('water',['fire','leaf']),1);assert.equal(C.effectiveness('leaf',['water','storm']),4);assert.equal(C.effectiveness('fire',['fire','water']),.25);assert.equal(C.moveEffect(C.MOVES.wildfire,['leaf']),2);});
-test('all starters and six hybrid paths have valid progression',()=>{assert.equal(Object.keys(C.SPECIES).length,6);for(const species of Object.keys(C.SPECIES))for(const pair of Object.keys(C.HYBRIDS)){const s=start(species),p=s.run.monkey;const [a,b]=pair.split('+');p.level=10;for(const t in s.run.essence)s.run.essence[t]=100;C.evolve(s,a);C.evolve(s,b);assert.equal(p.types.length,2);assert.ok(C.unlocked(p).includes(C.hybrid(p.types).move));C.evolve(s,a);assert.equal(p.stage,3);C.validate(s);assert.throws(()=>C.evolve(s,a));}});
-test('evolution requirements and training costs cannot be bypassed',()=>{const s=start(),copy=JSON.stringify(s);assert.throws(()=>C.evolve(s,'fire'));assert.equal(JSON.stringify(s),copy);s.run.fruit=100;const old=s.run.monkey.hp;C.train(s);assert.equal(s.run.monkey.level,2);assert.equal(s.run.fruit,88);assert.ok(s.run.monkey.hp>old);});
-test('slot one always retains a free attack; duplicate moves rejected',()=>{const s=start();assert.throws(()=>C.setMove(s,0,'brace'));assert.throws(()=>C.setMove(s,3,'strike'));C.setMove(s,2,'breathe');});
-test('battle readiness and zero energy checks; deterministic save/resume',()=>{const s=start();C.advance(s,C.ENCOUNTER_STEP,0,C.ENCOUNTER_STEP);assert.throws(()=>C.turn(s,'strike'));C.readyBattle(s);const copy=structuredClone(s);C.turn(s,'brace');C.turn(copy,'brace');assert.deepEqual(s,copy);s.run.monkey.loadout=['strike','cinder'];s.run.monkey.types=['fire'];s.run.monkey.stage=1;s.run.monkey.energy=0;assert.throws(()=>C.turn(s,'cinder'));C.turn(s,'strike');});
-test('a knockout awards only once, resets the origin, and preserves next distance',()=>{const s=start();fight(s);s.run.battle.enemy.hp=1;s.run.battle.enemy.species='mandrill';s.run.monkey.level=60;C.turn(s,'strike');assert.equal(s.run.phase,'trail');assert.equal(s.run.wins,1);assert.equal(s.run.nextEncounter,C.ENCOUNTER_STEP*2);assert.deepEqual(s.run.vector,{east:0,north:0});assert.equal(C.odds(s).fire,.25);const n=s.run.fruit;assert.throws(()=>C.turn(s,'strike'));assert.equal(s.run.fruit,n);});
-test('defeat records once and keeps gear/legacy but resets temporary resources',()=>{const s=start('mandrill');s.meta.gear.fang=3;s.meta.equipped.weapon='fang';fight(s);s.run.monkey.hp=1;s.run.battle.enemy.level=80;s.run.battle.enemy.species='macaque';s.run.battle.intent='strike';C.turn(s,'breathe');assert.equal(s.run.phase,'dead');assert.equal(s.meta.history.length,1);assert.throws(()=>C.turn(s,'strike'));const old=s.run.id;C.restart(s,'spider');assert.notEqual(s.run.id,old);assert.equal(s.meta.history.length,1);assert.equal(s.meta.gear.fang,3);assert.equal(s.meta.equipped.weapon,'fang');assert.ok(s.run.fruit>10);assert.equal(s.run.distance,0);assert.equal(s.run.essence.leaf,0);C.validate(s);});
-test('full-health items are not wasted; corrupt state rejected',()=>{const s=start(),n=s.run.items.berry;assert.throws(()=>C.useItem(s,'berry'));assert.equal(s.run.items.berry,n);s.run.distance=NaN;assert.throws(()=>C.validate(s));});
-
+// Core rules are covered by expansion-tests.mjs; tracker and vault regressions follow.
 const METERS_PER_DEGREE=6371008.8*Math.PI/180,epoch=1800000000000;
 const point=(t,north=0,east=0,speed=null,accuracy=3)=>({timestamp:epoch+t*1000,coords:{latitude:north/METERS_PER_DEGREE,longitude:east/METERS_PER_DEGREE,accuracy,speed}});
 const fix=(f,t,n=0,e=0,speed=null,acc=3)=>f.accept(point(t,n,e,speed,acc),epoch+t*1000,true);
@@ -29,6 +19,25 @@ test('stationary jitter and low device speed do not grant distance',()=>{const f
 test('teleports, weak fixes, stale points, duplicate times, and long gaps are rejected',()=>{const f=new MotionFilter();fix(f,0);fix(f,1,1);assert.equal(fix(f,2,1000).meters,0);assert.equal(fix(f,3,1001,0,1,40).meters,0);assert.equal(f.accept(point(0),epoch+20000).meters,0);fix(f,4,1002);assert.equal(fix(f,4,1003).meters,0);assert.equal(fix(f,25,1030).meters,0);});
 test('hiding or resetting loses the baseline, not a jump on return',()=>{const f=new MotionFilter();fix(f,0);fix(f,1,1);assert.equal(f.accept(point(2,100),epoch+2000,false).meters,0);assert.equal(fix(f,3,200).meters,0);assert.equal(fix(f,4,201).meters,0);f.reset();assert.equal(fix(f,5,202).meters,0);});
 test('haversine handles the antimeridian',()=>{assert.ok(delta({lat:0,lon:179.9999},{lat:0,lon:-179.9999}).meters<30);});
+
+test('fresh stationary positions can confirm a hunt without earning walking progress',()=>{
+  const f=new MotionFilter();fix(f,0,0,0,0);fix(f,1,0,0,0);const stationary=fix(f,2,0,0,0);
+  assert.equal(stationary.meters,0);assert.equal(stationary.positionValid,true);assert.equal(stationary.timestamp,epoch+2000);
+  assert.equal(fix(f,3,0,0,0,40).positionValid,undefined);assert.equal(fix(f,4,0,0,7).positionValid,undefined);
+  fix(f,5,0,0,0);fix(f,6,0,0,0);assert.equal(fix(f,40,0,0,0).positionValid,undefined);
+});
+
+test('tracking requests permission only on start and discards callbacks after stop',async()=>{
+  const saved={navigator:Object.getOwnPropertyDescriptor(globalThis,'navigator'),document:Object.getOwnPropertyDescriptor(globalThis,'document'),secure:Object.getOwnPropertyDescriptor(globalThis,'isSecureContext')};
+  let requests=0,cleared=0,callback,fixes=0;
+  try{
+    Object.defineProperty(globalThis,'navigator',{configurable:true,value:{geolocation:{watchPosition(fn){requests++;callback=fn;return 7;},clearWatch(id){assert.equal(id,7);cleared++;}}}});
+    Object.defineProperty(globalThis,'document',{configurable:true,value:{hidden:false}});Object.defineProperty(globalThis,'isSecureContext',{configurable:true,value:true});
+    const gps=new TrailGPS(()=>fixes++,()=>{});assert.equal(requests,0);await gps.start({wakeLock:false});assert.equal(requests,1);await gps.start();assert.equal(requests,1);
+    gps.stop();assert.equal(cleared,1);callback(point(1));assert.equal(fixes,0);assert.equal(gps.active,false);
+    globalThis.document.hidden=true;await assert.rejects(gps.start(),/foreground/);assert.equal(requests,1);
+  }finally{for(const [key,prop]of [['navigator',saved.navigator],['document',saved.document],['isSecureContext',saved.secure]]){if(prop)Object.defineProperty(globalThis,key,prop);else delete globalThis[key];}}
+});
 
 test('encryption round trip, random IVs, wrong-password and tamper rejection',async()=>{const s=start(),salt=btoa('0123456789abcdef'),id=await identity('Mossfoot'),key=await derive('a-unique-password',salt);const a=await seal(s,key,salt,id),b=await seal(s,key,salt,id);assert.notEqual(a.iv,b.iv);assert.deepEqual(await unseal(a,key,id),s);assert.equal(JSON.stringify(a).includes('Mossfoot'),false);await assert.rejects(unseal(a,await derive('incorrect',salt),id));await assert.rejects(unseal({...a,cipher:a.cipher.slice(0,15)+'AAAA'+a.cipher.slice(19)},key,id));assert.equal(await identity(' MOSSFOOT '),id);assert.notEqual(await identity('Mossfoot','practice'),id);});
 test('cloud save and password reopen use encrypted records and no coordinates',async()=>{const c=cloud(),m=memory(),v=new Vault(()=>{},m,async()=>c);let s=await v.open('Mossfoot','a-unique-password',{create:true});C.advance(s,100,0,100);await v.checkpoint(s,true);await flush(v);const w=new Vault(()=>{},memory(),async()=>c),reopened=await w.open('MOSSFOOT','a-unique-password');assert.equal(reopened.run.distance,100);await assert.rejects(new Vault(()=>{},memory(),async()=>c).open('Mossfoot','wrong'));assert.ok(!JSON.stringify([...c.docs.values()]).includes('latitude'));assert.ok(!JSON.stringify([...m.map.values()]).includes('a-unique-password'));});
