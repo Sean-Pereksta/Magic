@@ -2,6 +2,11 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {simulation}=require('./helpers/expansion-harness.cjs');
 
+test('a staged attack wave launches before scouting can borrow its final required troop',()=>{
+  const run=simulation('frontier',{factions:['frontier','brood']}),result=run.plain(`(()=>{chosenMapId='classic';chosenDifficulty='pro';players[1].ai=true;players[1].aiDifficulty='pro';addEntity('structure','hatchery',1,30,20);const army=Array.from({length:11},(_,i)=>addEntity('unit','zergling',1,26+i%4,16+Math.floor(i/4)));players[1].strategy.rally={x:27,y:17};players[1].strategy.stagingAt=testClock-20000;aiArmyCycle(1,army,DIFFICULTY.pro);return {wave:players[1].strategy.wave?.ids.length,scout:players[1].strategy.scoutId||null,state:players[1].strategy.state}})()`);
+  assert.deepEqual(result,{wave:11,scout:null,state:'attacking'});
+});
+
 test('idle troops far from a flank waypoint retry it instead of skipping to the enemy base',()=>{
   const run=simulation(),result=run.plain(`(()=>{chosenMapId='fourfold-divide';setBoardDimensions();terrain=mapLayout().terrain;const b=mapLayout().starts[0];addEntity('structure','commandHub',0,b.x,b.y);
     const units=Array.from({length:8},(_,i)=>addEntity('unit',i%3?'rifleman':'medic',0,b.x+i%3,b.y+Math.floor(i/3))),ids=units.map(u=>u.id),wave={ids,approaches:[{ids,points:[{x:40,y:33},{x:81,y:81}],index:0}]};

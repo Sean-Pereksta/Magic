@@ -101,3 +101,12 @@ test('solo losses, campaign stars and survival history persist with stable once-
   try { assert.equal(readProgress('profile-key').pendingResults[0].resultId, 'offline-loss'); }
   finally { delete global.localStorage; }
 });
+
+test('a solo transaction cannot write after the selected account or Auth identity changes during reads', async () => {
+  const {createProfileStore} = await load('profile-store.mjs'), state = database();
+  let current = true;
+  const api = {...state.api, runTransaction: (db, operation) => state.api.runTransaction(db, tx => operation({...tx, get: async ref => {const snap = await tx.get(ref);current = false;return snap;}}))};
+  const store = createProfileStore({db: state.db, api, isCurrentAccount: () => current});
+  await assert.rejects(store.save('Alpha', 'campaign', {resultId: 'late-result', missionId: 'amber-wastes-1', won: true}), {code: 'ACCOUNT_CHANGED'});
+  assert.equal(state.writes(), 0);assert.equal(state.records.has('users/Alpha/turncraftSoloHistory/late-result'), false);
+});
