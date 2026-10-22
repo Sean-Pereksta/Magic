@@ -124,7 +124,7 @@ async function checkClean(page,errors){
     await run('practice stays separate and requests no location automatically',{},async page=>{
       await page.locator('#practice-button').click();await page.locator('#game').waitFor({state:'visible'});
       assert.equal((await counts(page)).requests,0);assert.equal((await counts(page)).watches,0);assert.equal(await page.locator('#tracking-button:visible').count(),0);
-      const setup=page.locator('[data-action="gps-setup"]');assert.equal(await setup.count(),1);await setup.click();await page.locator('#welcome').waitFor({state:'visible'});
+      await page.locator('.practice-tools summary').click();const setup=page.locator('[data-action="gps-setup"]');assert.equal(await setup.count(),1);await setup.click();await page.locator('#welcome').waitFor({state:'visible'});
       assert.equal((await counts(page)).requests,0);assert.equal((await counts(page)).watches,0);
     });
     await run('cancelled location checks ignore late callbacks',{},async page=>{

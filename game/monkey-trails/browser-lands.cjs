@@ -12,12 +12,22 @@ const mime={'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript'
   const enter=async()=>{await page.goto('http://127.0.0.1:7777/game/monkey-trails.html');await page.locator('#practice-button').click();await page.locator('.land-scene').waitFor();};
   await enter();
   assert.match(await page.locator('.land-heading h2').innerText(),/Emerald Jungle/);
-  assert.equal(await page.locator('.land-rail .land-tile').count(),10);
+  assert.equal(await page.locator('.land-rail').count(),0,'region picker stays out of the main screen');
+  assert.equal(await page.locator('.land-scene .terrain-map').count(),1);
+  assert.equal(await page.locator('.map-compass').count(),1,'small compass is always visible');
   if(out)await page.screenshot({path:path.join(out,'monkey-trails-lands-mobile.png'),fullPage:true});
-  await page.locator('.land-compass summary').click();
+  await page.locator('[data-action="compass"]').click();
+  await page.locator('#inspect-dialog[open] .radar').waitFor();
+  await page.locator('.dialog-close').click();
+  const start=await page.locator('.terrain-map').evaluate(el=>({east:Number(el.dataset.mapEast),north:Number(el.dataset.mapNorth)}));
+  for(const [id,east,north]of [['N',start.east,start.north+15],['E',start.east+15,start.north+15],['S',start.east+15,start.north],['W',start.east,start.north]]){
+   await page.locator('[data-action="map-step"][data-id="'+id+'"]').click();
+   const position=await page.locator('.terrain-map').evaluate(el=>({east:Number(el.dataset.mapEast),north:Number(el.dataset.mapNorth)}));
+   assert.deepEqual(position,{east,north},id+' moves through the actual map coordinates');
+  }
+  assert.equal(await page.locator('.map-compass').count(),1);
   await page.locator('.practice-tools summary').click();
   await page.locator('[data-action="practice-step"][data-id="N"]').click();
-  assert.ok(await page.locator('.land-compass').getAttribute('open')!==null,'compass stays open on movement');
   await page.locator('[data-action="lands"]').first().click();
   assert.equal(await page.locator('.land-atlas .land-tile').count(),10);
   await page.locator('.land-atlas [data-id="moonlit-forest"]').click();
@@ -25,8 +35,9 @@ const mime={'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript'
   assert.match(await page.locator('.land-unlock-copy').innerText(),/18 km/);
   assert.equal(await page.evaluate(()=>document.activeElement?.tagName),'H2');
   await page.locator('.dialog-close').click();
-  for(let i=0;i<6;i++)await page.locator('[data-action="practice-step"][data-id="N"]').click();
-  await page.locator('.land-rail [data-id="sunstone-savannah"]').click();
+  for(let i=0;i<5;i++)await page.locator('[data-action="practice-step"][data-id="N"]').click();
+  await page.locator('[data-action="lands"]').first().click();
+  await page.locator('.land-atlas [data-id="sunstone-savannah"]').click();
   assert.match(await page.locator('[data-action="land-select"]').innerText(),/Visit Sunstone Savannah/);
   assert.doesNotMatch(await page.locator('[data-action="land-select"]').innerText(),/>|disabled/);
   await page.locator('[data-action="land-select"]').click();
@@ -38,11 +49,12 @@ const mime={'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript'
   await enter();
   const visited=[];
   for(const id of ['emerald-jungle','sunstone-savannah','crystal-caverns','whispering-marsh','frostpeak-mountains','thunder-highlands','ember-volcano','moonlit-forest','celestial-ruins','ancient-monkey-kingdom']){
-   await page.locator('.land-rail [data-id="'+id+'"]').click();
+   await page.locator('[data-action="lands"]').first().click();
+   await page.locator('.land-atlas [data-id="'+id+'"]').click();
    const invalid=await page.locator('.land-preview-art').evaluate(el=>new DOMParser().parseFromString(el.innerHTML,'image/svg+xml').querySelector('parsererror')?.textContent);
    assert.equal(invalid,undefined,id+' valid SVG');
    await page.locator('[data-action="land-select"]').click();
-   assert.ok(await page.locator('.land-scene .land-art').count());visited.push(id);
+   assert.ok(await page.locator('.land-scene .terrain-map').count());visited.push(id);
   }
   await page.locator('[data-action="lands"]').first().click();
   if(out)await page.screenshot({path:path.join(out,'monkey-trails-lands-atlas-mobile.png'),fullPage:true});
@@ -53,7 +65,7 @@ const mime={'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript'
   await page.evaluate(()=>{localStorage.setItem('monkey-trails-display-v2',JSON.stringify({reducedMotion:true}));});await enter();
   assert.equal(await page.locator('.land-scene').evaluate(el=>el.getAnimations({subtree:true}).length),0,'reduced motion stops scenery and traveler');
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({visited,viewports,reloadKeepsSelection:true,lockedPreview:true,compassPersists:true,reducedMotion:true,pageErrors:errors},null,2));
+  console.log(JSON.stringify({visited,viewports,reloadKeepsSelection:true,lockedPreview:true,cardinalMovement:true,compassVisible:true,popupOnly:true,reducedMotion:true,pageErrors:errors},null,2));
   await context.close();
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

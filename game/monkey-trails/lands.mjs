@@ -19,8 +19,9 @@ const MAX_DISTANCE=1e9,MAX_POSITION=1e7,TRAIL_LIMIT=128;
 const isUnlocked=(land,total)=>land.unlock<=total+1e-6;
 const nonnegative=n=>Number.isFinite(n)?Math.max(0,Math.min(MAX_DISTANCE,n)):0;
 const coordinate=n=>Number.isFinite(n)?Math.max(-MAX_POSITION,Math.min(MAX_POSITION,n)):0;
+const heading=n=>Number.isFinite(n)?((n%360)+360)%360:0;
 const point=p=>({east:coordinate(p?.east),north:coordinate(p?.north)});
-const region=()=>({distance:0,position:{east:0,north:0},trail:[{east:0,north:0}]});
+const region=()=>({distance:0,heading:0,position:{east:0,north:0},trail:[{east:0,north:0}]});
 
 // Older checkpoints never recorded cumulative walking. Retain the furthest
 // verifiable expedition once; score is not distance, and histories can overlap.
@@ -45,7 +46,7 @@ export function normalizeLands(s){
     for(const land of LANDS){
       const saved=old.regions?.[land.id];if(!saved||typeof saved!=='object')continue;
       const position=point(saved.position),trail=Array.isArray(saved.trail)?saved.trail.slice(-TRAIL_LIMIT).filter(p=>p&&Number.isFinite(p.east)&&Number.isFinite(p.north)).map(point):[];
-      regions[land.id]={distance:Math.min(totalDistance,nonnegative(saved.distance)),position,trail:trail.length?trail:[{...position}]};
+      regions[land.id]={distance:Math.min(totalDistance,nonnegative(saved.distance)),heading:heading(saved.heading),position,trail:trail.length?trail:[{...position}]};
     }
     const requested=byId.get(old.activeLand),activeLand=requested&&isUnlocked(requested,totalDistance)?requested.id:LANDS[0].id;
     s.world={version:1,totalDistance,activeLand,regions};
@@ -56,7 +57,7 @@ export function normalizeLands(s){
 export function landProgress(s){
   const world=normalizeLands(s),active=byId.get(world.activeLand),next=LANDS.find(land=>!isUnlocked(land,world.totalDistance))||null,current=world.regions[active.id];
   return{active,activeId:active.id,totalDistance:world.totalDistance,next,remaining:next?Math.max(0,next.unlock-world.totalDistance):0,
-    unlocked:LANDS.filter(land=>isUnlocked(land,world.totalDistance)),position:current.position,region:current,
+    unlocked:LANDS.filter(land=>isUnlocked(land,world.totalDistance)),position:current.position,heading:current.heading,region:current,
     lands:LANDS.map(land=>({...land,unlocked:isUnlocked(land,world.totalDistance),remaining:isUnlocked(land,world.totalDistance)?0:land.unlock-world.totalDistance}))};
 }
 
@@ -73,7 +74,9 @@ export function advanceLand(s,meters,east=0,north=0){
   const world=normalizeLands(s),current=world.regions[world.activeLand],used=Math.min(meters,MAX_DISTANCE-world.totalDistance),length=Math.hypot(east,north),scale=length>used?used/length:1;
   if(used<=0)return 0;
   world.totalDistance+=used;current.distance=Math.min(MAX_DISTANCE,current.distance+used);
-  current.position={east:coordinate(current.position.east+east*scale),north:coordinate(current.position.north+north*scale)};
+  const position={east:coordinate(current.position.east+east*scale),north:coordinate(current.position.north+north*scale)},movedEast=position.east-current.position.east,movedNorth=position.north-current.position.north;
+  if(movedEast||movedNorth)current.heading=heading(Math.atan2(movedEast,movedNorth)*180/Math.PI);
+  current.position=position;
   const last=current.trail.at(-1);if(!last||Math.hypot(current.position.east-last.east,current.position.north-last.north)>=8){current.trail.push({...current.position});current.trail=current.trail.slice(-TRAIL_LIMIT);}
   return used;
 }

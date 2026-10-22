@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as C from './core.mjs';
-import {normalizeLands} from './lands.mjs';
+import {normalizeLands,advanceLand} from './lands.mjs';
 
 const save=(mode='gps')=>C.newSave('Trail Explorer','capuchin',mode,7213);
 const walk=(s,meters,east=meters,north=0)=>{s.run.nextEncounter=1e8;s.run.nextCamp=1e8;return C.advance(s,meters,east,north);};
@@ -49,6 +49,54 @@ test('land position survives encounter direction resets without changing encount
   assert.deepEqual(s.run.vector,{east:-50,north:0});assert.equal(s.run.direction,'W');
 });
 
+test('terrain coordinates and facing follow the latest north, east, south, or west step',()=>{
+  const s=save();assert.equal(C.landProgress(s).heading,0);
+  for(const [east,north,position,heading] of [
+    [0,20,{east:0,north:20},0],
+    [20,0,{east:20,north:20},90],
+    [0,-20,{east:20,north:0},180],
+    [-20,0,{east:0,north:0},270]
+  ]){
+    walk(s,20,east,north);const p=C.landProgress(s);
+    assert.deepEqual(p.position,position);assert.equal(p.heading,heading);assert.equal(p.region.heading,heading);
+  }
+  // The encounter's accumulated vector is zero after this loop, but facing
+  // remembers the most recent accepted step for the walking-map avatar.
+  assert.deepEqual(s.run.vector,{east:0,north:0});
+  assert.equal(C.landProgress(s).heading,270);
+});
+
+test('each land remembers its facing through travel, reload, and expedition restart',()=>{
+  let s=save();walk(s,500,500,0);assert.equal(C.landProgress(s).heading,90);
+  C.selectLand(s,'sunstone-savannah');assert.equal(C.landProgress(s).heading,0);
+  walk(s,25,-25,0);assert.equal(C.landProgress(s).heading,270);
+  C.selectLand(s,'emerald-jungle');s=C.validate(structuredClone(s));assert.equal(C.landProgress(s).heading,90);
+  C.selectLand(s,'sunstone-savannah');assert.equal(C.landProgress(s).heading,270);
+  s.run.phase='dead';C.restart(s);assert.equal(C.landProgress(s).heading,270);
+  // Saves written before facing was recorded remain usable.
+  delete s.world.regions['sunstone-savannah'].heading;
+  assert.equal(C.landProgress(C.validate(structuredClone(s))).heading,0);
+});
+
+test('facing changes only for actual accepted displacement, including clipped movement',()=>{
+  const s=save();walk(s,10,0,-10);assert.equal(C.landProgress(s).heading,180);
+  walk(s,10,0,0);assert.equal(C.landProgress(s).heading,180);
+  for(const args of [[0,1,0],[-1,1,0],[NaN,1,0],[10,Infinity,0],[10,0,NaN]]){
+    assert.equal(C.advance(s,...args),0);assert.equal(C.landProgress(s).heading,180);
+  }
+  s.run.nextEncounter=s.run.distance+5;
+  assert.equal(C.advance(s,100,100,0),5);
+  assert.deepEqual(C.landProgress(s).position,{east:5,north:-10});assert.equal(C.landProgress(s).heading,90);
+  const before=structuredClone(s.world);assert.equal(C.advance(s,10,-10,0),0);assert.deepEqual(s.world,before);
+  s.run.phase='trail';s.world.regions['emerald-jungle'].position={east:1e7,north:0};
+  assert.equal(advanceLand(s,10,10,0),10);assert.equal(C.landProgress(s).heading,90);
+  // Hitting the coordinate limit cannot turn the avatar without moving it.
+  s.world.regions['emerald-jungle'].heading=180;
+  advanceLand(s,10,10,0);assert.equal(C.landProgress(s).heading,180);
+  advanceLand(s,10,10,10);assert.equal(C.landProgress(s).position.east,1e7);assert.ok(Math.abs(C.landProgress(s).position.north-Math.SQRT1_2*10)<1e-12);
+  assert.equal(C.landProgress(s).heading,0);
+});
+
 test('legacy migration retains verifiable distance once and never treats score as meters',()=>{
   let s=save();delete s.world;s.run.distance=200;s.run.vector={east:60,north:80};s.meta.best=999999;
   s.meta.history=[{id:'old',feet:2000,mode:'gps'},{id:'practice',feet:99999,mode:'practice'}];
@@ -68,8 +116,9 @@ test('practice progress belongs to its own save and does not unlock GPS lands',(
 test('restored landscape data stays finite and bounded; oversized vectors cannot teleport',()=>{
   const s=save();walk(s,50,5000,0);assert.deepEqual(C.landProgress(s).position,{east:50,north:0});
   s.world.totalDistance=Infinity;s.world.activeLand='ancient-monkey-kingdom';
-  s.world.regions['emerald-jungle']={distance:-50,position:{east:Infinity,north:NaN},trail:Array.from({length:500},()=>({east:1,north:2}))};
+  s.world.regions['emerald-jungle']={distance:-50,heading:Infinity,position:{east:Infinity,north:NaN},trail:Array.from({length:500},()=>({east:1,north:2}))};
   normalizeLands(s);const p=C.landProgress(s);assert.equal(p.totalDistance,0);assert.equal(p.active.id,'emerald-jungle');
   assert.equal(p.region.distance,0);assert.deepEqual(p.position,{east:0,north:0});assert.equal(p.region.trail.length,128);
+  assert.equal(p.heading,0);p.region.heading=359.25;normalizeLands(s);assert.equal(C.landProgress(s).heading,359.25);
   assert.ok(JSON.stringify(s.world).length<10000);
 });
