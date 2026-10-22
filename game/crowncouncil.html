@@ -941,8 +941,8 @@ import { FACTION_FORGE_CONFIG } from "./faction-forge/config.js";
 import { createAssetLoader } from "./faction-forge/assets.js";
 import { createBattleRenderer } from "./faction-forge/renderer.js";
 import { createExpansionUI } from "./faction-forge/ui.js";
-import { createProgressionService } from "./faction-forge/progression.js";
 import { createFirebaseProgress, soloMission } from "./faction-forge/firebase-progress.js";
+import { createProfileConnectionWaiter, profileConnectionError } from "./faction-forge/profile-connection.js";
 import { resolveForgeUsername, selectSoloAccount } from "./faction-forge/solo-account.js";
 import { createMatchmaking, estimatedOpponent } from "./faction-forge/matchmaking.js";
 import { getMission, createEndlessMission, chooseAIDraft, chooseAIDeck, MISSIONS, playerStartingRoster, prepareBattle, tickCampaignHazards } from "./faction-forge/campaign.js";
@@ -960,7 +960,6 @@ const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
   authDomain: "bible-game-246c0.firebaseapp.com",
   projectId: "bible-game-246c0",
-  storageBucket: "bible-game-246c0.appspot.com",
   messagingSenderId: "959619818996",
   appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
 };
@@ -4462,26 +4461,12 @@ function startSecurePolling(){
   },1500);
 }
 async function startProgressionMatch(mode,missionId,value){
-  if(profileLoadPromise)await profileLoadPromise;
-  if(!progression&&auth.currentUser)await restoreExpansionProfile(auth.currentUser);
-  const deck=selectedForgeDeck(value),faction=deck.faction;
-  if(!progression){
-    if(mode==="bot")return startPractice(deck);
-    throw new Error("Firebase is still connecting. Try starting the campaign again in a moment.");
-  }
-  if(!FACTION_FORGE_CONFIG.progressionApiUrl){
-    const mission=soloMission(forgeProfile,mode,missionId);
-    return startPractice(deck,mission?.id||null,{saveProgress:true,mode});
-  }
-  if(!forgeProfile?.uid){return startPractice(deck,mode==="campaign"?missionId:null);}
-  try{
-    resetActiveRuntime();executionMode="secure";isHost=false;
-    const response=await progression.startSolo({mode,missionId,faction,deck});
-    spriteRenderer?.paintTerrain?.(cellsEl,viewport,(mode==="campaign"?getMission(missionId)?.theme:null)||"contested-forge");
-    await adoptSecureResponse(response);ensureVisualLoop();startSecurePolling();
-  }catch(error){returnToForgeMenu();expansionUI?.notify(error.message);throw error;}
+  await ensureForgeProfile();
+  const deck=selectedForgeDeck(value),mission=soloMission(forgeProfile,mode,missionId);
+  return startPractice(deck,mission?.id||null,{saveProgress:true,mode});
 }
 async function beginMatchmaking(value){
+  await ensureForgeProfile();
   const deck=selectedForgeDeck(value);
   if(progression?.selectDeck&&forgeProfile?.selectedDeckId!==deck.id){const response=await progression.selectDeck(deck.id);forgeProfile=response.profile||forgeProfile;}
   resetActiveRuntime();executionMode="menu";S=null;updateAssetGate();
@@ -4497,13 +4482,32 @@ async function beginMatchmaking(value){
   });
   update();matchSearch.search();
 }
-let expansionInitialized=false,initializationPromise=null,profileLoadPromise=null,progressIdentity=null,profileConnectionFailed=false;
+let expansionInitialized=false,initializationPromise=null,profileLoadPromise=null,progressIdentity=null,profileConnectionFailed=false,profileLoadVersion=0;
+let anonymousSignIn=null,authConnectionStatus="Connecting to Firebase…",authConnectionError=null;
+let finishInitialAuth;
+const initialAuthReady=new Promise(resolve=>{finishInitialAuth=resolve;});
+const ensureForgeProfile=createProfileConnectionWaiter({connect:async()=>{
+  // Wait for persisted credentials before deciding whether a guest is needed.
+  await initialAuthReady;
+  if(!auth.currentUser)await connectGuestProfile();
+  if(!auth.currentUser)throw authConnectionError||new Error("Sign in to reconnect your Firestore profile.");
+  await restoreExpansionProfile(auth.currentUser);
+  if(!progression||profileConnectionFailed)throw authConnectionError||new Error(authConnectionStatus);
+  return progression;
+},onTimeout:error=>{
+  profileLoadVersion++;profileLoadPromise=null;profileConnectionFailed=true;
+  authConnectionError=error;authConnectionStatus=error.message;
+  progression?.dispose();progression=null;expansionUI?.refresh();
+}});
 function connectForgeProgress(account){
   progression?.dispose();
-  progression=FACTION_FORGE_CONFIG.progressionApiUrl?
-    createProgressionService({auth,db,apiBaseUrl:FACTION_FORGE_CONFIG.progressionApiUrl,firestoreApi:{doc,onSnapshot}}):
-    createFirebaseProgress({auth,db,...account,troops:TROOPS,api:{doc,getDoc,onSnapshot,runTransaction},isActiveMatch:()=>!!S&&S.phase!=="game-over",isCurrentAccount:()=>storedHubUsername()===launchHubUsername});
-  progression.subscribeProfile(profile=>{forgeProfile=profile||defaultForgeProfile();expansionUI?.updateProfile();});
+  progression=createFirebaseProgress({auth,db,...account,troops:TROOPS,api:{doc,getDoc,onSnapshot,runTransaction},isActiveMatch:()=>!!S&&S.phase!=="game-over",isCurrentAccount:()=>storedHubUsername()===launchHubUsername});
+  const connected=progression;
+  connected.subscribeProfile(profile=>{
+    if(connected!==progression)return;
+    if(!profile){clearForgeIdentity();authConnectionStatus="Account changed · reopen Faction Forge";profileConnectionFailed=true;expansionUI?.refresh();return;}
+    forgeProfile=profile;expansionUI?.updateProfile();
+  });
 }
 function initializeBattleSettings(){
   let saved={};try{saved=JSON.parse(localStorage.getItem("ff.battleEffects")||"{}")}catch{}
@@ -4525,21 +4529,21 @@ function initializeExpansion(){
   spriteRenderer=createBattleRenderer({assets,layer:partsEl,cell:CELL,gap:GAP,troops:TROOPS,fallbackPath:troopImagePath});
   initializeBattleSettings();
   expansionUI=createExpansionUI({assets,troops:TROOPS,counters:TROOP_COUNTERS,legendaryAbilities:LEGENDARY_ABILITIES,getProfile:()=>forgeProfile,isActiveMatch:()=>!!S&&S.phase!=="game-over",missionDefinitions:MISSIONS,fallbackPath:troopImagePath,
-    onSaveDeck:async deck=>{if(!progression?.saveDeck)throw new Error('Connect your profile to save a deck.');const response=await progression.saveDeck(deck);forgeProfile=response.profile;return response;},
-    onSelectDeck:async deck=>{if(progression?.selectDeck){const response=await progression.selectDeck(deck.id);forgeProfile=response.profile;return response;}forgeProfile={...forgeProfile,selectedDeckId:deck.id};return {profile:forgeProfile};},
+    onSaveDeck:async deck=>{const connected=await ensureForgeProfile();try{const response=await connected.saveDeck(deck);forgeProfile=response.profile;return response;}catch(error){throw profileConnectionError(error);}},
+    onSelectDeck:async deck=>{const connected=await ensureForgeProfile();try{const response=await connected.selectDeck(deck.id);forgeProfile=response.profile;return response;}catch(error){throw profileConnectionError(error);}},
     onCampaignMission:(id,faction)=>startProgressionMatch("campaign",id,faction),
     onPractice:faction=>startProgressionMatch("bot",null,faction),onEndless:faction=>startProgressionMatch("endless",null,faction),
-    canSignIn:()=>FACTION_FORGE_CONFIG.progressionApiUrl?!forgeProfile?.uid:auth.currentUser?.isAnonymous===true,
-    canRetryConnection:()=>profileConnectionFailed,
-    onRetryConnection:async()=>{if(!auth.currentUser)throw new Error("Sign in to reconnect your profile.");await restoreExpansionProfile(auth.currentUser);if(!progression)throw new Error(authConnectionStatus);expansionUI.showMenu();return true;},
+    canSignIn:()=>!auth.currentUser||auth.currentUser.isAnonymous===true,
+    canRetryConnection:()=>profileConnectionFailed||/pending retry/i.test(progression?.connectionStatus||""),
+    onRetryConnection:async()=>{profileConnectionFailed=true;await ensureForgeProfile();expansionUI.showMenu();return true;},
     onSignIn:async(email,password)=>{await signInWithEmailAndPassword(auth,email,password);await restoreExpansionProfile(auth.currentUser);expansionUI.updateProfile();return forgeProfile;},
-    onResume:async()=>{if(!secureSession&&forgeProfile?.activeSessionId){executionMode="secure";await adoptSecureResponse(await progression.getSession(forgeProfile.activeSessionId));startSecurePolling();}expansionUI.hide();return true;},onAbandon:async()=>{const activeId=secureSession?.id||forgeProfile?.activeSessionId;if(activeId){const response=await progression.abandon(activeId);forgeProfile=response.profile||await progression.loadProfile();}returnToForgeMenu();return true;},
+    onResume:async()=>{expansionUI.hide();return true;},onAbandon:async()=>{returnToForgeMenu();return true;},
     onFindMatch:beginMatchmaking,onBrowseLobbies:()=>{location.href="../lobby/lobby.html?view=multiplayer"},onMenu:returnToForgeMenu,
-    onUpgrade:async(key,options)=>{if(S&&S.phase!=="game-over")throw new Error("Finish your match before upgrading.");const response=await progression.upgradeTroop(key,options);forgeProfile=response.profile||response;expansionUI.showForge();return response;},
-    onBuyPack:async(packId,options)=>{if(S&&S.phase!=="game-over")throw new Error("Finish your match before buying packs.");if(!progression?.buyPack)throw new Error("Your Forge profile is still connecting. Try again shortly.");const response=await progression.buyPack(packId,options);forgeProfile=response.profile;return response;},
+    onUpgrade:async(key,options)=>{if(S&&S.phase!=="game-over")throw new Error("Finish your match before upgrading.");const connected=await ensureForgeProfile();const response=await connected.upgradeTroop(key,options);forgeProfile=response.profile||response;expansionUI.showForge();return response;},
+    onBuyPack:async(packId,options)=>{if(S&&S.phase!=="game-over")throw new Error("Finish your match before buying packs.");const connected=await ensureForgeProfile();const response=await connected.buyPack(packId,options);forgeProfile=response.profile;return response;},
     getPendingPackRequest:packId=>progression?.getPendingPackRequest?.(packId)||null,
-    onTargetReward:async key=>{const response=await progression.setRewardTarget(key);forgeProfile=response.profile||response;},
-    getConnectionStatus:()=>FACTION_FORGE_CONFIG.progressionApiUrl?(forgeProfile?.uid?"Profile connected":"Profile verification required"):(progression?.connectionStatus||authConnectionStatus)
+    onTargetReward:async key=>{const connected=await ensureForgeProfile();const response=await connected.setRewardTarget(key);forgeProfile=response.profile||response;},
+    getConnectionStatus:()=>progression?.connectionStatus||authConnectionStatus
   });
   await spriteRenderer.paintTerrain?.(cellsEl,viewport,'contested-forge');ensureVisualLoop();
   // Solo navigation opens as soon as graphics are ready, independently of Firebase.
@@ -4552,74 +4556,76 @@ function initializeExpansion(){
 }
 async function restoreExpansionProfile(user){
   if(progressIdentity===user.uid&&profileLoadPromise)return profileLoadPromise;
+  if(progressIdentity===user.uid&&progression&&!profileConnectionFailed)return forgeProfile;
   if(progressIdentity&&progressIdentity!==user.uid){clearForgeIdentity();}
   progressIdentity=user.uid;
-  profileLoadPromise=(async()=>{
+  const version=++profileLoadVersion;
+  const current=()=>!disposed&&auth.currentUser?.uid===user.uid&&progressIdentity===user.uid&&profileLoadVersion===version;
+  authConnectionError=null;authConnectionStatus="Connecting your Firestore profile…";
+  const attempt=(async()=>{
   await initializeExpansion();
-  if(disposed||auth.currentUser?.uid!==user.uid)return;
+  if(!current())return;
   try{
-    const account=FACTION_FORGE_CONFIG.progressionApiUrl?null:await selectSoloAccount({auth,db,api:{doc,getDoc,runTransaction},username,troops:TROOPS,useHubProfile:!!(launchHubUsername||params.get("username")?.trim())});
-    if(disposed||auth.currentUser?.uid!==user.uid||progressIdentity!==user.uid)return;
+    const account=await selectSoloAccount({auth,db,api:{doc,getDoc,runTransaction},username,troops:TROOPS,useHubProfile:!!(launchHubUsername||params.get("username")?.trim())});
+    if(!current())return;
     connectForgeProgress(account);
     const connected=progression,loaded=await connected.loadProfile();
-    if(connected!==progression||auth.currentUser?.uid!==user.uid)return;
+    if(connected!==progression||!current())return;
     forgeProfile=loaded;profileConnectionFailed=false;
   }catch(error){
-    if(auth.currentUser?.uid!==user.uid||progressIdentity!==user.uid)return;
-    authConnectionStatus=error.code==="permission-denied"?"Firebase save permissions need updating":error.message||"Firebase save unavailable · retry your connection";
-    profileConnectionFailed=true;progression?.dispose();progression=null;progressIdentity=null;profileLoadPromise=null;forgeProfile=defaultForgeProfile();
+    if(!current())return;
+    authConnectionError=profileConnectionError(error);
+    authConnectionStatus=error.code==="permission-denied"?"Firebase save permissions need updating":authConnectionError.message;
+    // Keep the last confirmed save visible during a same-account reconnect.
+    // Only an actual account change clears that profile.
+    profileConnectionFailed=true;progression?.dispose();progression=null;
+    expansionUI?.refresh();throw authConnectionError;
   }
-  if(disposed||auth.currentUser?.uid!==user.uid)return;
+  if(!current())return;
   if(!gameId){
     // Keep solo entry on its menu; an old online session can be resumed explicitly.
     if(["menu","campaign","forge"].includes(expansionUI.view))expansionUI.refresh();return;
   }
-  if(forgeProfile?.activeSessionId && FACTION_FORGE_CONFIG.progressionApiUrl){
-    executionMode="secure";isHost=false;
-    await adoptSecureResponse(await progression.getSession(forgeProfile.activeSessionId));
-    startSecurePolling();finishExpansionStartup();return;
-  }
-  let verifiedLobby=null;
-  if(gameId&&FACTION_FORGE_CONFIG.progressionApiUrl&&forgeProfile?.uid){
-    try{const snap=await getDoc(lobbyRef),data=snap.data();if(snap.exists()&&data.visibility==="public"&&data.hostUid&&data.members?.[auth.currentUser.uid]===forgeProfile.username){verifiedLobby=data;requestedRanked=data.forgeRanked!==false;}}catch{}
-  }
-  if(verifiedLobby){
-    executionMode="secure";S=newMatchState([username,"Opponent"],[forgeProfile?.crowncouncilElo||1000,1000],gameId);
-    S.phase="faction-select";S.phaseEndsAt=Date.now()+60000;expansionUI.hide();render();
-  }else if(gameId){executionMode="legacy-online";startTroopImagePreload().catch(()=>{});startListeners();expansionUI.notify("Hosted practice · competitive MMR requires the verified match service");}
+  if(gameId){executionMode="legacy-online";startTroopImagePreload().catch(()=>{});startListeners();expansionUI.notify("Firestore multiplayer · hosted practice");}
   else{executionMode="menu";updateAssetGate();expansionUI.showMenu();}
   finishExpansionStartup();
-  })();
-  return profileLoadPromise;
+  })().finally(()=>{if(profileLoadPromise===attempt)profileLoadPromise=null;});
+  profileLoadPromise=attempt;
+  return attempt;
 }
 
-let anonymousSignIn=null,authConnectionStatus="Connecting to Firebase…";
 function clearForgeIdentity(){
+  profileLoadVersion++;profileConnectionFailed=false;authConnectionError=null;
   progression?.dispose();progression=null;progressIdentity=null;profileLoadPromise=null;
   unsubscribeLobby?.();unsubscribeLobby=null;unsubscribeState?.();unsubscribeState=null;unsubscribeBattle?.();unsubscribeBattle=null;listenersStarted=false;
   returnToForgeMenu();forgeProfile=defaultForgeProfile();expansionUI?.refresh();
 }
 function connectGuestProfile(){
-  if(anonymousSignIn)return;
+  if(anonymousSignIn)return anonymousSignIn;
   startupError=null;updateAssetGate();
   anonymousSignIn=signInAnonymously(auth).catch(error=>{
-    console.error("Anon sign-in failed",error);authConnectionStatus="Firebase sign-in unavailable · Practice is available";
+    console.error("Anon sign-in failed",error);authConnectionError=profileConnectionError(error);authConnectionStatus=authConnectionError.message;profileConnectionFailed=true;
     initializeExpansion().then(()=>{
       if(gameId)showStartupError(new Error("Unable to connect your profile. Check your connection and retry."));
       else if(expansionUI?.view==="menu")expansionUI.refresh();
     }).catch(showStartupError);
+    throw authConnectionError;
   }).finally(()=>{anonymousSignIn=null;});
+  return anonymousSignIn;
 }
 initializeExpansion().catch(showStartupError);
 onAuthStateChanged(auth, (user) => {
+  finishInitialAuth(user);
   // The first callback runs after Firebase restores persisted credentials.
   // Creating the fallback earlier can replace a durable account on reload.
   if (!user) {
     if(progressIdentity)clearForgeIdentity();
-    connectGuestProfile();
+    connectGuestProfile().catch(()=>{});
     return;
   }
   restoreExpansionProfile(user).catch(error=>{if(gameId)showStartupError(error);else{console.error("Forge profile failed",error);expansionUI?.notify(error.message);}});
+},error=>{
+  finishInitialAuth(null);profileConnectionFailed=true;authConnectionError=profileConnectionError(error);authConnectionStatus=authConnectionError.message;expansionUI?.refresh();
 });
 
 // A login/logout in the hub must never keep the previous account's open game.

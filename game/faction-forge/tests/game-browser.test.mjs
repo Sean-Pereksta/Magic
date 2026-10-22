@@ -83,14 +83,20 @@ test('profile selection failures stay visible and can reconnect without reloadin
  const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
  try{
   const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
-  await context.addInitScript(()=>{localStorage.setItem('gh.username','Sean');localStorage.setItem('__forgeMockDocs',JSON.stringify([['users/Sean',{username:'Sean'}]]));globalThis.__denySolo=true;});
+  await context.addInitScript(()=>{localStorage.setItem('gh.username','Sean');localStorage.setItem('__forgeMockDocs',JSON.stringify([['users/Sean',{username:'Sean'}],['factionForgeSoloProfiles/owner-uid',{schemaVersion:1,uid:'owner-uid',username:'Sean',forgeDust:73,troops:{},campaign:{missions:{},endlessUnlocked:false,endlessBest:0},wins:0,losses:0,rewardTarget:null,rewardDay:'',rewardCounts:{},updatedAt:1}]]));globalThis.__denySolo=true;});
+  await context.route('**/game/crowncouncil.html*',async route=>{let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');html=html.replace('/* Fullscreen */','globalThis.__forgeRetry={get profile(){return forgeProfile},reconnect(){profileConnectionFailed=true;return restoreExpansionProfile(auth.currentUser)}};\n/* Fullscreen */');await route.fulfill({contentType:'text/html',body:html});});
   await page.goto(url+'/game/crowncouncil.html?mode=solo');
   await page.getByRole('button',{name:'Retry profile connection',exact:true}).waitFor();
   assert.match(await page.locator('.ff-connection').textContent(),/permissions need updating/);
   await page.evaluate(()=>globalThis.__denySolo=false);await page.getByRole('button',{name:'Retry profile connection',exact:true}).click();
   await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();
   assert.equal(await page.locator('.ff-player-summary strong').textContent(),'Sean');
+  assert.equal(await page.evaluate(()=>__forgeRetry.profile.forgeDust),73);
   assert.equal(await page.getByRole('button',{name:'Retry profile connection',exact:true}).count(),0);
+  const error=await page.evaluate(()=>{globalThis.__denySolo=true;return __forgeRetry.reconnect().catch(error=>error.message);});
+  assert.match(error,/updated Firestore rules/);assert.equal(await page.evaluate(()=>__forgeRetry.profile.forgeDust),73,'a denied reconnect keeps the last confirmed save visible');
+  await page.evaluate(()=>globalThis.__denySolo=false);await page.getByRole('button',{name:'Retry profile connection',exact:true}).click();await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>__forgeRetry.profile.forgeDust),73);
   assert.deepEqual(errors,[]);await context.close();
  }finally{await browser.close();await new Promise(resolve=>app.close(resolve));}
 });
@@ -113,13 +119,13 @@ test('solo menu appears before auth and save loading, without opening any lobby'
  }finally{await browser.close();await new Promise(resolve=>app.close(resolve));}
 });
 
-test('solo entry offers an old online session for explicit resume and multiplayer entry keeps the readiness gate',async()=>{
+test('solo ignores stale external progression configuration and multiplayer keeps its Firestore readiness gate',async()=>{
  const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
  try{
-  const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),sessionRequests=[];
-  await context.route('**/faction-forge/config.js',route=>route.fulfill({contentType:'text/javascript',body:`export const FACTION_FORGE_CONFIG={assetBaseUrl:'',progressionApiUrl:'${url}/api/faction-forge',matchmakingTimeoutMs:30000};`}));
-  await context.route('**/api/faction-forge/**',route=>{const p=new URL(route.request().url()).pathname;if(p.includes('/sessions/'))sessionRequests.push(p);return route.fulfill({contentType:'application/json',body:JSON.stringify({profile:{uid:'owner-uid',username:'Commander',activeSessionId:'old-online-match',troops:{},campaign:{missions:{}}}})});});
-  await page.goto(url+'/game/crowncouncil.html?mode=solo&gameId=old-forge-room');await page.getByRole('button',{name:'Resume match',exact:true}).waitFor();assert.equal(await page.locator('#assetGate').isVisible(),false);assert.deepEqual(sessionRequests,[]);await context.close();
+  const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),apiRequests=[];
+  await context.route('**/faction-forge/config.js',route=>route.fulfill({contentType:'text/javascript',body:"export const FACTION_FORGE_CONFIG={assetBaseUrl:'',progressionApiUrl:'https://obsolete.invalid/api/faction-forge',matchmakingTimeoutMs:30000};"}));
+  page.on('request',request=>{if(request.url().includes('/api/faction-forge'))apiRequests.push(request.url());});
+  await page.goto(url+'/game/crowncouncil.html?mode=solo&gameId=old-forge-room');await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();assert.equal(await page.locator('#assetGate').isVisible(),false);assert.deepEqual(apiRequests,[]);await context.close();
   const multi=await browser.newContext();await mockBrowser(multi);const game=await multi.newPage();
   await multi.route('**/game/crowncouncil.html*',async route=>{let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');html=html.replace('/* Fullscreen */','globalThis.__forgeEntry={get mode(){return executionMode},get listeners(){return listenersStarted},get gameId(){return gameId}};\n/* Fullscreen */');await route.fulfill({contentType:'text/html',body:html});});
   await game.goto(url+'/game/crowncouncil.html?mode=multi&gameId=real-room');await game.waitForFunction(()=>globalThis.__forgeEntry?.listeners);assert.deepEqual(await game.evaluate(()=>({id:__forgeEntry.gameId,mode:__forgeEntry.mode})),{id:'real-room',mode:'legacy-online'});assert.equal(await game.locator('#assetGate').isVisible(),true);assert.equal(await game.locator('.ff-view-menu').count(),0);await multi.close();
@@ -261,50 +267,32 @@ test('Firebase-only campaign saves rewards, reloads mission unlocks, and applies
  }finally{await browser.close();await new Promise(r=>app.close(r));}
 });
 
-test('configured secure campaign submits only legal pick inputs and renders the authoritative result',async()=>{
+test('campaign deck selection waits for restored Auth and a delayed Firestore profile',async()=>{
  const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
  try{
-  const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[],picks=[];page.on('pageerror',e=>errors.push(e.message));
-  const profile={uid:'owner-uid',username:'Commander',crowncouncilElo:1300,forgeDust:0,troops:Object.fromEntries(STARTER_DECKS.flatMap(deck=>deck.troops.map(key=>[key,{forgeTier:2,cards:4,unlocked:true}]))),decks:STARTER_DECKS,selectedDeckId:'starter-vanir',campaign:{missions:{}}};
-  const card={type:'troop',key:'marksman',name:'Marksman',role:'back'};
-  let session={id:'secure-one',mode:'campaign',revision:1,phase:'draft',round:1,draftIndex:0,meIndex:0,players:['Commander','IronWarden'],factions:{p0:'Vanir',p1:'Vanir'},decks:{p0:starterDeck('Vanir'),p1:starterDeck('Vanir')},roster:{p0:[],p1:[]},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]},formations:{p0:'balanced',p1:'balanced'},lives:[4,1],mmr:[1300,1300],currentPacks:{p0:[card,card,card],p1:[]},deadlineAt:Date.now()+60000};
-  await context.route('**/faction-forge/config.js',route=>route.fulfill({contentType:'text/javascript',body:`export const FACTION_FORGE_CONFIG={assetBaseUrl:'',progressionApiUrl:'${url}/api/faction-forge',matchmakingTimeoutMs:20};`}));
-  await context.route('**/api/faction-forge/**',async route=>{
-    const req=route.request(),pathname=new URL(req.url()).pathname;
-    if(pathname.endsWith('/pick')){const body=req.postDataJSON();picks.push(body);session={...session,revision:2,phase:'game-over',winner:'Commander',winnerSide:0,mmrChange:[0,0]};profile.forgeDust=20;profile.campaign.missions['forge-01']={completed:true,stars:3};}
-    const data=pathname.endsWith('/profile')?{profile}:{session,profile,receipt:session.phase==='game-over'?{dust:20,cards:[{troopKey:'rifleman',quantity:3}],stars:3}:undefined};
-    await route.fulfill({contentType:'application/json',body:JSON.stringify(data)});
-  });
-  await page.goto(url+'/game/crowncouncil.html');await page.getByRole('button',{name:'Campaign',exact:false}).first().click();await page.locator('.ff-mission').first().click();await page.getByRole('button',{name:'Select and continue with Iron Vanguard',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#cardRow')?.style.display==='flex');
-  await page.locator('#cardRow .card').first().click();await page.getByRole('heading',{name:'Victory',exact:true}).waitFor();
-  assert.equal(picks.length,1);assert.equal(picks[0].index,0);assert.equal(picks[0].sequence,1);assert.deepEqual(Object.keys(picks[0]).sort(),['index','requestId','sequence']);assert.equal(await page.evaluate(()=>globalThis.__fireWrites||0),0);assert.deepEqual(errors,[]);
- }finally{await browser.close();await new Promise(r=>app.close(r));}
+  const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+  await context.route('**/firebase-auth.js',route=>route.fulfill({contentType:'text/javascript',body:"const auth={currentUser:null};export const getAuth=()=>auth;export const signInAnonymously=async()=>{throw Error('Do not replace restored account')};export const signInWithEmailAndPassword=async()=>{};export const onAuthStateChanged=(a,fn)=>{globalThis.__restoreAuth=()=>{a.currentUser={uid:'owner-uid'};fn(a.currentUser)};return ()=>{}};"}));
+  await context.route('**/firebase-firestore.js',route=>route.fulfill({contentType:'text/javascript',body:firebaseMocks['firebase-firestore.js'].replace('export const runTransaction=async(db,fn)=>fn({get:getDoc,set:setDoc,update:updateDoc});','export const runTransaction=async(db,fn)=>{if(!globalThis.__profileReleased)await new Promise(resolve=>{globalThis.__releaseProfile=()=>{globalThis.__profileReleased=true;resolve()}});return fn({get:getDoc,set:setDoc,update:updateDoc});};')}));
+  await context.route('**/game/crowncouncil.html*',async route=>{let html=await fs.readFile(path.join(root,'game/crowncouncil.html'),'utf8');html=html.replace('/* Fullscreen */','globalThis.__forgeEntry={get state(){return S},get profile(){return forgeProfile}};\n/* Fullscreen */');await route.fulfill({contentType:'text/html',body:html});});
+  await page.goto(url+'/game/crowncouncil.html?mode=solo');await page.getByRole('button',{name:'Campaign',exact:false}).first().click();await page.locator('.ff-mission').first().click();await page.getByRole('button',{name:'Select and continue with Iron Vanguard',exact:true}).click();
+  assert.equal(await page.evaluate(()=>__forgeEntry.state),null);assert.doesNotMatch(await page.locator('.ff-status').first().textContent(),/still connecting|Try starting/);
+  await page.evaluate(()=>__restoreAuth());await page.waitForFunction(()=>typeof __releaseProfile==='function');assert.equal(await page.evaluate(()=>__forgeEntry.state),null);
+  await page.evaluate(()=>__releaseProfile());await page.waitForFunction(()=>__forgeEntry.state?.phase==='draft');assert.equal(await page.evaluate(()=>__forgeEntry.state.soloProgress),true);assert.equal(await page.evaluate(()=>__forgeEntry.profile.uid),'owner-uid');assert.deepEqual(errors,[]);
+ }finally{await browser.close();await new Promise(resolve=>app.close(resolve));}
 });
 
-test('restored durable auth survives reload and joined lobbies receive the verified profile name on a fresh device',async()=>{
+test('restored durable auth survives reload and Firestore lobbies receive the saved profile name',async()=>{
  const {app,url}=await server();const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
  try{
-  const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[],tokens=[];page.on('pageerror',e=>errors.push(e.message));
-  await context.route('**/firebase-auth.js',route=>route.fulfill({contentType:'text/javascript',body:`
-   const durable={uid:'owner-uid',getIdToken:async()=> 'durable-token'},auth={currentUser:null};
-   export const getAuth=()=>auth;
-   export const signInAnonymously=async()=>{globalThis.__anonymousCalls=(globalThis.__anonymousCalls||0)+1;auth.currentUser={uid:'anonymous',getIdToken:async()=> 'anonymous-token'};return {user:auth.currentUser};};
-   export const signInWithEmailAndPassword=async()=>({user:durable});
-   export const onAuthStateChanged=(a,fn)=>{setTimeout(()=>{a.currentUser=a.currentUser||durable;fn(a.currentUser)},100);return ()=>{};};
-  `}));
-  await context.route('**/firebase-firestore.js',route=>route.fulfill({contentType:'text/javascript',body:`
-   const room={name:'Open Forge',gameType:'crowncouncil',status:'waiting',visibility:'public',players:['Host'],host:'Host',hostUid:'host-uid',members:{'host-uid':'Host'},forgeRanked:true};
-   export const getFirestore=()=>({});export const doc=(...parts)=>({path:parts.slice(1).join('/')});export const collection=doc;export const query=(...x)=>x;export const where=(...x)=>x;
-   export const getDoc=async ref=>({exists:()=>ref.path==='lobbies/open-room',data:()=>ref.path==='lobbies/open-room'?room:{crowncouncilElo:1250}});
-   export const setDoc=async()=>{};export const updateDoc=setDoc;export const runTransaction=async(db,fn)=>fn({get:getDoc,set:setDoc,update:updateDoc});
-   export const onSnapshot=(ref,fn)=>{setTimeout(()=>ref instanceof Array?fn({docs:[{id:'open-room',data:()=>room}]}):fn({exists:()=>false}),0);return ()=>{};};
-  `}));
-  await context.route('**/faction-forge/config.js',route=>route.fulfill({contentType:'text/javascript',body:`export const FACTION_FORGE_CONFIG={assetBaseUrl:'',progressionApiUrl:'${url}/api/faction-forge',matchmakingTimeoutMs:30000};`}));
-  await context.route('**/api/faction-forge/**',async route=>{if(new URL(route.request().url()).pathname.endsWith('/profile'))tokens.push(route.request().headers().authorization);await route.fulfill({contentType:'application/json',body:JSON.stringify({profile:{uid:'owner-uid',username:'VerifiedCommander',crowncouncilElo:1300,forgeDust:0,troops:Object.fromEntries(STARTER_DECKS.flatMap(deck=>deck.troops.map(key=>[key,{forgeTier:1,cards:0,unlocked:true}]))),decks:STARTER_DECKS,selectedDeckId:'starter-vanir',campaign:{missions:{}}}})});});
+  const context=await browser.newContext();await mockBrowser(context);const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+  await context.addInitScript(()=>{localStorage.setItem('gh.username','SavedCommander');localStorage.setItem('__forgeMockDocs',JSON.stringify([['users/SavedCommander',{username:'SavedCommander'}],['lobbies/open-room',{name:'Open Forge',gameType:'crowncouncil',status:'waiting',visibility:'public',players:['Host'],host:'Host',hostUid:'host-uid',members:{'host-uid':'Host'},forgeRanked:true}]]));});
+  await context.route('**/firebase-auth.js',route=>route.fulfill({contentType:'text/javascript',body:"const durable={uid:'owner-uid'},auth={currentUser:null};export const getAuth=()=>auth;export const signInAnonymously=async()=>{globalThis.__anonymousCalls=(globalThis.__anonymousCalls||0)+1;auth.currentUser={uid:'anonymous'};return {user:auth.currentUser};};export const signInWithEmailAndPassword=async()=>({user:durable});export const onAuthStateChanged=(a,fn)=>{setTimeout(()=>{a.currentUser=durable;fn(a.currentUser)},100);return ()=>{};};"}));
+  const room={name:'Open Forge',gameType:'crowncouncil',status:'waiting',visibility:'public',players:['Host'],host:'Host',hostUid:'host-uid',members:{'host-uid':'Host'},forgeRanked:true};
+  await context.route('**/firebase-firestore.js',route=>route.fulfill({contentType:'text/javascript',body:firebaseMocks['firebase-firestore.js'].replace('ref instanceof Array?fn({docs:[]})','ref instanceof Array?fn({docs:[{id:"open-room",data:()=>('+JSON.stringify(room)+')}]})')}));
   await context.route('**/lobby/lobby.html?forgeJoin=*',route=>route.fulfill({contentType:'text/html',body:'<p>Lobby destination</p>'}));
-  await page.goto(url+'/game/crowncouncil.html');await page.getByText('Profile connected',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>globalThis.__anonymousCalls||0),0);assert.equal(await page.evaluate(()=>localStorage.getItem('gh.username')),null);
-  await page.reload();await page.getByText('Profile connected',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>globalThis.__anonymousCalls||0),0);assert.deepEqual(tokens,['Bearer durable-token','Bearer durable-token']);
+  await page.goto(url+'/game/crowncouncil.html');await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>globalThis.__anonymousCalls||0),0);
+  await page.reload();await page.getByText('Progress saved with Firebase',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>globalThis.__anonymousCalls||0),0);
   await page.getByRole('button',{name:'Play Online',exact:false}).first().click();await page.getByRole('button',{name:'Select and continue with Iron Vanguard',exact:true}).click();await page.getByRole('button',{name:'Join',exact:true}).click();await page.waitForURL('**/lobby/lobby.html?forgeJoin=open-room');
-  assert.deepEqual(await page.evaluate(()=>({name:localStorage.getItem('gh.username'),room:sessionStorage.getItem('ff.handoffLobby')})),{name:'VerifiedCommander',room:'open-room'});assert.deepEqual(errors,[]);
- }finally{await browser.close();await new Promise(r=>app.close(r));}
+  assert.deepEqual(await page.evaluate(()=>({name:localStorage.getItem('gh.username'),room:sessionStorage.getItem('ff.handoffLobby')})),{name:'SavedCommander',room:'open-room'});assert.deepEqual(errors,[]);
+ }finally{await browser.close();await new Promise(resolve=>app.close(resolve));}
 });

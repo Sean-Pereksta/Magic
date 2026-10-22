@@ -1,116 +1,51 @@
-# Faction Forge Firebase progression
+# Faction Forge: Firestore deployment and save recovery
 
-## Default: Firebase Auth + Firestore, no Node server
+Faction Forge stores profiles, decks, operation receipts and multiplayer room state in Cloud Firestore. Firebase Authentication supplies the identity used by Firestore rules. Cloudflare R2 supplies artwork. The game does not select an HTTP progression service, Realtime Database, Firebase Storage or Firebase Functions. The old optional server files are retained for historical compatibility and are not used by this browser entry point.
 
-The deck update adds `decks` and `selectedDeckId` to existing profiles. Migration adds the three canonical starter decks and retains cards, Forge Dust, permanent tiers, unlocks, receipts, campaign stars, purchases and ratings. A saved deck contains only `{id, name, faction, troops}` with exactly five distinct unlocked troop keys from one faction. Profiles support three starters and nine custom decks. Editing a starter creates a custom copy. Deck saves and selection use the existing Firestore transactions and profile subscription; the optional service exposes equivalent `/decks` and `/selected-deck` actions.
+## Why the pasted rules break decks and campaign entry
 
-Publish the game files and updated rules together. The rules validate custom decks, bound armies and battle snapshots to five bodies per side (including decoys), and lock deck snapshots after selection. Existing live snapshots migrate to faction starters before further drafting. Optional authoritative matches validate and retain full deck snapshots, including on reconnect. No new service is required. Run `npm run test:faction-forge`, `npm run test:faction-forge:browser`, `npm run test:faction-forge:rules` and `npm run bench:faction-forge:decks` before release; the measured balance sample and tuning rationale are in `DECK_BALANCE.md`.
+The rules supplied on October 22, 2026 whitelist profile fields without `decks`, `selectedDeckId`, `selectedDeckIndex` or `deckImportAccountKey`. The current client includes deck defaults when creating or migrating a profile. Firestore therefore rejects the entire transaction, including a first profile load. Deck saves and selection fail for the same reason. The old menu hid this failure behind a generic connecting message, and it also allowed actions before the initial Auth callback finished.
 
-Leave `progressionApiUrl` empty in `game/faction-forge/config.js`. Campaign and bot battles run in the browser, and personal progress saves directly to the existing `bible-game-246c0` Firebase project. No server URL, Firebase Functions deployment, Admin credentials or account-binding migration is required for this mode.
+Publish the complete checked-in `firestore.rules`, not a replacement rule allowing all authenticated writes. Both the private guest validator and the hub profile validator must call `forgeDeckFields` and allow those four fields. The shared deck validators near the top of the rules enforce three canonical starters, at most nine custom decks, five distinct troops from one faction, unlocked custom troops, a valid selected index/ID, and bounded edits. Once migrated, a stale write cannot remove the saved deck library. Multiplayer deck/body validation is also included. Existing unrelated game rules remain in this complete file.
 
-Publish the updated static game files and deploy the included Firestore rules to that existing project:
+## Deploy together
+
+1. Merge the game repair and publish the updated static files, including `game/crowncouncil.html`, the Faction Forge modules/styles and the new `profile-connection.js` module.
+2. In Firebase Console, choose project `bible-game-246c0`, open Firestore Database > Rules, replace the rules with the complete `firestore.rules` file, and Publish. Alternatively use the command below from the repository root.
+3. Ensure Firebase Authentication > Sign-in method > Anonymous is enabled. Authentication is still needed to authorize Firestore requests.
+4. Reopen Faction Forge or choose **Retry profile connection**. Create and select a custom deck, clear the first campaign mission, then reload and confirm the same deck, stars, cards and Dust remain.
 
 ```sh
 firebase deploy --only firestore:rules --project bible-game-246c0 --config firebase.rules.json
 ```
 
-Firebase Console users can instead publish the repository's complete `firestore.rules` in Firestore Database → Rules. The rules support the hub profile save at `users/{username}/factionForge/profile`, its immutable operation receipts, and the original private UID guest saves. Test rules in the emulator before publishing.
+No rules have been published to production by the automated tests. Emulator checks use `demo-faction-forge` only. No additional Firestore indexes are needed for these document transactions.
 
-The selected Game Hub profile (`gh.username`) determines the save, including when an old game URL supplies a different username. Sign into the same hub profile on another browser or device to reopen its campaign, cards, Forge Dust, tiers, reward preferences, wins and losses. Firebase Auth supplies the connection; changing its anonymous UID does not select a different hub save. The canonical save follows the existing username-profile access model used by the lobby. It does not replace the hub's authentication system.
+## Save paths and consistency
 
-On the first hub-profile launch, the game imports a matching legacy save from the currently connected UID, including its scoped account save. A legacy `Commander` or `Guest` label can be claimed by one named profile. The original save remains intact. Queued operations preserve their existing receipts when accessible, so uncertain rewards and purchases cannot apply twice during migration. Older rules that deny optional scoped saves or receipt paths do not block canonical saves. A previously lost anonymous UID cannot be searched or recovered by username alone; import its legacy save while that original browser identity is still available.
+A selected Game Hub profile saves to `users/{username}/factionForge/profile`. Reopening the same hub username selects the same document, including after an anonymous Auth UID changes. A guest without an existing hub profile saves privately to `factionForgeSoloProfiles/{uid}`; clearing browser identity can lose access to that guest save. Old matching UID/scoped saves migrate without deleting their source, balances, cards, upgrades, campaign progress or immutable receipts. Keep the original browser identity available until migration completes.
 
-Hub profiles have separate Firestore documents and retry queues. Hub login/logout in another tab, returning focus, or making the game visible reloads it into the currently selected account. Every save checks that its selected hub account and Firebase connection are still current. Without an existing hub profile, the browser retains a private guest save at `factionForgeSoloProfiles/{uid}`; clearing guest browser data can change that identity. Live multiplayer state remains in the selected `lobbies/{lobbyId}/crowncouncil` room, separate from profile progress.
+Deck saves, selection, rewards, upgrades and purchases use Firestore transactions. The menu waits for initial Auth and profile readiness, shares concurrent connection attempts, and gives a bounded timeout with a retry action. Permission, disabled sign-in and network errors identify the relevant fix. A temporary reconnect keeps the last confirmed profile visible. Account switches clear the previous account's view and reject stale writes.
 
-Deploy the updated Firestore rules with these static files for validated profile saves and immutable result, upgrade, purchase and round receipts. The Forge's **Buy packs** tab offers fixed faction packs for 50 Dust/15 cards, the War Chest for 90 Dust/30 cards, and **Random Reinforcements** for 50 Dust/15 cards. Random Reinforcements draws three unlocked troop types across every faction and grants five matching cards per draw. Types are distinct when at least three are unlocked; locked troops are never drawn. The store previews the quantity, eligible pool and cost, then reveals the actual cards after purchase. For browser-owned solo saves, the stable username and retained purchase request ID seed the draw; the optional authoritative service generates its own private crypto entropy before its transaction. Both save the exact contents in the immutable receipt, so retries and reloads cannot reroll or charge twice. Anonymous Auth UID changes also preserve hub-owned solo purchase receipts. Fixed packs continue to display their exact contents before purchase. An unfinished purchase exposes a **Finish opening** action even when the original purchase spent the last Dust, allowing its saved receipt to be revealed after a lost response or reload; active matches still block pack actions. Active matches block purchases. A saved solo round win awards 3 cards, and completed-win card grants are doubled; existing match-reward caps remain, with a separate cap of 70 rewarded rounds per UTC day. Practice without a connected save still earns no collection rewards.
+An uncertain reward/purchase/upgrade keeps its original request identifier in a small device retry queue. Durable game data and operation receipts remain in Firestore; the queue is not a second cloud database. Receipts prevent duplicate spending or rewards. Failure to replay one queued reward keeps the loaded profile available and preserves that reward for retry. An interrupted battle itself is not resumed by the personal save mode.
 
-Solo wins persist campaign stars, mission unlocks, all six troop milestones, matching cards, Forge Dust and Endless challenge progress. Upgrades deduct cards/dust and increase a permanent tier in one Firestore transaction; tiers are frozen into the next local battle. Result and upgrade receipts make retries idempotent. Interrupted reward saves remain queued under the hub username on that device and retry on reload; the results screen also provides a retry button. Pending upgrades and purchases retain their request IDs across reloads and Firebase sign-in changes. An interrupted solo battle itself is not restored by this mode.
+## Deck graphics and Cloudflare
 
-These are personal, client-played solo saves, not independently verified competitive results. Solo documents have no MMR field and never update `users/{username}.crowncouncilElo` or `factionForgeProfiles`. Hosted multiplayer remains available through the existing Firebase lobby path. The optional trusted competitive service below remains a separate mode; its currency, collection and ratings are not merged with client-owned solo saves.
+The deck stack artwork is drawn with CSS, and each deck displays five small portraits from the existing troop sprite sheets. The main menu also shows the selected deck and lineup. No new bitmap, manifest, R2 object or Cloudflare upload is required for this repair. Publish the CSS/JavaScript with the website. Existing artwork continues to load from the `assetBaseUrl` in `config.js`, with fallback icons if unavailable.
 
-The game reports `Progress saved with Firebase` after connecting. A permissions error specifically requests the Firebase rules update. A connection error retains pending results for retry.
+## Existing ownership limitation
 
-## Optional: authoritative competitive service
+The hub currently trusts the selected username and broadly authenticated access; its Forge documents are not restricted to a durable verified account owner. This compatibility behavior was already in the supplied rules and is preserved so existing users can reopen saves across anonymous sign-ins. It is not strong account security. Simply adding `request.auth.uid == profile.uid` would strand those existing cross-device saves. A future hub-wide migration must establish durable Firebase Auth sign-in and independently verified username bindings before tightening those permissions. Firestore can remain the only database during that migration. Private UID guest saves are already owner-scoped.
 
-The remaining sections apply only when an operator explicitly sets a non-empty `progressionApiUrl`. They are not needed for Firebase-only solo progression.
+Personal client-played progress is not verified competitive authority and does not update protected ratings.
 
-## Service
-
-The existing repository `server.js` now automatically mounts `/api/faction-forge` using its already initialized Firebase Admin connection. Deploying the latest code to that existing Node host supplies the endpoint without a separate service account or a second Firebase initialization. Its existing private `FIREBASE_SERVICE_ACCOUNT` or `serviceAccountKey.json` remains on the server. The optional mount accepts only the existing `bible-game-246c0` project; initialization failures leave Grid Overlord's original HTTP and Socket.IO host running.
-
-The shared host defaults to exactly `https://catnmice.com` and `https://www.catnmice.com` for progression CORS. `FACTION_FORGE_ALLOWED_ORIGINS` can explicitly override the allowlist. The original `/` health route remains unchanged. After deploying the Node runtime, verify its actual `/api/faction-forge/health` endpoint and set `progressionApiUrl` to that runtime's HTTPS origin plus `/api/faction-forge`. No live service address is assumed or invented. The R2 graphics address serves assets and is not the progression API.
-
-A separately hosted service is also supported. Install the repository dependencies, then run:
-
-```sh
-npm run start:faction-forge
-```
-
-Required runtime settings:
-
-- `GOOGLE_CLOUD_PROJECT`: the existing CatnMice Firebase project, `bible-game-246c0`.
-- Firebase Admin Application Default Credentials for that project, supplied by the server runtime or a private credentials file through `GOOGLE_APPLICATION_CREDENTIALS`.
-- `FACTION_FORGE_ALLOWED_ORIGINS`: comma-separated exact game origins, for example `https://catnmice.com,https://www.catnmice.com`.
-- `PORT`: optional, defaults to 8788.
-
-The service mounts `/api/faction-forge`. Expose it through HTTPS; set `progressionApiUrl` in `game/faction-forge/config.js` to the complete route base. Example: `https://YOUR-SERVICE/api/faction-forge`. Keep credentials out of GitHub and out of browser files. The dedicated service and the existing-host mount use the same progression implementation.
-
-Deploy `firestore.rules` to the same existing project after reviewing the protected profile fields and verifying the game code is updated. No special Firestore indexes are required for progression: all authoritative operations use document paths and transactions.
-
-## Account ownership and legacy history
-
-The previous profile model uses username documents with publicly readable plaintext passwords and broadly authenticated writes. A URL username, a supplied old password, or `chatAuthUid` is consequently insufficient ownership evidence. None is accepted as a progression ownership claim.
-
-The operator must independently recover/verify each CatnMice account, establish a durable Firebase Auth identity, and create its immutable binding:
-
-```sh
-node server/faction-forge/migrate-account.cjs 'ExactLegacyUsername' FIREBASE_AUTH_UID --verified-owner
-```
-
-This copies the existing `users/ExactLegacyUsername.crowncouncilElo` exactly into the UID-owned profile, without changing the old rating, password, other games, or other profile fields. Repeating it for the same owner is safe; claiming an already bound username for another UID is rejected. `factionForgeAccounts/{uid}` and `factionForgeNames/{username}` are Admin-only ownership records.
-
-The existing browser reuses any already signed-in Firebase Auth account. For recovery on another device, authenticate as the same durable UID. An anonymous browser session by itself is not a cross-device account recovery method. Accounts without a verified binding can play practice; they cannot claim another username's progression or mint rewards.
-
-For a migrated username, unrelated legacy profile updates remain possible for its bound owner. Its rating fields and all Faction Forge progression remain server-only. Unmigrated unrelated games keep their existing behavior, except direct writes to protected Faction Forge rating/progression fields. The old publicly readable legacy credential design is not used by this service; a full lobby authentication replacement is outside this change.
-
-## Authority and retries
-
-Clients submit only their own faction and an index from their issued draft pack, with a revision and request ID. They never submit a winner, mission stars, a roster, permanent tiers, currency, or MMR. Extra authority fields are rejected.
-
-The service executes the actual checked-in tile combat and shared troop/campaign hooks with a seeded RNG and virtual clock. It freezes each player's collection for the match, normalizes permanent stats for ranked games, and stores compressed authoritative replays. Human sessions require two independently authenticated verified profile seats in a public lobby with protected `hostUid` and `members` metadata. Ranked versus casual is selected by the lobby host through protected `forgeRanked`; a participant request cannot override it. Legacy name-only rooms and private invitation rooms retain hosted practice, with no ranked progression, until a separately authorized server invitation workflow is available. Neither a legacy host snapshot nor participant agreement about a winner grants rewards.
-
-Packs have a 60-second server deadline. Missing choices are selected legally by the server. Battle advancement waits for the recorded replay duration, with a 20-second minimum. Unchanged read requests do not write snapshots. The browser renderer performs no progression writes.
-
-Match receipts and upgrade receipts are committed atomically. Concurrent/repeated requests cannot spend or earn twice. Browser mutations retain request IDs through uncertain network errors and page refreshes. Reconnecting with the same identity resumes `activeSessionId`, including the persisted battle replay.
-
-A human may surrender only their own authenticated seat. A human ranked surrender is recorded as a forfeit, so abandoning cannot erase a losing rating result. Surrenders before a completed authoritative round or before 20 seconds award no cards/dust and give the winner no MMR; the quitter can receive a 25-point penalty. Ordinary ranked transfers are zero-sum and cannot exceed the loser's current rating. Each pair has at most three rated results per UTC day, limiting repeated opponent and zero-rating-floor farming. Solo abandon and unfilled lobby cancellation grant no rewards or rating changes.
-
-Rewards are configurable in `server/faction-forge/domain.cjs`: bot/endless wins cap at ten reward grants per UTC day; campaign replays cap at five; human wins cap at ten, with at most two reward grants against the same opponent each day. Campaign first clears and bosses have separate bounded ledgers. These limits reduce automatic farming and do not claim to prevent all collusion.
-
-## Data/API
-
-- `GET /profile`
-- `POST /sessions/solo`: `{mode, missionId?, faction}`
-- `POST /sessions/pvp`: `{lobbyId, faction, ranked}`
-- `GET /sessions/:id`
-- `POST /sessions/:id/pick`: `{index, sequence, requestId}`
-- `POST /sessions/:id/abandon`
-- `POST /upgrades`: `{troopKey, requestId}`
-- `POST /packs`: `{packId, requestId}`
-- `POST /reward-target`: `{troopKey}`
-
-All except `/health` require a Firebase ID token in the Bearer Authorization header. Ownership reads use server-only bindings. Profile documents live at `factionForgeProfiles/{uid}`; history and upgrade receipts are subcollections. Match state, seeds, frozen collections and compressed replays live under Admin-only `factionForgeMatches/{id}`.
-
-Campaign IDs are `forge-01` through `forge-30`; `c1m1` through `c5m6` are accepted aliases. Rewards preserve the existing `crowncouncilElo` field for legacy profile/leaderboard readers. Bot estimated MMR is session metadata only and never creates a leaderboard profile.
-
-## Local verification
+## Validation
 
 ```sh
 npm run test:faction-forge
-npm run test:faction-forge:rules
+node --test game/faction-forge/tests/profile-connection.test.mjs
 npm run test:faction-forge:browser
+npm run test:faction-forge:rules
 ```
 
-The rules command starts only a demo-project Firestore emulator. It tests private ownership reads, protected rating/currency/result/upgrade writes, cross-account denial, compatible unrelated profile updates and legacy hosted snapshots. Its Admin integration exercises ownership migration, simultaneous upgrade retries, cross-instance profile/session recovery and persistence of real deterministic combat replay. It does not access production Firebase.
-
-
+The rules suite exercises actual Firestore client transactions in the local emulator, including custom deck creation/editing, starter selection, legacy migration, reopen, malformed deck rejection and protection against erasing deck metadata. Browser tests cover connection delays/retry, no external service routing, campaign entry, deck building and mobile layouts.

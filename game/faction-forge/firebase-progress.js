@@ -171,8 +171,21 @@ export function createFirebaseProgress({auth,db,api,username,troops,storage=null
   }
   const upgradeRequests=new Map(),packRequests=new Map();
   return {
-    get profile(){return currentProfile;},get configured(){return true;},get connectionStatus(){return status;},
-    async loadProfile(){const profile=await transaction((tx,profile)=>{tx.set(profileRef,profile);return profile;});publish(profile);persistQueue();persistRounds();for(const result of [...pendingRounds.values()])await recordSoloRoundWin(result);for(const result of [...pending.values()])await recordSoloResult(result);return currentProfile;},
+    get profile(){return currentProfile;},get configured(){return true;},get connectionStatus(){return currentProfile&&(pending.size||pendingRounds.size)&&status==='Progress saved with Firebase'?'Progress loaded · rewards pending retry':status;},
+    async loadProfile(){
+      const profile=await transaction((tx,profile)=>{tx.set(profileRef,profile);return profile;});
+      publish(profile);persistQueue();persistRounds();let retryError=null;
+      // A retained reward is independent of loading an existing save. Keep its
+      // original identifier for retry without hiding the saved collection/decks.
+      for(const [queue,record] of [[pendingRounds,recordSoloRoundWin],[pending,recordSoloResult]]){
+        for(const result of [...queue.values()])try{await record(result);}catch(error){
+          if(['ACCOUNT_CHANGED','DISPOSED'].includes(error.code))throw error;
+          retryError=retryError||error;
+        }
+      }
+      if(retryError)status=(retryError.code==='permission-denied'?'Firebase save permissions need updating':'Progress loaded')+' · rewards pending retry';
+      return currentProfile;
+    },
     subscribeProfile(listener){listeners.add(listener);if(currentProfile)listener(currentProfile);if(!subscription)subscription=api.onSnapshot(profileRef,snap=>{if(!disposed&&auth.currentUser?.uid===uid&&snap.exists())try{publish(snap.data());}catch(error){if(error.code==='ACCOUNT_CHANGED'){currentProfile=null;status='Account changed · reopen Faction Forge';for(const fn of listeners)fn(null);}else saveError(error);}},saveError);return ()=>listeners.delete(listener);},
     recordSoloResult,
     recordSoloRoundWin,

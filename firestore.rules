@@ -42,8 +42,9 @@ service cloud.firestore {
     function forgeDeckFields(profile) {
       let previous=resource == null ? [] : resource.data.get('decks',[]);
       let index=profile.get('selectedDeckIndex',0);
-      // Existing saves remain readable/writable during rolling client migration.
-      return !profile.keys().hasAny(['decks','selectedDeckId']) || (
+      // Legacy saves can gain deck defaults without losing their progress. Once
+      // migrated, a stale save must not erase the player's saved deck library.
+      return !profile.keys().hasAny(['decks','selectedDeckId','selectedDeckIndex']) ? previous.size() == 0 : (
         profile.decks is list && profile.decks.size() >= 3 && profile.decks.size() <= 12 && profile.selectedDeckId is string
         && index is int && index >= 0 && index < profile.decks.size() && profile.selectedDeckId == profile.decks[index].id
         && profile.decks[0] == {'id':'starter-vanir','name':'Iron Vanguard','faction':'Vanir','troops':['vguard','marksman','suppressor','vrocket','medic']}
