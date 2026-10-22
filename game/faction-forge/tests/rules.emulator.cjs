@@ -2,7 +2,7 @@
 // Requires a running local Firestore emulator. Never points at production.
 const fs=require('node:fs');const path=require('node:path');
 const {initializeTestEnvironment,assertFails,assertSucceeds}=require('@firebase/rules-unit-testing');
-const {doc,getDoc,setDoc,updateDoc,deleteDoc,collection,getDocs}=require('firebase/firestore');
+const {doc,getDoc,setDoc,updateDoc,deleteDoc,deleteField,collection,getDocs}=require('firebase/firestore');
 (async()=>{
   if(!process.env.FIRESTORE_EMULATOR_HOST)throw new Error('Run through Firebase emulators:exec; FIRESTORE_EMULATOR_HOST is required.');
   const env=await initializeTestEnvironment({projectId:'demo-faction-forge',firestore:{rules:fs.readFileSync(path.resolve(__dirname,'../../../firestore.rules'),'utf8')}});
@@ -166,8 +166,47 @@ const {doc,getDoc,setDoc,updateDoc,deleteDoc,collection,getDocs}=require('fireba
         await assertFails(setDoc(doc(owner,...profilePath,'purchases','invalid-random'),invalid));
       }finally{randomClient.dispose();}
     }
+    // Exercise the actual client against both supported save locations. The
+    // deployed pre-deck rules rejected these complete post-migration profiles.
+    const deckDb=env.authenticatedContext('deck-owner').firestore();
+    for(const [profilePath,username] of [[['factionForgeSoloProfiles','deck-owner'],'Deck Guest'],[['users','DeckCommander','factionForge','profile'],'DeckCommander']]){
+      if(profilePath[0]==='users')await assertSucceeds(setDoc(doc(deckDb,'users',username),{username}));
+      const ref=doc(deckDb,...profilePath),legacy=newSoloProfile('deck-owner',username,troops);
+      delete legacy.decks;delete legacy.selectedDeckId;delete legacy.selectedDeckIndex;
+      legacy.forgeDust=73;legacy.wins=5;legacy.troops.rifleman.cards=9;
+      legacy.campaign.missions['forge-01']={completed:true,stars:3,clears:2};
+      await assertSucceeds(setDoc(ref,legacy));
+      await assertSucceeds(updateDoc(ref,{forgeDust:74}));
+      const options={auth:{currentUser:{uid:'deck-owner'}},db:deckDb,api:firestore,username,troops,profilePath,storage:{getItem:()=>null,setItem(){},removeItem(){}}};
+      const deckClient=createFirebaseProgress(options);
+      const custom={id:'persistent-deck',name:'Saved Precision',faction:'Vanir',troops:['vguard','marksman','rifleman','vrocket','medic']};
+      try{
+        await assertSucceeds(deckClient.loadProfile());
+        if(deckClient.profile.forgeDust!==74||deckClient.profile.wins!==5||deckClient.profile.troops.rifleman.cards!==9||deckClient.profile.campaign.missions['forge-01'].stars!==3)throw Error('Deck migration changed existing progress.');
+        await assertSucceeds(deckClient.saveDeck(custom));
+        await assertSucceeds(deckClient.saveDeck({...custom,name:'Edited Precision'}));
+        for(const id of ['starter-vanir','starter-aesir','starter-helions',custom.id])await assertSucceeds(deckClient.selectDeck(id));
+      }finally{deckClient.dispose();}
+      const reloaded=createFirebaseProgress(options);
+      try{
+        await assertSucceeds(reloaded.loadProfile());
+        if(reloaded.profile.selectedDeckId!==custom.id||reloaded.profile.selectedDeckIndex!==3||reloaded.profile.decks[3].name!=='Edited Precision')throw Error('Deck selection or edits did not survive reopening.');
+      }finally{reloaded.dispose();}
+      const saved=(await getDoc(ref)).data();
+      await assertFails(updateDoc(ref,{decks:deleteField(),selectedDeckId:deleteField(),selectedDeckIndex:deleteField()}));
+      await assertFails(updateDoc(ref,{selectedDeckId:'missing-deck'}));
+      await assertFails(updateDoc(ref,{selectedDeckIndex:99}));
+      await assertFails(updateDoc(ref,{decks:[{...saved.decks[0],name:'Overwritten starter'},...saved.decks.slice(1)]}));
+      for(const [id,keys] of [['duplicate-troops',['vguard','vguard','rifleman','vrocket','medic']],['foreign-troop',['guardian','marksman','rifleman','vrocket','medic']],['locked-troop',['railbreaker','marksman','rifleman','vrocket','medic']]]){
+        const invalid={...custom,id,troops:keys};
+        await assertFails(setDoc(ref,{...saved,decks:[...saved.decks,invalid],selectedDeckId:id,selectedDeckIndex:saved.decks.length}));
+      }
+      await assertSucceeds(updateDoc(ref,{forgeDust:75}));
+      const after=(await getDoc(ref)).data();
+      if(after.decks.length!==4||after.selectedDeckId!==custom.id||after.forgeDust!==75)throw Error('Rejected deck writes changed saved progress.');
+    }
     await assertFails(deleteDoc(solo));
-    console.log('Faction Forge rules: authority, private scoped accounts, rewards, packs, retry and upgrade assertions passed.');
+    console.log('Faction Forge rules: authority, private scoped accounts, rewards, packs, retry, upgrades, legacy deck migration and persistent deck selections passed.');
   }finally{await env.cleanup();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
 

@@ -11,12 +11,19 @@ const ROLE_ICONS={front:'◈',back:'⌖',support:'✦',artillery:'◉',assassin:
 const RATING_LABELS={antiArmor:'Anti-armor',antiSwarm:'Anti-swarm',frontline:'Protection',ranged:'Ranged damage',support:'Support',mobility:'Mobility'};
 const copyDeck=deck=>({id:deck.id,name:deck.name,faction:deck.faction,troops:[...deck.troops]});
 const makeId=()=>`deck-${globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2,10)}`}`;
+const profileOwner=profile=>({uid:profile?.uid||'',username:profile?.username||''});
+// The initial profile has a username before Firebase resolves its UID.
+// Hydrating that same profile must preserve an in-flight deck action or draft.
+export function sameDeckOwner(previous={},next={}){
+  if(previous.uid&&previous.uid!==next.uid)return false;
+  return (previous.username||'')===(next.username||'');
+}
 
 /** DOM-only deck authoring. The save/select callbacks own persistence and match entry. */
 export function mountDeckLibrary({container,profile={},getProfile, troops={},counters={},portrait,unlockText=()=> 'Collect 15 blueprints or complete its campaign mission.',onSelect,onSave,close,onBeforeRender=()=>{},onViewChange=()=>{},isLocked=()=>false,selectionMode=false}={}){
   if(!container)throw new Error('A deck library requires a container.');
   const document=container.ownerDocument,root=document.createElement('div');root.className='ff-deck-library';container.appendChild(root);
-  let currentProfile=profile,filter='All',draft=null,selectedSlot=null,search='',busy=false,disposed=false,message='',localDecks=[],selectedId=profile.selectedDeckId,owner=profile.uid||profile.username||'';
+  let currentProfile=profile,filter='All',draft=null,selectedSlot=null,search='',busy=false,disposed=false,message='',localDecks=[],selectedId=profile.selectedDeckId,owner=profileOwner(profile);
   const element=(tag,className,text)=>{const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=String(text);return node;};
   const button=(text,click,className='ff-button')=>{const node=element('button',className,text);node.type='button';node.onclick=click;return node;};
   const player=()=>getProfile?.()||currentProfile||{};
@@ -53,16 +60,16 @@ export function mountDeckLibrary({container,profile={},getProfile, troops={},cou
   }
   function availableCombos(deck){return COMBOS.filter(combo=>combo.faction===deck.faction&&combo.units.every(key=>deck.troops.includes(key)));}
   function miniTroops(deck){
-    const row=element('div','ff-deck-portraits');
-    for(const key of deck.troops){const tile=element('div','ff-deck-mini-troop');tile.append(troopPortrait(key),element('strong','',troops[key]?.name||key),element('span','ff-deck-mini-role',`${roleIcon(key)} ${role(key)}`));tile.title=`${troops[key]?.name||key} · ${role(key)} · Forge Tier ${player().troops?.[key]?.forgeTier||1}`;row.appendChild(tile);}return row;
+    const row=element('div','ff-deck-portraits');row.setAttribute('aria-label',`${deck.name}: five troops`);
+    for(const key of deck.troops){const tile=element('div','ff-deck-mini-troop');tile.dataset.troop=key;tile.append(troopPortrait(key),element('strong','',troops[key]?.name||key),element('span','ff-deck-mini-role',`${roleIcon(key)} ${role(key)}`));tile.title=`${troops[key]?.name||key} · ${role(key)} · Forge Tier ${player().troops?.[key]?.forgeTier||1}`;row.appendChild(tile);}return row;
   }
   function counterList(title,items,kind){const row=element('div',`ff-deck-counter-list ff-deck-${kind}`);row.appendChild(element('strong','',title));const list=element('div','');for(const text of items.slice(0,3))list.appendChild(element('span','',text));row.appendChild(list);return row;}
   function comboChips(deck){const row=element('div','ff-deck-combo-chips'),combos=availableCombos(deck);row.appendChild(element('span','ff-deck-combo-label',`${combos.length} combo${combos.length===1?'':'s'}`));for(const combo of combos){const chip=element('span','ff-deck-combo-chip',combo.name);chip.title=combo.description;row.appendChild(chip);}if(!combos.length)row.appendChild(element('span','ff-deck-combo-empty','Swap troops to build a combination'));return row;}
   async function select(deck){
     if(busy||isLocked())return;const check=validation(deck);if(!check.valid){message=check.errors.join(' ');renderLibrary();return;}
     const requestOwner=owner;busy=true;message=`Preparing ${deck.name}…`;renderLibrary();
-    try{const result=await onSelect?.(copyDeck(deck));if(result===false)throw new Error('Unable to select this deck. Try again.');if(disposed||owner!==requestOwner)return;selectedId=deck.id;currentProfile={...player(),selectedDeckId:deck.id};busy=false;message=`${deck.name} selected.`;renderLibrary();}
-    catch(error){if(disposed||owner!==requestOwner)return;busy=false;message=error?.message||'Unable to select this deck.';renderLibrary();}
+    try{const result=await onSelect?.(copyDeck(deck));if(result===false)throw new Error('Unable to select this deck. Try again.');if(disposed||!sameDeckOwner(requestOwner,owner))return;selectedId=deck.id;currentProfile={...player(),selectedDeckId:deck.id};busy=false;message=`${deck.name} selected.`;renderLibrary();}
+    catch(error){if(disposed||!sameDeckOwner(requestOwner,owner))return;busy=false;message=error?.message||'Unable to select this deck.';renderLibrary();}
   }
   function renderLibrary(){
     if(disposed)return;draft=null;beginRender();
@@ -74,8 +81,8 @@ export function mountDeckLibrary({container,profile={},getProfile, troops={},cou
     status(root);const grid=element('div','ff-deck-grid');
     for(const deck of allDecks().filter(item=>filter==='All'||item.faction===filter)){
       const details=analysis(deck),card=element('article',`ff-deck-card ff-faction-${deck.faction.toLowerCase()}`),active=deck.id===(selectedId||player().selectedDeckId),header=element('header','ff-deck-card-header'),heading=element('div','');
-      card.dataset.deckId=deck.id;card.classList.toggle('ff-deck-current',active);header.appendChild(element('span','ff-deck-emblem',FACTION_DETAILS[deck.faction]?.emblem||'◆'));heading.append(element('span','ff-deck-eyebrow',`${deck.faction} · ${starter(deck)?'Starter deck':'Custom deck'}`),element('h2','',deck.name));header.appendChild(heading);if(active)header.appendChild(element('span','ff-deck-selected-badge','Selected'));card.append(header,miniTroops(deck),element('p','ff-deck-playstyle',details.playstyle));
-      const countersRow=element('div','ff-deck-counters');countersRow.append(counterList('Strengths',details.strengths,'strength'),counterList('Watch for',details.weaknesses,'weakness'));card.append(countersRow,comboChips(deck));
+      card.dataset.deckId=deck.id;card.classList.toggle('ff-deck-current',active);const emblem=element('span','ff-deck-emblem',FACTION_DETAILS[deck.faction]?.emblem||'◆');emblem.setAttribute('aria-hidden','true');header.appendChild(emblem);heading.append(element('span','ff-deck-eyebrow',`${deck.faction} · ${starter(deck)?'Starter deck':'Custom deck'}`),element('h2','',deck.name));header.appendChild(heading);if(active)header.appendChild(element('span','ff-deck-selected-badge','✓ Selected'));card.append(header,miniTroops(deck));
+      const strategy=element('details','ff-deck-strategy'),summary=element('summary','ff-deck-strategy-summary','Strategy & combinations');strategy.append(summary,element('p','ff-deck-playstyle',details.playstyle));const countersRow=element('div','ff-deck-counters');countersRow.append(counterList('Strengths',details.strengths,'strength'),counterList('Watch for',details.weaknesses,'weakness'));strategy.append(countersRow,comboChips(deck));card.appendChild(strategy);
       const actions=element('div','ff-deck-card-actions'),edit=button('Edit',()=>editDeck(deck),'ff-button ff-secondary'),duplicate=button('Duplicate',()=>editDeck({...deck,id:makeId(),name:`${deck.name} copy`},true),'ff-button ff-secondary'),choose=button(selectionMode?'Select & continue':active?'Selected':'Select',()=>select(deck),'ff-button ff-deck-select');
       edit.setAttribute('aria-label',`Edit ${deck.name}`);duplicate.setAttribute('aria-label',`Duplicate ${deck.name}`);choose.setAttribute('aria-label',`${selectionMode?'Select and continue with':'Select'} ${deck.name}`);for(const action of [edit,duplicate,choose])action.disabled=busy||isLocked();const check=validation(deck);if(!check.valid){choose.disabled=true;choose.title=check.errors.join(' ');}actions.append(edit,duplicate,choose);card.appendChild(actions);grid.appendChild(card);
     }root.appendChild(grid);
@@ -135,8 +142,8 @@ export function mountDeckLibrary({container,profile={},getProfile, troops={},cou
   async function save(){
     if(busy||isLocked())return;const deck={...draft,name:draft.name.trim(),troops:draft.troops.filter(Boolean)},check=validation(deck);if(!check.valid){message=check.errors.join(' ');renderBuilder();return;}
     const requestOwner=owner;busy=true;message='Saving your deck…';renderBuilder();
-    try{if(!onSave)throw new Error('Deck saving is unavailable. Reconnect your profile and try again.');const result=await onSave(copyDeck(deck));if(result===false)throw new Error('Unable to save this deck. Try again.');if(disposed||owner!==requestOwner)return;if(result?.profile)currentProfile=result.profile;localDecks=localDecks.filter(item=>item.id!==deck.id);if(!player().decks?.some(item=>item.id===deck.id&&item.name===deck.name&&item.faction===deck.faction&&JSON.stringify(item.troops)===JSON.stringify(deck.troops)))localDecks.push(deck);busy=false;message=`${deck.name} saved. It is ready to take into battle.`;filter=deck.faction;renderLibrary();}
-    catch(error){if(disposed||owner!==requestOwner)return;busy=false;message=error?.message||'Unable to save this deck.';renderBuilder();}
+    try{if(!onSave)throw new Error('Deck saving is unavailable. Reconnect your profile and try again.');const result=await onSave(copyDeck(deck));if(result===false)throw new Error('Unable to save this deck. Try again.');if(disposed||!sameDeckOwner(requestOwner,owner))return;if(result?.profile)currentProfile=result.profile;localDecks=localDecks.filter(item=>item.id!==deck.id);if(!player().decks?.some(item=>item.id===deck.id&&item.name===deck.name&&item.faction===deck.faction&&JSON.stringify(item.troops)===JSON.stringify(deck.troops)))localDecks.push(deck);busy=false;message=`${deck.name} saved. It is ready to take into battle.`;filter=deck.faction;renderLibrary();}
+    catch(error){if(disposed||!sameDeckOwner(requestOwner,owner))return;busy=false;message=error?.message||'Unable to save this deck.';renderBuilder();}
   }
   function renderBuilder(){
     if(disposed||!draft)return;beginRender();root.classList.add(`ff-faction-${draft.faction.toLowerCase()}`);
@@ -149,5 +156,5 @@ export function mountDeckLibrary({container,profile={},getProfile, troops={},cou
     function updateValidation(){const check=validation({...draft,troops:draft.troops.filter(Boolean)}),count=draft.troops.filter(Boolean).length;summary.replaceChildren(element('strong','',`${count}/${DECK_SIZE} troops`),element('span','',check.valid?'Ready for battle · One faction · All unlocked':check.errors[0]));saveButton.disabled=busy||isLocked()||!check.valid||!onSave;saveButton.textContent=busy?'Saving…':'Save deck';}name.oninput=()=>{draft.name=name.value;updateValidation();if(messageNode.textContent==='Give your deck a name.')messageNode.textContent='';};updateValidation();footer.append(summary,saveButton);root.appendChild(footer);
   }
   renderLibrary();
-  return {refresh(next){if(disposed)return;currentProfile=next||player();const nextOwner=currentProfile.uid||currentProfile.username||'';if(nextOwner!==owner){owner=nextOwner;localDecks=[];selectedId=currentProfile.selectedDeckId;draft=null;filter='All';message='';busy=false;}else{if(next?.selectedDeckId)selectedId=next.selectedDeckId;if(Array.isArray(next?.decks))localDecks=localDecks.filter(deck=>!next.decks.some(saved=>saved.id===deck.id));}if(draft)renderBuilder();else renderLibrary();},edit:editDeck,show:renderLibrary,get editing(){return !!draft;},destroy(){disposed=true;root.remove();}};
+  return {refresh(next){if(disposed)return;currentProfile=next||player();const nextOwner=profileOwner(currentProfile);if(!sameDeckOwner(owner,nextOwner)){localDecks=[];selectedId=currentProfile.selectedDeckId;draft=null;filter='All';message='';busy=false;}else{if(next?.selectedDeckId)selectedId=next.selectedDeckId;if(Array.isArray(next?.decks))localDecks=localDecks.filter(deck=>!next.decks.some(saved=>saved.id===deck.id));}owner=nextOwner;if(draft)renderBuilder();else renderLibrary();},edit:editDeck,show:renderLibrary,get editing(){return !!draft;},destroy(){disposed=true;root.remove();}};
 }

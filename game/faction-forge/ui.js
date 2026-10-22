@@ -1,7 +1,7 @@
 import {animationDefinition,frameRectangle,drawSpriteFrame} from "./assets.js";
 import {draftCardPresentation,relevantComboStates} from "./drafting.js";
 import {FORGE_PACKS,packEligibility,randomPackPool,ROUND_WIN_CARDS} from "./packs.js";
-import {mountDeckLibrary} from "./deck-ui.js";
+import {mountDeckLibrary,sameDeckOwner} from "./deck-ui.js";
 import {normalizeDecks} from "./decks.js";
 
 const ROMAN=["","I","II","III"], TIER_NAMES=["","Recruit","Veteran","Elite"];
@@ -46,7 +46,7 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     }catch{return false;}
   }
   async function panelArt(parent,key,group="ui"){
-    if(!assets?.enabled())return;try{const item=await assets.asset(group,key);if(item){parent.style.backgroundImage=`url("${item.url}")`;parent.classList.add("ff-has-art");}}catch{}
+    if(!assets?.enabled())return;try{const item=await assets.asset(group,key);if(item){const shade=parent.classList.contains("ff-panel")?"#07101bd9":"#07101b55";parent.style.backgroundImage=`linear-gradient(${shade},${shade}),url("${item.url}")`;parent.classList.add("ff-has-art");}}catch{}
   }
   illustration(fab,"forge-button",{className:"ff-forge-fab-art"});
   function badge(tier){const node=element("span",`ff-tier-badge ff-tier-${tier}`,ROMAN[tier]||"I");node.setAttribute("aria-label",`Permanent Forge Tier ${tier}: ${TIER_NAMES[tier]}`);illustration(node,`tier-${tier}`,{className:"ff-tier-badge-art"});return node;}
@@ -75,7 +75,7 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     return stage;
   }
   function open(view,title){
-    deckUI?.destroy();deckUI=null;stopPortraits();generation++;if(shell.hidden)previousFocus=document.activeElement;shell.hidden=false;shell.replaceChildren();currentView=view;fab.hidden=view==="decks";
+    deckUI?.destroy();deckUI=null;stopPortraits();generation++;if(shell.hidden)previousFocus=document.activeElement;shell.hidden=false;shell.replaceChildren();currentView=view;fab.hidden=view==="decks"||view==="menu";
     const panel=element("section","ff-panel ff-view-"+view),header=element("header","ff-header"),titleNode=element("h1","ff-title",title);
     header.appendChild(titleNode);if(view!=="menu")header.appendChild(button("← Menu",()=>showMenu(),"ff-button ff-back"));
     if(matchActive())header.appendChild(button("Return to match",async()=>{if(onResume){const status=shell.querySelector(".ff-status");await invoke(onResume,[profile().activeSessionId],status,{hideOnSuccess:true});}else hide();},"ff-button ff-back"));
@@ -87,6 +87,18 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
   function hide(){deckUI?.destroy();deckUI=null;stopPortraits();shell.hidden=true;currentView="";previousFocus?.focus?.();}
   async function invoke(callback,args,status,{hideOnSuccess=false}={}){if(!callback){status.textContent="This action is temporarily unavailable.";return null;}status.textContent="Preparing…";try{const result=await callback(...args);if(result===false){status.textContent="Unable to complete this action. Try again.";return null;}if(hideOnSuccess)hide();else status.textContent="";updateProfile();return result??{ok:true};}catch(error){status.textContent=error?.message || "Unable to complete this action. Try again.";return null;}}
   function playerSummary(parent){const p=profile(),strip=element("div","ff-player-summary"),mmr=p.crowncouncilElo??1000;strip.append(element("strong","",p.username||"Commander"),element("span","",`MMR ${mmr}`),element("span","",`${countComplete()}/30 missions`),element("span","",`${p.forgeDust||0} Forge Dust`));illustration(strip,"rank-emblems",{className:"ff-rank-emblem",frame:mmr>=2500?4:mmr>=2000?3:mmr>=1600?2:mmr>=1300?1:0,animate:false});parent.appendChild(strip);}
+  function menuDeckState(){
+    const p=profile(),decks=normalizeDecks(p.decks),deck=decks.find(item=>item.id===p.selectedDeckId)||decks[0];
+    return {p,deck,signature:JSON.stringify([p.uid,p.username,deck,deck?.troops.map(key=>p.troops?.[key]?.forgeTier||1)])};
+  }
+  function selectedDeckSummary(parent,previous){
+    const {p,deck,signature}=menuDeckState();
+    if(!deck)return;
+    const strip=element("section",`ff-menu-deck ff-faction-${deck.faction.toLowerCase()}`),heading=element("div","ff-menu-deck-heading"),portraits=element("div","ff-menu-deck-troops");strip.setAttribute("aria-label","Selected deck");strip.dataset.deckId=deck.id;strip.dataset.signature=signature;
+    heading.append(element("span","ff-deck-eyebrow",`${deck.faction} · Selected deck`),element("h2","",deck.name));
+    for(const key of deck.troops){const troop=element("div","ff-menu-deck-troop"),name=troops[key]?.name||key;troop.title=name;troop.dataset.troop=key;troop.append(portrait(key,p.troops?.[key]?.forgeTier||1),element("span","",name));portraits.appendChild(troop);}
+    strip.append(heading,portraits,button("Change deck",()=>showDecks(),"ff-button ff-secondary ff-menu-change-deck"));if(previous)previous.replaceWith(strip);else parent.appendChild(strip);
+  }
   function showMenu(){
     const {panel,status}=open("menu","FACTION FORGE");panelArt(shell,"menu-background");panel.appendChild(element("p","ff-subtitle","The War for the Forge"));playerSummary(panel);
     if(onSignIn && canSignIn())panel.appendChild(button("Sign in to a saved profile",()=>showSignIn(),"ff-button ff-secondary"));
@@ -96,7 +108,7 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
       activeActions.appendChild(button("Resume match",()=>invoke(onResume,[profile().activeSessionId],status,{hideOnSuccess:true})));
       if(onAbandon)activeActions.appendChild(button("Leave match",async()=>{const result=await invoke(onAbandon,[profile().activeSessionId],status);if(result)showMenu();},"ff-button ff-secondary"));panel.appendChild(activeActions);
     }
-    const actions=element("div","ff-menu-actions");
+    selectedDeckSummary(panel);const actions=element("div","ff-menu-actions"),collectionActions=element("div","ff-menu-collection-actions");
     const next=missionDefinitions.find(m=>!profile().campaign?.missions?.[m.id]?.completed);
     for(const [title,detail,icon,click] of [
       ["Campaign",next?`Continue: ${next.title}`:"The Last Crucible conquered","campaign-map",()=>showCampaign()],
@@ -104,9 +116,9 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
       ["Your Decks",`${normalizeDecks(profile().decks).length} teams · Build, customize and prepare for battle`,"how-to-play",()=>showDecks()],
       ["The Forge",`${upgradeCount(profile(),costs)} upgrades ready · Your troop collection`,`forge-button`,()=>showForge()],
       ["How to Play","Draft, position, counter and conquer","how-to-play",()=>showHowToPlay()]
-    ]){const item=button("",click,"ff-menu-action");if(matchActive() && ["Campaign","Play Online"].includes(title))item.disabled=true;item.append(element("strong","",title),element("span","",detail));illustration(item,icon,{className:"ff-menu-action-art"});actions.appendChild(item);}
-    panel.appendChild(actions);
-    const factionShowcase=element("div","ff-faction-showcase");for(const faction of ["Vanir","Aesir","Helions"]){const card=element("div","ff-faction-banner");card.append(factionArtwork(faction,{animate:true}),element("strong","ff-faction-name",faction));factionShowcase.appendChild(card);}panel.appendChild(factionShowcase);
+    ]){const primary=["Campaign","Play Online"].includes(title),item=button("",click,"ff-menu-action"+(primary?" ff-menu-primary":" ff-menu-collection-action"));if(matchActive() && primary)item.disabled=true;item.append(element("strong","",title),element("span","",detail));illustration(item,icon,{className:"ff-menu-action-art"});(primary?actions:collectionActions).appendChild(item);}
+    panel.append(actions,collectionActions);
+    const factionDetails=element("details","ff-menu-factions"),factionShowcase=element("div","ff-faction-showcase");factionDetails.appendChild(element("summary","","Explore the factions"));for(const faction of ["Vanir","Aesir","Helions"]){const card=element("div","ff-faction-banner");card.append(factionArtwork(faction,{animate:true}),element("strong","ff-faction-name",faction));factionShowcase.appendChild(card);}factionDetails.appendChild(factionShowcase);panel.appendChild(factionDetails);
     if(onPractice){const practice=button("Practice against AI",()=>chooseFaction(f=>invoke(onPractice,[f],shell.querySelector(".ff-status")||status,{hideOnSuccess:true})),"ff-button ff-secondary");practice.disabled=matchActive();panel.appendChild(practice);}
   }
   function showSignIn(){
@@ -121,9 +133,9 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     const {panel,status}=open("decks",callback?"Choose your deck":"Your Decks");
     deckUI=mountDeckLibrary({container:panel,profile:profile(),getProfile:profile,troops,counters,portrait,unlockText,onBeforeRender:stopPortraits,onViewChange:view=>{panel.querySelector(".ff-title").textContent=view==="builder"?"Deck Builder":callback?"Choose your deck":"Your Decks";},isLocked:matchActive,selectionMode:!!callback,close:showMenu,onSave:onSaveDeck,onSelect:async deck=>{
       if(matchActive())throw new Error("Finish your current match before selecting another deck.");
-      const owner=profile().uid||profile().username;
+      const owner={uid:profile().uid,username:profile().username};
       if(onSelectDeck){const result=await onSelectDeck(deck);if(result===false)return false;}
-      if(owner!==(profile().uid||profile().username))throw new Error("Your account changed. Select a deck for the current profile.");
+      if(!sameDeckOwner(owner,profile()))throw new Error("Your account changed. Select a deck for the current profile.");
       if(callback){const result=await callback(deck);return result===null?false:result;}
       return {ok:true};
     }});return status;
@@ -260,9 +272,9 @@ export function createExpansionUI({host=globalThis.document?.body,assets,troops=
     toast.setAttribute("role","status");toast.setAttribute("aria-live","polite");toast.append(art,element("strong","",`${presentation.troopName} · ${presentation.rankLabel}`),element("span","",presentation.improvement));host.appendChild(toast);
     setTimeout(()=>toast.remove(),2600);
   }
-  function updateProfile(){const count=upgradeCount(profile(),costs),indicator=fab.querySelector(".ff-upgrade-count");indicator.hidden=count===0;indicator.textContent=String(count);fab.title=`The Forge${count?` · ${count} upgrades ready`:""}`;if(currentView==="decks")deckUI?.refresh(profile());}
+  function updateProfile(){const count=upgradeCount(profile(),costs),indicator=fab.querySelector(".ff-upgrade-count");indicator.hidden=count===0;indicator.textContent=String(count);fab.title=`The Forge${count?` · ${count} upgrades ready`:""}`;if(currentView==="decks")deckUI?.refresh(profile());if(currentView==="menu"){const strip=shell.querySelector(".ff-menu-deck");if(strip&&strip.dataset.signature!==menuDeckState().signature)selectedDeckSummary(strip.parentNode,strip);}}
   function refresh(){if(currentView==="forge")showForge();else if(currentView==="campaign")showCampaign();else if(currentView==="menu")showMenu();updateProfile();}
-  const keyboard=event=>{if(shell.hidden)return;if(event.key==="Escape"){const confirmation=shell.querySelector(".ff-confirm");if(confirmation){if(confirmation.dataset.pending!=="true")confirmation.remove();else event.preventDefault();}else if(matchActive())hide();else if(currentView!=="menu")showMenu();}if(event.key==="Tab"){const confirmation=shell.querySelector(".ff-confirm"),scope=confirmation||shell,warning=document.getElementById("ffGraphicsWarnings"),warningControls=!confirmation&&warning&&!warning.hidden?[warning.querySelector("summary"),...(warning.open?warning.querySelectorAll("button:not(:disabled),a[href]"):[])]:[],focusable=[...scope.querySelectorAll("button:not(:disabled),a[href],input"),...warningControls].filter(e=>e&&!e.hidden);if(!focusable.length)return;const index=focusable.indexOf(document.activeElement);if(index>=0){event.preventDefault();focusable[(index+(event.shiftKey?-1:1)+focusable.length)%focusable.length].focus();}}};document.addEventListener("keydown",keyboard);
+  const keyboard=event=>{if(shell.hidden)return;if(event.key==="Escape"){const confirmation=shell.querySelector(".ff-confirm");if(confirmation){if(confirmation.dataset.pending!=="true")confirmation.remove();else event.preventDefault();}else if(matchActive())hide();else if(currentView!=="menu")showMenu();}if(event.key==="Tab"){const confirmation=shell.querySelector(".ff-confirm"),scope=confirmation||shell,warning=document.getElementById("ffGraphicsWarnings"),warningControls=!confirmation&&warning&&!warning.hidden?[warning.querySelector("summary"),...(warning.open?warning.querySelectorAll("button:not(:disabled),a[href]"):[])]:[],focusable=[...scope.querySelectorAll("button:not(:disabled),a[href],input,summary"),...warningControls].filter(e=>e&&!e.hidden&&e.getClientRects().length);if(!focusable.length)return;const index=focusable.indexOf(document.activeElement);if(index>=0){event.preventDefault();focusable[(index+(event.shiftKey?-1:1)+focusable.length)%focusable.length].focus();}}};document.addEventListener("keydown",keyboard);
   updateProfile();
   function notify(message){let status=shell.querySelector(".ff-status");if(!status){status=element("div","ff-toast");status.setAttribute("role","status");host.appendChild(status);setTimeout(()=>status.remove(),7000);}status.textContent=String(message||"");}
   return {showMenu,showCampaign,showForge,showDecks,showResults,showMatchmaking,setMatchmakingState:showMatchmaking,showHowToPlay,showSignIn,chooseDeck,chooseFaction,decorateDraftCard,updateComboTracker,announceBattleUpgrade,portrait,badge,hide,refresh,updateProfile,notify,get view(){return currentView;},destroy(){deckUI?.destroy();stopPortraits();document.removeEventListener("keydown",keyboard);observer?.disconnect();lazyPortraits.clear();host.querySelector(".ff-battle-upgrade-toast")?.remove();shell.remove();fab.remove();}};

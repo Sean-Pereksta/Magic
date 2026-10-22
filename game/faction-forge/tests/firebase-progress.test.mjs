@@ -44,6 +44,26 @@ test('unacknowledged rewards survive reload and recover without a duplicate gran
  const store=firebase(),cache=storage(),one=service(store,{storage:cache});await one.loadProfile();store.uncertain();await assert.rejects(one.recordSoloResult(result()),{code:'unavailable'});one.dispose();
  const two=service(store,{storage:cache});await two.loadProfile();assert.equal(two.profile.forgeDust,20);assert.equal(two.profile.wins,1);assert.deepEqual(JSON.parse(cache.getItem('factionForge.solo.pending.owner')),[]);
 });
+
+test('a pending reward failure keeps the loaded save and other rewards available for safe retry',async()=>{
+ const store=firebase(),cache=storage(),one=service(store,{storage:cache});await one.loadProfile();
+ store.docs.get('factionForgeSoloProfiles/owner').forgeDust=71;one.dispose();
+ cache.setItem('factionForge.solo.pending.owner.rounds',JSON.stringify([{id:'pending-round',mode:'bot',round:1}]));
+ cache.setItem('factionForge.solo.pending.owner',JSON.stringify([result('pending-result')]));
+ const run=store.api.runTransaction;let calls=0;
+ store.api.runTransaction=(db,fn)=>{if(++calls===2)return Promise.reject(Object.assign(Error('Round save denied'),{code:'permission-denied'}));return run(db,fn);};
+ const two=service(store,{storage:cache});const loaded=await two.loadProfile();
+ assert.equal(loaded.forgeDust,91);assert.equal(loaded.wins,1);assert.equal(loaded.decks.length,3);
+ assert.match(two.connectionStatus,/permissions need updating.*rewards pending retry/);
+ assert.equal(JSON.parse(cache.getItem('factionForge.solo.pending.owner.rounds')).length,1);
+ assert.deepEqual(JSON.parse(cache.getItem('factionForge.solo.pending.owner')),[]);
+ await two.setRewardTarget('rifleman');assert.match(two.connectionStatus,/rewards pending retry/,'an unrelated save must not hide pending rewards');
+ store.api.runTransaction=run;await two.loadProfile();
+ assert.equal(two.profile.forgeDust,91);assert.equal(two.profile.wins,1);
+ assert.equal(Object.values(two.profile.troops).reduce((n,t)=>n+t.cards,0),9);
+ assert.deepEqual(JSON.parse(cache.getItem('factionForge.solo.pending.owner.rounds')),[]);
+ assert.equal(two.connectionStatus,'Progress saved with Firebase');
+});
 test('upgrade transaction deducts its cost once and rejects insufficient resources or a conflicting retry',async()=>{
  const store=firebase(),one=service(store);await one.loadProfile();let p=store.docs.get('factionForgeSoloProfiles/owner');p.forgeDust=100;p.troops.rifleman.cards=10;
  await Promise.all([one.upgradeTroop('rifleman',{requestId:'upgrade-1'}),one.upgradeTroop('rifleman',{requestId:'upgrade-1'})]);assert.equal(one.profile.forgeDust,0);assert.equal(one.profile.troops.rifleman.forgeTier,2);
