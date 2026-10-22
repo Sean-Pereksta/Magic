@@ -116,10 +116,47 @@ const ultra={
   eclipseFeint:{name:'Eclipse Feint',types:['shadow','storm'],power:34,cost:8,switch:true,weaken:.30,duration:1,cooldown:4,desc:'Noctyra deals split shadow/storm damage, weakens the next hit, then retreats. 4-round cooldown.'},
   renewalChorus:{name:'Renewal Chorus',types:['leaf','water'],cost:8,teamHeal:.18,cleanse:true,cooldown:5,uses:2,desc:'Oroluma heals conscious teammates by 18% and cleanses personal status. Twice per encounter; 5-round cooldown.'}
 };
+// Expedition II techniques compose the same bounded combat effects as the
+// original roster. Common companions keep useful, inexpensive specialties.
+const specialties={
+  acornAegis:{name:'Acorn Aegis',type:'leaf',cost:4,shield:.22,counter:.30,duration:2,cooldown:3,desc:'Gain a 22% maximum-health shield for 2 rounds; reflect 30% of the next unshielded hit. 3-round cooldown.'},
+  pitcherSip:{name:'Pitcher Sip',type:'leaf',power:20,cost:3,drain:.40,status:'poison',duration:2,desc:'Leaf damage; heal 40% of damage dealt and poison for 2 rounds. Leaf opponents resist poison.'},
+  petalParcel:{name:'Petal Parcel',type:'leaf',cost:5,teamHeal:.08,switch:true,cooldown:4,desc:'Heal conscious teammates for 8% of their maximum health, then switch to a chosen conscious teammate. 4-round cooldown.'},
+  coalCoat:{name:'Coal Coat',type:'fire',cost:4,shield:.20,counter:.25,duration:2,cooldown:3,desc:'Gain a 20% maximum-health shield for 2 rounds; reflect 25% of the next unshielded hit. 3-round cooldown.'},
+  wickFlick:{name:'Wick Flick',type:'fire',power:19,cost:3,priority:1,status:'burn',duration:2,desc:'Priority fire damage and burn for 2 rounds. Fire opponents resist burn.'},
+  temperedKnuckle:{name:'Tempered Knuckle',type:'fire',power:29,cost:4,breakShield:true,desc:'Break the opponent’s shield and guard before dealing fire damage.'},
+  skippingStone:{name:'Skipping Stone',type:'water',power:18,cost:4,switch:true,entryEnergy:3,cooldown:4,desc:'Water damage, then switch. The incoming teammate restores 3 energy, subject to a 4-round recipient cooldown. 4-round ability cooldown.'},
+  spiralShell:{name:'Spiral Shell',type:'water',cost:5,shield:.25,cleanse:true,duration:2,cooldown:4,desc:'Clear personal status effects, then gain a 25% maximum-health shield for 2 rounds. 4-round cooldown.'},
+  rainChorus:{name:'Rain Chorus',type:'water',cost:6,teamHeal:.09,energy:2,cooldown:4,desc:'Heal conscious teammates for 9% of their maximum health; restore 2 personal energy. 4-round cooldown.'},
+  kiteSnare:{name:'Kite Snare',type:'storm',power:20,cost:4,priority:1,status:'slow',duration:2,desc:'Priority storm damage; reduce the opponent’s speed by 35% for 2 rounds.'},
+  copperSip:{name:'Copper Sip',type:'storm',power:16,cost:3,drainEnergy:4,desc:'Storm damage; drain up to 4 energy from the opponent and restore that much personal energy.'},
+  drumRoll:{name:'Thunder Drumroll',type:'storm',power:31,cost:5,weaken:.15,duration:2,desc:'Storm damage; weaken the opponent’s next damaging attack by 15% within 2 rounds.'},
+  pottersRampart:{name:'Potter’s Rampart',type:'earth',cost:5,shield:.30,duration:2,cooldown:3,desc:'Gain a shield worth 30% maximum health for 2 rounds. 3-round cooldown.'},
+  flintFeint:{name:'Flint Feint',type:'earth',power:26,cost:4,weaken:.20,duration:2,desc:'Earth damage; weaken the opponent’s next damaging attack by 20% within 2 rounds.'},
+  rimeRebuke:{name:'Rime Rebuke',type:'ice',power:20,cost:4,status:'slow',counter:.25,duration:2,cooldown:3,desc:'Ice damage and a 2-round slow. Reflect 25% of the next unshielded hit within 2 rounds. 3-round cooldown.'},
+  podShelter:{name:'Snowpod Shelter',type:'ice',cost:4,switch:true,teamShield:.20,duration:2,cooldown:3,desc:'Switch to a conscious teammate and grant a shield worth 20% of their maximum health for 2 rounds. 3-round cooldown.'},
+  haloHandoff:{name:'Halo Handoff',type:'light',cost:5,switch:true,teamShield:.12,entryEnergy:3,duration:2,cooldown:4,desc:'Switch; grant a 12% maximum-health shield for 2 rounds and restore 3 energy, subject to a 4-round recipient cooldown. 4-round ability cooldown.'},
+  inkBlot:{name:'Ink Blot',type:'shadow',power:18,cost:3,weaken:.25,duration:2,desc:'Shadow damage; weaken the opponent’s next damaging attack by 25% within 2 rounds.'},
+  thornUmbra:{name:'Thorn Umbra',types:['leaf','shadow'],power:27,cost:5,drain:.25,status:'poison',duration:3,desc:'Split leaf/shadow damage; heal 25% of damage dealt and poison for 3 rounds. Leaf opponents resist poison.'},
+  pressureRelease:{name:'Pressure Release',types:['water','fire'],power:33,cost:6,cleanse:true,desc:'Clear personal status effects, then deal evenly split water/fire damage.'},
+  glassGlide:{name:'Glass Glide',types:['earth','ice'],power:28,cost:5,shield:.15,duration:2,cooldown:3,desc:'Split earth/ice damage and gain a 15% maximum-health shield for 2 rounds. 3-round cooldown.'},
+  lodestoneGrip:{name:'Lodestone Grip',types:['earth','storm'],power:25,cost:5,drainEnergy:3,root:2,duration:2,cooldown:3,desc:'Split earth/storm damage; drain up to 3 energy and prevent voluntary switching for 2 rounds. 3-round cooldown.'},
+  pollenBeacon:{name:'Pollen Beacon',types:['light','leaf'],cost:6,teamHeal:.12,cleanse:true,cooldown:4,minStage:1,desc:'Heal conscious teammates for 12% of their maximum health and clear personal status effects. 4-round cooldown.'},
+  brineCurtain:{name:'Brine Curtain',types:['water','shadow'],cost:5,shield:.20,weaken:.25,duration:2,cooldown:3,desc:'Gain a 20% maximum-health shield for 2 rounds; weaken the next opposing damaging attack by 25% within 2 rounds. 3-round cooldown.'},
+  hailCadence:{name:'Hail Cadence',types:['ice','storm'],power:30,cost:6,priority:1,status:'slow',duration:2,desc:'Priority split ice/storm damage; reduce the opponent’s speed by 35% for 2 rounds.'},
+  funeralLantern:{name:'Lantern Wake',types:['fire','shadow'],power:27,cost:5,status:'burn',drain:.25,duration:2,desc:'Split fire/shadow damage; heal 25% of damage dealt and burn for 2 rounds. Fire opponents resist burn.'}
+};
+Object.assign(ultra,{
+  zeroHourRelay:{name:'Zero-Hour Relay',types:['storm','ice'],power:33,cost:8,priority:1,switch:true,transferSpeed:true,duration:2,cooldown:4,desc:'Chronogibbon deals priority split storm/ice damage, then switches. Pass any remaining speed boost, or grant a 20% boost for 2 rounds. 4-round cooldown.'},
+  monolithVerdict:{name:'Monolith Verdict',types:['earth','light'],power:38,cost:8,shield:.22,counter:.25,duration:2,cooldown:4,desc:'Basaltoracle deals split earth/light damage, gains a 22% maximum-health shield for 2 rounds, and reflects 25% of the next unshielded hit. 4-round cooldown.'},
+  sovereignSpore:{name:'Sovereign Spore',types:['leaf','shadow'],power:34,cost:8,status:'poison',drain:.30,weaken:.20,duration:3,cooldown:4,desc:'Mirecrown deals split leaf/shadow damage, heals 30% of damage dealt, poisons for 3 rounds, and weakens the next opposing attack by 20% within 3 rounds. Leaf opponents resist poison. 4-round cooldown.'},
+  rebirthTide:{name:'Rebirth Tide',types:['fire','water'],power:35,cost:8,teamHeal:.12,cleanse:true,cooldown:5,uses:2,desc:'Phoenixmacaque heals conscious teammates for 12% of their maximum health, clears personal status effects, and deals split fire/water damage. Twice per encounter; 5-round cooldown.'}
+});
 export const MOVES=Object.fromEntries([
   ...Object.entries(general).map(([id,m])=>[id,{type:'neutral',family:'general',...m}]),
   ...Object.entries(elemental).map(([id,m])=>[id,{family:'elemental',...m}]),
   ...Object.entries(hybrids).map(([id,m])=>[id,{family:'hybrid',type:m.types[0],splitDamage:true,...m}]),
+  ...Object.entries(specialties).map(([id,m])=>[id,{family:'specialty',...(m.types?{type:m.types[0],splitDamage:true}:{}),...m}]),
   ...Object.entries(ultra).map(([id,m])=>[id,{family:'ultra',signature:true,type:m.types[0],splitDamage:true,...m}])
 ]);
 export const HYBRIDS=Object.fromEntries(Object.entries(hybrids).map(([move,m])=>[[...m.types].sort().join('+'),{name:m.name.split(' ')[0],move}]));
@@ -186,13 +223,81 @@ const rows=[
   ['cryomane','Cryomane, the Aurora Emperor','Aurora Emperor',['ice','light'],'ultra',104,15,14,8,'ultra','Layered ice armor gleams under magnificent aurora trails.','auroraReversal icicleBurst snowWard sunMend counterstance aurora'],
   ['obsidrax','Obsidrax, the Mountainbreaker','Mountainbreaker',['earth','fire'],'ultra',111,18,15,3,'ultra','Volcanic fists and glowing lava seams shake the field.','mountainbreaker magma stonePalm emberGuard heavyPalm quartzGuard'],
   ['noctyra','Noctyra, the Eclipse Matriarch','Eclipse Matriarch',['shadow','storm'],'ultra',92,16,10,17,'ultra','An electrical night-sky mantle frames a crescent tail.','eclipseFeint duskClaw spark eclipseHex bananaFeint veil'],
-  ['oroluma','Oroluma, the Eternal Canopy','Eternal Canopy',['leaf','water'],'ultra',108,12,13,8,'ultra','An immense vine crown shelters river-like ribbons.','renewalChorus monsoon spring seedDrain canopyRally teamMend']
+  ['oroluma','Oroluma, the Eternal Canopy','Eternal Canopy',['leaf','water'],'ultra',108,12,13,8,'ultra','An immense vine crown shelters river-like ribbons.','renewalChorus monsoon spring seedDrain canopyRally teamMend'],
+  // New identities are appended so the original sixty catalogue numbers remain
+  // stable in local checkpoints and encrypted cloud saves.
+  ['acornbuckler','Acornbuckler','The Nutshield Squire',['leaf'],'defender',96,10,14,6,'common','An affordable shield-and-counter specialist.','acornAegis vine counterstance guardianHandoff seedDrain rootedChallenge'],
+  ['pitcherwink','Pitcherwink','The Nectar Sneak',['leaf'],'drainer',77,11,8,16,'uncommon','A nimble pitcher-flower hunter who sustains through poison and draining.','pitcherSip vine seedDrain energySip friendlyFeint leafCleanse'],
+  ['orchidcap','Orchidcap','The Parasol Medic',['leaf'],'healer',81,9,10,13,'common','A small relay healer whose petal parcels recover the whole conscious team.','petalParcel leafCleanse mend branchRelay fieldMend calmCall'],
+  ['coalroller','Coalroller','The Hearth Wheel',['fire'],'defender',100,13,12,5,'uncommon','Low speed and sturdy coal armor reward a timed counterattack.','coalCoat cinder counterstance emberGuard heavyPalm guardianHandoff'],
+  ['wickwhisk','Wickwhisk','The Candle Dancer',['fire'],'controller',74,12,8,18,'common','Priority burning trades raw damage for reliable pressure.','wickFlick cinder ashRush tailSweep bananaFeint rescueSwing'],
+  ['coppersnap','Coppersnap','The Copper Boxer',['fire'],'attacker',80,16,8,13,'uncommon','A furnace-hearted boxer who punches through shields but dislikes drawn-out fights.','temperedKnuckle cinder ashRush focus quickJab emberGuard'],
+  ['rillhopper','Rillhopper','The Stone Skipper',['water'],'relay',74,11,8,19,'common','Fast water relays supply energy to a carefully chosen teammate.','skippingStone tide branchRelay secondWind bubbleGuard quickJab'],
+  ['nautiloop','Nautiloop','The Spiral Watch',['water'],'defender',97,10,14,6,'uncommon','Spiral shoulder shells cleanse status before rebuilding a shield.','spiralShell bubbleGuard tide counterstance guardianHandoff spring'],
+  ['drizzlemane','Drizzlemane','The Rain Poncho',['water'],'healer',86,9,11,10,'common','A modest, energy-efficient team healer with little burst damage.','rainChorus tide rippleDrain fieldMend spring canopyRally'],
+  ['kitehowl','Kitehowl','The Wind Tether',['storm'],'controller',78,12,9,17,'uncommon','Priority snares slow quick rivals while relay tricks keep momentum.','kiteSnare spark galeStep staticField tailwindTransfer bananaFeint'],
+  ['thimblevolt','Thimblevolt','The Pocket Battery',['storm'],'utility',69,10,7,22,'common','Exceptionally fast, fragile energy theft supports resource-starved teams.','copperSip spark energySip galeStep secondWind rescueSwing'],
+  ['drumtuft','Drumtuft','The Thunder Busker',['storm'],'caster',85,15,9,10,'uncommon','A drum-chested caster whose forceful beat softens the next return hit.','drumRoll spark thunder staticField focus canopyRally'],
+  ['claypot','Claypot','The Kiln Vessel',['earth'],'defender',105,10,15,3,'common','Slow pottery armor offers a large shield without rare-species offense.','pottersRampart stonePalm quartzGuard guardianHandoff counterstance rootWall'],
+  ['flintcap','Flintcap','The Flake Duelist',['earth'],'attacker',85,16,10,10,'uncommon','A flint-helmed duelist turns measured attacks into brief protection.','flintFeint stonePalm guardBreak focus quickJab faultLine'],
+  ['rimebeard','Rimebeard','The Frost Reproach',['ice'],'controller',88,11,12,8,'uncommon','Long icy whiskers slow opponents and punish their next hit.','rimeRebuke frostFang thaw snowWard counterstance canopyRally'],
+  ['snowpea','Snowpea','The Winter Pod',['ice'],'relay',76,9,10,17,'common','A tiny pod-shaped guardian who shelters the next teammate.','podShelter frostFang thaw guardianHandoff tailwindTransfer friendlyFeint'],
+  ['halohand','Halohand','The Ring Bearer',['light'],'relay',79,10,9,17,'common','Ring-shaped palms pass modest shielding and energy to companions.','haloHandoff dawnPalm prismGuard secondWind sunMend calmCall'],
+  ['inkcap','Inkcap','The Blot Trickster',['shadow'],'controller',78,12,9,15,'uncommon','A brush-tailed trickster whose ink weakens a threatening attack.','inkBlot duskClaw veil energySip bananaFeint nightDrain'],
+  ['bramblebat','Bramblebat','The Upside-Down Thicket',['leaf','shadow'],'drainer',85,13,9,17,'rare','Leaf-winged ambushes combine poison and lifesteal; low armor invites counterplay.','thornUmbra vine duskClaw nightDrain branchRelay veil'],
+  ['thermosage','Thermosage','The Pressure Scholar',['water','fire'],'caster',93,15,11,7,'rare','A venting flask collar clears ailments before releasing a balanced steam strike.','pressureRelease steam tide cinder spring focus'],
+  ['glassmanta','Glassmanta','The Shard Glider',['earth','ice'],'defender',96,12,14,7,'rare','Crystal arm fins turn attacks into small shields while slow strikes can be outrun.','glassGlide stonePalm frostFang quartzGuard snowWard faultLine'],
+  ['magnetuft','Magnetuft','The Lodestone Grip',['earth','storm'],'controller',88,14,12,11,'rare','Magnetic hands restrain switches and drain energy without preventing attacks.','lodestoneGrip fulgurite spark stonePalm galeStep guardBreak'],
+  ['lumenmoth','Lumenmoth','The Pollen Beacon',['light','leaf'],'healer',84,10,10,17,'rare','Petal wings become a team-healing beacon after the first awakening.','pollenBeacon sunMend leafCleanse seedDrain dawnPalm canopyRally'],
+  ['brineveil','Brineveil','The Veiled Estuary',['water','shadow'],'defender',94,12,13,9,'rare','A jellyfish mantle shields the body and softens the next opposing hit.','brineCurtain moonripple tide duskClaw spring counterstance'],
+  ['haildrummer','Haildrummer','The Hail Cadence',['ice','storm'],'attacker',82,16,9,16,'rare','A speedy hailstone percussionist with costly priority control.','hailCadence spark frostFang thunder icicleBurst galeStep'],
+  ['pyreclasp','Pyreclasp','The Lantern Mourner',['fire','shadow'],'drainer',87,14,10,13,'rare','Lantern hands restore health through burning split-element attacks.','funeralLantern ashcloak cinder nightDrain veil emberGuard'],
+  ['chronogibbon','Chronogibbon, the Zero-Hour Wanderer','Zero-Hour Wanderer',['storm','ice'],'ultra',91,15,10,19,'ultra','An immense gibbon swings through orbiting clock-snow rings; a priority relay bends the team’s tempo.','zeroHourRelay hailCadence thunder snowWard galeStep tailwindTransfer'],
+  ['basaltoracle','Basaltoracle, the Dawn Monolith','Dawn Monolith',['earth','light'],'ultra',109,15,16,4,'ultra','A monumental baboon reads radiant stone tablets and answers attacks with a shielded verdict.','monolithVerdict stonePalm dawnPalm quartzGuard prismGuard faultLine'],
+  ['mirecrown','Mirecrown, the Spore Sovereign','Spore Sovereign',['leaf','shadow'],'ultra',104,14,13,9,'ultra','A colossal swamp gorilla wears branching mushroom antlers; draining spores steadily weaken challengers.','sovereignSpore thornUmbra seedDrain nightDrain rootWall veil'],
+  ['phoenixmacaque','Phoenixmacaque, the Everflow Flame','Everflow Flame',['fire','water'],'ultra',99,15,11,13,'ultra','Fountain-feather wings rise around a regal macaque; cleansing tides restore conscious companions.','rebirthTide pressureRelease cinder tide spring teamMend']
 ];
+const expansionAppearances={
+  acornbuckler:'A short pear-shaped body, huge split acorn shield, broad cheek pouches, and a knotted tail.',
+  pitcherwink:'A slender hunter with a pitcher-flower head cup, pointed smiling muzzle, and long drinking tail.',
+  orchidcap:'A tiny upright marmoset with a broad orchid parasol, petal cape, and button face.',
+  coalroller:'A barrel pot belly, wheel-shaped coiled tail, soot eyebrows, and oversized coal mittens.',
+  wickwhisk:'Long stilt legs, candle-wick ears, a narrow face, and fine curling whiskers.',
+  coppersnap:'An angular boxer with a copper-plated jaw, rectangular furnace chest, and compact fists.',
+  rillhopper:'A frog-like crouch, round alert eyes, broad webbed hands, and a skipping-stone tail tip.',
+  nautiloop:'A low broad monkey with spiral shell shoulders, a curled eyebrow, and tiny sturdy feet.',
+  drizzlemane:'A tall rain-poncho mane, raindrop beard, sleepy face, and skinny dangling arms.',
+  kitehowl:'A diamond head ruff, wing-like kite forearms, open howling muzzle, and ribbon bow tail.',
+  thimblevolt:'A tiny huge-eared monkey with copper thimble cuffs, zigzag pupils, and an antenna tail.',
+  drumtuft:'A stout howler with a circular drum chest, twin mallet hands, and two bobbing head tufts.',
+  claypot:'A squat terracotta torso, wide pot-rim collar, narrow head, and flat heavy feet.',
+  flintcap:'A triangular flint helmet, sharp brow, broad shoulders, and pointed stone knuckles.',
+  rimebeard:'A tall narrow elder with a long icicle beard, drooping brows, and oversized mitten hands.',
+  snowpea:'A round baby face and body wrapped in a snow-pea pod cape with a bead-like pea tail.',
+  halohand:'Long thin arms, a small head, enormous eyebrows, and glowing ring-shaped palms.',
+  inkcap:'A wide mushroom-like ink hood, teardrop face, tapering body, and long brush tail.',
+  bramblebat:'Broad leaf-shaped ear wings, a pointed nose, hooked feet, and an inverted hanging stance.',
+  thermosage:'A tall flask-shaped body, barrel thermos collar, steaming ears, and a curved flask tail.',
+  glassmanta:'Wide gliding crystal arm fins, a diamond face, narrow waist, and a thin shard tail.',
+  magnetuft:'A horseshoe crown, blocky magnet hands, square muzzle, and compact grounded body.',
+  lumenmoth:'Four broad petal-cape wings, an antenna brow, round luminous cheeks, and tiny feet.',
+  brineveil:'A wide translucent jellyfish hat, tiny concealed face, and ribbon-like tentacle tail.',
+  haildrummer:'A drum-shaped belly, hailstone knuckles, flat nose, and short sturdy legs.',
+  pyreclasp:'A hunched back, very long arms, clasping lantern hands, and tapering smoke hair.',
+  chronogibbon:'An immense lanky gibbon with long pendulum arms, an hourglass face, and orbiting clock-snow rings.',
+  basaltoracle:'A monumental seated baboon with a squared muzzle, radiant tablet plates, and pillar-like arms.',
+  mirecrown:'A towering swamp gorilla with a broad face, mushroom-antler crown, and massive rooted forearms.',
+  phoenixmacaque:'A grand upright macaque with a narrow regal face, fountain-feather wings, and a streaming crest.'
+};
 export const SPECIES=Object.fromEntries(rows.map(([id,name,title,types,role,hp,atk,def,speed,rarity,trait,pool],index)=>[id,{
   id,number:index+1,name,title,types,affinity:types.length?types.map(t=>ELEMENTS[t].name).join(' / '):'Adaptable',role,hp,atk,def,speed,rarity,trait,
   learnset:[...new Set(['strike','brace','breathe',...pool.split(' ')])],signature:rarity==='ultra'?pool.split(' ')[0]:null,
   habitat:types[0]||'canopy',minFeet:index<6?0:index<22?2000:index<32?4000:index<52?6000:4000,
-  captureChance:rarity==='common'?.85:rarity==='uncommon'?.65:rarity==='rare'?.45:1
+  captureChance:rarity==='common'?.85:rarity==='uncommon'?.65:rarity==='rare'?.45:1,
+  encounterWeight:rarity==='common'?1:rarity==='uncommon'?.7:rarity==='rare'?.35:0,
+  ...(expansionAppearances[id]?{expansion:2,specialty:pool.split(' ')[0],appearance:expansionAppearances[id],
+    minFeet:rarity==='ultra'?5000:rarity==='rare'?10000:index<72?2000:4000,
+    evolutionAppearances:['Awakened: elemental shoulder growth and larger silhouette.','Elder: a contrasting elemental crest and layered chest armor.','Ascendant: mastery crown, enlarged gauntlets, and a floating elemental focus.']}:{}),
 }]));
 export const GEAR={
   fang:{name:'Sunfang Wraps',slot:'weapon',stat:'atk',amount:2,icon:'✦',fragmentCost:5,desc:'Woven fist wraps improve attack.'},

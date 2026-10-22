@@ -29,6 +29,7 @@ export const ENCOUNTER_STYLES={
 export const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 export function random(s){let x=s.rng|0;x^=x<<13;x^=x>>>17;x^=x<<5;s.rng=(x>>>0)||1234567;return s.rng/4294967296;}
 const choose=(s,a)=>a[Math.floor(random(s)*a.length)];
+const chooseSpecies=(s,ids)=>{const total=ids.reduce((sum,id)=>sum+(SPECIES[id].encounterWeight??1),0);let roll=random(s)*total;for(const id of ids){roll-=SPECIES[id].encounterWeight??1;if(roll<0)return id;}return ids.at(-1);};
 const copy=o=>JSON.parse(JSON.stringify(o));
 const alive=p=>p&&p.hp>0;
 const nativeTypes=id=>[...(SPECIES[id]?.types||[])];
@@ -58,7 +59,18 @@ export const playerStats=s=>stats(s.run.monkey,equipped(s));
 export function unlocked(p){
   const curated=new Set(['strike','brace','breathe',...(SPECIES[p.species]?.learnset||[]),...(p.learned||[])]);
   if(STARTERS.includes(p.species))for(const type of p.types){let n=0;for(const[id,m]of Object.entries(MOVES))if(m.type===type&&!m.types&&!m.signature&&n++<2)curated.add(id);}
-  return[...curated].filter(id=>MOVES[id]&&(p.stage||0)>=(MOVES[id].minStage||0));
+  return[...curated].filter(id=>MOVES[id]&&(p.stage||0)>=(MOVES[id].minStage||0)&&(!MOVES[id].signature||SPECIES[p.species]?.signature===id));
+}
+// UI cards and the equip action share this catalogue/stage eligibility. Learned
+// techniques survive evolution; Ultra signatures remain exclusive to their owner.
+export function abilityInfo(p,id){
+  const move=MOVES[id];if(!p||!move)return null;const species=SPECIES[p.species],requiredStage=move.minStage||0,eligible=unlocked(p).includes(id),equippedSlot=p.loadout?.indexOf(id)??-1;
+  let lockedReason=null;if(!eligible){
+    if(move.signature&&species?.signature!==id){const owner=Object.values(SPECIES).find(s=>s.signature===id);lockedReason=`Exclusive to ${owner?.name||'its Ultra species'}.`;}
+    else if((p.stage||0)<requiredStage)lockedReason=`Unlocks at ${['Base','Awakened','Elder','Ascendant'][requiredStage]||`stage ${requiredStage}`}.`;
+    else lockedReason='Outside this monkey’s curated learnset.';
+  }
+  return{id,move,eligible,requiredStage,lockedReason,required:id==='strike',equippedSlot};
 }
 export function say(s,text){s.log.push(text);s.log=s.log.slice(-16);}
 function monkey(s,species,level=1,types=nativeTypes(species),stage=0,prefix='m'){
@@ -133,7 +145,7 @@ export function advance(s,meters,east=0,north=0){
   if(r.distance+1e-6>=r.nextCamp){const milestone=r.nextCamp;enqueue(s,{type:'camp',id:`camp-${milestone}`});r.nextCamp+=CONFIG.campFeet*FEET;}
   updateNextCache(s);maybeUltra(s);pump(s);return used;
 }
-export function encounterPool(s,ultraSupport=false){const feet=s.run.distance/FEET,d=CONFIG.director;return Object.keys(SPECIES).filter(id=>SPECIES[id].rarity!=='ultra'&&!SPECIES[id].ultra&&(ultraSupport||((SPECIES[id].rarity!=='rare'||feet>=d.rareMinFeet)&&(nativeTypes(id).length<2||feet>=d.hybridMinFeet))));}
+export function encounterPool(s,ultraSupport=false){const feet=s.run.distance/FEET,d=CONFIG.director;return Object.keys(SPECIES).filter(id=>SPECIES[id].rarity!=='ultra'&&!SPECIES[id].ultra&&(ultraSupport||((!SPECIES[id].expansion||feet>=SPECIES[id].minFeet)&&(SPECIES[id].rarity!=='rare'||feet>=d.rareMinFeet)&&(nativeTypes(id).length<2||feet>=d.hybridMinFeet))));}
 export function encounterPlan(s,ultra=false){
   const feet=s.run.distance/FEET,index=s.run.encounters,scale=CONFIG.difficulty[s.difficulty]||1,d=CONFIG.director,[early,middle,deep]=d.bandsFeet;
   const size=feet<early?1:feet<middle?(index%d.pairCycle?2:1):feet<deep?(index%d.fullTeamCycle===0?3:2):3,
@@ -144,7 +156,7 @@ function encounter(s,isUltra=false){
   const r=s.run;r.encounters++;const plan=isUltra&&r.ultra.plan?r.ultra.plan:encounterPlan(s,isUltra),pool=encounterPool(s,isUltra),enemies=[];
   for(let i=0;i<plan.size;i++){
     const style=ENCOUNTER_STYLES[plan.style],roles=style.roles[i%style.roles.length],rolePool=pool.filter(id=>roles.includes(SPECIES[id].role)),themed=rolePool.filter(id=>!style.elements||nativeTypes(id).some(t=>style.elements.includes(t)));
-    let species=isUltra&&i===0?r.ultra.species:choose(s,themed.length?themed:rolePool.length?rolePool:pool);if(!isUltra&&r.ordinaryWins<2)species=r.ordinaryWins===0?'mossmop':'cinderpaw';
+    let species=isUltra&&i===0?r.ultra.species:chooseSpecies(s,themed.length?themed:rolePool.length?rolePool:pool);if(!isUltra&&r.ordinaryWins<2)species=r.ordinaryWins===0?'mossmop':'cinderpaw';
     const tutorial=r.ordinaryWins<2&&!isUltra,stage=tutorial?0:plan.stage,p=monkey(s,species,plan.level,nativeTypes(species),stage,'enemy');p.elite=plan.elite;p.bossOnly=isUltra&&i===0;
     if(tutorial)p.tutorialHpScale=CONFIG.tutorial.hpScales[r.ordinaryWins];p.hp=stats(p).hp;p.energy=stats(p).maxEnergy;
     const moves=unlocked(p).filter(id=>!['strike','brace','breathe'].includes(id));
@@ -323,7 +335,7 @@ export function equip(s,id,monkeyId){
   const p=getMonkey(s,monkeyId);if(!p||!['trail','camp'].includes(s.run.phase)||!s.meta.gear[id]||!GEAR[id])throw Error('Equip owned relics between battles.');const slot=GEAR[id].slot;for(const other of sanctuary(s))if(other.equipment[slot]===id)other.equipment[slot]=null;p.equipment[slot]=id;
   for(const other of sanctuary(s))other.hp=Math.min(other.hp,stats(other,equipped(s,other)).hp);if(p.id===s.run.activeId)s.meta.equipped={...p.equipment};updateNextCache(s);return p;
 }
-export function setMove(s,slot,id,monkeyId){const p=getMonkey(s,monkeyId);if(!p||!['trail','camp'].includes(s.run.phase)||!Number.isInteger(slot)||slot<0||slot>3||(slot===0&&id!=='strike')||!unlocked(p).includes(id))throw Error('Change curated abilities between encounters; keep Palm Strike in slot one.');if(p.loadout.includes(id)&&p.loadout[slot]!==id)throw Error('That ability is already equipped.');p.loadout[slot]=id;return p;}
+export function setMove(s,slot,id,monkeyId){const p=getMonkey(s,monkeyId);if(!p||!['trail','camp'].includes(s.run.phase)||!Number.isInteger(slot)||slot<0||slot>3||(slot===0&&id!=='strike')||!abilityInfo(p,id)?.eligible)throw Error('Change curated abilities between encounters; keep Palm Strike in slot one.');if(p.loadout.includes(id)&&p.loadout[slot]!==id)throw Error('That ability is already equipped.');p.loadout[slot]=id;return p;}
 export function exchangeEssence(s,from,to){if(!['trail','camp'].includes(s.run.phase)||!ELEMENTS[from]||!ELEMENTS[to]||from===to||s.run.essence[from]<4)throw Error('Exchange four of one essence for one other essence between encounters.');s.run.essence[from]-=4;s.run.essence[to]++;}
 export function craft(s,id){
   id=itemId(id);const r=s.run;if(r.phase!=='camp')throw Error('Craft supplies at an earned trail camp.');if(GEAR[id]){if((s.meta.fragments[id]||0)<CONFIG.fragmentCost)throw Error(`Collect ${CONFIG.fragmentCost} equipment fragments.`);s.meta.fragments[id]-=CONFIG.fragmentCost;s.meta.gear[id]=Math.min(12,(s.meta.gear[id]||0)+1);return;}

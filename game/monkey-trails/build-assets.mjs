@@ -1,6 +1,6 @@
 // Reproducible art package. Node standard library only; no image services/tools.
 // node game/monkey-trails/build-assets.mjs --output /path/monkey-trails-assets.zip
-import {writeFile,mkdir,readFile} from 'node:fs/promises';
+import {writeFile,mkdir,readFile,stat} from 'node:fs/promises';
 import {dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {deflateRawSync} from 'node:zlib';
@@ -9,16 +9,17 @@ import {portrait,battlefield,pickupIcon,elementIcon,ASSET_MANIFEST,ANIMATION_STA
 const gameDir=dirname(fileURLToPath(import.meta.url));
 const repoDir=resolve(gameDir,'../..'),buildDir=resolve(repoDir,'work');
 const args=process.argv.slice(2),value=key=>{const i=args.indexOf(key);return i<0?null:args[i+1];};
-const output=resolve(value('--output')||resolve(buildDir,'monkey-trails-assets.zip'));
+const output=resolve(value('--output')||resolve(gameDir,'art-pack/monkey-trails-wild-companions-v3.zip'));
 const contact=resolve(value('--contact')||resolve(buildDir,'monkey-trails-contact.html'));
-const prefix='monkey-trails/wild-companions-v2/';
+const prefix='monkey-trails/wild-companions-v3/';
 const manifest=structuredClone(ASSET_MANIFEST);
 manifest.prefix=prefix;
-manifest.artwork={author:'Monkey Trails original vector artwork',license:'Distributed with the Monkey Trails game source',anatomyFamilies:12,species:60,animationFiles:436,evolutionVariants:180};
+const roster=Object.values(SPECIES),ultras=roster.filter(s=>s.rarity==='ultra');
+manifest.artwork={author:'Monkey Trails original vector artwork',license:'Distributed with the Monkey Trails game source',anatomyFamilies:12,bespokeExpansionProportions:30,species:roster.length,animationFiles:roster.length*ANIMATION_STATES.length+ultras.length*ULTRA_STATES.length,evolutionVariants:roster.length*3};
 manifest.hosting={assetBaseVariable:'MONKEY_TRAILS_ASSET_BASE',contentType:'image/svg+xml',cacheControl:'public, max-age=31536000, immutable',cors:'Allow your game origin when using cross-origin fetch. Direct image display does not require authenticated requests.'};
 const entries=[];
 function add(name,content){entries.push({name:prefix+name,data:Buffer.from(content)});}
-for(const s of Object.values(SPECIES)){
+for(const s of roster){
  const states=[...ANIMATION_STATES,...(s.rarity==='ultra'?ULTRA_STATES:[])];
  for(const state of states)add(`monkeys/${s.id}/${state}.svg`,portrait({species:s.id,types:s.types,stage:0},{state}));
  for(const [variant,stage] of [['attuned',1],['elder',2],['ascendant',3]]){
@@ -34,7 +35,7 @@ for(const t of Object.keys(ELEMENTS)){
 for(const [id,src] of Object.entries(manifest.pickups))add(src,pickupIcon(id));
 add('interface/loading.svg',await readFile(resolve(gameDir,'assets/interface/loading.svg'),'utf8'));
 add('lobby/tile.svg',await readFile(resolve(gameDir,'tile.svg'),'utf8'));
-const readme=`Monkey Trails: Wild Companions — version 2 vector asset package
+const readme=`Monkey Trails: Wild Companions — version 3 vector asset package
 
 Upload the contents of this ZIP preserving the object prefix:
   ${prefix}
@@ -54,12 +55,14 @@ If fetching the manifest from a different origin, enable CORS for the game origi
 manifest.json describes every animation, duration, frame index, anchor, scale,
 variant, environment, and interface asset. These are animated vector scenes;
 frames:[0] names one SVG scene with articulated CSS keyframe animations.
-All 60 species have seven animation scenes. The eight Ultras add arrival and
+All ${roster.length} species have seven animation scenes. The ${ultras.length} Ultras add arrival and
 unique signature scenes. Three evolution variants per species add silhouette
 attachments while preserving species identity. Reduced-motion media queries
 and runtime preference classes stop the vector motion.
 
-Regenerate from source: node game/monkey-trails/build-assets.mjs --output FILE
+Every object is also committed under game/monkey-trails/assets/ in GitHub.
+The ZIP is committed under game/monkey-trails/art-pack/ for direct upload.
+Regenerate both local assets and ZIP: node game/monkey-trails/build-assets.mjs
 Art source: game/monkey-trails/art.mjs. Catalogue: data.mjs.
 `;
 add('HOSTING.txt',readme);
@@ -77,8 +80,10 @@ for(const e of entries.sort((a,b)=>a.name.localeCompare(b.name,'en'))){
 }
 const directory=Buffer.concat(central),end=Buffer.alloc(22);end.writeUInt32LE(0x06054b50);end.writeUInt16LE(entries.length,8);end.writeUInt16LE(entries.length,10);end.writeUInt32LE(directory.length,12);end.writeUInt32LE(offset,16);
 await mkdir(dirname(output),{recursive:true});await writeFile(output,Buffer.concat([...local,directory,end]));
-await mkdir(resolve(gameDir,'assets'),{recursive:true});await writeFile(resolve(gameDir,'assets/manifest.json'),JSON.stringify(manifest,null,2)+'\n');
+// Keep the actual art in GitHub as well as in the upload archive. Every manifest
+// path must resolve to a real local file, so ./assets/ is a useful hosting base.
+for(const entry of entries){const localPath=resolve(gameDir,'assets',entry.name.slice(prefix.length));await mkdir(dirname(localPath),{recursive:true});await writeFile(localPath,entry.data);}
 await mkdir(dirname(contact),{recursive:true});
 const cards=Object.values(SPECIES).map(s=>`<article><div>${portrait({species:s.id,types:s.types,stage:0},{reducedMotion:true})}</div><small>${String(s.number).padStart(2,'0')} · ${s.affinity}</small><h2>${s.name}</h2><p>${s.title}</p></article>`).join('');
-await writeFile(contact,`<!doctype html><html lang="en"><meta charset="utf-8"><title>Monkey Trails — 60 original companions</title><style>*{box-sizing:border-box}body{margin:0;padding:36px;background:#e8e9d8;color:#264d43;font:15px system-ui}h1{font-size:32px}main{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px}article{background:#f7f5e7;border:1px solid #c9d2bd;border-radius:18px;padding:12px;text-align:center}article>div{aspect-ratio:1;display:grid;place-items:center}.monkey-art{width:100%;height:100%;max-height:215px}h2{font-size:14px;margin:7px 0;min-height:34px}p{font-size:12px;margin:0;color:#65846b}small{font-size:11px;color:#708b72}@media(max-width:800px){main{grid-template-columns:repeat(3,minmax(0,1fr))}}</style><h1>60 companions. A whole wild world.</h1><p>Original starters · elemental specialists · hybrids · eight Ultras. Art contact sheet, motion paused for inspection.</p><main>${cards}</main></html>`);
-console.log(JSON.stringify({output,bytes:(await (await import('node:fs/promises')).stat(output)).size,entries:entries.length,manifest:resolve(gameDir,'assets/manifest.json'),contact},null,2));
+await writeFile(contact,`<!doctype html><html lang="en"><meta charset="utf-8"><title>Monkey Trails — ${roster.length} original companions</title><style>*{box-sizing:border-box}body{margin:0;padding:36px;background:#e8e9d8;color:#264d43;font:15px system-ui}h1{font-size:32px}main{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px}article{background:#f7f5e7;border:1px solid #c9d2bd;border-radius:18px;padding:12px;text-align:center}article>div{aspect-ratio:1;display:grid;place-items:center}.monkey-art{width:100%;height:100%;max-height:215px}h2{font-size:14px;margin:7px 0;min-height:34px}p{font-size:12px;margin:0;color:#65846b}small{font-size:11px;color:#708b72}@media(max-width:800px){main{grid-template-columns:repeat(3,minmax(0,1fr))}}</style><h1>${roster.length} companions. A whole wild world.</h1><p>Original starters · elemental specialists · hybrids · ${ultras.length} Ultras. Art contact sheet, motion paused for inspection.</p><main>${cards}</main></html>`);
+console.log(JSON.stringify({output,bytes:(await stat(output)).size,entries:entries.length,localAssetBytes:entries.reduce((sum,e)=>sum+e.data.length,0),manifest:resolve(gameDir,'assets/manifest.json'),contact},null,2));
