@@ -42,7 +42,7 @@ export class MotionFilter {
   }
 }
 export class TrailGPS {
-  constructor(onFix,onStatus,onPosition=()=>{}){this.filter=new MotionFilter();this.onFix=onFix;this.onStatus=onStatus;this.onPosition=onPosition;this.watch=null;this.lock=null;this.active=false;this.generation=0;}
+  constructor(onFix,onStatus,onPosition=()=>{},onError=()=>{}){this.filter=new MotionFilter();this.onFix=onFix;this.onStatus=onStatus;this.onPosition=onPosition;this.onError=onError;this.watch=null;this.lock=null;this.active=false;this.generation=0;}
   async start({wakeLock=true}={}){
     if(this.active)return;
     if(!globalThis.isSecureContext)throw Error('Open the HTTPS-hosted game. Browser location is not available on this insecure page.');
@@ -58,7 +58,7 @@ export class TrailGPS {
         if(generation!==this.generation)return;
         this.filter.reset();
         const message=error.code===1?'Location denied. Enable location in browser/site settings, then try again.':error.code===2?'Location unavailable. Move to open sky and retry.':'GPS timed out. Waiting for a new fix; no gap will be counted.';
-        if(error.code===1)this.stop();this.onStatus({reason:message,accuracy:null,mph:null});
+        if(error.code===1)this.stop();this.onStatus({reason:message,accuracy:null,mph:null});this.onError(error);
       },{enableHighAccuracy:true,maximumAge:0,timeout:12000});
     }catch(error){this.stop();throw error;}
     // Optional convenience, not background-location permission. Failure is harmless.
@@ -70,3 +70,4 @@ export class TrailGPS {
     this.watch=null;this.filter.reset();if(this.lock){this.lock.release().catch(()=>{});this.lock=null;}
   }
 }
+
