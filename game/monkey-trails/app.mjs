@@ -12,7 +12,9 @@ const STARTERS=['capuchin','macaque','langur','mandrill','spider','howler'];
 let state=null,vault=null,selected='capuchin',tab='walk',selectedId=null,busy=false,combatBusy=false,lastCheckpoint=0,toastTimer,scores=null,collectionPage=0,collectionFilter='owned',animation='idle',pendingMove=null,lastDiscovery=0,ultraConfirm=false,practiceExpanded=false;
 let gpsInfo={reason:'Paused · choose Start walking when ready.',mph:null,accuracy:null};
 let collectionSearch='',collectionElement='all',collectionRarity='all',collectionSort='number',selectedSpecies=null,abilityEditor=null,modalReturnFocus=null;
-let mapZoom=1,practiceMotionTimer=null;
+let mapZoom=1,practiceMotionTimer=null,menuProgressPending=false;
+const discoveryQueue=[];
+let discoveryTimer=null;
 const preferenceKey='monkey-trails-display-v2';
 let prefs={reducedMotion:false,battery:false,sound:false,vibration:false,keepAwake:true};
 try{prefs={...prefs,...JSON.parse(localStorage.getItem(preferenceKey)||'{}')};}catch{}
@@ -23,18 +25,19 @@ function applyPreferences(){document.body.classList.toggle('reduce-motion',prefs
 applyPreferences();
 const locationAccess=new LocationAccess(()=>renderLocation());
 const gps=new TrailGPS(fix=>{
-  if(!state||state.run.phase!=='trail'||tab!=='walk')return pause();
+  if(!state||state.run.phase!=='trail')return pause();
   if(ultraConfirm){radar.observe(fix,state);renderGPS();return;}
   const oldCache=state.run.discoveries??state.run.nextCache,oldPhase=state.run.phase;
-  C.advance(state,fix.meters,fix.east,fix.north);radar.observe(fix,state);animation='walk';
+  C.advance(state,fix.meters,fix.east,fix.north,notifyDiscovery);radar.observe(fix,state);animation='walk';
   const discovered=(state.run.discoveries??state.run.nextCache)!==oldCache;
-  if(discovered){lastDiscovery=Date.now();feedback();}
-  if(state.run.phase!=='trail')pause('Encounter ready · tracking paused. Stop somewhere safe.');
-  if(discovered||oldPhase!==state.run.phase||Date.now()-lastCheckpoint>=5000)void checkpoint(discovered);render();
+  if(state.run.phase!=='trail'){pause('Encounter ready · tracking paused. Stop somewhere safe.');closeModal();tab='walk';}
+  if(discovered||oldPhase!==state.run.phase||Date.now()-lastCheckpoint>=5000)void checkpoint(discovered);
+  // Keep inputs, filters and scroll stable while accepted fixes update the save.
+  if(tab==='walk'&&!$('inspect-dialog').open)render();else{menuProgressPending=true;renderGPS();}
 },info=>{gpsInfo=info;if(info.accuracy!=null&&locationAccess.status!=='ready')locationAccess.update('ready');renderGPS();},fix=>{
-  if(!state||state.run.phase!=='trail'||tab!=='walk')return;
+  if(!state||state.run.phase!=='trail')return;
   const before=radar.view(state).withinRadius;radar.observe(fix,state);
-  if(before!==radar.view(state).withinRadius)render();
+  if(before!==radar.view(state).withinRadius){if(tab==='walk'&&!$('inspect-dialog').open)render();else menuProgressPending=true;}
 },error=>locationAccess.reportError(error));
 function locationPanel(){return `<section class="location-access" data-location-panel><div class="location-heading">${uiIcon('play')}<strong>Location for real walks</strong><span data-location-label></span></div><p data-location-message role="status" aria-live="polite"></p><button type="button" data-action="enable-location">Enable location</button><details data-location-help><summary>No permission prompt?</summary><ol><li>In Chrome, tap the site controls beside the address, then Permissions → Location. Allow access or reset the blocked permission.</li><li>On Android, check Settings → Apps → Chrome → Permissions → Location. On iPhone, check Settings → Privacy & Security → Location Services → Chrome. Allow access while using the app; turn on precise location.</li><li>Keep phone location services on. Open the HTTPS game directly in Chrome and try again.</li></ol><p>Already allowed? Chrome can use location without showing another prompt.</p><a href="./monkey-trails.html" target="_top">Open game directly</a></details></section>`;}
 function renderLocation(){
@@ -60,6 +63,20 @@ function renderLocation(){
 }
 $('welcome-location').innerHTML=locationPanel();renderLocation();void locationAccess.refresh();
 function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,4800);}
+function notifyDiscovery(found){
+  lastDiscovery=Date.now();feedback();discoveryQueue.push({...found});
+  if(!discoveryTimer)showNextDiscovery();
+}
+function showNextDiscovery(){
+  const popup=$('discovery-popup'),found=discoveryQueue.shift();
+  if(!found){discoveryTimer=null;return;}
+  const label=found.category==='essence'?`${C.ELEMENTS[found.id].name} essence`:found.category==='fruit'?'Training fruit':found.category==='fragment'?`${C.GEAR[found.id].name} fragment`:C.ITEMS[found.id].name;
+  const icon=found.category==='fragment'?'fragment':found.category==='fruit'?'fruit':found.id;
+  const artwork=found.category==='essence'?`<span style="color:${C.ELEMENTS[found.id].color}">${C.ELEMENTS[found.id].icon}</span>`:pickupIcon(icon);
+  popup.innerHTML=`<span class="discovery-popup-icon" aria-hidden="true">${artwork}</span><span><small>YOU FOUND</small><strong>${esc(label)} ×${found.amount}</strong></span>`;
+  popup.hidden=false;popup.showPopover();
+  discoveryTimer=setTimeout(()=>{popup.hidePopover();popup.hidden=true;showNextDiscovery();},3600);
+}
 function feedback(){if(prefs.vibration&&navigator.vibrate)navigator.vibrate(25);if(prefs.sound)try{const a=new (window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=660;g.gain.setValueAtTime(.035,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.12);o.start();o.stop(a.currentTime+.13);o.onended=()=>a.close();}catch{}}
 function saveStatus({text,kind}){$('save-status').textContent=text;$('save-dot').className=`save-dot ${kind}`;$('cloud-restore').hidden=kind!=='conflict';}
 function starters(){$('starters').innerHTML=STARTERS.map(id=>{const p=C.SPECIES[id];return `<button type="button" class="starter ${selected===id?'selected':''}" data-starter="${id}" aria-pressed="${selected===id}">${portrait({species:id,types:[],stage:0})}<span>${esc(p.name)}</span></button>`;}).join('');$('starter-trait').textContent=`${C.SPECIES[selected].role||C.SPECIES[selected].title} · ${C.SPECIES[selected].trait}`;}
@@ -195,7 +212,7 @@ function abilityPool(p){return [...new Set([...C.unlocked(p),...C.unlocked({...p
 function comparisonSummary(current,next){const a=C.MOVES[current],b=C.MOVES[next];if(!a||!b)return 'Choose a technique below to compare.';const power=(b.power||0)-(a.power||0),cost=(b.cost||0)-(a.cost||0);return `${power?`${power>0?'+':''}${power} power`:'Same power'} · ${cost?`${cost>0?'+':''}${cost} energy cost`:'Same energy cost'}${moveTypes(b).join('+')!==moveTypes(a).join('+')?' · Different elemental coverage':''}. Power is a base value; final damage also uses stats and elemental matchups.`;}
 function abilityComparison(p,slot,candidate){return `<div class="ability-compare-heading"><h3>Compare techniques</h3><span>Focus a card or tap Compare</span></div><div class="ability-comparison"><div><span class="comparison-label">CURRENT · SLOT ${slot+1}</span>${abilityCard(p.loadout[slot],p,{className:'comparison-card'})}</div><div id="ability-proposed"><span class="comparison-label">PROPOSED REPLACEMENT</span>${candidate?abilityCard(candidate,p,{className:'comparison-card'}):'<div class="comparison-placeholder">Palm Strike is required in this slot.</div>'}</div></div><p id="ability-comparison-summary" class="comparison-summary" aria-live="polite">${esc(comparisonSummary(p.loadout[slot],candidate))}</p>`;}
 function openAbilities(monkeyId,slot){
-  const p=state.collection[monkeyId];if(!p||slot<0||slot>3)return;pause('Paused while arranging abilities.');const current=p.loadout[slot],available=C.unlocked(p),replaceable=canPrepare()&&slot!==0,candidate=replaceable?available.find(id=>!p.loadout.includes(id)):null;
+  const p=state.collection[monkeyId];if(!p||slot<0||slot>3)return;const current=p.loadout[slot],available=C.unlocked(p),replaceable=canPrepare()&&slot!==0,candidate=replaceable?available.find(id=>!p.loadout.includes(id)):null;
   abilityEditor={monkeyId,slot,candidateId:candidate};
   const locked=abilityPool(p).filter(id=>!available.includes(id));
   modal(`<section class="ability-picker"><span class="eyebrow">${esc(name(p))} · TECHNIQUE LIBRARY</span><h2 id="ability-picker-title" tabindex="-1">${replaceable?`Replace ability ${slot+1}`:'Equipped technique'}</h2><p class="ability-picker-intro">${slot===0?'Palm Strike is your required zero-energy action. It always stays in slot 1.':canPrepare()?'Tap any available technique to equip it immediately. Changes save automatically.':'Inspect your techniques here. Loadout changes unlock between encounters.'}</p>${abilityComparison(p,slot,candidate)}<div class="ability-options-heading"><h3>Unlocked for ${esc(name(p))}</h3><span>${available.length} techniques</span></div><div class="ability-options ability-grid">${available.map(id=>{const equippedSlot=p.loadout.indexOf(id),isCurrent=id===current,blocked=!replaceable||equippedSlot>=0;return `<div class="ability-option ${isCurrent?'is-current':''}" data-compare-id="${id}">${abilityCard(id,p,{action:'ability-equip',disabled:blocked,className:isCurrent?'is-current':'',extra:isCurrent?'Current':equippedSlot>=0?`In slot ${equippedSlot+1}`:replaceable?'Tap to equip':'Unlocked'})}<button type="button" class="ability-compare-button" data-action="ability-compare" data-id="${id}" ${slot===0?'disabled':''}>Compare ${esc(C.MOVES[id].name)}</button></div>`;}).join('')}</div>${locked.length?`<details class="ability-locked"><summary>${abilityIcon('lock')} ${locked.length} future techniques · evolution unlocks</summary><div class="ability-grid">${locked.map(id=>`<div class="locked-technique">${abilityCard(id,p,{extra:`Unlock: stage ${C.MOVES[id].minStage||1}`})}<p>${esc(typeof C.abilityInfo==='function'?C.abilityInfo(p,id)?.lockedReason||`Reach evolution stage ${C.MOVES[id].minStage||1}.`:`Reach evolution stage ${C.MOVES[id].minStage||1}.`)}</p></div>`).join('')}</div></details>`:''}<div class="ability-picker-actions"><span>Four techniques. One distinct strategy.</span><button type="button" data-action="close-dialog">${replaceable?'Cancel · keep loadout':'Done'}</button></div></section>`,'Ability replacement','ability-dialog');
@@ -229,7 +246,7 @@ function death(){const h=state.meta.history[0];return `<section class="panel run
 function renderGPS(){updateLandMotion();renderLocation();if($('gps-status'))$('gps-status').textContent=state?.mode==='practice'?'':gpsInfo.reason;if($('gps-meta'))$('gps-meta').textContent=gpsInfo.mph==null?'':`${gpsInfo.mph.toFixed(1)} mph`;if($('tracking-button'))$('tracking-button').textContent=gps.active?'Pause walking':'Start walking';if($('walking-state'))$('walking-state').textContent=state?.mode==='practice'?'Practice':gps.active?'Walking':'Paused';if($('gps-quality'))$('gps-quality').textContent=state?.mode==='practice'?'Unranked trail':gpsInfo.accuracy==null?'GPS waiting':`GPS ±${Math.round(gpsInfo.accuracy)} m`;}
 function render(){
   const oldMap=$('view').querySelector('.terrain-map'),camera=oldMap?{id:oldMap.dataset.land,east:Number(oldMap.dataset.mapEast),north:Number(oldMap.dataset.mapNorth),scale:Number(oldMap.dataset.mapScale)}:null;
-  if(!state)return;document.body.classList.add('in-game');document.body.classList.toggle('is-walk',tab==='walk');$('creature-label').textContent=`${state.name} · ${state.mode==='practice'?'Practice sanctuary':'Expedition '+state.meta.runs}`;document.querySelectorAll('[data-action="tab"]').forEach(b=>b.setAttribute('aria-current',b.dataset.id===tab?'page':'false'));
+  if(!state)return;menuProgressPending=false;document.body.classList.add('in-game');document.body.classList.toggle('is-walk',tab==='walk');$('creature-label').textContent=`${state.name} · ${state.mode==='practice'?'Practice sanctuary':'Expedition '+state.meta.runs}`;document.querySelectorAll('[data-action="tab"]').forEach(b=>b.setAttribute('aria-current',b.dataset.id===tab?'page':'false'));
   $('view').innerHTML=tab==='walk'?walk():tab==='team'?teamView():tab==='sanctuary'?sanctuaryView():pack();
   document.querySelectorAll('#view [data-action="craft"]').forEach(b=>{const recipe=b.dataset.id==='charm'?{fruit:2,material:1}:b.dataset.id==='revive'?{fruit:8,material:4}:null;b.disabled=state.run.phase!=='camp'||(recipe?state.run.fruit<recipe.fruit||(state.run.items.charmMaterial||0)<recipe.material:(state.meta.fragments[b.dataset.id]||0)<C.CONFIG.fragmentCost);});
   if(state.run.phase==='battle'&&!state.run.battle.ready)document.querySelectorAll('#view [data-action="item"]').forEach(b=>b.disabled=true);
@@ -243,9 +260,9 @@ function render(){
 }
 function modal(content,label='Trail details',className=''){
   const dialog=$('inspect-dialog');if(!dialog.open){const el=document.activeElement;modalReturnFocus={element:el,monkeyId:el?.dataset?.monkey,slot:el?.dataset?.abilitySlot};}
-  dialog.className=className;$('dialog-content').innerHTML=content;dialog.setAttribute('aria-label',label);if(!dialog.open)dialog.showModal();hydrateHostedPortraits($('dialog-content'),{reducedMotion:prefs.reducedMotion||prefs.battery});
+  dialog.className=className;$('dialog-content').innerHTML=content;dialog.setAttribute('aria-label',label);if(!dialog.open)dialog.showModal();const popup=$('discovery-popup');if(popup.matches(':popover-open')){popup.hidePopover();popup.showPopover();}hydrateHostedPortraits($('dialog-content'),{reducedMotion:prefs.reducedMotion||prefs.battery});
 }
-function closeModal(){const landscapeDialog=$('inspect-dialog').classList.contains('lands-dialog')||$('inspect-dialog').classList.contains('compass-dialog');const stopped=ultraConfirm;ultraConfirm=false;$('inspect-dialog').close();pendingMove=null;abilityEditor=null;const focus=modalReturnFocus;modalReturnFocus=null;if(focus?.element?.isConnected)focus.element.focus();else if(focus?.monkeyId&&focus.slot!==undefined)document.querySelector(`[data-action="ability-open"][data-monkey="${CSS.escape(focus.monkeyId)}"][data-ability-slot="${focus.slot}"]`)?.focus();if(landscapeDialog&&!focus?.element?.isConnected)document.querySelector('[data-action="lands"]')?.focus();if(stopped&&gps.active)pause('Ultra confirmation closed · Start walking to resume.');}
+function closeModal(){const landscapeDialog=$('inspect-dialog').classList.contains('lands-dialog')||$('inspect-dialog').classList.contains('compass-dialog');const stopped=ultraConfirm;ultraConfirm=false;$('inspect-dialog').close();pendingMove=null;abilityEditor=null;if(menuProgressPending)render();const focus=modalReturnFocus;modalReturnFocus=null;if(focus?.element?.isConnected)focus.element.focus();else if(focus?.monkeyId&&focus.slot!==undefined)document.querySelector(`[data-action="ability-open"][data-monkey="${CSS.escape(focus.monkeyId)}"][data-ability-slot="${focus.slot}"]`)?.focus();if(landscapeDialog&&!focus?.element?.isConnected)document.querySelector('[data-action="lands"]')?.focus();if(stopped&&gps.active)pause('Ultra confirmation closed · Start walking to resume.');}
 function switchPreview(id){const p=state.collection[id],e=state.run.battle.enemy;modal(`<span class="eyebrow">${pendingMove?'RELAY TARGET':'SWITCH PREVIEW'}</span>${profile(p)}<div class="notice">${pendingMove?`${esc(C.MOVES[pendingMove].name)} will bring this teammate in.`:'Switching spends this turn. The incoming teammate may receive the enemy attack.'} Status effects remain attached.</div><h3>Incoming matchup</h3><div class="matchups">${e.types.map(t=>`<span style="color:${C.ELEMENTS[t].color}">${C.ELEMENTS[t].name} ×${C.effectiveness(t,p.types)}</span>`).join('')}</div><p class="fine">${state.run.battle.hazard?`Entry hazard: ${esc(state.run.battle.hazard.name||state.run.battle.hazard)}`:'No entry hazard is visible.'}</p><button class="primary wide" data-action="switch-confirm" data-id="${id}">${pendingMove?'Use relay ability':'Confirm switch · uses turn'}</button>`,'Switch teammate');}
 function openEvolution(type,id){const p=state.collection[id],o=C.evolutionPreview(state,type,id);if(!o)return;const preview=o.monkey||o.preview||{...p,types:o.types||[type],stage:p.stage+1};modal(`<span class="eyebrow">EVOLUTION PREVIEW</span>${profile(preview)}<h3>${esc(o.specialization||C.ELEMENTS[type].name+' path')}</h3><p>${esc(o.desc||o.passive||'A new combat specialization, silhouette and elemental techniques.')}</p><div class="matchups">${Object.keys(C.ELEMENTS).map(t=>`<span style="color:${C.ELEMENTS[t].color}">${C.ELEMENTS[t].name} ×${C.effectiveness(t,preview.types)}</span>`).join('')}</div><h3 class="section-gap">New ability decisions</h3><p>${(o.moves||o.abilities||C.unlocked(preview).filter(x=>!C.unlocked(p).includes(x))).map(x=>esc(C.MOVES[typeof x==='string'?x:x.id]?.name||x)).join(' · ')||'Deepen this role and review your loadout.'}</p><p>Requires level ${o.level??o.requiredLevel??3} · ${Object.entries(o.cost||{}).map(([x,n])=>`${n} ${C.ELEMENTS[x]?.name||x} essence`).join(' + ')}</p><button class="primary wide" data-action="evolve" data-id="${type}" data-monkey="${id}" ${!canPrepare()?'disabled':''}>Commit to this evolution</button>`,'Evolution preview');}
 document.addEventListener('input',e=>{if(e.target.id==='collection-search'&&state){const cursor=e.target.selectionStart;collectionSearch=e.target.value;collectionPage=0;render();const field=$('collection-search');field.focus();if(cursor!==null)field.setSelectionRange(cursor,cursor);}});
@@ -256,9 +273,9 @@ document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-action]');if(!b||b.disabled)return;const a=b.dataset.action,id=b.dataset.id;if(a==='close-dialog'){closeModal();return;}if(a==='enable-location'){locationAccess.request();return;}if(!state)return;
   try{
     if(combatBusy&&['move','switch-menu','switch-confirm','battle-heal','battle-item','ready','replace'].includes(a))return;
-    if(a==='compass'){if(gps.active)pause('Compass open · Start walking to resume.');modal(`<span class="eyebrow">YOUR POCKET COMPASS</span><h2>Find your bearings</h2>${radarView()}<p class="fine">North stays up on the terrain map. The gold marker tracks an Ultra sighting when one is active.</p>`,'Encounter compass','compass-dialog');return;}
+    if(a==='compass'){modal(`<span class="eyebrow">YOUR POCKET COMPASS</span><h2>Find your bearings</h2>${radarView()}<p class="fine">North stays up on the terrain map. The gold marker tracks an Ultra sighting when one is active.</p>`,'Encounter compass','compass-dialog');return;}
     if(a==='map-zoom'){mapZoom=C.clamp(Math.round((mapZoom+(id==='in'?.25:-.25))*100)/100,.75,1.5);render();document.querySelector(`[data-action="map-zoom"][data-id="${id}"]`)?.focus();return;}
-    if(a==='lands'||a==='lands-preview'){if(gps.active)pause('Exploring the world · Start walking to resume.');openLands(a==='lands-preview'?id:null);return;}
+    if(a==='lands'||a==='lands-preview'){openLands(a==='lands-preview'?id:null);return;}
     if(a==='land-select'){selectLand(state,id);closeModal();render();document.querySelector('[data-action="lands"]')?.focus();await checkpoint(true);feedback();return;}
     if(a==='ability-open'){openAbilities(b.dataset.monkey,Number(b.dataset.abilitySlot));return;}
     if(a==='ability-compare'){previewAbility(id);return;}
@@ -266,18 +283,18 @@ document.addEventListener('click',async e=>{
     if(a==='collection-reset'){collectionSearch='';collectionElement='all';collectionRarity='all';collectionSort='number';collectionPage=0;render();return;}
     if(a==='collection-detail-close'){selectedSpecies=null;render();return;}
     if(a==='collection-individual'){selectedId=id;render();return;}
-    if(a==='tab'||['team','pack'].includes(a)){const next=a==='tab'?id:a;if(next!=='walk')pause('Paused while using menus. Return to Walk to resume.');tab=next;closeModal();render();window.scrollTo(0,0);return;}
+    if(a==='tab'||['team','pack'].includes(a)){const next=a==='tab'?id:a;tab=next;closeModal();render();window.scrollTo(0,0);return;}
     if(a==='gps-setup'){pause();await checkpoint(true);locationAccess.cancel();closeModal();state=null;vault=null;document.body.classList.remove('in-game','is-walk');$('game').hidden=true;$('welcome').hidden=false;$('mode-label').textContent='WALK · COLLECT · ADVENTURE';$('creature-label').textContent='WILD COMPANIONS';renderLocation();void locationAccess.refresh();window.scrollTo(0,0);return;}
     if(a==='tracking'){if(gps.active){pause();await checkpoint(true);}else if(state.mode==='gps'&&state.run.phase==='trail'&&tab==='walk'){locationAccess.cancel();try{await gps.start({wakeLock:prefs.keepAwake&&!prefs.battery});}catch(error){locationAccess.reportError(error);gpsInfo={reason:error.message,mph:null,accuracy:null};}}renderGPS();return;}
     if(a==='sync'){await checkpoint(true);void vault.sync();toast('Encrypted checkpoint queued. See save status below.');return;}
     if(a==='export'){await checkpoint(false);const data=await vault.export(),url=URL.createObjectURL(new Blob([data],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download=`monkey-trails-${state.name.replace(/[^A-Za-z0-9_-]/g,'-')}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);return;}
     if(a==='cloud'){pause();if(!confirm('Load the cloud checkpoint? An encrypted recovery copy of device progress will be kept.'))return;state=await vault.loadCloud();await radar.bind(vault);if(state.run.battle)state.run.battle.ready=false;render();return;}
-    if(a==='settings'){pause('Paused while using settings.');modal(settings(),'Settings');return;}
-    if(a==='records'){pause();modal(records(),'Trail stories');return;}
+    if(a==='settings'){modal(settings(),'Settings');return;}
+    if(a==='records'){modal(records(),'Trail stories');return;}
     if(a==='scores'){b.disabled=true;b.textContent='Reading scores…';scores=await vault.leaderboard();modal(records(),'Trail stories');return;}
     if(a==='select-monkey'){selectedId=id;render();return;}
-    if(a==='inspect'){pause('Paused while inspecting a companion.');modal(`${profile(state.collection[id])}<button class="primary wide" data-action="inspect-team" data-id="${id}">Inspect abilities & evolution</button>`,'Companion');return;}
-    if(a==='inspect-team'){selectedId=id;tab='team';pause();closeModal();render();window.scrollTo(0,0);return;}
+    if(a==='inspect'){modal(`${profile(state.collection[id])}<button class="primary wide" data-action="inspect-team" data-id="${id}">Inspect abilities & evolution</button>`,'Companion');return;}
+    if(a==='inspect-team'){selectedId=id;tab='team';closeModal();render();window.scrollTo(0,0);return;}
     if(a==='collection-filter'){collectionFilter=id;collectionPage=0;render();return;}
     if(a==='collection-page'){collectionPage+=Number(id);render();return;}
     if(a==='species'){selectedSpecies=id;render();$('selected-companion')?.scrollIntoView({behavior:prefs.reducedMotion?'instant':'smooth',block:'start'});return;}
@@ -288,7 +305,7 @@ document.addEventListener('click',async e=>{
     if(a==='move-info'){modal(`<span class="eyebrow">${esc(name(active()))} · BATTLE TECHNIQUES</span><h2>Four equipped abilities</h2><div class="ability-grid">${active().loadout.map((id,slot)=>abilityCard(id,active(),{slot,battle:true})).join('')}</div><p class="fine">Power is a base value. Final damage depends on attack, defense and elemental matchups. Combat changes unlock between encounters.</p>`,'Abilities','ability-dialog');return;}
     if(a==='battle-heal'){modal(`<h2>Battle supplies</h2><p class="fine">Supplies spend your action. Revival can target a fallen teammate from Pack.</p>${Object.entries(C.ITEMS).filter(([x])=>['berry','tonic','salve'].includes(x)).map(([x,item])=>`<div class="item-card"><div><h3>${esc(item.name)} ×${state.run.items[x]||0}</h3><p>${esc(item.desc)}</p></div><button data-action="battle-item" data-id="${x}" ${!state.run.items[x]?'disabled':''}>Use</button></div>`).join('')}`,'Battle supplies');return;}
     if(a==='ultra-preview'){ultraConfirm=true;const u=state.run.ultra;modal(`<span class="eyebrow">AN ULTRA AWAITS</span><div class="species-hero">${portrait({species:u.species,types:C.SPECIES[u.species].types,stage:0},{state:'arrival'})}<h2>${esc(C.SPECIES[u.species].name)}</h2></div><p>A new Ultra joins your sanctuary after victory, with no rare capture item required.</p><div class="notice">Look up. Stop in a safe, permitted place before beginning. Expedition distance is paused while this confirmation is open.</div><button class="primary wide" data-action="ultra-begin">I have stopped safely · Begin Battle</button>`,'Begin Ultra battle');return;}
-    if(a==='practice-step'||a==='map-step'){if(state.mode!=='practice'||state.run.phase!=='trail')return;const v={N:[0,1],S:[0,-1],E:[1,0],W:[-1,0]}[id];if(!v)return;const step=a==='map-step'?15:C.RESOURCE_STEP;C.advance(state,step,v[0]*step,v[1]*step);animation='walk';clearTimeout(practiceMotionTimer);practiceMotionTimer=setTimeout(()=>{if(state?.mode==='practice'&&state.run.phase==='trail'){animation='idle';updateLandMotion();}},650);}
+    if(a==='practice-step'||a==='map-step'){if(state.mode!=='practice'||state.run.phase!=='trail')return;const v={N:[0,1],S:[0,-1],E:[1,0],W:[-1,0]}[id];if(!v)return;const step=a==='map-step'?15:C.RESOURCE_STEP;C.advance(state,step,v[0]*step,v[1]*step,notifyDiscovery);animation='walk';clearTimeout(practiceMotionTimer);practiceMotionTimer=setTimeout(()=>{if(state?.mode==='practice'&&state.run.phase==='trail'){animation='idle';updateLandMotion();}},650);}
     else if(a==='ready')C.readyBattle(state);
     else if(a==='move'){if(combatBusy)return;const m=C.MOVES[id];if(m.switch&&team().filter(p=>p.hp>0).length>1){pendingMove=id;modal(`<h2>${esc(m.name)}</h2><p>${esc(m.desc)}</p>${switchChoices()}`,'Relay teammate');return;}C.turn(state,id);animation=m.signature?'signature':m.type!=='neutral'?'cast':m.power?'attack':'cast';combatBusy=true;feedback();setTimeout(()=>{combatBusy=false;animation='idle';render();},650);}
     else if(a==='switch-confirm'){
