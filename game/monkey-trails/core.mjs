@@ -5,6 +5,8 @@ export {ELEMENTS,DIRECTIONS,TYPE_CHART,SPECIES,MOVES,HYBRIDS,GEAR,ITEMS,STARTERS
 export {LANDS,landProgress,selectLand} from './lands.mjs';
 export const VERSION=2, FEET=.3048, RESOURCE_STEP=250*FEET, ENCOUNTER_STEP=2000*FEET;
 export const CONFIG={partySize:3,discoveryFeet:250,maxDiscoveryAcceleration:.20,encounterFeet:2000,campFeet:6000,
+  walkingRecovery:{feet:100,fraction:.01},
+  xp:{walkingFeet:100,earlyLevels:3,earlyMultiplier:2,midLevels:5,midMultiplier:1.5,contributionHP:10,maxCombatBase:120},
   captureAttempts:3,capturePity:4,ultraFirstFeet:5000,ultraRepeatFeet:18000,ultraPityFeet:24000,
   ultraApproachMeters:250,ultraChallengeFeet:1300,maxLevel:60,fragmentCost:5,
   tutorial:{hpScales:[.60,.85],loadout:['strike','brace','breathe'],enemyCriticals:false,revivesAfterFirst:1},
@@ -77,12 +79,12 @@ export function abilityInfo(p,id){
 export function say(s,text){s.log.push(text);s.log=s.log.slice(-16);}
 function monkey(s,species,level=1,types=nativeTypes(species),stage=0,prefix='m'){
   const p={id:uid(s,prefix),species,nickname:'',level,types:[...types],stage,hp:1,energy:12,status:{},statusPower:{},
-    loadout:['strike','brace','breathe'],training:0,bond:0,learned:[],discovered:[],highestForm:{stage:0,types:nativeTypes(species)},
+    loadout:['strike','brace','breathe'],training:0,xpRemainder:0,bond:0,learned:[],discovered:[],highestForm:{stage:0,types:nativeTypes(species)},
     equipment:{weapon:null,armor:null,charm:null},cooldowns:{},uses:{}};
   p.learned=unlocked(p);const specials=p.learned.filter(id=>!['strike','brace','breathe'].includes(id));
   p.loadout=['strike',...specials.slice(0,2),'brace'];if(p.loadout.length<4)p.loadout.splice(p.loadout.length-1,0,'breathe');p.hp=stats(p).hp;return p;
 }
-function resetExpeditionMonkey(p){p.level=1;p.types=nativeTypes(p.species);p.stage=0;p.status={};p.statusPower={};p.training=0;p.cooldowns={};p.uses={};p.shield=0;delete p.elite;delete p.bossOnly;delete p.mastery;const available=unlocked(p);p.loadout=['strike',...p.loadout.filter(id=>id!=='strike'&&available.includes(id)),...available].filter((id,i,a)=>a.indexOf(id)===i).slice(0,4);p.hp=stats(p).hp;p.energy=stats(p).maxEnergy;}
+function resetExpeditionMonkey(p){p.level=1;p.types=nativeTypes(p.species);p.stage=0;p.status={};p.statusPower={};p.training=0;p.xpRemainder=0;delete p.statusCredit;p.cooldowns={};p.uses={};p.shield=0;delete p.elite;delete p.bossOnly;delete p.mastery;const available=unlocked(p);p.loadout=['strike',...p.loadout.filter(id=>id!=='strike'&&available.includes(id)),...available].filter((id,i,a)=>a.indexOf(id)===i).slice(0,4);p.hp=stats(p).hp;p.energy=stats(p).maxEnergy;}
 export function newSave(name,species='capuchin',mode='gps',seed=Date.now()>>>0){
   if(!STARTERS.includes(species))throw Error('Choose one of the six starters.');
   const s={version:VERSION,name:String(name).slice(0,30),mode,rng:(seed>>>0)||1234567,difficulty:'standard',collection:{},
@@ -143,6 +145,11 @@ export function advance(s,meters,east=0,north=0,onDiscovery){
   const r=s.run;if(r.phase!=='trail'||![meters,east,north].every(Number.isFinite)||meters<=0)return 0;
   const next=Math.min(r.nextEncounter,r.nextCamp),used=Math.max(0,Math.min(meters,next-r.distance)),ratio=used/meters;
   advanceLand(s,used,east*ratio,north*ratio);
+  for(const p of team(s)){
+    grantXp(p,used/(CONFIG.xp.walkingFeet*FEET));
+    // Fractional HP preserves exactly 1% per 100 feet, even for low-HP species.
+    if(alive(p)){const max=stats(p,equipped(s,p)).hp;p.hp=Math.min(max,p.hp+max*CONFIG.walkingRecovery.fraction*used/(CONFIG.walkingRecovery.feet*FEET));}
+  }
   r.vector.east+=east*ratio;r.vector.north+=north*ratio;r.direction=direction(r.vector.east,r.vector.north,r.direction);r.weights[r.direction]+=used;acceptedDiscoveries(s,used,onDiscovery);r.distance+=used;
   if(r.ultra?.safeAlternative&&r.ultra.status==='challenge'){r.ultra.challengeRemaining=Math.max(0,r.ultra.challengeRemaining-used);if(r.ultra.challengeRemaining<=1e-7){r.ultra.status='ready';say(s,'Your safe-route Ultra challenge is complete. Stop somewhere safe and begin when ready.');}}
   if(r.distance+1e-6>=r.nextEncounter){const milestone=r.nextEncounter;enqueue(s,{type:'encounter',id:`encounter-${milestone}`});r.nextEncounter+=CONFIG.encounterFeet*FEET;}
@@ -199,13 +206,27 @@ function endRun(s){
   r.finalScore=points;r.phase='dead';r.battle=null;r.capture=null;r.events=[];r.fruit=0;for(const k in r.essence)r.essence[k]=0;for(const k in r.items)r.items[k]=0;
   for(const p of sanctuary(s)){resetExpeditionMonkey(p);p.hp=0;}say(s,`The whole expedition team has fallen. ${points} points; sanctuary companions, bonds, branches, and equipment are preserved.`);
 }
+export function xpMultiplier(p){return p.level<=CONFIG.xp.earlyLevels?CONFIG.xp.earlyMultiplier:p.level<=CONFIG.xp.midLevels?CONFIG.xp.midMultiplier:1;}
+function grantXp(p,base){
+  const total=(p.xpRemainder||0)+base*xpMultiplier(p),earned=Math.floor(total+1e-9);
+  p.training+=earned;p.xpRemainder=Math.max(0,total-earned);return earned;
+}
 function awardXp(s,pool){
-  const members=team(s),max=Math.max(...members.map(p=>p.level)),weights=members.map(p=>(p.id===s.run.activeId?1.1:1)*(p.level<max?1.2:1)),total=weights.reduce((a,b)=>a+b,0);let left=pool;
-  members.forEach((p,i)=>{const xp=i===members.length-1?left:Math.floor(pool*weights[i]/total);p.training+=xp;left-=xp;p.bond++;});return pool;
+  const members=team(s),max=Math.max(...members.map(p=>p.level)),weights=members.map(p=>(p.id===s.run.activeId?1.1:1)*(p.level<max?1.2:1)),total=weights.reduce((a,b)=>a+b,0);let left=pool,earned=0;
+  members.forEach((p,i)=>{const xp=i===members.length-1?left:Math.floor(pool*weights[i]/total);earned+=grantXp(p,xp);left-=xp;p.bond++;});return earned;
+}
+function contribution(s,p,damage=0,healing=0){
+  const b=s.run.battle;if(!b||!p||s.collection[p.id]!==p||!s.run.party.includes(p.id))return;
+  b.contributions??={};const c=b.contributions[p.id]??={damage:0,healing:0,base:0,xp:0};
+  c.damage+=Math.max(0,damage);c.healing+=Math.max(0,healing);
+  // Count actual HP, never overkill/overheal, and bound repeat-healing rewards.
+  const cap=Math.min(CONFIG.xp.maxCombatBase,Math.max(10,Math.ceil(b.enemies.reduce((n,e)=>n+stats(e).hp,0)*.3)));
+  const next=Math.min(cap,(c.damage+c.healing)/CONFIG.xp.contributionHP);
+  c.xp+=grantXp(p,Math.max(0,next-c.base));c.base=next;
 }
 function victory(s){
   const r=s.run,b=r.battle;if(!b||b.rewarded||s.meta.claims[`reward:${b.id}`])return;b.rewarded=true;s.meta.claims[`reward:${b.id}`]=true;r.wins++;if(!b.ultra)r.ordinaryWins++;
-  const xp=18+b.enemies.reduce((n,e)=>n+e.level*2,0)+b.enemies.length*4;awardXp(s,xp);r.fruit+=2;const type=b.enemy.types[0]||rollElement(s);r.essence[type]+=2;r.items.charmMaterial=(r.items.charmMaterial||0)+1;
+  const baseXp=18+b.enemies.reduce((n,e)=>n+e.level*2,0)+b.enemies.length*4,xp=awardXp(s,baseXp);r.fruit+=2;const type=b.enemy.types[0]||rollElement(s);r.essence[type]+=2;r.items.charmMaterial=(r.items.charmMaterial||0)+1;
   const tutorial=!b.ultra&&r.ordinaryWins<=2;if(tutorial)r.items.bondCharm+=2;if(!b.ultra&&r.ordinaryWins===1){r.items.revive+=CONFIG.tutorial.revivesAfterFirst;say(s,'Introductory revival supply: restore a fallen teammate before replacing them at camp.');}
   // An Ultra's support squad cannot consume the guaranteed boss invitation.
   const eligible=b.ultra?[b.enemies.find(e=>e.species===r.ultra.species)||b.enemies[0]]:b.enemies;
@@ -230,7 +251,7 @@ export function renameMonkey(s,id,name){const p=s.collection[id];if(!p)throw Err
 export function convertDuplicate(s,id){const p=s.collection[id],r=s.run,last=r.lastCapture;if(!p||last?.id!==id||last.converted||!last.duplicate||!alive(p)||!sanctuary(s).some(other=>other.id!==id&&other.species===p.species))throw Error('Only the newly recruited conscious duplicate may be converted.');
   if(r.party.includes(id)){if(!r.party.some(other=>other!==id&&alive(s.collection[other])))throw Error('Keep a conscious expedition companion.');r.party=r.party.filter(other=>other!==id);if(r.activeId===id){r.activeId=r.party.find(other=>alive(s.collection[other]));syncActive(s);}}
   s.meta.bondMaterials[p.species]=(s.meta.bondMaterials[p.species]||0)+3;delete s.collection[id];last.converted=true;return 3;}
-function heal(p,amount,max){if(!alive(p))return;p.hp=Math.min(max,p.hp+Math.round(amount*(p.species==='langur'?1.25:1)));}
+function heal(p,amount,max){if(!alive(p))return 0;const before=p.hp;p.hp=Math.min(max,p.hp+Math.round(amount*(p.species==='langur'?1.25:1)));return Math.max(0,p.hp-before);}
 function moveAvailable(b,p,id){const m=MOVES[id];return!(p.cooldowns[id]>b.round)&&!(m.uses&&((p.uses[id]||0)>=m.uses));}
 function applyStatus(p,id,duration=2,power){p.status[id]=Math.max(p.status[id]||0,duration);if(power!==undefined)p.statusPower[id]=power;}
 function enter(s,p,side){
@@ -243,10 +264,11 @@ function replacement(s,id,side='player',forced=false){
 }
 function execute(s,actor,target,id,actorStats,targetStats,label,targetId,side='player'){
   const b=s.run.battle,m=MOVES[id],duration=m.duration||2,members=side==='player'?team(s):b.enemies;actor.energy-=m.cost||0;actor.uses[id]=(actor.uses[id]||0)+1;if(m.cooldown)actor.cooldowns[id]=b.round+m.cooldown;
-  if(m.cleanse){actor.status={};actor.statusPower={};actor.shield=0;actor.counter=0;actor.prepare=0;}
+  let restored=0;
+  if(m.cleanse){actor.statusCredit={};actor.status={};actor.statusPower={};actor.shield=0;actor.counter=0;actor.prepare=0;}
   if(m.guard){actor.guard=actor.species==='mandrill'?.3:.45;actor.energy=Math.min(actorStats.maxEnergy,actor.energy+2);}
-  if(m.energy)actor.energy=Math.min(actorStats.maxEnergy,actor.energy+m.energy);if(m.heal)heal(actor,actorStats.hp*m.heal,actorStats.hp);
-  if(m.teamHeal)for(const p of members)heal(p,stats(p,side==='player'?equipped(s,p):{}).hp*m.teamHeal,stats(p,side==='player'?equipped(s,p):{}).hp);
+  if(m.energy)actor.energy=Math.min(actorStats.maxEnergy,actor.energy+m.energy);if(m.heal)restored+=heal(actor,actorStats.hp*m.heal,actorStats.hp);
+  if(m.teamHeal)for(const p of members)restored+=heal(p,stats(p,side==='player'?equipped(s,p):{}).hp*m.teamHeal,stats(p,side==='player'?equipped(s,p):{}).hp);
   if(m.shield){actor.shield=Math.max(actor.shield||0,Math.round(actorStats.hp*m.shield));applyStatus(actor,'shield',duration);}
   if(m.counter){actor.counter=m.counter;applyStatus(actor,'counter',m.duration||1);}
   if(m.prepare){actor.prepare=m.prepare;applyStatus(actor,'prepare',duration);}
@@ -260,11 +282,12 @@ function execute(s,actor,target,id,actorStats,targetStats,label,targetId,side='p
     const eff=moveEffect(m,target.types),stab=(m.types||[m.type]).some(t=>actor.types.includes(t))?1.15:1,critRoll=random(s),crit=(!actor.tutorialHpScale||CONFIG.tutorial.enemyCriticals)&&critRoll<(actor.species==='macaque'?.14:.07),howl=actor.species==='howler'&&m.type!=='neutral'?1.12:1;
     let damage=Math.max(1,Math.round((m.power+actorStats.atk*.70-targetStats.def*.42)*eff*stab*howl*(crit?1.4:1)*(.94+random(s)*.12)*(target.guard||1)*(actor.prepare?1+actor.prepare:1)*(actor.status.weaken?1-(actor.statusPower.weaken||.25):1)));
     if(actor.prepare){actor.prepare=0;delete actor.status.prepare;}if(actor.status.weaken){delete actor.status.weaken;delete actor.statusPower.weaken;}if(target.species==='spider'&&random(s)<.08)damage=0;
-    if(target.shield){const absorbed=Math.min(target.shield,damage);target.shield-=absorbed;damage-=absorbed;}target.hp=Math.max(0,target.hp-damage);say(s,`${label}: ${m.name} → ${damage}${crit?' critical':''}${eff!==1?` (×${eff})`:''}.`);
-    if(target.counter&&damage){actor.hp=Math.max(0,actor.hp-Math.max(1,Math.round(damage*target.counter)));target.counter=0;delete target.status.counter;}
-    if(m.status&&alive(target)){const immune=m.status==='burn'&&target.types.includes('fire')||m.status==='poison'&&target.types.includes('leaf');if(!immune)applyStatus(target,m.status,duration);}
-    if(m.drain)heal(actor,damage*m.drain,actorStats.hp);if(m.drainEnergy){const drained=Math.min(target.energy,m.drainEnergy);target.energy-=drained;actor.energy=Math.min(actorStats.maxEnergy,actor.energy+drained);}
+    if(target.shield){const absorbed=Math.min(target.shield,damage);target.shield-=absorbed;damage-=absorbed;}const actualDamage=Math.min(target.hp,damage);target.hp=Math.max(0,target.hp-damage);if(side==='player')contribution(s,actor,actualDamage);say(s,`${label}: ${m.name} → ${damage}${crit?' critical':''}${eff!==1?` (×${eff})`:''}.`);
+    if(target.counter&&damage){const reflected=Math.min(actor.hp,Math.max(1,Math.round(damage*target.counter)));actor.hp=Math.max(0,actor.hp-reflected);contribution(s,target,reflected);target.counter=0;delete target.status.counter;}
+    if(m.status&&alive(target)){const immune=m.status==='burn'&&target.types.includes('fire')||m.status==='poison'&&target.types.includes('leaf');if(!immune){applyStatus(target,m.status,duration);target.statusCredit??={};if(side==='player')target.statusCredit[m.status]=actor.id;else delete target.statusCredit[m.status];}}
+    if(m.drain)restored+=heal(actor,actualDamage*m.drain,actorStats.hp);if(m.drainEnergy){const drained=Math.min(target.energy,m.drainEnergy);target.energy-=drained;actor.energy=Math.min(actorStats.maxEnergy,actor.energy+drained);}
   }else say(s,`${label} uses ${m.name}.`);
+  if(side==='player')contribution(s,actor,0,restored);
   if(m.switch&&alive(actor)){
     const options=members.filter(p=>alive(p)&&p.id!==actor.id),incoming=options.find(p=>p.id===targetId)||options[0];if(incoming){replacement(s,incoming.id,side,false);
       if(m.teamShield){incoming.shield=Math.max(incoming.shield||0,Math.round(stats(incoming).hp*m.teamShield));applyStatus(incoming,'shield',duration);}
@@ -275,8 +298,8 @@ function execute(s,actor,target,id,actorStats,targetStats,label,targetId,side='p
 }
 function tick(p,max,label,s){
   if(!alive(p))return;for(const[status,turns]of Object.entries(p.status)){
-    if(status==='burn'||status==='poison'){const n=Math.max(1,Math.round(max*.04));p.hp=Math.max(0,p.hp-n);say(s,`${label} takes ${n} ${status} damage.`);}
-    if(turns<=1){delete p.status[status];delete p.statusPower[status];if(status==='shield')p.shield=0;if(status==='counter')p.counter=0;if(status==='prepare')p.prepare=0;}else p.status[status]--;
+    if(status==='burn'||status==='poison'){const n=Math.min(p.hp,Math.max(1,Math.round(max*.04)));p.hp=Math.max(0,p.hp-n);contribution(s,s.collection[p.statusCredit?.[status]],n);say(s,`${label} takes ${n} ${status} damage.`);}
+    if(turns<=1){if(p.statusCredit)delete p.statusCredit[status];delete p.status[status];delete p.statusPower[status];if(status==='shield')p.shield=0;if(status==='counter')p.counter=0;if(status==='prepare')p.prepare=0;}else p.status[status]--;
   }
 }
 function resolveRound(s){
@@ -293,9 +316,9 @@ function resolveRound(s){
 }
 function itemApply(s,id,targetId){
   id=itemId(id);const r=s.run,p=getMonkey(s,targetId);if(!p||!r.party.includes(p.id)||!ITEMS[id]||!(r.items[id]>0))throw Error('That item is unavailable for this teammate.');const st=stats(p,equipped(s,p));
-  if(id==='revive'){if(p.hp>0)throw Error('That teammate is already conscious.');r.items[id]--;p.hp=Math.max(1,Math.round(st.hp*.30));p.status={};p.statusPower={};say(s,'A revival supply restored your teammate.');return;}if(!alive(p))throw Error('Use an actual revival supply for a knocked-out teammate.');
+  if(id==='revive'){if(p.hp>0)throw Error('That teammate is already conscious.');r.items[id]--;p.hp=Math.max(1,Math.round(st.hp*.30));p.status={};p.statusCredit={};p.statusPower={};say(s,'A revival supply restored your teammate.');return;}if(!alive(p))throw Error('Use an actual revival supply for a knocked-out teammate.');
   if(id==='berry'&&p.hp>=st.hp||id==='tonic'&&p.energy>=st.maxEnergy||id==='salve'&&!Object.keys(p.status).length&&p.hp>=st.hp)throw Error('That supply is not needed.');if(!['berry','tonic','salve'].includes(id))throw Error('Use this utility from the pack or camp.');r.items[id]--;
-  if(id==='berry')heal(p,st.hp*.35,st.hp);if(id==='tonic')p.energy=Math.min(st.maxEnergy,p.energy+8);if(id==='salve'){p.status={};p.statusPower={};heal(p,st.hp*.15,st.hp);}say(s,`Used ${ITEMS[id].name}.`);
+  if(id==='berry')heal(p,st.hp*.35,st.hp);if(id==='tonic')p.energy=Math.min(st.maxEnergy,p.energy+8);if(id==='salve'){p.statusCredit={};p.status={};p.statusPower={};heal(p,st.hp*.15,st.hp);}say(s,`Used ${ITEMS[id].name}.`);
 }
 function performTurn(s,action){
   const r=s.run,b=r.battle;if(r.phase!=='battle'||!b?.ready)throw Error('Stop safely and begin the encounter first.');const p=r.monkey,e=b.enemy,enemyAction=copy(b.enemyAction||{type:'move',id:b.intent}),em=MOVES[enemyAction.id],ps=stats(p,equipped(s,p)),es=stats(e),pm=MOVES[action.id];
@@ -303,16 +326,23 @@ function performTurn(s,action){
     if(!p.loadout.includes(action.id)||!pm||p.energy<(pm.cost||0)||!moveAvailable(b,p,action.id))throw Error('Ability unavailable, cooling down, or insufficient energy.');if(pm.switch&&p.status.root)throw Error('Rooted Challenge prevents voluntary retreat this round.');if(pm.switch&&!team(s).some(m=>alive(m)&&m.id!==p.id))throw Error('No conscious teammate can receive the relay.');
   }
   if(action.type==='switch'){const incoming=team(s).find(m=>m.id===action.id);if(!incoming||!alive(incoming)||incoming.id===p.id||p.status.root)throw Error('Choose another conscious, unrooted switch.');}
-  if(action.type==='item'){const target=getMonkey(s,action.targetId);if(!target||!r.party.includes(target.id)||!(r.items[itemId(action.id)]>0))throw Error('That supply is unavailable.');}
   const initiative=(actor,st,m)=>(m?.priority||0)*1000+st.speed*(actor.status.slow?.65:1)*(actor.status.speed?1.2:1),playerFirst=action.type!=='move'||initiative(p,ps,pm)>=initiative(e,es,em);
-  const playerAction=()=>{if(!alive(p))return;if(action.type==='switch')replacement(s,action.id,'player');else if(action.type==='item')itemApply(s,action.id,action.targetId);else execute(s,p,b.enemy,action.id,stats(p,equipped(s,p)),stats(b.enemy),'You',action.targetId,'player');};
+  const playerAction=()=>{if(!alive(p))return;if(action.type==='switch')replacement(s,action.id,'player');else execute(s,p,b.enemy,action.id,stats(p,equipped(s,p)),stats(b.enemy),'You',action.targetId,'player');};
   const enemyAct=()=>{if(!alive(e))return;const cannotRetreat=e.status.root||!b.enemies.some(m=>m.id!==e.id&&alive(m));if(enemyAction.type==='switch'&&!cannotRetreat)replacement(s,enemyAction.id,'enemy');else{const chosen=enemyAction.type==='switch'||MOVES[enemyAction.id]?.switch&&cannotRetreat||e.energy<(MOVES[enemyAction.id]?.cost||0)?'strike':enemyAction.id;execute(s,e,r.monkey,chosen,stats(e),stats(r.monkey,equipped(s,r.monkey)),'Rival',null,'enemy');}};
   if(playerFirst){playerAction();enemyAct();}else{enemyAct();playerAction();}resolveRound(s);
 }
-export function turn(s,id,isItem=false,options={}){return performTurn(s,{type:isItem?'item':'move',id,targetId:options.targetId});}
+export function turn(s,id,isItem=false,options={}){if(isItem)return useItem(s,id,options.targetId);return performTurn(s,{type:'move',id,targetId:options.targetId});}
 export function switchMonkey(s,id){return performTurn(s,{type:'switch',id});}
 export function chooseReplacement(s,id){if(s.run.phase!=='replacement')throw Error('No forced replacement is pending.');replacement(s,id,'player',true);s.run.phase='battle';if(s.run.battle.pendingVictory)victory(s);else planEnemy(s);return s.run.monkey;}
-export function useItem(s,id,targetId){if(s.run.phase==='dead')throw Error('Begin a new expedition.');if(s.run.phase==='battle')return performTurn(s,{type:'item',id,targetId});itemApply(s,id,targetId);}
+export function useItem(s,id,targetId){
+  const r=s.run;if(r.phase==='dead')throw Error('Begin a new expedition.');
+  if(['replacement','befriend'].includes(r.phase))throw Error('Finish choosing your companion first.');
+  if(r.phase==='battle'){
+    const b=r.battle;if(!b?.ready)throw Error('Stop safely and begin the encounter first.');
+    if(b.itemUsedRound===b.round)throw Error('One supply per round. Choose an ability or attack next.');
+    itemApply(s,id,targetId);b.itemUsedRound=b.round;say(s,'Supply used — your attack or ability is still available.');return;
+  }itemApply(s,id,targetId);
+}
 export function setParty(s,ids){
   const r=s.run;if(!(r.phase==='camp'||r.phase==='trail'&&r.distance===0&&r.encounters===0))throw Error('Change teammates before departure or at an earned camp.');
   if(!Array.isArray(ids)||!ids.length||ids.length>3||new Set(ids).size!==ids.length||ids.some(id=>!s.collection[id]||!alive(s.collection[id])))throw Error('Choose one to three different conscious sanctuary companions.');if(r.party.filter(id=>!ids.includes(id)).some(id=>!alive(s.collection[id])))throw Error('Revive a knocked-out teammate before replacing it.');
@@ -320,9 +350,9 @@ export function setParty(s,ids){
 }
 export function campHeal(s,id=s.run.activeId){const r=s.run,p=getMonkey(s,id);if(r.phase!=='camp'||!r.party.includes(id)||!r.camp.heals||!alive(p))throw Error('Camp recovery needs a conscious teammate and a remaining recovery action.');r.camp.heals--;heal(p,stats(p,equipped(s,p)).hp*(r.camp.seedBoost?.4:.3),stats(p,equipped(s,p)).hp);p.energy=Math.min(stats(p).maxEnergy,p.energy+3);return p;}
 export function leaveCamp(s){if(s.run.phase!=='camp')return;s.run.camp=null;s.run.phase='trail';pump(s);}
-export function trainingCost(p){return{fruit:8+p.level*4,xp:12+p.level*10};}
+export function trainingCost(p){return{fruit:p.level<=3?[0,3,5,8][p.level]:8+p.level*4,xp:12+p.level*10};}
 export function train(s,id){
-  const r=s.run,p=getMonkey(s,id);if(!p||!alive(p)||!['trail','camp'].includes(r.phase)||!r.party.includes(p.id))throw Error('Train a conscious expedition companion between encounters.');if(p.level>=CONFIG.maxLevel)throw Error('Maximum level reached.');const cost=trainingCost(p);if(r.fruit<cost.fruit||p.training<cost.xp)throw Error(`Leveling needs ${cost.xp} battle experience and ${cost.fruit} fruit.`);
+  const r=s.run,p=getMonkey(s,id);if(!p||!alive(p)||!['trail','camp'].includes(r.phase)||!r.party.includes(p.id))throw Error('Train a conscious expedition companion between encounters.');if(p.level>=CONFIG.maxLevel)throw Error('Maximum level reached.');const cost=trainingCost(p);if(r.fruit<cost.fruit||p.training<cost.xp)throw Error(`Leveling needs ${cost.xp} XP and ${cost.fruit} fruit.`);
   const before=stats(p,equipped(s,p)).hp;r.fruit-=cost.fruit;p.training-=cost.xp;p.level++;p.hp=Math.min(stats(p,equipped(s,p)).hp,p.hp+stats(p,equipped(s,p)).hp-before);say(s,`${p.nickname||SPECIES[p.species].name} reached level ${p.level}.`);return p;
 }
 export function evolutionCost(s,type,id){const p=getMonkey(s,id),next=(p?.stage||0)+1,required=[0,3,6,10][next];if(!p||!ELEMENTS[type]||next>3)return null;
@@ -358,6 +388,7 @@ export function validate(s){
   if(!r||!['trail','battle','replacement','befriend','camp','dead'].includes(r.phase)||!s.collection||!Array.isArray(r.party)||r.party.length<1||r.party.length>3||new Set(r.party).size!==r.party.length||r.party.some(id=>!s.collection[id])||!r.party.includes(r.activeId))throw Error('Invalid expedition team.');syncActive(s);const finite=n=>Number.isFinite(n)&&n>=0;
   for(const n of[r.distance,r.nextCache,r.nextEncounter,r.nextCamp,r.fruit,r.discoveryProgress,s.rng,s.meta?.legacy])if(!finite(n))throw Error('Invalid save numbers.');if(r.discoveryProgress>=1)throw Error('Invalid discovery progress.');
   for(const[id,p]of Object.entries(s.collection)){
+    p.xpRemainder??=0;if(!finite(p.xpRemainder)||p.xpRemainder>=1)throw Error('Invalid XP remainder.');
     if(id!==p.id||!SPECIES[p.species]||![p.hp,p.energy,p.level,p.training,p.bond].every(finite)||!Number.isInteger(p.level)||p.level<1||p.level>60||!Number.isInteger(p.stage)||p.stage<0||p.stage>3||!Array.isArray(p.types)||p.types.length>2||p.types.some(t=>!ELEMENTS[t])||new Set(p.types).size!==p.types.length)throw Error('Invalid sanctuary companion.');
     // Earlier v2 checkpoints predate explicit mastery choices; retain the primary path.
     if(p.stage===3&&!p.mastery){p.mastery=p.types[0];if(p.highestForm?.stage===3&&!p.highestForm.mastery)p.highestForm.mastery=p.mastery;const key=`3:${[...p.types].sort().join('+')}:mastery=${p.mastery}`;if(!p.discovered.includes(key))p.discovered.push(key);}
