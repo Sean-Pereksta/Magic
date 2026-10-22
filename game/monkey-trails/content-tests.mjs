@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SPECIES,MOVES,ELEMENTS,TYPE_CHART,STARTERS} from './data.mjs';
 
-test('release roster includes exactly the requested sixty identities, six starters and eight Ultras',()=>{
-  assert.equal(Object.keys(SPECIES).length,60);assert.equal(new Set(Object.values(SPECIES).map(s=>s.name)).size,60);
+test('release roster includes ninety identities, six starters and twelve Ultras',()=>{
+  assert.equal(Object.keys(SPECIES).length,90);assert.equal(new Set(Object.values(SPECIES).map(s=>s.name)).size,90);
   assert.deepEqual(STARTERS,['capuchin','macaque','langur','mandrill','spider','howler']);
-  assert.equal(Object.values(SPECIES).filter(s=>s.rarity==='ultra').length,8);
-  assert.deepEqual(Object.values(SPECIES).map(s=>s.number).sort((a,b)=>a-b),Array.from({length:60},(_,i)=>i+1));
+  assert.equal(Object.values(SPECIES).filter(s=>s.rarity==='ultra').length,12);
+  assert.deepEqual(Object.values(SPECIES).map(s=>s.number).sort((a,b)=>a-b),Array.from({length:90},(_,i)=>i+1));
   for(const [id,s]of Object.entries(SPECIES)){assert.equal(s.id,id);assert.ok(s.learnset.includes('strike'));assert.ok(s.learnset.length>=6);assert.ok(s.types.length<=2);for(const type of s.types)assert.ok(ELEMENTS[type]);for(const move of s.learnset)assert.ok(MOVES[move],`${id} references ${move}`);}
 });
 test('all required technique families are usable by at least one curated species',()=>{
