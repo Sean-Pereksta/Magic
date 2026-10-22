@@ -80,7 +80,10 @@ async function checkClean(page,errors){
       assert.equal(await popup.evaluate(el=>getComputedStyle(el).pointerEvents),'none');
       await page.clock.fastForward(3601);await popup.waitFor({state:'hidden'});
       for(const tab of ['team','pack','walk']){
-        await page.locator(`[data-action="tab"][data-id="${tab}"]`).click();await walk();
+        await page.locator(`[data-action="tab"][data-id="${tab}"]`).click();
+        const before=tab==='team'?await page.locator('[data-level-resource="xp"]').innerText():null;
+        await walk(2);
+        if(tab==='team')assert.notEqual(await page.locator('[data-level-resource="xp"]').innerText(),before,'Team XP bars update while walking without reopening the menu');
         assert.equal((await counts(page)).cleared,0,`${tab} must keep the watch`);
       }
       assert.ok(parseInt((await page.locator('.distance-block strong').innerText()).replace(/[^0-9]/g,''))>300);
