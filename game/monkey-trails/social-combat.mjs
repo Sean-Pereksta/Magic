@@ -30,7 +30,10 @@ function freshTeam(source,version=SOCIAL_COMBAT_VERSION){
   if(new Set(source.map(p=>p.id)).size!==source.length)throw Error('A team cannot repeat the same companion.');
   return source.map(p=>freshMember(p,p.gear||{},version));
 }
-export function snapshotTeam(state){return freshTeam(team(state).map(p=>({...p,gear:equipped(state,p)})));}
+export function snapshotTeam(state){
+ const members=team(state),lead=members.find(p=>p.id===state.run.activeId&&p.hp>0)||members.find(p=>p.hp>0)||members[0];
+ return freshTeam([lead,...members.filter(p=>p!==lead)].filter(Boolean).map(p=>({...p,gear:equipped(state,p)})));
+}
 export function averageLevel(members){if(!Array.isArray(members)||!members.length)return 1;return members.reduce((sum,p)=>sum+integer(p.level,1,CONFIG.maxLevel,'companion level'),0)/members.length;}
 export function duelStake(members){return Math.min(10,Math.max(2,2*Math.floor(averageLevel(members))));}
 export function bossHealth(level){level=integer(level,1,1000,'tribe boss level');return Math.round(1500+850*(level-1)+150*Math.pow(level-1,1.6));}

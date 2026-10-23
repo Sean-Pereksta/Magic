@@ -316,3 +316,12 @@ Optional weekly tribe adventures accept multiple contribution types and use Fire
 - `npm run test:monkey-trails:adventures-browser` adds six routed browser flows for onboarding, pending encounter reload/pass, recap persistence, evolution replay, lineups and essence discovery notifications. Existing browser fixtures now explicitly begin waiting encounters and navigate the companion sections.
 
 The implementation was checked with 240 passing module tests, 104 Firestore emulator assertions and a DOM integration exercise of encrypted practice, onboarding, companion controls, lineups, evolution, hunts, walking, recap and battle previews. The environment could not install Chromium, so full browser layout/animation assertions and physical-phone GPS, lock-screen, outdoor readability and production multi-account verification remain to be run. The DOM exercise did not validate SVG rendering or phone layout. No production data or rules were changed during verification.
+
+
+### Choose the opening monkey
+
+Before a wild, researched, or regional guardian battle starts, **Who goes out first?** lets you choose any conscious member of the current team. Ultra confirmations and friendly challenge/boss confirmations include the same choice. Selecting the starter costs no action and preserves HP, energy, status, equipment and the three party slots. The current active companion is the default; knocked-out companions require revival first.
+
+After confirming the start, changing monkeys uses the existing combat switch action. Reloading a paused fight cannot reopen the free opening choice. Older active battles retain their current fighter and normal switch rules. Friendly duels and tribe bosses put the chosen starter first in protected battle snapshots; existing battles and raid attempts retain their saved order. No Firestore rule or asset changes are required.
+
+`battle-lead-tests.mjs` covers no-cost choice, ineligible companions, save/reload restrictions, actual opening actions and protected social snapshots. The routed `browser-adventures.cjs` suite includes lead selection, disabled knocked-out choices and normal switch costs after reload.
