@@ -33,7 +33,7 @@ test('utility crafting and four-for-one essence exchanges remain available on th
   C.craft(s,'bondCharm');assert.equal(s.run.fruit,998);assert.equal(s.run.items.charmMaterial,99);assert.equal(s.run.items.bondCharm,101);
   C.craft(s,'fang');assert.equal(s.meta.gear.fang,1);assert.equal(s.meta.fragments.fang,0);
   s.run.essence.leaf=8;C.exchangeEssence(s,'leaf','ice');assert.equal(s.run.essence.leaf,4);assert.equal(s.run.essence.ice,1);
-  for(const phase of ['battle','replacement','befriend','dead']){s.run.phase=phase;const before=structuredClone(s);assert.throws(()=>C.craft(s,'berry'),/between encounters/);assert.throws(()=>C.exchangeEssence(s,'leaf','ice'),/between encounters/);assert.deepEqual(s,before);}
+  for(const phase of ['battle','replacement','befriend','dead']){s.run.phase=phase;const before=structuredClone(s);if(['battle','replacement'].includes(phase))assert.throws(()=>C.craft(s,'berry'),/active battles/);assert.throws(()=>C.exchangeEssence(s,'leaf','ice'),/between encounters/);assert.deepEqual(s,before);}
 });
 
 test('exchange previews are pure, transparent and give a twenty-percent fruit discount at camp',()=>{

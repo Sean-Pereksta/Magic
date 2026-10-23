@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as C from './core.mjs';
 import * as F from './forge.mjs';
-import {FORGE_GEAR,LEGACY_GEAR_AFFINITIES} from './equipment-data.mjs';
+import {FORGE_GEAR,EXPANSION_GEAR,LEGACY_GEAR_AFFINITIES} from './equipment-data.mjs';
+import {normalizeEquipmentInventory} from './equipment-inventory.mjs';
 
 const save=()=>{const s=C.newSave('Forge','capuchin','gps',12345);s.run.phase='camp';return s;};
 const snapshot=s=>JSON.stringify(s);
@@ -15,12 +16,14 @@ function stock(s){
   return s;
 }
 
-test('catalogue adds forty real items with all eight elements, four rarities and existing slots',()=>{
-  assert.equal(Object.keys(FORGE_GEAR).length,40);
+test('catalogue keeps forty original items and adds sixty items across six rarities and neutral affinity',()=>{
+  assert.equal(Object.keys(FORGE_GEAR).length,100);assert.equal(Object.keys(EXPANSION_GEAR).length,60);
+  for(const rarity of Object.keys(F.GEAR_RARITIES))assert.equal(Object.values(EXPANSION_GEAR).filter(g=>g.rarity===rarity).length,10);
+  assert.equal(Object.values(EXPANSION_GEAR).filter(g=>g.element==='neutral').length,12);
   for(const element of Object.keys(C.ELEMENTS))for(const rarity of Object.keys(F.GEAR_RARITIES))assert.ok(Object.values(FORGE_GEAR).some(g=>g.element===element&&g.rarity===rarity),`${element} ${rarity}`);
   for(const g of Object.values(FORGE_GEAR)){
-    assert.ok(['weapon','armor','charm'].includes(g.slot));assert.match(g.desc,/\d/);
-    assert.ok(Object.keys(g.bonuses).length+Object.keys(g.effects).length>0);
+    assert.ok(['weapon','armor','charm'].includes(g.slot));assert.match(g.desc,/\d|one|first|five/);
+    assert.ok(Object.keys(g.bonuses).length+Object.keys(g.effects).length+Object.keys(g.statsPct||{}).length>0);
     assert.ok(Object.values(g.bonuses).every(n=>Number.isFinite(n)&&n>0&&n<=12));
   }
   for(const id of Object.keys(LEGACY_GEAR_AFFINITIES))assert.ok(C.GEAR[id]);
@@ -46,7 +49,7 @@ test('empty and underfunded offerings cannot create a free roll',()=>{
 
 test('previews expose the complete exact lottery without touching RNG or save state',()=>{
   const s=stock(save()),before=snapshot(s),p=F.previewForge(s,{fruit:3,'essence:fire':7,'fragment:worldroot':2,'bond:capuchin':1});
-  assert.equal(snapshot(s),before);assert.equal(p.canCraft,true);assert.equal(p.outcomes.length,45);
+  assert.equal(snapshot(s),before);assert.equal(p.canCraft,true);assert.equal(p.outcomes.length,105);
   for(const rows of [p.outcomes,p.rarityOdds,p.elementOdds]){
     assert.equal(rows.reduce((n,row)=>n+row.tickets,0),F.FORGE_LIMITS.tickets);
     assert.ok(Math.abs(rows.reduce((n,row)=>n+row.chance,0)-1)<1e-12);
@@ -100,6 +103,7 @@ test('duplicates really upgrade and tier twelve gives explicit recyclable salvag
   s.rng=12345;const second=F.craftForge(s,inputs,'forge-2');
   assert.equal(second.itemId,first.itemId);assert.equal(second.kind,'upgraded');assert.equal(second.tier,2);
   for(const id of Object.keys(C.GEAR))s.meta.gear[id]=12;
+  normalizeEquipmentInventory(s);for(const row of Object.values(s.meta.equipmentCopies))row.tier=12;
   const before=structuredClone(s),result=F.craftForge(s,{fruit:60},'forge-3');
   assert.equal(result.kind,'salvaged');assert.equal(result.tier,12);assert.equal(s.meta.gear[result.itemId],12);
   assert.ok(result.salvage.count>0);assert.equal(s.meta.fragments[result.itemId],before.meta.fragments[result.itemId]+result.salvage.count);
@@ -115,15 +119,31 @@ test('invalid amounts, unknown IDs, sequence IDs and overlarge mixes are atomic'
   s.meta.gear.fang=13;const invalid=snapshot(s);assert.throws(()=>F.craftForge(s,{fruit:8},'forge-1'),/invalid tier/);assert.equal(snapshot(s),invalid);
 });
 
-test('trail and camp forging work while unresolved encounters remain frozen',()=>{
+test('full copy collections and malformed individual ownership reject before spending or changing RNG',()=>{
+  const full=stock(save());normalizeEquipmentInventory(full);
+  for(let n=1;n<=4000;n++){const id=`gear-copy-${n}`;full.meta.equipmentCopies[id]={id,itemId:'fang',tier:1,favorite:false,protected:true,isNew:false,acquiredAt:n,source:'test'};}
+  full.meta.equipmentSerial=4000;full.meta.gear.fang=1;const before=snapshot(full);
+  assert.throws(()=>F.craftForge(full,{fruit:8},'forge-1'),/full/);assert.equal(snapshot(full),before);
+  const broken=stock(save());normalizeEquipmentInventory(broken);broken.meta.equipmentCopies.bad={id:'bad',itemId:'fang',tier:99};const badBefore=snapshot(broken);
+  assert.throws(()=>F.craftForge(broken,{fruit:8},'forge-1'),/Invalid equipment copy/);assert.equal(snapshot(broken),badBefore);
+});
+
+test('trail and camp forging work while active battles and replacements remain locked',()=>{
   const s=stock(save());
   s.run.phase='trail';assert.equal(F.previewForge(s,{fruit:8}).canCraft,true);
   const receipt=F.craftForge(s,{fruit:8},'forge-1');assert.equal(receipt.campBonus,false);assert.equal(receipt.chargedValue,8);
-  for(const phase of ['battle','replacement','befriend','dead']){
+  for(const phase of ['battle','replacement']){
     s.run.phase=phase;const before=snapshot(s),view=F.previewForge(s,{fruit:8});
-    assert.equal(view.outcomes.length,45);assert.equal(view.canCraft,false);assert.match(view.reason,/encounter/);
-    assert.throws(()=>F.craftForge(s,{fruit:8},'forge-2'),/encounter/);assert.equal(snapshot(s),before);
+    assert.equal(view.outcomes.length,105);assert.equal(view.canCraft,false);assert.match(view.reason,/battle/);
+    assert.throws(()=>F.craftForge(s,{fruit:8},'forge-2'),/battle/);assert.equal(snapshot(s),before);
   }
+});
+
+test('crafting remains available during post-battle recruitment without changing its saved invitation',()=>{
+  const s=stock(save());s.run.phase='befriend';s.run.capture={id:'saved-recruitment',candidates:[],attempts:0,claimed:false};const invitation=structuredClone(s.run.capture);
+  assert.equal(F.previewForge(s,{fruit:8}).canCraft,true);const receipt=F.craftForge(s,{fruit:8},'forge-1');
+  assert.equal(receipt.campBonus,false);assert.equal(receipt.chargedValue,8);assert.deepEqual(s.run.capture,invitation);assert.equal(s.run.phase,'befriend');
+  s.run.phase='dead';s.run.fruit=0;assert.equal(F.previewForge(s,{fruit:8}).canCraft,false);const before=snapshot(s);assert.throws(()=>F.craftForge(s,{fruit:8},'forge-2'),/Gather/);assert.equal(snapshot(s),before);
 });
 
 test('camps charge fewer ingredients and improve the same offering without changing elemental focus',()=>{
@@ -170,6 +190,7 @@ test('receipt validation accepts old saves and rejects malformed persisted recor
 
 test('two identically seeded saves produce the same item, cost, RNG and receipt',()=>{
   const a=stock(save()),b=stock(save()),inputs={fruit:4,'essence:light':4,'fragment:lifegiver':2};
+  b.run.startedAt=a.run.startedAt; // Wall-clock creation time is not combat RNG.
   assert.deepEqual(F.craftForge(a,inputs,'forge-1'),F.craftForge(b,{'fragment:lifegiver':2,'essence:light':4,fruit:4},'forge-1'));
   assert.equal(snapshot(a),snapshot(b));
 });

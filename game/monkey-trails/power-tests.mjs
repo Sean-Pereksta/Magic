@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {newSave,stats,equipped} from './core.mjs';
 import {snapshotTeam} from './social-combat.mjs';
 import {monkeyPower,teamPower,rankMonkeys,rankCrews,POWER_EXPLANATION} from './power.mjs';
+import {EXPANSION_GEAR} from './equipment-data.mjs';
 
 const monkey=(id='one',overrides={})=>({...structuredClone(newSave('Power tests','capuchin','gps',345).run.monkey),id,...overrides});
 
@@ -20,6 +21,12 @@ test('levels, evolution, equipped gear and permanent mastery each increase power
  const evolved={...p,stage:3,types:['fire']};
  assert.ok(monkeyPower({...evolved,mastery:'fire'})>monkeyPower(evolved));
  assert.equal(monkeyPower({...evolved,mastery:'leaf'}),monkeyPower(evolved),'Unchosen elemental mastery does not count');
+});
+
+test('all sixty expansion items including exploration and crafting gear contribute to power',()=>{
+ const p=monkey(),base=monkeyPower(p);assert.equal(Object.keys(EXPANSION_GEAR).length,60);
+ for(const id of Object.keys(EXPANSION_GEAR))assert.ok(monkeyPower(p,{[id]:1})>base,id);
+ assert.ok(monkeyPower(p,{trailforgersPrism:12})>monkeyPower(p,{trailforgersPrism:1}));
 });
 
 test('current injury, knockout, energy, temporary effects and battle-only modifiers do not lower or inflate power',()=>{

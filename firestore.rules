@@ -1804,7 +1804,7 @@ service cloud.firestore {
       function mtAvailable(uid) { let p=get(/databases/$(database)/documents/monkeyTrailsSocial/v1/presence/$(uid)).data; return p.online == true && p.busy == false && p.expiresAt > request.time.toMillis() && mtPlayer(uid).activeDuel == null && mtPlayer(uid).activeRaid == null; }
       // Missing versions are released v1 battles. A saved battle keeps its
       // balance version across every replay; new equipment starts in v3.
-      function mtCombatVersion(value) { return value is int && value in [1,2,3]; }
+      function mtCombatVersion(value) { return value is int && value in [1,2,3,4]; }
       match /challenges/{id} {
         allow read: if mtEnabled() && (request.auth.uid == resource.data.from || request.auth.uid == resource.data.to);
         allow create: if mtEnabled() && request.resource.data.id == id && request.resource.data.from == request.auth.uid && request.resource.data.from != request.resource.data.to

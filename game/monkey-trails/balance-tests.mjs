@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as C from './core.mjs';
 import {monkeyPower} from './power.mjs';
+import {normalizeEquipmentInventory} from './equipment-inventory.mjs';
 
 const fixture=()=>C.newSave('Balance trail','capuchin','practice',192837);
 const close=(actual,expected)=>assert.ok(Math.abs(actual-expected)<1e-8,`${actual} != ${expected}`);
@@ -76,7 +77,7 @@ test('effectiveness feedback retains both resolved hits, ignores free items and 
 });
 
 test('existing checkpoints preserve injuries, balances, companions and exact legacy online balance',()=>{
- const s=fixture(),p=s.run.monkey;p.hp=17;p.energy=3;p.training=100;p.bond=4;s.run.fruit=21;const original=structuredClone(s),restored=C.validate(structuredClone(s));assert.equal(restored.run.monkey.hp,17);assert.equal(restored.run.monkey.energy,3);assert.equal(restored.run.fruit,21);assert.deepEqual(restored.collection,original.collection);
+ const s=fixture(),p=s.run.monkey;p.hp=17;p.energy=3;p.training=100;p.bond=4;s.run.fruit=21;const original=structuredClone(s),restored=C.validate(structuredClone(s));normalizeEquipmentInventory(original);assert.equal(restored.run.monkey.hp,17);assert.equal(restored.run.monkey.energy,3);assert.equal(restored.run.fruit,21);assert.deepEqual(restored.collection,original.collection);
  const old=C.statsLegacy({species:'capuchin',level:4,stage:2,types:['leaf','fire']},{heart:1});
  assert.deepEqual(old,{hp:C.SPECIES.capuchin.hp+24+28+9,atk:Math.round(C.SPECIES.capuchin.atk+6+4.8),def:Math.round(C.SPECIES.capuchin.def+4.2+3.4),speed:Math.round(C.SPECIES.capuchin.speed+1.95+2),maxEnergy:16});
  assert.equal(C.moveEffectLegacy({type:'fire'},['leaf','water']),1);assert.equal(C.moveEffectLegacy({type:'fire'},['leaf','ice']),4);assert.equal(C.moveEffectLegacy({type:'fire'},['water','earth']),.25);

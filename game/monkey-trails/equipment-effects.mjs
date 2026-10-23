@@ -12,6 +12,31 @@ export const equipmentTier=tier=>Number.isInteger(tier)&&tier>=1?Math.min(EQUIPM
 export const equipmentTierScale=tier=>equipmentTier(tier)?1+.08*(equipmentTier(tier)-1):0;
 const entries=gear=>Object.entries(gear||{}).filter(([id,tier])=>Object.hasOwn(GEAR,id)&&equipmentTier(tier));
 
+// Flat released bonuses retain their values; percentages add before applying.
+export function equipmentPercentBonuses(gear={}, {p,team=[],includeConditional=false,hpMaximum}={}){
+  const out={hp:0,atk:0,def:0,speed:0,maxEnergy:0};
+  for(const[id,tier]of entries(gear)){
+    const item=GEAR[id],scale=equipmentTierScale(tier),effects=item.effects||{};
+    for(const key of statKeys)if(Number.isFinite(item.statsPct?.[key]))out[key]+=item.statsPct[key]*scale;
+    if(!includeConditional)continue;
+    const maximum=hpMaximum||p?.maxHp||p?.combatStats?.hp||0,ratio=maximum>0?p?.hp/maximum:1;
+    if(effects.healthyDefense&&ratio>.5)out.def+=effects.healthyDefense*scale;
+    if(effects.woundedAttack&&ratio<.5&&p?.hp>0)out.atk+=effects.woundedAttack*scale;
+    if(effects.diverseTeamStats&&equipmentDiverseTeam(team)){out.atk+=effects.diverseTeamStats*scale;out.def+=effects.diverseTeamStats*scale;}
+  }
+  return out;
+}
+export function equipmentDiverseTeam(team=[]){
+  if(team.length!==3)return false;
+  const elements=team.map(p=>p.types||[]);
+  return elements.every(types=>types.length>0)&&elements.every((types,index)=>elements.every((other,j)=>j===index||types.every(type=>!other.includes(type))));
+}
+export function applyEquipmentStatPercentages(stats,gear={},options={}){
+ const pct=equipmentPercentBonuses(gear,options),out={...stats};
+ for(const key of statKeys)if(Number.isFinite(out[key]))out[key]*=Math.max(.1,1+pct[key]);
+ return out;
+}
+
 export function equipmentBonuses(gear={}, {legacyOnly=false}={}){
   const out={hp:0,atk:0,def:0,speed:0,maxEnergy:0};
   for(const[id,tier]of entries(gear)){
@@ -66,8 +91,9 @@ export function applyEquipmentLifesteal(p,st,gear={},damage=0){return recoverHea
 const percentage=value=>`${Number((value*100).toFixed(1))}%`;
 const number=value=>Number(value.toFixed(1));
 export function equipmentSummary(gear={}){
-  const bonuses=equipmentBonuses(gear),effects=equipmentEffects(gear),out=[],labels={hp:'maximum health',atk:'attack',def:'defense',speed:'speed',maxEnergy:'maximum energy'};
+  const bonuses=equipmentBonuses(gear),pct=equipmentPercentBonuses(gear),effects=equipmentEffects(gear),out=[],labels={hp:'maximum health',atk:'attack',def:'defense',speed:'speed',maxEnergy:'maximum energy'};
   for(const key of statKeys)if(bonuses[key])out.push(`+${number(bonuses[key])} ${labels[key]}`);
+  for(const key of statKeys)if(pct[key])out.push(`${pct[key]>0?'+':'−'}${percentage(Math.abs(pct[key]))} ${labels[key]}`);
   if(effects.energyDamage)out.push(`+${percentage(effects.energyDamage)} damage with abilities that cost energy`);
   if(effects.physicalDamage)out.push(`+${percentage(effects.physicalDamage)} physical damage`);
   for(const[type,value]of Object.entries(effects.elementDamage))out.push(`+${percentage(value)} ${ELEMENTS[type].name.toLowerCase()} damage`);
@@ -77,5 +103,8 @@ export function equipmentSummary(gear={}){
   if(effects.roundEnergy)out.push(`Recover ${Math.round(effects.roundEnergy)} extra energy after each active round`);
   if(effects.roundShield)out.push(`Refresh a ${percentage(effects.roundShield)} maximum-health shield after each active round; shields do not stack`);
   if(entries(gear).some(([id])=>GEAR[id].discoveryReduction))out.push('5% shorter walking discoveries; total acceleration caps at 20%');
+  for(const[id,tier]of entries(gear))if(GEAR[id].newItem&&Object.keys(GEAR[id].effects||{}).length){
+    const scale=equipmentTierScale(tier);out.push(GEAR[id].desc+(scale>1?` Effect percentages ×${Number(scale.toFixed(2))} at rank ${equipmentTier(tier)}; activation counts and global caps stay fixed.`:''));
+  }
   return out;
 }

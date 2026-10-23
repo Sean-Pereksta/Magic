@@ -3,11 +3,25 @@
 import {MOVES,ELEMENTS,SPECIES} from './data.mjs';
 import {CONFIG,statsForCombatVersion,equipped,team,moveEffect,moveEffectLegacy,effectInfo} from './core.mjs';
 import {equipmentDamageMultiplier,equipmentEffects} from './equipment-effects.mjs';
+import {lockEquipmentBattle,equipmentBattleGear,equipmentBattleStats,equipmentEnter,equipmentAttackDetails,equipmentApplyHit,equipmentHealingMultiplier} from './equipment-battle.mjs';
 
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const alive=p=>p&&p.hp>0;
 const combatGear=(s,p)=>s?.collection?.[p.id]?equipped(s,p):p.gear||{};
-const combatStats=(s,p,version)=>p.combatStats||statsForCombatVersion(p,combatGear(s,p),version??3);
+const combatStats=(s,p,version)=>p.combatStats||statsForCombatVersion(p,combatGear(s,p),version??4);
+
+// Simulate only on small disposable copies. This includes saved once-per-battle
+// state, temporary stat buffs, shields, fatal prevention and the shared caps.
+function equipmentPreviewContext(s,actor,target,battle){
+ const source=battle||s?.run?.battle||{},teams=source.teams||(source.team?[source.team,[source.boss]]:s?.run?[team(s),source.enemies||[target]]:[[actor],[target]]);
+ const result=structuredClone({battle:source,teams,actor,target});
+ lockEquipmentBattle(result.battle,result.teams,p=>combatGear(s,p),(p,gear)=>p.combatStats||statsForCombatVersion(p,gear,4));
+ for(const[index,members]of result.teams.entries()){
+  const active=Array.isArray(result.battle.active)?members[result.battle.active[index]]:result.battle.team?members[index===0?result.battle.active:0]:members.find(p=>p.id===(index===0?s?.run?.activeId:result.battle.enemy?.id))||members[0];
+  if(active)equipmentEnter(result.battle,active,members);
+ }
+ return result;
+}
 
 export function moveSummary(move){
   const m=typeof move==='string'?MOVES[move]:move;if(!m)return 'Unknown technique.';
@@ -51,23 +65,35 @@ export function actionAvailability(s,id,{actor=s?.run?.monkey,members,round=s?.r
   return{available:!reason,reason,cooldown,uses,cost:m?.cost||0};
 }
 
-export function damagePreview(s,id,{actor=s?.run?.monkey,target=s?.run?.battle?.enemy,socialVersion}={}){
+export function damagePreview(s,id,{actor=s?.run?.monkey,target=s?.run?.battle?.enemy,socialVersion,battle}={}){
   const m=MOVES[id];if(!m?.power||!actor||!target)return null;
-  const ast=combatStats(s,actor,socialVersion),tst=combatStats(s,target,socialVersion),multiplier=(socialVersion===1?moveEffectLegacy:moveEffect)(m,target.types||[]);
+  const modern=socialVersion===undefined||socialVersion>=4,context=modern?equipmentPreviewContext(s,actor,target,battle):null;
+  const modernStats=p=>equipmentBattleStats(context.battle,p,p.combatStats||statsForCombatVersion(p,equipmentBattleGear(context.battle,p),4),context.teams.find(members=>members.includes(p))||[]);
+  const ast=modern?modernStats(context.actor):combatStats(s,actor,socialVersion),tst=modern?modernStats(context.target):combatStats(s,target,socialVersion),multiplier=(socialVersion===1?moveEffectLegacy:moveEffect)(m,target.types||[]);
   const stab=(m.types||[m.type]).some(t=>(actor.types||[]).includes(t))?(socialVersion===1?1.15:CONFIG.elemental.stab):1;
   const howl=actor.species==='howler'&&m.type!=='neutral'?1.12:1;
   // Cleansing happens before damage and removes prepare/weaken in the reducer.
   const prepare=m.prepare||(m.cleanse?0:actor.prepare)||0,weaken=!m.cleanse&&actor.status?.weaken?(actor.statusPower?.weaken||.25):0;
-  const equipmentFactor=(socialVersion===undefined||socialVersion>=3)?equipmentDamageMultiplier(combatGear(s,actor),combatGear(s,target),m):1;
+  if(modern&&(m.heal||m.teamHeal)){
+    const boost=equipmentHealingMultiplier(context.battle,context.actor,m,{consume:false}),amount=ast.hp*(m.heal||m.teamHeal)*boost*(actor.species==='langur'?1.25:1);context.actor.hp=Math.min(ast.hp,context.actor.hp+Math.round(amount));
+  }
+  const equipmentDetails=modern?equipmentAttackDetails(context.battle,context.actor,context.target,m):null;
+  const equipmentFactor=modern?equipmentDetails.multiplier:socialVersion>=3?equipmentDamageMultiplier(combatGear(s,actor),combatGear(s,target),m):1;
   const factor=multiplier*stab*howl*(m.breakShield?1:target.guard||1)*(prepare?1+prepare:1)*(1-weaken)*equipmentFactor,shield=m.breakShield?0:target.shield||0;
-  const hit=(variance,critical)=>Math.min(target.hp,Math.max(0,Math.max(1,Math.round((m.power+ast.atk*.70-tst.def*.42)*factor*variance*(critical?1.4:1)))-shield));
+  const hit=(variance,critical)=>{
+    const amount=Math.max(1,Math.round((m.power+ast.atk*.70-tst.def*.42)*factor*variance*(critical?1.4:1)));
+    if(!modern)return Math.min(target.hp,Math.max(0,amount-shield));
+    const copy=structuredClone(context);if(m.breakShield)copy.target.shield=0;
+    return equipmentApplyHit(copy.battle,copy.actor,copy.target,m,amount,{effectiveness:multiplier,attackBonus:equipmentDetails.bonus}).damage;
+  };
   const criticalPossible=socialVersion!==undefined||!actor.tutorialHpScale||CONFIG.tutorial.enemyCriticals;
   const notes=['Estimate at the current stats and effects; actions earlier in the round can change it.'];
   if(target.species==='spider')notes.push('Spider agility can dodge a hit completely (8% chance).');
   if(target.counter)notes.push('The opponent can reflect damage.');
   if(m.status){const immune=m.status==='burn'&&target.types?.includes('fire')||m.status==='poison'&&target.types?.includes('leaf');if(immune)notes.push(`This opponent resists ${m.status}; the damage still applies.`);else notes.push(`Damage excludes later ${m.status==='burn'||m.status==='poison'?m.status+' damage':'status effects'}.`);}
   if(m.drain||(socialVersion===undefined||socialVersion>=3)&&equipmentEffects(combatGear(s,actor)).lifesteal)notes.push('Healing depends on the damage actually dealt.');
-  if(equipmentFactor!==1)notes.push('Equipped damage bonuses and elemental resistance are included.');
+  if(modern||equipmentFactor!==1)notes.push('Equipped damage bonuses, conditional protection and elemental resistance are included.');
+  if(equipmentDetails?.capped)notes.push(`Equipment damage bonuses are capped at +40% (loadout requests +${Number((equipmentDetails.rawBonus*100).toFixed(1))}%).`);
   if(shield)notes.push(`${Math.round(shield)} current shield points are included.`);
   if(m.breakShield)notes.push('Current shields and guard are removed before damage.');
   const min=hit(.94,false),max=hit(1.06,false),criticalMax=criticalPossible?hit(1.06,true):max;
