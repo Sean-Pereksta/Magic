@@ -1802,6 +1802,9 @@ service cloud.firestore {
           && north*north+east*east <= radius*radius;
       }
       function mtAvailable(uid) { let p=get(/databases/$(database)/documents/monkeyTrailsSocial/v1/presence/$(uid)).data; return p.online == true && p.busy == false && p.expiresAt > request.time.toMillis() && mtPlayer(uid).activeDuel == null && mtPlayer(uid).activeRaid == null; }
+      // Missing versions are released v1 battles. A saved battle keeps its
+      // balance version across every replay; new equipment starts in v3.
+      function mtCombatVersion(value) { return value is int && value in [1,2,3]; }
       match /challenges/{id} {
         allow read: if mtEnabled() && (request.auth.uid == resource.data.from || request.auth.uid == resource.data.to);
         allow create: if mtEnabled() && request.resource.data.id == id && request.resource.data.from == request.auth.uid && request.resource.data.from != request.resource.data.to
@@ -1816,6 +1819,7 @@ service cloud.firestore {
       match /raids/{id} {
         allow read: if mtEnabled() && request.auth.uid == resource.data.uid;
         allow create: if mtEnabled() && request.resource.data.id == id && request.resource.data.uid == request.auth.uid && request.auth.uid in mtTribe(request.resource.data.tribeId).members
+          && mtCombatVersion(request.resource.data.get('version',1)) && request.resource.data.get('patternVersion',0) in [0,1]
           && mtPlayer(request.auth.uid).activeDuel == null && mtPlayer(request.auth.uid).activeRaid == null && mtPlayer(request.auth.uid).lastRaidAt <= request.time.toMillis()-3600000
           && mtPlayerAfter(request.auth.uid).activeRaid == id && mtFresh(mtPlayerAfter(request.auth.uid).lastRaidAt) && request.resource.data.bossLevel == mtTribe(request.resource.data.tribeId).boss.level
           && request.resource.data.submitted == false && request.resource.data.damage == 0 && request.resource.data.actions == [] && request.resource.data.team is list && request.resource.data.team.size() >= 1 && request.resource.data.team.size() <= 3 && mtFresh(request.resource.data.startedAt);
@@ -1827,9 +1831,11 @@ service cloud.firestore {
       match /duels/{id} {
         allow read: if mtEnabled() && request.auth.uid in resource.data.players;
         allow create: if mtEnabled() && request.resource.data.id == id && request.resource.data.players is list && request.resource.data.players.size() == 2 && request.resource.data.players[0] != request.resource.data.players[1] && request.auth.uid == request.resource.data.players[1]
+          && mtCombatVersion(request.resource.data.state.get('version',1))
           && request.resource.data.revision == 0 && request.resource.data.actions == [] && request.resource.data.status == 'active' && request.resource.data.settled == false && mtFresh(request.resource.data.createdAt) && mtFresh(request.resource.data.updatedAt)
           && mtPlayerAfter(request.resource.data.players[0]).activeDuel == id && mtPlayerAfter(request.resource.data.players[1]).activeDuel == id;
         allow update: if mtEnabled() && request.auth.uid in resource.data.players && request.resource.data.id == resource.data.id && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state','actions','revision','updatedAt','status','settled']) && request.resource.data.players == resource.data.players && request.resource.data.initialProfiles == resource.data.initialProfiles && request.resource.data.seed == resource.data.seed && request.resource.data.escrow == resource.data.escrow && request.resource.data.createdAt == resource.data.createdAt && mtFresh(request.resource.data.updatedAt)
+          && mtCombatVersion(request.resource.data.state.get('version',1)) && request.resource.data.state.get('version',1) == resource.data.state.get('version',1)
           && request.resource.data.state.sequence == request.resource.data.revision
           && (request.resource.data.state.winner == null || request.resource.data.state.winner in resource.data.players)
           && (request.resource.data.actions.size() == resource.data.actions.size() || request.resource.data.actions[request.resource.data.actions.size()-1].action.type != 'surrender'

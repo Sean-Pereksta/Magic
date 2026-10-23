@@ -2,7 +2,7 @@
 // Recompute from catalogue stats rather than trusting a saved combatStats/power field.
 import {CONFIG,ELEMENTS,GEAR,SPECIES,stats} from './core.mjs';
 
-export const POWER_EXPLANATION='Estimated power = max HP + 4 × attack + 4 × defense + 2 × speed + 8 × max energy, including rarity, equipped gear and evolution. Team power adds your starting three. Injuries do not lower power; abilities and elemental matchups still affect battles.';
+export const POWER_EXPLANATION='Estimated power = max HP + 4 × attack + 4 × defense + 2 × speed + 8 × max energy, including rarity, equipped gear and evolution. Team power adds your starting three. Injuries do not lower power; equipment passives, abilities and elemental matchups also affect battles.';
 
 const record=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const bounded=(value,min,max,fallback)=>Number.isFinite(value)?Math.min(max,Math.max(min,Math.floor(value))):fallback;

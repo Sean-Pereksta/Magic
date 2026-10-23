@@ -80,3 +80,22 @@ test('Firestore map key ordering does not cause unchanged crews to be republishe
  const expected=(await f.controller.store.getPlayer()).version;await settle(()=>f.controller.model.me?.version===expected);
  await f.controller.heartbeat(true);assert.equal((await f.controller.store.getPlayer()).version,expected);
 });
+
+test('tribe leaderboard loads on connection and refreshes public summaries without crew listeners',async t=>{
+ const f=await fixture(t);await settle(()=>f.controller.model.rankingsStatus==='ready');assert.deepEqual(f.controller.model.tribeRankings,[]);
+ await f.adapter.transaction(async tx=>{tx.set('tribes/LEADERS',{id:'LEADERS',name:'Canopy leaders',members:['unrelated-private-player'],boss:{level:8}});});
+ await f.controller.refreshTribeRankings();assert.equal(f.controller.model.tribeRankings[0].bossesDefeated,7);assert.equal(f.controller.model.rankingsUpdatedAt,f.now);
+ assert.equal(f.watches.has('players/unrelated-private-player'),false);
+ const saved=structuredClone(f.controller.model.tribeRankings),read=f.controller.store.listTribeRankings;
+ f.controller.store.listTribeRankings=async()=>{throw Error('Offline fixture');};await f.controller.refreshTribeRankings();
+ assert.equal(f.controller.model.status,'ready');assert.equal(f.controller.model.rankingsStatus,'error');assert.match(f.controller.model.rankingsError,/Offline fixture/);assert.deepEqual(f.controller.model.tribeRankings,saved);
+ f.controller.store.listTribeRankings=read;await f.controller.refreshTribeRankings();assert.equal(f.controller.model.rankingsStatus,'ready');assert.equal(f.controller.model.rankingsError,'');
+});
+
+test('leaderboard refreshes coalesce and a disconnected request cannot repopulate the next session',async t=>{
+ const f=await fixture(t);await settle(()=>f.controller.model.rankingsStatus==='ready');let release,calls=0;
+ f.controller.store.listTribeRankings=()=>{calls++;return new Promise(resolve=>release=resolve);};
+ const first=f.controller.refreshTribeRankings(),second=f.controller.refreshTribeRankings();assert.equal(calls,1);assert.equal(f.controller.model.rankingsStatus,'loading');
+ await f.controller.stop();release([{id:'STALE',bossLevel:99}]);await Promise.all([first,second]);
+ assert.deepEqual(f.controller.model.tribeRankings,[]);assert.equal(f.controller.model.rankingsStatus,'idle');assert.equal(f.controller.model.rankingsUpdatedAt,null);
+});

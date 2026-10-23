@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {newSave} from './core.mjs';
 import {snapshotTeam,newRaidAttempt,raidAction,newDuel} from './social-combat.mjs';
-import {SocialStore,createMemorySocialAdapter,nearbyPlayers,SOCIAL_CONFIG,encodeSocialWire,decodeSocialWire} from './social-store.mjs';
+import {SocialStore,createMemorySocialAdapter,nearbyPlayers,SOCIAL_CONFIG,encodeSocialWire,decodeSocialWire,rankTribes} from './social-store.mjs';
 function fixture(){let now=1800000000000,seq=0;const adapter=createMemorySocialAdapter();const make=id=>new SocialStore(adapter,{uid:id,now:()=>now,id:()=>`ID${String(++seq).padStart(8,'0')}`});const team=snapshotTeam(newSave('fixture','capuchin','gps',12345));return{adapter,make,team,advance:n=>now+=n,now:()=>now};}
 async function player(f,id){const s=f.make(id);await s.register({saveId:`save-${id}`,name:`Trail ${id}`,team:f.team});await s.heartbeat();return s;}
 async function tribePair(){const f=fixture(),a=await player(f,'a'),b=await player(f,'b'),tribe=await a.createTribe({name:'Canopy Keepers'});await b.joinTribe(tribe.code);await a.heartbeat();await b.heartbeat();return{...f,a,b,tribe};}
@@ -20,3 +20,17 @@ test('same uid cannot silently switch saves and receipts remain visible until di
 
 test('Firestore wire snapshots round-trip canonical duels without direct nested arrays',()=>{const f=fixture(),duel=newDuel({id:'a',name:'Alice',team:f.team},{id:'b',name:'Bob',team:f.team},42),value={state:duel,result:{state:duel}};const wire=encodeSocialWire(value);const inspect=v=>{if(Array.isArray(v)){assert.ok(v.every(x=>!Array.isArray(x)));for(const x of v)inspect(x);}else if(v&&typeof v==='object')for(const x of Object.values(v))inspect(x);};inspect(wire);assert.deepEqual(decodeSocialWire(wire),value);});
 test('online discovery watches do not discard own or nearby records after one hundred entries',async()=>{const now=1800000000000,seed={};for(let i=0;i<110;i++)seed[`presence/far-${i}`]={uid:`far-${i}`,online:true,busy:false,discoverable:true,location:{lat:50,lon:0,accuracy:80,at:now},seenAt:now,expiresAt:now+90000};for(const uid of['me','near'])seed[`presence/${uid}`]={uid,online:true,busy:false,discoverable:true,location:{lat:40,lon:-74,accuracy:80,at:now},seenAt:now,expiresAt:now+90000};const adapter=createMemorySocialAdapter(seed),store=new SocialStore(adapter,{uid:'me',now:()=>now});let stop;const rows=await new Promise(resolve=>{stop=store.watchPresence(resolve);});stop();assert.equal(rows.length,112);assert.equal(nearbyPlayers(rows,'me',now)[0].uid,'near');});
+
+test('tribe rankings query global boss progress before taking the top twenty-five',async()=>{
+ const seed={};for(let i=0;i<40;i++){const id=`TRIBE${String(i).padStart(2,'0')}`;seed[`tribes/${id}`]={id,name:`Tribe ${i}`,emblem:{symbol:'leaf'},members:['private-member-id'],boss:{level:i>=38?100:i+1},wallet:{fruit:999},saveId:'private-save',location:{lat:5,lon:5}};}
+ const base=createMemorySocialAdapter(seed),requests=[],adapter={...base,list(...args){requests.push(args);return base.list(...args);}},store=new SocialStore(adapter,{uid:'observer'}),rows=await store.listTribeRankings();
+ assert.deepEqual(requests,[['tribes',[],25,[['boss.level','desc']]]]);assert.equal(rows.length,25);
+ assert.deepEqual(rows.slice(0,3).map(row=>[row.id,row.rank,row.bossLevel]),[['TRIBE39',1,100],['TRIBE38',1,100],['TRIBE37',3,38]]);
+ assert.equal(rows.at(-1).id,'TRIBE15');assert.ok(rows.every((row,index)=>!index||row.bossLevel<=rows[index-1].bossLevel));
+ for(const row of rows){assert.deepEqual(Object.keys(row).sort(),['bossLevel','bossesDefeated','emblem','id','memberCount','name','rank']);assert.equal(row.memberCount,1);assert.equal(row.bossesDefeated,row.bossLevel-1);assert.doesNotMatch(JSON.stringify(row),/private-member-id|private-save|wallet|location/);}
+});
+
+test('tribe summaries keep equal progress tied and sanitize banner metadata without mutation',()=>{
+ const tribes=[{id:'A',name:'First',members:['a','b'],emblem:null,boss:{level:4}},{id:'Z',name:'Second',members:['c'],emblem:{color:'" onload="bad'},boss:{level:4}},{id:'B',name:'Third',members:[],boss:{level:2}},{id:'invalid',boss:{level:NaN}}],before=structuredClone(tribes),rows=rankTribes(tribes);
+ assert.deepEqual(rows.map(row=>[row.id,row.rank]),[['Z',1],['A',1],['B',3]]);assert.equal(rows[0].emblem.color,'#477a51');assert.deepEqual(tribes,before);
+});

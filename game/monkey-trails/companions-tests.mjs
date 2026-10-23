@@ -49,13 +49,13 @@ test('saved lineups reference individuals and use the existing party setter with
   const restored=JSON.parse(JSON.stringify(s));F.normalizeCompanions(restored);assert.deepEqual(restored.meta.companions.lineups[0].members,[b.id]);
   assert.equal(F.removeLineup(s,row.id),true);assert.equal(F.removeLineup(s,row.id),false);
 });
-test('lineup application obeys camp, party, injury and duplicate equipment restrictions',()=>{
+test('saved lineups work anywhere between encounters and preserve injury and equipment restrictions',()=>{
   const s=save(),a=s.run.monkey,b=cloneCompanion(s,'b'),row=F.saveLineup(s,'Second',[b.id]);
-  s.run.distance=1;assert.throws(()=>F.applyLineup(s,row.id,C.setParty),/camp/);s.run.phase='camp';s.run.camp={heals:1};
-  b.hp=0;assert.throws(()=>F.applyLineup(s,row.id,C.setParty),/Revive/);b.hp=8;a.hp=0;assert.throws(()=>F.applyLineup(s,row.id,C.setParty),/knocked-out/);a.hp=8;
+  s.run.distance=10000;s.run.encounters=5;s.run.phase='battle';assert.throws(()=>F.applyLineup(s,row.id,C.setParty),/between encounters/);s.run.phase='trail';
+  b.hp=0;assert.throws(()=>F.applyLineup(s,row.id,C.setParty),/Revive/);b.hp=8;a.hp=0;F.applyLineup(s,row.id,C.setParty);assert.deepEqual(s.run.party,[b.id]);assert.equal(a.hp,0);a.hp=8;
   assert.throws(()=>F.saveLineup(s,'Bad',[b.id,b.id]),/different/);
   const gear=Object.keys(C.GEAR)[0];s.meta.gear[gear]=1;const slot=C.GEAR[gear].slot;a.equipment[slot]=gear;b.equipment[slot]=gear;const both=F.saveLineup(s,'Both',[a.id,b.id]);
-  assert.throws(()=>F.applyLineup(s,both.id,C.setParty),/equipment/);assert.deepEqual(s.run.party,[a.id]);
+  assert.throws(()=>F.applyLineup(s,both.id,C.setParty),/equipment/);assert.deepEqual(s.run.party,[b.id]);
 });
 test('favorites and saved lineups protect duplicate conversion and show exact result',()=>{
   const s=save(),p=cloneCompanion(s);s.run.lastCapture={id:p.id,duplicate:true,converted:false};
@@ -83,4 +83,18 @@ test('rendered friendship, scene, lineups and goal controls escape user labels',
 test('tracking one elemental evolution does not complete on a different form',()=>{
   const s=save(),p=s.run.monkey;F.trackEvolution(s,p.id,'leaf',C.evolutionCost);p.stage=1;p.types=['fire'];
   assert.equal(F.evolutionGoal(s,C.evolutionCost).complete,false);
+});
+test('details readiness explains blocked upgrades without advertising that they are ready',()=>{
+  const s=save(),p=s.run.monkey;p.level=3;p.training=9999;s.run.fruit=9999;s.run.essence.leaf=6;
+  const helpers={trainingCost:C.trainingCost,evolutionCost:C.evolutionCost};
+  assert.equal(F.readiness(s,p.id,helpers).label,'Evolution available');
+  s.run.phase='battle';assert.equal(F.readiness(s,p.id,helpers).label,'Finish the encounter to evolve');
+  s.run.essence.leaf=0;assert.equal(F.readiness(s,p.id,helpers).label,'Finish the encounter to level up');
+  s.run.phase='camp';assert.equal(F.readiness(s,p.id,helpers).label,'Ready to level up');
+});
+test('Sanctuary details explain lineup requirements for funded upgrades',()=>{
+  const s=save(),p=cloneCompanion(s);p.level=3;p.training=9999;s.run.fruit=9999;s.run.essence.leaf=6;
+  const helpers={trainingCost:C.trainingCost,evolutionCost:C.evolutionCost};
+  assert.equal(F.readiness(s,p.id,helpers).label,'Add to your lineup to evolve');
+  s.run.essence.leaf=0;assert.equal(F.readiness(s,p.id,helpers).label,'Add to your lineup to level up');
 });

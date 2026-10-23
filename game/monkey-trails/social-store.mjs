@@ -4,6 +4,7 @@ import {tribeWeek,TRIBE_WEEK,TRIBE_ADVENTURE,cleanContribution,emptyContribution
 import {newRaidAttempt,raidAction,bossHealth,bossReward,newDuel,duelAction,duelStake,duelRewards,SOCIAL_COMBAT_VERSION} from './social-combat.mjs';
 export const SOCIAL_ROOT=['monkeyTrailsSocial','v1'];
 export const SOCIAL_CONFIG={maxMembers:10,raidCooldown:3600000,presenceTTL:90000,challengeTTL:120000,mile:1609.344,maxOffers:20};
+export const TRIBE_RANKING_LIMIT=25;
 const clone=x=>x==null?x:structuredClone(x),blankWallet=()=>({fruit:0,items:{}});
 const cleanId=x=>{if(typeof x!=='string'||!x.length||x.length>160||x.includes('/'))throw Error('Invalid social identity.');return x;};
 const count=n=>{if(!Number.isSafeInteger(n)||n<1||n>100000)throw Error('Choose a whole amount between 1 and 100,000.');return n;};
@@ -14,6 +15,12 @@ function changeWallet(p,id,delta){const w=p.wallet;if(balance(w,id)+delta<0)thro
 const ms=v=>typeof v?.toMillis==='function'?v.toMillis():Number(v)||0;
 const average=team=>Math.max(1,Math.floor(team.reduce((n,p)=>n+p.level,0)/Math.max(1,team.length)));
 export function cleanEmblem(value={}){const shapes=['shield','circle','diamond'],symbols=['leaf','flame','bolt','moon','crown','paw'];return{shape:shapes.includes(value.shape)?value.shape:'shield',symbol:symbols.includes(value.symbol)?value.symbol:'leaf',color:/^#[0-9a-fA-F]{6}$/.test(value.color||'')?value.color:'#477a51'};}
+// Rankings use permanent shared boss progress, not private player profiles or
+// client-reported crew power. Equal boss levels share a competition rank.
+export function rankTribes(tribes=[]){
+ const rows=tribes.filter(t=>t&&typeof t.id==='string'&&Number.isSafeInteger(t.boss?.level)&&t.boss.level>=1).map(t=>({id:t.id,name:String(t.name||'Unnamed tribe').slice(0,32),emblem:cleanEmblem(t.emblem||{}),memberCount:Array.isArray(t.members)?t.members.length:0,bossLevel:t.boss.level,bossesDefeated:t.boss.level-1})).sort((a,b)=>b.bossLevel-a.bossLevel||(a.id<b.id?1:a.id>b.id?-1:0));
+ let rank=0,previous=null;return rows.map((row,index)=>{if(row.bossLevel!==previous)rank=index+1;previous=row.bossLevel;return{...row,rank};});
+}
 function cleanName(name,max=32){name=String(name||'').trim();if(name.length<3||name.length>max)throw Error(`Use a name of 3–${max} characters.`);return name;}
 function usableTeam(team){if(!Array.isArray(team)||team.length<1||team.length>3)throw Error('Choose one to three monkeys first.');return clone(team);}
 export function locationDistance(a,b){if(!a||!b)return Infinity;const rad=Math.PI/180,dlat=(a.lat-b.lat)*rad,dlon=(a.lon-b.lon)*rad,h=Math.sin(dlat/2)**2+Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin(dlon/2)**2;return 12742017.6*Math.asin(Math.sqrt(Math.min(1,h)));}
@@ -84,6 +91,7 @@ export class SocialStore{
  watchAdventureMembers(tribeId,fn,error,weekStart=tribeWeek(this.now())){return this.adapter.watchQuery('adventureMembers',[['tribeId','==',tribeId],['weekStart','==',weekStart]],fn,error);}
  watchAdventureClaims(fn,error){return this.adapter.watchQuery('adventureClaims',[['uid','==',this.uid]],fn,error);}
  listTribes(){return this.adapter.list('tribes',[],30);}
+ async listTribeRankings(){return rankTribes(await this.adapter.list('tribes',[],TRIBE_RANKING_LIMIT,[['boss.level','desc']]));}
  async walletOp(kind,operationId,details,mutate){const id=cleanId(operationId||this.makeId()),now=this.now();return this.adapter.transaction(async tx=>{const prior=await tx.get(`operations/${id}`);if(prior){if(prior.actor!==this.uid||prior.kind!==kind||JSON.stringify(prior.details.request)!==JSON.stringify(details))throw Error('That operation ID is already in use.');return prior.details.result??prior;}const result=await mutate(tx,id,now),wallets={};for(const [uid,{before,after}]of Object.entries(result.wallets||{})){wallets[uid]={before:clone(before),after:clone(after)};const p=result.players[uid];p.lastOp=id;touch(p,now);tx.set(ppath(uid),p);}const op={id,kind,actor:this.uid,participants:result.participants||Object.keys(wallets),details:{...details,...result.details,request:details,wallets,receipts:Object.fromEntries((result.receipts||[]).map(r=>[r.uid,{type:r.type,title:r.title,payload:r.payload,walletCredited:r.walletCredited}])),...(result.returnValue?{result:result.returnValue}:{})},createdAt:now};tx.set(`operations/${id}`,op);for(const r of result.receipts||[])tx.set(receiptPath(r.uid,r.id),r);return result.returnValue??op;});}
  receipt(id,uid,type,title,value,sourceId,now,walletCredited=true){return{id,uid,type,title,payload:payload(value),walletCredited,sourceId,createdAt:now,seen:false};}
  deposit(assetName,amount,operationId){assetName=assetId(assetName);amount=count(amount);return this.walletOp('deposit',operationId,{uid:this.uid,asset:assetName,amount},async tx=>{const p=requirePlayer(await tx.get(ppath(this.uid))),before=clone(p.wallet);changeWallet(p,assetName,amount);return{players:{[this.uid]:p},wallets:{[this.uid]:{before,after:p.wallet}},details:{saveId:p.saveId}};});}
@@ -162,11 +170,11 @@ export function decodeSocialWire(value){
 
 export function createFirestoreSocialAdapter({db,f}){
  const ref=path=>f.doc(db,...SOCIAL_ROOT,...path.split('/')),collection=path=>f.collection(db,...SOCIAL_ROOT,...path.split('/'));
- const query=(path,filters=[],limit=100)=>f.query(collection(path),...filters.map(([key,op,value])=>f.where(key,op,value)),...(limit==null?[]:[f.limit(limit)]));
+ const query=(path,filters=[],limit=100,order=[])=>f.query(collection(path),...filters.map(([key,op,value])=>f.where(key,op,value)),...order.map(([key,direction])=>f.orderBy(key,direction)),...(limit==null?[]:[f.limit(limit)]));
  const rows=s=>s.docs.map(d=>({id:d.id,...decodeSocialWire(d.data())}));
  return{
   async get(path){const d=await f.getDocFromServer(ref(path));return d.exists()?decodeSocialWire(d.data()):null;},
-  async list(path,filters=[],limit=100){return rows(await f.getDocs(query(path,filters,limit)));},
+  async list(path,filters=[],limit=100,order=[]){return rows(await f.getDocs(query(path,filters,limit,order)));},
   transaction(callback){return f.runTransaction(db,async native=>{const writes=[];const result=await callback({async get(path){const d=await native.get(ref(path));return d.exists()?decodeSocialWire(d.data()):null;},set(path,value){writes.push(['set',path,clone(value)]);},delete(path){writes.push(['delete',path]);}});for(const[type,path,value]of writes)if(type==='set')native.set(ref(path),encodeSocialWire(value));else native.delete(ref(path));return result;},{maxAttempts:5});},
   watchDoc(path,fn,error){return f.onSnapshot(ref(path),d=>fn(d.exists()?decodeSocialWire(d.data()):null),error);},
   watchQuery(path,filters,fn,error,limit=null){return f.onSnapshot(query(path,filters,limit),s=>fn(rows(s)),error);}
@@ -176,7 +184,12 @@ export function createFirestoreSocialAdapter({db,f}){
 export function createMemorySocialAdapter(seed={}){
  let docs=new Map(Object.entries(clone(seed))),tail=Promise.resolve();const listeners=new Set();
  const matches=(d,filters)=>filters.every(([k,op,v])=>op==='array-contains'?Array.isArray(d[k])&&d[k].includes(v):op==='=='?d[k]===v:op==='>'?d[k]>v:op==='<'?d[k]<v:false);
- const get=async path=>clone(docs.get(path)||null),list=async(path,filters=[],limit=100)=>[...docs].filter(([p,d])=>p.startsWith(path+'/')&&p.slice(path.length+1).indexOf('/')<0&&matches(d,filters)).slice(0,limit==null?undefined:limit).map(([p,d])=>({id:p.split('/').at(-1),...clone(d)}));
+ const field=(value,path)=>path.split('.').reduce((row,key)=>row?.[key],value),compare=(a,b)=>a<b?-1:a>b?1:0;
+ const get=async path=>clone(docs.get(path)||null),list=async(path,filters=[],limit=100,order=[])=>{
+  const rows=[...docs].filter(([p,d])=>p.startsWith(path+'/')&&p.slice(path.length+1).indexOf('/')<0&&matches(d,filters)&&order.every(([key])=>field(d,key)!==undefined));
+  if(order.length)rows.sort(([ap,a],[bp,b])=>{for(const[key,direction]of order){const delta=compare(field(a,key),field(b,key))*(direction==='desc'?-1:1);if(delta)return delta;}return compare(ap,bp)*(order.at(-1)[1]==='desc'?-1:1);});
+  return rows.slice(0,limit==null?undefined:limit).map(([p,d])=>({id:p.split('/').at(-1),...clone(d)}));
+ };
  const emit=()=>{for(const fn of listeners)queueMicrotask(fn);};
  return{get,list,async transaction(callback){const work=tail.then(async()=>{const next=new Map([...docs].map(([p,d])=>[p,clone(d)]));const result=await callback({get:async p=>clone(next.get(p)||null),set:(p,d)=>next.set(p,clone(d)),delete:p=>next.delete(p)});docs=next;emit();return clone(result);});tail=work.catch(()=>{});return work;},watchDoc(path,fn){let active=true;const run=()=>active&&get(path).then(fn);listeners.add(run);run();return()=>{active=false;listeners.delete(run);};},watchQuery(path,filters,fn,error,limit=null){let active=true;const run=()=>active&&list(path,filters,limit).then(fn);listeners.add(run);run();return()=>{active=false;listeners.delete(run);};},dump:()=>Object.fromEntries([...docs].map(([p,d])=>[p,clone(d)]))};
 }

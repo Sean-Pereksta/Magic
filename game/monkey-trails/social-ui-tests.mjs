@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {newSave} from './core.mjs';
 import {teamPower} from './power.mjs';
-import {renderSocialView} from './social-ui.mjs';
+import {renderSocialView,renderTribeRankings} from './social-ui.mjs';
 
 const monkey=(id='companion',overrides={})=>({...structuredClone(newSave('UI tests','capuchin','gps',123).run.monkey),id,...overrides});
 function model(team,extra={}){
@@ -46,4 +46,16 @@ test('public crew ratings recompute from permanent team data instead of trusting
  m.me.team[0].level=8;
  assert.match(crew(renderSocialView(m)),new RegExp(`data-crew-power="${teamPower(team)}"`));
  assert.ok(teamPower(team)>expected);
+});
+
+test('top tribes show progress, shared ranks and the current tribe without exposing member identities',()=>{
+ const m=model([monkey()]);m.tribeRankings=[{id:'HIGH',name:'High canopy',rank:1,bossLevel:9,bossesDefeated:8,memberCount:10},{id:'CANOPY',name:'Our canopy',rank:1,bossLevel:9,bossesDefeated:8,memberCount:3},{id:'LOW',name:'Lower canopy',rank:3,bossLevel:5,bossesDefeated:4,memberCount:2}];m.rankingsStatus='ready';m.rankingsUpdatedAt=m.now;
+ const html=renderTribeRankings(m);assert.equal((html.match(/data-tribe-rank="1"/g)||[]).length,2);assert.match(html,/data-tribe-rank="3"/);assert.match(html,/class="social-tribe-ranking is-yours" data-ranked-tribe="CANOPY"/);assert.match(html,/Your tribe/);assert.match(html,/8 bosses defeated/);assert.match(html,/3 \/ 10 members/);assert.match(html,/Highest shared boss level first/);assert.match(html,/Loaded just now/);assert.match(renderSocialView(m),/aria-label="Top tribe rankings"/);
+});
+
+test('rankings preserve escaped names and explain loading, stale and empty states',()=>{
+ const m={rankingsStatus:'loading',tribeRankings:[]};let html=renderTribeRankings(m);assert.match(html,/Loading tribe rankings/);assert.match(html,/data-social-action="refresh-rankings" disabled/);
+ m.rankingsStatus='ready';html=renderTribeRankings(m);assert.match(html,/No tribes have started/);
+ m.tribeRankings=[{id:'"><script>',name:'<img src=x onerror=bad>',rank:1,bossLevel:2,bossesDefeated:1,memberCount:1}];m.rankingsStatus='error';m.rankingsError='Offline <script>';
+ html=renderTribeRankings(m);assert.match(html,/Showing the last loaded rankings/);assert.match(html,/&lt;img/);assert.match(html,/Offline &lt;script&gt;/);assert.doesNotMatch(html,/<(?:img|script)\b/);assert.doesNotMatch(html,/<[^>]+\bon(?:load|error)\s*=/i);
 });

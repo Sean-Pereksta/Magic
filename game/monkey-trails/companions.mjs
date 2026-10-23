@@ -105,9 +105,8 @@ export function removeLineup(s,id){const data=normalizeCompanions(s),before=data
 export function lineupAvailability(s,id){
   const data=normalizeCompanions(s),row=data.lineups.find(r=>r.id===id),r=s.run;
   if(!row)return{allowed:false,reason:'This lineup is unavailable.'};
-  if(!(r?.phase==='camp'||r?.phase==='trail'&&r.distance===0&&r.encounters===0))return{allowed:false,reason:'Apply this lineup before departure or at an earned camp.'};
-  if(row.members.some(id=>!s.collection[id]||s.collection[id].hp<=0))return{allowed:false,reason:'Revive every selected companion before applying this lineup.'};
-  if(r.party.some(id=>!row.members.includes(id)&&s.collection[id]?.hp<=0))return{allowed:false,reason:'Revive a knocked-out teammate before replacing it.'};
+  if(!['trail','camp'].includes(r?.phase))return{allowed:false,reason:'Apply this lineup on the trail or at camp, between encounters.'};
+  if(row.members.some(id=>!s.collection[id]||!r.party.includes(id)&&s.collection[id].hp<=0)||!row.members.some(id=>s.collection[id]?.hp>0))return{allowed:false,reason:'Revive incoming companions and keep at least one conscious teammate.'};
   const equipment=new Set();
   for(const id of row.members)for(const[slot,gear]of Object.entries(s.collection[id].equipment||{}))if(gear){if(!GEAR[gear]||GEAR[gear].slot!==slot||!s.meta.gear?.[gear]||equipment.has(gear))return{allowed:false,reason:'Resolve the selected companions’ equipment before applying this lineup.'};equipment.add(gear);}
   return{allowed:true,reason:'Applies these individuals with their current injuries and equipment.',lineup:row};
@@ -129,10 +128,11 @@ export function readiness(s,id,{trainingCost,evolutionCost,unlocked}={}){
   const p=s.collection?.[id];if(!p)return null;
   if(p.hp<=0)return{section:'train',label:'Needs revival before training or evolving'};
   const inTeam=s.run?.party?.includes(id),available=prepare(s)&&inTeam;
-  if(typeof evolutionCost==='function')for(const type of Object.keys(ELEMENTS)){const cost=evolutionCost(s,type,id);if(cost&&p.level>=cost.level&&Object.entries(cost.cost).every(([t,n])=>(s.run.essence[t]||0)>=n))return{section:'evolve',label:available?'Evolution available':'Evolution ready · bring to your team',type};}
+  const blockedLabel=action=>!prepare(s)?`Finish the encounter to ${action}`:`Add to your lineup to ${action}`;
+  if(typeof evolutionCost==='function')for(const type of Object.keys(ELEMENTS)){const cost=evolutionCost(s,type,id);if(cost&&p.level>=cost.level&&Object.entries(cost.cost).every(([t,n])=>(s.run.essence[t]||0)>=n))return{section:'evolve',label:available?'Evolution available':blockedLabel('evolve'),type};}
   if(p.level<60&&typeof trainingCost==='function'){
     const cost=trainingCost(p),fruit=Math.max(0,cost.fruit-(s.run?.fruit||0)),xp=Math.max(0,cost.xp-(p.training||0));
-    if(!fruit&&!xp)return{section:'train',label:available?'Ready to level up':'Training ready · bring to your team'};
+    if(!fruit&&!xp)return{section:'train',label:available?'Ready to level up':blockedLabel('level up')};
     if(!xp&&fruit)return{section:'train',label:`Needs ${fruit} more fruit`};
   }
   if(typeof unlocked==='function'){const fresh=unlocked(p).filter(move=>!p.loadout.includes(move));if(fresh.length)return{section:'abilities',label:'Unlocked abilities available'};}

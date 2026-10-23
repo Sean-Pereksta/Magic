@@ -110,7 +110,7 @@ test('the thirty new monkeys have unique face geometry and body proportions befo
 test('source and packaged manifests cover every scene, variant, scale, anchor and local placeholder',async()=>{
  const manifest=JSON.parse(await readFile(resolve(gameDir,'assets/manifest.json'),'utf8'));
  assert.equal(manifest.prefix,'monkey-trails/wild-companions-v3/');assert.equal(manifest.format,'animated-svg');
- assert.deepEqual(manifest.animations,ASSET_MANIFEST.animations);assert.equal(Object.keys(manifest.species).length,90);
+ assert.deepEqual(manifest.animations,ASSET_MANIFEST.animations);assert.deepEqual(ASSET_MANIFEST.pickups,manifest.pickups,'Every advertised hosted pickup URL has a packaged asset');assert.equal(Object.keys(manifest.species).length,90);
  let scenes=0,variants=0;
  for(const s of roster){
   const entry=manifest.species[s.id],states=[...ANIMATION_STATES,...(s.rarity==='ultra'?ULTRA_STATES:[])];
