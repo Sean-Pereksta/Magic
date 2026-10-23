@@ -50,7 +50,7 @@ const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/
   const cancel=await yes(a.offerTrade('bob',{asset:'berry',amount:1},{asset:'fruit',amount:2}),'second escrow trade');await yes(b.cancelTrade(cancel.id),'recipient cancels and refunds escrow');
   await yes(a.heartbeat(),'first presence');await yes(b.heartbeat(),'second presence');
   const challenge=await yes(a.challenge('bob'),'tribe challenge');const duel=await yes(b.acceptChallenge(challenge.id),'accept and escrow duel');
-  assert.equal(duel.state.version,3);checks++;
+  assert.equal(duel.state.version,4);checks++;
   await blocked(a.challenge('bob'),'busy players reject new challenges');
   await no(f.updateDoc(f.doc(dbs.charlie,root,'duels',duel.id),{revision:1}),'outsider cannot append turn');
   await blocked(b.act(duel.id,{type:'move',id:'strike'},0),'off-turn play denied');
@@ -70,16 +70,16 @@ const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/
   const bobBase=createFirestoreSocialAdapter({db:dbs.bob,f}),badEscrow={...bobBase,transaction:cb=>bobBase.transaction(async tx=>{const writes=[];const result=await cb({get:tx.get,set:(p,v)=>writes.push([p,structuredClone(v)]),delete:tx.delete});const operation=writes.find(([p,v])=>p.startsWith('operations/')&&v.kind==='duel-start')?.[1];if(operation){for(const uid of operation.participants){operation.details.escrow[uid]=-1;operation.details.wallets[uid].after.fruit=operation.details.wallets[uid].before.fruit+1;writes.find(([p])=>p===`players/${uid}`)[1].wallet.fruit=operation.details.wallets[uid].after.fruit;}writes.find(([p])=>p.startsWith('duels/'))[1].escrow=structuredClone(operation.details.escrow);}for(const [p,v]of writes)tx.set(p,v);return result;})};
   await no(new SocialStore(badEscrow,{uid:'bob'}).acceptChallenge(counterfeit.id),'negative escrow cannot mint either player fruit');await yes(b.declineChallenge(counterfeit.id),'close rejected malicious acceptance');
   const futureChallenge=await yes(a.challenge('bob'),'future-version challenge fixture');
-  await no(mutatedStore('bob',(p,v)=>{if(p.startsWith('duels/'))v.state.version=4;}).acceptChallenge(futureChallenge.id),'unknown duel balance version rejected');await yes(b.declineChallenge(futureChallenge.id),'close rejected future-version challenge');
+  await no(mutatedStore('bob',(p,v)=>{if(p.startsWith('duels/'))v.state.version=5;}).acceptChallenge(futureChallenge.id),'unknown duel balance version rejected');await yes(b.declineChallenge(futureChallenge.id),'close rejected future-version challenge');
   await no(f.setDoc(f.doc(dbs.charlie,root,'receipts','alice','entries','fake'),{id:'fake',uid:'alice',type:'raid',title:'Forged',payload:{fruit:100,xp:100,items:{}},walletCredited:true,sourceId:'fake',createdAt:Date.now(),seen:false}),'outsider forged rewards denied');
   await yes(c.heartbeat({discoverable:true,location:{lat:40,lon:-74,accuracy:100,at:Date.now()}}),'nearby presence');await yes(a.heartbeat({discoverable:true,location:{lat:40,lon:-74,accuracy:100,at:Date.now()}}),'own nearby presence');
   const nearby=await yes(a.challenge('charlie'),'opted-in nearby challenge');await yes(c.declineChallenge(nearby.id),'nearby decline');
   await yes(c.heartbeat({discoverable:true,location:{lat:42,lon:-74,accuracy:100,at:Date.now()}}),'far presence');await blocked(a.challenge('charlie'),'one-mile boundary blocks far strangers');
-  await no(mutatedStore('alice',(p,v)=>{if(p.startsWith('raids/'))v.version=4;}).startRaid(),'unknown raid balance version rejected');
-  const raid=await yes(a.startRaid(),'hourly raid start');assert.equal(raid.version,3);checks++;
+  await no(mutatedStore('alice',(p,v)=>{if(p.startsWith('raids/'))v.version=5;}).startRaid(),'unknown raid balance version rejected');
+  const raid=await yes(a.startRaid(),'hourly raid start');assert.equal(raid.version,4);checks++;
   await no(f.updateDoc(f.doc(dbs.alice,root,'raids',raid.id),{version:2}),'raid balance version immutable');
   await yes(a.abandonRaid(raid.id),'raid abandonment clears busy');await yes(a.heartbeat(),'raid availability');await blocked(a.startRaid(),'server cooldown rejects second hourly attempt');
-  for(const version of [undefined,1,2]){
+  for(const version of [undefined,1,2,3]){
    await env.withSecurityRulesDisabled(ctx=>f.updateDoc(f.doc(ctx.firestore(),root,'players','alice'),{lastRaidAt:0}));
    const legacyRaid=await yes(mutatedStore('alice',(p,v)=>{if(p.startsWith('raids/')){if(version===undefined)delete v.version;else v.version=version;}}).startRaid(),`legacy ${version===undefined?'unversioned':`v${version}`} raid fixture`);
    const legacyResult=await yes(a.submitRaid(legacyRaid.id,Array.from({length:10},()=>({type:'move',id:'strike'}))),`legacy ${version===undefined?'unversioned':`v${version}`} raid replay submits`);assert.equal(legacyResult.attempt.version,version);checks++;

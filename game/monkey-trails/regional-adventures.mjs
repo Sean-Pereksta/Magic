@@ -4,6 +4,7 @@ import {SPECIES,ELEMENTS,DIRECTIONS,ITEMS} from './data.mjs';
 import {LANDS,landProgress,normalizeLands} from './lands.mjs';
 import {terrainAt} from './terrain.mjs';
 import {recordTribeProgress} from './tribe-adventures.mjs';
+import {awardGearCopy,normalizeEquipmentInventory} from './equipment-inventory.mjs';
 
 const landById=new Map(LANDS.map(l=>[l.id,l]));
 const regionId=(index)=>LANDS[index].id;
@@ -86,7 +87,7 @@ export const REGION_ADVENTURES=Object.freeze(LANDS.map((land,index)=>{
   {kind:'seen',title:'Meet the local companions',goal:index<3?1:2,unit:'species',text:`Win encounters with different ${land.types.map(t=>ELEMENTS[t].name).join(' or ')} companions from this region. Recruitment remains your choice.`,reward:{fruit:1,items:{bondCharm:1},essence:{}}},
   {kind:'victories',title:`Secure the ${index%2?'supply trail':'landmark approach'}`,goal:2,unit:'wins',text:'Prepare elemental counters and win two wild encounters from this region.',reward:{fruit:2,items:{tonic:1},essence:{}}},
   {kind:'guardian',title:`Challenge the ${guardianName}`,goal:1,unit:'guardian',text:`A ${SPECIES[guardian].name} guards the final passage. Its intent reveals when to defend, break a shield, or switch. Requires ${speciesMinimumFeet(guardian).toLocaleString()} accepted expedition feet.`,reward:{fruit:2,items:{salve:1},essence:{}}},
-  {kind:'distance',title:`Return with the ${keepsake}`,goal:350+index*35,unit:'m',text:`Carry the story home along any safe route and earn your ${keepsake}.`,reward:{fruit:2,items:{},essence:{[land.types[0]]:2},cosmetic:`${land.id}:keepsake`}}
+  {kind:'distance',title:`Return with the ${keepsake}`,goal:350+index*35,unit:'m',text:`Carry the story home along any safe route and earn your ${keepsake}.`,reward:{fruit:2,items:{},essence:{[land.types[0]]:2},gear:[['trailfinderCompass','charcoalHeart','staticRelayCharm','nightfangTooth','quakehideBelt','trailfinderCompass','resourceLens','dawnRelayBell','dewdropChalice','briarloopBand'][index]],cosmetic:`${land.id}:keepsake`}}
  ];
  return Object.freeze({id:land.id,landId:land.id,title,story,guardian,guardianName,keepsake,steps:Object.freeze(order.map((i,n)=>Object.freeze({...actions[i],id:`adventure:${land.id}:${n}`,landId:land.id,index:n})))});
 }));
@@ -156,6 +157,8 @@ export function claimAdventure(s,id){
  if(row.claimed)throw Error('This adventure reward is already claimed.');if(!row.active||!row.complete||!row.unlocked)throw Error('Complete this adventure step first.');if(!canClaim(s))throw Error('Return to a living trail or camp to claim this reward.');
  const reward=step.reward,r=s.run;
  if(!Number.isSafeInteger(r.fruit)||r.fruit<0||!record(r.items)||!record(r.essence)||Object.entries(reward.items).some(([id,n])=>!ITEMS[id]||!Number.isSafeInteger(r.items[id])||r.items[id]<0||r.items[id]+n>Number.MAX_SAFE_INTEGER)||r.fruit+reward.fruit>Number.MAX_SAFE_INTEGER||Object.entries(reward.essence).some(([id,n])=>!ELEMENTS[id]||!Number.isSafeInteger(r.essence[id])||r.essence[id]<0||r.essence[id]+n>Number.MAX_SAFE_INTEGER))throw Error('Your expedition supplies are unavailable.');
+ if(reward.gear?.length)normalizeEquipmentInventory(s);
+ for(const itemId of reward.gear||[]){const awarded=awardGearCopy(s,itemId,{source:`milestone:${id}`});if(awarded.kind==='salvaged'){s.meta.fragments??={};s.meta.fragments[itemId]=(s.meta.fragments[itemId]||0)+5;}}
  r.fruit+=reward.fruit;for(const [id,n]of Object.entries(reward.items))r.items[id]+=n;for(const [id,n]of Object.entries(reward.essence))r.essence[id]+=n;
  const saved=s.meta.adventures,local=saved.regions[step.landId];local.claimed.push(id);local.current=0;local.seen=[];local.stepId=adventureById.get(step.landId).steps.find(x=>!local.claimed.includes(x.id))?.id||null;
  if(reward.cosmetic&&!saved.cosmetics.includes(reward.cosmetic))saved.cosmetics.push(reward.cosmetic);

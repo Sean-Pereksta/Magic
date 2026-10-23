@@ -82,6 +82,7 @@ function assertPaidCosts(before,after,receipt){
 function assertCraftState(actual,expected){
   assert.deepEqual(actual.meta.forge,expected.meta.forge,'The persisted receipt is the one originally rolled');
   assert.deepEqual(actual.meta.gear,expected.meta.gear,'One duplicate adds exactly one equipment rank');
+  assert.deepEqual(actual.meta.equipmentCopies,expected.meta.equipmentCopies,'Only the eligible individual duplicate is upgraded');
   assert.equal(actual.rng,expected.rng,'The craft consumes exactly one RNG transition');
   assert.equal(actual.run.fruit,expected.run.fruit);assert.deepEqual(actual.run.essence,expected.run.essence);
   assert.deepEqual(actual.run.items,expected.run.items);assert.deepEqual(actual.meta.fragments,expected.meta.fragments);
@@ -125,15 +126,18 @@ async function checkOddsAndLayout(page){
   assert.ok(elemental.elementOdds.find(row=>row.id==='fire').chance>rare.elementOdds.find(row=>row.id==='fire').chance,'Adding fire essence raises fire-item odds');
   assert.ok(elemental.elementOdds.find(row=>row.id==='fire').chance>elemental.elementOdds.find(row=>row.id==='water').chance);
   await page.locator('[data-action="forge-odds"]').click();
-  assert.match(await page.locator('.forge-item-odds > .muted').innerText(),/45 items share a total 100% chance/);
-  assert.equal(await page.locator('.forge-outcome').count(),8,'The full catalogue is paginated');
-  const firstNames=await page.locator('.forge-outcome h3').allTextContents();await page.locator('[data-action="forge-odds-page"][data-id="1"]').click();
-  assert.notDeepEqual(await page.locator('.forge-outcome h3').allTextContents(),firstNames);
+  assert.match(await page.locator('.forge-item-odds > .muted').innerText(),new RegExp(`${elemental.outcomes.length} eligible items share 100%`));
+  assert.equal(elemental.rarityOdds.length,6,'All six rarity probabilities are displayed');
+  assert.equal(await page.locator('.forge-outcome').count(),12,'The full catalogue uses compact paginated tiles');
+  const names='.forge-outcome button > span:not(.forge-gear-icon)',firstNames=await page.locator(names).allTextContents();await page.locator('[data-action="forge-odds-page"][data-id="1"]').click();
+  assert.notDeepEqual(await page.locator(names).allTextContents(),firstNames);
   await page.locator('[data-odds-filter="rarity"]').selectOption('rare');await page.locator('[data-odds-filter="element"]').selectOption('fire');
   const expected=elemental.outcomes.filter(row=>row.rarity==='rare'&&row.element==='fire').sort((a,b)=>b.chance-a.chance||a.name.localeCompare(b.name));
-  assert.deepEqual(await page.locator('.forge-outcome h3').allTextContents(),expected.map(row=>row.name));
-  assert.deepEqual(await page.locator('.forge-outcome .equipment-slot-heading > strong').allTextContents(),expected.map(row=>percent(row.chance)));
-  for(const outcome of await page.locator('.forge-outcome').all())assert.ok(await outcome.locator('.gear-effects li').count()>0,'Possible items describe their real effects');
+  assert.deepEqual(await page.locator(names).allTextContents(),expected.map(row=>row.name));
+  assert.deepEqual(await page.locator('.forge-outcome button > strong').allTextContents(),expected.map(row=>percent(row.chance)));
+  for(let index=0;index<expected.length;index++){
+    await page.locator('.forge-outcome [data-action="inventory-item"]').nth(index).click();assert.equal(await page.locator('.equipment-detail-heading h2').innerText(),expected[index].name);assert.ok((await page.locator('.equipment-description').innerText()).length>10,'Possible items open their full real effects');await page.locator('[data-action="inventory-back-odds"]').click();
+  }
   await page.locator('#dialog-content [data-action="close-dialog"]').click();
   const predicted=await predictCraft(page);assert.equal(predicted.receipt.campBonus,false);
   await doubleClickRoll(page);await waitForResult(page);
@@ -155,10 +159,10 @@ async function checkCraftAndTransfer(page,fixture){
   saved=await readSaved(page);assertCraftState(saved,predicted.state);
   assert.equal(await page.locator('.forge-result h3').innerText(),predicted.receipt.name);
   assert.match(await page.locator('.forge-result .equipment-slot-heading small').innerText(),/Rank 2/);
-  await page.locator('#gear-target').selectOption(fixture.reserve);
+  await page.locator('.pack-equipment-current > summary').click();await page.locator('#gear-target').selectOption(fixture.reserve);await page.locator('.pack-equipment-current > summary').click();
   await page.locator('#view [data-action="gear-picker"][data-id="charm"]').click();
   await page.locator('[data-gear-filter="element"]').selectOption('leaf');await page.locator('[data-gear-filter="rarity"]').selectOption('common');
-  const move=page.locator('#dialog-content [data-action="equip"][data-id="heart"]');assert.match(await move.innerText(),/Move from/);await move.click();
+  await page.locator('#dialog-content [data-action="inventory-item"][data-id="heart"]').click();const move=page.locator('#dialog-content [data-action="inventory-equip"]');assert.match(await move.innerText(),/Move from/);await move.click();
   saved=await waitForSaved(page,state=>state.collection[fixture.reserve].equipment.charm==='heart','the new equipment owner');
   assert.equal(saved.collection[fixture.lead].equipment.charm,null);assert.equal(saved.meta.equipped.charm,null);
   assert.equal(saved.collection[fixture.lead].hp,fixture.leadHp);assert.equal(saved.collection[fixture.reserve].hp,fixture.reserveHp);
@@ -183,7 +187,7 @@ async function checkFailedSaveRetry(page){
   assert.ok(await page.evaluate(()=>window.__forgeFailedWrites)>0,'The real checkpoint attempted the injected device write');
   assert.match(await page.locator('[data-action="forge-roll"]').innerText(),/Retry saving crafted item/);
   assert.equal(await page.locator('[data-action="forge-add"]').isDisabled(),true);
-  assert.equal(await page.locator('.forge-result [data-action="equip"]').isDisabled(),true);
+  assert.equal(await page.locator('.forge-result [data-equip-start="true"]').isDisabled(),true);
   assert.equal(await page.locator('.forge-result h3').innerText(),predicted.receipt.name);
   const unsaved=await readSaved(page);assert.deepEqual(unsaved.meta.forge,before.meta.forge);assert.deepEqual(unsaved.meta.gear,before.meta.gear);
   assert.equal(unsaved.run.fruit,before.run.fruit);assert.deepEqual(unsaved.run.essence,before.run.essence);assert.deepEqual(unsaved.run.items,before.run.items);

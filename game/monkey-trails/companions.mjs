@@ -2,6 +2,7 @@
 // travel hook; no coordinates or real-world route records are stored here.
 import {ELEMENTS,DIRECTIONS,GEAR,SPECIES} from './data.mjs';
 import {LANDS} from './lands.mjs';
+import {equipmentSlots} from './equipment-inventory.mjs';
 
 export const FRIENDSHIP_TIERS=Object.freeze([
   Object.freeze({id:'new',name:'New Friend',bond:0,reward:'A place in your Sanctuary',pose:'idle',title:'New Friend',accent:'none'}),
@@ -108,7 +109,7 @@ export function lineupAvailability(s,id){
   if(!['trail','camp'].includes(r?.phase))return{allowed:false,reason:'Apply this lineup on the trail or at camp, between encounters.'};
   if(row.members.some(id=>!s.collection[id]||!r.party.includes(id)&&s.collection[id].hp<=0)||!row.members.some(id=>s.collection[id]?.hp>0))return{allowed:false,reason:'Revive incoming companions and keep at least one conscious teammate.'};
   const equipment=new Set();
-  for(const id of row.members)for(const[slot,gear]of Object.entries(s.collection[id].equipment||{}))if(gear){if(!GEAR[gear]||GEAR[gear].slot!==slot||!s.meta.gear?.[gear]||equipment.has(gear))return{allowed:false,reason:'Resolve the selected companions’ equipment before applying this lineup.'};equipment.add(gear);}
+  for(const id of row.members){const p=s.collection[id],named=new Set();for(const[slot,gear]of Object.entries(p.equipment||{}))if(gear){const copyId=p.equipmentCopies?.[slot]||gear;if(!GEAR[gear]||!equipmentSlots(p).includes(slot)||!s.meta.gear?.[gear]||equipment.has(copyId)||named.has(gear))return{allowed:false,reason:'Resolve the selected companions’ equipment before applying this lineup.'};equipment.add(copyId);named.add(gear);}}
   return{allowed:true,reason:'Applies these individuals with their current injuries and equipment.',lineup:row};
 }
 export function applyLineup(s,id,setParty){

@@ -3,6 +3,9 @@
 import {ITEMS} from './data.mjs';
 import {recordTribeProgress} from './tribe-adventures.mjs';
 import {LANDS,landProgress,normalizeLands} from './lands.mjs';
+import {awardGearCopy,normalizeEquipmentInventory} from './equipment-inventory.mjs';
+
+const RARE_REWARDS=['briarloopBand','quakehideBelt','resourceLens','dewdropChalice','frostguardBrooch','staticRelayCharm','charcoalHeart','nightfangTooth','dawnRelayBell','trailfinderCompass'];
 
 const THEMES=[
  ['Canopy Wanderer','Hidden Fruit Trail','Temple Guardian',{fruit:3,items:{berry:2}},{fruit:2,items:{bondCharm:1}},{fruit:4,items:{tonic:1}}],
@@ -16,19 +19,19 @@ const THEMES=[
  ['Starlight Voyager','Sanctuary Secrets','Celestial Champion',{fruit:11,items:{tonic:3}},{fruit:6,items:{campfireSeed:2}},{fruit:12,items:{revive:2}}],
  ['Golden Crown Pilgrim','Royal Treasury Trail','Kingdom Protector',{fruit:12,items:{berry:5}},{fruit:8,items:{treasureScent:2}},{fruit:15,items:{revive:2,bondCharm:2}}]
 ];
-const freezeReward=reward=>Object.freeze({fruit:reward.fruit,items:Object.freeze({...reward.items})});
+const freezeReward=reward=>Object.freeze({fruit:reward.fruit,items:Object.freeze({...reward.items}),...(reward.gear?{gear:Object.freeze([...reward.gear])}:{})});
 export const REGION_CHALLENGES=Object.freeze(LANDS.flatMap((land,index)=>{
  const [walk,finds,battle,...rewards]=THEMES[index],distance=750+index*250,discoveries=8+index*2,victories=2+Math.floor(index/2);
  return[
   {kind:'distance',title:walk,goal:distance,unit:'m',description:`Walk ${distance.toLocaleString()} accepted meters in ${land.name}.`},
   {kind:'discoveries',title:finds,goal:discoveries,unit:'finds',description:`Make ${discoveries} trail discoveries while exploring ${land.name}.`},
   {kind:'victories',title:battle,goal:victories,unit:'wins',description:`Win ${victories} wild encounters in ${land.name}. Tribe and friendly battles do not count.`}
- ].map((goal,i)=>Object.freeze({...goal,id:`${land.id}:${goal.kind}`,landId:land.id,reward:freezeReward(rewards[i])}));
+ ].map((goal,i)=>Object.freeze({...goal,id:`${land.id}:${goal.kind}`,landId:land.id,reward:freezeReward({...rewards[i],...(goal.kind==='victories'?{gear:[RARE_REWARDS[index]]}:{})})}));
 }));
 const byId=new Map(REGION_CHALLENGES.map(challenge=>[challenge.id,challenge])),landIds=new Set(LANDS.map(land=>land.id));
 const record=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const counter=value=>Number.isSafeInteger(value)&&value>=0?Math.min(1000000000,value):0;
-const rewardCopy=reward=>({fruit:reward.fruit,items:{...reward.items}});
+const rewardCopy=reward=>({fruit:reward.fruit,items:{...reward.items},...(reward.gear?{gear:[...reward.gear]}:{})});
 
 export function normalizeChallenges(s){
  if(!s||!record(s.meta))throw Error('Open your saved sanctuary first.');
@@ -84,6 +87,8 @@ export function claimChallenge(s,id){
  if(!['gps','practice'].includes(s.mode)||!['trail','camp'].includes(run?.phase)||!Array.isArray(run.party)||!run.party.some(monkeyId=>s.collection?.[monkeyId]?.hp>0))throw Error('Return to a living trail or camp to claim this reward.');
  if(!Number.isSafeInteger(run.fruit)||run.fruit<0||!record(run.items)||Object.entries(goal.reward.items).some(([item])=>!Object.hasOwn(ITEMS,item)||!Number.isSafeInteger(run.items[item])||run.items[item]<0))throw Error('Your expedition supplies are unavailable.');
  if(run.fruit+goal.reward.fruit>Number.MAX_SAFE_INTEGER||Object.entries(goal.reward.items).some(([item,n])=>run.items[item]+n>Number.MAX_SAFE_INTEGER))throw Error('Your expedition supplies are full.');
+ if(goal.reward.gear?.length)normalizeEquipmentInventory(s);
+ for(const itemId of goal.reward.gear||[]){const awarded=awardGearCopy(s,itemId,{source:`challenge:${id}`});if(awarded.kind==='salvaged'){s.meta.fragments??={};s.meta.fragments[itemId]=(s.meta.fragments[itemId]||0)+5;}}
  run.fruit+=goal.reward.fruit;
  for(const [item,n] of Object.entries(goal.reward.items))run.items[item]+=n;
  s.meta.regionChallenges.claimed.push(id);

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import * as C from './core.mjs';
-import {FORGE_GEAR} from './equipment-data.mjs';
+import {ORIGINAL_FORGE_GEAR as FORGE_GEAR} from './equipment-data.mjs';
 import {equipmentBonuses,equipmentEffects,equipmentDamageMultiplier,equipmentSummary,applyEquipmentRecovery,applyEquipmentLifesteal} from './equipment-effects.mjs';
 import {damagePreview} from './battle-guide.mjs';
 import {newDuel,duelAction,newRaidAttempt,raidAction,snapshotTeam,SOCIAL_COMBAT_VERSION} from './social-combat.mjs';
@@ -56,9 +56,9 @@ test('equipping and removing items preserve injuries, unique ownership and maxim
   battle(s);const before=JSON.stringify(s);assert.throws(()=>C.unequip(s,'charm'),/between encounters/);assert.equal(JSON.stringify(s),before);
 });
 
-test('saved gear cannot use the wrong slot or have two monkey owners',()=>{
-  const s=save(),reserve=addReserve(s);equip(s,'sapwell');const wrong=structuredClone(s);wrong.run.monkey.equipment.weapon='sapwell';assert.throws(()=>C.validate(wrong),/equipment ownership/);
-  reserve.equipment.charm='sapwell';assert.throws(()=>C.validate(s),/equipment ownership/);
+test('one equipment copy cannot occupy two slots or have two monkey owners',()=>{
+  const s=save(),reserve=addReserve(s);equip(s,'sapwell');const wrong=structuredClone(s);wrong.run.monkey.equipment.weapon='sapwell';assert.throws(()=>C.validate(wrong),/equipment ownership|individual available copy/);
+  reserve.equipment.charm='sapwell';assert.throws(()=>C.validate(s),/equipment ownership|individual available copy/);
 });
 
 test('maximum tier fragment upgrades reject before spending any resource',()=>{
@@ -116,7 +116,7 @@ test('lifesteal restores only actual HP damage and active energy and shield effe
 
 test('new social copies apply equipment stats and effects without modifying expedition injuries',()=>{
   const s=save();teach(s.run.monkey);equip(s,'furnaceCore');equip(s,'snowmend');s.run.monkey.hp=10;s.run.monkey.energy=1;const source=JSON.stringify(s),members=snapshotTeam(s),r=newRaidAttempt(members,3,123);
-  assert.equal(r.version,SOCIAL_COMBAT_VERSION);assert.equal(r.version,3);r.team[0].hp=10;
+  assert.equal(r.version,SOCIAL_COMBAT_VERSION);assert.equal(r.version,4);r.team[0].hp=10;
   const preview=damagePreview(null,'cinder',{actor:r.team[0],target:r.boss,socialVersion:r.version});raidAction(r,{type:'move',id:'cinder'});
   assert.ok(r.lastHit.damage>=preview.min&&r.lastHit.damage<=(r.lastHit.critical?preview.criticalMax:preview.max));assert.ok(r.team[0].hp>10);assert.equal(JSON.stringify(s),source);
   const old=newRaidAttempt(members,3,123,2);old.team[0].hp=10;raidAction(old,{type:'move',id:'cinder'});assert.equal(old.team[0].hp,10);assert.ok(old.totalDamage<r.totalDamage);
@@ -124,8 +124,8 @@ test('new social copies apply equipment stats and effects without modifying expe
 
 test('version-three social gear has one item per slot and one owner per gear ID',()=>{
   const s=save(),reserve=addReserve(s);equip(s,'sapwell');const members=snapshotTeam(s);members[0].gear.furnaceCore=1;
-  const r=newRaidAttempt(members);assert.equal(Object.keys(r.team[0].gear).length,1);
-  members[1].gear.sapwell=1;assert.throws(()=>newRaidAttempt(members),/unique companion owner/);
+  const r=newRaidAttempt(members,1,5,3);assert.equal(Object.keys(r.team[0].gear).length,1);
+  members[1].gear.sapwell=1;assert.throws(()=>newRaidAttempt(members,1,5,3),/unique companion owner/);
   assert.doesNotThrow(()=>newRaidAttempt(members,1,5,2));
 });
 

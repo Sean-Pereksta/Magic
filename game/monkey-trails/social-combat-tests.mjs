@@ -108,7 +108,7 @@ test('in-flight version-one duels and raid tickets retain their released balance
 });
 test('new fights recompute rarity stats and reject forged cached combat strength',()=>{
  const [a,b]=legacyProfiles();a.team[0].combatStats={hp:999999,atk:999999};const d=S.newDuel(a,b,34567),r=S.newRaidAttempt(a.team,9,4343);
- assert.equal(d.version,3);assert.equal(r.version,3);
+ assert.equal(d.version,4);assert.equal(r.version,4);
  assert.deepEqual(d.teams[0][0].combatStats,C.stats(a.team[0],a.team[0].gear));
  assert.ok(d.teams[0][0].maxHp>C.statsLegacy(a.team[0],a.team[0].gear).hp);
  assert.throws(()=>S.newDuel(a,b,34567,999),/combat version/);

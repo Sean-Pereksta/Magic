@@ -16,7 +16,7 @@ The field guide contains all 90 species with discovered status, search, element 
 
 Distance discoveries show their exact item/resource and quantity in a compact, nonblocking popup that fades after 3.6 seconds. Multiple finds are queued, including in practice. Opening Team, Sanctuary, Pack, Settings, abilities, regions or the compass keeps foreground walking active. GPS updates preserve menu inputs and scroll; menus refresh on the next interaction or close. Encounter milestones still pause tracking and return to Walk. Explicit pause and hidden-page behavior remain unchanged.
 
-Only accepted tracker distance advances discoveries, encounter milestones, distance bonuses, camps and safe alternative Ultra challenges. Discoveries roll one category at a time (60% essence, 25% two fruit, 12% utilities, 3% fragments). The 250-foot base interval cannot fall below 200 feet. Each companion upgrades using fruit plus its own combined XP balance, earned from walking, victory and actual combat damage/healing. All three party members earn 1 base XP per 100 accepted feet, including reserves; sanctuary companions do not. Levels 1–3 earn 2× XP, levels 4–5 earn 1.5×, and later levels earn normal XP. Early fruit costs are 3, 5 and 8; later costs scale as before. No automatic level is granted: spend both resources from Team. Team displays separate XP and fruit progress bars, exact current/required amounts, percentages and enough/needed labels. Each bar is red below its requirement and green at or above it; surplus percentages remain visible while the fill stops at 100%. GPS progress updates these bars in place while the Team menu stays open, preserving other inputs. Maximum-level companions show their completion state instead of an unreachable next-level goal. Fractional XP survives reloads. Conscious party members also recover exactly 2% of equipped maximum HP per 100 accepted feet, smoothly across GPS samples; this caps at full HP, never revives, earns no combat XP and gives no stored recovery while full.
+Only accepted tracker distance advances discoveries, encounter milestones, distance bonuses, camps and safe alternative Ultra challenges. Discoveries roll one category at a time (60% essence, 25% two fruit, 12% utilities, 3% fragments). The 250-foot base interval cannot fall below 200 feet. Each companion upgrades using fruit plus its own combined XP balance, earned from walking, victory and actual combat damage/healing. All three party members earn 1 base XP per 100 accepted feet, including reserves; sanctuary companions do not. Levels 1–3 earn 2× XP, levels 4–5 earn 1.5×, and later levels earn normal XP. Early fruit costs are 3, 5 and 8; later costs scale as before. No automatic level is granted: spend both resources from Team. Team displays separate XP and fruit progress bars, exact current/required amounts, percentages and enough/needed labels. Each bar is red below its requirement and green at or above it; surplus percentages remain visible while the fill stops at 100%. GPS progress updates these bars in place while the Team menu stays open, preserving other inputs. Maximum-level companions show their completion state instead of an unreachable next-level goal. Fractional XP survives reloads. Conscious party members also recover a base 2% of equipped maximum HP per 100 accepted feet before equipment bonuses, smoothly across GPS samples; this caps at full HP, never revives, earns no combat XP and gives no stored recovery while full.
 
 Victory XP is still split once across the party before each member’s level bonus. Additional combat XP credits the acting monkey for actual HP damage, effective self/team/drain healing, counters and attributed burn/poison. Overkill, overhealing, shields, item healing and passive walking recovery do not award contribution XP. Contributions accumulate at 1 base XP per 10 HP with a per-monkey encounter cap to bound repeat-healing rewards. All balances retain the existing per-monkey `training` save field.
 
@@ -235,11 +235,14 @@ eligible nearby players and do not represent a global leaderboard. Legacy profil
 without a shared team show a missing-lineup state until their next update.
 
 `power.mjs` computes the same estimate in Team, Sanctuary and multiplayer:
-maximum HP + 4 × attack + 4 × defense + 2 × speed + 8 × maximum energy. It includes
-equipped gear tiers, evolution and permanent mastery. Injuries, current energy and
-temporary battle modifiers do not change the rating. Power is a comparison of
-permanent stats, not a prediction of victory or an Elo rating; abilities, strategy
-and elemental matchups still matter. No power score is trusted from saved data.
+maximum HP + 4 × attack + 4 × defense + 2 × speed + 8 × maximum energy, plus equipped
+item/passive value. Complete-loadout stats include gear ranks, additive equipment
+percentages, evolution and permanent mastery. Equipped expansion items and earlier
+passive gear also add a rarity-based estimate: 2 / 4 / 7 / 11 / 16 / 23 for Common
+through Mythic, scaled by upgrade rank. This gives exploration and crafting gear a
+visible power contribution too. Injuries, current energy and temporary battle
+modifiers do not change the rating. Conditional triggers, abilities, strategy and
+elemental matchups still affect actual battles. No saved power score is trusted.
 
 Team displays the selected crew total, and collected companions display individual
 power and their rank among all owned individuals. Sanctuary’s Highest power sort
@@ -269,16 +272,18 @@ attacks average their component results. Matching a monkey’s own element adds 
 feedback show the actual multiplier, Very effective!/Not effective labels and
 resolved damage; support moves receive no damage-effectiveness badge.
 
-Walking recovery is 2% of equipped maximum HP per 100 accepted feet for conscious
-party members, without reviving knockouts or banking healing at full health.
+Base walking recovery is 2% of equipped maximum HP per 100 accepted feet for conscious
+party members, before equipment bonuses, without reviving knockouts or banking healing at full health.
 First evolution costs 6 essence of each required element instead of 12; later
 costs stay unchanged. Every evolution increases HP, attack, defense, speed and
 maximum energy. Evolution cards show current/required essence, progress bars and
 stat gains before committing.
 
-New social battles use version-three balance with equipment passives. Existing duel and raid snapshots retain
-their original version-one or version-two combat calculations when replayed, including prior stats and
-matchups. This prevents an app refresh from rewriting an ongoing fight’s history.
+New social battles default to combat version **4**, including the expanded equipment
+triggers and Ultra capacity. Existing unversioned/v1/v2/v3 duel and raid snapshots
+retain their saved calculations, stats, caps and matchups when replayed, so refreshing
+the app cannot rewrite an ongoing fight's history. Expedition HP and energy are
+preserved when returning from protected player battles.
 
 ## Regional challenges
 
@@ -290,7 +295,8 @@ separate and expedition restarts do not erase unlocked regions.
 Each of the ten regions has three permanent challenges for walking within that
 region, finding discoveries and winning wild encounters there. Players can track
 a challenge to keep its progress bar on Walk and manually claim its exact fruit
-and consumable reward after completion. Claims are recorded permanently and
+and consumable reward after completion; victory challenges also grant fixed,
+region-themed Rare equipment. Claims are recorded permanently and
 cannot be repeated after reload or a new expedition. Event counts start when this
 update is installed; historical exploration distance remains valid. Claims are
 available on the trail or at camp, preserving battle inventories.
@@ -337,13 +343,19 @@ Green highlights and **Level up ready** labels require the real training XP and 
 
 `companion-actions-tests.mjs` covers exact upgrade thresholds, individual readiness, real training/evolution, slot replacement, party limits and injury/camp restrictions. The routed adventure browser suite includes the new tap menu, swap, full-lineup add and Details workflow. A DOM interaction exercise additionally verifies empty-slot Add and highlights becoming ready while a menu remains open; phone layout and full Chromium rendering still require external verification. No Firestore rule or hosted-asset changes are required.
 
-## Resource-mixing equipment forge
+## Equipment, inventory and resource crafting
 
-The Pack now opens with the Canopy Forge. Mix up to 60 existing resources worth at least 8 forge value, then craft one random permanent item anywhere on the trail between encounters. Camps reduce ingredient costs by 20% (rounded up per ingredient) and improve rare/legendary odds. The displayed rarity, element and individual-item odds use the exact million-ticket lottery. Rarer resources improve rare/legendary odds; essence steers the corresponding element. Ingredient choices and quantity inputs survive walking updates. [CRAFTING.md](CRAFTING.md) documents the economy, formulas and 40 new items (45 total).
+The catalog now contains **105 items**, including **60 additional equipment definitions**: ten in each of Common, Uncommon, Rare, Epic, Legendary and Mythic, comprising 48 elemental and 12 neutral additions. Rarity, upgrade rank and affinity remain separate. Neutral gear does not create a monkey element. The new Legendary Leaf heart is **Canopy Relay Heart**, preserving the original Canopy Heart's name and ID.
 
-Equipment uses three compact slot cards and a paginated owned-item picker. Item cards show rank-scaled health, damage, resistance, round healing, energy, shield and lifesteal effects. Duplicates upgrade owned gear to rank 12; max-rank duplicates explicitly return fragments. A saved operation receipt prevents duplicate spending and rerolls. The result remains in Pack after reload; a failed device checkpoint holds the result and blocks a new roll until saving succeeds. Equipping moves an item between individuals without healing them. Original gear values and five fragment recipes remain available.
+Pack opens to **Equipment · Consumables · Materials**. The responsive equipment grid has item silhouettes, written/accessibly labeled rarities, grouped quantities, assignment portraits and discreet favorite/New indicators. Search covers names and effects; one drawer holds rarity, affinity, purpose, status and collection filters, with remembered newest/rarity/name/rank sorting. Tap a tile for mobile bottom-sheet or desktop side-panel details, then choose a monkey and slot. Full-loadout comparisons show before/after stats and power plus separate effects gained/lost. Selection, filters and scroll survive inspection, equipping and upgrades.
 
-Publish the updated root `firestore.rules` alongside the client: new social battles use version 3, and immutable versions preserve existing unversioned/v1/v2 duel and raid replays. No new currency, hosted art files or composite Firestore index is required.
+Standard monkeys have three generic slots; all existing and newly acquired Ultras have four, with the fourth labeled **Ultra Slot**. Any item can use any usable slot, regardless of item rarity or wearer affinity. One named item per monkey is enforced; separate copies can belong to different monkeys. Assignments stay with individuals when changing the three-monkey expedition. Copy records protect assigned, favorited and protected equipment from automatic consumption. Available copies retain automatic upgrades through rank 12 and forge salvage at maximum rank; explicit upgrades consume a safe duplicate at the same rank. Equipment changes are available outside active battles and forced replacements, including post-battle recruitment, and never refill current health. Saved battle loadouts and trigger state prevent switching or reloads from refreshing limited effects.
+
+The Canopy Forge remains below the inventory and works anywhere outside active battles or forced replacements: offer up to 60 resources worth at least 8 forge value, inspect all six rarity probabilities and a grid of overall item chances, then craft. All 105 outcomes use the exact displayed million-ticket lottery, with Neutral represented alongside the eight affinities. Better materials improve higher-rarity odds, and essence steers affinity. Camps charge 20% fewer ingredients rounded up per row and add 0.10 quality using the original offering. Results offer **View Item** and **Equip**; saved operation receipts prevent repeat payments, refunds and rolls. Uncommon crafting materials from Resource Lens and Supply Satchel appear in Materials. Fixed Rare rewards also appear in regional victory challenges and final adventure milestones. [CRAFTING.md](CRAFTING.md) documents odds, costs, copy/save rules, trail effects and test commands.
+
+New discovery, capture, walking recovery, training-fruit, encounter, camp and crafting passives operate through existing expedition events. Team effect families use the strongest eligible value once. Ordinary discovery bonuses use saved event serials and never count as new discoveries. Equipment contributes to both individual and crew power through actual complete-loadout stats and the shared item/passive estimate.
+
+Publish the updated root `firestore.rules` alongside the client: new social battles use version **4**, while immutable versions preserve existing unversioned/v1/v2/v3 replays. Gameplay remains browser modules plus existing Firebase storage; no runtime Node server or composite Firestore index is added. Item icons render locally without a new Cloudflare upload.
 
 The Walk screen places walking controls at the top and the next-discovery bar directly beneath the terrain map. Upgrade badges require a conscious active-lineup member, a preparation phase, and every actual level/XP/resource requirement; the unconditional ready legend has been removed.
 

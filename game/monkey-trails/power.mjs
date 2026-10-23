@@ -1,8 +1,18 @@
 // Permanent, comparable strength estimates shared by the roster and crew cards.
 // Recompute from catalogue stats rather than trusting a saved combatStats/power field.
 import {CONFIG,ELEMENTS,GEAR,SPECIES,stats} from './core.mjs';
+import {equipmentTierScale} from './equipment-effects.mjs';
 
-export const POWER_EXPLANATION='Estimated power = max HP + 4 × attack + 4 × defense + 2 × speed + 8 × max energy, including rarity, equipped gear and evolution. Team power adds your starting three. Injuries do not lower power; equipment passives, abilities and elemental matchups also affect battles.';
+export const POWER_EXPLANATION='Estimated power = max HP + 4 × attack + 4 × defense + 2 × speed + 8 × max energy, plus equipment value. Item stats use the complete loadout. Additional equipment and passive value starts at 2 / 4 / 7 / 11 / 16 / 23 for Common through Mythic and scales with upgrade rank. Team power adds your starting three. Injuries do not lower power; triggers, abilities and elemental matchups affect actual battles.';
+
+export function equipmentPassivePower(gear={}){
+ let value=0;
+ for(const[id,tier]of Object.entries(gear||{})){
+  const g=Object.hasOwn(GEAR,id)&&GEAR[id];if(!g||!Number.isInteger(tier)||tier<1||tier>12)continue;
+  if(g.newItem||Object.keys(g.effects||{}).length||g.discoveryReduction)value+=({common:2,uncommon:4,rare:7,epic:11,legendary:16,mythic:23})[g.rarity||'common']*equipmentTierScale(tier);
+ }
+ return Math.round(value);
+}
 
 const record=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const bounded=(value,min,max,fallback)=>Number.isFinite(value)?Math.min(max,Math.max(min,Math.floor(value))):fallback;
@@ -18,7 +28,7 @@ export function monkeyPower(p,gear=p?.gear||{}){
  if(stage===3&&types.includes(p.mastery)&&own(CONFIG.masteries,p.mastery))permanent.mastery=p.mastery;
  const tiers=Object.fromEntries(Object.entries(record(gear)?gear:{}).filter(([id,tier])=>own(GEAR,id)&&Number.isInteger(tier)&&tier>=1&&tier<=12));
  const st=stats(permanent,tiers);
- return Math.max(0,Math.round(st.hp+4*st.atk+4*st.def+2*st.speed+8*st.maxEnergy));
+ return Math.max(0,Math.round(st.hp+4*st.atk+4*st.def+2*st.speed+8*st.maxEnergy)+equipmentPassivePower(tiers));
 }
 
 // A repeated document/object never counts as an extra companion or crew.
