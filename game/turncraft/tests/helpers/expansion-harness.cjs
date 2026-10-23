@@ -73,6 +73,7 @@ globalThis.addTestNode=(...args)=>{addNode(...args);return resourceNodes.at(-1)}
 globalThis.testEvaluate=source=>eval(source);`);
   const context = vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(MAP_FILE, 'utf8'), context, {timeout: 30000, filename: 'turncraft/maps.js'});
+  for (const file of options.preloadScripts || []) vm.runInContext(fs.readFileSync(file, 'utf8'), context, {timeout: 30000, filename: file});
   vm.runInContext(code, context, {timeout: 30000, filename: 'turncraft.html'});
   const run = source => {
     const result = vm.runInContext(`testEvaluate(${JSON.stringify(source)})`, context, {timeout: 30000});

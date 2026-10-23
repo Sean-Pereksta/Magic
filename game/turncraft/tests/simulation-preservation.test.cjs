@@ -20,7 +20,9 @@ const reference = {
 test('the visual upgrade preserves every original simulation definition and balance value', () => {
   const run = simulation();
   const definitions = run.plain(`({
-    units: UNITS, structures: STRUCTURES, abilities: ABILITIES,
+    units: UNITS, structures: STRUCTURES,
+    // Targeting metadata extends group commands without changing balance values.
+    abilities: Object.fromEntries(Object.entries(ABILITIES).map(([id,{targeting,...definition}])=>[id,definition])),
     research: RESEARCH_DEFS, difficulty: DIFFICULTY, factions: FACTIONS,
     modes: GAME_MODES,
     constants: {BOARD_W, BOARD_H, TILE, BASE_COLLECTION_RADIUS, AI_WORKER_HARD_CAP}
