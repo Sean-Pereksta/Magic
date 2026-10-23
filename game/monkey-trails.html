@@ -9,6 +9,9 @@
   <title>Monkey Trails · Wild Companions</title>
   <link rel="stylesheet" href="./monkey-trails/style.css">
   <link rel="stylesheet" href="./monkey-trails/social.css">
+  <link rel="stylesheet" href="./monkey-trails/presentation.css">
+  <link rel="stylesheet" href="./monkey-trails/companions.css">
+  <link rel="stylesheet" href="./monkey-trails/battle-guide.css">
 </head>
 <body>
   <header class="topbar">
@@ -19,19 +22,19 @@
   </header>
   <main>
     <section id="welcome" class="welcome">
-      <div class="intro"><span class="eyebrow">A LITTLE WALK. A WILD ADVENTURE.</span><h1>Your next friend<br>is out there.</h1><p>Collect extraordinary monkeys. Bring three companions on the trail, discover supplies, and chase a little wonder on your own safe route.</p><div class="facts"><span><b>90</b>monkey species</span><span><b>3</b>team companions</span><span><b>12</b>legendary Ultras</span></div><p class="intro-foot">Every 250 accepted feet brings a discovery. Tactical rival battles await roughly every 2,000 feet.</p><div id="welcome-location"></div></div>
+      <div class="intro"><span class="eyebrow">A LITTLE WALK. A WILD ADVENTURE.</span><h1>Your next friend<br>is out there.</h1><p>Collect extraordinary monkeys. Bring three companions on the trail, discover supplies, and chase a little wonder on your own safe route.</p><div class="facts"><span><b>90</b>monkey species</span><span><b>3</b>team companions</span><span><b>12</b>legendary Ultras</span></div><p class="intro-foot">Every 250 accepted feet brings a discovery. An optional rival encounter becomes ready roughly every 2,000 feet.</p><details class="welcome-location-help"><summary>Optional location setup & help</summary><div id="welcome-location"></div></details></div>
       <div class="panel login-panel">
-        <h2>Meet your first monkey</h2><div id="starters" class="starters"></div>
-        <p id="starter-trait" class="muted"></p>
+        <div class="welcome-choices"><button class="primary" data-action="welcome-new">New Adventure<small>Choose a companion and protect your save</small></button><button data-action="welcome-continue">Continue<small>Reopen your encrypted adventure</small></button></div>
+        <div id="welcome-setup" hidden><h2 id="welcome-setup-title" tabindex="-1">Choose your first companion</h2><div id="starter-setup"><div id="starters" class="starters"></div><p id="starter-trait" class="muted"></p></div>
         <form id="save-form">
           <label for="creature-name">Creature / save name <small>3–24 letters, numbers, spaces, – or _</small></label>
           <input id="creature-name" autocomplete="username" maxlength="24" placeholder="e.g. Mossfoot" required>
           <label for="creature-password">Save password <small>10+ characters for a new creature</small></label>
           <input id="creature-password" type="password" autocomplete="current-password" maxlength="200" placeholder="A unique password" required>
         <p class="fine">Use the same name and password to reopen your encrypted sanctuary on another device. There is no password reset. Save names and final scores appear on the casual leaderboard.</p>
-          <div class="button-row"><button type="submit" class="primary" name="action" value="create">Begin a new trail</button><button type="submit" name="action" value="open">Reopen save</button></div>
+          <div class="button-row"><button type="submit" class="primary" name="action" value="create">New Adventure</button><button type="submit" name="action" value="open">Continue</button></div>
         </form>
-        <button type="button" id="import-button" class="text-button">Restore an encrypted backup</button><input type="file" id="backup-file" accept=".json,application/json" hidden>
+        </div><button type="button" id="import-button" class="text-button">Restore an encrypted backup</button><input type="file" id="backup-file" accept=".json,application/json" hidden>
         <p id="login-message" role="status" aria-live="polite"></p>
         <button type="button" id="practice-button" class="text-button">Try a separate practice trail · no location needed</button>
       </div>
@@ -51,7 +54,7 @@
       </nav>
     </section>
     <details class="field-guide"><summary>Field guide · location, compass, saves & safety</summary><div class="guide-grid">
-      <div><h3>Explore your land</h3><p>Walking north, south, east or west moves you the same way through the fantasy terrain. Map north stays up. Regions opens the illustrated region picker. The terrain is fictional; choose your own physical route. North favors Leaf, south Fire, east Storm, and west Water. Earth, Ice, Light and Shadow also arrive through discoveries and resource exchange, so one safe route can complete the collection. Radar rings show relative encounters, not roads or accessible land. Select “Cannot safely reach this location” to hunt the same Ultra along a route you choose.</p></div>
+      <div><h3>Explore your land</h3><p>Walking north, south, east or west moves you the same way through the fantasy terrain. Map north stays up. Regions opens the illustrated region picker. The terrain is fictional; choose your own physical route. Regions and habitats shape wild encounters; the compass adds a gentle preference among eligible companions. North favors Leaf, south Fire, east Storm, and west Water. Earth, Ice, Light and Shadow also arrive through discoveries and resource exchange, so one safe route can complete the collection. Radar rings show relative encounters, not roads or accessible land. Select “Cannot safely reach this location” to hunt the same Ultra along a route you choose.</p></div>
       <div><h3>Foreground location only</h3><p>Use the HTTPS-hosted game, allow location, and tap Start walking. Only accepted readings at 10 mph or below count. Weak GPS, jumps, stale readings, long gaps, and stationary drift are discarded. Background tabs, a locked screen, battles pause tracking. The Team, Tribe and other menus keep walking active. Resume manually; untracked gaps never earn distance. GPS is approximate, not cheat-proof.</p></div>
       <div><h3>Saved exploration</h3><p>Cloud checkpoints and backups include your relative land position and a short exploration trail, with no latitude or longitude. A short-lived Ultra map anchor is separately encrypted on this device; reopening elsewhere recalibrates without changing the Ultra. Local and cloud checkpoints contain encrypted game progress. Existing shared Firestore rules do not make these saves owner-only: encryption protects readable content, but cannot stop another authenticated client from altering or deleting a record. Use a unique password and keep backups. Scores are casual and unverified.</p></div>
       <div><h3>Look up, then level up</h3><p>Walk only in safe, permitted places. Never use the game while driving or crossing roads. Stop somewhere safe for battles and menus. The compass is a resource guide, not a navigation instruction. You never need to enter private or unsafe areas. Optional screen wake-lock may keep the display awake; otherwise keep it unlocked yourself.</p></div>

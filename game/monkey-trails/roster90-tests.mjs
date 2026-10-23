@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as C from './core.mjs';
+import {LANDS} from './lands.mjs';
+import {speciesHomes,regionSpeciesPool} from './regional-adventures.mjs';
 
 const additions=Object.values(C.SPECIES).filter(s=>s.expansion===2);
 const originalIds='capuchin macaque langur mandrill spider howler mossmop thornback bloomtail vineknuckle cinderpaw ashmane lanternMarmoset kilnfist brooktail bubblecheek reefguard cascadeHowler sparkskip stormtuft cloudcap thunderfang pebblepalm quartzcrest dunetail snowmantle iciclefang frostwhisker sunbloom dawncrest duskmask nightfrill wildvine steampelt plasmafist magmajaw cinderfrost sunflare ashshade reedrunner tempestvine rootstone frostfern gloamorchid typhoontail siltguard glacierflow moonripple fulgurite auroraswing eclipsemask obsidianback solkar verdara tiderex voltaro cryomane obsidrax noctyra oroluma'.split(' ');
 const save=(seed=91)=>C.newSave('Roster Trial','capuchin','practice',seed);
 function specimen(s,species){const p=structuredClone(s.run.monkey);p.id=`specimen-${species}`;p.species=species;p.types=[...C.SPECIES[species].types];p.level=10;p.stage=0;p.learned=[];p.loadout=['strike','brace','breathe'];p.learned=C.unlocked(p);p.hp=C.stats(p).hp;p.energy=C.stats(p).maxEnergy;return p;}
-function specialtyBattle(species){const s=save(),p=specimen(s,species);p.stage=1;p.learned=C.unlocked(p);p.loadout=['strike',C.SPECIES[species].specialty,'brace','breathe'];p.energy=C.stats(p).maxEnergy;p.hp=20;s.collection[p.id]=p;s.run.party=[p.id];s.run.activeId=p.id;s.run.monkey=p;const reserve=structuredClone(p);reserve.id='reserve';reserve.hp=20;reserve.energy=1;s.collection.reserve=reserve;s.run.party.push('reserve');C.advance(s,C.ENCOUNTER_STEP,0,0);C.readyBattle(s);const e=s.run.battle.enemy;e.hp=10000;e.loadout=['strike'];e.types=[];e.status={};e.energy=10;s.run.battle.enemyAction={type:'move',id:'focus'};s.run.battle.intent='focus';return s;}
+function specialtyBattle(species){const s=save(),p=specimen(s,species);p.stage=1;p.learned=C.unlocked(p);p.loadout=['strike',C.SPECIES[species].specialty,'brace','breathe'];p.energy=C.stats(p).maxEnergy;p.hp=20;s.collection[p.id]=p;s.run.party=[p.id];s.run.activeId=p.id;s.run.monkey=p;const reserve=structuredClone(p);reserve.id='reserve';reserve.hp=20;reserve.energy=1;s.collection.reserve=reserve;s.run.party.push('reserve');C.advance(s,C.ENCOUNTER_STEP,0,0);C.beginPendingEncounter(s);C.readyBattle(s);const e=s.run.battle.enemy;e.hp=10000;e.loadout=['strike'];e.types=[];e.status={};e.energy=10;s.run.battle.enemyAction={type:'move',id:'focus'};s.run.battle.intent='focus';return s;}
 
 test('the thirty appended identities preserve the original sixty catalogue numbers and requested rarity split',()=>{
   assert.deepEqual(Object.keys(C.SPECIES).slice(0,60),originalIds);
@@ -19,19 +21,23 @@ test('the thirty appended identities preserve the original sixty catalogue numbe
   for(const s of additions){assert.ok(s.appearance.length>40);assert.equal(s.evolutionAppearances.length,3);assert.ok(s.types.length>=1&&s.types.length<=2);assert.ok(s.learnset.includes(s.specialty));assert.ok(s.learnset.every(id=>C.MOVES[id]));assert.ok(s.hp>=69&&s.hp<=110);assert.ok(s.atk>=9&&s.atk<=16);assert.ok(s.def>=7&&s.def<=16);assert.ok(s.speed>=3&&s.speed<=22);}
 });
 
-test('all new ordinary species enter depth-gated encounters, while new Ultras remain exclusive map sightings',()=>{
+test('all new ordinary species enter depth-gated regional encounters, while Ultras stay exclusive map sightings',()=>{
   const s=save();s.run.distance=0;assert.ok(additions.every(p=>!C.encounterPool(s).includes(p.id)));
-  s.run.distance=6000*C.FEET;const middle=C.encounterPool(s);assert.ok(additions.filter(p=>['common','uncommon'].includes(p.rarity)).every(p=>middle.includes(p.id)));
-  assert.ok(additions.filter(p=>['rare','ultra'].includes(p.rarity)).every(p=>!middle.includes(p.id)));
-  s.run.distance=10000*C.FEET;const deep=C.encounterPool(s);assert.equal(deep.length,78);assert.ok(additions.filter(p=>p.rarity!=='ultra').every(p=>deep.includes(p.id)));assert.ok(additions.filter(p=>p.rarity==='ultra').every(p=>!deep.includes(p.id)));
-  assert.ok(C.SPECIES.acornbuckler.encounterWeight>C.SPECIES.pitcherwink.encounterWeight);assert.ok(C.SPECIES.pitcherwink.encounterWeight>C.SPECIES.bramblebat.encounterWeight);
-  const seen=new Set(),ultras=new Set();
-  for(let seed=1;seed<=4000;seed++){
-    const ordinary=save(seed*7919);ordinary.run.ordinaryWins=2;ordinary.run.encounters=5;ordinary.run.distance=9999*C.FEET;ordinary.run.nextEncounter=10000*C.FEET;ordinary.run.nextCamp=12000*C.FEET;C.advance(ordinary,C.FEET,0,0);for(const e of ordinary.run.battle.enemies)seen.add(e.species);
-    if(ultras.size<12){const hunt=save(seed*3571);hunt.run.ordinaryWins=2;hunt.run.distance=5000*C.FEET;hunt.run.nextEncounter=6000*C.FEET;hunt.run.nextCamp=6000*C.FEET;C.advance(hunt,1,0,0);ultras.add(hunt.run.ultra.species);}
+  s.world.totalDistance=150000;s.world.unlocked=LANDS.map(l=>l.id);
+  const middle=new Set(),deep=new Set(),seen=new Set(),ultras=new Set();
+  for(const land of LANDS){C.selectLand(s,land.id);s.run.distance=6000*C.FEET;C.encounterPool(s).forEach(id=>middle.add(id));s.run.distance=10000*C.FEET;C.encounterPool(s).forEach(id=>deep.add(id));
+    for(let seed=1;seed<=350;seed++){
+      const ordinary=save(seed*7919);ordinary.world.totalDistance=150000;ordinary.world.unlocked=LANDS.map(l=>l.id);C.selectLand(ordinary,land.id);ordinary.run.ordinaryWins=2;ordinary.run.encounters=5;ordinary.run.distance=9999*C.FEET;ordinary.run.nextEncounter=10000*C.FEET;ordinary.run.nextCamp=12000*C.FEET;C.advance(ordinary,C.FEET,0,0);C.beginPendingEncounter(ordinary);for(const e of ordinary.run.battle.enemies)seen.add(e.species);
+      const hunt=save(seed*3571);hunt.world.totalDistance=150000;hunt.world.unlocked=LANDS.map(l=>l.id);C.selectLand(hunt,land.id);hunt.run.ordinaryWins=2;hunt.run.distance=5000*C.FEET;hunt.run.nextEncounter=6000*C.FEET;hunt.run.nextCamp=6000*C.FEET;C.advance(hunt,1,0,0);assert.ok(regionSpeciesPool(hunt,Object.keys(C.SPECIES),{ultra:true}).includes(hunt.run.ultra.species));ultras.add(hunt.run.ultra.species);
+    }
   }
+  assert.ok(additions.filter(p=>['common','uncommon'].includes(p.rarity)).every(p=>middle.has(p.id)));
+  assert.ok(additions.filter(p=>['rare','ultra'].includes(p.rarity)).every(p=>!middle.has(p.id)));
+  assert.equal(deep.size,78);assert.ok(additions.filter(p=>p.rarity!=='ultra').every(p=>deep.has(p.id)));assert.ok(additions.filter(p=>p.rarity==='ultra').every(p=>!deep.has(p.id)));
+  assert.ok(C.SPECIES.acornbuckler.encounterWeight>C.SPECIES.pitcherwink.encounterWeight);assert.ok(C.SPECIES.pitcherwink.encounterWeight>C.SPECIES.bramblebat.encounterWeight);
   assert.ok(additions.filter(p=>p.rarity!=='ultra').every(p=>seen.has(p.id)),`unseen ordinary additions: ${additions.filter(p=>p.rarity!=='ultra'&&!seen.has(p.id)).map(p=>p.id)}`);
   assert.ok(additions.filter(p=>p.rarity==='ultra').every(p=>ultras.has(p.id)));
+  assert.equal(seen.size,78,'all ordinary species are reachable through actual generated regional encounters');assert.equal(ultras.size,12,'all Ultras are reachable through regional sightings');
 });
 
 test('every addition can be captured, join a three-member team, evolve three times and retain a legal four-card loadout',()=>{
@@ -43,7 +49,7 @@ test('every addition can be captured, join a three-member team, evolve three tim
 
 test('each new Ultra appears as a map boss, equips its exclusive signature and offers one free first recruitment',()=>{
   for(const species of additions.filter(s=>s.rarity==='ultra')){
-    let s;for(let seed=1;seed<=1000;seed++){const candidate=save(seed*3571);candidate.run.ordinaryWins=2;candidate.run.distance=5000*C.FEET;candidate.run.nextEncounter=6000*C.FEET;candidate.run.nextCamp=6000*C.FEET;C.advance(candidate,1,0,0);if(candidate.run.ultra.species===species.id){s=candidate;break;}}
+    let s;for(let seed=1;seed<=1000;seed++){const candidate=save(seed*3571);candidate.world.totalDistance=150000;candidate.world.unlocked=LANDS.map(l=>l.id);C.selectLand(candidate,speciesHomes(species.id)[0]);candidate.run.ordinaryWins=2;candidate.run.distance=5000*C.FEET;candidate.run.nextEncounter=6000*C.FEET;candidate.run.nextCamp=6000*C.FEET;C.advance(candidate,1,0,0);if(candidate.run.ultra.species===species.id){s=candidate;break;}}
     assert.ok(s,`${species.id} never sighted`);const sightingId=s.run.ultra.id;C.beginUltra(s,{gpsFresh:true,withinRadius:true});assert.equal(s.run.battle.id,sightingId);const boss=s.run.battle.enemies[0];assert.equal(boss.species,species.id);assert.equal(boss.bossOnly,true);assert.ok(boss.loadout.includes(species.signature));assert.ok(C.stats(boss).hp>C.stats({...boss,bossOnly:false}).hp);
     C.readyBattle(s);s.run.monkey.level=60;s.run.monkey.hp=C.stats(s.run.monkey).hp;for(const e of s.run.battle.enemies)e.hp=1;
     for(let i=0;i<4&&s.run.phase==='battle';i++){s.run.battle.enemyAction={type:'move',id:'focus'};s.run.battle.intent='focus';C.turn(s,'strike');}

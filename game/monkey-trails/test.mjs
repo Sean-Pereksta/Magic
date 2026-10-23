@@ -4,7 +4,7 @@ import * as C from './core.mjs';
 import {MotionFilter,MAX_MPS,delta,TrailGPS} from './gps.mjs';
 import {Vault,identity,derive,seal,unseal,importBackup} from './storage.mjs';
 const start=(species='capuchin')=>C.newSave('Mossfoot',species,'gps',12345);
-const fight=s=>{C.advance(s,C.ENCOUNTER_STEP,0,C.ENCOUNTER_STEP);C.readyBattle(s);};
+const fight=s=>{C.advance(s,C.ENCOUNTER_STEP,0,C.ENCOUNTER_STEP);if(s.run.pendingEncounter)C.beginPendingEncounter(s);C.readyBattle(s);};
 const flush=async v=>{if(v.localTask)await v.localTask;if(v.inflight)await v.inflight;await v.sync();};
 const memory=()=>{const map=new Map();return {getItem:k=>map.get(k)||null,setItem:(k,v)=>map.set(k,v),map};};
 function cloud(){const docs=new Map(),scores=new Map();let available=true;return {docs,scores,set online(v){available=v;},async read(id){if(!available)throw Error('offline');return structuredClone(docs.get(id)||null);},async commit(id,base,e,history){if(!available)throw Error('offline');const old=docs.get(id);if((old?.revision||0)!==base||old&&old.salt!==e.salt){const err=Error('Cloud changed');err.code='save-conflict';throw err;}for(const h of history)if(h.mode==='gps')scores.set(`${id}_${h.id}`,structuredClone(h));docs.set(id,{...structuredClone(e),revision:base+1});return base+1;},async leaderboard(){return [...scores.values()].sort((a,b)=>b.score-a.score);}};}

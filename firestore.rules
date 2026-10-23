@@ -1779,7 +1779,7 @@ service cloud.firestore {
       }
       match /operations/{id} { allow get: if mtEnabled() && (resource == null || request.auth.uid in resource.data.participants); allow list: if mtEnabled() && request.auth.uid in resource.data.participants; allow create: if mtEnabled() && mtOperation(request.resource.data,id); allow update, delete: if false; }
       match /offers/{id} {
-        allow read: if mtEnabled() && request.auth.uid in [resource.data.from,resource.data.to];
+        allow read: if mtEnabled() && (request.auth.uid == resource.data.from || request.auth.uid == resource.data.to);
         allow create: if mtEnabled() && request.resource.data.id == id && mtOp(id).kind == 'trade-offer' && mtOp(id).actor == request.auth.uid && mtOp(id).details.offerId == id && request.resource.data.from == mtOp(id).details.from && request.resource.data.to == mtOp(id).details.to && request.resource.data.give == mtOp(id).details.give && request.resource.data.want == mtOp(id).details.want && request.resource.data.from == request.auth.uid && request.resource.data.to != request.auth.uid
           && mtSameTribe(request.resource.data.from,request.resource.data.to) && request.resource.data.tribeId == mtPlayer(request.auth.uid).tribeId && mtPair(request.resource.data.give) && mtPair(request.resource.data.want)
           && request.resource.data.status == 'pending' && mtFresh(request.resource.data.createdAt) && mtFresh(request.resource.data.updatedAt);
@@ -1803,7 +1803,7 @@ service cloud.firestore {
       }
       function mtAvailable(uid) { let p=get(/databases/$(database)/documents/monkeyTrailsSocial/v1/presence/$(uid)).data; return p.online == true && p.busy == false && p.expiresAt > request.time.toMillis() && mtPlayer(uid).activeDuel == null && mtPlayer(uid).activeRaid == null; }
       match /challenges/{id} {
-        allow read: if mtEnabled() && request.auth.uid in [resource.data.from,resource.data.to];
+        allow read: if mtEnabled() && (request.auth.uid == resource.data.from || request.auth.uid == resource.data.to);
         allow create: if mtEnabled() && request.resource.data.id == id && request.resource.data.from == request.auth.uid && request.resource.data.from != request.resource.data.to
           && request.resource.data.status == 'pending' && request.resource.data.eligibility in ['tribe','nearby'] && mtAvailable(request.resource.data.from) && mtAvailable(request.resource.data.to)
           && (request.resource.data.eligibility == 'tribe' ? mtSameTribe(request.resource.data.from,request.resource.data.to) : mtNearby(request.resource.data.from,request.resource.data.to))
@@ -1845,6 +1845,43 @@ service cloud.firestore {
                   && resource.data.updatedAt <= request.time.toMillis()-90000)
             || resource.data.settled == false && request.resource.data.settled == true && request.resource.data.status == 'finished' && request.resource.data.revision == resource.data.revision && request.resource.data.actions == resource.data.actions && request.resource.data.state == resource.data.state);
         allow delete: if false;
+      }
+      // Weekly objectives accept client-reported counts, never coordinates. Stable
+      // week+uid records serialize retries and prevent hopping tribes for rewards.
+      function mtWeekStart() { return int(math.floor((request.time.toMillis()-345600000) / 604800000))*604800000+345600000; }
+      function mtAdventureMember(week,uid) { return get(/databases/$(database)/documents/monkeyTrailsSocial/v1/adventureMembers/$(string(week)+'-'+uid)).data; }
+      function mtAdventureMemberAfter(week,uid) { return getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/adventureMembers/$(string(week)+'-'+uid)).data; }
+      function mtAdventureCounts(c) { return c is map && c.keys().hasAll(['meters','discoveries','challenges','raids','trades']) && c.keys().hasOnly(['meters','discoveries','challenges','raids','trades']) && c.meters is int && c.meters >= 0 && c.meters <= 1000000000 && c.discoveries is int && c.discoveries >= 0 && c.discoveries <= 1000000000 && c.challenges is int && c.challenges >= 0 && c.challenges <= 1000000000 && c.raids is int && c.raids >= 0 && c.raids <= 1000000000 && c.trades is int && c.trades >= 0 && c.trades <= 1000000000; }
+      function mtAdventurePoints(c) { return int(math.floor(c.meters / 50))+c.discoveries*3+c.challenges*25+c.raids*25+c.trades*15; }
+      function mtAdventureDifference(d) { return d.contribution.meters == d.counters.meters-d.baseline.meters && d.contribution.discoveries == d.counters.discoveries-d.baseline.discoveries && d.contribution.challenges == d.counters.challenges-d.baseline.challenges && d.contribution.raids == d.counters.raids-d.baseline.raids && d.contribution.trades == d.counters.trades-d.baseline.trades; }
+      function mtAdventureShape(d,id) { return d.keys().hasOnly(['id','tribeId','weekStart','weekEnd','target','points','updatedAt']) && d.id == id && d.weekStart in [mtWeekStart(),mtWeekStart()-604800000] && d.weekEnd == d.weekStart+604800000 && d.target == 600 && d.points is int && d.points >= 0 && d.points <= 1000000000 && mtFresh(d.updatedAt) && mtPlayer(request.auth.uid).tribeId == d.tribeId && request.auth.uid in mtTribe(d.tribeId).members && id == string(d.weekStart)+'-'+d.tribeId; }
+      function mtAdventureMemberShape(d,id) { return d.keys().hasOnly(['id','uid','saveId','tribeId','summaryId','weekStart','weekEnd','baseline','counters','contribution','points','joinedAt','updatedAt']) && d.id == id && id == string(d.weekStart)+'-'+request.auth.uid && d.uid == request.auth.uid && d.saveId == mtPlayer(request.auth.uid).saveId && d.tribeId == mtPlayer(request.auth.uid).tribeId && request.auth.uid in mtTribe(d.tribeId).members && d.weekStart in [mtWeekStart(),mtWeekStart()-604800000] && d.weekEnd == d.weekStart+604800000 && d.summaryId == string(d.weekStart)+'-'+d.tribeId && mtAdventureCounts(d.baseline) && mtAdventureCounts(d.counters) && mtAdventureCounts(d.contribution) && mtAdventureDifference(d) && d.points == mtAdventurePoints(d.contribution) && mtFresh(d.updatedAt); }
+      function mtAdventureSummaryAfter(d) { return getAfter(/databases/$(database)/documents/monkeyTrailsSocial/v1/adventures/$(d.summaryId)).data; }
+      match /adventures/{id} {
+        allow get: if mtEnabled() && (resource == null || request.auth.uid in mtTribe(resource.data.tribeId).members);
+        allow list: if mtEnabled() && request.auth.uid in mtTribe(resource.data.tribeId).members;
+        allow create: if mtEnabled() && mtAdventureShape(request.resource.data,id) && request.resource.data.weekStart == mtWeekStart() && request.resource.data.points == 0;
+        allow update: if mtEnabled() && mtAdventureShape(request.resource.data,id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points','updatedAt']) && request.resource.data.points == resource.data.points+mtAdventureMemberAfter(resource.data.weekStart,request.auth.uid).points-mtAdventureMember(resource.data.weekStart,request.auth.uid).points;
+        allow delete: if false;
+      }
+      match /adventureMembers/{id} {
+        allow get: if mtEnabled() && (resource == null || resource.data.uid == request.auth.uid || request.auth.uid in mtTribe(resource.data.tribeId).members);
+        allow list: if mtEnabled() && (resource.data.uid == request.auth.uid || request.auth.uid in mtTribe(resource.data.tribeId).members);
+        allow create: if mtEnabled() && mtAdventureMemberShape(request.resource.data,id) && request.resource.data.weekStart == mtWeekStart() && request.resource.data.baseline == request.resource.data.counters && request.resource.data.points == 0 && mtFresh(request.resource.data.joinedAt) && mtAdventureSummaryAfter(request.resource.data).tribeId == request.resource.data.tribeId;
+        allow update: if mtEnabled() && mtAdventureMemberShape(request.resource.data,id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['counters','contribution','points','updatedAt']) && request.resource.data.counters.meters >= resource.data.counters.meters && request.resource.data.counters.discoveries >= resource.data.counters.discoveries && request.resource.data.counters.challenges >= resource.data.counters.challenges && request.resource.data.counters.raids >= resource.data.counters.raids && request.resource.data.counters.trades >= resource.data.counters.trades && mtAdventureSummaryAfter(request.resource.data).points == get(/databases/$(database)/documents/monkeyTrailsSocial/v1/adventures/$(resource.data.summaryId)).data.points+request.resource.data.points-resource.data.points;
+        allow delete: if false;
+      }
+      function mtAdventureCosmetic(week) { let style=int(math.floor(week / 604800000))%4; return style == 0 ? 'canopy-banner' : style == 1 ? 'sunstone-emblem' : style == 2 ? 'moonwell-sanctuary' : 'crystal-banner'; }
+      function mtAdventureClaim(d,id) {
+        let member=mtAdventureMember(d.weekStart,request.auth.uid);
+        let summary=get(/databases/$(database)/documents/monkeyTrailsSocial/v1/adventures/$(member.summaryId)).data;
+        return d.keys().hasOnly(['id','uid','saveId','tribeId','summaryId','weekStart','contribution','reward','claimedAt']) && d.id == id && id == string(d.weekStart)+'-'+request.auth.uid && d.uid == request.auth.uid && d.saveId == mtPlayer(request.auth.uid).saveId && d.saveId == member.saveId && d.tribeId == member.tribeId && d.tribeId == mtPlayer(request.auth.uid).tribeId && request.auth.uid in mtTribe(d.tribeId).members && d.summaryId == member.summaryId && d.contribution == member.contribution && member.points > 0 && summary.points >= 600 && d.weekStart in [mtWeekStart(),mtWeekStart()-604800000] && mtFresh(d.claimedAt) && d.reward == {'fruit':6,'items':{'berry':1},'cosmetic':mtAdventureCosmetic(d.weekStart)};
+      }
+      match /adventureClaims/{id} {
+        allow get: if mtEnabled() && (resource == null || resource.data.uid == request.auth.uid);
+        allow list: if mtEnabled() && resource.data.uid == request.auth.uid;
+        allow create: if mtEnabled() && mtAdventureClaim(request.resource.data,id);
+        allow update, delete: if false;
       }
       function mtAssetPayload(p,asset,amount) {
         return p.keys().hasOnly(['fruit','xp','items']) && p.xp == 0

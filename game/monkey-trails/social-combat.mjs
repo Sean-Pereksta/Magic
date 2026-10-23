@@ -154,13 +154,27 @@ export function duelAction(duel,playerId,action){
   }
   Object.assign(duel,next);return duel;
 }
-export function newRaidAttempt(members,bossLevel=1,seed=1234567,version=SOCIAL_COMBAT_VERSION){
+export function newRaidAttempt(members,bossLevel=1,seed=1234567,version=SOCIAL_COMBAT_VERSION,patternVersion=0){
   version=balanceVersion(version);
   bossLevel=integer(bossLevel,1,1000,'tribe boss level');
   const roster=Object.values(SPECIES).filter(p=>p.rarity==='ultra'),species=roster[(bossLevel-1)%roster.length]?.id||'mandrill';
   const target=freshMember({id:'tribe-boss',species,level:Math.min(60,bossLevel+2),stage:Math.min(3,Math.floor((bossLevel-1)/8)),types:SPECIES[species].types||[],loadout:['strike'],learned:[]},{},version);
   target.hp=target.maxHp=bossHealth(bossLevel);target.combatStats.hp=target.hp;
-  return{version,team:freshTeam(members,version),active:0,turns:0,totalDamage:0,status:'active',sequence:0,boss:target,bossLevel,turnCounts:[0,0],rallies:[null,null],rng:freshSeed(seed),log:['Ten turns to help your tribe. The boss never attacks.']};
+  const attempt={version,team:freshTeam(members,version),active:0,turns:0,totalDamage:0,status:'active',sequence:0,boss:target,bossLevel,turnCounts:[0,0],rallies:[null,null],rng:freshSeed(seed),log:['Ten turns to help your tribe. The boss never attacks.']};
+  // Tickets explicitly opt in; previously started v1/v2 attempts replay unchanged.
+  if(patternVersion===1&&version>=2&&bossLevel%3===0){attempt.guardianPattern={version:1};prepareRaidWard(attempt);attempt.log.push('This guardian raises a ward every fourth turn. Break its shield or use the opening to prepare.');}
+  return attempt;
+}
+export function raidIntent(attempt){
+  if(!attempt?.guardianPattern)return{label:'Tribe challenge',detail:'The boss never attacks. Use ten actions to contribute damage.',ward:false};
+  const slot=(attempt.turns||0)%4;
+  return slot===1?{label:'Ward active',detail:'The guardian blocks most damage and carries a small shield this turn. Shield-breaking moves remove both; recovery or preparation can wait out the ward.',ward:true}:
+    slot===0?{label:'Ward forming next turn',detail:'The guardian is open now and will raise its ward next turn. Deal damage now or prepare a shield-breaking response.',ward:false}:
+    {label:'Recovery opening',detail:'The ward is down while the guardian recovers. Attack, replenish energy, or prepare. The boss never attacks.',ward:false};
+}
+function prepareRaidWard(attempt){
+  if(attempt.guardianPattern?.version!==1)return;
+  const ward=attempt.turns%4===1;attempt.boss.guard=ward?.45:0;attempt.boss.shield=ward?Math.min(90,16+attempt.bossLevel*3):0;
 }
 export function raidAction(attempt,action){
   if(attempt.status!=='active'||attempt.turns>=RAID_TURNS)throw Error('This raid attempt has finished.');
@@ -170,6 +184,6 @@ export function raidAction(attempt,action){
   if(action.type==='switch')enter(battle,0,selectedIncoming(next.team,next.active,action.index));else battle.totalDamage+=execute(battle,0,action);
   tickSide(battle,0);battle.totalDamage+=tickSide(battle,1);battle.sequence++;battle.turns++;
   next.team=battle.teams[0];next.active=battle.active[0];next.boss=battle.teams[1][0];next.totalDamage=battle.totalDamage;next.sequence=battle.sequence;next.turns=battle.turns;next.turnCounts=battle.turnCounts;next.rallies=battle.rallies;next.rng=battle.rng;next.log=battle.log;if(battle.lastHit)next.lastHit=battle.lastHit;
-  if(next.turns===RAID_TURNS){next.status='finished';log(next,`Raid complete: ${Math.round(next.totalDamage)} damage for your tribe.`);}
+  if(next.turns===RAID_TURNS){next.status='finished';log(next,`Raid complete: ${Math.round(next.totalDamage)} damage for your tribe.`);}else prepareRaidWard(next);
   Object.assign(attempt,next);return attempt;
 }

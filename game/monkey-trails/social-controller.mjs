@@ -1,6 +1,7 @@
 import {socialFirebaseContext} from './storage.mjs';
 import {SocialStore,createFirestoreSocialAdapter,nearbyPlayers,SOCIAL_CONFIG} from './social-store.mjs';
 import {snapshotTeam,newRaidAttempt,raidAction,duelStake} from './social-combat.mjs';
+import {tribeWeek,TRIBE_WEEK,weeklyProgress,cleanContribution,recordTribeProgress,applyAdventureClaim} from './tribe-adventures.mjs';
 import {localSocial,availableInPack,depositFromPack,retryPackDeposits,applySocialReceipt} from './social-local.mjs';
 const copy=x=>structuredClone(x);
 // Firestore map key order may differ from the local snapshot. Only confirmed
@@ -10,7 +11,7 @@ async function defaultConnection(){const {db,f,auth}=await socialFirebaseContext
 export class SocialController{
  constructor({getState,getVault,persist,onUpdate=()=>{},onBattle=()=>{},onReturn=()=>{},connect=defaultConnection,now=Date.now}={}){
   Object.assign(this,{getState,getVault,persist,onUpdate,onBattle,onReturn,connect,now});
-  this.model={status:'idle',error:'',me:null,tribe:null,members:[],presence:[],nearby:[],offers:[],challenges:[],duel:null,raid:null,receipts:[],now:now(),localFruit:0,localItems:{}};
+  this.model={status:'idle',error:'',me:null,tribe:null,members:[],presence:[],nearby:[],offers:[],challenges:[],duel:null,raid:null,receipts:[],now:now(),localFruit:0,localItems:{},adventure:null,adventureMembers:[],adventureClaims:[],previousAdventure:null};
   this.subscriptions=[];this.crewProfiles=new Map();this.crewWatches=new Map();this.generation=0;this.receiptTask=Promise.resolve();this.actionTask=null;this.lastHeartbeat=0;this.lastBusy=null;this.discoverable=false;this.latestLocation=null;this.teamSignature=null;this.heartbeatTask=null;
  }
  get uid(){return this.store?.uid;}
@@ -32,18 +33,20 @@ export class SocialController{
    this.subscriptions.push(this.store.watchChallenges(list=>{this.model.challenges=list;this.emit();},error));
    this.subscriptions.push(this.store.watchOffers(list=>{this.model.offers=list;this.emit();},error));
    this.subscriptions.push(this.store.watchReceipts(list=>{this.model.receipts=list;this.queueReceipts();this.emit();},error));
+   this.subscriptions.push(this.store.watchAdventureClaims(list=>{this.model.adventureClaims=list;this.queueAdventureClaims();this.emit();},error));
+   await this.loadPreviousAdventure();
    if(me.activeRaid)await this.restoreRaid(me.activeRaid);
    if(me.activeDuel)this.onBattle();
    await this.heartbeat(true);this.timer=setInterval(()=>{void this.heartbeat();this.emit();},25000);this.emit();
   }catch(e){if(generation===this.generation){this.model.status='offline';this.model.error=e.code==='permission-denied'?'Multiplayer rules are not enabled yet. Your trail is saved; retry after the Monkey Trails Firestore rules are published.':e.message;this.emit();}}
  }
  async stop(){
-  const generation=++this.generation;clearInterval(this.timer);this.timer=null;for(const unsubscribe of this.subscriptions)unsubscribe();this.subscriptions=[];this.tribeUnsubscribe?.();this.tribeUnsubscribe=null;this.tribeCode=null;this.duelUnsubscribe?.();this.duelUnsubscribe=null;this.duelId=null;for(const entry of this.crewWatches.values())entry.unsubscribe?.();this.crewWatches.clear();this.crewProfiles.clear();this.teamSignature=null;
+  const generation=++this.generation;for(const stop of this.adventureWatches||[])stop();this.adventureWatches=[];this.adventureWatchKey=null;clearInterval(this.timer);this.timer=null;for(const unsubscribe of this.subscriptions)unsubscribe();this.subscriptions=[];this.tribeUnsubscribe?.();this.tribeUnsubscribe=null;this.tribeCode=null;this.duelUnsubscribe?.();this.duelUnsubscribe=null;this.duelId=null;for(const entry of this.crewWatches.values())entry.unsubscribe?.();this.crewWatches.clear();this.crewProfiles.clear();this.teamSignature=null;
   const previous=this.store;this.store=null;if(previous)void previous.heartbeat({online:false,busy:true}).catch(()=>{});
-  this.model={...this.model,status:'idle',me:null,tribe:null,members:[],duel:null,raid:null,receipts:[],challenges:[],offers:[],presence:[],nearby:[]};return generation;
+  this.model={...this.model,status:'idle',me:null,tribe:null,members:[],duel:null,raid:null,receipts:[],challenges:[],offers:[],presence:[],nearby:[],adventure:null,adventureMembers:[],adventureClaims:[],previousAdventure:null};return generation;
  }
  emit(){
-  this.model.now=this.now();const nearby=this.uid?nearbyPlayers(this.model.presence,this.uid,this.now()):[];this.watchCrewProfiles(nearby);
+  this.model.now=this.now();if(this.store&&this.model.me?.tribeId)this.watchAdventure(this.model.me.tribeId);const nearby=this.uid?nearbyPlayers(this.model.presence,this.uid,this.now()):[];this.watchCrewProfiles(nearby);
   const profile=uid=>uid===this.uid?this.model.me:this.crewProfiles.get(uid),presence=uid=>this.model.presence.find(x=>x.uid===uid)||{};
   this.model.members=(this.model.tribe?.members||[]).map(uid=>{const p=profile(uid);return p?{...p,...presence(uid)}:null;}).filter(Boolean);
   this.model.canClaimTimeout=!!(this.model.duel?.status==='active'&&this.now()-this.model.duel.updatedAt>=90000&&this.model.duel.state?.players[this.model.duel.state.turn]!==this.uid);const state=this.getState();this.model.localFruit=state?.run.fruit||0;this.model.localItems=state?.run.items||{};this.model.busy=this.busy;this.model.discoverable=this.discoverable;
@@ -62,7 +65,7 @@ export class SocialController{
  chooseDuel(){if(this.model.me?.activeDuel!==this.duelId)this.watchActiveDuel(this.model.me?.activeDuel);}
  watchActiveDuel(id){this.duelUnsubscribe?.();this.duelId=id||null;this.model.duel=null;if(id)this.duelUnsubscribe=this.store.watchDuel(id,duel=>{if(this.duelId===id){this.model.duel=duel;this.emit();}},error=>{this.model.error=error.message;this.emit();});}
  watchTribe(code){
-  this.tribeUnsubscribe?.();this.tribeCode=code||null;this.model.tribe=null;this.model.members=[];if(!code)return;
+  this.tribeUnsubscribe?.();for(const stop of this.adventureWatches||[])stop();this.adventureWatches=[];this.adventureWatchKey=null;this.model.adventure=null;this.model.adventureMembers=[];this.tribeCode=code||null;this.model.tribe=null;this.model.members=[];if(!code)return;
   this.tribeUnsubscribe=this.store.watchTribe(code,tribe=>{if(this.tribeCode!==code)return;this.model.tribe=tribe;this.emit();},e=>{this.model.error=e.message;this.emit();});
  }
  localOptions(){return{state:this.getState(),store:this.store,uid:this.uid,saveId:this.getVault().id,persist:this.persist};}
@@ -78,6 +81,7 @@ export class SocialController{
     if(online&&!busy&&this.discoverable&&(!this.latestLocation||this.now()-this.latestLocation.at>45000))await this.refreshNearbyFix();
     if(generation!==this.generation||store!==this.store)return;
     await store.heartbeat({online,busy,discoverable:this.discoverable,location:this.latestLocation,...(changed?{team}:{})});
+    if(online&&this.model.me?.tribeId){const state=this.getState();await store.contributeAdventure(cleanContribution(weeklyProgress(state,this.now())));const previousWeek=tribeWeek(this.now())-TRIBE_WEEK,previous=state.meta.tribeAdventure?.weeks?.[String(previousWeek)];if(previous){await store.contributeAdventure(cleanContribution(previous),previousWeek);await this.loadPreviousAdventure();}await this.queueAdventureClaims();}
    }catch(e){if(generation===this.generation&&store===this.store){this.model.error=e.message;this.emit();}}
    finally{if(this.heartbeatTask===task){this.heartbeatTask=null;if(task.queued)void this.heartbeat(task.queuedForce);}}
   })();return task.promise;
@@ -100,7 +104,7 @@ export class SocialController{
  }
  queueReceipts(){
   this.receiptTask=this.receiptTask.then(async()=>{const state=this.getState();if(!state||state.run.phase==='dead')return;let changed=false;
-   for(const receipt of this.model.receipts)if(!receipt.seen)changed=applySocialReceipt(state,receipt)||changed;
+   for(const receipt of this.model.receipts)if(!receipt.seen){changed=applySocialReceipt(state,receipt)||changed;if(receipt.type==='trade')changed=recordTribeProgress(state,{trades:1},`trade:${receipt.id}`,this.now())||changed;}
    if(changed){await this.persist();this.emit();}
   }).catch(e=>{this.model.error=`Reward delivery pending: ${e.message}`;this.emit();});return this.receiptTask;
  }
@@ -109,6 +113,31 @@ export class SocialController{
   if(!localSocial(this.getState()).applied[`${receipt.uid}:${receipt.id}`])throw Error('This reward will be delivered after you begin your next expedition.');
   await this.persist();await this.store.acknowledgeReceipt(id);
  }
+ watchAdventure(tribeId){
+  const week=tribeWeek(this.now()),key=`${tribeId}:${week}`;if(this.adventureWatchKey===key)return;
+  for(const stop of this.adventureWatches||[])stop();this.adventureWatches=[];this.adventureWatchKey=key;this.model.adventure=null;this.model.adventureMembers=[];
+  const error=e=>{this.model.error=`Shared adventure pending: ${e.message}`;this.emit();};
+  this.adventureWatches.push(this.store.watchAdventure(tribeId,value=>{if(this.adventureWatchKey===key){this.model.adventure=value;this.emit();}},error,week));
+  this.adventureWatches.push(this.store.watchAdventureMembers(tribeId,value=>{if(this.adventureWatchKey===key){this.model.adventureMembers=value;this.emit();}},error,week));
+  void this.loadPreviousAdventure().catch(error);
+ }
+ async loadPreviousAdventure(){
+  const store=this.store;if(!store)return;const week=tribeWeek(this.now())-TRIBE_WEEK;
+  const member=await store.adapter.get(`adventureMembers/${store.adventureIdentity(week)}`);
+  if(!member||member.tribeId!==this.model.me?.tribeId)return;
+  const summary=await store.adapter.get(`adventures/${member.summaryId}`);if(this.store===store)this.model.previousAdventure={member,summary};
+ }
+ async joinAdventure(){this.requireFree();weeklyProgress(this.getState(),this.now());await this.persist();const member=await this.store.joinAdventure(cleanContribution(weeklyProgress(this.getState(),this.now())));await this.heartbeat(true);this.emit();return member;}
+ async claimAdventure(weekStart=tribeWeek(this.now())){
+  if(this.getVault().conflict)throw Error('Resolve the saved trail conflict before claiming supplies.');
+  const claim=await this.store.claimAdventure(Number(weekStart)||tribeWeek(this.now()));
+  if(claim.saveId===this.getVault().id&&applyAdventureClaim(this.getState(),claim))await this.persist();
+  await this.queueAdventureClaims();this.emit();return claim;
+ }
+ queueAdventureClaims(){
+  this.receiptTask=this.receiptTask.then(async()=>{const state=this.getState();if(!state||this.getVault()?.conflict)return;let changed=false;for(const claim of this.model.adventureClaims||[])if(claim.saveId===this.getVault()?.id)changed=applyAdventureClaim(state,claim)||changed;if(changed)await this.persist();}).catch(e=>{this.model.error=`Adventure reward delivery pending: ${e.message}`;this.emit();});return this.receiptTask;
+ }
+ recordTrade(id){recordTribeProgress(this.getState(),{trades:1},`trade:${id}`,this.now());return this.persist();}
  async fund(asset,amount){
   if(this.getVault().conflict)throw Error('Resolve the saved trail conflict before moving supplies.');
   await retryPackDeposits(this.localOptions());const me=await this.store.getPlayer(),balance=asset==='fruit'?me.wallet.fruit:me.wallet.items[asset]||0,missing=Math.max(0,amount-balance);
@@ -119,17 +148,17 @@ export class SocialController{
  async challenge(uid){this.requireFree();await this.refreshProfile();const me=await this.store.getPlayer(),target=Math.min(duelStake(snapshotTeam(this.getState())),availableInPack(this.getState(),'fruit')+me.wallet.fruit);await this.fund('fruit',target);return this.store.challenge(uid);}
  async accept(id){this.requireFree();await this.refreshProfile();const me=await this.store.getPlayer(),target=Math.min(duelStake(snapshotTeam(this.getState())),availableInPack(this.getState(),'fruit')+me.wallet.fruit);await this.fund('fruit',target);const duel=await this.store.acceptChallenge(id);this.onBattle();return duel;}
  async startRaid(){
-  this.requireFree();await this.refreshProfile();const ticket=await this.store.startRaid();const attempt=newRaidAttempt(ticket.team,ticket.bossLevel??ticket.level,ticket.seed,ticket.version??1);
+  this.requireFree();await this.refreshProfile();const ticket=await this.store.startRaid();const attempt=newRaidAttempt(ticket.team,ticket.bossLevel??ticket.level,ticket.seed,ticket.version??1,ticket.patternVersion||0);
   localSocial(this.getState()).raid={ticket,actions:[]};this.model.raid={...attempt,attemptId:ticket.id,actions:[],submitted:false};await this.persist();this.onBattle();await this.heartbeat(true);this.emit();
  }
  async restoreRaid(id){
   const saved=localSocial(this.getState()).raid,ticket=saved?.ticket?.id===id?saved.ticket:await this.store.getRaid(id);
   if(!ticket||ticket.submitted)return;
-  const attempt=newRaidAttempt(ticket.team,ticket.bossLevel??ticket.level,ticket.seed,ticket.version??1),actions=saved?.ticket?.id===id?saved.actions:[];for(const action of actions)raidAction(attempt,action);
+  const attempt=newRaidAttempt(ticket.team,ticket.bossLevel??ticket.level,ticket.seed,ticket.version??1,ticket.patternVersion||0),actions=saved?.ticket?.id===id?saved.actions:[];for(const action of actions)raidAction(attempt,action);
   localSocial(this.getState()).raid={ticket,actions};this.model.raid={...attempt,attemptId:id,actions:copy(actions),submitted:false};this.onBattle();
  }
  async raidMove(action){const raid=this.model.raid;if(!raid||raid.submitted)throw Error('Start a new hourly attempt first.');raidAction(raid,{...action,expectedSequence:action.expectedSequence??raid.sequence});raid.actions.push(action);localSocial(this.getState()).raid.actions=copy(raid.actions);await this.persist();this.emit();}
- async submitRaid(){const raid=this.model.raid;if(!raid||raid.status!=='finished')throw Error('Complete all ten turns first.');const result=await this.store.submitRaid(raid.attemptId,raid.actions);raid.submitted=true;raid.result=result;await this.persist();this.emit();}
+ async submitRaid(){const raid=this.model.raid;if(!raid||raid.status!=='finished')throw Error('Complete all ten turns first.');const result=await this.store.submitRaid(raid.attemptId,raid.actions);raid.submitted=true;raid.result=result;recordTribeProgress(this.getState(),{raids:1},`raid:${raid.attemptId}`,this.now());await this.persist();this.emit();}
  async returnToTrail(){
   let me=await this.store.getPlayer();
   if(me?.activeDuel){

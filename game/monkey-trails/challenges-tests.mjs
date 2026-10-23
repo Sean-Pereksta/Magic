@@ -28,7 +28,7 @@ test('walking challenges use accepted distance, show partial bars and never auto
 test('actual discovery and victory hooks advance regional counters once',()=>{
  const s=save();C.advance(s,C.ENCOUNTER_STEP);const finds=goal(s,'discoveries');
  assert.equal(finds.current,s.run.discoveries);assert.equal(finds.current,8);assert.equal(finds.complete,true);
- C.readyBattle(s);s.run.battle.enemy.hp=1;C.turn(s,'strike');
+ if(s.run.pendingEncounter)C.beginPendingEncounter(s);C.readyBattle(s);s.run.battle.enemy.hp=1;C.turn(s,'strike');
  assert.equal(goal(s,'victories').current,1);assert.equal(s.run.phase,'befriend');
  assert.throws(()=>C.turn(s,'strike'));assert.equal(goal(s,'victories').current,1);
 });
@@ -79,6 +79,6 @@ test('new challenge metadata does not invent historical wins and sanitizes malfo
 });
 
 test('encounter clipping and rejected movement do not inflate tracked distance',()=>{
- const s=save(),id=goal(s,'distance').id;trackChallenge(s,id);const accepted=C.advance(s,10000,10000,0);
- assert.equal(accepted,C.ENCOUNTER_STEP);assert.equal(trackedChallenge(s).current,accepted);assert.equal(C.advance(s,1000,1000,0),0);assert.equal(trackedChallenge(s).current,accepted);
+ const s=save(),id=goal(s,'distance').id;trackChallenge(s,id);const accepted=C.advance(s,C.ENCOUNTER_STEP,C.ENCOUNTER_STEP,0);
+ assert.equal(accepted,C.ENCOUNTER_STEP);assert.equal(trackedChallenge(s).current,accepted);assert.ok(s.run.pendingEncounter);C.beginPendingEncounter(s);assert.equal(C.advance(s,1000,1000,0),0);assert.equal(trackedChallenge(s).current,accepted);
 });

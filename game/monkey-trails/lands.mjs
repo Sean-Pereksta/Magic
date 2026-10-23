@@ -2,16 +2,16 @@
 // Encounter direction is intentionally separate: battles reset that short-term
 // vector, while a land keeps its location across encounters and expeditions.
 export const LANDS=Object.freeze([
-  {id:'emerald-jungle',name:'Emerald Jungle',unlock:0,types:['leaf'],label:'Nature · Normal',description:'Follow winding rivers through a lush canopy of giant leaves and sunlit clearings.',landmark:'Hidden Canopy Temple',color:'#57d48a'},
+  {id:'emerald-jungle',name:'Emerald Jungle',unlock:0,types:['leaf'],label:'Leaf',description:'Follow winding rivers through a lush canopy of giant leaves and sunlit clearings.',landmark:'Hidden Canopy Temple',color:'#57d48a'},
   {id:'sunstone-savannah',name:'Sunstone Savannah',unlock:2000,types:['earth','fire'],label:'Earth · Fire',description:'Golden grass, warm stone arches, and shady acacias stretch toward the horizon.',landmark:'Sunstone Arch',color:'#edbe65'},
-  {id:'crystal-caverns',name:'Crystal Caverns',unlock:6000,types:['earth','storm'],label:'Rock · Electric',description:'Glowing crystals light a mysterious underground river and glittering passages.',landmark:'Prismatic Grotto',color:'#a494f8'},
-  {id:'whispering-marsh',name:'Whispering Marsh',unlock:12000,types:['water','shadow'],label:'Water · Poison',description:'Lilies, crooked roots, and firefly lights fill a dreamy emerald wetland.',landmark:'Firefly Lagoon',color:'#6fc4c0'},
-  {id:'frostpeak-mountains',name:'Frostpeak Mountains',unlock:20000,types:['ice','storm'],label:'Ice · Wind',description:'Snowy pines and icy bridges lead beneath bright, towering mountain peaks.',landmark:'Aurora Summit',color:'#9bd9ef'},
-  {id:'thunder-highlands',name:'Thunder Highlands',unlock:32000,types:['storm'],label:'Electric · Air',description:'Clouds roll between grassy sky cliffs and ancient stones charged with lightning.',landmark:'Stormwatch Plateau',color:'#b8b3fa'},
+  {id:'crystal-caverns',name:'Crystal Caverns',unlock:6000,types:['earth','storm'],label:'Earth · Storm',description:'Glowing crystals light a mysterious underground river and glittering passages.',landmark:'Prismatic Grotto',color:'#a494f8'},
+  {id:'whispering-marsh',name:'Whispering Marsh',unlock:12000,types:['water','shadow'],label:'Water · Shadow',description:'Lilies, crooked roots, and firefly lights fill a dreamy emerald wetland.',landmark:'Firefly Lagoon',color:'#6fc4c0'},
+  {id:'frostpeak-mountains',name:'Frostpeak Mountains',unlock:20000,types:['ice','storm'],label:'Ice · Storm',description:'Snowy pines and icy bridges lead beneath bright, towering mountain peaks.',landmark:'Aurora Summit',color:'#9bd9ef'},
+  {id:'thunder-highlands',name:'Thunder Highlands',unlock:32000,types:['storm'],label:'Storm',description:'Clouds roll between grassy sky cliffs and ancient stones charged with lightning.',landmark:'Stormwatch Plateau',color:'#b8b3fa'},
   {id:'ember-volcano',name:'Ember Volcano',unlock:48000,types:['fire','earth'],label:'Fire · Earth',description:'Lava ribbons weave through charcoal cliffs beneath a glowing volcanic crown.',landmark:'Ember Crater',color:'#fa9368'},
-  {id:'moonlit-forest',name:'Moonlit Forest',unlock:72000,types:['shadow','light'],label:'Shadow · Psychic',description:'Moonbeams, blue mushrooms, and silver leaves illuminate an enchanted woodland.',landmark:'Moonwell Clearing',color:'#b4a3e8'},
-  {id:'celestial-ruins',name:'Celestial Ruins',unlock:100000,types:['light'],label:'Light · Mystic',description:'Floating columns and starlit pools surround a forgotten sanctuary in the sky.',landmark:'Starlight Sanctuary',color:'#e9d7a0'},
-  {id:'ancient-monkey-kingdom',name:'Ancient Monkey Kingdom',unlock:140000,types:['light','earth'],label:'Dragon · Ancient · Legendary',description:'Vine-covered golden towers reveal the grand home of the first monkey explorers.',landmark:'The Golden Crown',color:'#e9ba68'}
+  {id:'moonlit-forest',name:'Moonlit Forest',unlock:72000,types:['shadow','light'],label:'Shadow · Light',description:'Moonbeams, blue mushrooms, and silver leaves illuminate an enchanted woodland.',landmark:'Moonwell Clearing',color:'#b4a3e8'},
+  {id:'celestial-ruins',name:'Celestial Ruins',unlock:100000,types:['light'],label:'Light',description:'Floating columns and starlit pools surround a forgotten sanctuary in the sky.',landmark:'Starlight Sanctuary',color:'#e9d7a0'},
+  {id:'ancient-monkey-kingdom',name:'Ancient Monkey Kingdom',unlock:140000,types:['light','earth'],label:'Light · Earth',description:'Vine-covered golden towers reveal the grand home of the first monkey explorers.',landmark:'The Golden Crown',color:'#e9ba68'}
 ].map(land=>Object.freeze({...land,types:Object.freeze(land.types)})));
 
 const byId=new Map(LANDS.map(land=>[land.id,land]));

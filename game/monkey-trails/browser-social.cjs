@@ -63,7 +63,7 @@ async function openClient(browser,{uid,name,width=390,seed=7121,existing=false})
   for(const [i,species]of ['macaque','langur'].entries()){const p=structuredClone(C.newSave('Fixture',species,'gps',seed+i+10).run.monkey);p.id=`reserve-${i}`;p.level=6;p.hp=22+i;p.energy=4+i;s.collection[p.id]=p;}
   C.setParty(s,[s.run.activeId,'reserve-0','reserve-1']);s.run.fruit=100;s.run.items.berry=8;await v.checkpoint(s,true);await v.sync();
  },{name,seed});
- await page.locator('#creature-name').fill(name);await page.locator('#creature-password').fill('social-test-password');await page.locator('#save-form button[value="open"]').click();
+ await page.locator('[data-action="welcome-continue"]').click();await page.locator('#creature-name').fill(name);await page.locator('#creature-password').fill('social-test-password');await page.locator('#save-form button[value="open"]').click();
  await page.locator('#game').waitFor({state:'visible'});await page.waitForFunction(()=>window.__socialDebug.social.model.status==='ready');
  await page.locator('[data-action="tab"][data-id="social"]').click();
  return{page,context,errors,uid,name};

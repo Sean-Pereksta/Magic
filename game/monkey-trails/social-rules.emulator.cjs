@@ -13,6 +13,36 @@ const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/
   await no(f.getDoc(f.doc(env.unauthenticatedContext().firestore(),root,'players','alice')),'signed-out reads denied');
   await yes(a.deposit('fruit',40,'deposit-alice'),'own earned deposit');await yes(b.deposit('fruit',40,'deposit-bob'),'second deposit');
   const tribe=await yes(a.createTribe({name:'Canopy Guardians',emblem:{shape:'shield',symbol:'leaf',color:'#477a51'}}),'create tribe');await yes(b.joinTribe(tribe.id),'join tribe');
+  // New weekly shared objective: membership-scoped counts, exact delta totals,
+  // immutable per-week claims and no second-tribe participation.
+  const zero={meters:0,discoveries:0,challenges:0,raids:0,trades:0};
+  const am=await yes(a.joinAdventure(zero),'opt into weekly adventure');
+  await yes(b.joinAdventure({...zero,meters:1000}),'second member baseline');
+  await yes(b.contributeAdventure({...zero,meters:1500}),'accepted contribution delta');
+  await yes(b.contributeAdventure({...zero,meters:1500}),'same upload idempotent');
+  await yes(a.contributeAdventure({...zero,meters:30000}),'complete shared weekly objective');
+  const summary=await f.getDoc(f.doc(dbs.alice,root,'adventures',am.summaryId));assert.equal(summary.data().points,610);checks++;
+  await no(f.updateDoc(f.doc(dbs.bob,root,'adventures',am.summaryId),{points:999999,updatedAt:Date.now()}),'summary cannot grow without own matching member delta');
+  await no(f.updateDoc(f.doc(dbs.bob,root,'adventureMembers',am.id),{points:999999,updatedAt:Date.now()}),'other member contribution cannot be rewritten');
+  await no(f.getDoc(f.doc(dbs.charlie,root,'adventures',am.summaryId)),'outsider cannot read weekly progress');
+  await yes(a.adapter.list('adventureMembers',[['tribeId','==',tribe.id],['weekStart','==',am.weekStart]]),'weekly contribution roster query');
+  const weeklyClaim=await yes(a.claimAdventure(),'weekly reward claim');
+  assert.deepEqual(await yes(a.claimAdventure(),'repeated claim returns same immutable record'),weeklyClaim);checks++;
+  await yes(a.adapter.list('adventureClaims',[['uid','==','alice']]),'own immutable reward claim query');
+  await no(f.updateDoc(f.doc(dbs.alice,root,'adventureClaims',weeklyClaim.id),{'reward.fruit':999}),'claimed reward is immutable');
+  await yes(b.leaveTribe(),'leave after contribution');
+  await blocked(b.claimAdventure(),'departed member cannot claim');
+  const other=await yes(b.createTribe({name:'Another Canopy'}),'create different tribe');
+  await blocked(b.joinAdventure(zero),'one tribe objective per player per week');
+  await yes(b.leaveTribe(),'leave temporary tribe');await yes(b.joinTribe(tribe.id),'return to original tribe');
+  await yes(b.joinAdventure(zero),'same tribe opt-in returns prior baseline');
+  await yes(b.contributeAdventure({...zero,meters:1500}),'rejoin does not duplicate contribution');
+  await yes(b.claimAdventure(),'rejoined member can claim earned reward');
+  const oldWeek=am.weekStart-604800000,oldMember={...am,id:`${oldWeek}-alice`,weekStart:oldWeek,weekEnd:am.weekStart,summaryId:`${oldWeek}-${tribe.id}`,joinedAt:oldWeek+1000,updatedAt:oldWeek+1000};
+  await env.withSecurityRulesDisabled(async ctx=>{const db=ctx.firestore();await f.setDoc(f.doc(db,root,'adventureMembers',oldMember.id),oldMember);await f.setDoc(f.doc(db,root,'adventures',oldMember.summaryId),{id:oldMember.summaryId,tribeId:tribe.id,weekStart:oldWeek,weekEnd:am.weekStart,target:600,points:0,updatedAt:oldWeek+1000});});
+  await yes(a.contributeAdventure({...zero,meters:30000},oldWeek),'previous enrolled week accepts offline catch-up');
+  await yes(a.claimAdventure(oldWeek),'previous completed objective reward recovery');
+
   await yes(a.gift('bob','fruit',3),'atomic gift');assert.equal((await a.getPlayer()).wallet.fruit,37);assert.equal((await b.getPlayer()).wallet.fruit,43);
   await no(f.updateDoc(f.doc(dbs.charlie,root,'players','alice'),{'wallet.fruit':999}),'outsider cannot mint partner wallet');
   await yes(a.deposit('berry',3,'berry-alice'),'deposit item');const offer=await yes(a.offerTrade('bob',{asset:'berry',amount:1},{asset:'fruit',amount:2}),'escrow trade');await yes(b.acceptTrade(offer.id),'accept trade');assert.equal((await b.getPlayer()).wallet.items.berry,1);
