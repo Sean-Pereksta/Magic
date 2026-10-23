@@ -139,3 +139,88 @@ Rebuild the committed local art and Cloudflare ZIP with `node game/monkey-trails
 Automated browser checks use phone-sized viewports and simulated interactions; they cannot demonstrate real phone GPS, operating-system screen locking, or production Firestore behavior. Those checks remain release gates. Do not describe the expansion as release-complete until Android Chrome and iOS Safari have demonstrated permission allow/deny, GPS interruption and resume, screen lock, asset loading, mobile layout, a full expedition, offline reopening and a two-device cloud conflict.
 
 Run `npm run test:monkey-trails:progression-browser` to exercise walking XP, exact recovery, fruit/XP upgrades, saved levels, item-then-attack, reserve revival and the saved per-round supply allowance on mobile.
+
+## Tribes, shared bosses and friendly player battles
+
+Open **Tribe** in a regular saved trail. Create a named tribe with a colored
+shield, circle or diamond decal and one of six symbols, or join with its code.
+A tribe has at most ten members; the owner can update its emblem. Gifts and
+mutually accepted item trades use a synchronized tribe pouch. Offers escrow
+what the sender gives, and cancellation refunds the escrow exactly once.
+Move supplies between the expedition pack and pouch with the transfer controls.
+The pouch survives expedition restarts.
+
+Each member can make a ten-turn boss attempt once per hour. Attempts use healthy
+copies of their chosen three companions; the boss never attacks. Completed
+attempts are replayed deterministically before applying damage in a transaction.
+Damage accumulates on the tribe's boss. A defeat advances its level and health,
+and awards fruit, XP and supplies to every member in the defeat's membership
+snapshot. Fruit/supplies are credited to their pouch, and XP is delivered to the
+local save. Closeable notifications arrive live or on the member's next login.
+A saved receipt is applied locally once before its notification can be dismissed.
+
+Challenge an online, available tribe member, or explicitly opt into nearby
+players. Nearby discovery uses a coarse location fix, expires after 90 seconds,
+and conservatively accounts for location uncertainty at the one-mile boundary.
+It never displays coordinates, routes, or a navigation marker. Turning it off
+removes the shared point. Hidden/closed games are not available for challenges;
+a foreground presence heartbeat runs every 25 seconds, and opted-in location is refreshed about every 45 seconds even while not walking. No location is requested
+by multiplayer until the player explicitly enables nearby discovery.
+
+Player duels alternate one action at a time, with an expected revision checked in
+a Firestore transaction. Both browsers reconstruct the canonical state from the
+initial team snapshots and action log. A stale/double click, an out-of-turn move
+or a second simultaneous match is rejected. Players can surrender, and a waiting
+player can claim a turn after 90 seconds of inactivity. A maximum action count
+ends prolonged matches. Both players earn XP. Each player's fruit stake is capped
+at the smaller of ten fruit, twice their average team level rounded down, and
+available fruit. The stakes are shown with the invitation and held in escrow.
+The winner takes the loser's stake; a draw refunds both. Returning transfers the
+player's payout back into their expedition pack. There is no PvP cooldown.
+
+Duels and boss attempts never write their combat HP, energy, status effects,
+knockouts, loadouts or inventory usage into the expedition. A player battle
+cannot end a run or lose a companion. New challenges remain unavailable until
+the player returns from the result screen. Existing expedition encounters also
+mark the player busy. Opening the ordinary Tribe menu keeps foreground walking
+active, like the other menus.
+
+### Hosting and Firestore setup
+
+Gameplay remains static browser HTML/CSS/native modules plus Firebase Auth and
+Firestore. **There is no Node server, Cloud Function, paid map API or game build
+step.** The existing `lobby/firebase-config.mjs` project and current Firebase Auth
+session are reused. A social player is bound to that Auth UID and one saved trail;
+opening another trail cannot silently take over its wallet or membership. Use the
+same authenticated identity when returning on another device. Anonymous Firebase
+sessions retain their identity on the original browser; a creature password alone
+does not authenticate a different device as that Firebase user.
+
+Publish the repository's updated `firestore.rules` to the existing project before
+using multiplayer. The new records are isolated under
+`monkeyTrailsSocial/v1/{players,presence,tribes,offers,challenges,duels,raids,operations,receipts}`.
+The broad legacy `games_rogueduel` rules cannot grant access to this namespace.
+The app shows permission/connection failures and continues saving the solo trail;
+it does not substitute fake local opponents for online players. Production rules
+are not deployed by this source change.
+
+The shared economy is casual browser gameplay: rules enforce ownership,
+participant boundaries, escrow arithmetic and transaction ordering, while clients
+replay combat. Firestore rules cannot independently prove a browser's solo-earned
+inventory or execute the complete combat simulator. This is not an anti-cheat
+server; no such server is introduced here.
+
+Encrypted local deposits retain a debit intent until their idempotent remote
+operation succeeds. Ambiguous network failures are retried with the same ID.
+Withdrawal/reward receipts are applied once and checkpointed before dismissal.
+No absolute GPS location is written into the encrypted save or portable backup.
+
+Validation commands (Node is used only for development tests):
+
+- `npm run test:monkey-trails`
+- `npm run test:monkey-trails:social-browser`
+- `npm run test:monkey-trails:social-rules`
+
+The social browser harness uses two isolated browser contexts and a shared
+transactional test adapter, without touching production multiplayer records.
+The rules harness runs the actual Firestore adapter against the local emulator.
