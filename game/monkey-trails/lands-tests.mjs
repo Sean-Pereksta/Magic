@@ -19,8 +19,8 @@ test('ten lands unlock at cumulative accepted-meter thresholds, without auto tra
 });
 
 test('encounter clipping and rejected advances never bank extra world distance',()=>{
-  const s=save(),used=C.advance(s,10000,10000,0);
-  assert.equal(used,C.ENCOUNTER_STEP);assert.equal(s.run.phase,'battle');
+  const s=save(),used=C.advance(s,C.ENCOUNTER_STEP,C.ENCOUNTER_STEP,0);
+  assert.equal(used,C.ENCOUNTER_STEP);assert.equal(s.run.phase,'trail');assert.ok(s.run.pendingEncounter);C.beginPendingEncounter(s);
   assert.equal(C.landProgress(s).totalDistance,used);assert.equal(C.landProgress(s).position.east,used);
   const before=structuredClone(s.world);
   assert.equal(C.advance(s,1000,1000,0),0);assert.throws(()=>C.selectLand(s,'emerald-jungle'),/encounter/);
@@ -85,9 +85,9 @@ test('facing changes only for actual accepted displacement, including clipped mo
     assert.equal(C.advance(s,...args),0);assert.equal(C.landProgress(s).heading,180);
   }
   s.run.nextEncounter=s.run.distance+5;
-  assert.equal(C.advance(s,100,100,0),5);
+  assert.equal(C.advance(s,5,5,0),5);
   assert.deepEqual(C.landProgress(s).position,{east:5,north:-10});assert.equal(C.landProgress(s).heading,90);
-  const before=structuredClone(s.world);assert.equal(C.advance(s,10,-10,0),0);assert.deepEqual(s.world,before);
+  C.beginPendingEncounter(s);const before=structuredClone(s.world);assert.equal(C.advance(s,10,-10,0),0);assert.deepEqual(s.world,before);
   s.run.phase='trail';s.world.regions['emerald-jungle'].position={east:1e7,north:0};
   assert.equal(advanceLand(s,10,10,0),10);assert.equal(C.landProgress(s).heading,90);
   // Hitting the coordinate limit cannot turn the avatar without moving it.

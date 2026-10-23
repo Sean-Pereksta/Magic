@@ -38,6 +38,10 @@ async function setup(browser,options={}){
   });
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await mockLocation(page,options);await page.goto('http://127.0.0.1:7777/game/monkey-trails.html');
+  const locationHelp=page.locator('.welcome-location-help');
+  assert.equal(await locationHelp.evaluate(el=>el.open),false,'Optional diagnostics start collapsed');
+  await locationHelp.locator(':scope > summary').click();
+  assert.equal(await page.evaluate(()=>__geo.counts().requests),0,'Opening location help must not request GPS');
   await page.locator('#welcome-location [data-action="enable-location"]').waitFor();
   return {page,context,errors};
 }
@@ -47,6 +51,7 @@ async function waitText(page,pattern,selector='#welcome-location'){
   await page.waitForFunction(({source,flags,selector})=>new RegExp(source,flags).test(document.querySelector(selector)?.innerText||''),{source:pattern.source,flags:pattern.flags,selector});
 }
 async function openGPS(page){
+  await page.locator('[data-action="welcome-new"]').click();
   await page.locator('#creature-name').fill('Mossfoot');await page.locator('#creature-password').fill('a-test-password-only');
   await page.locator('#save-form button[value="create"]').click();await page.locator('#game').waitFor({state:'visible'});
 }
@@ -59,7 +64,7 @@ async function checkClean(page,errors){
   const browser=await chromium.launch({headless:true,...(process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE?{executablePath:process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE}:{})}),report=[];
   const run=async(name,options,test)=>{const {page,context,errors}=await setup(browser,options);try{await test(page);await checkClean(page,errors);report.push({scenario:name,errors:0});}finally{await context.close();}};
   try{
-    await run('menus retain walking, discoveries fade, and encounters still pause',{},async page=>{
+    await run('menus retain walking, discoveries fade, pending encounters wait, and actual combat pauses',{},async page=>{
       await page.clock.install();await openGPS(page);await page.locator('#tracking-button').click();
       let step=0;
       const walk=async(count=1)=>{let found=false;for(let i=0;i<count;i++){
@@ -97,6 +102,7 @@ async function checkClean(page,errors){
         await page.locator('.dialog-close').click();
       }
       await page.locator('[data-action="tab"][data-id="team"]').click();
+      await page.locator('[data-action="companion-section"][data-id="abilities"]').click();
       await page.locator('[data-action="ability-open"]').first().click();await walk();
       assert.equal((await counts(page)).cleared,0,'Ability editing must keep walking');
       await page.locator('.dialog-close').click();
@@ -104,9 +110,12 @@ async function checkClean(page,errors){
       await page.locator('#tracking-button').click();assert.equal((await counts(page)).cleared,1,'Manual pause still works');
       await page.locator('#tracking-button').click();await walk(2);
       await page.locator('[data-action="settings"]').click();await walk(20);
-      assert.ok((await counts(page)).cleared>=2,'The encounter milestone pauses tracking from a menu');
-      assert.equal(await page.locator('#inspect-dialog').evaluate(el=>el.open),false);
-      assert.equal(await page.locator('[data-action="ready"]').count(),1,'Encounter returns to the Walk screen');
+      assert.equal((await counts(page)).cleared,1,'An ordinary encounter invitation keeps the walking watch active');
+      assert.equal(await page.locator('#inspect-dialog').evaluate(el=>el.open),true,'The invitation preserves an open menu');
+      await page.locator('.dialog-close').click();
+      await page.locator('[data-action="pending-begin"]').click();
+      assert.ok((await counts(page)).cleared>=2,'Beginning actual combat pauses tracking');
+      assert.equal(await page.locator('[data-action="ready"]').count(),1,'The frozen encounter opens on Walk when requested');
     });
     await run('explicit setup verifies location without starting or adding distance',{},async page=>{
       assert.equal((await counts(page)).requests,0,'Opening the page must not request location');assert.equal((await counts(page)).watches,0);

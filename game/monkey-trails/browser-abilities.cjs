@@ -17,7 +17,7 @@ const shotDir=process.env.MONKEY_TRAILS_SCREENSHOT_DIR;
    C.setParty(save,['claypot','lumenmoth','chronogibbon']);await vault.checkpoint(save,true);
   });
   await page.locator('#practice-button').click();await page.locator('#game').waitFor({state:'visible'});
-  await page.locator('[data-action="tab"][data-id="team"]').click();
+  await page.locator('[data-action="tab"][data-id="team"]').click();await page.locator('[data-action="companion-section"][data-id="abilities"]').click();
   assert.equal(await page.locator('.loadout [data-action="ability-open"]').count(),4);
   assert.equal(await page.locator('.loadout select').count(),0);
   await page.locator('.loadout [data-ability-slot="1"]').click();await page.locator('.ability-picker').waitFor();
@@ -35,7 +35,7 @@ const shotDir=process.env.MONKEY_TRAILS_SCREENSHOT_DIR;
   assert.equal(await page.locator(`[data-action="ability-equip"][data-id="${move}"]`).isDisabled(),true);
   await page.locator('.ability-picker-actions [data-action="close-dialog"]').click();
   await page.reload();await page.locator('#practice-button').click();await page.locator('#game').waitFor({state:'visible'});
-  await page.locator('[data-action="tab"][data-id="team"]').click();
+  await page.locator('[data-action="tab"][data-id="team"]').click();await page.locator('[data-action="companion-section"][data-id="abilities"]').click();
   assert.equal(await page.locator('.loadout [data-ability-slot="1"]').getAttribute('data-id'),move);
   await page.locator('[data-action="tab"][data-id="sanctuary"]').click();await page.locator('[data-action="collection-filter"][data-id="all"]').click();
   const identities=new Set();for(let pageIndex=0;pageIndex<8;pageIndex++){for(const id of await page.locator('.collection-card').evaluateAll(cards=>cards.map(card=>card.dataset.id)))identities.add(id);const next=page.locator('[data-action="collection-page"][data-id="1"]');if(await next.isDisabled())break;await next.click();}
@@ -56,7 +56,7 @@ const shotDir=process.env.MONKEY_TRAILS_SCREENSHOT_DIR;
   await page.locator('#collection-sort').selectOption('recent');assert.equal(await page.locator('.collection-card').first().getAttribute('data-id'),'chronogibbon');
   if(width===390){
    await page.reload();
-   await page.evaluate(async()=>{const C=await import('/game/monkey-trails/core.mjs'),{Vault}=await import('/game/monkey-trails/storage.mjs'),v=new Vault(()=>{}),s=await v.open('Trail Practice','practice-only-not-ranked',{mode:'practice'});C.setParty(s,['chronogibbon','claypot','lumenmoth']);s.run.activeId='chronogibbon';s.run.monkey=s.collection.chronogibbon;const p=s.run.monkey;p.loadout=['strike','zeroHourRelay','brace','breathe'];p.energy=C.stats(p).maxEnergy;C.advance(s,C.ENCOUNTER_STEP,0,0);C.readyBattle(s);const b=s.run.battle;b.enemy.hp=10000;b.enemy.loadout=['strike','breathe'];b.enemyAction={type:'move',id:'breathe'};b.intent='breathe';await v.checkpoint(s,true);});
+   await page.evaluate(async()=>{const C=await import('/game/monkey-trails/core.mjs'),{Vault}=await import('/game/monkey-trails/storage.mjs'),v=new Vault(()=>{}),s=await v.open('Trail Practice','practice-only-not-ranked',{mode:'practice'});C.setParty(s,['chronogibbon','claypot','lumenmoth']);s.run.activeId='chronogibbon';s.run.monkey=s.collection.chronogibbon;const p=s.run.monkey;p.loadout=['strike','zeroHourRelay','brace','breathe'];p.energy=C.stats(p).maxEnergy;C.advance(s,C.ENCOUNTER_STEP,0,0);C.beginPendingEncounter(s);C.readyBattle(s);const b=s.run.battle;b.enemy.hp=10000;b.enemy.loadout=['strike','breathe'];b.enemyAction={type:'move',id:'breathe'};b.intent='breathe';await v.checkpoint(s,true);});
    await page.locator('#practice-button').click();await page.locator('#game').waitFor({state:'visible'});
    await page.locator('[data-action="ready"]').click();
    assert.equal(await page.locator('[data-action="move"][data-id="zeroHourRelay"]').count(),1,await page.locator('#view').innerText());

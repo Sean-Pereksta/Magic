@@ -19,7 +19,7 @@ async function client(browser,scenario){
   const v=new Vault(()=>{}),s=await v.open('Trail Practice','practice-only-not-ranked',{create:true,species:'capuchin',mode:'practice'});
   let info={};
   if(scenario==='strong'||scenario==='resisted'){
-   C.advance(s,C.ENCOUNTER_STEP);C.readyBattle(s);const p=s.run.monkey,b=s.run.battle,e=b.enemy;
+   C.advance(s,C.ENCOUNTER_STEP);C.beginPendingEncounter(s);C.readyBattle(s);const p=s.run.monkey,b=s.run.battle,e=b.enemy;
    p.level=8;p.stage=1;p.types=['fire'];p.learned.push('cinder');p.loadout=['strike','cinder','brace','breathe'];p.hp=C.stats(p).hp;p.energy=C.stats(p).maxEnergy;
    e.species='mossmop';e.types=[scenario==='strong'?'leaf':'fire'];e.level=1;e.stage=0;e.hp=1000;e.energy=12;e.loadout=['strike','brace','breathe'];b.enemyAction={type:'move',id:'strike'};b.intent='strike';s.rng=48217;
   }else if(scenario==='evolution'){
@@ -57,7 +57,7 @@ async function screenshot(page,name){if(out){fs.mkdirSync(out,{recursive:true});
   }
   {
    const c=await client(browser,'evolution'),p=c.page;
-   await p.locator('[data-action="tab"][data-id="team"]').click();const offer=p.locator('[data-action="evolution-preview"][data-id="leaf"]'),goal=offer.locator('.essence-goal[data-essence-type="leaf"]');
+   await p.locator('[data-action="tab"][data-id="team"]').click();await p.locator('[data-action="companion-section"][data-id="evolve"]').click();const offer=p.locator('[data-action="evolution-preview"][data-id="leaf"]'),goal=offer.locator('.essence-goal[data-essence-type="leaf"]');
    assert.equal(await goal.locator('[data-essence-current]').innerText(),'3');assert.equal(await goal.locator('[data-essence-required]').innerText(),'6');assert.equal(await goal.locator('[role="progressbar"]').getAttribute('aria-valuenow'),'3');
    await offer.click();const commit=p.locator('[data-action="evolve"][data-id="leaf"]');assert.equal(await commit.isDisabled(),true);
    for(const stat of ['hp','atk','def','speed','maxEnergy'])assert.ok(await p.locator('.evolution-stat-gains [data-stat="'+stat+'"]').count(),'Preview includes '+stat);

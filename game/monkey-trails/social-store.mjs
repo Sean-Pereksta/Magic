@@ -1,5 +1,6 @@
 // Firestore-only social state. Transactions serialize membership, escrow and turn revisions.
 import {ITEMS} from './core.mjs';
+import {tribeWeek,TRIBE_WEEK,TRIBE_ADVENTURE,cleanContribution,emptyContribution,contributionPoints,adventureReward} from './tribe-adventures.mjs';
 import {newRaidAttempt,raidAction,bossHealth,bossReward,newDuel,duelAction,duelStake,duelRewards,SOCIAL_COMBAT_VERSION} from './social-combat.mjs';
 export const SOCIAL_ROOT=['monkeyTrailsSocial','v1'];
 export const SOCIAL_CONFIG={maxMembers:10,raidCooldown:3600000,presenceTTL:90000,challengeTTL:120000,mile:1609.344,maxOffers:20};
@@ -37,6 +38,51 @@ export class SocialStore{
  async joinTribe(code){code=String(code||'').trim().toUpperCase();cleanId(code);const now=this.now();return this.adapter.transaction(async tx=>{const p=requirePlayer(await tx.get(ppath(this.uid))),tribe=await tx.get(`tribes/${code}`);if(!tribe)throw Error('No tribe has that code.');if(p.tribeId===code)return tribe;if(p.tribeId)throw Error('Leave your current tribe first.');if(tribe.members.length>=SOCIAL_CONFIG.maxMembers)throw Error('This tribe already has ten members.');tribe.members.push(this.uid);if(!tribe.ownerId)tribe.ownerId=this.uid;tribe.updatedAt=now;p.tribeId=code;touch(p,now);tx.set(`tribes/${code}`,tribe);tx.set(ppath(this.uid),p);return tribe;});}
  async updateTribe({name,emblem}){const now=this.now();return this.adapter.transaction(async tx=>{const p=requirePlayer(await tx.get(ppath(this.uid))),t=await tx.get(`tribes/${p.tribeId}`);if(!t||t.ownerId!==this.uid)throw Error('Only the tribe founder can change its banner.');if(name!==undefined)t.name=cleanName(name);if(emblem!==undefined)t.emblem=cleanEmblem(emblem);t.updatedAt=now;tx.set(`tribes/${t.id}`,t);return t;});}
  async leaveTribe(){const pending=await this.adapter.list('offers',[['from','==',this.uid],['status','==','pending']]);if(pending.length)throw Error('Cancel your open trade offers before leaving.');const now=this.now();return this.adapter.transaction(async tx=>{const p=requirePlayer(await tx.get(ppath(this.uid)));if(!p.tribeId)return;if(p.activeDuel||p.activeRaid)throw Error('Finish your current battle first.');const t=await tx.get(`tribes/${p.tribeId}`);if(t){t.members=t.members.filter(x=>x!==this.uid);if(t.ownerId===this.uid)t.ownerId=t.members[0]||null;t.updatedAt=now;tx.set(`tribes/${t.id}`,t);}p.tribeId=null;touch(p,now);tx.set(ppath(this.uid),p);});}
+ adventureIdentity(weekStart=tribeWeek(this.now())){return `${weekStart}-${this.uid}`;}
+ async joinAdventure(counters){
+  const now=this.now(),weekStart=tribeWeek(now),id=this.adventureIdentity(weekStart),clean=cleanContribution(counters);
+  return this.adapter.transaction(async tx=>{
+   const p=requirePlayer(await tx.get(ppath(this.uid)));if(!p.tribeId)throw Error('Join a tribe first.');
+   const tribe=await tx.get(`tribes/${p.tribeId}`),existing=await tx.get(`adventureMembers/${id}`);
+   if(!tribe?.members.includes(this.uid))throw Error('Your tribe membership changed. Reconnect and try again.');
+   if(existing){if(existing.tribeId!==tribe.id)throw Error('This week’s adventure stays with your first tribe. Join another adventure next week.');return existing;}
+   const summaryId=`${weekStart}-${tribe.id}`,summary=await tx.get(`adventures/${summaryId}`);
+   const member={id,uid:this.uid,saveId:p.saveId,tribeId:tribe.id,summaryId,weekStart,weekEnd:weekStart+TRIBE_WEEK,baseline:clone(clean),counters:clone(clean),contribution:emptyContribution(),points:0,joinedAt:now,updatedAt:now};
+   if(!summary)tx.set(`adventures/${summaryId}`,{id:summaryId,tribeId:tribe.id,weekStart,weekEnd:weekStart+TRIBE_WEEK,target:TRIBE_ADVENTURE.target,points:0,updatedAt:now});
+   tx.set(`adventureMembers/${id}`,member);return member;
+  });
+ }
+ async contributeAdventure(counters,weekStart=tribeWeek(this.now())){
+  const now=this.now(),id=this.adventureIdentity(weekStart),incoming=cleanContribution(counters);
+  if(![tribeWeek(now),tribeWeek(now)-TRIBE_WEEK].includes(weekStart))return null;
+  return this.adapter.transaction(async tx=>{
+   const member=await tx.get(`adventureMembers/${id}`);if(!member)return null;
+   const p=requirePlayer(await tx.get(ppath(this.uid))),tribe=await tx.get(`tribes/${member.tribeId}`),summary=await tx.get(`adventures/${member.summaryId}`);
+   if(p.tribeId!==member.tribeId||!tribe?.members.includes(this.uid)||!summary)return null;
+   for(const key of TRIBE_ADVENTURE.keys)member.counters[key]=Math.max(member.counters[key],incoming[key]);
+   const contribution=Object.fromEntries(TRIBE_ADVENTURE.keys.map(key=>[key,member.counters[key]-member.baseline[key]])),points=contributionPoints(contribution),delta=points-member.points;
+   if(points===member.points&&JSON.stringify(member.contribution)===JSON.stringify(contribution))return member;
+   summary.points+=delta;summary.updatedAt=now;member.contribution=contribution;member.points=points;member.updatedAt=now;
+   tx.set(`adventures/${summary.id}`,summary);tx.set(`adventureMembers/${id}`,member);return member;
+  });
+ }
+ async claimAdventure(weekStart=tribeWeek(this.now())){
+  const now=this.now(),id=this.adventureIdentity(weekStart);
+  return this.adapter.transaction(async tx=>{
+   const previous=await tx.get(`adventureClaims/${id}`);if(previous)return previous;
+   const member=await tx.get(`adventureMembers/${id}`),p=requirePlayer(await tx.get(ppath(this.uid)));
+   if(!member||member.points<=0)throw Error('Contribute to this adventure before claiming its reward.');
+   const tribe=await tx.get(`tribes/${member.tribeId}`),summary=await tx.get(`adventures/${member.summaryId}`);
+   if(p.tribeId!==member.tribeId||!tribe?.members.includes(this.uid))throw Error('Return to the tribe you explored with before claiming.');
+   if(!summary||summary.points<summary.target)throw Error('Your tribe is still working toward its shared goal.');
+   if(now>=member.weekEnd+TRIBE_WEEK)throw Error('This adventure’s reward window has ended.');
+   const claim={id,uid:this.uid,saveId:p.saveId,tribeId:member.tribeId,summaryId:member.summaryId,weekStart:member.weekStart,contribution:clone(member.contribution),reward:adventureReward(member.weekStart),claimedAt:now};
+   tx.set(`adventureClaims/${id}`,claim);return claim;
+  });
+ }
+ watchAdventure(tribeId,fn,error,weekStart=tribeWeek(this.now())){return this.adapter.watchDoc(`adventures/${weekStart}-${cleanId(tribeId)}`,fn,error);}
+ watchAdventureMembers(tribeId,fn,error,weekStart=tribeWeek(this.now())){return this.adapter.watchQuery('adventureMembers',[['tribeId','==',tribeId],['weekStart','==',weekStart]],fn,error);}
+ watchAdventureClaims(fn,error){return this.adapter.watchQuery('adventureClaims',[['uid','==',this.uid]],fn,error);}
  listTribes(){return this.adapter.list('tribes',[],30);}
  async walletOp(kind,operationId,details,mutate){const id=cleanId(operationId||this.makeId()),now=this.now();return this.adapter.transaction(async tx=>{const prior=await tx.get(`operations/${id}`);if(prior){if(prior.actor!==this.uid||prior.kind!==kind||JSON.stringify(prior.details.request)!==JSON.stringify(details))throw Error('That operation ID is already in use.');return prior.details.result??prior;}const result=await mutate(tx,id,now),wallets={};for(const [uid,{before,after}]of Object.entries(result.wallets||{})){wallets[uid]={before:clone(before),after:clone(after)};const p=result.players[uid];p.lastOp=id;touch(p,now);tx.set(ppath(uid),p);}const op={id,kind,actor:this.uid,participants:result.participants||Object.keys(wallets),details:{...details,...result.details,request:details,wallets,receipts:Object.fromEntries((result.receipts||[]).map(r=>[r.uid,{type:r.type,title:r.title,payload:r.payload,walletCredited:r.walletCredited}])),...(result.returnValue?{result:result.returnValue}:{})},createdAt:now};tx.set(`operations/${id}`,op);for(const r of result.receipts||[])tx.set(receiptPath(r.uid,r.id),r);return result.returnValue??op;});}
  receipt(id,uid,type,title,value,sourceId,now,walletCredited=true){return{id,uid,type,title,payload:payload(value),walletCredited,sourceId,createdAt:now,seen:false};}
@@ -46,12 +92,12 @@ export class SocialStore{
  offerTrade(toId,give,want){toId=cleanId(toId);give=asset(give);want=asset(want);if(toId===this.uid)throw Error('Choose another tribe member.');const id=this.makeId();return this.walletOp('trade-offer',id,{offerId:id,from:this.uid,to:toId,give,want},async(tx,opId,now)=>{const a=requirePlayer(await tx.get(ppath(this.uid))),b=requirePlayer(await tx.get(ppath(toId))),t=await tx.get(`tribes/${a.tribeId}`);if(!t||a.tribeId!==b.tribeId||!t.members.includes(toId))throw Error('Trade with members of your tribe.');const before=clone(a.wallet);changeWallet(a,give.asset,-give.amount);const offer={id,from:this.uid,to:toId,tribeId:t.id,give,want,status:'pending',createdAt:now,updatedAt:now};tx.set(`offers/${id}`,offer);return{players:{[a.uid]:a},wallets:{[a.uid]:{before,after:a.wallet}},participants:[a.uid,b.uid],returnValue:offer};});}
  acceptTrade(id){id=cleanId(id);return this.walletOp('trade',`accept-${id}`,{offerId:id},async(tx,opId,now)=>{const o=await tx.get(`offers/${id}`);if(!o||o.to!==this.uid||o.status!=='pending')throw Error('That trade is no longer available.');const a=requirePlayer(await tx.get(ppath(o.from))),b=requirePlayer(await tx.get(ppath(o.to))),t=await tx.get(`tribes/${o.tribeId}`);if(!t||a.tribeId!==o.tribeId||b.tribeId!==o.tribeId)throw Error('Both players must still belong to this tribe.');const aa=clone(a.wallet),bb=clone(b.wallet);changeWallet(b,o.want.asset,-o.want.amount);changeWallet(a,o.want.asset,o.want.amount);changeWallet(b,o.give.asset,o.give.amount);o.status='accepted';o.updatedAt=now;tx.set(`offers/${id}`,o);return{players:{[a.uid]:a,[b.uid]:b},wallets:{[a.uid]:{before:aa,after:a.wallet},[b.uid]:{before:bb,after:b.wallet}},details:{from:o.from,to:o.to,give:o.give,want:o.want},receipts:[this.receipt(opId,a.uid,'trade','Tribe trade complete',o.want.asset==='fruit'?{fruit:o.want.amount}:{items:{[o.want.asset]:o.want.amount}},opId,now),this.receipt(opId,b.uid,'trade','Tribe trade complete',o.give.asset==='fruit'?{fruit:o.give.amount}:{items:{[o.give.asset]:o.give.amount}},opId,now)]};});}
  cancelTrade(id){id=cleanId(id);return this.walletOp('trade-cancel',`cancel-${id}`,{offerId:id},async(tx,opId,now)=>{const o=await tx.get(`offers/${id}`);if(!o||![o.from,o.to].includes(this.uid)||o.status!=='pending')throw Error('That trade is no longer available.');const a=requirePlayer(await tx.get(ppath(o.from))),before=clone(a.wallet);changeWallet(a,o.give.asset,o.give.amount);o.status='cancelled';o.updatedAt=now;tx.set(`offers/${id}`,o);return{players:{[a.uid]:a},wallets:{[a.uid]:{before,after:a.wallet}},participants:[o.from,o.to],details:{from:o.from,to:o.to,give:o.give,want:o.want}};});}
- async startRaid(){const id=this.makeId(),now=this.now();return this.adapter.transaction(async tx=>{const p=requirePlayer(await tx.get(ppath(this.uid))),presence=await tx.get(`presence/${this.uid}`),t=await tx.get(`tribes/${p.tribeId}`);requireFree(p,presence,now);if(!t||!t.members.includes(this.uid))throw Error('Join a tribe before fighting its boss.');if(p.lastRaidAt&&now-p.lastRaidAt<SOCIAL_CONFIG.raidCooldown)throw Error('Your next tribe boss attempt unlocks one hour after the previous attempt.');const attempt={id,version:SOCIAL_COMBAT_VERSION,uid:this.uid,tribeId:t.id,bossLevel:t.boss.level,team:clone(p.team),seed:Math.floor(now%4294967295)||1,startedAt:now,submitted:false,damage:0,actions:[],completedAt:null};p.activeRaid=id;p.lastRaidAt=now;touch(p,now);tx.set(ppath(this.uid),p);tx.set(`raids/${id}`,attempt);return attempt;});}
+ async startRaid(){const id=this.makeId(),now=this.now();return this.adapter.transaction(async tx=>{const p=requirePlayer(await tx.get(ppath(this.uid))),presence=await tx.get(`presence/${this.uid}`),t=await tx.get(`tribes/${p.tribeId}`);requireFree(p,presence,now);if(!t||!t.members.includes(this.uid))throw Error('Join a tribe before fighting its boss.');if(p.lastRaidAt&&now-p.lastRaidAt<SOCIAL_CONFIG.raidCooldown)throw Error('Your next tribe boss attempt unlocks one hour after the previous attempt.');const attempt={id,version:SOCIAL_COMBAT_VERSION,patternVersion:1,uid:this.uid,tribeId:t.id,bossLevel:t.boss.level,team:clone(p.team),seed:Math.floor(now%4294967295)||1,startedAt:now,submitted:false,damage:0,actions:[],completedAt:null};p.activeRaid=id;p.lastRaidAt=now;touch(p,now);tx.set(ppath(this.uid),p);tx.set(`raids/${id}`,attempt);return attempt;});}
  getRaid(id){return this.adapter.get(`raids/${cleanId(id)}`);}
  async abandonRaid(id){if(!id)id=(await this.getPlayer())?.activeRaid;id=cleanId(id);const now=this.now();return this.adapter.transaction(async tx=>{const p=requirePlayer(await tx.get(ppath(this.uid))),a=await tx.get(`raids/${id}`);if(!a||a.uid!==this.uid||p.activeRaid!==id)throw Error('That attempt is not active.');p.activeRaid=null;touch(p,now);a.submitted=true;a.completedAt=now;tx.set(ppath(this.uid),p);tx.set(`raids/${id}`,a);return a;});}
  async submitRaid(id,actions){id=cleanId(id);if(!Array.isArray(actions)||actions.length!==10)throw Error('Complete all ten turns before submitting.');return this.walletOp('raid',`raid-${id}`,{attemptId:id},async(tx,opId,now)=>{
    const a=await tx.get(`raids/${id}`);if(!a||a.uid!==this.uid)throw Error('Unknown tribe boss attempt.');if(a.submitted)throw Error('This attempt was already submitted.');const p=requirePlayer(await tx.get(ppath(this.uid))),t=await tx.get(`tribes/${a.tribeId}`);if(p.activeRaid!==id||!t||p.tribeId!==a.tribeId)throw Error('This tribe boss attempt is no longer active.');
-   const attempt=newRaidAttempt(a.team,a.bossLevel,a.seed,a.version??1);for(const action of actions)raidAction(attempt,action);if(attempt.status!=='finished')throw Error('Complete all ten turns first.');
+   const attempt=newRaidAttempt(a.team,a.bossLevel,a.seed,a.version??1,a.patternVersion||0);for(const action of actions)raidAction(attempt,action);if(attempt.status!=='finished')throw Error('Complete all ten turns first.');
    const players={[p.uid]:p},wallets={},receipts=[];p.activeRaid=null;a.actions=clone(actions);a.submitted=true;a.damage=attempt.totalDamage;a.completedAt=now;
    let defeated=false,reward=null,damageApplied=0;
    if(t.boss.level===a.bossLevel){damageApplied=Math.min(t.boss.hp,attempt.totalDamage);t.boss.hp-=damageApplied;t.boss.revision++;t.updatedAt=now;

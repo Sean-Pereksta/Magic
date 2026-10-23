@@ -14,7 +14,7 @@ const root=path.resolve(__dirname,'../..'),mime={'.html':'text/html','.mjs':'tex
    const v=new Vault(()=>{}),s=await v.open('Trail Practice','practice-only-not-ranked',{create:true,species:'capuchin',mode:'practice'});
    for(let i=1;i<4;i++){const p=structuredClone(C.newSave('Fixture','macaque','practice',i).run.monkey);p.id=`fixture-${i}`;s.collection[p.id]=p;}
    C.setParty(s,[s.run.activeId,'fixture-1','fixture-2']);s.run.fruit=100;
-   if(scenario==='battle'){C.advance(s,C.ENCOUNTER_STEP);C.readyBattle(s);s.run.battle.enemy.hp=1000;s.run.battle.enemy.energy=0;s.run.battle.enemyAction={type:'move',id:'breathe'};s.run.battle.intent='breathe';s.run.items.berry=3;s.run.items.revive=1;s.collection['fixture-1'].hp=0;}
+   if(scenario==='battle'){C.advance(s,C.ENCOUNTER_STEP);C.beginPendingEncounter(s);C.readyBattle(s);s.run.battle.enemy.hp=1000;s.run.battle.enemy.energy=0;s.run.battle.enemyAction={type:'move',id:'breathe'};s.run.battle.intent='breathe';s.run.items.berry=3;s.run.items.revive=1;s.collection['fixture-1'].hp=0;}
    if(scenario==='goals'){s.run.monkey.training=11;s.run.fruit=2;}
    if(scenario==='exact-goals'){s.run.monkey.training=22;s.run.fruit=3;}
    if(scenario==='max-goals'){s.run.monkey.level=60;s.run.monkey.training=999;}

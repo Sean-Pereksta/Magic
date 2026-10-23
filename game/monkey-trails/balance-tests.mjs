@@ -8,7 +8,7 @@ const close=(actual,expected)=>assert.ok(Math.abs(actual-expected)<1e-8,`${actua
 function companion(species,level=1,stage=0){return{species,level,stage,types:[...C.SPECIES[species].types]};}
 function battle(targetTypes=[],actorTypes=['fire'],enemyMove='breathe'){
  const s=fixture(),p=s.run.monkey;p.level=10;p.types=[...actorTypes];p.learned.push('cinder');p.loadout=['strike','cinder','brace','breathe'];p.hp=C.stats(p).hp;
- C.advance(s,s.run.nextEncounter);C.readyBattle(s);const b=s.run.battle;b.enemy.types=[...targetTypes];b.enemy.hp=10000;b.intent=enemyMove;b.enemyAction={type:'move',id:enemyMove};s.rng=192837;
+ C.advance(s,s.run.nextEncounter);if(s.run.pendingEncounter)C.beginPendingEncounter(s);C.readyBattle(s);const b=s.run.battle;b.enemy.types=[...targetTypes];b.enemy.hp=10000;b.intent=enemyMove;b.enemyAction={type:'move',id:enemyMove};s.rng=192837;
  return s;
 }
 

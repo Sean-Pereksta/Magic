@@ -1,6 +1,7 @@
 // Regional goals use accepted landscape distance and real discovery/victory hooks.
 // They persist with the sanctuary; collecting a reward is an explicit, one-time act.
 import {ITEMS} from './data.mjs';
+import {recordTribeProgress} from './tribe-adventures.mjs';
 import {LANDS,landProgress,normalizeLands} from './lands.mjs';
 
 const THEMES=[
@@ -65,10 +66,11 @@ export function trackChallenge(s,id){
  s.meta.regionChallenges.tracked=id;return{...row,tracked:true};
 }
 
-export function recordRegionEvent(s,kind,amount=1,landId=landProgress(s).activeId){
+export function recordRegionEvent(s,kind,amount=1,landId=landProgress(s).activeId,{battleId}={}){
  if(!['discoveries','victories'].includes(kind)||!Number.isSafeInteger(amount)||amount<=0||amount>1000)throw Error('Invalid regional progress event.');
  const saved=normalizeChallenges(s);
- if(!landIds.has(landId)||landId!==s.world.activeLand)throw Error('Regional progress belongs to the region you are exploring.');
+ const battle=s.run?.battle,validOrigin=kind==='victories'&&battleId&&battleId===battle?.id&&(battle.originLandId||battle.landId)===landId&&s.world.unlocked.includes(landId);
+ if(!landIds.has(landId)||landId!==s.world.activeLand&&!validOrigin)throw Error('Regional progress belongs to the region you are exploring.');
  saved.regions[landId][kind]=Math.min(1000000000,saved.regions[landId][kind]+amount);
  return saved.regions[landId][kind];
 }
@@ -85,6 +87,7 @@ export function claimChallenge(s,id){
  run.fruit+=goal.reward.fruit;
  for(const [item,n] of Object.entries(goal.reward.items))run.items[item]+=n;
  s.meta.regionChallenges.claimed.push(id);
+ recordTribeProgress(s,{challenges:1},`regional-challenge:${id}`);
  if(s.meta.regionChallenges.tracked===id)s.meta.regionChallenges.tracked=null;
  return rewardCopy(goal.reward);
 }
