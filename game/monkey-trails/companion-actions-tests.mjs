@@ -25,10 +25,41 @@ test('both ready states can coexist and checking them changes neither progress n
   const s=fixture(),p=s.run.monkey;p.level=3;p.training=C.trainingCost(p).xp;s.run.fruit=C.trainingCost(p).fruit;s.run.essence.leaf=6;
   const before=structuredClone(s),info=A.upgradeReadiness(s,p.id);assert.equal(info.train,true);assert.equal(info.evolve,true);assert.deepEqual(s,before);
 });
-test('Sanctuary individuals have their own readiness and offer Add instead of Swap',()=>{
+test('Sanctuary companions offer Add and become upgrade-ready only after joining the lineup',()=>{
   const s=fixture(),p=s.collection['reserve-0'];p.training=C.trainingCost(p).xp;s.run.fruit=C.trainingCost(p).fruit;
-  assert.equal(A.companionAction(s,p.id).label,'Add to lineup');assert.equal(A.upgradeReadiness(s,p.id).train,true);assert.equal(A.upgradeReadiness(s,s.run.activeId).train,false);
-  A.addLineupCompanion(s,p.id);assert.equal(A.companionAction(s,p.id).label,'Swap');C.train(s,p.id);assert.equal(p.level,2);
+  assert.equal(A.companionAction(s,p.id).label,'Add to lineup');assert.equal(A.upgradeReadiness(s,p.id).train,false);assert.equal(A.upgradeReadiness(s,s.run.activeId).train,false);
+  assert.throws(()=>C.train(s,p.id),/expedition companion/);
+  A.addLineupCompanion(s,p.id);assert.equal(A.companionAction(s,p.id).label,'Swap');assert.equal(A.upgradeReadiness(s,p.id).train,true);C.train(s,p.id);assert.equal(p.level,2);
+});
+test('fully funded upgrades show ready only in phases where both actions can execute',()=>{
+  const s=fixture(),p=s.run.monkey;p.level=3;p.training=9999;s.run.fruit=9999;
+  for(const type of Object.keys(C.ELEMENTS))s.run.essence[type]=999;
+  for(const phase of ['battle','replacement','befriend','dead']){
+    s.run.phase=phase;const before=structuredClone(s);
+    assert.deepEqual(A.upgradeReadiness(s,p.id),{train:false,evolve:false,elements:[]});
+    assert.throws(()=>C.train(s,p.id),/between encounters/);assert.throws(()=>C.evolve(s,'leaf',p.id),/unavailable/);assert.deepEqual(s,before);
+  }
+  for(const phase of ['trail','camp']){
+    s.run.phase=phase;const ready=A.upgradeReadiness(s,p.id);assert.equal(ready.train,true);assert.equal(ready.evolve,true);
+    const training=structuredClone(s),evolution=structuredClone(s);C.train(training,p.id);C.evolve(evolution,ready.elements[0],p.id);
+    assert.equal(training.collection[p.id].level,4);assert.equal(evolution.collection[p.id].stage,1);
+  }
+});
+test('fully funded Sanctuary evolutions stay hidden until the monkey is an active teammate',()=>{
+  const s=fixture(),p=s.collection['reserve-0'];p.level=3;p.training=9999;s.run.fruit=9999;
+  for(const type of Object.keys(C.ELEMENTS))s.run.essence[type]=999;
+  assert.deepEqual(A.upgradeReadiness(s,p.id),{train:false,evolve:false,elements:[]});assert.throws(()=>C.evolve(s,'leaf',p.id),/unavailable/);
+  A.addLineupCompanion(s,p.id);assert.equal(A.upgradeReadiness(s,p.id).evolve,true);
+});
+test('evolution readiness requires every native element and clears at the final stage',()=>{
+  const s=fixture(),species=Object.values(C.SPECIES).find(p=>p.types.length===2),p=structuredClone(s.run.monkey);
+  p.id='hybrid';p.species=species.id;p.types=[...species.types];p.level=3;p.training=9999;s.collection[p.id]=p;C.setParty(s,[s.run.activeId,p.id]);
+  const type=species.types[0],offer=C.evolutionCost(s,type,p.id);assert.ok(offer);assert.equal(Object.keys(offer.cost).length,2);
+  for(const [element,amount]of Object.entries(offer.cost))s.run.essence[element]=amount;
+  const second=species.types[1];s.run.essence[second]--;assert.equal(A.upgradeReadiness(s,p.id).evolve,false);
+  s.run.essence[second]++;assert.equal(A.upgradeReadiness(s,p.id).evolve,true);C.evolve(s,type,p.id);
+  p.stage=3;p.level=60;for(const element of Object.keys(C.ELEMENTS))s.run.essence[element]=9999;
+  assert.equal(A.upgradeReadiness(s,p.id).evolve,false);assert.equal(A.upgradeReadiness(s,p.id).train,false);
 });
 test('Swap replaces exactly the chosen slot and preserves every individual injury, ability and equipment',()=>{
   const s=fixture();C.setParty(s,[s.run.activeId,'reserve-0','reserve-1']);s.collection['reserve-0'].hp=14;s.collection['reserve-2'].hp=9;s.collection['reserve-2'].energy=1;
@@ -41,9 +72,10 @@ test('full-lineup Add requires a replacement and never duplicates or removes a c
   assert.throws(()=>A.replaceLineupCompanion(s,'reserve-0','reserve-1'),/already/);assert.deepEqual(s,before);
   A.replaceLineupCompanion(s,'reserve-0','reserve-2');assert.equal(s.run.party.length,3);assert.equal(Object.keys(s.collection).length,4);
 });
-test('lineup actions honor departure, camp, battle and knockout restrictions atomically',()=>{
-  const s=fixture();s.run.distance=10;assert.equal(A.lineupPermission(s).allowed,false);const before=structuredClone(s);assert.throws(()=>A.addLineupCompanion(s,'reserve-0'),/earned camp/);assert.deepEqual(s,before);
-  s.run.phase='camp';assert.equal(A.lineupPermission(s).allowed,true);A.addLineupCompanion(s,'reserve-0');s.collection['reserve-0'].hp=0;
-  assert.equal(A.lineupPermission(s).allowed,false);assert.throws(()=>A.replaceLineupCompanion(s,'reserve-0','reserve-1'),/Revive/);
-  s.run.phase='battle';assert.equal(A.lineupPermission(s).allowed,false);
+test('lineup actions work anywhere between encounters and replace fallen outgoing monkeys without healing',()=>{
+  const s=fixture();s.run.distance=10000;s.run.encounters=5;assert.equal(A.lineupPermission(s).allowed,true);A.addLineupCompanion(s,'reserve-0');s.collection['reserve-0'].hp=0;
+  assert.equal(A.lineupPermission(s).allowed,true);assert.equal(A.companionAction(s,'reserve-0').allowed,true);
+  A.replaceLineupCompanion(s,'reserve-0','reserve-1');assert.equal(s.collection['reserve-0'].hp,0);
+  assert.equal(A.companionAction(s,'reserve-0').allowed,false);assert.match(A.companionAction(s,'reserve-0').reason,/Revive/);
+  for(const phase of ['battle','replacement','befriend','dead']){s.run.phase=phase;const before=structuredClone(s);assert.equal(A.lineupPermission(s).allowed,false);assert.throws(()=>A.addLineupCompanion(s,'reserve-2'),/between encounters/);assert.deepEqual(s,before);}
 });

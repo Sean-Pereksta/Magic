@@ -1,4 +1,5 @@
 // Monkey Trails content catalogue. IDs are save-stable; balance lives here.
+import {FORGE_GEAR} from './equipment-data.mjs';
 export const ELEMENTS = {
   leaf:{name:'Leaf',icon:'❧',color:'#78d99e',direction:'N',resource:'Canopy seeds',beats:'water',weak:'fire'},
   fire:{name:'Fire',icon:'♨',color:'#ff9564',direction:'S',resource:'Ember stones',beats:'leaf',weak:'water'},
@@ -304,7 +305,8 @@ export const GEAR={
   shell:{name:'River-shell Vest',slot:'armor',stat:'def',amount:2,icon:'◈',fragmentCost:5,desc:'Layered river shells improve defense.'},
   heart:{name:'Canopy Heart',slot:'charm',stat:'hp',amount:9,icon:'♥',fragmentCost:5,desc:'A carved seed charm improves maximum health.'},
   wind:{name:'Gale Anklet',slot:'charm',stat:'speed',amount:2,icon:'ϟ',fragmentCost:5,desc:'A feather anklet improves speed.'},
-  satchel:{name:'Forager Satchel',slot:'charm',stat:'hp',amount:3,icon:'▰',fragmentCost:6,discoveryReduction:.05,desc:'5% shorter discovery intervals while equipped; total acceleration caps at 20%.'}
+  satchel:{name:'Forager Satchel',slot:'charm',stat:'hp',amount:3,icon:'▰',fragmentCost:6,discoveryReduction:.05,desc:'5% shorter discovery intervals while equipped; total acceleration caps at 20%.'},
+  ...FORGE_GEAR
 };
 export const ITEMS={
   berry:{name:'Healing Berry',desc:'Restore 35% health to one conscious monkey.'},

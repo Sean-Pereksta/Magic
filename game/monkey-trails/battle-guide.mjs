@@ -1,11 +1,13 @@
 // Read-only combat explanations. Previews never call random(), execute a move,
 // normalize a save, or change status effects. Values use the current rules.
 import {MOVES,ELEMENTS,SPECIES} from './data.mjs';
-import {CONFIG,stats,statsLegacy,equipped,team,moveEffect,moveEffectLegacy,effectInfo} from './core.mjs';
+import {CONFIG,statsForCombatVersion,equipped,team,moveEffect,moveEffectLegacy,effectInfo} from './core.mjs';
+import {equipmentDamageMultiplier,equipmentEffects} from './equipment-effects.mjs';
 
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const alive=p=>p&&p.hp>0;
-const combatStats=(s,p,version)=>p.combatStats||((version===1?statsLegacy:stats)(p,s?.collection?.[p.id]?equipped(s,p):p.gear||{}));
+const combatGear=(s,p)=>s?.collection?.[p.id]?equipped(s,p):p.gear||{};
+const combatStats=(s,p,version)=>p.combatStats||statsForCombatVersion(p,combatGear(s,p),version??3);
 
 export function moveSummary(move){
   const m=typeof move==='string'?MOVES[move]:move;if(!m)return 'Unknown technique.';
@@ -56,14 +58,16 @@ export function damagePreview(s,id,{actor=s?.run?.monkey,target=s?.run?.battle?.
   const howl=actor.species==='howler'&&m.type!=='neutral'?1.12:1;
   // Cleansing happens before damage and removes prepare/weaken in the reducer.
   const prepare=m.prepare||(m.cleanse?0:actor.prepare)||0,weaken=!m.cleanse&&actor.status?.weaken?(actor.statusPower?.weaken||.25):0;
-  const factor=multiplier*stab*howl*(m.breakShield?1:target.guard||1)*(prepare?1+prepare:1)*(1-weaken),shield=m.breakShield?0:target.shield||0;
+  const equipmentFactor=(socialVersion===undefined||socialVersion>=3)?equipmentDamageMultiplier(combatGear(s,actor),combatGear(s,target),m):1;
+  const factor=multiplier*stab*howl*(m.breakShield?1:target.guard||1)*(prepare?1+prepare:1)*(1-weaken)*equipmentFactor,shield=m.breakShield?0:target.shield||0;
   const hit=(variance,critical)=>Math.min(target.hp,Math.max(0,Math.max(1,Math.round((m.power+ast.atk*.70-tst.def*.42)*factor*variance*(critical?1.4:1)))-shield));
   const criticalPossible=socialVersion!==undefined||!actor.tutorialHpScale||CONFIG.tutorial.enemyCriticals;
   const notes=['Estimate at the current stats and effects; actions earlier in the round can change it.'];
   if(target.species==='spider')notes.push('Spider agility can dodge a hit completely (8% chance).');
   if(target.counter)notes.push('The opponent can reflect damage.');
   if(m.status){const immune=m.status==='burn'&&target.types?.includes('fire')||m.status==='poison'&&target.types?.includes('leaf');if(immune)notes.push(`This opponent resists ${m.status}; the damage still applies.`);else notes.push(`Damage excludes later ${m.status==='burn'||m.status==='poison'?m.status+' damage':'status effects'}.`);}
-  if(m.drain)notes.push('Healing depends on the damage actually dealt.');
+  if(m.drain||(socialVersion===undefined||socialVersion>=3)&&equipmentEffects(combatGear(s,actor)).lifesteal)notes.push('Healing depends on the damage actually dealt.');
+  if(equipmentFactor!==1)notes.push('Equipped damage bonuses and elemental resistance are included.');
   if(shield)notes.push(`${Math.round(shield)} current shield points are included.`);
   if(m.breakShield)notes.push('Current shields and guard are removed before damage.');
   const min=hit(.94,false),max=hit(1.06,false),criticalMax=criticalPossible?hit(1.06,true):max;

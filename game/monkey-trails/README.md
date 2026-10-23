@@ -4,7 +4,7 @@ Entry: `/game/monkey-trails.html`; the existing `lobby/lobby.html` card remains 
 
 ## Game systems
 
-A permanent Sanctuary keeps individually named companions, learned techniques, bonds, equipment and discovered evolution branches. An expedition carries up to three; camps permit controlled roster changes and retain the injuries of companions already used in the expedition. A knockout requires a conscious replacement. Full-party defeat preserves ownership and permanent progress while a new expedition re-earns levels, supplies and active evolution stages.
+A permanent Sanctuary keeps individually named companions, learned techniques, bonds, equipment and discovered evolution branches. An expedition carries up to three; change the lineup anywhere on the trail between encounters. Swaps retain each individual’s injuries and energy. Every earned camp restores the entire collection to full health, including fallen companions. Full-party defeat preserves ownership and permanent progress while a new expedition re-earns levels, supplies and active evolution stages.
 
 `data.mjs` defines ninety species, their curated ability pools, eight elements, the authoritative matchup chart, items and equipment. Species 1–60 retain their save-stable IDs; species 61–90 add eighteen common/uncommon companions, eight rares and four Ultras. `core.mjs` owns deterministic game rules and configurable balancing constants. Every creature retains a free Palm Strike. Hybrid attacks average their elemental damage components; mixed defensive weaknesses and resistances multiply. Final evolutions choose an elemental mastery with an explicit passive specialization; the preview shows its benefit before committing, and the discovered choice persists when a new expedition resets its active power.
 
@@ -276,8 +276,8 @@ costs stay unchanged. Every evolution increases HP, attack, defense, speed and
 maximum energy. Evolution cards show current/required essence, progress bars and
 stat gains before committing.
 
-New social battles use version-two balance. Existing duel and raid snapshots retain
-version-one combat calculations when replayed, including their prior stats and
+New social battles use version-three balance with equipment passives. Existing duel and raid snapshots retain
+their original version-one or version-two combat calculations when replayed, including prior stats and
 matchups. This prevents an app refresh from rewriting an ongoing fight’s history.
 
 ## Regional challenges
@@ -301,7 +301,7 @@ The Walk screen and five navigation tabs remain in place. Ordinary rivals now be
 
 All ten regions now have real species pools, terrain habitat preferences, seven connected adventure steps, guarded landmarks, regional objects, and one-time keepsake rewards. The field guide's **Find this monkey** shows valid homes, unlocks and expedition-depth requirements. Pinned research advances only through accepted walking in an eligible region and eventually reveals the chosen encounter; capture rules still apply. All 78 ordinary species and 12 Ultras have tested encounter paths. Compass direction gently biases eligible species; it never requires a particular physical route. Existing region unlocks and challenge claims are retained.
 
-Team management groups actions into **Train · Abilities · Evolve · Equipment**, with names and compact adventure memories under Details. Four named lineups use individual identities and the existing camp, injury and equipment rules. Evolution requirements, research, adventure steps, and existing challenges share one player-selected pinned goal. Permanent friendship uses existing Bond: accepted kilometers and expedition victories add progress, while one species material provides exactly four Bond. Named tiers unlock poses, titles and decorative details. Conversion previews explain that a newly recruited duplicate becomes three species materials, and protect favorites, equipment and saved lineups. A lightweight Sanctuary scene features up to three favorites and stops idle motion offscreen or under reduced-motion/battery preferences.
+Team management groups actions into **Train · Abilities · Evolve · Equipment**, with names and compact adventure memories under Details. Four named lineups use individual identities and the existing phase, injury and equipment rules. Evolution requirements, research, adventure steps, and existing challenges share one player-selected pinned goal. Permanent friendship uses existing Bond: accepted kilometers and expedition victories add progress, while one species material provides exactly four Bond. Named tiers unlock poses, titles and decorative details. Conversion previews explain that a newly recruited duplicate becomes three species materials, and protect favorites, equipment and saved lineups. A lightweight Sanctuary scene features up to three favorites and stops idle motion offscreen or under reduced-motion/battery preferences.
 
 Battle cards show main effects, energy, current effectiveness, availability reasons, cooldowns/uses and damage estimates with separate Details buttons. Previews never change state or consume RNG. Regional guardians telegraph charges, heavy attacks, shielding and recovery, with a lower-health pattern change; selected new tribe-boss attempts add telegraphed wards without changing old in-progress attempts. Friendly battles continue to use protected copies.
 
@@ -336,3 +336,19 @@ Train, Abilities, Evolve and Equipment are grouped inside Details. Back returns 
 Green highlights and **Level up ready** labels require the real training XP and fruit costs. Purple highlights and **Evolution ready** labels require the appropriate level and every essence cost for a valid evolution. When both are possible, purple is the main card accent and both labels remain visible. These resource checks also apply to Sanctuary individuals, whose action sheet explains that they must join the lineup before upgrading. Knocked-out or max-level companions do not receive a false training highlight. Accepted walking updates badges without replacing inputs, selection or scroll.
 
 `companion-actions-tests.mjs` covers exact upgrade thresholds, individual readiness, real training/evolution, slot replacement, party limits and injury/camp restrictions. The routed adventure browser suite includes the new tap menu, swap, full-lineup add and Details workflow. A DOM interaction exercise additionally verifies empty-slot Add and highlights becoming ready while a menu remains open; phone layout and full Chromium rendering still require external verification. No Firestore rule or hosted-asset changes are required.
+
+## Resource-mixing equipment forge
+
+The Pack now opens with the Canopy Forge. Mix up to 60 existing resources worth at least 8 forge value, then craft one random permanent item anywhere on the trail between encounters. Camps reduce ingredient costs by 20% (rounded up per ingredient) and improve rare/legendary odds. The displayed rarity, element and individual-item odds use the exact million-ticket lottery. Rarer resources improve rare/legendary odds; essence steers the corresponding element. Ingredient choices and quantity inputs survive walking updates. [CRAFTING.md](CRAFTING.md) documents the economy, formulas and 40 new items (45 total).
+
+Equipment uses three compact slot cards and a paginated owned-item picker. Item cards show rank-scaled health, damage, resistance, round healing, energy, shield and lifesteal effects. Duplicates upgrade owned gear to rank 12; max-rank duplicates explicitly return fragments. A saved operation receipt prevents duplicate spending and rerolls. The result remains in Pack after reload; a failed device checkpoint holds the result and blocks a new roll until saving succeeds. Equipping moves an item between individuals without healing them. Original gear values and five fragment recipes remain available.
+
+Publish the updated root `firestore.rules` alongside the client: new social battles use version 3, and immutable versions preserve existing unversioned/v1/v2 duel and raid replays. No new currency, hosted art files or composite Firestore index is required.
+
+The Walk screen places walking controls at the top and the next-discovery bar directly beneath the terrain map. Upgrade badges require a conscious active-lineup member, a preparation phase, and every actual level/XP/resource requirement; the unconditional ready legend has been removed.
+
+The Pack also trades fruit and supplies for any of the eight essences, including the scarce Earth, Ice, Light and Shadow essences. Fruit costs 10 per essence on the trail or 8 at camp; other one-way offers show their exact item costs before confirming. These trades consume existing balances and preserve failed-action atomicity.
+
+The Tribe page shows the top 25 tribes by shared boss level, with tied ranks, tribe emblems, member counts, your-tribe highlighting and explicit loading/error/refresh states. Rankings query all tribes in server order before applying the limit, read no private member records, and need no new composite index.
+
+`npm run test:monkey-trails:forge-browser` adds routed Playwright flows for trail/camp crafting odds, discounts, exact costs, duplicate-click protection, encrypted reopening, unique equipment transfers and failed device-save retries, plus Walk layout order and readiness labels. It requires an installed Chromium executable.

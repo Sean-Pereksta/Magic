@@ -2,22 +2,24 @@
 import {CONFIG,ELEMENTS,trainingCost,evolutionCost,setParty} from './core.mjs';
 
 export function upgradeReadiness(s,id){
-  const p=s.collection?.[id];if(!p)return{train:false,evolve:false,elements:[]};
-  const conscious=p.hp>0,cost=trainingCost(p),train=conscious&&p.level<CONFIG.maxLevel&&(p.training||0)>=cost.xp&&(s.run.fruit||0)>=cost.fruit;
-  const elements=conscious?Object.keys(ELEMENTS).filter(type=>{const offer=evolutionCost(s,type,id);return offer&&p.level>=offer.level&&Object.entries(offer.cost).every(([type,amount])=>(s.run.essence[type]||0)>=amount);}):[];
+  const p=s.collection?.[id];
+  // These are action indicators, so resource eligibility alone is insufficient:
+  // core train/evolve also require a conscious teammate between encounters.
+  if(!p||!(p.hp>0)||!['trail','camp'].includes(s.run?.phase)||!s.run.party.includes(p.id))return{train:false,evolve:false,elements:[]};
+  const cost=trainingCost(p),train=p.level<CONFIG.maxLevel&&(p.training||0)>=cost.xp&&(s.run.fruit||0)>=cost.fruit;
+  const elements=Object.keys(ELEMENTS).filter(type=>{const offer=evolutionCost(s,type,id);return offer&&p.level>=offer.level&&Object.entries(offer.cost).every(([type,amount])=>(s.run.essence[type]||0)>=amount);});
   return{train,evolve:elements.length>0,elements};
 }
 export function lineupPermission(s){
   const r=s.run;
-  if(!(r?.phase==='camp'||r?.phase==='trail'&&r.distance===0&&r.encounters===0))return{allowed:false,reason:'Change the lineup before departure or at an earned trail camp.'};
-  if(r.party.some(id=>!(s.collection[id]?.hp>0)))return{allowed:false,reason:'Revive knocked-out teammates before changing the lineup.'};
+  if(!['trail','camp'].includes(r?.phase))return{allowed:false,reason:'Change the lineup on the trail or at camp, between encounters.'};
   return{allowed:true,reason:''};
 }
 export function companionAction(s,id){
   const p=s.collection?.[id];if(!p)throw Error('Choose a collected companion.');
   const permission=lineupPermission(s),inLineup=s.run.party.includes(id);
-  return{inLineup,action:inLineup?'swap':'add',label:inLineup?'Swap':'Add to lineup',allowed:permission.allowed&&p.hp>0,
-    reason:p.hp<=0?'Revive this companion before changing its lineup slot.':permission.reason,full:s.run.party.length>=CONFIG.partySize};
+  return{inLineup,action:inLineup?'swap':'add',label:inLineup?'Swap':'Add to lineup',allowed:permission.allowed&&(inLineup||p.hp>0),
+    reason:!inLineup&&p.hp<=0?'Revive this companion before adding it to the lineup.':permission.reason,full:s.run.party.length>=CONFIG.partySize};
 }
 export function replaceLineupCompanion(s,outgoingId,incomingId){
   const index=s.run.party.indexOf(outgoingId);
