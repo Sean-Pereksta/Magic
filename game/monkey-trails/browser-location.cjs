@@ -60,6 +60,7 @@ async function checkClean(page,errors){
   assert.ok(size.scroll<=size.width,`Mobile overflow: ${size.scroll-size.width}px`);assert.deepEqual(errors,[]);
 }
 
+async function openCompanionDetails(page){if(!await page.locator('.companion-detail-view').count()){await page.locator('#view .team-slot[data-action="monkey-actions"]').first().click();await page.locator('#dialog-content [data-action="companion-details"]').click();}}
 (async()=>{
   const browser=await chromium.launch({headless:true,...(process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE?{executablePath:process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE}:{})}),report=[];
   const run=async(name,options,test)=>{const {page,context,errors}=await setup(browser,options);try{await test(page);await checkClean(page,errors);report.push({scenario:name,errors:0});}finally{await context.close();}};
@@ -85,7 +86,7 @@ async function checkClean(page,errors){
       assert.equal(await popup.evaluate(el=>getComputedStyle(el).pointerEvents),'none');
       await page.clock.fastForward(3601);await popup.waitFor({state:'hidden'});
       for(const tab of ['team','pack','walk']){
-        await page.locator(`[data-action="tab"][data-id="${tab}"]`).click();
+        await page.locator(`[data-action="tab"][data-id="${tab}"]`).click();if(tab==='team')await openCompanionDetails(page);
         const before=tab==='team'?await page.locator('[data-level-resource="xp"]').innerText():null;
         await walk(2);
         if(tab==='team')assert.notEqual(await page.locator('[data-level-resource="xp"]').innerText(),before,'Team XP bars update while walking without reopening the menu');
@@ -93,7 +94,7 @@ async function checkClean(page,errors){
       }
       assert.ok(parseInt((await page.locator('.distance-block strong').innerText()).replace(/[^0-9]/g,''))>300);
       // Each modal keeps the same watch and permits a discovery above its top layer.
-      for(const action of ['settings','records','lands','compass','inspect']){
+      for(const action of ['settings','records','lands','compass','monkey-actions']){
         if(action==='records')await page.locator('[data-action="settings"]').click();
         await page.locator(`[data-action="${action}"]`).first().click();const found=await walk(8);
         assert.equal(await page.locator('#inspect-dialog').evaluate(el=>el.open),true);
@@ -102,7 +103,7 @@ async function checkClean(page,errors){
         await page.locator('.dialog-close').click();
       }
       await page.locator('[data-action="tab"][data-id="team"]').click();
-      await page.locator('[data-action="companion-section"][data-id="abilities"]').click();
+      await openCompanionDetails(page);await page.locator('[data-action="companion-section"][data-id="abilities"]').click();
       await page.locator('[data-action="ability-open"]').first().click();await walk();
       assert.equal((await counts(page)).cleared,0,'Ability editing must keep walking');
       await page.locator('.dialog-close').click();
