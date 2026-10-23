@@ -38,6 +38,7 @@ async function client(browser,scenario){
 }
 async function clean(c){const box=await c.page.evaluate(()=>({w:innerWidth,s:document.documentElement.scrollWidth}));assert.ok(box.s<=box.w,'No horizontal overflow at320px');assert.deepEqual(c.errors,[]);}
 async function screenshot(page,name){if(out){fs.mkdirSync(out,{recursive:true});await page.screenshot({path:path.join(out,name+'.png'),fullPage:true});}}
+async function openCompanionDetails(page){if(!await page.locator('.companion-detail-view').count()){await page.locator('#view .team-slot[data-action="monkey-actions"]').first().click();await page.locator('#dialog-content [data-action="companion-details"]').click();}}
 (async()=>{
  const browser=await chromium.launch({headless:true,...(process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE?{executablePath:process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE}:{})}),report=[];
  try{
@@ -57,7 +58,7 @@ async function screenshot(page,name){if(out){fs.mkdirSync(out,{recursive:true});
   }
   {
    const c=await client(browser,'evolution'),p=c.page;
-   await p.locator('[data-action="tab"][data-id="team"]').click();await p.locator('[data-action="companion-section"][data-id="evolve"]').click();const offer=p.locator('[data-action="evolution-preview"][data-id="leaf"]'),goal=offer.locator('.essence-goal[data-essence-type="leaf"]');
+   await p.locator('[data-action="tab"][data-id="team"]').click();await openCompanionDetails(p);await p.locator('[data-action="companion-section"][data-id="evolve"]').click();const offer=p.locator('[data-action="evolution-preview"][data-id="leaf"]'),goal=offer.locator('.essence-goal[data-essence-type="leaf"]');
    assert.equal(await goal.locator('[data-essence-current]').innerText(),'3');assert.equal(await goal.locator('[data-essence-required]').innerText(),'6');assert.equal(await goal.locator('[role="progressbar"]').getAttribute('aria-valuenow'),'3');
    await offer.click();const commit=p.locator('[data-action="evolve"][data-id="leaf"]');assert.equal(await commit.isDisabled(),true);
    for(const stat of ['hp','atk','def','speed','maxEnergy'])assert.ok(await p.locator('.evolution-stat-gains [data-stat="'+stat+'"]').count(),'Preview includes '+stat);

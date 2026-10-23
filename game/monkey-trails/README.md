@@ -325,3 +325,14 @@ Before a wild, researched, or regional guardian battle starts, **Who goes out fi
 After confirming the start, changing monkeys uses the existing combat switch action. Reloading a paused fight cannot reopen the free opening choice. Older active battles retain their current fighter and normal switch rules. Friendly duels and tribe bosses put the chosen starter first in protected battle snapshots; existing battles and raid attempts retain their saved order. No Firestore rule or asset changes are required.
 
 `battle-lead-tests.mjs` covers no-cost choice, ineligible companions, save/reload restrictions, actual opening actions and protected social snapshots. The routed `browser-adventures.cjs` suite includes lead selection, disabled knocked-out choices and normal switch costs after reload.
+
+
+### Simple companion actions and upgrade highlights
+
+Tap a Team or collected Sanctuary monkey to open two primary actions: **Swap** and **Details** for lineup members, or **Add to lineup** and **Details** for Sanctuary companions. Swap replaces that exact lineup slot. Add fills an empty slot or, when all three are occupied, asks which member should return to the Sanctuary. Individual HP, energy, equipment and saved identities remain intact; existing departure/camp and revival restrictions still apply.
+
+Train, Abilities, Evolve and Equipment are grouped inside Details. Back returns to the originating screen and scroll position. Collected Sanctuary cards now represent every individual, including duplicate species; the 90-species field guide, filters, search, power ranks, named lineups, friendship and hunting information remain accessible. When a species has multiple individuals, the action sheet can select the exact companion.
+
+Green highlights and **Level up ready** labels require the real training XP and fruit costs. Purple highlights and **Evolution ready** labels require the appropriate level and every essence cost for a valid evolution. When both are possible, purple is the main card accent and both labels remain visible. These resource checks also apply to Sanctuary individuals, whose action sheet explains that they must join the lineup before upgrading. Knocked-out or max-level companions do not receive a false training highlight. Accepted walking updates badges without replacing inputs, selection or scroll.
+
+`companion-actions-tests.mjs` covers exact upgrade thresholds, individual readiness, real training/evolution, slot replacement, party limits and injury/camp restrictions. The routed adventure browser suite includes the new tap menu, swap, full-lineup add and Details workflow. A DOM interaction exercise additionally verifies empty-slot Add and highlights becoming ready while a menu remains open; phone layout and full Chromium rendering still require external verification. No Firestore rule or hosted-asset changes are required.

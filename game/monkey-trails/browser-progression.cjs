@@ -1,6 +1,7 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {chromium}=require(process.env.MONKEY_TRAILS_PLAYWRIGHT||'playwright');
 const root=path.resolve(__dirname,'../..'),mime={'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.json':'application/json'};
+async function openCompanionDetails(page){if(!await page.locator('.companion-detail-view').count()){await page.locator('#view .team-slot[data-action="monkey-actions"]').first().click();await page.locator('#dialog-content [data-action="companion-details"]').click();}}
 (async()=>{
  const browser=await chromium.launch({headless:true,...(process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE?{executablePath:process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE}:{})});
  const reports=[];
@@ -23,7 +24,7 @@ const root=path.resolve(__dirname,'../..'),mime={'.html':'text/html','.mjs':'tex
   },scenario);
   await page.locator('#practice-button').click();await page.locator('#game').waitFor({state:'visible'});
   if(scenario.includes('goals')){
-   await page.locator('[data-action="tab"][data-id="team"]').click();
+   await page.locator('[data-action="tab"][data-id="team"]').click();await openCompanionDetails(page);
    const xp=page.locator('[data-level-resource="xp"]'),fruit=page.locator('[data-level-resource="fruit"]');
    if(scenario==='max-goals'){
     assert.equal(await page.locator('[data-level-resource]').count(),0);assert.match(await page.locator('.training-row').innerText(),/Maximum level reached/);assert.equal(await page.locator('[data-action="train"]').isDisabled(),true);
@@ -39,7 +40,7 @@ const root=path.resolve(__dirname,'../..'),mime={'.html':'text/html','.mjs':'tex
    }
   }else if(scenario==='walking'){
    await page.locator('.practice-tools summary').click();for(let i=0;i<5;i++)await page.locator('[data-action="practice-step"][data-id="N"]').click();
-   await page.locator('[data-action="tab"][data-id="team"]').click();
+   await page.locator('[data-action="tab"][data-id="team"]').click();await openCompanionDetails(page);
    assert.match(await page.locator('.training-row').innerText(),/25 XP available/);
    assert.match(await page.locator('.training-row').innerText(),/3 fruit \+ 22 XP/);
    assert.match(await page.locator('[data-level-resource="xp"]').innerText(),/25 \/ 22 · 113.6%/);
@@ -49,7 +50,7 @@ const root=path.resolve(__dirname,'../..'),mime={'.html':'text/html','.mjs':'tex
    // The UI rounds HP; fractional GPS sums may land just below a .5 tie.
    assert.ok(Math.abs(hp-(fixture.start+fixture.max*.25))<=.5+1e-8,'Walking restores2% per100ft before display rounding');
    await page.locator('[data-action="train"]').click();assert.match(await page.locator('.training-row').innerText(),/3 XP available/);
-   await page.reload();await page.locator('#practice-button').click();await page.locator('[data-action="tab"][data-id="team"]').click();
+   await page.reload();await page.locator('#practice-button').click();await page.locator('[data-action="tab"][data-id="team"]').click();await openCompanionDetails(page);
    assert.match(await page.locator('.profile-art').innerText(),/Lv 2/);assert.match(await page.locator('.training-row').innerText(),/3 XP available/);
   }else{
    await page.locator('[data-action="ready"]').click();
