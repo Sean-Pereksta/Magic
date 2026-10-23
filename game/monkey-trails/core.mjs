@@ -235,7 +235,7 @@ function encounter(s,isUltra=false,{defer=false,descriptor=null}={}){
   activateBattle(s,battle);return battle;
 }
 function activateBattle(s,battle){
-  const r=s.run;r.battle=battle;for(const p of team(s)){p.cooldowns={};p.uses={};}r.phase='battle';if(battle.ultra)r.ultra.status='battle';planEnemy(s);say(s,`${battle.ultra?'Ultra arrival':battle.guardian?'Regional guardian':'Wild team'}: ${battle.enemies.map(p=>formName(p)).join(' · ')}. Stop safely before beginning.`);
+  const r=s.run;r.battle=battle;battle.openingLocked=false;battle.openingLeadId=r.activeId;for(const p of team(s)){p.cooldowns={};p.uses={};}r.phase='battle';if(battle.ultra)r.ultra.status='battle';planEnemy(s);say(s,`${battle.ultra?'Ultra arrival':battle.guardian?'Regional guardian':'Wild team'}: ${battle.enemies.map(p=>formName(p)).join(' · ')}. Stop safely before beginning.`);
 }
 export function beginPendingEncounter(s){
   const r=s.run;if(r.phase!=='trail'||!r.pendingEncounter)throw Error('Return to the trail and choose an available encounter.');const battle=r.pendingEncounter;r.pendingEncounter=null;activateBattle(s,battle);return battle;
@@ -270,7 +270,21 @@ function planEnemy(s){
   if(!id){const ranked=options.filter(id=>MOVES[id].power).sort((a,c)=>MOVES[c].power*moveEffect(MOVES[c],p.types)-MOVES[a].power*moveEffect(MOVES[a],p.types));id=(random(s)<.8?ranked[0]:choose(s,ranked.slice(0,3)))||'strike';}
   const choices=b.enemies.filter(m=>m.id!==e.id&&alive(m));if(!e.status.root&&choices.length&&(e.hp<stats(e).hp*.23||moveEffect(MOVES[id],p.types)<.8)&&random(s)<.35)b.enemyAction={type:'switch',id:choices[0].id};else b.enemyAction={type:'move',id};b.intent=b.enemyAction.type==='switch'?'brace':id;
 }
-export function readyBattle(s){if(s.run.phase==='battle')s.run.battle.ready=true;}
+export function canChooseBattleLead(s){
+  const r=s.run,b=r?.battle;return !!r&&(['trail','camp'].includes(r.phase)||r.phase==='battle'&&!!b&&!b.ready&&b.openingLocked===false&&b.round===1&&b.itemUsedRound==null);
+}
+export function selectBattleLead(s,id){
+  if(!canChooseBattleLead(s))throw Error('Choose your first monkey before battle begins. Switching during battle uses a turn.');
+  const p=team(s).find(p=>p.id===id);if(!p||!alive(p))throw Error('Choose a conscious monkey from your current team.');
+  s.run.activeId=p.id;syncActive(s);return p;
+}
+export function readyBattle(s){
+  const r=s.run,b=r.battle;if(r.phase!=='battle')return;
+  if(!alive(r.monkey))throw Error('Choose a conscious monkey before beginning battle.');
+  // The opening choice is free once. Reloading pauses input without reopening it.
+  if(b.openingLocked===false&&b.openingLeadId!==r.activeId)planEnemy(s);
+  b.openingLocked=true;b.ready=true;
+}
 export function score(s){const r=s.run;if(r.phase==='dead'&&Number.isFinite(r.finalScore))return r.finalScore;return Math.floor(r.distance/FEET+1e-6)+r.wins*500+team(s).reduce((n,p)=>n+p.stage*300+(p.level-1)*40,0);}
 function endRun(s){
   const r=s.run;if(r.phase==='dead')return;recordCompanionExpedition(s);const points=score(s),active=r.monkey,earned=Math.max(1,Math.floor(r.wins/2)+Math.floor(r.distance/(4000*FEET)));
@@ -402,7 +416,7 @@ function performTurn(s,action){
     if(!p.loadout.includes(action.id)||!pm||p.energy<(pm.cost||0)||!moveAvailable(b,p,action.id))throw Error('Ability unavailable, cooling down, or insufficient energy.');if(pm.switch&&p.status.root)throw Error('Rooted Challenge prevents voluntary retreat this round.');if(pm.switch&&!team(s).some(m=>alive(m)&&m.id!==p.id))throw Error('No conscious teammate can receive the relay.');
   }
   if(action.type==='switch'){const incoming=team(s).find(m=>m.id===action.id);if(!incoming||!alive(incoming)||incoming.id===p.id||p.status.root)throw Error('Choose another conscious, unrooted switch.');}
-  b.hitFeedback=[];b.lastHits=b.hitFeedback;delete b.lastHit;
+  b.openingLocked=true;b.hitFeedback=[];b.lastHits=b.hitFeedback;delete b.lastHit;
   const initiative=(actor,st,m)=>(m?.priority||0)*1000+st.speed*(actor.status.slow?.65:1)*(actor.status.speed?1.2:1),playerFirst=action.type!=='move'||initiative(p,ps,pm)>=initiative(e,es,em);
   const playerAction=()=>{if(!alive(p))return;if(action.type==='switch')replacement(s,action.id,'player');else execute(s,p,b.enemy,action.id,stats(p,equipped(s,p)),stats(b.enemy),'You',action.targetId,'player');};
   const enemyAct=()=>{if(!alive(e))return;const cannotRetreat=e.status.root||!b.enemies.some(m=>m.id!==e.id&&alive(m));if(enemyAction.type==='switch'&&!cannotRetreat)replacement(s,enemyAction.id,'enemy');else{const chosen=enemyAction.type==='switch'||MOVES[enemyAction.id]?.switch&&cannotRetreat||e.energy<(MOVES[enemyAction.id]?.cost||0)?'strike':enemyAction.id;execute(s,e,r.monkey,chosen,stats(e),stats(r.monkey,equipped(s,r.monkey)),'Rival',null,'enemy');}};
@@ -417,7 +431,7 @@ export function useItem(s,id,targetId){
   if(r.phase==='battle'){
     const b=r.battle;if(!b?.ready)throw Error('Stop safely and begin the encounter first.');
     if(b.itemUsedRound===b.round)throw Error('One supply per round. Choose an ability or attack next.');
-    itemApply(s,id,targetId);b.itemUsedRound=b.round;say(s,'Supply used — your attack or ability is still available.');return;
+    itemApply(s,id,targetId);b.openingLocked=true;b.itemUsedRound=b.round;say(s,'Supply used — your attack or ability is still available.');return;
   }itemApply(s,id,targetId);
 }
 export function setParty(s,ids){
@@ -474,7 +488,7 @@ export function validate(s){
     if(!Array.isArray(p.loadout)||p.loadout[0]!=='strike'||p.loadout.length>4||new Set(p.loadout).size!==p.loadout.length||p.loadout.some(id=>!MOVES[id]||!unlocked(p).includes(id)))throw Error('Invalid ability loadout.');if(!p.status||Object.values(p.status).some(n=>!finite(n)||n>10)||!p.equipment||Object.values(p.equipment).some(id=>id&&!s.meta.gear[id]))throw Error('Invalid companion equipment or effects.');
   }
   if(!r.essence||Object.keys(ELEMENTS).some(t=>!finite(r.essence[t]))||!r.items||Object.keys(ITEMS).some(t=>!finite(r.items[t])))throw Error('Invalid inventory.');if(!r.vector||!Object.values(r.vector).every(Number.isFinite)||!r.weights||!Object.values(r.weights).every(finite)||!r.bonuses||!Object.values(r.bonuses).every(finite))throw Error('Invalid walking checkpoint.');
-  if(['battle','replacement'].includes(r.phase)){const b=r.battle;if(!b||!Array.isArray(b.enemies)||b.enemies.length<1||b.enemies.length>3||!b.enemies.every(p=>SPECIES[p.species]&&finite(p.hp)&&finite(p.energy))||!b.enemies.some(e=>e.id===b.enemy?.id)||!MOVES[b.intent]||!finite(b.round))throw Error('Invalid battle checkpoint.');b.enemy=b.enemies.find(e=>e.id===b.enemy.id);}
+  if(['battle','replacement'].includes(r.phase)){const b=r.battle;if(!b||!Array.isArray(b.enemies)||b.enemies.length<1||b.enemies.length>3||!b.enemies.every(p=>SPECIES[p.species]&&finite(p.hp)&&finite(p.energy))||!b.enemies.some(e=>e.id===b.enemy?.id)||!MOVES[b.intent]||!finite(b.round))throw Error('Invalid battle checkpoint.');b.enemy=b.enemies.find(e=>e.id===b.enemy.id);b.openingLocked??=true;}
   if(r.phase==='befriend'&&(!r.capture?.id||!r.capture.candidates?.length||!finite(r.capture.attempts)||r.capture.attempts>CONFIG.captureAttempts))throw Error('Invalid recruitment checkpoint.');if(r.ultra&&(!SPECIES[r.ultra.species]||!r.ultra.id||!finite(r.ultra.challengeRemaining)||!finite(r.ultra.spawnDistance)))throw Error('Invalid Ultra sighting.');
   if(!s.meta.gear||!s.meta.equipped||!Array.isArray(s.meta.history)||s.meta.history.length>25||Object.entries(s.meta.gear).some(([id,n])=>!GEAR[id]||!Number.isInteger(n)||n<1||n>12)||!s.meta.claims)throw Error('Invalid persistent inventory.');normalizeLands(s);normalizeWalkSessions(s);normalizeCompanions(s);normalizeAdventures(s);r.pendingEncounter??=null;if(r.pendingEncounter){const b=r.pendingEncounter;if(!b.id||!Array.isArray(b.enemies)||!b.enemies.length||b.enemies.length>3||b.enemies.some(p=>!SPECIES[p.species]||!finite(p.hp)||!finite(p.energy))||!s.world.unlocked.includes(b.originLandId))throw Error('Invalid pending encounter checkpoint.');b.enemy=b.enemies.find(e=>e.id===b.enemy?.id)||b.enemies[0];}if(!Array.isArray(s.log)||s.log.length>16||JSON.stringify(s).length>650000)throw Error('Save is too large.');return s;
 }

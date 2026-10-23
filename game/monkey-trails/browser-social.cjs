@@ -189,7 +189,7 @@ async function hostedCrewLayout(page){
   // Offline member reward delivery: the fixture boss is already near defeat.
   const t=clone(docs.get(`tribes/${code}`));t.boss.hp=1;docs.set(`tribes/${code}`,t);revision++;
   await bob.page.evaluate(()=>__socialDebug.social.stop());
-  await a.waitForTimeout(150);await a.locator('[data-social-action="start-raid"]').click();
+  await a.waitForTimeout(150);await a.locator('[data-social-action="start-raid"]').click();await a.locator('#dialog-content [data-social-action="start-raid"][data-lead-confirmed="true"]').click();
   await a.locator('[data-social-action="raid-move"]').first().waitFor();
   for(let turn=0;turn<10;turn++){
    await a.locator('[data-social-action="raid-move"][data-id="strike"]').click();
@@ -216,9 +216,9 @@ async function hostedCrewLayout(page){
   const fruitBefore={a:(await a.evaluate(()=>__socialDebug.state.run.fruit))+docs.get(`players/${alice.uid}`).wallet.fruit,b:(await b.evaluate(()=>__socialDebug.state.run.fruit))+docs.get(`players/${bob.uid}`).wallet.fruit};
   const xpBefore=await Promise.all([a,b].map(p=>p.evaluate(()=>__socialDebug.state.run.party.reduce((n,id)=>n+__socialDebug.state.collection[id].training,0))));
   await b.locator('[data-action="settings"]').click();assert.equal(await b.locator('#inspect-dialog').evaluate(el=>el.open),true);
-  await a.locator(`[data-social-action="challenge"][data-id="${bob.uid}"]`).first().click();
+  await a.locator(`[data-social-action="challenge"][data-id="${bob.uid}"]`).first().click();await a.locator('#dialog-content [data-social-action="challenge"][data-lead-confirmed="true"]').click();
   await b.waitForFunction(()=>document.querySelector('#social-menu-overlay')?.matches(':popover-open'));
-  const overlayAccept=b.locator('#social-menu-overlay [data-social-action="accept-challenge"]');await overlayAccept.waitFor();await overlayAccept.click();
+  const overlayAccept=b.locator('#social-menu-overlay [data-social-action="accept-challenge"]');await overlayAccept.waitFor();await overlayAccept.click();await b.locator('#dialog-content [data-social-action="accept-challenge"][data-lead-confirmed="true"]').click();
   await a.waitForFunction(()=>__socialDebug.social.model.duel?.status==='active');await b.waitForFunction(()=>__socialDebug.social.model.duel?.status==='active');
   assert.equal(await b.locator('#inspect-dialog').evaluate(el=>el.open),false,'Accepting the challenge closes the Settings dialog');
   assert.match(await b.locator('#social-banner').innerText(),/New challenges are paused/);
@@ -250,7 +250,7 @@ async function hostedCrewLayout(page){
   const player=clone(docs.get(`players/${alice.uid}`));player.lastRaidAt=0;docs.set(`players/${alice.uid}`,player);
   const nextBoss=clone(docs.get(`tribes/${code}`));nextBoss.boss.hp=1;docs.set(`tribes/${code}`,nextBoss);revision++;
   await a.waitForFunction(()=>__socialDebug.social.model.me?.lastRaidAt===0);
-  await a.locator('[data-social-action="start-raid"]').click();await a.locator('[data-social-action="raid-move"]').first().waitFor();
+  await a.locator('[data-social-action="start-raid"]').click();await a.locator('#dialog-content [data-social-action="start-raid"][data-lead-confirmed="true"]').click();await a.locator('[data-social-action="raid-move"]').first().waitFor();
   for(let turn=0;turn<10;turn++){await a.locator('[data-social-action="raid-move"][data-id="strike"]').click();await a.waitForFunction(expected=>__socialDebug.social.model.raid?.turns===expected,turn+1);}
   await a.locator('[data-social-action="submit-raid"]').click();await a.waitForFunction(()=>__socialDebug.social.model.raid?.submitted===true);
   await b.waitForFunction(()=>__socialDebug.social.model.receipts.some(r=>r.type==='raid'&&r.title.includes('boss 2')));

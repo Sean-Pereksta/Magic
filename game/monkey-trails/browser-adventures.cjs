@@ -7,7 +7,7 @@ async function readState(page){return page.evaluate(()=>window.readAdventureStat
 async function saved(page,condition,arg){await page.waitForFunction(async({source,arg})=>{const s=await window.readAdventureState();return new Function('s','arg',`return (${source})(s,arg)`)(s,arg);},{source:condition.toString(),arg},{timeout:15000});return readState(page);}
 (async()=>{
  const browser=await chromium.launch({headless:true,...(process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE?{executablePath:process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE}:{})}),reports=[];
- try{for(const scenario of ['welcome','pending','recap','evolution','lineup','discovery']){
+ try{for(const scenario of ['welcome','pending','recap','evolution','lineup','discovery','lead']){
   const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
   await context.route('**/*',async route=>{const u=new URL(route.request().url()),file=path.resolve(root,'.'+decodeURIComponent(u.pathname));if(u.hostname!=='127.0.0.1'||!file.startsWith(root+path.sep)||!fs.existsSync(file))return route.abort();return route.fulfill({contentType:mime[path.extname(file)]||'application/octet-stream',body:fs.readFileSync(file)});});
   const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));await page.goto('http://127.0.0.1:7777/game/monkey-trails.html');await page.locator('#practice-button').waitFor();
@@ -19,13 +19,24 @@ async function saved(page,condition,arg){await page.waitForFunction(async({sourc
     if(scenario==='discovery'){
      for(let seed=1;seed<1000;seed++){const candidate=C.newSave('Trail Practice','capuchin','practice',seed);C.advance(candidate,C.RESOURCE_STEP,0,C.RESOURCE_STEP);if(candidate.run.lastDiscovery?.category==='essence'){s=C.newSave('Trail Practice','capuchin','practice',seed);break;}}
     }
-    if(scenario==='pending')C.advance(s,C.ENCOUNTER_STEP,0,C.ENCOUNTER_STEP);
+    if(scenario==='lead'){
+     for(let i=0;i<2;i++){const p=structuredClone(C.newSave('Bench',i?'macaque':'langur','practice',i+4).run.monkey);p.id=`lead-${i}`;s.collection[p.id]=p;}
+     C.setParty(s,[s.run.activeId,'lead-0','lead-1']);s.collection['lead-0'].hp=17;s.collection['lead-1'].hp=0;
+    }
+    if(scenario==='pending'||scenario==='lead')C.advance(s,C.ENCOUNTER_STEP,0,C.ENCOUNTER_STEP);
+    if(scenario==='lead'){s.collection['lead-0'].hp=17;for(const p of s.run.pendingEncounter.enemies){p.hp=999;p.energy=0;p.loadout=['breathe'];}}
     if(scenario==='evolution'){s.run.monkey.level=3;s.run.essence.leaf=99;s.run.monkey.hp=C.playerStats(s).hp;}
     await v.checkpoint(s,true);window.readAdventureState=async()=>{const reader=new Vault(()=>{});return reader.open('Trail Practice','practice-only-not-ranked',{mode:'practice'});};
     return {runId:s.run.id,pending:structuredClone(s.run.pendingEncounter),id:s.run.activeId,essence:s.run.essence.leaf};
    },scenario);
    await page.locator('#practice-button').click();await page.locator('#game').waitFor({state:'visible'});
-   if(scenario==='pending'){
+   if(scenario==='lead'){
+    await page.locator('[data-action="pending-begin"]').click();await page.locator('.battle-lead-picker').waitFor();assert.equal(await page.locator('.battle-lead-choices button').count(),3);assert.equal(await page.locator('[data-action="battle-lead"][data-id="lead-1"]').isDisabled(),true);
+    await page.locator('[data-action="battle-lead"][data-id="lead-0"]').click();let s=await saved(page,s=>s.run.activeId==='lead-0');assert.equal(s.collection['lead-0'].hp,17);assert.equal(s.run.battle.round,1);assert.equal(s.run.battle.ready,false);
+    await page.locator('[data-action="ready"]').click();s=await saved(page,s=>s.run.battle.openingLocked===true);assert.equal(s.run.battle.round,1);assert.equal(await page.locator('.battle-lead-picker').count(),0);
+    await page.reload();await page.evaluate(async()=>{const{Vault}=await import('/game/monkey-trails/storage.mjs');window.readAdventureState=()=>new Vault(()=>{}).open('Trail Practice','practice-only-not-ranked',{mode:'practice'});});await page.locator('#practice-button').click();await page.locator('[data-action="ready"]').waitFor();assert.equal(await page.locator('.battle-lead-picker').count(),0);await page.locator('[data-action="ready"]').click();
+    await page.locator('[data-action="switch-menu"]').click();await page.locator(`[data-action="switch-preview"][data-id="${fixture.id}"]`).click();await page.locator('[data-action="switch-confirm"]').click();s=await saved(page,s=>s.run.battle.round===2);assert.equal(s.run.activeId,fixture.id);
+   }else if(scenario==='pending'){
     await page.locator('.pending-encounter').waitFor();await page.locator('.practice-tools summary').click();await page.locator('[data-action="practice-step"][data-id="N"]').click();let s=await saved(page,s=>s.run.distance>610);assert.equal(s.run.pendingEncounter.id,fixture.pending.id);assert.deepEqual(s.run.pendingEncounter.enemies,fixture.pending.enemies);assert.equal(s.run.phase,'trail');
     await page.reload();await page.evaluate(async()=>{const{Vault}=await import('/game/monkey-trails/storage.mjs');window.readAdventureState=()=>new Vault(()=>{}).open('Trail Practice','practice-only-not-ranked',{mode:'practice'});});await page.locator('#practice-button').click();await page.locator('.pending-encounter').waitFor();
     const before=await readState(page);await page.locator('[data-action="pending-pass"]').click();s=await saved(page,s=>!s.run.pendingEncounter);assert.equal(s.run.wins,before.run.wins);assert.equal(s.run.fruit,before.run.fruit);assert.deepEqual(s.run.essence,before.run.essence);assert.equal(Object.keys(s.collection).length,Object.keys(before.collection).length);assert.ok(Math.abs(s.run.nextEncounter-s.run.distance-609.6)<1e-6);
