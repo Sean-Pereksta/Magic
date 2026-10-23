@@ -224,3 +224,32 @@ Validation commands (Node is used only for development tests):
 The social browser harness uses two isolated browser contexts and a shared
 transactional test adapter, without touching production multiplayer records.
 The rules harness runs the actual Firestore adapter against the local emulator.
+
+## Tribe events and crew power
+
+The tribe roster shows every crew’s ordered starting three with portraits, names,
+levels, elements and individual power, including empty slots. Crew power is the
+sum of the selected companions. The tribe list sorts by crew power; tied crews
+share a competition rank (1, 1, 3). Nearby crew rankings compare only the currently
+eligible nearby players and do not represent a global leaderboard. Legacy profiles
+without a shared team show a missing-lineup state until their next update.
+
+`power.mjs` computes the same estimate in Team, Sanctuary and multiplayer:
+maximum HP + 4 × attack + 4 × defense + 2 × speed + 8 × maximum energy. It includes
+equipped gear tiers, evolution and permanent mastery. Injuries, current energy and
+temporary battle modifiers do not change the rating. Power is a comparison of
+permanent stats, not a prediction of victory or an Elo rating; abilities, strategy
+and elemental matchups still matter. No power score is trusted from saved data.
+
+Team displays the selected crew total, and collected companions display individual
+power and their rank among all owned individuals. Sanctuary’s Highest power sort
+uses the strongest individual of each species. Uncollected field-guide entries
+receive no personal rank. Profile updates publish changed lineups, levels and gear
+through existing Firestore documents; tribe and nearby profile subscriptions keep
+the roster current without changing battle snapshots.
+
+The shared boss event has an illustrated opponent, live shared health, the actual
+next reward preview and the existing per-player hourly readiness. Attempts show
+ten-turn progress and protected crew health. All prior trades, challenges, rewards
+and closeable notices remain available. No new runtime server or Firestore schema
+is required.

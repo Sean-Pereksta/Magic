@@ -90,6 +90,41 @@ async function clean(client){
  const size=await client.page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));assert.ok(size.scroll<=size.width,`${client.name} mobile overflow ${size.scroll-size.width}px`);assert.deepEqual(client.errors,[]);
 }
 const expedition=page=>page.evaluate(()=>{const s=__socialDebug.state;return {runId:s.run.id,phase:s.run.phase,distance:s.run.distance,items:s.run.items,monkeys:s.run.party.map(id=>{const p=s.collection[id];return{id,hp:p.hp,energy:p.energy,status:p.status,statusPower:p.statusPower,stage:p.stage};})};});
+async function crewCard(page,uid,scope='tribe'){
+ const card=page.locator(`[data-crew-id="${uid}"][data-crew-scope="${scope}"]`);await card.waitFor();
+ return card.evaluate(async el=>{
+  const {teamPower,monkeyPower}=await import('/game/monkey-trails/power.mjs'),{SPECIES}=await import('/game/monkey-trails/core.mjs');
+  const model=__socialDebug.social.model,uid=el.dataset.crewId,p=(el.dataset.crewScope==='nearby'?model.nearby:model.members).find(p=>p.uid===uid||p.id===uid);
+  return {power:Number(el.dataset.crewPower),expectedPower:teamPower(p.team),rank:Number(el.dataset.crewRank),rankLabel:el.querySelector('.social-crew-rank')?.textContent,
+   slots:[...el.querySelectorAll('.social-crew-slot')].map((slot,index)=>({index:Number(slot.dataset.slot),id:slot.dataset.monkeyId||null,power:Number(slot.dataset.monkeyPower||0),portrait:!!slot.querySelector('.monkey-art'),text:slot.textContent})),
+   expectedSlots:p.team.map(p=>({id:p.id,power:monkeyPower(p),name:p.nickname||SPECIES[p.species]?.name||'Companion'})),text:el.textContent};
+ });
+}
+async function assertCrew(page,uid,scope='tribe'){
+ const card=await crewCard(page,uid,scope);assert.equal(card.power,card.expectedPower,'Crew power is the sum of its starting three');assert.equal(card.slots.length,3,'Crew cards show all three starting slots');
+ assert.deepEqual(card.slots.map(p=>p.index),[0,1,2],'Crew order stays in starting-slot order');
+ for(const [i,p]of card.expectedSlots.entries()){
+  assert.equal(card.slots[i].id,p.id);assert.equal(card.slots[i].power,p.power);assert.ok(card.slots[i].portrait,`Starting slot ${i+1} has a monkey portrait`);assert.ok(card.slots[i].text.includes(p.name),`Starting slot ${i+1} shows its monkey name`);
+ }
+ return card;
+}
+async function hostedCrewLayout(page){
+ // Exercise the production SVG-to-image upgrade with committed assets as the
+ // hosted source. Native images retain their intrinsic 240px dimensions, so
+ // these bounds catch selectors that accidentally style only the initial SVG.
+ await page.evaluate(async()=>{
+  const {hydrateHostedPortraits}=await import('/game/monkey-trails/art.mjs');
+  globalThis.MONKEY_TRAILS_ASSET_BASE='/game/monkey-trails/assets/';hydrateHostedPortraits(document.querySelector('#view'));
+ });
+ await page.waitForFunction(()=>document.querySelectorAll('.social-crew-slot img.monkey-art').length===6&&!!document.querySelector('.social-boss-portrait img.monkey-art'));
+ const sizes=await page.evaluate(()=>[...document.querySelectorAll('.social-crew-slot img.monkey-art,.social-boss-portrait img.monkey-art')].map(img=>{
+  const r=img.getBoundingClientRect(),slot=img.parentElement.getBoundingClientRect();
+  return {kind:img.parentElement.className,loaded:img.complete&&img.naturalWidth>0,width:r.width,height:r.height,parentWidth:slot.width,parentHeight:slot.height,left:r.left,right:r.right,parentLeft:slot.left,parentRight:slot.right};
+ }));
+ assert.equal(sizes.length,7);
+ for(const size of sizes){assert.ok(size.loaded);assert.ok(size.width>0&&size.height>0);assert.ok(size.width<=size.parentWidth+1&&size.height<=size.parentHeight+1,`Hosted portrait stays inside its card: ${JSON.stringify(size)}`);assert.ok(size.left>=size.parentLeft-1&&size.right<=size.parentRight+1,`Hosted portrait stays within horizontal card bounds: ${JSON.stringify(size)}`);}
+ await page.evaluate(()=>delete globalThis.MONKEY_TRAILS_ASSET_BASE);
+}
 
 (async()=>{
  const browser=await chromium.launch({headless:true,...(process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE?{executablePath:process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE}:{})});
@@ -102,6 +137,48 @@ const expedition=page=>page.evaluate(()=>{const s=__socialDebug.state;return {ru
   await form(b,'join-tribe',{code});await a.waitForFunction(()=>__socialDebug.social.model.members.length===2);await b.waitForFunction(()=>__socialDebug.social.model.members.length===2);
   assert.match(await a.locator('.tribe-heading').innerText(),/2 \/ 10/);assert.equal(docs.get(`tribes/${code}`).emblem.symbol,'moon');
   await form(a,'update-emblem',{shape:'diamond',symbol:'crown',color:'#b08c36'});assert.equal(docs.get(`tribes/${code}`).emblem.symbol,'crown');report.push('create, join and update tribe emblem');console.log('Passed tribe setup');
+
+  // Identical starting crews share first place; rankings compare these tribe members.
+  const tiedAlice=await assertCrew(a,alice.uid),tiedBob=await assertCrew(a,bob.uid);
+  assert.equal(tiedAlice.power,tiedBob.power);assert.equal(tiedAlice.rank,1);assert.equal(tiedBob.rank,1);
+  assert.match(tiedAlice.rankLabel,/Tribe #1/);assert.match(tiedBob.rankLabel,/Tribe #1/);
+  const eventPreview=await a.locator('.social-boss-event').evaluate(async el=>{
+   const {bossReward}=await import('/game/monkey-trails/social-combat.mjs'),rewards=el.querySelector('.social-event-rewards');
+   return {art:!!el.querySelector('.social-boss-portrait svg'),level:Number(rewards.dataset.bossLevel),tokens:Object.fromEntries([...rewards.querySelectorAll('[data-reward]')].map(n=>[n.dataset.reward,Number(n.dataset.amount)])),expected:bossReward(Number(rewards.dataset.bossLevel))};
+  });
+  assert.ok(eventPreview.art,'Tribe event shows the actual boss portrait');assert.equal(eventPreview.level,1);
+  assert.deepEqual(eventPreview.tokens,{fruit:eventPreview.expected.fruit,xp:eventPreview.expected.xp,...eventPreview.expected.items});
+  assert.equal(await a.locator('[data-social-action="start-raid"]').isEnabled(),true);
+  await b.screenshot({path:'/tmp/monkey-crew-ui-tribe-mobile.png',fullPage:true});
+  await a.setViewportSize({width:1200,height:900});await clean(alice);await a.screenshot({path:'/tmp/monkey-crew-ui-tribe-desktop.png',fullPage:true});await a.setViewportSize({width:390,height:844});
+  await b.emulateMedia({reducedMotion:'reduce'});
+  const moving=await b.locator('.social-boss-event').evaluate(el=>[el,...el.querySelectorAll('*')].filter(n=>getComputedStyle(n).animationName!=='none'&&getComputedStyle(n).animationDuration.split(',').some(t=>parseFloat(t)>0)).length);
+  assert.equal(moving,0,'Tribe event respects reduced motion');await b.emulateMedia({reducedMotion:'no-preference'});
+  await hostedCrewLayout(b);await clean(bob);await b.screenshot({path:'/tmp/monkey-crew-ui-hosted-mobile.png',fullPage:true});
+  await hostedCrewLayout(a);await clean(alice);
+
+  // Use the real upgrade control, then wait for another client to receive the new crew.
+  await b.locator('[data-action="tab"][data-id="team"]').click();
+  await b.evaluate(()=>{__socialDebug.state.run.party.forEach(id=>__socialDebug.state.collection[id].training=100000);__socialDebug.render();});
+  const ownBefore=await b.locator('[data-team-power]').getAttribute('data-team-power');
+  await b.locator('[data-action="train"]').click();
+  await b.waitForFunction(()=>__socialDebug.state.run.monkey.level===7);
+  await a.waitForFunction(()=>__socialDebug.social.model.members.find(p=>p.uid==='bob-online')?.team?.[0]?.level===7);
+  const upgradedBob=await assertCrew(a,bob.uid),outpacedAlice=await assertCrew(a,alice.uid);
+  assert.ok(upgradedBob.power>tiedBob.power);assert.equal(upgradedBob.rank,1);assert.equal(outpacedAlice.rank,2);
+  assert.deepEqual(await a.locator('[data-crew-scope="tribe"]').evaluateAll(nodes=>nodes.map(n=>n.dataset.crewId)),[bob.uid,alice.uid]);
+  const own=await b.evaluate(async()=>{
+   const C=await import('/game/monkey-trails/core.mjs'),P=await import('/game/monkey-trails/power.mjs'),s=__socialDebug.state,p=s.run.monkey,ranking=P.rankMonkeys(C.sanctuary(s),p=>C.equipped(s,p));
+   return {total:Number(document.querySelector('[data-team-power]').dataset.teamPower),expectedTotal:P.teamPower(C.team(s).map(p=>({...p,gear:C.equipped(s,p)}))),power:Number(document.querySelector('.companion-power [data-monkey-power]').dataset.monkeyPower),expectedPower:P.monkeyPower(p,C.equipped(s,p)),rank:Number(document.querySelector('.companion-power [data-roster-rank]').dataset.rosterRank),expectedRank:ranking.find(r=>r.monkey.id===p.id).rank,slots:document.querySelectorAll('.team-slot [data-monkey-power]').length};
+  });
+  assert.ok(own.total>Number(ownBefore));assert.equal(own.total,own.expectedTotal);assert.equal(own.power,own.expectedPower);assert.equal(own.rank,own.expectedRank);assert.equal(own.slots,3);
+  await clean(bob);await b.screenshot({path:'/tmp/monkey-crew-ui-team-mobile.png',fullPage:true});
+  await b.locator('[data-action="tab"][data-id="sanctuary"]').click();await b.locator('[data-action="collection-filter"][data-id="owned"]').click();
+  await b.locator('#collection-sort').selectOption('power');
+  const rosterPower=await b.locator('.collection-card .collection-power').evaluateAll(nodes=>nodes.map(n=>({power:Number(n.dataset.monkeyPower),rank:Number(n.dataset.rosterRank)})));
+  assert.equal(rosterPower.length,3);assert.deepEqual(rosterPower.map(r=>r.power),rosterPower.map(r=>r.power).sort((x,y)=>y-x));assert.equal(rosterPower[0].rank,1);
+  await clean(bob);await b.screenshot({path:'/tmp/monkey-crew-ui-sanctuary-mobile.png',fullPage:true});
+  await b.locator('[data-action="tab"][data-id="social"]').click();report.push('starting-three portraits, tied tribe ranks, live upgrades, roster power sorting and responsive event graphics');console.log('Passed crew power UI');
 
   await form(a,'gift',{toId:bob.uid,asset:'berry',amount:2});await b.locator('[data-social-action="dismiss-reward"]').waitFor();assert.equal(docs.get(`players/${bob.uid}`).wallet.items.berry,2);await notices(b);
   await form(a,'offer-trade',{toId:bob.uid,giveAsset:'fruit',giveAmount:3,wantAsset:'berry',wantAmount:1});
@@ -121,6 +198,9 @@ const expedition=page=>page.evaluate(()=>{const s=__socialDebug.state;return {ru
   await a.locator('[data-social-action="submit-raid"]').click();await a.waitForFunction(()=>__socialDebug.social.model.raid?.submitted===true);
   assert.equal(docs.get(`tribes/${code}`).boss.level,2);assert.ok(rows(`receipts/${bob.uid}/entries`,[['type','==','raid']]).length===1);
   await a.locator('[data-social-action="return"]').click();await a.waitForFunction(()=>!__socialDebug.social.model.raid);
+  await a.locator('[data-action="tab"][data-id="social"]').click();
+  assert.equal(await a.locator('[data-social-action="start-raid"]').isDisabled(),true,'Hourly cooldown is visible after returning');
+  assert.ok(await a.locator('.social-event-availability').textContent());
   await b.evaluate(()=>__socialDebug.social.start());await b.waitForFunction(()=>__socialDebug.social.model.status==='ready');
   await b.locator('.social-reward-notice').filter({hasText:'Your tribe defeated boss 1'}).waitFor();await notices(a);await notices(b);report.push('ten-turn raid and offline member reward delivery');console.log('Passed raid and offline receipts');
 
@@ -128,6 +208,8 @@ const expedition=page=>page.evaluate(()=>{const s=__socialDebug.state;return {ru
   // A nearby discoverability opt-in shows a top option even without a map pin.
   await a.locator('[data-social-action="discoverability"]').check();await b.locator('[data-social-action="discoverability"]').check();
   await a.waitForFunction(()=>__socialDebug.social.model.nearby.length===1);await b.waitForFunction(()=>__socialDebug.social.model.nearby.length===1);
+  await a.waitForFunction(()=>__socialDebug.social.model.nearby[0]?.team?.length===3);await b.waitForFunction(()=>__socialDebug.social.model.nearby[0]?.team?.length===3);
+  const nearbyBob=await assertCrew(a,bob.uid,'nearby'),nearbyAlice=await assertCrew(b,alice.uid,'nearby');assert.match(nearbyBob.rankLabel,/Nearby #1/);assert.match(nearbyAlice.rankLabel,/Nearby #1/);
   assert.match(await a.locator('#social-banner').innerText(),/nearby player/);report.push('nearby online discovery');console.log('Passed nearby discovery');
 
   const beforeA=await expedition(a),beforeB=await expedition(b);
@@ -184,11 +266,18 @@ const expedition=page=>page.evaluate(()=>{const s=__socialDebug.state;return {ru
   const escaped=await b.evaluate(async()=>{
    const {renderSocialView,renderSocialBanner,renderRewardNotices,emblemSVG}=await import('/game/monkey-trails/social-ui.mjs');
    const model=structuredClone(__socialDebug.social.model),hostile='<img src=x onerror="window.__xss=1">';
-   model.tribe.name=hostile;model.members=model.members.map(p=>({...p,name:hostile}));model.challenges=[{id:'hostile',from:'alice-online',to:'bob-online',fromName:hostile,status:'pending'}];
+   model.tribe.name=hostile;model.members=model.members.map(p=>({...p,name:hostile,team:p.team?.map(m=>({...m,nickname:hostile}))}));model.challenges=[{id:'hostile',from:'alice-online',to:'bob-online',fromName:hostile,status:'pending'}];
    const box=document.createElement('div');box.innerHTML=renderSocialView(model)+renderSocialBanner(model)+renderRewardNotices([{id:'bad',uid:'bob-online',title:hostile,payload:{fruit:1,xp:1,items:{}}}])+emblemSVG({color:'red" onload="window.__xss=1',symbol:'<script>'});
    return {injected:box.querySelectorAll('[onerror],[onload],script,img[src="x"]').length,text:box.textContent.includes(hostile)};
   });
   assert.deepEqual(escaped,{injected:0,text:true});report.push('hostile names and emblem values stay inert');
+  const partial=await b.evaluate(async()=>{
+   const {renderSocialView}=await import('/game/monkey-trails/social-ui.mjs'),model=structuredClone(__socialDebug.social.model),box=document.createElement('div');
+   model.me={...model.me,team:model.me.team.slice(0,1)};model.members=[model.me];model.nearby=[];model.challenges=[];model.tribe.boss.hp=0;
+   box.innerHTML=renderSocialView(model);const crew=box.querySelector('[data-crew-scope="tribe"]');
+   return {slots:crew.querySelectorAll('.social-crew-slot').length,empty:crew.querySelectorAll('.social-crew-slot.is-empty').length,zeroHealth:box.querySelector('.social-boss-event .social-health i')?.style.width};
+  });
+  assert.deepEqual(partial,{slots:3,empty:2,zeroHealth:'0%'});report.push('partial crews retain three visible slots and zero boss HP stays zero');
   console.log(JSON.stringify({checks:report,clients:2,pageErrors:0,mobileOverflow:0},null,2));
  }finally{for(const c of clients)await c.context.close();await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
