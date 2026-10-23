@@ -46,7 +46,8 @@ const root=path.resolve(__dirname,'../..'),mime={'.html':'text/html','.mjs':'tex
    assert.equal(await page.locator('[data-level-resource="xp"]').evaluate(el=>el.classList.contains('is-ready')),true);
    assert.equal(await page.locator('[data-level-resource="xp"] i').evaluate(el=>el.style.width),'100%');
    const hp=Number(await page.locator('.companion-profile [aria-label="Health"]').getAttribute('aria-valuenow'));
-   assert.equal(hp,Math.round(fixture.start+fixture.max*.125));
+   // The UI rounds HP; fractional GPS sums may land just below a .5 tie.
+   assert.ok(Math.abs(hp-(fixture.start+fixture.max*.25))<=.5+1e-8,'Walking restores2% per100ft before display rounding');
    await page.locator('[data-action="train"]').click();assert.match(await page.locator('.training-row').innerText(),/3 XP available/);
    await page.reload();await page.locator('#practice-button').click();await page.locator('[data-action="tab"][data-id="team"]').click();
    assert.match(await page.locator('.profile-art').innerText(),/Lv 2/);assert.match(await page.locator('.training-row').innerText(),/3 XP available/);

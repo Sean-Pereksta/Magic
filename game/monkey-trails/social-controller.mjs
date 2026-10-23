@@ -119,13 +119,13 @@ export class SocialController{
  async challenge(uid){this.requireFree();await this.refreshProfile();const me=await this.store.getPlayer(),target=Math.min(duelStake(snapshotTeam(this.getState())),availableInPack(this.getState(),'fruit')+me.wallet.fruit);await this.fund('fruit',target);return this.store.challenge(uid);}
  async accept(id){this.requireFree();await this.refreshProfile();const me=await this.store.getPlayer(),target=Math.min(duelStake(snapshotTeam(this.getState())),availableInPack(this.getState(),'fruit')+me.wallet.fruit);await this.fund('fruit',target);const duel=await this.store.acceptChallenge(id);this.onBattle();return duel;}
  async startRaid(){
-  this.requireFree();await this.refreshProfile();const ticket=await this.store.startRaid();const attempt=newRaidAttempt(ticket.team,ticket.bossLevel??ticket.level,ticket.seed);
+  this.requireFree();await this.refreshProfile();const ticket=await this.store.startRaid();const attempt=newRaidAttempt(ticket.team,ticket.bossLevel??ticket.level,ticket.seed,ticket.version??1);
   localSocial(this.getState()).raid={ticket,actions:[]};this.model.raid={...attempt,attemptId:ticket.id,actions:[],submitted:false};await this.persist();this.onBattle();await this.heartbeat(true);this.emit();
  }
  async restoreRaid(id){
   const saved=localSocial(this.getState()).raid,ticket=saved?.ticket?.id===id?saved.ticket:await this.store.getRaid(id);
   if(!ticket||ticket.submitted)return;
-  const attempt=newRaidAttempt(ticket.team,ticket.bossLevel??ticket.level,ticket.seed),actions=saved?.ticket?.id===id?saved.actions:[];for(const action of actions)raidAction(attempt,action);
+  const attempt=newRaidAttempt(ticket.team,ticket.bossLevel??ticket.level,ticket.seed,ticket.version??1),actions=saved?.ticket?.id===id?saved.actions:[];for(const action of actions)raidAction(attempt,action);
   localSocial(this.getState()).raid={ticket,actions};this.model.raid={...attempt,attemptId:id,actions:copy(actions),submitted:false};this.onBattle();
  }
  async raidMove(action){const raid=this.model.raid;if(!raid||raid.submitted)throw Error('Start a new hourly attempt first.');raidAction(raid,{...action,expectedSequence:action.expectedSequence??raid.sequence});raid.actions.push(action);localSocial(this.getState()).raid.actions=copy(raid.actions);await this.persist();this.emit();}

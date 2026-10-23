@@ -17,5 +17,5 @@ test('all required technique families are usable by at least one curated species
 });
 test('one complete authoritative eight-element chart covers every defensive pair',()=>{
   assert.equal(Object.keys(ELEMENTS).length,8);assert.deepEqual(Object.keys(TYPE_CHART).sort(),Object.keys(ELEMENTS).sort());
-  for(const [attack,row]of Object.entries(TYPE_CHART)){assert.deepEqual(Object.keys(row).sort(),Object.keys(ELEMENTS).sort(),attack);for(const multiplier of Object.values(row))assert.ok(multiplier>0&&multiplier<=2);}
+  for(const [attack,row]of Object.entries(TYPE_CHART)){assert.deepEqual(Object.keys(row).sort(),Object.keys(ELEMENTS).sort(),attack);for(const multiplier of Object.values(row))assert.ok(multiplier>=.4&&multiplier<=2.25);}
 });

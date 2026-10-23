@@ -16,7 +16,7 @@ The field guide contains all 90 species with discovered status, search, element 
 
 Distance discoveries show their exact item/resource and quantity in a compact, nonblocking popup that fades after 3.6 seconds. Multiple finds are queued, including in practice. Opening Team, Sanctuary, Pack, Settings, abilities, regions or the compass keeps foreground walking active. GPS updates preserve menu inputs and scroll; menus refresh on the next interaction or close. Encounter milestones still pause tracking and return to Walk. Explicit pause and hidden-page behavior remain unchanged.
 
-Only accepted tracker distance advances discoveries, encounter milestones, distance bonuses, camps and safe alternative Ultra challenges. Discoveries roll one category at a time (60% essence, 25% two fruit, 12% utilities, 3% fragments). The 250-foot base interval cannot fall below 200 feet. Each companion upgrades using fruit plus its own combined XP balance, earned from walking, victory and actual combat damage/healing. All three party members earn 1 base XP per 100 accepted feet, including reserves; sanctuary companions do not. Levels 1–3 earn 2× XP, levels 4–5 earn 1.5×, and later levels earn normal XP. Early fruit costs are 3, 5 and 8; later costs scale as before. No automatic level is granted: spend both resources from Team. Team displays separate XP and fruit progress bars, exact current/required amounts, percentages and enough/needed labels. Each bar is red below its requirement and green at or above it; surplus percentages remain visible while the fill stops at 100%. GPS progress updates these bars in place while the Team menu stays open, preserving other inputs. Maximum-level companions show their completion state instead of an unreachable next-level goal. Fractional XP survives reloads. Conscious party members also recover exactly 1% of equipped maximum HP per 100 accepted feet, smoothly across GPS samples; this caps at full HP, never revives, earns no combat XP and gives no stored recovery while full.
+Only accepted tracker distance advances discoveries, encounter milestones, distance bonuses, camps and safe alternative Ultra challenges. Discoveries roll one category at a time (60% essence, 25% two fruit, 12% utilities, 3% fragments). The 250-foot base interval cannot fall below 200 feet. Each companion upgrades using fruit plus its own combined XP balance, earned from walking, victory and actual combat damage/healing. All three party members earn 1 base XP per 100 accepted feet, including reserves; sanctuary companions do not. Levels 1–3 earn 2× XP, levels 4–5 earn 1.5×, and later levels earn normal XP. Early fruit costs are 3, 5 and 8; later costs scale as before. No automatic level is granted: spend both resources from Team. Team displays separate XP and fruit progress bars, exact current/required amounts, percentages and enough/needed labels. Each bar is red below its requirement and green at or above it; surplus percentages remain visible while the fill stops at 100%. GPS progress updates these bars in place while the Team menu stays open, preserving other inputs. Maximum-level companions show their completion state instead of an unreachable next-level goal. Fractional XP survives reloads. Conscious party members also recover exactly 2% of equipped maximum HP per 100 accepted feet, smoothly across GPS samples; this caps at full HP, never revives, earns no combat XP and gives no stored recovery while full.
 
 Victory XP is still split once across the party before each member’s level bonus. Additional combat XP credits the acting monkey for actual HP damage, effective self/team/drain healing, counters and attributed burn/poison. Overkill, overhealing, shields, item healing and passive walking recovery do not award contribution XP. Contributions accumulate at 1 base XP per 10 HP with a per-monkey encounter cap to bound repeat-healing rewards. All balances retain the existing per-monkey `training` save field.
 
@@ -41,8 +41,8 @@ radar and Ultra direction. **Regions** opens a popup containing all ten original
 land illustrations and previews, from Emerald Jungle to Ancient Monkey Kingdom.
 There is no region gallery on the front screen. Unlocked lands can be revisited
 between encounters. Accepted walking adds
-to a persistent total (500 m, 1.5 km, 3 km, 5 km, 8 km, 12 km, 18 km, 25 km and
-35 km unlocks), independent of expedition restarts. Practice uses its separate
+to a persistent total (2 km, 6 km, 12 km, 20 km, 32 km, 48 km, 72 km, 100 km and
+140 km unlocks), independent of expedition restarts. Practice uses its separate
 save. Existing saves retain their furthest recorded expedition as a conservative
 starting total; older versions did not record lifetime walking distance.
 
@@ -253,3 +253,44 @@ next reward preview and the existing per-player hourly readiness. Attempts show
 ten-turn progress and protected crew health. All prior trades, challenges, rewards
 and closeable notices remain available. No new runtime server or Firestore schema
 is required.
+
+## Rarity, elemental tactics and evolution balance
+
+Common, uncommon, rare and Ultra companions receive permanent HP/attack/defense
+multipliers of 1, 1.25, 1.5 and 1.85. Their speed multipliers are 1, 1.03, 1.06 and
+1.10, with 0, 1, 2 and 3 extra maximum energy. These bonuses affect growth as well
+as initial stats, apply before equipment and mastery, and feed the existing power
+rankings. Species roles and curated ability pools remain distinct.
+
+Elemental strengths deal 2.25× damage and resistances reduce damage to 0.4×. Each
+attacking element multiplies its defensive matchups, capped to 0.25×–4×; split
+attacks average their component results. Matching a monkey’s own element adds a
+1.25× affinity bonus. Physical attacks remain neutral. Combat previews and hit
+feedback show the actual multiplier, Very effective!/Not effective labels and
+resolved damage; support moves receive no damage-effectiveness badge.
+
+Walking recovery is 2% of equipped maximum HP per 100 accepted feet for conscious
+party members, without reviving knockouts or banking healing at full health.
+First evolution costs 6 essence of each required element instead of 12; later
+costs stay unchanged. Every evolution increases HP, attack, defense, speed and
+maximum energy. Evolution cards show current/required essence, progress bars and
+stat gains before committing.
+
+New social battles use version-two balance. Existing duel and raid snapshots retain
+version-one combat calculations when replayed, including their prior stats and
+matchups. This prevents an app refresh from rewriting an ongoing fight’s history.
+
+## Regional challenges
+
+Later regions now require 2, 6, 12, 20, 32, 48, 72, 100 and 140 cumulative accepted
+walking kilometres. Migration preserves every region earned under the earlier
+thresholds, together with positions and exploration distance. Practice remains
+separate and expedition restarts do not erase unlocked regions.
+
+Each of the ten regions has three permanent challenges for walking within that
+region, finding discoveries and winning wild encounters there. Players can track
+a challenge to keep its progress bar on Walk and manually claim its exact fruit
+and consumable reward after completion. Claims are recorded permanently and
+cannot be repeated after reload or a new expedition. Event counts start when this
+update is installed; historical exploration distance remains valid. Claims are
+available on the trail or at camp, preserving battle inventories.

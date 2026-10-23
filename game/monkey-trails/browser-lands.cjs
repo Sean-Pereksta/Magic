@@ -32,10 +32,13 @@ const mime={'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript'
   assert.equal(await page.locator('.land-atlas .land-tile').count(),10);
   await page.locator('.land-atlas [data-id="moonlit-forest"]').click();
   assert.equal(await page.locator('[data-action="land-select"]').count(),0);
-  assert.match(await page.locator('.land-unlock-copy').innerText(),/18 km/);
+  assert.match(await page.locator('.land-unlock-copy').innerText(),/72 km/);
   assert.equal(await page.evaluate(()=>document.activeElement?.tagName),'H2');
   await page.locator('.dialog-close').click();
-  for(let i=0;i<5;i++)await page.locator('[data-action="practice-step"][data-id="N"]').click();
+  // Seed verified lifetime progress below the new2km gate, then cross it with
+  // an actual accepted15m practice step (without traversing unrelated battles).
+  await page.evaluate(async()=>{const {Vault}=await import('/game/monkey-trails/storage.mjs'),v=new Vault(()=>{}),s=await v.open('Trail Practice','practice-only-not-ranked',{mode:'practice'});s.world.totalDistance=1990;s.world.regions['emerald-jungle'].distance=1990;await v.checkpoint(s,true);});
+  await enter();await page.locator('[data-action="map-step"][data-id="N"]').click();
   await page.locator('[data-action="lands"]').first().click();
   await page.locator('.land-atlas [data-id="sunstone-savannah"]').click();
   assert.match(await page.locator('[data-action="land-select"]').innerText(),/Visit Sunstone Savannah/);
@@ -45,7 +48,7 @@ const mime={'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript'
   await page.waitForFunction(()=>/Practice saved on this device/.test(document.getElementById('save-status').textContent));
   await enter();
   assert.equal(await page.locator('.land-heading h2').innerText(),'Sunstone Savannah','selected land survives reload');
-  await page.evaluate(async()=>{const {Vault}=await import('/game/monkey-trails/storage.mjs'),v=new Vault(()=>{}),s=await v.open('Trail Practice','practice-only-not-ranked',{mode:'practice'});s.world.totalDistance=35000;await v.checkpoint(s,true);});
+  await page.evaluate(async()=>{const {Vault}=await import('/game/monkey-trails/storage.mjs'),v=new Vault(()=>{}),s=await v.open('Trail Practice','practice-only-not-ranked',{mode:'practice'});s.world.totalDistance=140000;await v.checkpoint(s,true);});
   await enter();
   const visited=[];
   for(const id of ['emerald-jungle','sunstone-savannah','crystal-caverns','whispering-marsh','frostpeak-mountains','thunder-highlands','ember-volcano','moonlit-forest','celestial-ruins','ancient-monkey-kingdom']){
