@@ -14,14 +14,14 @@ export const STARTERS=['capuchin','macaque','langur','mandrill','spider','howler
 // Attacking element -> every defending element. Mixed defense multiplies columns;
 // a split attack averages its component multipliers, never chooses the best one.
 export const TYPE_CHART={
-  leaf:  {leaf:.5, fire:.5,water:2,storm:2,earth:2,ice:.5,light:1,shadow:1},
-  fire:  {leaf:2,fire:.5,water:.5,storm:1,earth:.5,ice:2,light:1,shadow:1},
-  water: {leaf:.5,fire:2,water:.5,storm:1,earth:2,ice:.5,light:1,shadow:1},
-  storm: {leaf:.5,fire:1,water:2,storm:.5,earth:.5,ice:2,light:1,shadow:1},
-  earth: {leaf:.5,fire:2,water:.5,storm:2,earth:.5,ice:1,light:1,shadow:1},
-  ice:   {leaf:2,fire:.5,water:.5,storm:1,earth:2,ice:.5,light:1,shadow:1},
-  light: {leaf:1,fire:1,water:1,storm:1,earth:.5,ice:1,light:.5,shadow:2},
-  shadow:{leaf:1,fire:1,water:1,storm:1,earth:1,ice:.5,light:2,shadow:.5}
+  leaf:  {leaf:.4, fire:.4,water:2.25,storm:2.25,earth:2.25,ice:.4,light:1,shadow:1},
+  fire:  {leaf:2.25,fire:.4,water:.4,storm:1,earth:.4,ice:2.25,light:1,shadow:1},
+  water: {leaf:.4,fire:2.25,water:.4,storm:1,earth:2.25,ice:.4,light:1,shadow:1},
+  storm: {leaf:.4,fire:1,water:2.25,storm:.4,earth:.4,ice:2.25,light:1,shadow:1},
+  earth: {leaf:.4,fire:2.25,water:.4,storm:2.25,earth:.4,ice:1,light:1,shadow:1},
+  ice:   {leaf:2.25,fire:.4,water:.4,storm:1,earth:2.25,ice:.4,light:1,shadow:1},
+  light: {leaf:1,fire:1,water:1,storm:1,earth:.4,ice:1,light:.4,shadow:2.25},
+  shadow:{leaf:1,fire:1,water:1,storm:1,earth:1,ice:.4,light:2.25,shadow:.4}
 };
 
 const general={

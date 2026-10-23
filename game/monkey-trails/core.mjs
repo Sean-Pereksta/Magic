@@ -1,11 +1,15 @@
 // DOM-free expedition rules. Distances use accepted tracker meters exclusively.
 import {ELEMENTS,DIRECTIONS,TYPE_CHART,SPECIES,MOVES,HYBRIDS,GEAR,ITEMS,STARTERS} from './data.mjs';
 import {normalizeLands,advanceLand} from './lands.mjs';
+import {recordRegionEvent} from './challenges.mjs';
 export {ELEMENTS,DIRECTIONS,TYPE_CHART,SPECIES,MOVES,HYBRIDS,GEAR,ITEMS,STARTERS};
 export {LANDS,landProgress,selectLand} from './lands.mjs';
 export const VERSION=2, FEET=.3048, RESOURCE_STEP=250*FEET, ENCOUNTER_STEP=2000*FEET;
 export const CONFIG={partySize:3,discoveryFeet:250,maxDiscoveryAcceleration:.20,encounterFeet:2000,campFeet:6000,
-  walkingRecovery:{feet:100,fraction:.01},
+  walkingRecovery:{feet:100,fraction:.02},
+  rarity:{common:{stats:1,speed:1,energy:0},uncommon:{stats:1.25,speed:1.03,energy:1},rare:{stats:1.5,speed:1.06,energy:2},ultra:{stats:1.85,speed:1.10,energy:3}},
+  elemental:{strong:2.25,resisted:.4,min:.25,max:4,stab:1.25},
+  evolution:{firstEssence:6,stats:{hp:20,atk:4,def:3,speed:2,maxEnergy:3}},
   xp:{walkingFeet:100,earlyLevels:3,earlyMultiplier:2,midLevels:5,midMultiplier:1.5,contributionHP:10,maxCombatBase:120},
   captureAttempts:3,capturePity:4,ultraFirstFeet:5000,ultraRepeatFeet:18000,ultraPityFeet:24000,
   ultraApproachMeters:250,ultraChallengeFeet:1300,maxLevel:60,fragmentCost:5,
@@ -45,13 +49,33 @@ function syncActive(s){const r=s.run;r.monkey=s.collection[r.activeId]||s.collec
 function uid(s,prefix){s.meta.serial=(s.meta.serial||0)+1;return`${prefix}-${(s.rng>>>0).toString(36)}-${s.meta.serial.toString(36)}`;}
 export function hybrid(types){return HYBRIDS[[...types].sort().join('+')]||null;}
 export function formName(p){return`${p.stage===3?'Ascendant ':p.stage===2?'Elder ':p.stage===1?'Awakened ':''}${p.stage?(hybrid(p.types)?.name||ELEMENTS[p.types[0]]?.name||'Trail')+' ':''}${SPECIES[p.species]?.name||'Monkey'}`;}
-export function effectiveness(type,defenders=[]){if(type==='neutral'||!type)return 1;return defenders.reduce((n,t)=>n*(TYPE_CHART[type]?.[t]??1),1);}
+export function effectiveness(type,defenders=[]){
+  if(type==='neutral'||!type)return 1;
+  const types=Array.isArray(defenders)?[...new Set(defenders)]:[];
+  return clamp(types.reduce((n,t)=>n*(TYPE_CHART[type]?.[t]??1),1),CONFIG.elemental.min,CONFIG.elemental.max);
+}
 // A dual attack splits its power evenly instead of selecting its best matchup.
-export function moveEffect(move,defenders){const types=move.types||[move.type||'neutral'];return types.reduce((n,t)=>n+effectiveness(t,defenders),0)/types.length;}
-export function stats(p,gear={}){
+export function moveEffect(move,defenders){const types=move?.types?.length?move.types:[move?.type||'neutral'];return types.reduce((n,t)=>n+effectiveness(t,defenders),0)/types.length;}
+// Existing online fights replay with the precise rules they began with.
+export function moveEffectLegacy(move,defenders=[]){
+  const types=move?.types?.length?move.types:[move?.type||'neutral'];
+  const oldEffect=type=>!type||type==='neutral'?1:defenders.reduce((n,t)=>{const value=TYPE_CHART[type]?.[t]??1;return n*(value===CONFIG.elemental.strong?2:value===CONFIG.elemental.resisted?.5:value);},1);
+  return types.reduce((n,t)=>n+oldEffect(t),0)/types.length;
+}
+export function effectInfo(multiplier=1){
+  const value=Number.isFinite(multiplier)&&multiplier>0?multiplier:1,kind=value>1+1e-9?'strong':value<1-1e-9?'resisted':'neutral';
+  return{multiplier:value,kind,label:kind==='strong'?'Very effective!':kind==='resisted'?'Not effective':'Normal effectiveness'};
+}
+export function stats(p,gear={}){return calculatedStats(p,gear,false);}
+export function statsLegacy(p,gear={}){return calculatedStats(p,gear,true);}
+export const legacyStats=statsLegacy;
+function calculatedStats(p,gear={},legacy=false){
   const b=SPECIES[p.species],lv=Math.max(0,p.level-1),stage=p.stage||0;
-  const out={hp:b.hp+lv*8+stage*14,atk:b.atk+lv*2+stage*2.4,def:b.def+lv*1.4+stage*1.7,speed:b.speed+lv*.65+stage,maxEnergy:12+stage*2};
+  const step=legacy?{hp:14,atk:2.4,def:1.7,speed:1,maxEnergy:2}:CONFIG.evolution.stats;
+  const out={hp:b.hp+lv*8+stage*step.hp,atk:b.atk+lv*2+stage*step.atk,def:b.def+lv*1.4+stage*step.def,speed:b.speed+lv*.65+stage*step.speed,maxEnergy:12+stage*step.maxEnergy};
   if(stage&&p.types.length===1){const defensive=['leaf','water','earth','light','ice'].includes(p.types[0]);out[defensive?'def':'atk']+=stage*2;}
+  // Rarity strengthens permanent growth, while equipment keeps its listed value.
+  if(!legacy){const rarity=CONFIG.rarity[b.rarity]||CONFIG.rarity.common;for(const key of ['hp','atk','def'])out[key]*=rarity.stats;out.speed*=rarity.speed;out.maxEnergy+=rarity.energy;}
   for(const[id,tier]of Object.entries(gear))if(GEAR[id]&&GEAR[id].stat in out)out[GEAR[id].stat]+=GEAR[id].amount*tier;
   const mastery=stage===3?CONFIG.masteries[p.mastery]:null;if(mastery){for(const[key,factor]of Object.entries(mastery.multipliers||{}))out[key]*=factor;for(const[key,amount]of Object.entries(mastery.flat||{}))out[key]+=amount;}
   if(p.elite)for(const key of['hp','atk','def'])out[key]*=1.12;if(p.bossOnly)out.hp*=1.45;
@@ -82,7 +106,7 @@ function monkey(s,species,level=1,types=nativeTypes(species),stage=0,prefix='m')
     loadout:['strike','brace','breathe'],training:0,xpRemainder:0,bond:0,learned:[],discovered:[],highestForm:{stage:0,types:nativeTypes(species)},
     equipment:{weapon:null,armor:null,charm:null},cooldowns:{},uses:{}};
   p.learned=unlocked(p);const specials=p.learned.filter(id=>!['strike','brace','breathe'].includes(id));
-  p.loadout=['strike',...specials.slice(0,2),'brace'];if(p.loadout.length<4)p.loadout.splice(p.loadout.length-1,0,'breathe');p.hp=stats(p).hp;return p;
+  p.loadout=['strike',...specials.slice(0,2),'brace'];if(p.loadout.length<4)p.loadout.splice(p.loadout.length-1,0,'breathe');const maximum=stats(p);p.hp=maximum.hp;p.energy=maximum.maxEnergy;return p;
 }
 function resetExpeditionMonkey(p){p.level=1;p.types=nativeTypes(p.species);p.stage=0;p.status={};p.statusPower={};p.training=0;p.xpRemainder=0;delete p.statusCredit;p.cooldowns={};p.uses={};p.shield=0;delete p.elite;delete p.bossOnly;delete p.mastery;const available=unlocked(p);p.loadout=['strike',...p.loadout.filter(id=>id!=='strike'&&available.includes(id)),...available].filter((id,i,a)=>a.indexOf(id)===i).slice(0,4);p.hp=stats(p).hp;p.energy=stats(p).maxEnergy;}
 export function newSave(name,species='capuchin',mode='gps',seed=Date.now()>>>0){
@@ -116,6 +140,7 @@ function cache(s){
   else if(roll<w.essence+w.fruit){r.fruit+=2;say(s,'Discovery: two training fruit.');r.lastDiscovery={category:'fruit',amount:2};}
   else if(roll<w.essence+w.fruit+w.item){const id=choose(s,['berry','tonic','salve','bondCharm','trailRibbon','treasureScent','scoutFeather','campfireSeed']);r.items[id]++;say(s,`Discovery: ${ITEMS[id].name}.`);r.lastDiscovery={category:'item',id,amount:1};}
   else{const id=choose(s,Object.keys(GEAR));s.meta.fragments[id]=(s.meta.fragments[id]||0)+1;say(s,`Discovery: a ${GEAR[id].name} fragment (${s.meta.fragments[id]}/${CONFIG.fragmentCost}).`);r.lastDiscovery={category:'fragment',id,amount:1};}
+  recordRegionEvent(s,'discoveries');
 }
 function acceptedDiscoveries(s,meters,onDiscovery){
   const r=s.run;let remaining=meters;while(remaining>1e-8){const interval=discoveryInterval(s),untilDiscovery=(1-r.discoveryProgress)*interval,untilBonus=r.bonuses.ribbon>0?r.bonuses.ribbon:Infinity;
@@ -147,7 +172,7 @@ export function advance(s,meters,east=0,north=0,onDiscovery){
   advanceLand(s,used,east*ratio,north*ratio);
   for(const p of team(s)){
     grantXp(p,used/(CONFIG.xp.walkingFeet*FEET));
-    // Fractional HP preserves exactly 1% per 100 feet, even for low-HP species.
+    // Fractional HP preserves exactly 2% per 100 feet, even for low-HP species.
     if(alive(p)){const max=stats(p,equipped(s,p)).hp;p.hp=Math.min(max,p.hp+max*CONFIG.walkingRecovery.fraction*used/(CONFIG.walkingRecovery.feet*FEET));}
   }
   r.vector.east+=east*ratio;r.vector.north+=north*ratio;r.direction=direction(r.vector.east,r.vector.north,r.direction);r.weights[r.direction]+=used;acceptedDiscoveries(s,used,onDiscovery);r.distance+=used;
@@ -225,12 +250,13 @@ function contribution(s,p,damage=0,healing=0){
   c.xp+=grantXp(p,Math.max(0,next-c.base));c.base=next;
 }
 function victory(s){
-  const r=s.run,b=r.battle;if(!b||b.rewarded||s.meta.claims[`reward:${b.id}`])return;b.rewarded=true;s.meta.claims[`reward:${b.id}`]=true;r.wins++;if(!b.ultra)r.ordinaryWins++;
+  const r=s.run,b=r.battle;if(!b||b.rewarded||s.meta.claims[`reward:${b.id}`])return;b.rewarded=true;s.meta.claims[`reward:${b.id}`]=true;r.wins++;if(!b.ultra)r.ordinaryWins++;recordRegionEvent(s,'victories');
   const baseXp=18+b.enemies.reduce((n,e)=>n+e.level*2,0)+b.enemies.length*4,xp=awardXp(s,baseXp);r.fruit+=2;const type=b.enemy.types[0]||rollElement(s);r.essence[type]+=2;r.items.charmMaterial=(r.items.charmMaterial||0)+1;
   const tutorial=!b.ultra&&r.ordinaryWins<=2;if(tutorial)r.items.bondCharm+=2;if(!b.ultra&&r.ordinaryWins===1){r.items.revive+=CONFIG.tutorial.revivesAfterFirst;say(s,'Introductory revival supply: restore a fallen teammate before replacing them at camp.');}
   // An Ultra's support squad cannot consume the guaranteed boss invitation.
   const eligible=b.ultra?[b.enemies.find(e=>e.species===r.ultra.species)||b.enemies[0]]:b.enemies;
   r.capture={id:b.id,candidates:eligible.map(e=>({...copy(e),bondBonus:b.bondBonuses[e.id]||0})),attempts:0,maxAttempts:CONFIG.captureAttempts,guaranteed:tutorial||b.ultra&&!sanctuary(s).some(p=>p.species===r.ultra.species),ultra:b.ultra,claimed:false};
+  r.lastBattleFeedback=copy(b.hitFeedback||[]);r.lastBattleHits=r.lastBattleFeedback;
   r.battle=null;r.phase='befriend';r.vector={east:0,north:0};r.weights={N:0,S:0,E:0,W:0};say(s,`Victory: ${xp} experience shared across the team, two fruit, essence, and charm material. Choose one defeated companion to befriend.`);
 }
 export function captureChance(s,id){const c=s.run.capture,p=c?.candidates.find(p=>p.id===id);if(!p||c.claimed)return 0;if(c.guaranteed||s.meta.captureFailures>=CONFIG.capturePity)return 1;return clamp((({common:.85,uncommon:.65,rare:.45,ultra:.65})[SPECIES[p.species].rarity]??.85)+(p.bondBonus||0),.05,.99);}
@@ -279,10 +305,13 @@ function execute(s,actor,target,id,actorStats,targetStats,label,targetId,side='p
   if(m.bondBonus)b.bondBonuses[target.id]=Math.min(.25,(b.bondBonuses[target.id]||0)+m.bondBonus);
   if(m.power){
     if(m.breakShield){target.shield=0;target.guard=0;delete target.status.shield;}
-    const eff=moveEffect(m,target.types),stab=(m.types||[m.type]).some(t=>actor.types.includes(t))?1.15:1,critRoll=random(s),crit=(!actor.tutorialHpScale||CONFIG.tutorial.enemyCriticals)&&critRoll<(actor.species==='macaque'?.14:.07),howl=actor.species==='howler'&&m.type!=='neutral'?1.12:1;
+    const eff=moveEffect(m,target.types),stab=(m.types||[m.type]).some(t=>actor.types.includes(t))?CONFIG.elemental.stab:1,critRoll=random(s),crit=(!actor.tutorialHpScale||CONFIG.tutorial.enemyCriticals)&&critRoll<(actor.species==='macaque'?.14:.07),howl=actor.species==='howler'&&m.type!=='neutral'?1.12:1;
     let damage=Math.max(1,Math.round((m.power+actorStats.atk*.70-targetStats.def*.42)*eff*stab*howl*(crit?1.4:1)*(.94+random(s)*.12)*(target.guard||1)*(actor.prepare?1+actor.prepare:1)*(actor.status.weaken?1-(actor.statusPower.weaken||.25):1)));
     if(actor.prepare){actor.prepare=0;delete actor.status.prepare;}if(actor.status.weaken){delete actor.status.weaken;delete actor.statusPower.weaken;}if(target.species==='spider'&&random(s)<.08)damage=0;
-    if(target.shield){const absorbed=Math.min(target.shield,damage);target.shield-=absorbed;damage-=absorbed;}const actualDamage=Math.min(target.hp,damage);target.hp=Math.max(0,target.hp-damage);if(side==='player')contribution(s,actor,actualDamage);say(s,`${label}: ${m.name} → ${damage}${crit?' critical':''}${eff!==1?` (×${eff})`:''}.`);
+    if(target.shield){const absorbed=Math.min(target.shield,damage);target.shield-=absorbed;damage-=absorbed;}const actualDamage=Math.min(target.hp,damage);target.hp=Math.max(0,target.hp-damage);if(side==='player')contribution(s,actor,actualDamage);
+    const hit={actorId:actor.id,targetId:target.id,actorName:actor.nickname||SPECIES[actor.species].name,targetName:target.nickname||SPECIES[target.species].name,moveId:id,side,multiplier:eff,damage:actualDamage,critical:crit,round:b.round};
+    b.lastHit=hit;(b.hitFeedback??=[]).push(hit);b.lastHits=b.hitFeedback;
+    const feedback=effectInfo(eff);say(s,`${label}: ${m.name} → ${actualDamage}${crit?' critical':''}${feedback.kind!=='neutral'?` · ${feedback.label} (×${eff})`:''}.`);
     if(target.counter&&damage){const reflected=Math.min(actor.hp,Math.max(1,Math.round(damage*target.counter)));actor.hp=Math.max(0,actor.hp-reflected);contribution(s,target,reflected);target.counter=0;delete target.status.counter;}
     if(m.status&&alive(target)){const immune=m.status==='burn'&&target.types.includes('fire')||m.status==='poison'&&target.types.includes('leaf');if(!immune){applyStatus(target,m.status,duration);target.statusCredit??={};if(side==='player')target.statusCredit[m.status]=actor.id;else delete target.statusCredit[m.status];}}
     if(m.drain)restored+=heal(actor,actualDamage*m.drain,actorStats.hp);if(m.drainEnergy){const drained=Math.min(target.energy,m.drainEnergy);target.energy-=drained;actor.energy=Math.min(actorStats.maxEnergy,actor.energy+drained);}
@@ -326,6 +355,7 @@ function performTurn(s,action){
     if(!p.loadout.includes(action.id)||!pm||p.energy<(pm.cost||0)||!moveAvailable(b,p,action.id))throw Error('Ability unavailable, cooling down, or insufficient energy.');if(pm.switch&&p.status.root)throw Error('Rooted Challenge prevents voluntary retreat this round.');if(pm.switch&&!team(s).some(m=>alive(m)&&m.id!==p.id))throw Error('No conscious teammate can receive the relay.');
   }
   if(action.type==='switch'){const incoming=team(s).find(m=>m.id===action.id);if(!incoming||!alive(incoming)||incoming.id===p.id||p.status.root)throw Error('Choose another conscious, unrooted switch.');}
+  b.hitFeedback=[];b.lastHits=b.hitFeedback;delete b.lastHit;
   const initiative=(actor,st,m)=>(m?.priority||0)*1000+st.speed*(actor.status.slow?.65:1)*(actor.status.speed?1.2:1),playerFirst=action.type!=='move'||initiative(p,ps,pm)>=initiative(e,es,em);
   const playerAction=()=>{if(!alive(p))return;if(action.type==='switch')replacement(s,action.id,'player');else execute(s,p,b.enemy,action.id,stats(p,equipped(s,p)),stats(b.enemy),'You',action.targetId,'player');};
   const enemyAct=()=>{if(!alive(e))return;const cannotRetreat=e.status.root||!b.enemies.some(m=>m.id!==e.id&&alive(m));if(enemyAction.type==='switch'&&!cannotRetreat)replacement(s,enemyAction.id,'enemy');else{const chosen=enemyAction.type==='switch'||MOVES[enemyAction.id]?.switch&&cannotRetreat||e.energy<(MOVES[enemyAction.id]?.cost||0)?'strike':enemyAction.id;execute(s,e,r.monkey,chosen,stats(e),stats(r.monkey,equipped(s,r.monkey)),'Rival',null,'enemy');}};
@@ -358,9 +388,10 @@ export function train(s,id){
 export function evolutionCost(s,type,id){const p=getMonkey(s,id),next=(p?.stage||0)+1,required=[0,3,6,10][next];if(!p||!ELEMENTS[type]||next>3)return null;
   const native=nativeTypes(p.species);if(next===1&&native.length&&!native.includes(type))return null;
   const types=next===1?(native.length?native:[type]):[...new Set([...p.types,type])];if(types.length>2||next===3&&!p.types.includes(type))return null;
-  return{level:required,cost:next===1?Object.fromEntries(types.map(t=>[t,12])):next===2?{[type]:24}:Object.fromEntries(types.map(t=>[t,types.length===1?40:28])),types};}
+  return{level:required,cost:next===1?Object.fromEntries(types.map(t=>[t,CONFIG.evolution.firstEssence])):next===2?{[type]:24}:Object.fromEntries(types.map(t=>[t,types.length===1?40:28])),types};}
 export function evolutionPreview(s,type,id){const p=getMonkey(s,id),offer=evolutionCost(s,type,id);if(!offer)return null;const preview={...p,types:offer.types,stage:p.stage+1},mastery=preview.stage===3?CONFIG.masteries[type]:null;if(mastery)preview.mastery=type;
-  return{...offer,monkey:preview,name:formName(preview),stats:stats(preview,equipped(s,p)),abilities:unlocked(preview),specialization:mastery?.name,desc:mastery?`Ascendant mastery: ${mastery.desc} Choose which existing element to master for this expedition.`:undefined,passive:mastery?`${mastery.name}: ${mastery.desc}`:offer.types.length===1?'Pure harmony: greater specialization in attack or defense.':'Mixed harmony: broader coverage with combined weaknesses and resistances.',matchups:Object.fromEntries(Object.keys(ELEMENTS).map(t=>[t,effectiveness(t,preview.types)]))};}
+  const beforeStats=stats(p,equipped(s,p)),afterStats=stats(preview,equipped(s,p)),statGains=Object.fromEntries(Object.keys(afterStats).map(key=>[key,afterStats[key]-beforeStats[key]]));
+  return{...offer,monkey:preview,name:formName(preview),stats:afterStats,beforeStats,statGains,abilities:unlocked(preview),specialization:mastery?.name,desc:mastery?`Ascendant mastery: ${mastery.desc} Choose which existing element to master for this expedition.`:undefined,passive:mastery?`${mastery.name}: ${mastery.desc}`:offer.types.length===1?'Pure harmony: greater specialization in attack or defense.':'Mixed harmony: broader coverage with combined weaknesses and resistances.',matchups:Object.fromEntries(Object.keys(ELEMENTS).map(t=>[t,effectiveness(t,preview.types)]))};}
 export function evolve(s,type,id){
   const r=s.run,p=getMonkey(s,id),offer=evolutionCost(s,type,id);if(!p||!alive(p)||!['trail','camp'].includes(r.phase)||!offer||!r.party.includes(p.id))throw Error('That evolution is unavailable for a fallen companion.');if(p.level<offer.level)throw Error(`Reach level ${offer.level} first.`);if(Object.entries(offer.cost).some(([t,n])=>r.essence[t]<n))throw Error('Gather the required essence or use the slower resource exchange.');
   const old=stats(p,equipped(s,p)).hp;for(const[t,n]of Object.entries(offer.cost))r.essence[t]-=n;p.types=[...offer.types];p.stage++;if(p.stage===3)p.mastery=type;p.hp=Math.min(stats(p,equipped(s,p)).hp,p.hp+stats(p,equipped(s,p)).hp-old);const key=`${p.stage}:${[...p.types].sort().join('+')}${p.stage===3?`:mastery=${p.mastery}`:''}`;if(!p.discovered.includes(key))p.discovered.push(key);if(p.stage>=p.highestForm.stage)p.highestForm={stage:p.stage,types:[...p.types],...(p.stage===3?{mastery:p.mastery}:{})};p.learned=[...new Set([...p.learned,...unlocked(p)])];say(s,`Evolved into ${formName(p)}${p.stage===3?` with ${CONFIG.masteries[p.mastery].name}`:''}. This branch stays discovered in the sanctuary.`);return p;

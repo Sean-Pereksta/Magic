@@ -90,3 +90,48 @@ test('every catalogue technique resolves deterministically with bounded health a
   assert.ok(first.teams.flat().every(p=>p.hp>=0&&p.hp<=p.maxHp&&p.energy>=0&&p.energy<=p.maxEnergy),id);
  }
 });
+
+// Golden hashes were captured from the released version-one reducer before this
+// rebalance, covering stats, RNG, health, turn state and exact transcript text.
+function legacyProfiles(){return[
+ {id:'legacy-a',name:'Legacy A',team:[{id:'a-fire',species:'cinderpaw',nickname:'Ember',level:7,stage:2,types:['fire'],learned:['cinder'],loadout:['strike','cinder','brace','breathe'],gear:{fang:2}}]},
+ {id:'legacy-b',name:'Legacy B',team:[{id:'b-leaf',species:'mossmop',nickname:'Fern',level:7,stage:2,types:['leaf'],learned:['vine'],loadout:['strike','vine','brace','breathe'],gear:{bark:2}}]}
+];}
+test('in-flight version-one duels and raid tickets retain their released balance and exact replay',async()=>{
+ const {createHash}=await import('node:crypto'),hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex'),[a,b]=legacyProfiles();
+ let d=S.newDuel(a,b,34567,1);const actions=[['legacy-a','cinder'],['legacy-b','brace'],['legacy-a','strike'],['legacy-b','breathe'],['legacy-a','cinder']];
+ for(const [index,[uid,id]]of actions.entries()){S.duelAction(d,uid,{type:'move',id});if(index===1)d=JSON.parse(JSON.stringify(d));}
+ assert.equal(hash(d),'55aede4ce9c99a40de1c2f028169447385a9a404388207559649b6eaf627e319');
+ let r=S.newRaidAttempt(a.team,9,4343,1);for(let i=0;i<10;i++){S.raidAction(r,{type:'move',id:i%2?'strike':'cinder'});if(i===4)r=JSON.parse(JSON.stringify(r));}
+ assert.equal(hash(r),'2f7c9ea15a8e374c25716349d0be9e4e17352e59a0f9f44e1ba93df995b4f628');
+ assert.equal(d.lastHit,undefined);assert.equal(r.lastHit,undefined);
+});
+test('new fights recompute rarity stats and reject forged cached combat strength',()=>{
+ const [a,b]=legacyProfiles();a.team[0].combatStats={hp:999999,atk:999999};const d=S.newDuel(a,b,34567),r=S.newRaidAttempt(a.team,9,4343);
+ assert.equal(d.version,2);assert.equal(r.version,2);
+ assert.deepEqual(d.teams[0][0].combatStats,C.stats(a.team[0],a.team[0].gear));
+ assert.ok(d.teams[0][0].maxHp>C.statsLegacy(a.team[0],a.team[0].gear).hp);
+ assert.throws(()=>S.newDuel(a,b,34567,999),/combat version/);
+});
+test('new duel elemental attacks clearly report strong and resisted actual damage',()=>{
+ const source=learn(members(),'cinder');source[0].types=['fire'];const compare=[];
+ for(const types of [['leaf'],['fire']]){
+  const d=duel(source,members('mandrill'),34567);d.teams[1][0].types=types;d.teams[1][0].hp=d.teams[1][0].maxHp=10000;
+  const before=d.teams[1][0].hp;act(d,'cinder');const hit=d.lastHit;
+  assert.equal(hit.actorId,d.teams[0][0].id);assert.equal(hit.moveId,'cinder');assert.equal(hit.damage,before-d.teams[1][0].hp);
+  assert.equal(hit.multiplier,types[0]==='leaf'?2.25:.4);assert.ok(d.log.some(line=>line.includes(types[0]==='leaf'?'Very effective!':'Not effective')));
+  compare.push(hit.damage);
+ }
+ assert.ok(compare[0]>compare[1]*4,'An advantageous element must substantially outperform a resisted one.');
+ const support=duel();act(support,'breathe');assert.equal(support.lastHit,undefined);assert.ok(!support.log.some(line=>/effective/i.test(line)));
+});
+test('new raid feedback and move previews use the fight’s pinned elemental balance',async()=>{
+ const {renderSocialView}=await import('./social-ui.mjs'),[a,b]=legacyProfiles();
+ for(const version of [1,2]){
+  const d=S.newDuel(a,b,34567,version),html=renderSocialView({status:'ready',me:{uid:a.id},duel:{state:d}});
+  assert.match(html,new RegExp(`Very effective! · ×${version===1?'2':'2\\.25'}`));
+ }
+ const r=S.newRaidAttempt(a.team,1,123);S.raidAction(r,{type:'move',id:'cinder'});
+ assert.ok(r.lastHit&&r.lastHit.damage>=0);assert.equal(r.lastHit.multiplier,S.socialMoveEffect(C.MOVES.cinder,r.boss.types,2));
+ const html=renderSocialView({status:'ready',me:{uid:a.id},raid:r});assert.match(html,/social-hit-feedback/);assert.match(html,/Last hit · Ember/);
+});

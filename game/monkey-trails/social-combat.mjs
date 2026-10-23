@@ -1,15 +1,17 @@
 // Deterministic social combat. Every fight uses disposable, healthy team copies.
 // The reducers mutate only their supplied social state and return that same object.
-import {SPECIES,MOVES,ELEMENTS,GEAR,CONFIG,stats,equipped,team,unlocked,moveEffect,random} from './core.mjs';
+import {SPECIES,MOVES,ELEMENTS,GEAR,CONFIG,stats,statsLegacy,equipped,team,unlocked,moveEffect,moveEffectLegacy,effectInfo,random} from './core.mjs';
 
 const clone=value=>structuredClone(value),alive=p=>p&&p.hp>0;
 const integer=(value,min,max,label)=>{if(!Number.isInteger(value)||value<min||value>max)throw Error(`Invalid ${label}.`);return value;};
 const displayName=p=>p.nickname||SPECIES[p.species]?.name||'Companion';
 const log=(s,text)=>{s.log.push(text);s.log=s.log.slice(-18);};
 const freshSeed=seed=>Number.isInteger(seed)?(seed>>>0)||1234567:1234567;
-export const RAID_TURNS=10,DUEL_TURN_LIMIT=80;
+export const RAID_TURNS=10,DUEL_TURN_LIMIT=80,SOCIAL_COMBAT_VERSION=2;
+const balanceVersion=value=>integer(value,1,SOCIAL_COMBAT_VERSION,'combat version');
+export const socialMoveEffect=(move,defenders,version=SOCIAL_COMBAT_VERSION)=>version===1?moveEffectLegacy(move,defenders):moveEffect(move,defenders);
 
-function freshMember(source,gear={}){
+function freshMember(source,gear={},version=SOCIAL_COMBAT_VERSION){
   if(!source||!SPECIES[source.species])throw Error('Unknown social-battle companion.');
   const level=integer(source.level,1,CONFIG.maxLevel,'companion level'),stage=integer(source.stage||0,0,3,'evolution stage');
   const types=[...(source.types||[])];if(types.length>2||new Set(types).size!==types.length||types.some(t=>!ELEMENTS[t]))throw Error('Invalid companion elements.');
@@ -20,13 +22,13 @@ function freshMember(source,gear={}){
   if(source.mastery&&stage===3&&types.includes(source.mastery)&&CONFIG.masteries[source.mastery])p.mastery=source.mastery;
   const allowed=new Set(unlocked(p));
   if(p.loadout[0]!=='strike'||p.loadout.some(id=>!allowed.has(id)))throw Error('Invalid social-battle loadout.');
-  p.combatStats=stats(p,tiers);p.maxHp=p.combatStats.hp;p.maxEnergy=p.combatStats.maxEnergy;p.hp=p.maxHp;p.energy=p.maxEnergy;
+  p.combatStats=(version===1?statsLegacy:stats)(p,tiers);p.maxHp=p.combatStats.hp;p.maxEnergy=p.combatStats.maxEnergy;p.hp=p.maxHp;p.energy=p.maxEnergy;
   return p;
 }
-function freshTeam(source){
+function freshTeam(source,version=SOCIAL_COMBAT_VERSION){
   if(!Array.isArray(source)||!source.length||source.length>3)throw Error('Choose one to three companions.');
   if(new Set(source.map(p=>p.id)).size!==source.length)throw Error('A team cannot repeat the same companion.');
-  return source.map(p=>freshMember(p,p.gear||{}));
+  return source.map(p=>freshMember(p,p.gear||{},version));
 }
 export function snapshotTeam(state){return freshTeam(team(state).map(p=>({...p,gear:equipped(state,p)})));}
 export function averageLevel(members){if(!Array.isArray(members)||!members.length)return 1;return members.reduce((sum,p)=>sum+integer(p.level,1,CONFIG.maxLevel,'companion level'),0)/members.length;}
@@ -94,7 +96,7 @@ function execute(s,side,action){
   let damage=0;
   if(m.power){
     if(m.breakShield){target.shield=0;target.guard=0;delete target.status.shield;delete target.effectUntil.shield;}
-    const eff=moveEffect(m,target.types),stab=(m.types||[m.type]).some(t=>actor.types.includes(t))?1.15:1,crit=random(s)<(actor.species==='macaque'?.14:.07),howl=actor.species==='howler'&&m.type!=='neutral'?1.12:1;
+    const eff=socialMoveEffect(m,target.types,s.version??1),stab=(m.types||[m.type]).some(t=>actor.types.includes(t))?(s.version===1?1.15:CONFIG.elemental.stab):1,crit=random(s)<(actor.species==='macaque'?.14:.07),howl=actor.species==='howler'&&m.type!=='neutral'?1.12:1;
     let hit=Math.max(1,Math.round((m.power+st.atk*.7-target.combatStats.def*.42)*eff*stab*howl*(crit?1.4:1)*(.94+random(s)*.12)*(target.guard||1)*(actor.prepare?1+actor.prepare:1)*(actor.status.weaken?1-(actor.statusPower.weaken||.25):1)));
     if(target.species==='spider'&&random(s)<.08)hit=0;
     actor.prepare=0;delete actor.status.prepare;delete actor.effectUntil.prepare;delete actor.status.weaken;delete actor.effectUntil.weaken;delete actor.statusPower.weaken;target.guard=0;
@@ -103,7 +105,9 @@ function execute(s,side,action){
     if(m.status&&alive(target)&&!(m.status==='burn'&&target.types.includes('fire')||m.status==='poison'&&target.types.includes('leaf')))applyStatus(target,m.status,duration,s.turnCounts[other],m.status==='weaken'?(m.weaken||.25):undefined);
     if(m.drain)heal(actor,damage*m.drain);
     if(m.drainEnergy){const drained=Math.min(target.energy,m.drainEnergy);target.energy-=drained;actor.energy=Math.min(actor.maxEnergy,actor.energy+drained);}
-    log(s,`${displayName(actor)} uses ${m.name}: ${damage} damage${crit?' (critical)':''}.`);
+    if(s.version!==1)s.lastHit={actorId:actor.id,targetId:target.id,moveId:action.id,side,multiplier:eff,damage,critical:crit,sequence:s.sequence};
+    const feedback=s.version===1?'':` · ${effectInfo(eff).label}${eff!==1?` (×${eff})`:''}`;
+    log(s,`${displayName(actor)} uses ${m.name}: ${damage} damage${crit?' (critical)':''}${feedback}.`);
   }else log(s,`${displayName(actor)} uses ${m.name}.`);
   if(m.switch&&alive(actor)){
     const incoming=enter(s,side,selectedIncoming(s.teams[side],s.active[side],action.index));
@@ -131,9 +135,10 @@ function finishDuel(s){
   else{const ratio=s.teams.map(m=>m.reduce((n,p)=>n+p.hp,0)/m.reduce((n,p)=>n+p.maxHp,0));s.winner=Math.abs(ratio[0]-ratio[1])<1e-9?null:s.players[ratio[0]>ratio[1]?0:1];}
   log(s,s.winner?`${s.names[s.players.indexOf(s.winner)]} wins the friendly duel.`:'The friendly duel is a draw.');return true;
 }
-export function newDuel(a,b,seed=1234567){
+export function newDuel(a,b,seed=1234567,version=SOCIAL_COMBAT_VERSION){
+  version=balanceVersion(version);
   if(!a?.id||!b?.id||a.id===b.id)throw Error('A duel needs two different players.');
-  return{version:1,players:[String(a.id),String(b.id)],names:[String(a.name||'Challenger').slice(0,30),String(b.name||'Challenger').slice(0,30)],teams:[freshTeam(a.team),freshTeam(b.team)],active:[0,0],turn:0,sequence:0,round:1,turnCounts:[0,0],rallies:[null,null],status:'active',winner:null,rng:freshSeed(seed),log:['Friendly duel: alternating turns; expedition health is protected.']};
+  return{version,players:[String(a.id),String(b.id)],names:[String(a.name||'Challenger').slice(0,30),String(b.name||'Challenger').slice(0,30)],teams:[freshTeam(a.team,version),freshTeam(b.team,version)],active:[0,0],turn:0,sequence:0,round:1,turnCounts:[0,0],rallies:[null,null],status:'active',winner:null,rng:freshSeed(seed),log:['Friendly duel: alternating turns; expedition health is protected.']};
 }
 export function duelAction(duel,playerId,action){
   if(duel.status!=='active')throw Error('This duel has finished.');
@@ -149,12 +154,13 @@ export function duelAction(duel,playerId,action){
   }
   Object.assign(duel,next);return duel;
 }
-export function newRaidAttempt(members,bossLevel=1,seed=1234567){
+export function newRaidAttempt(members,bossLevel=1,seed=1234567,version=SOCIAL_COMBAT_VERSION){
+  version=balanceVersion(version);
   bossLevel=integer(bossLevel,1,1000,'tribe boss level');
   const roster=Object.values(SPECIES).filter(p=>p.rarity==='ultra'),species=roster[(bossLevel-1)%roster.length]?.id||'mandrill';
-  const target=freshMember({id:'tribe-boss',species,level:Math.min(60,bossLevel+2),stage:Math.min(3,Math.floor((bossLevel-1)/8)),types:SPECIES[species].types||[],loadout:['strike'],learned:[]});
+  const target=freshMember({id:'tribe-boss',species,level:Math.min(60,bossLevel+2),stage:Math.min(3,Math.floor((bossLevel-1)/8)),types:SPECIES[species].types||[],loadout:['strike'],learned:[]},{},version);
   target.hp=target.maxHp=bossHealth(bossLevel);target.combatStats.hp=target.hp;
-  return{version:1,team:freshTeam(members),active:0,turns:0,totalDamage:0,status:'active',sequence:0,boss:target,bossLevel,turnCounts:[0,0],rallies:[null,null],rng:freshSeed(seed),log:['Ten turns to help your tribe. The boss never attacks.']};
+  return{version,team:freshTeam(members,version),active:0,turns:0,totalDamage:0,status:'active',sequence:0,boss:target,bossLevel,turnCounts:[0,0],rallies:[null,null],rng:freshSeed(seed),log:['Ten turns to help your tribe. The boss never attacks.']};
 }
 export function raidAction(attempt,action){
   if(attempt.status!=='active'||attempt.turns>=RAID_TURNS)throw Error('This raid attempt has finished.');
@@ -163,7 +169,7 @@ export function raidAction(attempt,action){
   for(const p of next.team)expire(p,battle.turnCounts[0]);expire(next.boss,battle.turnCounts[1]);validateAction(battle,0,action);
   if(action.type==='switch')enter(battle,0,selectedIncoming(next.team,next.active,action.index));else battle.totalDamage+=execute(battle,0,action);
   tickSide(battle,0);battle.totalDamage+=tickSide(battle,1);battle.sequence++;battle.turns++;
-  next.team=battle.teams[0];next.active=battle.active[0];next.boss=battle.teams[1][0];next.totalDamage=battle.totalDamage;next.sequence=battle.sequence;next.turns=battle.turns;next.turnCounts=battle.turnCounts;next.rallies=battle.rallies;next.rng=battle.rng;next.log=battle.log;
+  next.team=battle.teams[0];next.active=battle.active[0];next.boss=battle.teams[1][0];next.totalDamage=battle.totalDamage;next.sequence=battle.sequence;next.turns=battle.turns;next.turnCounts=battle.turnCounts;next.rallies=battle.rallies;next.rng=battle.rng;next.log=battle.log;if(battle.lastHit)next.lastHit=battle.lastHit;
   if(next.turns===RAID_TURNS){next.status='finished';log(next,`Raid complete: ${Math.round(next.totalDamage)} damage for your tribe.`);}
   Object.assign(attempt,next);return attempt;
 }

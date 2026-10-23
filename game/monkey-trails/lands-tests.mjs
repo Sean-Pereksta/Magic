@@ -15,7 +15,7 @@ test('ten lands unlock at cumulative accepted-meter thresholds, without auto tra
     assert.equal(C.landProgress(s).active.id,'emerald-jungle');
   }
   assert.equal(C.landProgress(s).next,null);assert.equal(C.landProgress(s).remaining,0);
-  assert.equal(C.landProgress(s).totalDistance,35000);assert.throws(()=>C.selectLand(s,'made-up-land'));
+  assert.equal(C.landProgress(s).totalDistance,140000);assert.throws(()=>C.selectLand(s,'made-up-land'));
 });
 
 test('encounter clipping and rejected advances never bank extra world distance',()=>{
@@ -23,7 +23,7 @@ test('encounter clipping and rejected advances never bank extra world distance',
   assert.equal(used,C.ENCOUNTER_STEP);assert.equal(s.run.phase,'battle');
   assert.equal(C.landProgress(s).totalDistance,used);assert.equal(C.landProgress(s).position.east,used);
   const before=structuredClone(s.world);
-  assert.equal(C.advance(s,1000,1000,0),0);assert.throws(()=>C.selectLand(s,'sunstone-savannah'),/encounter/);
+  assert.equal(C.advance(s,1000,1000,0),0);assert.throws(()=>C.selectLand(s,'emerald-jungle'),/encounter/);
   assert.deepEqual(s.world,before);
   s.run.phase='trail';
   for(const args of [[0,0,0],[-1,-1,0],[NaN,1,0],[10,Infinity,0],[10,0,NaN]])assert.equal(C.advance(s,...args),0);
@@ -31,16 +31,16 @@ test('encounter clipping and rejected advances never bank extra world distance',
 });
 
 test('each land keeps its distance and position through selection, reload, and restart',()=>{
-  let s=save();walk(s,500,300,400);const jungle=structuredClone(C.landProgress(s).region);
+  let s=save();walk(s,2000,300,400);const jungle=structuredClone(C.landProgress(s).region);
   C.selectLand(s,'sunstone-savannah');assert.deepEqual(C.landProgress(s).position,{east:0,north:0});
   walk(s,100,-60,80);assert.equal(C.landProgress(s).region.distance,100);
   C.selectLand(s,'emerald-jungle');assert.deepEqual(C.landProgress(s).region,jungle);
   s=C.validate(structuredClone(s));assert.deepEqual(C.landProgress(s).position,{east:300,north:400});
   C.selectLand(s,'sunstone-savannah');assert.deepEqual(C.landProgress(s).position,{east:-60,north:80});
   s.run.phase='dead';C.restart(s);assert.equal(s.run.distance,0);
-  assert.equal(C.landProgress(s).active.id,'sunstone-savannah');assert.equal(C.landProgress(s).totalDistance,600);
+  assert.equal(C.landProgress(s).active.id,'sunstone-savannah');assert.equal(C.landProgress(s).totalDistance,2100);
   assert.deepEqual(C.landProgress(s).position,{east:-60,north:80});
-  walk(s,25,0,-25);assert.equal(C.landProgress(s).totalDistance,625);assert.equal(C.landProgress(s).region.distance,125);
+  walk(s,25,0,-25);assert.equal(C.landProgress(s).totalDistance,2125);assert.equal(C.landProgress(s).region.distance,125);
 });
 
 test('land position survives encounter direction resets without changing encounter steering',()=>{
@@ -67,7 +67,7 @@ test('terrain coordinates and facing follow the latest north, east, south, or we
 });
 
 test('each land remembers its facing through travel, reload, and expedition restart',()=>{
-  let s=save();walk(s,500,500,0);assert.equal(C.landProgress(s).heading,90);
+  let s=save();walk(s,2000,2000,0);assert.equal(C.landProgress(s).heading,90);
   C.selectLand(s,'sunstone-savannah');assert.equal(C.landProgress(s).heading,0);
   walk(s,25,-25,0);assert.equal(C.landProgress(s).heading,270);
   C.selectLand(s,'emerald-jungle');s=C.validate(structuredClone(s));assert.equal(C.landProgress(s).heading,90);
@@ -107,10 +107,10 @@ test('legacy migration retains verifiable distance once and never treats score a
 });
 
 test('practice progress belongs to its own save and does not unlock GPS lands',()=>{
-  const gps=save('gps'),practice=save('practice');walk(practice,35000);C.selectLand(practice,'ancient-monkey-kingdom');
+  const gps=save('gps'),practice=save('practice');walk(practice,140000);C.selectLand(practice,'ancient-monkey-kingdom');
   const restored=C.validate(structuredClone(practice));assert.equal(C.landProgress(restored).active.id,'ancient-monkey-kingdom');
   assert.equal(C.landProgress(gps).totalDistance,0);assert.equal(C.landProgress(gps).unlocked.length,1);
-  assert.throws(()=>C.selectLand(gps,'sunstone-savannah'),/unlock/);walk(gps,500);assert.equal(C.landProgress(practice).totalDistance,35000);
+  assert.throws(()=>C.selectLand(gps,'sunstone-savannah'),/unlock/);walk(gps,2000);assert.equal(C.landProgress(practice).totalDistance,140000);
 });
 
 test('restored landscape data stays finite and bounded; oversized vectors cannot teleport',()=>{
@@ -121,4 +121,23 @@ test('restored landscape data stays finite and bounded; oversized vectors cannot
   assert.equal(p.region.distance,0);assert.deepEqual(p.position,{east:0,north:0});assert.equal(p.region.trail.length,128);
   assert.equal(p.heading,0);p.region.heading=359.25;normalizeLands(s);assert.equal(C.landProgress(s).heading,359.25);
   assert.ok(JSON.stringify(s.world).length<10000);
+});
+
+
+test('longer region thresholds apply to new saves while all v1 earned lands stay available',()=>{
+  const fresh=save();assert.deepEqual(C.LANDS.map(land=>land.unlock),[0,2000,6000,12000,20000,32000,48000,72000,100000,140000]);
+  walk(fresh,500);assert.equal(C.landProgress(fresh).unlocked.length,1);assert.equal(fresh.world.version,2);
+  let legacy=save();legacy.world={version:1,totalDistance:8000,activeLand:'thunder-highlands',regions:{'thunder-highlands':{distance:55,position:{east:30,north:40},heading:180,trail:[{east:30,north:40}]}}};
+  normalizeLands(legacy);assert.equal(legacy.world.version,2);assert.equal(C.landProgress(legacy).unlocked.length,6);
+  assert.equal(C.landProgress(legacy).active.id,'thunder-highlands');assert.deepEqual(C.landProgress(legacy).position,{east:30,north:40});
+  assert.equal(C.landProgress(legacy).next.id,'ember-volcano');assert.equal(C.landProgress(legacy).remaining,40000);
+  legacy=C.validate(structuredClone(legacy));C.selectLand(legacy,'frostpeak-mountains');assert.equal(C.landProgress(legacy).unlocked.length,6);
+  legacy.run.phase='dead';C.restart(legacy);assert.equal(C.landProgress(legacy).unlocked.length,6);
+  assert.ok(C.landProgress(legacy).unlocked.some(land=>land.id==='thunder-highlands'));
+});
+
+test('the segment that unlocks a new region remains credited to the region actually walked',()=>{
+ const s=save();walk(s,1990,1990,0);walk(s,25,25,0);const world=C.landProgress(s);
+ assert.equal(world.unlocked.length,2);assert.equal(world.active.id,'emerald-jungle');assert.equal(world.region.distance,2015);
+ C.selectLand(s,'sunstone-savannah');assert.equal(C.landProgress(s).region.distance,0);walk(s,15,0,15);assert.equal(C.landProgress(s).region.distance,15);
 });
