@@ -40,6 +40,11 @@ try{
     await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
     await page.locator('#battle-encounter').waitFor({state:'visible'});
     assert.match(await page.locator('#battle-title').textContent(),/Stonewatch/);
+    assert.equal(await page.locator('#battle-encounter-size').inputValue(),'150','new battles default to the balanced size');
+    await page.locator('#battle-encounter-size').selectOption('200');
+    assert.equal(await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattles.battleSize,key),200);
+    await page.reload();await page.locator('#resume').click();
+    assert.equal(await page.locator('#battle-encounter-size').inputValue(),'200','battle size preference survives reloading before deployment');
     await page.locator('[data-battle-action=close]').first().click();
     assert.equal(await page.locator('#battle-pending').isVisible(),true);
     assert.equal(await page.locator('#end-turn').isDisabled(),true);
@@ -52,6 +57,7 @@ try{
     await page.waitForFunction(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).offlineBattle?.checkpoint?.phase==='deployment');
     assert.equal(await page.evaluate(()=>document.querySelector('#battle-canvas').width>0),true);
     const beforeOrders=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
+    assert.equal(beforeOrders.maxActive,200,'new battles use the selected field limit');
     await page.locator('#battle-army').selectOption(initial.armies[0].id);
     await page.locator('[data-battle-group=archers]').click();
     assert.equal(await page.locator('[data-battle-group=archers]').getAttribute('aria-pressed'),'true');
@@ -89,8 +95,20 @@ try{
     await page.locator('#battle-encounter').waitFor({state:'visible'});
     const checkpoint=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
     assert.equal(checkpoint.phase,'combat');assert.ok(checkpoint.time>0);
+    assert.equal(await page.locator('#battle-encounter-size').isDisabled(),true);
+    assert.equal(await page.locator('#battle-encounter-size').inputValue(),'200');
+    assert.match(await page.locator('#battle-size-note').textContent(),/saved battle keeps its 200-troop limit/);
+    await page.locator('[data-battle-action=close]').first().click();
+    await page.locator('#menu-button').click();
+    await page.locator('#offline-battle-size').selectOption('100');
+    await page.locator('[data-close=menu]').click();
+    const lowerPreference=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)),key);
+    assert.equal(lowerPreference.offlineBattles.battleSize,100);
+    assert.deepEqual(lowerPreference.offlineBattle.checkpoint,checkpoint,'changing the next-battle size does not resize or restart a saved battle');
     await page.reload();await page.locator('#resume').click();
     assert.match(await page.locator('[data-battle-action=enter]').textContent(),/Resume/);
+    assert.equal(await page.locator('#battle-encounter-size').inputValue(),'200','resuming retains the checkpoint size despite a lower preference');
+    assert.equal(await page.locator('#battle-encounter-size').isDisabled(),true);
     await page.locator('[data-battle-action=enter]').click();
     await page.locator('#battle-canvas').waitFor({state:'visible'});
     await page.waitForTimeout(250);
@@ -99,6 +117,7 @@ try{
     await page.locator('[data-battle-action=pause]').click();
     const resumed=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
     assert.ok(resumed.time>=checkpoint.time);
+    assert.equal(resumed.maxActive,200);
     assert.deepEqual(resumed.commandGroups,checkpoint.commandGroups,'save recovery preserves custom group roster membership');
     await page.locator('[data-battle-action=finish]').click({timeout:60000});
     await page.locator('[data-battle-action=return]').waitFor({state:'visible',timeout:120000});

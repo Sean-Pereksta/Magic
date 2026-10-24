@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { UNITS } from '../data.mjs';
-import { createBattle, beginBattle, stepBattle, issueOrder, battleResult, finishAutomatically, validateBattleCheckpoint, nearestBattlePosition, requestAlliedOrder, normalizeBattleCheckpoint, MAX_ACTIVE_TROOPS, RESERVE_WAVE_SECONDS } from '../battle-sim.mjs';
+import { createBattle, beginBattle, stepBattle, issueOrder, battleResult, finishAutomatically, validateBattleCheckpoint, nearestBattlePosition, requestAlliedOrder, normalizeBattleCheckpoint, MAX_ACTIVE_TROOPS, DEFAULT_ACTIVE_TROOPS, BATTLE_SIZE_OPTIONS, RESERVE_WAVE_SECONDS } from '../battle-sim.mjs';
 
 function encounter(a = { menAtArms: 5 }, d = { levy: 5 }, extras = {}) {
   return { id: 'encounter-1', seed: 42, playerOwner: 'ashen', playerSide: 0, tile: { terrain: 'plains' }, participants: [
@@ -30,7 +30,7 @@ test('every campaign troop is represented exactly once, including mounted and si
 });
 
 test('proportional active caps preserve numerical advantage and all reserves', () => {
-  const b = createBattle(encounter({ levy: 500, cavalry: 50, archer: 50 }, { levy: 60 }), { maxActive: 110 });
+  const b = createBattle(encounter({ levy: 500, cavalry: 50, archer: 50 }, { levy: 60 }), { maxActive: 100 });
   assert.deepEqual(b.activeCaps, [91, 9]);
   assert.equal(b.units.filter(u => u.status === 'active').length, 100);
   assert.equal(b.units.length, 660);
@@ -49,17 +49,64 @@ test('rare recruited siege roles deploy without creating replacement troops', ()
   assert.equal(b.units.filter(u => u.type === 'trebuchet').length, 1);
 });
 
-test('the 100 soldier ceiling includes the commander and both very unequal sides', () => {
+test('the 200 soldier ceiling includes the commander and both very unequal sides', () => {
   const b = createBattle(encounter({ levy: 1000 }, { levy: 1 }), { maxActive: 240 });
   assert.equal(b.maxActive, MAX_ACTIVE_TROOPS);
-  assert.deepEqual(b.activeCaps, [99, 1]);
-  assert.equal(b.units.filter(u => u.status === 'active').length, 100);
+  assert.deepEqual(b.activeCaps, [199, 1]);
+  // Occupied deployment positions can defer a few of the dominant side's
+  // troops, but can never add an extra slot beyond the selected ceiling.
+  assert.ok(b.units.filter(u => u.status === 'active').length <= 200);
+  assert.equal(b.units.filter(u => u.side === 1 && u.status === 'active').length, 1);
   assert.equal(b.units.find(u => u.id === b.commanderId).status, 'active');
   assert.equal(b.units.length, 1001);
 });
 
+test('all battle-size presets preserve rosters, refill by waves, and survive saved checkpoints', () => {
+  assert.deepEqual(BATTLE_SIZE_OPTIONS, [100, 150, 200]);
+  const e = encounter({ menAtArms: 100, archer: 50, cavalry: 50 }, { menAtArms: 100, archer: 50, cavalry: 50 });
+  const defaultBattle = createBattle(e);
+  assert.equal(DEFAULT_ACTIVE_TROOPS, 150);
+  assert.equal(defaultBattle.maxActive, DEFAULT_ACTIVE_TROOPS);
+  assert.equal(defaultBattle.units.filter(u => u.status === 'active').length, 150);
+  for (const cap of BATTLE_SIZE_OPTIONS) {
+    const b = createBattle(e, { maxActive: cap });
+    assert.equal(b.units.length, 400);
+    assert.equal(b.units.filter(u => u.status === 'active').length, cap);
+    beginBattle(b);
+    for (const side of [0, 1]) {
+      const casualty = b.units.find(u => u.status === 'active' && u.side === side && !u.commander);
+      casualty.status = 'dead'; casualty.hp = 0;
+    }
+    for (const u of b.units.filter(u => u.status === 'active')) { u.explicitOrder = true; u.order = { kind: 'hold', x: u.x, z: u.z }; }
+    run(b, 7.5, { commanderAI: true });
+    assert.equal(b.units.filter(u => u.status === 'active').length, cap - 2);
+    run(b, 1, { commanderAI: true });
+    assert.equal(b.units.filter(u => u.status === 'active').length, cap);
+    const saved = JSON.parse(JSON.stringify(b));
+    assert.equal(validateBattleCheckpoint(saved, e), true);
+    normalizeBattleCheckpoint(saved);
+    assert.equal(saved.maxActive, cap);
+    assert.deepEqual(saved.units, JSON.parse(JSON.stringify(b.units)));
+    for (const a of battleResult(saved).armies) for (const [type, n] of Object.entries(a.starting)) assert.equal(a.units[type] + a.losses[type], n);
+  }
+});
+
+test('normalization keeps the chosen 100 troop setting and the legacy 120 troop setting', () => {
+  const e = encounter({ levy: 500 }, { levy: 500 });
+  for (const cap of [100, 120]) {
+    const b = createBattle(e, { maxActive: cap });
+    if (cap === 120) delete b.battleRulesVersion;
+    const before = structuredClone(b.units);
+    normalizeBattleCheckpoint(b);
+    assert.equal(b.maxActive, cap);
+    assert.equal(b.units.filter(u => u.status === 'active').length, cap);
+    assert.deepEqual(b.units, before);
+    assert.equal(validateBattleCheckpoint(b, e), true);
+  }
+});
+
 test('casualty replacements wait for reserve waves and enter from the edge', () => {
-  const b = createBattle(encounter({ menAtArms: 80 }, { menAtArms: 80 })); beginBattle(b);
+  const b = createBattle(encounter({ menAtArms: 80 }, { menAtArms: 80 }), { maxActive: 100 }); beginBattle(b);
   const fallen = b.units.filter(u => u.side === 0 && u.status === 'active' && !u.commander).slice(0, 5);
   fallen.forEach(u => { u.status = 'dead'; u.hp = 0; });
   // Keep the front lines apart while measuring the replacement boundary.
@@ -77,35 +124,36 @@ test('casualty replacements wait for reserve waves and enter from the edge', () 
 });
 
 test('legacy overflow is safely queued without healing, rearming or replacing soldiers', () => {
-  const e = encounter({ archer: 90 }, { archer: 90 }), b = createBattle(e);
+  const e = encounter({ archer: 150 }, { archer: 150 }), b = createBattle(e);
   delete b.battleRulesVersion; delete b.nextReserveWave;
-  b.maxActive = 120; b.activeCaps = [60, 60]; b.time = 12;
+  b.maxActive = 240; b.activeCaps = [120, 120]; b.time = 12;
   for (const side of [0, 1]) {
-    for (const u of b.units.filter(u => u.side === side && u.status === 'reserve').slice(0, 10)) { u.status = 'active'; u.arrived = true; }
+    for (const u of b.units.filter(u => u.side === side && u.status === 'reserve').slice(0, 45)) { u.status = 'active'; u.arrived = true; }
   }
   b.units.forEach((u, n) => { u.hp -= n % 7; u.ammo -= n % 9; u.morale -= n % 11; });
   const original = b.units.map(u => ({ id: u.id, hp: u.hp, ammo: u.ammo, morale: u.morale, order: structuredClone(u.order) }));
   assert.equal(validateBattleCheckpoint(b, e), true);
   normalizeBattleCheckpoint(b);
-  assert.equal(b.units.filter(u => u.status === 'active').length, 100);
+  assert.equal(b.units.filter(u => u.status === 'active').length, 200);
   assert.equal(b.units.find(u => u.id === b.commanderId).status, 'active');
   assert.equal(b.nextReserveWave, 20);
   assert.deepEqual(b.units.map(u => ({ id: u.id, hp: u.hp, ammo: u.ammo, morale: u.morale, order: u.order })), original);
-  assert.equal(b.units.filter(u => u.reserveQueuedAt === 12).length, 20);
+  assert.equal(b.units.filter(u => u.reserveQueuedAt === 12).length, 40);
   assert.equal(validateBattleCheckpoint(b, e), true);
   const once = structuredClone(b); normalizeBattleCheckpoint(b); assert.deepEqual(b, once);
 });
 
-test('legacy skewed side caps accept the old extra slot before normalizing to 100', () => {
-  const e = encounter({ levy: 1000 }, { levy: 1 }), b = createBattle(e);
+test('legacy skewed side caps remove the old extra slot without increasing the saved size', () => {
+  const e = encounter({ levy: 1000 }, { levy: 1 }), b = createBattle(e, { maxActive: 100 });
   delete b.battleRulesVersion;
   b.maxActive = 120; b.activeCaps = [120, 1];
   b.units.filter(u => u.side === 0 && u.status === 'reserve').slice(0, 21).forEach(u => { u.status = 'active'; u.arrived = true; });
   assert.equal(b.units.filter(u => u.status === 'active').length, 121);
   assert.equal(validateBattleCheckpoint(b, e), true);
   normalizeBattleCheckpoint(b);
-  assert.equal(b.units.filter(u => u.status === 'active').length, 100);
-  assert.deepEqual(b.activeCaps, [99, 1]);
+  assert.equal(b.units.filter(u => u.status === 'active').length, 120);
+  assert.equal(b.maxActive, 120);
+  assert.deepEqual(b.activeCaps, [119, 1]);
   assert.equal(validateBattleCheckpoint(b, e), true);
   assert.equal(battleResult(b).armies[0].units.levy, 1000);
 });

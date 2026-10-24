@@ -3,7 +3,9 @@ import { UNITS } from './data.mjs';
 // This module has no DOM, clock or random global dependencies. The entire live
 // simulation is JSON data, including attack phases, missiles and delayed armies.
 export const BATTLE_VERSION = 1;
-export const MAX_ACTIVE_TROOPS = 100;
+export const DEFAULT_ACTIVE_TROOPS = 150;
+export const MAX_ACTIVE_TROOPS = 200;
+export const BATTLE_SIZE_OPTIONS = Object.freeze([100, 150, 200]);
 export const RESERVE_WAVE_SECONDS = 8;
 const TAU = Math.PI * 2, HALF = 80, STEP = 1 / 20;
 const clamp = (n, a, z) => Math.max(a, Math.min(z, n));
@@ -184,7 +186,7 @@ function allocateCaps(b) {
 // ammunition or casualties. Overflow soldiers wait for a later entry wave.
 export function normalizeBattleCheckpoint(b) {
   if (!b || !Array.isArray(b.units) || !Array.isArray(b.armies)) return b;
-  b.maxActive = clamp(Math.floor(b.maxActive || MAX_ACTIVE_TROOPS), 4, MAX_ACTIVE_TROOPS);
+  b.maxActive = clamp(Math.floor(b.maxActive || DEFAULT_ACTIVE_TROOPS), 4, MAX_ACTIVE_TROOPS);
   allocateCaps(b);
   b.nextReserveWave ??= b.time + RESERVE_WAVE_SECONDS;
   for (const side of [0, 1]) {
@@ -263,7 +265,7 @@ function deployReserves(b, initial = false) {
 export function createBattle(encounter, options = {}) {
   if (!encounter?.id || !Array.isArray(encounter.participants) || !encounter.participants.length) throw new Error('A recorded encounter with participating armies is required.');
   const ids = new Set();
-  const b = { version: BATTLE_VERSION, battleRulesVersion: 2, encounterId: encounter.id, battleId: encounter.id, seed: encounter.seed ?? encounter.id, rng: hash(encounter.seed ?? encounter.id), time: 0, accumulator: 0, phase: 'deployment', playerOwner: encounter.playerOwner, playerSide: encounter.playerSide ?? 0, commanderId: null, units: [], armies: [], projectiles: [], events: [], winner: null, maxActive: clamp(Math.floor(options.maxActive || MAX_ACTIVE_TROOPS), 4, MAX_ACTIVE_TROOPS), nextProjectile: 0, nextArmyPlan: 0, nextMorale: 1, nextReserves: 1, nextReserveWave: RESERVE_WAVE_SECONDS, occupation: 0, auto: false };
+  const b = { version: BATTLE_VERSION, battleRulesVersion: 2, encounterId: encounter.id, battleId: encounter.id, seed: encounter.seed ?? encounter.id, rng: hash(encounter.seed ?? encounter.id), time: 0, accumulator: 0, phase: 'deployment', playerOwner: encounter.playerOwner, playerSide: encounter.playerSide ?? 0, commanderId: null, units: [], armies: [], projectiles: [], events: [], winner: null, maxActive: clamp(Math.floor(options.maxActive || DEFAULT_ACTIVE_TROOPS), 4, MAX_ACTIVE_TROOPS), nextProjectile: 0, nextArmyPlan: 0, nextMorale: 1, nextReserves: 1, nextReserveWave: RESERVE_WAVE_SECONDS, occupation: 0, auto: false };
   b.layout = layoutFor(b, encounter.tile || {});
   for (const p of encounter.participants) {
     if (ids.has(p.armyId) || p.armyId == null || ![0, 1].includes(p.side)) throw new Error('Participants must have unique army identities and a battle side.');

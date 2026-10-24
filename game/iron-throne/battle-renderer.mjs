@@ -82,6 +82,7 @@ export async function createBattleRenderer(canvas,battle,options={}) {
   }
   for(const [name,mesh]of Object.entries(pack.meshes))upload(name,mesh);
   const disc={positions:[],normals:[]};for(let i=0;i<16;i++){const a=i*TAU/16,b=(i+1)*TAU/16;disc.positions.push(0,0,0,Math.sin(a),0,Math.cos(a),Math.sin(b),0,Math.cos(b));disc.normals.push(0,1,0,0,1,0,0,1,0);}upload('shadow',disc);
+  const annulus={positions:[],normals:[]};for(let i=0;i<32;i++){const a=i*TAU/32,b=(i+1)*TAU/32,point=(angle,r)=>[Math.sin(angle)*r,0,Math.cos(angle)*r];for(const triangle of [[point(a,.965),point(a,1.035),point(b,1.035)],[point(a,.965),point(b,1.035),point(b,.965)]])for(const v of triangle){annulus.positions.push(...v);annulus.normals.push(0,1,0);}}upload('selectionRing',annulus);
   const drop={positions:[],normals:[]},dropPoints=[[0,.7,0],[-.5,-.3,.35],[.5,-.3,.35],[0,-.3,-.55]];
   for(const ids of [[0,1,2],[0,2,3],[0,3,1],[1,3,2]]){const [a,b,c]=ids.map(i=>dropPoints[i]),n=normalize(cross(b.map((v,i)=>v-a[i]),c.map((v,i)=>v-a[i])));for(const point of [a,b,c]){drop.positions.push(...point);drop.normals.push(...n);}}upload('bloodDrop',drop);
   function add(name,matrix,tint,target=instances){if(!buffers.has(name))return;let items=target.get(name);if(!items){items=[];target.set(name,items);}items.push(...matrix,...tint);}
@@ -217,7 +218,8 @@ export async function createBattleRenderer(canvas,battle,options={}) {
       add(pack.houses[unit.owner]?.mesh||'crest_ashen',multiply(standard,transform([.4,2.16,.09],[0,0,0],[.15,.15,.15])),palette.ivory);
     }
   }
-  function ring(x,y,z,r,tint){for(let i=0;i<24;i++){const a=i*TAU/24;object('beam',[x+Math.sin(a)*r,y,z+Math.cos(a)*r],[.22,r*TAU/24,.22],tint,[Math.PI/2,0,Math.PI/2-a]);}}
+  // A single instanced annulus replaces 24 articulated beam segments per marker.
+  function ring(x,y,z,r,tint){object('selectionRing',[x,y,z],[r,1,r],tint);}
   function distantCorpse(unit){
     const mounted=unit.family==='mounted'&&unit.mounted!==false,y=corpseFloor(unit),root=multiply(transform([unit.x,y+.23,unit.z],[0,unit.deathFacing??unit.facing??0,0]),transform([0,0,0],[1.55,0,.1]));
     if(unit.family==='siege'){object('box',[unit.x,y+.05,unit.z],[2.5,.35,2],palette.wood,[0,unit.facing||0,.1]);for(const sign of [-1,1])object('beam',[unit.x+sign,y+.2,unit.z-1.5],[1.5,3,1.5],palette.wood,[Math.PI/2,0,sign*.3]);return;}
