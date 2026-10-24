@@ -1,3 +1,5 @@
+import { installOfflineBattleUI } from './offline-battle-ui.mjs';
+import { configureOfflineBattles, pendingEncounter } from './offline-encounters.mjs';
 import { installPrivateChatWorkspace } from './chat-workspace.mjs';
 import { installFormalProposalUI } from './formal-proposal-ui.mjs';
 import { defaultProposalDirection, cancelFormalConversation, isFormalCouncilBusy, retryFormalVoice, submitFormalProposal, ratifyFormalProposal, dismissFormalProposal, markFormalConsidering, resolveFormalResponse, answerFormalProposal, recordFormalVoice, stageConversationProposal } from './formal-proposals.mjs';
@@ -76,6 +78,10 @@ let online=null,onlineUI=null,onlineStatus=null,localHouse='ashen';
 let state = createGame(), selected = '5,6', selectedArmy = null, tab = 'land', orderMode = null, activeRuler = 'wintermere', proposals = [], epoch = 0, toastTimer, outcomeShown = false;
 let restored = false, config = {}, client = new DiplomacyClient(), turnstileWidget = null, challengeToken = '';
 let turnBusy = false;
+let battleUI = null;
+const battlePending = () => !onlineOptions && !!pendingEncounter(state);
+const offlineResolutionPending = () => !onlineOptions && !!state.offlineTurn;
+const planningLocked = () => turnBusy || battlePending() || offlineResolutionPending();
 let proposalConversation = null;
 let allianceUI = null, formalUI=null;
 let sending = false, compactCouncil = false, reviewedTrade = null;
@@ -152,11 +158,11 @@ $('start-game').disabled = $('resume').disabled = false;
 let displayedState=knowledgeView(state,localHouse);
 const map = new WorldMap($('map'), { getState: () => displayedState, onSelect: selectTile, onStrategicMarker: marker => {if(marker.operationId){tab='war-room';render();document.querySelector(`[data-operation-card="${marker.operationId}"]`)?.scrollIntoView({block:'center'});}else if(marker.councilId)allianceUI?.open(marker.councilId);else if(marker.ruler)openDiplomacy(marker.ruler);} });
 const strategicPicker=installStrategicMapPicker(document,{getState:()=>currentView(),getViewer:()=>localHouse,getCamera:()=>map,onError:toast});
-commandUI=installCommandUI({getState:()=>state,getView:()=>currentView(),getOwner:()=>localHouse,perform,toast,onOpen:showGeneralVerification,onClose:restoreGeneralVerification,canAct:()=>!turnBusy&&(!onlineOptions||onlineStatus?.online&&onlineStatus?.meta?.activeHouse===localHouse&&onlineStatus?.meta?.phase==='planning'&&!onlineStatus?.meta?.ready[localHouse]),send:(id,message)=>{const campaign=state,requestEpoch=epoch;return client.send(campaign,localHouse,message,challengeToken,$('use-gemini').checked,{generalId:id,actorHouseId:localHouse,isCurrent:()=>state===campaign&&epoch===requestEpoch});}});
+commandUI=installCommandUI({getState:()=>state,getView:()=>currentView(),getOwner:()=>localHouse,perform,toast,onOpen:showGeneralVerification,onClose:restoreGeneralVerification,canAct:()=>!planningLocked()&&(!onlineOptions||onlineStatus?.online&&onlineStatus?.meta?.activeHouse===localHouse&&onlineStatus?.meta?.phase==='planning'&&!onlineStatus?.meta?.ready[localHouse]),send:(id,message)=>{const campaign=state,requestEpoch=epoch;return client.send(campaign,localHouse,message,challengeToken,$('use-gemini').checked,{generalId:id,actorHouseId:localHouse,isCurrent:()=>state===campaign&&epoch===requestEpoch});}});
 
 function currentView() { displayedState=knowledgeView(state,localHouse);return displayedState; }
 function toast(message) { $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, 4200); }
-const armySortUI=installArmySortUI({getState:()=>state,getOwner:()=>localHouse,perform,toast,canAct:()=>!turnBusy&&(!onlineOptions||onlineStatus?.online&&onlineStatus?.meta?.activeHouse===localHouse&&onlineStatus?.meta?.phase==='planning'&&!onlineStatus?.meta?.ready[localHouse])});
+const armySortUI=installArmySortUI({getState:()=>state,getOwner:()=>localHouse,perform,toast,canAct:()=>!planningLocked()&&(!onlineOptions||onlineStatus?.online&&onlineStatus?.meta?.activeHouse===localHouse&&onlineStatus?.meta?.phase==='planning'&&!onlineStatus?.meta?.ready[localHouse])});
 function save() {
   if(onlineOptions)return !!online?.online;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); $('save-status').textContent = state.phase==='founding'?'Founding progress saved on this device':`Saved on this device · turn ${state.turn}`; restored = true; return true; }
@@ -164,7 +170,7 @@ function save() {
 }
 function changed(preserveOffers=false) { if(!turnBusy)showTurnProgress(null); refreshKnowledge(state); if(onlineOptions){render();return;} epoch++; proposals = []; /* Exact unresolved terms remain available and are revalidated on acceptance. */ save(); render(); }
 function perform(type,args,localAction) {
-  if(turnBusy)return false;
+  if(planningLocked())return false;
   if(state.phase==='founding'&&type!=='found'){toast('Found all kingdoms before issuing orders.');return false;}
   if(onlineOptions){if(onlineStatus?.meta?.phase==='planning'&&!['read','councilRead','takeover'].includes(type)&&(onlineStatus.meta.activeHouse!==localHouse||onlineStatus.meta.ready[localHouse])){toast('Wait for your House’s activation. You can inspect the realm and prepare drafts.');return false;}if(!online){toast('Connecting to the campaign…');return false;} if(type==='generalChat')return online.submit(type,args,{waitForApplied:true}).then(()=>true).catch(e=>{toast(e.message);return false;}); online.submit(type,args).catch(e=>toast(e.message));return true;}
   return result(localAction());
@@ -211,6 +217,8 @@ function selectTile(id) {
 }
 function goTo(id, armyId) { selected = id; selectedArmy = armyId || state.armies.find(a => a.tile === id && a.owner === localHouse)?.id || null; tab = 'land'; map.selected = id; map.center(id); $('panel').scrollTop = 0; render(); }
 function render() {
+  if(!onlineOptions)configureOfflineBattles(state);
+  battleUI?.sync();
   refreshKnowledge(state);displayedState=knowledgeView(state,localHouse);
   const view=displayedState;
   const k = kingdom(state,localHouse),{income}=economyProjection(state,localHouse),population=populationProjection(state,localHouse);
@@ -220,8 +228,8 @@ function render() {
   $('resources').innerHTML = RESOURCES.map(r => `<div class="resource" title="${founding?'Starting supplies':`${escape(r)}: ${income[r]>=0?'+':''}${income[r]} next turn`}"><span class="resource-icon">${art(ART.resources[r],r,'resource-art')}</span><div><small>${r}</small><b>${k.resources[r]}</b><span class="income ${!founding&&income[r]<0?'negative':''}">${founding?'Starting supplies':`${income[r]>=0?'+':''}${income[r]} / turn`}</span></div></div>`).join('') + `<div class="resource population-resource" title="${founding?'Population growth begins on Turn 1.':escape(populationBreakdown(population))}"><span class="resource-icon">♟</span><div><b class="population-label">${founding?`Population: ${k.population} · ready to settle`:`Population: ${k.population}/${population.capacity} · ${population.change>=0?'+':''}${population.change} next turn`}</b><small>${k.happiness}% content · ${founding?'Awaiting Turn 1':'breakdown in Realm'}</small></div></div>`;
   const rivals = state.kingdoms.filter(h => h.id !== localHouse && alive(state, h.id)), allies = rivals.filter(h => treaty(state, localHouse, h.id, 'alliance') || treaty(state, localHouse, h.id, 'vassalage'));
   $('objective').textContent = state.phase==='founding'?`${Object.values(state.founding.houses).filter(h=>h.founded).length}/${state.kingdoms.length} capitals founded · choose your region`:`${settlements(state, localHouse).length} settlements · crown requires 60% of the realm · ${allies.length}/${Math.floor(rivals.length / 2) + 1} allies · Accord ${(state.crownProgress?.[localHouse]??state.diplomaticTurns)}/3 turns`;
-  $('end-turn').disabled = turnBusy || !!state.outcome || state.phase==='founding';
-  if(!onlineOptions)$('end-turn').textContent=state.phase==='founding'?'Found all kingdoms':'End turn';
+  $('end-turn').disabled = turnBusy || battlePending() || !!state.outcome || state.phase==='founding';
+  if(!onlineOptions)$('end-turn').textContent=battlePending()?'Battle pending':offlineResolutionPending()?'Resume turn':state.phase==='founding'?'Found all kingdoms':'End turn';
   document.querySelectorAll('[data-tab]').forEach(b => { b.disabled=state.phase==='founding'; b.classList.toggle('active', b.dataset.tab === tab); b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'); });
   const scroll = $('panel').scrollTop;
   $('panel').innerHTML = state.phase==='founding'?foundingPanel(view,localHouse,selected):tab === 'land' ? landPanel() : tab === 'realm' ? realmPanel() : tab === 'council' ? councilPanel() : tab === 'intelligence' ? intelligencePanel(view) : tab === 'war-room' ? warRoomPanel(view)+vassalPanel(view,localHouse) : ledgerPanel();
@@ -353,25 +361,33 @@ $('panel').addEventListener('change', e => {
 document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; orderMode = null;navalOrder=null; $('panel').scrollTop = 0; render(); }));
 // Prevent orders, imports, or a second turn while a worker owns the round snapshot.
 for (const type of ['click','submit','change','keydown']) document.addEventListener(type, event => {
-  if (turnBusy) { event.preventDefault(); event.stopImmediatePropagation(); }
+  const battleControl=event.target.closest?.('[data-battle-ui],#welcome,#menu,#menu-button');
+  const resumeControl=offlineResolutionPending()&&!battlePending()&&event.target.closest?.('#end-turn');
+  if (turnBusy || (battlePending()||offlineResolutionPending()) && !battleControl && !resumeControl) { event.preventDefault(); event.stopImmediatePropagation(); }
 }, true);
-$('end-turn').addEventListener('click', async () => {
-  if(turnBusy || state.outcome || state.phase==='founding')return;
+async function advanceOfflineTurn() {
+  if(turnBusy || battlePending() || state.outcome || state.phase==='founding')return;
   orderMode=null;navalOrder=null;
-  if(onlineOptions){perform('endActivation',{},()=>({ok:true}));return;}
+  if(onlineOptions)return;
   turnBusy=true; epoch++; client.cancel(); abandonRestoredCouncilSequences(); cancelFormalConversation(state,localHouse); $('end-turn').disabled=true;
   showTurnProgress({phase:'preparing'});
   try {
     const next = await resolveTurnInWorker(state, showTurnProgress);
-    state=next; changed(true);
-    showTurnProgress({phase:'complete',ended:!!state.outcome});
+    const previous=state;state=next;
+    if(!save()){state=previous;throw new Error('Saving the new campaign position failed. Free device storage before retrying.');}
+    changed(true);
+    showTurnProgress(battlePending()?null:{phase:'complete',ended:!!state.outcome});
   } catch(error) {
     showTurnProgress(null);
     toast(`Turn could not finish. Your campaign is unchanged; try End turn again. ${error.message}`);
   } finally {
     turnBusy=false; render();
   }
-  voiceNextDispatch();
+  if(battlePending())battleUI.show();else voiceNextDispatch();
+}
+$('end-turn').addEventListener('click', async () => {
+  if(onlineOptions){perform('endActivation',{},()=>({ok:true}));return;}
+  await advanceOfflineTurn();
 });
 $('zoom-in').onclick = () => map.setZoom(map.zoom * 1.25);
 $('zoom-out').onclick = () => map.setZoom(map.zoom / 1.25);
@@ -399,7 +415,7 @@ $('new-game-form').addEventListener('submit', e => {
   selected = '5,6'; selectedArmy = null; tab = 'land'; orderMode = null; outcomeShown = false;
   $('welcome').close(); $('load-warning').hidden = true; changed(); map.home(); toast('Explore the map and choose where to found your kingdom.');
 });
-$('resume').onclick = () => { $('welcome').close(); map.home(); render(); if (state.outcome) $('outcome').showModal(); };
+$('resume').onclick = () => { $('welcome').close(); map.home(); render(); if(battlePending())battleUI.show();else if(state.offlineTurn)void advanceOfflineTurn();else if (state.outcome) $('outcome').showModal(); };
 function downloadSave() {
   if(onlineOptions)return;
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }), url = URL.createObjectURL(blob), a = document.createElement('a');
@@ -415,6 +431,7 @@ $('import-save').addEventListener('change', async e => {
     if(turnBusy || epoch!==importEpoch)return;
     if (!confirm('Replace your current campaign with this imported save? Export your current save first if you want to keep it.')) return;
     client.cancel(); councilJobs.clear(); councilSequences.clear(); replyDiagnostics.clear(); state = imported; abandonRestoredCouncilSequences(); selected = settlements(state, localHouse)[0]?.id || '5,6'; selectedArmy = null; outcomeShown = false; epoch++; $('menu').close(); changed(); map.home(); toast('Campaign imported.');
+    if(battlePending())battleUI.show();else if(offlineResolutionPending())void advanceOfflineTurn();
   } catch (error) { toast(`Import failed: ${error.message}`); }
   finally { e.target.value = ''; }
 });
@@ -647,7 +664,7 @@ async function sendDiplomatic(message, proposal = null, retry = null) {
       $('chat-message').value='';$('chat-notice').textContent=response.notice;
     }catch(e){toast(e.message);}finally{sending=false;challengeToken='';if($('diplomacy').open)renderDiplomacy();}return;
   }
-  if (!message || sending || turnBusy || state.outcome) return;
+  if (!message || sending || planningLocked() || state.outcome) return;
   if(!proposal)proposalConversation=null;
   const conversation=proposalConversation||privateConversation(activeRuler);
   if(retry&&(retry.campaign!==state||retry.turn!==state.turn)){failedPrivateReplies.delete(activeRuler);toast('This conversation changed. Send a new message.');return;}
@@ -662,7 +679,7 @@ async function sendDiplomatic(message, proposal = null, retry = null) {
   try {
     const response = await pending;
     if (epoch !== requestEpoch || campaign !== state) {
-      if (!turnBusy && campaign === state) { appendMessage(rulerId, 'council', 'Circumstances changed while the envoy travelled. These terms require a fresh discussion.'); save(); }
+      if (!planningLocked() && campaign === state) { appendMessage(rulerId, 'council', 'Circumstances changed while the envoy travelled. These terms require a fresh discussion.'); save(); }
       return;
     }
     recordReplyDiagnostic(rulerId, response);
@@ -809,11 +826,11 @@ document.addEventListener('click', e => {
   }
 });
 async function sendCouncilConversation(id,message,location,retryStart=null) {
-    if(turnBusy||normalCouncilBusy(id)||formalCouncilBusy(id))return {ok:false,error:'This council is already considering an envoy.'};
+    if(planningLocked()||normalCouncilBusy(id)||formalCouncilBusy(id))return {ok:false,error:'This council is already considering an envoy.'};
     const lock=councilSequences.acquire(id),identity=councilCampaignIdentity(),turn=state.turn;
     if(!lock)return {ok:false,error:'This council is already considering an envoy.'};
     let start;
-    const sameCampaign=()=>councilCampaignIdentity()===identity&&state.turn===turn&&!turnBusy;
+    const sameCampaign=()=>councilCampaignIdentity()===identity&&state.turn===turn&&!planningLocked();
     const action=async(type,args)=>{
       if(!sameCampaign())return {ok:false,error:'The campaign changed.'};
       if(onlineOptions)return online.submit(type,args,{waitForApplied:true});
@@ -864,7 +881,7 @@ allianceUI=installAllianceCouncil(document,{
   pickLocation:options=>strategicPicker.openStrategicMapPicker(options),
   planLocation:location=>{allianceUI.dialog.close();tab='war-room';render();const form=$('operation-form');if(!form){toast('Form an alliance before planning an operation.');return;}form.closest('details').open=true;form.elements.objectiveType.value=location.objectiveType;const select=form.elements.objective;let option=[...select.options].find(o=>o.value===location.targetTile);if(!option){option=document.createElement('option');option.value=location.targetTile;option.textContent=`Hex ${location.targetTile}`;select.append(option);}select.value=location.targetTile;form.scrollIntoView({block:'start'});},
   offerRequest:id=>formalUI.open({councilId:id}),
-  getState:()=>state,getActor:()=>localHouse,isBusy:id=>turnBusy||normalCouncilBusy(id)||formalCouncilBusy(id),
+  getState:()=>state,getActor:()=>localHouse,isBusy:id=>planningLocked()||normalCouncilBusy(id)||formalCouncilBusy(id),
   connection:()=>chatConnection({council:true}),
   gemini:()=>({enabled:$('use-gemini').checked,available:!$('use-gemini').disabled}),
   setGemini:enabled=>{$('use-gemini').checked=enabled;geminiChoiceMade=true;enableGemini();allianceUI.render();},
@@ -876,7 +893,7 @@ allianceUI=installAllianceCouncil(document,{
   onOpen:holder=>{holder.append($('turnstile'));formalUI?.render();if(configReady)enableGemini();voiceNextDispatch(true);},
   onClose:()=>{verificationHome.after($('turnstile'));save();renderDispatches();},
   open:async id=>{
-    if(turnBusy||state.phase==='founding')return null;
+    if(planningLocked()||state.phase==='founding')return null;
     if(onlineOptions){await online.submit('councilOpen',id?{councilId:id}:{});}
     const c=councilForActor(state,localHouse,id||null,!onlineOptions);
     if(!c)throw Error('The coalition changed. Open its current council.');
@@ -906,12 +923,12 @@ allianceUI=installAllianceCouncil(document,{
 const formalActions={formalSubmit:submitFormalProposal,formalRatify:ratifyFormalProposal,formalDismiss:dismissFormalProposal,formalRetryVoice:retryFormalVoice,formalConsider:markFormalConsidering,formalResolve:resolveFormalResponse,formalAnswer:answerFormalProposal,formalVoice:recordFormalVoice};
 formalUI=installFormalProposalUI(document,{
   getState:()=>currentView(),getActor:()=>localHouse,getRuler:()=>activeRuler,
-  canAct:()=>!turnBusy&&(!onlineOptions||onlineStatus?.online&&onlineStatus?.meta?.activeHouse===localHouse&&!onlineStatus?.meta?.ready[localHouse]),
+  canAct:()=>!planningLocked()&&(!onlineOptions||onlineStatus?.online&&onlineStatus?.meta?.activeHouse===localHouse&&!onlineStatus?.meta?.ready[localHouse]),
   isCouncilBusy:normalCouncilBusy,getCampaignIdentity:councilCampaignIdentity,
-  action:async(type,p)=>{if(turnBusy)return {ok:false,error:'Wait for the current turn.'};if(onlineOptions){try{return await online.submit(type,p,{waitForApplied:true});}catch(e){return {ok:false,error:e.message};}}const args=type==='formalSubmit'?[p]:['formalResolve','formalConsider','formalRetryVoice'].includes(type)?[p.id,p.house]:type==='formalAnswer'?[p.id,p.house,p.decision]:type==='formalVoice'?[p.id,p.house,p.message,p.source,p.diagnostic]:[p.id];const r=formalActions[type](state,localHouse,...args);if(r.ok){save();render();}return r;},
+  action:async(type,p)=>{if(planningLocked())return {ok:false,error:'Wait for the current turn.'};if(onlineOptions){try{return await online.submit(type,p,{waitForApplied:true});}catch(e){return {ok:false,error:e.message};}}const args=type==='formalSubmit'?[p]:['formalResolve','formalConsider','formalRetryVoice'].includes(type)?[p.id,p.house]:type==='formalAnswer'?[p.id,p.house,p.decision]:type==='formalVoice'?[p.id,p.house,p.message,p.source,p.diagnostic]:[p.id];const r=formalActions[type](state,localHouse,...args);if(r.ok){save();render();}return r;},
   voice:async(p,house)=>{
     const identity=councilCampaignIdentity(),turn=state.turn,row=p.responses[house];
-    const isCurrent=()=>councilCampaignIdentity()===identity&&state.turn===turn&&!turnBusy&&state.cooperation?.formalProposals?.some(x=>x.id===p.id&&x.status!=='dismissed'&&x.responses[house]?.status===row.status&&!x.responses[house]?.spoken);
+    const isCurrent=()=>councilCampaignIdentity()===identity&&state.turn===turn&&!planningLocked()&&state.cooperation?.formalProposals?.some(x=>x.id===p.id&&x.status!=='dismissed'&&x.responses[house]?.status===row.status&&!x.responses[house]?.spoken);
     const send=p.councilId?client.sendCouncilSpeaker.bind(client):client.send.bind(client);
     const response=await send(state,house,`Voice the recorded ${row.status} decision.`,takeCouncilChallenge(),$('use-gemini').checked,{councilId:p.councilId,speakerHouseId:house,getState:()=>state,bypassCache:true,actorHouseId:localHouse,formalDecision:{proposalId:p.id,house},onStatus:resumeCouncilVerification,isCurrent});
     if(response.source==='cancelled'||!isCurrent())return null;
@@ -932,6 +949,7 @@ $('reduced-effects').checked = !!state.presentation?.reducedEffects;
 $('reduced-effects').onchange = () => { state.presentation = { reducedEffects: $('reduced-effects').checked }; map.reducedEffects = state.presentation.reducedEffects; save(); map.draw(); };
 
 async function voiceNextDispatch(retry = false) {
+  if(planningLocked())return;
   if (!$('use-gemini').checked || !client.endpoint) return;
   const active = () => !onlineOptions || onlineStatus?.online && onlineStatus?.meta?.phase === 'planning' && onlineStatus.meta.activeHouse === localHouse && !onlineStatus.meta.ready[localHouse];
   if (!active()) return;
@@ -974,7 +992,7 @@ async function voiceNextDispatch(retry = false) {
     const entry=state.conversations[k.id]?.find(m=>m.role==='ruler'&&m.turn===state.turn&&m.dispatch&&!m.voiced&&!m.voiceFailed);
     if(!entry||privateDispatchJobs.has(k.id))continue;
     privateDispatchJobs.add(k.id);
-    const campaign=state,turn=state.turn,isCurrent=()=>state===campaign&&state.turn===turn&&!turnBusy;
+    const campaign=state,turn=state.turn,isCurrent=()=>state===campaign&&state.turn===turn&&!planningLocked();
     client.send(campaign,k.id,'Deliver the supplied diplomatic dispatch in your own voice.','',true,
       {actorHouseId:localHouse,background:true,isCurrent,event:entry.dispatch})
       .then(response=>{
@@ -996,6 +1014,7 @@ document.addEventListener('pointerdown', () => {
 
 $('resume').hidden = !restored;
 if (restored) $('start-game').textContent = 'Replace save & begin a new reign';
+battleUI = installOfflineBattleUI({getState:()=>state,replaceState:next=>{state=next;},save,render,continueTurn:advanceOfflineTurn,toast,isOnline:()=>!!onlineOptions});
 render(); if(!onlineOptions)$('welcome').showModal();
 
 if(onlineOptions){
