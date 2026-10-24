@@ -1,4 +1,5 @@
 > The economy and warfare expansion is documented in [EXPANSION.md](./EXPANSION.md), including regional production, construction tiers, contracts, recruitment and battle reports.
+> [LEAD_THE_BATTLE.md](./LEAD_THE_BATTLE.md) covers optional offline 3D combat, nearby reinforcements, siege warfare, controls, checkpoints, and battle assets.
 > [STRATEGY.md](./STRATEGY.md) explains player orders, autonomous rival turns, economic planning, campaigns and the Rival Turns reports.
 > [MULTIPLAYER.md](./MULTIPLAYER.md) covers online campaigns, deployment, synchronization, population growth and emulator tests.
 

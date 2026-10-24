@@ -39,6 +39,7 @@ import { buildingLevel, buildingSpec, cityOrderBonus, completeConstruction, cons
 import { damageFortifications, familyCount, fortificationDefense, inflict, protection, resolveFieldBattle, siegePower } from './warfare.mjs';
 
 import { initializeStrategy, recordStrategyAction, runStrategyTurn, validateStrategySave } from './strategy.mjs';
+import { interceptOfflineEncounter, pendingEncounter, validateOfflineBattles } from './offline-encounters.mjs';
 
 export const PLAYER = 'ashen';
 import { tileId, distance, neighbors, passable } from './world-hex.mjs';
@@ -389,7 +390,7 @@ export function projectedBattleLosses(s,armyId,targetId) {
   return {kind:'battle',fortifications,attackerId:armyId,defenderId:defender.id,enemyOwner:defender.owner,
     yours:ranges[0],theirs:ranges[1],multipleDefenders:enemies.length>1};
 }
-function capture(s, a, t) {
+export function capture(s, a, t) {
   if (!t.owner || t.owner === a.owner || !atWar(s, a.owner, t.owner)) return true;
   if (!sizeOf(a) || s.armies.some(e=>e.tile===t.id&&sizeOf(e)>0&&atWar(s,a.owner,e.owner))) return false;
   if (['city', 'town', 'fort', 'watchtower'].includes(t.building)) {
@@ -417,6 +418,7 @@ export function zoneOfControl(s, a, t) {
   return neighbors(s, t).some(n => s.armies.some(e => e.tile === n.id && sizeOf(e)>0 && atWar(s, a.owner, e.owner)));
 }
 export function resolveMovement(s, owner = null) {
+  if(pendingEncounter(s))return {paused:true};
   syncCommanders(s);
   // Stable, alternating initiative avoids one house always moving first.
   const armies = s.armies.filter(a=>!owner||a.owner===owner).sort((a, b) => a.id.localeCompare(b.id));
@@ -434,6 +436,8 @@ export function resolveMovement(s, owner = null) {
       else if (a.order === 'bombard' || a.tile === a.target) {
         const enemy = s.armies.find(e => e.tile === t.id && sizeOf(e) > 0 && atWar(s,a.owner,e.owner));
         if (enemy && a.order === 'attack') {
+          const encounter=interceptOfflineEncounter(s,a,enemy,t,{kind:'structure',attackerId:a.id,targetId:t.id,from:a.tile});
+          if(encounter){if(encounter.paused)return {paused:true};continue;}
           const result=battle(s,a,enemy,t);
           if(result.winner===0&&sizeOf(a)&&['city','town','fort','watchtower'].includes(t.building)&&capture(s,a,t)){a.path=[];a.target=null;a.structureTarget=null;a.order='hold';}
         }
@@ -443,6 +447,7 @@ export function resolveMovement(s, owner = null) {
     }
     const startingBudget = movementBudget(s,a);
     let budget = startingBudget;
+    let encounterHandled = false;
     while (a.path.length && budget > 0) {
       const t = s.tiles[a.path[0]], from = s.tiles[a.tile];
       const exiting = from.owner && !canEnter(s, a.owner, from) && s.tiles[a.target]?.owner !== from.owner && t?.owner === from.owner;
@@ -454,6 +459,8 @@ export function resolveMovement(s, owner = null) {
       const enemy = s.armies.find(e => e.tile === t.id && sizeOf(e)>0 && atWar(s, a.owner, e.owner));
       if (enemy) {
         a.movementSpent=effectiveArmySpeed(s,a);
+        const encounter=interceptOfflineEncounter(s,a,enemy,t,{kind:'move',attackerId:a.id,targetId:t.id,from:a.tile});
+        if(encounter){if(encounter.paused)return {paused:true};encounterHandled=true;break;}
         const result=battle(s,a,enemy,t);
         // Occupy in this resolution only after every hostile army has left. A
         // trapped or second defender still contests the tile, regardless of HP.
@@ -468,6 +475,7 @@ export function resolveMovement(s, owner = null) {
       a.tile = t.id; a.path.shift(); budget -= cost; a.movementSpent=Math.min(effectiveArmySpeed(s,a),(a.movementSpent||0)+cost); refreshKnowledge(s);
       if (zoneOfControl(s, a, t)) break;
     }
+    if(encounterHandled)continue;
     if (a.structureTarget && a.tile === a.target) damageStructure(s,a,s.tiles[a.target],a.structureTarget,a.order);
     if (!a.path.length && !a.structureTarget) { a.order = 'hold'; a.target = null; }
     if(a.embarkOrder)resolveArmyBoarding(s,a);
@@ -607,5 +615,6 @@ export function parseSave(raw) {
   validateStrategySave(s);
   validateStructures(s);
   validatePlans(s); validateCooperation(s); validateVassals(s); validateEspionage(s); validatePolitics(s); validateFog(s); validateWarBaselines(s); validateKingdomDevelopments(s);
+  validateOfflineBattles(s);
   return s;
 }

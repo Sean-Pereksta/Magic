@@ -1,0 +1,105 @@
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import { readFile, mkdir } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { createGame } from './fixtures/legacy-game.mjs';
+import { declareWar, orderArmy, resolveMovement, parseSave } from '../core.mjs';
+import { emptyUnits } from '../economy.mjs';
+import { configureOfflineBattles } from '../offline-encounters.mjs';
+
+const require=createRequire(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES?`${process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES}/playwright/package.json`:import.meta.url);
+const {chromium}=require('playwright');
+const root=fileURLToPath(new URL('../../../',import.meta.url));
+const server=http.createServer(async(req,res)=>{try{let name=decodeURIComponent(new URL(req.url,'http://localhost').pathname);if(name.endsWith('/'))name+='index.html';const file=path.resolve(root,`.${name}`);if(!file.startsWith(root))throw Error();res.writeHead(200,{'Content-Type':{'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.json':'application/json','.css':'text/css','.svg':'image/svg+xml'}[path.extname(file)]||'application/octet-stream'});res.end(await readFile(file));}catch{res.writeHead(404);res.end();}});
+await new Promise(r=>server.listen(0,'127.0.0.1',r));
+const base=`http://127.0.0.1:${server.address().port}`,key='catnmice.iron-throne.v1';
+function fixture(){
+  const s=parseSave(JSON.stringify(createGame(321))),a=s.armies[0],d=s.armies[1];
+  declareWar(s,a.owner,d.owner);
+  for(let q=7;q<15;q++)for(let r=7;r<14;r++)Object.assign(s.tiles[`${q},${r}`],{terrain:'plains',owner:null,building:null,levels:{},walls:0,fortIntegrity:0,road:false,river:false});
+  Object.assign(a,{name:'Ember Vanguard',tile:'10,10',units:{...emptyUnits(),menAtArms:14,spearman:8,archer:6,knight:3,ram:1},path:[],target:null,order:'hold',morale:1});
+  Object.assign(d,{name:'Wintermere Guard',tile:'11,10',units:{...emptyUnits(),levy:18,crossbow:4},path:[],target:null,order:'hold',morale:1});
+  Object.assign(s.tiles[d.tile],{owner:d.owner,name:'Stonewatch',building:'fort',levels:{fort:1,wall:1},walls:42,fortIntegrity:55});
+  s.armies.push({...structuredClone(a),id:`army-${s.nextId++}`,name:'Northern Spears',tile:'10,11',units:{...emptyUnits(),spearman:6,lightCavalry:2}});
+  configureOfflineBattles(s);orderArmy(s,a.owner,a.id,d.tile,'attack');resolveMovement(s,'ashen');
+  assert.ok(s.offlineBattle);return s;
+}
+let browser;
+try{
+  browser=await chromium.launch({headless:true,executablePath:process.env.IRON_THRONE_CHROMIUM||undefined,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+  for(const viewport of [{width:1365,height:900},{width:390,height:844}]){
+    const context=await browser.newContext({viewport,hasTouch:viewport.width<700});
+    const initial=fixture();await context.addInitScript(({initial,key})=>{if(!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify(initial));},{initial,key});
+    const page=await context.newPage(),errors=[];page.setDefaultTimeout(30000);page.setDefaultNavigationTimeout(60000);
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
+    await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
+    await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
+    await page.locator('#battle-encounter').waitFor({state:'visible'});
+    assert.match(await page.locator('#battle-title').textContent(),/Stonewatch/);
+    await page.locator('[data-battle-action=close]').first().click();
+    assert.equal(await page.locator('#battle-pending').isVisible(),true);
+    assert.equal(await page.locator('#end-turn').isDisabled(),true);
+    const frozen=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)),key);
+    assert.deepEqual(frozen.armies,initial.armies,'closing an encounter does not change troop counts');
+    await page.locator('#battle-pending').click();
+    await page.locator('[data-battle-action=enter]').click();
+    await page.locator('#battle-canvas').waitFor({state:'visible'});
+    await page.locator('#battle-deployment').waitFor({state:'visible'});
+    await page.waitForFunction(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).offlineBattle?.checkpoint?.phase==='deployment');
+    assert.equal(await page.evaluate(()=>document.querySelector('#battle-canvas').width>0),true);
+    await page.locator('[data-battle-group=ranged]').click();
+    await page.locator('#battle-formation').selectOption('skirmish');
+    await page.locator('[data-battle-order=hold]').click();
+    if(process.env.IRON_BATTLE_SCREENSHOTS){await mkdir(process.env.IRON_BATTLE_SCREENSHOTS,{recursive:true});await page.screenshot({path:path.join(process.env.IRON_BATTLE_SCREENSHOTS,`iron-thrones-deployment-${viewport.width}.png`)});}
+    if(viewport.width<700)await page.locator('[data-battle-action=commands]').first().click();
+    await page.locator('[data-battle-action=begin]').click();
+    await page.waitForTimeout(500);
+    await page.locator('[data-battle-action=pause]').click();
+    await page.locator('[data-battle-action=exit]').click();
+    await page.locator('#battle-encounter').waitFor({state:'visible'});
+    const checkpoint=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
+    assert.equal(checkpoint.phase,'combat');assert.ok(checkpoint.time>0);
+    await page.reload();await page.locator('#resume').click();
+    assert.match(await page.locator('[data-battle-action=enter]').textContent(),/Resume/);
+    await page.locator('[data-battle-action=enter]').click();
+    await page.locator('#battle-canvas').waitFor({state:'visible'});
+    await page.waitForTimeout(250);
+    await page.locator('[data-battle-action=pause]').click();
+    const resumed=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
+    assert.ok(resumed.time>=checkpoint.time);
+    await page.locator('[data-battle-action=finish]').click({timeout:60000});
+    await page.locator('[data-battle-action=return]').waitFor({state:'visible',timeout:120000});
+    const applied=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)),key);
+    assert.equal(applied.offlineBattle.status,'applied');
+    parseSave(JSON.stringify(applied));
+    for(const p of applied.offlineBattle.participants){const row=applied.offlineBattle.result.armies.find(a=>a.armyId===p.armyId);for(const [type,n]of Object.entries(p.units))assert.equal(n,(row.units[type]||0)+(row.losses[type]||0));}
+    await page.reload();await page.locator('#resume').click();
+    const again=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)),key);assert.deepEqual(again.armies,applied.armies,'reloading the report does not reapply casualties');
+    await page.locator('[data-battle-action=return]').click();
+    assert.equal(await page.locator('#battle-pending').isVisible(),false);assert.equal(await page.locator('#end-turn').isDisabled(),false);
+    assert.deepEqual(errors,[]);console.log(`Offline battlefield UI passed ${viewport.width}x${viewport.height}`);await context.close();
+  }
+  const context=await browser.newContext({viewport:{width:1280,height:800}}),initial=fixture();
+  await context.addInitScript(({initial,key})=>localStorage.setItem(key,JSON.stringify(initial)),{initial,key});
+  const page=await context.newPage();page.setDefaultTimeout(30000);
+  await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
+  await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
+  await page.route('**/assets/battle/v1/pack.json',route=>route.fulfill({status:503,body:''}));
+  await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
+  await page.evaluate(()=>{window.originalStorageSet=Storage.prototype.setItem;Storage.prototype.setItem=function(){throw new DOMException('Quota exceeded','QuotaExceededError');};});
+  await page.locator('[data-battle-action=enter]').click();
+  await page.waitForFunction(()=>document.querySelector('#battle-notice').textContent.includes('could not be saved'));
+  assert.equal(await page.locator('#battlefield').isVisible(),false);
+  await page.evaluate(()=>{Storage.prototype.setItem=window.originalStorageSet;});
+  await page.locator('[data-battle-action=enter]').click();
+  await page.waitForFunction(()=>document.querySelector('#battle-notice').textContent.includes('could not open'));
+  const failed=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)),key);
+  assert.equal(failed.offlineBattle.status,'active');assert.equal(failed.offlineBattle.checkpoint,null);
+  assert.deepEqual(failed.armies.map(a=>a.units),initial.armies.map(a=>a.units),'missing models do not damage armies');
+  await page.locator('[data-battle-action=auto]').click();
+  await page.locator('[data-battle-action=return]').waitFor({state:'visible'});
+  console.log('Offline battlefield storage/model failure recovery passed');await context.close();
+}finally{await browser?.close();await new Promise(r=>server.close(r));}

@@ -27,6 +27,7 @@ import { CAMPAIGN_HOUSES, UNITS, INTENT_TYPES, RESOURCES, RESOURCE_VALUES } from
 import { appendConversation, applyGift, borderThreat, changeRelation, contact, diplomaticPriorities, economicRelationship, grossProduction, recordPoliticalMemory, recordTrade, resolveAmbassadors, stationedAmbassador, tradeBlocked, updatePoliticalState } from './living.mjs';
 import { createPlayerPromise, detectPromise, isPlayerPromise, playerPromiseCheck, promiseProgress } from './promises.mjs';
 import { PLAYER, alive, armiesOf, atWar, buildCheck, canAfford, checkVictory, declareWar, distance, findPath, kingdom, log, makePeace, pay, rebuildTerritory, relation, remember, resolveEconomy, resolveMovement, settlements, strategyTurn, strength, treaty } from './core.mjs';
+import { pendingEncounter, supportedOfflineCampaign } from './offline-encounters.mjs';
 import { COMMERCIAL_TYPES, evaluateCommercial, tradeBriefing, isTradeDiscussion, parseCommercialOffer, explorationReply } from './trade-negotiation.mjs';
 
 export const LABELS = { INTELLIGENCE: 'Purchase private intelligence report', MARRIAGE: 'Royal marriage settlement', ALLIANCE: 'Alliance', PEACE: 'Peace treaty', TRADE: 'Trade agreement', EXCHANGE: 'Resource exchange', AID: 'Gift / military aid', JOINT_WAR: 'Joint war', DEFEND: 'Defend a location', POSITION: 'Position an army', WITHDRAW: 'Withdraw troops', BUILD_DEFENSES: 'Build a fort', TERRITORY: 'Request a province', TRIBUTE: 'Demand tribute', VASSALAGE: 'Request allegiance', PROMISE: 'Promise a later payment', WAR: 'Declare war', BETRAY: 'Break treaties and declare war', RECURRING: 'Recurring resource trade', LOAN: 'Loan with repayment', NON_AGGRESSION: 'Non-aggression pact', ACCESS: 'Open borders / military access', EMBARGO: 'Embargo a third House', GUARANTEE: 'Guarantee independence', PLEDGE_WAR: 'Promise to enter a war', PLEDGE_ATTACK: 'Promise an attack', PLEDGE_DEFEND: 'Promise to defend a location', PLEDGE_WITHDRAW: 'Promise border withdrawal', PLEDGE_BUILD: 'Promise to build a fort', PLEDGE_PEACE: 'Promise not to attack' };
@@ -443,6 +444,7 @@ export function resolveHouseActivation(s,owner) {
   return s;
 }
 export function finishRound(s) {
+  if(pendingEncounter(s))return s;
   if(s.roundFinished===s.turn)return s;
   s.roundFinished=s.turn;
   resolveEspionage(s);resolveEconomy(s);musterGenerals(s);resolveAmbassadors(s);
@@ -460,11 +462,23 @@ export function finishRound(s) {
 }
 export function endTurn(s,onProgress=()=>{}) {
   if(s.outcome||s.phase==='founding')return s;
-  onProgress({phase:'preparing'});prepareRound(s);
-  for(const actor of humanControlledHouseIds(s).filter(id=>!isAiHouse(s,id)))recordPlayerPlans(s,actor);
-  aiDiplomacy(s);aiResourceTrade(s);strategyTurn(s,onProgress);onProgress({phase:'resolving'});
-  resolveFleetMovement(s);resolveMovement(s);verifyPledges(s,{operationsOnly:true});updateOperations(s,{afterMovement:true});updateVassalProgress(s);finishPlans(s);
+  if(pendingEncounter(s)){onProgress({phase:'battle'});return s;}
+  const resumable=supportedOfflineCampaign(s)&&(s.offlineBattles?.enabled||!!s.offlineTurn);
+  if(!resumable||!s.offlineTurn){
+    onProgress({phase:'preparing'});prepareRound(s);
+    for(const actor of humanControlledHouseIds(s).filter(id=>!isAiHouse(s,id)))recordPlayerPlans(s,actor);
+    aiDiplomacy(s);aiResourceTrade(s);strategyTurn(s,onProgress);onProgress({phase:'resolving'});
+    resolveFleetMovement(s);
+    if(resumable)s.offlineTurn={turn:s.turn,phase:'movement'};
+  }else onProgress({phase:'resolving'});
+  if(!resumable||s.offlineTurn.phase==='movement'){
+    resolveMovement(s);
+    if(pendingEncounter(s)){onProgress({phase:'battle'});return s;}
+    if(resumable)s.offlineTurn.phase='aftermath';
+  }
+  verifyPledges(s,{operationsOnly:true});updateOperations(s,{afterMovement:true});updateVassalProgress(s);finishPlans(s);
   finishRound(s);
+  if(resumable)delete s.offlineTurn;
   for(const actor of humanControlledHouseIds(s).filter(id=>!isAiHouse(s,id)))prepareGenerals(s,actor);
   onProgress({phase:'complete'});return s;
 }
