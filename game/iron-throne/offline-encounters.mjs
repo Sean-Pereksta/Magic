@@ -8,7 +8,7 @@ import { damageFortifications, resolveFieldBattle, siegePower, troopTotal } from
 import { refreshKnowledge, visionTiles } from './fog.mjs';
 import { changeRelation } from './living.mjs';
 import { emotionalEvent } from './emotions.mjs';
-import { finishAutomatically, validateBattleCheckpoint } from './battle-sim.mjs';
+import { BATTLE_SIZE_OPTIONS, DEFAULT_ACTIVE_TROOPS, finishAutomatically, normalizeBattleCheckpoint, validateBattleCheckpoint } from './battle-sim.mjs';
 
 // The campaign stores only JSON. Neither a renderer nor a running worker is
 // required to recover a pending decision or resume the strategic turn.
@@ -24,7 +24,9 @@ export function configureOfflineBattles(s,options={}) {
   if(!['ask','auto'].includes(preference))fail('Choose Ask before battles or Resolve automatically.');
   const tacticalTime=options.tacticalTime??s.offlineBattles?.tacticalTime??'pause';
   if(!['pause','slow','real'].includes(tacticalTime))fail('Choose paused, slow motion, or real time command.');
-  s.offlineBattles={...s.offlineBattles,enabled:options.enabled??s.offlineBattles?.enabled??true,preference,tacticalTime};
+  const battleSize=options.battleSize??s.offlineBattles?.battleSize??DEFAULT_ACTIVE_TROOPS;
+  if(!BATTLE_SIZE_OPTIONS.includes(battleSize))fail('Choose 100, 150, or 200 troops on the field.');
+  s.offlineBattles={...s.offlineBattles,enabled:options.enabled??s.offlineBattles?.enabled??true,preference,tacticalTime,battleSize};
   return s.offlineBattles;
 }
 export const pendingEncounter = s => supportedOfflineCampaign(s)?s.offlineBattle||null:null;
@@ -238,7 +240,7 @@ export function encounterPreview(s) {
 }
 export function validateOfflineBattles(s) {
   if(!supportedOfflineCampaign(s)){if(s.offlineBattle||s.offlineTurn)fail('Online campaigns cannot contain a pending local battle.');delete s.offlineBattles;return;}
-  if(s.offlineBattles&&(!['ask','auto'].includes(s.offlineBattles.preference)||typeof s.offlineBattles.enabled!=='boolean'||s.offlineBattles.tacticalTime!==undefined&&!['pause','slow','real'].includes(s.offlineBattles.tacticalTime)))fail('Damaged offline battle preferences.');
+  if(s.offlineBattles&&(!['ask','auto'].includes(s.offlineBattles.preference)||typeof s.offlineBattles.enabled!=='boolean'||s.offlineBattles.tacticalTime!==undefined&&!['pause','slow','real'].includes(s.offlineBattles.tacticalTime)||s.offlineBattles.battleSize!==undefined&&!BATTLE_SIZE_OPTIONS.includes(s.offlineBattles.battleSize)))fail('Damaged offline battle preferences.');
   if(s.offlineTurn&&(!['movement','aftermath'].includes(s.offlineTurn.phase)||s.offlineTurn.turn!==s.turn))fail('Damaged suspended turn.');
   const e=s.offlineBattle;if(!e)return;
   if(e.version!==1||typeof e.id!=='string'||e.id.length>80||e.turn!==s.turn||!['pending','active','applied'].includes(e.status)||!finite(e.seed,0,4294967295)||!s.tiles[e.tile?.id]||!Array.isArray(e.participants)||e.participants.length<2||e.participants.length>500||new Set(e.participants.map(p=>p.armyId)).size!==e.participants.length||!Array.isArray(e.supportOptions)||e.supportOptions.length>500||!Array.isArray(e.primaryIds)||e.playerOwner!=='ashen'||![0,1].includes(e.playerSide)||!['move','structure'].includes(e.continuation?.kind)||e.continuation.attackerId!==e.attackerId||e.continuation.targetId!==e.tile.id||typeof e.commitmentsLocked!=='boolean')fail('Damaged pending battlefield.');
@@ -251,4 +253,7 @@ export function validateOfflineBattles(s) {
   if(e.status==='applied')validatedResult(e,e.result);
   if(e.checkpoint&&!validateBattleCheckpoint(e.checkpoint,e))fail('Damaged battlefield checkpoint.');
   if(e.checkpoint&&JSON.stringify(e.checkpoint).length>MAX_CHECKPOINT_LENGTH)fail('Battlefield checkpoint is too large.');
+  // Validate the original saved roster before migrating legacy deployment limits.
+  // The same normalized checkpoint is then used by both the renderer and worker.
+  if(e.checkpoint)normalizeBattleCheckpoint(e.checkpoint);
 }

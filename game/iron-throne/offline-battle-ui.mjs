@@ -1,11 +1,15 @@
 import { UNITS, FORMATIONS } from './data.mjs';
+import { BATTLE_SIZE_OPTIONS, DEFAULT_ACTIVE_TROOPS } from './battle-sim.mjs';
 import { configureOfflineBattles, pendingEncounter, commitEncounterSupport, beginEncounter, saveEncounterCheckpoint, resolveEncounterAutomatically, applyEncounterResult, returnFromEncounter, encounterPreview } from './offline-encounters.mjs';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const total = units => Object.values(units || {}).reduce((sum,n) => sum + n, 0);
 const composition = units => units ? Object.entries(units).filter(([,n])=>n).map(([id,n])=>`${n} ${UNITS[id]?.name || id}`).join(' · ') || 'No troops' : 'Composition unknown';
-const groups = [['all','All troops'],['infantry','Infantry'],['spearmen','Spearmen'],['ranged','Ranged'],['cavalry','Cavalry'],['siege','Siege']];
+const groups = [['all','All troops'],['infantry','Infantry'],['spearmen','Spearmen'],['archers','Archers'],['crossbow','Crossbows'],['cavalry','Cavalry'],['siege','Siege']];
+const formations = {line:{name:'Line'},column:{name:'Column'},wedge:{name:'Wedge'},square:{name:'Square'},...FORMATIONS};
+const matchesGroup = (unit,id) => id==='all'||id==='archers'&&['archer','veteranArcher'].includes(unit.type)||id==='crossbow'&&unit.type==='crossbow'||id==='spearmen'&&unit.type==='spearman'||id==='cavalry'&&unit.family==='mounted'||unit.family===id;
 const orders = [['move','Move and face'],['hold','Hold position'],['walls','Defend walls'],['advance','Advance'],['charge','Charge'],['follow','Follow me'],['attack','Attack selected formation'],['nearest','Attack nearest'],['fire','Fire'],['holdFire','Hold fire'],['withdraw','Withdraw'],['retreat','Retreat']];
+const sizeOptions = selected => [...BATTLE_SIZE_OPTIONS,...(BATTLE_SIZE_OPTIONS.includes(selected)?[]:[selected])].map(size=>`<option value="${size}" ${size===selected?'selected':''}>${size} · ${{100:'Lighter',150:'Balanced',200:'Large'}[size]||'Saved battle'}</option>`).join('');
 
 // This controller owns only presentation and input. Campaign writes always go
 // through the same validated encounter API and one durable campaign snapshot.
@@ -17,7 +21,7 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     <dialog id="battlefield" class="battlefield" aria-label="Lead the battle"><canvas id="battle-canvas" tabindex="0" aria-label="3D battlefield. WASD move, mouse aim, click attack, right click block, Q commands, Tab tactical view, Escape pause."></canvas>
       <header class="battle-hud"><div><span class="eyebrow" id="battle-mode">DEPLOYMENT</span><strong id="battle-location"></strong></div><div id="battle-counts"></div><div class="battle-hud-actions"><button data-battle-action="camera">Tactical view · Tab</button><button data-battle-action="commands">Orders · Q</button><button data-battle-action="pause">Pause · Esc</button></div></header>
       <div id="battle-deployment" class="battle-deployment"><h2>Choose your ground</h2><p>Select a formation, then drag on the field to place it and set its facing. Your army must deploy within its starting area.</p><button class="primary" data-battle-action="begin">Begin Battle</button></div>
-      <aside id="battle-command-panel" class="battle-command-panel" hidden><div class="battle-group-row">${groups.map(([id,label])=>`<button data-battle-group="${id}" aria-pressed="${id==='all'}">${label}</button>`).join('')}</div><label>Army <select id="battle-army"><option value="">All your armies</option></select></label><label>Formation <select id="battle-formation">${Object.entries(FORMATIONS).map(([id,f])=>`<option value="${id}">${esc(f.name)}</option>`).join('')}</select></label><div class="battle-order-row">${orders.map(([id,label])=>`<button data-battle-order="${id}">${label}</button>`).join('')}</div><p id="battle-order-status" role="status">Move and face: drag on the field.</p><label>Allied army <select id="battle-ally"></select></label><div class="battle-order-row"><button data-battle-request="flank">Protect a flank</button><button data-battle-request="assault">Support assault</button><button data-battle-request="withdraw">Cover withdrawal</button></div><label>Tactical view <select id="battle-command-time"><option value="pause">Pause combat</option><option value="slow">Slow motion</option><option value="real">Real time</option></select></label></aside>
+      <aside id="battle-command-panel" class="battle-command-panel" hidden><h2>Command your troops</h2><label>Army <select id="battle-army"><option value="">All your armies</option></select></label><div class="battle-group-row" aria-label="Choose troop type">${groups.map(([id,label])=>`<button data-battle-group="${id}" aria-pressed="${id==='all'}"><strong>${label}</strong><span data-battle-group-count="${id}">0</span></button>`).join('')}</div><p id="battle-selection-status" class="battle-selection-status" role="status"></p><details class="battle-saved-groups"><summary>Custom command groups</summary><label>Saved group <select id="battle-saved-group"><option value="">Choose a saved group</option></select></label><label>Group name <input id="battle-group-name" type="text" maxlength="40" placeholder="e.g. Left flank archers"></label><div class="battle-order-row"><button data-battle-action="save-group">Save selected troops</button><button data-battle-action="remove-group" disabled>Remove group</button></div><p>Save this army and troop selection as a group. Its troops keep their original army and can be selected together again.</p></details><label>Formation <select id="battle-formation"><option value="" disabled>Mixed formations</option>${Object.entries(formations).map(([id,f])=>`<option value="${id}">${esc(f.name)}</option>`).join('')}</select></label><p class="battle-formation-hint">Choosing a formation immediately reforms the selected troops. Drag on the field to move and set their facing.</p><div class="battle-order-row">${orders.map(([id,label])=>`<button data-battle-order="${id}" aria-pressed="${id==='move'}">${label}</button>`).join('')}</div><p id="battle-order-status" role="status">Move and face: drag on the field.</p><label>Allied army <select id="battle-ally"></select></label><div class="battle-order-row"><button data-battle-request="flank">Protect a flank</button><button data-battle-request="assault">Support assault</button><button data-battle-request="withdraw">Cover withdrawal</button></div><label>Tactical view <select id="battle-command-time"><option value="pause">Pause combat</option><option value="slow">Slow motion</option><option value="real">Real time</option></select></label></aside>
       <div id="battle-event" class="battle-event" role="status" aria-live="polite"></div><div id="battle-reticle" class="battle-reticle" aria-hidden="true">+</div>
       <footer class="battle-player"><span id="battle-player-status"></span><label>Weapon <select id="battle-weapon"><option value="sword">Sword & shield</option><option value="spear">Spear & shield</option><option value="axe">Two-handed axe</option><option value="mace">Mace</option><option value="bow">Bow & sidearm</option><option value="crossbow">Crossbow & sidearm</option><option value="lance">Mounted lance</option></select></label><span class="battle-help">WASD move · Mouse aim · Click attack · Right click block · Space heavy attack · Shift sprint · E interact / mount · Tab command</span></footer>
       <div class="battle-touch" id="battle-touch"><div id="battle-stick" aria-label="Movement stick"><span></span></div><div class="battle-touch-buttons"><button data-battle-touch="sprint">Sprint</button><button data-battle-touch="block">Block</button><button data-battle-touch="attack">Attack</button><button data-battle-touch="heavy">Heavy</button><button data-battle-touch="interact">Interact / Mount</button><button data-battle-action="commands">Orders</button></div></div>
@@ -27,10 +31,10 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
   const $ = id => ui.querySelector(`#${id}`), encounterDialog=$('battle-encounter'), field=$('battlefield'), canvas=$('battle-canvas');
   const menu=document.querySelector('#menu .menu-actions');
   const settings=document.createElement('div'); settings.dataset.battleUi=''; settings.className='battle-settings';
-  settings.innerHTML=`<label>Offline battles<select id="offline-battle-preference"><option value="ask">Ask before battles</option><option value="auto">Resolve automatically</option></select></label><button id="battle-download" type="button">Download battle assets for offline play</button><p id="battle-download-status" class="fine" role="status"></p>`;
+  settings.innerHTML=`<label>Offline battles<select id="offline-battle-preference"><option value="ask">Ask before battles</option><option value="auto">Resolve automatically</option></select></label><label>Troops on the field<select id="offline-battle-size" aria-describedby="offline-battle-size-note">${sizeOptions(DEFAULT_ACTIVE_TROOPS)}</select></label><p id="offline-battle-size-note" class="fine">Maximum active troops across both sides. Extra troops arrive in waves. Applies to new battles; saved battles keep their size. Choose 100 if battles run slowly.</p><button id="battle-download" type="button">Download battle assets for offline play</button><p id="battle-download-status" class="fine" role="status"></p>`;
   menu?.prepend(settings);
   let sim, renderer, battle=null, frame=0, lastTime=0, lastCheckpoint=0, lastEvent='', lastMilestone='', loading=false, paused=false, finishing=false, graphicsError=false, handledCommanderExit=false;
-  let group='all', order='move', drag=null, pointer=null, stickOrigin=null, camera={mode:'tactical',yaw:0,pitch:.8,distance:90};
+  let group='all', customGroupId='', order='move', drag=null, pointer=null, stickOrigin=null, camera={mode:'tactical',yaw:0,pitch:.8,distance:90};
   let keys=new Set(), touch={x:0,z:0}, input={attack:false,block:false,sprint:false}, sceneAbort=null;
   const mode=()=>battle?.phase==='deployment'?'deployment':camera.mode;
   const active=()=>!isOnline() && pendingEncounter(getState());
@@ -47,6 +51,7 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
   function ownSupport(){const own=new Set((active()?.supportOptions||[]).filter(p=>p.playerControlled&&p.available).map(p=>p.armyId));return [...ui.querySelectorAll('[data-battle-support]:checked')].map(el=>el.dataset.battleSupport).filter(id=>own.has(id));}
   function lockSupport(){if(!active()?.commitmentsLocked)transact(s=>commitEncounterSupport(s,ownSupport()));}
   function displayArmy(p){return `<article class="battle-army"><strong>${esc(p.name||p.armyName||p.armyId||'Unidentified army')}</strong><span>${esc(p.commander?.name||p.commander||'Army captain')}</span><p>${esc(composition(p.units))}</p><small>${p.distance?`${p.distance} legal hex steps · ${esc(p.entryDirection||'approach')} · ${p.arrivalSeconds||p.distance*25}s arrival`:'Initial deployment'}${p.isSupport?' · Supporting army':''}</small></article>`;}
+  function battleSizeControl(e){const size=e.checkpoint?.maxActive??getState().offlineBattles?.battleSize??DEFAULT_ACTIVE_TROOPS;return `<div class="battle-size-control"><label for="battle-encounter-size">Troops on the field</label><select id="battle-encounter-size" aria-describedby="battle-size-note" ${e.checkpoint?'disabled':''}>${sizeOptions(size)}</select><p id="battle-size-note" class="fine">${e.checkpoint?`This saved battle keeps its ${size}-troop limit. Menu settings apply to your next battle.`:'Maximum active troops across both sides. Extra troops arrive in waves. Choose 100 if battles run slowly.'}</p></div>`;}
   function showEncounter(){
     if(!active()||loading)return;
     disposeScene();
@@ -58,20 +63,54 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
       $('battle-choices').innerHTML='<button class="primary" data-battle-action="return">Return to Board</button>';
     }else{
       const participants=view.participants||[], support=view.supportOptions||[];
-      $('battle-brief').innerHTML=`<p>${esc(view.tile?.terrain||'Field')} · ${esc(view.tile?.building||'Open ground')} · Walls ${Math.round(view.tile?.walls||0)} · Fort ${Math.round(view.tile?.fortIntegrity||0)}</p><div class="battle-sides">${[e.playerSide,1-e.playerSide].map((side,i)=>`<section><h3>${i?'Known opposition':'Your side'}</h3>${participants.filter(p=>p.side===side).map(displayArmy).join('')||'<p>Army details are not visible.</p>'}</section>`).join('')}</div>${support.length?`<h3>Nearby support</h3><div class="battle-support">${support.map(p=>`<label><input type="checkbox" data-battle-support="${esc(p.armyId)}" ${p.available===false||p.owner!==e.playerOwner||e.commitmentsLocked?'disabled':''} ${p.joining||p.committed||p.available!==false&&p.owner===e.playerOwner?'checked':''}> <strong>${esc(p.name||p.armyId)}</strong> · ${p.distance??'?'} steps · ${esc(p.entryDirection||'approach')}<small>${esc(p.reason||p.status||(p.available===false?'Unavailable':p.owner===e.playerOwner?'Available':'Allied commander decides'))}</small><span>${esc(composition(p.units))}</span></label>`).join('')}</div>`:''}<p id="battle-forecast" class="battle-forecast">${forecastText(view)}</p><p class="fine">Automatic casualty estimates describe the strategic resolver. They do not predict the outcome of personally fighting. Both choices use the same committed armies and existing defenses.</p>${e.checkpoint?'<p class="battle-summary">Saved battle progress is available. Continue fighting or finish automatically from your current survivors and damage.</p>':''}`;
+      $('battle-brief').innerHTML=`${battleSizeControl(e)}<p>${esc(view.tile?.terrain||'Field')} · ${esc(view.tile?.building||'Open ground')} · Walls ${Math.round(view.tile?.walls||0)} · Fort ${Math.round(view.tile?.fortIntegrity||0)}</p><div class="battle-sides">${[e.playerSide,1-e.playerSide].map((side,i)=>`<section><h3>${i?'Known opposition':'Your side'}</h3>${participants.filter(p=>p.side===side).map(displayArmy).join('')||'<p>Army details are not visible.</p>'}</section>`).join('')}</div>${support.length?`<h3>Nearby support</h3><div class="battle-support">${support.map(p=>`<label><input type="checkbox" data-battle-support="${esc(p.armyId)}" ${p.available===false||p.owner!==e.playerOwner||e.commitmentsLocked?'disabled':''} ${p.joining||p.committed||p.available!==false&&p.owner===e.playerOwner?'checked':''}> <strong>${esc(p.name||p.armyId)}</strong> · ${p.distance??'?'} steps · ${esc(p.entryDirection||'approach')}<small>${esc(p.reason||p.status||(p.available===false?'Unavailable':p.owner===e.playerOwner?'Available':'Allied commander decides'))}</small><span>${esc(composition(p.units))}</span></label>`).join('')}</div>`:''}<p id="battle-forecast" class="battle-forecast">${forecastText(view)}</p><p class="fine">Automatic casualty estimates describe the strategic resolver. They do not predict the outcome of personally fighting. Both choices use the same committed armies and existing defenses.</p>${e.checkpoint?'<p class="battle-summary">Saved battle progress is available. Continue fighting or finish automatically from your current survivors and damage.</p>':''}`;
       $('battle-choices').innerHTML=`<button data-battle-action="auto">${e.checkpoint?'Finish Automatically':'Resolve Battle'}</button><button class="primary" data-battle-action="enter">${e.checkpoint?'Resume Battle':'Enter Battle'}</button><button data-battle-action="close">Decide later</button>`;
     }
     notice(''); if(!encounterDialog.open)encounterDialog.showModal(); sync();
   }
   function forecastText(view){const f=view.automaticForecast||view.forecast;if(typeof f==='string')return f;if(f?.label)return f.label; if(f?.armies)return `Automatic resolution estimate: ${f.armies.map(a=>`${a.name||a.armyId}: ${total(a.losses)} losses`).join(' · ')}`;return 'Automatic resolution estimate will be calculated from the committed forces.';}
+  function setBattleSize(value){try{transact(s=>configureOfflineBattles(s,{battleSize:Number(value)}));}catch(error){notice(error.message);toast(error.message);}sync();}
   async function loadSimulation(){sim ||= await import('./battle-sim.mjs');return sim;}
   const milestone=()=>battle?`${battle.armies.filter(a=>a.arrived).length}:${battle.layout.navRevision||0}:${battle.layout.gate?.hp===0}`:'';
   function checkpoint(){if(!battle)return;transact(s=>saveEncounterCheckpoint(s,structuredClone(battle)));lastCheckpoint=battle.time;lastMilestone=milestone();}
-  function selection(){const army=$('battle-army').value;return army?battle.units.filter(u=>u.armyId===army&&(group==='all'||group==='spearmen'?group==='all'||u.type==='spearman':group==='cavalry'?u.family==='mounted':u.family===group)).map(u=>u.id):group;}
-  function sendOrder(params={}){
+  function availableOwnTroops(){return battle?.units.filter(u=>u.owner===battle.playerOwner&&['active','reserve'].includes(u.status))||[];}
+  function selectedTroops(){
+    const own=availableOwnTroops(),saved=battle?.commandGroups?.find(g=>g.id===customGroupId);
+    if(saved){const ids=new Set(saved.unitIds);return own.filter(u=>ids.has(u.id));}
+    const army=$('battle-army').value;return own.filter(u=>(!army||u.armyId===army)&&matchesGroup(u,group));
+  }
+  function selection(){return selectedTroops().map(u=>u.id);}
+  function selectionName(){return battle?.commandGroups?.find(g=>g.id===customGroupId)?.name||groups.find(([id])=>id===group)?.[1]||'Troops';}
+  function storeCommandSelection(){battle.commandSelection={armyId:$('battle-army').value,group,customGroupId};}
+  function saveCommands(){try{storeCommandSelection();checkpoint();}catch(error){setPause(true);$('battle-pause-note').textContent=error.message;}}
+  function refreshSavedGroups(){
+    $('battle-saved-group').innerHTML='<option value="">Choose a saved group</option>'+(battle.commandGroups||[]).map(g=>`<option value="${esc(g.id)}">${esc(g.name)} · ${g.unitIds.length} troops</option>`).join('');
+    $('battle-saved-group').value=customGroupId;
+    ui.querySelector('[data-battle-action="remove-group"]').disabled=!customGroupId;
+  }
+  function refreshSelection(refreshFormation=false){
+    if(!battle)return;
+    const own=availableOwnTroops(),army=$('battle-army').value,scoped=own.filter(u=>!army||u.armyId===army),selected=selectedTroops();
+    for(const [id] of groups){const button=ui.querySelector(`[data-battle-group="${id}"]`),matching=scoped.filter(u=>matchesGroup(u,id)),count=button.querySelector('[data-battle-group-count]');if(count.textContent!==String(matching.length))count.textContent=String(matching.length);button.disabled=!matching.length;button.setAttribute('aria-pressed',String(!customGroupId&&group===id));button.title=`${matching.filter(u=>u.status==='active').length} deployed, ${matching.filter(u=>u.status==='reserve').length} in reserve`;}
+    const status=`${selectionName()} · ${selected.filter(u=>u.status==='active').length} deployed · ${selected.filter(u=>u.status==='reserve').length} reserves`;
+    if($('battle-selection-status').textContent!==status)$('battle-selection-status').textContent=status;
+    if(refreshFormation){const shapes=new Set(selected.map(u=>u.formation));$('battle-formation').value=shapes.size===1?[...shapes][0]:'';}
+    ui.querySelector('[data-battle-action="save-group"]').disabled=!selected.length||(battle.commandGroups?.length||0)>=12;
+  }
+  function chooseGroup(id){group=id;customGroupId='';$('battle-group-name').value='';refreshSavedGroups();refreshSelection(true);saveCommands();}
+  function saveCommandGroup(){
+    const troops=selectedTroops();if(!troops.length||(battle.commandGroups?.length||0)>=12)return;
+    battle.commandGroups||=[];let number=1;while(battle.commandGroups.some(g=>g.id===`command-group-${number}`))number++;
+    const name=($('battle-group-name').value.trim()||`${selectionName()} ${number}`).slice(0,40);
+    customGroupId=`command-group-${number}`;battle.commandGroups.push({id:customGroupId,name,unitIds:troops.map(u=>u.id)});
+    refreshSavedGroups();refreshSelection(true);saveCommands();$('battle-order-status').textContent=`Saved ${name}: ${troops.length} troops. Select it again under Custom command groups.`;
+  }
+  function sendOrder(params={},selectedOrder=order){
     if(!battle||!sim||finishing)return;
-    const result=sim.issueOrder(battle,selection(),order,{formation:$('battle-formation').value,...params});
-    $('battle-order-status').textContent=result?.message||result?.error||result?.reason||`${orders.find(([id])=>id===order)?.[1]||order} ordered${params.x!==undefined?` to ${Math.round(params.x)}, ${Math.round(params.z)}`:''}.`;
+    const result=sim.issueOrder(battle,selection(),selectedOrder,{formation:$('battle-formation').value||undefined,...params});
+    const description=selectedOrder==='formation'?`${formations[$('battle-formation').value]?.name||'Formation'} applied`:orders.find(([id])=>id===selectedOrder)?.[1]||selectedOrder;
+    $('battle-order-status').textContent=result?.accepted?`${description} · ${result.count} ${selectionName().toLowerCase()}${params.x!==undefined?` to ${Math.round(params.x)}, ${Math.round(params.z)}`:''}.${result.reason?` ${result.reason}`:''}`:result?.message||result?.error||result?.reason||'No troops accepted this order.';
+    if(result?.accepted){refreshSelection();saveCommands();}
   }
   async function enter(){
     if(loading||!active()||active().status==='applied')return;loading=true;
@@ -80,7 +119,7 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
       if(!ownIds.length)throw new Error('Include one of your armies to lead this battle.');
       lockSupport();transact(s=>beginEncounter(s));notice('Preparing the battlefield…');
       await loadSimulation();const e=active();
-      battle=e.checkpoint?structuredClone(e.checkpoint):sim.createBattle(e);
+      battle=e.checkpoint?structuredClone(e.checkpoint):sim.createBattle(e,{maxActive:getState().offlineBattles?.battleSize??DEFAULT_ACTIVE_TROOPS});
       const commander=player();$('battle-weapon').value=commander?.weapon||'sword';
       for(const option of $('battle-weapon').options)option.disabled=['bow','crossbow'].includes(option.value)?commander?.family!=='ranged':option.value==='lance'?commander?.family!=='mounted':false;
       const validation=sim.validateBattleCheckpoint(battle,e);if(validation===false||validation?.ok===false)throw new Error(validation?.error||'The saved battle checkpoint is invalid. Finish automatically to recover.');
@@ -90,6 +129,10 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
       camera={mode:battle.phase==='deployment'?'tactical':'third',yaw:commander?.facing||0,pitch:battle.phase==='deployment'?.8:.35,distance:battle.phase==='deployment'?90:10};
       $('battle-location').textContent=e.tile.name||e.tile.id;
       $('battle-army').innerHTML='<option value="">All your armies</option>'+e.participants.filter(p=>p.owner===e.playerOwner).map(p=>`<option value="${esc(p.armyId)}">${esc(p.name||p.armyId)}</option>`).join('');
+      group=groups.some(([id])=>id===battle.commandSelection?.group)?battle.commandSelection.group:'all';customGroupId=battle.commandGroups?.some(g=>g.id===battle.commandSelection?.customGroupId)?battle.commandSelection.customGroupId:'';
+      $('battle-army').value=battle.commandSelection?.armyId||'';if($('battle-army').selectedIndex<0)$('battle-army').value='';
+      order='move';ui.querySelectorAll('[data-battle-order]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.battleOrder===order)));
+      $('battle-group-name').value='';refreshSavedGroups();refreshSelection(true);storeCommandSelection();
       $('battle-ally').innerHTML=e.participants.filter(p=>p.side===e.playerSide&&p.owner!==e.playerOwner).map(p=>`<option value="${esc(p.armyId)}">${esc(p.name||p.armyId)}</option>`).join('');
       $('battle-command-time').value=getState().offlineBattles?.tacticalTime||'pause';
       $('battle-command-panel').hidden=battle.phase!=='deployment';paused=false;graphicsError=false;handledCommanderExit=false;$('battle-pause').hidden=true;$('battle-pause-note').textContent='Progress is saved on this device. Your campaign waits here.';
@@ -121,7 +164,9 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     $('battle-mode').textContent=battle.phase==='deployment'?'DEPLOYMENT':paused?'PAUSED':camera.mode==='tactical'?`TACTICAL COMMAND · ${$('battle-command-time').selectedOptions[0].textContent.toUpperCase()}`:'LEAD THE BATTLE';
     $('battle-deployment').hidden=battle.phase!=='deployment';$('battle-reticle').hidden=camera.mode==='tactical';
     const friendly=battle.units.filter(u=>u.side===side),enemy=battle.units.filter(u=>u.side!==side&&u.status==='active');
-    $('battle-counts').textContent=`Your side ${friendly.filter(u=>u.status!=='dead').length} · ${friendly.filter(u=>u.status==='reserve').length} reserves | Enemy deployed ${enemy.length}`;
+    const deployed=friendly.filter(u=>u.status==='active').length;
+    $('battle-counts').textContent=`Your deployed ${deployed} · Reserves ${friendly.filter(u=>u.status==='reserve').length} | Enemy deployed ${enemy.length} · Field ${deployed+enemy.length}/${battle.maxActive}`;
+    if(!$('battle-command-panel').hidden)refreshSelection();
     $('battle-player-status').textContent=p?.status==='active'?`Commander · Health ${Math.ceil(p.hp)}/${p.maxHp} · Stamina ${Math.round(p.stamina)}${Number.isFinite(p.ammo)?` · Ammo ${p.ammo}`:''}`:p?.status==='reserve'?'Your commander is approaching with reinforcements.':p?.status==='escaped'?'Your commander has withdrawn · Your army continues.':'Commander incapacitated · Your army continues under tactical command';
     const event=battle.events.at(-1), message=typeof event==='string'?event:event?.message||event?.text;
     if(message&&message!==lastEvent){lastEvent=message;$('battle-event').textContent=message;}
@@ -156,6 +201,8 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
       if(finishing)return;
       if(name==='close'){encounterDialog.close();sync();return;}
       if(name==='enter'){await enter();return;}
+      if(name==='save-group'){saveCommandGroup();return;}
+      if(name==='remove-group'){battle.commandGroups=battle.commandGroups.filter(g=>g.id!==customGroupId);customGroupId='';refreshSavedGroups();refreshSelection(true);saveCommands();$('battle-order-status').textContent='Command group removed. Its troops keep their current orders.';return;}
       if(name==='auto'){lockSupport();if(active()?.checkpoint){await finishSavedBattle();return;}transact(s=>resolveEncounterAutomatically(s));render();showEncounter();return;}
       if(name==='return'){const result=transact(s=>returnFromEncounter(s));encounterDialog.close();sync();render();if(result.resumeTurn)await continueTurn();return;}
       if(name==='begin'){sim.beginBattle(battle);camera.mode='third';camera.distance=10;camera.pitch=.35;delete camera.target;$('battle-command-panel').hidden=true;checkpoint();canvas.focus();return;}
@@ -168,14 +215,18 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
       if(name==='finish'){await finishSavedBattle();return;}
     }catch(error){if(battle){setPause(true);$('battle-pause-note').textContent=error.message;}notice(error.message);toast(error.message);}
   }
-  ui.addEventListener('click',event=>{const el=event.target.closest('button');if(!el)return;if(el.dataset.battleAction){event.preventDefault();action(el.dataset.battleAction);}if(el.dataset.battleGroup){group=el.dataset.battleGroup;ui.querySelectorAll('[data-battle-group]').forEach(b=>b.setAttribute('aria-pressed',String(b===el)));}if(el.dataset.battleOrder){order=el.dataset.battleOrder;if(['move','withdraw','attack'].includes(order))$('battle-order-status').textContent=order==='attack'?'Choose an enemy formation on the field.':'Drag on the field to choose position and facing.';else sendOrder();}if(el.dataset.battleRequest&&battle){const armyId=$('battle-ally').value;const r=sim.requestAlliedOrder?.(battle,armyId,el.dataset.battleRequest==='withdraw'?'cover':el.dataset.battleRequest);$('battle-order-status').textContent=r?.message||r?.error||r?.reason||(r?.accepted?'Allied commander accepts the request.':'No allied formation is available for that request.');}});
+  ui.addEventListener('click',event=>{const el=event.target.closest('button');if(!el)return;if(el.dataset.battleAction){event.preventDefault();action(el.dataset.battleAction);}if(el.dataset.battleGroup)chooseGroup(el.dataset.battleGroup);if(el.dataset.battleOrder){order=el.dataset.battleOrder;ui.querySelectorAll('[data-battle-order]').forEach(button=>button.setAttribute('aria-pressed',String(button===el)));if(['move','withdraw','attack'].includes(order))$('battle-order-status').textContent=order==='attack'?'Choose an enemy formation on the field.':'Drag on the field to choose position and facing.';else sendOrder();}if(el.dataset.battleRequest&&battle){const armyId=$('battle-ally').value;const r=sim.requestAlliedOrder?.(battle,armyId,el.dataset.battleRequest==='withdraw'?'cover':el.dataset.battleRequest);$('battle-order-status').textContent=r?.message||r?.error||r?.reason||(r?.accepted?'Allied commander accepts the request.':'No allied formation is available for that request.');}});
   ui.addEventListener('click',event=>{if(finishing){event.preventDefault();event.stopImmediatePropagation();}},true);
   $('battle-pending').onclick=showEncounter;
+  $('battle-army').onchange=()=>chooseGroup(group);
+  $('battle-formation').onchange=()=>sendOrder({},'formation');
+  $('battle-saved-group').onchange=()=>{customGroupId=$('battle-saved-group').value;$('battle-group-name').value='';if(customGroupId){const ids=new Set(battle.commandGroups.find(g=>g.id===customGroupId).unitIds),armies=new Set(battle.units.filter(u=>ids.has(u.id)).map(u=>u.armyId));$('battle-army').value=armies.size===1?[...armies][0]:'';}refreshSavedGroups();refreshSelection(true);saveCommands();if(customGroupId)$('battle-order-status').textContent=`Selected ${selectionName()}. New orders affect only this group's surviving troops.`;};
+  ui.addEventListener('change',event=>{if(event.target.id==='battle-encounter-size'&&!active()?.checkpoint)setBattleSize(event.target.value);});
   ui.addEventListener('change',event=>{if(event.target.dataset.battleSupport){const preview=structuredClone(getState());try{commitEncounterSupport(preview,ownSupport());$('battle-forecast').textContent=forecastText(encounterPreview(preview));}catch(error){notice(error.message);}}});
   encounterDialog.addEventListener('cancel',()=>{});field.addEventListener('cancel',event=>{event.preventDefault();setPause(!paused);});
   field.addEventListener('keydown',event=>{
     if(finishing){event.preventDefault();event.stopPropagation();return;}
-    if(event.target.matches('select,input'))return;
+    if(event.target.closest('select,input,textarea,button,summary'))return;
     if(['Tab','Escape','KeyQ','KeyW','KeyA','KeyS','KeyD','ShiftLeft','ShiftRight','KeyE','Space'].includes(event.code))event.preventDefault();event.stopPropagation();
     if(event.repeat){keys.add(event.code);return;}
     if(event.code==='Tab')cameraToggle();else if(event.code==='Escape')setPause(!paused);else if(event.code==='KeyQ')action('commands');else if(event.code==='KeyA'&&camera.mode==='tactical'){order='nearest';sendOrder();}else if(event.code==='KeyE')input.interact=true;else keys.add(event.code);
@@ -203,8 +254,9 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
   ui.querySelectorAll('[data-battle-touch]').forEach(button=>{button.addEventListener('pointerdown',event=>{event.preventDefault();button.setPointerCapture(event.pointerId);input[button.dataset.battleTouch]=true;});for(const type of ['pointerup','pointercancel'])button.addEventListener(type,()=>{input[button.dataset.battleTouch]=false;});});
   $('battle-command-time').onchange=()=>{try{transact(s=>{configureOfflineBattles(s);s.offlineBattles.tacticalTime=$('battle-command-time').value;return {ok:true};});}catch(error){toast(error.message);}};
   settings.querySelector('#offline-battle-preference').onchange=event=>{try{transact(s=>{configureOfflineBattles(s,{preference:event.target.value});return {ok:true};});}catch(error){toast(error.message);}sync();};
+  settings.querySelector('#offline-battle-size').onchange=event=>setBattleSize(event.target.value);
   settings.querySelector('#battle-download').onclick=async()=>{const button=settings.querySelector('#battle-download'),status=settings.querySelector('#battle-download-status');button.disabled=true;try{const assets=await import('./battle-assets.mjs');await assets.downloadBattleAssets(p=>{status.textContent=typeof p==='string'?p:'Downloading battle assets…';});status.textContent='Battle assets are saved on this device for offline play.';}catch(error){status.textContent=`Download failed: ${error.message}`;}finally{button.disabled=false;}};
-  function sync(){const e=active();$('battle-pending').hidden=!e||field.open||encounterDialog.open;settings.querySelector('#offline-battle-preference').value=getState().offlineBattles?.preference||'ask';}
+  function sync(){const e=active(),size=getState().offlineBattles?.battleSize??DEFAULT_ACTIVE_TROOPS;$('battle-pending').hidden=!e||field.open||encounterDialog.open;settings.querySelector('#offline-battle-preference').value=getState().offlineBattles?.preference||'ask';settings.querySelector('#offline-battle-size').value=String(size);if($('battle-encounter-size'))$('battle-encounter-size').value=String(e?.checkpoint?.maxActive??size);}
   const onVisibility=()=>{if(document.hidden&&battle)setPause(true);};document.addEventListener('visibilitychange',onVisibility);
   const onBlur=resetInput;window.addEventListener('blur',onBlur);
   const onUnload=()=>{if(battle)try{checkpoint();}catch{}};window.addEventListener('pagehide',onUnload);

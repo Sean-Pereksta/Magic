@@ -40,6 +40,39 @@ try{
   assert.equal(wallPick?.unitId,'parapet-defender','wall defenders are picked at their visible elevated position');assert.equal(wallPick.y,6);
   if(process.env.BATTLE_SCREENSHOT)await page.screenshot({path:process.env.BATTLE_SCREENSHOT.replace(/\.png$/, '-stairs.png')});
   await page.evaluate(()=>{Object.assign(battle.layout.walls[0],{hp:0,state:'breached'});renderer.render(battle,{mode:'tactical',target:{x:-12,y:0,z:26},yaw:Math.PI,pitch:.7,distance:23});});
+  const combat=await page.evaluate(async()=>{
+    const {battleActionPose}=await import('/game/iron-throne/battle-renderer.mjs');
+    const original=battle,base={armyId:'a',type:'menAtArms',family:'infantry',owner:'ashen',side:0,status:'active',y:0,hp:100,maxHp:100,speed:0,weapon:'sword',shield:true};
+    window.combatSample={...battle,time:4,commanderId:'swordsman',events:[],projectiles:[],units:[{...base,id:'swordsman',x:-.3,z:0,facing:0,action:{kind:'attack',elapsed:.3,windup:.3,recovery:.45,duration:.75}},{...base,id:'target',owner:'wintermere',side:1,x:.3,z:1.8,facing:Math.PI,action:{kind:'attack',elapsed:.2,windup:.3,recovery:.45,duration:.75}},{...base,id:'fallen',x:2,z:1,facing:1.2,status:'dead',hp:0,deathTime:2,deathFacing:1.2}]};
+    window.combatCamera={mode:'third',target:{x:.25,y:0,z:.6},yaw:1.1,pitch:.28,distance:6.5};
+    const actor=combatSample.units[0],poses=[.05,.3,.7].map(elapsed=>battleActionPose({...actor,action:{...actor.action,elapsed}}));
+    const spear=battleActionPose({...actor,weapon:'spear'});
+    const hit={eventId:1,type:'hit',time:3.86,x:.3,z:1.8,y:1.2,unitId:'target',sourceId:'swordsman',damage:24,damageApplied:24,targetFamily:'infantry',directionX:0,directionZ:1};
+    const draw=events=>{combatSample.events=events;renderer.render(combatSample,combatCamera);return{...renderer.stats};};
+    const gl=document.querySelector('canvas').getContext('webgl'),pixels=()=>{const out=new Uint8Array(gl.drawingBufferWidth*gl.drawingBufferHeight*4);gl.readPixels(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight,gl.RGBA,gl.UNSIGNED_BYTE,out);return out;};
+    draw([]);const plain=pixels();const hitStats=draw([hit]),blood=pixels();let visibleBloodPixels=0;
+    for(let i=0;i<blood.length;i+=4)if(blood[i]>blood[i+1]*3&&blood[i]>blood[i+2]*3&&blood[i]>45&&(blood[i]!==plain[i]||blood[i+1]!==plain[i+1]))visibleBloodPixels++;
+    const blocked=draw([{...hit,blocked:true},{...hit,type:'block'}]).bloodParticles;
+    const scenery=draw([{...hit,type:'siegeImpact'},{...hit,type:'hit',targetFamily:'siege'}]).bloodParticles;
+    const zero=draw([{...hit,damage:0,damageApplied:0}]).bloodParticles;
+    const distant=draw([{...hit,x:70}]).bloodParticles;
+    const expired=draw([{...hit,time:2}]).bloodParticles;
+    const bounded=draw(Array.from({length:40},(_,i)=>({...hit,eventId:i}))).bloodParticles;
+    draw([hit]);window.presentationFixture={original,hit};
+    return{stages:poses.map(p=>p.stage),strikeTipForward:Math.sin(poses[1].arm+poses[1].forearm+poses[1].weapon),thrustTipForward:Math.sin(spear.arm+spear.forearm+spear.weapon),hitStats,visibleBloodPixels,blocked,scenery,zero,distant,expired,bounded};
+  });
+  if(process.env.BATTLE_SCREENSHOT)await page.screenshot({path:process.env.BATTLE_SCREENSHOT.replace(/\.png$/, '-contact.png')});
+  assert.deepEqual(combat.stages,['windup','strike','recovery']);assert.ok(combat.strikeTipForward>.95,'the blade points toward the enemy at contact');assert.ok(combat.thrustTipForward>.99,'the spear thrust points forward');
+  assert.equal(combat.hitStats.bloodParticles,8);assert.equal(combat.hitStats.corpses,1);assert.equal(combat.hitStats.detailedCorpses,1);assert.equal(combat.hitStats.attacking,2);assert.ok(combat.visibleBloodPixels>8,'confirmed hits produce visible red particles in the actual WebGL framebuffer');
+  for(const key of ['blocked','scenery','zero','distant','expired'])assert.equal(combat[key],0,`${key} does not emit blood`);
+  assert.equal(combat.bounded,96,'particles have a fixed rendering budget');
+  const corpses=await page.evaluate(()=>{
+    const sample=structuredClone(combatSample),dead=sample.units[2];sample.events=[];sample.units=Array.from({length:200},(_,i)=>({...dead,id:`corpse-${i}`,x:i%20-10,z:Math.floor(i/20)*2-5}));
+    renderer.render(sample,{mode:'tactical',target:{x:0,y:0,z:5},yaw:0,pitch:.8,distance:42});const present={...renderer.stats};sample.time+=120;renderer.render(sample,{mode:'tactical',target:{x:0,y:0,z:5},yaw:0,pitch:.8,distance:42});return{present,later:{...renderer.stats}};
+  });
+  assert.equal(corpses.present.corpses,160);assert.equal(corpses.present.detailedCorpses,24);assert.equal(corpses.later.corpses,160,'fallen bodies persist independently of the live troop budget');
+  if(process.env.BATTLE_SCREENSHOT)await page.screenshot({path:process.env.BATTLE_SCREENSHOT.replace(/\.png$/, '-corpses.png')});
+  await page.evaluate(()=>{battle=presentationFixture.original;renderer.render(battle,{mode:'tactical',target:{x:0,y:0,z:0},yaw:0,pitch:1,distance:60});});
   if(process.env.BATTLE_BENCH){
     const benchmark=await page.evaluate(async()=>{
       const {createBattle}=await import('/game/iron-throne/battle-sim.mjs');
@@ -67,5 +100,5 @@ try{
   await page.route('**/assets/battle/v1/pack.json',route=>route.fulfill({status:503,body:'unavailable'}));
   const message=await page.evaluate(async()=>{const {loadBattleAssets,clearBattleAssetCache}=await import('/game/iron-throne/battle-assets.mjs');await clearBattleAssetCache();try{await loadBattleAssets({retry:true});return null;}catch(e){return e.message;}});assert.match(message,/Retry or resolve/);
   assert.equal(remoteRequests,4);assert.equal(localRequests,2);assert.deepEqual(errors,[]);
-  console.log('Battle renderer: all 15 troop classes, instanced geometry, cameras, picking, disposal, default Cloudflare load/download, offline remote cache, local fallback, and failure recovery passed.');
+  console.log('Battle renderer: all 15 troop classes, forward-facing weapon contact, visible close-hit blood with culling, persistent bounded corpses, instanced geometry, cameras, picking, disposal, default Cloudflare load/download, offline remote cache, local fallback, and failure recovery passed.');
 }finally{await browser.close();await new Promise(r=>server.close(r));}
