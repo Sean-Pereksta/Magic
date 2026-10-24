@@ -13,7 +13,7 @@ test('real game boots, renders frames, leaves manual closed and powers starter l
 });
 test('entrypoint loads readable source and open-modal CSS beats default ID display rules',()=>{
   const root=path.join(__dirname,'..');const html=fs.readFileSync(path.join(root,'../circuitbound.html'),'utf8'),css=fs.readFileSync(path.join(root,'styles.css'),'utf8');
-  assert.doesNotMatch(html,/document\.write|part-\d|atob/);for(const file of ['engineering.js','app.js','styles.css']){assert.ok(html.includes('/game/circuitbound/'+file));assert.ok(fs.existsSync(path.join(root,file)))}
+  assert.doesNotMatch(html,/document\.write|part-\d|atob/);for(const file of ['engineering.js','vertical.js','survival.js','interface.js','app.js','styles.css']){assert.ok(html.includes('./circuitbound/'+file)||html.includes('/game/circuitbound/'+file));assert.ok(fs.existsSync(path.join(root,file)))}
   assert.match(css,/#craftPanel\.show,#manual\.show,#pausePanel\.show\{display:block\}/);
 });
 test('placing and configuring an advanced part updates simulation state and inventory',()=>{
