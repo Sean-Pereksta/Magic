@@ -26,7 +26,7 @@ test('evolution replay uses actual committed stats and cannot spend resources or
 });
 test('recruit presentation stores its committed destination and handles renamed content safely',()=>{
   const s=save(),p={...monkey,nickname:'<img src=x>',id:'m-2'};s.collection[p.id]=p;
-  const moment=recruitMoment(s,p,{duplicate:true});assert.equal(moment.destination,'sanctuary');s.run.party.push('m-2');const markup=renderSavedReveal(s,moment);assert.match(markup,/Joined your Sanctuary/);assert.match(markup,/&lt;img src=x&gt;/);assert.match(markup,/1 \/ 90 species/);assert.doesNotMatch(markup,/<img src=x>/);assert.equal(moment.duplicate,true);
+  const moment=recruitMoment(s,p,{duplicate:true});assert.equal(moment.destination,'sanctuary');s.run.party.push('m-2');const markup=renderSavedReveal(s,moment);assert.match(markup,/Joined your Sanctuary/);assert.match(markup,/&lt;img src=x&gt;/);assert.match(markup,/1 \/ 110 species/);assert.doesNotMatch(markup,/<img src=x>/);assert.equal(moment.duplicate,true);
   assert.match(renderRecruitReveal(s,p),/Joined your active team/);
 });
 test('save labels retain failed-device and recovery information',()=>{

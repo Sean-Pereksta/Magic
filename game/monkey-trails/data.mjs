@@ -1,5 +1,6 @@
 // Monkey Trails content catalogue. IDs are save-stable; balance lives here.
 import {FORGE_GEAR} from './equipment-data.mjs';
+import {ELEMENTAL_TECHNIQUES,SPECIES_SIGNATURES,TACTICAL_TECHNIQUES,LIVING_SPECIES_ROWS,ROLE_ASCENSIONS} from './living-combat-data.mjs';
 export const ELEMENTS = {
   leaf:{name:'Leaf',icon:'❧',color:'#78d99e',direction:'N',resource:'Canopy seeds',beats:'water',weak:'fire'},
   fire:{name:'Fire',icon:'♨',color:'#ff9564',direction:'S',resource:'Ember stones',beats:'leaf',weak:'water'},
@@ -160,6 +161,8 @@ export const MOVES=Object.fromEntries([
   ...Object.entries(specialties).map(([id,m])=>[id,{family:'specialty',...(m.types?{type:m.types[0],splitDamage:true}:{}),...m}]),
   ...Object.entries(ultra).map(([id,m])=>[id,{family:'ultra',signature:true,type:m.types[0],splitDamage:true,...m}])
 ]);
+for(const[id,m]of Object.entries({...ELEMENTAL_TECHNIQUES,...TACTICAL_TECHNIQUES}))MOVES[id]={family:'progression',expansion:3,...m};
+for(const[id,m]of Object.entries(SPECIES_SIGNATURES))MOVES[id]={family:'signature',expansion:3,signature:true,minStage:3,minLevel:10,type:m.type||m.types[0],...(m.types?{splitDamage:true}:{}),...m};
 export const HYBRIDS=Object.fromEntries(Object.entries(hybrids).map(([move,m])=>[[...m.types].sort().join('+'),{name:m.name.split(' ')[0],move}]));
 
 // All learnsets are curated. Every species retains strike; traits distinguish
@@ -290,6 +293,8 @@ const expansionAppearances={
   mirecrown:'A towering swamp gorilla with a broad face, mushroom-antler crown, and massive rooted forearms.',
   phoenixmacaque:'A grand upright macaque with a narrow regal face, fountain-feather wings, and a streaming crest.'
 };
+const livingRegions={jungle:'emerald-jungle',savannah:'sunstone-savannah',caverns:'crystal-caverns',marsh:'whispering-marsh',frostpeak:'frostpeak-mountains',highlands:'thunder-highlands',volcano:'ember-volcano',moonlit:'moonlit-forest',celestial:'celestial-ruins',kingdom:'ancient-monkey-kingdom'};
+for(const row of LIVING_SPECIES_ROWS){const[id,name,title,types,role,hp,atk,def,speed,rarity,trait,pool]=row;rows.push([id,name,title,types,role,hp,atk,def,speed,rarity,trait,pool]);}
 export const SPECIES=Object.fromEntries(rows.map(([id,name,title,types,role,hp,atk,def,speed,rarity,trait,pool],index)=>[id,{
   id,number:index+1,name,title,types,affinity:types.length?types.map(t=>ELEMENTS[t].name).join(' / '):'Adaptable',role,hp,atk,def,speed,rarity,trait,
   learnset:[...new Set(['strike','brace','breathe',...pool.split(' ')])],signature:rarity==='ultra'?pool.split(' ')[0]:null,
@@ -300,6 +305,21 @@ export const SPECIES=Object.fromEntries(rows.map(([id,name,title,types,role,hp,a
     minFeet:rarity==='ultra'?5000:rarity==='rare'?10000:index<72?2000:4000,
     evolutionAppearances:['Awakened: elemental shoulder growth and larger silhouette.','Elder: a contrasting elemental crest and layered chest armor.','Ascendant: mastery crown, enlarged gauntlets, and a floating elemental focus.']}:{}),
 }]));
+for(const row of LIVING_SPECIES_ROWS){const[id,,,,,,,,,rarity,,,signature,region,habitat]=row,p=SPECIES[id];Object.assign(p,{signature,specialty:signature,expansion:3,region:livingRegions[region],habitat,habitats:[habitat],minFeet:rarity==='common'?2000:rarity==='uncommon'?4000:rarity==='rare'?12000:20000,encounterWeight:rarity==='common'?1:rarity==='uncommon'?.62:rarity==='rare'?.24:0,appearance:`${p.title}: bespoke ${habitat} anatomy and a ${p.affinity.toLowerCase()} signature silhouette.`,evolutionAppearances:[`${p.name} grows an elemental mantle and bright signature markings.`,`${p.name} gains a tall crest and layered signature armor.`,`${p.name} reveals a mastery crown and floating signature focus.`]});p.learnset.push(signature);}
+// Every species has a role-based Ascendant technique and its own Lv 30 upgrade.
+// Older Ultra signature IDs and mechanics stay unchanged for existing PvP replays.
+for(const p of Object.values(SPECIES)){
+ let signature=p.signature;
+ if(!signature){signature=`${p.id}Ascension`;MOVES[signature]={family:'signature',expansion:3,signature:true,owner:p.id,name:`${p.name} Resolve`,type:p.types[0]||'neutral',minStage:3,minLevel:10,...ROLE_ASCENSIONS[p.role||'utility']};}
+ else if(MOVES[signature].expansion!==3){const base=MOVES[signature];signature=`${p.id}Ascension`;MOVES[signature]={...base,family:'signature',expansion:3,owner:p.id,name:`${base.name} · Ascendant`,minStage:3,minLevel:10,cost:Math.min(10,base.cost+1),teamEnergy:2,reduceCooldown:1,desc:`${base.desc} Ascendant resonance also restores 2 energy to conscious allies and reduces your other cooldowns by one round.`};}
+ p.progressionSignature=signature;
+ const original=MOVES[signature],upgrade=`${p.id}MasterSignature`;
+ MOVES[upgrade]={...original,owner:p.id,family:'mastery',expansion:3,signature:true,name:`${original.name} · Mastered`,minStage:3,minLevel:30,power:original.power?Math.round(original.power*1.12):undefined,cost:Math.min(10,(original.cost||6)+1),cooldown:Math.max(3,(original.cooldown||4)-1),reduceCooldown:original.reduceCooldown||undefined,desc:`Species mastery: ${original.desc} ${original.power?'12% more base power. ':''}Cooldown is one round shorter (minimum 3).`};
+ p.progressionUpgrade=upgrade;
+ p.learnset=[...new Set([...p.learnset,signature,upgrade])];
+}
+// Defensive stances must be established before ordinary fast attacks resolve.
+for(const m of Object.values(MOVES))if(m.expansion===3&&m.guard&&m.priority===undefined)m.priority=3;
 export const GEAR={
   fang:{name:'Sunfang Wraps',slot:'weapon',stat:'atk',amount:2,icon:'✦',fragmentCost:5,desc:'Woven fist wraps improve attack.'},
   shell:{name:'River-shell Vest',slot:'armor',stat:'def',amount:2,icon:'◈',fragmentCost:5,desc:'Layered river shells improve defense.'},

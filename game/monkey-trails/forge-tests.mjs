@@ -17,7 +17,7 @@ function stock(s){
 }
 
 test('catalogue keeps forty original items and adds sixty items across six rarities and neutral affinity',()=>{
-  assert.equal(Object.keys(FORGE_GEAR).length,100);assert.equal(Object.keys(EXPANSION_GEAR).length,60);
+  assert.equal(Object.keys(FORGE_GEAR).length,130);assert.equal(Object.keys(EXPANSION_GEAR).length,60);
   for(const rarity of Object.keys(F.GEAR_RARITIES))assert.equal(Object.values(EXPANSION_GEAR).filter(g=>g.rarity===rarity).length,10);
   assert.equal(Object.values(EXPANSION_GEAR).filter(g=>g.element==='neutral').length,12);
   for(const element of Object.keys(C.ELEMENTS))for(const rarity of Object.keys(F.GEAR_RARITIES))assert.ok(Object.values(FORGE_GEAR).some(g=>g.element===element&&g.rarity===rarity),`${element} ${rarity}`);
@@ -49,7 +49,7 @@ test('empty and underfunded offerings cannot create a free roll',()=>{
 
 test('previews expose the complete exact lottery without touching RNG or save state',()=>{
   const s=stock(save()),before=snapshot(s),p=F.previewForge(s,{fruit:3,'essence:fire':7,'fragment:worldroot':2,'bond:capuchin':1});
-  assert.equal(snapshot(s),before);assert.equal(p.canCraft,true);assert.equal(p.outcomes.length,105);
+  assert.equal(snapshot(s),before);assert.equal(p.canCraft,true);assert.equal(p.outcomes.length,135);
   for(const rows of [p.outcomes,p.rarityOdds,p.elementOdds]){
     assert.equal(rows.reduce((n,row)=>n+row.tickets,0),F.FORGE_LIMITS.tickets);
     assert.ok(Math.abs(rows.reduce((n,row)=>n+row.chance,0)-1)<1e-12);
@@ -134,7 +134,7 @@ test('trail and camp forging work while active battles and replacements remain l
   const receipt=F.craftForge(s,{fruit:8},'forge-1');assert.equal(receipt.campBonus,false);assert.equal(receipt.chargedValue,8);
   for(const phase of ['battle','replacement']){
     s.run.phase=phase;const before=snapshot(s),view=F.previewForge(s,{fruit:8});
-    assert.equal(view.outcomes.length,105);assert.equal(view.canCraft,false);assert.match(view.reason,/battle/);
+    assert.equal(view.outcomes.length,135);assert.equal(view.canCraft,false);assert.match(view.reason,/battle/);
     assert.throws(()=>F.craftForge(s,{fruit:8},'forge-2'),/battle/);assert.equal(snapshot(s),before);
   }
 });

@@ -4,18 +4,20 @@ import {writeFile,mkdir,readFile,stat} from 'node:fs/promises';
 import {dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {deflateRawSync} from 'node:zlib';
+import {SPECIAL_LOCATIONS} from './living-world.mjs';
+import {locationArt} from './living-world-art.mjs';
 import {SPECIES,ELEMENTS} from './data.mjs';
 import {portrait,battlefield,pickupIcon,elementIcon,ASSET_MANIFEST,ANIMATION_STATES,ULTRA_STATES} from './art.mjs';
 const gameDir=dirname(fileURLToPath(import.meta.url));
 const repoDir=resolve(gameDir,'../..'),buildDir=resolve(repoDir,'work');
 const args=process.argv.slice(2),value=key=>{const i=args.indexOf(key);return i<0?null:args[i+1];};
-const output=resolve(value('--output')||resolve(gameDir,'art-pack/monkey-trails-wild-companions-v3.zip'));
+const output=resolve(value('--output')||resolve(gameDir,'art-pack/monkey-trails-wild-companions-v4.zip'));
 const contact=resolve(value('--contact')||resolve(buildDir,'monkey-trails-contact.html'));
-const prefix='monkey-trails/wild-companions-v3/';
+const prefix='monkey-trails/wild-companions-v4/';
 const manifest=structuredClone(ASSET_MANIFEST);
 manifest.prefix=prefix;
 const roster=Object.values(SPECIES),ultras=roster.filter(s=>s.rarity==='ultra');
-manifest.artwork={author:'Monkey Trails original vector artwork',license:'Distributed with the Monkey Trails game source',anatomyFamilies:12,bespokeExpansionProportions:30,species:roster.length,animationFiles:roster.length*ANIMATION_STATES.length+ultras.length*ULTRA_STATES.length,evolutionVariants:roster.length*3};
+manifest.artwork={author:'Monkey Trails original vector artwork',license:'Distributed with the Monkey Trails game source',anatomyFamilies:12,bespokeExpansionProportions:50,species:roster.length,animationFiles:roster.length*ANIMATION_STATES.length+ultras.length*ULTRA_STATES.length,evolutionVariants:roster.length*3};
 manifest.hosting={assetBaseVariable:'MONKEY_TRAILS_ASSET_BASE',contentType:'image/svg+xml',cacheControl:'public, max-age=31536000, immutable',cors:'Allow your game origin when using cross-origin fetch. Direct image display does not require authenticated requests.'};
 const entries=[];
 function add(name,content){entries.push({name:prefix+name,data:Buffer.from(content)});}
@@ -33,9 +35,11 @@ for(const t of Object.keys(ELEMENTS)){
  add(`interface/element-${t}.svg`,elementIcon(t));
 }
 for(const [id,src] of Object.entries(manifest.pickups))add(src,pickupIcon(id));
+for(const location of SPECIAL_LOCATIONS)add(`locations/${location.landId}/${location.key}.svg`,locationArt(location));
+manifest.locations=Object.fromEntries(SPECIAL_LOCATIONS.map(l=>[l.id,{src:`locations/${l.landId}/${l.key}.svg`,name:l.name,region:l.landId,main:l.main}]));
 add('interface/loading.svg',await readFile(resolve(gameDir,'assets/interface/loading.svg'),'utf8'));
 add('lobby/tile.svg',await readFile(resolve(gameDir,'tile.svg'),'utf8'));
-const readme=`Monkey Trails: Wild Companions — version 3 vector asset package
+const readme=`Monkey Trails: Wild Companions — version 4 vector asset package
 
 Upload the contents of this ZIP preserving the object prefix:
   ${prefix}

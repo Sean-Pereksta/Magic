@@ -12,7 +12,7 @@ test('new species loadouts at every evolution stage survive encrypted reopening 
   const save=await vault.open('Expansion Loadouts','expansion-save-password',{create:true});
   await flush(vault);
   const additions=Object.values(C.SPECIES).filter(species=>species.number>60);
-  assert.equal(additions.length,30);
+  assert.equal(additions.length,50);
   for(const species of additions)for(let stage=0;stage<=3;stage++){
     const companion=structuredClone(save.run.monkey);companion.id=`${species.id}-${stage}`;companion.species=species.id;companion.types=[...species.types];companion.stage=stage;companion.level=10;companion.learned=[];companion.loadout=['strike','brace','breathe'];
     if(stage===3)companion.mastery=companion.types[0];
@@ -22,7 +22,7 @@ test('new species loadouts at every evolution stage survive encrypted reopening 
   }
   await vault.checkpoint(save,true);await flush(vault);
   const remoteVault=new Vault(()=>{},memory(),async()=>cloud),remote=await remoteVault.open('Expansion Loadouts','expansion-save-password');
-  assert.equal(Object.keys(remote.collection).length,121);
+  assert.equal(Object.keys(remote.collection).length,201);
   for(const [id,companion]of Object.entries(save.collection))assert.deepEqual(remote.collection[id].loadout,companion.loadout,id);
   const localVault=new Vault(()=>{},device,async()=>{throw Error('Offline');}),local=await localVault.open('Expansion Loadouts','expansion-save-password');
   assert.deepEqual(Object.values(local.collection).map(p=>p.loadout),Object.values(remote.collection).map(p=>p.loadout));

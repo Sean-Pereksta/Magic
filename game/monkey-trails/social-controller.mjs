@@ -1,5 +1,5 @@
 import {socialFirebaseContext} from './storage.mjs';
-import {SocialStore,createFirestoreSocialAdapter,nearbyPlayers,SOCIAL_CONFIG} from './social-store.mjs';
+import {SocialStore,createFirestoreSocialAdapter,nearbyPlayers,SOCIAL_CONFIG,applicationStatus} from './social-store.mjs';
 import {snapshotTeam,newRaidAttempt,raidAction,duelStake} from './social-combat.mjs';
 import {tribeWeek,TRIBE_WEEK,weeklyProgress,cleanContribution,recordTribeProgress,applyAdventureClaim} from './tribe-adventures.mjs';
 import {localSocial,availableInPack,depositFromPack,retryPackDeposits,applySocialReceipt} from './social-local.mjs';
@@ -13,6 +13,7 @@ export class SocialController{
   Object.assign(this,{getState,getVault,persist,onUpdate,onBattle,onReturn,connect,now});
   this.model={status:'idle',error:'',me:null,tribe:null,members:[],presence:[],nearby:[],offers:[],challenges:[],duel:null,raid:null,receipts:[],now:now(),localFruit:0,localItems:{},adventure:null,adventureMembers:[],adventureClaims:[],previousAdventure:null,tribeRankings:[],rankingsStatus:'idle',rankingsError:'',rankingsUpdatedAt:null};
   this.subscriptions=[];this.crewProfiles=new Map();this.crewWatches=new Map();this.generation=0;this.receiptTask=Promise.resolve();this.actionTask=null;this.lastHeartbeat=0;this.lastBusy=null;this.discoverable=false;this.latestLocation=null;this.teamSignature=null;this.heartbeatTask=null;
+  Object.assign(this.model,{directory:[],directoryStatus:'idle',directorySearch:'',directoryAvailableOnly:false,applications:[],tribeApplications:[],publicTribe:null,publicMembers:[],rankingMetric:'bosses',weeklyMembership:null});
  }
  get uid(){return this.store?.uid;}
  get locked(){return !!(this.model.me?.activeDuel||this.model.raid||this.model.me?.activeRaid);}
@@ -27,6 +28,7 @@ export class SocialController{
    const me=await this.store.register({saveId:this.getVault().id,name:state.name,team:snapshotTeam(state)});if(generation!==this.generation)return;
    this.model.me=me;this.model.status='ready';this.teamSignature=crewSignature(me.team);
    void this.refreshTribeRankings();
+   void this.refreshDirectory();
    await retryPackDeposits(this.localOptions());if(generation!==this.generation)return;
    const error=e=>{this.model.error=`Online update unavailable: ${e.message}`;this.emit();};
    this.subscriptions.push(this.store.watchPlayer(this.uid,p=>{const changed=this.model.me?.activeDuel!==p?.activeDuel;this.model.me=p;this.teamSignature=crewSignature(p?.team);if(p?.tribeId!==this.tribeCode)this.watchTribe(p?.tribeId);if(p?.activeDuel!==this.duelId)this.watchActiveDuel(p?.activeDuel);if(changed&&p?.activeDuel)this.onBattle();this.emit();},error));
@@ -35,6 +37,7 @@ export class SocialController{
    this.subscriptions.push(this.store.watchOffers(list=>{this.model.offers=list;this.emit();},error));
    this.subscriptions.push(this.store.watchReceipts(list=>{this.model.receipts=list;this.queueReceipts();this.emit();},error));
    this.subscriptions.push(this.store.watchAdventureClaims(list=>{this.model.adventureClaims=list;this.queueAdventureClaims();this.emit();},error));
+   this.subscriptions.push(this.store.watchApplications(list=>{this.model.applications=list.map(r=>({...r,displayStatus:applicationStatus(r,this.now())}));void this.store?.expireApplications(list).catch(error);this.emit();},error));
    await this.loadPreviousAdventure();
    if(me.activeRaid)await this.restoreRaid(me.activeRaid);
    if(me.activeDuel)this.onBattle();
@@ -42,12 +45,12 @@ export class SocialController{
   }catch(e){if(generation===this.generation){this.model.status='offline';this.model.error=e.code==='permission-denied'?'Multiplayer rules are not enabled yet. Your trail is saved; retry after the Monkey Trails Firestore rules are published.':e.message;this.emit();}}
  }
  async stop(){
-  const generation=++this.generation;for(const stop of this.adventureWatches||[])stop();this.adventureWatches=[];this.adventureWatchKey=null;clearInterval(this.timer);this.timer=null;for(const unsubscribe of this.subscriptions)unsubscribe();this.subscriptions=[];this.tribeUnsubscribe?.();this.tribeUnsubscribe=null;this.tribeCode=null;this.duelUnsubscribe?.();this.duelUnsubscribe=null;this.duelId=null;for(const entry of this.crewWatches.values())entry.unsubscribe?.();this.crewWatches.clear();this.crewProfiles.clear();this.teamSignature=null;
+  const generation=++this.generation;this.applicationUnsubscribe?.();this.applicationUnsubscribe=null;this.applicationTribe=null;for(const stop of this.adventureWatches||[])stop();this.adventureWatches=[];this.adventureWatchKey=null;clearInterval(this.timer);this.timer=null;for(const unsubscribe of this.subscriptions)unsubscribe();this.subscriptions=[];this.tribeUnsubscribe?.();this.tribeUnsubscribe=null;this.tribeCode=null;this.duelUnsubscribe?.();this.duelUnsubscribe=null;this.duelId=null;for(const entry of this.crewWatches.values())entry.unsubscribe?.();this.crewWatches.clear();this.crewProfiles.clear();this.teamSignature=null;
   const previous=this.store;this.store=null;if(previous)void previous.heartbeat({online:false,busy:true}).catch(()=>{});
-  this.model={...this.model,status:'idle',me:null,tribe:null,members:[],duel:null,raid:null,receipts:[],challenges:[],offers:[],presence:[],nearby:[],adventure:null,adventureMembers:[],adventureClaims:[],previousAdventure:null,tribeRankings:[],rankingsStatus:'idle',rankingsError:'',rankingsUpdatedAt:null};return generation;
+  this.model={...this.model,status:'idle',me:null,tribe:null,members:[],duel:null,raid:null,receipts:[],challenges:[],offers:[],presence:[],nearby:[],adventure:null,adventureMembers:[],adventureClaims:[],previousAdventure:null,tribeRankings:[],rankingsStatus:'idle',rankingsError:'',rankingsUpdatedAt:null,directory:[],directoryStatus:'idle',applications:[],tribeApplications:[],publicTribe:null,publicMembers:[],weeklyMembership:null};return generation;
  }
  emit(){
-  this.model.now=this.now();if(this.store&&this.model.me?.tribeId)this.watchAdventure(this.model.me.tribeId);const nearby=this.uid?nearbyPlayers(this.model.presence,this.uid,this.now()):[];this.watchCrewProfiles(nearby);
+  this.model.now=this.now();this.model.ownBossRank=this.store?.tribeRanks?.get(this.model.me?.tribeId)||null;if(this.store&&this.model.me?.tribeId)this.watchAdventure(this.model.me.tribeId);const nearby=this.uid?nearbyPlayers(this.model.presence,this.uid,this.now()):[];this.watchCrewProfiles(nearby);
   const profile=uid=>uid===this.uid?this.model.me:this.crewProfiles.get(uid),presence=uid=>this.model.presence.find(x=>x.uid===uid)||{};
   this.model.members=(this.model.tribe?.members||[]).map(uid=>{const p=profile(uid);return p?{...p,...presence(uid)}:null;}).filter(Boolean);
   this.model.canClaimTimeout=!!(this.model.duel?.status==='active'&&this.now()-this.model.duel.updatedAt>=90000&&this.model.duel.state?.players[this.model.duel.state.turn]!==this.uid);const state=this.getState();this.model.localFruit=state?.run.fruit||0;this.model.localItems=state?.run.items||{};this.model.busy=this.busy;this.model.discoverable=this.discoverable;
@@ -72,17 +75,26 @@ export class SocialController{
   this.model.rankingsStatus='loading';this.model.rankingsError='';this.emit();
   task.promise=(async()=>{
    try{
-    const rows=await store.listTribeRankings();if(generation!==this.generation||store!==this.store)return[];
-    this.model.tribeRankings=rows;this.model.rankingsStatus='ready';this.model.rankingsUpdatedAt=this.now();this.emit();return rows;
+    const rows=await store.listTribeRankings(this.model.rankingMetric,this.model.me?.tribeId);if(generation!==this.generation||store!==this.store)return[];
+    this.model.tribeRankings=rows;this.model.ownTribeRanking=rows.own||null;this.model.rankingsStatus='ready';this.model.rankingsUpdatedAt=this.now();this.emit();return rows;
    }catch(error){
     if(generation===this.generation&&store===this.store){this.model.rankingsStatus='error';this.model.rankingsError=`Rankings unavailable: ${error.message}`;this.emit();}return[];
    }finally{if(this.rankingsTask===task)this.rankingsTask=null;}
   })();return task.promise;
  }
+ async refreshDirectory({search=this.model.directorySearch,availableOnly=this.model.directoryAvailableOnly}={}){const store=this.store,generation=this.generation;if(!store||this.model.status!=='ready')return[];const request=++this.directoryRequest||1;this.directoryRequest=request;this.model.directorySearch=String(search||'');this.model.directoryAvailableOnly=!!availableOnly;this.model.directoryStatus='loading';this.emit();try{const rows=await store.listDirectory({search,availableOnly});if(this.generation===generation&&this.store===store&&request===this.directoryRequest){this.model.directory=rows;this.model.directoryStatus='ready';this.emit();}return rows;}catch(e){if(this.generation===generation&&request===this.directoryRequest){this.model.directoryStatus='error';this.model.error=`Tribe directory unavailable: ${e.message}`;this.emit();}return[];}}
+ async setTribeRanking(metric){if(!['bosses','weekly','power'].includes(metric))return;if(this.rankingsTask)await this.rankingsTask.promise;if(this.model.rankingMetric!==metric){this.model.tribeRankings=[];this.model.ownTribeRanking=null;}this.model.rankingMetric=metric;return this.refreshTribeRankings();}
+ async viewTribe(id){const store=this.store,generation=this.generation;if(!store)return;const request=++this.publicProfileRequest||1;this.publicProfileRequest=request;const value=await store.getPublicTribe(id);if(generation!==this.generation||store!==this.store||request!==this.publicProfileRequest)return;if(!value)throw Error('This tribe is no longer available.');this.model.publicTribe=value.tribe;this.model.publicMembers=value.members;this.emit();}
+ closeTribeProfile(){this.publicProfileRequest=(this.publicProfileRequest||0)+1;this.model.publicTribe=null;this.model.publicMembers=[];this.emit();}
+ async requestTribe(id){this.requireFree();const result=await this.store.requestTribe(id);await this.refreshDirectory();await this.refreshTribeRankings();return result;}
+ async reviewApplication(id,accept){this.requireFree();const result=await this.store.reviewApplication(id,accept);await this.refreshDirectory();return result;}
+ cancelApplication(id){return this.store.cancelApplication(id);}
+ async leaveTribe(){this.requireFree();await this.store.leaveTribe();this.model.previousAdventure=null;this.closeTribeProfile();await this.refreshDirectory();await this.refreshTribeRankings();}
+ watchLeaderApplications(tribe){const code=tribe?.ownerId===this.uid?tribe.id:null;if(code===this.applicationTribe)return;this.applicationUnsubscribe?.();this.applicationUnsubscribe=null;this.applicationTribe=code;this.model.tribeApplications=[];if(code)this.applicationUnsubscribe=this.store.watchTribeApplications(code,list=>{if(this.applicationTribe!==code)return;this.model.tribeApplications=list.map(r=>({...r,displayStatus:applicationStatus(r,this.now())}));void this.store?.expireApplications(list).catch(()=>{});this.emit();},e=>{this.model.error=e.message;this.emit();});}
  watchActiveDuel(id){this.duelUnsubscribe?.();this.duelId=id||null;this.model.duel=null;if(id)this.duelUnsubscribe=this.store.watchDuel(id,duel=>{if(this.duelId===id){this.model.duel=duel;this.emit();}},error=>{this.model.error=error.message;this.emit();});}
  watchTribe(code){
-  this.tribeUnsubscribe?.();for(const stop of this.adventureWatches||[])stop();this.adventureWatches=[];this.adventureWatchKey=null;this.model.adventure=null;this.model.adventureMembers=[];this.tribeCode=code||null;this.model.tribe=null;this.model.members=[];if(!code)return;
-  this.tribeUnsubscribe=this.store.watchTribe(code,tribe=>{if(this.tribeCode!==code)return;this.model.tribe=tribe;this.emit();},e=>{this.model.error=e.message;this.emit();});
+  this.tribeUnsubscribe?.();this.watchLeaderApplications(null);for(const stop of this.adventureWatches||[])stop();this.adventureWatches=[];this.adventureWatchKey=null;this.model.adventure=null;this.model.adventureMembers=[];this.tribeCode=code||null;this.model.tribe=null;this.model.members=[];if(!code)return;
+  this.tribeUnsubscribe=this.store.watchTribe(code,tribe=>{if(this.tribeCode!==code)return;this.model.tribe=tribe;this.watchLeaderApplications(tribe);this.emit();},e=>{this.model.error=e.message;this.emit();});
  }
  localOptions(){return{state:this.getState(),store:this.store,uid:this.uid,saveId:this.getVault().id,persist:this.persist};}
  async heartbeat(force=false){
@@ -135,6 +147,7 @@ export class SocialController{
   const error=e=>{this.model.error=`Shared adventure pending: ${e.message}`;this.emit();};
   this.adventureWatches.push(this.store.watchAdventure(tribeId,value=>{if(this.adventureWatchKey===key){this.model.adventure=value;this.emit();}},error,week));
   this.adventureWatches.push(this.store.watchAdventureMembers(tribeId,value=>{if(this.adventureWatchKey===key){this.model.adventureMembers=value;this.emit();}},error,week));
+  const store=this.store;void store.adapter.get(`adventureMembers/${store.adventureIdentity(week)}`).then(member=>{if(this.store===store&&this.adventureWatchKey===key){this.model.weeklyMembership=member;this.emit();}}).catch(error);
   void this.loadPreviousAdventure().catch(error);
  }
  async loadPreviousAdventure(){
@@ -143,7 +156,7 @@ export class SocialController{
   if(!member||member.tribeId!==this.model.me?.tribeId)return;
   const summary=await store.adapter.get(`adventures/${member.summaryId}`);if(this.store===store)this.model.previousAdventure={member,summary};
  }
- async joinAdventure(){this.requireFree();weeklyProgress(this.getState(),this.now());await this.persist();const member=await this.store.joinAdventure(cleanContribution(weeklyProgress(this.getState(),this.now())));await this.heartbeat(true);this.emit();return member;}
+ async joinAdventure(){this.requireFree();weeklyProgress(this.getState(),this.now());await this.persist();const member=await this.store.joinAdventure(cleanContribution(weeklyProgress(this.getState(),this.now())));this.model.weeklyMembership=member;await this.heartbeat(true);this.emit();return member;}
  async claimAdventure(weekStart=tribeWeek(this.now())){
   if(this.getVault().conflict)throw Error('Resolve the saved trail conflict before claiming supplies.');
   const claim=await this.store.claimAdventure(Number(weekStart)||tribeWeek(this.now()));

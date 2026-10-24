@@ -44,6 +44,9 @@ export function equipmentCaptureChance(s,chance,cap=.99){
 }
 export const equipmentWalkingRecovery=(s,p,fraction)=>fraction*(1+(s.run?.party?.includes(p?.id)?effect(s,p,'distanceHealing'):0));
 export const equipmentTrainingExperience=(s,p,experience)=>experience*(1+(s.run?.party?.includes(p?.id)?effect(s,p,'trainingExperience'):0));
+export const equipmentCraftQuality=s=>Math.min(.06,teamEffect(s,'craftQuality'));
+export const equipmentSpecialDiscovery=s=>Math.min(.12,teamEffect(s,'specialDiscovery'));
+export const equipmentLocationBonusChance=(s,{offering=false}={})=>Math.min(.30,teamEffect(s,offering?'offeringBonus':'specialResource'));
 
 function baseResource(discovery){
   if(discovery.category==='fruit')return'fruit';
