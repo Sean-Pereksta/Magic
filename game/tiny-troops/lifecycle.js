@@ -4,6 +4,9 @@ const ttRunTimers = new Set();
 function ttTimeout(callback, delay = 0) {
   const epoch = ttTimerEpoch;
   const id = setTimeout(() => {
+    // A callback may already be queued when the browser receives clearTimeout.
+    // Its run token must still be live before it can touch game state.
+    if (!ttRunTimers.has(id)) return;
     ttRunTimers.delete(id);
     if (epoch === ttTimerEpoch) {
       try { callback(); }

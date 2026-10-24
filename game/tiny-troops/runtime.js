@@ -7,6 +7,12 @@
   const q = (s, root = document) => root.querySelector(s);
   const qa = (s, root = document) => [...root.querySelectorAll(s)];
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function copyActionData(value, seen = new Map()) {
+    if (!value || typeof value !== 'object') return value;
+    if (seen.has(value)) return seen.get(value);
+    const result = Array.isArray(value) ? [] : {}; seen.set(value, result);
+    Object.entries(value).forEach(([key, item]) => { if (!['_el', 'el'].includes(key)) result[key] = copyActionData(item, seen); }); return result;
+  }
   const storage = {
     read(key, fallback) { try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; } },
     write(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; } }
@@ -26,9 +32,11 @@
   const random = () => R.nextRandom(S.tt);
   const sample = a => a.length ? a[Math.min(a.length - 1, Math.floor(random() * a.length))] : null;
   const active = u => !!u && !u.dead && Number.isFinite(u.hp) && u.hp > 0;
+  const ownedTarget = u => !!u && (u.team === 'ally' ? S.squad.includes(u) : u.team === 'enemy' && S.enemies.includes(u));
   const isBattle = () => S.phase === 'battle' && !!S.battle;
   const mode = () => S.tt?.mode || 'MENU';
   const isPlaying = () => mode() === 'PLAYING' && !$('mainMenu').classList.contains('open');
+  Object.defineProperty(TP, 'battleState', { get: () => TP.recovery ? 'RECOVERY' : S.tt?.finished ? 'DEFEAT' : isBattle() ? mode() === 'PAUSED' || mode() === 'MENU' ? 'PAUSED' : 'RUNNING' : ['VICTORY', 'DEFEAT'].includes(mode()) ? mode() : 'PREPARATION' });
   function identify(u) { if (u && !u.ttId) { TP.unitSeq = Math.max(TP.unitSeq, S.tt.nextUnitId || 0) + 1; S.tt.nextUnitId = TP.unitSeq; u.ttId = S.tt.id + '-u' + TP.unitSeq; } return u; }
   function discover(u) { if (u && !TP.meta.units.includes(u.n)) { TP.meta.units.push(u.n); saveMeta(); } }
   function setMode(next) { if (!R.MODES.includes(next)) throw new Error('Unknown run mode'); S.tt.mode = next; $('app').dataset.runState = next; }
@@ -79,7 +87,7 @@
   }
   TP.handleCombatError = function (error, stage) { if (!isBattle() && !TP.recovery) return false; combatFailed(error, stage); return true; };
   function recoverBattle(action) {
-    if (!TP.recovery || TP.recovering) return;
+    if (!['retry', 'basic', 'prepare'].includes(action) || !TP.recovery || TP.recovering) return;
     TP.recovering = true;
     const recovery = TP.recovery;
     try {
@@ -173,7 +181,7 @@
   };
   const legacyDmg = dmg;
   dmg = function (src, target, amount, type = 'hit') {
-    if (!target || target.dead || !Number.isFinite(amount) || amount <= 0 || !(target.team === 'ally' ? S.squad.includes(target) : S.enemies.includes(target))) return 0;
+    if (!active(target) || !ownedTarget(target) || !Number.isFinite(amount) || amount <= 0 || TP.recovery || isBattle() && (S.battle.ttEnded || !isPlaying())) return 0;
     let value = amount * R.counterMultiplier(src, target, TP.act === src && type === 'burn' ? 'hit' : type);
     if (src?.team === 'ally') {
       const m = modifiers(src);
@@ -201,7 +209,7 @@
   };
   const legacyHeal = heal;
   heal = function (src, target, amount) {
-    if (!active(target) || !Number.isFinite(amount) || amount <= 0) return 0;
+    if (!active(target) || !ownedTarget(target) || !Number.isFinite(amount) || amount <= 0) return 0;
     let value = amount;
     if (src?.team === 'ally') { const m = modifiers(src); value *= 1 + (m.healMult || 0) + (target.hp / target.maxHp < .5 ? m.triageHeal || 0 : 0); if (R.has(src, 'HEALER') && R.has(target, 'ARMORED')) value *= 1 + (synergy('hospital')?.mods.healArmored || 0); }
     const before = target.hp, result = legacyHeal(src, target, value);
@@ -209,7 +217,7 @@
   };
   const legacyKill = kill;
   kill = function (src, target) {
-    if (!target || target.dead) return;
+    if (!target || target.dead || !ownedTarget(target) || TP.recovery || isBattle() && S.battle.ttEnded) return;
     const before = S.coins, killer = src?.team === 'ally' ? src : target.lastHit;
     legacyKill(src, target); if (!target.dead) return;
     formationKey = '';
@@ -241,6 +249,8 @@
   }
   TP.step = function () {
     if (!isBattle() || !isPlaying()) return false;
+    if (!Number.isSafeInteger(S.battle.id) || S.battle.id < 1 || !Number.isSafeInteger(S.battle.tick) || S.battle.tick < 0 || !Array.isArray(S.squad) || !Array.isArray(S.enemies)) throw new Error('The battle state is invalid. Restore the preparation checkpoint.');
+    if ([...S.squad.filter(Boolean), ...S.enemies].some(u => ![u.hp, u.maxHp, u.atk, u.spd].every(Number.isFinite) || u.maxHp <= 0 || u.spd <= 0)) throw new Error('A troop has invalid battle statistics. Restore the preparation checkpoint.');
     if (!liveA().length) { end(false); return false; } if (!liveE().length) { end(true); return false; }
     if (S.battle.basic) {
       const result = R.stepBasicBattle(S);
@@ -280,6 +290,13 @@
     if (!liveA().length) end(false); else if (!liveE().length) end(true); else render();
     return true;
   };
+  const performCombatStep = TP.step;
+  TP.step = function () {
+    if (TP.stepping || TP.recovery) return false;
+    TP.stepping = true;
+    try { return performCombatStep(); } catch (error) { combatFailed(error, 'combat'); return false; }
+    finally { TP.stepping = false; }
+  };
   loop = function (id) {
     if (!isBattle() || !isPlaying() || S.battle.id !== id || TP.timer !== null) return;
     const began = performance.now();
@@ -288,14 +305,14 @@
   };
   const legacyFight = fight;
   fight = function () {
-    if (isBattle() || S.tt.finished || ['MENU', 'RESULTS'].includes(mode())) return false;
+    if (TP.recovery || isBattle() || S.tt.finished || ['MENU', 'RESULTS'].includes(mode())) return false;
     if (openPendingChoice()) return;
     if (S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization) return msg('Finish your current choice before starting the wave.');
     const requiredEvolution = army().find(u => u && maybeEvolution(u)); if (requiredEvolution) return openEvolution(requiredEvolution);
     if (typeof processNextStarChoice === 'function' && processNextStarChoice()) return;
     if (!liveA().length) return msg('Place at least one fighter first.');
     try {
-    stopLoop(); ttClearTimers(); clearEffects(); S.tt.checkpoint = null; S.tt.draftedRound = S.round;
+    stopLoop(); ttClearTimers(); clearEffects(); S.tt.checkpoint = null; S.tt.pendingPlacement = null; S.tt.draftedRound = S.round;
     TP.battleCheckpoint = stableSnapshot(); prepareWave();
     S.tt.checkpoint = { state: stableSnapshot() }; TP.battleCheckpoint = R.copy(S.tt.checkpoint.state);
     TP.stats = new Map(); TP.deaths = new Set(); TP.actions = new Set(); TP.lastRecap = null; TP.focusTarget = null;
@@ -380,9 +397,16 @@
   choose = function (i) {
     if (S.phase !== 'recruit' || S.tt.finished || !S.choices[i] || S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization) return;
     const c = S.choices[i];
+    S.tt.pendingPlacement = R.copy(c);
     if (c.type === 'tt-path') { S.placingSpecialization = true; close(); msg('Choose a troop that has no specialization yet.'); render(); }
     else legacyChoose(i);
     S.choices = []; saveProfile('draft choice');
+  };
+  TP.cancelPlacement = function () {
+    if (isBattle() || TP.recovery || !(S.placing || S.placingEffect || S.placingUpgrade || S.placingSpecialization || S.tt.pendingPlacement)) return false;
+    S.placing = S.placingEffect = null; S.placingUpgrade = S.placingSpecialization = false; S.tt.pendingPlacement = null;
+    if (S.tt.draftedRound !== S.round) S.choices = S.tt.draft || [];
+    forceClose(); render(); saveProfile('placement canceled'); msg('Placement canceled. Your formation and draft are unchanged.'); return true;
   };
   reroll = function () {
     if (S.phase !== 'recruit' || S.tt.finished || S.placing || S.placingUpgrade || S.placingEffect || S.placingSpecialization) return;
@@ -401,7 +425,7 @@
   function prepareReserve(u) { if (u) { u.dead = false; u.hp = u.maxHp; } return u; }
   function canManageBench() { return ['recruit', 'shop'].includes(S.phase) && mode() !== 'MENU' && !S.tt.finished && !forcedChoice() && !TP.recovery; }
   function finishPlacement(reason) {
-    S.tt.draftedRound = S.round; formationKey = ''; close(); render(); saveProfile(reason);
+    S.tt.pendingPlacement = null; S.tt.draftedRound = S.round; formationKey = ''; close(); render(); saveProfile(reason);
     if (!liveA().length && !army().some(u => maybeEvolution(u)) && !(S.pendingStarChoices || []).length) {
       msg('Recruit saved on the bench. Deploy it to an empty board square to fight.'); return window.openBench();
     }
@@ -505,17 +529,27 @@
     if (!Number.isInteger(i) || i < 0 || i >= S.squad.length || S.tt.finished || mode() === 'MENU') return;
     if (S.placingSpecialization) {
       const u = S.squad[i]; if (!u) return msg('Choose a filled square.'); if (u.ttPath) return msg('This troop already has a specialization.');
+      S.tt.pendingPlacement = null; S.tt.draftedRound = S.round;
       S.placingSpecialization = false; S.tt.pathTarget = u.ttId || identify(u).ttId; S.phase = 'tt-path';
       show('Specialize ' + u.e + ' ' + u.n, 'One permanent path for this troop, for this run.', '<div class="choices">' + R.pathsFor(u).map(pathCard).join('') + '</div>'); render(); return;
     }
     if (S.placing && S.squad[i] && S.squad[i].n !== S.placing.n) return askReplacement('board', i);
-    return legacyTapCell(i);
+    if (S.placingUpgrade && S.squad[i] && !canGainStar(S.squad[i])) return msg('This troop is at the current star cap. Choose another troop.');
+    const pending = S.tt.pendingPlacement;
+    const result = legacyTapCell(i);
+    // Training can open an evolution before fight() runs. Consume its draft at
+    // the actual placement boundary so postponing/reloading cannot grant it twice.
+    if (pending && !S.placing && !S.placingUpgrade && !S.placingEffect && !S.placingSpecialization) {
+      S.tt.pendingPlacement = null; S.tt.draftedRound = S.round; saveProfile('card applied');
+    }
+    return result;
   };
   function pickPath(id) {
     if (S.phase !== 'tt-path') return;
-    const u = S.squad.find(u => u?.ttId === S.tt.pathTarget), p = R.pathsFor(u).find(p => p.id === id);
+    const u = army().find(u => u?.ttId === S.tt.pathTarget), p = R.pathsFor(u).find(p => p.id === id);
     if (!u || u.ttPath || !p) return;
     u.ttPath = id; S.tt.pathTarget = null; S.phase = 'recruit'; formationKey = '';
+    S.tt.deferredDecisions = decisionQueue().filter(d => !(d.kind === 'path' && d.unitId === u.ttId)); delete S.tt.activeDeferredKey;
     if (!TP.meta.paths.includes(id)) { TP.meta.paths.push(id); saveMeta(); }
     close(); msg(u.e + ' ' + u.n + ' chose ' + p.name + '.'); saveProfile('specialization'); fight();
   }
@@ -531,12 +565,14 @@
   // Earlier evolution handlers hard-started private loops. All choices now use the same scheduler.
   pickEvolution = function (i) {
     const u = S.evoTarget, e = S.evoChoices?.[i]; if (!u || !e || S.phase !== 'evolve') return;
-    e.apply(u); window.applySelectedUpgradeBoost?.(u, 5, 'evolution'); u.hp = u.maxHp; u.shield = (u.shield || 0) + 35; S.evoTarget = null; S.evoChoices = []; S.phase = 'recruit';
+    if (!army().includes(u) || !TP.applyUpgrade(u, () => { e.apply(u); window.applySelectedUpgradeBoost?.(u, 5, 'evolution'); })) return;
+    TP.completeDeferredChoice(u, 'evolution', 5); u.hp = u.maxHp; u.shield = (u.shield || 0) + 35; S.evoTarget = null; S.evoChoices = []; S.phase = 'recruit';
     close(); msg(u.e + ' ' + u.n + ' became ' + e.n + '.'); saveProfile('evolution'); fight();
   };
   window.pickAscension = function (i) {
     const u = S.ascTarget, a = S.ascChoices?.[i]; if (!u || !a || !['ascend', 'ascension'].includes(S.phase)) return;
-    a.apply(u); if (u.star < 6) u.star = 6; if (u.star === 6) u.starProg = 0; u.hp = u.maxHp; u.shield = (u.shield || 0) + 70; S.ascTarget = null; S.ascChoices = []; S.phase = 'recruit';
+    if (!army().includes(u) || !TP.applyUpgrade(u, () => a.apply(u))) return;
+    TP.completeDeferredChoice(u, 'mastery', 6); if (u.star < 6) u.star = 6; if (u.star === 6) u.starProg = 0; u.hp = u.maxHp; u.shield = (u.shield || 0) + 70; S.ascTarget = null; S.ascChoices = []; S.phase = 'recruit';
     close(); msg(u.e + ' ' + u.n + ' chose ' + a.n + '.'); saveProfile('mastery'); fight();
   };
   function openEvent() {
@@ -551,11 +587,13 @@
     const bonuses = Array.isArray(S.tt.eventBonuses) ? S.tt.eventBonuses.filter(b => b && typeof b.tag === 'string').map(b => ({ ...b })) : [];
     if (o.bonus) { const old = bonuses.find(b => b.tag === o.bonus.tag && Object.keys(o.bonus).every(k => k === 'tag' || k in b)); if (old) Object.keys(o.bonus).filter(k => k !== 'tag').forEach(k => old[k] = R.numeric(old[k]) + o.bonus[k]); else bonuses.push({ ...o.bonus }); }
     S.tt.eventBonuses = bonuses;
+    S.tt.deferredDecisions = decisionQueue().filter(d => d.key !== S.tt.activeDeferredKey); delete S.tt.activeDeferredKey;
     if (o.coins) S.coins = R.numeric(S.coins) + o.coins;
     S.tt.event = null; S.phase = 'recruit'; close(); msg(e.name + ': ' + o.name + '.'); saveProfile('event'); openRecruit();
   }
   function skipEvent() {
     if (!S.tt.event || isBattle() || mode() === 'MENU' || S.tt.finished) return;
+    S.tt.deferredDecisions = decisionQueue().filter(d => d.key !== S.tt.activeDeferredKey); delete S.tt.activeDeferredKey;
     S.tt.event = null; S.phase = 'recruit'; close(); saveProfile('event skipped'); openRecruit();
   }
   const legacyEnd = end;
@@ -590,6 +628,11 @@
     clearRecovery();
     // Waves have no limit. The campaign keeps escalating after the last region.
   };
+  const settleBattle = end;
+  end = function (win) {
+    if (typeof win !== 'boolean' || TP.recovery) return false;
+    try { return settleBattle(win); } catch (error) { combatFailed(error, 'wave settlement'); return false; }
+  };
   function finishRun(wave) {
     stopLoop(); ttClearTimers(); clearEffects(); S.tt.finished = true; S.tt.outcome = 'defeat'; S.tt.checkpoint = null; S.phase = 'dead'; S.battle = null; setMode('DEFEAT');
     const values = Object.values(S.tt.stats), mvp = values.slice().sort((a, b) => b.damage + b.heal + b.shield - a.damage - a.heal - a.shield)[0], favorite = values.slice().sort((a, b) => b.kills - a.kills)[0];
@@ -607,7 +650,11 @@
   openRelic = function () {
     if (S.tt.finished || mode() === 'MENU' || S.phase !== 'relic') return;
     const pool = relics.filter(r => !S.relics.includes(r.id));
-    if (!pool.length) { S.tt.relicDraft = null; S.phase = 'shop'; return openShop(); }
+    if (!pool.length) {
+      S.tt.deferredDecisions = decisionQueue().filter(d => d.key !== S.tt.activeDeferredKey); delete S.tt.activeDeferredKey;
+      S.tt.relicDraft = null; S.phase = S.shopOpen ? 'shop' : 'recruit';
+      if (S.shopOpen) return openShop(); render(); return msg('Every relic is already in your collection. Your army is ready for the next wave.');
+    }
     if (!S.tt.relicDraft?.some(id => pool.some(r => r.id === id))) { const options = pool.slice(); S.tt.relicDraft = []; while (S.tt.relicDraft.length < 3 && options.length) { const r = sample(options); S.tt.relicDraft.push(r.id); options.splice(options.indexOf(r), 1); } }
     S.relicChoices = S.tt.relicDraft.map(id => pool.find(r => r.id === id)).filter(Boolean);
     show('Boss relic', 'Choose one free relic for this run, then visit the store.', '<div class="choices">' + S.relicChoices.map((r, i) => `<button class="choice" onclick="pickRelic(${i})"><span class="be">${r.e}</span><span><strong>${esc(r.n)}</strong><p>${esc(r.desc)}</p></span><span class="price">FREE</span></button>`).join('') + '</div>'); saveProfile('relic draft'); render();
@@ -615,7 +662,9 @@
   pickRelic = function (i) {
     if (S.phase !== 'relic' || !S.relicChoices[i]) return;
     const r = S.relicChoices[i]; if (S.relics.includes(r.id)) return;
-    r.take(); S.relics.push(r.id); S.relicChoices = []; S.tt.relicDraft = null; S.phase = 'shop'; close(); msg('Relic gained: ' + r.e + ' ' + r.n); saveProfile('relic'); openShop();
+    if (!TP.applyUpgrade(null, () => r.take())) return;
+    S.tt.deferredDecisions = decisionQueue().filter(d => d.key !== S.tt.activeDeferredKey); delete S.tt.activeDeferredKey;
+    S.relics.push(r.id); S.relicChoices = []; S.tt.relicDraft = null; S.phase = S.shopOpen ? 'shop' : 'recruit'; close(); msg('Relic gained: ' + r.e + ' ' + r.n); saveProfile('relic'); if (S.shopOpen) openShop(); else render();
   };
   const legacyShop = openShop;
   openShop = function () {
@@ -660,6 +709,101 @@
     if (S.phase === 'relic' || S.tt.relicDraft?.length) return make('relic', 'relic', 'boss', 'pickRelic(');
     return null;
   }
+  function decisionQueue() { return S.tt.deferredDecisions ||= []; }
+  function decisionUnit(entry) { return army().find(u => (u.ttId || u.id) === entry.unitId || u.id === entry.unitId); }
+  function choiceStar(pending) { return pending.kind === 'evolution' ? 5 : pending.kind === 'mastery' ? 6 : /^star/.test(pending.kind) ? S.starChoiceStar || 10 : 0; }
+  TP.pendingDecisionCount = () => decisionQueue().length;
+  TP.completeDeferredChoice = function (u, kind, star) {
+    const id = u?.ttId || u?.id;
+    S.tt.deferredDecisions = decisionQueue().filter(d => !(d.unitId === id && (kind ? d.kind === kind : true) && (star ? d.star === star : true)));
+    if (!decisionQueue().some(d => d.key === S.tt.activeDeferredKey)) delete S.tt.activeDeferredKey;
+    if (u && star) u.ttDeferredMilestones = (u.ttDeferredMilestones || []).filter(s => s !== star);
+  };
+  TP.applyUpgrade = function (u, apply) {
+    if (isBattle() || TP.recovery || mode() === 'MENU' || u && !army().includes(u)) return false;
+    const unitBefore = u ? copyActionData(u) : null;
+    const before = copyActionData({ boost: S.boost, coins: S.coins, points: S.points, relics: S.relics, abilities: S.abilities, upgrades: S.upgrades, tt: S.tt });
+    try {
+      apply();
+      if (u && ![u.baseMaxHp, u.maxHp, u.baseAtk, u.baseSpd].every(Number.isFinite)) throw new Error('This upgrade produced invalid troop statistics.');
+      return true;
+    } catch (error) {
+      if (u) { Object.keys(u).forEach(k => delete u[k]); Object.assign(u, unitBefore); }
+      Object.assign(S, before); console.error('Tiny Troops upgrade canceled', error);
+      msg('This upgrade could not be applied. Your troop and resources are unchanged; try another choice or choose Later.'); return false;
+    }
+  };
+  TP.deferChoice = function () {
+    const pending = pendingChoice(); if (!pending || isBattle() || TP.recovery) return false;
+    const star = choiceStar(pending), u = typeof pending.target === 'object' ? pending.target : null;
+    if (u) identify(u);
+    const options = pending.kind === 'evolution' ? S.evoChoices : pending.kind === 'mastery' ? S.ascChoices : S.starChoiceChoices || S.ultimate10Choices;
+    const reopening = decisionQueue().find(d => d.key === S.tt.activeDeferredKey && d.kind === pending.kind);
+    const entry = { key: reopening?.key || pending.key, kind: pending.kind, unitId: u?.ttId || (pending.kind === 'path' ? pending.target : null), star, wave: reopening?.wave || S.round, event: pending.kind === 'event' ? R.copy(S.tt.event) : null, relicDraft: pending.kind === 'relic' ? R.copy(S.tt.relicDraft || []) : null, choiceIds: star ? (options || []).map(o => o.id) : [] };
+    const old = decisionQueue().findIndex(d => d.key === entry.key); if (old < 0) decisionQueue().push(entry); else decisionQueue()[old] = entry;
+    if (u && star) u.ttDeferredMilestones = [...new Set([...(u.ttDeferredMilestones || []), star])];
+    if (pending.kind === 'event') S.tt.event = null;
+    if (pending.kind === 'path') S.tt.pathTarget = null;
+    if (pending.kind === 'relic') { S.tt.relicDraft = null; S.relicChoices = []; }
+    S.evoTarget = S.ascTarget = S.starChoiceTarget = S.ultimate10Target = null;
+    S.evoChoices = []; S.ascChoices = []; S.starChoiceChoices = []; S.ultimate10Choices = [];
+    S.phase = pending.kind === 'relic' && S.shopOpen ? 'shop' : 'recruit';
+    delete S.tt.activeDeferredKey;
+    forceClose(); stopLoop(); ttClearTimers(); render(); saveProfile('decision postponed'); msg('Choice saved for later. You can keep preparing and fighting.'); return true;
+  };
+  TP.openDeferredChoice = function (index = 0) {
+    if (isBattle() || TP.recovery || mode() === 'MENU' || S.tt.finished) return false;
+    if (pendingChoice()) return openPendingChoice();
+    const entry = decisionQueue()[index]; if (!entry) return false;
+    S.tt.activeDeferredKey = entry.key;
+    const u = entry.unitId ? decisionUnit(entry) : null;
+    if (entry.unitId && !u) { decisionQueue().splice(index, 1); render(); return false; }
+    if (entry.kind === 'event') { S.tt.event = R.copy(entry.event); S.phase = 'tt-event'; openEvent(); }
+    else if (entry.kind === 'relic') { S.tt.relicDraft = R.copy(entry.relicDraft); S.phase = 'relic'; openRelic(); }
+    else if (entry.kind === 'path') { if (u.ttPath) { decisionQueue().splice(index, 1); return false; } S.tt.pathTarget = u.ttId; openPendingChoice(); }
+    else if (entry.kind === 'evolution' || entry.kind === 'mastery') {
+      if (entry.kind === 'evolution' ? u.evo : u.ascension) { TP.completeDeferredChoice(u, entry.kind, entry.star); return false; }
+      openEvolution(u);
+    } else {
+      forceClose(); const originalStar = u.star;
+      const others = army().filter(a => a !== u).map(a => [a, a.star]);
+      try {
+        others.forEach(([a]) => a.star = 1); S.pendingStarChoices ||= [];
+        S.pendingStarChoices.unshift({ unitId: u.id || u.ttId, unit: u, star: entry.star });
+        u.ttDeferredMilestones = (u.ttDeferredMilestones || []).filter(s => s !== entry.star);
+        window.processNextStarChoice();
+      } finally { u.star = originalStar; others.forEach(([a, star]) => a.star = star); }
+    }
+    if (entry.choiceIds?.length) {
+      const field = entry.star === 5 ? 'evoChoices' : entry.star === 6 ? 'ascChoices' : 'starChoiceChoices';
+      const available = S[field] || [];
+      const pool = [...available, ...(entry.star === 10 ? window.ultimate10Specializations || [] : window.lateStarChoices?.[entry.star] || [])];
+      const exact = entry.choiceIds.map(id => pool.find(o => o.id === id)).filter(Boolean);
+      if (exact.length === entry.choiceIds.length) { S[field] = exact; if (entry.star === 10) S.ultimate10Choices = exact; choiceViews.clear(); forceClose(); openPendingChoice(); }
+    }
+    return true;
+  };
+  // Older adapters also treated any queued 7–13★ choice as a 5★ evolution.
+  // Keep those separate so an already evolved troop cannot open a dead-end view.
+  maybeEvolution = function (u) { const milestone = !u?.evo ? 5 : !u.ascension ? 6 : 0; return !!(u && u.team === 'ally' && milestone && u.star >= milestone && !(u.ttDeferredMilestones || []).includes(milestone)); };
+  window.maybeEvolution = maybeEvolution;
+  const nativeProcessStarChoice = window.processNextStarChoice;
+  window.processNextStarChoice = processNextStarChoice = function () {
+    if (isBattle()) return false;
+    const held = [], previous = S.pendingStarChoices || [];
+    S.pendingStarChoices = previous.filter(c => { const u = army().find(a => a.id === c.unitId || a.ttId === c.unitId); return !u?.ttDeferredMilestones?.includes(c.star); });
+    army().forEach(u => { const stars = (u.ttDeferredMilestones || []).filter(s => s >= 7); if (stars.length) { held.push([u, u.star]); u.star = Math.min(u.star, Math.min(...stars) - 1); } });
+    try { return nativeProcessStarChoice?.(); } finally { held.forEach(([u, star]) => u.star = star); }
+  };
+  const nativePickStarChoice = window.pickStarChoice;
+  window.pickStarChoice = function (i) {
+    const u = S.starChoiceTarget || S.ultimate10Target, star = S.starChoiceStar || 10;
+    const options = S.starChoiceChoices || S.ultimate10Choices || [];
+    if (!u || !army().includes(u) || !options[i] || !['lateStarChoice', 'ultimate10'].includes(S.phase) || isBattle() || TP.recovery) return false;
+    if (!TP.applyUpgrade(u, () => nativePickStarChoice(i))) return false;
+    TP.completeDeferredChoice(u, 'star' + star, star); saveProfile('star choice'); return true;
+  };
+  window.pickUltimate10 = i => window.pickStarChoice(i);
   function openPendingChoice() {
     if (!S.tt || S.tt.finished || isBattle() || mode() === 'MENU') return false;
     let pending = pendingChoice();
@@ -709,18 +853,21 @@
     (q('#body button:not(:disabled), #body input') || $('close')).focus({ preventScroll: true });
   };
   close = function () {
+    // Dismissing an optional decision must also release its preparation lock.
+    if (pendingChoice() && $('drawer').dataset.ttChoiceKey === pendingChoice().key) { TP.deferChoice(); lastFocus?.isConnected && lastFocus.focus({ preventScroll: true }); return; }
     forceClose(); lastFocus?.isConnected && lastFocus.focus({ preventScroll: true });
     if (forcedChoice()) { msg('Your choice is waiting. Use Continue choice to reopen it.'); render(); if (!isBattle()) { stopLoop(); ttClearTimers(); } }
     if (TP.pauseForDialog) { TP.pauseForDialog = false; if (mode() === 'PAUSED') pause(); }
   };
   openMainMenu = function () {
     if (S.tt?.started && window.TinyTroopsSaveFiles?.active()) saveProfile('menu checkpoint');
+    if (mode() !== 'MENU') TP.menuBattleMode = mode();
     stopLoop(); ttClearTimers(); clearEffects(); TP.pauseForDialog = false; forceClose(); setMode('MENU'); $('mainMenu').classList.add('open');
     $('ttResume').hidden = !TP.recovery && (!S.tt.started || S.tt.finished); menuOptions(); refreshTop10(); window.dispatchEvent(new CustomEvent('tt-saves-changed'));
   };
   function resumeRun() {
     if (!TP.recovery && (!S.tt.started || S.tt.finished)) return;
-    $('mainMenu').classList.remove('open'); setMode('PLAYING');
+    $('mainMenu').classList.remove('open'); setMode(isBattle() && TP.menuBattleMode === 'PAUSED' ? 'PAUSED' : 'PLAYING');
     if (TP.recovery) { setMode('PAUSED'); return openRecovery(); }
     if (isBattle()) scheduleStep();
     else if (!openPendingChoice()) { if (S.phase === 'shop') openShop(); else openRecruit(); }
@@ -729,7 +876,7 @@
   openRunMenu = function () {
     if (TP.recovery) return openRecovery();
     if (isBattle() && mode() === 'PLAYING') { pause(); TP.pauseForDialog = true; }
-    show('Your campaign', 'Wave ' + S.round + ' · Endless · ' + R.armyStyle(S.squad), '<div class="runMenuGrid"><button data-tt-action="resume">Continue</button><button class="secondary" onclick="saveProfile(\'manual\')">Save run</button><button class="secondary" data-tt-action="book">Army Book</button><button class="secondary" data-tt-action="history">Run history</button><button class="secondary" data-tt-action="new">Choose a new army</button><button class="secondary" data-tt-action="new">Browse saved runs</button></div>');
+    show('Your campaign', 'Wave ' + S.round + ' · Endless · ' + R.armyStyle(S.squad), '<div class="runMenuGrid"><button data-tt-action="resume">Continue</button><button class="secondary" data-tt-action="decisions">Saved choices · ' + TP.pendingDecisionCount() + '</button><button class="secondary" onclick="saveProfile(\'manual\')">Save run</button><button class="secondary" data-tt-action="book">Army Book</button><button class="secondary" data-tt-action="history">Run history</button><button class="secondary" data-tt-action="new">Choose a new army</button><button class="secondary" data-tt-action="new">Browse saved runs</button></div>');
   };
   function menuOptions() {
     if (!$('ttStarter')) return;
@@ -903,6 +1050,7 @@
     if (el.dataset.ttEvent) return pickEvent(el.dataset.ttEvent, el.dataset.ttEventId);
     if (el.dataset.ttSynergy) return openSynergies(el.dataset.ttSynergy);
     if (el.dataset.ttHistory !== undefined) return openResults(TP.meta.runs[Number(el.dataset.ttHistory)]);
+    if (el.dataset.ttAction === 'decisions') return TP.openDeferredChoice();
     const actions = { pause, retry: () => recoverBattle('retry'), basic: () => recoverBattle('basic'), prepare: () => recoverBattle('prepare'), 'skip-event': skipEvent, resume: close, new: openMainMenu, book: openBook, history: openHistory, synergies: openSynergies, help, counters: openCounters, elements: () => window.openElements?.(), causes: () => show('Combat explanations', 'Recent immunities, resistances, and special interactions.', (S.combatCauses || []).slice(0, 12).map(c => `<p>${esc(c)}</p>`).join('') || '<p>Battle explanations will appear here.</p>'), bench: () => window.openBench?.(), more: () => show('Army tools', 'Details when you need them.', '<div class="runMenuGrid">' + [['book', '📖 Army Book'], ['synergies', '✨ Synergies'], ['bench', '🧺 Bench'], ['counters', '⚔️ Matchups'], ['causes', '📜 Combat explanations'], ['history', '🕰 Run history'], ['help', '❔ How to play']].map(([a, n]) => `<button class="secondary" data-tt-action="${a}">${n}</button>`).join('') + '</div>') };
     actions[el.dataset.ttAction]?.();
   });

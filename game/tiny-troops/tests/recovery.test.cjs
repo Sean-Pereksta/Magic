@@ -57,3 +57,32 @@ test('canceled callbacks cannot mutate a recovered run, and unrelated exceptions
   const { jobs, context } = timers(); vm.runInContext("ttTimeout(() => { throw new Error('stale'); }); ttClearTimers(); ttTimeout(() => { throw new Error('unrelated'); });", context);
   assert.doesNotThrow(jobs[0]); assert.throws(jobs[1], /unrelated/);
 });
+test('an individually canceled callback remains inert even when it was already queued', () => {
+  const { jobs, context } = timers();
+  vm.runInContext("const queued = ttTimeout(() => { throw new Error('canceled work'); }); ttCancelTimeout(queued);", context);
+  assert.doesNotThrow(jobs[0]);
+});
+test('selected draft cards survive migration separately from transient placement references', () => {
+  for (const card of [{ type: 'recruit', unit: ally() }, { type: 'upgrade' }, { type: 'effect', effect: { id: 'shield', n: 'Shield' } }, { type: 'tt-path' }]) {
+    const s = fixture(); s.phase = 'recruit'; s.tt.pendingPlacement = card;
+    const migrated = R.sanitizeSnapshot(s);
+    assert.equal(migrated.tt.pendingPlacement.type, card.type);
+    if (card.type === 'recruit') { assert.equal(migrated.placing.n, 'Squire'); assert.notEqual(migrated.placing, migrated.tt.pendingPlacement.unit); }
+    else assert.ok(card.type === 'upgrade' ? migrated.placingUpgrade : card.type === 'tt-path' ? migrated.placingSpecialization : migrated.placingEffect.id === 'shield');
+  }
+});
+test('deferred milestones, equipment and formation extensions survive migration together', () => {
+  const s = fixture(); s.squad[3].ttId = 'troop'; s.squad[3].ttDeferredMilestones = [5, 8, 'bad', 0, 20, 8];
+  s.squad[3].towerEquipment = ['owned-item-1']; s.tt.equipment = { inventory: [{ id: 'owned-item-1', type: 'bolts' }] }; s.tt.formationPresets = [[null, 'troop']];
+  s.tt.deferredDecisions = [{ key: 'evo', kind: 'evolution', unitId: 'troop', star: 5 }, { key: 'bad', kind: 'unknown' }];
+  const migrated = R.sanitizeSnapshot(s);
+  assert.deepEqual(migrated.squad[3].ttDeferredMilestones, [5]);
+  assert.deepEqual(migrated.tt.equipment, s.tt.equipment); assert.deepEqual(migrated.tt.formationPresets, s.tt.formationPresets);
+  assert.deepEqual(migrated.squad[3].towerEquipment, ['owned-item-1']); assert.equal(migrated.tt.deferredDecisions.length, 1);
+});
+test('migration retains every deferred progression choice and clears orphan suppression', () => {
+  const s = fixture(); s.squad[3].ttId = 'troop'; s.squad[3].ttDeferredMilestones = [5, 8];
+  s.tt.deferredDecisions = Array.from({ length: 180 }, (_, i) => ({ key: 'pending-' + i, kind: 'evolution', star: 5, unitId: 'troop' }));
+  const migrated = R.sanitizeSnapshot(s); assert.equal(migrated.tt.deferredDecisions.length, 180); assert.deepEqual(migrated.squad[3].ttDeferredMilestones, [5]);
+  s.tt.deferredDecisions = []; assert.deepEqual(R.sanitizeSnapshot(s).squad[3].ttDeferredMilestones, []);
+});

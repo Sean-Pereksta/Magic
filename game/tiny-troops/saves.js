@@ -17,14 +17,14 @@
     const get = key => { try { return storage.getItem(key); } catch { return null; } };
     function read(clean) {
       const raw = get(PREFIX + clean), backup = parse(get(BACKUP_PREFIX + clean)), data = parse(raw);
-      return { data: data || backup, recovered: !data && !!backup, corrupt: !!raw && !data, hasBackup: !!backup };
+      return { data: data || backup, backupData: backup, recovered: !data && !!backup, corrupt: !!raw && !data, hasBackup: !!backup };
     }
-    function write(clean, payload) {
+    function write(clean, payload, options = {}) {
       if (!valid(payload)) return { ok: false, error: 'The checkpoint could not be validated.' };
       try {
         const serialized = JSON.stringify(payload), previous = get(PREFIX + clean);
         // A damaged file must never replace the last readable backup.
-        if (parse(previous) && previous !== serialized) {
+        if (!options.preserveBackup && parse(previous) && previous !== serialized) {
           try { storage.setItem(BACKUP_PREFIX + clean, previous); } catch { /* Primary write can still fit. */ }
         }
         storage.setItem(PREFIX + clean, serialized);

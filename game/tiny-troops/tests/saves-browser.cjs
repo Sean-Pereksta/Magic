@@ -45,6 +45,17 @@ async function start(page, name, code = 'qa-code') {
   await page.evaluate(() => { openMainMenu(); localStorage.setItem('tinyTroops.save.v2.save_army_2', '{broken'); }); await page.click('#ttRefreshSaves');
   assert.equal(await page.locator('[data-tt-load-save="save_army_2"]').innerText(), 'Recover');
   await page.click('[data-tt-load-save="save_army_2"]'); assert.equal(await page.evaluate(() => S.round), 27);
+  const validBackup = await page.evaluate(() => {
+    openMainMenu(); const key = 'tinyTroops.save.v2.save_army_2', backupKey = 'tinyTroops.backup.v3.save_army_2';
+    const good = localStorage.getItem(key), bad = JSON.parse(good); bad.updatedAtMs += 100;
+    bad.state.phase = 'battle'; bad.state.tt.checkpoint = { state: 7 };
+    localStorage.setItem(backupKey, good); localStorage.setItem(key, JSON.stringify(bad)); return good;
+  });
+  await page.click('#ttRefreshSaves'); await page.click('[data-tt-load-save="save_army_2"]');
+  assert.equal(await page.evaluate(() => S.round), 27);
+  assert.match(await page.locator('#menuStatus').innerText(), /backup checkpoint/);
+  assert.equal(await page.evaluate(() => localStorage.getItem('tinyTroops.backup.v3.save_army_2')), validBackup, 'a schema-invalid primary cannot replace the usable recovery backup');
+  console.log('PASS schema-invalid primary recovers a validated backup and retains that backup');
   const failed = await page.evaluate(async () => {
     const key = 'tinyTroops.save.v2.save_army_2', before = localStorage.getItem(key), original = Storage.prototype.setItem;
     Storage.prototype.setItem = function (key, value) { if (key.startsWith('tinyTroops.save.v2.')) throw new DOMException('Storage is full', 'QuotaExceededError'); return original.call(this, key, value); };

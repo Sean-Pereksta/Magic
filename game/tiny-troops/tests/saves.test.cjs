@@ -27,6 +27,16 @@ test('a backup is discoverable even if the primary file is missing', () => {
   const storage = memory(), store = P.createStore(storage); storage.setItem(P.BACKUP_PREFIX + 'army', JSON.stringify(payload()));
   assert.equal(store.list()[0].readable, true); assert.equal(store.list()[0].recovered, true);
 });
+test('schema validation can recover the backup when a newer primary has readable JSON but invalid state', () => {
+  const storage = memory(), store = P.createStore(storage), good = payload('army', 5), bad = payload('army', 8);
+  store.write('army', good); bad.state.corrupt = true; store.write('army', bad);
+  const saved = store.read('army'); assert.equal(saved.data.state.round, 8); assert.equal(saved.backupData.state.round, 5);
+  const selected = P.choose([{ data: saved.data, source: 'device' }, { data: saved.backupData, source: 'backup' }], 'code', state => { if (state.corrupt) throw new Error('invalid state'); return state; });
+  assert.equal(selected.source, 'backup'); assert.equal(selected.data.state.round, 5);
+  const priorBackup = storage.getItem(P.BACKUP_PREFIX + 'army');
+  assert.equal(store.write('army', selected.data, { preserveBackup: true }).ok, true);
+  assert.equal(storage.getItem(P.BACKUP_PREFIX + 'army'), priorBackup);
+});
 test('unreadable files remain visible and storage failures never report success', () => {
   const storage = memory(), store = P.createStore(storage); storage.setItem(P.PREFIX + 'broken', 'null');
   assert.equal(store.list()[0].readable, false);

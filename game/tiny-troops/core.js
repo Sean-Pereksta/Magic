@@ -6,7 +6,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
   const VERSION = 3;
-  const MODES = ['MENU', 'PLAYING', 'PAUSED', 'VICTORY', 'DEFEAT', 'RESULTS'];
+  const MODES = ['MENU', 'PLAYING', 'PAUSED', 'VICTORY', 'DEFEAT', 'RESULTS', 'RECOVERY'];
   const PHASES = ['recruit', 'shop', 'relic', 'battle', 'evolve', 'ascend', 'lateStarChoice', 'ultimate10', 'tt-event', 'tt-path', 'dead', 'won'];
   const numeric = (v, fallback = 0, min = 0, max = 1e12) => Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Number(v))) : fallback;
   const copy = v => JSON.parse(JSON.stringify(v));
@@ -189,7 +189,7 @@
   function newRun(config = {}, seed = 1) {
     const starter = STARTERS.some(s => s.id === config.starter) ? config.starter : 'defender';
     const modifier = MODIFIERS.some(m => m.id === config.modifier) ? config.modifier : 'standard';
-    return { version: VERSION, id: 'tt-' + Date.now() + '-' + seed, rng: Math.max(1, seed >>> 0), starter, modifier, difficulty: ['relaxed', 'standard', 'tactician'].includes(config.difficulty) ? config.difficulty : 'standard', mode: 'PLAYING', stats: {}, seenSynergies: {}, eventBonuses: [], event: null, lastEventRound: 0, wavePlan: null, objective: null, outcome: null, finished: false, steps: 0, bestHit: 0, checkpoint: null };
+    return { version: VERSION, id: 'tt-' + Date.now() + '-' + seed, rng: Math.max(1, seed >>> 0), starter, modifier, difficulty: ['relaxed', 'standard', 'tactician'].includes(config.difficulty) ? config.difficulty : 'standard', mode: 'PLAYING', stats: {}, seenSynergies: {}, eventBonuses: [], event: null, lastEventRound: 0, wavePlan: null, objective: null, outcome: null, finished: false, steps: 0, bestHit: 0, checkpoint: null, deferredDecisions: [], pendingPlacement: null };
   }
   function armyStyle(squad) {
     const c = countTags(squad), n = squad.filter(Boolean).length;
@@ -220,6 +220,7 @@
     ['burn', 'poison', 'slow', 'marked', 'silenced', 'stun', 'rooted', 'stagger', 'weakened', 'delay', 'hex', 'healCut', 'healDown', 'goldShield', 'fractured', 'riftTouched', 'fragile', 'cursed', 'suppressed'].forEach(k => u[k] = 0);
     ['lastHit', 'lastAttacker', 'target', 'attacker', 'victim', 'source', 'owner', 'parent', 'linked', 'link', 'from', 'to', '_el', 'el'].forEach(k => delete u[k]);
     u.kills = Math.floor(numeric(u.kills)); u.starProg = numeric(u.starProg);
+    u.ttDeferredMilestones = [...new Set((Array.isArray(u.ttDeferredMilestones) ? u.ttDeferredMilestones : []).filter(s => Number.isInteger(s) && s >= 5 && s <= 13))];
     u.fx = (Array.isArray(u.fx) ? u.fx : []).filter(f => f && typeof f.id === 'string').slice(0, 30);
     if (!PATHS.some(p => p.id === u.ttPath)) delete u.ttPath;
     return u;
@@ -255,6 +256,8 @@
     if (snap.tt.wavePlan && (!Array.isArray(snap.tt.wavePlan.enemies) || snap.tt.wavePlan.enemies.length > 40)) snap.tt.wavePlan = null;
     if (snap.tt.wavePlan?.enemies.some(e => !e || typeof e.n !== 'string' || !Number.isFinite(e.maxHp) || e.maxHp <= 0 || !Number.isFinite(e.atk) || e.atk < 0 || !Number.isFinite(e.spd) || e.spd <= 0)) snap.tt.wavePlan = null;
     snap.tt.steps = Math.floor(numeric(snap.tt.steps)); snap.tt.bestHit = numeric(snap.tt.bestHit); snap.tt.nextUnitId = Math.floor(numeric(snap.tt.nextUnitId));
+    snap.tt.deferredDecisions = (Array.isArray(snap.tt.deferredDecisions) ? snap.tt.deferredDecisions : []).filter(d => d && typeof d.key === 'string' && ['evolution', 'mastery', 'path', 'event', 'relic', 'star7', 'star8', 'star9', 'star10', 'star11', 'star12', 'star13'].includes(d.kind) && (d.kind !== 'event' || EVENTS.some(e => e.id === d.event?.id)) && (['event', 'relic'].includes(d.kind) || typeof d.unitId === 'string')).map(d => ({ ...d, key: d.key.slice(0, 200), star: Math.floor(numeric(d.star, 0, 0, 13)), wave: Math.floor(numeric(d.wave, snap.round, 1)), choiceIds: (Array.isArray(d.choiceIds) ? d.choiceIds : []).filter(id => typeof id === 'string').slice(0, 3), relicDraft: (Array.isArray(d.relicDraft) ? d.relicDraft : []).filter(id => typeof id === 'string').slice(0, 3) }));
+    [...snap.squad, ...snap.bench].filter(Boolean).forEach(u => { u.ttDeferredMilestones = u.ttDeferredMilestones.filter(star => snap.tt.deferredDecisions.some(d => (d.unitId === u.ttId || u.id && d.unitId === u.id) && d.star === star)); });
     if (snap.tt.basicCombatRound !== snap.round) delete snap.tt.basicCombatRound;
     snap.tt.draft = (Array.isArray(snap.tt.draft) ? snap.tt.draft : []).slice(0, 3).map(c => { if (!c || !['recruit', 'effect', 'upgrade', 'tt-path'].includes(c.type)) return null; if (c.type === 'recruit') { c.unit = sanitizeUnit(c.unit, roster); if (!c.unit) return null; } return c; }).filter(Boolean);
     snap.runEnded = !!snap.runEnded || ['dead', 'won'].includes(snap.phase) || !!snap.tt.finished;
@@ -263,6 +266,13 @@
     ['placing', 'placingEffect', 'placingSpecialization', 'evoTarget', 'ascTarget', 'starChoiceTarget', 'ultimate10Target'].forEach(k => snap[k] = null);
     snap.placingUpgrade = false;
     ['choices', 'items', 'relicChoices', 'evoChoices', 'ascChoices', 'starChoiceChoices', 'ultimate10Choices'].forEach(k => snap[k] = []);
+    const pending = snap.tt.pendingPlacement;
+    snap.tt.pendingPlacement = null;
+    if (!snap.runEnded && snap.phase === 'recruit' && pending && ['recruit', 'effect', 'upgrade', 'tt-path'].includes(pending.type)) {
+      if (pending.type === 'recruit') { const unit = sanitizeUnit(pending.unit, roster); if (unit) { snap.tt.pendingPlacement = { ...pending, unit }; snap.placing = copy(unit); } }
+      else if (pending.type === 'effect' && pending.effect && typeof pending.effect.id === 'string') { snap.tt.pendingPlacement = pending; snap.placingEffect = copy(pending.effect); }
+      else if (pending.type === 'upgrade' || pending.type === 'tt-path') { snap.tt.pendingPlacement = pending; snap[pending.type === 'upgrade' ? 'placingUpgrade' : 'placingSpecialization'] = true; }
+    }
     return snap;
   }
   // A recovery battle deliberately avoids native spell/ability callbacks. It still

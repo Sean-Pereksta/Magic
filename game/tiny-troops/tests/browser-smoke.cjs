@@ -69,8 +69,8 @@ let browser;
     qaArmy(180, ['Archer']); S.squad[3].star = 7; S.squad[3].starProg = 2; S.tt.draftedRound = 180;
     restoreSnapshot(stableSnapshot()); ttClearTimers(); openRecruit();
     if (S.phase !== 'evolve') throw new Error('Legacy high-star evolution did not reopen');
-    pickEvolution(0); if (S.phase !== 'ascend') throw new Error('Legacy high-star mastery did not reopen');
-    pickAscension(0); ttClearTimers(); TinyTroopsPolish.timer = null;
+    pickEvolution(0); TinyTroopsManagement.confirmEvolution(); fight(); if (S.phase !== 'ascend') throw new Error('Legacy high-star mastery did not reopen');
+    pickAscension(0); TinyTroopsManagement.confirmEvolution(); fight(); ttClearTimers(); TinyTroopsPolish.timer = null;
     if (S.phase !== 'battle' || S.squad[3].star !== 7 || S.squad[3].starProg !== 2) throw new Error('Legacy evolution repair lost star progress');
   });
   console.log('PASS older saves with an occupied fifth row and unfinished high-star evolution');
@@ -95,10 +95,10 @@ let browser;
   console.log('PASS equipment/abilities/specializations', equipment);
   const upgrades = await page.evaluate(() => {
     qaArmy(180, ['Archer']); const u = S.squad[3]; u.star = 4; u.starProg = starNeed(u) - 1; S.placingUpgrade = true; tapCell(3);
-    if (S.phase !== 'evolve') throw new Error('5-star evolution missing'); pickEvolution(0); ttClearTimers(); TinyTroopsPolish.timer = null;
+    if (S.phase !== 'evolve') throw new Error('5-star evolution missing'); pickEvolution(0); TinyTroopsManagement.confirmEvolution(); fight(); ttClearTimers(); TinyTroopsPolish.timer = null;
     if (!u.evo || S.phase !== 'battle') throw new Error('Evolution did not use the canonical battle flow');
     end(true); ttClearTimers(); S.phase = 'recruit'; S.tt.event = null; u.star = 5; u.starProg = starNeed(u) - 1; S.placingUpgrade = true; tapCell(3);
-    if (S.phase !== 'ascend') throw new Error('6-star ascension missing'); pickAscension(0); ttClearTimers(); TinyTroopsPolish.timer = null;
+    if (S.phase !== 'ascend') throw new Error('6-star ascension missing'); pickAscension(0); TinyTroopsManagement.confirmEvolution(); fight(); ttClearTimers(); TinyTroopsPolish.timer = null;
     if (!u.ascension || S.phase !== 'battle') throw new Error('Ascension did not start combat');
     for (const n of ['Archer', 'Medic']) {
       qaArmy(180, [n]); const x = S.squad[3];
@@ -169,6 +169,7 @@ let browser;
   await page.evaluate(() => { openMainMenu(); reset(); document.getElementById('mainMenu').classList.remove('open'); close(); render(); });
   for (const size of [{ width: 1280, height: 900 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 360, height: 640 }]) {
     await page.setViewportSize(size);
+      await page.waitForFunction(() => { const grid = document.getElementById('grid').getBoundingClientRect(), footer = document.querySelector('footer').getBoundingClientRect(); return document.documentElement.scrollWidth <= innerWidth && grid.bottom <= footer.top + 2; });
     const bounds = await page.evaluate(() => { const g = document.getElementById('grid').getBoundingClientRect(), f = document.querySelector('footer').getBoundingClientRect(); return { width: document.documentElement.scrollWidth, viewport: innerWidth, gridBottom: g.bottom, footerTop: f.top, gridWidth: g.width, height: g.height }; });
     if (bounds.width > bounds.viewport) console.log('Overflow elements:', await page.evaluate(() => [...document.querySelectorAll('*')].map(el => ({ id: el.id, c: el.className, right: el.getBoundingClientRect().right, left: el.getBoundingClientRect().left })).filter(x => x.right > innerWidth + 2 || x.left < -2).slice(0, 20)));
     assert.ok(bounds.width <= bounds.viewport, JSON.stringify(bounds)); assert.ok(bounds.gridBottom <= bounds.footerTop + 2, JSON.stringify(bounds));
