@@ -7,11 +7,16 @@ import {createRequire} from 'node:module';
 const require=createRequire(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES?`${process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES}/playwright/package.json`:import.meta.url);
 const {chromium}=require('playwright');
 const root=path.resolve(fileURLToPath(new URL('../../../',import.meta.url)));
+const remotePackURL='https://pub-47f679f65f034fbda4c4b2ee31b3818a.r2.dev/battle/v1/pack.json';
+const packBody=await readFile(path.join(root,'game/iron-throne/assets/battle/v1/pack.json'),'utf8');
 const server=http.createServer(async(req,res)=>{try{const url=new URL(req.url,'http://localhost');if(url.pathname==='/test'){res.writeHead(200,{'Content-Type':'text/html'});res.end('<style>html,body{margin:0;height:100%;background:#123}canvas{width:100%;height:100%}</style><canvas id="battle"></canvas>');return;}const filename=path.resolve(root,'.'+url.pathname);if(!filename.startsWith(root+path.sep))throw Error('outside root');const data=await readFile(filename);res.writeHead(200,{'Content-Type':filename.endsWith('.mjs')?'text/javascript':filename.endsWith('.json')?'application/json':'application/octet-stream'});res.end(data);}catch{res.writeHead(404);res.end();}});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const browser=await chromium.launch({headless:true,executablePath:process.env.IRON_THRONE_CHROMIUM||undefined,args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 try{
   const page=await browser.newPage({viewport:{width:1280,height:800}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  let remoteStatus=200,remoteRequests=0,localRequests=0;
+  page.on('request',request=>{if(new URL(request.url()).pathname==='/game/iron-throne/assets/battle/v1/pack.json')localRequests++;});
+  await page.route(remotePackURL,route=>{remoteRequests++;return route.fulfill({status:remoteStatus,headers:{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'},body:remoteStatus===200?packBody:'unavailable'});});
   await page.goto(`http://127.0.0.1:${server.address().port}/test`);
   const result=await page.evaluate(async()=>{
     const {createBattleRenderer}=await import('/game/iron-throne/battle-renderer.mjs'),{UNITS,CAMPAIGN_HOUSES}=await import('/game/iron-throne/data.mjs');
@@ -22,6 +27,8 @@ try{
     const point=renderer.pick(640,400);return{stats:renderer.stats,point};
   });
   assert.ok(result.stats.instanced);assert.equal(result.stats.models,16);assert.ok(result.point&&Math.abs(result.point.x)<.01);assert.ok(result.stats.drawCalls>15);
+  assert.equal(remoteRequests,1,'a battlefield loads the default Cloudflare pack');
+  assert.equal(localRequests,0,'a successful default remote load does not fetch the local fallback');
   if(process.env.BATTLE_SCREENSHOT){await mkdir(path.dirname(process.env.BATTLE_SCREENSHOT),{recursive:true});await page.screenshot({path:process.env.BATTLE_SCREENSHOT});}
   const wallPick=await page.evaluate(()=>{
     battle.layout.stairs=[{id:'w-stairs',wallId:'w',x:-12,z:32,topX:-12,topZ:26,height:6,width:3,depth:6}];
@@ -46,11 +53,19 @@ try{
   }
   await page.evaluate(()=>{battle.time+=.3;renderer.render(battle,{mode:'third',target:{x:0,y:0,z:0},yaw:Math.PI,pitch:.3,distance:7});renderer.dispose();renderer.dispose();});
   assert.deepEqual(errors,[]);
-  // A populated asset cache permits a new battlefield while disconnected.
+  const downloaded=await page.evaluate(async()=>{const {downloadBattleAssets,BATTLE_ASSET_BASE,BATTLE_ASSET_PATH}=await import('/game/iron-throne/battle-assets.mjs');const result=await downloadBattleAssets();const cache=await caches.open('iron-thrones-battle-v1');return{...result,remoteCached:!!await cache.match(`${BATTLE_ASSET_BASE}/${BATTLE_ASSET_PATH}`)};});
+  assert.equal(downloaded.cached,true,'Download battlefield models accepts the default remote cache');assert.equal(downloaded.remoteCached,true);assert.equal(downloaded.models,16);
+  assert.equal(remoteRequests,2,'explicit download refreshes the remote package');assert.equal(localRequests,0);
+  // A populated remote asset cache permits a new battlefield while disconnected.
   await page.context().setOffline(true);
   const cached=await page.evaluate(async()=>{const {loadBattleAssets,releaseBattleAssets}=await import('/game/iron-throne/battle-assets.mjs');releaseBattleAssets();return(await loadBattleAssets()).version;});assert.equal(cached,1);
+  assert.equal(remoteRequests,2,'an offline cache hit needs no remote request');assert.equal(localRequests,0);
   await page.context().setOffline(false);
+  remoteStatus=503;
+  const fallback=await page.evaluate(async()=>{const {loadBattleAssets,clearBattleAssetCache}=await import('/game/iron-throne/battle-assets.mjs');await clearBattleAssetCache();return(await loadBattleAssets({retry:true})).version;});
+  assert.equal(fallback,1,'a failed Cloudflare request falls back to the bundled package');assert.equal(remoteRequests,3);assert.equal(localRequests,1);
   await page.route('**/assets/battle/v1/pack.json',route=>route.fulfill({status:503,body:'unavailable'}));
   const message=await page.evaluate(async()=>{const {loadBattleAssets,clearBattleAssetCache}=await import('/game/iron-throne/battle-assets.mjs');await clearBattleAssetCache();try{await loadBattleAssets({retry:true});return null;}catch(e){return e.message;}});assert.match(message,/Retry or resolve/);
-  console.log('Battle renderer: all 15 troop classes, instanced geometry, cameras, picking, disposal, offline cache, and failure recovery passed.');
+  assert.equal(remoteRequests,4);assert.equal(localRequests,2);assert.deepEqual(errors,[]);
+  console.log('Battle renderer: all 15 troop classes, instanced geometry, cameras, picking, disposal, default Cloudflare load/download, offline remote cache, local fallback, and failure recovery passed.');
 }finally{await browser.close();await new Promise(r=>server.close(r));}

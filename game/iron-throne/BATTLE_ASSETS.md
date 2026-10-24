@@ -16,7 +16,7 @@ The bundle contains `battle/v1/models/*.gltf` and their binary buffers, animatio
 
 ## Existing R2 workflow
 
-The existing public asset base is `https://pub-47f679f65f034fbda4c4b2ee31b3818a.r2.dev`. Upload the bundle contents with their paths intact; the runtime model URL becomes `battle/v1/pack.json`. Set `globalThis.IRON_THRONES_BATTLE_ASSET_BASE` to this base before opening the battle to opt into the mirror. Serve JSON with CORS GET permission for the game origin. A remote failure falls back to the included local package. No upload is needed to play the supplied expansion.
+The default public asset base is `https://pub-47f679f65f034fbda4c4b2ee31b3818a.r2.dev`. Upload the bundle contents with their paths intact; the runtime model URL becomes `battle/v1/pack.json`. Enter Battle automatically loads this Cloudflare package and caches it for offline play. Serve JSON with CORS GET permission for the game origin. A remote failure falls back to the included local package. Set `globalThis.IRON_THRONES_BATTLE_ASSET_BASE` to another base to override the host, or to an empty string to use only bundled assets.
 
 The settings download action saves the validated model pack in browser Cache Storage. Loading checks that cache before fetching; a failed load never silently substitutes generic placeholder soldiers. Retry clears the in-memory failed request and re-fetches. If both local and configured remote sources fail, the caller receives a recovery error while the saved encounter remains pending. A download reports failure if site storage cannot persist the pack. Clearing browser site data removes the offline model cache; the base campaign files still need to be available to open the game itself.
 

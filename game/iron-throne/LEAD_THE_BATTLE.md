@@ -41,7 +41,7 @@ The UI saves a single campaign snapshot containing the applied marker and all re
 
 ## Artwork and delivery
 
-The renderer loads only on entering combat. The included articulated models cover the complete troop catalog and all twelve House emblems, with horses, weapons, engine crew, effects and audio. Browser Cache Storage can predownload the model package from campaign settings. The runtime uses the local package and optionally an R2 mirror; no remote upload is required to play this change. See [BATTLE_ASSETS.md](BATTLE_ASSETS.md) for the reusable glTF/animation/texture/sound package and existing remote-asset workflow.
+The renderer loads only on entering combat. The included articulated models cover the complete troop catalog and all twelve House emblems, with horses, weapons, engine crew, effects and audio. Enter Battle automatically loads the package from the configured Cloudflare R2 bucket and caches it for offline play; bundled assets remain available if the remote package cannot load. Campaign settings can also predownload the package. See [BATTLE_ASSETS.md](BATTLE_ASSETS.md) for the reusable glTF/animation/texture/sound package and existing remote-asset workflow.
 
 ## Validation and limits
 

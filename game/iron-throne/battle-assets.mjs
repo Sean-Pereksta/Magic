@@ -5,6 +5,8 @@ export const BATTLE_ASSET_BASE = 'https://pub-47f679f65f034fbda4c4b2ee31b3818a.r
 const LOCAL_PACK = new URL(`./assets/${BATTLE_ASSET_PATH}`,import.meta.url).href;
 const CACHE_NAME = `iron-thrones-battle-${BATTLE_ASSET_VERSION}`;
 const pending = new Map();
+const configuredAssetBase = () => globalThis.IRON_THRONES_BATTLE_ASSET_BASE ?? BATTLE_ASSET_BASE;
+const remotePackUrl = base => base ? `${String(base).replace(/\/$/,'')}/${BATTLE_ASSET_PATH}` : null;
 
 export function validateBattlePack(pack) {
   if(pack?.format!=='iron-thrones-rigged-mesh'||pack.version!==1||!pack.models||!pack.meshes)throw new Error('The battlefield model package is incompatible.');
@@ -15,8 +17,8 @@ export function validateBattlePack(pack) {
   return pack;
 }
 
-export async function loadBattleAssets({onProgress=()=>{},signal,assetBase=globalThis.IRON_THRONES_BATTLE_ASSET_BASE,retry=false}={}) {
-  const remote=assetBase?`${String(assetBase).replace(/\/$/,'')}/${BATTLE_ASSET_PATH}`:null;
+export async function loadBattleAssets({onProgress=()=>{},signal,assetBase=configuredAssetBase(),retry=false}={}) {
+  const remote=remotePackUrl(assetBase);
   const key=remote||LOCAL_PACK;
   if(retry)pending.delete(key);
   if(pending.has(key))return pending.get(key);
@@ -47,9 +49,9 @@ export async function loadBattleAssets({onProgress=()=>{},signal,assetBase=globa
 export function releaseBattleAssets(){pending.clear();}
 export async function clearBattleAssetCache(){releaseBattleAssets();return globalThis.caches?.delete(CACHE_NAME);}
 export async function downloadBattleAssets(onProgress=()=>{}) {
-  const pack=await loadBattleAssets({onProgress,retry:true});
+  const assetBase=configuredAssetBase(), pack=await loadBattleAssets({onProgress,assetBase,retry:true});
   let cached=false;
-  try{const cache=await globalThis.caches?.open(CACHE_NAME);cached=!!(await cache?.match(LOCAL_PACK));if(!cached&&globalThis.IRON_THRONES_BATTLE_ASSET_BASE)cached=!!(await cache?.match(`${String(globalThis.IRON_THRONES_BATTLE_ASSET_BASE).replace(/\/$/,'')}/${BATTLE_ASSET_PATH}`));}catch{}
+  try{const cache=await globalThis.caches?.open(CACHE_NAME);const remote=remotePackUrl(assetBase);cached=!!(remote&&await cache?.match(remote))||!!(await cache?.match(LOCAL_PACK));}catch{}
   if(!cached)throw new Error('This browser could load the models but could not save them for offline use. Allow site storage and try again.');
   return{models:Object.keys(pack.models).length,cached,version:BATTLE_ASSET_VERSION};
 }
