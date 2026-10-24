@@ -50,7 +50,7 @@ const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/
   const cancel=await yes(a.offerTrade('bob',{asset:'berry',amount:1},{asset:'fruit',amount:2}),'second escrow trade');await yes(b.cancelTrade(cancel.id),'recipient cancels and refunds escrow');
   await yes(a.heartbeat(),'first presence');await yes(b.heartbeat(),'second presence');
   const challenge=await yes(a.challenge('bob'),'tribe challenge');const duel=await yes(b.acceptChallenge(challenge.id),'accept and escrow duel');
-  assert.equal(duel.state.version,4);checks++;
+  assert.equal(duel.state.version,A.SOCIAL_COMBAT_VERSION);checks++;
   await blocked(a.challenge('bob'),'busy players reject new challenges');
   await no(f.updateDoc(f.doc(dbs.charlie,root,'duels',duel.id),{revision:1}),'outsider cannot append turn');
   await blocked(b.act(duel.id,{type:'move',id:'strike'},0),'off-turn play denied');
@@ -70,13 +70,13 @@ const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/
   const bobBase=createFirestoreSocialAdapter({db:dbs.bob,f}),badEscrow={...bobBase,transaction:cb=>bobBase.transaction(async tx=>{const writes=[];const result=await cb({get:tx.get,set:(p,v)=>writes.push([p,structuredClone(v)]),delete:tx.delete});const operation=writes.find(([p,v])=>p.startsWith('operations/')&&v.kind==='duel-start')?.[1];if(operation){for(const uid of operation.participants){operation.details.escrow[uid]=-1;operation.details.wallets[uid].after.fruit=operation.details.wallets[uid].before.fruit+1;writes.find(([p])=>p===`players/${uid}`)[1].wallet.fruit=operation.details.wallets[uid].after.fruit;}writes.find(([p])=>p.startsWith('duels/'))[1].escrow=structuredClone(operation.details.escrow);}for(const [p,v]of writes)tx.set(p,v);return result;})};
   await no(new SocialStore(badEscrow,{uid:'bob'}).acceptChallenge(counterfeit.id),'negative escrow cannot mint either player fruit');await yes(b.declineChallenge(counterfeit.id),'close rejected malicious acceptance');
   const futureChallenge=await yes(a.challenge('bob'),'future-version challenge fixture');
-  await no(mutatedStore('bob',(p,v)=>{if(p.startsWith('duels/'))v.state.version=5;}).acceptChallenge(futureChallenge.id),'unknown duel balance version rejected');await yes(b.declineChallenge(futureChallenge.id),'close rejected future-version challenge');
+  await no(mutatedStore('bob',(p,v)=>{if(p.startsWith('duels/'))v.state.version=6;}).acceptChallenge(futureChallenge.id),'unknown duel balance version rejected');await yes(b.declineChallenge(futureChallenge.id),'close rejected future-version challenge');
   await no(f.setDoc(f.doc(dbs.charlie,root,'receipts','alice','entries','fake'),{id:'fake',uid:'alice',type:'raid',title:'Forged',payload:{fruit:100,xp:100,items:{}},walletCredited:true,sourceId:'fake',createdAt:Date.now(),seen:false}),'outsider forged rewards denied');
   await yes(c.heartbeat({discoverable:true,location:{lat:40,lon:-74,accuracy:100,at:Date.now()}}),'nearby presence');await yes(a.heartbeat({discoverable:true,location:{lat:40,lon:-74,accuracy:100,at:Date.now()}}),'own nearby presence');
   const nearby=await yes(a.challenge('charlie'),'opted-in nearby challenge');await yes(c.declineChallenge(nearby.id),'nearby decline');
   await yes(c.heartbeat({discoverable:true,location:{lat:42,lon:-74,accuracy:100,at:Date.now()}}),'far presence');await blocked(a.challenge('charlie'),'one-mile boundary blocks far strangers');
-  await no(mutatedStore('alice',(p,v)=>{if(p.startsWith('raids/'))v.version=5;}).startRaid(),'unknown raid balance version rejected');
-  const raid=await yes(a.startRaid(),'hourly raid start');assert.equal(raid.version,4);checks++;
+  await no(mutatedStore('alice',(p,v)=>{if(p.startsWith('raids/'))v.version=6;}).startRaid(),'unknown raid balance version rejected');
+  const raid=await yes(a.startRaid(),'hourly raid start');assert.equal(raid.version,A.SOCIAL_COMBAT_VERSION);checks++;
   await no(f.updateDoc(f.doc(dbs.alice,root,'raids',raid.id),{version:2}),'raid balance version immutable');
   await yes(a.abandonRaid(raid.id),'raid abandonment clears busy');await yes(a.heartbeat(),'raid availability');await blocked(a.startRaid(),'server cooldown rejects second hourly attempt');
   for(const version of [undefined,1,2,3]){
@@ -106,6 +106,50 @@ const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/
   assert.equal(rankings.length,25);assert.deepEqual(rankings.slice(0,3).map(t=>[t.id,t.rank]),[['ranking-34',1],['ranking-33',1],['ranking-32',3]]);checks++;
   for(const [index,row] of rankings.entries()){assert.deepEqual(Object.keys(row).sort(),['id','name','emblem','memberCount','bossLevel','bossesDefeated','rank'].sort());assert.equal(row.bossesDefeated,row.bossLevel-1);assert.equal(row.memberCount,1);if(index)assert.ok(row.bossLevel<=rankings[index-1].bossLevel);}checks++;
   await no(f.getDocs(f.query(f.collection(env.unauthenticatedContext().firestore(),root,'tribes'),f.orderBy('boss.level','desc'),f.limit(25))),'rankings remain authenticated');
+  // Public directory and approval mode must be enforced by rules, even when a
+  // modified browser skips the normal application and membership checks.
+  const leaderA=await make('leaderA'),leaderB=await make('leaderB'),applicant=await make('applicant'),outsider=await make('outsider');
+  const approvalA=await yes(leaderA.createTribe({name:'Approval Canopy A',admissionMode:'approval'}),'create approval tribe A'),approvalB=await yes(leaderB.createTribe({name:'Approval Canopy B',admissionMode:'approval'}),'create approval tribe B');
+  const requestA=await yes(applicant.requestTribe(approvalA.id),'request approval tribe A'),requestB=await yes(applicant.joinTribe(approvalB.id),'invite code respects leader approval');
+  assert.equal((await applicant.getPlayer()).tribeId,null);checks++;
+  await yes(applicant.adapter.list('applications',[['uid','==','applicant']]),'applicant can inspect own request statuses');
+  await yes(leaderA.adapter.list('applications',[['tribeId','==',approvalA.id]]),'leader can inspect request inbox');
+  await no(outsider.adapter.get(`applications/${requestA.id}`),'outsider cannot read another application');
+  await no(f.setDoc(f.doc(dbs.applicant,root,'applications','applicant-3'),{...requestA,id:'applicant-3',slot:3}),'fourth application slot rejected by rules');
+  await no(f.updateDoc(f.doc(dbs.applicant,root,'applications',requestA.id),{status:'accepted',decidedBy:'applicant',updatedAt:Date.now()}),'applicant cannot self approve');
+  await no(f.updateDoc(f.doc(dbs.leaderA,root,'applications',requestA.id),{status:'accepted',decidedBy:'leaderA',updatedAt:Date.now()}),'approval requires atomic membership writes');
+  await no(applicant.adapter.transaction(async tx=>{const p=await tx.get('players/applicant'),t=await tx.get(`tribes/${approvalA.id}`);t.members.push('applicant');t.updatedAt=Date.now();p.tribeId=t.id;p.version++;p.updatedAt=Date.now();tx.set(`tribes/${t.id}`,t);tx.set('players/applicant',p);}),'approval tribe rejects direct open join');
+  await yes(applicant.heartbeat({busy:true}),'applicant enters ordinary battle');await blocked(leaderA.reviewApplication(requestA.id,true),'leader cannot interrupt an online applicant battle');
+  const bypassBase=createFirestoreSocialAdapter({db:dbs.leaderA,f}),bypassBusy=new SocialStore({...bypassBase,transaction:cb=>bypassBase.transaction(tx=>cb({...tx,get:async path=>{const value=await tx.get(path);return path==='presence/applicant'?{...value,busy:false}:value;}}))},{uid:'leaderA'});
+  await no(bypassBusy.reviewApplication(requestA.id,true),'rules enforce busy applicant even when browser forges its local read');await yes(applicant.heartbeat({busy:false}),'applicant returns before approval');
+  const competing=await Promise.allSettled([leaderA.reviewApplication(requestA.id,true),leaderB.reviewApplication(requestB.id,true)]);assert.equal(competing.filter(r=>r.status==='fulfilled').length,1);checks++;
+  const joined=await applicant.getPlayer(),otherLeader=joined.tribeId===approvalA.id?leaderB:leaderA,otherRequest=joined.tribeId===approvalA.id?requestB:requestA;
+  await yes(otherLeader.reviewApplication(otherRequest.id,false),'other leader can reject after applicant joined elsewhere');
+  const cap1=await make('cap1'),cap2=await make('cap2'),capA=await yes(cap1.requestTribe(approvalA.id),'first last-place applicant'),capB=await yes(cap2.requestTribe(approvalA.id),'second last-place applicant');
+  await env.withSecurityRulesDisabled(async ctx=>{const db=ctx.firestore(),ref=f.doc(db,root,'tribes',approvalA.id),t=(await f.getDoc(ref)).data();while(t.members.length<9)t.members.push(`capacity-fixture-${t.members.length}`);await f.updateDoc(ref,{members:t.members});});
+  const lastPlace=await Promise.allSettled([leaderA.reviewApplication(capA.id,true),leaderA.reviewApplication(capB.id,true)]);assert.equal(lastPlace.filter(r=>r.status==='fulfilled').length,1);assert.equal((await leaderA.adapter.get(`tribes/${approvalA.id}`)).members.length,10);checks++;
+  const expires=await yes(outsider.requestTribe(approvalB.id),'expiring request');
+  await env.withSecurityRulesDisabled(ctx=>{const now=Date.now();return f.updateDoc(f.doc(ctx.firestore(),root,'applications',expires.id),{createdAt:now-604800001,expiresAt:now-1});});
+  await blocked(leaderB.reviewApplication(expires.id,true),'expired request cannot be approved');
+  await yes(outsider.expireApplications([await outsider.adapter.get(`applications/${expires.id}`)]),'ordinary client persists expired status');
+  assert.equal((await outsider.adapter.get(`applications/${expires.id}`)).status,'expired');checks++;
+  await yes(outsider.requestTribe(approvalB.id),'expired slot can be reused');
+  const remaining=joined.tribeId===approvalB.id?leaderB:leaderA;
+  await yes(remaining.deposit('fruit',4,'lock-test-fruit'),'fund escrow lock test');const locked=await yes(remaining.offerTrade('applicant',{asset:'fruit',amount:1},{asset:'berry',amount:1}),'pending trade locks both memberships');
+  await blocked(applicant.leaveTribe(),'incoming trade blocks leave');
+  await no(applicant.adapter.transaction(async tx=>{const p=await tx.get('players/applicant'),t=await tx.get(`tribes/${p.tribeId}`);t.members=t.members.filter(uid=>uid!=='applicant');t.updatedAt=Date.now();p.tribeId=null;p.version++;p.updatedAt=Date.now();tx.set(`tribes/${t.id}`,t);tx.set('players/applicant',p);}),'rules reject bypassed pending trade leave');
+  await yes(applicant.cancelTrade(locked.id),'cancel clears both membership locks');await yes(applicant.leaveTribe(),'leave after resolving escrow');
+  await no(f.setDoc(f.doc(dbs.outsider,root,'tribePublicActivity',approvalA.id),{id:approvalA.id,weekStart:am.weekStart,points:999999,updatedAt:Date.now()}),'outsider cannot forge public weekly metrics');
+  await yes(outsider.listDirectory({search:'approval',availableOnly:true}),'public directory search uses real tribe records');
+  const publicProfile=await yes(outsider.getPublicTribe(approvalB.id),'view another public tribe crew');assert.doesNotMatch(JSON.stringify(publicProfile),/saveId|wallet|location|route/);checks++;
+  // Encrypted legacy saves remain writable. Sale receipts stay immutable and
+  // sale ids survive stale clients, using no permanent monkey data in plaintext.
+  const saveId='a'.repeat(64),saleId='b'.repeat(64),saveRef=f.doc(dbs.alice,'games_rogueduel','monkey_trails_v1','saves',saveId),saleRef=f.doc(dbs.alice,'games_rogueduel','monkey_trails_v1','sale_operations',saleId);
+  await yes(f.setDoc(saveRef,{format:1,salt:'encrypted',cipher:'encrypted',revision:1}),'legacy encrypted save remains accepted');
+  await yes(f.runTransaction(dbs.alice,async tx=>{await tx.get(saveRef);tx.update(saveRef,{saleIds:[saleId],revision:2});tx.set(saleRef,{saveId,fingerprint:'c'.repeat(64),createdAt:f.serverTimestamp()});}),'sale receipt and encrypted checkpoint commit atomically');
+  await no(f.updateDoc(saleRef,{fingerprint:'d'.repeat(64)}),'sale receipt cannot be rewritten');await no(f.deleteDoc(saleRef),'sale receipt cannot be deleted');
+  await no(f.updateDoc(saveRef,{saleIds:[],revision:3}),'stale checkpoint cannot erase sale ids');
+  await yes(f.updateDoc(saveRef,{cipher:'next encrypted revision',revision:3}),'ordinary encrypted checkpoint preserves sale ids');
   console.log(JSON.stringify({checks,ownership:true,tribeCap:true,atomicTrading:true,duelTurns:true,nearby:true,cooldown:true},null,2));
  }finally{await env.cleanup();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

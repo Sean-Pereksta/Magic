@@ -4,7 +4,7 @@ import {MOVES,SPECIES} from './data.mjs';
 const alive=p=>p&&p.hp>0;
 export function configureGuardian(b,landId='jungle'){
   const e=b?.enemy;if(!e||b.guardianPattern)return b;
-  const native=SPECIES[e.species]?.types||[],attacks=Object.entries(MOVES).filter(([,m])=>m.power&&!m.signature&&!m.types&&native.includes(m.type)&&!m.switch&&(m.minStage||0)<=(e.stage||0)).sort((a,c)=>(c[1].power||0)-(a[1].power||0));
+  const native=SPECIES[e.species]?.types||[],attacks=Object.entries(MOVES).filter(([,m])=>m.power&&!m.signature&&!m.types&&native.includes(m.type)&&!m.switch&&(m.minStage||0)<=(e.stage||0)&&(m.minLevel||1)<=e.level).sort((a,c)=>(c[1].power||0)-(a[1].power||0));
   const heavy=attacks[0]?.[0]||'heavyPalm',shield=Object.keys(MOVES).find(id=>MOVES[id].shield&&native.includes(MOVES[id].type)&&!MOVES[id].switch)||'ironGuard';
   e.learned=[...new Set([...(e.learned||[]),'focus',heavy,shield,'breathe'])];e.loadout=['focus',heavy,shield,'breathe'];
   e.guardianMaxHp=e.hp;b.guardian=true;b.guardianPattern={version:1,landId:String(landId),heavy,shield,phase:1};return b;

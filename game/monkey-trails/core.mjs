@@ -12,6 +12,10 @@ import {normalizeCompanions,recordCompanionTravel,recordCompanionVictory,recordC
 import {configureGuardian,planGuardian} from './guardian-patterns.mjs';
 import {recordTribeProgress} from './tribe-adventures.mjs';
 import {normalizeWalkSessions,recordWalkSession} from './walk-sessions.mjs';
+import {normalizeSales} from './monkey-sales.mjs';
+import {recordLivingWorldBattle} from './living-world.mjs';
+import {equipmentMoveCost,equipmentTacticalEvent,equipmentShieldMultiplier} from './equipment-battle.mjs';
+export {normalizeSales,salePreview,sellMonkey,transferReserve,nextReserveOperation,setMonkeyProtection} from './monkey-sales.mjs';
 export {beginWalkSession,finishWalkSession,walkSessionPreview} from './walk-sessions.mjs';
 export {ELEMENTS,DIRECTIONS,TYPE_CHART,SPECIES,MOVES,HYBRIDS,GEAR,ITEMS,STARTERS};
 export {LANDS,landProgress,selectLand} from './lands.mjs';
@@ -77,9 +81,9 @@ export function effectInfo(multiplier=1){
   const value=Number.isFinite(multiplier)&&multiplier>0?multiplier:1,kind=value>1+1e-9?'strong':value<1-1e-9?'resisted':'neutral';
   return{multiplier:value,kind,label:kind==='strong'?'Very effective!':kind==='resisted'?'Not effective':'Normal effectiveness'};
 }
-export function stats(p,gear={},options={}){return calculatedStats(p,gear,false,true,options);}
+export function stats(p,gear={},options={}){const result=calculatedStats(p,gear,false,true,options),passive=progressionPassive(p);if(passive)for(const[key,n]of Object.entries(passive.flat))result[key]+=n;return result;}
 export function statsLegacy(p,gear={}){return calculatedStats(p,gear,true,false);}
-export function statsForCombatVersion(p,gear={},version=4){return calculatedStats(p,gear,version===1,version>=3,{applyPercent:version>=4});}
+export function statsForCombatVersion(p,gear={},version=4){if(version>=5)return stats(p,gear);return calculatedStats(p,gear,version===1,version>=3,{applyPercent:version>=4});}
 export const legacyStats=statsLegacy;
 function calculatedStats(p,gear={},legacy=false,equipmentModern=true,options={}){
   const b=SPECIES[p.species],lv=Math.max(0,p.level-1),stage=p.stage||0;
@@ -105,28 +109,34 @@ function processEquipmentKnockouts(s){const b=s.run.battle;if(!b)return;for(cons
 export function unlocked(p){
   const curated=new Set(['strike','brace','breathe',...(SPECIES[p.species]?.learnset||[]),...(p.learned||[])]);
   if(STARTERS.includes(p.species))for(const type of p.types){let n=0;for(const[id,m]of Object.entries(MOVES))if(m.type===type&&!m.types&&!m.signature&&n++<2)curated.add(id);}
-  return[...curated].filter(id=>MOVES[id]&&(p.stage||0)>=(MOVES[id].minStage||0)&&(!MOVES[id].signature||SPECIES[p.species]?.signature===id));
+  for(const[id,m]of Object.entries(MOVES))if(m.family==='progression'&&(m.type==='neutral'||p.types.includes(m.type)))curated.add(id);
+  return[...curated].filter(id=>{const m=MOVES[id];return m&&(p.stage||0)>=(m.minStage||0)&&(p.level||1)>=(m.minLevel||1)&&(!m.signature||m.owner===p.species||SPECIES[p.species]?.signature===id||SPECIES[p.species]?.progressionSignature===id)&&(!(m.expansion===3&&m.family==='progression'&&m.type!=='neutral')||p.types.includes(m.type));});
 }
+export function abilityCatalogue(p){const species=SPECIES[p.species],ids=new Set(['strike','brace','breathe',...(species?.learnset||[]),...(p.learned||[])]),types=new Set([...(species?.types||[]),...(p.types||[]),...(p.highestForm?.types||[])]);if(STARTERS.includes(p.species))for(const t of Object.keys(ELEMENTS))types.add(t);for(const[id,m]of Object.entries(MOVES))if(m.family==='progression'&&(m.type==='neutral'||types.has(m.type)))ids.add(id);return [...ids].filter(id=>MOVES[id]).map(id=>abilityInfo(p,id));}
+export function syncProgression(p){p.learned=[...new Set([...(p.learned||[]),...unlocked(p)])];p.highestLevel=Math.max(p.highestLevel||1,p.level||1);return p;}
+export function progressionPassive(p){if(!p?.stage)return null;const type=p.mastery||p.types?.[0],stage=Math.min(2,p.stage),bonus={leaf:{hp:3*stage},fire:{atk:stage},water:{def:stage},storm:{speed:stage},earth:{def:stage+1},ice:{hp:2*stage,def:stage},light:{maxEnergy:stage},shadow:{atk:stage,speed:stage}}[type];return bonus?{name:`${ELEMENTS[type].name} ${stage===1?'Affinity':'Specialization'}`,flat:bonus,desc:Object.entries(bonus).map(([k,v])=>`+${v} ${k==='maxEnergy'?'energy':k}`).join(', ')}:null;}
+export function progressionMilestones(p){return[3,6,10,20,30,40,50,60].map(level=>({level,stage:level===3?1:level===6?2:3,name:({3:'Awakened',6:'Elder',10:'Ascendant',20:'Tactician',30:'Species mastery',40:'Elemental apex',50:'Legendary',60:'Final mastery'})[level],moves:abilityCatalogue(p).filter(a=>a.requiredLevel===level),active:p.level>=level&&p.stage>=(level===3?1:level===6?2:3)}));}
 // UI cards and the equip action share this catalogue/stage eligibility. Learned
 // techniques survive evolution; Ultra signatures remain exclusive to their owner.
 export function abilityInfo(p,id){
-  const move=MOVES[id];if(!p||!move)return null;const species=SPECIES[p.species],requiredStage=move.minStage||0,eligible=unlocked(p).includes(id),equippedSlot=p.loadout?.indexOf(id)??-1;
+  const move=MOVES[id];if(!p||!move)return null;const species=SPECIES[p.species],requiredStage=move.minStage||0,requiredLevel=move.minLevel||1,eligible=unlocked(p).includes(id),equippedSlot=p.loadout?.indexOf(id)??-1,requirement=`Requires ${['Base','Awakened','Elder','Ascendant'][requiredStage]} + Level ${requiredLevel}`;
   let lockedReason=null;if(!eligible){
-    if(move.signature&&species?.signature!==id){const owner=Object.values(SPECIES).find(s=>s.signature===id);lockedReason=`Exclusive to ${owner?.name||'its Ultra species'}.`;}
-    else if((p.stage||0)<requiredStage)lockedReason=`Unlocks at ${['Base','Awakened','Elder','Ascendant'][requiredStage]||`stage ${requiredStage}`}.`;
+    if(move.signature&&move.owner!==p.species&&species?.signature!==id&&species?.progressionSignature!==id){const owner=SPECIES[move.owner]||Object.values(SPECIES).find(s=>s.signature===id);lockedReason=`Exclusive to ${owner?.name||'its species'}.`;}
+    else if((p.stage||0)<requiredStage||p.level<requiredLevel)lockedReason=requirement;
+    else if(move.expansion===3&&move.family==='progression'&&move.type!=='neutral'&&!p.types.includes(move.type))lockedReason=`Requires an active ${ELEMENTS[move.type]?.name} evolution branch.`;
     else lockedReason='Outside this monkey’s curated learnset.';
   }
-  return{id,move,eligible,requiredStage,lockedReason,required:id==='strike',equippedSlot};
+  return{id,move,eligible,requiredStage,requiredLevel,requirement,discovered:(p.learned||[]).includes(id)||eligible,lockedReason,required:id==='strike',equippedSlot};
 }
 export function say(s,text){s.log.push(text);s.log=s.log.slice(-16);}
 function monkey(s,species,level=1,types=nativeTypes(species),stage=0,prefix='m'){
   const p={id:uid(s,prefix),species,nickname:'',level,types:[...types],stage,hp:1,energy:12,status:{},statusPower:{},
     loadout:['strike','brace','breathe'],training:0,xpRemainder:0,bond:0,learned:[],discovered:[],highestForm:{stage:0,types:nativeTypes(species)},
     equipment:{weapon:null,armor:null,charm:null},cooldowns:{},uses:{}};
-  p.equipment=Object.fromEntries(equipmentSlots(p).map(slot=>[slot,null]));p.learned=unlocked(p);const specials=p.learned.filter(id=>!['strike','brace','breathe'].includes(id));
+  p.equipment=Object.fromEntries(equipmentSlots(p).map(slot=>[slot,null]));syncProgression(p);const specials=p.learned.filter(id=>!['strike','brace','breathe'].includes(id));
   p.loadout=['strike',...specials.slice(0,2),'brace'];if(p.loadout.length<4)p.loadout.splice(p.loadout.length-1,0,'breathe');const maximum=stats(p);p.hp=maximum.hp;p.energy=maximum.maxEnergy;return p;
 }
-function resetExpeditionMonkey(p){p.level=1;p.types=nativeTypes(p.species);p.stage=0;p.status={};p.statusPower={};p.training=0;p.xpRemainder=0;delete p.statusCredit;p.cooldowns={};p.uses={};p.shield=0;delete p.elite;delete p.bossOnly;delete p.mastery;const available=unlocked(p);p.loadout=['strike',...p.loadout.filter(id=>id!=='strike'&&available.includes(id)),...available].filter((id,i,a)=>a.indexOf(id)===i).slice(0,4);p.hp=stats(p).hp;p.energy=stats(p).maxEnergy;}
+function resetExpeditionMonkey(p){syncProgression(p);delete p.charging;delete p.evasion;p.healingMomentum=0;p.level=1;p.types=nativeTypes(p.species);p.stage=0;p.status={};p.statusPower={};p.training=0;p.xpRemainder=0;delete p.statusCredit;p.cooldowns={};p.uses={};p.shield=0;delete p.elite;delete p.bossOnly;delete p.mastery;const available=unlocked(p);p.loadout=['strike',...p.loadout.filter(id=>id!=='strike'&&available.includes(id)),...available].filter((id,i,a)=>a.indexOf(id)===i).slice(0,4);p.hp=stats(p).hp;p.energy=stats(p).maxEnergy;}
 export function newSave(name,species='capuchin',mode='gps',seed=Date.now()>>>0){
   if(!STARTERS.includes(species))throw Error('Choose one of the six starters.');
   const s={version:VERSION,name:String(name).slice(0,30),mode,rng:(seed>>>0)||1234567,difficulty:'standard',collection:{},
@@ -230,7 +240,7 @@ export function encounterPlan(s,ultra=false){
   const feet=s.run.distance/FEET,index=s.run.encounters,scale=CONFIG.difficulty[s.difficulty]||1,d=CONFIG.director,[early,middle,deep]=d.bandsFeet;
   const size=feet<early?1:feet<middle?(index%d.pairCycle?2:1):feet<deep?(index%d.fullTeamCycle===0?3:2):3,
     level=clamp(Math.round((1+Math.floor(feet/d.levelStepFeet))*scale),1,CONFIG.maxLevel),stage=d.evolutionFeet.filter(threshold=>feet>=threshold).length;
-  return{size:ultra?(feet>=d.ultraSupportFeet?2:1):size,level:ultra?Math.max(d.ultraMinLevel,level+d.ultraLevelBonus):level,stage,style:choose(s,Object.keys(ENCOUNTER_STYLES)),elite:feet>=deep&&index%d.eliteCycle===0};
+  return{size:ultra?(feet>=d.ultraSupportFeet?2:1):size,level:ultra?clamp(Math.max(d.ultraMinLevel,level+d.ultraLevelBonus),1,CONFIG.maxLevel):level,stage,style:choose(s,Object.keys(ENCOUNTER_STYLES)),elite:feet>=deep&&index%d.eliteCycle===0};
 }
 function encounter(s,isUltra=false,{defer=false,descriptor=null}={}){
   const r=s.run;if(isUltra&&!descriptor)descriptor={species:r.ultra.species,landId:r.ultra.landId||s.world.activeLand,habitat:r.ultra.habitat||regionSnapshot(s).habitat,...(r.ultra.hunt?{hunt:true}:{})};r.encounters++;const plan=isUltra&&r.ultra.plan?r.ultra.plan:encounterPlan(s,isUltra),pool=encounterPool(descriptor?.landId&&descriptor.landId!==s.world.activeLand?{...s,world:{...s.world,activeLand:descriptor.landId}}:s,isUltra),enemies=[];
@@ -246,6 +256,7 @@ function encounter(s,isUltra=false,{defer=false,descriptor=null}={}){
     const first=ranked[0],attack=ranked.find(id=>MOVES[id].power&&id!==first)||ranked[1];p.loadout=tutorial?[...CONFIG.tutorial.loadout]:['strike',first,attack,'breathe'].filter((id,index,a)=>id&&a.indexOf(id)===index);enemies.push(p);
   }
   const battle={id:isUltra?r.ultra.id:descriptor?.id||uid(s,'encounter'),originLandId:descriptor?.landId||s.world.activeLand,habitat:descriptor?.habitat||regionSnapshot(s).habitat,originDistance:r.distance,difficulty:s.difficulty,plan:copy(plan),...(descriptor?.hunt?{hunt:true}:{}),...(descriptor?.guardian?{guardian:true}:{}),enemy:enemies[0],enemies,enemyActive:0,turn:1,round:1,ready:false,boss:isUltra,ultra:isUltra,style:plan.style,intent:'strike',enemyAction:{type:'move',id:'strike'},rewarded:false,bondBonuses:{},pendingRally:null,enemyRally:null};
+  if(descriptor?.worldLocationId){battle.worldLocationId=descriptor.worldLocationId;battle.worldLocationStage=descriptor.worldLocationStage;}
   if(descriptor?.guardian)configureGuardian(battle,battle.originLandId);
   if(descriptor?.guardian)battle.guardianName=descriptor.name;
   if(defer){r.pendingEncounter=battle;say(s,`Encounter ready: ${enemies.map(p=>formName(p)).join(' · ')}. Keep walking and choose when to battle.`);return battle;}
@@ -253,7 +264,7 @@ function encounter(s,isUltra=false,{defer=false,descriptor=null}={}){
 }
 function activateBattle(s,battle){
   normalizeEquipmentInventory(s);
-  const r=s.run;r.battle=battle;battle.openingLocked=false;battle.openingLeadId=r.activeId;for(const p of team(s)){p.cooldowns={};p.uses={};}r.phase='battle';ensureEquipmentBattle(s);if(battle.ultra)r.ultra.status='battle';planEnemy(s);say(s,`${battle.ultra?'Ultra arrival':battle.guardian?'Regional guardian':'Wild team'}: ${battle.enemies.map(p=>formName(p)).join(' · ')}. Stop safely before beginning.`);
+  const r=s.run;r.battle=battle;battle.openingLocked=false;battle.openingLeadId=r.activeId;for(const p of team(s)){p.cooldowns={};p.uses={};p.healingMomentum=0;delete p.charging;delete p.evasion;}r.phase='battle';ensureEquipmentBattle(s);if(battle.ultra)r.ultra.status='battle';planEnemy(s);say(s,`${battle.ultra?'Ultra arrival':battle.guardian?'Regional guardian':'Wild team'}: ${battle.enemies.map(p=>formName(p)).join(' · ')}. Stop safely before beginning.`);
 }
 export function beginPendingEncounter(s){
   const r=s.run;if(r.phase!=='trail'||!r.pendingEncounter)throw Error('Return to the trail and choose an available encounter.');const battle=r.pendingEncounter;r.pendingEncounter=null;activateBattle(s,battle);return battle;
@@ -261,6 +272,7 @@ export function beginPendingEncounter(s){
 export function passPendingEncounter(s){
   const r=s.run;if(!['trail','camp'].includes(r.phase)||!r.pendingEncounter)throw Error('There is no waiting ordinary encounter to pass.');const passed=r.pendingEncounter;r.pendingEncounter=null;r.nextEncounter=r.distance+ENCOUNTER_STEP;r.events=r.events.filter(e=>e.type!=='encounter');say(s,'Encounter passed. No battle rewards were earned; the next invitation follows the normal walking interval.');return passed;
 }
+export function beginLocationBattle(s,descriptor){if(s.run.phase!=='trail'||!descriptor?.id||!SPECIES[descriptor.species]||!s.world.unlocked.includes(descriptor.landId))throw Error('Choose a ready special-location trial on the trail.');return encounter(s,false,{descriptor});}
 export function beginRegionalGuardian(s,landId){
   if(s.run.phase!=='trail')throw Error('Return to the trail before challenging a guardian.');const descriptor=guardianChallenge(s,landId);if(s.meta.claims[`reward:${descriptor.id}`])throw Error('This guardian is already defeated. Claim the adventure reward.');return encounter(s,false,{descriptor});
 }
@@ -277,8 +289,10 @@ export function beginUltra(s,{gpsFresh=false,withinRadius=false}={}){
   u.tracked=true;enqueue(s,{type:'ultra',id:u.id});if(r.phase==='trail')pump(s);return r.phase==='battle'&&r.battle.ultra;
 }
 function planEnemy(s){
-  const b=s.run.battle,p=s.run.monkey,e=b.enemy;if(!e)return;const tactical=planGuardian(s);if(tactical){b.enemyAction={...tactical};b.intent=tactical.id;b.tacticalIntent=tactical;return;}delete b.tacticalIntent;const options=e.loadout.filter(id=>MOVES[id]&&(MOVES[id].cost||0)<=e.energy&&moveAvailable(b,e,id)&&(!MOVES[id].switch||!e.status.root&&b.enemies.some(m=>m.id!==e.id&&alive(m))));
-  let id=options.find(id=>MOVES[id].cleanse&&Object.keys(e.status).some(k=>['burn','poison','weaken','root'].includes(k)));
+  const b=s.run.battle,p=s.run.monkey,e=b.enemy;if(!e)return;b.phase='intent';if(e.charging){b.enemyAction={type:'move',id:e.charging.resolveRound<=b.round?e.charging.id:'brace',release:e.charging.resolveRound<=b.round};b.intent=b.enemyAction.id;return;}const tactical=planGuardian(s);if(tactical){b.enemyAction={...tactical};b.intent=tactical.id;b.tacticalIntent=tactical;return;}delete b.tacticalIntent;const options=e.loadout.filter(id=>MOVES[id]&&equipmentMoveCost(b,e,MOVES[id])<=e.energy&&moveAvailable(b,e,id)&&(!MOVES[id].switch||!e.status.root&&b.enemies.some(m=>m.id!==e.id&&alive(m))));
+  let id=p.charging?options.find(id=>MOVES[id].interrupt):null;
+  if(!id&&p.shield)id=options.find(id=>MOVES[id].breakShield||MOVES[id].feint);
+  if(!id)id=options.find(id=>MOVES[id].cleanse&&Object.keys(e.status).some(k=>['burn','poison','weaken','root'].includes(k)));
   if(!id)id=options.find(id=>MOVES[id].heal&&e.hp<stats(e,combatGear(s,e)).hp*.40);
   if(!id)id=options.find(id=>MOVES[id].teamHeal&&b.enemies.some(m=>alive(m)&&m.hp<stats(m,combatGear(s,m)).hp*.55));
   if(!id)id=options.find(id=>MOVES[id].shield&&!e.shield&&e.hp<stats(e,combatGear(s,e)).hp*.65&&random(s)<.6);
@@ -329,7 +343,7 @@ function contribution(s,p,damage=0,healing=0){
   const earned=grantXp(p,Math.max(0,next-c.base));c.xp+=earned;recordWalkSession(s,{trainingXp:earned});c.base=next;
 }
 function victory(s){
-  const r=s.run,b=r.battle;if(!b||b.rewarded||s.meta.claims[`reward:${b.id}`])return;b.rewarded=true;s.meta.claims[`reward:${b.id}`]=true;r.wins++;if(!b.ultra)r.ordinaryWins++;recordRegionEvent(s,'victories',1,b.originLandId||s.world.activeLand,{battleId:b.id});recordAdventureEvent(s,'victories',1,b.originLandId||s.world.activeLand);recordAdventureEvent(s,'seen',1,b.originLandId||s.world.activeLand,{species:b.enemies.map(p=>p.species)});if(b.guardian)recordAdventureEvent(s,'guardian',1,b.originLandId||s.world.activeLand);recordCompanionVictory(s,{guardian:!!b.guardian,regionId:b.originLandId||s.world.activeLand});recordWalkSession(s,{victories:1,friendship:team(s).length,landId:b.originLandId||s.world.activeLand});if(!b.ultra&&!b.guardian&&!b.hunt)r.nextEncounter=r.distance+ENCOUNTER_STEP;
+  const r=s.run,b=r.battle;if(!b||b.rewarded||s.meta.claims[`reward:${b.id}`])return;b.rewarded=true;s.meta.claims[`reward:${b.id}`]=true;recordLivingWorldBattle(s,b);r.wins++;if(!b.ultra)r.ordinaryWins++;recordRegionEvent(s,'victories',1,b.originLandId||s.world.activeLand,{battleId:b.id});recordAdventureEvent(s,'victories',1,b.originLandId||s.world.activeLand);recordAdventureEvent(s,'seen',1,b.originLandId||s.world.activeLand,{species:b.enemies.map(p=>p.species)});if(b.guardian)recordAdventureEvent(s,'guardian',1,b.originLandId||s.world.activeLand);recordCompanionVictory(s,{guardian:!!b.guardian,regionId:b.originLandId||s.world.activeLand});recordWalkSession(s,{victories:1,friendship:team(s).length,landId:b.originLandId||s.world.activeLand});if(!b.ultra&&!b.guardian&&!b.hunt)r.nextEncounter=r.distance+ENCOUNTER_STEP;
   const baseXp=18+b.enemies.reduce((n,e)=>n+e.level*2,0)+b.enemies.length*4,xp=awardXp(s,baseXp);recordWalkSession(s,{trainingXp:xp});r.fruit+=2;const type=b.enemy.types[0]||rollElement(s);r.essence[type]+=2;r.items.charmMaterial=(r.items.charmMaterial||0)+1;
   const tutorial=!b.ultra&&r.ordinaryWins<=2;if(tutorial)r.items.bondCharm+=2;if(!b.ultra&&r.ordinaryWins===1){r.items.revive+=CONFIG.tutorial.revivesAfterFirst;say(s,'Introductory revival supply: restore a fallen teammate before replacing them at camp.');}
   // An Ultra's support squad cannot consume the guaranteed boss invitation.
@@ -357,7 +371,11 @@ export function convertDuplicate(s,id){assertDuplicateConvertible(s,id);const p=
   if(r.party.includes(id)){if(!r.party.some(other=>other!==id&&alive(s.collection[other])))throw Error('Keep a conscious expedition companion.');r.party=r.party.filter(other=>other!==id);if(r.activeId===id){r.activeId=r.party.find(other=>alive(s.collection[other]));syncActive(s);}}
   s.meta.bondMaterials[p.species]=(s.meta.bondMaterials[p.species]||0)+3;delete s.collection[id];last.converted=true;return 3;}
 function heal(p,amount,max){if(!alive(p))return 0;const before=p.hp;p.hp=Math.min(max,p.hp+Math.round(amount*(p.species==='langur'?1.25:1)));return Math.max(0,p.hp-before);}
-function moveAvailable(b,p,id){const m=MOVES[id];return!(p.cooldowns[id]>b.round)&&!(m.uses&&((p.uses[id]||0)>=m.uses));}
+function moveAvailable(b,p,id){const m=MOVES[id];if(p.charging?.id===id)return p.charging.resolveRound<=b.round;return!(p.cooldowns[id]>b.round)&&!(m.uses&&((p.uses[id]||0)>=m.uses));}
+export function timingResult(position,{assisted=false,online=false}={}){const perfect=!online&&(assisted||Number.isFinite(position)&&position>=.42&&position<=.58);return{perfect,bonus:perfect?.10:0,window:[.42,.58]};}
+export function battleIntent(s){const b=s.run?.battle,e=b?.enemy;if(!b||!e)return null;const m=MOVES[b.enemyAction?.id||b.intent],charge=e.charging;return{phase:b.phase||'intent',round:b.round,id:m?b.enemyAction?.id||b.intent:'strike',charging:!!charge,resolves:charge?.resolveRound,label:charge?`Charging ${MOVES[charge.id].name} — ${charge.resolveRound<=b.round?'resolves this round':'resolves next round'}`:b.tacticalIntent?.intentLabel||m?.shield||m?.guard?b.tacticalIntent?.intentLabel||`Preparing ${m.name} — vulnerable to Guard Break`:b.enemyAction?.type==='switch'?'Preparing a switch':m?.charge?`Preparing ${m.name} — charges for one round`:m?.name,detail:b.tacticalIntent?.intentDetail||m?.desc};}
+export function battleOpportunities(s){const b=s.run?.battle,p=s.run?.monkey,e=b?.enemy;if(!b||!p||!e)return[];const moves=p.loadout.map(id=>({id,move:MOVES[id]}));return moves.flatMap(({id,move:m})=>e.charging&&m.interrupt?[{id,kind:'interrupt',label:'Interrupt opportunity'}]:(e.shield||MOVES[b.intent]?.guard||MOVES[b.intent]?.shield)&&(m.breakShield||m.feint)?[{id,kind:'guardBreak',label:'Break defensive setup'}]:m.comboStatuses?.some(status=>e.status[status])?[{id,kind:'combo',label:'Elemental combo ready'}]:[]);}
+function metric(b,key,n=1){b.metrics??={};b.metrics[key]=(b.metrics[key]||0)+n;}
 function applyStatus(p,id,duration=2,power){p.status[id]=Math.max(p.status[id]||0,duration);if(power!==undefined)p.statusPower[id]=power;}
 function enter(s,p,side){
   const b=s.run.battle;if(side==='player'){s.run.activeId=p.id;syncActive(s);}else{b.enemyActive=b.enemies.findIndex(m=>m.id===p.id);b.enemy=p;}
@@ -365,42 +383,65 @@ function enter(s,p,side){
 }
 function replacement(s,id,side='player',forced=false){
   const b=s.run.battle,actor=side==='player'?s.run.monkey:b.enemy,members=side==='player'?team(s):b.enemies,incoming=members.find(p=>p.id===id);
-  if(!incoming||incoming.id===actor.id||!alive(incoming))throw Error('Choose another conscious teammate.');if(!forced&&actor.status.root)throw Error('Rooted Challenge briefly prevents voluntary switching.');equipmentSwitch(b,actor,incoming,members,{voluntary:!forced});enter(s,incoming,side);say(s,`${side==='player'?'You':'Rival'} bring in ${incoming.nickname||SPECIES[incoming.species].name}.`);return incoming;
+  if(!incoming||incoming.id===actor.id||!alive(incoming))throw Error('Choose another conscious teammate.');if(!forced&&actor.status.root)throw Error('Rooted Challenge briefly prevents voluntary switching.');delete actor.charging;if(side==='player'&&!forced)metric(b,'switches');equipmentSwitch(b,actor,incoming,members,{voluntary:!forced});enter(s,incoming,side);say(s,`${side==='player'?'You':'Rival'} bring in ${incoming.nickname||SPECIES[incoming.species].name}.`);return incoming;
 }
-function execute(s,actor,target,id,actorStats,targetStats,label,targetId,side='player'){
-  const b=s.run.battle,m=MOVES[id],duration=m.duration||2,members=side==='player'?team(s):b.enemies;actor.energy-=m.cost||0;actor.uses[id]=(actor.uses[id]||0)+1;if(m.cooldown)actor.cooldowns[id]=b.round+m.cooldown;
-  let restored=0;const healingMultiplier=equipmentHealingMultiplier(b,actor,m);
+function execute(s,actor,target,id,actorStats,targetStats,label,targetId,side='player',timing=null){
+  const b=s.run.battle,m=MOVES[id],duration=m.duration||2,members=side==='player'?team(s):b.enemies,releasing=actor.charging?.id===id&&actor.charging.resolveRound<=b.round;
+  if(!releasing){actor.energy-=equipmentMoveCost(b,actor,m,{consume:true});actor.uses[id]=(actor.uses[id]||0)+1;if(m.cooldown)actor.cooldowns[id]=b.round+m.cooldown;}
+  if(actor.charging&&!releasing&&m.power)delete actor.charging;
+  if(m.charge&&!releasing){actor.charging={id,resolveRound:b.round+m.charge,paid:m.cost||0};say(s,`${label} charges ${m.name} — resolves next round. Interrupt, guard, or switch.`);return;}
+  if(releasing)delete actor.charging;
+  const precision=m.timing&&side==='player'?timingResult(timing?.position,{assisted:timing?.assisted===true,online:!!b.online}):{perfect:false,bonus:0};
+  let restored=0;const healingMultiplier=equipmentHealingMultiplier(b,actor,m),shieldMultiplier=equipmentShieldMultiplier(b,actor,m);
+  if(side==='player'){b.metrics??={};b.metrics.elementUses??={};for(const t of m.types||[m.type])if(ELEMENTS[t])b.metrics.elementUses[t]=(b.metrics.elementUses[t]||0)+1;if(precision.perfect)metric(b,'perfectTiming');}
   if(m.cleanse){actor.statusCredit={};actor.status={};actor.statusPower={};actor.shield=0;actor.counter=0;actor.prepare=0;}
-  if(m.guard){actor.guard=actor.species==='mandrill'?.3:.45;actor.energy=Math.min(actorStats.maxEnergy,actor.energy+2);}
-  if(m.energy)actor.energy=Math.min(actorStats.maxEnergy,actor.energy+m.energy);if(m.heal)restored+=heal(actor,actorStats.hp*m.heal*healingMultiplier,actorStats.hp);
+  if(m.guard){actor.guard=(actor.species==='mandrill'?.3:.45)*(precision.perfect?.9:1);actor.energy=Math.min(actorStats.maxEnergy,actor.energy+2);}
+  if(m.evasion){actor.evasion=m.evasion;applyStatus(actor,'evasion',duration);}
+  if(m.energy)actor.energy=Math.min(actorStats.maxEnergy,actor.energy+m.energy);if(m.heal){const recipient=m.healTarget?members.find(p=>p.id===targetId&&alive(p))||actor:actor,st=stats(recipient,combatGear(s,recipient));restored+=heal(recipient,st.hp*m.heal*healingMultiplier,st.hp);}
   if(m.teamHeal)for(const p of members)restored+=heal(p,stats(p,combatGear(s,p)).hp*m.teamHeal*healingMultiplier,stats(p,combatGear(s,p)).hp);
-  if(m.shield){actor.shield=Math.max(actor.shield||0,Math.round(actorStats.hp*m.shield));applyStatus(actor,'shield',duration);}
-  if(m.counter){actor.counter=m.counter;applyStatus(actor,'counter',m.duration||1);}
+  if(m.teamCleanse)for(const p of members)if(alive(p))for(const status of['burn','poison','slow','root','weaken']){delete p.status[status];delete p.statusPower[status];if(p.statusCredit)delete p.statusCredit[status];}
+  if(m.teamEnergy)for(const p of members)if(alive(p))p.energy=Math.min(stats(p,combatGear(s,p)).maxEnergy,p.energy+m.teamEnergy);
+  if(m.reviveReserve){const p=members.find(p=>p.id!==actor.id&&!alive(p));if(p){p.hp=Math.max(1,Math.round(stats(p,combatGear(s,p)).hp*m.reviveReserve));p.status={};p.statusPower={};p.statusCredit={};p.shield=0;say(s,`${SPECIES[p.species].name} returns at ${Math.round(m.reviveReserve*100)}% health.`);}}
+  if(m.shield){actor.shield=Math.max(actor.shield||0,Math.round(actorStats.hp*m.shield*shieldMultiplier));applyStatus(actor,'shield',duration);}
+  if(m.counter){actor.counter=m.counter;actor.counterAbsorbed=m.expansion===3;actor.drainOnCounter=m.drainOnCounter||0;applyStatus(actor,'counter',m.duration||1);}
+  if(m.reduceCooldown)for(const[mid,due]of Object.entries(actor.cooldowns))if(mid!==id&&due>b.round)actor.cooldowns[mid]=Math.max(b.round,due-m.reduceCooldown);
   if(m.prepare){actor.prepare=m.prepare;applyStatus(actor,'prepare',duration);}
   if(m.statusSelf)applyStatus(actor,m.statusSelf,duration);
   if(m.rally){const value={prepare:typeof m.rally==='number'?m.rally:.18,duration:m.duration||3,expires:b.round+(m.duration||3)};if(side==='player')b.pendingRally=value;else b.enemyRally=value;}
-  if(m.teamShield&&!m.switch){const value={shield:m.teamShield,duration,expires:b.round+duration};if(side==='player')b.pendingRally={...b.pendingRally,...value};else b.enemyRally={...b.enemyRally,...value};}
+  if(m.teamShield&&!m.switch){if(m.expansion===3){for(const p of members)if(alive(p)){p.shield=Math.max(p.shield||0,Math.round(stats(p,combatGear(s,p)).hp*m.teamShield*shieldMultiplier));applyStatus(p,'shield',duration);}}else{const value={shield:m.teamShield*shieldMultiplier,duration,expires:b.round+duration};if(side==='player')b.pendingRally={...b.pendingRally,...value};else b.enemyRally={...b.enemyRally,...value};}}
   if(m.root)applyStatus(target,'root',typeof m.root==='number'?m.root:2);if(m.weaken)applyStatus(target,'weaken',duration,typeof m.weaken==='number'?m.weaken:.25);
   if(m.bondBonus)b.bondBonuses[target.id]=Math.min(.25,(b.bondBonuses[target.id]||0)+m.bondBonus);
+  const plannedDefense=side==='player'&&b.interrupted?.[target.id]!==b.round&&(MOVES[b.enemyAction?.id]?.guard||MOVES[b.enemyAction?.id]?.shield||MOVES[b.enemyAction?.id]?.teamShield),comboActive=m.comboStatuses?.some(status=>target.status[status]),defensive=!!target.shield||!!target.guard||!!plannedDefense;
+  const interrupt=!!m.interrupt&&(!!target.charging||!!target.prepare);
+  if(interrupt){delete target.charging;target.prepare=0;delete target.status.prepare;b.interrupted??={};b.interrupted[target.id]=b.round;if(side==='player')metric(b,'interrupts');say(s,`${label}: Interrupted!`);}
+  if(m.breakShield&&plannedDefense){b.interrupted??={};b.interrupted[target.id]=b.round;if(side==='player')metric(b,'guardBreaks');say(s,'Guard Break interrupts the defensive setup.');}
+  if(m.delayCharge&&target.charging&&!target.charging.delayed){target.charging.resolveRound+=m.delayCharge;target.charging.delayed=true;say(s,`${label} delays the charged attack by one round.`);}
+  if(comboActive){for(const status of m.comboStatuses){delete target.status[status];delete target.statusPower[status];if(target.statusCredit)delete target.statusCredit[status];}if(side==='player')metric(b,'combos');}
   if(m.power){
     if(m.breakShield){target.shield=0;target.guard=0;delete target.status.shield;}
     const eff=moveEffect(m,target.types),stab=(m.types||[m.type]).some(t=>actor.types.includes(t))?CONFIG.elemental.stab:1,critRoll=random(s),crit=(!actor.tutorialHpScale||CONFIG.tutorial.enemyCriticals)&&critRoll<(actor.species==='macaque'?.14:.07),howl=actor.species==='howler'&&m.type!=='neutral'?1.12:1;
     const actorGear=s.collection[actor.id]?equipped(s,actor):actor.gear||{},targetGear=s.collection[target.id]?equipped(s,target):target.gear||{};
-    let damage=Math.max(1,Math.round((m.power+actorStats.atk*.70-targetStats.def*.42)*eff*stab*howl*(crit?1.4:1)*(.94+random(s)*.12)*(target.guard||1)*(actor.prepare?1+actor.prepare:1)*(actor.status.weaken?1-(actor.statusPower.weaken||.25):1)*equipmentAttackMultiplier(b,actor,target,m)));
+    const healingPower=m.healingPower?Math.min(30,(actor.healingMomentum||0)*m.healingPower):0,finisher=m.finisherThreshold&&target.hp<=targetStats.hp*m.finisherThreshold?1+m.finisherBonus:1,tacticalMove={...m,perfectTiming:precision.perfect,comboActive,interrupted:interrupt};
+    let rawDamage=Math.max(1,Math.round((m.power+healingPower+actorStats.atk*.70-targetStats.def*.42)*eff*stab*howl*(crit?1.4:1)*(.94+random(s)*.12)*(actor.prepare?1+actor.prepare:1)*(actor.status.weaken?1-(actor.statusPower.weaken||.25):1)*(1+precision.bonus)*(comboActive?1+m.comboBonus:1)*(m.feint&&defensive?1+m.feint:1)*finisher*equipmentAttackMultiplier(b,actor,target,tacticalMove))),damage=Math.max(1,Math.round(rawDamage*(m.feint?1:target.guard||1)*(1-(target.evasion||0))));
+    if(m.healingPower)actor.healingMomentum=0;if(target.evasion){delete target.evasion;delete target.status.evasion;}
     if(actor.prepare){actor.prepare=0;delete actor.status.prepare;}if(actor.status.weaken){delete actor.status.weaken;delete actor.statusPower.weaken;}if(target.species==='spider'&&random(s)<.08)damage=0;
-    const hitResult=equipmentApplyHit(b,actor,target,m,damage,{effectiveness:eff}),actualDamage=hitResult.damage;if(side==='player')contribution(s,actor,actualDamage);
-    const hit={actorId:actor.id,targetId:target.id,actorName:actor.nickname||SPECIES[actor.species].name,targetName:target.nickname||SPECIES[target.species].name,moveId:id,side,multiplier:eff,damage:actualDamage,critical:crit,round:b.round};
+    const shieldBefore=target.shield||0,blocked=!!target.guard||shieldBefore>0,hitResult=equipmentApplyHit(b,actor,target,m,damage,{effectiveness:eff}),actualDamage=hitResult.damage;if(side==='player')contribution(s,actor,actualDamage);if(blocked&&side==='enemy')metric(b,'blocks');
+    const hit={actorId:actor.id,targetId:target.id,actorName:actor.nickname||SPECIES[actor.species].name,targetName:target.nickname||SPECIES[target.species].name,moveId:id,side,multiplier:eff,damage:actualDamage,critical:crit,round:b.round,perfectTiming:precision.perfect,interrupted:interrupt,combo:!!comboActive,blocked,feint:!!(m.feint&&defensive),charged:releasing};
     b.lastHit=hit;(b.hitFeedback??=[]).push(hit);b.lastHits=b.hitFeedback;
     const feedback=effectInfo(eff);say(s,`${label}: ${m.name} → ${actualDamage}${crit?' critical':''}${feedback.kind!=='neutral'?` · ${feedback.label} (×${eff})`:''}.`);
-    if(target.counter&&actualDamage){const reflected=Math.min(actor.hp,Math.max(1,Math.round(actualDamage*target.counter)));actor.hp=Math.max(0,actor.hp-reflected);contribution(s,target,reflected);target.counter=0;delete target.status.counter;}
+    if(target.counter&&(actualDamage||target.counterAbsorbed)){const base=target.counterAbsorbed?Math.max(actualDamage,rawDamage):actualDamage,reflected=Math.min(actor.hp,Math.max(1,Math.round(base*target.counter)));actor.hp=Math.max(0,actor.hp-reflected);contribution(s,target,reflected);if(side==='enemy')metric(b,'counters');const proc=equipmentTacticalEvent(b,target,'counter',{maxEnergy:targetStats.maxEnergy});if(proc.energy||proc.cooldowns)say(s,`Counter equipment restores ${proc.energy} energy and reduces ${proc.cooldowns} cooldowns.`);if(target.drainOnCounter){const n=Math.min(actor.energy,target.drainOnCounter);actor.energy-=n;target.energy=Math.min(targetStats.maxEnergy,target.energy+n);}target.counter=0;target.drainOnCounter=0;delete target.status.counter;say(s,`Counter: ${reflected} damage.`);}
     if(m.status&&alive(target)){const immune=m.status==='burn'&&target.types.includes('fire')||m.status==='poison'&&target.types.includes('leaf');if(!immune){applyStatus(target,m.status,duration);target.statusCredit??={};if(side==='player')target.statusCredit[m.status]=actor.id;else delete target.statusCredit[m.status];}}
-    if(m.drain)restored+=heal(actor,actualDamage*m.drain,actorStats.hp);applyEquipmentLifesteal(actor,actorStats,actorGear,actualDamage);if(m.drainEnergy){const drained=Math.min(target.energy,m.drainEnergy);target.energy-=drained;actor.energy=Math.min(actorStats.maxEnergy,actor.energy+drained);}
+    if(m.drain)restored+=heal(actor,actualDamage*m.drain,actorStats.hp);applyEquipmentLifesteal(actor,actorStats,actorGear,actualDamage);
+    if(m.splash){const opponents=side==='player'?b.enemies:team(s);for(const p of opponents)if(p.id!==target.id&&alive(p)){const damage=equipmentApplyHit(b,actor,p,m,Math.round(actualDamage*m.splash),{effectiveness:eff,direct:false}).damage;if(side==='player')contribution(s,actor,damage);}}
   }else say(s,`${label} uses ${m.name}.`);
-  equipmentAfterAbility(b,actor,m,{team:members,recipients:m.teamHeal?members:[actor]});processEquipmentKnockouts(s);
+  if(m.drainEnergy){const drained=Math.min(target.energy,m.drainEnergy);target.energy-=drained;actor.energy=Math.min(actorStats.maxEnergy,actor.energy+drained);if(m.cancelUnfundedCharge&&target.charging&&target.energy<equipmentMoveCost(b,target,MOVES[target.charging.id])){delete target.charging;b.interrupted??={};b.interrupted[target.id]=b.round;if(side==='player')metric(b,'interrupts');say(s,'Energy disruption interrupted the charge.');}}
+  actor.healingMomentum=Math.min(100,(actor.healingMomentum||0)+restored);
+  if(precision.perfect)say(s,'Perfect Timing!');
+  equipmentAfterAbility(b,actor,m,{target,moveId:id,team:members,recipients:m.teamHeal?members:[actor]});processEquipmentKnockouts(s);
   if(side==='player')contribution(s,actor,0,restored);
   if(m.switch&&alive(actor)&&actor.id===(side==='player'?s.run.activeId:b.enemy.id)){
     const options=members.filter(p=>alive(p)&&p.id!==actor.id),incoming=options.find(p=>p.id===targetId)||options[0];if(incoming){replacement(s,incoming.id,side,false);
-      if(m.teamShield){incoming.shield=Math.max(incoming.shield||0,Math.round(stats(incoming,combatGear(s,incoming)).hp*m.teamShield));applyStatus(incoming,'shield',duration);}
+      if(m.teamShield){incoming.shield=Math.max(incoming.shield||0,Math.round(stats(incoming,combatGear(s,incoming)).hp*m.teamShield*shieldMultiplier));applyStatus(incoming,'shield',duration);}
       if(m.transferSpeed){const turns=actor.status.speed||duration;applyStatus(incoming,'speed',turns,actor.statusPower.speed);delete actor.status.speed;delete actor.statusPower.speed;}
       if(m.entryEnergy&&!(incoming.cooldowns.secondWind>b.round)){incoming.energy=Math.min(stats(incoming,combatGear(s,incoming)).maxEnergy,incoming.energy+m.entryEnergy);incoming.cooldowns.secondWind=b.round+Math.max(4,m.cooldown||0);}
     }
@@ -409,12 +450,13 @@ function execute(s,actor,target,id,actorStats,targetStats,label,targetId,side='p
 function tick(p,max,label,s){
   if(!alive(p))return;for(const[status,turns]of Object.entries(p.status)){
     if(status==='burn'||status==='poison'){const source=s.collection[p.statusCredit?.[status]]||(s.collection[p.id]?s.run.battle.enemy:s.run.monkey),n=equipmentApplyHit(s.run.battle,source,p,{type:status==='burn'?'fire':'leaf'},Math.min(p.hp,Math.max(1,Math.round(max*.04))),{direct:false,ignoreShields:true}).damage;contribution(s,s.collection[p.statusCredit?.[status]],n);say(s,`${label} takes ${n} ${status} damage.`);}
-    if(turns<=1){if(p.statusCredit)delete p.statusCredit[status];delete p.status[status];delete p.statusPower[status];if(status==='shield')p.shield=0;if(status==='counter')p.counter=0;if(status==='prepare')p.prepare=0;}else p.status[status]--;
+    if(turns<=1){if(p.statusCredit)delete p.statusCredit[status];delete p.status[status];delete p.statusPower[status];if(status==='shield')p.shield=0;if(status==='counter')p.counter=0;if(status==='prepare')p.prepare=0;if(status==='evasion')delete p.evasion;}else p.status[status]--;
   }
 }
 function resolveRound(s){
   const r=s.run,b=r.battle;if(b.round===CONFIG.fatigueRound-3)say(s,`Both teams are tiring. From round ${CONFIG.fatigueRound}, escalating fatigue will end a prolonged battle.`);
   for(const p of[...team(s),...b.enemies]){const st=stats(p,combatGear(s,p));tick(p,st.hp,p.nickname||SPECIES[p.species].name,s);p.guard=0;
+    if(!alive(p))delete p.charging;
     if(b.round>=CONFIG.fatigueRound&&alive(p))p.hp=Math.max(0,p.hp-Math.max(1,Math.round(st.hp*Math.min(.6,.04*(b.round-CONFIG.fatigueRound+1)))));
     if(alive(p)){p.energy=Math.min(st.maxEnergy,p.energy+1);if(p.id===r.activeId||p.id===b.enemy.id){const recovered=equipmentApplyRecovery(b,p,st,combatGear(s,p));if(recovered.healing)say(s,`${p.nickname||SPECIES[p.species].name} recovers ${recovered.healing} health from equipment.`);}}}
   processEquipmentKnockouts(s);if(b.pendingRally?.expires<=b.round)b.pendingRally=null;if(b.enemyRally?.expires<=b.round)b.enemyRally=null;
@@ -432,17 +474,17 @@ function itemApply(s,id,targetId){
 }
 function performTurn(s,action){
   const r=s.run,b=r.battle;if(r.phase!=='battle'||!b?.ready)throw Error('Stop safely and begin the encounter first.');beginEquipmentBattle(s);const p=r.monkey,e=b.enemy,enemyAction=copy(b.enemyAction||{type:'move',id:b.intent}),em=MOVES[enemyAction.id],ps=battleStats(s,p),es=battleStats(s,e),pm=MOVES[action.id];
-  if(action.type==='move'){
-    if(!p.loadout.includes(action.id)||!pm||p.energy<(pm.cost||0)||!moveAvailable(b,p,action.id))throw Error('Ability unavailable, cooling down, or insufficient energy.');if(pm.switch&&p.status.root)throw Error('Rooted Challenge prevents voluntary retreat this round.');if(pm.switch&&!team(s).some(m=>alive(m)&&m.id!==p.id))throw Error('No conscious teammate can receive the relay.');
+    if(action.type==='move'){
+    if(!p.loadout.includes(action.id)||!pm||!(p.charging?.id===action.id&&p.charging.resolveRound<=b.round)&&p.energy<equipmentMoveCost(b,p,pm)||!moveAvailable(b,p,action.id))throw Error('Ability unavailable, cooling down, or insufficient energy.');if(pm.switch&&p.status.root)throw Error('Rooted Challenge prevents voluntary retreat this round.');if(pm.switch&&!team(s).some(m=>alive(m)&&m.id!==p.id))throw Error('No conscious teammate can receive the relay.');
   }
   if(action.type==='switch'){const incoming=team(s).find(m=>m.id===action.id);if(!incoming||!alive(incoming)||incoming.id===p.id||p.status.root)throw Error('Choose another conscious, unrooted switch.');}
-  b.openingLocked=true;b.hitFeedback=[];b.lastHits=b.hitFeedback;delete b.lastHit;
+  b.phase='resolution';b.openingLocked=true;b.hitFeedback=[];b.lastHits=b.hitFeedback;delete b.lastHit;
   const initiative=(actor,st,m)=>(m?.priority||0)*1000+st.speed*(actor.status.slow?.65:1)*(actor.status.speed?1.2:1),playerFirst=action.type!=='move'||initiative(p,ps,pm)>=initiative(e,es,em);
-  const playerAction=()=>{if(!alive(p)||p.id!==r.activeId)return;if(action.type==='switch')replacement(s,action.id,'player');else execute(s,p,b.enemy,action.id,battleStats(s,p),battleStats(s,b.enemy),'You',action.targetId,'player');equipmentTurnEnd(b,p,team(s));processEquipmentKnockouts(s);};
-  const enemyAct=()=>{if(!alive(e)||e.id!==b.enemy.id)return;const cannotRetreat=e.status.root||!b.enemies.some(m=>m.id!==e.id&&alive(m));if(enemyAction.type==='switch'&&!cannotRetreat)replacement(s,enemyAction.id,'enemy');else{const chosen=enemyAction.type==='switch'||MOVES[enemyAction.id]?.switch&&cannotRetreat||e.energy<(MOVES[enemyAction.id]?.cost||0)?'strike':enemyAction.id;execute(s,e,r.monkey,chosen,battleStats(s,e),battleStats(s,r.monkey),'Rival',null,'enemy');}equipmentTurnEnd(b,e,b.enemies);processEquipmentKnockouts(s);};
-  if(playerFirst){playerAction();enemyAct();}else{enemyAct();playerAction();}resolveRound(s);
+  const playerAction=()=>{if(!alive(p)||p.id!==r.activeId||b.interrupted?.[p.id]===b.round)return;if(action.type==='switch')replacement(s,action.id,'player');else execute(s,p,b.enemy,action.id,battleStats(s,p),battleStats(s,b.enemy),'You',action.targetId,'player',action.timing);equipmentTurnEnd(b,p,team(s));processEquipmentKnockouts(s);};
+  const enemyAct=()=>{if(!alive(e)||e.id!==b.enemy.id||b.interrupted?.[e.id]===b.round)return;const cannotRetreat=e.status.root||!b.enemies.some(m=>m.id!==e.id&&alive(m));if(enemyAction.type==='switch'&&!cannotRetreat)replacement(s,enemyAction.id,'enemy');else{const chosen=enemyAction.type==='switch'||MOVES[enemyAction.id]?.switch&&cannotRetreat||!(e.charging?.id===enemyAction.id&&e.charging.resolveRound<=b.round)&&e.energy<equipmentMoveCost(b,e,MOVES[enemyAction.id]||MOVES.strike)?'strike':e.charging?.id===enemyAction.id&&e.charging.resolveRound>b.round?'brace':enemyAction.id;execute(s,e,r.monkey,chosen,battleStats(s,e),battleStats(s,r.monkey),'Rival',null,'enemy');}equipmentTurnEnd(b,e,b.enemies);processEquipmentKnockouts(s);};
+  if(playerFirst){playerAction();enemyAct();}else{enemyAct();playerAction();}b.phase='results';resolveRound(s);
 }
-export function turn(s,id,isItem=false,options={}){if(isItem)return useItem(s,id,options.targetId);return performTurn(s,{type:'move',id,targetId:options.targetId});}
+export function turn(s,id,isItem=false,options={}){if(isItem)return useItem(s,id,options.targetId);return performTurn(s,{type:'move',id,targetId:options.targetId,timing:options.timing});}
 export function switchMonkey(s,id){return performTurn(s,{type:'switch',id});}
 export function chooseReplacement(s,id){if(s.run.phase!=='replacement')throw Error('No forced replacement is pending.');replacement(s,id,'player',true);s.run.phase='battle';if(s.run.battle.pendingVictory)victory(s);else planEnemy(s);return s.run.monkey;}
 export function useItem(s,id,targetId){
@@ -464,7 +506,7 @@ export function leaveCamp(s){if(s.run.phase!=='camp')return;s.run.camp=null;s.ru
 export function trainingCost(p){return{fruit:p.level<=3?[0,3,5,8][p.level]:8+p.level*4,xp:12+p.level*10};}
 export function train(s,id){
   const r=s.run,p=getMonkey(s,id);if(!p||!alive(p)||!['trail','camp'].includes(r.phase)||!r.party.includes(p.id))throw Error('Train a conscious expedition companion between encounters.');if(p.level>=CONFIG.maxLevel)throw Error('Maximum level reached.');const cost=trainingCost(p);if(r.fruit<cost.fruit||p.training<cost.xp)throw Error(`Leveling needs ${cost.xp} XP and ${cost.fruit} fruit.`);
-  const before=stats(p,equipped(s,p)).hp;r.fruit-=cost.fruit;p.training-=cost.xp;grantXp(p,(equipmentTrainingExperience(s,p,cost.xp)-cost.xp)/xpMultiplier(p));p.level++;p.hp=Math.min(stats(p,equipped(s,p)).hp,p.hp+stats(p,equipped(s,p)).hp-before);say(s,`${p.nickname||SPECIES[p.species].name} reached level ${p.level}.`);return p;
+  const before=stats(p,equipped(s,p)).hp;r.fruit-=cost.fruit;p.training-=cost.xp;grantXp(p,(equipmentTrainingExperience(s,p,cost.xp)-cost.xp)/xpMultiplier(p));p.level++;const known=new Set(p.learned||[]);syncProgression(p);const newlyLearned=p.learned.filter(id=>!known.has(id));if(newlyLearned.length){s.run.progressionNotice={monkeyId:p.id,level:p.level,moves:newlyLearned};say(s,`New techniques: ${newlyLearned.map(id=>MOVES[id].name).join(", ")}.`);}p.hp=Math.min(stats(p,equipped(s,p)).hp,p.hp+stats(p,equipped(s,p)).hp-before);say(s,`${p.nickname||SPECIES[p.species].name} reached level ${p.level}.`);return p;
 }
 export function evolutionCost(s,type,id){const p=getMonkey(s,id),next=(p?.stage||0)+1,required=[0,3,6,10][next];if(!p||!ELEMENTS[type]||next>3)return null;
   const native=nativeTypes(p.species);if(next===1&&native.length&&!native.includes(type))return null;
@@ -472,10 +514,10 @@ export function evolutionCost(s,type,id){const p=getMonkey(s,id),next=(p?.stage|
   return{level:required,cost:next===1?Object.fromEntries(types.map(t=>[t,CONFIG.evolution.firstEssence])):next===2?{[type]:24}:Object.fromEntries(types.map(t=>[t,types.length===1?40:28])),types};}
 export function evolutionPreview(s,type,id){const p=getMonkey(s,id),offer=evolutionCost(s,type,id);if(!offer)return null;const preview={...p,types:offer.types,stage:p.stage+1},mastery=preview.stage===3?CONFIG.masteries[type]:null;if(mastery)preview.mastery=type;
   const beforeStats=stats(p,equipped(s,p)),afterStats=stats(preview,equipped(s,p)),statGains=Object.fromEntries(Object.keys(afterStats).map(key=>[key,afterStats[key]-beforeStats[key]]));
-  return{...offer,monkey:preview,name:formName(preview),stats:afterStats,beforeStats,statGains,abilities:unlocked(preview),specialization:mastery?.name,desc:mastery?`Ascendant mastery: ${mastery.desc} Choose which existing element to master for this expedition.`:undefined,passive:mastery?`${mastery.name}: ${mastery.desc}`:offer.types.length===1?'Pure harmony: greater specialization in attack or defense.':'Mixed harmony: broader coverage with combined weaknesses and resistances.',matchups:Object.fromEntries(Object.keys(ELEMENTS).map(t=>[t,effectiveness(t,preview.types)]))};}
+  return{...offer,monkey:preview,name:formName(preview),stats:afterStats,beforeStats,statGains,abilities:unlocked(preview),newlyUnlocked:unlocked(preview).filter(id=>!unlocked(p).includes(id)),future:abilityCatalogue(preview).filter(a=>!a.eligible),minorPassive:progressionPassive(preview),specialization:mastery?.name,desc:mastery?`Ascendant mastery: ${mastery.desc} Choose which existing element to master for this expedition.`:undefined,passive:mastery?`${mastery.name}: ${mastery.desc}`:offer.types.length===1?'Pure harmony: greater specialization in attack or defense.':'Mixed harmony: broader coverage with combined weaknesses and resistances.',matchups:Object.fromEntries(Object.keys(ELEMENTS).map(t=>[t,effectiveness(t,preview.types)]))};}
 export function evolve(s,type,id){
   const r=s.run,p=getMonkey(s,id),offer=evolutionCost(s,type,id);if(!p||!alive(p)||!['trail','camp'].includes(r.phase)||!offer||!r.party.includes(p.id))throw Error('That evolution is unavailable for a fallen companion.');if(p.level<offer.level)throw Error(`Reach level ${offer.level} first.`);if(Object.entries(offer.cost).some(([t,n])=>r.essence[t]<n))throw Error('Gather the required essence or use the slower resource exchange.');
-  const old=stats(p,equipped(s,p)).hp;for(const[t,n]of Object.entries(offer.cost))r.essence[t]-=n;p.types=[...offer.types];p.stage++;if(p.stage===3)p.mastery=type;p.hp=Math.min(stats(p,equipped(s,p)).hp,p.hp+stats(p,equipped(s,p)).hp-old);const key=`${p.stage}:${[...p.types].sort().join('+')}${p.stage===3?`:mastery=${p.mastery}`:''}`;if(!p.discovered.includes(key))p.discovered.push(key);if(p.stage>=p.highestForm.stage)p.highestForm={stage:p.stage,types:[...p.types],...(p.stage===3?{mastery:p.mastery}:{})};p.learned=[...new Set([...p.learned,...unlocked(p)])];say(s,`Evolved into ${formName(p)}${p.stage===3?` with ${CONFIG.masteries[p.mastery].name}`:''}. This branch stays discovered in the sanctuary.`);return p;
+  const old=stats(p,equipped(s,p)).hp;for(const[t,n]of Object.entries(offer.cost))r.essence[t]-=n;p.types=[...offer.types];p.stage++;if(p.stage===3)p.mastery=type;p.hp=Math.min(stats(p,equipped(s,p)).hp,p.hp+stats(p,equipped(s,p)).hp-old);const key=`${p.stage}:${[...p.types].sort().join('+')}${p.stage===3?`:mastery=${p.mastery}`:''}`;if(!p.discovered.includes(key))p.discovered.push(key);if(p.stage>=p.highestForm.stage)p.highestForm={stage:p.stage,types:[...p.types],...(p.stage===3?{mastery:p.mastery}:{})};syncProgression(p);s.run.evolutionNotice={monkeyId:p.id,stage:p.stage,name:formName(p),moves:unlocked(p),passive:progressionPassive(p)};say(s,`Evolved into ${formName(p)}${p.stage===3?` with ${CONFIG.masteries[p.mastery].name}`:''}. This branch stays discovered in the sanctuary.`);return p;
 }
 function clampEquipmentVitals(s){
   for(const p of sanctuary(s)){const maximum=stats(p,equipped(s,p));p.hp=Math.min(p.hp,maximum.hp);p.energy=Math.min(p.energy,maximum.maxEnergy);}
@@ -493,7 +535,7 @@ export function equip(s,id,monkeyId,slot){
 export function unequip(s,slot,monkeyId){
   const p=getMonkey(s,monkeyId);if(!p)throw Error('Choose a monkey.');removeEquipment(s,slot,p.id);clampEquipmentVitals(s);return p;
 }
-export function setMove(s,slot,id,monkeyId){const p=getMonkey(s,monkeyId);if(!p||!['trail','camp'].includes(s.run.phase)||!Number.isInteger(slot)||slot<0||slot>3||(slot===0&&id!=='strike')||!abilityInfo(p,id)?.eligible)throw Error('Change curated abilities between encounters; keep Palm Strike in slot one.');if(p.loadout.includes(id)&&p.loadout[slot]!==id)throw Error('That ability is already equipped.');p.loadout[slot]=id;return p;}
+export function setMove(s,slot,id,monkeyId){const p=getMonkey(s,monkeyId);if(!p||!['trail','camp'].includes(s.run.phase)||!Number.isInteger(slot)||slot<0||slot>3||(slot===0&&id!=='strike')||!abilityInfo(p,id)?.eligible)throw Error('Change curated abilities between encounters; keep Palm Strike in slot one.');if(p.loadout.includes(id)&&p.loadout[slot]!==id)throw Error('That ability is already equipped.');syncProgression(p);p.loadout[slot]=id;return p;}
 export function exchangeEssence(s,from,to){if(!['trail','camp'].includes(s.run.phase)||!ELEMENTS[from]||!ELEMENTS[to]||from===to||s.run.essence[from]<4)throw Error('Exchange four of one essence for one other essence between encounters.');s.run.essence[from]-=4;s.run.essence[to]++;}
 export function craft(s,id){
   id=itemId(id);const r=s.run;if(!canChangeEquipment(s))throw Error('Craft supplies outside active battles.');if(GEAR[id]){if((s.meta.fragments[id]||0)<CONFIG.fragmentCost)throw Error(`Collect ${CONFIG.fragmentCost} equipment fragments.`);if(previewGearAward(s,id).kind==='salvaged')throw Error('This equipment is already at maximum tier.');awardGearCopy(s,id,{source:'fragments'});s.meta.fragments[id]-=CONFIG.fragmentCost;applyEquipmentCraftRefund(s,equipmentCraftRefund(s,{[`fragment:${id}`]:CONFIG.fragmentCost}));return;}
@@ -514,7 +556,7 @@ export function validate(s){
   normalizeEquipmentInventory(s);
   normalizeEquipmentTrail(s);
   for(const[id,p]of Object.entries(s.collection)){
-    p.xpRemainder??=0;if(!finite(p.xpRemainder)||p.xpRemainder>=1)throw Error('Invalid XP remainder.');
+    p.learned??=[];p.discovered??=[];p.highestForm??={stage:p.stage,types:[...p.types]};syncProgression(p);p.xpRemainder??=0;if(!finite(p.xpRemainder)||p.xpRemainder>=1)throw Error('Invalid XP remainder.');
     if(id!==p.id||!SPECIES[p.species]||![p.hp,p.energy,p.level,p.training,p.bond].every(finite)||!Number.isInteger(p.level)||p.level<1||p.level>60||!Number.isInteger(p.stage)||p.stage<0||p.stage>3||!Array.isArray(p.types)||p.types.length>2||p.types.some(t=>!ELEMENTS[t])||new Set(p.types).size!==p.types.length)throw Error('Invalid sanctuary companion.');
     // Earlier v2 checkpoints predate explicit mastery choices; retain the primary path.
     if(p.stage===3&&!p.mastery){p.mastery=p.types[0];if(p.highestForm?.stage===3&&!p.highestForm.mastery)p.highestForm.mastery=p.mastery;const key=`3:${[...p.types].sort().join('+')}:mastery=${p.mastery}`;if(!p.discovered.includes(key))p.discovered.push(key);}
@@ -525,5 +567,5 @@ export function validate(s){
   if(!r.essence||Object.keys(ELEMENTS).some(t=>!finite(r.essence[t]))||!r.items||Object.keys(ITEMS).some(t=>!finite(r.items[t])))throw Error('Invalid inventory.');if(!r.vector||!Object.values(r.vector).every(Number.isFinite)||!r.weights||!Object.values(r.weights).every(finite)||!r.bonuses||!Object.values(r.bonuses).every(finite))throw Error('Invalid walking checkpoint.');
   if(['battle','replacement'].includes(r.phase)){const b=r.battle;if(!b||!Array.isArray(b.enemies)||b.enemies.length<1||b.enemies.length>3||!b.enemies.every(p=>SPECIES[p.species]&&finite(p.hp)&&finite(p.energy))||!b.enemies.some(e=>e.id===b.enemy?.id)||!MOVES[b.intent]||!finite(b.round))throw Error('Invalid battle checkpoint.');b.enemy=b.enemies.find(e=>e.id===b.enemy.id);b.openingLocked??=true;}
   if(r.phase==='befriend'&&(!r.capture?.id||!r.capture.candidates?.length||!finite(r.capture.attempts)||r.capture.attempts>CONFIG.captureAttempts))throw Error('Invalid recruitment checkpoint.');if(r.ultra&&(!SPECIES[r.ultra.species]||!r.ultra.id||!finite(r.ultra.challengeRemaining)||!finite(r.ultra.spawnDistance)))throw Error('Invalid Ultra sighting.');
-  if(!s.meta.gear||!s.meta.equipped||!Array.isArray(s.meta.history)||s.meta.history.length>25||Object.entries(s.meta.gear).some(([id,n])=>!GEAR[id]||!Number.isInteger(n)||n<1||n>12)||!s.meta.claims)throw Error('Invalid persistent inventory.');validateForgeCheckpoint(s);normalizeLands(s);normalizeWalkSessions(s);normalizeCompanions(s);normalizeAdventures(s);r.pendingEncounter??=null;if(r.pendingEncounter){const b=r.pendingEncounter;if(!b.id||!Array.isArray(b.enemies)||!b.enemies.length||b.enemies.length>3||b.enemies.some(p=>!SPECIES[p.species]||!finite(p.hp)||!finite(p.energy))||!s.world.unlocked.includes(b.originLandId))throw Error('Invalid pending encounter checkpoint.');b.enemy=b.enemies.find(e=>e.id===b.enemy?.id)||b.enemies[0];}if(!Array.isArray(s.log)||s.log.length>16||JSON.stringify(s).length>650000)throw Error('Save is too large.');return s;
+  if(!s.meta.gear||!s.meta.equipped||!Array.isArray(s.meta.history)||s.meta.history.length>25||Object.entries(s.meta.gear).some(([id,n])=>!GEAR[id]||!Number.isInteger(n)||n<1||n>12)||!s.meta.claims)throw Error('Invalid persistent inventory.');validateForgeCheckpoint(s);normalizeSales(s);normalizeLands(s);normalizeWalkSessions(s);normalizeCompanions(s);normalizeAdventures(s);r.pendingEncounter??=null;if(r.pendingEncounter){const b=r.pendingEncounter;if(!b.id||!Array.isArray(b.enemies)||!b.enemies.length||b.enemies.length>3||b.enemies.some(p=>!SPECIES[p.species]||!finite(p.hp)||!finite(p.energy))||!s.world.unlocked.includes(b.originLandId))throw Error('Invalid pending encounter checkpoint.');b.enemy=b.enemies.find(e=>e.id===b.enemy?.id)||b.enemies[0];}if(!Array.isArray(s.log)||s.log.length>16||JSON.stringify(s).length>650000)throw Error('Save is too large.');return s;
 }

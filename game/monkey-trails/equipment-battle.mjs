@@ -57,6 +57,7 @@ export function equipmentEnter(b,p,team=[],{reason='initial'}={}){
  if(reason==='voluntary'){
   if(effect(b,p,'switchInHeal')&&claim(b,p,'switchInHeal'))result.healing+=heal(b,p,maximum(b,p)*effect(b,p,'switchInHeal'));
   if(effect(b,p,'switchInAttack')&&claim(b,p,'switchInAttack'))u.eclipseReady=true;
+  if(effect(b,p,'switchInGuard')&&claim(b,p,'switchInGuard'))u.nextReduction=Math.min(.30,(u.nextReduction||0)+effect(b,p,'switchInGuard'));
  }
  if(reason==='knockout'&&effect(b,p,'replacementSpeed')&&claim(b,p,'replacementSpeed')){
   buff(b,p,'replacementSpeed',{speed:effect(b,p,'replacementSpeed')},2);u.nextDamage=(u.nextDamage||0)+effect(b,p,'replacementDamage');
@@ -86,6 +87,9 @@ export function equipmentAttackDetails(b,actor,target,move,{consume=false}={}){
  let bonus=((move.cost||0)>0?effects.energyDamage:0)+(attackTypes.every(t=>t==='neutral')?effects.physicalDamage:0)+attackTypes.reduce((n,t)=>n+(effects.elementDamage[t]||0),0)/attackTypes.length;
  const once=(key,condition=true)=>{if(condition&&effect(b,actor,key)&&!used(b,actor,key)){bonus+=effect(b,actor,key);if(consume)claim(b,actor,key);}};
  once('firstAttackDamage');
+ if(move.interrupted||move.interrupt&&(target.charging||target.charge||b.enemyAction?.charging||b.enemyAction?.charged))bonus+=effect(b,actor,'interruptDamage');
+ if(move.perfectTiming&&hasType(move,'storm'))bonus+=effect(b,actor,'perfectStormDamage');
+ if(move.comboActive)bonus+=effect(b,actor,'comboDamage');
  if(targetRatio>.75)bonus+=effect(b,actor,'healthyTargetDamage');
  if(targetRatio<.35)bonus+=effect(b,actor,'criticalTargetDamage');
  once('firstHigherFireDamage',hasType(move,'fire')&&targetRatio>actorRatio);
@@ -115,6 +119,11 @@ export function equipmentApplyHit(b,actor,target,move,damage,{effectiveness=1,di
  const oldShield=ignoreShields?0:positive(target.shield),normalBonus=positive(attackBonus??a?.lastAttackBonus),shieldBonus=direct?Math.max(0,Math.min(.40-normalBonus,effect(b,actor,'shieldDamage')))/(1+normalBonus):0;
  result.absorbed=Math.min(oldShield,Math.round(damage*(1+shieldBonus)));
  if(!ignoreShields){target.shield=oldShield-result.absorbed;if(t)t.equipmentShield=Math.max(0,Math.min(t.equipmentShield,oldShield)-result.absorbed);}
+ if(enemy&&direct&&(result.absorbed>0||target.guard)&&effect(b,target,'blockReflect')&&alive(actor)){
+  const token=`${actor.equipmentBattleKey||actor.id}:${a?.turns||0}`;if(t.blockToken!==token){t.blockToken=token;t.blockReflected=0;}
+  const reflected=Math.min(actor.hp,Math.max(0,Math.min(Math.round((result.absorbed||damage)*effect(b,target,'blockReflect')),Math.floor(maximum(b,target)*.03)-t.blockReflected)));
+  actor.hp-=reflected;t.blockReflected+=reflected;result.reflected+=reflected;
+ }
  const healthHit=Math.max(0,Math.round(damage-result.absorbed/(1+shieldBonus))),beforeHp=target.hp;
  let actual=Math.min(beforeHp,healthHit);
  if(enemy&&direct&&healthHit>=beforeHp&&effect(b,target,'surviveFatal')&&claim(b,target,'surviveFatal'))actual=Math.max(0,beforeHp-1);
@@ -151,13 +160,17 @@ export function equipmentHealingMultiplier(b,actor,move,{consume=true}={}){
  if(!(move.heal||move.teamHeal)||!effect(b,actor,'firstAbilityHealing')||used(b,actor,'firstAbilityHealing'))return 1;
  if(consume)claim(b,actor,'firstAbilityHealing');return 1+effect(b,actor,'firstAbilityHealing');
 }
-export function equipmentAfterAbility(b,actor,move,{team=[],recipients,recipient}={}){
+export function equipmentAfterAbility(b,actor,move,{team=[],recipients,recipient,target,moveId}={}){
  const u=unit(b,actor),result={healing:0,shield:0};if(!u||!alive(actor))return result;
  if(hasType(move,'storm')&&effect(b,actor,'stormSpeed'))buff(b,actor,'stormSpeed',{speed:effect(b,actor,'stormSpeed')},2);
  if(!move.power&&effect(b,actor,'firstSupportHeal')&&claim(b,actor,'firstSupportHeal'))result.healing+=heal(b,actor,maximum(b,actor)*effect(b,actor,'firstSupportHeal'));
+ if(move.guard&&effect(b,actor,'braceShield')&&claim(b,actor,'braceShield'))result.shield+=addShield(b,actor,effect(b,actor,'braceShield'));
+ if(moveId&&move.cooldown&&actor.cooldowns?.[moveId]>b.round&&effect(b,actor,'firstCooldownReduction')&&claim(b,actor,'firstCooldownReduction'))actor.cooldowns[moveId]=Math.max(b.round,actor.cooldowns[moveId]-1);
+ if(target?.status?.weaken&&(move.weaken||move.status==='weaken')&&effect(b,actor,'firstWeakenTurns')&&claim(b,actor,'firstWeakenTurns'))target.status.weaken=Math.min(6,target.status.weaken+1);
  if(move.heal||move.teamHeal){
   if(effect(b,actor,'abilityHealShield')&&(u.healShieldUses||0)<2){u.healShieldUses=(u.healShieldUses||0)+1;for(const p of recipients||[recipient||actor])result.shield+=addShield(b,p,effect(b,actor,'abilityHealShield'));}
   if(effect(b,actor,'reserveHeal')&&claim(b,actor,'reserveHeal')){const reserve=team.filter(p=>p!==actor&&alive(p)).sort((x,y)=>x.hp/maximum(b,x)-y.hp/maximum(b,y))[0];if(reserve)result.healing+=heal(b,reserve,maximum(b,reserve)*effect(b,actor,'reserveHeal'));}
+  if(move.teamHeal&&effect(b,actor,'firstTeamHealShield')&&claim(b,actor,'firstTeamHealShield'))for(const p of team)if(alive(p))result.shield+=addShield(b,p,effect(b,actor,'firstTeamHealShield'));
  }
  return result;
 }
@@ -187,3 +200,22 @@ export function equipmentRevivedToReserve(b,p){const u=unit(b,p);if(!u?.revivedT
 export function equipmentConsumableHealing(gear={}){let value=0;for(const[id,tier]of Object.entries(safeGear(gear)))value+=positive(GEAR[id].effects?.consumableHealing)*equipmentTierScale(tier);return 1+value;}
 
 export const EQUIPMENT_COMBAT_LIMITS=Object.freeze({damageBonus:.40,damageReduction:.30,shieldCapacity:.30});
+
+// Preview and spend share the same discount. Merely opening a move card cannot
+// consume a once-per-battle effect.
+export function equipmentMoveCost(b,p,move,{consume=false}={}){
+ const cost=positive(move.cost);if(!cost||!hasType(move,'shadow')||!effect(b,p,'firstShadowDiscount')||used(b,p,'firstShadowDiscount'))return cost;
+ if(consume)claim(b,p,'firstShadowDiscount');return Math.max(0,cost-Math.min(1,effect(b,p,'firstShadowDiscount')));
+}
+export function equipmentShieldMultiplier(b,p,move,{consume=true}={}){
+ if(!(move.shield||move.teamShield)||!effect(b,p,'firstShieldBoost')||used(b,p,'firstShieldBoost'))return 1;
+ if(consume)claim(b,p,'firstShieldBoost');return 1+Math.min(.30,effect(b,p,'firstShieldBoost'));
+}
+export function equipmentTacticalEvent(b,p,event,{target,move,team=[],maxEnergy}={}){
+ const u=unit(b,p),result={energy:0,cooldowns:0};if(!u||!alive(p))return result;
+ if(event==='counter'){
+  if(effect(b,p,'counterEnergy')&&claim(b,p,'counterEnergy')){const max=maxEnergy||p.combatStats?.maxEnergy||p.maxEnergy||24;result.energy=Math.min(Math.max(0,max-p.energy),Math.round(effect(b,p,'counterEnergy')));p.energy+=result.energy;}
+  if(effect(b,p,'counterCooldown')&&claim(b,p,'counterCooldown'))for(const[id,due]of Object.entries(p.cooldowns||{}))if(due>b.round){p.cooldowns[id]=Math.max(b.round,due-1);result.cooldowns++;}
+ }
+ return result;
+}

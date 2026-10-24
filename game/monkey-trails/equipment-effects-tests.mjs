@@ -116,7 +116,7 @@ test('lifesteal restores only actual HP damage and active energy and shield effe
 
 test('new social copies apply equipment stats and effects without modifying expedition injuries',()=>{
   const s=save();teach(s.run.monkey);equip(s,'furnaceCore');equip(s,'snowmend');s.run.monkey.hp=10;s.run.monkey.energy=1;const source=JSON.stringify(s),members=snapshotTeam(s),r=newRaidAttempt(members,3,123);
-  assert.equal(r.version,SOCIAL_COMBAT_VERSION);assert.equal(r.version,4);r.team[0].hp=10;
+  assert.equal(r.version,SOCIAL_COMBAT_VERSION);assert.equal(r.version,5);r.team[0].hp=10;
   const preview=damagePreview(null,'cinder',{actor:r.team[0],target:r.boss,socialVersion:r.version});raidAction(r,{type:'move',id:'cinder'});
   assert.ok(r.lastHit.damage>=preview.min&&r.lastHit.damage<=(r.lastHit.critical?preview.criticalMax:preview.max));assert.ok(r.team[0].hp>10);assert.equal(JSON.stringify(s),source);
   const old=newRaidAttempt(members,3,123,2);old.team[0].hp=10;raidAction(old,{type:'move',id:'cinder'});assert.equal(old.team[0].hp,10);assert.ok(old.totalDamage<r.totalDamage);

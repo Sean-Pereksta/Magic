@@ -37,16 +37,25 @@ export function connectFirebase(){
     return {
       context:{db,f,auth},
       async read(id){const d=await f.getDocFromServer(ref(id));return d.exists()?d.data():null;},
-      async commit(id,base,envelope,history){
+      async commit(id,base,envelope,history,sales=[]){
+        const operations=await Promise.all(sales.map(async row=>({id:await identity(`${id}:${row.operationId}`,'sale'),fingerprint:await identity(JSON.stringify(row),'receipt')})));
         return f.runTransaction(db,async tx=>{
           const doc=await tx.get(ref(id)),old=doc.exists()?doc.data():null;
           if((old?.revision||0)!==base||old&&old.salt!==envelope.salt){const error=Error('Another device changed this save. Your device copy was kept. Export it or load the cloud copy.');error.code='save-conflict';throw error;}
+          const saleIds=operations.map(row=>row.id);
+          if((old?.saleIds||[]).some(key=>!saleIds.includes(key))){const error=Error('This checkpoint predates a permanent monkey sale. Load the current cloud copy to preserve the sale and its resources.');error.code='save-conflict';throw error;}
+          const fresh=operations.filter(row=>!(old?.saleIds||[]).includes(row.id));
+          // Read every receipt before any write. The encrypted removal, reserve
+          // payout and immutable receipt commit at the same cloud revision.
+          const receipts=await Promise.all(fresh.map(row=>tx.get(f.doc(db,...ROOT,'sale_operations',row.id))));
+          for(let i=0;i<fresh.length;i++)if(receipts[i].exists()){const error=Error('This monkey sale is already recorded. Load the current cloud checkpoint before continuing.');error.code='save-conflict';throw error;}
           const published=new Set(old?.scoreIds||[]);
           for(const h of history){
             if(h.mode!=='gps'||published.has(h.id))continue;
             tx.set(f.doc(db,...ROOT,'scores',`${id}_${h.id}`),{...h,verified:false,publishedAt:f.serverTimestamp()});published.add(h.id);
           }
-          tx.set(ref(id),{...envelope,revision:base+1,scoreIds:[...published].slice(-50),updatedAt:f.serverTimestamp()});
+          for(const row of fresh)tx.set(f.doc(db,...ROOT,'sale_operations',row.id),{saveId:id,fingerprint:row.fingerprint,createdAt:f.serverTimestamp()});
+          tx.set(ref(id),{...envelope,revision:base+1,scoreIds:[...published].slice(-50),saleIds,updatedAt:f.serverTimestamp()});
           return base+1;
         },{maxAttempts:3});
       },
@@ -136,7 +145,7 @@ export class Vault {
         this.adapter=this.adapter||await timeout(this.connect());
         // Do not race a transaction against a timeout and then issue an overlapping write.
         warning=setTimeout(()=>this.status('Cloud sync is delayed. Device checkpoint remains available.','offline'),12000);
-        this.base=await this.adapter.commit(this.id,base,envelope,snapshot.meta.history);
+        this.base=await this.adapter.commit(this.id,base,envelope,snapshot.meta.history,Object.values(snapshot.meta.monkeySales?.receipts||{}));
         this.dirty=this.seq!==seq;
         this.put(this.envelope,this.dirty);
         this.status(this.dirty?'Device saved · newer changes awaiting sync.':this.localOK?'Saved on this device and in Firestore.':'Cloud saved · device storage unavailable.',this.dirty?'local':'saved');

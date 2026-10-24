@@ -82,8 +82,9 @@ test('surrender and bounded passive battles finish deterministically without exp
 test('every catalogue technique resolves deterministically with bounded health and energy',()=>{
  for(const [id,move]of Object.entries(C.MOVES)){
   const roster=members('capuchin',3),p=roster[0];
-  if(move.signature){p.species=Object.entries(C.SPECIES).find(([,s])=>s.signature===id)[0];p.types=[...(C.SPECIES[p.species].types||[])];}
-  p.stage=3;p.learned=[...new Set([...p.learned,id])];p.loadout=['strike',id,'brace','breathe'].filter((id,index,array)=>array.indexOf(id)===index);
+  if(move.signature){p.species=move.owner||Object.entries(C.SPECIES).find(([,s])=>s.signature===id||s.progressionSignature===id)[0];p.types=[...(C.SPECIES[p.species].types||[])];}
+  if(move.expansion===3&&move.family==='progression'&&move.type!=='neutral')p.types=[move.type];
+  p.stage=3;p.level=60;p.learned=[...new Set([...p.learned,id])];p.loadout=['strike',id,'brace','breathe'].filter((id,index,array)=>array.indexOf(id)===index);
   const first=duel(roster,members('macaque',3),8765),second=structuredClone(first);
   for(const d of [first,second]){d.teams[0][0].hp=20;d.teams[0][1].hp=20;d.teams[1][0].hp=1000;d.teams[1][0].maxHp=1000;}
   const action={type:'move',id,expectedSequence:0,...(move.switch?{index:1}:{})};S.duelAction(first,'alice',action);S.duelAction(second,'alice',action);assert.deepEqual(first,second,id);
@@ -108,7 +109,7 @@ test('in-flight version-one duels and raid tickets retain their released balance
 });
 test('new fights recompute rarity stats and reject forged cached combat strength',()=>{
  const [a,b]=legacyProfiles();a.team[0].combatStats={hp:999999,atk:999999};const d=S.newDuel(a,b,34567),r=S.newRaidAttempt(a.team,9,4343);
- assert.equal(d.version,4);assert.equal(r.version,4);
+ assert.equal(d.version,S.SOCIAL_COMBAT_VERSION);assert.equal(r.version,S.SOCIAL_COMBAT_VERSION);
  assert.deepEqual(d.teams[0][0].combatStats,C.stats(a.team[0],a.team[0].gear));
  assert.ok(d.teams[0][0].maxHp>C.statsLegacy(a.team[0],a.team[0].gear).hp);
  assert.throws(()=>S.newDuel(a,b,34567,999),/combat version/);

@@ -134,6 +134,39 @@ export const EXPANSION_GEAR=Object.fromEntries(expansionRows.map(([id,name,eleme
   acquisition:`Resource-mixing crafting${rarity==='rare'?'; suitable regional challenges and milestones':''}. ${element==='neutral'?'Mixed resources keep neutral outcomes eligible.':`${element[0].toUpperCase()+element.slice(1)} essence increases this item’s crafting weight.`}`,
   ...(effects.discoveryReduction?{discoveryReduction:effects.discoveryReduction}:{}),...(effects.encounterWeight||effects.prismConvert?{selectableElement:true}:{})}];
 }));
-export const FORGE_GEAR={...ORIGINAL_FORGE_GEAR,...EXPANSION_GEAR};
+const livingRows=[
+ ['trailrunnerAnklet','Trailrunner Anklet','storm','common','charm',{speed:.04},{},'Increase Speed by 4%.','Switching'],
+ ['barkhideWristguards','Barkhide Wristguards','leaf','common','armor',{hp:.05},{},'Increase maximum health by 5%.','Protection'],
+ ['pebblewhistle','Pebblewhistle','earth','common','charm',{def:.04},{},'Increase Defense by 4%.','Protection'],
+ ['dewglassPin','Dewglass Pin','water','common','charm',{}, {flatEnergy:1},'Add 1 maximum energy.','Healing'],
+ ['coalKnotWrap','Coal-Knot Wrap','fire','common','weapon',{atk:.04},{},'Increase Attack by 4%.','Damage'],
+ ['moonthreadSash','Moonthread Sash','shadow','uncommon','armor',{}, {firstShadowDiscount:1},'The first Shadow ability that costs energy costs 1 less, once per battle.','Damage'],
+ ['stormcatchRope','Stormcatch Rope','storm','uncommon','charm',{}, {entrySpeed:.08},'First battle entry grants 8% Speed for three wearer turns.','Switching'],
+ ['icefernBuckler','Icefern Buckler','ice','uncommon','armor',{}, {firstShieldBoost:.15},'The first ability shield created by the wearer is 15% stronger, once per battle.','Protection'],
+ ['canopyCarabiner','Canopy Carabiner','leaf','uncommon','charm',{}, {distanceHealing:.10},'Accepted walking recovery restores 10% more health to the wearer; never revives.','Exploration,Healing'],
+ ['radiantLapel','Radiant Lapel','light','uncommon','charm',{}, {firstAbilityHealing:.15},'The first healing ability restores 15% more health, once per battle.','Healing'],
+ ['echoheartMedallion','Echoheart Medallion','earth','rare','charm',{}, {counterEnergy:2},'After the first successful defensive counter, restore 2 energy, once per battle.','Protection'],
+ ['flarefootBoots','Flarefoot Boots','fire','rare','charm',{}, {switchInAttack:.12},'The first damaging attack after voluntary switch-in gains 12% damage, once per battle.','Switching,Damage'],
+ ['marshcallTotem','Marshcall Totem','water','rare','charm',{}, {firstWeakenTurns:1},'The first weaken inflicted lasts one additional round, once per battle.','Damage'],
+ ['ridgebreakerGloves','Ridgebreaker Gloves','earth','rare','weapon',{}, {shieldDamage:.18},'Deal 18% more damage to shields, within the shared 40% damage bonus cap.','Damage'],
+ ['glasswingCape','Glasswing Cape','storm','rare','armor',{}, {braceShield:.06},'First Brace grants a shield worth 6% maximum health, once per battle.','Protection'],
+ ['templekeeperLantern','Templekeeper Lantern','light','epic','charm',{}, {specialResource:.20},'A completed special-location challenge has a 20% chance for 1 extra matching essence. One roll per location; team copies do not stack.','Exploration'],
+ ['mirageBand','Mirage Band','earth','epic','charm',{}, {switchInGuard:.10},'First voluntary switch-in reduces the next enemy attack by 10%, once per battle.','Switching,Protection'],
+ ['frostclockRing','Frostclock Ring','ice','epic','charm',{}, {firstCooldownReduction:1},'After the first ability with a cooldown, reduce that cooldown by 1 round, once per battle.','Protection'],
+ ['voltglassTalon','Voltglass Talon','storm','epic','weapon',{}, {perfectStormDamage:.04},'A successfully timed Storm attack gains 4% damage, within the shared equipment damage cap.','Damage'],
+ ['bloomguardCloak','Bloomguard Cloak','leaf','epic','armor',{}, {firstTeamHealShield:.05},'First team-healing ability shields each living ally for 5% maximum health, once per battle.','Healing,Protection'],
+ ['regentsCompass',"Regent’s Compass",'light','legendary','charm',{}, {specialDiscovery:.08},'Reduce the next special-location interval by 8%, with a 1,500-foot minimum. Team copies do not stack.','Exploration'],
+ ['phoenixMemory','Phoenix Memory','fire','legendary','charm',{}, {surviveFatal:true},'The first lethal direct enemy hit leaves the wearer at 1 HP, once per battle.','Protection'],
+ ['abyssalMirror','Abyssal Mirror','shadow','legendary','armor',{}, {blockReflect:.15},'After a successful block reflect 15% of absorbed damage, capped at 3% maximum health per turn. Reflections cannot trigger more effects.','Protection,Damage'],
+ ['crownOfStillwater','Crown of Stillwater','water','legendary','charm',{}, {switchOutShield:.10},'First voluntary switch-out shields the incoming ally for 10% of their maximum health, once per battle.','Switching,Protection'],
+ ['thunderScepter','Thunder Scepter','storm','legendary','weapon',{}, {interruptDamage:.15},'A technique that interrupts a charged attack gains 15% damage, within the shared equipment damage cap.','Damage'],
+ ['worldwalkerMantle','Worldwalker Mantle','neutral','mythic','armor',{hp:.06},{distanceHealing:.10,discoveryReduction:.03,specialDiscovery:.04},'Increase maximum health by 6%, walking recovery by 10%; reduce ordinary discovery intervals by 3% and special intervals by 4%. Matching team effects do not stack; existing distance caps apply.','Exploration,Healing'],
+ ['celestialHourglass','Celestial Hourglass','light','mythic','charm',{}, {counterCooldown:1},'First successful defensive counter reduces all wearer cooldowns by 1, once per battle.','Protection'],
+ ['eclipseDrum','Eclipse Drum','shadow','mythic','charm',{}, {comboDamage:.12},'A successful status-combination attack gains 12% damage within the shared 40% equipment bonus cap.','Damage'],
+ ['kingdomForgeheart','Kingdom Forgeheart','earth','mythic','charm',{}, {craftQuality:.03},'Add 3 percentage points to forge mix quality, capped at 100%. Team copies do not stack. The displayed odds include this benefit.','Crafting'],
+ ['omnifruitIdol','Omnifruit Idol','leaf','mythic','charm',{}, {offeringBonus:.10},'Offerings have a 10% chance for 1 extra matching essence, once per location. Team copies do not stack; no additional equipment roll.','Exploration']
+];
+export const LIVING_GEAR=Object.fromEntries(livingRows.map(([id,name,element,rarity,slot,statsPct,effects,desc,purposes])=>[id,{name,element,affinity:element==='neutral'?null:element,rarity,slot,statsPct,effects,desc,purpose:purposes.toLowerCase().split(','),summary:purposeSummary[purposes.split(',')[0]],acquisition:'Mix resources in the Canopy Forge or complete regional locations and quests.',bonuses:effects.flatEnergy?{maxEnergy:effects.flatEnergy}:{},icon:icons[slot],newItem:true,fragmentCost:5}]));
+export const FORGE_GEAR={...ORIGINAL_FORGE_GEAR,...EXPANSION_GEAR,...LIVING_GEAR};
 // Metadata for original gear leaves all original stat/amount values unchanged.
 export const LEGACY_GEAR_AFFINITIES={fang:{element:'fire',rarity:'common'},shell:{element:'water',rarity:'common'},heart:{element:'leaf',rarity:'common'},wind:{element:'storm',rarity:'common'},satchel:{element:'leaf',rarity:'uncommon'}};

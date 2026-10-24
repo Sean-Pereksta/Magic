@@ -23,7 +23,7 @@ test('accepted walking restores exactly 2% equipped max HP per 100 feet without 
 });
 
 test('all catalogue rarity tiers have distinct permanent power bands at equal level and evolution',()=>{
- const rarities=['common','uncommon','rare','ultra'];assert.equal(Object.keys(C.SPECIES).length,90);
+ const rarities=['common','uncommon','rare','ultra'];assert.equal(Object.keys(C.SPECIES).length,110);
  for(const level of [1,10,60])for(const stage of [0,1,2,3]){
   let previousMax=-1;
   for(const rarity of rarities){
