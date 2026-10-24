@@ -1,4 +1,4 @@
-import { TILE, UNITS, armySize, clamp, hash } from "./data.mjs";
+import { TILE, UNITS, FACTIONS, armySize, clamp, hash } from "./data.mjs";
 import { battleMap, formationSlots } from "./battle.mjs";
 export class Renderer {
   constructor(canvas, mini, assets) {
@@ -12,6 +12,7 @@ export class Renderer {
     this.chunks = new Map();
     this.selected = new Set();
     this.preview = null;
+    this.overlay = "none";
     this.marquee = null;
     this.follow = true;
     this.frameMs = 16.7;
@@ -206,10 +207,72 @@ export class Renderer {
     c.fill();
     c.restore();
   }
+  regionMap(state, map) {
+    const signature = `${map.seed}:${map.width}:${state.settlements.length}`;
+    if (this.regions?.signature === signature) return this.regions;
+    const cells = [], step = 8;
+    for (let y = 0; y < map.height; y += step)
+      for (let x = 0; x < map.width; x += step) {
+        let nearest = null, distance = Infinity;
+        for (const s of state.settlements) {
+          const d = (s.x - x - step / 2) ** 2 + (s.y - y - step / 2) ** 2;
+          if (d < distance) { distance = d; nearest = s.id; }
+        }
+        cells.push({ x, y, id: nearest });
+      }
+    return this.regions = { signature, cells, step };
+  }
+  regionColor(s, state) {
+    if (!s) return '#68795d';
+    if (this.overlay === 'ownership') return s.owner === state.profile.uid ? '#e8c778' : s.owner ? '#ab8ac3' : '#76877a';
+    if (this.overlay === 'relations') {
+      const relation = state.profile.relations?.[s.faction] || 0;
+      return relation < -20 ? '#d86651' : relation > 20 ? '#7ac29b' : '#d2bd7c';
+    }
+    if (this.overlay === 'wars') {
+      const faction = state.kingdoms?.factions?.find(f => f.id === s.faction);
+      return faction?.player?.atWar ? '#df6653' : faction?.player?.treaties?.some(t => /lliance/.test(t.type)) ? '#7ebba5' : faction?.wars?.length ? '#c58c60' : '#7c8b7c';
+    }
+    return FACTIONS.find(f => f.id === (s.currentFaction || s.faction))?.color || '#819287';
+  }
+  worldOverlay(state, map, time) {
+    const c = this.ctx, mode = this.overlay;
+    if (mode === 'none') return;
+    if (['territories', 'relations', 'wars', 'ownership'].includes(mode)) {
+      const regions = this.regionMap(state, map), byId = new Map(state.settlements.map(s => [s.id, s]));
+      c.save(); c.globalAlpha = 0.23;
+      for (const cell of regions.cells) {
+        if (!this.visible(cell.x + 4, cell.y + 4, 8)) continue;
+        c.fillStyle = this.regionColor(byId.get(cell.id), state);
+        c.fillRect(cell.x * TILE, cell.y * TILE, regions.step * TILE, regions.step * TILE);
+      }
+      c.restore();
+    }
+    if (mode === 'trade') {
+      const routes = state.kingdoms?.tradeRoutes || [];
+      for (const route of routes) {
+        const a = state.settlements.find(s => s.id === (route.from || route.a)), b = state.settlements.find(s => s.id === (route.to || route.b));
+        if (a && b && (this.visible(a.x,a.y,20) || this.visible(b.x,b.y,20))) this.path([a,b],(route.blocked || route.disrupted) ? '#d86b55' : '#dbc477',time * 0.4);
+      }
+    }
+    if (mode === 'armies') for (const n of state.npcs) {
+      const target = state.settlements.find(s => s.id === n.target);
+      if (target && this.visible(n.x,n.y,10)) this.path([n,target],n.kind === 'bandit' ? '#d47f67' : '#91bdbe',time * 0.3);
+    }
+    if (mode === 'threats') {
+      c.save(); c.fillStyle = '#da684230'; c.strokeStyle = '#dc8066'; c.lineWidth = 1;
+      for (const entity of [...state.npcs.filter(n => n.kind === 'bandit'), ...state.settlements.filter(s => s.underAttack || s.raidedUntil > state.time)]) {
+        if (!this.visible(entity.x,entity.y,10)) continue;
+        c.beginPath(); c.arc(entity.x*TILE,entity.y*TILE,4*TILE,0,Math.PI*2); c.fill(); c.stroke();
+      }
+      c.restore();
+    }
+  }
   world(state, map, time) {
     const c = this.ctx,
       p = state.profile;
     this.terrain(map);
+    this.worldOverlay(state, map, time);
     if (p.route?.length > p.routeIndex)
       this.path([p, ...p.route.slice(p.routeIndex)], "#ebcc89", time);
     if (!this.low) {
@@ -249,7 +312,13 @@ export class Renderer {
           }
     }
     const objects = [];
-    for (const prop of map.props)
+    const visibleProps = map.propChunks ? (() => {
+      const props = [], halfW=this.width/(TILE*this.cam.zoom*2)+3, halfH=this.height/(TILE*this.cam.zoom*2)+3;
+      for(let cy=Math.max(0,Math.floor((this.cam.y-halfH)/12));cy<=Math.floor((this.cam.y+halfH)/12);cy++)
+        for(let cx=Math.max(0,Math.floor((this.cam.x-halfW)/12));cx<=Math.floor((this.cam.x+halfW)/12);cx++) props.push(...(map.propChunks.get(`${cx},${cy}`)||[]));
+      return props;
+    })() : map.props;
+    for (const prop of visibleProps)
       if (this.visible(prop.x, prop.y)) objects.push({ ...prop, sort: prop.y });
     for (const s of state.settlements)
       if (this.visible(s.x, s.y))
@@ -286,11 +355,11 @@ export class Renderer {
       if (o.settlement) {
         const mine = o.owner === p.uid;
         this.label(o.name, o.x, o.y + 1, mine ? "#f1ce82" : "#f3e9d4");
-        if (o.kind === "castle") {
+        if (["castle", "capital", "town"].includes(o.kind)) {
           this.pennon(
             o.x + 0.5,
             o.y - 0.8,
-            mine ? "#dabb76" : o.faction === "ember" ? "#d78367" : "#72b4d5",
+            mine ? "#dabb76" : FACTIONS.find(f => f.id === (o.currentFaction || o.faction))?.color || "#72b4d5",
           );
           this.label(
             o.ownerName || `${o.garrison} defenders`,
@@ -319,14 +388,14 @@ export class Renderer {
         this.pennon(
           n.x - 0.4,
           n.y,
-          n.kind === "bandit" ? "#d5765c" : "#8fc0c3",
+          n.kind === "bandit" ? "#d5765c" : FACTIONS.find(f => f.id === n.faction)?.color || "#8fc0c3",
           0.7,
         );
       }
       this.label(
         n.kind === "merchant"
           ? "Caravan"
-          : `${n.kind === "bandit" ? "Outlaws" : "Patrol"} · ${armySize(n.army)}`,
+          : `${n.kind === "bandit" ? "Outlaws" : n.lord ? n.name : "Patrol"} · ${armySize(n.army)}`,
         n.x,
         n.y + 0.8,
         n.kind === "bandit" ? "#f4b095" : "#c9d6c4",
@@ -394,6 +463,15 @@ export class Renderer {
     map.seed = b.seed;
     map.siege = b.siege;
     this.terrain(map);
+    if (b.objective) {
+      const o=b.objective, allied=o.team === team;
+      c.save(); c.strokeStyle=allied ? '#e4c77e' : '#e19178'; c.fillStyle=allied ? '#e4c77e16' : '#e1917816'; c.lineWidth=2/this.cam.zoom;
+      c.setLineDash([8,7]); c.beginPath(); c.arc(o.x*TILE,o.y*TILE,(o.radius || 4)*TILE,0,Math.PI*2); c.fill();c.stroke(); c.setLineDash([]);
+      if(o.type==='caravanDefense' || o.type==='caravan') this.atlas(2,14,o.x*TILE-28,o.y*TILE-36,60,60);
+      if(o.type==='raid') this.atlas(2,10,o.x*TILE-35,o.y*TILE-55,70,70);
+      this.label(`${o.type} · ${o.hp != null ? Math.ceil(o.hp)+' integrity' : Math.max(0,Math.ceil(o.duration-(['defensive','reinforcement'].includes(o.type) ? o.heldFor || 0 : o.elapsed || b.time)))+'s'}`,o.x,o.y-(o.radius || 4)-.4,'#efd293',true);
+      c.restore();
+    }
     if (b.siege) {
       for (let y = 1; y < 40; y += 3) {
         if (y > 17 && y < 23) continue;
@@ -450,6 +528,15 @@ export class Renderer {
         0.8,
       );
       if (u.hp > 0) {
+        if ((u.order?.kind === 'brace' || u.state === 'defend') && ['spear','shield'].includes(UNITS[u.key].role)) {
+          c.strokeStyle = u.team === team ? '#a9d4dc' : '#e4a382';
+          c.lineWidth = 2;
+          const angle = u.heading ?? (u.facing < 0 ? Math.PI : 0);
+          c.beginPath();
+          if (UNITS[u.key].role === 'shield') c.arc(x*TILE,y*TILE-10,18,angle-0.9,angle+0.9);
+          else { c.moveTo(x*TILE,y*TILE-10); c.lineTo(x*TILE+Math.cos(angle)*31,y*TILE-10+Math.sin(angle)*31); }
+          c.stroke();
+        }
         c.fillStyle = u.team === team ? "#75b3ce" : "#db8068";
         c.fillRect(x * TILE - 8, y * TILE + 8, 16, 2);
         if (u.hp < u.maxHp || this.selected.has(u.id)) {
@@ -457,6 +544,10 @@ export class Renderer {
           c.fillRect(x * TILE - 11, y * TILE - 32, 22, 3);
           c.fillStyle = u.team === team ? "#a7d7a5" : "#df9a7f";
           c.fillRect(x * TILE - 11, y * TILE - 32, (22 * u.hp) / u.maxHp, 3);
+          if (this.selected.has(u.id)) {
+            c.fillStyle = '#cfbd78'; c.fillRect(x*TILE-11,y*TILE-27,22*(u.stamina ?? 100)/100,2);
+            c.fillStyle = '#86c5c4'; c.fillRect(x*TILE-11,y*TILE-23,22*(u.morale ?? 100)/100,2);
+          }
         }
       }
     }
@@ -464,7 +555,7 @@ export class Renderer {
       c.save();
       c.translate(p.x * TILE, p.y * TILE - 15);
       c.rotate(Math.atan2(p.ty - p.y, p.tx - p.x));
-      if (p.kind === "magic") {
+      if (["magic", "explosive", "bomb", "rock", "mire"].includes(p.kind)) {
         const g = c.createRadialGradient(0, 0, 0, 0, 0, 12);
         g.addColorStop(0, "#fff0ac");
         g.addColorStop(0.3, "#f5b34b");
@@ -504,6 +595,9 @@ export class Renderer {
           ? "#ffd383"
           : "#f1dfae";
       c.lineWidth = heal ? 3 : 2;
+      if (['block','shield','brace','charge','splash','explosion'].includes(e.kind)) {
+        c.beginPath(); c.arc(0,0,(e.radius || 0.7)*TILE*(0.25+age),0,Math.PI*2); c.stroke();
+      }
       for (let i = 0; i < (this.low ? 4 : 8); i++) {
         const angle = (i * Math.PI) / 4 + e.x;
         const distance = 5 + age * (e.kind === "firestorm" ? 100 : 28),
@@ -602,16 +696,29 @@ export class Renderer {
       "#c1c6b2",
       "#bb9d72",
     ];
-    for (let y = 0; y < m.height; y += 2)
-      for (let x = 0; x < m.width; x += 2) {
-        c.fillStyle = colors[m.tiles[y * m.width + x]];
-        c.fillRect(
+    const miniKey = `${m.seed}:${m.width}:${m.height}:${m.version}:${w}:${h}`;
+    if (this.miniTerrain?.key !== miniKey) {
+      const canvas = document.createElement('canvas'); canvas.width=w; canvas.height=h;
+      const terrain=canvas.getContext('2d',{alpha:false});
+      for (let y = 0; y < m.height; y += 2)
+        for (let x = 0; x < m.width; x += 2) {
+        terrain.fillStyle = colors[m.tiles[y * m.width + x]];
+        terrain.fillRect(
           (x / m.width) * w,
           (y / m.height) * h,
           (2 / m.width) * w + 1,
           (2 / m.height) * h + 1,
         );
       }
+      this.miniTerrain={key:miniKey,canvas};
+    }
+    c.drawImage(this.miniTerrain.canvas,0,0);
+    if (!b && ['territories','wars','relations','ownership'].includes(this.overlay)) {
+      const regions=this.regionMap(state,map), byId=new Map(state.settlements.map(s=>[s.id,s]));
+      c.globalAlpha=.46;
+      for(const cell of regions.cells){c.fillStyle=this.regionColor(byId.get(cell.id),state);c.fillRect(cell.x/m.width*w,cell.y/m.height*h,regions.step/m.width*w+1,regions.step/m.height*h+1);}
+      c.globalAlpha=1;
+    }
     const marker = (x, y, color, size = 3) => {
       c.fillStyle = color;
       c.fillRect(

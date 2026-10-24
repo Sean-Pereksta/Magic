@@ -43,6 +43,13 @@ export class Navigator {
     this.closed = new Uint32Array(n);
     this.stamp = 0;
     this.cache = new Map();
+    this.maxVisits = Math.min(8192, n * 2);
+    this.lastVisits = 0;
+    this.backbone = map.roads?.length ? map.settlements.map(() => []) : null;
+    if (this.backbone) for (const road of map.roads) {
+      this.backbone[road.a].push({ to: road.b, points: road.points, reverse: false });
+      this.backbone[road.b].push({ to: road.a, points: road.points, reverse: true });
+    }
   }
   walkable(x, y) {
     return (
@@ -66,6 +73,7 @@ export class Navigator {
     return null;
   }
   path(start, end) {
+    this.lastVisits = 0;
     const a = this.nearest(start.x, start.y),
       b = this.nearest(end.x, end.y);
     if (!a || !b) return [];
@@ -74,6 +82,59 @@ export class Navigator {
       t = b.y * w + b.x,
       key = `${s}:${t}:${this.map.version || 0}`;
     if (this.cache.has(key)) return this.cache.get(key).map((p) => ({ ...p }));
+    if (s === t) return [];
+    let path = null;
+    if (this.backbone && Math.hypot(a.x - b.x, a.y - b.y) > 48)
+      path = this.backbonePath(a, b);
+    path ||= this.search(a, b, this.maxVisits);
+    if (!path?.length) return [];
+    if (this.cache.size >= 192) this.cache.delete(this.cache.keys().next().value);
+    this.cache.set(key, path);
+    return path.map((p) => ({ ...p }));
+  }
+  backbonePath(a, b) {
+    const sites = this.map.settlements;
+    const candidates = (p) => sites.slice(0, this.backbone.length).map((s, id) => ({ id, d: Math.hypot(s.x - p.x, s.y - p.y) }))
+      .sort((x, y) => x.d - y.d || x.id - y.id).slice(0, 3);
+    let first, last, enter, leave;
+    for (const { id } of candidates(a)) {
+      const site = { x: Math.floor(sites[id].x), y: Math.floor(sites[id].y) };
+      const route = site.x === a.x && site.y === a.y ? [] : this.search(a, site, 3072);
+      if (route) { first = id; enter = route; break; }
+    }
+    for (const { id } of candidates(b)) {
+      const site = { x: Math.floor(sites[id].x), y: Math.floor(sites[id].y) };
+      const route = site.x === b.x && site.y === b.y ? [] : this.search(site, b, 3072);
+      if (route) { last = id; leave = route; break; }
+    }
+    if (first == null || last == null) return null;
+    const heap = new MinHeap(), distance = new Float32Array(sites.length).fill(Infinity), previous = [];
+    distance[first] = 0; heap.push(first, 0);
+    while (heap.items.length) {
+      const { id, score } = heap.pop();
+      if (score > distance[id] + .001) continue;
+      if (id === last) break;
+      for (const edge of this.backbone[id]) {
+        const next = score + edge.points.length;
+        if (next < distance[edge.to]) { distance[edge.to] = next; previous[edge.to] = { from: id, edge }; heap.push(edge.to, next); }
+      }
+    }
+    if (!Number.isFinite(distance[last])) return null;
+    const edges = [];
+    for (let at = last; at !== first;) {
+      const item = previous[at]; if (!item) return null;
+      edges.push(item.edge); at = item.from;
+    }
+    const path = [...enter];
+    for (const edge of edges.reverse()) {
+      const points = edge.reverse ? [...edge.points].reverse() : edge.points;
+      for (const p of points) if (!path.length || p.x !== path.at(-1).x || p.y !== path.at(-1).y) path.push({ ...p });
+    }
+    path.push(...leave);
+    return path;
+  }
+  search(a, b, maxVisits) {
+    const w = this.map.width, s = a.y * w + a.x, t = b.y * w + b.x;
     const stamp = ++this.stamp,
       heap = new MinHeap();
     this.seen[s] = stamp;
@@ -92,7 +153,7 @@ export class Navigator {
       [-1, 1],
       [1, 1],
     ];
-    while (heap.items.length && visits++ < w * this.map.height * 2) {
+    while (heap.items.length && visits++ < maxVisits) {
       const { id } = heap.pop();
       if (this.closed[id] === stamp) continue;
       this.closed[id] = stamp;
@@ -124,15 +185,13 @@ export class Navigator {
         }
       }
     }
-    if (!found) return [];
+    this.lastVisits += visits;
+    if (!found) return null;
     const path = [];
     for (let p = t; p !== s && p !== -1; p = this.parents[p])
       path.push({ x: (p % w) + 0.5, y: Math.floor(p / w) + 0.5 });
     path.reverse();
-    if (this.cache.size >= 192)
-      this.cache.delete(this.cache.keys().next().value);
-    this.cache.set(key, path);
-    return path.map((p) => ({ ...p }));
+    return path;
   }
   clearLine(a, b) {
     const steps = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) * 3);

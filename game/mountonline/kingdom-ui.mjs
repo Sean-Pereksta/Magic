@@ -1,0 +1,25 @@
+import { FACTIONS, UNITS } from './data.mjs';
+
+const actions = [
+  ['gift', 'Send gift'], ['pact', 'Non-aggression pact'], ['trade', 'Trade agreement'],
+  ['passage', 'Safe passage'], ['defensiveAlliance', 'Defensive alliance'],
+  ['militaryAlliance', 'Military alliance'], ['aid', 'Request war aid'],
+  ['war', 'Declare war'], ['ceasefire', 'Ceasefire'], ['peace', 'Lasting peace'],
+  ['prisoners', 'Exchange prisoners'], ['tribute', 'Offer tribute'], ['demandTribute', 'Demand tribute'],
+  ['territory', 'Negotiate territory'],
+  ['protection', 'Request protection'], ['break', 'Break treaties'],
+];
+export function kingdomCards(state, esc, focus = null) {
+  const p = state?.profile || {}, diplomacy = p.diplomacy || {};
+  const factions = state?.kingdoms?.factions || [];
+  const cards = FACTIONS.filter(f => !focus || f.id === focus).map(f => {
+    const k = factions.find(k => k.id === f.id) || {};
+    const player = k.player || {};
+    const treaties = player.treaties || (diplomacy.treaties || []).filter(t => t.faction === f.id);
+    const offers = player.offers || (diplomacy.offers || []).filter(o => o.faction === f.id && o.status === 'pending');
+    const holdings = (state?.settlements || []).filter(s => (s.currentFaction || s.faction) === f.id && !s.owner);
+    const wars = (state?.kingdoms?.wars || []).filter(w => w.a === f.id || w.b === f.id);
+    return `<details class="faction-card" ${focus ? 'open' : ''} data-faction-card="${f.id}"><summary><i style="background:${f.color}"></i><span>${esc(f.name)}<small>${esc(f.trait)}</small></span><b>${player.atWar ? 'AT WAR' : `Relations ${p.relations?.[f.id] || 0}`}</b></summary><div class="faction-content"><p>${esc(f.leader || 'Council of lords')} · ${esc(f.personality || f.doctrine || '')}</p><div class="faction-metrics"><span>Strength <b>${Math.round(k.strength || 0)}</b></span><span>Wealth <b>${Math.floor(k.wealth || 0)}</b></span><span>Settlements <b>${holdings.length}</b></span><span>Exhaustion <b>${Math.round(k.exhaustion || 0)}</b></span><span>Trust <b>${Math.round(player.trust ?? diplomacy.trust?.[f.id] ?? 0)}</b></span></div><p>Signature troops: ${(f.signature || f.signatureUnits || []).map(key => esc(UNITS[key]?.name || key)).join(', ')}</p><p>Wars: ${wars.map(w => esc(FACTIONS.find(o => o.id === (w.a === f.id ? w.b : w.a))?.name || 'rival')).join(', ') || 'None'}<br>Agreements: ${treaties.map(t => `${esc(t.type || t.action)}${t.until ? ` (${Math.max(0, Math.ceil((t.until - (state?.time || 0)) / 60))} min)` : ''}`).join(', ') || 'None'}</p><form data-negotiation="${f.id}" class="negotiation-form"><label>Proposal<select name="proposal">${actions.map(([id,label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label>Gold offered<input name="gold" type="number" min="0" max="100000" step="1" value="50"></label><label>War partner / target<select name="target"><option value="">Choose kingdom</option>${FACTIONS.filter(o => o.id !== f.id).map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select></label><label>Territory<select name="settlement"><option value="">Choose holding</option>${(state?.settlements || []).filter(s => s.faction === f.id || s.owner === p.uid).map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></label><button type="submit" ${p.activeBattle ? 'disabled' : ''}>Send proposal</button></form><div class="inline-actions"><button data-action="diplomacy" data-faction="${f.id}" ${p.activeBattle || p.gold < 35 ? 'disabled' : ''}>Send envoy · 35g</button><button data-action="diplomacy" data-faction="${f.id}" data-peace="true" ${p.activeBattle || p.gold < 120 ? 'disabled' : ''}>Negotiate peace · 120g</button></div>${offers.filter(o => !o.status || o.status === 'pending' || o.status === 'counter').map(o => `<article class="diplomatic-offer"><b>${esc(o.action || o.type)} · ${Math.floor(o.gold || 0)}g</b><p>${esc(Array.isArray(o.reasons) ? o.reasons.join(' · ') : o.reasons || '')}</p><button data-diplomatic-accept="${esc(o.id)}" data-faction="${f.id}" ${p.activeBattle ? 'disabled' : ''}>Accept terms</button></article>`).join('')}<div class="holding-links">${holdings.map(s => `<button data-travel="${s.id}">${esc(s.name)} →</button>`).join('')}</div></div></details>`;
+  }).join('');
+  return `<p class="panel-intro">Ten kingdoms pursue their own interests. Trust, military strength, wealth, wars, and exhaustion influence negotiations. Trade funds armies; alliances send aid; passage opens supply routes. Breaking agreements damages your reputation.</p>${diplomacy.lastDecision ? `<p class="diplomatic-decision" role="status">${esc(typeof diplomacy.lastDecision === 'string' ? diplomacy.lastDecision : [diplomacy.lastDecision.status, ...(diplomacy.lastDecision.reasons || [])].join(' · '))}</p>` : ''}<div class="faction-list">${cards}</div><h3>Diplomatic history</h3><div class="chronicle">${[...(diplomacy.history || []), ...(state?.kingdoms?.history || [])].slice(-12).reverse().map(h => `<p>${esc(typeof h === 'string' ? h : h.message || h.text || '')}</p>`).join('') || '<p>The council is awaiting its first envoy.</p>'}</div>`;
+}

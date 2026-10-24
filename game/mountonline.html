@@ -48,7 +48,7 @@
         <div class="menu-secondary">
           <button id="practice" disabled>Field battle</button
           ><button id="practiceSiege" disabled>Siege practice</button
-          ><button id="help">How to command</button>
+          ><button id="training" data-panel="training" disabled>Tactical scenarios</button><button id="help">How to command</button>
         </div>
         <p id="menuMessage" class="menu-message" role="status">
           Local campaigns save on this device. Online progress belongs to your
@@ -68,7 +68,7 @@
           <b>02</b
           ><span
             >Build your company<small
-              >14 troop classes · branching promotions</small
+              >34 troop classes · ten military doctrines</small
             ></span
           >
         </div>
@@ -76,7 +76,7 @@
           <b>03</b
           ><span
             >Claim the realm<small
-              >Living factions · castles · alliances</small
+              >80 settlements · diplomacy · living kingdoms</small
             ></span
           >
         </div>
@@ -162,7 +162,7 @@
           aria-label="Mini-map. Tap to move the camera."
           tabindex="0"
         ></canvas>
-        <div class="map-tools">
+        <label class="overlay-label">Map overlay<select id="mapOverlay" aria-label="Map overlay"><option value="none">Terrain</option><option value="territories">Kingdom territories</option><option value="wars">Wars and alliances</option><option value="relations">Diplomatic relations</option><option value="trade">Trade routes</option><option value="ownership">Settlement ownership</option><option value="armies">Army movements</option><option value="threats">Regional threats</option></select></label><div class="map-tools">
           <button id="zoomOut" aria-label="Zoom out">−</button
           ><span id="zoomLabel">100%</span
           ><button id="zoomIn" aria-label="Zoom in">+</button
@@ -208,7 +208,7 @@
             >Formation
             <select id="formation">
               <option value="line">Line</option>
-              <option value="shieldwall">Shield wall</option>
+              <option value="shieldwall" title="Directional protection depends on spacing and stamina">Shield wall</option>
               <option value="square">Defensive square</option>
               <option value="wedge">Cavalry wedge</option>
               <option value="loose">Loose ranks</option>
@@ -220,10 +220,10 @@
             <svg class="icon" aria-hidden="true">
               <use href="/graphics/mountonline/ui/icons.svg#move"></use></svg
             >Move <kbd>M</kbd></button
-          ><button data-order="attack">
+          ><button data-order="attackNearest" title="Immediately engage the nearest accessible enemy. No second tap needed.">Attack nearest <kbd>A</kbd></button><button data-order="attack" title="Choose a specific enemy or destination">
             <svg class="icon" aria-hidden="true">
               <use href="/graphics/mountonline/ui/icons.svg#attack"></use></svg
-            >Attack <kbd>A</kbd></button
+            >Target attack <kbd>⇧A</kbd></button
           ><button data-order="charge">
             <svg class="icon" aria-hidden="true">
               <use href="/graphics/mountonline/ui/icons.svg#charge"></use></svg
@@ -254,7 +254,7 @@
             >Auto <kbd>G</kbd>
           </button>
         </div>
-        <div class="ability-row">
+        <details class="advanced-orders"><summary>More tactics · Skirmish · Brace · Flank</summary><div class="orders"><button data-order="skirmish" title="Fire, withdraw toward the marker, then return to bow range">Skirmish <kbd>K</kbd></button><button data-order="brace" title="Hold spears and shields against incoming frontal charges">Brace <kbd>B</kbd></button><button data-order="flank" title="Move around the enemy toward your chosen side">Flank</button><button data-order="fallback" title="Withdraw to a marker while keeping ranks">Fall back</button><button data-order="focus" title="Concentrate missiles on a chosen enemy">Focus fire</button><button data-order="regroup" title="Reassemble around a rally marker">Regroup</button></div></details><div class="ability-row">
           <span>COMMANDER ORDERS</span
           ><button data-ability="rally">Rally</button
           ><button data-ability="volley">Arrow volley</button

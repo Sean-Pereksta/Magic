@@ -11,10 +11,12 @@ import {
   newProfile,
   clone,
 } from "./data.mjs";
+import { kingdomCards } from "./kingdom-ui.mjs";
 import { Realm } from "./realm.mjs";
 import { createWorld, battleArmy } from "./world.mjs";
-import { battleMap, hydrateView, formationSlots } from "./battle.mjs";
-import { CONTRACTS, ownerKey } from "./progression.mjs";
+import { SCENARIOS, scenarioOptions } from "./training.mjs";
+import { battleMap, hydrateView, formationSlots, createBattle, issueOrder } from "./battle.mjs";
+import { CONTRACTS, ownerKey, signatureRecruitment } from "./progression.mjs";
 import { loadAssets } from "./assets.mjs";
 import { Renderer } from "./renderer.mjs";
 import { OnlineClient } from "./network.mjs";
@@ -135,10 +137,11 @@ function localState() {
     time: realm.time,
     profile: p,
     settlements: realm.world.settlements,
-    npcs: realm.npcs.filter((n) => n.respawn <= realm.time),
+    npcs: realm.npcs.filter((n) => n.respawn <= realm.time && !n.capturedBy),
     others: [],
     events: realm.events,
-    alliance: [],
+    alliances: realm.alliances,
+    kingdoms: state?.kingdoms,
   };
 }
 function showGame() {
@@ -310,6 +313,23 @@ function practice(siege = false) {
   setStatus("Practice · no campaign rewards");
   updateHUD();
 }
+function training(id) {
+  const options=scenarioOptions(id); if(!options) return;
+  network?.stop(); network=null; mode='practice'; realm=new Realm();
+  const p=newProfile(username); p.level=10; p.army=clone(options.armyA); realm.enter('local',p);
+  const b=createBattle({...options,id:'training-'+id});
+  b.participants=['local',null]; b.encounter={kind:'practice',targetId:id}; b.settled=false;
+  p.activeBattle=b.id; realm.battles.set(b.id,b);
+  if(id==='shield') {
+    const guards=b.units.filter(u=>u.team===0 && UNITS[u.key].role==='shield'), archers=b.units.filter(u=>u.team===0 && UNITS[u.key].role==='ranged');
+    guards.forEach((u,i)=>{u.x=u.px=24;u.y=u.py=13+i*.65;});
+    archers.forEach((u,i)=>{u.x=u.px=20;u.y=u.py=i<8 ? 13+i*.7 : 27+(i-8)*.7;});
+    issueOrder(b,0,guards.map(u=>u.id),'brace',{x:24,y:17},'shieldwall');
+    issueOrder(b,0,archers.map(u=>u.id),'hold');
+  }
+  dismissed.clear();resultShown.clear();battle=null;state=localState();
+  if($('panel').open)$('panel').close(); showGame();updateLocal();setStatus('Training · '+options.name);updateHUD();toast(options.detail);
+}
 function save(silent = false) {
   if (mode !== "local" || !realm) return;
   try {
@@ -419,8 +439,8 @@ function selectGroup(role) {
   if (!battle) return;
   const roles = {
     infantry: ["spear", "shield"],
-    ranged: ["ranged", "crossbow", "mage"],
-    cavalry: ["cavalry"],
+    ranged: ["ranged", "crossbow", "mage", "horseArcher"],
+    cavalry: ["cavalry", "horseArcher"],
     support: ["healer"],
   };
   const eligible = battle.units.filter(
@@ -434,8 +454,9 @@ function selectGroup(role) {
   updateSelected();
 }
 function updateSelected() {
-  const n = selectedUnits().length;
-  $("selectedCount").textContent = `${n} selected`;
+  const selected = selectedUnits(), n = selected.length;
+  const average = key => n ? Math.round(selected.reduce((sum,u) => sum + (key === 'cohesion' ? (u[key] ?? 0.7) * 100 : u[key] ?? 100), 0) / n) : 0;
+  $("selectedCount").textContent = n ? `${n} selected · morale ${average('morale')} · stamina ${average('stamina')} · cohesion ${average('cohesion')}` : '0 selected';
   $("formation").value = battle?.formation?.[team] || "line";
   for (const button of document.querySelectorAll("[data-order]")) {
     button.disabled = !n || battle?.finished;
@@ -463,6 +484,7 @@ async function command(order, point = selectionCenter(), target = null) {
     pending = null;
     ability = null;
     renderer.preview = null;
+    if (order === 'attackNearest' && battle?.notice) toast(battle.notice);
     $("orderHint").textContent =
       `${order === "auto" ? "Auto-engage" : order[0].toUpperCase() + order.slice(1)} order sent to ${units.length} troops.`;
   }
@@ -470,7 +492,7 @@ async function command(order, point = selectionCenter(), target = null) {
 }
 function chooseOrder(order) {
   if (!battle) return;
-  if (["charge", "hold", "retreat", "auto"].includes(order)) {
+  if (["attackNearest", "charge", "hold", "retreat", "auto", "brace"].includes(order)) {
     void command(order);
     return;
   }
@@ -552,11 +574,14 @@ function renderContext() {
     buttons = `<button data-context="travel">March to ${selectedContext.kind === "settlement" ? "settlement" : "company"} →</button>`;
   if (selectedContext.kind === "settlement") {
     copy =
-      e.kind === "castle"
+      ["castle","capital","town"].includes(e.kind)
         ? `${e.ownerName ? `Held by ${esc(e.ownerName)}.` : `${esc(e.faction)} territory.`} ${e.garrison} defenders · fortification ${e.level}. ${e.owner === p.uid ? "Your holdings earn gold every two minutes of active play." : ""}`
         : "Recruit fresh soldiers, refill your wagons, and rest before the next campaign.";
     buttons += `<button data-context="recruit" ${!near || p.gold < 60 ? "disabled" : ""}>Recruit 5 soldiers · 60 gold</button><button data-context="supplies" ${!near || p.gold < 30 || p.supplies >= 200 ? "disabled" : ""}>Restock supplies · 30 gold</button><button data-context="rest" ${!near || p.gold < 15 ? "disabled" : ""}>Rest and rally · 15 gold</button>`;
-    if (e.kind === "castle" && e.owner !== p.uid)
+    if (e.kind === 'village' && e.owner !== p.uid) buttons += `<button data-encounter="raid" ${!nearBattle || e.battleId ? 'disabled' : ''}>Raid supply stores</button>`;
+    const faction = FACTIONS.find(f => f.id === (e.currentFaction || e.faction));
+    if (faction) buttons += `<button data-faction-info="${faction.id}">${esc(faction.name)} · contact council</button>`;
+    if (["castle","capital","town"].includes(e.kind) && e.owner !== p.uid)
       buttons += `<button data-context="engage" ${!nearBattle || e.battleId ? "disabled" : ""}>Lay siege · ${e.garrison} defenders</button>`;
     if (e.owner === p.uid) {
       buttons += `<button data-context="build" ${!near || e.level >= 5 ? "disabled" : ""}>Develop keep · ${e.level * 120} gold + 30 supplies</button><select id="garrisonUnit" aria-label="Troop to assign to garrison">${UNIT_KEYS.filter(
@@ -580,6 +605,8 @@ function renderContext() {
       buttons += `<button data-context="engage" ${!nearBattle || e.battleId ? "disabled" : ""}>Engage company · ${size} troops</button>`;
     else
       buttons += `<button data-context="caravan" ${!near || p.gold < 20 || p.supplies >= 200 ? "disabled" : ""}>Trade · 20g for 50 supplies</button>`;
+    if(e.kind === 'merchant') buttons += `<button data-encounter="caravanDefense" ${!nearBattle || !state.npcs.some(n=>n.kind==='bandit' && Math.hypot(n.x-e.x,n.y-e.y)<24) ? 'disabled' : ''}>Defend caravan from nearby raiders</button>`;
+    else buttons += `<details class="encounter-choices"><summary>Choose battle objective</summary><button data-encounter="defensive" ${!nearBattle ? 'disabled' : ''}>Hold defensive ground</button><button data-encounter="rearguard" ${!nearBattle ? 'disabled' : ''}>Delay & withdraw</button><button data-encounter="reinforcement" ${!nearBattle ? 'disabled' : ''}>Hold for allied aid</button></details>`;
   } else {
     copy = `${e.armySize} troops · ${e.activeBattle ? "currently fighting" : "on the march"}. ${e.allianceId && e.allianceId === p.allianceId ? "An allied commander." : "Close the distance to challenge this commander."}`;
     buttons += `<button data-context="engage" ${!nearBattle || e.activeBattle || (e.allianceId && e.allianceId === p.allianceId) ? "disabled" : ""}>Challenge this commander</button>`;
@@ -615,6 +642,10 @@ function hitWorld(point) {
     }
   }
   if (best) inspect(best.kind, best.id);
+  else if (renderer.overlay !== 'none' && renderer.overlay !== 'armies') {
+    const nearest=[...state.settlements].sort((a,b)=>Math.hypot(a.x-point.x,a.y-point.y)-Math.hypot(b.x-point.x,b.y-point.y))[0];
+    if(nearest) { openPanel('diplomacy'); const detail=document.querySelector(`[data-faction-card="${nearest.faction}"]`); if(detail) { detail.open=true; detail.scrollIntoView({block:'start'}); } }
+  }
   else if (Math.hypot(point.x - p.x, point.y - p.y) < 1) openPanel("army");
   else {
     selectedContext = null;
@@ -646,7 +677,7 @@ function tap(point, shift = false, right = false) {
       pending,
       point,
       hit &&
-        ((pending === "attack" && hit.team !== team) ||
+        ((["attack", "focus"].includes(pending) && hit.team !== team) ||
           (["follow", "defend"].includes(pending) && hit.team === team))
         ? hit.id
         : null,
@@ -670,6 +701,7 @@ function tap(point, shift = false, right = false) {
 function updateHUD() {
   if (!state) return;
   const p = state.profile;
+  if (realm && mode !== "online") state.kingdoms = realm.snapshot("local").kingdoms;
   $("commanderName").textContent = p.username;
   $("gold").textContent = Math.floor(p.gold);
   $("armyCount").textContent = `${armySize(p.army)}/${armyCap(p)}`;
@@ -699,20 +731,15 @@ function updateHUD() {
   }
   document.body.classList.toggle("in-battle", inBattle);
   $("battleDock").hidden = !inBattle;
+  if(inBattle) document.body.style.setProperty('--battle-dock-height', `${$("battleDock").getBoundingClientRect().height}px`);
   $("worldDock").hidden = inBattle;
   $("battleHeading").hidden = !inBattle;
   $("objective").hidden = inBattle;
   $("saveGame").hidden = mode !== "local";
   $("performance").hidden = !settings.showFPS;
-  $("mapTitle").textContent = inBattle
-    ? battle.siege
-      ? "THE SIEGE FIELD"
-      : "THE BATTLEFIELD"
-    : p.x > 85
-      ? "THE EMBER MARCH"
-      : p.y < 30
-        ? "THE GREEN VALE"
-        : "THE CROWNLANDS";
+  $("mapTitle").textContent = inBattle ? (battle.siege ? "THE SIEGE FIELD" : `${(battle.terrain || 'field').toUpperCase()} BATTLE`) : (FACTIONS.find(f => f.id === [...state.settlements].sort((a,b) => Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0]?.faction)?.name || 'LIVING KINGDOMS').toUpperCase();
+  $("mapOverlay").hidden = inBattle;
+  $("mapOverlay").closest('label').hidden = inBattle;
   if (battle) {
     const own = battle.units.filter(
         (u) => u.team === team && u.hp > 0 && !u.routed,
@@ -722,6 +749,11 @@ function updateHUD() {
       ).length;
     $("battleAlly").textContent = `${battle.names[team]} · ${own}`;
     $("battleEnemy").textContent = `${battle.names[1 - team]} · ${enemy}`;
+    if(battle.objective) {
+      const objective=battle.objective;
+      const remaining=Math.max(0,Math.ceil((objective.duration || 0)-(['defensive','reinforcement'].includes(objective.type) ? objective.heldFor || 0 : objective.elapsed || battle.time)));
+      $('orderHint').textContent = objective.description || `${objective.type} · ${remaining}s · ${Math.round((objective.progress || 0)*100)}%${objective.contestedFor ? ' · contested' : ''}`;
+    }
     $("battleClock").textContent = `${Math.floor(battle.time / 60)
       .toString()
       .padStart(2, "0")}:${Math.floor(battle.time % 60)
@@ -834,6 +866,7 @@ function renderPanel(type) {
     standards: "Standards & heirlooms",
     settings: "Campaign settings",
     help: "The art of command",
+    training: "Tactical proving grounds",
   };
   $("panelTitle").textContent = titles[type] || "The company";
   $("panelEyebrow").textContent =
@@ -844,19 +877,20 @@ function renderPanel(type) {
         : mode === "practice"
           ? "THE TRAINING FIELD"
           : "YOUR CAMPAIGN";
-  if (type === "help")
-    body.innerHTML = `<div class="help-grid"><div><h3>Travel and build</h3><p>Tap open ground to march along a safe route. Tap a village, castle, caravan, or company to inspect it. Visit Hearthford for recruits and supplies. Promotions are available from the Army screen. Win contracts to earn gold and standards; capture castles for income and stronger defenses.</p><h3>Command on desktop</h3><p>Click a soldier or drag a selection box. Shift adds troops. Right-click issues a move or attack order. Select a command, then click its target. A attacks nearby enemies at a destination; C charges; H holds. Arrow keys pan during battles; WASD marches on the world map. Hold Space and drag to pan. Scroll to zoom.</p></div><div><h3>Command on touch</h3><p>Tap a friendly soldier to select it. Use All, Infantry, Ranged, Cavalry, or Support for quick groups. Enable Add to selection to select several soldiers, or hold briefly and drag a selection box. Tap an enemy to attack, or open ground to move. Tap Pan to drag the map. Pinch to zoom; the mini-map also moves the camera.</p><h3>Choose your tactics</h3><p>Shield walls resist incoming damage. Spearmen counter cavalry; cavalry charges punish missile troops. Keep healers behind the line. Crossbows pierce armor and mages deal splash damage. Defend returns to a protected area. Hold never chases enemies. Retreat withdraws troops toward their deployment edge. Patrol loops from your soldiers' positions to the destination. Rally restores health and morale; special orders recharge.</p><h3>Control groups</h3><p>1–5 select troop roles. Ctrl+1–5 stores the current selection; press that number again to recall it. Esc cancels a pending order. Siege attackers must breach the gate before entering the keep.</p></div></div>`;
+  if (type === "training") body.innerHTML = `<p class="panel-intro">Playable scenarios use the shared campaign combat system. Your saved company is untouched. Choose a tactical problem and try different orders.</p><div class="two-column">${SCENARIOS.map(s=>`<article class="story-card"><span class="eyebrow">${esc(s.terrain)} · ${esc(s.encounterType || 'field')}</span><h3>${esc(s.name)}</h3><p>${esc(s.detail)}</p><button data-scenario="${s.id}">Take command →</button></article>`).join('')}</div>`;
+  else if (type === "help")
+    body.innerHTML = `<div class="help-grid"><div><h3>Travel and build</h3><p>Tap open ground to march along a safe route. Tap a village, castle, caravan, or company to inspect it. Visit Hearthford for recruits and supplies. Promotions are available from the Army screen. Win contracts to earn gold and standards; capture castles for income and stronger defenses.</p><h3>Command on desktop</h3><p>Click a soldier or drag a selection box. Shift adds troops. Right-click issues a move or attack order. Select a command, then click its target. A immediately attacks the nearest accessible enemies. Shift+A targets an enemy or destination; C charges; H holds; B braces; K sets a skirmish fallback marker. Arrow keys pan during battles; WASD marches on the world map. Hold Space and drag to pan. Scroll to zoom.</p></div><div><h3>Command on touch</h3><p>Tap a friendly soldier to select it. Use All, Infantry, Ranged, Cavalry, or Support for quick groups. Enable Add to selection to select several soldiers, or hold briefly and drag a selection box. Tap an enemy to attack, or open ground to move. Tap Pan to drag the map. Pinch to zoom; the mini-map also moves the camera.</p><h3>Choose your tactics</h3><p>Directional shield walls intercept arrows for allies behind them. Flank their rear to break protection. Brace spears to stop a frontal cavalry charge. Horse archers in Skirmish fire, retreat toward your marker, and return while ammunition and stamina last. Cavalry must build momentum and regroup after impact; cavalry charges punish missile troops. Keep healers behind the line. Crossbows pierce armor and mages deal splash damage. Defend returns to a protected area. Hold never chases enemies. Retreat withdraws troops toward their deployment edge. Patrol loops from your soldiers' positions to the destination. Rally restores health and morale; special orders recharge.</p><h3>Control groups</h3><p>1–5 select troop roles. Ctrl+1–5 stores the current selection; press that number again to recall it. Esc cancels a pending order. Siege attackers must breach the gate before entering the keep.</p></div></div>`;
   else if (type === "army")
     body.innerHTML = `<div class="metric-row">${metric("FIELD COMPANY", `${armySize(p.army)} / ${armyCap(p)}`)}${metric("RESERVES", armySize(p.reserve))}${metric("COMMANDER", `Level ${p.level}`)}${metric("NEXT LEVEL", `${Math.floor(p.xp)} / ${100 * p.level} XP`)}</div><p class="panel-intro">Promote recruits into distinct roles, then specialize your veterans. Reserve troops retain their class. All 14 original troop types remain available. ${p.activeBattle ? "Finish your battle before changing the army." : ""}</p><div class="army-grid">${UNIT_KEYS.map(
       (key) => {
-        const t = UNITS[key],
+        const t = UNITS[key], signature = !!t.faction, eligibility = signature && s ? signatureRecruitment(p, {time:state?.time || 0, kingdoms:realm?.kingdoms}, s, key) : {allowed:false,reason:"Visit a recruitment settlement.",price:t.cost},
           can =
             t.from &&
             p.army[t.from] > 0 &&
             p.gold >= t.cost &&
             p.level >= t.tier - 1 &&
             !p.activeBattle;
-        return `<article class="unit-card"><b class="count">${p.army[key] || 0}</b><div class="unit-art"><canvas data-portrait="${key}" width="128" height="128"></canvas></div><h3>${esc(t.name)}</h3><span class="tier">Tier ${t.tier} · ${t.role}</span><p>${t.hp} health · ${t.damage} ${t.role === "healer" ? "healing" : "damage"} · ${t.range} range${t.from ? `<br>Promotes from ${esc(UNITS[t.from].name)}` : ""}</p><div class="unit-actions">${t.from ? `<button data-action="train" data-unit="${key}" ${can ? "" : "disabled"}>Train · ${t.cost}g</button>` : `<button data-recruit ${s && !p.activeBattle && p.gold >= 60 ? "" : "disabled"}>Recruit 5 · 60g</button>`}<button data-action="reserve" data-unit="${key}" ${p.army[key] && !p.activeBattle ? "" : "disabled"}>Reserve</button><button data-action="reserve" data-unit="${key}" data-withdraw="true" ${p.reserve?.[key] && !p.activeBattle ? "" : "disabled"}>Field (${p.reserve?.[key] || 0})</button></div></article>`;
+        return `<article class="unit-card"><b class="count">${p.army[key] || 0}</b><div class="unit-art"><canvas data-portrait="${key}" width="128" height="128"></canvas></div><h3>${esc(t.name)}</h3><span class="tier">Tier ${t.tier} · ${t.role}</span><p>${t.hp} health · ${t.damage} ${t.role === "healer" ? "healing" : "damage"} · ${t.range} range${signature ? `<br>${esc(FACTIONS.find(f => f.id === t.faction)?.name || t.faction)} · regional recruitment` : t.from ? `<br>Promotes from ${esc(UNITS[t.from].name)}` : ""}</p><div class="unit-actions">${signature ? `<button data-signature="${key}" title="${esc(eligibility.reason || 'Recruit this regional specialty')}" ${s && eligibility.allowed && !p.activeBattle && p.gold >= eligibility.price ? "" : "disabled"}>Recruit · ${eligibility.price}g</button>` : t.from ? `<button data-action="train" data-unit="${key}" ${can ? "" : "disabled"}>Train · ${t.cost}g</button>` : `<button data-recruit ${s && !p.activeBattle && p.gold >= 60 ? "" : "disabled"}>Recruit 5 · 60g</button>`}<button data-action="reserve" data-unit="${key}" ${p.army[key] && !p.activeBattle ? "" : "disabled"}>Reserve</button><button data-action="reserve" data-unit="${key}" data-withdraw="true" ${p.reserve?.[key] && !p.activeBattle ? "" : "disabled"}>Field (${p.reserve?.[key] || 0})</button></div></article>`;
       },
     ).join("")}</div>`;
   else if (type === "kingdom") {
@@ -904,7 +938,7 @@ function renderPanel(type) {
         "",
       )}</div>${p.legacyInventory ? '<p class="panel-intro" style="margin-top:20px">Your original inventory is retained in the migrated save, including older custom banners.</p>' : ""}`;
   else if (type === "diplomacy")
-    body.innerHTML = `<p class="panel-intro">Enemy factions respond when you seize their keeps. Hostile patrols intercept your company and reinforce threatened territory. Send envoys to repair relations before expanding again.</p><div class="card-list">${FACTIONS.map((f) => `<article class="story-card"><span class="eyebrow">${esc(f.trait)}</span><h3>${esc(f.name)} <small>Relations ${p.relations[f.id]}</small></h3><div class="inline-actions"><button data-action="diplomacy" data-faction="${f.id}" ${p.activeBattle || p.gold < 35 ? "disabled" : ""}>Send envoy · 35g</button><button data-action="diplomacy" data-faction="${f.id}" data-peace="true" ${p.activeBattle || p.gold < 120 ? "disabled" : ""}>Negotiate peace · 120g</button></div></article>`).join("")}</div>${mode === "online" ? `<h3 style="margin-top:24px">Player alliances</h3><p class="panel-intro">Found an alliance or request membership. Founders approve applications; allied commanders and their castles are protected from friendly attacks.</p><div class="inline-actions"><input id="allianceName" maxlength="30" placeholder="Alliance name" aria-label="New alliance name"><button id="createAlliance" ${p.allianceId ? "disabled" : ""}>Found · 100g</button></div><div class="card-list" style="margin-top:14px">${(state.alliances || []).map((a) => `<article class="story-card"><h3>${esc(a.name)}</h3><p>${a.members.length} / 6 commanders</p><button data-action="${p.allianceId === a.id ? "allianceLeave" : "allianceRequest"}" data-alliance="${esc(a.id)}" ${p.allianceId && p.allianceId !== a.id ? "disabled" : ""}>${p.allianceId === a.id ? "Leave alliance" : "Request membership"}</button>${a.owner === p.uid ? a.requests.map((r) => `<p>${esc(r.username)} <button data-action="allianceAccept" data-alliance="${esc(a.id)}" data-member="${esc(r.uid)}">Approve</button></p>`).join("") : ""}</article>`).join("") || '<p class="panel-intro">No alliances have been founded yet.</p>'}</div>` : ""}`;
+    body.innerHTML = `${kingdomCards(state, esc)}${mode === "online" ? `<h3 style="margin-top:24px">Player alliances</h3><p class="panel-intro">Found an alliance or request membership. Founders approve applications; allied commanders and their castles are protected from friendly attacks.</p><div class="inline-actions"><input id="allianceName" maxlength="30" placeholder="Alliance name" aria-label="New alliance name"><button id="createAlliance" ${p.allianceId ? "disabled" : ""}>Found · 100g</button></div><div class="card-list" style="margin-top:14px">${(state.alliances || []).map((a) => `<article class="story-card"><h3>${esc(a.name)}</h3><p>${a.members.length} / 6 commanders</p><button data-action="${p.allianceId === a.id ? "allianceLeave" : "allianceRequest"}" data-alliance="${esc(a.id)}" ${p.allianceId && p.allianceId !== a.id ? "disabled" : ""}>${p.allianceId === a.id ? "Leave alliance" : "Request membership"}</button>${a.owner === p.uid ? a.requests.map((r) => `<p>${esc(r.username)} <button data-action="allianceAccept" data-alliance="${esc(a.id)}" data-member="${esc(r.uid)}">Approve</button></p>`).join("") : ""}</article>`).join("") || '<p class="panel-intro">No alliances have been founded yet.</p>'}</div>` : ""}`;
   else if (type === "settings")
     body.innerHTML = `<div class="settings-row"><label for="quality">Graphics quality</label><select id="quality"><option value="auto" ${settings.quality === "auto" ? "selected" : ""}>Adaptive</option><option value="high" ${settings.quality === "high" ? "selected" : ""}>High</option><option value="low" ${settings.quality === "low" ? "selected" : ""}>Performance</option></select></div><div class="settings-row"><label for="sound">Sound effects</label><input id="sound" type="checkbox" ${settings.sound ? "checked" : ""}></div><div class="settings-row"><label for="fps">Show performance</label><input id="fps" type="checkbox" ${settings.showFPS ? "checked" : ""}></div><p class="panel-intro" style="margin-top:18px">Adaptive quality limits high-density displays and reduces effects when frames slow down. Camera zoom is available on the mini-map, mouse wheel, or by pinching.</p><div class="inline-actions"><button data-panel="help">Read the field guide</button>${mode === "local" ? '<button id="exportCampaign">Export campaign</button><label><button id="importCampaign">Import campaign</button><input type="file" id="importFile" accept="application/json,.json" hidden></label>' : ""}</div><p class="panel-intro" style="margin-top:16px">${mode === "online" ? `Firebase UID: <code>${esc(network?.uid || "")}</code><br>Online saves synchronize directly through Firestore. Reconnect with the same Firebase identity to resume your company. Local imports remain separate from online progress.` : "Local campaigns keep a previous save as a recovery checkpoint. Export a campaign to move it to another device."}</p>`;
   if (assets)
@@ -914,9 +948,9 @@ function renderPanel(type) {
       c.drawImage(
         assets.images[u.sheet],
         2,
-        u.row * 160 + 2,
-        156,
-        156,
+        u.row * assets.manifest.atlases[u.sheet].frameHeight + 2,
+        assets.manifest.atlases[u.sheet].frameWidth - 4,
+        assets.manifest.atlases[u.sheet].frameHeight - 4,
         0,
         0,
         128,
@@ -935,6 +969,8 @@ document.addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button || button.disabled) return;
   const d = button.dataset;
+  if (d.scenario) { training(d.scenario); return; }
+  if (d.encounter) { const e=contextEntity(); if(e) void perform({type:'engage',kind:d.encounter,target:e.id}); return; }
   if (d.panel) {
     openPanel(d.panel);
     return;
@@ -954,6 +990,13 @@ document.addEventListener("click", (event) => {
     $("orderHint").textContent = `Choose where to use ${button.textContent}.`;
     sound();
     return;
+  }
+  if (d.diplomaticAccept) {
+    void perform({type:'diplomacy', faction:d.faction, action:'accept', offerId:d.diplomaticAccept}); return;
+  }
+  if (d.factionInfo) { openPanel('diplomacy'); const detail = document.querySelector(`[data-faction-card="${d.factionInfo}"]`); if(detail) { detail.open=true; detail.scrollIntoView({block:'start'}); } return; }
+  if (d.signature) {
+    const s=nearestSettlement(); if(s) void perform({type:'recruit', settlement:s.id, unit:d.signature, count:1}); return;
   }
   if (d.action) {
     const input = { type: d.action };
@@ -1074,6 +1117,15 @@ $("startLocal").onclick = () => void startLocal();
 $("startOnline").onclick = () => void startOnline();
 $("practice").onclick = () => practice(false);
 $("practiceSiege").onclick = () => practice(true);
+document.addEventListener('submit', event => {
+  const form=event.target.closest('[data-negotiation]'); if(!form) return; event.preventDefault();
+  const fields=new FormData(form), input={type:'diplomacy', faction:form.dataset.negotiation, action:fields.get('proposal'), gold:Number(fields.get('gold'))};
+  if(input.action==='demandTribute') {input.action='tribute'; input.demand=true; input.gold=0;}
+  if(fields.get('target')) input.target=fields.get('target');
+  if(fields.get('settlement')) input.settlement=fields.get('settlement');
+  void perform(input);
+});
+$("mapOverlay").onchange = event => { renderer.overlay=event.target.value; renderer.lastMini=0; };
 $("help").onclick = () => openPanel("help");
 $("closePanel").onclick = () => $("panel").close();
 $("menuButton").onclick = returnMenu;
@@ -1261,7 +1313,9 @@ addEventListener("keydown", (event) => {
   if (event.repeat) return;
   if (battle) {
     const shortcuts = {
-      a: "attack",
+      a: event.shiftKey ? "attack" : "attackNearest",
+      k: "skirmish",
+      b: "brace",
       m: "move",
       c: "charge",
       h: "hold",
@@ -1271,7 +1325,7 @@ addEventListener("keydown", (event) => {
       p: "patrol",
       g: "auto",
     };
-    if (shortcuts[key]) chooseOrder(shortcuts[key]);
+    if (shortcuts[key]) { event.preventDefault(); chooseOrder(shortcuts[key]); }
     if (/^[1-5]$/.test(key)) {
       event.preventDefault();
       if (event.ctrlKey || event.metaKey) {
@@ -1339,8 +1393,8 @@ function frame(now) {
     void perform({
       type: "move",
       point: {
-        x: clamp(p.x + dx * 6, 0, 127.9),
-        y: clamp(p.y + dy * 6, 0, 87.9),
+        x: clamp(p.x + dx * 6, 0, WORLD.width - 0.1),
+        y: clamp(p.y + dy * 6, 0, WORLD.height - 0.1),
       },
     });
   }
@@ -1416,7 +1470,7 @@ async function boot() {
     renderer.quality = settings.quality;
     renderer.resize();
     $("loadLabel").textContent = "The realm is ready";
-    for (const id of ["startLocal", "startOnline", "practice", "practiceSiege"])
+    for (const id of ["startLocal", "startOnline", "practice", "practiceSiege", "training"])
       $(id).disabled = false;
     updateContinue();
     $("welcome").textContent = `Welcome, ${username}. Raise your banner.`;

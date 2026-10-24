@@ -1,3 +1,40 @@
+# Living Kingdoms verification — 2026-10-24
+
+The overhaul was exercised on Windows with Node 24 and headless Chrome, using the actual static game and the local **demo-mountonline** Firestore emulator. Responsive results are browser emulation, not physical-phone or deployed-production measurements.
+
+| Suite | Result |
+| --- | --- |
+| Shared simulation, campaign, saves, navigation, tactical combat, kingdom economy, diplomacy, motion and compression | **72 passing tests** |
+| Original browser regressions | Desktop 1440 × 900, phone 390 × 844, landscape 844 × 390 pass: local saves, recruitment, promotions/reserves, travel, selection, groups, pinch/zoom, targeted orders, formations, abilities, field victory, siege breach and results; zero JavaScript errors or missing local assets |
+| Living Kingdoms browser flow | Desktop and phone pass: all eight overlays, ten council cards, actual gift and counteroffer/acceptance effects, all twenty unique signature portraits, individual/group immediate attack and distributed targets, Shift+A targeted attack, Skirmish, Brace and overflow checks; all eleven training scenarios open and render |
+| Movement browser regression | All three layouts pass irregular snapshots, burst updates, displayed-position selection and zero additional network requests |
+| Firestore security | 62 allow/deny/transaction checks pass against each of the repository and complete supplied rule sets; unrelated supplied rule sections retain their original SHA-256 digest |
+| Browser multiplayer | Real SDK/listeners/rules pass idempotent purchases and diplomatic agreements (including host-recovery persistence), protected profiles, shared battle, seat reconnect, abrupt host loss and restore, exactly one battle result, alliances, duplicate-tab ownership and verified legacy migration |
+| Assets | All 34 troop definitions point to valid eight-frame rows; essential atlases plus hero total 2,350,478 bytes; versioned cache and manifest updated |
+
+## Gameplay evidence
+
+Scenario tests compare shield-covered and exposed projectile targets, frontal and rear strikes, splash falloff and physical obstruction, braced pikes and cavalry momentum, horse-archer firing/withdrawal/ammunition/stamina, terrain movement, group orders, and doctrine-based role assignment. Defensive objectives require actual friendly occupation; escort and raid objectives can resolve while enemies survive. Rearguards preserve escaped survivors and temporary reinforcement waves arrive once.
+
+Kingdom tests verify counteroffer acceptance cannot spend twice, independent deterministic diplomacy/war, treaty expiry and betrayal, conquest and exhaustion, occupied settlement loyalty, gated recruitment, damaged production and desert supply costs, trade delivery payments, ransom and lord recovery, old/new campaign loads, and bounded terrain-free checkpoints.
+
+Review regressions cover expired captive timers between strategic turns, duplicate delivery income after caravan defense, and an escaped rearguard incorrectly capturing a living pursuing lord. All are fixed. Allied reinforcement casualties return to the real lord's roster and never duplicate into the player's army. The expanded world retains every original settlement coordinate and original NPC identity.
+
+## Measured budgets
+
+- Sixteen players and 74 NPCs, 120 simulated seconds: mean world tick 0.436 ms; p95 1.175 ms; p99 3.091 ms on this host.
+- A 1,200-troop battle measured mean 13.44 ms and p95 34.69 ms before final targeting-cache optimizations, inside the 50 ms simulation-step budget. These figures do not guarantee performance on every phone or the maximum aggregate battle load.
+- Complete browser-flow frame p95: desktop 19.1 ms, phone 19.9 ms, landscape 26.2 ms. Canvas drawing averaged approximately 1.46–2.48 ms across those layouts.
+- A 4,800-troop/16-player checkpoint and per-player views round-trip browser compression below the existing 850,000-character document guard. Terrain, props, navigation, and artwork are not transmitted through Firestore.
+
+## Release checks
+
+Publish the matching static game and Mountain Blade Firestore rules together. The pull request does not modify production Firebase rules or deploy the site. Check the deployed game with two real accounts and on physical mobile devices. Long campaigns still need balance testing for faction snowballing, recruitment prices, treaty pricing, supply pressure, and AI war outcomes. The existing peer-host trust model remains unchanged.
+
+The earlier implementation records follow for historical context.
+
+---
+
 # Rebuild verification — 2026-10-16
 
 Validation ran against the actual game source and optimized artwork, on Linux with Node v24.19.0 and headless Chromium 138. Desktop and mobile results below are browser emulation on this host, not measurements from physical phones or a production multiplayer deployment.

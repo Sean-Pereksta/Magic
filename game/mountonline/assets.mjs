@@ -2,10 +2,10 @@ import { ART_BASE } from "./config.mjs";
 export async function loadAssets(progress = () => {}) {
   let cache;
   try {
-    cache = await caches.open("mountonline-art-v2");
+    cache = await caches.open("mountonline-art-v3");
   } catch {}
   async function get(path) {
-    const url = ART_BASE + path + "?v=2";
+    const url = ART_BASE + path + "?v=3";
     let response = await cache?.match(url);
     if (!response) {
       response = await fetch(url);
