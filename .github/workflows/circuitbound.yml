@@ -27,14 +27,15 @@ jobs:
       - run: node game/circuitbound/tests/performance.cjs
   browser:
     runs-on: ubuntu-latest
-    env:
-      CIRCUITBOUND_PLAYWRIGHT: ${{ runner.temp }}/circuitbound-browser/node_modules/playwright
-      CIRCUITBOUND_SCREENSHOTS: ${{ runner.temp }}/circuitbound-screenshots
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Set browser test paths
+        run: |
+          echo "CIRCUITBOUND_PLAYWRIGHT=$RUNNER_TEMP/circuitbound-browser/node_modules/playwright" >> "$GITHUB_ENV"
+          echo "CIRCUITBOUND_SCREENSHOTS=$RUNNER_TEMP/circuitbound-screenshots" >> "$GITHUB_ENV"
       - name: Install optional browser test tools
         run: |
           npm install --prefix "$RUNNER_TEMP/circuitbound-browser" --no-package-lock --ignore-scripts playwright@1.62.1
