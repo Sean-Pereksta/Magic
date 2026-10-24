@@ -82,10 +82,10 @@ let browser;
     for (const name of ['Archer', 'Medic']) {
       qaPrep(['Squire'], [null, name]); const u = S.bench[1]; u.star = 4; u.starProg = starNeed(u) - 1; qaCard('upgrade'); openBench(); document.querySelector('[data-tt-bench-slot="1"]').click(); qaFreeze();
       if (S.evoTarget !== u || S.phase !== 'evolve') failures.push(name + ': missing bench evolution');
-      pickEvolution(0); qaFreeze(); if (!u.evo || S.phase !== 'battle') failures.push(name + ': unresolved bench evolution');
+      pickEvolution(0); TinyTroopsManagement.confirmEvolution(); qaFreeze(); if (!u.evo || S.phase !== 'recruit') failures.push(name + ': unresolved bench evolution');
       S.phase = 'recruit'; S.battle = null; S.tt.checkpoint = null; u.star = 5; u.starProg = starNeed(u) - 1; qaCard('upgrade'); openBench(); document.querySelector('[data-tt-bench-slot="1"]').click(); qaFreeze();
       if (S.ascTarget !== u) failures.push(name + ': missing bench mastery');
-      pickAscension(0); qaFreeze(); if (!u.ascension || S.phase !== 'battle') failures.push(name + ': unresolved bench mastery');
+      pickAscension(0); TinyTroopsManagement.confirmEvolution(); qaFreeze(); if (!u.ascension || S.phase !== 'recruit') failures.push(name + ': unresolved bench mastery');
       for (const star of [7, 8, 9, 10, 11, 12, 13]) {
         S.phase = 'recruit'; S.battle = null; S.tt.checkpoint = null; u.star = star; u.id ||= u.ttId || name + '-reserve'; S.pendingStarChoices = [{ unitId: u.id, unit: u, star }]; close();
         processNextStarChoice(); if (S.starChoiceTarget !== u || !S.starChoiceChoices.length) failures.push(name + ': missing ' + star + '-star bench choice');

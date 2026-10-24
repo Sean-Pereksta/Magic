@@ -1,4 +1,4 @@
-/* Exercise required-choice collisions through actual mouse, keyboard, and touch. */
+/* Exercise optional-choice deferral through actual mouse, keyboard, and touch. */
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), http = require('node:http');
 const { chromium } = require('playwright');
@@ -42,9 +42,10 @@ let browser;
   await page.evaluate(() => ttTimeout(openRecruit, 100)); await page.click('#close'); await page.waitForTimeout(200);
   assert.equal(await page.evaluate(() => document.getElementById('drawer').classList.contains('open')), false, 'a delayed draft does not undo Close');
   await page.click('#recruit');
-  await page.click('#body .choice:first-child'); await freeze(); assert.match(await title(), /Abandoned Armory/);
-  assert.equal(await page.evaluate(() => !!S.squad[3].evo && !S.evoTarget && S.phase === 'tt-event'), true);
+  assert.match(await title(), /Abandoned Armory/);
   await page.click('[data-tt-event="supplies"]'); assert.match(await title(), /Build your army/);
+  await page.evaluate(() => TinyTroopsPolish.openDeferredChoice());
+  await page.click('[data-tt-evolution-confirm]'); await freeze();
   assert.equal(await page.evaluate(() => !S.tt.event && S.phase === 'recruit' && !S.evoTarget), true);
   console.log('PASS delayed event/evolution collision resolves both rewards without dead buttons');
 
@@ -53,8 +54,8 @@ let browser;
     await page.evaluate(id => { qaPrep(); S.coins = 100; qaEvent(id); }, event.id);
     const choices = await page.locator('#body').innerHTML();
     assert.equal(await page.locator('#close').isEnabled(), true); await page.click('#close');
-    assert.equal(await page.evaluate(() => !document.getElementById('drawer').classList.contains('open') && !!S.tt.event), true);
-    assert.equal(await page.locator('#recruit').innerText(), 'Continue choice'); await page.click('#recruit');
+    assert.equal(await page.evaluate(() => !document.getElementById('drawer').classList.contains('open') && !S.tt.event && TinyTroopsPolish.pendingDecisionCount() === 1), true);
+    await page.evaluate(() => TinyTroopsPolish.openDeferredChoice());
     assert.equal(await page.locator('#body').innerHTML(), choices);
     // Recover the legitimate choice even if an older callback changed only the phase.
     await page.evaluate(() => S.phase = 'recruit'); await page.click(`[data-tt-event="${option.id}"] strong`);
@@ -87,17 +88,25 @@ let browser;
       qaFreeze();
     }, kind);
     const beforeTitle = await title(), beforeHtml = await page.locator('#body').innerHTML();
+    const beforeOptions = await page.evaluate(() => (S.starChoiceChoices || []).map(c => c.id));
+    const checkChoices = async () => {
+      if (kind.startsWith('star') || kind === 'support11') assert.deepEqual(await page.evaluate(() => S.starChoiceChoices.map(c => c.id)), beforeOptions, kind);
+      else { assert.equal(await title(), beforeTitle, kind); assert.equal(await page.locator('#body').innerHTML(), beforeHtml, kind); }
+    };
     await page.keyboard.press('Escape'); await page.waitForTimeout(160); assert.equal(await page.evaluate(() => document.getElementById('drawer').classList.contains('open')), false, kind + ' stays dismissed');
-    assert.equal(await page.locator('#recruit').isEnabled(), true); await page.click('#recruit');
-    assert.equal(await title(), beforeTitle, kind); assert.equal(await page.locator('#body').innerHTML(), beforeHtml, kind);
+    assert.equal(await page.evaluate(() => TinyTroopsPolish.pendingDecisionCount()), 1); await page.evaluate(() => TinyTroopsPolish.openDeferredChoice());
+    await checkChoices();
     await page.click('#close'); await page.click('#restart'); await page.click('[data-tt-action="new"]');
     assert.equal(await page.locator('#ttResume').isVisible(), true); await page.click('#ttResume');
-    assert.equal(await title(), beforeTitle, kind); assert.equal(await page.locator('#body').innerHTML(), beforeHtml, kind);
-    await page.evaluate(() => { S.phase = 'recruit'; }); await page.click('#body .choice:first-child'); await freeze();
+    await page.evaluate(() => TinyTroopsPolish.openDeferredChoice());
+    await checkChoices();
+    if (kind === 'evolution' || kind === 'mastery') await page.click('[data-tt-evolution-confirm]');
+    else { await page.evaluate(() => { S.phase = 'recruit'; }); await page.click('#body .choice:first-child'); }
+    await freeze();
     const resolved = await page.evaluate(kind => kind === 'evolution' ? !!S.squad[3].evo && !S.evoTarget : kind === 'mastery' ? !!S.squad[3].ascension && !S.ascTarget : kind === 'path' ? !!S.squad[3].ttPath && !S.tt.pathTarget : kind === 'relic' ? S.relics.length === 1 && S.phase === 'shop' : !S.starChoiceTarget && !S.ultimate10Target, kind);
     assert.equal(resolved, true, kind);
   }
-  console.log('PASS evolution, mastery, stars 8/10/11, specialization, and relics close/resume with identical choices and reachable menus');
+  console.log('PASS evolution, mastery, stars 8/10/11, specialization, and relics postpone/reopen with identical choices and reachable menus');
 
   for (const wave of [1, 3, 5, 6, 300]) {
     await page.evaluate(wave => { qaPrep('Archer', wave); fight(); qaFreeze(); end(true); qaFreeze(); }, wave);
@@ -133,15 +142,17 @@ let browser;
   for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }, { width: 360, height: 640 }, { width: 360, height: 420 }]) {
     await page.setViewportSize(viewport); await page.evaluate(() => { qaPrep(); qaEvent('hospital'); });
     await page.locator('#drawer').evaluate(el => el.scrollTop = el.scrollHeight);
+    // Hit-test after the sheet's entrance animation has reached its resting position.
+    await page.waitForFunction(() => { const el = document.getElementById('close'), r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === el; });
     const reachable = await page.locator('#close').evaluate(el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === el; });
-    assert.equal(reachable, true, JSON.stringify(viewport)); await page.tap('#close'); await page.tap('#recruit'); await page.tap('[data-tt-event="medics"]');
+    assert.equal(reachable, true, JSON.stringify(viewport)); await page.tap('#close'); await page.evaluate(() => TinyTroopsPolish.openDeferredChoice()); await page.tap('[data-tt-event="medics"]');
     assert.equal(await page.evaluate(() => !S.tt.event), true);
     await page.tap('#close');
     const nextBounds = await page.locator('#playNext').evaluate(el => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, height: innerHeight, width: r.width, footer: el.closest('footer').getBoundingClientRect().width }; });
     assert.ok(nextBounds.top >= 0 && nextBounds.bottom <= nextBounds.height && nextBounds.width >= nextBounds.footer * .8, JSON.stringify(nextBounds));
     await page.evaluate(() => qaEvent('armory')); await page.tap('#shade', { position: { x: 8, y: 8 } });
-    assert.equal(await page.evaluate(() => !document.getElementById('drawer').classList.contains('open') && !!S.tt.event), true);
-    await page.tap('#recruit'); await page.tap('[data-tt-action="skip-event"]');
+    assert.equal(await page.evaluate(() => !document.getElementById('drawer').classList.contains('open') && !S.tt.event && TinyTroopsPolish.pendingDecisionCount() === 1), true);
+    await page.evaluate(() => TinyTroopsPolish.openDeferredChoice()); await page.tap('[data-tt-action="skip-event"]');
   }
   console.log('PASS clickable, sticky Close and touch event choices on desktop, mobile, and short screens');
 
@@ -149,7 +160,7 @@ let browser;
   const savedKey = await page.evaluate(() => { qaPrep(); S.squad[3].star = 5; openEvolution(S.squad[3]); S.tt.event = { id: 'armory' }; saveProfile('pending popup reload'); return cleanUsername(document.getElementById('menuUser').value); });
   await page.reload(); await page.waitForFunction(() => TinyTroopsPolish?.ready);
   await page.click(`[data-tt-load-save="${savedKey}"]`); await page.waitForFunction(() => S.evoTarget && document.getElementById('drawer').classList.contains('open'));
-  assert.match(await title(), /Evolution/); await page.click('#body .choice:first-child'); await page.evaluate(() => { ttClearTimers(); TinyTroopsPolish.timer = null; });
+  assert.match(await title(), /Evolution/); await page.click('[data-tt-evolution-confirm]'); await page.evaluate(() => { ttClearTimers(); TinyTroopsPolish.timer = null; openRecruit(); });
   assert.match(await title(), /Abandoned Armory/); await page.click('[data-tt-event="supplies"]'); assert.equal(await page.evaluate(() => !S.tt.event && !!S.squad[3].evo), true);
   assert.deepEqual(errors, []); console.log('PASS real save/reload restores overlapping rewards in order without UI errors');
   console.log('All Tiny Troops popup and next-wave checks passed.');
