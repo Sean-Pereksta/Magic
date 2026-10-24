@@ -2,24 +2,28 @@
 
 The game remains a standalone HTML game. Open `onehitknight.html` in a browser to play with its included image artwork. Node and a local web server are not needed for play. The online leaderboard still needs an Internet connection and the existing Firebase configuration.
 
+The configured artwork host is `https://pub-b50fd62dbbdf45b2aef043f19a0b7380.r2.dev/`. The game requests `manifest.json` and its relative PNG paths from the root of this bucket.
+
+Live verification found the `arcade-v1` manifest and knight PNG at these paths. Both currently omit `Access-Control-Allow-Origin`, so browser loading requires the CORS policy below. Until it is enabled, the game reports the delivery issue and uses its included artwork.
+
 ## Upload the artwork
 
 1. Extract `one-hit-knight-arcade.zip` on your computer. Upload the extracted files, not the ZIP itself.
-2. Open **Cloudflare → R2 object storage**, then select your artwork bucket. Create the prefix `one-hit-knight-arcade/v2/`.
-3. Upload the contents of the extracted `one-hit-knight-arcade/` folder inside that prefix, preserving every subfolder. The dashboard's **Upload** and **Create folder** controls can do this. A configured S3 client or `rclone copy` can transfer the whole directory while preserving paths.
+2. Open **Cloudflare → R2 object storage**, then select the bucket for the configured host.
+3. Upload the contents of the extracted `one-hit-knight-arcade/` folder directly into the bucket root, preserving every subfolder. The dashboard's **Upload** and **Create folder** controls can do this. A configured S3 client or `rclone copy` can transfer the whole directory while preserving paths.
 4. In the bucket's **Settings → Custom Domains**, connect your artwork domain for production. The public `r2.dev` URL can be used for a development check.
 
 Your object keys must look like this:
 
 ```text
-one-hit-knight-arcade/v2/manifest.json
-one-hit-knight-arcade/v2/player/base/...
-one-hit-knight-arcade/v2/enemies/goblin/...
-one-hit-knight-arcade/v2/bosses/ogre/...
-one-hit-knight-arcade/v2/pickups/...
-one-hit-knight-arcade/v2/effects/...
-one-hit-knight-arcade/v2/environments/castle/...
-one-hit-knight-arcade/v2/ui/...
+manifest.json
+player/base/...
+enemies/goblin/...
+bosses/ogre/...
+pickups/...
+effects/...
+environments/castle/...
+ui/...
 ```
 
 Keep the filenames lowercase. The manifest references files relative to the folder containing `manifest.json`.
@@ -47,12 +51,12 @@ Wildcard read origins allow the standalone `file://` game as well as the hosted 
 Near the top of `game/onehitknight.html`, find `ONE_HIT_KNIGHT_ASSET_BASE` and set it to the public folder URL, with a trailing slash:
 
 ```js
-window.ONE_HIT_KNIGHT_ASSET_BASE = 'https://assets.example.com/one-hit-knight-arcade/v2/';
+window.ONE_HIT_KNIGHT_ASSET_BASE = 'https://pub-b50fd62dbbdf45b2aef043f19a0b7380.r2.dev/';
 ```
 
-The empty default uses the image package already included in the HTML. Keep `ONE_HIT_KNIGHT_ASSET_VERSION` aligned with the manifest version. Use a new folder/version for future art releases so older cached files cannot mix with newer metadata.
+This URL is already the default in the PR. An explicit empty string uses the image package already included with the game. Keep `ONE_HIT_KNIGHT_ASSET_VERSION` aligned with the manifest version (`arcade-v1`). If future uploads use a versioned subfolder, include that subfolder in the base URL and update the version with it.
 
-Before updating the hosted game, open the public `.../v2/manifest.json` URL and one PNG path copied from that manifest. Then start a run and visit later arenas. The game loads the first arena and knight before play, prepares upcoming artwork ahead of each wave, and uses included artwork if an uploaded file is missing. A delivery notice and browser console message identify failed requests; **Retry Assets** retries the host.
+Before updating the hosted game, open `https://pub-b50fd62dbbdf45b2aef043f19a0b7380.r2.dev/manifest.json` and one PNG path copied from that manifest. Then start a run and visit later arenas. The game loads the first arena and knight before play, prepares upcoming artwork ahead of each wave, and uses included artwork if an uploaded file is missing. A delivery notice and browser console message identify failed requests; **Retry Assets** retries the host.
 
 ## Activate the online leaderboard
 

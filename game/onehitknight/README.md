@@ -10,7 +10,7 @@ The settings screen controls sound/music volume, reduced shake and reduced flash
 
 ## Assets and deployment
 
-See [Cloudflare integration](CLOUDFLARE.md). The only graphics host setting is `window.ONE_HIT_KNIGHT_ASSET_BASE` near the top of the HTML. An empty string uses the included image art; a public HTTPS folder URL loads its versioned manifest and relative PNG paths. Critical art blocks the initial loading screen, while future enemies and arenas load ahead of their introduction. Missing remote images use the included PNGs and produce a delivery notice with retry.
+See [Cloudflare integration](CLOUDFLARE.md). The graphics host setting, `window.ONE_HIT_KNIGHT_ASSET_BASE` near the top of the HTML, defaults to `https://pub-b50fd62dbbdf45b2aef043f19a0b7380.r2.dev/`. It loads the versioned manifest and relative PNG paths from that folder. Set the value to an empty string to use only the included image art; an explicit browser override also supports this. Critical art blocks the initial loading screen, while future enemies and arenas load ahead of their introduction. Missing remote images use the included PNGs and produce a delivery notice with retry.
 
 The downloadable artwork ZIP includes transparent PNGs, animation source rectangles/durations/directions/pivots, equipment attachment points, weapon timing/hitbox metadata, contact sheets and exact generation prompts. The manifest records authored frame counts and intentional reused effects. Standard enemies currently have two movement poses; independent equipment has two poses per direction. These counts are explicit, rather than duplicated frames presented as new animation.
 
