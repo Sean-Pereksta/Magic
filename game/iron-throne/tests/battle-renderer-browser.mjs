@@ -30,6 +30,19 @@ try{
   assert.equal(remoteRequests,1,'a battlefield loads the default Cloudflare pack');
   assert.equal(localRequests,0,'a successful default remote load does not fetch the local fallback');
   if(process.env.BATTLE_SCREENSHOT){await mkdir(path.dirname(process.env.BATTLE_SCREENSHOT),{recursive:true});await page.screenshot({path:process.env.BATTLE_SCREENSHOT});}
+  const deployment=await page.evaluate(()=>{
+    const sample=structuredClone(battle);sample.phase='deployment';sample.layout.deploymentZones=[{side:0,minX:-66,maxX:66,minZ:-72,maxZ:-44},{side:1,minX:-66,maxX:66,minZ:44,maxZ:72}];
+    const camera={mode:'tactical',target:{x:0,y:0,z:0},yaw:0,pitch:1.45,distance:145};renderer.render(sample,camera);const visible=renderer.stats.deploymentZones;
+    const gl=document.querySelector('canvas').getContext('webgl'),pixels=new Uint8Array(gl.drawingBufferWidth*gl.drawingBufferHeight*4);gl.readPixels(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight,gl.RGBA,gl.UNSIGNED_BYTE,pixels);let tealPixels=0,redPixels=0;
+    sample.phase='combat';renderer.render(sample,camera);const combat=renderer.stats.deploymentZones;
+    const plain=new Uint8Array(pixels.length);gl.readPixels(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight,gl.RGBA,gl.UNSIGNED_BYTE,plain);
+    for(let i=0;i<pixels.length;i+=4){if(pixels[i]===plain[i]&&pixels[i+1]===plain[i+1]&&pixels[i+2]===plain[i+2])continue;if(pixels[i+1]>pixels[i]*1.3&&pixels[i+2]>pixels[i]*1.3)tealPixels++;if(pixels[i]>pixels[i+1]*1.04&&pixels[i]>pixels[i+2]*1.04)redPixels++;}
+    sample.phase='deployment';delete sample.layout.deploymentZones;renderer.render(sample,camera);const legacy=renderer.stats.deploymentZones;
+    sample.layout.deploymentZones=[{side:0,minX:-66,maxX:66,minZ:-72,maxZ:-44},{side:1,minX:-66,maxX:66,minZ:44,maxZ:72}];renderer.render(sample,camera);
+    return{visible,combat,legacy,tealPixels,redPixels};
+  });
+  if(process.env.BATTLE_SCREENSHOT)await page.screenshot({path:process.env.BATTLE_SCREENSHOT.replace(/\.png$/, '-zones.png')});
+  assert.equal(deployment.visible,2);assert.equal(deployment.combat,0,'deployment boundaries disappear when combat begins');assert.equal(deployment.legacy,0,'legacy scenes without zone metadata remain renderable');assert.ok(deployment.tealPixels>20&&deployment.redPixels>20,`both deployment boundaries reach the framebuffer: ${JSON.stringify(deployment)}`);
   const wallPick=await page.evaluate(()=>{
     battle.layout.stairs=[{id:'w-stairs',wallId:'w',x:-12,z:32,topX:-12,topZ:26,height:6,width:3,depth:6}];
     battle.units.push({...battle.units[4],id:'parapet-defender',type:'archer',family:'ranged',x:-12,z:26,y:6,wallId:'w',speed:0,action:null});
@@ -48,6 +61,8 @@ try{
     const actor=combatSample.units[0],poses=[.05,.3,.7].map(elapsed=>battleActionPose({...actor,action:{...actor.action,elapsed}}));
     const spear=battleActionPose({...actor,weapon:'spear'});
     const hit={eventId:1,type:'hit',time:3.86,x:.3,z:1.8,y:1.2,unitId:'target',sourceId:'swordsman',damage:24,damageApplied:24,targetFamily:'infantry',directionX:0,directionZ:1};
+    const pickCamera={mode:'tactical',target:{x:actor.x,y:.95,z:actor.z},yaw:Math.PI,pitch:.5,distance:8};renderer.render(combatSample,pickCamera);
+    const bodyPick=renderer.pick(640,400),groundPick=renderer.pick(640,400,{groundOnly:true});
     const draw=events=>{combatSample.events=events;renderer.render(combatSample,combatCamera);return{...renderer.stats};};
     const gl=document.querySelector('canvas').getContext('webgl'),pixels=()=>{const out=new Uint8Array(gl.drawingBufferWidth*gl.drawingBufferHeight*4);gl.readPixels(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight,gl.RGBA,gl.UNSIGNED_BYTE,out);return out;};
     draw([]);const plain=pixels();const hitStats=draw([hit]),blood=pixels();let visibleBloodPixels=0;
@@ -59,10 +74,11 @@ try{
     const expired=draw([{...hit,time:2}]).bloodParticles;
     const bounded=draw(Array.from({length:40},(_,i)=>({...hit,eventId:i}))).bloodParticles;
     draw([hit]);window.presentationFixture={original,hit};
-    return{stages:poses.map(p=>p.stage),strikeTipForward:Math.sin(poses[1].arm+poses[1].forearm+poses[1].weapon),thrustTipForward:Math.sin(spear.arm+spear.forearm+spear.weapon),hitStats,visibleBloodPixels,blocked,scenery,zero,distant,expired,bounded};
+    return{stages:poses.map(p=>p.stage),strikeTipForward:Math.sin(poses[1].arm+poses[1].forearm+poses[1].weapon),thrustTipForward:Math.sin(spear.arm+spear.forearm+spear.weapon),hitStats,visibleBloodPixels,blocked,scenery,zero,distant,expired,bounded,bodyPick,groundPick};
   });
   if(process.env.BATTLE_SCREENSHOT)await page.screenshot({path:process.env.BATTLE_SCREENSHOT.replace(/\.png$/, '-contact.png')});
   assert.deepEqual(combat.stages,['windup','strike','recovery']);assert.ok(combat.strikeTipForward>.95,'the blade points toward the enemy at contact');assert.ok(combat.thrustTipForward>.99,'the spear thrust points forward');
+  assert.equal(combat.bodyPick.unitId,'swordsman','normal picking selects the commander at the reticle');assert.equal(combat.groundPick.unitId,null,'ground aiming ignores the commander');assert.equal(combat.groundPick.y,0);assert.ok(Math.hypot(combat.groundPick.x-combat.bodyPick.x,combat.groundPick.z-combat.bodyPick.z)>.5,'ground aiming continues beyond the intercepted body');
   assert.equal(combat.hitStats.bloodParticles,8);assert.equal(combat.hitStats.corpses,1);assert.equal(combat.hitStats.detailedCorpses,1);assert.equal(combat.hitStats.attacking,2);assert.ok(combat.visibleBloodPixels>8,'confirmed hits produce visible red particles in the actual WebGL framebuffer');
   for(const key of ['blocked','scenery','zero','distant','expired'])assert.equal(combat[key],0,`${key} does not emit blood`);
   assert.equal(combat.bounded,96,'particles have a fixed rendering budget');
@@ -100,5 +116,5 @@ try{
   await page.route('**/assets/battle/v1/pack.json',route=>route.fulfill({status:503,body:'unavailable'}));
   const message=await page.evaluate(async()=>{const {loadBattleAssets,clearBattleAssetCache}=await import('/game/iron-throne/battle-assets.mjs');await clearBattleAssetCache();try{await loadBattleAssets({retry:true});return null;}catch(e){return e.message;}});assert.match(message,/Retry or resolve/);
   assert.equal(remoteRequests,4);assert.equal(localRequests,2);assert.deepEqual(errors,[]);
-  console.log('Battle renderer: all 15 troop classes, forward-facing weapon contact, visible close-hit blood with culling, persistent bounded corpses, instanced geometry, cameras, picking, disposal, default Cloudflare load/download, offline remote cache, local fallback, and failure recovery passed.');
+  console.log('Battle renderer: all 15 troop classes, forward-facing weapon contact, visible close-hit blood with culling, persistent bounded corpses, deployment boundaries, instanced geometry, cameras, body/wall/ground picking, disposal, default Cloudflare load/download, offline remote cache, local fallback, and failure recovery passed.');
 }finally{await browser.close();await new Promise(r=>server.close(r));}

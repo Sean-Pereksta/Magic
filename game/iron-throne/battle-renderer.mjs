@@ -55,7 +55,7 @@ export async function createBattleRenderer(canvas,battle,options={}) {
   if(!gl)throw new Error('This browser could not start WebGL. Resolve this battle automatically or try another browser.');
   const ext=gl.getExtension('ANGLE_instanced_arrays'),p=program(gl,!!ext),buffers=new Map(),instances=new Map(),staticInstances=new Map();
   let disposed=false,lost=false,previousBattle=battle,lastEye=[0,20,-30],lastTarget=[0,0,0],lastAspect=1,frame=0;
-  let frameStats={bloodParticles:0,corpses:0,detailedCorpses:0,attacking:0};
+  let frameStats={bloodParticles:0,corpses:0,detailedCorpses:0,attacking:0,deploymentZones:0};
   const recentHits=new Map();
   const attribute=name=>gl.getAttribLocation(p,name),uniform=name=>gl.getUniformLocation(p,name);
   const aPos=attribute('aPosition'),aNormal=attribute('aNormal'),uVP=uniform('uViewProjection'),uEye=uniform('uEye'),uModel=uniform('uModel'),uColor=uniform('uColor');
@@ -220,6 +220,21 @@ export async function createBattleRenderer(canvas,battle,options={}) {
   }
   // A single instanced annulus replaces 24 articulated beam segments per marker.
   function ring(x,y,z,r,tint){object('selectionRing',[x,y,z],[r,1,r],tint);}
+  function deploymentOutlines(next){
+    if(next.phase!=='deployment')return;
+    for(const zone of next.layout.deploymentZones||[]){
+      if(![zone.minX,zone.maxX,zone.minZ,zone.maxZ].every(Number.isFinite)||zone.minX>=zone.maxX||zone.minZ>=zone.maxZ)continue;
+      const tint=zone.side===next.playerSide?[.35,.74,.76]:[.86,.38,.31],corners=[[zone.minX,zone.minZ],[zone.maxX,zone.minZ],[zone.maxX,zone.maxZ],[zone.minX,zone.maxZ]];
+      for(let edge=0;edge<4;edge++){
+        const a=corners[edge],b=corners[(edge+1)%4],segments=Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])/5);
+        for(let i=0;i<segments;i++){
+          const x=mix(a[0],b[0],i/segments),z=mix(a[1],b[1],i/segments),endX=mix(a[0],b[0],(i+1)/segments),endZ=mix(a[1],b[1],(i+1)/segments),y=height(x,z)+.075,endY=height(endX,endZ)+.075,length=Math.hypot(endX-x,endY-y,endZ-z);
+          add('beam',multiply(transform([x,y,z],[0,Math.atan2(endX-x,endZ-z),0]),transform([0,0,0],[Math.acos((endY-y)/length),0,0],[1,length,.5])),tint);
+        }
+      }
+      frameStats.deploymentZones++;
+    }
+  }
   function distantCorpse(unit){
     const mounted=unit.family==='mounted'&&unit.mounted!==false,y=corpseFloor(unit),root=multiply(transform([unit.x,y+.23,unit.z],[0,unit.deathFacing??unit.facing??0,0]),transform([0,0,0],[1.55,0,.1]));
     if(unit.family==='siege'){object('box',[unit.x,y+.05,unit.z],[2.5,.35,2],palette.wood,[0,unit.facing||0,.1]);for(const sign of [-1,1])object('beam',[unit.x+sign,y+.2,unit.z-1.5],[1.5,3,1.5],palette.wood,[Math.PI/2,0,sign*.3]);return;}
@@ -264,9 +279,10 @@ export async function createBattleRenderer(canvas,battle,options={}) {
     const pitch=clamp(camera.pitch??(tactical?.9:.32),tactical?.45:.04,1.52),distance=clamp(camera.distance??(tactical?70:7),tactical?12:3,150);
     lastTarget=Array.isArray(target)?target:[target.x||0,(target.y||0)+(tactical?0:1.5),target.z||0];
     lastEye=[lastTarget[0]-Math.sin(yaw)*Math.cos(pitch)*distance,lastTarget[1]+Math.sin(pitch)*distance,lastTarget[2]-Math.cos(yaw)*Math.cos(pitch)*distance];
-    frameStats={bloodParticles:0,corpses:0,detailedCorpses:0,attacking:0};recentHits.clear();
+    frameStats={bloodParticles:0,corpses:0,detailedCorpses:0,attacking:0,deploymentZones:0};recentHits.clear();
     for(const event of next.events||[]){const age=next.time-event.time;if(event.type==='hit'&&!event.blocked&&(event.damageApplied??event.damage)>0&&age>=0&&age<.22)recentHits.set(event.unitId||event.targetId,1-age/.22);}
     const vp=multiply(perspective(lastAspect),lookAt(lastEye,lastTarget));
+    deploymentOutlines(next);
     for(const w of next.layout.walls||[])wall(w);if(next.layout.gate)wall(next.layout.gate,true);
     for(const stair of next.layout.stairs||[]){
       const w=next.layout.walls.find(w=>w.id===stair.wallId);if(!w||w.hp<=0)continue;
@@ -328,7 +344,7 @@ export async function createBattleRenderer(canvas,battle,options={}) {
     }
     frame++;
   }
-  function pick(clientX,clientY){
+  function pick(clientX,clientY,pickOptions={}){
     const rect=canvas.getBoundingClientRect(),nx=(clientX-rect.left)/rect.width*2-1,ny=1-(clientY-rect.top)/rect.height*2;
     const forward=normalize(lastTarget.map((v,i)=>v-lastEye[i])),right=normalize(cross(forward,[0,1,0])),up=cross(right,forward),tan=Math.tan(Math.PI/6);
     const ray=normalize(forward.map((v,i)=>v+right[i]*nx*tan*lastAspect+up[i]*ny*tan));
@@ -338,7 +354,7 @@ export async function createBattleRenderer(canvas,battle,options={}) {
     point=lastEye.map((v,k)=>v+ray[k]*d);
     // Select elevated wall defenders at their visible bodies, not the ground behind them.
     let picked=null,nearest=d;
-    for(const unit of previousBattle.units){
+    for(const unit of pickOptions.groundOnly?[]:previousBattle.units){
       if(unit.status!=='active')continue;
       const radius=unit.family==='siege'?1.8:unit.mounted?1.2:.75,center=[unit.x,(unit.y||0)+(unit.mounted?1.5:.95),unit.z],offset=center.map((v,i)=>v-lastEye[i]),along=dot(offset,ray);
       if(along<=0||along>=nearest)continue;
@@ -347,6 +363,7 @@ export async function createBattleRenderer(canvas,battle,options={}) {
     if(picked)return{x:picked.x,y:picked.y||0,z:picked.z,unitId:picked.id};
     const [x,y,z]=point;
     if(Math.abs(x)>previousBattle.layout.width/2||Math.abs(z)>previousBattle.layout.depth/2)return null;
+    if(pickOptions.groundOnly)return{x,y,z,unitId:null};
     const unit=previousBattle.units.filter(u=>u.status==='active').sort((a,b)=>Math.hypot(a.x-x,a.z-z)-Math.hypot(b.x-x,b.z-z))[0];
     return{x,y,z,unitId:unit&&Math.hypot(unit.x-x,unit.z-z)<2.4?unit.id:null};
   }
