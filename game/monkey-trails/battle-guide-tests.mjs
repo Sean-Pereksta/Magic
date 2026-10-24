@@ -67,9 +67,9 @@ test('opt-in raid ward patterns preserve old tickets and expedition copies',()=>
 
 test('every damaging catalogue technique preview bounds the real hit with current effects',()=>{
   for(const [id,move]of Object.entries(C.MOVES).filter(([,move])=>move.power)){
-    const s=battle(777),p=s.run.monkey,e=s.run.battle.enemy;p.stage=3;p.level=12;p.types=move.types||[move.type==='neutral'?'fire':move.type];p.loadout=['strike',id].filter((id,index,a)=>a.indexOf(id)===index);p.learned.push(id);p.energy=100;p.hp=C.stats(p).hp;p.prepare=.22;p.status.weaken=2;p.statusPower.weaken=.2;e.shield=12;e.guard=.45;e.hp=10000;
+    const s=battle(777),p=s.run.monkey,e=s.run.battle.enemy;p.stage=3;p.level=60;p.types=move.types||[move.type==='neutral'?'fire':move.type];p.loadout=['strike',id].filter((id,index,a)=>a.indexOf(id)===index);p.learned.push(id);p.energy=100;p.hp=C.stats(p).hp;p.prepare=.22;p.status.weaken=2;p.statusPower.weaken=.2;e.shield=12;e.guard=.45;e.hp=10000;
     const reserve=structuredClone(p);reserve.id='preview-reserve';reserve.loadout=['strike'];s.collection[reserve.id]=reserve;s.run.party.push(reserve.id);
-    const preview=damagePreview(s,id);C.turn(s,id);const hit=s.run.battle.hitFeedback.find(hit=>hit.side==='player');assert.ok(hit,`${id} produces feedback`);
+    if(move.charge)C.turn(s,id);const preview=damagePreview(s,id);C.turn(s,id);const hit=s.run.battle.hitFeedback.find(hit=>hit.side==='player');assert.ok(hit,`${id} produces feedback`);
     assert.ok(hit.damage>=preview.min&&hit.damage<=(hit.critical?preview.criticalMax:preview.max),`${id} damage ${hit.damage} in ${preview.min}–${preview.max}, crit ${preview.criticalMax}`);
   }
 });

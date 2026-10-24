@@ -2,11 +2,11 @@
 import {ELEMENTS,GEAR,ITEMS,SPECIES} from './data.mjs';
 import {GEAR_RARITIES,LEGACY_GEAR_AFFINITIES} from './equipment-data.mjs';
 import {previewGearAward,awardGearCopy,normalizeEquipmentInventory,assertGearAwardCapacity,canChangeEquipment} from './equipment-inventory.mjs';
-import {equipmentCraftRefund,applyEquipmentCraftRefund,isCommonCraftIngredient} from './equipment-trail.mjs';
+import {equipmentCraftRefund,applyEquipmentCraftRefund,isCommonCraftIngredient,equipmentCraftQuality} from './equipment-trail.mjs';
 
 export {GEAR_RARITIES};
 export const FORGE_LIMITS={minimumValue:8,maximumUnits:60,maximumTier:12,tickets:1000000};
-const terms=s=>{const campBonus=s.run?.phase==='camp';return{campBonus,discount:campBonus?.2:0,qualityBoost:campBonus?.10:0};};
+const terms=s=>{const campBonus=s.run?.phase==='camp',gearQualityBoost=equipmentCraftQuality(s);return{campBonus,discount:campBonus?.2:0,qualityBoost:(campBonus?.10:0)+gearQualityBoost,gearQualityBoost};};
 const chargedCount=(count,campBonus)=>campBonus?Math.max(1,Math.ceil(count*4/5)):count;
 const ELEMENT_IDS=Object.keys(ELEMENTS),AFFINITY_IDS=[...ELEMENT_IDS,'neutral'],RARITY_IDS=Object.keys(GEAR_RARITIES);
 const has=(object,id)=>Object.prototype.hasOwnProperty.call(object,id);
@@ -113,7 +113,7 @@ function ledger(s){
     let costs=normalized;
     if(hasCharges){
       try{costs=mixForReplay(r.costInputs);}catch{throw Error('This forge checkpoint has invalid charged inputs.');}
-      if(typeof r.campBonus!=='boolean'||r.discount!==(r.campBonus?.2:0)||r.qualityBoost!==(r.campBonus?.1:0)||!bounded(r.baseQuality,0,1)||Math.abs(r.quality-clamp(r.baseQuality+r.qualityBoost,0,1))>1e-12||r.offeredUnits!==Object.values(normalized).reduce((a,b)=>a+b,0)||r.chargedUnits!==Object.values(costs).reduce((a,b)=>a+b,0)||!validCount(r.chargedValue)||r.chargedValue<1||r.chargedValue>r.value||Object.keys(costs).length!==Object.keys(normalized).length||Object.entries(normalized).some(([id,count])=>costs[id]!==chargedCount(count,r.campBonus)))throw Error('This forge checkpoint has invalid camp benefits.');
+      if(typeof r.campBonus!=='boolean'||r.discount!==(r.campBonus?.2:0)||!bounded(r.gearQualityBoost??0,0,.06)||Math.abs(r.qualityBoost-((r.campBonus?.1:0)+(r.gearQualityBoost||0)))>1e-12||!bounded(r.baseQuality,0,1)||Math.abs(r.quality-clamp(r.baseQuality+r.qualityBoost,0,1))>1e-12||r.offeredUnits!==Object.values(normalized).reduce((a,b)=>a+b,0)||r.chargedUnits!==Object.values(costs).reduce((a,b)=>a+b,0)||!validCount(r.chargedValue)||r.chargedValue<1||r.chargedValue>r.value||Object.keys(costs).length!==Object.keys(normalized).length||Object.entries(normalized).some(([id,count])=>costs[id]!==chargedCount(count,r.campBonus)))throw Error('This forge checkpoint has invalid camp benefits.');
     }
     if(!Array.isArray(r.costSummary)||r.costSummary.length!==Object.keys(normalized).length||new Set(r.costSummary.map(row=>row?.id)).size!==r.costSummary.length||r.costSummary.some(row=>!row||costs[row.id]!==row.count||!validCount(row.value)||row.value<row.count||typeof row.name!=='string'||row.name.length>200||hasCharges&&(normalized[row.id]!==row.offeredCount||!validCount(row.offeredValue)||row.offeredValue<row.value||row.value*row.offeredCount!==row.offeredValue*row.count))||r.costSummary.reduce((n,row)=>n+row.value,0)!==(hasCharges?r.chargedValue:r.value)||hasCharges&&r.costSummary.reduce((n,row)=>n+row.offeredValue,0)!==r.value)throw Error('This forge checkpoint has an invalid cost receipt.');
     if(r.kind==='salvaged'){
@@ -176,7 +176,7 @@ export function craftForge(s,inputs,operationId){
   const award=previewGearAward(verified,result.id),salvageCount=award.kind==='salvaged'?Math.max(1,Math.floor(preview.value*.4/4)):0;
   assertGearAwardCapacity(verified,result.id);
   const salvage=salvageCount?{id:`fragment:${result.id}`,itemId:result.id,name:`${result.name} fragments`,count:salvageCount,value:salvageCount*4}:null;
-  const receipt={operationId,fingerprint,itemId:result.id,name:result.name,rarity:result.rarity,element:result.element,slot:result.slot,icon:result.icon,desc:result.desc,kind:award.kind,tier:award.tier,copyId:award.copyId,salvage,refunds:preview.refunds,inputs:preview.inputs,costInputs:preview.costInputs,costSummary:preview.costSummary,value:preview.value,chargedValue:preview.chargedValue,offeredUnits:preview.offeredUnits,chargedUnits:preview.chargedUnits,campBonus:preview.campBonus,discount:preview.discount,qualityBoost:preview.qualityBoost,baseQuality:preview.baseQuality,quality:preview.quality,chance:result.chance,serial:f.serial+1};
+  const receipt={operationId,fingerprint,itemId:result.id,name:result.name,rarity:result.rarity,element:result.element,slot:result.slot,icon:result.icon,desc:result.desc,kind:award.kind,tier:award.tier,copyId:award.copyId,salvage,refunds:preview.refunds,inputs:preview.inputs,costInputs:preview.costInputs,costSummary:preview.costSummary,value:preview.value,chargedValue:preview.chargedValue,offeredUnits:preview.offeredUnits,chargedUnits:preview.chargedUnits,campBonus:preview.campBonus,discount:preview.discount,qualityBoost:preview.qualityBoost,gearQualityBoost:preview.gearQualityBoost,baseQuality:preview.baseQuality,quality:preview.quality,chance:result.chance,serial:f.serial+1};
   const checkpoint={...verified,meta:{...verified.meta,forge:{serial:receipt.serial,last:receipt}}};
   if(JSON.stringify(checkpoint).length+256>650000)throw Error('Equipment storage is full. Upgrade available duplicate copies first.');
   for(const[id,count]of Object.entries(preview.costInputs))spend(s,id,count);

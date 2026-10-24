@@ -1,0 +1,91 @@
+// Save-stable expansion definitions. Effects are resolved by the existing engine.
+export const ELEMENTAL_TECHNIQUES={
+ brambleSnare:{name:'Bramble Snare',type:'leaf',power:17,cost:3,status:'slow',weaken:.18,duration:3,minStage:1,minLevel:3,cooldown:2,desc:'Slow for 3 rounds and weaken the next attack by 18%.'},
+ pollenWard:{name:'Pollen Ward',type:'leaf',cost:6,teamShield:.20,teamCleanse:true,duration:3,minStage:2,minLevel:6,cooldown:4,desc:'Shield every conscious teammate for 20% maximum health and cleanse their ailments.'},
+ verdantVerdict:{name:'Verdant Verdict',type:'leaf',power:39,cost:8,comboStatuses:['poison','slow','weaken'],comboBonus:.30,minStage:3,minLevel:40,cooldown:5,desc:'Deal 30% extra damage to a poisoned, slowed, or weakened foe; consumes the combo ailments.'},
+ emberJuke:{name:'Ember Juke',type:'fire',power:19,cost:3,priority:2,evasion:.20,duration:1,minStage:1,minLevel:3,cooldown:2,timing:true,desc:'Priority attack; reduce the next incoming hit this round by 20%.'},
+ furnaceRush:{name:'Furnace Rush',type:'fire',power:29,cost:5,status:'burn',drainEnergy:2,duration:3,minStage:2,minLevel:6,cooldown:3,desc:'Burn for 3 rounds and steal up to 2 energy to pressure expensive techniques.'},
+ crownfireComet:{name:'Crownfire Comet',type:'fire',power:57,cost:10,charge:1,comboStatuses:['burn'],comboBonus:.25,minStage:3,minLevel:40,cooldown:6,uses:2,timing:true,desc:'Charge for one round, then strike. A burning target takes 25% extra damage; consumes burn. Two uses.'},
+ currentSwap:{name:'Current Swap',type:'water',power:18,cost:4,switch:true,entryEnergy:2,minStage:1,minLevel:3,cooldown:3,desc:'Strike and relay to a chosen teammate, restoring 2 energy with the recipient relay cooldown.'},
+ tidalReversal:{name:'Tidal Reversal',type:'water',cost:5,guard:true,counter:.55,duration:1,minStage:2,minLevel:6,cooldown:3,timing:true,desc:'Block this round and retaliate for 55% of damage absorbed, including shields.'},
+ leviathanPulse:{name:'Leviathan Pulse',type:'water',power:38,cost:9,splash:.35,status:'slow',duration:2,minStage:3,minLevel:40,cooldown:5,desc:'Strike the active foe, slow for 2 rounds, and splash reserves for 35% of damage.'},
+ staticBait:{name:'Static Bait',type:'storm',cost:3,guard:true,counter:.40,drainOnCounter:3,duration:1,minStage:1,minLevel:3,cooldown:3,timing:true,desc:'Block, retaliate for 40% of absorbed damage, and drain 3 energy when struck.'},
+ chainSurge:{name:'Chain Surge',type:'storm',power:28,cost:6,splash:.25,comboStatuses:['slow'],comboBonus:.20,minStage:2,minLevel:6,cooldown:3,desc:'Lightning splashes reserves for 25%; slowed targets take 20% more and lose slow.'},
+ tempestRequiem:{name:'Tempest Requiem',type:'storm',power:55,cost:10,charge:1,interrupt:true,minStage:3,minLevel:40,cooldown:6,uses:2,timing:true,desc:'Charge for one round, then deliver an interrupting storm strike. Two uses; vulnerable while charging.'},
+ stoneCounter:{name:'Stone Counter',type:'earth',cost:4,guard:true,counter:.45,shield:.12,duration:1,minStage:1,minLevel:3,cooldown:3,timing:true,desc:'Block behind a 12% shield and retaliate for 45% of all absorbed damage.'},
+ seismicLock:{name:'Seismic Lock',type:'earth',power:27,cost:6,breakShield:true,root:2,status:'root',duration:2,minStage:2,minLevel:6,cooldown:3,desc:'Shatter shield and guard, then restrain voluntary switches for 2 rounds.'},
+ titansOath:{name:"Titan’s Oath",type:'earth',cost:9,guard:true,teamShield:.25,counter:.80,duration:2,minStage:3,minLevel:40,cooldown:6,uses:2,timing:true,desc:'Block, shield the team for 25%, and answer the next hit for 80% of absorbed damage. Two uses.'},
+ frostTiming:{name:'Frost Timing',type:'ice',power:17,cost:3,priority:2,delayCharge:1,status:'slow',duration:2,minStage:1,minLevel:3,cooldown:3,timing:true,desc:'Priority slow; delay a charged attack by one round, once per charge.'},
+ hailguard:{name:'Hailguard',type:'ice',cost:6,teamShield:.23,teamCleanse:true,duration:2,minStage:2,minLevel:6,cooldown:4,desc:'Shield all conscious allies for 23% maximum health and clear harmful statuses.'},
+ zeroHorizon:{name:'Zero Horizon',type:'ice',power:44,cost:9,status:'slow',root:2,comboStatuses:['slow'],comboBonus:.25,duration:3,minStage:3,minLevel:40,cooldown:5,desc:'A freezing assault; slowed foes take 25% extra damage before slow is renewed. Restrain switches for 2 rounds.'},
+ healingGleam:{name:'Healing Gleam',type:'light',cost:4,heal:.24,healTarget:true,minStage:1,minLevel:3,cooldown:3,desc:'Restore 24% maximum health to a chosen conscious teammate; builds healing momentum.'},
+ radiantAegis:{name:'Radiant Aegis',type:'light',cost:6,teamShield:.18,teamCleanse:true,duration:3,minStage:2,minLevel:6,cooldown:4,desc:'Cleanse the team and give every conscious ally an 18% shield for 3 rounds.'},
+ solarJudgment:{name:'Solar Judgment',type:'light',power:31,cost:8,healingPower:.30,minStage:3,minLevel:40,cooldown:5,desc:'Add 30% of this companion’s healing performed this battle, capped at 30 power; consumes healing momentum.'},
+ shadowstep:{name:'Shadowstep',type:'shadow',power:15,cost:3,priority:2,evasion:.30,statusSelf:'speed',duration:2,minStage:1,minLevel:3,cooldown:3,timing:true,desc:'Priority repositioning grants speed for 2 rounds and reduces the next hit by 30%.'},
+ umbralSiphon:{name:'Umbral Siphon',type:'shadow',power:25,cost:5,drain:.40,weaken:.20,drainEnergy:2,duration:2,minStage:2,minLevel:6,cooldown:3,desc:'Drain 40% of damage and 2 energy; weaken the next opposing hit by 20%.'},
+ midnightEclipse:{name:'Midnight Eclipse',type:'shadow',power:37,cost:9,comboStatuses:['burn','poison','root','slow','weaken'],comboBonus:.35,minStage:3,minLevel:40,cooldown:5,desc:'Exploit any harmful status for 35% more damage, consuming those ailments.'}
+};
+export const SPECIES_SIGNATURES={
+ quickleafSlip:{name:'Quickleaf Slip',type:'leaf',power:27,cost:6,priority:2,evasion:.30,interrupt:true,cooldown:4,desc:'Intercept a charge with priority, then evade 30% of the next hit.'},
+ dewlineChorus:{name:'Dewline Chorus',types:['leaf','water'],cost:7,teamHeal:.16,teamCleanse:true,cooldown:5,desc:'Heal conscious teammates for 16% and cleanse harmful statuses.'},
+ sandboundFeint:{name:'Sandbound Feint',type:'earth',power:29,cost:6,feint:.50,switch:true,entryEnergy:3,cooldown:4,desc:'Deal 50% more against a defense, bypass guard, then relay 3 energy.'},
+ solarRam:{name:'Solar Ram',types:['fire','earth'],power:39,cost:7,breakShield:true,status:'burn',duration:2,cooldown:4,desc:'Break guard and shields, then burn the target for 2 rounds.'},
+ prismSplit:{name:'Prism Split',types:['earth','light'],power:26,cost:7,splash:.30,weaken:.25,duration:2,cooldown:4,desc:'Refracted damage hits reserves for 30% and weakens the active foe by 25%.'},
+ cavernResonance:{name:'Cavern Resonance',types:['earth','storm'],power:39,cost:8,charge:1,breakShield:true,interrupt:true,cooldown:4,desc:'Charge one round, then unleash a shield-breaking interrupt.'},
+ lilySpring:{name:'Lily Spring',types:['water','leaf'],power:21,cost:6,switch:true,teamShield:.18,entryEnergy:3,duration:2,cooldown:4,desc:'Strike, then switch and shield the entrant for 18%, restoring 3 energy.'},
+ fogboundPromise:{name:'Fogbound Promise',types:['water','shadow'],power:26,cost:7,weaken:.30,status:'slow',drainEnergy:4,duration:3,cooldown:4,desc:'Fog slows for 3 rounds, weakens by 30%, and drains up to 4 energy.'},
+ froststepLunge:{name:'Froststep Lunge',type:'ice',power:34,cost:6,priority:2,interrupt:true,comboStatuses:['slow'],comboBonus:.20,cooldown:4,timing:true,desc:'Priority interrupt; slowed foes take 20% extra damage and lose slow.'},
+ winterShroud:{name:'Winter Shroud',types:['ice','shadow'],cost:7,teamShield:.22,guard:true,counter:.40,teamCleanse:true,duration:2,cooldown:5,desc:'Cleanse and shield the team for 22%, block, and counter for 40%.'},
+ lightningGrapple:{name:'Lightning Grapple',type:'storm',power:28,cost:6,priority:2,interrupt:true,switch:true,transferSpeed:true,duration:2,cooldown:4,desc:'Interrupt with priority, then relay a 2-round speed boost.'},
+ stormAnvil:{name:'Storm Anvil',types:['storm','earth'],power:40,cost:8,breakShield:true,comboStatuses:['slow','root'],comboBonus:.25,cooldown:4,desc:'Break defenses; restrained or slowed foes take 25% more and lose those statuses.'},
+ lavaCrest:{name:'Lava Crest',types:['fire','earth'],cost:7,shield:.30,counter:.65,guard:true,duration:2,cooldown:5,desc:'Create a 30% shield, block this round, and return 65% of absorbed damage.'},
+ phoenixCircuit:{name:'Phoenix Circuit',types:['fire','shadow'],power:37,cost:9,teamHeal:.15,status:'burn',reviveReserve:.20,duration:3,cooldown:6,uses:1,desc:'Once per battle, burn, heal the conscious team 15%, and revive one fallen reserve at 20% health.'},
+ moonstep:{name:'Moonstep',types:['light','shadow'],power:25,cost:6,priority:2,switch:true,teamShield:.20,cleanse:true,duration:2,cooldown:4,desc:'Cleanse, strike with priority, and shield the chosen entrant for 20%.'},
+ midnightBloom:{name:'Midnight Bloom',types:['leaf','shadow'],cost:9,teamHeal:.23,teamCleanse:true,shield:.18,drainEnergy:3,duration:2,cooldown:6,uses:2,desc:'Heal the conscious team 23%, cleanse, shield yourself 18%, and drain 3 enemy energy. Two uses.'},
+ constellationWeave:{name:'Constellation Weave',types:['light','storm'],cost:7,teamShield:.16,teamEnergy:3,rally:.25,duration:3,cooldown:5,desc:'Shield all conscious allies 16%, restore each 3 energy, and prepare the next entrant for 25% more damage.'},
+ auroraOath:{name:'Aurora Oath',types:['light','ice'],cost:9,teamShield:.30,teamCleanse:true,guard:true,counter:.60,duration:3,cooldown:6,uses:2,desc:'Cleanse and shield the team 30%, block and reflect 60% of absorbed damage. Two uses.'},
+ kingsDecree:{name:'King’s Decree',types:['light','earth'],power:28,cost:7,breakShield:true,weaken:.25,teamShield:.15,duration:2,cooldown:4,desc:'Break defenses, weaken the next enemy attack 25%, and shield allies 15%.'},
+ timeCrown:{name:'Time Crown',types:['light','shadow'],power:27,cost:9,interrupt:true,delayCharge:1,drainEnergy:4,reduceCooldown:1,priority:2,cooldown:6,uses:2,desc:'Interrupt charges, steal 4 energy, and reduce your other cooldowns by one round. Two uses.'}
+};
+export const TACTICAL_TECHNIQUES={
+ intercept:{name:'Intercept',type:'neutral',power:17,cost:4,priority:3,interrupt:true,cooldown:3,minStage:3,minLevel:20,timing:true,desc:'A priority attack that interrupts a charging foe; paid charge energy is lost.'},
+ tacticalFeint:{name:'Tactical Feint',type:'neutral',power:25,cost:4,priority:1,feint:.60,cooldown:3,minStage:3,minLevel:20,desc:'Bypass guard and deal 60% extra damage to a shielded or guarding opponent.'},
+ rescueCounter:{name:'Rescue Switch',type:'neutral',cost:4,priority:3,switch:true,teamShield:.25,entryEnergy:3,cooldown:4,minStage:3,minLevel:20,desc:'Priority rescue: shield the incoming ally 25% and restore 3 energy.'},
+ tacticalDrain:{name:'Energy Disrupt',type:'neutral',power:19,cost:4,priority:2,drainEnergy:5,cancelUnfundedCharge:true,cooldown:3,minStage:3,minLevel:20,desc:'Steal up to 5 energy; cancel a charge that needs more energy than remains.'},
+ legendaryConvergence:{name:'Legendary Convergence',type:'neutral',power:42,cost:10,charge:1,comboStatuses:['burn','poison','slow','weaken','root'],comboBonus:.35,teamShield:.10,duration:2,cooldown:7,uses:1,minStage:3,minLevel:50,desc:'Once per battle, charge then exploit ailments for 35% more damage. Protect the team with 10% shields.'},
+ finalMastery:{name:'Mastery Finale',type:'neutral',power:44,cost:11,charge:1,breakShield:true,finisherThreshold:.30,finisherBonus:.35,cooldown:8,uses:1,minStage:3,minLevel:60,timing:true,desc:'Once per battle: charge, break defenses, and deal 35% extra damage to a foe below 30% health. Never an instant knockout.'}
+};
+// Appended identities keep the original catalogue numbers stable.
+export const LIVING_SPECIES_ROWS=[
+ ['fernflick','Fernflick','The Quickleaf Scout',['leaf'],'relay',75,12,8,20,'common','Quickleaf evasion and interrupting scouts.','vine quickJab branchRelay seedDrain','quickleafSlip','jungle','grove'],
+ ['vinewhisk','Vinewhisk','The Dewline Medic',['leaf','water'],'healer',88,9,11,13,'uncommon','Healing songs cleanse the whole conscious team.','monsoon spring leafCleanse teamMend','dewlineChorus','jungle','riverbank'],
+ ['dustracer','Dustracer','The Dune Courier',['earth'],'relay',78,12,8,21,'uncommon','Sand feints punish defensive setups before a relay.','stonePalm quickJab branchRelay flintFeint','sandboundFeint','savannah','trail'],
+ ['sunscar','Sunscar','The Solar Ram',['fire','earth'],'attacker',91,17,10,9,'uncommon','Sun-warmed ram horns break shields and kindle burns.','cinder stonePalm magma focus','solarRam','savannah','landmark'],
+ ['prismtail','Prismtail','The Crystal Jester',['earth','light'],'controller',85,12,12,12,'uncommon','A mirrored fan tail splits weakening light across enemies.','stonePalm dawnPalm prismGuard tailSweep','prismSplit','caverns','cave'],
+ ['echoquartz','Echoquartz','The Resonant Sage',['earth','storm'],'caster',92,16,11,7,'rare','Crystal tuning forks charge an interrupting resonance.','fulgurite thunder quartzGuard focus','cavernResonance','caverns','cave'],
+ ['lilypadleap','Lilypadleap','The Pond Acrobat',['water','leaf'],'relay',77,11,9,19,'common','A springing lily pad protects the next companion.','tide vine branchRelay bubbleGuard','lilySpring','marsh','riverbank'],
+ ['bogwhisper','Bogwhisper','The Fog Promiser',['water','shadow'],'controller',89,12,11,14,'rare','Whispered fog steals energy and softens the next blow.','moonripple tide veil energySip','fogboundPromise','marsh','riverbank'],
+ ['rimepounce','Rimepounce','The Froststep Hunter',['ice'],'attacker',80,17,8,18,'uncommon','Frozen paw springs reward slowing then intercepting.','frostFang icicleBurst quickJab focus','froststepLunge','frostpeak','cave'],
+ ['glaciershade','Glaciershade','The Winter Veil',['ice','shadow'],'defender',108,11,16,5,'rare','A moon-dark glacier cloak shelters the crew.','frostFang veil snowWard counterstance','winterShroud','frostpeak','ruins'],
+ ['skyhook','Skyhook','The Lightning Grappler',['storm'],'relay',76,13,8,23,'uncommon','Lightning hooks interrupt and relay speed.','spark galeStep branchRelay tailwindTransfer','lightningGrapple','highlands','landmark'],
+ ['stormforge','Stormforge','The Storm Anvil',['storm','earth'],'attacker',97,18,12,7,'rare','Anvil fists exploit restrained foes.','fulgurite spark stonePalm guardBreak','stormAnvil','highlands','cave'],
+ ['magmacrest','Magmacrest','The Lava Bastion',['fire','earth'],'defender',111,13,17,3,'rare','A spreading lava crest turns blocks into punishment.','magma emberGuard quartzGuard counterstance','lavaCrest','volcano','cave'],
+ ['ashwing','Ashwing','The Phoenix Circuit',['fire','shadow'],'caster',100,17,11,15,'ultra','A single phoenix circuit can revive a fallen reserve.','ashcloak cinder nightDrain focus','phoenixCircuit','volcano','landmark'],
+ ['moondancer','Moondancer','The Moonstep Artist',['light','shadow'],'relay',83,13,10,21,'rare','Moonstep cleanses before shielding a partner.','eclipse dawnPalm duskClaw guardianHandoff','moonstep','moonlit','ruins'],
+ ['nightbloom','Nightbloom','The Midnight Garden',['leaf','shadow'],'healer',107,12,14,11,'ultra','Night blossoms heal and cleanse the crew with bounded uses.','gloamorchid seedDrain nightDrain teamMend','midnightBloom','moonlit','grove'],
+ ['starweaver','Starweaver','The Constellation Artisan',['light','storm'],'utility',88,11,12,16,'rare','Constellation threads renew energy and prepare a relay.','dawnPalm spark prismGuard canopyRally','constellationWeave','celestial','ruins'],
+ ['lumenkeeper','Lumenkeeper','The Aurora Oath',['light','ice'],'defender',116,12,18,5,'ultra','Aurora ribbons cleanse the team and answer aggression.','aurora dawnPalm snowWard counterstance','auroraOath','celestial','ruins'],
+ ['regalsentinel','Regalsentinel','The Crown’s Guardian',['light','earth'],'defender',110,14,17,5,'rare','Royal decrees break defenses while protecting the crew.','stonePalm dawnPalm prismGuard guardianHandoff','kingsDecree','kingdom','ruins'],
+ ['chronomane','Chronomane','The Time Crown',['light','shadow'],'controller',101,15,13,18,'ultra','Time crowns interrupt and cycle cooldowns twice per battle.','eclipse dawnPalm duskClaw energySip','timeCrown','kingdom','landmark']
+];
+export const ROLE_ASCENSIONS={
+ defender:{power:25,cost:7,shield:.24,counter:.35,duration:2,cooldown:4,desc:'Strike, gain a 24% shield, and return 35% of the next absorbed hit.'},
+ healer:{cost:7,teamHeal:.15,teamCleanse:true,cooldown:5,desc:'Restore 15% health to conscious teammates and cleanse harmful statuses.'},
+ relay:{power:23,cost:6,switch:true,teamShield:.18,entryEnergy:3,duration:2,cooldown:4,desc:'Strike, relay to a conscious teammate, shield them 18%, and restore 3 energy.'},
+ controller:{power:26,cost:6,weaken:.25,drainEnergy:3,status:'slow',duration:2,cooldown:4,desc:'Slow, weaken the next attack by 25%, and steal 3 energy.'},
+ utility:{cost:6,teamEnergy:3,teamShield:.15,duration:2,cooldown:4,desc:'Restore each conscious ally 3 energy and shield them 15%.'},
+ drainer:{power:29,cost:7,drain:.40,comboStatuses:['poison','weaken'],comboBonus:.20,cooldown:4,desc:'Drain 40% of damage; poisoned or weakened targets take 20% more and lose those ailments.'},
+ attacker:{power:36,cost:7,interrupt:true,priority:1,cooldown:4,timing:true,desc:'A fast strike that interrupts a charging enemy.'},
+ caster:{power:39,cost:8,charge:1,splash:.25,cooldown:4,desc:'Charge for one round; the blast splashes reserves for 25% of damage.'},
+ ultra:{power:35,cost:8,breakShield:true,shield:.18,duration:2,cooldown:5,desc:'Break opposing defenses and gain an 18% shield.'}
+};

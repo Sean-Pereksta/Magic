@@ -16,9 +16,9 @@ const state=(b,p)=>b.equipmentBattle.units[p.equipmentBattleKey];
 const hit=(b,a,e,damage=100,move=attack,effectiveness=1)=>E.equipmentApplyHit(b,a,e,move,damage,{effectiveness});
 
 test('sixty genuinely additional items have six balanced rarities, affinity and individual vector icons',()=>{
- assert.equal(Object.keys(ORIGINAL_FORGE_GEAR).length,40);assert.equal(Object.keys(GEAR).length,105);assert.equal(Object.keys(EXPANSION_GEAR).length,60);
+ assert.equal(Object.keys(ORIGINAL_FORGE_GEAR).length,40);assert.equal(Object.keys(GEAR).length,135);assert.equal(Object.keys(EXPANSION_GEAR).length,60);
  assert.equal(Object.values(EXPANSION_GEAR).filter(g=>g.affinity===null).length,12);
- assert.equal(new Set(Object.values(GEAR).map(g=>g.name)).size,105);
+ assert.equal(new Set(Object.values(GEAR).map(g=>g.name)).size,135);
  assert.deepEqual(Object.keys(GEAR_RARITIES),['common','uncommon','rare','epic','legendary','mythic']);
  for(const rarity of Object.keys(GEAR_RARITIES))assert.equal(Object.values(EXPANSION_GEAR).filter(g=>g.rarity===rarity).length,10);
  assert.equal(EXPANSION_ICON_IDS.length,60);assert.equal(new Set(EXPANSION_ICON_IDS.map(id=>equipmentIconSvg(id))).size,60);

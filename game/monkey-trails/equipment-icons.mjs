@@ -1,4 +1,5 @@
 import {FORGE_GEAR,GEAR_RARITIES} from './equipment-data.mjs';
+import {LIVING_EQUIPMENT_OUTLINES} from './living-equipment-icons.mjs';
 
 // Small original vector illustrations. Every new definition has its own outline;
 // no network requests or bitmap downloads are needed as the collection grows.
@@ -67,7 +68,7 @@ const outlines={
 const colors={leaf:'#83cf87',earth:'#d2ad7a',fire:'#ff9d65',storm:'#c0a0ff',water:'#75c8e7',ice:'#b4ecf1',shadow:'#b8a0d2',light:'#f9dc88',neutral:'#d7c7a5'};
 export function equipmentIconSvg(id,{size=64}={}){
  const item=FORGE_GEAR[id],color=colors[item?.element]||colors.neutral,border=GEAR_RARITIES[item?.rarity]?.color||'#b8c7b6';
- const path=outlines[id]||({weapon:'M12 43 43 12l10 10-31 31zM16 38l11 11',armor:'M32 9 52 19v21L32 56 12 40V19z',charm:'M16 9q16 19 32 0M32 25l17 15-17 17-17-17z'}[item?.slot]||'M32 9 55 32 32 55 9 32z');
+ const path=outlines[id]||LIVING_EQUIPMENT_OUTLINES[id]||({weapon:'M12 43 43 12l10 10-31 31zM16 38l11 11',armor:'M32 9 52 19v21L32 56 12 40V19z',charm:'M16 9q16 19 32 0M32 25l17 15-17 17-17-17z'}[item?.slot]||'M32 9 55 32 32 55 9 32z');
  const safeSize=Math.max(24,Math.min(256,Number(size)||64));
  return `<svg xmlns="http://www.w3.org/2000/svg" width="${safeSize}" height="${safeSize}" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><rect x="1" y="1" width="62" height="62" rx="13" fill="#192922" stroke="${border}" stroke-opacity=".35"/><path d="${path}" fill="${color}" fill-opacity=".35" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }

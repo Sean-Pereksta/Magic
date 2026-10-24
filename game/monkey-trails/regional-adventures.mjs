@@ -5,6 +5,7 @@ import {LANDS,landProgress,normalizeLands} from './lands.mjs';
 import {terrainAt} from './terrain.mjs';
 import {recordTribeProgress} from './tribe-adventures.mjs';
 import {awardGearCopy,normalizeEquipmentInventory} from './equipment-inventory.mjs';
+import {normalizeLivingWorld,advanceLivingWorld,recordLivingWorldEvent} from './living-world.mjs';
 
 const landById=new Map(LANDS.map(l=>[l.id,l]));
 const regionId=(index)=>LANDS[index].id;
@@ -27,6 +28,7 @@ const FEET=.3048;
 
 export function speciesHomes(id){
  const p=SPECIES[id];if(!p)return [];
+ if(p.region&&landById.has(p.region))return[p.region];
  const explicit=ultraHomes[id]||rareHomes[id];
  if(explicit)return explicit.map(regionId);
  if(!p.types.length)return LANDS.map(l=>l.id);
@@ -57,7 +59,7 @@ export function habitatView(s){
  return{id,name:id==='landmark'?active.landmark:habitatNames[id],landId:activeId,types:habitatTypes[id],likely,
   description:`${habitatTypes[id].length?habitatTypes[id].map(t=>ELEMENTS[t].name).join(' and ')+' companions are more likely here.':'The open trail has no additional habitat preference.'} Region and expedition depth determine eligibility; the compass adjusts odds within that pool. The two introductory encounters use fixed companions. Walk any safe, accessible route.`};
 }
-const habitatAffinity=(species,habitat)=>SPECIES[species]?.types.some(t=>habitatTypes[habitat]?.includes(t))?2.5:1;
+const habitatAffinity=(species,habitat)=>SPECIES[species]?.habitats?.includes(habitat)?3:SPECIES[species]?.types.some(t=>habitatTypes[habitat]?.includes(t))?2.5:1;
 export function regionalWeight(s,id){
  const h=currentHabitat(s),p=SPECIES[id],weights=s.run.weights||{},total=Object.values(weights).reduce((n,v)=>n+finite(v),0);
  const compass=total?Object.entries(DIRECTIONS).reduce((n,[direction,type])=>n+(p?.types.includes(type)?finite(weights[direction])/total:0),0):0;
@@ -102,12 +104,12 @@ export function normalizeAdventures(s){
   // A valid sequence is a prefix; preserve every claim while exposing only the
   // earliest missing step. A damaged import cannot manufacture future progress.
   const next=a.steps.find(step=>!claimed.includes(step.id));
-  regions[a.id]={claimed,current:finite(saved.current),seen:unique((Array.isArray(saved.seen)?saved.seen:[]).filter(id=>SPECIES[id])).slice(0,90),stepId:next?.id||null};
+  regions[a.id]={claimed,current:finite(saved.current),seen:unique((Array.isArray(saved.seen)?saved.seen:[]).filter(id=>SPECIES[id])).slice(0,Object.keys(SPECIES).length),stepId:next?.id||null};
   if(saved.stepId!==regions[a.id].stepId){regions[a.id].current=0;regions[a.id].seen=[];}
  }
  const hunts={};for(const [id,h]of Object.entries(record(old.hunts)?old.hunts:{}))if(SPECIES[id])hunts[id]={meters:finite(h?.meters),attempts:Math.floor(finite(h?.attempts))};
  const cosmetics=unique((Array.isArray(old.cosmetics)?old.cosmetics:[]).filter(id=>typeof id==='string'&&id.endsWith(':keepsake')&&landById.has(id.slice(0,-9))));
- s.meta.adventures={version:1,regions,hunts,cosmetics};return s.meta.adventures;
+ s.meta.adventures={version:1,regions,hunts,cosmetics};normalizeLivingWorld(s);return s.meta.adventures;
 }
 function unlocked(s,landId){return s.world.unlocked.includes(landId);}
 function currentStep(s,landId){const saved=normalizeAdventures(s),a=adventureById.get(landId);return a?.steps.find(step=>step.id===saved.regions[landId].stepId)||null;}
@@ -124,7 +126,7 @@ export function trackAdventure(s,id){
 export function trackHunt(s,id){if(!SPECIES[id])throw Error('Choose a monkey from the collection.');normalizeAdventures(s);s.meta.adventures.hunts[id]??={meters:0,attempts:0};s.meta.pinnedGoal={kind:'hunt',id};if(s.meta.regionChallenges)s.meta.regionChallenges.tracked=null;return huntView(s);}
 export function speciesLocation(s,id){
  const p=SPECIES[id];if(!p)throw Error('Unknown species.');const homes=speciesHomes(id),progress=landProgress(s),available=homes.filter(id=>unlocked(s,id)),requiredFeet=speciesMinimumFeet(id),depthReady=s.run.distance/FEET+1e-6>=requiredFeet,winReady=!isUltra(id)||s.run.ordinaryWins>=2;
- const preferred=Object.entries(habitatTypes).filter(([,types])=>p.types.some(t=>types.includes(t))).map(([id])=>id);
+ const preferred=p.habitats?.length?p.habitats.filter(id=>habitatNames[id]):Object.entries(habitatTypes).filter(([,types])=>p.types.some(t=>types.includes(t))).map(([id])=>id);
  const activeHere=homes.includes(progress.activeId),landId=activeHere?progress.activeId:available[0]||homes[0],land=landById.get(landId);
  const nextStep=!available.length?`Walk ${Math.ceil(Math.max(0,land.unlock-progress.totalDistance))} more accepted meters to unlock ${land.name}.`:!activeHere?`Visit ${land.name}.`:!depthReady?`Reach ${Math.ceil(requiredFeet).toLocaleString()} accepted expedition feet (${Math.ceil(requiredFeet-s.run.distance/FEET).toLocaleString()} remaining).`:!winReady?'Complete the two introductory wild victories.':`Explore ${preferred.length?preferred.map(id=>habitatNames[id].toLowerCase()).join(' or '):'the trails'}; accepted research can reveal a targeted encounter.`;
  return{species:id,name:p.name,rarity:p.rarity,homes:homes.map(id=>({...landById.get(id),unlocked:unlocked(s,id)})),landId,habitats:preferred.length?preferred:['trail'],unlocked:available.length>0,depthReady,requiredFeet,available:available.length>0&&activeHere&&depthReady&&winReady,nextStep,
@@ -136,6 +138,7 @@ export function huntView(s,id=s.meta.pinnedGoal?.kind==='hunt'?s.meta.pinnedGoal
 }
 export function advanceAdventures(s,meters){
  if(s.run?.phase!=='trail'||!Number.isFinite(meters)||meters<=0)return;
+ advanceLivingWorld(s,meters);
  const saved=normalizeAdventures(s),landId=s.world.activeLand,r=saved.regions[landId],step=stepById.get(r.stepId);
  if(step&&['distance','objects'].includes(step.kind))r.current=Math.min(step.goal,r.current+meters);
  const hunt=huntView(s);if(hunt?.available){const h=s.meta.adventures.hunts[hunt.id]??={meters:0,attempts:0};h.meters=Math.min(hunt.goal,h.meters+meters);}
@@ -144,6 +147,7 @@ export function advanceAdventures(s,meters){
 // never call this path. The origin land comes from the frozen encounter record.
 export function recordAdventureEvent(s,kind,amount=1,landId=landProgress(s).activeId,details={}){
  if(!['discoveries','victories','seen','guardian'].includes(kind)||!Number.isSafeInteger(amount)||amount<=0||amount>1000||!landById.has(landId))return;
+ recordLivingWorldEvent(s,kind,amount,landId,details);
  const saved=normalizeAdventures(s);if(!unlocked(s,landId))return;const r=saved.regions[landId],step=stepById.get(r.stepId);if(!step||step.kind!==kind)return;
  if(kind==='seen'){
   const ids=Array.isArray(details.species)?details.species:[details.species];

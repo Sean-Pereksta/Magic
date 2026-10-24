@@ -6,10 +6,10 @@ const root=path.resolve(__dirname,'../..'),origin='http://127.0.0.1:7777';
 const mime={'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.json':'application/json'};
 const clone=x=>x==null?x:structuredClone(x),docs=new Map();let revision=0;
 function matches(d,filters){return filters.every(([key,op,value])=>op==='array-contains'?Array.isArray(d[key])&&d[key].includes(value):op==='=='?d[key]===value:op==='>'?d[key]>value:op==='<'?d[key]<value:false);}
-function rows(prefix,filters=[],limit=100){return [...docs].filter(([p,d])=>p.startsWith(prefix+'/')&&!p.slice(prefix.length+1).includes('/')&&matches(d,filters)).slice(0,limit).map(([p,d])=>({id:p.split('/').at(-1),...clone(d)}));}
-function rpc({method,path,filters,limit,base,writes}){
+function rows(prefix,filters=[],limit=100,order=[]){let result=[...docs].filter(([p,d])=>p.startsWith(prefix+'/')&&!p.slice(prefix.length+1).includes('/')&&matches(d,filters));const field=(d,key)=>key.split('.').reduce((v,k)=>v?.[k],d);if(order.length)result.sort(([ap,a],[bp,b])=>{for(const [key,direction]of order){const x=field(a,key),y=field(b,key),delta=x<y?-1:x>y?1:0;if(delta)return direction==='desc'?-delta:delta;}return ap.localeCompare(bp)*(order.at(-1)[1]==='desc'?-1:1);});return result.slice(0,limit==null?undefined:limit).map(([p,d])=>({id:p.split('/').at(-1),...clone(d)}));}
+function rpc({method,path,filters,limit,order,base,writes}){
  if(method==='get')return clone(docs.get(path)||null);
- if(method==='list')return rows(path,filters,limit);
+ if(method==='list')return rows(path,filters,limit,order);
  if(method==='snapshot')return {revision,docs:Object.fromEntries([...docs].map(([p,d])=>[p,clone(d)]))};
  if(method==='commit'){
   if(base!==revision)return false;
@@ -25,7 +25,7 @@ async function openClient(browser,{uid,name,width=390,seed=7121,existing=false})
   const clone=x=>x==null?x:structuredClone(x);
   const adapter={
    get:path=>window.__socialRPC({method:'get',path}),
-   list:(path,filters=[],limit=100)=>window.__socialRPC({method:'list',path,filters,limit}),
+   list:(path,filters=[],limit=100,order=[])=>window.__socialRPC({method:'list',path,filters,limit,order}),
    async transaction(callback){for(let tries=0;tries<30;tries++){
     const snapshot=await window.__socialRPC({method:'snapshot'}),values=new Map(Object.entries(snapshot.docs)),writes=[];
     const result=await callback({get:async p=>clone(values.get(p)||null),set(p,d){values.set(p,clone(d));writes.push(['set',p,clone(d)]);},delete(p){values.delete(p);writes.push(['delete',p]);}});
@@ -69,12 +69,14 @@ async function openClient(browser,{uid,name,width=390,seed=7121,existing=false})
  return{page,context,errors,uid,name};
 }
 async function form(page,kind,values){
+ await page.waitForFunction(()=>!window.__socialDebug.social.actionTask);
  const locator=page.locator(`[data-social-form="${kind}"]`);await locator.waitFor({state:'attached'});
  // Fill the real form in one browser task so concurrent snapshot paints cannot
  // detach a select between individual Playwright actions.
  await locator.evaluate((f,values)=>{
   let parent=f.parentElement;while(parent){if(parent.tagName==='DETAILS')parent.open=true;parent=parent.parentElement;}
   for(const [key,value]of Object.entries(values)){const field=f.elements.namedItem(key);if(!field)throw Error('Missing social form field '+key);field.value=String(value);field.dispatchEvent(new Event('input',{bubbles:true}));field.dispatchEvent(new Event('change',{bubbles:true}));}
+  if(!f.checkValidity())throw Error('Invalid social form: '+[...f.elements].filter(el=>el.validity&&!el.validity.valid).map(el=>`${el.name}: ${el.validationMessage}`).join('; '));
   f.requestSubmit();
  },values);
  await page.waitForFunction(()=>!window.__socialDebug.social.actionTask);
@@ -130,10 +132,12 @@ async function hostedCrewLayout(page){
  const browser=await chromium.launch({headless:true,...(process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE?{executablePath:process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE}:{})});
  const clients=[],report=[];
  try{
+  let code;
+  if(!process.env.MONKEY_TRAILS_DIRECTORY_ONLY){
   const alice=await openClient(browser,{uid:'alice-online',name:'Alice Trail',width:390}),bob=await openClient(browser,{uid:'bob-online',name:'Bob Trail',width:320});clients.push(alice,bob);
   const a=alice.page,b=bob.page;
   await form(a,'create-tribe',{name:'Moonleaf Tribe',shape:'shield',symbol:'moon',color:'#78629a'});
-  await a.locator('.tribe-code strong').waitFor();const code=await a.locator('.tribe-code strong').innerText();
+  await a.locator('.tribe-code strong').waitFor();code=await a.locator('.tribe-code strong').innerText();
   await form(b,'join-tribe',{code});await a.waitForFunction(()=>__socialDebug.social.model.members.length===2);await b.waitForFunction(()=>__socialDebug.social.model.members.length===2);
   assert.match(await a.locator('.tribe-heading').innerText(),/2 \/ 10/);assert.equal(docs.get(`tribes/${code}`).emblem.symbol,'moon');
   await form(a,'update-emblem',{shape:'diamond',symbol:'crown',color:'#b08c36'});assert.equal(docs.get(`tribes/${code}`).emblem.symbol,'crown');report.push('create, join and update tribe emblem');console.log('Passed tribe setup');
@@ -148,7 +152,7 @@ async function hostedCrewLayout(page){
   });
   assert.ok(eventPreview.art,'Tribe event shows the actual boss portrait');assert.equal(eventPreview.level,1);
   assert.deepEqual(eventPreview.tokens,{fruit:eventPreview.expected.fruit,xp:eventPreview.expected.xp,...eventPreview.expected.items});
-  assert.equal(await a.locator('[data-social-action="start-raid"]').isEnabled(),true);
+  assert.equal(await a.locator('#view [data-social-action="start-raid"]').isEnabled(),true);
   await b.screenshot({path:'/tmp/monkey-crew-ui-tribe-mobile.png',fullPage:true});
   await a.setViewportSize({width:1200,height:900});await clean(alice);await a.screenshot({path:'/tmp/monkey-crew-ui-tribe-desktop.png',fullPage:true});await a.setViewportSize({width:390,height:844});
   await b.emulateMedia({reducedMotion:'reduce'});
@@ -161,6 +165,7 @@ async function hostedCrewLayout(page){
   await b.locator('[data-action="tab"][data-id="team"]').click();
   await b.evaluate(()=>{__socialDebug.state.run.party.forEach(id=>__socialDebug.state.collection[id].training=100000);__socialDebug.render();});
   const ownBefore=await b.locator('[data-team-power]').getAttribute('data-team-power');
+  await b.locator('[data-action="monkey-actions"]').first().click();await b.locator('[data-action="companion-details"]').click();
   await b.locator('[data-action="train"]').click();
   await b.waitForFunction(()=>__socialDebug.state.run.monkey.level===7);
   await a.waitForFunction(()=>__socialDebug.social.model.members.find(p=>p.uid==='bob-online')?.team?.[0]?.level===7);
@@ -189,7 +194,7 @@ async function hostedCrewLayout(page){
   // Offline member reward delivery: the fixture boss is already near defeat.
   const t=clone(docs.get(`tribes/${code}`));t.boss.hp=1;docs.set(`tribes/${code}`,t);revision++;
   await bob.page.evaluate(()=>__socialDebug.social.stop());
-  await a.waitForTimeout(150);await a.locator('[data-social-action="start-raid"]').click();await a.locator('#dialog-content [data-social-action="start-raid"][data-lead-confirmed="true"]').click();
+  await a.waitForTimeout(150);await a.locator('#view [data-social-action="start-raid"]').click();await a.locator('#dialog-content [data-social-action="start-raid"][data-lead-confirmed="true"]').click();
   await a.locator('[data-social-action="raid-move"]').first().waitFor();
   for(let turn=0;turn<10;turn++){
    await a.locator('[data-social-action="raid-move"][data-id="strike"]').click();
@@ -199,7 +204,7 @@ async function hostedCrewLayout(page){
   assert.equal(docs.get(`tribes/${code}`).boss.level,2);assert.ok(rows(`receipts/${bob.uid}/entries`,[['type','==','raid']]).length===1);
   await a.locator('[data-social-action="return"]').click();await a.waitForFunction(()=>!__socialDebug.social.model.raid);
   await a.locator('[data-action="tab"][data-id="social"]').click();
-  assert.equal(await a.locator('[data-social-action="start-raid"]').isDisabled(),true,'Hourly cooldown is visible after returning');
+  assert.equal(await a.locator('#view [data-social-action="start-raid"]').isDisabled(),true,'Hourly cooldown is visible after returning');
   assert.ok(await a.locator('.social-event-availability').textContent());
   await b.evaluate(()=>__socialDebug.social.start());await b.waitForFunction(()=>__socialDebug.social.model.status==='ready');
   await b.locator('.social-reward-notice').filter({hasText:'Your tribe defeated boss 1'}).waitFor();await notices(a);await notices(b);report.push('ten-turn raid and offline member reward delivery');console.log('Passed raid and offline receipts');
@@ -250,7 +255,7 @@ async function hostedCrewLayout(page){
   const player=clone(docs.get(`players/${alice.uid}`));player.lastRaidAt=0;docs.set(`players/${alice.uid}`,player);
   const nextBoss=clone(docs.get(`tribes/${code}`));nextBoss.boss.hp=1;docs.set(`tribes/${code}`,nextBoss);revision++;
   await a.waitForFunction(()=>__socialDebug.social.model.me?.lastRaidAt===0);
-  await a.locator('[data-social-action="start-raid"]').click();await a.locator('#dialog-content [data-social-action="start-raid"][data-lead-confirmed="true"]').click();await a.locator('[data-social-action="raid-move"]').first().waitFor();
+  await a.locator('#view [data-social-action="start-raid"]').click();await a.locator('#dialog-content [data-social-action="start-raid"][data-lead-confirmed="true"]').click();await a.locator('[data-social-action="raid-move"]').first().waitFor();
   for(let turn=0;turn<10;turn++){await a.locator('[data-social-action="raid-move"][data-id="strike"]').click();await a.waitForFunction(expected=>__socialDebug.social.model.raid?.turns===expected,turn+1);}
   await a.locator('[data-social-action="submit-raid"]').click();await a.waitForFunction(()=>__socialDebug.social.model.raid?.submitted===true);
   await b.waitForFunction(()=>__socialDebug.social.model.receipts.some(r=>r.type==='raid'&&r.title.includes('boss 2')));
@@ -278,6 +283,21 @@ async function hostedCrewLayout(page){
    return {slots:crew.querySelectorAll('.social-crew-slot').length,empty:crew.querySelectorAll('.social-crew-slot.is-empty').length,zeroHealth:box.querySelector('.social-boss-event .social-health i')?.style.width};
   });
   assert.deepEqual(partial,{slots:3,empty:2,zeroHealth:'0%'});report.push('partial crews retain three visible slots and zero boss HP stays zero');
-  console.log(JSON.stringify({checks:report,clients:2,pageErrors:0,mobileOverflow:0},null,2));
+  }else{const seed=await openClient(browser,{uid:'seed-online',name:'Seed Trail',width:390});clients.push(seed);await form(seed.page,'create-tribe',{name:'Moonleaf Tribe'});await seed.page.locator('.tribe-code strong').waitFor();code=await seed.page.locator('.tribe-code strong').innerText();}
+  const carol=await openClient(browser,{uid:'carol-online',name:'Carol Trail',width:360}),dana=await openClient(browser,{uid:'dana-online',name:'Dana Trail',width:320});clients.push(carol,dana);
+  const c=carol.page,d=dana.page;await d.emulateMedia({reducedMotion:'reduce'});
+  await form(c,'directory-search',{search:'moonleaf',availableOnly:'true'});await c.locator(`[data-directory-tribe="${code}"]`).waitFor();
+  await c.locator(`[data-social-action="view-tribe"][data-id="${code}"]`).first().click();await c.locator('.social-public-profile').waitFor();
+  const publicFields=await c.evaluate(()=>JSON.stringify({tribe:__socialDebug.social.model.publicTribe,members:__socialDebug.social.model.publicMembers}));assert.doesNotMatch(publicFields,/saveId|wallet|location|route/);
+  await c.locator('[data-social-action="close-tribe-profile"]').click();
+  await form(c,'create-tribe',{name:'Approval Explorers',admissionMode:'approval',acceptingApplications:'true'});await c.waitForFunction(()=>!!__socialDebug.social.model.me?.tribeId);await c.locator('.tribe-code strong').waitFor();const approval=await c.locator('.tribe-code strong').innerText();
+  await form(d,'directory-search',{search:'approval explorers',availableOnly:'true'});const requestButton=d.locator(`[data-social-action="request-tribe"][data-id="${approval}"]`);await requestButton.click();await d.locator('.social-application-status.is-pending').waitFor();
+  await c.locator('[data-social-action="accept-application"]').click();await d.waitForFunction(()=>__socialDebug.social.model.tribe?.name==='Approval Explorers');await d.locator('.social-application-status.is-accepted').waitFor();
+  await d.locator('[data-social-action="leave-tribe"]').click();await d.locator('[data-social-action="leave-tribe"][data-leave-confirmed="true"]').click();await d.waitForFunction(()=>!__socialDebug.social.model.me?.tribeId);await d.locator('.social-directory').waitFor();
+  await form(d,'directory-search',{search:'approval explorers',availableOnly:'true'});await d.locator(`[data-social-action="request-tribe"][data-id="${approval}"]`).click();await c.locator('[data-social-action="reject-application"]').click();await d.locator('.social-application-status.is-rejected').waitFor();
+  await form(c,'update-emblem',{acceptingApplications:'false'});await c.waitForFunction(()=>__socialDebug.social.model.tribe?.acceptingApplications===false);await form(d,'directory-search',{search:'approval explorers',availableOnly:'true'});await d.waitForFunction(id=>__socialDebug.social.model.directoryStatus==='ready'&&!__socialDebug.social.model.directory.some(t=>t.id===id),approval);assert.equal(await d.locator(`[data-directory-tribe="${approval}"]`).count(),0);
+  await d.locator('[data-social-action="ranking-metric"][data-id="power"]').click();await d.waitForFunction(()=>__socialDebug.social.model.rankingMetric==='power'&&__socialDebug.social.model.rankingsStatus==='ready');
+  await clean(carol);await clean(dana);report.push('directory search, private public profiles, leader approval/rejection, safe leave, paused-admissions filter and power ranking at 320px with reduced motion');
+  console.log(JSON.stringify({checks:report,clients:clients.length,pageErrors:0,mobileOverflow:0},null,2));
  }finally{for(const c of clients)await c.context.close();await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -1,6 +1,6 @@
 # Equipment, inventory and the trail forge
 
-The catalog contains **105 equipment definitions**: the original five, the previous forty forge items, and **sixty additional items**. The expansion has ten items in each of Common, Uncommon, Rare, Epic, Legendary and Mythic, with 48 elemental items and 12 neutral items. All 105 participate in resource-mixing crafting. Regional victory challenges and final adventure keepsake milestones also give fixed, themed Rare equipment.
+The catalog contains **135 equipment definitions**: the original five, the previous forty forge items, the previous **sixty additional items**, and **30 Living World items**. The earlier sixty-item expansion has ten items in each of Common, Uncommon, Rare, Epic, Legendary and Mythic, with 48 elemental items and 12 neutral items. All 105 participate in resource-mixing crafting. Regional victory challenges and final adventure keepsake milestones also give fixed, themed Rare equipment.
 
 Rarity, upgrade rank and affinity are independent. Neutral equipment has no elemental affinity and creates no new monkey element. Affinity influences acquisition and crafting; it does not change the wearer or convert abilities. The new Legendary Leaf heart is named **Canopy Relay Heart** (`canopyHeart`) to distinguish it from the original **Canopy Heart** (`heart`). Existing IDs and collected upgrades remain save-stable.
 
@@ -102,7 +102,7 @@ Before rolling, the UI chooses `forge-N`. Permanent `meta.forge` stores its sequ
 
 `equipment-data.mjs` owns definitions; `equipment-icons.mjs` and `inventory-ui.mjs` provide icons, grid, details and comparisons. `equipment-inventory.mjs` owns copies and assignments; `equipment-effects.mjs` and `equipment-battle.mjs` own scaling and saved combat triggers. `equipment-trail.mjs` handles discovery/camp effects, materials and refunds. `forge.mjs` owns probabilities, payments and receipts. `challenges.mjs` and `regional-adventures.mjs` supply fixed Rare rewards. `core.mjs`, `power.mjs` and `social-combat.mjs` integrate expedition, power and protected online copies.
 
-New duels/raids default to combat version **4**. Existing unversioned/v1/v2/v3 snapshots retain their saved rules. Runtime remains static browser modules and existing Firebase storage, with no Node server. From the repository root:
+New duels/raids default to combat version **5**. Existing unversioned/v1/v2/v3/v4 snapshots retain their saved rules. Runtime remains static browser modules and existing Firebase storage, with no Node server. From the repository root:
 
 ```text
 npm run test:monkey-trails
@@ -112,3 +112,5 @@ npm run test:monkey-trails:social-rules
 ```
 
 The browser suite requires an installed Chromium executable. Node and the Firestore emulator are development verification tools only.
+
+See [LIVING_WORLD.md](LIVING_WORLD.md) for the 30 new equipment triggers, Forge Reserve proceeds and the bounded Forgeheart quality benefit.

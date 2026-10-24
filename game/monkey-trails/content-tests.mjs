@@ -1,16 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {unlocked} from './core.mjs';
 import {SPECIES,MOVES,ELEMENTS,TYPE_CHART,STARTERS} from './data.mjs';
 
-test('release roster includes ninety identities, six starters and twelve Ultras',()=>{
-  assert.equal(Object.keys(SPECIES).length,90);assert.equal(new Set(Object.values(SPECIES).map(s=>s.name)).size,90);
+test('release roster includes 110 identities, six starters and sixteen Ultras',()=>{
+  assert.equal(Object.keys(SPECIES).length,110);assert.equal(new Set(Object.values(SPECIES).map(s=>s.name)).size,110);
   assert.deepEqual(STARTERS,['capuchin','macaque','langur','mandrill','spider','howler']);
-  assert.equal(Object.values(SPECIES).filter(s=>s.rarity==='ultra').length,12);
-  assert.deepEqual(Object.values(SPECIES).map(s=>s.number).sort((a,b)=>a-b),Array.from({length:90},(_,i)=>i+1));
+  assert.equal(Object.values(SPECIES).filter(s=>s.rarity==='ultra').length,16);
+  assert.deepEqual(Object.values(SPECIES).map(s=>s.number).sort((a,b)=>a-b),Array.from({length:110},(_,i)=>i+1));
   for(const [id,s]of Object.entries(SPECIES)){assert.equal(s.id,id);assert.ok(s.learnset.includes('strike'));assert.ok(s.learnset.length>=6);assert.ok(s.types.length<=2);for(const type of s.types)assert.ok(ELEMENTS[type]);for(const move of s.learnset)assert.ok(MOVES[move],`${id} references ${move}`);}
 });
 test('all required technique families are usable by at least one curated species',()=>{
-  const counts={};const reachable=new Set(Object.values(SPECIES).flatMap(s=>s.learnset));
+  const counts={};const reachable=new Set(Object.values(SPECIES).flatMap(s=>unlocked({species:s.id,types:s.types.length?s.types:['leaf'],stage:3,level:60})));
   for(const [id,m]of Object.entries(MOVES)){counts[m.family]=(counts[m.family]||0)+1;assert.ok(reachable.has(id),`unreachable move ${id}`);assert.ok(Number.isFinite(m.cost)&&m.cost>=0);assert.ok(m.type==='neutral'||ELEMENTS[m.type]);if(m.types){assert.equal(m.types.length,2);assert.equal(m.splitDamage,true);}}
   assert.ok(counts.general>=24);assert.ok(counts.elemental>=32);assert.ok(counts.hybrid>=16);assert.ok(counts.ultra>=8);
   assert.equal(MOVES.strike.cost,0);assert.ok(MOVES.strike.power>0);
