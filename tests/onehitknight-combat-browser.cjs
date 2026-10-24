@@ -58,7 +58,7 @@ module.exports=async function combatBrowserChecks(page,exec,check,assert){
  await check('independent equipment upgrades combine and 30-kill chains trigger Knight Frenzy',async()=>{
   const result=await run(String.raw`
    fresh();for(const item of ['quick-boots','royal-score','flame-sword','shadow-knight'])choices.find(c=>c.item===item)[2]();
-   must(player.equipment.boots==='gold'&&player.equipment.helmet==='crown'&&player.equipment.weapon==='flame'&&player.equipment.armor==='shadow'&&player.equipment.cape==='shadow','Equipment slots must combine independently');
+   must(player.equipment.boots==='gold'&&player.equipment.helmet==='crown'&&player.equipment.weapon==='flame'&&player.equipment.armor==='shadow'&&player.equipment.cape==='red','Equipment slots combine without a duplicate cape on the complete armor variant');
    fresh();for(let n=0;n<30;n++){target();doSlash();tick(60);}
    must(stats.combo===30&&stats.bestCombo===30&&player.frenzy>0,'30 kills must activate Knight Frenzy');must(stats.achievements.includes('frenzy'),'Frenzy achievement must unlock');
    return {combo:stats.combo,multiplier:stats.highestMultiplier};
