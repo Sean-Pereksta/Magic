@@ -1441,8 +1441,25 @@ service cloud.firestore {
       }
 
       match /highscores/{scoreId} {
-        allow read: if isAuthed() && gameId == 'world_quest';
-        allow create: if gameId == 'world_quest' && validCountryQuestScore();
+        // Standalone One Hit Knight scores do not require a multiplayer lobby document.
+        function validKnightScore() {
+          let d = request.resource.data;
+          return isAuthed()
+            && d.keys().hasAll(['name','score','wave','kills','mode','uid','createdMs','createdAt'])
+            && d.keys().hasOnly(['name','score','wave','kills','mode','uid','createdMs','createdAt'])
+            && d.uid == request.auth.uid
+            && d.name is string && d.name.matches('^[A-Z0-9 _.-]{1,16}$')
+            && d.score is int && d.score > 0 && d.score <= 1000000000000
+            && d.wave is int && d.wave >= 1 && d.wave <= 1000000
+            && d.kills is int && d.kills >= 0 && d.kills <= 1000000000
+            && d.mode in ['CLASSIC','CHAOS','60 SECOND']
+            && d.createdMs is int && d.createdMs >= request.time.toMillis() - 300000
+            && d.createdMs <= request.time.toMillis() + 300000
+            && d.createdAt == request.time;
+        }
+        allow read: if isAuthed() && gameId in ['world_quest','one_hit_knight'];
+        allow create: if gameId == 'world_quest' && validCountryQuestScore()
+          || gameId == 'one_hit_knight' && validKnightScore();
         allow update: if gameId == 'world_quest'
           && validCountryQuestScore()
           && resource.data.uid == request.auth.uid
@@ -1457,6 +1474,7 @@ service cloud.firestore {
       // Academy and other lobby-backed games also use authenticated subcollections.
       match /{subcollection}/{document=**} {
         allow read, write: if isAuthed() && gameId != 'world_quest'
+          && !(gameId == 'one_hit_knight' && subcollection == 'highscores')
           && (!turncraftType(ironLobby()) || ironLobby().get('turncraftVersion',0) != 1)
           && subcollection != 'rpg_rooms'
           && !(gameId == 'turncraft' && subcollection == 'invites')
@@ -2011,5 +2029,3 @@ service cloud.firestore {
     }
   }
 }
-
-
