@@ -44,7 +44,7 @@ Every sampled build has wins and losses at every rank. Rocket Battery remains es
 
 ## Safeguards
 
-Draft recruitment has its own 65% category budget, separate from direct rank upgrades (15%), specializations (10%), combo enhancements (6%) and legacy attachments (4%). Every normal pack includes at least one actual troop, and combo-completing recruits count toward recruitment. Seeded distribution regressions sample 3,000 packs per faction with complete Rank I armies and require 65–70% actual troop choices. Additional empty, partial and fully upgraded roster samples verify that troops remain the majority, unavailable cards never appear, positions vary, and browser/server seeded packs agree. This changes draft availability; the fixed-army combat results above remain the same historical sample.
+Recruitment now has an 80% category weight, with upgrades 8%, specializations 6%, combo enhancements 4%, and legacy attachments 2%. Three-card packs guarantee two distinct recruitment choices when available, and an unowned type whenever one remains legal. Regression tests sample 18,000 seeded packs across three factions and armies of two, five and fifteen bodies, requiring 82–93% actual troop cards. Additional tests cover availability subsets, pack sizes, copy recruitment, continued growth beyond five, and browser/server parity. The five-slot deck restricts troop types, not deployed bodies. The fixed-army combat results above remain historical samples.
 
 Basic combinations work at Rank I. All upgrades are in-battle choices; permanent Forge tiers remain normalized in ranked simulations. A combo enhancement can promote an assembled Basic combo to Advanced; Legendary combinations require a Rank III partner and an upgraded complementary partner.
 

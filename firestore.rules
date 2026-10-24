@@ -1378,6 +1378,16 @@ service cloud.firestore {
       function forgeRosterCount(rows) {
         return rows.size() == 0 ? 0 : rows.size() == 1 ? rows[0].count : rows.size() == 2 ? rows[0].count+rows[1].count : rows.size() == 3 ? rows[0].count+rows[1].count+rows[2].count : rows.size() == 4 ? rows[0].count+rows[1].count+rows[2].count+rows[3].count : rows[0].count+rows[1].count+rows[2].count+rows[3].count+rows[4].count;
       }
+      // Recruitment may continue for any number of rounds. Bound each write's
+      // growth so a forged count cannot request an enormous battlefield at once.
+      function forgeRosterGrowth(data) {
+        let before=resource == null ? {} : resource.data;
+        let oldRoster=before.get('roster',{});
+        let count0=forgeRosterCount(data.roster.p0);let count1=forgeRosterCount(data.roster.p1);
+        let reset=data.phase == 'faction-select' || !before.keys().hasAny(['decks']) || before.get('sessionKey','') != data.get('sessionKey','');
+        return (count0 <= 5 || !reset && (data.roster.p0 == oldRoster.get('p0',[]) || count0 <= forgeRosterCount(oldRoster.get('p0',[]))+5))
+          && (count1 <= 5 || !reset && (data.roster.p1 == oldRoster.get('p1',[]) || count1 <= forgeRosterCount(oldRoster.get('p1',[]))+5));
+      }
       function forgeStaticDeckOwner(deck,name) {
         let canonical=/databases/$(database)/documents/users/$(name)/factionForge/profile;
         let guest=/databases/$(database)/documents/factionForgeSoloProfiles/$(request.auth.uid);
@@ -1394,12 +1404,11 @@ service cloud.firestore {
         return rows is list && rows.size() <= 5 && ((deck == null && data.phase in ['waiting','asset-loading','faction-select'] && rows.size() == 0)
           || deck != null && data.factions[side] == deck.faction
             && (resource != null && resource.data.get('decks',{}).get(side,null) == deck || forgeDeckShape(deck) && forgeStaticDeckCollection(deck,data,side))
-            && forgeRosterRow(rows,deck,0) && forgeRosterRow(rows,deck,1) && forgeRosterRow(rows,deck,2) && forgeRosterRow(rows,deck,3) && forgeRosterRow(rows,deck,4)
-            && forgeRosterCount(rows) <= 5);
+            && forgeRosterRow(rows,deck,0) && forgeRosterRow(rows,deck,1) && forgeRosterRow(rows,deck,2) && forgeRosterRow(rows,deck,3) && forgeRosterRow(rows,deck,4));
       }
       function forgeStaticState(data) {
         return !data.keys().hasAny(['decks']) && data.phase in ['waiting','asset-loading','faction-select']
-          || data.keys().hasAny(['decks']) && data.decks is map && data.decks.keys().hasOnly(['p0','p1']) && forgeStaticSide(data,'p0') && forgeStaticSide(data,'p1');
+          || data.keys().hasAny(['decks']) && data.decks is map && data.decks.keys().hasOnly(['p0','p1']) && forgeRosterGrowth(data) && forgeStaticSide(data,'p0') && forgeStaticSide(data,'p1');
       }
       function forgeStaticDeckLock() {
         let before=resource.data;let after=request.resource.data;
@@ -1420,7 +1429,7 @@ service cloud.firestore {
           || unit.get('summoned',false) == true && unit.type in ['hellspawn','blood'] && 'matron' in allowed;
       }
       function forgeBattleSideAt(units,index) { return units.size() <= index ? 0 : units[index].p == 0 ? 1 : 0; }
-      function forgeStaticBattle(data) {
+      function forgeLegacyStaticBattle(data) {
         let units=data.units;let locked=getAfter(/databases/$(database)/documents/lobbies/$(gameId)/crowncouncil/state).data;
         let allowed0=locked.get('decks',{}).get('p0',null) == null ? [] : locked.decks.p0.troops;
         let allowed1=locked.get('decks',{}).get('p1',null) == null ? [] : locked.decks.p1.troops;
@@ -1428,6 +1437,30 @@ service cloud.firestore {
         return units is list && units.size() <= 10 && p0 <= 5 && units.size()-p0 <= 5
           && forgeBattleUnitAt(units,allowed0,allowed1,0) && forgeBattleUnitAt(units,allowed0,allowed1,1) && forgeBattleUnitAt(units,allowed0,allowed1,2) && forgeBattleUnitAt(units,allowed0,allowed1,3) && forgeBattleUnitAt(units,allowed0,allowed1,4)
           && forgeBattleUnitAt(units,allowed0,allowed1,5) && forgeBattleUnitAt(units,allowed0,allowed1,6) && forgeBattleUnitAt(units,allowed0,allowed1,7) && forgeBattleUnitAt(units,allowed0,allowed1,8) && forgeBattleUnitAt(units,allowed0,allowed1,9);
+      }
+      // Each body inherits its side and troop type from these validated map
+      // keys when decoded. This supports growing armies without enumerating
+      // one rule expression per body in a flat snapshot array.
+      function forgeBattleGroupCount(groups,troops) {
+        let recruited=troops.size() == 0 ? 0 : groups.get(troops[0],[]).size()+groups.get(troops[1],[]).size()+groups.get(troops[2],[]).size()+groups.get(troops[3],[]).size()+groups.get(troops[4],[]).size();
+        return recruited+('miragewarden' in troops ? 0 : groups.get('miragewarden',[]).size())+('hellspawn' in troops ? 0 : groups.get('hellspawn',[]).size())+('blood' in troops ? 0 : groups.get('blood',[]).size());
+      }
+      function forgeBattleGroupsForSide(groups,deck,roster) {
+        let troops=deck == null ? [] : deck.troops;
+        let allowed=troops.concat('phaser' in troops ? ['miragewarden'] : []).concat('matron' in troops ? ['hellspawn','blood'] : []);
+        return groups is map && groups.keys().hasOnly(allowed)
+          && (deck == null || (groups.get(troops[0],[]) is list && groups.get(troops[1],[]) is list && groups.get(troops[2],[]) is list && groups.get(troops[3],[]) is list && groups.get(troops[4],[]) is list))
+          && groups.get('miragewarden',[]) is list && groups.get('hellspawn',[]) is list && groups.get('blood',[]) is list
+          && forgeBattleGroupCount(groups,troops) <= forgeRosterCount(roster)+3;
+      }
+      function forgeStaticBattle(data) {
+        let locked=getAfter(/databases/$(database)/documents/lobbies/$(gameId)/crowncouncil/state).data;
+        let decks=locked.get('decks',{});
+        let roster=locked.get('roster',{});
+        return data.keys().hasAny(['unitGroups'])
+          ? !data.keys().hasAny(['units']) && data.unitGroups is map && data.unitGroups.keys().hasOnly(['p0','p1'])
+            && forgeBattleGroupsForSide(data.unitGroups.p0,decks.get('p0',null),roster.get('p0',[])) && forgeBattleGroupsForSide(data.unitGroups.p1,decks.get('p1',null),roster.get('p1',[]))
+          : forgeLegacyStaticBattle(data);
       }
       match /crowncouncil/{docId} {
         allow read: if forgeStaticMember();

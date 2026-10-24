@@ -118,7 +118,7 @@ globalThis.core={TROOPS,TROOP_COUNTERS,FACTIONS,LEGENDARY_ABILITIES,TROOP_VISUAL
       const frames=[];
       const capture=()=>{
         const field=context.__state.field;
-        frames.push({at:time-1000,units:field.units.map(u=>{
+        frames.push({at:time-1000,width:field.width,height:field.height,units:field.units.map(u=>{
           const keep=['id','p','type','x','y','hp','maxhp','dmg','range','lvl','battleRank','forgeTier','size','targetId','animUntil','animType','statusShockUntil','statusPoisonUntil','statusAcidUntil','woundUntil','illusion','startShield','summoned','revealedUntil','markedUntil','markedBySide','expiresAt','evolution','evolutionSignature','comboShield','comboShieldUntil','chainChargedUntil','bindUntil','suppressedUntil'];
           return Object.fromEntries(keep.filter(k=>u[k]!==undefined).map(k=>[k,u[k]]));
         }),poison:clone(field.poison),toxic:clone(field.toxic),acid:clone(field.acid),wards:clone(field.wards),syncedFx:clone(field.syncedFx),temporalFields:clone(field.temporalFields||[]),comboFields:clone(field.comboFields||[]),endlessPressure:clone(field.endlessPressure||null)});
@@ -134,7 +134,6 @@ globalThis.core={TROOPS,TROOP_COUNTERS,FACTIONS,LEGENDARY_ABILITIES,TROOP_VISUAL
 if(doLogic){pruneBattleField(st.field,now);applyTerrain(st.field,units);for(const u of units)blinkIfNeeded(u,units,st);wardsHeal(st,now);wardsShoot(st,now);broodTick(st,now);FFUnits.tickForgeAbilities(st,now,forgeCombatHooks(st));applySuddenDeath(st,now);}
 const ordered=FFUnits.combatTurnOrder(units,now,st.field);for(let i=0;i<ordered.length;i++){const u=ordered[i];if(!u||u.hp<=0)continue;if(doLogic){healAction(u,st,now);wardAction(u,st,now);applyVguardRegen(u,st,now);FFUnits.keepFiringDistance?.(u,units,now,forgeCombatHooks(st));}const t=pickTarget(u,units,st.field);if(!t)continue;const attacked=attack(u,t,now,st);if(!attacked&&doLogic&&canStepNow(u,now)){const slowed=u.slowUntil&&u.slowUntil>now,bound=u.bindUntil&&u.bindUntil>now;const steps=bound?0:(slowed?1:PACE.moveSteps);for(let s=0;s<steps;s++){const t2=pickTarget(u,units,st.field);if(!t2)break;if(u.burrow)attemptBurrow(u,units,st,now);if(u.viperLeap&&isBacklineUnit(t2)&&rectDistance(u,t2)>1){if(attemptViperLeap(u,units,st)){if(rectDistance(u,t2)<=(u.range||1))attack(u,t2,now,st);continue;}}stepToward(u,t2,units);if(rectDistance(u,t2)<=(u.range||1)){attack(u,t2,now,st);break;}}}}
 if(doLogic){for(const u of st.field.units.filter(u=>u.hp<=0)){FFUnits.noteForgeDeath(u,st,now,{distance:rectDistance});if(u.paints){paintPoison(st,u.x,u.y,7000,u.p);pushSyncedFx(st.field,fxBurst(u.x,u.y),now);}}st.field.units=st.field.units.filter(u=>u.hp>0);pruneBattleField(st.field,now);}return st.field;})()`);
-        for(const side of [0,1])if(context.__state.field.units.filter(unit=>unit.p===side&&unit.hp>0).length>5)throw new Error('Five active combatants per side exceeded');
         const nextHealth=[0,0];for(const u of context.__state.field.units)if(u.hp>0)nextHealth[u.p]+=u.hp;
         if(tick%2===0||nextHealth[0]===0||nextHealth[1]===0)capture();
         if(!nextHealth[0]||!nextHealth[1]) {

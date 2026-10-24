@@ -1,7 +1,7 @@
 /** Deterministic combat decisions used by the browser and extracted simulator.
  * Bonuses add to one bounded multiplier; penetration removes real armor before
  * mitigation. Neither ranks nor combinations multiply the counter modifier. */
-export const COMBAT_LIMITS = Object.freeze({activePerSide:5,counterBonus:.25,maxCounterMultiplier:1.35,interceptRange:2,interceptCooldown:2200,shieldCapacity:4});
+export const COMBAT_LIMITS = Object.freeze({activePerSide:Infinity,counterBonus:.25,maxCounterMultiplier:1.35,interceptRange:2,interceptCooldown:2200,shieldCapacity:4});
 const groups={
   defender:['vguard','guardian','shieldcap','golem'],
   precision:['marksman','railbreaker'],

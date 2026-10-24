@@ -1,4 +1,6 @@
-# Five-troop combat balance
+# Historical five-body combat balance sample
+
+The October 24 recruitment correction keeps the five distinct troop types per deck and removes the field population cap. Armies can continue recruiting copies, and the board grows for their footprints. Summon and decoy abilities retain their own budgets. The matrix below records the earlier five-body setup; its win rates do not establish balance for larger armies. Current regression tests separately verify growing recruitment, mixed-footprint deployment, snapshot recovery and type validation.
 
 The balance harness runs the actual functions from `crowncouncil.html` through
 the same authoritative simulator used by the optional multiplayer service.

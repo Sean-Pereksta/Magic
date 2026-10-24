@@ -1,7 +1,9 @@
 /** Canonical deck rules used by the browser, draft engine and replay service. */
 import {COMBOS} from './combos.js';
 export const DECK_SIZE=5;
-export const MAX_ACTIVE_UNITS=5;
+// Compatibility for callers that used the former field cap. Deck slots select
+// troop types; they do not limit the number of recruited bodies.
+export const MAX_ACTIVE_UNITS=Infinity;
 export const MAX_CUSTOM_DECKS=9;
 export const FACTION_TROOPS=Object.freeze({
   Vanir:Object.freeze(['rifleman','vrocket','vguard','miner','medic','suppressor','shieldcap','marksman','emp','railbreaker','signalhawk']),
@@ -41,23 +43,56 @@ export function deckForState(state,side){
   if(deck!==undefined&&deck!==null)return validateDeck(deck).deck;
   return starterDeck(state?.factions?.[side]);
 }
-/** One recruited row body occupies one slot. Multi-body identities are abilities. */
-export function rosterCount(roster=[]){return roster.reduce((n,row)=>n+Math.max(0,Math.floor(Number(row?.count)||0)),0);}
+/** Recruitment counts are independent of the five distinct types in a deck. */
+const validCount=value=>Number.isSafeInteger(Number(value))&&Number(value)>0?Number(value):0;
+export function rosterCount(roster=[]){return roster.reduce((n,row)=>n+validCount(row?.count),0);}
 export function sanitizeRoster(roster=[],deck){
   if(!validateDeck(deck).valid)return [];
-  const rows=[],allowed=new Set(deck.troops);let remaining=MAX_ACTIVE_UNITS;
-  for(const row of Array.isArray(roster)?roster:[]){if(!allowed.has(row?.type)||remaining<=0)continue;const count=Math.min(remaining,Math.max(0,Math.floor(Number(row.count)||0)));if(!count)continue;const lvl=Math.max(1,Math.min(3,Math.floor(Number(row.lvl)||1))),existing=rows.find(r=>r.type===row.type);if(existing){existing.count+=count;existing.lvl=Math.max(existing.lvl,lvl);}else rows.push({type:row.type,count,lvl});remaining-=count;}
+  const rows=[],allowed=new Set(deck.troops);
+  for(const row of Array.isArray(roster)?roster:[]){if(!allowed.has(row?.type))continue;const count=validCount(row.count);if(!count)continue;const lvl=Math.max(1,Math.min(3,Math.floor(Number(row.lvl)||1))),existing=rows.find(r=>r.type===row.type);if(existing){if(!Number.isSafeInteger(existing.count+count))continue;existing.count+=count;existing.lvl=Math.max(existing.lvl,lvl);}else rows.push({type:row.type,count,lvl});}
   return rows;
 }
-/** Recovery and received snapshots obey the same body cap as fresh spawns. */
+/** Recovery and received snapshots preserve every legal body, including copies. */
 export function sanitizeBattleUnits(units=[],state){
-  const counts=[0,0],ids=new Set();
+  const ids=new Set();
   return (Array.isArray(units)?units:[]).filter(unit=>{
-    if(!unit||![0,1].includes(unit.p)||!(unit.hp>0)||ids.has(unit.id)||counts[unit.p]>=MAX_ACTIVE_UNITS)return false;
+    if(!unit||![0,1].includes(unit.p)||!Number.isFinite(unit.hp)||!(unit.hp>0)||ids.has(unit.id))return false;
     const deck=deckForState(state,unit.p===0?'p0':'p1');if(!deck)return false;
     const legal=deck.troops.includes(unit.type)||unit.illusion&&unit.type==='miragewarden'&&deck.troops.some(key=>['phaser','miragewarden'].includes(key))||unit.summoned&&['hellspawn','blood'].includes(unit.type)&&deck.troops.includes('matron');
-    if(!legal)return false;counts[unit.p]++;ids.add(unit.id);return true;
+    if(!legal)return false;ids.add(unit.id);return true;
   });
+}
+/** Type-keyed transport lets database rules validate growing armies without
+ * unrolling one validation expression for every body in a flat array. */
+export function encodeBattleUnits(units=[],state){
+  const groups={p0:{},p1:{}};let syncOrder=0;
+  for(const unit of sanitizeBattleUnits(units,state)){
+    const {p,type,...body}=unit,side=p===0?'p0':'p1';
+    (groups[side][type]||=[]).push({...body,syncOrder:syncOrder++});
+  }
+  return groups;
+}
+function withinRosterBudget(units,state){
+  const counts=[0,0];for(const unit of units)counts[unit.p]++;
+  return units.filter(unit=>{const roster=state?.roster?.[unit.p===0?'p0':'p1'];return !Array.isArray(roster)||counts[unit.p]<=rosterCount(roster)+3;});
+}
+export function decodeBattleUnits(payload={},state){
+  if(!payload?.unitGroups)return withinRosterBudget(sanitizeBattleUnits(Array.isArray(payload)?payload:payload?.units,state),state);
+  const decoded=[];
+  for(const [side,p] of [['p0',0],['p1',1]]){
+    const deck=deckForState(state,side),groups=payload.unitGroups[side];
+    if(!deck||!groups||typeof groups!=='object'||Array.isArray(groups))continue;
+    for(const [type,bodies] of Object.entries(groups)){
+      const inDeck=deck.troops.includes(type),decoy=!inDeck&&type==='miragewarden'&&deck.troops.includes('phaser'),brood=!inDeck&&['hellspawn','blood'].includes(type)&&deck.troops.includes('matron');
+      if((!inDeck&&!decoy&&!brood)||!Array.isArray(bodies))continue;
+      for(const body of bodies){
+        if(!body||typeof body!=='object'||Array.isArray(body))continue;
+        decoded.push({...body,p,type,...(decoy?{illusion:true,summoned:true,dmg:0}:{}),...(brood?{summoned:true}:{})});
+      }
+    }
+  }
+  decoded.sort((a,b)=>(Number.isSafeInteger(a.syncOrder)&&a.syncOrder>=0?a.syncOrder:Infinity)-(Number.isSafeInteger(b.syncOrder)&&b.syncOrder>=0?b.syncOrder:Infinity));
+  return withinRosterBudget(sanitizeBattleUnits(decoded.map(({syncOrder,...unit})=>unit),state),state);
 }
 export function deckAnalysis(deck,{troops={}}={}){
   const keys=Array.isArray(deck?.troops)?deck.troops:[],preset=STARTER_DECKS.find(value=>value.id===deck?.id),has=group=>keys.filter(key=>group.includes(key)).length;

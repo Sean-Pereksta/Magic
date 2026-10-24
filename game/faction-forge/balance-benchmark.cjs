@@ -48,7 +48,7 @@ async function benchmark({seeds=5,ranks=[1,2,3],scenarios=SCENARIOS}={}){
       total++;seat0Wins+=result.winnerSide===0;aWins+=result.winnerSide===(reverse?1:0);duration+=result.durationMs;
       const comboIds=new Set();
       for(const frame of result.frames){
-        for(const p of [0,1]){const count=frame.units.filter(unit=>unit.p===p&&unit.hp>0).length;peakBodies=Math.max(peakBodies,count);if(count>5)throw Error('Five-body limit exceeded, including summons and illusions');}
+        for(const p of [0,1]){const count=frame.units.filter(unit=>unit.p===p&&unit.hp>0).length;peakBodies=Math.max(peakBodies,count);}
         for(const u of frame.units)if(!Number.isFinite(u.hp)||!Number.isFinite(u.x)||!Number.isFinite(u.y))throw Error('Non-finite combat state');
         for(const event of frame.syncedFx||[])if(event.comboId)comboIds.add(event.id);
       }

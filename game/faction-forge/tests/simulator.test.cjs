@@ -29,9 +29,23 @@ test('all campaign chapters have server-readable composed rosters and all six mi
   for(const mission of campaign.CAMPAIGN_MISSIONS){assert(mission.opponent.roster.length>0);assert.equal(D.missionNumber(mission.id),mission.number);assert.equal(D.missionId(mission.number),mission.id);if(mission.unlockTroop){const p=D.newProfile('u','U');const s={id:'m-'+mission.number,phase:'game-over',serverValidated:true,mode:'campaign',missionId:mission.id,missionNumber:mission.number,participants:['u',null],winnerSide:0,lives:[3,0]};assert(D.settle(p,s,0).profile.troops[mission.unlockTroop].unlocked);}}
 });
 
-test('old overfilled and off-deck armies cannot bypass the five-combatant simulation limit',async()=>{
- const modules=await loadModules(),s=state(['vguard','marksman'],['hellspawn','blood']);s.roster.p0=[{type:'vguard',count:99,lvl:3},{type:'miner',count:99,lvl:3}];s.roster.p1=[{type:'hellspawn',count:99,lvl:3},{type:'blood',count:99,lvl:3}];
- const replay=createCombatAdapter({seed:'malformed-old-armies',modules}).battle(s);
- for(const frame of replay.frames)for(const p of [0,1]){const active=frame.units.filter(unit=>unit.p===p&&unit.hp>0&&!unit.illusion);assert.ok(active.length<=5);assert.ok(active.every(unit=>s.decks['p'+p].troops.includes(unit.type)));}
+test('armies larger than five preserve recruits while rejecting off-deck bodies',async()=>{
+ const modules=await loadModules(),s=state(['vguard','marksman'],['hellspawn','blood']);s.roster.p0=[{type:'vguard',count:12,lvl:3},{type:'miner',count:8,lvl:3}];s.roster.p1=[{type:'hellspawn',count:8,lvl:3},{type:'blood',count:4,lvl:3}];
+ const replay=createCombatAdapter({seed:'legal-large-armies',modules}).battle(s);
+ for(const p of [0,1])assert.equal(replay.frames[0].units.filter(unit=>unit.p===p).length,12);
+ for(const frame of replay.frames)for(const p of [0,1])assert.ok(frame.units.filter(unit=>unit.p===p&&unit.hp>0&&!unit.illusion).every(unit=>s.decks['p'+p].troops.includes(unit.type)));
  assert.equal(replay.frames[0].units.some(unit=>unit.type==='miner'),false);
+});
+
+test('local and authoritative recruitment keep growing past fifteen bodies and replay every recruit',async()=>{
+ const modules=await loadModules();let s=state(factionTypes.Vanir.slice(0,5),factionTypes.Helions.slice(0,5));
+ for(let turn=0;turn<14;turn++)for(const side of ['p0','p1']){
+  const adapter=createCombatAdapter({seed:'large-draft-'+turn+side,modules}),pack=adapter.pack(s,side,s.decks[side].troops),card=pack.find(card=>card.type==='troop');
+  assert.ok(pack.filter(card=>card.type==='troop').length>=2);
+  const local=structuredClone(s),before=modules.decks.rosterCount(s.roster[side]);modules.drafting.applyDraftPick(local,side,card);
+  s=adapter.pick(s,side,card);assert.deepEqual(s,local);assert.equal(modules.decks.rosterCount(s.roster[side]),before+1);
+ }
+ for(const side of ['p0','p1']){assert.equal(modules.decks.rosterCount(s.roster[side]),19);assert.equal(s.roster[side].length,5);}
+ const replay=createCombatAdapter({seed:'grown-draft-replay',modules}).battle(s);
+ for(const p of [0,1])assert.equal(replay.frames[0].units.filter(unit=>unit.p===p).length,19);
 });
