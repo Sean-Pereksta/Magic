@@ -11,10 +11,10 @@ const make=(type,props={})=>units.initializeForgeUnit({id:type,p:0,type,x:3,y:3,
 const state=(...troops)=>({field:{units:troops,wards:[]}});
 const hooks={applyDamage:(v,d)=>v.hp-=d,healScale:(v,now)=>(v.woundUntil||0)>now?.5:1};
 
-test('campaign and endless enemies use five-type faction decks and never grow beyond five deployed bodies',()=>{
- for(const mission of [...campaign.MISSIONS,...[1,7,30,80,10000].map(stage=>campaign.createEndlessMission(stage))]){const {deck,roster}=mission.opponent;assert.equal(validateDeck(deck).valid,true,mission.id);assert.ok(rosterCount(roster)<=5,mission.id);assert.ok(roster.every(row=>deck.troops.includes(row.type)),mission.id);assert.equal(deck.faction,mission.aiFaction);}
+test('campaign and endless enemies use five-type faction decks with legal recruit counts',()=>{
+ for(const mission of [...campaign.MISSIONS,...[1,7,30,80,10000].map(stage=>campaign.createEndlessMission(stage))]){const {deck,roster}=mission.opponent;assert.equal(validateDeck(deck).valid,true,mission.id);assert.ok(rosterCount(roster)>0,mission.id);assert.ok(roster.every(row=>deck.troops.includes(row.type)&&Number.isSafeInteger(row.count)&&row.count>0),mission.id);assert.equal(deck.faction,mission.aiFaction);}
  const custom={id:'custom-campaign',name:'Flanking Precision',faction:'Vanir',troops:['miner','marksman','vrocket','emp','medic']};
- for(const mission of campaign.MISSIONS){const roster=campaign.playerStartingRoster('Vanir',mission,custom);assert.ok(rosterCount(roster)<=5);assert.ok(roster.every(row=>custom.troops.includes(row.type)));}
+ for(const mission of campaign.MISSIONS){const roster=campaign.playerStartingRoster('Vanir',mission,custom);assert.ok(rosterCount(roster)>0);assert.ok(roster.every(row=>custom.troops.includes(row.type)&&Number.isSafeInteger(row.count)&&row.count>0));}
  for(let i=0;i<20;i++){const bot=campaign.practiceOpponent(1700,()=>i/20);assert.equal(validateDeck(bot.deck).valid,true);assert.equal(bot.deck.faction,bot.faction);}
 });
 test('expert bots select complete counter decks in response to armor or exposed ranged troops',()=>{
@@ -182,13 +182,14 @@ test('campaign prepares distinct faction armies and introduces special troops in
   assert.equal(campaign.createEndlessMission(1).opponent.unlockedTroops.length,6);
 });
 
-test('the actual engine leaves reserves undeployed rather than overlap crowded boards or cross starting halves',async()=>{
+test('the actual engine deploys every recruit on an expanded board without overlaps or crossed starting halves',async()=>{
   const {createRequire}=await import('node:module'),require=createRequire(import.meta.url);
   const {createCombatAdapter,loadModules}=require('../../../server/faction-forge/simulator.cjs');
   const modules=await loadModules();
-  const st={mode:'bot',roster:{p0:[{type:'golem',count:30,lvl:3},{type:'rifleman',count:100,lvl:1}],p1:[{type:'golem',count:30,lvl:3},{type:'hellspawn',count:100,lvl:1}]},factions:{p0:'Aesir',p1:'Helions'},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]},formations:{p0:'wide',p1:'spearhead'}};
-  const replay=createCombatAdapter({seed:'full-board-reserves',modules}).battle(st);
-  const troops=replay.frames[0].units;
-  assert.ok(troops.length<st.roster.p0[0].count+st.roster.p0[1].count+st.roster.p1[0].count+st.roster.p1[1].count);
-  for(const u of troops){const size=u.size||1;assert.ok(u.x>=0&&u.x+size<=8&&u.y>=0&&u.y+size<=16);assert.ok(u.p===0?u.y>=8:u.y+size<=8);assert.equal(placementHooks.rectangleFree(troops.filter(v=>v.id!==u.id),u.x,u.y,size),true,'overlap: '+u.id);}
+  const st={mode:'bot',decks:{p0:{id:'large-aesir',name:'Large Aesir',faction:'Aesir',troops:['golem','phaser','guardian','storm','wardmaker']},p1:{id:'large-helions',name:'Large Helions',faction:'Helions',troops:['hellspawn','roach','defiler','spitter','blood']}},roster:{p0:[{type:'golem',count:16,lvl:3},{type:'phaser',count:24,lvl:1}],p1:[{type:'hellspawn',count:20,lvl:3},{type:'roach',count:20,lvl:1}]},factions:{p0:'Aesir',p1:'Helions'},relics:{p0:[],p1:[]},tactics:{p0:[],p1:[]},formations:{p0:'wide',p1:'spearhead'}};
+  const replay=createCombatAdapter({seed:'growing-board-armies',modules}).battle(st);
+  const first=replay.frames[0],troops=first.units,width=first.width,height=first.height;
+  assert.equal(troops.length,80);assert.equal(troops.filter(u=>u.type==='golem'&&u.size===2).length,16);
+  assert.ok(width>8||height>16,'battlefield expands to fit the army');
+  for(const u of troops){const size=u.size||1;assert.ok(u.x>=0&&u.x+size<=width&&u.y>=0&&u.y+size<=height);assert.ok(u.p===0?u.y>=height/2:u.y+size<=height/2);assert.ok(!troops.some(v=>v.id!==u.id&&u.x<v.x+(v.size||1)&&u.x+size>v.x&&u.y<v.y+(v.size||1)&&u.y+size>v.y),'overlap: '+u.id);}
 });

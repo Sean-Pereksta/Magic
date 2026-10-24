@@ -1045,6 +1045,7 @@ function openCardInfoModal(title, bodyHtml){
 }
 
 let unitLayerEl = null;
+const lastCellTerrainKey = new Map();
 
 /* ---------------- Fit the complete battlefield ---------------- */
 let boardScale=1, pan={x:0, y:0};
@@ -1209,6 +1210,7 @@ async function ensureStateExists(lobbyData){
 
 /* ---------------- Build cells ---------------- */
 function buildBoard(){
+  lastCellTerrainKey.clear();
   cellsEl.style.setProperty("--w", W);
   cellsEl.style.setProperty("--cell", CELL + "px");
   cellsEl.style.setProperty("--gap", GAP + "px");
@@ -1239,6 +1241,14 @@ function buildBoard(){
   }
 }
 buildBoard();
+
+function syncBattleDimensions(field){
+  const valid=Number.isSafeInteger(field?.width)&&field.width>=8&&field.width%2===0&&field.height===field.width*2&&field.width*field.height<=8192;
+  const width=valid?field.width:8,height=valid?field.height:16;
+  if(W===width&&H===height)return;
+  W=width;H=height;buildBoard();fitBoard();
+  spriteRenderer?.paintTerrain?.(cellsEl,viewport,"contested-forge");
+}
 
 /* ---------------- Units & data ---------------- */
 const R = (hp,dmg,range,cd)=>({hp:hp,dmg:dmg,range:range,cd:cd});
@@ -1387,7 +1397,7 @@ const TROOP_IMAGE_PATHS=Object.freeze({
 const LEGENDARY_ABILITIES = {
   rifleman:{name:"Overwatch Line", desc:"Fires faster and gains +1 damage vs enemies already damaged this battle.", notes:"+28% attack speed."}, vrocket:{name:"Siege Burst", desc:"Wider burst splash for anti-clump pressure.", notes:"Splash up."}, vguard:{name:"Shield Wall", desc:"Nearby backline allies take -1 incoming damage.", notes:"Aura mitigation."}, miner:{name:"Tunnel Breakers", desc:"First hit vs ranged/support stuns briefly and deals bonus damage.", notes:"One-time proc."}, medic:{name:"Emergency Revival", desc:"Once per battle, prevents a nearby ally from dying and heals a small amount.", notes:"One revive."}, suppressor:{name:"Lockdown Foam", desc:"Suppressed targets lose 1 range for longer.", notes:"Range debuff window."}, shieldcap:{name:"Rally Banner", desc:"Nearby allies gain +1 armor.", notes:"Aura armor."}, marksman:{name:"Headshot Protocol", desc:"Armor penetration and bounded finishing shots punish heavy targets without instant executions.", notes:"65% penetration; bounded finishing damage."}, emp:{name:"System Crash", desc:"EMP also disables nearby enemy wards briefly.", notes:"Ward disable."},
   phaser:{name:"Phase Echo", desc:"First blink grants brief invulnerability.", notes:"Short invuln."}, blade:{name:"Tempest Blades", desc:"Every third attack cleaves adjacent enemies.", notes:"3-hit cleave."}, storm:{name:"Chain Storm", desc:"Chains one additional target and prefers wounded units.", notes:"4 hops."}, guardian:{name:"Gravity Slam", desc:"First impact applies stronger slow/knock control.", notes:"First-hit control."}, wardmaker:{name:"Sanctuary Ward", desc:"First ward has bonus HP and pulse-heals nearby allies.", notes:"First ward bonus."}, architect:{name:"Arcane Turret Grid", desc:"Turret wards fire faster and deal +1 damage.", notes:"Ward buff."}, golem:{name:"Mountain Core", desc:"Reduced ranged damage and ignores first knockback.", notes:"First knock immunity."}, runebinder:{name:"Greater Bind", desc:"Bind lasts longer and amplifies magic/storm follow-up.", notes:"Longer bind."},
-  hellspawn:{name:"Frenzy Swarm", desc:"Gains speed/attack speed when near other Hell Spawn.", notes:"Swarm haste."}, roach:{name:"Hardened Carapace", desc:"Below 50% HP, gains damage reduction.", notes:"Low-HP DR."}, defiler:{name:"Plague Nova", desc:"First low-HP trigger spreads toxic nearby.", notes:"One nova."}, blood:{name:"Blood Detonation", desc:"Explosion applies wound with stronger splash.", notes:"Wound splash."}, matron:{name:"Endless Brood", desc:"Replaces fallen troops faster; a full formation instead grants a nearby brood a temporary surge.", notes:"Five bodies; bounded brood surge."}, viper:{name:"Apex Venom", desc:"First ambush gains a bounded follow-up; leaps respect distance, occupied tiles and detection.", notes:"One leap proc."}, spitter:{name:"Acid Rain", desc:"Acid lasts longer and strips armor by 1 on tiles.", notes:"Longer acid."}, carrion:{name:"Blood Curse", desc:"Wounded enemies receive reduced healing.", notes:"Anti-heal uptime."}, burrower:{name:"Deep Ambush", desc:"First burrow hit roots briefly and leaves poison behind.", notes:"One ambush proc."}
+  hellspawn:{name:"Frenzy Swarm", desc:"Gains speed/attack speed when near other Hell Spawn.", notes:"Swarm haste."}, roach:{name:"Hardened Carapace", desc:"Below 50% HP, gains damage reduction.", notes:"Low-HP DR."}, defiler:{name:"Plague Nova", desc:"First low-HP trigger spreads toxic nearby.", notes:"One nova."}, blood:{name:"Blood Detonation", desc:"Explosion applies wound with stronger splash.", notes:"Wound splash."}, matron:{name:"Endless Brood", desc:"Summons brood faster, within its independent summon budget.", notes:"Bounded brood summons."}, viper:{name:"Apex Venom", desc:"First ambush gains a bounded follow-up; leaps respect distance, occupied tiles and detection.", notes:"One leap proc."}, spitter:{name:"Acid Rain", desc:"Acid lasts longer and strips armor by 1 on tiles.", notes:"Longer acid."}, carrion:{name:"Blood Curse", desc:"Wounded enemies receive reduced healing.", notes:"Anti-heal uptime."}, burrower:{name:"Deep Ambush", desc:"First burrow hit roots briefly and leaves poison behind.", notes:"One ambush proc."}
 };
 
 const TROOP_COUNTERS = {
@@ -1642,6 +1652,7 @@ const battleEmpty = ()=>({battleTickId:0, units:[], poison:[], toxic:[], acid:[]
 function battleFromStateFallback(st){
   const fld = (st && st.field) ? st.field : fieldEmpty();
   return Object.assign(battleEmpty(), {
+    width:fld.width||8,height:fld.height||16,
     units: fld.units || [],
     poison: fld.poison || [],
     toxic: fld.toxic || [],
@@ -1657,7 +1668,6 @@ let serverBattleState = null;
 let battlePresentationUntil=0,lastVisualPhase=null;
 const visualUnits = new Map();
 const unitDomById = new Map();
-const lastCellTerrainKey = new Map();
 const lastUnitRenderKey = new Map();
 const lastHpPct = new Map();
 const unitEls = new Map();
@@ -1731,10 +1741,11 @@ function canMoveTo(u, units, nx, ny){
 
 /* spawn bands */
 function bandRows(p, role){
+  const half=Math.floor(H/2);
   if (p===0){
-    return role==="back" ? [H-3,H-2,H-1] : [H-6,H-5,H-4];
+    return role==="back" ? [half+5,half+6,half+7] : [half+2,half+3,half+4];
   }else{
-    return role==="back" ? [2,1,0] : [5,4,3];
+    return role==="back" ? [half-6,half-7,half-8] : [half-3,half-4,half-5];
   }
 }
 function spawnSlot(state,p,typeKey){
@@ -1807,7 +1818,7 @@ function placeUnit(state,p,key,lvl){
   if(!FFDecks.deckForState(state,pKey(p))?.troops.includes(key))return false;
   const t=TROOPS[key]; if(!t) return false;
   let placed=false;
-  const spawnCount = 1; // Brood effects share the five active slots.
+  const spawnCount = 1; // Each recruit adds one body; the deck limits troop types.
   for(let k=0;k<spawnCount;k++){
     if(state.field.units.filter(v=>v.hp>0&&v.p===p).length>=FFUnits.UNIT_LIMITS.aliveUnitsPerSide)break;
     const pos=spawnSlot(state,p,key);
@@ -1879,6 +1890,22 @@ function placeUnit(state,p,key,lvl){
 
 function rebuildFieldFromRoster(state){
   if (!state.field) state.field = fieldEmpty();
+  state.roster||={p0:[],p1:[]};
+  let largestFootprint=0;
+  for(const side of ["p0","p1"]){
+    state.roster[side]=FFDecks.sanitizeRoster(state.roster?.[side]||[],FFDecks.deckForState(state,side));
+    largestFootprint=Math.max(largestFootprint,state.roster[side].reduce((area,row)=>area+row.count*(TROOPS[row.type]?.size===2?4:1),0));
+  }
+  // Leave room for formation spacing, 2x2 bodies, and bounded summoned units.
+  // Army growth expands the board instead of silently dropping recruits.
+  const width=Math.max(8,2*Math.ceil(Math.sqrt(largestFootprint*1.5+16)/2));
+  if(!Number.isSafeInteger(largestFootprint)||width*width*2>8192)throw new Error("Invalid battlefield data: army footprints exceed the renderer's supported area.");
+  const dimensionsChanged=W!==width||H!==width*2;
+  W=width;H=width*2;state.field.width=W;state.field.height=H;
+  if(dimensionsChanged&&typeof buildBoard==="function"){
+    buildBoard();fitBoard();
+    if(typeof spriteRenderer!=="undefined")spriteRenderer?.paintTerrain?.(cellsEl,viewport,"contested-forge");
+  }
   state.field.units = [];
   state.field.comboCooldowns={};state.field.comboFields=[];state.field.artilleryCharge={p0:0,p1:0};state.field.comboFieldSerial=0;state.field.temporalFields=[];state.field.syncedFx=[];
   if (!state.field.poison) state.field.poison = [];
@@ -1890,8 +1917,8 @@ function rebuildFieldFromRoster(state){
     const rk = pKey(p);
     const roster = FFDecks.sanitizeRoster(state.roster?.[rk]||[],FFDecks.deckForState(state,rk));
     if(state.roster)state.roster[rk]=roster;
-    const fronts = roster.filter(r=>TROOPS[r.type] && TROOPS[r.type].role==="front");
-    const backs  = roster.filter(r=>!TROOPS[r.type] || TROOPS[r.type].role!=="front");
+    const fronts = roster.filter(r=>TROOPS[r.type] && TROOPS[r.type].role==="front").sort((a,b)=>(TROOPS[b.type]?.size||1)-(TROOPS[a.type]?.size||1));
+    const backs  = roster.filter(r=>!TROOPS[r.type] || TROOPS[r.type].role!=="front").sort((a,b)=>(TROOPS[b.type]?.size||1)-(TROOPS[a.type]?.size||1));
     for(const r of fronts){ for(let c=0;c<r.count;c++)if(!placeUnit(state,p,r.type,r.lvl))break; }
     for(const r of backs ){ for(let c=0;c<r.count;c++)if(!placeUnit(state,p,r.type,r.lvl))break; }
   }
@@ -2371,6 +2398,7 @@ function getStatusIcons(u, now, field){
 }
 function upsertVisualUnitsFromBattle(battle){
   if (!battle || !Array.isArray(battle.units)) return;
+  syncBattleDimensions(battle);
   serverBattleState = battle;
   const now = Date.now(), frameTime=performance.now();
   const liveIds = new Set();
@@ -3178,10 +3206,11 @@ function pruneBattleField(field, now){
 function makeBattlePayload(field, battleTickId){
   const cleanField=field||fieldEmpty();
   return sanitizeFirestoreValue({
-    schemaVersion:2,
+    schemaVersion:3,
     sessionKey:(S&&S.sessionKey)||undefined,
     battleTickId:battleTickId|0,
-    units:FFDecks.sanitizeBattleUnits(cleanField.units,S).map(compactUnitForSync),
+    width:cleanField.width||W,height:cleanField.height||H,
+    unitGroups:FFDecks.encodeBattleUnits((cleanField.units||[]).map(compactUnitForSync),S),
     temporalFields:cleanField.temporalFields||[],
     comboFields:cleanField.comboFields||[],
     poison:cleanField.poison||[],
@@ -3194,8 +3223,14 @@ function makeBattlePayload(field, battleTickId){
     updatedAt:Date.now()
   });
 }
+function readBattlePayload(payload){
+  const field=Object.assign(battleEmpty(),payload||{});
+  field.units=FFDecks.decodeBattleUnits(payload||{},S);
+  delete field.unitGroups;
+  return field;
+}
 async function flushBattlePublishQueue(){
-  if(isLocalPractice()){if(queuedBattlePayload){B=queuedBattlePayload;queuedBattlePayload=null;upsertVisualUnitsFromBattle(B);}return;}
+  if(isLocalPractice()){if(queuedBattlePayload){B=readBattlePayload(queuedBattlePayload);queuedBattlePayload=null;upsertVisualUnitsFromBattle(B);}return;}
   if (battlePublishInFlight || disposed) return;
   battlePublishInFlight=true;
   try{
@@ -3221,7 +3256,7 @@ async function publishBattleNow(payload){
   while (battlePublishInFlight) await new Promise(resolve=>setTimeout(resolve,20));
 }
 function applyHostBattleVisual(field){
-  const payload=makeBattlePayload(field,hostBattleTickId);
+  const payload=readBattlePayload(makeBattlePayload(field,hostBattleTickId));
   B=payload;
   serverBattleState=payload;
   renderSyncedFxEvents(payload.syncedFx||[]);
@@ -3300,9 +3335,9 @@ async function beginBattle(field){
   hostBattleTickId=0;
   hostBattleState=Object.assign(fieldEmpty(),deepClone(field||fieldEmpty()),{startedAt:now,suddenDeathTickAt:0});
   const payload=makeBattlePayload(hostBattleState,0);
-  B=payload;
-  serverBattleState=payload;
-  upsertVisualUnitsFromBattle(payload);
+  B=readBattlePayload(payload);
+  serverBattleState=B;
+  upsertVisualUnitsFromBattle(B);
   await publishBattleNow(payload);
   runBattle(hostBattleState);
 }
@@ -3603,15 +3638,16 @@ async function runBattle(initialField){
     if (initialField){
       hostBattleState=Object.assign(fieldEmpty(),deepClone(initialField));
     }else if (!hostBattleState){
-      if (B && Array.isArray(B.units) && B.units.length){
-        hostBattleState=Object.assign(fieldEmpty(),deepClone(B));
+      if (B && (B.unitGroups||Array.isArray(B.units) && B.units.length)){
+        hostBattleState=Object.assign(fieldEmpty(),readBattlePayload(deepClone(B)));
       }else{
         const snap=await getDoc(battleRef); // one recovery read, not a repeating poll
-        hostBattleState=Object.assign(fieldEmpty(),snap.exists()?deepClone(snap.data()):fieldEmpty());
+        hostBattleState=Object.assign(fieldEmpty(),snap.exists()?readBattlePayload(deepClone(snap.data())):fieldEmpty());
       }
     }
     if (!hasHostLease() || !S || S.phase!=="battle" || disposed) return;
     hostBattleState.units=FFDecks.sanitizeBattleUnits(hostBattleState.units,S);
+    syncBattleDimensions(hostBattleState);
     hostBattleStartedAt=hostBattleState.startedAt||Date.now();
     hostBattleState.startedAt=hostBattleStartedAt;
     hostBattleTickId=Number.isFinite(hostBattleState.battleTickId)?hostBattleState.battleTickId:(Number.isFinite(B&&B.battleTickId)?B.battleTickId:0);
@@ -4163,16 +4199,20 @@ function setBattleSyncBadgeVisible(visible){
 }
 
 function enqueueBattleSnapshot(snapshot){
+  snapshot=readBattlePayload(snapshot);
   const tickId = Number.isFinite(snapshot && snapshot.battleTickId) ? snapshot.battleTickId : -1;
   battleSnapshotBuffer.push({
     battleTickId: tickId,
     receivedAt: Date.now(),
+    width:snapshot.width||8,height:snapshot.height||16,
     units: Array.isArray(snapshot.units) ? snapshot.units : [],
     poison: Array.isArray(snapshot.poison) ? snapshot.poison : [],
     toxic: Array.isArray(snapshot.toxic) ? snapshot.toxic : [],
     acid: Array.isArray(snapshot.acid) ? snapshot.acid : [],
     wards: Array.isArray(snapshot.wards) ? snapshot.wards : [],
     syncedFx: Array.isArray(snapshot.syncedFx) ? snapshot.syncedFx : [],
+    temporalFields:Array.isArray(snapshot.temporalFields)?snapshot.temporalFields:[],
+    comboFields:Array.isArray(snapshot.comboFields)?snapshot.comboFields:[],
     startedAt: Number.isFinite(snapshot.startedAt) ? snapshot.startedAt : 0,
     suddenDeathTickAt: Number.isFinite(snapshot.suddenDeathTickAt) ? snapshot.suddenDeathTickAt : 0,
     sessionKey: snapshot.sessionKey || null,
@@ -4206,6 +4246,7 @@ function pickBufferedBattleSnapshot(){
 }
 
 function applyBattleSnapshot(nextBattle){
+  nextBattle=readBattlePayload(nextBattle);
   const incomingTick = Number.isFinite(nextBattle.battleTickId) ? nextBattle.battleTickId : -1;
   const tickGap = incomingTick - lastRenderedBattleTickId;
   if (S && S.phase === "battle" && incomingTick <= lastRenderedBattleTickId) return;

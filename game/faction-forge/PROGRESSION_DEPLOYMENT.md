@@ -10,6 +10,8 @@ Publish the complete checked-in `firestore.rules`, not a replacement rule allowi
 
 ## Deploy together
 
+The October 24 recruitment update removes the accidental five-body restriction. Decks still contain five distinct troop types; armies can recruit further copies. Multiplayer battle writes now use `unitGroups` keyed by side and troop type, with board dimensions for growing armies. Publish the complete updated rules before the static game files so multiplayer accepts the new snapshots. Old flat snapshots remain readable. No saved-profile migration or graphics upload is needed.
+
 1. Merge the game repair and publish the updated static files, including `game/crowncouncil.html`, the Faction Forge modules/styles and the new `profile-connection.js` module.
 2. In Firebase Console, choose project `bible-game-246c0`, open Firestore Database > Rules, replace the rules with the complete `firestore.rules` file, and Publish. Alternatively use the command below from the repository root.
 3. Ensure Firebase Authentication > Sign-in method > Anonymous is enabled. Authentication is still needed to authorize Firestore requests.

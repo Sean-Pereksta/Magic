@@ -33,7 +33,7 @@ export const NEW_LEGENDARIES = Object.freeze({
   railbreaker:{name:'Overload Shot',desc:'Every third charged rail shot pierces two additional enemies with stronger penetration.',notes:'3-shot cycle; no splash.'},
   signalhawk:{name:'Coordinated Strike',desc:'Marks two targets per scan. Nearby allies gain +1 damage; marks never stack.',notes:'Two marks; 2-tile ally radius.'},
   chronoweaver:{name:'Time Fracture',desc:'Every third field briefly slows enemy cooldowns more strongly.',notes:'Bounded temporal field.'},
-  miragewarden:{name:'Mirror Legion',desc:'Creates a decoy in a vacant army slot, or a temporary mirror shield when the five-unit field is full.',notes:'One decoy; five total bodies.'},
+  miragewarden:{name:'Mirror Legion',desc:'Creates a decoy, or a temporary mirror shield while a decoy or other summoned allies are already active.',notes:'One decoy; summoned allies share a bounded ability budget.'},
   siphonleech:{name:'Blood Communion',desc:'One point of excess siphoned healing can restore a nearby damaged Helions ally.',notes:'Wound reduces self/ally healing.'},
   hiveherald:{name:'Hive Frenzy',desc:'A nearby swarm death grants surviving swarms brief haste, without additive stacking.',notes:'Frenzy lasts 2 seconds.'}
 });
@@ -167,7 +167,7 @@ export function applyArmyOptions(st,now,hooks={}) {
 
 export function canSpawnSummon(st,parent,illusion=false) {
   const units = st.field.units||[];
-  return alive(parent)&&!parent.illusion&&units.filter(v=>alive(v)&&v.p===parent.p).length<UNIT_LIMITS.aliveUnitsPerSide &&
+  return alive(parent)&&!parent.illusion&&
     units.filter(v=>alive(v)&&v.p===parent.p&&v.summoned).length<UNIT_LIMITS.summonsPerSide &&
     units.filter(v=>alive(v)&&v.summonedBy===parent.id).length<UNIT_LIMITS.summonsPerParent &&
     (!illusion || units.filter(v=>alive(v)&&v.p===parent.p&&v.illusion).length<UNIT_LIMITS.decoysPerSide);

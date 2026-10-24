@@ -1,7 +1,7 @@
 /** Campaign definitions and strategic selection shared by UI and server replay. */
 import {comboStatus} from './combos.js';
 import {evolutionFor} from './evolutions.js';
-import {STARTER_DECKS,MAX_ACTIVE_UNITS,sanitizeRoster} from './decks.js';
+import {STARTER_DECKS,sanitizeRoster} from './decks.js';
 import {COMBAT_ROLES,counterProfile} from './combat-rules.js';
 export const CAMPAIGN_CHAPTERS = Object.freeze([
   {id:1,title:'Sparks on the Frontier',theme:'iron-frontier',description:'Draft a balanced army and learn to protect the Vanir gunline.'},
@@ -205,7 +205,7 @@ export function scoreAIDraft(card,context={},hooks={}) {
   const enemyFront=countMatching(enemy,fronts),enemySwarm=countMatching(enemy,swarm),enemyTanks=countMatching(enemy,tanks);
   const enemySplash=countMatching(enemy,splash),enemyAssassins=countMatching(enemy,assassins);
   if (card.type==='troop') {
-    if(bodies>=MAX_ACTIVE_UNITS||context.deck&&!context.deck.troops.includes(card.key))return -1000;
+    if(context.deck&&!context.deck.troops.includes(card.key))return -1000;
     if (!hooks.evaluateDraftCard) {score+=fronts.has(card.key)&&mineFront<2?3:0;score+=splash.has(card.key)&&enemySwarm>=2?4:0;score+=assassins.has(card.key)&&countMatching(enemy,support)>=1?3:0;}
     if (card.key==='railbreaker'||card.key==='marksman') score+=enemyTanks*2.1-(enemySwarm>=2?2:0);
     if (card.key==='signalhawk') score+=(mine.length>=2?1.5:-2)+(enemy.some(r=>r.type==='burrower')?2:0);

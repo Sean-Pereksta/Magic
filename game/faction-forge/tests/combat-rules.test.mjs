@@ -73,18 +73,20 @@ test('movement is deterministic, avoids occupancy, holds useful range, and flank
   assert.deepEqual(move,chooseFlankLanding(assassin,prey,[assassin,prey,blocker],2,hooks));
 });
 
-test('every summoned body and illusion consumes the same five active slots; dead bodies release slots',()=>{
-  const parent=make('matron'),all=[parent,...Array.from({length:4},(_,i)=>make('hellspawn',{id:'s'+i,summoned:i<1,illusion:i===1}))],st={field:{units:all}};
+test('recruited armies can exceed five bodies while summon ability budgets remain bounded',()=>{
+  const parent=make('matron'),all=[parent,...Array.from({length:12},(_,i)=>make('hellspawn',{id:'r'+i}))],st={field:{units:all}};
+  assert.equal(units.canSpawnSummon(st,parent),true);assert.equal(units.canSpawnSummon(st,parent,true),true);
+  const summoned=make('hellspawn',{id:'summoned',summoned:true,summonedBy:parent.id});all.push(summoned);
   assert.equal(units.canSpawnSummon(st,parent),false);assert.equal(units.canSpawnSummon(st,parent,true),false);
-  all[4].hp=0;assert.equal(units.canSpawnSummon(st,parent),true);
+  summoned.hp=0;assert.equal(units.canSpawnSummon(st,parent),true);
   parent.hp=0;assert.equal(units.canSpawnSummon(st,parent),false);
 });
 
-test('a full five-unit formation retains Mirage Warden identity through a temporary shield',()=>{
+test('an existing decoy lets Mirage Warden grant a temporary shield to a larger army',()=>{
   const warden=make('miragewarden',{range:3}),ally=make('phaser',{hp:5,maxhp:20,x:4,y:8,range:5}),enemy=make('vguard',{p:1,x:3,y:5});
-  const st={field:{units:[warden,ally,make('guardian'),make('storm'),make('runebinder'),enemy]}};
+  const st={field:{units:[warden,ally,make('guardian'),make('storm'),make('runebinder'),make('miragewarden',{id:'decoy',illusion:true,summoned:true,summonedBy:warden.id}),enemy]}};
   const events=[];units.tickForgeAbilities(st,1000,{...hooks,event:event=>events.push(event)});
-  assert.equal(st.field.units.length,6);assert.ok(ally.comboShield>0);assert.equal(ally.comboShieldUntil,3200);assert.ok(events.some(event=>event.kind==='mirage'));
+  assert.equal(st.field.units.length,7);assert.ok(ally.comboShield>0);assert.equal(ally.comboShieldUntil,3200);assert.ok(events.some(event=>event.kind==='mirage'));
 });
 
 test('actual damage clamps combined shield sources before absorption',()=>{

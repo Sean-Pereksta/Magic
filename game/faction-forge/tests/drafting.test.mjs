@@ -39,13 +39,87 @@ test('issued choices remain faction legal, owned upgrades are below III, and pat
   assert.deepEqual(createDraftPack({...opts,availableTypes:[]},rng('none')),[]);
 });
 
-test('empty, partial, full and exhausted five-unit teams always receive legal usable deterministic choices',()=>{
-  for(const faction of ['Vanir','Aesir','Helions'])for(const count of [0,2,5])for(const lvl of [1,2,3])for(let seed=0;seed<100;seed++){
+test('empty, partial and complete five-type armies always receive legal deterministic recruitment choices',()=>{
+  for(const faction of ['Vanir','Aesir','Helions'])for(const count of [0,2,5,12])for(const lvl of [1,2,3])for(let seed=0;seed<100;seed++){
     const deck=starterDeck(faction),roster=rows(deck.troops.slice(0,count),lvl),opts={...options(faction,roster,deck),evolutions:lvl===3?Object.fromEntries(deck.troops.map(key=>[key,'b'])):{},comboEnhancements:lvl===3?COMBOS.map(c=>c.id):[]};
+    if(count>deck.troops.length)roster[0].count+=count-deck.troops.length;
     const pack=createDraftPack(opts,rng(seed));assert.equal(pack.length,3);assert.deepEqual(pack,createDraftPack(opts,rng(seed)));
-    for(const card of pack){if(card.type==='troop'){assert.ok(count<5);assert.ok(deck.troops.includes(card.key));}if(card.for)assert.ok(deck.troops.includes(card.for));if(card.type==='combo')assert.ok(COMBOS.find(c=>c.id===card.key).units.every(k=>deck.troops.includes(k)));}
-    if(count===0)assert.ok(pack.filter(c=>c.type==='troop').length>=2);
-    if(count===5)assert.ok(pack.every(c=>c.type!=='troop'));
+    for(const card of pack){if(card.type==='troop')assert.ok(deck.troops.includes(card.key));if(card.for)assert.ok(deck.troops.includes(card.for));if(card.type==='combo')assert.ok(COMBOS.find(c=>c.id===card.key).units.every(k=>deck.troops.includes(k)));}
+    assert.ok(pack.filter(c=>c.type==='troop').length>=2);
+  }
+});
+
+test('packs reserve recruitment choices and introduce unowned types across sizes, ranks and factions',()=>{
+  for(const faction of ['Vanir','Aesir','Helions'])for(const count of [1,2,4])for(const lvl of [1,2,3])for(const size of [1,2,3,4,5]){
+    const deck=starterDeck(faction),roster=rows(deck.troops.slice(0,count),lvl),opts={...options(faction,roster,deck),size};
+    for(let seed=0;seed<30;seed++){
+      const random=seed===0?()=>0:seed===1?()=>.999999:rng('recruit-guarantee-'+faction+count+lvl+size+seed);
+      const pack=createDraftPack(opts,random),recruits=pack.filter(card=>card.type==='troop');
+      assert.equal(pack.length,size);
+      assert.ok(recruits.length>=Math.ceil(size*2/3),`${faction} ${count} bodies, rank ${lvl}, size ${size}`);
+      assert.ok(recruits.some(card=>!roster.some(row=>row.type===card.key)),'offer a genuinely new troop');
+      assert.equal(new Set(recruits.map(card=>card.key)).size,recruits.length,'recruit choices are distinct');
+    }
+  }
+});
+
+test('recruitment guarantees respect available subsets and remain available in larger armies',()=>{
+  for(const faction of ['Vanir','Aesir','Helions']){
+    const deck=deckWith(faction,FACTION_TROOPS[faction].slice(-2)),roster=rows(deck.troops.slice(0,2));
+    for(const availableTypes of [[deck.troops[0]],[deck.troops[2]],[deck.troops[0],deck.troops[2]],deck.troops])for(const size of [1,2,3,4,5])for(let seed=0;seed<25;seed++){
+      const opts={...options(faction,roster,deck),size,availableTypes:[...availableTypes,availableTypes[0],'invented',faction==='Vanir'?'guardian':'vguard']};
+      const pack=createDraftPack(opts,rng('recruit-subset-'+faction+size+availableTypes.length+seed)),recruits=pack.filter(card=>card.type==='troop');
+      assert.ok(recruits.length>=Math.min(availableTypes.length,Math.ceil(size*2/3)));
+      assert.ok(recruits.every(card=>availableTypes.includes(card.key)));
+      assert.equal(new Set(recruits.map(card=>card.key)).size,recruits.length);
+      if(availableTypes.some(key=>!roster.some(row=>row.type===key)))assert.ok(recruits.some(card=>!roster.some(row=>row.type===card.key)));
+    }
+    for(const count of [5,12,32])for(let seed=0;seed<25;seed++){
+      const roster=[{type:deck.troops[0],count,lvl:1}],pack=createDraftPack(options(faction,roster,deck),rng('large-'+seed));
+      assert.ok(pack.filter(card=>card.type==='troop').length>=2);
+      assert.ok(pack.some(card=>card.type==='troop'&&card.key!==deck.troops[0]));
+    }
+  }
+});
+
+test('recruitment and legacy doubles grow beyond five bodies without admitting a sixth deck type',()=>{
+  for(const faction of ['Vanir','Aesir','Helions']){
+    const deck=starterDeck(faction),state={factions:{p0:faction},decks:{p0:deck},roster:{p0:rows(deck.troops),p1:[]}};
+    for(let pick=0;pick<20;pick++){
+      const before=rosterCount(state.roster.p0),card=createDraftPack(options(faction,state.roster.p0,deck),rng('growth-'+faction+pick)).find(card=>card.type==='troop');
+      applyDraftPick(state,'p0',card);assert.equal(rosterCount(state.roster.p0),before+1);
+    }
+    const unit=state.roster.p0[0],before=unit.count;
+    applyDraftPick(state,'p0',{type:'special',special:'double',for:unit.type});
+    assert.equal(state.roster.p0[0].count,before*2);
+    const snapshot=structuredClone(state.roster.p0),foreign=FACTION_TROOPS[faction].find(key=>!deck.troops.includes(key));
+    applyDraftPick(state,'p0',{type:'troop',key:foreign});assert.deepEqual(state.roster.p0,snapshot);
+    assert.equal(new Set(state.roster.p0.map(row=>row.type)).size,5);
+  }
+});
+
+test('seeded recruitment distribution strongly favors bodies while preserving copies and upgrades',()=>{
+  assert.equal(Object.values(DRAFT_WEIGHTS).reduce((sum,weight)=>sum+weight,0),100);
+  for(const faction of ['Vanir','Aesir','Helions'])for(const count of [2,5,15]){
+    const deck=starterDeck(faction),roster=rows(deck.troops.slice(0,count)),opts=options(faction,roster,deck);
+    if(count>deck.troops.length)for(const row of roster)row.count=3;
+    const categories=new Set(),newPositions=new Set();let recruits=0,copies=0,unowned=0;
+    const samples=2000;
+    for(let seed=0;seed<samples;seed++){
+      const pack=createDraftPack(opts,rng('recruit-frequency-'+faction+count+seed));
+      for(const [index,card]of pack.entries()){
+        categories.add(card.draftCategory);
+        if(card.type!=='troop')continue;
+        recruits++;
+        if(roster.some(row=>row.type===card.key))copies++;else{unowned++;newPositions.add(index);}
+      }
+    }
+    const share=recruits/(samples*3);
+    assert.ok(share>=.82&&share<=.93,`${faction}, ${count} bodies: actual recruit share ${share}`);
+    if(count<deck.troops.length)assert.ok(unowned/recruits>=.8,`${faction}: new types dominate recruitment`);
+    assert.ok(copies>0,'additional copies remain available');
+    if(count<deck.troops.length)assert.deepEqual([...newPositions].sort(),[0,1,2],'new troops can appear in every card position');
+    for(const category of ['troop','upgrade','evolution','legacy'])assert.ok(categories.has(category),`${faction}: ${category} remains available`);
   }
 });
 

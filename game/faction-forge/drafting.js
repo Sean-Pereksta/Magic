@@ -2,9 +2,9 @@
  * tiers never determine battle rank, evolution eligibility, or combo level. */
 import {COMBOS,comboStatus} from './combos.js';
 import {EVOLUTIONS,RANK_ENHANCEMENTS,evolutionDescription} from './evolutions.js';
-import {starterDeck,validateDeck,deckForState,sanitizeRoster,rosterCount,MAX_ACTIVE_UNITS} from './decks.js';
+import {starterDeck,validateDeck,deckForState,sanitizeRoster} from './decks.js';
 
-export const DRAFT_WEIGHTS=Object.freeze({troop:65,upgrade:15,evolution:10,combo:6,legacy:4});
+export const DRAFT_WEIGHTS=Object.freeze({troop:80,upgrade:8,evolution:6,combo:4,legacy:2});
 export const LEGACY_DRAFT_CARDS=Object.freeze([
   {type:'relic',key:'banner_frontline',name:'Banner of the Frontline',desc:'Frontline units gain +2 max HP.'},
   {type:'relic',key:'sharpshooter_doctrine',name:'Sharpshooter Doctrine',desc:'Backline units gain +1 range, -1 max HP.'},
@@ -46,8 +46,8 @@ export function relevantComboStates(roster,faction,{availableTypes,comboEnhancem
   ).sort((a,b)=>(a.missing?.length||0)-(b.missing?.length||0)||(b.level||0)-(a.level||0)||a.id.localeCompare(b.id)).slice(0,limit);
 }
 
-/** Recruits dominate while slots remain; full teams develop ranks, paths and
- * combinations. Formation changes remain available after all upgrades. */
+/** Recruits dominate throughout a match. The five deck slots limit troop types;
+ * additional copies remain available as armies develop ranks and combinations. */
 export function createDraftPack({roster=[],faction,deck=starterDeck(faction),availableTypes=deck?.troops||[],troops={},evolutions={},comboEnhancements=[],ownedRelics=[],ownedTactics=[],formation='balanced',size=3}={},rng=Math.random){
   if(!validateDeck(deck).valid||deck.faction!==faction)return [];
   roster=sanitizeRoster(roster,deck);
@@ -58,7 +58,7 @@ export function createDraftPack({roster=[],faction,deck=starterDeck(faction),ava
   const relevant=relevantComboStates(roster,faction,{availableTypes:available,comboEnhancements,limit:100});
   const partners=new Map();
   for(const combo of relevant)if((combo.missing||[]).length===1&&!partners.has(combo.missing[0]))partners.set(combo.missing[0],combo);
-  const recruitment=(rosterCount(roster)<MAX_ACTIVE_UNITS?available:[]).map(key=>{
+  const recruitment=available.map(key=>{
     const partner=partners.get(key);
     return {type:'troop',key,name:name(key),role:troops[key].role,draftCategory:'troop',
       ...(partner?{comboId:partner.id}:{}),
@@ -71,15 +71,20 @@ export function createDraftPack({roster=[],faction,deck=starterDeck(faction),ava
   const categories={troop:recruitment,upgrade:upgrades,evolution:paths,combo:enhancements,legacy};
   const selected=[],used=new Set();
   const desired=Math.max(1,Math.min(5,Math.floor(Number(size)||3)));
+  const minimumRecruits=Math.min(recruitment.length,Math.ceil(desired*2/3));
   while(selected.length<desired){
     const pools=Object.entries(categories).map(([category,cards])=>({category,cards:cards.filter(card=>!used.has(identity(card)))})).filter(pool=>pool.cards.length&&(owned.length||pool.category!=='legacy'||!selected.some(card=>card.draftCategory==='legacy')));
     if(!pools.length)break;
-    // Reserve a troop only if the other choices used the enhancement budget.
-    // Ordinary sampling keeps recruits in any slot rather than fixing slot one.
-    const requireTroop=recruitment.length>0&&selected.length===desired-1&&!selected.some(card=>card.type==='troop');
+    // Reserve enough remaining choices for recruits. A normal three-card pack
+    // offers at least two, with no fixed position for the enhancement choice.
+    const recruitsSelected=selected.filter(card=>card.type==='troop').length;
+    const requireTroop=minimumRecruits-recruitsSelected>=desired-selected.length;
     const pool=sample(requireTroop?pools.filter(value=>value.category==='troop'):pools,rng,value=>DRAFT_WEIGHTS[value.category]);
-    const card=sample(pool.cards,rng,value=>{
-      if(value.type==='troop')return value.comboId?1.8:current(roster,value.key)?1.2:1.5;
+    // The first recruitment option introduces an unowned type when possible.
+    // Later choices still favor new types while allowing additional copies.
+    const newTroops=pool.category==='troop'&&!recruitsSelected?pool.cards.filter(card=>!current(roster,card.key)):[];
+    const card=sample(newTroops.length?newTroops:pool.cards,rng,value=>{
+      if(value.type==='troop')return current(roster,value.key)?1:value.comboId?5:4;
       return 1;
     });
     selected.push(card);used.add(identity(card));
@@ -99,11 +104,11 @@ export function applyDraftPick(state,side,card){
   const roster=state.roster[side]=sanitizeRoster(state.roster[side]||[],deck),key=card.for||card.key,own=current(roster,key);
   const allowed=deck.troops.includes(key);
   if(card.type==='troop'){
-    if(allowed&&rosterCount(roster)<MAX_ACTIVE_UNITS){if(own)own.count++;else roster.push({type:key,lvl:1,count:1});}
+    if(allowed){if(own)own.count=Math.min(Number.MAX_SAFE_INTEGER,own.count+1);else roster.push({type:key,lvl:1,count:1});}
   }else if(card.type==='special'||card.type==='upgrade'){
     if(!allowed||!own)return true;
     if(card.type==='upgrade'||card.special==='upgrade')own.lvl=Math.min(3,rank(own.lvl)+1);
-    if(card.special==='double')own.count+=Math.min(own.count,MAX_ACTIVE_UNITS-rosterCount(roster));
+    if(card.special==='double')own.count=Math.min(Number.MAX_SAFE_INTEGER,own.count*2);
   }else if(card.type==='relic'||card.type==='tactic'){
     if(!LEGACY_DRAFT_CARDS.some(value=>value.type===card.type&&value.key===key))return true;
     const field=card.type==='relic'?'relics':'tactics';state[field]||={p0:[],p1:[]};state[field][side]||=[];
