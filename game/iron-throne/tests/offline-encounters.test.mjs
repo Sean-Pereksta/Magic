@@ -130,6 +130,25 @@ test('a mutual withdrawal does not capture and an escaped victor cannot occupy',
     applyEncounterResult(s,result);assert.equal(tile.owner,d.owner);
   }
 });
+
+test('legacy battle saves cap deployment at 100 without healing, rearming or losing troops',()=>{
+  const {s}=fixture({support:false,fort:false});resolveMovement(s);beginEncounter(s);
+  const b=createBattle(pendingEncounter(s));b.maxActive=120;b.activeCaps=[95,25];delete b.battleRulesVersion;delete b.nextReserveWave;
+  const wounded=b.units.find(u=>u.status==='active'&&u.type==='archer');wounded.hp-=7;wounded.ammo-=1;wounded.morale=63;
+  const corpse=b.units.find(u=>u.status==='active'&&u.id!==b.commanderId&&u.id!==wounded.id);corpse.status='dead';corpse.hp=0;
+  const escaped=b.units.find(u=>u.status==='active'&&u.side!==b.playerSide);escaped.status='escaped';
+  while(b.units.filter(u=>u.status==='active').length<120)b.units.find(u=>u.status==='reserve').status='active';
+  b.time=21;saveEncounterCheckpoint(s,b);
+  const identities=b.units.map(u=>({id:u.id,armyId:u.armyId,type:u.type,hp:u.hp,ammo:u.ammo,morale:u.morale}));
+  const before=battleResult(b),loaded=parseSave(JSON.stringify(s)),migrated=loaded.offlineBattle.checkpoint;
+  assert.equal(migrated.maxActive,100);assert.ok(migrated.units.filter(u=>u.status==='active').length<=100);
+  assert.deepEqual(migrated.units.map(u=>({id:u.id,armyId:u.armyId,type:u.type,hp:u.hp,ammo:u.ammo,morale:u.morale})),identities);
+  assert.equal(migrated.units.find(u=>u.id===corpse.id).status,'dead');assert.equal(migrated.units.find(u=>u.id===escaped.id).status,'escaped');
+  assert.equal(migrated.units.find(u=>u.id===b.commanderId).status,'active');
+  assert.deepEqual(battleResult(migrated).armies.map(a=>a.units),before.armies.map(a=>a.units));
+  assert.ok(migrated.units.some(u=>u.status==='reserve'&&u.wasDeployed),'overflow troops wait for a later wave');
+  saveEncounterCheckpoint(loaded,migrated);assert.deepEqual(parseSave(JSON.stringify(loaded)).offlineBattle.checkpoint,migrated);
+});
 test('configuring the existing campaign preserves tactical timing preferences',()=>{
   const {s}=fixture();configureOfflineBattles(s,{tacticalTime:'slow'});configureOfflineBattles(s);
   assert.equal(s.offlineBattles.tacticalTime,'slow');assert.throws(()=>configureOfflineBattles(s,{tacticalTime:'invalid'}));

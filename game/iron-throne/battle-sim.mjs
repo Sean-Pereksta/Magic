@@ -3,6 +3,8 @@ import { UNITS } from './data.mjs';
 // This module has no DOM, clock or random global dependencies. The entire live
 // simulation is JSON data, including attack phases, missiles and delayed armies.
 export const BATTLE_VERSION = 1;
+export const MAX_ACTIVE_TROOPS = 100;
+export const RESERVE_WAVE_SECONDS = 8;
 const TAU = Math.PI * 2, HALF = 80, STEP = 1 / 20;
 const clamp = (n, a, z) => Math.max(a, Math.min(z, n));
 const distance = (a, c) => Math.hypot(a.x - c.x, a.z - c.z);
@@ -44,7 +46,7 @@ function profileFor(u) { const p = PROFILE[u.type]; return u.weapon === p.weapon
 
 function hash(value) { let n = 2166136261; for (const c of String(value)) n = Math.imul(n ^ c.charCodeAt(0), 16777619); return n >>> 0 || 1; }
 function random(b) { let x = b.rng; x ^= x << 13; x ^= x >>> 17; x ^= x << 5; b.rng = x >>> 0; return b.rng / 4294967296; }
-function event(b, type, message, extra = {}) { b.events.push({ time: b.time, type, message, ...extra }); if (b.events.length > 100) b.events.shift(); }
+function event(b, type, message, extra = {}) { b.nextEvent = (b.nextEvent || 0) + 1; b.events.push({ eventId: b.nextEvent, time: b.time, type, message, ...extra }); if (b.events.length > 100) b.events.shift(); }
 function entryPoint(p) {
   let e = p.entry || p.entryDirection;
   if (typeof e === 'string') e = ({ north: { x: 0, z: -1 }, south: { x: 0, z: 1 }, east: { x: 1, z: 0 }, west: { x: -1, z: 0 }, northeast: { x: .7, z: -.7 }, northwest: { x: -.7, z: -.7 }, southeast: { x: .7, z: .7 }, southwest: { x: -.7, z: .7 } })[e.toLowerCase()];
@@ -175,11 +177,29 @@ function pathTo(b, u, target) {
 function allocateCaps(b) {
   const totals = [0, 0]; for (const a of b.armies) totals[a.side] += count(a.starting);
   const total = totals[0] + totals[1];
-  const cap0 = Math.min(totals[0], total ? Math.max(totals[0] ? 1 : 0, Math.round(b.maxActive * totals[0] / total)) : 0);
+  const cap0 = Math.min(totals[0], b.maxActive - (totals[1] ? 1 : 0), total ? Math.max(totals[0] ? 1 : 0, Math.round(b.maxActive * totals[0] / total)) : 0);
   b.activeCaps = [cap0, Math.min(totals[1], Math.max(totals[1] ? 1 : 0, b.maxActive - cap0))];
 }
-function initialPosition(b, u, a, index) {
-  const e = a.entry, early = !a.arrivalSeconds;
+// Upgrade old saved battles without changing a soldier's identity, health,
+// ammunition or casualties. Overflow soldiers wait for a later entry wave.
+export function normalizeBattleCheckpoint(b) {
+  if (!b || !Array.isArray(b.units) || !Array.isArray(b.armies)) return b;
+  b.maxActive = clamp(Math.floor(b.maxActive || MAX_ACTIVE_TROOPS), 4, MAX_ACTIVE_TROOPS);
+  allocateCaps(b);
+  b.nextReserveWave ??= b.time + RESERVE_WAVE_SECONDS;
+  for (const side of [0, 1]) {
+    const active = b.units.filter(u => alive(u) && u.side === side), enemies = b.units.filter(u => alive(u) && u.side !== side);
+    active.sort((a, c) => Number(c.id === b.commanderId) - Number(a.id === b.commanderId) || Math.min(Infinity, ...enemies.map(v => distance(a, v))) - Math.min(Infinity, ...enemies.map(v => distance(c, v))) || a.id.localeCompare(c.id));
+    for (const u of active.slice(b.activeCaps[side])) {
+      u.status = 'reserve'; u.wasDeployed = true; u.reserveQueuedAt = b.time;
+      u.action = null; u.path = []; u.speed = 0; u.blocking = false; u.wallId = null;
+    }
+  }
+  b.battleRulesVersion = 2;
+  return b;
+}
+function initialPosition(b, u, a, index, entering = false) {
+  const e = a.entry, early = !entering && !a.arrivalSeconds;
   const direction = Math.atan2(-e.x, -e.z), columns = 12;
   let center = early ? { x: e.x * .69, z: e.z * .69 } : e;
   if (early && a.side === 1 && b.layout.fortified) center = { x: 0, z: 33 };
@@ -188,16 +208,19 @@ function initialPosition(b, u, a, index) {
   const p = nearestBattlePosition(b, { x: center.x + Math.cos(direction) * sideways - Math.sin(direction) * row, z: center.z - Math.sin(direction) * sideways - Math.cos(direction) * row }, u);
   return { ...p, facing: direction };
 }
-function deployReserves(b) {
+function deployReserves(b, initial = false) {
   for (const a of b.armies) if (!a.arrived && b.time >= a.arrivalSeconds) {
     a.arrived = true;
+    a.entryPending = true;
     for (const u of b.units) if (u.side === a.side && alive(u)) u.morale = clamp(u.morale + 5, 0, 100);
     if (a.arrivalSeconds > 0) event(b, 'reinforcements', `${a.name || a.owner} reinforcements have arrived.`, { armyId: a.armyId, owner: a.owner, x: a.entry.x, z: a.entry.z });
   }
+  const wave = initial || b.time + 1e-6 >= b.nextReserveWave;
+  if (wave && !initial) b.nextReserveWave = b.time + RESERVE_WAVE_SECONDS;
   for (const side of [0, 1]) {
     const active = b.units.filter(u => u.side === side && alive(u));
     let remaining = b.activeCaps[side] - active.length;
-    const eligible = b.armies.filter(a => a.side === side && a.arrived && !a.retreating);
+    const eligible = b.armies.filter(a => a.side === side && a.arrived && !a.retreating && (wave || a.entryPending));
     const groups = [];
     for (const a of eligible) for (const [type, amount] of Object.entries(a.starting)) {
       const reserves = b.units.filter(u => u.armyId === a.armyId && u.type === type && u.status === 'reserve' && !u.routing);
@@ -213,7 +236,7 @@ function deployReserves(b) {
       const group = commanderGroup || missingRole || groups.find(g => g.reserves.length && !g.blocked);
       const index = group.reserves.findIndex(u => u.id === b.commanderId), u = group.reserves.splice(index >= 0 ? index : 0, 1)[0];
       const deployedCount = b.units.filter(v => v.armyId === u.armyId && alive(v)).length;
-      let p = initialPosition(b, u, group.a, deployedCount);
+      let p = initialPosition(b, u, group.a, initial ? deployedCount : 0, !initial);
       // Arrivals use the edge; an occupied edge is shifted along its boundary.
       const available = point => !obstruction(b, point.x, point.z, u) && !b.units.some(v => alive(v) && distance(v, point) < (v.side !== side ? 6 : v.family === 'siege' || u.family === 'siege' ? 2.4 : 1.6));
       const origin = { ...p };
@@ -224,15 +247,23 @@ function deployReserves(b) {
       }
       if (!available(p)) { group.reserves.unshift(u); group.blocked = true; continue; }
       Object.assign(u, { status: 'active', x: p.x, z: p.z, y: terrainHeight(b, p.x, p.z), facing: p.facing, arrived: true, deployedAt: b.time });
+      u.wasDeployed = true;
       if (!u.explicitOrder) u.order = { kind: b.phase === 'deployment' ? 'hold' : 'advance', x: p.x, z: p.z, facing: p.facing };
       group.deployed++; remaining--;
+    }
+    for (const a of eligible) {
+      const arrived = b.units.filter(u => u.armyId === a.armyId && u.deployedAt === b.time);
+      if (arrived.length) {
+        a.entryPending = false;
+        if (!initial) event(b, 'reserveWave', `${arrived.length} troops enter from ${a.name || a.owner}'s approach.`, { armyId: a.armyId, count: arrived.length, x: a.entry.x, z: a.entry.z });
+      }
     }
   }
 }
 export function createBattle(encounter, options = {}) {
   if (!encounter?.id || !Array.isArray(encounter.participants) || !encounter.participants.length) throw new Error('A recorded encounter with participating armies is required.');
   const ids = new Set();
-  const b = { version: BATTLE_VERSION, encounterId: encounter.id, battleId: encounter.id, seed: encounter.seed ?? encounter.id, rng: hash(encounter.seed ?? encounter.id), time: 0, accumulator: 0, phase: 'deployment', playerOwner: encounter.playerOwner, playerSide: encounter.playerSide ?? 0, commanderId: null, units: [], armies: [], projectiles: [], events: [], winner: null, maxActive: clamp(Math.floor(options.maxActive || 120), 4, 240), nextProjectile: 0, nextArmyPlan: 0, nextMorale: 1, nextReserves: 1, occupation: 0, auto: false };
+  const b = { version: BATTLE_VERSION, battleRulesVersion: 2, encounterId: encounter.id, battleId: encounter.id, seed: encounter.seed ?? encounter.id, rng: hash(encounter.seed ?? encounter.id), time: 0, accumulator: 0, phase: 'deployment', playerOwner: encounter.playerOwner, playerSide: encounter.playerSide ?? 0, commanderId: null, units: [], armies: [], projectiles: [], events: [], winner: null, maxActive: clamp(Math.floor(options.maxActive || MAX_ACTIVE_TROOPS), 4, MAX_ACTIVE_TROOPS), nextProjectile: 0, nextArmyPlan: 0, nextMorale: 1, nextReserves: 1, nextReserveWave: RESERVE_WAVE_SECONDS, occupation: 0, auto: false };
   b.layout = layoutFor(b, encounter.tile || {});
   for (const p of encounter.participants) {
     if (ids.has(p.armyId) || p.armyId == null || ![0, 1].includes(p.side)) throw new Error('Participants must have unique army identities and a battle side.');
@@ -256,11 +287,12 @@ export function createBattle(encounter, options = {}) {
     const u = roster.find(u => u.family !== 'siege') || roster[0];
     if (u) { b.commanderId = u.id; b.playerSide = u.side; b.commanderName = commanderArmy.general?.name || commanderArmy.general || `${commanderArmy.name || commanderArmy.owner} Captain`; u.commander = true; }
   }
-  allocateCaps(b); deployReserves(b);
+  allocateCaps(b); deployReserves(b, true);
   event(b, 'deployment', 'Place your formations, then begin the battle.');
   return b;
 }
 export function beginBattle(b) {
+  if (b.battleRulesVersion !== 2 || b.maxActive > MAX_ACTIVE_TROOPS) normalizeBattleCheckpoint(b);
   if (b.phase !== 'deployment') return b;
   b.phase = 'combat';
   for (const u of b.units) if (alive(u) && !u.explicitOrder) u.order = { kind: 'advance' };
@@ -279,38 +311,61 @@ function selected(b, selection) {
   }
   if (!selection || selection === 'all') return candidates;
   if (selection === 'spearmen') return candidates.filter(u => u.type === 'spearman');
+  if (selection === 'archers') return candidates.filter(u => ['archer', 'veteranArcher'].includes(u.type));
   if (selection === 'cavalry') return candidates.filter(u => u.family === 'mounted');
   if (['infantry', 'ranged', 'siege'].includes(selection)) return candidates.filter(u => u.family === selection);
+  if (PROFILE[selection]) return candidates.filter(u => u.type === selection);
   return candidates.filter(u => u.armyId === selection || u.id === selection);
+}
+const FORMATIONS = new Set(['balanced', 'line', 'column', 'wedge', 'square', 'skirmish', 'defensive', 'spearWall', 'flanking', 'charge']);
+function formationOffsets(units, formation) {
+  const spacing = formation === 'skirmish' ? 3.6 : formation === 'defensive' || formation === 'spearWall' ? 1.8 : units.some(u => u.family === 'mounted' || u.family === 'siege') ? 2.8 : 2.2;
+  const width = formation === 'line' || formation === 'spearWall' ? Math.min(20, units.length) : formation === 'column' ? Math.min(3, units.length) : Math.max(3, Math.ceil(Math.sqrt(units.length) * (formation === 'defensive' ? 2 : 1.4)));
+  const points = units.map((u, i) => {
+    if (formation === 'wedge') { const row = Math.floor(Math.sqrt(i)); return { x: (i - row * row - row) * spacing, z: -row * spacing }; }
+    if (formation === 'square') {
+      const edge = Math.max(1, Math.ceil(units.length / 4)), side = Math.floor(i / edge), t = i % edge, half = edge * spacing / 2;
+      return [{ x: -half + t * spacing, z: half }, { x: half, z: half - t * spacing }, { x: half - t * spacing, z: -half }, { x: -half, z: -half + t * spacing }][side];
+    }
+    return { x: (i % width) * spacing, z: -Math.floor(i / width) * spacing };
+  });
+  const center = points.reduce((p, v) => ({ x: p.x + v.x / points.length, z: p.z + v.z / points.length }), { x: 0, z: 0 });
+  return points.map(p => ({ x: p.x - center.x, z: p.z - center.z }));
 }
 const ORDER_ALIASES = { moveAndFace: 'move', holdPosition: 'hold', followMe: 'follow', attackFormation: 'attack', attackNearest: 'nearest', holdfire: 'holdFire' };
 export function issueOrder(b, selection, order, params = {}) {
   if (b.phase === 'complete') return { accepted: false, reason: 'The battle has ended.' };
   order = ORDER_ALIASES[order] || order;
-  if (!['move', 'hold', 'advance', 'charge', 'follow', 'attack', 'nearest', 'fire', 'holdFire', 'withdraw', 'retreat', 'formation', 'ladder', 'walls'].includes(order)) return { accepted: false, reason: 'Unknown battle order.' };
+  if (!['move', 'face', 'hold', 'advance', 'charge', 'follow', 'attack', 'nearest', 'fire', 'holdFire', 'withdraw', 'retreat', 'formation', 'ladder', 'walls'].includes(order)) return { accepted: false, reason: 'Unknown battle order.' };
   const units = selected(b, selection).filter(u => order !== 'walls' || ['infantry', 'ranged'].includes(u.family) && (b.phase !== 'deployment' || u.side === 1));
   if (!units.length) return { accepted: false, reason: 'No available troops match the selection.' };
+  if (params.formation && !FORMATIONS.has(params.formation)) return { accepted: false, reason: 'Unknown tactical formation.' };
+  if (order === 'face' && !Number.isFinite(params.facing)) return { accepted: false, reason: 'Choose the direction the formation should face.' };
   if (order === 'walls') return issueWallOrder(b, units, params);
   if (['move', 'withdraw'].includes(order) && (!Number.isFinite(params.x) || !Number.isFinite(params.z))) return { accepted: false, reason: 'Choose a destination on the battlefield.' };
-  const pos = nearestBattlePosition(b, { x: params.x ?? units[0].x, z: params.z ?? units[0].z }, units[0]);
+  const deployed = units.filter(alive), centerUnits = deployed.length ? deployed : units;
+  const center = centerUnits.reduce((p, u) => ({ x: p.x + u.x / centerUnits.length, z: p.z + u.z / centerUnits.length }), { x: 0, z: 0 });
+  const pos = nearestBattlePosition(b, { x: params.x ?? center.x, z: params.z ?? center.z }, units[0]);
   const f = Number.isFinite(params.facing) ? params.facing : units[0].facing;
-  units.forEach((u, index) => {
+  const formation = params.formation || units[0].formation || 'balanced';
+  const slotUnits = deployed.length ? deployed : units.slice(0, b.activeCaps[b.playerSide]);
+  const offsets = formationOffsets(slotUnits, formation), slotOrder = [...deployed, ...units.filter(u => !alive(u))];
+  units.forEach(u => {
     if (order === 'fire' || order === 'holdFire') { u.holdFire = order === 'holdFire'; return; }
     if (params.formation) u.formation = params.formation;
-    if (order === 'formation') return;
-    const spacing = u.formation === 'skirmish' ? 3.6 : u.formation === 'defensive' || u.formation === 'spearWall' ? 1.8 : 2.2;
-    const width = Math.max(3, Math.ceil(Math.sqrt(units.length) * (u.formation === 'defensive' ? 2 : 1.4)));
-    const x = ((index % width) - (Math.min(width, units.length) - 1) / 2) * spacing, z = -Math.floor(index / width) * spacing;
+    if (order === 'face') { u.facing = f; u.order = { kind: 'hold', x: u.x, z: u.z, facing: f, lockFacing: true }; u.explicitOrder = true; return; }
+    const { x, z } = offsets[slotOrder.indexOf(u) % offsets.length];
     const destination = nearestBattlePosition(b, { x: pos.x + x * Math.cos(f) + z * Math.sin(f), z: pos.z - x * Math.sin(f) + z * Math.cos(f) }, u);
-    u.order = { kind: order, x: destination.x, z: destination.z, facing: f, targetArmyId: params.targetArmyId || null, targetId: params.targetId || null, offsetX: x, offsetZ: z };
+    u.order = { kind: order === 'formation' ? 'move' : order, x: destination.x, z: destination.z, facing: f, lockFacing: Number.isFinite(params.facing), targetArmyId: params.targetArmyId || null, targetId: params.targetId || null, offsetX: x, offsetZ: z };
     u.explicitOrder = true; u.path = []; u.pathAt = -10;
     if (order === 'retreat') u.routing = true;
-    if (b.phase === 'deployment' && ['move', 'hold'].includes(order) && alive(u)) {
+    if (b.phase === 'deployment' && ['move', 'hold', 'formation'].includes(order) && alive(u)) {
       const a = b.armies.find(a => a.armyId === u.armyId), origin = initialPosition(b, u, a, 0);
       const dx = destination.x - origin.x, dz = destination.z - origin.z, d = Math.hypot(dx, dz), ratio = d > 25 ? 25 / d : 1;
       const safe = nearestBattlePosition(b, { x: origin.x + dx * ratio, z: origin.z + dz * ratio }, u);
       u.x = safe.x; u.z = safe.z; u.y = terrainHeight(b, u.x, u.z); u.facing = f;
       u.order.x = u.x; u.order.z = u.z;
+      u.order.kind = 'hold';
     }
   });
   if (order === 'retreat') for (const a of b.armies) {
@@ -457,7 +512,8 @@ function nearestEnemy(b, u, candidates, max = Infinity) {
     const d = distance(u, v);
     if (d < best && (b.layout.terrain !== 'forest' || d < 32 || u.family === 'mounted')) { enemy = v; best = d; }
   }
-  return enemy;
+  const preferred = candidates.find(v => v.id === (u.order.targetId || u.targetId) && alive(v) && v.side !== u.side && (!u.order.targetArmyId || v.armyId === u.order.targetArmyId));
+  return preferred && distance(u, preferred) < Math.min(max, best + (u.order.targetId ? 8 : 1.5)) ? preferred : enemy;
 }
 function startAttack(b, u, target, heavy = false, point = null) {
   if (u.action || u.stagger > 0 || u.attackCooldown > 0 || u.stamina < (heavy ? 24 : 8)) return false;
@@ -486,14 +542,17 @@ function startAttack(b, u, target, heavy = false, point = null) {
 function kill(b, u, attacker) {
   if (!alive(u)) return;
   u.hp = 0; u.status = 'dead'; u.action = null; u.speed = 0; u.blocking = false;
-  event(b, 'casualty', `${UNITS[u.type].name} fell.`, { unitId: u.id, armyId: u.armyId, x: u.x, z: u.z });
+  u.deathTime = b.time; u.deathFacing = u.facing;
+  const direction = attacker ? facing(attacker, u) : u.facing;
+  u.deathDirection = { x: Math.sin(direction), z: Math.cos(direction) };
+  event(b, 'casualty', `${UNITS[u.type].name} fell.`, { unitId: u.id, armyId: u.armyId, x: u.x, y: u.y, z: u.z, facing: u.deathFacing });
   if (attacker) attacker.morale = clamp(attacker.morale + 2, 0, 100);
   for (const v of b.units) if (alive(v) && v.side === u.side && distance(v, u) < 12) v.morale = Math.max(0, v.morale - (u.commander ? 18 : 2.5));
   if (u.commander) event(b, 'commander', 'Your commander is incapacitated. You can continue commanding the surviving army.', { unitId: u.id });
 }
 function hit(b, attacker, target, raw, options = {}) {
   if (!alive(target)) return;
-  let damage = raw;
+  let damage = raw, blocked = false;
   const incoming = facing(target, attacker), frontal = angle(target.facing, incoming) < 1.08;
   const charge = attacker.mounted && attacker.speed > 4.5 && attacker.chargeDistance > 8 && !options.projectile;
   if (charge && target.braced && frontal && target.weapon === 'spear') {
@@ -508,6 +567,7 @@ function hit(b, attacker, target, raw, options = {}) {
     event(b, 'charge', 'A mounted charge strikes home.', { x: target.x, z: target.z });
   }
   if (target.blocking && frontal && target.stamina >= 7 && (target.shield || !options.projectile)) {
+    blocked = true;
     const axe = attacker.weapon === 'axe' || options.heavy;
     target.stamina = Math.max(0, target.stamina - (axe ? 25 : 10));
     damage *= axe ? .48 : .14;
@@ -521,8 +581,9 @@ function hit(b, attacker, target, raw, options = {}) {
   if (attacker.counterUntil > b.time) damage *= 1.25;
   if (!frontal && !options.projectile) target.morale = Math.max(0, target.morale - 2.5);
   if (['climb', 'stairs'].includes(target.action?.kind)) damage *= 1.4;
-  target.hp -= Math.max(1, damage);
-  event(b, 'hit', 'A weapon hits.', { x: target.x, z: target.z, damage: Math.round(damage), unitId: target.id });
+  const damageApplied = Math.min(target.hp, Math.max(1, damage)), direction = facing(attacker, target);
+  target.hp -= damageApplied;
+  event(b, 'hit', 'A weapon hits.', { x: target.x, y: target.y + (target.mounted ? 1.8 : 1.05), z: target.z, damage: Math.round(damageApplied), damageApplied, unitId: target.id, targetId: target.id, sourceId: attacker.id, targetType: target.type, targetFamily: target.family, directionX: Math.sin(direction), directionZ: Math.cos(direction), blocked });
   if (target.hp <= 0) kill(b, target, attacker);
 }
 function updateFortifications(b) {
@@ -645,6 +706,12 @@ function aiUnit(b, u, active, dt) {
     if (distance(u, e) < 5 || Math.abs(u.x) > 76 || Math.abs(u.z) > 76) { u.status = 'escaped'; u.action = null; event(b, 'escape', 'Routing troops reach an escape route.', { armyId: u.armyId }); }
     return;
   }
+  // Keep the visible weapon swing committed through impact and recovery.
+  // Re-targeting/moving every frame previously made fighters turn their backs
+  // during a strike and caused the saved strike direction to miss the enemy.
+  if (u.action && ['attack', 'shoot', 'siege'].includes(u.action.kind)) {
+    u.speed = Math.max(0, u.speed - dt * 12); u.blocking = false; return;
+  }
   const enemy = nearestEnemy(b, u, active), d = enemy ? distance(u, enemy) : Infinity;
   if (u.order.kind === 'walls' && takeWallPosition(b, u, dt)) return;
   u.targetId = enemy?.id || null;
@@ -666,8 +733,8 @@ function aiUnit(b, u, active, dt) {
   if (u.order.kind === 'move' || u.order.kind === 'withdraw') {
     moveUnit(b, u, u.order, dt, { keepFacing: u.order.kind === 'withdraw' });
     if (u.order.kind === 'withdraw' && enemy) u.facing = facing(u, enemy);
-    if (distance(u, u.order) < 2) { u.order.kind = 'hold'; u.facing = u.order.facing; }
-    if (d > 2.2) return;
+    if (distance(u, u.order) < .6) { u.order.kind = 'hold'; if (u.order.lockFacing) u.facing = u.order.facing; }
+    else return;
   }
   if (u.order.kind === 'follow') {
     const commander = b.units.find(v => v.id === b.commanderId);
@@ -682,28 +749,34 @@ function aiUnit(b, u, active, dt) {
     else u.speed *= .8;
     return;
   }
+  const mayFaceEnemy = !u.order.lockFacing;
+  const canStrike = mayFaceEnemy || angle(u.facing, facing(u, enemy)) < .65;
+  if (mayFaceEnemy) u.facing = facing(u, enemy);
   const ranged = ['bow', 'crossbow'].includes(u.weapon) && u.ammo > 0 || u.family === 'siege' && u.type !== 'ram' && u.ammo > 0;
   u.sidearm = u.family === 'ranged' && (u.ammo <= 0 || d < 3) || u.family === 'siege' && u.type !== 'ram' && u.ammo <= 0;
   if (ranged && !u.sidearm) {
     if (d < 10 && !['hold', 'walls'].includes(u.order.kind)) { moveUnit(b, u, { x: u.x + (u.x - enemy.x), z: u.z + (u.z - enemy.z) }, dt, { keepFacing: true }); u.facing = facing(u, enemy); }
-    else if (d < p.reach && !u.holdFire && lineClear(b, u, enemy, u, u.family === 'ranged')) {
-      u.facing = facing(u, enemy);
+    else if (canStrike && d < p.reach && !u.holdFire && lineClear(b, u, enemy, u, u.family === 'ranged')) {
       const fired = startAttack(b, u, enemy);
-      if (!fired && !u.action && u.stamina > 10 && !u.wallId) {
+      if (!fired && !u.action && u.stamina > 10 && !u.wallId && !['hold', 'walls'].includes(u.order.kind)) {
         const direction = hash(u.id) % 2 ? 1 : -1;
         moveUnit(b, u, { x: u.x + Math.cos(u.facing) * direction * 3, z: u.z - Math.sin(u.facing) * direction * 3 }, dt, { keepFacing: true });
       } else u.speed *= .75;
     }
-    else if (!['hold', 'walls', 'follow'].includes(u.order.kind)) moveUnit(b, u, enemy, dt);
+    else if (!['hold', 'walls', 'follow'].includes(u.order.kind)) moveUnit(b, u, enemy, dt, { keepFacing: mayFaceEnemy });
     return;
   }
   const reach = u.sidearm ? 1.9 : p.reach;
-  if (d < reach + .3 && Math.abs(u.y - enemy.y) < 2.7 && lineClear(b, u, enemy, u)) {
-    u.facing = facing(u, enemy); startAttack(b, u, enemy, u.type === 'heavyInfantry' && random(b) < .2); u.speed *= .8;
+  if (canStrike && d < reach + .3 && Math.abs(u.y - enemy.y) < 2.7 && lineClear(b, u, enemy, u)) {
+    startAttack(b, u, enemy, u.type === 'heavyInfantry' && random(b) < .2); u.speed *= .8;
     return;
   }
   if (u.order.kind === 'walls') { u.speed = 0; return; }
-  if (u.order.kind === 'hold' && distance(enemy, u.order) > 8) { moveUnit(b, u, u.order, dt); u.facing = u.order.facing ?? u.facing; return; }
+  if (u.order.kind === 'hold' && (u.order.lockFacing || distance(enemy, u.order) > 8)) {
+    moveUnit(b, u, u.order, dt, { keepFacing: true });
+    if (u.order.lockFacing) u.facing = u.order.facing;
+    return;
+  }
   if (enemy.wallId && enemy.wallId !== u.wallId && u.family !== 'siege') {
     const wall = b.layout.walls.find(w => w.id === enemy.wallId), stair = b.layout.stairs?.find(s => s.wallId === enemy.wallId);
     const ladder = b.layout.ladders.find(l => wall && inside(wall, l.x, l.z, .5));
@@ -723,7 +796,15 @@ function aiUnit(b, u, active, dt) {
     const centerX = peers.reduce((sum, v) => sum + v.x, 0) / Math.max(1, peers.length);
     destination = { x: centerX * .4 + enemy.x * .6 + ((rank % width) - width / 2) * 1.6, z: enemy.z + (u.side ? 1 : -1) * Math.floor(rank / width) * 1.7 };
   }
-  moveUnit(b, u, destination, dt, { sprint: u.order.kind === 'charge' && d > 5 });
+  moveUnit(b, u, destination, dt, { sprint: u.order.kind === 'charge' && d > 5, keepFacing: u.family !== 'mounted' && mayFaceEnemy });
+}
+function trackAttackFacing(b, u) {
+  const action = u.action;
+  if (!action || action.impacted || !['attack', 'shoot', 'siege'].includes(action.kind) || u.order.lockFacing || u.routing || ['move', 'withdraw', 'retreat'].includes(u.order.kind)) return;
+  const target = b.units.find(v => v.id === action.targetId && alive(v)) || [...b.layout.walls, ...(b.layout.gate ? [b.layout.gate] : [])].find(w => w.id === action.targetId && w.hp > 0);
+  if (!target) return;
+  action.facing = u.facing = facing(u, target);
+  action.targetX = target.x; action.targetZ = target.z; action.targetY = target.y ?? terrainHeight(b, target.x, target.z);
 }
 function playerUnit(b, u, input, dt) {
   if (['stairs', 'climb'].includes(u.action?.kind)) return;
@@ -779,7 +860,8 @@ function separateUnits(b, active, dt) {
     const dx = v.x - u.x, dz = v.z - u.z, d = Math.hypot(dx, dz), radius = u.family === 'siege' || v.family === 'siege' ? 2.2 : u.family === 'mounted' || v.family === 'mounted' ? 1.7 : 1.15;
     if (d >= radius) continue;
     if (u.family === 'mounted' && u.speed > 4 && u.side === v.side) { u.speed *= .7; u.chargeDistance = 0; }
-    const n = d || 1, push = Math.min((radius - d) * .5, dt * 2), x = (dx || .1) / n * push, z = dz / n * push;
+    const push = Math.min((radius - d) * .5, dt * 2), direction = d > .0001 ? Math.atan2(dx, dz) : hash(`${u.id}:${v.id}`) / 4294967296 * TAU;
+    const x = Math.sin(direction) * push, z = Math.cos(direction) * push;
     if (!obstruction(b, u.x - x, u.z - z, u)) { u.x -= x; u.z -= z; }
     if (!obstruction(b, v.x + x, v.z + z, v)) { v.x += x; v.z += z; }
   }
@@ -815,6 +897,7 @@ function tick(b, input) {
     }
     u.stagger = Math.max(0, u.stagger - dt); u.attackCooldown = Math.max(0, u.attackCooldown - dt);
     if (!u.action && !u.blocking) u.stamina = Math.min(100, u.stamina + dt * 11);
+    if (u.id !== b.commanderId || b.auto || input.commanderAI || u.routing) trackAttackFacing(b, u);
     updateAction(b, u, dt);
     if (!alive(u)) continue;
     if (u.id === b.commanderId && !b.auto && !input.commanderAI && !u.routing) playerUnit(b, u, input, dt);
@@ -823,6 +906,7 @@ function tick(b, input) {
   separateUnits(b, active.filter(alive), dt); updateProjectiles(b, dt); checkVictory(b);
 }
 export function stepBattle(b, dt, input = {}) {
+  if (b.battleRulesVersion !== 2 || b.maxActive > MAX_ACTIVE_TROOPS) normalizeBattleCheckpoint(b);
   if (b.phase !== 'combat' || input.paused || !Number.isFinite(dt) || dt <= 0) return b;
   b.accumulator += Math.min(dt, 2);
   b.pendingInput ||= {};
@@ -837,12 +921,14 @@ export function stepBattle(b, dt, input = {}) {
 
 export function battleResult(b) {
   const armies = b.armies.map(a => {
-    const units = b.units.filter(u => u.armyId === a.armyId), survivors = countTypes(units.filter(u => u.status !== 'dead')), losses = {}, escaped = countTypes(units.filter(u => u.status === 'escaped' || u.routing && alive(u))), undeployed = countTypes(units.filter(u => u.status === 'reserve'));
+    const units = b.units.filter(u => u.armyId === a.armyId), survivors = countTypes(units.filter(u => u.status !== 'dead')), losses = {}, escaped = countTypes(units.filter(u => u.status === 'escaped' || u.routing && alive(u))), undeployed = countTypes(units.filter(u => u.status === 'reserve' && !u.wasDeployed));
     for (const [type, n] of Object.entries(a.starting)) { survivors[type] ||= 0; losses[type] = n - survivors[type]; }
     const living = units.filter(u => u.status !== 'dead');
     return { armyId: a.armyId, owner: a.owner, side: a.side, starting: { ...a.starting }, units: survivors, survivors, losses, escaped, undeployed, morale: living.length ? Math.max(.1, living.reduce((sum, u) => sum + u.morale, 0) / living.length / 100) : .1, commanderKnockedOut: units.some(u => u.commander && u.status === 'dead'), destroyedEngines: countTypes(units.filter(u => u.family === 'siege' && u.status === 'dead')), sourceTile: a.sourceTile, arrived: a.arrived, retreat: b.winner !== a.side };
   });
-  const occupying = b.units.filter(u => fighting(u) && u.side === b.winner && u.family !== 'siege' && (!b.layout.fortified || b.winner === 1 || distance(u, b.layout.objective) < 14));
+  // A completed legacy save may queue previously deployed survivors to meet
+  // the new display cap. Their recorded occupation has already taken place.
+  const occupying = b.units.filter(u => (fighting(u) || b.phase === 'complete' && u.status === 'reserve' && u.wasDeployed && !u.routing) && u.side === b.winner && u.family !== 'siege' && (!b.layout.fortified || b.winner === 1 || distance(u, b.layout.objective) < 14));
   const sections = [...b.layout.walls, ...(b.layout.gate ? [b.layout.gate] : [])];
   return { battleId: b.encounterId, encounterId: b.encounterId, complete: b.phase === 'complete', winner: b.winner, armies, walls: Math.max(0, b.fortifications.walls), fortIntegrity: Math.max(0, b.fortifications.fortIntegrity), fortifications: clone(b.fortifications), wallBreaches: sections.filter(w => w.hp <= 0).map(w => w.id), wallSections: sections.map(w => ({ id: w.id, hp: w.hp, maxHp: w.maxHp })), occupationSide: occupying.length ? b.winner : null, duration: b.time, commanderId: b.commanderId };
 }
@@ -911,6 +997,13 @@ export function validateBattleCheckpoint(b, encounter) {
   if (!b || b.version !== BATTLE_VERSION || b.encounterId !== encounter?.id || !['deployment', 'combat', 'complete'].includes(b.phase) || !Array.isArray(b.units) || !Array.isArray(b.armies)) return false;
   if (!Number.isFinite(b.time) || b.time < 0 || !Number.isFinite(b.rng) || !Number.isFinite(b.accumulator) || !b.layout || !Array.isArray(b.projectiles) || !b.fortifications || !Array.isArray(b.events)) return false;
   if (b.seed !== (encounter.seed ?? encounter.id) || b.playerOwner !== encounter.playerOwner || !Number.isInteger(b.maxActive) || b.maxActive < 4 || b.maxActive > 240 || !Array.isArray(b.activeCaps)) return false;
+  // The original allocator could grant one extra opposing slot when the
+  // larger side rounded all the way up to maxActive. Accept that legacy
+  // shape so normalization can safely reduce it to the current hard cap.
+  const legacyOverflow = b.battleRulesVersion !== 2 && b.activeCaps[0] === b.maxActive && b.activeCaps[1] === 1 ? 1 : 0;
+  if (b.activeCaps.length !== 2 || !b.activeCaps.every(n => Number.isInteger(n) && n >= 0) || b.activeCaps.reduce((n, c) => n + c, 0) > b.maxActive + legacyOverflow) return false;
+  if (b.battleRulesVersion === 2 && (b.maxActive > MAX_ACTIVE_TROOPS || [0, 1].some(side => b.units.filter(u => alive(u) && u.side === side).length > b.activeCaps[side]))) return false;
+  if (b.nextReserveWave !== undefined && (!Number.isFinite(b.nextReserveWave) || b.nextReserveWave < 0)) return false;
   const seen = new Set(), expected = new Map();
   for (const p of encounter.participants || []) {
     if (expected.has(p.armyId)) return false;
@@ -937,6 +1030,21 @@ export function validateBattleCheckpoint(b, encounter) {
   }
   for (const p of encounter.participants) for (const type of Object.keys(UNITS)) if ((p.units?.[type] || 0) !== (totals.get(`${p.armyId}:${type}`) || 0)) return false;
   if (b.commanderId && !b.units.some(u => u.id === b.commanderId && u.owner === encounter.playerOwner && u.commander)) return false;
+  if (b.commandGroups !== undefined) {
+    if (!Array.isArray(b.commandGroups) || b.commandGroups.length > 12) return false;
+    const groupIds = new Set();
+    for (const group of b.commandGroups) {
+      if (!group || typeof group.id !== 'string' || !group.id.length || group.id.length > 80 || groupIds.has(group.id) || typeof group.name !== 'string' || !group.name.trim() || group.name.length > 40 || !Array.isArray(group.unitIds) || new Set(group.unitIds).size !== group.unitIds.length || !group.unitIds.length) return false;
+      groupIds.add(group.id);
+      if (group.unitIds.some(id => !b.units.some(u => u.id === id && u.owner === b.playerOwner))) return false;
+    }
+  }
+  if (b.commandSelection !== undefined) {
+    const selection = b.commandSelection;
+    if (!selection || !['all', 'infantry', 'spearmen', 'archers', 'archer', 'crossbow', 'ranged', 'cavalry', 'siege'].includes(selection.group)) return false;
+    if (selection.armyId && !b.armies.some(a => a.armyId === selection.armyId && a.owner === b.playerOwner)) return false;
+    if (selection.customGroupId && !b.commandGroups?.some(g => g.id === selection.customGroupId)) return false;
+  }
   if (!Array.isArray(b.layout.walls) || !Array.isArray(b.layout.obstacles) || !Array.isArray(b.layout.ladders) || ![0, 1, null].includes(b.winner)) return false;
   const tile = encounter.tile || {}, fortMax = tile.building === 'fort' ? [0, 45, 100, 180][clamp(tile.levels?.fort || tile.buildings?.fort || tile.level || tile.buildingLevel || 1, 1, 3)] : 0;
   const f = b.fortifications;

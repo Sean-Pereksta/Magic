@@ -8,7 +8,7 @@ import { damageFortifications, resolveFieldBattle, siegePower, troopTotal } from
 import { refreshKnowledge, visionTiles } from './fog.mjs';
 import { changeRelation } from './living.mjs';
 import { emotionalEvent } from './emotions.mjs';
-import { finishAutomatically, validateBattleCheckpoint } from './battle-sim.mjs';
+import { finishAutomatically, normalizeBattleCheckpoint, validateBattleCheckpoint } from './battle-sim.mjs';
 
 // The campaign stores only JSON. Neither a renderer nor a running worker is
 // required to recover a pending decision or resume the strategic turn.
@@ -251,4 +251,7 @@ export function validateOfflineBattles(s) {
   if(e.status==='applied')validatedResult(e,e.result);
   if(e.checkpoint&&!validateBattleCheckpoint(e.checkpoint,e))fail('Damaged battlefield checkpoint.');
   if(e.checkpoint&&JSON.stringify(e.checkpoint).length>MAX_CHECKPOINT_LENGTH)fail('Battlefield checkpoint is too large.');
+  // Validate the original saved roster before migrating legacy deployment limits.
+  // The same normalized checkpoint is then used by both the renderer and worker.
+  if(e.checkpoint)normalizeBattleCheckpoint(e.checkpoint);
 }

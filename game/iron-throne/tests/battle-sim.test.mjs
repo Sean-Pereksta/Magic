@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { UNITS } from '../data.mjs';
-import { createBattle, beginBattle, stepBattle, issueOrder, battleResult, finishAutomatically, validateBattleCheckpoint, nearestBattlePosition, requestAlliedOrder } from '../battle-sim.mjs';
+import { createBattle, beginBattle, stepBattle, issueOrder, battleResult, finishAutomatically, validateBattleCheckpoint, nearestBattlePosition, requestAlliedOrder, normalizeBattleCheckpoint, MAX_ACTIVE_TROOPS, RESERVE_WAVE_SECONDS } from '../battle-sim.mjs';
 
 function encounter(a = { menAtArms: 5 }, d = { levy: 5 }, extras = {}) {
   return { id: 'encounter-1', seed: 42, playerOwner: 'ashen', playerSide: 0, tile: { terrain: 'plains' }, participants: [
@@ -31,14 +31,14 @@ test('every campaign troop is represented exactly once, including mounted and si
 
 test('proportional active caps preserve numerical advantage and all reserves', () => {
   const b = createBattle(encounter({ levy: 500, cavalry: 50, archer: 50 }, { levy: 60 }), { maxActive: 110 });
-  assert.deepEqual(b.activeCaps, [100, 10]);
-  assert.equal(b.units.filter(u => u.status === 'active').length, 110);
+  assert.deepEqual(b.activeCaps, [91, 9]);
+  assert.equal(b.units.filter(u => u.status === 'active').length, 100);
   assert.equal(b.units.length, 660);
   assert.ok(b.units.some(u => u.type === 'cavalry' && u.status === 'active'));
   assert.ok(b.units.some(u => u.type === 'archer' && u.status === 'active'));
   const a = battleResult(b).armies[0];
   assert.equal(Object.values(a.units).reduce((s, n) => s + n), 600);
-  assert.equal(Object.values(a.undeployed).reduce((s, n) => s + n), 500);
+  assert.equal(Object.values(a.undeployed).reduce((s, n) => s + n), 509);
 });
 
 test('rare recruited siege roles deploy without creating replacement troops', () => {
@@ -47,6 +47,163 @@ test('rare recruited siege roles deploy without creating replacement troops', ()
   assert.ok(b.units.some(u => u.type === 'trebuchet' && u.status === 'active'));
   assert.equal(b.units.filter(u => u.type === 'ram').length, 2);
   assert.equal(b.units.filter(u => u.type === 'trebuchet').length, 1);
+});
+
+test('the 100 soldier ceiling includes the commander and both very unequal sides', () => {
+  const b = createBattle(encounter({ levy: 1000 }, { levy: 1 }), { maxActive: 240 });
+  assert.equal(b.maxActive, MAX_ACTIVE_TROOPS);
+  assert.deepEqual(b.activeCaps, [99, 1]);
+  assert.equal(b.units.filter(u => u.status === 'active').length, 100);
+  assert.equal(b.units.find(u => u.id === b.commanderId).status, 'active');
+  assert.equal(b.units.length, 1001);
+});
+
+test('casualty replacements wait for reserve waves and enter from the edge', () => {
+  const b = createBattle(encounter({ menAtArms: 80 }, { menAtArms: 80 })); beginBattle(b);
+  const fallen = b.units.filter(u => u.side === 0 && u.status === 'active' && !u.commander).slice(0, 5);
+  fallen.forEach(u => { u.status = 'dead'; u.hp = 0; });
+  // Keep the front lines apart while measuring the replacement boundary.
+  for (const u of b.units.filter(u => u.status === 'active')) { u.explicitOrder = true; u.order = { kind: 'hold', x: u.x, z: u.z }; }
+  const reserveIds = new Set(b.units.filter(u => u.status === 'reserve').map(u => u.id));
+  run(b, RESERVE_WAVE_SECONDS - .5, { commanderAI: true });
+  assert.equal(b.units.filter(u => u.status === 'active').length, 95);
+  run(b, 1, { commanderAI: true });
+  const entered = b.units.filter(u => u.status === 'active' && reserveIds.has(u.id));
+  assert.equal(entered.length, 5);
+  assert.ok(entered.every(u => u.z < -70 && u.deployedAt >= RESERVE_WAVE_SECONDS));
+  assert.equal(b.units.filter(u => u.status === 'active').length, 100);
+  assert.equal(battleResult(b).armies[0].losses.menAtArms, 5);
+  assert.ok(b.events.some(e => e.type === 'reserveWave' && e.count === 5));
+});
+
+test('legacy overflow is safely queued without healing, rearming or replacing soldiers', () => {
+  const e = encounter({ archer: 90 }, { archer: 90 }), b = createBattle(e);
+  delete b.battleRulesVersion; delete b.nextReserveWave;
+  b.maxActive = 120; b.activeCaps = [60, 60]; b.time = 12;
+  for (const side of [0, 1]) {
+    for (const u of b.units.filter(u => u.side === side && u.status === 'reserve').slice(0, 10)) { u.status = 'active'; u.arrived = true; }
+  }
+  b.units.forEach((u, n) => { u.hp -= n % 7; u.ammo -= n % 9; u.morale -= n % 11; });
+  const original = b.units.map(u => ({ id: u.id, hp: u.hp, ammo: u.ammo, morale: u.morale, order: structuredClone(u.order) }));
+  assert.equal(validateBattleCheckpoint(b, e), true);
+  normalizeBattleCheckpoint(b);
+  assert.equal(b.units.filter(u => u.status === 'active').length, 100);
+  assert.equal(b.units.find(u => u.id === b.commanderId).status, 'active');
+  assert.equal(b.nextReserveWave, 20);
+  assert.deepEqual(b.units.map(u => ({ id: u.id, hp: u.hp, ammo: u.ammo, morale: u.morale, order: u.order })), original);
+  assert.equal(b.units.filter(u => u.reserveQueuedAt === 12).length, 20);
+  assert.equal(validateBattleCheckpoint(b, e), true);
+  const once = structuredClone(b); normalizeBattleCheckpoint(b); assert.deepEqual(b, once);
+});
+
+test('legacy skewed side caps accept the old extra slot before normalizing to 100', () => {
+  const e = encounter({ levy: 1000 }, { levy: 1 }), b = createBattle(e);
+  delete b.battleRulesVersion;
+  b.maxActive = 120; b.activeCaps = [120, 1];
+  b.units.filter(u => u.side === 0 && u.status === 'reserve').slice(0, 21).forEach(u => { u.status = 'active'; u.arrived = true; });
+  assert.equal(b.units.filter(u => u.status === 'active').length, 121);
+  assert.equal(validateBattleCheckpoint(b, e), true);
+  normalizeBattleCheckpoint(b);
+  assert.equal(b.units.filter(u => u.status === 'active').length, 100);
+  assert.deepEqual(b.activeCaps, [99, 1]);
+  assert.equal(validateBattleCheckpoint(b, e), true);
+  assert.equal(battleResult(b).armies[0].units.levy, 1000);
+});
+
+test('normalizing a completed legacy checkpoint preserves occupation and participation', () => {
+  const e = encounter({ menAtArms: 2 }, { levy: 1000 }, { tile: { building: 'fort', walls: 60, fortIntegrity: 45 } });
+  const b = createBattle(e);
+  delete b.battleRulesVersion; b.maxActive = 240; b.activeCaps = [2, 238];
+  const commander = b.units.find(u => u.commander), occupier = b.units.find(u => u.owner === 'ashen' && !u.commander);
+  Object.assign(occupier, { status: 'active', x: b.layout.objective.x, z: b.layout.objective.z, wasDeployed: true });
+  Object.assign(commander, { x: 0, z: -40 });
+  b.phase = 'complete'; b.winner = 0;
+  const before = battleResult(b);
+  assert.equal(before.occupationSide, 0);
+  normalizeBattleCheckpoint(b);
+  assert.equal(occupier.status, 'reserve');
+  const after = battleResult(b);
+  assert.equal(after.occupationSide, before.occupationSide);
+  assert.deepEqual(after.armies, before.armies);
+  assert.equal(validateBattleCheckpoint(b, e), true);
+});
+
+test('AI face their opponent through windup, land hits, and leave a persistent corpse', () => {
+  const { b, a, d } = duel('heavyInfantry', 'levy');
+  a.facing = Math.PI; d.facing = 0; a.order = { kind: 'advance' }; d.order = { kind: 'hold', x: d.x, z: d.z };
+  d.shield = false; a.shield = false;
+  run(b, .1, { commanderAI: true });
+  const angular = (x, y) => Math.abs(Math.atan2(Math.sin(x - y), Math.cos(x - y)));
+  assert.ok(angular(a.facing, Math.atan2(d.x - a.x, d.z - a.z)) < .05);
+  // Move the opponent across the windup arc; a stale initial strike angle misses.
+  d.x = 1.6; d.z = .6;
+  run(b, .9, { commanderAI: true });
+  assert.ok(d.hp < d.maxHp);
+  const hit = b.events.find(e => e.type === 'hit' && e.unitId === d.id);
+  assert.ok(hit.damageApplied > 0 && Number.isFinite(hit.y));
+  assert.equal(hit.sourceId, a.id); assert.equal(hit.targetType, 'levy'); assert.equal(hit.targetFamily, 'infantry');
+  assert.ok(Math.abs(Math.hypot(hit.directionX, hit.directionZ) - 1) < 1e-9);
+  run(b, 8, { commanderAI: true });
+  assert.equal(d.status, 'dead'); assert.equal(d.hp, 0);
+  assert.ok(Number.isFinite(d.deathTime) && Number.isFinite(d.deathFacing));
+  assert.deepEqual(structuredClone(b).units.find(u => u.id === d.id).deathDirection, d.deathDirection);
+});
+
+test('an explicit facing or movement order overrides automatic enemy facing', () => {
+  const { b, a, d } = duel(); d.explicitOrder = true; d.order = { kind: 'move', x: 15, z: 1.9 };
+  issueOrder(b, [a.id], 'face', { facing: Math.PI });
+  run(b, .1, { commanderAI: true });
+  assert.equal(a.facing, Math.PI); assert.equal(a.action, null);
+  issueOrder(b, [a.id], 'move', { x: -10, z: 0, facing: -Math.PI / 2 });
+  run(b, .3, { commanderAI: true });
+  assert.ok(a.x < 0); assert.ok(Math.abs(a.facing + Math.PI / 2) < .1);
+  assert.equal(a.action, null);
+});
+
+test('direct player facing is not replaced by AI target tracking during a swing', () => {
+  const { b, a, d } = duel();
+  stepBattle(b, .05, { attack: true, facing: 0 });
+  d.x = 1.5; d.z = .5;
+  run(b, .1, { facing: -1 });
+  assert.equal(a.facing, -1); assert.equal(a.action.facing, 0);
+});
+
+test('coincident soldiers separate cleanly and fight without silent overlaps', () => {
+  const { b, a, d } = duel();
+  Object.assign(d, { x: a.x, z: a.z, shield: false }); a.shield = false;
+  run(b, 1, { commanderAI: true });
+  assert.ok(Math.hypot(a.x - d.x, a.z - d.z) >= 1.1);
+  assert.ok(a.hp < a.maxHp || d.hp < d.maxHp);
+});
+
+test('archers, crossbows and cavalry take separate orders; formations create distinct slots', () => {
+  const e = encounter({ menAtArms: 6, archer: 8, veteranArcher: 2, crossbow: 3, cavalry: 8 }, { levy: 3 }), b = createBattle(e);
+  const originals = new Map(b.units.map(u => [u.id, structuredClone(u.order)]));
+  issueOrder(b, 'archers', 'formation', { formation: 'line' });
+  const archers = b.units.filter(u => ['archer', 'veteranArcher'].includes(u.type));
+  assert.ok(archers.every(u => u.formation === 'line'));
+  assert.equal(new Set(archers.map(u => `${u.order.x.toFixed(2)},${u.order.z.toFixed(2)}`)).size, archers.length);
+  for (const u of b.units.filter(u => !archers.includes(u))) assert.deepEqual(u.order, originals.get(u.id));
+  issueOrder(b, 'crossbow', 'holdFire');
+  assert.ok(b.units.filter(u => u.type === 'crossbow').every(u => u.holdFire));
+  assert.ok(archers.every(u => !u.holdFire));
+  issueOrder(b, 'cavalry', 'formation', { formation: 'wedge' });
+  assert.ok(b.units.filter(u => u.family === 'mounted').every(u => u.formation === 'wedge'));
+  assert.ok(archers.every(u => u.formation === 'line'));
+  assert.equal(issueOrder(b, 'cavalry', 'formation', { formation: 'made-up' }).accepted, false);
+});
+
+test('custom command groups survive saves and cannot include hostile or forged troops', () => {
+  const e = encounter({ archer: 3, cavalry: 3 }), b = createBattle(e);
+  b.commandGroups = [{ id: 'command-group-1', name: 'Right wing', unitIds: b.units.filter(u => u.owner === 'ashen').slice(1, 4).map(u => u.id) }];
+  b.commandSelection = { armyId: '', group: 'all', customGroupId: 'command-group-1' };
+  assert.equal(validateBattleCheckpoint(structuredClone(b), e), true);
+  issueOrder(b, b.commandGroups[0].unitIds, 'formation', { formation: 'column' });
+  assert.equal(b.units.filter(u => u.formation === 'column').length, 3);
+  for (const badId of ['unknown', b.units.find(u => u.side === 1).id, b.commandGroups[0].unitIds[0]]) {
+    const copy = structuredClone(b); copy.commandGroups[0].unitIds.push(badId);
+    assert.equal(validateBattleCheckpoint(copy, e), false);
+  }
 });
 
 test('seed and fixed timesteps make replay independent of render frequency', () => {

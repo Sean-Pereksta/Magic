@@ -6,7 +6,9 @@ The encounter shows the location, defenses, armies and commanders, visible oppos
 
 ## Playing
 
-Enter Battle opens deployment. Select troop families or a particular player army, choose a formation, and drag on the ground to place the group and set its facing. Deployment stays within the starting area. Begin Battle switches to third-person commander control.
+Enter Battle opens deployment. Select troop families or a particular player army, choose a formation, and drag on the ground to place the group and set its facing. Archers, crossbows and cavalry have separate selection cards with deployed and reserve counts. Choosing a formation immediately rearranges the selected troops. Deployment stays within the starting area. Begin Battle switches to third-person commander control.
+
+Save a selection under **Custom command groups** to name and recall its exact soldiers, including reserves. Up to twelve groups persist with the battlefield checkpoint; recalling a group selects its surviving members. Orders affect only the selected group. Line, column, wedge and square layouts complement the existing tactical formations.
 
 | Control | Action |
 | --- | --- |
@@ -27,17 +29,21 @@ Tactical view pauses combat by default; slow motion and real time are optional. 
 
 Orders cover move/facing, hold, defend walls, advance, charge, follow, attack a selected enemy army, attack nearest, fire/hold fire, withdrawal and retreat. Defend walls places infantry and ranged troops on intact parapets during deployment; during combat they walk to the inside stairs and climb. Leaving a wall uses the same stairs. Elevated archers can shoot down over the parapet while ground troops need a route up to engage them. Formation spacing and behavior implement balanced, defensive line, spear wall, aggressive charge, skirmish and flanking. Allies accept or decline broad requests and retain their own command.
 
+Engaged troops face their opponents and commit to a visible strike through contact and recovery. Explicit facing, movement and retreat orders take precedence. Weapon poses follow the simulation's strike timing. Confirmed damaging hits produce red blood particles near the camera; blocked attacks and impacts on defenses do not. Fallen troops remain on the field, with a separate bounded rendering budget for corpse detail.
+
 ## Campaign and recovery contract
 
 `offline-encounters.mjs` is the campaign boundary. It snapshots exact rosters, commander identities, defenses, approach directions, seed and support decisions. `offlineTurn` records the movement phase after AI planning and fleet movement. Returning from a battle resumes the established army order using existing resolved-turn markers; economy, construction and diplomatic timers do not advance inside a battlefield.
 
 Support uses a bounded breadth-first walk through legal land neighbors and access rules, up to two steps. Military relationships and existing wars must entitle an army to participate. Trade or non-aggression alone does not qualify. Committed armies cannot spend movement again; their incompatible orders are cleared. Surviving support normally stays on its source tile. Arrival timing is 0/25/50 seconds for zero/one/two steps, from the corresponding edge.
 
-`battle-sim.mjs` is deterministic and independent of the DOM. Every soldier retains its army/type identity. A rider and horse count once; engine crews are visual parts of the engine. The active deployment budget is distributed proportionally across sides and compositions, with remaining troops preserved in reserves. Victory checks remaining commitments, escaped units and reserves. Defenses begin at their saved integrity; gates and breached sections change navigation and persist back to the campaign.
+`battle-sim.mjs` is deterministic and independent of the DOM. Every soldier retains its army/type identity. A rider and horse count once; engine crews are visual parts of the engine. At most **100 troops total** are active, including the commander. The deployment budget is distributed proportionally across sides and compositions, with remaining troops preserved in reserves. Reserves enter from legal approach edges in eight-second waves as space opens. Newly arriving support can enter at its scheduled arrival if space is available. Fallen troops do not use active slots. Victory checks remaining commitments, escaped units and reserves. Defenses begin at their saved integrity; gates and breached sections change navigation and persist back to the campaign.
 
 The result validates every army before application. For each army and type, starting = surviving + lost. Escaped and undeployed survivors are disjoint subsets of survivors. Capture requires an active surviving occupying force and no hostile army still contesting the tile. The existing capture and political-history rules are reused. Manual damage replaces incidental assault damage; casualties are not fed through the original resolver again.
 
 The UI saves a single campaign snapshot containing the applied marker and all results before showing the report. Reopening that report cannot apply it twice. Checkpoints contain simulation RNG, attack phases, missiles, ammunition, morale, reserve arrival state and fortification damage. Save and Exit, refresh, graphics failure, and Finish Automatically preserve that progress. Automatic completion runs in a separate worker so the interface remains responsive; failure retains the last saved checkpoint. Save failures pause play and explain that progress could not be persisted.
+
+Older checkpoints with larger active deployments move overflow troops into reserves while preserving identity, health, ammunition, morale and casualties. The commander remains deployed when already active, and returning reserves keep their prior orders.
 
 ## Artwork and delivery
 

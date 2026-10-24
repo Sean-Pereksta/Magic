@@ -12,7 +12,7 @@ import { configureOfflineBattles } from '../offline-encounters.mjs';
 const require=createRequire(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES?`${process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES}/playwright/package.json`:import.meta.url);
 const {chromium}=require('playwright');
 const root=fileURLToPath(new URL('../../../',import.meta.url));
-const server=http.createServer(async(req,res)=>{try{let name=decodeURIComponent(new URL(req.url,'http://localhost').pathname);if(name.endsWith('/'))name+='index.html';const file=path.resolve(root,`.${name}`);if(!file.startsWith(root))throw Error();res.writeHead(200,{'Content-Type':{'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.json':'application/json','.css':'text/css','.svg':'image/svg+xml'}[path.extname(file)]||'application/octet-stream'});res.end(await readFile(file));}catch{res.writeHead(404);res.end();}});
+const server=http.createServer(async(req,res)=>{try{let name=decodeURIComponent(new URL(req.url,'http://localhost').pathname);if(name.endsWith('/'))name+='index.html';const file=path.resolve(root,`.${name}`);if(!file.startsWith(root))throw Error();const body=await readFile(file);res.writeHead(200,{'Content-Type':{'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.json':'application/json','.css':'text/css','.svg':'image/svg+xml'}[path.extname(file)]||'application/octet-stream'});res.end(body);}catch{res.writeHead(404);res.end();}});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${server.address().port}`,key='catnmice.iron-throne.v1';
 function fixture(){
@@ -34,6 +34,7 @@ try{
     const initial=fixture();await context.addInitScript(({initial,key})=>{if(!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify(initial));},{initial,key});
     const page=await context.newPage(),errors=[];page.setDefaultTimeout(30000);page.setDefaultNavigationTimeout(60000);
     page.on('pageerror',error=>errors.push(error.message));
+    if(process.env.IRON_BATTLE_DEBUG){page.on('response',r=>{if(r.status()>=400&&r.url().startsWith(base))console.error(r.status(),r.url());});page.on('pageerror',error=>console.error(error.message));}
     await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
     await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
     await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
@@ -50,9 +51,35 @@ try{
     await page.locator('#battle-deployment').waitFor({state:'visible'});
     await page.waitForFunction(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).offlineBattle?.checkpoint?.phase==='deployment');
     assert.equal(await page.evaluate(()=>document.querySelector('#battle-canvas').width>0),true);
-    await page.locator('[data-battle-group=ranged]').click();
+    const beforeOrders=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
+    await page.locator('#battle-army').selectOption(initial.armies[0].id);
+    await page.locator('[data-battle-group=archers]').click();
+    assert.equal(await page.locator('[data-battle-group=archers]').getAttribute('aria-pressed'),'true');
+    assert.equal(await page.locator('[data-battle-group-count=archers]').textContent(),'6');
+    assert.ok((await page.locator('[data-battle-group=archers]').boundingBox()).height>=44,'troop cards remain touch-sized');
     await page.locator('#battle-formation').selectOption('skirmish');
-    await page.locator('[data-battle-order=hold]').click();
+    assert.match(await page.locator('#battle-order-status').textContent(),/Skirmish applied/);
+    let commands=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
+    const mounted=b=>b.units.filter(u=>u.armyId===initial.armies[0].id&&u.family==='mounted');
+    assert.deepEqual(mounted(commands),mounted(beforeOrders),'reforming archers leaves cavalry orders and positions untouched');
+    assert.ok(commands.units.filter(u=>u.armyId===initial.armies[0].id&&u.type==='archer').every(u=>u.formation==='skirmish'),'formation selection takes effect without another order');
+    await page.locator('.battle-saved-groups summary').click();
+    await page.locator('#battle-group-name').fill('Left flank archers');
+    await page.locator('[data-battle-action=save-group]').click();
+    commands=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
+    const custom=commands.commandGroups[0];assert.equal(custom.name,'Left flank archers');assert.equal(custom.unitIds.length,6);
+    assert.ok(custom.unitIds.every(id=>commands.units.some(u=>u.id===id&&u.armyId===initial.armies[0].id&&u.type==='archer')),'saved groups preserve exact source army and troop membership');
+    await page.locator('[data-battle-group=cavalry]').click();
+    await page.locator('#battle-formation').selectOption('wedge');
+    commands=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
+    assert.ok(mounted(commands).every(u=>u.formation==='wedge'));
+    await page.locator('#battle-saved-group').selectOption(custom.id);
+    assert.match(await page.locator('#battle-selection-status').textContent(),/Left flank archers/);
+    await page.locator('[data-battle-order=holdFire]').click();
+    const grouped=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
+    assert.ok(grouped.units.filter(u=>custom.unitIds.includes(u.id)).every(u=>u.holdFire));
+    assert.deepEqual(mounted(grouped),mounted(commands),'a saved archer group cannot change cavalry orders');
+    await page.locator('.battle-saved-groups summary').click();
     if(process.env.IRON_BATTLE_SCREENSHOTS){await mkdir(process.env.IRON_BATTLE_SCREENSHOTS,{recursive:true});await page.screenshot({path:path.join(process.env.IRON_BATTLE_SCREENSHOTS,`iron-thrones-deployment-${viewport.width}.png`)});}
     if(viewport.width<700)await page.locator('[data-battle-action=commands]').first().click();
     await page.locator('[data-battle-action=begin]').click();
@@ -67,9 +94,12 @@ try{
     await page.locator('[data-battle-action=enter]').click();
     await page.locator('#battle-canvas').waitFor({state:'visible'});
     await page.waitForTimeout(250);
+    assert.equal(await page.locator('#battle-saved-group').inputValue(),custom.id,'custom group selection restores after reloading');
+    assert.match(await page.locator('#battle-selection-status').textContent(),/Left flank archers/);
     await page.locator('[data-battle-action=pause]').click();
     const resumed=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
     assert.ok(resumed.time>=checkpoint.time);
+    assert.deepEqual(resumed.commandGroups,checkpoint.commandGroups,'save recovery preserves custom group roster membership');
     await page.locator('[data-battle-action=finish]').click({timeout:60000});
     await page.locator('[data-battle-action=return]').waitFor({state:'visible',timeout:120000});
     const applied=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)),key);
