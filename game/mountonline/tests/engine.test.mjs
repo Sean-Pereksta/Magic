@@ -434,7 +434,7 @@ test("every troop has an eight-frame atlas and total essential artwork stays bel
   const root = new URL("../../../graphics/mountonline/", import.meta.url),
     manifest = JSON.parse(readFileSync(new URL("manifest.json", root)));
   for (const u of Object.values(UNITS)) {
-    assert.ok(u.sheet < 2 && u.row < 7);
+    assert.ok(manifest.atlases[u.sheet] && u.row < manifest.atlases[u.sheet].rows);
     assert.equal(manifest.atlases[u.sheet].columns, 8);
   }
   for (const a of manifest.atlases) {

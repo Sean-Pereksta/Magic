@@ -84,7 +84,7 @@ async function main() {
       );
       await page.click("#closeContext");
       await page.locator('.hud-nav [data-panel="army"]').click();
-      assert.equal(await page.locator(".unit-card").count(), 14);
+      assert.equal(await page.locator(".unit-card").count(), 34);
       await page.click('[data-action="train"][data-unit="footmen"]');
       await page.waitForFunction(
         () => __MBO_TEST__.state.profile.army.footmen === 7,
@@ -181,6 +181,9 @@ async function main() {
       );
       await page.click("#multiSelect");
       const box = await page.evaluate(() => {
+        const map = document.getElementById("map"),
+          hudBottom = document.querySelector(".hud").getBoundingClientRect().bottom,
+          dockTop = document.getElementById("battleDock").getBoundingClientRect().top;
         const points = __MBO_TEST__.battle.units
           .filter((u) => u.team === 0)
           .map((u) => __MBO_TEST__.renderer.toScreen(u.x, u.y))
@@ -188,60 +191,87 @@ async function main() {
             (p) =>
               p.x > 20 &&
               p.x < innerWidth - 20 &&
-              p.y > 160 &&
-              p.y <
-                document.getElementById("battleDock").getBoundingClientRect()
-                  .top -
-                  20 &&
-              document.elementFromPoint(p.x, p.y) ===
-                document.getElementById("map"),
+              p.y > hudBottom + 12 &&
+              p.y < dockTop - 12 &&
+              document.elementFromPoint(p.x, p.y) === map,
           )
-          .slice(0, 8);
-        return {
-          x1: Math.min(...points.map((p) => p.x)) - 8,
-          y1: Math.min(...points.map((p) => p.y)) - 8,
-          x2: Math.max(...points.map((p) => p.x)) + 8,
-          y2: Math.max(...points.map((p) => p.y)) + 8,
-        };
+          .sort((a, b) => a.y - b.y || a.x - b.x);
+        // The landscape dock leaves a shallow battlefield strip. Derive its
+        // usable bounds from layout rather than imposing the portrait y=160.
+        // Confirm the whole gesture surface, including padding, remains free.
+        for (let first = 0; first <= points.length - 5; first++) {
+          const group = points.slice(first, first + 8),
+            result = {
+              count: group.length,
+              x1: Math.min(...group.map((p) => p.x)) - 6,
+              y1: Math.min(...group.map((p) => p.y)) - 6,
+              x2: Math.max(...group.map((p) => p.x)) + 6,
+              y2: Math.max(...group.map((p) => p.y)) + 6,
+            };
+          let free = true;
+          for (let row = 0; row <= 2; row++) for (let col = 0; col <= 2; col++)
+            free &&= document.elementFromPoint(result.x1 + (result.x2-result.x1)*col/2, result.y1 + (result.y2-result.y1)*row/2) === map;
+          if (free) return result;
+        }
+        return { count: points.length, x1: 0, y1: 0, x2: 0, y2: 0, noFreeBox: true };
       });
+      assert.ok(box.count >= 5 && !box.noFreeBox, device.name + " exposes at least five troops on a free selection surface");
       if (device.touch) {
         const cdp = await context.newCDPSession(page);
+        // CDP acknowledges injection before pointer events necessarily reach the
+        // page. Measure the long press from the received down event, then wait
+        // for the actual marquee before lifting the finger.
+        await page.evaluate(() => {
+          window.__MBO_TEST_TOUCH_DOWN__ = false;
+          document.getElementById("map").addEventListener("pointerdown", () => {
+            window.__MBO_TEST_TOUCH_DOWN__ = true;
+          }, { once: true });
+        });
         await cdp.send("Input.dispatchTouchEvent", {
           type: "touchStart",
           touchPoints: [{ x: box.x1, y: box.y1, id: 1 }],
         });
+        await page.waitForFunction(() => window.__MBO_TEST_TOUCH_DOWN__);
         await page.waitForTimeout(360);
         await cdp.send("Input.dispatchTouchEvent", {
           type: "touchMove",
           touchPoints: [{ x: box.x2, y: box.y2, id: 1 }],
         });
+        await page.waitForFunction(() => !!__MBO_TEST__.renderer.marquee);
         await cdp.send("Input.dispatchTouchEvent", {
           type: "touchEnd",
           touchPoints: [],
         });
+        await page.waitForFunction(() => __MBO_TEST__.renderer.selected.size >= 5);
+        const selectionBeforePinch = await page.evaluate(() => __MBO_TEST__.renderer.selected.size);
         const before = await page.evaluate(
           () => __MBO_TEST__.renderer.cam.zoom,
         );
+        const pinchY = await page.evaluate(() => Math.min(250, document.getElementById("battleDock").getBoundingClientRect().top - 24));
         for (const [from, to] of [
           [60, 100],
           [100, 60],
         ]) {
+          const zoomBeforeGesture = await page.evaluate(() => __MBO_TEST__.renderer.cam.zoom);
           await cdp.send("Input.dispatchTouchEvent", {
             type: "touchStart",
             touchPoints: [
-              { x: 200 - from / 2, y: 250, id: 1 },
-              { x: 200 + from / 2, y: 250, id: 2 },
+              { x: 200 - from / 2, y: pinchY, id: 1 },
+              { x: 200 + from / 2, y: pinchY, id: 2 },
             ],
           });
           await cdp.send("Input.dispatchTouchEvent", {
             type: "touchMove",
             touchPoints: [
-              { x: 200 - to / 2, y: 250, id: 1 },
-              { x: 200 + to / 2, y: 250, id: 2 },
+              { x: 200 - to / 2, y: pinchY, id: 1 },
+              { x: 200 + to / 2, y: pinchY, id: 2 },
             ],
           });
-          if (to === 100)
-            assert.ok(
+          await page.waitForFunction(({ z, increase }) => increase
+            ? __MBO_TEST__.renderer.cam.zoom > z
+            : __MBO_TEST__.renderer.cam.zoom < z,
+            { z: zoomBeforeGesture, increase: to > from });
+          if (to === 100) assert.ok(
               await page.evaluate(
                 (z) => __MBO_TEST__.renderer.cam.zoom > z,
                 before,
@@ -252,6 +282,7 @@ async function main() {
             touchPoints: [],
           });
         }
+        assert.equal(await page.evaluate(() => __MBO_TEST__.renderer.selected.size), selectionBeforePinch, device.name + " pinch preserves the selected group");
         await cdp.detach();
       } else {
         await page.mouse.move(box.x1, box.y1);
@@ -259,8 +290,13 @@ async function main() {
         await page.mouse.move(box.x2, box.y2, { steps: 10 });
         await page.mouse.up();
       }
+      const selectedAfterGesture = await page.evaluate(() => __MBO_TEST__.renderer.selected.size);
+      if (selectedAfterGesture < 5) {
+        await page.screenshot({ path: path.join(out, device.name + "-selection-failure.png") });
+        console.error(JSON.stringify({ device: device.name, box, selectedAfterGesture, surface: await page.evaluate((r) => ({ start: document.elementFromPoint(r.x1,r.y1)?.outerHTML?.slice(0,120), end: document.elementFromPoint(r.x2,r.y2)?.outerHTML?.slice(0,120), dock: document.querySelector('#battleDock').getBoundingClientRect().toJSON() }),box) }));
+      }
       assert.ok(
-        await page.evaluate(() => __MBO_TEST__.renderer.selected.size >= 5),
+        selectedAfterGesture >= 5, device.name + " selection box retains at least five troops after camera gestures",
       );
       if (!device.touch) {
         const selected = await page.evaluate(

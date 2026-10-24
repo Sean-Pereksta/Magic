@@ -5,9 +5,9 @@ const fs = require("node:fs"),
   sharp = require("sharp");
 async function main() {
   const sources = process.argv.slice(2);
-  if (sources.length !== 3)
+  if (![3, 4].includes(sources.length))
     throw new Error(
-      "Usage: node scripts/build-mountonline-assets.cjs infantry.png elite.png world.png",
+      "Usage: node scripts/build-mountonline-assets.cjs infantry.png elite.png world.png [signatures-8x20.png]",
     );
   const root = path.resolve(__dirname, "../graphics/mountonline"),
     files = [
@@ -16,7 +16,7 @@ async function main() {
       ["world/atlas.webp", 1024, 1024, 4, 4],
     ],
     manifest = {
-      version: 2,
+      version: 3,
       frameInset: 2,
       animation: {
         idle: [0],
@@ -44,6 +44,10 @@ async function main() {
       bytes: fs.statSync(path.join(root, file)).size,
     });
   }
+  const signature = sources[3], signatureFile = path.join(root, "units/signatures-v3.webp");
+  if (signature) await sharp(signature).resize(768,1920,{fit:"fill"}).webp({quality:82,alphaQuality:90,effort:6}).toFile(signatureFile);
+  // Rebuilding original artwork must preserve the already deployed signature atlas.
+  if (fs.existsSync(signatureFile)) manifest.atlases.push({file:"units/signatures-v3.webp",width:768,height:1920,columns:8,rows:20,frameWidth:96,frameHeight:96,bytes:fs.statSync(signatureFile).size});
   const hero = path.resolve(
     __dirname,
     "../lobby/assets/game-tiles/mountonline.webp",

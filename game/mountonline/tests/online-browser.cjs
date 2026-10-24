@@ -92,7 +92,7 @@ async function main() {
         return route.fulfill({
           contentType: "text/javascript",
           body: fs.readFileSync(
-            path.resolve(__dirname, "../../../node_modules/firebase", name),
+            path.join(path.dirname(require.resolve("firebase/package.json")), name),
           ),
         });
       });
@@ -188,6 +188,14 @@ export async function connectFirebase() {
     console.log("Firestore purchase replay checked");
     assert.equal(purchased.count, 1);
     assert.ok(purchased.after < purchased.before);
+    const diplomacy = await a.evaluate(async () => {
+      const n=__MBO_TEST__.network, input={type:'diplomacy',faction:'suncoast',action:'trade',gold:200,requestId:'same-trade-001'};
+      const before=(await n.sdk.getDoc(n.ref('mountOnlineProfiles/'+n.uid))).data();
+      await Promise.all([n.action(input),n.action(input)]); await n.action(input);
+      const after=(await n.sdk.getDoc(n.ref('mountOnlineProfiles/'+n.uid))).data();
+      return {spent:before.gold-after.gold,treaties:after.diplomacy.treaties.filter(t=>t.faction==='suncoast'&&t.type==='trade').length};
+    });
+    assert.deepEqual(diplomacy,{spent:200,treaties:1});
     const denials = await b.evaluate(async () => {
       const n = __MBO_TEST__.network;
       async function denied(fn) {
@@ -272,6 +280,7 @@ export async function connectFirebase() {
     });
     assert.equal(await b.evaluate(() => __MBO_TEST__.battle.id), battleId);
     console.log("Abrupt host handover restored the battle");
+    await b.waitForFunction(() => __MBO_TEST__.state.kingdoms?.factions?.length === 10);
     a = await join(ac);
     await a.waitForFunction(() => !!__MBO_TEST__.battle);
     assert.equal(await a.evaluate(() => __MBO_TEST__.battle.id), battleId);
@@ -295,6 +304,7 @@ export async function connectFirebase() {
       );
     });
     assert.equal(profiles[0].stats.battles, 1);
+    assert.ok(profiles[0].diplomacy.treaties.some(t => t.faction === 'suncoast' && t.type === 'trade'));
     assert.equal(profiles[1].stats.battles, 1);
     assert.equal(profiles[0].stats.wins + profiles[1].stats.wins, 1);
     await a.click("#returnRealm");
@@ -432,6 +442,8 @@ export async function connectFirebase() {
         desktopAndTouch: true,
         realSecurityRules: true,
         idempotentPurchase: true,
+        idempotentDiplomacy: true,
+        expandedKingdomCheckpoint: true,
         unauthorizedWritesDenied: true,
         sharedBattle: true,
         movementAndAlliances: true,

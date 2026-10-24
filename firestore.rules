@@ -84,13 +84,13 @@ service cloud.firestore {
         && data.gold is number && data.gold >= 0 && data.gold <= 1000000000000
         && data.level is int && data.level >= 1 && data.level <= 100
         && data.xp is number && data.xp >= 0
-        && data.x is number && data.x >= 0 && data.x < 128
-        && data.y is number && data.y >= 0 && data.y < 88
-        && data.army is map && data.army.size() == 14
-        && data.reserve is map && data.reserve.size() == 14
+        && data.x is number && data.x >= 0 && data.x < 320
+        && data.y is number && data.y >= 0 && data.y < 224
+        && data.army is map && data.army.size() in [14, 34]
+        && data.reserve is map && data.reserve.size() in [14, 34]
         && data.inventory is map && data.stats is map && data.skills is map
         && data.achievements is list && data.claimedContracts is list
-        && data.keys().hasOnly(['schemaVersion','username','gold','supplies','renown','level','xp','army','reserve','x','y','morale','inventory','achievements','stats','relations','skills','skillPoints','contracts','claimedContracts','explored','activeBattle','revision','lastIncome','uid','linked','migrated','legacyHoldings','legacyInventory','legacyAllegiance','route','routeIndex','readyAt','battleCooldown','px','py','lastBattle','allianceId','economyClock','playTime']);
+        && data.keys().hasOnly(['schemaVersion','username','gold','supplies','renown','level','xp','army','reserve','x','y','morale','inventory','achievements','stats','relations','skills','skillPoints','contracts','claimedContracts','explored','activeBattle','revision','lastIncome','uid','linked','migrated','legacyHoldings','legacyInventory','legacyAllegiance','route','routeIndex','readyAt','battleCooldown','px','py','lastBattle','allianceId','economyClock','playTime','diplomacy','worldVersion']);
     }
     match /mountOnlineProfiles/{uid} {
       allow get: if isAuthed() && (request.auth.uid == uid || moHostFor(uid));
@@ -180,7 +180,11 @@ service cloud.firestore {
           && request.resource.data.type in ['move','command','halt','engage','recruit','train','reserve','supplies','rest','buyBanner','equip','contract','skill','build','garrison','diplomacy','caravan','allianceCreate','allianceRequest','allianceAccept','allianceLeave']
           && request.resource.data.payload is map && request.resource.data.payload.size() <= 16
           && request.resource.data.payload.type == request.resource.data.type
-          && request.resource.data.payload.keys().hasOnly(['type','point','order','ids','formation','target','ability','kind','settlement','count','unit','withdraw','item','skill','faction','peace','id','name','alliance','member'])
+          && request.resource.data.payload.keys().hasOnly(['type','point','order','ids','formation','target','ability','kind','settlement','count','unit','withdraw','item','skill','faction','peace','id','name','alliance','member','action','gold','offerId','demand'])
+          && (!('gold' in request.resource.data.payload) || (request.resource.data.type == 'diplomacy' && request.resource.data.payload.gold is int && request.resource.data.payload.gold >= 0 && request.resource.data.payload.gold <= 100000))
+          && (!('action' in request.resource.data.payload) || (request.resource.data.type == 'diplomacy' && request.resource.data.payload.action is string && request.resource.data.payload.action.size() <= 32))
+          && (!('offerId' in request.resource.data.payload) || (request.resource.data.type == 'diplomacy' && request.resource.data.payload.offerId is string && request.resource.data.payload.offerId.size() <= 16))
+          && (!('demand' in request.resource.data.payload) || (request.resource.data.type == 'diplomacy' && request.resource.data.payload.demand is bool))
           && (!('ids' in request.resource.data.payload) || (request.resource.data.payload.ids is list && request.resource.data.payload.ids.size() <= 600));
         allow update: if living() && moHost() && resource.data.state == 'pending'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state','result','epoch','handledAt'])

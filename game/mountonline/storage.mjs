@@ -1,5 +1,7 @@
 import {
   VERSION,
+  WORLD,
+  FACTIONS,
   newProfile,
   safeArmy,
   armySize,
@@ -29,8 +31,8 @@ export function parseCampaign(text) {
   if (
     raw.version !== VERSION ||
     !p ||
-    !finite(p.x, 0, 128) ||
-    !finite(p.y, 0, 88) ||
+    !finite(p.x, 0, WORLD.width - 0.001) ||
+    !finite(p.y, 0, WORLD.height - 0.001) ||
     !finite(p.gold, 0, 1e9) ||
     !finite(p.level, 1, 100)
   )
@@ -57,42 +59,51 @@ export function parseCampaign(text) {
   clean.route = [];
   clean.routeIndex = 0;
   clean.explored = Array.isArray(p.explored)
-    ? p.explored.filter((n) => Number.isInteger(n) && n >= 0 && n < 176)
+    ? p.explored.filter((n) => Number.isInteger(n) && n >= 0 && n < Math.ceil(WORLD.width / 8) * Math.ceil(WORLD.height / 8)).slice(-1200)
     : [];
   const state = raw.state || {};
   if (
     !finite(state.time, 0, 1e10) ||
     !Array.isArray(state.settlements) ||
-    state.settlements.length > 64
+    state.settlements.length > 160
   )
     throw new Error("The saved realm is invalid.");
   for (const s of state.settlements) {
     if (
-      !finite(s.x, 0, 128) ||
-      !finite(s.y, 0, 88) ||
+      typeof s.id !== "string" || s.id.length > 80 ||
+      !finite(s.x, 0, WORLD.width - 0.001) ||
+      !finite(s.y, 0, WORLD.height - 0.001) ||
       !finite(s.garrison, 0, 400) ||
-      !["castle", "village"].includes(s.kind)
+      !["castle", "village", "town", "capital"].includes(s.kind)
     )
       throw new Error("A saved settlement is invalid.");
     if (s.owner === p.uid) s.owner = "local";
   }
-  const realm = new Realm({ time: state.time });
-  realm.world.settlements = state.settlements.map((s) => ({
-    ...s,
-    name: String(s.name).slice(0, 80),
-  }));
-  realm.sequence = Number(state.sequence) || 0;
+  // Overlay saved strategic changes on the generated continent. Old campaigns
+  // keep their holdings while newly introduced settlements and lords still exist.
+  const realm = new Realm({ time: state.time, sequence: finite(state.sequence, 0, 1e10) ? state.sequence : 0,
+    seed: finite(state.seed, 0, 4294967295) ? state.seed : WORLD.seed,
+    settlements: state.settlements.map((s) => ({ ...s, name: String(s.name).slice(0, 80), garrisonArmy: safeArmy(s.garrisonArmy),
+      level: clamp(Number(s.level) || 1, 1, 5), damage: clamp(Number(s.damage) || 0, 0, 100),
+      loyalty: clamp(Number(s.loyalty ?? 100), 0, 100), supplies: clamp(Number(s.supplies ?? 100), 0, 100),
+    })), kingdoms: state.kingdoms,
+    alliances: Array.isArray(state.alliances) ? state.alliances.slice(0, 100) : [],
+  });
   realm.enter("local", clean);
-  if (Array.isArray(state.npcs) && state.npcs.length <= 80) {
+  if (Array.isArray(state.npcs) && state.npcs.length <= 160) {
     for (const saved of state.npcs) {
       const n = realm.npcs.find((n) => n.id === saved.id);
-      if (n && finite(saved.x, 0, 128) && finite(saved.y, 0, 88)) {
+      if (n && finite(saved.x, 0, WORLD.width - 0.001) && finite(saved.y, 0, WORLD.height - 0.001)) {
         n.x = saved.x;
         n.y = saved.y;
         n.army = safeArmy(saved.army);
         n.respawn = finite(saved.respawn, 0, 1e10) ? saved.respawn : 0;
         n.battleId = saved.battleId || null;
         n.target = typeof saved.target === "string" ? saved.target : n.target;
+        n.capturedBy = saved.capturedBy === p.uid ? "local" : typeof saved.capturedBy === "string" ? saved.capturedBy.slice(0, 128) : null;
+        n.capturedUntil = finite(saved.capturedUntil, 0, 1e10) ? saved.capturedUntil : 0;
+        n.deliveryCount = finite(saved.deliveryCount, 0, 1e9) ? Math.floor(saved.deliveryCount) : 0;
+        n.raidAt = finite(saved.raidAt, 0, 1e10) ? saved.raidAt : 0;
         n.route = [];
         n.routeIndex = 0;
       }

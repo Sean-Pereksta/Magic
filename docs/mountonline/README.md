@@ -2,17 +2,19 @@
 
 The Online game now uses a shared deterministic simulation instead of separate world, local-battle, and siege implementations. The default route remains `/game/mountonline.html`; the Cat'N Mice lobby supports both local campaign and online-realm entry. The separate `/game/mountainblade.html` skirmish game and Village Wars' shared `/game/battle.html` remain intact.
 
+See [Living Kingdoms and Tactical Warfare](LIVING_KINGDOMS.md) for the expanded world, diplomacy, signature troops, objective encounters, and new command behavior.
+
 ## Playing
 
-- Explore a 128 × 88 realm with roads, physical trees and cliffs, rivers, bridges, settlements, caravans, outlaws, and faction patrols. Tap ground to march or an entity to inspect it. WASD travels on the world map.
+- Explore a 320 × 224 realm with 80 settlements across ten kingdoms, including roads, physical trees and cliffs, rivers, bridges, settlements, caravans, outlaws, and faction patrols. Tap ground to march or an entity to inspect it. WASD travels on the world map.
 - Recruit at settlements, promote all 14 original troop classes, rotate reserves, buy supplies and standards, complete contracts, and develop leadership, logistics, and tactics.
-- Use Move, Attack, Charge, Hold, Defend, Follow, Retreat, Patrol, and Auto commands. Attack on ground attacks enemies on the way to that location. Hold keeps the current position. Follow accepts an allied unit; including that leader in the selection holds the leader while followers converge. Patrol guards a route and returns after engagements.
+- Use immediate Attack Nearest, targeted Attack, Move, Charge, Hold, Defend, Follow, Retreat, Patrol, and Auto commands. More tactics adds Skirmish, Brace, Flank, Fall Back, Focus Fire, and Regroup. Attack on ground attacks enemies on the way to that location. Hold keeps the current position. Follow accepts an allied unit; including that leader in the selection holds the leader while followers converge. Patrol guards a route and returns after engagements.
 - Infantry counters charges, cavalry flanks toward missile troops, crossbows pierce armor, mages deal splash damage, and healers follow wounded allies. Shield wall and square formations protect defending troops. Commander rally, volleys, and firestorms have validated cooldowns.
 - Breach a castle gate before entering. A nearby, available owner controls the castle's actual garrison. Garrison casualties never duplicate or consume the owner's separate field company. An absent or occupied owner has AI defenders.
 - Castles generate income every 120 seconds of active simulation. Supply consumption and modest upkeep make logistics meaningful. Hostile patrols can recapture neglected holdings; development, garrison strength, interception, and peace negotiations protect them.
 - Online alliances support founding, membership requests, founder approval, succession, and leaving. Members cannot attack each other's companies or castles.
 
-Desktop: click/drag to select, Shift to add, right-click to move/attack, mouse wheel to zoom, Space-drag or arrow keys to pan. A/M/C/H/D/F/R/P/G select orders. 1–5 select roles; Ctrl+1–5 saves control groups. Touch: tap troops or role groups, tap enemies/ground, use Add to selection, hold then drag for a selection box, pinch to zoom, or enable Pan. The mini-map moves the camera.
+Desktop: click/drag to select, Shift to add, right-click to move/attack, mouse wheel to zoom, Space-drag or arrow keys to pan. A attacks nearest immediately; Shift+A targets an enemy or destination. M/C/H/D/F/R/P/G retain their orders; K sets a skirmish marker and B braces. 1–5 select roles; Ctrl+1–5 saves control groups. Touch: tap troops or role groups, tap enemies/ground, use Add to selection, hold then drag for a selection box, pinch to zoom, or enable Pan. The mini-map moves the camera.
 
 ## Architecture
 
@@ -22,6 +24,8 @@ Desktop: click/drag to select, Shift to add, right-click to move/attack, mouse w
 | `navigation.mjs` | Bounded A*, route cache, physical obstacles, spatial hash |
 | `world.mjs` | Seeded terrain, connected roads/bridges, NPC companies and routes |
 | `battle.mjs` | 20 Hz deterministic combat, roles, orders, formations, sieges, projectiles, abilities |
+| `kingdoms.mjs`, `kingdom-ui.mjs` | Bounded kingdom diplomacy, wars, treaties, strategic economy, and council interface |
+| `training.mjs` | Eleven playable tactical and objective scenarios |
 | `progression.mjs` | Validated economy, training, reserves, contracts, inventory, skills, settlements |
 | `realm.mjs` | World simulation, encounters, territory, garrison control, battle settlement |
 | `renderer.mjs`, `motion.mjs` | Persistent online display poses, sprite animation, culled terrain chunks, mini-map, order graphics |
@@ -85,7 +89,7 @@ Local campaigns do not require Firebase. They save every five seconds and on pag
 
 All assets are in `graphics/mountonline/`. Two optimized RGBA WebP atlases contain 112 fixed-cell troop poses across 14 classes, with idle, two walk, two attack, brace, fall, and fallen poses. Breathing, marching, projectiles, impacts, banner feedback, tree sway, and water highlights animate them in the engine. The world atlas contains eight ground textures and eight cutout props; native SVG icons provide consistent command graphics. The existing Mountain Blade lobby artwork is reused as the loading/menu/result backdrop.
 
-The three atlases plus hero total approximately 1.7 MB. Essential bitmap artwork is decoded before gameplay and cached under a game-specific version. `manifest.json` documents crop cells with an inset that prevents neighboring sprites bleeding into the frame. Re-encode new source atlases with `scripts/build-mountonline-assets.cjs`; bump the art cache version whenever changing deployed art. Asset provenance and generation specifications are in `ART.md`.
+The original atlases, twenty new signature-unit rows, and hero total approximately 2.35 MB. The fourth atlas adds 160 dedicated poses at 96 × 96 pixels per cell. Essential bitmap artwork is decoded before gameplay and cached under a game-specific version. `manifest.json` documents crop cells with an inset that prevents neighboring sprites bleeding into the frame. Re-encode new source atlases with `scripts/build-mountonline-assets.cjs`; bump the art cache version whenever changing deployed art. Asset provenance and generation specifications are in `ART.md`.
 
 ## Validation
 

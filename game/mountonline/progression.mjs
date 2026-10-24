@@ -1,5 +1,7 @@
 import {
   UNITS,
+  WORLD,
+  FACTIONS,
   ITEMS,
   UNIT_KEYS,
   armySize,
@@ -7,6 +9,8 @@ import {
   addXP,
   clamp,
 } from "./data.mjs";
+import { createKingdomState, diplomaticAction, playerTreaty, playerHostile } from "./kingdoms.mjs";
+import { BIOMES } from "./world.mjs";
 export class GameError extends Error {
   constructor(message, code = "INVALID_ACTION", status = 400) {
     super(message);
@@ -26,21 +30,43 @@ export function nearSettlement(p, world, id) {
   );
   return s;
 }
+export function signatureRecruitment(p, world, s, key) {
+  const unit = UNITS[key];
+  if (!unit?.faction) return { allowed: key === "recruits", reason: "Train shared troops through the promotion roster.", price: unit?.cost || 0 };
+  const time = world.time || 0, faction = s.currentFaction || s.faction, owned = s.owner === ownerKey(p), home = unit.faction === faction;
+  const agreement = ["trade", "militaryAlliance", "defensiveAlliance", "protection"].some((type) => playerTreaty(p, unit.faction, type, time));
+  const mercenary = faction === "suncoast" && ["town", "capital"].includes(s.kind) && agreement;
+  const reputation = (p.relations?.[unit.faction] || 0) >= (unit.tier >= 4 ? 35 : 15);
+  let reason = "";
+  if (!home && !mercenary) reason = `Recruit this unit in its homeland or through a Suncoast mercenary contract.`;
+  else if (playerHostile(p, world.kingdoms, unit.faction, time)) reason = "Recruitment is closed while your kingdoms are hostile.";
+  else if (!owned && !agreement && !reputation) reason = `Requires ${unit.tier >= 4 ? 35 : 15} relations, a trade agreement, or an alliance.`;
+  else if ((s.recruitment || 1) + (s.level || 1) - 1 < unit.tier - 2) reason = "Develop this settlement's recruitment buildings for elite troops.";
+  else if (p.level < unit.tier - 1) reason = `Reach commander level ${unit.tier - 1}.`;
+  else if ((s.loyalty ?? 100) < 25 || (s.damage || 0) > 65) reason = "Local resistance or raid damage prevents specialty recruitment.";
+  return { allowed: !reason, reason, price: Math.ceil(unit.cost * (mercenary ? 1.35 : agreement ? 0.9 : 1)) };
+}
 export function applyAction(p, world, type, input = {}) {
   requireThat(!p.activeBattle, "Finish the battle first.");
   if (type === "recruit") {
-    nearSettlement(p, world, input.settlement);
+    const s = nearSettlement(p, world, input.settlement), key = input.unit || "recruits", unit = UNITS[key];
+    requireThat(unit, "Choose an available troop.");
+    const eligibility = signatureRecruitment(p, world, s, key);
+    requireThat(eligibility.allowed, eligibility.reason);
+    requireThat(s.owner === ownerKey(p) || !playerHostile(p, world.kingdoms, s.currentFaction || s.faction, world.time || 0), "Hostile settlements will not recruit for your army.");
     const n = clamp(Math.floor(input.count) || 1, 1, 10),
-      price = n * UNITS.recruits.cost;
+      price = n * eligibility.price;
+    requireThat((s.recruitStock ?? 30) >= n && (s.damage || 0) < 80, "This settlement needs time to recover its recruits after raids.");
     requireThat(
       armySize(p.army) + n <= armyCap(p),
       "Your field army is full. Train leadership or use your reserve.",
     );
     requireThat(p.gold >= price, "You need more gold.");
     p.gold -= price;
-    p.army.recruits += n;
+    p.army[key] = (p.army[key] || 0) + n;
+    s.recruitStock = (s.recruitStock ?? 30) - n;
     addXP(p, n * 2);
-    return `Recruited ${n} soldiers.`;
+    return `Recruited ${n} ${key === "recruits" ? "soldiers" : unit.name.toLowerCase()}${key === "recruits" ? "" : " troops"}.`;
   }
   if (type === "train") {
     const unit = UNITS[input.unit];
@@ -76,11 +102,14 @@ export function applyAction(p, world, type, input = {}) {
     return "Army updated.";
   }
   if (type === "supplies") {
-    nearSettlement(p, world, input.settlement);
-    requireThat(p.gold >= 30, "Supplies cost 30 gold.");
+    const s = nearSettlement(p, world, input.settlement), faction = s.currentFaction || s.faction, trade = playerTreaty(p, faction, "trade", world.time || 0), price = trade ? 24 : 30;
+    requireThat(s.owner === ownerKey(p) || !playerHostile(p, world.kingdoms, faction, world.time || 0), "Hostile settlements cannot supply your company.");
+    requireThat((s.supplies ?? 100) >= 20 && !s.battleId, "This settlement's supply route is disrupted.");
+    requireThat(p.gold >= price, `Supplies cost ${price} gold.`);
     requireThat(p.supplies < 200, "Your wagons are full.");
-    p.gold -= 30;
+    p.gold -= price;
     p.supplies = Math.min(200, p.supplies + 60);
+    s.supplies = Math.max(0, (s.supplies ?? 100) - 20);
     p.morale = Math.min(100, p.morale + 10);
     return "Wagons restocked. Morale restored.";
   }
@@ -146,6 +175,7 @@ export function applyAction(p, world, type, input = {}) {
     p.gold -= cost;
     p.supplies -= 30;
     s.level++;
+    s.recruitment = Math.min(5, (s.recruitment || 1) + 1);
     s.prosperity = (s.prosperity || 1) + 1;
     s.garrison += 8;
     return `${s.name} upgraded: stronger walls, garrison, and income.`;
@@ -168,19 +198,8 @@ export function applyAction(p, world, type, input = {}) {
     return "Troop assigned to castle defense.";
   }
   if (type === "diplomacy") {
-    requireThat(
-      ["crown", "ember", "vale"].includes(input.faction),
-      "Unknown faction.",
-    );
-    const cost = input.peace ? 120 : 35;
-    requireThat(p.gold >= cost, `This diplomatic mission costs ${cost} gold.`);
-    p.gold -= cost;
-    p.relations[input.faction] = clamp(
-      (p.relations[input.faction] || 0) + (input.peace ? 45 : 12),
-      -100,
-      100,
-    );
-    return "Your envoy improved relations. Friendly patrols will leave you in peace.";
+    if (!world.kingdoms) createKingdomState(world);
+    return diplomaticAction(p, world, input, world.time || 0);
   }
   if (type === "contract") {
     const contract = CONTRACTS.find((c) => c.id === input.id);
@@ -246,17 +265,21 @@ export const CONTRACTS = [
 export function tickEconomy(p, world, dt) {
   p.playTime = (p.playTime || 0) + dt;
   p.economyClock = (p.economyClock || 0) + dt;
-  const region = Math.floor(p.y / 8) * 16 + Math.floor(p.x / 8);
+  const region = Math.floor(p.y / 8) * Math.ceil(WORLD.width / 8) + Math.floor(p.x / 8);
   if (!p.explored.includes(region)) p.explored.push(region);
   if (p.economyClock < 120) return null;
   p.economyClock -= 120;
   const owned = world.settlements.filter((s) => s.owner === ownerKey(p)),
-    income = owned.reduce((n, s) => n + 24 * s.level, 0),
-    upkeep = Math.ceil(armySize(p.army) / 30);
+    income = Math.floor(owned.reduce((n, s) => n + 24 * s.level * (1 - (s.damage || 0) / 100) * ((s.supplies ?? 100) < 20 ? 0.4 : 1) * ((s.loyalty ?? 100) < 25 ? 0.5 : 1), 0)),
+    upkeep = Math.ceil(armySize(p.army) / 30) + owned.reduce((n, s) => n + Math.ceil(Math.max(0, s.garrison - 40) / 20), 0);
+  const nearest = world.settlements.reduce((best, s) => !best || Math.hypot(s.x - p.x, s.y - p.y) < Math.hypot(best.x - p.x, best.y - p.y) ? s : best, null),
+    hostile = nearest && !nearest.owner && playerHostile(p, world.kingdoms, nearest.currentFaction || nearest.faction, world.time || 0),
+    biome = world.biomes?.[Math.floor(p.y) * world.width + Math.floor(p.x)],
+    supplyFactor = (hostile ? 1.6 : 1) * (biome === BIOMES.desert ? 1.25 : 1);
   const consumption = Math.max(
     1,
     Math.ceil(
-      (armySize(p.army) / 12) *
+      (armySize(p.army) / 12) * supplyFactor *
         (1 - (p.skills.logistics || 0) * 0.045) *
         (p.inventory.equipped.includes("quartermaster") ? 0.75 : 1),
     ),
@@ -270,7 +293,7 @@ export function applyBattleResult(p, battle, team) {
   const survivors = Object.fromEntries(UNIT_KEYS.map((k) => [k, 0]));
   let wounded = 0;
   for (const u of battle.units) {
-    if (u.team !== team) continue;
+    if (u.team !== team || u.temporary) continue;
     if (u.hp > 0 || u.routed) survivors[u.key]++;
     else if (u.id % 4 === 0) {
       survivors[u.key]++;

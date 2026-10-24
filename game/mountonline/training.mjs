@@ -1,0 +1,22 @@
+import { emptyArmy } from './data.mjs';
+
+const army = troops => ({ ...emptyArmy(), ...troops });
+export const SCENARIOS = [
+  {id:'shield',name:'The shield screen',detail:'Keep Tower Wardens facing the enemy while your archers shoot from behind. Compare their protection with exposed archers on the south wing.',armyA:army({towerWardens:12,archers:16,royalCaptains:1}),armyB:army({archers:30,footmen:8}),terrain:'plains',factions:['crown','vale']},
+  {id:'flank',name:'Turn the shield wall',detail:'Hold enemy shields with infantry. Send cavalry around the north side and strike from behind.',armyA:army({footmen:14,cinderLancers:10,archers:8}),armyB:army({graniteShieldbearers:20,thunderSlingers:5}),terrain:'mountain',factions:['ember','stone']},
+  {id:'horse',name:'Falcons on the steppe',detail:'Select mounted archers, choose Skirmish, then place a fallback marker. Keep distance from pursuing Dune Riders. Arrows and stamina are finite.',armyA:army({falconHorseArchers:18,khaganLancers:5}),armyB:army({duneRiders:10,romanChampions:8}),terrain:'steppe',factions:['steppe','desert']},
+  {id:'splash',name:'Break the dense ranks',detail:'Use Ash Bombardiers against clustered infantry, then protect them from a cavalry flank. Explosive friendly fire can hurt your own screen.',armyA:army({ashBombardiers:6,footmen:14,archers:6}),armyB:army({recruits:36,cavalry:6}),terrain:'plains',factions:['ember','crown']},
+  {id:'commander',name:'Combined arms',detail:'A defensive commander screens missile troops and keeps cavalry in reserve. Break its line with coordinated roles.',armyA:army({footmen:16,archers:12,cavalry:8,priests:3}),armyB:army({towerWardens:14,paviseCrossbowmen:10,cavalry:8,royalCaptains:2}),terrain:'forest',factions:['vale','crown']},
+  {id:'defensive',name:'Hold the pass',detail:'Hold the marked pass for 60 seconds. Braced spears can stop mounted charges while your archers control the approach.',armyA:army({condottieriPikes:18,paviseCrossbowmen:10}),armyB:army({cinderLancers:16,footmen:20}),terrain:'mountain',encounterType:'defensive',objective:{type:'defensive',team:0,x:22,y:20,radius:6,duration:60},factions:['suncoast','ember']},
+  {id:'ambush',name:'Reeds in the mist',detail:'A concealed raiding force begins close to your column. Form a screen and use the open road to escape the marsh.',armyA:army({hearthHuscarls:14,archers:12,duneRiders:5}),armyB:army({reedAmbushers:18,mireHurlers:6,groveSentinels:8}),terrain:'marsh',encounterType:'ambush',factions:['frost','marsh']},
+  {id:'caravan',name:'The merchant road',detail:'Escort the wagon across the field. Intercept raiders before they reach its guards.',armyA:army({footmen:18,cavalry:8,archers:10}),armyB:army({ravagerAxemen:20,duneRiders:7}),terrain:'plains',encounterType:'caravanDefense',objective:{type:'caravanDefense',team:0,x:12,y:20,targetX:53,targetY:20,hp:500,duration:120},factions:['suncoast','frost']},
+  {id:'raid',name:'Burn the supply camp',detail:'Break into the marked supply zone and destroy its stores. A successful raid has an objective beyond eliminating the defenders.',armyA:army({ironSappers:5,chainFlailGuards:10,cavalry:6}),armyB:army({groveSentinels:16,thornbowRangers:10}),terrain:'forest',encounterType:'raid',objective:{type:'raid',team:0,x:48,y:20,radius:5,hp:400,duration:120},factions:['iron','vale']},
+  {id:'rearguard',name:'The last bridge',detail:'Delay pursuit for 30 seconds, then withdraw at least eight soldiers with Retreat. Survival decides this battle.',armyA:army({graniteShieldbearers:12,condottieriPikes:8}),armyB:army({duneRiders:16,ravagerAxemen:14}),terrain:'mountain',encounterType:'rearguard',objective:{type:'rearguard',team:0,delay:30,duration:90,required:8},factions:['stone','frost']},
+  {id:'reinforcement',name:'Until the banners arrive',detail:'Hold the marked rally ground for 50 seconds. Organize a defense until allied reinforcements secure the field.',armyA:army({towerWardens:12,archers:10,priests:2}),armyB:army({cinderLancers:10,swordsmen:16,mages:3}),terrain:'plains',encounterType:'reinforcement',objective:{type:'reinforcement',team:0,x:20,y:20,radius:7,duration:50,waves:[{at:35,team:0,army:army({cavalry:8,footmen:12}),spawn:{x:5,y:20}}]},factions:['crown','ember']},
+];
+
+export function scenarioOptions(id) {
+  const scenario = SCENARIOS.find(s => s.id === id);
+  if (!scenario) return null;
+  return {...scenario, seed:77113, names:['Your training company', 'AI commander'],commanders:[false,true]};
+}
