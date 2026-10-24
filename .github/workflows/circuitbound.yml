@@ -1,0 +1,49 @@
+name: Circuitbound gameplay
+on:
+  pull_request:
+    paths:
+      - 'game/circuitbound/**'
+      - 'game/circuitbound.html'
+      - '.github/workflows/circuitbound.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  simulation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check standalone JavaScript
+        run: |
+          node --check game/circuitbound/engineering.js
+          node --check game/circuitbound/vertical.js
+          node --check game/circuitbound/survival.js
+          node --check game/circuitbound/interface.js
+          node --check game/circuitbound/app.js
+      - run: node --test game/circuitbound/tests/*.test.cjs
+      - run: node game/circuitbound/tests/performance.cjs
+  browser:
+    runs-on: ubuntu-latest
+    env:
+      CIRCUITBOUND_PLAYWRIGHT: ${{ runner.temp }}/circuitbound-browser/node_modules/playwright
+      CIRCUITBOUND_SCREENSHOTS: ${{ runner.temp }}/circuitbound-screenshots
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install optional browser test tools
+        run: |
+          npm install --prefix "$RUNNER_TEMP/circuitbound-browser" --no-package-lock --ignore-scripts playwright@1.62.1
+          node "$CIRCUITBOUND_PLAYWRIGHT/cli.js" install --with-deps chromium
+      - run: node game/circuitbound/tests/interface-browser.cjs
+      - run: node game/circuitbound/tests/gameplay-browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: circuitbound-browser-screenshots
+          path: ${{ env.CIRCUITBOUND_SCREENSHOTS }}
+          if-no-files-found: ignore

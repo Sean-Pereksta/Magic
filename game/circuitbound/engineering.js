@@ -33,13 +33,54 @@
     ['FILTER','filter','Item Filter','≡','item','Rear input → front; configure allowed material', {iron:2,crystal:1}],
     ['SIGNAL_SPLIT','signalSplit','Signal Splitter','↗','signal','Rear input → front / bottom', {copper:1}],
     ['FRAME','frame','Light Frame','□','structure','Light structural member', {wood:1}],
-    ['BEAM','beam','Reinforced Beam','I','structure','Strong structural member', {iron:2}]
+    ['BEAM','beam','Reinforced Beam','I','structure','Strong structural member', {iron:2}],
+    ['DRILL','drill','Industrial Drill','▼','item','Rear drive + side power; mines in front; output below', {iron:8,copper:5,stone:4}],
+    ['EXCAVATOR','excavator','Advanced Excavator','▾','item','High-torque drill mines a three-wide corridor', {steel:8,advancedComponent:2,gear:2}],
+    ['CRUSHER','crusher','Ore Crusher','⋈','item','Top drive + bottom power; rear ore → front crushed ore', {iron:6,stone:5,gear:1}],
+    ['SMELTER','smelter','Electric Smelter','♨','item','Bottom power; rear crushed ore → front ingots', {iron:6,copper:4,stone:8}],
+    ['REFINER','refiner','Metal Refiner','◇','item','Refines iron ingots and stone into steel', {ironIngot:6,copperIngot:3,crystal:2}],
+    ['ASSEMBLER','assembler','Component Assembler','⚒','item','Makes circuits from copper ingots and crystal', {ironIngot:5,copperIngot:4,gear:1}],
+    ['AMMO_FABRICATOR','ammoFabricator','Ammunition Fabricator','⋮','item','One iron ingot becomes four turret rounds', {ironIngot:4,copper:3}],
+    ['ADVANCED_FABRICATOR','advancedFabricator','Advanced Fabricator','✧','item','Steel + circuit → advanced components', {steel:6,circuit:4,crystal:4}],
+    ['REPAIR_STATION','repairStation','Repair Station','+','item','Iron and crystal become repair kits', {iron:5,copper:3,crystal:2}],
+    ['BATTERY','battery','Grid Battery','▥','power','Stores surplus power; supplies 8 power during shortages', {iron:4,copper:6,crystal:4}],
+    ['TURRET','turret','Basic Turret','↗','power','Rear ammunition; bottom power; optional top enable', {iron:8,copper:4,gear:1}],
+    ['ARC_TOWER','arcTower','Arc Tower','ϟ','power','Powered short-range defense; optional top enable', {ironIngot:6,copperIngot:6,crystal:5}],
+    ['TESLA_COIL','teslaCoil','Tesla Coil','↯','power','High-power area burst defense', {steel:6,advancedComponent:2,crystal:8}],
+    ['ENEMY_SENSOR','enemySensor','Enemy Detector','◉','signal','Signals when enemies are within eight tiles', {copper:3,crystal:3}],
+    ['AUTO_DOOR','autoDoor','Automated Door','▯','power','Powered door opens when a top signal is high', {iron:5,copper:2}],
+    ['BARRIER','barrier','Defensive Barrier','▦','structure','Reinforced wall with 240 durability', {iron:5,stone:5}],
+    ['TRAP','trap','Mechanical Trap','⋀','mechanical','Rear rotation drives a short-range trap', {iron:5,gear:1,wood:2}],
+    ['RECOVERY_STATION','recoveryStation','Recovery Station','✚','power','Powered station heals nearby engineers', {ironIngot:5,circuit:2,crystal:4}]
   ];
+  // IDs 52–54 belong to the original door, ladder and ledge. Keep every saved tile stable.
+  const MACHINES={
+    DRILL:{load:2,torque:4,time:1.5},EXCAVATOR:{load:6,torque:10,time:.8},
+    CRUSHER:{load:2,torque:3,time:1.5,recipes:[
+      {key:'crushedIron',cost:{iron:1},out:{crushedIron:1}},
+      {key:'crushedCopper',cost:{copper:1},out:{crushedCopper:1}}]},
+    SMELTER:{load:4,time:2,recipes:[
+      {key:'ironIngot',cost:{crushedIron:1},out:{ironIngot:1}},
+      {key:'copperIngot',cost:{crushedCopper:1},out:{copperIngot:1}},
+      {key:'rawIron',cost:{iron:2},out:{ironIngot:1}},
+      {key:'rawCopper',cost:{copper:2},out:{copperIngot:1}}]},
+    REFINER:{load:5,time:3,recipes:[{key:'steel',cost:{ironIngot:2,stone:1},out:{steel:1}}]},
+    ASSEMBLER:{load:3,time:2.5,recipes:[
+      {key:'circuit',cost:{copperIngot:2,crystal:1},out:{circuit:1}},
+      {key:'gear',cost:{ironIngot:2},out:{gear:1}},
+      {key:'wire',cost:{copperIngot:1},out:{wire:6}}]},
+    AMMO_FABRICATOR:{load:3,time:1.5,recipes:[{key:'ammo',cost:{ironIngot:1},out:{ammo:4}}]},
+    ADVANCED_FABRICATOR:{load:6,time:4,recipes:[{key:'advancedComponent',cost:{steel:2,circuit:1},out:{advancedComponent:1}}]},
+    REPAIR_STATION:{load:2,time:3,recipes:[{key:'repairKit',cost:{iron:2,crystal:1},out:{repairKit:1}}]}
+  };
+  const GOODS=[['crushedIron','Crushed Iron','◆'],['crushedCopper','Crushed Copper','◆'],
+    ['ironIngot','Iron Ingot','▰'],['copperIngot','Copper Ingot','▰'],['steel','Steel','▰'],
+    ['circuit','Circuit','▣'],['ammo','Turret Rounds','⋮'],['advancedComponent','Advanced Component','✧'],['repairKit','Repair Kit','+']];
   const port = (side, type, mode, name = type) => ({side, type, mode, name});
   const all = (type, mode) => DIRS.map((_,side)=>port(side,type,mode));
   function install(T, defs, items, recipes) {
     CATALOG.forEach(([symbol,key,name,icon,kind,desc,cost],i)=>{
-      const id=26+i; T[symbol]=id;
+      const id=26+i+(i>=26?3:0); T[symbol]=id;
       defs[id]={name,drop:key,solid:kind!=='signal' && !['BELT','PULLEY','SMALL_GEAR'].includes(symbol),
         hard:.6,weight:kind==='signal'?1:kind==='structure'?(symbol==='FRAME'?1:3):3,
         strength:symbol==='BEAM'?16:symbol==='FRAME'?4:8,
@@ -47,11 +88,24 @@
       items.push({key,tile:id,name,icon,color:COLORS[kind]});
       recipes.push({key,name,icon,out:1,cost,desc});
     });
+    GOODS.forEach(([key,name,icon])=>{if(!items.some(item=>item.key===key))items.push({key,tile:-2,name,icon,color:'#b9d7e4',resource:true});});
+    for(const [symbol,machine] of Object.entries(MACHINES))Object.assign(defs[T[symbol]],{
+      machine,producer:true,transport:true,electric:true,load:machine.load,capacity:40,inventoryCapacity:24,outputCapacity:16,mechanical:!!machine.torque});
+    Object.assign(defs[T.BATTERY],{electric:true,capacity:50,battery:true,storage:120,discharge:8,charge:4});
+    [T.TURRET,T.ARC_TOWER,T.TESLA_COIL,T.AUTO_DOOR,T.RECOVERY_STATION].forEach((id,i)=>Object.assign(defs[id],{
+      electric:true,load:[3,6,10,1,4][i],capacity:40,defense:i<3,door:id===T.AUTO_DOOR}));
+    Object.assign(defs[T.TURRET],{transport:true,inventoryCapacity:48,ammo:'ammo',range:9,damage:14,cooldown:.65});
+    Object.assign(defs[T.ARC_TOWER],{range:5,damage:11,cooldown:.8});
+    Object.assign(defs[T.TESLA_COIL],{range:4,damage:18,cooldown:1.5,area:true});
+    Object.assign(defs[T.TRAP],{defense:true,range:1.7,damage:20,cooldown:1.2,torque:3});
+    Object.assign(defs[T.BARRIER],{hp:240,strength:30});
+    Object.assign(defs[T.ENEMY_SENSOR],{sensor:true,range:8});
     // Recovered manufactured blocks remain components, not a lossy raw-material conversion.
     defs[T.COPPER_BLOCK].drop='copperBlock'; defs[T.IRON_BLOCK].drop='ironBlock';
     const map = new Map();
     [T.WIRE,T.COPPER_BLOCK,T.IRON_BLOCK].forEach(id=>map.set(id,all('power','both')));
     map.set(T.GENERATOR,all('power','out'));
+    map.set(T.BATTERY,all('power','both'));
     map.set(T.SIGNAL,all('signal','both'));
     [T.SWITCH,T.SENSOR].forEach(id=>map.set(id,[port(0,'signal','out','OUT')]));
     map.set(T.MOTOR,[port(2,'power','in','PWR'),port(3,'signal','in','EN'),port(0,'mechanical','out','DRIVE')]);
@@ -71,16 +125,26 @@
     map.set(T.HOPPER,[port(3,'item','in','IN'),port(2,'item','in','IN'),port(0,'item','out','OUT')]);
     [T.STORAGE,T.FILTER].forEach(id=>map.set(id,[port(2,'item','in','IN'),port(0,'item','out','OUT')]));
     map.set(T.SPLITTER,[port(2,'item','in','IN'),port(0,'item','out','OUT'),port(1,'item','out','OUT2')]);
+    for(const [symbol,machine] of Object.entries(MACHINES)){
+      const mining=symbol==='DRILL'||symbol==='EXCAVATOR';
+      map.set(T[symbol],[port(1,'power','in','PWR'),...(mining?[port(3,'power','in','PWR'),port(2,'mechanical','in','DRIVE'),port(1,'item','out','OUT')]:
+        [port(2,'item','in','IN'),port(0,'item','out','OUT'),...(machine.torque?[port(3,'mechanical','in','DRIVE')]:[])]),port(3,'signal','in','EN')]);
+    }
+    [T.TURRET,T.ARC_TOWER,T.TESLA_COIL,T.AUTO_DOOR,T.RECOVERY_STATION].forEach(id=>map.set(id,
+      [port(1,'power','in','PWR'),port(2,'power','in','PWR'),port(3,'signal','in','EN'),...(id===T.TURRET?[port(2,'item','in','AMMO')]:[])]));
+    map.set(T.ENEMY_SENSOR,[port(0,'signal','out','OUT')]);
+    map.set(T.TRAP,[port(2,'mechanical','in','DRIVE'),port(3,'signal','in','EN')]);
     for (const [id,ports] of map) defs[id].ports=ports;
   }
   function ports(d,m={}) {return (d?.ports||[]).map(p=>({...p,side:(p.side+(m.rot||0))%4}));}
   function compatible(a,b) {return a.type===b.type && a.mode!=='in' && b.mode!=='out';}
   function strengthColor(ratio) {return ratio<.25?'#64a9ff':ratio<.6?'#8ee36c':ratio<.85?'#ffe365':ratio<1?'#ff9d46':'#ff5b5b';}
   class Simulation {
-    constructor({width,height,get,meta,defs,T}) {
-      Object.assign(this,{width,height,get,getMeta:meta,defs,T});
+    constructor({width,height,get,set,meta,defs,T}) {
+      Object.assign(this,{width,height,get,set,getMeta:meta,defs,T});
       this.nodes=new Set();this.revision=0;this.built=-1;this.rebuilds=0;
       this.drops=[];this.nextDrop=1;this.nextAssembly=1;this.nextNode=1;this.elapsed=0;
+      this.metrics={mined:0,produced:0,shots:0,healed:0};
     }
     key(x,y){return x+y*this.width;}
     xy(k){return [k%this.width,Math.floor(k/this.width)];}
@@ -94,6 +158,7 @@
     }
     reset(){
       this.nodes.clear();this.drops=[];this.nextDrop=1;this.nextAssembly=1;this.nextNode=1;this.elapsed=0;
+      this.metrics={mined:0,produced:0,shots:0,healed:0};
       for(let y=0;y<this.height;y++)for(let x=0;x<this.width;x++){
         const id=this.get(x,y),k=this.key(x,y),m=this.getMeta().get(k);
         if(id&&(this.defs[id]?.ports||m?.linked||m?.assembly))this.nodes.add(k);
@@ -176,7 +241,7 @@
       const T=this.T,comb=new Set([T.AND,T.OR,T.NOT,T.XOR,T.NAND,T.NOR,T.SIGNAL_SPLIT]);
       let values=new Map(this.signalNodes.map(k=>[k,!!this.data(k).output]));
       for(const k of this.signalNodes){const id=this.id(k),m=this.data(k);m.logicUnstable=false;
-        if(id===T.SWITCH)values.set(k,!!m.on);if(id===T.SENSOR)values.set(k,!!m.sensorActive);}
+        if(id===T.SWITCH)values.set(k,!!m.on);if(id===T.SENSOR||id===T.ENEMY_SENSOR)values.set(k,!!m.sensorActive);}
       const settle=()=>{
         let stable=false;
         // Bounded fixed-point pass: propagation is independent of placement / tile traversal order.
@@ -208,10 +273,31 @@
         m.signalOK=!this.inputs.get(k)?.EN||this.input(k,'EN',values,b);
       }
     }
-    power(){let supplyTotal=0,loadTotal=0;
+    power(dt=.05){let supplyTotal=0,loadTotal=0;
       this.powerNets.forEach((net,i)=>{let supply=0,load=0,capacity=Infinity;
-        for(const k of net){const d=this.defs[this.id(k)];supply+=d.source||0;load+=d.load||0;capacity=Math.min(capacity,d.capacity||Infinity);}
-        for(const k of net){const m=this.data(k);Object.assign(m,{powerNet:i+1,supply,load,capacity,overload:load>capacity,powered:supply>0&&supply>=load&&load<=capacity});}
+        const batteries=[];
+        for(const k of net){const d=this.defs[this.id(k)],m=this.data(k);supply+=m.disabled?0:d.source||0;
+          load+=m.disabled||m.signalOK===false?0:d.load||0;
+          if(m.leechUntil>this.elapsed)load+=m.leechDrain||2;
+          capacity=Math.min(capacity,d.capacity||Infinity);if(d.battery)batteries.push(k);}
+        // Zero-time inspector refreshes observe the same grid without spending or adding energy.
+        const horizon=dt>0?dt:.05,generated=supply;
+        for(const k of batteries){const d=this.defs[this.id(k)],m=this.data(k);m.energy=Math.max(0,Math.min(d.storage,Number(m.energy)||0));m.batteryFlow=0;}
+        const available=batteries.reduce((n,k)=>n+(this.data(k).disabled?0:Math.min(this.defs[this.id(k)].discharge,this.data(k).energy/horizon)),0);
+        let remaining=Math.max(0,load-supply),discharged=0;
+        // Brownouts and overloaded cables stop consumers; they cannot drain a battery without doing work.
+        if(load<=capacity&&generated+available+1e-8>=load)for(const k of batteries){
+          const d=this.defs[this.id(k)],m=this.data(k);if(m.disabled)continue;
+          const amount=Math.min(remaining,d.discharge,m.energy/horizon);
+          if(amount>0){m.energy=Math.max(0,m.energy-amount*Math.max(0,dt));m.batteryFlow=-amount;remaining-=amount;discharged+=amount;}}
+        supply+=discharged;
+        let surplus=Math.max(0,Math.min(generated-load,capacity-load)),charging=0;
+        for(const k of batteries){const d=this.defs[this.id(k)],m=this.data(k);if(m.disabled||m.batteryFlow<0)continue;
+          const amount=Math.min(surplus,d.charge,(d.storage-m.energy)/horizon);
+          if(amount>0){m.energy+=amount*Math.max(0,dt);m.batteryFlow=amount;surplus-=amount;charging+=amount;}}
+        // Charging is an actual load and shares the cable's remaining capacity with machinery.
+        load+=charging;
+        for(const k of net){const m=this.data(k);Object.assign(m,{powerNet:i+1,supply,load,capacity,overload:load>capacity,powered:supply>0&&supply+1e-8>=load&&load<=capacity});}
         supplyTotal+=supply;loadTotal+=load;
       });this.supply=supplyTotal;this.load=loadTotal;
     }
@@ -222,10 +308,11 @@
       for(const k of this.mechanical.keys()){const m=this.data(k);m.running=false;m.torque=0;m.speed=0;m.driveSource=null;m.drivePath=[];m.mechanicalFault='';}
       for(const source of this.mechanical.keys()){
         if(this.id(source)!==T.MOTOR)continue;const src=this.data(source);
-        if(!src.powered||src.signalOK===false||src.overload)continue;
+        if(src.disabled||!src.powered||src.signalOK===false||src.overload)continue;
         const q=[{k:source,torque:12,speed:1,path:[]}],seen=new Set();
         for(let i=0;i<q.length;i++){
           const {k,torque,speed,path}=q[i];if(seen.has(k))continue;seen.add(k);const m=this.data(k),id=this.id(k);
+          if(m.disabled){m.mechanicalFault='COMPONENT DISABLED';continue;}
           if(id===T.CLUTCH&&!m.signalInputs?.EN){m.mechanicalFault='CLUTCH OPEN';continue;}
           const ratio=this.ratio(k),outTorque=torque/Math.abs(ratio),outSpeed=speed*ratio;
           if(outTorque>4096||Math.abs(outSpeed)>64){m.mechanicalFault='TRANSMISSION LIMIT';continue;}
@@ -237,7 +324,7 @@
         }
       }
     }
-    step(dt=.05){this.rebuild();this.elapsed+=dt;this.logic(dt);this.power();this.mechanics();this.updateStress(dt);}
+    step(dt=.05){this.rebuild();this.elapsed+=dt;this.logic(dt);this.power(dt);this.mechanics();this.updateStress(dt);}
     group(x,y){this.rebuild();const k=this.key(x,y),m=this.data(k);return (m.assembly?this.assemblies.get(m.assembly):[k])?.map(k=>this.xy(k))||[];}
     structureInfo(id){this.rebuild();const keys=this.assemblies.get(id)||[];
       return {keys,mass:keys.reduce((n,k)=>n+(this.defs[this.id(k)].weight??1),0),
@@ -274,25 +361,134 @@
       return failure;
     }
     spawn(key,count,x,y){
-      if(!key||count<=0)return false;
+      if(typeof key!=='string'||!key||!Number.isFinite(count)||count<=0||!Number.isFinite(x)||!Number.isFinite(y))return false;
       const stack=this.drops.find(d=>d.key===key&&Math.abs(d.x-x)<.4&&Math.abs(d.y-y)<.4);
       if(stack){stack.count+=count;return true;}
       // Refuse mining rather than destroying resources when the entity budget is exhausted.
       if(this.drops.length>=512)return false;
       this.drops.push({id:this.nextDrop++,key,count,x,y,age:0});return true;
     }
-    capacity(k){return this.id(k)===this.T.STORAGE?64:8;}
+    capacity(k){return this.defs[this.id(k)]?.inventoryCapacity||(this.id(k)===this.T.STORAGE?64:8);}
     stored(k){return Object.values(this.data(k).contents||{}).reduce((a,b)=>a+b,0);}
     insert(k,key,count=1){const m=this.data(k),d=this.defs[this.id(k)];
       if(!d?.transport&&this.id(k)!==this.T.CONVEYOR)return 0;
+      if(d.ammo&&key!==d.ammo||d.producer&&!d.machine.recipes)return 0;
       if(this.id(k)===this.T.FILTER&&(m.filter||'iron')!==key)return 0;
+      if(!key||!Number.isFinite(count)||count<=0)return 0;
       const n=Math.max(0,Math.min(count,this.capacity(k)-this.stored(k)));if(!n)return 0;
       if(!m.contents)m.contents={};m.contents[key]=(m.contents[key]||0)+n;return n;
+    }
+    recipe(k){const d=this.defs[this.id(k)],m=this.data(k),recipes=d?.machine?.recipes||[];
+      return recipes.find(r=>r.key===m.recipe)||recipes[0]||null;
+    }
+    outputRoom(k){const d=this.defs[this.id(k)];return Math.max(0,(d.outputCapacity||16)-Object.values(this.data(k).outputs||{}).reduce((n,v)=>n+v,0));}
+    outputConnection(k,key){
+      for(const p of this.pp(k,'item').filter(p=>p.mode==='out')){const n=this.neighbor(k,p.side);if(n===null)continue;
+        const d=this.defs[this.id(n)],m=this.data(n);
+        if(!d?.transport||!this.pp(n,'item').some(b=>b.side===(p.side+2)%4&&compatible(p,b)))continue;
+        if(this.stored(n)>=this.capacity(n)||this.id(n)===this.T.FILTER&&(m.filter||'iron')!==key||d.ammo&&d.ammo!==key)continue;
+        if(d.producer&&!d.machine?.recipes)continue;return n;
+      }return null;
+    }
+    miningTarget(k){const m=this.data(k),[x,y]=this.xy(k),[dx,dy]=DIRS[m.rot||0],wide=this.id(k)===this.T.EXCAVATOR;
+      const allowed=new Set([this.T.GRASS,this.T.DIRT,this.T.STONE,this.T.WOOD,this.T.COPPER,this.T.IRON,this.T.CRYSTAL,this.T.OBSIDIAN]);
+      const blocked=new Set();
+      for(let depth=1;depth<=(wide?10:6);depth++)for(const offset of wide?[0,-1,1]:[0]){
+        if(blocked.has(offset))continue;
+        const tx=x+dx*depth-dy*offset,ty=y+dy*depth+dx*offset;
+        if(!this.inside(tx,ty)){blocked.add(offset);continue;}const id=this.get(tx,ty);
+        if(!id)continue;
+        // The first obstruction ends this ray; machines never tunnel through protected construction.
+        if(!allowed.has(id)||this.getMeta().get(this.key(tx,ty))?.assembly){blocked.add(offset);continue;}
+        return {x:tx,y:ty,id,key:this.defs[id]?.drop};
+      }return null;
+    }
+    production(dt,{set=this.set,onMined,onProduced}={}){
+      this.rebuild();dt=Math.max(0,Math.min(Number(dt)||0,2));
+      for(const k of this.active){const d=this.defs[this.id(k)];if(!d?.producer)continue;
+        const m=this.data(k),machine=d.machine,recipe=this.recipe(k);m.machineFault='';m.working=false;m.efficiency=0;
+        if(m.disabled||m.signalOK===false){m.machineFault='DISABLED BY CONTROL SIGNAL';continue;}
+        if(!m.powered){m.machineFault=m.overload?'POWER CABLE OVERLOADED':'CONNECT POWER TO PWR INPUT';continue;}
+        if(machine.torque&&(!m.running||m.torque<machine.torque)){m.machineFault=!m.running?'CONNECT MOTOR TO DRIVE INPUT':`NEEDS ${machine.torque} TORQUE`;continue;}
+        const speed=machine.torque?Math.min(2,Math.abs(m.speed||0)):1;
+        if(!recipe){
+          const target=this.miningTarget(k);
+          if(!target?.key){m.machineFault='NO MINEABLE BLOCKS IN FRONT';m.progress=0;continue;}
+          const targetKey=`${target.x},${target.y},${target.id}`;
+          if(m.miningTarget!==targetKey){m.miningTarget=targetKey;m.progress=0;}
+          if(typeof set!=='function'){m.machineFault='WORLD MINING CONNECTION UNAVAILABLE';continue;}
+          if(this.outputRoom(k)<1||this.outputConnection(k,target.key)===null){m.machineFault='OUTPUT BLOCKED: CONNECT A HOPPER WITH SPACE';continue;}
+          m.working=true;m.efficiency=speed;m.progress=(m.progress||0)+dt*speed/(machine.time*Math.max(.3,this.defs[target.id].hard||1));
+          if(m.progress+1e-8<1)continue;
+          // Commit only after a real tile is removed. A refused edit produces no resources.
+          set(target.x,target.y,this.T.AIR);
+          if(this.get(target.x,target.y)!==this.T.AIR){m.machineFault='MINING TARGET PROTECTED';m.working=false;m.progress=0;continue;}
+          this.changed(target.x,target.y);m.outputs=m.outputs||{};m.outputs[target.key]=(m.outputs[target.key]||0)+1;
+          m.progress=Math.max(0,m.progress-1);m.totalMined=(m.totalMined||0)+1;this.metrics.mined++;
+          if(onMined)onMined(target.key,1,target.x,target.y);continue;
+        }
+        if(m.activeRecipe!==recipe.key){m.activeRecipe=recipe.key;m.progress=0;}
+        const missing=()=>Object.entries(recipe.cost).find(([key,n])=>(m.contents?.[key]||0)<n);
+        if(missing()){const [key,n]=missing();m.machineFault=`NEEDS ${n} ${key}`;continue;}
+        const amount=Object.values(recipe.out).reduce((n,v)=>n+v,0);
+        if(this.outputRoom(k)<amount){m.machineFault='OUTPUT BUFFER FULL — EMPTY OR CONNECT LOGISTICS';continue;}
+        m.working=true;m.efficiency=speed;m.progress=(m.progress||0)+dt*speed/machine.time;
+        for(let cycle=0;cycle<16&&m.progress+1e-8>=1&&!missing()&&this.outputRoom(k)>=amount;cycle++){
+          // Ingredients and output capacity are checked together, then committed as one inventory operation.
+          for(const [key,n] of Object.entries(recipe.cost)){m.contents[key]-=n;if(!m.contents[key])delete m.contents[key];}
+          m.outputs=m.outputs||{};for(const [key,n] of Object.entries(recipe.out))m.outputs[key]=(m.outputs[key]||0)+n;
+          m.progress=Math.max(0,m.progress-1);m.totalProduced=(m.totalProduced||0)+amount;this.metrics.produced+=amount;
+          if(onProduced)onProduced(recipe.key,amount,k);
+        }
+        // Completed work cannot accumulate while blocked and burst into free future production.
+        m.progress=Math.min(1,m.progress);
+      }
+    }
+    defenses(dt,{targets=[],damage,heal,lineOfSight,canClose}={}){
+      this.rebuild();dt=Math.max(0,Math.min(Number(dt)||0,2));
+      for(const k of this.active){const id=this.id(k),d=this.defs[id],m=this.data(k),[x,y]=this.xy(k),cx=x+.5,cy=y+.5;
+        if(id===this.T.ENEMY_SENSOR){m.sensorActive=targets.some(t=>t.health>0&&Math.hypot(t.x-cx,t.y-cy)<=d.range);continue;}
+        if(id===this.T.AUTO_DOOR){m.defenseFault='';const commandedOpen=!!(!m.disabled&&m.powered&&m.signalInputs?.EN);
+          if(!commandedOpen&&canClose&&!canClose(x,y)){m.open=true;m.defenseFault='WAITING FOR DOORWAY TO CLEAR';}
+          else m.open=commandedOpen;continue;}
+        if(id===this.T.RECOVERY_STATION){m.healClock=Math.max(0,(m.healClock||0)-dt);
+          if(!m.disabled&&m.powered&&m.signalOK!==false&&m.healClock<=0&&heal){const amount=heal(cx,cy,4);if(amount>0){m.healClock=1;this.metrics.healed+=amount;}}continue;}
+        if(!d.defense)continue;m.attackClock=Math.max(0,(m.attackClock||0)-dt);m.defenseFault='';m.firing=false;
+        if(m.disabled||m.signalOK===false){m.defenseFault='DISABLED BY CONTROL SIGNAL';continue;}
+        if(id===this.T.TRAP?(!m.running||m.torque<d.torque):!m.powered){m.defenseFault=id===this.T.TRAP?'NO MECHANICAL DRIVE':'NO POWER';continue;}
+        if(d.ammo&&!(m.contents?.[d.ammo]>0)){m.defenseFault='SUPPLY TURRET ROUNDS TO REAR ITEM INPUT';continue;}
+        const candidates=targets.filter(t=>t.health>0&&Math.hypot(t.x-cx,t.y-cy)<=d.range&&(!lineOfSight||lineOfSight(cx,cy,t.x,t.y)))
+          .sort((a,b)=>Math.hypot(a.x-cx,a.y-cy)-Math.hypot(b.x-cx,b.y-cy));
+        const target=candidates[0];if(!target||m.attackClock>0||!damage)continue;
+        if(d.ammo){m.contents[d.ammo]--;if(!m.contents[d.ammo])delete m.contents[d.ammo];}
+        for(const t of d.area?candidates:[target])damage(t,d.damage,id===this.T.TURRET?'turret':id===this.T.TRAP?'trap':id===this.T.TESLA_COIL?'tesla':'arc');
+        m.attackClock=d.cooldown;m.lastShot={x:target.x,y:target.y,time:this.elapsed};m.firing=true;this.metrics.shots++;
+      }
+    }
+    diagnose(k){this.rebuild();const d=this.defs[this.id(k)],m=this.data(k);return {
+      name:d?.name,powered:!!m.powered,supply:m.supply||0,load:m.load||0,capacity:m.capacity||0,
+      running:!!m.running,torque:m.torque||0,signal:m.signalOK!==false,working:!!m.working,
+      recipe:this.recipe(k),progress:m.progress||0,efficiency:m.efficiency||0,energy:m.energy||0,
+      contents:{...(m.contents||{})},outputs:{...(m.outputs||{})},
+      fault:m.machineFault||m.defenseFault||m.mechanicalFault||m.logisticsFault||
+        (d?.load&&!m.powered?'CONNECT POWER TO PWR INPUT':d?.mechanical&&!m.running?'CONNECT MOTOR TO DRIVE INPUT':''),
+      connections:['power','mechanical','signal','item'].map(type=>({type,count:this.pp(k,type).filter(p=>{
+        const n=this.neighbor(k,p.side);return n!==null&&this.pp(n,type).some(b=>b.side===(p.side+2)%4&&(compatible(p,b)||compatible(b,p)));
+      }).length}))};}
+    smartRotation(x,y,id,fallback=0){
+      const d=this.defs[id];let best=-1,candidates=[];
+      for(let rot=0;rot<4;rot++){let score=0;
+        for(const p of ports(d,{rot})){const [dx,dy]=DIRS[p.side],nx=x+dx,ny=y+dy;if(!this.inside(nx,ny))continue;
+          const other=this.defs[this.get(nx,ny)],m=this.getMeta().get(this.key(nx,ny))||{};
+          for(const b of ports(other,m))if(b.side===(p.side+2)%4&&(compatible(p,b)||compatible(b,p)))score+=p.type==='power'?1:2;
+        }
+        if(score>best){best=score;candidates=[rot];}else if(score===best)candidates.push(rot);
+      }return candidates.length===1?candidates[0]:fallback;
     }
     logistics(dt){
       this.rebuild();const T=this.T;
       // Each item crosses at most one component per tick, independent of tile iteration order.
-      const ready=new Map(this.transport.map(k=>[k,{...(this.data(k).contents||{})}]));
+      const ready=new Map(this.transport.map(k=>[k,{...((this.defs[this.id(k)].producer?this.data(k).outputs:this.data(k).contents)||{})}]));
       for(const k of this.transport){const m=this.data(k);m.itemClock=(m.itemClock||0)+dt;
         if(m.itemClock<.25)continue;m.itemClock%=.25;m.logisticsFault='';
         const id=this.id(k);if(id===T.CONVEYOR&&!m.running){m.logisticsFault='NO ROTATION';continue;}
@@ -303,10 +499,11 @@
         const n=this.neighbor(k,p.side);let moved=0;
         if(n!==null){const nid=this.id(n),[nx,ny]=this.xy(n);
           if((id!==T.STORAGE||nid===T.HOPPER)&&this.pp(n,'item').some(b=>b.side===(p.side+2)%4&&compatible(p,b)))moved=this.insert(n,key,1);
-          // Storage only feeds an attached hopper; other devices may release real loose items.
-          if(!nid&&id!==T.STORAGE)moved=this.spawn(key,1,nx+.5,ny+.5)?1:0;
+          // Manufacturing retains finished goods until a receiver is attached. Transport belts and
+          // hoppers may intentionally unload physical items onto the ground.
+          if(!nid&&id!==T.STORAGE&&!this.defs[id].producer)moved=this.spawn(key,1,nx+.5,ny+.5)?1:0;
         }
-        if(moved){m.contents[key]--;if(!m.contents[key])delete m.contents[key];if(id===T.SPLITTER)m.route=((m.route||0)+1)%2;}
+        if(moved){const inventory=this.defs[id].producer?m.outputs:m.contents;inventory[key]--;if(!inventory[key])delete inventory[key];if(id===T.SPLITTER)m.route=((m.route||0)+1)%2;}
         else m.logisticsFault='OUTPUT BLOCKED / FULL / FILTERED';
       }
       for(const drop of this.drops){drop.age+=dt;const x=Math.floor(drop.x),y=Math.floor(drop.y),k=this.key(x,y);
@@ -321,9 +518,11 @@
       }
       this.drops=this.drops.filter(d=>d.count>0);
     }
-    export(){return {version:2,drops:this.drops,nextDrop:this.nextDrop,nextAssembly:this.nextAssembly};}
+    export(){return {version:3,drops:this.drops,nextDrop:this.nextDrop,nextAssembly:this.nextAssembly,metrics:this.metrics,elapsed:this.elapsed};}
     restore(d){if(!d)return;this.drops=(d.drops||[]).filter(v=>typeof v.key==='string'&&Number.isFinite(v.count)&&v.count>0&&Number.isFinite(v.x)&&Number.isFinite(v.y)).slice(0,512);
-      this.nextDrop=Math.max(d.nextDrop||1,...this.drops.map(v=>v.id+1));this.nextAssembly=Math.max(this.nextAssembly,d.nextAssembly||1);}
+      this.nextDrop=Math.max(d.nextDrop||1,...this.drops.map(v=>v.id+1));this.nextAssembly=Math.max(this.nextAssembly,d.nextAssembly||1);
+      if(Number.isFinite(d.elapsed))this.elapsed=Math.max(0,d.elapsed);
+      for(const key of Object.keys(this.metrics))if(Number.isFinite(d.metrics?.[key]))this.metrics[key]=Math.max(0,d.metrics[key]);}
   }
-  return {install,Simulation,ports,compatible,DIRS,COLORS,DELAYS,CATALOG,strengthColor};
+  return {install,Simulation,ports,compatible,DIRS,COLORS,DELAYS,CATALOG,MACHINES,GOODS,strengthColor};
 });
