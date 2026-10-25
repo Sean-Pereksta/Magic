@@ -65,7 +65,7 @@ let browser;
   }
   await page.evaluate(() => { qaPrep(); S.tt.eventBonuses = [null, { tag: 'ARMORED', shield: '8' }]; qaEvent('armory'); });
   await page.click('[data-tt-event="shield"]'); assert.deepEqual(await page.evaluate(() => S.tt.eventBonuses), [{ tag: 'ARMORED', shield: 16 }]);
-  console.log('PASS all nine event options, close/reopen, nested clicks, stale phases, and migrated bonuses');
+  console.log('PASS all ' + events.reduce((total, event) => total + event.options.length, 0) + ' event options, close/reopen, nested clicks, stale phases, and migrated bonuses');
 
   await page.evaluate(() => { qaPrep(); S.coins = 100; qaEvent('armory'); window.qaOldEvent = { title: document.getElementById('dt').textContent, hint: document.getElementById('dhint').textContent, html: document.getElementById('body').innerHTML }; });
   await page.click('[data-tt-event="supplies"]');

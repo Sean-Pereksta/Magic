@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const $ = id => document.getElementById(id), R = window.TinyTroopsRules;
-  const stylesheet = document.createElement('link'); stylesheet.rel = 'stylesheet'; stylesheet.href = 'tiny-troops/presentation.css?v=20261024'; document.head.appendChild(stylesheet);
+  const stylesheet = document.createElement('link'); stylesheet.rel = 'stylesheet'; stylesheet.href = 'tiny-troops/presentation.css?v=20261025'; document.head.appendChild(stylesheet);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   let quality = 'full', selected = null, frame = null, epoch = '', warned = false;
@@ -69,6 +69,7 @@
   const legacyFlash = TinyTroopsPolish.legacyFlash; TinyTroopsPolish.legacyFlash = function () { if (level() !== 'minimal') return visual(() => legacyFlash.apply(this, arguments)); };
 
   const ribbon = document.createElement('section'); ribbon.id = 'ttBattleRibbon'; ribbon.setAttribute('aria-label', 'Battle progress');
+  $('enemyRow').setAttribute('role', 'region'); $('enemyRow').setAttribute('aria-label', 'Enemy formation. Scroll vertically to inspect all enemies.'); $('enemyRow').tabIndex = 0;
   ribbon.innerHTML = '<div class="tt-force tt-friendly"><span>YOUR ARMY <b id="ttAlliedCount"></b></span><progress id="ttAlliedHealth" max="100" value="100" aria-label="Army health"></progress></div><span class="tt-versus">⚔</span><div class="tt-force tt-hostile"><span>ENEMY WAVE <b id="ttEnemyCount"></b></span><progress id="ttEnemyHealth" max="100" value="100" aria-label="Enemy health"></progress></div>';
   $('ttWavePreview').before(ribbon);
   const events = document.createElement('details'); events.id = 'ttBattleEvents'; events.innerHTML = '<summary>Battle events <span>↗</span></summary><ol></ol>'; $('ttIntel').appendChild(events);

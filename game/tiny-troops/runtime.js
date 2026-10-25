@@ -579,7 +579,7 @@
     if (!S.tt.event || S.tt.finished || mode() === 'MENU') return;
     const e = R.EVENTS.find(e => e.id === S.tt.event.id); if (!e) { S.tt.event = null; S.phase = 'recruit'; return openRecruit(); }
     S.phase = 'tt-event';
-    show(e.emoji + ' ' + e.name, e.desc, '<div class="choices">' + e.options.map(o => `<button class="choice" data-tt-event="${o.id}" data-tt-event-id="${e.id}"><span class="be">${o.coins ? '🪙' : e.emoji}</span><span><strong>${o.name}</strong><p>${o.desc}</p></span></button>`).join('') + '</div><button class="secondary tt-wide" data-tt-action="skip-event">Skip event · no reward</button>'); render();
+    show(e.emoji + ' ' + e.name, e.desc, '<div class="choices">' + e.options.map(o => `<button class="choice" data-tt-event="${o.id}" data-tt-event-id="${e.id}"><span class="be">${o.emoji || (o.coins ? '🪙' : e.emoji)}</span><span><strong>${o.name}</strong><p>${o.desc}</p></span></button>`).join('') + '</div><button class="secondary tt-wide" data-tt-action="skip-event">Skip event · no reward</button>'); render();
   }
   function pickEvent(id, eventId) {
     if (S.phase !== 'tt-event' || !S.tt.event || S.tt.event.id !== eventId) return;
