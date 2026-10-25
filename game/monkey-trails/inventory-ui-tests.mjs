@@ -29,6 +29,10 @@ test('details expose copy safety, written rarity, full comparison, and all Ultra
   const {s,add}=fixture(),p=s.run.monkey;add('glacierAegis',1,{protected:true});const copy=I.inspectGearCopies(s,'glacierAegis')[0];let html=UI.renderItemDetails(s,{itemId:copy.itemId,copyId:copy.id,monkeyId:p.id,slot:'armor'});assert.match(html,/Epic · Ice · Rank 1/);assert.match(html,/protected or favorited/);assert.match(html,/Complete loadout/);assert.match(html,/data-action="inventory-upgrade"[^>]*disabled/);
   const ultra={...p,species:Object.keys(C.SPECIES).find(id=>C.SPECIES[id].rarity==='ultra')};html=renderEquipmentSlots(s,ultra);assert.equal((html.match(/class="equipment-slot /g)||[]).length,4);assert.match(html,/Ultra Slot/);assert.equal((renderEquipmentSlots(s,p).match(/class="equipment-slot /g)||[]).length,3);
 });
+test('item details label direct slots and route all companion choices to the visual roster',()=>{
+  const {s}=fixture(),copy=I.inspectGearCopies(s,'glacierAegis')[0],html=UI.renderItemDetails(s,{itemId:copy.itemId,copyId:copy.id,monkeyId:s.run.activeId});
+  assert.match(html,/data-action="forge-equip-roster"/);assert.match(html,/Choose any monkey/);assert.doesNotMatch(html,/data-equipment-monkey/);assert.doesNotMatch(html,/>Slot [123]</);for(const label of ['Weapon','Armor','Charm'])assert.ok(html.includes(label));
+});
 test('possible items uses overall lottery probabilities and every outcome opens full details',()=>{
   const {s}=fixture();s.run.fruit=20;const mix={fruit:8},preview=previewForge(s,mix),html=renderForgeOdds(s,mix);assert.equal(preview.rarityOdds.length,6);assert.match(html,/actual overall chance/);assert.match(html,/data-from-odds="true"/);assert.match(html,/compact-outcome-grid/);
 });

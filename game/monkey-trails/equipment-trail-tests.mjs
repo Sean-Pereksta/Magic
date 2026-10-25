@@ -69,12 +69,12 @@ test('trailforger returns only actually spent common ingredients after discount,
  assert.deepEqual(T.equipmentCraftRefund(s,{fruit:3,'item:berry':2}),{fruit:1});
 });
 
-test('equipped and protected duplicates survive forge auto-upgrades while available copies retain upgrades and salvage',()=>{
+test('equipped and protected duplicates survive forge upgrades and maximum ranks retain a new copy',()=>{
  const s=save();s.run.fruit=100;const first=F.craftForge(s,{fruit:8},'forge-1');C.equip(s,first.copyId,s.run.activeId);
  s.rng=12345;const second=F.craftForge(s,{fruit:8},'forge-2');assert.equal(second.itemId,first.itemId);assert.equal(second.kind,'discovered');assert.notEqual(second.copyId,first.copyId);assert.equal(s.meta.equipmentCopies[first.copyId].tier,1);
  setEquipmentCopyFlag(s,second.copyId,'protected',true);s.rng=12345;const third=F.craftForge(s,{fruit:8},'forge-3');assert.equal(third.kind,'discovered');assert.equal(ownedEquipmentCopies(s).filter(c=>c.itemId===first.itemId).length,3);
  s.rng=12345;const fourth=F.craftForge(s,{fruit:8},'forge-4');assert.equal(fourth.kind,'upgraded');assert.equal(fourth.copyId,third.copyId);assert.equal(s.meta.equipmentCopies[second.copyId].tier,1);
- s.meta.equipmentCopies[third.copyId].tier=12;s.meta.gear[first.itemId]=12;s.rng=12345;const salvage=F.craftForge(s,{fruit:8},'forge-5');assert.equal(salvage.kind,'salvaged');assert.equal(s.meta.equipmentCopies[first.copyId].tier,1);
+ s.meta.equipmentCopies[third.copyId].tier=12;s.meta.gear[first.itemId]=12;s.rng=12345;const duplicate=F.craftForge(s,{fruit:8},'forge-5');assert.equal(duplicate.kind,'discovered');assert.equal(duplicate.tier,1);assert.notEqual(duplicate.copyId,third.copyId);assert.equal(s.meta.equipmentCopies[third.copyId].tier,12);assert.equal(s.meta.equipmentCopies[first.copyId].tier,1);assert.equal(ownedEquipmentCopies(s).filter(c=>c.itemId===first.itemId).length,4);
 });
 
 test('regional victory challenges award themed Rare equipment exactly once',()=>{
