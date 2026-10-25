@@ -24,6 +24,8 @@ Older saves migrate without resetting their collection, injuries, equipment, bal
 
 The furnace reserves quantities in memory. Adding, editing, dragging, removing, canceling and clearing never spend inventory. A stack picker supports 1 through the available quantity, subject to the existing 60-unit furnace limit. Tap-to-add is available alongside mouse dragging and touch hold-and-drag; movement before the hold threshold scrolls normally.
 
+The forge occupies a fixed workspace above the game navigation. The furnace and inventory remain visible together while only inventory contents scroll. Desktop dedicates most of the width to the pack; phones place the compact furnace and rarity summary above it. Each ingredient shows its per-unit crafting power directly below its name. The six actual rarity percentages stay visible, with full costs and elemental bonuses under **Cost & bonuses** and the equipment catalogue under **Possible items**.
+
 The existing forge lottery supplies both the preview and actual result. Rarity percentages are sums of the exact million-ticket outcome table and total 100%. Camp discounts and equipped crafting effects appear before commitment. Equipment shown in the furnace inventory is inspection-only, so equipped, protected and favorite copies cannot be consumed accidentally.
 
 Smelting consumes ingredients, advances RNG and records the equipment award in one state change. The operation receipt makes retries return the same result. New rolls stay locked until the encrypted device checkpoint succeeds; **Retry saving equipment** persists the existing result without rolling again. Maximum-rank duplicates now create a fresh equipment copy instead of returning fragments. Older salvage receipts still load and replay.
@@ -35,6 +37,7 @@ Expedition completion records the recap, record reward and permanent earnings to
 - `npm run test:monkey-trails` — rules, save migration, combat, crafting, ownership and progression regressions.
 - `npm run test:monkey-trails:browser` — existing capture, camp, battle replacement and defeat/restart flows.
 - `npm run test:monkey-trails:forge-browser` — quantity sliders, cancellation, real touch scrolling and dragging, mouse dragging, exact odds, repeated smelt clicks, device-save failure/retry, encrypted reload and immediate equipment transfers at 320, 390 and 1280 pixels.
+- `npm run test:monkey-trails:forge-layout` — fixed furnace/inventory frames, condensed preview, independent inventory scrolling, and viewport fit on desktop, phones and short screens.
 - `npm run test:monkey-trails:legacy-browser` — recap, upgrade purchase, history, reload and restart at 320, 390 and 1280 pixels.
 - `node game/monkey-trails/browser-inventory.cjs` — responsive inventory and equipment movement.
 

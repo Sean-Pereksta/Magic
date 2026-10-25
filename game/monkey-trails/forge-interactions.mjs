@@ -27,12 +27,25 @@ export function renderForgeQuantityPicker(s,mix,id,{edit=false}={}){
 export function attachForgeInteractions({getState,getMix,setMix,isLocked=()=>false,getStatus=()=>({busy:isLocked(),unsaved:false}),onChange=()=>{},modal,closeModal,toast=()=>{},root=globalThis.document}={}){
   if(!root||!getState||!getMix||!setMix||!modal||!closeModal)throw Error('The forge needs its game state and dialog controls.');
   let filter='all',search='',favorites=new Set(),lastPanel=null,lastSignature='',picker=null,drag=null,touch=null,suppressClickUntil=0,suppressClickSource=null,feedbackTimer=0,destroyed=false;
+  const scrollMemory=new Map(),detailMemory=new Map(),scrollSelectors=['.forge-inventory-scroll','[data-forge-mix]','[data-forge-preview]'];
   try{const saved=JSON.parse(globalThis.localStorage?.getItem('monkey-trails.forge-favorites')||'[]');if(Array.isArray(saved))favorites=new Set(saved.filter(id=>typeof id==='string').slice(0,500));}catch{}
   const preferences=()=>({filter,search,favorites:[...favorites]});
   const panel=()=>root.querySelector('[data-forge-panel]');
   const locked=()=>Boolean(isLocked());
   function notify(message){toast(message);}
   function safe(action){try{return action();}catch(error){notify(error.message||'Try choosing your ingredient again.');}}
+  const detailKey=(node,index)=>node.dataset?.forgeDetailsKey||node.id||node.className||`details-${index}`;
+  function rememberView(current){
+    if(!current)return;
+    // Detached nodes can report zero offsets after an app rerender; retain the
+    // offsets captured by the scrolling event until their replacements exist.
+    if(current.isConnected!==false)for(const selector of scrollSelectors){const node=current.querySelector(selector);if(node)scrollMemory.set(selector,{top:node.scrollTop,left:node.scrollLeft});}
+    current.querySelectorAll('details').forEach((node,index)=>detailMemory.set(detailKey(node,index),node.open));
+  }
+  function restoreView(current){
+    for(const selector of scrollSelectors){const node=current.querySelector(selector),position=scrollMemory.get(selector);if(node&&position){node.scrollTop=position.top;node.scrollLeft=position.left;}}
+    current.querySelectorAll('details').forEach((node,index)=>{const key=detailKey(node,index);if(detailMemory.has(key))node.open=detailMemory.get(key);});
+  }
   function updateGrid(current=panel()){
     if(!current||!getState())return;const grid=current.querySelector('[data-forge-inventory]'),scroll=current.querySelector('.forge-inventory-scroll'),position=scroll?.scrollTop||0;
     if(grid)grid.innerHTML=renderForgeInventory(getState(),getMix(),preferences());
@@ -43,19 +56,20 @@ export function attachForgeInteractions({getState,getMix,setMix,isLocked=()=>fal
     current.querySelectorAll('[data-forge-item]').forEach(button=>{button.disabled=locked()||(resources.get(button.dataset.forgeItem)?.owned||0)<=(mix[button.dataset.forgeItem]||0);button.draggable=!button.disabled;});
   }
   function refresh({force=false}={}){
-    if(destroyed)return;const s=getState(),current=panel();if(!s||!current){lastPanel=null;clearDrag();clearTouch();return;}
+    if(destroyed)return;const s=getState(),current=panel();if(!s||!current){rememberView(lastPanel);lastPanel=null;clearDrag();clearTouch();return;}
     const mix=getMix(),status=getStatus(),viewSignature=forgeViewSignature(s,mix),signature=`${viewSignature}|${Boolean(status.busy)}|${Boolean(status.unsaved)}|${locked()}`;
     if(!force&&current===lastPanel&&signature===lastSignature)return;
+    if(lastPanel)rememberView(lastPanel);
     if(current!==lastPanel||signature!==lastSignature){clearDrag();clearTouch();}
     lastPanel=current;lastSignature=signature;current.dataset.forgeLocked=String(locked());
     const preview=cachedForgePreview(s,mix),mixNode=current.querySelector('[data-forge-mix]'),previewNode=current.querySelector('[data-forge-preview]');
-    if(mixNode)mixNode.innerHTML=renderMix(s,mix);if(previewNode)previewNode.innerHTML=renderForgePreview(s,mix,preview);updateGrid(current);
+    if(mixNode)mixNode.innerHTML=renderMix(s,mix);if(previewNode)previewNode.innerHTML=renderForgePreview(s,mix,preview);updateGrid(current);restoreView(current);
     const furnace=current.querySelector('[data-forge-drop]');
     // Use engine weights, including its split contribution for dual-type bond
     // materials, so the furnace glow agrees with the actual elemental influence.
     const element=Object.entries(preview.weights||{}).filter(([id,weight])=>ELEMENTS[id]&&weight>2).sort((a,b)=>b[1]-a[1])[0]?.[0]||'neutral';
     if(furnace){furnace.dataset.forgeElement=element;furnace.classList.toggle('has-ingredients',preview.units>0);furnace.style.setProperty('--forge-flame',ELEMENTS[element]?.color||'#f4b76b');furnace.classList.toggle('is-smelting',Boolean(status.busy));}
-    const button=current.querySelector('[data-action="forge-roll"]');if(button){button.disabled=Boolean(status.busy)||(!status.unsaved&&!preview.canCraft);button.innerHTML=`<span aria-hidden="true">♨</span> ${status.busy?'Saving your equipment…':status.unsaved?'Retry saving equipment':'SMELT'}<small>${status.busy?'Your equipment is held safely on this page':status.unsaved?'Finish saving before mixing again':'Create one equipment item · spend selected ingredients'}</small>`;}
+    const button=current.querySelector('[data-action="forge-roll"]');if(button){button.disabled=Boolean(status.busy)||(!status.unsaved&&!preview.canCraft);button.innerHTML=`<span aria-hidden="true">♨</span> ${status.busy?'Saving your equipment…':status.unsaved?'Retry saving equipment':'SMELT'}<small>${status.busy?'Your equipment is held safely':status.unsaved?'Finish saving before mixing again':(preview.canCraft?'Create one equipment item':preview.value<8?'8 power needed':'Finish encounter to smelt')}</small>`;}
     current.querySelectorAll('[data-action="forge-clear"],[data-action="forge-remove"],[data-forge-edit]').forEach(button=>{button.disabled=locked()||(button.dataset.action==='forge-clear'&&!Object.keys(mix).length);});
   }
   function commit(next,{pulse=false}={}){
@@ -64,7 +78,13 @@ export function attachForgeInteractions({getState,getMix,setMix,isLocked=()=>fal
     if(pulse){const furnace=panel()?.querySelector('[data-forge-drop]');if(furnace){furnace.classList.remove('forge-added');void furnace.offsetWidth;furnace.classList.add('forge-added');globalThis.clearTimeout(feedbackTimer);feedbackTimer=globalThis.setTimeout(()=>furnace.classList.remove('forge-added'),450);}}
   }
   function remove(id){const next={...getMix()};delete next[id];commit(next);}
-  function focusIngredient(id,{inFurnace=false}={}){const key=inFurnace?'forgeEdit':'forgeItem';[...root.querySelectorAll(inFurnace?'[data-forge-edit]':'[data-forge-item]')].find(button=>button.dataset[key]===id)?.focus({preventScroll:true});}
+  function focusIngredient(id,{inFurnace=false}={}){
+    const key=inFurnace?'forgeEdit':'forgeItem',button=[...root.querySelectorAll(inFurnace?'[data-forge-edit]':'[data-forge-item]')].find(button=>button.dataset[key]===id);button?.focus({preventScroll:true});
+    // A compact furnace may use one horizontally scrolling ingredient row.
+    // Reveal the newly selected stack inside that row without moving the pack.
+    const container=inFurnace?panel()?.querySelector('[data-forge-mix]'):null;
+    if(button&&container){const item=button.getBoundingClientRect(),bounds=container.getBoundingClientRect();container.scrollLeft+=item.right>bounds.right?item.right-bounds.right+4:item.left<bounds.left?item.left-bounds.left-4:0;container.scrollTop+=item.bottom>bounds.bottom?item.bottom-bounds.bottom+4:item.top<bounds.top?item.top-bounds.top-4:0;}
+  }
   function openQuantity(id,edit=false){
     if(locked())return;const bounds=forgeQuantityBounds(getState(),getMix(),id,{edit});
     if(!bounds.max){notify(bounds.room?'That stack is already in the furnace. Tap it there to adjust.':'The furnace holds 60 ingredients. Remove a stack first.');return;}
@@ -132,7 +152,9 @@ export function attachForgeInteractions({getState,getMix,setMix,isLocked=()=>fal
   }
   function dismissDialog(event){if(event.target.querySelector?.('[data-forge-quantity-dialog]'))picker=null;}
   function preventTouchMenu(event){if(touch?.active&&event.target.closest?.('[data-forge-drag]'))event.preventDefault();}
-  const listeners=[['click',onClick,true],['input',onInput,false],['close',dismissDialog,true],['cancel',dismissDialog,true],['contextmenu',preventTouchMenu,false],['dragstart',onDragStart,false],['dragover',onDragOver,false],['drop',onDrop,false],['dragend',clearDrag,false],['touchstart',startTouch,{passive:true}],['touchmove',moveTouch,{passive:false}],['touchend',endTouch,{passive:false}],['touchcancel',clearTouch,{passive:true}]];
+  function rememberScroll(event){if(!event.target.closest?.('[data-forge-panel]'))return;for(const selector of scrollSelectors)if(event.target.matches?.(selector))scrollMemory.set(selector,{top:event.target.scrollTop,left:event.target.scrollLeft});}
+  function rememberDetails(event){if(event.target.matches?.('details')&&event.target.closest?.('[data-forge-panel]'))rememberView(panel());}
+  const listeners=[['click',onClick,true],['input',onInput,false],['close',dismissDialog,true],['cancel',dismissDialog,true],['scroll',rememberScroll,true],['toggle',rememberDetails,true],['contextmenu',preventTouchMenu,false],['dragstart',onDragStart,false],['dragover',onDragOver,false],['drop',onDrop,false],['dragend',clearDrag,false],['touchstart',startTouch,{passive:true}],['touchmove',moveTouch,{passive:false}],['touchend',endTouch,{passive:false}],['touchcancel',clearTouch,{passive:true}]];
   for(const[name,handler,options]of listeners)root.addEventListener(name,handler,options);
   return {refresh,openQuantity,preferences,destroy(){destroyed=true;clearDrag();clearTouch();globalThis.clearTimeout(feedbackTimer);for(const[name,handler,options]of listeners)root.removeEventListener(name,handler,options);}};
 }
