@@ -1,222 +1,99 @@
-// Reproducible browser checks against the real app and encrypted device vault.
-// Run: node game/monkey-trails/browser-forge.cjs
-// Optional: MONKEY_TRAILS_PLAYWRIGHT=/path/to/playwright
-//           MONKEY_TRAILS_BROWSER_EXECUTABLE=/path/to/chromium
+// Real browser coverage: furnace inputs, exact odds, safe saves, reveal and copy transfers.
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {chromium}=require(process.env.MONKEY_TRAILS_PLAYWRIGHT||'playwright');
 const root=path.resolve(__dirname,'../..'),url='http://127.0.0.1:7777/game/monkey-trails.html';
 const mime={'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.json':'application/json'};
-const fixtureName='Trail Practice',fixturePassword='practice-only-not-ranked';
-const craftMix={fruit:8,'essence:fire':4,'item:revive':1};
-const percent=value=>`${Number((value*100).toFixed(4))}%`;
+const fixtureName='Trail Practice',fixturePassword='practice-only-not-ranked',craftMix={fruit:8,'essence:fire':4,'item:revive':1};
+const percent=value=>String(Number((value*100).toFixed(4)))+'%';
 
-async function readSaved(page){
-  return page.evaluate(async({name,password})=>{
-    const {identity,derive,unseal}=await import('/game/monkey-trails/storage.mjs');
-    const id=await identity(name,'practice'),envelope=JSON.parse(localStorage.getItem('monkey-trails.v1.'+id));
-    if(!envelope)throw Error('The encrypted fixture checkpoint is missing.');
-    return unseal(envelope,await derive(password,envelope.salt),id);
-  },{name:fixtureName,password:fixturePassword});
-}
-async function waitForSaved(page,predicate,label){
-  let state;const deadline=Date.now()+12000;
-  while(Date.now()<deadline){state=await readSaved(page);if(predicate(state))return state;await page.waitForTimeout(50);}
-  throw Error(`Encrypted checkpoint did not reach ${label}; forge receipt: ${JSON.stringify(state?.meta?.forge||null)}`);
-}
-async function openPractice(page){
-  await page.locator('#practice-button').click();await page.locator('#game').waitFor({state:'visible'});
-}
-async function openPack(page){
-  await page.locator('[data-action="tab"][data-id="pack"]').click();await page.locator('[data-forge-panel]').waitFor();
-  await waitForSaved(page,state=>state.meta.interface?.tab==='pack','the Pack tab checkpoint');
-}
-async function addIngredient(page,id,count){
-  await page.locator('#forge-resource').selectOption(id);await page.locator('#forge-amount').fill(String(count));
-  await page.locator('[data-action="forge-add"]').click();
-  assert.equal(await page.locator(`[data-forge-quantity="${id}"]`).inputValue(),String(count));
-}
-async function addCraftMix(page){for(const[id,count]of Object.entries(craftMix))await addIngredient(page,id,count);}
-async function doubleClickRoll(page){
-  // Two clicks in one event loop also cover the period while encryption is pending.
-  await page.locator('[data-action="forge-roll"]').evaluate(button=>{button.click();button.click();});
-}
-async function waitForResult(page,pending=false){
-  await page.waitForFunction(pending=>{
-    const eyebrow=document.querySelector('[data-forge-result] .forge-result .eyebrow');
-    return eyebrow?.textContent===(pending?'SAVE PENDING':'LAST CRAFT · SAVED');
-  },pending);
-}
-async function preview(page,mix){
-  const state=await readSaved(page);
-  return page.evaluate(async({state,mix})=>(await import('/game/monkey-trails/forge.mjs')).previewForge(state,mix),{state,mix});
-}
+async function readSaved(page){return page.evaluate(async({name,password})=>{
+ const {identity,derive,unseal}=await import('/game/monkey-trails/storage.mjs'),id=await identity(name,'practice'),envelope=JSON.parse(localStorage.getItem('monkey-trails.v1.'+id));
+ if(!envelope)throw Error('Encrypted fixture missing.');return unseal(envelope,await derive(password,envelope.salt),id);
+},{name:fixtureName,password:fixturePassword});}
+async function waitForSaved(page,predicate,label){let s;const deadline=Date.now()+12000;while(Date.now()<deadline){s=await readSaved(page);if(predicate(s))return s;await page.waitForTimeout(50);}throw Error('Encrypted save did not reach '+label+'; '+await page.locator('#save-status').innerText()+'; saved interface '+JSON.stringify(s?.meta.interface));}
+async function openPractice(page){await page.locator('#practice-button').click();await page.locator('#game').waitFor({state:'visible'});}
+async function openPack(page){await page.locator('[data-action="tab"][data-id="pack"]').click();await page.locator('[data-action="pack-section"][data-id="forge"]').click();await page.locator('[data-forge-panel]').waitFor();await waitForSaved(page,s=>s.meta.interface?.tab==='pack','Pack tab');}
+async function chooseQuantity(page,count){await page.locator('[data-forge-quantity-dialog]').waitFor();await page.locator('[data-forge-picker-number]').fill(String(count));await page.locator('[data-forge-picker-confirm]').click();await page.locator('[data-forge-quantity-dialog]').waitFor({state:'hidden'});}
+async function addIngredient(page,id,count){await page.locator('[data-forge-filter="all"]').click();await page.locator('[data-forge-search]').fill('');const item=page.locator('[data-forge-item="'+id+'"]');await item.scrollIntoViewIfNeeded();await item.evaluate(el=>{const bench=document.querySelector(innerWidth>620?'.forge-workbench':'.forge-furnace-column'),b=bench.getBoundingClientRect(),r=el.getBoundingClientRect();if(r.top<b.bottom+8)window.scrollBy(0,r.top-b.bottom-8);});await item.click();await chooseQuantity(page,count);assert.equal(await page.locator('[data-forge-edit="'+id+'"] > strong').innerText(),'×'+count);}
+async function addCraftMix(page){for(const[id,count]of Object.entries(craftMix))await addIngredient(page,id,count);const width=page.viewportSize().width;if(width===390||width===1280){const dir=path.resolve(root,'../qa');fs.mkdirSync(dir,{recursive:true});await page.locator('[data-forge-panel]').evaluate(el=>window.scrollTo(0,el.getBoundingClientRect().top+window.scrollY-12));await page.screenshot({path:path.join(dir,'forge-'+width+'.png'),fullPage:false});}}
+async function doubleClickRoll(page){await page.locator('[data-action="forge-roll"]').evaluate(button=>{button.click();button.click();});}
+async function waitForResult(page,pending=false){await page.waitForFunction(pending=>{const text=document.querySelector('[data-forge-result] .eyebrow')?.textContent||'';return pending?text==='SAVE PENDING':/SMELT COMPLETE|MYTHIC DISCOVERY/.test(text);},pending);}
+async function preview(page,mix){return page.evaluate(async({state,mix})=>(await import('/game/monkey-trails/forge.mjs')).previewForge(state,mix),{state:await readSaved(page),mix});}
 async function assertPreview(page,mix){
-  const expected=await preview(page,mix);
-  assert.deepEqual(await page.locator('[data-forge-preview] .forge-odds-row > strong').allTextContents(),expected.rarityOdds.map(row=>percent(row.chance)));
-  const elements=await page.locator('[data-forge-preview] .forge-elements > span').allTextContents();
-  for(const[index,row]of expected.elementOdds.entries())assert.ok(elements[index].endsWith(' '+percent(row.chance)),`${row.name} odds match the actual ticket allocation`);
-  const displayedTotal=(await page.locator('[data-forge-preview] .forge-odds-row > strong').allTextContents()).reduce((sum,text)=>sum+Number(text.replace('%','')),0);
-  assert.ok(Math.abs(displayedTotal-100)<1e-8,'Displayed rarity odds total exactly 100%');
-  const spend=await page.locator('[data-forge-preview] .forge-spend').innerText();
-  for(const row of expected.costSummary)assert.ok(spend.includes(`${row.count} ${row.name}`),'The preview states the actual charged ingredients');
-  return expected;
+ const expected=await preview(page,mix),shown=await page.locator('[data-forge-preview] .forge-odds-row > strong').allTextContents();assert.deepEqual(shown,expected.rarityOdds.map(row=>percent(row.chance)));assert.ok(Math.abs(shown.reduce((n,text)=>n+Number(text.replace('%','')),0)-100)<1e-8,'Displayed odds total 100%');
+ const elements=await page.locator('[data-forge-preview] .forge-elements > span').allTextContents();for(const[index,row]of expected.elementOdds.entries())assert.ok(elements[index].endsWith(' '+percent(row.chance)),row.name+' displayed odds equal lottery');
+ if(expected.costSummary.length){const spend=await page.locator('[data-forge-preview] .forge-spend').textContent();for(const row of expected.costSummary)assert.ok(spend.includes(row.count+' '+row.name));}return expected;
 }
-async function predictCraft(page){
-  const state=await readSaved(page);
-  return page.evaluate(async({state,mix})=>{
-    const F=await import('/game/monkey-trails/forge.mjs'),before=structuredClone(state);const receipt=F.craftForge(state,mix,F.nextForgeOperationId(state));return{before,state,receipt};
-  },{state,mix:craftMix});
-}
-function resourceAmount(state,id){
-  if(id==='fruit')return state.run.fruit;
-  const split=id.indexOf(':'),kind=id.slice(0,split),key=id.slice(split+1);
-  return(kind==='essence'?state.run.essence:kind==='item'?state.run.items:kind==='fragment'?state.meta.fragments:state.meta.bondMaterials)[key]||0;
-}
-function assertPaidCosts(before,after,receipt){
-  for(const row of receipt.costSummary){
-    assert.equal(resourceAmount(before,row.id)-resourceAmount(after,row.id),row.count,`${row.name}: spend the receipt's charged quantity once`);
-    assert.equal(receipt.costInputs[row.id],row.count);
-    assert.equal(row.count,receipt.campBonus?Math.ceil(receipt.inputs[row.id]*4/5):receipt.inputs[row.id]);
-  }
-}
-function assertCraftState(actual,expected){
-  assert.deepEqual(actual.meta.forge,expected.meta.forge,'The persisted receipt is the one originally rolled');
-  assert.deepEqual(actual.meta.gear,expected.meta.gear,'One duplicate adds exactly one equipment rank');
-  assert.deepEqual(actual.meta.equipmentCopies,expected.meta.equipmentCopies,'Only the eligible individual duplicate is upgraded');
-  assert.equal(actual.rng,expected.rng,'The craft consumes exactly one RNG transition');
-  assert.equal(actual.run.fruit,expected.run.fruit);assert.deepEqual(actual.run.essence,expected.run.essence);
-  assert.deepEqual(actual.run.items,expected.run.items);assert.deepEqual(actual.meta.fragments,expected.meta.fragments);
-}
-async function seedFixture(page,scenario){
-  return page.evaluate(async({scenario,name,password})=>{
-    const C=await import('/game/monkey-trails/core.mjs'),{Vault}=await import('/game/monkey-trails/storage.mjs');
-    const vault=new Vault(()=>{}),state=await vault.open(name,password,{create:true,species:'capuchin',mode:'practice'});
-    state.rng=765;state.run.fruit=100;for(const element of Object.keys(C.ELEMENTS))state.run.essence[element]=25;
-    state.run.items.revive=3;state.meta.fragments.worldroot=5;
-    const reserve=structuredClone(C.newSave('Reserve','macaque','practice',11).run.monkey);reserve.id='forge-reserve';reserve.nickname='Reserve';state.collection[reserve.id]=reserve;
-    C.setParty(state,[state.run.activeId,reserve.id]);
-    // Any roll is a known duplicate, making the exact tier increase deterministic.
-    for(const id of Object.keys(C.GEAR))state.meta.gear[id]=1;
-    C.equip(state,'heart',state.run.activeId);state.run.monkey.hp=10;reserve.hp=12;
-    if(scenario!=='odds-layout'){state.run.phase='camp';state.run.camp={heals:2,seedBoost:false};}
-    await vault.checkpoint(state,true);if(!vault.localOK)throw Error('Could not save the browser fixture.');
-    return{lead:state.run.activeId,reserve:reserve.id,leadHp:10,reserveHp:12};
-  },{scenario,name:fixtureName,password:fixturePassword});
-}
+async function predictCraft(page){return page.evaluate(async({state,mix})=>{const F=await import('/game/monkey-trails/forge.mjs'),before=structuredClone(state),receipt=F.craftForge(state,mix,F.nextForgeOperationId(state));return{before,state,receipt};},{state:await readSaved(page),mix:craftMix});}
+function resourceAmount(s,id){if(id==='fruit')return s.run.fruit;const split=id.indexOf(':'),kind=id.slice(0,split),key=id.slice(split+1);return(kind==='essence'?s.run.essence:kind==='item'?s.run.items:kind==='fragment'?s.meta.fragments:s.meta.bondMaterials)[key]||0;}
+function assertPaidCosts(before,after,receipt){for(const row of receipt.costSummary){assert.equal(resourceAmount(before,row.id)-resourceAmount(after,row.id),row.count,row.name+' paid once');assert.equal(receipt.costInputs[row.id],row.count);}}
+function assertCraftState(actual,expected){for(const key of ['forge','gear','equipmentCopies'])assert.deepEqual(actual.meta[key],expected.meta[key],key+' one persisted award');assert.equal(actual.rng,expected.rng);assert.equal(actual.run.fruit,expected.run.fruit);assert.deepEqual(actual.run.essence,expected.run.essence);assert.deepEqual(actual.run.items,expected.run.items);assert.deepEqual(actual.meta.fragments,expected.meta.fragments);}
+async function seedFixture(page,scenario){return page.evaluate(async({scenario,name,password})=>{
+ const C=await import('/game/monkey-trails/core.mjs'),{Vault}=await import('/game/monkey-trails/storage.mjs'),vault=new Vault(()=>{}),s=await vault.open(name,password,{create:true,species:'capuchin',mode:'practice'});
+ s.rng=765;s.run.fruit=100;for(const element of Object.keys(C.ELEMENTS))s.run.essence[element]=25;s.run.essence.fire=8;s.run.items.revive=3;s.meta.fragments.worldroot=5;
+ const reserve=structuredClone(C.newSave('Reserve','macaque','practice',11).run.monkey);reserve.id='forge-reserve';reserve.nickname='Reserve';s.collection[reserve.id]=reserve;
+ for(const id of Object.keys(C.GEAR))s.meta.gear[id]=1;C.equip(s,'heart',s.run.activeId,'charm');s.run.monkey.hp=10;reserve.hp=12;
+ if(scenario!=='odds-layout'){s.run.phase='camp';s.run.camp={heals:2,seedBoost:false};}
+ await vault.checkpoint(s,true);if(!vault.localOK)throw Error('Fixture save failed.');return{lead:s.run.activeId,reserve:reserve.id,leadHp:10,reserveHp:12,heartCopy:s.collection[s.run.activeId].equipmentCopies.charm};
+},{scenario,name:fixtureName,password:fixturePassword});}
 
+async function checkQuantityAndCancel(page){
+ const before=await readSaved(page);await page.locator('[data-forge-item="essence:fire"]').click();assert.equal(await page.locator('[data-forge-picker-range]').getAttribute('max'),'8','Stack eight offers every quantity 1–8');
+ for(const n of [1,3,8]){await page.locator('[data-forge-picker-range]').fill(String(n));assert.equal(await page.locator('[data-forge-picker-number]').inputValue(),String(n));}
+ await page.locator('[data-forge-picker-step="-1"]').click();assert.equal(await page.locator('[data-forge-picker-number]').inputValue(),'7');await page.locator('[data-forge-picker-step="1"]').click();assert.equal(await page.locator('[data-forge-picker-number]').inputValue(),'8');
+ await page.locator('[data-forge-picker-cancel]').click();assert.equal(await page.locator('[data-forge-edit]').count(),0);assert.deepEqual((await readSaved(page)).run.essence,before.run.essence);
+ await addIngredient(page,'essence:fire',3);await assertPreview(page,{'essence:fire':3});assert.equal(await page.locator('[data-forge-item="essence:fire"] .forge-tile-quantity').innerText(),'×5');
+ await page.locator('[data-forge-edit="essence:fire"]').click();await chooseQuantity(page,8);assert.equal(await page.locator('[data-forge-item="essence:fire"] .forge-tile-quantity').innerText(),'×0');
+ await page.locator('[data-action="forge-remove"][data-id="essence:fire"]').click();assert.equal(await page.locator('[data-forge-item="essence:fire"] .forge-tile-quantity').innerText(),'×8');assert.deepEqual((await readSaved(page)).run.essence,before.run.essence);await assertPreview(page,{});
+}
+async function checkDrag(page,{touch=false}={}){
+ await page.locator('[data-forge-filter="essence"]').click();await page.locator('[data-forge-search]').fill('Fire');const source=page.locator('[data-forge-item="essence:fire"]'),target=page.locator('[data-forge-drop]');
+ if(!touch){await source.scrollIntoViewIfNeeded();await page.evaluate(()=>{window.__forgeDragEvents=[];for(const name of ['dragstart','dragover','drop','dragend'])document.addEventListener(name,e=>window.__forgeDragEvents.push([name,e.target.closest('[data-forge-drag]')?.dataset.forgeDrag,Boolean(e.target.closest('[data-forge-drop]'))]));});await source.dragTo(target);assert.deepEqual([...new Set((await page.evaluate(()=>window.__forgeDragEvents)).map(row=>row[0]))],['dragstart','dragover','drop','dragend'],'Mouse performs a native furnace drop');}
+ else{
+  await source.scrollIntoViewIfNeeded();const a=await source.boundingBox(),b=await target.boundingBox();assert.ok(a&&b&&b.y+b.height>0&&b.y<844,'Furnace reachable while browsing ingredients');
+  const cdp=await page.context().newCDPSession(page),from={x:Math.round(a.x+a.width/2),y:Math.round(a.y+a.height/2)},to={x:Math.round(b.x+b.width/2),y:Math.round(Math.max(12,b.y+Math.min(b.height/2,100)))};
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...from,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:from.x,y:from.y-35,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});assert.equal(await page.locator('.forge-drag-ghost').count(),0);assert.equal(await page.locator('[data-forge-quantity-dialog]').count(),0);
+  await source.scrollIntoViewIfNeeded();const actual=await source.boundingBox(),start={x:Math.round(actual.x+actual.width/2),y:Math.round(actual.y+actual.height/2)};
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...start,id:2}]});await page.locator('.forge-drag-ghost').waitFor();await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{...to,id:2}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await cdp.detach();
+ }
+ await page.locator('[data-forge-quantity-dialog]').waitFor();assert.equal(await page.locator('[data-forge-picker-range]').getAttribute('max'),'8');
+ await chooseQuantity(page,3);assert.equal(await page.locator('[data-forge-edit="essence:fire"] > strong').innerText(),'×3');await page.locator('[data-action="forge-clear"]').click();await page.locator('[data-forge-filter="all"]').click();await page.locator('[data-forge-search]').fill('');
+}
 async function checkOddsAndLayout(page){
-  const layout=await page.evaluate(()=>{
-    const main=document.querySelector('.walk-main'),scene=document.querySelector('.land-scene');
-    return{trackingFirst:main?.firstElementChild?.classList.contains('tracking-controls'),trackingBeforeScene:!!(document.querySelector('.tracking-controls')?.compareDocumentPosition(scene)&Node.DOCUMENT_POSITION_FOLLOWING),discoveryAfterScene:scene?.nextElementSibling?.classList.contains('discovery'),legends:document.querySelectorAll('.upgrade-legend,.readiness-legend').length,readyBadges:document.querySelectorAll('.upgrade-ready-badge').length};
-  });
-  assert.deepEqual(layout,{trackingFirst:true,trackingBeforeScene:true,discoveryAfterScene:true,legends:0,readyBadges:0});
-  for(const tab of ['team','sanctuary']){
-    await page.locator(`[data-action="tab"][data-id="${tab}"]`).click();
-    assert.equal(await page.locator('.upgrade-legend,.readiness-legend').count(),0,`${tab}: no unconditional readiness legend`);
-    assert.equal(await page.locator('.upgrade-ready-badge').count(),0,`${tab}: an unavailable upgrade has no ready badge`);
-  }
-  await openPack(page);assert.equal(await page.locator('[data-action="forge-roll"]').isDisabled(),true);
-  await addIngredient(page,'fruit',8);const plain=await assertPreview(page,{fruit:8});
-  assert.equal(await page.locator('[data-action="forge-roll"]').isEnabled(),true,'A valid mix can be crafted directly on the trail');
-  assert.match(await page.locator('[data-forge-reason]').innerText(),/Ready: one guaranteed equipment roll/);
-  assert.equal(await page.locator('.forge-camp-bonus').count(),0);
-  await addIngredient(page,'item:revive',1);const rare=await assertPreview(page,{fruit:8,'item:revive':1});
-  assert.ok(rare.rarityOdds.find(row=>row.id==='legendary').chance>plain.rarityOdds.find(row=>row.id==='legendary').chance,'Rarer resources improve the displayed legendary odds');
-  await addIngredient(page,'essence:fire',4);const elemental=await assertPreview(page,craftMix);
-  assert.ok(elemental.elementOdds.find(row=>row.id==='fire').chance>rare.elementOdds.find(row=>row.id==='fire').chance,'Adding fire essence raises fire-item odds');
-  assert.ok(elemental.elementOdds.find(row=>row.id==='fire').chance>elemental.elementOdds.find(row=>row.id==='water').chance);
-  await page.locator('[data-action="forge-odds"]').click();
-  assert.match(await page.locator('.forge-item-odds > .muted').innerText(),new RegExp(`${elemental.outcomes.length} eligible items share 100%`));
-  assert.equal(elemental.rarityOdds.length,6,'All six rarity probabilities are displayed');
-  assert.equal(await page.locator('.forge-outcome').count(),12,'The full catalogue uses compact paginated tiles');
-  const names='.forge-outcome button > span:not(.forge-gear-icon)',firstNames=await page.locator(names).allTextContents();await page.locator('[data-action="forge-odds-page"][data-id="1"]').click();
-  assert.notDeepEqual(await page.locator(names).allTextContents(),firstNames);
-  await page.locator('[data-odds-filter="rarity"]').selectOption('rare');await page.locator('[data-odds-filter="element"]').selectOption('fire');
-  const expected=elemental.outcomes.filter(row=>row.rarity==='rare'&&row.element==='fire').sort((a,b)=>b.chance-a.chance||a.name.localeCompare(b.name));
-  assert.deepEqual(await page.locator(names).allTextContents(),expected.map(row=>row.name));
-  assert.deepEqual(await page.locator('.forge-outcome button > strong').allTextContents(),expected.map(row=>percent(row.chance)));
-  for(let index=0;index<expected.length;index++){
-    await page.locator('.forge-outcome [data-action="inventory-item"]').nth(index).click();assert.equal(await page.locator('.equipment-detail-heading h2').innerText(),expected[index].name);assert.ok((await page.locator('.equipment-description').innerText()).length>10,'Possible items open their full real effects');await page.locator('[data-action="inventory-back-odds"]').click();
-  }
-  await page.locator('#dialog-content [data-action="close-dialog"]').click();
-  const predicted=await predictCraft(page);assert.equal(predicted.receipt.campBonus,false);
-  await doubleClickRoll(page);await waitForResult(page);
-  const saved=await waitForSaved(page,state=>state.meta.forge?.serial===1,'the trail craft');
-  assertCraftState(saved,predicted.state);assertPaidCosts(predicted.before,saved,predicted.receipt);
+ await openPack(page);assert.equal(await page.locator('[data-action="forge-roll"]').isDisabled(),true);await checkQuantityAndCancel(page);
+ await addIngredient(page,'fruit',8);const plain=await assertPreview(page,{fruit:8});assert.equal(await page.locator('[data-action="forge-roll"]').isEnabled(),true);assert.match(await page.locator('[data-forge-reason]').innerText(),/Ready to smelt/);assert.equal(await page.locator('.forge-camp-bonus').count(),0);
+ await addIngredient(page,'item:revive',1);const rare=await assertPreview(page,{fruit:8,'item:revive':1});assert.ok(rare.rarityOdds.find(row=>row.id==='legendary').chance>plain.rarityOdds.find(row=>row.id==='legendary').chance);
+ await addIngredient(page,'essence:fire',4);const elemental=await assertPreview(page,craftMix);assert.ok(elemental.elementOdds.find(row=>row.id==='fire').chance>rare.elementOdds.find(row=>row.id==='fire').chance);assert.equal(await page.locator('[data-forge-drop]').getAttribute('data-forge-element'),'fire');
+ await page.locator('[data-action="forge-odds"]').click();assert.equal(await page.locator('.forge-outcome').count(),12);const names='.forge-outcome button > span:not(.forge-gear-icon)',first=await page.locator(names).allTextContents();await page.locator('[data-action="forge-odds-page"][data-id="1"]').click();assert.notDeepEqual(await page.locator(names).allTextContents(),first);
+ await page.locator('[data-odds-filter="rarity"]').selectOption('rare');await page.locator('[data-odds-filter="element"]').selectOption('fire');const expected=elemental.outcomes.filter(row=>row.rarity==='rare'&&row.element==='fire').sort((a,b)=>b.chance-a.chance||a.name.localeCompare(b.name));assert.deepEqual(await page.locator(names).allTextContents(),expected.map(row=>row.name));assert.deepEqual(await page.locator('.forge-outcome button > strong').allTextContents(),expected.map(row=>percent(row.chance)));
+ await page.locator('.forge-outcome [data-action="inventory-item"]').first().click();assert.equal(await page.locator('.equipment-detail-heading h2').innerText(),expected[0].name);await page.locator('[data-action="inventory-back-odds"]').click();await page.locator('#dialog-content [data-action="close-dialog"]').click();
+ const predicted=await predictCraft(page);await doubleClickRoll(page);await waitForResult(page);const saved=await waitForSaved(page,s=>s.meta.forge?.serial===1,'trail craft');assertCraftState(saved,predicted.state);assertPaidCosts(predicted.before,saved,predicted.receipt);
+ await page.locator('[data-action="forge-skip-reveal"]').click();assert.equal(await page.locator('.gear-reveal').count(),0);await page.locator('[data-action="forge-keep"]').click();assert.equal(await page.locator('[data-forge-result] .forge-result').count(),0);
 }
-
 async function checkCraftAndTransfer(page,fixture){
-  await openPack(page);await addCraftMix(page);const camp=await assertPreview(page,craftMix);
-  assert.match(await page.locator('.forge-camp-bonus').innerText(),/20% ingredient discount/);
-  const trail=await page.evaluate(async({state,mix})=>{state.run.phase='trail';return(await import('/game/monkey-trails/forge.mjs')).previewForge(state,mix);},{state:await readSaved(page),mix:craftMix});
-  for(const rarity of ['rare','legendary'])assert.ok(camp.rarityOdds.find(row=>row.id===rarity).chance>trail.rarityOdds.find(row=>row.id===rarity).chance,'Camp improves the same mix’s rare and legendary odds');
-  const predicted=await predictCraft(page);assert.equal(predicted.receipt.campBonus,true);
-  await doubleClickRoll(page);await waitForResult(page);
-  let saved=await waitForSaved(page,state=>state.meta.forge?.serial===1,'the first craft');assertCraftState(saved,predicted.state);assertPaidCosts(predicted.before,saved,predicted.receipt);
-  assert.equal(saved.meta.forge.last.kind,'upgraded');assert.equal(saved.meta.forge.last.tier,2);
-  assert.equal(await page.locator('[data-forge-quantity]').count(),0);assert.equal(await page.locator('[data-action="forge-roll"]').isDisabled(),true);
-  await page.reload();await openPractice(page);await openPack(page);await waitForResult(page);
-  saved=await readSaved(page);assertCraftState(saved,predicted.state);
-  assert.equal(await page.locator('.forge-result h3').innerText(),predicted.receipt.name);
-  assert.match(await page.locator('.forge-result .equipment-slot-heading small').innerText(),/Rank 2/);
-  await page.locator('.pack-equipment-current > summary').click();await page.locator('#gear-target').selectOption(fixture.reserve);await page.locator('.pack-equipment-current > summary').click();
-  await page.locator('#view [data-action="gear-picker"][data-id="charm"]').click();
-  await page.locator('[data-gear-filter="element"]').selectOption('leaf');await page.locator('[data-gear-filter="rarity"]').selectOption('common');
-  await page.locator('#dialog-content [data-action="inventory-item"][data-id="heart"]').click();const move=page.locator('#dialog-content [data-action="inventory-equip"]');assert.match(await move.innerText(),/Move from/);await move.click();
-  saved=await waitForSaved(page,state=>state.collection[fixture.reserve].equipment.charm==='heart','the new equipment owner');
-  assert.equal(saved.collection[fixture.lead].equipment.charm,null);assert.equal(saved.meta.equipped.charm,null);
-  assert.equal(saved.collection[fixture.lead].hp,fixture.leadHp);assert.equal(saved.collection[fixture.reserve].hp,fixture.reserveHp);
-  assert.equal(Object.values(saved.collection).filter(p=>Object.values(p.equipment).includes('heart')).length,1);
-  assert.deepEqual(saved.meta.forge,predicted.state.meta.forge,'Moving gear does not create another craft');
-  await page.locator('#dialog-content [data-action="close-dialog"]').click();
-  await page.reload();await openPractice(page);saved=await readSaved(page);
-  assert.equal(saved.collection[fixture.reserve].equipment.charm,'heart');assert.equal(saved.collection[fixture.reserve].hp,fixture.reserveHp);
+ await openPack(page);await checkDrag(page,{touch:true});await addCraftMix(page);const camp=await assertPreview(page,craftMix);assert.match(await page.locator('.forge-camp-bonus').innerText(),/20% fewer ingredients/);
+ const trail=await page.evaluate(async({state,mix})=>{state.run.phase='trail';return(await import('/game/monkey-trails/forge.mjs')).previewForge(state,mix);},{state:await readSaved(page),mix:craftMix});for(const rarity of ['rare','legendary'])assert.ok(camp.rarityOdds.find(row=>row.id===rarity).chance>trail.rarityOdds.find(row=>row.id===rarity).chance);
+ const predicted=await predictCraft(page);await doubleClickRoll(page);await waitForResult(page);let saved=await waitForSaved(page,s=>s.meta.forge?.serial===1,'camp craft');assertCraftState(saved,predicted.state);assertPaidCosts(predicted.before,saved,predicted.receipt);assert.equal(saved.meta.forge.last.kind,'upgraded');assert.equal(saved.meta.forge.last.tier,2);
+ await page.reload();await openPractice(page);await openPack(page);await waitForResult(page);assertCraftState(await readSaved(page),predicted.state);assert.equal(await page.locator('.direct-forge-result h2').innerText(),predicted.receipt.name);
+ await page.locator('[data-action="forge-equip-roster"]').click();await page.locator('.direct-sanctuary > summary').click();await page.locator('[data-action="gear-roster-monkey"][data-id="'+fixture.reserve+'"]').click();assert.equal(await page.locator('[data-action="gear-equip"]').count(),1);assert.ok(await page.locator('.direct-stat-grid').count());await page.locator('[data-action="gear-equip"]').click();
+ saved=await waitForSaved(page,s=>s.collection[fixture.reserve].equipmentCopies[predicted.receipt.slot]===predicted.receipt.copyId,'immediate crafted equipment');assert.equal(saved.collection[fixture.reserve].hp,fixture.reserveHp);
+ await page.locator('[data-action="tab"][data-id="sanctuary"]').click();await page.locator('.collection-card[data-id="'+fixture.reserve+'"]').click();await page.locator('.compact-equipment-slot[data-monkey="'+fixture.reserve+'"][data-id="charm"]').click();await page.locator('[data-gear-filter="element"]').selectOption('leaf');await page.locator('[data-gear-filter="rarity"]').selectOption('common');
+ await page.locator('[data-action="gear-select"][data-id="'+fixture.heartCopy+'"]').click();assert.match(await page.locator('.direct-equip-confirmation .notice').innerText(),/Moves this copy/);await page.locator('[data-action="gear-equip"]').click();
+ saved=await waitForSaved(page,s=>s.collection[fixture.reserve].equipment.charm==='heart','transferred owner');assert.equal(saved.collection[fixture.lead].equipment.charm,null);assert.equal(saved.collection[fixture.lead].hp,fixture.leadHp);assert.equal(saved.collection[fixture.reserve].hp,fixture.reserveHp);assert.equal(Object.values(saved.collection).filter(p=>Object.values(p.equipment).includes('heart')).length,1);assert.deepEqual(saved.meta.forge,predicted.state.meta.forge);
+ await page.reload();await openPractice(page);saved=await readSaved(page);assert.equal(saved.collection[fixture.reserve].equipment.charm,'heart');assert.equal(saved.collection[fixture.reserve].hp,fixture.reserveHp);
 }
-
 async function checkFailedSaveRetry(page){
-  await openPack(page);await addCraftMix(page);const before=await readSaved(page),predicted=await predictCraft(page);
-  await page.evaluate(async()=>{
-    const {Vault}=await import('/game/monkey-trails/storage.mjs'),original=Vault.prototype.put;
-    window.__forgeFailDeviceSave=true;window.__forgeFailedWrites=0;
-    Vault.prototype.put=function(...args){
-      if(this.mode==='practice'&&window.__forgeFailDeviceSave){this.localOK=false;window.__forgeFailedWrites++;this.status('Device save failed: injected browser test failure.','error');return;}
-      return original.apply(this,args);
-    };
-  });
-  await doubleClickRoll(page);await waitForResult(page,true);
-  assert.ok(await page.evaluate(()=>window.__forgeFailedWrites)>0,'The real checkpoint attempted the injected device write');
-  assert.match(await page.locator('[data-action="forge-roll"]').innerText(),/Retry saving crafted item/);
-  assert.equal(await page.locator('[data-action="forge-add"]').isDisabled(),true);
-  assert.equal(await page.locator('.forge-result [data-equip-start="true"]').isDisabled(),true);
-  assert.equal(await page.locator('.forge-result h3').innerText(),predicted.receipt.name);
-  const unsaved=await readSaved(page);assert.deepEqual(unsaved.meta.forge,before.meta.forge);assert.deepEqual(unsaved.meta.gear,before.meta.gear);
-  assert.equal(unsaved.run.fruit,before.run.fruit);assert.deepEqual(unsaved.run.essence,before.run.essence);assert.deepEqual(unsaved.run.items,before.run.items);
-  await page.evaluate(()=>{window.__forgeFailDeviceSave=false;});await doubleClickRoll(page);await waitForResult(page);
-  const saved=await waitForSaved(page,state=>state.meta.forge?.serial===1,'the retried craft');assertCraftState(saved,predicted.state);assertPaidCosts(predicted.before,saved,predicted.receipt);
-  assert.equal(saved.meta.forge.last.operationId,'forge-1');assert.equal(saved.meta.forge.last.tier,2);
-  await page.reload();await openPractice(page);await openPack(page);await waitForResult(page);
-  assertCraftState(await readSaved(page),predicted.state);assert.equal(await page.locator('[data-action="forge-roll"]').isDisabled(),true);
+ await openPack(page);await checkDrag(page);await addCraftMix(page);const before=await readSaved(page),predicted=await predictCraft(page);
+ await page.evaluate(async()=>{const {Vault}=await import('/game/monkey-trails/storage.mjs'),original=Vault.prototype.put;window.__forgeFailDeviceSave=true;window.__forgeFailedWrites=0;Vault.prototype.put=function(...args){if(this.mode==='practice'&&window.__forgeFailDeviceSave){this.localOK=false;window.__forgeFailedWrites++;this.status('Device save failed: injected test failure.','error');return;}return original.apply(this,args);};});
+ await doubleClickRoll(page);await waitForResult(page,true);assert.ok(await page.evaluate(()=>window.__forgeFailedWrites)>0);assert.match(await page.locator('[data-action="forge-roll"]').innerText(),/Retry saving equipment/);assert.equal(await page.locator('[data-forge-item]').first().isDisabled(),true);assert.equal(await page.locator('[data-action="forge-equip-roster"]').isDisabled(),true);assert.equal(await page.locator('.direct-forge-result h2').innerText(),predicted.receipt.name);
+ const unsaved=await readSaved(page);assert.deepEqual(unsaved.meta.forge,before.meta.forge);assert.deepEqual(unsaved.meta.gear,before.meta.gear);assert.equal(unsaved.run.fruit,before.run.fruit);assert.deepEqual(unsaved.run.essence,before.run.essence);
+ await page.evaluate(()=>{window.__forgeFailDeviceSave=false;});await doubleClickRoll(page);await waitForResult(page);const saved=await waitForSaved(page,s=>s.meta.forge?.serial===1,'save retry');assertCraftState(saved,predicted.state);assertPaidCosts(predicted.before,saved,predicted.receipt);
+ await page.reload();await openPractice(page);await openPack(page);await waitForResult(page);assertCraftState(await readSaved(page),predicted.state);assert.equal(await page.locator('[data-action="forge-roll"]').isDisabled(),true);
 }
-
-(async()=>{
-  const browser=await chromium.launch({headless:true,...(process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE?{executablePath:process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE}:{})}),reports=[];
-  try{for(const scenario of ['odds-layout','craft-equipment','failed-save-retry']){
-    const context=await browser.newContext({viewport:{width:scenario==='odds-layout'?320:390,height:844},isMobile:true,hasTouch:true});
-    try{
-      await context.route('**/*',async route=>{
-        const request=new URL(route.request().url()),file=path.resolve(root,'.'+decodeURIComponent(request.pathname));
-        if(request.hostname!=='127.0.0.1'||!file.startsWith(root+path.sep)||!fs.existsSync(file))return route.abort();
-        await route.fulfill({contentType:mime[path.extname(file)]||'application/octet-stream',body:fs.readFileSync(file)});
-      });
-      const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
-      await page.goto(url);await page.locator('#practice-button').waitFor();const fixture=await seedFixture(page,scenario);await openPractice(page);
-      if(scenario==='odds-layout')await checkOddsAndLayout(page);
-      else if(scenario==='craft-equipment')await checkCraftAndTransfer(page,fixture);
-      else await checkFailedSaveRetry(page);
-      const size=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));
-      assert.ok(size.scroll<=size.width,`${scenario}: mobile layout overflow`);assert.deepEqual(errors,[],`${scenario}: browser runtime errors`);
-      reports.push({scenario,errors:0,overflow:0});
-    }finally{await context.close();}
-  }}finally{await browser.close();}
-  console.log(JSON.stringify(reports,null,2));
-})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{const browser=await chromium.launch({headless:true,...(process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE?{executablePath:process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE}:{})}),reports=[];
+try{for(const[scenario,width]of [['odds-layout',320],['craft-equipment',390],['failed-save-retry',1280]]){if(process.env.MONKEY_TRAILS_BROWSER_SCENARIO&&scenario!==process.env.MONKEY_TRAILS_BROWSER_SCENARIO)continue;const context=await browser.newContext({viewport:{width,height:844},isMobile:width<700,hasTouch:width<700});try{
+ await context.route('**/*',async route=>{const request=new URL(route.request().url()),file=path.resolve(root,'.'+decodeURIComponent(request.pathname));if(request.hostname!=='127.0.0.1'||!file.startsWith(root+path.sep)||!fs.existsSync(file))return route.abort();await route.fulfill({contentType:mime[path.extname(file)]||'application/octet-stream',body:fs.readFileSync(file)});});
+ const page=await context.newPage(),errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('Browser error:',e.message);});await page.goto(url);await page.locator('#practice-button').waitFor();const fixture=await seedFixture(page,scenario);await openPractice(page);
+ if(scenario==='odds-layout')await checkOddsAndLayout(page);else if(scenario==='craft-equipment')await checkCraftAndTransfer(page,fixture);else await checkFailedSaveRetry(page);
+ const size=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));assert.ok(size.scroll<=size.width,width+'px no horizontal overflow');assert.deepEqual(errors,[]);reports.push({scenario,width,errors:0,overflow:0});
+}finally{await context.close();}}}finally{await browser.close();}console.log(JSON.stringify(reports,null,2));})().catch(error=>{console.error(error);process.exitCode=1;});

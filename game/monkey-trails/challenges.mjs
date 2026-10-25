@@ -4,6 +4,7 @@ import {ITEMS} from './data.mjs';
 import {recordTribeProgress} from './tribe-adventures.mjs';
 import {LANDS,landProgress,normalizeLands} from './lands.mjs';
 import {awardGearCopy,normalizeEquipmentInventory} from './equipment-inventory.mjs';
+import {recordLegacyChallenge} from './legacy.mjs';
 
 const RARE_REWARDS=['briarloopBand','quakehideBelt','resourceLens','dewdropChalice','frostguardBrooch','staticRelayCharm','charcoalHeart','nightfangTooth','dawnRelayBell','trailfinderCompass'];
 
@@ -92,6 +93,7 @@ export function claimChallenge(s,id){
  run.fruit+=goal.reward.fruit;
  for(const [item,n] of Object.entries(goal.reward.items))run.items[item]+=n;
  s.meta.regionChallenges.claimed.push(id);
+ recordLegacyChallenge(s,id,goal.title);
  recordTribeProgress(s,{challenges:1},`regional-challenge:${id}`);
  if(s.meta.regionChallenges.tracked===id)s.meta.regionChallenges.tracked=null;
  return rewardCopy(goal.reward);

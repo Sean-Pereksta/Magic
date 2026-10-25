@@ -32,6 +32,12 @@ test('automatic duplicate upgrades exclude equipped, favorite and protected copi
 test('copy award previews never mutate checkpoints or RNG',()=>{
   const s=save();s.meta.gear.fang=3;const before=JSON.stringify(s);assert.equal(I.previewGearAward(s,'fang').tier,4);assert.equal(JSON.stringify(s),before);
 });
+test('forge-style awards retain max-rank equipment and create a safe separate copy',()=>{
+  const s=save();s.meta.gear.fang=12;I.normalizeEquipmentInventory(s);const existing=I.ownedEquipmentCopies(s)[0],before=JSON.stringify(s);
+  assert.equal(I.previewGearAward(s,'fang').kind,'salvaged');assert.equal(I.previewGearAward(s,'fang',{allowSalvage:false}).kind,'discovered');assert.equal(JSON.stringify(s),before);
+  const award=I.awardGearCopy(s,'fang',{source:'forge',allowSalvage:false});assert.equal(award.kind,'discovered');assert.equal(award.tier,1);assert.notEqual(award.copyId,existing.id);
+  assert.equal(I.equipmentCopy(s,existing.id).tier,12);assert.equal(s.meta.gear.fang,12);C.validate(s);
+});
 test('explicit upgrades consume only unassigned, unprotected same-rank duplicates',()=>{
   const s=save(),p=s.run.monkey,a=I.awardGearCopy(s,'fang');C.equip(s,a.copyId,p.id);const b=I.awardGearCopy(s,'fang');I.setEquipmentCopyFlag(s,b.copyId,'protected',true);
   assert.throws(()=>I.upgradeEquipmentCopy(s,a.copyId),/duplicate/);I.setEquipmentCopyFlag(s,b.copyId,'protected',false);I.upgradeEquipmentCopy(s,a.copyId);assert.equal(C.equipped(s,p).fang,2);assert.equal(I.equipmentCopy(s,b.copyId),null);C.validate(s);

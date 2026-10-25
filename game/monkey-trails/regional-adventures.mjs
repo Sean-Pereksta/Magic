@@ -4,6 +4,7 @@ import {SPECIES,ELEMENTS,DIRECTIONS,ITEMS} from './data.mjs';
 import {LANDS,landProgress,normalizeLands} from './lands.mjs';
 import {terrainAt} from './terrain.mjs';
 import {recordTribeProgress} from './tribe-adventures.mjs';
+import {recordLegacyMilestone,recordLegacyLocation} from './legacy.mjs';
 import {awardGearCopy,normalizeEquipmentInventory} from './equipment-inventory.mjs';
 import {normalizeLivingWorld,advanceLivingWorld,recordLivingWorldEvent} from './living-world.mjs';
 
@@ -165,6 +166,7 @@ export function claimAdventure(s,id){
  for(const itemId of reward.gear||[]){const awarded=awardGearCopy(s,itemId,{source:`milestone:${id}`});if(awarded.kind==='salvaged'){s.meta.fragments??={};s.meta.fragments[itemId]=(s.meta.fragments[itemId]||0)+5;}}
  r.fruit+=reward.fruit;for(const [id,n]of Object.entries(reward.items))r.items[id]+=n;for(const [id,n]of Object.entries(reward.essence))r.essence[id]+=n;
  const saved=s.meta.adventures,local=saved.regions[step.landId];local.claimed.push(id);local.current=0;local.seen=[];local.stepId=adventureById.get(step.landId).steps.find(x=>!local.claimed.includes(x.id))?.id||null;
+ recordLegacyMilestone(s,id,step.title);if(step.index===0)recordLegacyLocation(s,`landmark:${step.landId}`,landById.get(step.landId).landmark);
  if(reward.cosmetic&&!saved.cosmetics.includes(reward.cosmetic))saved.cosmetics.push(reward.cosmetic);
  if(!local.stepId)recordTribeProgress(s,{challenges:1},`regional-adventure:${step.landId}`);
  if(s.meta.pinnedGoal?.kind==='adventure'&&s.meta.pinnedGoal.id===id)s.meta.pinnedGoal=local.stepId?{kind:'adventure',id:local.stepId}:null;

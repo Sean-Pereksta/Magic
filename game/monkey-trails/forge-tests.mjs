@@ -98,17 +98,26 @@ test('operation receipts survive reload, resolve the same roll and never charge 
   assert.throws(()=>F.craftForge(restored,inputs,receipt.operationId),/resolved/);assert.equal(snapshot(restored),second);
 });
 
-test('duplicates really upgrade and tier twelve gives explicit recyclable salvage',()=>{
+test('duplicates upgrade and maximum-rank duplicates produce another usable equipment copy',()=>{
   const s=stock(save()),inputs={fruit:8},first=F.craftForge(s,inputs,'forge-1');
   s.rng=12345;const second=F.craftForge(s,inputs,'forge-2');
   assert.equal(second.itemId,first.itemId);assert.equal(second.kind,'upgraded');assert.equal(second.tier,2);
   for(const id of Object.keys(C.GEAR))s.meta.gear[id]=12;
   normalizeEquipmentInventory(s);for(const row of Object.values(s.meta.equipmentCopies))row.tier=12;
   const before=structuredClone(s),result=F.craftForge(s,{fruit:60},'forge-3');
-  assert.equal(result.kind,'salvaged');assert.equal(result.tier,12);assert.equal(s.meta.gear[result.itemId],12);
-  assert.ok(result.salvage.count>0);assert.equal(s.meta.fragments[result.itemId],before.meta.fragments[result.itemId]+result.salvage.count);
-  assert.ok(result.salvage.value<=result.value*.5);assert.ok(result.salvage.value>=result.value*.3);
+  assert.equal(result.kind,'discovered');assert.equal(result.tier,1);assert.equal(s.meta.gear[result.itemId],12);
+  assert.equal(result.salvage,null);assert.equal(s.meta.equipmentCopies[result.copyId].itemId,result.itemId);assert.equal(s.meta.equipmentCopies[result.copyId].tier,1);
+  assert.equal(Object.keys(s.meta.equipmentCopies).length,Object.keys(before.meta.equipmentCopies).length+1);
+  assert.equal(s.meta.fragments[result.itemId],before.meta.fragments[result.itemId]);
+  const after=snapshot(s);assert.deepEqual(F.craftForge(s,{fruit:60},'forge-3'),result);assert.equal(snapshot(s),after);
   assert.deepEqual(F.validateForgeCheckpoint(JSON.parse(JSON.stringify(s))).meta.forge.last,result);
+});
+
+test('historical automatic salvage receipts remain valid and replay without spending',()=>{
+  const s=stock(save()),receipt=F.craftForge(s,{fruit:8},'forge-1');
+  const count=Math.max(1,Math.floor(receipt.value*.4/4)),legacy=s.meta.forge.last;
+  Object.assign(legacy,{kind:'salvaged',tier:12,salvage:{id:`fragment:${receipt.itemId}`,itemId:receipt.itemId,name:`${receipt.name} fragments`,count,value:count*4}});
+  const before=snapshot(s);assert.equal(F.validateForgeCheckpoint(s),s);assert.deepEqual(F.craftForge(s,{fruit:8},'forge-1'),legacy);assert.equal(snapshot(s),before);
 });
 
 test('invalid amounts, unknown IDs, sequence IDs and overlarge mixes are atomic',()=>{

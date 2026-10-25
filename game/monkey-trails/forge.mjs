@@ -92,7 +92,7 @@ function odds(s,m){
   const raw=[];
   for(const rarity of RARITY_IDS)for(const element of AFFINITY_IDS){
     const ids=buckets[`${rarity}:${element}`]||[];
-    for(const id of ids){const g=metadata(id),currentTier=tierOf(s,id),award=previewGearAward(s,id);raw.push({id,name:g.name,icon:g.icon,rarity,element,slot:g.slot,desc:g.desc,currentTier,nextTier:award.tier,kind:award.kind,copyId:award.copyId,weight:rarityWeights[rarity]*m.weights[element]/weightTotal/ids.length});}
+    for(const id of ids){const g=metadata(id),currentTier=tierOf(s,id),award=previewGearAward(s,id,{allowSalvage:false});raw.push({id,name:g.name,icon:g.icon,rarity,element,slot:g.slot,desc:g.desc,currentTier,nextTier:award.tier,kind:award.kind,copyId:award.copyId,weight:rarityWeights[rarity]*m.weights[element]/weightTotal/ids.length});}
   }
   const outcomes=apportion(raw);
   const rarityOdds=RARITY_IDS.map(id=>{const tickets=outcomes.filter(row=>row.rarity===id).reduce((n,row)=>n+row.tickets,0);return{id,...GEAR_RARITIES[id],tickets,chance:tickets/FORGE_LIMITS.tickets};});
@@ -173,15 +173,16 @@ export function craftForge(s,inputs,operationId){
   let x=s.rng|0;x^=x<<13;x^=x>>>17;x^=x<<5;const nextRng=(x>>>0)||1234567;
   const roll=Math.floor(nextRng/4294967296*FORGE_LIMITS.tickets);let remaining=roll,result=preview.outcomes.at(-1);
   for(const row of preview.outcomes){remaining-=row.tickets;if(remaining<0){result=row;break;}}
-  const award=previewGearAward(verified,result.id),salvageCount=award.kind==='salvaged'?Math.max(1,Math.floor(preview.value*.4/4)):0;
-  assertGearAwardCapacity(verified,result.id);
-  const salvage=salvageCount?{id:`fragment:${result.id}`,itemId:result.id,name:`${result.name} fragments`,count:salvageCount,value:salvageCount*4}:null;
+  // Every paid smelt leaves usable equipment. Existing maximum-rank copies
+  // stay intact and a new rank-one copy is created instead of auto-salvaging.
+  const award=previewGearAward(verified,result.id,{allowSalvage:false});
+  assertGearAwardCapacity(verified,result.id,{allowSalvage:false});
+  const salvage=null;
   const receipt={operationId,fingerprint,itemId:result.id,name:result.name,rarity:result.rarity,element:result.element,slot:result.slot,icon:result.icon,desc:result.desc,kind:award.kind,tier:award.tier,copyId:award.copyId,salvage,refunds:preview.refunds,inputs:preview.inputs,costInputs:preview.costInputs,costSummary:preview.costSummary,value:preview.value,chargedValue:preview.chargedValue,offeredUnits:preview.offeredUnits,chargedUnits:preview.chargedUnits,campBonus:preview.campBonus,discount:preview.discount,qualityBoost:preview.qualityBoost,gearQualityBoost:preview.gearQualityBoost,baseQuality:preview.baseQuality,quality:preview.quality,chance:result.chance,serial:f.serial+1};
   const checkpoint={...verified,meta:{...verified.meta,forge:{serial:receipt.serial,last:receipt}}};
   if(JSON.stringify(checkpoint).length+256>650000)throw Error('Equipment storage is full. Upgrade available duplicate copies first.');
   for(const[id,count]of Object.entries(preview.costInputs))spend(s,id,count);
-  if(salvage){s.meta.fragments??={};s.meta.fragments[result.id]=(s.meta.fragments[result.id]||0)+salvageCount;}
-  else receipt.copyId=awardGearCopy(s,result.id,{source:'forge',value:preview.value}).copyId;
+  receipt.copyId=awardGearCopy(s,result.id,{source:'forge',allowSalvage:false}).copyId;
   applyEquipmentCraftRefund(s,receipt.refunds);
   s.rng=nextRng;s.meta.forge={serial:receipt.serial,last:copy(receipt)};
   return copy(receipt);

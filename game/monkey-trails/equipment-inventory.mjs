@@ -1,5 +1,6 @@
 // Individual ownership layered over the original, save-stable catalogue ranks.
 import {GEAR,SPECIES,ELEMENTS} from './data.mjs';
+import {recordLegacyEquipment} from './legacy.mjs';
 
 export const equipmentSlots=p=>['weapon','armor','charm',...(SPECIES[p?.species]?.rarity==='ultra'||SPECIES[p?.species]?.ultra||p?.classification==='ultra'?['ultra']:[])];
 const members=s=>Object.values(s.collection||{});
@@ -62,23 +63,23 @@ export function equipmentLoadout(s,p){
   return out;
 }
 export function inspectGearCopies(s,itemId){return ownedEquipmentCopies(s).filter(c=>c.itemId===itemId);}
-export function previewGearAward(s,itemId){
+export function previewGearAward(s,itemId,{allowSalvage=true}={}){
   if(!Object.hasOwn(GEAR,itemId))throw Error('Unknown equipment.');
   let copies=s.meta.equipmentCopies?Object.values(s.meta.equipmentCopies).filter(c=>c.itemId===itemId).map(c=>({...c,...copyOwner(s,c.id)})):[];
   if(!copies.length&&s.meta.gear[itemId])copies=[{id:null,itemId,tier:s.meta.gear[itemId],acquiredAt:0,ownerId:members(s).find(p=>Object.values(p.equipment||{}).includes(itemId))?.id}];
   const free=copies.filter(c=>!c.ownerId&&!c.favorite&&!c.protected).sort((a,b)=>b.tier-a.tier||a.acquiredAt-b.acquiredAt),row=free.find(c=>c.tier<12)||free[0];
-  return row?{kind:row.tier===12?'salvaged':'upgraded',tier:Math.min(12,row.tier+1),copyId:row.id}:{kind:'discovered',tier:1,copyId:null};
+  return row&&(allowSalvage||row.tier<12)?{kind:row.tier===12?'salvaged':'upgraded',tier:Math.min(12,row.tier+1),copyId:row.id}:{kind:'discovered',tier:1,copyId:null};
 }
-export function awardGearCopy(s,itemId,{source='discovery'}={}){
-  assertGearAwardCapacity(s,itemId);
+export function awardGearCopy(s,itemId,{source='discovery',allowSalvage=true}={}){
+  assertGearAwardCapacity(s,itemId,{allowSalvage});
   normalizeEquipmentInventory(s);
-  const result=previewGearAward(s,itemId);
+  const result=previewGearAward(s,itemId,{allowSalvage});
   if(result.kind==='discovered'){const row=createCopy(s,itemId,1,source);result.copyId=row.id;}
   else if(result.kind==='upgraded'){const row=s.meta.equipmentCopies[result.copyId];row.tier=result.tier;row.isNew=true;}
-  mirror(s,itemId);return result;
+  mirror(s,itemId);if(result.kind!=='salvaged')recordLegacyEquipment(s,{crafted:source==='forge'||source==='fragments'});return result;
 }
-export function assertGearAwardCapacity(s,itemId){
-  const award=previewGearAward(s,itemId);
+export function assertGearAwardCapacity(s,itemId,options={}){
+  const award=previewGearAward(s,itemId,options);
   if(award.kind==='discovered'&&(Object.keys(s.meta.equipmentCopies||s.meta.gear||{}).length>=4000||JSON.stringify(s).length+256>650000))throw Error('Equipment storage is full. Upgrade available duplicate copies first.');
   return award;
 }
