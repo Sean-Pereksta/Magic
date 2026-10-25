@@ -10,7 +10,7 @@ module.exports=async function assetsBrowserChecks(browser,scratch,check,assert){
   const headers={'access-control-allow-origin':'*','cache-control':'no-store'};
   async function openCase(state={}){
     const context=await browser.newContext({viewport:{width:960,height:640}});contexts.push(context);
-    await context.addInitScript(()=>{window.ONE_HIT_KNIGHT_ASSET_BASE='https://ohk-art.test/';window.ONE_HIT_KNIGHT_ASSET_VERSION='arcade-test';});
+    await context.addInitScript(version=>{window.ONE_HIT_KNIGHT_ASSET_BASE='https://ohk-art.test/';window.ONE_HIT_KNIGHT_ASSET_VERSION=version;},manifest.version);
     await context.route('https://www.gstatic.com/firebasejs/**',route=>route.fulfill({status:200,contentType:'text/javascript',body:'/* offline scoring test */'}));
     const requests=[],consoleErrors=[];
     await context.route('https://ohk-art.test/**',async route=>{
@@ -18,7 +18,7 @@ module.exports=async function assetsBrowserChecks(browser,scratch,check,assert){
       if(relative==='manifest.json'){
         if(state.manifestDelay)await new Promise(resolve=>setTimeout(resolve,state.manifestDelay));
         if(state.failManifest)return route.fulfill({status:503,headers,body:'Asset host unavailable'});
-        const body=JSON.stringify(state.emptyManifest?{version:'broken',sprites:{}}:state.invalidManifest?{...manifest,version:''}:state.changedPath?{...manifest,sprites:{...manifest.sprites,knight:{...manifest.sprites.knight,image:'missing-knight.png'}}}:manifest);
+        const body=JSON.stringify(state.emptyManifest?{version:'broken',sprites:{}}:state.invalidManifest?{...manifest,version:''}:state.oldVersion?{...manifest,version:'arcade-v1'}:state.changedPath?{...manifest,sprites:{...manifest.sprites,knight:{...manifest.sprites.knight,image:'missing-knight.png'}}}:manifest);
         return route.fulfill({status:200,contentType:'application/json',headers,body});
       }
       if(relative==='missing-knight.png'||state.failImage&&relative===knightPath)return route.fulfill({status:503,headers,body:'Image delivery failed'});
@@ -58,6 +58,9 @@ module.exports=async function assetsBrowserChecks(browser,scratch,check,assert){
     });
     await check('invalid unversioned manifest is rejected with included-art recovery',async()=>{
       const c=await openCase({invalidManifest:true});assert.equal(await c.page.evaluate(()=>OHKAssets.hosted),false);assert(c.consoleErrors.some(e=>e.includes('version and sprites')));const visible=await pixels(c.page);assert(visible.drawn&&visible.pixels>300);summaries.push({case:'invalid manifest fallback',knightPixels:visible.pixels});
+    });
+    await check('older hosted artwork cannot replace the new complete knight package',async()=>{
+      const c=await openCase({oldVersion:true});assert.equal(await c.page.evaluate(()=>OHKAssets.hosted),false);assert(c.consoleErrors.some(e=>e.includes('does not match required')));assert.equal(await c.page.evaluate(()=>OHKAssets.lookup('knight.gold').image),'player/knights/gold.png');const visible=await pixels(c.page);assert(visible.drawn&&visible.pixels>300);summaries.push({case:'older hosted manifest fallback',knightPixels:visible.pixels});
     });
     await check('incomplete critical manifest falls back before a run starts',async()=>{const c=await openCase({emptyManifest:true});assert.equal(await c.page.evaluate(()=>OHKAssets.hosted),false);assert(c.consoleErrors.some(e=>e.includes('critical sprite')));const visible=await pixels(c.page);assert(visible.drawn&&visible.pixels>300);summaries.push({case:'incomplete manifest fallback'});});
     await check('renamed missing critical PNG falls back to the complete included manifest',async()=>{const c=await openCase({changedPath:true});assert.equal(await c.page.evaluate(()=>OHKAssets.hosted),false);const visible=await pixels(c.page);assert(visible.drawn&&visible.pixels>300);summaries.push({case:'critical package fallback'});});
