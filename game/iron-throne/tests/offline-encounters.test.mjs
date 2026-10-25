@@ -165,6 +165,26 @@ test('battle size preferences persist and cannot resize a saved encounter',()=>{
   const broken=structuredClone(s);broken.offlineBattles.battleSize=400;assert.throws(()=>parseSave(JSON.stringify(broken)),/preferences/);
   const legacy=structuredClone(s);delete legacy.offlineBattles.battleSize;assert.doesNotThrow(()=>parseSave(JSON.stringify(legacy)));
 });
+
+test('a real east-side attack deploys armies at opposite ends and repairs only unsafe deployment saves',()=>{
+  const {s,a,tile}=fixture({support:false,fort:false,defenders:100});a.tile='12,10';orderArmy(s,a.owner,a.id,tile.id,'attack');
+  resolveMovement(s);beginEncounter(s);const e=pendingEncounter(s);
+  assert.ok(e.participants.every(p=>p.entryDirection==='east'),'reproduce the campaign approach that formerly shared a spawn edge');
+  const b=createBattle(e,{maxActive:200});
+  const separated=state=>{
+    const attackers=state.units.filter(u=>u.status==='active'&&u.side===0),defenders=state.units.filter(u=>u.status==='active'&&u.side===1);
+    assert.ok(attackers.length&&defenders.length);assert.ok(Math.max(...attackers.map(u=>u.z))<-30);assert.ok(Math.min(...defenders.map(u=>u.z))>30);
+  };
+  separated(b);
+  const health=b.units.map(u=>[u.id,u.hp,u.ammo,u.morale]);
+  for(const u of b.units.filter(u=>u.status==='active')){u.x=50;u.z=0;u.order={kind:'hold',x:50,z:0};}
+  saveEncounterCheckpoint(s,b);const repaired=parseSave(JSON.stringify(s));separated(repaired.offlineBattle.checkpoint);
+  assert.deepEqual(repaired.offlineBattle.checkpoint.units.map(u=>[u.id,u.hp,u.ammo,u.morale]),health);
+  const fighting=structuredClone(repaired.offlineBattle.checkpoint);fighting.phase='combat';fighting.time=8;
+  for(const u of fighting.units.filter(u=>u.status==='active')){u.x=4;u.z=0;}
+  saveEncounterCheckpoint(repaired,fighting);
+  assert.deepEqual(parseSave(JSON.stringify(repaired)).offlineBattle.checkpoint.units,JSON.parse(JSON.stringify(fighting.units)),'loading active combat never teleports fighters back to deployment');
+});
 test('a completed tactical simulation round-trips through the real campaign save schema',()=>{
   const {s,a,d}=fixture({support:false});a.units={...emptyUnits(),menAtArms:14,spearman:8,archer:6,knight:3,ram:1};d.units={...emptyUnits(),levy:18,crossbow:4};
   resolveMovement(s);beginEncounter(s);const e=pendingEncounter(s),b=createBattle(e);

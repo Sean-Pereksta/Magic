@@ -9,6 +9,10 @@ const groups = [['all','All troops'],['infantry','Infantry'],['spearmen','Spearm
 const formations = {line:{name:'Line'},column:{name:'Column'},wedge:{name:'Wedge'},square:{name:'Square'},...FORMATIONS};
 const matchesGroup = (unit,id) => id==='all'||id==='archers'&&['archer','veteranArcher'].includes(unit.type)||id==='crossbow'&&unit.type==='crossbow'||id==='spearmen'&&unit.type==='spearman'||id==='cavalry'&&unit.family==='mounted'||unit.family===id;
 const orders = [['move','Move and face'],['hold','Hold position'],['walls','Defend walls'],['advance','Advance'],['charge','Charge'],['follow','Follow me'],['attack','Attack selected formation'],['nearest','Attack nearest'],['fire','Fire'],['holdFire','Hold fire'],['withdraw','Withdraw'],['retreat','Retreat']];
+const commandKeys = {F1:'hold',F2:'follow',F3:'charge',F4:'advance',F5:'toggleFire',F6:'retreat',KeyG:'aimMove'};
+const groupKeys = {Digit1:'all',Digit2:'infantry',Digit3:'spearmen',Digit4:'archers',Digit5:'crossbow',Digit6:'cavalry',Digit7:'siege'};
+const savedGroupKeys = {Digit8:0,Digit9:1,Digit0:2};
+const movementKeys = new Set(['KeyW','KeyA','KeyS','KeyD','ShiftLeft','ShiftRight','Space']);
 const sizeOptions = selected => [...BATTLE_SIZE_OPTIONS,...(BATTLE_SIZE_OPTIONS.includes(selected)?[]:[selected])].map(size=>`<option value="${size}" ${size===selected?'selected':''}>${size} · ${{100:'Lighter',150:'Balanced',200:'Large'}[size]||'Saved battle'}</option>`).join('');
 
 // This controller owns only presentation and input. Campaign writes always go
@@ -23,6 +27,7 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
       <div id="battle-deployment" class="battle-deployment"><h2>Choose your ground</h2><p>Select a formation, then drag on the field to place it and set its facing. Your army must deploy within its starting area.</p><button class="primary" data-battle-action="begin">Begin Battle</button></div>
       <aside id="battle-command-panel" class="battle-command-panel" hidden><h2>Command your troops</h2><label>Army <select id="battle-army"><option value="">All your armies</option></select></label><div class="battle-group-row" aria-label="Choose troop type">${groups.map(([id,label])=>`<button data-battle-group="${id}" aria-pressed="${id==='all'}"><strong>${label}</strong><span data-battle-group-count="${id}">0</span></button>`).join('')}</div><p id="battle-selection-status" class="battle-selection-status" role="status"></p><details class="battle-saved-groups"><summary>Custom command groups</summary><label>Saved group <select id="battle-saved-group"><option value="">Choose a saved group</option></select></label><label>Group name <input id="battle-group-name" type="text" maxlength="40" placeholder="e.g. Left flank archers"></label><div class="battle-order-row"><button data-battle-action="save-group">Save selected troops</button><button data-battle-action="remove-group" disabled>Remove group</button></div><p>Save this army and troop selection as a group. Its troops keep their original army and can be selected together again.</p></details><label>Formation <select id="battle-formation"><option value="" disabled>Mixed formations</option>${Object.entries(formations).map(([id,f])=>`<option value="${id}">${esc(f.name)}</option>`).join('')}</select></label><p class="battle-formation-hint">Choosing a formation immediately reforms the selected troops. Drag on the field to move and set their facing.</p><div class="battle-order-row">${orders.map(([id,label])=>`<button data-battle-order="${id}" aria-pressed="${id==='move'}">${label}</button>`).join('')}</div><p id="battle-order-status" role="status">Move and face: drag on the field.</p><label>Allied army <select id="battle-ally"></select></label><div class="battle-order-row"><button data-battle-request="flank">Protect a flank</button><button data-battle-request="assault">Support assault</button><button data-battle-request="withdraw">Cover withdrawal</button></div><label>Tactical view <select id="battle-command-time"><option value="pause">Pause combat</option><option value="slow">Slow motion</option><option value="real">Real time</option></select></label></aside>
       <div id="battle-event" class="battle-event" role="status" aria-live="polite"></div><div id="battle-reticle" class="battle-reticle" aria-hidden="true">+</div>
+      <aside class="battle-keyboard-hud" aria-label="Battlefield keyboard commands"><strong id="battle-live-selection">All troops</strong><div class="battle-keyboard-legend"><span>1 All · 2 Infantry · 3 Spears · 4 Archers · 5 Crossbows · 6 Cavalry · 7 Siege</span><span>F1 Hold here · F2 Follow · F3 Charge · F4 Advance · F5 Fire / Hold fire · F6 Retreat · G Move to aim</span><span id="battle-saved-shortcuts" hidden>8 / 9 / 0 Select saved groups</span></div><span id="battle-keyboard-feedback" role="status" aria-live="polite">Select troops, then press an order key. Fighting continues.</span></aside>
       <footer class="battle-player"><span id="battle-player-status"></span><label>Weapon <select id="battle-weapon"><option value="sword">Sword & shield</option><option value="spear">Spear & shield</option><option value="axe">Two-handed axe</option><option value="mace">Mace</option><option value="bow">Bow & sidearm</option><option value="crossbow">Crossbow & sidearm</option><option value="lance">Mounted lance</option></select></label><span class="battle-help">WASD move · Mouse aim · Click attack · Right click block · Space heavy attack · Shift sprint · E interact / mount · Tab command</span></footer>
       <div class="battle-touch" id="battle-touch"><div id="battle-stick" aria-label="Movement stick"><span></span></div><div class="battle-touch-buttons"><button data-battle-touch="sprint">Sprint</button><button data-battle-touch="block">Block</button><button data-battle-touch="attack">Attack</button><button data-battle-touch="heavy">Heavy</button><button data-battle-touch="interact">Interact / Mount</button><button data-battle-action="commands">Orders</button></div></div>
       <div id="battle-pause" class="battle-pause" hidden><section><span class="eyebrow">CAMPAIGN PAUSED</span><h2>Battle paused</h2><p id="battle-pause-note">Progress is saved on this device. Your campaign waits here.</p><button class="primary" data-battle-action="resume">Resume</button><button data-battle-action="exit">Save and Exit</button><button data-battle-action="retreat">Retreat</button><button data-battle-action="finish">Finish Automatically</button></section></div>
@@ -81,6 +86,15 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
   }
   function selection(){return selectedTroops().map(u=>u.id);}
   function selectionName(){return battle?.commandGroups?.find(g=>g.id===customGroupId)?.name||groups.find(([id])=>id===group)?.[1]||'Troops';}
+  function commandFeedback(message){$('battle-keyboard-feedback').textContent=message;}
+  function setOrder(value){order=value;ui.querySelectorAll('[data-battle-order]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.battleOrder===value)));}
+  function refreshLiveSelection(){
+    const troops=selectedTroops(),scope=!customGroupId&&$('battle-army').value?` · ${$('battle-army').selectedOptions[0]?.textContent||'Selected army'}`:'';
+    const text=`${selectionName()}${scope} · ${troops.filter(u=>u.status==='active').length} deployed · ${troops.filter(u=>u.status==='reserve').length} reserves`;
+    if($('battle-live-selection').textContent!==text)$('battle-live-selection').textContent=text;
+    $('battle-saved-shortcuts').hidden=!(battle?.commandGroups?.length);
+    return text;
+  }
   function storeCommandSelection(){battle.commandSelection={armyId:$('battle-army').value,group,customGroupId};}
   function saveCommands(){try{storeCommandSelection();checkpoint();}catch(error){setPause(true);$('battle-pause-note').textContent=error.message;}}
   function refreshSavedGroups(){
@@ -92,12 +106,18 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     if(!battle)return;
     const own=availableOwnTroops(),army=$('battle-army').value,scoped=own.filter(u=>!army||u.armyId===army),selected=selectedTroops();
     for(const [id] of groups){const button=ui.querySelector(`[data-battle-group="${id}"]`),matching=scoped.filter(u=>matchesGroup(u,id)),count=button.querySelector('[data-battle-group-count]');if(count.textContent!==String(matching.length))count.textContent=String(matching.length);button.disabled=!matching.length;button.setAttribute('aria-pressed',String(!customGroupId&&group===id));button.title=`${matching.filter(u=>u.status==='active').length} deployed, ${matching.filter(u=>u.status==='reserve').length} in reserve`;}
-    const status=`${selectionName()} · ${selected.filter(u=>u.status==='active').length} deployed · ${selected.filter(u=>u.status==='reserve').length} reserves`;
+    const status=refreshLiveSelection();
     if($('battle-selection-status').textContent!==status)$('battle-selection-status').textContent=status;
     if(refreshFormation){const shapes=new Set(selected.map(u=>u.formation));$('battle-formation').value=shapes.size===1?[...shapes][0]:'';}
     ui.querySelector('[data-battle-action="save-group"]').disabled=!selected.length||(battle.commandGroups?.length||0)>=12;
   }
-  function chooseGroup(id){group=id;customGroupId='';$('battle-group-name').value='';refreshSavedGroups();refreshSelection(true);saveCommands();}
+  function chooseGroup(id){group=id;customGroupId='';$('battle-group-name').value='';refreshSavedGroups();refreshSelection(true);saveCommands();commandFeedback(`${selectionName()} selected · ${selectedTroops().length} troops.`);}
+  function chooseSavedGroup(id){
+    const saved=battle.commandGroups?.find(g=>g.id===id);customGroupId=saved?.id||'';$('battle-group-name').value='';
+    if(saved){const ids=new Set(saved.unitIds),armies=new Set(battle.units.filter(u=>ids.has(u.id)).map(u=>u.armyId));$('battle-army').value=armies.size===1?[...armies][0]:'';}
+    refreshSavedGroups();refreshSelection(true);saveCommands();
+    if(saved){$('battle-order-status').textContent=`Selected ${selectionName()}. New orders affect only this group's surviving troops.`;commandFeedback(`${selectionName()} selected · ${selectedTroops().length} troops.`);}
+  }
   function saveCommandGroup(){
     const troops=selectedTroops();if(!troops.length||(battle.commandGroups?.length||0)>=12)return;
     battle.commandGroups||=[];let number=1;while(battle.commandGroups.some(g=>g.id===`command-group-${number}`))number++;
@@ -107,10 +127,23 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
   }
   function sendOrder(params={},selectedOrder=order){
     if(!battle||!sim||finishing)return;
-    const result=sim.issueOrder(battle,selection(),selectedOrder,{formation:$('battle-formation').value||undefined,...params});
+    const result=sim.issueOrder(battle,selection(),selectedOrder,{formation:$('battle-formation').value||undefined,...(selectedOrder==='hold'&&params.x===undefined?{atCurrent:true}:{}),...params});
     const description=selectedOrder==='formation'?`${formations[$('battle-formation').value]?.name||'Formation'} applied`:orders.find(([id])=>id===selectedOrder)?.[1]||selectedOrder;
     $('battle-order-status').textContent=result?.accepted?`${description} · ${result.count} ${selectionName().toLowerCase()}${params.x!==undefined?` to ${Math.round(params.x)}, ${Math.round(params.z)}`:''}.${result.reason?` ${result.reason}`:''}`:result?.message||result?.error||result?.reason||'No troops accepted this order.';
+    commandFeedback(result?.accepted?`${selectionName()}: ${description} · ${result.count} troops.`:$('battle-order-status').textContent);
     if(result?.accepted){refreshSelection();saveCommands();}
+  }
+  function battlefieldHotkey(code){
+    if(groupKeys[code]){$('battle-army').value='';chooseGroup(groupKeys[code]);return;}
+    if(code in savedGroupKeys){const saved=battle.commandGroups?.[savedGroupKeys[code]];if(saved)chooseSavedGroup(saved.id);else commandFeedback('Save a custom command group in Orders to use this slot.');return;}
+    let next=commandKeys[code];
+    if(next==='aimMove'){
+      const rect=canvas.getBoundingClientRect(),target=renderer?.pick(rect.left+rect.width/2,rect.top+rect.height/2,{groundOnly:true});
+      if(!target){commandFeedback('Aim at ground inside the battlefield, then press G.');return;}
+      setOrder('move');sendOrder({x:target.x,z:target.z,facing:camera.yaw});return;
+    }
+    if(next==='toggleFire'){const troops=selectedTroops();next=troops.length&&troops.every(u=>u.holdFire)?'fire':'holdFire';}
+    setOrder(next);sendOrder();
   }
   async function enter(){
     if(loading||!active()||active().status==='applied')return;loading=true;
@@ -131,7 +164,7 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
       $('battle-army').innerHTML='<option value="">All your armies</option>'+e.participants.filter(p=>p.owner===e.playerOwner).map(p=>`<option value="${esc(p.armyId)}">${esc(p.name||p.armyId)}</option>`).join('');
       group=groups.some(([id])=>id===battle.commandSelection?.group)?battle.commandSelection.group:'all';customGroupId=battle.commandGroups?.some(g=>g.id===battle.commandSelection?.customGroupId)?battle.commandSelection.customGroupId:'';
       $('battle-army').value=battle.commandSelection?.armyId||'';if($('battle-army').selectedIndex<0)$('battle-army').value='';
-      order='move';ui.querySelectorAll('[data-battle-order]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.battleOrder===order)));
+      setOrder('move');commandFeedback('Select troops, then press an order key. Fighting continues.');
       $('battle-group-name').value='';refreshSavedGroups();refreshSelection(true);storeCommandSelection();
       $('battle-ally').innerHTML=e.participants.filter(p=>p.side===e.playerSide&&p.owner!==e.playerOwner).map(p=>`<option value="${esc(p.armyId)}">${esc(p.name||p.armyId)}</option>`).join('');
       $('battle-command-time').value=getState().offlineBattles?.tacticalTime||'pause';
@@ -166,7 +199,7 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     const friendly=battle.units.filter(u=>u.side===side),enemy=battle.units.filter(u=>u.side!==side&&u.status==='active');
     const deployed=friendly.filter(u=>u.status==='active').length;
     $('battle-counts').textContent=`Your deployed ${deployed} · Reserves ${friendly.filter(u=>u.status==='reserve').length} | Enemy deployed ${enemy.length} · Field ${deployed+enemy.length}/${battle.maxActive}`;
-    if(!$('battle-command-panel').hidden)refreshSelection();
+    if(!$('battle-command-panel').hidden)refreshSelection();else refreshLiveSelection();
     $('battle-player-status').textContent=p?.status==='active'?`Commander · Health ${Math.ceil(p.hp)}/${p.maxHp} · Stamina ${Math.round(p.stamina)}${Number.isFinite(p.ammo)?` · Ammo ${p.ammo}`:''}`:p?.status==='reserve'?'Your commander is approaching with reinforcements.':p?.status==='escaped'?'Your commander has withdrawn · Your army continues.':'Commander incapacitated · Your army continues under tactical command';
     const event=battle.events.at(-1), message=typeof event==='string'?event:event?.message||event?.text;
     if(message&&message!==lastEvent){lastEvent=message;$('battle-event').textContent=message;}
@@ -215,23 +248,27 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
       if(name==='finish'){await finishSavedBattle();return;}
     }catch(error){if(battle){setPause(true);$('battle-pause-note').textContent=error.message;}notice(error.message);toast(error.message);}
   }
-  ui.addEventListener('click',event=>{const el=event.target.closest('button');if(!el)return;if(el.dataset.battleAction){event.preventDefault();action(el.dataset.battleAction);}if(el.dataset.battleGroup)chooseGroup(el.dataset.battleGroup);if(el.dataset.battleOrder){order=el.dataset.battleOrder;ui.querySelectorAll('[data-battle-order]').forEach(button=>button.setAttribute('aria-pressed',String(button===el)));if(['move','withdraw','attack'].includes(order))$('battle-order-status').textContent=order==='attack'?'Choose an enemy formation on the field.':'Drag on the field to choose position and facing.';else sendOrder();}if(el.dataset.battleRequest&&battle){const armyId=$('battle-ally').value;const r=sim.requestAlliedOrder?.(battle,armyId,el.dataset.battleRequest==='withdraw'?'cover':el.dataset.battleRequest);$('battle-order-status').textContent=r?.message||r?.error||r?.reason||(r?.accepted?'Allied commander accepts the request.':'No allied formation is available for that request.');}});
+  ui.addEventListener('click',event=>{const el=event.target.closest('button');if(!el)return;if(el.dataset.battleAction){event.preventDefault();action(el.dataset.battleAction);}if(el.dataset.battleGroup)chooseGroup(el.dataset.battleGroup);if(el.dataset.battleOrder){setOrder(el.dataset.battleOrder);if(['move','withdraw','attack'].includes(order))$('battle-order-status').textContent=order==='attack'?'Choose an enemy formation on the field.':'Drag on the field to choose position and facing.';else sendOrder();}if(el.dataset.battleRequest&&battle){const armyId=$('battle-ally').value;const r=sim.requestAlliedOrder?.(battle,armyId,el.dataset.battleRequest==='withdraw'?'cover':el.dataset.battleRequest);$('battle-order-status').textContent=r?.message||r?.error||r?.reason||(r?.accepted?'Allied commander accepts the request.':'No allied formation is available for that request.');}});
   ui.addEventListener('click',event=>{if(finishing){event.preventDefault();event.stopImmediatePropagation();}},true);
   $('battle-pending').onclick=showEncounter;
   $('battle-army').onchange=()=>chooseGroup(group);
   $('battle-formation').onchange=()=>sendOrder({},'formation');
-  $('battle-saved-group').onchange=()=>{customGroupId=$('battle-saved-group').value;$('battle-group-name').value='';if(customGroupId){const ids=new Set(battle.commandGroups.find(g=>g.id===customGroupId).unitIds),armies=new Set(battle.units.filter(u=>ids.has(u.id)).map(u=>u.armyId));$('battle-army').value=armies.size===1?[...armies][0]:'';}refreshSavedGroups();refreshSelection(true);saveCommands();if(customGroupId)$('battle-order-status').textContent=`Selected ${selectionName()}. New orders affect only this group's surviving troops.`;};
+  $('battle-saved-group').onchange=()=>chooseSavedGroup($('battle-saved-group').value);
   ui.addEventListener('change',event=>{if(event.target.id==='battle-encounter-size'&&!active()?.checkpoint)setBattleSize(event.target.value);});
   ui.addEventListener('change',event=>{if(event.target.dataset.battleSupport){const preview=structuredClone(getState());try{commitEncounterSupport(preview,ownSupport());$('battle-forecast').textContent=forecastText(encounterPreview(preview));}catch(error){notice(error.message);}}});
   encounterDialog.addEventListener('cancel',()=>{});field.addEventListener('cancel',event=>{event.preventDefault();setPause(!paused);});
   field.addEventListener('keydown',event=>{
-    if(finishing){event.preventDefault();event.stopPropagation();return;}
-    if(event.target.closest('select,input,textarea,button,summary'))return;
-    if(['Tab','Escape','KeyQ','KeyW','KeyA','KeyS','KeyD','ShiftLeft','ShiftRight','KeyE','Space'].includes(event.code))event.preventDefault();event.stopPropagation();
-    if(event.repeat){keys.add(event.code);return;}
-    if(event.code==='Tab')cameraToggle();else if(event.code==='Escape')setPause(!paused);else if(event.code==='KeyQ')action('commands');else if(event.code==='KeyA'&&camera.mode==='tactical'){order='nearest';sendOrder();}else if(event.code==='KeyE')input.interact=true;else keys.add(event.code);
+    if(!battle||!field.open||event.isComposing||event.ctrlKey||event.altKey||event.metaKey||event.shiftKey&&!movementKeys.has(event.code))return;
+    if(event.target.closest('select,input,textarea,[contenteditable]:not([contenteditable="false"]),[role="textbox"]'))return;
+    if(event.code==='Escape'&&!finishing){event.preventDefault();event.stopPropagation();if(!event.repeat)setPause(!paused);return;}
+    if(paused||finishing)return;
+    if(commandKeys[event.code]||groupKeys[event.code]||event.code in savedGroupKeys){event.preventDefault();event.stopPropagation();if(!event.repeat)battlefieldHotkey(event.code);return;}
+    if(event.target.closest('button,summary')||!movementKeys.has(event.code)&&!['Tab','KeyQ','KeyE'].includes(event.code))return;
+    event.preventDefault();event.stopPropagation();
+    if(event.repeat){if(movementKeys.has(event.code))keys.add(event.code);return;}
+    if(event.code==='Tab')cameraToggle();else if(event.code==='KeyQ')action('commands');else if(event.code==='KeyE')input.interact=true;else keys.add(event.code);
   });
-  field.addEventListener('keyup',event=>{keys.delete(event.code);event.stopPropagation();});
+  field.addEventListener('keyup',event=>{if(keys.delete(event.code))event.stopPropagation();});
   canvas.addEventListener('contextmenu',e=>e.preventDefault());
   canvas.addEventListener('pointerdown',event=>{
     if(paused)return;canvas.focus();pointer={x:event.clientX,y:event.clientY,id:event.pointerId};canvas.setPointerCapture(event.pointerId);

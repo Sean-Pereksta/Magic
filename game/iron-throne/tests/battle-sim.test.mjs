@@ -17,6 +17,169 @@ function duel(type = 'menAtArms', enemy = 'menAtArms', enemyFacing = Math.PI) {
   Object.assign(d, { x: 0, z: 1.9, facing: enemyFacing, explicitOrder: true, order: { kind: 'hold', x: 0, z: 1.9, facing: enemyFacing } });
   return { b, a, d };
 }
+function assertDeploymentIntegrity(b) {
+  const active = b.units.filter(u => u.status === 'active');
+  for (const u of active) {
+    if (u.wallId) continue;
+    const zone = b.layout.deploymentZones[u.side];
+    assert.ok(u.x >= zone.minX && u.x <= zone.maxX && u.z >= zone.minZ && u.z <= zone.maxZ, `${u.id} must remain in its own deployment end`);
+    assert.equal(nearestBattlePosition(b, u, u).reachable, true, `${u.id} must avoid terrain and buildings`);
+  }
+  for (let i = 0; i < active.length; i++) for (let j = i + 1; j < active.length; j++) {
+    const a = active[i], d = active[j];
+    if (Math.abs(a.y - d.y) >= 2.7) continue;
+    const clearance = a.family === 'siege' || d.family === 'siege' ? 2.6 : a.family === 'mounted' || d.family === 'mounted' ? 2.2 : 1.75;
+    assert.ok(Math.hypot(a.x - d.x, a.z - d.z) >= clearance - 1e-6, `${a.id} and ${d.id} must not overlap`);
+  }
+}
+
+test('every campaign approach deploys opposing sides at separate map ends facing each other', () => {
+  for (const direction of ['north', 'south', 'east', 'west', 'northeast', 'northwest', 'southeast', 'southwest', { x: 0, y: 0 }]) {
+    const e = encounter({ menAtArms: 20, archer: 10, cavalry: 10 }, { menAtArms: 20, archer: 10, cavalry: 10 });
+    e.participants.forEach(p => { p.entryDirection = direction; });
+    const b = createBattle(e, { maxActive: 200 });
+    assertDeploymentIntegrity(b);
+    assert.equal(b.units.filter(u => u.status === 'active').length, 80);
+    assert.ok(b.units.filter(u => u.side === 0).every(u => u.z <= -44 && u.facing === 0));
+    assert.ok(b.units.filter(u => u.side === 1).every(u => u.z >= 44 && u.facing === Math.PI));
+    assert.ok(b.armies.every(a => a.entry.z === (a.side ? 75 : -75)));
+  }
+});
+
+test('multiple armies and mixed troop bodies fill 200 distinct slots on opposite ends', () => {
+  const e = encounter();
+  e.participants = [0, 1].flatMap(side => Array.from({ length: 4 }, (_, n) => ({ armyId: `army-${side}-${n}`, owner: side ? 'vesper' : 'ashen', side, units: { menAtArms: 20, archer: 10, cavalry: 10, ram: 2 }, morale: .85, entryDirection: 'east' })));
+  const b = createBattle(e, { maxActive: 200 });
+  assert.equal(b.units.filter(u => u.status === 'active').length, 200);
+  assert.equal(b.units.length, 336);
+  assertDeploymentIntegrity(b);
+  assert.equal(b.units.find(u => u.id === b.commanderId).status, 'active');
+  for (const a of b.armies) assert.ok(b.units.some(u => u.armyId === a.armyId && u.status === 'active'));
+  const north = b.units.filter(u => u.status === 'active' && u.side === 0), south = b.units.filter(u => u.status === 'active' && u.side === 1);
+  assert.ok(Math.min(...south.map(u => u.z)) - Math.max(...north.map(u => u.z)) >= 88);
+  for (const a of battleResult(b).armies) assert.deepEqual(a.units, a.starting);
+});
+
+test('deployment drags and repeated formation changes cannot cross the front or overlap other groups', () => {
+  const e = encounter({ menAtArms: 50, archer: 30, cavalry: 20 }, { menAtArms: 50, archer: 30, cavalry: 20 });
+  const b = createBattle(e, { maxActive: 200 });
+  const originals = b.units.map(u => ({ id: u.id, hp: u.hp, ammo: u.ammo, morale: u.morale }));
+  for (const [group, x, z, formation] of [['all', 75, 75, 'line'], ['archers', -75, 75, 'column'], ['cavalry', 75, -75, 'wedge'], ['all', 0, 0, 'square'], ['all', 0, 75, 'skirmish']]) {
+    const result = issueOrder(b, group, 'move', { x, z, formation, facing: 0 });
+    assert.equal(result.accepted, true);
+    assertDeploymentIntegrity(b);
+  }
+  assert.deepEqual(b.units.map(u => ({ id: u.id, hp: u.hp, ammo: u.ammo, morale: u.morale })), originals);
+});
+
+test('deployment slots remain clear across forests, hills, rivers, towns and fortified courtyards', () => {
+  for (const tile of [{ terrain: 'forest' }, { terrain: 'hills' }, { terrain: 'river' }, { terrain: 'mountain' }, { terrain: 'plains', building: 'town' }, { terrain: 'plains', building: 'fort', walls: 60, fortIntegrity: 45 }]) {
+    const e = encounter({ menAtArms: 70, archer: 20, cavalry: 8, ram: 2 }, { menAtArms: 70, archer: 20, cavalry: 8, ram: 2 }, { tile });
+    const b = createBattle(e, { maxActive: 200 });
+    assert.equal(b.units.filter(u => u.status === 'active').length, 200);
+    assertDeploymentIntegrity(b);
+    if (tile.building === 'fort') assert.ok(b.units.filter(u => u.side === 1).every(u => Math.abs(u.x) <= 30 && u.z >= 20 && u.z <= 54));
+  }
+});
+
+test('deployment checkpoint repairs overlaps while preserving soldiers and valid parapets', () => {
+  const e = encounter({ menAtArms: 40, archer: 10 }, { menAtArms: 40, archer: 10 }, { playerOwner: 'vesper', playerSide: 1, tile: { building: 'fort', walls: 60, fortIntegrity: 45 } });
+  const b = createBattle(e);
+  issueOrder(b, 'archers', 'walls', { wallId: 'wall-west-front' });
+  const onWall = b.units.find(u => u.wallId), wallBefore = structuredClone(onWall);
+  b.commandGroups = [{ id: 'defenders', name: 'Wall archers', unitIds: b.units.filter(u => u.wallId).map(u => u.id) }];
+  b.commandSelection = { armyId: '', group: 'archers', customGroupId: 'defenders' };
+  for (const u of b.units.filter(u => !u.wallId)) { u.x = 50; u.z = 0; u.y = 0; u.order = { kind: 'hold', x: 50, z: 0 }; }
+  const ledger = b.units.map(u => ({ id: u.id, hp: u.hp, ammo: u.ammo, morale: u.morale, status: u.status }));
+  const groups = structuredClone(b.commandGroups);
+  normalizeBattleCheckpoint(b);
+  assertDeploymentIntegrity(b);
+  assert.deepEqual(b.units.map(u => ({ id: u.id, hp: u.hp, ammo: u.ammo, morale: u.morale, status: u.status })), ledger);
+  assert.deepEqual(onWall, wallBefore);
+  assert.deepEqual(b.commandGroups, groups);
+  const repaired = structuredClone(b); normalizeBattleCheckpoint(b); assert.deepEqual(b, repaired);
+  assert.equal(validateBattleCheckpoint(b, e), true);
+});
+
+test('legacy combat entry migration changes future approaches without teleporting combatants', () => {
+  const e = encounter({ menAtArms: 20 }, { menAtArms: 20 }), b = createBattle(e);
+  beginBattle(b); b.time = 8; delete b.deploymentLayoutVersion;
+  for (const a of b.armies) { a.entry = { x: 75, z: 0 }; a.entryDirection = 'east'; }
+  for (const u of b.units) { u.x = 50; u.z = 0; u.order = { kind: 'hold', x: 50, z: 0 }; }
+  const before = structuredClone(b.units);
+  normalizeBattleCheckpoint(b);
+  assert.deepEqual(b.units, before);
+  assert.deepEqual(b.armies.map(a => a.entry), [{ x: 55, z: -75 }, { x: 55, z: 75 }]);
+});
+
+test('hold-current anchors each selected troop in place without reforming or locking facing', () => {
+  const b = createBattle(encounter({ menAtArms: 4, archer: 4, cavalry: 2 }, { levy: 3 }));
+  beginBattle(b);
+  const archers = b.units.filter(u => u.type === 'archer');
+  archers.forEach((u, n) => { u.x = -30 + n * 8; u.z = -55 + n; u.order = { kind: 'move', x: 70, z: 40 }; });
+  const before = b.units.map(u => ({ id: u.id, x: u.x, y: u.y, z: u.z }));
+  const result = issueOrder(b, 'archers', 'hold', { atCurrent: true });
+  assert.equal(result.count, 4);
+  assert.deepEqual(b.units.map(u => ({ id: u.id, x: u.x, y: u.y, z: u.z })), before);
+  for (const u of archers) assert.deepEqual(u.order, { kind: 'hold', x: u.x, z: u.z, facing: u.facing, lockFacing: false });
+  const orders = b.units.filter(u => u.type !== 'archer').map(u => structuredClone(u.order));
+  run(b, .5);
+  assert.deepEqual(archers.map(u => ({ id: u.id, x: u.x, y: u.y, z: u.z })), before.filter(p => archers.some(u => u.id === p.id)));
+  assert.deepEqual(b.units.filter(u => u.type !== 'archer' && u.owner === 'ashen').map(u => u.order), orders.slice(0, 6));
+});
+
+test('hold-current immediately cancels a charge while permitting nearby defensive attacks', () => {
+  const { b, a, d } = duel('cavalry', 'levy');
+  Object.assign(a, { speed: 7, chargeDistance: 12, order: { kind: 'charge' } });
+  issueOrder(b, [a.id], 'hold', { atCurrent: true });
+  assert.equal(a.speed, 0); assert.equal(a.chargeDistance, 0);
+  assert.equal(a.order.lockFacing, false);
+  run(b, .8, { commanderAI: true });
+  assert.ok(d.hp < d.maxHp);
+  assert.equal(b.events.some(e => e.type === 'charge'), false);
+});
+
+test('hold-current reserves anchor at their actual entry slot when their wave arrives', () => {
+  const b = createBattle(encounter({ menAtArms: 70 }, { menAtArms: 70 }), { maxActive: 100 });
+  beginBattle(b);
+  issueOrder(b, 'all', 'hold', { atCurrent: true });
+  const reserve = b.units.find(u => u.side === 0 && u.status === 'reserve');
+  assert.equal(reserve.order.anchorOnArrival, true);
+  reserve.x = 0; reserve.z = 0; // Old saves can contain meaningless reserve coordinates.
+  const casualty = b.units.find(u => u.side === 0 && u.status === 'active' && !u.commander);
+  casualty.status = 'dead'; casualty.hp = 0;
+  for (const u of b.units.filter(u => u.side === 1 && u.status === 'active')) { u.explicitOrder = true; u.order = { kind: 'hold', x: u.x, z: u.z }; }
+  run(b, 8.5, { commanderAI: true });
+  assert.equal(reserve.status, 'active');
+  assert.equal(reserve.order.anchorOnArrival, false);
+  assert.equal(reserve.order.x, reserve.x); assert.equal(reserve.order.z, reserve.z);
+  assert.ok(reserve.z <= -74);
+});
+
+test('hold-current keeps wall defenders on the parapet, including when the enemy is below them', () => {
+  const e = encounter({ levy: 1 }, { menAtArms: 2 }, { playerOwner: 'vesper', playerSide: 1, tile: { building: 'fort', walls: 60, fortIntegrity: 45 } });
+  const b = createBattle(e);
+  issueOrder(b, 'all', 'walls', { wallId: 'wall-west-front' });
+  beginBattle(b);
+  const defender = b.units.find(u => u.side === 1), attacker = b.units.find(u => u.side === 0);
+  Object.assign(attacker, { x: defender.x, z: defender.z - 2, y: 0, explicitOrder: true, order: { kind: 'hold', x: defender.x, z: defender.z - 2 } });
+  const before = { x: defender.x, y: defender.y, z: defender.z, wallId: defender.wallId };
+  issueOrder(b, 'all', 'hold', { atCurrent: true });
+  run(b, 1, { commanderAI: true });
+  assert.deepEqual({ x: defender.x, y: defender.y, z: defender.z, wallId: defender.wallId }, before);
+  assert.notEqual(defender.action?.kind, 'stairs');
+});
+
+test('parapet assignments check physical occupants even when their saved slot metadata is stale', () => {
+  const e = encounter({ levy: 1 }, { archer: 4 }, { playerOwner: 'vesper', playerSide: 1, tile: { building: 'fort', walls: 60, fortIntegrity: 45 } });
+  const b = createBattle(e), defenders = b.units.filter(u => u.side === 1);
+  issueOrder(b, [defenders[0].id], 'walls', { wallId: 'wall-west-front' });
+  defenders[0].wallPosition.slot = 'stale-slot';
+  defenders[0].order = { kind: 'hold', x: defenders[0].x, z: defenders[0].z };
+  issueOrder(b, defenders.slice(1).map(u => u.id), 'walls', { wallId: 'wall-west-front' });
+  assertDeploymentIntegrity(b);
+  assert.ok(defenders.every(u => u.wallId === 'wall-west-front'));
+});
 
 test('every campaign troop is represented exactly once, including mounted and siege units', () => {
   const roster = Object.fromEntries(Object.keys(UNITS).map(type => [type, 3]));
@@ -126,7 +289,7 @@ test('casualty replacements wait for reserve waves and enter from the edge', () 
 test('legacy overflow is safely queued without healing, rearming or replacing soldiers', () => {
   const e = encounter({ archer: 150 }, { archer: 150 }), b = createBattle(e);
   delete b.battleRulesVersion; delete b.nextReserveWave;
-  b.maxActive = 240; b.activeCaps = [120, 120]; b.time = 12;
+  b.maxActive = 240; b.activeCaps = [120, 120]; b.time = 12; b.phase = 'combat';
   for (const side of [0, 1]) {
     for (const u of b.units.filter(u => u.side === side && u.status === 'reserve').slice(0, 45)) { u.status = 'active'; u.arrived = true; }
   }
@@ -274,7 +437,7 @@ test('reinforcements arrive from their own edge and prevent premature victory', 
   assert.ok(b.units.filter(u => u.armyId === 'relief').every(u => u.status === 'reserve'));
   run(b, 2);
   assert.equal(b.armies.find(a => a.armyId === 'relief').arrived, true);
-  assert.ok(b.units.filter(u => u.armyId === 'relief').every(u => u.status === 'active' && u.x > 65));
+  assert.ok(b.units.filter(u => u.armyId === 'relief').every(u => u.status === 'active' && u.x > 40 && u.z > 65));
 });
 
 test('a blocked entry keeps arriving troops in reserve instead of spawning inside opponents', () => {
@@ -282,7 +445,7 @@ test('a blocked entry keeps arriving troops in reserve instead of spawning insid
   e.participants.push({ armyId: 'relief', owner: 'ashen', side: 0, units: { knight: 2 }, morale: .8, arrivalSeconds: 1, entryDirection: 'east' });
   const b = createBattle(e); beginBattle(b);
   const enemy = b.units.filter(u => u.side === 1);
-  enemy.forEach((u, n) => { u.x = 75; u.z = -75 + n * 5; u.explicitOrder = true; u.order = { kind: 'hold', x: u.x, z: u.z }; });
+  enemy.forEach((u, n) => { u.x = -75 + n * 5; u.z = -75; u.explicitOrder = true; u.order = { kind: 'hold', x: u.x, z: u.z }; });
   run(b, 1.1);
   assert.ok(b.units.filter(u => u.armyId === 'relief').every(u => u.status === 'reserve'));
   enemy.forEach((u, n) => { u.x = n - 15; u.z = 35; u.order = { kind: 'hold', x: u.x, z: u.z }; });
@@ -403,11 +566,12 @@ test('hold fire conserves arrows and hold position does not pursue distant targe
 
 test('deployment stays in the starting area and reports obstructed positions', () => {
   const e = encounter(); e.tile = { terrain: 'plains', building: 'fort', walls: 60, fortIntegrity: 45 };
-  const b = createBattle(e), u = b.units[0], before = { x: u.x, z: u.z };
+  const b = createBattle(e), u = b.units[0];
   const blocked = nearestBattlePosition(b, { x: -19, z: 12 }, u);
   assert.equal(blocked.reachable, false); assert.match(blocked.reason, /obstructed/);
-  issueOrder(b, 'all', 'move', { x: 75, z: 75, facing: 1 });
-  assert.ok(Math.hypot(u.x - before.x, u.z - before.z) <= 27);
+  const order = issueOrder(b, 'all', 'move', { x: 75, z: 75, facing: 1 });
+  assert.ok(u.x <= 66 && u.x >= -66 && u.z >= -72 && u.z <= -44);
+  assert.match(order.reason, /deployment area/);
 });
 
 test('sieges retain exact breached gates and wall sections between encounters', () => {

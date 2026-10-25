@@ -26,6 +26,44 @@ function fixture(){
   configureOfflineBattles(s);orderArmy(s,a.owner,a.id,d.tile,'attack');resolveMovement(s,'ashen');
   assert.ok(s.offlineBattle);return s;
 }
+async function checkBattlefieldHotkeys(page,custom){
+  const saved=()=>page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
+  const archerUnits=b=>b.units.filter(u=>u.owner===b.playerOwner&&['archer','veteranArcher'].includes(u.type)&&['active','reserve'].includes(u.status));
+  const cavalryOrders=b=>b.units.filter(u=>u.owner===b.playerOwner&&u.family==='mounted').map(u=>({id:u.id,order:u.order,formation:u.formation,holdFire:u.holdFire}));
+  const original=await saved();assert.equal(await page.locator('#battle-command-panel').isVisible(),false);
+  await page.locator('#battle-canvas').focus();await page.keyboard.press('4');await page.keyboard.press('F3');
+  const charged=await saved();assert.ok(archerUnits(charged).every(u=>u.order.kind==='charge'));
+  assert.deepEqual(cavalryOrders(charged),cavalryOrders(original),'keyboard archer charge leaves cavalry orders untouched');
+  assert.equal(charged.phase,'combat');assert.equal(await page.locator('#battle-command-panel').isVisible(),false);
+  assert.equal(await page.locator('#battle-mode').textContent(),'LEAD THE BATTLE','direct orders retain the third-person camera');
+  assert.match(await page.locator('#battle-keyboard-feedback').textContent(),/Archers: Charge/);
+  assert.match(await page.locator('#battle-live-selection').textContent(),/Archers/);
+  await page.waitForTimeout(150);await page.keyboard.press('F1');
+  const held=await saved();assert.ok(held.time>charged.time,'combat time continues while direct orders are issued');
+  assert.ok(archerUnits(held).every(u=>u.order.kind==='hold'&&Math.abs(u.order.x-u.x)<1e-9&&Math.abs(u.order.z-u.z)<1e-9),'Hold here anchors every selected troop at its current location');
+  assert.deepEqual(cavalryOrders(held),cavalryOrders(original));
+  await page.keyboard.press('F5');assert.ok(archerUnits(await saved()).every(u=>!u.holdFire),'F5 resumes fire for a holding group');
+  await page.keyboard.press('F5');assert.ok(archerUnits(await saved()).every(u=>u.holdFire),'F5 toggles back to hold fire');
+  await page.keyboard.down('F3');const once=await saved();await page.keyboard.down('F3');await page.keyboard.up('F3');
+  assert.equal((await saved()).events.filter(e=>e.type==='order').length,once.events.filter(e=>e.type==='order').length,'key repeats do not issue duplicate commands');
+  await page.keyboard.press('F1');
+  const modified=await page.locator('#battle-canvas').evaluate(canvas=>{const event=new KeyboardEvent('keydown',{key:'F3',code:'F3',ctrlKey:true,bubbles:true,cancelable:true});canvas.dispatchEvent(event);return event.defaultPrevented;});
+  assert.equal(modified,false,'browser modifier shortcuts are not intercepted');assert.ok(archerUnits(await saved()).every(u=>u.order.kind==='hold'));
+  await page.keyboard.press('Escape');const paused=await saved();await page.keyboard.press('6');await page.keyboard.press('F3');
+  assert.deepEqual(await saved(),paused,'paused battles ignore troop and order hotkeys');
+  await page.locator('[data-battle-action=resume]').click();await page.keyboard.press('q');
+  await page.locator('.battle-saved-groups summary').click();await page.locator('#battle-group-name').fill('Typing');
+  const editing=await saved();await page.keyboard.press('6');assert.equal(await page.locator('#battle-group-name').inputValue(),'Typing6');
+  assert.deepEqual((await saved()).commandSelection,editing.commandSelection,'typing group names does not select cavalry');
+  await page.locator('#battle-formation').focus();await page.keyboard.press('4');
+  assert.deepEqual((await saved()).commandSelection,editing.commandSelection,'focused selects retain native keyboard input');
+  await page.locator('.battle-saved-groups summary').click();await page.locator('#battle-canvas').focus();
+  await page.keyboard.down('a');await page.waitForTimeout(120);await page.keyboard.up('a');
+  assert.ok(archerUnits(await saved()).every(u=>u.order.kind==='hold'),'A pans left in tactical view instead of issuing an attack order');
+  await page.keyboard.press('g');assert.ok(archerUnits(await saved()).every(u=>u.order.kind==='move'),'G sends the selected troops to aimed ground');
+  await page.keyboard.press('8');assert.equal(await page.locator('#battle-saved-group').inputValue(),custom.id,'8 reselects the first saved command group');
+  await page.keyboard.press('Tab');assert.equal(await page.locator('#battle-command-panel').isVisible(),false);
+}
 let browser;
 try{
   browser=await chromium.launch({headless:true,executablePath:process.env.IRON_THRONE_CHROMIUM||undefined,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
@@ -90,6 +128,7 @@ try{
     if(viewport.width<700)await page.locator('[data-battle-action=commands]').first().click();
     await page.locator('[data-battle-action=begin]').click();
     await page.waitForTimeout(500);
+    await checkBattlefieldHotkeys(page,custom);
     await page.locator('[data-battle-action=pause]').click();
     await page.locator('[data-battle-action=exit]').click();
     await page.locator('#battle-encounter').waitFor({state:'visible'});
