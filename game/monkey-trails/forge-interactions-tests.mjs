@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {newSave} from './core.mjs';
 import {forgeQuantityBounds,chooseForgeQuantity,renderForgeQuantityPicker,attachForgeInteractions} from './forge-interactions.mjs';
-import {cachedForgePreview,forgeGridRows,renderForge,renderForgeInventory,renderForgePreview} from './forge-ui.mjs';
+import {cachedForgePreview,forgeGridRows,renderForge,renderForgeInventory,renderForgePreview,renderForgeDetails} from './forge-ui.mjs';
 import {normalizeEquipmentInventory,awardGearCopy,assignEquipment,setEquipmentCopyFlag} from './equipment-inventory.mjs';
 
 function fixture(){const s=newSave('Furnace','capuchin','practice',12345);s.run.fruit=100;s.run.essence.fire=8;s.run.phase='trail';normalizeEquipmentInventory(s);return s;}
@@ -47,8 +47,9 @@ test('forge filters expose artwork, selected remainder and protected equipment w
 
 test('element influence uses the actual weighted offering and describes hybrid mixes without promising item bonuses',()=>{
   const s=fixture();s.run.essence.water=8;
-  assert.match(renderForgePreview(s,{fruit:8}),/Balanced influence/);
-  const hybrid=renderForgePreview(s,{'essence:fire':5,'essence:water':3});assert.match(hybrid,/Fire influence/);assert.match(hybrid,/Mix favors Fire \+ Water/);assert.match(hybrid,/Potential:/);assert.match(hybrid,/Final bonuses depend on the item rolled/);
+  assert.match(renderForgePreview(s,{fruit:8}),/Balanced/);
+  const mix={'essence:fire':5,'essence:water':3},compact=renderForgePreview(s,mix);assert.match(compact,/Fire \+ Water/);assert.equal((compact.match(/class="forge-odds-row /g)||[]).length,6);assert.match(compact,/data-action="forge-details"/);assert.doesNotMatch(compact,/class="forge-elements"|class="forge-spend"/);
+  const details=renderForgeDetails(s,mix);assert.match(details,/Fire influence/);assert.match(details,/Mix favors Fire \+ Water/);assert.match(details,/Potential:/);assert.match(details,/Final bonuses depend on the item rolled/);assert.match(details,/class="forge-elements"/);assert.match(details,/class="forge-spend"/);
 });
 
 // A small event surface keeps the cancellation test deterministic without a
@@ -77,4 +78,20 @@ test('dismissed quantity popups cannot apply a stale selection after close or Es
   const s=fixture(),surface=eventSurface();let mix={};const controller=attachForgeInteractions({getState:()=>s,getMix:()=>mix,setMix:next=>{mix=next;},modal:surface.modal,closeModal:surface.closeModal,root:surface.root});
   controller.openQuantity('essence:fire');surface.closeModal();surface.fire('click',{target:surface.target('data-forge-picker-confirm')});assert.deepEqual(mix,{});
   controller.openQuantity('essence:fire');surface.fire('cancel',{target:surface.host});surface.fire('click',{target:surface.target('data-forge-picker-confirm')});assert.deepEqual(mix,{});assert.equal(s.run.essence.fire,8);controller.destroy();
+});
+
+test('fixed inventory and selected-stack scroll offsets survive input refreshes and recreated panels',()=>{
+  const s=fixture(),surface=eventSurface(),makePanel=()=>{
+    const inventory={scrollTop:0,scrollLeft:0},mix={scrollTop:0,scrollLeft:0,innerHTML:''},preview={scrollTop:0,scrollLeft:0,innerHTML:''},grid={innerHTML:''},detail={className:'forge-cost-details',dataset:{},open:false};
+    const nodes={'.forge-inventory-scroll':inventory,'[data-forge-mix]':mix,'[data-forge-preview]':preview,'[data-forge-inventory]':grid};
+    const panel={dataset:{},isConnected:true,querySelector:selector=>nodes[selector]||null,querySelectorAll:selector=>selector==='details'?[detail]:[]};
+    for(const[selector,node]of Object.entries(nodes)){node.closest=()=>panel;node.matches=query=>query===selector;}
+    return {panel,inventory,mix,preview,detail};
+  };
+  let current=makePanel(),ingredients={fruit:8};const originalQuery=surface.root.querySelector;surface.root.querySelector=selector=>selector==='[data-forge-panel]'?current?.panel:originalQuery(selector);
+  const controller=attachForgeInteractions({getState:()=>s,getMix:()=>ingredients,setMix:next=>{ingredients=next;},modal:surface.modal,closeModal:surface.closeModal,root:surface.root});
+  controller.refresh();current.inventory.scrollTop=235;current.mix.scrollLeft=84;current.detail.open=true;surface.fire('scroll',{target:current.inventory});surface.fire('scroll',{target:current.mix});
+  ingredients={fruit:9};controller.refresh();assert.equal(current.inventory.scrollTop,235);assert.equal(current.mix.scrollLeft,84);assert.equal(current.detail.open,true);
+  current.panel.isConnected=false;current.inventory.scrollTop=0;current.mix.scrollLeft=0;controller.refresh();
+  current=makePanel();controller.refresh();assert.equal(current.inventory.scrollTop,235);assert.equal(current.mix.scrollLeft,84);assert.equal(current.detail.open,true);controller.destroy();
 });
