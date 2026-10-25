@@ -165,7 +165,17 @@
   ];
   const EVENTS = [
     { id: 'armory', name: 'Abandoned Armory', emoji: '🔨', desc: 'A supply cart holds two kinds of equipment.', options: [{ id: 'shield', name: 'Reinforce defenders', desc: '+8 starting shield for armored troops.', bonus: { tag: 'ARMORED', shield: 8 } }, { id: 'blades', name: 'Sharpen weapons', desc: '+5% damage for melee troops.', bonus: { tag: 'MELEE', atkMult: .05 } }, { id: 'supplies', name: 'Take supplies', desc: '+18 coins.', coins: 18 }] },
-    { id: 'shrine', name: 'Elemental Shrine', emoji: '🔮', desc: 'Choose one blessing for this run.', options: [{ id: 'ember', name: 'Ember blessing', desc: '+1 burn stack on Fire hits.', bonus: { tag: 'FIRE', burn: 1 } }, { id: 'winter', name: 'Winter blessing', desc: '+8 starting shield for Frost troops.', bonus: { tag: 'FROST', shield: 8 } }, { id: 'supplies', name: 'Take offerings', desc: '+18 coins.', coins: 18 }] },
+    { id: 'shrine', name: 'Elemental Shrine', emoji: '🔮', desc: 'Choose one lasting blessing for the army you want to build.', options: [
+      { id: 'ember', name: 'Ember blessing', emoji: '🔥', desc: '+1 burn stack on Fire hits.', bonus: { tag: 'FIRE', burn: 1 } },
+      { id: 'winter', name: 'Winter blessing', emoji: '❄️', desc: '+8 starting shield for Frost troops.', bonus: { tag: 'FROST', shield: 8 } },
+      { id: 'storm', name: 'Storm blessing', emoji: '⚡', desc: '+8 percentage points of chain-lightning chance for Storm troops, under the existing 75% cap.', bonus: { tag: 'LIGHTNING', chain: .08 } },
+      { id: 'venom', name: 'Venom blessing', emoji: '☠️', desc: '+1 poison stack on Poison troop attacks.', bonus: { tag: 'POISON', poison: 1 } },
+      { id: 'dawn', name: 'Dawn blessing', emoji: '💚', desc: '+10% healing from Healer troops.', bonus: { tag: 'HEALER', healMult: .10 } },
+      { id: 'arcane', name: 'Arcane blessing', emoji: '✨', desc: '+6% damage from Caster troops.', bonus: { tag: 'MAGIC', atkMult: .06 } },
+      { id: 'gale', name: 'Gale blessing', emoji: '🏹', desc: '+6% base attack tempo for Ranged troops.', bonus: { tag: 'RANGED', spdMult: .06 } },
+      { id: 'valor', name: 'Valor blessing', emoji: '🐎', desc: '+15% first-hit damage for Fast strikers each battle.', bonus: { tag: 'FAST', opening: .15 } },
+      { id: 'supplies', name: 'Take offerings', emoji: '🪙', desc: '+18 coins.', coins: 18 }
+    ] },
     { id: 'hospital', name: 'Field Infirmary', emoji: '💚', desc: 'The field medics offer their expertise.', options: [{ id: 'medics', name: 'Study triage', desc: '+10% healing from healers.', bonus: { tag: 'HEALER', healMult: .10 } }, { id: 'tempo', name: 'Study battle rhythm', desc: '+5% attack tempo for support troops.', bonus: { tag: 'SUPPORT', spdMult: .05 } }, { id: 'supplies', name: 'Take supplies', desc: '+18 coins.', coins: 18 }] }
   ];
   const OBJECTIVES = [

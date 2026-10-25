@@ -18,6 +18,17 @@ complete native abilities, equipment, and progression. **Team** contains Troops,
 Formation, Evolutions, Towers, and Inventory sections. Small screens scroll the
 battle area and return the formation to view after a panel closes.
 
+Enemies use a responsive multi-column grid on desktop, tablet, and phone. Its
+own vertical scroll area shows at least two full rows and keeps every remaining
+enemy reachable with wheel, keyboard, or touch. It overrides the older fixed
+single-row height rather than clipping later rows inside the enemy box.
+
+The Elemental Shrine offers eight lasting blessings plus its coin option:
+Ember (Fire burn), Winter (Frost starting shield), Storm (chain chance), Venom
+(poison), Dawn (healing), Arcane (Caster damage), Gale (Ranged tempo), and Valor
+(Fast-striker first-hit damage). Existing blessing IDs and saved bonuses remain
+compatible; postponing or closing the Shrine still spends nothing.
+
 Tap a reserve and then an empty square, or drag a reserve/deployed troop onto a
 legal highlighted square. Invalid drops retain the original formation. Deployed
 troops can swap freely during preparation. Returning a troop to an empty bench
@@ -235,6 +246,7 @@ npm run test:tiny-troops:management-browser
 npm run test:tiny-troops:lifecycle-browser
 npm run test:tiny-troops:tactical-browser
 npm run test:tiny-troops:navigation-browser
+npm run test:tiny-troops:enemy-grid-browser
 ```
 
 This browser suite verifies visible files, reload, separate run names, backups,
