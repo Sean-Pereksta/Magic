@@ -59,3 +59,29 @@ test('rankings preserve escaped names and explain loading, stale and empty state
  m.tribeRankings=[{id:'"><script>',name:'<img src=x onerror=bad>',rank:1,bossLevel:2,bossesDefeated:1,memberCount:1}];m.rankingsStatus='error';m.rankingsError='Offline <script>';
  html=renderTribeRankings(m);assert.match(html,/Showing the last loaded rankings/);assert.match(html,/&lt;img/);assert.match(html,/Offline &lt;script&gt;/);assert.doesNotMatch(html,/<(?:img|script)\b/);assert.doesNotMatch(html,/<[^>]+\bon(?:load|error)\s*=/i);
 });
+
+test('legacy multiplayer controls offer supported tribe features and explain unavailable admission options',()=>{
+ const m=model([monkey()]);m.capabilities={tribeApplications:false,tradeLocks:false,publicActivity:false};
+ let html=renderSocialView(m);
+ assert.match(html,/Tribes support open membership on this server/);
+ assert.match(html,/data-social-form="update-emblem"/);
+ assert.match(html,/The shared canopy trail/);
+ assert.match(html,/data-social-action="start-raid"/);
+ assert.doesNotMatch(html,/name="admissionMode"|name="acceptingApplications"|Membership requests|data-id="weekly"/);
+ assert.match(html,/data-id="bosses"/);assert.match(html,/data-id="power"/);
+ m.tribe=null;html=renderSocialView(m);
+ assert.match(html,/data-social-form="create-tribe"/);
+ assert.match(html,/data-social-form="join-tribe"/);
+ assert.doesNotMatch(html,/name="admissionMode"|name="acceptingApplications"|Join or request membership/);
+ m.publicTribe={id:'OTHER',name:'Other canopy',memberCount:1,acceptingApplications:true,weeklyContribution:0};m.publicMembers=[];
+ assert.doesNotMatch(renderSocialView(m),/0 weekly points/);
+});
+
+test('modern multiplayer keeps approval admissions, leader inbox and public weekly rankings',()=>{
+ const m=model([monkey()]);m.capabilities={tribeApplications:true,tradeLocks:true,publicActivity:true};
+ const html=renderSocialView(m);
+ assert.match(html,/name="admissionMode"/);assert.match(html,/name="acceptingApplications"/);
+ assert.match(html,/Membership requests/);assert.match(html,/data-id="weekly"/);
+ assert.doesNotMatch(html,/social-compatibility-notice/);
+});
+

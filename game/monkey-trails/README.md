@@ -4,6 +4,14 @@ Entry: `/game/monkey-trails.html`; the existing `lobby/lobby.html` card remains 
 
 See [LIVING_WORLD.md](LIVING_WORLD.md) for the new 110 species, level 60 progression, tactical combat,135 equipment items, permanent Forge Reserve, regional quests/destinations, tribe applications, artwork upload and verification.
 
+## Remembered accounts and deployed rules
+
+Successful named GPS account logins remember the account on this browser by default. The starting menu offers **Reopen [name]**, **Use a different account**, and **Forget account**; it never enters automatically. Uncheck **Remember this account on this device** on a shared browser. Quick access stores a non-exportable AES key in IndexedDB, alongside the save identity, and uses the existing encrypted device checkpoint. It never stores the password. Forget removes quick access while retaining encrypted saves and password-based reopening. Settings also offers **Return to starting menu**. Practice remains separate. Browsers that deny device storage retain normal password login.
+
+The social client detects whether the deployed v1 rules support tribe applications. With the original v1 rules, it writes the original tribe field contract and uses supported collections for open tribes, directory profiles, gifts, trade escrow, challenges, raids, and shared weekly adventures. Approval admissions, paused admissions, and public weekly rankings appear only when the server supports the newer collections. Presence publishes only the permitted location fields and omits fixes whose accuracy exceeds 500 metres. This compatibility change requires no Firestore permission changes; keep the deployed rules in place.
+
+`npm run test:monkey-trails:remembered-account` checks real IndexedDB key persistence, reload, explicit reopening, offline progress, switching, forgetting, and opt-out in Chromium. `npm run test:monkey-trails:compat-rules` checks real Firebase transactions and denied unauthorized writes in the emulator. To validate an older exported rules file, set `MONKEY_TRAILS_RULES_FILE` to its absolute path before running the compatibility check; the test reads that file without editing it. The normal Node suite includes remembered-account and original-v1 contract regressions.
+
 ## Game systems
 
 A permanent Sanctuary keeps individually named companions, learned techniques, bonds, equipment and discovered evolution branches. An expedition carries up to three; change the lineup anywhere on the trail between encounters. Swaps retain each individual’s injuries and energy. Every earned camp restores the entire collection to full health, including fallen companions. Full-party defeat preserves ownership and permanent progress while a new expedition re-earns levels, supplies and active evolution stages.
@@ -78,6 +86,8 @@ Version-one checkpoints migrate their existing monkey into slot one, preserving 
 (project `bible-game-246c0`). It waits for the existing Auth session and signs in
 anonymously only if no session exists. It does not replace or sign out the lobby
 identity and does not require an email/password Auth provider.
+
+Multiplayer preserves the shared Firebase UID for the save already linked to it. A different save on the same browser uses a separate persisted anonymous Auth session under a deterministic Firebase app name. Existing named sessions restore before selecting a newly changed lobby login, so switching saves does not rebind another save's player record or lose its tribe. Encrypted cloud checkpoints continue through the shared storage connection.
 
 Paths:
 
@@ -370,3 +380,4 @@ The Tribe page shows the top 25 tribes by shared boss level, with tied ranks, tr
 ## Trail Wisdom and the interactive forge
 
 See [Legacy and Forge](LEGACY_AND_FORGE.md) for permanent progression rewards, rank costs, expedition recaps, resource accounting and browser verification. Pack now includes a dedicated Craft / Forge tab with artwork grids, mouse/touch dragging and precise quantity selection. Team and Sanctuary quick sheets expose direct equipment slots, and smelted equipment can be assigned through a visual roster.
+

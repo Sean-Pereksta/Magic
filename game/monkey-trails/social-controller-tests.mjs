@@ -7,9 +7,9 @@ import {SocialStore,createMemorySocialAdapter} from './social-store.mjs';
 
 globalThis.document={hidden:false};
 const settle=async predicate=>{for(let i=0;i<100;i++){if(predicate())return;await new Promise(resolve=>setImmediate(resolve));}assert.ok(predicate(),'The live crew model did not settle.');};
-async function fixture(t){
+async function fixture(t,{wrapAdapter=adapter=>adapter}={}){
  const state=newSave('Alice Trail','capuchin','gps',123),other=newSave('Bob Trail','langur','gps',456),now=1800000000000,base=createMemorySocialAdapter(),watches=new Map();
- const adapter={...base,watchDoc(path,callback,error){watches.set(path,(watches.get(path)||0)+1);const stop=base.watchDoc(path,callback,error);return()=>{watches.set(path,watches.get(path)-1);stop();};}};
+ const adapter=wrapAdapter({...base,watchDoc(path,callback,error){watches.set(path,(watches.get(path)||0)+1);const stop=base.watchDoc(path,callback,error);return()=>{watches.set(path,watches.get(path)-1);stop();};}});
  const bob=new SocialStore(adapter,{uid:'bob',now:()=>now,id:()=>crypto.randomUUID()});await bob.register({saveId:'bob-save',name:other.name,team:snapshotTeam(other)});
  const controller=new SocialController({getState:()=>state,getVault:()=>({id:'alice-save'}),persist:async()=>{},connect:async()=>({uid:'alice',adapter}),now:()=>now});
  await controller.start();t.after(()=>controller.stop());assert.equal(controller.model.status,'ready');
@@ -99,3 +99,48 @@ test('leaderboard refreshes coalesce and a disconnected request cannot repopulat
  await f.controller.stop();release([{id:'STALE',bossLevel:99}]);await Promise.all([first,second]);
  assert.deepEqual(f.controller.model.tribeRankings,[]);assert.equal(f.controller.model.rankingsStatus,'idle');assert.equal(f.controller.model.rankingsUpdatedAt,null);
 });
+
+test('legacy multiplayer rules connect without watching unsupported applications',async t=>{
+ const queries=[],reads=[];
+ const f=await fixture(t,{wrapAdapter:base=>({...base,async get(path){reads.push(path);if(path.startsWith('applications/'))throw Object.assign(Error('Missing legacy collection'),{code:'permission-denied'});return base.get(path);},watchQuery(path,...args){queries.push(path);assert.notEqual(path,'applications','Unsupported application listeners must not be started.');return base.watchQuery(path,...args);}})});
+ assert.equal(f.controller.model.capabilities.tribeApplications,false);
+ assert.equal(f.controller.model.capabilities.publicActivity,false);
+ assert.equal(f.controller.model.error,'');
+ const tribe=await f.controller.store.createTribe({name:'Legacy canopy'});
+ await settle(()=>f.controller.model.tribe?.id===tribe.id);
+ assert.equal(f.controller.model.status,'ready');
+ assert.ok(queries.includes('adventureMembers'),'Supported shared adventures remain available.');
+ assert.equal(queries.includes('applications'),false);
+ assert.equal(reads.some(path=>path.startsWith('applications/')),true);
+ await assert.rejects(f.controller.setTribeRanking('weekly'),/unavailable on this server/);
+});
+
+test('optional adventure history failures do not stop tribe presence or listeners',async t=>{
+ const f=await fixture(t,{wrapAdapter:base=>({...base,async get(path){if(path.startsWith('adventureMembers/'))throw Object.assign(Error('History temporarily unavailable'),{code:'unavailable'});return base.get(path);}})});
+ assert.equal(f.controller.model.status,'ready');
+ assert.match(f.controller.model.error,/History temporarily unavailable/);
+ assert.equal((await f.adapter.get('presence/alice')).online,true);
+ assert.ok(f.controller.timer,'Presence updates must continue after an optional history failure.');
+});
+
+test('a stopped connection cannot publish stale capability detection into another session',async()=>{
+ const state=newSave('Alice Trail','capuchin','gps',123),base=createMemorySocialAdapter();let release,entered;
+ const blocked=new Promise(resolve=>release=resolve),enteredPromise=new Promise(resolve=>entered=resolve);
+ const adapter={...base,async get(path){if(path.startsWith('applications/')){entered();await blocked;}return base.get(path);}};
+ const controller=new SocialController({getState:()=>state,getVault:()=>({id:'alice-save'}),persist:async()=>{},connect:async()=>({uid:'alice',adapter})});
+ const starting=controller.start();await enteredPromise;await controller.stop();release();await starting;
+ assert.equal(controller.model.capabilities,null);assert.equal(controller.model.status,'idle');assert.equal(controller.timer,null);
+});
+
+test('nearby sharing omits coarse fixes that exceed the allowed accuracy without understating uncertainty',async t=>{
+ const f=await fixture(t);
+ f.controller.observeLocation({lat:40,lon:-74,accuracy:100,timestamp:f.now});
+ assert.equal(f.controller.latestLocation.accuracy,180);
+ f.controller.observeLocation({lat:40,lon:-74,accuracy:450,timestamp:f.now});
+ assert.equal(f.controller.latestLocation,null);
+ assert.match(f.controller.model.locationMessage,/accuracy is too low/);
+ f.controller.discoverable=true;
+ await f.controller.store.heartbeat({discoverable:true,location:f.controller.latestLocation});
+ assert.equal((await f.adapter.get('presence/alice')).location,null);
+});
+
