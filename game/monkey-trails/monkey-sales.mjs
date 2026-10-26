@@ -1,5 +1,6 @@
 // Permanent, per-individual recycling receipts. No sale payout enters the
 // expedition until explicitly withdrawn from the persistent Forge Reserve.
+import {normalizeExplorer} from './exploration.mjs';
 import {SPECIES,GEAR,ELEMENTS,DIRECTIONS} from './data.mjs';
 import {normalizeEquipmentInventory} from './equipment-inventory.mjs';
 import {normalizeCompanions} from './companions.mjs';
@@ -58,7 +59,7 @@ export function sellMonkey(s,id,{confirmUltra=false}={}){
   s.run.party=s.run.party.filter(member=>member!==id);
   if(!s.run.party.some(member=>s.collection[member]?.hp>0)){const next=Object.values(s.collection).find(q=>q.hp>0);s.run.party=[next.id,...s.run.party.filter(member=>member!==next.id)].slice(0,3);}
   if(!s.run.party.includes(s.run.activeId)||s.collection[s.run.activeId]?.hp<=0)s.run.activeId=s.run.party.find(member=>s.collection[member]?.hp>0)||s.run.party[0];
-  s.run.monkey=s.collection[s.run.activeId];
+  s.run.monkey=s.collection[s.run.activeId];normalizeExplorer(s);
   friends.lineups=friends.lineups.map(row=>({...row,members:row.members.filter(member=>member!==id)})).filter(row=>row.members.length);
   friends.favorites=friends.favorites.filter(member=>member!==id);if(friends.evolutionGoal?.monkeyId===id)friends.evolutionGoal=null;
   if(s.meta.pinnedGoal?.monkeyId===id)s.meta.pinnedGoal=null;
@@ -83,3 +84,4 @@ export function transferReserve(s,resources,operationId){
 }
 export function setMonkeyProtection(s,id,protectedValue){const p=s.collection?.[id];if(!p||typeof protectedValue!=='boolean')throw Error('Choose a collected monkey.');p.protected=protectedValue;return p;}
 export function reserveResourceName(id){if(id==='fruit')return 'Fruit';const [kind,key]=id.split(':');return kind==='essence'?`${ELEMENTS[key]?.name} essence`:kind==='bond'?`${SPECIES[key]?.name} species materials`:`${GEAR[key]?.name} fragments`;}
+

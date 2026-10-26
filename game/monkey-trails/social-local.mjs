@@ -1,11 +1,13 @@
 import {team,xpMultiplier,ITEMS} from './core.mjs';
+import {isPersonalMaterial} from './exploration.mjs';
 const integer=n=>Number.isSafeInteger(n)&&n>=0;
+const supply=id=>Object.hasOwn(ITEMS,id)&&!isPersonalMaterial(id);
 export function localSocial(state){
   state.social??={};state.social.applied??={};state.social.deposits??={};return state.social;
 }
 function inventory(state,asset){
   if(asset==='fruit')return [state.run,'fruit'];
-  if(!ITEMS[asset])throw Error('Choose fruit or a trail supply.');return[state.run.items,asset];
+  if(!supply(asset))throw Error('Choose fruit or a trail supply. Personal crafting and training materials stay in your expedition pack.');return[state.run.items,asset];
 }
 export function availableInPack(state,asset){const [bag,key]=inventory(state,asset);return bag[key]||0;}
 export async function depositFromPack({state,store,uid,saveId,asset,amount,persist,id=()=>crypto.randomUUID()}){
@@ -22,13 +24,14 @@ export async function depositFromPack({state,store,uid,saveId,asset,amount,persi
 export async function retryPackDeposits({state,store,uid,saveId,persist}){
   for(const [op,pending]of Object.entries(localSocial(state).deposits)){
     if(pending.uid!==uid||pending.saveId!==saveId)continue;
+    inventory(state,pending.asset);
     await store.deposit(pending.asset,pending.amount,op);delete state.social.deposits[op];await persist();
   }
 }
 export function applySocialReceipt(state,receipt){
   if(!receipt||typeof receipt.id!=='string'||!receipt.id||receipt.id.length>160||typeof receipt.uid!=='string'||!receipt.uid||receipt.uid.length>160)throw Error('Invalid social receipt identity.');
   const p=receipt.payload||{};
-  if(typeof p!=='object'||Array.isArray(p)||!integer(p.fruit??0)||!integer(p.xp??0)||p.items!==undefined&&(!p.items||typeof p.items!=='object'||Array.isArray(p.items))||Object.entries(p.items||{}).some(([id,n])=>!ITEMS[id]||!integer(n))||p.teamIds!==undefined&&(!Array.isArray(p.teamIds)||p.teamIds.length>3||p.teamIds.some(id=>typeof id!=='string'||!id||id.length>160)))throw Error('Invalid social reward.');
+  if(typeof p!=='object'||Array.isArray(p)||!integer(p.fruit??0)||!integer(p.xp??0)||p.items!==undefined&&(!p.items||typeof p.items!=='object'||Array.isArray(p.items))||Object.entries(p.items||{}).some(([id,n])=>!supply(id)||!integer(n))||p.teamIds!==undefined&&(!Array.isArray(p.teamIds)||p.teamIds.length>3||p.teamIds.some(id=>typeof id!=='string'||!id||id.length>160)))throw Error('Invalid social reward.');
   const local=localSocial(state),key=`${receipt.uid}:${receipt.id}`;
   if(local.applied[key])return false;
   if(!receipt.walletCredited){
@@ -40,3 +43,4 @@ export function applySocialReceipt(state,receipt){
   members.forEach((m,i)=>{const base=i===members.length-1?remaining:Math.floor((p.xp||0)/members.length);remaining-=base;const total=(m.xpRemainder||0)+base*xpMultiplier(m),earned=Math.floor(total+1e-9);m.training+=earned;m.xpRemainder=Math.max(0,total-earned);});
   local.applied[key]=true;return true;
 }
+

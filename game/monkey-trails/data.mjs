@@ -329,6 +329,9 @@ export const GEAR={
   ...FORGE_GEAR
 };
 export const ITEMS={
+  ingot:{name:'Ingot',desc:'A rare mineral crafting material worth 5 forge value. Earth foragers favor these finds.'},
+  starOre:{name:'Star Ore',desc:'A very rare walking find used for late-level rare and Ultra training. Also worth 12 forge value.'},
+  crownCore:{name:'Crown Core',desc:'Earned only by defeating an Ultra. Required for late-level Ultra training; worth 20 forge value.'},
   berry:{name:'Healing Berry',desc:'Restore 35% health to one conscious monkey.'},
   tonic:{name:'Spark Tonic',desc:'Restore 8 energy.'},
   salve:{name:'Cleanse Balm',desc:'Clear effects and restore 15% health.'},
@@ -341,3 +344,4 @@ export const ITEMS={
 };
 export const BALANCE={discoveryFeet:250,encounterFeet:2000,campFeet:6000,minDiscoveryFeet:200,maxDiscoveryReduction:.20,
   discoveryWeights:{essence:.60,fruit:.25,item:.12,fragment:.03},captureAttempts:3,capturePity:4,firstUltraFeet:5000,ultraRadiusFeet:100};
+

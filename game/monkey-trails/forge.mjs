@@ -31,6 +31,9 @@ function resource(s,id){
     const element=id.slice(8),e=has(ELEMENTS,element)&&ELEMENTS[element];if(!e)return null;
     row={name:`${e.name} essence`,kind:'essence',icon:e.icon,value:2,quality:.25,element,elementWeight:3,raw:s.run?.essence?.[element]};
   }else if(id==='item:charmMaterial')row={name:'Charm material',kind:'item',icon:'◇',value:3,quality:.35,raw:s.run?.items?.charmMaterial};
+  else if(id==='item:ingot')row={name:'Ingot',kind:'item',icon:'▰',value:5,quality:.7,rarity:'rare',element:'earth',elementWeight:3,raw:s.run?.items?.ingot};
+  else if(id==='item:starOre')row={name:'Star Ore',kind:'item',icon:'✦',value:12,quality:.9,rarity:'epic',raw:s.run?.items?.starOre};
+  else if(id==='item:crownCore')row={name:'Crown Core',kind:'item',icon:'♛',value:20,quality:1,rarity:'legendary',raw:s.run?.items?.crownCore};
   else if(id.startsWith('item:')){
     const item=id.slice(5),v=has(supplyValues,item)&&supplyValues[item];if(!has(ITEMS,item)||!v)return null;
     row={name:ITEMS[item].name,kind:'item',icon:'▰',value:v[0],quality:v[1],raw:s.run?.items?.[item]};
@@ -194,3 +197,4 @@ function mixForReplay(inputs){
   for(const[id,count]of Object.entries(inputs).sort(([a],[b])=>a.localeCompare(b))){if(!resource({},id))throw Error('This mix contains an unknown resource.');if(!validCount(count))throw Error('Use whole, non-negative resource amounts.');if(count)normalized[id]=count;}
   return normalized;
 }
+

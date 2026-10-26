@@ -2,7 +2,7 @@
 // are stored here: accepted distance and the existing fantasy map are enough.
 import {SPECIES,ELEMENTS,DIRECTIONS,ITEMS} from './data.mjs';
 import {LANDS,landProgress,normalizeLands} from './lands.mjs';
-import {terrainAt} from './terrain.mjs';
+import {habitatAt} from './habitats.mjs';
 import {recordTribeProgress} from './tribe-adventures.mjs';
 import {recordLegacyMilestone,recordLegacyLocation} from './legacy.mjs';
 import {awardGearCopy,normalizeEquipmentInventory} from './equipment-inventory.mjs';
@@ -48,17 +48,14 @@ export function regionSpeciesPool(s,candidates=Object.keys(SPECIES),{ultra=false
 // The marker grid is the same one used by terrainMap. Water/path queries also
 // come from the map renderer. Habitat never gates physical walking.
 function currentHabitat(s){
- const {activeId,active,position:p}=landProgress(s),surface=terrainAt(activeId,p.east,p.north);
- const marker={east:Math.round((p.east-62)/540)*540+62,north:Math.round((p.north-36)/540)*540+36};
- const hash=((Math.floor(p.east/95)*73)^(Math.floor(p.north/95)*131))>>>0;
- const id=Math.hypot(p.east-marker.east,p.north-marker.north)<40?'landmark':surface.riverDistance<28?'riverbank':surface.kind==='trail'?'trail':['grove','cave','ruins'][hash%3];
- return {id,activeId,active};
+ const {activeId,active}=landProgress(s),patch=habitatAt(s);
+ return {...patch,activeId,active};
 }
 export function habitatView(s){
- const {id,activeId,active}=currentHabitat(s);
+ const patch=currentHabitat(s),{id,activeId,active}=patch;
  const likely=regionSpeciesPool(s,Object.keys(SPECIES),{ultra:false}).filter(id=>speciesMinimumFeet(id)<=s.run.distance/FEET).sort((a,b)=>habitatAffinity(b,id)-habitatAffinity(a,id)||SPECIES[a].number-SPECIES[b].number).slice(0,4);
- return{id,name:id==='landmark'?active.landmark:habitatNames[id],landId:activeId,types:habitatTypes[id],likely,
-  description:`${habitatTypes[id].length?habitatTypes[id].map(t=>ELEMENTS[t].name).join(' and ')+' companions are more likely here.':'The open trail has no additional habitat preference.'} Region and expedition depth determine eligibility; the compass adjusts odds within that pool. The two introductory encounters use fixed companions. Walk any safe, accessible route.`};
+ return{...patch,id,name:patch.name,landId:activeId,types:habitatTypes[id],likely,
+  description:`${patch.description} ${habitatTypes[id].length?habitatTypes[id].map(t=>ELEMENTS[t].name).join(' and ')+' companions are more likely here.':'The open trail has no additional habitat preference.'} Region and expedition depth determine eligibility; active monkey scouting and the compass adjust odds within that pool. The two introductory encounters use fixed companions. Walk any safe, accessible route.`};
 }
 const habitatAffinity=(species,habitat)=>SPECIES[species]?.habitats?.includes(habitat)?3:SPECIES[species]?.types.some(t=>habitatTypes[habitat]?.includes(t))?2.5:1;
 export function regionalWeight(s,id){
@@ -189,3 +186,4 @@ export function trackedRegionalGoal(s){
  if(pin?.kind==='adventure'){const step=stepById.get(pin.id);return step?{...adventureSteps(s,step.landId).find(x=>x.id===pin.id),kind:'adventure',description:step.text}:null;}
  return null;
 }
+

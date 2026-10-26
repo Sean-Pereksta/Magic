@@ -4,7 +4,7 @@ import {LEGACY_GEAR_AFFINITIES} from './equipment-data.mjs';
 import {equipmentSummary} from './equipment-effects.mjs';
 import {equipmentIconSvg} from './equipment-icons.mjs';
 import {equipmentSlots,equipmentLoadout,ownedEquipmentCopies,equipmentCopy,canChangeEquipment} from './equipment-inventory.mjs';
-import {assetUrl} from './art.mjs';
+import {assetUrl,pickupIcon} from './art.mjs';
 
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const gearData=id=>({...LEGACY_GEAR_AFFINITIES[id],...GEAR[id]});
@@ -65,6 +65,7 @@ export function renderIngredientOptions(s,mix){
 export function forgeResourceArt(row){
   if(row?.equipmentId)return equipmentIconSvg(row.equipmentId);
   const id=row?.id||'',base=id.startsWith('quality:')?id.slice(8):id;
+  if(['item:ingot','item:starOre','item:crownCore'].includes(base))return pickupIcon(base.slice(5));
   if(base.startsWith('fragment:'))return `<span class="forge-fragment-art">${equipmentIconSvg(base.slice(9))}<span aria-hidden="true">◆</span></span>`;
   if(base.startsWith('bond:'))return `<img src="${esc(assetUrl(`monkeys/${base.slice(5)}/idle.svg`))}" alt="" draggable="false" loading="lazy" width="64" height="64">`;
   const name=base.startsWith('essence:')?`element-${base.slice(8)}`:base==='fruit'?'fruit':base==='item:charmMaterial'?'fragment':base.startsWith('item:')?base.slice(5):'fragment';
@@ -126,3 +127,4 @@ export function renderForgeOdds(s,mix,{rarity='all',element='all',page=0}={}){
   const pages=Math.max(1,Math.ceil(filtered.length/12));page=Math.max(0,Math.min(page,pages-1));
   return `<section class="forge-item-odds"><span class="eyebrow">YOUR CURRENT MIX</span><h2>Possible items</h2><p class="muted">Every percentage is the actual overall chance for one craft. ${all.length} eligible items share 100%. Tap an item for its full effects and acquisition details.</p><div class="forge-filter-row"><label>Affinity<select data-odds-filter="element"><option value="all">All affinities</option>${[...Object.entries(ELEMENTS),['neutral',{name:'Neutral'}]].map(([id,e])=>`<option value="${id}" ${element===id?'selected':''}>${e.name}</option>`).join('')}</select></label><label>Rarity<select data-odds-filter="rarity"><option value="all">All rarities</option>${[...new Set(all.map(row=>gearData(row.id).rarity||'common'))].map(id=>`<option value="${id}" ${rarity===id?'selected':''}>${title(id)}</option>`).join('')}</select></label></div><div class="forge-outcomes compact-outcome-grid">${filtered.slice(page*12,page*12+12).map(row=>{const g=gearData(row.id);return `<article class="forge-outcome rarity-${g.rarity||'common'}"><button type="button" data-action="inventory-item" data-id="${row.id}" data-from-odds="true" aria-label="${esc(g.name)}, ${esc(g.rarity)}, ${percent(row.chance)} overall chance">${gearIcon(row.id)}<span>${esc(g.name)}</span><small>${title(g.rarity)}</small><strong>${percent(row.chance)}</strong></button></article>`;}).join('')||'<p class="muted">No possible items match these filters.</p>'}</div><div class="forge-pagination"><button data-action="forge-odds-page" data-id="-1" ${page===0?'disabled':''}>Previous</button><span>${page+1} / ${pages} · ${filtered.length} items</span><button data-action="forge-odds-page" data-id="1" ${page===pages-1?'disabled':''}>Next</button></div><button type="button" data-action="close-dialog" class="wide">Back to mix</button></section>`;
 }
+

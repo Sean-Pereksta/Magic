@@ -6,7 +6,7 @@ export function upgradeReadiness(s,id){
   // These are action indicators, so resource eligibility alone is insufficient:
   // core train/evolve also require a conscious teammate between encounters.
   if(!p||!(p.hp>0)||!['trail','camp'].includes(s.run?.phase)||!s.run.party.includes(p.id))return{train:false,evolve:false,elements:[]};
-  const cost=trainingCost(p),train=p.level<CONFIG.maxLevel&&(p.training||0)>=cost.xp&&(s.run.fruit||0)>=cost.fruit;
+  const cost=trainingCost(p),materialsReady=Object.entries(cost.materials||{}).every(([id,n])=>(s.run.items[id]||0)>=n),train=materialsReady&&p.level<CONFIG.maxLevel&&(p.training||0)>=cost.xp&&(s.run.fruit||0)>=cost.fruit;
   const elements=Object.keys(ELEMENTS).filter(type=>{const offer=evolutionCost(s,type,id);return offer&&p.level>=offer.level&&Object.entries(offer.cost).every(([type,amount])=>(s.run.essence[type]||0)>=amount);});
   return{train,evolve:elements.length>0,elements};
 }
@@ -32,3 +32,4 @@ export function addLineupCompanion(s,incomingId){
   if(s.run.party.length>=CONFIG.partySize)throw Error('Choose which lineup companion to replace.');
   return setParty(s,[...s.run.party,incomingId]);
 }
+
