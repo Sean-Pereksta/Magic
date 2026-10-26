@@ -1,4 +1,4 @@
-import {socialFirebaseContext} from './storage.mjs';
+import {socialFirebaseContext} from './social-connection.mjs';
 import {SocialStore,createFirestoreSocialAdapter,nearbyPlayers,SOCIAL_CONFIG,applicationStatus} from './social-store.mjs';
 import {snapshotTeam,newRaidAttempt,raidAction,duelStake} from './social-combat.mjs';
 import {tribeWeek,TRIBE_WEEK,weeklyProgress,cleanContribution,recordTribeProgress,applyAdventureClaim} from './tribe-adventures.mjs';
@@ -7,7 +7,7 @@ const copy=x=>structuredClone(x);
 // Firestore map key order may differ from the local snapshot. Only confirmed
 // profile snapshots acknowledge a crew; a heartbeat can lose a race to a lock.
 const crewSignature=team=>JSON.stringify(team,(_key,value)=>value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b))):value);
-async function defaultConnection(){const {db,f,auth}=await socialFirebaseContext();return{adapter:createFirestoreSocialAdapter({db,f}),uid:auth.currentUser.uid};}
+async function defaultConnection(saveId){const {db,f,auth}=await socialFirebaseContext(saveId);return{adapter:createFirestoreSocialAdapter({db,f}),uid:auth.currentUser.uid};}
 export class SocialController{
  constructor({getState,getVault,persist,onUpdate=()=>{},onBattle=()=>{},onReturn=()=>{},connect=defaultConnection,now=Date.now}={}){
   Object.assign(this,{getState,getVault,persist,onUpdate,onBattle,onReturn,connect,now});
@@ -23,9 +23,11 @@ export class SocialController{
   if(state.mode==='practice'){this.model.status='practice';this.emit();return;}
   this.model.status='connecting';this.model.error='';this.emit();
   try{
-   const context=await this.connect();if(generation!==this.generation)return;
+   const context=await this.connect(this.getVault().id);if(generation!==this.generation)return;
    this.store=new SocialStore(context.adapter,{uid:context.uid,now:this.now});
    const me=await this.store.register({saveId:this.getVault().id,name:state.name,team:snapshotTeam(state)});if(generation!==this.generation)return;
+   const capabilities=await this.store.initializeCompatibility();if(generation!==this.generation)return;this.model.capabilities=capabilities;
+   if(!this.model.capabilities.publicActivity&&this.model.rankingMetric==='weekly')this.model.rankingMetric='bosses';
    this.model.me=me;this.model.status='ready';this.teamSignature=crewSignature(me.team);
    void this.refreshTribeRankings();
    void this.refreshDirectory();
@@ -37,8 +39,8 @@ export class SocialController{
    this.subscriptions.push(this.store.watchOffers(list=>{this.model.offers=list;this.emit();},error));
    this.subscriptions.push(this.store.watchReceipts(list=>{this.model.receipts=list;this.queueReceipts();this.emit();},error));
    this.subscriptions.push(this.store.watchAdventureClaims(list=>{this.model.adventureClaims=list;this.queueAdventureClaims();this.emit();},error));
-   this.subscriptions.push(this.store.watchApplications(list=>{this.model.applications=list.map(r=>({...r,displayStatus:applicationStatus(r,this.now())}));void this.store?.expireApplications(list).catch(error);this.emit();},error));
-   await this.loadPreviousAdventure();
+   if(this.model.capabilities.tribeApplications)this.subscriptions.push(this.store.watchApplications(list=>{this.model.applications=list.map(r=>({...r,displayStatus:applicationStatus(r,this.now())}));void this.store?.expireApplications(list).catch(error);this.emit();},error));
+   await this.loadPreviousAdventure().catch(error);
    if(me.activeRaid)await this.restoreRaid(me.activeRaid);
    if(me.activeDuel)this.onBattle();
    await this.heartbeat(true);this.timer=setInterval(()=>{void this.heartbeat();this.emit();},25000);this.emit();
@@ -47,7 +49,7 @@ export class SocialController{
  async stop(){
   const generation=++this.generation;this.applicationUnsubscribe?.();this.applicationUnsubscribe=null;this.applicationTribe=null;for(const stop of this.adventureWatches||[])stop();this.adventureWatches=[];this.adventureWatchKey=null;clearInterval(this.timer);this.timer=null;for(const unsubscribe of this.subscriptions)unsubscribe();this.subscriptions=[];this.tribeUnsubscribe?.();this.tribeUnsubscribe=null;this.tribeCode=null;this.duelUnsubscribe?.();this.duelUnsubscribe=null;this.duelId=null;for(const entry of this.crewWatches.values())entry.unsubscribe?.();this.crewWatches.clear();this.crewProfiles.clear();this.teamSignature=null;
   const previous=this.store;this.store=null;if(previous)void previous.heartbeat({online:false,busy:true}).catch(()=>{});
-  this.model={...this.model,status:'idle',me:null,tribe:null,members:[],duel:null,raid:null,receipts:[],challenges:[],offers:[],presence:[],nearby:[],adventure:null,adventureMembers:[],adventureClaims:[],previousAdventure:null,tribeRankings:[],rankingsStatus:'idle',rankingsError:'',rankingsUpdatedAt:null,directory:[],directoryStatus:'idle',applications:[],tribeApplications:[],publicTribe:null,publicMembers:[],weeklyMembership:null};return generation;
+  this.model={...this.model,status:'idle',capabilities:null,me:null,tribe:null,members:[],duel:null,raid:null,receipts:[],challenges:[],offers:[],presence:[],nearby:[],adventure:null,adventureMembers:[],adventureClaims:[],previousAdventure:null,tribeRankings:[],rankingsStatus:'idle',rankingsError:'',rankingsUpdatedAt:null,directory:[],directoryStatus:'idle',applications:[],tribeApplications:[],publicTribe:null,publicMembers:[],weeklyMembership:null};return generation;
  }
  emit(){
   this.model.now=this.now();this.model.ownBossRank=this.store?.tribeRanks?.get(this.model.me?.tribeId)||null;if(this.store&&this.model.me?.tribeId)this.watchAdventure(this.model.me.tribeId);const nearby=this.uid?nearbyPlayers(this.model.presence,this.uid,this.now()):[];this.watchCrewProfiles(nearby);
@@ -83,14 +85,14 @@ export class SocialController{
   })();return task.promise;
  }
  async refreshDirectory({search=this.model.directorySearch,availableOnly=this.model.directoryAvailableOnly}={}){const store=this.store,generation=this.generation;if(!store||this.model.status!=='ready')return[];const request=++this.directoryRequest||1;this.directoryRequest=request;this.model.directorySearch=String(search||'');this.model.directoryAvailableOnly=!!availableOnly;this.model.directoryStatus='loading';this.emit();try{const rows=await store.listDirectory({search,availableOnly});if(this.generation===generation&&this.store===store&&request===this.directoryRequest){this.model.directory=rows;this.model.directoryStatus='ready';this.emit();}return rows;}catch(e){if(this.generation===generation&&request===this.directoryRequest){this.model.directoryStatus='error';this.model.error=`Tribe directory unavailable: ${e.message}`;this.emit();}return[];}}
- async setTribeRanking(metric){if(!['bosses','weekly','power'].includes(metric))return;if(this.rankingsTask)await this.rankingsTask.promise;if(this.model.rankingMetric!==metric){this.model.tribeRankings=[];this.model.ownTribeRanking=null;}this.model.rankingMetric=metric;return this.refreshTribeRankings();}
+ async setTribeRanking(metric){if(!['bosses','weekly','power'].includes(metric))return;if(metric==='weekly'&&this.model.capabilities?.publicActivity===false)throw Error('Public weekly rankings are unavailable on this server.');if(this.rankingsTask)await this.rankingsTask.promise;if(this.model.rankingMetric!==metric){this.model.tribeRankings=[];this.model.ownTribeRanking=null;}this.model.rankingMetric=metric;return this.refreshTribeRankings();}
  async viewTribe(id){const store=this.store,generation=this.generation;if(!store)return;const request=++this.publicProfileRequest||1;this.publicProfileRequest=request;const value=await store.getPublicTribe(id);if(generation!==this.generation||store!==this.store||request!==this.publicProfileRequest)return;if(!value)throw Error('This tribe is no longer available.');this.model.publicTribe=value.tribe;this.model.publicMembers=value.members;this.emit();}
  closeTribeProfile(){this.publicProfileRequest=(this.publicProfileRequest||0)+1;this.model.publicTribe=null;this.model.publicMembers=[];this.emit();}
  async requestTribe(id){this.requireFree();const result=await this.store.requestTribe(id);await this.refreshDirectory();await this.refreshTribeRankings();return result;}
  async reviewApplication(id,accept){this.requireFree();const result=await this.store.reviewApplication(id,accept);await this.refreshDirectory();return result;}
  cancelApplication(id){return this.store.cancelApplication(id);}
  async leaveTribe(){this.requireFree();await this.store.leaveTribe();this.model.previousAdventure=null;this.closeTribeProfile();await this.refreshDirectory();await this.refreshTribeRankings();}
- watchLeaderApplications(tribe){const code=tribe?.ownerId===this.uid?tribe.id:null;if(code===this.applicationTribe)return;this.applicationUnsubscribe?.();this.applicationUnsubscribe=null;this.applicationTribe=code;this.model.tribeApplications=[];if(code)this.applicationUnsubscribe=this.store.watchTribeApplications(code,list=>{if(this.applicationTribe!==code)return;this.model.tribeApplications=list.map(r=>({...r,displayStatus:applicationStatus(r,this.now())}));void this.store?.expireApplications(list).catch(()=>{});this.emit();},e=>{this.model.error=e.message;this.emit();});}
+ watchLeaderApplications(tribe){const code=this.model.capabilities?.tribeApplications!==false&&tribe?.ownerId===this.uid?tribe.id:null;if(code===this.applicationTribe)return;this.applicationUnsubscribe?.();this.applicationUnsubscribe=null;this.applicationTribe=code;this.model.tribeApplications=[];if(code)this.applicationUnsubscribe=this.store.watchTribeApplications(code,list=>{if(this.applicationTribe!==code)return;this.model.tribeApplications=list.map(r=>({...r,displayStatus:applicationStatus(r,this.now())}));void this.store?.expireApplications(list).catch(()=>{});this.emit();},e=>{this.model.error=e.message;this.emit();});}
  watchActiveDuel(id){this.duelUnsubscribe?.();this.duelId=id||null;this.model.duel=null;if(id)this.duelUnsubscribe=this.store.watchDuel(id,duel=>{if(this.duelId===id){this.model.duel=duel;this.emit();}},error=>{this.model.error=error.message;this.emit();});}
  watchTribe(code){
   this.tribeUnsubscribe?.();this.watchLeaderApplications(null);for(const stop of this.adventureWatches||[])stop();this.adventureWatches=[];this.adventureWatchKey=null;this.model.adventure=null;this.model.adventureMembers=[];this.tribeCode=code||null;this.model.tribe=null;this.model.members=[];if(!code)return;
@@ -117,11 +119,13 @@ export class SocialController{
  observeLocation(fix){
   if(!fix||!Number.isFinite(fix.lat)||!Number.isFinite(fix.lon))return;
   // Only a short-lived, coarse point is published after the explicit opt-in.
-  this.latestLocation={lat:Math.round(fix.lat*1000)/1000,lon:Math.round(fix.lon*1000)/1000,accuracy:Math.min(1000,Math.max(0,fix.accuracy||25)+80),at:fix.timestamp||this.now()};
+  const accuracy=Math.max(0,fix.accuracy||25)+80;
+  this.model.locationMessage=accuracy>500?'Location accuracy is too low to find nearby crews. Try again outdoors.':'';
+  this.latestLocation=accuracy>500?null:{lat:Math.round(fix.lat*1000)/1000,lon:Math.round(fix.lon*1000)/1000,accuracy,at:Math.round(fix.timestamp||this.now())};
  }
  async shareNearby(enabled){
   this.discoverable=!!enabled;
-  if(!enabled){this.latestLocation=null;await this.heartbeat(true);this.emit();return;}
+  if(!enabled){this.latestLocation=null;this.model.locationMessage='';await this.heartbeat(true);this.emit();return;}
   try{await this.refreshNearbyFix();}catch(error){this.discoverable=false;this.latestLocation=null;await this.heartbeat(true);this.emit();throw error;}
   await this.heartbeat(true);this.emit();
  }
@@ -209,3 +213,4 @@ export class SocialController{
  }
  async run(task){if(this.actionTask)throw Error('Wait for the current online action to finish.');this.model.error='';this.model.pendingAction=true;this.actionTask=Promise.resolve().then(task);this.emit();try{return await this.actionTask;}finally{this.actionTask=null;this.model.pendingAction=false;await this.heartbeat(true);this.emit();}}
 }
+
