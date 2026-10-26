@@ -381,3 +381,8 @@ The Tribe page shows the top 25 tribes by shared boss level, with tied ranks, tr
 
 See [Legacy and Forge](LEGACY_AND_FORGE.md) for permanent progression rewards, rank costs, expedition recaps, resource accounting and browser verification. Pack now includes a dedicated Craft / Forge tab with artwork grids, mouse/touch dragging and precise quantity selection. Team and Sanctuary quick sheets expose direct equipment slots, and smelted equipment can be assigned through a visual roster.
 
+
+
+## Active walking monkeys and broad foraging habitats
+
+See [EXPLORATION.md](./EXPLORATION.md) for Active monkey selection, visible forager/scout traits, 480 m resource habitats, 5-value ingots, Star Ore, Crown Cores, and late-level training requirements. Run `npm run test:monkey-trails:exploration-browser` to check the saved selection, habitat walking, visible material values, and mobile layouts.

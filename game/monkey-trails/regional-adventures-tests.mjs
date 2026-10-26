@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as C from './core.mjs';
 import {LANDS} from './lands.mjs';
+import {HABITATS,habitatAtPosition} from './habitats.mjs';
 import {regionChallenges,recordRegionEvent} from './challenges.mjs';
 import * as R from './regional-adventures.mjs';
 import {habitatUI,speciesHuntUI,regionAdventureUI} from './regional-ui.mjs';
@@ -18,9 +19,23 @@ test('all 110 species have depth-valid obtainable regional homes, including all 
 
 test('habitat hints match the real pool and weight influences without route constraints',()=>{
  const s=save();unlock(s);const seen=new Set();
- for(const land of LANDS){C.selectLand(s,land.id);for(const [east,north]of [[62,36],[50,-48],[0,0],[100,100],[250,250]]){s.world.regions[land.id].position={east,north};const habitat=R.habitatView(s);seen.add(habitat.id);assert.ok(habitat.likely.length);assert.ok(habitat.likely.every(id=>R.regionSpeciesPool(s).includes(id)));assert.match(habitat.description,/safe, accessible route/);for(const id of habitat.likely)assert.ok(R.regionalWeight(s,id)>=1);}}
- assert.ok(seen.has('landmark'));assert.ok(seen.has('riverbank'));
+ for(const land of LANDS){C.selectLand(s,land.id);for(let x=0;x<6;x++){
+  const patch=habitatAtPosition(land.id,x*480,0);s.world.regions[land.id].position={...patch.center};const habitat=R.habitatView(s);seen.add(habitat.id);
+  assert.equal(habitat.patchId,patch.patchId,'regional encounter ecology follows the broad map habitat');assert.equal(habitat.name,patch.name);assert.equal(habitat.sizeMeters,480);
+  assert.ok(habitat.likely.length);assert.ok(habitat.likely.every(id=>R.regionSpeciesPool(s).includes(id)));assert.match(habitat.description,/safe, accessible route/);assert.ok(habitat.description.includes(patch.description));for(const id of habitat.likely)assert.ok(R.regionalWeight(s,id)>=1);
+ }}
+ assert.deepEqual(seen,new Set(Object.keys(HABITATS)));
  const before=s.world.totalDistance;s.world.regions[s.world.activeLand].position={east:0,north:-48};assert.ok(C.advance(s,1,1,0)>=0);assert.ok(s.world.totalDistance>=before);
+});
+
+test('small surface features and decorative landmarks do not replace the surrounding neighborhood habitat',()=>{
+ const s=save();unlock(s);C.selectLand(s,'emerald-jungle');
+ for(const position of [{east:0,north:0},{east:62,north:36},{east:50,north:-48},{east:120,north:100}]){
+  s.world.regions['emerald-jungle'].position=position;const h=R.habitatView(s);
+  assert.equal(h.id,'grove');assert.equal(h.name,'Sunfruit Grove');assert.equal(R.regionSnapshot(s).habitat,'grove');
+ }
+ const cave=habitatAtPosition('emerald-jungle',480,0);s.world.regions['emerald-jungle'].position={...cave.center};
+ assert.equal(R.habitatView(s).id,'cave');assert.equal(R.regionSnapshot(s).habitat,'cave');
 });
 
 test('tracking shows locked homes and research cannot bypass region or depth requirements',()=>{
@@ -64,3 +79,4 @@ test('old challenges and saved claims remain intact; origin victory credit requi
 test('regional surfaces expose real hints, saved research, and explicit track and claim actions',()=>{
  const s=save();assert.match(habitatUI(s),/LOCAL HABITAT/);assert.match(speciesHuntUI(s,'cryomane'),/Track this monkey/);assert.match(speciesHuntUI(s,'cryomane'),/Frostpeak Mountains/);assert.match(regionAdventureUI(s),/data-action="adventure-track"/);assert.match(regionAdventureUI(s),/data-action="adventure-claim"/);
 });
+

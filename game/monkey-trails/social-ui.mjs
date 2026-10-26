@@ -1,4 +1,5 @@
 import {ITEMS,MOVES,SPECIES,ELEMENTS,CONFIG,stats,effectInfo} from './core.mjs';
+import {isPersonalMaterial} from './exploration.mjs';
 import {portrait,pickupIcon} from './art.mjs';
 import {availableMoves,bossHealth,bossReward,duelStake,socialMoveEffect,raidIntent} from './social-combat.mjs';
 import {abilityGuide} from './battle-guide.mjs';
@@ -18,7 +19,7 @@ const meId=model=>idOf(model.me)||model.uid||'';
 const profileFor=(uid,model)=>[model.me,...list(model.members),...list(model.nearby)].find(p=>idOf(p)===uid);
 const playerName=(uid,model)=>{const p=profileFor(uid,model);return p?displayName(p):uid||'Trail player';};
 const walletOf=p=>p?.wallet||{fruit:0,items:{}};
-const assets=['fruit',...Object.keys(ITEMS)];
+const assets=['fruit',...Object.keys(ITEMS).filter(id=>!isPersonalMaterial(id))];
 const assetName=id=>id==='fruit'?'Fruit':ITEMS[id]?.name||id;
 const assetOptions=(selected='fruit')=>assets.map(id=>`<option value="${id}" ${selected===id?'selected':''}>${esc(assetName(id))}</option>`).join('');
 const select=(name,label,options)=>`<label>${label}<select name="${name}">${options}</select></label>`;
@@ -100,7 +101,7 @@ function sharedBoss(model){
  return `<section class="panel social-panel social-boss-event"><div class="social-section-head"><div><span class="eyebrow">TRIBE EVENT · SHARED BOSS</span><h2>Tribe boss · ${count(level)}</h2></div><span class="social-tag">10 turns</span></div><div class="social-event-scene">${eventScenery()}<span class="social-event-tier">CHALLENGE ${count(level)}</span><div class="social-boss-portrait">${portrait(boss)}</div><div class="social-event-title"><span>THE CANOPY CHALLENGE</span><strong>${esc(SPECIES[boss.species]?.name||'Tribe guardian')}</strong></div></div><div class="social-event-health">${healthMeter(hp,max,'Shared boss health')}<span class="social-event-progress">${percent}% defeated together</span></div><div class="social-boss-stats"><span><strong>${count(hp)}</strong> HP remaining</span><span class="social-event-availability ${remaining?'is-waiting':'is-ready'}">${remaining?`Next attempt in ${Math.ceil(remaining/60000)} min`:'Your attempt is ready'}</span></div>${rewardPreview(level)}${action('start-raid',remaining?'Resting between attempts':'Enter the tribe event',{disabled:remaining>0||model.busy||model.me?.busy||!!model.duel,cls:'primary wide'})}<div class="social-event-rules"><span>10 turns per attempt</span><span>No damage to your crew</span><span>One attempt per hour</span></div><p class="fine">Every hit helps your tribe. Defeat this boss to unlock a stronger rival. Every member receives the reward, including members who are offline.</p></section>`;
 }
 function walletSection(model){
- const w=walletOf(model.me),items=w.items||{},hasItems=Object.entries(items).filter(([,v])=>number(v)>0);
+ const w=walletOf(model.me),items=w.items||{},hasItems=Object.entries(items).filter(([id,v])=>assets.includes(id)&&number(v)>0);
  return `<section class="panel social-panel"><span class="eyebrow">YOUR TRIBE POUCH</span><h2>Trading supplies</h2><div class="social-wallet"><span>${pickupIcon('fruit')}<strong>${count(w.fruit)}</strong> fruit</span>${hasItems.map(([id,n])=>`<span>${pickupIcon(id)}<strong>${count(n)}</strong> ${esc(assetName(id))}</span>`).join('')}</div><p class="fine">Move supplies into your tribe pouch to trade, or move them back whenever available. Friendly battle stakes move from your expedition pack into this pouch automatically when needed. If an invitation is declined or expires, that fruit stays yours here and can be moved back.</p><details class="social-disclosure"><summary>Move supplies between packs</summary><div class="social-pack-transfer"><form data-social-form="deposit"><h3>From expedition</h3><p class="fine">${count(model.localFruit)} fruit in your expedition</p><div class="social-form-grid">${select('asset','Supply',assetOptions())}${amountInput()}</div>${submit('Move into tribe pouch')}</form><form data-social-form="withdraw"><h3>Back to expedition</h3><div class="social-form-grid">${select('asset','Supply',assetOptions())}${amountInput()}</div>${submit('Move back to expedition')}</form></div></details></section>`;
 }
 function tradingSection(model){

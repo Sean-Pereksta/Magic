@@ -133,7 +133,9 @@ export function readiness(s,id,{trainingCost,evolutionCost,unlocked}={}){
   if(typeof evolutionCost==='function')for(const type of Object.keys(ELEMENTS)){const cost=evolutionCost(s,type,id);if(cost&&p.level>=cost.level&&Object.entries(cost.cost).every(([t,n])=>(s.run.essence[t]||0)>=n))return{section:'evolve',label:available?'Evolution available':blockedLabel('evolve'),type};}
   if(p.level<60&&typeof trainingCost==='function'){
     const cost=trainingCost(p),fruit=Math.max(0,cost.fruit-(s.run?.fruit||0)),xp=Math.max(0,cost.xp-(p.training||0));
-    if(!fruit&&!xp)return{section:'train',label:available?'Ready to level up':blockedLabel('level up')};
+    const missing=Object.entries(cost.materials||{}).filter(([id,n])=>(s.run?.items?.[id]||0)<n);
+    if(!fruit&&!xp&&missing.length)return{section:'train',label:`Needs ${missing.map(([id,n])=>`${n-(s.run?.items?.[id]||0)} ${id==='starOre'?'Star Ore':'Crown Core'}`).join(' + ')}`};
+    if(!fruit&&!xp&&!missing.length)return{section:'train',label:available?'Ready to level up':blockedLabel('level up')};
     if(!xp&&fruit)return{section:'train',label:`Needs ${fruit} more fruit`};
   }
   if(typeof unlocked==='function'){const fresh=unlocked(p).filter(move=>!p.loadout.includes(move));if(fresh.length)return{section:'abilities',label:'Unlocked abilities available'};}
@@ -158,3 +160,4 @@ export function evolutionGoal(s,evolutionCost){
   return{...goal,complete:false,label:`Evolve ${p.nickname||SPECIES[p.species].name}`,requiredLevel:cost.level,currentLevel:p.level,ready:p.level>=cost.level&&remaining.every(row=>!row.needed),remaining,
     hint:'Essence comes from accepted trail discoveries, regional rewards and victories. Compass direction influences ordinary essence finds; four spare essence can be exchanged for one needed essence.'};
 }
+

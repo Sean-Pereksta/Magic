@@ -1,6 +1,7 @@
 // A fantasy walking map. Geometry lives in meters; the camera alone moves.
 // World features use absolute coordinates, including negative coordinates, so
 // returning to a place (or crossing a rendering-cell boundary) preserves it.
+import {habitatAtPosition,habitatMapLayer,habitatMapLegend} from './habitats.mjs';
 export const MAP_METERS_TO_PIXELS = 2.2;
 export const MAP_PIXELS_PER_METER = MAP_METERS_TO_PIXELS;
 const WIDTH = 600, HEIGHT = 360, CELL = 28, LIMIT = 1e7;
@@ -187,7 +188,10 @@ export function terrainMap(id,{position={east:0,north:0},trail=[],uid='terrain',
     if(!inside(e,n,24)||Math.hypot(e,n)<15||landmarkPoints.some(v=>Math.hypot(e-v.east,n-v.north)<25))continue;
     const d=distances(id,e,n),choice=noise(x,y,seed+15),isSmall=choice>.77,clearance=isSmall?9:17;
     if(d.river<p.river+(isSmall?3:12)||d.path<clearance||d.horizontal<clearance-2)continue;
-    const kind=choice<.55?'flora':choice<.7?'special':choice<.81?'stone':'detail';
+    // Large habitat zones change what is visibly growing in the neighborhood,
+    // while all props keep their original absolute world coordinates.
+    const local=habitatAtPosition(id,e,n).id;
+    const kind=local==='cave'?(choice<.72?'stone':choice<.84?'special':'detail'):local==='grove'?(choice<.76?'flora':choice<.9?'special':'detail'):choice<.55?'flora':choice<.7?'special':choice<.81?'stone':'detail';
     const a=at(e,n),size=(isSmall?.65:.8)+noise(x,y,seed+16)*.35,rotation=(noise(x,y,seed+17)-.5)*(kind==='detail'?120:35);
     props+=`<use href="#${uid}-${kind}" data-cell="${x}:${y}" data-world-east="${fmt(e)}" data-world-north="${fmt(n)}" transform="translate(${fmt(a.x)} ${fmt(a.y)}) rotate(${fmt(rotation)}) scale(${fmt(scale*size)})"/>`;propCount++;
   }
@@ -211,5 +215,6 @@ export function terrainMap(id,{position={east:0,north:0},trail=[],uid='terrain',
     const a=at(-19,-6);landmarks+=`<g class="terrain-start" transform="translate(${fmt(a.x)} ${fmt(a.y)}) scale(${fmt(scale)})">${ellipse(0,4,8,3,p.dark,'opacity=".18"')}${stroke('M0 4V-13','#816a49',1.7)}${shape('M1-12H12L9-8 12-4H1Z',p.accent,'stroke="#846c48" stroke-width=".65"')}${circle(0,-14,1.2,p.path)}</g>`;
   }
   const bar=20*scale;
-  return `<svg class="terrain-map" viewBox="0 0 ${WIDTH} ${HEIGHT}" role="img" aria-label="${p.name} walking map" data-land="${id}" data-map-east="${camera.east}" data-map-north="${camera.north}" data-map-scale="${scale}" data-prop-count="${propCount}" xmlns="http://www.w3.org/2000/svg"><title>${p.name}: explore in every direction</title><desc>A north-up fantasy terrain map. Your position stays at the center while trails, terrain and landmarks follow your actual walking direction.</desc>${symbols(p,uid)}<rect width="${WIDTH}" height="${HEIGHT}" fill="${p.ground}"/><g class="terrain-camera"><g class="terrain-ground">${ground}${ridges}${details}</g><g class="terrain-rivers">${water}</g><g class="terrain-paths">${paths}</g>${bridges}<g class="terrain-props">${props}</g><g class="terrain-landmarks">${landmarks}</g><g class="terrain-route">${route}</g></g><g class="terrain-scale" transform="translate(16 323)"><rect x="-7" y="-5" width="${fmt(bar+15)}" height="30" rx="7" fill="${p.dark}" opacity=".72"/>${stroke(`M0 5V12H${fmt(bar)}V5`,'#fff5da',1.7)}<text x="${fmt(bar/2)}" y="1" text-anchor="middle" fill="#fff5da" font-size="11" font-weight="700" font-family="system-ui,sans-serif">20 m</text></g></svg>`;
+  return `<svg class="terrain-map" viewBox="0 0 ${WIDTH} ${HEIGHT}" role="img" aria-label="${p.name} walking map" data-land="${id}" data-map-east="${camera.east}" data-map-north="${camera.north}" data-map-scale="${scale}" data-prop-count="${propCount}" xmlns="http://www.w3.org/2000/svg"><title>${p.name}: explore in every direction</title><desc>A north-up fantasy terrain map. Your position stays at the center while trails, terrain and landmarks follow your actual walking direction. Broad 480 meter habitats persist across visits and favor different foraging resources.</desc>${symbols(p,uid)}<rect width="${WIDTH}" height="${HEIGHT}" fill="${p.ground}"/><g class="terrain-camera"><g class="terrain-ground">${ground}${ridges}${details}</g>${habitatMapLayer(id,{position:camera,zoom:zoomValue(zoom),scale})}<g class="terrain-rivers">${water}</g><g class="terrain-paths">${paths}</g>${bridges}<g class="terrain-props">${props}</g><g class="terrain-landmarks">${landmarks}</g><g class="terrain-route">${route}</g></g>${habitatMapLegend(id,{position:camera})}<g class="terrain-scale" transform="translate(16 323)"><rect x="-7" y="-5" width="${fmt(bar+15)}" height="30" rx="7" fill="${p.dark}" opacity=".72"/>${stroke(`M0 5V12H${fmt(bar)}V5`,'#fff5da',1.7)}<text x="${fmt(bar/2)}" y="1" text-anchor="middle" fill="#fff5da" font-size="11" font-weight="700" font-family="system-ui,sans-serif">20 m</text></g></svg>`;
 }
+

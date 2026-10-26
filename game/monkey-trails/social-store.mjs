@@ -1,5 +1,6 @@
 // Firestore-only social state. Transactions serialize membership, escrow and turn revisions.
 import {ITEMS} from './core.mjs';
+import {isPersonalMaterial} from './exploration.mjs';
 import {teamPower} from './power.mjs';
 import {tribeWeek,TRIBE_WEEK,TRIBE_ADVENTURE,cleanContribution,emptyContribution,contributionPoints,adventureReward} from './tribe-adventures.mjs';
 import {newRaidAttempt,raidAction,bossHealth,bossReward,newDuel,duelAction,duelStake,duelRewards,SOCIAL_COMBAT_VERSION} from './social-combat.mjs';
@@ -9,10 +10,10 @@ export const TRIBE_RANKING_LIMIT=25;
 const clone=x=>x==null?x:structuredClone(x),blankWallet=()=>({fruit:0,items:{}});
 const cleanId=x=>{if(typeof x!=='string'||!x.length||x.length>160||x.includes('/'))throw Error('Invalid social identity.');return x;};
 const count=n=>{if(!Number.isSafeInteger(n)||n<1||n>100000)throw Error('Choose a whole amount between 1 and 100,000.');return n;};
-const assetId=x=>{if(x!=='fruit'&&!ITEMS[x])throw Error('Unknown supply.');return x;};
+const assetId=x=>{if(x!=='fruit'&&(!Object.hasOwn(ITEMS,x)||isPersonalMaterial(x)))throw Error('Unknown supply. Personal crafting and training materials cannot enter the tribe pouch.');return x;};
 const asset=v=>({asset:assetId(v?.asset),amount:count(v?.amount)});
 const balance=(w,id)=>id==='fruit'?w.fruit:(w.items[id]||0);
-function changeWallet(p,id,delta){const w=p.wallet;if(balance(w,id)+delta<0)throw Error('Not enough supplies in your social pouch.');if(id==='fruit')w.fruit+=delta;else w.items[id]=(w.items[id]||0)+delta;}
+function changeWallet(p,id,delta){assetId(id);const w=p.wallet;if(balance(w,id)+delta<0)throw Error('Not enough supplies in your social pouch.');if(id==='fruit')w.fruit+=delta;else w.items[id]=(w.items[id]||0)+delta;}
 const ms=v=>typeof v?.toMillis==='function'?v.toMillis():Number(v)||0;
 const average=team=>Math.max(1,Math.floor(team.reduce((n,p)=>n+p.level,0)/Math.max(1,team.length)));
 const admission=value=>value==='approval'?'approval':'open';
