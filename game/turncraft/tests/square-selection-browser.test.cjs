@@ -99,11 +99,11 @@ for(const [label,viewport,hasTouch] of [['desktop',{width:1280,height:900},false
  });
 }
 
-test('desktop Shift-click selects a troop from its square corner without ordering the selected group',async()=>{
+test('desktop Shift-click adds a troop from its square corner without ordering the selected group',async()=>{
  const {browser,page,errors}=await setup({width:1280,height:900},false);
  try{
   await page.evaluate(()=>tcSquare.prepare());const p=await point(page,8.98,8.98);await page.keyboard.down('Shift');await page.mouse.click(p.x,p.y);await page.keyboard.up('Shift');
-  const r=await state(page);assert.deepEqual(r.selected,[r.target]);assert.deepEqual(r.commands,[]);assert.deepEqual(errors,[]);
+  const r=await state(page);assert.deepEqual(r.selected,[...r.group,r.target]);assert.deepEqual(r.commands,[]);assert.deepEqual(errors,[]);
  }finally{await browser.close()}
 });
 

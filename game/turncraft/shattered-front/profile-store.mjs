@@ -26,6 +26,7 @@ export function mergePersonalResult(previous = {}, mode, input, now = new Date()
     next.campaign.completedMissions[mission.id] = {
       ...old,
       stars: Math.max(stars, old.stars || 0),
+      ...(Number(input.durationSeconds)>0 ? {bestDurationSeconds:Math.min(old.bestDurationSeconds || 604800,Math.max(1,integer(input.durationSeconds,604800)))} : {}),
       ratingsByDifficulty: { ...old.ratingsByDifficulty, [difficulty]: Math.max(stars, old.ratingsByDifficulty?.[difficulty] || 0) },
       optionalObjectives: [...new Set([...(old.optionalObjectives || []), ...optional])],
       completedAt: old.completedAt || now

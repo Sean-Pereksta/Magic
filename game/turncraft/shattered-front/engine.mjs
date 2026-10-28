@@ -8,6 +8,7 @@ import {
 } from './campaign.mjs';
 import { WaveDirector } from './waves.mjs';
 import { checkpointKey } from './progress.mjs';
+import { campaignSupport } from './operations.mjs';
 export { CATALOG, campaignLayout };
 export const CHECKPOINT_KEY = 'turncraft.shattered-front.checkpoint.v1';
 const copy = (value) => JSON.parse(JSON.stringify(value));
@@ -46,6 +47,7 @@ export function createExpansion(
     return {
       ...copy(s),
       mode: run.mode,
+      resultId: run.resultId,
       missionId: run.mission?.id || null,
       arenaId: run.arena?.id || null,
       regionId: run.region.id,
@@ -55,6 +57,12 @@ export function createExpansion(
       factionId: run.factionId,
       difficulty: run.difficulty,
       seed: run.seed,
+      operation: run.operation ? copy(run.operation) : null,
+      stageTitle: run.mission?.operation?.stages[run.operation?.stage]?.title || null,
+      missionStyle: run.mission?.missionStyle || null,
+      enemyEconomy: !!run.mission?.operation.economy,
+      limitedArmy: !!run.mission?.operation.limitedArmy,
+      totalStages: run.mission?.operation.stages.length || null,
       protectedHealth: adapter.protectedHealth?.(run.objectives) ?? 1
     };
   }
@@ -128,7 +136,8 @@ export function createExpansion(
       }),
       result: null,
       hazards: [],
-      hazardClock: 0
+      hazardClock: 0,
+      operation: mission?.operation ? { version: 1, stage: 0, stageElapsed: 0, assaultClock: 15, completedStages: [] } : null
     };
     adapter.begin({
       mode,
@@ -139,10 +148,19 @@ export function createExpansion(
       difficulty,
       seed,
       enemyFaction,
+      support: mode === 'campaign' ? campaignSupport(profile, mission?.index) : null,
       layout: campaignLayout(region.id, seed)
     });
-    for (const objective of run.objectives)
-      objective.entityId = adapter.createObjective?.(objective) || null;
+    for (const objective of run.objectives) {
+      // Future convoys are materialized at departure, so they cannot die offscreen before their stage.
+      if (!(objective.type === 'escort' && (objective.stage > 0 || objective.activateStage > 0)))
+        objective.entityId = adapter.createObjective?.(objective) || null;
+    }
+    if (run.operation) {
+      run.director.config.waves = null;
+      run.director.state.remaining = 1e9;
+      adapter.stage?.(run.operation.stage, mission.operation.stages[0], run);
+    }
     lastState = 0;
     lastSave = 0;
     objectiveClock = 0;
@@ -165,13 +183,26 @@ export function createExpansion(
       `${o.label}: complete. Coalition supplies delivered.`
     );
     if (o.type === 'rescue') adapter.reinforce?.(o);
+    adapter.objectiveComplete?.(o, run);
+    if (run.mission?.operation.choice?.includes(o.id)) {
+      for (const other of run.objectives)
+        if (other.id !== o.id && run.mission.operation.choice.includes(other.id)) other.unavailable = true;
+    }
     notify();
   }
   function updateObjectives(dt) {
     for (const o of run.objectives) {
       const entity = o.entityId ? adapter.entity(o.entityId) : null;
-      if (o.failed || o.completed) continue;
+      if (o.failed || o.completed || o.unavailable) continue;
+      if (run.operation && o.activateStage > run.operation.stage) continue;
+      if (run.operation && o.stage >= 0 && o.stage !== run.operation.stage) continue;
+      if (o.type === 'survive') {
+        o.progress = Math.min(1, run.operation.stageElapsed / o.seconds);
+        if (o.progress >= 1) completeObjective(o);
+        continue;
+      }
       if (o.type === 'protect') {
+        if (!entity && run.mission?.operation.limitedArmy && run.operation.stage === 0) continue;
         if (!entity) {
           o.failed = true;
           if (!o.optional) {
@@ -184,6 +215,7 @@ export function createExpansion(
       if (o.type === 'escort') {
         if (!entity) {
           o.failed = true;
+          if (o.optional) {announce('nyx', `${o.label}: lost. The remaining evacuation can continue.`);notify();continue;}
           finish(false, 'The convoy was destroyed.');
           return;
         }
@@ -191,14 +223,18 @@ export function createExpansion(
           completeObjective(o);
           continue;
         }
-        adapter.escort?.(entity, o.to);
+        const threats = adapter.nearby?.(entity.x, entity.y, 5, 1) || [];
+        o.blocked = threats.length > 0 || (run.mission?.operation.blockedUntil && !run.objectives.find(item => item.id === run.mission.operation.blockedUntil)?.completed);
+        if (o.blocked) adapter.stopEscort?.(entity);
+        else adapter.escort?.(entity, o.to, o, run);
         continue;
       }
       if (o.type === 'destroy') {
-        if (!entity) completeObjective(o);
+        if (!entity && o.entityId) completeObjective(o);
+        else if (!o.entityId) o.entityId = adapter.createObjective?.(o) || null;
         continue;
       }
-      const friendly = adapter.nearby?.(o.x, o.y, 2.6, 0) || [],
+      const friendly = (o.workers ? adapter.workersNearby?.(o.x, o.y, 2.6) : adapter.nearby?.(o.x, o.y, 2.6, 0)) || [],
         enemy = adapter.nearby?.(o.x, o.y, 3.5, 1) || [];
       if (friendly.length && !enemy.length) {
         o.progress = Math.min(1, o.progress + dt / (o.seconds || 6));
@@ -208,6 +244,7 @@ export function createExpansion(
   }
   function nextWave() {
     if (!run || adapter.paused?.()) return null;
+    if (run.operation) return null;
     const plan = run.director.nextWave(adapter.army?.());
     if (plan) onWave(plan);
     notify();
@@ -234,6 +271,25 @@ export function createExpansion(
   }
   function tick(dt) {
     if (!run || run.result || adapter.paused?.()) return;
+    dt = Math.max(0, Math.min(1, Number(dt) || 0));
+    if (run.operation) {
+      const operation = run.operation, stage = run.mission.operation.stages[operation.stage];
+      operation.stageElapsed += dt;
+      operation.assaultClock -= dt;
+      if (stage.assault && operation.assaultClock <= 0 && run.director.state.phase === 'preparation' && (!run.mission.operation.portal || !run.objectives.find(o => o.id === run.mission.operation.portal)?.completed)) {
+        const plan = run.director.nextWave(adapter.army?.());
+        // Scripted pressure supports the current tactical objective, with bounded reinforcement size.
+        if (plan) {
+          plan.composition = plan.composition.slice(0, Math.min(20, 4 + run.region.index * 2 + operation.stage * 2));
+          adapter.configureWave?.(plan,run);
+          run.director.state.pending = [...plan.composition];
+          onWave(plan);
+        }
+        operation.assaultClock = Math.max(24, 52 - run.region.index * 3);
+      }
+      if (run.director.state.phase === 'preparation') run.director.state.remaining = 1e9;
+      adapter.operationTick?.(dt, run);
+    }
     const events = run.director.tick(dt, {
       alive: (id) => !!adapter.entity(id),
       spawn: (type, plan, index) => adapter.spawn(type, plan, index, run),
@@ -258,12 +314,30 @@ export function createExpansion(
       objectiveClock = 0;
       if (run.result) return;
     }
-    if (!adapter.hasBase?.()) {
+    if (run.operation) {
+      const operation = run.operation, stage = run.mission.operation.stages[operation.stage];
+      if (stage.ids[stage.any?'some':'every'](id => run.objectives.find(o => o.id === id)?.completed)) {
+        operation.completedStages.push(operation.stage);
+        operation.stage++;
+        operation.stageElapsed = 0;
+        operation.assaultClock = 6;
+        if (operation.stage >= run.mission.operation.stages.length) {
+          finish(true, 'All tactical stages and primary objectives completed.');
+          return;
+        }
+        const next = run.mission.operation.stages[operation.stage];
+        for (const objective of run.objectives) if ((objective.stage === operation.stage || objective.activateStage === operation.stage) && !objective.entityId && ['escort','destroy'].includes(objective.type)) objective.entityId = adapter.createObjective?.(objective) || null;
+        adapter.stage?.(operation.stage, next, run);
+        announce('elara_venn', next.title);
+        notify(); checkpoint();
+      }
+    }
+    if (!(run.mission?.operation.limitedArmy ? (adapter.hasForces?.() ?? adapter.hasBase?.()) : adapter.hasBase?.())) {
       finish(false, 'Your final command base has fallen.');
       return;
     }
     if (
-      run.director.state.phase === 'objectives' &&
+      !run.operation && run.director.state.phase === 'objectives' &&
       run.objectives
         .filter((o) => !o.optional && o.type !== 'protect')
         .every((o) => o.completed)
@@ -301,12 +375,12 @@ export function createExpansion(
         .filter((o) => o.optional && o.completed)
         .map((o) => o.id),
       required = run.objectives.filter(
-        (o) => !o.optional && o.type !== 'protect'
+        (o) => !o.optional && !o.unavailable && o.type !== 'protect'
       );
     const stars = won
       ? 1 +
         (optionalObjectives.length ===
-        run.objectives.filter((o) => o.optional).length
+        run.objectives.filter((o) => o.optional && !o.unavailable).length
           ? 1
           : 0) +
         ((stats.unitsLost || 0) < Math.max(8, s.wave * 2) ? 1 : 0)
@@ -322,7 +396,7 @@ export function createExpansion(
       wave: s.cleared,
       highestWave: s.wave,
       wavesSurvived: s.cleared,
-      enemiesDefeated: s.enemiesDefeated,
+      enemiesDefeated: stats.enemiesDefeated ?? s.enemiesDefeated,
       unitsLost: stats.unitsLost || 0,
       durationSeconds: Math.round(s.elapsed),
       stars,
@@ -335,6 +409,12 @@ export function createExpansion(
       reason,
       completedObjectives: required.filter((o) => o.completed).map((o) => o.id)
     };
+    if (run.operation) {
+      result.completedStages = copy(run.operation.completedStages);
+      result.campaignRewards = won ? [run.mission.campaignReward] : [];
+      if(run.mission.index===11){result.evacuatedGroups=run.objectives.filter(o=>o.type==='escort'&&o.completed).length;if(won)result.campaignRewards.push({id:'evacuation-survivors',label:`${result.evacuatedGroups} convoy groups evacuated`});}
+      result.starReasons = [{earned:won,label:'Complete every primary tactical objective'}, {earned:won && optionalObjectives.length === run.objectives.filter(o => o.optional && !o.unavailable).length,label:'Complete every available optional objective'}, {earned:won && (stats.unitsLost || 0) < Math.max(8,s.wave*2),label:'Preserve your army'}];
+    }
     run.result = result;
     try {
       storage?.removeItem(checkpointKey(run.username));
@@ -368,6 +448,7 @@ export function createExpansion(
       simulation: adapter.snapshot(),
       hazardClock: run.hazardClock
     };
+    if (run.operation) checkpoint.operation = copy(run.operation);
     try {
       storage?.setItem(checkpointKey(run.username), JSON.stringify(checkpoint));
     } catch {}
@@ -399,7 +480,18 @@ export function createExpansion(
     run.director = director;
     run.objectives = copy(saved.objectives);
     run.hazardClock = saved.hazardClock || 0;
+    if (run.operation) {
+      run.operation = saved.operation?.version === 1 ? copy(saved.operation) : run.operation;
+      // Older checkpoints keep their objective progress and begin at the first unfinished tactical stage.
+      if (!saved.operation) while (run.operation.stage < run.mission.operation.stages.length - 1 && run.mission.operation.stages[run.operation.stage].ids.every(id => run.objectives.find(o => o.id === id)?.completed)) run.operation.stage++;
+      for (const objective of run.mission.objectives) if (!run.objectives.some(o => o.id === objective.id)) run.objectives.push({...copy(objective), progress:0, completed:false, failed:false, entityId:null});
+      run.objectives = run.objectives.map(o => {const definition=run.mission.objectives.find(definition => definition.id === o.id);return {...copy(definition || {}), ...o, stage: definition?.stage ?? o.stage, optional: definition?.optional ?? o.optional};});
+      run.director.config.waves = null;
+      if(run.director.state.phase==='objectives'){run.director.state.phase='preparation';run.director.state.remaining=1e9;}
+    }
     adapter.restore(saved.simulation, saved.savedAt);
+    if (run.operation) for (const objective of run.objectives) if (!objective.entityId && !objective.completed && objective.stage <= run.operation.stage && !(objective.activateStage > run.operation.stage)) objective.entityId = adapter.createObjective?.(objective) || null;
+    if (run.operation) adapter.stage?.(run.operation.stage, run.mission.operation.stages[run.operation.stage], run, {restoring:true});
     adapter.unpause?.();
     lastState = director.state.elapsed;
     lastSave = lastState;
@@ -436,6 +528,9 @@ export function createExpansion(
     getIdentity: () => adapter.getIdentity(),
     selectFaction: (id) => adapter.selectFaction(id),
     configureSolo: (options) => adapter.configureSolo(options),
+    getSoloSettings: () => adapter.getSoloSettings?.(),
+    drawMapPreview: (canvas, id) => adapter.drawMapPreview?.(canvas, id),
+    startSkirmish(options) { run = null; adapter.hud?.(null); return adapter.startSkirmish?.(options); },
     showSkirmish: () => {
       run = null;
       adapter.hud?.(null);

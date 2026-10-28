@@ -23,7 +23,7 @@ function setup(){
     canvas:{addEventListener:(name,fn)=>listeners.set(name,fn),setPointerCapture:()=>{},classList:classes(canvasClasses)},
     window:{addEventListener:(name,fn)=>windowListeners.set(name,fn)},document:{body:{classList:classes(bodyClasses)}},
     gameStarted:true,paused:false,gameOver:false,PLAYER:0,W:500,H:500,MIN_ZOOM:.25,MAX_ZOOM:2.4,
-    TILE:20,lastStackTap:{key:'',idx:0,at:0},isFlying:()=>false,spriteEntityVisible:e=>e?.alive!==false&&!e?.garrisonedIn,
+    TILE:20,STRUCTURES:{},lastStackTap:{key:'',idx:0,at:0},isFlying:()=>false,spriteEntityVisible:e=>e?.alive!==false&&!e?.garrisonedIn,
     cam:{x:0,y:0,zoom:1},entities:troops,UNITS:{marine:{name:'Marine'},engineer:{name:'Engineer'}},
     dragging:false,dragStart:null,pointerMoved:false,activePointers:new Map(),pinch:null,selectionBox:null,selectionHoldTimer:null,
     lastCanvasTap:{at:0,entityId:null},interactionMode:null,interactionPayload:null,legalTiles:[],hoverTile:null,

@@ -46,7 +46,8 @@ for(const [label,viewport,hasTouch] of [['desktop',{width:1280,height:900},false
   try{
    for(const [faction,name,type] of [['frontier','Command Hub','commandHub'],['ascendant','Nexus','nexus'],['brood','Hatchery','hatchery']]){
     await page.evaluate(f=>tcBuild.prepare(f),faction);
-    await page.locator('#commandButtons button').filter({hasText:/^Build$/}).click();
+    assert.equal(await page.locator('#commandButtons [data-command-label="Build"] kbd').innerText(),'B');
+    await page.locator('#commandButtons [data-command-label="Build"]').click();
     const card=page.locator('#actionList .actionCard').filter({hasText:name});
     assert.equal(await card.isEnabled(),true,`${name} affordable at exactly 300`);
     assert.equal((await card.locator('.actionCost').innerText()).trim(),'◆ 300');
@@ -69,7 +70,8 @@ for(const [label,viewport,hasTouch] of [['desktop',{width:1280,height:900},false
   const {browser,page,errors}=await setup(viewport,hasTouch);
   try{
    await page.evaluate(()=>{tcBuild.prepare();tcBuild.run("tileVisibleToFaction=(f,x,y)=>x!==14;addEntity('unit','probe',1,15,8);tileAt(16,8).blocked=true;addNode('mineral',17,8,1000)")});
-   await page.locator('#commandButtons button').filter({hasText:/^Build$/}).click();
+   assert.equal(await page.locator('#commandButtons [data-command-label="Build"] kbd').innerText(),'B');
+    await page.locator('#commandButtons [data-command-label="Build"]').click();
    await page.locator('#actionList .actionCard').filter({hasText:'Supply Depot'}).click();
    assert.deepEqual(await page.evaluate(()=>tcBuild.run('[13,14,15,16,17].map(x=>legalTiles.some(p=>p.x===x&&p.y===8))')),[true,false,false,false,false]);
    await page.evaluate(()=>tcBuild.run('centerOn(13,8);draw()'));

@@ -284,13 +284,16 @@ function clickGame() {
   return run;
 }
 
-test('contextual mineral and friendly extractor taps retain the worker group and send one mining command', () => {
+test('mineral taps mine; friendly extractors select safely and explicit Mine retains the worker group', () => {
   const run = clickGame();
   run('handlePolishTap(patches[0].x,patches[0].y)');
   assert.equal(run('testCommands.length'), 1);
   assert.equal(run('testCommands[0].type'), 'groupMine');
   assert.deepEqual(run.plain('selectedIds'), run.plain('workers.map(w=>w.id)'));
-  run(`globalThis.gas=addTestNode('gas',12,13,1800);addEntity('structure',fac.gas,0,gas.x,gas.y);handlePolishTap(gas.x,gas.y)`);
+  run(`globalThis.gas=addTestNode('gas',12,13,1800);globalThis.extractor=addEntity('structure',fac.gas,0,gas.x,gas.y);handlePolishTap(gas.x,gas.y)`);
+  assert.equal(run('testCommands.length'), 1, 'normal friendly-structure selection sends no mining or movement order');
+  assert.deepEqual(run.plain('selectedIds'), [run('extractor.id')]);
+  run(`selectEntities(workers);interactionMode='mine';handlePolishTap(gas.x,gas.y)`);
   assert.equal(run('testCommands.length'), 2);
   assert.equal(run('testCommands[1].type'), 'groupMine');
   assert.equal(run('testCommands[1].nodeId'), run('gas.id'));

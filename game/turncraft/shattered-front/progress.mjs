@@ -50,6 +50,7 @@ export function mergeProgress(local, remote = {}) {
       ...old,
       ...record,
       ratingsByDifficulty,
+      ...(old?.bestDurationSeconds || record.bestDurationSeconds ? {bestDurationSeconds:Math.min(old?.bestDurationSeconds || Infinity, record.bestDurationSeconds || Infinity)} : {}),
       optionalObjectives: [
         ...new Set([
           ...(old?.optionalObjectives || []),
@@ -92,6 +93,7 @@ export function recordResult(progress, result) {
     };
     next.campaign.completedMissions[result.missionId] = {
       ...result,
+      ...(Number(result.durationSeconds)>0 ? {bestDurationSeconds:Math.min(old.bestDurationSeconds || Infinity,Math.max(1,Number(result.durationSeconds)))} : {}),
       ratingsByDifficulty,
       optionalObjectives: [
         ...new Set([

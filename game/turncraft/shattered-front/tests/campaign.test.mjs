@@ -279,7 +279,10 @@ test('Continue restores the selected profile checkpoint while another profile ha
 test('actual mission objective, rewards, results and defeat lifecycle', () => {
   const h = harness();
   h.engine.startCampaign('amber-wastes-1', { seed: 19 });
-  h.engine.nextWave();
+  assert.equal(h.engine.nextWave(),null,'Tactical missions do not expose survival next-wave controls');
+  for(let n=0;n<80;n++){h.engine.tick(1);h.clearWave();}
+  assert.equal(h.events.some(e=>e.type==='sf:result'),false,'Patrol must actually discover the signal');
+  h.adapter.nearby=(x,y,r,f)=>f===0?[{id:99}]:[];
   let ticks = 0;
   while (!h.events.some((e) => e.type === 'sf:result') && ticks++ < 3000) {
     h.engine.tick(1);
@@ -289,9 +292,9 @@ test('actual mission objective, rewards, results and defeat lifecycle', () => {
   assert.ok(ticks < 3000);
   const result = h.events.find((e) => e.type === 'sf:result').detail;
   assert.ok(result.won);
-  assert.equal(result.wave, 4);
+  assert.equal(result.completedStages.length,3);
   assert.equal(result.missionId, 'amber-wastes-1');
-  assert.equal(result.stars, 2);
+  assert.equal(result.stars, 3);
   assert.equal(h.storage.getItem(CHECKPOINT_KEY), null);
   h.engine.startSurvival('frozen-rift', { seed: 9, factionId: 'ascendant' });
   h.loseBase();
