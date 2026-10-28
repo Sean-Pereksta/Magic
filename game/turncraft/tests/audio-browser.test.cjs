@@ -67,7 +67,8 @@ for (const [width, height, touch] of [[1280, 900, false], [390, 844, true], [844
     assert.ok(popup.y >= 0 && popup.y + popup.height <= height, 'audio settings fit the viewport');
     if (width <= 920) {
       const [button, minimap] = await Promise.all([page.locator('#tcAudio').boundingBox(), page.locator('#minimapDock').boundingBox()]);
-      assert.ok(button.y >= minimap.y + minimap.height, 'sound control stays below the minimap');
+      const overlaps = button.x < minimap.x + minimap.width && button.x + button.width > minimap.x && button.y < minimap.y + minimap.height && button.y + button.height > minimap.y;
+      assert.equal(overlaps, false, 'sound control stays clear of the minimap in either orientation');
     }
     await page.evaluate(() => {window.audioEvents=[];const play=TurncraftAudio.play;TurncraftAudio.play=function(kind, options) {audioEvents.push({kind, options});return play(kind, options);};});
     await page.evaluate(() => audioTest(`globalThis.soundUnit=addEntity('unit','rifleman',0,10,10);selectEntities([soundUnit]);cam.zoom=.6;focusSelected();draw();sendCommand({type:'hold',entityId:soundUnit.id});`));

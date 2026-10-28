@@ -39,8 +39,8 @@ test('illustrated faction selection and real difficulty choices persist without 
 test('ability hotkeys activate ready casters, select targeting, and respect cooldowns and input focus',async()=>{
  const {browser,page,errors}=await setup();try{
   for(const [faction,type] of [['frontier','engineer'],['ascendant','probe'],['brood','drone']]){
-   await page.evaluate(([f,t])=>{tcMenu.start(f);tcMenu.select([t])},[faction,type]);const key=page.locator('#abilityButtons [data-hotkey="Q"]');assert.equal(await key.getAttribute('aria-keyshortcuts'),'Q');assert.equal(await key.locator('kbd').isVisible(),true);
-   await page.keyboard.press('q');const at=await page.evaluate(()=>tcMenu.selected[0].abilityReadyAt);assert.ok(at>await page.evaluate(()=>tcMenu.now));await page.keyboard.press('q');assert.equal(await page.evaluate(()=>tcMenu.selected[0].abilityReadyAt),at);
+   await page.evaluate(([f,t])=>{tcMenu.start(f);tcMenu.select([t])},[faction,type]);const key=page.locator('#abilityButtons [data-ability]').first(),shortcut=await key.getAttribute('data-hotkey');assert.ok(shortcut);assert.equal(await key.getAttribute('aria-keyshortcuts'),shortcut);assert.equal(await key.locator('kbd').isVisible(),true);
+   await page.keyboard.press(shortcut.toLowerCase());const at=await page.evaluate(()=>tcMenu.selected[0].abilityReadyAt);assert.ok(at>await page.evaluate(()=>tcMenu.now));await page.keyboard.press(shortcut.toLowerCase());assert.equal(await page.evaluate(()=>tcMenu.selected[0].abilityReadyAt),at);
   }
   await page.evaluate(()=>{tcMenu.start('ascendant');tcMenu.select(['templar','templar'])});await page.keyboard.press('q');assert.equal(await page.evaluate(()=>tcMenu.mode),'ability');assert.equal(await page.evaluate(()=>tcMenu.payload),'psionicStorm');await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>tcMenu.mode),null);
   await page.evaluate(()=>tcMenu.select(['sentry']));await page.keyboard.press('e');assert.equal(await page.evaluate(()=>tcMenu.payload),'forcefield');await page.keyboard.press('Escape');

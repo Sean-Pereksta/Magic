@@ -31,3 +31,83 @@
 @media(max-width:760px),(pointer:coarse){#commandButtons,#abilityButtons{grid-template-columns:repeat(auto-fill,48px)!important;grid-auto-rows:48px!important}#commandButtons .cmdBtn,#abilityButtons .cmdBtn,#abilityButtons .warfareAbility{width:48px!important;height:48px!important;min-width:48px!important;min-height:48px!important;max-height:48px;font-size:8px!important}#controlGroups{width:min(540px,calc(100vw - 12px));flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;justify-content:flex-start;pointer-events:auto;touch-action:pan-x}#controlGroups .controlGroupChip{flex:0 0 44px;height:44px;min-height:44px;width:44px;min-width:44px;touch-action:pan-x}.groupPortraits .spritePortrait:nth-child(2){display:none}}
 @media(max-width:520px){#controlGroups{max-width:calc(100vw - 12px);right:6px!important;top:44px!important}.controlGroupChip .groupPortraits{max-width:22px}}
 @media(max-width:760px),(max-height:520px) and (orientation:landscape){#minimapDock{top:96px!important}#commandPanel:not(.mobileCollapsed) #selectionCard{max-height:112px;min-height:82px}#selectionCard #cooldownGrid{display:grid!important;min-height:20px;margin-top:3px}.coolChip{min-height:20px;padding:1px 3px}#commandPanel.mobileCollapsed #cooldownGrid{display:none!important}}
+
+/* Compact battle workspace. Descriptions live in Help and button tooltips; the
+   battlefield keeps only the selected entity, health, controls and key badges. */
+:root{--dock-height:150px}
+#commandPanel{left:10px!important;right:10px!important;top:auto!important;bottom:max(8px,env(safe-area-inset-bottom))!important;transform:none!important;width:auto!important;height:var(--dock-height)!important;min-height:0!important;max-height:none!important;display:grid!important;grid-template-columns:196px 108px minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr)!important;gap:8px!important;padding:8px!important;overflow:visible}
+#commandPanel .commandGroupTitle,#selectionMeta,#selectionOrder,#contextSummary,#statusText,#cooldownGrid,#hintLine,.abilityExplain,#abilityButtons .cmdBtn>small{display:none!important}
+#commandPanel #abilityButtons .cmdBtn>small{display:none!important}
+#commandPanel #selectionCard #selectionMeta,#commandPanel #selectionCard #selectionOrder,#commandPanel #selectionCard #cooldownGrid{display:none!important}
+#selectionCard{display:block!important;grid-column:1;grid-row:1;min-height:0!important;max-height:none!important;padding:0 4px 0 0!important;overflow:hidden}
+#selectionName{display:block!important;white-space:nowrap!important;font-size:13px;line-height:18px;min-height:18px;margin-top:1px}
+#selectionPortrait{float:left;margin:0 5px 2px 0}#selectionPortrait .spritePortrait,#selectionPortrait canvas{width:32px;height:32px}
+#selectionCard .hpTrack{height:4px;margin:4px 0 0;clear:both}
+#utilityButtons{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;grid-auto-rows:26px;gap:3px!important;margin:6px 0 0!important;padding:0!important;max-height:84px;overflow:auto;scrollbar-width:thin}
+#utilityButtons>button,#utilityButtons>.hudBtn{min-width:0;min-height:26px!important;height:26px!important;padding:2px!important;font-size:8px!important;line-height:1.1;border-radius:5px}
+#utilityButtons>button::after{content:none!important}
+#ordersPanel{grid-column:2!important;grid-row:1!important;padding:0 0 0 6px!important;border-top:0!important;overflow:hidden!important;display:flex;align-items:flex-start}
+#commandButtons{width:100%;height:96px!important;max-height:96px!important;min-height:0;grid-template-columns:repeat(2,44px)!important;grid-template-rows:none!important;grid-auto-flow:row!important;grid-auto-columns:auto!important;grid-auto-rows:44px!important;gap:4px!important;padding:0 4px 0 0!important;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior:contain;scrollbar-width:thin;touch-action:pan-y}
+#commandButtons .cmdBtn,#abilityButtons .cmdBtn,#abilityButtons .warfareAbility{flex:none!important;width:44px!important;height:44px!important;min-width:44px!important;min-height:44px!important;max-height:44px!important;font-size:7px!important;scroll-snap-align:none}
+#contextPanel,#commandPanel.hasActions #contextPanel{grid-column:3!important;grid-row:1!important;display:grid!important;grid-template-columns:auto minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr) auto!important;gap:4px 6px!important;padding:0 0 0 6px!important;border-top:0!important;overflow:hidden!important}
+#contextHeader{display:block!important;grid-column:1;grid-row:1;width:96px;min-height:0!important;max-height:none!important;min-width:0;overflow:hidden!important;padding:0;margin:0}
+#contextHeader>div:first-child{display:none!important}
+#contextHeader:has(#abilityButtons:empty){display:none!important}
+#abilityButtons{width:100%;min-width:0!important;max-width:none!important;max-height:100%;margin:0!important;grid-template-columns:repeat(auto-fill,44px)!important;grid-template-rows:none!important;grid-auto-flow:row!important;grid-auto-columns:auto!important;grid-auto-rows:44px!important;gap:4px!important;overflow:auto!important;scrollbar-width:thin;overscroll-behavior:contain}
+#abilityButtons:empty{display:none!important}
+#contextPanel:not(:has(#actionList .actionCard)) #contextHeader{width:auto;grid-column:1/-1}
+#actionList,#actionList.actionGrid{grid-column:2;grid-row:1;grid-template-columns:repeat(auto-fill,52px)!important;grid-template-rows:none!important;grid-auto-flow:row!important;grid-auto-columns:auto!important;grid-auto-rows:52px!important;align-content:start!important;justify-content:start;gap:4px!important;overflow:auto!important;overscroll-behavior:contain;min-height:0!important;max-height:100%;margin:0;padding:0 4px 1px 0!important;scrollbar-width:thin;scroll-snap-type:none}
+#contextPanel:has(#abilityButtons:empty) #actionList{grid-column:1/-1}
+#actionList:empty{display:none!important}
+#actionList .actionCard{box-sizing:border-box;width:52px!important;min-width:52px!important;max-width:52px;height:52px!important;min-height:52px!important;padding:2px!important;border-radius:6px;overflow:hidden;scroll-snap-align:none}
+#actionList .actionTitle{display:flex!important;flex-direction:column;align-items:center!important;justify-content:flex-start;gap:0!important;min-height:0!important;padding:0!important;margin:0!important;font-size:7px!important;line-height:1.05}
+#actionList .actionTitle>.spritePortrait,#actionList .actionTitle canvas,#actionList .actionTitle .assetThumb,#actionList .actionTitle .assetFallback{width:24px!important;height:24px!important;flex-basis:24px;margin:0!important}
+#actionList .actionTitle>span:not(.spritePortrait){width:46px;max-height:15px;display:block;font-size:7px!important;line-height:7.5px;text-align:center;white-space:normal;overflow:hidden}
+#actionList .actionCost{position:absolute!important;left:2px!important;right:2px!important;top:auto!important;bottom:1px!important;display:flex!important;justify-content:center;gap:2px!important;flex-wrap:nowrap!important;margin:0!important;font-size:6px!important;line-height:7px;white-space:nowrap;overflow:hidden}
+#actionList .researchBadge{position:absolute;top:18px;left:2px;right:2px;max-height:16px;overflow:hidden;margin:0;padding:0;border:0;background:transparent;font-size:6px!important;line-height:7px;text-align:center}
+#actionList .actionMeta,#actionList .rolePill,#actionList .researchSymbol{display:none!important}
+#productionQueue{grid-column:1/-1;grid-row:2;min-height:0!important;max-height:24px!important;height:24px;gap:6px;padding:0!important;overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:thin}
+#productionQueue:not(.visible){display:none!important}#productionQueue .queueTitle,#productionQueue .queueInfo small{display:none!important}
+#productionQueue .queueCircle{width:23px;height:23px;flex-basis:23px;box-shadow:none}#productionQueue .queueCircle::after{inset:3px}#productionQueue .queueCircle b{font-size:6px}#productionQueue .queueInfo{font-size:8px;line-height:1.1}#productionQueue .queueItem{min-width:70px;gap:3px}
+
+/* Groups occupy the first screen row, independent of the bottom dock. */
+#controlGroups{position:fixed!important;top:max(4px,env(safe-area-inset-top))!important;bottom:auto!important;right:72px!important;left:auto!important;width:max-content!important;max-width:min(540px,calc(100vw - 84px))!important;height:44px!important;max-height:44px!important;display:flex!important;flex-wrap:nowrap!important;justify-content:flex-start!important;align-items:stretch;gap:3px!important;overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:none;pointer-events:auto;touch-action:pan-x}
+#controlGroups .controlGroupChip{flex:0 0 44px!important;width:44px!important;min-width:44px!important;height:44px!important;min-height:44px!important;touch-action:pan-x}
+#controlGroups .allArmyChip{order:-1;flex-basis:52px!important;width:52px!important;min-width:52px!important}#controlGroups .allArmyLabel{grid-column:2;grid-row:1;font-size:7px;line-height:8px;text-align:center;align-self:center;white-space:normal}
+#topHud{top:max(5px,env(safe-area-inset-top))!important;left:10px;right:auto;max-width:calc(100vw - 590px)}
+#resourceHud{padding:4px 5px!important;gap:4px!important;max-width:100%;overflow-x:auto;scrollbar-width:none;min-height:34px}
+.resourcePill{padding:4px 6px!important;gap:4px!important;min-height:25px;font-size:10px!important;border-radius:5px}.resourcePill small{display:none!important}.resourcePill span:first-child{font-size:12px!important}
+#minimapDock{bottom:calc(var(--dock-height) + 22px)!important}
+#toast.tcBriefToast{display:block!important;position:fixed;left:auto;right:12px;top:auto;bottom:calc(var(--dock-height) + 20px);transform:none;max-width:min(400px,calc(100vw - 24px));padding:7px 10px;font-size:11px;line-height:1.3;border-radius:8px;z-index:22;pointer-events:none}
+@media(max-width:1100px){#topHud{top:54px!important;left:6px!important;right:6px;max-width:calc(100vw - 12px)}#resourceHud{min-height:30px}.resourcePill{padding:3px 5px!important;min-height:23px}#sfBattleHud{top:98px!important}}
+@media(max-width:760px),(max-height:520px) and (orientation:landscape){
+ :root{--dock-height:218px}
+ #commandPanel,#commandPanel.hasActions:not(.mobileCollapsed),#commandPanel.mobileExpanded{left:5px!important;right:5px!important;top:auto!important;bottom:max(5px,env(safe-area-inset-bottom))!important;width:auto!important;height:var(--dock-height)!important;min-height:0!important;max-height:none!important;grid-template-columns:100px minmax(0,1fr)!important;grid-template-rows:36px minmax(0,1fr) 44px!important;padding:6px!important;gap:5px!important;transition:none}
+ #selectionCard{display:contents!important}#selectionPortrait{grid-column:1/-1;grid-row:1;align-self:start;justify-self:start;float:none;margin:0;width:32px;height:32px}
+ #selectionName{grid-column:1/-1;grid-row:1;align-self:start;min-width:0;margin:0 0 0 38px!important;padding:0!important;line-height:20px;font-size:12px!important;white-space:nowrap!important;overflow:hidden;text-overflow:ellipsis}
+ #selectionCard .hpTrack{grid-column:1/-1;grid-row:1;align-self:end;clear:none;margin:0 0 1px 38px!important;width:auto;height:4px!important}
+ #selectionCard #selectionMeta,#selectionCard #selectionOrder,#selectionCard #cooldownGrid{display:none!important}
+ #utilityButtons,#selectionCard #utilityButtons{display:flex!important;grid-column:1/-1!important;grid-row:3!important;gap:4px!important;height:44px;max-height:44px!important;margin:0!important;padding:0!important;overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:thin;touch-action:pan-x}
+ #utilityButtons>button,#utilityButtons>.hudBtn{flex:0 0 52px;min-width:52px!important;min-height:44px!important;height:44px!important;padding:2px!important;font-size:8px!important;line-height:1.1;border-radius:5px}
+ #ordersPanel{grid-column:1!important;grid-row:2!important;border:0!important;padding:0!important;overflow:hidden!important}
+ #commandButtons{height:96px!important;max-height:100%!important;padding:0 4px 0 0!important}
+ #contextPanel,#commandPanel.hasActions #contextPanel{grid-column:2!important;grid-row:2!important;padding:0 0 0 5px!important;border-left:1px solid var(--line)!important;border-top:0!important;gap:3px!important}
+ #contextHeader{width:44px}#contextPanel:not(:has(#actionList .actionCard)) #contextHeader{width:auto}
+ #abilityButtons{grid-template-columns:repeat(auto-fill,44px)!important;grid-auto-rows:44px!important}
+ #actionList,#actionList.actionGrid{grid-template-columns:repeat(auto-fill,52px)!important;grid-auto-rows:52px!important;gap:3px!important;padding-right:3px!important}
+ #mobileDockToggle{position:absolute;left:auto;right:2px;top:-48px;bottom:auto;transform:none;width:44px;height:44px;min-height:44px;line-height:1;z-index:8}
+ #minimapDock{top:96px!important;bottom:auto!important}#sfBattleHud{top:98px!important}
+ #commandPanel.mobileCollapsed{height:56px!important;min-height:56px!important;max-height:56px!important;grid-template-columns:minmax(0,1fr)!important;grid-template-rows:36px!important;padding:8px!important}
+ #commandPanel.mobileCollapsed #selectionCard{display:contents!important}#commandPanel.mobileCollapsed #selectionName{grid-column:1;grid-row:1;align-self:start}#commandPanel.mobileCollapsed #selectionPortrait{grid-column:1;grid-row:1}#commandPanel.mobileCollapsed .hpTrack{grid-column:1;grid-row:1}
+ #commandPanel.mobileCollapsed #ordersPanel,#commandPanel.mobileCollapsed #contextPanel,#commandPanel.mobileCollapsed #utilityButtons{display:none!important}
+ body:has(#commandPanel.mobileCollapsed){--dock-height:56px}
+}
+@media(max-height:520px) and (orientation:landscape){
+ :root{--dock-height:202px}
+ #commandPanel,#commandPanel.hasActions:not(.mobileCollapsed),#commandPanel.mobileExpanded{left:auto!important;right:6px!important;bottom:6px!important;top:auto!important;width:min(350px,44vw)!important;height:var(--dock-height)!important;grid-template-rows:32px minmax(0,1fr) 44px!important}
+ #commandPanel.mobileCollapsed{width:250px!important;height:56px!important;grid-template-rows:36px!important}
+ #sfBattleHud{left:125px!important;top:96px!important;max-width:calc(56vw - 140px)}
+ #toast.tcBriefToast{left:12px;right:auto;bottom:12px;max-width:calc(56vw - 24px)}
+ #tcAudio[data-compact="true"][data-menu="false"]{top:4px!important;right:12px}
+}
+@media(max-width:760px) and (orientation:portrait){#controlGroups{left:6px!important;right:6px!important;width:auto!important;max-width:calc(100vw - 12px)!important}}

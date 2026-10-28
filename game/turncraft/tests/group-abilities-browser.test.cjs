@@ -44,7 +44,9 @@ for (const [width, height, touch] of [[1280, 900, false], [390, 844, true], [844
       await page.evaluate(() => groupTest(`globalThis.blinkArmy=Array.from({length:10},(_,i)=>addEntity('unit','dragoon',0,10+i%5,10+Math.floor(i/5)));selectEntities(blinkArmy);refreshUI(true);cam.zoom=.5;focusSelected();draw()`));
       const button = page.locator('[data-ability="phaseStep"]');
       assert.equal(await button.count(), 1);
-      assert.match(await button.innerText(), /10\/10/);
+      assert.match(await button.locator('small').first().textContent(), /10\/10/);
+      assert.equal(await button.getAttribute('data-ready'), 'true');
+      assert.equal(await button.isEnabled(), true);
       if (!touch) {
         await page.evaluate(() => {const item=document.createElement('button');item.id='reservedItem';item.dataset.hotkey='Q';document.body.appendChild(item);groupTest('refreshUI(false)')});
         const shortcuts=await page.locator('[data-ability]').evaluateAll(buttons=>buttons.map(b=>({key:b.dataset.hotkey,aria:b.getAttribute('aria-keyshortcuts'),label:b.querySelector('kbd')?.textContent})));
