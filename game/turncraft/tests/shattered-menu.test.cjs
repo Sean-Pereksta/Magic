@@ -84,7 +84,7 @@ async function setup(width = 1440, height = 1000) {
         });
     }
     if (url.pathname === '/fixture')
-      return route.fulfill({ contentType: 'text/html', body: fixture });
+      return route.fulfill({ contentType: 'text/html', body: fixture.replace('<script type="module"', `<script>Object.assign(window.TurncraftExpansion,{getMaps:()=>[{id:'classic',name:'Classic Frontier',capacity:3,width:42,height:30},{id:'rift-dominion',name:'Rift Dominion',capacity:8,width:128,height:128}],getSoloSettings:()=>({mapId:'classic'}),drawMapPreview:()=>{},startSkirmish:options=>{window.solo=options;window.skirmish=true}})</script><script type="module"`) });
     if (url.pathname.endsWith('/profile.mjs'))
       return route.fulfill({
         contentType: 'text/javascript',
@@ -120,7 +120,8 @@ test('campaign gates advance on victory, preserves stars, and deploys the confir
     assert.equal(await page.locator('.sf-mission:disabled').count(), 3);
     await page.getByRole('button', { name: /Operation 1  Protect/ }).count();
     await page.locator('.sf-mission').first().click();
-    await page.getByRole('button', { name: 'Choose your faction →' }).click();
+    assert.equal(await page.getByRole('button', { name:'Launch Mission', exact:true }).count(),1);
+    await page.getByRole('button', { name: 'Change faction →' }).click();
     for (const name of [
       'Ascendant Conclave',
       'Brood Dominion',
@@ -134,7 +135,7 @@ test('campaign gates advance on victory, preserves stars, and deploys the confir
     await page.getByRole('button', { name: 'Confirm & deploy →' }).click();
     await page.locator('#sfMenu').waitFor({ state: 'hidden' });
     assert.equal(await page.locator('#sfMenu').isVisible(), false);
-    assert.deepEqual(await page.evaluate(() => launches), [
+    assert.deepEqual(await page.evaluate(() => launches.map(({id,factionId,difficulty})=>({id,factionId,difficulty}))), [
       { id: 'm1', factionId: 'brood', difficulty: 'medium' }
     ]);
     await page.evaluate(() =>
@@ -143,6 +144,7 @@ test('campaign gates advance on victory, preserves stars, and deploys the confir
           detail: {
             mode: 'campaign',
             missionId: 'm1',
+            resultId: 'menu-test-campaign-run',
             won: true,
             stars: 2,
             wave: 5,
@@ -151,6 +153,7 @@ test('campaign gates advance on victory, preserves stars, and deploys the confir
         })
       )
     );
+    assert.deepEqual(errors, []);
     await page
       .getByRole('button', { name: 'Continue to next mission →' })
       .click();
@@ -212,23 +215,48 @@ test('desktop, phone, and landscape navigation stays inside viewport and remains
     }
   }
 });
-test('custom opponent factions are passed to the preserved skirmish setup', async () => {
+test('one graphical skirmish screen starts with the chosen faction and independent opponent settings', async () => {
   const { browser, page, errors } = await setup();
   try {
     await page.getByRole('button', { name: /^03 Single Player/ }).click();
-    await page.getByLabel('Your faction').selectOption('ascendant');
-    await page.getByLabel('Opponent 1').selectOption('brood');
-    await page.getByLabel('Opponent 2').selectOption('');
-    await page
-      .getByRole('button', { name: 'Battlefield & match settings →' })
-      .click();
-    assert.deepEqual(await page.evaluate(() => solo), {
-      factionId: 'ascendant',
-      opponentFactions: ['brood']
-    });
+    await page.getByRole('button', { name: 'Play as Ascendant Conclave' }).click();
+    await page.getByLabel('AI opponents', {exact:true}).selectOption('1');
+    await page.getByText('Configure each opponent', {exact:true}).click();
+    await page.getByLabel('Opponent 1 faction', {exact:true}).selectOption('brood');
+    await page.getByLabel('Opponent 1 difficulty', {exact:true}).selectOption('pro');
+    await page.getByLabel('Victory condition', {exact:true}).selectOption('relic');
+    assert.equal(await page.locator('#overlay').isVisible(), false);
+    await page.getByRole('button', {name:'Start Battle',exact:true}).click();
+    const options=await page.evaluate(() => solo);
+    assert.equal(options.factionId,'ascendant'); assert.equal(options.aiCount,1); assert.equal(options.mapId,'classic'); assert.equal(options.gameMode,'relic');
+    assert.deepEqual(options.opponents,[{factionId:'brood',difficulty:'pro',style:''}]);
     assert.equal(await page.evaluate(() => skirmish), true);
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();
+  }
+});
+
+test('single-screen skirmish preserves choices on Back and fits desktop, phone and landscape', async () => {
+  for (const [width,height] of [[1440,1000],[390,844],[844,390]]) {
+    const {browser,page,errors}=await setup(width,height);
+    try {
+      await page.getByRole('button',{name:/^03 Single Player/}).click();
+      await page.getByRole('button',{name:'Play as Brood Dominion'}).click();
+      await page.getByLabel('AI opponents',{exact:true}).selectOption('7');
+      await page.getByLabel('Battle difficulty',{exact:true}).selectOption('hard');
+      assert.equal(await page.getByRole('button',{name:'Battlefield: Classic Frontier',exact:true}).isDisabled(),true);
+      assert.equal(await page.getByRole('button',{name:'Battlefield: Rift Dominion',exact:true}).getAttribute('aria-pressed'),'true');
+      assert.equal(await page.locator('#overlay').isVisible(),false);
+      const geometry=await page.locator('.sf-view-skirmish').evaluate(node=>({width:node.scrollWidth,body:document.documentElement.clientWidth,targets:[...node.querySelectorAll('button,select,summary')].map(e=>e.getBoundingClientRect()).filter(r=>r.height>0).every(r=>r.height>=44)}));
+      assert.ok(geometry.width<=geometry.body,JSON.stringify(geometry));assert.equal(geometry.targets,true);
+      await page.getByRole('button',{name:'← Command center',exact:true}).click();
+      await page.getByRole('button',{name:/^03 Single Player/}).click();
+      assert.equal(await page.getByRole('button',{name:'Play as Brood Dominion'}).getAttribute('aria-pressed'),'true');
+      assert.equal(await page.getByLabel('AI opponents',{exact:true}).inputValue(),'7');
+      assert.equal(await page.getByLabel('Battle difficulty',{exact:true}).inputValue(),'hard');
+      await page.getByRole('button',{name:'Start Battle',exact:true}).click();
+      const config=await page.evaluate(()=>solo);assert.equal(config.opponents.length,7);assert.equal(config.mapId,'rift-dominion');assert.equal(config.difficulty,'hard');assert.deepEqual(errors,[]);
+    } finally {await browser.close();}
   }
 });

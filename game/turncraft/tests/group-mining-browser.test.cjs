@@ -48,14 +48,15 @@ async function tapTile(page, x, y, hasTouch) {
   else await page.mouse.click(point.x, point.y);
 }
 
-test('desktop and touch group resource taps and the Mine button issue one distributed order without losing selection', async () => {
+test('desktop and touch mineral mining, safe extractor selection and explicit Mine issue distributed orders', async () => {
   for (const [viewport, hasTouch] of [[{width: 1280, height: 900}, false], [{width: 390, height: 844}, true]]) {
     const {browser, page, errors} = await setup(viewport, hasTouch);
     try {
       for (const faction of ['frontier', 'ascendant', 'brood']) {
         await page.evaluate(faction => tcMining.prepare(faction), faction);
-        const mine = page.locator('#commandButtons button').filter({hasText: /^Mine$/});
+        const mine = page.locator('#commandButtons [data-command-label="Mine"]');
         assert.equal(await mine.count(), 1, `${faction}: group Mine control`);
+        assert.equal(await mine.locator('kbd').innerText(), 'G', `${faction}: actual Mine shortcut shown`);
         await tapTile(page, 13, 10, hasTouch);
         let result = await page.evaluate(() => ({commands: miningCommands, selected: tcMining.run('selectedIds'), nodes: miningWorkers.map(w => w.economyNodeId), ids: miningWorkers.map(w => w.id)}));
         assert.equal(result.commands.length, 1, `${faction}: mineral tap`);
@@ -64,8 +65,15 @@ test('desktop and touch group resource taps and the Mine button issue one distri
         assert.deepEqual(result.selected, result.ids);
 
         await tapTile(page, 12, 13, hasTouch);
+        result = await page.evaluate(() => ({count:miningCommands.length,selected:tcMining.run('selectedIds'),extractor:tcMining.run("entities.find(e=>e.kind==='structure'&&e.x===12&&e.y===13).id")}));
+        assert.equal(result.count,1,`${faction}: ordinary extractor selection sends no order`);
+        assert.deepEqual(result.selected,[result.extractor],`${faction}: friendly extractor is selected`);
+        await page.evaluate(() => tcMining.run('selectEntities(miningWorkers);refreshUI(true)'));
+        await mine.click();
+        assert.equal(await page.evaluate(() => tcMining.run('interactionMode')), 'mine');
+        await tapTile(page, 12, 13, hasTouch);
         result = await page.evaluate(() => ({commands: miningCommands, selected: tcMining.run('selectedIds'), nodes: miningWorkers.map(w => w.economyNodeId), ids: miningWorkers.map(w => w.id), gas: miningGas.id}));
-        assert.equal(result.commands.length, 2, `${faction}: friendly extractor tap`);
+        assert.equal(result.commands.length, 2, `${faction}: explicit Mine on a friendly extractor`);
         assert.equal(result.commands[1].type, 'groupMine');
         assert.equal(result.commands[1].nodeId, result.gas);
         assert.deepEqual(result.selected, result.ids);

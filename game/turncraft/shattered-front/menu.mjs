@@ -471,10 +471,14 @@ function campaign(main) {
         saved
           ? '★'.repeat(saved.stars || 1) + '☆'.repeat(3 - (saved.stars || 1))
           : unlocked
-            ? `${mission.waves} waves · Deploy →`
+            ? `${mission.missionStyle || 'Tactical operation'} · Deploy →`
             : '🔒 Locked'
       )
     );
+    if (saved) {
+      const remaining=(mission.objectives||[]).filter(o=>o.optional&&!(saved.optionalObjectives||[]).includes(o.id));
+      b.append(el('small','',`${mission.missionStyle||'Campaign operation'}${saved.bestDurationSeconds?` · Best ${Math.floor(saved.bestDurationSeconds/60)}m ${saved.bestDurationSeconds%60}s`:''} · ${remaining.length} optional remaining`));
+    }
     grid.append(b);
   }
   main.append(grid);
@@ -526,7 +530,7 @@ function briefing(main) {
     heading(
       mission.title || mission.name,
       region.name,
-      'Prepare, defend, and strike back.'
+      mission.missionStyle || 'Prepare, defend, and strike back.'
     )
   );
   const speaker = mission.briefing?.speaker || 'elara_venn';
@@ -558,10 +562,18 @@ function briefing(main) {
       el('li', '', `${o.optional ? 'Optional: ' : ''}${o.label}`)
     );
   content.append(objectives);
+  content.append(el('p','sf-starting-conditions',mission.startingConditions||'Establish a base and complete the coalition objectives.'));
+  if(mission.operation?.stages?.length) {
+    const stages=el('ol','sf-objectives');
+    for(const stage of mission.operation.stages)stages.append(el('li','',stage.title));
+    content.append(el('b','','Tactical stages'),stages);
+  }
+  if(mission.campaignReward)content.append(el('p','',`Campaign reward: ${mission.campaignReward.label}. Optional objectives recover modest resources, intelligence or reinforcements for later operations.`));
   difficultyPicker(content);
+  content.append(button('Launch Mission',launch,'sf-button sf-primary'));
   content.append(
     button(
-      'Choose your faction →',
+      'Change faction →',
       () => {
         factionReturn = 'briefing';
         show('factions');
@@ -808,75 +820,76 @@ async function resume() {
 }
 function skirmish(main) {
   pendingLaunch = null;
-  main.append(
-    heading(
-      'Single Player',
-      'CUSTOM SKIRMISH',
-      'Choose up to seven AI opponents, then compare compatible battlefields and configure individual difficulties and temperaments.'
-    )
-  );
-  const panel = el('div', 'sf-setup');
-  const player = el('label', 'sf-field', 'Your faction');
-  const own = el('select');
-  for (const f of factions()) {
-    const o = el('option', '', f.name);
-    o.value = f.id;
-    o.selected = f.id === faction;
-    own.append(o);
+  const legacy = document.getElementById('overlay');
+  if (legacy) legacy.style.display = 'none';
+  main.append(heading('Single Player', 'CUSTOM SKIRMISH', 'Choose your army, battlefield and opponents, then start the battle.'));
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('csf.skirmishSetup.v1') || '{}') || {}; } catch {}
+  const initial = { factionId: faction, difficulty: 'medium', style: 'balanced', aiCount: 2, ...(api.getSoloSettings?.() || {}), ...saved },
+    allFactions = factions(), maps = api.getMaps?.() || [],
+    config = { ...initial, opponents: Array.isArray(initial.opponents) ? initial.opponents.map(p => ({ ...p })) : [] };
+  config.aiCount = Math.max(1, Math.min(7, Number(config.aiCount) || 2));
+  const persist = () => { faction = config.factionId; try { localStorage.setItem('csf.skirmishSetup.v1', JSON.stringify(config)); } catch {} };
+  const grid = el('div', 'sf-skirmish-layout'), army = el('section', 'sf-skirmish-army'), options = el('section', 'sf-skirmish-options');
+  army.append(el('h3', '', 'Your faction'));
+  const cards = el('div', 'sf-skirmish-factions');
+  const markFaction = () => { for (const b of cards.children) { const active = b.dataset.faction === config.factionId; b.classList.toggle('selected', active); b.setAttribute('aria-pressed', String(active)); } };
+  for (const f of allFactions) {
+    const card = button('', () => { config.factionId = f.id; markFaction(); persist(); }, 'sf-skirmish-faction');
+    card.dataset.faction = f.id; card.setAttribute('aria-label', `Play as ${f.name}`);
+    const img = el('img'); img.src = fallbackArt(f.id); img.alt = ''; img.loading = 'lazy';
+    img.onerror = () => { img.hidden = true; };
+    const text = el('span', 'sf-skirmish-faction-text');
+    text.append(el('b', '', f.name), el('small', '', f.playstyle || f.summary), el('small', '', `Strengths: ${f.strengths || 'Combined arms'}`), el('small', '', `Tradeoffs: ${f.weaknesses || 'Protect your economy'}`));
+    card.append(img, text); cards.append(card);
   }
-  player.append(own);
-  panel.append(player);
-  const picks = [];
-  for (let i = 0; i < 7; i++) {
-    const label = el('label', 'sf-field', `Opponent ${i + 1}`);
-    const select = el('select');
-    if (i) {
-      const none = el('option', '', 'Unused slot');
-      none.value = '';
-      select.append(none);
-    }
-    for (const f of factions()) {
-      const o = el('option', '', f.name);
-      o.value = f.id;
-      o.selected = i < 2 && f.id === factions()[(i + 1) % factions().length].id;
-      select.append(o);
-    }
-    label.append(select);
-    panel.append(label);
-    picks.push(select);
+  markFaction(); army.append(cards); grid.append(army, options); main.append(grid);
+  function selectField(host, label, entries, value, onChange) {
+    const wrap = el('label', 'sf-field', label), select = el('select'); select.setAttribute('aria-label', label);
+    for (const [id, name] of entries) { const o = el('option', '', name); o.value = id; select.append(o); }
+    select.value = value; select.onchange = () => { onChange(select.value); persist(); }; wrap.append(select); host.append(wrap); return select;
   }
-  panel.append(
-    el(
-      'p',
-      '',
-      'Standard rules: each commander begins with the established economy and army. Annihilation, Conquest, and Central Relic remain available.'
-    )
-  );
-  panel.append(
-    button(
-      'Battlefield & match settings →',
-      () => {
-        faction = own.value;
-        api.configureSolo?.({
-          factionId: faction,
-          opponentFactions: picks.map((p) => p.value).filter(Boolean)
-        });
-        api.selectFaction?.(faction);
-        api.showSkirmish?.();
-        hide();
-        addSkirmishBack();
-      },
-      'sf-button sf-primary'
-    )
-  );
-  main.append(panel);
-}
-function addSkirmishBack() {
-  const card = document.getElementById('startCard');
-  if (!card || document.getElementById('sfSkirmishBack')) return;
-  const b = button('← Command center', () => show('home'), 'sf-back');
-  b.id = 'sfSkirmishBack';
-  card.prepend(b);
+  const labels = ids => ids.map(id => [id, id[0].toUpperCase() + id.slice(1)]), difficultyOptions = labels(['easy', 'medium', 'hard', 'pro']), styleOptions = labels(['cautious', 'balanced', 'aggressive']);
+  options.append(el('h3', '', 'Battle settings'));
+  const standard = el('div', 'sf-skirmish-fields'); options.append(standard);
+  selectField(standard, 'AI opponents', Array.from({ length: 7 }, (_, i) => [String(i + 1), String(i + 1)]), String(config.aiCount), value => { config.aiCount = Number(value); renderOpponents(); updateMaps(); });
+  selectField(standard, 'Battle difficulty', difficultyOptions, config.difficulty, value => { config.difficulty = value; });
+  selectField(standard, 'AI temperament', styleOptions, config.style, value => { config.style = value; });
+  selectField(standard, 'Victory condition', [['annihilation', 'Annihilation'], ['conquest', 'Conquest'], ['relic', 'Central Relic']], config.gameMode || 'annihilation', value => { config.gameMode = value; });
+  const advanced = el('details', 'sf-skirmish-advanced'); advanced.append(el('summary', '', 'Configure each opponent')); const opponentRows = el('div', 'sf-skirmish-opponents'); advanced.append(opponentRows); options.append(advanced);
+  function renderOpponents() {
+    opponentRows.replaceChildren();
+    for (let i = 0; i < config.aiCount; i++) {
+      const settings = config.opponents[i] ||= { factionId: allFactions[(i + 1) % allFactions.length]?.id || config.factionId, difficulty: '', style: '' }, row = el('div', 'sf-skirmish-opponent');
+      row.append(el('b', '', `AI ${i + 1}`));
+      selectField(row, `Opponent ${i + 1} faction`, allFactions.map(f => [f.id, f.name]), settings.factionId, value => { settings.factionId = value; });
+      selectField(row, `Opponent ${i + 1} difficulty`, [['', 'Use battle difficulty'], ...difficultyOptions], settings.difficulty || '', value => { settings.difficulty = value; });
+      selectField(row, `Opponent ${i + 1} temperament`, [['', 'Use battle temperament'], ...styleOptions], settings.style || '', value => { settings.style = value; });
+      opponentRows.append(row);
+    }
+  }
+  renderOpponents();
+  const battlefields = el('section', 'sf-skirmish-battlefields'); battlefields.append(el('h3', '', 'Battlefield'));
+  const note = el('p', 'sf-skirmish-map-note'), gallery = el('div', 'sf-skirmish-maps'); battlefields.append(note, gallery); main.append(battlefields);
+  for (const map of maps) {
+    const b = button('', () => { config.mapId = map.id; updateMaps(); persist(); }, 'sf-skirmish-map'); b.dataset.map = map.id;
+    const preview = el('canvas'); preview.width = 252; preview.height = 156; preview.setAttribute('aria-hidden', 'true');
+    b.append(preview, el('b', '', map.name), el('small', '', `${map.capacity || map.playerCount || 3} commanders · ${map.width || 42} × ${map.height || map.width || 30}`), el('small', '', map.description || map.subtitle || ''));
+    b.setAttribute('aria-label', `Battlefield: ${map.name}`); gallery.append(b); api.drawMapPreview?.(preview, map.id);
+  }
+  function updateMaps() {
+    const required = config.aiCount + 1, compatible = maps.filter(m => (m.capacity || m.playerCount || 3) >= required);
+    if (!compatible.some(m => m.id === config.mapId)) config.mapId = compatible[0]?.id || config.mapId;
+    for (const b of gallery.children) { const map = maps.find(m => m.id === b.dataset.map), active = map.id === config.mapId; b.disabled = (map.capacity || map.playerCount || 3) < required; b.classList.toggle('selected', active); b.setAttribute('aria-pressed', String(active)); }
+    note.textContent = `${required} commanders. Choose from every supported battlefield; maps too small for this army are disabled.`;
+  }
+  updateMaps(); persist();
+  const launch = button('Start Battle', async () => {
+    const selected = { ...config, opponents: config.opponents.slice(0, config.aiCount).map(p => ({ ...p })) };
+    if (!selected.mapId || !api.startSkirmish) { status('The battlefield is still preparing. Please try again.'); return; }
+    launch.disabled = true;
+    try { await api.startSkirmish(selected); hide(); } catch (error) { status(error.message || 'This battle could not start.'); launch.disabled = false; }
+  }, 'sf-button sf-primary'); launch.classList.add('sf-skirmish-start'); main.append(launch);
 }
 function lobby(mode) {
   if (api.getIdentity?.().lobbyId) {
@@ -1058,6 +1071,7 @@ function settings(main) {
   };
   motion.append(check, document.createTextNode(' Reduce menu motion'));
   panel.append(motion);
+  const radio=el('label','sf-field'),radioCheck=el('input');radioCheck.type='checkbox';radioCheck.checked=localStorage.getItem('turncraft.radioMessages')!=='false';radioCheck.onchange=()=>localStorage.setItem('turncraft.radioMessages',String(radioCheck.checked));radio.append(radioCheck,document.createTextNode(' Show ordinary NPC radio messages (objectives remain visible)'));panel.append(radio);
   const graphics = el('label', 'sf-field', 'Expansion artwork location');
   const input = el('input');
   input.type = 'url';
@@ -1133,6 +1147,10 @@ function resultScreen(main) {
   }
   main.append(stats);
   const content = el('div', 'sf-setup');
+  if(r.reason)content.append(el('p','',r.reason));
+  for(const reason of r.starReasons||[])content.append(el('p','',`${reason.earned?'★':'☆'} ${reason.label}`));
+  for(const id of r.completedObjectives||[])content.append(el('p','',`✓ ${mission?.objectives?.find(o=>o.id===id)?.label||id}`));
+  for(const reward of r.campaignRewards||[])content.append(el('p','',`Campaign reward earned: ${reward.label}`));
   for (const o of r.optionalObjectives || [])
     content.append(
       el(
@@ -1191,7 +1209,7 @@ function resultScreen(main) {
           'The Conductor falls silent. Across six regions, the gateways close. Beyond the broken network, one signal remains unanswered. The coalition will be ready.'
         )
       );
-    content.append(button('Retry mission', () => chooseMission(mission)));
+    content.append(button(r.won?'Replay mission':'Retry mission', () => chooseMission(mission)),button('Campaign Map',()=>show('campaign')));
   } else {
     content.append(
       el(

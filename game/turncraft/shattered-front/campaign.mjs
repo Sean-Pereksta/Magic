@@ -1,3 +1,4 @@
+import { authorOperation } from './operations.mjs';
 // Authored campaign content. Objectives are simulated by the director, not skirmish aliases.
 export const CHARACTERS = [
   {
@@ -415,7 +416,7 @@ export const MISSIONS = scripts.map(
   ([title, speaker, text, objectives, waves, strategy], index) => {
     const region = REGIONS[Math.floor(index / 4)],
       number = (index % 4) + 1;
-    return {
+    return authorOperation({
       id: `${region.id}-${number}`,
       index,
       number,
@@ -455,7 +456,7 @@ export const MISSIONS = scripts.map(
               : 'This is their last assault. Hold the line.'
         }
       ]
-    };
+    }, index);
   }
 );
 export const ARENAS = REGIONS.map((region, index) => ({

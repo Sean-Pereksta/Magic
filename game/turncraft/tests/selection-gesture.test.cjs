@@ -23,7 +23,7 @@ function setup(){
     canvas:{addEventListener:(name,fn)=>listeners.set(name,fn),setPointerCapture:()=>{},classList:classes(canvasClasses)},
     window:{addEventListener:(name,fn)=>windowListeners.set(name,fn)},document:{body:{classList:classes(bodyClasses)}},
     gameStarted:true,paused:false,gameOver:false,PLAYER:0,W:500,H:500,MIN_ZOOM:.25,MAX_ZOOM:2.4,
-    TILE:20,lastStackTap:{key:'',idx:0,at:0},isFlying:()=>false,spriteEntityVisible:e=>e?.alive!==false&&!e?.garrisonedIn,
+    TILE:20,STRUCTURES:{},lastStackTap:{key:'',idx:0,at:0},isFlying:()=>false,spriteEntityVisible:e=>e?.alive!==false&&!e?.garrisonedIn,
     cam:{x:0,y:0,zoom:1},entities:troops,UNITS:{marine:{name:'Marine'},engineer:{name:'Engineer'}},
     dragging:false,dragStart:null,pointerMoved:false,activePointers:new Map(),pinch:null,selectionBox:null,selectionHoldTimer:null,
     lastCanvasTap:{at:0,entityId:null},interactionMode:null,interactionPayload:null,legalTiles:[],hoverTile:null,
@@ -138,4 +138,11 @@ test('stationary hold follows the initially pressed moving troop rather than a d
  const s=setup(),touch={pointerType:'touch'};s.dispatch('pointerdown',50,70,touch);
  s.context.entities[0].px=8;s.context.entities[0].py=3;s.context.entities[1].px=2;s.context.entities[1].py=3;
  s.advance(380);s.dispatch('pointerup',50,70,touch);assert.deepEqual(s.selectedIds(),[1]);assert.deepEqual(s.taps,[]);
+});
+
+test('Shift-box retains its additive intent after Shift release and deduplicates repeated selection',()=>{
+ const s=setup();s.context.selectEntities([s.context.entities[0]]);
+ const box=()=>{s.dispatch('pointerdown',100,115,{shiftKey:true});s.dispatch('pointermove',125,145);s.dispatch('pointerup',125,145)};
+ box();assert.deepEqual(s.selectedIds(),[1,2]);box();assert.deepEqual(s.selectedIds(),[1,2]);assert.deepEqual(s.taps,[]);
+ s.dispatch('pointerdown',100,115);s.advance(380);s.dispatch('pointermove',125,145);s.dispatch('pointerup',125,145);assert.deepEqual(s.selectedIds(),[2],'ordinary held box replaces the previous selection');
 });

@@ -98,7 +98,7 @@ test('real RTS engine launches every region/faction and preserves movement, prod
         assert.equal(state.map, 'sf-' + region);
       }
     const moved = await page.evaluate(() => {
-      TurncraftExpansion.startCampaign('amber-wastes-1', {
+      TurncraftExpansion.startCampaign('amber-wastes-4', {
         factionId: 'frontier',
         seed: 33
       });
@@ -131,7 +131,8 @@ test('real mission finishes, survival reaches 30 waves, and a fresh page restore
       let ticks = 0;
       while (!sfResults.length && ticks++ < 1000) {
         const state = TurncraftExpansion.getState();
-        if (state.phase === 'preparation') TurncraftExpansion.nextWave();
+        const objective=state.objectives.find(o=>!o.optional&&o.stage===state.operation.stage&&['discover','capture'].includes(o.type));
+        if(objective)sfTest.run(`(()=>{const patrol=playerUnits(0).find(e=>!isWorker(e));patrol.x=${objective.x};patrol.y=${objective.y};})()`);
         TurncraftExpansion.tick(1);
         sfTest.clearWave();
       }
@@ -139,7 +140,7 @@ test('real mission finishes, survival reaches 30 waves, and a fresh page restore
     });
     assert.ok(result.ticks < 1000);
     assert.equal(result.result.won, true);
-    assert.equal(result.result.wave, 4);
+    assert.equal(result.result.completedStages.length,3);
     assert.ok(result.gameOver);
     const saved = await page.evaluate(() => {
       TurncraftExpansion.startSurvival('sundered-coast', {
@@ -199,7 +200,7 @@ test('mobile wave HUD stays within the screen and its button is touch sized', as
   const { browser, page, errors } = await setup({ width: 390, height: 844 });
   try {
     await page.evaluate(() =>
-      TurncraftExpansion.startCampaign('amber-wastes-1', { seed: 1 })
+      TurncraftExpansion.startSurvival('amber-wastes', { seed: 1 })
     );
     const hud = await page.locator('#sfBattleHud').boundingBox(),
       button = await page.locator('#sfNextWave').boundingBox();
