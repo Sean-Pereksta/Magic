@@ -154,3 +154,18 @@ test('command-base cooldowns and bunker or dropship occupancy update the same vi
   assert.deepEqual(result,{initial:true,loaded:true,unloaded:true,same:true,empty:true,aboard:true,landed:true,shipSame:true});assert.deepEqual(errors,[]);
  }finally{await browser.close()}
 });
+
+test('Shift-click and Shift-box add friendly troops without replacing, removing, duplicating or ordering them',async()=>{
+ const {browser,page,errors}=await setup({width:1280,height:900},false);
+ try{
+  const points=await page.evaluate(()=>{tcSquare.prepare();return tcSquare.run(`(()=>{window.additiveArmy=[...squareGroup,addEntity('unit','rifleman',0,10,8),addEntity('unit','rifleman',0,11,9)];window.additiveBuilding=addEntity('structure','barracks',0,12,9);selectEntities(additiveArmy.slice(0,2));assignControlGroup(3);return {start:worldToScreen(9.9,7.9),end:worldToScreen(11.9,9.9),unit:worldToScreen(10.5,8.5),building:worldToScreen(12.99,9.99)}})()`)});
+  async function box(shift,releaseEarly=false){await page.mouse.move(points.start.x,points.start.y);if(shift)await page.keyboard.down('Shift');await page.mouse.down();if(releaseEarly)await page.keyboard.up('Shift');if(!shift)await page.clock.runFor(380);await page.mouse.move(points.end.x,points.end.y,{steps:4});await page.mouse.up();if(shift&&!releaseEarly)await page.keyboard.up('Shift')}
+  await box(true,true);let result=await page.evaluate(()=>tcSquare.run(`({selected:selectedIds,expected:additiveArmy.map(e=>e.id),commands:squareCommands.length,numbered:controlGroupSlots[3]})`));
+  assert.deepEqual(result.selected,result.expected);assert.equal(result.commands,0);assert.deepEqual(result.numbered,result.expected.slice(0,2),'selection changes do not reassign a numbered group');
+  await box(true);assert.deepEqual(await page.evaluate(()=>tcSquare.run('selectedIds')),result.expected,'boxing already selected troops keeps each exactly once');
+  await page.keyboard.down('Shift');await page.mouse.click(points.unit.x,points.unit.y);await page.keyboard.up('Shift');assert.deepEqual(await page.evaluate(()=>tcSquare.run('selectedIds')),result.expected,'Shift-click never removes a selected troop');
+  await box(false);assert.deepEqual(await page.evaluate(()=>tcSquare.run('selectedIds')),result.expected.slice(2),'ordinary held box still replaces selection');
+  await page.mouse.click(points.building.x,points.building.y);assert.deepEqual(await page.evaluate(()=>tcSquare.run('selectedIds')),[await page.evaluate(()=>additiveBuilding.id)],'friendly structure squares still select the structure');assert.equal(await page.evaluate(()=>squareCommands.length),0);
+  const moving=await page.evaluate(()=>tcSquare.run(`selectEntities(additiveArmy.slice(0,2));worldToScreen(squareTarget.x+.99,squareTarget.y+.99)`));await page.keyboard.down('Shift');await page.mouse.move(moving.x,moving.y);await page.mouse.down();await page.evaluate(()=>{squareTarget.x=squareTarget.px=16;squareTarget.y=squareTarget.py=12});await page.keyboard.up('Shift');await page.mouse.up();assert.deepEqual(await page.evaluate(()=>tcSquare.run('selectedIds')),[...result.expected.slice(0,2),await page.evaluate(()=>squareTarget.id)],'a moving troop pressed with Shift is added even if Shift is released before the troop moves away');assert.equal(await page.evaluate(()=>squareCommands.length),0);assert.deepEqual(errors,[]);
+ }finally{await browser.close()}
+});

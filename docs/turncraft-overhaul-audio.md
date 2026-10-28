@@ -4,7 +4,7 @@ Turncraft still runs from `game/turncraft.html` with the existing static hosting
 
 ## Player controls
 
-- Friendly occupied grid squares select their units or building footprints before contextual movement. Shift adds friendly units. Visible enemies receive validated attack orders. Explicit abilities, construction and rally targeting retain their own validation and never fall through to an ordinary order.
+- Friendly occupied grid squares select their units or building footprints before contextual movement. Hold Shift while clicking troops or dragging a selection box to add them to the current army selection without duplicates; releasing Shift after starting the box preserves that intent. Visible enemies receive validated attack orders. Explicit abilities, construction and rally targeting retain their own validation and never fall through to an ordinary order.
 - Commands use compact fixed cells, atlas-cropped portraits, visible actual shortcuts, stable button identity and independent cooldown/resource/production updates. Selection, research and genuine layout changes can update available actions.
 - Groups 1–9: tap a number to recall, hold for 500 ms to assign, double-tap to center. Ctrl/Meta plus a number remains supported. Empty selections, repeat events, lost focus, pause and blocking menus cannot accidentally assign groups. Local groups are scoped to the profile and battle and survive checkpoint timer rebasing.
 - Single Player opens one graphical faction/map setup with 1–7 independently configurable opponents, all difficulty/temperament choices and the existing victory conditions. Start Battle launches directly. Preferences persist.
@@ -37,7 +37,7 @@ The objective tracker retains its elements and expanded state. Radio messages ex
 
 ## Verification and limits
 
-Local verification: the full regression/browser suite passed 589/589 checks, excluding the separately run economic-horizon file (34/34 checks, including twelve thirty-minute matches). After the final menu/input and unload-readiness review fixes, both focused browser checks and 35 related runtime regressions passed. Warfare validation also passed 41 simulation and 45 browser assertions. All 178 existing production artwork files were hash-verified; the three new faction frames were visually inspected and checked for transparent centers.
+Local verification: the full regression/browser suite passed 589/589 checks, excluding the separately run economic-horizon file (34/34 checks, including twelve thirty-minute matches). After the final menu/input and unload-readiness review fixes, both focused browser checks and 35 related runtime regressions passed. The subsequent Shift-selection change passed two focused browser tests and 55 related runtime/desktop/touch regressions. Warfare validation also passed 41 simulation and 45 browser assertions. All 178 existing production artwork files were hash-verified; the three new faction frames were visually inspected and checked for transparent centers.
 
 The regression suite is `node --test game/turncraft/tests/*.test.cjs game/turncraft/shattered-front/tests/*.mjs game/turncraft/shattered-front/tests/*.cjs` after the existing artwork-cache preparation. The economic-horizon file includes twelve thirty-minute simulated matches and can run separately to avoid CPU contention with browser checks. Browser tests use Playwright; `CHROMIUM_EXECUTABLE_PATH` selects an installed Chrome when needed.
 

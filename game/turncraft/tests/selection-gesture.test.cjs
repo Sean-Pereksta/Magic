@@ -139,3 +139,10 @@ test('stationary hold follows the initially pressed moving troop rather than a d
  s.context.entities[0].px=8;s.context.entities[0].py=3;s.context.entities[1].px=2;s.context.entities[1].py=3;
  s.advance(380);s.dispatch('pointerup',50,70,touch);assert.deepEqual(s.selectedIds(),[1]);assert.deepEqual(s.taps,[]);
 });
+
+test('Shift-box retains its additive intent after Shift release and deduplicates repeated selection',()=>{
+ const s=setup();s.context.selectEntities([s.context.entities[0]]);
+ const box=()=>{s.dispatch('pointerdown',100,115,{shiftKey:true});s.dispatch('pointermove',125,145);s.dispatch('pointerup',125,145)};
+ box();assert.deepEqual(s.selectedIds(),[1,2]);box();assert.deepEqual(s.selectedIds(),[1,2]);assert.deepEqual(s.taps,[]);
+ s.dispatch('pointerdown',100,115);s.advance(380);s.dispatch('pointermove',125,145);s.dispatch('pointerup',125,145);assert.deepEqual(s.selectedIds(),[2],'ordinary held box replaces the previous selection');
+});
