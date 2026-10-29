@@ -336,7 +336,7 @@ export const ITEMS={
   tonic:{name:'Spark Tonic',desc:'Restore 8 energy.'},
   salve:{name:'Cleanse Balm',desc:'Clear effects and restore 15% health.'},
   bondCharm:{name:'Bond Charm',desc:'One visible post-battle recruitment attempt.'},
-  revive:{name:'Revival Seed',desc:'Revive one knocked-out teammate at 25% health.'},
+  revive:{name:'Revival Seed',desc:'Revive one knocked-out teammate at 30% health.'},
   trailRibbon:{name:'Trail Ribbon',desc:'15% shorter discovery intervals for the next 1,000 accepted feet.'},
   treasureScent:{name:'Treasure Scent',desc:'Improve your next 3 discovery reward rolls.'},
   scoutFeather:{name:'Scout’s Feather',desc:'Reveal details about an eligible Ultra sighting; never creates another Ultra.'},
