@@ -14,15 +14,15 @@ test('consumables spend the displayed recipe and only the selected essence',()=>
   const initial={...s.run.items};
   C.craft(s,'charm');assert.equal(s.run.items.bondCharm,initial.bondCharm+1);assert.equal(s.run.fruit,48);assert.equal(s.run.items.charmMaterial,9);
   C.craft(s,'berry','water');assert.equal(s.run.items.berry,initial.berry+1);assert.equal(s.run.fruit,44);assert.equal(s.run.essence.water,8);assert.equal(s.run.essence.fire,10);
-  C.craft(s,'revive','fire');assert.equal(s.run.items.revive,initial.revive+1);assert.equal(s.run.fruit,24);assert.equal(s.run.items.charmMaterial,1);assert.equal(s.run.essence.fire,5);assert.equal(s.run.essence.water,8);
+  C.craft(s,'revive','fire');assert.equal(s.run.items.revive,initial.revive+1);assert.equal(s.run.fruit,38);assert.equal(s.run.items.charmMaterial,7);assert.equal(s.run.essence.fire,7);assert.equal(s.run.essence.water,8);
 });
 
 test('missing ingredients or an invalid essence never spend resources',()=>{
   for(const [id,element,alter] of [
     ['berry',undefined,()=>{}],['berry','unknown',()=>{}],['berry','__proto__',()=>{}],
     ['berry','fire',s=>s.run.essence.fire=1],['berry','fire',s=>s.run.fruit=3],
-    ['revive','fire',s=>s.run.items.charmMaterial=7],['revive','fire',s=>s.run.fruit=19],
-    ['revive','fire',s=>s.run.essence.fire=4],['bogus','fire',()=>{}]
+    ['revive','fire',s=>s.run.items.charmMaterial=1],['revive','fire',s=>s.run.fruit=5],
+    ['revive','fire',s=>s.run.essence.fire=2],['bogus','fire',()=>{}]
   ]){
     const s=stocked();alter(s);const before=structuredClone(s);
     assert.equal(C.consumableCraftAvailability(s,id,element).ok,false);
@@ -50,6 +50,6 @@ test('crafting is blocked during combat and after an expedition ends',()=>{
 test('Trailforger refunds only eligible common ingredients, never essence or charm material',()=>{
   const s=stocked(),copy=awardGearCopy(s,'trailforgersPrism');C.equip(s,copy.copyId,s.run.activeId,'charm');
   C.craft(s,'revive','fire');
-  assert.equal(s.run.fruit,34); // 20 spent, 4 fruit returned by the equipped prism.
-  assert.equal(s.run.items.charmMaterial,2);assert.equal(s.run.essence.fire,5);
+  assert.equal(s.run.fruit,45); // 6 spent, 1 fruit returned by the equipped prism.
+  assert.equal(s.run.items.charmMaterial,8);assert.equal(s.run.essence.fire,7);
 });

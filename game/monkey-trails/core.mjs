@@ -15,6 +15,8 @@ import {normalizeWalkSessions,recordWalkSession} from './walk-sessions.mjs';
 import {normalizeSales} from './monkey-sales.mjs';
 import {recordLivingWorldBattle} from './living-world.mjs';
 import {activeExplorer,normalizeExplorer,explorationEncounterWeight,rollTrailResource,foragePickup} from './exploration.mjs';
+import {advanceLineupForaging,lineupForageProfile} from './lineup-foraging.mjs';
+export {lineupForageProfile} from './lineup-foraging.mjs';
 import {habitatAt,habitatAtPosition} from './habitats.mjs';
 import {equipmentMoveCost,equipmentTacticalEvent,equipmentShieldMultiplier} from './equipment-battle.mjs';
 import {normalizeLegacy,startLegacyExpedition,expeditionDepth,legacyBonuses,recordLegacyWalking,recordLegacyBattle,recordLegacyCapture,beginLegacyBattle,legacyDamage,legacyDiscoveryBonus,completeLegacyExpedition} from './legacy.mjs';
@@ -143,7 +145,7 @@ function monkey(s,species,level=1,types=nativeTypes(species),stage=0,prefix='m')
   p.equipment=Object.fromEntries(equipmentSlots(p).map(slot=>[slot,null]));syncProgression(p);const specials=p.learned.filter(id=>!['strike','brace','breathe'].includes(id));
   p.loadout=['strike',...specials.slice(0,2),'brace'];if(p.loadout.length<4)p.loadout.splice(p.loadout.length-1,0,'breathe');const maximum=stats(p);p.hp=maximum.hp;p.energy=maximum.maxEnergy;return p;
 }
-function resetExpeditionMonkey(p){p.reviveWalkMeters=0;syncProgression(p);delete p.charging;delete p.evasion;delete p.trailCrew;p.healingMomentum=0;p.level=1;p.types=nativeTypes(p.species);p.stage=0;p.status={};p.statusPower={};p.training=0;p.xpRemainder=0;delete p.statusCredit;p.cooldowns={};p.uses={};p.shield=0;delete p.elite;delete p.bossOnly;delete p.mastery;const available=unlocked(p);p.loadout=['strike',...p.loadout.filter(id=>id!=='strike'&&available.includes(id)),...available].filter((id,i,a)=>a.indexOf(id)===i).slice(0,4);p.hp=stats(p).hp;p.energy=stats(p).maxEnergy;}
+function resetExpeditionMonkey(p){p.reviveWalkMeters=0;p.forageWalkMeters=0;syncProgression(p);delete p.charging;delete p.evasion;delete p.trailCrew;p.healingMomentum=0;p.level=1;p.types=nativeTypes(p.species);p.stage=0;p.status={};p.statusPower={};p.training=0;p.xpRemainder=0;delete p.statusCredit;p.cooldowns={};p.uses={};p.shield=0;delete p.elite;delete p.bossOnly;delete p.mastery;const available=unlocked(p);p.loadout=['strike',...p.loadout.filter(id=>id!=='strike'&&available.includes(id)),...available].filter((id,i,a)=>a.indexOf(id)===i).slice(0,4);p.hp=stats(p).hp;p.energy=stats(p).maxEnergy;}
 export function newSave(name,species='capuchin',mode='gps',seed=Date.now()>>>0){
   if(!STARTERS.includes(species))throw Error('Choose one of the six starters.');
   const s={version:VERSION,name:String(name).slice(0,30),mode,rng:(seed>>>0)||1234567,difficulty:'standard',collection:{},
@@ -253,6 +255,9 @@ function advanceSegment(s,meters,east=0,north=0,onDiscovery){
       healingMeters=Math.max(0,used-remaining);
       say(s,`${p.nickname||SPECIES[p.species].name} revived after 2,000 feet on the trail!`);
     }else p.reviveWalkMeters=0;
+    // Revival partway through a GPS sample grants foraging only after waking.
+    const foraged=advanceLineupForaging(p,healingMeters);
+    if(foraged.length){for(const pickup of foraged)awardTrailPickup(s,pickup);say(s,`${p.nickname||SPECIES[p.species].name} gathered ${foraged.map(trailPickupName).join(' and ')} while walking.`);}
     // Only distance after revival earns normal walking recovery.
     const max=stats(p,equipped(s,p)).hp;p.hp=Math.min(max,p.hp+max*equipmentWalkingRecovery(s,p,CONFIG.walkingRecovery.fraction)*healingMeters/(CONFIG.walkingRecovery.feet*FEET));
   }
@@ -579,7 +584,7 @@ export function exchangeEssence(s,from,to){if(!['trail','camp'].includes(s.run.p
 export const CONSUMABLE_RECIPES=Object.freeze({
   bondCharm:Object.freeze({fruit:2,material:1,essence:0}),
   berry:Object.freeze({fruit:4,material:0,essence:2}),
-  revive:Object.freeze({fruit:20,material:8,essence:5})
+  revive:Object.freeze({fruit:6,material:2,essence:3})
 });
 export function consumableCraftAvailability(s,id,essenceType){
   id=itemId(id);const recipe=Object.hasOwn(CONSUMABLE_RECIPES,id)?CONSUMABLE_RECIPES[id]:null,r=s?.run;
@@ -616,6 +621,7 @@ export function validate(s){
   normalizeEquipmentInventory(s);
   normalizeEquipmentTrail(s);
   for(const[id,p]of Object.entries(s.collection)){
+    p.forageWalkMeters??=0;const forageProfile=lineupForageProfile(p);if(!finite(p.forageWalkMeters)||p.forageWalkMeters>(forageProfile?.intervalFeet||250)*FEET)throw Error('Invalid lineup foraging progress.');
     p.reviveWalkMeters??=0;if(!finite(p.reviveWalkMeters)||p.reviveWalkMeters>CONFIG.walkingRevival.feet*FEET)throw Error('Invalid walking revival progress.');if(alive(p))p.reviveWalkMeters=0;
     p.learned??=[];p.discovered??=[];p.highestForm??={stage:p.stage,types:[...p.types]};syncProgression(p);p.xpRemainder??=0;if(!finite(p.xpRemainder)||p.xpRemainder>=1)throw Error('Invalid XP remainder.');
     if(id!==p.id||!SPECIES[p.species]||![p.hp,p.energy,p.level,p.training,p.bond].every(finite)||!Number.isInteger(p.level)||p.level<1||p.level>60||!Number.isInteger(p.stage)||p.stage<0||p.stage>3||!Array.isArray(p.types)||p.types.length>2||p.types.some(t=>!ELEMENTS[t])||new Set(p.types).size!==p.types.length)throw Error('Invalid sanctuary companion.');
