@@ -70,7 +70,7 @@ function defaultStorage(){try{return globalThis.localStorage;}catch{return null;
 function parse(raw){try{const d=JSON.parse(raw);return d&&d.format===1&&typeof d.salt==='string'&&typeof d.cipher==='string'?d:null;}catch{return null;}}
 export class Vault {
   constructor(notify=()=>{},storage=defaultStorage(),connect=connectFirebase){
-    this.notify=notify;this.storage=storage;this.connect=connect;this.seq=0;this.base=0;this.dirty=false;this.conflict=false;this.lastAttempt=0;this.localOK=false;this.force=false;this.pending=false;this.localTask=null;this.inflight=null;this.retired=false;this.sessionId=b64(crypto.getRandomValues(new Uint8Array(16)));
+    this.notify=notify;this.storage=storage;this.connect=connect;this.seq=0;this.encryptedSeq=0;this.base=0;this.dirty=false;this.conflict=false;this.lastAttempt=0;this.localOK=false;this.force=false;this.pending=false;this.localTask=null;this.inflight=null;this.retired=false;this.sessionId=b64(crypto.getRandomValues(new Uint8Array(16)));
   }
   status(text,kind='local'){if(!this.retired)this.notify({text,kind});}
   // Finish the device checkpoint before retiring. An already-sent transaction
@@ -147,7 +147,7 @@ export class Vault {
     // retained copy or apply its inventory automatically.
     const priorBackup=candidates.find(row=>row.fromBackup),retained=candidates.find(row=>row.source==='reopen-backup');
     if(priorBackup&&!retained&&priorBackup.e.salt===chosen.e.salt&&JSON.stringify(priorBackup.state)!==JSON.stringify(chosen.state))try{this.storage?.setItem(PREFIX+this.id+'.reopen-backup',backupRaw);}catch{/* The original backup remains untouched while opening. */}
-    this.salt=chosen.e.salt;this.key=chosen.key;this.snapshot=chosen.state;this.seq=Number(chosen.e.seq)||0;
+    this.salt=chosen.e.salt;this.key=chosen.key;this.snapshot=chosen.state;this.seq=Number(chosen.e.seq)||0;this.encryptedSeq=this.seq;
     this.base=chosen.source==='cloud'?remote.revision:Number(chosen.e.baseRevision)||0;
     this.dirty=chosen.source==='device'&&(!!chosen.e.dirty||unsafeCloud);this.envelope={format:1,salt:this.salt,iv:chosen.e.iv,cipher:chosen.e.cipher};
     this.conflict=unsafeCloud||!!(!sameCheckpoint&&device&&device.e.dirty&&remote&&(remote.revision!==this.base||remote.salt!==this.salt));
@@ -164,7 +164,7 @@ export class Vault {
     if(!this.localTask)this.localTask=(async()=>{
       while(this.pending){
         this.pending=false;const seq=this.seq,snapshot=this.snapshot;
-        try{const e=await seal(snapshot,this.key,this.salt,this.id);if(seq!==this.seq)continue;this.envelope=e;this.put(e,true);}
+        try{const e=await seal(snapshot,this.key,this.salt,this.id);if(seq!==this.seq)continue;this.envelope=e;this.encryptedSeq=seq;this.put(e,true);}
         catch(e){this.status(`Unable to encrypt checkpoint: ${e.message}`,'error');}
       }
     })().finally(()=>{
@@ -177,7 +177,7 @@ export class Vault {
   }
   async sync(){
     if(this.localTask)await this.localTask;
-    if(this.retired||this.mode==='practice'||!this.dirty||this.conflict||!this.envelope)return;
+    if(this.retired||this.mode==='practice'||!this.dirty||this.conflict||!this.envelope||this.encryptedSeq!==this.seq)return;
     if(this.inflight)return this.inflight;
     const seq=this.seq,snapshot=this.snapshot,envelope=this.envelope,base=this.base;
     this.lastAttempt=Date.now();this.force=false;this.status(this.localOK?'Device saved · syncing cloud…':'Syncing cloud · no device backup.','syncing');
@@ -208,6 +208,30 @@ export class Vault {
     })();
     return this.inflight;
   }
+  async flushCloud({timeoutMs=5000}={}){
+    if(this.retired||this.mode!=='gps'||!this.envelope||this.conflict)return false;
+    const deadline=Date.now()+Math.max(0,Number.isFinite(timeoutMs)?timeoutMs:5000);
+    const wait=async task=>{
+      const remaining=deadline-Date.now();if(remaining<=0)return false;let timer;
+      // Timing out only bounds the caller's wait. The actual transaction keeps
+      // running and sync() remains its sole owner; no competing write starts.
+      try{return await Promise.race([Promise.resolve(task).then(()=>true,()=>false),new Promise(resolve=>{timer=setTimeout(()=>resolve(false),remaining);})]);}
+      finally{clearTimeout(timer);}
+    };
+    while(!this.retired&&!this.conflict){
+      if(this.localTask&&!await wait(this.localTask))return false;
+      if(this.encryptedSeq!==this.seq)return false;
+      if(!this.dirty&&!this.pending&&!this.localTask&&!this.inflight&&!this.conflict&&!this.retired)return true;
+      if(Date.now()>=deadline)return false;
+      const base=this.base,seq=this.seq;
+      if(!await wait(this.sync()))return false;
+      if(!this.dirty&&!this.pending&&!this.localTask&&!this.inflight&&!this.conflict&&!this.retired&&this.encryptedSeq===this.seq)return true;
+      // Drain a newer checkpoint after an older acknowledgement, but never
+      // spin retrying an offline or failed write at the same base and sequence.
+      if(this.base===base&&this.seq===seq&&!this.inflight)return false;
+    }
+    return false;
+  }
   async loadCloud(){
     if(this.retired)throw Error('This save session has ended. Reopen it from the starting menu.');
     if(this.inflight)throw Error('A cloud write is still pending. Retry after it finishes.');
@@ -217,7 +241,7 @@ export class Vault {
     const state=await unseal(e,this.key,this.id);
     if(this.retired)throw Error('This save session has ended. Reopen it from the starting menu.');
     try{const old=this.get(PREFIX+this.id);if(old)this.storage.setItem(PREFIX+this.id+'.recovery',old);}catch{throw Error('Cannot keep a recovery copy. Export a backup before reopening from another device.');}
-    this.snapshot=state;this.envelope={format:1,salt:e.salt,iv:e.iv,cipher:e.cipher};this.base=e.revision;this.seq++;this.dirty=false;this.conflict=false;this.force=false;
+    this.snapshot=state;this.envelope={format:1,salt:e.salt,iv:e.iv,cipher:e.cipher};this.base=e.revision;this.seq++;this.encryptedSeq=this.seq;this.dirty=false;this.conflict=false;this.force=false;
     this.put(this.envelope,false);this.status('Cloud checkpoint loaded; previous device copy retained.','saved');return structuredClone(state);
   }
   async export(){if(this.localTask)await this.localTask;if(!this.envelope)throw Error('No encrypted checkpoint is available.');return JSON.stringify({game:'monkey-trails',id:this.id,...this.envelope,baseRevision:this.base,dirty:this.dirty},null,2);}
