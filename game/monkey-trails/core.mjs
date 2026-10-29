@@ -157,15 +157,18 @@ export function newSave(name,species='capuchin',mode='gps',seed=Date.now()>>>0){
     meta:{runs:0,legacy:0,best:0,serial:0,gear:{},fragments:{},equipped:{weapon:null,armor:null,charm:null},history:[],claims:{},captureFailures:0,bondMaterials:{}},run:null,log:[]};
   const p=monkey(s,species);s.collection[p.id]=p;restart(s,species);return s;
 }
+const carriedEssenceMaterials=run=>Object.fromEntries(Object.entries(run?.forgeMaterials||{}).filter(([id])=>id.startsWith('essence:')&&Object.hasOwn(ELEMENTS,id.slice(8))));
 export function restart(s,species=s.run?.monkey.species||'capuchin'){
   if(s.run&&s.run.phase!=='dead')throw Error('Your expedition is still active.');
   normalizeLegacy(s);
   normalizeLands(s);
+  // Essence is owned inventory: starting another expedition must not clear it.
+  const essence=Object.fromEntries(Object.keys(ELEMENTS).map(type=>[type,s.run?.essence?.[type]??0])),forgeMaterials=carriedEssenceMaterials(s.run);
   const oldExplorer=s.run?.explorerId,rareMaterials=Object.fromEntries(['starOre','crownCore'].map(id=>[id,s.run?.items?.[id]||0])),oldParty=s.run?.party?.filter(id=>s.collection[id])||[Object.keys(s.collection)[0]];for(const p of sanctuary(s))resetExpeditionMonkey(p);
   s.meta.runs++;const id=uid(s,'run'),bonus=Math.min(20,s.meta.legacy||0);
   s.run={id,phase:'trail',distance:0,nextCache:RESOURCE_STEP,nextEncounter:ENCOUNTER_STEP,nextCamp:CONFIG.campFeet*FEET,
     discoveryProgress:0,discoveries:0,wins:0,encounters:0,ordinaryWins:0,party:oldParty.slice(0,3),activeId:oldParty[0],explorerId:oldExplorer||oldParty[0],monkey:null,
-    fruit:8+bonus,essence:Object.fromEntries(Object.keys(ELEMENTS).map(t=>[t,0])),
+    fruit:8+bonus,essence,forgeMaterials,
     items:Object.fromEntries(Object.keys(ITEMS).map(id=>[id,rareMaterials[id]??({berry:2,tonic:1,salve:1})[id]??0])),
     vector:{east:0,north:0},weights:{N:0,S:0,E:0,W:0},direction:'N',battle:null,pendingEncounter:null,capture:null,camp:null,events:[],
     bonuses:{ribbon:0,scent:0,feather:0,campSeed:0},injuries:{},ultra:null,nextUltra:CONFIG.ultraFirstFeet*FEET,startedAt:Date.now()};
@@ -371,8 +374,8 @@ export function score(s){const r=s.run;if(r.phase==='dead'&&Number.isFinite(r.fi
 function endRun(s){
   const r=s.run;if(r.phase==='dead')return;recordCompanionExpedition(s);const points=score(s),active=r.monkey,earned=Math.max(1,Math.floor(r.wins/2)+Math.floor(r.distance/(4000*FEET)));
   s.meta.legacy=Math.min(100,s.meta.legacy+earned);s.meta.best=Math.max(s.meta.best,points);completeLegacyExpedition(s,{score:points,level:active.level,form:formName(active)});
-  r.finalScore=points;r.phase='dead';r.pendingEncounter=null;r.battle=null;r.capture=null;r.events=[];r.fruit=0;r.forgeMaterials={};for(const k in r.essence)r.essence[k]=0;for(const k in r.items)if(!['starOre','crownCore'].includes(k))r.items[k]=0;
-  for(const p of sanctuary(s)){resetExpeditionMonkey(p);p.hp=0;}say(s,`The whole expedition team has fallen. ${points} points; sanctuary companions, bonds, branches, and equipment are preserved.`);
+  r.finalScore=points;r.phase='dead';r.pendingEncounter=null;r.battle=null;r.capture=null;r.events=[];r.fruit=0;r.forgeMaterials=carriedEssenceMaterials(r);for(const k in r.items)if(!['starOre','crownCore'].includes(k))r.items[k]=0;
+  for(const p of sanctuary(s)){resetExpeditionMonkey(p);p.hp=0;}say(s,`The whole expedition team has fallen. ${points} points; essence, sanctuary companions, bonds, branches, and equipment are preserved.`);
 }
 export function xpMultiplier(p){return p.level<=CONFIG.xp.earlyLevels?CONFIG.xp.earlyMultiplier:p.level<=CONFIG.xp.midLevels?CONFIG.xp.midMultiplier:1;}
 function grantXp(p,base){

@@ -1,7 +1,7 @@
 import {validate,newSave} from './core.mjs';
 import {validRememberedAccount} from './remembered-account.mjs';
 export const ROOT=['games_rogueduel','monkey_trails_v1'],ITERATIONS=310000;
-const enc=new TextEncoder(),dec=new TextDecoder(),PREFIX='monkey-trails.v1.';
+const enc=new TextEncoder(),dec=new TextDecoder(),PREFIX='monkey-trails.v1.',RECOVERY_SOURCES=['backup','recovery','reopen-backup'];
 const b64=a=>{let text='';for(let i=0;i<a.length;i+=8192)text+=String.fromCharCode(...a.subarray(i,i+8192));return btoa(text);};
 const bytes=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 export const normalize=name=>String(name).trim().toLowerCase();
@@ -70,7 +70,7 @@ function defaultStorage(){try{return globalThis.localStorage;}catch{return null;
 function parse(raw){try{const d=JSON.parse(raw);return d&&d.format===1&&typeof d.salt==='string'&&typeof d.cipher==='string'?d:null;}catch{return null;}}
 export class Vault {
   constructor(notify=()=>{},storage=defaultStorage(),connect=connectFirebase){
-    this.notify=notify;this.storage=storage;this.connect=connect;this.seq=0;this.base=0;this.dirty=false;this.conflict=false;this.lastAttempt=0;this.localOK=false;this.force=false;this.pending=false;this.localTask=null;this.inflight=null;this.retired=false;this.sessionId=b64(crypto.getRandomValues(new Uint8Array(16)));
+    this.notify=notify;this.storage=storage;this.connect=connect;this.seq=0;this.encryptedSeq=0;this.base=0;this.dirty=false;this.conflict=false;this.lastAttempt=0;this.localOK=false;this.force=false;this.pending=false;this.localTask=null;this.inflight=null;this.retired=false;this.sessionId=b64(crypto.getRandomValues(new Uint8Array(16)));
   }
   status(text,kind='local'){if(!this.retired)this.notify({text,kind});}
   // Finish the device checkpoint before retiring. An already-sent transaction
@@ -78,12 +78,12 @@ export class Vault {
   // Its checkpoint stays dirty at the old base revision, preserving conflicts.
   retire(){this.retired=true;this.force=false;this.pending=false;}
   get(key){try{return this.storage?.getItem(key)||null;}catch{return null;}}
-  put(envelope,dirty=this.dirty){
+  put(envelope,dirty=this.dirty,{preserveBackup=false}={}){
     if(this.retired)return;
     const data={...envelope,baseRevision:this.base,dirty,seq:this.seq,sessionId:this.sessionId};
     try{
       if(!this.storage)throw Error('Browser storage is unavailable.');
-      const old=this.get(PREFIX+this.id);if(parse(old))try{this.storage.setItem(PREFIX+this.id+'.backup',old);}catch{}
+      const old=this.get(PREFIX+this.id);if(!preserveBackup&&parse(old))try{this.storage.setItem(PREFIX+this.id+'.backup',old);}catch{}
       const raw=JSON.stringify(data);this.storage.setItem(PREFIX+this.id,raw);
       if(this.get(PREFIX+this.id)!==raw)throw Error('Browser storage did not retain the checkpoint.');
       this.localOK=true;
@@ -100,13 +100,15 @@ export class Vault {
       return remembered.key;
     },'The remembered account could not unlock this save. Continue with your save name and password.');
   }
-  async unlock(name,{create=false,species='capuchin',mode='gps'},getKey,unlockError='The password did not unlock a valid save. Check the creature name and password.'){
+  async unlock(name,{create=false,species='capuchin',mode='gps'},getKey,unlockError='The password did not unlock a valid save. Check the creature name and password.',attempt=0){
     if(this.retired)throw Error('This save session has ended. Reopen it from the starting menu.');
     name=String(name).trim();if(!/^[A-Za-z0-9 _-]{3,24}$/.test(name))throw Error('Use a creature name of 3–24 letters, numbers, spaces, dashes, or underscores.');
     this.id=await identity(name,mode);this.mode=mode;
-    const local=parse(this.get(PREFIX+this.id))||parse(this.get(PREFIX+this.id+'.backup'));
     let remote=null,cloudError=null;
     if(mode==='gps')try{this.adapter=await timeout(this.connect());remote=await timeout(this.adapter.read(this.id));}catch(e){cloudError=e;}
+    // Read after the network wait: the departing page may finish its last
+    // encrypted device checkpoint while this reload is waiting for Firestore.
+    const primaryRaw=this.get(PREFIX+this.id),backupRaw=this.get(PREFIX+this.id+'.backup'),preservedRaw=this.get(PREFIX+this.id+'.reopen-backup'),primary=parse(primaryRaw),backup=parse(backupRaw),preserved=parse(preservedRaw),local=primary||backup;
     if(create&&(local||remote))throw Error('That creature already has a save. Choose Reopen, or a different creature name.');
     if(create){
       this.salt=b64(crypto.getRandomValues(new Uint8Array(16)));this.key=await getKey(this.salt);this.base=0;
@@ -114,24 +116,43 @@ export class Vault {
       await this.checkpoint(this.snapshot,true);return structuredClone(this.snapshot);
     }
     const candidates=[];
-    for(const [source,e]of [['device',local],['cloud',remote]])if(e)try{
+    for(const [source,e]of [['device',primary],['backup',backup],['cloud',remote],['reopen-backup',preserved]])if(e)try{
       const key=await getKey(e.salt),state=await unseal(e,key,this.id);
       if(state.mode!==mode||normalize(state.name)!==normalize(name))throw Error('Save identity mismatch.');
-      candidates.push({source,e,key,state});
+      candidates.push({source:source==='backup'?'device':source,fromBackup:source==='backup',e,key,state});
     }catch{/* Try the independently encrypted copy before reporting failure. */}
-    if(!candidates.length)throw Error(local||remote?unlockError:cloudError?'Cloud unavailable and no device copy found. Try again online; nothing was overwritten.':'No save found for that creature name.');
+    // Password derivation and decryption also yield to a departing page's save.
+    // Retry from its latest authenticated row, never write the opening snapshot
+    // over a checkpoint that finished during those asynchronous operations.
+    if(primaryRaw!==this.get(PREFIX+this.id)||backupRaw!==this.get(PREFIX+this.id+'.backup')||preservedRaw!==this.get(PREFIX+this.id+'.reopen-backup')){
+      if(attempt>=2)throw Error('Your device save is still updating. Reopen it again; no checkpoint was overwritten.');
+      return this.unlock(name,{create,species,mode},getKey,unlockError,attempt+1);
+    }
+    if(!candidates.some(row=>row.source==='device'||row.source==='cloud'))throw Error(local||remote?unlockError:cloudError?'Cloud unavailable and no device copy found. Try again online; nothing was overwritten.':'No save found for that creature name.');
     const device=candidates.find(x=>x.source==='device'),cloud=candidates.find(x=>x.source==='cloud');
     // Dirty device progress is never silently replaced by a conflicting cloud checkpoint.
     // A delayed old session may have committed this same authenticated state
     // after its device checkpoint. Equal states can adopt that cloud revision.
-    const sameCheckpoint=device&&cloud&&device.e.salt===cloud.e.salt&&JSON.stringify(device.state)===JSON.stringify(cloud.state);
-    const chosen=device&&!sameCheckpoint&&(device.e.dirty||!cloud)?device:cloud||device;
-    this.salt=chosen.e.salt;this.key=chosen.key;this.snapshot=chosen.state;this.seq=Number(chosen.e.seq)||0;
+    const deviceRevision=Number(device?.e.baseRevision)||0,cloudRevision=Number(remote?.revision)||0;
+    const sameCheckpoint=device&&cloud&&cloudRevision>=deviceRevision&&device.e.salt===cloud.e.salt&&JSON.stringify(device.state)===JSON.stringify(cloud.state);
+    // A clean local row was already acknowledged at its base revision. An
+    // older or different checkpoint at that same revision cannot supersede it.
+    // Keep the exact checkpoint and stop writes instead of merging inventories:
+    // taking larger balances could undo legitimate spending on another device.
+    const unsafeCloud=!!(device&&remote&&!sameCheckpoint&&(!cloud||remote.salt!==device.e.salt||!device.e.dirty&&cloudRevision<=deviceRevision));
+    const chosen=device&&!sameCheckpoint&&(device.e.dirty||!cloud||unsafeCloud)?device:cloud||device;
+    // Opening a zeroed checkpoint must not destroy the preceding valid backup.
+    // Keep its original encrypted bytes in a stable, review-only slot before
+    // ordinary checkpoints resume rotating .backup. Never replace a valid
+    // retained copy or apply its inventory automatically.
+    const priorBackup=candidates.find(row=>row.fromBackup),retained=candidates.find(row=>row.source==='reopen-backup');
+    if(priorBackup&&!retained&&priorBackup.e.salt===chosen.e.salt&&JSON.stringify(priorBackup.state)!==JSON.stringify(chosen.state))try{this.storage?.setItem(PREFIX+this.id+'.reopen-backup',backupRaw);}catch{/* The original backup remains untouched while opening. */}
+    this.salt=chosen.e.salt;this.key=chosen.key;this.snapshot=chosen.state;this.seq=Number(chosen.e.seq)||0;this.encryptedSeq=this.seq;
     this.base=chosen.source==='cloud'?remote.revision:Number(chosen.e.baseRevision)||0;
-    this.dirty=chosen.source==='device'&&!!chosen.e.dirty;this.envelope={format:1,salt:this.salt,iv:chosen.e.iv,cipher:chosen.e.cipher};
-    this.conflict=!!(!sameCheckpoint&&device&&device.e.dirty&&remote&&(remote.revision!==this.base||remote.salt!==this.salt));
-    if(remote&&!cloud&&device)this.conflict=true;
-    this.put(this.envelope);
+    this.dirty=chosen.source==='device'&&(!!chosen.e.dirty||unsafeCloud);this.envelope={format:1,salt:this.salt,iv:chosen.e.iv,cipher:chosen.e.cipher};
+    this.conflict=unsafeCloud||!!(!sameCheckpoint&&device&&device.e.dirty&&remote&&(remote.revision!==this.base||remote.salt!==this.salt));
+    // Opening does not advance gameplay; never rotate an existing backup here.
+    this.put(this.envelope,this.dirty,{preserveBackup:true});
     if(this.conflict)this.status('Cloud conflict. Device progress kept; export a backup or load the cloud copy.','conflict');
     else if(cloudError)this.status('Device save opened · cloud unavailable; retry when online.','offline');
     else this.status(this.dirty?'Device save opened · cloud sync pending.':mode==='practice'?'Practice save opened · device only.':'Cloud save opened.','saved');
@@ -143,7 +164,7 @@ export class Vault {
     if(!this.localTask)this.localTask=(async()=>{
       while(this.pending){
         this.pending=false;const seq=this.seq,snapshot=this.snapshot;
-        try{const e=await seal(snapshot,this.key,this.salt,this.id);if(seq!==this.seq)continue;this.envelope=e;this.put(e,true);}
+        try{const e=await seal(snapshot,this.key,this.salt,this.id);if(seq!==this.seq)continue;this.envelope=e;this.encryptedSeq=seq;this.put(e,true);}
         catch(e){this.status(`Unable to encrypt checkpoint: ${e.message}`,'error');}
       }
     })().finally(()=>{
@@ -156,7 +177,7 @@ export class Vault {
   }
   async sync(){
     if(this.localTask)await this.localTask;
-    if(this.retired||this.mode==='practice'||!this.dirty||this.conflict||!this.envelope)return;
+    if(this.retired||this.mode==='practice'||!this.dirty||this.conflict||!this.envelope||this.encryptedSeq!==this.seq)return;
     if(this.inflight)return this.inflight;
     const seq=this.seq,snapshot=this.snapshot,envelope=this.envelope,base=this.base;
     this.lastAttempt=Date.now();this.force=false;this.status(this.localOK?'Device saved · syncing cloud…':'Syncing cloud · no device backup.','syncing');
@@ -187,6 +208,30 @@ export class Vault {
     })();
     return this.inflight;
   }
+  async flushCloud({timeoutMs=5000}={}){
+    if(this.retired||this.mode!=='gps'||!this.envelope||this.conflict)return false;
+    const deadline=Date.now()+Math.max(0,Number.isFinite(timeoutMs)?timeoutMs:5000);
+    const wait=async task=>{
+      const remaining=deadline-Date.now();if(remaining<=0)return false;let timer;
+      // Timing out only bounds the caller's wait. The actual transaction keeps
+      // running and sync() remains its sole owner; no competing write starts.
+      try{return await Promise.race([Promise.resolve(task).then(()=>true,()=>false),new Promise(resolve=>{timer=setTimeout(()=>resolve(false),remaining);})]);}
+      finally{clearTimeout(timer);}
+    };
+    while(!this.retired&&!this.conflict){
+      if(this.localTask&&!await wait(this.localTask))return false;
+      if(this.encryptedSeq!==this.seq)return false;
+      if(!this.dirty&&!this.pending&&!this.localTask&&!this.inflight&&!this.conflict&&!this.retired)return true;
+      if(Date.now()>=deadline)return false;
+      const base=this.base,seq=this.seq;
+      if(!await wait(this.sync()))return false;
+      if(!this.dirty&&!this.pending&&!this.localTask&&!this.inflight&&!this.conflict&&!this.retired&&this.encryptedSeq===this.seq)return true;
+      // Drain a newer checkpoint after an older acknowledgement, but never
+      // spin retrying an offline or failed write at the same base and sequence.
+      if(this.base===base&&this.seq===seq&&!this.inflight)return false;
+    }
+    return false;
+  }
   async loadCloud(){
     if(this.retired)throw Error('This save session has ended. Reopen it from the starting menu.');
     if(this.inflight)throw Error('A cloud write is still pending. Retry after it finishes.');
@@ -196,10 +241,33 @@ export class Vault {
     const state=await unseal(e,this.key,this.id);
     if(this.retired)throw Error('This save session has ended. Reopen it from the starting menu.');
     try{const old=this.get(PREFIX+this.id);if(old)this.storage.setItem(PREFIX+this.id+'.recovery',old);}catch{throw Error('Cannot keep a recovery copy. Export a backup before reopening from another device.');}
-    this.snapshot=state;this.envelope={format:1,salt:e.salt,iv:e.iv,cipher:e.cipher};this.base=e.revision;this.seq++;this.dirty=false;this.conflict=false;this.force=false;
+    this.snapshot=state;this.envelope={format:1,salt:e.salt,iv:e.iv,cipher:e.cipher};this.base=e.revision;this.seq++;this.encryptedSeq=this.seq;this.dirty=false;this.conflict=false;this.force=false;
     this.put(this.envelope,false);this.status('Cloud checkpoint loaded; previous device copy retained.','saved');return structuredClone(state);
   }
   async export(){if(this.localTask)await this.localTask;if(!this.envelope)throw Error('No encrypted checkpoint is available.');return JSON.stringify({game:'monkey-trails',id:this.id,...this.envelope,baseRevision:this.base,dirty:this.dirty},null,2);}
+  async readRecovery(source){
+    if(!RECOVERY_SOURCES.includes(source))throw Error('Choose a saved device backup.');
+    if(!this.id||!this.key||!this.snapshot||this.retired)throw Error('Open your saved trail before reviewing backups.');
+    const envelope=parse(this.get(PREFIX+this.id+'.'+source));
+    if(!envelope||envelope.salt!==this.salt||!Number.isInteger(envelope.baseRevision)||envelope.baseRevision<0)throw Error('This device backup is unavailable.');
+    const state=await unseal(envelope,this.key,this.id);
+    if(state.mode!==this.mode||normalize(state.name)!==normalize(this.snapshot.name))throw Error('This device backup belongs to a different save.');
+    const checkpointId=[...new Uint8Array(await crypto.subtle.digest('SHA-256',enc.encode(JSON.stringify([envelope.salt,envelope.iv,envelope.cipher]))))].map(n=>n.toString(16).padStart(2,'0')).join('');
+    return {envelope,state,checkpointId};
+  }
+  async recoveryCopies(){
+    const rows=[];
+    for(const source of RECOVERY_SOURCES)try{
+      const {envelope,state,checkpointId}=await this.readRecovery(source);
+      rows.push({source,checkpointId,runId:state.run.id,phase:state.run.phase,expedition:state.meta.runs,essence:{...state.run.essence},forgeEssence:Object.fromEntries(Object.keys(state.run.essence).map(id=>[id,state.run.forgeMaterials?.['essence:'+id]||0])),fruit:state.run.fruit,baseRevision:envelope.baseRevision});
+    }catch{/* Inaccessible or invalid copies cannot be offered for restoration. */}
+    return rows;
+  }
+  async exportRecovery(source,expectedCheckpointId){
+    const {envelope,checkpointId}=await this.readRecovery(source),{format,salt,iv,cipher,baseRevision}=envelope;
+    if(checkpointId!==expectedCheckpointId)throw Error('This saved backup changed. Review saved backups again before exporting.');
+    return JSON.stringify({game:'monkey-trails',id:this.id,format,salt,iv,cipher,baseRevision,dirty:true},null,2);
+  }
   // A pinned GPS target is encrypted on this device only. It is never part of
   // snapshot/envelope/cloud transactions, portable exports, or route history.
   async saveDeviceData(label,data){
