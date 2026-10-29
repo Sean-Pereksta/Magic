@@ -386,7 +386,7 @@ export function captureChance(s,id){const c=s.run.capture,p=c?.candidates.find(p
 function finishCapture(s){s.run.capture=null;s.run.phase='trail';normalizeExplorer(s);maybeUltra(s);pump(s);}
 export function befriend(s,id,{duplicate='keep',nickname=''}={}){
   const r=s.run,c=r.capture,p=c?.candidates.find(p=>p.id===id);if(r.phase!=='befriend'||!p||c.claimed||s.meta.claims[`capture:${c.id}`])throw Error('This recruitment opportunity is already resolved.');if(c.attempts>=c.maxAttempts)throw Error('No attempts remain.');
-  const free=c.ultra&&c.guaranteed;if(!free&&!(r.items.bondCharm>0))throw Error('A Bond Charm is required. Craft one at a camp.');const chance=captureChance(s,id);if(!free)r.items.bondCharm--;c.attempts++;
+  const free=c.ultra&&c.guaranteed;if(!free&&!(r.items.bondCharm>0))throw Error('A Bond Charm is required. Craft one from your consumables.');const chance=captureChance(s,id);if(!free)r.items.bondCharm--;c.attempts++;
   if(chance<1&&random(s)>=chance){s.meta.captureFailures++;say(s,`The charm did not connect. Bad-luck protection: ${s.meta.captureFailures}/${CONFIG.capturePity}.`);return{success:false,chance,remaining:c.maxAttempts-c.attempts};}
   const duplicateFound=sanctuary(s).some(m=>m.species===p.species),level=Math.max(1,Math.min(3,Math.floor(team(s).reduce((n,m)=>n+m.level,0)/team(s).length)-1));
   const recruit=monkey(s,p.species,level),crew=legacyBonuses(r.legacy?.ranks);if(crew.crewHp||crew.crewEnergy){recruit.trailCrew={hp:crew.crewHp,maxEnergy:crew.crewEnergy};recruit.hp=stats(recruit).hp;recruit.energy=stats(recruit).maxEnergy;}recruit.nickname=String(nickname).trim().slice(0,24);recruit.bond=1;recruit.capturedEncounter=c.id;s.meta.captureFailures=0;s.meta.claims[`capture:${c.id}`]=true;c.claimed=true;s.collection[recruit.id]=recruit;recordCompanionRecruit(s,recruit.id);recordLegacyCapture(s);recordWalkSession(s,{recruited:1});
@@ -575,9 +575,27 @@ export function unequip(s,slot,monkeyId){
 }
 export function setMove(s,slot,id,monkeyId){const p=getMonkey(s,monkeyId);if(!p||!['trail','camp'].includes(s.run.phase)||!Number.isInteger(slot)||slot<0||slot>3||(slot===0&&id!=='strike')||!abilityInfo(p,id)?.eligible)throw Error('Change curated abilities between encounters; keep Palm Strike in slot one.');if(p.loadout.includes(id)&&p.loadout[slot]!==id)throw Error('That ability is already equipped.');syncProgression(p);p.loadout[slot]=id;return p;}
 export function exchangeEssence(s,from,to){if(!['trail','camp'].includes(s.run.phase)||!ELEMENTS[from]||!ELEMENTS[to]||from===to||s.run.essence[from]<4)throw Error('Exchange four of one essence for one other essence between encounters.');s.run.essence[from]-=4;s.run.essence[to]++;}
-export function craft(s,id){
+// Costs are shared by the crafting UI and the authoritative inventory update.
+export const CONSUMABLE_RECIPES=Object.freeze({
+  bondCharm:Object.freeze({fruit:2,material:1,essence:0}),
+  berry:Object.freeze({fruit:4,material:0,essence:2}),
+  revive:Object.freeze({fruit:20,material:8,essence:5})
+});
+export function consumableCraftAvailability(s,id,essenceType){
+  id=itemId(id);const recipe=Object.hasOwn(CONSUMABLE_RECIPES,id)?CONSUMABLE_RECIPES[id]:null,r=s?.run;
+  if(!recipe)return{ok:false,reason:'Unknown consumable recipe.',recipe:null};
+  if(!r||!['trail','camp','befriend'].includes(r.phase))return{ok:false,reason:'Craft supplies outside active battles.',recipe};
+  if(recipe.essence&&(!essenceType||!Object.hasOwn(ELEMENTS,essenceType)))return{ok:false,reason:'Choose an essence type for this recipe.',recipe};
+  if(r.fruit<recipe.fruit)return{ok:false,reason:'Not enough fruit.',recipe};
+  if((r.items.charmMaterial||0)<recipe.material)return{ok:false,reason:'Not enough charm material.',recipe};
+  if(recipe.essence&&(r.essence[essenceType]||0)<recipe.essence)return{ok:false,reason:`Not enough ${ELEMENTS[essenceType].name} essence.`,recipe};
+  return{ok:true,reason:'',recipe};
+}
+export function craft(s,id,essenceType){
   id=itemId(id);const r=s.run;if(!canChangeEquipment(s))throw Error('Craft supplies outside active battles.');if(GEAR[id]){if((s.meta.fragments[id]||0)<CONFIG.fragmentCost)throw Error(`Collect ${CONFIG.fragmentCost} equipment fragments.`);if(previewGearAward(s,id).kind==='salvaged')throw Error('This equipment is already at maximum tier.');awardGearCopy(s,id,{source:'fragments'});s.meta.fragments[id]-=CONFIG.fragmentCost;applyEquipmentCraftRefund(s,equipmentCraftRefund(s,{[`fragment:${id}`]:CONFIG.fragmentCost}));return;}
-  const recipes={bondCharm:{fruit:2,material:1},revive:{fruit:8,material:4},berry:{fruit:3,material:0}},recipe=recipes[id];if(!recipe||r.fruit<recipe.fruit||(r.items.charmMaterial||0)<recipe.material)throw Error('Gather more fruit and charm material for this recipe.');r.fruit-=recipe.fruit;r.items.charmMaterial-=recipe.material;r.items[id]++;applyEquipmentCraftRefund(s,equipmentCraftRefund(s,{fruit:recipe.fruit,'item:charmMaterial':recipe.material}));
+  const availability=consumableCraftAvailability(s,id,essenceType);if(!availability.ok)throw Error(availability.reason);
+  const recipe=availability.recipe;r.fruit-=recipe.fruit;if(recipe.material)r.items.charmMaterial-=recipe.material;if(recipe.essence)r.essence[essenceType]-=recipe.essence;r.items[id]++;
+  applyEquipmentCraftRefund(s,equipmentCraftRefund(s,{fruit:recipe.fruit,'item:charmMaterial':recipe.material,...(recipe.essence?{[`essence:${essenceType}`]:recipe.essence}:{})}));
 }
 export function migrate(s){
   if(!s||s.version!==1)return s;const r=s.run,p=r?.monkey;if(!r||!p||!SPECIES[p.species])throw Error('Invalid legacy checkpoint.');s.version=VERSION;s.difficulty=s.difficulty||'standard';s.meta.serial=s.meta.serial||0;s.meta.fragments={};s.meta.claims={};s.meta.captureFailures=0;s.meta.bondMaterials={};s.collection={};
