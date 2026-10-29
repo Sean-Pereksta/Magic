@@ -1,5 +1,9 @@
 # Monkey Trails · Wild Companions
 
+See [ADVENTUROUS_WORLD.md](ADVENTUROUS_WORLD.md) for illustrated trail choices,
+the World Forecast, adventure journal, camp moments, sanctuary decorating and
+team techniques, including event timing and save compatibility.
+
 Entry: `/game/monkey-trails.html`; the existing `lobby/lobby.html` card remains the launch point. Static HTML, CSS and native modules require no game build step, paid map service, or game server.
 
 See [LIVING_WORLD.md](LIVING_WORLD.md) for the new 110 species, level 60 progression, tactical combat,135 equipment items, permanent Forge Reserve, regional quests/destinations, tribe applications, artwork upload and verification.
