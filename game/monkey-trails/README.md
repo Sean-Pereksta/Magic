@@ -398,3 +398,7 @@ See [Legacy and Forge](LEGACY_AND_FORGE.md) for permanent progression rewards, r
 ## Active walking monkeys and broad foraging habitats
 
 See [EXPLORATION.md](./EXPLORATION.md) for Active monkey selection, visible forager/scout traits, 480 m resource habitats, 5-value ingots, Star Ore, Crown Cores, and late-level training requirements. Run `npm run test:monkey-trails:exploration-browser` to check the saved selection, habitat walking, visible material values, and mobile layouts.
+
+### Knocked-out lineup companions
+
+Collected monkeys can join the lineup while knocked out, provided the resulting lineup has at least one conscious member. A knocked-out companion keeps its injuries, cannot lead or switch into an expedition battle, and its lineup foraging progress pauses until revival. Walking 2,000 accepted feet with it in the lineup revives it at 25% health. Friendly battles and tribe boss attempts use protected snapshots of conscious lineup members; a knocked-out monkey joins new social battles once revived. Existing social battles retain their original snapshots.

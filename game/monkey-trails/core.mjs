@@ -401,7 +401,7 @@ function victory(s){
   if(b.trailRoute==='ancient-ruins'&&!b.ultra&&!b.guardian&&!b.hunt){r.items.charmMaterial++;say(s,'Ancient Ruins: recovered one extra charm material.');}
   if(b.worldGuardian&&b.worldEvent?.type==='guardian-stirring'){r.essence.leaf+=3;say(s,'Bloomwatch Guardian: three extra Leaf essence. This event reward is saved.');}
   if(b.ultra){r.items.crownCore=(r.items.crownCore||0)+1;say(s,'Legendary victory: one Crown Core, a rare material found only by defeating an Ultra team.');}
-  const tutorial=!b.ultra&&r.ordinaryWins<=2;if(tutorial)r.items.bondCharm+=2;if(!b.ultra&&r.ordinaryWins===1){r.items.revive+=CONFIG.tutorial.revivesAfterFirst;say(s,'Introductory revival supply: restore a fallen teammate before replacing them at camp.');}
+  const tutorial=!b.ultra&&r.ordinaryWins<=2;if(tutorial)r.items.bondCharm+=2;if(!b.ultra&&r.ordinaryWins===1){r.items.revive+=CONFIG.tutorial.revivesAfterFirst;say(s,'Introductory revival supply: use it to restore a fallen teammate.');}
   // An Ultra's support squad cannot consume the guaranteed boss invitation.
   const eligible=b.ultra?[b.enemies.find(e=>e.species===r.ultra.species)||b.enemies[0]]:b.enemies;
   r.capture={id:b.id,candidates:eligible.map(e=>({...copy(e),bondBonus:b.bondBonuses[e.id]||0})),attempts:0,maxAttempts:CONFIG.captureAttempts,guaranteed:tutorial||b.ultra&&!sanctuary(s).some(p=>p.species===r.ultra.species),ultra:b.ultra,claimed:false};
@@ -556,7 +556,8 @@ export function useItem(s,id,targetId){
 }
 export function setParty(s,ids){
   const r=s.run;if(!['trail','camp'].includes(r.phase))throw Error('Change teammates on the trail or at camp, between encounters.');
-  if(!Array.isArray(ids)||!ids.length||ids.length>3||new Set(ids).size!==ids.length||ids.some(id=>!s.collection[id]||!r.party.includes(id)&&!alive(s.collection[id]))||!ids.some(id=>alive(s.collection[id])))throw Error('Choose one to three different companions, with conscious incoming monkeys and at least one conscious teammate.');
+  if(!Array.isArray(ids)||!ids.length||ids.length>3||new Set(ids).size!==ids.length||ids.some(id=>!s.collection[id]))throw Error('Choose one to three different collected companions.');
+  if(!ids.some(id=>alive(s.collection[id])))throw Error('Keep at least one conscious teammate in the lineup.');
   for(const p of team(s))r.injuries[p.id]={hp:p.hp,energy:p.energy,status:copy(p.status)};r.party=[...ids];if(!ids.includes(r.activeId)||!alive(s.collection[r.activeId]))r.activeId=ids.find(id=>alive(s.collection[id]));syncActive(s);normalizeExplorer(s);say(s,'Expedition team updated. Every returning companion keeps its injuries.');return team(s);
 }
 export function campHeal(s,id=s.run.activeId){const r=s.run,p=getMonkey(s,id);if(r.phase!=='camp'||!r.party.includes(id)||!r.camp.heals||!alive(p))throw Error('Camp recovery needs a conscious teammate and a remaining recovery action.');r.camp.heals--;heal(p,stats(p,equipped(s,p)).hp*(r.camp.seedBoost?.4:.3),stats(p,equipped(s,p)).hp);p.energy=Math.min(stats(p,equipped(s,p)).maxEnergy,p.energy+3);return p;}

@@ -15,11 +15,24 @@ export function lineupPermission(s){
   if(!['trail','camp'].includes(r?.phase))return{allowed:false,reason:'Change the lineup on the trail or at camp, between encounters.'};
   return{allowed:true,reason:''};
 }
+// Preview the exact resulting lineup, including replacement of a knocked-out slot.
+export function lineupChoice(s,incomingId,outgoingId=null){
+  const permission=lineupPermission(s);if(!permission.allowed)return permission;
+  const incoming=s.collection?.[incomingId],party=s.run.party;
+  if(!incoming||party.includes(incomingId))return{allowed:false,reason:'Choose a collected companion outside the lineup.'};
+  const ids=[...party];
+  if(outgoingId!==null){const index=ids.indexOf(outgoingId);if(index<0)return{allowed:false,reason:'Choose a current lineup companion.'};ids[index]=incomingId;}
+  else {if(ids.length>=CONFIG.partySize)return{allowed:false,reason:'Choose which lineup companion to replace.'};ids.push(incomingId);}
+  if(!ids.some(id=>s.collection[id]?.hp>0))return{allowed:false,reason:'Keep at least one conscious monkey in your lineup.'};
+  return{allowed:true,reason:''};
+}
 export function companionAction(s,id){
   const p=s.collection?.[id];if(!p)throw Error('Choose a collected companion.');
-  const permission=lineupPermission(s),inLineup=s.run.party.includes(id);
-  return{inLineup,action:inLineup?'swap':'add',label:inLineup?'Swap':'Add to lineup',allowed:permission.allowed&&(inLineup||p.hp>0),
-    reason:!inLineup&&p.hp<=0?'Revive this companion before adding it to the lineup.':permission.reason,full:s.run.party.length>=CONFIG.partySize};
+  const permission=lineupPermission(s),inLineup=s.run.party.includes(id),full=s.run.party.length>=CONFIG.partySize;
+  const choices=full?s.run.party.map(outgoing=>lineupChoice(s,id,outgoing)):[lineupChoice(s,id)];
+  const allowed=permission.allowed&&(inLineup||choices.some(choice=>choice.allowed));
+  return{inLineup,action:inLineup?'swap':'add',label:inLineup?'Swap':'Add to lineup',allowed,
+    reason:!permission.allowed?permission.reason:!allowed?choices[0]?.reason||'Keep at least one conscious monkey in your lineup.':'',full};
 }
 export function replaceLineupCompanion(s,outgoingId,incomingId){
   const index=s.run.party.indexOf(outgoingId);

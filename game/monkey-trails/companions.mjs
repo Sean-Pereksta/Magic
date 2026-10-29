@@ -107,7 +107,7 @@ export function lineupAvailability(s,id){
   const data=normalizeCompanions(s),row=data.lineups.find(r=>r.id===id),r=s.run;
   if(!row)return{allowed:false,reason:'This lineup is unavailable.'};
   if(!['trail','camp'].includes(r?.phase))return{allowed:false,reason:'Apply this lineup on the trail or at camp, between encounters.'};
-  if(row.members.some(id=>!s.collection[id]||!r.party.includes(id)&&s.collection[id].hp<=0)||!row.members.some(id=>s.collection[id]?.hp>0))return{allowed:false,reason:'Revive incoming companions and keep at least one conscious teammate.'};
+  if(row.members.some(id=>!s.collection[id])||!row.members.some(id=>s.collection[id]?.hp>0))return{allowed:false,reason:'Keep at least one conscious teammate in the lineup.'};
   const equipment=new Set();
   for(const id of row.members){const p=s.collection[id],named=new Set();for(const[slot,gear]of Object.entries(p.equipment||{}))if(gear){const copyId=p.equipmentCopies?.[slot]||gear;if(!GEAR[gear]||!equipmentSlots(p).includes(slot)||!s.meta.gear?.[gear]||equipment.has(copyId)||named.has(gear))return{allowed:false,reason:'Resolve the selected companions’ equipment before applying this lineup.'};equipment.add(copyId);named.add(gear);}}
   return{allowed:true,reason:'Applies these individuals with their current injuries and equipment.',lineup:row};

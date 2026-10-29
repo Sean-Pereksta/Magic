@@ -50,3 +50,14 @@ test('only distance after the revival threshold applies ordinary walking healing
   const s=fixture(),p=s.collection['friend-0'];walk(s,1900);walk(s,200);
   const max=C.stats(p,C.equipped(s,p)).hp;close(p.hp,max*.27);
 });
+
+test('a knocked-out Sanctuary monkey can join, walk to revive, and stays unavailable in battle until revived',()=>{
+  const s=C.newSave('Sanctuary recovery','capuchin','practice',42),p=structuredClone(s.run.monkey);p.id='fallen';p.species='mossmop';p.types=[...C.SPECIES.mossmop.types];p.hp=0;p.forageWalkMeters=100*C.FEET;s.collection[p.id]=p;
+  C.setParty(s,[s.run.activeId,p.id]);assert.equal(p.hp,0);s.run.nextEncounter=s.run.nextCamp=1e9;
+  walk(s,500);assert.equal(p.hp,0);close(p.reviveWalkMeters,500*C.FEET);close(p.forageWalkMeters,100*C.FEET);
+  assert.throws(()=>C.selectBattleLead(s,p.id),/conscious/);
+  const battle=structuredClone(s);battle.run.nextEncounter=battle.run.distance+C.FEET;walk(battle,1);C.beginPendingEncounter(battle);C.readyBattle(battle);
+  assert.throws(()=>C.switchMonkey(battle,p.id),/conscious/);assert.equal(battle.collection[p.id].hp,0);
+  walk(s,1500);assert.equal(p.hp,C.stats(p,C.equipped(s,p)).hp*.25);close(p.forageWalkMeters,100*C.FEET);
+  walk(s,150);close(p.forageWalkMeters,0);C.selectBattleLead(s,p.id);assert.equal(s.run.activeId,p.id);
+});

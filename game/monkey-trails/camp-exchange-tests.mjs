@@ -25,7 +25,7 @@ test('lineup changes at any trail distance preserve injuries and permit replacin
   const before=structuredClone(s.collection);C.setParty(s,[p.id,incoming.id]);assert.deepEqual(s.collection,before);assert.equal(fallen.hp,0);assert.equal(incoming.hp,9);
   // A different slot can change while a fallen current teammate is retained.
   s.run.party.push(fallen.id);C.setParty(s,[incoming.id,fallen.id]);assert.equal(fallen.hp,0);
-  C.setParty(s,[incoming.id]);assert.throws(()=>C.setParty(s,[fallen.id]),/conscious incoming/);
+  C.setParty(s,[incoming.id]);assert.throws(()=>C.setParty(s,[fallen.id]),/at least one conscious/);
 });
 
 test('utility crafting and four-for-one essence exchanges remain available on the trail',()=>{

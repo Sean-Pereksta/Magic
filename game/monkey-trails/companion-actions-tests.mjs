@@ -76,6 +76,17 @@ test('lineup actions work anywhere between encounters and replace fallen outgoin
   const s=fixture();s.run.distance=10000;s.run.encounters=5;assert.equal(A.lineupPermission(s).allowed,true);A.addLineupCompanion(s,'reserve-0');s.collection['reserve-0'].hp=0;
   assert.equal(A.lineupPermission(s).allowed,true);assert.equal(A.companionAction(s,'reserve-0').allowed,true);
   A.replaceLineupCompanion(s,'reserve-0','reserve-1');assert.equal(s.collection['reserve-0'].hp,0);
-  assert.equal(A.companionAction(s,'reserve-0').allowed,false);assert.match(A.companionAction(s,'reserve-0').reason,/Revive/);
+  assert.equal(A.companionAction(s,'reserve-0').allowed,true);A.addLineupCompanion(s,'reserve-0');assert.equal(s.collection['reserve-0'].hp,0);C.setParty(s,[s.run.activeId,'reserve-1']);
   for(const phase of ['battle','replacement','befriend','dead']){s.run.phase=phase;const before=structuredClone(s);assert.equal(A.lineupPermission(s).allowed,false);assert.throws(()=>A.addLineupCompanion(s,'reserve-2'),/between encounters/);assert.deepEqual(s,before);}
+});
+
+test('knocked-out companions can join, but each resulting lineup keeps one conscious monkey',()=>{
+  const s=fixture(),lead=s.run.activeId,a=s.collection['reserve-0'],b=s.collection['reserve-1'],c=s.collection['reserve-2'];a.hp=b.hp=c.hp=0;
+  A.addLineupCompanion(s,a.id);A.addLineupCompanion(s,b.id);
+  assert.equal(a.hp,0);assert.equal(b.hp,0);assert.equal(A.companionAction(s,c.id).allowed,true);
+  assert.equal(A.lineupChoice(s,c.id,lead).allowed,false);assert.equal(A.lineupChoice(s,c.id,a.id).allowed,true);
+  const before=structuredClone(s);assert.throws(()=>A.replaceLineupCompanion(s,lead,c.id),/at least one conscious/);assert.deepEqual(s,before);
+  A.replaceLineupCompanion(s,a.id,c.id);assert.deepEqual(s.run.party,[lead,c.id,b.id]);assert.equal(c.hp,0);
+  assert.throws(()=>C.setParty(s,[a.id,b.id,c.id]),/at least one conscious/);
+  assert.throws(()=>C.setParty(s,[a.id]),/at least one conscious/);
 });

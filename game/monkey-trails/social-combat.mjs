@@ -36,7 +36,8 @@ function freshTeam(source,version=SOCIAL_COMBAT_VERSION){
   return source.map(p=>{const member=freshMember(p,p.gear||{},version);if(version===3)for(const id of Object.keys(member.gear)){if(gearOwners.has(id))throw Error('Equipment needs a unique companion owner.');gearOwners.add(id);}return member;});
 }
 export function snapshotTeam(state){
- const members=team(state),lead=members.find(p=>p.id===state.run.activeId&&p.hp>0)||members.find(p=>p.hp>0)||members[0];
+ const members=team(state).filter(p=>p.hp>0),lead=members.find(p=>p.id===state.run.activeId)||members[0];
+ if(!lead)throw Error('Choose at least one conscious monkey for a social battle.');
  return freshTeam([lead,...members.filter(p=>p!==lead)].filter(Boolean).map(p=>({...p,gear:equipped(state,p)})));
 }
 export function averageLevel(members){if(!Array.isArray(members)||!members.length)return 1;return members.reduce((sum,p)=>sum+integer(p.level,1,CONFIG.maxLevel,'companion level'),0)/members.length;}
