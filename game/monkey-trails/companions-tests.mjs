@@ -52,7 +52,7 @@ test('saved lineups reference individuals and use the existing party setter with
 test('saved lineups work anywhere between encounters and preserve injury and equipment restrictions',()=>{
   const s=save(),a=s.run.monkey,b=cloneCompanion(s,'b'),row=F.saveLineup(s,'Second',[b.id]);
   s.run.distance=10000;s.run.encounters=5;s.run.phase='battle';assert.throws(()=>F.applyLineup(s,row.id,C.setParty),/between encounters/);s.run.phase='trail';
-  b.hp=0;assert.throws(()=>F.applyLineup(s,row.id,C.setParty),/Revive/);b.hp=8;a.hp=0;F.applyLineup(s,row.id,C.setParty);assert.deepEqual(s.run.party,[b.id]);assert.equal(a.hp,0);a.hp=8;
+  b.hp=0;assert.throws(()=>F.applyLineup(s,row.id,C.setParty),/at least one conscious/);b.hp=8;a.hp=0;const mixed=F.saveLineup(s,'Mixed',[b.id,a.id]);F.applyLineup(s,mixed.id,C.setParty);assert.equal(a.hp,0);F.applyLineup(s,row.id,C.setParty);assert.deepEqual(s.run.party,[b.id]);assert.equal(a.hp,0);a.hp=8;
   assert.throws(()=>F.saveLineup(s,'Bad',[b.id,b.id]),/different/);
   const gear=Object.keys(C.GEAR)[0];s.meta.gear[gear]=1;const slot=C.GEAR[gear].slot;a.equipment[slot]=gear;b.equipment[slot]=gear;const both=F.saveLineup(s,'Both',[a.id,b.id]);
   assert.throws(()=>F.applyLineup(s,both.id,C.setParty),/equipment/);assert.deepEqual(s.run.party,[b.id]);

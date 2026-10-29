@@ -136,3 +136,11 @@ test('new raid feedback and move previews use the fight’s pinned elemental bal
  assert.ok(r.lastHit&&r.lastHit.damage>=0);assert.equal(r.lastHit.multiplier,S.socialMoveEffect(C.MOVES.cinder,r.boss.types,2));
  const html=renderSocialView({status:'ready',me:{uid:a.id},raid:r});assert.match(html,/social-hit-feedback/);assert.match(html,/Last hit · Ember/);
 });
+
+test('social battle snapshots exclude knocked-out lineup monkeys until revived',()=>{
+ const s=save('capuchin'),p=structuredClone(s.run.monkey);p.id='fallen';p.hp=0;s.collection[p.id]=p;C.setParty(s,[s.run.activeId,p.id]);
+ const before=structuredClone(s),snapshot=S.snapshotTeam(s);assert.deepEqual(snapshot.map(m=>m.id),[s.run.activeId]);assert.deepEqual(s,before);
+ const duel=S.newDuel({id:'alice',name:'Alice',team:snapshot},{id:'bob',name:'Bob',team:members('langur')},42);assert.equal(duel.teams[0].some(m=>m.id===p.id),false);
+ const raid=S.newRaidAttempt(snapshot,1,42);assert.equal(raid.team.some(m=>m.id===p.id),false);
+ p.hp=1;assert.equal(S.snapshotTeam(s).some(m=>m.id===p.id),true);
+});
