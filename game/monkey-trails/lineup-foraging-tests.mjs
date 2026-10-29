@@ -1,7 +1,12 @@
-import test from 'node:test';
+import test,{beforeEach} from 'node:test';
 import assert from 'node:assert/strict';
 import * as C from './core.mjs';
 import {advanceLineupForaging} from './lineup-foraging.mjs';
+
+// These exact assertions isolate base lineup rewards. Event additions and their
+// GPS sample-size invariance are exercised separately in world-adventure-tests.
+// A test-scoped mock leaves storage timers and every other test file untouched.
+beforeEach(t=>t.mock.method(Date,'now',()=>Date.UTC(2026,10,1)));
 
 function add(s,species,id){
   const p=structuredClone(s.run.monkey);p.id=id;p.species=species;p.types=[...C.SPECIES[species].types];p.learned=[];p.loadout=['strike','brace','breathe'];C.syncProgression(p);p.hp=C.stats(p).hp;p.energy=C.stats(p).maxEnergy;s.collection[id]=p;return p;

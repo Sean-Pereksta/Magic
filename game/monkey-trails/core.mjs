@@ -18,6 +18,11 @@ import {activeExplorer,normalizeExplorer,explorationEncounterWeight,rollTrailRes
 import {advanceLineupForaging,lineupForageProfile} from './lineup-foraging.mjs';
 export {lineupForageProfile} from './lineup-foraging.mjs';
 import {habitatAt,habitatAtPosition} from './habitats.mjs';
+import {normalizeRoutes,routeView,routeEncounterWeight,routeEncounterLevel,routeDiscovery} from './trail-routes.mjs';
+import {eventSnapshot,worldEncounterWeight,worldDiscovery,worldGuardianView} from './world-events.mjs';
+import {recordTeamAction} from './team-techniques.mjs';
+import {applyCampMealRound,normalizeAdventureLife,recordJournalEncounter} from './adventure-life.mjs';
+export {chooseRoute,routeView} from './trail-routes.mjs';
 import {equipmentMoveCost,equipmentTacticalEvent,equipmentShieldMultiplier} from './equipment-battle.mjs';
 import {normalizeLegacy,startLegacyExpedition,expeditionDepth,legacyBonuses,recordLegacyWalking,recordLegacyBattle,recordLegacyCapture,beginLegacyBattle,legacyDamage,legacyDiscoveryBonus,completeLegacyExpedition} from './legacy.mjs';
 export {LEGACY_UPGRADES,LEGACY_LIMITS,normalizeLegacy,legacyView,legacyBonuses,purchaseLegacyUpgrade,expeditionRecap,expeditionDepth} from './legacy.mjs';
@@ -59,7 +64,7 @@ export const ENCOUNTER_STYLES={
 export const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 export function random(s){let x=s.rng|0;x^=x<<13;x^=x>>>17;x^=x<<5;s.rng=(x>>>0)||1234567;return s.rng/4294967296;}
 const choose=(s,a)=>a[Math.floor(random(s)*a.length)];
-const chooseSpecies=(s,ids)=>{const weight=id=>(SPECIES[id].encounterWeight??1)*regionalWeight(s,id)*equipmentEncounterWeight(s,id)*explorationEncounterWeight(s,id);const total=ids.reduce((sum,id)=>sum+weight(id),0);let roll=random(s)*total;for(const id of ids){roll-=weight(id);if(roll<0)return id;}return ids.at(-1);};
+const chooseSpecies=(s,ids,event=null)=>{const weight=id=>(SPECIES[id].encounterWeight??1)*regionalWeight(s,id)*equipmentEncounterWeight(s,id)*explorationEncounterWeight(s,id)*routeEncounterWeight(s,id)*worldEncounterWeight(id,event);const total=ids.reduce((sum,id)=>sum+weight(id),0);let roll=random(s)*total;for(const id of ids){roll-=weight(id);if(roll<0)return id;}return ids.at(-1);};
 const copy=o=>JSON.parse(JSON.stringify(o));
 const alive=p=>p&&p.hp>0;
 const nativeTypes=id=>[...(SPECIES[id]?.types||[])];
@@ -165,7 +170,7 @@ export function restart(s,species=s.run?.monkey.species||'capuchin'){
     vector:{east:0,north:0},weights:{N:0,S:0,E:0,W:0},direction:'N',battle:null,pendingEncounter:null,capture:null,camp:null,events:[],
     bonuses:{ribbon:0,scent:0,feather:0,campSeed:0},injuries:{},ultra:null,nextUltra:CONFIG.ultraFirstFeet*FEET,startedAt:Date.now()};
   s.run.items.charmMaterial=0;const legacyStart=startLegacyExpedition(s);s.run.nextEncounter=Math.max(250,CONFIG.encounterFeet-legacyStart.startingFeet)*FEET;syncActive(s);normalizeExplorer(s);normalizeWalkSessions(s);normalizeCompanions(s);normalizeAdventures(s);for(const p of sanctuary(s)){const maximum=stats(p,equipped(s,p));p.hp=maximum.hp;p.energy=maximum.maxEnergy;}
-  s.log=[];say(s,`Expedition ${s.meta.runs}: choose up to three companions before tracking. Your sanctuary and equipment endure.`);return s;
+  normalizeRoutes(s);s.log=[];say(s,`Expedition ${s.meta.runs}: choose up to three companions before tracking. Your sanctuary and equipment endure.`);return s;
 }
 export function direction(east,north,fallback='N'){if(Math.hypot(east,north)<2)return fallback;return Math.abs(north)>=Math.abs(east)?north>=0?'N':'S':east>=0?'E':'W';}
 export function odds(s){const w=s.run.weights,total=Object.values(w).reduce((a,b)=>a+b,0);return Object.fromEntries(Object.keys(w).map(d=>[DIRECTIONS[d],total?.1+.6*w[d]/total:.25]));}
@@ -174,10 +179,11 @@ export function discoveryInterval(s){const reduction=Math.min(CONFIG.maxDiscover
 function updateNextCache(s){s.run.nextCache=s.run.distance+(1-s.run.discoveryProgress)*discoveryInterval(s);}
 function cache(s,discoveryHabitat){
   const r=s.run;r.discoveries++;let roll=random(s);if(r.bonuses.scent>0){r.bonuses.scent--;roll=Math.min(.999,roll+.06);}const w=CONFIG.discoveryWeights,instinct=legacyDiscoveryBonus(s);if(instinct&&roll>=w.essence+w.fruit-instinct&&roll<w.essence+w.fruit)roll=w.essence+w.fruit+(roll-(w.essence+w.fruit-instinct));
-  const habitat=discoveryHabitat||habitatAt(s),discovery=rollTrailResource(s,roll,habitat,{instinct});awardTrailPickup(s,discovery);r.lastDiscovery={...discovery,habitat:habitat.id,habitatName:habitat.name};
+  const habitat=discoveryHabitat||habitatAt(s),discovery=rollTrailResource(s,roll,habitat,{instinct}),event=eventSnapshot(),worldBonuses=[...routeDiscovery(s,discovery),...worldDiscovery(discovery,event)];awardTrailPickup(s,discovery);for(const bonus of worldBonuses)awardTrailPickup(s,bonus);r.lastDiscovery={...discovery,habitat:habitat.id,habitatName:habitat.name,worldBonuses};
   say(s,`Discovery: ${trailPickupName(discovery)}.`);recordEquipmentDiscovery(s,r.lastDiscovery);
   const bonus=foragePickup(s,random,habitat);r.lastDiscovery.foragingBonuses=bonus?[bonus]:[];
-  if(bonus){awardTrailPickup(s,bonus);const p=s.collection[bonus.monkeyId];say(s,`${p.nickname||SPECIES[p.species].name} foraged an extra ${trailPickupName(bonus)}.`);}
+  if(bonus){const extra=worldDiscovery(bonus,event);awardTrailPickup(s,bonus);for(const pickup of extra){awardTrailPickup(s,pickup);r.lastDiscovery.worldBonuses.push(pickup);}const p=s.collection[bonus.monkeyId];say(s,`${p.nickname||SPECIES[p.species].name} foraged an extra ${trailPickupName(bonus)}.`);}
+  for(const bonus of r.lastDiscovery.worldBonuses)say(s,`${bonus.source}: extra ${trailPickupName(bonus)}.`);
   recordRegionEvent(s,'discoveries');recordAdventureEvent(s,'discoveries');recordTribeProgress(s,{discoveries:1});recordWalkSession(s,{discoveries:1,landId:s.world.activeLand});
 }
 function awardTrailPickup(s,pickup){
@@ -257,7 +263,7 @@ function advanceSegment(s,meters,east=0,north=0,onDiscovery){
     }else p.reviveWalkMeters=0;
     // Revival partway through a GPS sample grants foraging only after waking.
     const foraged=advanceLineupForaging(p,healingMeters);
-    if(foraged.length){for(const pickup of foraged)awardTrailPickup(s,pickup);say(s,`${p.nickname||SPECIES[p.species].name} gathered ${foraged.map(trailPickupName).join(' and ')} while walking.`);}
+    if(foraged.length){const event=eventSnapshot(),profile=lineupForageProfile(p),extras=[];for(const pickup of foraged){const reward=profile.rewards.find(row=>row.category===pickup.category&&row.id===pickup.id),occurrences=pickup.amount/reward.amount,extra=worldDiscovery(pickup,event,occurrences);awardTrailPickup(s,pickup);for(const bonus of extra){awardTrailPickup(s,bonus);extras.push(bonus);}}say(s,`${p.nickname||SPECIES[p.species].name} gathered ${[...foraged,...extras].map(trailPickupName).join(' and ')} while walking.`);}
     // Only distance after revival earns normal walking recovery.
     const max=stats(p,equipped(s,p)).hp;p.hp=Math.min(max,p.hp+max*equipmentWalkingRecovery(s,p,CONFIG.walkingRecovery.fraction)*healingMeters/(CONFIG.walkingRecovery.feet*FEET));
   }
@@ -275,11 +281,12 @@ export function encounterPlan(s,ultra=false){
   return{size:ultra?(feet>=d.ultraSupportFeet?2:1):size,level:ultra?clamp(Math.max(d.ultraMinLevel,level+d.ultraLevelBonus),1,CONFIG.maxLevel):level,stage,style:choose(s,Object.keys(ENCOUNTER_STYLES)),elite:feet>=deep&&index%d.eliteCycle===0};
 }
 function encounter(s,isUltra=false,{defer=false,descriptor=null}={}){
-  const r=s.run;if(isUltra&&!descriptor)descriptor={species:r.ultra.species,landId:r.ultra.landId||s.world.activeLand,habitat:r.ultra.habitat||regionSnapshot(s).habitat,...(r.ultra.hunt?{hunt:true}:{})};r.encounters++;const plan=isUltra&&r.ultra.plan?r.ultra.plan:encounterPlan(s,isUltra),pool=encounterPool(descriptor?.landId&&descriptor.landId!==s.world.activeLand?{...s,world:{...s.world,activeLand:descriptor.landId}}:s,isUltra),enemies=[];
+  const r=s.run,event=descriptor?.worldEvent||eventSnapshot(),trailRoute=routeView(s).selected?.id||null;if(isUltra&&!descriptor)descriptor={species:r.ultra.species,landId:r.ultra.landId||s.world.activeLand,habitat:r.ultra.habitat||regionSnapshot(s).habitat,...(r.ultra.hunt?{hunt:true}:{})};r.encounters++;const plan=isUltra&&r.ultra.plan?r.ultra.plan:encounterPlan(s,isUltra),pool=encounterPool(descriptor?.landId&&descriptor.landId!==s.world.activeLand?{...s,world:{...s.world,activeLand:descriptor.landId}}:s,isUltra),enemies=[];
+  if(!isUltra&&!descriptor)plan.level=Math.min(CONFIG.maxLevel,plan.level+routeEncounterLevel(s));
   if(!descriptor&&!isUltra&&r.startingDepth>0&&r.ordinaryWins<2){plan.size=1;plan.level=Math.min(plan.level,Math.max(1,Math.round(team(s).reduce((n,p)=>n+p.level,0)/team(s).length)));plan.stage=0;plan.elite=false;}
   for(let i=0;i<plan.size;i++){
     const style=ENCOUNTER_STYLES[plan.style],roles=style.roles[i%style.roles.length],rolePool=pool.filter(id=>roles.includes(SPECIES[id].role)),themed=rolePool.filter(id=>!style.elements||nativeTypes(id).some(t=>style.elements.includes(t)));
-    let species=descriptor&&i===0?descriptor.species:isUltra&&i===0?r.ultra.species:chooseSpecies(s,themed.length?themed:rolePool.length?rolePool:pool);if(!descriptor&&!isUltra&&r.ordinaryWins<2)species=r.ordinaryWins===0?'mossmop':'cinderpaw';
+    let species=descriptor&&i===0?descriptor.species:isUltra&&i===0?r.ultra.species:chooseSpecies(s,themed.length?themed:rolePool.length?rolePool:pool,!descriptor&&!isUltra?event:null);if(!descriptor&&!isUltra&&r.ordinaryWins<2)species=r.ordinaryWins===0?'mossmop':'cinderpaw';
     const tutorial=r.ordinaryWins<2&&!isUltra&&!descriptor,stage=tutorial?0:plan.stage,p=monkey(s,species,plan.level,nativeTypes(species),stage,'enemy');p.elite=plan.elite;p.bossOnly=isUltra&&i===0;
     if(tutorial)p.tutorialHpScale=CONFIG.tutorial.hpScales[r.ordinaryWins];p.hp=stats(p).hp;p.energy=stats(p).maxEnergy;
     const moves=unlocked(p).filter(id=>!['strike','brace','breathe'].includes(id));
@@ -289,6 +296,7 @@ function encounter(s,isUltra=false,{defer=false,descriptor=null}={}){
     const first=ranked[0],attack=ranked.find(id=>MOVES[id].power&&id!==first)||ranked[1];p.loadout=tutorial?[...CONFIG.tutorial.loadout]:['strike',first,attack,'breathe'].filter((id,index,a)=>id&&a.indexOf(id)===index);enemies.push(p);
   }
   const battle={id:isUltra?r.ultra.id:descriptor?.id||uid(s,'encounter'),originLandId:descriptor?.landId||s.world.activeLand,habitat:descriptor?.habitat||regionSnapshot(s).habitat,originDistance:r.distance,difficulty:s.difficulty,plan:copy(plan),...(descriptor?.hunt?{hunt:true}:{}),...(descriptor?.guardian?{guardian:true}:{}),enemy:enemies[0],enemies,enemyActive:0,turn:1,round:1,ready:false,boss:isUltra,ultra:isUltra,style:plan.style,intent:'strike',enemyAction:{type:'move',id:'strike'},rewarded:false,bondBonuses:{},pendingRally:null,enemyRally:null};
+  battle.worldEvent=event;battle.trailRoute=trailRoute;if(descriptor?.worldGuardian)battle.worldGuardian=true;
   if(descriptor?.worldLocationId){battle.worldLocationId=descriptor.worldLocationId;battle.worldLocationStage=descriptor.worldLocationStage;}
   if(descriptor?.guardian)configureGuardian(battle,battle.originLandId);
   if(descriptor?.guardian)battle.guardianName=descriptor.name;
@@ -296,6 +304,7 @@ function encounter(s,isUltra=false,{defer=false,descriptor=null}={}){
   activateBattle(s,battle);return battle;
 }
 function activateBattle(s,battle){
+  recordJournalEncounter(s,battle);
   normalizeEquipmentInventory(s);
   beginLegacyBattle(s,battle);
   const r=s.run;r.battle=battle;battle.openingLocked=false;battle.openingLeadId=r.activeId;for(const p of team(s)){p.cooldowns={};p.uses={};p.healingMomentum=0;delete p.charging;delete p.evasion;}r.phase='battle';ensureEquipmentBattle(s);if(battle.ultra)r.ultra.status='battle';planEnemy(s);say(s,`${battle.ultra?'Ultra arrival':battle.guardian?'Regional guardian':'Wild team'}: ${battle.enemies.map(p=>formName(p)).join(' · ')}. Stop safely before beginning.`);
@@ -309,6 +318,13 @@ export function passPendingEncounter(s){
 export function beginLocationBattle(s,descriptor){if(s.run.phase!=='trail'||!descriptor?.id||!SPECIES[descriptor.species]||!s.world.unlocked.includes(descriptor.landId))throw Error('Choose a ready special-location trial on the trail.');return encounter(s,false,{descriptor});}
 export function beginRegionalGuardian(s,landId){
   if(s.run.phase!=='trail')throw Error('Return to the trail before challenging a guardian.');const descriptor=guardianChallenge(s,landId);if(s.meta.claims[`reward:${descriptor.id}`])throw Error('This guardian is already defeated. Claim the adventure reward.');return encounter(s,false,{descriptor});
+}
+export function startWorldGuardian(s){
+  const view=worldGuardianView(s);if(!view.canChallenge)throw Error(view.reason||'The Bloomwatch Guardian is resting. Check the World Forecast for its next visit.');
+  // Choose from the player's existing eligible pool, preserving rarity/depth gates.
+  const pool=encounterPool(s),species=pool.filter(id=>SPECIES[id].types.includes('leaf')).sort((a,b)=>SPECIES[b].hp-SPECIES[a].hp)[0]||pool[0];
+  if(!species)throw Error('Keep exploring to meet the guardian.');
+  return encounter(s,false,{descriptor:{id:view.id,species,landId:s.world.activeLand,habitat:'landmark',guardian:true,worldGuardian:true,name:'Bloomwatch Guardian',worldEvent:eventSnapshot(view.event.startsAt)}});
 }
 export function startRegionalHunt(s){
   const r=s.run;if(r.phase!=='trail')throw Error('Return to the trail before beginning the hunt.');if(huntView(s)?.rarity==='ultra'&&r.ultra&&r.ultra.status!=='claimed')throw Error('Resolve the current Ultra sighting before starting another targeted Ultra hunt.');const descriptor=consumeReadyHunt(s);if(!descriptor)throw Error('Finish the research and required regional progression first.');
@@ -377,8 +393,10 @@ function contribution(s,p,damage=0,healing=0){
   const earned=grantXp(p,Math.max(0,next-c.base));c.xp+=earned;recordWalkSession(s,{trainingXp:earned});c.base=next;
 }
 function victory(s){
-  const r=s.run,b=r.battle;if(!b||b.rewarded||s.meta.claims[`reward:${b.id}`])return;b.rewarded=true;s.meta.claims[`reward:${b.id}`]=true;recordLivingWorldBattle(s,b);recordLegacyBattle(s,b);r.wins++;if(!b.ultra)r.ordinaryWins++;recordRegionEvent(s,'victories',1,b.originLandId||s.world.activeLand,{battleId:b.id});recordAdventureEvent(s,'victories',1,b.originLandId||s.world.activeLand);recordAdventureEvent(s,'seen',1,b.originLandId||s.world.activeLand,{species:b.enemies.map(p=>p.species)});if(b.guardian)recordAdventureEvent(s,'guardian',1,b.originLandId||s.world.activeLand);recordCompanionVictory(s,{guardian:!!b.guardian,regionId:b.originLandId||s.world.activeLand});recordWalkSession(s,{victories:1,friendship:team(s).length,landId:b.originLandId||s.world.activeLand});if(!b.ultra&&!b.guardian&&!b.hunt)r.nextEncounter=r.distance+ENCOUNTER_STEP;
+  const r=s.run,b=r.battle;if(!b||b.rewarded||s.meta.claims[`reward:${b.id}`])return;b.rewarded=true;s.meta.claims[`reward:${b.id}`]=true;recordLivingWorldBattle(s,b);if(!b.worldGuardian)recordLegacyBattle(s,b);r.wins++;if(!b.ultra)r.ordinaryWins++;recordRegionEvent(s,'victories',1,b.originLandId||s.world.activeLand,{battleId:b.id});recordAdventureEvent(s,'victories',1,b.originLandId||s.world.activeLand);recordAdventureEvent(s,'seen',1,b.originLandId||s.world.activeLand,{species:b.enemies.map(p=>p.species)});if(b.guardian&&!b.worldGuardian)recordAdventureEvent(s,'guardian',1,b.originLandId||s.world.activeLand);recordCompanionVictory(s,{guardian:!!b.guardian&&!b.worldGuardian,regionId:b.originLandId||s.world.activeLand});recordWalkSession(s,{victories:1,friendship:team(s).length,landId:b.originLandId||s.world.activeLand});if(!b.ultra&&!b.guardian&&!b.hunt)r.nextEncounter=r.distance+ENCOUNTER_STEP;
   const baseXp=18+b.enemies.reduce((n,e)=>n+e.level*2,0)+b.enemies.length*4,xp=awardXp(s,baseXp);recordWalkSession(s,{trainingXp:xp});r.fruit+=2;const type=b.enemy.types[0]||rollElement(s);r.essence[type]+=2;r.items.charmMaterial=(r.items.charmMaterial||0)+1;
+  if(b.trailRoute==='ancient-ruins'&&!b.ultra&&!b.guardian&&!b.hunt){r.items.charmMaterial++;say(s,'Ancient Ruins: recovered one extra charm material.');}
+  if(b.worldGuardian&&b.worldEvent?.type==='guardian-stirring'){r.essence.leaf+=3;say(s,'Bloomwatch Guardian: three extra Leaf essence. This event reward is saved.');}
   if(b.ultra){r.items.crownCore=(r.items.crownCore||0)+1;say(s,'Legendary victory: one Crown Core, a rare material found only by defeating an Ultra team.');}
   const tutorial=!b.ultra&&r.ordinaryWins<=2;if(tutorial)r.items.bondCharm+=2;if(!b.ultra&&r.ordinaryWins===1){r.items.revive+=CONFIG.tutorial.revivesAfterFirst;say(s,'Introductory revival supply: restore a fallen teammate before replacing them at camp.');}
   // An Ultra's support squad cannot consume the guaranteed boss invitation.
@@ -474,7 +492,7 @@ function execute(s,actor,target,id,actorStats,targetStats,label,targetId,side='p
   actor.healingMomentum=Math.min(100,(actor.healingMomentum||0)+restored);
   if(precision.perfect)say(s,'Perfect Timing!');
   equipmentAfterAbility(b,actor,m,{target,moveId:id,team:members,recipients:m.teamHeal?members:[actor]});processEquipmentKnockouts(s);
-  if(side==='player')contribution(s,actor,0,restored);
+  if(side==='player'){contribution(s,actor,0,restored);recordTeamAction(s,actor,id,m);}
   if(m.switch&&alive(actor)&&actor.id===(side==='player'?s.run.activeId:b.enemy.id)){
     const options=members.filter(p=>alive(p)&&p.id!==actor.id),incoming=options.find(p=>p.id===targetId)||options[0];if(incoming){replacement(s,incoming.id,side,false);
       if(m.teamShield){incoming.shield=Math.max(incoming.shield||0,Math.round(stats(incoming,combatGear(s,incoming)).hp*m.teamShield*shieldMultiplier));applyStatus(incoming,'shield',duration);}
@@ -495,6 +513,7 @@ function resolveRound(s){
     if(!alive(p))delete p.charging;
     if(b.round>=CONFIG.fatigueRound&&alive(p))p.hp=Math.max(0,p.hp-Math.max(1,Math.round(st.hp*Math.min(.6,.04*(b.round-CONFIG.fatigueRound+1)))));
     if(alive(p)){p.energy=Math.min(st.maxEnergy,p.energy+1);if(p.id===r.activeId||p.id===b.enemy.id){const recovered=equipmentApplyRecovery(b,p,st,combatGear(s,p));if(recovered.healing)say(s,`${p.nickname||SPECIES[p.species].name} recovers ${recovered.healing} health from equipment.`);}}}
+  applyCampMealRound(s,p=>stats(p,combatGear(s,p)));
   processEquipmentKnockouts(s);if(b.pendingRally?.expires<=b.round)b.pendingRally=null;if(b.enemyRally?.expires<=b.round)b.enemyRally=null;
   if(!team(s).some(alive)){endRun(s);return;}if(!b.enemies.some(alive)){
     if(!alive(r.monkey)){b.pendingVictory=true;r.phase='replacement';say(s,'Your team won, and the active companion fell. Choose a conscious teammate before collecting the rewards.');return;}
@@ -612,7 +631,7 @@ export function migrate(s){
 }
 export function validate(s){
   migrate(s);if(!s||s.version!==VERSION||!['gps','practice'].includes(s.mode)||typeof s.name!=='string'||s.name.length>30)throw Error('Unsupported save.');const r=s.run;
-  normalizeLegacy(s);
+  normalizeLegacy(s);normalizeRoutes(s);normalizeAdventureLife(s);
   if(!r||!['trail','battle','replacement','befriend','camp','dead'].includes(r.phase)||!s.collection||!Array.isArray(r.party)||r.party.length<1||r.party.length>3||new Set(r.party).size!==r.party.length||r.party.some(id=>!s.collection[id])||!r.party.includes(r.activeId))throw Error('Invalid expedition team.');syncActive(s);normalizeExplorer(s);const finite=n=>Number.isFinite(n)&&n>=0;
   // Earlier v2 checkpoints predate prospecting and legendary training materials.
   if(r.items)for(const id of['ingot','starOre','crownCore'])if(r.items[id]===undefined)r.items[id]=0;
