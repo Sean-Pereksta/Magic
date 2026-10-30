@@ -18,10 +18,25 @@ const metadata=id=>({...LEGACY_GEAR_AFFINITIES[id],...GEAR[id]});
 const supplyValues={berry:[3,.10],tonic:[4,.20],salve:[4,.20],bondCharm:[5,.40],revive:[10,.55],trailRibbon:[6,.40],treasureScent:[6,.45],scoutFeather:[8,.65],campfireSeed:[6,.45]};
 const rarityForQuality=q=>q>=.9?'legendary':q>=.7?'rare':q>=.3?'uncommon':'common';
 const tierOf=(s,id)=>s.meta?.gear?.[id]||0;
+const equipmentIngredient=id=>/^equipment:[A-Za-z0-9_-]{1,100}$/.test(id);
+const equipmentOwner=(s,id)=>Object.values(s.collection||{}).some(p=>Object.values(p.equipmentCopies||{}).includes(id));
+const equipmentValue=(rarity,tier)=>({common:8,uncommon:12,rare:18,epic:26,legendary:36,mythic:48}[rarity]||8)+(tier-1)*2;
+function consumeEquipment(s,copyId){
+  const c=s.meta.equipmentCopies?.[copyId];if(!c||c.favorite||c.protected||equipmentOwner(s,copyId))throw Error('Only unequipped, unfavorited and unprotected equipment can be smelted.');
+  delete s.meta.equipmentCopies[copyId];const remaining=Object.values(s.meta.equipmentCopies).filter(row=>row.itemId===c.itemId);
+  if(remaining.length)s.meta.gear[c.itemId]=Math.max(...remaining.map(row=>row.tier));else delete s.meta.gear[c.itemId];
+}
+function afterEquipmentOffering(s,inputs){
+  if(!Object.keys(inputs).some(equipmentIngredient))return s;const projected=copy(s);
+  for(const[id,n]of Object.entries(inputs))if(n&&equipmentIngredient(id))consumeEquipment(projected,id.slice(10));return projected;
+}
 
 function resource(s,id){
   let row;
-  if(id.startsWith('quality:')){
+  if(equipmentIngredient(id)){
+    const c=s.meta?.equipmentCopies?.[id.slice(10)],g=c&&has(GEAR,c.itemId)&&metadata(c.itemId);if(!g)return null;
+    row={name:`${g.name} · Rank ${c.tier}`,kind:'equipment',equipmentId:c.itemId,copyId:c.id,value:equipmentValue(g.rarity,c.tier),quality:({common:.4,uncommon:.55,rare:.7,epic:.85,legendary:.95,mythic:1})[g.rarity],rarity:g.rarity,element:g.element,elementWeight:4,raw:c.favorite||c.protected||equipmentOwner(s,c.id)?0:1};
+  }else if(id.startsWith('quality:')){
     const baseId=id.slice(8),base=baseId.startsWith('quality:')?null:resource(s,baseId);
     if(!base||base.rarity!=='common'||!['fruit','essence','item','fragment'].includes(base.kind))return null;
     row={...base,name:`Uncommon ${base.name.toLowerCase()}`,kind:'quality',value:Math.max(base.value+1,Math.ceil(base.value*1.5)),quality:Math.max(.45,base.quality+.20),rarity:'uncommon',raw:s.run?.forgeMaterials?.[baseId]};
@@ -51,7 +66,7 @@ function resource(s,id){
 }
 
 export function forgeInventory(s){
-  const ids=['fruit',...ELEMENT_IDS.map(t=>`essence:${t}`),'item:charmMaterial',...Object.keys(ITEMS).map(id=>`item:${id}`),...Object.keys(GEAR).map(id=>`fragment:${id}`),...Object.keys(SPECIES).map(id=>`bond:${id}`),...Object.keys(s.run?.forgeMaterials||{}).map(id=>`quality:${id}`)];
+  const ids=['fruit',...ELEMENT_IDS.map(t=>`essence:${t}`),'item:charmMaterial',...Object.keys(ITEMS).map(id=>`item:${id}`),...Object.keys(GEAR).map(id=>`fragment:${id}`),...Object.keys(SPECIES).map(id=>`bond:${id}`),...Object.keys(s.run?.forgeMaterials||{}).map(id=>`quality:${id}`),...Object.keys(s.meta?.equipmentCopies||{}).map(id=>`equipment:${id}`)];
   return [...new Set(ids)].map(id=>resource(s,id)).filter(row=>row&&(row.owned>0||row.kind==='fruit'||row.kind==='essence'||row.id==='item:charmMaterial')).map(({raw,...row})=>row);
 }
 
@@ -62,6 +77,7 @@ function mix(s,inputs){
   for(const[id,count]of entries.sort(([a],[b])=>a.localeCompare(b))){
     const row=resource(s,id);if(!row)throw Error('This mix contains an unknown resource.');
     if(!validCount(count))throw Error('Use whole, non-negative resource amounts.');
+    if(row.kind==='equipment'&&count>1)throw Error('Choose each equipment copy only once.');
     if(!count)continue;
     if(!Number.isFinite(row.raw)||row.raw<0||count>row.raw)throw Error(`Gather more ${row.name.toLowerCase()} for this mix.`);
     units+=count;if(units>FORGE_LIMITS.maximumUnits)throw Error(`Use at most ${FORGE_LIMITS.maximumUnits} resource units per craft.`);
@@ -110,7 +126,7 @@ function ledger(s){
   if(f.last){
     const r=f.last,g=has(GEAR,r.itemId)&&metadata(r.itemId),bounded=(n,min,max)=>Number.isFinite(n)&&n>=min&&n<=max;
     let normalized;try{normalized=mixForReplay(r.inputs);}catch{throw Error('This forge checkpoint has an invalid receipt.');}
-    if(!g||r.operationId!==`forge-${f.serial}`||r.serial!==f.serial||r.fingerprint!==JSON.stringify(normalized)||!['discovered','upgraded','salvaged'].includes(r.kind)||!Number.isInteger(r.tier)||r.tier<1||r.tier>12||r.kind==='discovered'&&r.tier!==1||r.kind==='upgraded'&&r.tier<2||r.kind==='salvaged'&&r.tier!==12||r.rarity!==g.rarity||r.element!==g.element||r.slot!==g.slot||!bounded(r.quality,0,1)||!bounded(r.chance,Number.MIN_VALUE,1)||!validCount(r.value)||r.value<8||r.value>720||Object.values(normalized).reduce((a,b)=>a+b,0)>60||!Object.keys(normalized).length)throw Error('This forge checkpoint has an invalid receipt.');
+    if(!g||r.operationId!==`forge-${f.serial}`||r.serial!==f.serial||r.fingerprint!==JSON.stringify(normalized)||!['discovered','upgraded','salvaged'].includes(r.kind)||!Number.isInteger(r.tier)||r.tier<1||r.tier>12||r.kind==='discovered'&&r.tier!==1||r.kind==='upgraded'&&r.tier<2||r.kind==='salvaged'&&r.tier!==12||r.rarity!==g.rarity||r.element!==g.element||r.slot!==g.slot||!bounded(r.quality,0,1)||!bounded(r.chance,Number.MIN_VALUE,1)||!validCount(r.value)||r.value<8||r.value>4200||Object.values(normalized).reduce((a,b)=>a+b,0)>60||!Object.keys(normalized).length)throw Error('This forge checkpoint has an invalid receipt.');
     for(const key of ['name','desc','icon'])if(typeof r[key]!=='string'||r[key].length>1200)throw Error('This forge checkpoint has an invalid receipt.');
     const hasCharges=['costInputs','chargedUnits','chargedValue','campBonus','discount','qualityBoost','baseQuality','offeredUnits'].some(key=>has(r,key));
     let costs=normalized;
@@ -140,7 +156,8 @@ export function previewForge(s,inputs={}){
   try{m=mix(s,inputs);}catch(error){const benefits=terms(s);reason=error.message;m={inputs:{},costInputs:{},costSummary:[],units:0,offeredUnits:0,chargedUnits:0,value:0,chargedValue:0,resourceQuality:0,baseQuality:0,quality:benefits.qualityBoost,...benefits,weights:Object.fromEntries(AFFINITY_IDS.map(id=>[id,2])),fingerprint:'{}'};}
   if(!reason&&m.value<FORGE_LIMITS.minimumValue)reason=`Add resources worth at least ${FORGE_LIMITS.minimumValue} forge value.`;
   if(!reason&&!canChangeEquipment(s))reason='Finish the active battle before crafting equipment.';
-  const probabilities=odds(s,m);if(!reason&&!probabilities.outcomes.length)reason='No eligible equipment is available. Choose another resource mix.';
+  let projected=s;try{projected=afterEquipmentOffering(s,m.inputs);}catch(error){reason||=error.message;}
+  const probabilities=odds(projected,m);if(!reason&&!probabilities.outcomes.length)reason='No eligible equipment is available. Choose another resource mix.';
   return{canCraft:!reason,reason,...m,...probabilities,refunds:equipmentCraftRefund(s,m.costInputs),limits:{...FORGE_LIMITS}};
 }
 
@@ -156,6 +173,7 @@ function assertEquipmentInventory(s){
 }
 
 function spend(s,id,count){
+  if(equipmentIngredient(id)){if(count!==1)throw Error('Choose each equipment copy only once.');consumeEquipment(s,id.slice(10));return;}
   if(id==='fruit'){s.run.fruit-=count;return;}
   if(id.startsWith('quality:')){s.run.forgeMaterials[id.slice(8)]-=count;return;}
   const split=id.indexOf(':'),kind=id.slice(0,split),key=id.slice(split+1);
@@ -172,6 +190,7 @@ export function craftForge(s,inputs,operationId){
   if(operationId!==`forge-${f.serial+1}`)throw Error('That forge operation is already resolved or out of sequence.');
   const preview=previewForge(s,inputs);if(!preview.canCraft)throw Error(preview.reason);
   const verified=assertEquipmentInventory(s);
+  for(const[id,count]of Object.entries(preview.costInputs))spend(verified,id,count);
   // All checks precede the only RNG transition and every inventory mutation.
   let x=s.rng|0;x^=x<<13;x^=x>>>17;x^=x<<5;const nextRng=(x>>>0)||1234567;
   const roll=Math.floor(nextRng/4294967296*FORGE_LIMITS.tickets);let remaining=roll,result=preview.outcomes.at(-1);
@@ -184,17 +203,21 @@ export function craftForge(s,inputs,operationId){
   const receipt={operationId,fingerprint,itemId:result.id,name:result.name,rarity:result.rarity,element:result.element,slot:result.slot,icon:result.icon,desc:result.desc,kind:award.kind,tier:award.tier,copyId:award.copyId,salvage,refunds:preview.refunds,inputs:preview.inputs,costInputs:preview.costInputs,costSummary:preview.costSummary,value:preview.value,chargedValue:preview.chargedValue,offeredUnits:preview.offeredUnits,chargedUnits:preview.chargedUnits,campBonus:preview.campBonus,discount:preview.discount,qualityBoost:preview.qualityBoost,gearQualityBoost:preview.gearQualityBoost,baseQuality:preview.baseQuality,quality:preview.quality,chance:result.chance,serial:f.serial+1};
   const checkpoint={...verified,meta:{...verified.meta,forge:{serial:receipt.serial,last:receipt}}};
   if(JSON.stringify(checkpoint).length+256>650000)throw Error('Equipment storage is full. Upgrade available duplicate copies first.');
-  for(const[id,count]of Object.entries(preview.costInputs))spend(s,id,count);
-  receipt.copyId=awardGearCopy(s,result.id,{source:'forge',allowSalvage:false}).copyId;
-  applyEquipmentCraftRefund(s,receipt.refunds);
-  s.rng=nextRng;s.meta.forge={serial:receipt.serial,last:copy(receipt)};
+  receipt.copyId=awardGearCopy(verified,result.id,{source:'forge',allowSalvage:false}).copyId;
+  applyEquipmentCraftRefund(verified,receipt.refunds);
+  verified.rng=nextRng;verified.meta.forge={serial:receipt.serial,last:copy(receipt)};
+  if(JSON.stringify(verified).length>650000)throw Error('Equipment storage is full. Upgrade available duplicate copies first.');
+  // Commit only after consumption and the award succeeded on the isolated copy.
+  s.meta=verified.meta;s.rng=verified.rng;
+  for(const key of ['fruit','essence','items','forgeMaterials','legacy'])if(verified.run[key]!==undefined)s.run[key]=verified.run[key];
+  for(const[id,p]of Object.entries(verified.collection||{})){s.collection[id].equipment=p.equipment;s.collection[id].equipmentCopies=p.equipmentCopies;}
   return copy(receipt);
 }
 
 function mixForReplay(inputs){
   if(!inputs||typeof inputs!=='object'||Array.isArray(inputs)||![Object.prototype,null].includes(Object.getPrototypeOf(inputs)))throw Error('Choose resource amounts for your mix.');
   const normalized={};
-  for(const[id,count]of Object.entries(inputs).sort(([a],[b])=>a.localeCompare(b))){if(!resource({},id))throw Error('This mix contains an unknown resource.');if(!validCount(count))throw Error('Use whole, non-negative resource amounts.');if(count)normalized[id]=count;}
+  for(const[id,count]of Object.entries(inputs).sort(([a],[b])=>a.localeCompare(b))){if(!resource({},id)&&!equipmentIngredient(id))throw Error('This mix contains an unknown resource.');if(!validCount(count))throw Error('Use whole, non-negative resource amounts.');if(count)normalized[id]=count;}
   return normalized;
 }
 

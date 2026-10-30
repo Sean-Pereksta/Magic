@@ -402,3 +402,7 @@ See [EXPLORATION.md](./EXPLORATION.md) for Active monkey selection, visible fora
 ### Knocked-out lineup companions
 
 Collected monkeys can join the lineup while knocked out, provided the resulting lineup has at least one conscious member. A knocked-out companion keeps its injuries, cannot lead or switch into an expedition battle, and its lineup foraging progress pauses until revival. Walking 2,000 accepted feet with it in the lineup revives it at 25% health. Friendly battles and tribe boss attempts use protected snapshots of conscious lineup members; a knocked-out monkey joins new social battles once revived. Existing social battles retain their original snapshots.
+
+### Directional temples and pack merchants
+
+See [Temples and Merchants](TEMPLES_AND_MERCHANTS.md) for saved cardinal walking challenges, merchant purchases using pack crafting value, and spare equipment as forge ingredients, and grove fruit baskets that require another 500 feet before collecting 3–5 fruit.

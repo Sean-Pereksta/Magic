@@ -14,6 +14,10 @@ import * as FriendUI from './companions-ui.mjs';
 import * as Regions from './regional-adventures.mjs';
 import * as World from './living-world.mjs';
 import * as WorldUI from './living-world-ui.mjs';
+import * as Merchant from './merchant.mjs';
+import {renderMerchant} from './merchant-ui.mjs';
+import {claimFruitBasket,fruitBasketView} from './fruit-baskets.mjs';
+import {renderFruitBasket,refreshFruitBasket} from './fruit-baskets-ui.mjs';
 import * as Forge from './forge.mjs';
 import * as CampExchange from './camp-exchange.mjs';
 import * as ForgeUI from './forge-ui.mjs';
@@ -52,6 +56,7 @@ let adventureDialog=null,adventureClockKey='';
 let adventureJournalKey='';
 let companionSection='train',sanctuaryScroll=0,welcomeMode='new',companionDetailOpen=false,detailReturn=null;
 const deviceAccount=new RememberedAccount();let rememberedAccount=null,rememberedAccountRequest=0;
+let merchantPayment={},merchantBusy=false,merchantUnsaved=false,merchantLocation=null;
 let forgeMix={},forgeBusy=false,forgeUnsaved=false,gearPicker=null,forgeOdds={rarity:'all',element:'all',page:0};
 let packSection='supplies',supplyRecipe=null,consumableEssence='leaf',equipmentSelection=null,equipmentScroll=0;
 const packScroll={};let supplyMarkup='';
@@ -223,7 +228,7 @@ async function rememberOpenedAccount(nextVault,remember){
   catch{toast(remember?'This browser could not remember the account. Use your save name and password next time.':'Quick access could not be removed. Use Forget account from the starting menu.');}
 }
 function clearNotifications(){clearTimeout(discoveryTimer);discoveryTimer=null;discoveryQueue.clear();const popup=$('discovery-popup');if(popup.matches(':popover-open'))popup.hidePopover();popup.hidden=true;}
-async function showGame(next,nextVault){clearNotifications();locationAccess.cancel();vault=nextVault;state=next;companionDetailOpen=false;detailReturn=null;forgeMix={};forgeBusy=false;forgeUnsaved=false;gearPicker=null;equipRoster=null;forgeResultHidden=null;legacyBusy=false;tab=['walk','team','sanctuary','pack','social'].includes(next.meta.interface?.tab)?next.meta.interface.tab:'walk';if(['battle','replacement','befriend','camp','dead'].includes(next.run.phase))tab='walk';selectedId=next.collection[next.meta.interface?.selectedId]?.id||active().id;await radar.bind(vault);$('creature-password').value='';$('welcome').hidden=true;$('game').hidden=false;$('login-message').textContent='';$('mode-label').textContent=state.mode==='practice'?'PRACTICE · UNRANKED':'GPS · FOREGROUND ONLY';if(state.run.battle)state.run.battle.ready=false;render();const reveal=P.pendingReveal(state);if(reveal)showSavedReveal(reveal);void social.start();window.scrollTo(0,0);}
+async function showGame(next,nextVault){clearNotifications();locationAccess.cancel();vault=nextVault;state=next;companionDetailOpen=false;detailReturn=null;forgeMix={};forgeBusy=false;forgeUnsaved=false;merchantPayment={};merchantBusy=false;merchantUnsaved=false;merchantLocation=null;gearPicker=null;equipRoster=null;forgeResultHidden=null;legacyBusy=false;tab=['walk','team','sanctuary','pack','social'].includes(next.meta.interface?.tab)?next.meta.interface.tab:'walk';if(['battle','replacement','befriend','camp','dead'].includes(next.run.phase))tab='walk';selectedId=next.collection[next.meta.interface?.selectedId]?.id||active().id;await radar.bind(vault);$('creature-password').value='';$('welcome').hidden=true;$('game').hidden=false;$('login-message').textContent='';$('mode-label').textContent=state.mode==='practice'?'PRACTICE · UNRANKED':'GPS · FOREGROUND ONLY';if(state.run.battle)state.run.battle.ready=false;render();const reveal=P.pendingReveal(state);if(reveal)showSavedReveal(reveal);void social.start();window.scrollTo(0,0);}
 async function enter(name,password,options){loginBusy(true);const remember=$('remember-account').checked;$('login-message').textContent='Opening your encrypted sanctuary…';const nextVault=new Vault(saveStatus);try{const next=await nextVault.open(name,password,options);await rememberOpenedAccount(nextVault,remember);await showGame(next,nextVault);}catch(error){$('login-message').textContent=error.message;}finally{loginBusy(false);}}
 $('reopen-account').addEventListener('click',async()=>{
   if(busy)return;loginBusy(true);$('login-message').textContent='Reopening your remembered sanctuary…';
@@ -413,7 +418,7 @@ function nextDiscovery(cacheLeft,progress){return `<div class="discovery ${Date.
 function walk(){
   const r=state.run;if(r.phase==='dead')return death();if(['battle','replacement'].includes(r.phase))return P.renderTutorial(state)+battle();if(r.phase==='befriend')return P.renderTutorial(state)+capture();if(r.phase==='camp')return camp();
   const interval=C.discoveryInterval(state),cacheLeft=Math.max(0,r.nextCache-r.distance),encounterLeft=Math.max(0,r.nextEncounter-r.distance),progress=C.clamp((1-cacheLeft/interval)*100,0,100);
-  return `<div class="walk-layout"><section class="walk-main" data-mode="${state.mode}"><div class="tracking-controls"><button data-action="tracking" id="tracking-button" class="primary" ${state.mode==='practice'?'hidden':''}>Start walking</button>${state.mode==='practice'?practiceControls():''}<div class="gps-status-row"><p id="gps-status" class="gps-status"></p><p id="gps-meta" class="gps-meta"></p></div>${state.mode==='gps'?compactLocationPanel():''}</div><div class="trail-strip"><div class="distance-block"><span>EXPEDITION ${String(state.meta.runs).padStart(2,'0')}</span><strong>${feet(r.distance)}<small> ft</small></strong><small class="depth-label">${feet(C.expeditionDepth(state))} ft trail depth</small></div><div class="tracking-state"><b id="walking-state">${gps.active?'Walking':'Paused'}</b><span id="gps-quality">GPS waiting</span></div><span class="speed-limit"><b>10</b><small>MPH LIMIT</small></span></div><div data-adventure-banner>${AdventureUI.renderWorldBanner(state)}</div>${landscape(nextDiscovery(cacheLeft,progress))}<div data-adventure-routes>${AdventureUI.renderRouteChoices(state)}</div>${WorldUI.specialTrackerUI(state)}<div class="walk-goals" data-walk-goals>${pinnedGoalUI()}${AdventureUI.renderTrackedJournalGoal(state)}</div>${habitatUI(state)}${pendingEncounterCard()}<div class="team-heading"><span>ON YOUR TEAM</span><b>${team().length} / 3</b></div>${teamStrip()}${walkingBonuses()}<button class="text-button session-finish" data-action="finish-walk">Finish walk · view recap</button><div class="next-events"><span>${uiIcon('rival')}<i>Next rival<b>${r.pendingEncounter?'Encounter ready':`${feet(encounterLeft)} ft`}</b></i></span><span>${uiIcon('camp')}<i>Trail camp<b>${feet(r.nextCamp-r.distance)} ft</b></i></span></div><div class="recent-discovery">${uiIcon(r.lastDiscovery?'pack':'leaf')}<span>${esc(discoveryText())}</span></div></section><aside class="walk-aside">${ultraCard()}${P.renderTutorial(state)}<button class="wide activity-open" data-action="activity-open">Trail activity & saved moments</button>${journal()}</aside></div>`;
+  return `<div class="walk-layout"><section class="walk-main" data-mode="${state.mode}"><div class="tracking-controls"><button data-action="tracking" id="tracking-button" class="primary" ${state.mode==='practice'?'hidden':''}>Start walking</button>${state.mode==='practice'?practiceControls():''}<div class="gps-status-row"><p id="gps-status" class="gps-status"></p><p id="gps-meta" class="gps-meta"></p></div>${state.mode==='gps'?compactLocationPanel():''}</div><div class="trail-strip"><div class="distance-block"><span>EXPEDITION ${String(state.meta.runs).padStart(2,'0')}</span><strong>${feet(r.distance)}<small> ft</small></strong><small class="depth-label">${feet(C.expeditionDepth(state))} ft trail depth</small></div><div class="tracking-state"><b id="walking-state">${gps.active?'Walking':'Paused'}</b><span id="gps-quality">GPS waiting</span></div><span class="speed-limit"><b>10</b><small>MPH LIMIT</small></span></div><div data-adventure-banner>${AdventureUI.renderWorldBanner(state)}</div>${landscape(nextDiscovery(cacheLeft,progress))}<div data-adventure-routes>${AdventureUI.renderRouteChoices(state)}</div>${WorldUI.specialTrackerUI(state)}<div data-fruit-basket-host>${renderFruitBasket(state)}</div><div class="walk-goals" data-walk-goals>${pinnedGoalUI()}${AdventureUI.renderTrackedJournalGoal(state)}</div>${habitatUI(state)}${pendingEncounterCard()}<div class="team-heading"><span>ON YOUR TEAM</span><b>${team().length} / 3</b></div>${teamStrip()}${walkingBonuses()}<button class="text-button session-finish" data-action="finish-walk">Finish walk · view recap</button><div class="next-events"><span>${uiIcon('rival')}<i>Next rival<b>${r.pendingEncounter?'Encounter ready':`${feet(encounterLeft)} ft`}</b></i></span><span>${uiIcon('camp')}<i>Trail camp<b>${feet(r.nextCamp-r.distance)} ft</b></i></span></div><div class="recent-discovery">${uiIcon(r.lastDiscovery?'pack':'leaf')}<span>${esc(discoveryText())}</span></div></section><aside class="walk-aside">${ultraCard()}${P.renderTutorial(state)}<button class="wide activity-open" data-action="activity-open">Trail activity & saved moments</button>${journal()}</aside></div>`;
 }
 function statusList(p){return Object.entries(p.status||{}).map(([id,v])=>`<span class="status">${esc(id)} ${typeof v==='object'?v.turns??v.duration??'':v}r</span>`).join('');}
 function fighter(p,isEnemy){const st=isEnemy?C.stats(p):pstats(p);return `<div class="fighter ${isEnemy?'enemy-fighter':''}">${portrait(p,{enemy:isEnemy,state:p.hp<=0?'knockout':isEnemy&&['attack','cast','signature'].includes(animation)?'hit':!isEnemy?animation:'idle'})}<h3>${esc(name(p))}</h3><div class="fighter-meta">Lv ${p.level} <span>${chips(p)}</span></div>${bar(p.hp,st.hp,'Health',isEnemy?'enemy':'')}${bar(p.energy,st.maxEnergy,'Energy','energy')}<div class="statuses">${statusList(p)}</div></div>`;}
@@ -598,7 +603,7 @@ function switchPackSection(section,{focusTab=true}={}){
   if(focusTab)$(`pack-tab-${section}`)?.focus({preventScroll:true});
 }
 function packMaterials(){
-  const rows=Forge.forgeInventory(state).filter(row=>row.kind!=='item'||['item:charmMaterial','item:ingot','item:starOre','item:crownCore'].includes(row.id));
+  const rows=Forge.forgeInventory(state).filter(row=>row.kind!=='equipment'&&(row.kind!=='item'||['item:charmMaterial','item:ingot','item:starOre','item:crownCore'].includes(row.id)));
   return `<section class="panel pack-materials-panel"><span class="eyebrow">GATHERED ALONG THE WAY</span><h2>Crafting materials</h2><p class="muted">Select a material to see what it makes. Fruit, essence and charm material also craft your trail supplies.</p><div class="pack-material-grid">${rows.map(row=>`<button type="button" class="material-pack-tile rarity-${esc(row.rarity)}" data-action="pack-material" data-id="${esc(row.id)}" aria-label="${esc(row.name)}, ${row.owned} owned. See crafting uses.">${ForgeUI.forgeResourceArt(row)}<strong>${esc(row.name)}</strong><small class="material-crafting-value">${row.value} forge value</small><span>×${row.owned}</span></button>`).join('')}</div></section>
     <details class="pack-exchanges"><summary>Trade materials & original recipes</summary><div class="pack-crafting two-col"><div class="stack">${essenceMarket()}<section class="panel"><h2>Essence exchange</h2><p class="muted">Exchange 4 spare essence for 1 of another element.</p><div class="exchange-grid"><label>Give essence<select id="exchange-from">${Object.entries(C.ELEMENTS).map(([id,e])=>`<option value="${id}">${e.name} (${state.run.essence[id]??0})</option>`).join('')}</select></label><span>→</span><label>Receive essence<select id="exchange-to">${Object.entries(C.ELEMENTS).map(([id,e])=>`<option value="${id}" ${id==='earth'?'selected':''}>${e.name}</option>`).join('')}</select></label></div><p class="fine" data-exchange-reason></p><button data-action="exchange" class="wide">Exchange essence</button><details class="pack-supplies"><summary>Original fragment recipes</summary><p class="fine">Use saved fragments for these original recipes or mix them in the forge.</p>${['fang','shell','heart','wind','satchel'].map(id=>`<button class="craft-gear" data-action="craft" data-id="${id}">Craft ${esc(C.GEAR[id].name)} <span>${state.meta.fragments?.[id]||0} / ${C.CONFIG.fragmentCost} fragments</span></button><p class="fine">${!canPrepare()?'Finish the encounter to craft equipment.':state.meta.gear[id]>=12?'Maximum rank reached.':(state.meta.fragments?.[id]||0)<C.CONFIG.fragmentCost?'Gather more fragments to craft this equipment.':'Ready to craft.'}</p>`).join('')}</details></section></div></div></details><details class="pack-exchanges"><summary>Forge Reserve · permanent materials</summary>${SalesUI.reserveUI(state)}</details>`;
 }
@@ -649,6 +654,21 @@ function openEquipmentItem(itemId,{tier=0,copyId=null,monkeyId=null,slot=null,fr
   if(!C.GEAR[itemId])return;equipmentScroll=window.scrollY;equipmentSelection={itemId,tier,copyId,monkeyId:monkeyId||selectedId,slot,fromOdds};showEquipmentItem({preserveScroll:false});
   if(equipmentSelection.copyId){EquipmentInventory.setEquipmentCopyFlag(state,equipmentSelection.copyId,'isNew',false);refreshInventory();void checkpoint(true);}
 }
+function openMerchant(id){
+  if(social.busy)throw Error('Return from the current battle before trading.');
+  if(merchantUnsaved&&merchantLocation!==id)throw Error('Retry saving your current purchase before visiting another merchant.');
+  if(merchantLocation!==id)merchantPayment={};merchantLocation=id;
+  modal(renderMerchant(state,id,merchantPayment,{busy:merchantBusy,unsaved:merchantUnsaved}),'Merchant · Pack barter','world-location-dialog');
+}
+async function buyFromMerchant(offerId){
+  if(merchantBusy)return;merchantBusy=true;
+  try{
+    if(!merchantUnsaved){Merchant.purchaseMerchant(state,merchantLocation,offerId,merchantPayment,Merchant.nextMerchantOperationId(state));merchantPayment={};merchantUnsaved=true;}
+    openMerchant(merchantLocation);vault.localOK=false;await checkpoint(true);
+    if(vault.localOK){merchantUnsaved=false;toast('Purchase saved. Any unspent barter value stays as merchant credit.');}
+    else toast('Purchase held here. Retry saving before buying again.');
+  }finally{merchantBusy=false;render();openMerchant(merchantLocation);}
+}
 async function rollForge(){
   if(forgeBusy)return;forgeBusy=true;refreshForge();
   try{
@@ -681,7 +701,7 @@ function refreshMaterialExchange(){
   const reason=!canPrepare()?'Exchange essence on the trail or at camp.':from===to?'Choose two different elements.':(state.run.essence[from]||0)<4?'Gather at least 4 of the essence you want to give.':'';
   button.disabled=!!reason;document.querySelector('[data-exchange-reason]').textContent=reason||'Ready to exchange 4 essence for 1.';
 }
-function renderGPS(){refreshAdventureJournalProgress();refreshLineupRecovery();refreshLineupForaging();refreshUpgradeIndicators();refreshForge();refreshEssenceTrade();refreshCraftButtons();if(state){refreshRegionalProgress(state);WorldUI.refreshLivingWorldProgress(state);const goals=document.querySelector('[data-walk-goals]');if(goals&&tab!=='walk')goals.innerHTML=pinnedGoalUI();}refreshTrainingProgress();refreshChallengeProgress();refreshEssenceProgress();if(state)void social.heartbeat();updateLandMotion();renderLocation();if($('gps-status'))$('gps-status').textContent=state?.mode==='practice'?'':gpsInfo.reason;if($('gps-meta'))$('gps-meta').textContent=gpsInfo.mph==null?'':`${gpsInfo.mph.toFixed(1)} mph`;if($('tracking-button'))$('tracking-button').textContent=gps.active?'Pause walking':'Start walking';if($('walking-state'))$('walking-state').textContent=state?.mode==='practice'?'Practice':gps.active?'Walking':'Paused';if($('gps-quality'))$('gps-quality').textContent=state?.mode==='practice'?'Unranked trail':gpsInfo.accuracy==null?'GPS waiting':`GPS ±${Math.round(gpsInfo.accuracy)} m`;}
+function renderGPS(){if(state)refreshFruitBasket(state);refreshAdventureJournalProgress();refreshLineupRecovery();refreshLineupForaging();refreshUpgradeIndicators();refreshForge();refreshEssenceTrade();refreshCraftButtons();if(state){refreshRegionalProgress(state);WorldUI.refreshLivingWorldProgress(state);const goals=document.querySelector('[data-walk-goals]');if(goals&&tab!=='walk')goals.innerHTML=pinnedGoalUI();}refreshTrainingProgress();refreshChallengeProgress();refreshEssenceProgress();if(state)void social.heartbeat();updateLandMotion();renderLocation();if($('gps-status'))$('gps-status').textContent=state?.mode==='practice'?'':gpsInfo.reason;if($('gps-meta'))$('gps-meta').textContent=gpsInfo.mph==null?'':`${gpsInfo.mph.toFixed(1)} mph`;if($('tracking-button'))$('tracking-button').textContent=gps.active?'Pause walking':'Start walking';if($('walking-state'))$('walking-state').textContent=state?.mode==='practice'?'Practice':gps.active?'Walking':'Paused';if($('gps-quality'))$('gps-quality').textContent=state?.mode==='practice'?'Unranked trail':gpsInfo.accuracy==null?'GPS waiting':`GPS ±${Math.round(gpsInfo.accuracy)} m`;}
 function render(){
   const oldMap=$('view').querySelector('.terrain-map'),camera=oldMap?{id:oldMap.dataset.land,east:Number(oldMap.dataset.mapEast),north:Number(oldMap.dataset.mapNorth),scale:Number(oldMap.dataset.mapScale)}:null;
   if(!state)return;observeMilestones();menuProgressPending=false;document.body.classList.add('in-game');document.body.classList.toggle('is-walk',tab==='walk');document.body.classList.toggle('is-forge',tab==='pack'&&packSection==='forge');$('creature-label').textContent=`${state.name} · ${state.mode==='practice'?'Practice sanctuary':'Expedition '+state.meta.runs}`;document.querySelectorAll('[data-action="tab"]').forEach(b=>b.setAttribute('aria-current',b.dataset.id===tab?'page':'false'));
@@ -868,6 +888,25 @@ document.addEventListener('click',async e=>{
     if(a==='map-zoom'){mapZoom=C.clamp(Math.round((mapZoom+(id==='in'?.25:-.25))*100)/100,.75,1.5);render();document.querySelector(`[data-action="map-zoom"][data-id="${id}"]`)?.focus();return;}
     if(a==='lands'||a==='lands-preview'){openLands(a==='lands-preview'?id:null);return;}
     if(a==='world-locations'||a==='world-quests'){openLands(id||state.world.activeLand);return;}
+    if(a==='fruit-basket-open'){if(fruitBasketView(state))modal(renderFruitBasket(state),'Fruit basket');return;}
+    if(a==='fruit-basket-claim'){if(social.busy)throw Error('Finish the current battle before collecting.');const receipt=claimFruitBasket(state,id);P.recordActivity(state,{id:receipt.id,kind:'reward',title:'Fruit basket collected',detail:`+${receipt.fruit} fruit after walking 500 feet.`,important:true});await checkpoint(true);closeModal();render();toast(`Fruit basket: +${receipt.fruit} fruit.`);return;}
+    if(a==='merchant-open'){openMerchant(id);return;}
+    if(a.startsWith('merchant-')){
+      if(social.busy)throw Error('Return from the current battle before trading.');
+      const location=b.dataset.location||merchantLocation;if(!location||location!==merchantLocation)throw Error('Reopen this merchant before trading.');
+      if(merchantBusy)return;
+      if(a==='merchant-save-retry'){await buyFromMerchant(null);return;}
+      if(merchantUnsaved)throw Error('Retry saving the current purchase first.');
+      if(a==='merchant-payment-add'){
+        const resource=$('merchant-payment-resource').value,quantity=Number($('merchant-payment-quantity').value);
+        if(!resource||!Number.isSafeInteger(quantity)||quantity<=0)throw Error('Choose a pack material and a whole quantity.');
+        const next={...merchantPayment,[resource]:(merchantPayment[resource]||0)+quantity},offer=Merchant.merchantView(state,location,next);
+        if(offer.reason)throw Error(offer.reason);merchantPayment=offer.payment;openMerchant(location);return;
+      }
+      if(a==='merchant-payment-remove'){delete merchantPayment[id];openMerchant(location);return;}
+      if(a==='merchant-buy'){await buyFromMerchant(id);return;}
+      return;
+    }
     if(a==='world-location-open'){modal(WorldUI.specialLocationUI(state,id),'Special destination','world-location-dialog');return;}
     if(a.startsWith('world-')||a==='sidequest-claim'){
       if(social.busy)throw Error('Return from the current battle before continuing this destination.');
@@ -875,6 +914,7 @@ document.addEventListener('click',async e=>{
       if(a==='world-pin')World.pinLivingWorldGoal(state,id);
       else if(a==='world-safe')World.useLocationSafeRoute(state,id);
       else if(a==='world-visit')World.visitLocation(state,id);
+      else if(a==='world-temple-flexible')World.useTempleFlexibleRoute(state,id);
       else if(a==='world-dismiss')World.dismissLocation(state,id);
       else if(a==='world-puzzle')World.locationPuzzleInput(state,id,b.dataset.symbol);
       else if(a==='world-forge-boost')World.setLocationForgeBoost(state,id,b.dataset.boost==='true');
@@ -886,7 +926,7 @@ document.addEventListener('click',async e=>{
       else return;
       if(reward)P.recordActivity(state,{id:reward.operationId||reward.id||id,kind:'reward',title:'Regional reward collected',detail:'Your one-time claim and rewards are saved.',important:true});
       await checkpoint(true);render();
-      if(['world-safe','world-visit','world-puzzle','world-forge-boost','world-claim'].includes(a))modal(WorldUI.specialLocationUI(state,id),'Special destination','world-location-dialog');
+      if(['world-safe','world-visit','world-temple-flexible','world-puzzle','world-forge-boost','world-claim'].includes(a))modal(WorldUI.specialLocationUI(state,id),'Special destination','world-location-dialog');
       else if(a==='sidequest-claim'||a==='world-achievement-claim')openLands(state.world.activeLand);
       else if(a==='world-dismiss')closeModal();
       else if(a==='world-pin')toast('Trail goal pinned.');

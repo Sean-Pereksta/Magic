@@ -40,7 +40,7 @@ test('forge filters expose artwork, selected remainder and protected equipment w
   s.run.forgeMaterials={'essence:fire':2};const mix={'essence:fire':3};
   const essence=forgeGridRows(s,mix,{filter:'essence'});assert.ok(essence.some(row=>row.id==='quality:essence:fire'));assert.equal(essence.find(row=>row.id==='essence:fire').available,5);
   assert.ok(forgeGridRows(s,mix,{filter:'materials'}).every(row=>row.kind!=='equipment'&&!row.id.includes('essence:')));
-  assert.ok(forgeGridRows(s,mix,{filter:'favorites',favorites:['essence:fire']}).some(row=>row.id==='equipment:fang'));
+  assert.ok(forgeGridRows(s,mix,{filter:'favorites',favorites:['essence:fire']}).some(row=>row.id===`equipment:${copy.copyId}`));
   const gear=renderForgeInventory(s,mix,{filter:'equipment'});assert.match(gear,/<svg/);assert.match(gear,/Equipped/);assert.doesNotMatch(gear,/data-forge-drag|draggable="true"/);
   const html=renderForge(s,mix);assert.match(html,/data-forge-drop/);assert.match(html,/data-forge-search/);assert.match(html,/SMELT/);assert.doesNotMatch(html,/id="forge-resource"/);
 });
@@ -94,4 +94,13 @@ test('fixed inventory and selected-stack scroll offsets survive input refreshes 
   ingredients={fruit:9};controller.refresh();assert.equal(current.inventory.scrollTop,235);assert.equal(current.mix.scrollLeft,84);assert.equal(current.detail.open,true);
   current.panel.isConnected=false;current.inventory.scrollTop=0;current.mix.scrollLeft=0;controller.refresh();
   current=makePanel();controller.refresh();assert.equal(current.inventory.scrollTop,235);assert.equal(current.mix.scrollLeft,84);assert.equal(current.detail.open,true);controller.destroy();
+});
+
+
+test('available equipment copies use the same drag and quantity flow as resources',()=>{
+ const s=fixture(),given=awardGearCopy(s,'fang'),id=`equipment:${given.copyId}`,before=JSON.stringify(s);
+ const rows=forgeGridRows(s,{}, {filter:'equipment'});assert.equal(rows.find(row=>row.id===id).smeltable,true);
+ const html=renderForgeInventory(s,{}, {filter:'equipment'});assert.match(html,new RegExp(`data-forge-drag="${id}"`));assert.match(html,/power each/);assert.match(html,/Smelt copy/);
+ const next=chooseForgeQuantity(s,{},id,1);assert.deepEqual(next,{[id]:1});assert.equal(JSON.stringify(s),before);assert.throws(()=>chooseForgeQuantity(s,next,id,1),/Only 0/);
+ assert.match(renderForgeQuantityPicker(s,{},id),/exact equipment copy will be destroyed/);
 });

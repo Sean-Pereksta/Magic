@@ -134,9 +134,9 @@ export function huntView(s,id=s.meta.pinnedGoal?.kind==='hunt'?s.meta.pinnedGoal
  if(!id||!SPECIES[id])return null;const saved=normalizeAdventures(s),location=speciesLocation(s,id),h=saved.hunts[id]||{meters:0,attempts:0},goal=researchDistance[SPECIES[id].rarity]||1800;
  return{...location,id,current:Math.min(goal,h.meters),goal,percent:Math.min(100,h.meters/goal*100),ready:h.meters+1e-6>=goal&&location.available,attempts:h.attempts};
 }
-export function advanceAdventures(s,meters){
+export function advanceAdventures(s,meters,east=0,north=0){
  if(s.run?.phase!=='trail'||!Number.isFinite(meters)||meters<=0)return;
- advanceLivingWorld(s,meters);
+ advanceLivingWorld(s,meters,east,north);
  const saved=normalizeAdventures(s),landId=s.world.activeLand,r=saved.regions[landId],step=stepById.get(r.stepId);
  if(step&&['distance','objects'].includes(step.kind))r.current=Math.min(step.goal,r.current+meters);
  const hunt=huntView(s);if(hunt?.available){const h=s.meta.adventures.hunts[hunt.id]??={meters:0,attempts:0};h.meters=Math.min(hunt.goal,h.meters+meters);}

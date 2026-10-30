@@ -38,11 +38,18 @@ const mainThemes=[
  ['crown-vault','Crown Vault','vault','guardian',{},'Defeat a three-stage guardian crew to open the royal treasure vault.']
 ];
 const smallerKinds=[['cache','Hidden Cache','cache','explore'],['shrine','Abandoned Shrine','shrine','offering'],['merchant','Wandering Merchant','merchant','bargain'],['ruins','Guarded Ruins','ruins','guardian'],['pool','Elemental Pool','pool','pattern'],['den','Rare-Monkey Den','den','explore'],['arena','Temporary Challenge Arena','arena','counter']];
+export const TEMPLE_DIRECTIONS=Object.freeze([
+ {id:'east',name:'Dawnstride Temple',label:'East',axis:'east',sign:1,element:'light',item:'bondCharm'},
+ {id:'west',name:'Duskpath Temple',label:'West',axis:'east',sign:-1,element:'shadow',item:'treasureScent'},
+ {id:'south',name:'Sunfire Temple',label:'South',axis:'north',sign:-1,element:'fire',item:'tonic'},
+ {id:'north',name:'Northwind Temple',label:'North',axis:'north',sign:1,element:'ice',item:'revive'}
+].map(Object.freeze));
 export const SPECIAL_LOCATIONS=Object.freeze(LANDS.flatMap((land,index)=>{
  const [key,name,icon,interaction,cost,description]=mainThemes[index];
  const main={id:`${land.id}:${key}`,landId:land.id,key,name,icon,interaction,cost,description,main:true,element:land.types[0],stages:['defense','guardian'].includes(interaction)?3:interaction==='counter'?2:interaction==='bargain'?3:['pattern','constellation'].includes(interaction)?4:1};
  const small=smallerKinds.map(([key,name,icon,interaction])=>({id:`${land.id}:${key}`,landId:land.id,key,name:`${land.name.split(' ')[0]} ${name}`,icon,interaction,cost:key==='merchant'?{fruit:6}:key==='shrine'?{essence:{[land.types[0]]:2}}:{},description:({cache:'Explore a short safe route to uncover forgotten supplies.',shrine:'Leave an elemental offering for the region’s companions.',merchant:'Read a wandering merchant’s clue and choose a fair bargain.',ruins:'Defeat the watchful guardian to recover the lost cache.',pool:'Repeat the elemental ripples to gather concentrated essence.',den:'Explore carefully to reveal a recruitable rare companion.',arena:'Win with an interrupt or defensive counter to earn the arena cache.'})[key],main:false,element:land.types[0],stages:interaction==='pattern'?3:1}));
- return[Object.freeze(main),...small.map(Object.freeze)];
+ const temples=TEMPLE_DIRECTIONS.map((d,i)=>({id:`${land.id}:temple-${d.id}`,landId:land.id,key:`temple-${d.id}`,name:d.name,icon:'temple',interaction:'directional',direction:d.id,directionLabel:d.label,goalFeet:500+index*100+i*250,cost:{},description:`After visiting, walk ${500+index*100+i*250} feet ${d.label.toLowerCase()} to awaken this temple. Earn a guaranteed supply and elemental essence, plus a mystery reward.`,main:false,element:d.element,stages:1}));
+ return[Object.freeze(main),...small.map(Object.freeze),...temples.map(Object.freeze)];
 }));
 const siteById=new Map(SPECIAL_LOCATIONS.map(l=>[l.id,l]));
 const trialSpecies=['rootstone','kilnfist','magnetuft','moonripple','iciclefang','thunderfang','magmajaw','eclipsemask','dawncrest','obsidianback'];
@@ -54,7 +61,7 @@ export function normalizeLivingWorld(s){
  const locations={};
  for(const[id,l]of Object.entries(record(old.locations)?old.locations:{})){
   const def=siteById.get(l?.definitionId);if(!def||l.id!==id||!Number.isSafeInteger(l.serial)||l.serial<1||l.serial>regions[def.landId].spawnSerial||id!==`location:${def.landId}:${l.serial}`||!['discovered','visited','claimed','dismissed'].includes(l.status))continue;
-  locations[id]={id,definitionId:def.id,serial:l.serial,landId:def.landId,status:l.status,position:{east:Number.isFinite(l.position?.east)?Math.max(-1e7,Math.min(1e7,l.position.east)):0,north:Number.isFinite(l.position?.north)?Math.max(-1e7,Math.min(1e7,l.position.north)):0},safeRoute:!!l.safeRoute,approachMeters:finite(l.approachMeters),challengeMeters:finite(l.challengeMeters),stage:Math.min(def.stages,Math.floor(finite(l.stage))),patternIndex:Math.min(def.stages,Math.floor(finite(l.patternIndex))),boosted:!!l.boosted,battleSerial:Math.floor(finite(l.battleSerial)),receipt:record(l.receipt)?copy(l.receipt):null,encounterTaken:!!l.encounterTaken};
+  locations[id]={id,definitionId:def.id,serial:l.serial,landId:def.landId,status:l.status,position:{east:Number.isFinite(l.position?.east)?Math.max(-1e7,Math.min(1e7,l.position.east)):0,north:Number.isFinite(l.position?.north)?Math.max(-1e7,Math.min(1e7,l.position.north)):0},safeRoute:!!l.safeRoute,approachMeters:finite(l.approachMeters),challengeMeters:finite(l.challengeMeters),templeAnyRoute:!!l.templeAnyRoute,stage:Math.min(def.stages,Math.floor(finite(l.stage))),patternIndex:Math.min(def.stages,Math.floor(finite(l.patternIndex))),boosted:!!l.boosted,battleSerial:Math.floor(finite(l.battleSerial)),receipt:record(l.receipt)?copy(l.receipt):null,encounterTaken:!!l.encounterTaken};
  }
  // Retain active opportunities and the latest receipt; a region's monotonic
  // serial makes discarded historic IDs permanently ineligible for a new claim.
@@ -78,18 +85,19 @@ export function recordLivingWorldEvent(s,kind,amount=1,landId=landProgress(s).ac
  if(kind==='discoveries'){advanceQuest(w,landId,'discoveries',amount);const d=s.run.lastDiscovery;if(d?.category==='essence'||d?.kind==='essence'||d?.type==='essence'){const element=d.element||d.id;if(ELEMENTS[element])advanceQuest(w,landId,'essence',d.amount||1,{element});}}
  if(kind==='seen'){const ids=Array.isArray(details.species)?details.species:[details.species];if(ids.some(id=>SPECIES[id]?.types.some(t=>landById.get(landId).types.includes(t))))advanceQuest(w,landId,'types',1);}
 }
-export function advanceLivingWorld(s,meters){
+export function advanceLivingWorld(s,meters,east=0,north=0){
  if(s.run?.phase!=='trail'||!Number.isFinite(meters)||meters<=0)return;
  const w=normalizeLivingWorld(s),landId=s.world.activeLand,r=w.regions[landId];advanceQuest(w,landId,'distance',meters);advanceQuest(w,landId,'rescue',meters);
- for(const l of Object.values(w.locations))if(l.landId===landId){if(l.status==='discovered'&&l.safeRoute)l.approachMeters+=meters;if(l.status==='visited')l.challengeMeters+=meters;}
+ for(const l of Object.values(w.locations))if(l.landId===landId){if(l.status==='discovered'&&l.safeRoute)l.approachMeters+=meters;if(l.status==='visited'){const def=siteById.get(l.definitionId);let progress=meters;if(def.interaction==='directional'&&!l.templeAnyRoute){const d=TEMPLE_DIRECTIONS.find(d=>d.id===def.direction),length=Math.hypot(east,north);const scale=length>meters?meters/length:1;progress=Number.isFinite(east)&&Number.isFinite(north)?Math.max(0,(d.axis==='east'?east:north)*d.sign*scale):0;}l.challengeMeters=Math.min(1e9,l.challengeMeters+progress);}}
  const gap=Math.max(WORLD_LIMITS.minimumSpawnFeet*FEET,spawnGap(landId,r.spawnSerial)*(1-equipmentSpecialDiscovery(s))),active=Object.values(w.locations).filter(l=>l.landId===landId&&(['discovered','visited'].includes(l.status)||l.status==='claimed'&&l.receipt?.reward?.encounter&&!l.encounterTaken));r.spawnMeters=Math.min(gap,r.spawnMeters+meters);
  if(r.spawnMeters+1e-6<gap||active.length>=WORLD_LIMITS.activePerRegion||r.spawnSerial>=1000000)return;
- r.spawnMeters=0;const serial=++r.spawnSerial,defs=SPECIAL_LOCATIONS.filter(l=>l.landId===landId),main=serial===1||hash(`${landId}:${serial}:rarity`)%100<35,def=main?defs[0]:defs[1+hash(`${landId}:${serial}:kind`)%(defs.length-1)],position=s.world.regions[landId].position,angle=hash(`${landId}:${serial}`)%360*Math.PI/180,radius=100+hash(`${landId}:${serial}:radius`)%91,id=`location:${landId}:${serial}`;
+ r.spawnMeters=0;const serial=++r.spawnSerial,defs=SPECIAL_LOCATIONS.filter(l=>l.landId===landId),main=serial===1||hash(`${landId}:${serial}:rarity`)%100<35,def=serial>=2&&serial<=5?defs.find(d=>d.direction===TEMPLE_DIRECTIONS[serial-2].id):main?defs[0]:defs[1+hash(`${landId}:${serial}:kind`)%(defs.length-1)],position=s.world.regions[landId].position,angle=hash(`${landId}:${serial}`)%360*Math.PI/180,radius=100+hash(`${landId}:${serial}:radius`)%91,id=`location:${landId}:${serial}`;
  w.locations[id]={id,definitionId:def.id,landId,serial,status:'discovered',position:{east:position.east+Math.sin(angle)*radius,north:position.north+Math.cos(angle)*radius},safeRoute:false,approachMeters:0,challengeMeters:0,stage:0,patternIndex:0,boosted:false,battleSerial:0,receipt:null,encounterTaken:false};
 }
 const patternFor=(l,def)=>Array.from({length:def.stages},(_,i)=>(def.interaction==='constellation'?['crown','moon','star','sun']:['leaf','fire','water','storm'])[(hash(`${l.id}:pattern`)+i*3+i*i)%4]);
 function rewardTable(l,def,{boosted}={}){
  const table=(rows)=>rows.map(([kind,tickets,rarity])=>({kind,tickets,rarity:rarity||null,chance:tickets/WORLD_LIMITS.tickets,label:kind==='essence'?`${ELEMENTS[def.element].name} essence bundle`:kind==='materials'?'Rare crafting materials':kind==='encounter'?'Rare regional encounter':`${rarity[0].toUpperCase()+rarity.slice(1)} equipment`}));
+ if(def.interaction==='directional')return table([['essence',4500],['materials',3500],['gear',1500,'rare'],['gear',400,'epic'],['gear',100,'legendary']]);
  if(def.key==='canopy-temple')return table([['essence',4500],['materials',3000],['gear',1500,'rare'],['gear',800,'epic'],['gear',180,'legendary'],['gear',20,'mythic']]);
  if(def.key==='ember-forge')return table((boosted??l.boosted)?[['gear',2500,'rare'],['gear',4500,'epic'],['gear',2700,'legendary'],['gear',300,'mythic']]:[['gear',5500,'rare'],['gear',3500,'epic'],['gear',900,'legendary'],['gear',100,'mythic']]);
  if(def.key==='crown-vault')return table([['gear',4500,'epic'],['gear',5000,'legendary'],['gear',500,'mythic']]);
@@ -105,6 +113,7 @@ function challengeView(l,def){
  let goal=def.stages,current=l.stage,unit='stages';
  if(['offering','forge'].includes(def.interaction)){goal=1;current=l.status==='visited'?1:0;unit='offering';}
  if(['pattern','constellation'].includes(def.interaction)){current=l.patternIndex;unit='symbols';}
+ if(def.interaction==='directional'){goal=def.goalFeet*(l.templeAnyRoute?2:1);current=Math.min(goal,l.challengeMeters/FEET);unit='ft';}
  if(['rescue','explore'].includes(def.interaction)){goal=def.interaction==='rescue'?450:def.key==='den'?250:120;current=Math.min(goal,l.challengeMeters);unit='m';}
  return{current,goal,unit,complete:current+1e-6>=goal,percent:Math.min(100,current/goal*100)};
 }
@@ -119,6 +128,7 @@ export function discoverableLocations(landId){return SPECIAL_LOCATIONS.filter(l=
 export function pinLivingWorldGoal(s,id){const w=normalizeLivingWorld(s),l=w.locations[id];if(id===null){w.pinned=null;return null;}if(l&&['discovered','visited'].includes(l.status)){w.pinned=id;return specialLocation(s,id);}for(const land of LANDS){const q=rotatingSideQuests(s,land.id).find(q=>q.id===id);if(q){if(!q.unlocked)throw Error('Unlock this region before pinning a side quest.');s.meta.livingWorld.pinned=id;return q;}}throw Error('Choose an active quest or destination.');}
 export function pinnedLivingWorldGoal(s){const w=normalizeLivingWorld(s),id=w.pinned;if(!id)return null;if(w.locations[id])return{kind:'location',...specialLocation(s,id)};for(const land of LANDS){const q=rotatingSideQuests(s,land.id).find(q=>q.id===id);if(q)return{kind:'sidequest',...q};}return null;}
 export function useLocationSafeRoute(s,id){requireAlive(s);normalizeLivingWorld(s);const l=s.meta.livingWorld.locations[id];if(!l||l.status!=='discovered')throw Error('Choose an unvisited destination.');l.safeRoute=true;return specialLocation(s,id);}
+export function useTempleFlexibleRoute(s,id){requireAlive(s);const row=specialLocation(s,id);if(row.interaction!=='directional'||row.status!=='visited'||s.world.activeLand!==row.landId)throw Error('Visit this directional temple first.');s.meta.livingWorld.locations[id].templeAnyRoute=true;return specialLocation(s,id);}
 export function dismissLocation(s,id){requireAlive(s);const w=normalizeLivingWorld(s),l=w.locations[id];if(!l||!['discovered','visited'].includes(l.status))throw Error('This destination is already resolved.');l.status='dismissed';if(w.pinned===id)w.pinned=null;return true;}
 export function visitLocation(s,id){requireAlive(s);const view=specialLocation(s,id);if(s.world.activeLand!==view.landId)throw Error('Return to this region before visiting.');if(view.status!=='discovered')throw Error('This destination has already been visited.');if(!view.arrived)throw Error('Approach on the fantasy map or complete the safe-route alternative first.');const w=s.meta.livingWorld,l=w.locations[id];l.status='visited';w.regions[l.landId].visits++;advanceQuest(w,l.landId,'landmarks',1);recordLegacyLocation(s,view.definitionId,view.name,{major:view.main});return specialLocation(s,id);}
 export function locationPuzzleInput(s,id,symbol){requireAlive(s);const row=specialLocation(s,id);if(row.status!=='visited'||!['pattern','constellation','bargain'].includes(row.interaction)||s.world.activeLand!==row.landId)throw Error('Visit this region’s puzzle first.');const l=s.meta.livingWorld.locations[id];if(row.challenge.complete)return{complete:true,correct:true};const expected=row.interaction==='bargain'?bargainClue(row).answer:row.pattern[l.patternIndex],correct=symbol===expected;if(row.interaction==='bargain'){if(correct)l.stage++;else l.stage=0;}else if(correct)l.patternIndex++;else l.patternIndex=0;return{correct,complete:specialLocation(s,id).challenge.complete};}
@@ -168,6 +178,7 @@ export function claimLocation(s,id){requireAlive(s);return atomic(s,d=>{
  if(outcome.kind==='materials'){reward.materials=row.main?6:3;const id=pick(d,regional.length?regional:locals);if(id){reward.bondSpecies=id;reward.bondCount=row.main?5:2;}}
  if(outcome.kind==='gear'){const pool=gearPool(row.landId,outcome.rarity);if(!pool.length)throw Error('This equipment reward pool is unavailable.');reward.gear=pick(d,pool);}
  if(outcome.kind==='encounter'){const pool=regional.length?regional:locals;if(!pool.length)throw Error('This region’s encounter pool is unavailable.');reward.encounter={species:pick(d,pool),landId:row.landId,habitat:'landmark',id:`${id}:encounter`,hunt:true};}
+ if(row.interaction==='directional'){const d=TEMPLE_DIRECTIONS.find(d=>d.id===row.direction);reward.essence??={};reward.essence[d.element]=(reward.essence[d.element]||0)+2;reward.items={[d.item]:1};}
  const bonusRoll=row.bonusChance?rng(d):null;if(bonusRoll!==null&&bonusRoll<row.bonusChance){reward.essence??={};reward.essence[row.element]=(reward.essence[row.element]||0)+1;reward.equipmentBonus={element:row.element,count:1,chance:row.bonusChance};}
  payout(d,reward,row.cost);const l=d.meta.livingWorld.locations[id],receipt={operationId:id,kind:'location',definitionId:row.definitionId,outcome:copy(outcome),roll,cost:row.cost,reward};l.status='claimed';l.receipt=copy(receipt);d.meta.livingWorld.lastReceipt=copy(receipt);if(d.meta.livingWorld.pinned===id)d.meta.livingWorld.pinned=null;recordTribeProgress(d,{challenges:1},id);return receipt;
  });}
