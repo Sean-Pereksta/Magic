@@ -28,3 +28,7 @@ Equipped, favorited and protected copies stay inspection-only. Each selected cop
 Occasional accepted discoveries in grove habitats, and meadow paths within Emerald Jungle or Moonlit Forest, reveal a fruit basket at the discovery's fantasy-map position. Cave, wetland, ruins and ridge discoveries do not spawn baskets. Each region has one active basket; new spawn progress pauses while it is waiting.
 
 A basket stores a reward of 3–5 fruit. Walk another 500 accepted feet in that region in any direction, then press Collect. Walking before the spawn never counts. Progress pauses during battles and at camp, survives reloads/restarts, and remains with its region. The map marker and Walk card show the basket and feet remaining. Repeated collection or save retry cannot pay twice.
+
+## Graphics
+
+The four temples have distinct illustrated silhouettes and matching compact map icons. Merchant screens show a monkey trader, striped stall and illustrated stock; fruit baskets show a woven, fruit-filled basket in the Walk tracker and map. These original SVG scenes are rendered inline from `opportunity-art.mjs`, including a ready-state decoration, with no external image hosting dependency. Existing equipment continues to use its specific equipment icons in the forge.
