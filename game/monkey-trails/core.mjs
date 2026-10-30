@@ -1,3 +1,4 @@
+import {recordFruitBasketDiscovery,advanceFruitBaskets} from './fruit-baskets.mjs';
 // DOM-free expedition rules. Distances use accepted tracker meters exclusively.
 import {ELEMENTS,DIRECTIONS,TYPE_CHART,SPECIES,MOVES,HYBRIDS,GEAR,ITEMS,STARTERS} from './data.mjs';
 import {equipmentBonuses,applyEquipmentStatPercentages,equipmentDamageMultiplier,applyEquipmentRecovery,applyEquipmentLifesteal,LEGACY_GEAR_IDS} from './equipment-effects.mjs';
@@ -187,6 +188,7 @@ function cache(s,discoveryHabitat){
   const bonus=foragePickup(s,random,habitat);r.lastDiscovery.foragingBonuses=bonus?[bonus]:[];
   if(bonus){const extra=worldDiscovery(bonus,event);awardTrailPickup(s,bonus);for(const pickup of extra){awardTrailPickup(s,pickup);r.lastDiscovery.worldBonuses.push(pickup);}const p=s.collection[bonus.monkeyId];say(s,`${p.nickname||SPECIES[p.species].name} foraged an extra ${trailPickupName(bonus)}.`);}
   for(const bonus of r.lastDiscovery.worldBonuses)say(s,`${bonus.source}: extra ${trailPickupName(bonus)}.`);
+  const basket=recordFruitBasketDiscovery(s,habitat);if(basket)say(s,'Fruit basket found! Walk another 500 feet in this region to collect it.');
   recordRegionEvent(s,'discoveries');recordAdventureEvent(s,'discoveries');recordTribeProgress(s,{discoveries:1});recordWalkSession(s,{discoveries:1,landId:s.world.activeLand});
 }
 function awardTrailPickup(s,pickup){
@@ -198,7 +200,7 @@ function awardTrailPickup(s,pickup){
 function trailPickupName(pickup){return pickup.category==='fruit'?`${pickup.amount} training fruit`:pickup.category==='essence'?`${pickup.amount} ${ELEMENTS[pickup.id].name} essence`:pickup.category==='fragment'?`${GEAR[pickup.id].name} fragment`:ITEMS[pickup.id]?.name||'charm material';}
 function acceptedDiscoveries(s,meters,onDiscovery,route){
   const r=s.run;let remaining=meters;while(remaining>1e-8){const interval=discoveryInterval(s),untilDiscovery=(1-r.discoveryProgress)*interval,untilBonus=r.bonuses.ribbon>0?r.bonuses.ribbon:Infinity;
-    const chunk=Math.min(remaining,untilDiscovery,untilBonus);r.discoveryProgress+=chunk/interval;remaining-=chunk;if(r.bonuses.ribbon>0)r.bonuses.ribbon=Math.max(0,r.bonuses.ribbon-chunk);
+    const chunk=Math.min(remaining,untilDiscovery,untilBonus);advanceFruitBaskets(s,chunk);r.discoveryProgress+=chunk/interval;remaining-=chunk;if(r.bonuses.ribbon>0)r.bonuses.ribbon=Math.max(0,r.bonuses.ribbon-chunk);
     if(r.discoveryProgress>=1-1e-9){r.discoveryProgress=Math.max(0,r.discoveryProgress-1);const fraction=meters>0?(meters-remaining)/meters:0,habitat=route?habitatAtPosition(route.landId,route.start.east+(route.end.east-route.start.east)*fraction,route.start.north+(route.end.north-route.start.north)*fraction):null;cache(s,habitat);onDiscovery?.({...r.lastDiscovery});}if(chunk<1e-10&&r.discoveryProgress<1-1e-9)break;
   }
 }
@@ -249,7 +251,7 @@ function advanceSegment(s,meters,east=0,north=0,onDiscovery){
   const r=s.run;if(r.phase!=='trail'||![meters,east,north].every(Number.isFinite)||meters<=0)return 0;
   const next=Math.min(r.pendingEncounter?Infinity:r.nextEncounter,r.nextCamp),used=Math.max(0,Math.min(meters,next-r.distance)),ratio=used/meters;
   normalizeLands(s);const route={landId:s.world.activeLand,start:{...s.world.regions[s.world.activeLand].position}};
-  advanceLand(s,used,east*ratio,north*ratio);advanceAdventures(s,used);const friendship=recordCompanionTravel(s,used,s.world.activeLand);recordTribeProgress(s,{meters:used});
+  advanceLand(s,used,east*ratio,north*ratio);advanceAdventures(s,used,east*ratio,north*ratio);const friendship=recordCompanionTravel(s,used,s.world.activeLand);recordTribeProgress(s,{meters:used});
   let walkingXp=0;
   for(const p of team(s)){
     walkingXp+=grantXp(p,used/(CONFIG.xp.walkingFeet*FEET));

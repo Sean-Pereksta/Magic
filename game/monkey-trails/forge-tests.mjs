@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as C from './core.mjs';
 import * as F from './forge.mjs';
 import {FORGE_GEAR,EXPANSION_GEAR,LEGACY_GEAR_AFFINITIES} from './equipment-data.mjs';
-import {normalizeEquipmentInventory} from './equipment-inventory.mjs';
+import {normalizeEquipmentInventory,awardGearCopy,assignEquipment,setEquipmentCopyFlag} from './equipment-inventory.mjs';
 
 const save=()=>{const s=C.newSave('Forge','capuchin','gps',12345);s.run.phase='camp';return s;};
 const snapshot=s=>JSON.stringify(s);
@@ -202,4 +202,32 @@ test('two identically seeded saves produce the same item, cost, RNG and receipt'
   b.run.startedAt=a.run.startedAt; // Wall-clock creation time is not combat RNG.
   assert.deepEqual(F.craftForge(a,inputs,'forge-1'),F.craftForge(b,{'fragment:lifegiver':2,'essence:light':4,fruit:4},'forge-1'));
   assert.equal(snapshot(a),snapshot(b));
+});
+
+
+test('spare equipment contributes its rarity, rank and element, then consumes the exact copy once',()=>{
+  const s=stock(save()),given=awardGearCopy(s,'fang'),id=`equipment:${given.copyId}`;
+  const before=snapshot(s),entry=F.forgeInventory(s).find(row=>row.id===id);assert.ok(entry);assert.equal(entry.kind,'equipment');assert.ok(entry.value>=8);assert.equal(entry.owned,1);
+  const preview=F.previewForge(s,{[id]:1});assert.equal(preview.canCraft,true);assert.equal(snapshot(s),before);
+  const result=F.craftForge(s,{[id]:1},'forge-1');assert.equal(s.meta.equipmentCopies[given.copyId],undefined);assert.ok(s.meta.equipmentCopies[result.copyId]);
+  assert.equal(result.costInputs[id],1);assert.equal(result.value,entry.value);
+  const loaded=C.validate(JSON.parse(JSON.stringify(s))),after=snapshot(loaded);assert.deepEqual(F.craftForge(loaded,{[id]:1},'forge-1'),result);assert.equal(snapshot(loaded),after);
+});
+
+test('equipment reservations cannot consume assigned, favorite, protected or repeated copies',()=>{
+  for(const mode of ['equipped','favorite','protected']){
+    const s=stock(save()),given=awardGearCopy(s,'fang'),id=`equipment:${given.copyId}`;
+    const selected=F.previewForge(s,{[id]:1});assert.equal(selected.canCraft,true);
+    if(mode==='equipped')assignEquipment(s,given.copyId,s.run.activeId,'weapon');else setEquipmentCopyFlag(s,given.copyId,mode,true);
+    const before=snapshot(s);assert.equal(F.forgeInventory(s).some(row=>row.id===id),false);assert.throws(()=>F.craftForge(s,{[id]:1},'forge-1'));assert.equal(snapshot(s),before);
+  }
+  const s=stock(save()),given=awardGearCopy(s,'fang'),before=snapshot(s);assert.throws(()=>F.craftForge(s,{[`equipment:${given.copyId}`]:2},'forge-1'));assert.equal(snapshot(s),before);
+});
+
+test('rerolling the consumed item awards a new rank-one copy without resurrecting the old one',()=>{
+  const s=stock(save()),given=awardGearCopy(s,'fang'),id=`equipment:${given.copyId}`,preview=F.previewForge(s,{[id]:1});
+  let low=0;for(const outcome of preview.outcomes){if(outcome.id==='fang')break;low+=outcome.tickets;}
+  const high=low+preview.outcomes.find(row=>row.id==='fang').tickets;
+  for(let seed=1;seed<1000000;seed++){let x=seed|0;x^=x<<13;x^=x>>>17;x^=x<<5;const roll=Math.floor(((x>>>0)||1234567)/4294967296*F.FORGE_LIMITS.tickets);if(roll>=low&&roll<high){s.rng=seed;break;}}
+  const result=F.craftForge(s,{[id]:1},'forge-1');assert.equal(result.itemId,'fang');assert.equal(result.kind,'discovered');assert.equal(result.tier,1);assert.notEqual(result.copyId,given.copyId);assert.equal(s.meta.equipmentCopies[given.copyId],undefined);
 });
