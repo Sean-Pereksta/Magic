@@ -85,3 +85,26 @@ test('modern multiplayer keeps approval admissions, leader inbox and public week
  assert.doesNotMatch(html,/social-compatibility-notice/);
 });
 
+
+test('tribe boss shows attacks left from the authoritative action count, including switches and reloads',async()=>{
+ const {newRaidAttempt,raidAction,RAID_TURNS}=await import('./social-combat.mjs');
+ const members=[monkey('first'),monkey('second')],raid=newRaidAttempt(members,1,42);
+ const m=model(members);m.raid=raid;
+ const check=(remaining,used)=>{
+  const html=renderSocialView(m);
+  assert.match(html,new RegExp(`data-raid-remaining="${remaining}"`));
+  assert.match(html,new RegExp(`${remaining} ${remaining===1?'attack':'attacks'} left`));
+  assert.match(html,new RegExp(`${used} / ${RAID_TURNS} actions used`));
+  assert.match(html,/Each attack, ability, or switch uses one action/);
+  assert.match(html,new RegExp(`aria-valuetext="${used} of ${RAID_TURNS} actions used, ${remaining} remaining"`));
+  return html;
+ };
+ check(10,0);raidAction(raid,{type:'move',id:'strike',expectedSequence:0});check(9,1);
+ raidAction(raid,{type:'switch',index:1,expectedSequence:1});check(8,2);
+ assert.throws(()=>raidAction(raid,{type:'move',id:'strike',expectedSequence:0}));check(8,2);
+ m.raid=JSON.parse(JSON.stringify(raid));check(8,2);
+ while(m.raid.turns<RAID_TURNS-1)raidAction(m.raid,{type:'move',id:'strike',expectedSequence:m.raid.sequence});
+ check(1,9);raidAction(m.raid,{type:'move',id:'strike',expectedSequence:m.raid.sequence});
+ const finished=renderSocialView(m);assert.match(finished,/data-raid-remaining="0"/);assert.match(finished,/0 attacks left/);assert.match(finished,/Attempt complete/);assert.match(finished,/data-social-action="submit-raid"/);
+ m.raid.submitted=true;m.raid.result={damageApplied:25};const submitted=renderSocialView(m);assert.match(submitted,/0 attacks left/);assert.match(submitted,/Your damage is on the board/);
+});
