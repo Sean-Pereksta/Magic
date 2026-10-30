@@ -9,6 +9,7 @@ import {awardGearCopy} from './equipment-inventory.mjs';
 import {craftForge} from './forge.mjs';
 import {snapshotTeam} from './social-combat.mjs';
 import {Vault} from './storage.mjs';
+import {renderLegacy} from './legacy-ui.mjs';
 
 const start=()=>C.newSave('Legacy walker','capuchin','practice',123456);
 const walk=(s,feet)=>{s.run.nextEncounter=1e8;s.run.nextCamp=1e8;return C.advance(s,feet*C.FEET,0,feet*C.FEET);};
@@ -22,22 +23,22 @@ function die(s){
  C.turn(s,'breathe');assert.equal(s.run.phase,'dead');return C.expeditionRecap(s);
 }
 
-test('Trail Wisdom counts only actual accepted walking, survives reload, and caps each expedition',()=>{
+test('Trail Wisdom counts only actual accepted walking, survives reload, and continues beyond the old cap',()=>{
  let s=start();walk(s,1999);assert.equal(C.legacyView(s).wisdom,0);
  for(const value of [0,-1,NaN,Infinity])assert.equal(C.advance(s,value),0);
  walk(s,1);assert.equal(C.legacyView(s).wisdom,1);
- s=C.validate(structuredClone(s));walk(s,28000);assert.equal(C.legacyView(s).wisdom,L.LEGACY_LIMITS.walkingWisdom);
- assert.equal(s.run.legacy.walkingWisdom,12);assert.equal(C.legacyView(s).milestone.capped,true);
+ s=C.validate(structuredClone(s));walk(s,28000);assert.equal(C.legacyView(s).wisdom,15);
+ assert.equal(s.run.legacy.walkingWisdom,15);assert.equal(C.legacyView(s).milestone.capped,false);
  const before=C.legacyView(s).wisdom;s.run.phase='camp';assert.equal(C.advance(s,5000),0);assert.equal(C.legacyView(s).wisdom,before);
  restart(s);assert.equal(C.legacyView(s).wisdom,before);assert.equal(s.run.legacy.earned,0);walk(s,2000);assert.equal(C.legacyView(s).wisdom,before+1);
 });
 
 test('five permanent upgrades have increasing costs, rank caps, durable balances and future-only effects',()=>{
  let s=start();assert.equal(C.LEGACY_UPGRADES.length,5);
- for(const row of C.LEGACY_UPGRADES){assert.ok(row.costs.length>=3&&row.costs.length<=5);assert.ok(row.costs.every((cost,i)=>cost>0&&(!i||cost>row.costs[i-1])));}
+ for(const row of C.LEGACY_UPGRADES){assert.ok(row.costs.length>=100);assert.ok(row.costs.every((cost,i)=>cost>0&&(!i||cost>=row.costs[i-1])));}
  const before={fruit:s.run.fruit,hp:s.run.monkey.hp,distance:s.run.distance};buy(s,'prepared',4);buy(s,'crew',4);
  assert.deepEqual({fruit:s.run.fruit,hp:s.run.monkey.hp,distance:s.run.distance},before);
- const spent=s.meta.trailWisdom.spent;assert.ok(spent>0);assert.throws(()=>C.purchaseLegacyUpgrade(s,'prepared'),/maximum rank/);
+ const spent=s.meta.trailWisdom.spent;assert.ok(spent>0);assert.equal(C.legacyView(s).upgrades.find(row=>row.id==='prepared').maxRank,100);
  s=C.validate(structuredClone(s));assert.equal(s.meta.trailWisdom.spent,spent);assert.equal(C.legacyView(s).wisdom,s.meta.trailWisdom.earned-spent);
  restart(s);assert.equal(s.run.fruit,16);assert.equal(Object.values(s.run.essence).reduce((a,b)=>a+b,0),3);
  assert.equal(['trailRibbon','treasureScent','scoutFeather'].reduce((n,id)=>n+s.run.items[id],0),1);
@@ -100,7 +101,7 @@ test('new guardian and Ultra victories reward first achievements once while reca
  assert.equal(L.recordLegacyBattle(s,guardian),3);assert.equal(L.recordLegacyBattle(s,guardian),0);
  assert.equal(L.recordLegacyBattle(s,{...guardian,id:'g-two',legacyRecorded:false}),0);
  const species=Object.keys(C.SPECIES).find(id=>C.SPECIES[id].rarity==='ultra'),ultra={id:'u-one',rewarded:true,ultra:true,enemies:[{species}]};
- assert.equal(L.recordLegacyBattle(s,ultra),5);assert.equal(L.recordLegacyBattle(s,ultra),0);assert.equal(s.run.legacy.ultras,1);
+ assert.equal(L.recordLegacyBattle(s,ultra),6);assert.equal(L.recordLegacyBattle(s,ultra),0);assert.equal(s.run.legacy.ultras,1);
  assert.equal(L.recordLegacyBattle(s,{...ultra,id:'u-two',legacyRecorded:false}),0);assert.equal(s.run.legacy.ultras,2);
  const before=C.legacyView(s).wisdom;restart(s);L.recordLegacyBattle(s,{...ultra,id:'u-three',legacyRecorded:false});assert.equal(C.legacyView(s).wisdom,before);
 });
@@ -146,4 +147,40 @@ test('an interrupted encrypted cloud checkpoint preserves the completed recap an
  const reopened=await new Vault(()=>{},local(),async()=>adapter).open('Legacy cloud','legacy-cloud-password');
  assert.equal(C.legacyView(reopened).wisdom,wisdom);assert.deepEqual(C.expeditionRecap(reopened),recap);assert.equal(reopened.meta.history.length,1);
  L.completeLegacyExpedition(reopened);assert.equal(C.legacyView(reopened).wisdom,wisdom);C.restart(reopened);assert.equal(C.legacyView(reopened).wisdom,wisdom);assert.equal(reopened.meta.history.length,1);
+});
+
+test('all tracks grow beyond rank four and Trailblazer reaches exactly 50,000 feet',()=>{
+ let s=start();s.meta.trailWisdom.earned=1000000;
+ for(const row of C.LEGACY_UPGRADES){
+  const costs=row.costs;assert.ok(costs.every((cost,i)=>!i||cost>=costs[i-1]));
+  for(let i=0;i<costs.length;i++)C.purchaseLegacyUpgrade(s,row.id);
+  assert.throws(()=>C.purchaseLegacyUpgrade(s,row.id),/maximum rank/);
+ }
+ const v=C.legacyView(s);assert.equal(v.bonuses.startingFeet,50000);assert.equal(v.bonuses.fruit,200);assert.equal(v.bonuses.essence,99);assert.equal(v.bonuses.utilityItem,true);
+ assert.equal(v.bonuses.crewHp,200);assert.equal(v.bonuses.crewEnergy,50);assert.ok(v.bonuses.protectionPercent>10);assert.ok(v.bonuses.discoveryBonus>.03);
+ assert.ok(C.LEGACY_UPGRADES.find(x=>x.id==='trailblazer').costs.reduce((a,b)=>a+b,0)>15000);
+ const balance=v.wisdom;restart(s);assert.equal(s.run.startingDepth,50000*C.FEET);assert.equal(s.run.distance,0);assert.equal(C.legacyView(s).wisdom,balance);
+ assert.equal(s.run.monkey.trailCrew.hp,200);const base=C.stats({...s.run.monkey,trailCrew:undefined});assert.equal(C.stats(s.run.monkey).hp,base.hp+200);
+ s=C.validate(structuredClone(s));assert.equal(s.run.startingDepth,50000*C.FEET);assert.equal(C.legacyView(s).bonuses.startingFeet,50000);
+ assert.equal(s.run.legacy.ranks.trailblazer,200);assert.equal(s.run.discoveries,0);assert.equal(s.run.legacy.walkingWisdom,0);
+ const html=renderLegacy(s);assert.match(html,/50,000 virtual feet/);assert.match(html,/Rank 200 \/ 200/);assert.match(html,/Earn more Trail Wisdom/);assert.match(html,/per 3 expedition victories/);
+});
+
+test('repeatable victory, capture and crafting Wisdom is exact across reloads and restarts',()=>{
+ let s=start();const victory=n=>({id:'ordinary-'+n,rewarded:true,enemies:[]});
+ L.recordLegacyBattle(s,victory(1));L.recordLegacyBattle(s,victory(2));L.recordLegacyCapture(s);L.recordLegacyEquipment(s,{crafted:true});L.recordLegacyEquipment(s,{crafted:true});
+ assert.deepEqual(C.legacyView(s).repeatable,{victories:2,captures:1,crafted:2});s=C.validate(structuredClone(s));const b=victory(3);
+ assert.equal(L.recordLegacyBattle(s,b),1);assert.equal(L.recordLegacyBattle(s,b),0);L.recordLegacyCapture(s);L.recordLegacyEquipment(s,{crafted:true});assert.equal(C.legacyView(s).wisdom,3);
+ assert.deepEqual(C.legacyView(s).repeatable,{victories:0,captures:0,crafted:0});const before=C.legacyView(s).wisdom;restart(s);assert.equal(C.legacyView(s).wisdom,before);assert.deepEqual(C.legacyView(s).repeatable,{victories:0,captures:0,crafted:0});
+});
+
+test('old capped walking and activity counters migrate without retroactive payouts',()=>{
+ let s=start();walk(s,30000);const l=s.run.legacy;l.walkingWisdom=12;l.captured=1;l.equipmentCrafted=2;s.run.wins=2;delete l.victories;delete l.expandedWisdom;
+ const before=C.legacyView(s).wisdom;s=C.validate(structuredClone(s));walk(s,1999);assert.equal(C.legacyView(s).wisdom,before);walk(s,1);assert.equal(C.legacyView(s).wisdom,before+1);
+ L.recordLegacyBattle(s,{id:'after-migration',rewarded:true,enemies:[]});L.recordLegacyCapture(s);L.recordLegacyEquipment(s,{crafted:true});assert.equal(C.legacyView(s).wisdom,before+4);
+});
+
+test('deep head starts preserve ordinary encounter scaling without overwhelming a fresh team',()=>{
+ const s=start();s.meta.trailWisdom.earned=1000000;for(let i=0;i<200;i++)C.purchaseLegacyUpgrade(s,'trailblazer');restart(s);s.run.ordinaryWins=2;
+ const b=battle(s);assert.equal(b.plan.size,1);assert.ok(b.plan.level<=s.run.monkey.level+3);assert.equal(b.plan.stage,0);assert.equal(s.run.distance>0,true);
 });

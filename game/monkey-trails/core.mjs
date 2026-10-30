@@ -110,7 +110,7 @@ function calculatedStats(p,gear={},legacy=false,equipmentModern=true,options={})
   if(p.elite)for(const key of['hp','atk','def'])out[key]*=1.12;if(p.bossOnly)out.hp*=1.45;
   if(Number.isFinite(p.tutorialHpScale))out.hp*=p.tutorialHpScale;
   // Expedition-only crew preparation is deliberately absent from social copies.
-  if(p.trailCrew&&!legacy){out.hp+=Math.min(8,Math.max(0,Number(p.trailCrew.hp)||0));out.maxEnergy+=Math.min(2,Math.max(0,Number(p.trailCrew.maxEnergy)||0));}
+  if(p.trailCrew&&!legacy){out.hp+=Math.min(200,Math.max(0,Number(p.trailCrew.hp)||0));out.maxEnergy+=Math.min(50,Math.max(0,Number(p.trailCrew.maxEnergy)||0));}
   for(const k in out)out[k]=Math.round(out[k]);return out;
 }
 export function equipped(s,p=s.run.monkey){const b=s.run?.battle;return b?.equipmentBattle?.units?.[p?.equipmentBattleKey]?.gear||equipmentLoadout(s,p);}
@@ -286,6 +286,8 @@ export function encounterPlan(s,ultra=false){
 function encounter(s,isUltra=false,{defer=false,descriptor=null}={}){
   const r=s.run,event=descriptor?.worldEvent||eventSnapshot(),trailRoute=routeView(s).selected?.id||null;if(isUltra&&!descriptor)descriptor={species:r.ultra.species,landId:r.ultra.landId||s.world.activeLand,habitat:r.ultra.habitat||regionSnapshot(s).habitat,...(r.ultra.hunt?{hunt:true}:{})};r.encounters++;const plan=isUltra&&r.ultra.plan?r.ultra.plan:encounterPlan(s,isUltra),pool=encounterPool(descriptor?.landId&&descriptor.landId!==s.world.activeLand?{...s,world:{...s.world,activeLand:descriptor.landId}}:s,isUltra),enemies=[];
   if(!isUltra&&!descriptor)plan.level=Math.min(CONFIG.maxLevel,plan.level+routeEncounterLevel(s));
+  // Deep head starts should still let a fresh crew grow into the expedition.
+  if(!descriptor&&!isUltra&&r.startingDepth>1000*FEET){const members=team(s).filter(alive);if(members.length){plan.size=Math.min(plan.size,members.length);plan.level=Math.min(plan.level,Math.max(...members.map(p=>p.level))+3);plan.stage=Math.min(plan.stage,Math.max(...members.map(p=>p.stage||0)));}}
   if(!descriptor&&!isUltra&&r.startingDepth>0&&r.ordinaryWins<2){plan.size=1;plan.level=Math.min(plan.level,Math.max(1,Math.round(team(s).reduce((n,p)=>n+p.level,0)/team(s).length)));plan.stage=0;plan.elite=false;}
   for(let i=0;i<plan.size;i++){
     const style=ENCOUNTER_STYLES[plan.style],roles=style.roles[i%style.roles.length],rolePool=pool.filter(id=>roles.includes(SPECIES[id].role)),themed=rolePool.filter(id=>!style.elements||nativeTypes(id).some(t=>style.elements.includes(t)));
@@ -396,7 +398,7 @@ function contribution(s,p,damage=0,healing=0){
   const earned=grantXp(p,Math.max(0,next-c.base));c.xp+=earned;recordWalkSession(s,{trainingXp:earned});c.base=next;
 }
 function victory(s){
-  const r=s.run,b=r.battle;if(!b||b.rewarded||s.meta.claims[`reward:${b.id}`])return;b.rewarded=true;s.meta.claims[`reward:${b.id}`]=true;recordLivingWorldBattle(s,b);if(!b.worldGuardian)recordLegacyBattle(s,b);r.wins++;if(!b.ultra)r.ordinaryWins++;recordRegionEvent(s,'victories',1,b.originLandId||s.world.activeLand,{battleId:b.id});recordAdventureEvent(s,'victories',1,b.originLandId||s.world.activeLand);recordAdventureEvent(s,'seen',1,b.originLandId||s.world.activeLand,{species:b.enemies.map(p=>p.species)});if(b.guardian&&!b.worldGuardian)recordAdventureEvent(s,'guardian',1,b.originLandId||s.world.activeLand);recordCompanionVictory(s,{guardian:!!b.guardian&&!b.worldGuardian,regionId:b.originLandId||s.world.activeLand});recordWalkSession(s,{victories:1,friendship:team(s).length,landId:b.originLandId||s.world.activeLand});if(!b.ultra&&!b.guardian&&!b.hunt)r.nextEncounter=r.distance+ENCOUNTER_STEP;
+  const r=s.run,b=r.battle;if(!b||b.rewarded||s.meta.claims[`reward:${b.id}`])return;b.rewarded=true;s.meta.claims[`reward:${b.id}`]=true;recordLivingWorldBattle(s,b);recordLegacyBattle(s,b);r.wins++;if(!b.ultra)r.ordinaryWins++;recordRegionEvent(s,'victories',1,b.originLandId||s.world.activeLand,{battleId:b.id});recordAdventureEvent(s,'victories',1,b.originLandId||s.world.activeLand);recordAdventureEvent(s,'seen',1,b.originLandId||s.world.activeLand,{species:b.enemies.map(p=>p.species)});if(b.guardian&&!b.worldGuardian)recordAdventureEvent(s,'guardian',1,b.originLandId||s.world.activeLand);recordCompanionVictory(s,{guardian:!!b.guardian&&!b.worldGuardian,regionId:b.originLandId||s.world.activeLand});recordWalkSession(s,{victories:1,friendship:team(s).length,landId:b.originLandId||s.world.activeLand});if(!b.ultra&&!b.guardian&&!b.hunt)r.nextEncounter=r.distance+ENCOUNTER_STEP;
   const baseXp=18+b.enemies.reduce((n,e)=>n+e.level*2,0)+b.enemies.length*4,xp=awardXp(s,baseXp);recordWalkSession(s,{trainingXp:xp});r.fruit+=2;const type=b.enemy.types[0]||rollElement(s);r.essence[type]+=2;r.items.charmMaterial=(r.items.charmMaterial||0)+1;
   if(b.trailRoute==='ancient-ruins'&&!b.ultra&&!b.guardian&&!b.hunt){r.items.charmMaterial++;say(s,'Ancient Ruins: recovered one extra charm material.');}
   if(b.worldGuardian&&b.worldEvent?.type==='guardian-stirring'){r.essence.leaf+=3;say(s,'Bloomwatch Guardian: three extra Leaf essence. This event reward is saved.');}

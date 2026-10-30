@@ -4,21 +4,23 @@ Open **Legacy · Trail Wisdom** from the game header or the Expedition Complete 
 
 ## Permanent progression
 
-Trail Wisdom is separate from the older Legacy score. Each upgrade has four ranks; purchasing a rank prepares the next expedition, without changing an active run's bonuses.
+Trail Wisdom is separate from the older Legacy score. Purchases take effect on the next expedition. Existing ranks, their original first four prices and benefits, balances, and current-run bonuses are retained.
 
-| Upgrade | Rank costs | Maximum benefit |
+| Upgrade | Maximum rank | Maximum benefit |
 | --- | --- | --- |
-| Trailblazer | 3, 6, 10, 15 | 1,000 virtual starting feet |
-| Prepared Expedition | 3, 5, 8, 12 | 8 fruit, 3 essence, one utility item |
-| Scout's Protection | 4, 6, 9, 13 | 10% reduced incoming damage in the first two ordinary battles |
-| Trail Instinct | 4, 7, 10, 14 | 3 percentage points toward useful discoveries |
-| Experienced Crew | 4, 6, 9, 13 | 8 health and 2 maximum energy |
+| Trailblazer | 200 | 50,000 virtual starting feet, in 250-foot steps |
+| Prepared Expedition | 100 | 200 fruit, 99 essence, one utility item |
+| Scout's Protection | 100 | 29.2% reduced damage in the first 98 ordinary battles |
+| Trail Instinct | 100 | 15 percentage points toward useful discoveries |
+| Experienced Crew | 100 | 200 health and 50 maximum energy |
 
-Accepted walking earns one Wisdom per 2,000 feet, capped at 12 per expedition. Permanent first-time claims award two for major locations, two for regional milestones/challenges, three for regional guardians, and five for each first Ultra species victory. A completed expedition that advances the distance record by at least 2,000 actual feet adds two Wisdom. Restarting without improving the record cannot claim that bonus again.
+The first four costs remain unchanged. For each later rank, the price rises by `ceil(0.5 × n + 0.002 × n²)` over the original fourth-rank cost, where n starts at 1. The Trailblazer track takes a very long time to complete; each rank and the next price are visible in the Legacy screen.
 
-Virtual depth changes encounter position and recap depth. It never adds accepted distance, walking XP, discoveries, regional travel progress or distance rewards. The opening encounters remain appropriate for the starting crew. Scout's Protection and crew bonuses do not enter competitive player battle snapshots.
+Accepted walking earns one Wisdom per 2,000 feet without a per-expedition cap. Each expedition also earns one per three victories, one per two captures, and one per three equipment pieces crafted. These repeatable activity counters reset on restart; existing run counters are adopted without paying older events retroactively. Permanent first-time claims award two for major locations, two for regional milestones/challenges, three for regional guardians, and five for each first Ultra species victory. A completed expedition that advances the distance record by at least 2,000 actual feet adds two Wisdom.
 
-Older saves migrate without resetting their collection, injuries, equipment, balances or history. Previously claimed regional milestones and visited major locations are adopted as claimed; older walking is not paid retroactively.
+Virtual depth changes encounter position and recap depth. It never adds accepted distance, walking XP, discoveries, regional travel progress or distance rewards. After a deep head start, ordinary enemies scale up with the expedition crew so a newly restarted team is not immediately overwhelmed. Scout's Protection and crew bonuses do not enter competitive player battle snapshots.
+
+Older saves migrate without resetting collection, injuries, equipment, balances, or history. Previously claimed achievements stay claimed, and any distance beyond the former 12-point walking cap is adopted without retroactive rewards. Saved starting depths up to 50,000 feet persist through reload.
 
 ## Resource and reward accounting
 
