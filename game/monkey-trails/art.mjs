@@ -159,11 +159,27 @@ import {deepSpecies,hosts} from './deep-roster.mjs';
 import {emblem,badges} from './deep-art.mjs';
 const deepRigs=['howler','sage','warden','sage','marmoset','brawler','sprinter','warden','acrobat','howler','acrobat','warden','tank'];
 const deepFur=['#537d87','#5e9588','#847c74','#7eaeaa','#665479','#a76e52','#96a8b2','#705969','#93b8d3','#f4efda','#443b54','#c5d5d0','#746a61'];
+const deepParts={
+ carilluma:()=>({head:[[-42,3],[-32,-18],[-14,-33],[10,-35],[32,-20],[44,0]].map(([dx,dy])=>shell(120+dx,94+dy,.56,'#f1c6a4')).join(''),body:line('M93 140Q120 166 149 140','#dbbb94',6)+shell(120,160,.5,'#f9d6a7')}),
+ driftmantle:()=>({back:path('M92 97Q59 103 54 180L73 164 71 191 95 175 107 140 149 185 163 172 180 192Q179 126 147 100Z','#476f69'),body:leaf(98,159,.76,'#88b393',-27)+leaf(126,164,.88,'#5c9b87',20)}),
+ keelknuckle:()=>({hand:circle(1,0,19,'#879c99')+shell(-9,-4,.38,'#dbbeaa')+shell(9,3,.34,'#e6ccae'),face:line('M105 98l-2 19m32-19 2 19','#658f9c',5)}),
+ bridgeback:()=>({back:line('M61 137L64 74Q119 125 178 68L177 128','#54777c',11)+line('M64 74Q119 111 178 68M64 83Q119 124 178 78','#c6f5ed',4),body:path('M88 130Q117 148 151 126L146 143Q120 161 94 145Z','#698a86')+line('M98 140Q121 153 144 135','#def4da',3)}),
+ silkshear:()=>({tail:path('M169 164Q201 153 182 122L198 74 199 114 221 84 202 140Q213 175 173 187Z','#a591b2'),head:line('M103 63L91 38 115 61M127 63l20-30-4 31','#807194',6)}),
+ coppercoil:()=>({back:[0,1,2].map(n=>oval(165,132+n*10,29,13,'none','stroke="#c28b5c" stroke-width="6"')).join(''),head:path('M89 79Q91 49 116 62L125 37 137 56 154 48 147 78Z','#cc956c')}),
+ mirrorkin:()=>({face:path('M90 96L101 75 121 71 146 82 151 103 135 123 118 132 100 119Z','#b9d9d8')+line('M95 94l20-14m11 34 17-18','#eff9d9',3),back:crystal(172,151,1.15,'#b2d4cd',23)}),
+ kilnveil:()=>({head:path('M77 105Q72 54 116 42Q155 40 166 102L148 89Q135 64 111 71L90 115Z','#544c60'),back:path('M87 102L57 183 85 170 98 193 126 167 151 186 171 171 187 177 156 105Z','#65576a'),hand:flame(0,4,.47,'#fdaf79')}),
+ rimewhistle:()=>({head:[-32,-16,1,18,32].map((x,i)=>crystal(120+x,77-Math.abs(x)*.18,.55+i%2*.13,'#d4f0ef',x*.7)).join(''),body:line('M99 139Q118 159 142 137M98 148Q119 169 142 147','#c6e8e7',4)}),
+ nacreon:()=>({back:branch('M58 147Q54 108 70 77M64 101l-15-11m19 2 14-17M165 117l8-42m-4 25 16-17','#efac92',9),
+ head:path('M78 82L62 74 73 98 60 104 77 112 69 126 89 122 88 139 108 129 118 143 133 128 149 135 147 120 166 125 157 110 171 100 154 95 165 78 146 84Q125 65 103 73Z','#faf3d6')+path('M89 85Q118 68 151 86L140 93Q120 87 101 95Z','#e6d9b4'),body:line('M90 135Q120 152 148 133','#da987d',8)+shell(119,151,.53,'#fff0c9')}),
+ vesperloom:()=>({back:path('M56 198Q47 163 58 135L39 112 51 94 75 112Q86 84 104 81Q118 62 128 74L118 92 135 101 116 118 91 132 76 176Z','#51445f'),tail:line('M174 183Q206 140 185 115Q169 94 179 70','#635477',9),face:line('M97 87l10-3m25 0 11-5','#bb92c8',3)}),
+ vitreus:()=>({back:crystal(72,154,1.63,'#efc3a5',-24)+crystal(167,149,1.52,'#eac5c8',29),face:path('M98 83L118 62 138 79 128 92 118 84 109 98Z','#f8dbb5'),body:path('M93 136L119 143 148 133 139 165 118 190 104 168Z','#9ec6c7')+path('M119 143L118 190 139 165Z','#f4d2b5')}),
+ orrakai:()=>({back:path('M61 137L59 72 72 72 72 43 82 43 82 58 103 58 103 31 136 31 136 58 157 58 157 43 168 43 168 72 181 72 179 137Z','#968774')+line('M70 127V82H79V69M160 69V82H171V127','#d7c99d',5),head:path('M88 76L83 48 104 60 119 37 135 59 154 47 149 77Z','#ceae73'),body:path('M83 128L102 137 120 148 138 137 158 126 148 155 119 169 93 153Z','#8c8471')+crystal(119,163,.48,'#e6c589')})
+};
 deepSpecies.forEach((p,i)=>{
  const accent=ELEMENTS[p.types[1]].color;
  EXPANSION_RIGS[p.id]=[...RIGS[deepRigs[i]]];EXPANSION_RIGS[p.id][0]+=(i+1)*.61;EXPANSION_RIGS[p.id][3]+=(i+1)*.27;EXPANSION_RIGS[p.id][1]+=i*.43;
  VISUAL[p.id]=[deepRigs[i],deepFur[i],'#edceae',accent];
- DESIGNS[p.id]=()=>({head:emblem(badges[i],120,66,.7,accent),back:hosts.includes(p.id)?emblem(i===12?'court':'bridge',120,107,1.85,'#d3b481'):emblem(badges[i],83,116,1.15,accent),hand:emblem(badges[i],0,-3,.48,accent)});
+ DESIGNS[p.id]=()=>({head:emblem(badges[i],120,66,.7,accent),back:hosts.includes(p.id)?emblem(i===12?'court':'bridge',120,107,1.85,'#d3b481'):emblem(badges[i],83,116,1.15,accent),hand:emblem(badges[i],0,-3,.48,accent),...deepParts[p.id]()});
 });
 const LIVING_MOTION=Object.fromEntries(Object.values(SPECIES).filter(s=>s.expansion===3).map((s,i)=>[s.id,`.monkey-art[data-species="${s.id}"]{--mt-lift:${-4-i%5}px;--mt-lean:${1+i%4}deg;--mt-punch:${-48-i%6*7}deg;--mt-hop:${-9-i%7}px;--mt-cast:${1.03+i%4*.07};--mt-hit:${-5-i%5}px}.monkey-art[data-species="${s.id}"][data-state="idle"] .rig{animation-duration:${2.4+i*.09}s}.monkey-art[data-species="${s.id}"][data-state="walk"] .back-parts{transform-origin:120px 150px;animation:mt-living-prop ${.47+i*.014}s ease-in-out infinite alternate}`]));
 export const ANIMATION_STATES=['idle','walk','attack','cast','hit','knockout','victory'];
