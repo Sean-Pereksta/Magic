@@ -557,7 +557,7 @@
           attackFlash: 0, target: -1,
           _slot: slot, _cooldown: type === 'musketeer' ? 0 : this._random() * t.cooldown,
           _volleyRank: type === 'musketeer' ? row : -1, _meleeCooldown: 0, _lastMusketMelee: -1000,
-          _radius: t.radius, _contact: false,
+          _radius: t.radius, _contact: false, _recoverMarchUntil: 0,
           travelDistance: 0,
           _sense: this._random() * .65, _charge: 0,
           _contactSense: 0, _flex: 0, _turnStart: 0, _turnEnd: 0, _turnFrom: 0, _turnDelta: 0,
@@ -2667,7 +2667,8 @@
         if (r && r._traffic && r._traffic.plan === plan) {
           r._traffic = null; r.maneuver = 'reforming';
           for (const uid of r.unitIds) this.units[uid]._trafficSlot = -1;
-          if (r.order === 'auto' || (plan.parallel && (r.order === 'move' || r.order === 'attack' || r.order === 'charge'))) {
+          if (plan.formedPass) r._pathTimer = 0;
+          else if (r.order === 'auto' || (plan.parallel && (r.order === 'move' || r.order === 'attack' || r.order === 'charge'))) {
             // A passage ends in the body that actually emerged. Returning to
             // cached pre-passage offsets would swap files through one another.
             this._captureMarchLayout(r);
@@ -2705,9 +2706,9 @@
       traffic.rows = rows;
     }
 
-    _startParallelPass(a, b, ax, ay, crossing) {
+    _startParallelPass(a, b, ax, ay, crossing, formedPass = false) {
       const canMarch = r => r.order === 'auto' || r.order === 'move' || r.order === 'charge' || this._advancingAttack(r);
-      if (!canMarch(a) || (!canMarch(b) && !b._withdrawLeg) || a.fallingBack || (b.fallingBack && !b._withdrawLeg) || a._rallyTime > 0 || b._rallyTime > 0 ||
+      if (!canMarch(a) || (!canMarch(b) && !b._withdrawLeg && !(formedPass && b.order === 'hold')) || a.fallingBack || (b.fallingBack && !b._withdrawLeg) || a._rallyTime > 0 || b._rallyTime > 0 ||
           a._missileActive || b._missileActive || a._bridge || b._bridge || a._terrainColumns < a._shapeColumns || b._terrainColumns < b._shapeColumns ||
           (!crossing && TYPES[a.type].speed < TYPES[b.type].speed * 1.12)) return false;
       const aa = this._projectBounds(a, ax, ay), ba = this._projectBounds(b, ax, ay);
@@ -2715,11 +2716,20 @@
       const width = Math.max(a.width, at.hi - at.lo), depth = Math.max(a.depth, aa.hi - aa.lo);
       const clearance = Math.hypot(width, depth) * .5 + TYPES[a.type].radius + 4;
       const across = (bt.lo + bt.hi) * .5, ownAcross = -ay * a.x + ax * a.y;
-      const initialSide = Math.abs(ownAcross - across) > 20 ? Math.sign(ownAcross - across) : a._flankSign;
+      const partnerGoal = formedPass && b.order !== 'hold' ? this._trafficWaypoint(b) : b;
+      const crossTravel = (partnerGoal.y - b.y) * ax - (partnerGoal.x - b.x) * ay;
+      // At an intersection aim behind the passing ranks. Head-on traffic
+      // uses the nearer flank, with a stable tie break on the centerline.
+      const initialSide = Math.abs(crossTravel) > 32 ? -Math.sign(crossTravel) :
+        Math.abs(ownAcross - across) > 20 ? Math.sign(ownAcross - across) : a._flankSign;
       for (const side of [initialSide, -initialSide]) {
-        const origin = across + side * (Math.max(b.width, bt.hi - bt.lo) * .5 + width * .5 + 42);
+        // Crossing ranks will reach our course before we meet them. Make
+        // room at that intersection rather than circling their launch point.
+        const passCenter = Math.abs(crossTravel) > 32 ? ownAcross : across;
+        const origin = passCenter + side * (Math.max(b.width, bt.hi - bt.lo) * .5 + width * .5 + 42);
         const along = a.x * ax + a.y * ay, end = ba.hi + depth + 180;
-        const bend = { x: along * ax - origin * ay, y: along * ay + origin * ax };
+        const bendAlong = formedPass ? along + Math.max(0, ba.lo - aa.hi) * .25 : along;
+        const bend = { x: bendAlong * ax - origin * ay, y: bendAlong * ay + origin * ax };
         const finish = { x: end * ax - origin * ay, y: end * ay + origin * ax };
         if (!this._lineClear(a.x, a.y, bend.x, bend.y, clearance) || !this._lineClear(bend.x, bend.y, finish.x, finish.y, clearance)) continue;
         // A broad woodland route is still passable at its normal terrain
@@ -2727,10 +2737,13 @@
         if (this._trafficPlans.some(other => other.parallel && other.b === b.id &&
           Math.abs(other.origin - origin) < (width + this.regiments[other.a].width) * .5 + 24)) continue;
         const lanes = Math.max(1, a._shapeColumns), pitch = a._shapeSpacing;
-        const plan = { a: a.id, b: b.id, ax, ay, origin, pitch, started: this.time, marching: true, parallel: true, bodyFacing: a.facing,
+        const plan = { a: a.id, b: b.id, ax, ay, origin, pitch, started: this.time, marching: true, parallel: true, formedPass, bodyFacing: a.facing,
           intentA: a.order + ':' + a.fallingBack + ':' + (a._rallyTime > 0), intentB: b.order + ':' + b.fallingBack + ':' + (b._rallyTime > 0),
           epochA: a._commandEpoch, epochB: b._commandEpoch };
-        this._captureMarchLayout(a);
+        // A commanded formation keeps the slots it was given, including
+        // the slots of soldiers delayed on the way into the bypass.
+        if (formedPass) { plan.bend = bend; plan.end = end; }
+        else this._captureMarchLayout(a);
         a._traffic = { plan, phase: 0, lanes, maxLanes: lanes, base: -(lanes - 1) / 2, hold: false, anchorX: a.x, anchorY: a.y };
         this._trafficPlans.push(plan);
         return true;
@@ -2962,8 +2975,8 @@
           a.fallingBack || b.fallingBack || a._rallyTime > 0 || b._rallyTime > 0 || a._terrainColumns < a._shapeColumns || b._terrainColumns < b._shapeColumns ||
           !this._crossingFootprintsMeet(a, b, plan.ax, plan.ay, 3));
         const clear = !a || !b || a.alive <= 0 || b.alive <= 0 || a._nearestEnemyDistance < 200 || b._nearestEnemyDistance < 200 || combatDeployment ||
-          changedIntent || yieldDone ||
-          (plan.parallel && (a.order === 'hold' || b.order === 'hold' || a.fallingBack || (b.fallingBack && !b._withdrawLeg) || a._rallyTime > 0 || b._rallyTime > 0 ||
+          changedIntent || yieldDone || (plan.formedPass && a.x * plan.ax + a.y * plan.ay >= plan.end - 2) ||
+          (plan.parallel && (a.order === 'hold' || (!plan.formedPass && b.order === 'hold') || a.fallingBack || (b.fallingBack && !b._withdrawLeg) || a._rallyTime > 0 || b._rallyTime > 0 ||
             a._terrainColumns < a._shapeColumns || b._terrainColumns < b._shapeColumns)) || (this.time > plan.started + 4 && pa.lo > pb.hi + 28);
         if (clear) {
           this._clearTraffic(plan);
@@ -2984,6 +2997,18 @@
           const b = this.regiments[j];
           if (i === j || b.team !== a.team || b.alive <= 0 || b._traffic || b.order === 'face' || TYPES[b.type].commander || TYPES[b.type].equipment || b._nearestEnemyDistance < 250 || this._needsCombatRoom(b)) continue;
           const ox = b.x - a.x, oy = b.y - a.y, along = ox * ax + oy * ay, lateral = Math.abs(-ox * ay + oy * ax);
+          // Predict crossings before either front rank touches. Only one
+          // regiment bends. Its partner keeps marching on the original line.
+          const direct = a.order === 'move' || this._advancingAttack(a) || a.order === 'charge';
+          const heldFoot = b.order === 'hold' && !TYPES[a.type].mounted;
+          if (direct && !a._siegeJob && !b._siegeJob && along > 0 && along < distance && (heldFoot || b.order === 'move' || this._advancingAttack(b) || b.order === 'charge') &&
+              !(TYPES[a.type].mounted && TYPES[b.type].mounted) &&
+              Math.hypot(ox, oy) < (a.width + a.depth + b.width + b.depth) * .5 + (TYPES[a.type].speed + TYPES[b.type].speed) * 8) {
+            const nextB = this._trafficWaypoint(b), bx = nextB.x - b.x, by = nextB.y - b.y;
+            if ((heldFoot || bx * ax + by * ay < .6 * Math.hypot(bx, by)) &&
+                this._crossingFootprintsMeet(a, b, ax, ay, 8) &&
+                this._startParallelPass(a, b, ax, ay, true, true)) break;
+          }
           if (a.type === 'lancer' && b.type === 'lancer' && (a.alive > 1 || b.alive > 1) &&
               !a.fallingBack && !b.fallingBack && a._rallyTime <= 0 && b._rallyTime <= 0 &&
               !a._bridge && !b._bridge &&
@@ -3206,8 +3231,10 @@
           waypoint = { x: r.x + r._lancerPass.nx * 120, y: r.y + r._lancerPass.ny * 120 };
         }
         if (r._traffic && r._traffic.plan.parallel) {
-          const plan = r._traffic.plan, along = r.x * plan.ax + r.y * plan.ay + 260;
-          waypoint = { x: along * plan.ax - plan.origin * plan.ay, y: along * plan.ay + plan.origin * plan.ax };
+          const plan = r._traffic.plan;
+          if (plan.bend && Math.hypot(plan.bend.x - r.x, plan.bend.y - r.y) < 3) plan.bend = null;
+          const along = plan.formedPass ? plan.end : r.x * plan.ax + r.y * plan.ay + 260;
+          waypoint = plan.bend || { x: along * plan.ax - plan.origin * plan.ay, y: along * plan.ay + plan.origin * plan.ax };
         }
         if (waypoint && !(r._traffic && r._traffic.hold) && r.commandTurnRemaining <= 0) {
           const dx = waypoint.x - r.x, dy = waypoint.y - r.y;
@@ -3539,6 +3566,11 @@
       const moveNX = dx / distance, moveNY = dy / distance;
       u._moveIntentNX = moveNX; u._moveIntentNY = moveNY; u._moveIntentTime = this.time;
       let speed = t.speed * (speedScale || 1) * Math.max(.2, u._terrain.speed) * (this._inUnitStep ? regiment._speedFactor : this._formationFactor(regiment, 'speed')) * regiment._movementScale;
+      if ((regiment.order === 'move' || this._advancingAttack(regiment) || regiment.order === 'charge') &&
+          (regiment._traffic ? regiment._traffic.plan.formedPass : u._recoverMarchUntil > this.time && this._marchingBody(regiment))) {
+        const lag = Math.hypot(regiment.x + u._orderOffsetX - u.x, regiment.y + u._orderOffsetY - u.y);
+        speed *= 1 + clamp((lag - regiment._shapeSpacing) / Math.max(1, regiment._shapeSpacing) * .1, 0, .18);
+      }
       if (u._terrain.type === 'forest') speed *= Number.isFinite(t.forestSpeed) ? t.forestSpeed : t.mounted ? .62 : 1;
       if (mountedImpact) speed = impacts.speedFor(u, speed, moveNX, moveNY, dt);
       let amount = Math.min(distance, speed * dt);
@@ -3565,6 +3597,7 @@
         if (amount < .0001) { u._vx = u._vy = 0; return false; }
       }
       const collision = this._collideMovement(u, mx, my, amount);
+      if (collision.ally || regiment._traffic && regiment._traffic.plan.formedPass) u._recoverMarchUntil = this.time + 6;
       mx = collision.x; my = collision.y;
       regiment._moveAttempts++;
       if (collision.blocked) regiment._blockedMoves++;
