@@ -172,7 +172,7 @@
       <div id="battlefieldToolbar" class="menu-map-toolbar"><span>EXPLORE THE BATTLEFIELDS</span><div role="group" aria-label="Filter battlefields"><button data-map-filter="all" class="active" aria-pressed="true">All</button><button data-map-filter="new" aria-pressed="false">New fields</button><button data-map-filter="large" aria-pressed="false">Large maps</button><button data-map-filter="siege" aria-pressed="false">Sieges</button></div></div>
       <div id="menuMapGrid" class="menu-map-grid" role="group" aria-label="Battlefield selection"></div>
       <section id="historyBrowser" class="history-browser" aria-label="Historical battle collection" hidden><div class="history-tools"><label><span class="sr-only">Search historical battles</span><input id="historySearch" type="search" placeholder="Search a battle, army, or place" autocomplete="off"></label><label><span class="sr-only">Historical era</span><select id="historyEra"><option value="all">Every era</option></select></label></div><p id="historyResults" class="history-results" role="status"></p><div id="historyGrid" class="history-grid" role="group" aria-label="Historical battle selection"></div><p id="historyEmpty" class="empty-state" hidden>No battles match. Try another era or search.</p></section>
-      <p class="menu-tip">Musketeers fire together, one rank at a time. Protect the line through its reload. Cannon and trebuchet impacts scatter the enemy ranks.</p>
+      <p class="menu-tip">Musketeers fire together once a quarter of the formation has targets in range. Protect the line through its reload. Cannon and trebuchet impacts scatter the enemy ranks.</p>
     </main>
   </div>
 </section>
@@ -277,7 +277,7 @@
   <footer class="statusbar"><span><i class="status-dot"></i><span id="statusText">Armies assembled. The field is yours.</span></span><span><span id="performance">60 FPS</span><b>·</b><span id="unitTotal">2,400 combatants</span><b>·</b><span class="optional">OFFLINE SANDBOX</span></span></footer>
 </div>
 
-<dialog id="helpDialog" class="modal wide-modal"><div class="modal-heading"><div><span class="eyebrow">IRONFIELD 2.7 / FIELD MANUAL</span><h2>A thousand soldiers. Your command.</h2></div><button data-close="helpDialog" class="icon-button" aria-label="Close field manual"><span data-icon="close"></span></button></div><div class="modal-body"><p>Build both armies, position their formations, then unleash the battle. Every soldier moves, targets, fights, and can flee individually. Leave the armies to their battle plans, or take command at any moment.</p><div class="manual-grid"><section><h3>Command the battlefield</h3><dl class="controls-list"><dt>Left click / drag</dt><dd>Select a regiment / several regiments</dd><dt>Shift + click / drag</dt><dd>Add or remove from your selection</dd><dt>Right click</dt><dd>Reposition in deployment. In battle, march to open ground or attack at an enemy position.</dd><dt>M / A + click</dt><dd>Move / attack-move to a destination; left or right click confirms</dd><dt>T + click</dt><dd>Face that direction at the current position; during battle, turn and then hold</dd><dt>C / Shift + C</dt><dd>Charge a nearby enemy immediately / choose an enemy to charge</dd><dt>H / G / R</dt><dd>Hold / auto-command / withdraw immediately</dd><dt>J / V</dt><dd>Select a commander / sound a rally</dd><dt>Formation menu / B</dt><dd>Choose a shape / split selected formations in half</dd><dt>Scroll / pinch</dt><dd>Zoom toward the cursor / between fingers</dd><dt>Arrows / middle drag</dt><dd>Pan the camera (WASD when no troops selected)</dd><dt>Space / F / Tab</dt><dd>Start or pause / fit the field / cinematic view</dd><dt>1 / 2 / 3</dt><dd>Command Azure / Ember / spectate</dd><dt>Escape</dt><dd>Cancel a pending destination; otherwise deselect or close a window</dd></dl><p class="muted small">On touch screens: tap a formation, choose Move or Attack, and tap its destination. Drag with two fingers to pan and pinch to zoom. Drag the tactical map to travel quickly.</p></section><section><h3>Gunpowder and war clubs</h3><p class="muted small">Use the Infantry, Cavalry, Ranged and Siege tabs in the army builder. Musketeers fire synchronized ranks in turn; each soldier reloads for 24 seconds and staggers the first enemy hit. Field cannons scatter packed ranks every 22 seconds. Trebuchets lob boulders over walls and need 24 seconds to reload. Select one of these formations to see its loaded weapons. Berserkers carry two-handed clubs that sweep the ground in front of them. Try all four in Thunder at Stonekeep.</p><h3>Win with the right force</h3><ul class="manual-tips"><li><strong>Keep spears in the line.</strong> Pikemen punish mounted charges. Heavy shields buy your ranged troops time.</li><li><strong>Use the flanks.</strong> Cavalry move quickly and strike hard on a charge. Avoid pushing horses into a spear wall.</li><li><strong>Give missile troops room.</strong> Javelins skirmish close and reposition between throws. Archers form broad shooting ranks at longer range; crossbows plant to aim and reload, favoring armored targets. Give each formation space to fire.</li><li><strong>Break dense formations.</strong> Catapult stones and war elephants deal area damage. Give them a screen of infantry.</li><li><strong>Read the terrain.</strong> Forests slow cavalry and shelter troops from missiles. Hills benefit ranged units. Rivers and rocks block movement; bridges create chokepoints.</li><li><strong>Arrange your battle line.</strong> Use T, then click a direction to face before the advance. Formations keep their marching ranks and approach their local front before spreading into combat. Choose Encircle to give cavalry a route around the wing into the enemy rear, or face and command each wing yourself.</li><li><strong>Let the ranks bend.</strong> Soldiers adjust their local spacing around obstacles, pressure, and nearby allies, then recover their chosen formation in open ground. Passing troops still slow down and use real gaps.</li><li><strong>Direct their attention.</strong> Automatic troops fight enemies already within reach, even from a different formation. Move and Charge keep the ordered direction; Hold defends the current position. Press G to return to automatic battle behavior.</li><li><strong>Build a broad front.</strong> Automatic attacks spread regiments across available enemy frontage. Waiting melee troops seek reachable openings around crowded allies, and passing lanes widen as the approach opens. Use open flanks and keep ranged troops behind your line.</li><li><strong>Keep formations cohesive.</strong> Collision, contact, movement, and flanking disrupt the ranks. Formation bonuses weaken as cohesion falls.</li><li><strong>Pull a formation out of melee.</strong> Press R to start withdrawing on the next simulation step. Soldiers turn while moving and seek friendly support after clearing the fight. Use M and click to choose their destination yourself. The command also works while withdrawing or regrouping. Repeating it keeps the withdrawal moving. Shaken troops can recover and return under a commander.</li><li><strong>Protect your commanders.</strong> Gold standards mark your leaders. Press J to find one, then V to rally nearby shaken and retreating troops. Move commanders behind the formations that need help.</li></ul></section></div><h3>Formations earn their advantage</h3><p class="muted small">Change the formation of selected regiments in deployment or during battle. Bonuses scale with cohesion; a disordered group cannot keep a perfect shield wall or charge wedge.</p><div id="manualFormations" class="formation-manual"></div><h3>Battle plans that give orders</h3><p class="muted small">Open Battle plans to assign an army a strategy before or during battle. The plan directs formations on Auto; your Move, Hold, Face, Charge, and Retreat commands take priority. Press G to return selected formations to the army plan. Steady Advance moves a cohesive infantry front with partial bracing; pikes and hoplites gain the most, and stationary bracing remains stronger. Rapid Encirclement chooses an isolated formation or a local cluster of enemy squads, then assigns a pinning front and fast surrounding wings. Its scope and target count appear on the selected formation. Refused Flank, Concentrated Breakthrough, Elastic Defense, and Echelon Assault give different advance and withdrawal sequences. Select a formation to see its current phase and planned route. Encircle takes cavalry around the enemy wing and into the rear; its turning points stay committed as the formation advances. Narrow terrain or an occupied route can delay or redirect a maneuver.</p><div id="manualPlans" class="formation-manual"></div><h3>Build a custom encounter</h3><p class="muted small">Choose Custom Map or New empty encounter to clear both armies and all terrain. Choose Standard, Large, Huge, or Colossal battlefield size; the largest field has 6.25 times the original area. Enlarging a field keeps your existing terrain and troops in place. Shrinking requires every formation and terrain area to fit inside the new bounds. Choose Castle and drag its perimeter for four walls, corner towers and a west gate. A click places a square keep. You can also draw individual terrain, wall and gate areas. Choose which army defends new walls and gates. A gate painted across a wall replaces the stone beneath it. Erase and Undo revise the layout. Choose an army, troop type, and size, then Place on field and click a clearing. Select troops and right-click to reposition them. Press T and click a direction to turn their formation. Press B or Split to divide a formation into independently commanded groups. Deployment splits, facing, and custom terrain are included in scenario saves. Give each army troops before starting.</p><h3>Build momentum, break the line</h3><p class="muted small">Horse troops now travel substantially faster than infantry. Lancers are slower than Royal Cavalry and Steppe Outriders, while mounted commanders can keep pace with the cavalry. Cavalry and lancers accelerate into a charge. Give them a straight run-up: speed increases impact damage and displacement. Fast lancers can burst through several levy ranks. Weak light troops are driven backward and outward from the horse's path, opening real gaps; a falling front-rank target no longer ends the follow-through. Light infantry can be thrown into the air; formed hoplites and prepared pikes absorb more force. Pressure passes into troops behind the first rank and fades through the line. Each enemy impact slows the horse, so a thin screen can be pierced while a deep, braced formation can stop the charge. The speed meter shows the selected riders' actual momentum. Sharp turns reduce it; Retreat starts a withdrawal while the riders turn.</p><h3>Friendly riders make room</h3><p class="muted small">Lancers, Royal Cavalry, and Steppe Outriders sidestep to open real gaps for nearby friendly horses. Nearby companies can follow the same opening at riding speed. Their leading horses move first, even when the next rank belongs to a different company. Two lone riders on a collision course can pass one another sideways on open ground. Held horses can take a small sideways step while keeping their facing. Move, Hold, Face, and Retreat replace the previous interaction; turning troops finish their turn first. Enemy ranks, prepared pikes, and solid terrain still resist a charge. Sideways steps do not add impact power.</p><h3>Give ground under pressure</h3><p class="muted small">Sustained close contact lets a stronger force slowly drive an enemy formation and its supporting ranks backward. Bring reserves into physical contact behind your front to add weight. Pressure builds while contact lasts. A regiment can rout after losing at least 80% of its starting strength if its morale also collapses. Troop mass, quality, cohesion, engaged frontage, and supporting ranks determine the pressure; facing, bracing, and firm formations increase resistance. Rear ranks step back with the front while retaining their facing. Rocks and occupied ground can stop the line, and distant separated troops do not get pulled along. Backward and sideways shuffling show the real movement. GIVING GROUND appears when pressure is moving the formation, unless a command or morale status takes priority. Move, Face, and Retreat take control immediately; Retreat immediately starts a breakoff. Hold stops your active advance, but a stronger enemy can still push your line back.</p><h3>Assault the fortifications</h3><p class="muted small">Choose Stonekeep Siege, Floodgate Citadel or The Three Crowns for an enclosed castle. Select a defending formation and right-click or tap a castle gate to open or close it. Either army can use an open gate. The gate stays open while the entrance is occupied. Siege towers roll to enemy walls and take four seconds to deploy a raised assault ramp; infantry then climb through the new opening. Battering rams must physically reach a gate before breaking it. Catapults and ballistas can bombard fortifications, while melee infantry can assault gates. Select an assault formation and right-click an enemy wall or gate to assign it. Auto finds useful siege work; Move, Hold, Face, and Retreat override that job. Towers remain archery platforms after deployment. Narrow bridges, breaches, and ramps require real space, so send a screen ahead and stagger your reserves.</p><h3>Defend the ramparts</h3><p class="muted small">Select ranged foot troops and right-click a friendly wall to man it during deployment, battle, or pause. Hovering previews their posts. You can also select foot troops, choose Man ramparts, and click the wall. They walk to interior stairs, climb, and form on the connected wall decks. Set Depth to one, two, or three ranks and choose Close, Regular, or Spread spacing; narrow walls limit the ranks that fit. Guards without a place wait in the courtyard. Ranged guards fire from the wall and are harder to hit from outside the castle. Attackers inside the courtyard do not face that outside-wall accuracy penalty.</p><p class="muted small">Use Form in courtyard to descend and prepare a ground defense. A wall or gate collapse triggers that response automatically: guards on intact decks use surviving stairs, while troops on a destroyed section fall. Move and Retreat orders continue after safe descent. In the custom editor, individual walls and gates can have stairs on either side. Keep those approaches clear.</p><h3>Fire by ranks</h3><p class="muted small">Musketeers form three ranks and fire one complete rank at a time. Each soldier reloads for 24 seconds, with a rank volley every eight seconds once the line is ready. Three-rank volley spreads the frontage; Three-file column makes a narrow marching formation. Keep them stationary and face the enemy. A melee breach breaks volley discipline. Once the attackers are cleared, the survivors reform before firing together again. Cannon and trebuchet impacts throw troops hardest; catapults also scatter packed targets.</p><h3>Great armies and fortified fields</h3><p class="muted small">Each army can field 20,000 combatants, for 40,000 total. Use the Army scale selector and a Grand, Vast, or Colossal field to give large forces room. Overview graphics simplify distant figures while preserving every soldier; zoom in for detailed movement and fighting.</p><p class="muted small">In Custom Encounter, roads speed the march; mud and snow slow it. Marsh and trenches trade movement for cover. The Castle plan selector includes the original square keep, timber palisades, curtain castles, moated castles with four causeways, bastioned star forts, and concentric citadels. Houses, watchtowers, barricades, and gate keeps can be placed separately. Leave space around walls and bridge mouths, and use friendly defenders to open a gate before marching through. Artillery can breach buildings and walls; the resulting opening becomes real traversable ground.</p><h3>Historical battles</h3><p class="muted small">Open Historical battles in the Campaign Atlas to search by battle, army, or place and filter by era. The preview shows the authored opening deployment and facing. Read the deployment briefing and its linked sources before choosing Prepare This Battle or Quick Battle. These are scaled recreations using the available troop classes; the notes explain troop substitutions and omitted reinforcements. Your commands determine what happens next.</p><h3>Watch the fight</h3><p class="muted small">Troops march, brace, charge, strike, recover, and react to hits with distinct poses. In Settings, choose Brief, Long, or Entire battle for fallen soldiers. Entire battle lets bodies accumulate in visible piles at their death locations until you reset the encounter. Use Reduced animations or Performance detail when viewing especially large fights.</p><section id="matchupSection" class="counter-guide" aria-labelledby="counterHeading"><h3 id="counterHeading">Armor and troop counters</h3><p class="muted small">Every troop has an armor class and a weapon profile. The values below multiply damage after armor-point protection. Armor penetration, anti-mounted damage, facing, formation, reach, and terrain also affect the fight.</p><div id="armorLegend" class="armor-legend"></div><div class="matchup-selectors"><div><label for="matchupAttacker">Attacking troop</label><select id="matchupAttacker"></select></div><div><label for="matchupDefender">Defending troop</label><select id="matchupDefender"></select></div></div><div id="matchupResult" class="matchup-result" aria-live="polite"></div><div class="table-wrap armor-table-wrap"><table class="armor-matrix"><caption>Weapon damage modifiers by defending armor class</caption><thead><tr><th scope="col">Attacking troop</th><th scope="col">Own armor</th><th scope="col">Vs light</th><th scope="col">Vs medium</th><th scope="col">Vs heavy</th></tr></thead><tbody id="armorMatchupTable"></tbody></table></div><p class="muted small counter-tactics"><strong>Brace pikes toward a cavalry charge.</strong> Use Face / T, keep the ranks cohesive, and hold a frontal approach. Flanks and broken formations reduce that protection. <strong>Advance hoplites as a shielded line.</strong> Their firm ranks and shield pressure work best together; loose order, disrupted ranks, and attacks from the side reduce their advantage.</p></section><h3>The complete muster</h3><div id="manualRoster" class="manual-roster"></div></div><div class="modal-footer"><button class="primary-button" data-close="helpDialog">RETURN TO THE FIELD</button></div></dialog>
+<dialog id="helpDialog" class="modal wide-modal"><div class="modal-heading"><div><span class="eyebrow">IRONFIELD 2.7 / FIELD MANUAL</span><h2>A thousand soldiers. Your command.</h2></div><button data-close="helpDialog" class="icon-button" aria-label="Close field manual"><span data-icon="close"></span></button></div><div class="modal-body"><p>Build both armies, position their formations, then unleash the battle. Every soldier moves, targets, fights, and can flee individually. Leave the armies to their battle plans, or take command at any moment.</p><div class="manual-grid"><section><h3>Command the battlefield</h3><dl class="controls-list"><dt>Left click / drag</dt><dd>Select a regiment / several regiments</dd><dt>Shift + click / drag</dt><dd>Add or remove from your selection</dd><dt>Right click</dt><dd>Reposition in deployment. In battle, march to open ground or attack at an enemy position.</dd><dt>M / A + click</dt><dd>Move / attack-move to a destination; left or right click confirms</dd><dt>T + click</dt><dd>Face that direction at the current position; during battle, turn and then hold</dd><dt>C / Shift + C</dt><dd>Charge a nearby enemy immediately / choose an enemy to charge</dd><dt>H / G / R</dt><dd>Hold / auto-command / withdraw immediately</dd><dt>J / V</dt><dd>Select a commander / sound a rally</dd><dt>Formation menu / B</dt><dd>Choose a shape / split selected formations in half</dd><dt>Scroll / pinch</dt><dd>Zoom toward the cursor / between fingers</dd><dt>Arrows / middle drag</dt><dd>Pan the camera (WASD when no troops selected)</dd><dt>Space / F / Tab</dt><dd>Start or pause / fit the field / cinematic view</dd><dt>1 / 2 / 3</dt><dd>Command Azure / Ember / spectate</dd><dt>Escape</dt><dd>Cancel a pending destination; otherwise deselect or close a window</dd></dl><p class="muted small">On touch screens: tap a formation, choose Move or Attack, and tap its destination. Drag with two fingers to pan and pinch to zoom. Drag the tactical map to travel quickly.</p></section><section><h3>Gunpowder and war clubs</h3><p class="muted small">Use the Infantry, Cavalry, Ranged and Siege tabs in the army builder. Musketeers fire in company volleys; each soldier reloads for 24 seconds and staggers the first enemy hit. Field cannons scatter packed ranks every 22 seconds. Trebuchets lob boulders over walls and need 24 seconds to reload. Select one of these formations to see its loaded weapons. Berserkers carry two-handed clubs that sweep the ground in front of them. Try all four in Thunder at Stonekeep.</p><h3>Win with the right force</h3><ul class="manual-tips"><li><strong>Keep spears in the line.</strong> Pikemen punish mounted charges. Heavy shields buy your ranged troops time.</li><li><strong>Use the flanks.</strong> Cavalry move quickly and strike hard on a charge. Avoid pushing horses into a spear wall.</li><li><strong>Give missile troops room.</strong> Javelins skirmish close and reposition between throws. Archers form broad shooting ranks at longer range; crossbows plant to aim and reload, favoring armored targets. Give each formation space to fire.</li><li><strong>Break dense formations.</strong> Catapult stones and war elephants deal area damage. Give them a screen of infantry.</li><li><strong>Read the terrain.</strong> Forests slow cavalry and shelter troops from missiles. Hills benefit ranged units. Rivers and rocks block movement; bridges create chokepoints.</li><li><strong>Arrange your battle line.</strong> Use T, then click a direction to face before the advance. Formations keep their marching ranks and approach their local front before spreading into combat. Choose Encircle to give cavalry a route around the wing into the enemy rear, or face and command each wing yourself.</li><li><strong>Let the ranks bend.</strong> Soldiers adjust their local spacing around obstacles, pressure, and nearby allies, then recover their chosen formation in open ground. Passing troops still slow down and use real gaps.</li><li><strong>Direct their attention.</strong> Automatic troops fight enemies already within reach, even from a different formation. Move and Charge keep the ordered direction; Hold defends the current position. Press G to return to automatic battle behavior.</li><li><strong>Build a broad front.</strong> Automatic attacks spread regiments across available enemy frontage. Waiting melee troops seek reachable openings around crowded allies, and passing lanes widen as the approach opens. Use open flanks and keep ranged troops behind your line.</li><li><strong>Keep formations cohesive.</strong> Collision, contact, movement, and flanking disrupt the ranks. Formation bonuses weaken as cohesion falls.</li><li><strong>Pull a formation out of melee.</strong> Press R to start withdrawing on the next simulation step. Soldiers turn while moving and seek friendly support after clearing the fight. Use M and click to choose their destination yourself. The command also works while withdrawing or regrouping. Repeating it keeps the withdrawal moving. Shaken troops can recover and return under a commander.</li><li><strong>Protect your commanders.</strong> Gold standards mark your leaders. Press J to find one, then V to rally nearby shaken and retreating troops. Move commanders behind the formations that need help.</li></ul></section></div><h3>Formations earn their advantage</h3><p class="muted small">Change the formation of selected regiments in deployment or during battle. Bonuses scale with cohesion; a disordered group cannot keep a perfect shield wall or charge wedge.</p><div id="manualFormations" class="formation-manual"></div><h3>Battle plans that give orders</h3><p class="muted small">Open Battle plans to assign an army a strategy before or during battle. The plan directs formations on Auto; your Move, Hold, Face, Charge, and Retreat commands take priority. Press G to return selected formations to the army plan. Steady Advance moves a cohesive infantry front with partial bracing; pikes and hoplites gain the most, and stationary bracing remains stronger. Rapid Encirclement chooses an isolated formation or a local cluster of enemy squads, then assigns a pinning front and fast surrounding wings. Its scope and target count appear on the selected formation. Refused Flank, Concentrated Breakthrough, Elastic Defense, and Echelon Assault give different advance and withdrawal sequences. Select a formation to see its current phase and planned route. Encircle takes cavalry around the enemy wing and into the rear; its turning points stay committed as the formation advances. Narrow terrain or an occupied route can delay or redirect a maneuver.</p><div id="manualPlans" class="formation-manual"></div><h3>Build a custom encounter</h3><p class="muted small">Choose Custom Map or New empty encounter to clear both armies and all terrain. Choose Standard, Large, Huge, or Colossal battlefield size; the largest field has 6.25 times the original area. Enlarging a field keeps your existing terrain and troops in place. Shrinking requires every formation and terrain area to fit inside the new bounds. Choose Castle and drag its perimeter for four walls, corner towers and a west gate. A click places a square keep. You can also draw individual terrain, wall and gate areas. Choose which army defends new walls and gates. A gate painted across a wall replaces the stone beneath it. Erase and Undo revise the layout. Choose an army, troop type, and size, then Place on field and click a clearing. Select troops and right-click to reposition them. Press T and click a direction to turn their formation. Press B or Split to divide a formation into independently commanded groups. Deployment splits, facing, and custom terrain are included in scenario saves. Give each army troops before starting.</p><h3>Build momentum, break the line</h3><p class="muted small">Horse troops now travel substantially faster than infantry. Lancers are slower than Royal Cavalry and Steppe Outriders, while mounted commanders can keep pace with the cavalry. Cavalry and lancers accelerate into a charge. Give them a straight run-up: speed increases impact damage and displacement. Fast lancers can burst through several levy ranks. Weak light troops are driven backward and outward from the horse's path, opening real gaps; a falling front-rank target no longer ends the follow-through. Light infantry can be thrown into the air; formed hoplites and prepared pikes absorb more force. Pressure passes into troops behind the first rank and fades through the line. Each enemy impact slows the horse, so a thin screen can be pierced while a deep, braced formation can stop the charge. The speed meter shows the selected riders' actual momentum. Sharp turns reduce it; Retreat starts a withdrawal while the riders turn.</p><h3>Friendly riders make room</h3><p class="muted small">Lancers, Royal Cavalry, and Steppe Outriders sidestep to open real gaps for nearby friendly horses. Nearby companies can follow the same opening at riding speed. Their leading horses move first, even when the next rank belongs to a different company. Two lone riders on a collision course can pass one another sideways on open ground. Held horses can take a small sideways step while keeping their facing. Move, Hold, Face, and Retreat replace the previous interaction; turning troops finish their turn first. Enemy ranks, prepared pikes, and solid terrain still resist a charge. Sideways steps do not add impact power.</p><h3>Give ground under pressure</h3><p class="muted small">Sustained close contact lets a stronger force slowly drive an enemy formation and its supporting ranks backward. Bring reserves into physical contact behind your front to add weight. Pressure builds while contact lasts. A regiment can rout after losing at least 80% of its starting strength if its morale also collapses. Troop mass, quality, cohesion, engaged frontage, and supporting ranks determine the pressure; facing, bracing, and firm formations increase resistance. Rear ranks step back with the front while retaining their facing. Rocks and occupied ground can stop the line, and distant separated troops do not get pulled along. Backward and sideways shuffling show the real movement. GIVING GROUND appears when pressure is moving the formation, unless a command or morale status takes priority. Move, Face, and Retreat take control immediately; Retreat immediately starts a breakoff. Hold stops your active advance, but a stronger enemy can still push your line back.</p><h3>Assault the fortifications</h3><p class="muted small">Choose Stonekeep Siege, Floodgate Citadel or The Three Crowns for an enclosed castle. Select a defending formation and right-click or tap a castle gate to open or close it. Either army can use an open gate. The gate stays open while the entrance is occupied. Siege towers roll to enemy walls and take four seconds to deploy a raised assault ramp; infantry then climb through the new opening. Battering rams must physically reach a gate before breaking it. Catapults and ballistas can bombard fortifications, while melee infantry can assault gates. Select an assault formation and right-click an enemy wall or gate to assign it. Auto finds useful siege work; Move, Hold, Face, and Retreat override that job. Towers remain archery platforms after deployment. Narrow bridges, breaches, and ramps require real space, so send a screen ahead and stagger your reserves.</p><h3>Defend the ramparts</h3><p class="muted small">Select ranged foot troops and right-click a friendly wall to man it during deployment, battle, or pause. Hovering previews their posts. You can also select foot troops, choose Man ramparts, and click the wall. They walk to interior stairs, climb, and form on the connected wall decks. Set Depth to one, two, or three ranks and choose Close, Regular, or Spread spacing; narrow walls limit the ranks that fit. Guards without a place wait in the courtyard. Ranged guards fire from the wall and are harder to hit from outside the castle. Attackers inside the courtyard do not face that outside-wall accuracy penalty.</p><p class="muted small">Use Form in courtyard to descend and prepare a ground defense. A wall or gate collapse triggers that response automatically: guards on intact decks use surviving stairs, while troops on a destroyed section fall. Move and Retreat orders continue after safe descent. In the custom editor, individual walls and gates can have stairs on either side. Keep those approaches clear.</p><h3>Company volleys</h3><p class="muted small">Once at least a quarter of the formed musketeers have targets in range and most face the enemy, all loaded soldiers with the company fire together. Distant stragglers sit out. Each soldier reloads for 24 seconds. Three-rank volley spreads the frontage; Three-file column makes a narrow marching formation. Keep them stationary and face the enemy. A melee breach breaks volley discipline. Once the attackers are cleared, the survivors reform before firing together again. Cannon and trebuchet impacts throw troops hardest; catapults also scatter packed targets.</p><h3>Great armies and fortified fields</h3><p class="muted small">Each army can field 20,000 combatants, for 40,000 total. Use the Army scale selector and a Grand, Vast, or Colossal field to give large forces room. Overview graphics simplify distant figures while preserving every soldier; zoom in for detailed movement and fighting.</p><p class="muted small">In Custom Encounter, roads speed the march; mud and snow slow it. Marsh and trenches trade movement for cover. The Castle plan selector includes the original square keep, timber palisades, curtain castles, moated castles with four causeways, bastioned star forts, and concentric citadels. Houses, watchtowers, barricades, and gate keeps can be placed separately. Leave space around walls and bridge mouths, and use friendly defenders to open a gate before marching through. Artillery can breach buildings and walls; the resulting opening becomes real traversable ground.</p><h3>Historical battles</h3><p class="muted small">Open Historical battles in the Campaign Atlas to search by battle, army, or place and filter by era. The preview shows the authored opening deployment and facing. Read the deployment briefing and its linked sources before choosing Prepare This Battle or Quick Battle. These are scaled recreations using the available troop classes; the notes explain troop substitutions and omitted reinforcements. Your commands determine what happens next.</p><h3>Watch the fight</h3><p class="muted small">Troops march, brace, charge, strike, recover, and react to hits with distinct poses. In Settings, choose Brief, Long, or Entire battle for fallen soldiers. Entire battle lets bodies accumulate in visible piles at their death locations until you reset the encounter. Use Reduced animations or Performance detail when viewing especially large fights.</p><section id="matchupSection" class="counter-guide" aria-labelledby="counterHeading"><h3 id="counterHeading">Armor and troop counters</h3><p class="muted small">Every troop has an armor class and a weapon profile. The values below multiply damage after armor-point protection. Armor penetration, anti-mounted damage, facing, formation, reach, and terrain also affect the fight.</p><div id="armorLegend" class="armor-legend"></div><div class="matchup-selectors"><div><label for="matchupAttacker">Attacking troop</label><select id="matchupAttacker"></select></div><div><label for="matchupDefender">Defending troop</label><select id="matchupDefender"></select></div></div><div id="matchupResult" class="matchup-result" aria-live="polite"></div><div class="table-wrap armor-table-wrap"><table class="armor-matrix"><caption>Weapon damage modifiers by defending armor class</caption><thead><tr><th scope="col">Attacking troop</th><th scope="col">Own armor</th><th scope="col">Vs light</th><th scope="col">Vs medium</th><th scope="col">Vs heavy</th></tr></thead><tbody id="armorMatchupTable"></tbody></table></div><p class="muted small counter-tactics"><strong>Brace pikes toward a cavalry charge.</strong> Use Face / T, keep the ranks cohesive, and hold a frontal approach. Flanks and broken formations reduce that protection. <strong>Advance hoplites as a shielded line.</strong> Their firm ranks and shield pressure work best together; loose order, disrupted ranks, and attacks from the side reduce their advantage.</p></section><h3>The complete muster</h3><div id="manualRoster" class="manual-roster"></div></div><div class="modal-footer"><button class="primary-button" data-close="helpDialog">RETURN TO THE FIELD</button></div></dialog>
 
 <dialog id="battlePlansDialog" class="modal wide-modal" aria-labelledby="battlePlansHeading">
   <div class="modal-heading"><div><span class="eyebrow">ARMY COMMAND</span><h2 id="battlePlansHeading">Choose how the battle unfolds.</h2></div><button data-close="battlePlansDialog" class="icon-button" aria-label="Close battle plans"><span data-icon="close"></span></button></div>
@@ -388,7 +388,7 @@
     musketeer: tactics('light', 'musket', 0.95,
       [['guardian', 'Musket balls pierce plate and push a Guardian back while it crosses the firing lane.']],
       [['cavalry', 'Cavalry can ride around the screen and reach the gun line during a reload.']],
-      'Three disciplined ranks fire in rotating volleys. Each soldier takes 24 seconds to reload; protect the line from close combat.'),
+      'The formed company fires together when at least a quarter have targets in range. Each soldier takes 24 seconds to reload; protect the line from close combat.'),
     crossbow: tactics('medium', 'bolt', .95,
       [['guardian', 'High armor penetration and a heavy-armor modifier make bolts useful against plate.'], ['lancer', 'Piercing bolts threaten armored riders while an infantry screen keeps them at range.']],
       [['archer', 'Longbows outrange crossbows and fire more frequently.'], ['cavalry', 'The long reload leaves unsupported crews vulnerable to a close charge.']],
@@ -530,11 +530,11 @@
     }),
     musketeer: unit('musketeer', {
       name: 'Musketeers', shortName: 'Musketeers', role: 'Gunpowder infantry',
-      description: 'Three ranks plant their feet and fire one synchronized rank at a time. Hard-hitting balls reward careful positioning through a long 24-second individual reload.',
-      strengths: 'Synchronized rank volleys · armor penetration · heavy musket damage', weakness: 'Close combat breaks volley discipline; cavalry can overrun the line during its long reload.',
+      description: 'Loaded musketeers fire a synchronized company volley. Hard-hitting balls reward careful positioning through a long 24-second individual reload.',
+      strengths: 'Synchronized company volleys · armor penetration · heavy musket damage', weakness: 'Close combat breaks volley discipline; cavalry can overrun the line during its long reload.',
       hp: 72, damage: 78, armor: 2, speed: 40, range: 425, cooldown: 24, radius: 6, cost: 7, morale: 71,
       ranged: true, siege: false, projectile: 'musketBall', projectileSpeed: 1500, projectileArc: 1, splash: 0, armorPierce: .85, color: '#ae967e',
-      missile: Object.freeze({ label: 'Rotating rank volleys', description: 'Hold three ranks and fire one entire rank together, then pass the fire order to the next rank while the others reload.', standoff: .80, ranks: 3, spacing: 1.10, maxWidth: 680, breakRange: 55, reloadStep: 0, armorPreference: .018 })
+      missile: Object.freeze({ label: 'Company volleys', description: 'Once a quarter have targets in range and most face the enemy, the formed company fires together.', standoff: .80, ranks: 3, spacing: 1.10, maxWidth: 680, breakRange: 55, reloadStep: 0, armorPreference: .018 })
     }),
     crossbow: unit('crossbow', {
       missile: Object.freeze({ label: 'Planted bolt line', description: 'Settle before firing, reload in place, and favor armored targets within reach.', standoff: .76, ranks: 5, spacing: 1.05, maxWidth: 540, breakRange: 45, reloadStep: 0, armorPreference: .026 }),
@@ -688,7 +688,7 @@
   const FORMATIONS = Object.freeze({
     volley: Object.freeze({
       id: 'volley', name: 'Three-rank volley', ranks: 3,
-      description: 'A broad frontage three ranks deep. Musketeers fire one complete rank together, rotating front to rear while each soldier reloads. Close combat breaks the firing drill.',
+      description: 'A broad frontage three ranks deep. Loaded musketeers in all three ranks fire together. Close combat breaks the firing drill.',
       speed: .95, damage: 1, frontalMelee: 1, frontalRanged: 1,
       incomingMelee: 1, incomingRanged: 1, incomingSplash: 1, charge: 1, spacing: 1.1
     }),
@@ -4970,9 +4970,9 @@
         _approachNX: facingX, _approachNY: facingY, _approachEnemy: -1, _localFront: false,
         _faceStart: 0, _faceDuration: 0, _faceFrom: facing, _faceDelta: 0, _faceError: 0,
         fireBehavior: t.missile ? t.missile.label : '',
-        nextVolleyRank: 1, nextVolleyAt: 0, volleyRankCount: type === 'musketeer' ? rows : 0,
-        volleyStatus: type === 'musketeer' ? 'forming' : '', lastVolleyAt: -1000, lastVolleyRank: 0,
-        _volleyNext: 0, _volleyBrokenUntil: 0, _volleyDispatch: false, _volleyLayout: '',
+        _volleyScanAt: 0, nextVolleyAt: 0, volleyRankCount: type === 'musketeer' ? rows : 0,
+        volleyStatus: type === 'musketeer' ? 'forming' : '', lastVolleyAt: -1000,
+        _volleyBrokenUntil: 0, _volleyDispatch: false, _volleyLayout: '',
         _siegeJob: null, siegeStatus: '', _siegeManualTarget: null, _siegeManualEpoch: -1, _siegeReachRevision: -1,
         _lancerPass: null,
         _rigidMinX: Infinity, _rigidMaxX: -Infinity, _rigidMinY: Infinity, _rigidMaxY: -Infinity,
@@ -5089,7 +5089,7 @@
         r.width = columns * r._spacing * (f.spacing || 1);
         r.depth = rows * r._spacing * (f.spacing || 1);
         r._shapeColumns = columns;
-        if (r.type === 'musketeer') { r._volleyLayout = ''; r._missileSlotsTime = -10; r._volleyNext = 0; }
+        if (r.type === 'musketeer') { r._volleyLayout = ''; r._missileSlotsTime = -10; }
         if (this.phase === 'deployment') {
           r._adaptiveColumns = columns; r._terrainColumns = columns;
           r.effectiveWidth = r.width; r.effectiveDepth = r.depth;
@@ -6663,7 +6663,7 @@
     }
 
     _assignMusketRanks(r, missiles) {
-      if(r._rampartJob){let ranks=1;for(const id of r.unitIds){const u=this.units[id];u._volleyRank=u._rampartRank;ranks=Math.max(ranks,u._volleyRank+1);}r.volleyRankCount=ranks;r._volleyNext%=ranks;r.nextVolleyRank=r._volleyNext+1;return;}
+      if(r._rampartJob){let ranks=1;for(const id of r.unitIds){const u=this.units[id];u._volleyRank=u._rampartRank;ranks=Math.max(ranks,u._volleyRank+1);}r.volleyRankCount=ranks;return;}
       const form = FORMATIONS[r.formation] || {};
       const columns = missiles ? r._missileColumns : form.files ? Math.min(r.alive, form.files) : form.ranks ? Math.ceil(r.alive / form.ranks) : r.formation === 'wedge' ? r._shapeColumns : Math.ceil(r.alive / 3);
       const wedge = !missiles && r.formation === 'wedge';
@@ -6679,7 +6679,6 @@
         ranks = Math.max(ranks, u._volleyRank + 1);
       }
       r.volleyRankCount = ranks;
-      r._volleyNext %= ranks; r.nextVolleyRank = r._volleyNext + 1;
       r._volleyLayout = [missiles ? 'fire' : 'march', r.formation, columns, r.alive].join(':');
     }
 
@@ -6691,74 +6690,115 @@
       this._hit(u, enemy, 9, false, false);
     }
 
-    _stepMusketVolleys() {
+    _musketReach(u) {
+      const elevated = u._onRampart || this.terrainAt(u.x, u.y).elevation;
+      return TYPES.musketeer.range * (elevated ? 1.12 : 1);
+    }
+
+    _formedMusketeers(r, soldiers) {
+      // Find the main body from actual positions. A broad line or long column
+      // stays connected, while a distant pair cannot vouch for each other.
+      if (r._rampartJob || soldiers.length <= 1) return soldiers;
+      const cell = 2.5 * Math.max(r._shapeSpacing, r._missileSpacing);
+      const stride = Math.ceil(this.width / cell) + 2, cells = new Map();
+      for (const u of soldiers) {
+        const key = Math.floor(u.x / cell) + Math.floor(u.y / cell) * stride;
+        if (!cells.has(key)) cells.set(key, []);
+        cells.get(key).push(u);
+      }
+      while (cells.size) {
+        const stack = [cells.keys().next().value], group = [];
+        while (stack.length) {
+          const key = stack.pop(), members = cells.get(key);
+          if (!members) continue;
+          cells.delete(key);
+          for (const u of members) group.push(u);
+          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const neighbor = key + dy * stride + dx;
+            if (cells.has(neighbor)) stack.push(neighbor);
+          }
+        }
+        if (group.length * 2 > soldiers.length) return group;
+      }
+      return [];
+    }
+
+    _stepMusketVolleys(dt) {
       for (const r of this.regiments) {
         if (r.type !== 'musketeer' || r.alive <= 0 || r._routed) continue;
         const t = TYPES.musketeer, missiles = this._canDeployMissiles(r);
         const columns = missiles ? r._missileColumns : (FORMATIONS[r.formation] || {}).files || ((FORMATIONS[r.formation] || {}).ranks ? Math.ceil(r.alive / FORMATIONS[r.formation].ranks) : r.formation === 'wedge' ? r._shapeColumns : Math.ceil(r.alive / 3));
         const layout = [missiles ? 'fire' : 'march', r.formation, columns, r.alive].join(':');
-        if (layout !== r._volleyLayout) this._assignMusketRanks(r, missiles);
-        const soldiers = r.unitIds.map(id => this.units[id]).filter(u => u.alive && !u.routed&&(!r._rampartJob||(u._onRampart&&!u._rampartPath.length&&!r._rampartJob.leaving)));
-        if(r._rampartJob)this._assignMusketRanks(r,true);
-        const rankMembers = Array.from({ length: r.volleyRankCount }, () => []);
-        for (const u of soldiers) rankMembers[u._volleyRank].push(u);
-        let contact = false;
+        if (layout !== r._volleyLayout || r._rampartJob) this._assignMusketRanks(r, missiles);
+        const soldiers = r.unitIds.map(id => this.units[id]).filter(u => u.alive && !u.routed &&
+          (!r._rampartJob || (u._onRampart && !u._rampartPath.length && !r._rampartJob.leaving)));
+        let formed, contact = false;
         for (const u of soldiers) {
           const id = this._nearestEnemy(u, 42);
-          if (id >= 0 && Math.abs(this.unitAltitude(u)-this.unitAltitude(this.units[id]))<=18 && this._meleeLineClear(u,this.units[id])) {
-            contact = true;
-            this._musketMelee(u, this.units[id]);
-          }
+          if (id < 0) continue;
+          const enemy = this.units[id];
+          if (Math.abs(this.unitAltitude(u) - this.unitAltitude(enemy)) > 18 || !this._meleeLineClear(u, enemy)) continue;
+          this._musketMelee(u, enemy);
+          formed ||= new Set(this._formedMusketeers(r, soldiers));
+          if (formed.has(u)) contact = true;
         }
-        if (contact) {
-          r._volleyBrokenUntil = this.time + 3;
-          r.volleyStatus = 'melee'; r._fireLocked = false;
-          r.nextVolleyAt = Math.max(r.nextVolleyAt, r._volleyBrokenUntil);
+        if (contact) r._volleyBrokenUntil = this.time + 3;
+        if (this.time < r._volleyBrokenUntil) {
+          r.volleyStatus = contact ? 'melee' : 'reforming';
+          r._fireLocked = false;
           continue;
         }
-        if (this.time < r._volleyBrokenUntil) { r.volleyStatus = 'reforming'; continue; }
-        if (r.fallingBack || r._rallyTime > 0 || r.order === 'move' || r.order === 'face' || this._advancingAttack(r) || r._frontTurning || r._traffic || r._bridge) {
+        if (r.fallingBack || r._rallyTime > 0 || r.order === 'move' || r.order === 'face' || this._advancingAttack(r) || r._traffic || r._bridge) {
           r.volleyStatus = 'marching'; continue;
         }
         if (this.time + 1e-8 < r.nextVolleyAt) { r.volleyStatus = 'reloading'; continue; }
-        // A row is a single firing transaction. Soldiers never acquire an
-        // individual permission window that could trickle shots over frames.
-        // Empty/out-of-range rows are skipped, and only one row fires per step.
-        let fired = false;
-        for (let attempt = 0; attempt < r.volleyRankCount && !fired; attempt++) {
-          const rank = (r._volleyNext + attempt) % r.volleyRankCount;
-          const members = rankMembers[rank];
-          if (!members.length) continue;
-          if(r._rampartJob&&r.unitIds.some(id=>{const u=this.units[id];return u.alive&&!u.routed&&u._volleyRank===rank&&(!u._onRampart||u._rampartPath.length);}))continue;
-          const ready = members.every(u => u._cooldown <= 1e-8 && u._impactUntil <= this.time && u._vx * u._vx + u._vy * u._vy <= 25);
-          if (!ready) continue;
-          const shots = [];
-          for (const u of members) {
-            let target = this.units[u.target];
-            const reach = t.range * (u._terrain.elevation ? 1.12 : 1);
-            if (!target || !target.alive || target.routed || Math.hypot(target.x - u.x, target.y - u.y) > reach) target = this.units[this._rangedLocalTarget(u, reach)];
-            if (target && target.alive && !target.routed && Math.hypot(target.x - u.x, target.y - u.y) <= reach) shots.push([u, target]);
-          }
-          if (shots.length < Math.ceil(members.length * .5)) continue;
-          // Edge files discharge with their row even when their line of aim
-          // ends short of an enemy. The actual projectile still travels only
-          // to weapon range and can hit only a body crossing that path.
-          const reference = shots[Math.floor(shots.length / 2)][1];
-          const armed = new Set(shots.map(shot => shot[0].id));
-          for (const u of members) if (!armed.has(u.id)) {
-            const dx = reference.x - u.x, dy = reference.y - u.y, distance = Math.hypot(dx, dy) || 1;
-            const reach = t.range * (u._terrain.elevation ? 1.12 : 1) * .98;
-            shots.push([u, { id: -1, x: u.x + dx / distance * reach, y: u.y + dy / distance * reach, _vx: 0, _vy: 0, _radius: 0 }]);
-          }
-          r._volleyDispatch = true;
-          for (const [u, target] of shots) this._attack(u, target);
-          r._volleyDispatch = false;
-          r.lastVolleyAt = this.time; r.lastVolleyRank = rank + 1;
-          r._volleyNext = (rank + 1) % r.volleyRankCount; r.nextVolleyRank = r._volleyNext + 1;
-          r.nextVolleyAt = this.time + t.cooldown / r.volleyRankCount;
-          r.volleyStatus = 'reloading'; fired = true;
+        if (this.time < r._volleyScanAt) continue;
+        const company = formed ? [...formed] : this._formedMusketeers(r, soldiers);
+        // Musketeers still climbing to assigned posts count toward their
+        // wall company, but only settled gunners can aim and discharge.
+        const strength = r._rampartJob ? r.unitIds.filter(id => {
+          const u = this.units[id];
+          return u.alive && !u.routed && r._rampartSlots[u._rampartSlot];
+        }).length : company.length;
+        const targets = new Map();
+        for (const u of company) {
+          const reach = this._musketReach(u);
+          let target = this.units[u.target];
+          if (!target || !target.alive || target.routed || Math.hypot(target.x - u.x, target.y - u.y) > reach)
+            target = this.units[this._rangedLocalTarget(u, reach)];
+          if (target) targets.set(u, target);
         }
-        if (!fired) r.volleyStatus = soldiers.some(u => u._cooldown > 0) ? 'reloading' : 'ready';
+        if (!targets.size || targets.size * 4 < strength) {
+          r.volleyStatus = 'ready'; r._volleyScanAt = this.time + .2; continue;
+        }
+        const reference = targets.values().next().value;
+        let facing = 0;
+        for (const u of company) {
+          const target = targets.get(u) || reference;
+          const aim = Math.atan2(target.y - u.y, target.x - u.x);
+          const delta = Math.atan2(Math.sin(aim - u.angle), Math.cos(aim - u.angle));
+          if (Math.abs(delta) <= Math.PI / 3) facing++;
+          if (u._impactUntil <= this.time) u.angle += clamp(delta, -3 * dt, 3 * dt);
+        }
+        if (facing * 2 <= strength) { r.volleyStatus = 'aiming'; continue; }
+        const loaded = company.filter(u => u._cooldown <= 1e-8 && u._impactUntil <= this.time);
+        if (!loaded.length) { r.volleyStatus = 'reloading'; continue; }
+        r._volleyDispatch = true;
+        for (const u of loaded) {
+          let target = targets.get(u);
+          if (!target) {
+            // Edge files fire along the company sightline, with a real ball
+            // that ends inside the weapon's reach.
+            const dx = reference.x - u.x, dy = reference.y - u.y;
+            const reach = this._musketReach(u) * .98;
+            const scale = Math.min(1, reach / Math.max(1, Math.hypot(dx, dy)));
+            target = { id: -1, x: u.x + dx * scale, y: u.y + dy * scale, _vx: 0, _vy: 0, _radius: 0 };
+          }
+          this._attack(u, target);
+        }
+        r._volleyDispatch = false;
+        r.lastVolleyAt = this.time; r.nextVolleyAt = this.time + t.cooldown;
+        r.volleyStatus = 'reloading';
       }
     }
 
@@ -8466,7 +8506,7 @@
       if (distance > t.range + bodyReach) {
         // Movement terrain is cached, but a hill's extra weapon reach must
         // end when the soldier leaves that ground, even between cache ticks.
-        attacker._terrain = this.terrainAt(attacker.x, attacker.y);
+        if (!attacker._onRampart) attacker._terrain = this.terrainAt(attacker.x, attacker.y);
         if (distance > t.range * (attacker._terrain.elevation ? 1.12 : 1) + bodyReach) return;
       }
       const attackRegiment = this.regiments[attacker.regiment];
@@ -9086,7 +9126,7 @@
         }
       }
       this._inUnitStep = false;
-      this._stepMusketVolleys();
+      this._stepMusketVolleys(dt);
       for (let i = this.projectiles.length - 1; i >= 0; i--) {
         const p = this.projectiles[i];
         const previous = p.age / p.duration;
@@ -10943,12 +10983,6 @@
         if(u.type==='siegeTower'&&u._siegeDeployed)continue;
         const dir=((Math.round(angle/(Math.PI/4))%8)+8)%8;
         const elevation=this._elevation(u);
-        if(u.type==='musketeer'&&z>.38&&selected.has(u.regiment)&&Number.isInteger(u._volleyRank)){
-          const regiment=e.regiments&&e.regiments[u.regiment];
-          if(regiment&&regiment.volleyStatus!=='melee'&&regiment.nextVolleyRank===u._volleyRank+1){
-            c.globalAlpha=.58;line(c,u.x-4,u.y-elevation+3,u.x+4,u.y-elevation+3,TEAM[u.team||0].light,1.5);c.globalAlpha=1;
-          }
-        }
         if(this._drawImpactUnit(c,u,atlas,dir,spriteLevel,elevation)){drawCalls++;continue;}
         let frame=this._attackFrame(u);
         if(u.state==='turning')frame=0;
@@ -11341,7 +11375,7 @@
         const pushing=r.type==='hoplite'&&Number(r.pushingSoldiers)>0;
         const yielding=r._formationPressureSpeed>.01&&r._formationPressureUntil>this.engine.time&&r._pressureSourceId>=0&&r.order!=='move'&&r.order!=='face'&&r.order!=='retreat'&&!(r._rallyTime>0)&&!(r.order==='attack'&&r._hasDestination&&!r._attackBlocked);
         const volley=r.type==='musketeer'&&r.volleyStatus;
-        const volleyStatus=volley==='melee'?'MELEE · RANKS BROKEN':volley==='reforming'?'REFORMING FIRING RANKS':volley==='forming'?'FORMING FIRING RANKS':volley==='marching'?'MARCHING · FIRE HELD':volley&&r.nextVolleyRank?'NEXT VOLLEY · RANK '+r.nextVolleyRank:'';
+        const volleyStatus=volley==='melee'?'MELEE · RANKS BROKEN':volley==='reforming'?'REFORMING FIRING RANKS':volley==='forming'?'FORMING FIRING RANKS':volley==='marching'?'MARCHING · FIRE HELD':volley==='ready'?'WAITING FOR RANGE':volley==='aiming'?'AIMING VOLLEY':volley==='reloading'?'RELOADING VOLLEY':'';
         const rampartStatus=typeof r.rampartStatus==='string'?r.rampartStatus.toUpperCase():'';
         const status=r.commandStatus==='facing'?'TURNING IN PLACE':r.commandStatus==='turning'?'TURNING TO WITHDRAW':fallingBack?'FALLING BACK':reforming?'REFORMING':r.status==='shaken'?'SHAKEN':r.status==='routing'?'ROUTING':((isSel||z>.65)?r.siegeStatus?r.siegeStatus.toUpperCase():rampartStatus|| (yielding?'GIVING GROUND':pushing?'SHIELD PRESS':volleyStatus||maneuverStatus):'');
         const statusColor=r.commandStatus==='facing'?'#f1d58e':fallingBack||r.status==='shaken'?'#efbd6e':status==='GIVING GROUND'?'#d8bd89':reforming||maneuver==='reforming'?'#b8dcc4':pushing?'#e9c67a':passage?'#d9c696':rampartStatus?'#b9dac9':'#df8f77';
@@ -12442,9 +12476,9 @@
       }
       reload.textContent=`${loaded}/${total} loaded${Number.isFinite(next)?' · Next ready in '+next.toFixed(1)+' s':''}`;
       if(selectedType.id==='musketeer'){
-        const r=regs[0],status={melee:'Line broken · Close combat',reforming:'Reforming the firing line',marching:'Marching · Hold to form ranks',forming:'Forming ranks',ready:'Ready to fire',reloading:'Loading the next rank'}[r.volleyStatus]||'Forming ranks';
+        const r=regs[0],status={melee:'Line broken · Close combat',reforming:'Reforming the firing line',marching:'Marching · Hold to form ranks',forming:'Forming ranks',ready:'Waiting for targets in range',aiming:'Aiming the company volley',reloading:'Reloading the company volley'}[r.volleyStatus]||'Forming ranks';
         const wait=Math.max(0,(r.nextVolleyAt||0)-engine.time);
-        reload.textContent=`${status}${r.nextVolleyRank?' · Rank '+r.nextVolleyRank+' / '+r.volleyRankCount:''}${wait>.1&&r.volleyStatus!=='melee'?' · '+wait.toFixed(1)+' s':''} · ${loaded}/${total} loaded`;
+        reload.textContent=`${status}${wait>.1&&r.volleyStatus!=='melee'?' · '+wait.toFixed(1)+' s':''} · ${loaded}/${total} loaded`;
       }
     }
     const siegeRegs=regs.filter(r=>r.siegeStatus||data.TYPES[r.type].equipment),siegeText=$('selectedSiege');
@@ -12483,8 +12517,8 @@
   function formationSummary(info,cohesion){
     const scaled=key=>Math.round(((Number(info[key])||1)-1)*clamp(cohesion,0,100));
     const percent=n=>(n>0?'+':n<0?'−':'')+Math.abs(n)+'%';
-    if(info.id==='volley')return`Three ranks · Musketeers fire by rank · ${percent(scaled('speed'))} speed`;
-    if(info.id==='column')return`Three soldiers abreast · Musketeers fire by row · ${percent(scaled('incomingSplash'))} splash taken`;
+    if(info.id==='volley')return`Three ranks · Company volley · ${percent(scaled('speed'))} speed`;
+    if(info.id==='column')return`Three soldiers abreast · Company volley · ${percent(scaled('incomingSplash'))} splash taken`;
     if(info.id==='shieldwall')return`${percent(scaled('frontalMelee'))} frontal melee taken · ${percent(scaled('frontalRanged'))} frontal missiles · ${percent(scaled('speed'))} speed`;
     if(info.id==='wedge')return`${percent(scaled('charge'))} charge · ${percent(scaled('speed'))} speed · ${percent(scaled('incomingMelee'))} melee taken`;
     if(info.id==='loose')return`${percent(scaled('incomingRanged'))} missiles · ${percent(scaled('incomingSplash'))} splash · ${percent(scaled('incomingMelee'))} melee taken`;

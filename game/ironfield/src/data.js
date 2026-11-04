@@ -87,7 +87,7 @@
     musketeer: tactics('light', 'musket', 0.95,
       [['guardian', 'Musket balls pierce plate and push a Guardian back while it crosses the firing lane.']],
       [['cavalry', 'Cavalry can ride around the screen and reach the gun line during a reload.']],
-      'Three disciplined ranks fire in rotating volleys. Each soldier takes 24 seconds to reload; protect the line from close combat.'),
+      'The formed company fires together when at least a quarter have targets in range. Each soldier takes 24 seconds to reload; protect the line from close combat.'),
     crossbow: tactics('medium', 'bolt', .95,
       [['guardian', 'High armor penetration and a heavy-armor modifier make bolts useful against plate.'], ['lancer', 'Piercing bolts threaten armored riders while an infantry screen keeps them at range.']],
       [['archer', 'Longbows outrange crossbows and fire more frequently.'], ['cavalry', 'The long reload leaves unsupported crews vulnerable to a close charge.']],
@@ -229,11 +229,11 @@
     }),
     musketeer: unit('musketeer', {
       name: 'Musketeers', shortName: 'Musketeers', role: 'Gunpowder infantry',
-      description: 'Three ranks plant their feet and fire one synchronized rank at a time. Hard-hitting balls reward careful positioning through a long 24-second individual reload.',
-      strengths: 'Synchronized rank volleys · armor penetration · heavy musket damage', weakness: 'Close combat breaks volley discipline; cavalry can overrun the line during its long reload.',
+      description: 'Loaded musketeers fire a synchronized company volley. Hard-hitting balls reward careful positioning through a long 24-second individual reload.',
+      strengths: 'Synchronized company volleys · armor penetration · heavy musket damage', weakness: 'Close combat breaks volley discipline; cavalry can overrun the line during its long reload.',
       hp: 72, damage: 78, armor: 2, speed: 40, range: 425, cooldown: 24, radius: 6, cost: 7, morale: 71,
       ranged: true, siege: false, projectile: 'musketBall', projectileSpeed: 1500, projectileArc: 1, splash: 0, armorPierce: .85, color: '#ae967e',
-      missile: Object.freeze({ label: 'Rotating rank volleys', description: 'Hold three ranks and fire one entire rank together, then pass the fire order to the next rank while the others reload.', standoff: .80, ranks: 3, spacing: 1.10, maxWidth: 680, breakRange: 55, reloadStep: 0, armorPreference: .018 })
+      missile: Object.freeze({ label: 'Company volleys', description: 'Once a quarter have targets in range and most face the enemy, the formed company fires together.', standoff: .80, ranks: 3, spacing: 1.10, maxWidth: 680, breakRange: 55, reloadStep: 0, armorPreference: .018 })
     }),
     crossbow: unit('crossbow', {
       missile: Object.freeze({ label: 'Planted bolt line', description: 'Settle before firing, reload in place, and favor armored targets within reach.', standoff: .76, ranks: 5, spacing: 1.05, maxWidth: 540, breakRange: 45, reloadStep: 0, armorPreference: .026 }),
@@ -387,7 +387,7 @@
   const FORMATIONS = Object.freeze({
     volley: Object.freeze({
       id: 'volley', name: 'Three-rank volley', ranks: 3,
-      description: 'A broad frontage three ranks deep. Musketeers fire one complete rank together, rotating front to rear while each soldier reloads. Close combat breaks the firing drill.',
+      description: 'A broad frontage three ranks deep. Loaded musketeers in all three ranks fire together. Close combat breaks the firing drill.',
       speed: .95, damage: 1, frontalMelee: 1, frontalRanged: 1,
       incomingMelee: 1, incomingRanged: 1, incomingSplash: 1, charge: 1, spacing: 1.1
     }),

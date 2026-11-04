@@ -57,7 +57,7 @@ for (const formation of ['volley', 'column']) {
   el('formationSelect').value = formation;el('formationSelect').dispatch('change');
   assert.equal(ui.engine.getRegiment(gun.id).formation, formation);
   assert(ui.window.IRONFIELD.config.formations.some(f => f.type === 'musketeer' && f.formation === formation));
-  assert.match(el('selectedFormationDetails').textContent,formation==='volley'?/Three ranks.*fire by rank/:/Three soldiers abreast.*fire by row/);
+  assert.match(el('selectedFormationDetails').textContent,formation==='volley'?/Three ranks.*Company volley/:/Three soldiers abreast.*Company volley/);
 }
 el('scenarioName').value = 'Historical column saved';el('saveScenario').click();
 const saved = JSON.parse(ui.storage.get('ironfield.scenarios.v1'))[0];

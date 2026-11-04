@@ -21,7 +21,7 @@ Run `node tests/grand-performance-bench.cjs` for the local simulation benchmark.
 
 ## IRONFIELD 2.6 validation
 
-- The rank-volley fixture fires twelve musketeers together at approximately 0.03, 8.03, 16.03, and 24.03 seconds. Each soldier waits at least 24 seconds between shots. A three-file column fires three men in each physical row. Movement stops fire, close combat disrupts the entire company, and fire resumes together after reforming. Casualty compaction preserves three rank numbers.
+- The company-volley fixture fires 36 musketeers together in both a three-rank line and a three-file column. Individual reloads last at least 24 seconds. With 32 formed musketeers and four distant scouts, seven in range hold fire and eight release the volley. Movement orders suspend fire, and close combat interrupts it until the company reforms.
 - Automatic companies are limited to 90 musketeers. Explicit authored battalions retain their count. Historical named sectors survive capture and load.
 - An isolated impact fixture records approximately 47 world units of displacement from a catapult, 69 from a cannon, and 79 from a trebuchet. Actual results depend on target mass, terrain, and neighboring bodies.
 - All 20 historical opening deployments have complete explicit soldier counts, clear terrain, and separated bodies. Characteristic depth, wings, reserves, and army-relative flank orientation have dedicated assertions.
