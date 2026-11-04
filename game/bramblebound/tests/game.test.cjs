@@ -5,9 +5,9 @@ const fs=require('node:fs');
 const path=require('node:path');
 function game(){const context=vm.createContext({console});context.window=context;for(const name of ['catalog','progression','engine'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',name+'.js'),'utf8'),context);return {C:context.Catalog,E:context.GameEngine,P:context.Progression};}
 test('every region has a guardian and enough distinct enemies for group encounters',()=>{
-  const {C,E}=game();assert.equal(C.regions.length,20);assert.equal(Object.keys(C.items).length,212);
+  const {C,E}=game();assert.equal(C.regions.length,35);assert.equal(Object.keys(C.items).length,284);
   for(let i=0;i<C.regions.length;i++){assert.equal(C.enemies.filter(e=>e.region===i&&e.boss).length,1);assert.ok(C.enemies.filter(e=>e.region===i&&!e.boss).length>=5);}
-  for(let round=1;round<=240;round++){const route=E.routeInfo({round,routeEpoch:1});assert.equal(route.region,Math.floor(((round-1)%80)/4));assert.equal(route.circuit,1+Math.floor((round-1)/80));}
+  for(let round=1;round<=420;round++){const route=E.routeInfo({round,routeEpoch:1});assert.equal(route.region,Math.floor(((round-1)%140)/4));assert.equal(route.circuit,1+Math.floor((round-1)/140));}
 });
 test('all fusion recipes consume their ingredients and preserve fractional levels',()=>{
   const {C,E}=game();let recipes=0;

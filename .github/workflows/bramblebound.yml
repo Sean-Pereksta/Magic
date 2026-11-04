@@ -16,9 +16,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test game/bramblebound/tests/game.test.cjs
+      - run: npm run test:bramblebound
       - name: Install browser tools
         run: |
           npm install --no-save --ignore-scripts playwright@1.62.1
           npx playwright install --with-deps chromium
-      - run: node game/bramblebound/tests/browser.cjs
+      - run: npm run test:bramblebound:browser

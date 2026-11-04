@@ -5,23 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#10221e">
   <title>Bramblebound · The Endless Road</title>
-  <meta name="description" content="Walk the endless road with Pip. Fuse 212 elemental relics, shape your build, face guardians across 20 regions, and grow stronger with every expedition.">
+  <meta name="description" content="Walk the endless road with Pip. Fuse 284 elemental relics, shape your build, face guardians across 35 regions, and grow stronger with every expedition.">
   <meta property="og:title" content="Bramblebound · The Endless Road">
   <meta property="og:description" content="A little traveler. An endless road. A new build with every journey. Play on Cat’N Mice.">
   <meta property="og:image" content="https://www.catnmice.com/game/bramblebound/assets/title.webp">
   <meta property="og:type" content="website">
   <link rel="icon" href="brand.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="legacy.css">
-  <link rel="stylesheet" href="title.css">
-  <script defer src="catalog.js"></script>
-  <script defer src="icons.js"></script>
-  <script defer src="world.js"></script>
-  <script defer src="progression.js"></script>
-  <script defer src="engine.js"></script>
-  <script defer src="sound.js"></script>
-  <script defer src="journal.js"></script>
-  <script defer src="app.js"></script>
+  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="legacy.css?v=2">
+  <link rel="stylesheet" href="title.css?v=2">
+  <script defer src="catalog.js?v=2"></script>
+  <script defer src="icons.js?v=2"></script>
+  <script defer src="world.js?v=2"></script>
+  <script defer src="progression.js?v=2"></script>
+  <script defer src="engine.js?v=2"></script>
+  <script defer src="sound.js?v=2"></script>
+  <script defer src="journal.js?v=2"></script>
+  <script defer src="app.js?v=2"></script>
 </head>
 <body class="on-expedition title-open">
   <section id="title-screen" class="title-screen" aria-labelledby="title-heading">
@@ -29,7 +29,7 @@
       <div class="title-topline"><a href="/lobby/lobby.html">← Cat’N Mice game library</a><span>A SMALL TRAVELER. A WORLD OF POSSIBILITIES.</span></div>
       <div class="title-poster"><img src="assets/title.webp" width="1672" height="941" alt="Bramblebound — The Endless Road. Pip overlooks a sunlit forest trail leading to mountains and ancient ruins." fetchpriority="high"><h1 id="title-heading" class="sr-only">Bramblebound · The Endless Road</h1></div>
       <div class="title-content">
-        <div class="title-story"><span class="eyebrow">AN ELEMENTAL EXPEDITION ROGUELITE</span><h2>One more road.<br><em>One stronger build.</em></h2><p>Guide Pip into the wild. Turn humble finds into extraordinary relics, outlast the guardians, and bring home the seeds of your next adventure.</p><div class="title-features"><span>20 regions</span><span>212 relics</span><span>64 talents</span></div></div>
+        <div class="title-story"><span class="eyebrow">THE EXPANDED ROAD · 15 NEW REGIONS</span><h2>One more road.<br><em>One stronger build.</em></h2><p>Guide Pip into the wild. Turn humble finds into extraordinary relics, outlast the guardians, and bring home the seeds of your next adventure.</p><div class="title-features"><span>35 regions</span><span>284 relics</span><span>64 talents</span></div></div>
         <div class="title-actions"><p id="title-record" class="title-record" aria-live="polite">Your journey begins here.</p><button id="title-play" class="primary">Begin expedition <span aria-hidden="true">→</span></button><button id="title-kit" class="outline">Prepare your kit</button><div class="title-links"><button id="title-help">How to play</button><button id="title-profile">Profile & settings</button></div><p class="title-save-note">Autosaves on this device. Export your profile to take it with you.</p></div>
       </div>
       <ol class="title-steps"><li><b>01 / EQUIP</b><span>Four relics. Your choice of elements. Attacks fire automatically.</span></li><li><b>02 / FUSE</b><span>Match copies to level up, or combine ingredients into something new.</span></li><li><b>03 / RETURN STRONGER</b><span>Choose talents on the road. Spend trail seeds on permanent upgrades.</span></li></ol>
@@ -69,7 +69,7 @@
           <div class="kit-content">
             <section class="gear-panel"><div class="section-heading"><h3><i data-glyph="swords"></i> Equipped</h3><span class="count" id="gear-count"></span></div><div id="equipped" class="equipped"></div></section>
             <section class="pack-panel"><div class="section-heading"><h3><i data-glyph="pack"></i> Pack slots</h3><span class="count" id="pack-count"></span></div>
-              <div class="pack-tools"><input type="search" id="pack-search" placeholder="Find gear…" aria-label="Search backpack by item, element or effect"><select id="pack-tier" aria-label="Filter backpack by rarity"><option value="all">All tiers</option><option value="common">Common</option><option value="rare">Rare</option><option value="mythic">Mythic</option></select><div class="page-controls"><button data-pack-step="-1" aria-label="Previous backpack page" title="Previous page">‹</button><select id="pack-page" aria-label="Choose backpack page"></select><button data-pack-step="1" aria-label="Next backpack page" title="Next page">›</button></div></div>
+              <div class="pack-tools"><input type="search" id="pack-search" placeholder="Find gear…" aria-label="Search backpack by item, element or effect"><select id="pack-tier" aria-label="Filter backpack by rarity"><option value="all">All tiers</option><option value="common">Common</option><option value="uncommon">Uncommon</option><option value="rare">Rare</option><option value="epic">Epic</option><option value="mythic">Mythic</option></select><div class="page-controls"><button data-pack-step="-1" aria-label="Previous backpack page" title="Previous page">‹</button><select id="pack-page" aria-label="Choose backpack page"></select><button data-pack-step="1" aria-label="Next backpack page" title="Next page">›</button></div></div>
               <div id="pack" class="pack-grid"></div></section>
             <div class="workbench"><div id="drag-note" class="drag-note" role="status">Drag to equip, swap, or fuse. Select a relic to light up its matches.</div><div class="workbench-actions"><button id="recipe-btn" class="text-link"><i data-glyph="book"></i> Recipes</button><button id="discard-zone" class="discard-zone" data-dialog="discard-picker"><i data-glyph="trash"></i> Discard</button></div></div>
             <section class="finds" aria-label="Latest trail find"><div class="eyebrow">LATEST FIND</div><div id="recent-find" role="status">Fallen enemies can drop gear straight into your backpack.</div></section>

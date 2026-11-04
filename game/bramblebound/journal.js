@@ -10,28 +10,32 @@
   const cap = s => s[0].toUpperCase() + s.slice(1);
   const nfmt = n => n.toLocaleString();
   const styleLabel = style => style==='mend'?'Healing':style==='drain'?'Lifesteal':cap(style);
+  const elementText={leaf:'Every hit adds poison. Every third hit roots the foe, slowing attack charge by 75% for 0.8s.',fire:'Every hit leaves a burning ember. Fire ignites poisoned foes into a wildfire that splashes nearby enemies.',frost:'Every hit chills attack charge. Every third hit freezes the foe for 0.65s.',storm:'Hits disrupt windups. Every third hit chains lightning to two other foes; chilled foes conduct an extra arc.',stone:'Hits stagger windups and stack up to five Fractures. Each fracture increases direct relic damage taken by 3.5%.',spirit:'Hits leave a four-second haunt and grant a small shield. Every third spirit hit releases a delayed soul echo.'};
+  const afflictionText={corrosive:'Corrosion: incoming damage rises 15% and shields erode for six seconds. Counter: Purify.',entangling:'Entangle: relics recharge 30% more slowly for 2.5 seconds. Counter: Unbinding.',hexed:'Hex: relics deal 20% less damage for four seconds. Counter: Purify.',scorching:'Scorch: strikes leave lingering fire damage. Counter: Blastguard cuts it 75%; Thaw reduces it; Cleanse removes it.',freezing:'Frostbite: relics recharge 35% more slowly for 2.5 seconds. Counter: Thaw.',shocking:'Static: abilities recharge 40% more slowly for 0.8 seconds. Counter: Insulated also reduces these strikes 15%.',bulwark:'Bulwark: begins warded and renews its ward every second strike. Counter: Wardbreaker, pierce attacks, or a Wardbreak signature.'};
+  function relicEffects(item){return '<div class="subhead">Element · '+esc(elements[item.element].name)+'</div><p class="body-copy">'+esc(elementText[item.element])+'</p>'+(item.special?'<div class="subhead">Signature · '+esc(item.special)+'</div><p class="body-copy">'+esc(item.specialDescription)+'</p>':'')+(item.counter?'<div class="subhead">Counter · '+esc(item.counter)+'</div><p class="body-copy">'+esc(item.counterDescription)+'</p>':'');}
+  function elementHandbook(){return '<details class="element-handbook frame"><summary>Element effects & counter gear</summary><div class="element-notes">'+Object.entries(elementText).map(([id,text])=>'<article style="--el:'+elements[id].color+'"><strong>'+esc(elements[id].name)+'</strong><p>'+esc(text)+'</p></article>').join('')+'</div><p>Counter gear works while equipped. Cleansers remove ailments when that relic attacks. Search for Cleanse, Antivenom, Insulated, Thaw, Unbinding, Purify, Blastguard, or Wardbreaker. Inspect enemies to plan your loadout.</p></details>';}
   function relicSearchText(item){
     const effect=item.style==='mend'?'healing healer restore health':item.style==='drain'?'lifesteal life steal life-steal leech siphon':'';
     const home=regions[item.dropRegion];
-    return [item.name,item.element,item.style,effect,item.rarity,home?.name||''].join(' ').toLowerCase();
+    return [item.name,item.element,item.style,effect,item.rarity,item.special||'',item.specialDescription||'',item.counter||'',item.counterDescription||'',home?.name||''].join(' ').toLowerCase();
   }
   const glyph = name => '<i aria-hidden="true" data-glyph="'+name+'"></i>';
   const traitText = {
-    armored:'Its shell absorbs 26% of direct damage. Pierce attacks cut through the shell.',
+    armored:'Its shell absorbs 26% of direct damage. Pierce attacks, Wardbreaker gear and Wardbreak signatures cut through the shell.',
     swift:'Its attack takes about one-third less time to charge.',
-    venom:'Each strike builds up venom that deals damage over time.',
+    venom:'Each strike builds up venom that deals damage over time. Antivenom reduces the buildup and accelerates decay. Cleanse removes existing venom when its relic activates.',
     brute:'It hits 32% harder, with a longer windup between blows.',
     regenerating:'Each second it regrows 1.8% of its maximum health.',
     warded:'Its ward absorbs 72% of the next direct hit and returns after every third attack. Pierce attacks bypass the ward.',
     leech:'It heals for 45% of the damage it deals through Pip’s shield.',
     veteran:'Its third strike hits 38% harder. Below 45% health, it shrugs off 17% of direct damage.',
     swarm:'It attacks more frequently, with 18% less damage per strike.',
-    volatile:'Its final burst hits for 48% of its usual attack damage.'
+    volatile:'Its final burst hits for 48% of its usual attack damage. Equipped Blastguard gear reduces the burst by 75%.'
   };
   function lead(kicker, title, description) {
     return `<header class="page-lead"><div><div class="eyebrow"><span class="mini-line"></span>${kicker}</div><h1>${title}<span class="gold">.</span></h1><p class="subtitle">${description}</p></div></header>`;
   }
-  function tierBadge(item,includeCommon=false){
+  function tierBadge(item,includeCommon=true){
     const tier=item.rarity;
     if(tier==='common'&&!includeCommon)return '';
     return '<span class="tier-badge" data-rarity="'+tier+'">'+esc(window.Catalog.rarities[tier].name)+'</span>';
@@ -47,12 +51,12 @@
   function routeAtlas(r){
     const info=E.routeInfo(r),n=regions.length;
     const rows=regions.map((reg,i)=>{
-      const start=info.circuitStart+i*4,here=i===r.region;
+      const start=info.circuitStart+i*4+(i>=info.regionsPerCircuit?info.regionsPerCircuit*4:0),here=i===r.region;
       return '<button data-region="'+i+'" class="atlas-stop'+(here?' here':'')+'" style="--region-color:'+reg.color+'" '+(here?'aria-current="step"':'')+'><span class="atlas-number">'+String(i+1).padStart(2,'0')+'</span><span><b>'+esc(reg.name)+'</b><small>Waves '+start+'–'+(start+3)+(here?' · You are here':'')+'</small></span></button>';
     }).join('');
     const odds=E.lootOdds(r),boss=E.lootOdds({...r,round:info.regionEnd},true),pct=f=>Number((f*100).toFixed(2))+'%';
-    return '<h2 class="dialog-title">Route atlas</h2><p class="body-copy">'+n+' regions · '+(n*4)+' waves per full circuit. Select a stop to see the landscape, its creatures and its relics.</p><div class="atlas-grid">'+rows+'</div>'+
-      '<div class="subhead">Drop rarity here · '+esc(regions[r.region].name)+'</div><p class="body-copy">Of relics dropped by ordinary foes, '+pct(odds.rare)+' are rare and '+pct(odds.mythic)+' are mythic. For the wave '+info.regionEnd+' guardian, those odds are '+pct(boss.rare)+' and '+pct(boss.mythic)+'.</p>';
+    return '<h2 class="dialog-title">Route atlas</h2><p class="body-copy">'+n+' regions · '+(n*4)+' waves per full circuit. Select a stop to see the landscape, its creatures and its relics.'+(info.regionsPerCircuit<n?' Your saved '+info.regionsPerCircuit+'-region circuit will finish before the expanded road begins next circuit.':'')+'</p><div class="atlas-grid">'+rows+'</div>'+
+      '<div class="subhead">Finds & rarity · '+esc(regions[r.region].name)+'</div><p class="body-copy">A normal wave has a '+pct(E.dropChances.normal)+' chance of at least one relic; a guardian wave has a '+pct(E.dropChances.guardian)+' chance, regardless of group size. These are the rarity odds for each relic that drops:</p><table class="rarity-odds"><thead><tr><th>Tier</th><th>Normal</th><th>Guardian</th><th>Power</th></tr></thead><tbody>'+Object.entries(window.Catalog.rarities).map(([key,tier])=>'<tr><th style="color:'+tier.color+'">'+esc(tier.name)+'</th><td>'+pct(odds[key])+'</td><td>'+pct(boss[key])+'</td><td>×'+tier.powerScale+'</td></tr>').join('')+'</tbody></table><p class="mini-note">Unavailable tiers have zero odds until their relics unlock. Fusion recipes still let you craft stronger gear from the right ingredients.</p>';
   }
   function regionDossier(r,i){
     const reg=regions[i],start=E.routeInfo(r).circuitStart+4*i,roster=enemies.filter(e=>e.region===i);
@@ -69,13 +73,13 @@
     const names = recipe ? item.recipe.map(id => items[id].name).join(' + ') : '';
     return `<button type="button" class="frame guide-card" data-catalog="${esc(item.id)}" data-rarity="${item.rarity}" style="--el:${element.color}">
       <span class="icon-tile">${ItemArt.svg(item.id,40)}</span>
-      <span><b>${esc(item.name)}</b><small>${recipe ? esc(names) : element.name+' · '+styleLabel(item.style)}</small><small>${tierBadge(item)} ${seen ? '✓ Discovered' : 'Undiscovered'}</small></span>
+      <span><b>${esc(item.name)}</b><small>${recipe ? esc(names) : element.name+' · '+styleLabel(item.style)}</small>${item.special?'<small class="relic-signature">✦ '+esc(cap(item.special))+'</small>':''}${item.counter?'<small class="relic-counter">Counters · '+esc(cap(item.counter))+'</small>':''}<small>${tierBadge(item)} ${seen ? '✓ Discovered' : 'Undiscovered'}</small></span>
     </button>`;
   }
   function enemyCard(enemy, seen) {
     return `<button type="button" class="frame guide-card" data-species="${esc(enemy.id)}">
       <canvas class="icon-tile" data-portrait-id="${esc(enemy.id)}" width="48" height="48" style="--el:${enemy.color}" aria-hidden="true"></canvas>
-      <span><b>${esc(enemy.name)}</b><small>${esc(regions[enemy.region].name)} · ${enemy.boss ? 'Guardian' : cap(enemy.trait)}</small><small>${seen ? '✓ Encountered' : 'Unseen'}</small></span>
+      <span><b>${esc(enemy.name)}</b><small>${esc(regions[enemy.region].name)} · ${enemy.boss ? 'Guardian' : cap(enemy.trait)}</small>${enemy.affliction?'<small>'+esc(cap(enemy.affliction))+'</small>':''}<small>${seen ? '✓ Encountered' : 'Unseen'}</small></span>
     </button>`;
   }
   function guide(profile, tab='items', query='', tier='all') {
@@ -87,15 +91,15 @@
     const terms = String(query).toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
     const results = entries.filter(entry=>{
       if(!isUpgrade&&!isEnemy&&tier!=='all'&&entry.rarity!==tier)return false;
-      const fields = isUpgrade?[entry.name,entry.element,entry.kind,entry.category,entry.description]:isEnemy ? [entry.name, entry.trait, entry.species, regions[entry.region].name, entry.boss?'guardian boss':'', 'weak '+entry.weak, 'resists '+entry.resist] :
+      const fields = isUpgrade?[entry.name,entry.element,entry.kind,entry.category,entry.description]:isEnemy ? [entry.name, entry.trait, entry.affliction||'',afflictionText[entry.affliction]||'',entry.species, regions[entry.region].name, entry.boss?'guardian boss':'', 'weak '+entry.weak, 'resists '+entry.resist] :
         [relicSearchText(entry),...(isRecipe ? entry.recipe.map(id=>items[id].name) : [])];
       const key = fields.join(' ').toLocaleLowerCase(); return terms.every(term=>key.includes(term));
     });
     const hint = isUpgrade?'Search upgrades and abilities':isRecipe?'Search by fusion or ingredient':isEnemy?'Search by name, trait or region':'Search by relic, element or effect';
-    return lead('PIP’S FIELD NOTES','Field guide','A record of relics, fusion recipes, enemies and expedition upgrades.')+
+    return lead('PIP’S FIELD NOTES','Field guide','A record of relics, fusion recipes, enemies and expedition upgrades.')+elementHandbook()+
       `<div class="tools-row"><div class="tabs" aria-label="Field guide sections">${Object.entries(tabs).map(([key,title])=>`<button type="button" data-guide-tab="${key}" aria-pressed="${key===tab}" class="${key===tab?'selected':''}">${title}</button>`).join('')}</div>
         <input id="guide-search" class="search" type="search" value="${esc(query)}" aria-label="${hint}" placeholder="${hint}"></div>
-        ${!isUpgrade&&!isEnemy?'<div class="guide-filters"><div class="guide-roles" aria-label="Rarity filter"><span>Rarity</span>'+['all','rare','mythic'].map(t=>'<button type="button" data-guide-tier="'+t+'" data-rarity="'+t+'" aria-pressed="'+(tier===t)+'">'+(t==='all'?'All':window.Catalog.rarities[t].name)+'</button>').join('')+'</div>'+(tab==='items'?'<div class="guide-roles" aria-label="Find recovery gear"><span>Recovery gear</span>'+['Healing','Lifesteal'].map(role=>'<button type="button" data-gear-role="'+role+'" aria-pressed="'+(query.toLowerCase()===role.toLowerCase())+'">'+role+'</button>').join('')+'</div>':'')+'</div>':''}
+        ${!isUpgrade&&!isEnemy?'<div class="guide-filters"><div class="guide-roles" aria-label="Rarity filter"><span>Rarity</span>'+['all',...Object.keys(window.Catalog.rarities)].map(t=>'<button type="button" data-guide-tier="'+t+'" data-rarity="'+t+'" aria-pressed="'+(tier===t)+'">'+(t==='all'?'All':window.Catalog.rarities[t].name)+'</button>').join('')+'</div>'+(tab==='items'?'<div class="guide-roles" aria-label="Find recovery gear"><span>Recovery gear</span>'+['Healing','Lifesteal'].map(role=>'<button type="button" data-gear-role="'+role+'" aria-pressed="'+(query.toLowerCase()===role.toLowerCase())+'">'+role+'</button>').join('')+'</div>':'')+'</div>':''}
         <div class="guide-count" aria-live="polite">${isUpgrade?'LEARNED THIS RUN':isEnemy?'ENCOUNTERED':'DISCOVERED'} ${count} / ${entries.length}${(terms.length||(!isEnemy&&!isUpgrade&&tier!=='all'))?' &nbsp; · &nbsp; '+results.length+' '+(results.length===1?'RESULT':'RESULTS'):''}</div>
         ${isRecipe ? '<aside class="frame guide-intro"><div><strong>At the forge</strong><p>Drag one ingredient onto its partner to fuse them. Select one relic to make valid partners glow. Tap a glowing partner to preview the fusion. A fusion inherits the average level of its ingredients. Two identical relics at the same level gain one level.</p></div></aside>':''}
         <div class="guide-grid">${results.length ? results.map(entry=>isUpgrade?
@@ -140,6 +144,7 @@
     const loss=Number.isFinite(c?.damage)?' ('+nfmt(Number(c.damage.toFixed(1)))+' HP)':'';
     if(c?.kind==='strike')return source+' landed the final strike'+loss+'.';
     if(c?.kind==='venom')return (enemy?source+'’s venom':'Lingering venom')+' took Pip’s last health'+loss+'.';
+    if(c?.kind==='scorch')return 'Lingering scorch took Pip’s last health'+loss+'. Try Blastguard or a cleansing relic.';
     if(c?.kind==='burst')return source+' fell, then its final burst brought Pip down'+loss+'.';
     const remaining=r.enemies?.filter(e=>e.hp>0)||[];
     if(remaining.length){const e=remaining[0];return 'When Pip fell, '+esc(e.name)+' still had '+nfmt(Math.ceil(e.hp))+' of '+nfmt(Math.ceil(e.maxHp))+' HP.';}
@@ -180,5 +185,5 @@
       '<p class="camp-explainer">'+glyph('road')+'<span>Trail memory speeds up cleared waves. Pip returns to 1× on new ground. Gear and expedition talents are collected anew each run.</span></p>'+
       recap+'<div class="camp-actions">'+(traveling?'<button type="button" class="outline" data-nav="expedition">'+glyph('road')+'Return to expedition</button>':'<button type="button" class="primary" data-do="start">'+glyph('play')+(p.deaths?'Start next expedition':'Begin expedition')+'</button>')+'</div>';
   }
-  window.Journal={guide,legacy,debrief,paintPortraits,traitText,styleLabel,relicSearchText,tierBadge,relicSource,routeAtlas,regionDossier};
+  window.Journal={guide,legacy,debrief,paintPortraits,traitText,afflictionText,elementText,relicEffects,styleLabel,relicSearchText,tierBadge,relicSource,routeAtlas,regionDossier};
 })();

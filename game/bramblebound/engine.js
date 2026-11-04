@@ -5,11 +5,15 @@
   const C = () => root.Catalog;
   const P = () => root.Progression;
   const WALK = 3.2, ACTIVE = 4, PACK = 400, WAVE_RULES=2;
+  const dropChances=Object.freeze({normal:.24,guardian:.48});
   const xpNeeded = level => 14+Math.round((level-1)*5.5);
   const OLD_REGIONS=8, WAVES_PER_REGION=4;
+  const ailments=()=>({corrosion:0,snare:0,hex:0,burn:0,chill:0,shock:0});
+  const counter=(r,key)=>r.active.some(it=>C().items[it.id].counter===key);
   const expeditionXpRate = 0.22;
   function expeditionDefaults(){return {routeEpoch:1,level:1,xp:0,draft:[],skills:{},abilityTimers:{},foes:0,waveSize:0,
-    nextEnemyUid:1,enemies:[],targetCursor:0,venomClock:0,waveRules:WAVE_RULES,bestAtStart:null,deathCause:null};}
+    nextEnemyUid:1,enemies:[],targetCursor:0,venomClock:0,waveRules:WAVE_RULES,bestAtStart:null,deathCause:null,
+    ailments:ailments(),routeRegions:C().regions.length,routeCircuit:1,routeHistory:[]};}
   const perks = {
     heart: {name:'Heartwood', description:'Start each journey with 14 more maximum health.', max:100},
     claw: {name:'Iron grip', description:'All items deal 8% more base damage per rank.', max:100},
@@ -18,7 +22,7 @@
   const ok = message => ({ok:true,message});
   const fail = message => ({ok:false,message});
   const owns = (obj, key) => Object.prototype.hasOwnProperty.call(obj,key);
-  function freshProfile() { return {version:1,points:0,best:0,deaths:0,routeMarks:Array(C().regions.length*WAVES_PER_REGION).fill(0),seenItems:[],seenEnemies:[],perks:{heart:0,claw:0,pace:0},run:null}; }
+  function freshProfile() { return {version:1,worldRegions:C().regions.length,points:0,best:0,deaths:0,routeMarks:Array(C().regions.length*WAVES_PER_REGION).fill(0),seenItems:[],seenEnemies:[],perks:{heart:0,claw:0,pace:0},run:null}; }
   function perkCost(p,key) {
     if (!owns(perks,key) || p.perks[key]>=perks[key].max) return null;
     const rank=p.perks[key];
@@ -36,11 +40,12 @@
   const maxSpeed = p => 1+p.perks.pace;
   function routeInfo(r,round=r.round){
     const epoch=r.routeEpoch||1, historical=round<epoch;
-    const regionsPerCircuit=historical?OLD_REGIONS:C().regions.length;
-    const origin=historical?1:epoch, length=regionsPerCircuit*WAVES_PER_REGION;
+    const past=(r.routeHistory||[]).filter(s=>s.epoch<=round).at(-1);
+    const regionsPerCircuit=historical?(past?.regions||OLD_REGIONS):(r.routeRegions||C().regions.length);
+    const origin=historical?(past?.epoch||1):epoch, length=regionsPerCircuit*WAVES_PER_REGION;
     const lap=Math.floor((round-origin)/length), circuitStart=origin+lap*length;
     const region=Math.floor((round-circuitStart)/WAVES_PER_REGION),regionStart=circuitStart+region*WAVES_PER_REGION;
-    const circuit=1+lap+(historical?0:(epoch-1)/(OLD_REGIONS*WAVES_PER_REGION));
+    const circuit=(historical?(past?.circuit||1):(r.routeCircuit||1+(epoch-1)/(OLD_REGIONS*WAVES_PER_REGION)))+lap;
     return {region,circuit,waveInRegion:round-regionStart+1,regionsPerCircuit,circuitStart,regionStart,regionEnd:regionStart+WAVES_PER_REGION-1};
   }
   const routeSlot=r=>r.region*WAVES_PER_REGION+(r.round-1)%WAVES_PER_REGION;
@@ -55,7 +60,8 @@
   function levelText(l) { return String(l); }
   function itemPower(p,it) {
     const n=it.level-1;
-    return C().items[it.id].power*(1+.31*n+.009*n*n)*(1+.08*p.perks.claw);
+    const d=C().items[it.id];
+    return d.power*(C().rarities[d.rarity]?.powerScale||1)*(1+.31*n+.009*n*n)*(1+.08*p.perks.claw);
   }
   const itemCooldown = (it,r) => r ? P().cooldown(r,C().items[it.id]) : C().items[it.id].cooldown;
   function start(p) {
@@ -71,6 +77,7 @@
     const recipe=Object.values(C().items).find(x=>x.recipe?.includes(starters[0]) && !x.recipe.includes(starters[1]) && x.recipe.every(id=>!C().items[id].recipe));
     const partner=recipe?.recipe.find(id=>id!==starters[0]) || Object.keys(C().items).find(id=>!starters.includes(id));
     r.pack.push(makeItem(r,partner));
+    if(C().items.dewglass_vial)r.pack.push(makeItem(r,'dewglass_vial'));
     for(const zone of [r.active,r.pack]) zone.forEach((it,slot)=>{it.slot=slot;discover(p.seenItems,it.id);});
     p.run=r;
     return ok('A new journey begins.');
@@ -103,7 +110,7 @@
     const damage=strike*(boss?(classic?1.25:1.32):1)*traitPower/attackSpread;
     const tempo=d.trait==='swift'?.67:d.trait==='brute'?1.24:d.trait==='swarm'?.78:1;
     const period=(classic?(boss?2.2:2.65):(boss?2.12:2.62)/(1+.22*n/(n+9)))*tempo;
-    return {id:d.id,name:d.name,species:d.species,color:d.color,trait:d.trait,weak:d.weak,resist:d.resist,boss,hp:maxHp,maxHp,damage,period,attackProgress:0,burn:0,poison:0,chill:0,stun:0,statusClock:0,ward:d.trait==='warded'?1:0,swings:0,echoes:[]};
+    return {id:d.id,name:d.name,species:d.species,color:d.color,trait:d.trait,affliction:d.affliction||null,weak:d.weak,resist:d.resist,boss,hp:maxHp,maxHp,damage,period,attackProgress:0,burn:0,poison:0,chill:0,stun:0,statusClock:0,ward:d.trait==='warded'||d.affliction==='bulwark'?1:0,swings:0,echoes:[],rooted:0,fracture:0,haunt:0,hauntTime:0,leafHits:0,frostHits:0,stormHits:0};
   }
   function find(r,uid) { return r.active.concat(r.pack).find(i=>i.uid===uid); }
   function previewCombine(p,a,b) {
@@ -125,8 +132,13 @@
   }
   function next(p) {
     const r=p.run;
+    const previous=routeInfo(r);
+    if(r.routeRegions<C().regions.length&&r.round===previous.circuitStart+r.routeRegions*WAVES_PER_REGION-1){
+      r.routeHistory.push({epoch:r.routeEpoch,regions:r.routeRegions,circuit:r.routeCircuit});
+      r.routeEpoch=r.round+1;r.routeRegions=C().regions.length;r.routeCircuit=previous.circuit+1;
+    }
     r.round++; r.region=routeInfo(r).region; r.phase='walk'; r.walkLeft=WALK;
-    r.enemy=null;r.enemies=[];r.waveSize=0;r.waveRules=WAVE_RULES;r.venomClock=0; r.venom=0; r.speed=isReplay(p,r)?r.paceChoice:1;
+    r.enemy=null;r.enemies=[];r.waveSize=0;r.waveRules=WAVE_RULES;r.venomClock=0; r.venom=0;r.ailments=ailments();r.speed=isReplay(p,r)?r.paceChoice:1;
   }
   // Arrays contain occupied items only. Slot numbers preserve intentional gaps.
   const slotAt=(r,zone,slot)=>r[zone].find(it=>it.slot===slot);
@@ -216,18 +228,77 @@
     if(before>0 && r.hp===0){r.deathCause={kind,damage};if(enemy)r.deathCause.enemyId=enemy.id;}
     return damage;
   }
+  function secondary(ev,e,amount,element,pattern,it){
+    const loss=Math.min(e.hp,Math.max(0,amount));e.hp=Math.max(0,e.hp-loss);
+    Object.assign(add(ev,'special',element,it.level,String(Math.ceil(loss)),pattern,e),{itemId:it.id,special:pattern,specialId:pattern,amount:loss});return loss;
+  }
+  function elemental(p,it,e,damage,ev){
+    const r=p.run,el=C().items[it.id].element,others=r.enemies.filter(x=>x!==e&&x.hp>0);
+    const status=(label,pattern)=>Object.assign(add(ev,'status',el,it.level,label,pattern,e),{itemId:it.id});
+    if(el==='leaf'){
+      e.poison=Math.max(e.poison,Math.min(e.maxHp*.08,e.poison+damage*.07));
+      e.leafHits=(e.leafHits+1)%3;if(e.leafHits===0){e.rooted=.8;status('Rooted','root');}
+    }else if(el==='fire'){
+      e.burn=Math.max(e.burn,damage*.22);
+      if(e.poison>0){e.poison*=.5;secondary(ev,e,damage*.18,el,'wildfire',it);for(const foe of others.slice(0,2)){foe.burn=Math.max(foe.burn,damage*.12);secondary(ev,foe,damage*.12,el,'wildfire',it);}}
+    }else if(el==='frost'){
+      e.chill=Math.max(e.chill,1.1);e.frostHits=(e.frostHits+1)%3;
+      if(e.frostHits===0){e.stun=Math.max(e.stun,.65);status('Frozen','freeze');}
+    }else if(el==='storm'){
+      e.attackProgress=Math.max(0,e.attackProgress-.025);e.stormHits=(e.stormHits+1)%3;
+      if(e.stormHits===0){e.stun=Math.max(e.stun,.22);status('Charged arc','chain');for(const foe of others.slice(0,2))secondary(ev,foe,damage*.32,el,'chain',it);}
+      if(e.chill>0&&others.length){secondary(ev,others[0],damage*.18,el,'superconduct',it);others[0].stun=Math.max(others[0].stun,.2);}
+    }else if(el==='stone'){
+      e.fracture=Math.min(5,e.fracture+1);e.attackProgress=Math.max(0,e.attackProgress-.06);status('Fracture '+e.fracture,'fracture');
+    }else if(el==='spirit'){
+      e.hauntTime=4;e.haunt++;
+      r.shield=Math.min(r.maxHp*.4,r.shield+damage*.045);
+      if(e.haunt>=3){e.haunt=0;e.echoes.push({delay:.48,damage:damage*.35,el,pattern:'soulmark'});status('Soul echo','haunt');}
+    }
+  }
+  function special(p,it,e,damage,removed,ev){
+    const r=p.run,d=C().items[it.id],id=d.special;if(!id)return;
+    const others=r.enemies.filter(x=>x!==e&&x.hp>0),strike=(target,n)=>secondary(ev,target,n,d.element,id,it);
+    let triggered=true;
+    if(id==='ricochet'){if(others.length)strike(others[0],damage*.38);else triggered=false;}
+    if(id==='execute'){if(e.hp>0&&e.hp/e.maxHp<.3)strike(e,damage*.65);else triggered=false;}
+    if(id==='rupture'){if(e.burn||e.poison||e.chill||e.haunt){strike(e,damage*.4);e.burn*=.5;e.poison*=.5;}else triggered=false;}
+    if(id==='chain')for(const foe of others.slice(0,2))strike(foe,damage*.28);
+    if(id==='leech'){const n=heal(r,removed*.18);Object.assign(add(ev,'heal',d.element,1,'+'+Math.ceil(n),'drain',e),{itemId:it.id,amount:n,sourceUid:e.uid});}
+    if(id==='wardbreak'){e.ward=0;e.fracture=Math.min(5,e.fracture+2);}
+    if(id==='bloom')for(const foe of others.slice(0,2)){foe.poison=Math.max(foe.poison,Math.min(foe.maxHp*.08,foe.poison+damage*.12));strike(foe,damage*.1);}
+    if(id==='permafrost'){e.chill=2.1;e.stun=Math.max(e.stun,.9);}
+    if(id==='aftershock')e.echoes.push({delay:.6,damage:damage*.45,el:d.element,pattern:'aftershock'});
+    if(id==='soulmark'){e.haunt=Math.min(2,e.haunt+1);e.hauntTime=4;}
+    if(id==='renewal'){heal(r,damage*.13);r.shield=Math.min(r.maxHp*.4,r.shield+damage*.12);}
+    if(id==='overload'){
+      it.charges=((it.charges||0)+1)%3;
+      if(it.charges===0){for(const foe of [e,...others].slice(0,3))strike(foe,damage*.42);}else triggered=false;
+    }
+    if(triggered)Object.assign(add(ev,'special',d.element,it.level,id==='permafrost'?'Deep freeze':id==='wardbreak'?'Ward broken':id==='soulmark'?'Soulmarked':'',id,e),{itemId:it.id,special:id,specialId:id});
+  }
+  function cleanse(r,it,ev){
+    const d=C().items[it.id];if(d.counter!=='cleanse')return;
+    if(r.venom>0||Object.values(r.ailments).some(v=>v>0)){
+      r.venom=0;r.ailments=ailments();Object.assign(add(ev,'status',d.element,it.level,'Cleansed','cleanse'),{itemId:it.id});
+    }
+  }
   function fire(p,it,e,ev) {
     const r=p.run,d=C().items[it.id],el=d.element,style=d.style;
+    cleanse(r,it,ev);
     const power=itemPower(p,it);let damage=power*P().hitMultiplier(r,d,e,r.enemies.filter(x=>x.hp>0).length);
+    damage*=(1+e.fracture*.035+e.haunt*.03)*(r.ailments.hex>0?.8:1);
     const weak=matches(e.weak,el),resist=matches(e.resist,el);
     damage*=weak?1.68:resist?.60:1;
-    if(e.trait==='armored'&&style!=='pierce') damage*=.74;
+    const pierces=style==='pierce'||d.special==='wardbreak'||d.counter==='wardbreaker';
+    if(e.trait==='armored'&&!pierces) damage*=.74;
     if(e.trait==='veteran'&&e.hp<e.maxHp*.45)damage*=.83;
-    if(e.ward&&style!=='pierce'){damage*=.28;e.ward=0;}
+    if(e.ward&&!pierces){damage*=.28;e.ward=0;}else if(pierces)e.ward=0;
     const removed=Math.min(e.hp,damage);e.hp-=removed;
     const amount=Math.max(1,Math.round(damage));
     add(ev,'attack',el,it.level,weak?`${amount} WEAK`:resist?`${amount} RESIST`:`${amount}`,style,e);
-    ev[ev.length-1].itemId=it.id;
+    Object.assign(ev[ev.length-1],{itemId:it.id,special:d.special||null,specialId:d.special||null});
+    elemental(p,it,e,damage,ev);
     if(style==='burn'){e.burn=Math.max(e.burn,damage*.60);add(ev,'status',el,1,'Burn','burn',e);}
     if(style==='poison'){e.poison+=damage*.23;add(ev,'status',el,1,'Poison','poison',e);}
     if(style==='chill'){e.chill=Math.max(2.1,e.chill);add(ev,'status',el,1,'Slowed','chill',e);}
@@ -251,6 +322,7 @@
     if(it.level>=10){const nova=damage*.65;
       for(const foe of r.enemies){if(foe!==e&&foe.hp<=0)continue;foe.hp=Math.max(0,foe.hp-nova);add(ev,'milestone',el,10,`+${Math.round(nova)}`,'nova',foe);}
     }
+    special(p,it,e,damage,removed,ev);
     P().afterHit(r,r.enemies,e,removed,d,ev,()=>rng(r));
     it.cd=itemCooldown(it,r);
   }
@@ -260,15 +332,17 @@
     return !d.recipe || (boss && d.recipe.every(id=>!C().items[id].recipe));
   }
   function lootPools(r,boss){
-    const pools={common:[],rare:[],mythic:[]};
+    const pools=Object.fromEntries(Object.keys(C().rarities).map(key=>[key,[]]));
     for(const d of Object.values(C().items))if(dropEligible(d,boss,r.round))pools[rarityOf(d)].push(d);
     return pools;
   }
   function lootOdds(r,boss=false,pools=lootPools(r,boss)){
-    const band=Math.min(2,Math.floor(r.region/7));
-    const rare=pools.rare.length?(boss?.22:.12)+band*.04:0;
-    const mythic=pools.mythic.length?(boss?.03+band*.02:.008+band*.007):0;
-    return {common:1-rare-mythic,rare,mythic};
+    const band=Math.min(3,Math.floor(r.region/10)),odds={common:0,
+      uncommon:pools.uncommon.length?(boss?.25:.20)+band*.01:0,
+      rare:pools.rare.length?(boss?.16:.10)+band*.012:0,
+      epic:pools.epic.length?(boss?.065:.035)+band*.006:0,
+      mythic:pools.mythic.length?(boss?.018:.008)+band*(boss?.004:.002):0};
+    odds.common=1-odds.uncommon-odds.rare-odds.epic-odds.mythic;return odds;
   }
   function localPick(r,pool){
     let total=0;
@@ -281,7 +355,8 @@
     // Select rarity before any duplicate, support, ingredient or guardian bonus.
     // This keeps a carried mythic from raising the probability of another one.
     const pools=lootPools(r,boss),odds=lootOdds(r,boss,pools),tierRoll=rng(r);
-    const tier=tierRoll<odds.mythic?'mythic':tierRoll<odds.mythic+odds.rare?'rare':'common';
+    let tier='common',cumulative=0;
+    for(const candidate of ['mythic','epic','rare','uncommon']){cumulative+=odds[candidate];if(tierRoll<cumulative){tier=candidate;break;}}
     const eligible=pools[tier],bases=eligible.filter(d=>!d.recipe),owned=r.active.concat(r.pack);
     const roll=rng(r),baseLevel=1+Math.floor((r.round-1)/5);
     let selection=[];
@@ -318,9 +393,10 @@
   function enemyDrop(p,foe,ev){
     const r=p.run;
     // Independent kill rolls, normalized to the original headcount. The chance
-    // that every roll misses is .84 on a normal wave and .63 on a guardian wave.
-    const miss=Math.pow(.84,1/r.waveSize);
-    const chance=foe.boss ? 1-.63/Math.pow(miss,r.waveSize-1) : 1-miss;
+    // Preserve a 24%/48% chance of at least one find across the whole wave,
+    // independent of group size. Rarity is rolled separately, before item bias.
+    const miss=Math.pow(1-dropChances.normal,1/r.waveSize);
+    const chance=foe.boss ? 1-(1-dropChances.guardian)/Math.pow(miss,r.waveSize-1) : 1-miss;
     if(rng(r)>=chance)return;
     const item=rollDrop(r,foe.boss);item.level+=P().dropBonus(r,()=>rng(r));
     ev.push(collectDrop(p,item,foe));
@@ -361,20 +437,44 @@
       if(e.trait==='regenerating'&&e.hp>0)e.hp=Math.min(e.maxHp,e.hp+e.maxHp*.018);
     }
     if(e.hp<=0 || r.hp<=0)return;
-    if(e.stun<=0)e.attackProgress+=dt/e.period*(e.chill>0?.50:1);
+    if(e.stun<=0)e.attackProgress+=dt/e.period*(e.chill>0?.50:1)*(e.rooted>0?.25:1);
     e.stun=Math.max(0,e.stun-dt);e.chill=Math.max(0,e.chill-dt);
+    e.rooted=Math.max(0,e.rooted-dt);e.hauntTime=Math.max(0,e.hauntTime-dt);if(!e.hauntTime)e.haunt=0;
     if(e.attackProgress>=1){e.attackProgress-=1;e.swings++;
       const incoming=e.damage*(e.trait==='veteran'&&e.swings%3===0?1.38:1);
-      const adjusted=P().incoming(r,incoming,e,ev,()=>rng(r));
+      const adjusted=P().incoming(r,incoming,e,ev,()=>rng(r))*(r.ailments.corrosion>0?1.15:1)*(counter(r,'insulated')&&e.affliction==='shocking'?.85:1);
       const dealt=hurt(r,adjusted,'strike',e);
-      if(e.trait==='venom' && adjusted>0)r.venom=Math.min(e.damage*.42,r.venom+e.damage*.14);
+      if(e.trait==='venom' && adjusted>0)r.venom=Math.min(e.damage*.42,r.venom+e.damage*.14*(counter(r,'antivenom')?.15:1));
       if(e.trait==='leech')e.hp=Math.min(e.maxHp,e.hp+dealt*.45);
       if(e.trait==='warded'&&e.swings%3===0)e.ward=1;
+      if(e.affliction==='bulwark'&&e.swings%2===0)e.ward=1;
+      if(dealt>0)afflict(r,e,ev);
       add(ev,'enemy',e.resist||'stone',1,dealt<.5?'Blocked':`−${Math.round(dealt)}`,e.trait,e).sourceUid=e.uid;
     }
   }
+  function afflict(r,e,ev){
+    const a=r.ailments,key=e.affliction;let applied=false;
+    if(key==='corrosive'&&!counter(r,'purify')){a.corrosion=6;applied=true;}
+    if(key==='entangling'&&!counter(r,'unbinding')){a.snare=2.5;applied=true;}
+    if(key==='hexed'&&!counter(r,'purify')){a.hex=4;applied=true;}
+    if(key==='scorching'){a.burn+=e.damage*(counter(r,'blastguard')?.06:counter(r,'thaw')?.10:.24);applied=true;}
+    if(key==='freezing'&&!counter(r,'thaw')){a.chill=2.5;applied=true;}
+    if(key==='shocking'&&!counter(r,'insulated')){a.shock=.8;applied=true;}
+    if(applied)add(ev,'status',key==='scorching'?'fire':key==='freezing'?'frost':key==='shocking'?'storm':key==='hexed'?'spirit':'leaf',1,key,'affliction',e).sourceUid=e.uid;
+  }
+  function protect(r,dt){
+    const a=r.ailments;
+    for(const key of ['corrosion','snare','hex','chill','shock'])a[key]=Math.max(0,a[key]-dt);
+    if(counter(r,'antivenom'))r.venom=Math.max(0,r.venom-dt*.9);
+    if(counter(r,'thaw')){a.chill=0;a.burn=Math.max(0,a.burn-dt*.5);}
+    if(counter(r,'insulated'))a.shock=0;
+    if(counter(r,'unbinding'))a.snare=0;
+    if(counter(r,'purify'))a.hex=a.corrosion=0;
+    if(a.corrosion>0)r.shield=Math.max(0,r.shield-dt*r.maxHp*.01);
+  }
   function step(p,dt,ev){
     const r=p.run;r.time+=dt;r.xp+=dt*.45*expeditionXpRate;
+    protect(r,dt);
     if(r.phase==='walk'){
       r.distance+=dt*41;r.walkLeft=Math.max(0,r.walkLeft-dt);
       for(const it of r.active)it.cd=Math.max(0,it.cd-dt);
@@ -382,13 +482,13 @@
     }else{
       r.distance+=dt*13;
       for(const it of r.active){
-        it.cd=Math.max(0,it.cd-dt);
+        it.cd=Math.max(0,it.cd-dt*(r.ailments.snare>0?.7:1)*(r.ailments.chill>0?.65:1));
         if(it.cd<=0){const target=selectTarget(r,it);if(target)fire(p,it,target,ev);}
       }
-      P().tickAbilities(r,r.enemies,dt,ev);
+      P().tickAbilities(r,r.enemies,dt*(r.ailments.shock>0?.6:1),ev);
       for(const e of r.enemies)advanceFoe(r,e,dt,ev);
       r.venomClock+=dt;
-      if(r.venomClock>=1){r.venomClock-=1;if(r.venom>0){hurt(r,r.venom,'venom');r.venom=Math.max(0,r.venom-.6);}}
+      if(r.venomClock>=1){r.venomClock-=1;if(r.venom>0){hurt(r,r.venom,'venom');r.venom=Math.max(0,r.venom-.6);}if(r.ailments.burn>0){const n=r.ailments.burn*.5;hurt(r,n,'scorch');r.ailments.burn=Math.max(0,r.ailments.burn-n);add(ev,'enemy','fire',1,'−'+Math.ceil(n),'scorching');}}
       for(const e of r.enemies){
         if(e.hp>0)continue;
         const event=add(ev,'kill',e.weak,1,e.name,'kill',e);
@@ -396,7 +496,7 @@
         r.foes++;r.xp+=((e.boss?17:8)+Math.sqrt(r.round)*1.4)*expeditionXpRate;
         enemyDrop(p,e,ev);
         if(e.trait==='volatile'){
-          const damage=P().incoming(r,e.damage*.48,e,ev,()=>rng(r)), n=hurt(r,damage,'burst',e);
+          const damage=P().incoming(r,e.damage*.48*(counter(r,'blastguard')?.25:1),e,ev,()=>rng(r)), n=hurt(r,damage,'burst',e);
           add(ev,'enemy','fire',1,`−${Math.round(n)}`,'volatile',e).sourceUid=e.uid;
         }
       }
@@ -434,8 +534,9 @@
       p.routeMarks=p.routeMarks.map((_,i)=>i<oldLength&&i<p.best?i+1+oldLength*Math.floor((p.best-i-1)/oldLength):0);
     }else{
       const marks=array(src.routeMarks,p.routeMarks.length);
-      if(marks.length!==p.routeMarks.length)bad();
-      p.routeMarks=marks.map((v,i)=>{integer(v,0,p.best);if(v&&(v-1)%WAVES_PER_REGION!==i%WAVES_PER_REGION)bad();return v;});
+      const expected=src.worldRegions===undefined?marks.length:integer(src.worldRegions,1,C().regions.length)*WAVES_PER_REGION;
+      if(![OLD_REGIONS*4,80,p.routeMarks.length].includes(marks.length)||marks.length!==expected)bad();
+      marks.forEach((v,i)=>{integer(v,0,p.best);if(v&&(v-1)%WAVES_PER_REGION!==i%WAVES_PER_REGION)bad();p.routeMarks[i]=v;});
     }
     p.seenItems=journal(src.seenItems,itemIds);p.seenEnemies=journal(src.seenEnemies,enemyIds);
     const ranks=object(src.perks);
@@ -445,14 +546,26 @@
     r.waveRules=s.waveRules===undefined?1:integer(s.waveRules,1,WAVE_RULES);
     r.bestAtStart=s.bestAtStart==null?null:integer(s.bestAtStart,0,p.best);
     if(s.deathCause!=null){
-      const c=object(s.deathCause), kind=id(c.kind,new Set(['strike','venom','burst']));
+      const c=object(s.deathCause), kind=id(c.kind,new Set(['strike','venom','burst','scorch']));
       if(s.phase!=='dead')bad();r.deathCause={kind,damage:number(c.damage)};
       if(c.enemyId!==undefined)r.deathCause.enemyId=id(c.enemyId,enemyIds);
     }
     r.phase=id(s.phase,new Set(['walk','fight','loot','dead']));r.round=integer(s.round,1);
     const oldLength=OLD_REGIONS*WAVES_PER_REGION;
     r.routeEpoch=s.routeEpoch===undefined?1+oldLength*Math.floor((r.round-1)/oldLength):integer(s.routeEpoch,1,r.round);
-    if((r.routeEpoch-1)%oldLength!==0)bad();
+    if(s.routeRegions===undefined){
+      if((r.routeEpoch-1)%oldLength!==0)bad();
+      r.routeRegions=s.routeEpoch===undefined?OLD_REGIONS:(src.routeMarks?.length===140?C().regions.length:20);
+      r.routeCircuit=1+(r.routeEpoch-1)/oldLength;
+      r.routeHistory=r.routeEpoch>1?[{epoch:1,regions:OLD_REGIONS,circuit:1}]:[];
+    }else{
+      r.routeRegions=integer(s.routeRegions,1,C().regions.length);if(![8,20,C().regions.length].includes(r.routeRegions))bad();
+      r.routeCircuit=integer(s.routeCircuit,1);
+      r.routeHistory=array(s.routeHistory||[],3).map(segment=>{object(segment);const value={epoch:integer(segment.epoch,1,r.routeEpoch),regions:integer(segment.regions,1,C().regions.length),circuit:integer(segment.circuit,1)};if(![8,20,C().regions.length].includes(value.regions))bad();return value;});
+      const segments=[...r.routeHistory,{epoch:r.routeEpoch,regions:r.routeRegions,circuit:r.routeCircuit}];
+      if(segments[0].epoch!==1||segments[0].circuit!==1)bad();
+      for(let i=1;i<segments.length;i++){const a=segments[i-1],b=segments[i],cycles=(b.epoch-a.epoch)/(a.regions*4);if(!Number.isInteger(cycles)||cycles<1||b.circuit!==a.circuit+cycles||b.regions<a.regions)bad();}
+    }
     r.region=routeInfo(r).region;if(s.region!==r.region)bad();
     r.maxHp=number(s.maxHp,1,88+14*perks.heart.max);r.hp=number(s.hp,0,r.maxHp);r.shield=number(s.shield,0,r.maxHp*.4+.00001);
     r.distance=number(s.distance);r.time=number(s.time);r.kills=integer(s.kills);
@@ -465,8 +578,9 @@
     r.walkLeft=number(s.walkLeft,0,WALK);r.lastAward=integer(s.lastAward);
     if(r.lastAward!==(r.phase==='dead'?1+r.kills+Math.floor(r.kills/4):0))bad();
     r.nextUid=integer(s.nextUid,1);r.seed=integer(s.seed,1,4294967295);r.venom=number(s.venom);
+    if(s.ailments!==undefined){const a=object(s.ailments);for(const key of Object.keys(r.ailments))r.ailments[key]=number(a[key]??0,0,key==='burn'?Number.MAX_SAFE_INTEGER:6);}
     const uids=new Set();
-    const item=x=>{object(x);const uid=integer(x.uid,1,r.nextUid-1),name=id(x.id,itemIds);if(uids.has(uid))bad();uids.add(uid);return {uid,id:name,level:number(x.level,1),cd:number(x.cd,0,C().items[name].cooldown+.00001)};};
+    const item=x=>{object(x);const uid=integer(x.uid,1,r.nextUid-1),name=id(x.id,itemIds);if(uids.has(uid))bad();uids.add(uid);const it={uid,id:name,level:number(x.level,1),cd:number(x.cd,0,C().items[name].cooldown+.00001)};if(x.charges!==undefined)it.charges=integer(x.charges,0,2);return it;};
     function slots(list,capacity){
       const used=new Set();return array(list,capacity).map((entry,index)=>{
         const it=item(entry), slot=integer(entry.slot===undefined?index:entry.slot,0,capacity-1);
@@ -536,11 +650,13 @@
       e.attackProgress=number(v.attackProgress,0,1);e.ward=integer(v.ward,0,1);e.swings=integer(v.swings);
       e.burn=number(v.burn);e.poison=number(v.poison);e.chill=number(v.chill,0,2.1);
       e.stun=number(v.stun,0,.95);e.statusClock=number(v.statusClock,0,1);
-      e.echoes=array(v.echoes,40).map(x=>{object(x);return {delay:number(x.delay,0,1),damage:number(x.damage),el:id(x.el,elements),pattern:id(x.pattern,new Set(['echo','rapid']))};});
+      e.rooted=number(v.rooted??0,0,.8);e.fracture=integer(v.fracture??0,0,5);e.haunt=integer(v.haunt??0,0,2);e.hauntTime=number(v.hauntTime??0,0,4);
+      for(const key of ['leafHits','frostHits','stormHits'])e[key]=integer(v[key]??0,0,2);
+      e.echoes=array(v.echoes,40).map(x=>{object(x);return {delay:number(x.delay,0,1),damage:number(x.damage),el:id(x.el,elements),pattern:id(x.pattern,new Set(['echo','rapid','soulmark','aftershock']))};});
       return e;
     }).filter(e=>e.hp>0);
     r.enemy=r.enemies[0]||null;
     return p;
   }
-  root.GameEngine={routeInfo,isReplay,lootOdds,dropEligible,freshProfile,start,tick,act,validate,xpNeeded,previewPair,previewCombine,slotAt,perks,perkCost,perkPreview,awardBreakdown,maxSpeed,itemPower,itemCooldown,levelText,walkDuration:WALK,activeCapacity:ACTIVE,packCapacity:PACK};
+  root.GameEngine={routeInfo,isReplay,lootOdds,dropEligible,dropChances,freshProfile,start,tick,act,validate,xpNeeded,previewPair,previewCombine,slotAt,perks,perkCost,perkPreview,awardBreakdown,maxSpeed,itemPower,itemCooldown,levelText,walkDuration:WALK,activeCapacity:ACTIVE,packCapacity:PACK};
 })();

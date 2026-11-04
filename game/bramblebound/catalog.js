@@ -27,10 +27,29 @@
     ['Blackice Fjord','The aurora hangs above black ice and the ribs of longships.','#8cbfda'],
     ['Clockwork Rookery','Pendulums swing beneath the nests of brass-feathered birds.','#d5b577'],
     ['Meteor Quarry','Fallen stars hover above the pits where miners first found them.','#b6a0c9'],
-    ['Dawnroot Summit','Gold leaves frame the rising sun at the crest of the world-tree.','#ecd18a']
+    ['Dawnroot Summit','Gold leaves frame the rising sun at the crest of the world-tree.','#ecd18a'],
+    ['Verdigris Aqueduct','Turquoise canals braid beneath the broken arches of a copper-green city.','#72c6b1'],
+    ['Emberglass Caldera','Rivers of flame shine through the black glass of a sleeping volcano.','#ed8a69'],
+    ['Hushsnow Orchard','Snow-laden branches shelter lanterns that have burned for a thousand winters.','#b7d9d4'],
+    ['Thunderstep Savanna','Golden grass bends beneath thunderheads and the silhouettes of storm totems.','#dbbd72'],
+    ['Obsidian Ossuary','Pale ribs and polished black pillars guard the resting place of mountain giants.','#b29cbe'],
+    ['Dreamtide Marsh','Reflected moons drift upstream through violet reeds and half-remembered doorways.','#b3a0df'],
+    ['Honeycomb Cathedral','Amber light falls through waxen towers while enormous hives hum like an organ.','#e5bf79'],
+    ['Ashen Railworks','Old rails thread the cinders below skeletal gantries and still-glowing signal lamps.','#c78f7b'],
+    ['Winterglass Conservatory','Frozen glasshouses shelter silver vines whose blossoms ring when touched.','#a4dbe2'],
+    ['Copperstorm Flats','Lightning walks from spire to copper spire across a sea of blue-green salt.','#7dccc5'],
+    ['Titanroot Canyon','Roots thicker than towers bridge the red cliffs above a river of drifting seeds.','#c8aa76'],
+    ['Mothmoon Opera','Velvet curtains stir in an abandoned amphitheater beneath a luminous moth-wing moon.','#c6a0d8'],
+    ['Bloodbloom Basin','Scarlet flowers drink the red mist as hanging vines weave bridges over still water.','#db929a'],
+    ['Shattered Aurora','Ice islands hang in the sky, joined by bright ribbons torn from the northern lights.','#a4c9ed'],
+    ['Everdawn Observatory','Ivory orreries turn above the clouds, measuring the first sunrise of every world.','#ead39a']
   ].map(([name,subtitle,color])=>({name,subtitle,color}));
   const rarities = {
-    common:{name:'Common',color:'#b8c6a6'}, rare:{name:'Rare',color:'#79d5f6'}, mythic:{name:'Mythic',color:'#ffc97e'}
+    common:{name:'Common',color:'#b8c6a6',rank:0,powerScale:1},
+    uncommon:{name:'Uncommon',color:'#8ed18a',rank:1,powerScale:1.12},
+    rare:{name:'Rare',color:'#79bfff',rank:2,powerScale:1.28},
+    epic:{name:'Epic',color:'#c59aff',rank:3,powerScale:1.5},
+    mythic:{name:'Mythic',color:'#ffd17a',rank:4,powerScale:1.8}
   };
   const items = {};
   const milestones = {3:'Echo • An afterimage follows each activation for 40% damage.',5:'Guard pulse • Each activation adds a shield in a visible ring.',10:'Nova • Each activation adds a burst for 65% damage.'};
@@ -157,6 +176,83 @@
   ];
   for(const [region,id,name,element,style,power,cd,icon,rarity,unlock,flavor] of regionalFinds){
     item(id,name,element,style,power,cd,icon,flavor,null,rarity,unlock,region);
+  }
+  // The far road adds hand-matched weapons with signature mechanics. A special
+  // augments the usual elemental/style effect instead of replacing it.
+  const specialText={
+    ricochet:'The strike rebounds into another foe.',execute:'Deals extra damage to badly wounded foes.',
+    rupture:'Detonates an afflicted target in an elemental burst.',chain:'Lightning jumps between nearby foes.',
+    leech:'Returns part of the damage dealt as health.',wardbreak:'Breaks protective wards before the strike lands.',
+    bloom:'Spreads venomous growth through the enemy group.',permafrost:'Briefly freezes the target and leaves it deeply chilled.',
+    aftershock:'A delayed impact follows the original strike.',soulmark:'Marks the target for stronger follow-up attacks.',
+    renewal:'Restores health and raises a protective shield.',overload:'Every third activation releases stored charge in a group-hitting discharge.'
+  };
+  const counterText={
+    cleanse:'Its activations clear venom and all lingering afflictions.',
+    antivenom:'Reduces venom damage and helps clear poison.',
+    insulated:'Resists enemy shocks and preserves relic tempo.',
+    thaw:'Prevents freezing and helps extinguish scorching.',
+    unbinding:'Cuts entangling growth and frees slowed relics.',
+    purify:'Prevents hostile hexes and corrosive afflictions.',
+    blastguard:'Softens scorching attacks and explosive bursts.',
+    wardbreaker:'Strikes bypass armor and break protective wards.'
+  };
+  const farFinds=[
+    [20,'canal_trident','Canalkeeper Trident','storm','shock',17,2.45,'trident','rare','chain','Three copper tines draw a current from the aqueduct.'],
+    [20,'patina_disc','Patina Discbuckler','stone','guard',14,2.5,'aegis','rare','ricochet','Canal coins are hammered into the rim of this returning shield.'],
+    [21,'glassfire_cleaver','Glassfire Cleaver','fire','burn',20,2.6,'cleavers','rare','rupture','A black-glass edge catches embers in its hairline cracks.'],
+    [21,'magma_mantle','Magma Mantle','stone','guard',16,2.9,'aegis','rare','aftershock','A moving seam of lava runs through its basalt plates.'],
+    [22,'hushwood_bow','Hushwood Longbow','frost','chill',15,2.3,'thornbow','rare','permafrost','Its white branches bend without disturbing the falling snow.'],
+    [22,'lantern_apple','Lantern Apple','leaf','mend',10,2.8,'orbiter','rare','renewal','A warm blossom grows inside the clear skin of this winter fruit.'],
+    [23,'stormtotem_lance','Stormtotem Lance','storm','shock',19,2.55,'lance','rare','chain','A carved thunderhead crowns the long copper point.'],
+    [23,'liongrass_sabre','Liongrass Saber','leaf','rapid',11,1.5,'saber','common','execute','Its serrated green blade whistles above the golden grass.'],
+    [24,'bonekey_greatsword','Bonekey Greatsword','stone','pierce',24,2.9,'greatsword','rare','wardbreak','The teeth of an ancient giant form a key along its edge.'],
+    [24,'obsidian_missal','Obsidian Missal','spirit','drain',16,2.6,'tome','rare','soulmark','Black pages name every guardian buried in the mountain.'],
+    [25,'dreamtide_crook','Dreamtide Crook','spirit','drain',17,2.45,'wand','rare','soulmark','A small floating moon is tethered to its crook by a silver thread.'],
+    [25,'marshlight_crossbow','Marshlight Crossbow','leaf','poison',14,2.1,'crossbow','rare','bloom','Its bolts unfold into luminous marsh flowers.'],
+    [26,'honeycomb_cannon','Honeycomb Cannon','fire','rapid',12,1.65,'cannon','rare','overload','Six wax-sealed chambers pop open in a fragrant flash.'],
+    [26,'amberwax_aegis','Amberwax Aegis','leaf','guard',18,2.85,'aegis','rare','renewal','Honey-colored resin closes over every scratch in its face.'],
+    [27,'railspike_lance','Railspike Lance','stone','pierce',22,2.45,'lance','common','ricochet','A polished railspike sits in a socket of spring-loaded iron.'],
+    [27,'signal_chainblade','Signal Chainblade','fire','burn',18,2.25,'chainblade','rare','execute','Red signal glass gleams between the teeth of its moving chain.'],
+    [28,'silvervine_wand','Silvervine Wand','frost','chill',17,2.2,'wand','rare','permafrost','A frozen vine makes new blossoms whenever its tip strikes.'],
+    [28,'glasswing_orbiter','Glasswing Orbiter','spirit','rapid',12,1.5,'orbiter','rare','ricochet','A ring of translucent wings circles a bead of captive moonlight.'],
+    [29,'voltaic_crossbow','Voltaic Crossbow','storm','rapid',12,1.45,'crossbow','rare','overload','A pair of tuning forks charge the rails before every shot.'],
+    [29,'coppercoil_aegis','Coppercoil Aegis','storm','guard',19,2.65,'aegis','rare','chain','Lightning that strikes the face travels around its spiral rim.'],
+    [30,'titanroot_scythe','Titanroot Scythe','leaf','poison',19,2.35,'sicklestaff','rare','bloom','A canyon-root curves into a living blade taller than its bearer.'],
+    [30,'canyonfang_greatsword','Canyonfang Greatsword','stone','strike',28,3.05,'greatsword','rare','aftershock','Its sandstone edge carries the weight of a fallen cliff.'],
+    [31,'mothmoon_tome','Mothmoon Score','spirit','drain',18,2.45,'tome','rare','soulmark','Silent notes lift from the page like pale moths.'],
+    [31,'velvet_crescent','Velvet Crescent','frost','rapid',12,1.4,'chainblade','rare','execute','A crescent of cold stage light swings from a velvet ribbon.'],
+    [32,'bloodbloom_thornbow','Bloodbloom Thornbow','leaf','poison',18,2.15,'thornbow','rare','bloom','Scarlet sap feeds every thorn along the bowstring.'],
+    [32,'redmist_cleavers','Redmist Cleavers','fire','drain',21,2.55,'cleavers','rare','leech','Twin blades drink the basin mist and glow along their spines.'],
+    [33,'aurora_orbiter','Aurora Orbiter','frost','rapid',13,1.45,'orbiter','rare','ricochet','Splinters of the northern lights orbit a core of black ice.'],
+    [33,'fracture_lance','Fracture Lance','storm','pierce',24,2.45,'lance','rare','wardbreak','Its forked tip fits exactly into the cracks between worlds.'],
+    [34,'dawnstar_greatsword','Dawnstar Greatsword','fire','pierce',29,2.8,'greatsword','mythic','execute','A line of dawn rests in the fuller of this ivory blade.'],
+    [34,'orrery_wand','Orrery Wand','spirit','mend',16,2.65,'wand','mythic','renewal','Tiny sun-and-moon rings turn around its warm crystal heart.']
+  ];
+  const signatures={};
+  for(const [region,id,name,el,style,power,cd,icon,rarity,special,flavor] of farFinds){
+    item(id,name,el,style,power,cd,icon,flavor,null,rarity,region*4+1,region);
+    signatures[id]=special;
+  }
+  // Counters are available from the first circuit as well as from the new
+  // regions, so an imported traveler can answer enemy afflictions immediately.
+  const counterFinds=[
+    [0,'dewglass_vial','Dewglass Vial','leaf','mend',5,3.15,'vial',1,'cleanse','renewal','Clean dew gathers on the inside of a corked leaf-glass bottle.'],
+    [0,'serpentroot_knife','Serpentroot Knife','leaf','poison',7,2.3,'saber',1,'antivenom','bloom','A pale root coils around a blade used by the grove healers.'],
+    [1,'ashfelt_mantle','Ashfelt Mantle','stone','guard',7,3.1,'aegis',5,'blastguard','aftershock','Dense felt and overlapping shale turn aside cinders.'],
+    [1,'coalheart_warmer','Coalheart Warmer','fire','mend',5,3.05,'censer',1,'thaw','renewal','A coal glows safely inside a little brass cage.'],
+    [2,'thawthorn_rapier','Thawthorn Rapier','fire','pierce',10,2.5,'rapier',9,'thaw','execute','Warm sap runs down a copper thorn forged into a narrow sword.'],
+    [2,'frostmoss_wrap','Frostmoss Wrap','leaf','guard',6,2.95,'scarf',5,'antivenom','renewal','Cool moss draws the sting from the traveler’s skin.'],
+    [3,'grounding_spear','Grounding Spear','stone','pierce',11,2.65,'lance',1,'insulated','wardbreak','A trailing copper braid guides stray lightning into the earth.'],
+    [3,'stormcork_charm','Stormcork Charm','storm','guard',6,2.85,'brooch',13,'insulated','chain','A ring of dry cork keeps a captured spark from touching the hand.'],
+    [4,'trailcut_sickle','Trailcut Sickle','leaf','rapid',6,1.7,'sickle',1,'unbinding','execute','This hooked edge was made to free a trail from creeping vines.'],
+    [4,'bastion_chisel','Bastion Chisel','stone','pierce',12,2.75,'awl',13,'wardbreaker','wardbreak','A mason’s chisel finds the weak seam in any shield.'],
+    [5,'pilgrim_saltbell','Pilgrim’s Saltbell','spirit','mend',6,3.1,'bell',1,'purify','soulmark','Every quiet chime scatters a pinch of blessed silver salt.'],
+    [5,'rainwash_fan','Rainwash Fan','frost','chill',8,2.55,'fan',9,'cleanse','permafrost','A sweep of the fan calls clean rain from the empty air.']
+  ];
+  for(const [region,id,name,el,style,power,cd,icon,unlock,counter,special,flavor] of counterFinds){
+    item(id,name,el,style,power,cd,icon,flavor,null,'common',unlock,region);
+    Object.assign(items[id],{counter,counterDescription:counterText[counter]});signatures[id]=special;
   }
   // Recipes are hand matched; order of ingredients is irrelevant.
   const recipes = [
@@ -289,6 +385,39 @@
     ['crater_song','Crater Song','impact_core','tremor','stone','strike',44,2.55,'gravitymaul'],
     ['dawn_of_the_grove','Dawn of the Grove','sunroot_crown','ambrosia','leaf','mend',29,2.1,'scepter']
   );
+  const farFusions=[
+    ['verdigris_torrent','Verdigris Torrent','canal_trident','patina_disc','storm','shock',29,2.25,'trident','chain'],
+    ['tidebreaker_lance','Tidebreaker Lance','canal_trident','needle','frost','pierce',28,2.3,'lance','wardbreak'],
+    ['caldera_heart','Caldera Heart','glassfire_cleaver','magma_mantle','fire','burn',32,2.55,'cannon','overload'],
+    ['ashglass_executioner','Ashglass Executioner','glassfire_cleaver','soul_scythe','spirit','drain',32,2.65,'greatsword','execute'],
+    ['silent_solstice','Silent Solstice','hushwood_bow','lantern_apple','frost','chill',25,2.1,'thornbow','permafrost'],
+    ['winter_bloom','Winter Bloom','lantern_apple','thorn','leaf','poison',23,2.15,'wand','bloom'],
+    ['savanna_king','The Savanna King','stormtotem_lance','liongrass_sabre','storm','pierce',31,2.3,'lance','overload'],
+    ['monsoon_repeater','Monsoon Repeater','stormtotem_lance','squall_repeater','storm','rapid',18,1.4,'crossbow','ricochet'],
+    ['ossuary_sentence','Ossuary Sentence','bonekey_greatsword','obsidian_missal','spirit','drain',35,2.75,'greatsword','execute'],
+    ['giantbreaker','Giantbreaker','bonekey_greatsword','gravity_maul','stone','strike',43,3.0,'gravitymaul','aftershock'],
+    ['reverie_harvester','Reverie Harvester','dreamtide_crook','marshlight_crossbow','spirit','drain',29,2.35,'sicklestaff','leech'],
+    ['drowned_moon','Drowned Moon','dreamtide_crook','mirror','frost','chill',27,2.2,'orbiter','permafrost'],
+    ['cathedral_sun','Cathedral Sun','honeycomb_cannon','amberwax_aegis','fire','burn',31,2.35,'cannon','rupture'],
+    ['queens_mercy','The Queen’s Mercy','amberwax_aegis','dawn_harpbow','spirit','mend',22,2.6,'harpbow','renewal'],
+    ['cinder_express','Cinder Express','railspike_lance','signal_chainblade','fire','rapid',21,1.65,'crossbow','overload'],
+    ['switchyard_hammer','Switchyard Hammer','railspike_lance','mallet','stone','strike',36,2.7,'hammer','aftershock'],
+    ['winterglass_prism','Winterglass Prism','silvervine_wand','glasswing_orbiter','frost','pierce',30,2.15,'orbiter','wardbreak'],
+    ['solstice_vine','Solstice Vine','silvervine_wand','gourd','leaf','mend',20,2.6,'wand','renewal'],
+    ['stormglass_apparatus','Stormglass Apparatus','voltaic_crossbow','coppercoil_aegis','storm','shock',31,2.2,'cannon','chain'],
+    ['faraday_rosary','Faraday Rosary','coppercoil_aegis','bead','spirit','guard',25,2.55,'beads','wardbreak'],
+    ['worldroot_reaper','Worldroot Reaper','titanroot_scythe','canyonfang_greatsword','leaf','drain',36,2.65,'sicklestaff','leech'],
+    ['faultline_colossus','Faultline Colossus','canyonfang_greatsword','fault_flail','stone','strike',44,2.9,'greatsword','rupture'],
+    ['encore_eclipse','Encore Eclipse','mothmoon_tome','velvet_crescent','spirit','rapid',20,1.5,'chainblade','soulmark'],
+    ['aria_of_thaw','Aria of Thaw','mothmoon_tome','flute','frost','chill',28,2.1,'tome','permafrost'],
+    ['crimson_harvest','Crimson Harvest','bloodbloom_thornbow','redmist_cleavers','leaf','drain',35,2.4,'thornbow','renewal'],
+    ['sanguine_comet','Sanguine Comet','redmist_cleavers','brand','fire','pierce',37,2.4,'cleavers','execute'],
+    ['heavens_splitter','Heavensplitter','aurora_orbiter','fracture_lance','frost','pierce',36,2.2,'lance','permafrost'],
+    ['prismstorm_cannon','Prismstorm Cannon','aurora_orbiter','coil','storm','shock',29,2.2,'cannon','overload'],
+    ['firstlight_judgment','Firstlight Judgment','dawnstar_greatsword','orrery_wand','fire','burn',46,2.9,'greatsword','rupture'],
+    ['atlas_of_returns','Atlas of Returns','orrery_wand','hourglass','spirit','drain',34,2.45,'tome','soulmark']
+  ];
+  for(const row of farFusions){recipes.push(row.slice(0,9));signatures[row[0]]=row[9];}
   for(const [id,name,a,b,element,style,power,cooldown,icon] of recipes){
     const pair=[items[a],items[b]];
     const mythic=pair.some(d=>d.rarity==='mythic')||pair.every(d=>d.recipe);
@@ -296,6 +425,21 @@
     item(id,name,element,style,power,cooldown,icon,`${pair[0].name} fused with ${pair[1].name}.`,
       [a,b],mythic?'mythic':'rare',unlock,pair[0].dropRegion??pair[1].dropRegion);
   }
+  for(const [id,special] of Object.entries(signatures))Object.assign(items[id],{special,specialDescription:specialText[special]});
+  const farCounters={
+    patina_disc:'insulated',glassfire_cleaver:'thaw',magma_mantle:'blastguard',lantern_apple:'thaw',
+    stormtotem_lance:'insulated',liongrass_sabre:'unbinding',bonekey_greatsword:'wardbreaker',obsidian_missal:'purify',
+    dreamtide_crook:'purify',marshlight_crossbow:'antivenom',honeycomb_cannon:'unbinding',amberwax_aegis:'cleanse',
+    railspike_lance:'wardbreaker',signal_chainblade:'thaw',silvervine_wand:'cleanse',glasswing_orbiter:'blastguard',
+    voltaic_crossbow:'insulated',coppercoil_aegis:'insulated',titanroot_scythe:'unbinding',canyonfang_greatsword:'blastguard',
+    mothmoon_tome:'purify',velvet_crescent:'thaw',bloodbloom_thornbow:'antivenom',redmist_cleavers:'antivenom',
+    aurora_orbiter:'cleanse',fracture_lance:'wardbreaker',dawnstar_greatsword:'wardbreaker',orrery_wand:'purify',
+    verdigris_torrent:'insulated',caldera_heart:'blastguard',silent_solstice:'thaw',winter_bloom:'antivenom',
+    savanna_king:'unbinding',ossuary_sentence:'wardbreaker',reverie_harvester:'purify',cathedral_sun:'cleanse',
+    cinder_express:'blastguard',winterglass_prism:'thaw',stormglass_apparatus:'insulated',worldroot_reaper:'unbinding',
+    encore_eclipse:'purify',crimson_harvest:'antivenom',heavens_splitter:'cleanse',firstlight_judgment:'wardbreaker'
+  };
+  for(const [id,counter] of Object.entries(farCounters))Object.assign(items[id],{counter,counterDescription:counterText[counter]});
   const roster = [
     [ ['Mossback Beetle','beetle','armored','fire','leaf','#88bc62'], ['Pollen Moth','moth','swarm','frost','leaf','#ecd28a'], ['Bramble Boar','boar','brute','fire','stone','#bf815c'], ['Sapsip Toad','frog','leech','storm','leaf','#73b675'], ['Lanterncap','shroom','regenerating','fire','spirit','#dd926a'], ['Vine Adder','serpent','venom','frost','leaf','#91b64d'], ['Crownroot Sentinel','golem','veteran','fire','leaf','#7f9c65'] ],
     [ ['Coalback Boar','boar','brute','frost','fire','#b55e44'], ['Ashwing Bat','bat','swift','storm','fire','#a28195'], ['Cinder Moth','moth','volatile','frost','fire','#e68e61'], ['Furnace Crab','crab','armored','frost','stone','#cb7857'], ['Soot Hound','wolf','swift','frost','fire','#8a7876'], ['Spark Viper','serpent','venom','stone','fire','#df934a'], ['Orchard Pyre','golem','warded','frost','fire','#ff9865'] ],
@@ -429,10 +573,148 @@
       ['Solivar, the Dawnroot Dragon','dragon','veteran','frost','fire','#f0c082']
     ]
   ];
-  const enemies=[...roster,...outerRoad].flatMap((list,region)=> {
+  // Each far-road resident carries an additional, counterable affliction.
+  // Familiar sprite families and traits keep tells readable as the road grows.
+  const farRoad=[
+    [
+      ['Canal-Coin Hermit','crab','armored','storm','stone','#a8bb92','bulwark'],
+      ['Patina Spitter','snail','venom','fire','leaf','#79bfa3','corrosive'],
+      ['Copperfin Skimmer','ray','swift','stone','storm','#8ac9bf','shocking'],
+      ['Sluicegate Weaver','spider','swarm','frost','leaf','#9fbf9b','entangling'],
+      ['Drowned Censer','wisp','leech','spirit','frost','#92d5cb','hexed'],
+      ['Verdigris Frill','axolotl','regenerating','fire','leaf','#7cb7a2','corrosive'],
+      ['The Brinewrought Regent','golem','warded','leaf','stone','#9cc8ad','corrosive']
+    ],[
+      ['Glassback Salamander','axolotl','volatile','frost','fire','#e79d7a','scorching'],
+      ['Lava-Thread Mantis','mantis','swift','frost','fire','#d27a68','scorching'],
+      ['Obsidian Stag','stag','armored','leaf','stone','#ad8b96','bulwark'],
+      ['Sulfur Widow','spider','venom','frost','fire','#d2a46c','corrosive'],
+      ['Cindervein Moth','moth','swarm','storm','fire','#f0b68b','shocking'],
+      ['Magma-Scale Pangolin','pangolin','brute','frost','stone','#b88675','bulwark'],
+      ['Vespara, the Glassfire Wyrm','dragon','veteran','frost','fire','#f1a476','scorching']
+    ],[
+      ['Lanternsnow Hare','hare','swift','fire','frost','#d4dfcd','freezing'],
+      ['Hushwood Antler','elk','warded','stone','frost','#b6d4d3','bulwark'],
+      ['Frostapple Beetle','beetle','armored','fire','leaf','#a5c6b8','freezing'],
+      ['Snowveil Fox','fox','leech','spirit','frost','#d2d6e1','hexed'],
+      ['Iceblossom Snail','snail','regenerating','fire','leaf','#bed8cc','entangling'],
+      ['Whitebell Bat','bat','swarm','storm','frost','#ccdbea','freezing'],
+      ['The Orchard’s Last Lantern','owl','warded','fire','frost','#e3e3c8','freezing']
+    ],[
+      ['Thundergrass Stalker','wolf','swift','stone','storm','#c7ad78','shocking'],
+      ['Coppermane Boar','boar','brute','frost','stone','#c29b63','bulwark'],
+      ['Static-Feather Kite','bird','swarm','stone','storm','#d7c58a','shocking'],
+      ['Stormtotem Scarab','beetle','warded','leaf','stone','#b9a371','bulwark'],
+      ['Liongrass Viper','serpent','venom','frost','leaf','#a9ae6d','entangling'],
+      ['Heat-Haze Manta','ray','volatile','frost','fire','#d8b28d','scorching'],
+      ['Kharu, the Walking Thunder','griffin','veteran','stone','storm','#e3c580','shocking']
+    ],[
+      ['Bonekey Scuttler','crab','armored','leaf','stone','#b9b4b7','bulwark'],
+      ['Funeral Moth','moth','leech','fire','spirit','#b9a2ce','hexed'],
+      ['Obsidian Fang','wolf','swift','frost','stone','#8c829e','corrosive'],
+      ['Marrow-Mist Jelly','jellyfish','warded','storm','spirit','#c7b4d8','hexed'],
+      ['Graveglass Warden','golem','brute','leaf','stone','#aa9bad','bulwark'],
+      ['Ashbone Scorpion','scorpion','venom','frost','fire','#b49a99','scorching'],
+      ['The Giant Beneath the Bells','golem','armored','leaf','stone','#cbbcd0','bulwark']
+    ],[
+      ['Dreamreed Lurker','frog','regenerating','storm','leaf','#aba1c5','entangling'],
+      ['Moonwell Axolotl','axolotl','leech','fire','spirit','#bca8dd','hexed'],
+      ['Reverie Threader','spider','venom','frost','leaf','#b69bd3','corrosive'],
+      ['Drowsy Lantern','wisp','warded','spirit','frost','#b6c8e6','freezing'],
+      ['Mirrorsleep Eel','serpent','swift','stone','storm','#9d9ec9','shocking'],
+      ['Doorway Moth','moth','swarm','fire','spirit','#d4bbdf','hexed'],
+      ['The Dreamtide Ferryman','jellyfish','leech','storm','spirit','#cab3ec','hexed']
+    ],[
+      ['Waxen Mason','beetle','armored','fire','stone','#ccac66','bulwark'],
+      ['Honeydrop Slug','snail','regenerating','frost','leaf','#e2bd76','entangling'],
+      ['Pollen-Script Moth','moth','swarm','fire','leaf','#e6ce91','corrosive'],
+      ['Candlewick Bat','bat','volatile','frost','fire','#c39875','scorching'],
+      ['Amber Organist','golem','warded','leaf','stone','#c5ac6c','bulwark'],
+      ['Royal Wax Mantis','mantis','swift','frost','leaf','#d6b379','entangling'],
+      ['The Queen of Seven Hives','moth','veteran','fire','leaf','#f0cf8e','entangling']
+    ],[
+      ['Signal-Lamp Hound','wolf','swift','frost','fire','#c98977','scorching'],
+      ['Railspike Mole','mole','armored','leaf','stone','#a28b7e','bulwark'],
+      ['Cinder-Ticket Wisp','wisp','volatile','frost','fire','#e6ab7e','scorching'],
+      ['Switchyard Weaver','spider','venom','storm','stone','#aa827c','corrosive'],
+      ['Copper Boilerback','turtle','brute','frost','stone','#c19a82','bulwark'],
+      ['Sootsignal Crow','bird','swarm','stone','storm','#b4a0a1','shocking'],
+      ['The Last Cinder Express','boar','brute','frost','fire','#d7a184','scorching']
+    ],[
+      ['Silvervine Mantis','mantis','swift','fire','leaf','#acd0cb','entangling'],
+      ['Greenhouse Frostling','golem','warded','fire','frost','#b9d7db','freezing'],
+      ['Glass-Petal Dragonfly','dragonfly','swarm','stone','frost','#c4dfe1','freezing'],
+      ['Mirror Fern Spider','spider','venom','storm','leaf','#a7bfc7','corrosive'],
+      ['Snowglass Tortoise','turtle','armored','fire','frost','#9bbdcf','bulwark'],
+      ['Orchid-Wake Owl','owl','leech','spirit','frost','#c4c9de','hexed'],
+      ['The Gardener of Still Winters','elk','regenerating','fire','frost','#cbe3e0','freezing']
+    ],[
+      ['Voltaic Skimmer','ray','swift','stone','storm','#87c9c0','shocking'],
+      ['Saltcoil Viper','serpent','venom','frost','storm','#97bfae','corrosive'],
+      ['Copperstorm Ram','ram','brute','frost','stone','#b69f83','bulwark'],
+      ['Arcglass Widow','spider','swarm','fire','storm','#91b4c6','shocking'],
+      ['Grounding Tortoise','turtle','warded','leaf','stone','#9cab94','bulwark'],
+      ['Blue-Salt Lantern','wisp','volatile','stone','storm','#a6ddd7','shocking'],
+      ['The Faraday Leviathan','dragon','veteran','stone','storm','#9ed7cc','shocking']
+    ],[
+      ['Canyon-Root Pangolin','pangolin','armored','fire','leaf','#b4ac7e','bulwark'],
+      ['Seedriver Elk','elk','regenerating','fire','leaf','#cab68b','entangling'],
+      ['Redcliff Mole','mole','brute','leaf','stone','#bc916e','corrosive'],
+      ['Titanroot Weaver','spider','venom','frost','leaf','#a9af77','entangling'],
+      ['Falling-Slate Griffin','griffin','swift','frost','stone','#c8ac91','bulwark'],
+      ['Seed-Tide Moth','moth','swarm','fire','leaf','#d1c28b','entangling'],
+      ['The Root That Holds the Mountain','golem','regenerating','fire','leaf','#c2ba88','entangling']
+    ],[
+      ['Velvet-Wing Usher','bat','swift','storm','spirit','#b199bd','hexed'],
+      ['Moon-Score Moth','moth','leech','fire','spirit','#d4bce6','hexed'],
+      ['Curtain-Spool Spider','spider','venom','frost','leaf','#c199ba','entangling'],
+      ['Hushlight Owl','owl','warded','stone','frost','#c2b3dc','freezing'],
+      ['Gilded Stagehand','golem','armored','leaf','stone','#bfa487','bulwark'],
+      ['Crescent Chorus','jellyfish','swarm','storm','spirit','#d4b5df','hexed'],
+      ['The Mothmoon Prima','wisp','veteran','spirit','frost','#e4c5ef','hexed']
+    ],[
+      ['Bloodbloom Stalker','mantis','swift','frost','leaf','#b4a37c','entangling'],
+      ['Scarlet-Sap Adder','serpent','venom','frost','leaf','#c49292','corrosive'],
+      ['Redmist Familiar','fox','leech','storm','spirit','#d2a19d','hexed'],
+      ['Basin Lanterncap','shroom','regenerating','fire','leaf','#d2a49f','entangling'],
+      ['Thorn-Crown Beetle','beetle','armored','fire','stone','#b79783','bulwark'],
+      ['Cinder-Petal Moth','moth','volatile','frost','fire','#e2aaa0','scorching'],
+      ['Vesper, the Crimson Antler','stag','leech','fire','leaf','#e3a8af','corrosive']
+    ],[
+      ['Aurora-Scale Drake','dragon','swift','fire','frost','#b4c4e5','freezing'],
+      ['Fracturewing','dragonfly','swarm','stone','storm','#b8d4e6','shocking'],
+      ['Polar Mirrorback','turtle','armored','fire','frost','#b3c7db','bulwark'],
+      ['Skyshard Jelly','jellyfish','warded','storm','spirit','#c2c9eb','hexed'],
+      ['Northern-Ribbon Ray','ray','leech','stone','storm','#b5dbdd','shocking'],
+      ['Blackice Voidling','wisp','volatile','fire','frost','#a8b7df','freezing'],
+      ['The Warden of Broken Skies','griffin','veteran','fire','frost','#d0dff2','freezing']
+    ],[
+      ['Orrery-Keeper Owl','owl','warded','stone','spirit','#d7c7a9','hexed'],
+      ['Firstlight Griffin','griffin','swift','frost','fire','#e5c898','scorching'],
+      ['Ivory Sunscarab','beetle','armored','leaf','stone','#d5c795','bulwark'],
+      ['Golden Hour Hare','hare','swarm','frost','storm','#d5bf8e','shocking'],
+      ['Daybreak Rootkeeper','golem','regenerating','fire','leaf','#c4c789','entangling'],
+      ['Moonring Serpent','serpent','venom','spirit','frost','#ccbdd1','corrosive'],
+      ['Aurelion, the First Sunrise','dragon','veteran','frost','fire','#f1d196','bulwark']
+    ]
+  ];
+  const enemies=[...roster,...outerRoad,...farRoad].flatMap((list,region)=> {
     const guardianIndex=list.length-1;
-    return [...list,...(roadCreatures[region]||[])].map(([name,species,trait,weak,resist,color],index)=>({id:`r${region}e${index}`,name,species,color,weak,resist,trait,region,boss:index===guardianIndex}));
+    return [...list,...(roadCreatures[region]||[])].map(([name,species,trait,weak,resist,color,affliction],index)=>({id:`r${region}e${index}`,name,species,color,weak,resist,trait,region,boss:index===guardianIndex,...(affliction?{affliction}:{})}));
   });
+  // Tier scores estimate sustained damage plus the value of control, sustain,
+  // and signature mechanics. The raw weapon stats and recipe graph stay fixed.
+  // Existing mythics keep their identity; the two starter weapons and the
+  // first cleansing vial remain accessible common finds.
+  const styleValue={strike:1,rapid:1.23,burn:1.4,poison:1.32,pierce:1.12,guard:1.2,mend:1.3,drain:1.22,chill:1.12,shock:1.12};
+  const tierNames=Object.keys(rarities),tierThresholds=[5.8,9.5,12.5,22];
+  for(const def of Object.values(items)){
+    const score=def.power/def.cooldown*(styleValue[def.style]||1)+(def.special?2.5:0)+(def.counter?.8:0);
+    let rank=tierThresholds.filter(threshold=>score>=threshold).length;
+    if(def.rarity==='mythic')rank=4;
+    if(['stick','sling','dewglass_vial'].includes(def.id))rank=0;
+    def.rarity=tierNames[rank];def.rarityScore=Math.round(score*100)/100;
+  }
   const pairKey=(a,b)=>a<b?a+'|'+b:b+'|'+a;
   const recipeMap=new Map(recipes.map(([id,,a,b])=>[pairKey(a,b),id]));
   window.Catalog={items,enemies,regions,elements,rarities,starter:['stick','sling'],combo:(a,b)=>recipeMap.get(pairKey(a,b))??null};

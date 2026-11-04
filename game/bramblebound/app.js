@@ -26,6 +26,7 @@
   const pad=n=>String(n).padStart(2,'0'), lv=n=>E.levelText(n);
   const defs=Object.values(C.items), allItems=r=>[...r.active,...r.pack], byUid=(r,uid)=>allItems(r).find(x=>x.uid===Number(uid));
   const elName=id=>C.elements[id]?.name||id;
+  function enemyRelics(e){const counters={corrosive:['purify','cleanse'],entangling:['unbinding','cleanse'],hexed:['purify','cleanse'],scorching:['blastguard','thaw','cleanse'],freezing:['thaw','cleanse'],shocking:['insulated','cleanse'],bulwark:['wardbreaker']};const keys=counters[e.affliction]||({venom:['antivenom','cleanse'],volatile:['blastguard'],warded:['wardbreaker'],armored:['wardbreaker']}[e.trait]||[]);return [...new Set([...defs.filter(x=>!x.recipe&&keys.includes(x.counter)).slice(0,3),...defs.filter(x=>!x.recipe&&x.element===e.weak).slice(0,3)])];}
   const tile=(id,size=32)=>'<span class="icon-tile" data-rarity="'+C.items[id].rarity+'" style="--el:'+C.elements[C.items[id].element].color+'">'+A.svg(id,size)+'</span>';
   const KEY='bramblebound.profile.v1', defaultPrefs=()=>({audio:false,motion:!window.matchMedia('(prefers-reduced-motion: reduce)').matches});
   function freshKit(){const draft=E.freshProfile();E.start(draft);return draft;}
@@ -166,7 +167,7 @@
     const verb=result?(it.id===byUid(r,selectedUid)?.id?'Upgrade':'Fuse'):'';
     const hint=result?' · '+verb+' → '+C.items[result.id].name+' · Lv '+lv(result.level):'';
     const state=selected?' is-selected':result?' fusion-partner':'';
-    const tier=d.rarity==='common'?'':C.rarities[d.rarity].name;
+    const tier=C.rarities[d.rarity].name;
     const stamp=tier?'<span class="gear-tier">'+tier+'</span>':num;
     const marker=result?'<span class="match-badge" aria-hidden="true">'+(verb==='Upgrade'?'+1':'✦')+'</span>':'';
     return '<button class="gear-slot'+state+'" '+attrs+' data-uid="'+it.uid+'" data-rarity="'+d.rarity+'" aria-pressed="'+selected+'" style="--el:'+C.elements[d.element].color+'" aria-label="'+name+(tier?', '+tier:'')+', level '+level+', '+place+' slot '+(index+1)+esc(hint)+'" title="'+name+(tier?' · '+tier:'')+' · Lv '+level+esc(hint)+'">'+stamp+marker+'<span class="level-tag">Lv '+level+'</span><span class="relic-picture">'+A.svg(it.id,58)+'</span><span class="slot-name">'+name+'</span>'+(equipped?'<span class="cd-text" data-clock="'+it.uid+'"></span><span class="cd-fill" data-fill="'+it.uid+'"></span>':'<span class="slot-type">'+elName(d.element)+' · '+J.styleLabel(d.style)+'</span>')+'</button>';
@@ -229,7 +230,7 @@
       el.textContent=time>.05?time.toFixed(1)+'s':'Ready';
       el.closest('button').querySelector('.ability-fill').style.transform='scaleX('+Math.max(0,Math.min(1,1-time/period))+')';
     }
-    if(pending&&!modal.open&&!dragging&&displayedDraft!==r.draft){showDialog('draft');}
+    if(!titleOpen&&pending&&!modal.open&&!dragging&&displayedDraft!==r.draft){showDialog('draft');}
   }
   let renderedDrop,renderedLocate;
   function renderFind(r){
@@ -285,13 +286,14 @@
     if(!titleOpen&&active&&r.phase==='dead'&&debriefedRun!==r&&!modal.open&&!dragging)showDialog('debrief');
     updateGrowth(r);
     $('hp-num').textContent=Math.ceil(r.hp)+' / '+r.maxHp;$('hp-bar').style.width=100*r.hp/r.maxHp+'%';
-    $('hero-sub').textContent=r.shield>.1?'Shield +'+Math.ceil(r.shield):'Trailwalker · '+(active?r.foes:0)+' defeated';
+    const afflicted=Object.entries(r.ailments||{}).filter(([,n])=>n>.1).map(([key])=>({corrosion:'Corroded',snare:'Entangled',hex:'Hexed',burn:'Scorched',chill:'Frostbitten',shock:'Static'}[key]));
+    $('hero-sub').textContent=afflicted.length?afflicted.join(' · '):r.shield>.1?'Shield +'+Math.ceil(r.shield):'Trailwalker · '+(active?r.foes:0)+' defeated';
     const e=r.phase==='fight'?r.enemy:null;
     $('enemy-name').textContent=e?(r.enemies.length>1?r.enemies.length+' enemies':e.name):r.phase==='dead'?'Expedition ended':'Open trail';
     const hpTotal=r.enemies.reduce((n,foe)=>n+foe.hp,0),maxTotal=r.enemies.reduce((n,foe)=>n+foe.maxHp,0);
     $('enemy-num').textContent=e?Math.ceil(hpTotal)+' / '+maxTotal:'';
     $('enemy-bar').style.width=e?100*hpTotal/maxTotal+'%':r.phase==='walk'&&active?100*(1-r.walkLeft/E.walkDuration)+'%':'0%';
-    $('enemy-sub').textContent=e?(r.enemies.length>1?'Lead foe · '+e.name:'Weak to '+elName(e.weak)+' · Resists '+elName(e.resist)):r.phase==='dead'?'Resting at camp':active?'Approaching encounter':'The road is quiet';
+    $('enemy-sub').textContent=e?(e.affliction?e.affliction+' · Inspect to plan a counter':r.enemies.length>1?'Lead foe · '+e.name:'Weak to '+elName(e.weak)+' · Resists '+elName(e.resist)):r.phase==='dead'?'Resting at camp':active?'Approaching encounter':'The road is quiet';
     for(const it of r.active){const clock=document.querySelector('[data-clock="'+it.uid+'"]'),bar=document.querySelector('[data-fill="'+it.uid+'"]');if(clock)clock.textContent=it.cd>.04&&e?it.cd.toFixed(1)+'s':'Ready';if(bar)bar.style.transform='scaleX('+(it.cd>.04&&e?Math.max(0,1-it.cd/E.itemCooldown(it,r)):1)+')';}
   }
   function closeDialog(){if(modal.open)modal.close();dialogState=null;pendingImport=null;}
@@ -327,7 +329,7 @@
       const held=type==='item'&&r.active.some(i=>i.uid===it.uid);
       kicker=type==='catalog'?'RELIC DOSSIER':held?'EQUIPPED RELIC':'BACKPACK RELIC';
       html='<div class="dialog-lead">'+tile(d.id,55)+'<div style="--el:'+C.elements[d.element].color+'"><h2 class="dialog-title">'+esc(d.name)+'</h2><div class="eyebrow">'+elName(d.element)+' / '+esc(J.styleLabel(d.style))+' / Level '+lv(it.level)+'</div></div></div><p class="body-copy">'+esc(d.description)+'</p><div class="stat-row"><span class="stat-pill">'+number(E.itemPower(profile,it))+' base damage</span><span class="stat-pill">'+Number(E.itemCooldown(it,r).toFixed(2))+'s cooldown</span></div>';
-      html+=J.tierBadge(d,true);
+      html+=J.tierBadge(d,true)+'<div class="stat-row"><span class="stat-pill">Rarity power ×'+C.rarities[d.rarity].powerScale+' · included above</span></div>'+J.relicEffects(d);
       if(d.recipe)html+='<div class="subhead">Fusion recipe</div><div class="chip-row">'+d.recipe.map(id=>'<button class="outline compact" data-catalog="'+id+'">'+esc(C.items[id].name)+'</button>').join(' + ')+'</div>';
       html+=J.relicSource(d);
       html+='<div class="subhead">Level effects</div><div class="milestones">'+[3,5,10].map(n=>'<div class="mile '+(it.level>=n?'live':'')+'"><b>LV '+n+'</b><span>'+esc(d.milestones[n])+'</span></div>').join('')+'</div>';
@@ -353,7 +355,7 @@
     }else if(type==='species'){
       const e=C.enemies.find(x=>x.id===data.id);if(!e)return;
       kicker=e.boss?'GUARDIAN DOSSIER':'CREATURE DOSSIER';portrait=e;
-      html='<div class="dialog-lead"><canvas id="detail-portrait" class="dialog-portrait" aria-hidden="true"></canvas><div><h2 class="dialog-title">'+esc(e.name)+'</h2><div class="eyebrow">'+esc(C.regions[e.region].name)+'</div></div></div><div class="stat-row"><span class="stat-pill">Weak to '+elName(e.weak)+' · 1.68×</span><span class="stat-pill">Resists '+elName(e.resist)+' · 0.60×</span></div><div class="subhead">'+esc(e.trait)+'</div><p class="body-copy">'+esc(J.traitText[e.trait])+'</p><div class="subhead">Relics to try</div><div class="chip-row">'+defs.filter(x=>!x.recipe&&x.element===e.weak).slice(0,3).map(d=>'<button class="outline compact" data-catalog="'+d.id+'">'+esc(d.name)+'</button>').join('')+'</div>';
+      html='<div class="dialog-lead"><canvas id="detail-portrait" class="dialog-portrait" aria-hidden="true"></canvas><div><h2 class="dialog-title">'+esc(e.name)+'</h2><div class="eyebrow">'+esc(C.regions[e.region].name)+'</div></div></div><div class="stat-row"><span class="stat-pill">Weak to '+elName(e.weak)+' · 1.68×</span><span class="stat-pill">Resists '+elName(e.resist)+' · 0.60×</span></div><div class="subhead">'+esc(e.trait)+'</div><p class="body-copy">'+esc(J.traitText[e.trait])+'</p>'+(e.affliction?'<div class="subhead">Enemy effect · '+esc(e.affliction)+'</div><p class="body-copy">'+esc(J.afflictionText[e.affliction])+'</p>':'')+'<div class="subhead">Relics to try</div><div class="chip-row">'+enemyRelics(e).map(d=>'<button class="outline compact" data-catalog="'+d.id+'">'+esc(d.name)+'</button>').join('')+'</div>';
     }else if(type==='region'){
       const i=data.index;if(!C.regions[i])return closeDialog();
       kicker='FIELD ATLAS / REGION '+pad(i+1)+' OF '+C.regions.length;html=J.regionDossier(r,i);
@@ -367,11 +369,14 @@
     }else if(type==='help'){
       kicker='THE TRAIL HANDBOOK';html='<h2 class="dialog-title">Walking with Pip</h2>'+[
         ['On the road','Pip starts alone against one foe. The first guardian arrives with two escorts on wave 4. Groups reach four foes on wave 7 and five on wave 11. Every fourth wave is a guardian.'],
+        ['Elements with a purpose','Leaf poisons and roots; Fire burns and ignites poison; Frost chills and freezes; Storm disrupts and chains; Stone fractures defenses; Spirit marks foes and returns protective energy. The field guide explains the timings and cross-element reactions.'],
+        ['Pack a counter','New backpacks include a Dewglass Vial. Equip it to cleanse ailments whenever it activates. Other relics counter venom, static, frostbite, entanglement, hexes, corrosion, explosive death bursts and wards. Inspect a foe to see its effect and recommended counter relics.'],
+        ['Signature relics','The expanded road adds twelve special weapon effects, including ricochets, executions, ailment ruptures, poison blooms and delayed aftershocks. Overload stores charge on its own relic and bursts every third activation. Search the field guide by signature or counter name.'],
         ['Pack for the next fight','Four equipped relics attack on independent cooldowns. Your backpack holds 400 more. Search by name, element, or effect, or jump to a page by slot number. Drag an item to an empty slot to move it. Drop onto a matching recipe to fuse, or onto an unrelated item to swap. Select a relic to light up every valid partner. Tap a glowing item to preview the result, or choose Details to equip or discard.'],
-        ['Trail finds','Every defeated enemy can drop a relic into your backpack during the fight. The chance of at least one drop across a full wave is 16%, or 37% in a guardian wave. When the pack is full, a matching copy at the same level upgrades automatically. Other finds stay on the road.'],
+        ['Trail finds','Every defeated enemy can drop a relic into your backpack during the fight. The chance of at least one drop across a full wave is 24%, or 48% in a guardian wave. When the pack is full, a matching copy at the same level upgrades automatically. Other finds stay on the road.'],
         ['Leveling up','Time on the trail and defeated enemies earn XP. At each level, choose one of three random upgrades. Passive bonuses stack, and learned abilities cast automatically on separate cooldowns. Expedition ranks reset when you start another run.'],
         ['Group encounters','Enemies approach together and charge their attacks independently. A green bar shows health, a gold bar shows windup, and a red warning marks an imminent strike. Area attacks can hit multiple foes.'],
-        ['Relic rarity','Rare and mythic relics glow in your pack, on the road, and in Pip’s hand. The field guide shows drop unlocks and recipes. Guardians and later regions give better odds for higher tiers. The atlas lists your current drop odds.'],
+        ['Relic rarity','Common, Uncommon, Rare, Epic and Mythic gear has ×1, ×1.12, ×1.28, ×1.5 and ×1.8 rarity power. Stronger weapons and richer special effects sit in higher tiers. High tiers drop less often; guardian waves and later regions improve your odds. Rarity is rolled before duplicate or ingredient bonuses. The atlas lists exact local chances and the field guide filters every tier.'],
         ['At the forge','Two matching copies at the same level gain one level, with no final tier. Different ingredients in a listed recipe give their exact average level. A level 2 and a level 3 make a level 2.5 relic.'],
         ['Growing stronger','Level 3 adds an echo strike, level 5 adds a shield ring, and level 10 adds a damage nova. All three effects stack.'],
         ['After a fall','Earn one seed for setting out, one per cleared wave, and one extra per four defeats. Spend seeds on health, damage, or replay speed in Legacy.'],
@@ -647,11 +652,11 @@
         for(const ev of events){
           if(ev.kind==='round'&&ev.pattern==='encounter')encounterAge=0;
           if(ev.kind==='kill')defeated=ev.enemy||C.enemies.find(foe=>foe.id===ev.enemyId);
-          if(['attack','enemy','hit','kill','heal','milestone','status','loot','ability'].includes(ev.kind)){
+          if(['attack','enemy','hit','kill','heal','milestone','status','loot','ability','special'].includes(ev.kind)){
             if(ev.kind==='attack'){lastHeld=ev.itemId||r.active.find(it=>C.items[it.id].element===ev.element)?.id;heldFor=.7;}
-            if(prefs.motion||['enemy','hit','attack','heal','milestone','ability'].includes(ev.kind))effects.push({...ev,age:prefs.motion?0:.24});
+            if(prefs.motion||['enemy','hit','attack','heal','milestone','ability','special'].includes(ev.kind))effects.push({...ev,age:prefs.motion?0:.24});
           }
-          sound(ev.kind==='attack'&&ev.label?.includes('WEAK')?'crit':ev.kind,ev.element);
+          sound(ev.kind==='attack'&&ev.label?.includes('WEAK')?'crit':ev.kind==='special'?'ability':ev.kind,ev.element);
         }
         if(r.draft.length||events.some(ev=>['loot','dead','round','level'].includes(ev.kind)))save();
         if(r.phase==='walk'||r.phase==='fight'){saveTimer+=dt;if(saveTimer>=3){saveTimer=0;save();}}
@@ -663,15 +668,16 @@
 
       const view={time:sceneClock,reducedMotion:!prefs.motion,distance:prefs.motion?(r?v.distance:demoDistance):0,region:v.region,round:v.round,phase:r?v.phase:'walk',
         heroHP:v.hp,heroMax:v.maxHp,heroX:.30,enemyX:.69+.008*standing,enemy:r?v.enemy:null,enemies:r?v.enemies:[],waveSize:v.waveSize,encounterAge:prefs.motion?encounterAge:1,defeated:deathFX?defeated:null,defeatAge:deathFX?.age??1,effects,paused:!running,
-        heldId:heldFor>0&&lastHeld?lastHeld:v.active[0]?.id};
+        heldId:heldFor>0&&lastHeld?lastHeld:v.active[0]?.id,
+        heldLevel:(v.active.find(it=>it.id===(heldFor>0&&lastHeld?lastHeld:v.active[0]?.id))||v.active[0])?.level||1,heroShield:v.shield,equipped:v.active.map(it=>({id:it.id,level:it.level})),heroAilments:v.ailments};
       const still=!animating||(!prefs.motion&&!effects.length);
-      const stillFrame=still?[v.region,v.phase,v.round,v.hp,v.enemies.map(e=>e.uid+'-'+Math.ceil(e.hp)+'-'+Math.floor(e.attackProgress*8)).join(),view.heldId,view.distance,innerWidth,innerHeight].join('|'):'';
+      const stillFrame=still?[v.region,v.phase,v.round,v.hp,v.shield,v.enemies.map(e=>[e.uid,Math.ceil(e.hp),Math.floor(e.attackProgress*8),e.fracture,e.haunt,e.chill>0,e.rooted>0,e.stun>0].join('-')).join(),view.heldId,view.heldLevel,JSON.stringify(v.ailments),view.distance,innerWidth,innerHeight].join('|'):'';
       if(!still||stillFrame!==lastStillFrame)WorldArt.draw($('world'),view,dt);
       lastStillFrame=stillFrame;
     }
     requestAnimationFrame(frame);
   }
-  for(const key of ['rare','mythic'])document.documentElement.style.setProperty('--'+key+'-light',C.rarities[key].color);
+  for(const key of Object.keys(C.rarities))document.documentElement.style.setProperty('--'+key+'-light',C.rarities[key].color);
   ink();fullLabel();S?.setEnabled(prefs.audio);update(true);
   titleMenu(true);
   if(!storageOK)$('save-line').textContent='Local save unavailable · export in Profile';

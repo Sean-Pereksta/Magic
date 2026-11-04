@@ -1291,7 +1291,7 @@
     "bramblebound": {
       "key": "bramblebound",
       "title": "Bramblebound · The Endless Road",
-      "desc": "Fuse elemental relics, shape your build, and guide Pip through 20 regions on an endless expedition.",
+      "desc": "Guide Pip across 35 regions in an endless expedition roguelite. Fuse 284 elemental relics, unleash 12 weapon signatures, counter enemy ailments, and battle 289 creatures. Local autosaves and profile export.",
       "route": "/game/bramblebound/",
       "category": "Adventure",
       "modes": [

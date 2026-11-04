@@ -96,7 +96,24 @@
     mask:`...3.......3..../...33.....33..../..23322222332.../..23333433332.../..23344344332.../..23333333322.../..21133233112.../..23412321432.../...222332222..../...223332221..../....22aa221...../....12ww221...../.....12221....../......111.......`,
     fan:`......333332..../....333443322.../..333233333232../.33343323322332./.32234323223221./..322332332221../...3223232221.../....22232221..../.....222221...../......awa......./.......wa......./........wa....../.........wa.....`
   };
-  const cache = new Map();
+  // New expedition relics have their own silhouettes rather than recolored rocks.
+  Object.assign(drawings,{
+    greatsword:'............44../...........443../..........4432../.........44332../........443332../.......443332.../......443332..../.....443332...../....443332....../...ww4332ww...../..wwwww2wwww..../.....awa......../....awa........./...awa........../..wa............',
+    lance:'.............4../............434./...........4332./..........4332../.........4332.../........ww22..../.......awa....../......awa......./.....awa......../....awa........./...awa........../..awa.........../.awa............/.wa.............',
+    crossbow:'..34........43../..3432....23432./...3432..23432../....343ww3432.../.....wwwwww...../...wwwa43aww..../..wa..a43a..aw../.wa...a43a...aw./......a43a....../......w43w....../.....wwwwwa...../....awaaa......./...awa........../..awa...........',
+    wand:'.......3......../......343......./....33344333..../.....344443...../....33344333..../......343......./.......w......../......awa......./.....awa......../....awa........./...awa........../..awa.........../.awa............/.wa.............',
+    cannon:'........wwwwww../.......w334443w./.....ww3333333w./...ww333222333w./..w33322aa2233w./.w3322aaaaaa22w./.wwwwwaaaaaaww../...awwwwwwwa..../..aawawwwwa...../.awa...wwa....../.aa....aa.......',
+    chainblade:'.........233332./........3444332./.......34323332./........322332../........a.222.../.......a.a....../......a.a......./.....a.a......../....a.a........./...wwa........../..wwa.........../.awa............/.wa.............',
+    sicklestaff:'....233333332.../..234443333332../.3433322...2332./.332......awa22./.32......awa..2./........awa...../.......awa....../......awa......./.....awa......../....awa........./...awa........../..awa.........../.awa............/.wa.............',
+    tome:'...wwwwwwwww..../..w44333333ww.../.w44333333w32w../.w433w33w3w32w../.w4333ww33w32w../.w433w33w3w32w../.w43333333w32w../.w43333333w32w../.w43333333w32w../.wwwwwwwwww32w../..w2222222222w../...wwwwwwwwww.../.....3....3.....',
+    aegis:'......wwww....../...www4444www.../..w3344444433w../.w333344443333w./.w332344443233w./.w33334ww43333w./.w3334w44w4333w./.w3334w44w4333w./..w3344ww4433w../..w3334444333w../...w33344333w.../....w334433w..../.....w3443w...../......w33w....../.......ww.......',
+    cleavers:'..3444....4443../.34443....34443./.34433....33443./.33332....23333./..332......233../..ww........ww../..awa......awa../...awa....awa.../....awa..awa..../.....awwwwa...../......awa......./.....awa........',
+    thornbow:'...32.........../..2332........../...a332........./....a.332......./...3.a.332....../....3.a.332...../.....3.a.43...../......3a.ww...../.....3.a.ww...../....3.a.332...../...3.a.332....../....a.332......./...a332........./..2332........../...32...........',
+    orbiter:'......3333....../....33444332..../...3432234332.../..3432...23332../.3432..3..23332./.332..343..2332./.332..232..2332./.2332.....23332./..23332.233332../...2333333332.../.....222222...../......wwww....../.......aa.......'
+  });
+  drawings.sword=drawings.cometblade=drawings.greatsword;
+  drawings.lanternstaff=drawings.wand;drawings.greatshield=drawings.aegis;
+  const cache = new Map(), heldCache=new Map();
   function shade(hex, target, a){
     const channels=[1,3,5].map((i,k)=>Math.round(parseInt(hex.slice(i,i+2),16)*(1-a)+target[k]*a));
     return `rgb(${channels.join(',')})`;
@@ -105,14 +122,20 @@
     if(!Object.hasOwn(window.Catalog.items,id)) return null;
     const item=window.Catalog.items[id];
     if(!cache.has(id)){
-      const color=window.Catalog.elements[item.element].color;
+      const baseColor=window.Catalog.elements[item.element].color;
+      const color=item.rarity==='common'?shade(baseColor,[157,168,153],.30):baseColor;
       const secondary=item.recipe?.map(key=>window.Catalog.items[key].element).find(el=>el!==item.element);
       const accent=secondary?window.Catalog.elements[secondary].color:'#f6d99b';
-      const palette={1:shade(color,[24,29,40],.65),2:shade(color,[33,41,51],.38),3:color,4:shade(color,[255,250,221],.6),w:accent,a:'#907246',b:'#bfa06b'};
+      const tierColor=window.Catalog.rarities[item.rarity]?.color||'#b8c6a6';
+      // Bindings retain ingredient colors; a small tier seal adds a consistent
+      // visual ladder without replacing the weapon's elemental identity.
+      const palette={1:shade(baseColor,[24,29,40],.65),2:shade(baseColor,[33,41,51],.38),3:color,4:shade(baseColor,[255,250,221],.6),w:accent,a:'#907246',b:'#bfa06b',r:tierColor};
       const pixels=new Map();
       (drawings[item.icon]||drawings.rock).split('/').forEach((line,y)=>Array.from(line).forEach((v,x)=>{if('1234wab'.includes(v))pixels.set(`${x},${y}`,{x,y,v});}));
       // A two-tone spark in the corner marks an artifact made in the forge.
       if(item.recipe){const advanced=item.recipe.every(k=>window.Catalog.items[k].recipe);const x=advanced?2:13,y=advanced?3:12;for(const [dx,dy,v] of [[0,-1,'w'],[-1,0,'w'],[0,0,'4'],[1,0,'w'],[0,1,'w']])pixels.set(`${x+dx},${y+dy}`,{x:x+dx,y:y+dy,v});}
+      const rank=['common','uncommon','rare','epic','mythic'].indexOf(item.rarity);
+      if(rank>0)for(let i=0;i<rank;i++)pixels.set(`${12+i%2},${11+Math.floor(i/2)}`,{x:12+i%2,y:11+Math.floor(i/2),v:'r'});
       const outlines=new Set();for(const {x,y} of pixels.values()){for(const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1]]){const k=`${x+dx},${y+dy}`;if(!pixels.has(k))outlines.add(k);}}
       const paths={outline:[...outlines].map(k=>'M'+k+'h1v1h-1z')};for(const {x,y,v} of pixels.values())(paths[v]??=[]).push(`M${x},${y}h1v1h-1z`);
       const layers=Object.entries(paths).map(([k,v])=>({fill:palette[k]||'#1b2230',d:v.join('')}));
@@ -140,5 +163,61 @@
     const px=Math.min(512,Math.max(1,Number(size)||40));
     return `<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" width="${px}" height="${px}" viewBox="-2 -2 20 19" shape-rendering="crispEdges">${art.markup}</svg>`;
   }
-  window.ItemArt={svg,sprite};
+  function held(id){
+    const item=window.Catalog?.items[id];if(!item)return null;
+    if(heldCache.has(id))return heldCache.get(id);
+    const canvas=document.createElement('canvas');canvas.width=42;canvas.height=49;
+    const g=canvas.getContext('2d'),color=window.Catalog.elements[item.element].color;
+    const rank=Math.max(0,['common','uncommon','rare','epic','mythic'].indexOf(item.rarity));
+    const tierColor=window.Catalog.rarities[item.rarity]?.color||'#b8c6a6';
+    const ink='#292b34',metal=shade(color,[240,245,227],.57),shadeMetal=shade(color,[30,40,51],.45),gold=rank?tierColor:'#9da790';
+    const B=(c,x,y,w,h)=>{g.fillStyle=c;g.fillRect(Math.round(x),Math.round(y),w,h);};
+    const L=(c,x,y,xx,yy,w=1)=>{x=Math.round(x);y=Math.round(y);xx=Math.round(xx);yy=Math.round(yy);let dx=Math.abs(xx-x),sx=x<xx?1:-1,dy=-Math.abs(yy-y),sy=y<yy?1:-1,e=dx+dy;for(;;){B(c,x,y,w,w);if(x===xx&&y===yy)break;let q=2*e;if(q>=dy){e+=dy;x+=sx;}if(q<=dx){e+=dx;y+=sy;}}};
+    let hash=0;for(const c of id)hash=(Math.imul(hash,31)+c.charCodeAt(0))>>>0;
+    const icon=item.silhouette||item.icon;
+    const pole=['staff','crook','scepter','torch','wand','lanternstaff','lance','harpoon','trident','halberd','glaive','sicklestaff'].includes(icon);
+    const blade=['sword','cometblade','greatsword','rapier','saber','cleaver','needle','fang','sai','cleavers'].includes(icon);
+    const ranged=['crossbow','repeater','ballista','bow','harpbow','thornbow','sling'].includes(icon);
+    const shield=['shield','pavise','aegis','greatshield','mirror'].includes(icon);
+    const hammer=['hammer','gravitymaul','pick','drill','gauntlet','tongs'].includes(icon);
+    const chain=['chainblade','chainscythe','flail','whip','scythe'].includes(icon);
+    let family=pole?'pole':blade?'blade':ranged?'ranged':shield?'shield':hammer?'hammer':chain?'chain':'focus';
+    if(pole){
+      L(ink,10,44,19,5,4);L('#987248',10,44,19,5,2);L(gold,13,29,16,17,1);B(ink,12,32,6,2);B(gold,13,32,4,1);
+      if(['lance','harpoon','glaive','halberd'].includes(icon)){for(let y=2;y<18;y++){let w=Math.max(1,Math.min(4,(y-1)/2));B(ink,20-w,y,w*2+1,1);B(color,20-w+1,y,Math.max(1,w),1);B(metal,20,y,1,1);}if(icon==='halberd'){B(ink,21,10,10,10);B(color,22,11,8,7);B(metal,22,11,7,2);}}
+      else if(icon==='trident'){for(const x of [13,19,25]){L(ink,x,2,x,13,3);L(metal,x,3,x,11);L(color,x,13,19,17,2);}}
+      else if(icon==='sicklestaff'){for(let x=9;x<34;x++){let y=4+Math.round(Math.pow((x-22)/6,2));B(ink,x,y,2,4);B(metal,x,y,1,2);}B(color,31,10,3,8);}
+      else{B(ink,12,4,15,13);B(shadeMetal,14,5,11,10);B(color,16,3,7,14);B(metal,18,2,3,15);B(gold,13,8,14,2);B('#fff8d0',19,5,2,3);if(icon==='torch')for(let j=0;j<4;j++)B(j%2?color:metal,14+j*3,1+j%2,3,7);}
+    }else if(blade){
+      const wide=['greatsword','cometblade','sword','cleaver','cleavers'].includes(icon),w=wide?7:3;
+      L(ink,10,43,16,30,5);L('#9d7751',11,42,16,30,2);L(ink,8,29,25,32,4);L(gold,9,29,25,32,2);
+      for(let y=2;y<30;y++){const x=19+Math.round((30-y)*.30),ww=y<7?Math.max(1,w*(y-1)/6):w;B(ink,x-ww/2,y,ww+2,1);B(shadeMetal,x-ww/2+1,y,Math.max(1,ww),1);B(color,x-ww/2+1,y,Math.max(1,ww/2),1);B(metal,x-ww/2+1,y,1,1);}
+      if(icon==='cleavers'){L(ink,13,33,5,8,5);L(color,14,30,6,7,3);L(metal,13,29,5,8);}
+      B('#fff8d4',25,5,2,5);B(gold,16,35,2,2);
+    }else if(ranged){
+      if(['crossbow','repeater','ballista'].includes(icon)){L(ink,8,40,23,18,5);L('#a07d4b',9,40,23,18,3);L(ink,8,14,35,29,4);L(color,8,14,35,29,2);L(gold,8,15,21,30);L(gold,35,28,21,30);L(metal,13,34,30,13,2);B(color,25,10,4,7);}
+      else if(icon==='sling'){L(gold,12,36,20,8);L(gold,12,36,31,13);B(ink,19,5,9,7);B(color,21,6,5,5);}
+      else{let px=21,py=1;for(let y=2;y<=44;y+=2){let x=21+Math.round(12*Math.sin((y-1)/43*Math.PI));L(ink,px,py,x,y,4);L(color,px,py,x,y,2);px=x;py=y;}L(gold,21,2,10,35);L(gold,21,44,10,35);L(metal,9,35,37,19);B(color,35,17,4,4);if(icon==='thornbow')for(let i=0;i<5;i++){const y=6+i*7;L(metal,30,y,35,y-3,2);}}
+    }else if(shield){
+      for(let y=8;y<43;y++){let w=y<15?9+(y-8):y<31?17:Math.max(1,17-(y-31)*1.3);B(ink,21-w/2,y,w,1);B(gold,22-w/2,y,Math.max(1,w-2),1);B(shadeMetal,23-w/2,y,Math.max(1,w-4),1);}
+      B(color,19,14,3,22);B(metal,20,15,1,18);B(gold,13,24,16,2);B(ink,18,21,7,8);B(color,19,22,5,6);B(metal,20,23,2,2);
+    }else if(hammer){
+      L(ink,10,44,22,14,5);L('#a07a4b',11,44,23,14,3);B(ink,13,5,24,14);B(shadeMetal,14,6,22,12);B(color,14,6,8,11);B(metal,14,6,21,2);B(gold,23,8,3,8);for(let i=0;i<3;i++)B('#3a3540',31+i%2,10+i*3,3,1);
+      if(icon==='pick'){B(ink,4,11,14,4);B(metal,7,10,10,2);L(metal,5,13,1,20,2);}
+    }else if(chain){
+      L(ink,10,44,15,30,5);L('#a57d4f',11,43,16,30,3);for(let i=0;i<6;i++){let x=16+i*2,y=29-i*3;B(ink,x,y,4,5);B(gold,x+1,y+1,2,3);B(ink,x+1,y+2,1,1);}B(ink,23,2,14,13);B(color,24,3,12,10);B(metal,25,3,8,2);B(ink,26,7,7,5);B(gold,21,5,3,3);
+    }else if(icon==='tome'){
+      B(ink,11,12,25,26);B(gold,12,13,23,24);B(shadeMetal,14,14,20,21);B(color,14,14,3,21);B(gold,18,16,13,1);B(gold,18,31,13,1);B(color,22,20,5,9);B(color,20,22,9,5);B(metal,23,23,3,3);B('#ddd1ad',13,37,21,2);
+    }else{
+      // Charms keep the identity of their etched inventory art, held in a
+      // crafted bronze setting rather than enlarged into a generic projectile.
+      const image=sprite(id);B(ink,10,31,6,12);B(gold,11,32,4,10);g.imageSmoothingEnabled=false;if(image)g.drawImage(image,5,2,35,34);B(gold,14,32,10,2);
+    }
+    // Each relic carries a different inlaid rune; special relics use a twin seal.
+    for(let i=0;i<12;i++)if(hash&(1<<i)){B(metal,17+(i%3)*2,17+Math.floor(i/3)*3,1,1);}
+    if(item.special){B(ink,14,29,7,5);B(gold,15,30,5,3);B(color,17,29,1,5);}
+    if(rank){B(ink,6,33,8,3);B(tierColor,7,34,6,1);for(let i=0;i<rank;i++)B(tierColor,8+(i%2)*3,37+Math.floor(i/2)*3,2,2);}
+    const result={canvas,grip:{x:12,y:36},family,element:item.element};heldCache.set(id,result);return result;
+  }
+  window.ItemArt={svg,sprite,held};
 })();

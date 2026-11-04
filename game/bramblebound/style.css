@@ -1,3 +1,4 @@
+.element-handbook{margin:0 0 18px;padding:13px 16px;color:var(--muted);font-size:12px;line-height:1.6}.element-handbook summary{color:var(--gold);font-weight:700;cursor:pointer;min-height:26px}.element-handbook>p{margin-top:13px}.element-notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:12px}.element-notes article{border-left:2px solid var(--el);padding-left:10px}.element-notes strong{color:var(--el)}.element-notes p{margin-top:4px}.relic-signature{color:var(--gold)!important}.relic-counter{color:#a4dfcf!important}
 :root{
   color-scheme:dark;--bg:#101c19;--panel:#192a24;--panel2:#1d3028;--line:#34473c;--muted:#a4b3a4;--faint:#829786;--cream:#f3edd9;--gold:#e1be76;--lime:#bcd9a4;--dark:#101b17;--red:#e79079;
   font-family:Inter,"Segoe UI",system-ui,sans-serif;font-size:15px;font-synthesis:none;
@@ -137,19 +138,36 @@ dialog button{touch-action:none}
 .guide-roles button[aria-pressed=true]{border-color:#b7aa69;background:#394832;color:#f1dfab}
 .finds #recent-find{flex:1;min-width:0}.find-description{min-width:0}.find-description small{display:block;color:var(--muted);font-size:10px}.find-gear{flex:none;margin-left:auto;color:var(--gold);white-space:nowrap}
 @media(orientation:portrait),(max-height:590px){.find-description small{font-size:8px}.find-gear{font-size:9px;padding:3px 5px}}
-/* Item rarity lights the artwork; the outer gold frame is reserved for forge partners. */
-[data-rarity="rare"]{--tier-light:var(--rare-light,#79d5f6)}
-[data-rarity="mythic"]{--tier-light:var(--mythic-light,#ffc97e)}
+/* Five named tiers carry their own trim, seal, and light. Selection and forge
+   previews retain the stronger outline so color never obscures an interaction. */
+[data-rarity="common"]{--tier-light:var(--common-light,#b8c6a6)}
+[data-rarity="uncommon"]{--tier-light:var(--uncommon-light,#8ed18a)}
+[data-rarity="rare"]{--tier-light:var(--rare-light,#79bfff)}
+[data-rarity="epic"]{--tier-light:var(--epic-light,#c59aff)}
+[data-rarity="mythic"]{--tier-light:var(--mythic-light,#ffd17a)}
+.gear-slot[data-uid][data-rarity]:not(.is-selected):not(.fusion-partner):not(.compatible):not(.drop-over){border-color:color-mix(in srgb,var(--tier-light) 66%,#293c30);box-shadow:inset 2px 0 color-mix(in srgb,var(--tier-light) 45%,transparent)}
+.gear-slot[data-uid][data-rarity="common"]:not(.is-selected):not(.fusion-partner){background:linear-gradient(155deg,#28332a,#1b2b23 88%);border-color:#53604f;box-shadow:none}
+.icon-tile[data-rarity]{border-color:color-mix(in srgb,var(--tier-light) 67%,#25372b)}
 .tier-badge,.gear-tier{font:700 8px/1.25 ui-monospace,monospace;letter-spacing:.7px;text-transform:uppercase;color:var(--tier-light,var(--muted))}
 .tier-badge{display:inline-block;vertical-align:middle;white-space:nowrap;padding:2px 5px;border:1px solid color-mix(in srgb,var(--tier-light,var(--muted)) 55%,#253328);border-radius:3px;background:color-mix(in srgb,var(--tier-light,var(--muted)) 9%,#19291e)}
 .gear-tier{position:absolute;top:4px;left:5px;font-size:8px}
+.gear-tier:before{display:inline-block;margin-right:3px;font-size:.9em;line-height:1}
+.gear-slot[data-rarity="uncommon"] .gear-tier:before{content:"◆"}
+.gear-slot[data-rarity="rare"] .gear-tier:before{content:"✦"}
+.gear-slot[data-rarity="epic"] .gear-tier:before{content:"✧"}
+.gear-slot[data-rarity="mythic"] .gear-tier:before{content:"✺"}
 .gear-slot.fusion-partner .gear-tier{left:27px}
-.gear-slot:is([data-rarity="rare"],[data-rarity="mythic"]) .relic-picture,.icon-tile:is([data-rarity="rare"],[data-rarity="mythic"]){position:relative;isolation:isolate}
-.gear-slot:is([data-rarity="rare"],[data-rarity="mythic"]) .relic-picture:before,.icon-tile:is([data-rarity="rare"],[data-rarity="mythic"]):before{content:"";position:absolute;inset:-12% -8%;pointer-events:none;background:radial-gradient(ellipse at center,color-mix(in srgb,var(--tier-light) 36%,transparent),transparent 68%);z-index:-1}
+.gear-slot:is([data-rarity="uncommon"],[data-rarity="rare"],[data-rarity="epic"],[data-rarity="mythic"]) .relic-picture,.icon-tile:is([data-rarity="uncommon"],[data-rarity="rare"],[data-rarity="epic"],[data-rarity="mythic"]){position:relative;isolation:isolate}
+.gear-slot:is([data-rarity="uncommon"],[data-rarity="rare"],[data-rarity="epic"],[data-rarity="mythic"]) .relic-picture:before,.icon-tile:is([data-rarity="uncommon"],[data-rarity="rare"],[data-rarity="epic"],[data-rarity="mythic"]):before{content:"";position:absolute;inset:-12% -8%;pointer-events:none;background:radial-gradient(ellipse at center,color-mix(in srgb,var(--tier-light) 29%,transparent),transparent 68%);z-index:-1}
+[data-rarity="common"] :is(.relic-picture,.icon-tile,.atlas-icon) svg,.icon-tile[data-rarity="common"] svg{filter:saturate(.78) brightness(.95)}
+[data-rarity="uncommon"] :is(.relic-picture,.icon-tile,.atlas-icon) svg,.icon-tile[data-rarity="uncommon"] svg,#recent-find[data-rarity="uncommon"]>svg,.drag-chip[data-rarity="uncommon"]>svg{filter:drop-shadow(0 0 2px color-mix(in srgb,var(--tier-light) 65%,transparent))}
 [data-rarity="rare"] :is(.relic-picture,.icon-tile,.atlas-icon) svg,.icon-tile[data-rarity="rare"] svg,#recent-find[data-rarity="rare"]>svg,.drag-chip[data-rarity="rare"]>svg{filter:drop-shadow(0 0 2px var(--tier-light)) drop-shadow(0 0 4px #68c3e366)}
+[data-rarity="epic"] :is(.relic-picture,.icon-tile,.atlas-icon) svg,.icon-tile[data-rarity="epic"] svg,#recent-find[data-rarity="epic"]>svg,.drag-chip[data-rarity="epic"]>svg{filter:drop-shadow(0 0 2px #ddc3ff) drop-shadow(0 0 5px var(--tier-light))}
 [data-rarity="mythic"] :is(.relic-picture,.icon-tile,.atlas-icon) svg,.icon-tile[data-rarity="mythic"] svg,#recent-find[data-rarity="mythic"]>svg,.drag-chip[data-rarity="mythic"]>svg{filter:drop-shadow(0 0 2px #fff0be) drop-shadow(0 0 4px var(--tier-light)) drop-shadow(0 0 5px #f19a5844)}
+.gear-slot[data-rarity="epic"] .relic-picture:after,.icon-tile[data-rarity="epic"]:after{content:"◇";pointer-events:none;position:absolute;top:3%;right:14%;line-height:1;color:#e8d1ff;font-size:13px;text-shadow:0 0 3px var(--tier-light)}
 .gear-slot[data-rarity="mythic"] .relic-picture:after,.icon-tile[data-rarity="mythic"]:after{content:"✧";pointer-events:none;position:absolute;top:0;right:14%;line-height:1;color:#fff4c7;font-size:13px;text-shadow:0 0 3px var(--tier-light)}
 @media(prefers-reduced-motion:no-preference){body:not(.reduced-art) .gear-slot[data-rarity="mythic"] .relic-picture:after{animation:relic-glint 2.8s ease-in-out infinite alternate}}
+body.reduced-art :is(.relic-picture,.icon-tile):after{animation:none!important}
 @keyframes relic-glint{from{opacity:.4;transform:translate(0,0)}to{opacity:1;transform:translate(-2px,2px)}}
 #pack-tier{height:27px;max-width:83px;min-width:50px;border:1px solid #415646;border-radius:4px;background:#192b21;color:var(--cream);font:10px ui-monospace,monospace}
 .guide-filters{display:flex;gap:6px 22px;flex-wrap:wrap;align-items:center;margin:0 0 10px}.guide-filters .guide-roles{margin:0}.guide-filters [data-guide-tier]:not([data-rarity="all"]){color:var(--tier-light)}
@@ -164,8 +182,13 @@ dialog button{touch-action:none}
 #region-art{display:block;width:100%;height:auto;aspect-ratio:368/136;margin:10px 0;border:1px solid var(--line);border-radius:6px;background:#293c2c;image-rendering:pixelated}
 .atlas-creatures .outline{padding:5px 7px;font-size:11px}.atlas-relics .outline{justify-content:flex-start;text-align:left;gap:6px;font-size:11px}.atlas-relics .tier-badge{margin-left:auto}
 .atlas-nav{display:flex;justify-content:center}.atlas-nav .outline{min-height:30px}
+.rarity-odds{width:100%;border-collapse:collapse;margin:10px 0 14px;font:11px/1.45 ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--cream)}
+.rarity-odds th,.rarity-odds td{padding:8px 11px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.rarity-odds th{font-size:9px;letter-spacing:.6px;color:var(--muted);font-weight:600;background:#18271f}
+.rarity-odds :is(th,td):first-child{text-align:left}.rarity-odds tbody tr:last-child td{border-bottom:0}.rarity-odds tr[data-rarity] td:first-child{color:var(--tier-light);font-weight:700}
 @media(orientation:portrait),(max-height:680px){
  #pack-tier{height:21px;max-width:64px;font-size:9px}.gear-tier{left:3px;top:1px;font-size:6.5px;letter-spacing:.35px}
  .gear-slot.fusion-partner .gear-tier{left:17px}.gear-slot[data-rarity="mythic"] .relic-picture:after{font-size:9px}
 }
 @media(max-width:490px){.atlas-grid{gap:4px}.atlas-stop{padding:5px 4px;gap:5px}.atlas-stop b{font-size:12px}.atlas-stop small{font-size:8px}.atlas-number{min-width:20px;font-size:8px}.atlas-relics{grid-template-columns:1fr}.guide-filters{gap:5px 12px}}
+@media(max-width:390px){.rarity-odds{font-size:10px}.rarity-odds th,.rarity-odds td{padding:8px 6px}.rarity-odds .tier-badge{font-size:7px;padding-inline:3px}}

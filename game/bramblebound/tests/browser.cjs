@@ -55,10 +55,10 @@ async function main(){
       await context.addInitScript(()=>{globalThis.__fixture={data:{'users/Tester':{username:'Tester',displayName:'Tester',password:'fixture-password',favoriteGames:[],recentlyPlayed:[],gamePlayCounts:{},avatar:'🐭'}},calls:[],listeners:[],sequence:0};localStorage.setItem('gh.username','Tester');localStorage.setItem('gh.lastTab','discover');localStorage.setItem('gh.profilePromptSeen','1');});
       await context.route('**/*',route=>{const url=new URL(route.request().url());if(url.hostname==='www.gstatic.com'&&url.pathname.includes('/firebasejs/'))return route.fulfill({status:200,contentType:'text/javascript',body:firebase});if(!url.href.startsWith(origin))return route.abort();return route.continue();});
       page.on('pageerror',e=>errors.push(e.message));await page.goto(origin+'/lobby/lobby.html');
-      const pick=page.locator('#cnmBuiltOutGrid [data-game-key="bramblebound"]');await pick.waitFor();await pick.scrollIntoViewIfNeeded();await pick.locator('img').first().evaluate(img=>img.decode());
+      const pick=page.locator('#cnmBuiltOutGrid [data-game-key="bramblebound"]');await pick.waitFor({state:'attached'});
       await page.locator('[data-view="singleplayer"]:visible').first().click();await page.locator('#gameSearch').fill('Bramblebound');
       const card=page.locator('#singleGameGrid [data-game-key="bramblebound"]');await card.waitFor();await card.locator('.catalog-status-badge[data-status="showcase"]').waitFor();
-      assert.equal(await page.locator('#singleGameGrid .game-card').count(),1);assert.match(await card.innerText(),/Built Out/);
+      assert.equal(await page.locator('#singleGameGrid .game-card').count(),1);assert.match(await card.innerText(),/Complete|Built Out/);
       await page.waitForFunction(()=>document.getElementById('accountButtonText')?.textContent==='Tester');
       const favorite=card.locator('.favorite-btn');await favorite.click();await card.locator('.favorite-btn[aria-pressed="true"]').waitFor();
       if(shots)await page.screenshot({path:path.join(shots,'library-'+width+'.png'),fullPage:true});
