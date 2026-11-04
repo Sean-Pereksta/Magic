@@ -1,4 +1,15 @@
-# IRONFIELD 2.5.1 reload balance
+# IRONFIELD 2.6 validation
+
+- The rank-volley fixture fires twelve musketeers together at approximately 0.03, 8.03, 16.03, and 24.03 seconds. Each soldier waits at least 24 seconds between shots. A three-file column fires three men in each physical row. Movement stops fire, close combat disrupts the entire company, and fire resumes together after reforming. Casualty compaction preserves three rank numbers.
+- Automatic companies are limited to 90 musketeers. Explicit authored battalions retain their count. Historical named sectors survive capture and load.
+- An isolated impact fixture records approximately 47 world units of displacement from a catapult, 69 from a cannon, and 79 from a trebuchet. Actual results depend on target mass, terrain, and neighboring bodies.
+- All 20 historical opening deployments have complete explicit soldier counts, clear terrain, and separated bodies. Characteristic depth, wings, reserves, and army-relative flank orientation have dedicated assertions.
+- Menu checks cover historical search, eras, sources, preparing the selected scenario, army scaling, formation selection, saved formation styles, and returning to the battlefield collection. Browser checks cover desktop, 390-pixel mobile width, all 20 deployments, and both source and offline HTML entry points.
+- Graphics checks cover all 23 complete portraits, seven distinct biome detail sets, movement/fighting poses, musket melee transitions, and bounded terrain animation that freezes with simulation time and respects Reduced animations.
+
+Reproduce with `node tests/engine-test.cjs`, `node tests/command-ui-test.cjs`, `node tests/menu-world-ui-test.cjs`, `node tests/historical-menu-test.cjs`, `node tests/graphics-test.cjs`, and `node tests/animation-corpses-test.cjs` from the game directory. Build the standalone game using `python build.py`.
+
+## Previous release: IRONFIELD 2.5.1 reload balance
 
 Two wings of 64 Banner Lancers charge 128 musketeers backed by eight field cannons on open ground. The defenders hold out of range for 32 simulated seconds before the charge order, so both versions begin with loaded weapons. The table gives results at 25 seconds after the charge order.
 

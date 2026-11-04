@@ -1,4 +1,4 @@
-# IRONFIELD 2.5.1 — movement, armor, and counter reference
+# IRONFIELD 2.6 — movement, armor, and counter reference
 
 All values are fictional game balance. This reference uses the same troop and weapon data as the simulation and in-game field manual. A listed advantage describes a useful situation, not a guaranteed duel or equal-cost victory.
 
@@ -47,11 +47,13 @@ Each damage column is the attacking troop’s multiplier against that defending 
 | Weapon | Base range | Base damage | Reload | Hit area |
 | --- | ---: | ---: | ---: | --- |
 | War club | 31 | 34 | 1.65 s nominal | 144-degree forward sweep, 42 units from the attacker. Secondary hits use 68% damage. |
-| Musket ball | 425 | 51 | 12 s | One enemy in the shot path. Push follows the direction of the ball. |
+| Musket ball | 425 | 78 | 24 s per soldier | A synchronized rank volley; three-rank companies fire a rank every 8 s. One enemy in each ball's path. |
 | Cannonball | 920 | 160 | 22 s | 64-unit blast around first impact. Lighter targets fly higher. |
 | Trebuchet boulder | 1,450 | 320 | 24 s | 112-unit impact area. The high arc can clear intervening walls. |
 
 Range and blast radii are in world units. Damage lists the weapon input before armor, shields, distance falloff, formation and other combat modifiers.
+
+Musketeer companies retain volley discipline while formed. A melee breach suspends the company schedule; survivors need a clear interval and formed ranks before resuming. Formation changes preserve each soldier's reload. Three-rank volley has three depth ranks; Three-file column has three soldiers abreast and cycles its successive depth ranks. Artillery displacement remains physical and respects mass, intervening troops, and terrain: cannon and trebuchet are the strongest throwers, followed by catapults.
 
 ## Using prepared pikes
 

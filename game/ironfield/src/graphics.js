@@ -49,7 +49,7 @@
       this.camera={x:3200,y:2200,zoom:.18};
       this.width=canvas.clientWidth||1280;this.height=canvas.clientHeight||720;
       this.dpr=1;this.fps=60;this._lastFrame=0;this._frame=0;this._visible=[];
-      this._atlas=new Map();this._miniFrame=0;this._terrain=null;this._terrainScale=.4;this._now=0;
+      this._atlas=new Map();this._miniFrame=0;this._terrain=null;this._terrainScale=.4;this._now=0;this._ambientTerrain=[];
       this._unitAtlases=[];this._siegeTowers=[];this._depthCounts=new Int32Array(0);this._depthKeys=new Uint32Array(0);this._depthSorted=[];
       this._adaptiveLow=false;this._qualityChangedAt=0;
       this._formationEnvelopes=new Map();
@@ -122,6 +122,7 @@
         else {c.fillStyle=t.patch[i%t.patch.length];c.fillRect(x,y,2+rand()*7,2+rand()*3);}
       }
       c.globalAlpha=1;
+      this._paintBiomeDetails(c,rand,w,h);
       if(this.map.id!=='custom')this._drawRoads(c,rand,w,h);
       const regs=this.map.regions||[];
       for(const r of regs)if(r.type==='hill')this._paintHill(c,r,rand);
@@ -134,6 +135,71 @@
       c.strokeStyle='rgba(33,41,32,.22)';c.lineWidth=22;c.strokeRect(11,11,w-22,h-22);
       c.strokeStyle='rgba(222,212,171,.22)';c.lineWidth=4;c.strokeRect(28,28,w-56,h-56);
       c.globalAlpha=1;
+    }
+
+    _paintBiomeDetails(c,rand,w,h) {
+      // These small landmarks are baked into the terrain once. They give each
+      // biome its own simple visual language without loading external artwork.
+      const biome=this.map.biome||'grassland',t=this.theme,ambient=this._ambientTerrain=[];
+      const count=Math.min(900,Math.floor(w*h/65000));
+      c.save();c.lineCap='round';
+      for(let i=0;i<count;i++){
+        const x=45+rand()*(w-90),y=45+rand()*(h-90),s=.65+rand()*.8;
+        c.save();c.translate(x,y);c.scale(s,s);
+        if(biome==='desert'){
+          c.globalAlpha=.28;c.strokeStyle='#e3c596';c.lineWidth=2.8;
+          c.beginPath();c.moveTo(-28,5);c.quadraticCurveTo(-2,-9,31,-3);c.stroke();
+          line(c,-20,9,23,3,'#786747',1.1);
+          if(i%7===0){poly(c,[[-7,3],[-3,-7],[6,-9],[12,-2],[8,5]],'#8e7859');line(c,-2,-5,6,-6,'#ddc09a',1.6);}
+        }else if(biome==='tundra'){
+          c.globalAlpha=.36;ellipse(c,0,0,24,5,'#e4e9dc');line(c,-16,4,17,4,'#72867c',1.2);
+          if(i%4===0){line(c,-5,1,-6,-11,'#536f62',1.7);line(c,-6,-6,-12,-10,'#72866a',1.4);line(c,-6,-8,1,-13,'#72866a',1.4);}
+        }else if(biome==='ashland'){
+          c.globalAlpha=.36;poly(c,[[-11,4],[-5,-2],[2,-1],[7,5]],'#514f47');line(c,-2,-2,4,-7,'#c0a084',1.4);
+          if(i%3===0){line(c,-3,1,-1,-12,'#51493c',2.8);line(c,-2,-6,-10,-11,'#51493c',1.5);}
+        }else if(biome==='wetland'){
+          c.globalAlpha=.3;ellipse(c,0,4,17,5,'#577f77');
+          for(let j=0;j<3;j++){line(c,-5+j*5,4,-7+j*5,-12-j%2*6,'#8e9a63',1.6);line(c,-7+j*5,-12-j%2*6,-7+j*5,-17-j%2*6,'#63563a',2.9);}
+        }else{
+          c.globalAlpha=.43;
+          if(biome==='highland'){
+            poly(c,[[-11,4],[-6,-4],[1,-8],[10,-1],[7,5]],'#68766a');poly(c,[[-6,-4],[1,-8],[6,-2]],'#b0b69e');
+            for(let j=0;j<3;j++)ellipse(c,12+j*3,1-j%2*4,1.7,1.6,'#c0a5b4');
+          }else if(biome==='woodland'&&i%3===0){
+            line(c,-2,3,-1,-13,'#96ac76',1.3);
+            for(let j=0;j<4;j++){line(c,-1,-j*3,-8+j,-j*3-4,'#8da36d',1.2);line(c,-1,-j*3,6-j,-j*3-5,'#8da36d',1.2);}
+          }else{
+            for(let j=0;j<3;j++){line(c,-7+j*6,4,-5+j*6,-8-j%2*4,t.grass,1.4);ellipse(c,-5+j*6,-8-j%2*4,1.8,1.5,j%2?'#e5d5a2':'#d5d9bf');}
+          }
+        }
+        c.restore();
+        // A fixed small set of wind details is animated; viewport culling and
+        // reduced-motion settings keep cost independent of the soldier count.
+        if(i%7===0&&ambient.length<72)ambient.push({x,y,phase:rand()*TAU,size:s,kind:biome});
+      }
+      c.restore();
+    }
+
+    _drawTerrainMotion(c,bounds,z) {
+      if(!this.options||this.options.animations==='reduced'||this.options.quality==='low'||z<.32)return;
+      const time=Number(this.engine.time)||0;
+      c.save();c.lineCap='round';
+      for(const p of this._ambientTerrain||[]){
+        if(p.x<bounds.x1||p.x>bounds.x2||p.y<bounds.y1||p.y>bounds.y2)continue;
+        const sway=Math.sin(time*1.7+p.phase)*3*p.size;
+        c.globalAlpha=.35;
+        if(p.kind==='desert'||p.kind==='ashland'||p.kind==='tundra'){
+          const drift=(time*6+p.phase*13)%62;
+          c.globalAlpha=.15;line(c,p.x-30+drift,p.y,p.x-19+drift,p.y-2,p.kind==='ashland'?'#dfcbb1':p.kind==='tundra'?'#f1f3e7':'#efd8ac',1.4);
+        }else{
+          const color=p.kind==='wetland'?'#bbbc7d':this.theme.grass||'#b9bf8d';
+          for(let j=0;j<3;j++){
+            const x=p.x+j*4,y=p.y+Math.abs(j-1)*2;
+            c.strokeStyle=color;c.lineWidth=1.2;c.beginPath();c.moveTo(x,y);c.quadraticCurveTo(x-2+sway*.3,y-6,x+sway,y-12-j%2*5);c.stroke();
+          }
+        }
+      }
+      c.restore();
     }
 
     _drawRoads(c,rand,w,h) {
@@ -167,7 +233,10 @@
 
     _paintForest(c,r,rand) {
       const t=this.theme;
-      c.save();c.globalAlpha=.19;c.fillStyle=t.shadow;c.fillRect(r.x,r.y,r.w,r.h);c.globalAlpha=1;
+      c.save();
+      // A soft canopy edge replaces the old solid rectangular forest patch.
+      c.globalAlpha=.11;ellipse(c,r.x+r.w/2,r.y+r.h/2,r.w*.53,r.h*.53,t.shadow);
+      c.globalAlpha=.12;ellipse(c,r.x+r.w/2,r.y+r.h/2,r.w*.48,r.h*.48,t.tree);c.globalAlpha=1;
       const trees=[];const n=Math.max(8,Math.min(2200,Math.floor(r.w*r.h/4200*Math.min(1,(this._terrainRasterScale||.4)/.4))));
       for(let i=0;i<n;i++)trees.push({x:r.x+12+rand()*Math.max(1,r.w-24),y:r.y+12+rand()*Math.max(1,r.h-24),s:.7+rand()*.8});
       trees.sort((a,b)=>a.y-b.y);
@@ -198,7 +267,7 @@
 
     _paintRockRegion(c,r,rand) {
       const t=this.theme;
-      c.save();c.globalAlpha=.18;c.fillStyle=t.shadow;c.fillRect(r.x,r.y,r.w,r.h);c.globalAlpha=1;
+      c.save();c.globalAlpha=.13;ellipse(c,r.x+r.w/2,r.y+r.h/2,r.w*.53,r.h*.53,t.shadow);c.globalAlpha=1;
       const count=Math.max(4,Math.min(1400,Math.floor(r.w*r.h/2600*Math.min(1,(this._terrainRasterScale||.4)/.4))));
       for(let i=0;i<count;i++){
         const rx=Math.min(r.w*.45,12+rand()*31),ry=Math.min(r.h*.45,12+rand()*25);
@@ -462,6 +531,11 @@
       c.save();c.translate(face*reach,-bob+(loading?2.5:0));
       // Cloaks, trailing quivers, and distinct armor silhouettes.
       if(archer||heavy){poly(c,[[-5,-20],[-8-walk,-4],[1,-1],[7,-5],[5,-20]],archer?p.dark:p.base,ink,.7);}
+      if(type==='musketeer'){
+        // Split coat tails, buff waistcoat and powder flasks give the gun line
+        // a recognizable early-modern silhouette even with its musket lowered.
+        poly(c,[[-6,-20],[5,-20],[8+walk*.6,-3],[1,-5],[-1,-3],[-8-walk*.6,-4]],p.dark,ink,.8);
+      }
       if(archer){line(c,-face*4,-22,-face*8,-12,'#71543b',4);for(let i=0;i<3;i++){line(c,-face*(4+i*.8),-26,-face*(6+i*.8),-18,'#c8bda1',.8);line(c,-face*(4+i*.8)-1,-26,-face*(4+i*.8)+1,-24,'#e2dac1',.8);}}
       if(javelin){for(let i=0;i<3;i++){const xx=-face*(5+i*2);line(c,xx,-8,xx-face*5,-33-i*2,'#bda877',1.2);poly(c,[[xx-face*5,-38-i*2],[xx-face*7,-33-i*2],[xx-face*3,-34-i*2]],'#d4d9c5');}line(c,-face*9,-24,-face*4,-11,'#665035',2.5);}
       const stance=attack?[1,2,3.5,2.5,.7,1][pose]:shuffling?1.3:0;
@@ -484,6 +558,29 @@
         if(halberd){poly(c,[[-3,-16],[3,-16],[4,-4],[0,-6],[-4,-4]],p.base);line(c,0,-15,0,-6,p.trim,1);line(c,-7,-20,-4,-20,'#e2dfc4',1.5);line(c,4,-20,7,-20,'#e2dfc4',1.5);}
         if(javelin||slinger){line(c,-4,-20,4,-9,slinger?p.base:'#7b5d3d',3);ellipse(c,-face*6,-10,3,4,'#826642','#4f4934',.8);}
         line(c,-5,-9,5,-9,'#6b4d35',1.8);ellipse(c,0,-9,1.1,1.1,gold);
+      }
+      // Large blocks of livery survive the overview raster better than fine
+      // mail texture. Equipment still carries each class's unique silhouette.
+      if(type==='musketeer'){
+        poly(c,[[-4,-20],[3,-20],[4,-10],[-3,-10]],'#c8ad77',ink,.55);
+        line(c,-4,-20,4,-12,p.base,3);line(c,-5,-8,-6,-3,p.light,2);line(c,5,-8,6,-3,p.light,2);
+        for(let k=0;k<3;k++)ellipse(c,.5,-18+k*3,.6,.6,'#eee0ad');
+      }else if(type==='pikeman'){
+        poly(c,[[-5,-21],[5,-21],[3,-17],[-3,-17]],'#c2cbbd',steelDark,.7);
+        poly(c,[[-3,-16],[3,-16],[4,-6],[0,-8],[-4,-6]],p.base);line(c,0,-15,0,-8,p.trim,1.1);
+      }else if(crossbow){
+        for(let y=-19;y<=-12;y+=3)line(c,-3,y,3,y+2,'#9aa99f',.75);
+        line(c,-5,-21,4,-9,p.trim,1.5);line(c,4,-20,-4,-10,p.dark,1.5);
+      }else if(archer){
+        line(c,-4,-20,4,-10,'#a88d5e',1.7);line(c,-5,-21,-5,-16,p.light,2.4);
+      }else if(type==='swordsman'){
+        poly(c,[[-3,-17],[3,-17],[3,-7],[0,-4],[-3,-7]],p.base);line(c,-2,-15,2,-15,p.trim,1.3);
+      }else if(berserk){
+        line(c,-6,-18,-6,-13,p.base,2.6);line(c,5,-17,5,-12,p.base,2.6);line(c,-2,-15,1,-17,p.light,1.3);
+      }else if(javelin||slinger){
+        line(c,-4,-20,4,-9,p.base,2.4);line(c,-5,-21,5,-21,p.trim,1.2);
+      }else if(type==='militia'){
+        poly(c,[[-4,-13],[1,-13],[1,-8],[-4,-8]],p.dark);line(c,-3,-12,0,-9,p.light,.7);
       }
       // Head, face and class-specific headwear.
       ellipse(c,face*.4,-24,3.5,4.2,skin,ink,.65);
@@ -545,8 +642,9 @@
         // on the shot. The brass powder bandolier remains visible at rest.
         line(c,-face*4,-21,face*4,-10,'#574332',2);
         for(let k=0;k<3;k++)line(c,face*(-2+k*2),-18+k*2,face*(-2+k*2),-15.5+k*2,'#dbb976',1.2);
-        const tilt=attack?[.24,.07,.12,.06,1.34,.96][pose]:.72;
-        const grip=attack&&pose===2?-2:1,dx=Math.cos(angle)*Math.cos(tilt);
+        const melee=action==='musketMelee';
+        const tilt=melee?[.92,1.24,.02,-.16,.42,.65][pose]:attack?[.24,.07,.12,.06,1.34,.96][pose]:.72;
+        const grip=melee?[-3,-5,7,5,-2,0][pose]:attack&&pose===2?-2:1,dx=Math.cos(angle)*Math.cos(tilt);
         const dy=Math.sin(angle)*.58*Math.cos(tilt)-Math.sin(tilt);
         const gx=face*grip,gy=attack&&pose<4?-19:-15;
         line(c,gx-8*dx,gy-8*dy+1,gx+12*dx,gy+12*dy+1,'#805834',3.6);
@@ -554,7 +652,7 @@
         line(c,gx+7*dx,gy+7*dy-.6,gx+31*dx,gy+31*dy-.6,'#bdc9c4',1);
         line(c,-face*4,-18,gx+2*dx,gy+2*dy,p.light,2.8);
         line(c,face*3,-18,gx+11*dx,gy+11*dy,skin,2.3);
-        if(frame===8)line(c,gx+17*dx+face*3,gy+17*dy-6,gx+32*dx,gy+32*dy-6,'#c3b79b',1);
+        if(frame===8&&!melee)line(c,gx+17*dx+face*3,gy+17*dy-6,gx+32*dx,gy+32*dy-6,'#c3b79b',1);
       }else if(berserk){
         const bearing=angle+(attack?[-1.15,-1.70,-.42,.98,1.32,.48][pose]:-.65);
         const tilt=attack?[.85,.98,.12,.06,.4,.65][pose]:.78;
@@ -619,6 +717,12 @@
         for(let i=0;i<5;i++)line(c,-10+i*5,-17,-9+i*5,-9,'#8b9d9c',.7);
         poly(c,[[14,-31],[22,-33],[27,-27],[21,-23],[15,-25]],commander?'#e1c578':'#b5c0b6',commander?'#877041':'#657878',.7);
       }else{poly(c,[[-9,-20],[6,-20],[8,-9],[-8,-10]],p.base,p.trim,1);}
+      // Broad saddlecloth devices identify horse troops among the infantry.
+      const emblem=type==='horseArcher'?'#ead7ac':p.trim;
+      poly(c,[[-5,-16],[-1,-12],[3,-16],[-1,-10]],emblem);
+      if(type==='cavalry'){
+        poly(c,[[-6,-37],[-15-walk,-30],[-18-walk,-20],[-9,-22],[0,-31]],p.base,p.trim,.7);
+      }
       line(c,22,-27,5,-23,'#483d30',.8);line(c,22,-27,3,-26,'#483d30',.8);
       if(commander){
         // The white charger, long gilded cape, and tall standard identify a
@@ -682,6 +786,7 @@
         line(c,...point(-30,side*3,3),...point(10,side*8,12),'#a37c4a',3.5);
       }
       line(c,...point(-29,-4,3),...point(-29,4,3),p.base,4);
+      const badge=point(-18,0,8);poly(c,[[badge[0]-4,badge[1]-3],[badge[0]+4,badge[1]-3],[badge[0]+3,badge[1]+4],[badge[0]-3,badge[1]+4]],p.base,p.trim,.8);
       const recoil=attack?[0,1,-6,-3,-1,0][pose]:0;
       const breech=point(-9+recoil,0,16),muzzle=point(30+recoil,0,20);
       line(c,...breech,...muzzle,'#313a37',11);
@@ -725,6 +830,7 @@
       poly(c,[[pouchX-5,pouchY-1],[pouchX+7,pouchY-2],[pouchX+4,pouchY+2],[pouchX-2,pouchY+3]],'#705238',ink,.8);
       line(c,-30,-3,-1,pivot,'#c09b66',5.5);line(c,24,-5,-1,pivot,'#a37d4c',5.5);
       line(c,-16,-25,12,-25,'#7d5c39',3);ellipse(c,-1,pivot,3.7,3.7,'#b2ada0',ink,1.2);
+      line(c,-11,-5,18,-8,p.base,5);line(c,-10,-5,17,-8,p.trim,.9);
       line(c,-23,-5,tip,-lift,'#ad9a74',1);
       for(const x of [-27,25])this._artilleryWheel(c,x,1,7,phase,.85);
       const crewX=-29,crewY=-9;
@@ -750,6 +856,7 @@
       if(!attack||frame<6||frame===9)ellipse(c,ex,ey-3,4.5,4,'#87958a','#3e5046',.6);
       line(c,-16,-12,ex,ey,'#d4bf8c',.8);line(c,-17,-12,-10,-18,'#e1d0a0',.8);
       c.fillStyle=p.base;c.fillRect(3,-19,9,6);line(c,5,-18,5,-14,p.trim,1);line(c,9,-18,9,-14,p.trim,1);
+      line(c,-22,-14,-11,-3,'#cdb785',1.5);line(c,-22,-11,-15,-4,'#554631',1);
       // Crew make the scale unambiguous.
       ellipse(c,-23,-16,3,3.3,'#c7a077');poly(c,[[-26,-13],[-20,-13],[-19,-6],[-25,-5]],p.base);ellipse(c,-23,-18,3.5,2,'#7a8c82');
       c.restore();
@@ -802,6 +909,7 @@
       ellipse(c,30,-31,1.4,1.5,'#263e32');line(c,24,-39,34,-37,'#ccd2bb',2);
       poly(c,[[-23,-36],[12,-39],[17,-16],[-18,-12]],p.dark,p.trim,1.4);
       poly(c,[[-20,-34],[11,-36],[13,-20],[-17,-17]],p.base);line(c,-17,-20,11,-23,p.trim,2);line(c,-3,-34,-3,-20,p.light,2);
+      for(const x of [-12,4])poly(c,[[x,-29],[x+4,-26],[x+1,-22],[x-3,-25]],p.trim);
       // Armored howdah with two visibly distinct crew and a battle standard.
       poly(c,[[-15,-44],[8,-46],[13,-37],[-11,-34]],'#8f6e43','#4b4c36',1.2);poly(c,[[-15,-44],[-11,-34],[-11,-27],[-15,-35]],'#65573b');poly(c,[[-11,-34],[13,-37],[13,-30],[-11,-27]],p.base,p.trim,.8);
       for(const q of [[-8,-44],[5,-46]]){ellipse(c,q[0],q[1]-6,3,3.7,'#d1a479');poly(c,[[q[0]-4,q[1]-3],[q[0]+4,q[1]-3],[q[0]+4,q[1]+4],[q[0]-3,q[1]+4]],p.light);line(c,q[0]-3,q[1]-8,q[0]+3,q[1]-8,'#b9c5b8',2);}
@@ -913,6 +1021,9 @@
     }
 
     _drawActionSprite(c,type,team,dir,kind,phase) {
+      if(kind==='musketMelee'){
+        this._drawSprite(c,type,team,dir,4+clamp(phase|0,0,5),false,undefined,kind);return;
+      }
       const cycle=phase*Math.PI/4*(kind==='backstep'?-1:1),face=Math.cos(dir*Math.PI/4)<-.2?-1:1;
       if(kind==='march'||kind==='gallop'||kind==='brace'||kind==='backstep'||kind==='sidestep'){
         const ready=kind==='brace'||kind==='gallop'&&(type==='lancer'||type==='cavalry');
@@ -939,7 +1050,7 @@
       if(!atlas.cw||!atlas.ch)return null;
       if(!atlas.actions)atlas.actions=new Map();
       const direction=spriteFacing(u.type,dir);
-      const actionId=kind==='march'?0:kind==='gallop'?1:kind==='brace'?2:kind==='collapse'?3:kind==='block'?4:kind==='backstep'?6:kind==='sidestep'?7:5;
+      const actionId=kind==='march'?0:kind==='gallop'?1:kind==='brace'?2:kind==='collapse'?3:kind==='block'?4:kind==='backstep'?6:kind==='sidestep'?7:kind==='musketMelee'?8:5;
       const key=actionId*64+phase*8+direction;
       if(atlas.actions.has(key))return atlas.actions.get(key);
       if(!(this._poseBuildBudget>0))return null;
@@ -965,6 +1076,7 @@
       if(this.options&&this.options.animations==='reduced'||u.state==='turning'||u.state==='fallBack'||u.routed)return null;
       const e=this.engine,r=e.regiments&&e.regiments[u.regiment];
       if(r&&(r.order==='face'||r.order==='retreat'||r.fallingBack))return null;
+      if(u.type==='musketeer'&&frame>=4&&((Number.isFinite(u._lastMusketMelee)&&u._lastMusketMelee===u._lastAttack)||r&&r.volleyStatus==='melee'&&frame<6))return {kind:'musketMelee',phase:frame-4};
       if(frame>=4)return null;
       const hit=this._hitPoses&&this._hitPoses.get(u.id);
       const moving=(u.state==='move'||u.state==='rout')&&((u._vx||0)*(u._vx||0)+(u._vy||0)*(u._vy||0)>1);
@@ -1136,6 +1248,20 @@
       const e=this.engine,t=global.GameData&&global.GameData.TYPES[u.type];
       if(!t)return 0;
       const age=e.time-u._lastAttack,travel=u.state==='move'&&Math.hypot(u._vx||0,u._vy||0)>1,hoplite=u.type==='hoplite';
+      const regiment=e.regiments&&e.regiments[u.regiment];
+      const meleeHit=u.type==='musketeer'&&Number.isFinite(u._lastMusketMelee)&&u._lastMusketMelee===u._lastAttack;
+      if(u.type==='musketeer'&&(meleeHit||regiment&&regiment.volleyStatus==='melee'&&age>=.29)){
+        if(travel)return 0;
+        if(meleeHit){
+          if(age>=0&&age<.13)return 6;
+          if(age>=.13&&age<.28)return 7;
+          if(age>=.28&&age<.52)return 8;
+          if(age>=.52&&age<.86)return 9;
+        }
+        const foe=e.units&&e.units[u.target];
+        if(regiment&&regiment.volleyStatus==='melee'&&foe&&foe.alive&&Math.hypot(foe.x-u.x,foe.y-u.y)<42&&u._meleeCooldown>0&&u._meleeCooldown<.35)return u._meleeCooldown>.17?4:5;
+        return 0;
+      }
       const release=t.siege?.22:hoplite?.16:.12,follow=t.siege?.50:hoplite?.34:t.ranged?.29:.24;
       if(age>=0&&age<release)return 6;
       if(age>=release&&age<follow)return 7;
@@ -1395,6 +1521,7 @@
       c.imageSmoothingEnabled=true;
       c.drawImage(this._terrain,0,0,e.width,e.height);
       const bounds={x1:this.camera.x-this.width/z/2-180,x2:this.camera.x+this.width/z/2+180,y1:this.camera.y-this.height/z/2-180,y2:this.camera.y+this.height/z/2+180};
+      this._drawTerrainMotion(c,bounds,z);
       this._drawFortifications(c,bounds,z);
       this._drawSiegeRamps(c,bounds,z);
       if(e.phase==='deployment')this._drawDeployment(c,bounds,z);
@@ -1426,6 +1553,12 @@
         if(u.type==='siegeTower'&&u._siegeDeployed)continue;
         const dir=((Math.round(angle/(Math.PI/4))%8)+8)%8;
         const elevation=this._elevation(u);
+        if(u.type==='musketeer'&&z>.38&&selected.has(u.regiment)&&Number.isInteger(u._volleyRank)){
+          const regiment=e.regiments&&e.regiments[u.regiment];
+          if(regiment&&regiment.volleyStatus!=='melee'&&regiment.nextVolleyRank===u._volleyRank+1){
+            c.globalAlpha=.58;line(c,u.x-4,u.y-elevation+3,u.x+4,u.y-elevation+3,TEAM[u.team||0].light,1.5);c.globalAlpha=1;
+          }
+        }
         if(this._drawImpactUnit(c,u,atlas,dir,spriteLevel,elevation)){drawCalls++;continue;}
         let frame=this._attackFrame(u);
         if(u.state==='turning')frame=0;
@@ -1636,7 +1769,8 @@
     }
 
     _drawWaterMotion(c,bounds,now,z) {
-      if(z<.19||this.options.quality==='low')return;
+      if(z<.19||this.options.quality==='low'||this.options.animations==='reduced')return;
+      now=Number(this.engine.time)||0;
       c.save();c.globalAlpha=.16;c.strokeStyle='#c1dfd7';c.lineWidth=1.3;
       for(const r of this.map.regions||[]){if(r.type!=='water'||r.x>bounds.x2||r.x+r.w<bounds.x1)continue;
         const minY=Math.max(r.y,bounds.y1),maxY=Math.min(r.y+r.h,bounds.y2),step=86;
@@ -1769,14 +1903,16 @@
         const maneuverStatus=maneuver==='narrowing'?'NARROWING':maneuver==='threading'?(Number(r.trafficPressure)>.45?'YIELDING / PASSAGE':'PASSAGE'):maneuver==='reforming'?'REFORMING RANKS':'';
         const pushing=r.type==='hoplite'&&Number(r.pushingSoldiers)>0;
         const yielding=r._formationPressureSpeed>.01&&r._formationPressureUntil>this.engine.time&&r._pressureSourceId>=0&&r.order!=='move'&&r.order!=='face'&&r.order!=='retreat'&&!(r._rallyTime>0)&&!(r.order==='attack'&&r._hasDestination&&!r._attackBlocked);
-        const status=r.commandStatus==='facing'?'TURNING IN PLACE':r.commandStatus==='turning'?'TURNING TO WITHDRAW':fallingBack?'FALLING BACK':reforming?'REFORMING':r.status==='shaken'?'SHAKEN':r.status==='routing'?'ROUTING':((isSel||z>.65)?r.siegeStatus?r.siegeStatus.toUpperCase():yielding?'GIVING GROUND':pushing?'SHIELD PRESS':maneuverStatus:'');
+        const volley=r.type==='musketeer'&&r.volleyStatus;
+        const volleyStatus=volley==='melee'?'MELEE · RANKS BROKEN':volley==='reforming'?'REFORMING FIRING RANKS':volley==='forming'?'FORMING FIRING RANKS':volley==='marching'?'MARCHING · FIRE HELD':volley&&r.nextVolleyRank?'NEXT VOLLEY · RANK '+r.nextVolleyRank:'';
+        const status=r.commandStatus==='facing'?'TURNING IN PLACE':r.commandStatus==='turning'?'TURNING TO WITHDRAW':fallingBack?'FALLING BACK':reforming?'REFORMING':r.status==='shaken'?'SHAKEN':r.status==='routing'?'ROUTING':((isSel||z>.65)?r.siegeStatus?r.siegeStatus.toUpperCase():yielding?'GIVING GROUND':pushing?'SHIELD PRESS':volleyStatus||maneuverStatus:'');
         const statusColor=r.commandStatus==='facing'?'#f1d58e':fallingBack||r.status==='shaken'?'#efbd6e':status==='GIVING GROUND'?'#d8bd89':reforming||maneuver==='reforming'?'#b8dcc4':pushing?'#e9c67a':passage?'#d9c696':'#df8f77';
         const flagColor=fallingBack?'#b78a46':reforming?'#6e9d87':p.base,trim=commander?'#f4d78a':p.trim;
         const screen=this.worldToScreen(r.x,r.y);if(screen.x<-90||screen.x>this.width+90||screen.y<-90||screen.y>this.height+90)continue;
         const scale=clamp(1/z,.8,3.8)*(commander?1.25:1),fx=r.x,fy=r.y-18*scale;
         if(drawLabels||isSel){
           line(c,fx,fy+12*scale,fx,fy-15*scale,commander?'#dfc37b':'#4a4c36',1.6*scale);
-          const wind=Math.sin(this._now*2.4+r.id)*1.5;
+          const wind=this.options.animations==='reduced'?0:Math.sin((Number(this.engine.time)||0)*2.4+r.id)*1.5;
           poly(c,[[fx,fy-15*scale],[fx+17*scale,fy-(13+wind)*scale],[fx+14*scale,fy-3*scale],[fx,fy-5*scale]],flagColor,trim,(commander?1:.55)*scale);
           if(fallingBack||reforming)line(c,fx+1*scale,fy-14*scale,fx+1*scale,fy-6*scale,p.light,2*scale);
           else if(passage)line(c,fx+3*scale,fy-5.5*scale,fx+12*scale,fy-4.5*scale,'#e4cb90',1.2*scale);
@@ -1811,7 +1947,7 @@
           const name=(global.GameData&&global.GameData.TYPES[r.type]?global.GameData.TYPES[r.type].shortName:r.type)||'Regiment';
           const label=name.toUpperCase()+'  '+Math.max(0,r.alive).toLocaleString(),fontSize=10/z;
           c.font='600 '+fontSize+'px system-ui, sans-serif';c.textAlign='center';c.textBaseline='bottom';
-          const formName=({line:'LINE',shieldwall:'SHIELD WALL',wedge:'WEDGE',loose:'LOOSE'})[r.formation]||'LINE';
+          const formName=(global.GameData&&global.GameData.FORMATIONS[r.formation]?.name||({line:'LINE',shieldwall:'SHIELD WALL',wedge:'WEDGE',loose:'LOOSE'})[r.formation]||'LINE').toUpperCase();
           const cohesion=Math.round(clamp(Number.isFinite(r.cohesion)?r.cohesion:100,0,100));
           const role=({line:'LINE',flank:'FLANK',support:'SUPPORT',reserve:'RESERVE'})[r.tacticalRole];
           const details=isSel?(commander?'COMMAND AURA':passage?'PASSAGE COLUMN':formName)+'  ·  COH '+cohesion+(role&&z>.8?'  ·  '+role:''):'';
@@ -1867,15 +2003,11 @@
       const a=this._getAtlas(typeId,team===1?1:0);c.clearRect(0,0,w,h);c.imageSmoothingEnabled=true;
       const p=TEAM[team===1?1:0],grad=c.createLinearGradient(0,0,w,h);grad.addColorStop(0,p.dark);grad.addColorStop(1,'#17241f');c.fillStyle=grad;c.fillRect(0,0,w,h);
       c.fillStyle='rgba(242,224,180,.07)';c.beginPath();c.arc(w*.55,h*.44,w*.40,0,TAU);c.fill();
-      const mounted=typeId==='cavalry'||typeId==='lancer'||typeId==='horseArcher'||typeId==='commander',large=mounted||typeId==='catapult'||typeId==='ballista'||typeId==='elephant';
-      const polearm=typeId==='pikeman'||typeId==='militia'||typeId==='halberdier';
-      const desired=typeId==='elephant'?h*.91:large?h*.79:polearm?h*.70:h*.87;
-      const bodyHeight=typeId==='commander'?79:typeId==='elephant'?77:typeId==='ballista'?61:typeId==='catapult'?53:mounted?55:typeId==='javelin'?49:typeId==='slinger'?47:39;
-      const bodyWidth=typeId==='elephant'?88:typeId==='ballista'?94:typeId==='catapult'?64:typeId==='lancer'?76:typeId==='commander'?66:mounted?60:polearm?52:typeId==='javelin'?48:typeId==='slinger'?46:typeId==='berserker'?37:33;
-      const sprite=a.frames[0],fit=!!WEAPON_ART[typeId]||typeId==='hoplite'||typeId==='siegeTower'||typeId==='batteringRam';
-      const scale=fit?Math.min((w-10)/sprite.w,(h-10)/sprite.h):Math.min(desired/bodyHeight,(w-12)/bodyWidth);
-      const center=typeId==='elephant'?4:typeId==='ballista'?6:typeId==='lancer'?9:mounted?2:polearm?11:typeId==='slinger'?5:0;
-      const dx=fit?(w-sprite.w*scale)/2:w*.50-center*scale+sprite.ox*scale,dy=fit?(h-sprite.h*scale)/2:h*.88+sprite.oy*scale;
+      // Use the actual complete silhouette for every portrait: pikes, bows,
+      // standards and throwing engines retain their iconic equipment at 32px.
+      const sprite=a.frames[0],pad=Math.min(5,Math.min(w,h)*.12);
+      const scale=Math.min((w-pad*2)/sprite.w,(h-pad*2)/sprite.h);
+      const dx=(w-sprite.w*scale)/2,dy=(h-sprite.h*scale)/2;
       c.drawImage(sprite.full,dx,dy,sprite.w*scale,sprite.h*scale);
       c.strokeStyle=typeId==='commander'?'rgba(240,205,119,.65)':'rgba(221,206,159,.20)';c.lineWidth=1;c.strokeRect(.5,.5,w-1,h-1);
     }

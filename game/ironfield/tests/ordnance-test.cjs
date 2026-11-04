@@ -31,7 +31,7 @@ function register(test) {
     assert(frames > 1 && frames < 180, 'Shell must travel before striking');
   }
   test('Muskets and cannons take a full reload between successive shots', () => {
-    for (const [type, reload, bombard] of [['musketeer', 12, false], ['cannon', 22, false], ['cannon', 22, true]]) {
+    for (const [type, reload, bombard] of [['musketeer', 24, false], ['cannon', 22, false], ['cannon', 22, true]]) {
       const wall = { type: 'wall', x: 2200, y: 2100, w: 30, h: 200, hp: 5000, team: 1 };
       const e = bombard ? battle(type, [], [wall]) : battle(type, [['elephant', 2050, 2200]]);
       const [gun, enemy] = e.units;
@@ -79,7 +79,7 @@ function register(test) {
     assert(!center.alive && e.deadUnitIds.includes(center.id));
     assert(center._impactLift > 25 && flank._impactLift > 10 && flank.hp < hp);
     assert.equal(far.hp, outsideHP);
-    for (let i = 0; i < 30; i++) e.step(dt);
+    for (let i = 0; i < 60; i++) e.step(dt);
     assert(center.x > x + 4 && e.time > center._impactStart + center._impactDuration);
     assert(!e.impacts.active.has(center.id));
   });

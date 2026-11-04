@@ -21,7 +21,7 @@ def build():
                             '<script>\n' + script + '\n</script>')
     if re.search(r'<(?:script|link)\b[^>]*(?:src|href)="src/', html):
         raise RuntimeError("An external source reference remains in the bundle.")
-    html = html.replace('<!doctype html>', '<!doctype html>\n<!-- IRONFIELD 2.5.1 | Standalone offline game | All source included -->', 1)
+    html = html.replace('<!doctype html>', '<!doctype html>\n<!-- IRONFIELD 2.6.0 | Standalone offline game | All source included -->', 1)
     out = root / "IRONFIELD.html"
     out.write_text(html, encoding="utf-8")
     (root / "dist").mkdir(exist_ok=True)
