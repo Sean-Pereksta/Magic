@@ -82,6 +82,44 @@ try{
   assert.equal(combat.hitStats.bloodParticles,8);assert.equal(combat.hitStats.corpses,1);assert.equal(combat.hitStats.detailedCorpses,1);assert.equal(combat.hitStats.attacking,2);assert.ok(combat.visibleBloodPixels>8,'confirmed hits produce visible red particles in the actual WebGL framebuffer');
   for(const key of ['blocked','scenery','zero','distant','expired'])assert.equal(combat[key],0,`${key} does not emit blood`);
   assert.equal(combat.bounded,96,'particles have a fixed rendering budget');
+  const siege=await page.evaluate(async()=>{
+    const {createBattleRenderer}=await import('/game/iron-throne/battle-renderer.mjs');
+    const {createBattle}=await import('/game/iron-throne/battle-sim.mjs');
+    const field=createBattle({id:'West Wall Assault',seed:701,playerOwner:'ashen',playerSide:0,tile:{building:'fort',walls:100,fortIntegrity:45,terrain:'plains'},participants:[
+      {armyId:'a',owner:'ashen',side:0,units:{menAtArms:40,spearman:16,archer:16,ram:1}},
+      {armyId:'d',owner:'wintermere',side:1,units:{menAtArms:16,spearman:16,archer:16}}
+    ]});
+    const canvas=document.querySelector('canvas'),cam={mode:'tactical',target:{x:-20,y:3,z:10},yaw:0,pitch:.18,distance:17};
+    field.time=2;
+    const attackers=field.units.filter(u=>u.side===0&&u.type==='menAtArms'),ladder=field.layout.ladders[0],ram=field.units.find(u=>u.type==='ram');
+    Object.assign(attackers[0],{x:ladder.x,z:ladder.foot.z+1.1,y:3,facing:0,action:{kind:'climb',phase:'rungs',ladderId:ladder.id,progress:.43,elapsed:2.5,duration:5.8}});
+    Object.assign(ram,{x:-12,y:0,z:8.2,facing:0,crewCount:6,action:{kind:'ramStrike',windup:1.25,elapsed:1.19,duration:3.05}});
+    const {ramHandle}=await import('/game/iron-throne/battle-siege.mjs');
+    for(let i=0;i<6;i++)Object.assign(attackers[i+1],ramHandle(ram,i),{y:0,facing:0,order:{kind:'crew',ramId:ram.id,handle:i},atHandle:true});
+    const results={};
+    for(const blood of ['off','reduced','full']){
+      const scene=await createBattleRenderer(canvas,field,{blood});
+      field.events=[{...presentationFixture.hit,x:-19,z:8,y:1,time:1.75}];
+      scene.render(field,{...cam,targetKind:'ladder'});const ladder=scene.pick(640,400,{targetKind:'ladder'});
+      scene.render(field,{...cam,target:{x:0,y:2,z:12},targetKind:'breach'});
+      const gate=scene.pick(640,400,{targetKind:'breach'}),ground=scene.pick(640,400,{targetKind:'ground'});
+      const gl=canvas.getContext('webgl');
+      results[blood]={particles:scene.stats.bloodParticles,stains:scene.stats.stains,ladder:ladder?.targetId,gate:gate?.targetId,ground,glError:gl.getError()};
+      scene.setBlood('off');scene.render(field,cam);
+      if(scene.stats.stains||scene.stats.bloodParticles)throw new Error('Turning blood off during battle must clear existing blood.');
+      scene.setBlood(blood);
+      scene.render(field,{mode:'third',target:{x:-20,y:0,z:-3},yaw:0,pitch:.08,distance:6});
+      if(blood==='full')window.siegePresentation=scene;else scene.dispose();
+    }
+    return results;
+  });
+  assert.deepEqual(Object.values(siege).map(r=>r.particles),[0,3,8]);
+  assert.deepEqual(Object.values(siege).map(r=>r.stains),[0,1,1]);
+  for(const result of Object.values(siege)){
+    assert.equal(result.ladder,'ladder-0');assert.equal(result.gate,'gate');assert.equal(result.ground,null);assert.equal(result.glError,0);
+  }
+  if(process.env.BATTLE_SCREENSHOT)await page.screenshot({path:process.env.BATTLE_SCREENSHOT.replace(/\.png$/, '-west-wall.png')});
+  await page.evaluate(()=>siegePresentation.dispose());
   const corpses=await page.evaluate(()=>{
     const sample=structuredClone(combatSample),dead=sample.units[2];sample.events=[];sample.units=Array.from({length:200},(_,i)=>({...dead,id:`corpse-${i}`,x:i%20-10,z:Math.floor(i/20)*2-5}));
     renderer.render(sample,{mode:'tactical',target:{x:0,y:0,z:5},yaw:0,pitch:.8,distance:42});const present={...renderer.stats};sample.time+=120;renderer.render(sample,{mode:'tactical',target:{x:0,y:0,z:5},yaw:0,pitch:.8,distance:42});return{present,later:{...renderer.stats}};

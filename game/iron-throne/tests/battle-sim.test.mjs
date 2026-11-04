@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { UNITS } from '../data.mjs';
-import { createBattle, beginBattle, stepBattle, issueOrder, battleResult, finishAutomatically, validateBattleCheckpoint, nearestBattlePosition, requestAlliedOrder, normalizeBattleCheckpoint, MAX_ACTIVE_TROOPS, DEFAULT_ACTIVE_TROOPS, BATTLE_SIZE_OPTIONS, RESERVE_WAVE_SECONDS } from '../battle-sim.mjs';
+import { createBattle, beginBattle, stepBattle, issueOrder, battleResult, finishAutomatically, validateBattleCheckpoint, nearestBattlePosition, requestAlliedOrder, normalizeBattleCheckpoint, terrainHeight, MAX_ACTIVE_TROOPS, DEFAULT_ACTIVE_TROOPS, BATTLE_SIZE_OPTIONS, RESERVE_WAVE_SECONDS } from '../battle-sim.mjs';
 
 function encounter(a = { menAtArms: 5 }, d = { levy: 5 }, extras = {}) {
   return { id: 'encounter-1', seed: 42, playerOwner: 'ashen', playerSide: 0, tile: { terrain: 'plains' }, participants: [
@@ -78,7 +78,10 @@ test('deployment slots remain clear across forests, hills, rivers, towns and for
     const b = createBattle(e, { maxActive: 200 });
     assert.equal(b.units.filter(u => u.status === 'active').length, 200);
     assertDeploymentIntegrity(b);
-    if (tile.building === 'fort') assert.ok(b.units.filter(u => u.side === 1).every(u => Math.abs(u.x) <= 30 && u.z >= 20 && u.z <= 54));
+    if (tile.building === 'fort') {
+      assert.ok(b.units.filter(u => u.side === 1 && !u.wallId).every(u => Math.abs(u.x) <= 30 && u.z >= 20 && u.z <= 54));
+      assert.ok(b.units.filter(u => u.side === 1 && u.type === 'archer').every(u => u.wallId));
+    }
   }
 });
 
@@ -116,7 +119,7 @@ test('hold-current anchors each selected troop in place without reforming or loc
   const b = createBattle(encounter({ menAtArms: 4, archer: 4, cavalry: 2 }, { levy: 3 }));
   beginBattle(b);
   const archers = b.units.filter(u => u.type === 'archer');
-  archers.forEach((u, n) => { u.x = -30 + n * 8; u.z = -55 + n; u.order = { kind: 'move', x: 70, z: 40 }; });
+  archers.forEach((u, n) => { u.x = -30 + n * 8; u.z = -55 + n; u.y = terrainHeight(b,u.x,u.z); u.order = { kind: 'move', x: 70, z: 40 }; });
   const before = b.units.map(u => ({ id: u.id, x: u.x, y: u.y, z: u.z }));
   const result = issueOrder(b, 'archers', 'hold', { atCurrent: true });
   assert.equal(result.count, 4);
@@ -675,7 +678,7 @@ test('parapet cover reduces incoming arrows without making the defender invulner
   assert.ok(covered > 0); assert.ok(covered < open);
 });
 
-test('ram attacks damage the real gate and update navigation on a breach', () => {
+test('a legacy uncrewed ram attack cannot land or move the abandoned engine', () => {
   const e = encounter({ levy: 1, ram: 1 }, { levy: 2 }); e.tile = { building: 'fort', walls: 60, fortIntegrity: 45 };
   const b = createBattle(e); beginBattle(b);
   const ram = b.units.find(u => u.type === 'ram'); ram.x = 0; ram.z = 8.7;
@@ -683,8 +686,8 @@ test('ram attacks damage the real gate and update navigation on a breach', () =>
     ram.action = { kind: 'siege', elapsed: 1.69, windup: 1.7, recovery: 2.3, duration: 4, targetId: 'gate', targetX: 0, targetZ: 12, facing: 0, impacted: false, ranged: false };
     stepBattle(b, .05);
   }
-  assert.equal(b.layout.gate.hp, 0); assert.equal(b.layout.gate.state, 'breached'); assert.ok(b.layout.navRevision > 0);
-  assert.ok(b.fortifications.walls < 60); assert.ok(b.fortifications.fortIntegrity < 45);
+  assert.equal(b.layout.gate.hp, 150); assert.equal(b.layout.navRevision, 0);
+  assert.deepEqual([ram.x,ram.z],[0,8.7]); assert.equal(ram.action,null);
 });
 
 test('rivers have actual impassable water and passable crossing lanes', () => {

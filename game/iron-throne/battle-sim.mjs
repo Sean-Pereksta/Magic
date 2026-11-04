@@ -1,4 +1,6 @@
 import { UNITS } from './data.mjs';
+import { provisionLadders, ramHandle, ramApproach, wallHeightAt, battlementHeightAt } from './battle-siege.mjs';
+import { battleGroundHeight, battlefieldClimate } from './battle-terrain.mjs';
 
 // This module has no DOM, clock or random global dependencies. The entire live
 // simulation is JSON data, including attack phases, missiles and delayed armies.
@@ -87,6 +89,11 @@ function deploymentPosition(b, u, preferred, ignored = new Set(), placed = []) {
   return candidates.find(point => freeTroopPosition(b, u, point, ignored, placed)) || null;
 }
 function entryPosition(b, u, a) {
+  if (u.side === 1 && b.layout.fortified) {
+    const spots = [];
+    for (const z of [54, 51, 48]) for (let x = -28; x <= 28; x += 2.8) spots.push({ x, z });
+    return spots.find(p => freeTroopPosition(b, u, p, new Set(), [], 6)) || null;
+  }
   const candidates = [a.entry];
   for (let n = 1; n <= 55; n++) for (const sign of [1, -1]) candidates.push({ x: clamp(a.entry.x + n * 2.8 * sign, -74, 74), z: a.entry.z });
   return candidates.find(p => freeTroopPosition(b, u, p, new Set(), [], 6)) || null;
@@ -95,6 +102,7 @@ function layoutFor(b, tile) {
   const terrain = tile.terrain || 'plains';
   const layout = { width: 160, depth: 160, terrain, obstacles: [], walls: [], gate: null, ladders: [], stairs: [], objective: { x: 0, z: 38 }, bridges: [], navRevision: 0 };
   const initialWalls = Math.max(0, Number(tile.walls) || 0);
+  layout.climate = battlefieldClimate(b.seed);
   const fortMax = tile.building === 'fort' ? [0, 45, 100, 180][clamp(tile.levels?.fort || tile.buildings?.fort || tile.level || tile.buildingLevel || 1, 1, 3)] : 0;
   const initialFortIntegrity = Math.max(0, Number(tile.fortIntegrity ?? fortMax) || 0);
   const baseline = tile.battleDamageIntegrity;
@@ -115,9 +123,11 @@ function layoutFor(b, tile) {
       const saved = !repaired && tile.wallSections?.find(s => s.id === w.id);
       if (saved && Number.isFinite(saved.hp) && Number.isFinite(saved.maxHp) && saved.maxHp > 0) w.hp = w.maxHp * clamp(saved.hp / saved.maxHp, 0, 1) * damageScale;
       if (!repaired && tile.wallBreaches?.includes(w.id)) w.hp = 0;
+      if (w.hp === 0 && saved?.breach && [saved.breach.x, saved.breach.z, saved.breach.width].every(Number.isFinite)) w.breach = { ...saved.breach };
       w.state = w.hp <= 0 ? 'breached' : w.hp < w.maxHp * .7 ? 'damaged' : 'intact';
     }
     layout.ladders = [-20, 20].map((x, i) => ({ id: `ladder-${i}`, x, z: 12, height: 6, active: false, progress: 0, climberId: null }));
+    provisionLadders(layout);
     layout.stairs = layout.walls.map(w => ({ id: `${w.id}-stairs`, wallId: w.id, x: w.x + (w.id === 'wall-west' ? 6 : w.id === 'wall-east' ? -6 : 0), z: w.z + (w.id.includes('front') ? 6 : w.id === 'wall-rear' ? -6 : 0), topX: w.x, topZ: w.z, height: w.height, width: 3, depth: 6 }));
     b.fortifications.initialTacticalHp = [...layout.walls, layout.gate].reduce((sum, w) => sum + w.hp, 0);
   }
@@ -140,15 +150,14 @@ function layoutFor(b, tile) {
   }
   return layout;
 }
-export function terrainHeight(b, x, z) { return b.layout.terrain === 'hills' ? 2.8 * Math.sin(x / 25) + 2.3 * Math.cos(z / 23) : 0; }
+export function terrainHeight(b, x, z) { return battleGroundHeight(b.layout, x, z); }
 function inside(o, x, z, margin = 0) { return o.radius ? Math.hypot(o.x - x, o.z - z) < o.radius + margin : Math.abs(o.x - x) < o.width / 2 + margin && Math.abs(o.z - z) < o.depth / 2 + margin; }
-function obstruction(b, x, z, u, options = {}) {
+function obstruction(b, x, z, u) {
   if (Math.abs(x) > 78.5 || Math.abs(z) > 78.5) return { id: 'boundary', kind: 'boundary' };
   for (const o of b.layout.obstacles) if (inside(o, x, z, .35)) return o;
   for (const w of b.layout.walls) {
-    if (w.hp <= 0 || !inside(w, x, z, .35)) continue;
+    if (!wallHeightAt(w, x, z, .35)) continue;
     if (u?.wallId === w.id && u.y >= terrainHeight(b, x, z) + w.height - .3) continue;
-    if (options.ladders && u?.family === 'infantry' && b.layout.ladders.some(l => Math.abs(l.x - x) < 2.3 && Math.abs(l.z - z) < 3)) continue;
     return w;
   }
   const g = b.layout.gate;
@@ -164,16 +173,27 @@ export function nearestBattlePosition(b, position, unit = null) {
   }
   return { ...p, reachable: false, reason: 'No open position is available.' };
 }
+function projectileCover(b, x, y, z) {
+  const ground = terrainHeight(b,x,z);
+  if (y <= ground) return 'ground';
+  for (const w of b.layout.walls) {
+    const h = battlementHeightAt(w,x,z);
+    if (h && y <= terrainHeight(b,w.x,w.z) + h) return w;
+  }
+  const gate = b.layout.gate;
+  if (gate?.hp > 0 && inside(gate,x,z) && y <= terrainHeight(b,gate.x,gate.z) + gate.height) return gate;
+  return b.layout.obstacles.find(o => o.kind !== 'water' && inside(o,x,z) && y <= terrainHeight(b,o.x,o.z) + o.height);
+}
 function lineClear(b, a, c, u, projectile = false) {
-  const length = distance(a, c), steps = Math.ceil(length / 1.4);
+  const length = distance(a, c), steps = Math.ceil(length / (projectile ? .36 : 1.2));
+  const startY = projectile ? (a.y ?? terrainHeight(b,a.x,a.z)) + 1.6 : 0;
+  const endY = projectile ? (c.y ?? terrainHeight(b,c.x,c.z)) + 1 : 0;
   for (let i = 1; i < steps; i++) {
     const t = i / steps, x = a.x + (c.x - a.x) * t, z = a.z + (c.z - a.z) * t;
-    const o = obstruction(b, x, z, u);
-    if (o && projectile) {
-      const rayY = (a.y || 0) + 1.6 + (((c.y || 0) + 1.2) - ((a.y || 0) + 1.6)) * t + Math.sin(t * Math.PI) * .22;
-      if (rayY > terrainHeight(b, x, z) + (o.height || 6) + .1) continue;
-    }
-    if (o && (!projectile || o.kind !== 'water') && !(projectile && o.kind === 'tree' && random(b) > .8)) return false;
+    if (projectile) {
+      const rayY = startY + (endY-startY) * t + Math.sin(t * Math.PI) * .22;
+      if (projectileCover(b,x,rayY,z)) return false;
+    } else if (obstruction(b,x,z,u)) return false;
   }
   return true;
 }
@@ -194,7 +214,7 @@ function pathTo(b, u, target) {
       const next = { x: n.x + dx, z: n.z + dz };
       if (next.x < 0 || next.z < 0 || next.x >= grid || next.z >= grid) continue;
       const p = center(next), q = center(n), midpoint = { x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 };
-      if (obstruction(b, p.x, p.z, u, { ladders: true }) || obstruction(b, midpoint.x, midpoint.z, u, { ladders: true })) continue;
+      if (obstruction(b, p.x, p.z, u) || obstruction(b, midpoint.x, midpoint.z, u)) continue;
       const g = n.g + 1, k = key(next);
       if (costs.has(k) && costs.get(k) <= g) continue;
       costs.set(k, g); parents.set(k, n); queue.push({ ...next, g, h: Math.abs(next.x - goal.x) + Math.abs(next.z - goal.z) });
@@ -218,6 +238,7 @@ function allocateCaps(b) {
 // ammunition or casualties. Overflow soldiers wait for a later entry wave.
 export function normalizeBattleCheckpoint(b) {
   if (!b || !Array.isArray(b.units) || !Array.isArray(b.armies)) return b;
+  if (b.layout.ladders.some(l => !l.foot)) provisionLadders(b.layout);
   b.maxActive = clamp(Math.floor(b.maxActive || DEFAULT_ACTIVE_TROOPS), 4, MAX_ACTIVE_TROOPS);
   allocateCaps(b);
   b.nextReserveWave ??= b.time + RESERVE_WAVE_SECONDS;
@@ -343,6 +364,7 @@ export function createBattle(encounter, options = {}) {
     if (u) { b.commanderId = u.id; b.playerSide = u.side; b.commanderName = commanderArmy.general?.name || commanderArmy.general || `${commanderArmy.name || commanderArmy.owner} Captain`; u.commander = true; }
   }
   allocateCaps(b); deployReserves(b, true);
+  if (b.layout.fortified) postDefenders(b, b.units.filter(u => fighting(u) && u.side === 1 && (u.owner !== b.playerOwner || options.autoGarrison)));
   event(b, 'deployment', 'Place your formations, then begin the battle.');
   return b;
 }
@@ -350,7 +372,7 @@ export function beginBattle(b) {
   if (b.phase === 'deployment' || b.battleRulesVersion !== 2 || b.maxActive > MAX_ACTIVE_TROOPS || b.deploymentLayoutVersion !== 1) normalizeBattleCheckpoint(b);
   if (b.phase !== 'deployment') return b;
   b.phase = 'combat';
-  for (const u of b.units) if (alive(u) && !u.explicitOrder) u.order = { kind: 'advance' };
+  for (const u of b.units) if (alive(u) && !u.explicitOrder && !u.fortPost) u.order = { kind: 'advance' };
   event(b, 'begin', 'The battle has begun.');
   checkVictory(b);
   return b;
@@ -388,14 +410,59 @@ function formationOffsets(units, formation) {
   return points.map(p => ({ x: p.x - center.x, z: p.z - center.z }));
 }
 const ORDER_ALIASES = { moveAndFace: 'move', holdPosition: 'hold', followMe: 'follow', attackFormation: 'attack', attackNearest: 'nearest', holdfire: 'holdFire' };
+function disengage(u) {
+  if (['shoot', 'attack', 'siege'].includes(u.action?.kind)) u.action = null;
+  u.targetId = null; u.blocking = false; u.braced = false; u.chargeDistance = 0;
+}
+function recallRetreat(b, u) {
+  if (!u.order.orderedRetreat) return;
+  u.routing = false;
+  const army = b.armies.find(a => a.armyId === u.armyId);
+  if (army) army.retreating = false;
+}
+function followerDestination(b, u, commander) {
+  if (!Number.isInteger(u.order.followSlot)) {
+    const taken = new Set(b.units.filter(v => alive(v) && v.order.kind === 'follow').map(v => v.order.followSlot));
+    let next = 0; while (taken.has(next)) next++;
+    u.order.followSlot = next;
+  }
+  // Widen successive ranks so a large company fits behind the moving commander.
+  let row = 0, width = 3, column = u.order.followSlot;
+  while (column >= width) { column -= width; row++; width = Math.min(15, width + 2); }
+  const side = Math.ceil(column / 2) * (column % 2 ? -1 : 1) * 2.7, back = 2.8 + row * 2.7;
+  const cos = Math.cos(commander.facing), sin = Math.sin(commander.facing);
+  const x = commander.x + cos * side - sin * back, z = commander.z - sin * side - cos * back;
+  if (commander.wallId) {
+    const w = b.layout.walls.find(w => w.id === commander.wallId && w.hp > 0);
+    if (w) {
+      const horizontal = w.width > w.depth, slots = Math.floor((horizontal ? w.width : w.depth) / 1.8);
+      const along = horizontal ? commander.x - w.x : commander.z - w.z;
+      const offsets = Array.from({length:slots}, (_,i)=>(i-(slots-1)/2)*1.8)
+        .filter(offset=>Math.abs(offset-along)>1.2).sort((a,c)=>Math.abs(a-along)-Math.abs(c-along));
+      const offset = offsets[u.order.followSlot];
+      if (offset !== undefined) return {x:w.x + (horizontal ? offset : 0), z:w.z + (horizontal ? 0 : offset), wallId:w.id};
+      // Once the parapet is full, form a second rank at its interior stair.
+      const stair = b.layout.stairs.find(s=>s.wallId===w.id);
+      if (stair) {
+        const inward = 2 + row * 1.8;
+        return nearestBattlePosition(b,{x:stair.x + (horizontal ? side : Math.sign(stair.x - w.x) * inward),
+          z:stair.z + (horizontal ? Math.sign(stair.z - w.z) * inward : side)},u);
+      }
+    }
+  }
+  return nearestBattlePosition(b, { x, z }, u);
+}
 export function issueOrder(b, selection, order, params = {}) {
   if (b.phase === 'complete') return { accepted: false, reason: 'The battle has ended.' };
   order = ORDER_ALIASES[order] || order;
-  if (!['move', 'face', 'hold', 'advance', 'charge', 'follow', 'attack', 'nearest', 'fire', 'holdFire', 'withdraw', 'retreat', 'formation', 'ladder', 'walls'].includes(order)) return { accepted: false, reason: 'Unknown battle order.' };
+  if (!['move', 'face', 'hold', 'advance', 'charge', 'follow', 'attack', 'nearest', 'fire', 'holdFire', 'withdraw', 'retreat', 'formation', 'ladder', 'walls', 'crew', 'breach'].includes(order)) return { accepted: false, reason: 'Unknown battle order.' };
   const units = selected(b, selection).filter(u => order !== 'walls' || ['infantry', 'ranged'].includes(u.family) && (b.phase !== 'deployment' || u.side === 1));
   if (!units.length) return { accepted: false, reason: 'No available troops match the selection.' };
+  if (order === 'ladder') return assignLadders(b, units, params.ladderId);
+  if (order === 'crew' || order === 'breach') return assignRam(b, units, params.ramId, params.wallId);
   if (order === 'hold' && (params.atCurrent || params.holdCurrent)) {
     for (const u of units) {
+      recallRetreat(b, u);
       u.order = { kind: 'hold', x: u.x, z: u.z, facing: Number.isFinite(params.facing) ? params.facing : u.facing, lockFacing: Number.isFinite(params.facing) };
       if (u.wallId) u.order.wallId = u.wallId;
       if (u.status === 'reserve') u.order.anchorOnArrival = true;
@@ -415,6 +482,8 @@ export function issueOrder(b, selection, order, params = {}) {
   const formation = params.formation || units[0].formation || 'balanced';
   const slotUnits = deployed.length ? deployed : units.slice(0, b.activeCaps[b.playerSide]);
   const offsets = formationOffsets(slotUnits, formation), slotOrder = [...deployed, ...units.filter(u => !alive(u))];
+  const occupied = new Set(order === 'follow' ? b.units.filter(u => u.order.kind === 'follow' && !units.includes(u) && alive(u)).map(u => u.order.followSlot) : []);
+  let followSlot = 0;
   const deploymentPositions = new Map();
   if (b.phase === 'deployment' && ['move', 'hold', 'formation'].includes(order)) {
     const ignored = new Set(deployed.map(u => u.id)), placed = [];
@@ -428,14 +497,25 @@ export function issueOrder(b, selection, order, params = {}) {
     }
   }
   units.forEach(u => {
-    if (order === 'fire' || order === 'holdFire') { u.holdFire = order === 'holdFire'; return; }
+    if (order === 'fire' || order === 'holdFire') {
+      u.holdFire = order === 'holdFire';
+      if (u.holdFire && u.action?.ranged && !u.action.impacted) u.action = null;
+      return;
+    }
     if (params.formation) u.formation = params.formation;
+    if (order !== 'retreat') recallRetreat(b,u);
     if (order === 'face') { u.facing = f; u.order = { kind: 'hold', x: u.x, z: u.z, facing: f, lockFacing: true }; u.explicitOrder = true; return; }
     const { x, z } = offsets[slotOrder.indexOf(u) % offsets.length];
     const destination = nearestBattlePosition(b, { x: pos.x + x * Math.cos(f) + z * Math.sin(f), z: pos.z - x * Math.sin(f) + z * Math.cos(f) }, u);
     u.order = { kind: order === 'formation' ? 'move' : order, x: destination.x, z: destination.z, facing: f, lockFacing: Number.isFinite(params.facing), targetArmyId: params.targetArmyId || null, targetId: params.targetId || null, offsetX: x, offsetZ: z };
+    if (order === 'follow' && u.id !== b.commanderId && alive(u)) {
+      while (occupied.has(followSlot)) followSlot++;
+      u.order.followSlot = followSlot++;
+    }
+    if (order === 'advance') u.order.company = (b.nextEvent || 0) + 1;
+    if (['follow', 'move', 'formation', 'withdraw', 'retreat', 'advance'].includes(order) && (u.id !== b.commanderId || order === 'retreat')) disengage(u);
     u.explicitOrder = true; u.path = []; u.pathAt = -10;
-    if (order === 'retreat') u.routing = true;
+    if (order === 'retreat') { u.routing = true; u.order.orderedRetreat = true; }
     if (b.phase === 'deployment' && ['move', 'hold', 'formation'].includes(order) && alive(u)) {
       const safe = deploymentPositions.get(u.id);
       u.x = safe.x; u.z = safe.z; u.y = terrainHeight(b, u.x, u.z); u.facing = f;
@@ -453,6 +533,43 @@ export function issueOrder(b, selection, order, params = {}) {
   event(b, 'order', `${order === 'holdFire' ? 'Hold fire' : order}: ${units.length} troops.`, { x: actualPosition.x, z: actualPosition.z });
   return { accepted: true, count: units.length, destination: actualPosition, reason: deploymentPositions.size && !inDeploymentZone(deploymentZonesFor(b)[units[0].side], pos) ? 'The formation stays inside its deployment area.' : pos.reason || null };
 }
+function assignLadders(b, units, ladderId) {
+  const ladders = usableLadders(b).filter(l => !ladderId || l.id === ladderId);
+  const eligible = units.filter(u => u.side === 0 && ['ranged', 'infantry'].includes(u.family) && !u.wallId);
+  if (!ladders.length || !eligible.length) return { accepted: false, reason: 'Select foot troops and a ladder on an intact wall.' };
+  const demand = new Map(ladders.map(l => [l.id, b.units.filter(u => fighting(u) && !eligible.includes(u) && u.order?.ladderId === l.id).length]));
+  for (const u of eligible.sort((a, c) => a.id.localeCompare(c.id))) {
+    const cost = l => distance(u, l.foot) + demand.get(l.id) * 3;
+    const l = ladders.reduce((best, next) => cost(best) <= cost(next) ? best : next);
+    demand.set(l.id, demand.get(l.id) + 1);
+    u.order = { kind: 'ladder', ladderId: l.id }; u.explicitOrder = true; u.routing = false;
+    u.targetId = null; u.blocking = false; u.path = []; u.pathAt = -10;
+    if (!['climb','stairs'].includes(u.action?.kind)) u.action = null;
+  }
+  event(b, 'order', `${eligible.length} troops advancing to ${ladderId ? ladders[0].name : 'the ladders'}.`);
+  return { accepted: true, count: eligible.length };
+}
+function usableLadders(b) {
+  return b.layout.ladders.filter(l => b.layout.walls.some(w => w.id === l.wallId && w.hp > 0));
+}
+function assignRam(b, units, ramId, wallId) {
+  const ram = b.units.find(u => u.id === ramId && u.type === 'ram' && u.side === 0 && fighting(u));
+  const wall = [...b.layout.walls, b.layout.gate].find(w => w && w.id === wallId && w.hp > 0);
+  if (!ram || !wall) return { accepted: false, reason: 'Choose an available ram and an intact exterior wall or gate.' };
+  const carriers = units.filter(u => u.owner === ram.owner && u.family === 'infantry' && fighting(u) && !u.wallId && !u.action?.ladderId && (b.auto || u.id !== b.commanderId)).sort((a, c) => distance(a, ram) - distance(c, ram));
+  if (!carriers.length) return { accepted: false, reason: 'Select active infantry to carry the timber.' };
+  let assigned = 0;
+  const current = b.units.filter(v => fighting(v) && v.order.kind === 'crew' && v.order.ramId === ramId);
+  const taken = new Set(current.map(v => v.order.handle));
+  for (const u of carriers) {
+    if (current.includes(u)) { assigned++; continue; }
+    const open = [0,1,2,3,4,5].find(i => !taken.has(i));
+    u.order = { kind: 'crew', ramId, handle: open ?? null }; u.explicitOrder = true; u.action = null; u.targetId = null;
+    u.path = []; u.pathAt = -10; u.blocking = false; u.atHandle = false; taken.add(open); assigned++;
+  }
+  if (assigned) { ram.ramTargetId = wall.id; ram.action = null; ram.order = { kind: 'breach', wallId }; ram.explicitOrder = true; }
+  return { accepted: assigned > 0, count: assigned, reason: assigned ? null : 'All six handles are occupied.' };
+}
 function issueWallOrder(b, units, params) {
   const walls = b.layout.walls.filter(w => w.hp > 0 && (!params.wallId || w.id === params.wallId));
   if (!walls.length) return { accepted: false, reason: 'No intact wall section is available to defend.' };
@@ -461,14 +578,15 @@ function issueWallOrder(b, units, params) {
   const slots = [];
   for (const w of walls) {
     const horizontal = w.width > w.depth, length = horizontal ? w.width : w.depth;
-    const n = Math.max(1, Math.floor((length - 4) / 2.4));
+    const n = Math.max(1, Math.floor((length - 2) / 2));
     const f = w.id.includes('front') ? Math.PI : w.id === 'wall-rear' ? 0 : w.id === 'wall-west' ? -Math.PI / 2 : Math.PI / 2;
     for (let i = 0; i < n; i++) {
-      const slot = `${w.id}:${i}`, offset = (i - (n - 1) / 2) * 2.4;
+      const slot = `${w.id}:${i}`, offset = -length / 2 + 1.7 + i * 2;
       if (!occupied.has(slot)) slots.push({ slot, wallId: w.id, x: w.x + (horizontal ? offset : 0), z: w.z + (horizontal ? 0 : offset), facing: f });
     }
   }
   let assigned = 0; const placed = [];
+  if (params.near) slots.sort((a,c) => distance(a,params.near) - distance(c,params.near));
   for (const u of units) {
     const slotIndex = slots.findIndex(s => {
       const wall = walls.find(w => w.id === s.wallId);
@@ -497,7 +615,7 @@ function moveOnWall(b, u, target, dt, keepFacing = false) {
   u.y = terrainHeight(b, u.x, u.z) + w.height; u.speed = d > .05 ? step / dt : 0;
 }
 function startStairs(b, u, stair, ascending) {
-  if (u.action || b.units.some(v => v.id !== u.id && alive(v) && v.action?.kind === 'stairs' && v.action.stairId === stair.id)) return false;
+  if (u.action || b.units.some(v => v.id !== u.id && alive(v) && v.action?.kind === 'stairs' && v.action.stairId === stair.id && (v.action.ascending !== ascending || v.action.elapsed < 1.1))) return false;
   u.action = { kind: 'stairs', stairId: stair.id, wallId: stair.wallId, ascending, elapsed: 0, duration: 4, windup: 4, recovery: 0, fromX: u.x, fromZ: u.z, fromY: u.y, targetX: ascending ? stair.topX : stair.x, targetZ: ascending ? stair.topZ : stair.z };
   u.speed = 0; u.blocking = false; u.braced = false;
   return true;
@@ -544,6 +662,18 @@ function moveUnit(b, u, destination, dt, options = {}) {
     if (destination.wallId === u.wallId || options.direct && inside(wall, destination.x, destination.z, -.15)) {
       moveOnWall(b, u, destination, dt, options.keepFacing); return;
     }
+    const outside = destination.z < 11 && u.side === 0;
+    const closed = outside && b.layout.gate?.hp > 0 && b.layout.walls.every(w => w.hp > 0);
+    const ladder = closed && usableLadders(b).find(l => l.wallId === u.wallId);
+    if (ladder && ['follow','retreat','move','withdraw'].includes(u.order.kind)) {
+      if (distance(u,ladder.landing) > .65) moveOnWall(b,u,ladder.landing,dt);
+      else if (!u.action && !b.units.some(v => alive(v) && v.action?.ladderId === ladder.id)) {
+        u.action = { kind:'climb', ladderId:ladder.id, wallId:wall.id, progress:1, elapsed:5.8,
+          duration:5.8, windup:4.8, recovery:1, ascending:false, phase:'crest' };
+        u.wallId=null; u.speed=0;
+      }
+      return;
+    }
     const stair = b.layout.stairs?.find(s => s.wallId === wall.id);
     if (!stair) return;
     const top = { x: stair.topX, z: stair.topZ };
@@ -554,7 +684,7 @@ function moveUnit(b, u, destination, dt, options = {}) {
   let target = destination;
   if (options.direct) u.path = [];
   else {
-    if (b.time - u.pathAt > 3 || !u.pathTarget || distance(u.pathTarget, destination) > 6 || u.navRevision !== b.layout.navRevision) {
+    if (b.time - u.pathAt > 3 || !u.pathTarget || distance(u.pathTarget, destination) > (u.order.kind === 'follow' ? .75 : 6) || u.navRevision !== b.layout.navRevision) {
       u.path = pathTo(b, u, destination); u.pathAt = b.time; u.pathTarget = { x: destination.x, z: destination.z }; u.navRevision = b.layout.navRevision;
     }
     while (u.path.length && distance(u, u.path[0]) < 1.3) u.path.shift();
@@ -562,7 +692,7 @@ function moveUnit(b, u, destination, dt, options = {}) {
   }
   const dx = target.x - u.x, dz = target.z - u.z, d = Math.hypot(dx, dz);
   if (d < .3) { u.speed *= .5; return; }
-  let speed = profile.speed * (options.sprint && u.stamina > 5 ? 1.45 : 1);
+  let speed = profile.speed * (options.speedScale ?? 1) * (options.sprint && u.stamina > 5 ? 1.45 : 1);
   if (u.family === 'mounted' && !u.mounted) speed = 3.3 * (options.sprint ? 1.45 : 1);
   if (u.family === 'mounted' && b.layout.terrain === 'forest') speed *= .55;
   if (u.formation === 'defensive' || u.formation === 'spearWall') speed *= .78;
@@ -575,12 +705,9 @@ function moveUnit(b, u, destination, dt, options = {}) {
   const blocked = obstruction(b, nx, nz, u);
   if (blocked) {
     u.chargeDistance = 0; u.speed = 0;
-    const ladder = u.family === 'infantry' && b.layout.ladders.find(l => Math.abs(u.x - l.x) < 3 && Math.abs(u.z - l.z) < 4 && Math.sign(destination.z - l.z) !== Math.sign(u.z - l.z));
-    if (ladder && !u.action && (!ladder.climberId || !b.units.some(v => v.id === ladder.climberId && alive(v) && v.action?.kind === 'climb'))) {
-      ladder.active = true; ladder.climberId = u.id;
-      const destinationWall = b.layout.walls.find(w => w.hp > 0 && inside(w, destination.x, destination.z, .5));
-      u.action = { kind: 'climb', elapsed: 0, windup: 3.5, duration: 5, recovery: 1.5, ladderId: ladder.id, targetX: ladder.x, targetZ: destinationWall ? ladder.z : ladder.z + Math.sign(destination.z - ladder.z) * 3, wallId: destinationWall?.id || null, fromZ: u.z };
-      event(b, 'ladder', 'Infantry are climbing the assault ladder.', { x: ladder.x, z: ladder.z });
+    if (options.direct && u.side === 0 && !u.wallId && !u.mounted && dz > 0) {
+      const l = usableLadders(b).find(l => distance(u, l.foot) <= 2.3);
+      if (l) startClimb(b, u, l, true);
     }
     return;
   }
@@ -588,6 +715,88 @@ function moveUnit(b, u, destination, dt, options = {}) {
   if (!options.keepFacing) u.facing = Math.atan2(dx, dz);
   u.x = nx; u.z = nz; u.y = terrainHeight(b, nx, nz);
   if (options.sprint) u.stamina = Math.max(0, u.stamina - dt * 13);
+}
+function startClimb(b, u, l, personal = false) {
+  if (u.action || u.mounted || u.family === 'siege') return false;
+  const onLane = b.units.filter(v => alive(v) && v.action?.kind === 'climb' && v.action.ladderId === l.id);
+  if (onLane.some(v => !v.action.ascending || v.action.progress < .23)) return false;
+  u.x = l.foot.x; u.z = l.foot.z; u.facing = 0; u.speed = 0; u.blocking = false;
+  u.action = { kind: 'climb', ladderId: l.id, wallId: l.wallId, elapsed: 0, duration: 5.8, windup: 4.8, recovery: 1, progress: 0, phase: 'rungs', ascending: true, personal };
+  event(b, 'ladder', `${l.name} in use.`, { x: l.x, z: l.z, unitId: u.id });
+  return true;
+}
+function approachLadder(b, u, dt) {
+  const l = usableLadders(b).find(l => l.id === u.order.ladderId);
+  if (!l) { u.order = { kind: 'charge' }; u.pathAt = -10; return false; }
+  if (u.wallId) { u.order = { kind: 'charge' }; return false; }
+  const queue = b.units.filter(v => fighting(v) && !v.wallId && v.order.kind === 'ladder' && v.order.ladderId === l.id && v.action?.kind !== 'climb')
+    .sort((a,c) => distance(a,l.foot) - distance(c,l.foot) || a.id.localeCompare(c.id));
+  const index = Math.max(0, queue.indexOf(u)), dest = { x: l.foot.x + (index > 5 ? (index % 3 - 1) * 1.4 : 0), z: l.foot.z - Math.min(index, 5) * 1.4 - Math.floor(Math.max(index - 5, 0) / 3) * 1.5 };
+  u.blocking = false; u.targetId = null;
+  if (index === 0 && distance(u, l.foot) <= .85) { startClimb(b, u, l); u.speed = 0; }
+  else moveUnit(b, u, dest, dt);
+  return true;
+}
+function updateClimb(b, u, a, dt) {
+  const l = b.layout.ladders.find(l => l.id === a.ladderId), w = b.layout.walls.find(w => w.id === l?.wallId);
+  if (!l || !w || w.hp <= 0) {
+    u.y = terrainHeight(b, u.x, u.z); u.action = null; u.wallId = null; u.pathAt = -10;
+    if (u.order.kind === 'ladder') u.order = { kind: 'charge' };
+    return;
+  }
+  // Checkpoints from the old single-climber route had no progress field.
+  if (!Number.isFinite(a.progress)) Object.assign(a, { progress: clamp(a.elapsed / a.duration, 0, .95), ascending: true, phase: 'rungs', wallId: w.id });
+  const assigned = u.order.kind === 'ladder' && u.order.ladderId === l.id;
+  if ((!assigned && !a.personal || u.routing) && a.progress < .72) a.ascending = false;
+  const others = b.units.filter(v => v !== u && alive(v) && v.action?.kind === 'climb' && v.action.ladderId === l.id);
+  if (!a.ascending && others.some(v => v.action.progress < a.progress && v.order.kind === 'ladder' && !v.routing)) a.ascending = true;
+  const ahead = others.filter(v => a.ascending ? v.action.progress > a.progress : v.action.progress < a.progress);
+  let next = a.progress + (a.ascending ? 1 : -1) * dt / 5.8;
+  for (const v of ahead) next = a.ascending ? Math.min(next, Math.max(a.progress, v.action.progress - .21)) : Math.max(next, Math.min(a.progress, v.action.progress + .21));
+  if (a.ascending && next >= .76 && a.phase !== 'clear') {
+    const defender = b.units.find(v => fighting(v) && v.side !== u.side && v.wallId === w.id && distance(v, l.landing) < 2.25);
+    if (defender) {
+      if (!l.held || b.time >= (l.nextHeldNotice || 0)) {
+        event(b, 'ladderHeld', `${l.name} held by defenders`, { ladderId: l.id, x: l.x, z: l.z });
+        l.nextHeldNotice = b.time + 8;
+      }
+      l.held = true;
+      next = Math.min(next, Math.max(a.progress, .80));
+      if (b.time >= (a.nextThrust || 0) && Math.abs(u.y - defender.y) <= 2 && distance(u, defender) <= profileFor(u).reach + .6) {
+        u.facing = facing(u, defender); hit(b, u, defender, profileFor(u).damage * .8); a.nextThrust = b.time + 1.25;
+      }
+    } else l.held = false;
+  }
+  a.progress = clamp(next, 0, 1); a.elapsed = a.progress * a.duration;
+  const rise = clamp(a.progress / .86, 0, 1);
+  const lip = w.z - w.depth / 2 - .28, mantle = clamp((a.progress - .86) / .12, 0, 1);
+  u.x = l.x; u.z = l.foot.z + (lip - l.foot.z) * rise + (l.landing.z-lip) * mantle;
+  u.y = terrainHeight(b, u.x, u.z) + l.height * rise;
+  if (!a.ascending && a.progress <= 0) { u.action = null; u.pathAt = -10; u.z -= .7; u.y = terrainHeight(b, u.x, u.z); return; }
+  a.phase = a.progress < .76 ? 'rungs' : a.progress < .9 ? 'crest' : 'clear';
+  if (a.phase !== 'clear' || !a.ascending) return;
+  // Choose the closest free ledge, then step sideways so the next climber
+  // never lands in a friendly. Claims live on actions and vanish on death.
+  if (a.clearX === undefined) {
+    const occupied = b.units.filter(v => v !== u && alive(v) && (v.wallId === w.id || v.action?.wallId === w.id && Number.isFinite(v.action.clearX)));
+    for (let n = 1; n <= 14 && a.clearX === undefined; n++) for (const sign of [-1,1]) {
+      const x = l.x + sign * n * 1.5;
+      if (Math.abs(x - w.x) > w.width / 2 - .4 || occupied.some(v => Math.abs((v.action?.clearX ?? (v.order.assaultLanding ? v.order.x : v.x)) - x) < 1.2)) continue;
+      a.clearX = x; break;
+    }
+  }
+  if (a.clearX === undefined) { a.progress = .91; return; }
+  const slide = Math.min(1, (a.progress - .9) * 10);
+  // Only the short landing step belongs to the ladder. March farther along
+  // the parapet in ordinary wall movement after the leading foot lands.
+  u.x = l.x + Math.sign(a.clearX - l.x) * Math.min(1.4, Math.abs(a.clearX - l.x)) * slide;
+  if (a.progress >= 1) {
+    u.wallId = w.id; u.action = null; u.pathAt = -10; u.y = terrainHeight(b,u.x,u.z) + w.height;
+    if (assigned) {
+      u.order = { kind: 'hold', wallId: w.id, x: a.clearX, z: l.landing.z, facing: 0, assaultLanding: true, landedAt:b.time };
+      event(b, 'landed', `${l.name} landing cleared.`, { unitId: u.id, wallId: w.id, x: u.x, z: u.z });
+    }
+  }
 }
 function nearestEnemy(b, u, candidates, max = Infinity) {
   let enemy = null, best = max;
@@ -680,10 +889,22 @@ function hitWall(b, u, w, damage) {
   w.hp = Math.max(0, w.hp - damage);
   const before = w.state;
   w.state = w.hp === 0 ? 'breached' : w.hp < w.maxHp * .7 ? 'damaged' : 'intact';
-  if (w.state === 'breached' && before !== 'breached') { b.layout.navRevision++; event(b, 'breach', `${w.id === 'gate' ? 'The gate has fallen' : 'A wall is breached'}!`, { x: w.x, z: w.z, wallId: w.id }); }
+  if (w.state === 'breached' && before !== 'breached') {
+    if (w.id !== 'gate' && u.type === 'ram') w.breach = { x:w.x, z:w.z, width:6 };
+    b.layout.navRevision++;
+    event(b, 'breach', `${w.id === 'gate' ? 'The gate has fallen' : 'A wall is breached'}!`, { x: w.x, z: w.z, wallId: w.id });
+    for (const l of b.layout.ladders.filter(l => l.wallId === w.id)) { l.active = false; l.held = false; }
+    const at = ramApproach(w), reserves = b.units.filter(v => fighting(v) && ['reserve','gate'].includes(v.fortPost) && !v.explicitOrder);
+    for (const [i,v] of reserves.entries()) v.order = { kind:'hold', x:w.x + Math.sin(at.facing)*6 + Math.cos(at.facing)*(i%7-3)*2, z:w.z + Math.cos(at.facing)*6 - Math.sin(at.facing)*(i%7-3)*2, facing:at.facing + Math.PI };
+    for (const v of b.units.filter(v => fighting(v) && v.side===0 && v.order.kind==='ladder' && v.action?.kind!=='climb')) {
+      if (!b.layout.ladders.some(l => l.id===v.order.ladderId && l.wallId===w.id) && v.owner===b.playerOwner && !b.auto) continue;
+      v.order={kind:'charge'}; v.pathAt=-10;
+    }
+  }
   updateFortifications(b);
 }
 function actionImpact(b, u, action) {
+  if (u.type === 'ram') return;
   const p = profileFor(u), target = b.units.find(v => v.id === action.targetId), wall = [...b.layout.walls, ...(b.layout.gate ? [b.layout.gate] : [])].find(w => w.id === action.targetId);
   if (action.ranged) {
     if (u.ammo <= 0) return;
@@ -710,43 +931,43 @@ function updateAction(b, u, dt) {
     if (t >= 1) { u.wallId = a.ascending ? a.wallId : null; u.action = null; u.path = []; u.pathAt = -10; }
     return;
   }
-  if (a.kind === 'climb') {
-    const ladder = b.layout.ladders.find(l => l.id === a.ladderId);
-    if (ladder) ladder.progress = clamp(a.elapsed / a.duration, 0, 1);
-    u.y = terrainHeight(b, u.x, u.z) + (a.wallId ? clamp(a.elapsed / a.duration, 0, 1) : Math.sin(Math.PI * clamp(a.elapsed / a.duration, 0, 1))) * 6;
-    if (a.elapsed >= a.duration) { u.x = a.targetX; u.z = a.targetZ; u.wallId = a.wallId || null; u.y = terrainHeight(b, u.x, u.z) + (u.wallId ? 6 : 0); if (ladder) ladder.climberId = null; u.action = null; u.path = []; u.pathAt = -10; }
-    return;
-  }
+  if (a.kind === 'climb') { updateClimb(b, u, a, dt); return; }
   if (!a.impacted && a.elapsed >= a.windup) { a.impacted = true; actionImpact(b, u, a); }
   if (a.elapsed >= a.duration) u.action = null;
 }
 function updateProjectiles(b, dt) {
   for (const p of b.projectiles) {
-    const ox = p.x, oz = p.z;
+    const ox = p.x, oy = p.y, oz = p.z;
     p.elapsed += dt; const t = clamp(p.elapsed / p.duration, 0, 1);
     p.x = p.startX + (p.targetX - p.startX) * t; p.z = p.startZ + (p.targetZ - p.startZ) * t;
     p.y = p.startY + (p.targetY - p.startY) * t + Math.sin(t * Math.PI) * (p.kind === 'stone' ? 16 : .22);
     const source = b.units.find(u => u.id === p.sourceId);
     if (!source) { p.done = true; continue; }
-    if (p.kind !== 'stone') {
-      const obstacle = obstruction(b, p.x, p.z, source);
-      if (obstacle && obstacle.kind !== 'water' && p.y < (obstacle.height || 6) + terrainHeight(b, p.x, p.z)) { p.done = true; event(b, 'missileBlocked', 'A missile strikes cover.', { x: p.x, z: p.z }); continue; }
-      for (const u of b.units) {
-        if (!alive(u) || u.id === source.id || Math.abs(p.y - (u.y + 1.2)) > 1.3) continue;
-        const vx = p.x - ox, vz = p.z - oz, lengthSq = vx * vx + vz * vz;
-        const along = lengthSq ? clamp(((u.x - ox) * vx + (u.z - oz) * vz) / lengthSq, 0, 1) : 0;
-        if (Math.hypot(u.x - ox - along * vx, u.z - oz - along * vz) < .85) {
-          if (u.side !== source.side) hit(b, source, u, p.damage, { projectile: true, piercing: p.kind === 'bolt' });
-          else event(b, 'missileBlocked', 'An allied formation blocks the firing lane.', { x: p.x, z: p.z });
-          p.done = true; break;
-        }
+    let stoneImpact = null;
+    if (p.kind === 'stone') {
+      const steps=Math.max(1,Math.ceil(Math.hypot(p.x-ox,p.y-oy,p.z-oz)/.3));
+      for(let i=1;i<=steps;i++) {
+        const f=i/steps, x=ox+(p.x-ox)*f, y=oy+(p.y-oy)*f, z=oz+(p.z-oz)*f;
+        stoneImpact=projectileCover(b,x,y,z);
+        if (stoneImpact) { Object.assign(p,{x,y,z}); break; }
+      }
+    } else {
+      const dx=p.x-ox, dy=p.y-oy, dz=p.z-oz, steps=Math.max(1,Math.ceil(Math.hypot(dx,dy,dz)/.23));
+      const nearby=b.units.filter(u=>alive(u) && u!==source && Math.abs(u.x-ox)<Math.abs(dx)+.86 && Math.abs(u.z-oz)<Math.abs(dz)+.86);
+      for(let i=1;i<=steps;i++){
+        const f=i/steps, x=ox+dx*f, y=oy+dy*f, z=oz+dz*f;
+        if(projectileCover(b,x,y,z)) { p.done=true; event(b,'missileBlocked','A missile strikes cover.',{x,y,z}); break; }
+        const victim=nearby.find(u=>y >= u.y && y < u.y+(u.mounted?2.9:2.15) && Math.hypot(x-u.x,z-u.z)<.85);
+        if (!victim) continue;
+        if (victim.side !== source.side) hit(b,source,victim,p.damage,{projectile:true,piercing:p.kind==='bolt'});
+        else event(b,'missileBlocked','An allied formation blocks the firing lane.',{x,y,z});
+        p.done=true; break;
       }
     }
-    if (t >= 1) {
+    if (t >= 1 || stoneImpact) {
       if (p.kind === 'stone') {
         for (const u of b.units) if (alive(u) && distance(p, u) < p.splash) hit(b, source, u, p.damage * (1 - distance(p, u) / (p.splash + 1)), { projectile: true, piercing: true });
-        const wall = [...b.layout.walls, ...(b.layout.gate ? [b.layout.gate] : [])].find(w => w.id === p.wallId);
-        if (wall) hitWall(b, source, wall, (UNITS[source.type].breach || 8) * 3);
+        if (stoneImpact?.hp > 0) hitWall(b, source, stoneImpact, (UNITS[source.type].breach || 8) * 3);
         event(b, 'siegeImpact', 'A siege projectile impacts.', { x: p.x, z: p.z });
       }
       p.done = true;
@@ -755,15 +976,104 @@ function updateProjectiles(b, dt) {
   b.projectiles = b.projectiles.filter(p => !p.done);
 }
 
+function carryRam(b, u, dt) {
+  const ram = b.units.find(v => v.id === u.order.ramId && fighting(v) && v.order.kind === 'breach' && v.ramTargetId);
+  if (!ram) { u.order = { kind: 'hold', x: u.x, z: u.z }; u.atHandle = false; return; }
+  if (u.order.handle === null) {
+    const occupied = b.units.filter(v => fighting(v) && v.order.kind === 'crew' && v.order.ramId === ram.id);
+    const open = [0,1,2,3,4,5].find(i => !occupied.some(v => v.order.handle === i));
+    if (open !== undefined) u.order.handle = open;
+    else { u.atHandle = false; if (distance(u, ram) > 6) moveUnit(b, u, ram, dt); return; }
+  }
+  const handle = ramHandle(ram, u.order.handle);
+  u.blocking = false; u.targetId = null;
+  if (distance(u, handle) > .65) { u.atHandle = false; moveUnit(b, u, handle, dt); }
+  else { u.atHandle = true; u.x = handle.x; u.z = handle.z; u.y = terrainHeight(b, u.x, u.z); u.facing = ram.facing; u.speed = ram.speed; }
+}
+function updateRam(b, ram, dt) {
+  const crew = b.units.filter(u => fighting(u) && u.order.kind === 'crew' && u.order.ramId === ram.id && u.atHandle && Number.isInteger(u.order.handle) && distance(u,ramHandle(ram,u.order.handle)) < .85);
+  ram.crewCount = crew.length;
+  const wall = [...b.layout.walls, b.layout.gate].find(w => w && w.id === ram.ramTargetId && w.hp > 0);
+  if (!wall || ram.order.kind !== 'breach' || ram.routing) {
+    ram.ramTargetId = null; ram.action = null; ram.speed = 0; ram.crewCount = 0;
+    for (const u of b.units.filter(u => u.order.kind === 'crew' && u.order.ramId === ram.id)) {
+      u.atHandle = false; u.order = { kind: wall ? 'hold' : 'charge', x: u.x, z: u.z }; u.explicitOrder = !!wall;
+    }
+    return;
+  }
+  if (crew.length < 4) { ram.speed = 0; ram.action = null; return; }
+  const dest = ramApproach(wall), strength = crew.length / 6;
+  if (distance(ram, dest) > .42) {
+    moveUnit(b, ram, dest, dt, { speedScale: strength, direct: lineClear(b,ram,dest,ram) });
+    ram.action = null;
+  } else {
+    ram.speed = 0; ram.facing = dest.facing;
+    if (!ram.action || ram.action.kind !== 'ramStrike') {
+      ram.action = { kind: 'ramStrike', targetId: wall.id, elapsed: 0, windup: 1.25 / strength, recovery: 1.8 / strength, duration: 3.05 / strength, impacted: false };
+    }
+    const a = ram.action; a.elapsed += dt;
+    if (!a.impacted && a.elapsed + 1e-8 >= a.windup) {
+      a.impacted = true;
+      const material = wall.id === 'gate' ? 'wood' : 'stone';
+      event(b, 'ramImpact', material === 'wood' ? 'The ram splinters the gate.' : 'The ram strikes masonry.', { unitId: ram.id, wallId: wall.id, material, x: ram.x + Math.sin(ram.facing) * 2.8, y: ram.y + 1.1, z: ram.z + Math.cos(ram.facing) * 2.8 });
+      hitWall(b, ram, wall, (material === 'wood' ? 54 : 31) * strength);
+    }
+    if (a.elapsed >= a.duration) ram.action = null;
+  }
+  for (const u of crew) {
+    const p = ramHandle(ram, u.order.handle);
+    Object.assign(u, p, { y: terrainHeight(b, p.x, p.z), facing: ram.facing, speed: ram.speed });
+  }
+}
+function postDefenders(b, troops) {
+  const available = troops.filter(u => !u.explicitOrder && !u.fortPost);
+  const ladders = usableLadders(b);
+  const guards = available.filter(u => u.family === 'infantry' && u.type !== 'spearman');
+  const marksmen = available.filter(u => u.family === 'ranged');
+  const assign = (u,l,near) => {
+    if (!u || !l) return;
+    if (issueWallOrder(b,[u],{wallId:l.wallId,near}).accepted) u.fortPost = 'parapet';
+  };
+  for (const l of ladders) {
+    const guard = b.units.find(u => fighting(u) && u.fortPost === 'parapet' && u.family === 'infantry' && u.wallPosition?.wallId === l.wallId);
+    if (!guard) assign(guards.shift(),l,l.landing);
+  }
+  for (let i=0; i<marksmen.length && ladders.length; i++) {
+    const sorted = ladders.slice().sort((a,c) => b.units.filter(v => fighting(v) && v.order.kind === 'walls' && v.wallPosition?.wallId === a.wallId).length - b.units.filter(v => fighting(v) && v.order.kind === 'walls' && v.wallPosition?.wallId === c.wallId).length);
+    for (const l of sorted) { assign(marksmen[i], l); if (marksmen[i].fortPost) break; }
+  }
+  const posts = available.filter(u => !u.fortPost);
+  for (const [i,u] of posts.entries()) {
+    const gate = u.type === 'spearman', p = { x: (i % 7 - 3) * 1.8, z: (gate ? 20 : 26) + Math.floor(i / 7) * 2 };
+    u.fortPost = gate ? 'gate' : 'reserve'; u.order = { kind:'hold', ...p, facing:Math.PI };
+    if (b.phase === 'deployment' && inDeploymentZone(deploymentZonesFor(b)[u.side],p) && freeTroopPosition(b,u,p)) Object.assign(u,p,{y:terrainHeight(b,p.x,p.z)});
+  }
+}
+function planSiege(b, a, troops) {
+  if (!b.layout.fortified || a.owner === b.playerOwner && !b.auto) return;
+  if (a.side === 1) { postDefenders(b,troops); return; }
+  const opening = [...b.layout.walls,b.layout.gate].some(w => w && w.hp <= 0);
+  if (opening) return;
+  const rams = troops.filter(u => u.type === 'ram');
+  for (const ram of rams) {
+    const crew = troops.filter(u => u.order.kind === 'crew' && u.order.ramId === ram.id);
+    const picks = troops.filter(u => u.family === 'infantry' && (!u.explicitOrder || u.order.kind === 'ladder' && !u.wallId && !u.action)).sort((a,c) => distance(a,ram)-distance(c,ram)).slice(0,6-crew.length);
+    const wall = b.layout.walls.find(w => w.id === 'wall-east-front' && w.hp > 0) || b.layout.gate;
+    if (picks.length && wall?.hp>0) assignRam(b,picks,ram.id,wall.id);
+  }
+  const infantry = troops.filter(u => u.family === 'infantry' && !u.explicitOrder && !u.wallId);
+  if (infantry.length) assignLadders(b,infantry,rams.length ? usableLadders(b)[0]?.id : null);
+}
 function planArmies(b) {
   const strengths = [0, 0]; for (const u of b.units) if (u.status === 'active' || u.status === 'reserve') strengths[u.side] += (UNITS[u.type].attack + UNITS[u.type].defense) * (u.hp / u.maxHp);
   for (const a of b.armies) {
     const troops = b.units.filter(u => u.armyId === a.armyId && fighting(u));
     if (!troops.length) continue;
+    planSiege(b,a,troops);
     a.morale = troops.reduce((sum, u) => sum + u.morale, 0) / troops.length;
     const commander = a.general || {}, aggression = Number(commander.aggression ?? .5), defensive = strengths[a.side] < strengths[1 - a.side] * .7 || a.side === 1 && b.layout.fortified;
     for (const u of troops) {
-      if (u.owner === b.playerOwner && !b.auto || u.explicitOrder || u.allyRequestUntil > b.time) continue;
+      if (u.owner === b.playerOwner && !b.auto || u.explicitOrder || u.fortPost || u.allyRequestUntil > b.time) continue;
       if (a.morale < 18 && strengths[a.side] < strengths[1 - a.side] * .6) { u.routing = true; u.order = { kind: 'retreat' }; continue; }
       if (u.family === 'mounted') u.formation = 'flanking';
       if (u.type === 'spearman' && defensive) u.formation = 'spearWall';
@@ -775,14 +1085,38 @@ function planArmies(b) {
 function targetWall(b, u) {
   if (u.side !== 0 || !b.layout.fortified) return null;
   if (u.family === 'siege') {
-    if (u.type === 'ram') return b.layout.gate?.hp > 0 ? b.layout.gate : null;
+    if (u.type === 'ram') return null;
     return b.layout.walls.filter(w => w.hp > 0).sort((a, c) => distance(u, a) - distance(u, c))[0] || (b.layout.gate?.hp > 0 ? b.layout.gate : null);
   }
   return null;
 }
-function aiUnit(b, u, active, dt) {
+function advanceCompanies(active) {
+  const groups = new Map(), guides = new Map();
+  for (const u of active) {
+    if (u.order.kind !== 'advance' || !u.order.company || u.routing || u.type === 'ram') continue;
+    if (!groups.has(u.order.company)) groups.set(u.order.company, []);
+    groups.get(u.order.company).push(u);
+  }
+  for (const troops of groups.values()) {
+    const center = troops.reduce((p, u) => ({x:p.x + u.x / troops.length, z:p.z + u.z / troops.length}), {x:0,z:0});
+    let closest = null, range = Infinity;
+    for (const v of active) if (v.side !== troops[0].side && fighting(v) && distance(center, v) < range) {
+      closest = v; range = distance(center, v);
+    }
+    if (!closest) continue;
+    const heading = facing(center, closest), sin = Math.sin(heading), cos = Math.cos(heading);
+    for (const u of troops) {
+      const {offsetX, offsetZ} = u.order;
+      guides.set(u.id, {x:center.x + cos * offsetX + sin * (offsetZ + 4), z:center.z - sin * offsetX + cos * (offsetZ + 4)});
+    }
+  }
+  return guides;
+}
+function aiUnit(b, u, active, dt, advanceGuide) {
   const a = b.armies.find(a => a.armyId === u.armyId), p = profileFor(u);
   if (['stairs', 'climb'].includes(u.action?.kind)) return;
+  if (u.order.kind === 'crew' && !u.routing) { carryRam(b,u,dt); return; }
+  if (u.order.kind === 'ladder' && !u.routing && approachLadder(b,u,dt)) return;
   if (u.routing || u.order.kind === 'retreat') {
     u.routing = true; u.blocking = false; u.braced = false;
     const e = a.entry;
@@ -790,13 +1124,69 @@ function aiUnit(b, u, active, dt) {
     if (distance(u, e) < 5 || Math.abs(u.x) > 76 || Math.abs(u.z) > 76) { u.status = 'escaped'; u.action = null; event(b, 'escape', 'Routing troops reach an escape route.', { armyId: u.armyId }); }
     return;
   }
+  if (u.order.kind === 'follow' && u.id !== b.commanderId) {
+    const commander = b.units.find(v => v.id === b.commanderId && alive(v));
+    if (commander) {
+      const destination = followerDestination(b, u, commander);
+      const changingLevel = (destination.wallId || null) !== (u.wallId || null);
+      if (distance(u, destination) > .9 || changingLevel) {
+        disengage(u);
+        const stair = changingLevel && !u.wallId && b.layout.stairs?.find(s => s.wallId === destination.wallId);
+        if (stair && distance(u, stair) < 1) startStairs(b, u, stair, true);
+        else moveUnit(b, u, stair || destination, dt);
+        return;
+      }
+    }
+    u.speed = 0;
+  }
+  if (['move', 'withdraw'].includes(u.order.kind)) {
+    moveUnit(b, u, u.order, dt, { keepFacing: u.order.kind === 'withdraw' });
+    if (distance(u, u.order) >= .6) return;
+    u.order.kind = 'hold'; u.speed = 0;
+    if (u.order.lockFacing) u.facing = u.order.facing;
+  }
   // Keep the visible weapon swing committed through impact and recovery.
   // Re-targeting/moving every frame previously made fighters turn their backs
   // during a strike and caused the saved strike direction to miss the enemy.
   if (u.action && ['attack', 'shoot', 'siege'].includes(u.action.kind)) {
     u.speed = Math.max(0, u.speed - dt * 12); u.blocking = false; return;
   }
-  const enemy = nearestEnemy(b, u, active), d = enemy ? distance(u, enemy) : Infinity;
+  let enemy = nearestEnemy(b, u, active);
+  if (u.wallId && enemy) {
+    const threats = active.filter(v => alive(v) && v.side !== u.side && Math.abs(v.y - u.y) < 2.7 && distance(u,v) < 3.4);
+    if (threats.length) enemy = nearestEnemy(b,u,threats);
+    else if (u.family === 'ranged' && distance(u,enemy)<p.reach && !lineClear(b,u,enemy,u,true)) {
+      const others=active.filter(v => fighting(v) && v.side !== u.side && distance(u,v)<p.reach).sort((a,c) => distance(u,a)-distance(u,c));
+      const visible=others.find(v => lineClear(b,u,v,u,true));
+      if (visible) enemy=visible;
+      else if (u.order.kind==='walls' && u.wallPosition && b.time >= (u.nextWallAngle || 0)) {
+        u.nextWallAngle=b.time+2;
+        const wall=b.layout.walls.find(w=>w.id===u.wallId), horizontal=wall.width>wall.depth;
+        for (const shift of [-2,2,-4,4,-6,6]) {
+          const point={x:u.wallPosition.x+(horizontal?shift:0),z:u.wallPosition.z+(horizontal?0:shift),y:u.y};
+          if (!inside(wall,point.x,point.z,-.35) || active.some(v=>v!==u && v.wallId===wall.id && distance(v,point)<1.8)) continue;
+          if (!others.some(v=>lineClear(b,point,v,u,true))) continue;
+          Object.assign(u.wallPosition,{x:point.x,z:point.z,slot:`${wall.id}@${point.x},${point.z}`});
+          Object.assign(u.order,u.wallPosition);
+          break;
+        }
+      }
+    }
+  }
+  const d = enemy ? distance(u, enemy) : Infinity;
+  if (u.order.assaultLanding && u.wallId) {
+    if (!u.order.cleared && distance(u,u.order) > .25) { moveOnWall(b,u,u.order,dt); return; }
+    u.order.cleared=true;
+    const guard = active.find(v => fighting(v) && v.side !== u.side && v.wallId === u.wallId);
+    if (guard && distance(u,guard)>p.reach) { moveOnWall(b,u,guard,dt); return; }
+    if (!guard && b.time-u.order.landedAt>4 && enemy && enemy.z>13 &&
+        !active.some(v=>fighting(v) && v.side===u.side && v.order.kind==='ladder' && b.layout.ladders.some(l=>l.id===v.order.ladderId && l.wallId===u.wallId))) {
+      u.order={kind:'charge'};
+    }
+  }
+  if (advanceGuide && d > Math.max(p.reach, 4)) {
+    moveUnit(b, u, advanceGuide, dt); return;
+  }
   if (u.order.kind === 'walls' && takeWallPosition(b, u, dt)) return;
   u.targetId = enemy?.id || null;
   const oldBlock = u.blocking;
@@ -810,24 +1200,6 @@ function aiUnit(b, u, active, dt) {
     else moveUnit(b, u, approach, dt);
     return;
   }
-  if (u.order.kind === 'ladder' && b.layout.ladders.length) {
-    const ladder = b.layout.ladders.slice().sort((a, c) => distance(u, a) - distance(u, c))[0];
-    moveUnit(b, u, { x: ladder.x, z: ladder.z + 6 }, dt); return;
-  }
-  if (u.order.kind === 'move' || u.order.kind === 'withdraw') {
-    moveUnit(b, u, u.order, dt, { keepFacing: u.order.kind === 'withdraw' });
-    if (u.order.kind === 'withdraw' && enemy) u.facing = facing(u, enemy);
-    if (distance(u, u.order) < .6) { u.order.kind = 'hold'; if (u.order.lockFacing) u.facing = u.order.facing; }
-    else return;
-  }
-  if (u.order.kind === 'follow') {
-    const commander = b.units.find(v => v.id === b.commanderId);
-    if (commander && alive(commander)) {
-      const dest = { x: commander.x + (u.order.offsetX || 0), z: commander.z + (u.order.offsetZ || -3) };
-      if (distance(u, dest) > 4) moveUnit(b, u, dest, dt);
-      if (d > 3) return;
-    }
-  }
   if (!enemy) {
     if (b.securing && u.side === 0 && u.family !== 'siege') moveUnit(b, u, b.layout.objective, dt);
     else u.speed *= .8;
@@ -837,12 +1209,12 @@ function aiUnit(b, u, active, dt) {
   const canStrike = mayFaceEnemy || angle(u.facing, facing(u, enemy)) < .65;
   if (mayFaceEnemy) u.facing = facing(u, enemy);
   const ranged = ['bow', 'crossbow'].includes(u.weapon) && u.ammo > 0 || u.family === 'siege' && u.type !== 'ram' && u.ammo > 0;
-  u.sidearm = u.family === 'ranged' && (u.ammo <= 0 || d < 3) || u.family === 'siege' && u.type !== 'ram' && u.ammo <= 0;
+  u.sidearm = u.family === 'ranged' && (u.ammo <= 0 || d < 3 && Math.abs(u.y - enemy.y) < 2.7) || u.family === 'siege' && u.type !== 'ram' && u.ammo <= 0;
   if (ranged && !u.sidearm) {
-    if (d < 10 && !['hold', 'walls'].includes(u.order.kind)) { moveUnit(b, u, { x: u.x + (u.x - enemy.x), z: u.z + (u.z - enemy.z) }, dt, { keepFacing: true }); u.facing = facing(u, enemy); }
+    if (d < 10 && !['hold', 'walls', 'follow'].includes(u.order.kind)) { moveUnit(b, u, { x: u.x + (u.x - enemy.x), z: u.z + (u.z - enemy.z) }, dt, { keepFacing: true }); u.facing = facing(u, enemy); }
     else if (canStrike && d < p.reach && !u.holdFire && lineClear(b, u, enemy, u, u.family === 'ranged')) {
       const fired = startAttack(b, u, enemy);
-      if (!fired && !u.action && u.stamina > 10 && !u.wallId && !['hold', 'walls'].includes(u.order.kind)) {
+      if (!fired && !u.action && u.stamina > 10 && !u.wallId && !['hold', 'walls', 'follow'].includes(u.order.kind)) {
         const direction = hash(u.id) % 2 ? 1 : -1;
         moveUnit(b, u, { x: u.x + Math.cos(u.facing) * direction * 3, z: u.z - Math.sin(u.facing) * direction * 3 }, dt, { keepFacing: true });
       } else u.speed *= .75;
@@ -855,9 +1227,9 @@ function aiUnit(b, u, active, dt) {
     startAttack(b, u, enemy, u.type === 'heavyInfantry' && random(b) < .2); u.speed *= .8;
     return;
   }
-  if (u.order.kind === 'walls') { u.speed = 0; return; }
+  if (u.order.kind === 'walls' || u.order.kind === 'follow') { u.speed = 0; return; }
   if (u.order.kind === 'hold' && u.wallId) { u.speed = 0; return; }
-  if (u.order.kind === 'hold' && (u.order.lockFacing || distance(enemy, u.order) > 8)) {
+  if (u.order.kind === 'hold' && (u.explicitOrder || u.order.lockFacing || distance(enemy, u.order) > 8)) {
     moveUnit(b, u, u.order, dt, { keepFacing: true });
     if (u.order.lockFacing) u.facing = u.order.facing;
     return;
@@ -865,7 +1237,7 @@ function aiUnit(b, u, active, dt) {
   if (enemy.wallId && enemy.wallId !== u.wallId && u.family !== 'siege') {
     const wall = b.layout.walls.find(w => w.id === enemy.wallId), stair = b.layout.stairs?.find(s => s.wallId === enemy.wallId);
     const ladder = b.layout.ladders.find(l => wall && inside(wall, l.x, l.z, .5));
-    if (ladder && u.z < 12 && u.family === 'infantry') moveUnit(b, u, { x: ladder.x, z: ladder.z, wallId: wall.id }, dt);
+    if (ladder && u.z < 12 && u.family === 'infantry') { assignLadders(b,[u],ladder.id); approachLadder(b,u,dt); }
     else if (stair) { if (!u.wallId && distance(u, stair) < 1) startStairs(b, u, stair, true); else moveUnit(b, u, stair, dt); }
     return;
   }
@@ -919,10 +1291,10 @@ function playerUnit(b, u, input, dt) {
     startAttack(b, u, enemy && distance(u, enemy) <= reach ? enemy : null, !!input.heavy, point);
   }
   if (input.interact && !u.interactHeld) {
-    const ladder = b.layout.ladders.find(l => distance(u, l) < 5);
+    const ladder = !u.wallId && usableLadders(b).find(l => distance(u, l.foot) < 2.5);
     const stair = b.layout.stairs?.find(s => u.wallId === s.wallId ? Math.hypot(u.x - s.topX, u.z - s.topZ) < 3 : distance(u, s) < 3);
     if (stair) startStairs(b, u, stair, !u.wallId);
-    else if (ladder) moveUnit(b, u, { x: ladder.x, z: ladder.z + (u.z < ladder.z ? 5 : -5) }, dt);
+    else if (ladder) startClimb(b,u,ladder,true);
     else if (u.family === 'mounted' && !u.action) { u.mounted = !u.mounted; u.speed = 0; u.chargeDistance = 0; event(b, 'mount', u.mounted ? 'You mount your horse.' : 'You dismount. Your mount stays with you.'); }
   }
   u.interactHeld = !!input.interact;
@@ -941,7 +1313,7 @@ function updateMorale(b) {
 function separateUnits(b, active, dt) {
   for (let i = 0; i < active.length; i++) for (let j = i + 1; j < active.length; j++) {
     const u = active[i], v = active[j];
-    if (u.wallId || v.wallId || ['climb', 'stairs'].includes(u.action?.kind) || ['climb', 'stairs'].includes(v.action?.kind) || Math.abs(u.y - v.y) > 2.7) continue;
+    if (u.type==='ram' || v.type==='ram' || u.order.kind==='crew' && u.atHandle || v.order.kind==='crew' && v.atHandle || u.wallId || v.wallId || ['climb', 'stairs'].includes(u.action?.kind) || ['climb', 'stairs'].includes(v.action?.kind) || Math.abs(u.y - v.y) > 2.7) continue;
     const dx = v.x - u.x, dz = v.z - u.z, d = Math.hypot(dx, dz), radius = u.family === 'siege' || v.family === 'siege' ? 2.2 : u.family === 'mounted' || v.family === 'mounted' ? 1.7 : 1.15;
     if (d >= radius) continue;
     if (u.family === 'mounted' && u.speed > 4 && u.side === v.side) { u.speed *= .7; u.chargeDistance = 0; }
@@ -951,16 +1323,49 @@ function separateUnits(b, active, dt) {
     if (!obstruction(b, v.x + x, v.z + z, v)) { v.x += x; v.z += z; }
   }
 }
+function canSecureKeep(b, u) {
+  if (u.family === 'siege') return false;
+  const objective=b.layout.objective;
+  if (distance(u,objective)<14) return true;
+  const reaches = (from,to) => {
+    const route = pathTo(b,{...u,...from,wallId:null},to);
+    return route.length && distance(route[route.length-1],to)<.1;
+  };
+  for (const l of usableLadders(b)) {
+    const stair=b.layout.stairs.find(s=>s.wallId===l.wallId);
+    if (stair && (u.wallId===l.wallId || !u.mounted && (u.action?.ladderId===l.id || reaches(u,l.foot))) && reaches(stair,objective)) return true;
+  }
+  if (u.wallId) {
+    const stair=b.layout.stairs.find(s=>s.wallId===u.wallId);
+    return !!stair && reaches(stair,objective);
+  }
+  return reaches(u,objective);
+}
 function checkVictory(b) {
   if (b.phase !== 'combat') return;
   const resistance = [0, 0];
-  for (const u of b.units) if (fighting(u) || u.status === 'reserve' && !u.routing && !b.armies.find(a => a.armyId === u.armyId)?.retreating) resistance[u.side]++;
+  for (const u of b.units) if (u.type !== 'ram' && (fighting(u) || u.status === 'reserve' && !u.routing && !b.armies.find(a => a.armyId === u.armyId)?.retreating)) resistance[u.side]++;
   if (resistance[0] && resistance[1]) return;
   const winner = resistance[0] ? 0 : resistance[1] ? 1 : null;
-  if (winner === 0 && b.layout.fortified && !b.units.some(u => fighting(u) && u.side === 0 && u.family !== 'siege' && distance(u, b.layout.objective) < 14)) {
-    b.securing = true;
-    // Siege-only survivors cannot occupy; end their assault without capture.
-    if (b.units.some(u => fighting(u) && u.side === 0 && u.family !== 'siege')) return;
+  if (winner === 0 && b.layout.fortified) {
+    // Once organized resistance ends, the field cap must not strand the
+    // arriving foot company behind a full front line of mounted survivors.
+    let occupier=b.units.find(u=>fighting(u) && u.side===0 && canSecureKeep(b,u));
+    if (!occupier) {
+      const reserves=b.units.filter(u=>u.side===0 && u.status==='reserve' && !u.routing && u.family!=='siege' && !b.armies.find(a=>a.armyId===u.armyId).retreating);
+      reserves.sort((a,c) => b.armies.find(army=>army.armyId===a.armyId).arrivalSeconds - b.armies.find(army=>army.armyId===c.armyId).arrivalSeconds);
+      const incoming=reserves.find(u=>canSecureKeep(b,{...u,...b.armies.find(a=>a.armyId===u.armyId).entry}));
+      if (incoming) {
+        const army=b.armies.find(a=>a.armyId===incoming.armyId);
+        if (!army.arrived) return;
+        incoming.wasDeployed=true; incoming.arrived=true;
+        occupier=incoming;
+      }
+    }
+    if (occupier) {
+      b.securedBy=occupier.id;
+      event(b,'occupied','The survivors secure the keep.',{unitId:occupier.id,x:b.layout.objective.x,z:b.layout.objective.z});
+    }
   }
   // A field defeat leaves unarrived supporters and routed survivors intact.
   // All committed reserves count as resistance until they arrive or withdraw.
@@ -975,23 +1380,42 @@ function tick(b, input) {
   if (b.time >= b.nextArmyPlan) { planArmies(b); b.nextArmyPlan = b.time + 4; }
   if (b.time >= b.nextMorale) { updateMorale(b); b.nextMorale = b.time + 1; }
   const active = b.units.filter(alive);
+  const guides = advanceCompanies(active);
+  for (const u of active) if (!u.wallId && !['stairs','climb'].includes(u.action?.kind)) u.y=terrainHeight(b,u.x,u.z);
   for (const u of active) {
+    if (!alive(u) || u.type==='ram') continue;
+    if (u.order.kind !== 'crew') u.atHandle = false;
     if (u.wallId && !b.layout.walls.some(w => w.id === u.wallId && w.hp > 0)) {
+      u.fortPost = null; u.wallPosition=null;
+      if (u.order.kind === 'walls') { u.order={kind:'hold',x:u.x,z:u.z}; u.explicitOrder=false; }
       u.wallId = null; u.y = terrainHeight(b, u.x, u.z); u.hp -= 18; u.stagger = .8; u.action = null;
+      if (obstruction(b,u.x,u.z,u)) {
+        const p=nearestBattlePosition(b,u,u); u.x=p.x; u.z=p.z; u.y=terrainHeight(b,p.x,p.z);
+      }
       if (u.hp <= 0) { kill(b, u, null); continue; }
     }
     u.stagger = Math.max(0, u.stagger - dt); u.attackCooldown = Math.max(0, u.attackCooldown - dt);
     if (!u.action && !u.blocking) u.stamina = Math.min(100, u.stamina + dt * 11);
-    if (u.id !== b.commanderId || b.auto || input.commanderAI || u.routing) trackAttackFacing(b, u);
+    if (u.id !== b.commanderId || b.auto || input.commanderAI || u.routing) {
+      // An already-reformed follower may be defending its slot when the commander turns away.
+      if (u.action && u.order.kind === 'follow' && !['climb', 'stairs'].includes(u.action.kind) && u.id !== b.commanderId) {
+        const commander = b.units.find(v => v.id === b.commanderId && alive(v));
+        if (commander && distance(u, followerDestination(b, u, commander)) > .9) disengage(u);
+      }
+      trackAttackFacing(b, u);
+    }
     updateAction(b, u, dt);
     if (!alive(u)) continue;
     if (u.id === b.commanderId && !b.auto && !input.commanderAI && !u.routing) playerUnit(b, u, input, dt);
-    else aiUnit(b, u, active, dt);
+    else aiUnit(b, u, active, dt, guides.get(u.id));
   }
-  separateUnits(b, active.filter(alive), dt); updateProjectiles(b, dt); checkVictory(b);
+  separateUnits(b, active.filter(alive), dt); updateProjectiles(b, dt);
+  for (const ram of active) if (ram.type==='ram' && alive(ram)) updateRam(b,ram,dt);
+  for (const l of b.layout.ladders) if (l.held && !active.some(u => fighting(u) && u.action?.ladderId===l.id && u.action.progress>=.75)) l.held=false;
+  checkVictory(b);
 }
 export function stepBattle(b, dt, input = {}) {
-  if (b.battleRulesVersion !== 2 || b.maxActive > MAX_ACTIVE_TROOPS || b.deploymentLayoutVersion !== 1) normalizeBattleCheckpoint(b);
+  if (b.battleRulesVersion !== 2 || b.maxActive > MAX_ACTIVE_TROOPS || b.deploymentLayoutVersion !== 1 || b.layout.ladders.some(l => !l.foot)) normalizeBattleCheckpoint(b);
   if (b.phase !== 'combat' || input.paused || !Number.isFinite(dt) || dt <= 0) return b;
   b.accumulator += Math.min(dt, 2);
   b.pendingInput ||= {};
@@ -1013,15 +1437,16 @@ export function battleResult(b) {
   });
   // A completed legacy save may queue previously deployed survivors to meet
   // the new display cap. Their recorded occupation has already taken place.
-  const occupying = b.units.filter(u => (fighting(u) || b.phase === 'complete' && u.status === 'reserve' && u.wasDeployed && !u.routing) && u.side === b.winner && u.family !== 'siege' && (!b.layout.fortified || b.winner === 1 || distance(u, b.layout.objective) < 14));
+  const occupying = b.units.filter(u => (fighting(u) || b.phase === 'complete' && u.status === 'reserve' && u.wasDeployed && !u.routing) && u.side === b.winner && u.family !== 'siege' && (!b.layout.fortified || b.winner === 1 || u.id === b.securedBy || distance(u, b.layout.objective) < 14));
   const sections = [...b.layout.walls, ...(b.layout.gate ? [b.layout.gate] : [])];
-  return { battleId: b.encounterId, encounterId: b.encounterId, complete: b.phase === 'complete', winner: b.winner, armies, walls: Math.max(0, b.fortifications.walls), fortIntegrity: Math.max(0, b.fortifications.fortIntegrity), fortifications: clone(b.fortifications), wallBreaches: sections.filter(w => w.hp <= 0).map(w => w.id), wallSections: sections.map(w => ({ id: w.id, hp: w.hp, maxHp: w.maxHp })), occupationSide: occupying.length ? b.winner : null, duration: b.time, commanderId: b.commanderId };
+  const occupier=occupying.find(u=>u.id===b.securedBy)||occupying[0];
+  return { battleId: b.encounterId, encounterId: b.encounterId, complete: b.phase === 'complete', winner: b.winner, armies, walls: Math.max(0, b.fortifications.walls), fortIntegrity: Math.max(0, b.fortifications.fortIntegrity), fortifications: clone(b.fortifications), wallBreaches: sections.filter(w => w.hp <= 0).map(w => w.id), wallSections: sections.map(w => ({ id: w.id, hp: w.hp, maxHp: w.maxHp, ...(w.breach ? {breach:{...w.breach}} : {}) })), occupationSide: occupier ? b.winner : null, occupyingArmyId:occupier?.armyId??null, duration: b.time, commanderId: b.commanderId };
 }
 
 export function finishAutomatically(b) {
   if (b.phase === 'complete') return battleResult(b);
   beginBattle(b); b.auto = true;
-  for (const u of b.units) { u.explicitOrder = false; if (u.order.kind !== 'retreat') u.order = { kind: 'advance' }; }
+  for (const u of b.units) if (!u.fortPost && !['ladder','breach','crew','retreat'].includes(u.order.kind)) { u.explicitOrder = false; u.order = { kind: 'advance' }; }
   // Execute the same simulation from this checkpoint. Existing casualties,
   // missiles, depleted quivers, fortification damage and delayed troops remain.
   const stop = b.time + 240;
@@ -1034,18 +1459,12 @@ export function finishAutomatically(b) {
       b.time += 5; deployReserves(b);
       const forces = [0, 0], living = [[], []];
       for (const u of b.units) if (fighting(u)) {
-        const ammunition = u.family === 'ranged' ? u.ammo > 0 ? 1 : .45 : u.family === 'siege' ? u.type === 'ram' || u.ammo > 0 ? .8 : .2 : 1;
+        const ammunition = u.type === 'ram' ? 0 : u.family === 'ranged' ? u.ammo > 0 ? 1 : .45 : u.family === 'siege' ? u.ammo > 0 ? .8 : .2 : 1;
         const health = .35 + .65 * u.hp / u.maxHp, morale = .3 + .7 * u.morale / 100;
         forces[u.side] += (UNITS[u.type].attack + UNITS[u.type].defense) * ammunition * health * morale;
         living[u.side].push(u);
       }
       if (!living[0].length || !living[1].length) {
-        if (living[0].length && !living[1].length && b.layout.fortified && !b.units.some(u => u.side === 1 && u.status === 'reserve' && !u.routing)) {
-          // With resistance gone, the surviving infantry can secure an empty
-          // courtyard without inventing a casualty or replacing the roster.
-          const occupier = living[0].find(u => u.family !== 'siege');
-          if (occupier) { occupier.x = b.layout.objective.x; occupier.z = b.layout.objective.z; occupier.y = terrainHeight(b, occupier.x, occupier.z); }
-        }
         checkVictory(b); continue;
       }
       for (const side of [0, 1]) {

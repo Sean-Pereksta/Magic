@@ -6,6 +6,7 @@ import { endTurn } from '../diplomacy.mjs';
 import { emptyUnits } from '../economy.mjs';
 import { applyEncounterResult, beginEncounter, commitEncounterSupport, configureOfflineBattles, encounterPreview, pendingEncounter, reinforcementRoute, resolveEncounterAutomatically, returnFromEncounter, saveEncounterCheckpoint, validateOfflineBattles } from '../offline-encounters.mjs';
 import { battleResult, createBattle, finishAutomatically } from '../battle-sim.mjs';
+import { settlePlayedEncounter } from '../offline-encounters.mjs';
 
 function fixture({support=true,defenders=40,fort=true}={}) {
   const s=createGame(321),a=s.armies[0],d=s.armies[1];
@@ -57,6 +58,19 @@ test('manual results atomically apply exact counts and existing siege damage onc
   const after=structuredClone(s);applyEncounterResult(s,result);assert.deepEqual(s,after);
   assert.equal(returnFromEncounter(s).resumeTurn,false);assert.equal(s.offlineBattle,null);
   assert.throws(()=>returnFromEncounter(s));assert.equal(tile.walls,20);
+});
+test('settlement clears the encounter in its result snapshot and tolerates replay after reload',()=>{
+  for(const legacyApplied of [false,true]){
+    const {s,tile}=fixture();resolveMovement(s);beginEncounter(s);
+    const result=finish(s),id=s.offlineBattle.id;
+    if(legacyApplied)applyEncounterResult(s,result);
+    settlePlayedEncounter(s,id,result);
+    assert.equal(s.offlineBattle,null);assert.equal(s.lastOfflineBattleReport.id,id);assert.equal(tile.walls,20);
+    const loaded=parseSave(JSON.stringify(s)),before=structuredClone(loaded);
+    assert.equal(settlePlayedEncounter(loaded,id,result).alreadyApplied,true);
+    assert.deepEqual(loaded,before);
+    assert.equal(loaded.militaryEvents.filter(e=>e.battleId===id).length,1);
+  }
 });
 test('invalid results cannot alter the pending state or resurrect troops',()=>{
   const {s}=fixture();resolveMovement(s);const bad=finish(s);bad.armies[0].units.levy++;
