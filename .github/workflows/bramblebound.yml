@@ -1,0 +1,24 @@
+name: Bramblebound gameplay
+on:
+  push:
+    branches: [main]
+    paths: ['game/bramblebound/**', 'game/bramblebound.html', '.github/workflows/bramblebound.yml']
+  pull_request:
+    paths: ['game/bramblebound/**', 'game/bramblebound.html', '.github/workflows/bramblebound.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  game:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test game/bramblebound/tests/game.test.cjs
+      - name: Install browser tools
+        run: |
+          npm install --no-save --ignore-scripts playwright@1.62.1
+          npx playwright install --with-deps chromium
+      - run: node game/bramblebound/tests/browser.cjs

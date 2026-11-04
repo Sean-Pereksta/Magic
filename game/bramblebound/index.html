@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#10221e">
+  <title>Bramblebound · The Endless Road</title>
+  <meta name="description" content="Walk the endless road with Pip. Fuse 212 elemental relics, shape your build, face guardians across 20 regions, and grow stronger with every expedition.">
+  <meta property="og:title" content="Bramblebound · The Endless Road">
+  <meta property="og:description" content="A little traveler. An endless road. A new build with every journey. Play on Cat’N Mice.">
+  <meta property="og:image" content="https://www.catnmice.com/game/bramblebound/assets/title.webp">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="brand.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="legacy.css">
+  <link rel="stylesheet" href="title.css">
+  <script defer src="catalog.js"></script>
+  <script defer src="icons.js"></script>
+  <script defer src="world.js"></script>
+  <script defer src="progression.js"></script>
+  <script defer src="engine.js"></script>
+  <script defer src="sound.js"></script>
+  <script defer src="journal.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body class="on-expedition title-open">
+  <section id="title-screen" class="title-screen" aria-labelledby="title-heading">
+    <div class="title-wrap">
+      <div class="title-topline"><a href="/lobby/lobby.html">← Cat’N Mice game library</a><span>A SMALL TRAVELER. A WORLD OF POSSIBILITIES.</span></div>
+      <div class="title-poster"><img src="assets/title.webp" width="1672" height="941" alt="Bramblebound — The Endless Road. Pip overlooks a sunlit forest trail leading to mountains and ancient ruins." fetchpriority="high"><h1 id="title-heading" class="sr-only">Bramblebound · The Endless Road</h1></div>
+      <div class="title-content">
+        <div class="title-story"><span class="eyebrow">AN ELEMENTAL EXPEDITION ROGUELITE</span><h2>One more road.<br><em>One stronger build.</em></h2><p>Guide Pip into the wild. Turn humble finds into extraordinary relics, outlast the guardians, and bring home the seeds of your next adventure.</p><div class="title-features"><span>20 regions</span><span>212 relics</span><span>64 talents</span></div></div>
+        <div class="title-actions"><p id="title-record" class="title-record" aria-live="polite">Your journey begins here.</p><button id="title-play" class="primary">Begin expedition <span aria-hidden="true">→</span></button><button id="title-kit" class="outline">Prepare your kit</button><div class="title-links"><button id="title-help">How to play</button><button id="title-profile">Profile & settings</button></div><p class="title-save-note">Autosaves on this device. Export your profile to take it with you.</p></div>
+      </div>
+      <ol class="title-steps"><li><b>01 / EQUIP</b><span>Four relics. Your choice of elements. Attacks fire automatically.</span></li><li><b>02 / FUSE</b><span>Match copies to level up, or combine ingredients into something new.</span></li><li><b>03 / RETURN STRONGER</b><span>Choose talents on the road. Spend trail seeds on permanent upgrades.</span></li></ol>
+      <div class="title-bottom"><span>BUILT FOR A LITTLE DISCOVERY, EVERY DAY.</span><span>Solo · Mouse or touch · Space to pause</span></div>
+    </div>
+  </section>
+  <a class="skip" href="#main">Skip to game</a>
+  <header class="mast"><div class="mast-inner">
+    <a class="brand" aria-label="Bramblebound title menu" href="#title" data-title><img src="brand.svg" alt=""><span>Bramblebound</span></a>
+    <nav aria-label="Main navigation">
+      <button data-nav="expedition" class="current"><i data-glyph="road"></i>Expedition</button>
+      <button data-nav="guide"><i data-glyph="book"></i>Field guide</button>
+      <button data-nav="legacy"><i data-glyph="sprout"></i>Legacy</button>
+    </nav>
+    <div class="mast-tools"><button id="full-btn" class="outline compact" aria-label="Enter fullscreen" aria-pressed="false"><i data-glyph="expand"></i><span>Fullscreen</span></button><button id="profile-btn" class="icon-btn" title="Profile and settings" aria-label="Profile and settings"><i data-glyph="settings"></i></button></div>
+  </div></header>
+  <main id="main" tabindex="-1">
+    <section id="expedition-page" class="page">
+      <div class="dashboard">
+        <article class="frame road-col world-frame" aria-label="Walking trail">
+          <header class="scene-head"><div class="scene-title"><span class="eyebrow" id="region-cap">REGION I</span><h1 id="region-name">Canopy Verge</h1></div><span id="round-chip" class="round-chip">ROUND 01</span></header>
+          <div class="canvas-well"><canvas id="world" width="560" height="420" role="img" aria-label="Pip on the trail"></canvas><div class="scene-brand">✦ FIELD ATLAS</div><div id="pause-glass" hidden><span>Ⅱ &nbsp; PAUSED</span></div></div>
+          <div class="growth-strip">
+            <button id="growth-btn" class="growth-button" title="View expedition upgrades"><span id="level-text" class="level-badge">LV 1</span><span class="xp-track"><span id="xp-bar"></span></span><span id="xp-text"></span><span id="growth-hint">Run build ›</span></button>
+            <div id="ability-strip" class="ability-strip" hidden aria-label="Ability cooldowns"></div>
+          </div>
+          <div class="vitals">
+            <div class="vital hero-vital"><div class="vital-title"><i data-glyph="heart"></i><b>Pip</b><span id="hp-num"></span></div><div class="meter"><span id="hp-bar"></span></div><div class="vital-sub" id="hero-sub"></div></div>
+            <div class="vital enemy-vital"><div class="vital-title"><i data-glyph="target"></i><b id="enemy-name">Open trail</b><span id="enemy-num"></span></div><div class="meter"><span id="enemy-bar"></span></div><div class="vital-sub" id="enemy-sub"></div></div>
+          </div>
+          <div class="controls"><div class="command-left"><button id="run-btn" class="primary"></button><button id="speed-btn" class="outline compact" title="Replay pace"></button></div><div class="command-left"><button class="flat compact" data-dialog="route" aria-label="Route map" title="Route map"><i data-glyph="road"></i><span class="control-text">Map</span></button><button id="audio-btn" class="flat compact" aria-label="Toggle sound"></button></div></div>
+        </article>
+        <aside class="frame kit-col" aria-label="Equipment and backpack">
+          <header class="kit-head"><div><span class="eyebrow">TRAVELER’S KIT</span><h2>Backpack</h2></div><div class="kit-stats"><span title="Best round"><i data-glyph="flag"></i><b id="best-count">00</b></span><button data-nav="legacy" title="Trail seeds"><i data-glyph="seed"></i><b id="point-count">0</b><small id="pending-seeds" hidden></small></button></div>
+            <div id="selected-item" hidden><div class="selected-meta"><span id="sel-icon"></span><div class="selected-name"><span>SELECTED RELIC</span><b id="sel-name"></b></div></div><div class="selected-actions"><button data-selection="partners" aria-pressed="false"></button><button data-selection="details">Details</button><button data-selection="clear" aria-label="Clear selection" title="Clear selection">×</button></div></div>
+          </header>
+          <div class="kit-content">
+            <section class="gear-panel"><div class="section-heading"><h3><i data-glyph="swords"></i> Equipped</h3><span class="count" id="gear-count"></span></div><div id="equipped" class="equipped"></div></section>
+            <section class="pack-panel"><div class="section-heading"><h3><i data-glyph="pack"></i> Pack slots</h3><span class="count" id="pack-count"></span></div>
+              <div class="pack-tools"><input type="search" id="pack-search" placeholder="Find gear…" aria-label="Search backpack by item, element or effect"><select id="pack-tier" aria-label="Filter backpack by rarity"><option value="all">All tiers</option><option value="common">Common</option><option value="rare">Rare</option><option value="mythic">Mythic</option></select><div class="page-controls"><button data-pack-step="-1" aria-label="Previous backpack page" title="Previous page">‹</button><select id="pack-page" aria-label="Choose backpack page"></select><button data-pack-step="1" aria-label="Next backpack page" title="Next page">›</button></div></div>
+              <div id="pack" class="pack-grid"></div></section>
+            <div class="workbench"><div id="drag-note" class="drag-note" role="status">Drag to equip, swap, or fuse. Select a relic to light up its matches.</div><div class="workbench-actions"><button id="recipe-btn" class="text-link"><i data-glyph="book"></i> Recipes</button><button id="discard-zone" class="discard-zone" data-dialog="discard-picker"><i data-glyph="trash"></i> Discard</button></div></div>
+            <section class="finds" aria-label="Latest trail find"><div class="eyebrow">LATEST FIND</div><div id="recent-find" role="status">Fallen enemies can drop gear straight into your backpack.</div></section>
+          </div>
+        </aside>
+      </div>
+      <section id="encounter" class="encounter" aria-live="polite"></section>
+    </section>
+    <section id="guide-page" class="page" hidden></section>
+    <section id="legacy-page" class="page" hidden></section>
+    <footer><span><img src="brand.svg" alt=""> BRAMBLEBOUND</span><span id="save-line"><b class="save-dot"></b> Local profile</span></footer>
+  </main>
+  <dialog id="modal"><div class="dialog-top"><span class="eyebrow" id="dialog-kicker">FIELD NOTES</span><button id="close-btn" class="icon-btn" aria-label="Close dialog"><i data-glyph="close"></i></button></div><div id="dialog-body"></div></dialog>
+  <div id="toast" class="toast" role="status"></div>
+  <input type="file" accept=".json,application/json" id="import-input" hidden>
+  <noscript>Enable JavaScript to play Bramblebound.</noscript>
+</body>
+</html>
