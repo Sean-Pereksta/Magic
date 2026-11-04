@@ -10,3 +10,201 @@
 @media(max-width:420px){.battle-size-control{grid-template-columns:1fr}.battle-size-control select{width:100%}}
 .battle-keyboard-hud{position:absolute;left:24px;bottom:108px;max-width:min(760px,calc(100vw - 48px));display:grid;gap:5px;padding:10px 14px;background:#0b1c25df;border:1px solid #bda16c66;border-radius:4px;pointer-events:none;font-size:.75rem;line-height:1.4;color:#d1dcd7}.battle-keyboard-hud>strong{font-size:.83rem;color:#f0d8a9}.battle-keyboard-legend{display:grid;gap:3px;color:#becbc6}.battle-keyboard-hud #battle-keyboard-feedback{color:#f1d18b;min-height:1.4em}.battlefield .battle-event{bottom:240px}
 @media(max-width:700px){.battle-keyboard-hud{left:10px;right:10px;bottom:245px;max-width:none;padding:7px 9px;font-size:.61rem;gap:4px}.battle-keyboard-hud>strong{font-size:.69rem}.battle-keyboard-legend{line-height:1.45;gap:2px}.battlefield .battle-event{bottom:205px}.battlefield.is-deploying .battle-event{display:none}.battlefield.is-deploying .battle-keyboard-hud{bottom:255px}}
+/* Keep the combat controls against the edges. Only the controls themselves capture clicks. */
+.battlefield {
+  --hud-edge: 10px;
+  --hud-top: max(var(--hud-edge), env(safe-area-inset-top));
+  --hud-right: max(var(--hud-edge), env(safe-area-inset-right));
+  --hud-left: max(var(--hud-edge), env(safe-area-inset-left));
+  --hud-bottom: max(var(--hud-edge), env(safe-area-inset-bottom));
+  --controls-top: calc(var(--battle-header-bottom, calc(var(--hud-top) + 50px)) + 6px);
+  --hud-back: #11212ce8;
+}
+.battlefield .battle-hud {
+  top: var(--hud-top); left: var(--hud-left); right: auto;
+  width: max-content; max-width: calc(100% - var(--hud-left) - var(--hud-right) - 100px);
+  height: auto; min-height: 0; padding: 6px 10px; gap: 14px;
+  background: var(--hud-back); border: 1px solid #c4a56d66; border-radius: 5px;
+  box-sizing: border-box; flex-wrap: nowrap;
+}
+.battlefield .battle-hud > div {min-width: 0}
+.battlefield .battle-hud strong {font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap}
+.battlefield .battle-hud #battle-counts {font-size: .78rem; line-height: 1.3}
+.battle-hud #battle-siege-status {display: block; color: #f0c882; font-weight: 700}
+.battle-hud #battle-siege-status:empty {display: none}
+.battle-hud-actions {flex-shrink: 0; gap: 4px}
+.battle-hud-actions button {min-height: 30px; padding: 4px 7px; font-size: .75rem}
+.battlefield #battle-hud-toggle {
+  position: absolute; z-index: 5; top: var(--hud-top); right: var(--hud-right);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  width: auto; min-height: 32px; padding: 4px 9px; margin: 0; pointer-events: auto;
+  color: #f1e6cf; background: var(--hud-back); border: 1px solid #c4a56d88;
+  border-radius: 5px; font: 600 .73rem/1.2 system-ui; white-space: nowrap;
+}
+#battle-hud-toggle kbd, .battle-command-strip kbd {color: #eed294; font: 700 .72rem monospace}
+#battle-hud-toggle:focus-visible, .battle-command-strip button:focus-visible {outline: 2px solid #efd498; outline-offset: -2px}
+.battle-command-strip {
+  position: absolute; right: var(--hud-right); top: var(--controls-top);
+  width: 138px; height: max-content; max-height: calc(100% - var(--controls-top) - var(--hud-bottom));
+  display: flex; flex-direction: column; gap: 3px; box-sizing: border-box;
+  overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+  background: var(--hud-back); border: 1px solid #c4a56d88; border-radius: 5px; padding: 4px;
+}
+.battle-command-strip button, .battle-command-strip select {
+  margin: 0; min-height: 32px; flex: none; width: 100%; padding: 4px;
+  font: 600 .72rem/1.16 system-ui;
+}
+.battle-command-strip button {display: flex; align-items: center; text-align: left; gap: 5px; background: #20343bea; color: #f3ebd7}
+.battle-command-strip kbd {display: inline-grid; place-items: center; min-width: 20px}
+.battle-command-strip button[aria-pressed=true] {background: #445348; border-color: #e6c88a}
+.battlefield.orders-open .battle-command-strip {display: none}
+.battlefield .battle-command-panel, .battlefield.is-deploying .battle-command-panel {
+  box-sizing: border-box; right: var(--hud-right); top: var(--controls-top); left: auto;
+  width: min(286px, calc(100% - var(--hud-left) - var(--hud-right)));
+  max-height: calc(100% - var(--controls-top) - var(--hud-bottom));
+  padding: 10px; overscroll-behavior: contain; scrollbar-width: thin;
+}
+.battle-command-panel label, .battle-command-panel p {margin-block: 6px}
+.battle-command-heading {
+  position: sticky; top: -10px; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: -10px -10px 7px; padding: 5px 8px; background: #142730; border-bottom: 1px solid #bda16c55;
+}
+.battle-command-heading h2 {margin: 0}
+.battle-command-heading button {min-width: 32px; min-height: 32px; padding: 0; font-size: 1.15rem; line-height: 1}
+.battle-command-panel .battle-group-row {gap: 4px}
+.battle-command-panel .battle-group-row button {min-height: 34px; padding: 5px}
+.battle-command-panel .battle-order-row button {min-height: 32px; padding: 4px 6px}
+.battlefield .battle-player {
+  width: max-content; max-width: calc(100% - var(--hud-left) - 158px); height: auto; min-height: 0;
+  left: var(--hud-left); bottom: var(--hud-bottom); right: auto; padding: 5px 9px; gap: 8px;
+  flex-wrap: nowrap; justify-content: flex-start; border: 1px solid #bda16c55; border-radius: 4px;
+  background: var(--hud-back); color: #eee4cb; font-size: .75rem; pointer-events: none;
+}
+.battlefield .battle-player #battle-player-status {flex: 0 1 auto; min-width: 0; white-space: nowrap}
+.battlefield .battle-player label {width: auto; flex: 0 0 auto; gap: 4px; pointer-events: auto}
+.battlefield .battle-player select {width: auto; padding: 3px 5px; min-height: 25px; font-size: .72rem}
+.battlefield .battle-help {display: none}
+.battlefield .battle-keyboard-hud {
+  left: var(--hud-left); right: auto; bottom: calc(var(--hud-bottom) + 44px);
+  max-width: min(420px, calc(100% - 170px)); padding: 4px 8px; gap: 2px;
+}
+.battle-keyboard-hud #battle-keyboard-feedback:empty {display: none}
+.battlefield .battle-event {
+  top: var(--controls-top); bottom: auto; left: var(--hud-left); transform: none;
+  width: max-content; max-width: min(42%, 450px);
+  padding: 4px 9px; font-size: .75rem; line-height: 1.3;
+}
+.battlefield.is-targeting canvas {cursor: crosshair}
+.battlefield.is-targeting #battle-reticle {color: #f4d27c}
+.battlefield .battle-pause {z-index: 6}
+.battlefield .battle-pause section {max-height: calc(100dvh - 16px); overflow: auto; box-sizing: border-box}
+.battle-combat-guide{margin-top:12px;padding-top:8px;border-top:1px solid #bca37455}
+.battle-combat-guide summary{cursor:pointer;color:#ebcf9c;padding:4px 0}
+.battle-combat-guide p{margin:8px 0;font-size:.82rem}
+
+/* In the clear view the reticle, touch controls, deployment action, pause and short order feedback stay usable. */
+.battlefield.hud-minimized :is(.battle-hud,.battle-command-panel,.battle-command-strip,.battle-player,.battle-event,#battle-live-selection) {display: none}
+.battlefield.hud-minimized .battle-keyboard-hud:not(:has(#battle-keyboard-feedback:not(:empty))) {display: none}
+.battlefield.hud-minimized .battle-keyboard-hud {top: auto; bottom: calc(var(--hud-bottom) + 32px); max-width: min(480px, calc(100% - 20px))}
+.battlefield.hud-minimized .battle-deployment {left: var(--hud-left); top: var(--hud-top); bottom: auto; width: auto; padding: 4px}
+.battlefield.hud-minimized .battle-deployment :is(h2,p) {display: none}
+.battlefield.hud-minimized .battle-touch {bottom: var(--hud-bottom)}
+@media (max-width: 750px), (pointer: coarse) {
+  .battlefield {--hud-edge: 6px}
+  .battlefield #battle-hud-toggle {min-height: 44px}
+  .battle-command-strip {
+    left: var(--hud-left); right: auto; flex-direction: row; width: max-content;
+    max-width: calc(100% - var(--hud-left) - var(--hud-right)); height: auto; max-height: none;
+    overflow-x: auto; overflow-y: hidden; padding: 3px;
+  }
+  .battle-command-strip button, .battle-command-strip select {width: auto; max-width: 114px; min-height: 44px; font-size: .69rem; padding: 3px 6px}
+  .battle-command-strip select {max-width: 93px}
+  .battlefield .battle-command-panel, .battlefield.is-deploying .battle-command-panel {width: min(280px, 73vw); max-height: calc(100% - var(--controls-top) - 262px)}
+  .battlefield.is-deploying .battle-command-panel {max-height: calc(100% - var(--controls-top) - 145px)}
+  .battle-command-panel .battle-group-row button, .battle-command-panel .battle-order-row button {min-height: 44px}
+  .battle-command-heading button {min-width: 44px; min-height: 44px}
+  .battlefield .battle-keyboard-hud, .battlefield.is-deploying .battle-keyboard-hud {
+    top: calc(var(--controls-top) + 56px); left: var(--hud-left); bottom: auto; right: auto;
+    max-width: calc(100% - var(--hud-left) - var(--hud-right));
+  }
+  .battlefield.orders-open .battle-keyboard-hud {display: none}
+  .battlefield .battle-event {
+    top: auto; bottom: calc(var(--hud-bottom) + 204px); left: 50%;
+    transform: translateX(-50%); max-width: min(80%,400px);
+  }
+  .battlefield .battle-player {max-width: calc(100% - var(--hud-left) - var(--hud-right))}
+  .battlefield .battle-touch {bottom: calc(var(--hud-bottom) + 39px)}
+  .battlefield.hud-minimized .battle-touch {bottom: var(--hud-bottom)}
+  .battlefield.hud-minimized .battle-keyboard-hud {display: grid; top: var(--hud-top); bottom: auto; max-width: calc(100% - 106px)}
+  .battlefield.hud-minimized.is-deploying .battle-deployment {top: auto; bottom: var(--hud-bottom); left: var(--hud-left); width: auto}
+}
+@media (max-width: 700px) {
+  .battlefield .battle-hud {
+    max-width: calc(100% - var(--hud-left) - var(--hud-right) - 78px);
+    display: grid; grid-template-columns: minmax(0,1fr); padding: 4px 6px; gap: 2px;
+  }
+  .battlefield .battle-hud > div:first-child {display: flex; align-items: baseline; gap: 5px; min-width: 0}
+  .battlefield .battle-hud .eyebrow {font-size: .56rem; letter-spacing: .04em; white-space: nowrap}
+  .battlefield .battle-hud #battle-counts {width: 100%; order: 0; font-size: .65rem}
+  .battlefield .battle-hud strong {font-size: .84rem}
+  .battlefield .battle-hud-actions {grid-row: 3}
+  .battlefield .battle-hud-actions button {min-height: 28px; padding: 3px 5px}
+  .battlefield.is-deploying .battle-deployment {bottom: var(--hud-bottom); left: var(--hud-left); width: min(230px, 68vw); padding: 7px}
+  .battlefield.is-deploying .battle-deployment p {font-size: .7rem; line-height: 1.3; margin: 4px 0}
+  .battlefield.is-deploying .battle-player {display: none}
+  .battlefield.hud-minimized .battle-hud {display: none}
+}
+@media (max-height: 560px) and (orientation: landscape) {
+  .battlefield {--hud-edge: 4px}
+  .battlefield .battle-command-panel, .battlefield.is-deploying .battle-command-panel {
+    width: min(268px, 40vw); max-height: calc(100% - var(--controls-top) - var(--hud-bottom) - 46px);
+  }
+  .battlefield:not(.is-deploying) .battle-command-panel {right: max(140px, var(--hud-right))}
+  .battlefield .battle-touch {left: var(--hud-left); right: var(--hud-right)}
+  .battlefield .battle-touch-buttons {display: grid; grid-template-columns: repeat(2,58px); gap: 3px}
+  .battlefield .battle-touch-buttons button {min-height: 36px; padding: 3px; font-size: .66rem}
+  .battlefield #battle-stick {width: 78px; height: 78px}
+  .battlefield:not(.hud-minimized) .battle-event {
+    top: auto; bottom: calc(var(--hud-bottom) + 54px); left: 98px; transform: none;
+    max-width: min(25vw, calc(60vw - 242px), 220px);
+  }
+  .battlefield .battle-pause section {padding: 12px}
+}
+@media (max-width:700px), (pointer:coarse) {
+  .battlefield .battle-touch-buttons {
+    display:grid; grid-template-columns:repeat(2,minmax(58px,70px)); gap:4px;
+    grid-template-areas:"sprint orders" "heavy interact" "attack block";
+  }
+  .battle-touch-buttons [data-battle-touch=sprint]{grid-area:sprint}
+  .battle-touch-buttons [data-battle-action=commands]{grid-area:orders}
+  .battle-touch-buttons [data-battle-touch=heavy]{grid-area:heavy}
+  .battle-touch-buttons [data-battle-touch=interact]{grid-area:interact}
+  .battle-touch-buttons [data-battle-touch=attack]{grid-area:attack}
+  #battle-touch-block {
+    grid-area:block;display:grid;grid-template-columns:17px auto;justify-content:center;align-content:center;
+    align-items:center;gap:1px 3px;min-height:52px;padding:3px;background:#294955;color:#f6e4ac;
+    border:2px solid #bfa46e;pointer-events:auto;user-select:none;touch-action:none;
+  }
+  #battle-touch-block svg{display:block;width:17px;height:19px}
+  #battle-touch-block strong{font-size:.8rem}
+  #battle-touch-block small{grid-column:1/-1;font-size:.65rem}
+  #battle-touch-block[aria-pressed=true]{color:#182523;background:#e7ca85;border-color:#fff3c4}
+}
+.battlefield #battle-player-climb {
+  position:absolute; z-index:3; left:50%; top:calc(50% + 54px); transform:translateX(-50%);
+  display:flex; align-items:center; gap:9px; min-height:50px; max-width:calc(100% - 20px); padding:6px 12px;
+  color:#fff4d5; background:#503e22f2; border:2px solid #e5c478; border-radius:8px;
+  box-shadow:0 2px 10px #0009; text-align:left; touch-action:manipulation;
+}
+#battle-player-climb kbd {display:grid; place-items:center; min-width:25px; height:26px; border:1px solid #dbc590; border-radius:4px; color:#ffe2a1}
+#battle-player-climb span {display:grid; gap:1px}
+#battle-player-climb strong {font-size:.9rem}
+#battle-player-climb small {color:#e7cca3; font-size:.74rem}
+.battlefield #battle-player-climb:disabled {opacity:1; color:#e0dad1; background:#30332ff2; border-color:#a39a7d}
+#battle-player-climb:focus-visible {outline:2px solid #ffedbe; outline-offset:3px}
+@media (max-width:700px), (pointer:coarse) {
+  .battlefield #battle-player-climb {top:auto; bottom:calc(var(--hud-bottom) + 194px)}
+}
+@media (max-height:560px) and (orientation:landscape) {
+  .battlefield #battle-player-climb {top:53%; bottom:auto}
+}

@@ -70,7 +70,7 @@ export function buildBattlePack() {
     add('helmet','helm',type==='levy'?'leather':mail?'steel':'darkSteel',[0,.02,0],[0,0,0],[1,1,1],'head');
     add('nose','nose','skin',[0,-.06,.13],[0,0,0],[1,1,1],'head');
     for(const s of [-1,1])add('eye'+s,'beam','darkSteel',[s*.065,.015,.135],[0,0,Math.PI/2],[.1,.05,.1],'head');
-    if(heavy)add('visor','beam','darkSteel',[0,-.07,.155],[0,0,Math.PI/2],[.22,1.15,.15],'head');
+    if(heavy)add('visor','beam','darkSteel',[.14,-.045,.155],[0,0,Math.PI/2],[.22,.28,.15],'head');
     if(veteran||type==='knight')add('plume','cape','accent',[0,.28,0],[.3,0,0],[.2,.4,.4],'head');
     if(heavy||veteran)add('cape','cape','house',[0,1.53,-.15],[0,0,0],[1,1,1],'rider');
     for(const s of [-1,1]) {

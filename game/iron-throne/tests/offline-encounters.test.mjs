@@ -6,6 +6,7 @@ import { endTurn } from '../diplomacy.mjs';
 import { emptyUnits } from '../economy.mjs';
 import { applyEncounterResult, beginEncounter, commitEncounterSupport, configureOfflineBattles, encounterPreview, pendingEncounter, reinforcementRoute, resolveEncounterAutomatically, returnFromEncounter, saveEncounterCheckpoint, validateOfflineBattles } from '../offline-encounters.mjs';
 import { battleResult, createBattle, finishAutomatically } from '../battle-sim.mjs';
+import { settlePlayedEncounter } from '../offline-encounters.mjs';
 
 function fixture({support=true,defenders=40,fort=true}={}) {
   const s=createGame(321),a=s.armies[0],d=s.armies[1];
@@ -57,6 +58,56 @@ test('manual results atomically apply exact counts and existing siege damage onc
   const after=structuredClone(s);applyEncounterResult(s,result);assert.deepEqual(s,after);
   assert.equal(returnFromEncounter(s).resumeTurn,false);assert.equal(s.offlineBattle,null);
   assert.throws(()=>returnFromEncounter(s));assert.equal(tile.walls,20);
+});
+test('campaign parsing accepts old pass rocks before clearing the saved fortress approaches',()=>{
+  const {s,tile}=fixture({support:false});
+  resolveMovement(s);beginEncounter(s);
+  const e=pendingEncounter(s);tile.terrain=e.tile.terrain='mountain';
+  const b=createBattle(e);
+  delete b.layout.settlementTerrainVersion;
+  const cliff=b.layout.obstacles.find(o=>o.id==='mountain-west');
+  Object.assign(cliff,{x:-52,width:68});
+  b.units[0].hp-=3; b.layout.gate.hp-=11;
+  saveEncounterCheckpoint(s,b);
+  const restored=parseSave(JSON.stringify(s)).offlineBattle.checkpoint;
+  const cut=restored.layout.obstacles.find(o=>o.id==='mountain-west');
+  assert.equal(restored.layout.settlementTerrainVersion,1);
+  assert.ok(cut.x+cut.width/2<restored.layout.castle.outer.left-10);
+  assert.equal(restored.units[0].hp,b.units[0].hp);
+  assert.equal(restored.layout.gate.hp,b.layout.gate.hp);
+});
+test('the campaign checkpoint and resulting map save independent outer and inner ward damage',()=>{
+  const {s,tile}=fixture({support:false});
+  resolveMovement(s);beginEncounter(s);
+  const encounter=pendingEncounter(s), b=createBattle(encounter);
+  const gate=b.layout.walls.find(w=>w.id==='inner-gate'), inner=b.layout.walls.find(w=>w.id==='inner-wall-east-front');
+  gate.hp=0; gate.state='breached'; inner.hp-=18;
+  saveEncounterCheckpoint(s,b);
+  const restored=parseSave(JSON.stringify(s));
+  assert.equal(restored.offlineBattle.checkpoint.layout.walls.find(w=>w.id==='inner-gate').hp,0);
+  const result=battleResult(b); result.complete=true; result.winner=1;
+  const forged=structuredClone(result); forged.wallSections.find(w=>w.id==='inner-gate').hp=1;
+  assert.throws(()=>applyEncounterResult(s,forged),/restores or invents/);
+  applyEncounterResult(s,result);
+  assert.ok(tile.wallBreaches.includes('inner-gate'));
+  assert.ok(!tile.wallBreaches.includes('gate'));
+  const persisted=parseSave(JSON.stringify(s)).tiles[tile.id];
+  const next=createBattle({...encounter,id:'next-siege',tile:persisted});
+  assert.equal(next.layout.walls.find(w=>w.id==='inner-gate').hp,0);
+  assert.equal(next.layout.walls.find(w=>w.id==='inner-wall-east-front').hp,inner.hp);
+});
+test('settlement clears the encounter in its result snapshot and tolerates replay after reload',()=>{
+  for(const legacyApplied of [false,true]){
+    const {s,tile}=fixture();resolveMovement(s);beginEncounter(s);
+    const result=finish(s),id=s.offlineBattle.id;
+    if(legacyApplied)applyEncounterResult(s,result);
+    settlePlayedEncounter(s,id,result);
+    assert.equal(s.offlineBattle,null);assert.equal(s.lastOfflineBattleReport.id,id);assert.equal(tile.walls,20);
+    const loaded=parseSave(JSON.stringify(s)),before=structuredClone(loaded);
+    assert.equal(settlePlayedEncounter(loaded,id,result).alreadyApplied,true);
+    assert.deepEqual(loaded,before);
+    assert.equal(loaded.militaryEvents.filter(e=>e.battleId===id).length,1);
+  }
 });
 test('invalid results cannot alter the pending state or resurrect troops',()=>{
   const {s}=fixture();resolveMovement(s);const bad=finish(s);bad.armies[0].units.levy++;
@@ -153,16 +204,29 @@ test('configuring the existing campaign preserves tactical timing preferences',(
   const {s}=fixture();configureOfflineBattles(s,{tacticalTime:'slow'});configureOfflineBattles(s);
   assert.equal(s.offlineBattles.tacticalTime,'slow');assert.throws(()=>configureOfflineBattles(s,{tacticalTime:'invalid'}));
 });
+test('resuming a campaign upgrades only its counted commander and preserves the wound percentage',()=>{
+  const {s}=fixture({support:false,fort:false});
+  resolveMovement(s);beginEncounter(s);
+  const b=createBattle(pendingEncounter(s));
+  const hero=b.units.find(u=>u.id===b.commanderId),peer=b.units.find(u=>u.id!==hero.id&&u.type===hero.type);
+  b.battleRulesVersion=3;hero.maxHp=peer.maxHp;hero.hp=hero.maxHp/4;peer.hp=32;
+  saveEncounterCheckpoint(s,b);
+  const loaded=parseSave(JSON.stringify(s)), resumed=loaded.offlineBattle.checkpoint;
+  const upgraded=resumed.units.find(u=>u.id===hero.id);
+  assert.equal(upgraded.maxHp,84);assert.equal(upgraded.hp,21);
+  assert.equal(resumed.units.find(u=>u.id===peer.id).hp,32);
+  assert.deepEqual(parseSave(JSON.stringify(loaded)).offlineBattle.checkpoint,resumed);
+});
 
 test('battle size preferences persist and cannot resize a saved encounter',()=>{
-  const {s}=fixture({support:false,fort:false,defenders:100});assert.equal(s.offlineBattles.battleSize,150);
-  for(const battleSize of [100,150,200]){configureOfflineBattles(s,{battleSize});configureOfflineBattles(s);assert.equal(parseSave(JSON.stringify(s)).offlineBattles.battleSize,battleSize);}
-  for(const battleSize of [0,99,201,300,'200',NaN])assert.throws(()=>configureOfflineBattles(s,{battleSize}),/Choose/);
+  const {s}=fixture({support:false,fort:false,defenders:100});assert.equal(s.offlineBattles.battleSize,300);
+  for(const battleSize of [100,150,200,300,400]){configureOfflineBattles(s,{battleSize});configureOfflineBattles(s);assert.equal(parseSave(JSON.stringify(s)).offlineBattles.battleSize,battleSize);}
+  for(const battleSize of [0,99,201,401,'200',NaN])assert.throws(()=>configureOfflineBattles(s,{battleSize}),/Choose/);
   resolveMovement(s);beginEncounter(s);const b=createBattle(pendingEncounter(s),{maxActive:s.offlineBattles.battleSize});saveEncounterCheckpoint(s,b);
   configureOfflineBattles(s,{battleSize:100});const restored=parseSave(JSON.stringify(s));
-  assert.equal(restored.offlineBattles.battleSize,100);assert.equal(restored.offlineBattle.checkpoint.maxActive,200);
+  assert.equal(restored.offlineBattles.battleSize,100);assert.equal(restored.offlineBattle.checkpoint.maxActive,400);
   assert.deepEqual(restored.offlineBattle.checkpoint.units,b.units,'changing the next battle setting leaves the live roster untouched');
-  const broken=structuredClone(s);broken.offlineBattles.battleSize=400;assert.throws(()=>parseSave(JSON.stringify(broken)),/preferences/);
+  const broken=structuredClone(s);broken.offlineBattles.battleSize=401;assert.throws(()=>parseSave(JSON.stringify(broken)),/preferences/);
   const legacy=structuredClone(s);delete legacy.offlineBattles.battleSize;assert.doesNotThrow(()=>parseSave(JSON.stringify(legacy)));
 });
 

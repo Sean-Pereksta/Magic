@@ -4,11 +4,21 @@ Offline land encounters now pause when armies meet and offer **Resolve Battle** 
 
 The encounter shows the location, defenses, armies and commanders, visible opposition, nearby support, and a clearly labeled strategic casualty estimate. Closing it leaves a **Battle pending** button and keeps campaign orders frozen. An empty settlement still follows ordinary capture rules without manufacturing defenders.
 
+## Custom Battle
+
+Choose **Custom Battle** on the opening screen. **West Wall Assault** fields 72 soldiers and one ram against 48 defenders, including 16 archers. Send infantry to a ladder with **L**, or select infantry, press **B**, and choose the ram and its target. At the start of a siege, nearby available infantry take the ram handles automatically. They can replace fallen pushers. A direct recall takes priority, and B lets you pick a different wall or assign specific infantry. The ram has 2,400 HP. Four living infantry can roll it into position. Six push faster and recover sooner between blows. A section collapses where the head strikes, opening a route into the fort.
+
+**Royal City Siege** fields 240 attacking soldiers and two wheeled rams against 200 defenders. The royal citadel has separate outer and inner walls, a chapel, a keep and defenders in both wards. Select **Defenses** to try an open market town, a timber stockade or palisade, a stone fort, or a larger upgraded city. Campaign battles use the actual settlement, fort and wall upgrades on the tile. The settlement and its approaches are cleared and levelled before deployment.
+
+Both sides have editable rosters. Their deployment previews show how many soldiers and engines will fight immediately and how many will arrive in waves. **Deploy First** lets you position formations and assign a ram crew. **Fight Now** starts immediately. At the end you return to setup. **Rematch** restores the starting deployment and **New Field** changes the seed. Custom battles use their own in-memory state. Finish Automatically resolves the live custom fight and takes you directly back to setup.
+
 ## Playing
+
+In Custom Battle, **Your commander** lets you lead as a troop already in your chosen army. Choose **Cavalry rider** to ride with a mixed force or **Spearman** to fight on foot. The player commander gets 20% extra maximum health, rounded to the nearest hit point, and deals 10% more personal weapon damage. Older battles retain the commander’s wound percentage on reload.
 
 Enter Battle opens deployment. Attackers and defenders begin in separate zones at opposite ends of the field, facing each other, even when their campaign approach directions coincide. Fort defenders start inside their defenses. Zone outlines show the starting areas; placement checks terrain and occupied space so troops cannot be stacked on another formation or placed among opponents. Select troop families or a particular player army, choose a formation, and drag on the ground to place the group and set its facing. Archers, crossbows and cavalry have separate selection cards with deployed and reserve counts. Choosing a formation immediately rearranges the selected troops. Begin Battle switches to third-person commander control.
 
-Choose **Troops on the field** in campaign settings or before entering a new battle: **100 — Lighter**, **150 — Balanced** (default), or **200 — Large**. This is the combined active limit for both sides. Extra soldiers remain in reserves. A saved battle retains its recorded limit; changing the preference applies to the next new battle.
+Choose **Troops on the field** in campaign settings, at a new encounter, or in Custom Battle. Both armies share the selected limit of 100, 150, 200, 300, or 400 active troops. Extra soldiers arrive in waves. New campaigns default to 300. Existing campaigns keep their chosen limit. Saved battles retain their starting limit.
 
 Save a selection under **Custom command groups** to name and recall its exact soldiers, including reserves. Up to twelve groups persist with the battlefield checkpoint; recalling a group selects its surviving members. Orders affect only the selected group. Line, column, wedge and square layouts complement the existing tactical formations.
 
@@ -17,7 +27,7 @@ Save a selection under **Custom command groups** to name and recall its exact so
 | WASD / movement stick | Move the counted commander; WASD pans the tactical camera |
 | Mouse / swipe | Aim and camera |
 | Left click / Attack | Attack or shoot |
-| Right click / Block | Directional defense |
+| Right click / Block | Face the blow and hold to defend. On phones, use the shield button beside Attack. Raise guard within 0.3 seconds of a frontal melee hit to stun the attacker for 0.7 seconds. |
 | Space / Heavy | Heavy attack with stamina cost |
 | Shift / Sprint | Sprint |
 | E / Interact / Mount | Interact with a ladder or mount/dismount an existing mounted troop |
@@ -31,13 +41,25 @@ Save a selection under **Custom command groups** to name and recall its exact so
 | F5 | Toggle fire / hold fire for the selection |
 | F6 | Retreat the selected troops |
 | G | Move the selection to the ground under the aim point |
-| Q / Orders | Formation commands |
+| L | Assault a ladder |
+| B | Assign infantry to the ram and choose a gate or exterior wall |
+| V | Defend a wall |
+| Q / Orders | Expand or collapse formation commands in the current camera |
+| H / Hide UI / Show UI | Hide or restore the battlefield controls. Orders and movement still work while the controls are hidden. |
 | Tab / Tactical view | Elevated command view |
-| Escape / Pause | Pause, save and exit, retreat, or finish automatically |
+| Escape / Pause | Cancel targeting, otherwise pause |
 
-The compact on-field command guide shows the current selection and acknowledges orders. Number keys and function-key orders work directly in commander and tactical views without opening the orders panel, switching cameras, or changing time mode. Hotkeys ignore held-key repeats, modifier shortcuts, text/select fields, pauses, and automatic completion. Numbered troop selection covers your own armies; saved-group keys retain exact membership. Hold here cancels charge momentum while allowing nearby defensive attacks; reserves given this order hold at their entry position when they arrive.
+The compact on-field command guide shows the current selection and acknowledges orders. Number keys and function-key orders work directly in commander and tactical views without opening the orders panel, switching cameras, or changing time mode. Orders work while sprinting. Hotkeys respect text entry, browser shortcuts, and pause. Numbered troop selection covers your own armies; saved-group keys retain exact membership. Hold here cancels charge momentum while allowing nearby defensive attacks; reserves given this order hold at their entry position when they arrive.
 
-Tactical view pauses combat by default; slow motion and real time are optional. In real time, the commander follows formation orders while the player commands. A knocked-out commander stays knocked out; surviving troops remain controllable. Ranged loadouts require a ranged commander, and lances require a mounted commander. Weapon changes never refill a quiver or add troops.
+Adjust **Mouse look sensitivity** in the campaign menu or battle pause panel, from 0.5× through 4×. A posted archer gains 10 accuracy points on an intact wall walk. Individual training and weapon type affect aim, and moving targets can dodge an arrow after it leaves the bow.
+
+Tactical view runs in real time by default. Slow motion and pause remain available in the command panel. In real time, the commander follows formation orders while the player commands. A knocked-out commander stays knocked out; surviving troops remain controllable. Ranged loadouts require a ranged commander, and lances require a mounted commander. Weapon changes never refill a quiver or add troops.
+
+**Personal climbing.** Walk to the foot of an intact ladder. The **Climb Ladder** button names the ladder within reach. Click, tap or press **E** to climb to its parapet. If the lowest rungs are occupied, wait for space. The prompt stays available when the rest of the HUD is hidden.
+
+**Weapon handling.** A sword makes quick cuts in close quarters. A spear reaches about four metres in a narrow forward lane. A well-placed thrust checks advancing infantry and hits an oncoming horse harder. A spearman takes time to bring the point around, so swordsmen can close from the side. Axes put pressure on shields, maces work against armor, and a lance does its best work on a committed charge. See **Weapons and riding** in the pause menu for a short guide.
+
+**Mounted steering.** Use the movement keys or stick to steer the horse. At speed it turns in an arc and carries forward as it slows. **Hold Here** cancels a charge immediately and the horse brakes to a stop. Start a turn before the corner and line up the lance before contact. You can look around with the camera while riding straight ahead.
 
 Orders cover move/facing, hold, defend walls, advance, charge, follow, attack a selected enemy army, attack nearest, fire/hold fire, withdrawal and retreat. Defend walls places infantry and ranged troops on intact parapets during deployment; during combat they walk to the inside stairs and climb. Leaving a wall uses the same stairs. Elevated archers can shoot down over the parapet while ground troops need a route up to engage them. Formation spacing and behavior implement balanced, defensive line, spear wall, aggressive charge, skirmish and flanking. Allies accept or decline broad requests and retain their own command.
 
@@ -49,11 +71,11 @@ Engaged troops face their opponents and commit to a visible strike through conta
 
 Support uses a bounded breadth-first walk through legal land neighbors and access rules, up to two steps. Military relationships and existing wars must entitle an army to participate. Trade or non-aggression alone does not qualify. Committed armies cannot spend movement again; their incompatible orders are cleared. Surviving support normally stays on its source tile. Arrival timing is 0/25/50 seconds for zero/one/two steps. Tactical approach lanes retain the approach's flank while keeping each side's entry on its own end of the map; occupied entry points leave arrivals safely in reserve.
 
-`battle-sim.mjs` is deterministic and independent of the DOM. Every soldier retains its army/type identity. A rider and horse count once; engine crews are visual parts of the engine. At most **200 troops total** are active, including the commander, with a default limit of **150**. The deployment budget is distributed proportionally across sides and compositions, with remaining troops preserved in reserves. Reserves enter from legal approach edges in eight-second waves as space opens. Newly arriving support can enter at its scheduled arrival if space is available. Fallen troops do not use active slots. Victory checks remaining commitments, escaped units and reserves. Defenses begin at their saved integrity; gates and breached sections change navigation and persist back to the campaign.
+`battle-sim.mjs` is deterministic and independent of the DOM. Every soldier retains its army/type identity. A rider and horse count once. Ram pushers are individual infantry from the army roster. The ram stops when fewer than four remain at its grips. At most **400 troops total** are active, including the commander, with a new-campaign default limit of **300**. The deployment budget is distributed proportionally across sides and compositions, with remaining troops preserved in reserves. Reserves enter from legal approach edges in eight-second waves as space opens. Newly arriving support can enter at its scheduled arrival if space is available. Fallen troops do not use active slots. Victory checks remaining commitments, escaped units and reserves. Defenses begin at their saved integrity; gates and breached sections change navigation and persist back to the campaign.
 
 The result validates every army before application. For each army and type, starting = surviving + lost. Escaped and undeployed survivors are disjoint subsets of survivors. Capture requires an active surviving occupying force and no hostile army still contesting the tile. The existing capture and political-history rules are reused. Manual damage replaces incidental assault damage; casualties are not fed through the original resolver again.
 
-The UI saves a single campaign snapshot containing the applied marker and all results before showing the report. Reopening that report cannot apply it twice. Checkpoints contain simulation RNG, attack phases, missiles, ammunition, morale, reserve arrival state and fortification damage. Save and Exit, refresh, graphics failure, and Finish Automatically preserve that progress. Automatic completion runs in a separate worker so the interface remains responsive; failure retains the last saved checkpoint. Save failures pause play and explain that progress could not be persisted.
+The battle closes automatically when the outcome is final. A single save records the survivors, casualties, capture, wall damage and cleared encounter. The map resumes the interrupted turn. View Report opens the latest result from the map banner. Checkpoints contain simulation RNG, attack phases, missiles, ammunition, morale, reserve arrival state and fortification damage. Save and Exit, refresh, graphics failure, and Finish Automatically preserve that progress. Automatic completion runs in a separate worker so the interface remains responsive; failure retains the last saved checkpoint. Save failures pause play and explain that progress could not be persisted.
 
 Older checkpoints exceeding the 200-troop ceiling move overflow troops into reserves while preserving identity, health, ammunition, morale and casualties. Existing lower limits remain unchanged. The commander remains deployed when already active, and returning reserves keep their prior orders.
 
@@ -67,6 +89,6 @@ The renderer loads only on entering combat. The included articulated models cove
 
 Run `npm run test:iron-throne:battle` for tactical, accounting, recovery and asset tests; run `npm run test:iron-throne:battle-browser` for the campaign loop and WebGL checks. The browser suite supports the same optional `IRON_THRONE_CHROMIUM` and `CODEX_PRIMARY_RUNTIME_NODE_MODULES` settings as existing tests. `IRON_BATTLE_SCREENSHOTS` optionally records review images outside the repository.
 
-Tactical markers use one instanced ring mesh instead of 24 separate beam segments per ring. On an AMD Radeon integrated GPU through ANGLE D3D11 at 1280×800 and device pixel ratio 1, a mixed-roster rendering test with 24 detailed corpses and 96 blood particles measured 12.9 ms median / 16.0 ms p95 at 150 troops and 17.2 ms median / 31.8 ms p95 at 200 troops (40 measured frames after 12 warmup frames). The previous 200-troop rendering cost was 28.5 ms median / 35.8 ms p95. These are renderer timings, not whole-game frame-rate guarantees. A separate 60-second combat simulation with a 1,600-soldier roster measured 2.55 ms median / 3.40 ms p95 per physics step at a 200-troop cap. The 300–400 tiers were measured but excluded to leave performance headroom.
+Large battles share static scenery and route data. The renderer uses less animation detail for distant troops, and nearby soldiers retain their weapon poses. Active troop limits can be lowered independently of both army rosters.
 
 Regression coverage includes legal support, online exclusion, defended and empty settlements, multi-defender capture, no extra troops, fractional integrity conversion to campaign save format, exact resumed turns, duplicate outcomes, checkpoint corruption, knockout, finite ammunition, physical defenses, breach navigation, and automatic continuation. The full interface is exercised at desktop and mobile viewport sizes, including save/reload during combat and after results. Real-device performance and combat balance still need playtesting; viewport and software-renderer tests do not establish a mobile frame-rate guarantee.

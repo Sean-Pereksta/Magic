@@ -9,6 +9,7 @@ import { refreshKnowledge, visionTiles } from './fog.mjs';
 import { changeRelation } from './living.mjs';
 import { emotionalEvent } from './emotions.mjs';
 import { BATTLE_SIZE_OPTIONS, DEFAULT_ACTIVE_TROOPS, finishAutomatically, normalizeBattleCheckpoint, validateBattleCheckpoint } from './battle-sim.mjs';
+import { castleSite } from './battle-siege.mjs';
 
 // The campaign stores only JSON. Neither a renderer nor a running worker is
 // required to recover a pending decision or resume the strategic turn.
@@ -22,10 +23,10 @@ export function configureOfflineBattles(s,options={}) {
   if(!supportedOfflineCampaign(s))return null;
   const preference=options.preference??s.offlineBattles?.preference??'ask';
   if(!['ask','auto'].includes(preference))fail('Choose Ask before battles or Resolve automatically.');
-  const tacticalTime=options.tacticalTime??s.offlineBattles?.tacticalTime??'pause';
+  const tacticalTime=options.tacticalTime??s.offlineBattles?.tacticalTime??'real';
   if(!['pause','slow','real'].includes(tacticalTime))fail('Choose paused, slow motion, or real time command.');
   const battleSize=options.battleSize??s.offlineBattles?.battleSize??DEFAULT_ACTIVE_TROOPS;
-  if(!BATTLE_SIZE_OPTIONS.includes(battleSize))fail('Choose 100, 150, or 200 troops on the field.');
+  if(!BATTLE_SIZE_OPTIONS.includes(battleSize))fail(`Choose a supported field limit (${BATTLE_SIZE_OPTIONS.join(', ')}).`);
   s.offlineBattles={...s.offlineBattles,enabled:options.enabled??s.offlineBattles?.enabled??true,preference,tacticalTime,battleSize};
   return s.offlineBattles;
 }
@@ -130,12 +131,16 @@ function validatedResult(e,result) {
     row.losses=Object.fromEntries(Object.keys(UNITS).map(type=>[type,(p.units[type]||0)-row.units[type]]));
   }
   if(!finite(result.walls,0,e.tile.walls||0)||!finite(result.fortIntegrity,0,e.tile.fortIntegrity||0))fail('Battle damage cannot restore or exceed the saved fortifications.');
-  if(result.wallBreaches!==undefined&&(!Array.isArray(result.wallBreaches)||result.wallBreaches.length>6||result.wallBreaches.some(id=>!WALL_SECTIONS.includes(id))||new Set(result.wallBreaches).size!==result.wallBreaches.length))fail('Invalid breached wall sections.');
-  if(result.wallSections!==undefined&&(!Array.isArray(result.wallSections)||result.wallSections.length>6||new Set(result.wallSections.map(w=>w.id)).size!==result.wallSections.length||result.wallSections.some(w=>!WALL_SECTIONS.includes(w.id)||!finite(w.maxHp,1,1000)||!finite(w.hp,0,w.maxHp))))fail('Invalid wall section damage.');
+  const sections=new Set(WALL_SECTIONS);
+  if ((e.checkpoint?.layout?.castle ?? castleSite(e.tile))?.inner) for(const id of WALL_SECTIONS) sections.add('inner-'+id);
+  if(result.wallBreaches!==undefined&&(!Array.isArray(result.wallBreaches)||result.wallBreaches.length>sections.size||result.wallBreaches.some(id=>!sections.has(id))||new Set(result.wallBreaches).size!==result.wallBreaches.length))fail('Invalid breached wall sections.');
+  if(result.wallSections!==undefined&&(!Array.isArray(result.wallSections)||result.wallSections.length>sections.size||new Set(result.wallSections.map(w=>w.id)).size!==result.wallSections.length||result.wallSections.some(w=>!sections.has(w.id)||!finite(w.maxHp,1,1000)||!finite(w.hp,0,w.maxHp)||w.breach&&(w.hp!==0||!finite(w.breach.x,-80,80)||!finite(w.breach.z,-80,80)||!finite(w.breach.width,1,72)))))fail('Invalid wall section damage.');
   if(e.checkpoint){
     if(!validateBattleCheckpoint(e.checkpoint,e))fail('The saved battlefield checkpoint is damaged.');
     for(const row of normalized.armies){const remaining=emptyUnits();for(const u of e.checkpoint.units)if(u.armyId===row.armyId&&u.status!=='dead')remaining[u.type]++;validateCounts(row.units,remaining,'checkpoint surviving');}
     if(result.walls>e.checkpoint.fortifications.walls||result.fortIntegrity>e.checkpoint.fortifications.fortIntegrity)fail('Battle result restores damage already recorded in its checkpoint.');
+    const savedSections=[...e.checkpoint.layout.walls,e.checkpoint.layout.gate].filter(Boolean);
+    if(result.wallSections?.some(section=>!savedSections.some(w=>w.id===section.id && w.maxHp===section.maxHp && w.hp>=section.hp)))fail('Battle result restores or invents a fortress section.');
   }
   // Campaign construction and save validation use integral integrity points.
   // Round damage outward, never heal a fractional point on leaving the scene.
@@ -179,6 +184,8 @@ export function saveEncounterCheckpoint(s,checkpoint) {
     if(checkpoint.time<e.checkpoint.time)fail('The checkpoint is older than the last saved battlefield.');
     const byId=new Map(checkpoint.units.map(u=>[u.id,u]));
     if(e.checkpoint.units.some(u=>u.status==='dead'&&byId.get(u.id)?.status!=='dead')||checkpoint.fortifications.walls>e.checkpoint.fortifications.walls||checkpoint.fortifications.fortIntegrity>e.checkpoint.fortifications.fortIntegrity)fail('The checkpoint restores recorded casualties or damage.');
+    const previous=[...e.checkpoint.layout.walls,e.checkpoint.layout.gate].filter(Boolean), current=[...checkpoint.layout.walls,checkpoint.layout.gate].filter(Boolean);
+    if (current.length!==previous.length || current.some(w=>!previous.some(v=>v.id===w.id && v.hp>=w.hp))) fail('The checkpoint restores or changes a wall section.');
   }
   if(JSON.stringify({...s,offlineBattle:{...e,checkpoint}}).length>12000000)fail('This battlefield checkpoint would exceed the campaign save size limit.');
   e.checkpoint=clone(checkpoint);return {ok:true};
@@ -207,7 +214,7 @@ export function applyEncounterResult(s,result) {
     }
   }
   s.armies=s.armies.filter(a=>troopTotal(a)>0);
-  const attacker=s.armies.find(a=>a.id===e.attackerId),defender=e.participants.find(p=>p.armyId===e.defenderId),winner=e.participants.find(p=>p.side===checked.winner)?.owner||null,loser=e.participants.find(p=>p.side!==checked.winner)?.owner;
+  const defender=e.participants.find(p=>p.armyId===e.defenderId),winner=e.participants.find(p=>p.side===checked.winner)?.owner||null,loser=e.participants.find(p=>p.side!==checked.winner)?.owner;
   const composition=[0,1].map(side=>aggregate(e,side).units),after=[0,1].map(side=>checked.armies.filter(a=>e.participants.find(p=>p.armyId===a.armyId).side===side).reduce((n,a)=>n+troopTotal(a),0));
   const event={id:s.nextId++,battleId:e.id,turn:s.turn,attacker:e.participants[0].owner,defender:defender.owner,attackerArmyId:e.attackerId,defenderArmyId:e.defenderId,tile:tile.id,from:e.continuation.from||e.participants[0].sourceTile,action:'battle',winner,before:composition.map(units=>troopTotal({units})),after,composition,casualties:[0,1].map(side=>Object.fromEntries(Object.keys(UNITS).map(type=>[type,checked.armies.filter(a=>e.participants.find(p=>p.armyId===a.armyId).side===side).reduce((n,a)=>n+a.losses[type],0)]))),morale:[0,1].map(side=>checked.armies.find(a=>e.participants.find(p=>p.armyId===a.armyId).side===side)?.morale||.1),phases:checked.phases||[{name:'Personal command',loss:composition.map((units,i)=>troopTotal({units})-after[i]),notes:['Casualties and fortification damage supplied by the battlefield.']}],participants:clone(checked.armies),method:checked.method||'manual'};
   s.militaryEvents.push(event);s.militaryEvents=s.militaryEvents.slice(-100);
@@ -216,8 +223,15 @@ export function applyEncounterResult(s,result) {
     emotionalEvent(s,loser,winner,'defeat',{key:`battle:${event.id}`,text:`Defeated our army at ${tile.name||tile.id}.`});
     emotionalEvent(s,winner,loser,'victory',{key:`battle:${event.id}`,text:`Faced a rival in battle at ${tile.name||tile.id}.`});
   }
-  const occupying=checked.armies.find(a=>a.armyId===e.attackerId),occupyingTroops=Object.entries(occupying.units).reduce((n,[type,count])=>n+(UNITS[type].family==='siege'?0:count-(occupying.escaped?.[type]||0)-(occupying.undeployed?.[type]||0)),0);
-  if(checked.winner===0&&attacker&&occupyingTroops>0&&checked.occupationSide!==null&&!s.armies.some(a=>a.tile===tile.id&&atWar(s,attacker.owner,a.owner))&&capture(s,attacker,tile)){attacker.tile=tile.id;checked.capture=tile.owner===attacker.owner?tile.id:null;}
+  if(checked.winner===0&&checked.occupationSide!==null){
+    for(const p of e.participants.filter(p=>p.side===0&&(!checked.occupyingArmyId||p.armyId===checked.occupyingArmyId))){
+      const row=checked.armies.find(a=>a.armyId===p.armyId);
+      const canOccupy=Object.entries(row.units).some(([type,n])=>UNITS[type].family!=='siege'&&n>(row.escaped?.[type]||0)+(row.undeployed?.[type]||0));
+      const attacker=canOccupy&&s.armies.find(a=>a.id===p.armyId);
+      if(!attacker||s.armies.some(a=>a.tile===tile.id&&atWar(s,attacker.owner,a.owner)))continue;
+      if(capture(s,attacker,tile)){attacker.tile=tile.id;checked.capture=tile.owner===attacker.owner?tile.id:null;break;}
+    }
+  }
   log(s,winner?`${kingdom(s,winner)?.name||winner} wins at ${tile.name||tile.id}.`:`Both armies withdraw at ${tile.name||tile.id}.`,'battle',{audience:[...new Set(e.participants.map(p=>p.owner))]});
   e.result=checked;e.status='applied';e.checkpoint=null;refreshKnowledge(s);
   return {ok:true,result:e.result};
@@ -226,6 +240,21 @@ export function returnFromEncounter(s) {
   const e=requireEncounter(s);if(e.status!=='applied')fail('Finish the encounter before returning to the campaign.');
   s.lastOfflineBattleId=e.id;s.offlineBattle=null;return {ok:true,resumeTurn:!!s.offlineTurn};
 }
+// Save casualties, map changes and the cleared encounter in one campaign snapshot.
+// A duplicate worker reply or recovery of an old applied checkpoint is harmless.
+export function settlePlayedEncounter(s,id,result) {
+  if(s.lastOfflineBattleReport?.id===id)return {ok:true,alreadyApplied:true};
+  const e=requireEncounter(s);
+  if(id!==e.id)fail('This encounter is no longer active.');
+  if(e.status!=='applied'){
+    if(result)applyEncounterResult(s,result);
+    else resolveEncounterAutomatically(s);
+  }
+  const view=encounterPreview(s);
+  s.lastOfflineBattleReport={id,name:e.tile.name||e.tile.id,side:e.playerSide,result:view.result,
+    participants:view.participants.map(({armyId,name,units})=>({armyId,name,units}))};
+  return returnFromEncounter(s);
+}
 export function encounterPreview(s) {
   const e=pendingEncounter(s);if(!e)return null;
   const seen=visionTiles(s,e.playerOwner),visible=p=>p.owner===e.playerOwner||p.side===e.playerSide||seen.has(p.sourceTile);
@@ -233,6 +262,7 @@ export function encounterPreview(s) {
   const visibleIds=new Set(preview.participants.map(p=>p.armyId));preview.primaryIds=preview.primaryIds.filter(id=>visibleIds.has(id));
   if(preview.result)preview.result.armies=preview.result.armies.filter(row=>visibleIds.has(row.armyId));
   delete preview.checkpoint;delete preview.continuation;
+  if(e.status==='applied')return preview;
   const estimate=automaticResult(e),side=e.playerSide;
   const yours=estimate.armies.filter(a=>e.participants.find(p=>p.armyId===a.armyId).side===side).reduce((n,a)=>n+troopTotal(e.participants.find(p=>p.armyId===a.armyId))-troopTotal(a),0),winner=estimate.winner===side?'favorable':'unfavorable';
   preview.automaticForecast={label:`Strategic automatic-resolution estimate: ${winner}, approximately ${yours} friendly losses. Personal combat can differ.`,yours,winner};
@@ -242,6 +272,16 @@ export function validateOfflineBattles(s) {
   if(!supportedOfflineCampaign(s)){if(s.offlineBattle||s.offlineTurn)fail('Online campaigns cannot contain a pending local battle.');delete s.offlineBattles;return;}
   if(s.offlineBattles&&(!['ask','auto'].includes(s.offlineBattles.preference)||typeof s.offlineBattles.enabled!=='boolean'||s.offlineBattles.tacticalTime!==undefined&&!['pause','slow','real'].includes(s.offlineBattles.tacticalTime)||s.offlineBattles.battleSize!==undefined&&!BATTLE_SIZE_OPTIONS.includes(s.offlineBattles.battleSize)))fail('Damaged offline battle preferences.');
   if(s.offlineTurn&&(!['movement','aftermath'].includes(s.offlineTurn.phase)||s.offlineTurn.turn!==s.turn))fail('Damaged suspended turn.');
+  const report=s.lastOfflineBattleReport;
+  if(report){
+    if(typeof report.id!=='string'||typeof report.name!=='string'||![0,1].includes(report.side)||!Array.isArray(report.participants)||report.participants.length>500||!Array.isArray(report.result?.armies)||report.result.armies.length!==report.participants.length||![0,1,null].includes(report.result.winner))fail('Damaged battle report.');
+    const maximum=Object.fromEntries(Object.keys(UNITS).map(type=>[type,100000]));
+    for(const row of report.result.armies){
+      const p=report.participants.find(p=>p.armyId===row.armyId);
+      if(!p)fail('Damaged battle report army.');
+      validateCounts(p.units,maximum,'battle report');validateCounts(row.units,p.units,'battle survivors');
+    }
+  }
   const e=s.offlineBattle;if(!e)return;
   if(e.version!==1||typeof e.id!=='string'||e.id.length>80||e.turn!==s.turn||!['pending','active','applied'].includes(e.status)||!finite(e.seed,0,4294967295)||!s.tiles[e.tile?.id]||!Array.isArray(e.participants)||e.participants.length<2||e.participants.length>500||new Set(e.participants.map(p=>p.armyId)).size!==e.participants.length||!Array.isArray(e.supportOptions)||e.supportOptions.length>500||!Array.isArray(e.primaryIds)||e.playerOwner!=='ashen'||![0,1].includes(e.playerSide)||!['move','structure'].includes(e.continuation?.kind)||e.continuation.attackerId!==e.attackerId||e.continuation.targetId!==e.tile.id||typeof e.commitmentsLocked!=='boolean')fail('Damaged pending battlefield.');
   if(!e.participants.some(p=>p.armyId===e.attackerId&&p.side===0)||!e.participants.some(p=>p.armyId===e.defenderId&&p.side===1)||!e.primaryIds.includes(e.attackerId)||!e.primaryIds.includes(e.defenderId)||e.primaryIds.some(id=>!e.participants.some(p=>p.armyId===id))||!finite(e.tile.walls,0,180)||!finite(e.tile.fortIntegrity,0,180)||e.status!=='pending'&&!e.commitmentsLocked)fail('Damaged battlefield starting position.');

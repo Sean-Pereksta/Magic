@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { UNITS } from '../data.mjs';
-import { createBattle, beginBattle, stepBattle, issueOrder, battleResult, finishAutomatically, validateBattleCheckpoint, nearestBattlePosition, requestAlliedOrder, normalizeBattleCheckpoint, MAX_ACTIVE_TROOPS, DEFAULT_ACTIVE_TROOPS, BATTLE_SIZE_OPTIONS, RESERVE_WAVE_SECONDS } from '../battle-sim.mjs';
+import { createBattle, beginBattle, stepBattle, issueOrder, battleResult, finishAutomatically, validateBattleCheckpoint, nearestBattlePosition, requestAlliedOrder, normalizeBattleCheckpoint, terrainHeight, MAX_ACTIVE_TROOPS, DEFAULT_ACTIVE_TROOPS, BATTLE_SIZE_OPTIONS, RESERVE_WAVE_SECONDS } from '../battle-sim.mjs';
 
 function encounter(a = { menAtArms: 5 }, d = { levy: 5 }, extras = {}) {
   return { id: 'encounter-1', seed: 42, playerOwner: 'ashen', playerSide: 0, tile: { terrain: 'plains' }, participants: [
@@ -78,7 +78,10 @@ test('deployment slots remain clear across forests, hills, rivers, towns and for
     const b = createBattle(e, { maxActive: 200 });
     assert.equal(b.units.filter(u => u.status === 'active').length, 200);
     assertDeploymentIntegrity(b);
-    if (tile.building === 'fort') assert.ok(b.units.filter(u => u.side === 1).every(u => Math.abs(u.x) <= 30 && u.z >= 20 && u.z <= 54));
+    if (tile.building === 'fort') {
+      assert.ok(b.units.filter(u => u.side === 1 && !u.wallId).every(u => Math.abs(u.x) <= 30 && u.z >= 20 && u.z <= 54));
+      assert.ok(b.units.filter(u => u.side === 1 && u.type === 'archer').every(u => u.wallId));
+    }
   }
 });
 
@@ -116,7 +119,7 @@ test('hold-current anchors each selected troop in place without reforming or loc
   const b = createBattle(encounter({ menAtArms: 4, archer: 4, cavalry: 2 }, { levy: 3 }));
   beginBattle(b);
   const archers = b.units.filter(u => u.type === 'archer');
-  archers.forEach((u, n) => { u.x = -30 + n * 8; u.z = -55 + n; u.order = { kind: 'move', x: 70, z: 40 }; });
+  archers.forEach((u, n) => { u.x = -30 + n * 8; u.z = -55 + n; u.y = terrainHeight(b,u.x,u.z); u.order = { kind: 'move', x: 70, z: 40 }; });
   const before = b.units.map(u => ({ id: u.id, x: u.x, y: u.y, z: u.z }));
   const result = issueOrder(b, 'archers', 'hold', { atCurrent: true });
   assert.equal(result.count, 4);
@@ -131,9 +134,12 @@ test('hold-current anchors each selected troop in place without reforming or loc
 test('hold-current immediately cancels a charge while permitting nearby defensive attacks', () => {
   const { b, a, d } = duel('cavalry', 'levy');
   Object.assign(a, { speed: 7, chargeDistance: 12, order: { kind: 'charge' } });
+  d.z=4;d.order.z=4;
   issueOrder(b, [a.id], 'hold', { atCurrent: true });
-  assert.equal(a.speed, 0); assert.equal(a.chargeDistance, 0);
+  assert.equal(a.speed, 7); assert.equal(a.chargeDistance, 0);
   assert.equal(a.order.lockFacing, false);
+  stepBattle(b,.05,{commanderAI:true});
+  assert.ok(a.speed<7&&a.z>0,'the horse is braking when Hold Here cancels its charge');
   run(b, .8, { commanderAI: true });
   assert.ok(d.hp < d.maxHp);
   assert.equal(b.events.some(e => e.type === 'charge'), false);
@@ -212,28 +218,28 @@ test('rare recruited siege roles deploy without creating replacement troops', ()
   assert.equal(b.units.filter(u => u.type === 'trebuchet').length, 1);
 });
 
-test('the 200 soldier ceiling includes the commander and both very unequal sides', () => {
-  const b = createBattle(encounter({ levy: 1000 }, { levy: 1 }), { maxActive: 240 });
+test('the 400 troop ceiling includes the commander and both very unequal sides', () => {
+  const b = createBattle(encounter({ levy: 1000 }, { levy: 1 }), { maxActive: 500 });
   assert.equal(b.maxActive, MAX_ACTIVE_TROOPS);
-  assert.deepEqual(b.activeCaps, [199, 1]);
+  assert.deepEqual(b.activeCaps, [399, 1]);
   // Occupied deployment positions can defer a few of the dominant side's
   // troops, but can never add an extra slot beyond the selected ceiling.
-  assert.ok(b.units.filter(u => u.status === 'active').length <= 200);
+  assert.ok(b.units.filter(u => u.status === 'active').length <= MAX_ACTIVE_TROOPS);
   assert.equal(b.units.filter(u => u.side === 1 && u.status === 'active').length, 1);
   assert.equal(b.units.find(u => u.id === b.commanderId).status, 'active');
   assert.equal(b.units.length, 1001);
 });
 
 test('all battle-size presets preserve rosters, refill by waves, and survive saved checkpoints', () => {
-  assert.deepEqual(BATTLE_SIZE_OPTIONS, [100, 150, 200]);
-  const e = encounter({ menAtArms: 100, archer: 50, cavalry: 50 }, { menAtArms: 100, archer: 50, cavalry: 50 });
+  assert.deepEqual(BATTLE_SIZE_OPTIONS, [100, 150, 200, 300, 400]);
+  const e = encounter({ menAtArms: 120, archer: 50, cavalry: 50 }, { menAtArms: 120, archer: 50, cavalry: 50 });
   const defaultBattle = createBattle(e);
-  assert.equal(DEFAULT_ACTIVE_TROOPS, 150);
+  assert.equal(DEFAULT_ACTIVE_TROOPS, 300);
   assert.equal(defaultBattle.maxActive, DEFAULT_ACTIVE_TROOPS);
-  assert.equal(defaultBattle.units.filter(u => u.status === 'active').length, 150);
+  assert.equal(defaultBattle.units.filter(u => u.status === 'active').length, 300);
   for (const cap of BATTLE_SIZE_OPTIONS) {
     const b = createBattle(e, { maxActive: cap });
-    assert.equal(b.units.length, 400);
+    assert.equal(b.units.length, 440);
     assert.equal(b.units.filter(u => u.status === 'active').length, cap);
     beginBattle(b);
     for (const side of [0, 1]) {
@@ -287,7 +293,7 @@ test('casualty replacements wait for reserve waves and enter from the edge', () 
 });
 
 test('legacy overflow is safely queued without healing, rearming or replacing soldiers', () => {
-  const e = encounter({ archer: 150 }, { archer: 150 }), b = createBattle(e);
+  const e = encounter({ archer: 150 }, { archer: 150 }), b = createBattle(e,{maxActive:150});
   delete b.battleRulesVersion; delete b.nextReserveWave;
   b.maxActive = 240; b.activeCaps = [120, 120]; b.time = 12; b.phase = 'combat';
   for (const side of [0, 1]) {
@@ -675,7 +681,7 @@ test('parapet cover reduces incoming arrows without making the defender invulner
   assert.ok(covered > 0); assert.ok(covered < open);
 });
 
-test('ram attacks damage the real gate and update navigation on a breach', () => {
+test('a legacy uncrewed ram attack cannot land or move the abandoned engine', () => {
   const e = encounter({ levy: 1, ram: 1 }, { levy: 2 }); e.tile = { building: 'fort', walls: 60, fortIntegrity: 45 };
   const b = createBattle(e); beginBattle(b);
   const ram = b.units.find(u => u.type === 'ram'); ram.x = 0; ram.z = 8.7;
@@ -683,8 +689,8 @@ test('ram attacks damage the real gate and update navigation on a breach', () =>
     ram.action = { kind: 'siege', elapsed: 1.69, windup: 1.7, recovery: 2.3, duration: 4, targetId: 'gate', targetX: 0, targetZ: 12, facing: 0, impacted: false, ranged: false };
     stepBattle(b, .05);
   }
-  assert.equal(b.layout.gate.hp, 0); assert.equal(b.layout.gate.state, 'breached'); assert.ok(b.layout.navRevision > 0);
-  assert.ok(b.fortifications.walls < 60); assert.ok(b.fortifications.fortIntegrity < 45);
+  assert.equal(b.layout.gate.hp, 150); assert.equal(b.layout.navRevision, 0);
+  assert.deepEqual([ram.x,ram.z],[0,8.7]); assert.equal(ram.action,null);
 });
 
 test('rivers have actual impassable water and passable crossing lanes', () => {

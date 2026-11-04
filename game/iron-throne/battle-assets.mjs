@@ -14,6 +14,11 @@ export function validateBattlePack(pack) {
     if(!pack.models[id]?.nodes?.length)throw new Error(`The battlefield package is missing ${id}.`);
   }
   for(const [id,mesh]of Object.entries(pack.meshes))if(!Array.isArray(mesh.positions)||mesh.positions.length%9||mesh.normals?.length!==mesh.positions.length||mesh.positions.some(n=>!Number.isFinite(n)))throw new Error(`The ${id} model mesh is damaged.`);
+  // Earlier v1 downloads used a 1.15 m beam for the visor. Its pivot is at one
+  // end, so center a helmet-width strip on the face when reading those caches.
+  for(const model of Object.values(pack.models))for(const node of model.nodes||[]){
+    if(node.name==='visor'&&node.scale?.[1]===1.15){node.position=[.14,-.045,.155];node.scale=[.22,.28,.15];}
+  }
   return pack;
 }
 
