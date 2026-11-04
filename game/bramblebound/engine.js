@@ -72,6 +72,36 @@
     return Math.min(8,(d.duration||.75)*Math.pow(itemPower(p,it)/d.power,.25)*Math.pow(utilityMultiplier(p,d),.25)*utilityMilestones(it));
   }
   const itemCooldown = (it,r) => r ? P().cooldown(r,C().items[it.id]) : C().items[it.id].cooldown;
+  function itemComparison(p,it){
+    const d=C().items[it.id],r=p.run,power=itemPower(p,it);
+    const stats={damage:0,heal:0,shield:0,lifesteal:0,stun:0,freeze:0,chill:0,cooldown:itemCooldown(it,r)};
+    const healing=value=>r?P().healing(r,value):value;
+    if(utilityStyles.has(d.style)){
+      if(d.style==='heal')stats.heal=healing(itemUtility(p,it));
+      else if(d.style==='shield')stats.shield=itemUtility(p,it);
+      else stats[d.style]=itemDuration(p,it);
+      return stats;
+    }
+    // Compare one activation against a neutral foe. Include unconditional build
+    // bonuses and direct follow-ups; conditional hits and damage over time are
+    // described by effect icons rather than a misleading total damage estimate.
+    const reach=r?P().upgrades.long_arm.value(P().rankOf(r,'long_arm')):0;
+    const initial=power*(utilityMultiplier(p,d)+reach);
+    stats.damage=initial*(1+(d.style==='rapid'?.23:0)+(d.special==='aftershock'?.45:0)+(it.level>=3?.4:0)+(it.level>=10?.65:0));
+    if(d.style==='mend')stats.heal=power*.55;
+    if(d.style==='guard')stats.shield=power*.60;
+    if(d.style==='drain')stats.lifesteal=.23;
+    if(d.style==='shock')stats.stun=.44;
+    if(d.style==='chill')stats.chill=2.1;
+    if(d.element==='frost')stats.chill=Math.max(stats.chill,1.1);
+    if(d.element==='spirit')stats.shield+=initial*.045;
+    if(it.level>=5)stats.shield+=1+.12*power;
+    if(d.special==='leech')stats.lifesteal+=.18;
+    if(d.special==='renewal'){stats.heal+=initial*.13;stats.shield+=initial*.12;}
+    if(d.special==='permafrost'){stats.stun=Math.max(stats.stun,.9);stats.chill=2.1;}
+    stats.heal=healing(stats.heal);stats.lifesteal=healing(stats.lifesteal);
+    return stats;
+  }
   function start(p) {
     if (p.run && p.run.phase!=='dead') return fail('A journey is already in progress.');
     const hp=88+p.perks.heart*14;
@@ -695,5 +725,5 @@
     r.enemy=r.enemies[0]||null;
     return p;
   }
-  root.GameEngine={routeInfo,isReplay,lootOdds,dropEligible,dropChances,freshProfile,start,tick,act,validate,xpNeeded,previewPair,previewCombine,slotAt,perks,perkCost,perkPreview,awardBreakdown,maxSpeed,itemPower,itemUtility,itemDuration,itemCooldown,levelText,walkDuration:WALK,activeCapacity:ACTIVE,packCapacity:PACK};
+  root.GameEngine={routeInfo,isReplay,lootOdds,dropEligible,dropChances,freshProfile,start,tick,act,validate,xpNeeded,previewPair,previewCombine,slotAt,perks,perkCost,perkPreview,awardBreakdown,maxSpeed,itemPower,itemUtility,itemDuration,itemComparison,itemCooldown,levelText,walkDuration:WALK,activeCapacity:ACTIVE,packCapacity:PACK};
 })();

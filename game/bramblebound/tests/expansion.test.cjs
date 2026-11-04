@@ -324,3 +324,58 @@ test('control expiry charges the meter for only the unheld fraction of a simulat
     f.E.tick(f.p,.1);assert.ok(Math.abs(f.e.attackProgress-.57)<1e-10,status+' held .03 seconds of a .1 second update');assert.equal(f.e[status],0);
   }
 });
+
+test('comparison damage matches a neutral single-target activation including rapid, echo and nova hits',()=>{
+  for(const style of ['strike','rapid'])for(const level of [1,3,5,10]){
+    const f=encounter('stone',1,{style});f.r.active[0].level=level;f.e.weak='none';
+    const before=f.e.hp,comparison=f.E.itemComparison(f.p,f.r.active[0]);f.activate();f.r.active[0].cd=100;f.E.tick(f.p,.4);
+    assert.ok(Math.abs(comparison.damage-(before-f.e.hp))<1e-8,style+' Lv'+level+' comparison should include its direct follow-up hits');
+    assert.equal(comparison.heal,0);assert.equal(comparison.lifesteal,0);assert.ok(comparison.cooldown>0);
+  }
+});
+
+test('comparison includes delayed aftershock damage and the actual chill applied by frost hits',()=>{
+  const shock=encounter('stone',1,{special:'aftershock'});shock.r.active[0].level=10;shock.e.weak='none';
+  const stats=shock.E.itemComparison(shock.p,shock.r.active[0]),before=shock.e.hp;shock.activate();shock.r.active[0].cd=100;shock.E.tick(shock.p,.7);
+  assert.ok(Math.abs(stats.damage-(before-shock.e.hp))<1e-8,'aftershock should count its delayed single-target damage');
+  const frost=encounter('frost',1);frost.e.weak='none';const frostStats=frost.E.itemComparison(frost.p,frost.r.active[0]);frost.activate();
+  assert.ok(Math.abs(frostStats.chill-(frost.e.chill+.01))<1e-9,'offensive frost should show its innate chill duration');
+  const healer=encounter('frost',1,{style:'heal'});assert.equal(healer.E.itemComparison(healer.p,healer.r.active[0]).chill,0,'frost healing should not acquire an offensive chill effect');
+});
+
+test('comparison distinguishes damage, healing, shield and control without granting utility damage',()=>{
+  for(const style of ['heal','shield','stun','freeze'])for(const level of [1,10]){
+    const f=encounter('leaf',1,{style,duration:1});f.r.active[0].level=level;f.r.maxHp=100000;f.r.hp=1;
+    f.P.apply(f.r,'green_thumb');const stats=f.E.itemComparison(f.p,f.r.active[0]);
+    assert.equal(stats.damage,0);assert.equal(stats.lifesteal,0);
+    const ev=f.activate();
+    if(style==='heal'){const gain=ev.find(e=>e.kind==='heal'&&e.itemId==='__probe');assert.ok(Math.abs(stats.heal-gain.amount)<1e-9);assert.equal(stats.shield,0);}
+    if(style==='shield'){const gain=ev.find(e=>e.pattern==='guard'&&e.itemId==='__probe');assert.ok(Math.abs(stats.shield-gain.amount)<1e-9);assert.equal(stats.heal,0);}
+    if(style==='stun'||style==='freeze'){assert.equal(stats[style],f.E.itemDuration(f.p,f.r.active[0]));assert.equal(stats.heal,0);assert.equal(stats.shield,0);}
+  }
+});
+
+test('comparison shows lifesteal as a healing-adjusted fraction rather than guaranteed flat healing',()=>{
+  const f=encounter('spirit',1,{style:'drain',special:'leech'}),it=f.r.active[0];
+  const base=f.E.itemComparison(f.p,it);assert.equal(base.heal,0);assert.ok(Math.abs(base.lifesteal-.41)<1e-12);
+  f.P.apply(f.r,'green_thumb');const boosted=f.E.itemComparison(f.p,it);
+  assert.ok(Math.abs(boosted.lifesteal-.41*1.16)<1e-12);assert.equal(boosted.heal,0);
+});
+
+test('comparison uses levels, permanent power and applicable talent context without changing the simulation',()=>{
+  const {C,E,P}=load(),p=E.freshProfile();E.start(p);
+  const d=Object.values(C.items).find(d=>d.style==='heal'&&!d.recipe),it={uid:800,id:d.id,level:1,cd:.4,slot:0};
+  const initial=E.itemComparison(p,it);it.level=10;const leveled=E.itemComparison(p,it);assert.ok(leveled.heal>initial.heal);assert.equal(leveled.damage,0);
+  p.perks.claw=3;const permanent=E.itemComparison(p,it);assert.ok(permanent.heal>leveled.heal);
+  P.apply(p.run,'field_medic');P.apply(p.run,d.element+'_focus');P.apply(p.run,'green_thumb');P.apply(p.run,'quick_hands');
+  const talented=E.itemComparison(p,it);assert.ok(talented.heal>permanent.heal);assert.ok(talented.cooldown<permanent.cooldown);
+  const offensive={uid:801,id:'stick',level:3,cd:.2,slot:1},plain=E.itemComparison(p,offensive);
+  P.apply(p.run,'long_arm');const longer=E.itemComparison(p,offensive);assert.ok(longer.damage>plain.damage);
+  P.apply(p.run,'first_light');P.apply(p.run,'giantkiller');assert.equal(E.itemComparison(p,offensive).damage,longer.damage,'conditional target bonuses should not misrepresent a neutral comparison');
+  const before=JSON.stringify(p),itemBefore=JSON.stringify(it);
+  for(let i=0;i<10;i++)for(const item of [it,offensive]){
+    const result=E.itemComparison(p,item);for(const value of Object.values(result))assert.ok(Number.isFinite(value)&&value>=0);
+  }
+  assert.equal(JSON.stringify(p),before,'rendering comparisons must not advance cooldowns, targets, RNG or combat');assert.equal(JSON.stringify(it),itemBefore);
+  const camp=E.freshProfile();assert.ok(E.itemComparison(camp,offensive).damage>0,'prepared kits should also be comparable before a journey');
+});
