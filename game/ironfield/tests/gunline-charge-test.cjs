@@ -58,8 +58,8 @@ function register(test) {
   test('A loaded mixed gun line fires its opening volley and leaves a window for a massed cavalry charge', () => {
     const outcomes = [47319, 94].map(chargeTrial);
     for (const r of outcomes) {
-      assert(r.opening && r.opening.cannonball === 8 && r.opening.musketBall >= 120,
-        'The charging lancers must face the fully loaded opening volleys');
+      assert(r.opening && r.opening.cannonball === 8 && r.opening.musketBall >= 30 && r.opening.musketBall <= 48,
+        'The charging lancers must face one synchronized opening rank per company: ' + JSON.stringify(r));
       assert(r.opening.riders < 128 && r.wings === 2, 'Riders must take casualties and hit the enemy from both wings');
       assert(r.shots.cannonball <= 12 && r.shots.musketBall <= 256,
         'Sustained gunfire gave the battery too many volleys in 25 seconds');

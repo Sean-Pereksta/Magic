@@ -1,0 +1,36 @@
+name: IRONFIELD regression tests
+on:
+  pull_request:
+    paths: ['game/ironfield/**', '.github/workflows/ironfield.yml']
+  push:
+    branches: [main]
+    paths: ['game/ironfield/**', '.github/workflows/ironfield.yml']
+permissions:
+  contents: read
+jobs:
+  battle-and-interface:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Battle simulation and formation regressions
+        run: node game/ironfield/tests/engine-test.cjs
+      - name: Command and menu regressions
+        run: |
+          node game/ironfield/tests/command-ui-test.cjs
+          node game/ironfield/tests/menu-world-ui-test.cjs
+          node game/ironfield/tests/historical-menu-test.cjs
+      - name: Graphics and animation regressions
+        run: |
+          node game/ironfield/tests/graphics-test.cjs
+          node game/ironfield/tests/animation-corpses-test.cjs
+      - name: Verify the offline game includes current source
+        run: |
+          python game/ironfield/build.py
+          git diff --exit-code -- game/ironfield/IRONFIELD.html

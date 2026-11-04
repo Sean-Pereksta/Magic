@@ -60,6 +60,7 @@
   let endedShown = false, rebuildTimer = 0, resizeTimer = 0, cinematic = false;
   let visibleEventSignature = '', mouseWorld = {x:3200,y:2200}, mouseScreen = null;
   let menuOpen = true, enteredField = false, menuResumeRunning = false, menuMapId = null, menuFilter = 'all';
+  let menuCollection = 'fields', historicalPresetId = null;
   let lastMiniSignature = '', lastRendered = 0;
   let cancelBattlefieldGesture = () => {};
   const keys = new Set();
@@ -119,18 +120,28 @@
       return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r.type==='forest'?Math.min(w,h)*.2:r.type==='rock'?5:0}" fill="${fill}" fill-opacity="${r.type==='forest'?.8:1}" stroke="#17241c55" stroke-width="1"/>`;
     }).join('');
     let ranks='';
-    const castle=map.regions.some(r=>r.castleTower);
-    const siege=castle&&scenario?.formations;
+    const siege=scenario?.formations;
     if(siege)for(const group of siege){
-      const color=group.team?'#ec947b':'#8dd2e3',width=clamp(Math.sqrt(group.count)*.75,3,12);
-      ranks+=`<rect x="${group.x*scaleX-2}" y="${group.y*scaleY-width/2}" width="4" height="${width}" fill="${color}" stroke="#1d302b" stroke-width=".6"/>`;
+      const color=group.team?'#ec947b':'#8dd2e3',facing=Number.isFinite(group.facing)?group.facing:group.team?Math.PI:0;
+      const type=data.TYPES[group.type],form=data.FORMATIONS[group.formation]||{},spacing=(type.siege?48:type.mounted?28:17)*(form.spacing||1);
+      const columns=form.files?Math.min(group.count,form.files):form.ranks?Math.ceil(group.count/form.ranks):Math.ceil(Math.sqrt(group.count*1.6));
+      let depth=Math.ceil(group.count/columns)*spacing,front=columns*spacing;
+      if(group.offsets?.length){
+        const nx=Math.cos(facing),ny=Math.sin(facing),points=group.offsets.map(p=>({x:p.x*nx+p.y*ny,y:-p.x*ny+p.y*nx}));
+        depth=Math.max(...points.map(p=>p.x))-Math.min(...points.map(p=>p.x))+spacing;
+        front=Math.max(...points.map(p=>p.y))-Math.min(...points.map(p=>p.y))+spacing;
+      }
+      const w=Math.max(3,depth*scaleX),h=Math.max(3,front*scaleY);
+      const shape=group.formation==='wedge'?`<path d="M${w/2} 0 ${-w/2} ${-h/2} ${-w/2} ${h/2}Z"/>`:`<rect x="${-w/2}" y="${-h/2}" width="${w}" height="${h}" rx="1"/>`;
+      ranks+=`<g transform="translate(${group.x*scaleX} ${group.y*scaleY}) rotate(${facing*180/Math.PI})" fill="${color}" fill-opacity=".9" stroke="#1d302b" stroke-width=".7">${shape}<path d="M${w/2+2} -2 ${w/2+5} 0 ${w/2+2} 2" stroke="${color}" fill="none" stroke-width="1"/></g>`;
     }
     else for(let team=0;team<2;team++)for(let group=0;group<4;group++){
       const x=team?520:100,y=95+group*79,color=team?'#ec947b':'#8dd2e3';
       for(let row=0;row<3;row++)for(let col=0;col<8;col++)ranks+=`<rect x="${x+row*5}" y="${y+col*4}" width="2.6" height="2.6" fill="${color}" opacity=".9"/>`;
       ranks+=`<path d="M${x-7} ${y-5}v25m0-25h13l-3 4 3 4h-13" stroke="${color}" stroke-width="1.4" fill="${color}"/>`;
     }
-    return`<svg viewBox="0 0 640 440" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="638" height="438" rx="7" fill="${colors[map.biome]||colors.grassland}" stroke="#c7c29377" stroke-width="2"/><path d="M160 0v440M320 0v440M480 0v440M0 110h640M0 220h640M0 330h640" stroke="#d6ddaa12" fill="none"/>${terrain}${ranks}<path d="M321 35v-21m-5 8 5-8 5 8" stroke="#e6d8a1aa" fill="none"/><text x="320" y="53" text-anchor="middle" fill="#ead9abbb" font-size="10" font-family="Georgia">N</text><rect x="13" y="13" width="614" height="414" rx="3" fill="none" stroke="#e0d2a522"/></svg>`;
+    const orientation=historicalInfo(scenario)?'<text x="29" y="35" fill="#ead9abbb" font-size="10" font-family="Arial" letter-spacing="1">OPENING DEPLOYMENT · SCHEMATIC</text>':'<path d="M321 35v-21m-5 8 5-8 5 8" stroke="#e6d8a1aa" fill="none"/><text x="320" y="53" text-anchor="middle" fill="#ead9abbb" font-size="10" font-family="Georgia">N</text>';
+    return`<svg viewBox="0 0 640 440" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="638" height="438" rx="7" fill="${colors[map.biome]||colors.grassland}" stroke="#c7c29377" stroke-width="2"/><path d="M160 0v440M320 0v440M480 0v440M0 110h640M0 220h640M0 330h640" stroke="#d6ddaa12" fill="none"/>${terrain}${ranks}${orientation}<rect x="13" y="13" width="614" height="414" rx="3" fill="none" stroke="#e0d2a522"/></svg>`;
   }
   function updateMenuMap(id){
     const map=data.MAPS.find(m=>m.id===id&&m.id!=='custom')||data.MAPS[0];menuMapId=map.id;
@@ -143,6 +154,52 @@
     $('menuScenarioSelect').value=scenarios[0]?scenarios[0].id:'';
     $('menuScenarioSelect').hidden=scenarios.length<2;
     all('[data-menu-map]').forEach(b=>{const active=b.dataset.menuMap===map.id;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
+  }
+  function historicalInfo(preset){return preset&&(typeof preset.historical==='object'?preset.historical:preset.history);}
+  function historicalBattles(){return data.PRESETS.filter(p=>historicalInfo(p));}
+  function historicalYear(year){return Number(year)<0?`${Math.abs(Number(year))} BCE`:`${year} CE`;}
+  function showHistoricalBattle(id){
+    const preset=historicalBattles().find(p=>p.id===id)||historicalBattles()[0];if(!preset)return;
+    historicalPresetId=preset.id;const h=historicalInfo(preset),map=preset.map==='custom'?preset.customMap:data.MAPS.find(m=>m.id===preset.map);
+    $('menuMapTitle').textContent=preset.name;
+    $('menuMapTag').textContent=`${h.era} · ${historicalYear(h.year)}`.toUpperCase();
+    $('menuMapDescription').textContent=preset.description||h.summary;
+    const counts=preset.armies.map(totalRoster);
+    $('menuMapDimensions').textContent=`${h.location} · ${fmt(counts[0]+counts[1])} soldiers`;
+    $('menuMapPreview').innerHTML=mapPreview(map,preset);
+    $('menuScenarioSelect').hidden=true;
+    $('historyDeployment').textContent=h.deployment||h.summary||'';
+    $('historyScaleNote').textContent=h.scaleNote||'A scaled recreation of the opening deployment. The battle can unfold differently under your command.';
+    $('historyUnitNotes').textContent=Array.isArray(h.unitNotes)?h.unitNotes.join(' '):h.unitNotes||'';
+    $('historySources').innerHTML=(h.sources||[]).filter(s=>/^https:\/\//.test(s.url)).map(s=>`<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)} ↗</a>`).join('');
+    all('[data-history-battle]').forEach(b=>{const active=b.dataset.historyBattle===preset.id;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
+  }
+  function filterHistoricalBattles(){
+    const query=$('historySearch').value.trim().toLowerCase(),era=$('historyEra').value;
+    const visible=historicalBattles().filter(p=>{const h=historicalInfo(p);return(era==='all'||h.era===era)&&(!query||`${p.name} ${h.location} ${h.year} ${h.era} ${p.armies.map(a=>a.name).join(' ')}`.toLowerCase().includes(query));});
+    const ids=new Set(visible.map(p=>p.id));all('[data-history-battle]').forEach(b=>{b.hidden=!ids.has(b.dataset.historyBattle);});
+    $('historyResults').textContent=`${visible.length} of ${historicalBattles().length} battles · Opening deployments`;
+    $('historyEmpty').hidden=visible.length>0;
+    if(visible.length&&!ids.has(historicalPresetId))showHistoricalBattle(visible[0].id);
+  }
+  function buildHistoricalBrowser(){
+    const battles=historicalBattles().slice().sort((a,b)=>Number(historicalInfo(a).year)-Number(historicalInfo(b).year));
+    $('historyCount').textContent=battles.length;
+    $('historyEra').innerHTML='<option value="all">Every era</option>'+Array.from(new Set(battles.map(p=>historicalInfo(p).era))).map(era=>`<option value="${esc(era)}">${esc(era)}</option>`).join('');
+    $('historyEra').value='all';
+    $('historyGrid').innerHTML=battles.map(p=>{const h=historicalInfo(p);return`<button class="history-card" data-history-battle="${esc(p.id)}" aria-pressed="false"><span class="history-card-top"><span>${esc(h.era)}</span><b>${esc(historicalYear(h.year))}</b></span><strong>${esc(p.name)}</strong><span class="history-card-place">${esc(h.location)}</span><small>${esc(p.armies[0].name)}<span>vs</span>${esc(p.armies[1].name)}</small></button>`;}).join('');
+    filterHistoricalBattles();
+  }
+  function setMenuCollection(collection){
+    menuCollection=collection;
+    const history=collection==='history';
+    $('historyBrowser').hidden=$('historyBriefing').hidden=!history;
+    $('menuMapGrid').hidden=$('battlefieldToolbar').hidden=history;
+    $('menuFieldsTab').classList.toggle('active',!history);$('menuFieldsTab').setAttribute('aria-pressed',String(!history));
+    $('menuHistoryTab').classList.toggle('active',history);$('menuHistoryTab').setAttribute('aria-pressed',String(history));
+    $('menuBrowseTitle').textContent=history?'Great battles. Your command.':'A field worth fighting for.';
+    $('menuMapCount').textContent=history?`${historicalBattles().length} HISTORICAL BATTLES`:`${data.MAPS.filter(m=>m.id!=='custom').length} BATTLEFIELDS`;
+    if(history)showHistoricalBattle(historicalPresetId);else updateMenuMap(menuMapId||config.map);
   }
   function buildMenuMaps(){
     const maps=data.MAPS.filter(m=>m.id!=='custom').sort(largestMapsFirst);
@@ -181,7 +238,7 @@
     menuResumeRunning=false;updatePhase();resize();canvas.focus({preventScroll:true});
   }
   function enterMenuBattle(quick){
-    const selected=data.PRESETS.find(p=>p.id===$('menuScenarioSelect').value)||data.PRESETS.find(p=>p.map===menuMapId);
+    const selected=menuCollection==='history'?data.PRESETS.find(p=>p.id===historicalPresetId):data.PRESETS.find(p=>p.id===$('menuScenarioSelect').value)||data.PRESETS.find(p=>p.map===menuMapId);
     closeMainMenu(false);
     if(selected)loadPreset(selected.id);
     else{const raw=clone(data.PRESETS[0]);raw.map=menuMapId;raw.name=data.MAPS.find(m=>m.id===menuMapId).name;delete raw.formations;newBattle(raw);setBuilder(true);}
@@ -189,7 +246,13 @@
     else toast('Deployment ready. Arrange the armies, choose battle plans, then press Space.',4200);
   }
   function bindMenu(){
-    buildMenuMaps();
+    buildMenuMaps();buildHistoricalBrowser();setMenuCollection('fields');
+    $('menuHistory').addEventListener('click',()=>{setMenuCollection('history');$('menuHistoryTab').focus({preventScroll:true});});
+    $('menuHistoryTab').addEventListener('click',()=>setMenuCollection('history'));
+    $('menuFieldsTab').addEventListener('click',()=>setMenuCollection('fields'));
+    $('historySearch').addEventListener('input',filterHistoricalBattles);
+    $('historyEra').addEventListener('change',filterHistoricalBattles);
+    $('historyGrid').addEventListener('click',e=>{const b=e.target.closest('[data-history-battle]');if(b)showHistoricalBattle(b.dataset.historyBattle);});
     $('menuButton').addEventListener('click',openMainMenu);
     $('menuResume').addEventListener('click',()=>closeMainMenu(true));
     $('menuQuick').addEventListener('click',()=>enterMenuBattle(true));
@@ -270,7 +333,8 @@
         if(!f||![0,1].includes(f.team)||!data.TYPES[f.type]||![f.count,f.x,f.y].every(Number.isFinite)||f.count<1)continue;
         const count=Math.min(Math.floor(f.count),remaining[f.team][f.type],data.TYPES[f.type].commander?1:10000);
         if(!count)continue;
-        const group={team:f.team,type:f.type,count,x:clamp(f.x,35,map.width-35),y:clamp(f.y,35,map.height-35),formation:['line','shieldwall','wedge','loose'].includes(f.formation)?f.formation:'line'};
+        const group={team:f.team,type:f.type,count,x:clamp(f.x,35,map.width-35),y:clamp(f.y,35,map.height-35),formation:Object.hasOwn(data.FORMATIONS,f.formation)?f.formation:data.TYPES[f.type].id==='musketeer'?'volley':'line'};
+        if(typeof f.name==='string')group.name=f.name.slice(0,64);
         if(Number.isFinite(f.facing))group.facing=Math.atan2(Math.sin(f.facing),Math.cos(f.facing));
         // A split keeps the soldiers' actual footprint. Rebuilding a standard
         // rectangle at each half's center can otherwise put both halves atop
@@ -342,6 +406,10 @@
     $('redName').textContent = config.armies[1].name.toUpperCase();
     $('editBlue').textContent = config.armies[0].name;
     $('editRed').textContent = config.armies[1].name;
+    for(let team=0;team<2;team++){
+      const option=$('controlSelect').querySelector(`option[value="${team}"]`);
+      if(option)option.textContent=`Command ${config.armies[team].name}`;
+    }
     $('seedInput').value = config.seed;
     $('scenarioName').value = config.name;
     $('fieldFeed').replaceChildren();
@@ -367,8 +435,28 @@
     const raw = clone(preset);
     raw.armies.forEach(a => {
       const total = totalRoster(a), scale = Math.min(factor,10000 / Math.max(1,total));
-      data.TYPE_ORDER.forEach(t => { a.roster[t] = Math.round(a.roster[t] * scale); });
+      data.TYPE_ORDER.forEach(t => { a.roster[t] = Array.isArray(raw.formations)&&data.TYPES[t].commander?a.roster[t]:Math.round(a.roster[t] * scale); });
     });
+    // Scale every authored formation proportionally, preserving its place in
+    // the historical deployment instead of auto-deploying extra soldiers.
+    if(factor!==1&&Array.isArray(raw.formations))for(let team=0;team<2;team++)for(const type of data.TYPE_ORDER){
+      const groups=raw.formations.filter(f=>f.team===team&&f.type===type),original=groups.reduce((n,f)=>n+f.count,0);
+      let assigned=0,cumulative=0;for(const group of groups){
+        cumulative+=group.count;const end=Math.round(cumulative/Math.max(1,original)*raw.armies[team].roster[type]);
+        const count=end-assigned;assigned=end;
+        if(count!==group.count&&group.offsets?.length){
+          // Keep a deep phalanx deep and a broad firing line broad when the
+          // army scale changes. Coordinates remain relative to its facing.
+          const a=group.facing||0,nx=Math.cos(a),ny=Math.sin(a);
+          const axes=group.offsets.map(p=>({forward:p.x*nx+p.y*ny,cross:-p.x*ny+p.y*nx}));
+          const unique=key=>Array.from(new Set(axes.map(p=>Math.round(p[key]*100)/100))).sort((x,y)=>x-y);
+          const files=unique('cross'),ranks=unique('forward'),spacing=list=>list.length>1?Math.min(...list.slice(1).map((n,i)=>n-list[i])):17;
+          const cols=Math.max(1,Math.round(Math.sqrt(count*files.length/Math.max(1,ranks.length)))),rows=Math.ceil(count/cols),sx=spacing(ranks),sy=spacing(files);
+          group.offsets=Array.from({length:count},(_,i)=>{const x=((rows-1)/2-Math.floor(i/cols))*sx,y=(i%cols-(cols-1)/2)*sy;return{x:x*nx-y*ny,y:x*ny+y*nx};});
+        }
+        group.count=count;
+      }
+    }
     if (factor !== 1) raw.name += ` · ${factor}×`;
     newBattle(raw);
     $('presetSelect').value = preset.id; $('scaleSelect').value = String(factor);
@@ -753,7 +841,7 @@
     $('selectedName').textContent = regs.length === 1 ? regs[0].name||data.TYPES[regs[0].type].shortName : types.size === 1 ? `${regs.length} ${data.TYPES[regs[0].type].shortName} regiments` : `${regs.length} formations selected`;
     const compass=['E','SE','S','SW','W','NW','N','NE'];
     const directions=new Set(regs.map(r=>compass[(Math.round((Number.isFinite(r.facing)?r.facing:0)/(Math.PI/4))+8)%8]));
-    $('selectedDetails').textContent = `${fmt(alive)} in army · ${Math.round(morale)}% morale · ${directions.size===1?'Facing '+directions.values().next().value:'Mixed facing'}`;
+    $('selectedDetails').textContent = `${regs.length===1?data.TYPES[regs[0].type].shortName+' · ':''}${fmt(alive)} in army · ${Math.round(morale)}% morale · ${directions.size===1?'Facing '+directions.values().next().value:'Mixed facing'}`;
     const armorClasses=new Set(regs.map(r=>data.TYPES[r.type].armorClass)), selectedType=data.TYPES[regs[0].type];
     $('selectedMatchups').textContent=(armorClasses.size===1?armorLabel(selectedType)+' armor':'Mixed armor')+' · Matchup guide';
     $('selectedMatchups').title=types.size===1?counterDescription(selectedType):'Compare armor, weapon modifiers, useful targets, and threats for every troop type.';
@@ -808,6 +896,11 @@
         else next=Math.min(next,u._cooldown);
       }
       reload.textContent=`${loaded}/${total} loaded${Number.isFinite(next)?' · Next ready in '+next.toFixed(1)+' s':''}`;
+      if(selectedType.id==='musketeer'){
+        const r=regs[0],status={melee:'Line broken · Close combat',reforming:'Reforming the firing line',marching:'Marching · Hold to form ranks',forming:'Forming ranks',ready:'Ready to fire',reloading:'Loading the next rank'}[r.volleyStatus]||'Forming ranks';
+        const wait=Math.max(0,(r.nextVolleyAt||0)-engine.time);
+        reload.textContent=`${status}${r.nextVolleyRank?' · Rank '+r.nextVolleyRank+' / '+r.volleyRankCount:''}${wait>.1&&r.volleyStatus!=='melee'?' · '+wait.toFixed(1)+' s':''} · ${loaded}/${total} loaded`;
+      }
     }
     const siegeRegs=regs.filter(r=>r.siegeStatus||data.TYPES[r.type].equipment),siegeText=$('selectedSiege');
     siegeText.hidden=!siegeRegs.length||engine.phase==='ended';
@@ -845,6 +938,8 @@
   function formationSummary(info,cohesion){
     const scaled=key=>Math.round(((Number(info[key])||1)-1)*clamp(cohesion,0,100));
     const percent=n=>(n>0?'+':n<0?'−':'')+Math.abs(n)+'%';
+    if(info.id==='volley')return`Three ranks · Musketeers fire by rank · ${percent(scaled('speed'))} speed`;
+    if(info.id==='column')return`Three soldiers abreast · Musketeers fire by row · ${percent(scaled('incomingSplash'))} splash taken`;
     if(info.id==='shieldwall')return`${percent(scaled('frontalMelee'))} frontal melee taken · ${percent(scaled('frontalRanged'))} frontal missiles · ${percent(scaled('speed'))} speed`;
     if(info.id==='wedge')return`${percent(scaled('charge'))} charge · ${percent(scaled('speed'))} speed · ${percent(scaled('incomingMelee'))} melee taken`;
     if(info.id==='loose')return`${percent(scaled('incomingRanged'))} missiles · ${percent(scaled('incomingSplash'))} splash · ${percent(scaled('incomingMelee'))} melee taken`;
@@ -1395,13 +1490,15 @@
     data=window.GameData;
     if(!data||!window.BattleTactics||!window.BattleImpacts||!window.BattleSiege||!window.BattleEngine||!window.BattleRenderer)throw new Error('A required game source file is missing.');
     for(const id of ['doctrineSelect','plan0Select','plan1Select'])$(id).innerHTML=doctrineOptions();
-    const mapFor=p=>data.MAPS.find(m=>m.id===p.map)||data.MAPS[0];
-    $('presetSelect').innerHTML=data.PRESETS.slice().sort((a,b)=>largestMapsFirst(mapFor(a),mapFor(b))).map(p=>`<option value="${p.id}">${esc(mapSizeLabel(mapFor(p)))} — ${esc(p.name)}</option>`).join('')+'<option value="custom">Custom encounter · empty field</option>';
+    const mapFor=p=>p.customMap||data.MAPS.find(m=>m.id===p.map)||data.MAPS[0];
+    const scenarioOptions=presets=>presets.map(p=>`<option value="${p.id}">${historicalInfo(p)?esc(historicalYear(historicalInfo(p).year)):esc(mapSizeLabel(mapFor(p)))} — ${esc(p.name)}</option>`).join('');
+    $('presetSelect').innerHTML='<optgroup label="Historical battles">'+scenarioOptions(historicalBattles())+'</optgroup><optgroup label="IRONFIELD battlefields">'+scenarioOptions(data.PRESETS.filter(p=>!historicalInfo(p)).slice().sort((a,b)=>largestMapsFirst(mapFor(a),mapFor(b))))+'</optgroup><option value="custom">Custom encounter · empty field</option>';
+    $('formationSelect').innerHTML=Object.values(data.FORMATIONS).map(f=>`<option value="${f.id}">${esc(f.name)}</option>`).join('')+'<option value="mixed" disabled>Mixed formations</option>';
     $('mapSelect').innerHTML=data.MAPS.filter(m=>m.id!=='custom').sort(largestMapsFirst).map(m=>`<option value="${m.id}">${esc(mapSizeLabel(m))} — ${esc(m.name)}</option>`).join('')+'<option value="custom">Custom Map · Choose battlefield size</option>';
     $('customWorldSize').innerHTML=data.WORLD_SIZES.map(s=>`<option value="${s.id}">${esc(mapSizeLabel(s))} · ${fmt(s.width)} × ${fmt(s.height)}</option>`).join('');
     loadPreset(data.PRESETS[0].id);
     bindControls();bindBattlefieldInput();bindMenu();
-    window.IRONFIELD=Object.freeze({version:'2.5.1',get engine(){return engine;},get renderer(){return renderer;},get config(){return clone(config);},get menuOpen(){return menuOpen;},loadPreset,showResults});
+    window.IRONFIELD=Object.freeze({version:'2.6.0',get engine(){return engine;},get renderer(){return renderer;},get config(){return clone(config);},get menuOpen(){return menuOpen;},loadPreset,showResults});
     requestAnimationFrame(frame);
     if(window.innerWidth<=760)setBuilder(false);
   }

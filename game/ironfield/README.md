@@ -1,4 +1,10 @@
-# IRONFIELD 2.5.1
+# IRONFIELD 2.6 — Fire by ranks
+
+The Campaign Atlas now includes **20 historical battles**, with searchable eras, named armies, tactical opening deployments, and source notes. Select **Historical battles**, read the deployment briefing, then **Prepare This Battle** to command the opening or **Quick Battle** to start immediately. The scenarios use scaled forces and the available troop classes; every battle explains its approximations in the historical notes. See [HISTORICAL-BATTLES.md](HISTORICAL-BATTLES.md) for the source catalog.
+
+Musketeers now reload for **24 seconds** and deal **78 base damage** per shot. Their companies fire synchronized volleys by rank, with eight seconds between ranks in a three-rank line. **Three-rank volley** spreads the frontage; **Three-file column** makes a narrow formation with three soldiers abreast. Close combat breaks fire discipline, and survivors reform after the attackers clear. The selection panel shows the next rank and firing status. Cannon and trebuchet impacts throw troops much farther, with catapults also scattering packed ranks.
+
+The menus use a new campaign atlas layout. All 23 troop classes have readable equipment, team livery, movement and attack poses. Biomes have distinct ground details, and bounded wind, water, and vegetation movement follows simulation time and the animation settings.
 
 ## Massive battle simulator
 

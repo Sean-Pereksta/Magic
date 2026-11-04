@@ -1,5 +1,6 @@
 /* IRONFIELD — unit roster, battlefields, and repeatable scenarios.
- * All values are fictional game balance, measured in world units / seconds.
+ * Combat values are fictional game balance, measured in world units / seconds.
+ * Historical scenarios are sourced, schematic adaptations of opening layouts.
  * No network access or third-party dependencies are needed.
  */
 (function (global) {
@@ -86,7 +87,7 @@
     musketeer: tactics('light', 'musket', 0.95,
       [['guardian', 'Musket balls pierce plate and push a Guardian back while it crosses the firing lane.']],
       [['cavalry', 'Cavalry can ride around the screen and reach the gun line during a reload.']],
-      'A planted firing line delivers flat, hard-hitting shots that knock individual enemies back.'),
+      'Three disciplined ranks fire in rotating volleys. Each soldier takes 24 seconds to reload; protect the line from close combat.'),
     crossbow: tactics('medium', 'bolt', .95,
       [['guardian', 'High armor penetration and a heavy-armor modifier make bolts useful against plate.'], ['lancer', 'Piercing bolts threaten armored riders while an infantry screen keeps them at range.']],
       [['archer', 'Longbows outrange crossbows and fire more frequently.'], ['cavalry', 'The long reload leaves unsupported crews vulnerable to a close charge.']],
@@ -228,11 +229,11 @@
     }),
     musketeer: unit('musketeer', {
       name: 'Musketeers', shortName: 'Musketeers', role: 'Gunpowder infantry',
-      description: 'A planted firing line delivers flat, hard-hitting shots that knock individual enemies back.',
-      strengths: 'Armor penetration · direct knockback', weakness: 'Cavalry can ride around the screen and reach the gun line during a reload.',
-      hp: 72, damage: 51, armor: 2, speed: 40, range: 425, cooldown: 12, radius: 6, cost: 7, morale: 71,
+      description: 'Three ranks plant their feet and fire one synchronized rank at a time. Hard-hitting balls reward careful positioning through a long 24-second individual reload.',
+      strengths: 'Synchronized rank volleys · armor penetration · heavy musket damage', weakness: 'Close combat breaks volley discipline; cavalry can overrun the line during its long reload.',
+      hp: 72, damage: 78, armor: 2, speed: 40, range: 425, cooldown: 24, radius: 6, cost: 7, morale: 71,
       ranged: true, siege: false, projectile: 'musketBall', projectileSpeed: 1500, projectileArc: 1, splash: 0, armorPierce: .85, color: '#ae967e',
-      missile: Object.freeze({ label: 'Gunpowder infantry', description: 'A planted firing line delivers flat, hard-hitting shots that knock individual enemies back.', standoff: .80, ranks: 4, spacing: 1.10, maxWidth: 680, breakRange: 55, reloadStep: 0, armorPreference: .018 })
+      missile: Object.freeze({ label: 'Rotating rank volleys', description: 'Hold three ranks and fire one entire rank together, then pass the fire order to the next rank while the others reload.', standoff: .80, ranks: 3, spacing: 1.10, maxWidth: 680, breakRange: 55, reloadStep: 0, armorPreference: .018 })
     }),
     crossbow: unit('crossbow', {
       missile: Object.freeze({ label: 'Planted bolt line', description: 'Settle before firing, reload in place, and favor armored targets within reach.', standoff: .76, ranks: 5, spacing: 1.05, maxWidth: 540, breakRange: 45, reloadStep: 0, armorPreference: .026 }),
@@ -384,6 +385,18 @@
   // A formation's combat and speed multipliers blend toward 1 as cohesion falls.
   // Spacing also changes its physical footprint; loose ranks need more ground.
   const FORMATIONS = Object.freeze({
+    volley: Object.freeze({
+      id: 'volley', name: 'Three-rank volley', ranks: 3,
+      description: 'A broad frontage three ranks deep. Musketeers fire one complete rank together, rotating front to rear while each soldier reloads. Close combat breaks the firing drill.',
+      speed: .95, damage: 1, frontalMelee: 1, frontalRanged: 1,
+      incomingMelee: 1, incomingRanged: 1, incomingSplash: 1, charge: 1, spacing: 1.1
+    }),
+    column: Object.freeze({
+      id: 'column', name: 'Three-file column', files: 3,
+      description: 'A narrow marching column three soldiers wide. Useful for passages, but exposes little firing frontage and is vulnerable to artillery along its depth.',
+      speed: 1, damage: 1, frontalMelee: 1, frontalRanged: 1,
+      incomingMelee: 1, incomingRanged: 1, incomingSplash: 1.08, charge: 1, spacing: 1
+    }),
     line: Object.freeze({
       id: 'line', name: 'Battle line',
       description: 'A steady, balanced line. At full cohesion, frontal melee damage taken is reduced by 4%.',
@@ -995,6 +1008,205 @@
     ])
   );
 
+  // Schematic, scaled historical deployments. The cited sources support the
+  // arrangement, not the fictional statistics or an exact reconstructed map.
+  // Explicit bodies preserve the distinctive frontage, reserves, and flanks.
+  const historicalGroup = (team, type, count, x, y, name, columns, formation, facing) => {
+    const t = TYPES[type], angle = Number.isFinite(facing) ? facing : team === 0 ? 0 : Math.PI;
+    const group = { team, type, count, x, y, name, facing: angle, formation: formation || (type === 'musketeer' ? 'volley' : 'line') };
+    // Pointed formations use the engine's triangular layout. A rectangular
+    // saved offset array would otherwise overwrite that wedge at deployment.
+    if (columns && type !== 'musketeer' && group.formation !== 'wedge') {
+      const spacing = t.siege ? 58 : t.mounted ? 30 : 17;
+      const rows = Math.ceil(count / columns), nx = Math.cos(angle), ny = Math.sin(angle);
+      group.offsets = Array.from({ length: count }, (_, slot) => {
+        const forward = ((rows - 1) / 2 - Math.floor(slot / columns)) * spacing;
+        const cross = ((slot % columns) - (columns - 1) / 2) * spacing;
+        return { x: forward * nx - cross * ny, y: forward * ny + cross * nx };
+      });
+    }
+    return group;
+  };
+  const historySource = (title, url) => ({ title, url });
+  const historicalScene = spec => {
+    const formations = spec.groups.map(g => historicalGroup(...g)), counts = [{}, {}];
+    for (const g of formations) counts[g.team][g.type] = (counts[g.team][g.type] || 0) + g.count;
+    const historical = {
+      year: spec.year, era: spec.era, location: spec.location, summary: spec.summary,
+      deployment: spec.deployment,
+      scaleNote: 'Scaled representative deployment, with compressed troop numbers and terrain. Historical unit roles use the game roster; results develop freely. ' + (spec.scaleNote || ''),
+      unitNotes: spec.unitNotes || 'Equipment, armor, and movement use IRONFIELD troop archetypes rather than exact period statistics.',
+      sources: spec.sources
+    };
+    return { id: spec.id, name: spec.name, description: spec.summary, map: 'custom', seed: spec.seed || Math.abs(spec.year * 7919 + spec.id.length * 101),
+      customMap: { name: spec.name + ' · historical field', width: 6400, height: 4400, biome: spec.biome || 'grassland', regions: spec.regions || [] },
+      formations, armies: spec.armies.map((a, team) => army(a[0], a[1], counts[team])), historical };
+  };
+  const HISTORICAL_BATTLES = Object.freeze([
+    historicalScene({ id: 'historyMarathon', name: 'Marathon', year: -490, era: 'Ancient', location: 'Attica, Greece',
+      summary: 'A thin Greek center and stronger hoplite wings face the Persian landing army.',
+      deployment: 'Athens and Plataea occupy a continuous front, with shallow central ranks and deeper wings. Persian strength is concentrated opposite the center; marsh and coastal water bound the field.',
+      sources: [historySource('Herodotus: Marathon · University of Texas at Arlington', 'https://websites.uta.edu/hunnicut/reading-list/readings-western-civilization/herodotus-the-battle-of-marathon/')],
+      unitNotes: 'Hoplites represent Greek heavy foot; Persian infantry and archers use light-foot archetypes. No Persian cavalry is placed: its role in this battle is uncertain.',
+      armies: [['Athens & Plataea', 'hammer'], ['Persian Expedition', 'breakthrough']],
+      regions: [region('water', 5500, 0, 900, 4400), region('water', 3200, 0, 1900, 450), region('hill', 900, 1200, 900, 2200)],
+      groups: [[0,'hoplite',120,2450,1400,'Plataean left wing',12,'shieldwall'],[0,'hoplite',64,2450,2200,'Shallow Greek center',32,'line'],[0,'hoplite',120,2450,3000,'Athenian right wing',12,'shieldwall'],[0,'commander',1,2150,2200,'Miltiades'],
+        [1,'militia',120,3900,1400,'Persian right',20],[1,'swordsman',160,3850,2200,'Persians & Sacae',20],[1,'militia',120,3900,3000,'Persian left',20],[1,'archer',60,3700,1450,'Persian bow screen',30,'loose'],[1,'archer',60,3700,2950,'Persian bow screen',30,'loose'],[1,'commander',1,4300,2200,'Datis & Artaphernes']] }),
+    historicalScene({ id: 'historyLeuctra', name: 'Leuctra', year: -371, era: 'Ancient', location: 'Boeotia, Greece',
+      summary: 'Theban mass on the left confronts the Spartan royal right while cavalry screens the infantry.',
+      deployment: 'The Theban left is much deeper than its center and refused right. The Spartan king stands opposite that concentration. Both sides begin with horse in front of their hoplites.',
+      sources: [historySource('Xenophon: Hellenica VI.4 · Fordham University', 'https://sourcebooks.web.fordham.edu/ancient/371leuctra.asp')],
+      scaleNote: 'The famous fifty-shield depth is represented by a proportionally deep block, not fifty full-size ranks.',
+      armies: [['Thebes & Boeotia', 'refuseLeft'], ['Sparta & Allies', 'steady']],
+      regions: [region('hill', 1200, 700, 1000, 2700),region('hill', 4600, 600, 1000, 2600)],
+      groups: [[0,'hoplite',240,2650,1350,'Deep Theban left',12,'shieldwall'],[0,'hoplite',96,2350,2200,'Boeotian center',24],[0,'hoplite',72,2100,2900,'Refused Boeotian right',24],[0,'cavalry',36,3000,1400,'Theban cavalry screen',12],[0,'commander',1,2350,1350,'Epaminondas'],
+        [1,'hoplite',144,3900,1350,'Spartan royal right',18,'shieldwall'],[1,'hoplite',144,3900,2200,'Peloponnesian center',24],[1,'hoplite',120,3900,2900,'Allied left',24],[1,'cavalry',30,3550,1400,'Spartan cavalry screen',10],[1,'commander',1,4200,1350,'Cleombrotus']] }),
+    historicalScene({ id: 'historyGaugamela', name: 'Gaugamela', year: -331, era: 'Ancient', location: 'Northern Mesopotamia', biome: 'desert',
+      summary: 'Alexander’s mounted right supports a pike center against a wider Persian battle line.',
+      deployment: 'The Macedonian phalanx holds the center, the Companions the right, and Parmenion the left. Persian cavalry extends both wings and Darius commands from the center.',
+      sources: [historySource('Arrian: Alexander at Gaugamela · University of Texas at Arlington', 'https://websites.uta.edu/hunnicut/reading-list/readings-western-civilization/arrian-alexander-at-the-battle-of-gaugamela/')],
+      unitNotes: 'Pikemen stand for the sarissa phalanx, lancers for Companions, hoplites for Greek mercenaries. Scythed chariots are omitted because the roster has no equivalent.',
+      armies: [['Alexander’s Army', 'hammer'], ['Darius III’s Army', 'flank']], regions: [region('hill', 700, 500, 650, 1100)],
+      groups: [[0,'cavalry',48,2200,1100,'Parmenion’s left',12],[0,'pikeman',144,2500,1750,'Phalanx left',18],[0,'pikeman',144,2500,2350,'Phalanx right',18],[0,'hoplite',80,2600,2850,'Hypaspists',16],[0,'lancer',64,2700,3350,'Companion Cavalry',16,'wedge'],[0,'javelin',40,2900,3000,'Agrianian screen',20,'loose'],[0,'commander',1,2400,3300,'Alexander'],
+        [1,'horseArcher',48,3950,650,'Persian outer right',12,'loose'],[1,'cavalry',64,3900,1200,'Persian right cavalry',16],[1,'hoplite',120,4000,1900,'Greek mercenary center',20],[1,'militia',160,4000,2500,'Persian center',20],[1,'cavalry',80,3900,3200,'Bactrian cavalry',16],[1,'horseArcher',48,3950,3800,'Sacaean horse',12,'loose'],[1,'commander',1,4400,2200,'Darius III']] }),
+    historicalScene({ id: 'historyCannae', name: 'Cannae', year: -216, era: 'Ancient', location: 'Apulia, Italy',
+      summary: 'Hannibal’s projecting center, African wing reserves, and superior cavalry meet dense Roman infantry.',
+      deployment: 'Iberian and Gallic companies form a forward-bowed center. African veterans wait back on the wings, with cavalry outside them. Rome concentrates deep infantry between its cavalry flanks.',
+      sources: [historySource('Polybius: Histories III.107–118 · Fordham University', 'https://sourcebooks.web.fordham.edu/ancient/polybius-cannae.asp')],
+      unitNotes: 'Swordsmen represent legionaries and Iberian/Gallic infantry; hoplites represent African heavy foot. Numidian light cavalry use the cavalry archetype, without invented horse archers.',
+      armies: [['Hannibal’s Army', 'hammer'], ['Roman Consular Army', 'breakthrough']], regions: [region('water', 0, 0, 6400, 400)],
+      groups: [[0,'cavalry',96,2400,850,'Iberian & Gallic cavalry',16],[0,'hoplite',100,2400,1400,'African left reserve',10,'shieldwall'],[0,'swordsman',72,2700,1800,'Iberian left center',18],[0,'militia',96,2900,2200,'Projecting Gallic center',24],[0,'swordsman',72,2700,2600,'Iberian right center',18],[0,'hoplite',100,2400,3000,'African right reserve',10,'shieldwall'],[0,'cavalry',60,2400,3600,'Numidian cavalry',15,'loose'],[0,'slinger',48,3200,2200,'Forward light troops',24,'loose'],[0,'commander',1,2650,2200,'Hannibal'],
+        [1,'cavalry',40,3900,850,'Roman citizen cavalry',10],[1,'swordsman',200,3900,1700,'Roman massed right',10],[1,'swordsman',200,3900,2200,'Roman massed center',10],[1,'swordsman',200,3900,2700,'Roman massed left',10],[1,'javelin',60,3550,2200,'Velite screen',30,'loose'],[1,'cavalry',60,3900,3550,'Allied cavalry',12],[1,'commander',1,4450,2200,'Consuls Paullus & Varro']] }),
+    historicalScene({ id: 'historyHastings', name: 'Hastings', year: 1066, era: 'Medieval', location: 'Sussex, England',
+      summary: 'Harold’s ridge-top shield wall receives Norman archers, infantry, and cavalry in successive depths.',
+      deployment: 'English foot occupy the hill in a joined shield wall. Norman missile troops lead, with infantry behind and mounted troops farther back across three sectors.',
+      sources: [historySource('What happened at Hastings · English Heritage', 'https://www.english-heritage.org.uk/visit/places/1066-battle-of-hastings-abbey-and-battlefield/history-and-stories/what-happened-battle-hastings')],
+      unitNotes: 'Swordsmen and halberdiers approximate English shield bearers and axe-armed housecarls; poleaxes and cavalry equipment are generic visual stand-ins.',
+      armies: [['Harold’s English Host', 'defensive'], ['William’s Norman Host', 'echelon']], regions: [region('hill', 1700, 850, 1200, 2800),region('forest', 600, 300, 800, 3800)],
+      groups: [[0,'swordsman',160,2400,1400,'English left shield wall',32,'shieldwall'],[0,'halberdier',120,2400,2200,'Royal housecarls',30,'shieldwall'],[0,'swordsman',160,2400,3000,'English right shield wall',32,'shieldwall'],[0,'militia',120,2100,2200,'Fyrd behind the front',24,'shieldwall'],[0,'commander',1,2050,1850,'Harold’s standard'],
+        [1,'archer',72,3500,1400,'Franco-Flemish bowmen',24],[1,'archer',72,3500,2200,'Norman bowmen',24],[1,'archer',72,3500,3000,'Breton bowmen',24],[1,'swordsman',120,3850,1400,'French infantry',24],[1,'swordsman',120,3850,2200,'Norman infantry',24],[1,'swordsman',120,3850,3000,'Breton infantry',24],[1,'lancer',48,4300,1400,'French horse',12],[1,'lancer',60,4300,2200,'Norman horse',15],[1,'lancer',48,4300,3000,'Breton horse',12],[1,'commander',1,4650,2200,'William']] }),
+    historicalScene({ id: 'historyBannockburn', name: 'Bannockburn', year: 1314, era: 'Medieval', location: 'Stirling, Scotland',
+      summary: 'Scottish spear blocks advance against crowded English cavalry with limited room to deploy.',
+      deployment: 'Three Scottish schiltron blocks lead with a reserve behind. English cavalry occupy the forward space, with infantry crowded farther back between constrained flanks.',
+      sources: [historySource('Bannockburn battlefield inventory · Historic Environment Scotland', 'https://portal.historicenvironment.scot/apex/f?p=1505%3A300%3A%3A%3A%3A%3AVIEWTYPE%2CVIEWREF%3Adesignation%2CBTL4')],
+      scaleNote: 'This is a schematic second-day arrangement; the precise location and layout remain debated.', unitNotes: 'Pike blocks stand for schiltrons. The game cannot reproduce every hedge, bog, or the historical English command failure.',
+      armies: [['Robert Bruce’s Scots', 'steady'], ['Edward II’s Host', 'aggressive']], regions: [region('forest', 900, 600, 1000, 3200),region('water', 3350, 0, 2100, 650),region('water', 3350, 3750, 2100, 650)],
+      groups: [[0,'pikeman',160,2550,1400,'Moray’s schiltron',16,'shieldwall'],[0,'pikeman',160,2750,2200,'Edward Bruce’s schiltron',16,'shieldwall'],[0,'pikeman',160,2550,3000,'Douglas & Stewart',16,'shieldwall'],[0,'pikeman',120,2050,2200,'Bruce’s reserve',12,'shieldwall'],[0,'cavalry',40,2200,3450,'Keith’s light horse',10],[0,'archer',48,2150,1100,'Scottish archers',24],[0,'commander',1,1850,2200,'Robert Bruce'],
+        [1,'lancer',72,3600,1400,'English vanguard',12],[1,'lancer',72,3600,2200,'English vanguard',12],[1,'cavalry',72,3650,3000,'Mounted men-at-arms',12],[1,'militia',200,4100,1800,'Crowded infantry',16],[1,'militia',200,4100,2700,'English rearward foot',16],[1,'archer',96,4400,2200,'English & Welsh bowmen',24],[1,'commander',1,4700,2200,'Edward II']] }),
+    historicalScene({ id: 'historyAgincourt', name: 'Agincourt', year: 1415, era: 'Medieval', location: 'Artois, France',
+      summary: 'An archer-heavy English front holds a narrow corridor against French men-at-arms and mounted wings.',
+      deployment: 'English men-at-arms occupy the center, with longbow companies on either side. French foot stand in successive deep bodies, with mounted detachments at the flanks. Woods compress the frontage.',
+      sources: [historySource('The battle of Agincourt · College of Arms', 'https://www.college-of-arms.gov.uk/news-grants/news/item/119-the-battle-of-agincourt')],
+      scaleNote: 'Archer-wing placement is a conventional reconstruction; exact dispositions and the battlefield site are disputed. Stakes and mud are not separately simulated.',
+      armies: [['Henry V’s Army', 'defensive'], ['French Royal Army', 'aggressive']], regions: [region('forest', 1200, 0, 3900, 1000),region('forest', 1200, 3400, 3900, 1000)],
+      groups: [[0,'archer',144,2500,1350,'English & Welsh left bow',36],[0,'guardian',64,2550,2200,'Dismounted men-at-arms',32,'shieldwall'],[0,'archer',144,2500,3050,'English & Welsh right bow',36],[0,'archer',72,2200,1700,'Supporting bowmen',24],[0,'archer',72,2200,2700,'Supporting bowmen',24],[0,'commander',1,2100,2200,'Henry V'],
+        [1,'guardian',160,3650,2200,'French vanguard',16],[1,'guardian',160,4100,2200,'French main battle',16],[1,'swordsman',160,4550,2200,'French rear battle',16],[1,'lancer',48,3700,1300,'Mounted left attack',12],[1,'lancer',48,3700,3100,'Mounted right attack',12],[1,'crossbow',48,4550,1350,'French crossbow reserve',24],[1,'commander',1,4850,2200,'French constable']] }),
+    historicalScene({ id: 'historyBosworth', name: 'Bosworth', year: 1485, era: 'Medieval', location: 'Leicestershire, England',
+      summary: 'Tudor foot face Richard’s larger host and field guns beside marshy ground.',
+      deployment: 'Oxford’s compact vanguard shields Henry’s reserve against the Royal front. Richard’s mounted household sits behind his center, with the Stanley contingent represented at the Tudor flank.',
+      sources: [historySource('Bosworth registered battlefield · Historic England', 'https://historicengland.org.uk/listing/the-list/list-entry/1000004?section=official-list-entry')],
+      scaleNote: 'Deployments are conjectural. The two-team engine places the Stanleys with Henry from the start and cannot reproduce their delayed commitment or Northumberland’s inactivity.',
+      armies: [['Henry Tudor & Stanley', 'defensive'], ['Richard III’s Royal Host', 'aggressive']], regions: [region('water', 2900, 0, 1400, 700),region('water', 2900, 3300, 1400, 1100),region('hill', 4400, 1200, 900, 1700)],
+      groups: [[0,'halberdier',120,2450,1900,'Oxford’s vanguard',24],[0,'swordsman',120,2450,2500,'Tudor vanguard',24],[0,'archer',80,2250,1300,'Welsh archers',20],[0,'pikeman',96,1950,2200,'French foot',16],[0,'cavalry',48,1900,3050,'Stanley contingent',12],[0,'commander',1,1600,2200,'Henry Tudor'],
+        [1,'archer',96,3500,1600,'Royal archers',24],[1,'halberdier',160,3800,1950,'Norfolk’s battle',20],[1,'swordsman',160,3800,2650,'Royal infantry',20],[1,'cannon',3,3500,2550,'Royal field guns',3],[1,'lancer',48,4350,2200,'Richard’s household',12],[1,'commander',1,4650,2200,'Richard III']] }),
+    historicalScene({ id: 'historyNaseby', name: 'Naseby', year: 1645, era: 'Pike & shot', location: 'Northamptonshire, England',
+      summary: 'Pike-and-shot centers contend between cavalry wings, with Parliamentary dragoons on a covered flank.',
+      deployment: 'Both armies place foot in the center and cavalry on each wing. Cromwell leads Parliament’s right, Rupert the opposing Royalist right. A dismounted musket detachment represents the hedgerow dragoons.',
+      sources: [historySource('Battle of Naseby · National Army Museum', 'https://www.nam.ac.uk/explore/battle-naseby')],
+      unitNotes: 'Musketeers use the game’s three-rank drill instead of exact Civil War depths. Pike and shot are separate neighboring companies; dragoons begin dismounted.',
+      armies: [['Fairfax’s New Model Army', 'hammer'], ['Charles I’s Royalists', 'aggressive']], regions: [region('hill', 1400, 800, 900, 2800),region('hill', 4200, 800, 900, 2800),region('forest', 2900, 500, 500, 500)],
+      groups: [[0,'cavalry',72,2450,1000,'Ireton’s left horse',12],[0,'musketeer',60,2550,1700,'New Model shot left'],[0,'pikeman',80,2500,2200,'New Model pikes',16],[0,'musketeer',60,2550,2700,'New Model shot right'],[0,'cavalry',96,2450,3450,'Cromwell’s right horse',16],[0,'musketeer',30,3050,700,'Okey’s dismounted dragoons',0,'loose'],[0,'commander',1,2000,2200,'Fairfax'],
+        [1,'cavalry',72,3900,1000,'Rupert’s right horse',12],[1,'musketeer',60,3850,1700,'Royalist shot right'],[1,'pikeman',80,3900,2200,'Royalist pikes',16],[1,'musketeer',60,3850,2700,'Royalist shot left'],[1,'cavalry',60,3900,3450,'Langdale’s left horse',12],[1,'cannon',2,4150,2200,'Royalist guns',2],[1,'commander',1,4400,2200,'Charles I']] }),
+    historicalScene({ id: 'historyBlenheim', name: 'Blenheim', year: 1704, era: 'Musket age', location: 'Bavaria, Germany',
+      summary: 'Allied infantry and horse cross the Nebel toward three defended village sectors.',
+      deployment: 'French and Bavarian troops anchor on Blenheim, Oberglau, and Lutzingen, with weaker gaps between. Marlborough’s wing and Eugene’s wing begin opposite those sectors; the Danube closes one flank.',
+      sources: [historySource('Battle of Blenheim · National Army Museum', 'https://www.nam.ac.uk/explore/battle-blenheim')],
+      unitNotes: 'Woodland cover stands in for village clusters; the shallow Nebel is represented by several open crossings. The map is a schematic sector layout.',
+      armies: [['Marlborough & Eugene', 'breakthrough'], ['French & Bavarian Army', 'defensive']], regions: [region('water', 0, 0, 6400, 500),region('water', 3200, 500, 160, 3900),region('bridge', 3100, 950, 360, 420),region('bridge', 3100, 2000, 360, 420),region('bridge', 3100, 3050, 360, 420),region('forest', 3750, 700, 500, 600),region('forest', 3750, 1850, 500, 600),region('forest', 3750, 3000, 500, 600)],
+      groups: [[0,'musketeer',96,2500,1100,'Marlborough’s infantry'],[0,'musketeer',96,2450,2200,'Allied center'],[0,'musketeer',96,2500,3300,'Eugene’s infantry'],[0,'cavalry',72,2100,1700,'Allied center horse',12],[0,'cavalry',72,2100,2700,'Allied cavalry reserve',12],[0,'cannon',4,2100,2200,'Allied batteries',4],[0,'commander',1,1800,2500,'Marlborough'],
+        [1,'musketeer',144,4000,1050,'Blenheim defenders'],[1,'musketeer',72,4100,2200,'Oberglau defenders'],[1,'musketeer',120,4000,3300,'Lutzingen defenders'],[1,'cavalry',60,4350,1600,'French center horse',12],[1,'cavalry',60,4350,2800,'French cavalry reserve',12],[1,'cannon',4,3700,2200,'French batteries',4],[1,'commander',1,4800,2600,'Tallard']] }),
+    historicalScene({ id: 'historyDettingen', name: 'Dettingen', year: 1743, era: 'Musket age', location: 'Main Valley, Germany',
+      summary: 'Two infantry lines with cavalry flanks meet beside the Main and a dangerous rearward ravine.',
+      deployment: 'Both armies have two central infantry lines and horse on the wings. French guns fire from beyond the Main, while Gramont’s troops have left the ravine behind their battle line.',
+      sources: [historySource('Battle of Dettingen · National Army Museum', 'https://www.nam.ac.uk/explore/battle-dettingen')],
+      armies: [['George II’s Pragmatic Army', 'steady'], ['Gramont’s French Army', 'aggressive']], regions: [region('water', 0, 550, 6400, 350),region('water', 4550, 900, 160, 2800),region('bridge', 4400, 2000, 500, 400),region('hill', 800, 3600, 4700, 800)],
+      groups: [[0,'cavalry',48,2450,1050,'Allied left horse',12],[0,'musketeer',96,2600,1800,'Allied first line left'],[0,'musketeer',96,2600,2650,'Allied first line right'],[0,'musketeer',96,2150,2200,'Allied second line'],[0,'cavalry',48,2450,3300,'Allied right horse',12],[0,'cannon',3,2400,2200,'Allied guns',3],[0,'commander',1,1800,2200,'George II'],
+        [1,'cavalry',72,3850,1050,'Maison du Roi',12],[1,'musketeer',96,3800,1800,'French Guards'],[1,'musketeer',96,3800,2650,'French first line'],[1,'musketeer',96,4250,2200,'French second line'],[1,'cavalry',48,3850,3300,'French left horse',12],[1,'cannon',4,3300,300,'French cross-river battery',4],[1,'commander',1,4250,1500,'Gramont']] }),
+    historicalScene({ id: 'historyCulloden', name: 'Culloden', year: 1746, era: 'Musket age', location: 'Inverness, Scotland', biome: 'highland',
+      summary: 'Jacobite clan sectors confront Government musket lines, guns, and flanking cavalry.',
+      deployment: 'A broad Jacobite front faces Government infantry in two depths with guns forward and horse outside. Wet ground impedes one Jacobite wing, while enclosures bound the approach.',
+      sources: [historySource('Battle of Culloden · National Army Museum', 'https://www.nam.ac.uk/explore/battle-culloden?ms=homepage'),historySource('Culloden inventory · Historic Environment Scotland', 'https://portal.historicenvironment.scot/apex/f?p=1505%3A300%3A%3A%3A%3AVIEWTYPE%2CVIEWREF%3Adesignation%2CBTL6')],
+      unitNotes: 'Swordsmen represent charging clan foot; their generic shields and armor differ from Highland equipment. Government and Jacobite shot share the three-rank game drill.',
+      armies: [['Jacobite Army', 'aggressive'], ['Cumberland’s Government Army', 'defensive']], regions: [region('water', 2950, 650, 400, 500),region('rock', 2100, 0, 2300, 300),region('rock', 2100, 3900, 2300, 300),region('hill', 2700, 1600, 900, 1600)],
+      groups: [[0,'swordsman',120,2550,1350,'MacDonald wing',24],[0,'swordsman',160,2550,2200,'Jacobite center',32],[0,'swordsman',160,2550,3050,'Clan Chattan right',32],[0,'musketeer',60,2100,2200,'Jacobite regular reserve'],[0,'cannon',2,2800,2200,'Jacobite light guns',2],[0,'commander',1,1800,2200,'Charles Edward Stuart'],
+        [1,'musketeer',96,3900,1350,'Government first line north'],[1,'musketeer',96,3900,2200,'Government first line center'],[1,'musketeer',96,3900,3050,'Barrell & Munro sector'],[1,'musketeer',96,4400,2200,'Government second line'],[1,'cannon',4,3550,2200,'Government artillery',4],[1,'cavalry',48,4300,650,'Government northern horse',12],[1,'cavalry',48,4300,3600,'Government southern horse',12],[1,'commander',1,4800,2200,'Cumberland']] }),
+    historicalScene({ id: 'historyBunkerHill', name: 'Bunker Hill', year: 1775, era: 'Musket age', location: 'Massachusetts, North America',
+      summary: 'Provincial defenders occupy Breed’s Hill and a fence line against a British frontal and flank advance.',
+      deployment: 'One Provincial body holds the hill redoubt sector while another extends toward the Mystic shore. British battalions prepare an uphill attack and a separate shoreward approach.',
+      sources: [historySource('The Battle of Bunker Hill · National Park Service', 'https://home.nps.gov/articles/000/the-battle-of-bunker-hill.htm')],
+      unitNotes: 'Hill and sparse wall sections approximate earthworks and rail fences. The game does not model the defenders’ historical ammunition shortage.',
+      armies: [['Provincial Army', 'defensive'], ['British Army at Boston', 'aggressive']], regions: [region('hill', 1700, 1800, 1300, 1700),region('water', 0, 0, 6400, 500),region('wall', 2900, 2000, 80, 450),region('wall', 2900, 2750, 80, 450),region('hill', 2200, 800, 600, 900)],
+      groups: [[0,'musketeer',96,2650,1200,'Provincial fence line'],[0,'musketeer',96,2650,1850,'Fence-line continuation'],[0,'musketeer',120,2600,2600,'Breed’s Hill redoubt sector'],[0,'musketeer',60,2100,2600,'Provincial reserve'],[0,'cannon',2,2500,3250,'Provincial light guns',2],[0,'commander',1,2050,2200,'Prescott & Putnam'],
+        [1,'musketeer',96,3900,900,'British shoreward attack'],[1,'musketeer',96,3900,1750,'British flank battalions'],[1,'musketeer',120,3900,2600,'British redoubt attack'],[1,'musketeer',96,4400,2600,'British supports'],[1,'cannon',3,4400,3350,'British guns',3],[1,'commander',1,4700,2200,'Howe']] }),
+    historicalScene({ id: 'historyFreemansFarm', name: 'Freeman’s Farm', year: 1777, era: 'Musket age', location: 'New York, North America', biome: 'woodland',
+      summary: 'American riflemen and supporting foot meet separated British and German columns among farm clearings.',
+      deployment: 'The Crown advances in three separated sectors, with Hamilton in the center, Fraser inland, and Riedesel by the Hudson. American detachments occupy the central and inland woodland approaches.',
+      sources: [historySource('Battle of Freeman’s Farm · National Park Service', 'https://home.nps.gov/sara/learn/historyculture/battle-of-freemans-farm.htm')],
+      scaleNote: 'Three approach sectors are present together; reinforcements and their historical arrival times are not scripted.', unitNotes: 'Loose-order musketeers represent Morgan’s riflemen, without separate rifle ballistics.',
+      armies: [['Arnold’s American Division', 'skirmish'], ['Burgoyne’s Crown Army', 'echelon']], regions: [region('forest', 1100, 700, 1300, 1300),region('forest', 2700, 1600, 700, 900),region('forest', 3400, 2900, 1200, 800),region('water', 0, 3900, 6400, 500)],
+      groups: [[0,'musketeer',48,2800,2200,'Morgan’s riflemen',0,'loose'],[0,'musketeer',96,2300,1350,'American inland supports'],[0,'musketeer',96,2300,2600,'American center supports'],[0,'musketeer',96,1800,2200,'Arnold’s reserve'],[0,'commander',1,1500,2200,'Benedict Arnold'],
+        [1,'musketeer',96,3850,1000,'Fraser’s inland column',0,'column'],[1,'musketeer',120,3850,2200,'Hamilton’s center'],[1,'musketeer',96,4300,3450,'Riedesel’s river column',0,'column'],[1,'cannon',3,4200,2600,'Crown field guns',3],[1,'commander',1,4700,2200,'John Burgoyne']] }),
+    historicalScene({ id: 'historyCowpens', name: 'Cowpens', year: 1781, era: 'Musket age', location: 'South Carolina, North America',
+      summary: 'Morgan’s forward screen, militia line, and Continental reserve receive Tarleton’s attack.',
+      deployment: 'Three American infantry positions stand one behind another, with cavalry behind a low hill. British foot and light guns lead their advance, with dragoon reserves on a wing.',
+      sources: [historySource('The Battle of Cowpens · National Park Service', 'https://www.nps.gov/cowp/learn/historyculture/the-battle-of-cowpens.htm')],
+      scaleNote: 'Militia withdrawal after two volleys must be ordered by the player; the scenario does not force the historical sequence.', unitNotes: 'All firearm infantry use musketeers. Differences in militia training, rifle range, and ammunition are not individually represented.',
+      armies: [['Daniel Morgan’s Army', 'elastic'], ['Tarleton’s Legion', 'aggressive']], regions: [region('hill', 1400, 2600, 700, 1000),region('forest', 1100, 500, 900, 700),region('forest', 4400, 600, 900, 650)],
+      groups: [[0,'musketeer',30,2950,2200,'Forward rifle screen',0,'loose'],[0,'musketeer',60,2500,2200,'Pickens’s militia'],[0,'musketeer',96,1950,2200,'Howard’s Continentals'],[0,'cavalry',36,1500,3000,'Washington’s cavalry reserve',12],[0,'commander',1,1400,2200,'Daniel Morgan'],
+        [1,'musketeer',90,3800,1800,'British regular front'],[1,'musketeer',90,3800,2650,'Legion infantry front'],[1,'musketeer',60,4300,2200,'71st Foot reserve'],[1,'cannon',2,3550,2200,'British light guns',2],[1,'cavalry',48,4400,3150,'British dragoon reserve',12],[1,'commander',1,4650,2200,'Banastre Tarleton']] }),
+    historicalScene({ id: 'historyGuilford', name: 'Guilford Courthouse', year: 1781, era: 'Musket age', location: 'North Carolina, North America', biome: 'woodland',
+      summary: 'Greene’s three lines trade depth for ground while British battalions advance through woods.',
+      deployment: 'North Carolina militia occupy the first position, Virginia militia the second, and Continentals the third. American detachments guard both flanks; British foot form a broad advancing front.',
+      sources: [historySource('Guilford Courthouse cultural landscape · National Park Service', 'https://home.nps.gov/articles/000/guilford-courthouse-national-military-park-550002.htm')],
+      unitNotes: 'Militia and Continentals share musket statistics. Woodland and spacing represent the layered defense; historical withdrawals are left to battlefield orders.',
+      armies: [['Nathanael Greene’s Army', 'elastic'], ['Cornwallis’s Army', 'aggressive']], regions: [region('forest', 2000, 600, 450, 3200),region('forest', 3100, 600, 450, 3200),region('hill', 1000, 1500, 600, 1400)],
+      groups: [[0,'musketeer',96,2900,2200,'North Carolina first line'],[0,'musketeer',96,2300,2200,'Virginia second line'],[0,'musketeer',120,1600,2200,'Continental third line'],[0,'musketeer',30,2700,1000,'American northern flank',0,'loose'],[0,'musketeer',30,2700,3400,'American southern flank',0,'loose'],[0,'cavalry',24,1450,1000,'Washington’s horse',8],[0,'cavalry',24,1450,3400,'Lee’s horse',8],[0,'cannon',2,1700,2800,'Continental guns',2],[0,'commander',1,1150,2200,'Nathanael Greene'],
+        [1,'musketeer',96,4000,1550,'British northern front'],[1,'musketeer',96,4000,2850,'British southern front'],[1,'musketeer',96,4400,2200,'Guards reserve'],[1,'cavalry',36,4550,3350,'Tarleton’s cavalry',12],[1,'cannon',3,3850,2200,'British artillery',3],[1,'commander',1,4800,2200,'Cornwallis']] }),
+    historicalScene({ id: 'historyYorktown', name: 'Yorktown', year: 1781, era: 'Musket age', location: 'Virginia, North America',
+      summary: 'French and American assault sectors face the outer redoubts ahead of Cornwallis’s main defenses.',
+      deployment: 'French troops face Redoubt 9 and Americans face Redoubt 10, with siege batteries behind the assault line. British detachments hold the outer works in front of their main position and the York River.',
+      sources: [historySource('History of the siege of Yorktown · National Park Service', 'https://www.nps.gov/york/learn/historyculture/history-of-the-siege.htm')],
+      unitNotes: 'Short wall panels represent earthen works. Musketeers approximate the bayonet assault parties; the player controls whether they shoot or close, and no nighttime modifier is imposed.',
+      armies: [['American & French Allies', 'breakthrough'], ['Cornwallis’s Garrison', 'defensive']], regions: [region('water', 5600, 0, 800, 4400),region('wall', 3650, 1000, 80, 450),region('wall', 3650, 1800, 80, 450),region('wall', 3650, 2600, 80, 450),region('wall', 3650, 3400, 80, 450),region('hill', 3400, 1050, 900, 2600)],
+      groups: [[0,'musketeer',96,2750,1500,'French assault on Redoubt 9'],[0,'musketeer',96,2750,3000,'American assault on Redoubt 10'],[0,'musketeer',96,2250,2200,'Allied supporting line'],[0,'cannon',4,2200,1400,'French siege battery',4],[0,'cannon',4,2200,3100,'American siege battery',4],[0,'commander',1,1750,1700,'Rochambeau'],[0,'commander',1,1750,2800,'George Washington'],
+        [1,'musketeer',48,3900,1550,'Redoubt 9 defenders'],[1,'musketeer',48,3900,3100,'Redoubt 10 defenders'],[1,'musketeer',120,4650,2200,'British main defense'],[1,'cannon',4,4500,1600,'British batteries',4],[1,'cannon',2,4500,3000,'British riverward guns',2],[1,'commander',1,5050,2200,'Cornwallis']] }),
+    historicalScene({ id: 'historyAlbuera', name: 'Albuera', year: 1811, era: 'Napoleonic', location: 'Extremadura, Spain',
+      summary: 'A French demonstration at the bridge masks a stronger attack against the Allied right.',
+      deployment: 'Allied foot cover the village sector and ridge, with Spanish infantry on the right and supports behind. A smaller French body faces the bridge while the main infantry and horse concentrate around the southern flank.',
+      sources: [historySource('The Battle of Albuera · Mercian Regiment Museum', 'https://www.worcestershireandmercianregimentmuseum.org/the-battle-of-albuera-16-may-1811/')],
+      scaleNote: 'This depicts the opening turn of the flank, rather than compressing all later redeployments into one line.',
+      armies: [['Beresford’s Allied Army', 'refused'], ['Soult’s Army of the South', 'flank']], regions: [region('water', 3350, 0, 150, 2500),region('bridge', 3250, 1400, 350, 450),region('hill', 1800, 1700, 900, 2200),region('forest', 3500, 2450, 900, 650)],
+      groups: [[0,'musketeer',72,2750,1000,'Portuguese left'],[0,'musketeer',60,2900,1650,'Alten’s village defenders'],[0,'musketeer',96,2550,2500,'Spanish right'],[0,'musketeer',96,2100,2200,'Stewart’s supporting division'],[0,'musketeer',72,1750,3000,'Cole’s reserve'],[0,'cavalry',48,2350,3500,'Allied right horse',12],[0,'cannon',4,2350,1850,'Allied artillery',4],[0,'commander',1,1600,2200,'Beresford'],
+        [1,'musketeer',72,4000,1650,'Godinot’s demonstration'],[1,'musketeer',120,3850,3300,'Girard’s main attack',0,'column'],[1,'musketeer',120,4350,3300,'Gazan’s support',0,'column'],[1,'lancer',48,3250,3650,'French & Polish cavalry',12],[1,'cavalry',36,4350,3850,'French dragoon reserve',12],[1,'cannon',4,4100,2200,'French artillery',4],[1,'commander',1,4750,3200,'Soult']] }),
+    historicalScene({ id: 'historySalamanca', name: 'Salamanca', year: 1812, era: 'Napoleonic', location: 'Castile, Spain',
+      summary: 'Wellington’s concentrated force is poised to strike Marmont’s stretched left beneath the Arapiles.',
+      deployment: 'Allied infantry wait near the Lesser Arapile, with a southern striking force and cavalry support. French divisions form a long, separated chain west of the Greater Arapile, exposing the leading left.',
+      sources: [historySource('Battle of Salamanca · National Army Museum', 'https://www.nam.ac.uk/explore/battle-salamanca')],
+      scaleNote: 'The map captures the exposed-left crisis; it does not attempt the full preceding day of maneuver.',
+      armies: [['Wellington’s Allied Army', 'hammer'], ['Marmont’s Army of Portugal', 'echelon']], regions: [region('hill', 2300, 1200, 650, 700),region('hill', 3650, 1000, 850, 900),region('hill', 1200, 1800, 600, 1300)],
+      groups: [[0,'musketeer',96,2450,1750,'Allied holding center'],[0,'musketeer',96,2450,2450,'Allied main body'],[0,'musketeer',120,2800,3350,'Pakenham’s striking division'],[0,'cavalry',72,2300,3600,'Le Marchant’s cavalry',12],[0,'musketeer',72,1900,2700,'Clinton’s reserve'],[0,'cannon',4,2050,2100,'Allied batteries',4],[0,'commander',1,1750,2200,'Wellington'],
+        [1,'musketeer',120,3850,1100,'French right near the Arapile'],[1,'musketeer',96,3950,2100,'French center'],[1,'musketeer',96,4050,3000,'Stretched French left'],[1,'musketeer',96,3950,3800,'Exposed leading division',0,'column'],[1,'cavalry',48,4450,3000,'French cavalry support',12],[1,'cannon',5,4250,1600,'French batteries',5],[1,'commander',1,4700,2100,'Marmont']] }),
+    historicalScene({ id: 'historyWaterloo', name: 'Waterloo', year: 1815, era: 'Napoleonic', location: 'Belgium',
+      summary: 'Wellington’s reverse-slope defense and three forward strongpoints face Napoleon’s combined arms.',
+      deployment: 'Allied infantry hold behind the Mont-Saint-Jean ridge, with forward detachments representing Hougoumont, La Haye Sainte, and Papelotte. French infantry, guns, and cavalry occupy successive depths opposite the ridge.',
+      sources: [historySource('Battle of Waterloo · National Army Museum', 'https://www.nam.ac.uk/explore/battle-waterloo'),historySource('Waterloo contemporary map · The National Archives', 'https://www.nationalarchives.gov.uk/education/resources/significant-events/battle-of-waterloo-1815/')],
+      scaleNote: 'Opening deployments only: Prussian arrivals and later cavalry-versus-square phases are not scripted.', unitNotes: 'Generic musketeers use three ranks instead of varied historical depths; hill cover approximates the reverse slope, and woodland patches stand in for farm strongpoints.',
+      armies: [['Wellington’s Anglo-Allied Army', 'defensive'], ['Napoleon’s Army of the North', 'echelon']], regions: [region('hill', 2300, 700, 650, 3000),region('forest', 2900, 800, 450, 450),region('forest', 2900, 1950, 350, 450),region('forest', 2900, 3100, 450, 450)],
+      groups: [[0,'musketeer',48,3100,1050,'Papelotte detachment'],[0,'musketeer',36,3050,2200,'La Haye Sainte detachment'],[0,'musketeer',48,3100,3350,'Hougoumont detachment'],[0,'musketeer',120,2300,1350,'Allied ridge left'],[0,'musketeer',120,2300,2200,'Allied ridge center'],[0,'musketeer',120,2300,3050,'Allied ridge right'],[0,'cavalry',60,1800,1550,'Allied cavalry reserve',15],[0,'cavalry',60,1800,2850,'Allied heavy horse',15],[0,'cannon',3,2750,1500,'Allied ridge battery',3],[0,'cannon',3,2750,2800,'Allied ridge battery',3],[0,'commander',1,1550,2200,'Wellington'],
+        [1,'musketeer',120,4050,1350,'French right infantry'],[1,'musketeer',120,4050,2200,'French center infantry'],[1,'musketeer',120,4050,3050,'French left infantry'],[1,'musketeer',96,4900,2200,'Guard reserve'],[1,'cannon',4,3700,1650,'Grand Battery north',4],[1,'cannon',4,3700,2750,'Grand Battery south',4],[1,'cavalry',72,4550,1400,'French heavy cavalry',12],[1,'lancer',60,4550,3100,'French mounted reserve',12],[1,'commander',1,5300,2200,'Napoleon']] })
+  ]);
+  PRESETS.push(...HISTORICAL_BATTLES);
+
   // Plans issue real movement orders; Steady advance also preserves a partial
   // weapon brace only while bodies actually move forward in coherent ranks.
   // Keep the original four ids so older saved scenarios retain their meaning.
@@ -1016,7 +1228,7 @@
   });
 
   global.GameData = Object.freeze({
-    TYPES, TYPE_ORDER, FORMATIONS, MAPS, PRESETS, DOCTRINES, WORLD_SIZES, normalizeWorldSize, castleWalls, ARMOR_CLASSES, ATTACK_PROFILES, armorMultiplier, getMatchup,
+    TYPES, TYPE_ORDER, FORMATIONS, MAPS, PRESETS, HISTORICAL_BATTLES, DOCTRINES, WORLD_SIZES, normalizeWorldSize, castleWalls, ARMOR_CLASSES, ATTACK_PROFILES, armorMultiplier, getMatchup,
     DEFAULT_CONFIG: JSON.parse(JSON.stringify(PRESETS[0])),
     MAX_UNITS: 20000, RNG, clamp
   });

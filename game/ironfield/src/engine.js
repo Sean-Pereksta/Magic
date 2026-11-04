@@ -218,7 +218,8 @@
           if (!raw || ![0, 1].includes(raw.team) || !TYPES[raw.type] || !Number.isFinite(raw.count) || ![raw.x, raw.y].every(Number.isFinite)) continue;
           const count = Math.min(remaining[raw.team][raw.type], Math.max(0, Math.floor(raw.count)), TYPES[raw.type].groupSize || (TYPES[raw.type].commander ? 1 : cap));
           if (!count) continue;
-          const group = { team: raw.team, type: raw.type, count, x: clamp(raw.x, 35, worldWidth - 35), y: clamp(raw.y, 35, worldHeight - 35), formation: FORMATIONS[raw.formation] ? raw.formation : 'line' };
+          const group = { team: raw.team, type: raw.type, count, x: clamp(raw.x, 35, worldWidth - 35), y: clamp(raw.y, 35, worldHeight - 35), formation: FORMATIONS[raw.formation] ? raw.formation : raw.type === 'musketeer' ? 'volley' : 'line' };
+          if (typeof raw.name === 'string' && raw.name.trim()) group.name = raw.name.replace(/[<>]/g, '').trim().slice(0, 80);
           if (Number.isFinite(raw.facing)) group.facing = Math.atan2(Math.sin(raw.facing), Math.cos(raw.facing));
           if (Array.isArray(raw.offsets) && raw.offsets.length >= count) {
             const offsets = raw.offsets.slice(0, count);
@@ -248,7 +249,8 @@
         companies[group.team][group.type] = number;
         this._createRegiment(group.team, group.type, group.count, number, group.x, group.y, group.facing);
         const r = this.regiments[this.regiments.length - 1];
-        if (group.formation !== 'line' && !TYPES[group.type].commander) this.setFormation([r.id], group.formation);
+        if (group.name) r.name = group.name;
+        if (group.formation !== r.formation && !TYPES[group.type].commander) this.setFormation([r.id], group.formation);
         if (group.offsets) {
           // A detached half is a real body of troops, not a newly generated
           // rectangular company. Keep the exact saved deployment footprint.
@@ -285,10 +287,10 @@
         const groupsPerType = Math.max(6, Math.floor(100 / Math.max(1, occupiedTypes)));
         for (const type of DATA.TYPE_ORDER.slice().sort((a, b) => sort[a] - sort[b])) {
           const t = TYPES[type];
-          const baseSize = t.groupSize || (t.commander ? 1 : t.siege ? 12 : type === 'elephant' ? 16 : t.mounted ? 80 : 160);
+          const baseSize = t.groupSize || (t.commander ? 1 : t.siege ? 12 : type === 'musketeer' ? 90 : type === 'elephant' ? 16 : t.mounted ? 80 : 160);
           // Extreme all-artillery or all-elephant sandboxes still use a bounded
           // number of strategic formations; every soldier remains simulated.
-          const maxSize = t.groupSize || (t.commander ? 1 : Math.max(baseSize, Math.ceil(roster[type] / Math.min(groupsPerType, layoutBudget))));
+          const maxSize = t.groupSize || (t.commander ? 1 : type === 'musketeer' ? 90 : Math.max(baseSize, Math.ceil(roster[type] / Math.min(groupsPerType, layoutBudget))));
           let remaining = roster[type];
           let company = (companyNumbers[type] || 0) + 1;
           while (remaining > 0) {
@@ -302,7 +304,7 @@
         const columnSpacing = Math.min(300, 1950 / Math.max(1, columnCount - 1));
         const halfFrontage = group => {
           const type = TYPES[group.type], pitch = type.siege ? 48 : group.type === 'elephant' ? 56 : type.mounted ? 28 : 17;
-          return (Math.ceil(Math.sqrt(group.amount * 1.6)) - 1) * pitch * .5 + type.radius;
+          return ((group.type === 'musketeer' ? Math.ceil(group.amount / 3) : Math.ceil(Math.sqrt(group.amount * 1.6))) - 1) * pitch * .5 + type.radius;
         };
         let requiredRowSpacing = 320;
         for (let i = 1; i < groups.length; i++) if (i % rowCount !== 0) {
@@ -384,7 +386,7 @@
 
     _emptyDeploymentOrigin(team, type, amount, x, y, occupancy) {
       const t = TYPES[type], spacing = t.siege ? 48 : type === 'elephant' ? 56 : t.mounted ? 28 : 17;
-      const columns = Math.ceil(Math.sqrt(amount * 1.6)), rows = Math.ceil(amount / columns), direction = team === 0 ? 1 : -1;
+      const columns = type === 'musketeer' ? Math.ceil(amount / 3) : Math.ceil(Math.sqrt(amount * 1.6)), rows = Math.ceil(amount / columns), direction = team === 0 ? 1 : -1;
       const clear = (cx, cy) => {
         for (let slot = 0; slot < amount; slot++) {
           const px = cx + ((rows - 1) / 2 - Math.floor(slot / columns)) * spacing * direction;
@@ -407,7 +409,7 @@
     _createRegiment(team, type, amount, number, x, y, facing) {
       const t = TYPES[type];
       const spacing = t.siege ? 48 : type === 'elephant' ? 56 : t.mounted ? 28 : 17;
-      const columns = Math.ceil(Math.sqrt(amount * 1.6));
+      const columns = type === 'musketeer' ? Math.ceil(amount / 3) : Math.ceil(Math.sqrt(amount * 1.6));
       const rows = Math.ceil(amount / columns);
       const origin = this._nearestPassable(x, y);
       facing = Number.isFinite(facing) ? facing : team === 0 ? 0 : Math.PI;
@@ -420,7 +422,7 @@
         targetX: origin.x, targetY: origin.y,
         width: columns * spacing, depth: rows * spacing,
         facing, kills: 0,
-        formation: 'line', cohesion: 100, status: 'steady', fallingBack: false,
+        formation: type === 'musketeer' ? 'volley' : 'line', cohesion: 100, status: 'steady', fallingBack: false,
         rallyRadius: t.commander ? (t.rallyRadius || 620) : 0, rallyCooldown: 0,
         regroupWith: '', supportRegimentId: -1,
         maneuver: 'formed', effectiveWidth: columns * spacing, effectiveDepth: rows * spacing,
@@ -471,7 +473,10 @@
         _missileAcrossLo: 0, _missileAcrossHi: 0, _missileEnemyFront: 0, _missileGap: 0, _missileRowSpacing: spacing,
         _approachNX: facingX, _approachNY: facingY, _approachEnemy: -1, _localFront: false,
         _faceStart: 0, _faceDuration: 0, _faceFrom: facing, _faceDelta: 0, _faceError: 0,
-        fireBehavior: t.missile ? t.missile.label : ''
+        fireBehavior: t.missile ? t.missile.label : '',
+        nextVolleyRank: 1, nextVolleyAt: 0, volleyRankCount: type === 'musketeer' ? rows : 0,
+        volleyStatus: type === 'musketeer' ? 'forming' : '', lastVolleyAt: -1000, lastVolleyRank: 0,
+        _volleyNext: 0, _volleyBrokenUntil: 0, _volleyDispatch: false, _volleyLayout: ''
       };
       this.regiments.push(r);
       for (let slot = 0; slot < amount; slot++) {
@@ -486,7 +491,8 @@
           alive: true, routed: false, angle: r.facing,
           state: 'idle', anim: this._random() * 8,
           attackFlash: 0, target: -1,
-          _slot: slot, _cooldown: this._random() * t.cooldown,
+          _slot: slot, _cooldown: type === 'musketeer' ? 0 : this._random() * t.cooldown,
+          _volleyRank: type === 'musketeer' ? row : -1, _meleeCooldown: 0, _lastMusketMelee: -1000,
           _radius: t.radius, _contact: false,
           travelDistance: 0,
           _sense: this._random() * .65, _charge: 0,
@@ -553,7 +559,7 @@
     }
 
     setFormation(ids, formation) {
-      if (!['line', 'shieldwall', 'wedge', 'loose'].includes(formation) || this.phase === 'ended') return 0;
+      if (!FORMATIONS[formation] || this.phase === 'ended') return 0;
       let changed = 0;
       for (const id of new Set(ids || [])) {
         const r = this.getRegiment(id);
@@ -570,11 +576,12 @@
         r.formation = formation;
         r._pathTimer = 0;
         const f = FORMATIONS[formation] || {};
-        const columns = formation === 'shieldwall' ? Math.ceil(r._columns * 1.25) : formation === 'wedge' ? Math.ceil((Math.sqrt(8 * r.alive + 1) - 1) / 2) : r._columns;
+        const columns = f.files ? Math.min(r.alive, f.files) : f.ranks ? Math.ceil(r.alive / f.ranks) : r.type === 'musketeer' && formation !== 'wedge' ? Math.ceil(r.alive / 3) : formation === 'shieldwall' ? Math.ceil(r._columns * 1.25) : formation === 'wedge' ? Math.ceil((Math.sqrt(8 * r.alive + 1) - 1) / 2) : r._columns;
         const rows = formation === 'wedge' ? columns : Math.ceil(r.alive / columns);
         r.width = columns * r._spacing * (f.spacing || 1);
         r.depth = rows * r._spacing * (f.spacing || 1);
         r._shapeColumns = columns;
+        if (r.type === 'musketeer') { r._volleyLayout = ''; r._missileSlotsTime = -10; r._volleyNext = 0; }
         if (this.phase === 'deployment') {
           r._adaptiveColumns = columns; r._terrainColumns = columns;
           r.effectiveWidth = r.width; r.effectiveDepth = r.depth;
@@ -593,6 +600,7 @@
             if (u.alive && !u.routed) u._holdPosition = this.phase === 'deployment' ? { x: u.x, y: u.y } : this._formationGoal(u, r);
           }
         }
+        if (r.type === 'musketeer') this._assignMusketRanks(r, false);
         changed++;
       }
       if (changed) this._strategyTimer = 0;
@@ -601,7 +609,7 @@
     }
 
     captureFormations() {
-      return this.regiments.filter(r => r.unitIds.length > 0).map(r => ({ team: r.team, type: r.type, count: r.unitIds.length, x: r.x, y: r.y, formation: r.formation, facing: r.facing,
+      return this.regiments.filter(r => r.unitIds.length > 0).map(r => ({ team: r.team, type: r.type, name: r.name, count: r.unitIds.length, x: r.x, y: r.y, formation: r.formation, facing: r.facing,
         offsets: r.unitIds.map(id => ({ x: this.units[id].x - r.x, y: this.units[id].y - r.y })) }));
     }
 
@@ -2037,8 +2045,9 @@
           const share = coverage * (desired[i] + 25) / Math.max(1, total);
           const lateral = group.length === 1 ? centerT : cursor + share / 2;
           cursor += share;
-          let columns = Math.max(1, Math.min(r.alive, Math.floor(desired[i] / r._missileSpacing)));
-          while (columns > 1 && columns * r._missileSpacing + Math.floor((columns - 1) / 5) * r._missileGap > desired[i]) columns--;
+          const form = FORMATIONS[r.formation] || {};
+          let columns = form.files ? Math.min(r.alive, form.files) : r.type === 'musketeer' ? Math.ceil(r.alive / 3) : form.ranks ? Math.ceil(r.alive / form.ranks) : Math.max(1, Math.min(r.alive, Math.floor(desired[i] / r._missileSpacing)));
+          if (r.type !== 'musketeer' && !form.files && !form.ranks) while (columns > 1 && columns * r._missileSpacing + Math.floor((columns - 1) / 5) * r._missileGap > desired[i]) columns--;
           const rows = Math.ceil(r.alive / columns);
           r._missileRowSpacing = Math.max(t.radius * 2 + 4, Math.min(r._missileSpacing, t.range * .6 / Math.max(1, rows - 1)));
           const stand = Math.max(60, t.range * profile.standoff);
@@ -2114,6 +2123,103 @@
         rows = Math.max(rows, lanes[col].length);
       }
       r._missileRows = rows; r._missileAssignedCount = r.alive; r._missileSlotsTime = this.time;
+      if (r.type === 'musketeer') this._assignMusketRanks(r, true);
+    }
+
+    _assignMusketRanks(r, missiles) {
+      const form = FORMATIONS[r.formation] || {};
+      const columns = missiles ? r._missileColumns : form.files ? Math.min(r.alive, form.files) : form.ranks ? Math.ceil(r.alive / form.ranks) : r.formation === 'wedge' ? r._shapeColumns : Math.ceil(r.alive / 3);
+      const wedge = !missiles && r.formation === 'wedge';
+      let ranks = 1, liveSlot = 0;
+      for (const id of r.unitIds) {
+        const u = this.units[id];
+        if (!u.alive || u.routed) continue;
+        // Casualties are resolved every step; the slower morale pass must not
+        // leave holes in compact slot numbers and invent a fourth volley rank.
+        if (!missiles) u._slot = liveSlot++;
+        const slot = missiles && u._missileSlot >= 0 ? u._missileSlot : u._slot;
+        u._volleyRank = wedge ? Math.floor((Math.sqrt(8 * slot + 1) - 1) / 2) : Math.floor(slot / Math.max(1, columns));
+        ranks = Math.max(ranks, u._volleyRank + 1);
+      }
+      r.volleyRankCount = ranks;
+      r._volleyNext %= ranks; r.nextVolleyRank = r._volleyNext + 1;
+      r._volleyLayout = [missiles ? 'fire' : 'march', r.formation, columns, r.alive].join(':');
+    }
+
+    _musketMelee(u, enemy) {
+      if (!enemy || !enemy.alive || enemy.routed || u._meleeCooldown > 0 || Math.hypot(enemy.x - u.x, enemy.y - u.y) > 32 + enemy._radius || !this._lineClear(u.x, u.y, enemy.x, enemy.y)) return;
+      u.angle = Math.atan2(enemy.y - u.y, enemy.x - u.x);
+      u._meleeCooldown = 1.7; u._lastMusketMelee = u._lastAttack = this.time; u.attackFlash = 1; u.state = 'attack';
+      this._hit(u, enemy, 9, false, false);
+    }
+
+    _stepMusketVolleys() {
+      for (const r of this.regiments) {
+        if (r.type !== 'musketeer' || r.alive <= 0 || r._routed) continue;
+        const t = TYPES.musketeer, missiles = this._canDeployMissiles(r);
+        const columns = missiles ? r._missileColumns : (FORMATIONS[r.formation] || {}).files || ((FORMATIONS[r.formation] || {}).ranks ? Math.ceil(r.alive / FORMATIONS[r.formation].ranks) : r.formation === 'wedge' ? r._shapeColumns : Math.ceil(r.alive / 3));
+        const layout = [missiles ? 'fire' : 'march', r.formation, columns, r.alive].join(':');
+        if (layout !== r._volleyLayout) this._assignMusketRanks(r, missiles);
+        const soldiers = r.unitIds.map(id => this.units[id]).filter(u => u.alive && !u.routed);
+        const rankMembers = Array.from({ length: r.volleyRankCount }, () => []);
+        for (const u of soldiers) rankMembers[u._volleyRank].push(u);
+        let contact = false;
+        for (const u of soldiers) {
+          const id = this._nearestEnemy(u, 42);
+          if (id >= 0 && this._lineClear(u.x, u.y, this.units[id].x, this.units[id].y)) {
+            contact = true;
+            this._musketMelee(u, this.units[id]);
+          }
+        }
+        if (contact) {
+          r._volleyBrokenUntil = this.time + 3;
+          r.volleyStatus = 'melee'; r._fireLocked = false;
+          r.nextVolleyAt = Math.max(r.nextVolleyAt, r._volleyBrokenUntil);
+          continue;
+        }
+        if (this.time < r._volleyBrokenUntil) { r.volleyStatus = 'reforming'; continue; }
+        if (r.fallingBack || r._rallyTime > 0 || r.order === 'move' || r.order === 'face' || this._advancingAttack(r) || r._frontTurning || r._traffic || r._bridge) {
+          r.volleyStatus = 'marching'; continue;
+        }
+        if (this.time + 1e-8 < r.nextVolleyAt) { r.volleyStatus = 'reloading'; continue; }
+        // A row is a single firing transaction. Soldiers never acquire an
+        // individual permission window that could trickle shots over frames.
+        // Empty/out-of-range rows are skipped, and only one row fires per step.
+        let fired = false;
+        for (let attempt = 0; attempt < r.volleyRankCount && !fired; attempt++) {
+          const rank = (r._volleyNext + attempt) % r.volleyRankCount;
+          const members = rankMembers[rank];
+          if (!members.length) continue;
+          const ready = members.every(u => u._cooldown <= 1e-8 && u._impactUntil <= this.time && u._vx * u._vx + u._vy * u._vy <= 25);
+          if (!ready) continue;
+          const shots = [];
+          for (const u of members) {
+            let target = this.units[u.target];
+            const reach = t.range * (u._terrain.elevation ? 1.12 : 1);
+            if (!target || !target.alive || target.routed || Math.hypot(target.x - u.x, target.y - u.y) > reach) target = this.units[this._rangedLocalTarget(u, reach)];
+            if (target && target.alive && !target.routed && Math.hypot(target.x - u.x, target.y - u.y) <= reach) shots.push([u, target]);
+          }
+          if (shots.length < Math.ceil(members.length * .5)) continue;
+          // Edge files discharge with their row even when their line of aim
+          // ends short of an enemy. The actual projectile still travels only
+          // to weapon range and can hit only a body crossing that path.
+          const reference = shots[Math.floor(shots.length / 2)][1];
+          const armed = new Set(shots.map(shot => shot[0].id));
+          for (const u of members) if (!armed.has(u.id)) {
+            const dx = reference.x - u.x, dy = reference.y - u.y, distance = Math.hypot(dx, dy) || 1;
+            const reach = t.range * (u._terrain.elevation ? 1.12 : 1) * .98;
+            shots.push([u, { id: -1, x: u.x + dx / distance * reach, y: u.y + dy / distance * reach, _vx: 0, _vy: 0, _radius: 0 }]);
+          }
+          r._volleyDispatch = true;
+          for (const [u, target] of shots) this._attack(u, target);
+          r._volleyDispatch = false;
+          r.lastVolleyAt = this.time; r.lastVolleyRank = rank + 1;
+          r._volleyNext = (rank + 1) % r.volleyRankCount; r.nextVolleyRank = r._volleyNext + 1;
+          r.nextVolleyAt = this.time + t.cooldown / r.volleyRankCount;
+          r.volleyStatus = 'reloading'; fired = true;
+        }
+        if (!fired) r.volleyStatus = soldiers.some(u => u._cooldown > 0) ? 'reloading' : 'ready';
+      }
     }
 
     _canDeployMissiles(r) {
@@ -3072,7 +3178,7 @@
         return rigid ? goal : this._elasticGoal(u, r, goal, r._marchAngle, nx, ny);
       }
       const adapted = (r.maneuver !== 'formed' || Math.abs(r._adaptiveOffset) > 1) && this.phase !== 'deployment';
-      let columns = adapted ? Math.max(1, r._travelSlots ? r._travelSlotColumns : Math.round(r._adaptiveColumns)) : r.formation === 'shieldwall' ? Math.ceil(r._columns * 1.25) : r._columns;
+      let columns = adapted ? Math.max(1, r._travelSlots ? r._travelSlotColumns : Math.round(r._adaptiveColumns)) : formation.files ? Math.min(r.alive, formation.files) : formation.ranks ? Math.ceil(r.alive / formation.ranks) : r.type === 'musketeer' && r.formation !== 'wedge' ? Math.ceil(r.alive / 3) : r.formation === 'shieldwall' ? Math.ceil(r._columns * 1.25) : r._columns;
       let spacing = adapted ? r._shapeSpacing : r._spacing * (formation.spacing || 1);
       if (r._bridge) columns = Math.max(1, Math.min(columns, Math.floor((r._bridge.h - 55) / spacing)));
       if (r._bridge) {
@@ -3483,7 +3589,7 @@
         u._vx = 0; u._vy = 0; u.state = 'turning';
         return;
       }
-      u._cooldown -= dt; u._sense -= dt; u._terrainTimer -= dt; u._contactSense -= dt;
+      u._cooldown -= dt; u._meleeCooldown -= dt; u._sense -= dt; u._terrainTimer -= dt; u._contactSense -= dt;
       if (u._pushUntil > this.time) this._resolveShieldPush(u, dt);
       if (t.brace) u._braceTime = !r._frontTurning && (u._vx * u._vx + u._vy * u._vy < t.speed * t.speed * .0324 || this._steadyMotion(u, r)) ? Math.min(2, u._braceTime + dt) : 0;
       if (u._terrainTimer <= 0) { u._terrain = this.terrainAt(u.x, u.y); u._terrainTimer = .4 + u._jitter * .25; }
@@ -3506,8 +3612,8 @@
       const current = this.units[u.target];
       const tacticalMovement = r._tacticalMovement;
       if (!current || !current.alive || current.routed || length2(current.x - u.x, current.y - u.y) > t.range + 260) this._setTarget(u, -1);
-      if (!t.ranged && (r.order === 'auto' || r.order === 'hold') && u._contactSense <= 0 && r._contactDistance < t.range + this._maxRadius + 100) {
-        const contact = this._contactTarget(u, t.range * (u._terrain.elevation ? 1.12 : 1));
+      if ((!t.ranged || u.type === 'musketeer') && (r.order === 'auto' || r.order === 'hold') && u._contactSense <= 0 && r._contactDistance < (u.type === 'musketeer' ? 42 : t.range) + this._maxRadius + 100) {
+        const contact = this._contactTarget(u, u.type === 'musketeer' ? 32 : t.range * (u._terrain.elevation ? 1.12 : 1));
         if (contact !== -1) this._setTarget(u, contact);
         u._contactSense = .12 + u._jitter * .08;
       }
@@ -3666,6 +3772,7 @@
 
     _attack(attacker, target) {
       const t = TYPES[attacker.type];
+      if (attacker.type === 'musketeer' && this._inUnitStep && !this.regiments[attacker.regiment]._volleyDispatch) return;
       const distance = Math.hypot(target.x - attacker.x, target.y - attacker.y);
       const bodyReach = t.ranged ? 0 : target._radius;
       if (distance > t.range + bodyReach) {
@@ -3812,7 +3919,11 @@
           if (id === skipId || !target.alive || target.routed) continue;
           const distance = Math.hypot(target.x - x, target.y - y);
           if (distance <= radius + TYPES[target.type].radius) {
-            this._hit(attacker, target, damage * (1 - .5 * Math.min(1, distance / radius)), ranged, false, true);
+            const strength = 1 - .5 * Math.min(1, distance / radius);
+            this._hit(attacker, target, damage * strength, ranged, false, true);
+            if (attacker.type === 'catapult' && this.impacts) this.impacts.weaponImpulse(attacker, target,
+              distance > .1 ? (target.x - x) / distance : Math.cos(attacker.angle), distance > .1 ? (target.y - y) / distance : Math.sin(attacker.angle),
+              245 * strength, 1.05 * (.6 + strength * .4), 85 * strength);
             if (++hits >= (attacker.type === 'catapult' ? 28 : 7)) return;
           }
         }
@@ -3921,7 +4032,7 @@
         const strength = 1 - .65 * Math.min(1, d / radius);
         this._hit(attacker, target, p.damage * strength, true, false, true);
         if (this.impacts) this.impacts.weaponImpulse(attacker, target, d > .1 ? ox / d : nx, d > .1 ? oy / d : ny,
-          (stone ? 230 : 170) * strength, (stone ? .98 : .75) * (.55 + strength * .45), (stone ? 78 : 54) * strength);
+          (stone ? 520 : 440) * strength, (stone ? 1.8 : 1.5) * (.55 + strength * .45), (stone ? 180 : 145) * strength);
       });
       if (wall) this.siege.damage(wall, p.damage * (stone ? 3.4 : 2.2), attacker);
       this._effect(p.tx, p.ty, stone ? 'trebuchetImpact' : 'cannonImpact', radius, p.team, stone ? 1.1 : .72);
@@ -4261,6 +4372,7 @@
         }
       }
       this._inUnitStep = false;
+      this._stepMusketVolleys();
       for (let i = this.projectiles.length - 1; i >= 0; i--) {
         const p = this.projectiles[i];
         const previous = p.age / p.duration;

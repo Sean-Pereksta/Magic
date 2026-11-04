@@ -692,5 +692,75 @@ test('Ramp occupants and their shots use deck elevation while docked towers rend
   return { deckElevation: 38, towerLaunchHeight: 116, spriteDraws: 2, dockedTowerDrawnOnce: true, rampCasualtyElevated: true };
 });
 
+test('Every biome has deterministic distinct landmarks and a bounded ambient set', () => {
+  const signatures = new Set();
+  for (const biome of ['grassland', 'woodland', 'wetland', 'desert', 'tundra', 'highland', 'ashland']) {
+    const r = renderer(); r.map = { biome }; r.theme = { grass: '#9ba17a' };
+    const draw = () => { const c = recordingContext(); r._paintBiomeDetails(c, GameData.RNG(99), 16000, 11000); return JSON.stringify(c.calls); };
+    const first = draw(), ambient = JSON.stringify(r._ambientTerrain);
+    assert.equal(draw(), first, 'Landmarks vary with wall-clock state');
+    assert.equal(JSON.stringify(r._ambientTerrain), ambient);
+    assert(r._ambientTerrain.length <= 72, 'Ambient terrain grows with map size without a cap');
+    signatures.add(first);
+  }
+  assert.equal(signatures.size, 7, 'Two biomes use indistinguishable landmark artwork');
+  return { distinctBiomeLandmarks: 7, maximumAmbientObjects: 72 };
+});
+
+test('Wind and water animation freeze with simulation time, cull offscreen objects and respect reduced motion', () => {
+  const r = renderer(); r.options = { animations: 'full', quality: 'high' }; r.theme = { grass: '#abc' };
+  r._ambientTerrain = [{ x: 80, y: 70, phase: .1, size: 1, kind: 'grassland' }];
+  r.map = { regions: [{ type: 'water', x: 20, y: 20, w: 300, h: 300 }] };
+  const bounds = { x1: 0, x2: 400, y1: 0, y2: 400 };
+  const terrain = recordingContext(); r._drawTerrainMotion(terrain, bounds, 1);
+  const before = JSON.stringify(r.engine); r.engine.time += 1;
+  const later = recordingContext(); r._drawTerrainMotion(later, bounds, 1);
+  assert.notEqual(JSON.stringify(later.calls), JSON.stringify(terrain.calls), 'The wind does not animate');
+  const water = recordingContext(), frozen = recordingContext();
+  r._drawWaterMotion(water, bounds, 5, 1); r._drawWaterMotion(frozen, bounds, 1000, 1);
+  assert.deepEqual(water.calls, frozen.calls, 'Wall-clock changes animate a paused river');
+  const offscreen = recordingContext(); r._drawTerrainMotion(offscreen, { x1: 1000, x2: 2000, y1: 1000, y2: 2000 }, 1);
+  assert(!offscreen.calls.some(call => call[0] === 'stroke'), 'Offscreen grass still renders');
+  r.options.animations = 'reduced'; const reduced = recordingContext();
+  r._drawTerrainMotion(reduced, bounds, 1); r._drawWaterMotion(reduced, bounds, 10, 1);
+  assert.equal(reduced.calls.length, 0);
+  r.engine.time -= 1; assert.equal(JSON.stringify(r.engine), before, 'Terrain rendering changes simulation state');
+  return { pausedWaterFrozen: true, viewportCulled: true, reducedMotionCalls: 0 };
+});
+
+test('All troop portraits fit their complete cached equipment silhouette', () => {
+  const r = renderer(); let portraits = 0;
+  r._cropSprite = function(scratch, ctx, cw, anchorY, scale) {
+    const start = ctx.calls.findLastIndex(call => call[0] === 'clearRect');
+    const b = drawingBounds(ctx.calls.slice(start + 1));
+    return { full: { tag: 'portrait' }, w: (b.x2 - b.x1 + 4) / scale, h: (b.y2 - b.y1 + 4) / scale, ox: 0, oy: 0 };
+  };
+  for (const type of GameData.TYPE_ORDER) for (const size of [32, 80]) {
+    const target = canvas(); target.width = target.height = size; r.drawUnitIcon(target, type, 0);
+    const [, , x, y, w, h] = target.getContext().calls.find(call => call[0] === 'drawImage');
+    assert(x >= 1 && y >= 1 && x + w < size && y + h < size, type + ' portrait loses part of its weapon or standard');
+    portraits++;
+  }
+  return { completePortraits: portraits };
+});
+
+test('Broken musketeer ranks animate close combat separately from musket reloads', () => {
+  const u = soldier('musketeer', { regiment: 0, _meleeCooldown: .2, _lastMusketMelee: 20 }), enemy = soldier('militia', { id: 1, x: 120 });
+  const r = renderer([u, enemy]); r.options = { animations: 'full' }; r.engine.regiments = [{ volleyStatus: 'melee' }];
+  const normal = recordingContext(), melee = recordingContext();
+  r._drawSprite(normal, 'musketeer', 0, 0, 8); r._drawActionSprite(melee, 'musketeer', 0, 0, 'musketMelee', 4);
+  assert.notDeepEqual(normal.calls, melee.calls, 'A fighting musketeer still uses a reload pose');
+  r.engine.time = 20.06; assert.equal(r._attackFrame(u), 6);
+  assert.deepEqual(r._motionAction(u, 6), { kind: 'musketMelee', phase: 2 });
+  r.engine.regiments[0].volleyStatus = 'reforming'; r.engine.time = 20.2;
+  assert.equal(r._attackFrame(u), 7, 'Losing contact recast the last melee swing as a musket shot');
+  assert.deepEqual(r._motionAction(u, 7), { kind: 'musketMelee', phase: 3 });
+  r.engine.regiments[0].volleyStatus = 'melee'; u._lastAttack = 20.15;
+  assert.equal(r._motionAction(u, 6), null, 'A recent actual shot was recast as a musket-butt attack');
+  r.engine.time = 22; enemy.x = 900; assert.equal(r._attackFrame(u), 0, 'A distant soldier performs a pretend musket-butt attack');
+  u.state = 'turning'; assert.equal(r._motionAction(u, 6), null);
+  return { separateCloseCombatChoreography: true, honestAttackEvents: true };
+});
+
 console.log(JSON.stringify({ passed: results.filter(x => x.passed).length, failed: results.filter(x => !x.passed).length, tests: results }, null, 2));
 if (results.some(x => !x.passed)) process.exitCode = 1;

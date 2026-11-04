@@ -92,7 +92,7 @@ test('Default scenario: 2,400 individuals, eighteen troop types, and independent
 test('All authored battlefields and scenarios provide valid terrain and complete rosters', () => {
   assert.equal(GameData.TYPE_ORDER.length, 23);
   assert.equal(GameData.MAPS.length, 23);
-  assert.equal(GameData.PRESETS.length, 24);
+  assert.equal(GameData.PRESETS.length, 24 + GameData.HISTORICAL_BATTLES.length);
   for (const id of ['halberdier', 'javelin', 'slinger', 'ballista']) assert(GameData.TYPES[id]);
   const allowedTerrain = new Set(['forest', 'hill', 'water', 'bridge', 'rock', 'wall', 'gate']);
   for (const map of GameData.MAPS) {
@@ -1680,6 +1680,8 @@ require('./march-response-test.cjs')(test);
 require('./castle-navigation-test.cjs')(test);
 require('./club-sweep-test.cjs')(test);
 require('./ordnance-test.cjs')(test);
+require('./rank-volley-test.cjs')(test);
+require('./historical-battles-test.cjs')(test);
 require('./gunline-charge-test.cjs')(test);
 require('./expanded-battlefields-test.cjs')(test);
 require('./army-plans-test.cjs')(test);

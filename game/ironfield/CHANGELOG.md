@@ -1,4 +1,12 @@
-# IRONFIELD 2.5.1 — gun-line reload balance
+# IRONFIELD 2.6 — Fire by ranks and the Campaign Atlas
+
+- Musketeers use a regiment schedule: synchronized successive rank volleys, 24-second reloads and 78 base shot damage. Added three-rank volley and three-file column styles, melee disruption, reforming, and visible rank status.
+- Cannon and trebuchet blasts throw enemies farther; catapult impacts also displace and lift troops.
+- Added 20 sourced historical scenarios with explicit scaled opening deployments, army names, terrain, formation facings, and approximation notes.
+- Modernized the menu with a historical atlas, search, era filters, deployment previews, briefings and linked sources. Army scaling preserves authored deployment positions.
+- Improved procedural troop silhouettes, team equipment details, portraits, biome details and terrain animation. Reduced animation settings remain supported.
+
+## IRONFIELD 2.5.1 — gun-line reload balance
 
 - Musketeers take 12 seconds to reload after a shot, up from 4.4 seconds. Field cannons take 22 seconds, up from 9. The longer intervals give cavalry time to close between volleys.
 - Fixed a timing bug that advanced the reload twice per simulation step when a bombarding gun was knocked back.
