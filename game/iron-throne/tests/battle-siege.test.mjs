@@ -50,6 +50,22 @@ test('a player interacting at the foot uses the rungs, mantle and side step onto
   assert.equal(commander.wallId,ladder.wallId); assert.equal(commander.y,6);
   assert.ok(Math.abs(commander.x-ladder.landing.x)>1);
 });
+test('a company larger than the wall walk keeps landing as the forward ranks take the stairs',()=>{
+  const {b,attackers,defenders}=fort({archer:1,menAtArms:28},{cavalry:1});
+  const reserve=defenders[0];
+  Object.assign(reserve,{x:0,z:53,explicitOrder:true,order:{kind:'hold',x:0,z:53}});
+  beginBattle(b);
+  const soldiers=attackers.filter(u=>u.family==='infantry');
+  issueOrder(b,'infantry','ladder',{ladderId:'ladder-0'});
+  const landed=new Set();
+  for(let i=0;i<2400 && landed.size<soldiers.length;i++){
+    stepBattle(b,.05,{});
+    for(const u of soldiers) if(u.wallId) landed.add(u.id);
+    // Keep a legal defender in the keep so taking the field does not end the exercise early.
+    reserve.hp=reserve.maxHp;
+  }
+  assert.equal(landed.size,soldiers.length);
+});
 test('a living defender holds the crest, and his death immediately opens it to the queue',()=>{
   const {b,attackers,defenders}=fort({menAtArms:4},{spearman:1,cavalry:1});
   const l=b.layout.ladders[0], guard=defenders.find(u=>u.type==='spearman');

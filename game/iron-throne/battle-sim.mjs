@@ -1179,9 +1179,10 @@ function aiUnit(b, u, active, dt, advanceGuide) {
     u.order.cleared=true;
     const guard = active.find(v => fighting(v) && v.side !== u.side && v.wallId === u.wallId);
     if (guard && distance(u,guard)>p.reach) { moveOnWall(b,u,guard,dt); return; }
-    if (!guard && b.time-u.order.landedAt>4 && enemy && enemy.z>13 &&
-        !active.some(v=>fighting(v) && v.side===u.side && v.order.kind==='ladder' && b.layout.ladders.some(l=>l.id===v.order.ladderId && l.wallId===u.wallId))) {
-      u.order={kind:'charge'};
+    if (!guard && b.time-u.order.landedAt>4 && enemy) {
+      const queue = active.some(v=>fighting(v) && v.side===u.side && v.order.kind==='ladder' && b.layout.ladders.some(l=>l.id===v.order.ladderId && l.wallId===u.wallId));
+      const crowded = active.filter(v=>fighting(v) && v.side===u.side && v.wallId===u.wallId).length >= 13;
+      if (crowded || !queue && enemy.z>13) u.order={kind:'charge'};
     }
   }
   if (advanceGuide && d > Math.max(p.reach, 4)) {
