@@ -16,7 +16,7 @@ function fixture(move='intercept',species='chronomane'){
 function quiet(b){b.enemyAction={type:'move',id:'breathe'};b.intent='breathe';}
 
 test('twenty appended identities have exclusive signatures, regional capture routes and six articulated animations',()=>{
- assert.equal(Object.keys(C.SPECIES).length,110);assert.equal(Object.keys(ELEMENTAL_TECHNIQUES).length,24);assert.equal(Object.keys(SPECIES_SIGNATURES).length,20);assert.equal(LIVING_SPECIES_ROWS.length,20);
+ assert.equal(Object.keys(C.SPECIES).length,123);assert.equal(Object.keys(ELEMENTAL_TECHNIQUES).length,24);assert.equal(Object.keys(SPECIES_SIGNATURES).length,20);assert.equal(LIVING_SPECIES_ROWS.length,20);
  const signatures=new Set();
  for(const [index,row]of LIVING_SPECIES_ROWS.entries()){
   const p=C.SPECIES[row[0]];assert.equal(p.number,index+91);assert.equal(p.signature,row[12]);assert.ok(p.learnset.includes(p.signature));signatures.add(p.signature);assert.ok(speciesHomes(p.id).includes(p.region));assert.ok(p.minFeet>0);assert.ok(p.hp&&p.atk&&p.def&&p.speed);assert.equal(p.evolutionAppearances.length,3);

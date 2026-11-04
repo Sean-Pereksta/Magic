@@ -6,6 +6,9 @@ export const MAP_METERS_TO_PIXELS = 2.2;
 export const MAP_PIXELS_PER_METER = MAP_METERS_TO_PIXELS;
 const WIDTH = 600, HEIGHT = 360, CELL = 28, LIMIT = 1e7;
 const THEMES = Object.freeze({
+  'bellreef-atolls':{name:'Bellreef Atolls',ground:'#89c9bc',patch:'#b9e0c8',dark:'#436e75',leaf:'#467d67',light:'#9ab99b',water:'#5299a9',bank:'#d8d99d',foam:'#e6eee0',path:'#e4d1a2',edge:'#a4a58f',rock:'#8fa8a1',accent:'#ec9d87',surface:'reef',flora:'marsh',river:18},
+  'loomspun-escarpment':{name:'Loomspun Escarpment',ground:'#93b8a7',patch:'#c1d2bc',dark:'#555b77',leaf:'#5d8983',light:'#c9e4d8',water:'#889db1',bank:'#a6c9bd',foam:'#e4eeee',path:'#cec1aa',edge:'#948b96',rock:'#8f91a1',accent:'#f1c9a4',surface:'cliff',flora:'snow',river:9},
+  'saltglass-basin':{name:'Saltglass Basin',ground:'#deb797',patch:'#f3ccac',dark:'#8e6573',leaf:'#a48d87',light:'#debfaf',water:'#92bed0',bank:'#d9c6af',foam:'#fff2d6',path:'#f0dcba',edge:'#bb9287',rock:'#af9399',accent:'#f2e9bc',surface:'glass',flora:'crystal',river:7},
   'emerald-jungle': { name:'Emerald Jungle', ground:'#82b85b', patch:'#a1cb70', dark:'#4b854b', leaf:'#347b4e', light:'#69ab57', water:'#47b8b7', bank:'#b7cf78', foam:'#b6f1dc', path:'#e9cd8d', edge:'#b2995d', rock:'#8b9c73', accent:'#f3b18b', surface:'grass', flora:'jungle', river:10 },
   'sunstone-savannah': { name:'Sunstone Savannah', ground:'#d3b85e', patch:'#e8ce7a', dark:'#a09341', leaf:'#708149', light:'#a3aa54', water:'#72b8ad', bank:'#e9da98', foam:'#dcf4cb', path:'#f5dda2', edge:'#b69b5a', rock:'#b99a63', accent:'#f3a358', surface:'dry-grass', flora:'savannah', river:8 },
   'crystal-caverns': { name:'Crystal Caverns', ground:'#58637f', patch:'#73718e', dark:'#3b4764', leaf:'#aaa3ed', light:'#d0c1ff', water:'#469bb8', bank:'#8c9cad', foam:'#b9f5ef', path:'#b9acba', edge:'#84788e', rock:'#7d7c9c', accent:'#a2f2e1', surface:'stone', flora:'crystal', river:10 },

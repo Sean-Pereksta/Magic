@@ -12,7 +12,7 @@ function specialtyBattle(species){const s=save(),p=specimen(s,species);p.stage=1
 
 test('the thirty appended identities preserve the original sixty catalogue numbers and requested rarity split',()=>{
   assert.deepEqual(Object.keys(C.SPECIES).slice(0,60),originalIds);
-  assert.equal(Object.keys(C.SPECIES).length,110);assert.equal(additions.length,30);
+  assert.equal(Object.keys(C.SPECIES).length,123);assert.equal(additions.length,30);
   assert.equal(additions.filter(s=>['common','uncommon'].includes(s.rarity)).length,18);
   assert.equal(additions.filter(s=>s.rarity==='rare').length,8);assert.equal(additions.filter(s=>s.rarity==='ultra').length,4);
   assert.deepEqual(additions.map(s=>s.number),Array.from({length:30},(_,i)=>61+i));
@@ -28,7 +28,7 @@ test('all new ordinary species enter depth-gated regional encounters, while Ultr
   for(const land of LANDS){C.selectLand(s,land.id);s.run.distance=6000*C.FEET;C.encounterPool(s).forEach(id=>middle.add(id));s.run.distance=20000*C.FEET;C.encounterPool(s).forEach(id=>deep.add(id));
     for(let seed=1;seed<=350;seed++){
       const ordinary=save(seed*7919);ordinary.world.totalDistance=150000;ordinary.world.unlocked=LANDS.map(l=>l.id);C.selectLand(ordinary,land.id);ordinary.run.ordinaryWins=2;ordinary.run.encounters=5;ordinary.run.distance=19999*C.FEET;ordinary.run.nextEncounter=20000*C.FEET;ordinary.run.nextCamp=24000*C.FEET;C.advance(ordinary,C.FEET,0,0);C.beginPendingEncounter(ordinary);for(const e of ordinary.run.battle.enemies)seen.add(e.species);
-      const hunt=save(seed*3571);hunt.world.totalDistance=150000;hunt.world.unlocked=LANDS.map(l=>l.id);C.selectLand(hunt,land.id);hunt.run.ordinaryWins=2;hunt.run.distance=5000*C.FEET;hunt.run.nextEncounter=6000*C.FEET;hunt.run.nextCamp=6000*C.FEET;C.advance(hunt,1,0,0);assert.ok(regionSpeciesPool(hunt,Object.keys(C.SPECIES),{ultra:true}).includes(hunt.run.ultra.species));ultras.add(hunt.run.ultra.species);
+      const hunt=save(seed*3571);hunt.world.totalDistance=150000;hunt.world.unlocked=LANDS.map(l=>l.id);C.selectLand(hunt,land.id);hunt.run.ordinaryWins=2;hunt.run.distance=5000*C.FEET;hunt.run.nextEncounter=6000*C.FEET;hunt.run.nextCamp=6000*C.FEET;C.advance(hunt,1,0,0);if(land.unlock>=185000){assert.equal(hunt.run.ultra,null);}else{assert.ok(regionSpeciesPool(hunt,Object.keys(C.SPECIES),{ultra:true}).includes(hunt.run.ultra.species));ultras.add(hunt.run.ultra.species);}
     }
   }
   assert.ok(additions.filter(p=>['common','uncommon'].includes(p.rarity)).every(p=>middle.has(p.id)));

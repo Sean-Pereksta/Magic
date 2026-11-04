@@ -1,6 +1,7 @@
 // Persistent, DOM-free landscape progress. All distances and positions use meters.
 // Encounter direction is intentionally separate: battles reset that short-term
 // vector, while a land keeps its location across encounters and expeditions.
+import {deepLands} from './deep-roster.mjs';
 export const LANDS=Object.freeze([
   {id:'emerald-jungle',name:'Emerald Jungle',unlock:0,types:['leaf'],label:'Leaf',description:'Follow winding rivers through a lush canopy of giant leaves and sunlit clearings.',landmark:'Hidden Canopy Temple',color:'#57d48a'},
   {id:'sunstone-savannah',name:'Sunstone Savannah',unlock:2000,types:['earth','fire'],label:'Earth · Fire',description:'Golden grass, warm stone arches, and shady acacias stretch toward the horizon.',landmark:'Sunstone Arch',color:'#edbe65'},
@@ -11,7 +12,7 @@ export const LANDS=Object.freeze([
   {id:'ember-volcano',name:'Ember Volcano',unlock:48000,types:['fire','earth'],label:'Fire · Earth',description:'Lava ribbons weave through charcoal cliffs beneath a glowing volcanic crown.',landmark:'Ember Crater',color:'#fa9368'},
   {id:'moonlit-forest',name:'Moonlit Forest',unlock:72000,types:['shadow','light'],label:'Shadow · Light',description:'Moonbeams, blue mushrooms, and silver leaves illuminate an enchanted woodland.',landmark:'Moonwell Clearing',color:'#b4a3e8'},
   {id:'celestial-ruins',name:'Celestial Ruins',unlock:100000,types:['light'],label:'Light',description:'Floating columns and starlit pools surround a forgotten sanctuary in the sky.',landmark:'Starlight Sanctuary',color:'#e9d7a0'},
-  {id:'ancient-monkey-kingdom',name:'Ancient Monkey Kingdom',unlock:140000,types:['light','earth'],label:'Light · Earth',description:'Vine-covered golden towers reveal the grand home of the first monkey explorers.',landmark:'The Golden Crown',color:'#e9ba68'}
+  {id:'ancient-monkey-kingdom',name:'Ancient Monkey Kingdom',unlock:140000,types:['light','earth'],label:'Light · Earth',description:'Vine-covered golden towers reveal the grand home of the first monkey explorers.',landmark:'The Golden Crown',color:'#e9ba68'},...deepLands
 ].map(land=>Object.freeze({...land,types:Object.freeze(land.types)})));
 
 const byId=new Map(LANDS.map(land=>[land.id,land]));

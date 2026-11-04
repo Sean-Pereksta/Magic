@@ -45,15 +45,15 @@ export const TEMPLE_DIRECTIONS=Object.freeze([
  {id:'north',name:'Northwind Temple',label:'North',axis:'north',sign:1,element:'ice',item:'revive'}
 ].map(Object.freeze));
 export const SPECIAL_LOCATIONS=Object.freeze(LANDS.flatMap((land,index)=>{
- const [key,name,icon,interaction,cost,description]=mainThemes[index];
+ const [key,name,icon,interaction,cost,description]=mainThemes[index]||[['shell-pier','Old Shell Pier','ferry','rescue',{},'Guide a traveler along the reef.'],['cable-post','Cable Watch','shrine','offering',{fruit:8},'Leave fruit for the bridge guards.'],['glass-market','Mirage Stall','merchant','bargain',{fruit:6},'Barter at the glass flats.']][index-10];
  const main={id:`${land.id}:${key}`,landId:land.id,key,name,icon,interaction,cost,description,main:true,element:land.types[0],stages:['defense','guardian'].includes(interaction)?3:interaction==='counter'?2:interaction==='bargain'?3:['pattern','constellation'].includes(interaction)?4:1};
  const small=smallerKinds.map(([key,name,icon,interaction])=>({id:`${land.id}:${key}`,landId:land.id,key,name:`${land.name.split(' ')[0]} ${name}`,icon,interaction,cost:key==='merchant'?{fruit:6}:key==='shrine'?{essence:{[land.types[0]]:2}}:{},description:({cache:'Explore a short safe route to uncover forgotten supplies.',shrine:'Leave an elemental offering for the region’s companions.',merchant:'Read a wandering merchant’s clue and choose a fair bargain.',ruins:'Defeat the watchful guardian to recover the lost cache.',pool:'Repeat the elemental ripples to gather concentrated essence.',den:'Explore carefully to reveal a recruitable rare companion.',arena:'Win with an interrupt or defensive counter to earn the arena cache.'})[key],main:false,element:land.types[0],stages:interaction==='pattern'?3:1}));
  const temples=TEMPLE_DIRECTIONS.map((d,i)=>({id:`${land.id}:temple-${d.id}`,landId:land.id,key:`temple-${d.id}`,name:d.name,icon:'temple',interaction:'directional',direction:d.id,directionLabel:d.label,goalFeet:500+index*100+i*250,cost:{},description:`After visiting, walk ${500+index*100+i*250} feet ${d.label.toLowerCase()} to awaken this temple. Earn a guaranteed supply and elemental essence, plus a mystery reward.`,main:false,element:d.element,stages:1}));
  return[Object.freeze(main),...small.map(Object.freeze),...temples.map(Object.freeze)];
 }));
 const siteById=new Map(SPECIAL_LOCATIONS.map(l=>[l.id,l]));
-const trialSpecies=['rootstone','kilnfist','magnetuft','moonripple','iciclefang','thunderfang','magmajaw','eclipsemask','dawncrest','obsidianback'];
-function spawnGap(landId,serial){const i=LANDS.findIndex(l=>l.id===landId);return(1500+(hash(`${landId}:${serial}:gap`)%1601)+i*44)*FEET;}
+const trialSpecies=['rootstone','kilnfist','magnetuft','moonripple','iciclefang','thunderfang','magmajaw','eclipsemask','dawncrest','obsidianback','cascadeHowler','frostfern','glassmanta'];
+function spawnGap(landId,serial){const i=LANDS.findIndex(l=>l.id===landId);return Math.min(3500,1500+(hash(`${landId}:${serial}:gap`)%1601)+i*44)*FEET;}
 function nextQuest(slot){return{generation:safe(slot?.generation)?Math.min(1000000,slot.generation):0,current:finite(slot?.current)};}
 export function normalizeLivingWorld(s){
  normalizeLands(s);s.meta??={};const old=record(s.meta.livingWorld)?s.meta.livingWorld:{},regions={};
@@ -173,7 +173,7 @@ export function claimRegionalAchievement(s,landId){requireAlive(s);return atomic
 export function claimLocation(s,id){requireAlive(s);return atomic(s,d=>{
  const row=specialLocation(d,id);if(row.status!=='visited'||!row.ready||d.world.activeLand!==row.landId)throw Error('Complete this destination’s challenge before collecting.');if(!row.canAfford)throw Error('Gather the displayed offering resources first.');
  const roll=Math.floor(rng(d)*WORLD_LIMITS.tickets);let cursor=0,outcome=row.odds.at(-1);for(const o of row.odds){cursor+=o.tickets;if(roll<cursor){outcome=o;break;}}
- const reward={},regional=regionalSpecies(row.landId,'rare'),locals=regionalSpecies(row.landId).filter(id=>SPECIES[id].rarity!=='ultra');
+ const reward={},regional=regionalSpecies(row.landId,'rare'),locals=regionalSpecies(row.landId).filter(id=>!['ultra','mythic'].includes(SPECIES[id].rarity));
  if(outcome.kind==='essence')reward.essence={[row.element]:row.main?8:4};
  if(outcome.kind==='materials'){reward.materials=row.main?6:3;const id=pick(d,regional.length?regional:locals);if(id){reward.bondSpecies=id;reward.bondCount=row.main?5:2;}}
  if(outcome.kind==='gear'){const pool=gearPool(row.landId,outcome.rarity);if(!pool.length)throw Error('This equipment reward pool is unavailable.');reward.gear=pick(d,pool);}

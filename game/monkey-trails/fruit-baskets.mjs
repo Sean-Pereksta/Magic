@@ -41,12 +41,14 @@ export function fruitBasketView(s,landId=s.world?.activeLand){
  const remainingMeters=Math.max(0,GOAL-active.meters),remainingFeet=Math.max(0,Math.ceil(remainingMeters/FOOT-1e-6)),ready=remainingMeters<=1e-7;
  return{...copy(active),landId,goalFeet:FRUIT_BASKET_FEET,progressFeet:Math.min(FRUIT_BASKET_FEET,active.meters/FOOT),remainingFeet,ready,canClaim:ready&&s.world?.activeLand===landId&&['trail','camp'].includes(s.run?.phase)&&s.run.party?.some(id=>s.collection?.[id]?.hp>0)};
 }
+import {forage as deepForage} from './deep-foraging.mjs';
+import {event as deepEvent} from './deep-journal.mjs';
 export function claimFruitBasket(s,id){
  if(typeof id!=='string')throw Error('Choose an active fruit basket.');const ledger=state(s),entry=Object.entries(ledger.regions).find(([,row])=>row.active?.id===id||row.last?.id===id);if(!entry)throw Error('This fruit basket is no longer available.');const[landId,region]=entry;
  if(region.last?.id===id)return copy(region.last);
  const view=fruitBasketView(s,landId);if(!view?.canClaim)throw Error('Walk 500 accepted feet after finding this basket, then collect it in its region between encounters.');
  if(!count(s.run.fruit)||s.run.fruit+view.fruit>MAX)throw Error('Your fruit inventory cannot hold this basket.');
- const next=copy(s),receipt={id,fruit:view.fruit,kind:'fruit-basket',landId};next.run.fruit+=view.fruit;region.active=null;region.discoveries=0;region.last=receipt;next.meta.fruitBaskets=ledger;
+ const next=copy(s),receipt={id,fruit:view.fruit,kind:'fruit-basket',landId};next.run.fruit+=view.fruit;deepEvent(next,'basket');deepForage(next,'basket');region.active=null;region.discoveries=0;region.last=receipt;next.meta.fruitBaskets=ledger;
  if(next.run.activeId&&next.collection[next.run.activeId])next.run.monkey=next.collection[next.run.activeId];if(JSON.stringify(next).length>650000)throw Error('Your save is too large to collect this basket.');
  for(const key of Object.keys(s))delete s[key];Object.assign(s,next);return copy(receipt);
 }

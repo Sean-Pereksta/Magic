@@ -17,7 +17,7 @@ export const HABITATS=Object.freeze({
  trail:Object.freeze({id:'trail',name:'Wildflower Meadow',shortName:'Meadow',element:'leaf',types:Object.freeze([]),color:'#9b9f50',ink:'#fffbdc',resources:'More fruit and trail supplies',description:'An open meadow with fruit and useful trail supplies.',resourceWeights:weights({fruit:1.6,ingot:.6,item:1.7,leaf:1.5})}),
  landmark:Object.freeze({id:'landmark',name:'Sunstone Ridge',shortName:'Ridge',element:'storm',types:Object.freeze(['fire','storm','light']),color:'#b7825b',ink:'#fff0d8',resources:'More fragments and Storm essence',description:'A broad rocky ridge with fragments and Storm essence.',resourceWeights:weights({fruit:.65,ingot:2,fragment:2.5,charmMaterial:1.4,storm:3,fire:2,light:1.5})})
 });
-const origins={'emerald-jungle':0,'sunstone-savannah':4,'crystal-caverns':1,'whispering-marsh':2,'frostpeak-mountains':1,'thunder-highlands':5,'ember-volcano':5,'moonlit-forest':0,'celestial-ruins':3,'ancient-monkey-kingdom':3};
+const origins={'bellreef-atolls':2,'loomspun-escarpment':0,'saltglass-basin':3,'emerald-jungle':0,'sunstone-savannah':4,'crystal-caverns':1,'whispering-marsh':2,'frostpeak-mountains':1,'thunder-highlands':5,'ember-volcano':5,'moonlit-forest':0,'celestial-ruins':3,'ancient-monkey-kingdom':3};
 const names={
  'crystal-caverns':{grove:'Glowmoss Grove',cave:'Crystal Vein Caves',riverbank:'Underground Wetland',trail:'Luminous Clearing',landmark:'Prismatic Ridge'},
  'frostpeak-mountains':{grove:'Snowpine Grove',cave:'Froststone Caves',riverbank:'Glacial Wetland',trail:'Alpine Meadow',landmark:'Aurora Ridge'},

@@ -13,9 +13,9 @@ const regionId=(index)=>LANDS[index].id;
 const rareHomes={
  wildvine:[0,1],tempestvine:[0,5],rootstone:[0,9],bramblebat:[0,7],
  kilnfist:[1,6],steampelt:[3,6],plasmafist:[5,6],magmajaw:[6,9],cinderfrost:[4,6],sunflare:[1,8],ashshade:[6,7],
- cascadeHowler:[3],thunderfang:[2,5],iciclefang:[4],dawncrest:[7,8],frostfern:[4],gloamorchid:[3,7],typhoontail:[3,5],
+ cascadeHowler:[3,10],thunderfang:[2,5],iciclefang:[4],dawncrest:[7,8],frostfern:[4,11],gloamorchid:[3,7],typhoontail:[3,5],
  glacierflow:[4],moonripple:[3,7],fulgurite:[2,5],auroraswing:[4,8],eclipsemask:[7,9],obsidianback:[6,9],
- thermosage:[3,6],glassmanta:[2,4],magnetuft:[2,5],lumenmoth:[7,8],brineveil:[3,7],haildrummer:[4,5],pyreclasp:[6,7]
+ thermosage:[3,6],glassmanta:[2,4,12],magnetuft:[2,5],lumenmoth:[7,8],brineveil:[3,7],haildrummer:[4,5],pyreclasp:[6,7]
 };
 const ultraHomes={solkar:[1,8],verdara:[0,9],tiderex:[3],voltaro:[5,8],cryomane:[4],obsidrax:[2,6],noctyra:[5,7],oroluma:[0,3],chronogibbon:[4,5],basaltoracle:[2,9],mirecrown:[3,7],phoenixmacaque:[1,6]};
 const habitatNames={trail:'Trail',riverbank:'Riverbank',grove:'Grove',cave:'Cave formations',ruins:'Ancient ruins',landmark:'Landmark clearing'};
@@ -43,7 +43,7 @@ export function speciesMinimumFeet(id){
 }
 export function regionSpeciesPool(s,candidates=Object.keys(SPECIES),{ultra=false}={}){
  const {activeId}=landProgress(s);
- return candidates.filter(id=>SPECIES[id]&&!!isUltra(id)===ultra&&speciesHomes(id).includes(activeId));
+ return candidates.filter(id=>SPECIES[id]&&SPECIES[id].rarity!=='mythic'&&!!isUltra(id)===ultra&&speciesHomes(id).includes(activeId));
 }
 // The marker grid is the same one used by terrainMap. Water/path queries also
 // come from the map renderer. Habitat never gates physical walking.
@@ -78,7 +78,7 @@ const THEMES=[
  ['The Golden Crown','Ancient tablets reveal the first explorers and their final guardian.','Royal tablet rubbing','Golden shrine piece','obsidianback','Golden Crown stamp','Crown Guardian']
 ];
 export const REGION_ADVENTURES=Object.freeze(LANDS.map((land,index)=>{
- const [title,story,clue,object,guardian,keepsake,guardianName]=THEMES[index];
+ const [title,story,clue,object,guardian,keepsake,guardianName]=THEMES[index]||[land.landmark,land.description,'Trail marker','Carved stone',['cascadeHowler','frostfern','glassmanta'][index-10],'Explorer seal',land.landmark+' Guardian'];
  const order=index%3===1?[0,2,1,3,4,5,6]:index%3===2?[0,1,3,2,4,5,6]:[0,1,2,3,4,5,6];
  const actions=[
   {kind:'distance',title:`Discover ${land.landmark}`,goal:300+index*40,unit:'m',text:story,reward:{fruit:1,items:{},essence:{}}},
@@ -87,7 +87,7 @@ export const REGION_ADVENTURES=Object.freeze(LANDS.map((land,index)=>{
   {kind:'seen',title:'Meet the local companions',goal:index<3?1:2,unit:'species',text:`Win encounters with different ${land.types.map(t=>ELEMENTS[t].name).join(' or ')} companions from this region. Recruitment remains your choice.`,reward:{fruit:1,items:{bondCharm:1},essence:{}}},
   {kind:'victories',title:`Secure the ${index%2?'supply trail':'landmark approach'}`,goal:2,unit:'wins',text:'Prepare elemental counters and win two wild encounters from this region.',reward:{fruit:2,items:{tonic:1},essence:{}}},
   {kind:'guardian',title:`Challenge the ${guardianName}`,goal:1,unit:'guardian',text:`A ${SPECIES[guardian].name} guards the final passage. Its intent reveals when to defend, break a shield, or switch. Requires ${speciesMinimumFeet(guardian).toLocaleString()} accepted expedition feet.`,reward:{fruit:2,items:{salve:1},essence:{}}},
-  {kind:'distance',title:`Return with the ${keepsake}`,goal:350+index*35,unit:'m',text:`Carry the story home along any safe route and earn your ${keepsake}.`,reward:{fruit:2,items:{},essence:{[land.types[0]]:2},gear:[['trailfinderCompass','charcoalHeart','staticRelayCharm','nightfangTooth','quakehideBelt','trailfinderCompass','resourceLens','dawnRelayBell','dewdropChalice','briarloopBand'][index]],cosmetic:`${land.id}:keepsake`}}
+  {kind:'distance',title:`Return with the ${keepsake}`,goal:350+index*35,unit:'m',text:`Carry the story home along any safe route and earn your ${keepsake}.`,reward:{fruit:2,items:{},essence:{[land.types[0]]:2},gear:[['trailfinderCompass','charcoalHeart','staticRelayCharm','nightfangTooth','quakehideBelt','trailfinderCompass','resourceLens','dawnRelayBell','dewdropChalice','briarloopBand'][index%10]],cosmetic:`${land.id}:keepsake`}}
  ];
  return Object.freeze({id:land.id,landId:land.id,title,story,guardian,guardianName,keepsake,steps:Object.freeze(order.map((i,n)=>Object.freeze({...actions[i],id:`adventure:${land.id}:${n}`,landId:land.id,index:n})))});
 }));
@@ -121,7 +121,7 @@ export function trackAdventure(s,id){
  if(row.claimed)throw Error('This adventure reward is already claimed.');
  s.meta.pinnedGoal={kind:'adventure',id};if(s.meta.regionChallenges)s.meta.regionChallenges.tracked=null;return row;
 }
-export function trackHunt(s,id){if(!SPECIES[id])throw Error('Choose a monkey from the collection.');normalizeAdventures(s);s.meta.adventures.hunts[id]??={meters:0,attempts:0};s.meta.pinnedGoal={kind:'hunt',id};if(s.meta.regionChallenges)s.meta.regionChallenges.tracked=null;return huntView(s);}
+export function trackHunt(s,id){if(SPECIES[id]?.rarity==='mythic')throw Error('Pin this Mythic in the Deep Expedition journal.');if(!SPECIES[id])throw Error('Choose a monkey from the collection.');normalizeAdventures(s);s.meta.adventures.hunts[id]??={meters:0,attempts:0};s.meta.pinnedGoal={kind:'hunt',id};if(s.meta.regionChallenges)s.meta.regionChallenges.tracked=null;return huntView(s);}
 export function speciesLocation(s,id){
  const p=SPECIES[id];if(!p)throw Error('Unknown species.');const homes=speciesHomes(id),progress=landProgress(s),available=homes.filter(id=>unlocked(s,id)),requiredFeet=speciesMinimumFeet(id),depthReady=s.run.distance/FEET+1e-6>=requiredFeet,winReady=!isUltra(id)||s.run.ordinaryWins>=2;
  const preferred=p.habitats?.length?p.habitats.filter(id=>habitatNames[id]):Object.entries(habitatTypes).filter(([,types])=>p.types.some(t=>types.includes(t))).map(([id])=>id);

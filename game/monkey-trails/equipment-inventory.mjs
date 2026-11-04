@@ -2,7 +2,7 @@
 import {GEAR,SPECIES,ELEMENTS} from './data.mjs';
 import {recordLegacyEquipment} from './legacy.mjs';
 
-export const equipmentSlots=p=>['weapon','armor','charm',...(SPECIES[p?.species]?.rarity==='ultra'||SPECIES[p?.species]?.ultra||p?.classification==='ultra'?['ultra']:[])];
+export const equipmentSlots=p=>['weapon','armor','charm',...(['ultra','mythic'].includes(SPECIES[p?.species]?.rarity)||SPECIES[p?.species]?.ultra||p?.classification==='ultra'?['ultra']:[])];
 const members=s=>Object.values(s.collection||{});
 const validTier=t=>Number.isInteger(t)&&t>=1&&t<=12;
 export const canChangeEquipment=s=>Boolean(s?.run)&&!['battle','replacement'].includes(s.run.phase);

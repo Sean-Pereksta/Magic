@@ -6,8 +6,8 @@ import {normalizeLands,advanceLand} from './lands.mjs';
 const save=(mode='gps')=>C.newSave('Trail Explorer','capuchin',mode,7213);
 const walk=(s,meters,east=meters,north=0)=>{s.run.nextEncounter=1e8;s.run.nextCamp=1e8;return C.advance(s,meters,east,north);};
 
-test('ten lands unlock at cumulative accepted-meter thresholds, without auto travel',()=>{
-  const s=save();assert.equal(C.LANDS.length,10);assert.equal(C.landProgress(s).unlocked.length,1);
+test('thirteen lands unlock at cumulative accepted-meter thresholds, without auto travel',()=>{
+  const s=save();assert.equal(C.LANDS.length,13);assert.equal(C.landProgress(s).unlocked.length,1);
   for(const land of C.LANDS.slice(1)){
     const before=land.unlock-C.landProgress(s).totalDistance-.01;walk(s,before);
     assert.ok(!C.landProgress(s).unlocked.some(entry=>entry.id===land.id));assert.throws(()=>C.selectLand(s,land.id),/unlock/);
@@ -15,7 +15,7 @@ test('ten lands unlock at cumulative accepted-meter thresholds, without auto tra
     assert.equal(C.landProgress(s).active.id,'emerald-jungle');
   }
   assert.equal(C.landProgress(s).next,null);assert.equal(C.landProgress(s).remaining,0);
-  assert.equal(C.landProgress(s).totalDistance,140000);assert.throws(()=>C.selectLand(s,'made-up-land'));
+  assert.equal(C.landProgress(s).totalDistance,310000);assert.throws(()=>C.selectLand(s,'made-up-land'));
 });
 
 test('encounter clipping and rejected advances never bank extra world distance',()=>{
@@ -125,7 +125,7 @@ test('restored landscape data stays finite and bounded; oversized vectors cannot
 
 
 test('longer region thresholds apply to new saves while all v1 earned lands stay available',()=>{
-  const fresh=save();assert.deepEqual(C.LANDS.map(land=>land.unlock),[0,2000,6000,12000,20000,32000,48000,72000,100000,140000]);
+  const fresh=save();assert.deepEqual(C.LANDS.map(land=>land.unlock),[0,2000,6000,12000,20000,32000,48000,72000,100000,140000,185000,240000,310000]);
   walk(fresh,500);assert.equal(C.landProgress(fresh).unlocked.length,1);assert.equal(fresh.world.version,2);
   let legacy=save();legacy.world={version:1,totalDistance:8000,activeLand:'thunder-highlands',regions:{'thunder-highlands':{distance:55,position:{east:30,north:40},heading:180,trail:[{east:30,north:40}]}}};
   normalizeLands(legacy);assert.equal(legacy.world.version,2);assert.equal(C.landProgress(legacy).unlocked.length,6);

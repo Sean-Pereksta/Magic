@@ -9,10 +9,10 @@ import {habitatUI,speciesHuntUI,regionAdventureUI} from './regional-ui.mjs';
 const save=()=>C.newSave('Regional adventure','capuchin','practice',12345);
 function unlock(s){s.world.totalDistance=150000;s.world.unlocked=LANDS.map(l=>l.id);s.run.distance=40000*C.FEET;s.run.ordinaryWins=3;}
 
-test('all 110 species have depth-valid obtainable regional homes, including all sixteen Ultras',()=>{
+test('ordinary species and Ultras have depth-valid obtainable regional homes, including all 25 Ultras',()=>{
  const s=save();unlock(s);const ordinary=new Set(),ultras=new Set();
  for(const land of LANDS){C.selectLand(s,land.id);const pool=R.regionSpeciesPool(s),ultra=R.regionSpeciesPool(s,Object.keys(C.SPECIES),{ultra:true});assert.ok(pool.some(id=>C.SPECIES[id].rarity==='common'),land.id);assert.ok(pool.some(id=>C.SPECIES[id].rarity==='uncommon'),land.id);assert.ok(pool.some(id=>C.SPECIES[id].rarity==='rare'),land.id);assert.ok(ultra.length,land.id);pool.forEach(id=>ordinary.add(id));ultra.forEach(id=>ultras.add(id));}
- assert.equal(ordinary.size,94);assert.equal(ultras.size,16);assert.deepEqual(new Set([...ordinary,...ultras]),new Set(Object.keys(C.SPECIES)));
+ assert.equal(ordinary.size,94);assert.equal(ultras.size,25);assert.deepEqual(new Set([...ordinary,...ultras]),new Set(Object.keys(C.SPECIES).filter(id=>C.SPECIES[id].rarity!=='mythic')));
  assert.ok(!R.speciesHomes('pyreclasp').includes('emerald-jungle'));assert.ok(R.speciesHomes('pyreclasp').includes('ember-volcano'));
  assert.equal(R.speciesMinimumFeet('bramblebat'),10000);assert.equal(R.speciesMinimumFeet('chronogibbon'),5000); // existing Ultra timing stays unchanged
 });
@@ -62,7 +62,7 @@ test('all ten adventures have distinct connected steps, modest explicit rewards,
   }
   assert.equal(R.adventureSteps(s,land.id).filter(row=>row.claimed).length,7);
  }
- assert.equal(s.meta.adventures.cosmetics.length,10);assert.equal(new Set(s.meta.adventures.cosmetics).size,10);
+ assert.equal(s.meta.adventures.cosmetics.length,13);assert.equal(new Set(s.meta.adventures.cosmetics).size,13);
 });
 
 test('reopening or repeatedly claiming regional objects never awards supplies and battle claims are blocked',()=>{

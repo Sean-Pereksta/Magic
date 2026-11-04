@@ -38,7 +38,7 @@ test('all ten regions have distinct maps, clear starting paths and deterministic
     assert.equal(svg,terrainMap(land.id));rendered.add(svg);
     for(const [east,north]of [[-420.001,-260.001],[-28,28],[1e7,-1e7]])assert.deepEqual(terrainAt(land.id,east,north),terrainAt(land.id,east,north));
   }
-  assert.equal(rendered.size,10);
+  assert.equal(rendered.size,13);
 });
 
 test('world coordinates stay exact in metadata and invalid inputs remain bounded and safe',()=>{
