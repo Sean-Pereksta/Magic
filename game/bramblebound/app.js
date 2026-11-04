@@ -304,9 +304,10 @@
   }
   function resetPack(){clearSelection();packPage=0;packQuery='';packTier='all';$('pack-tier').value='all';$('pack-search').value='';}
   function renderPack(r){
-    const size=pageSize(),terms=packQuery.toLowerCase().replace(/\b(?:level|lv)\s*(\d+(?:\.\d+)?)/g,'lv$1').trim().split(/\s+/).filter(Boolean);
-    const matches=(terms.length||partnerView||packTier!=='all')?r.pack.filter(it=>{
+    const size=pageSize(),{terms,stages}=J.parseRelicSearch(packQuery.replace(/\b(?:level|lv)\s*(\d+(?:\.\d+)?)/gi,'lv$1'));
+    const matches=(terms.length||stages.size||partnerView||packTier!=='all')?r.pack.filter(it=>{
       if(packTier!=='all'&&C.items[it.id].rarity!==packTier)return false;
+      if(!J.matchesFusionStage(C.items[it.id],stages))return false;
       if(partnerView&&!partners.has(it.uid))return false;
       const fields=J.relicSearchText(C.items[it.id]);
       return terms.every(word=>/^lv\d/.test(word)?Number(word.slice(2))===it.level:/^p\d+$/.test(word)?Number(word.slice(1))===it.slot+1:fields.includes(word));
@@ -316,7 +317,7 @@
     const from=packPage*size,to=Math.min(total,from+size);
     const indices=matches?matches.slice(from,to).map(it=>it.slot):Array.from({length:to-from},(_,i)=>from+i);
     const grid=$('pack');grid.style.setProperty('--pack-rows',size/4);
-    grid.innerHTML=indices.length?indices.map(i=>gearSlot(r,'pack',i)).join(''):'<p class="pack-miss">'+(partnerView&&!terms.length&&packTier==='all'&&partners.size?'All matches are in your equipped slots above.':'No matching relics in your backpack.')+'</p>';
+    grid.innerHTML=indices.length?indices.map(i=>gearSlot(r,'pack',i)).join(''):'<p class="pack-miss">'+(partnerView&&!terms.length&&!stages.size&&packTier==='all'&&partners.size?'All matches are in your equipped slots above.':'No matching relics in your backpack.')+'</p>';
     const pageHits=new Array(packPages).fill(0);
     if(selectedUid!==null)(matches||r.pack).forEach((it,i)=>{
       if(partners.has(it.uid))pageHits[Math.floor((matches?i:it.slot)/size)]++;
@@ -467,7 +468,7 @@
       kicker=type==='catalog'?'RELIC DOSSIER':held?'EQUIPPED RELIC':'BACKPACK RELIC';
       html='<div class="dialog-lead">'+tile(d.id,55)+'<div style="--el:'+C.elements[d.element].color+'"><h2 class="dialog-title">'+esc(d.name)+'</h2><div class="eyebrow">'+elName(d.element)+' / '+esc(J.styleLabel(d.style))+' / Level '+lv(it.level)+'</div></div></div><p class="body-copy">'+esc(d.description)+'</p><div class="stat-row"><span class="stat-pill">'+esc(J.relicStat(equipmentProfile(),it))+'</span><span class="stat-pill">'+Number(E.itemCooldown(it,r).toFixed(2))+'s cooldown</span></div>';
       html+=J.tierBadge(d,true)+'<div class="stat-row"><span class="stat-pill">Rarity power ×'+C.rarities[d.rarity].powerScale+' · included above</span></div>'+J.relicEffects(d);
-      if(d.recipe)html+='<div class="subhead">Fusion recipe</div><div class="chip-row">'+d.recipe.map(id=>'<button class="outline compact" data-catalog="'+id+'">'+esc(C.items[id].name)+'</button>').join(' + ')+'</div>';
+      if(d.recipe)html+='<div class="subhead">'+esc(J.fusionStage(d))+' recipe</div><div class="chip-row">'+d.recipe.map(id=>'<button class="outline compact" data-catalog="'+id+'">'+esc(C.items[id].name)+'</button>').join(' + ')+'</div>';
       html+=J.relicSource(d);
       html+='<div class="subhead">Level effects</div><div class="milestones">'+[3,5,10].map(n=>'<div class="mile '+(it.level>=n?'live':'')+'"><b>LV '+n+'</b><span>'+esc(d.milestones[n])+'</span></div>').join('')+'</div>';
       if(type==='item'&&live){
@@ -515,7 +516,7 @@
         ['Leveling up','Time on the trail and defeated enemies earn XP. At each level, choose one of three random upgrades. Passive bonuses stack, and learned abilities cast automatically on separate cooldowns. Expedition ranks reset when you start another run.'],
         ['Group encounters','Enemies approach together and charge their attacks independently. A green bar shows health, a gold bar shows windup, and a red warning marks an imminent strike. Area attacks can hit multiple foes.'],
         ['Relic rarity','Common, Uncommon, Rare, Epic and Mythic gear has ×1, ×1.12, ×1.28, ×1.5 and ×1.8 rarity power. Stronger weapons and richer special effects sit in higher tiers. High tiers drop less often; guardian waves and later regions improve your odds. Rarity is rolled before duplicate or ingredient bonuses. The atlas lists exact local chances and the field guide filters every tier.'],
-        ['At the forge','Two matching copies at the same level gain one level, with no final tier. Every listed fusion gains one level above its highest-level ingredient. Level 2 + level 3 makes level 4; level 2.5 + level 3.5 makes level 4.5. Fuse crafted relics again for second-stage upgrades.'],
+        ['At the forge','Two matching copies at the same level gain one level, with no final tier. Every listed fusion gains one level above its highest-level ingredient. Level 2 + level 3 makes level 4; level 2.5 + level 3.5 makes level 4.5. Fuse crafted relics again for second-stage and third-stage upgrades. Search the fusion guide by stage or ingredient to follow a crafting chain.'],
         ['Growing stronger','Offensive relics gain an echo strike at level 3, a shield ring at level 5 and a damage nova at level 10. Healing, shield, stun and freeze relics gain stronger utility at those milestones and continue to deal zero damage. Inspect a relic for its level effects.'],
         ['After a fall','Earn one seed for setting out, one per cleared wave, and one extra per four defeats. Spend seeds on health, damage, or replay speed in Legacy.'],
         ['Take your time','Gear details, the field guide, and settings pause battle. Space pauses or resumes on the road. Profiles save locally. Use Firebase cloud saves from the title menu or settings to reopen a password-protected journey on another device. Exported profiles remain available as backups.']
