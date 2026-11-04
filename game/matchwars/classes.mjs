@@ -1,5 +1,5 @@
 /** Pure class and formation metadata. No combat, browser, or persistence dependency. */
-import { TOTAL_STAGES } from './campaign.mjs?v=3';
+import { TOTAL_STAGES } from './campaign.mjs?v=4';
 const ELEMENTS = ['ember', 'tide', 'grove', 'storm', 'sun', 'void'];
 const COLORS = ['#ff805e', '#61c7f4', '#83d18b', '#e7c76d', '#ffe3a0', '#b79aef'];
 const ICONS = ['flame', 'drop', 'leaf', 'bolt', 'sun', 'moon'];

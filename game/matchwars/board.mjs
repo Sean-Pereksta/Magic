@@ -1,12 +1,13 @@
 /** Pure, DOM-free match rules. All snapshots are detached from the live board. */
+import { BOARD_EVENTS, BOARD_EVENT_RATE, BOARD_EVENT_COOLDOWN, BOARD_EVENT_MIN_STAGE, CURSE_FUSE } from './events.mjs?v=4';
 export const ELEMENTS = Object.freeze(['ember', 'tide', 'grove', 'storm', 'sun', 'void']);
 const SPECIALS = new Set(['row', 'column', 'nova', 'wild']);
 const RELICS = ['fury', 'aegis', 'haste', 'vitality'];
-const cloneTile = tile => ({ ...tile });
+const cloneTile = tile => ({ ...tile, event: tile.event ? { ...tile.event } : null });
 const at = ({ r, c }) => `${r},${c}`;
 
 export class Board {
-  constructor({ size = 7, elements = ELEMENTS, rng = Math.random } = {}) {
+  constructor({ size = 7, elements = ELEMENTS, rng = Math.random, events = false, stage = 1 } = {}) {
     if (!Number.isInteger(size) || size < 3 || size > 10) throw new RangeError('Board size must be 3–10.');
     if (!Array.isArray(elements) || new Set(elements).size !== elements.length || elements.length < 3 || elements.some(e => typeof e !== 'string')) {
       throw new TypeError('Use at least three distinct element names.');
@@ -16,6 +17,12 @@ export class Board {
     this.elements = [...elements];
     this.rng = rng;
     this.nextId = 1;
+    this.eventsEnabled = events === true && typeof stage === 'number' && Number.isFinite(stage) && stage >= BOARD_EVENT_MIN_STAGE;
+    this.eventCooldown = 0;
+    this.successfulMoves = 0;
+    this._eventId = null;
+    this._refilling = false;
+    this._bornEvents = new Set();
     this.grid = [];
     this._fill();
     if (!this.hint()) this._fill(true);
@@ -28,12 +35,22 @@ export class Board {
 
   _tile(key = this.elements[this._random(this.elements.length)], relics = true) {
     const relic = relics && this._random(1000) < 60 ? RELICS[this._random(RELICS.length)] : null;
-    return { id: this.nextId++, key, special: null, relic };
+    const tile = { id: this.nextId++, key, special: null, relic, event: null };
+    if (this._refilling && this.eventsEnabled && this.eventCooldown === 0 && this._eventId === null && this._random(1000) < BOARD_EVENT_RATE * 1000) {
+      const type = Object.keys(BOARD_EVENTS)[this._random(3)];
+      tile.event = type === 'curse' ? { type, fuse: CURSE_FUSE } : { type };
+      this._eventId = tile.id;
+      this._bornEvents.add(tile.id);
+      this.eventCooldown = BOARD_EVENT_COOLDOWN;
+    }
+    return tile;
   }
 
-  _fill(forceMove = false) {
+  _fill(forceMove = false, carry = null) {
     this.grid = Array.from({ length: this.size }, () => Array(this.size).fill(null));
-    const [a, b, c] = this.elements;
+    const palette = carry ? [...this.elements.filter(key => key !== carry.key), carry.key] : this.elements;
+    const [a, b] = palette;
+    const c = carry ? carry.key : palette[2];
     const pattern = [[a, b, a], [c, a, c]];
     for (let r = 0; r < this.size; r++) {
       for (let col = 0; col < this.size; col++) {
@@ -44,6 +61,10 @@ export class Board {
         this.grid[r][col] = this._tile(key);
       }
     }
+    // Keep an existing event even through the bounded reshuffle fallback. The
+    // carried color is the third color in the forced pattern, away from its swap.
+    if (carry) this.grid[1][0] = cloneTile(carry);
+    this._eventId = carry?.id ?? null;
   }
 
   snapshot() { return this.grid.map(row => row.map(cloneTile)); }
@@ -54,16 +75,26 @@ export class Board {
     if (!Array.isArray(grid) || grid.length !== this.size || grid.some(row => !Array.isArray(row) || row.length !== this.size)) {
       throw new TypeError('Invalid board dimensions.');
     }
+    let eventCount = 0;
     for (const row of grid) for (const tile of row) {
       if (!tile || !this.elements.includes(tile.key) || (tile.special != null && !SPECIALS.has(tile.special)) ||
           (tile.relic != null && !RELICS.includes(tile.relic)) ||
           !((typeof tile.id === 'number' && Number.isSafeInteger(tile.id) && tile.id >= 0) || (typeof tile.id === 'string' && tile.id.length > 0)) || ids.has(tile.id)) {
         throw new TypeError('Invalid or duplicate tile.');
       }
+      if (tile.event != null) {
+        if (typeof tile.event !== 'object' || !Object.prototype.hasOwnProperty.call(BOARD_EVENTS, tile.event.type) ||
+            (tile.event.type === 'curse' && (!Number.isInteger(tile.event.fuse) || tile.event.fuse < 1 || tile.event.fuse > CURSE_FUSE)) || ++eventCount > 1) {
+          throw new TypeError('Invalid or multiple board events.');
+        }
+      }
       ids.add(tile.id);
     }
-    this.grid = grid.map(row => row.map(tile => ({ id: tile.id, key: tile.key, special: tile.special || null, relic: tile.relic || null })));
+    this.grid = grid.map(row => row.map(tile => ({ id: tile.id, key: tile.key, special: tile.special || null, relic: tile.relic || null,
+      event: tile.event ? (tile.event.type === 'curse' ? { type: 'curse', fuse: tile.event.fuse } : { type: tile.event.type }) : null })));
     this.nextId = Math.max(this.nextId, ...[...ids].filter(id => typeof id === 'number').map(id => id + 1));
+    this._eventId = this.grid.flat().find(tile => tile.event)?.id ?? null;
+    this._bornEvents.clear();
     return this.snapshot();
   }
 
@@ -106,6 +137,7 @@ export class Board {
   }
 
   _productive(a, b) {
+    if (this.grid[a.r][a.c].event?.type === 'frost' || this.grid[b.r][b.c].event?.type === 'frost') return false;
     if (this.grid[a.r][a.c].special || this.grid[b.r][b.c].special) return true;
     this._swap(a, b);
     const valid = this._matches().some(group => group.cells.some(p => at(p) === at(a) || at(p) === at(b)));
@@ -129,6 +161,7 @@ export class Board {
   /** Reorders existing tiles first, preserving relics/specials. A safe fresh fill is the bounded fallback. */
   shuffle() {
     const tiles = this.grid.flat().map(cloneTile);
+    const carry = tiles.find(tile => tile.event) || null;
     for (let attempt = 0; attempt < 80; attempt++) {
       for (let i = tiles.length - 1; i > 0; i--) {
         const j = this._random(i + 1);
@@ -137,15 +170,20 @@ export class Board {
       this.grid = Array.from({ length: this.size }, (_, r) => tiles.slice(r * this.size, (r + 1) * this.size));
       if (!this._matches().length && this.hint()) return this.snapshot();
     }
-    this._fill(true);
+    this._fill(true, carry);
     return this.snapshot();
   }
 
   trySwap(from, to) {
-    const result = { valid: false, steps: [], reshuffled: false };
+    const result = { valid: false, steps: [], reshuffled: false, events: [], thawed: [] };
     if (!this._inside(from) || !this._inside(to) || Math.abs(from.r - to.r) + Math.abs(from.c - to.c) !== 1) return result;
+    if (this.grid[from.r][from.c].event?.type === 'frost' || this.grid[to.r][to.c].event?.type === 'frost') return { ...result, reason: 'frozen' };
     if (!this._productive(from, to)) return result;
     result.valid = true;
+    this.successfulMoves++;
+    this.eventCooldown = Math.max(0, this.eventCooldown - 1);
+    this._bornEvents.clear();
+    this._eventId = this.grid.flat().find(tile => tile.event)?.id ?? null;
     this._swap(from, to);
     const a = this.grid[from.r][from.c], b = this.grid[to.r][to.c];
     let extra = [];
@@ -168,12 +206,28 @@ export class Board {
       result.steps.push(step);
       extra = [];
     }
+    const last = result.steps.at(-1);
+    // A curse counts player decisions, not cascade steps. Its birth move is free.
+    for (let r = 0; r < this.size; r++) for (let c = 0; c < this.size; c++) {
+      const tile = this.grid[r][c];
+      if (tile.event?.type !== 'curse' || this._bornEvents.has(tile.id)) continue;
+      tile.event.fuse--;
+      if (tile.event.fuse === 0) {
+        const record = { type: 'curse', action: 'reinforcement', tileId: tile.id, r, c, key: tile.key };
+        tile.event = null; this._eventId = null; this.eventCooldown = BOARD_EVENT_COOLDOWN;
+        if (last) last.events.push(record);
+      }
+    }
+    if (last) last.after = this.snapshot();
     if (this._matches().length || !this.hint()) { this.shuffle(); result.reshuffled = true; }
+    result.events = result.steps.flatMap(step => step.events);
+    result.thawed = result.steps.flatMap(step => step.thawed);
     return result;
   }
 
   _clear(matches, extra, chain, preferred, wildTargets = new Map()) {
     const before = this.snapshot();
+    const events = [], thawed = [];
     const marked = new Map(extra.map(p => [at(p), p]));
     const created = [];
     for (const group of matches) {
@@ -184,7 +238,7 @@ export class Board {
       if (special) {
         const normal = group.cells.filter(p => !this.grid[p.r][p.c].special);
         const anchor = preferred.find(p => normal.some(q => at(p) === at(q))) || normal[Math.floor(normal.length / 2)];
-        if (anchor) created.push({ ...anchor, tile: { ...this.grid[anchor.r][anchor.c], special, relic: null } });
+        if (anchor) created.push({ ...anchor, tile: { ...this.grid[anchor.r][anchor.c], special, relic: null, event: null } });
       }
     }
     // A queue makes special-to-special detonations finite, even when their areas overlap.
@@ -206,6 +260,23 @@ export class Board {
         for (let r = 0; r < this.size; r++) for (let c = 0; c < this.size; c++) if (key === null || this.grid[r][c].key === key) add(r, c);
       }
     }
+    // Resolve events only after special-chain expansion, including blast hits.
+    for (let r = 0; r < this.size; r++) for (let c = 0; c < this.size; c++) {
+      const tile = this.grid[r][c];
+      if (!tile.event) continue;
+      const matched = marked.has(at({ r, c }));
+      const adjacent = tile.event.type === 'frost' && [...marked.values()].some(p => Math.abs(p.r - r) + Math.abs(p.c - c) === 1);
+      if (!matched && !adjacent) continue;
+      const type = tile.event.type;
+      const record = { type, action: type === 'supply' ? 'collected' : type === 'curse' ? 'purified' : 'thawed', tileId: tile.id, r, c, key: tile.key, chain };
+      if (type === 'supply') record.gold = BOARD_EVENTS.supply.gold;
+      if (type === 'frost') {
+        const reason = !matched ? 'adjacent' : matches.some(group => group.cells.some(p => p.r === r && p.c === c)) ? 'match' : 'blast';
+        record.reason = reason; thawed.push({ r, c, tileId: tile.id, key: tile.key, reason });
+      }
+      events.push(record);
+      tile.event = null; this._eventId = null; this.eventCooldown = BOARD_EVENT_COOLDOWN;
+    }
     // Aggregate by element across the clear; every tile contributes to exactly one troop group.
     const byElement = new Map();
     for (const p of marked.values()) {
@@ -221,15 +292,24 @@ export class Board {
     const kept = new Set(created.map(at));
     const cleared = [];
     for (const p of marked.values()) if (!kept.has(at(p))) {
-      cleared.push({ ...p, tile: cloneTile(this.grid[p.r][p.c]) });
+      cleared.push({ ...p, tile: cloneTile(before[p.r][p.c]) });
       this.grid[p.r][p.c] = null;
     }
     for (const creation of created) this.grid[creation.r][creation.c] = cloneTile(creation.tile);
+    this._refilling = true;
     for (let c = 0; c < this.size; c++) {
       const stack = [];
       for (let r = this.size - 1; r >= 0; r--) if (this.grid[r][c]) stack.push(this.grid[r][c]);
       for (let r = this.size - 1; r >= 0; r--) this.grid[r][c] = stack[this.size - 1 - r] || this._tile();
     }
-    return { before, cleared, groups: [...byElement.values()], created, after: this.snapshot(), chain };
+    this._refilling = false;
+    const after = this.snapshot();
+    for (let r = 0; r < this.size; r++) for (let c = 0; c < this.size; c++) {
+      const tile = this.grid[r][c];
+      if (tile.event && this._bornEvents.has(tile.id) && !before.flat().some(old => old.id === tile.id)) {
+        events.push({ type: tile.event.type, action: 'spawned', tileId: tile.id, r, c, key: tile.key, chain });
+      }
+    }
+    return { before, cleared, groups: [...byElement.values()], created, after, chain, events, thawed };
   }
 }

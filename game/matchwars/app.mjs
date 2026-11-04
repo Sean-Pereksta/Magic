@@ -1,8 +1,10 @@
-import { Board, ELEMENTS } from './board.mjs';
-import { Battle, TROOPS, ENEMIES, ELEMENT_INFO, UPGRADES, upgradeCost, elementMultiplier, difficultyForStage } from './combat.mjs?v=3';
-import { loadProgress, saveProgress } from './progress.mjs?v=3';
-import { STAGES, CHAPTERS, TOTAL_STAGES, getChapter, getStage } from './campaign.mjs?v=3';
-import { CLASSES, CLASS_CHOICES, DEFAULT_LOADOUT, COMBOS, getTroop, normalizeLoadout, isClassUnlocked } from './classes.mjs?v=3';
+import { Board, ELEMENTS } from './board.mjs?v=4';
+import { Battle, TROOPS, ENEMIES, ELEMENT_INFO, UPGRADES, CHAMPION_AFFIXES, upgradeCost, elementMultiplier, difficultyForStage } from './combat.mjs?v=4';
+import { loadProgress, saveProgress } from './progress.mjs?v=4';
+import { STAGES, CHAPTERS, TOTAL_STAGES, getChapter, getStage } from './campaign.mjs?v=4';
+import { CLASSES, CLASS_CHOICES, DEFAULT_LOADOUT, COMBOS, getTroop, normalizeLoadout, isClassUnlocked } from './classes.mjs?v=4';
+import { SPECIALIZATIONS, masteryRank, masteryProgress, calculateMasteryAwards, applyMasteryAwards, selectSpecialization } from './mastery.mjs?v=4';
+import { createDaily, seededRng, recordDailyResult } from './daily.mjs?v=4';
 import { drawSpellEffect, drawCastingRune } from './vfx.mjs?v=3';
 
 const $ = id => document.getElementById(id);
@@ -22,13 +24,15 @@ const RELICS = {
   vitality:{name:'Vitality',symbol:'+',color:'#a9d7a4',detail:'+35% health'},
 };
 const roman = number => {let rest=number,result='';for(const [n,s] of [[50,'L'],[40,'XL'],[10,'X'],[9,'IX'],[5,'V'],[4,'IV'],[1,'I']])while(rest>=n){result+=s;rest-=n;}return result;};
-const difficultyName = stage => stage<=12?'Initiate':stage<=24?'Veteran':stage<=36?'Elite':stage<=48?'Mythic':stage<=60?'Ascendant':stage<=72?'Legendary':'Worldbreaker';
+const difficultyName = stage => stage<=12?'Initiate':stage<=24?'Veteran':stage<=36?'Elite':stage<=48?'Mythic':stage<=60?'Ascendant':stage<=72?'Legendary':stage<=84?'Worldbreaker':stage<=108?'Eternal':'Cataclysm';
 let progress = loadProgress(), board, battle, lane = 1, selected = null, busy = false;
 let started = false, session = 0, lastFrame = 0, uiTimer = 0, resolved = false;
 let charge = 0, overdrive = 0, matches = 0, bestChain = 1, summonCount = 0;
 let lastFocus = null, modalKind = '', rootDialog = null, toastTimer, bannerTimer, hintTimer;
 let particles = [], floats = [], motionTime = 0, soundContext, lastSound = 0, lastCastSound=0;
 let pointer = null, suppressClick = false;
+let dailyConfig = null, eventCount = 0;
+const todayKey = () => new Date().toISOString().slice(0,10);
 const tileNodes = new Map();
 const reduced = () => progress.settings.reducedMotion || matchMedia('(prefers-reduced-motion: reduce)').matches;
 const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
@@ -88,6 +92,21 @@ function sound(kind='match', chain=1) {
   } catch { /* Audio is optional on browsers that block Web Audio. */ }
 }
 
+function eventMark(event) {
+  const paths={supply:'<path d="M7 17h34v24H7zM6 12h36v9H6z"/><path d="M20 12v29h8V12M17 12V8h14v4"/>',frost:'<path d="m24 3 17 11v21L24 45 7 35V14Z"/><path d="M24 8v32M10 17l28 16M10 33l28-16M18 13l6 6 6-6M18 35l6-6 6 6"/>',curse:'<path d="m24 4 18 20-18 20L6 24Z"/><path d="m17 16 14 16m0-16L17 32"/>'};
+  return `<span class="event-mark event-${event.type}"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">${paths[event.type]||''}</svg>${event.type==='curse'?`<b>${event.fuse}</b>`:''}</span>`;
+}
+
+function applyBoardEvents(events,targetLane) {
+  for(const event of events) {
+    if(event.action==='spawned'){banner({supply:'RARE FIND · Match the supply cache for gold and charge.',frost:'FROZEN RUNE · Match beside it to thaw.',curse:'CURSED RUNE · Clear it within 4 moves!'}[event.type]);continue;}
+    if(event.action==='collected'){eventCount++;battle.gold+=event.gold||20;charge+=8;burst(dailyConfig?'SUPPLY CACHE · CHARGE + SCORE':'SUPPLY CACHE · +20 GOLD');}
+    if(event.action==='purified'){eventCount++;charge+=8;overdrive=Math.max(overdrive,5);burst('CURSE PURIFIED · EMPOWERED SUMMONS');}
+    if(event.action==='thawed'){eventCount++;burst('ICE SHATTERED');}
+    if(event.action==='reinforcement'){battle.reinforce(event.key,{lane:targetLane});banner(`CURSE UNLEASHED · An enemy joins lane ${targetLane+1}.`);}
+  }
+}
+
 function renderBoard(snapshot=board.snapshot(), animate=false) {
   const ids = new Set();
   snapshot.forEach((row,r) => row.forEach((tile,c) => {
@@ -97,15 +116,16 @@ function renderBoard(snapshot=board.snapshot(), animate=false) {
     if (fresh) { node = document.createElement('button'); node.className='tile'; node.type='button'; node.setAttribute('role','gridcell'); tileNodes.set(tile.id,node); boardEl.append(node); }
     node.dataset.id = tile.id; node.dataset.r = r; node.dataset.c = c;
     node.dataset.key = tile.key; node.dataset.special = tile.special || '';
-    const signature = `${tile.key}:${tile.special}:${tile.relic}`;
+    node.dataset.event=tile.event?.type||'';
+    const signature = `${tile.key}:${tile.special}:${tile.relic}:${tile.event?.type}:${tile.event?.fuse}`;
     if (node.dataset.signature !== signature) {
       node.dataset.signature = signature;
       node.style.setProperty('--element', colors[tile.key]);
-      node.innerHTML = `<span class="tile-inner">${rune(tile.key)}${tile.special ? '<span class="special-mark"></span>' : ''}${tile.relic ? `<span class="relic-mark" style="--relic-color:${RELICS[tile.relic].color}">${RELICS[tile.relic].symbol}</span>` : ''}</span>`;
+      node.innerHTML = `<span class="tile-inner">${rune(tile.key)}${tile.special ? '<span class="special-mark"></span>' : ''}${tile.relic ? `<span class="relic-mark" style="--relic-color:${RELICS[tile.relic].color}">${RELICS[tile.relic].symbol}</span>` : ''}${tile.event?eventMark(tile.event):''}</span>`;
     }
     node.classList.remove('clearing','hint','invalid');
     node.classList.toggle('selected', !!selected && selected.r===r && selected.c===c);
-    node.setAttribute('aria-label',`${activeTroop(tile.key).name}${tile.special ? ', '+tile.special+' special' : ''}${tile.relic ? ', '+RELICS[tile.relic].name+' relic' : ''}. Row ${r+1}, column ${c+1}`);
+    node.setAttribute('aria-label',`${activeTroop(tile.key).name}${tile.special ? ', '+tile.special+' special' : ''}${tile.relic ? ', '+RELICS[tile.relic].name+' relic' : ''}${tile.event?', '+({supply:'supply cache',frost:'frozen: clear a neighbor to thaw',curse:'cursed rune, '+tile.event.fuse+' moves left'}[tile.event.type]):''}. Row ${r+1}, column ${c+1}`);
     node.setAttribute('aria-rowindex',r+1); node.setAttribute('aria-colindex',c+1);
     node.setAttribute('aria-selected',String(!!selected && selected.r===r && selected.c===c));
     node.tabIndex = r===0 && c===0 ? 0 : -1;
@@ -153,7 +173,7 @@ async function swap(from,to) {
   if(!result.valid) {
     renderBoard(old);
     [from,to].forEach(p=>tileNodes.get(old[p.r][p.c].id)?.classList.add('invalid'));
-    $('board-message').textContent='Make a line of 3, or swap a special rune. Try again.';
+    $('board-message').textContent=result.reason==='frozen'?'Frozen rune: match beside it to thaw, or clear it in a line or blast.':'Make a line of 3, or swap a special rune. Try again.';
     await delay(220);
   } else {
     for(const step of result.steps) {
@@ -161,7 +181,7 @@ async function swap(from,to) {
       renderBoard(step.before);
       step.cleared.forEach(({tile})=>tileNodes.get(tile.id)?.classList.add('clearing'));
       matches += step.groups.length; bestChain=Math.max(bestChain,step.chain);
-      $('combo').textContent=`×${(1+(step.chain-1)*(.14+(progress.upgrades.combo||0)*.06)).toFixed(2).replace(/0$/,'').replace(/\.0$/,'')}`;
+      $('combo').textContent=`×${(1+(step.chain-1)*(.14+(battle.upgrades.combo||0)*.06)).toFixed(2).replace(/0$/,'').replace(/\.0$/,'')}`;
       $('combo-label').textContent=step.chain>1 ? `CASCADE ${step.chain}` : 'COMBO POWER';
       document.querySelector('.combo-display').classList.remove('ignite');
       void $('combo').offsetWidth; document.querySelector('.combo-display').classList.add('ignite');
@@ -181,7 +201,9 @@ async function swap(from,to) {
       $('board-message').textContent = `${names} → lane ${targetLane+1}${buffs.length ? ' · '+buffs.map(k=>RELICS[k].name).join(' + ') : step.chain>1 ? ' · empowered cascade' : ''}`;
       await delay(240);
     }
-    if(token!==session) return;
+    if(!await waitForPlay(token)) return;
+    applyBoardEvents(result.events||[],targetLane);
+    renderBoard(board.snapshot(),true);
     if(result.reshuffled) { renderBoard(board.snapshot(),true); toast('No swaps left — the runes have reshuffled.'); }
   }
   if(token!==session) return;
@@ -286,7 +308,7 @@ function showIntro() {
   openModal(progress.seenIntro?'Your army awaits.':'Every match turns the tide.',`
     <p class="guide-intro">${progress.seenIntro?`Continue at battle ${progress.stage}: ${STAGES[progress.stage-1][0]}. Your upgrades and campaign progress are saved.`:'The rift is open. Match elemental runes to summon an army, choose where it fights, and turn cascading combos into overwhelming power.'}</p>
     ${progress.legacyMigrated?'<p class="legacy-note">Your original Color Clash gold, levels, and earned upgrades have been carried into Match Wars.</p>':''}
-    <div class="feature-grid"><div class="feature-card"><b>01 · Match & summon</b><p>Tap two neighboring runes or swipe. Lines of 3 summon your equipped class. Longer matches forge special runes.</p></div><div class="feature-card"><b>02 · Build a formation</b><p>Troops cast their own spells. Pair colors in the same lane for healing covenants, frozen shatters, or armies of the dead.</p></div><div class="feature-card"><b>03 · Choose your classes</b><p>Unlock 12 additional classes at campaign milestones. Equip one class for each color before battle.</p></div><div class="feature-card"><b>04 · Conquer the frontiers</b><p>Fight across ${TOTAL_STAGES} battles. Spend gold on 18 upgrade paths and adapt to ${Object.keys(ENEMIES).length} enemy types.</p></div></div>
+    <div class="feature-grid"><div class="feature-card"><b>01 · Match & summon</b><p>Tap two neighboring runes or swipe. Lines of 3 summon your equipped class. Longer matches forge special runes.</p></div><div class="feature-card"><b>02 · Build a formation</b><p>Troops cast their own spells. Pair colors in the same lane for healing covenants, frozen shatters, or armies of the dead.</p></div><div class="feature-card"><b>03 · Choose your classes</b><p>Unlock 12 additional classes at campaign milestones. Earn mastery XP and choose from 36 specializations.</p></div><div class="feature-card"><b>04 · Conquer the frontiers</b><p>Fight across ${TOTAL_STAGES} battles. Spend gold on 18 upgrade paths and adapt to ${Object.keys(ENEMIES).length} enemy types.</p></div></div>
     <div class="modal-actions"><button class="primary-button" data-action="begin">${progress.seenIntro?'Return to the front':'Begin the campaign'} →</button><button class="secondary-button" data-action="army">Choose classes</button><button class="secondary-button" data-action="forge">Upgrade forge · ◆ ${progress.gold}</button></div>
     <p class="muted">PC: arrows + Enter to match · 1 / 2 / 3 lanes · Q / W / E spells · H hint · P pause. On mobile, tap or swipe.</p>`, 'intro','THE RUNEBORN FRONT');
 }
@@ -296,11 +318,13 @@ function begin() {
 }
 
 function showMenu() {
-  openModal('Take a breath.',`<p>Battle is paused. Plan your next move.</p><div class="menu-grid"><button data-action="resume">↗ Return to battle</button><button data-action="army">✦ Troop classes</button><button data-action="forge">◆ Upgrade forge</button><button data-action="campaign">✧ Campaign map</button><button data-action="guide">⌘ Field guide</button><button data-action="bonds">◇ Formation bonds</button><button data-action="how">? How to play</button><button data-action="restart">↻ Restart this battle</button></div><label class="setting-row">Sound effects<input id="sound-setting" type="checkbox" ${progress.settings.sound?'checked':''}></label><label class="setting-row">Reduce visual effects<input id="motion-setting" type="checkbox" ${progress.settings.reducedMotion?'checked':''}></label><div class="modal-actions"><a class="secondary-button" href="/lobby/">‹ Back to the library</a></div>`, 'menu');
+  openModal('Take a breath.',`<p>Battle is paused. Plan your next move.</p><div class="menu-grid"><button data-action="resume">↗ Return to battle</button><button data-action="army">✦ Troop classes</button><button data-action="forge">◆ Upgrade forge</button><button data-action="campaign">✧ Campaign map</button><button data-action="daily">✦ Daily challenge</button><button data-action="guide">⌘ Field guide</button><button data-action="bonds">◇ Formation bonds</button><button data-action="how">? How to play</button><button data-action="restart">↻ Restart this battle</button></div><label class="setting-row">Sound effects<input id="sound-setting" type="checkbox" ${progress.settings.sound?'checked':''}></label><label class="setting-row">Reduce visual effects<input id="motion-setting" type="checkbox" ${progress.settings.reducedMotion?'checked':''}></label><div class="modal-actions"><a class="secondary-button" href="/lobby/">‹ Back to the library</a></div>`, 'menu');
 }
 
+function rareGuide() { return '<h3>Rare battlefield finds</h3><p>From battle 5, very rare supply caches grant battle gold and Overdrive charge. Frozen runes cannot be swapped: match beside one to thaw it, or clear it in a match or special blast. Clear a cursed rune within four successful swaps for five seconds of empowered summons; letting it expire calls one enemy reinforcement. Only one board event can be present at a time, with at least eight successful moves between new events.</p><h3>Master your classes</h3><p>Campaign troops earn mastery XP through deployment and useful spells. At mastery 3, choose one of two specializations for each class. Choices are free to change for the next battle. Daily challenges use fixed mastery and award medals instead of class XP.</p>'; }
+
 function showHow() {
-  openModal('A commander’s primer.',`<div class="feature-grid"><div class="feature-card"><b>Matches become troops</b><p>Each match summons one soldier. Matches of 5 or more summon extra troops. Choose your lane first; every cascade uses that lane. Invalid swaps return safely.</p></div><div class="feature-card"><b>Forge special runes</b><p>Match 4 for a line blast, 5 for a wild rune, and a T or L for a nova. Swap a special with any neighbor to activate it. Wilds clear the other rune’s element. Special blasts chain.</p></div><div class="feature-card"><b>Cascades & Overdrive</b><p>Falling runes can match again. Each cascade gives new troops +14% power, increased by Battle Rhythm. Clear 50 runes for 10 seconds of +25% summon power.</p></div><div class="feature-card"><b>Relics empower summons</b><p>Small colored marks are relics. Match them to buff that element’s new soldiers: ↑ Fury, ◇ Aegis, ϟ Haste, + Vitality. Forge talents strengthen these buffs.</p></div><div class="feature-card"><b>Build a formation</b><p>Sun Paladins hold the front while Tide Rangers and Ember Mages attack from behind. Grove Wardens sustain them. Storm Lancers hunt flyers; Reapers punish weakened tanks. Summon the same element 4 / 8 / 12 times to increase its resonance.</p></div><div class="feature-card"><b>Win the battle</b><p>Destroy the rift or defeat every wave. Later chapters bring more waves, denser formations, and elite enemies. Defend your citadel with troops and spells. Every fourth battle has a boss ward: defeat the chapter boss to break it. Losses grant some earned gold so you can adapt and retry.</p></div></div><h3>Elemental counters</h3><p>Ember → Grove → Storm → Tide → Ember. A counter deals 1.5× damage; fighting into your weakness deals 0.7×. Sun and Void both deal 1.35× to each other.</p><p>Spells target your selected lane. Meteor damages enemies, Rally grants attack speed and shields, Renew heals troops and repairs your citadel. They recharge during battle.</p><p>Progress saves on this browser and device after battles and purchases. Refreshing restarts the current battle. The forge pauses combat; new class upgrades affect future summons.</p><div class="modal-actions"><button class="primary-button" data-action="resume">${started?'Back to battle':'Start battle'} →</button></div>`, 'how','MATCH · COMMAND · CONQUER');
+  openModal('A commander’s primer.',`<div class="feature-grid"><div class="feature-card"><b>Matches become troops</b><p>Each match summons one soldier. Matches of 5 or more summon extra troops. Choose your lane first; every cascade uses that lane. Invalid swaps return safely.</p></div><div class="feature-card"><b>Forge special runes</b><p>Match 4 for a line blast, 5 for a wild rune, and a T or L for a nova. Swap a special with any neighbor to activate it. Wilds clear the other rune’s element. Special blasts chain.</p></div><div class="feature-card"><b>Cascades & Overdrive</b><p>Falling runes can match again. Each cascade gives new troops +14% power, increased by Battle Rhythm. Clear 50 runes for 10 seconds of +25% summon power.</p></div><div class="feature-card"><b>Relics empower summons</b><p>Small colored marks are relics. Match them to buff that element’s new soldiers: ↑ Fury, ◇ Aegis, ϟ Haste, + Vitality. Forge talents strengthen these buffs.</p></div><div class="feature-card"><b>Build a formation</b><p>Sun Paladins hold the front while Tide Rangers and Ember Mages attack from behind. Grove Wardens sustain them. Storm Lancers hunt flyers; Reapers punish weakened tanks. Summon the same element 4 / 8 / 12 times to increase its resonance.</p></div><div class="feature-card"><b>Win the battle</b><p>Destroy the rift or defeat every wave. Later chapters bring more waves, denser formations, and elite enemies. Defend your citadel with troops and spells. Chapter finales have a boss ward: defeat the chapter boss to break it. Losses grant some earned gold so you can adapt and retry.</p></div></div><h3>Elemental counters</h3><p>Ember → Grove → Storm → Tide → Ember. A counter deals 1.5× damage; fighting into your weakness deals 0.7×. Sun and Void both deal 1.35× to each other.</p><p>Spells target your selected lane. Meteor damages enemies, Rally grants attack speed and shields, Renew heals troops and repairs your citadel. They recharge during battle.</p>${rareGuide()}<p>Progress saves on this browser and device after battles and purchases. Refreshing restarts the current battle. The forge pauses combat; new class upgrades affect future summons.</p><div class="modal-actions"><button class="primary-button" data-action="resume">${started?'Back to battle':'Start battle'} →</button></div>`, 'how','MATCH · COMMAND · CONQUER');
 }
 
 function troopGuide(key) {
@@ -309,22 +333,38 @@ function troopGuide(key) {
   openModal(troop.name,`${classPortrait(troop,'dialog-portrait')}<p style="color:${info.color}">${troop.role} · ${info.name}</p><p>${troop.description}</p><p>Health <b>${troop.hp}</b> · Attack <b>${troop.attack}</b> · Range <b>${troop.range}</b></p><div class="spell-detail"><b>${troop.spell.name}</b><small>Automatic spell · ${troop.spell.cooldown}s recharge</small><p>${troop.spell.description}</p></div><p>Strong against ${ELEMENT_INFO[info.strong].name}${key==='sun'||key==='void'?' (mutual counter)':' · vulnerable to '+ELEMENT_INFO[info.weak].name}.</p><p>Battle resonance: ${resonance} / 3. Every four summons adds +5% power, up to +15%.</p><h3>Formation partners</h3>${COMBOS.filter(c=>c.elements.includes(key)).map(c=>`<p><b>${c.name}</b> · ${c.elements.map(k=>ELEMENT_INFO[k].name).join(' + ')}<br>${c.description}</p>`).join('')}<div class="modal-actions"><button class="primary-button" data-army="${key}">Choose ${info.name} class →</button><button class="secondary-button" data-action="forge" data-tab="${key}">Train talents</button><button class="secondary-button" data-action="resume">Return</button></div>`,'troop','ELEMENTAL ARMORY');
 }
 
+function masteryPanel(def,unlocked) {
+  const record=progress.mastery[def.id]||{xp:0,specialization:null},info=masteryProgress(record.xp);
+  return `<div class="mastery-panel"><div class="mastery-heading"><b>MASTERY ${info.rank} / 6</b><small>${info.rank===6?'MASTERED':`${record.xp} / ${info.nextXp} XP`}</small></div><div class="mastery-track" role="progressbar" aria-label="${escape(def.name)} mastery" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(info.progress*100)}"><i style="width:${info.progress*100}%"></i></div><p>${info.rank<3?'Use this class in campaign battles. Choose a specialization at mastery 3.':'Choose one specialization. You can change it freely for your next battle.'}</p><div class="specialization-list">${SPECIALIZATIONS[def.id].map(spec=>`<button data-specialize="${spec.id}" data-class-id="${def.id}" class="specialization ${record.specialization===spec.id?'chosen':''}" ${!unlocked||info.rank<3?'disabled':''} aria-pressed="${record.specialization===spec.id}"><b>${record.specialization===spec.id?'✦ ':''}${escape(spec.name)}</b><span>${escape(spec.description)}</span></button>`).join('')}</div></div>`;
+}
+
 function showArmory(key='ember') {
+  if(dailyConfig){showDailyArmy();return;}
   if(!CLASS_CHOICES[key])key='ember';
   const chosen=progress.loadout[key],pending=started&&battle.status==='playing'&&battle.loadout[key]!==chosen;
   const earned=Object.values(CLASSES).filter(c=>isClassUnlocked(c.id,progress.unlocked)).length;
   openModal('Your colors. Your classes.',`<p>Equip one class for each color. Troops cast spells automatically when suitable targets are in reach. <b>${earned} / ${Object.keys(CLASSES).length}</b> classes unlocked.</p><p class="armory-rule">${started&&battle.status==='playing'?'Changes are saved for your next battle. Your current formation keeps its equipped classes.':'Choose your formation before the first wave. Class choices are free once unlocked.'}</p><div class="tabs class-tabs">${ELEMENTS.map(k=>`<button data-army="${k}" class="${k===key?'active':''}" style="${k===key?'':'color:'+colors[k]}">${ELEMENT_INFO[k].name}</button>`).join('')}</div><div class="class-grid">${CLASS_CHOICES[key].map(def=>{
     const unlocked=isClassUnlocked(def.id,progress.unlocked),selected=def.id===chosen;
-    return `<article class="class-card ${selected?'equipped':''} ${unlocked?'':'locked'}" style="--element:${def.color}"><div class="class-portrait-wrap">${classPortrait(def,'class-portrait')}<span>${selected?'EQUIPPED':unlocked?'AVAILABLE':`BATTLE ${def.unlockLevel}`}</span></div><h3>${def.name}</h3><small class="class-role">${def.role}</small><p>${def.description}</p><div class="class-statline"><span>${def.hp} HP</span><span>${def.attack} ATK</span><span>${def.range} RANGE</span></div><div class="spell-detail"><b>${def.spell.name}</b><small>Auto cast · ${def.spell.cooldown}s</small><p>${def.spell.description}</p></div><button class="${selected?'secondary-button':'primary-button'}" data-equip="${def.id}" ${!unlocked||selected?'disabled':''}>${selected?'Equipped':unlocked?'Equip class':`Reach battle ${def.unlockLevel} to unlock`}</button></article>`;
+    return `<article class="class-card ${selected?'equipped':''} ${unlocked?'':'locked'}" style="--element:${def.color}"><div class="class-portrait-wrap">${classPortrait(def,'class-portrait')}<span>${selected?'EQUIPPED':unlocked?'AVAILABLE':`BATTLE ${def.unlockLevel}`}</span></div><h3>${def.name}</h3><small class="class-role">${def.role}</small><p>${def.description}</p><div class="class-statline"><span>${def.hp} HP</span><span>${def.attack} ATK</span><span>${def.range} RANGE</span></div><div class="spell-detail"><b>${def.spell.name}</b><small>Auto cast · ${def.spell.cooldown}s</small><p>${def.spell.description}</p></div>${masteryPanel(def,unlocked)}<button class="${selected?'secondary-button':'primary-button'}" data-equip="${def.id}" ${!unlocked||selected?'disabled':''}>${selected?'Equipped':unlocked?'Equip class':`Reach battle ${def.unlockLevel} to unlock`}</button></article>`;
   }).join('')}</div><p class="class-swipe-hint">Swipe across the cards to compare all three classes.</p>${pending?'<p class="pending-note">New class equipped for the next battle.</p>':''}<h3>Build a bond</h3><p>${COMBOS.filter(c=>c.elements.includes(key)).map(c=>`<b>${c.name}</b>: ${c.elements.map(k=>ELEMENT_INFO[k].name).join(' + ')}. ${c.description}`).join('<br>')}</p><div class="modal-actions"><button class="primary-button" data-action="resume">${started?'Return to the front':'Start with this army'} →</button>${started&&battle.status==='playing'?'<button class="secondary-button" data-action="restart">Restart with this army</button>':''}<button class="secondary-button" data-action="bonds">All formation bonds</button></div>`,'army','THE CLASS ARMORY');
   if(mobileScreen.matches){const grid=content.querySelector('.class-grid'),card=content.querySelector('.class-card.equipped');if(grid&&card)grid.scrollLeft+=card.getBoundingClientRect().left-grid.getBoundingClientRect().left;}
 }
 
 function equipClass(id) {
+  if(dailyConfig)return;
   const def=CLASSES[id];if(!def||!isClassUnlocked(id,progress.unlocked))return;
   progress.loadout[def.key]=id;progress.loadout=normalizeLoadout(progress.loadout,progress.unlocked);persist();
-  if(!started&&battle.time===0)startBattle(progress.stage);
+  if(!dailyConfig&&!started&&battle.time===0)startBattle(progress.stage);
   showArmory(def.key);sound('match');
+}
+
+function equipSpecialization(classId,id) {
+  if(dailyConfig)return;
+  const def=CLASSES[classId];if(!def||!isClassUnlocked(classId,progress.unlocked))return;
+  const scroll=modal.scrollTop;
+  progress.mastery=selectSpecialization(progress.mastery,classId,id);persist();
+  if(!dailyConfig&&!started&&battle.time===0)startBattle(progress.stage);
+  showArmory(def.key);modal.scrollTop=scroll;toast(started?'Specialization saved for your next campaign battle.':'Specialization ready.');
 }
 
 function showBonds() {
@@ -332,19 +372,25 @@ function showBonds() {
   openModal('Stronger together.',`<p>Keep both colors alive in the same lane to activate a formation bond. Choose classes that supply the healing, shields, or status effects the bond needs.</p><div class="guide-grid">${COMBOS.map(c=>`<div class="guide-card bond-card"><span class="bond-status ${active.has(c.id)?'on':''}">${active.has(c.id)?'ACTIVE IN LANE '+(lane+1):'FORMATION BOND'}</span><h3>${c.name}</h3><div class="bond-colors">${c.elements.map(k=>`<span style="color:${colors[k]}">${ELEMENT_INFO[k].name}</span>`).join(' + ')}</div><p>${c.description}</p><small>${c.condition}</small></div>`).join('')}</div><div class="modal-actions"><button class="primary-button" data-action="army">Build your army →</button><button class="secondary-button" data-action="resume">Return</button></div>`,'bonds','LANE FORMATIONS');
 }
 
+function showDailyArmy() {
+  openModal('The challenge army.',`<p>This army is fixed for the shared daily challenge, with forge talents at rank 2 and class mastery at rank 3. Campaign class choices and specializations do not affect it.</p><div class="guide-grid">${ELEMENTS.map(key=>{const def=battle.troopFor(key),record=dailyConfig.mastery[def.id],spec=SPECIALIZATIONS[def.id].find(s=>s.id===record.specialization);return `<article class="guide-card">${classPortrait(def)}<h3>${escape(def.name)}</h3><p>${escape(def.role)}</p><div class="spell-detail"><b>${escape(def.spell.name)}</b><p>${escape(def.spell.description)}</p></div><p><b>${escape(spec.name)}</b><br>${escape(spec.description)}</p></article>`;}).join('')}</div><div class="modal-actions"><button class="primary-button" data-action="resume">Return to challenge →</button><button class="secondary-button" data-action="daily">Daily briefing</button><button class="secondary-button" data-action="bonds">Formation bonds</button></div>`,'army','DAILY · FIXED ARMY');
+}
+
 function showGuide(tab='troops') {
   const entries=tab==='enemies'?Object.values(ENEMIES):Object.values(CLASSES);
   const tabs=`<div class="tabs"><button data-guide="troops" class="${tab==='troops'?'active':''}">${Object.keys(CLASSES).length} troop classes</button><button data-guide="enemies" class="${tab==='enemies'?'active':''}">${Object.keys(ENEMIES).length} enemy types</button><button data-guide="relics" class="${tab==='relics'?'active':''}">Relics & buffs</button><button data-action="bonds">Formation bonds</button></div>`;
   const relics=`<div class="guide-grid">${Object.values(RELICS).map(r=>`<div class="guide-card"><b style="color:${r.color}">${r.symbol} ${r.name}</b><p>${r.detail} for troops summoned by a match containing this relic. Relic types stack; Relic Attunement improves all four.</p></div>`).join('')}</div><p>Gold shield rings, orange Fury sparks, cyan Haste trails, and green Vitality crosses identify empowered troops. Roots, frost, curses, and regeneration have distinct effects.</p>`;
   const cards=`<div class="guide-grid">${entries.map(t=>`<div class="guide-card">${tab==='enemies'?`<canvas class="portrait" data-portrait="${t.element}" data-enemy="${t.key}" width="180" height="180"></canvas>`:classPortrait(t)}<b style="color:${colors[t.element]}">${t.name}</b><p>${t.role}</p><p>${t.description||`${ELEMENT_INFO[t.element].name} · ${t.hp} health · ${t.attack} attack${t.boss?' · BOSS':''}`}</p>${t.spell?`<p><b>${t.spell.name}</b> · ${t.spell.cooldown}s<br>${t.spell.description||''}</p>`:''}<div class="counter-list"><span>Counter: ${ELEMENT_INFO[Object.keys(TROOPS).find(k=>elementMultiplier(k,t.element)>1)||'storm'].name}</span>${t.unlockLevel?`<span>${isClassUnlocked(t.id,progress.unlocked)?'Unlocked':'Reach battle '+t.unlockLevel}</span>`:''}</div></div>`).join('')}</div>`;
-  openModal('Know your battlefield.',`<p>Pair a frontline, a ranged attacker, and a support. Enemy spellcasters and undead create new threats to counter.</p>${tabs}${tab==='relics'?relics:cards}`,'guide','THE FIELD GUIDE');
+  openModal('Know your battlefield.',`<p>Pair a frontline, a ranged attacker, and a support. Enemy spellcasters and undead create new threats to counter.</p>${tabs}${tab==='enemies'?`<div class="champion-guide"><h3>Champions of the Eternal Front (85+)</h3>${Object.values(CHAMPION_AFFIXES).map(a=>`<p><b style="color:${a.color}">${escape(a.name)}</b> · ${escape(a.description)}</p>`).join('')}</div>`:''}${tab==='relics'?relics:cards}`,'guide','THE FIELD GUIDE');
 }
 
 function showForge(tab='command') {
+  if(dailyConfig){openModal('A level field.',`<p>Daily challenges use a fixed army, mastery, and forge so every player faces the same challenge. Campaign purchases and class choices do not affect this run.</p><div class="modal-actions"><button class="primary-button" data-action="resume">Return to challenge</button><button class="secondary-button" data-action="daily">Daily briefing</button></div>`,'forge','DAILY CHALLENGE');return;}
   openModal('The upgrade forge.',`<p>Build around the army you want to play. <b style="color:var(--gold)">◆ ${progress.gold}</b> available. Purchased troop talents empower future summons; keep and spell talents apply immediately.</p><div class="tabs"><button data-forge="command" class="${tab==='command'?'active':''}">Command</button>${ELEMENTS.map(k=>`<button data-forge="${k}" class="${tab===k?'active':''}" style="${tab!==k?'color:'+colors[k]:''}">${ELEMENT_INFO[k].name}</button>`).join('')}</div><div class="upgrade-grid">${UPGRADES.filter(u=>u.group===tab).map(u=>{const rank=progress.upgrades[u.id]||0,cost=upgradeCost(u.id,rank);return `<div class="upgrade-card"><h3>${u.name}</h3><small>RANK ${rank} / ${u.max}</small><p>${u.description}</p><div class="progress-dots">${Array.from({length:u.max},(_,i)=>`<i class="${i<rank?'filled':''}"></i>`).join('')}</div><button data-buy="${u.id}" ${rank>=u.max||progress.gold<cost?'disabled':''}>${rank>=u.max?'Fully trained':`Train rank ${rank+1} · ◆ ${cost}`}</button></div>`;}).join('')}</div><div class="modal-actions"><button class="primary-button" data-action="resume">${started?'Return to the front':'Start battle'} →</button></div>`,'forge','CRAFT YOUR STRATEGY');
 }
 
 function buyUpgrade(id) {
+  if(dailyConfig)return;
   const def=UPGRADES.find(u=>u.id===id);if(!def)return;
   const rank=progress.upgrades[id]||0,cost=upgradeCost(id,rank);
   if(rank>=def.max||progress.gold<cost)return;
@@ -356,12 +402,30 @@ function buyUpgrade(id) {
 
 function showCampaign(chapterNumber=getChapter(progress.stage).number) {
   const index=clamp(Number(chapterNumber)||1,1,CHAPTERS.length)-1,chapter=CHAPTERS[index];
-  const first=index*4+1, stages=STAGES.slice(first-1,first+3), cleared=progress.completed.filter(n=>n>=first&&n<first+4).length;
+  const first=chapter.startStage, stages=STAGES.slice(first-1,chapter.endStage), cleared=progress.completed.filter(n=>n>=first&&n<=chapter.endStage).length;
   openModal('Beyond the first rift.',`<p>${TOTAL_STAGES} battles across ${CHAPTERS.length} chapters. Each frontier brings stronger armies, tighter waves, and a new boss showdown. ${progress.completed.length} / ${TOTAL_STAGES} cleared.</p>
-    <div class="chapter-navigation"><button class="secondary-button" data-chapter="${chapter.number-1}" aria-label="Previous chapter" ${index===0?'disabled':''}>‹</button><label for="campaign-chapter" class="sr-only">Choose a campaign chapter</label><select id="campaign-chapter">${CHAPTERS.map(c=>`<option value="${c.number}" ${c.number===chapter.number?'selected':''}>${roman(c.number)} · ${escape(c.title)}${progress.unlocked<(c.number-1)*4+1?' · Locked':''}</option>`).join('')}</select><button class="secondary-button" data-chapter="${chapter.number+1}" aria-label="Next chapter" ${index===CHAPTERS.length-1?'disabled':''}>›</button></div>
-    <div class="chapter-summary" style="--chapter-color:${chapter.color}"><span class="eyebrow">CHAPTER ${roman(chapter.number)} · ${difficultyName(first).toUpperCase()} · ${cleared} / 4 CLEARED</span><h3>${escape(chapter.title)}</h3><p>${escape(chapter.description)}</p><small>Chapter boss: ${escape(chapter.bossName)}</small></div>
-    <div class="campaign-grid chapter-stages">${stages.map(([name,description],i)=>{const stage=first+i,difficulty=difficultyForStage(stage);return `<button class="stage-card ${stage===progress.stage?'current':''}" data-stage="${stage}" ${stage>progress.unlocked?'disabled':''}><span class="stage-number">${String(stage).padStart(2,'0')} ${progress.completed.includes(stage)?'✦':stage%4===0?'♜':''}</span><b>${escape(name)}</b><small>${escape(description)}</small><span class="stage-difficulty">${stage>progress.unlocked?'Locked · ':''}${difficulty.totalWaves} waves${stage%4===0?' · Boss ward':''}</span></button>`;}).join('')}</div>
+    <div class="chapter-navigation"><button class="secondary-button" data-chapter="${chapter.number-1}" aria-label="Previous chapter" ${index===0?'disabled':''}>‹</button><label for="campaign-chapter" class="sr-only">Choose a campaign chapter</label><select id="campaign-chapter">${CHAPTERS.map(c=>`<option value="${c.number}" ${c.number===chapter.number?'selected':''}>${roman(c.number)} · ${escape(c.title)}${progress.unlocked<c.startStage?' · Locked':''}</option>`).join('')}</select><button class="secondary-button" data-chapter="${chapter.number+1}" aria-label="Next chapter" ${index===CHAPTERS.length-1?'disabled':''}>›</button></div>
+    <div class="chapter-summary" style="--chapter-color:${chapter.color}"><span class="eyebrow">CHAPTER ${roman(chapter.number)} · ${difficultyName(first).toUpperCase()} · ${cleared} / ${chapter.stageCount} CLEARED</span><h3>${escape(chapter.title)}</h3><p>${escape(chapter.description)}</p><small>Chapter boss: ${escape(chapter.bossName)}</small></div>
+    <div class="campaign-grid chapter-stages">${stages.map(([name,description],i)=>{const stage=first+i,difficulty=difficultyForStage(stage);return `<button class="stage-card ${stage===progress.stage?'current':''}" data-stage="${stage}" ${stage>progress.unlocked?'disabled':''}><span class="stage-number">${String(stage).padStart(2,'0')} ${progress.completed.includes(stage)?'✦':getStage(stage).boss?'♜':''}</span><b>${escape(name)}</b><small>${escape(description)}</small><span class="stage-difficulty">${stage>progress.unlocked?'Locked · ':''}${difficulty.totalWaves} waves${getStage(stage).boss?' · Boss ward':''}</span></button>`;}).join('')}</div>
     <div class="modal-actions"><button class="primary-button" data-stage="${progress.unlocked}">Continue · battle ${progress.unlocked} →</button><button class="secondary-button" data-action="army">Troop classes</button><button class="secondary-button" data-action="resume">Return</button></div>`, 'campaign',`THE ${TOTAL_STAGES}-BATTLE CAMPAIGN`);
+}
+
+function showDaily(date=todayKey()) {
+  const config=createDaily(date);if(!config){toast('Choose a challenge from the past 30 days.');return;}
+  const saved=progress.daily.records[config.date],targets=config.medalTargets;
+
+  openModal('One day. One shared battlefield.',`<div class="daily-hero"><span class="eyebrow">UTC DAILY · ${config.date}${config.date!==todayKey()?' · PRACTICE':''}</span><h3>${escape(getStage(config.stage).name)}</h3><p>Everyone gets the same starting board, army, mastery, and enemy waves. Earn medals and beat your personal best.</p><div class="daily-targets"><span>✦ GOLD <b>${targets.gold.toLocaleString()}</b></span><span>◇ SILVER <b>${targets.silver.toLocaleString()}</b></span><span>○ BRONZE <b>${targets.bronze.toLocaleString()}</b></span></div></div><div class="daily-army">${ELEMENTS.map(k=>{const def=getTroop(k,config.loadout[k]);return `<div>${classPortrait(def)}<b>${escape(def.name)}</b></div>`;}).join('')}</div><p>Clear waves quickly, protect your citadel, and build cascades to score. ${config.date===todayKey()?`First victory today earns ◆ ${config.reward}${saved?.claimed?' (already claimed)':''}.`:'Past challenges are practice; no gold reward.'} Daily runs do not change your campaign or class mastery.</p><div class="daily-best"><span>YOUR BEST</span><b>${saved?saved.score.toLocaleString():'—'}</b><small>${saved?`${saved.medal.toUpperCase()} · ${saved.attempts} completed attempt${saved.attempts===1?'':'s'}`:'No completed attempts yet'}</small></div><div class="modal-actions"><button class="primary-button" data-daily="${config.date}">${saved?'Try again':'Start challenge'} →</button><button class="secondary-button" data-share-daily="${config.date}">Copy challenge link</button><button class="secondary-button" data-action="campaign-return">Return to campaign</button></div><label class="daily-date">Practice a recent day<input type="date" id="daily-date" min="${new Date(Date.now()-29*86400000).toISOString().slice(0,10)}" max="${todayKey()}" value="${config.date}"></label><p class="muted">Personal scores are saved on this device. Starting a challenge restarts any unfinished battle without rewards.</p>`,'daily','THE DAILY FRONT');
+}
+
+function finishDaily() {
+  const result=recordDailyResult(progress.daily,dailyConfig,{won:battle.status==='won',time:battle.time,kills:battle.kills,matches,bestChain,playerHp:battle.playerHp,playerMax:battle.playerMax,events:eventCount});
+  progress.daily=result.daily;progress.gold+=result.reward;persist();sound(result.won?'win':'lose');
+  openModal(result.won?'Daily front secured.':'Another attempt awaits.',`<div class="result-icon medal-${result.medal}">${result.medal==='gold'?'✦':result.medal==='silver'?'◇':result.medal==='bronze'?'○':'♜'}</div><p class="result-intro">${dailyConfig.date} · ${result.medal==='none'?'Clear the battlefield to earn a medal.':`${result.medal.toUpperCase()} MEDAL`}${result.improved?' · New personal best!':''}</p><div class="result-stats"><div><b>${result.score.toLocaleString()}</b><small>SCORE</small></div><div><b>${bestChain}×</b><small>BEST CASCADE</small></div><div><b>+${result.reward}</b><small>GOLD</small></div></div><p>Campaign progress and mastery are unchanged. ${result.reward?'Today’s first-win reward has been saved.':'Replay to improve your score.'}</p><div class="modal-actions"><button class="primary-button" data-daily="${dailyConfig.date}">Try the same challenge →</button><button class="secondary-button" data-action="daily">Daily briefing</button><button class="secondary-button" data-action="campaign-return">Campaign</button></div>`,'result','THE DAILY FRONT');
+}
+
+async function shareDaily(date) {
+  const url=new URL(location.href);url.search='';url.searchParams.set('daily',date);url.hash='';
+  try{await navigator.clipboard.writeText(url.href);toast('Challenge link copied.');}catch{openModal('Share this battlefield.',`<p>Copy this link to share the same challenge and fixed army.</p><input class="share-link" value="${escape(url.href)}" readonly aria-label="Daily challenge link"><div class="modal-actions"><button class="primary-button" data-action="daily">Back to briefing</button></div>`,'daily');content.querySelector('input').select();}
 }
 
 function confirmRestart(stage=progress.stage) {
@@ -369,16 +433,19 @@ function confirmRestart(stage=progress.stage) {
   openModal(stage===progress.stage?'Restart this battle?':'Change your battlefield?',`<p>This will restart the battle. Your purchased talents, gold, and cleared campaign battles are saved. Unfinished battle rewards are earned only when you win or lose.</p><div class="modal-actions"><button class="primary-button" data-restart="${stage}">Start battle ${stage} →</button><button class="secondary-button" data-action="resume">Keep playing</button></div>`,'confirm','CAMPAIGN');
 }
 
-function startBattle(stage=progress.stage) {
-  session++;progress.stage=clamp(stage,1,progress.unlocked);board=new Board();
-  battle=new Battle({stage:progress.stage,upgrades:progress.upgrades,loadout:progress.loadout,onEvent:combatEvent});
-  selected=null;busy=false;resolved=false;charge=0;overdrive=0;matches=0;bestChain=1;summonCount=0;particles=[];floats=[];
+function startBattle(stage=progress.stage,challenge=null) {
+  session++;dailyConfig=challenge;started=false;
+  if(!challenge)progress.stage=clamp(stage,1,progress.unlocked);
+  const current=challenge?.stage||progress.stage;
+  board=new Board({events:true,stage:current,...(challenge?{rng:seededRng(challenge.boardSeed)}:{})});
+  battle=new Battle({stage:current,upgrades:challenge?.upgrades||progress.upgrades,loadout:challenge?.loadout||progress.loadout,mastery:challenge?.mastery||progress.mastery,...(challenge?{rng:seededRng(challenge.combatSeed)}:{}),onEvent:combatEvent});
+  selected=null;busy=false;resolved=false;charge=0;overdrive=0;matches=0;bestChain=1;summonCount=0;eventCount=0;particles=[];floats=[];
   tileNodes.clear();boardEl.replaceChildren();boardEl.setAttribute('aria-busy','false');renderBoard();setLane(1);
-  $('stage-name').textContent=STAGES[progress.stage-1][0];
-  $('stage-counter').textContent=`Battle ${progress.stage} / ${TOTAL_STAGES}`;
-  $('chapter-label').textContent=`CHAPTER ${roman(getChapter(progress.stage).number)} · ${STAGES[progress.stage-1][2]}`;
-  $('stage-details').textContent=`Battle ${progress.stage} / ${TOTAL_STAGES} · ${difficultyName(progress.stage)} · ${battle.totalWaves} waves${battle.enemyBarrier?' · Boss battle':''}`;
-  document.body.style.setProperty('--chapter-color',getChapter(progress.stage).color);
+  $('stage-name').textContent=STAGES[current-1][0];
+  $('stage-counter').textContent=challenge?`Daily · ${challenge.date}`:`Battle ${current} / ${TOTAL_STAGES}`;
+  $('chapter-label').textContent=challenge?'THE DAILY FRONT · FIXED ARMY':`CHAPTER ${roman(getChapter(current).number)} · ${STAGES[current-1][2]}`;
+  $('stage-details').textContent=`${challenge?'Shared challenge':`Battle ${current} / ${TOTAL_STAGES}`} · ${difficultyName(current)} · ${battle.totalWaves} waves${battle.enemyBarrier?' · Boss battle':''}`;
+  document.body.style.setProperty('--chapter-color',getChapter(current).color);
   $('combo').textContent='×1';$('combo-label').textContent='COMBO POWER';
   $('board-message').textContent='Swap adjacent runes to summon troops.';
   makeRoster();paintScenery();persist();updateUI();drawBattle();
@@ -390,9 +457,19 @@ function showClassUnlocks(definitions) {
   content.prepend(panel);drawPortraits();
 }
 
+function showMasteryGains(awards,before) {
+  const panel=document.createElement('div');panel.className='mastery-gains';
+  panel.innerHTML=`<h3>Class mastery earned</h3>${awards.map(({classId,xp})=>{const record=progress.mastery[classId],oldRank=masteryRank(before[classId]?.xp||0),rank=masteryRank(record.xp);return `<span><b>${escape(CLASSES[classId].name)}</b> +${xp} XP${rank>oldRank?` · MASTERY ${rank}${oldRank<3&&rank>=3?' · SPECIALIZATIONS UNLOCKED':''}`:''}</span>`;}).join('')}<button class="text-button" data-action="army">Choose specializations →</button>`;
+  content.append(panel);
+}
+
 function finishBattle() {
   if(resolved||busy||battle.status==='playing')return;
+  if(dailyConfig){resolved=true;finishDaily();return;}
   resolved=true;const won=battle.status==='won',stage=progress.stage;
+  const priorMastery=progress.mastery;
+  const awards=calculateMasteryAwards(battle.classStats,{won,stage});
+  progress.mastery=applyMasteryAwards(progress.mastery,awards);
   const firstClear=won&&!progress.completed.includes(stage);
   const previousUnlock=progress.unlocked;
   const reward=Math.round(battle.reward())+(firstClear?35:0);
@@ -402,6 +479,7 @@ function finishBattle() {
   persist();sound(won?'win':'lose');
   openModal(won?(stage===TOTAL_STAGES?'The final rift is sealed.':'The front is yours.'):'The line has fallen.',`<div class="result-icon">${won?'✦':'♜'}</div><p class="result-intro">${won?(stage===TOTAL_STAGES?`You defeated ${escape(getStage(stage).bossName)} and completed all ${TOTAL_STAGES} battles of the Runeborn campaign. Replay any chapter to master a different army.`:stage===12?'The Eclipse Lord has fallen, but more frontiers await. Battle 13 is now unlocked.':`${STAGES[stage-1][0]} is secure. Train your army and prepare for the next battle.`):'Scout the enemy elements, protect your ranged attackers, and spend your earned gold before trying again.'}</p><div class="result-stats"><div><b>+${reward}</b><small>GOLD${firstClear?' · FIRST CLEAR +35':''}</small></div><div><b>${battle.kills}</b><small>ENEMIES DEFEATED</small></div><div><b>${bestChain}×</b><small>BEST CASCADE</small></div></div><div class="modal-actions"><button class="primary-button" data-next="${won?Math.min(TOTAL_STAGES,stage+1):stage}">${won&&stage<TOTAL_STAGES?'Next battle':'Play again'} →</button><button class="secondary-button" data-action="forge">Upgrade forge · ◆ ${progress.gold}</button><button class="secondary-button" data-action="campaign">Campaign map</button></div>`,'result',won?'VICTORY':'REGROUP & RETURN');
   if(newClasses.length)showClassUnlocks(newClasses);
+  if(awards.length)showMasteryGains(awards,priorMastery);
 }
 
 function cast(spell) {
@@ -416,6 +494,9 @@ content.addEventListener('click',event=>{
   if(button.dataset.guide){showGuide(button.dataset.guide);return;}
   if(button.dataset.army){showArmory(button.dataset.army);return;}
   if(button.dataset.equip){equipClass(button.dataset.equip);return;}
+  if(button.dataset.specialize){equipSpecialization(button.dataset.classId,button.dataset.specialize);return;}
+  if(button.dataset.daily){const config=createDaily(button.dataset.daily);if(config){startBattle(config.stage,config);begin();}return;}
+  if(button.dataset.shareDaily){shareDaily(button.dataset.shareDaily);return;}
   if(button.dataset.chapter){showCampaign(+button.dataset.chapter);return;}
   if(button.dataset.stage){confirmRestart(+button.dataset.stage);return;}
   if(button.dataset.restart){startBattle(+button.dataset.restart);begin();return;}
@@ -428,11 +509,14 @@ content.addEventListener('click',event=>{
     case 'guide':showGuide();break;
     case 'army':showArmory(button.dataset.key||'ember');break;
     case 'bonds':showBonds();break;
+    case 'daily':showDaily(dailyConfig?.date||todayKey());break;
+    case 'campaign-return':if(!dailyConfig){closeModal();}else{startBattle(progress.stage);begin();}break;
     case 'how':showHow();break;
-    case 'restart':confirmRestart();break;
+    case 'restart':if(dailyConfig){showDaily(dailyConfig.date);}else confirmRestart();break;
   }
 });
 content.addEventListener('change',event=>{
+  if(event.target.id==='daily-date'){showDaily(event.target.value);return;}
   if(event.target.id==='campaign-chapter'){showCampaign(+event.target.value);return;}
   if(event.target.id==='sound-setting'){progress.settings.sound=event.target.checked;persist();}
   if(event.target.id==='motion-setting'){progress.settings.reducedMotion=event.target.checked;persist();}
@@ -442,6 +526,7 @@ document.querySelectorAll('[data-spell]').forEach(button=>button.onclick=()=>cas
 $('menu-button').onclick=showMenu;$('forge-button').onclick=()=>showForge();$('campaign-button').onclick=()=>showCampaign();
 $('how-button').onclick=showHow;$('codex-button').onclick=()=>showGuide();$('hint-button').onclick=showHint;
 $('army-button').onclick=()=>showArmory();$('synergy-button').onclick=showBonds;
+$('daily-button').onclick=()=>showDaily();
 canvas.addEventListener('click',event=>{const rect=canvas.getBoundingClientRect(),y=(event.clientY-rect.top)/rect.height*530;setLane(clamp(Math.round((y-220)/120),0,2));});
 
 function updateUI() {
@@ -475,6 +560,7 @@ function combatEvent(event) {
   if(event.type==='damage'&&event.amount>=1&&floats.length<55)floats.push({x:event.x,y:laneY(event.lane)-67,text:String(Math.ceil(event.amount)),color:event.effective?'#ffe5a0':event.side==='player'?'#ffb5a7':'#e5eee2',life:.8});
   if(event.type==='heal'&&event.amount>=2&&floats.length<55)floats.push({x:event.x,y:laneY(event.lane)-70,text:'+'+Math.ceil(event.amount),color:'#b7efba',life:.8});
   if(event.type==='spawn'&&event.unit.boss)banner(`${event.unit.name} has entered the middle lane!`,4200);
+  if(event.type==='spawn'&&event.unit.affix&&!event.unit.boss)banner(`${event.unit.tag||'CHAMPION'} · ${event.unit.name} · lane ${event.unit.lane+1}`);
   if(event.type==='boss-phase')banner(`${event.name} · SECOND WIND! Break the empowered formation.`,3600);
   if(event.type==='troop-spell'){
     spawnParticles(event.x,laneY(event.lane)-35,colors[event.key]||'#d9c2f2',5);
@@ -521,7 +607,7 @@ function paintScenery() {
     sun:{sky:['#41414c','#998d6e','#dbc490'],mountains:['#6f6a5d','#7c7258','#5d6251'],ground:['#6e7052','#414d3e'],trees:'#3b4b42',moon:'#fff0b7'},
     void:{sky:['#24243d','#5b526f','#9c809c'],mountains:['#46435f','#534663','#373c54'],ground:['#484859','#2b3548'],trees:'#262c46',moon:'#d3b5e4'},
   };
-  const palette=palettes[getChapter(progress.stage).theme]||palettes.forest;
+  const palette=palettes[getChapter(battle.stage).theme]||palettes.forest;
   const sky=bg.createLinearGradient(0,0,0,300);sky.addColorStop(0,palette.sky[0]);sky.addColorStop(.65,palette.sky[1]);sky.addColorStop(1,palette.sky[2]);bg.fillStyle=sky;bg.fillRect(0,0,1000,530);
   bg.fillStyle=palette.moon;bg.beginPath();bg.arc(720,64,27,0,Math.PI*2);bg.fill();
   for(let layer=0;layer<3;layer++){
@@ -613,6 +699,7 @@ function drawUnit(u) {
   if(u.statuses.curse){ctx.strokeStyle='#df9dee';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(0,-76);ctx.lineTo(8,-66);ctx.lineTo(0,-56);ctx.lineTo(-8,-66);ctx.closePath();ctx.stroke();}
   if(u.statuses.regeneration){ctx.fillStyle='#b1e8ac';ctx.font='bold 14px system-ui';ctx.fillText('+',-22,-48-Math.sin(motionTime*2)*5);}
   if(u.statuses.rally||u.elite){ctx.fillStyle='#fbe4a6';ctx.textAlign='center';ctx.font='14px serif';ctx.fillText(u.elite?'✦':'↑',0,-size*.93);}
+  if(u.affix){ctx.strokeStyle=CHAMPION_AFFIXES[u.affix]?.color||'#f2c38d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-24,-size*.82);ctx.lineTo(-15,-size*.97);ctx.lineTo(0,-size*.86);ctx.lineTo(15,-size*.97);ctx.lineTo(24,-size*.82);ctx.stroke();}
   const hpWidth=u.boss?64:38,hpY=-size*.88;
   if(u.hp<u.maxHp||u.side==='enemy'||u.elite){ctx.fillStyle='#10212ac9';ctx.fillRect(-hpWidth/2,hpY,hpWidth,4);ctx.fillStyle=u.side==='enemy'?'#df9a98':'#a8d4b0';ctx.fillRect(-hpWidth/2,hpY,hpWidth*clamp(u.hp/u.maxHp,0,1),4);if(u.shield){ctx.fillStyle='#e9cf91';ctx.fillRect(-hpWidth/2,hpY-2,hpWidth*clamp(u.shield/u.maxHp,0,1),2);}}
   ctx.fillStyle=colors[u.key];ctx.beginPath();ctx.arc(0,8,3,0,Math.PI*2);ctx.fill();
@@ -660,4 +747,4 @@ function frame(time) {
 
 document.addEventListener('visibilitychange',()=>{lastFrame=performance.now();if(document.hidden&&started&&backdrop.hidden&&battle.status==='playing')showMenu();});
 window.addEventListener('pagehide',persist);
-makeRoster();startBattle(progress.completed.includes(progress.stage)&&progress.stage<progress.unlocked?progress.unlocked:progress.stage);showIntro();requestAnimationFrame(frame);
+makeRoster();startBattle(progress.completed.includes(progress.stage)&&progress.stage<progress.unlocked?progress.unlocked:progress.stage);showIntro();const linkedDaily=new URLSearchParams(location.search).get('daily');if(linkedDaily&&createDaily(linkedDaily))showDaily(linkedDaily);requestAnimationFrame(frame);

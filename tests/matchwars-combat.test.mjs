@@ -190,11 +190,11 @@ test('support abilities and elemental damage change tactical outcomes', () => {
   assert.ok(foe.statuses.burn);
 });
 
-test('84 campaign encounters expose finite, steadily increasing difficulty metrics', () => {
-  assert.equal(TOTAL_STAGES, 84);
+test('134 campaign encounters expose finite, steadily increasing difficulty metrics', () => {
+  assert.equal(TOTAL_STAGES, 134);
   assert.equal(difficultyForStage(-20).stage, 1);
-  assert.equal(difficultyForStage(500).stage, 84);
-  assert.equal(new Battle({ stage: 500 }).stage, 84);
+  assert.equal(difficultyForStage(500).stage, 134);
+  assert.equal(new Battle({ stage: 500 }).stage, 134);
   let prior;
   for (let stage = 1; stage <= TOTAL_STAGES; stage++) {
     const difficulty = difficultyForStage(stage);
@@ -215,8 +215,8 @@ test('84 campaign encounters expose finite, steadily increasing difficulty metri
     }
     prior = difficulty;
   }
-  assert.ok(prior.healthMultiplier < 3.5);
-  assert.ok(prior.attackMultiplier < 2.9);
+  assert.ok(prior.healthMultiplier < 4.1);
+  assert.ok(prior.attackMultiplier < 3.3);
   assert.ok(prior.unitsPerWave <= 14 && prior.scheduledUnits <= 100);
 });
 
@@ -235,7 +235,8 @@ test('the original twelve stages retain their original opening, waves, and enemy
 
 test('every chapter has a correctly named, forecast boss and later variants have distinct tactics', () => {
   const names = new Set(), baseTraits = JSON.stringify(ENEMIES);
-  for (let stage = 4; stage <= TOTAL_STAGES; stage += 4) {
+  for (let stage = 1; stage <= TOTAL_STAGES; stage++) {
+    if (!getStage(stage).boss) continue;
     const battle = new Battle({ stage });
     const bossIndex = battle._schedule.findIndex(entry => ENEMIES[entry.key].boss);
     const entry = battle._schedule[bossIndex];
@@ -251,11 +252,11 @@ test('every chapter has a correctly named, forecast boss and later variants have
     const boss = battle.units[0];
     assert.equal(boss.name, entry.name);
     assert.ok(boss.maxHp >= ENEMIES[entry.key].hp);
-    assert.ok(boss.attack < 65, 'late bosses do not one-shot a trained army');
+    assert.ok(boss.attack < 75, 'late bosses do not one-shot a trained army');
     assert.equal(!!boss.trait.secondWind, stage > 12);
     names.add(boss.name);
   }
-  assert.equal(names.size, 21);
+  assert.equal(names.size, 34);
   assert.equal(JSON.stringify(ENEMIES), baseTraits, 'variant traits never mutate shared definitions');
   const sky = new Battle({ stage: 44 });
   assert.equal(sky._enemyDefinition(sky._schedule.find(entry => ENEMIES[entry.key].boss)).flying, true);
@@ -290,10 +291,10 @@ test('later veterans and half-health boss phases are visible, bounded, and activ
 
 test('a full trained army leaves room for the final boss and resolves the final ward', () => {
   const battle = new Battle({ stage: TOTAL_STAGES });
-  for (let i = 0; i < 100; i++) battle.summon('sun', { count: 49, lane: i % 3, power: 8 });
+  for (let i = 0; i < 100; i++) battle.summon(Object.keys(TROOPS)[i % 6], { count: 49, lane: i % 3, power: 8 });
   assert.equal(battle.units.length, 40);
   advance(battle, 240, () => {
-    // A tank-only full army still needs command spells against ranged control formations.
+    // Command spells support the full formation against ranged control units.
     const lane = [0, 1, 2].sort((a, b) =>
       battle.units.filter(u => u.side === 'enemy' && u.lane === b).reduce((sum, u) => sum + u.hp, 0) -
       battle.units.filter(u => u.side === 'enemy' && u.lane === a).reduce((sum, u) => sum + u.hp, 0))[0];

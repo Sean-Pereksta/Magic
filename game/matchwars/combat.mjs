@@ -1,7 +1,8 @@
 /** Match Wars combat. Coordinates are logical units; time is always seconds. */
-import { TOTAL_STAGES, getStage, getChapter } from './campaign.mjs?v=3';
-import { CLASSES, DEFAULT_LOADOUT, normalizeLoadout, getTroop, COMBOS } from './classes.mjs?v=3';
-export { COMBOS } from './classes.mjs?v=3';
+import { TOTAL_STAGES, getStage, getChapter } from './campaign.mjs?v=4';
+import { CLASSES, DEFAULT_LOADOUT, normalizeLoadout, getTroop, COMBOS } from './classes.mjs?v=4';
+import { normalizeMastery, masteryBonuses } from './mastery.mjs?v=4';
+export { COMBOS } from './classes.mjs?v=4';
 export const ELEMENT_INFO = {
   ember: { name: 'Ember', color: '#ff805e', icon: 'flame', strong: 'grove', weak: 'tide' },
   tide: { name: 'Tide', color: '#61c7f4', icon: 'drop', strong: 'ember', weak: 'storm' },
@@ -51,6 +52,15 @@ export const ENEMIES = {
   soulleech: enemy('soulleech', 'Soul Leech', 'void', 'Siphon / life steal', 60, 9, 49, 160, 1.4, { spriteAtlas: 'enemies', unlockStage: 11, lifesteal: .35, spell: enemySpell('siphon', 'Soul Siphon', 9, 'voidrift', 'Drains a target and restores its own life.') }),
 };
 
+export const CHAMPION_AFFIXES = Object.freeze({
+  warded: Object.freeze({ name: 'Warded', color: '#d4c58f', description: 'Starts shielded and renews its ward once below half health.' }),
+  frenzied: Object.freeze({ name: 'Frenzied', color: '#e7a282', description: 'Moves and attacks faster, then periodically rallies itself.' }),
+  mender: Object.freeze({ name: 'Mender', color: '#9ed6a1', description: 'Periodically restores one wounded ally.' }),
+  hexer: Object.freeze({ name: 'Hexer', color: '#bca3d7', description: 'Periodically weakens and curses its nearest opponent.' }),
+  siphoner: Object.freeze({ name: 'Siphoner', color: '#c7a1ca', description: 'Steals life with its attacks.' }),
+  ironhide: Object.freeze({ name: 'Ironhide', color: '#aabdc4', description: 'Armored and reflects some melee health damage.' }),
+});
+
 const upgrade = (id, name, description, group, cost, max = 3) => ({ id, name, description, group, cost, max });
 export const UPGRADES = [
   upgrade('ember-burn', 'Lingering Embers', 'Burn deals +35% damage per rank.', 'ember', 50),
@@ -85,29 +95,34 @@ const rounded = (value, digits = 3) => Number(value.toFixed(digits));
 export function difficultyForStage(value = 1) {
   const stage = Math.floor(clamp(value, 1, TOTAL_STAGES));
   const beyond = Math.max(0, stage - 12);
+  const extension = Math.max(0, stage - 84);
+  const coreBeyond = Math.min(72, beyond);
+  const boss = getStage(stage).boss;
   const totalWaves = stage <= 12 ? 3 : stage < 33 ? 4 : stage < 57 ? 5 : 6;
   const unitsPerWave = stage <= 12 ? 4 + Math.min(4, Math.floor(stage / 3)) : 8 + Math.min(6, Math.floor((stage - 13) / 9));
-  const healthMultiplier = stage <= 12 ? 1 + (stage - 1) * .055 : 1.605 + beyond * .026;
-  const attackMultiplier = stage <= 12 ? healthMultiplier : 1.605 + beyond * .017;
-  const waveInterval = 20 - beyond * .075;
-  const spawnInterval = 1.65 - beyond * .009;
-  const bossHealthMultiplier = stage <= 12 ? 1 + Math.max(0, stage - 4) * .035 : 1.28 + beyond * .03;
-  const bossAttackMultiplier = stage <= 12 ? bossHealthMultiplier : 1.28 + beyond * .012;
+  const healthMultiplier = stage <= 12 ? 1 + (stage - 1) * .055 : 1.605 + coreBeyond * .026 + extension * .012;
+  const attackMultiplier = stage <= 12 ? healthMultiplier : 1.605 + coreBeyond * .017 + extension * .0075;
+  const waveInterval = 20 - coreBeyond * .075 - extension * .015;
+  const spawnInterval = 1.65 - coreBeyond * .009 - extension * .003;
+  const bossHealthMultiplier = stage <= 12 ? 1 + Math.max(0, stage - 4) * .035 : 1.28 + coreBeyond * .03 + extension * .016;
+  const bossAttackMultiplier = stage <= 12 ? bossHealthMultiplier : 1.28 + coreBeyond * .012 + extension * .006;
   const eliteEvery = stage <= 12 ? 0 : Math.max(7, 12 - Math.floor((stage - 13) / 6));
   const averageUnits = unitsPerWave + (totalWaves - 1) / 2;
   const waveAttackGrowth = stage <= 12 ? .035 : .018;
+  const championEvery = extension ? Math.max(10, 14 - Math.floor((extension - 1) / 12)) : 0;
   const pressure = averageUnits / waveInterval * (healthMultiplier + (totalWaves - 1) * .035 / 2) *
-    (attackMultiplier + (totalWaves - 1) * waveAttackGrowth / 2) * 100;
+    (attackMultiplier + (totalWaves - 1) * waveAttackGrowth / 2) * 100 * (championEvery ? 1 + .08 / championEvery : 1);
   return Object.freeze({
     stage, totalWaves, unitsPerWave, waveInterval: rounded(waveInterval), spawnInterval: rounded(spawnInterval),
     healthMultiplier: rounded(healthMultiplier), attackMultiplier: rounded(attackMultiplier),
     bossHealthMultiplier: rounded(bossHealthMultiplier), bossAttackMultiplier: rounded(bossAttackMultiplier),
-    speedMultiplier: rounded(1 + beyond * .0015), waveHealthGrowth: .035, waveAttackGrowth,
+    speedMultiplier: rounded(1 + coreBeyond * .0015 + extension * .0005), waveHealthGrowth: .035, waveAttackGrowth,
     eliteEvery, eliteChance: eliteEvery ? rounded(1 / eliteEvery) : 0,
+    championEvery, championChance: championEvery ? rounded(1 / championEvery) : 0,
     keepHealth: 180 + stage * 18 + beyond * 10,
-    scheduledUnits: totalWaves * unitsPerWave + totalWaves * (totalWaves - 1) / 2 + (stage % 4 === 0 ? 1 : 0),
+    scheduledUnits: totalWaves * unitsPerWave + totalWaves * (totalWaves - 1) / 2 + (boss ? 1 : 0),
     bossAt: rounded(5 + (totalWaves - 1) * waveInterval + 4 + Math.min(3, beyond * .08)),
-    pressure: rounded(pressure, 2), rewardBonus: 65 + stage * 12 + (stage % 4 === 0 ? 45 : 0),
+    pressure: rounded(pressure, 2), rewardBonus: 65 + stage * 12 + (boss ? 45 : 0),
   });
 }
 
@@ -126,13 +141,15 @@ export function elementMultiplier(attacker, defender) {
 
 /** A Battle never reads the DOM, storage, wall clock, or global randomness. */
 export class Battle {
-  constructor({ stage = 1, upgrades = {}, loadout = DEFAULT_LOADOUT, rng = Math.random, onEvent = () => {} } = {}) {
+  constructor({ stage = 1, upgrades = {}, loadout = DEFAULT_LOADOUT, mastery = {}, rng = Math.random, onEvent = () => {} } = {}) {
     this.stage = Math.floor(clamp(stage, 1, TOTAL_STAGES));
     this.difficulty = difficultyForStage(this.stage);
     this.chapter = getChapter(this.stage);
     this.stageInfo = getStage(this.stage);
     this.upgrades = Object.fromEntries(UPGRADES.map(def => [def.id, Math.floor(clamp(upgrades[def.id] || 0, 0, def.max))]));
     this.loadout = Object.freeze(normalizeLoadout(loadout));
+    this.mastery = Object.freeze(Object.fromEntries(Object.entries(normalizeMastery(mastery)).map(([id, record]) => [id, Object.freeze(record)])));
+    this.classStats = Object.fromEntries(Object.keys(CLASSES).map(id => [id, { deployments: 0, casts: 0, kills: 0, damage: 0, healing: 0, shields: 0, raised: 0 }]));
     this.rng = rng;
     this.onEvent = onEvent;
     this.units = [];
@@ -146,7 +163,7 @@ export class Battle {
     this.enemyMax = this.difficulty.keepHealth;
     this.playerHp = this.playerMax;
     this.enemyHp = this.enemyMax;
-    this.enemyBarrier = this.stage % 4 === 0;
+    this.enemyBarrier = this.stageInfo.boss;
     this.kills = 0;
     this.gold = 0;
     this.status = 'playing';
@@ -166,6 +183,12 @@ export class Battle {
   rank(id) { return this.upgrades[id] || 0; }
 
   troopFor(key) { return getTroop(key, this.loadout[key]); }
+
+  _stat(unit, field, amount = 1) {
+    const id = unit?.masteryClassId || unit?.classId;
+    if (unit?.side !== 'player' || !this.classStats[id] || !Number.isFinite(amount) || amount <= 0) return;
+    this.classStats[id][field] = Math.min(1_000_000, this.classStats[id][field] + amount);
+  }
 
   activeCombos(value = 1) {
     const lane = Math.floor(clamp(value, 0, 2));
@@ -205,10 +228,12 @@ export class Battle {
           if ((this.stage + wave + lane + formation) % 3 === 0) variant = formation % 2 && roster[4] ? 4 : 3;
         }
         const serial = schedule.length + 1;
+        const affixes = Object.keys(CHAMPION_AFFIXES);
         schedule.push({
           time: rounded(5 + (wave - 1) * this.difficulty.waveInterval + index * this.difficulty.spawnInterval),
           wave, lane, key: roster[variant].key,
           elite: !!this.difficulty.eliteEvery && serial % this.difficulty.eliteEvery === 0,
+          affix: this.difficulty.championEvery && serial % this.difficulty.championEvery === 0 ? affixes[(serial + this.chapter.number + wave) % affixes.length] : null,
         });
       }
       if (wave === this.totalWaves && this.stageInfo.boss) {
@@ -222,13 +247,22 @@ export class Battle {
     return this._schedule.slice(this._next, this._next + 9).map(entry => {
       const def = this._enemyDefinition(entry);
       const counter = Object.keys(TROOPS).find(key => ELEMENT_INFO[key].strong === def.element) || 'storm';
-      return { ...entry, time: Math.max(0, entry.time - this.time), element: def.element, name: def.name, role: def.role, counter, boss: !!def.boss, elite: !!entry.elite };
+      return { ...entry, time: Math.max(0, entry.time - this.time), element: def.element, name: def.name, role: def.role, counter, boss: !!def.boss, elite: !!entry.elite, tag: def.tag || null };
     });
   }
 
   _enemyDefinition(entry) {
     const base = ENEMIES[entry.key];
-    if (!base.boss) return entry.elite ? { ...base, elite: true, name: `Veteran ${base.name}`, role: `Veteran / ${base.role}`, armor: Math.min(.35, (base.armor || 0) + .04) } : base;
+    if (!base.boss) {
+      const veteran = entry.elite ? { ...base, elite: true, name: `Veteran ${base.name}`, role: `Veteran / ${base.role}`, armor: Math.min(.35, (base.armor || 0) + .04) } : base;
+      const affix = CHAMPION_AFFIXES[entry.affix];
+      if (!affix) return veteran;
+      return { ...veteran, affix: entry.affix, tag: `${affix.name} Champion`, name: `${affix.name} ${base.name}`, role: `${affix.name} / ${base.role}`,
+        armor: Math.min(.4, (veteran.armor || 0) + (entry.affix === 'ironhide' ? .08 : 0)),
+        reflect: entry.affix === 'ironhide' ? .08 : veteran.reflect || 0,
+        lifesteal: Math.min(.45, (veteran.lifesteal || 0) + (entry.affix === 'siphoner' ? .15 : 0)),
+      };
+    }
     const tricks = {
       4: { shield: 65, armor: .18 },
       5: { chain: true, flying: true },
@@ -249,9 +283,25 @@ export class Battle {
       20: { flying: true, shieldBreak: true, splash: 85, shield: 200 },
       21: { chain: true, splash: 85, shield: 260, summonLimit: 8, shieldBreak: true, poison: true },
     };
-    return { ...base, ...tricks[this.chapter.number], name: entry.name || this.stageInfo.bossName || base.name,
-      secondWind: this.stage > 12, phasePower: .12 + Math.max(0, this.stage - 12) * .002,
+    const late = this.stage > 84 ? [
+      { armor: .16, shield: 160, shieldBreak: true }, { chain: true, shield: 150 },
+      { healer: true, shield: 140, regen: 5 }, { poison: true, splash: 60, shield: 170 },
+    ][(this.chapter.number - 22) % 4] : {};
+    const bossSpell = this.stage > 84 ? base.key === 'rootking' ? enemySpell('boss-vines', 'Sovereign Roots', 14, 'vines', 'Roots two nearby attackers.') : base.key === 'frostqueen' ? enemySpell('boss-whiteout', 'Royal Whiteout', 15, 'frostnova', 'Briefly freezes two nearby attackers.') : enemySpell('boss-ruin', 'Ruin Pulse', 15, 'voidrift', 'Sears and weakens two nearby attackers.') : null;
+    return { ...base, ...tricks[this.chapter.number], ...late, ...(bossSpell ? { spell: bossSpell } : {}), name: entry.name || this.stageInfo.bossName || base.name,
+      secondWind: this.stage > 12, phaseThresholds: this.stage > 100 ? [.65, .3] : [.5], phasePower: Math.min(.3, .12 + Math.max(0, this.stage - 12) * .002),
     };
+  }
+
+  /** One event reinforcement; never advances the encounter director or its waves. */
+  reinforce(key, { lane = 1, affix = null } = {}) {
+    if (this.status !== 'playing' || this.units.length >= 64) return null;
+    let definition = Object.prototype.hasOwnProperty.call(ENEMIES, key) ? ENEMIES[key] : null;
+    if (!definition && ELEMENT_INFO[key]) definition = Object.values(ENEMIES).find(enemy => enemy.element === key && !enemy.boss && (enemy.unlockStage || 1) <= this.stage);
+    if (!definition || definition.boss) return null;
+    const entry = { key: definition.key, lane: Math.floor(clamp(lane, 0, 2)), wave: Math.max(1, this.wave), affix: CHAMPION_AFFIXES[affix] ? affix : null };
+    const index = this.units.length;
+    return this._spawnEnemy(entry) ? this.units[index] : null;
   }
 
   summon(key, { lane = 1, power = 1, chain = 1, buffs = [], elite = false, count = 3 } = {}) {
@@ -284,27 +334,32 @@ export class Battle {
       const initialShield = u.shield; u.shield = 0;
       this.units.push(u);
       this._formationRevision++;
-      this._shield(u, initialShield);
+      this._shield(u, initialShield, u);
       this.synergy[key]++;
+      this._stat(u, 'deployments');
       spawned.push(u);
       this._emit('spawn', { unit: u, side: 'player', key, lane });
       this._effect('summon', u.x, lane, def.color, .65);
       if (def.shieldOnSpawn) {
         const ally = this.units.filter(other => other.side === 'player' && other.lane === lane && other.id !== u.id).sort((a, b) => Math.abs(a.x - u.x) - Math.abs(b.x - u.x))[0];
-        if (ally) { this._shield(ally, 16 + this.rank('sun-shield') * 18); this._effect('shield', ally.x, lane, '#ffe3a0', .7); }
+        if (ally) { this._shield(ally, 16 + this.rank('sun-shield') * 18, u); this._effect('shield', ally.x, lane, '#ffe3a0', .7); }
       }
     }
     return spawned;
   }
 
   _makeUnit(def, side, lane, strength = 1) {
+    const mastery = side === 'player' && def.id && CLASSES[def.id] ? masteryBonuses(def.id, this.mastery[def.id]) : null;
+    const mods = mastery?.mods || {};
     return {
       id: ++this._id, key: def.element, enemyType: side === 'enemy' ? def.key : null,
       name: def.name, role: def.role, element: def.element, color: def.color,
-      side, lane, power: strength, x: side === 'player' ? 85 : 915, hp: def.hp * strength,
-      maxHp: def.hp * strength, attack: def.attack * strength, speed: def.speed,
-      range: def.range, interval: def.interval, cooldown: .3, state: 'walk', anim: 0,
-      shield: def.shield || 0, armor: def.armor || 0, buffs: [], boss: !!def.boss,
+      side, lane, power: strength, x: side === 'player' ? 85 : 915, hp: def.hp * strength * (mastery?.hp || 1),
+      maxHp: def.hp * strength * (mastery?.hp || 1), attack: def.attack * strength * (mastery?.attack || 1), speed: def.speed * (mods.speed || 1),
+      range: def.range + (mods.range || 0), interval: def.interval / (mods.attackRate || 1), cooldown: .3, state: 'walk', anim: 0,
+      shield: def.shield || 0, armor: Math.min(.5, (def.armor || 0) + (mods.armor || 0)), buffs: [], boss: !!def.boss,
+      mods, masteryRank: mastery?.rank || 1, specialization: mastery?.specialization?.id || null, specializationName: mastery?.specialization?.name || null,
+      masteryCooldown: mastery?.cooldown || 1, affix: def.affix || null, tag: def.tag || null, affixCooldown: 8,
       classId: side === 'player' ? def.id || null : null, spriteAtlas: def.spriteAtlas || 'troops', spriteRow: def.spriteRow, spriteColumn: def.spriteColumn || 0,
       spell: def.spell || null, spellCooldown: def.spell ? 2.5 + (this._id % 3) * .4 : 0, casting: 0, spellCasts: 0, raises: 0,
       statuses: {}, supportCooldown: .8, elite: !!def.elite, undead: false,
@@ -322,6 +377,9 @@ export class Battle {
     const u = this._makeUnit(def, 'enemy', entry.lane, healthScale);
     u.attack = def.attack * attackScale;
     u.speed *= this.difficulty.speedMultiplier;
+    if (u.affix) { u.hp *= 1.12; u.maxHp = u.hp; u.attack *= 1.05; }
+    if (u.affix === 'warded') u.shield += 45 + u.maxHp * .12;
+    if (u.affix === 'frenzied') { u.speed *= 1.08; u.interval /= 1.12; }
     if (this.stage > 12) u.shield *= Math.sqrt(healthScale);
     u.x += (this.units.filter(other => other.side === 'enemy' && other.lane === u.lane && other.x > 890).length) * 20;
     this.units.push(u);
@@ -408,12 +466,15 @@ export class Battle {
 
   _tickUnit(u, dt, alive) {
     if (u.dead) return;
-    if (u.boss && u.trait.secondWind && !u.phaseUsed && u.hp < u.maxHp * .5) {
+    const thresholds = u.trait.phaseThresholds || [.5];
+    const phaseIndex = u.phaseIndex || 0;
+    if (u.boss && u.trait.secondWind && phaseIndex < thresholds.length && u.hp < u.maxHp * thresholds[phaseIndex]) {
       u.phaseUsed = true;
+      u.phaseIndex = phaseIndex + 1;
       this._status(u, 'rally', 9, u.trait.phasePower);
       u.shield += 25 + this.stage;
       this._effect('rally', u.x, u.lane, u.color, 1);
-      this._emit('boss-phase', { name: u.name, unitId: u.id, lane: u.lane, x: u.x });
+      this._emit('boss-phase', { name: u.name, unitId: u.id, lane: u.lane, x: u.x, phase: u.phaseIndex });
     }
     u.anim += dt;
     u.hitFlash = Math.max(0, u.hitFlash - dt);
@@ -435,11 +496,12 @@ export class Battle {
     if (u.dead) return;
     if (u.trait.regen) u.hp = Math.min(u.maxHp, u.hp + u.trait.regen * dt);
     const allies = alive.filter(other => other.side === u.side && other.lane === u.lane && !other.dead);
+    if (u.affix) this._tickAffix(u, dt, allies, alive);
     if ((u.side === 'player' && u.trait.passiveHeal || u.side === 'enemy' && u.trait.healer) && u.supportCooldown <= 0) {
       const target = allies.filter(other => Math.abs(other.x - u.x) < 190 && other.hp < other.maxHp).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
       if (target) {
-        const amount = u.side === 'player' ? 12 * (1 + this.rank('grove-heal') * .25) : 10 + this.stage * .6;
-        this._heal(target, amount);
+        const amount = u.side === 'player' ? 12 * (1 + this.rank('grove-heal') * .25) * (u.mods.passiveHealPower || 1) : 10 + Math.min(50, this.stage * .6);
+        this._heal(target, amount, false, u);
         u.supportCooldown = 3;
       }
     }
@@ -511,9 +573,9 @@ export class Battle {
 
   _attack(u, target) {
     let amount = u.attack * (1 + (u.statuses.rally?.power || 0));
-    if (u.side === 'player' && u.trait.execute && target.hp / target.maxHp < .35) amount *= 1.4 + this.rank('void-execute') * .2;
+    if (u.side === 'player' && u.trait.execute && target.hp / target.maxHp < .35) amount *= 1.4 + this.rank('void-execute') * .2 + (u.mods.executeBonus || 0);
     if (u.range > 80) {
-      if (this.projectiles.length < 100) this.projectiles.push({ id: ++this._projectileId, sourceId: u.id, targetId: target.id, x: u.x, lane: u.lane, element: u.element, color: u.color, side: u.side, speed: 470, damage: amount, age: 0, trait: u.trait, key: u.key, statuses: { ...u.statuses } });
+      if (this.projectiles.length < 100) this.projectiles.push({ id: ++this._projectileId, sourceId: u.id, targetId: target.id, x: u.x, lane: u.lane, element: u.element, color: u.color, side: u.side, speed: 470, damage: amount, age: 0, trait: u.trait, key: u.key, classId: u.classId, masteryClassId: u.masteryClassId, mods: u.mods, statuses: { ...u.statuses } });
     } else {
       this._impactAttack(u, target, amount);
       this._effect('slash', target.x, target.lane, u.color, .25);
@@ -541,10 +603,10 @@ export class Battle {
     const dealt = this._hit(u, target, damage, { shieldBreak: !!u.trait.shieldBreak });
     const player = u.side === 'player';
     const key = u.key;
-    if (u.trait.burn) this._status(target, 'burn', 4, (player ? 3.5 * (1 + this.rank('ember-burn') * .35) : 2.4));
-    if (u.trait.slow) this._status(target, 'slow', player ? 3 + this.rank('tide-slow') : 2.4, player ? .32 + this.rank('tide-slow') * .06 : .25);
-    if (u.trait.poison) this._status(target, 'poison', 5, player ? 3 * (1 + this.rank('grove-poison') * .35) : 2.8);
-    const splash = u.trait.splash ? u.trait.splash + (player ? this.rank('ember-splash') * 18 : 0) : 0;
+    if (u.trait.burn) this._status(target, 'burn', 4 + (u.mods?.burnDuration || 0), (player ? 3.5 * (1 + this.rank('ember-burn') * .35) : 2.4) * (u.mods?.burnPower || 1));
+    if (u.trait.slow) this._status(target, 'slow', (player ? 3 + this.rank('tide-slow') : 2.4) + (u.mods?.slowDuration || 0), Math.min(.65, (player ? .32 + this.rank('tide-slow') * .06 : .25) + (u.mods?.slowPower || 0)));
+    if (u.trait.poison) this._status(target, 'poison', 5, (player ? 3 * (1 + this.rank('grove-poison') * .35) : 2.8) * (u.mods?.poisonPower || 1));
+    const splash = u.trait.splash ? u.trait.splash + (player ? this.rank('ember-splash') * 18 : 0) + (u.mods?.splashRadius || 0) : 0;
     if (splash) {
       for (const other of this.units.filter(other => other.id !== target.id && !other.dead && other.side !== u.side && other.lane === u.lane && Math.abs(other.x - target.x) <= splash)) {
         this._hit(u, other, damage * (player ? .45 + this.rank('ember-splash') * .1 : .4));
@@ -552,30 +614,56 @@ export class Battle {
       this._effect('burst', target.x, target.lane, u.color, .45);
     }
     if (u.trait.chain) {
-      const others = this.units.filter(other => other.id !== target.id && !other.dead && other.side !== u.side && other.lane === u.lane && Math.abs(other.x - target.x) < 170).sort((a, b) => Math.abs(a.x - target.x) - Math.abs(b.x - target.x)).slice(0, player ? 1 + this.rank('storm-chain') : 1);
+      const others = this.units.filter(other => other.id !== target.id && !other.dead && other.side !== u.side && other.lane === u.lane && Math.abs(other.x - target.x) < 170).sort((a, b) => Math.abs(a.x - target.x) - Math.abs(b.x - target.x)).slice(0, player ? Math.min(5, 1 + this.rank('storm-chain') + (u.mods?.chainTargets || 0)) : 1);
       for (const other of others) {
         this._hit(u, other, damage * .55);
         this.effects.push({ type: 'lightning', x: target.x, toX: other.x, lane: u.lane, color: u.color, life: .25, maxLife: .25, age: 0 });
       }
     }
-    const drain = (u.trait.lifesteal || 0) + (player && key === 'void' ? this.rank('void-drain') * .1 : 0);
-    if (drain && !u.dead && u.hp > 0) this._heal(u, dealt * drain, true);
+    const drain = Math.min(.7, (u.trait.lifesteal || 0) + (player && key === 'void' ? this.rank('void-drain') * .1 : 0) + (u.mods?.drainBonus || 0));
+    if (drain && !u.dead && u.hp > 0) this._heal(u, dealt * drain, true, u);
   }
 
-  _shield(target, amount) {
+  _shield(target, amount, source = null) {
     if (target.dead || amount <= 0) return 0;
     let bonus = 0;
     if (target.side === 'player') {
       if (this._hasCombo(target.lane, 'verdant-covenant')) bonus += .2;
       if (this._hasCombo(target.lane, 'steamguard')) bonus += .1;
     }
-    const added = Math.min(amount * (1 + bonus), Math.max(0, target.maxHp * .8 + 50 - target.shield));
+    const added = Math.min(amount * (1 + bonus) * (source?.mods?.shieldPower || target.mods?.shieldPower || 1), Math.max(0, target.maxHp * .8 + 50 - target.shield));
     target.shield += added;
+    this._stat(source, 'shields', added);
     return added;
   }
 
   _cleanse(target) {
     for (const name of ['burn', 'poison', 'weakness', 'curse']) delete target.statuses[name];
+  }
+
+  _tickAffix(u, dt, allies, alive) {
+    u.affixCooldown -= dt;
+    if (u.affix === 'warded' && !u.wardRenewed && u.hp < u.maxHp * .5) {
+      u.wardRenewed = true;
+      this._shield(u, 35 + u.maxHp * .1, u);
+      this._effect('blessing', u.x, u.lane, '#d4c58f', .7, { label: 'Ward renewed' });
+      this._emit('enemy-affix', { unitId: u.id, affix: u.affix, tag: u.tag, lane: u.lane, x: u.x });
+      return;
+    }
+    if (u.affixCooldown > 0) return;
+    let useful = false;
+    if (u.affix === 'frenzied') {
+      this._status(u, 'rally', 5, .16); useful = true;
+      this._effect('rally', u.x, u.lane, '#e7a282', .6, { label: 'Frenzy' });
+    } else if (u.affix === 'mender') {
+      const target = allies.filter(other => !other.dead && other.hp < other.maxHp - 1 && Math.abs(other.x - u.x) < 220).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+      if (target) { this._heal(target, 18 + Math.min(14, this.stage * .1), false, u); this._effect('healbeam', u.x, u.lane, '#9ed6a1', .65, { toX: target.x, label: 'Mending pulse' }); useful = true; }
+    } else if (u.affix === 'hexer') {
+      const target = alive.filter(other => !other.dead && other.side !== u.side && other.lane === u.lane && Math.abs(other.x - u.x) < 250).sort((a, b) => Math.abs(a.x - u.x) - Math.abs(b.x - u.x))[0];
+      if (target) { this._status(target, 'weakness', 4, .15); this._status(target, 'curse', 4, .08); this._effect('curse', u.x, u.lane, '#bca3d7', .65, { toX: target.x, label: 'Champion hex' }); useful = true; }
+    }
+    u.affixCooldown = useful ? 14 : 1;
+    if (useful) this._emit('enemy-affix', { unitId: u.id, affix: u.affix, tag: u.tag, lane: u.lane, x: u.x });
   }
 
   /** Cast only when there is a useful target; idle healers and necromancers wait. */
@@ -588,87 +676,102 @@ export class Battle {
     const wounded = friends.filter(other => other.hp < other.maxHp - 1 || other.statuses.burn || other.statuses.poison || other.statuses.curse)
       .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
     const player = u.side === 'player';
+    const mods = u.mods || {};
     const strength = player ? Math.sqrt(clamp(u.power || 1, .25, 8)) * (1 + this.rank('spellcraft') * .05) * (u.key === 'ember' ? 1 + this.rank('ember-splash') * .08 : 1) : 1;
     const healPower = (player ? 22 * (u.key === 'grove' ? 1 + this.rank('grove-heal') * .25 : 1) : 16 + Math.min(20, this.stage * .25)) * strength;
     const blast = (base, factor = .65) => (base + u.attack * factor) * strength;
     const hit = (target, amount, options = {}) => this._hit(u, target, amount, options);
-    const debuff = (target, name, seconds, power) => this._status(target, name, seconds, power);
+    const heal = (target, amount, silent = false) => this._heal(target, amount * (mods.healPower || 1), silent, u);
+    const shield = (target, amount) => this._shield(target, amount, u);
+    const debuff = (target, name, seconds, power) => {
+      if (name === 'burn') { seconds += mods.burnDuration || 0; power *= mods.burnPower || 1; }
+      if (name === 'poison') power *= mods.poisonPower || 1;
+      if (name === 'slow') { seconds += mods.slowDuration || 0; power = Math.min(.65, power + (mods.slowPower || 0)); }
+      if (name === 'freeze') seconds += mods.freezeDuration || 0;
+      if (name === 'root') seconds += mods.rootDuration || 0;
+      if (name === 'curse') { seconds += mods.curseDuration || 0; power = Math.min(.3, power + (mods.cursePower || 0)); }
+      if (name === 'weakness') power = Math.min(.4, power + (mods.weaknessPower || 0));
+      this._status(target, name, seconds, power);
+    };
     let target = near[0];
     let useful = false;
     switch (spell.id) {
       case 'firewave':
         if (!near.length) return false;
-        for (const foe of near.slice(0, 3)) { hit(foe, blast(8)); debuff(foe, 'burn', 5, 3 * (1 + this.rank('ember-burn') * .35)); }
+        for (const foe of near.slice(0, 3 + (mods.spellTargets || 0))) { hit(foe, blast(8)); debuff(foe, 'burn', 5, 3 * (1 + this.rank('ember-burn') * .35)); }
         useful = true; break;
       case 'cinder-charge': case 'hound-pounce':
         if (!target) return false;
         u.x = clamp(u.x + Math.sign(target.x - u.x) * Math.min(40, Math.max(0, Math.abs(target.x - u.x) - 38)), 55, 945);
-        hit(target, blast(12)); debuff(target, 'burn', 4, 3);
-        if (player) this._shield(u, 24 * strength);
+        hit(target, blast(12) * (mods.chargeDamage || 1)); debuff(target, 'burn', 4, 3);
+        if (mods.chargeRoot) debuff(target, 'root', mods.chargeRoot, 1);
+        if (mods.chargeFortify) this._status(u, 'fortify', 4, mods.chargeFortify);
+        if (player) shield(u, 24 * strength);
         useful = true; break;
       case 'phoenix-flare':
         if (!near.length && !wounded.length) return false;
-        for (const foe of near.slice(0, 2)) { hit(foe, blast(7)); debuff(foe, 'burn', 4, 3); }
-        if (wounded[0]) this._heal(wounded[0], healPower);
+        for (const foe of near.slice(0, 2 + (mods.phoenixTargets || 0))) { hit(foe, blast(7)); debuff(foe, 'burn', 4, 3); }
+        if (wounded[0]) heal(wounded[0], healPower);
         useful = true; break;
       case 'piercing-frost':
         if (!target) return false;
-        for (const foe of near.slice(0, 2)) { hit(foe, blast(9)); debuff(foe, 'slow', 4 + this.rank('tide-slow'), .4 + this.rank('tide-slow') * .04); }
+        for (const foe of near.slice(0, 2 + (mods.pierceTargets || 0))) { hit(foe, blast(9)); debuff(foe, 'slow', 4 + this.rank('tide-slow'), .4 + this.rank('tide-slow') * .04); }
         useful = true; break;
       case 'frostnova':
         if (!target) return false;
-        for (const foe of near.slice(0, 3)) { hit(foe, blast(5)); debuff(foe, 'freeze', 1.35, 1); debuff(foe, 'slow', 4, .35); }
+        for (const foe of near.slice(0, 3 + (mods.freezeTargets || 0))) { hit(foe, blast(5)); debuff(foe, 'freeze', 1.35, 1); debuff(foe, 'slow', 4, .35); }
         useful = true; break;
       case 'restorative-tide':
         if (!wounded.length) return false;
-        for (const ally of wounded.slice(0, 2)) { this._cleanse(ally); this._heal(ally, healPower * 1.15 * (1 + this.rank('tide-slow') * .1)); }
+        for (const ally of wounded.slice(0, 2 + (mods.healingTargets || 0))) { this._cleanse(ally); heal(ally, healPower * 1.15 * (1 + this.rank('tide-slow') * .1)); if (mods.cleanseShield) shield(ally, mods.cleanseShield); }
         target = wounded[0]; useful = true; break;
       case 'living-roots':
         if (!target && !wounded.length) return false;
         if (target) { hit(target, blast(4)); debuff(target, 'root', 2, 1); }
-        if (wounded[0]) this._heal(wounded[0], healPower * .8);
+        if (wounded[0]) { heal(wounded[0], healPower * .8); if (mods.rootHealShield) shield(wounded[0], mods.rootHealShield); }
         useful = true; break;
       case 'renewal-garden':
         if (!wounded.length) return false;
-        for (const ally of wounded.slice(0, 3)) { this._heal(ally, healPower * .7); this._status(ally, 'regeneration', 5, 4 * (1 + this.rank('grove-poison') * .35) * strength); }
+        for (const ally of wounded.slice(0, 3 + (mods.healingTargets || 0))) { heal(ally, healPower * .7); this._status(ally, 'regeneration', 5 + (mods.regenDuration || 0), 4 * (1 + this.rank('grove-poison') * .35) * strength * (mods.regenPower || 1)); if (mods.regenerationShield) shield(ally, mods.regenerationShield); }
         target = wounded[0]; useful = true; break;
       case 'thicket-bulwark':
         if (!target && u.hp > u.maxHp * .85) return false;
-        this._shield(u, 40 * strength * (1 + this.rank('grove-heal') * .25));
-        for (const foe of near.slice(0, 2)) { debuff(foe, 'root', 2.4, 1); hit(foe, blast(3)); }
+        shield(u, 40 * strength * (1 + this.rank('grove-heal') * .25));
+        for (const foe of near.slice(0, 2 + (mods.rootTargets || 0))) { debuff(foe, 'root', 2.4, 1); hit(foe, blast(3) * (mods.thornDamage || 1)); }
         useful = true; break;
       case 'chain-lance': case 'thunderstorm':
         if (!target) return false;
-        for (const foe of near.slice(0, Math.min(5, 3 + this.rank('storm-chain')))) hit(foe, blast(spell.id === 'thunderstorm' ? 9 : 5));
+        for (const foe of near.slice(0, Math.min(6, Math.min(5, 3 + this.rank('storm-chain')) + (mods.spellTargets || 0)))) { hit(foe, blast(spell.id === 'thunderstorm' ? 9 : 5)); if (mods.lightningSlow) debuff(foe, 'slow', 4, mods.lightningSlow); }
         useful = true; break;
       case 'zephyr-aura':
         if (!target && friends.length < 2) return false;
-        for (const ally of friends.slice(0, Math.min(5, 3 + this.rank('storm-chain')))) this._status(ally, 'rally', 6, .22);
-        for (const foe of near.slice(0, Math.min(5, 2 + this.rank('storm-chain')))) { foe.x = clamp(foe.x + (player ? 25 : -25), 55, 945); hit(foe, blast(2, .35)); }
+        for (const ally of friends.slice(0, Math.min(5, 3 + this.rank('storm-chain')))) this._status(ally, 'rally', 6 + (mods.rallyDuration || 0), .22 + (mods.rallyPower || 0));
+        for (const foe of near.slice(0, Math.min(6, Math.min(5, 2 + this.rank('storm-chain')) + (mods.windTargets || 0)))) { foe.x = clamp(foe.x + (player ? 1 : -1) * (25 + (mods.pushDistance || 0)), 55, 945); hit(foe, blast(2, .35) * (mods.windDamage || 1)); }
         useful = true; break;
       case 'dawn-barrier':
         if (!target && !wounded.length) return false;
         for (const ally of [...friends].sort((a, b) => a.shield - b.shield).slice(0, 2)) {
-          this._shield(ally, (25 + this.rank('sun-shield') * 6) * strength);
-          this._status(ally, 'fortify', 5, .12);
+          shield(ally, (25 + this.rank('sun-shield') * 6) * strength);
+          this._status(ally, 'fortify', 5, .12 + (mods.barrierFortify || 0));
         }
+        if (target && mods.barrierRadiance) hit(target, mods.barrierRadiance * strength);
         useful = true; break;
       case 'cleansing-radiance':
         if (!wounded.length && !near.some(foe => foe.undead || foe.element === 'void')) return false;
-        for (const ally of wounded.slice(0, 3)) { this._cleanse(ally); this._heal(ally, healPower); }
-        if (friends[0]) this._shield(friends[0], (18 + this.rank('sun-shield') * 5) * strength);
-        for (const foe of near.filter(foe => foe.undead || foe.element === 'void').slice(0, 3)) hit(foe, blast(12) * (foe.undead ? 2 : 1));
+        for (const ally of wounded.slice(0, 3)) { this._cleanse(ally); heal(ally, healPower); if (mods.cleanseFortify) this._status(ally, 'fortify', 4, mods.cleanseFortify); }
+        for (const ally of friends.slice(0, 1 + (mods.priestShieldTargets || 0))) shield(ally, (18 + this.rank('sun-shield') * 5) * strength);
+        for (const foe of near.filter(foe => foe.undead || foe.element === 'void').slice(0, 3)) hit(foe, blast(12) * (foe.undead ? 2 : 1) * (mods.purgePower || 1));
         useful = true; break;
       case 'solar-verdict': case 'inquisition':
         if (!target) return false;
         target = near.find(foe => foe.undead) || target;
-        hit(target, blast(18) * (target.undead ? 2 : 1), { shieldBreak: true });
+        for (const foe of [target, ...near.filter(foe => foe.id !== target.id)].slice(0, 1 + (mods.verdictTargets || 0))) hit(foe, blast(18) * (foe.undead ? 2 : 1) * (mods.verdictPower || 1) * (foe.hp / foe.maxHp < .35 ? 1 + (mods.verdictExecute || 0) : 1), { shieldBreak: true });
         useful = true; break;
       case 'soul-harvest': case 'siphon': {
         if (!target) return false;
-        const execute = spell.id === 'soul-harvest' && target.hp / target.maxHp < .35 ? 1.6 + this.rank('void-execute') * .15 : 1;
+        const execute = spell.id === 'soul-harvest' && target.hp / target.maxHp < (mods.harvestThreshold || .35) ? 1.6 + this.rank('void-execute') * .15 + (mods.executeBonus || 0) : 1;
         const drained = hit(target, blast(12) * execute);
-        this._heal(u, Math.max(healPower * .7, drained * .45));
+        heal(u, Math.max(healPower * .7, drained * .45) * (mods.harvestHeal || 1));
         useful = true; break;
       }
       case 'raise-boneguard': case 'enemy-raise':
@@ -680,16 +783,17 @@ export class Battle {
           hit(foe, blast(5)); debuff(foe, 'weakness', 6, .25); debuff(foe, 'curse', 6, .15 + (player ? this.rank('void-execute') * .03 : 0));
           if (spell.id === 'hexfire') debuff(foe, 'burn', 5, 3);
         }
+        if (mods.curseShield) shield(u, mods.curseShield * Math.min(2, near.length));
         useful = true; break;
       case 'tidal-shell':
         if (!target && u.hp > u.maxHp * .85) return false;
-        this._shield(u, 35 + this.stage * .2);
+        shield(u, 35 + this.stage * .2);
         if (target) debuff(target, 'root', 1.5, 1);
         useful = true; break;
       case 'siren-song':
         if (!target && !wounded.length) return false;
         for (const foe of near.slice(0, 3)) debuff(foe, 'slow', 4, .4);
-        if (wounded[0]) this._heal(wounded[0], healPower);
+        if (wounded[0]) heal(wounded[0], healPower);
         useful = true; break;
       case 'snare-web':
         if (!target) return false;
@@ -698,11 +802,11 @@ export class Battle {
       case 'spore-cloud':
         if (!target && !wounded.length) return false;
         for (const foe of near.slice(0, 3)) { hit(foe, blast(3)); debuff(foe, 'poison', 5, 4); }
-        if (wounded[0]) this._heal(wounded[0], healPower);
+        if (wounded[0]) heal(wounded[0], healPower);
         useful = true; break;
       case 'static-carapace':
         if (!target) return false;
-        this._shield(u, 30);
+        shield(u, 30);
         for (const foe of near.slice(0, 2)) hit(foe, blast(8));
         useful = true; break;
       case 'djinn-cyclone':
@@ -714,18 +818,31 @@ export class Battle {
         for (const ally of friends.slice(0, 3)) this._status(ally, 'rally', 5, .18);
         for (const foe of near.slice(0, 2)) hit(foe, blast(5));
         useful = true; break;
+      case 'boss-vines':
+        if (!target) return false;
+        for (const foe of near.slice(0, 2)) { hit(foe, blast(4, .4)); debuff(foe, 'root', 1.25, 1); }
+        useful = true; break;
+      case 'boss-whiteout':
+        if (!target) return false;
+        for (const foe of near.slice(0, 2)) { hit(foe, blast(4, .4)); debuff(foe, 'freeze', .8, 1); }
+        useful = true; break;
+      case 'boss-ruin':
+        if (!target) return false;
+        for (const foe of near.slice(0, 2)) { hit(foe, blast(5, .4)); debuff(foe, 'weakness', 4, .12); }
+        useful = true; break;
       default: return false;
     }
     if (!useful) return false;
-    u.spellCooldown = spell.cooldown;
+    u.spellCooldown = spell.cooldown * (u.masteryCooldown || 1);
     u.casting = .45; u.anim = 0; u.spellCasts++;
+    this._stat(u, 'casts');
     this._effect(spell.type, u.x, u.lane, u.color, .75, { toX: target?.x ?? u.x, label: spell.name });
     this._emit('troop-spell', { unitId: u.id, name: spell.name, key: u.key, lane: u.lane, x: u.x, side: u.side, classId: u.classId });
     return true;
   }
 
   _raiseGuard(caster) {
-    if (caster.raises >= (caster.trait.raiseLimit || 3) || this.units.length >= 64) return false;
+    if (caster.raises >= (caster.trait.raiseLimit || 3) + (caster.mods.raiseLimit || 0) || this.units.length >= 64) return false;
     if (caster.side === 'player' && this.units.filter(u => u.side === 'player' && !u.dead).length >= 40) return false;
     if (caster.side === 'enemy' && this.units.filter(u => u.side === 'enemy' && !u.dead).length >= 24) return false;
     const corpse = this.corpses.find(body => !body.consumed && body.life > 0 && body.lane === caster.lane && Math.abs(body.x - caster.x) < 280);
@@ -737,23 +854,28 @@ export class Battle {
     if (caster.side === 'player') {
       raised.maxHp *= 1 + this.rank('void-drain') * .06; raised.hp = raised.maxHp;
       raised.attack *= 1 + this.rank('void-execute') * .08;
+      raised.maxHp *= caster.mods.guardHealth || 1; raised.hp = raised.maxHp;
+      raised.attack *= caster.mods.guardAttack || 1;
     }
     raised.classId = 'bone-guard'; raised.undead = true; raised.noCorpse = true; raised.noReward = true;
     raised.raisedBy = caster.id; raised.corpseId = corpse.unitId;
+    raised.masteryClassId = caster.classId;
     raised.x = clamp(corpse.x, 65, 935);
-    raised.decay = 18 + (caster.side === 'player' && this._hasCombo(caster.lane, 'gravebloom') ? 4 : 0);
+    raised.decay = 18 + (caster.side === 'player' && this._hasCombo(caster.lane, 'gravebloom') ? 4 : 0) + (caster.mods.guardDuration || 0);
     this.units.push(raised); this._formationRevision++;
     caster.raises++;
+    this._stat(caster, 'raised');
     this._effect('resurrect', raised.x, raised.lane, '#bba2dd', .8, { label: 'Bone Guard' });
     this._emit('spawn', { unit: raised, side: raised.side, key: raised.key, lane: raised.lane });
     return true;
   }
 
-  _kill(target, decay = false) {
+  _kill(target, decay = false, source = null) {
     if (target.dead) return;
     if (!decay && target.side === 'player' && target.trait.rebirth && !target.reborn) {
-      target.reborn = true; target.hp = target.maxHp * .3; target.casting = .6;
-      this._cleanse(target); this._shield(target, 15);
+      target.reborn = true; target.hp = target.maxHp * (target.mods.rebirthHealth || .3); target.casting = .6;
+      this._cleanse(target); this._shield(target, 15 + (target.mods.rebirthShield || 0), target);
+      this._stat(target, 'casts');
       this._effect('radiance', target.x, target.lane, '#ffc683', 1, { label: 'Rebirth' });
       this._emit('troop-spell', { unitId: target.id, name: 'Rebirth', key: target.key, lane: target.lane, x: target.x, side: target.side, classId: target.classId });
       return;
@@ -766,6 +888,7 @@ export class Battle {
     }
     if (target.side === 'enemy' && !target.noReward && !target.undead && !decay) {
       this.kills++;
+      this._stat(source, 'kills');
       this.gold += Math.round((target.boss ? 30 : 4) * (1 + this.rank('bounty') * .2));
     }
     if (target.boss && target.side === 'enemy') { this.enemyBarrier = false; if (this.enemyHp <= 1) this.enemyHp = 0; }
@@ -783,11 +906,14 @@ export class Battle {
     const element = options.element || source?.element;
     amount *= elementMultiplier(element, target.element);
     if (source?.statuses?.weakness) amount *= 1 - Math.min(.4, source.statuses.weakness.power);
-    if (target.statuses.curse) amount *= 1 + Math.min(.25, target.statuses.curse.power);
+    if (target.statuses.curse) amount *= 1 + Math.min(.3, target.statuses.curse.power);
     if (target.statuses.fortify) amount *= 1 - Math.min(.3, target.statuses.fortify.power);
     if (source?.side === 'player' && !options.dot) {
       if (source.element === 'storm' && (target.statuses.slow || target.statuses.root || target.statuses.freeze) && this._hasCombo(source.lane, 'shatter')) amount *= 1.25;
       if (source.element === 'void' && target.statuses.burn && this._hasCombo(source.lane, 'soulfire')) amount *= 1.25;
+      if (target.statuses.freeze) amount *= source.mods?.frozenDamage || 1;
+      if (target.statuses.freeze || target.statuses.root || target.statuses.slow) amount *= source.mods?.controlledDamage || 1;
+      if (target.trait.flying) amount *= source.mods?.antiAirPower || 1;
     }
     if (source?.side === 'enemy' && source.statuses?.burn && this._hasCombo(target.lane, 'steamguard')) amount *= .85;
     const armor = clamp(target.armor * (1 - (options.ignoreArmor || 0)), 0, .65);
@@ -796,23 +922,26 @@ export class Battle {
     if (source && source.range <= 80 && target.trait.flying && source.element !== 'storm') amount *= .55;
     const prior = target.hp;
     if (target.shield > 0) {
-      const shieldDamage = amount * (options.shieldBreak ? 2 : 1);
+      const shieldFactor = (options.shieldBreak ? 2 : 1) * (source?.mods?.shieldBreakPower || 1);
+      const shieldDamage = amount * shieldFactor;
       const absorbed = Math.min(target.shield, shieldDamage);
       target.shield -= absorbed;
-      amount -= absorbed / (options.shieldBreak ? 2 : 1);
+      amount -= absorbed / shieldFactor;
       if (!options.dot) this._effect('shield', target.x, target.lane, '#ffe7b0', .25);
     }
     target.hp = Math.max(0, target.hp - Math.max(0, amount));
+    this._stat(source, 'damage', Math.max(0, prior - target.hp));
     if (!options.dot) {
       target.hitFlash = .12;
       this._emit('damage', { unitId: target.id, x: target.x, lane: target.lane, amount: prior - target.hp, side: target.side, element, effective: elementMultiplier(element, target.element) > 1 });
     }
-    if (source && !source.dead && target.trait.reflect && !options.reflected && !options.dot && source.range <= 80) this._hit(target, source, Math.max(0, prior - target.hp) * target.trait.reflect, { reflected: true });
-    if (target.hp <= 0) this._kill(target);
+    const reflect = Math.min(.25, (target.trait.reflect || 0) + (target.mods.reflectBonus || 0));
+    if (source && !source.dead && reflect && !options.reflected && !options.dot && source.range <= 80) this._hit(target, source, Math.max(0, prior - target.hp) * reflect, { reflected: true });
+    if (target.hp <= 0) this._kill(target, false, source);
     return Math.max(0, prior - target.hp);
   }
 
-  _heal(u, amount, silent = false) {
+  _heal(u, amount, silent = false, source = null) {
     if (u.dead || amount <= 0) return;
     if (u.side === 'player') {
       if (this._hasCombo(u.lane, 'verdant-covenant')) amount *= 1.2;
@@ -821,6 +950,7 @@ export class Battle {
     const healed = Math.min(u.maxHp - u.hp, amount);
     if (healed <= 0) return;
     u.hp += healed;
+    this._stat(source, 'healing', healed);
     if (!silent || amount >= 2) this._effect('heal', u.x, u.lane, '#85d7a2', .45);
     if (!silent) this._emit('heal', { unitId: u.id, x: u.x, lane: u.lane, amount: healed });
   }

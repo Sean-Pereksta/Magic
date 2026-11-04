@@ -1,5 +1,5 @@
 /** Authored campaign data shared by the map, save limits, and enemy director. */
-export const TOTAL_STAGES = 84;
+export const TOTAL_STAGES = 134;
 const ELEMENT_KEYS = new Set(['ember', 'tide', 'grove', 'storm', 'sun', 'void']);
 const BOSS_KEYS = new Set(['rootking', 'frostqueen', 'eclipselord']);
 
@@ -256,21 +256,177 @@ const chapters = [
       ['The Worldbreaker', 'Choose your army from all eighteen classes, defeat the combined host, and unite your strongest bonds against the architect of every invasion.'],
     ],
   },
+  {
+    title: 'THE BROKEN OATH',
+    description: 'After the Worldbreaker falls, oathbound armies fight over the embers of the shattered ward.',
+    theme: 'ash', color: '#dda487', elements: ['ember', 'sun', 'void'],
+    bossKey: 'rootking', bossName: 'The Oathfire Regent',
+    stages: [
+      ['Oaths Among the Ashes', 'Radiant shields shelter a burning host. Master your frontline talents before the shadow reserves arrive.'],
+      ['The False Standard', 'Void duelists advance under golden banners. Keep a counter ready for the guard beneath each new wave.'],
+      ['The Ember Tribunal', 'Siege troops press all three roads while support holds the center. Save a decisive combo for the weakest front.'],
+      ['The Oathfire Regent', 'An oathbound guardian leads the divided host. Break its layered escort before committing your strongest sustained formation.'],
+    ],
+  },
+  {
+    title: 'THE WINTERVAULT',
+    description: 'The sealed winter roads hide old allies, frostbound sentinels, and the life that grows beneath the ice.',
+    theme: 'frost', color: '#a3c6dc', elements: ['tide', 'void', 'grove'],
+    bossKey: 'frostqueen', bossName: 'The Rimekeeper',
+    stages: [
+      ['The Sealed Crossing', 'Frost marksmen cover a living wall. Send a force that can survive the crossing and still reach their support.'],
+      ['Roots Beneath the Ice', 'Grove healers restore the frozen line. Separate your counters instead of feeding a single draining lane.'],
+      ['The Vault of Borrowed Souls', 'Void summoners gather behind frost armor. Purge the growing host before the next reinforcements arrive.'],
+      ['The Rimekeeper', 'The vault’s sovereign commands cold and recovery. Hold both flanks while your main formation breaks its protected court.'],
+    ],
+  },
+  {
+    title: 'THE THUNDER FORGE',
+    description: 'A forge above the clouds arms the surviving invaders with lightning, flame, and radiant steel.',
+    theme: 'storm', color: '#d9ce9b', elements: ['storm', 'ember', 'sun'],
+    bossKey: 'rootking', bossName: 'The Stormforged Titan',
+    stages: [
+      ['The Skybound Foundry', 'Flying hunters guard the forge roads. Field anti-air troops before the armored convoy reaches your line.'],
+      ['The Furnace Above', 'Fire casters work behind radiant shields. Divide your pressure between the shield wall and its fragile support.'],
+      ['The Hammering Front', 'Fast siege runners strike beside heavy guards. Match into the threatened lane before the next hammer falls.'],
+      ['The Stormforged Titan', 'A living engine carries the forge into battle. Sustain your counterattack through its shielded escorts and crushing advance.'],
+    ],
+  },
+  {
+    title: 'THE HOLLOW GARDENS',
+    description: 'The old healing grounds have become a nursery for draining shades and regenerative siege beasts.',
+    theme: 'forest', color: '#99bf9f', elements: ['grove', 'void', 'tide'],
+    bossKey: 'rootking', bossName: 'The Hollow Arbor',
+    stages: [
+      ['The Garden Without Sleep', 'Regenerating defenders wait behind frost cover. Build enough sustained damage to outpace their recovery.'],
+      ['The Shade Orchard', 'Life-stealing hunters shelter the healers. Finish wounded threats before their support can restore them.'],
+      ['The Rootbound Nursery', 'Summoners refill a living frontline. Use class control and a chained special to expose the nursery.'],
+      ['The Hollow Arbor', 'The garden’s oldest guardian feeds the hollow host. Keep your support alive while focused counters cut through its renewal.'],
+    ],
+  },
+  {
+    title: 'THE GLASS DOMINION',
+    description: 'The mirror citadels turn frost, shields, and borrowed life into a disciplined defensive empire.',
+    theme: 'sun', color: '#d9d2a9', elements: ['sun', 'tide', 'void'],
+    bossKey: 'frostqueen', bossName: 'The Glassbound Sovereign',
+    stages: [
+      ['The Mirrored Bastion', 'Ranged-resistant guards anchor the gate. Bring melee counters while your backline answers the frost snipers.'],
+      ['The Pale Reflection', 'Void support waits behind radiant armor. Break its outer defense without surrendering your answer to draining foes.'],
+      ['The Crystal Procession', 'Frost control slows every road beneath the shields. Reinforce early so your formations arrive together.'],
+      ['The Glassbound Sovereign', 'The mirror throne commands a layered frost court. Commit a resilient center while keeping both outside lanes supplied.'],
+    ],
+  },
+  {
+    title: 'THE CINDER COVENANT',
+    description: 'A burning pact unites living siege beasts and lightning hunters behind the last ash cults.',
+    theme: 'ash', color: '#d9a277', elements: ['ember', 'grove', 'storm'],
+    bossKey: 'eclipselord', bossName: 'The Ashen Hierarch',
+    stages: [
+      ['The Scorched Covenant', 'Ember casters cover Grove tanks. Send complementary elements before the pact establishes its support line.'],
+      ['The Hunt in the Cinders', 'Storm hunters race past slower siege troops. Hold the fast flank without losing pressure on the armored road.'],
+      ['The Cult of Renewal', 'Healing and burning overlap behind a storm screen. Keep your cleanse and control classes in protected positions.'],
+      ['The Ashen Hierarch', 'The pact’s summoner gathers every surviving order. Defeat its support and turn your next cascade into a focused breach.'],
+    ],
+  },
+  {
+    title: 'THE SILENT CONSTELLATION',
+    description: 'A starless road stretches past the old rifts, defended by frost cults and lightning-born shades.',
+    theme: 'void', color: '#b5a2d5', elements: ['void', 'storm', 'tide'],
+    bossKey: 'eclipselord', bossName: 'The Star-Eater',
+    stages: [
+      ['The Road Between Stars', 'Shades advance beneath flying escorts. Give your Sun frontline the anti-air support it needs to cross.'],
+      ['The Frozen Silence', 'Frost control pins the outer lanes while Void support gathers. Match fresh troops before either road empties.'],
+      ['The Constellation Breaks', 'A mixed host strikes behind repeated summons. Preserve the class bonds that let your army weather a longer assault.'],
+      ['The Star-Eater', 'The starless lord drains the center behind a changing guard. Strike wounded threats quickly and keep your sustain within reach.'],
+    ],
+  },
+  {
+    title: 'THE DAWNWARD ALLIANCE',
+    description: 'The radiant and living orders rally one final coalition among the ruins left by the old campaign.',
+    theme: 'sun', color: '#e5cf97', elements: ['sun', 'grove', 'ember'],
+    bossKey: 'rootking', bossName: 'The Dawnguard Paragon',
+    stages: [
+      ['The Restored Standard', 'Shield bearers return with a stronger healing line. Use your mastered damage roles to reach the support.'],
+      ['The Brightwood Road', 'Ember pressure punishes a pure Grove defense. Send distinct counters to the living wall and the burning flank.'],
+      ['The Coalition’s Last Gate', 'Armored siege troops lead a disciplined three-lane attack. Plan each reinforcement around the next forecast.'],
+      ['The Dawnguard Paragon', 'The alliance’s champion anchors the radiant road. Break its supporting orders while preserving your own healing covenant.'],
+    ],
+  },
+  {
+    title: 'THE FROZEN CROWN OF WAR',
+    description: 'A new frost dynasty rises where sky hunters and radiant guards defend the same throne.',
+    theme: 'frost', color: '#adcbd8', elements: ['tide', 'sun', 'storm'],
+    bossKey: 'frostqueen', bossName: 'The Crownbreaker',
+    stages: [
+      ['The Froststeel Approach', 'Frost armor shelters ranged batteries. Build a force that can close the distance without leaving its support behind.'],
+      ['The Crown’s Aerial Guard', 'Storm flyers circle the radiant center. Answer the sky before spending your strongest melee formation.'],
+      ['The Throne of Three Roads', 'The dynasty presses every lane with shielded frost troops. Time your next special around the most dangerous arrival.'],
+      ['The Crownbreaker', 'A war queen commands the frozen throne. Hold both flanks through its barrage and bring a bonded center to the crown.'],
+    ],
+  },
+  {
+    title: 'THE STORM’S LAST SONG',
+    description: 'The last sky clans join hollow summoners and living hunters in a swift, unrelenting assault.',
+    theme: 'storm', color: '#bec8bd', elements: ['storm', 'void', 'grove'],
+    bossKey: 'frostqueen', bossName: 'The Tempest Ascendant',
+    stages: [
+      ['The Highwind Refrain', 'Fast hunters rush behind a living screen. Establish anti-air pressure before their support reaches the road.'],
+      ['The Hollow Chorus', 'Void casters replenish the sky clans. Finish the summoners before their guards can wear down your tanks.'],
+      ['The Song Before the Storm', 'Regeneration and speed combine across three fronts. Keep your crowd control ready for the road that starts to fail.'],
+      ['The Tempest Ascendant', 'The final sky sovereign commands a relentless mixed guard. Sustain your class bonds while a focused army ends the storm.'],
+    ],
+  },
+  {
+    title: 'THE ROOTS OF RUIN',
+    description: 'Beneath every broken citadel, the oldest roots gather fire and darkness into a primordial war.',
+    theme: 'forest', color: '#a6bb91', elements: ['grove', 'ember', 'void'],
+    bossKey: 'rootking', bossName: 'The Primordial Thorn',
+    stages: [
+      ['Under the Broken Citadels', 'Living tanks emerge behind burning siege troops. Divide your counters before the first support line takes hold.'],
+      ['The Root That Remembers', 'Void hunters drain the remnants of the old army. Protect the healers that keep your mastered frontline standing.'],
+      ['The Garden of Every War', 'Summoners and regenerative defenders fill the ruin roads. Bring enough focused damage to break each protected layer.'],
+      ['The Primordial Thorn', 'The oldest living guardian rises beneath the ruins. Overcome its renewal without abandoning the lanes around its throne.'],
+    ],
+  },
+  {
+    title: 'THE UNMAKING HOST',
+    description: 'The rift’s surviving architects assemble every lesson of the invasion into one final combined host.',
+    theme: 'ash', color: '#cfa7aa', elements: ['ember', 'void', 'sun'],
+    bossKey: 'eclipselord', bossName: 'The Rift Architect',
+    stages: [
+      ['The Muster of Fallen Banners', 'Radiant guards shelter burning casters while shades prepare the rear. Assign each class a clear job before the lines meet.'],
+      ['The Unbroken Siege', 'The host cycles fresh defenders into every road. Save your burst for the wave that exposes its support.'],
+      ['The Blueprint of Ruin', 'The architects repeat their strongest formations. Use mastered talents, class bonds, and special chains to seize the initiative.'],
+      ['The Rift Architect', 'The last architect hides behind the combined host. Defeat its changing escort and open the road beyond every broken ward.'],
+    ],
+  },
+  {
+    title: 'THE ETERNAL FRONT',
+    description: 'Beyond the architects lies the final two-battle front, where the power behind every invasion waits.',
+    theme: 'void', color: '#d0addc', elements: ['void', 'storm', 'sun'],
+    bossKey: 'eclipselord', bossName: 'The Eternal Unmaker',
+    stages: [
+      ['The Edge of Eternity', 'A final coalition of darkness, lightning, and radiant steel guards the crossing. Build the formation that can survive the last road.'],
+      ['The Eternal Unmaker', 'Defeat the final host and the power beyond every rift. Bring your mastered classes and strongest living bonds to end the eternal war.'],
+    ],
+  },
 ];
 
 // Fail loudly if authored data drifts away from the shared campaign contract.
-if (chapters.length * 4 !== TOTAL_STAGES || chapters.some(chapter =>
-  chapter.stages.length !== 4 || chapter.elements.length !== 3 ||
+if (chapters.reduce((sum, chapter) => sum + chapter.stages.length, 0) !== TOTAL_STAGES || chapters.some(chapter =>
+  chapter.stages.length < 1 || chapter.stages.length > 4 || chapter.elements.length !== 3 ||
   new Set(chapter.elements).size !== 3 || chapter.elements.some(key => !ELEMENT_KEYS.has(key)) ||
   !BOSS_KEYS.has(chapter.bossKey) || !/^#[\da-f]{6}$/i.test(chapter.color))) {
   throw new Error('Invalid Match Wars campaign configuration.');
 }
 
-export const CHAPTERS = Object.freeze(chapters.map(({ stages, ...chapter }, index) => Object.freeze({
-  number: index + 1,
-  ...chapter,
-  elements: Object.freeze([...chapter.elements]),
-})));
+let nextStage = 1;
+export const CHAPTERS = Object.freeze(chapters.map(({ stages, ...chapter }, index) => {
+  const startStage = nextStage;
+  nextStage += stages.length;
+  return Object.freeze({ number: index + 1, ...chapter, elements: Object.freeze([...chapter.elements]),
+    startStage, endStage: nextStage - 1, stageCount: stages.length });
+}));
 
 export const STAGES = Object.freeze(chapters.flatMap(chapter => chapter.stages.map(([name, description]) =>
   Object.freeze([name, description, chapter.title]))));
@@ -280,13 +436,14 @@ function stageNumber(stage) {
 }
 
 export function getChapter(stage = 1) {
-  return CHAPTERS[Math.floor((stageNumber(stage) - 1) / 4)];
+  const number = stageNumber(stage);
+  return CHAPTERS.find(chapter => number >= chapter.startStage && number <= chapter.endStage);
 }
 
-/** Presentation-safe stage metadata; only every fourth battle has a boss. */
+/** Every chapter ends in a boss, including the two-battle final chapter. */
 export function getStage(stage = 1) {
   const number = stageNumber(stage);
   const [name, description] = STAGES[number - 1];
   const chapter = getChapter(number);
-  return Object.freeze({ number, name, description, chapter, boss: number % 4 === 0, bossKey: chapter.bossKey, bossName: chapter.bossName });
+  return Object.freeze({ number, name, description, chapter, boss: number === chapter.endStage, bossKey: chapter.bossKey, bossName: chapter.bossName });
 }

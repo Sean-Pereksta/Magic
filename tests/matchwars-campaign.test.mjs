@@ -7,6 +7,7 @@ import { TOTAL_STAGES, CHAPTERS, STAGES, getChapter, getStage } from '../game/ma
 import { difficultyForStage, ELEMENT_INFO } from '../game/matchwars/combat.mjs';
 import { ELEMENTS } from '../game/matchwars/board.mjs';
 import { CLASSES, CLASS_CHOICES, DEFAULT_LOADOUT, COMBOS, isClassUnlocked, normalizeLoadout } from '../game/matchwars/classes.mjs';
+import { calculateMasteryAwards, applyMasteryAwards } from '../game/matchwars/mastery.mjs';
 
 const originalStages = [
   ['The Verdant Gate', 'Meet the raiders at the forest border.', 'THE AWAKENING'],
@@ -23,10 +24,10 @@ const originalStages = [
   ['The Eclipse Lord', 'Break the ward. End the invasion.', 'THE ECLIPSE'],
 ];
 
-test('the 84-stage campaign preserves the original twelve names, descriptions, and chapter titles', () => {
-  assert.equal(TOTAL_STAGES, 84);
+test('the 134-stage campaign preserves the original twelve names, descriptions, and chapter titles', () => {
+  assert.equal(TOTAL_STAGES, 134);
   assert.equal(STAGES.length, TOTAL_STAGES);
-  assert.equal(CHAPTERS.length, 21);
+  assert.equal(CHAPTERS.length, 34);
   assert.deepEqual(STAGES.slice(0, 12), originalStages);
   assert.equal(new Set(STAGES.map(([name]) => name)).size, TOTAL_STAGES);
   for (const tuple of STAGES) assert.ok(tuple.length === 3 && tuple.every(value => typeof value === 'string' && value.length > 0));
@@ -34,15 +35,18 @@ test('the 84-stage campaign preserves the original twelve names, descriptions, a
 
 test('all first 48 stage tuples and twelve chapter records remain exactly compatible with the previous release', () => {
   const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const legacyChapter = ({ startStage, endStage, stageCount, ...chapter }) => chapter;
   assert.equal(fingerprint(STAGES.slice(0, 48)), '2a23d53080e1bcff9ae273fbeef14ff6f0b50a48f57bf99b303cc3fb1c453de6');
-  assert.equal(fingerprint(CHAPTERS.slice(0, 12)), '6ba3f0c9af502ade96aebec10d9da1cf3809030801afca9b7b11124227136aa5');
+  assert.equal(fingerprint(CHAPTERS.slice(0, 12).map(legacyChapter)), '6ba3f0c9af502ade96aebec10d9da1cf3809030801afca9b7b11124227136aa5');
+  assert.equal(fingerprint(STAGES.slice(0, 84)), '0bb7033d90cd863471422352362456bce5d20f91ca97685ac3e206697fe8cac4');
+  assert.equal(fingerprint(CHAPTERS.slice(0, 21).map(legacyChapter)), '08a0f55d1e82e9e56ca1543ba81193c8ffd5d752a8918d399b1365551e73705b');
 });
 
-test('each four-battle chapter has a valid element roster, theme, and named final boss', () => {
+test('each chapter covers a contiguous range and ends in its named boss, including the partial finale', () => {
   const elements = new Set(['ember', 'tide', 'grove', 'storm', 'sun', 'void']);
   const bosses = new Set(['rootking', 'frostqueen', 'eclipselord']);
-  assert.equal(new Set(CHAPTERS.map(chapter => chapter.title)).size, 21);
-  assert.equal(new Set(CHAPTERS.map(chapter => chapter.bossName)).size, 21);
+  assert.equal(new Set(CHAPTERS.map(chapter => chapter.title)).size, 34);
+  assert.equal(new Set(CHAPTERS.map(chapter => chapter.bossName)).size, 34);
   for (const [index, chapter] of CHAPTERS.entries()) {
     assert.equal(chapter.number, index + 1);
     assert.ok(chapter.description.length > 20);
@@ -52,32 +56,38 @@ test('each four-battle chapter has a valid element roster, theme, and named fina
     assert.equal(new Set(chapter.elements).size, 3);
     assert.ok(chapter.elements.every(element => elements.has(element)));
     assert.ok(bosses.has(chapter.bossKey));
-    for (let offset = 1; offset <= 4; offset++) {
-      const number = index * 4 + offset;
+    assert.equal(chapter.startStage, index === 0 ? 1 : CHAPTERS[index - 1].endStage + 1);
+    assert.equal(chapter.endStage - chapter.startStage + 1, chapter.stageCount);
+    assert.equal(chapter.stageCount, index === 33 ? 2 : 4);
+    for (let offset = 0; offset < chapter.stageCount; offset++) {
+      const number = chapter.startStage + offset;
       const stage = getStage(number);
       assert.equal(stage.number, number);
       assert.equal(stage.chapter, chapter);
       assert.equal(getChapter(number), chapter);
-      assert.equal(stage.boss, offset === 4);
+      assert.equal(stage.boss, number === chapter.endStage);
       assert.equal(stage.bossKey, chapter.bossKey);
       assert.equal(stage.bossName, chapter.bossName);
       assert.equal(STAGES[number - 1][2], chapter.title);
     }
-    assert.equal(getStage((index + 1) * 4).name, chapter.bossName);
+    assert.equal(getStage(chapter.endStage).name, chapter.bossName);
   }
+  assert.equal(getStage(133).boss, false);
+  assert.equal(getStage(134).boss, true);
+  assert.equal(getChapter(134).stageCount, 2);
 });
 
 test('stage helpers clamp bounds and reject invalid input without unsafe indexing', () => {
-  for (const value of [-Infinity, Infinity, NaN, undefined, null, '84', {}, []]) {
+  for (const value of [-Infinity, Infinity, NaN, undefined, null, '134', {}, []]) {
     assert.equal(getStage(value).number, 1);
     assert.equal(getChapter(value), CHAPTERS[0]);
   }
   for (const value of [-99, -1, 0, .9]) assert.equal(getStage(value).number, 1);
   assert.equal(getStage(16.9).number, 16);
   assert.equal(getChapter(16.9), CHAPTERS[3]);
-  for (const value of [85, 999, Number.MAX_SAFE_INTEGER]) {
-    assert.equal(getStage(value).number, 84);
-    assert.equal(getChapter(value), CHAPTERS[20]);
+  for (const value of [135, 999, Number.MAX_SAFE_INTEGER]) {
+    assert.equal(getStage(value).number, 134);
+    assert.equal(getChapter(value), CHAPTERS[33]);
   }
 });
 
@@ -85,21 +95,22 @@ test('campaign constants and returned metadata cannot be mutated by UI or combat
   assert.ok(Object.isFrozen(CHAPTERS) && Object.isFrozen(STAGES));
   for (const chapter of CHAPTERS) assert.ok(Object.isFrozen(chapter) && Object.isFrozen(chapter.elements));
   for (const tuple of STAGES) assert.ok(Object.isFrozen(tuple));
-  const stage = getStage(84);
+  const stage = getStage(134);
   assert.ok(Object.isFrozen(stage));
   assert.throws(() => { stage.number = 1; }, TypeError);
   assert.throws(() => { stage.chapter.elements[0] = 'sun'; }, TypeError);
-  assert.throws(() => { STAGES[83][0] = 'changed'; }, TypeError);
+  assert.throws(() => { STAGES[133][0] = 'changed'; }, TypeError);
 });
 
-test('new frontiers provide nine distinct bosses and strategic encounter descriptions', () => {
-  const expansion = STAGES.slice(48);
-  assert.equal(expansion.length, 36);
-  assert.equal(new Set(expansion.map(([, description]) => description)).size, 36);
+test('fifty new encounters provide thirteen named bosses and strategic descriptions', () => {
+  const expansion = STAGES.slice(84);
+  assert.equal(expansion.length, 50);
+  assert.equal(new Set(expansion.map(([, description]) => description)).size, 50);
   assert.deepEqual(CHAPTERS.slice(0, 3).map(chapter => chapter.bossName), ['The Root King', 'Frostbound Queen', 'The Eclipse Lord']);
   assert.equal(getStage(48).name, 'The Runeless Emperor');
   assert.equal(getStage(72).name, 'The Runebound Avatar');
   assert.equal(getStage(84).name, 'The Worldbreaker');
+  assert.equal(getStage(134).name, 'The Eternal Unmaker');
   assert.match(expansion.map(([, description]) => description).join(' '), /healers/);
   assert.match(expansion.map(([, description]) => description).join(' '), /Flying|flying/);
   assert.match(expansion.map(([, description]) => description).join(' '), /every lane|three roads|outer lanes/);
@@ -113,13 +124,14 @@ function appFunction(name, next, context) {
   const start = source.indexOf(`function ${name}(`);
   const end = source.indexOf(`function ${next}(`, start);
   assert.ok(start >= 0 && end > start, `presentation function ${name} must exist`);
-  const sandbox = vm.createContext(context);
+  const sandbox = vm.createContext({dailyConfig:null,calculateMasteryAwards,applyMasteryAwards,getStage,
+    masteryPanel:()=>'',showMasteryGains(){},...context});
   vm.runInContext(`${source.slice(start, end)}\nglobalThis.run = ${name};`, sandbox);
   return sandbox;
 }
 
-test('the app advances beyond both former finales and caps only at battle 84', () => {
-  for (const stage of [12, 48, 72, 84]) {
+test('the app advances beyond former finales and caps only at battle 134', () => {
+  for (const stage of [12, 48, 72, 84, 132, 134]) {
     let result;
     const host = appFunction('finishBattle', 'cast', {
       progress: { stage, completed: [], unlocked: stage, gold: 0 },
@@ -140,9 +152,9 @@ test('the app advances beyond both former finales and caps only at battle 84', (
     } else if (stage < TOTAL_STAGES) {
       assert.doesNotMatch(result[1], /completed all 84 battles/);
     } else {
-      assert.match(result[1], /The Worldbreaker/);
-      assert.match(result[1], /completed all 84 battles/);
-      assert.doesNotMatch(result[1], /data-next="85"/);
+      assert.match(result[1], /The Eternal Unmaker/);
+      assert.match(result[1], /completed all 134 battles/);
+      assert.doesNotMatch(result[1], /data-next="135"/);
     }
   }
 });

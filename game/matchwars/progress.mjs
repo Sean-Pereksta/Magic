@@ -1,6 +1,8 @@
-import { UPGRADES } from './combat.mjs?v=3';
-import { TOTAL_STAGES } from './campaign.mjs?v=3';
-import { DEFAULT_LOADOUT, normalizeLoadout } from './classes.mjs?v=3';
+import { UPGRADES } from './combat.mjs?v=4';
+import { TOTAL_STAGES } from './campaign.mjs?v=4';
+import { DEFAULT_LOADOUT, normalizeLoadout } from './classes.mjs?v=4';
+import { normalizeMastery } from './mastery.mjs?v=4';
+import { normalizeDaily } from './daily.mjs?v=4';
 
 /** Only durable campaign progress is saved. Battles always begin afresh. */
 export const KEY = 'matchwars-runeborn-v2';
@@ -21,6 +23,8 @@ function freshProgress() {
     completed: [],
     upgrades: {},
     loadout: { ...DEFAULT_LOADOUT },
+    mastery: normalizeMastery({}),
+    daily: { records: {} },
     settings: { sound: true, reducedMotion: false },
     seenIntro: false,
     legacyMigrated: false,
@@ -43,6 +47,8 @@ export function sanitizeProgress(input) {
   }
   result.stage = bounded(input.stage, 1, result.unlocked, 1);
   result.loadout = normalizeLoadout(record(input.loadout) ? input.loadout : {}, result.unlocked);
+  result.mastery = normalizeMastery(input.mastery);
+  result.daily = normalizeDaily(input.daily);
   if (record(input.upgrades)) {
     for (const definition of UPGRADES) {
       if (!owns(input.upgrades, definition.id)) continue;
