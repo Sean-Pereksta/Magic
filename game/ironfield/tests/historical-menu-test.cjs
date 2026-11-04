@@ -6,7 +6,7 @@ const root = process.argv[2] || path.resolve(__dirname, '..');
 const ui = bootUI(root, { menu: true });
 const D = ui.window.GameData, battles = D.PRESETS.filter(p => p.historical && typeof p.historical === 'object');
 const el = id => ui.document.getElementById(id);
-assert(battles.length >= 20);
+assert(battles.length >= 30);
 el('menuHistory').click();
 assert.equal(el('historyBrowser').hidden, false);
 assert.equal(el('menuMapGrid').hidden, true);

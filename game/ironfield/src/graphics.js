@@ -57,6 +57,8 @@
       this._bodyWarmQueue=[];this._bodyBuildBudget=0;this._poseBuildBudget=0;
       this._corpseCache=null;this._corpseStats=null;this._hitPoses=new Map();this._minimapBase=null;
       this.pendingFacing=null;
+      this.pendingRampart=null;
+      this._rampartPreviewCache=null;
       this._renderStats={visible:0,drawCalls:0};
       this.resize(this.width,this.height);
       this.setEngine(engine);
@@ -68,6 +70,8 @@
       if(this._minimapBase){this._minimapBase.canvas.width=1;this._minimapBase.canvas.height=1;this._minimapBase=null;}
       this.engine=engine;
       this.pendingFacing=null;
+      this.pendingRampart=null;
+      this._rampartPreviewCache=null;
       this.map=engine.map||{width:engine.width,height:engine.height,regions:[],biome:'grassland'};
       this.theme=THEMES[this.map.biome]||THEMES.grassland;
       this._buildTerrain();
@@ -127,6 +131,7 @@
       const regs=this.map.regions||[];
       for(const r of regs)if(r.type==='hill')this._paintHill(c,r,rand);
       for(const r of regs)if(r.type==='forest')this._paintForest(c,r,rand);
+      for(const r of regs)if(['road','mud','marsh','snow','trench'].includes(r.type))this._paintSurface(c,r,rand);
       for(const r of regs)if(r.type==='rock')this._paintRockRegion(c,r,rand);
       for(const r of regs)if(r.type==='water')this._paintWater(c,r,rand);
       for(const r of regs)if(r.type==='bridge')this._paintBridge(c,r);
@@ -228,6 +233,49 @@
       }
       c.globalAlpha=.22;
       for(let i=0;i<28;i++){const px=r.x+rand()*r.w,py=r.y+rand()*r.h;line(c,px,py,px+8+rand()*18,py-3,t.grass,2);}
+      c.restore();
+    }
+
+    _paintSurface(c,r,rand) {
+      const kind=r.type,vertical=r.h>r.w;
+      c.save();c.beginPath();c.rect(r.x,r.y,r.w,r.h);c.clip();
+      c.fillStyle=({road:'#aa9674',mud:'#735d43',marsh:'#57786a',snow:'#d1dcd3',trench:'#74674f'})[kind];c.fillRect(r.x,r.y,r.w,r.h);
+      const count=Math.min(1100,Math.max(8,Math.floor(r.w*r.h/(kind==='road'?5500:2900))));
+      if(kind==='road'){
+        // A narrow, worn center and two wheel ruts follow the road's actual
+        // collision rectangle; no invented road continues over water or rock.
+        c.fillStyle='#b6a17c';
+        if(vertical)c.fillRect(r.x+r.w*.16,r.y,r.w*.68,r.h);else c.fillRect(r.x,r.y+r.h*.16,r.w,r.h*.68);
+        for(const side of [.29,.71]){
+          if(vertical)line(c,r.x+r.w*side,r.y,r.x+r.w*side,r.y+r.h,'#8b795d',Math.min(6,r.w*.045));
+          else line(c,r.x,r.y+r.h*side,r.x+r.w,r.y+r.h*side,'#8b795d',Math.min(6,r.h*.045));
+        }
+      }else if(kind==='trench'){
+        const inset=Math.min(20,Math.min(r.w,r.h)*.17);
+        c.fillStyle='#b19c73';c.fillRect(r.x+inset*.35,r.y+inset*.35,r.w-inset*.7,r.h-inset*.7);
+        c.fillStyle='#4b4838';c.fillRect(r.x+inset,r.y+inset,r.w-inset*2,r.h-inset*2);
+        c.strokeStyle='#98845e';c.lineWidth=3;c.strokeRect(r.x+inset,r.y+inset,r.w-inset*2,r.h-inset*2);
+        const span=vertical?r.h:r.w,step=Math.max(34,span/100);
+        for(let n=12;n<span-12;n+=step){
+          if(vertical){line(c,r.x+inset,r.y+n,r.x+r.w-inset,r.y+n,'#796749',5);line(c,r.x+inset,r.y+n-2,r.x+r.w-inset,r.y+n-2,'#b39b69',1.5);}
+          else{line(c,r.x+n,r.y+inset,r.x+n,r.y+r.h-inset,'#796749',5);line(c,r.x+n-2,r.y+inset,r.x+n-2,r.y+r.h-inset,'#b39b69',1.5);}
+        }
+      }
+      for(let i=0;i<count;i++){
+        const x=r.x+rand()*r.w,y=r.y+rand()*r.h;
+        if(kind==='mud'){
+          c.globalAlpha=.22+rand()*.16;ellipse(c,x,y,8+rand()*23,3+rand()*7,i%3?'#4f4c3a':'#9a926e');
+          if(i%4===0){line(c,x,y,x+4,y+2,'#b39c73',2.5);line(c,x+8,y-4,x+12,y-2,'#b39c73',2.5);}
+        }else if(kind==='marsh'){
+          c.globalAlpha=.3;ellipse(c,x,y,14+rand()*23,4+rand()*11,'#7aa198');c.globalAlpha=.75;
+          for(let j=0;j<3;j++){line(c,x+j*5,y,x+j*5-3,y-9-j%2*7,'#bcc28c',1.7);line(c,x+j*5-3,y-9-j%2*7,x+j*5-3,y-13-j%2*7,'#6f6540',2.8);}
+        }else if(kind==='snow'){
+          c.globalAlpha=.3;ellipse(c,x,y,10+rand()*35,3+rand()*9,i%4?'#f4f3e7':'#91aba4');
+          if(i%5===0)line(c,x-4,y,x+7,y-1,'#92a59d',1.5);
+        }else if(kind==='road'){
+          c.globalAlpha=.3;ellipse(c,x,y,2+rand()*4,1+rand()*2,i%2?'#d2c3a0':'#756e56');
+        }
+      }
       c.restore();
     }
 
@@ -1075,6 +1123,10 @@
     _motionAction(u,frame) {
       if(this.options&&this.options.animations==='reduced'||u.state==='turning'||u.state==='fallBack'||u.routed)return null;
       const e=this.engine,r=e.regiments&&e.regiments[u.regiment];
+      if(u._rampartStage==='falling'&&u._rampartZ>0){
+        const wall=e.siege&&e.siege.byId&&e.siege.byId.get(u._rampartId),height=wall&&wall.deckHeight||36;
+        return {kind:'collapse',phase:Math.min(2,Math.floor(clamp(1-u._rampartZ/height,0,1)*3))};
+      }
       if(r&&(r.order==='face'||r.order==='retreat'||r.fallingBack))return null;
       if(u.type==='musketeer'&&frame>=4&&((Number.isFinite(u._lastMusketMelee)&&u._lastMusketMelee===u._lastAttack)||r&&r.volleyStatus==='melee'&&frame<6))return {kind:'musketMelee',phase:frame-4};
       if(frame>=4)return null;
@@ -1116,8 +1168,9 @@
       const e=this.engine,mode=this._bodyMode();let cache=this._corpseCache;
       if(!cache||cache.engine!==e||cache.mode!==mode||e.time<cache.time){
         this._resetCorpseCache();
-        cache=this._corpseCache={engine:e,mode,time:e.time,cursor:0,seen:new Set(),pending:[],tiles:new Map(),pixels:0,settled:0,frame:0,scanAt:-Infinity,scanCount:0};
+        cache=this._corpseCache={engine:e,mode,time:e.time,terrainRevision:e.terrainRevision,cursor:0,seen:new Set(),pending:[],tiles:new Map(),pixels:0,settled:0,frame:0,scanAt:-Infinity,scanCount:0};
       }
+      if(cache.terrainRevision!==e.terrainRevision){for(const tile of cache.tiles.values())tile.dirty=true;cache.terrainRevision=e.terrainRevision;}
       cache.time=e.time;cache.frame++;
       const ids=e.deadUnitIds;
       if(Array.isArray(ids)){
@@ -1180,6 +1233,7 @@
           c.globalAlpha=opacity;
           // Later casualties occupy progressively raised layers in their
           // local pile; no displacement is applied to simulation bodies.
+          body.elevation=this._elevation(u);
           c.drawImage(sprite[level],body.x+sprite.ox,body.y-body.elevation-body.layer*1.35+sprite.oy,sprite.w,sprite.h);
           count++;tile.visibleCount++;
           if(long)tile.nextRefresh=Math.min(tile.nextRefresh,u._deathTime+LONG_BODY_FADE_START>this.engine.time?u._deathTime+LONG_BODY_FADE_START:this.engine.time+2);
@@ -1332,7 +1386,13 @@
     }
 
     _elevation(u) {
+      // Rampart/climb height belongs to the physical unit, so an archer on a
+      // wall and a soldier passing its ground gate can share x/y safely.
       const siege=this.engine.siege;
+      if(Number.isFinite(u._rampartZ)&&u._rampartZ>0){
+        const wall=!u.alive&&u._rampartId&&siege&&siege.byId&&siege.byId.get(u._rampartId);
+        return wall&&wall.breached?0:u._rampartZ;
+      }
       return siege&&typeof siege.heightAt==='function'?siege.heightAt(u.x,u.y):0;
     }
 
@@ -1364,13 +1424,14 @@
     _drawFortifications(c,bounds,z) {
       const structures=this.engine.structures||[];
       for(const s of structures){
-        const gate=s.type==='gate',tower=s.castleTower===true,height=tower?68:gate?29:38;
+        const gate=s.type==='gate',tower=s.castleTower===true||s.structureKind==='keep',height=s.walkable&&Number.isFinite(s.deckHeight)?s.deckHeight:Number(s.structureHeight)||({palisade:28,earthwork:14,house:32,watchtower:64,barricade:16,keep:56})[s.structureKind]||(tower?68:gate?29:38);
         if(s.x+s.w+10<bounds.x1||s.x-8>bounds.x2||s.y+s.h+10<bounds.y1||s.y-height-32>bounds.y2)continue;
         if(s.breached){
           c.fillStyle='rgba(57,51,36,.22)';c.fillRect(s.x-8,s.y-5,s.w+16,s.h+10);
           for(let i=0;i<18;i++){
             const x=s.x+((i*73+17)%101)/101*s.w,y=s.y+((i*47+11)%97)/97*s.h,r=6+(i%4)*3;
-            poly(c,[[x-r,y],[x-r*.45,y-r*.6],[x+r*.7,y-r*.5],[x+r,y+r*.5],[x,y+r]],s.type==='gate'?'#8c704c':'#96917b','#5d6252',1);
+            const timber=['palisade','house','watchtower','barricade'].includes(s.structureKind),earth=s.structureKind==='earthwork';
+            poly(c,[[x-r,y],[x-r*.45,y-r*.6],[x+r*.7,y-r*.5],[x+r,y+r*.5],[x,y+r]],timber||gate?'#8c704c':earth?'#a08a60':'#96917b','#5d6252',1);
           }
           continue;
         }
@@ -1385,6 +1446,7 @@
             c.fillStyle='#795e40';c.fillRect(x,y-6,width,depth);
             c.strokeStyle='#514a36';c.lineWidth=1.5;c.strokeRect(x,y-6,width,depth);
           }
+          this._drawRampartDeck(c,s,z);this._drawRampartStairs(c,s,z);
           continue;
         }
         let pieces=[{x:s.x,y:s.y,w:s.w,h:s.h}];
@@ -1403,6 +1465,7 @@
         }
         const p=TEAM[s.team===0?0:1];
         for(const r of pieces){
+          if(!gate&&this._drawMaterialStructure(c,r,s,height,z))continue;
           c.fillStyle='rgba(28,35,24,.25)';c.fillRect(r.x+9,r.y+9,r.w+12,r.h+9);
           poly(c,[[r.x,r.y+r.h-height],[r.x+r.w,r.y+r.h-height],[r.x+r.w,r.y+r.h],[r.x,r.y+r.h]],gate?'#655139':'#777968','#454b3d',2);
           poly(c,[[r.x+r.w,r.y-height],[r.x+r.w+8,r.y-height+8],[r.x+r.w+8,r.y+r.h],[r.x+r.w,r.y+r.h-height]],gate?'#544a33':'#626955','#414b3b',1.5);
@@ -1443,12 +1506,137 @@
             line(c,mx-10,my-18,mx+5,my-3,'#4b5143',2.7);line(c,mx+5,my-3,mx-3,my+9,'#4b5143',2.7);line(c,mx-3,my+9,mx+14,my+21,'#4b5143',2.7);
           }
         }
+        this._drawRampartDeck(c,s,z);this._drawRampartStairs(c,s,z);
         const mx=s.x+s.w/2,my=s.y+s.h/2-height;
         if(pieces.length&&z>.17){
           line(c,mx,my,mx,my-31,'#d5bf85',2);poly(c,[[mx,my-31],[mx+21,my-28],[mx+17,my-15],[mx,my-18]],p.base,p.trim,1);
           if(s.hp<s.maxHp){const width=Math.min(100,Math.max(48,70/z*.4));c.fillStyle='#273b31';c.fillRect(mx-width/2,my+7,width,6);c.fillStyle=s.hp/s.maxHp>.35?p.light:'#d98c62';c.fillRect(mx-width/2,my+7,width*clamp(s.hp/s.maxHp,0,1),6);}
         }
       }
+    }
+
+    _drawRampartDeck(c,s,z) {
+      if(!s.walkable||s.breached||!Number.isFinite(s.deckHeight))return;
+      const h=s.deckHeight,x=s.x,y=s.y-h,w=s.w,d=s.h,kind=s.structureKind;
+      const timber=kind==='palisade'||kind==='watchtower',earth=kind==='earthwork';
+      c.save();
+      c.fillStyle=timber?'#b69969':earth?'#b1a17b':'#c3c1a7';c.fillRect(x,y,w,d);
+      c.strokeStyle=timber?'#766344':earth?'#8e805d':'#939681';c.lineWidth=1;c.strokeRect(x,y,w,d);
+      const vertical=d>w,span=vertical?d:w,step=Math.max(timber?24:42,10/Math.max(.15,z));
+      for(let n=step;n<span;n+=step){
+        if(vertical)line(c,x,y+n,x+w,y+n,timber?'#7d694b':'#a3a58e',.8);
+        else line(c,x+n,y,x+n,y+d,timber?'#7d694b':'#a3a58e',.8);
+      }
+      // Only the outward edge is crenellated. Interior seams remain open so
+      // adjacent panels, corner towers and gatehouses read as one walkway.
+      const side=String(s.rampartSide||((d>w)?'W':'N')).charAt(0).toUpperCase(),along=side==='W'||side==='E'?d:w;
+      const edge=(at,up)=>side==='W'?[x,y+at-up]:side==='E'?[x+w,y+at-up]:side==='N'?[x+at,y-up]:[x+at,y+d-up];
+      const post=Math.max(22,9/Math.max(.15,z));
+      for(let n=0;n<along;n+=post){
+        const a=edge(n,0),b=edge(Math.min(along,n+post*.6),0);
+        if(timber){line(c,a[0],a[1],a[0],a[1]-8,'#584c37',3);line(c,a[0],a[1]-7,b[0],b[1]-7,'#dcc38a',2.3);}
+        else if(earth)ellipse(c,a[0],a[1]-3,side==='W'||side==='E'?5:Math.min(12,post*.4),side==='W'||side==='E'?Math.min(10,post*.4):5,'#d0bc8b','#8c7b55',1);
+        else{
+          c.fillStyle='#e2d8b8';c.fillRect(Math.min(a[0],b[0])-(side==='W'?5:0),Math.min(a[1],b[1])-7,Math.max(7,Math.abs(b[0]-a[0])),Math.max(7,Math.abs(b[1]-a[1])));
+        }
+      }
+      if(z>.4&&s.type==='gate'){
+        c.font='600 '+8/z+'px system-ui, sans-serif';c.textAlign='center';c.fillStyle=timber?'#534a36':'#626b5d';c.fillText('GATEHOUSE WALK',x+w/2,y+d/2);
+      }
+      c.restore();
+    }
+
+    _drawRampartStairs(c,s,z) {
+      if(s.breached||!s.walkable)return;
+      const timber=s.structureKind==='palisade'||s.structureKind==='watchtower';
+      for(const stair of s.stairs||[]){
+        if(![stair.groundX,stair.groundY,stair.deckX,stair.deckY].every(Number.isFinite))continue;
+        const height=Number(stair.height)||Number(s.deckHeight)||0,dx=stair.deckX-stair.groundX,dy=stair.deckY-stair.groundY,length=Math.hypot(dx,dy)||1;
+        const half=(Number(stair.width)||Math.min(stair.w||64,stair.h||64)||64)/2,px=-dy/length*half,py=dx/length*half;
+        const point=(t,side)=>[stair.groundX+dx*t+px*side,stair.groundY+dy*t+py*side-height*t];
+        c.save();
+        poly(c,[point(0,-1),point(1,-1),point(1,1),point(0,1)],timber?'#9e8052':'#a6aa92','#5a6555',1.2);
+        const steps=Math.max(4,Math.min(24,Math.ceil(length/16)));
+        for(let n=0;n<=steps;n++){
+          const a=point(n/steps,-1),b=point(n/steps,1);line(c,a[0],a[1],b[0],b[1],timber?'#d1b784':'#d4d4b9',1.5);
+        }
+        for(const side of [-1,1]){
+          const a=point(0,side),b=point(1,side);line(c,a[0],a[1]-4,b[0],b[1]-4,timber?'#66563b':'#727d68',2);
+        }
+        if(z>.55){const p=point(.18,0);c.font='600 '+8/z+'px system-ui, sans-serif';c.textAlign='center';c.fillStyle='#ebdba8';c.fillText('STAIRS',p[0],p[1]+12/z);}
+        c.restore();
+      }
+    }
+
+    _drawMaterialStructure(c,r,s,height,z) {
+      const kind=s.structureKind;
+      if(!kind||kind==='stone')return false;
+      const x=r.x,y=r.y,w=r.w,h=r.h,top=y-height,vertical=h>w,span=vertical?h:w;
+      const ink='#453e30',wood='#9b7548',bright='#d0ac70';
+      c.save();c.fillStyle='rgba(27,32,23,.26)';c.fillRect(x+8,y+8,w+8,h+5);
+      if(kind==='palisade'){
+        c.fillStyle='#665035';c.fillRect(x,top,w,h+height);c.strokeStyle=ink;c.lineWidth=2;c.strokeRect(x,top,w,h+height);
+        const step=Math.max(15,span/80);
+        for(let n=0;n<span;n+=step){
+          const width=Math.min(step-1,span-n),px=vertical?x:x+n,py=vertical?y+n:top;
+          if(vertical){
+            poly(c,[[x,py-height],[x+w*.5,py-height-4],[x+w,py-height],[x+w,py+width],[x,py+width]],n/step%2<1?wood:'#84643e',ink,1);
+            line(c,x+3,py-height+3,x+w-3,py-height+3,bright,1.2);
+          }else{
+            poly(c,[[px,top+5],[px+width*.5,top],[px+width,top+5],[px+width,y+h],[px,y+h]],n/step%2<1?wood:'#84643e',ink,1);
+            line(c,px+3,top+7,px+3,y+h-3,bright,1.2);
+          }
+        }
+        if(vertical){for(const f of [.25,.75])line(c,x+w*f,top+3,x+w*f,y+h-3,'#514333',4);}
+        else for(const f of [.35,.75])line(c,x+3,top+(h+height)*f,x+w-3,top+(h+height)*f,'#514333',4);
+      }else if(kind==='earthwork'){
+        poly(c,[[x,y+h],[x+Math.min(14,w*.2),top],[x+w-Math.min(14,w*.2),top],[x+w,y+h]],'#978259',ink,1.2);
+        c.fillStyle='#899265';c.fillRect(x+4,top+3,Math.max(1,w-8),Math.max(3,h*.5));
+        const step=Math.max(22,span/60);
+        for(let n=0;n<span;n+=step){const px=vertical?x+w*.5:x+n,py=vertical?y+n-height*.4:top+h*.65;ellipse(c,px,py,vertical?Math.min(13,w*.35):Math.min(12,span-n),vertical?10:7,'#bdab7c','#796b4d',1.1);}
+      }else if(kind==='barricade'){
+        c.fillStyle='#6b5d43';c.fillRect(x,top,w,h+height);
+        const step=Math.max(27,span/60);
+        for(let n=0;n<span;n+=step)for(const across of [.25,.72]){
+          const px=vertical?x+w*across:x+n,py=vertical?y+n:top+(h+height)*across;
+          line(c,px-13,py+height*.65,px+12,py-height*.5,ink,7);line(c,px-13,py+height*.65,px+12,py-height*.5,bright,3.5);
+          line(c,px+13,py+height*.65,px-12,py-height*.5,ink,7);line(c,px+13,py+height*.65,px-12,py-height*.5,wood,3.5);
+          ellipse(c,px,py,2,2,'#b9b2a0');
+        }
+      }else if(kind==='house'){
+        c.fillStyle='#d5c6a1';c.fillRect(x,y-height*.52,w,h+height*.52);
+        c.strokeStyle=ink;c.lineWidth=2;c.strokeRect(x,y-height*.52,w,h+height*.52);
+        for(const f of [0,.5,1])line(c,x+w*f,y-height*.5,x+w*f,y+h,wood,4);
+        line(c,x,y+h*.45,x+w,y+h*.45,wood,4);line(c,x,y+h*.45,x+w*.5,y+h,wood,3);
+        c.fillStyle='#5d655b';c.fillRect(x+w*.13,y+h*.15,Math.max(5,w*.17),Math.max(7,h*.24));c.fillStyle='#69523a';c.fillRect(x+w*.65,y+h*.48,w*.2,h*.52);
+        poly(c,[[x-5,y-height*.52],[x+w*.5,top],[x+w*.5,y+h-height],[x-5,y+h-height*.52]],'#985e43',ink,2);
+        poly(c,[[x+w*.5,top],[x+w+5,y-height*.52],[x+w+5,y+h-height*.52],[x+w*.5,y+h-height]],'#b07950',ink,2);
+        line(c,x+w*.5,top,x+w*.5,y+h-height,'#e0b981',2);
+        for(let n=18;n<w;n+=Math.max(18,w/18))line(c,x+n,y-height*.52,x+n,y+h-height*.5,'#744a37',1);
+        c.fillStyle='#756d56';c.fillRect(x+w*.72,top-2,Math.max(8,w*.1),height*.45);
+      }else if(kind==='watchtower'){
+        c.fillStyle='#786040';c.fillRect(x,y-height*.75,w,h+height*.75);
+        c.strokeStyle=ink;c.lineWidth=2;c.strokeRect(x,y-height*.75,w,h+height*.75);
+        for(const f of [0,1])line(c,x+w*f,top+height*.2,x+w*f,y+h,bright,5);
+        line(c,x,top+height*.3,x+w,y+h,bright,4);line(c,x+w,top+height*.3,x,y+h,bright,4);
+        c.fillStyle='#ac8755';c.fillRect(x-4,top+height*.2,w+8,h*.55+8);c.strokeStyle=ink;c.strokeRect(x-4,top+height*.2,w+8,h*.55+8);
+        poly(c,[[x-7,top+height*.2],[x+w*.5,top-9],[x+w+7,top+height*.2+h*.55],[x,top+height*.2+h*.55]],'#576963',ink,2);
+        line(c,x+w*.5,top-9,x+w+7,top+height*.2+h*.55,'#9bac95',2);
+      }else if(kind==='keep'){
+        poly(c,[[x,y+h-height],[x+w,y+h-height],[x+w,y+h],[x,y+h]],'#7b8170',ink,2);
+        poly(c,[[x+w,top],[x+w+6,top+6],[x+w+6,y+h],[x+w,y+h-height]],'#606e61',ink,1.2);
+        c.fillStyle='#b8b59c';c.fillRect(x,top,w,h);c.strokeStyle=ink;c.lineWidth=2;c.strokeRect(x,top,w,h);
+        const lip=Math.max(6,Math.min(15,w*.15,h*.15));c.fillStyle='#637466';c.fillRect(x+lip,top+lip,Math.max(1,w-lip*2),Math.max(1,h-lip*2));
+        c.fillStyle='#dfd2ad';
+        for(let n=0;n<w;n+=Math.max(28,w/24)){c.fillRect(x+n,top,Math.min(17,w-n),lip);c.fillRect(x+n,top+h-lip,Math.min(17,w-n),lip);}
+        for(let n=20;n<h-lip;n+=Math.max(28,h/24)){c.fillRect(x,top+n,lip,Math.min(17,h-lip-n));c.fillRect(x+w-lip,top+n,lip,Math.min(17,h-lip-n));}
+        for(const f of [.22,.75]){c.fillStyle='#303d34';c.fillRect(x+w*f,y+h-height*.6,4,height*.25);}
+      }else{c.restore();return false;}
+      if(s.hp/s.maxHp<.7){
+        const mx=x+w*.53,my=y+h*.5-height*.3;
+        line(c,mx-9,my-12,mx+3,my+2,ink,3);line(c,mx+3,my+2,mx-4,my+13,ink,3);
+      }
+      c.restore();return true;
     }
 
     _drawSiegeRamps(c,bounds,z) {
@@ -1509,6 +1697,85 @@
       return sorted;
     }
 
+    _drawOverviewUnits(c,units,z) {
+      // Below roughly six pixels per infantryman, a full sprite blit for each
+      // body costs more than the detail it can show. Rasterize every soldier
+      // into one reusable screen-sized layer, then submit that layer once.
+      // Zooming in immediately restores the full cached artwork and animation.
+      const ratio=Math.min(2,this.dpr||1),width=Math.ceil(this.width*ratio),height=Math.ceil(this.height*ratio);
+      let cache=this._overviewLayer;
+      if(!cache||cache.width!==width||cache.height!==height){
+        if(cache)cache.canvas.width=cache.canvas.height=1;
+        const canvas=newCanvas(width,height),ctx=canvas.getContext('2d'),data=ctx.createImageData(width,height);
+        // Recording/no-pixel Canvas implementations use the regular sprite
+        // path; this optimization must never remove bodies in that fallback.
+        if(!data||!data.data||!data.data.buffer)return 0;
+        cache=this._overviewLayer={canvas,ctx,data,pixels:new Uint32Array(data.data.buffer),width,height};
+      }
+      const pixels=cache.pixels;pixels.fill(0);
+      const scale=z*ratio,ox=(this.width/2-this.camera.x*z)*ratio,oy=(this.height/2-this.camera.y*z)*ratio;
+      const packed=(r,g,b,a=255)=>(a<<24|b<<16|g<<8|r)>>>0;
+      const blue=packed(113,174,212),red=packed(214,125,103),ink=packed(42,54,47),skin=packed(222,193,142),wood=packed(185,150,94),steel=packed(218,223,196),flash=packed(255,237,182);
+      const data=global.GameData.TYPES,time=this.engine.time||0;
+      let rasterized=0;
+      for(let i=0;i<units.length;i++){
+        const u=units[i],type=data[u.type],mounted=type.mounted||u.type==='elephant',siege=type.siege;
+        if(u.type==='siegeTower'&&u._siegeDeployed)continue;
+        rasterized++;
+        let lift=0;
+        if(u._impactLift>0&&u._impactDuration>0){const progress=(time-u._impactStart)/u._impactDuration;if(progress>=0&&progress<1)lift=Math.sin(progress*Math.PI)*u._impactLift;}
+        const x=Math.round(u.x*scale+ox),y=Math.round((u.y-lift-(u._rampartZ||0))*scale+oy);
+        const bodyW=siege?Math.max(3,Math.ceil(35*scale)):mounted?Math.max(2,Math.ceil(17*scale)):Math.max(1,Math.ceil(8*scale));
+        const bodyH=Math.max(2,Math.ceil((siege?26:mounted?29:23)*scale)),left=x-(bodyW>>1),top=y-bodyH;
+        const color=siege?wood:u.team?red:blue,alpha=u.routed?0x99ffffff:0xffffffff;
+        for(let py=Math.max(0,top);py<=Math.min(height-1,y);py++){
+          const shade=py===top?(siege?steel:skin):py===y?ink:color;
+          const offset=py*width;
+          for(let px=Math.max(0,left);px<Math.min(width,left+bodyW);px++)pixels[offset+px]=(shade&alpha)>>>0;
+        }
+        // A one-pixel footfall and real shot/strike flash retain movement and
+        // fighting cues at overview scale without inventing simulation events.
+        if(this.options.animations!=='reduced'&&(u.state==='move'||u.state==='rout')&&bodyW>1){
+          const foot=x+(((Math.floor((u.travelDistance||0)/11)+u.id)&1)?1:-1);
+          if(foot>=0&&foot<width&&y>=0&&y<height)pixels[y*width+foot]=ink;
+        }
+        if(u.attackFlash>.1&&time-u._lastAttack>=0&&time-u._lastAttack<.16){
+          const sx=x+(Math.cos(u.angle||0)<0?-bodyW:bodyW),sy=top+1;
+          if(sx>=0&&sx<width&&sy>=0&&sy<height)pixels[sy*width+sx]=flash;
+        }
+      }
+      cache.ctx.putImageData(cache.data,0,0);
+      c.imageSmoothingEnabled=false;
+      c.drawImage(cache.canvas,this.camera.x-this.width/z/2,this.camera.y-this.height/z/2,this.width/z,this.height/z);
+      c.imageSmoothingEnabled=true;
+      return rasterized;
+    }
+
+    _drawTerrainViewport(c,z,offsetX,offsetY) {
+      const terrain=this._terrain;
+      if(!terrain||!terrain.width||!terrain.height)return false;
+      const width=this.canvas.width,height=this.canvas.height;
+      // A second viewport is inexpensive on normal screens. Avoid allocating
+      // an unusually large additional framebuffer on oversized displays.
+      if(width*height>10000000)return false;
+      let cache=this._terrainViewport;
+      if(!cache||cache.width!==width||cache.height!==height){
+        if(cache)cache.canvas.width=cache.canvas.height=1;
+        const canvas=newCanvas(width,height);cache=this._terrainViewport={canvas,ctx:canvas.getContext('2d',{alpha:false}),width,height};
+      }
+      if(cache.terrain!==terrain||cache.x!==this.camera.x||cache.y!==this.camera.y||cache.zoom!==z||cache.dpr!==this.dpr||cache.cssWidth!==this.width||cache.cssHeight!==this.height||cache.worldWidth!==this.engine.width||cache.worldHeight!==this.engine.height||cache.terrainRevision!==this.engine.terrainRevision){
+        const b=cache.ctx;
+        b.setTransform(1,0,0,1,0,0);b.fillStyle='#252d28';b.fillRect(0,0,width,height);
+        b.setTransform(z*this.dpr,0,0,z*this.dpr,offsetX*this.dpr,offsetY*this.dpr);b.imageSmoothingEnabled=true;
+        b.drawImage(terrain,0,0,this.engine.width,this.engine.height);
+        Object.assign(cache,{terrain,x:this.camera.x,y:this.camera.y,zoom:z,dpr:this.dpr,cssWidth:this.width,cssHeight:this.height,worldWidth:this.engine.width,worldHeight:this.engine.height,terrainRevision:this.engine.terrainRevision});
+      }
+      // Reusing the already scaled opaque pixels avoids resampling the large
+      // world backdrop every troop frame. Dynamic water/wind/forts stay live.
+      c.setTransform(1,0,0,1,0,0);c.globalAlpha=1;c.drawImage(cache.canvas,0,0);
+      return true;
+    }
+
     render(nowSeconds,selectedIds) {
       if(!this.engine||!this.ctx)return;
       const now=Number.isFinite(nowSeconds)?nowSeconds:0;
@@ -1516,16 +1783,17 @@
       this._lastFrame=now;this._now=now;this._frame++;
       const selected=selectedIds instanceof Set?selectedIds:new Set(selectedIds||[]),e=this.engine,c=this.ctx,z=this.camera.zoom;
       const offsetX=this.width/2-this.camera.x*z,offsetY=this.height/2-this.camera.y*z;
-      c.setTransform(this.dpr,0,0,this.dpr,0,0);c.globalAlpha=1;c.fillStyle='#252d28';c.fillRect(0,0,this.width,this.height);
+      const terrainCached=this._drawTerrainViewport(c,z,offsetX,offsetY);
+      if(!terrainCached){c.setTransform(this.dpr,0,0,this.dpr,0,0);c.globalAlpha=1;c.fillStyle='#252d28';c.fillRect(0,0,this.width,this.height);}
       c.setTransform(z*this.dpr,0,0,z*this.dpr,offsetX*this.dpr,offsetY*this.dpr);
       c.imageSmoothingEnabled=true;
-      c.drawImage(this._terrain,0,0,e.width,e.height);
+      if(!terrainCached)c.drawImage(this._terrain,0,0,e.width,e.height);
       const bounds={x1:this.camera.x-this.width/z/2-180,x2:this.camera.x+this.width/z/2+180,y1:this.camera.y-this.height/z/2-180,y2:this.camera.y+this.height/z/2+180};
       this._drawTerrainMotion(c,bounds,z);
       this._drawFortifications(c,bounds,z);
       this._drawSiegeRamps(c,bounds,z);
       if(e.phase==='deployment')this._drawDeployment(c,bounds,z);
-      if(this.options.showOrders&&!this.options.cinematic)this._drawOrders(c,selected,z);
+      if(this.options.showOrders&&!this.options.cinematic){this._drawOrders(c,selected,z);this._drawRampartOrders(c,selected,z);}
       this._drawWaterMotion(c,bounds,now,z);
       const units=e.units||[],visible=this._visible;visible.length=0;
       if(this.options.quality==='auto'&&now-this._qualityChangedAt>2){
@@ -1548,7 +1816,9 @@
       // reusable screen-row buckets. Neither path touches simulation order.
       const ordered=this.options.quality!=='high'&&pixelZoom<.8&&visible.length>1200?
         this._sortVisibleRows(visible,bounds,pixelZoom):visible.sort((a,b)=>a.y-b.y||a.id-b.id);
-      for(let i=0;i<ordered.length;i++){
+      const overviewBodies=this.options.quality!=='high'&&pixelZoom<.22&&visible.length>=12000?this._drawOverviewUnits(c,ordered,z):0;
+      if(overviewBodies)drawCalls++;
+      else for(let i=0;i<ordered.length;i++){
         const u=ordered[i],atlas=this._unitAtlases[u.id]||this._getAtlas(u.type,u.team||0),angle=Number.isFinite(u.angle)?u.angle:(u.team?Math.PI:0);
         if(u.type==='siegeTower'&&u._siegeDeployed)continue;
         const dir=((Math.round(angle/(Math.PI/4))%8)+8)%8;
@@ -1600,7 +1870,7 @@
       if(this.options.cinematic){
         const grd=c.createRadialGradient(this.width/2,this.height/2,this.height*.23,this.width/2,this.height/2,Math.max(this.width,this.height)*.7);grd.addColorStop(0,'rgba(8,17,13,0)');grd.addColorStop(1,'rgba(8,17,13,.42)');c.fillStyle=grd;c.fillRect(0,0,this.width,this.height);
       }
-      this._renderStats={visible:visible.length,bodies,drawCalls,corpseTiles:this._corpseStats?this._corpseStats.drawnTiles:0};
+      this._renderStats={visible:visible.length,bodies,drawCalls,overviewBodies,corpseTiles:this._corpseStats?this._corpseStats.drawnTiles:0};
     }
 
     _drawDeployment(c,bounds,z) {
@@ -1615,6 +1885,7 @@
       c.save();
       for(const r of this.engine.regiments||[]){
         if(!selected.has(r.id)||!r.alive)continue;
+        if(r._rampartJob)continue;
         const p=TEAM[r.team||0],rw=Math.max(12,Number(r.effectiveWidth)||Number(r.width)||80),rh=Math.max(12,Number(r.effectiveDepth)||Number(r.depth)||50);
         const fallingBack=r.status==='fallingBack'||r.fallingBack,reforming=r.status==='rallying';
         const maneuver=r.maneuver||'formed',column=maneuver==='narrowing'||maneuver==='threading';
@@ -1669,6 +1940,45 @@
       c.restore();
     }
 
+    _drawRampartOrders(c,selected,z) {
+      const pending=this.pendingRampart,e=this.engine,groups=[];
+      for(const r of e.regiments||[])if(selected.has(r.id)&&r._rampartJob&&!r._rampartJob.leaving&&Array.isArray(r._rampartSlots)&&r._rampartSlots.length)groups.push({slots:r._rampartSlots,team:r.team,ranks:r.rampartRanks||1});
+      if(pending){
+        let slots=pending.slots;
+        if(!Array.isArray(slots)&&e.siege&&typeof e.siege.previewRampart==='function'){
+          const ids=pending.regimentIds||Array.from(selected);
+          const key=[pending.structureId,pending.ranks,pending.spacing,e.terrainRevision||0,ids.map(id=>{const r=e.regiments[id];return id+':'+(r?r.alive:0)+':'+(r?r.type:'');}).join(',')].join('|');
+          const reservations=(e.regiments||[]).filter(r=>r._rampartJob&&!r._rampartJob.leaving).map(r=>r._rampartSlots);
+          let cache=this._rampartPreviewCache;
+          if(!cache||cache.engine!==e||cache.key!==key||cache.reservations.length!==reservations.length||reservations.some((slots,i)=>slots!==cache.reservations[i])){
+            const preview=e.siege.previewRampart(ids,pending.structureId,{ranks:pending.ranks,spacing:pending.spacing});
+            cache=this._rampartPreviewCache={engine:e,key,reservations,slots:Array.isArray(preview)?preview:preview&&preview.slots};
+          }
+          slots=cache.slots;
+        }
+        if(Array.isArray(slots)&&slots.length)groups.push({slots,team:0,ranks:pending.ranks||1,preview:true});
+        const structure=(e.structures||[]).find(s=>s.id===pending.structureId&&!s.breached&&s.walkable);
+        if(structure){
+          const height=Number(structure.deckHeight)||0;
+          c.save();c.globalAlpha=.8;c.strokeStyle='#f1d58e';c.lineWidth=2/z;c.setLineDash([5/z,4/z]);c.strokeRect(structure.x,structure.y-height,structure.w,structure.h);c.restore();
+          const stair=(structure.stairs||[])[0];
+          if(stair&&[stair.groundX,stair.groundY,stair.deckX,stair.deckY].every(Number.isFinite)){
+            c.save();c.globalAlpha=.65;c.setLineDash([5/z,5/z]);
+            for(const id of pending.regimentIds||selected){const r=e.regiments[id];if(r)line(c,r.x,r.y,stair.groundX,stair.groundY,'#efda9e',1/z);}
+            line(c,stair.groundX,stair.groundY,stair.deckX,stair.deckY-height,'#efda9e',2/z);c.restore();
+          }
+        }
+      }else this._rampartPreviewCache=null;
+      if(z<.16)return;
+      c.save();
+      for(const group of groups){
+        const stride=Math.max(1,Math.ceil(group.slots.length/900)),palette=group.preview?['#f1d58e','#e0c089','#c9ac78']:[TEAM[group.team===1?1:0].light,'#e2cb97','#bfccb2'];
+        c.globalAlpha=group.preview?.80:.48;
+        for(let i=0;i<group.slots.length;i+=stride){const slot=group.slots[i];if(!Number.isFinite(slot.x)||!Number.isFinite(slot.y))continue;ellipse(c,slot.x,slot.y-(Number(slot.z)||0),Math.max(2,1.8/z),Math.max(1.2,1.1/z),null,palette[(Number(slot.rank)||0)%palette.length],1/z);}
+      }
+      c.restore();
+    }
+
     _drawTacticRoute(c,r,z) {
       const tactic=r._tactic;
       if(!tactic||!(tactic.transit||tactic.charge))return;
@@ -1694,6 +2004,7 @@
       // the angle only; no route, destination ring, or travel line is drawn.
       for(const r of this.engine.regiments||[]){
         if(!selected.has(r.id)||!r.alive||!Number.isFinite(r.x)||!Number.isFinite(r.y))continue;
+        if(r._rampartJob)continue;
         const actual=Number.isFinite(r.facing)?r.facing:r.team?Math.PI:0;
         const turning=r.order==='face'||r.commandStatus==='facing';
         const desired=preview&&Math.hypot(pending.x-r.x,pending.y-r.y)>1?Math.atan2(pending.y-r.y,pending.x-r.x):turning&&Number.isFinite(r.commandFacing)?r.commandFacing:null;
@@ -1784,7 +2095,10 @@
         const p=ps[i];if(p.x<bounds.x1-45||p.x>bounds.x2+45||p.y<bounds.y1-24||p.y-(p.z||0)-125>bounds.y2)continue;
         let altitude=Number(p.z)||0;
         const siege=this.engine.siege;
-        if(p.type==='siegeTower'||siege&&siege.ramps&&siege.ramps.length){
+        if(Number.isFinite(p.launchZ)||Number.isFinite(p.targetZ)){
+          const progress=clamp((Number(p.age)||0)/Math.max(.01,Number(p.duration)||1),0,1);
+          altitude+=(Number(p.launchZ)||0)*(1-progress)+(Number(p.targetZ)||0)*progress;
+        }else if(p.type==='siegeTower'||siege&&siege.ramps&&siege.ramps.length){
           const progress=clamp((Number(p.age)||0)/Math.max(.01,Number(p.duration)||1),0,1),attacker=this.engine.units&&this.engine.units[p.attacker];
           const start=p.type==='siegeTower'?116+(attacker&&attacker._siegeDeployed?0:siege&&siege.heightAt?siege.heightAt(p.sx,p.sy):0):siege&&siege.heightAt?siege.heightAt(p.sx,p.sy):0;
           const end=siege&&siege.heightAt?siege.heightAt(p.tx,p.ty):0;
@@ -1799,12 +2113,12 @@
           // sprite, then converge on the exact simulated impact point.
           const start=1-fraction;
           if(p.type==='trebuchet'){
-            y-=87*start;
+            if(!Number.isFinite(p.launchZ))y-=87*start;
             c.globalAlpha=.23;ellipse(c,p.x,p.y,12,5,'#1c241d');c.globalAlpha=1;
             poly(c,[[x-10,y-4],[x-4,y-11],[x+6,y-10],[x+12,y-2],[x+8,y+7],[x-1,y+9],[x-10,y+5]],'#868e7f','#39423c',1.7);
             poly(c,[[x-8,y-3],[x-3,y-9],[x+5,y-8],[x+2,y-3]],'#bbc1ad');
           }else{
-            x+=nx*27*start;y+=ny*16*start-19*start;
+            x+=nx*27*start;y+=ny*16*start-(Number.isFinite(p.launchZ)?0:19*start);
             if(p.type==='cannon'){
               c.globalAlpha=.26;ellipse(c,p.x,p.y,6,3,'#252922');c.globalAlpha=1;
               line(c,x-nx*20,y-ny*20,x,y,'rgba(219,202,159,.68)',3);
@@ -1835,6 +2149,8 @@
       const effects=this.engine.effects||[];c.save();
       for(let i=0;i<effects.length;i++){
         const e=effects[i];if(e.x<bounds.x1||e.x>bounds.x2||e.y<bounds.y1||e.y>bounds.y2||(low&&i%2))continue;
+        const raised=Number.isFinite(e.z)?e.z:(this.engine.units[e.unitId]?Number(this.engine.units[e.unitId]._rampartZ)||0:0);
+        if(raised){c.save();c.translate(0,-raised);}
         const life=Number(e.life)||.5,t=clamp((Number(e.age)||0)/life,0,1),r=(Number(e.size)||12)*(1+t*.6),fade=1-t;
         if(e.kind==='musketMuzzle'||e.kind==='cannonMuzzle'){
           const cannon=e.kind==='cannonMuzzle',angle=Number.isFinite(e.angle)?e.angle:(this.engine.units[e.unitId]?.angle||0);
@@ -1889,6 +2205,7 @@
           c.globalAlpha=fade*.16;ellipse(c,e.x,e.y-t*6,r,r*.45,this.theme.grass);
           if(e.kind==='charge'){c.globalAlpha=fade*.35;ellipse(c,e.x,e.y,r*1.2,r*.65,null,'#dcc48d',1.5/z);}
         }
+        if(raised)c.restore();
       }c.restore();
     }
 
@@ -1905,11 +2222,17 @@
         const yielding=r._formationPressureSpeed>.01&&r._formationPressureUntil>this.engine.time&&r._pressureSourceId>=0&&r.order!=='move'&&r.order!=='face'&&r.order!=='retreat'&&!(r._rallyTime>0)&&!(r.order==='attack'&&r._hasDestination&&!r._attackBlocked);
         const volley=r.type==='musketeer'&&r.volleyStatus;
         const volleyStatus=volley==='melee'?'MELEE · RANKS BROKEN':volley==='reforming'?'REFORMING FIRING RANKS':volley==='forming'?'FORMING FIRING RANKS':volley==='marching'?'MARCHING · FIRE HELD':volley&&r.nextVolleyRank?'NEXT VOLLEY · RANK '+r.nextVolleyRank:'';
-        const status=r.commandStatus==='facing'?'TURNING IN PLACE':r.commandStatus==='turning'?'TURNING TO WITHDRAW':fallingBack?'FALLING BACK':reforming?'REFORMING':r.status==='shaken'?'SHAKEN':r.status==='routing'?'ROUTING':((isSel||z>.65)?r.siegeStatus?r.siegeStatus.toUpperCase():yielding?'GIVING GROUND':pushing?'SHIELD PRESS':volleyStatus||maneuverStatus:'');
-        const statusColor=r.commandStatus==='facing'?'#f1d58e':fallingBack||r.status==='shaken'?'#efbd6e':status==='GIVING GROUND'?'#d8bd89':reforming||maneuver==='reforming'?'#b8dcc4':pushing?'#e9c67a':passage?'#d9c696':'#df8f77';
+        const rampartStatus=typeof r.rampartStatus==='string'?r.rampartStatus.toUpperCase():'';
+        const status=r.commandStatus==='facing'?'TURNING IN PLACE':r.commandStatus==='turning'?'TURNING TO WITHDRAW':fallingBack?'FALLING BACK':reforming?'REFORMING':r.status==='shaken'?'SHAKEN':r.status==='routing'?'ROUTING':((isSel||z>.65)?r.siegeStatus?r.siegeStatus.toUpperCase():rampartStatus|| (yielding?'GIVING GROUND':pushing?'SHIELD PRESS':volleyStatus||maneuverStatus):'');
+        const statusColor=r.commandStatus==='facing'?'#f1d58e':fallingBack||r.status==='shaken'?'#efbd6e':status==='GIVING GROUND'?'#d8bd89':reforming||maneuver==='reforming'?'#b8dcc4':pushing?'#e9c67a':passage?'#d9c696':rampartStatus?'#b9dac9':'#df8f77';
         const flagColor=fallingBack?'#b78a46':reforming?'#6e9d87':p.base,trim=commander?'#f4d78a':p.trim;
         const screen=this.worldToScreen(r.x,r.y);if(screen.x<-90||screen.x>this.width+90||screen.y<-90||screen.y>this.height+90)continue;
-        const scale=clamp(1/z,.8,3.8)*(commander?1.25:1),fx=r.x,fy=r.y-18*scale;
+        let deckLift=0,samples=0;
+        if(r._rampartJob&&Array.isArray(r.unitIds)){
+          const step=Math.max(1,Math.ceil(r.unitIds.length/8));
+          for(let n=0;n<r.unitIds.length;n+=step){const u=this.engine.units[r.unitIds[n]];if(u&&u.alive){deckLift+=Number(u._rampartZ)||0;samples++;}}
+        }
+        const scale=clamp(1/z,.8,3.8)*(commander?1.25:1),fx=r.x,fy=r.y-(samples?deckLift/samples:0)-18*scale;
         if(drawLabels||isSel){
           line(c,fx,fy+12*scale,fx,fy-15*scale,commander?'#dfc37b':'#4a4c36',1.6*scale);
           const wind=this.options.animations==='reduced'?0:Math.sin((Number(this.engine.time)||0)*2.4+r.id)*1.5;
@@ -1950,8 +2273,9 @@
           const formName=(global.GameData&&global.GameData.FORMATIONS[r.formation]?.name||({line:'LINE',shieldwall:'SHIELD WALL',wedge:'WEDGE',loose:'LOOSE'})[r.formation]||'LINE').toUpperCase();
           const cohesion=Math.round(clamp(Number.isFinite(r.cohesion)?r.cohesion:100,0,100));
           const role=({line:'LINE',flank:'FLANK',support:'SUPPORT',reserve:'RESERVE'})[r.tacticalRole];
-          const details=isSel?(commander?'COMMAND AURA':passage?'PASSAGE COLUMN':formName)+'  ·  COH '+cohesion+(role&&z>.8?'  ·  '+role:''):'';
-          const envelope=isSel&&z>=.36&&this.options.showOrders&&(maneuver!=='formed'||Number(r.deformation)>12||Number(r.engagedSoldiers)>0)?this._formationEnvelopes.get(r.id):null;
+          const formationText=r._rampartJob?(r.rampartRanks||1)+' WALL RANK'+(r.rampartRanks===1?'':'S')+' · '+String(r.rampartSpacing||'normal').toUpperCase():commander?'COMMAND AURA':passage?'PASSAGE COLUMN':formName;
+          const details=isSel?formationText+'  ·  COH '+cohesion+(role&&z>.8?'  ·  '+role:''):'';
+          const envelope=!r._rampartJob&&isSel&&z>=.36&&this.options.showOrders&&(maneuver!=='formed'||Number(r.deformation)>12||Number(r.engagedSoldiers)>0)?this._formationEnvelopes.get(r.id):null;
           const tw=Math.max(c.measureText(label).width,details?c.measureText(details).width:0,status?c.measureText(status).width:0),x=envelope?envelope.labelX:r.x,y=envelope?envelope.labelY:fy-19*scale;
           const extra=(details?13:0)+(status?13:0);
           c.fillStyle='rgba(17,28,23,.87)';c.fillRect(x-tw/2-6/z,y-(12+extra)/z,tw+12/z,(16+extra)/z);
@@ -2012,7 +2336,7 @@
       c.strokeStyle=typeId==='commander'?'rgba(240,205,119,.65)':'rgba(221,206,159,.20)';c.lineWidth=1;c.strokeRect(.5,.5,w-1,h-1);
     }
 
-    destroy() {this._resetCorpseCache();if(this._minimapBase){this._minimapBase.canvas.width=1;this._minimapBase.canvas.height=1;this._minimapBase=null;}if(this._hitPoses)this._hitPoses.clear();if(this._terrain){this._terrain.width=1;this._terrain.height=1;}for(const a of this._atlas.values())for(const frame of a.unique.values())for(const level of ['full','mid','low']){frame[level].width=1;frame[level].height=1;}this._atlas.clear();this._unitAtlases.length=0;this._siegeTowers.length=0;this._depthSorted.length=0;this._depthCounts=new Int32Array(0);this._depthKeys=new Uint32Array(0);this._formationEnvelopes.clear();this._visible.length=0;this._visibleBodies.length=0;for(const bucket of this._bodyBuckets)bucket.length=0;this._bodyWarmQueue.length=0;this.pendingFacing=null;}
+    destroy() {this._resetCorpseCache();if(this._terrainViewport){this._terrainViewport.canvas.width=this._terrainViewport.canvas.height=1;this._terrainViewport=null;}if(this._overviewLayer){this._overviewLayer.canvas.width=this._overviewLayer.canvas.height=1;this._overviewLayer=null;}if(this._minimapBase){this._minimapBase.canvas.width=1;this._minimapBase.canvas.height=1;this._minimapBase=null;}if(this._hitPoses)this._hitPoses.clear();if(this._terrain){this._terrain.width=1;this._terrain.height=1;}for(const a of this._atlas.values())for(const frame of a.unique.values())for(const level of ['full','mid','low']){frame[level].width=1;frame[level].height=1;}this._atlas.clear();this._unitAtlases.length=0;this._siegeTowers.length=0;this._depthSorted.length=0;this._depthCounts=new Int32Array(0);this._depthKeys=new Uint32Array(0);this._formationEnvelopes.clear();this._visible.length=0;this._visibleBodies.length=0;for(const bucket of this._bodyBuckets)bucket.length=0;this._bodyWarmQueue.length=0;this.pendingFacing=null;this.pendingRampart=null;this._rampartPreviewCache=null;}
   }
 
   global.BattleRenderer=BattleRenderer;

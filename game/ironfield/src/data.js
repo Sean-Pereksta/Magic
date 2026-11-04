@@ -434,6 +434,35 @@
   };
   const region = (type, x, y, w, h) => ({ type, x, y, w, h });
   const fort = (type, x, y, w, h, hp, team = 1) => ({ type, x, y, w, h, hp, team });
+  const TERRAIN_TYPES = Object.freeze({
+    plain: Object.freeze({ id:'plain', name:'Open ground', description:'Clear maneuvering ground.', speed:1, cover:0 }),
+    forest: Object.freeze({ id:'forest', name:'Woodland', description:'Slower movement and useful missile cover.', speed:.78, cover:.36 }),
+    hill: Object.freeze({ id:'hill', name:'High ground', description:'Raised ground improves reach and offers light cover.', speed:.88, cover:.06 }),
+    water: Object.freeze({ id:'water', name:'Deep water', description:'Impassable except where a bridge crosses.', speed:0, cover:0 }),
+    bridge: Object.freeze({ id:'bridge', name:'Bridge or causeway', description:'A physical crossing over water.', speed:1, cover:.04 }),
+    rock: Object.freeze({ id:'rock', name:'Rock outcrop', description:'Solid terrain that formations must go around.', speed:0, cover:.4 }),
+    wall: Object.freeze({ id:'wall', name:'Wall', description:'A destructible physical fortification.', speed:0, cover:.65 }),
+    gate: Object.freeze({ id:'gate', name:'Gate', description:'An operated doorway through a fortification.', speed:0, cover:.5 }),
+    road: Object.freeze({ id:'road', name:'Road', description:'Firm ground favors rapid movement and long columns.', speed:1.16, cover:0 }),
+    mud: Object.freeze({ id:'mud', name:'Mud', description:'Soft ground sharply slows an approach.', speed:.55, cover:.08 }),
+    marsh: Object.freeze({ id:'marsh', name:'Reed marsh', description:'Passable wet ground provides cover at a movement cost.', speed:.62, cover:.20 }),
+    snow: Object.freeze({ id:'snow', name:'Deep snow', description:'Snow slows movement across exposed ground.', speed:.72, cover:.06 }),
+    trench: Object.freeze({ id:'trench', name:'Field trench', description:'A passable defensive earthwork with strong cover.', speed:.65, cover:.42 })
+  });
+  const STRUCTURE_TYPES = Object.freeze({
+    house:Object.freeze({id:'house',name:'House',description:'A solid building; troops route around its footprint.',defaultWidth:200,defaultHeight:160}),
+    watchtower:Object.freeze({id:'watchtower',name:'Watchtower',description:'A tall solid observation tower.',defaultWidth:160,defaultHeight:160}),
+    barricade:Object.freeze({id:'barricade',name:'Barricade',description:'A low destructible obstacle; leave broad lanes around it.',defaultWidth:400,defaultHeight:80}),
+    keep:Object.freeze({id:'keep',name:'Gate keep',description:'A hollow fortified court with broad opposed gates.',defaultWidth:960,defaultHeight:960})
+  });
+  const FORTRESS_TYPES = Object.freeze({
+    classic:Object.freeze({id:'classic',name:'Square keep',description:'The original square stone keep with its broad west-facing gate.',minSize:320,defaultWidth:1200,defaultHeight:1200}),
+    palisade:Object.freeze({id:'palisade',name:'Timber palisade',description:'A timber perimeter with four broad gates and corner watchtowers.',minSize:1600,defaultWidth:2400,defaultHeight:2400}),
+    curtain:Object.freeze({id:'curtain',name:'Curtain castle',description:'A stone enclosure with four gatehouses and a broad central courtyard.',minSize:1800,defaultWidth:2800,defaultHeight:2800}),
+    moated:Object.freeze({id:'moated',name:'Moated castle',description:'Four causeways cross a complete moat to matching gates.',minSize:2400,defaultWidth:3200,defaultHeight:3200}),
+    star:Object.freeze({id:'star',name:'Bastioned star fort',description:'A low earthwork enclosure with four projecting bastions. Its angular outline is represented by stepped rectangular works.',minSize:2200,defaultWidth:2800,defaultHeight:2800}),
+    concentric:Object.freeze({id:'concentric',name:'Concentric citadel',description:'Two independently defended rings with four aligned passages and generous space between them.',minSize:4200,defaultWidth:4800,defaultHeight:4800})
+  });
   // All four corners and every gate are ordinary, independently destructible
   // structures. The wall runs meet edge-to-edge, with no invisible blocker
   // left across a gate or a breach. Gate positions are measured along a side.
@@ -456,6 +485,7 @@
           const part = fort(type, sx + (vertical ? 0 : start), sy + (vertical ? start : 0),
             vertical ? thick : size, vertical ? size : thick, type === 'gate' ? gateHp : wallHp, team);
           if (type === 'gate') part.castleGate = true;
+          part.rampartSide = name;
           parts.push(part);
         }
       };
@@ -476,7 +506,112 @@
     side('east', x + w - thick, y, h, true);
     side('south', x, y + h - thick, w, false);
     for (const cx of [x, x + w - tower]) for (const cy of [y, y + h - tower]) {
-      parts.push({ ...fort('wall', cx, cy, tower, tower, wallHp * 1.4, team), castleTower: true });
+      parts.push({ ...fort('wall', cx, cy, tower, tower, wallHp * 1.4, team), castleTower: true, rampartSide: cy === y ? 'north' : 'south' });
+    }
+    return addRampartAccess(parts, x, y, w, h, thick, options);
+  }
+  function addRampartAccess(parts, x, y, w, h, thick, options = {}) {
+    const height=Number.isFinite(options.deckHeight)?clamp(options.deckHeight,8,80):36;
+    const width=64,margin=width/2+24;
+    const left=x+thick+margin,right=x+w-thick-margin,top=y+thick+margin,bottom=y+h-thick-margin;
+    const groundX=value=>clamp(value,Math.min(left,x+w/2),Math.max(right,x+w/2));
+    const groundY=value=>clamp(value,Math.min(top,y+h/2),Math.max(bottom,y+h/2));
+    for(const part of parts){
+      part.walkable=options.walkable!==false;part.deckHeight=height;
+      const side=part.rampartSide;
+      part.courtyardX=groundX(side==='west'?x+thick+220:side==='east'?x+w-thick-220:part.x+part.w/2);
+      part.courtyardY=groundY(side==='north'?y+thick+220:side==='south'?y+h-thick-220:part.y+part.h/2);
+      part.stairs=[];
+    }
+    if(options.walkable===false)return parts;
+    const accesses=[
+      {side:'west',axis:'x',dir:-1,groundX:groundX(x+thick+220),groundY:groundY(y+h*.25),deckX:x+thick/2,deckY:groundY(y+h*.25)},
+      {side:'east',axis:'x',dir:1,groundX:groundX(x+w-thick-220),groundY:groundY(y+h*.75),deckX:x+w-thick/2,deckY:groundY(y+h*.75)},
+      {side:'north',axis:'y',dir:-1,groundX:groundX(x+w*.75),groundY:groundY(y+thick+220),deckX:groundX(x+w*.75),deckY:y+thick/2},
+      {side:'south',axis:'y',dir:1,groundX:groundX(x+w*.25),groundY:groundY(y+h-thick-220),deckX:groundX(x+w*.25),deckY:y+h-thick/2}
+    ];
+    for(const a of accesses){
+      const owner=parts.find(p=>p.rampartSide===a.side&&a.deckX>=p.x&&a.deckX<=p.x+p.w&&a.deckY>=p.y&&a.deckY<=p.y+p.h)||parts.find(p=>a.deckX>=p.x&&a.deckX<=p.x+p.w&&a.deckY>=p.y&&a.deckY<=p.y+p.h);
+      if(!owner)continue;
+      owner.stairs.push({id:'stair-'+a.side+'-'+x+'-'+y+'-'+w+'-'+h,x:Math.min(a.groundX,a.deckX)-width/2,y:Math.min(a.groundY,a.deckY)-width/2,
+        w:Math.abs(a.deckX-a.groundX)+width,h:Math.abs(a.deckY-a.groundY)+width,axis:a.axis,dir:a.dir,width,height,
+        groundX:a.groundX,groundY:a.groundY,deckX:a.deckX,deckY:a.deckY});
+    }
+    return parts;
+  }
+  function createRampartWall(x,y,w,h,options={}) {
+    if(![x,y,w,h].every(Number.isFinite)||Math.min(w,h)<24)return null;
+    const vertical=h>=w,courtyardSide=['east','west','north','south'].includes(options.courtyardSide)?options.courtyardSide:vertical?'east':'south';
+    const axis=courtyardSide==='east'||courtyardSide==='west'?'x':'y',direction=courtyardSide==='east'||courtyardSide==='south'?1:-1;
+    const material=['stone','palisade','earthwork','keep'].includes(options.structureKind)?options.structureKind:'stone',height=Number.isFinite(options.deckHeight)?clamp(options.deckHeight,8,80):material==='palisade'?28:material==='earthwork'?14:material==='keep'?56:36;
+    const width=64,along=clamp(Number.isFinite(options.accessAt)?options.accessAt:.5,0,1),deckX=axis==='x'?x+w/2:x+clamp(w*along,Math.min(width/2+8,w/2),Math.max(w-width/2-8,w/2)),deckY=axis==='y'?y+h/2:y+clamp(h*along,Math.min(width/2+8,h/2),Math.max(h-width/2-8,h/2));
+    const length=Number.isFinite(options.accessLength)?clamp(options.accessLength,48,400):220;
+    const groundX=axis==='x'?(direction>0?x+w+length:x-length):deckX,groundY=axis==='y'?(direction>0?y+h+length:y-length):deckY;
+    const courtyardX=groundX+(axis==='x'?direction*120:0),courtyardY=groundY+(axis==='y'?direction*120:0);
+    if((Number.isFinite(options.worldWidth)&&[groundX,courtyardX].some(n=>n<20||n>options.worldWidth-20))||(Number.isFinite(options.worldHeight)&&[groundY,courtyardY].some(n=>n<20||n>options.worldHeight-20)))return null;
+    const type=options.type==='gate'?'gate':'wall',team=options.team===0?0:1,side={east:'west',west:'east',north:'south',south:'north'}[courtyardSide];
+    const part={...fort(type,x,y,w,h,options.hp||(type==='gate'?1000:2200),team),structureKind:material,name:String(options.name||'Custom rampart').replace(/[<>]/g,'').slice(0,80),walkable:true,deckHeight:height,rampartSide:side,courtyardX,courtyardY,
+      stairs:[{id:'stair-'+side+'-'+x+'-'+y+'-'+w+'-'+h,x:Math.min(groundX,deckX)-width/2,y:Math.min(groundY,deckY)-width/2,w:Math.abs(groundX-deckX)+width,h:Math.abs(groundY-deckY)+width,axis,dir:-direction,width,height,groundX,groundY,deckX,deckY}]};
+    if(type==='gate')part.castleGate=true;
+    return part;
+  }
+  function addStandaloneRamparts(regions,width,height,name) {
+    const inside=(x,y,r,p=0)=>x>=r.x+p&&x<=r.x+r.w-p&&y>=r.y+p&&y<=r.y+r.h-p;
+    const groundClear=(x,y)=>x>=20&&y>=20&&x<=width-20&&y<=height-20&&!regions.some(r=>{
+      if(!['wall','gate','rock','water'].includes(r.type))return false;
+      const distance=Math.hypot(Math.max(r.x-x,0,x-r.x-r.w),Math.max(r.y-y,0,y-r.y-r.h));
+      return distance<10&&!(r.type==='water'&&regions.some(b=>b.type==='bridge'&&inside(x,y,b,10)));
+    });
+    for(const region of regions){
+      if(!['wall','gate'].includes(region.type)||region.walkable||['house','watchtower','barricade'].includes(region.structureKind))continue;
+      for(const accessAt of [.5,.25,.75]){
+        const part=createRampartWall(region.x,region.y,region.w,region.h,{...region,name:region.name||name+(region.type==='gate'?' gate':' rampart'),courtyardSide:region.h>=region.w?'east':'south',accessAt,worldWidth:width,worldHeight:height});if(!part)continue;
+        const stair=part.stairs[0];if(!groundClear(stair.groundX,stair.groundY)||!groundClear(part.courtyardX,part.courtyardY))continue;
+        // Another building may not be hidden under the physical stair route.
+        let clear=true;for(let step=0;step<=12&&clear;step++){const f=step/12,px=stair.groundX+(stair.deckX-stair.groundX)*f,py=stair.groundY+(stair.deckY-stair.groundY)*f;clear=!regions.some(r=>r!==region&&['wall','gate','rock','water'].includes(r.type)&&inside(px,py,r,0));}
+        if(clear){Object.assign(region,part);break;}
+      }
+    }
+  }
+  function createBattlefieldStructure(kind, x, y, w, h, options = {}) {
+    const spec=STRUCTURE_TYPES[kind];
+    if(!spec||![x,y].every(Number.isFinite))return [];
+    w=Number.isFinite(w)?Math.max(kind==='keep'?640:60,w):spec.defaultWidth;
+    h=Number.isFinite(h)?Math.max(kind==='keep'?640:60,h):spec.defaultHeight;
+    const team=options.team===0?0:1,name=String(options.name||spec.name).replace(/[<>]/g,'').slice(0,80);
+    if(kind==='keep') {
+      const span=Math.max(240,Math.min(w,h)*.35);
+      return castleWalls(x,y,w,h,{team,thickness:80,deckHeight:56,wallHp:options.hp||3400,gateHp:1400,gates:{west:[[h/2,span]],east:[[h/2,span]]}}).map(p=>({...p,structureKind:p.type==='gate'?'stone':'keep',name:p.type==='gate'?name+' gate':name}));
+    }
+    return [{...fort('wall',x,y,w,h,options.hp||(kind==='house'?1100:kind==='watchtower'?1900:650),team),structureKind:kind,name,castleTower:kind==='watchtower'}];
+  }
+  function createFortress(kind, x, y, w, h, options = {}) {
+    const spec=FORTRESS_TYPES[kind];
+    if(!spec||![x,y,w,h].every(Number.isFinite)||Math.min(w,h)<spec.minSize)return [];
+    const team=options.team===0?0:1,span=clamp(Math.min(w,h)*.16,320,640),name=String(options.name||spec.name).replace(/[<>]/g,'').slice(0,64);
+    if(kind==='classic')return castleWalls(x,y,w,h,options).map(p=>({...p,structureKind:'stone',name:name+(p.type==='gate'?' gate':' wall')}));
+    const structureKind=kind==='palisade'?'palisade':kind==='star'?'earthwork':'stone';
+    const thick=kind==='palisade'?80:kind==='star'?120:100;
+    const gates={west:[[h/2,span]],east:[[h/2,span]],north:[[w/2,span]],south:[[w/2,span]]};
+    const wallHp=options.wallHp||(kind==='palisade'?1500:kind==='star'?2100:3000),gateHp=options.gateHp||1200;
+    const tag=parts=>parts.map(p=>({...p,structureKind:p.castleTower&&kind!=='star'?'watchtower':structureKind,name:name+(p.type==='gate'?' gate':p.castleTower?' tower':' wall')}));
+    const deckHeight=kind==='palisade'?28:kind==='star'?14:36;
+    const parts=tag(castleWalls(x,y,w,h,{team,thickness:thick,deckHeight,wallHp,gateHp,gates}));
+    if(kind==='moated') {
+      const gap=240,moat=240,pad=gap+moat,west=x-pad,east=x+w+gap,north=y-pad,south=y+h+gap;
+      // Four water strips meet edge-to-edge; each gate has a bridge longer
+      // than the moat plus its banks, with no decorative false crossing.
+      parts.unshift(region('water',west,north,w+pad*2,moat),region('water',west,south,w+pad*2,moat),region('water',west,y-gap,moat,h+gap*2),region('water',east,y-gap,moat,h+gap*2));
+      parts.push(region('bridge',west-80,y+h/2-span/2,pad+thick+160,span),region('bridge',x+w-thick-80,y+h/2-span/2,pad+thick+160,span),region('bridge',x+w/2-span/2,north-80,span,pad+thick+160),region('bridge',x+w/2-span/2,y+h-thick-80,span,pad+thick+160));
+    }
+    if(kind==='star') {
+      const bastion=300;
+      for(const cx of [x-bastion/2,x+w-bastion/2])for(const cy of [y-bastion/2,y+h-bastion/2])parts.push({...fort('wall',cx,cy,bastion,bastion,wallHp*1.25,team),structureKind:'earthwork',name:name+' bastion',castleTower:true,walkable:true,deckHeight,rampartSide:cy<y?'north':'south',courtyardX:clamp(cx+bastion/2,x+thick+220,x+w-thick-220),courtyardY:cy<y?y+thick+220:y+h-thick-220,stairs:[]});
+    }
+    if(kind==='concentric') {
+      const inset=Math.max(1000,Math.min(w,h)*.24),iw=w-inset*2,ih=h-inset*2;
+      const innerSpan=Math.max(320,Math.min(iw,ih)*.22);
+      parts.push(...tag(castleWalls(x+inset,y+inset,iw,ih,{team,thickness:100,wallHp:wallHp*1.25,gateHp:gateHp*1.2,gates:{west:[[ih/2,innerSpan]],east:[[ih/2,innerSpan]],north:[[iw/2,innerSpan]],south:[[iw/2,innerSpan]]}})).map(p=>({...p,structureKind:p.type==='gate'?'stone':p.castleTower?'keep':'stone',name:name+' inner '+(p.type==='gate'?'gate':p.castleTower?'keep':'wall')})));
     }
     return parts;
   }
@@ -1042,7 +1177,148 @@
       customMap: { name: spec.name + ' · historical field', width: 6400, height: 4400, biome: spec.biome || 'grassland', regions: spec.regions || [] },
       formations, armies: spec.armies.map((a, team) => army(a[0], a[1], counts[team])), historical };
   };
+  const EXPANSION_MAPS = [
+    {id:'timberfort',name:'The Timber Marches',subtitle:'Grand timber fort · muddy woodland roads',description:'A four-gate timber stockade protects a broad clearing. Firm roads offer alternate approaches around muddy woodland sectors.',biome:'woodland',width:9600,height:6600,seed:304101,fortress:{kind:'palisade',x:5400,y:1700,w:2600,h:3200},regions:[region('mud',3200,1000,1000,1000),region('mud',3200,4600,1000,1000),region('forest',1600,700,1100,1200),region('forest',1800,4700,1100,1200),region('road',1000,3060,7600,480),...createFortress('palisade',5400,1700,2600,3200,{name:'Timberwatch'}),...createBattlefieldStructure('house',6850,2100,240,180),...createBattlefieldStructure('house',6850,4250,240,180)]},
+    {id:'fourwinds',name:'Castle of Four Winds',subtitle:'Grand curtain castle · four independent gateways',description:'A stone perimeter has a gate on every side. Open courtyards and clear lanes let the garrison shift between approaches.',biome:'grassland',width:9600,height:6600,seed:304102,fortress:{kind:'curtain',x:5200,y:1000,w:3400,h:4600},regions:[region('road',800,3040,8200,520),region('road',6640,400,520,5800),region('hill',1900,700,1100,1200),region('forest',2000,4800,1200,1000),...createFortress('curtain',5200,1000,3400,4600,{name:'Four Winds Castle'}),...createBattlefieldStructure('house',7450,1800,280,200),...createBattlefieldStructure('house',7450,4550,280,200)]},
+    {id:'reedmoat',name:'The Reedwater Keep',subtitle:'Vast moated castle · four real causeways',description:'Reed marsh surrounds a complete moat. Four broad causeways align with four castle gates; water elsewhere remains impassable.',biome:'wetland',width:12800,height:8800,seed:304103,fortress:{kind:'moated',x:6800,y:2000,w:4000,h:4800},regions:[region('marsh',3200,1100,1800,1700),region('marsh',3300,6000,1800,1700),region('road',1000,4140,10800,520),...createFortress('moated',6800,2000,4000,4800,{name:'Reedwater Castle'}),...createBattlefieldStructure('house',9100,2750,320,220),...createBattlefieldStructure('house',9100,5850,320,220)]},
+    {id:'starhaven',name:'Starhaven Redoubt',subtitle:'Grand bastioned fort · artillery and field trenches',description:'Low earthworks and projecting corner bastions surround a wide court. Field trenches provide covered approach sectors without blocking movement.',biome:'grassland',width:9600,height:6600,seed:304104,fortress:{kind:'star',x:5300,y:1700,w:2800,h:3200},regions:[region('trench',3600,1100,700,1000),region('trench',3600,4500,700,1000),region('mud',2900,2300,1000,2000),region('road',800,3100,8100,400),...createFortress('star',5300,1700,2800,3200,{name:'Starhaven Fort'}),...createBattlefieldStructure('barricade',7350,2150,420,100),...createBattlefieldStructure('barricade',7350,4350,420,100)]},
+    {id:'twincrown',name:'The Twin Crown Citadel',subtitle:'Vast concentric citadel · two physical defense rings',description:'Two independently breachable rings enclose a large inner court. Four aligned gateways and wide galleries connect both layers.',biome:'highland',width:12800,height:8800,seed:304105,fortress:{kind:'concentric',x:6400,y:1400,w:5000,h:6000},regions:[region('road',900,4200,11000,400),region('road',8700,500,400,7800),region('hill',2300,1000,1200,1800),region('snow',2500,6400,1800,1300),...createFortress('concentric',6400,1400,5000,6000,{name:'Twin Crown Citadel'})]},
+    {id:'kingsroad',name:'The King’s Causeway',subtitle:'Grand road battle · villages, marsh, and open flanks',description:'Two armies contest a firm road between muddy fields and reed marsh. Separate village buildings and barricades leave clear routes through and around the settlement.',biome:'grassland',width:9600,height:6600,seed:304106,regions:[region('mud',3500,600,2000,1400),region('marsh',3500,4700,2000,1300),region('road',500,3000,8600,600),region('forest',1800,650,900,1100),region('forest',6800,4800,900,1100),...createBattlefieldStructure('house',4450,2400,280,220),...createBattlefieldStructure('house',5000,4050,280,220),...createBattlefieldStructure('watchtower',4750,2150,180,180),...createBattlefieldStructure('barricade',4600,3900,480,90)]},
+    {id:'whitepass',name:'The White Pass',subtitle:'Vast winter field · three wide mountain approaches',description:'Snow-covered approaches cross a broken ridge through three broad gaps. Field trenches, road surfaces, and isolated towers create several defensible sectors.',biome:'tundra',width:12800,height:8800,seed:304107,regions:[region('snow',2500,600,7800,7600),region('rock',6100,0,600,1500),region('rock',6100,2500,600,1400),region('rock',6100,4900,600,1400),region('rock',6100,7300,600,1500),region('road',1000,4250,10800,300),region('trench',7100,1500,550,950),region('trench',7100,4000,550,800),region('trench',7100,6400,550,850),...createBattlefieldStructure('watchtower',7600,2700,180,180),...createBattlefieldStructure('watchtower',7600,5800,180,180)]},
+    {id:'sablelines',name:'The Sable Lines',subtitle:'Grand entrenched battle · guns, fieldworks, and reserves',description:'Successive passable trenches cover a broad front. Separate earthwork panels shelter batteries but leave three wide lanes for infantry and cavalry.',biome:'ashland',width:9600,height:6600,seed:304108,regions:[region('mud',3300,800,1100,5000),region('trench',5350,700,500,5200),region('trench',6650,700,500,5200),region('road',700,3100,8200,400),...createBattlefieldStructure('barricade',6150,1100,100,850),...createBattlefieldStructure('barricade',6150,2350,100,550),...createBattlefieldStructure('barricade',6150,3700,100,550),...createBattlefieldStructure('barricade',6150,4650,100,850),...createBattlefieldStructure('house',7450,1500,300,220),...createBattlefieldStructure('house',7450,4900,300,220),...createBattlefieldStructure('keep',7800,2850,1100,1100,{name:'Sable headquarters'})]}
+  ];
+  // Keep the west stair's approach queue above the Four Winds ground guard.
+  // This changes only access metadata, with no new wall or moved reserve.
+  for(const part of EXPANSION_MAPS.find(m=>m.id==='fourwinds').regions)for(const stair of part.stairs||[])if(stair.id.startsWith('stair-west-')){
+    stair.y-=60;stair.groundY-=60;stair.deckY-=60;
+  }
+  MAPS.push(...EXPANSION_MAPS);
+  function expansionScene(id,name,mapId,description,groups,armyNames,doctrines) {
+    const counts=[{},{}],formations=groups.map(g=>historicalGroup(...g));
+    for(const g of formations)counts[g.team][g.type]=(counts[g.team][g.type]||0)+g.count;
+    return{id,name,map:mapId,description,seed:304200+id.length,expansion:true,formations,armies:armyNames.map((name,team)=>army(name,doctrines[team],counts[team]))};
+  }
+  function fortressEncounter(map) {
+    const f=map.fortress,cy=f.y+f.h/2,ax=f.x-1200,dx=f.x+650,missileX=dx+(f.kind==='concentric'?1050:600),artillery=f.kind==='star';
+    const groups=[
+      [0,'swordsman',480,ax,cy-950,'Assault left',32],[0,'swordsman',480,ax,cy+950,'Assault right',32],
+      [0,'hoplite',400,ax-500,cy,'Supported assault center',25,'shieldwall'],[0,'pikeman',240,ax-650,cy-1450,'Northern escort',24],
+      [0,artillery?'musketeer':'archer',240,ax-600,cy-800,'Left missile support',30],[0,artillery?'musketeer':'crossbow',240,ax-600,cy+800,'Right missile support',30],
+      [0,'cavalry',120,ax-700,cy+1450,'Mounted reserve',20],[0,'cannon',6,ax-850,cy-200,'Field gun battery',3],
+      [0,'trebuchet',4,ax-1150,cy+500,'Heavy stone battery',2],[0,'batteringRam',1,f.x-650,cy-140,'Northern ram'],[0,'batteringRam',1,f.x-650,cy+140,'Southern ram'],
+      [0,'commander',1,ax-1100,cy,'Assault commander'],
+      [1,'guardian',240,dx,cy-950,'Garrison left',24,'shieldwall'],[1,'guardian',240,dx,cy+950,'Garrison right',24,'shieldwall'],[1,'hoplite',240,dx,cy,'Gate reserve',24,'shieldwall'],
+      [1,artillery?'musketeer':'archer',160,missileX,cy-900,'Garrison missile left',32],[1,artillery?'musketeer':'crossbow',160,missileX,cy+900,'Garrison missile right',32],
+      [1,'cannon',4,dx+850,cy,'Garrison guns',4],[1,'commander',1,dx+1000,cy+400,'Garrison commander']
+    ];
+    if(f.kind==='concentric') {
+      // The inner keep is a separate real reserve, not a body placed in its wall.
+      groups.push([1,'guardian',320,f.x+f.w/2,cy,'Inner court reserve',32,'shieldwall']);
+      groups.push([1,'crossbow',160,f.x+f.w/2+700,cy-650,'Inner court crossbows',32]);
+    }
+    const scene=expansionScene('grand'+map.id,'Assault on '+map.name,map.id,'Larger assault companies, protected rams, heavy artillery, and a layered garrison fight over '+f.kind+' defenses.',groups,['The Western Coalition','The Eastern Garrison'],['aggressive','defensive']);
+    if(map.id==='fourwinds') {
+      // The garrison begins on courtyard ground and takes the real stairs only
+      // once play starts. The gate reserve remains a separate ground formation.
+      for(const group of scene.formations)if(group.team===1&&(group.type==='archer'||group.type==='crossbow')){
+        group.rampart={ranks:2,spacing:'normal'};
+        if(group.type==='archer')group.y=f.y+650;
+      }
+      scene.description+=' Courtyard archers and crossbows march to the wall stairs at the start, while the gate reserve protects the interior.';
+    }
+    return scene;
+  }
+  const EXPANSION_PRESETS = [
+    ...EXPANSION_MAPS.filter(m=>m.fortress).map(fortressEncounter),
+    expansionScene('grandKingsroad','The Causeway Offensive','kingsroad','Broad infantry fronts and mobile wings contest the firm road through a village. Mud and marsh make the flanks costly, while real buildings leave multiple passages.',[
+      [0,'swordsman',640,2700,2200,'Western left line',40],[0,'hoplite',640,2700,4400,'Western right line',40,'shieldwall'],[0,'pikeman',480,2350,3300,'Western pike reserve',32],[0,'musketeer',240,2100,1800,'Western musket left'],[0,'musketeer',240,2100,4800,'Western musket right'],[0,'cavalry',160,1800,1000,'Western north horse',20],[0,'lancer',160,1800,5600,'Western south horse',20],[0,'cannon',8,1800,3300,'Western artillery',4],[0,'commander',1,1500,3300,'Western commander'],
+      [1,'swordsman',640,6900,2200,'Eastern right line',40],[1,'hoplite',640,6900,4400,'Eastern left line',40,'shieldwall'],[1,'pikeman',480,7250,3300,'Eastern pike reserve',32],[1,'musketeer',240,7500,1800,'Eastern musket right'],[1,'musketeer',240,7500,4800,'Eastern musket left'],[1,'cavalry',160,7800,1000,'Eastern north horse',20],[1,'lancer',160,7800,5600,'Eastern south horse',20],[1,'cannon',8,7800,3300,'Eastern artillery',4],[1,'commander',1,8100,3300,'Eastern commander']
+    ],['Western Road Army','Eastern Road Army'],['steady','hammer']),
+    expansionScene('grandWhitepass','Three Winter Columns','whitepass','Three deep assault sectors approach separate snowy passes. Road access, trench cover, and mounted reserves make each gap a different tactical problem.',[
+      [0,'hoplite',640,4200,2000,'Northern winter column',32,'shieldwall'],[0,'hoplite',640,4200,4400,'Center winter column',32,'shieldwall'],[0,'hoplite',640,4200,6800,'Southern winter column',32,'shieldwall'],[0,'musketeer',240,3500,2000,'Northern musket supports'],[0,'musketeer',240,3500,4400,'Center musket supports'],[0,'musketeer',240,3500,6800,'Southern musket supports'],[0,'cavalry',180,3000,3200,'Mounted northern reserve',20],[0,'lancer',180,3000,5600,'Mounted southern reserve',20],[0,'cannon',12,3200,4400,'Winter artillery',4],[0,'commander',1,2700,4400,'Winter commander'],
+      [1,'pikeman',640,7350,2000,'Northern pass defense',32,'shieldwall'],[1,'hoplite',640,7350,4400,'Center pass defense',32,'shieldwall'],[1,'pikeman',640,7350,6800,'Southern pass defense',32,'shieldwall'],[1,'musketeer',240,8150,2000,'Northern fire line'],[1,'musketeer',240,8150,4400,'Center fire line'],[1,'musketeer',240,8150,6800,'Southern fire line'],[1,'cavalry',180,8800,3200,'Northern counterattack horse',20],[1,'cavalry',180,8800,5600,'Southern counterattack horse',20],[1,'cannon',12,8750,4400,'Pass artillery',4],[1,'commander',1,9400,4400,'Pass commander']
+    ],['The Winter Expedition','Wardens of the Pass'],['echelon','defensive']),
+    expansionScene('grandSablelines','Break the Sable Lines','sablelines','Three assault fronts push toward passable trenches and separated barricades. Counterattack reserves can move through the broad gaps or around the ends of the works.',[
+      [0,'swordsman',640,3000,1600,'Northern assault front',40],[0,'swordsman',640,3000,3300,'Center assault front',40],[0,'swordsman',640,3000,5000,'Southern assault front',40],[0,'musketeer',240,2300,1800,'Northern supporting volleys'],[0,'musketeer',240,2300,4800,'Southern supporting volleys'],[0,'cavalry',180,1900,900,'Northern wing horse',20],[0,'lancer',180,1900,5800,'Southern wing horse',20],[0,'cannon',12,2000,3300,'Assault artillery',4],[0,'trebuchet',4,1500,3300,'Heavy bombardment',2],[0,'commander',1,1300,3300,'Assault general'],
+      [1,'guardian',480,5750,1600,'Northern trench guard',32,'shieldwall'],[1,'pikeman',480,5750,3300,'Center trench guard',32,'shieldwall'],[1,'guardian',480,5750,5000,'Southern trench guard',32,'shieldwall'],[1,'musketeer',240,6900,1800,'Northern trench volleys'],[1,'musketeer',240,6900,4800,'Southern trench volleys'],[1,'cavalry',180,7450,900,'Northern counterattack reserve',20],[1,'cavalry',180,7450,5800,'Southern counterattack reserve',20],[1,'cannon',12,7300,3300,'Entrenched batteries',4],[1,'commander',1,8350,3400,'Sable commander']
+    ],['Coalition Assault Army','The Sable Defense'],['breakthrough','elastic'])
+  ];
+  PRESETS.push(...EXPANSION_PRESETS);
+
   const HISTORICAL_BATTLES = Object.freeze([
+    historicalScene({id:'historyThermopylae',name:'Thermopylae',year:-480,era:'Ancient',location:'Malis, Greece',
+      summary:'A coalition of Greek hoplites blocks a narrow coastal approach against successive Persian infantry bodies.',
+      deployment:'Greek heavy foot occupy the pass with supporting contingents behind them. Persian assault bodies wait in separate depths outside the constricted entrance, with missile troops supporting the approach.',
+      sources:[historySource('Herodotus: Histories Book VII · Fordham University','https://sourcebooks.web.fordham.edu/ancient/herodotus-thermopylae.asp')],
+      scaleNote:'The opening pass defense is represented, including allied Greeks. The later mountain-path encirclement and final stand are not scripted; the pass is widened for playable body clearance.',
+      armies:[['Leonidas & the Greek Allies','defensive'],['Xerxes’s Assault Force','echelon']],regions:[region('water',1200,0,4000,1100),region('rock',1400,2800,3900,1600),region('hill',1700,1400,700,1200)],
+      groups:[[0,'hoplite',160,2550,2050,'Greek forward shield front',32,'shieldwall'],[0,'hoplite',120,2100,2050,'Peloponnesian supports',24,'shieldwall'],[0,'hoplite',100,1700,2050,'Thespian & Theban supports',20,'shieldwall'],[0,'commander',1,1500,2050,'Leonidas'],[1,'militia',240,3650,1900,'Median assault body',24],[1,'swordsman',240,4150,2200,'Persian assault reserve',24],[1,'archer',120,4500,1550,'Persian missile support',30],[1,'swordsman',160,4700,2400,'Immortal reserve',20],[1,'commander',1,5100,2100,'Persian commander']]}),
+    historicalScene({id:'historyHydaspes',name:'Hydaspes',year:-326,era:'Ancient',location:'Punjab, South Asia',
+      summary:'Porus’s spaced elephant screen shelters infantry while Alexander concentrates mounted troops against a wing.',
+      deployment:'Porus places elephants in front of his infantry, with cavalry on both flanks. Macedonian pikes and light troops approach the center while a mounted striking force occupies the right.',
+      sources:[historySource('Arrian: Anabasis V.15 · public-domain translation','https://en.wikisource.org/wiki/The_Anabasis_of_Alexander/Book_V/Chapter_XV')],
+      unitNotes:'Pikes and cavalry represent Macedonian roles; elephant howdahs and all armor use generic game artwork. Indian chariots have no direct roster equivalent and are omitted.',scaleNote:'This begins after Alexander’s crossing. River ferries, prior diversions, and the precise historical elephant spacing are outside the scenario.',
+      armies:[['Alexander’s Crossing Force','hammer'],['Porus’s Army','defensive']],biome:'grassland',regions:[region('water',0,0,700,4400),region('mud',1100,700,700,1000)],
+      groups:[[0,'pikeman',200,2500,1600,'Macedonian phalanx left',25],[0,'pikeman',200,2500,2400,'Macedonian phalanx right',25],[0,'javelin',80,2850,2050,'Light infantry screen',40,'loose'],[0,'lancer',96,2600,3350,'Alexander’s cavalry strike',0,'wedge'],[0,'cavalry',60,2200,1000,'Supporting mounted wing',15],[0,'commander',1,2100,3100,'Alexander'],
+        [1,'elephant',4,3600,1450,'Elephant screen right',4],[1,'elephant',4,3600,2200,'Elephant screen center',4],[1,'elephant',4,3600,2950,'Elephant screen left',4],[1,'militia',240,4050,1600,'Indian infantry right',30],[1,'militia',240,4050,2800,'Indian infantry left',30],[1,'archer',120,4450,2200,'Indian bowmen',30],[1,'cavalry',80,4100,900,'Indian right cavalry',20],[1,'cavalry',80,4100,3550,'Indian left cavalry',20],[1,'commander',1,4700,2200,'Porus']]}),
+    historicalScene({id:'historyZama',name:'Zama',year:-202,era:'Ancient',location:'North Africa',biome:'desert',
+      summary:'Scipio’s aligned infantry lanes confront elephants and Hannibal’s three separated infantry lines.',
+      deployment:'Roman companies stand in aligned passages rather than a closed checkerboard, with Laelius on the left and Massinissa on the right. Carthaginian elephants lead mercenaries, native infantry, and a distant veteran reserve.',
+      sources:[historySource('Polybius: Histories XV.9–16 · University of Chicago','https://penelope.uchicago.edu/Thayer/E/Roman/Texts/Polybius/15%2A.html')],
+      unitNotes:'Swordsmen stand for Roman and Carthaginian foot. Cavalry approximate Numidian light horse without adding bows. The simulator does not impose historical elephant panic.',
+      armies:[['Scipio & Massinissa','hammer'],['Hannibal’s African Army','echelon']],regions:[],
+      groups:[[0,'swordsman',80,2650,1600,'Hastati left',10],[0,'swordsman',80,2650,2200,'Hastati center',10],[0,'swordsman',80,2650,2800,'Hastati right',10],[0,'swordsman',80,2200,1600,'Principes left',10],[0,'swordsman',80,2200,2200,'Principes center',10],[0,'swordsman',80,2200,2800,'Principes right',10],[0,'hoplite',64,1750,1600,'Triarii left',8],[0,'hoplite',64,1750,2200,'Triarii center',8],[0,'hoplite',64,1750,2800,'Triarii right',8],[0,'javelin',60,3000,2200,'Velite screen',30,'loose'],[0,'cavalry',60,2400,850,'Laelius’s Italian horse',15],[0,'cavalry',96,2400,3550,'Massinissa’s Numidians',16],[0,'commander',1,1450,2200,'Scipio'],
+        [1,'elephant',6,3500,2200,'Carthaginian elephant front',6],[1,'militia',200,3900,1800,'Mercenary first line right',25],[1,'militia',200,3900,2600,'Mercenary first line left',25],[1,'swordsman',240,4400,2200,'Carthaginian second line',30],[1,'swordsman',240,4950,2200,'Italian veteran third line',30],[1,'cavalry',48,4200,850,'Carthaginian right cavalry',12],[1,'cavalry',48,4200,3550,'Carthaginian Numidian left',12],[1,'commander',1,5250,2200,'Hannibal']]}),
+    historicalScene({id:'historyStirlingBridge',name:'Stirling Bridge',year:1297,era:'Medieval',location:'Stirling, Scotland',
+      summary:'Scottish spears descend toward an English bridgehead while the larger English body remains across the Forth.',
+      deployment:'The Scots occupy rising ground near the bridgehead. A selected English vanguard has already crossed, while further infantry and horse stand on the far bank behind a single crossing.',
+      sources:[historySource('Stirling Bridge battlefield inventory · Historic Environment Scotland','https://portal.historicenvironment.scot/apex/f?p=1505%3A300%3A%3A%3A%3A%3AVIEWTYPE%2CVIEWREF%3Adesignation%2CBTL28')],
+      scaleNote:'The river loop is simplified and the crossing widened for practical navigation. The bridge does not collapse; neither timed crossings nor the historical cut-off are forced.',
+      armies:[['Wallace & Moray’s Scots','breakthrough'],['Surrey’s English Host','steady']],regions:[region('water',3200,0,320,4400),region('bridge',3050,1850,620,700),region('hill',1500,800,800,2800),region('marsh',2700,900,400,650),region('marsh',2700,2850,400,650)],
+      groups:[[0,'pikeman',200,2250,1500,'Scottish northern spear body',20,'shieldwall'],[0,'pikeman',200,2250,2900,'Scottish southern spear body',20,'shieldwall'],[0,'militia',160,1750,2200,'Scottish supporting foot',20],[0,'archer',72,1500,3200,'Scottish archers',24],[0,'commander',1,1350,2200,'Wallace & Moray'],[1,'cavalry',48,2900,2200,'Crossed English vanguard',12],[1,'militia',160,4200,1600,'English infantry awaiting crossing',20],[1,'swordsman',160,4200,2800,'English men-at-arms',20],[1,'archer',96,4700,2200,'Welsh archers',24],[1,'lancer',60,4750,3300,'English horse reserve',15],[1,'commander',1,5100,2200,'Surrey']]}),
+    historicalScene({id:'historyFlodden',name:'Flodden',year:1513,era:'Pike & shot',location:'Northumberland, England',
+      summary:'Scottish pike divisions descend from Branxton Hill toward English bills and bowmen across broken, wet ground.',
+      deployment:'Huntly and Home occupy the Scottish left, James the center, Lennox and Argyll the right, with Bothwell in reserve. English divisions oppose the hill while Stanley’s wing is offset to threaten the Scottish right.',
+      sources:[historySource('Flodden battlefield report · Historic England','https://historicengland.org.uk/content/docs/listing/battlefields/flodden/')],
+      unitNotes:'Halberdiers approximate English bills; generic pikes represent Scottish continental-length weapons. Equipment and gun effects remain game rules.',
+      armies:[['James IV’s Scottish Host','steady'],['Surrey’s English Army','refuseLeft']],regions:[region('hill',1700,800,1100,2800),region('mud',2950,900,350,2700),region('road',900,3900,4500,220)],
+      groups:[[0,'pikeman',200,2500,1300,'Home & Huntly left',20],[0,'pikeman',240,2500,2200,'James IV’s center',24],[0,'pikeman',200,2500,3100,'Lennox & Argyll right',20],[0,'pikeman',160,1900,2200,'Bothwell’s reserve',20],[0,'cannon',4,2800,1750,'Scottish heavy guns',4],[0,'commander',1,2100,2650,'James IV'],[1,'halberdier',200,3850,1300,'English right division',25],[1,'halberdier',240,3850,2200,'Surrey’s center',30],[1,'archer',120,4100,1650,'English supporting bows',30],[1,'halberdier',160,4150,3400,'Stanley’s offset left',20],[1,'archer',96,4450,3000,'Stanley’s bowmen',24],[1,'cannon',4,3800,2700,'English light artillery',4],[1,'commander',1,4650,2200,'Surrey']]}),
+    historicalScene({id:'historyPinkie',name:'Pinkie Cleugh',year:1547,era:'Pike & shot',location:'Musselburgh, Scotland',
+      summary:'An English combined-arms front receives Scottish pike battles advancing across constricted wet ground.',
+      deployment:'English foot form three supporting battle sectors with shot, bowmen, artillery, and mounted wings. Scottish strength lies in deep pike divisions, backed by a smaller missile element.',
+      sources:[historySource('Pinkie battlefield inventory · Historic Environment Scotland','https://portal.historicenvironment.scot/apex/f?p=1505%3A300%3A%3A%3A%3A%3AVIEWTYPE%2CVIEWREF%3Adesignation%2CBTL15')],
+      scaleNote:'The land battle is represented; English naval support is omitted. Pike depths and frontage are compressed, and firearms follow the game’s three-rank drill.',
+      armies:[['Somerset’s English Army','defensive'],['Arran’s Scottish Army','steady']],regions:[region('water',0,0,6400,400),region('mud',3100,900,500,2600),region('marsh',4300,3350,1000,600),region('hill',1900,800,800,2800)],
+      groups:[[0,'pikeman',160,2500,1300,'English vanguard',20],[0,'halberdier',200,2500,2200,'English main battle',25],[0,'pikeman',160,2500,3100,'English rearward battle',20],[0,'musketeer',96,2200,1700,'English shot'],[0,'archer',96,2200,2650,'English archers',24],[0,'cannon',6,2750,2200,'English artillery',3],[0,'lancer',60,2350,750,'English northern horse',15],[0,'cavalry',60,2350,3650,'English southern horse',15],[0,'commander',1,1750,2200,'Somerset'],[1,'pikeman',240,3900,1300,'Scottish vanguard',16],[1,'pikeman',240,3900,2200,'Scottish main battle',16],[1,'pikeman',240,3900,3100,'Scottish rearward battle',16],[1,'archer',96,4400,2200,'Highland archers',24],[1,'cavalry',48,4500,1000,'Scottish horse',12],[1,'commander',1,4750,2200,'Arran']]}),
+    historicalScene({id:'historyTrenton',name:'Trenton',year:1776,era:'Musket age',location:'New Jersey, North America',biome:'tundra',
+      summary:'American columns converge on the Hessian garrison from two directions, supported by guns at street approaches.',
+      deployment:'One American body approaches the town from the west while Greene’s body and Washington approach from the north. Hessian regiments assemble within the open street sectors, with Assunpink Creek behind the town.',
+      sources:[historySource('Battle of Trenton · George Washington’s Mount Vernon','https://www.mountvernon.org/library/digitalhistory/digital-encyclopedia/article/battle-of-trenton')],
+      scaleNote:'The scenario begins with the garrison forming. Surprise, fatigue, building interiors, and the earlier Delaware crossing are not scripted.',
+      armies:[['Washington’s Continental Army','breakthrough'],['Rall’s Hessian Garrison','defensive']],regions:[region('snow',1100,500,4000,3200),region('road',1400,2020,3600,360),region('road',3450,650,360,2800),region('water',2800,3700,2500,250),region('bridge',3450,3550,400,550),...createBattlefieldStructure('house',3200,1700,240,180),...createBattlefieldStructure('house',4050,1700,240,180),...createBattlefieldStructure('house',3200,2900,240,180),...createBattlefieldStructure('house',4050,2900,240,180)],
+      groups:[[0,'musketeer',144,2300,2200,'Sullivan’s western approach'],[0,'musketeer',96,1850,2200,'Western supporting column',0,'column'],[0,'musketeer',144,3600,1050,'Greene’s northern approach',0,'volley',Math.PI/2],[0,'cannon',4,3550,1400,'American northern guns',4,'line',Math.PI/2],[0,'cannon',2,2650,2200,'American western guns',2],[0,'commander',1,3150,900,'Washington'],[1,'musketeer',96,3750,2200,'Rall’s assembling regiment'],[1,'musketeer',96,3800,2650,'Lossberg regiment'],[1,'musketeer',72,4350,2300,'Knyphausen regiment'],[1,'cannon',3,4200,3300,'Hessian guns',3],[1,'commander',1,4700,2600,'Johann Rall']]}),
+    historicalScene({id:'historyPrinceton',name:'Princeton',year:1777,era:'Musket age',location:'New Jersey, North America',
+      summary:'Mercer’s advanced force meets British foot around the Clarke orchard as Washington’s supports approach.',
+      deployment:'A forward American detachment confronts the British 17th Foot near the orchard. Additional American infantry and Moulder’s battery stand farther back, while British supporting bodies occupy a second depth.',
+      sources:[historySource('Princeton Battlefield State Park · New Jersey DEP','https://dep.nj.gov/parksandforests/state-park/princeton-battlefield-state-park/'),historySource('Moulder’s Battery battlefield interpretation · Borough of Princeton / NJ State Parks','https://www.princetonnj.gov/DocumentCenter/View/15452/Battle-Window-at-Moulder-s-Battery_submission-for-ABPP-Rev-and-Princeton-Sec-106-Rvw_122023-PDF')],
+      scaleNote:'Reinforcements are present from the opening rather than arriving on a clock. Rifle and bayonet differences use generic musket infantry rules.',
+      armies:[['Washington’s American Army','echelon'],['Mawhood’s British Detachment','aggressive']],regions:[region('forest',2800,1500,700,950),region('road',1000,2620,4400,320),...createBattlefieldStructure('house',3150,1150,240,180),...createBattlefieldStructure('house',3000,3300,240,180)],
+      groups:[[0,'musketeer',72,2550,2000,'Mercer’s orchard advance',0,'loose'],[0,'musketeer',120,2200,2750,'Cadwalader’s supporting militia'],[0,'musketeer',120,1750,2200,'American supporting foot'],[0,'cannon',3,2000,3150,'Moulder’s battery',3],[0,'commander',1,1450,2400,'Washington'],[1,'musketeer',96,3700,2100,'17th Foot at the orchard'],[1,'musketeer',96,4150,2700,'British supporting battalions'],[1,'musketeer',72,4550,1800,'British reserve'],[1,'cannon',2,4350,3200,'British light guns',2],[1,'commander',1,4800,2300,'Mawhood']]}),
+    historicalScene({id:'historyAusterlitz',name:'Austerlitz',year:1805,era:'Napoleonic',location:'Moravia, Central Europe',
+      summary:'Soult’s concentrated French center faces the Pratzen Heights as Allied columns mass toward the French right.',
+      deployment:'A strong French center stands opposite the Pratzen plateau while the right wing is comparatively thin. Allied strength concentrates in southern columns, leaving a smaller central force and a separate northern wing.',
+      sources:[historySource('The Battle of Austerlitz and the Principles of War · Fondation Napoléon','https://www.napoleon.org/en/history-of-the-two-empires/articles/the-battle-of-austerlitz-and-the-principles-of-war')],
+      scaleNote:'The scenario depicts the developing central opportunity. Mist, timed arrivals, frozen ponds, and each prior maneuver are not simulated.',
+      armies:[['Napoleon’s Grande Armée','breakthrough'],['Austro-Russian Coalition','refuseLeft']],regions:[region('hill',3350,1450,1000,1400),region('mud',2800,2900,550,800),region('road',1000,850,4400,280),...createBattlefieldStructure('house',2800,3450,230,160),...createBattlefieldStructure('house',3100,2900,230,160)],
+      groups:[[0,'musketeer',144,2450,1100,'Lannes’s northern wing'],[0,'musketeer',200,2500,1950,'Soult’s central first wave'],[0,'musketeer',200,2100,2450,'Soult’s central second wave'],[0,'musketeer',96,2550,3200,'Thin French right'],[0,'cavalry',96,2100,1450,'Murat’s cavalry reserve',16],[0,'cannon',6,2300,2700,'French central guns',3],[0,'commander',1,1600,2200,'Napoleon'],[1,'musketeer',160,4050,1100,'Bagration’s northern wing'],[1,'musketeer',120,3950,2100,'Pratzen central guard'],[1,'musketeer',240,3750,3100,'Allied left first column',0,'column'],[1,'musketeer',240,4300,3350,'Allied left supporting column',0,'column'],[1,'cavalry',96,4500,1400,'Allied cavalry reserve',16],[1,'cannon',6,4350,2500,'Allied guns',3],[1,'commander',1,4800,2200,'Kutuzov']]}),
+    historicalScene({id:'historyBorodino',name:'Borodino',year:1812,era:'Napoleonic',location:'Western Russia',
+      summary:'French infantry and massed guns confront Russian depth around the Great Redoubt and the Bagration fieldworks.',
+      deployment:'Russian foot hold successive sectors behind the central redoubt and southern fieldworks, with a northern village sector and reserves. French infantry faces the works with supporting cavalry and concentrated gun batteries.',
+      sources:[historySource('Napoleon’s Russian campaign: Borodino · Fondation Napoléon','https://www.napoleon.org/en/history-of-the-two-empires/timelines/napoleons-russian-campaign-from-the-niemen-to-moscow'),historySource('Contemporary Borodino map · Service historique de la Défense','https://www.servicehistorique.sga.defense.gouv.fr/les-tresors-du-shd/carte-de-la-bataille-de-borodino')],
+      unitNotes:'Trenches and short rectangular earthwork panels approximate the redoubt and flèches, whose exact angular geometry is not reproduced. Musket and gun effects are game balance.',
+      armies:[['French & Allied Grande Armée','aggressive'],['Kutuzov’s Russian Army','defensive']],regions:[region('trench',3700,1650,500,800),region('trench',3700,2850,500,750),region('forest',3650,3650,900,650),region('road',900,850,4600,260),{...fort('wall',3500,1750,80,200,1600),structureKind:'earthwork',name:'Great Redoubt north face'},{...fort('wall',3500,2250,80,200,1600),structureKind:'earthwork',name:'Great Redoubt south face'},{...fort('wall',3500,2900,80,250,1400),structureKind:'earthwork',name:'Bagration fieldwork'},...createBattlefieldStructure('house',3950,650,240,160)],
+      groups:[[0,'musketeer',200,2550,1200,'French northern wing'],[0,'musketeer',240,2550,2150,'French central assault'],[0,'musketeer',240,2550,3150,'French southern assault'],[0,'cannon',8,2850,1700,'French central grand battery',4],[0,'cannon',8,2850,2800,'French southern grand battery',4],[0,'cavalry',120,2000,2200,'French mounted reserve',20],[0,'musketeer',160,1800,3300,'French infantry reserve'],[0,'commander',1,1500,2200,'Napoleon'],[1,'musketeer',200,4100,1200,'Russian right village sector'],[1,'musketeer',240,4100,2150,'Great Redoubt infantry'],[1,'musketeer',240,4100,3150,'Bagration left infantry'],[1,'musketeer',160,4650,2200,'Russian second line'],[1,'cannon',6,3900,2150,'Great Redoubt battery',3],[1,'cannon',6,3900,3150,'Southern fieldwork battery',3],[1,'cavalry',120,4900,1500,'Russian cavalry reserve',20],[1,'commander',1,5200,2600,'Kutuzov']] }),
+
     historicalScene({ id: 'historyMarathon', name: 'Marathon', year: -490, era: 'Ancient', location: 'Attica, Greece',
       summary: 'A thin Greek center and stronger hoplite wings face the Persian landing army.',
       deployment: 'Athens and Plataea occupy a continuous front, with shallow central ranks and deeper wings. Persian strength is concentrated opposite the center; marsh and coastal water bound the field.',
@@ -1206,6 +1482,8 @@
         [1,'musketeer',120,4050,1350,'French right infantry'],[1,'musketeer',120,4050,2200,'French center infantry'],[1,'musketeer',120,4050,3050,'French left infantry'],[1,'musketeer',96,4900,2200,'Guard reserve'],[1,'cannon',4,3700,1650,'Grand Battery north',4],[1,'cannon',4,3700,2750,'Grand Battery south',4],[1,'cavalry',72,4550,1400,'French heavy cavalry',12],[1,'lancer',60,4550,3100,'French mounted reserve',12],[1,'commander',1,5300,2200,'Napoleon']] })
   ]);
   PRESETS.push(...HISTORICAL_BATTLES);
+  for(const map of MAPS)if(map.regions)addStandaloneRamparts(map.regions,map.width,map.height,map.name);
+  for(const battle of HISTORICAL_BATTLES)addStandaloneRamparts(battle.customMap.regions,battle.customMap.width,battle.customMap.height,battle.name);
 
   // Plans issue real movement orders; Steady advance also preserves a partial
   // weapon brace only while bodies actually move forward in coherent ranks.
@@ -1228,8 +1506,8 @@
   });
 
   global.GameData = Object.freeze({
-    TYPES, TYPE_ORDER, FORMATIONS, MAPS, PRESETS, HISTORICAL_BATTLES, DOCTRINES, WORLD_SIZES, normalizeWorldSize, castleWalls, ARMOR_CLASSES, ATTACK_PROFILES, armorMultiplier, getMatchup,
+    TYPES, TYPE_ORDER, FORMATIONS, MAPS, PRESETS, EXPANSION_MAPS, EXPANSION_PRESETS, HISTORICAL_BATTLES, DOCTRINES, WORLD_SIZES, normalizeWorldSize, castleWalls, TERRAIN_TYPES, STRUCTURE_TYPES, FORTRESS_TYPES, createFortress, createBattlefieldStructure, createRampartWall, ARMOR_CLASSES, ATTACK_PROFILES, armorMultiplier, getMatchup,
     DEFAULT_CONFIG: JSON.parse(JSON.stringify(PRESETS[0])),
-    MAX_UNITS: 20000, RNG, clamp
+    MAX_UNITS: 40000, MAX_TERRAIN_REGIONS: 192, RNG, clamp
   });
 })(typeof window !== 'undefined' ? window : globalThis);

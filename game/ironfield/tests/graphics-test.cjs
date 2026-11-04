@@ -762,5 +762,127 @@ test('Broken musketeer ranks animate close combat separately from musket reloads
   return { separateCloseCombatChoreography: true, honestAttackEvents: true };
 });
 
+test('New passable surfaces have distinct bounded artwork inside their authored region', () => {
+  const r=renderer(),signatures=new Set();
+  for(const type of ['road','mud','marsh','snow','trench']){
+    const c=recordingContext();r._paintSurface(c,{type,x:30,y:40,w:480,h:120},GameData.RNG(15));
+    assert(c.calls.some(q=>q[0]==='rect'&&q[1]===30&&q[2]===40&&q[3]===480&&q[4]===120));
+    assert(c.calls.some(q=>q[0]==='clip'),'A terrain overlay can paint across its collision boundary');
+    signatures.add(JSON.stringify(c.calls));
+  }
+  assert.equal(signatures.size,5);return{distinctSurfaces:5,regionClipped:true};
+});
+
+test('Destructible material kinds remain distinct, damaged, passaged and visibly breached', () => {
+  const r=renderer(),bounds={x1:0,x2:1000,y1:0,y2:1000},signatures=new Set();
+  for(const structureKind of ['stone','palisade','earthwork','house','watchtower','barricade','keep']){
+    const s={id:structureKind,type:'wall',structureKind,x:200,y:200,w:240,h:100,hp:2000,maxHp:2000,team:0};
+    r.engine.structures=[s];let c=recordingContext();r._drawFortifications(c,bounds,1);signatures.add(JSON.stringify(c.calls));
+    const intact=JSON.stringify(c.calls);s.hp=800;c=recordingContext();r._drawFortifications(c,bounds,1);
+    assert.notEqual(JSON.stringify(c.calls),intact,structureKind+' damage has no visible feedback');
+    s.breached=true;c=recordingContext();r._drawFortifications(c,bounds,1);
+    assert(!c.calls.some(q=>q[0]==='strokeRect'),structureKind+' breach still has an intact blocking outline');
+    const offscreen=recordingContext();r._drawFortifications(offscreen,{x1:2000,x2:3000,y1:2000,y2:3000},1);assert.equal(offscreen.calls.length,0);
+  }
+  assert.equal(signatures.size,7);return{distinctMaterials:7,damageAndBreachStates:true,offscreenCalls:0};
+});
+
+test('Forty thousand overview bodies use one pixel layer and restore detailed sprites near the camera', () => {
+  const originalCreate=document.createElement;
+  document.createElement=()=>({width:1,height:1,getContext(){return{createImageData:(w,h)=>({data:new Uint8ClampedArray(w*h*4)}),putImageData(){}};}});
+  try{
+    const units=Array.from({length:40000},(_,id)=>soldier(id%2?'cavalry':'swordsman',{id,team:id%2,x:80+id%250*63,y:70+Math.floor(id/250)*68,_lastAttack:-1000,attackFlash:0}));
+    const r=renderer(units),c=recordingContext(),atlases=[fakeAtlas('swordsman',0),fakeAtlas('cavalry',1)];
+    Object.assign(r,{ctx:c,_terrain:{tag:'terrain'},_visible:[],_lastFrame:0,_frame:0,fps:60,dpr:1,width:1440,height:900,camera:{x:8000,y:5500,zoom:.06},options:{quality:'auto',animations:'full',showBodies:false,showOrders:false,cinematic:false},_unitAtlases:units.map(u=>atlases[u.team]),_siegeTowers:[]});
+    r.engine.width=16000;r.engine.height=11000;
+    for(const name of ['_drawWaterMotion','_drawProjectiles','_drawEffects','_drawStandards','_drawFacingIndicators'])r[name]=()=>{};
+    const before=JSON.stringify(r.engine);r.render(1,new Set());
+    assert.equal(r._renderStats.visible,40000);assert.equal(r._renderStats.overviewBodies,40000);assert.equal(r._renderStats.drawCalls,1);
+    assert(r._overviewLayer.pixels.some(n=>n!==0),'The overview layer does not contain any soldier pixels');
+    const cache=r._overviewLayer;r.render(2,new Set());assert.equal(r._overviewLayer,cache,'A stationary render reallocates its pixel buffer');
+    r.camera.zoom=.6;c.calls.length=0;r.render(3,new Set());
+    assert.equal(r._renderStats.overviewBodies,0);assert(r._renderStats.visible>0);assert.equal(r._renderStats.drawCalls,r._renderStats.visible);
+    assert.equal(JSON.stringify(r.engine),before,'Overview rendering changed the simulation');
+    return{soldiers:40000,overviewLayerDraws:1,detailedCloseupBodies:r._renderStats.visible,reusedPixelBuffer:true};
+  }finally{document.createElement=originalCreate;}
+});
+
+test('Static terrain viewport rescales once and invalidates for camera, density, resize and map changes', () => {
+  const r=renderer(),c=recordingContext();
+  Object.assign(r,{canvas:{width:800,height:600},width:800,height:600,dpr:1,camera:{x:3200,y:2200,zoom:.15},_terrain:{width:2560,height:1760,tag:'terrain'}});
+  const draw=()=>r._drawTerrainViewport(c,r.camera.zoom,400-r.camera.x*r.camera.zoom,300-r.camera.y*r.camera.zoom);
+  assert(draw());const cache=r._terrainViewport;
+  const scales=()=>cache.ctx.calls.filter(q=>q[0]==='drawImage').length;
+  assert.equal(scales(),1);draw();draw();assert.equal(scales(),1,'Stationary troop frames rescale the world terrain');
+  r.engine.time+=1;draw();assert.equal(scales(),1,'Simulation time unnecessarily invalidates static ground');
+  r.camera.x+=10;draw();assert.equal(scales(),2);
+  r.camera.y+=10;draw();assert.equal(scales(),3);
+  r.camera.zoom=.17;draw();assert.equal(scales(),4);
+  r.dpr=2;draw();assert.equal(scales(),5);
+  r._terrain={width:2560,height:1760,tag:'new-terrain'};draw();assert.equal(scales(),6);
+  r.width=900;draw();assert.equal(scales(),7);
+  r.canvas.width=900;draw();assert.notEqual(r._terrainViewport,cache);assert.equal(cache.canvas.width,1,'Resize retained the old viewport framebuffer');
+  assert.equal(c.calls.filter(q=>q[0]==='drawImage').length,11,'A terrain frame submitted more than one final viewport blit');
+  return{stationaryWorldRescales:1,independentInvalidations:7,oneViewportBlitPerFrame:true};
+});
+
+test('Wall occupants and stair climbers draw once at their own physical altitude above ground gate users',()=>{
+  const units=[soldier('archer',{id:0,x:100,y:100,_rampartZ:36,_onRampart:true}),soldier('swordsman',{id:1,x:100,y:120,_rampartZ:0}),soldier('archer',{id:2,x:120,y:120,_rampartZ:18,_onRampart:false})],r=renderer(units),c=recordingContext();
+  Object.assign(r,{ctx:c,_terrain:{tag:'terrain'},_visible:[],_lastFrame:0,_frame:0,fps:60,dpr:1,width:400,height:300,camera:{x:150,y:150,zoom:1},_siegeTowers:[],options:{quality:'high',showBodies:false,showOrders:false,cinematic:false,animations:'reduced'}});
+  r._getAtlas=fakeAtlas;r.engine.siege={heightAt:()=>0};
+  for(const name of ['_drawWaterMotion','_drawProjectiles','_drawEffects','_drawStandards'])r[name]=()=>{};
+  r.render(1,new Set());const sprites=c.calls.filter(q=>q[0]==='drawImage'&&q[1]!=='terrain');assert.equal(sprites.length,3);
+  assert(sprites.some(q=>q[2]===85&&q[3]===34),'The wall archer feet were not lifted by36');
+  assert(sprites.some(q=>q[2]===85&&q[3]===90),'A ground gate user was lifted onto the wall');
+  assert(sprites.some(q=>q[2]===105&&q[3]===72),'A stair climber did not use its intermediate physical height');
+  units[0]._rampartZ=0;assert.equal(r._elevation(units[0]),0,'A collapsed-wall survivor kept a stale visual deck height');
+  return{wallHeight:36,stairHeight:18,draws:3,sharedGroundGateUnaffected:true};
+});
+
+test('Rampart decks and courtyard stairs stay connected across open gatehouses and vanish on collapse',()=>{
+  const r=renderer(),s={id:'deck',type:'gate',x:100,y:100,w:100,h:240,walkable:true,deckHeight:36,rampartSide:'west',team:0,open:true,hp:1000,maxHp:1000,stairs:[{groundX:330,groundY:220,deckX:150,deckY:220,width:64,height:36}]};
+  r.engine.structures=[s];const c=recordingContext();r._drawFortifications(c,{x1:0,x2:600,y1:0,y2:600},1);
+  assert(c.calls.some(q=>q[0]==='fillRect'&&q[1]===100&&q[2]===64&&q[3]===100&&q[4]===240),'Opening the ground gate removed the upper walkway');
+  assert(c.calls.some(q=>q[0]==='fillText'&&q[1]==='STAIRS'),'The physical stair access has no visible stair drawing');
+  const broken=recordingContext();s.breached=true;r._drawFortifications(broken,{x1:0,x2:600,y1:0,y2:600},1);
+  assert(!broken.calls.some(q=>q[0]==='fillText'&&q[1]==='STAIRS'));assert(!broken.calls.some(q=>q[0]==='fillRect'&&q[2]===64&&q[3]===100&&q[4]===240));
+  return{openGateDeckRetained:true,physicalCourtyardStairs:true,collapsedDeckRemoved:true};
+});
+
+test('Elevated missiles interpolate actual launch and target heights without adding deck or muzzle height twice',()=>{
+  const r=renderer(),p={type:'archer',kind:'arrow',attacker:0,team:0,sx:100,sy:100,tx:300,ty:100,x:100,y:100,z:0,age:0,duration:1,launchZ:56,targetZ:14};
+  r.engine.projectiles=[p];r.engine.siege={ramps:[{}],heightAt:()=>36};
+  const tip=()=>{const c=recordingContext();r._drawProjectiles(c,{x1:0,x2:500,y1:0,y2:400},1);return c.calls.find(q=>q[0]==='lineTo');};
+  assert.equal(tip()[2],44);p.age=.5;p.x=200;p.z=20;assert.equal(tip()[2],45);
+  p.type='musketeer';p.age=0;p.x=100;p.z=0;assert.equal(tip()[2],44,'A wall musket added its19-unit muzzle offset to an already absolute launch height');
+  return{launchAltitude:56,targetAltitude:14,midFlightIncludingArc:55,noDoubleHeight:true};
+});
+
+test('Rampart hover uses pure engine slot preview and selected ranks retain their actual projected heights',()=>{
+  const r=renderer(),c=recordingContext(),slots=[{x:100,y:100,z:36,rank:0,structureId:'w'},{x:120,y:100,z:36,rank:1,structureId:'w'}];
+  r.engine.regiments=[{id:0,team:0,x:200,y:200,_rampartJob:{},_rampartSlots:slots,rampartRanks:2}];r.engine.structures=[{id:'w',x:90,y:90,w:80,h:160,walkable:true,deckHeight:36,stairs:[]}];
+  let calls=0;r.engine.siege={previewRampart(ids,id,options){assert.deepEqual(ids,[0]);assert.equal(id,'w');assert.equal(options.ranks,2);calls++;return slots;}};
+  r.pendingRampart={structureId:'w',regimentIds:[0],ranks:2,spacing:'compact'};
+  const before=JSON.stringify(r.engine.regiments);r._drawRampartOrders(c,new Set([0]),1);
+  assert.equal(calls,1);assert.equal(JSON.stringify(r.engine.regiments),before);
+  r._drawRampartOrders(recordingContext(),new Set([0]),1);assert.equal(calls,1,'A stationary wall hover regenerates component slots every frame');
+  r.engine.terrainRevision=1;r._drawRampartOrders(recordingContext(),new Set([0]),1);assert.equal(calls,2,'A breached wall retained a stale slot preview');
+  assert.equal(c.calls.filter(q=>q[0]==='ellipse'&&q[2]===64).length,4,'Assigned or preview ranks were drawn at ground height');
+  const u=soldier('archer',{regiment:0,_rampartStage:'falling',_rampartZ:18,_rampartId:'w'});r.options={animations:'full'};r.engine.siege.byId=new Map([['w',{deckHeight:36}]]);
+  assert.deepEqual(r._motionAction(u,0),{kind:'collapse',phase:1});
+  return{purePreview:true,elevatedRankMarkers:4,physicalWallFallPose:true};
+});
+
+test('Accumulated wall casualties rebake at rubble height after the supporting deck collapses',()=>{
+  const dead=soldier('archer',{alive:false,_deathTime:19,_rampartZ:36,_rampartId:'wall'}),r=renderer([dead]),wall={breached:false,deckHeight:36};
+  r.options={corpseMode:'battle'};r.engine.deadUnitIds=[0];r.engine.terrainRevision=0;r.engine.siege={byId:new Map([['wall',wall]]),heightAt:()=>0};
+  r._corpseSprite=()=>fakeAtlas('archer',0).corpses[0];
+  const cache=r._syncCorpseCache(),tile=cache.tiles.values().next().value;
+  r._bakeCorpseTile(cache,tile,1,1200);assert.equal(tile.entries[0].elevation,36);
+  wall.breached=true;r.engine.terrainRevision=1;r._syncCorpseCache();assert.equal(tile.dirty,true);
+  r._bakeCorpseTile(cache,tile,1,1200);assert.equal(tile.entries[0].elevation,0,'A baked body remains floating above a collapsed wall');
+  return{standingDeckCorpseHeight:36,collapsedDeckCorpseHeight:0,terrainRevisionInvalidatesRaster:true};
+});
+
 console.log(JSON.stringify({ passed: results.filter(x => x.passed).length, failed: results.filter(x => !x.passed).length, tests: results }, null, 2));
 if (results.some(x => !x.passed)) process.exitCode = 1;

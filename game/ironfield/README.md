@@ -1,6 +1,20 @@
-# IRONFIELD 2.6 — Fire by ranks
+# IRONFIELD 2.7 — Grand battlefields and rampart defense
 
-The Campaign Atlas now includes **20 historical battles**, with searchable eras, named armies, tactical opening deployments, and source notes. Select **Historical battles**, read the deployment briefing, then **Prepare This Battle** to command the opening or **Quick Battle** to start immediately. The scenarios use scaled forces and the available troop classes; every battle explains its approximations in the historical notes. See [HISTORICAL-BATTLES.md](HISTORICAL-BATTLES.md) for the source catalog.
+Castles now have **walkable ramparts and real interior stairs**. Select foot troops, choose **Man ramparts**, and click a friendly wall. Set **Depth** to one, two, or three ranks and choose close, regular, or spread spacing. Troops queue at the stairs, travel over connected wall and gatehouse decks, and take the available firing positions; overflow remains in the courtyard. The normal ground formation controls return after they descend.
+
+Ranged guards fire from their actual height. The parapet reduces incoming ranged accuracy from outside the castle, while courtyard attackers do not receive that outside-wall penalty. When a wall or gate collapses, the garrison prepares a courtyard defense: troops on the destroyed deck fall to the breach, and guards on intact sections descend through surviving stairs. **Form in courtyard** gives that order manually. See [RAMPARTS.md](RAMPARTS.md) for controls and design details.
+
+Try **Castle of Four Winds → Assault on Castle of Four Winds**: its archers and crossbows start on courtyard ground and climb when play begins. Command the defending army or choose **Command both** to adjust their wall drill.
+
+Battles now support **40,000 individually simulated soldiers**, up to **20,000 per army**. The builder, army scale, scenario imports, and saved formation offsets retain the full count. The new 8× scale option helps fill Grand, Vast, and Colossal fields. Distant armies use a faster overview drawing pass; zooming in restores detailed troop sprites and animation.
+
+Eight new battlefields bring the authored catalog to **30 fields and 32 scenarios**, alongside **30 sourced historical battles**. Choose **New fields** in the atlas for The Timber Marches, Castle of Four Winds, The Reedwater Keep, Starhaven Redoubt, The Twin Crown Citadel, The King's Causeway, The White Pass, and The Sable Lines. Their plans combine roads, mud, marshes, snow, trenches, villages, and fortifications. See [BATTLEFIELD-EXPANSION.md](BATTLEFIELD-EXPANSION.md).
+
+The custom editor now offers five additional castle plans: timber palisade, curtain castle, moated castle, bastioned star fort, and concentric citadel. The original square keep remains available. Moated castles include four real causeways; concentric castles have aligned gates through both rings. Houses, watchtowers, barricades, and hollow gate keeps can also be placed separately. Their materials and names survive export and import. Buildings block movement until breached, and opened gates and causeways provide real routes through the works.
+
+Roads favor marching; mud and snow slow movement; marshes and trenches add cover at a movement cost. Passable terrain painted later takes precedence, and bridges carry troops across water. The editor supports **192 terrain areas** and checks every castle entrance before placement.
+
+The Campaign Atlas includes **30 historical battles**, with searchable eras, named armies, tactical opening deployments, and source notes. Select **Historical battles**, read the deployment briefing, then **Prepare This Battle** to command the opening or **Quick Battle** to start immediately. The scenarios use scaled forces and the available troop classes; every battle explains its approximations in the historical notes. See [HISTORICAL-BATTLES.md](HISTORICAL-BATTLES.md) for the source catalog.
 
 Musketeers now reload for **24 seconds** and deal **78 base damage** per shot. Their companies fire synchronized volleys by rank, with eight seconds between ranks in a three-rank line. **Three-rank volley** spreads the frontage; **Three-file column** makes a narrow formation with three soldiers abreast. Close combat breaks fire discipline, and survivors reform after the attackers clear. The selection panel shows the next rank and firing status. Cannon and trebuchet impacts throw troops much farther, with catapults also scattering packed ranks.
 
@@ -50,9 +64,9 @@ Yielding troops use short backward or sideways steps while keeping their weapons
 
 ## A larger war table
 
-The game opens at a main menu with **Quick Battle**, a browser for all **22 authored battlefields**, **Custom Encounter**, saved scenarios, the field manual, and settings. Select a field and choose **Prepare This Battle** to arrange the armies, or use Quick Battle to start its scenario immediately. **Menu** in the top bar pauses the current battle; **Resume Battle** returns to the same troops, positions, selection, and accepted orders. A battle that was already paused stays paused. The menu performs no simulation or battlefield rendering in the background.
+The game opens at a main menu with **Quick Battle**, a browser for all **30 authored battlefields**, **Custom Encounter**, saved scenarios, the field manual, and settings. Select a field and choose **Prepare This Battle** to arrange the armies, or use Quick Battle to start its scenario immediately. **Menu** in the top bar pauses the current battle; **Resume Battle** returns to the same troops, positions, selection, and accepted orders. A battle that was already paused stays paused. The menu performs no simulation or battlefield rendering in the background.
 
-Twelve additional maps bring the total to **23 choices including Custom**, with **24 prepared scenarios**. Maps are labeled **Standard**, **Large**, **Huge**, or **Colossal**, with their area multiplier shown in the battlefield browser, scenario and map selectors, custom editor, and saved encounters. The largest maps appear first. Choose **Large maps · 12** in the main menu to show the twelve larger fields; if the current selection is Standard, this also selects a matching large field for Prepare This Battle and Quick Battle.
+Twelve additional maps bring the total to **31 choices including Custom**, with **62 prepared scenarios including historical battles**. Maps are labeled **Standard**, **Large**, **Huge**, or **Colossal**, with their area multiplier shown in the battlefield browser, scenario and map selectors, custom editor, and saved encounters. The largest maps appear first. Choose **Large maps** in the main menu to show the larger fields; if the current selection is Standard, this also selects a matching large field for Prepare This Battle and Quick Battle.
 
 The full-width battlefield picker shows map size before the name, with dimensions beneath it. **Army scale · Soldier counts** changes the number of troops; choose a larger battlefield to increase map area.
 
@@ -358,7 +372,7 @@ Use the custom editor to build your field:
 5. Add troops for both armies, then start. Use **Save scenario** or **Export
    JSON** to keep the terrain, army composition, facing, and deployment groups.
 
-The editor supports up to 96 terrain areas. Direct formation placement accepts
+The editor supports up to 192 terrain areas. Direct formation placement accepts
 up to 400 soldiers at a time, within the usual army limits; a commander is
 placed individually. Middle-mouse dragging still pans while a tool is active,
 and touch dragging paints terrain with that tool selected.
@@ -389,7 +403,7 @@ the requested orientation around its own center, then holds there.
 
 The builder has a separate roster and battle plan for each army. Enter exact quantities, use the troop controls, or mirror one army into the other. Army points are a comparison of the configured troop costs, rather than a spending restriction; this is a sandbox, so uneven battles are allowed.
 
-Each side can contain up to **10,000 combatants**, for a maximum of **20,000 total**. A catapult, elephant, commander, tower, or ram counts as one simulated combatant. The epic preset contains 12,000 combatants. Commanders are limited to **16 per army** and each has its own selectable unit. The original field presets include two commanders per side; the epic preset includes four per side.
+Each side can contain up to **20,000 combatants**, for a maximum of **40,000 total**. A catapult, elephant, commander, tower, or ram counts as one simulated combatant. The epic preset contains 12,000 combatants. Commanders are limited to **16 per army** and each has its own selectable unit. The original field presets include two commanders per side; the epic preset includes four per side.
 
 Troop portraits and equipment are original graphics drawn in code and cached as sprite frames. Soldiers are not represented by a shared generic marker: infantry carry their own weapon and shield designs, mounted units have horses, lancers carry long pennant lances, catapults have wheeled frames, and elephants have tusks and howdahs. Team colors identify allegiance, while the silhouette and equipment identify the class.
 
@@ -706,7 +720,7 @@ Troops can also regroup near ordinary friendly formations. Passive recovery take
 
 ## Battlefields
 
-There are 22 authored fields plus the empty custom editor. Original maps retain their dimensions; all twelve additional maps are larger.
+There are 30 authored fields plus the empty custom editor. Original maps retain their dimensions; the twelve earlier additions and eight new fields are larger.
 
 | Map | Dimensions | Tactical character |
 | --- | ---: | --- |
@@ -782,7 +796,7 @@ Browser storage can be unavailable or cleared. Export a JSON copy when you want 
 
 ## Performance and presentation
 
-Start at the default 2,400 combatants, then try the 12,000-combatant preset. The 20,000-combatant cap is a supported configuration limit, not a promise of a particular frame rate on every device.
+Start at the default 2,400 combatants, then try the 12,000-combatant preset. The 40,000-combatant cap is a supported configuration limit, not a promise of a particular frame rate on every device.
 
 The simulation caches shared formation calculations once per step and uses
 separate collision neighborhoods for ordinary soldiers and large bodies. A

@@ -27,7 +27,7 @@ test('Startup menu blocks battlefield commands and performs no hidden battle ren
 });
 test('Menu offers every authored battlefield and prepares the chosen larger scenario',()=>{
   const ui=bootUI(ROOT,{menu:true}),D=ui.window.GameData,maps=D.MAPS.filter(m=>m.id!=='custom');
-  assert.equal(ui.document.querySelectorAll('[data-menu-map]').length,maps.length);assert.equal(maps.length,22);
+  assert.equal(ui.document.querySelectorAll('[data-menu-map]').length,maps.length);assert(maps.length>=30);
   const biggest=maps.find(m=>m.width===16000);assert(biggest);gallery(ui,biggest.id);
   assert.equal(button(ui,'menuMapTitle').textContent,biggest.name);assert.match(button(ui,'menuMapDimensions').textContent,/6\.25/);
   button(ui,'menuDeploy').click();assert.equal(ui.window.IRONFIELD.menuOpen,false);assert.equal(ui.engine.map.id,biggest.id);assert.equal(ui.engine.width,16000);assert.equal(ui.engine.height,11000);assert.equal(ui.engine.phase,'deployment');
@@ -84,9 +84,9 @@ test('Corpse persistence and animation settings persist and follow the renderer 
 test('Battlefield filters expose the additional large maps and fortified assaults',()=>{
   const ui=bootUI(ROOT,{menu:true}),D=ui.window.GameData;ui.document.querySelector('[data-map-filter="large"]').click();
   const visible=()=>ui.document.querySelectorAll('[data-menu-map]').filter(e=>!e.hidden).map(e=>D.MAPS.find(m=>m.id===e.dataset.menuMap));
-  const large=visible();assert.equal(large.length,12);assert(large.every(m=>m.width>6400));
+  const large=visible();assert.equal(large.length,D.MAPS.filter(m=>m.id!=='custom'&&m.width*m.height>6400*4400).length);assert(large.every(m=>m.width>6400));
   ui.document.querySelector('[data-map-filter="siege"]').click();const siege=visible();assert(siege.length>=6);assert(siege.every(m=>m.regions.some(r=>r.type==='wall'||r.type==='gate')));
-  ui.document.querySelector('[data-map-filter="all"]').click();assert.equal(visible().length,22);
+  ui.document.querySelector('[data-map-filter="all"]').click();assert.equal(visible().length,D.MAPS.filter(m=>m.id!=='custom').length);
   return{additionalLargeMaps:large.length,fortifiedAssaultMaps:siege.length};
 });
 test('Rapid Encirclement exposes single-versus-group scope and manual Hold removes the automatic status',()=>{

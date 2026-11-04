@@ -121,7 +121,7 @@ function bootUI(root, options = {}) {
     vm.runInContext(fs.readFileSync(scriptPath('tactics.js'), 'utf8'), sandbox, { filename: 'tactics.js' });
     context.BattleTactics = window.BattleTactics;
   }
-  for (const [name, symbol] of [['impacts.js', 'BattleImpacts'], ['siege.js', 'BattleSiege']]) {
+  for (const [name, symbol] of [['impacts.js', 'BattleImpacts'], ['siege.js', 'BattleSiege'], ['ramparts.js', 'BattleRamparts']]) {
     if (fs.existsSync(scriptPath(name))) {
       vm.runInContext(fs.readFileSync(scriptPath(name), 'utf8'), sandbox, { filename: name });
       context[symbol] = window[symbol];

@@ -2,9 +2,9 @@
 const assert = require('node:assert/strict');
 function register(test) {
   const D = global.GameData, Engine = global.BattleEngine;
-  test('Historical catalog supplies twenty sourced, explicitly deployed battles across five eras', () => {
+  test('Historical catalog supplies thirty sourced, explicitly deployed battles across five eras', () => {
     const battles = D.HISTORICAL_BATTLES;
-    assert.equal(battles.length, 20);
+    assert.equal(battles.length, 30);
     assert.equal(new Set(D.PRESETS.map(p => p.id)).size, D.PRESETS.length);
     assert.equal(new Set(battles.map(p => p.historical.era)).size, 5);
     assert(Math.min(...battles.map(p => p.historical.year)) < 0);
@@ -64,6 +64,17 @@ function register(test) {
     const xs=new Map(); for(const id of companions.unitIds) { const key=Math.round(gaugamela.units[id].x*100)/100; xs.set(key,(xs.get(key)||0)+1); }
     assert.equal(xs.get(Math.max(...xs.keys())),1,'Companions lost their pointed front'); assert(Math.max(...xs.values())>=8,'Companions became a rectangular saved layout');
     return {strongGreekWings:true,deepThebanLeft:true,carthaginianConvexCenter:true,threeAmericanLines:true,waterlooOutposts:true,armyRelativeFlanks:true,companionWedge:true};
+  });
+  test('Additional historical fields keep elephant screens, aligned Roman lanes, bridgeheads, converging columns, and redoubt sectors',()=>{
+    const find=id=>D.HISTORICAL_BATTLES.find(p=>p.id===id),named=(p,text)=>p.formations.find(g=>g.name.includes(text));
+    const hydaspes=find('historyHydaspes'),elephants=hydaspes.formations.filter(g=>g.type==='elephant');
+    assert.equal(elephants.length,3);for(const g of elephants)assert(g.x<named(hydaspes,'Indian infantry right').x,'Porus lost the elephant screen ahead of his infantry');
+    const zama=find('historyZama');for(const side of ['left','center','right']){const a=named(zama,'Hastati '+side),b=named(zama,'Principes '+side),c=named(zama,'Triarii '+side);assert.equal(a.y,b.y);assert.equal(b.y,c.y);assert(a.x>b.x&&b.x>c.x,'Roman company lanes lost their three aligned depths');}
+    const stirling=find('historyStirlingBridge'),river=stirling.customMap.regions.find(r=>r.type==='water');assert(named(stirling,'Crossed English').x<river.x);assert(named(stirling,'awaiting crossing').x>river.x+river.w);
+    const trenton=find('historyTrenton');assert(Math.abs(named(trenton,'western approach').facing-named(trenton,'northern approach').facing)>1.5,'Trenton became one generic parallel front');
+    const austerlitz=find('historyAusterlitz');assert(named(austerlitz,'central first wave').count+named(austerlitz,'central second wave').count>named(austerlitz,'Thin French right').count*3);assert(named(austerlitz,'Allied left first').y>named(austerlitz,'Pratzen central').y);
+    const borodino=find('historyBorodino');assert(borodino.customMap.regions.some(r=>r.structureKind==='earthwork'&&r.name.includes('Redoubt')));assert(named(borodino,'Great Redoubt battery').x>3500);assert(named(borodino,'Bagration left').y>named(borodino,'Russian right village').y);
+    return{elephantScreen:true,romanLanes:true,crossedVanguard:true,twoApproachDirections:true,centralAusterlitzMass:true,redoubtSector:true};
   });
 }
 module.exports = register;

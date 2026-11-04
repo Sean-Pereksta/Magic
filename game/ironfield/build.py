@@ -14,14 +14,14 @@ def build():
     css = (root / "src" / "style.css").read_text(encoding="utf-8")
     html = html.replace('<link rel="stylesheet" href="src/style.css">',
                         '<style>\n' + css + '\n</style>')
-    for filename in ("data.js", "tactics.js", "impacts.js", "siege.js", "engine.js", "graphics.js", "app.js"):
+    for filename in ("data.js", "tactics.js", "impacts.js", "siege.js", "ramparts.js", "engine.js", "graphics.js", "app.js"):
         script = (root / "src" / filename).read_text(encoding="utf-8")
         script = re.sub(r"</script", r"<\\/script", script, flags=re.IGNORECASE)
         html = html.replace(f'<script src="src/{filename}"></script>',
                             '<script>\n' + script + '\n</script>')
     if re.search(r'<(?:script|link)\b[^>]*(?:src|href)="src/', html):
         raise RuntimeError("An external source reference remains in the bundle.")
-    html = html.replace('<!doctype html>', '<!doctype html>\n<!-- IRONFIELD 2.6.0 | Standalone offline game | All source included -->', 1)
+    html = html.replace('<!doctype html>', '<!doctype html>\n<!-- IRONFIELD 2.7.0 | Standalone offline game | All source included -->', 1)
     out = root / "IRONFIELD.html"
     out.write_text(html, encoding="utf-8")
     (root / "dist").mkdir(exist_ok=True)

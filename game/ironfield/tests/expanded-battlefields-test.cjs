@@ -58,7 +58,7 @@ function step(e,m) {
 function register(test) {
   const D=global.GameData,Engine=global.BattleEngine;
   test('Twelve larger battlefields and their full scenarios deploy bounded separated armies',()=>{
-    assert.equal(D.MAPS.length,23);assert.equal(D.PRESETS.filter(p=>!p.historical).length,24);assert.equal(D.PRESETS.length,24+(D.HISTORICAL_BATTLES||[]).length);assert.equal(new Set(D.MAPS.map(m=>m.id)).size,23);
+    assert.equal(D.MAPS.length,23+D.EXPANSION_MAPS.length);assert.equal(D.PRESETS.filter(p=>!p.historical).length,24+D.EXPANSION_PRESETS.length);assert.equal(D.PRESETS.length,24+D.EXPANSION_PRESETS.length+(D.HISTORICAL_BATTLES||[]).length);assert.equal(new Set(D.MAPS.map(m=>m.id)).size,D.MAPS.length);
     assert.deepEqual(D.WORLD_SIZES.map(s=>[s.width,s.height]),[[6400,4400],[9600,6600],[12800,8800],[16000,11000]]);
     const outcomes=[];
     for(const id of NEW_MAPS){
