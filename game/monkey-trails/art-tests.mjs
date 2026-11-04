@@ -51,17 +51,17 @@ function assertArticulatedMotion(svg,selector,part){
  assert.match(svg.slice(beginning,beginning+4000),/<(path|circle|ellipse|rect)\b/,`${part} contains actual vector shapes`);
 }
 
-test('all 110 species have distinct authored geometry after ignoring paint, labels and hidden effects',()=>{
- assert.equal(roster.length,110);const seen=new Map();
+test('all 123 species have distinct authored geometry after ignoring paint, labels and hidden effects',()=>{
+ assert.equal(roster.length,123);const seen=new Map();
  for(const s of roster){const svg=portrait(model(s)),shape=geometry(svg);assert.equal(geometry(svg.replace(/(?:fill|stroke)="[^"]*"/g,'fill="#000"')),shape,'paint must never influence identity');assert.ok(!seen.has(shape),`${s.id} shares geometry with ${seen.get(shape)}`);seen.set(shape,s.id);}
- assert.equal(seen.size,110);
+ assert.equal(seen.size,123);
 });
 
-test('all 802 required animation scenes bind state-specific motion to actual body geometry',()=>{
- assert.equal(ultras.length,16);assert.deepEqual(ANIMATION_STATES,['idle','walk','attack','cast','hit','knockout','victory']);
+test('all 919 required animation scenes bind state-specific motion to actual body geometry',()=>{
+ assert.equal(ultras.length,25);assert.deepEqual(ANIMATION_STATES,['idle','walk','attack','cast','hit','knockout','victory']);
  const bindings={idle:['.monkey-art .rig','rig'],walk:['.monkey-art[data-state="walk"] .rig','rig'],attack:['.monkey-art[data-state="attack"] .arm-r','arm-r'],cast:['.monkey-art[data-state="cast"] .arm-l','arm-l'],hit:['.monkey-art[data-state="hit"] .rig','rig'],knockout:['.monkey-art[data-state="knockout"] .rig','rig'],victory:['.monkey-art[data-state="victory"] .rig','rig'],arrival:['.monkey-art[data-state="arrival"] .rig','rig'],signature:['.monkey-art[data-state="signature"] .rig','rig']};
  let scenes=0;
- for(const s of roster)for(const state of [...ANIMATION_STATES,...(s.rarity==='ultra'?ULTRA_STATES:[])]){
+ for(const s of roster)for(const state of [...ANIMATION_STATES,...(['ultra','mythic'].includes(s.rarity)?ULTRA_STATES:[])]){
   const svg=portrait(model(s),{state});scenes++;
   assert.ok(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"'));
   assert.ok(svg.includes(`data-state="${state}"`));assert.doesNotMatch(svg,/undefined|NaN|<image\b|href="https?:/);
@@ -70,10 +70,10 @@ test('all 802 required animation scenes bind state-specific motion to actual bod
   if(state==='knockout'){assert.equal(rule(styles(svg),'.monkey-art[data-state="knockout"] .ko-eyes'),'display:block');assert.match(rule(styles(svg),'.monkey-art[data-state="knockout"] .eyes'),/display:none/);}
   if(state==='signature'){const selector=`.monkey-art[data-state="signature"][data-signature="${s.signature}"] .signature-fx`;assertArticulatedMotion(svg,selector,'signature-fx');}
  }
- assert.equal(scenes,802);
+ assert.equal(scenes,919);
 });
 
-test('sixteen Ultras have different signature geometry and different signature motion',()=>{
+test('25 Ultras have different signature geometry and different signature motion',()=>{
  const scenes=new Set(),motions=new Set();
  for(const s of ultras){
   const svg=portrait(model(s),{state:'signature'}),selector=`.monkey-art[data-state="signature"][data-signature="${s.signature}"] .signature-fx`;
@@ -82,10 +82,10 @@ test('sixteen Ultras have different signature geometry and different signature m
   assert.ok(svg.length>allButFx.length+100,`${s.id} has a substantial signature effect`);
   scenes.add(svg.slice(start,start+svg.length-allButFx.length));
  }
- assert.equal(scenes.size,16);assert.equal(motions.size,16);
+ assert.equal(scenes.size,25);assert.equal(motions.size,25);
 });
 
-test('all 110 species retain identity while adding three distinct evolution silhouettes',()=>{
+test('all 123 species retain identity while adding three distinct evolution silhouettes',()=>{
  let variants=0;
  for(const s of roster){
   const forms=[0,1,2,3].map(stage=>portrait(model(s,stage)));
@@ -93,11 +93,11 @@ test('all 110 species retain identity while adding three distinct evolution silh
   for(const form of forms){assert.ok(form.includes(`data-species="${s.id}"`));assert.doesNotMatch(form,/undefined|NaN/);}
   for(const stage of [1,2,3]){assert.ok(forms[stage].includes('class="evolution-parts"'));variants++;}
  }
- assert.equal(variants,330);
+ assert.equal(variants,369);
 });
 
-test('the fifty expansion monkeys have unique face geometry and body proportions before paint or props',()=>{
- const newcomers=roster.filter(s=>s.number>60),faces=new Set(),bodies=new Set();assert.equal(newcomers.length,50);
+test('the 63 expansion monkeys have unique face geometry and body proportions before paint or props',()=>{
+ const newcomers=roster.filter(s=>s.number>60),faces=new Set(),bodies=new Set();assert.equal(newcomers.length,63);
  for(const s of newcomers){
   const svg=portrait(model(s)),head=svg.slice(svg.indexOf('<g class="head">'),svg.indexOf('<g class="cast-fx">'));
   faces.add(geometry(head));
@@ -105,21 +105,21 @@ test('the fifty expansion monkeys have unique face geometry and body proportions
   const body=svg.slice(svg.indexOf('<g class="leg-r">'),svg.indexOf('<g class="arm-l">'));
   bodies.add(geometry(body));
  }
- assert.equal(faces.size,50);assert.equal(bodies.size,50);
+ assert.equal(faces.size,63);assert.equal(bodies.size,63);
 });
 
 test('source and packaged manifests cover every scene, variant, scale, anchor and local placeholder',async()=>{
  const manifest=JSON.parse(await readFile(resolve(gameDir,'assets/manifest.json'),'utf8'));
  assert.equal(manifest.prefix,'monkey-trails/wild-companions-v4/');assert.equal(manifest.format,'animated-svg');
- assert.deepEqual(manifest.animations,ASSET_MANIFEST.animations);assert.deepEqual(ASSET_MANIFEST.pickups,manifest.pickups,'Every advertised hosted pickup URL has a packaged asset');assert.equal(Object.keys(manifest.species).length,110);
+ assert.deepEqual(manifest.animations,ASSET_MANIFEST.animations);assert.deepEqual(ASSET_MANIFEST.pickups,manifest.pickups,'Every advertised hosted pickup URL has a packaged asset');assert.equal(Object.keys(manifest.species).length,123);
  let scenes=0,variants=0;
  for(const s of roster){
-  const entry=manifest.species[s.id],states=[...ANIMATION_STATES,...(s.rarity==='ultra'?ULTRA_STATES:[])];
+  const entry=manifest.species[s.id],states=[...ANIMATION_STATES,...(['ultra','mythic'].includes(s.rarity)?ULTRA_STATES:[])];
   assert.deepEqual(Object.keys(entry.states),states);assert.ok(entry.scale>0);assert.deepEqual(entry.anchor,[.5,.90]);
   for(const state of states){assert.equal(entry.states[state].src,`monkeys/${s.id}/${state}.svg`);assert.deepEqual(entry.states[state].frames,[0]);assert.deepEqual(entry.states[state].anchor,[.5,.90]);assert.ok(manifest.animations[state].durationMs>0);scenes++;}
   for(const variant of ['attuned','elder','ascendant']){assert.equal(entry.variants[variant].src,`monkeys/${s.id}/variants/${variant}.svg`);assert.ok(entry.variants[variant].modular);variants++;}
  }
- assert.equal(scenes,802);assert.equal(variants,330);
+ assert.equal(scenes,919);assert.equal(variants,369);
  assert.ok((await stat(resolve(gameDir,'assets',manifest.placeholder))).size>100);
  assert.match(await readFile(resolve(gameDir,'assets',manifest.placeholder),'utf8'),/<svg[^>]+aria-label="Loading companion"/);
 });
@@ -137,13 +137,13 @@ test('every manifest object exists in GitHub assets and the committed Cloudflare
   const compressed=zip.readUInt32LE(offset+18),nameLength=zip.readUInt16LE(offset+26),extra=zip.readUInt16LE(offset+28),name=zip.subarray(offset+30,offset+30+nameLength).toString(),start=offset+30+nameLength+extra;
   objects.set(name,inflateRawSync(zip.subarray(start,start+compressed)));offset=start+compressed;
  }
- assert.equal(Object.keys(manifest.locations).length,80);
+ assert.equal(Object.keys(manifest.locations).length,156);
  const paths=[...Object.values(manifest.locations).map(l=>l.src),manifest.placeholder,...Object.values(manifest.environments),...Object.values(manifest.pickups),...Object.keys(ELEMENTS).map(id=>`interface/element-${id}.svg`)];
  for(const s of roster){const entry=manifest.species[s.id];paths.push(...Object.values(entry.states).map(state=>state.src),...Object.values(entry.variants).filter(v=>v.src).map(v=>v.src));}
  for(const file of new Set(paths)){const local=await readFile(resolve(gameDir,'assets',file));assert.deepEqual(objects.get(manifest.prefix+file),local,`${file} is saved locally and in the upload ZIP`);assert.match(local.toString(),/^<svg\b/);assert.ok(local.length<30000,`${file} remains a small vector asset`);}
  assert.deepEqual(JSON.parse(objects.get(manifest.prefix+'manifest.json').toString()),manifest);
- assert.equal(manifest.artwork.species,110);assert.equal(manifest.artwork.animationFiles,802);assert.equal(manifest.artwork.evolutionVariants,330);
- assert.ok(zip.length<4*1024*1024,'the complete upload ZIP stays below 4 MiB');
+ assert.equal(manifest.artwork.species,123);assert.equal(manifest.artwork.animationFiles,919);assert.equal(manifest.artwork.evolutionVariants,369);
+ assert.ok(zip.length<5*1024*1024,'the complete upload ZIP stays below 5 MiB');
 });
 
 test('hosted portraits load configured art, fall back locally, preserve inline on failures and respect reduced motion',()=>{

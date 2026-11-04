@@ -40,6 +40,7 @@ export function useTeamTechnique(s,id,{turn,stats}={}){
  const draft=structuredClone(s),b=draft.run.battle,p=draft.collection[draft.run.activeId],helper=draft.collection[row.helperId];draft.run.monkey=p;
  b.enemy=b.enemies.find(enemy=>enemy.id===b.enemy.id);p.energy-=row.cost;helper.energy-=row.helperCost;
  const saved=normalize(b);saved.used.push(id);saved.lastTechnique={id,round:b.round,actorId:p.id,helperId:helper.id};b.teamTechniqueInProgress=true;
+ b.deepActors=[...new Set([...(b.deepActors||[]),p.id])];
  if(id==='canopy-relay'){p.prepare=Math.max(p.prepare||0,.25);p.status.prepare=Math.max(p.status.prepare||0,2);}
  else for(const friend of members(draft))if(friend.hp>0){const max=stats(friend,draft).hp;friend.hp=Math.min(max,friend.hp+Math.max(1,Math.round(max*.08)));}
  draft.log??=[];draft.log.push(`${row.name}! ${helper.nickname||SPECIES[helper.species]?.name||'Your teammate'} helps ${p.nickname||SPECIES[p.species]?.name||'the active monkey'}.`);draft.log=draft.log.slice(-16);

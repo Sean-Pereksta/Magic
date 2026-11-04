@@ -198,7 +198,10 @@ const scenes={
  'ancient-monkey-kingdom':kingdom
 };
 
+import {panorama} from './deep-art.mjs';
 export function landArt(id,{uid='land',position={east:0,north:0},compact=false}={}){
+ const deep=['bellreef-atolls','loomspun-escarpment','saltglass-basin'].indexOf(id);
+ if(deep!==-1)return `<svg xmlns="http://www.w3.org/2000/svg" class="land-art" viewBox="0 0 600 340" data-land="${id}" aria-hidden="true">${panorama(deep)}</svg>`;
  const key=Object.hasOwn(scenes,id)?id:'emerald-jungle',p=palettes[key];
  const safeUid=String(uid).replace(/[^a-zA-Z0-9_-]/g,'-')||'land';
  const prefix=`land-${safeUid}-${key}`;

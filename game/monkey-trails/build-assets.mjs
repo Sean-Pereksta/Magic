@@ -4,6 +4,9 @@ import {writeFile,mkdir,readFile,stat} from 'node:fs/promises';
 import {dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {deflateRawSync} from 'node:zlib';
+import {questArt,panorama} from './deep-art.mjs';
+import {quests} from './deep-journal.mjs';
+import {deepLands} from './deep-roster.mjs';
 import {SPECIAL_LOCATIONS} from './living-world.mjs';
 import {locationArt} from './living-world-art.mjs';
 import {SPECIES,ELEMENTS} from './data.mjs';
@@ -16,13 +19,13 @@ const contact=resolve(value('--contact')||resolve(buildDir,'monkey-trails-contac
 const prefix='monkey-trails/wild-companions-v4/';
 const manifest=structuredClone(ASSET_MANIFEST);
 manifest.prefix=prefix;
-const roster=Object.values(SPECIES),ultras=roster.filter(s=>s.rarity==='ultra');
+const roster=Object.values(SPECIES),ultras=roster.filter(s=>['ultra','mythic'].includes(s.rarity));
 manifest.artwork={author:'Monkey Trails original vector artwork',license:'Distributed with the Monkey Trails game source',anatomyFamilies:12,bespokeExpansionProportions:50,species:roster.length,animationFiles:roster.length*ANIMATION_STATES.length+ultras.length*ULTRA_STATES.length,evolutionVariants:roster.length*3};
 manifest.hosting={assetBaseVariable:'MONKEY_TRAILS_ASSET_BASE',contentType:'image/svg+xml',cacheControl:'public, max-age=31536000, immutable',cors:'Allow your game origin when using cross-origin fetch. Direct image display does not require authenticated requests.'};
 const entries=[];
-function add(name,content){entries.push({name:prefix+name,data:Buffer.from(content)});}
+function add(name,content){entries.push({name:prefix+name,data:Buffer.from(typeof content==='string'?content.replaceAll('\r\n','\n'):content)});}
 for(const s of roster){
- const states=[...ANIMATION_STATES,...(s.rarity==='ultra'?ULTRA_STATES:[])];
+ const states=[...ANIMATION_STATES,...(['ultra','mythic'].includes(s.rarity)?ULTRA_STATES:[])];
  for(const state of states)add(`monkeys/${s.id}/${state}.svg`,portrait({species:s.id,types:s.types,stage:0},{state}));
  for(const [variant,stage] of [['attuned',1],['elder',2],['ascendant',3]]){
   const src=`monkeys/${s.id}/variants/${variant}.svg`;
@@ -30,6 +33,9 @@ for(const s of roster){
   Object.assign(manifest.species[s.id].variants[variant],{src,types:s.types.length?s.types:['leaf']});
  }
 }
+manifest.deepRegions={};manifest.deepQuests={};
+for(const [i,land] of deepLands.entries()){const src=`environments/${land.id}.svg`;add(src,`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 340">${panorama(i)}</svg>`);manifest.deepRegions[land.id]=src;}
+for(const q of quests){manifest.deepQuests[q.id]=q.steps.concat([null]).map((_,stage)=>{const src=`quests/${q.name.toLowerCase().replaceAll(' ','-')}/chapter-${stage}.svg`;add(src,questArt(q.id,stage));return src;});}
 for(const t of Object.keys(ELEMENTS)){
  add(`environments/${t}.svg`,battlefield([t]));
  add(`interface/element-${t}.svg`,elementIcon(t));

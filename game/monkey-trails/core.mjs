@@ -1,3 +1,6 @@
+import {splitHealth,deepSetup,deepHit,pairDefense} from './deep-combat.mjs';
+import {forage as deepForage} from './deep-foraging.mjs';
+import * as Deep from './deep-journal.mjs';
 import {recordFruitBasketDiscovery,advanceFruitBaskets} from './fruit-baskets.mjs';
 // DOM-free expedition rules. Distances use accepted tracker meters exclusively.
 import {ELEMENTS,DIRECTIONS,TYPE_CHART,SPECIES,MOVES,HYBRIDS,GEAR,ITEMS,STARTERS} from './data.mjs';
@@ -35,7 +38,7 @@ export {LANDS,landProgress,selectLand} from './lands.mjs';
 export const VERSION=2, FEET=.3048, RESOURCE_STEP=250*FEET, ENCOUNTER_STEP=2000*FEET;
 export const CONFIG={partySize:3,discoveryFeet:250,maxDiscoveryAcceleration:.20,encounterFeet:2000,campFeet:6000,
   walkingRecovery:{feet:100,fraction:.02},walkingRevival:{feet:2000,fraction:.25},
-  rarity:{common:{stats:1,speed:1,energy:0},uncommon:{stats:1.25,speed:1.03,energy:1},rare:{stats:1.5,speed:1.06,energy:2},ultra:{stats:1.85,speed:1.10,energy:3}},
+  rarity:{common:{stats:1,speed:1,energy:0},uncommon:{stats:1.25,speed:1.03,energy:1},rare:{stats:1.5,speed:1.06,energy:2},mythic:{stats:3.70,speed:1.10,energy:3},ultra:{stats:1.85,speed:1.10,energy:3}},
   elemental:{strong:2.25,resisted:.4,min:.25,max:4,stab:1.25},
   evolution:{firstEssence:6,stats:{hp:20,atk:4,def:3,speed:2,maxEnergy:3}},
   xp:{walkingFeet:100,earlyLevels:3,earlyMultiplier:2,midLevels:5,midMultiplier:1.5,contributionHP:10,maxCombatBase:120},
@@ -94,7 +97,7 @@ export function effectInfo(multiplier=1){
   const value=Number.isFinite(multiplier)&&multiplier>0?multiplier:1,kind=value>1+1e-9?'strong':value<1-1e-9?'resisted':'neutral';
   return{multiplier:value,kind,label:kind==='strong'?'Very effective!':kind==='resisted'?'Not effective':'Normal effectiveness'};
 }
-export function stats(p,gear={},options={}){const result=calculatedStats(p,gear,false,true,options),passive=progressionPassive(p);if(passive)for(const[key,n]of Object.entries(passive.flat))result[key]+=n;return result;}
+export function stats(p,gear={},options={}){const result=calculatedStats(p,gear,false,true,options);result.hp+=p.pooledMaximum||0;const passive=progressionPassive(p);if(passive)for(const[key,n]of Object.entries(passive.flat))result[key]+=n;return result;}
 export function statsLegacy(p,gear={}){return calculatedStats(p,gear,true,false);}
 export function statsForCombatVersion(p,gear={},version=4){if(version>=5)return stats(p,gear);return calculatedStats(p,gear,version===1,version>=3,{applyPercent:version>=4});}
 export const legacyStats=statsLegacy;
@@ -118,7 +121,7 @@ export function equipped(s,p=s.run.monkey){const b=s.run?.battle;return b?.equip
 export const playerStats=s=>stats(s.run.monkey,equipped(s));
 const combatGear=(s,p)=>s.run?.battle?.equipmentBattle?.units?.[p?.equipmentBattleKey]?.gear||(s.collection[p.id]?equipped(s,p):p.gear||{});
 const battleStats=(s,p)=>equipmentBattleStats(s.run.battle,p,stats(p,combatGear(s,p)),s.collection[p.id]?team(s):s.run.battle.enemies);
-function ensureEquipmentBattle(s){const b=s.run.battle;if(!b)return;lockEquipmentBattle(b,[team(s),b.enemies],p=>combatGear(s,p),(p,gear)=>stats(p,gear));}
+function ensureEquipmentBattle(s){const b=s.run.battle;if(!b)return;lockEquipmentBattle(b,[Deep.travelers(s),b.enemies],p=>combatGear(s,p),(p,gear)=>stats(p,gear));}
 function beginEquipmentBattle(s){ensureEquipmentBattle(s);const b=s.run.battle;if(b.equipmentStarted)return;b.equipmentStarted=true;equipmentEnter(b,s.run.monkey,team(s));equipmentEnter(b,b.enemy,b.enemies);}
 function processEquipmentKnockouts(s){const b=s.run.battle;if(!b)return;for(const members of[team(s),b.enemies])for(const p of members){const wasDown=!alive(p);equipmentKnockout(b,p,members,{active:p.id===s.run.activeId||p.id===b.enemy.id});if(wasDown&&alive(p))p.reviveWalkMeters=0;if(equipmentRevivedToReserve(b,p)){const other=members.find(q=>q.id!==p.id&&alive(q));if(other&&(p.id===s.run.activeId||p.id===b.enemy.id)){const side=s.collection[p.id]?'player':'enemy';equipmentSwitch(b,p,other,members,{voluntary:false});enter(s,other,side);}}}}
 export function unlocked(p){
@@ -168,7 +171,7 @@ export function restart(s,species=s.run?.monkey.species||'capuchin'){
   const oldExplorer=s.run?.explorerId,rareMaterials=Object.fromEntries(['starOre','crownCore'].map(id=>[id,s.run?.items?.[id]||0])),oldParty=s.run?.party?.filter(id=>s.collection[id])||[Object.keys(s.collection)[0]];for(const p of sanctuary(s))resetExpeditionMonkey(p);
   s.meta.runs++;const id=uid(s,'run'),bonus=Math.min(20,s.meta.legacy||0);
   s.run={id,phase:'trail',distance:0,nextCache:RESOURCE_STEP,nextEncounter:ENCOUNTER_STEP,nextCamp:CONFIG.campFeet*FEET,
-    discoveryProgress:0,discoveries:0,wins:0,encounters:0,ordinaryWins:0,party:oldParty.slice(0,3),activeId:oldParty[0],explorerId:oldExplorer||oldParty[0],monkey:null,
+    discoveryProgress:0,discoveries:0,wins:0,encounters:0,deepWins:0,ordinaryWins:0,party:oldParty.slice(0,3),activeId:oldParty[0],explorerId:oldExplorer||oldParty[0],monkey:null,
     fruit:8+bonus,essence,forgeMaterials,
     items:Object.fromEntries(Object.keys(ITEMS).map(id=>[id,rareMaterials[id]??({berry:2,tonic:1,salve:1})[id]??0])),
     vector:{east:0,north:0},weights:{N:0,S:0,E:0,W:0},direction:'N',battle:null,pendingEncounter:null,capture:null,camp:null,events:[],
@@ -182,9 +185,9 @@ function rollElement(s){if(random(s)<.22)return choose(s,['earth','ice','light',
 export function discoveryInterval(s){const reduction=Math.min(CONFIG.maxDiscoveryAcceleration,equipmentDiscoveryReduction(s)+(s.run.bonuses.ribbon>0?.15:0));return CONFIG.discoveryFeet*FEET*(1-reduction);}
 function updateNextCache(s){s.run.nextCache=s.run.distance+(1-s.run.discoveryProgress)*discoveryInterval(s);}
 function cache(s,discoveryHabitat){
-  const r=s.run;r.discoveries++;let roll=random(s);if(r.bonuses.scent>0){r.bonuses.scent--;roll=Math.min(.999,roll+.06);}const w=CONFIG.discoveryWeights,instinct=legacyDiscoveryBonus(s);if(instinct&&roll>=w.essence+w.fruit-instinct&&roll<w.essence+w.fruit)roll=w.essence+w.fruit+(roll-(w.essence+w.fruit-instinct));
+  const r=s.run;r.discoveries++;Deep.event(s,'find');let roll=random(s);if(r.bonuses.scent>0){r.bonuses.scent--;roll=Math.min(.999,roll+.06);}const w=CONFIG.discoveryWeights,instinct=legacyDiscoveryBonus(s);if(instinct&&roll>=w.essence+w.fruit-instinct&&roll<w.essence+w.fruit)roll=w.essence+w.fruit+(roll-(w.essence+w.fruit-instinct));
   const habitat=discoveryHabitat||habitatAt(s),discovery=rollTrailResource(s,roll,habitat,{instinct}),event=eventSnapshot(),worldBonuses=[...routeDiscovery(s,discovery),...worldDiscovery(discovery,event)];awardTrailPickup(s,discovery);for(const bonus of worldBonuses)awardTrailPickup(s,bonus);r.lastDiscovery={...discovery,habitat:habitat.id,habitatName:habitat.name,worldBonuses};
-  say(s,`Discovery: ${trailPickupName(discovery)}.`);recordEquipmentDiscovery(s,r.lastDiscovery);
+  say(s,`Discovery: ${trailPickupName(discovery)}.`);recordEquipmentDiscovery(s,r.lastDiscovery);deepForage(s,habitat.id);if(discovery.category==='essence')deepForage(s,'essence');
   const bonus=foragePickup(s,random,habitat);r.lastDiscovery.foragingBonuses=bonus?[bonus]:[];
   if(bonus){const extra=worldDiscovery(bonus,event);awardTrailPickup(s,bonus);for(const pickup of extra){awardTrailPickup(s,pickup);r.lastDiscovery.worldBonuses.push(pickup);}const p=s.collection[bonus.monkeyId];say(s,`${p.nickname||SPECIES[p.species].name} foraged an extra ${trailPickupName(bonus)}.`);}
   for(const bonus of r.lastDiscovery.worldBonuses)say(s,`${bonus.source}: extra ${trailPickupName(bonus)}.`);
@@ -228,7 +231,7 @@ function pump(s){
     else if(event.type==='ultra')encounter(s,true);
     else if(event.type==='camp'){
       r.phase='camp';r.camp={id:event.id,heals:2+(r.bonuses.campSeed?1:0),seedBoost:!!r.bonuses.campSeed,fullRecovery:true,recoveredMonkeys:sanctuary(s).length};
-      awardEquipmentCamp(s,event.id);
+      delete r.pace;deepForage(s,'camp');awardEquipmentCamp(s,event.id);
       // Arrival is the recovery event. Reopening an existing camp/checkpoint
       // never runs this branch again and cannot repeatedly heal equipped HP.
       for(const p of sanctuary(s)){p.hp=stats(p,equipped(s,p)).hp;p.reviveWalkMeters=0;}
@@ -249,11 +252,11 @@ export function advance(s,meters,east=0,north=0,onDiscovery){
 }
 function advanceSegment(s,meters,east=0,north=0,onDiscovery){
   const r=s.run;if(r.phase!=='trail'||![meters,east,north].every(Number.isFinite)||meters<=0)return 0;
-  const next=Math.min(r.pendingEncounter?Infinity:r.nextEncounter,r.nextCamp),used=Math.max(0,Math.min(meters,next-r.distance)),ratio=used/meters;
+  const next=Math.min(r.pendingEncounter||r.pace?Infinity:r.nextEncounter,r.nextCamp),used=Math.max(0,Math.min(meters,next-r.distance)),ratio=used/meters;
   normalizeLands(s);const route={landId:s.world.activeLand,start:{...s.world.regions[s.world.activeLand].position}};
-  advanceLand(s,used,east*ratio,north*ratio);advanceAdventures(s,used,east*ratio,north*ratio);const friendship=recordCompanionTravel(s,used,s.world.activeLand);recordTribeProgress(s,{meters:used});
+  Deep.deepWalk(s,used,east*ratio,north*ratio,random);deepForage(s,'ft',used/FEET);advanceLand(s,used,east*ratio,north*ratio);advanceAdventures(s,used,east*ratio,north*ratio);const friendship=recordCompanionTravel(s,used,s.world.activeLand);recordTribeProgress(s,{meters:used});
   let walkingXp=0;
-  for(const p of team(s)){
+  for(const p of Deep.travelers(s)){
     walkingXp+=grantXp(p,used/(CONFIG.xp.walkingFeet*FEET));
     let healingMeters=used;
     if(!alive(p)){
@@ -274,7 +277,7 @@ function advanceSegment(s,meters,east=0,north=0,onDiscovery){
   }
   r.vector.east+=east*ratio;r.vector.north+=north*ratio;r.direction=direction(r.vector.east,r.vector.north,r.direction);r.weights[r.direction]+=used;recordWalkSession(s,{distance:used,trainingXp:walkingXp,friendship,landId:s.world.activeLand});route.end={...s.world.regions[s.world.activeLand].position};acceptedDiscoveries(s,used,onDiscovery,route);r.distance+=used;recordLegacyWalking(s,used);
   if(r.ultra?.safeAlternative&&r.ultra.status==='challenge'){r.ultra.challengeRemaining=Math.max(0,r.ultra.challengeRemaining-used);if(r.ultra.challengeRemaining<=1e-7){r.ultra.status='ready';say(s,'Your safe-route Ultra challenge is complete. Stop somewhere safe and begin when ready.');}}
-  if(!r.pendingEncounter&&r.distance+1e-6>=r.nextEncounter){const milestone=r.nextEncounter;enqueue(s,{type:'encounter',id:`encounter-${milestone}`});r.nextEncounter+=CONFIG.encounterFeet*FEET;}
+  if(!r.pace&&!r.pendingEncounter&&r.distance+1e-6>=r.nextEncounter){const milestone=r.nextEncounter;enqueue(s,{type:'encounter',id:`encounter-${milestone}`});r.nextEncounter+=CONFIG.encounterFeet*FEET;}
   if(r.distance+1e-6>=r.nextCamp){const milestone=r.nextCamp;enqueue(s,{type:'camp',id:`camp-${milestone}`});r.nextCamp+=CONFIG.campFeet*FEET;}
   updateNextCache(s);maybeUltra(s);pump(s);return used;
 }
@@ -314,9 +317,10 @@ function activateBattle(s,battle){
   recordJournalEncounter(s,battle);
   normalizeEquipmentInventory(s);
   beginLegacyBattle(s,battle);
-  const r=s.run;r.battle=battle;battle.openingLocked=false;battle.openingLeadId=r.activeId;for(const p of team(s)){p.cooldowns={};p.uses={};p.healingMomentum=0;delete p.charging;delete p.evasion;}r.phase='battle';ensureEquipmentBattle(s);if(battle.ultra)r.ultra.status='battle';planEnemy(s);say(s,`${battle.ultra?'Ultra arrival':battle.guardian?'Regional guardian':'Wild team'}: ${battle.enemies.map(p=>formName(p)).join(' · ')}. Stop safely before beginning.`);
+  const r=s.run;r.battle=battle;battle.openingLocked=false;battle.openingLeadId=r.activeId;for(const p of Deep.travelers(s)){for(const key of deepBattleFields)delete p[key];p.cooldowns={};p.uses={};p.healingMomentum=0;delete p.charging;delete p.evasion;}r.phase='battle';ensureEquipmentBattle(s);if(battle.ultra)r.ultra.status='battle';planEnemy(s);say(s,`${battle.ultra?'Ultra arrival':battle.guardian?'Regional guardian':'Wild team'}: ${battle.enemies.map(p=>formName(p)).join(' · ')}. Stop safely before beginning.`);
 }
 export function beginPendingEncounter(s){
+ if(s.run.pace)throw Error('Finish the three-minute bell trial before starting a wild battle.');
   const r=s.run;if(r.phase!=='trail'||!r.pendingEncounter)throw Error('Return to the trail and choose an available encounter.');const battle=r.pendingEncounter;r.pendingEncounter=null;activateBattle(s,battle);return battle;
 }
 export function passPendingEncounter(s){
@@ -325,6 +329,16 @@ export function passPendingEncounter(s){
 export function beginLocationBattle(s,descriptor){if(s.run.phase!=='trail'||!descriptor?.id||!SPECIES[descriptor.species]||!s.world.unlocked.includes(descriptor.landId))throw Error('Choose a ready special-location trial on the trail.');return encounter(s,false,{descriptor});}
 export function beginRegionalGuardian(s,landId){
   if(s.run.phase!=='trail')throw Error('Return to the trail before challenging a guardian.');const descriptor=guardianChallenge(s,landId);if(s.meta.claims[`reward:${descriptor.id}`])throw Error('This guardian is already defeated. Claim the adventure reward.');return encounter(s,false,{descriptor});
+}
+export function beginDeepBattle(s,mythic=false){
+ const x=Deep.activeQuest(s),target=Deep.journal(s).target,sp=SPECIES[target];
+ if(s.run.phase!=='trail')throw Error('Return to the trail to begin.');
+ if(mythic){if(!sp||!Deep.huntReady(s,sp)||!Deep.hunt(s,target).sign||Deep.hunt(s,target).trial<Deep.trials[target].length||s.run.distance/FEET+1e-6<sp.minFeet)throw Error('Finish the investigation and return to its actual depth.');}
+ else if(!x||!['interrupt','block'].includes(x.step.kind))throw Error('Reach the guardian chapter first.');
+ const lesson=mythic&&Deep.trialLessons[target]&&!Deep.hunt(s,target).proven;
+ const id=lesson?({nacreon:'cascadeHowler',vesperloom:'frostfern',orrakai:'glassmanta'})[target]:mythic?target:({4:'iciclefang',5:'magmajaw',6:'cascadeHowler',10:'glassmanta'})[x.q.id];
+ const b=encounter(s,false,{descriptor:{id:uid(s,'deep'),species:id,landId:s.world.activeLand,hunt:mythic,guardian:!!lesson||!mythic,name:lesson?Deep.trialLessons[target]:mythic?sp.name:'Trail guardian'}});
+ if(lesson)b.deepLesson=target;else if(mythic)b.deepMythic=id;else b.deepQuest=x.q.id;return b;
 }
 export function startWorldGuardian(s){
   const view=worldGuardianView(s);if(!view.canChallenge)throw Error(view.reason||'The Bloomwatch Guardian is resting. Check the World Forecast for its next visit.');
@@ -387,11 +401,11 @@ function grantXp(p,base){
   p.training+=earned;p.xpRemainder=Math.max(0,total-earned);return earned;
 }
 function awardXp(s,pool){
-  const members=team(s),max=Math.max(...members.map(p=>p.level)),weights=members.map(p=>(p.id===s.run.activeId?1.1:1)*(p.level<max?1.2:1)),total=weights.reduce((a,b)=>a+b,0);let left=pool,earned=0;
+  const members=Deep.travelers(s),max=Math.max(...members.map(p=>p.level)),weights=members.map(p=>(p.id===s.run.activeId?1.1:1)*(p.level<max?1.2:1)),total=weights.reduce((a,b)=>a+b,0);let left=pool,earned=0;
   members.forEach((p,i)=>{const xp=i===members.length-1?left:Math.floor(pool*weights[i]/total);earned+=grantXp(p,xp);left-=xp;p.bond++;});return earned;
 }
 function contribution(s,p,damage=0,healing=0){
-  const b=s.run.battle;if(!b||!p||s.collection[p.id]!==p||!s.run.party.includes(p.id))return;
+  const b=s.run.battle;if(!b||!p||s.collection[p.id]!==p||!Deep.travelers(s).includes(p))return;
   b.contributions??={};const c=b.contributions[p.id]??={damage:0,healing:0,base:0,xp:0};
   c.damage+=Math.max(0,damage);c.healing+=Math.max(0,healing);
   // Count actual HP, never overkill/overheal, and bound repeat-healing rewards.
@@ -400,7 +414,16 @@ function contribution(s,p,damage=0,healing=0){
   const earned=grantXp(p,Math.max(0,next-c.base));c.xp+=earned;recordWalkSession(s,{trainingXp:earned});c.base=next;
 }
 function victory(s){
-  const r=s.run,b=r.battle;if(!b||b.rewarded||s.meta.claims[`reward:${b.id}`])return;b.rewarded=true;s.meta.claims[`reward:${b.id}`]=true;recordLivingWorldBattle(s,b);recordLegacyBattle(s,b);r.wins++;if(!b.ultra)r.ordinaryWins++;recordRegionEvent(s,'victories',1,b.originLandId||s.world.activeLand,{battleId:b.id});recordAdventureEvent(s,'victories',1,b.originLandId||s.world.activeLand);recordAdventureEvent(s,'seen',1,b.originLandId||s.world.activeLand,{species:b.enemies.map(p=>p.species)});if(b.guardian&&!b.worldGuardian)recordAdventureEvent(s,'guardian',1,b.originLandId||s.world.activeLand);recordCompanionVictory(s,{guardian:!!b.guardian&&!b.worldGuardian,regionId:b.originLandId||s.world.activeLand});recordWalkSession(s,{victories:1,friendship:team(s).length,landId:b.originLandId||s.world.activeLand});if(!b.ultra&&!b.guardian&&!b.hunt)r.nextEncounter=r.distance+ENCOUNTER_STEP;
+  const r=s.run,b=r.battle;if(!b||b.rewarded||s.meta.claims[`reward:${b.id}`])return;b.rewarded=true;
+  if(!b.ultra&&!b.guardian&&!b.hunt){r.deepWins=(r.deepWins??r.ordinaryWins)+1;if((b.deepActors||[]).length>=2)Deep.event(s,'technique');}
+  if(b.deepLesson){
+    const passed=b.deepLesson==='nacreon'?b.choirInterrupt:b.deepLesson==='vesperloom'?b.deepBlocked:b.crownSurvived;
+    if(passed)Deep.hunt(s,b.deepLesson).proven=true;
+    say(s,passed?'Trial complete. The Mythic will accept your challenge.':'The guardian withdraws. Retry the trial and answer its announced strike.');
+    r.battle=null;r.phase='trail';pump(s);return;
+  }
+  if(b.guardian&&b.originLandId===s.world.activeLand){if(b.deepBlocked)Deep.event(s,'block');if(b.metrics?.interrupts)Deep.event(s,'interrupt');}
+  s.meta.claims[`reward:${b.id}`]=true;recordLivingWorldBattle(s,b);recordLegacyBattle(s,b);r.wins++;if(!b.ultra)r.ordinaryWins++;recordRegionEvent(s,'victories',1,b.originLandId||s.world.activeLand,{battleId:b.id});recordAdventureEvent(s,'victories',1,b.originLandId||s.world.activeLand);recordAdventureEvent(s,'seen',1,b.originLandId||s.world.activeLand,{species:b.enemies.map(p=>p.species)});if(b.guardian&&!b.worldGuardian)recordAdventureEvent(s,'guardian',1,b.originLandId||s.world.activeLand);recordCompanionVictory(s,{guardian:!!b.guardian&&!b.worldGuardian,regionId:b.originLandId||s.world.activeLand});recordWalkSession(s,{victories:1,friendship:team(s).length,landId:b.originLandId||s.world.activeLand});if(!b.ultra&&!b.guardian&&!b.hunt)r.nextEncounter=r.distance+ENCOUNTER_STEP;
   const baseXp=18+b.enemies.reduce((n,e)=>n+e.level*2,0)+b.enemies.length*4,xp=awardXp(s,baseXp);recordWalkSession(s,{trainingXp:xp});r.fruit+=2;const type=b.enemy.types[0]||rollElement(s);r.essence[type]+=2;r.items.charmMaterial=(r.items.charmMaterial||0)+1;
   if(b.trailRoute==='ancient-ruins'&&!b.ultra&&!b.guardian&&!b.hunt){r.items.charmMaterial++;say(s,'Ancient Ruins: recovered one extra charm material.');}
   if(b.worldGuardian&&b.worldEvent?.type==='guardian-stirring'){r.essence.leaf+=3;say(s,'Bloomwatch Guardian: three extra Leaf essence. This event reward is saved.');}
@@ -409,14 +432,15 @@ function victory(s){
   // An Ultra's support squad cannot consume the guaranteed boss invitation.
   const eligible=b.ultra?[b.enemies.find(e=>e.species===r.ultra.species)||b.enemies[0]]:b.enemies;
   r.capture={id:b.id,candidates:eligible.map(e=>({...copy(e),bondBonus:b.bondBonuses[e.id]||0})),attempts:0,maxAttempts:CONFIG.captureAttempts,guaranteed:tutorial||b.ultra&&!sanctuary(s).some(p=>p.species===r.ultra.species),ultra:b.ultra,claimed:false};
+  if(b.deepMythic){r.capture.candidates=[copy(b.enemies[0])];r.capture.guaranteed=true;r.capture.deepMythic=true;}
   r.lastBattleFeedback=copy(b.hitFeedback||[]);r.lastBattleHits=r.lastBattleFeedback;
-  r.battle=null;r.phase='befriend';r.vector={east:0,north:0};r.weights={N:0,S:0,E:0,W:0};say(s,`Victory: ${xp} experience shared across the team, two fruit, essence, and charm material. Choose one defeated companion to befriend.`);
+  r.battle=null;r.phase='befriend';r.vector={east:0,north:0};r.weights={N:0,S:0,E:0,W:0};say(s,`Victory: ${xp} experience shared across the team, two fruit, essence, and charm material. Choose one defeated companion to befriend.`);if(b.deepMythic)befriend(s,r.capture.candidates[0].id);
 }
 export function captureChance(s,id){const c=s.run.capture,p=c?.candidates.find(p=>p.id===id);if(!p||c.claimed)return 0;if(c.guaranteed||s.meta.captureFailures>=CONFIG.capturePity)return 1;return equipmentCaptureChance(s,clamp((({common:.85,uncommon:.65,rare:.45,ultra:.65})[SPECIES[p.species].rarity]??.85)+(p.bondBonus||0),.05,.99));}
 function finishCapture(s){s.run.capture=null;s.run.phase='trail';normalizeExplorer(s);maybeUltra(s);pump(s);}
 export function befriend(s,id,{duplicate='keep',nickname=''}={}){
   const r=s.run,c=r.capture,p=c?.candidates.find(p=>p.id===id);if(r.phase!=='befriend'||!p||c.claimed||s.meta.claims[`capture:${c.id}`])throw Error('This recruitment opportunity is already resolved.');if(c.attempts>=c.maxAttempts)throw Error('No attempts remain.');
-  const free=c.ultra&&c.guaranteed;if(!free&&!(r.items.bondCharm>0))throw Error('A Bond Charm is required. Craft one from your consumables.');const chance=captureChance(s,id);if(!free)r.items.bondCharm--;c.attempts++;
+  const free=c.deepMythic||c.ultra&&c.guaranteed;if(!free&&!(r.items.bondCharm>0))throw Error('A Bond Charm is required. Craft one from your consumables.');const chance=captureChance(s,id);if(!free)r.items.bondCharm--;c.attempts++;
   if(chance<1&&random(s)>=chance){s.meta.captureFailures++;say(s,`The charm did not connect. Bad-luck protection: ${s.meta.captureFailures}/${CONFIG.capturePity}.`);return{success:false,chance,remaining:c.maxAttempts-c.attempts};}
   const duplicateFound=sanctuary(s).some(m=>m.species===p.species),level=Math.max(1,Math.min(3,Math.floor(team(s).reduce((n,m)=>n+m.level,0)/team(s).length)-1));
   const recruit=monkey(s,p.species,level),crew=legacyBonuses(r.legacy?.ranks);if(crew.crewHp||crew.crewEnergy){recruit.trailCrew={hp:crew.crewHp,maxEnergy:crew.crewEnergy};recruit.hp=stats(recruit).hp;recruit.energy=stats(recruit).maxEnergy;}recruit.nickname=String(nickname).trim().slice(0,24);recruit.bond=1;recruit.capturedEncounter=c.id;s.meta.captureFailures=0;s.meta.claims[`capture:${c.id}`]=true;c.claimed=true;s.collection[recruit.id]=recruit;recordCompanionRecruit(s,recruit.id);recordLegacyCapture(s);recordWalkSession(s,{recruited:1});
@@ -430,7 +454,7 @@ export function renameMonkey(s,id,name){const p=s.collection[id];if(!p)throw Err
 export function convertDuplicate(s,id){assertDuplicateConvertible(s,id);const p=s.collection[id],r=s.run,last=r.lastCapture;if(!p||last?.id!==id||last.converted||!last.duplicate||!alive(p)||!sanctuary(s).some(other=>other.id!==id&&other.species===p.species))throw Error('Only the newly recruited conscious duplicate may be converted.');
   if(r.party.includes(id)){if(!r.party.some(other=>other!==id&&alive(s.collection[other])))throw Error('Keep a conscious expedition companion.');r.party=r.party.filter(other=>other!==id);if(r.activeId===id){r.activeId=r.party.find(other=>alive(s.collection[other]));syncActive(s);}}
   s.meta.bondMaterials[p.species]=(s.meta.bondMaterials[p.species]||0)+3;delete s.collection[id];normalizeExplorer(s);last.converted=true;return 3;}
-function heal(p,amount,max){if(!alive(p))return 0;const before=p.hp;p.hp=Math.min(max,p.hp+Math.round(amount*(p.species==='langur'?1.25:1)));return Math.max(0,p.hp-before);}
+function heal(p,amount,max){const pair=healingPartners.get(p);if(pair){const before=pair.host.hp;pair.host.hp=Math.min(before+Math.round(amount),pair.max);return pair.host.hp-before;}if(!alive(p))return 0;const before=p.hp;p.hp=Math.min(max,p.hp+Math.round(amount*(p.species==='langur'?1.25:1)));return Math.max(0,p.hp-before);}
 function moveAvailable(b,p,id){const m=MOVES[id];if(p.charging?.id===id)return p.charging.resolveRound<=b.round;return!(p.cooldowns[id]>b.round)&&!(m.uses&&((p.uses[id]||0)>=m.uses));}
 export function timingResult(position,{assisted=false,online=false}={}){const perfect=!online&&(assisted||Number.isFinite(position)&&position>=.42&&position<=.58);return{perfect,bonus:perfect?.10:0,window:[.42,.58]};}
 export function battleIntent(s){const b=s.run?.battle,e=b?.enemy;if(!b||!e)return null;const m=MOVES[b.enemyAction?.id||b.intent],charge=e.charging;return{phase:b.phase||'intent',round:b.round,id:m?b.enemyAction?.id||b.intent:'strike',charging:!!charge,resolves:charge?.resolveRound,label:charge?`Charging ${MOVES[charge.id].name} — ${charge.resolveRound<=b.round?'resolves this round':'resolves next round'}`:b.tacticalIntent?.intentLabel||m?.shield||m?.guard?b.tacticalIntent?.intentLabel||`Preparing ${m.name} — vulnerable to Guard Break`:b.enemyAction?.type==='switch'?'Preparing a switch':m?.charge?`Preparing ${m.name} — charges for one round`:m?.name,detail:b.tacticalIntent?.intentDetail||m?.desc};}
@@ -438,6 +462,7 @@ export function battleOpportunities(s){const b=s.run?.battle,p=s.run?.monkey,e=b
 function metric(b,key,n=1){b.metrics??={};b.metrics[key]=(b.metrics[key]||0)+n;}
 function applyStatus(p,id,duration=2,power){p.status[id]=Math.max(p.status[id]||0,duration);if(power!==undefined)p.statusPower[id]=power;}
 function enter(s,p,side){
+ const previous=side==='player'?s.run.monkey:s.run.battle.enemy;if(previous?.curtain){p.double=true;delete previous.curtain;}
   const b=s.run.battle;if(side==='player'){s.run.activeId=p.id;syncActive(s);}else{b.enemyActive=b.enemies.findIndex(m=>m.id===p.id);b.enemy=p;}
   const rally=side==='player'?b.pendingRally:b.enemyRally;if(rally&&(!rally.expires||rally.expires>=b.round)){if(rally.shield){p.shield=Math.max(p.shield||0,Math.round(stats(p,combatGear(s,p)).hp*rally.shield));applyStatus(p,'shield',rally.duration||2);}if(rally.prepare){p.prepare=rally.prepare;applyStatus(p,'prepare',rally.duration||2);}if(side==='player')b.pendingRally=null;else b.enemyRally=null;}
 }
@@ -445,8 +470,10 @@ function replacement(s,id,side='player',forced=false){
   const b=s.run.battle,actor=side==='player'?s.run.monkey:b.enemy,members=side==='player'?team(s):b.enemies,incoming=members.find(p=>p.id===id);
   if(!incoming||incoming.id===actor.id||!alive(incoming))throw Error('Choose another conscious teammate.');if(!forced&&actor.status.root)throw Error('Rooted Challenge briefly prevents voluntary switching.');delete actor.charging;if(side==='player'&&!forced)metric(b,'switches');equipmentSwitch(b,actor,incoming,members,{voluntary:!forced});enter(s,incoming,side);say(s,`${side==='player'?'You':'Rival'} bring in ${incoming.nickname||SPECIES[incoming.species].name}.`);return incoming;
 }
+const deepBattleFields=['weave','groundwire','arc','curtain','double','whiteNote','soakedBy','peal','deepActed','crownElement','revealedWeakness'];
 function execute(s,actor,target,id,actorStats,targetStats,label,targetId,side='player',timing=null){
   const b=s.run.battle,m=MOVES[id],duration=m.duration||2,members=side==='player'?team(s):b.enemies,releasing=actor.charging?.id===id&&actor.charging.resolveRound<=b.round;
+  deepSetup(m,actor,target,members,p=>stats(p,combatGear(s,p)).hp,b.round);actor.deepActed=b.round;
   if(!releasing){actor.energy-=equipmentMoveCost(b,actor,m,{consume:true});actor.uses[id]=(actor.uses[id]||0)+1;if(m.cooldown)actor.cooldowns[id]=b.round+m.cooldown;}
   if(actor.charging&&!releasing&&m.power)delete actor.charging;
   if(m.charge&&!releasing){actor.charging={id,resolveRound:b.round+m.charge,paid:m.cost||0};say(s,`${label} charges ${m.name} — resolves next round. Interrupt, guard, or switch.`);return;}
@@ -457,7 +484,7 @@ function execute(s,actor,target,id,actorStats,targetStats,label,targetId,side='p
   if(m.cleanse){actor.statusCredit={};actor.status={};actor.statusPower={};actor.shield=0;actor.counter=0;actor.prepare=0;}
   if(m.guard){actor.guard=(actor.species==='mandrill'?.3:.45)*(precision.perfect?.9:1);actor.energy=Math.min(actorStats.maxEnergy,actor.energy+2);}
   if(m.evasion){actor.evasion=m.evasion;applyStatus(actor,'evasion',duration);}
-  if(m.energy)actor.energy=Math.min(actorStats.maxEnergy,actor.energy+m.energy);if(m.heal){const recipient=m.healTarget?members.find(p=>p.id===targetId&&alive(p))||actor:actor,st=stats(recipient,combatGear(s,recipient));restored+=heal(recipient,st.hp*m.heal*healingMultiplier,st.hp);}
+  if(m.energy)actor.energy=Math.min(actorStats.maxEnergy,actor.energy+m.energy);if(m.heal){const recipient=m.healTarget?(side==='player'?Deep.travelers(s):members).find(p=>p.id===targetId&&alive(p))||actor:actor,st=stats(recipient,combatGear(s,recipient));restored+=heal(recipient,st.hp*m.heal*healingMultiplier,st.hp);}
   if(m.teamHeal)for(const p of members)restored+=heal(p,stats(p,combatGear(s,p)).hp*m.teamHeal*healingMultiplier,stats(p,combatGear(s,p)).hp);
   if(m.teamCleanse)for(const p of members)if(alive(p))for(const status of['burn','poison','slow','root','weaken']){delete p.status[status];delete p.statusPower[status];if(p.statusCredit)delete p.statusCredit[status];}
   if(m.teamEnergy)for(const p of members)if(alive(p))p.energy=Math.min(stats(p,combatGear(s,p)).maxEnergy,p.energy+m.teamEnergy);
@@ -473,11 +500,13 @@ function execute(s,actor,target,id,actorStats,targetStats,label,targetId,side='p
   if(m.bondBonus)b.bondBonuses[target.id]=Math.min(.25,(b.bondBonuses[target.id]||0)+m.bondBonus);
   const plannedDefense=side==='player'&&b.interrupted?.[target.id]!==b.round&&(MOVES[b.enemyAction?.id]?.guard||MOVES[b.enemyAction?.id]?.shield||MOVES[b.enemyAction?.id]?.teamShield),comboActive=m.comboStatuses?.some(status=>target.status[status]),defensive=!!target.shield||!!target.guard||!!plannedDefense;
   const interrupt=!!m.interrupt&&(!!target.charging||!!target.prepare);
-  if(interrupt){delete target.charging;target.prepare=0;delete target.status.prepare;b.interrupted??={};b.interrupted[target.id]=b.round;if(side==='player')metric(b,'interrupts');say(s,`${label}: Interrupted!`);}
+  if(interrupt){if(side==='player'&&b.deepLesson==='nacreon'&&b.round<=3)b.choirInterrupt=true;delete target.charging;target.prepare=0;delete target.status.prepare;b.interrupted??={};b.interrupted[target.id]=b.round;if(side==='player')metric(b,'interrupts');say(s,`${label}: Interrupted!`);}
   if(m.breakShield&&plannedDefense){b.interrupted??={};b.interrupted[target.id]=b.round;if(side==='player')metric(b,'guardBreaks');say(s,'Guard Break interrupts the defensive setup.');}
   if(m.delayCharge&&target.charging&&!target.charging.delayed){target.charging.resolveRound+=m.delayCharge;target.charging.delayed=true;say(s,`${label} delays the charged attack by one round.`);}
   if(comboActive){for(const status of m.comboStatuses){delete target.status[status];delete target.statusPower[status];if(target.statusCredit)delete target.statusCredit[status];}if(side==='player')metric(b,'combos');}
   if(m.power){
+    const barrier=target.shield||0;
+    if(m.deep==='silkshear'){target.shield=0;delete target.status.shield;}
     if(m.breakShield){target.shield=0;target.guard=0;delete target.status.shield;}
     const eff=moveEffect(m,target.types),stab=(m.types||[m.type]).some(t=>actor.types.includes(t))?CONFIG.elemental.stab:1,critRoll=random(s),crit=(!actor.tutorialHpScale||CONFIG.tutorial.enemyCriticals)&&critRoll<(actor.species==='macaque'?.14:.07),howl=actor.species==='howler'&&m.type!=='neutral'?1.12:1;
     const actorGear=s.collection[actor.id]?equipped(s,actor):actor.gear||{},targetGear=s.collection[target.id]?equipped(s,target):target.gear||{};
@@ -486,7 +515,11 @@ function execute(s,actor,target,id,actorStats,targetStats,label,targetId,side='p
     if(m.healingPower)actor.healingMomentum=0;if(target.evasion){delete target.evasion;delete target.status.evasion;}
     if(actor.prepare){actor.prepare=0;delete actor.status.prepare;}if(actor.status.weaken){delete actor.status.weaken;delete actor.statusPower.weaken;}if(target.species==='spider'&&random(s)<.08)damage=0;
     if(side==='enemy')damage=legacyDamage(s,damage);
-    const shieldBefore=target.shield||0,blocked=!!target.guard||shieldBefore>0,hitResult=equipmentApplyHit(b,actor,target,m,damage,{effectiveness:eff}),actualDamage=hitResult.damage;if(side==='player')contribution(s,actor,actualDamage);if(blocked&&side==='enemy')metric(b,'blocks');
+    const shieldBefore=target.shield||0,blocked=!!target.guard||shieldBefore>0,hitResult=equipmentApplyHit(b,actor,target,m,damage,{effectiveness:eff}),actualDamage=hitResult.damage;const host=team(s).find(h=>Deep.rider(s,h)?.id===actor.id);
+    const extra=deepHit(b,actor,target,m,actualDamage,{round:b.round,interrupted:interrupt,riderHost:host,max:host?stats(host,combatGear(s,host)).hp:0,follow:amount=>{const n=Math.min(target.hp,amount);target.hp-=n;return n;}});
+    if(m.deep==='silkshear'&&barrier){const reserve=(side==='player'?b.enemies:team(s)).find(q=>q!==target&&alive(q));if(reserve)equipmentApplyHit(b,actor,reserve,m,Math.max(0,actualDamage-barrier));}
+    if(side==='player')contribution(s,actor,actualDamage+extra);if(side==='enemy'&&target.guard&&m.power&&b.guardian&&id===b.guardianPattern?.heavy)b.deepBlocked=true;if(blocked&&side==='enemy')metric(b,'blocks');
+    if(b.deepLesson==='orrakai'&&side==='enemy'&&id===b.guardianPattern?.heavy&&alive(target))b.crownSurvived=true;
     const hit={actorId:actor.id,targetId:target.id,actorName:actor.nickname||SPECIES[actor.species].name,targetName:target.nickname||SPECIES[target.species].name,moveId:id,side,multiplier:eff,damage:actualDamage,critical:crit,round:b.round,perfectTiming:precision.perfect,interrupted:interrupt,combo:!!comboActive,blocked,feint:!!(m.feint&&defensive),charged:releasing};
     b.lastHit=hit;(b.hitFeedback??=[]).push(hit);b.lastHits=b.hitFeedback;
     const feedback=effectInfo(eff);say(s,`${label}: ${m.name} → ${actualDamage}${crit?' critical':''}${feedback.kind!=='neutral'?` · ${feedback.label} (×${eff})`:''}.`);
@@ -499,7 +532,7 @@ function execute(s,actor,target,id,actorStats,targetStats,label,targetId,side='p
   actor.healingMomentum=Math.min(100,(actor.healingMomentum||0)+restored);
   if(precision.perfect)say(s,'Perfect Timing!');
   equipmentAfterAbility(b,actor,m,{target,moveId:id,team:members,recipients:m.teamHeal?members:[actor]});processEquipmentKnockouts(s);
-  if(side==='player'){contribution(s,actor,0,restored);recordTeamAction(s,actor,id,m);}
+  if(side==='player'){if(s.run.party.includes(actor.id)&&!['strike','brace','breathe'].includes(id))b.deepActors=[...new Set([...(b.deepActors||[]),actor.id])];contribution(s,actor,0,restored);recordTeamAction(s,actor,id,m);}
   if(m.switch&&alive(actor)&&actor.id===(side==='player'?s.run.activeId:b.enemy.id)){
     const options=members.filter(p=>alive(p)&&p.id!==actor.id),incoming=options.find(p=>p.id===targetId)||options[0];if(incoming){replacement(s,incoming.id,side,false);
       if(m.teamShield){incoming.shield=Math.max(incoming.shield||0,Math.round(stats(incoming,combatGear(s,incoming)).hp*m.teamShield*shieldMultiplier));applyStatus(incoming,'shield',duration);}
@@ -515,8 +548,9 @@ function tick(p,max,label,s){
   }
 }
 function resolveRound(s){
-  const r=s.run,b=r.battle;if(b.round===CONFIG.fatigueRound-3)say(s,`Both teams are tiring. From round ${CONFIG.fatigueRound}, escalating fatigue will end a prolonged battle.`);
-  for(const p of[...team(s),...b.enemies]){const st=stats(p,combatGear(s,p));tick(p,st.hp,p.nickname||SPECIES[p.species].name,s);p.guard=0;
+  const r=s.run,b=r.battle;for(const unit of [...Deep.travelers(s),...b.enemies])if(unit.peal?.round===b.round&&alive(unit)){const foe=s.collection[unit.id]?b.enemy:r.monkey;foe.hp=Math.max(0,foe.hp-unit.peal.damage);delete unit.peal;}
+ if(b.round===CONFIG.fatigueRound-3)say(s,`Both teams are tiring. From round ${CONFIG.fatigueRound}, escalating fatigue will end a prolonged battle.`);
+  for(const p of[...Deep.travelers(s),...b.enemies]){const st=stats(p,combatGear(s,p));tick(p,st.hp,p.nickname||SPECIES[p.species].name,s);p.guard=0;
     if(!alive(p))delete p.charging;
     if(b.round>=CONFIG.fatigueRound&&alive(p))p.hp=Math.max(0,p.hp-Math.max(1,Math.round(st.hp*Math.min(.6,.04*(b.round-CONFIG.fatigueRound+1)))));
     if(alive(p)){p.energy=Math.min(st.maxEnergy,p.energy+1);if(p.id===r.activeId||p.id===b.enemy.id){const recovered=equipmentApplyRecovery(b,p,st,combatGear(s,p));if(recovered.healing)say(s,`${p.nickname||SPECIES[p.species].name} recovers ${recovered.healing} health from equipment.`);}}}
@@ -535,6 +569,33 @@ function itemApply(s,id,targetId){
   const healingBonus=equipmentConsumableHealing(equipped(s,p));if(id==='berry')heal(p,st.hp*.35*healingBonus,st.hp);if(id==='tonic')p.energy=Math.min(st.maxEnergy,p.energy+8);if(id==='salve'){p.statusCredit={};p.status={};p.statusPower={};heal(p,st.hp*.15*healingBonus,st.hp);}say(s,`Used ${ITEMS[id].name}.`);
 }
 function performTurn(s,action){
+ const r=s.run,host=r.monkey,sidekick=Deep.rider(s,host),b=r.battle;
+ if(r.phase!=='battle'||!b?.ready)return resolveTurn(s,action);
+ if(sidekick&&action.type==='move'){
+ const id=action.riderId,m=MOVES[id];if(!m||!sidekick.loadout.includes(id)||!moveAvailable(b,sidekick,id)||sidekick.energy<equipmentMoveCost(b,sidekick,m))throw Error('Select an available sidekick ability.');
+ }
+ return withSharedHealth(s,()=>resolveTurn(s,action));
+}
+const healingPartners=new WeakMap();
+function withSharedHealth(s,resolve){
+ const restore=[];
+ try{
+ for(const host of team(s)){
+ const rider=Deep.rider(s,host);if(!rider||host.hp<=0)continue;
+ const hm=stats(host,equipped(s,host)).hp,rm=stats(rider,equipped(s,rider)).hp;
+ let individual=host.hp;
+ host.pooledMaximum=rm;
+ Object.defineProperty(host,'hp',{configurable:true,enumerable:true,
+ get:()=>individual+rider.hp,
+ set:total=>{[individual,rider.hp]=splitHealth(individual,rider.hp,hm,rm,total);}
+ });
+ healingPartners.set(rider,{host,max:hm+rm});
+ restore.push(()=>{Object.defineProperty(host,'hp',{value:individual,writable:true,enumerable:true,configurable:true});delete host.pooledMaximum;healingPartners.delete(rider);});
+ }
+ return resolve();
+ }finally{for(const finish of restore)finish();}
+}
+function resolveTurn(s,action){
   const r=s.run,b=r.battle;if(r.phase!=='battle'||!b?.ready)throw Error('Stop safely and begin the encounter first.');beginEquipmentBattle(s);const p=r.monkey,e=b.enemy,enemyAction=copy(b.enemyAction||{type:'move',id:b.intent}),em=MOVES[enemyAction.id],ps=battleStats(s,p),es=battleStats(s,e),pm=MOVES[action.id];
     if(action.type==='move'){
     if(!p.loadout.includes(action.id)||!pm||!(p.charging?.id===action.id&&p.charging.resolveRound<=b.round)&&p.energy<equipmentMoveCost(b,p,pm)||!moveAvailable(b,p,action.id))throw Error('Ability unavailable, cooling down, or insufficient energy.');if(pm.switch&&p.status.root)throw Error('Rooted Challenge prevents voluntary retreat this round.');if(pm.switch&&!team(s).some(m=>alive(m)&&m.id!==p.id))throw Error('No conscious teammate can receive the relay.');
@@ -542,11 +603,18 @@ function performTurn(s,action){
   if(action.type==='switch'){const incoming=team(s).find(m=>m.id===action.id);if(!incoming||!alive(incoming)||incoming.id===p.id||p.status.root)throw Error('Choose another conscious, unrooted switch.');}
   b.phase='resolution';b.openingLocked=true;b.hitFeedback=[];b.lastHits=b.hitFeedback;delete b.lastHit;
   const initiative=(actor,st,m)=>(m?.priority||0)*1000+st.speed*(actor.status.slow?.65:1)*(actor.status.speed?1.2:1),playerFirst=action.type!=='move'||initiative(p,ps,pm)>=initiative(e,es,em);
-  const playerAction=()=>{if(!alive(p)||p.id!==r.activeId||b.interrupted?.[p.id]===b.round)return;if(action.type==='switch')replacement(s,action.id,'player');else execute(s,p,b.enemy,action.id,battleStats(s,p),battleStats(s,b.enemy),'You',action.targetId,'player',action.timing);equipmentTurnEnd(b,p,team(s));processEquipmentKnockouts(s);};
+  const playerAction=()=>{if(!alive(p)||p.id!==r.activeId||b.interrupted?.[p.id]===b.round)return;if(action.type==='switch')replacement(s,action.id,'player');else {
+ const rider=Deep.rider(s,p);
+ execute(s,p,b.enemy,action.id,battleStats(s,p),battleStats(s,b.enemy),'You',action.targetId,'player',action.timing);
+ if(rider&&alive(p)){
+ const target=alive(b.enemy)?b.enemy:b.enemies.find(alive);
+ if(target){pairDefense(p,pm,MOVES[action.riderId],ps.hp);execute(s,rider,target,action.riderId,battleStats(s,rider),battleStats(s,target),'Sidekick',action.riderTarget,'player');equipmentTurnEnd(b,rider,team(s));}
+ }
+ }equipmentTurnEnd(b,p,team(s));processEquipmentKnockouts(s);};
   const enemyAct=()=>{if(!alive(e)||e.id!==b.enemy.id||b.interrupted?.[e.id]===b.round)return;const cannotRetreat=e.status.root||!b.enemies.some(m=>m.id!==e.id&&alive(m));if(enemyAction.type==='switch'&&!cannotRetreat)replacement(s,enemyAction.id,'enemy');else{const chosen=enemyAction.type==='switch'||MOVES[enemyAction.id]?.switch&&cannotRetreat||!(e.charging?.id===enemyAction.id&&e.charging.resolveRound<=b.round)&&e.energy<equipmentMoveCost(b,e,MOVES[enemyAction.id]||MOVES.strike)?'strike':e.charging?.id===enemyAction.id&&e.charging.resolveRound>b.round?'brace':enemyAction.id;execute(s,e,r.monkey,chosen,battleStats(s,e),battleStats(s,r.monkey),'Rival',null,'enemy');}equipmentTurnEnd(b,e,b.enemies);processEquipmentKnockouts(s);};
   if(playerFirst){playerAction();enemyAct();}else{enemyAct();playerAction();}b.phase='results';resolveRound(s);
 }
-export function turn(s,id,isItem=false,options={}){if(isItem)return useItem(s,id,options.targetId);return performTurn(s,{type:'move',id,targetId:options.targetId,timing:options.timing});}
+export function turn(s,id,isItem=false,options={}){if(isItem)return useItem(s,id,options.targetId);return performTurn(s,{type:'move',id,targetId:options.targetId,timing:options.timing,riderId:options.riderId,riderTarget:options.riderTarget});}
 export function switchMonkey(s,id){return performTurn(s,{type:'switch',id});}
 export function chooseReplacement(s,id){if(s.run.phase!=='replacement')throw Error('No forced replacement is pending.');replacement(s,id,'player',true);s.run.phase='battle';if(s.run.battle.pendingVictory)victory(s);else planEnemy(s);return s.run.monkey;}
 export function useItem(s,id,targetId){
@@ -555,13 +623,14 @@ export function useItem(s,id,targetId){
   if(r.phase==='battle'){
     const b=r.battle;if(!b?.ready)throw Error('Stop safely and begin the encounter first.');
     if(b.itemUsedRound===b.round)throw Error('One supply per round. Choose an ability or attack next.');
-    itemApply(s,id,targetId);b.openingLocked=true;b.itemUsedRound=b.round;say(s,'Supply used — your attack or ability is still available.');return;
-  }itemApply(s,id,targetId);
+    withSharedHealth(s,()=>itemApply(s,id,targetId));b.openingLocked=true;b.itemUsedRound=b.round;say(s,'Supply used — your attack or ability is still available.');return;
+  }withSharedHealth(s,()=>itemApply(s,id,targetId));
 }
 export function setParty(s,ids){
   const r=s.run;if(!['trail','camp'].includes(r.phase))throw Error('Change teammates on the trail or at camp, between encounters.');
   if(!Array.isArray(ids)||!ids.length||ids.length>3||new Set(ids).size!==ids.length||ids.some(id=>!s.collection[id]))throw Error('Choose one to three different collected companions.');
   if(!ids.some(id=>alive(s.collection[id])))throw Error('Keep at least one conscious teammate in the lineup.');
+  for(const [host,id] of Object.entries(s.meta.deep?.pairs||{}))if(ids.includes(id)||!ids.includes(host))delete s.meta.deep.pairs[host];
   for(const p of team(s))r.injuries[p.id]={hp:p.hp,energy:p.energy,status:copy(p.status)};r.party=[...ids];if(!ids.includes(r.activeId)||!alive(s.collection[r.activeId]))r.activeId=ids.find(id=>alive(s.collection[id]));syncActive(s);normalizeExplorer(s);say(s,'Expedition team updated. Every returning companion keeps its injuries.');return team(s);
 }
 export function campHeal(s,id=s.run.activeId){const r=s.run,p=getMonkey(s,id);if(r.phase!=='camp'||!r.party.includes(id)||!r.camp.heals||!alive(p))throw Error('Camp recovery needs a conscious teammate and a remaining recovery action.');r.camp.heals--;heal(p,stats(p,equipped(s,p)).hp*(r.camp.seedBoost?.4:.3),stats(p,equipped(s,p)).hp);p.energy=Math.min(stats(p,equipped(s,p)).maxEnergy,p.energy+3);return p;}

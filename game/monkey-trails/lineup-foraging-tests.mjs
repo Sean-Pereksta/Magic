@@ -16,7 +16,7 @@ function walk(s,feet){return C.advance(s,feet*C.FEET);}
 
 test('all Ultras have unique, previewable rewards and several ordinary monkeys gather fruit',()=>{
   const ultras=Object.keys(C.SPECIES).filter(id=>C.SPECIES[id].rarity==='ultra');
-  assert.equal(ultras.length,16);
+  assert.equal(ultras.length,25);
   const descriptions=ultras.map(species=>C.lineupForageProfile({species}).description);
   assert.equal(new Set(descriptions).size,ultras.length);
   assert.ok(Object.values(C.SPECIES).filter(p=>p.rarity!=='ultra'&&C.lineupForageProfile({species:p.id})?.description.includes('fruit')).length>=5);

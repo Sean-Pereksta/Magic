@@ -1,5 +1,6 @@
 // Guaranteed walking rewards are separate from the active explorer's random finds.
 // Each conscious lineup member earns their own progress on accepted trail distance.
+import {forageProfile} from './deep-foraging.mjs';
 import {SPECIES,ELEMENTS} from './data.mjs';
 const FOOT=.3048, INTERVAL_FEET=250;
 const fruit=(amount)=>({category:'fruit',amount});
@@ -33,7 +34,7 @@ const BONUS={
 };
 
 export function lineupForageProfile(p){
-  const data=BONUS[p?.species];if(!data||!SPECIES[p.species])return null;
+  const data=BONUS[p?.species];if(!data||!SPECIES[p.species])return forageProfile(p);
   const labels=data.rewards.map(r=>r.category==='fruit'?`${r.amount} fruit`:`${r.amount} ${ELEMENTS[r.id].name} essence`);
   const meters=Number.isFinite(p.forageWalkMeters)?Math.max(0,p.forageWalkMeters):0;
   return {name:data.name,description:`+${labels.join(' +')} every ${data.intervalFeet} ft`,intervalFeet:data.intervalFeet,

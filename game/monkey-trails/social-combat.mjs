@@ -1,6 +1,9 @@
 // Deterministic social combat. Every fight uses disposable, healthy team copies.
 // The reducers mutate only their supplied social state and return that same object.
 import {SPECIES,MOVES,ELEMENTS,GEAR,CONFIG,statsForCombatVersion,equipped,team,unlocked,moveEffect,moveEffectLegacy,effectInfo,random} from './core.mjs';
+import {rider as attachedRider} from './deep-journal.mjs';
+import {hosts} from './deep-roster.mjs';
+import {deepSetup,deepHit,pairDefense} from './deep-combat.mjs';
 import {equipmentDamageMultiplier,applyEquipmentRecovery,applyEquipmentLifesteal} from './equipment-effects.mjs';
 import {lockEquipmentBattle,equipmentBattleGear,equipmentBattleStats,equipmentEnter,equipmentSwitch,equipmentAttackMultiplier,equipmentApplyHit,equipmentHealingMultiplier,equipmentAfterAbility,equipmentTurnEnd,equipmentKnockout,equipmentRevivedToReserve,equipmentApplyRecovery,equipmentMoveCost,equipmentShieldMultiplier,equipmentTacticalEvent} from './equipment-battle.mjs';
 
@@ -9,7 +12,7 @@ const integer=(value,min,max,label)=>{if(!Number.isInteger(value)||value<min||va
 const displayName=p=>p.nickname||SPECIES[p.species]?.name||'Companion';
 const log=(s,text)=>{s.log.push(text);s.log=s.log.slice(-18);};
 const freshSeed=seed=>Number.isInteger(seed)?(seed>>>0)||1234567:1234567;
-export const RAID_TURNS=10,DUEL_TURN_LIMIT=80,SOCIAL_COMBAT_VERSION=5;
+export const RAID_TURNS=10,DUEL_TURN_LIMIT=80,SOCIAL_COMBAT_VERSION=6;
 const balanceVersion=value=>integer(value,1,SOCIAL_COMBAT_VERSION,'combat version');
 export const socialMoveEffect=(move,defenders,version=SOCIAL_COMBAT_VERSION)=>version===1?moveEffectLegacy(move,defenders):moveEffect(move,defenders);
 
@@ -17,7 +20,7 @@ function freshMember(source,gear={},version=SOCIAL_COMBAT_VERSION){
   if(!source||!SPECIES[source.species])throw Error('Unknown social-battle companion.');
   const level=integer(source.level,1,CONFIG.maxLevel,'companion level'),stage=integer(source.stage||0,0,3,'evolution stage');
   const types=[...(source.types||[])];if(types.length>2||new Set(types).size!==types.length||types.some(t=>!ELEMENTS[t]))throw Error('Invalid companion elements.');
-  const slots=new Set(),capacity=SPECIES[source.species].rarity==='ultra'||SPECIES[source.species].ultra||source.classification==='ultra'?4:3,tiers=Object.fromEntries(Object.entries(gear).filter(([id,tier])=>{if(!GEAR[id]||!Number.isInteger(tier)||tier<1||tier>12)return false;if(version<3)return true;if(version>=4){if(slots.size>=capacity)return false;slots.add(id);return true;}const slot=GEAR[id].slot;if(slots.has(slot))return false;slots.add(slot);return true;}));
+  const slots=new Set(),capacity=['ultra','mythic'].includes(SPECIES[source.species].rarity)||SPECIES[source.species].ultra||source.classification==='ultra'?4:3,tiers=Object.fromEntries(Object.entries(gear).filter(([id,tier])=>{if(!GEAR[id]||!Number.isInteger(tier)||tier<1||tier>12)return false;if(version<3)return true;if(version>=4){if(slots.size>=capacity)return false;slots.add(id);return true;}const slot=GEAR[id].slot;if(slots.has(slot))return false;slots.add(slot);return true;}));
   const p={id:String(source.id||source.species).slice(0,80),species:source.species,nickname:String(source.nickname||'').slice(0,24),level,stage,types,
     learned:[...new Set((source.learned||[]).filter(id=>MOVES[id]))].slice(0,200),gear:tiers,
     loadout:[...new Set(source.loadout||[])].slice(0,4),status:{},statusPower:{},effectUntil:{},cooldowns:{},uses:{},shield:0,guard:0,counter:0,prepare:0};
@@ -32,13 +35,14 @@ function freshMember(source,gear={},version=SOCIAL_COMBAT_VERSION){
 function freshTeam(source,version=SOCIAL_COMBAT_VERSION){
   if(!Array.isArray(source)||!source.length||source.length>3)throw Error('Choose one to three companions.');
   if(new Set(source.map(p=>p.id)).size!==source.length)throw Error('A team cannot repeat the same companion.');
+  const ids=source.flatMap(p=>version>=6&&p.rider?[p.id,p.rider.id]:[p.id]);if(new Set(ids).size!==ids.length)throw Error('Each host and rider must be a different individual.');
   const gearOwners=new Set();
-  return source.map(p=>{const member=freshMember(p,p.gear||{},version);if(version===3)for(const id of Object.keys(member.gear)){if(gearOwners.has(id))throw Error('Equipment needs a unique companion owner.');gearOwners.add(id);}return member;});
+  return source.map(p=>{const member=freshMember(p,p.gear||{},version);if(version>=6&&p.rider){if(!hosts.includes(p.species)||p.rider.rider)throw Error('Invalid sidekick host.');member.rider=freshMember(p.rider,p.rider.gear,version);member.hp=member.maxHp+=member.rider.maxHp;member.combatStats.hp=member.maxHp;}if(version===3)for(const id of Object.keys(member.gear)){if(gearOwners.has(id))throw Error('Equipment needs a unique companion owner.');gearOwners.add(id);}return member;});
 }
 export function snapshotTeam(state){
  const members=team(state).filter(p=>p.hp>0),lead=members.find(p=>p.id===state.run.activeId)||members[0];
  if(!lead)throw Error('Choose at least one conscious monkey for a social battle.');
- return freshTeam([lead,...members.filter(p=>p!==lead)].filter(Boolean).map(p=>({...p,gear:equipped(state,p)})));
+ return freshTeam([lead,...members.filter(p=>p!==lead)].filter(Boolean).map(p=>({...p,gear:equipped(state,p),rider:attachedRider(state,p)?{...attachedRider(state,p),gear:equipped(state,attachedRider(state,p))}:null})));
 }
 export function averageLevel(members){if(!Array.isArray(members)||!members.length)return 1;return members.reduce((sum,p)=>sum+integer(p.level,1,CONFIG.maxLevel,'companion level'),0)/members.length;}
 export function duelStake(members){return Math.min(10,Math.max(2,2*Math.floor(averageLevel(members))));}
@@ -74,7 +78,7 @@ function selectedIncoming(members,active,index){
 }
 function enter(s,side,index,{forced=false}={}){
   const outgoing=s.teams[side][s.active[side]];
-  if(s.version>=5)delete outgoing.charging;
+  if(s.version>=5)delete outgoing.charging;if(outgoing.curtain){s.teams[side][index].double=true;delete outgoing.curtain;}
   s.active[side]=index;const incoming=s.teams[side][index],rally=s.rallies[side];
   if(s.version>=4)equipmentSwitch(s,outgoing,incoming,s.teams[side],{voluntary:!forced});
   if(rally&&rally.until>s.turnCounts[side]){
@@ -90,9 +94,21 @@ function validateAction(s,side,action){
   if(action.type==='switch'){if(actor.status.root)throw Error('Rooted companions cannot switch this turn.');selectedIncoming(s.teams[side],s.active[side],action.index);return;}
   const option=availableMoves(actor,s.turnCounts[side],s.teams[side],s).find(m=>m.id===action.id);
   if(!option||!option.available)throw Error(option?.reason||'This companion does not have that ability.');
+  if(actor.rider){const choice=availableMoves(actor.rider,s.turnCounts[side],s.teams[side],s).find(row=>row.id===action.riderId);if(!choice?.available)throw Error('Choose an available sidekick ability.');}
   if(MOVES[action.id].switch)selectedIncoming(s.teams[side],s.active[side],action.index);
 }
-function execute(s,side,action){return s.version>=5?executeLiving(s,side,action):executeLegacy(s,side,action);}
+function execute(s,side,action){if(s.version<5)return executeLegacy(s,side,action);
+ const host=s.teams[side][s.active[side]],rider=host.rider;
+ let damage=executeLiving(s,side,action);
+ if(!rider||host.hp<=0)return damage;
+ const other=1-side;
+ if(s.teams[other][s.active[other]].hp<=0){const next=s.teams[other].findIndex(alive);if(next<0)return damage;enter(s,other,next,{forced:true});}
+ pairDefense(host,MOVES[action.id],MOVES[action.riderId],host.maxHp);
+ const ownMaximum=rider.maxHp;rider.maxHp=host.maxHp;
+ Object.defineProperty(rider,'hp',{enumerable:true,configurable:true,get:()=>host.hp,set:v=>{host.hp=Math.max(0,Math.min(host.maxHp,v));}});
+ try{damage+=executeLiving(s,side,{id:action.riderId,targetIndex:action.riderTarget},rider,host);}
+ finally{Object.defineProperty(rider,'hp',{enumerable:true,configurable:true,writable:true,value:host.hp>0?ownMaximum:0});rider.maxHp=ownMaximum;}
+ equipmentTurnEnd(s,rider,s.teams[side]);return damage;}
 // Versions 1–4 retain their original reducer, including RNG consumption. Live
 // timing input never participates in this deterministic alternating-turn path.
 function executeLegacy(s,side,action){
@@ -139,8 +155,9 @@ function executeLegacy(s,side,action){
 function livingMetric(s,side,key,amount=1){s.metrics??=[{},{}];s.metrics[side][key]=(s.metrics[side][key]||0)+amount;}
 function removeStatus(p,id){delete p.status[id];delete p.statusPower[id];delete p.effectUntil[id];}
 function cleanseTeam(members){for(const p of members)if(alive(p))for(const status of ['burn','poison','slow','root','weaken'])removeStatus(p,status);}
-function executeLiving(s,side,action){
- const actor=s.teams[side][s.active[side]],other=1-side,target=s.teams[other][s.active[other]],members=s.teams[side],opponents=s.teams[other],m=MOVES[action.id],duration=m.duration||2,ownTurns=s.turnCounts[side],targetTurns=s.turnCounts[other],st=equipmentBattleStats(s,actor,actor.combatStats,members),targetStats=equipmentBattleStats(s,target,target.combatStats,opponents),releasing=actor.charging?.id===action.id&&actor.charging.resolveTurn<=ownTurns;
+function executeLiving(s,side,action,actor=s.teams[side][s.active[side]],host=null){
+ const other=1-side,target=s.teams[other][s.active[other]],members=s.teams[side],opponents=s.teams[other],m=MOVES[action.id],duration=m.duration||2,ownTurns=s.turnCounts[side],targetTurns=s.turnCounts[other],st=equipmentBattleStats(s,actor,actor.combatStats,members),targetStats=equipmentBattleStats(s,target,target.combatStats,opponents),releasing=actor.charging?.id===action.id&&actor.charging.resolveTurn<=ownTurns;
+ if(s.version>=6){deepSetup(m,actor,target,members,p=>p.maxHp,s.round||ownTurns+1);actor.deepActed=s.round||ownTurns+1;}
  if(!releasing){actor.energy-=equipmentMoveCost(s,actor,m,{consume:true});actor.uses[action.id]=(actor.uses[action.id]||0)+1;if(m.cooldown)actor.cooldowns[action.id]=ownTurns+m.cooldown;}
  if(m.charge&&!releasing){actor.charging={id:action.id,resolveTurn:ownTurns+m.charge+(actor.status.slow?1:0),paid:m.cost||0};log(s,`${displayName(actor)} charges ${m.name}; resolves on its next turn${actor.status.slow?' after a one-turn Slow delay':''}. The opponent can interrupt, guard, or switch.`);return 0;}
  if(releasing)delete actor.charging;
@@ -175,7 +192,12 @@ function executeLiving(s,side,action){
   let hit=Math.max(1,Math.round(raw*(m.feint?1:target.guard||1)*(1-(target.evasion||0))));if(target.species==='spider'&&random(s)<.08)hit=0;
   const blocked=!!target.guard||target.shield>0;if(blocked)livingMetric(s,other,'blocks');
   actor.prepare=0;removeStatus(actor,'prepare');removeStatus(actor,'weaken');target.guard=0;if(m.healingPower)actor.healingMomentum=0;if(target.evasion){delete target.evasion;removeStatus(target,'evasion');}
+  const barrier=target.shield;if(m.deep==='silkshear')target.shield=0;
   damage=equipmentApplyHit(s,actor,target,tacticalMove,hit,{effectiveness:eff}).damage;
+  if(s.version>=6){
+    if(m.deep==='silkshear'&&barrier){const reserve=opponents.find(p=>p!==target&&alive(p));if(reserve)equipmentApplyHit(s,actor,reserve,m,Math.max(0,damage-barrier));}
+    damage+=deepHit(s,actor,target,m,damage,{round:s.round||ownTurns+1,interrupted,riderHost:host,max:host?.maxHp||0,follow:n=>{const raid=s.contributionTarget===target.id,dealt=raid?n:Math.min(n,target.hp);target.hp=Math.max(raid?1:0,target.hp-dealt);return dealt;}});
+  }
   if(target.counter&&(damage||target.counterAbsorbed)){
    const reflected=Math.min(actor.hp,Math.max(1,Math.round((target.counterAbsorbed?Math.max(damage,raw):damage)*target.counter)));actor.hp=Math.max(0,actor.hp-reflected);livingMetric(s,other,'counters');
    equipmentTacticalEvent({...s,round:targetTurns},target,'counter',{maxEnergy:target.maxEnergy});if(target.drainOnCounter){const n=Math.min(actor.energy,target.drainOnCounter);actor.energy-=n;target.energy=Math.min(target.maxEnergy,target.energy+n);}target.counter=0;target.drainOnCounter=0;removeStatus(target,'counter');log(s,`${displayName(target)} counters for ${reflected} damage.`);
@@ -200,6 +222,8 @@ function executeLiving(s,side,action){
 function tickSide(s,side,turnActor=null){
   let damage=0;
   for(const p of s.teams[side])if(alive(p)){
+    if(s.version>=6){for(const member of [p,p.rider].filter(Boolean)){if(member.peal&&member.peal.round<=(s.round||s.turnCounts[side]+1)){const foe=s.teams[1-side][s.active[1-side]],amount=s.contributionTarget===foe.id?member.peal.damage:Math.min(member.peal.damage,foe.hp);foe.hp=Math.max(s.contributionTarget===foe.id?1:0,foe.hp-amount);if(s.contributionTarget===foe.id)s.totalDamage+=amount;delete member.peal;}}}
+    if(p.rider){expire(p.rider,s.turnCounts[side]);p.rider.energy=Math.min(p.rider.maxEnergy,p.rider.energy+1);}
     for(const id of ['burn','poison'])if(p.status[id]){let hit=Math.min(p.hp,Math.max(1,Math.round(p.maxHp*.04)));if(s.version>=4)hit=equipmentApplyHit(s,s.teams[1-side][s.active[1-side]],p,{type:id==='burn'?'fire':'leaf'},hit,{direct:false,ignoreShields:true}).damage;else p.hp-=hit;damage+=hit;log(s,`${displayName(p)} takes ${hit} ${id} damage.`);}
     if(alive(p)){const energy=s.version>=5?(p.status.slow?0:p.status.speed?2:1):1;p.energy=Math.min(p.maxEnergy,p.energy+energy);if(s.version>=3&&p===s.teams[side][s.active[side]]){const recovered=s.version>=4?equipmentApplyRecovery(s,p,p.combatStats):applyEquipmentRecovery(p,p.combatStats,p.gear);if(recovered.healing)log(s,`${displayName(p)} recovers ${recovered.healing} health from equipment.`);}}
   }
@@ -225,7 +249,7 @@ export function newDuel(a,b,seed=1234567,version=SOCIAL_COMBAT_VERSION){
   if(!a?.id||!b?.id||a.id===b.id)throw Error('A duel needs two different players.');
   const battle={version,players:[String(a.id),String(b.id)],names:[String(a.name||'Challenger').slice(0,30),String(b.name||'Challenger').slice(0,30)],teams:[freshTeam(a.team,version),freshTeam(b.team,version)],active:[0,0],turn:0,sequence:0,round:1,turnCounts:[0,0],rallies:[null,null],status:'active',winner:null,rng:freshSeed(seed),log:['Friendly duel: alternating turns; expedition health is protected.']};
   if(version>=5){battle.metrics=[{},{}];battle.log.push('Timing is assisted for both players. Slow pauses energy recovery and delays new charges; Speed restores 2 energy per turn.');}
-  if(version>=4){lockEquipmentBattle(battle,battle.teams,p=>p.gear,p=>p.combatStats);for(const members of battle.teams)equipmentEnter(battle,members[0],members);}
+  if(version>=4){lockEquipmentBattle(battle,battle.teams.map(side=>side.flatMap(p=>p.rider?[p,p.rider]:[p])),p=>p.gear,p=>p.combatStats);for(const members of battle.teams)equipmentEnter(battle,members[0],members);}
   return battle;
 }
 export function duelAction(duel,playerId,action){
@@ -245,12 +269,12 @@ export function duelAction(duel,playerId,action){
 export function newRaidAttempt(members,bossLevel=1,seed=1234567,version=SOCIAL_COMBAT_VERSION,patternVersion=0){
   version=balanceVersion(version);
   bossLevel=integer(bossLevel,1,1000,'tribe boss level');
-  const roster=Object.values(SPECIES).filter(p=>p.rarity==='ultra'&&(version>=5||p.number<=90)),species=roster[(bossLevel-1)%roster.length]?.id||'mandrill';
+  const roster=Object.values(SPECIES).filter(p=>p.rarity==='ultra'&&(version>=6||p.expansion!==4)&&(version>=5||p.number<=90)),species=roster[(bossLevel-1)%roster.length]?.id||'mandrill';
   const target=freshMember({id:'tribe-boss',species,level:Math.min(60,bossLevel+2),stage:Math.min(3,Math.floor((bossLevel-1)/8)),types:SPECIES[species].types||[],loadout:['strike'],learned:[]},{},version);
   target.hp=target.maxHp=bossHealth(bossLevel);target.combatStats.hp=target.hp;
   const attempt={version,team:freshTeam(members,version),active:0,turns:0,totalDamage:0,status:'active',sequence:0,boss:target,bossLevel,turnCounts:[0,0],rallies:[null,null],rng:freshSeed(seed),log:['Ten turns to help your tribe. The boss never attacks.']};
   if(version>=5)attempt.metrics=[{},{}];
-  if(version>=4){lockEquipmentBattle(attempt,[attempt.team,[target]],p=>p.gear,p=>p.combatStats);equipmentEnter(attempt,attempt.team[0],attempt.team);}
+  if(version>=4){lockEquipmentBattle(attempt,[attempt.team.flatMap(p=>p.rider?[p,p.rider]:[p]),[target]],p=>p.gear,p=>p.combatStats);equipmentEnter(attempt,attempt.team[0],attempt.team);}
   // Tickets explicitly opt in; previously started v1/v2 attempts replay unchanged.
   if(patternVersion===1&&version>=2&&bossLevel%3===0){attempt.guardianPattern={version:1};prepareRaidWard(attempt);attempt.log.push('This guardian raises a ward every fourth turn. Break its shield or use the opening to prepare.');}
   return attempt;
@@ -270,9 +294,11 @@ export function raidAction(attempt,action){
   if(attempt.status!=='active'||attempt.turns>=RAID_TURNS)throw Error('This raid attempt has finished.');
   if(action?.type==='surrender')throw Error('Choose an ability or switch for this raid turn.');
   const next=clone(attempt),battle={...next,teams:[next.team,[next.boss]],active:[next.active,0],names:['You','Tribe boss']},turnActor=next.team[next.active];
+  if(next.version>=6)battle.contributionTarget=next.boss.id;
   for(const p of next.team)expire(p,battle.turnCounts[0]);expire(next.boss,battle.turnCounts[1]);validateAction(battle,0,action);
   if(action.type==='switch')enter(battle,0,selectedIncoming(next.team,next.active,action.index));else battle.totalDamage+=execute(battle,0,action);
   tickSide(battle,0,turnActor);battle.totalDamage+=tickSide(battle,1);battle.sequence++;battle.turns++;
+
   next.team=battle.teams[0];next.active=battle.active[0];next.boss=battle.teams[1][0];next.totalDamage=battle.totalDamage;next.sequence=battle.sequence;next.turns=battle.turns;next.turnCounts=battle.turnCounts;next.rallies=battle.rallies;next.rng=battle.rng;next.log=battle.log;if(battle.lastHit)next.lastHit=battle.lastHit;
   if(battle.equipmentBattle)next.equipmentBattle=battle.equipmentBattle;
   if(next.turns===RAID_TURNS){next.status='finished';log(next,`Raid complete: ${Math.round(next.totalDamage)} damage for your tribe.`);}else prepareRaidWard(next);

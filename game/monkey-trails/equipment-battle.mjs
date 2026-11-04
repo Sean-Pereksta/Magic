@@ -106,6 +106,7 @@ export function equipmentAttackMultiplier(b,actor,target,move,options={}){return
 export function equipmentApplyHit(b,actor,target,move,damage,{effectiveness=1,direct=true,enemy=true,ignoreShields=false,attackBonus}={}){
  const a=unit(b,actor),t=unit(b,target),result={damage:0,absorbed:0,reflected:0,healing:0,shield:0,shieldBroken:false,reduction:0};
  if(!alive(target)||!Number.isFinite(damage)||damage<=0)return result;
+ if(direct&&target.double){delete target.double;target.evasion=0;delete target.status.evasion;actor.revealedWeakness=true;return result;}
  let reduction=0;
  const incoming=equipmentEffects(equipmentBattleGear(b,target)),attackTypes=types(move);
  reduction+=attackTypes.reduce((sum,type)=>sum+(incoming.elementResist[type]||0),0)/attackTypes.length;
@@ -125,9 +126,10 @@ export function equipmentApplyHit(b,actor,target,move,damage,{effectiveness=1,di
   actor.hp-=reflected;t.blockReflected+=reflected;result.reflected+=reflected;
  }
  const healthHit=Math.max(0,Math.round(damage-result.absorbed/(1+shieldBonus))),beforeHp=target.hp;
- let actual=Math.min(beforeHp,healthHit);
+ const raid=b.contributionTarget===target.id;
+ let actual=raid?healthHit:Math.min(beforeHp,healthHit);
  if(enemy&&direct&&healthHit>=beforeHp&&effect(b,target,'surviveFatal')&&claim(b,target,'surviveFatal'))actual=Math.max(0,beforeHp-1);
- target.hp=Math.max(0,beforeHp-actual);result.damage=actual;result.shieldBroken=oldShield>0&&target.shield===0&&result.absorbed>0;
+ target.hp=Math.max(raid?1:0,beforeHp-actual);result.damage=actual;result.shieldBroken=oldShield>0&&target.shield===0&&result.absorbed>0;
  const actualEnemyDamage=enemy&&(actual>0||result.absorbed>0);
  if(a&&direct&&(actual>0||result.absorbed>0)){a.dealtThisTurn=true;
   if(effect(b,actor,'firstIceShield')&&hasType(move,'ice')&&claim(b,actor,'firstIceShield'))result.shield+=addShield(b,actor,effect(b,actor,'firstIceShield'));

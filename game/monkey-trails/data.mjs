@@ -1,5 +1,6 @@
 // Monkey Trails content catalogue. IDs are save-stable; balance lives here.
 import {FORGE_GEAR} from './equipment-data.mjs';
+import {registerDeep} from './deep-roster.mjs';
 import {ELEMENTAL_TECHNIQUES,SPECIES_SIGNATURES,TACTICAL_TECHNIQUES,LIVING_SPECIES_ROWS,ROLE_ASCENSIONS} from './living-combat-data.mjs';
 export const ELEMENTS = {
   leaf:{name:'Leaf',icon:'❧',color:'#78d99e',direction:'N',resource:'Canopy seeds',beats:'water',weak:'fire'},
@@ -306,6 +307,7 @@ export const SPECIES=Object.fromEntries(rows.map(([id,name,title,types,role,hp,a
     evolutionAppearances:['Awakened: elemental shoulder growth and larger silhouette.','Elder: a contrasting elemental crest and layered chest armor.','Ascendant: mastery crown, enlarged gauntlets, and a floating elemental focus.']}:{}),
 }]));
 for(const row of LIVING_SPECIES_ROWS){const[id,,,,,,,,,rarity,,,signature,region,habitat]=row,p=SPECIES[id];Object.assign(p,{signature,specialty:signature,expansion:3,region:livingRegions[region],habitat,habitats:[habitat],minFeet:rarity==='common'?2000:rarity==='uncommon'?4000:rarity==='rare'?12000:20000,encounterWeight:rarity==='common'?1:rarity==='uncommon'?.62:rarity==='rare'?.24:0,appearance:`${p.title}: bespoke ${habitat} anatomy and a ${p.affinity.toLowerCase()} signature silhouette.`,evolutionAppearances:[`${p.name} grows an elemental mantle and bright signature markings.`,`${p.name} gains a tall crest and layered signature armor.`,`${p.name} reveals a mastery crown and floating signature focus.`]});p.learnset.push(signature);}
+registerDeep(SPECIES,MOVES);
 // Every species has a role-based Ascendant technique and its own Lv 30 upgrade.
 // Older Ultra signature IDs and mechanics stay unchanged for existing PvP replays.
 for(const p of Object.values(SPECIES)){

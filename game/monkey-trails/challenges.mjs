@@ -22,12 +22,12 @@ const THEMES=[
 ];
 const freezeReward=reward=>Object.freeze({fruit:reward.fruit,items:Object.freeze({...reward.items}),...(reward.gear?{gear:Object.freeze([...reward.gear])}:{})});
 export const REGION_CHALLENGES=Object.freeze(LANDS.flatMap((land,index)=>{
- const [walk,finds,battle,...rewards]=THEMES[index],distance=750+index*250,discoveries=8+index*2,victories=2+Math.floor(index/2);
+ const [walk,finds,battle,...rewards]=(THEMES[index]||[land.landmark+' Walker',land.name+' Finds',land.landmark+' Defender',...THEMES[index%10].slice(3)]),distance=750+index*250,discoveries=8+index*2,victories=2+Math.floor(index/2);
  return[
   {kind:'distance',title:walk,goal:distance,unit:'m',description:`Walk ${distance.toLocaleString()} accepted meters in ${land.name}.`},
   {kind:'discoveries',title:finds,goal:discoveries,unit:'finds',description:`Make ${discoveries} trail discoveries while exploring ${land.name}.`},
   {kind:'victories',title:battle,goal:victories,unit:'wins',description:`Win ${victories} wild encounters in ${land.name}. Tribe and friendly battles do not count.`}
- ].map((goal,i)=>Object.freeze({...goal,id:`${land.id}:${goal.kind}`,landId:land.id,reward:freezeReward({...rewards[i],...(goal.kind==='victories'?{gear:[RARE_REWARDS[index]]}:{})})}));
+ ].map((goal,i)=>Object.freeze({...goal,id:`${land.id}:${goal.kind}`,landId:land.id,reward:freezeReward({...rewards[i],...(goal.kind==='victories'?{gear:[RARE_REWARDS[index%10]]}:{})})}));
 }));
 const byId=new Map(REGION_CHALLENGES.map(challenge=>[challenge.id,challenge])),landIds=new Set(LANDS.map(land=>land.id));
 const record=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);

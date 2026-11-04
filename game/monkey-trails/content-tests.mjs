@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {unlocked} from './core.mjs';
 import {SPECIES,MOVES,ELEMENTS,TYPE_CHART,STARTERS} from './data.mjs';
 
-test('release roster includes 110 identities, six starters and sixteen Ultras',()=>{
-  assert.equal(Object.keys(SPECIES).length,110);assert.equal(new Set(Object.values(SPECIES).map(s=>s.name)).size,110);
+test('release roster includes 123 identities, six starters and 25 Ultras and four Mythics',()=>{
+  assert.equal(Object.keys(SPECIES).length,123);assert.equal(new Set(Object.values(SPECIES).map(s=>s.name)).size,123);
   assert.deepEqual(STARTERS,['capuchin','macaque','langur','mandrill','spider','howler']);
-  assert.equal(Object.values(SPECIES).filter(s=>s.rarity==='ultra').length,16);
-  assert.deepEqual(Object.values(SPECIES).map(s=>s.number).sort((a,b)=>a-b),Array.from({length:110},(_,i)=>i+1));
+  assert.equal(Object.values(SPECIES).filter(s=>s.rarity==='ultra').length,25);assert.equal(Object.values(SPECIES).filter(s=>s.rarity==='mythic').length,4);
+  assert.deepEqual(Object.values(SPECIES).map(s=>s.number).sort((a,b)=>a-b),Array.from({length:123},(_,i)=>i+1));
   for(const [id,s]of Object.entries(SPECIES)){assert.equal(s.id,id);assert.ok(s.learnset.includes('strike'));assert.ok(s.learnset.length>=6);assert.ok(s.types.length<=2);for(const type of s.types)assert.ok(ELEMENTS[type]);for(const move of s.learnset)assert.ok(MOVES[move],`${id} references ${move}`);}
 });
 test('all required technique families are usable by at least one curated species',()=>{
