@@ -19,36 +19,49 @@ function register(test) {
     e.start(); return { e, shots, r: e.regiments[0] };
   };
   const advance = (e, seconds) => { for (let i = 0; i < Math.ceil(seconds / DT); i++) e.step(DT); };
-  test('Musketeer ranks fire synchronized rotating volleys with a full individual reload', () => {
-    const { e, shots, r } = make();
-    assert.equal(r.formation, 'volley');
-    assert.equal(new Set(r.unitIds.map(id => e.units[id].x)).size, 3, 'Deployment must have exactly three physical ranks');
-    advance(e, 56);
-    const volleys = Map.groupBy(shots, s => s.time);
-    assert(volleys.size >= 6, 'The gun line must continue rotating through the ranks');
-    const batches = [...volleys.entries()];
-    for (let i = 0; i < batches.length; i++) {
-      const [time, batch] = batches[i];
-      assert.equal(batch.length, 12, 'Every man in a complete rank must fire in the same simulation step');
-      assert.equal(new Set(batch.map(s => s.rank)).size, 1, 'Two ranks may never fire in the same step');
-      assert.equal(batch[0].rank, i % 3, 'Fire must pass to the next physical rank');
-      if (i) assert(time - batches[i - 1][0] >= 8 - 1e-7, 'Ranks must leave the specified interval between volleys');
+  for (const formation of ['volley', 'column']) test('All ranks in a ' + formation + ' fire together and keep the full musket reload', () => {
+    const { e, shots, r } = make(formation);
+    advance(e, 52);
+    const batches = [...Map.groupBy(shots, s => s.time)];
+    assert.equal(batches.length, 3);
+    for (const [i, [time, batch]] of batches.entries()) {
+      assert.equal(new Set(batch.map(s => s.shooter)).size, 36);
+      assert.equal(new Set(batch.map(s => s.rank)).size, formation === 'volley' ? 3 : 12);
+      if (i) assert(time - batches[i - 1][0] >= 24 - 1e-7);
     }
-    for (const history of Map.groupBy(shots, s => s.shooter).values()) for (let i = 1; i < history.length; i++)
-      assert(history[i].time - history[i - 1].time >= 24 - 1e-7, 'A soldier fired before finishing the long reload');
-    assert.equal(r.volleyRankCount, 3);
-    return { volleys: batches.length, shots: shots.length, firstRankTimes: batches.slice(0, 4).map(x => +x[0].toFixed(2)) };
+    return { volleys: batches.length, ranks: r.volleyRankCount, shots: shots.length };
   });
-  test('A three-file musket column has a distinct footprint and fires one physical row at a time', () => {
-    const { e, shots, r } = make('column', 2070);
-    assert.equal(new Set(r.unitIds.map(id => e.units[id].y)).size, 3, 'Column must be three soldiers wide');
-    assert.equal(new Set(r.unitIds.map(id => e.units[id].x)).size, 12, 'Column must have twelve physical rows');
-    advance(e, 20);
-    const batches = [...Map.groupBy(shots, s => s.time).values()];
-    assert(batches.length >= 6);
-    for (const batch of batches) { assert.equal(batch.length, 3); assert.equal(new Set(batch.map(s => s.rank)).size, 1); }
-    assert.equal(r.volleyRankCount, 12);
-    return { rows: r.volleyRankCount, volleys: batches.length };
+  test('Eight of 32 formed musketeers release a company volley but seven cannot, even with detached scouts in range', () => {
+    const { e, r, shots } = make('volley', 3500);
+    const enemy = e.units.find(u => u.team === 1);
+    enemy.x = 2225; enemy.y = 2200;
+    const troops = r.unitIds.map(id => e.units[id]);
+    const place = (u, inside) => {
+      const dy = u.y - enemy.y;
+      u.x = enemy.x - Math.sqrt(GameData.TYPES.musketeer.range ** 2 - dy * dy) + (inside ? 4 : -4);
+    };
+    for (let i = 0; i < 32; i++) {
+      const u = troops[i];
+      u.y = 2200 + (i - 15.5) * 17;
+      place(u, i < 7); u.angle = i < 17 ? 0 : Math.PI;
+      if (i % 4 === 0) u._vy = 8; // Some files are still dressing their ranks.
+    }
+    for (const [i,u] of troops.slice(32).entries()) { u.x = 2225 + i * 17; u.y = 2490; }
+    e._rebuildHash();
+    e._stepMusketVolleys(DT);
+    assert.equal(shots.length, 0);
+    place(troops[7], true); e._rebuildHash();
+    r._frontTurning = true; // A slight wheel must not veto a majority already facing the enemy.
+    e.time += .25; e._stepMusketVolleys(DT);
+    assert.deepEqual(shots.map(s => s.shooter).sort((a,b) => a-b), r.unitIds.slice(0,32));
+    assert.equal(new Set(shots.map(s => s.time)).size, 1);
+  });
+  test('A musket company facing away turns to aim before firing', () => {
+    const { e, shots, r } = make();
+    for (const id of r.unitIds) e.units[id].angle = Math.PI;
+    e._stepMusketVolleys(DT); assert.equal(shots.length, 0);
+    for (let tick = 0; tick < 60 && !shots.length; tick++) { e.time += DT; e._stepMusketVolleys(DT); }
+    assert.equal(shots.length, 36);
   });
   test('Casualties close musket rank numbers without creating phantom fourth ranks', () => {
     const { e, r } = make();
@@ -98,14 +111,14 @@ function register(test) {
     e._rebuildHash(); advance(e, 1);
     assert(shots.length > 0);
   });
-  test('Automatic musketeers settle into three ranks and fire whole rows against a held enemy', () => {
+  test('Automatic musketeers fire company volleys against a held enemy', () => {
     const { e, shots, r } = make();
     e.command([r.id], 'auto');
-    advance(e, 24);
+    advance(e, 56);
     const batches = [...Map.groupBy(shots, s => s.time).values()];
     assert(batches.length >= 2, 'Automatic orders must establish and keep a working firing line');
     assert.equal(r.volleyRankCount, 3);
-    for (const batch of batches) { assert.equal(batch.length, 12); assert.equal(new Set(batch.map(s => s.rank)).size, 1); }
+    for (const batch of batches) { assert.equal(batch.length, 36); assert.equal(new Set(batch.map(s => s.rank)).size, 3); }
     return { volleys: batches.length, firstVolley: +shots[0].time.toFixed(2) };
   });
   test('Artillery throws victims farther, with cannons and trebuchets exceeding catapults', () => {

@@ -532,9 +532,9 @@
         _approachNX: facingX, _approachNY: facingY, _approachEnemy: -1, _localFront: false,
         _faceStart: 0, _faceDuration: 0, _faceFrom: facing, _faceDelta: 0, _faceError: 0,
         fireBehavior: t.missile ? t.missile.label : '',
-        nextVolleyRank: 1, nextVolleyAt: 0, volleyRankCount: type === 'musketeer' ? rows : 0,
-        volleyStatus: type === 'musketeer' ? 'forming' : '', lastVolleyAt: -1000, lastVolleyRank: 0,
-        _volleyNext: 0, _volleyBrokenUntil: 0, _volleyDispatch: false, _volleyLayout: '',
+        _volleyScanAt: 0, nextVolleyAt: 0, volleyRankCount: type === 'musketeer' ? rows : 0,
+        volleyStatus: type === 'musketeer' ? 'forming' : '', lastVolleyAt: -1000,
+        _volleyBrokenUntil: 0, _volleyDispatch: false, _volleyLayout: '',
         _siegeJob: null, siegeStatus: '', _siegeManualTarget: null, _siegeManualEpoch: -1, _siegeReachRevision: -1,
         _lancerPass: null,
         _rigidMinX: Infinity, _rigidMaxX: -Infinity, _rigidMinY: Infinity, _rigidMaxY: -Infinity,
@@ -651,7 +651,7 @@
         r.width = columns * r._spacing * (f.spacing || 1);
         r.depth = rows * r._spacing * (f.spacing || 1);
         r._shapeColumns = columns;
-        if (r.type === 'musketeer') { r._volleyLayout = ''; r._missileSlotsTime = -10; r._volleyNext = 0; }
+        if (r.type === 'musketeer') { r._volleyLayout = ''; r._missileSlotsTime = -10; }
         if (this.phase === 'deployment') {
           r._adaptiveColumns = columns; r._terrainColumns = columns;
           r.effectiveWidth = r.width; r.effectiveDepth = r.depth;
@@ -2225,7 +2225,7 @@
     }
 
     _assignMusketRanks(r, missiles) {
-      if(r._rampartJob){let ranks=1;for(const id of r.unitIds){const u=this.units[id];u._volleyRank=u._rampartRank;ranks=Math.max(ranks,u._volleyRank+1);}r.volleyRankCount=ranks;r._volleyNext%=ranks;r.nextVolleyRank=r._volleyNext+1;return;}
+      if(r._rampartJob){let ranks=1;for(const id of r.unitIds){const u=this.units[id];u._volleyRank=u._rampartRank;ranks=Math.max(ranks,u._volleyRank+1);}r.volleyRankCount=ranks;return;}
       const form = FORMATIONS[r.formation] || {};
       const columns = missiles ? r._missileColumns : form.files ? Math.min(r.alive, form.files) : form.ranks ? Math.ceil(r.alive / form.ranks) : r.formation === 'wedge' ? r._shapeColumns : Math.ceil(r.alive / 3);
       const wedge = !missiles && r.formation === 'wedge';
@@ -2241,7 +2241,6 @@
         ranks = Math.max(ranks, u._volleyRank + 1);
       }
       r.volleyRankCount = ranks;
-      r._volleyNext %= ranks; r.nextVolleyRank = r._volleyNext + 1;
       r._volleyLayout = [missiles ? 'fire' : 'march', r.formation, columns, r.alive].join(':');
     }
 
@@ -2253,74 +2252,115 @@
       this._hit(u, enemy, 9, false, false);
     }
 
-    _stepMusketVolleys() {
+    _musketReach(u) {
+      const elevated = u._onRampart || this.terrainAt(u.x, u.y).elevation;
+      return TYPES.musketeer.range * (elevated ? 1.12 : 1);
+    }
+
+    _formedMusketeers(r, soldiers) {
+      // Find the main body from actual positions. A broad line or long column
+      // stays connected, while a distant pair cannot vouch for each other.
+      if (r._rampartJob || soldiers.length <= 1) return soldiers;
+      const cell = 2.5 * Math.max(r._shapeSpacing, r._missileSpacing);
+      const stride = Math.ceil(this.width / cell) + 2, cells = new Map();
+      for (const u of soldiers) {
+        const key = Math.floor(u.x / cell) + Math.floor(u.y / cell) * stride;
+        if (!cells.has(key)) cells.set(key, []);
+        cells.get(key).push(u);
+      }
+      while (cells.size) {
+        const stack = [cells.keys().next().value], group = [];
+        while (stack.length) {
+          const key = stack.pop(), members = cells.get(key);
+          if (!members) continue;
+          cells.delete(key);
+          for (const u of members) group.push(u);
+          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const neighbor = key + dy * stride + dx;
+            if (cells.has(neighbor)) stack.push(neighbor);
+          }
+        }
+        if (group.length * 2 > soldiers.length) return group;
+      }
+      return [];
+    }
+
+    _stepMusketVolleys(dt) {
       for (const r of this.regiments) {
         if (r.type !== 'musketeer' || r.alive <= 0 || r._routed) continue;
         const t = TYPES.musketeer, missiles = this._canDeployMissiles(r);
         const columns = missiles ? r._missileColumns : (FORMATIONS[r.formation] || {}).files || ((FORMATIONS[r.formation] || {}).ranks ? Math.ceil(r.alive / FORMATIONS[r.formation].ranks) : r.formation === 'wedge' ? r._shapeColumns : Math.ceil(r.alive / 3));
         const layout = [missiles ? 'fire' : 'march', r.formation, columns, r.alive].join(':');
-        if (layout !== r._volleyLayout) this._assignMusketRanks(r, missiles);
-        const soldiers = r.unitIds.map(id => this.units[id]).filter(u => u.alive && !u.routed&&(!r._rampartJob||(u._onRampart&&!u._rampartPath.length&&!r._rampartJob.leaving)));
-        if(r._rampartJob)this._assignMusketRanks(r,true);
-        const rankMembers = Array.from({ length: r.volleyRankCount }, () => []);
-        for (const u of soldiers) rankMembers[u._volleyRank].push(u);
-        let contact = false;
+        if (layout !== r._volleyLayout || r._rampartJob) this._assignMusketRanks(r, missiles);
+        const soldiers = r.unitIds.map(id => this.units[id]).filter(u => u.alive && !u.routed &&
+          (!r._rampartJob || (u._onRampart && !u._rampartPath.length && !r._rampartJob.leaving)));
+        let formed, contact = false;
         for (const u of soldiers) {
           const id = this._nearestEnemy(u, 42);
-          if (id >= 0 && Math.abs(this.unitAltitude(u)-this.unitAltitude(this.units[id]))<=18 && this._meleeLineClear(u,this.units[id])) {
-            contact = true;
-            this._musketMelee(u, this.units[id]);
-          }
+          if (id < 0) continue;
+          const enemy = this.units[id];
+          if (Math.abs(this.unitAltitude(u) - this.unitAltitude(enemy)) > 18 || !this._meleeLineClear(u, enemy)) continue;
+          this._musketMelee(u, enemy);
+          formed ||= new Set(this._formedMusketeers(r, soldiers));
+          if (formed.has(u)) contact = true;
         }
-        if (contact) {
-          r._volleyBrokenUntil = this.time + 3;
-          r.volleyStatus = 'melee'; r._fireLocked = false;
-          r.nextVolleyAt = Math.max(r.nextVolleyAt, r._volleyBrokenUntil);
+        if (contact) r._volleyBrokenUntil = this.time + 3;
+        if (this.time < r._volleyBrokenUntil) {
+          r.volleyStatus = contact ? 'melee' : 'reforming';
+          r._fireLocked = false;
           continue;
         }
-        if (this.time < r._volleyBrokenUntil) { r.volleyStatus = 'reforming'; continue; }
-        if (r.fallingBack || r._rallyTime > 0 || r.order === 'move' || r.order === 'face' || this._advancingAttack(r) || r._frontTurning || r._traffic || r._bridge) {
+        if (r.fallingBack || r._rallyTime > 0 || r.order === 'move' || r.order === 'face' || this._advancingAttack(r) || r._traffic || r._bridge) {
           r.volleyStatus = 'marching'; continue;
         }
         if (this.time + 1e-8 < r.nextVolleyAt) { r.volleyStatus = 'reloading'; continue; }
-        // A row is a single firing transaction. Soldiers never acquire an
-        // individual permission window that could trickle shots over frames.
-        // Empty/out-of-range rows are skipped, and only one row fires per step.
-        let fired = false;
-        for (let attempt = 0; attempt < r.volleyRankCount && !fired; attempt++) {
-          const rank = (r._volleyNext + attempt) % r.volleyRankCount;
-          const members = rankMembers[rank];
-          if (!members.length) continue;
-          if(r._rampartJob&&r.unitIds.some(id=>{const u=this.units[id];return u.alive&&!u.routed&&u._volleyRank===rank&&(!u._onRampart||u._rampartPath.length);}))continue;
-          const ready = members.every(u => u._cooldown <= 1e-8 && u._impactUntil <= this.time && u._vx * u._vx + u._vy * u._vy <= 25);
-          if (!ready) continue;
-          const shots = [];
-          for (const u of members) {
-            let target = this.units[u.target];
-            const reach = t.range * (u._terrain.elevation ? 1.12 : 1);
-            if (!target || !target.alive || target.routed || Math.hypot(target.x - u.x, target.y - u.y) > reach) target = this.units[this._rangedLocalTarget(u, reach)];
-            if (target && target.alive && !target.routed && Math.hypot(target.x - u.x, target.y - u.y) <= reach) shots.push([u, target]);
-          }
-          if (shots.length < Math.ceil(members.length * .5)) continue;
-          // Edge files discharge with their row even when their line of aim
-          // ends short of an enemy. The actual projectile still travels only
-          // to weapon range and can hit only a body crossing that path.
-          const reference = shots[Math.floor(shots.length / 2)][1];
-          const armed = new Set(shots.map(shot => shot[0].id));
-          for (const u of members) if (!armed.has(u.id)) {
-            const dx = reference.x - u.x, dy = reference.y - u.y, distance = Math.hypot(dx, dy) || 1;
-            const reach = t.range * (u._terrain.elevation ? 1.12 : 1) * .98;
-            shots.push([u, { id: -1, x: u.x + dx / distance * reach, y: u.y + dy / distance * reach, _vx: 0, _vy: 0, _radius: 0 }]);
-          }
-          r._volleyDispatch = true;
-          for (const [u, target] of shots) this._attack(u, target);
-          r._volleyDispatch = false;
-          r.lastVolleyAt = this.time; r.lastVolleyRank = rank + 1;
-          r._volleyNext = (rank + 1) % r.volleyRankCount; r.nextVolleyRank = r._volleyNext + 1;
-          r.nextVolleyAt = this.time + t.cooldown / r.volleyRankCount;
-          r.volleyStatus = 'reloading'; fired = true;
+        if (this.time < r._volleyScanAt) continue;
+        const company = formed ? [...formed] : this._formedMusketeers(r, soldiers);
+        // Musketeers still climbing to assigned posts count toward their
+        // wall company, but only settled gunners can aim and discharge.
+        const strength = r._rampartJob ? r.unitIds.filter(id => {
+          const u = this.units[id];
+          return u.alive && !u.routed && r._rampartSlots[u._rampartSlot];
+        }).length : company.length;
+        const targets = new Map();
+        for (const u of company) {
+          const reach = this._musketReach(u);
+          let target = this.units[u.target];
+          if (!target || !target.alive || target.routed || Math.hypot(target.x - u.x, target.y - u.y) > reach)
+            target = this.units[this._rangedLocalTarget(u, reach)];
+          if (target) targets.set(u, target);
         }
-        if (!fired) r.volleyStatus = soldiers.some(u => u._cooldown > 0) ? 'reloading' : 'ready';
+        if (!targets.size || targets.size * 4 < strength) {
+          r.volleyStatus = 'ready'; r._volleyScanAt = this.time + .2; continue;
+        }
+        const reference = targets.values().next().value;
+        let facing = 0;
+        for (const u of company) {
+          const target = targets.get(u) || reference;
+          const aim = Math.atan2(target.y - u.y, target.x - u.x);
+          const delta = Math.atan2(Math.sin(aim - u.angle), Math.cos(aim - u.angle));
+          if (Math.abs(delta) <= Math.PI / 3) facing++;
+          if (u._impactUntil <= this.time) u.angle += clamp(delta, -3 * dt, 3 * dt);
+        }
+        if (facing * 2 <= strength) { r.volleyStatus = 'aiming'; continue; }
+        const loaded = company.filter(u => u._cooldown <= 1e-8 && u._impactUntil <= this.time);
+        if (!loaded.length) { r.volleyStatus = 'reloading'; continue; }
+        r._volleyDispatch = true;
+        for (const u of loaded) {
+          let target = targets.get(u);
+          if (!target) {
+            // Edge files fire along the company sightline, with a real ball
+            // that ends inside the weapon's reach.
+            const dx = reference.x - u.x, dy = reference.y - u.y;
+            const reach = this._musketReach(u) * .98;
+            const scale = Math.min(1, reach / Math.max(1, Math.hypot(dx, dy)));
+            target = { id: -1, x: u.x + dx * scale, y: u.y + dy * scale, _vx: 0, _vy: 0, _radius: 0 };
+          }
+          this._attack(u, target);
+        }
+        r._volleyDispatch = false;
+        r.lastVolleyAt = this.time; r.nextVolleyAt = this.time + t.cooldown;
+        r.volleyStatus = 'reloading';
       }
     }
 
@@ -4028,7 +4068,7 @@
       if (distance > t.range + bodyReach) {
         // Movement terrain is cached, but a hill's extra weapon reach must
         // end when the soldier leaves that ground, even between cache ticks.
-        attacker._terrain = this.terrainAt(attacker.x, attacker.y);
+        if (!attacker._onRampart) attacker._terrain = this.terrainAt(attacker.x, attacker.y);
         if (distance > t.range * (attacker._terrain.elevation ? 1.12 : 1) + bodyReach) return;
       }
       const attackRegiment = this.regiments[attacker.regiment];
@@ -4648,7 +4688,7 @@
         }
       }
       this._inUnitStep = false;
-      this._stepMusketVolleys();
+      this._stepMusketVolleys(dt);
       for (let i = this.projectiles.length - 1; i >= 0; i--) {
         const p = this.projectiles[i];
         const previous = p.age / p.duration;

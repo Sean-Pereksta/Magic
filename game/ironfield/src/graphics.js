@@ -1823,12 +1823,6 @@
         if(u.type==='siegeTower'&&u._siegeDeployed)continue;
         const dir=((Math.round(angle/(Math.PI/4))%8)+8)%8;
         const elevation=this._elevation(u);
-        if(u.type==='musketeer'&&z>.38&&selected.has(u.regiment)&&Number.isInteger(u._volleyRank)){
-          const regiment=e.regiments&&e.regiments[u.regiment];
-          if(regiment&&regiment.volleyStatus!=='melee'&&regiment.nextVolleyRank===u._volleyRank+1){
-            c.globalAlpha=.58;line(c,u.x-4,u.y-elevation+3,u.x+4,u.y-elevation+3,TEAM[u.team||0].light,1.5);c.globalAlpha=1;
-          }
-        }
         if(this._drawImpactUnit(c,u,atlas,dir,spriteLevel,elevation)){drawCalls++;continue;}
         let frame=this._attackFrame(u);
         if(u.state==='turning')frame=0;
@@ -2221,7 +2215,7 @@
         const pushing=r.type==='hoplite'&&Number(r.pushingSoldiers)>0;
         const yielding=r._formationPressureSpeed>.01&&r._formationPressureUntil>this.engine.time&&r._pressureSourceId>=0&&r.order!=='move'&&r.order!=='face'&&r.order!=='retreat'&&!(r._rallyTime>0)&&!(r.order==='attack'&&r._hasDestination&&!r._attackBlocked);
         const volley=r.type==='musketeer'&&r.volleyStatus;
-        const volleyStatus=volley==='melee'?'MELEE · RANKS BROKEN':volley==='reforming'?'REFORMING FIRING RANKS':volley==='forming'?'FORMING FIRING RANKS':volley==='marching'?'MARCHING · FIRE HELD':volley&&r.nextVolleyRank?'NEXT VOLLEY · RANK '+r.nextVolleyRank:'';
+        const volleyStatus=volley==='melee'?'MELEE · RANKS BROKEN':volley==='reforming'?'REFORMING FIRING RANKS':volley==='forming'?'FORMING FIRING RANKS':volley==='marching'?'MARCHING · FIRE HELD':volley==='ready'?'WAITING FOR RANGE':volley==='aiming'?'AIMING VOLLEY':volley==='reloading'?'RELOADING VOLLEY':'';
         const rampartStatus=typeof r.rampartStatus==='string'?r.rampartStatus.toUpperCase():'';
         const status=r.commandStatus==='facing'?'TURNING IN PLACE':r.commandStatus==='turning'?'TURNING TO WITHDRAW':fallingBack?'FALLING BACK':reforming?'REFORMING':r.status==='shaken'?'SHAKEN':r.status==='routing'?'ROUTING':((isSel||z>.65)?r.siegeStatus?r.siegeStatus.toUpperCase():rampartStatus|| (yielding?'GIVING GROUND':pushing?'SHIELD PRESS':volleyStatus||maneuverStatus):'');
         const statusColor=r.commandStatus==='facing'?'#f1d58e':fallingBack||r.status==='shaken'?'#efbd6e':status==='GIVING GROUND'?'#d8bd89':reforming||maneuver==='reforming'?'#b8dcc4':pushing?'#e9c67a':passage?'#d9c696':rampartStatus?'#b9dac9':'#df8f77';

@@ -976,9 +976,9 @@
       }
       reload.textContent=`${loaded}/${total} loaded${Number.isFinite(next)?' · Next ready in '+next.toFixed(1)+' s':''}`;
       if(selectedType.id==='musketeer'){
-        const r=regs[0],status={melee:'Line broken · Close combat',reforming:'Reforming the firing line',marching:'Marching · Hold to form ranks',forming:'Forming ranks',ready:'Ready to fire',reloading:'Loading the next rank'}[r.volleyStatus]||'Forming ranks';
+        const r=regs[0],status={melee:'Line broken · Close combat',reforming:'Reforming the firing line',marching:'Marching · Hold to form ranks',forming:'Forming ranks',ready:'Waiting for targets in range',aiming:'Aiming the company volley',reloading:'Reloading the company volley'}[r.volleyStatus]||'Forming ranks';
         const wait=Math.max(0,(r.nextVolleyAt||0)-engine.time);
-        reload.textContent=`${status}${r.nextVolleyRank?' · Rank '+r.nextVolleyRank+' / '+r.volleyRankCount:''}${wait>.1&&r.volleyStatus!=='melee'?' · '+wait.toFixed(1)+' s':''} · ${loaded}/${total} loaded`;
+        reload.textContent=`${status}${wait>.1&&r.volleyStatus!=='melee'?' · '+wait.toFixed(1)+' s':''} · ${loaded}/${total} loaded`;
       }
     }
     const siegeRegs=regs.filter(r=>r.siegeStatus||data.TYPES[r.type].equipment),siegeText=$('selectedSiege');
@@ -1017,8 +1017,8 @@
   function formationSummary(info,cohesion){
     const scaled=key=>Math.round(((Number(info[key])||1)-1)*clamp(cohesion,0,100));
     const percent=n=>(n>0?'+':n<0?'−':'')+Math.abs(n)+'%';
-    if(info.id==='volley')return`Three ranks · Musketeers fire by rank · ${percent(scaled('speed'))} speed`;
-    if(info.id==='column')return`Three soldiers abreast · Musketeers fire by row · ${percent(scaled('incomingSplash'))} splash taken`;
+    if(info.id==='volley')return`Three ranks · Company volley · ${percent(scaled('speed'))} speed`;
+    if(info.id==='column')return`Three soldiers abreast · Company volley · ${percent(scaled('incomingSplash'))} splash taken`;
     if(info.id==='shieldwall')return`${percent(scaled('frontalMelee'))} frontal melee taken · ${percent(scaled('frontalRanged'))} frontal missiles · ${percent(scaled('speed'))} speed`;
     if(info.id==='wedge')return`${percent(scaled('charge'))} charge · ${percent(scaled('speed'))} speed · ${percent(scaled('incomingMelee'))} melee taken`;
     if(info.id==='loose')return`${percent(scaled('incomingRanged'))} missiles · ${percent(scaled('incomingSplash'))} splash · ${percent(scaled('incomingMelee'))} melee taken`;

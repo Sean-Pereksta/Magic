@@ -65,12 +65,13 @@ function register(test){
     const wall=incoming(s.e,target,source),courtyard=incoming(s.e,target,inside),ground=incoming(exposed,exposed.units.find(u=>u.team===0),exposed.units.find(u=>u.team===1));assert(ground.hits>=190,'The exposed control failed its clear incoming flight lane');assert(courtyard.hits>=190,'The exterior wall accuracy penalty incorrectly applied to a courtyard shooter');assert(wall.hits>=60&&wall.hits<courtyard.hits*.75,'The same wall target was not harder to hit from outside than inside');assert(wall.damage/wall.hits<ground.damage/ground.hits*.9,'The deck did not provide missile damage cover after a successful hit');
     return{outside:{...wall,damage:round(wall.damage)},courtyard:{...courtyard,damage:round(courtyard.damage)},exposed:{...ground,damage:round(ground.damage)}};
   });
-  test('Wall musketeers discharge complete physical ranks together from elevated settled positions',()=>{
+  test('Wall musketeers fire company volleys from elevated settled positions',()=>{
     const s=setup('curtain',12,false,false,true,'guardian',false,'musketeer'),shots=[],launch=s.e._launchProjectile;
-    s.e._launchProjectile=function(p){launch.call(this,p);if(p.type!=='musketeer'||p.regiment!==s.r.id)return;const u=this.units[p.attacker];shots.push({time:this.time,id:u.id,rank:u._rampartRank,settled:u._onRampart&&!u._rampartPath.length,z:p.launchZ,expected:s.r.unitIds.filter(id=>{const v=this.units[id];return v.alive&&!v.routed&&v._rampartRank===u._rampartRank;}).length});};
+    s.e._launchProjectile=function(p){launch.call(this,p);if(p.type!=='musketeer'||p.regiment!==s.r.id)return;const u=this.units[p.attacker];shots.push({time:this.time,id:u.id,rank:u._rampartRank,settled:u._onRampart&&!u._rampartPath.length,z:p.launchZ,expected:s.r.unitIds.filter(id=>{const v=this.units[id];return v.alive&&!v.routed&&v._onRampart&&!v._rampartPath.length&&v._impactUntil<=this.time;}).length});};
     begin(s,{ranks:2,spacing:'normal'});assert(until(s,()=>settled(s),100),'The musket company failed to man its wall: '+JSON.stringify(blockage(s)));assert(until(s,()=>shots.length>=24,60),'The wall musket ranks did not fire and reload');
     const batches=new Map();for(const shot of shots){const key=Math.round(shot.time*1000000);if(!batches.has(key))batches.set(key,[]);batches.get(key).push(shot);assert(shot.settled&&shot.z===s.wall.deckHeight+20,'A queued or climbing musketeer fired from ground level');}
-    for(const batch of batches.values()){assert.equal(new Set(batch.map(v=>v.rank)).size,1,'Two physical wall ranks fired in one volley');assert.equal(batch.length,batch[0].expected,'A wall row fired piecemeal before all its living members could discharge');}
+    for(const batch of batches.values())assert.equal(batch.length,batch[0].expected,'Settled wall gunners missed their company volley');
+    assert([...batches.values()].some(batch=>batch.length===12&&new Set(batch.map(v=>v.rank)).size===2),'The two settled ranks never fired a full company volley');
     assert.equal(new Set(shots.map(v=>v.rank)).size,2);return{...detail(s),volleys:batches.size,shots:shots.length,physicalRanks:2};
   });
   test('A full72-archer company mans connected wall segments with stable wall cohesion and physical separation',()=>{
