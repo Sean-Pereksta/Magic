@@ -133,6 +133,16 @@ try{
 
   page=await open();
   const guestAction=page.locator('#cnmFlagshipGrid [data-game-key="cat"] [data-game-action="lobby"]');
+  const waitForGuestFocus=async()=>{
+    // Closing visibility and restoring focus are separate MutationObserver work.
+    // Wait for the user-visible focus state, retaining a strict opener assertion.
+    try{
+      await page.waitForFunction(()=>document.activeElement===document.querySelector('#cnmFlagshipGrid [data-game-key="cat"] [data-game-action="lobby"]'),{},{timeout:3000});
+    }catch(error){
+      const focus=await guestAction.evaluate(node=>({opener:{connected:node.isConnected,disabled:node.disabled,visible:!!node.getClientRects().length},active:{tag:document.activeElement?.tagName,id:document.activeElement?.id,action:document.activeElement?.getAttribute('data-game-action'),game:document.activeElement?.closest('[data-game-key]')?.getAttribute('data-game-key')},modalHidden:document.getElementById('modalLayer').hidden}));
+      throw new Error('Dialog closed without restoring its original action: '+JSON.stringify(focus),{cause:error});
+    }
+  };
   await guestAction.focus();await page.keyboard.press('Enter');
   check('guest multiplayer retains the account gate',await page.locator('#accountGateModal').isVisible());
   const gate=page.locator('#accountGateModal'),gateControls=gate.locator('button:visible:not([disabled]),input:visible:not([disabled]),select:visible:not([disabled]),textarea:visible:not([disabled]),a[href]:visible,[tabindex="0"]:visible');
@@ -143,7 +153,15 @@ try{
   await page.keyboard.press('Shift+Tab');
   assert.equal(await gateControls.last().evaluate(node=>node===document.activeElement),true);
   await page.keyboard.press('Escape');await gate.waitFor({state:'hidden'});
+  await waitForGuestFocus();
   check('guest dialog traps keyboard focus and Escape restores its original action',await guestAction.evaluate(node=>node===document.activeElement));
+  // Repeat with browsers' immediate blur-on-disable behavior made deterministic.
+  await guestAction.evaluate(node=>{const native=Object.getOwnPropertyDescriptor(HTMLButtonElement.prototype,'disabled');Object.defineProperty(node,'disabled',{configurable:true,get(){return native.get.call(this);},set(value){const focused=document.activeElement===this;native.set.call(this,value);if(value&&focused){this.blur();this.dataset.blurredOnDisable='true';}}});});
+  await page.keyboard.press('Enter');await gate.waitFor({state:'visible'});
+  await page.waitForFunction(()=>document.getElementById('accountGateModal').contains(document.activeElement));
+  assert.equal(await guestAction.getAttribute('data-blurred-on-disable'),'true');
+  await page.keyboard.press('Escape');await gate.waitFor({state:'hidden'});await waitForGuestFocus();
+  check('dialog restores its captured action after disabling it blurred focus to body',await guestAction.evaluate(node=>node===document.activeElement));
   await page.locator('#inviteToggle').click();
   assert.equal(await page.locator('#inviteToggle').getAttribute('aria-expanded'),'true');
   assert.equal(await page.locator('#invitePanel').isVisible(),true);

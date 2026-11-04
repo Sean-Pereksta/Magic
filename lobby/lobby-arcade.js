@@ -87,10 +87,15 @@
     // Preserve the visitor counts in a supporting position without crowding play.
     doc.querySelector('.cnm-footer').appendChild(doc.getElementById('dailyUsersPill'));
     for(const title of doc.querySelectorAll('.view > .section-head .section-title')){title.setAttribute('role','heading');title.setAttribute('aria-level','1');}
-    const layer=doc.getElementById('modalLayer');let opener=null,activeModal=null;
+    const layer=doc.getElementById('modalLayer');let opener=null,activeModal=null,lastTrigger=null;
+    // Some browsers blur a focused game action as soon as its busy state disables
+    // it. Remember the explicit action before that handler runs so a dialog can
+    // still return focus to the enabled action when it closes.
+    const rememberTrigger=event=>{const node=event.target.closest?.('button,a[href],input,select,textarea,[tabindex]');if(node&&!layer.contains(node))lastTrigger=node;};
+    doc.addEventListener('click',rememberTrigger,true);
     for(const modal of layer.querySelectorAll(':scope > .modal')){modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');const title=modal.querySelector('.modal-title');if(title){if(!title.id)title.id=modal.id+'Title';modal.setAttribute('aria-labelledby',title.id);}modal.querySelectorAll('[data-close-modal]').forEach(button=>{if(button.classList.contains('modal-close'))button.setAttribute('aria-label','Close dialog');});}
     const controls=modal=>[...modal.querySelectorAll('button,input,select,textarea,a[href],[tabindex="0"]')].filter(node=>!node.disabled&&node.getClientRects().length);
-    new MutationObserver(()=>{const next=layer.hidden?null:layer.querySelector(':scope > .modal:not([hidden])');if(next===activeModal)return;if(next){if(!activeModal)opener=doc.activeElement;activeModal=next;queueMicrotask(()=>{if(!next.contains(doc.activeElement))controls(next)[0]?.focus();});}else{activeModal=null;if(opener?.isConnected&&opener.getClientRects().length)opener.focus();opener=null;}}).observe(layer,{attributes:true,subtree:true,attributeFilter:['hidden']});
+    new MutationObserver(()=>{const next=layer.hidden?null:layer.querySelector(':scope > .modal:not([hidden])');if(next===activeModal)return;if(next){if(!activeModal){const focused=doc.activeElement;opener=focused!==doc.body&&focused!==doc.documentElement?focused:lastTrigger||focused;lastTrigger=null;}activeModal=next;queueMicrotask(()=>{if(!next.contains(doc.activeElement))controls(next)[0]?.focus();});}else{activeModal=null;if(opener?.isConnected&&opener.getClientRects().length)opener.focus();opener=null;}}).observe(layer,{attributes:true,subtree:true,attributeFilter:['hidden']});
     doc.addEventListener('keydown',event=>{if(!activeModal)return;if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();hooks.closeModal();}else if(event.key==='Tab'){const items=controls(activeModal),first=items[0],last=items.at(-1);if(event.shiftKey&&doc.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&doc.activeElement===last){event.preventDefault();first?.focus();}}},true);
     const multi=doc.getElementById('view-multiplayer'),worlds=doc.getElementById('onlineWorldSection'),leaders=doc.getElementById('leaderboardEntries'),leaderHeading=leaders.previousElementSibling;
     const heading=multi.querySelector(':scope > .section-head');heading.querySelector('.section-title').textContent='Play together';heading.querySelector('.section-sub').textContent='Find your people. Choose a hosted lobby or enter a shared online world.';
