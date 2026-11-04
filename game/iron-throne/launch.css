@@ -1,0 +1,41 @@
+#welcome.launch-screen {
+  width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 28px;
+  box-sizing: border-box; border: 0; border-radius: 0; color: #342c23;
+  background: #d4bd8e url('./assets/campaign-map.svg') center / cover;
+  overflow: auto; text-align: center;
+}
+.launch-screen::backdrop { background: #d4bd8e; }
+.launch-content { width: min(580px, 100%); margin: auto; min-height: calc(100dvh - 56px); padding-top: clamp(24px, calc(50dvh - 225px), 220px); box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
+.launch-content > * { flex-shrink: 0; }
+.launch-screen .eyebrow { color: #665037; letter-spacing: .3em; font-size: 11px; }
+.launch-screen h2 { font: 600 clamp(44px, 7vw, 80px)/1.05 Georgia, serif; letter-spacing: -.04em; margin: 14px 0 22px; text-shadow: 0 2px #f6e8c6; }
+.launch-crest { width: 84px; height: 96px; margin-bottom: 28px; filter: drop-shadow(0 4px 4px #5c47274a); }
+.launch-screen .fine { color: #68573f; font-size: 12px; }
+.launch-screen button, .launch-screen .launch-multiplayer { min-height: 48px; border: 1px solid #78603d; border-radius: 3px; font: 600 15px/1.3 Georgia, serif; letter-spacing: .04em; background: #ead7ae; color: #302921; }
+.launch-screen button.primary { color: #f3dfb3; background: linear-gradient(#343735, #202522); border-color: #242823; box-shadow: inset 0 0 0 2px #b49b6133, 0 5px 10px #634f3929; }
+.launch-screen button:focus-visible, .launch-multiplayer:focus-visible { outline: 3px solid #795d2b; outline-offset: 4px; }
+#launch-menu { width: min(370px, 100%); animation: launch-reveal .25s ease-out; }
+#launch-menu button, .launch-multiplayer { display: block; width: 100%; margin: 10px 0; padding: 13px; box-sizing: border-box; }
+#launch-menu #custom-battle { min-height: 34px; padding: 6px; border-color: transparent; background: transparent; font-size: 13px; color: #655238; }
+.launch-screen .launch-multiplayer { text-decoration: none; background: #d2bd9455; }
+#launch-loading { width: min(440px, 100%); padding-top: 4px; }
+.launch-track { position: relative; height: 22px; border: 4px solid #363832; background: #3c3d31; box-shadow: 0 2px 8px #6b55394a, inset 0 0 0 1px #89754e; }
+#art-progress { appearance: none; display: block; width: 100%; height: 100%; border: 0; background: #434334; accent-color: #ae914c; }
+#art-progress::-webkit-progress-bar { background: #434334; }
+#art-progress::-webkit-progress-value { background: linear-gradient(#ceb571, #9c8045); }
+#art-progress::-moz-progress-bar { background: linear-gradient(#ceb571, #9c8045); }
+.launch-standard { position: absolute; left: clamp(0px, var(--progress, 0%), calc(100% - 14px)); bottom: 9px; height: 27px; border-left: 2px solid #302f25; transition: left .15s; }
+.launch-standard::after { content: ''; display: block; width: 16px; height: 12px; background: #793f2d; clip-path: polygon(0 0, 100% 10%, 80% 50%, 100% 100%, 0 90%); }
+#art-status { color: #5c4b33; font-size: 13px; min-height: 20px; margin: 16px 0; }
+#new-game-form { width: 100%; padding: 14px; box-sizing: border-box; background: #ebdab5d9; border: 1px solid #927a4b55; animation: launch-reveal .2s ease-out; }
+#new-game-form .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; text-align: left; }
+#new-game-form label { color: #57462e; }
+#new-game-form select, #new-game-form input { background: #f1e4c8; color: #302c24; border-color: #ad9566; }
+#new-game-form .button-row { justify-content: center; margin-top: 16px; }
+#launch-error { background: #f3e2c5; border: 1px solid #98634b; padding: 20px; }
+.launch-screen #launch-error-message, .launch-screen #load-warning { color: #693c2d; }
+.launch-screen [hidden] { display: none !important; }
+@keyframes launch-reveal { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media(max-width: 600px) { #welcome.launch-screen { padding: 22px; background-size: auto 100%; } .launch-content { min-height: calc(100dvh - 44px); } .launch-crest { width: 66px; height: 76px; margin-bottom: 20px; } #new-game-form .form-row { gap: 10px; } }
+@media(max-height: 550px) { .launch-screen h2 { font-size: 40px; margin: 8px 0; } .launch-crest { width: 42px; height: 48px; margin-bottom: 10px; } .launch-content { padding-top: 0; } #launch-menu { display: flex; flex-wrap: wrap; gap: 8px; width: min(560px,100%); } #launch-menu button { flex: 1; margin: 0; } #launch-menu .launch-multiplayer { margin: 0; } }
+@media(prefers-reduced-motion: reduce) { #launch-menu, #new-game-form { animation: none; } .launch-standard { transition: none; } }

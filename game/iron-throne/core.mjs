@@ -1,4 +1,4 @@
-import { OPENING_RESOURCES, openingCommandBonus, applyOpeningRecruitment, validateOpening } from './opening.mjs';
+import { FOUNDING_WAGON, OPENING_RESOURCES, openingCommandBonus, applyOpeningRecruitment, validateOpening } from './opening.mjs';
 import { validateKingdomDevelopments } from './kingdom-developments.mjs';
 import { validateFormalProposals } from './formal-proposal-state.mjs';
 import { foodAccounting } from './food-security.mjs';
@@ -35,18 +35,26 @@ import { BUILDINGS, CAMPAIGN_HOUSES, WORLD_SIZES, LEGACY_WORLD_SIZES, INTENT_TYP
 import { validateCouncilSave } from './council-state.mjs';
 import { changeRelation, initializeLiving, recordPoliticalMemory, tradeBlocked, validateLivingSave } from './living.mjs';
 
-import { buildingLevel, buildingSpec, cityOrderBonus, completeConstruction, constructionSpec, emptyUnits, migrateEconomy, productionPlan, storageCapacity, validateExpansion } from './economy.mjs';
+import { buildingLevel, buildingSpec, cityOrderBonus, completeConstruction, constructionDuration, constructionSpec, emptyUnits, migrateEconomy, productionPlan, storageCapacity, validateExpansion } from './economy.mjs';
 import { damageFortifications, familyCount, fortificationDefense, inflict, protection, resolveFieldBattle, siegePower } from './warfare.mjs';
 
 import { initializeStrategy, recordStrategyAction, runStrategyTurn, validateStrategySave } from './strategy.mjs';
 import { interceptOfflineEncounter, pendingEncounter, validateOfflineBattles } from './offline-encounters.mjs';
+import { worldTileKeys, worldTiles } from './world-index.mjs';
 
 export const PLAYER = 'ashen';
 import { tileId, distance, neighbors, passable } from './world-hex.mjs';
 export { tileId, distance, neighbors, passable } from './world-hex.mjs';
 export const getTile = (s, id) => s.tiles[id];
 export const kingdom = (s, id) => s.kingdoms.find(k => k.id === id);
-export const settlements = (s, owner) => Object.values(s.tiles).filter(t => ['city', 'town'].includes(t.building) && (!owner || t.owner === owner));
+export function settlements(s, owner) {
+  const result = [];
+  for (const id of worldTileKeys(s)) {
+    const tile = s.tiles[id];
+    if ((tile.building === 'city' || tile.building === 'town') && (!owner || tile.owner === owner)) result.push(tile);
+  }
+  return result;
+}
 export const armiesOf = (s, owner) => s.armies.filter(a => a.owner === owner);
 export const militaryArmiesOf = (s, owner) => allArmies(s).filter(a=>a.owner===owner);
 export const sizeOf = a => Object.values(a.units).reduce((sum, n) => sum + n, 0);
@@ -103,7 +111,7 @@ export function createGame(seed = 8147, preset = 'random', houseCount = 6, diffi
   seed = Number(seed) >>> 0 || 8147;
   const s = { ambitionVersion:1, difficulty, version: SAVE_VERSION, ...WORLD_SIZES[houseCount], seed, rng: seed, preset, turn: 0, nextId: 1, tiles: {}, kingdoms: [], armies: [], treaties: [], wars: [], pledges: [], events: [], militaryEvents: [], conversations: {}, diplomaticTurns: 0, outcome: null };
   for (const house of roster) {
-    const k = { ...house, opening:{charterUsed:false,decree:null,decreeTurn:null}, resources: {...OPENING_RESOURCES}, population: 80, happiness: 70, tax: 'medium', commands: 5, relations: {}, memories: [], memorySummary: '', goal: 'ECONOMY', lastGiftTurn: -1 };
+    const k = { ...house, opening:{charterUsed:false,decree:null,decreeTurn:null,foundingWagonReceived:false}, resources: Object.fromEntries(Object.entries(OPENING_RESOURCES).map(([resource,amount])=>[resource,amount-(FOUNDING_WAGON[resource]||0)])), population: 80, happiness: 70, tax: 'medium', commands: 5, relations: {}, memories: [], memorySummary: '', goal: 'ECONOMY', lastGiftTurn: -1 };
     for (const other of roster) if (other.id !== k.id) k.relations[other.id] = { opinion: k.honor > .8 ? 18 : k.aggression > .8 ? -12 : 5, trust: 15 };
     s.kingdoms.push(k);
   }
@@ -117,8 +125,8 @@ export function createGame(seed = 8147, preset = 'random', houseCount = 6, diffi
 
 export function rebuildTerritory(s) {
   if(s.worldGeneration)return rebuildRegionalTerritory(s);
-  const anchors = Object.values(s.tiles).filter(t => t.owner && ['city', 'town', 'fort', 'watchtower'].includes(t.building));
-  for (const t of Object.values(s.tiles)) {
+  const anchors = worldTiles(s).filter(t => t.owner && ['city', 'town', 'fort', 'watchtower'].includes(t.building));
+  for (const t of worldTiles(s)) {
     if (anchors.includes(t)) continue;
     if (t.project && t.project.owner === t.owner && ['town', 'fort'].includes(t.project.type)) continue;
     const candidates = anchors.map(a => ({ a, d: distance(a, t) })).filter(x => x.d <= (x.a.building === 'fort' ? 2 : x.a.building === 'watchtower' ? 1 : 3));
@@ -128,7 +136,7 @@ export function rebuildTerritory(s) {
 }
 // New worlds spread influence along usable land. Legacy saves keep their original rules.
 function rebuildRegionalTerritory(s) {
-  const tiles=Object.values(s.tiles),anchors=tiles.filter(t=>t.owner&&['city','town','fort','watchtower'].includes(t.building)),claims=new Map();
+  const tiles=worldTiles(s),anchors=tiles.filter(t=>t.owner&&['city','town','fort','watchtower'].includes(t.building)),claims=new Map();
   for(const a of anchors){
     const radius=a.building==='fort'?2:a.building==='watchtower'?1:a.capital?STARTING_RADIUS:3;
     const queue=[a],seen=new Set([a.id]);
@@ -144,7 +152,7 @@ function rebuildRegionalTerritory(s) {
     t.owner=claims.get(t.id)?.a.owner||null;
   }
 }
-export function commandLimit(s, owner, turn=s.turn) { return Math.min(8, 3 + openingCommandBonus(s,owner,turn) + cityOrderBonus(s,owner) + Object.values(s.tiles).filter(t=>t.owner===owner).reduce((n,t)=>n+buildingLevel(t,'workshop'),0)); }
+export function commandLimit(s, owner, turn=s.turn) { return Math.min(8, 3 + openingCommandBonus(s,owner,turn) + cityOrderBonus(s,owner) + worldTiles(s).filter(t=>t.owner===owner).reduce((n,t)=>n+buildingLevel(t,'workshop'),0)); }
 export function buildCheck(s, owner, id, type) {
   const t=s.tiles[id],k=kingdom(s,owner),b=BUILDINGS[type];
   if(s.phase==='founding')return 'Found all kingdoms before construction begins.';
@@ -177,8 +185,7 @@ export function build(s,owner,id,type) {
   const error=buildCheck(s,owner,id,type);if(error)return {ok:false,error};
   const k=kingdom(s,owner),t=s.tiles[id],spec=constructionSpec(t,type,s,owner);pay(k,spec.cost);k.commands--;t.owner=owner;
   if(spec.charter)k.opening.charterUsed=true;
-  const efficient=spec.turns>=4&&(buildingLevel(t,'workshop')>=3||buildingLevel(t,'siegeFoundry')&&type==='siegeWorks'||Object.values(s.tiles).some(n=>n.owner===owner&&buildingLevel(n,'lumber')===3));
-  const turns=spec.turns-(efficient?1:0);
+  const turns=constructionDuration(s,owner,t,type,spec);
   t.project={type,remaining:turns,total:turns,level:spec.level,repair:spec.repair,owner};return {ok:true};
 }
 export function recruitmentCost(t,type,count=null,s=null,owner=null) {const u=UNITS[type];return u&&applyOpeningRecruitment(s,owner,type,Object.fromEntries(Object.entries(u.cost).map(([r,n])=>{const cost=buildingLevel(t,'siegeFoundry')&&u.family==='siege'?Math.ceil(n*.8):n;return [r,count===null?cost:Math.ceil(cost*count/u.count)];})));}
@@ -488,7 +495,7 @@ export function resolveMovement(s, owner = null) {
 export function economyProjection(s, owner) {
   if(s.knowledgeView===owner&&s.ownAccounting)return structuredClone(s.ownAccounting.economy);
   const k = kingdom(s, owner), {income,gross,stalls}=productionPlan(s,owner), towns=settlements(s,owner);
-  for(const t of Object.values(s.tiles).filter(t=>t.owner===owner)) if(t.building)income.gold--;
+  for(const t of worldTiles(s).filter(t=>t.owner===owner)) if(t.building)income.gold--;
   income.gold -= spyUpkeep(s, owner) + generalUpkeep(s,owner);
   income.gold += Math.floor(k.population * ({ low: .08, medium: .17, high: .28 }[k.tax]));
   const food=foodAccounting(s,owner,gross.food);
@@ -512,7 +519,7 @@ export function economyProjection(s, owner) {
 export function populationProjection(s, owner) {
   if(s.knowledgeView===owner&&s.ownAccounting?.population)return structuredClone(s.ownAccounting.population);
   let projected=s;
-  if(Object.values(s.tiles).some(t=>t.project?.owner===owner&&t.project.remaining===1)){
+  if(worldTiles(s).some(t=>t.project?.owner===owner&&t.project.remaining===1)){
     projected=structuredClone(s);
     for(const t of Object.values(projected.tiles))if(t.project&&t.project.owner===t.owner&&t.project.remaining===1)completeConstruction(t);
     rebuildTerritory(projected);
@@ -520,7 +527,7 @@ export function populationProjection(s, owner) {
   return {...calculatePopulationChange(projected,owner,economyProjection(projected,owner).income),capacity:populationCapacity(s,owner),nextCapacity:populationCapacity(projected,owner)};
 }
 export function resolveEconomy(s) {
-  for (const t of Object.values(s.tiles)) if (t.project) {
+  for (const t of worldTiles(s)) if (t.project) {
     if (t.project.owner !== t.owner) { t.project = null; continue; }
     if (--t.project.remaining <= 0) {
       const name=buildingSpec(t.project.type,t.project.level||1).name;
@@ -537,7 +544,7 @@ export function resolveEconomy(s) {
     for (const r of RESOURCES) k.resources[r] = Math.min(Math.max(k.resources[r],storageCapacity(s,k.id,r)), k.resources[r]+income[r]);
     const deficit = population.shortage;
     if (deficit) {
-      const protection=Object.values(s.tiles).some(t=>t.owner===k.id&&buildingLevel(t,'greatGranary'))?.5:1;
+      const protection=worldTiles(s).some(t=>t.owner===k.id&&buildingLevel(t,'greatGranary'))?.5:1;
       for (const a of militaryArmiesOf(s, k.id)) {casualties(a, .06*protection);a.morale=Math.max(.1,a.morale-.12*protection);}
       k.happiness = population.happinessAfter; k.population = population.nextPopulation;
       if (isHumanHouse(s,k.id)) log(s, `${k.name}: Food or gold ran out. Soldiers deserted and population fell.`, 'economy',{audience:[k.id]});

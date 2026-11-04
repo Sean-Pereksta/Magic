@@ -1,3 +1,5 @@
+import { launchProgress, launchMenu, launchFailure, paintLaunch } from './launch.mjs';
+import { diplomaticActions, installDiplomaticActionSearch } from './diplomatic-action-search.mjs';
 import { installOfflineBattleUI } from './offline-battle-ui.mjs';
 import { configureOfflineBattles, pendingEncounter } from './offline-encounters.mjs';
 import { installPrivateChatWorkspace } from './chat-workspace.mjs';
@@ -76,6 +78,7 @@ function restoreGeneralVerification(){
 }
 let online=null,onlineUI=null,onlineStatus=null,localHouse='ashen';
 let state = createGame(), selected = '5,6', selectedArmy = null, tab = 'land', orderMode = null, activeRuler = 'wintermere', proposals = [], epoch = 0, toastTimer, outcomeShown = false;
+let loadError = null, launchBusy = false;
 let restored = false, config = {}, client = new DiplomacyClient(), turnstileWidget = null, challengeToken = '';
 let turnBusy = false;
 let battleUI = null;
@@ -143,18 +146,13 @@ const queueNotice = status => status === 'verification' ? 'Queued for Gemini. Co
 try {
   const saved = onlineOptions ? null : localStorage.getItem(SAVE_KEY);
   if (saved) { state = parseSave(saved); abandonRestoredCouncilSequences(); restored = true; }
-} catch (error) { $('load-warning').hidden = false; $('load-warning').textContent = `Your saved campaign could not be loaded: ${error.message} Starting a new reign will replace it.`; }
+} catch (error) { loadError = error; $('load-warning').hidden = false; $('load-warning').textContent = `Your saved campaign could not be loaded: ${error.message} Starting a new reign will replace it.`; }
 installArtFallbacks(document);
-$('resume').hidden = !restored;
-$('start-game').disabled = $('resume').disabled = true;
-$('welcome').addEventListener('cancel', event => { if ($('start-game').disabled) event.preventDefault(); });
-if(!onlineOptions)$('welcome').showModal();
-const artResult = await preloadAllArt(({completed,total,failed}) => {
-  $('art-progress').max = total; $('art-progress').value = completed;
-  $('art-status').textContent = `Loading artwork ${completed} / ${total}${failed ? ` · ${failed} unavailable` : ''}`;
-});
-$('art-status').textContent = artResult.failed ? `Artwork ready · ${artResult.failed} unavailable images will use fallback art.` : 'All artwork ready';
-$('start-game').disabled = $('resume').disabled = false;
+$('resume').disabled = !restored;
+$('welcome').addEventListener('cancel', event => { event.preventDefault(); });
+launchProgress('Preparing the main menu', 2);
+// Decorative images load alongside the interactive menu and board.
+void preloadAllArt().then(() => map.draw()).catch(() => {});
 let displayedState=knowledgeView(state,localHouse);
 const map = new WorldMap($('map'), { getState: () => displayedState, onSelect: selectTile, onStrategicMarker: marker => {if(marker.operationId){tab='war-room';render();document.querySelector(`[data-operation-card="${marker.operationId}"]`)?.scrollIntoView({block:'center'});}else if(marker.councilId)allianceUI?.open(marker.councilId);else if(marker.ruler)openDiplomacy(marker.ruler);} });
 const strategicPicker=installStrategicMapPicker(document,{getState:()=>currentView(),getViewer:()=>localHouse,getCamera:()=>map,onError:toast});
@@ -165,7 +163,9 @@ function toast(message) { $('toast').textContent = message; $('toast').hidden = 
 const armySortUI=installArmySortUI({getState:()=>state,getOwner:()=>localHouse,perform,toast,canAct:()=>!planningLocked()&&(!onlineOptions||onlineStatus?.online&&onlineStatus?.meta?.activeHouse===localHouse&&onlineStatus?.meta?.phase==='planning'&&!onlineStatus?.meta?.ready[localHouse])});
 function save() {
   if(onlineOptions)return !!online?.online;
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); $('save-status').textContent = state.phase==='founding'?'Founding progress saved on this device':`Saved on this device · turn ${state.turn}`; restored = true; return true; }
+  try { state.presentation ??= { reducedEffects: false };
+    state.presentation.board = { x: map.x, y: map.y, zoom: map.zoom, selected, selectedArmy, tab };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state)); $('save-status').textContent = state.phase==='founding'?'Founding progress saved on this device':`Saved on this device · turn ${state.turn}`; restored = true; $('resume').disabled = false; return true; }
   catch { $('save-status').textContent = 'Save unavailable · export a copy'; return false; }
 }
 function changed(preserveOffers=false) { if(!turnBusy)showTurnProgress(null); refreshKnowledge(state); if(onlineOptions){render();return;} epoch++; proposals = []; /* Exact unresolved terms remain available and are revalidated on acceptance. */ save(); render(); }
@@ -405,17 +405,60 @@ $('menu-button').onclick = () => $('menu').showModal();
 $('help').onclick = () => $('help-dialog').showModal();
 $('save-now').onclick = () => toast(save() ? 'Campaign saved on this device.' : 'Local storage is unavailable. Export a save file.');
 function showNewCampaign() {
-  if(onlineOptions)return;
+  if (onlineOptions || launchBusy) return;
   document.querySelectorAll('dialog[open]').forEach(d => d.close());
-  $('resume').hidden = !restored; $('start-game').textContent = restored ? 'Replace save & begin a new reign' : 'Begin your reign'; if(!onlineOptions)$('welcome').showModal();
+  launchMenu();
+  $('launch-menu').hidden = true;
+  $('new-game-form').hidden = false;
+  $('start-game').textContent = restored ? 'Replace save & begin a new reign' : 'Begin your reign';
+  $('welcome').showModal();
+  $('preset').focus();
+}
+function restoreBoardPosition() {
+  const board = state.presentation?.board;
+  selected = state.tiles[board?.selected] ? board.selected : settlements(state, localHouse)[0]?.id || '5,6';
+  selectedArmy = state.armies.some(a => a.id === board?.selectedArmy && a.owner === localHouse) ? board.selectedArmy : null;
+  tab = ['land','realm','council','ledger','intelligence','war-room'].includes(board?.tab) ? board.tab : 'land';
+  if (board && [board.x,board.y,board.zoom].every(Number.isFinite) && board.zoom >= .08 && board.zoom <= 2.8) {
+    map.x = board.x; map.y = board.y; map.zoom = board.zoom;
+  } else map.home();
+}
+async function loadCampaign(kind) {
+  if (onlineOptions || launchBusy) return;
+  launchBusy = true;
+  const settings = { seed: Number($('seed').value), preset: $('preset').value, size: Number($('game-size').value), difficulty: $('difficulty').value };
+  launchProgress(kind === 'new' ? 'Generating terrain' : 'Restoring your campaign', 0, 3);
+  await paintLaunch();
+  try {
+    const saved = kind === 'continue' && localStorage.getItem(SAVE_KEY);
+    if (kind === 'continue' && !saved) throw new Error('No saved campaign was found on this device.');
+    const next = kind === 'new' ? createGame(settings.seed, settings.preset, settings.size, settings.difficulty) : parseSave(saved);
+    launchProgress(kind === 'new' ? 'Preparing your founding expedition' : 'Restoring your saved position', 1, 3);
+    await paintLaunch();
+    client.cancel(); councilJobs.clear(); councilSequences.clear(); replyDiagnostics.clear();
+    state = next; abandonRestoredCouncilSequences(); epoch++; selectedArmy = null; tab = 'land'; orderMode = null; outcomeShown = false;
+    displayedState = knowledgeView(state, localHouse);
+    if (kind === 'continue') restoreBoardPosition();
+    else { selected = '5,6'; map.home(); }
+    render();
+    launchProgress('Your realm is ready', 3, 3);
+    if (kind === 'new') save();
+    else { restored = true; $('resume').disabled = false; }
+    $('welcome').close(); $('load-warning').hidden = true;
+    $('map').focus();
+    if (battlePending()) battleUI.show();
+    else if (state.offlineTurn) void advanceOfflineTurn();
+    else if (state.outcome) $('outcome').showModal();
+  } catch (error) {
+    launchFailure(error, () => loadCampaign(kind), launchMenu);
+  } finally { launchBusy = false; }
 }
 $('new-campaign').onclick = showNewCampaign; $('play-again').onclick = showNewCampaign;
-$('new-game-form').addEventListener('submit', e => {
-  e.preventDefault(); if(onlineOptions)return; client.cancel(); councilJobs.clear(); councilSequences.clear(); replyDiagnostics.clear(); state = createGame(Number($('seed').value), $('preset').value, Number($('game-size').value),$('difficulty').value); epoch++;
-  selected = '5,6'; selectedArmy = null; tab = 'land'; orderMode = null; outcomeShown = false;
-  $('welcome').close(); $('load-warning').hidden = true; changed(); map.home(); toast('Explore the map and choose where to found your kingdom.');
-});
-$('resume').onclick = () => { $('welcome').close(); map.home(); render(); if(battlePending())battleUI.show();else if(state.offlineTurn)void advanceOfflineTurn();else if (state.outcome) $('outcome').showModal(); };
+$('launch-new').onclick = showNewCampaign;
+$('launch-back').onclick = launchMenu;
+$('new-game-form').addEventListener('submit', e => { e.preventDefault(); void loadCampaign('new'); });
+$('resume').onclick = () => loadCampaign('continue');
+window.addEventListener('pagehide', () => { if (restored && !$('welcome').open) save(); });
 function downloadSave() {
   if(onlineOptions)return;
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }), url = URL.createObjectURL(blob), a = document.createElement('a');
@@ -430,7 +473,7 @@ $('import-save').addEventListener('change', async e => {
     const imported = parseSave(await file.text());
     if(turnBusy || epoch!==importEpoch)return;
     if (!confirm('Replace your current campaign with this imported save? Export your current save first if you want to keep it.')) return;
-    client.cancel(); councilJobs.clear(); councilSequences.clear(); replyDiagnostics.clear(); state = imported; abandonRestoredCouncilSequences(); selected = settlements(state, localHouse)[0]?.id || '5,6'; selectedArmy = null; outcomeShown = false; epoch++; $('menu').close(); changed(); map.home(); toast('Campaign imported.');
+    client.cancel(); councilJobs.clear(); councilSequences.clear(); replyDiagnostics.clear(); state = imported; abandonRestoredCouncilSequences(); displayedState = knowledgeView(state, localHouse); restoreBoardPosition(); outcomeShown = false; epoch++; $('menu').close(); changed(); toast('Campaign imported.');
     if(battlePending())battleUI.show();else if(offlineResolutionPending())void advanceOfflineTurn();
   } catch (error) { toast(`Import failed: ${error.message}`); }
   finally { e.target.value = ''; }
@@ -939,6 +982,20 @@ formalUI=installFormalProposalUI(document,{
 });
 
 installPrivateChatWorkspace(document,{connection:chatConnection});
+for (const details of [$('private-chat-options'), allianceUI.dialog.querySelector('.chat-options')]) {
+  const scope = () => ({ actor: localHouse, ruler: activeRuler, councilId: details.id === 'private-chat-options' ? null : allianceUI.dialog.dataset.councilId });
+  installDiplomaticActionSearch(details, {
+    getActions: () => diplomaticActions(state, scope()),
+    select: action => {
+      if (planningLocked()) return;
+      if (action.terms) {
+        $('quick-offer').click();
+        $('offer-type').value = action.type;
+        $('offer-type').dispatchEvent(new Event('change', { bubbles: true }));
+      } else formalUI.open(action);
+    }
+  });
+}
 
 document.addEventListener('click',e=>{const b=e.target.closest('[data-alliance]');if(b&&!b.disabled)allianceUI.open(b.dataset.alliance);});
 document.addEventListener('click',e=>{if(e.target.closest('.treaty-drawer-close')&&$('diplomacy').classList.contains('council-terms'))$('diplomacy').close();});
@@ -946,7 +1003,7 @@ $('diplomacy').addEventListener('close',()=>{
   if(!$('diplomacy').open){$('diplomacy').classList.remove('council-terms');allianceUI.dialog.classList.remove('has-terms');proposalConversation=null;allianceUI.render();}
 });
 $('reduced-effects').checked = !!state.presentation?.reducedEffects;
-$('reduced-effects').onchange = () => { state.presentation = { reducedEffects: $('reduced-effects').checked }; map.reducedEffects = state.presentation.reducedEffects; save(); map.draw(); };
+$('reduced-effects').onchange = () => { state.presentation = { ...state.presentation, reducedEffects: $('reduced-effects').checked }; map.reducedEffects = state.presentation.reducedEffects; save(); map.draw(); };
 
 async function voiceNextDispatch(retry = false) {
   if(planningLocked())return;
@@ -1012,10 +1069,16 @@ document.addEventListener('pointerdown', () => {
   }
 }, { passive: true });
 
-$('resume').hidden = !restored;
+$('resume').disabled = !restored;
 if (restored) $('start-game').textContent = 'Replace save & begin a new reign';
 battleUI = installOfflineBattleUI({getState:()=>state,replaceState:next=>{state=next;},save,render,continueTurn:advanceOfflineTurn,toast,isOnline:()=>!!onlineOptions});
-render(); if(!onlineOptions)$('welcome').showModal();
+render();
+if (!onlineOptions) {
+  if (!$('welcome').open) $('welcome').showModal();
+  launchMenu();
+  if (loadError) launchFailure(loadError, () => loadCampaign('continue'), launchMenu);
+} else launchProgress('Connecting to your campaign', 2);
+
 
 if(onlineOptions){
   document.body.classList.add('online-campaign');
@@ -1026,10 +1089,13 @@ if(onlineOptions){
     const changedHouse=localHouse!==localHouseId(next),newCapital=!state.founding?.houses[localHouse]?.founded&&next.founding?.houses[localHouse]?.founded,realmFounded=received&&state.phase==='founding'&&next.phase==='playing';localHouse=localHouseId(next);state=next;epoch++;
     if(!received||changedHouse||newCapital){selected=settlements(state,localHouse)[0]?.id||'5,6';selectedArmy=state.armies.find(a=>a.owner===localHouse)?.id||null;activeRuler=state.kingdoms.find(k=>k.id!==localHouse).id;map.home();received=true;}
     if(!state.armies.some(a=>a.id===selectedArmy))selectedArmy=state.armies.find(a=>a.owner===localHouse&&a.tile===selected)?.id||null;
-    proposals=state.diplomacy.offers[activeRuler]||[];render();if(realmFounded)toast('THE REALM IS FOUNDED. Turn 1 begins.');
-  },onStatus:status=>{onlineStatus=status;onlineUI?.render(status,state);void cancelInterruptedCouncilSequences();voiceNextDispatch();},onError:message=>toast(message)});
+    proposals=state.diplomacy.offers[activeRuler]||[];render();$('welcome').close();if(realmFounded)toast('THE REALM IS FOUNDED. Turn 1 begins.');
+  },onStatus:status=>{onlineStatus=status;onlineUI?.render(status,state);void cancelInterruptedCouncilSequences();voiceNextDispatch();},onError:message=>{
+    toast(message);
+    if(!received)launchFailure(new Error(message),()=>location.reload(),()=>location.assign(new URL('./index.html',location.href)));
+  }});
   onlineUI=new MultiplayerUI(online,toast);applyLobbyReturnUrl();
   onlineUI.render({online:false,pending:0,presence:{}},state);
-  online.connect().catch(e=>toast(e.message));
+  online.connect().catch(e=>{toast(e.message);launchFailure(e,()=>location.reload(),()=>location.assign(new URL('./index.html',location.href)));});
   window.addEventListener('pagehide',()=>online.close(),{once:true});
 }

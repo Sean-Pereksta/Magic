@@ -1,3 +1,4 @@
+import { worldTiles } from './world-index.mjs';
 import { normalizePackage } from './trade-package.mjs';
 import { blockadeAt } from './naval.mjs';
 import { BUILDINGS, FORMATIONS, QUALITY, REGIONS, RESOURCES, UNITS } from './data.mjs';
@@ -16,7 +17,7 @@ export function buildingLevel(t, type) {
 }
 export const buildingSpec = (type, level = 1) => BUILDINGS[type]?.levels[Math.max(0, level - 1)];
 export const cityBenefits = t => t?.building === 'city' ? buildingSpec('city',buildingLevel(t,'city')) : null;
-export const cityOrderBonus = (s,owner) => Object.values(s.tiles).filter(t=>t.owner===owner).reduce((n,t)=>n+(cityBenefits(t)?.orders||0),0);
+export const cityOrderBonus = (s,owner) => worldTiles(s).filter(t=>t.owner===owner).reduce((n,t)=>n+(cityBenefits(t)?.orders||0),0);
 export function wallMaximum(t) { return buildingLevel(t, 'wall') * 60; }
 export function fortMaximum(t) { return t.building === 'fort' ? [0, 45, 100, 180][buildingLevel(t, 'fort')] : 0; }
 export function constructionSpec(t, type, s=null, owner=null) {
@@ -27,6 +28,11 @@ export function constructionSpec(t, type, s=null, owner=null) {
   if(!spec)return null;
   const result={...spec, repair, cost: repair ? Object.fromEntries(Object.entries(spec.cost).map(([r,n])=>[r,Math.ceil(n*.4)])) : spec.cost, turns: repair ? 2 : spec.turns};
   return s&&owner?applyOpeningConstruction(s,owner,t,type,result):result;
+}
+export function constructionDuration(s,owner,t,type,spec=constructionSpec(t,type,s,owner)) {
+  if(!spec)return null;
+  const efficient=spec.turns>=4&&(buildingLevel(t,'workshop')>=3||buildingLevel(t,'siegeFoundry')&&type==='siegeWorks'||worldTiles(s).some(n=>n.owner===owner&&buildingLevel(n,'lumber')===3));
+  return spec.turns-(efficient?1:0);
 }
 export function tileProduction(t, owner) {
   const output = emptyResources();
@@ -49,7 +55,7 @@ export function tileProduction(t, owner) {
 }
 export function productionPlan(s, owner) {
   const k = s.kingdoms.find(k=>k.id === owner), income = emptyResources(), gross = emptyResources(), stalls = [];
-  const tiles = Object.values(s.tiles).filter(t=>t.owner === owner),openingFactor=openingProductionFactor(s,owner);
+  const tiles = worldTiles(s).filter(t=>t.owner === owner),openingFactor=openingProductionFactor(s,owner);
   for (const t of tiles) {
     const production = tileProduction(t, owner);
     if((buildingLevel(t,'fishingDock')||buildingLevel(t,'harbor'))&&blockadeAt(s,t.id,owner)){
@@ -73,7 +79,7 @@ export function productionPlan(s, owner) {
 export function storageCapacity(s, owner, resource) {
   if (resource === 'gold') return 99999;
   let capacity = 600;
-  for (const t of Object.values(s.tiles)) if(t.owner===owner) capacity += buildingLevel(t,'storehouse')*400 + (resource==='food' ? buildingLevel(t,'greatGranary')*2400 + buildingLevel(t,'farm')*50 : 0);
+  for (const t of worldTiles(s)) if(t.owner===owner) capacity += buildingLevel(t,'storehouse')*400 + (resource==='food' ? buildingLevel(t,'greatGranary')*2400 + buildingLevel(t,'farm')*50 : 0);
   return capacity;
 }
 export function completeConstruction(t) {
@@ -87,9 +93,9 @@ export function completeConstruction(t) {
   t.project=null;
 }
 export function regionalize(s, roll) {
-  const capitals=Object.values(s.tiles).filter(t=>t.capital), dist=(a,b)=>(Math.abs(a.q-b.q)+Math.abs(a.r-b.r)+Math.abs(a.q+a.r-b.q-b.r))/2;
+  const capitals=worldTiles(s).filter(t=>t.capital), dist=(a,b)=>(Math.abs(a.q-b.q)+Math.abs(a.r-b.r)+Math.abs(a.q+a.r-b.q-b.r))/2;
   const resources=['food','wood','stone','iron','horses'];
-  for(const t of Object.values(s.tiles)) {
+  for(const t of worldTiles(s)) {
     t.levels ||= {};
     const capital=capitals.reduce((a,b)=>dist(t,a)<dist(t,b)?a:b), region=REGIONS[capital.owner];t.region=capital.owner;
     const strong=region.weights[resources.indexOf(t.resource)] || 1;
@@ -119,7 +125,7 @@ export function regionalize(s, roll) {
 }
 export function migrateEconomy(s) {
   for(const k of s.kingdoms) for(const r of ['horses','tools','arms']) k.resources[r] ??= 0;
-  for(const t of Object.values(s.tiles)) {
+  for(const t of worldTiles(s)) {
     t.levels ||= {};
     for(const [id,b] of Object.entries(BUILDINGS)) if(t.building===id || id==='wall'&&t.walls>0 || id==='road'&&t.road || b.settlement&&t[id]) t.levels[id] ||= 1;
     t.quality ||= 'normal'; t.region ||= t.owner || 'ashen';
@@ -134,7 +140,7 @@ export function migrateEconomy(s) {
 }
 export function validateExpansion(s) {
   const integer=(n,min,max)=>Number.isInteger(n)&&n>=min&&n<=max, fail=()=>{throw new Error('Damaged expansion data.');};
-  for(const t of Object.values(s.tiles)) {
+  for(const t of worldTiles(s)) {
     if(!Object.hasOwn(QUALITY,t.quality)||!(s.worldGeneration ? Object.hasOwn(s.regions||{},t.region) : Object.hasOwn(REGIONS,t.region))||!t.levels||Array.isArray(t.levels))fail();
     if(t.shipyard!==undefined&&typeof t.shipyard!=='boolean')fail();
     for(const [id,n] of Object.entries(t.levels))if(!BUILDINGS[id]||!integer(n,1,BUILDINGS[id].maxLevel))fail();

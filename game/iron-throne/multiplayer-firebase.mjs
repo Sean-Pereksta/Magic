@@ -198,7 +198,10 @@ export class FirebaseCampaign {
     this.watchReceipt(id);void this.pump();return waitForApplied?this.waitForApplied(id):id;
   }
   async pump(){
-    if(this.stopped||this.busy||!this.online||!ownsLease(this.meta,this.uid,this.token,this.now())||this.meta.phase==='setup'||this.meta.phase==='ended')return;
+    // Snapshot callbacks can arrive during the transaction that commits the
+    // previous activation. Remember that wake-up, then continue after commit.
+    if(this.busy){this.pumpAgain=true;return;}
+    if(this.stopped||!this.online||!ownsLease(this.meta,this.uid,this.token,this.now())||this.meta.phase==='setup'||this.meta.phase==='ended')return;
     this.busy=true;
     try{
       if(this.meta.phase==='planning'&&!this.meta.activeHouse){await this.advance();return;}
@@ -210,7 +213,10 @@ export class FirebaseCampaign {
         if(docs.length>12)this.commandDirty=true;
       }
       if(this.meta.phase==='resolving'||this.state&&resolutionDue(this.meta,this.presence,this.now(),this.state))await this.advance();
-    }catch(e){this.commandDirty=true;this.error(e);}finally{this.busy=false;}
+    }catch(e){this.commandDirty=true;this.error(e);}finally{
+      this.busy=false;
+      if(this.pumpAgain){this.pumpAgain=false;queueMicrotask(()=>void this.pump());}
+    }
   }
   async process(id){
     await this.transaction(async tx=>{

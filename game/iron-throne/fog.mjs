@@ -9,6 +9,7 @@ import { economyProjection, populationProjection } from './core.mjs';
 import { operationProgress } from './operations.mjs';
 import { BUILDINGS, RESOURCES, UNITS } from './data.mjs';
 import { distance } from './world-hex.mjs';
+import { worldTileKeys, worldTiles } from './world-index.mjs';
 
 // Observation records are authoritative snapshots. Rendering never consults the
 // current enemy board to fill holes in a remembered record.
@@ -23,19 +24,29 @@ export function structureVision(t) {
 }
 export function initializeFog(s) { s.fog??={version:1,houses:{}};return s.fog; }
 export function setupVisible(s,viewer) { return s.phase==='founding'&&!s.founding?.houses[viewer]?.founded; }
+const visionCache = new WeakMap();
 export function visionTiles(s,viewer,{allied=true}={}) {
   const seen=new Set(),sources=[];
   const area=(id,radius)=>{const center=s.tiles[id];if(!center)return;for(let r=center.r-radius;r<=center.r+radius;r++)for(let q=center.q-radius;q<=center.q+radius;q++){const t=s.tiles[`${q},${r}`];if(t&&distance(center,t)<=radius)seen.add(t.id);}};
-  for(const t of Object.values(s.tiles))if(t.owner===viewer){sources.push([t.id,structureVision(t)]);}
+  const tiles=worldTiles(s);
+  for(const t of tiles)if(t.owner===viewer){sources.push([t.id,structureVision(t)]);}
   for(const a of s.armies)if(a.owner===viewer)sources.push([a.tile,armyVision(a)]);
   for(const f of s.fleets||[])if(f.owner===viewer)sources.push([f.tile,fleetVision(f)]);
   // Strong alliances share their own settlements and major forces, never the
   // ally's explored map, spy reports, or the vision of its other allies.
   const allies=(allied?s.treaties||[]:[]).filter(t=>t.type==='alliance'&&t.expires>s.turn&&t.parties.includes(viewer)).map(t=>t.parties.find(id=>id!==viewer)).filter(id=>(s.kingdoms.find(k=>k.id===id)?.relations[viewer]?.trust||0)+marriageSupport(s,id,viewer)>=50);
-  for(const t of Object.values(s.tiles))if(allies.includes(t.owner)&&['city','town','fort'].includes(t.building))sources.push([t.id,1]);
+  for(const t of tiles)if(allies.includes(t.owner)&&['city','town','fort'].includes(t.building))sources.push([t.id,1]);
   for(const a of s.armies)if(allies.includes(a.owner)&&size(a)>=20)sources.push([a.tile,1]);
   for(const f of s.fleets||[])if(allies.includes(f.owner))sources.push([f.tile,1]);
+  // Reuse this House's visibility until its actual sight sources change. The
+  // signature follows movement, casualties, construction, capture and alliance
+  // eligibility, including direct edits to imported or projected states.
+  let cache=visionCache.get(s.tiles);
+  if(!cache){cache=new Map();visionCache.set(s.tiles,cache);}
+  const key=`${viewer}:${allied}`,signature=JSON.stringify(sources),previous=cache.get(key);
+  if(previous?.signature===signature)return new Set(previous.seen);
   for(const [id,radius] of sources)area(id,radius);
+  cache.set(key,{signature,seen:new Set(seen)});
   return seen;
 }
 const geographyKeys=['id','q','r','terrain','resource','quality','owner','building','road','river','capital','name','region','biome','mountainPass','levels','premiumRegion','premiumYield','premiumFactor'];
@@ -85,7 +96,9 @@ function spyCurrent(s,x,viewer) {return x.source==='spy'&&s.turn-x.turn<=2&&s.in
 export function knowledgeView(s,viewer='ashen',{refresh=false,forecast=true}={}) {
   if(s.knowledgeView)return s;
   if(refresh)refreshKnowledge(s,[viewer]);
-  const v=clone({...s,fog:undefined,kingdomDevelopments:undefined,tiles:{},armies:[]}),k=s.fog?.houses[viewer]||{tiles:{},armies:{},battles:[],actions:[]},setup=setupVisible(s,viewer),seen=setup?new Set(Object.keys(s.tiles)):visionTiles(s,viewer);
+  const v=clone({...s,fog:undefined,kingdomDevelopments:undefined,tiles:{},armies:[]}),k=s.fog?.houses[viewer]||{tiles:{},armies:{},battles:[],actions:[]},setup=setupVisible(s,viewer),seen=setup?new Set(worldTileKeys(s)):visionTiles(s,viewer);
+  const tiles=worldTiles(s),livingHouses=new Set(tiles.filter(t=>t.building==='city'||t.building==='town').map(t=>t.owner));
+  const capitals=new Map(Object.entries(s.founding?.houses||{}).map(([id,f])=>[f.capital,id]));
   v.knowledgeView=viewer;v.viewHouseId=viewer;delete v.fog;
   v.courtIntelligence=projectCourtIntelligence(s,viewer);
   v.marriageBriefings=s.kingdoms.some(h=>h.id===viewer)
@@ -98,12 +111,12 @@ export function knowledgeView(s,viewer='ashen',{refresh=false,forecast=true}={})
   delete v.warBaselines; delete v.warPositions;
   v.proposalFollowups=Object.fromEntries(Object.entries(s.proposalFollowups||{}).filter(([,c])=>c.actor===viewer&&c.turn===s.turn));
   if(s.kingdoms.some(k=>k.id===viewer))v.ownAccounting={economy:economyProjection(s,viewer),...(forecast?{population:populationProjection(s,viewer)}:{})};
-  v.tiles=Object.fromEntries(Object.values(s.tiles).map(t=>{
+  v.tiles=Object.fromEntries(tiles.map(t=>{
     if(seen.has(t.id))return [t.id,{...clone(t),fog:'visible',observedTurn:s.turn}];
     const old=k.tiles[t.id];
     const known=old?{...blankTile(t),...clone(old.tile),fog:'explored',observedTurn:old.turn,intelligenceFresh:spyCurrent(s,old,viewer),intelligenceSource:old.source}: {...blankTile(t),fog:'unknown'};
     // Only the original site and name are public. Ownership and garrison are unknown.
-    const capital=Object.entries(s.founding?.houses||{}).find(([,f])=>f.capital===t.id)?.[0]||(!s.founding&&t.capital);
+    const capital=capitals.get(t.id)||(!s.founding&&t.capital);
     if(capital&&!old){known.capital=capital;known.knownCapital=capital;known.building='city';known.name=capitalName(capital);known.levels={city:1};}
     return [t.id,known];
   }));
@@ -138,7 +151,7 @@ export function knowledgeView(s,viewer='ashen',{refresh=false,forecast=true}={})
   v.crownProgress={[viewer]:s.crownProgress?.[viewer]||0};
   v.humanProposals=(v.humanProposals||[]).filter(p=>[p.from,p.to].includes(viewer));
   for(const h of v.kingdoms){
-    h.knownAlive=Object.values(s.tiles).some(t=>t.owner===h.id&&['city','town'].includes(t.building));
+    h.knownAlive=livingHouses.has(h.id);
     for(const r of Object.values(h.id===viewer?{}:h.relations)){r.observations={};r.observedArmyTiles={};r.movements={};r.contacts={};r.history=[];}
     if(h.id===viewer)continue;
     for(const [id,r]of Object.entries(h.relations))if(id!==viewer){delete r.personal;delete r.negotiation;}

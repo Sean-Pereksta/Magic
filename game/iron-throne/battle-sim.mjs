@@ -11,7 +11,7 @@ export const MAX_ACTIVE_TROOPS = 400;
 export const BATTLE_SIZE_OPTIONS = Object.freeze([100, 150, 200, 300, MAX_ACTIVE_TROOPS]);
 export const RESERVE_WAVE_SECONDS = 8;
 const TAU = Math.PI * 2, STEP = 1 / 20;
-const RULES_VERSION = 4, LEGACY_RAM_HP = 280;
+const RULES_VERSION = 5, LEGACY_RAM_HP = 280;
 const HERO_HEALTH = 1.2, HERO_WEAPON_DAMAGE = 1.1;
 export const WALL_ACCURACY_BONUS = 10;
 const PARRY_WINDOW = .3, PARRY_STUN = .7;
@@ -275,6 +275,20 @@ function allocateCaps(b) {
 // ammunition or casualties. Overflow soldiers wait for a later entry wave.
 export function normalizeBattleCheckpoint(b) {
   if (!b || !Array.isArray(b.units) || !Array.isArray(b.armies)) return b;
+  if ((b.battleRulesVersion || 1) < 5 && !b.auto && b.phase !== 'complete') {
+    const commander = b.units.find(u => u.id === b.commanderId);
+    if (commander && (commander.routing || commander.explicitOrder || commander.order.kind !== 'hold' || commander.fortPost || commander.wallPosition || commander.holdFire)) {
+      commander.order = { kind: 'hold', x: commander.x, z: commander.z };
+      commander.routing = false;
+      commander.explicitOrder = false;
+      commander.fortPost = null;
+      commander.wallPosition = null;
+      commander.path = [];
+      commander.holdFire = false;
+      const army = b.armies.find(a => a.armyId === commander.armyId);
+      if (army?.retreating && ['active', 'reserve'].includes(commander.status)) army.retreating = false;
+    }
+  }
   for (const u of b.units) if (u.weapon==='lance' && !u.mounted) u.sidearm=true;
   if (needsSettlementTerrainRepair(b.layout)) {
     if (fitSettlementTerrain(b.layout)) b.layout.navRevision=(b.layout.navRevision || 0)+1;
@@ -438,7 +452,7 @@ export function beginBattle(b) {
 }
 
 function selected(b, selection) {
-  let candidates = b.units.filter(u => u.owner === b.playerOwner && u.status !== 'dead' && u.status !== 'escaped');
+  let candidates = b.units.filter(u => u.owner === b.playerOwner && u.id !== b.commanderId && u.status !== 'dead' && u.status !== 'escaped');
   if (Array.isArray(selection)) return candidates.filter(u => selection.includes(u.id) || selection.includes(u.armyId));
   if (selection && typeof selection === 'object') {
     if (selection.armyId) candidates = candidates.filter(u => u.armyId === selection.armyId);
@@ -630,6 +644,17 @@ export function playerLadderOption(b,u) {
   }
   return ladder?{ladder,blocked:ladderEntryBlocker(b,u,ladder)}:null;
 }
+export function playerStairOption(b, u) {
+  if (b.phase !== 'combat' || !u || u.id !== b.commanderId || !fighting(u) || u.mounted || u.family === 'siege' || ['climb', 'stairs'].includes(u.action?.kind)) return null;
+  let stair = null, range = 3;
+  for (const candidate of b.layout.stairs || []) {
+    if (u.wallId && u.wallId !== candidate.wallId || !b.layout.walls.some(w => w.id === candidate.wallId && w.hp > 0)) continue;
+    const d = u.wallId ? Math.hypot(u.x - candidate.topX, u.z - candidate.topZ) : distance(u, candidate);
+    if (d < range) { range = d; stair = candidate; }
+  }
+  const ascending = !u.wallId;
+  return stair ? { stair, ascending, blocked: stairEntryBlocker(b, u, stair, ascending) } : null;
+}
 function inWard(u,ward) { return !!ward && u.x>=ward.left && u.x<=ward.right && u.z>=ward.front && u.z<=ward.rear; }
 function canApproachLayer(b,u,layer) {
   return layer !== 'inner' || inWard(u,b.layout.castle?.outer) || u.wallId ||
@@ -715,8 +740,12 @@ function moveOnWall(b, u, target, dt, keepFacing = false) {
   if (d > .05) { if (!keepFacing) faceHeading(b,u,Math.atan2(x-u.x,z-u.z),dt); u.x += (x - u.x) / d * step; u.z += (z - u.z) / d * step; }
   u.y = terrainHeight(b, u.x, u.z) + w.height; u.speed = d > .05 ? step / dt : 0;
 }
+function stairEntryBlocker(b, u, stair, ascending) {
+  if (u.action || u.stagger > 0) return 'Finish current action';
+  return b.units.some(v => v.id !== u.id && alive(v) && v.action?.kind === 'stairs' && v.action.stairId === stair.id && (v.action.ascending !== ascending || v.action.elapsed < 1.1)) ? 'Stairs occupied' : null;
+}
 function startStairs(b, u, stair, ascending) {
-  if (u.mounted || u.action || b.units.some(v => v.id !== u.id && alive(v) && v.action?.kind === 'stairs' && v.action.stairId === stair.id && (v.action.ascending !== ascending || v.action.elapsed < 1.1))) return false;
+  if (u.mounted || stairEntryBlocker(b, u, stair, ascending)) return false;
   u.action = { kind: 'stairs', stairId: stair.id, wallId: stair.wallId, ascending, elapsed: 0, duration: 4, windup: 4, recovery: 0, fromX: u.x, fromZ: u.z, fromY: u.y, targetX: ascending ? stair.topX : stair.x, targetZ: ascending ? stair.topZ : stair.z };
   u.speed = 0; u.blocking = false; u.braced = false;
   return true;
@@ -789,7 +818,7 @@ function moveUnit(b, u, destination, dt, options = {}) {
       if (u.hp <= 0) kill(b, u, null);
       return;
     }
-    if (destination.wallId === u.wallId || options.direct && inside(wall, destination.x, destination.z, -.15)) {
+    if (destination.wallId === u.wallId || options.direct) {
       moveOnWall(b, u, destination, dt, options.keepFacing); return;
     }
     const ward=wall.layer==='inner'?b.layout.castle?.inner:b.layout.castle?.outer;
@@ -850,8 +879,8 @@ function moveUnit(b, u, destination, dt, options = {}) {
   const blocked = obstruction(b, nx, nz, u);
   if (blocked) {
     u.chargeDistance = 0; u.speed = 0;
-    if (options.direct && u.side === 0 && !u.wallId && !u.mounted && dz > 0) {
-      const l = u.id===b.commanderId ? playerLadderOption(b,u)?.ladder : usableLadders(b).find(l => distance(u, l.foot) <= 2.3);
+    if (options.direct && u.id !== b.commanderId && u.side === 0 && !u.wallId && !u.mounted && dz > 0) {
+      const l = usableLadders(b).find(l => distance(u, l.foot) <= 2.3);
       if (l) startClimb(b, u, l, true);
     }
     return;
@@ -1591,8 +1620,12 @@ function playerUnit(b, u, input, dt) {
   const mx = clamp(Number(input.moveX ?? input.move?.x) || 0, -1, 1), mz = clamp(Number(input.moveZ ?? input.move?.z) || 0, -1, 1), norm = Math.hypot(mx, mz);
   if (norm > .05) moveUnit(b, u, { x: u.x + mx / Math.max(1, norm) * 5, z: u.z + mz / Math.max(1, norm) * 5 }, dt, { direct: true, sprint: !!input.sprint, keepFacing: true });
   else if(u.mounted)moveHorse(b,u,(input.attack||u.blocking)&&Number.isFinite(input.facing)?input.facing:u.facing,0,dt);
-  else if (u.order.kind === 'walls') takeWallPosition(b, u, dt, Number.isFinite(input.facing));
   else u.speed = Math.max(0, u.speed - dt * 8);
+  if (!u.wallId && (u.side === 0 ? u.z < -76 && mz < 0 : u.z > 76 && mz > 0)) {
+    u.status = 'escaped'; u.action = null; u.speed = 0;
+    event(b, 'escape', 'You leave the battlefield through your rear edge.', { armyId: u.armyId, unitId: u.id });
+    return;
+  }
   u.braced = footSpear(u) && u.blocking && u.speed < .5;
   if (input.attack && !u.blocking) {
     const enemy = nearestEnemy(b, u, b.units.filter(v => angle(u.facing, facing(u, v)) < 1));
@@ -1603,12 +1636,16 @@ function playerUnit(b, u, input, dt) {
     if (enemy && distance(u, enemy) <= reach && angle(u.facing, facing(u, enemy)) < .12 && ['bow', 'crossbow'].includes(u.weapon)) Object.assign(point, { x: enemy.x, z: enemy.z, y: enemy.y });
     startAttack(b, u, enemy && distance(u, enemy) <= reach ? enemy : null, !!input.heavy, point);
   }
-  if (input.climbLadderId || input.interact && !u.interactHeld) {
+  if (input.climbLadderId || input.stairId || input.interact && !u.interactHeld) {
     const option = playerLadderOption(b,u);
-    const stair = b.layout.stairs?.find(s => u.wallId === s.wallId ? Math.hypot(u.x - s.topX, u.z - s.topZ) < 3 : distance(u, s) < 3);
-    if (option || input.climbLadderId) {
+    const stairs = playerStairOption(b,u);
+    if (input.stairId) {
+      if (stairs && !stairs.blocked && stairs.stair.id === input.stairId) startStairs(b, u, stairs.stair, stairs.ascending);
+    } else if (option || input.climbLadderId) {
       if (option && !option.blocked && (!input.climbLadderId || option.ladder.id===input.climbLadderId)) startClimb(b,u,option.ladder,true);
-    } else if (stair&&!u.mounted) startStairs(b, u, stair, !u.wallId);
+    } else if (stairs) {
+      if (!stairs.blocked) startStairs(b, u, stairs.stair, stairs.ascending);
+    }
     else if (u.family === 'mounted' && !u.wallId&&!u.action) {
       u.mounted=!u.mounted;u.speed=0;u.horseLean=0;u.chargeDistance=0;
       if (u.weapon==='lance') u.sidearm=!u.mounted;
@@ -1628,7 +1665,7 @@ function updateMorale(b) {
     }
   }
 }
-function separateUnits(b, active, dt) {
+function separateUnits(b, active, dt, controlledId) {
   // Only nearby ground bodies can collide. Sweep by their initial x coordinate;
   // the small extra margin covers nudges from preceding pairs in this step.
   const bodies=active.filter(u=>u.type!=='ram'&&!u.wallId&&!(u.order.kind==='crew'&&u.atHandle)&&!['climb','stairs'].includes(u.action?.kind))
@@ -1643,9 +1680,10 @@ function separateUnits(b, active, dt) {
     const d=Math.sqrt(squared);
     if (u.family === 'mounted' && u.speed > 4 && u.side === v.side) { u.speed *= .7; u.chargeDistance = 0; }
     const push = Math.min((radius - d) * .5, dt * 2), direction = d > .0001 ? Math.atan2(dx, dz) : hash(`${u.id}:${v.id}`) / 4294967296 * TAU;
-    const x = Math.sin(direction) * push, z = Math.cos(direction) * push;
-    if (!obstruction(b, u.x - x, u.z - z, u)) { u.x -= x; u.z -= z; }
-    if (!obstruction(b, v.x + x, v.z + z, v)) { v.x += x; v.z += z; }
+    const scale = u.id === controlledId || v.id === controlledId ? 2 : 1;
+    const x = Math.sin(direction) * push * scale, z = Math.cos(direction) * push * scale;
+    if (u.id !== controlledId && !obstruction(b, u.x - x, u.z - z, u)) { u.x -= x; u.z -= z; }
+    if (v.id !== controlledId && !obstruction(b, v.x + x, v.z + z, v)) { v.x += x; v.z += z; }
   }
 }
 function canSecureKeep(b, u) {
@@ -1746,7 +1784,7 @@ function tick(b, input) {
     else aiUnit(b, u, active, dt, guides.get(u.id));
     if(u.mounted&&alive(u)&&u.speed>0&&u.horseStepAt!==b.time)moveHorse(b,u,u.facing,0,dt);
   }
-  separateUnits(b, active.filter(alive), dt); updateProjectiles(b, dt);
+  separateUnits(b, active.filter(alive), dt, !b.auto && !input.commanderAI ? b.commanderId : null); updateProjectiles(b, dt);
   for (const ram of active) if (ram.type==='ram' && alive(ram)) updateRam(b,ram,dt);
   for (const l of b.layout.ladders) if (l.held && !active.some(u => fighting(u) && u.action?.ladderId===l.id && u.action.progress>=.75)) l.held=false;
   checkVictory(b);
@@ -1758,9 +1796,10 @@ export function stepBattle(b, dt, input = {}) {
   b.pendingInput ||= {};
   for (const key of ['attack', 'interact', 'heavy', 'blockPressed']) if (input[key]) b.pendingInput[key] = true;
   if (input.climbLadderId) b.pendingInput.climbLadderId=input.climbLadderId;
+  if (input.stairId) b.pendingInput.stairId=input.stairId;
   while (b.accumulator + 1e-9 >= STEP && b.phase === 'combat') {
     b.accumulator -= STEP;
-    tick(b, { ...input, attack: input.attack || b.pendingInput.attack, interact: input.interact || b.pendingInput.interact, heavy: input.heavy || b.pendingInput.heavy, blockPressed:!!b.pendingInput.blockPressed, climbLadderId:b.pendingInput.climbLadderId });
+    tick(b, { ...input, attack: input.attack || b.pendingInput.attack, interact: input.interact || b.pendingInput.interact, heavy: input.heavy || b.pendingInput.heavy, blockPressed:!!b.pendingInput.blockPressed, climbLadderId:b.pendingInput.climbLadderId, stairId:b.pendingInput.stairId });
     b.pendingInput = {};
   }
   return b;

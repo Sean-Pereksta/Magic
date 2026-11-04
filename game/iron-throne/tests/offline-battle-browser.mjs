@@ -17,6 +17,13 @@ const root=fileURLToPath(new URL('../../../',import.meta.url));
 const server=http.createServer(async(req,res)=>{try{let name=decodeURIComponent(new URL(req.url,'http://localhost').pathname);if(name.endsWith('/'))name+='index.html';const file=path.resolve(root,`.${name}`);if(!file.startsWith(root))throw Error();const body=await readFile(file);res.writeHead(200,{'Content-Type':{'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.json':'application/json','.css':'text/css','.svg':'image/svg+xml'}[path.extname(file)]||'application/octet-stream'});res.end(body);}catch{res.writeHead(404);res.end();}});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${server.address().port}`,key='catnmice.iron-throne.v1';
+const commandableTroops = b => b.units.filter(u => u.owner === b.playerOwner && u.id !== b.commanderId);
+async function resumeWithPausedClock(page){
+  const resume=page.locator('#resume');
+  for(let i=0;i<300&&(!await resume.isVisible()||!await resume.isEnabled());i++)await page.clock.runFor(50);
+  await resume.click({force:true});
+  for(let i=0;i<300&&!await page.locator('[data-battle-action=enter]').isVisible();i++)await page.clock.runFor(50);
+}
 function fixture(stressCap,defending=false){
   const s=parseSave(JSON.stringify(createGame(321))),a=s.armies[0],d=s.armies[1];
   declareWar(s,a.owner,d.owner);
@@ -83,9 +90,11 @@ async function checkBattlefieldHotkeys(page,custom){
     await page.locator('#battle-pause-sensitivity').selectOption('1');
     await page.locator('[data-battle-action=resume]').click();
   }
-  const archerUnits=b=>b.units.filter(u=>u.owner===b.playerOwner&&['archer','veteranArcher'].includes(u.type)&&['active','reserve'].includes(u.status));
-  const cavalryOrders=b=>b.units.filter(u=>u.owner===b.playerOwner&&u.family==='mounted').map(u=>({id:u.id,order:u.order,formation:u.formation,holdFire:u.holdFire}));
+  const archerUnits=b=>commandableTroops(b).filter(u=>['archer','veteranArcher'].includes(u.type)&&['active','reserve'].includes(u.status));
+  const cavalryOrders=b=>commandableTroops(b).filter(u=>u.family==='mounted').map(u=>({id:u.id,order:u.order,formation:u.formation,holdFire:u.holdFire}));
   const original=await saved();assert.equal(await page.locator('#battle-command-panel').isVisible(),false);
+  const commandKeys=await page.locator('[data-battle-key] kbd').allTextContents();
+  for(const key of ['W','A','S','D','Shift','Space','E'])assert.equal(commandKeys.includes(key),false,`${key} is reserved for personal control`);
   await page.locator('#battle-canvas').focus();await page.keyboard.press('4');await page.keyboard.press('F3');
   const charged=await saved();assert.ok(archerUnits(charged).every(u=>u.order.kind==='charge'));
   assert.deepEqual(cavalryOrders(charged),cavalryOrders(original),'keyboard archer charge leaves cavalry orders untouched');
@@ -121,9 +130,12 @@ async function checkBattlefieldHotkeys(page,custom){
   await page.locator('.battle-saved-groups summary').click();await page.locator('#battle-canvas').focus();
   await page.keyboard.press('Tab');
   await page.waitForFunction(()=>document.querySelector('#battle-mode').textContent.includes('REAL TIME'));
+  const officerBefore=(await saved()).units.find(u=>u.commander);
   await page.keyboard.down('a');await page.waitForTimeout(120);await page.keyboard.up('a');
   assert.ok(archerUnits(await saved()).every(u=>u.order.kind==='hold'),'A pans left in tactical view instead of issuing an attack order');
   await page.keyboard.press('g');assert.ok(archerUnits(await saved()).every(u=>u.order.kind==='move'),'G sends the selected troops to aimed ground');
+  const officerAfter=(await saved()).units.find(u=>u.commander);
+  assert.deepEqual([officerAfter.x,officerAfter.z,officerAfter.order],[officerBefore.x,officerBefore.z,officerBefore.order],'tactical camera movement and orders leave the commander in place');
   await page.keyboard.press('8');assert.equal(await page.locator('#battle-saved-group').inputValue(),custom.id,'8 reselects the first saved command group');
   await page.keyboard.press('Tab');await page.keyboard.press('q');assert.equal(await page.locator('#battle-command-panel').isVisible(),false);
 }
@@ -144,7 +156,7 @@ async function checkCommanderMovement(browser){
       await page.clock.install({time:start});await page.clock.pauseAt(new Date(+start+1000));
       await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
       await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
-      await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click({force:true});
+      await page.goto(`${base}/game/iron-throne/index.html`);await resumeWithPausedClock(page);
       await page.locator('[data-battle-action=enter]').click({force:true});
       for(let n=0;n<300&&await page.locator('#battle-mode').textContent()!=='LEAD THE BATTLE';n++)await page.clock.runFor(50);
       assert.equal(await page.locator('#battle-mode').textContent(),'LEAD THE BATTLE');
@@ -198,6 +210,48 @@ async function checkCommanderMovement(browser){
   }
   console.log('Mounted commander accelerates, steers toward independent mouse look, turns on D and coasts. A foot spearman tracks the same mouse input at a bounded rate.');
 }
+async function checkPlayerStairs(browser){
+  for(const mobile of [false,true]){
+    const initial=fixture();beginEncounter(initial);
+    const b=createBattle(initial.offlineBattle);beginBattle(b);
+    const player=b.units.find(u=>u.commander),enemy=b.units.find(u=>u.side!==player.side),stair=b.layout.stairs[0];
+    for(const u of b.units)if(u!==player&&u!==enemy)u.status='escaped';
+    Object.assign(player,{x:stair.x,z:stair.z,y:terrainHeight(b,stair.x,stair.z),facing:0});
+    Object.assign(enemy,{x:0,z:50,wallId:null,wallPosition:null,explicitOrder:true,holdFire:true,order:{kind:'hold',x:0,z:50}});
+    saveEncounterCheckpoint(initial,b);
+    const context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1280,height:860},hasTouch:mobile});
+    try{
+      await context.addInitScript(({initial,key})=>localStorage.setItem(key,JSON.stringify(initial)),{initial,key});
+      const page=await context.newPage(),start=new Date('2026-11-04T12:00:00Z');
+      await page.clock.install({time:start});await page.clock.pauseAt(new Date(+start+1000));
+      await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
+      await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
+      await page.goto(`${base}/game/iron-throne/index.html`);await resumeWithPausedClock(page);
+      await page.locator('[data-battle-action=enter]').click({force:true});
+      for(let i=0;i<300&&await page.locator('#battle-mode').textContent()!=='LEAD THE BATTLE';i++)await page.clock.runFor(50);
+      const button=page.locator('#battle-player-climb');
+      const savedPlayer=async()=>{await page.keyboard.press('1');return page.evaluate(key=>{
+        const b=JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint;return b.units.find(u=>u.commander);
+      },key);};
+      assert.match(await button.textContent(),/Ascend Stairs/);
+      assert.equal(await button.getAttribute('data-stair'),stair.id);
+      await page.keyboard.down('d');await page.clock.runFor(150);await page.keyboard.up('d');
+      assert.equal((await savedPlayer()).action,null,'walking beside stairs leaves personal control active');
+      if(mobile)await button.tap({force:true});else await page.keyboard.press('e');
+      await page.clock.runFor(100);
+      assert.equal((await savedPlayer()).action?.kind,'stairs');
+      await page.clock.runFor(4300);
+      assert.equal((await savedPlayer()).wallId,stair.wallId);
+      assert.match(await button.textContent(),/Descend Stairs/);
+      await page.clock.runFor(300);
+      assert.equal((await savedPlayer()).action,null,'arrival does not immediately reverse the stair traversal');
+      if(mobile)await button.tap({force:true});else await page.keyboard.press('e');
+      await page.clock.runFor(4300);
+      assert.equal((await savedPlayer()).wallId,null);
+      console.log(`PASS ${mobile?'phone':'desktop'}: personal stairs require E or the contextual button in both directions`);
+    }finally{await context.close();}
+  }
+}
 async function checkPlayerLadder(browser){
   for(const scenario of ['desktop','phone-occupied','phone-destroyed']){
     const mobile=scenario!=='desktop',initial=fixture();beginEncounter(initial);
@@ -221,7 +275,7 @@ async function checkPlayerLadder(browser){
       await page.clock.install({time:start});await page.clock.pauseAt(new Date(+start+1000));
       await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
       await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
-      await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click({force:true});
+      await page.goto(`${base}/game/iron-throne/index.html`);await resumeWithPausedClock(page);
       await page.locator('[data-battle-action=enter]').click({force:true});
       for(let i=0;i<300&&await page.locator('#battle-mode').textContent()!=='LEAD THE BATTLE';i++)await page.clock.runFor(50);
       assert.equal(await page.locator('#battle-mode').textContent(),'LEAD THE BATTLE');
@@ -279,7 +333,7 @@ async function checkMobileGuard(browser){
     await page.clock.install({time:clockStart});await page.clock.pauseAt(new Date(+clockStart+1000));
     await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
     await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
-    await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click({force:true});
+    await page.goto(`${base}/game/iron-throne/index.html`);await resumeWithPausedClock(page);
     await page.locator('[data-battle-action=enter]').click({force:true});
     for(let i=0;i<300&&await page.locator('#battle-mode').textContent()!=='LEAD THE BATTLE';i++)await page.clock.runFor(50);
     assert.equal(await page.locator('#battle-mode').textContent(),'LEAD THE BATTLE');
@@ -339,7 +393,7 @@ async function checkBattleHUD(browser){
           assert.equal(await page.locator(selector).isVisible(),false,`${selector} leaves the field clear`);
         }
       };
-      await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
+      await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();await page.locator('#welcome').waitFor({state:'hidden'});
       await page.locator('[data-battle-action=enter]').click();await toggle.waitFor();
       await page.waitForFunction(key=>JSON.parse(localStorage.getItem(key)).offlineBattle?.checkpoint?.phase==='deployment',key);
       if(!await panel.isVisible())await page.keyboard.press('q');
@@ -352,7 +406,7 @@ async function checkBattleHUD(browser){
       await page.locator('[data-battle-action=begin]').click();
       await page.waitForFunction(()=>document.querySelector('#battle-mode').textContent==='LEAD THE BATTLE');
       await assertMinimized();await page.keyboard.press('4');await page.keyboard.press('F2');
-      const recalled=await saved(),archers=recalled.units.filter(u=>u.owner===recalled.playerOwner&&u.type==='archer');
+      const recalled=await saved(),archers=commandableTroops(recalled).filter(u=>u.type==='archer');
       assert.ok(archers.length&&archers.every(u=>u.order.kind==='follow'),'hidden HUD still accepts troop and order hotkeys');
       if(mobile){
         const stick=page.locator('#battle-stick'),attack=page.locator('[data-battle-touch=attack]');
@@ -387,7 +441,7 @@ async function checkBattleHUD(browser){
       const recovery=fixture();beginEncounter(recovery);const b=createBattle(recovery.offlineBattle);beginBattle(b);
       Object.assign(commander(b),{status:'dead',hp:0,action:null});saveEncounterCheckpoint(recovery,b);
       await page.evaluate(({key,recovery})=>localStorage.setItem(key,JSON.stringify(recovery)),{key,recovery});
-      await page.reload();await page.locator('#resume').click();await page.locator('[data-battle-action=enter]').click();
+      await page.reload();await page.locator('#resume').click();await page.locator('#welcome').waitFor({state:'hidden'});await page.locator('[data-battle-action=enter]').click();
       await page.waitForFunction(()=>document.querySelector('#battle-mode').textContent.includes('TACTICAL'));
       assert.match(await toggle.textContent(),/Hide UI/i);
       assert.equal(await panel.isVisible(),false,'incapacitation changes camera without forcing the full panel open');
@@ -410,7 +464,6 @@ async function checkSiegePicking(browser){
     assert.equal(b.playerSide,Number(defending));
     const commander=b.units.find(u=>u.commander),z=defending?35:-8,yaw=defending?Math.PI:0;
     Object.assign(commander,{x:0,y:0,z,facing:yaw,wallId:null,wallPosition:null});
-    issueOrder(b,[commander.id],'hold',{atCurrent:true});
     const ram=b.units.find(u=>u.type==='ram');
     if(!defending)Object.assign(ram,{x:12,y:terrainHeight(b,12,-13),z:-13});
     saveEncounterCheckpoint(initial,b);
@@ -421,7 +474,7 @@ async function checkSiegePicking(browser){
       page.on('pageerror',error=>console.error(error.message));
       await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
       await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
-      await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
+      await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();await page.locator('#welcome').waitFor({state:'hidden'});
       await page.locator('[data-battle-action=enter]').click();
       await page.waitForFunction(()=>document.querySelector('#battle-mode').textContent==='LEAD THE BATTLE');
       if(defending)assert.ok((await page.locator('#battle-player-status').textContent()).includes(`Accuracy ${rangedAccuracy(b,commander)}/100`),'an archer commander sees his own current rating');
@@ -440,17 +493,17 @@ async function checkSiegePicking(browser){
         await page.keyboard.press('5');
         assert.match(await page.locator('#battle-live-selection').textContent(),/Crossbows .*Accuracy \d+(?:–\d+)?\/100/);
         await page.keyboard.press('4');
-        const grades=b.units.filter(u=>u.owner===b.playerOwner&&u.type==='archer').map(u=>rangedAccuracy(b,u));
+        const grades=commandableTroops(b).filter(u=>u.type==='archer').map(u=>rangedAccuracy(b,u));
         assert.ok((await page.locator('#battle-live-selection').textContent()).includes(`Accuracy ${Math.min(...grades)}–${Math.max(...grades)}/100 · +10 on parapets`),'selected archer ratings include their occupied wall posts');
         await page.keyboard.press('v');
         await page.mouse.click(...screenPoint({x:wall.x,y:wall.height,z:wall.z}));
-        const guards=(await saved()).units.filter(u=>u.owner===b.playerOwner&&u.type==='archer'&&u.status==='active');
+        const guards=commandableTroops(await saved()).filter(u=>u.type==='archer'&&u.status==='active');
         assert.ok(guards.length&&guards.every(u=>u.order.kind==='walls'&&u.order.wallId===wall.id),'V assigns the selected archers to the clicked parapet');
       }else{
         const ladder=b.layout.ladders[0];
         await page.keyboard.press('3');await page.keyboard.press('l');
         await page.touchscreen.tap(...screenPoint({x:ladder.x,y:ladder.height/2,z:(ladder.foot.z+ladder.landing.z)/2}));
-        const spears=(await saved()).units.filter(u=>u.owner===b.playerOwner&&u.type==='spearman'&&u.status==='active');
+        const spears=commandableTroops(await saved()).filter(u=>u.type==='spearman'&&u.status==='active');
         assert.ok(spears.length&&spears.every(u=>u.order.kind==='ladder'&&u.order.ladderId===ladder.id),'a battlefield tap sends the company to the west ladder');
         await page.mouse.move(width/2,height/2);await page.keyboard.press('2');await page.keyboard.press('b');
         await page.mouse.click(...screenPoint({x:ram.x,y:ram.y+.8,z:ram.z}));
@@ -474,13 +527,13 @@ async function stressCommands(browser){
     page.on('pageerror',error=>errors.push(error.message));
     await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
     await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
-    await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
+    await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();await page.locator('#welcome').waitFor({state:'hidden'});
     await page.locator('[data-battle-action=enter]').click();
     await page.waitForFunction(()=>document.querySelector('#battle-mode').textContent==='LEAD THE BATTLE');
     const saved=()=>page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
     await page.keyboard.down('Shift');await page.keyboard.press('4');await page.keyboard.press('F2');await page.keyboard.up('Shift');
     let snapshot=await saved();
-    const selected=b=>b.units.filter(u=>u.owner===b.playerOwner&&u.type==='archer'&&!['dead','escaped'].includes(u.status));
+    const selected=b=>commandableTroops(b).filter(u=>u.type==='archer'&&!['dead','escaped'].includes(u.status));
     assert.ok(selected(snapshot).length&&selected(snapshot).every(u=>u.order.kind==='follow'),'Shift+F2 recalls the selected archers');
     await page.locator('[data-battle-key=hold]').click();
     assert.ok(selected(await saved()).every(u=>u.order.kind==='hold'),'mouse button holds their ground');
@@ -506,7 +559,8 @@ try{
   else if(process.argv.includes('--targets-only'))await checkSiegePicking(browser);
   else if(process.argv.includes('--hud-only'))await checkBattleHUD(browser);
   else if(process.argv.includes('--block-only'))await checkMobileGuard(browser);
-  else if(process.argv.includes('--player-climb-only'))await checkPlayerLadder(browser);
+  else if(process.argv.includes('--player-stairs-only'))await checkPlayerStairs(browser);
+  else if(process.argv.includes('--player-climb-only')){await checkPlayerLadder(browser);await checkPlayerStairs(browser);}
   else if(process.argv.includes('--mounted-controls-only'))await checkCommanderMovement(browser);
   else {
   for(const viewport of [{width:1365,height:900},{width:390,height:844}]){
@@ -517,13 +571,13 @@ try{
     if(process.env.IRON_BATTLE_DEBUG){page.on('response',r=>{if(r.status()>=400&&r.url().startsWith(base))console.error(r.status(),r.url());});page.on('pageerror',error=>console.error(error.message));}
     await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
     await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
-    await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
+    await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();await page.locator('#welcome').waitFor({state:'hidden'});
     await page.locator('#battle-encounter').waitFor({state:'visible'});
     assert.match(await page.locator('#battle-title').textContent(),/Stonewatch/);
     assert.equal(await page.locator('#battle-encounter-size').inputValue(),'300','new campaigns default to larger armies');
     await page.locator('#battle-encounter-size').selectOption('200');
     assert.equal(await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattles.battleSize,key),200);
-    await page.reload();await page.locator('#resume').click();
+    await page.reload();await page.locator('#resume').click();await page.locator('#welcome').waitFor({state:'hidden'});
     assert.equal(await page.locator('#battle-encounter-size').inputValue(),'200','battle size preference survives reloading before deployment');
     await page.locator('[data-battle-action=close]').first().click();
     assert.equal(await page.locator('#battle-pending').isVisible(),true);
@@ -541,21 +595,24 @@ try{
     await page.locator('#battle-army').selectOption(initial.armies[0].id);
     await page.locator('[data-battle-group=archers]').click();
     assert.equal(await page.locator('[data-battle-group=archers]').getAttribute('aria-pressed'),'true');
-    assert.equal(await page.locator('[data-battle-group-count=archers]').textContent(),'6');
+    const armyArchers = b => commandableTroops(b).filter(u=>u.armyId===initial.armies[0].id&&u.type==='archer');
+    assert.equal(await page.locator('[data-battle-group-count=archers]').textContent(),String(armyArchers(beforeOrders).length));
     const card=await page.locator('[data-battle-group=archers]').boundingBox();
     const touch=await page.evaluate(()=>matchMedia('(pointer: coarse)').matches);
     assert.ok(touch?Math.min(card.width,card.height)>=44:card.height>=34,'troop cards fit the primary input device');
     await page.locator('#battle-formation').selectOption('skirmish');
     assert.match(await page.locator('#battle-order-status').textContent(),/Skirmish applied/);
     let commands=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
-    const mounted=b=>b.units.filter(u=>u.armyId===initial.armies[0].id&&u.family==='mounted');
+    const mounted=b=>commandableTroops(b).filter(u=>u.armyId===initial.armies[0].id&&u.family==='mounted');
     assert.deepEqual(mounted(commands),mounted(beforeOrders),'reforming archers leaves cavalry orders and positions untouched');
-    assert.ok(commands.units.filter(u=>u.armyId===initial.armies[0].id&&u.type==='archer').every(u=>u.formation==='skirmish'),'formation selection takes effect without another order');
+    assert.ok(armyArchers(commands).every(u=>u.formation==='skirmish'),'formation selection takes effect without another order');
+    assert.deepEqual(commands.units.find(u=>u.commander),beforeOrders.units.find(u=>u.commander),'troop formation changes leave the commander untouched');
     await page.locator('.battle-saved-groups summary').click();
     await page.locator('#battle-group-name').fill('Left flank archers');
     await page.locator('[data-battle-action=save-group]').click();
     commands=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
-    const custom=commands.commandGroups[0];assert.equal(custom.name,'Left flank archers');assert.equal(custom.unitIds.length,6);
+    const custom=commands.commandGroups[0];assert.equal(custom.name,'Left flank archers');assert.equal(custom.unitIds.length,armyArchers(commands).length);
+    assert.equal(custom.unitIds.includes(commands.commanderId),false,'saved command groups exclude the commander');
     assert.ok(custom.unitIds.every(id=>commands.units.some(u=>u.id===id&&u.armyId===initial.armies[0].id&&u.type==='archer')),'saved groups preserve exact source army and troop membership');
     await page.locator('[data-battle-group=cavalry]').click();
     await page.locator('#battle-formation').selectOption('wedge');
@@ -588,7 +645,7 @@ try{
     const lowerPreference=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)),key);
     assert.equal(lowerPreference.offlineBattles.battleSize,100);
     assert.deepEqual(lowerPreference.offlineBattle.checkpoint,checkpoint,'changing the next-battle size does not resize or restart a saved battle');
-    await page.reload();await page.locator('#resume').click();
+    await page.reload();await page.locator('#resume').click();await page.locator('#welcome').waitFor({state:'hidden'});
     assert.match(await page.locator('[data-battle-action=enter]').textContent(),/Resume/);
     assert.equal(await page.locator('#battle-encounter-size').inputValue(),'200','resuming retains the checkpoint size despite a lower preference');
     assert.equal(await page.locator('#battle-encounter-size').isDisabled(),true);
@@ -609,7 +666,7 @@ try{
     parseSave(JSON.stringify(applied));
     const report=applied.lastOfflineBattleReport;
     for(const p of report.participants){const row=report.result.armies.find(a=>a.armyId===p.armyId);for(const [type,n]of Object.entries(p.units))assert.equal(n,(row.units[type]||0)+(row.losses[type]||0));}
-    await page.reload();await page.locator('#resume').click();
+    await page.reload();await page.locator('#resume').click();await page.locator('#welcome').waitFor({state:'hidden'});
     const again=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)),key);assert.deepEqual(again.armies,applied.armies,'reloading the report does not reapply casualties');
     await page.locator('[data-battle-action=report]').click();
     await page.getByRole('button',{name:'Close report'}).click();
@@ -622,7 +679,7 @@ try{
   await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
   await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
   await page.route('**/assets/battle/v1/pack.json',route=>route.fulfill({status:503,body:''}));
-  await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
+  await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();await page.locator('#welcome').waitFor({state:'hidden'});
   await page.evaluate(()=>{window.originalStorageSet=Storage.prototype.setItem;Storage.prototype.setItem=function(){throw new DOMException('Quota exceeded','QuotaExceededError');};});
   await page.locator('[data-battle-action=enter]').click();
   await page.waitForFunction(()=>document.querySelector('#battle-notice').textContent.includes('could not be saved'));
@@ -640,6 +697,7 @@ try{
   await checkBattleHUD(browser);
   await checkMobileGuard(browser);
   await checkPlayerLadder(browser);
+  await checkPlayerStairs(browser);
   await checkCommanderMovement(browser);
   }
 }finally{await browser?.close();await new Promise(r=>server.close(r));}

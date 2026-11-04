@@ -29,7 +29,9 @@ test('portrait registry is included in the bounded shared startup loader', async
 test('entry points enhance the existing app instead of replacing it', async () => {
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.equal((html.match(/src="\.\/correspondence\.mjs"/g) || []).length, 1);
-  assert.equal((html.match(/src="\.\/app\.mjs"/g) || []).length, 1);
+  assert.equal((html.match(/src="\.\/boot\.mjs"/g) || []).length, 1);
+  const boot = await readFile(new URL('../boot.mjs', import.meta.url), 'utf8');
+  assert.equal((boot.match(/import\('\.\/app\.mjs'\)/g) || []).length, 1);
   for (const id of ['messages','proposals','offer-form','council-records','gemini-diagnostics']) {
     assert.equal((html.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1);
   }
