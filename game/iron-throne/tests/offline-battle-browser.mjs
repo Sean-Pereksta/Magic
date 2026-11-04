@@ -8,7 +8,7 @@ import { createGame } from './fixtures/legacy-game.mjs';
 import { declareWar, orderArmy, resolveMovement, parseSave } from '../core.mjs';
 import { emptyUnits } from '../economy.mjs';
 import { configureOfflineBattles, beginEncounter, saveEncounterCheckpoint } from '../offline-encounters.mjs';
-import { beginBattle, createBattle, issueOrder, stepBattle, terrainHeight } from '../battle-sim.mjs';
+import { beginBattle, createBattle, issueOrder, rangedAccuracy, stepBattle, terrainHeight } from '../battle-sim.mjs';
 import { ramApproach, ramHandle } from '../battle-siege.mjs';
 
 const require=createRequire(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES?`${process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES}/playwright/package.json`:import.meta.url);
@@ -24,9 +24,10 @@ function fixture(stressCap,defending=false){
   Object.assign(a,{name:'Ember Vanguard',tile:'10,10',units:{...emptyUnits(),menAtArms:14,spearman:8,archer:6,knight:3,ram:1},path:[],target:null,order:'hold',morale:1});
   Object.assign(d,{name:'Wintermere Guard',tile:'11,10',units:{...emptyUnits(),levy:18,crossbow:4},path:[],target:null,order:'hold',morale:1});
   const attacker=defending?d:a,defender=defending?a:d;
+  if(defending)a.units.crossbow=3;
   Object.assign(s.tiles[defender.tile],{owner:defender.owner,name:'Stonewatch',building:'fort',levels:{fort:1,wall:1},walls:42,fortIntegrity:55});
   s.armies.push({...structuredClone(a),id:`army-${s.nextId++}`,name:'Northern Spears',tile:'10,11',units:{...emptyUnits(),spearman:6,lightCavalry:2}});
-  if(stressCap){a.units.menAtArms=110;d.units.levy=95;d.units.crossbow=18;}
+  if(stressCap){a.units.menAtArms=Math.max(110,stressCap/2+10);d.units.levy=Math.max(95,stressCap/2-5);d.units.crossbow=18;}
   configureOfflineBattles(s,stressCap?{battleSize:stressCap}:{});orderArmy(s,attacker.owner,attacker.id,defender.tile,'attack');resolveMovement(s,attacker.owner);
   assert.ok(s.offlineBattle);
   if(stressCap){
@@ -59,6 +60,29 @@ function fixture(stressCap,defending=false){
 }
 async function checkBattlefieldHotkeys(page,custom){
   const saved=()=>page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
+  if(page.viewportSize().width>700){
+    await page.locator('#battle-canvas').focus();
+    const facing=b=>b.units.find(u=>u.id===b.commanderId).facing;
+    const waitForPhysics=()=>page.evaluate(()=>new Promise(resolve=>{
+      const start=performance.now();let frames=0;
+      function frame(now){if(++frames>=3&&now-start>=110)resolve();else requestAnimationFrame(frame);}
+      requestAnimationFrame(frame);
+    }));
+    const {width,height}=page.viewportSize(),x=Math.floor(width/2),y=Math.floor(height/2);
+    for(const sensitivity of [1,3]){
+      await page.keyboard.press('Escape');
+      await page.locator('#battle-pause-sensitivity').selectOption(String(sensitivity));
+      await page.locator('[data-battle-action=resume]').click();
+      await page.mouse.move(x,y);await waitForPhysics();await page.keyboard.press('4');
+      const before=facing(await saved());
+      await page.mouse.move(x+10,y);await waitForPhysics();await page.keyboard.press('4');
+      const after=facing(await saved());
+      assert.ok(Math.abs((after-before)-.06*sensitivity)<.001,`10 mouse pixels at ${sensitivity}× rotated from ${before} to ${after}`);
+    }
+    await page.keyboard.press('Escape');
+    await page.locator('#battle-pause-sensitivity').selectOption('1');
+    await page.locator('[data-battle-action=resume]').click();
+  }
   const archerUnits=b=>b.units.filter(u=>u.owner===b.playerOwner&&['archer','veteranArcher'].includes(u.type)&&['active','reserve'].includes(u.status));
   const cavalryOrders=b=>b.units.filter(u=>u.owner===b.playerOwner&&u.family==='mounted').map(u=>({id:u.id,order:u.order,formation:u.formation,holdFire:u.holdFire}));
   const original=await saved();assert.equal(await page.locator('#battle-command-panel').isVisible(),false);
@@ -179,7 +203,13 @@ async function checkSiegePicking(browser){
   const width=1280,height=800;
   for(const defending of [false,true]){
     const initial=fixture(undefined,defending);beginEncounter(initial);
-    const b=createBattle(initial.offlineBattle);beginBattle(b);
+    const b=createBattle(initial.offlineBattle);
+    if(defending){
+      const [captain,guard]=b.units.filter(u=>u.type==='archer'&&u.owner===b.playerOwner);
+      b.units.find(u=>u.commander).commander=false;captain.commander=true;b.commanderId=captain.id;
+      issueOrder(b,[guard.id],'walls',{wallId:'wall-east-front'});
+    }
+    beginBattle(b);
     assert.equal(b.playerSide,Number(defending));
     const commander=b.units.find(u=>u.commander),z=defending?35:-8,yaw=defending?Math.PI:0;
     Object.assign(commander,{x:0,y:0,z,facing:yaw,wallId:null,wallPosition:null});
@@ -191,12 +221,15 @@ async function checkSiegePicking(browser){
     try{
       await context.addInitScript(({initial,key})=>{if(!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify(initial));},{initial,key});
       const page=await context.newPage();
+      page.on('pageerror',error=>console.error(error.message));
       await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
       await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
       await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
       await page.locator('[data-battle-action=enter]').click();
       await page.waitForFunction(()=>document.querySelector('#battle-mode').textContent==='LEAD THE BATTLE');
-      await page.keyboard.press('Tab');await page.waitForFunction(()=>document.querySelector('#battle-mode').textContent.includes('TACTICAL'));
+      if(defending)assert.ok((await page.locator('#battle-player-status').textContent()).includes(`Accuracy ${rangedAccuracy(b,commander)}/100`),'an archer commander sees his own current rating');
+      await page.locator('#battle-canvas').focus();await page.keyboard.press('Tab');
+      await page.waitForFunction(()=>document.querySelector('#battle-mode').textContent.includes('TACTICAL'));
       const saved=()=>page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
       // Project the physical objects into the ordinary tactical camera. The UI alone performs all picks.
       function screenPoint({x,y,z:worldZ}){
@@ -207,7 +240,12 @@ async function checkSiegePicking(browser){
       const wall=b.layout.walls.find(w=>w.id==='wall-east-front');
       await page.mouse.move(width/2,height/2);
       if(defending){
-        await page.keyboard.press('4');await page.keyboard.press('v');
+        await page.keyboard.press('5');
+        assert.match(await page.locator('#battle-live-selection').textContent(),/Crossbows .*Accuracy \d+(?:–\d+)?\/100/);
+        await page.keyboard.press('4');
+        const grades=b.units.filter(u=>u.owner===b.playerOwner&&u.type==='archer').map(u=>rangedAccuracy(b,u));
+        assert.ok((await page.locator('#battle-live-selection').textContent()).includes(`Accuracy ${Math.min(...grades)}–${Math.max(...grades)}/100 · +10 on parapets`),'selected archer ratings include their occupied wall posts');
+        await page.keyboard.press('v');
         await page.mouse.click(...screenPoint({x:wall.x,y:wall.height,z:wall.z}));
         const guards=(await saved()).units.filter(u=>u.owner===b.playerOwner&&u.type==='archer'&&u.status==='active');
         assert.ok(guards.length&&guards.every(u=>u.order.kind==='walls'&&u.order.wallId===wall.id),'V assigns the selected archers to the clicked parapet');
@@ -224,7 +262,7 @@ async function checkSiegePicking(browser){
         const snapshot=await saved(),beam=snapshot.units.find(u=>u.id===ram.id);
         assert.equal(beam.ramTargetId,wall.id);
         assert.ok(snapshot.units.filter(u=>u.order.kind==='crew'&&u.order.ramId===beam.id).length>=6,'B assigns selected infantry to the clicked timber and east wall');
-        await page.waitForFunction(()=>document.querySelector('#battle-siege-status')?.textContent.includes('/6 carriers · 4 needed to lift'));
+        await page.waitForFunction(()=>document.querySelector('#battle-siege-status')?.textContent.includes('/6 pushers · 4 needed to roll'));
       }
       assert.ok(!await page.locator('#battlefield').evaluate(f=>f.classList.contains('is-targeting')));
     }finally{await context.close();}
@@ -232,7 +270,7 @@ async function checkSiegePicking(browser){
   console.log('Live siege battlefield clicks and taps selected the west ladder, friendly ram, east breach and defensive parapet.');
 }
 async function stressCommands(browser){
-  for(const cap of [150,200]){
+  for(const cap of [150,200,300,400]){
     const context=await browser.newContext({viewport:{width:950,height:700},hasTouch:true});
     await context.addInitScript(({initial,key})=>{if(!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify(initial));},{initial:fixture(cap),key});
     const page=await context.newPage(),errors=[];
@@ -282,7 +320,7 @@ try{
     await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
     await page.locator('#battle-encounter').waitFor({state:'visible'});
     assert.match(await page.locator('#battle-title').textContent(),/Stonewatch/);
-    assert.equal(await page.locator('#battle-encounter-size').inputValue(),'150','new battles default to the balanced size');
+    assert.equal(await page.locator('#battle-encounter-size').inputValue(),'300','new campaigns default to larger armies');
     await page.locator('#battle-encounter-size').selectOption('200');
     assert.equal(await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattles.battleSize,key),200);
     await page.reload();await page.locator('#resume').click();
@@ -304,7 +342,9 @@ try{
     await page.locator('[data-battle-group=archers]').click();
     assert.equal(await page.locator('[data-battle-group=archers]').getAttribute('aria-pressed'),'true');
     assert.equal(await page.locator('[data-battle-group-count=archers]').textContent(),'6');
-    assert.ok((await page.locator('[data-battle-group=archers]').boundingBox()).height>=44,'troop cards remain touch-sized');
+    const card=await page.locator('[data-battle-group=archers]').boundingBox();
+    const touch=await page.evaluate(()=>matchMedia('(pointer: coarse)').matches);
+    assert.ok(touch?Math.min(card.width,card.height)>=44:card.height>=34,'troop cards fit the primary input device');
     await page.locator('#battle-formation').selectOption('skirmish');
     assert.match(await page.locator('#battle-order-status').textContent(),/Skirmish applied/);
     let commands=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
@@ -397,5 +437,6 @@ try{
   await page.locator('#battle-result-banner').waitFor({state:'visible'});
   console.log('Offline battlefield storage/model failure recovery passed');await context.close();
   await checkSiegePicking(browser);
+  await checkBattleHUD(browser);
   }
 }finally{await browser?.close();await new Promise(r=>server.close(r));}

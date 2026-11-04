@@ -22,7 +22,7 @@ const prompts = {ground:'Choose highlighted ground',ladder:'Choose an assault la
 const groupKeys = {Digit1:'all',Digit2:'infantry',Digit3:'spearmen',Digit4:'archers',Digit5:'crossbow',Digit6:'cavalry',Digit7:'siege'};
 const savedGroupKeys = {Digit8:0,Digit9:1,Digit0:2};
 const movementKeys = new Set(['KeyW','KeyA','KeyS','KeyD','ShiftLeft','ShiftRight','Space']);
-const sizeOptions = selected => [...BATTLE_SIZE_OPTIONS,...(BATTLE_SIZE_OPTIONS.includes(selected)?[]:[selected])].map(size=>`<option value="${size}" ${size===selected?'selected':''}>${size} · ${{100:'Lighter',150:'Balanced',200:'Large'}[size]||'Saved battle'}</option>`).join('');
+const sizeOptions = selected => [...BATTLE_SIZE_OPTIONS,...(BATTLE_SIZE_OPTIONS.includes(selected)?[]:[selected])].map(size=>`<option value="${size}" ${size===selected?'selected':''}>${size} · ${{100:'Lighter',150:'Balanced',200:'Large',300:'Grand',400:'Massed armies'}[size]||'Saved battle'}</option>`).join('');
 
 // This controller owns only presentation and input. Campaign writes always go
 // through the same validated encounter API and one durable campaign snapshot.
@@ -71,15 +71,34 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     bloodSelect.value=pausedSelect.value=select.value;renderer?.setBlood(select.value);
     try{localStorage.setItem('ironThrones.battleBlood',select.value);}catch{}
   };
+  const mouseRates=[.5,1,1.5,2,3,4];
+  let mouseRate=1;
+  try{const saved=Number(localStorage.getItem('ironThrones.mouseLook'));if(mouseRates.includes(saved))mouseRate=saved;}catch{}
+  const lookSelects=[settings,$('battle-pause').querySelector('section')].map((container,i)=>{
+    const label=document.createElement('label'), select=document.createElement('select');
+    select.id=i?'battle-pause-sensitivity':'offline-battle-sensitivity';
+    for(const rate of mouseRates)select.add(new Option(`${rate}×${rate===1?' · Standard':''}`,String(rate)));
+    select.value=String(mouseRate);label.append('Mouse look sensitivity ',select);
+    container.insertBefore(label,container.querySelector(i?'[data-battle-action="resume"]':'#battle-download'));
+    return select;
+  });
+  for(const select of lookSelects)select.onchange=()=>{
+    mouseRate=Number(select.value);
+    for(const other of lookSelects)other.value=select.value;
+    try{localStorage.setItem('ironThrones.mouseLook',String(mouseRate));}catch{}
+  };
   let sim, renderer, battle=null, frame=0, lastTime=0, lastCheckpoint=0, lastEvent='', lastMilestone='', loading=false, paused=false, finishing=false, graphicsError=false, handledCommanderExit=false;
   let group='all', customGroupId='', order='move', drag=null, pointer=null, stickOrigin=null, camera={mode:'tactical',yaw:0,pitch:.8,distance:90};
   let targeting=null, tacticalAim=null, feedbackUntil=0;
+  let lastHudPaint=0;
   let hudMinimized=false, ordersOpen=false;
   try{hudMinimized=localStorage.getItem('ironThrones.hudMinimized')==='true';}catch{}
   let keys=new Set(), touch={x:0,z:0}, input={attack:false,block:false,sprint:false}, sceneAbort=null;
   const mode=()=>battle?.phase==='deployment'?'deployment':camera.mode;
   let custom=null, dismissedReport=null;
-  const customSetup=installCustomBattle(session=>{custom=session;void enter();});
+  let preferredLimit=null;
+  try{const saved=Number(localStorage.getItem('ironThrones.troopLimit'));if(BATTLE_SIZE_OPTIONS.includes(saved))preferredLimit=saved;}catch{}
+  const customSetup=installCustomBattle(session=>{custom=session;void enter();},()=>preferredLimit);
   const active=()=>custom?.encounter||(!isOnline() && pendingEncounter(getState()));
   function setHud(minimized,open){
     if(minimized!==hudMinimized){
@@ -149,7 +168,15 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     notice(''); if(!encounterDialog.open)encounterDialog.showModal(); sync();
   }
   function forecastText(view){const f=view.automaticForecast||view.forecast;if(typeof f==='string')return f;if(f?.label)return f.label; if(f?.armies)return `Automatic resolution estimate: ${f.armies.map(a=>`${a.name||a.armyId}: ${total(a.losses)} losses`).join(' · ')}`;return 'Automatic resolution estimate will be calculated from the committed forces.';}
-  function setBattleSize(value){try{transact(s=>configureOfflineBattles(s,{battleSize:Number(value)}));}catch(error){notice(error.message);toast(error.message);}sync();}
+  function setBattleSize(value){
+    try{
+      const limit=Number(value);
+      transact(s=>configureOfflineBattles(s,{battleSize:limit}));
+      preferredLimit=limit;
+      try{localStorage.setItem('ironThrones.troopLimit',String(limit));}catch{}
+    }catch(error){notice(error.message);toast(error.message);}
+    sync();
+  }
   async function loadSimulation(){sim ||= await import('./battle-sim.mjs');return sim;}
   const milestone=()=>battle?`${battle.armies.filter(a=>a.arrived).length}:${battle.layout.navRevision||0}:${battle.layout.gate?.hp===0}`:'';
   function checkpoint(){
@@ -172,7 +199,11 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
   });}
   function refreshLiveSelection(){
     const troops=selectedTroops(),scope=!customGroupId&&$('battle-army').value?` · ${$('battle-army').selectedOptions[0]?.textContent||'Selected army'}`:'';
-    const text=`${selectionName()}${scope} · ${troops.filter(u=>u.status==='active').length} deployed · ${troops.filter(u=>u.status==='reserve').length} reserves`;
+    let text=`${selectionName()}${scope} · ${troops.filter(u=>u.status==='active').length} deployed · ${troops.filter(u=>u.status==='reserve').length} reserves`;
+    if(troops.length&&troops.every(u=>u.family==='ranged')){
+      const ratings=troops.map(u=>sim.rangedAccuracy(battle,u)),lo=Math.min(...ratings),hi=Math.max(...ratings);
+      text+=` · Accuracy ${lo===hi?lo:`${lo}–${hi}`}/100 · +${sim.WALL_ACCURACY_BONUS} on parapets`;
+    }
     if($('battle-live-selection').textContent!==text)$('battle-live-selection').textContent=text;
     $('battle-quick-group').value=customGroupId||group;
     return text;
@@ -304,7 +335,9 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     if(p?.status==='reserve'&&!tactical){const escort=battle.units.find(u=>u.side===battle.playerSide&&u.status==='active');if(escort){camera.target={x:escort.x,y:escort.y,z:escort.z};camera.spectating=true;}}
     else if(camera.spectating){delete camera.target;delete camera.spectating;if(p)camera.yaw=p.facing;}
     if(p&&['dead','escaped'].includes(p.status)&&!handledCommanderExit){handledCommanderExit=true;camera.mode='tactical';camera.distance=90;camera.pitch=.8;}
-    try{renderer.render(battle,camera);}catch(error){graphicsError=true;setPause(true);$('battle-pause-note').textContent=`${error.message} Choose Resume to reload the battlefield, or Finish Automatically to preserve your progress.`;return;}updateHUD();
+    try{renderer.render(battle,camera);}catch(error){graphicsError=true;setPause(true);$('battle-pause-note').textContent=`${error.message} Choose Resume to reload the battlefield, or Finish Automatically to preserve your progress.`;return;}
+    // Counts, formation summaries and status text can refresh less often than the 3D view.
+    if(now-lastHudPaint>=100){lastHudPaint=now;updateHUD();}
     if(battle.phase==='complete'&&!paused&&!finishing){finishResult();return;}
     if(battle.time-lastCheckpoint>=5||milestone()!==lastMilestone){try{checkpoint();}catch(error){setPause(true);$('battle-pause-note').textContent=error.message;}}
     frame=requestAnimationFrame(tick);
@@ -320,17 +353,19 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     $('battle-army-counts').textContent=`Your deployed ${deployed} · Reserves ${friendly.filter(u=>u.status==='reserve').length} | Enemy deployed ${enemy.length} · Field ${deployed+enemy.length}/${battle.maxActive}`;
     const siegeStatus=[];
     for(const ram of friendly.filter(u=>u.type==='ram'&&u.status==='active'&&u.ramTargetId)){
-      const n=ram.crewCount||0; siegeStatus.push(`${n}/6 carriers · ${n<4?'4 needed to lift':n===6?'full crew':'carrying'}`);
+      const n=ram.crewCount||0; siegeStatus.push(`Ram ${Math.ceil(ram.hp)}/${ram.maxHp} HP · ${n}/6 pushers · ${n<4?'4 needed to roll':n===6?'full crew':'under strength'}`);
     }
     for(const l of battle.layout.ladders)if(l.held&&battle.units.some(u=>u.status==='active'&&u.action?.ladderId===l.id))siegeStatus.push(`${l.name} held by defenders`);
     const status=siegeStatus.join(' | ');if($('battle-siege-status').textContent!==status)$('battle-siege-status').textContent=status;
     if(!$('battle-command-panel').hidden)refreshSelection();else refreshLiveSelection();
-    $('battle-player-status').textContent=p?.status==='active'?`Commander · Health ${Math.ceil(p.hp)}/${p.maxHp} · Stamina ${Math.round(p.stamina)}${Number.isFinite(p.ammo)?` · Ammo ${p.ammo}`:''}`:p?.status==='reserve'?'Your commander is approaching with reinforcements.':p?.status==='escaped'?'Your commander has withdrawn · Your army continues.':'Commander incapacitated · Your army continues under tactical command';
+    const accuracy=p?.status==='active'&&['bow','crossbow'].includes($('battle-weapon').value)?sim.rangedAccuracy(battle,p):null;
+    const aim=accuracy===null?'':` · Accuracy ${accuracy}/100${p.wallId?` (+${sim.WALL_ACCURACY_BONUS} wall)`:''}`;
+    $('battle-player-status').textContent=p?.status==='active'?`Commander · Health ${Math.ceil(p.hp)}/${p.maxHp} · Stamina ${Math.round(p.stamina)}${Number.isFinite(p.ammo)?` · Ammo ${p.ammo}`:''}${aim}`:p?.status==='reserve'?'Your commander is approaching with reinforcements.':p?.status==='escaped'?'Your commander has withdrawn · Your army continues.':'Commander incapacitated · Your army continues under tactical command';
     const event=battle.events.at(-1), message=typeof event==='string'?event:event?.message||event?.text;
     if(message&&message!==lastEvent){lastEvent=message;$('battle-event').textContent=message;}
   }
   function setPause(value){if(finishing&&!value)return;paused=value;resetInput();$('battle-pause').hidden=!value;if(value){document.exitPointerLock?.();try{checkpoint();}catch(error){$('battle-pause-note').textContent=error.message;}}lastTime=0;if(battle)updateHUD();}
-  function cameraToggle(){if(!battle)return;camera.mode=camera.mode==='tactical'?'third':'tactical';camera.distance=camera.mode==='tactical'?90:10;camera.pitch=camera.mode==='tactical'?.8:.35;delete camera.target;document.exitPointerLock?.();resetInput();canvas.focus();}
+  function cameraToggle(){if(!battle)return;camera.mode=camera.mode==='tactical'?'third':'tactical';camera.distance=camera.mode==='tactical'?90:10;camera.pitch=camera.mode==='tactical'?.8:.35;delete camera.target;document.exitPointerLock?.();resetInput();updateHUD();canvas.focus();}
   function leaveCustom(result,message){
     const session=custom;custom=null;
     disposeScene();customSetup.finish(session,result,message);
@@ -440,7 +475,10 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     if(camera.mode==='tactical'){tacticalAim={x:event.clientX,y:event.clientY};return;}
     if(targeting)return;
     const dx=pointer?event.clientX-pointer.x:event.movementX,dy=pointer?event.clientY-pointer.y:event.movementY;
-    if(event.pointerType==='mouse'||pointer){camera.yaw+=dx*.006;camera.pitch=Math.max(-.4,Math.min(1.05,camera.pitch+dy*.004));}
+    if(event.pointerType==='mouse'||pointer){
+      const sensitivity=event.pointerType==='mouse'?mouseRate:1;
+      camera.yaw+=dx*.006*sensitivity;camera.pitch=Math.max(-.4,Math.min(1.05,camera.pitch+dy*.004*sensitivity));
+    }
     if(pointer){pointer.x=event.clientX;pointer.y=event.clientY;}
   });
   const release=event=>{if(drag&&renderer&&camera.mode==='tactical'){const end=renderer.pick(event.clientX,event.clientY);if(end&&order!=='attack')sendOrder({x:drag.x,z:drag.z,facing:Math.hypot(end.x-drag.x,end.z-drag.z)>1?Math.atan2(end.x-drag.x,end.z-drag.z):battle.playerSide===0?0:Math.PI});}drag=null;pointer=null;input.attack=input.block=false;};

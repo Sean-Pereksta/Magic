@@ -1,15 +1,18 @@
 import { UNITS } from './data.mjs';
-import { provisionLadders, ramHandle, ramApproach, wallHeightAt, battlementHeightAt } from './battle-siege.mjs';
+import { groundRoute, groundLineClear } from './battle-navigation.mjs';
+import { buildCastle, matchesCastleLayout, provisionLadders, ramHandle, ramApproach, wallHeightAt, battlementHeightAt } from './battle-siege.mjs';
 import { battleGroundHeight, battlefieldClimate } from './battle-terrain.mjs';
 
 // This module has no DOM, clock or random global dependencies. The entire live
 // simulation is JSON data, including attack phases, missiles and delayed armies.
 export const BATTLE_VERSION = 1;
-export const DEFAULT_ACTIVE_TROOPS = 150;
-export const MAX_ACTIVE_TROOPS = 200;
-export const BATTLE_SIZE_OPTIONS = Object.freeze([100, 150, 200]);
+export const DEFAULT_ACTIVE_TROOPS = 300;
+export const MAX_ACTIVE_TROOPS = 400;
+export const BATTLE_SIZE_OPTIONS = Object.freeze([100, 150, 200, 300, MAX_ACTIVE_TROOPS]);
 export const RESERVE_WAVE_SECONDS = 8;
-const TAU = Math.PI * 2, HALF = 80, STEP = 1 / 20;
+const TAU = Math.PI * 2, STEP = 1 / 20;
+const RULES_VERSION = 3, LEGACY_RAM_HP = 280;
+export const WALL_ACCURACY_BONUS = 10;
 const clamp = (n, a, z) => Math.max(a, Math.min(z, n));
 const distance = (a, c) => Math.hypot(a.x - c.x, a.z - c.z);
 const facing = (a, c) => Math.atan2(c.x - a.x, c.z - a.z);
@@ -24,14 +27,14 @@ const PROFILE = {
   spearman: { hp: 85, damage: 18, reach: 3.7, speed: 3.3, weapon: 'spear', shield: true, windup: .52, recovery: .7 },
   menAtArms: { hp: 100, damage: 25, reach: 2.1, speed: 3.3, weapon: 'sword', shield: true, windup: .3, recovery: .45 },
   heavyInfantry: { hp: 135, damage: 35, reach: 2.3, speed: 2.6, weapon: 'mace', shield: true, windup: .65, recovery: .9 },
-  archer: { hp: 62, damage: 21, reach: 40, speed: 3.6, weapon: 'bow', ammo: 24, windup: .75, recovery: 1.4 },
-  veteranArcher: { hp: 78, damage: 26, reach: 48, speed: 3.7, weapon: 'bow', ammo: 30, windup: .6, recovery: 1.1 },
-  crossbow: { hp: 90, damage: 44, reach: 46, speed: 3, weapon: 'crossbow', ammo: 18, windup: .6, recovery: 3.1 },
+  archer: { hp: 62, damage: 21, reach: 40, accuracy: 58, speed: 3.6, weapon: 'bow', ammo: 24, windup: .75, recovery: 1.4 },
+  veteranArcher: { hp: 78, damage: 26, reach: 48, accuracy: 84, speed: 3.7, weapon: 'bow', ammo: 30, windup: .6, recovery: 1.1 },
+  crossbow: { hp: 90, damage: 44, reach: 46, accuracy: 70, speed: 3, weapon: 'crossbow', ammo: 18, windup: .6, recovery: 3.1 },
   scout: { hp: 95, damage: 16, reach: 2.6, speed: 8, weapon: 'sword', windup: .32, recovery: .65 },
   lightCavalry: { hp: 110, damage: 23, reach: 2.8, speed: 8.2, weapon: 'sword', shield: true, windup: .35, recovery: .7 },
   cavalry: { hp: 145, damage: 31, reach: 4.1, speed: 7, weapon: 'lance', shield: true, windup: .4, recovery: .9 },
   knight: { hp: 180, damage: 40, reach: 4.4, speed: 6.5, weapon: 'lance', shield: true, windup: .4, recovery: .85 },
-  ram: { hp: 280, damage: 6, reach: 4, speed: 1.8, weapon: 'ram', windup: 1.7, recovery: 2.3 },
+  ram: { hp: 2400, damage: 6, reach: 4, speed: 1.1, weapon: 'ram', windup: 1.7, recovery: 2.3 },
   catapult: { hp: 160, damage: 54, reach: 65, speed: 1.3, weapon: 'catapult', ammo: 16, windup: 2.1, recovery: 5.2 },
   trebuchet: { hp: 190, damage: 80, reach: 100, speed: .9, weapon: 'trebuchet', ammo: 12, windup: 3.2, recovery: 7.5 },
   siege: { hp: 160, damage: 48, reach: 60, speed: 1.3, weapon: 'catapult', ammo: 16, windup: 2.1, recovery: 5.5 }
@@ -49,6 +52,13 @@ const WEAPONS = {
 function profileFor(u) { const p = PROFILE[u.type]; return u.weapon === p.weapon || !WEAPONS[u.weapon] ? p : { ...p, ...WEAPONS[u.weapon] }; }
 
 function hash(value) { let n = 2166136261; for (const c of String(value)) n = Math.imul(n ^ c.charCodeAt(0), 16777619); return n >>> 0 || 1; }
+export function rangedAccuracy(b, u) {
+  const base = PROFILE[u.type]?.accuracy;
+  if (base === undefined) return null;
+  const drill = hash(`${b.seed}|${u.id}`) % 11 - 5;
+  const posted = u.wallId && b.layout.walls.some(w => w.id === u.wallId && w.hp > 0);
+  return Math.min(97, base + drill + (posted ? WALL_ACCURACY_BONUS : 0));
+}
 function random(b) { let x = b.rng; x ^= x << 13; x ^= x >>> 17; x ^= x << 5; b.rng = x >>> 0; return b.rng / 4294967296; }
 function event(b, type, message, extra = {}) { b.nextEvent = (b.nextEvent || 0) + 1; b.events.push({ eventId: b.nextEvent, time: b.time, type, message, ...extra }); if (b.events.length > 100) b.events.shift(); }
 function entryPoint(p) {
@@ -65,10 +75,11 @@ function entryPoint(p) {
   return { x: clamp(x / norm * 55, -55, 55), z: p.side ? 75 : -75 };
 }
 function deploymentZonesFor(b) {
+  const ward=b.layout.castle?.outer;
   return [
     { side: 0, minX: -66, maxX: 66, minZ: -72, maxZ: -44 },
     b.layout.fortified
-      ? { side: 1, minX: -30, maxX: 30, minZ: 20, maxZ: 54 }
+      ? { side: 1, minX:(ward?.left ?? -35)+5, maxX:(ward?.right ?? 35)-5, minZ:(ward?.front ?? 12)+8, maxZ:(ward?.rear ?? 59)-5 }
       : { side: 1, minX: -66, maxX: 66, minZ: 44, maxZ: 72 }
   ];
 }
@@ -91,7 +102,8 @@ function deploymentPosition(b, u, preferred, ignored = new Set(), placed = []) {
 function entryPosition(b, u, a) {
   if (u.side === 1 && b.layout.fortified) {
     const spots = [];
-    for (const z of [54, 51, 48]) for (let x = -28; x <= 28; x += 2.8) spots.push({ x, z });
+    const ward=b.layout.castle?.inner || b.layout.castle?.outer || {left:-35,right:35,rear:59};
+    for (let z=ward.rear-4; z>=ward.rear-16; z-=2.8) for (let x=ward.left+4; x<=ward.right-4; x+=2.8) spots.push({x,z});
     return spots.find(p => freeTroopPosition(b, u, p, new Set(), [], 6)) || null;
   }
   const candidates = [a.entry];
@@ -109,32 +121,33 @@ function layoutFor(b, tile) {
   const repaired = !!baseline && (initialWalls > baseline.walls + 1e-6 || initialFortIntegrity > baseline.fortIntegrity + 1e-6);
   const damageScale = baseline && !repaired ? clamp((initialWalls + initialFortIntegrity) / Math.max(.00001, baseline.walls + baseline.fortIntegrity), 0, 1) : 1;
   b.fortifications = { walls: initialWalls, fortIntegrity: initialFortIntegrity, initialWalls, initialFortIntegrity };
-  const fortified = initialWalls > 0 || tile.building === 'fort' || tile.wallBreaches?.length;
+  buildCastle(layout,tile);
+  const fortified = layout.castle?.enclosed;
   layout.fortified = !!fortified;
   if (fortified) {
-    const maximum = Math.max(initialWalls, (tile.levels?.wall || tile.buildings?.wall || 1) * 60, fortMax);
-    const condition = clamp((initialWalls || initialFortIntegrity) / maximum, 0, 1);
-    const specifications = [ ['wall-west-front', -19, 12, 30, 2], ['wall-east-front', 19, 12, 30, 2], ['wall-west', -35, 35, 2, 48], ['wall-east', 35, 35, 2, 48], ['wall-rear', 0, 59, 72, 2] ];
-    for (const [id, x, z, width, depth] of specifications) layout.walls.push({ id, x, z, width, depth, height: 6, maxHp: 220, hp: 220 * condition, state: condition < .7 ? 'damaged' : 'intact' });
-    layout.gate = { id: 'gate', x: 0, z: 12, width: 8, depth: 2, height: 5.7, hp: 150 * condition, maxHp: 150, state: condition < .7 ? 'damaged' : 'intact' };
+    const wallMax = (tile.levels?.wall || tile.buildings?.wall || (initialWalls>0?1:0))*60;
+    const condition = clamp((initialWalls+initialFortIntegrity)/Math.max(1,wallMax+fortMax),0,1);
+    for (const w of [...layout.walls,layout.gate]) w.hp=w.maxHp*condition;
     if (condition < .3) Object.assign(layout.walls[0], { hp: 0, state: 'breached' });
     if (!condition) for (const w of [...layout.walls, layout.gate]) Object.assign(w, { hp: 0, state: 'breached' });
     for (const w of [...layout.walls, layout.gate]) {
       const saved = !repaired && tile.wallSections?.find(s => s.id === w.id);
       if (saved && Number.isFinite(saved.hp) && Number.isFinite(saved.maxHp) && saved.maxHp > 0) w.hp = w.maxHp * clamp(saved.hp / saved.maxHp, 0, 1) * damageScale;
       if (!repaired && tile.wallBreaches?.includes(w.id)) w.hp = 0;
-      if (w.hp === 0 && saved?.breach && [saved.breach.x, saved.breach.z, saved.breach.width].every(Number.isFinite)) w.breach = { ...saved.breach };
+      if (w.hp === 0 && saved?.breach && [saved.breach.x, saved.breach.z, saved.breach.width].every(Number.isFinite)) {
+        w.breach={...saved.breach};
+        // On a city upgrade, move the existing hole with its named section.
+        if (!inside(w,w.breach.x,w.breach.z,1)) Object.assign(w.breach,{x:w.x,z:w.z});
+      }
       w.state = w.hp <= 0 ? 'breached' : w.hp < w.maxHp * .7 ? 'damaged' : 'intact';
     }
-    layout.ladders = [-20, 20].map((x, i) => ({ id: `ladder-${i}`, x, z: 12, height: 6, active: false, progress: 0, climberId: null }));
     provisionLadders(layout);
-    layout.stairs = layout.walls.map(w => ({ id: `${w.id}-stairs`, wallId: w.id, x: w.x + (w.id === 'wall-west' ? 6 : w.id === 'wall-east' ? -6 : 0), z: w.z + (w.id.includes('front') ? 6 : w.id === 'wall-rear' ? -6 : 0), topX: w.x, topZ: w.z, height: w.height, width: 3, depth: 6 }));
     b.fortifications.initialTacticalHp = [...layout.walls, layout.gate].reduce((sum, w) => sum + w.hp, 0);
   }
   if (terrain === 'forest') {
     for (let i = 0; i < 42; i++) {
       const x = (random(b) - .5) * 140, z = (random(b) - .5) * 130;
-      if (Math.abs(x) < 10 || fortified && Math.abs(x) < 40 && z > 0) continue;
+      if (Math.abs(x) < 10 || layout.castle && Math.abs(x)<layout.castle.outer.right+4 && z>layout.castle.outer.front-5 && z<layout.castle.outer.rear+3) continue;
       layout.obstacles.push({ id: `tree-${i}`, kind: 'tree', x, z, radius: .9 + random(b) * .6, height: 7 + random(b) * 4 });
     }
   }
@@ -145,9 +158,6 @@ function layoutFor(b, tile) {
     layout.bridges = [{ x: -20, z: 0, width: 12, depth: 12 }, { x: 28, z: 0, width: 10, depth: 12 }];
     for (const [x, width] of [[-53, 42], [5, 34], [56, 46]]) layout.obstacles.push({ id: `water-${x}`, kind: 'water', x, z: 0, width, depth: 10, height: .1 });
   }
-  if (['town', 'city'].includes(tile.building)) {
-    for (const [x, z] of [[-23, 30], [23, 30], [-23, 49], [23, 49]]) layout.obstacles.push({ id: `house-${x}-${z}`, kind: 'building', x, z, width: 11, depth: 10, height: 7 });
-  }
   return layout;
 }
 export function terrainHeight(b, x, z) { return battleGroundHeight(b.layout, x, z); }
@@ -157,6 +167,7 @@ function obstruction(b, x, z, u) {
   for (const o of b.layout.obstacles) if (inside(o, x, z, .35)) return o;
   for (const w of b.layout.walls) {
     if (!wallHeightAt(w, x, z, .35)) continue;
+    if (w.kind === 'gate' && u?.side === 1) continue;
     if (u?.wallId === w.id && u.y >= terrainHeight(b, x, z) + w.height - .3) continue;
     return w;
   }
@@ -198,34 +209,7 @@ function lineClear(b, a, c, u, projectile = false) {
   return true;
 }
 function pathTo(b, u, target) {
-  if (lineClear(b, u, target, u)) return [{ x: target.x, z: target.z }];
-  const grid = 40, size = 4, cell = p => ({ x: clamp(Math.floor((p.x + HALF) / size), 0, grid - 1), z: clamp(Math.floor((p.z + HALF) / size), 0, grid - 1) });
-  const start = cell(u), goal = cell(target), key = p => p.z * grid + p.x, center = p => ({ x: p.x * size - HALF + 2, z: p.z * size - HALF + 2 });
-  const queue = [{ ...start, g: 0, h: Math.hypot(start.x - goal.x, start.z - goal.z) }], parents = new Map(), costs = new Map([[key(start), 0]]), done = new Set();
-  let end = null, closest = queue[0];
-  while (queue.length && done.size < 1600) {
-    queue.sort((a, c) => (a.g + a.h) - (c.g + c.h));
-    const n = queue.shift(), nk = key(n);
-    if (done.has(nk)) continue;
-    done.add(nk);
-    if (n.h < closest.h) closest = n;
-    if (n.x === goal.x && n.z === goal.z) { end = n; break; }
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const next = { x: n.x + dx, z: n.z + dz };
-      if (next.x < 0 || next.z < 0 || next.x >= grid || next.z >= grid) continue;
-      const p = center(next), q = center(n), midpoint = { x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 };
-      if (obstruction(b, p.x, p.z, u) || obstruction(b, midpoint.x, midpoint.z, u)) continue;
-      const g = n.g + 1, k = key(next);
-      if (costs.has(k) && costs.get(k) <= g) continue;
-      costs.set(k, g); parents.set(k, n); queue.push({ ...next, g, h: Math.abs(next.x - goal.x) + Math.abs(next.z - goal.z) });
-    }
-  }
-  end ||= closest;
-  const path = []; let at = end;
-  while (at && key(at) !== key(start)) { path.push(center(at)); at = parents.get(key(at)); }
-  path.reverse();
-  if (end.x === goal.x && end.z === goal.z) path.push({ x: target.x, z: target.z });
-  return path;
+  return groundRoute(b.layout,u,target,(x,z)=>obstruction(b,x,z,u));
 }
 
 function allocateCaps(b) {
@@ -238,12 +222,20 @@ function allocateCaps(b) {
 // ammunition or casualties. Overflow soldiers wait for a later entry wave.
 export function normalizeBattleCheckpoint(b) {
   if (!b || !Array.isArray(b.units) || !Array.isArray(b.armies)) return b;
+  if ((b.battleRulesVersion || 1) < RULES_VERSION) for (const u of b.units) {
+    if (u.type === 'ram' && u.maxHp === LEGACY_RAM_HP) {
+      u.hp = u.hp / u.maxHp * PROFILE.ram.hp; u.maxHp = PROFILE.ram.hp;
+    }
+  }
   if (b.layout.ladders.some(l => !l.foot)) provisionLadders(b.layout);
-  b.maxActive = clamp(Math.floor(b.maxActive || DEFAULT_ACTIVE_TROOPS), 4, MAX_ACTIVE_TROOPS);
+  // Keep the original 200-slot migration for pre-wave saves. New battles may opt into larger armies.
+  b.maxActive = clamp(Math.floor(b.maxActive || DEFAULT_ACTIVE_TROOPS), 4, b.battleRulesVersion>=2?MAX_ACTIVE_TROOPS:200);
   allocateCaps(b);
   b.nextReserveWave ??= b.time + RESERVE_WAVE_SECONDS;
   for (const side of [0, 1]) {
-    const active = b.units.filter(u => alive(u) && u.side === side), enemies = b.units.filter(u => alive(u) && u.side !== side);
+    const active = b.units.filter(u => alive(u) && u.side === side);
+    if(active.length<=b.activeCaps[side])continue;
+    const enemies=b.units.filter(u=>alive(u)&&u.side!==side);
     active.sort((a, c) => Number(c.id === b.commanderId) - Number(a.id === b.commanderId) || Math.min(Infinity, ...enemies.map(v => distance(a, v))) - Math.min(Infinity, ...enemies.map(v => distance(c, v))) || a.id.localeCompare(c.id));
     for (const u of active.slice(b.activeCaps[side])) {
       u.status = 'reserve'; u.wasDeployed = true; u.reserveQueuedAt = b.time;
@@ -256,7 +248,7 @@ export function normalizeBattleCheckpoint(b) {
     b.deploymentLayoutVersion = 1;
   }
   if (b.phase === 'deployment') repairDeployment(b);
-  b.battleRulesVersion = 2;
+  b.battleRulesVersion = RULES_VERSION;
   return b;
 }
 function validParapetPosition(b, u) {
@@ -314,17 +306,16 @@ function deployReserves(b, initial = false) {
       // Keep rare but important roster roles (especially the player's actual
       // ram) available when there is room, then fill remaining slots in
       // proportion to the original formations. Both sides use this rule.
-      const missingRole = b.activeCaps[side] >= groups.length ? groups.find(g => !g.blocked && g.reserves.length && !active.some(u => u.armyId === g.a.armyId && u.type === g.type) && !b.units.some(u => alive(u) && u.armyId === g.a.armyId && u.type === g.type)) : null;
+      const missingRole = b.activeCaps[side] >= groups.length ? groups.find(g => !g.blocked && g.reserves.length && !active.some(u => u.armyId === g.a.armyId && u.type === g.type)) : null;
       const group = commanderGroup || missingRole || groups.find(g => g.reserves.length && !g.blocked);
       const index = group.reserves.findIndex(u => u.id === b.commanderId), u = group.reserves.splice(index >= 0 ? index : 0, 1)[0];
-      const deployedCount = b.units.filter(v => v.side === side && alive(v)).length;
-      const p = initialPosition(b, u, group.a, initial ? deployedCount : 0, !initial);
+      const p = initialPosition(b, u, group.a, initial ? active.length : 0, !initial);
       if (!p) { group.reserves.unshift(u); group.blocked = true; continue; }
       Object.assign(u, { status: 'active', x: p.x, z: p.z, y: terrainHeight(b, p.x, p.z), facing: side ? Math.PI : 0, arrived: true, deployedAt: b.time });
       u.wasDeployed = true;
       if (!u.explicitOrder) u.order = { kind: b.phase === 'deployment' ? 'hold' : 'advance', x: p.x, z: p.z, facing: u.facing };
       else if (u.order.anchorOnArrival) u.order = { ...u.order, x: p.x, z: p.z, facing: u.order.lockFacing ? u.order.facing : u.facing, wallId: null, anchorOnArrival: false };
-      group.deployed++; remaining--;
+      active.push(u);group.deployed++; remaining--;
     }
     for (const a of eligible) {
       const arrived = b.units.filter(u => u.armyId === a.armyId && u.deployedAt === b.time);
@@ -338,7 +329,7 @@ function deployReserves(b, initial = false) {
 export function createBattle(encounter, options = {}) {
   if (!encounter?.id || !Array.isArray(encounter.participants) || !encounter.participants.length) throw new Error('A recorded encounter with participating armies is required.');
   const ids = new Set();
-  const b = { version: BATTLE_VERSION, battleRulesVersion: 2, encounterId: encounter.id, battleId: encounter.id, seed: encounter.seed ?? encounter.id, rng: hash(encounter.seed ?? encounter.id), time: 0, accumulator: 0, phase: 'deployment', playerOwner: encounter.playerOwner, playerSide: encounter.playerSide ?? 0, commanderId: null, units: [], armies: [], projectiles: [], events: [], winner: null, maxActive: clamp(Math.floor(options.maxActive || DEFAULT_ACTIVE_TROOPS), 4, MAX_ACTIVE_TROOPS), nextProjectile: 0, nextArmyPlan: 0, nextMorale: 1, nextReserves: 1, nextReserveWave: RESERVE_WAVE_SECONDS, occupation: 0, auto: false };
+  const b = { version: BATTLE_VERSION, battleRulesVersion: RULES_VERSION, encounterId: encounter.id, battleId: encounter.id, seed: encounter.seed ?? encounter.id, rng: hash(encounter.seed ?? encounter.id), time: 0, accumulator: 0, phase: 'deployment', playerOwner: encounter.playerOwner, playerSide: encounter.playerSide ?? 0, commanderId: null, units: [], armies: [], projectiles: [], events: [], winner: null, maxActive: clamp(Math.floor(options.maxActive || DEFAULT_ACTIVE_TROOPS), 4, MAX_ACTIVE_TROOPS), nextProjectile: 0, nextArmyPlan: 0, nextMorale: 1, nextReserves: 1, nextReserveWave: RESERVE_WAVE_SECONDS, occupation: 0, auto: false };
   b.layout = layoutFor(b, encounter.tile || {});
   b.layout.deploymentZones = deploymentZonesFor(b); b.deploymentLayoutVersion = 1;
   for (const p of encounter.participants) {
@@ -369,7 +360,7 @@ export function createBattle(encounter, options = {}) {
   return b;
 }
 export function beginBattle(b) {
-  if (b.phase === 'deployment' || b.battleRulesVersion !== 2 || b.maxActive > MAX_ACTIVE_TROOPS || b.deploymentLayoutVersion !== 1) normalizeBattleCheckpoint(b);
+  if (b.phase === 'deployment' || b.battleRulesVersion !== RULES_VERSION || b.maxActive > MAX_ACTIVE_TROOPS || b.deploymentLayoutVersion !== 1) normalizeBattleCheckpoint(b);
   if (b.phase !== 'deployment') return b;
   b.phase = 'combat';
   for (const u of b.units) if (alive(u) && !u.explicitOrder && !u.fortPost) u.order = { kind: 'advance' };
@@ -533,31 +524,37 @@ export function issueOrder(b, selection, order, params = {}) {
   event(b, 'order', `${order === 'holdFire' ? 'Hold fire' : order}: ${units.length} troops.`, { x: actualPosition.x, z: actualPosition.z });
   return { accepted: true, count: units.length, destination: actualPosition, reason: deploymentPositions.size && !inDeploymentZone(deploymentZonesFor(b)[units[0].side], pos) ? 'The formation stays inside its deployment area.' : pos.reason || null };
 }
-function assignLadders(b, units, ladderId) {
+function assignLadders(b, units, ladderId, announce=true) {
   const ladders = usableLadders(b).filter(l => !ladderId || l.id === ladderId);
-  const eligible = units.filter(u => u.side === 0 && ['ranged', 'infantry'].includes(u.family) && !u.wallId);
+  const eligible = units.filter(u => u.side === 0 && ['ranged', 'infantry'].includes(u.family) && ladders.some(l=>l.wallId!==u.wallId && canApproachLayer(b,u,l.layer)));
   if (!ladders.length || !eligible.length) return { accepted: false, reason: 'Select foot troops and a ladder on an intact wall.' };
   const demand = new Map(ladders.map(l => [l.id, b.units.filter(u => fighting(u) && !eligible.includes(u) && u.order?.ladderId === l.id).length]));
   for (const u of eligible.sort((a, c) => a.id.localeCompare(c.id))) {
     const cost = l => distance(u, l.foot) + demand.get(l.id) * 3;
-    const l = ladders.reduce((best, next) => cost(best) <= cost(next) ? best : next);
+    const l = ladders.filter(l=>l.wallId!==u.wallId && canApproachLayer(b,u,l.layer)).reduce((best, next) => cost(best) <= cost(next) ? best : next);
     demand.set(l.id, demand.get(l.id) + 1);
     u.order = { kind: 'ladder', ladderId: l.id }; u.explicitOrder = true; u.routing = false;
     u.targetId = null; u.blocking = false; u.path = []; u.pathAt = -10;
     if (!['climb','stairs'].includes(u.action?.kind)) u.action = null;
   }
-  event(b, 'order', `${eligible.length} troops advancing to ${ladderId ? ladders[0].name : 'the ladders'}.`);
+  if (announce) event(b, 'order', `${eligible.length} troops advancing to ${ladderId ? ladders[0].name : 'the ladders'}.`);
   return { accepted: true, count: eligible.length };
 }
 function usableLadders(b) {
   return b.layout.ladders.filter(l => b.layout.walls.some(w => w.id === l.wallId && w.hp > 0));
 }
+function inWard(u,ward) { return !!ward && u.x>=ward.left && u.x<=ward.right && u.z>=ward.front && u.z<=ward.rear; }
+function canApproachLayer(b,u,layer) {
+  return layer !== 'inner' || inWard(u,b.layout.castle?.outer) || u.wallId ||
+    [...b.layout.walls,b.layout.gate].some(w=>w && w.layer!=='inner' && w.hp<=0);
+}
 function assignRam(b, units, ramId, wallId) {
   const ram = b.units.find(u => u.id === ramId && u.type === 'ram' && u.side === 0 && fighting(u));
   const wall = [...b.layout.walls, b.layout.gate].find(w => w && w.id === wallId && w.hp > 0);
   if (!ram || !wall) return { accepted: false, reason: 'Choose an available ram and an intact exterior wall or gate.' };
+  if (!canApproachLayer(b,ram,wall.layer)) return {accepted:false,reason:'Open the outer ward before hauling the ram to the inner defenses.'};
   const carriers = units.filter(u => u.owner === ram.owner && u.family === 'infantry' && fighting(u) && !u.wallId && !u.action?.ladderId && (b.auto || u.id !== b.commanderId)).sort((a, c) => distance(a, ram) - distance(c, ram));
-  if (!carriers.length) return { accepted: false, reason: 'Select active infantry to carry the timber.' };
+  if (!carriers.length) return { accepted: false, reason: 'Select active infantry to push the ram.' };
   let assigned = 0;
   const current = b.units.filter(v => fighting(v) && v.order.kind === 'crew' && v.order.ramId === ramId);
   const taken = new Set(current.map(v => v.order.handle));
@@ -571,7 +568,7 @@ function assignRam(b, units, ramId, wallId) {
   return { accepted: assigned > 0, count: assigned, reason: assigned ? null : 'All six handles are occupied.' };
 }
 function issueWallOrder(b, units, params) {
-  const walls = b.layout.walls.filter(w => w.hp > 0 && (!params.wallId || w.id === params.wallId));
+  const walls = b.layout.walls.filter(w => w.kind!=='gate' && w.hp > 0 && (!params.wallId || w.id === params.wallId));
   if (!walls.length) return { accepted: false, reason: 'No intact wall section is available to defend.' };
   const selectedIds = new Set(units.map(u => u.id));
   const occupied = new Set(b.units.filter(u => u.wallPosition && u.order.kind === 'walls' && u.status !== 'dead' && !selectedIds.has(u.id)).map(u => u.wallPosition.slot));
@@ -579,7 +576,7 @@ function issueWallOrder(b, units, params) {
   for (const w of walls) {
     const horizontal = w.width > w.depth, length = horizontal ? w.width : w.depth;
     const n = Math.max(1, Math.floor((length - 2) / 2));
-    const f = w.id.includes('front') ? Math.PI : w.id === 'wall-rear' ? 0 : w.id === 'wall-west' ? -Math.PI / 2 : Math.PI / 2;
+    const f = w.id.includes('front') ? Math.PI : w.id.endsWith('wall-rear') ? 0 : w.id.endsWith('wall-west') ? -Math.PI / 2 : Math.PI / 2;
     for (let i = 0; i < n; i++) {
       const slot = `${w.id}:${i}`, offset = -length / 2 + 1.7 + i * 2;
       if (!occupied.has(slot)) slots.push({ slot, wallId: w.id, x: w.x + (horizontal ? offset : 0), z: w.z + (horizontal ? 0 : offset), facing: f });
@@ -662,8 +659,9 @@ function moveUnit(b, u, destination, dt, options = {}) {
     if (destination.wallId === u.wallId || options.direct && inside(wall, destination.x, destination.z, -.15)) {
       moveOnWall(b, u, destination, dt, options.keepFacing); return;
     }
-    const outside = destination.z < 11 && u.side === 0;
-    const closed = outside && b.layout.gate?.hp > 0 && b.layout.walls.every(w => w.hp > 0);
+    const ward=wall.layer==='inner'?b.layout.castle?.inner:b.layout.castle?.outer;
+    const outside = destination.z < (ward?.front ?? 12)-1 && u.side === 0;
+    const closed = outside && [...b.layout.walls,b.layout.gate].filter(w=>w && w.layer===wall.layer).every(w => w.hp > 0);
     const ladder = closed && usableLadders(b).find(l => l.wallId === u.wallId);
     if (ladder && ['follow','retreat','move','withdraw'].includes(u.order.kind)) {
       if (distance(u,ladder.landing) > .65) moveOnWall(b,u,ladder.landing,dt);
@@ -687,11 +685,14 @@ function moveUnit(b, u, destination, dt, options = {}) {
     if (b.time - u.pathAt > 3 || !u.pathTarget || distance(u.pathTarget, destination) > (u.order.kind === 'follow' ? .75 : 6) || u.navRevision !== b.layout.navRevision) {
       u.path = pathTo(b, u, destination); u.pathAt = b.time; u.pathTarget = { x: destination.x, z: destination.z }; u.navRevision = b.layout.navRevision;
     }
-    while (u.path.length && distance(u, u.path[0]) < 1.3) u.path.shift();
+    while (u.path.length && distance(u, u.path[0]) < 1.3) {
+      if (u.path.length>1 && !groundLineClear(b.layout,u,u.path[1],u.side)) break;
+      u.path.shift();
+    }
     target = u.path[0] || destination;
   }
   const dx = target.x - u.x, dz = target.z - u.z, d = Math.hypot(dx, dz);
-  if (d < .3) { u.speed *= .5; return; }
+  if (d < (u.path.length>1 ? .03 : .3)) { u.speed *= .5; return; }
   let speed = profile.speed * (options.speedScale ?? 1) * (options.sprint && u.stamina > 5 ? 1.45 : 1);
   if (u.family === 'mounted' && !u.mounted) speed = 3.3 * (options.sprint ? 1.45 : 1);
   if (u.family === 'mounted' && b.layout.terrain === 'forest') speed *= .55;
@@ -725,13 +726,27 @@ function startClimb(b, u, l, personal = false) {
   event(b, 'ladder', `${l.name} in use.`, { x: l.x, z: l.z, unitId: u.id });
   return true;
 }
+// All soldiers in this step use the same queue order. Reserve and dead troops
+// never occupy places, and the next step reflects recalls and new arrivals.
+const ladderQueues = new WeakMap();
+function ladderQueueIndex(b,l,u){
+  let snapshot=ladderQueues.get(b);
+  if(snapshot?.time!==b.time){
+    snapshot={time:b.time,lanes:new Map()};ladderQueues.set(b,snapshot);
+  }
+  if(!snapshot.lanes.has(l.id)){
+    const waiting=b.units.filter(v=>fighting(v)&&!v.wallId&&v.order.kind==='ladder'&&v.order.ladderId===l.id&&v.action?.kind!=='climb')
+      .map(v=>({id:v.id,d:(v.x-l.foot.x)**2+(v.z-l.foot.z)**2})).sort((a,c)=>a.d-c.d||a.id.localeCompare(c.id));
+    snapshot.lanes.set(l.id,new Map(waiting.map(({id},i)=>[id,i])));
+  }
+  return snapshot.lanes.get(l.id).get(u.id)??0;
+}
 function approachLadder(b, u, dt) {
   const l = usableLadders(b).find(l => l.id === u.order.ladderId);
   if (!l) { u.order = { kind: 'charge' }; u.pathAt = -10; return false; }
-  if (u.wallId) { u.order = { kind: 'charge' }; return false; }
-  const queue = b.units.filter(v => fighting(v) && !v.wallId && v.order.kind === 'ladder' && v.order.ladderId === l.id && v.action?.kind !== 'climb')
-    .sort((a,c) => distance(a,l.foot) - distance(c,l.foot) || a.id.localeCompare(c.id));
-  const index = Math.max(0, queue.indexOf(u)), dest = { x: l.foot.x + (index > 5 ? (index % 3 - 1) * 1.4 : 0), z: l.foot.z - Math.min(index, 5) * 1.4 - Math.floor(Math.max(index - 5, 0) / 3) * 1.5 };
+  if (u.wallId===l.wallId) { u.order = { kind: 'charge' }; return false; }
+  if (u.wallId) { moveUnit(b,u,l.foot,dt); return true; }
+  const index = ladderQueueIndex(b,l,u), dest = { x: l.foot.x + (index > 5 ? (index % 3 - 1) * 1.4 : 0), z: l.foot.z - Math.min(index, 5) * 1.4 - Math.floor(Math.max(index - 5, 0) / 3) * 1.5 };
   u.blocking = false; u.targetId = null;
   if (index === 0 && distance(u, l.foot) <= .85) { startClimb(b, u, l); u.speed = 0; }
   else moveUnit(b, u, dest, dt);
@@ -799,14 +814,18 @@ function updateClimb(b, u, a, dt) {
   }
 }
 function nearestEnemy(b, u, candidates, max = Infinity) {
-  let enemy = null, best = max;
+  let enemy = null, preferred = null, preferredSquared = Infinity;
+  let bestSquared=max*max;
+  const requested=u.order.targetId||u.targetId;
+  const coverLimit=b.layout.terrain==='forest'&&u.family!=='mounted'?32*32:Infinity;
   for (const v of candidates) {
     if (!alive(v) || v.side === u.side || u.order.targetArmyId && v.armyId !== u.order.targetArmyId) continue;
-    const d = distance(u, v);
-    if (d < best && (b.layout.terrain !== 'forest' || d < 32 || u.family === 'mounted')) { enemy = v; best = d; }
+    const dx=u.x-v.x, dz=u.z-v.z, squared=dx*dx+dz*dz;
+    if(v.id===requested){preferred=v;preferredSquared=squared;}
+    if(squared<bestSquared&&squared<coverLimit){enemy=v;bestSquared=squared;}
   }
-  const preferred = candidates.find(v => v.id === (u.order.targetId || u.targetId) && alive(v) && v.side !== u.side && (!u.order.targetArmyId || v.armyId === u.order.targetArmyId));
-  return preferred && distance(u, preferred) < Math.min(max, best + (u.order.targetId ? 8 : 1.5)) ? preferred : enemy;
+  if(preferred&&Math.sqrt(preferredSquared)<Math.min(max,Math.sqrt(bestSquared)+(u.order.targetId?8:1.5)))return preferred;
+  return enemy;
 }
 function startAttack(b, u, target, heavy = false, point = null) {
   if (u.action || u.stagger > 0 || u.attackCooldown > 0 || u.stamina < (heavy ? 24 : 8)) return false;
@@ -890,11 +909,12 @@ function hitWall(b, u, w, damage) {
   const before = w.state;
   w.state = w.hp === 0 ? 'breached' : w.hp < w.maxHp * .7 ? 'damaged' : 'intact';
   if (w.state === 'breached' && before !== 'breached') {
-    if (w.id !== 'gate' && u.type === 'ram') w.breach = { x:w.x, z:w.z, width:6 };
+    if (w.kind!=='gate' && w.id !== 'gate' && u.type === 'ram') w.breach = { x:w.x, z:w.z, width:6 };
     b.layout.navRevision++;
-    event(b, 'breach', `${w.id === 'gate' ? 'The gate has fallen' : 'A wall is breached'}!`, { x: w.x, z: w.z, wallId: w.id });
+    event(b, 'breach', `${w.id.endsWith('gate') ? 'The gate has fallen' : 'A wall is breached'}!`, { x: w.x, z: w.z, wallId: w.id });
     for (const l of b.layout.ladders.filter(l => l.wallId === w.id)) { l.active = false; l.held = false; }
-    const at = ramApproach(w), reserves = b.units.filter(v => fighting(v) && ['reserve','gate'].includes(v.fortPost) && !v.explicitOrder);
+    const at = ramApproach(w), roles=w.layer==='inner'?['innerReserve','innerGate']:['reserve','gate'];
+    const reserves = b.units.filter(v => fighting(v) && roles.includes(v.fortPost) && !v.explicitOrder);
     for (const [i,v] of reserves.entries()) v.order = { kind:'hold', x:w.x + Math.sin(at.facing)*6 + Math.cos(at.facing)*(i%7-3)*2, z:w.z + Math.cos(at.facing)*6 - Math.sin(at.facing)*(i%7-3)*2, facing:at.facing + Math.PI };
     for (const v of b.units.filter(v => fighting(v) && v.side===0 && v.order.kind==='ladder' && v.action?.kind!=='climb')) {
       if (!b.layout.ladders.some(l => l.id===v.order.ladderId && l.wallId===w.id) && v.owner===b.playerOwner && !b.auto) continue;
@@ -903,15 +923,28 @@ function hitWall(b, u, w, damage) {
   }
   updateFortifications(b);
 }
+function arrowAim(b, u, action) {
+  const dx = action.targetX - u.x, dz = action.targetZ - u.z;
+  const groundRange = Math.hypot(dx,dz), rise = action.targetY + 1 - (u.y + 1.6), range = Math.hypot(groundRange,rise);
+  const centerShot = random(b) * 100 < rangedAccuracy(b,u);
+  // Spread is angular: a poorly loosed shot can still connect at point-blank range.
+  const radius = range / 30 * (centerShot ? .5 * Math.sqrt(random(b)) : 1.25 + 1.9 * random(b));
+  const angle = random(b) * TAU, side = radius * Math.cos(angle), up = radius * Math.sin(angle);
+  const fx = groundRange ? dx/groundRange : Math.sin(u.facing), fz = groundRange ? dz/groundRange : Math.cos(u.facing);
+  const slope = rise / Math.max(range,.001);
+  return {x:action.targetX + side*fz - up*slope*fx, y:action.targetY + 1 + up*groundRange/Math.max(range,.001),
+    z:action.targetZ - side*fx - up*slope*fz};
+}
 function actionImpact(b, u, action) {
   if (u.type === 'ram') return;
   const p = profileFor(u), target = b.units.find(v => v.id === action.targetId), wall = [...b.layout.walls, ...(b.layout.gate ? [b.layout.gate] : [])].find(w => w.id === action.targetId);
   if (action.ranged) {
     if (u.ammo <= 0) return;
     u.ammo--;
-    const stone = u.family === 'siege', spread = stone ? 1.8 : u.type === 'veteranArcher' ? .3 : .75;
-    const tx = action.targetX + (random(b) - .5) * spread, tz = action.targetZ + (random(b) - .5) * spread;
-    b.projectiles.push({ id: `missile-${b.nextProjectile++}`, sourceId: u.id, side: u.side, kind: stone ? 'stone' : u.weapon === 'crossbow' ? 'bolt' : 'arrow', x: u.x, z: u.z, y: u.y + 1.6, startX: u.x, startZ: u.z, startY: u.y + 1.6, targetX: tx, targetZ: tz, targetY: wall ? terrainHeight(b, tx, tz) + 3 : action.targetY + 1, elapsed: 0, duration: Math.max(.15, distance(u, { x: tx, z: tz }) / (stone ? 20 : 45)), damage: p.damage, wallId: wall?.id || null, splash: stone ? 4.8 : 0 });
+    const stone = u.family === 'siege';
+    const aim = stone ? {x:action.targetX + (random(b)-.5)*1.8, z:action.targetZ + (random(b)-.5)*1.8, y:action.targetY+1} : arrowAim(b,u,action);
+    if (stone && wall) aim.y = terrainHeight(b,aim.x,aim.z) + 3;
+    b.projectiles.push({ id: `missile-${b.nextProjectile++}`, sourceId: u.id, side: u.side, kind: stone ? 'stone' : u.weapon === 'crossbow' ? 'bolt' : 'arrow', x: u.x, z: u.z, y: u.y + 1.6, startX: u.x, startZ: u.z, startY: u.y + 1.6, targetX: aim.x, targetZ: aim.z, targetY: aim.y, elapsed: 0, duration: Math.max(.15, distance(u, aim) / (stone ? 20 : 45)), damage: p.damage, wallId: wall?.id || null, splash: stone ? 4.8 : 0 });
     return;
   }
   if (wall && distance(u, wall) < p.reach + Math.max(wall.width, wall.depth) / 2) { hitWall(b, u, wall, u.type === 'ram' ? 38 : 3); return; }
@@ -1004,7 +1037,9 @@ function updateRam(b, ram, dt) {
   if (crew.length < 4) { ram.speed = 0; ram.action = null; return; }
   const dest = ramApproach(wall), strength = crew.length / 6;
   if (distance(ram, dest) > .42) {
-    moveUnit(b, ram, dest, dt, { speedScale: strength, direct: lineClear(b,ram,dest,ram) });
+    const previous = {x:ram.x,z:ram.z};
+    moveUnit(b, ram, dest, dt, { speedScale: strength, direct: groundLineClear(b.layout,ram,dest,ram.side) });
+    ram.rolledDistance = (ram.rolledDistance || 0) + distance(ram,previous);
     ram.action = null;
   } else {
     ram.speed = 0; ram.facing = dest.facing;
@@ -1014,7 +1049,7 @@ function updateRam(b, ram, dt) {
     const a = ram.action; a.elapsed += dt;
     if (!a.impacted && a.elapsed + 1e-8 >= a.windup) {
       a.impacted = true;
-      const material = wall.id === 'gate' ? 'wood' : 'stone';
+      const material = wall.material==='timber' || wall.id === 'gate' ? 'wood' : 'stone';
       event(b, 'ramImpact', material === 'wood' ? 'The ram splinters the gate.' : 'The ram strikes masonry.', { unitId: ram.id, wallId: wall.id, material, x: ram.x + Math.sin(ram.facing) * 2.8, y: ram.y + 1.1, z: ram.z + Math.cos(ram.facing) * 2.8 });
       hitWall(b, ram, wall, (material === 'wood' ? 54 : 31) * strength);
     }
@@ -1044,25 +1079,42 @@ function postDefenders(b, troops) {
   }
   const posts = available.filter(u => !u.fortPost);
   for (const [i,u] of posts.entries()) {
-    const gate = u.type === 'spearman', p = { x: (i % 7 - 3) * 1.8, z: (gate ? 20 : 26) + Math.floor(i / 7) * 2 };
-    u.fortPost = gate ? 'gate' : 'reserve'; u.order = { kind:'hold', ...p, facing:Math.PI };
-    if (b.phase === 'deployment' && inDeploymentZone(deploymentZonesFor(b)[u.side],p) && freeTroopPosition(b,u,p)) Object.assign(u,p,{y:terrainHeight(b,p.x,p.z)});
+    const gate = u.type === 'spearman', castle=b.layout.castle;
+    const inner=castle?.inner && (gate ? i%2===0 : i%3!==0);
+    const front=(inner?castle.inner.front:castle?.outer.front) ?? 12;
+    const p = { x: (i % 7 - 3) * 2.2, z: front+(gate ? 8 : 13)+Math.floor(i / 7) % 3 * 2.4 };
+    u.fortPost = inner ? (gate?'innerGate':'innerReserve') : gate ? 'gate' : 'reserve';
+    u.order = {kind:'hold', ...p, facing:Math.PI};
+    if (b.phase==='deployment') {
+      const site=deploymentPosition(b,u,p);
+      if (site) { Object.assign(u,site,{y:terrainHeight(b,site.x,site.z)}); Object.assign(u.order,site); }
+    }
   }
 }
 function planSiege(b, a, troops) {
   if (!b.layout.fortified || a.owner === b.playerOwner && !b.auto) return;
   if (a.side === 1) { postDefenders(b,troops); return; }
-  const opening = [...b.layout.walls,b.layout.gate].some(w => w && w.hp <= 0);
-  if (opening) return;
+  const surfaces=[...b.layout.walls,b.layout.gate].filter(Boolean);
+  const outerOpen=surfaces.some(w=>w.layer!=='inner' && w.hp<=0);
+  const innerClosed=b.layout.castle?.inner && !surfaces.some(w=>w.layer==='inner' && w.hp<=0);
+  if (outerOpen && !innerClosed) return;
   const rams = troops.filter(u => u.type === 'ram');
   for (const ram of rams) {
     const crew = troops.filter(u => u.order.kind === 'crew' && u.order.ramId === ram.id);
     const picks = troops.filter(u => u.family === 'infantry' && (!u.explicitOrder || u.order.kind === 'ladder' && !u.wallId && !u.action)).sort((a,c) => distance(a,ram)-distance(c,ram)).slice(0,6-crew.length);
-    const wall = b.layout.walls.find(w => w.id === 'wall-east-front' && w.hp > 0) || b.layout.gate;
+    const wall = outerOpen ? surfaces.find(w=>w.id==='inner-gate') : b.layout.walls.find(w => w.id === 'wall-east-front' && w.hp > 0) || b.layout.gate;
     if (picks.length && wall?.hp>0) assignRam(b,picks,ram.id,wall.id);
   }
-  const infantry = troops.filter(u => u.family === 'infantry' && !u.explicitOrder && !u.wallId);
-  if (infantry.length) assignLadders(b,infantry,rams.length ? usableLadders(b)[0]?.id : null);
+  const ladders=usableLadders(b);
+  for (const u of troops.filter(u=>u.family==='infantry' && (!u.explicitOrder || u.order.assaultLanding && u.order.cleared || u.aiAssault && u.order.kind==='charge'))) {
+    const inner=b.layout.castle?.inner && innerClosed && (outerOpen || inWard(u,b.layout.castle.outer));
+    if (inner && inWard(u,b.layout.castle.inner)) continue;
+    const layerLadders=ladders.filter(l=>inner ? l.layer==='inner' : l.layer!=='inner');
+    if (!layerLadders.length || !inner && u.wallId) continue;
+    const cost=l=>distance(u,l.foot)+b.units.filter(v=>fighting(v) && v.order.ladderId===l.id).length*3;
+    const ladder=rams.length?layerLadders[0]:layerLadders.reduce((a,l)=>cost(l)<cost(a)?l:a);
+    if (assignLadders(b,[u],ladder.id,false).accepted) u.aiAssault=true;
+  }
 }
 function planArmies(b) {
   const strengths = [0, 0]; for (const u of b.units) if (u.status === 'active' || u.status === 'reserve') strengths[u.side] += (UNITS[u.type].attack + UNITS[u.type].defense) * (u.hp / u.maxHp);
@@ -1154,23 +1206,36 @@ function aiUnit(b, u, active, dt, advanceGuide) {
   let enemy = nearestEnemy(b, u, active);
   if (u.wallId && enemy) {
     const threats = active.filter(v => alive(v) && v.side !== u.side && Math.abs(v.y - u.y) < 2.7 && distance(u,v) < 3.4);
-    if (threats.length) enemy = nearestEnemy(b,u,threats);
-    else if (u.family === 'ranged' && distance(u,enemy)<p.reach && !lineClear(b,u,enemy,u,true)) {
-      const others=active.filter(v => fighting(v) && v.side !== u.side && distance(u,v)<p.reach).sort((a,c) => distance(u,a)-distance(u,c));
-      const visible=others.find(v => lineClear(b,u,v,u,true));
-      if (visible) enemy=visible;
-      else if (u.order.kind==='walls' && u.wallPosition && b.time >= (u.nextWallAngle || 0)) {
-        u.nextWallAngle=b.time+2;
-        const wall=b.layout.walls.find(w=>w.id===u.wallId), horizontal=wall.width>wall.depth;
-        for (const shift of [-2,2,-4,4,-6,6]) {
-          const point={x:u.wallPosition.x+(horizontal?shift:0),z:u.wallPosition.z+(horizontal?0:shift),y:u.y};
-          if (!inside(wall,point.x,point.z,-.35) || active.some(v=>v!==u && v.wallId===wall.id && distance(v,point)<1.8)) continue;
-          if (!others.some(v=>lineClear(b,point,v,u,true))) continue;
-          Object.assign(u.wallPosition,{x:point.x,z:point.z,slot:`${wall.id}@${point.x},${point.z}`});
-          Object.assign(u.order,u.wallPosition);
-          break;
+    if (threats.length) {enemy=nearestEnemy(b,u,threats);u.wallSightId=enemy?.id||null;}
+    else if(u.family==='ranged'&&distance(u,enemy)<p.reach){
+      // Scan in small batches. Stone still blocks every shot at release and in flight.
+      if(b.time >= (u.nextWallScan||0)){
+        u.nextWallScan=b.time+.3+(hash(u.id)%7)*.035;
+        let visible=lineClear(b,u,enemy,u,true)?enemy:null;
+        const others=[];
+        if(!visible){
+          const nearby=active.filter(v=>fighting(v)&&v.side!==u.side&&v!==enemy&&distance(u,v)<p.reach);
+          const start=(u.wallScanCursor||0)%Math.max(1,nearby.length);
+          for(let i=0;i<Math.min(8,nearby.length);i++)others.push(nearby[(start+i)%nearby.length]);
+          u.wallScanCursor=start+others.length;
+          visible=others.find(v=>lineClear(b,u,v,u,true));
+        }
+        u.wallSightId=visible?.id||null;
+        if(!visible)others.unshift(enemy);
+        if(!visible&&u.order.kind==='walls'&&u.wallPosition&&b.time>=(u.nextWallAngle||0)){
+          u.nextWallAngle=b.time+2;
+          const wall=b.layout.walls.find(w=>w.id===u.wallId), horizontal=wall.width>wall.depth;
+          for (const shift of [-2,2,-4,4,-6,6]) {
+            const point={x:u.wallPosition.x+(horizontal?shift:0),z:u.wallPosition.z+(horizontal?0:shift),y:u.y};
+            if (!inside(wall,point.x,point.z,-.35) || active.some(v=>v!==u && v.wallId===wall.id && distance(v,point)<1.8)) continue;
+            if (!others.some(v=>lineClear(b,point,v,u,true))) continue;
+            Object.assign(u.wallPosition,{x:point.x,z:point.z,slot:`${wall.id}@${point.x},${point.z}`});
+            Object.assign(u.order,u.wallPosition);
+            break;
+          }
         }
       }
+      const sight=active.find(v=>v.id===u.wallSightId&&fighting(v));if(sight)enemy=sight;
     }
   }
   const d = enemy ? distance(u, enemy) : Infinity;
@@ -1181,7 +1246,8 @@ function aiUnit(b, u, active, dt, advanceGuide) {
     if (guard && distance(u,guard)>p.reach) { moveOnWall(b,u,guard,dt); return; }
     if (!guard && b.time-u.order.landedAt>4 && enemy) {
       const queue = active.some(v=>fighting(v) && v.side===u.side && v.order.kind==='ladder' && b.layout.ladders.some(l=>l.id===v.order.ladderId && l.wallId===u.wallId));
-      const crowded = active.filter(v=>fighting(v) && v.side===u.side && v.wallId===u.wallId).length >= 13;
+      const ledge=b.layout.walls.find(w=>w.id===u.wallId), capacity=Math.min(13,Math.max(3,Math.floor(ledge.width/1.5)-2));
+      const crowded = active.filter(v=>fighting(v) && v.side===u.side && v.wallId===u.wallId).length >= capacity;
       if (crowded || !queue && enemy.z>13) u.order={kind:'charge'};
     }
   }
@@ -1213,7 +1279,7 @@ function aiUnit(b, u, active, dt, advanceGuide) {
   u.sidearm = u.family === 'ranged' && (u.ammo <= 0 || d < 3 && Math.abs(u.y - enemy.y) < 2.7) || u.family === 'siege' && u.type !== 'ram' && u.ammo <= 0;
   if (ranged && !u.sidearm) {
     if (d < 10 && !['hold', 'walls', 'follow'].includes(u.order.kind)) { moveUnit(b, u, { x: u.x + (u.x - enemy.x), z: u.z + (u.z - enemy.z) }, dt, { keepFacing: true }); u.facing = facing(u, enemy); }
-    else if (canStrike && d < p.reach && !u.holdFire && lineClear(b, u, enemy, u, u.family === 'ranged')) {
+    else if (canStrike && d < p.reach && !u.holdFire && (u.wallId&&u.family==='ranged'?u.wallSightId===enemy.id:lineClear(b, u, enemy, u, u.family === 'ranged'))) {
       const fired = startAttack(b, u, enemy);
       if (!fired && !u.action && u.stamina > 10 && !u.wallId && !['hold', 'walls', 'follow'].includes(u.order.kind)) {
         const direction = hash(u.id) % 2 ? 1 : -1;
@@ -1238,7 +1304,7 @@ function aiUnit(b, u, active, dt, advanceGuide) {
   if (enemy.wallId && enemy.wallId !== u.wallId && u.family !== 'siege') {
     const wall = b.layout.walls.find(w => w.id === enemy.wallId), stair = b.layout.stairs?.find(s => s.wallId === enemy.wallId);
     const ladder = b.layout.ladders.find(l => wall && inside(wall, l.x, l.z, .5));
-    if (ladder && u.z < 12 && u.family === 'infantry') { assignLadders(b,[u],ladder.id); approachLadder(b,u,dt); }
+    if (ladder && u.z < ladder.z && u.side===0 && u.family === 'infantry' && canApproachLayer(b,u,ladder.layer)) { assignLadders(b,[u],ladder.id); approachLadder(b,u,dt); }
     else if (stair) { if (!u.wallId && distance(u, stair) < 1) startStairs(b, u, stair, true); else moveUnit(b, u, stair, dt); }
     return;
   }
@@ -1312,11 +1378,18 @@ function updateMorale(b) {
   }
 }
 function separateUnits(b, active, dt) {
-  for (let i = 0; i < active.length; i++) for (let j = i + 1; j < active.length; j++) {
-    const u = active[i], v = active[j];
-    if (u.type==='ram' || v.type==='ram' || u.order.kind==='crew' && u.atHandle || v.order.kind==='crew' && v.atHandle || u.wallId || v.wallId || ['climb', 'stairs'].includes(u.action?.kind) || ['climb', 'stairs'].includes(v.action?.kind) || Math.abs(u.y - v.y) > 2.7) continue;
-    const dx = v.x - u.x, dz = v.z - u.z, d = Math.hypot(dx, dz), radius = u.family === 'siege' || v.family === 'siege' ? 2.2 : u.family === 'mounted' || v.family === 'mounted' ? 1.7 : 1.15;
-    if (d >= radius) continue;
+  // Only nearby ground bodies can collide. Sweep by their initial x coordinate;
+  // the small extra margin covers nudges from preceding pairs in this step.
+  const bodies=active.filter(u=>u.type!=='ram'&&!u.wallId&&!(u.order.kind==='crew'&&u.atHandle)&&!['climb','stairs'].includes(u.action?.kind))
+    .map(u=>({u,startX:u.x})).sort((a,c)=>a.startX-c.startX);
+  for(let i=0;i<bodies.length;i++)for(let j=i+1;j<bodies.length;j++){
+    if(bodies[j].startX-bodies[i].startX>2.6)break;
+    const u=bodies[i].u,v=bodies[j].u;
+    if(Math.abs(u.y-v.y)>2.7)continue;
+    const dx=v.x-u.x,dz=v.z-u.z,radius=u.family==='siege'||v.family==='siege'?2.2:u.family==='mounted'||v.family==='mounted'?1.7:1.15;
+    const squared=dx*dx+dz*dz;
+    if(squared>=radius*radius)continue;
+    const d=Math.sqrt(squared);
     if (u.family === 'mounted' && u.speed > 4 && u.side === v.side) { u.speed *= .7; u.chargeDistance = 0; }
     const push = Math.min((radius - d) * .5, dt * 2), direction = d > .0001 ? Math.atan2(dx, dz) : hash(`${u.id}:${v.id}`) / 4294967296 * TAU;
     const x = Math.sin(direction) * push, z = Math.cos(direction) * push;
@@ -1327,20 +1400,26 @@ function separateUnits(b, active, dt) {
 function canSecureKeep(b, u) {
   if (u.family === 'siege') return false;
   const objective=b.layout.objective;
-  if (distance(u,objective)<14) return true;
+  if (distance(u,objective)<4 && !u.wallId && !u.action?.ladderId) return true;
   const reaches = (from,to) => {
     const route = pathTo(b,{...u,...from,wallId:null},to);
     return route.length && distance(route[route.length-1],to)<.1;
   };
-  for (const l of usableLadders(b)) {
-    const stair=b.layout.stairs.find(s=>s.wallId===l.wallId);
-    if (stair && (u.wallId===l.wallId || !u.mounted && (u.action?.ladderId===l.id || reaches(u,l.foot))) && reaches(stair,objective)) return true;
+  const heldWall=u.wallId || (u.action?.kind==='climb' ? u.action.wallId : null);
+  const from=heldWall ? b.layout.stairs.find(s=>s.wallId===heldWall) : u;
+  if (!from) return false;
+  const points=[from], visited=new Set(), ladders=u.mounted?[]:usableLadders(b);
+  for (let i=0;i<points.length;i++) {
+    const point=points[i];
+    if (reaches(point,objective)) return true;
+    for (const l of ladders) {
+      if (visited.has(l.id) || !reaches(point,l.foot)) continue;
+      const stair=b.layout.stairs.find(s=>s.wallId===l.wallId);
+      visited.add(l.id);
+      if (stair) points.push(stair);
+    }
   }
-  if (u.wallId) {
-    const stair=b.layout.stairs.find(s=>s.wallId===u.wallId);
-    return !!stair && reaches(stair,objective);
-  }
-  return reaches(u,objective);
+  return false;
 }
 function checkVictory(b) {
   if (b.phase !== 'combat') return;
@@ -1416,7 +1495,7 @@ function tick(b, input) {
   checkVictory(b);
 }
 export function stepBattle(b, dt, input = {}) {
-  if (b.battleRulesVersion !== 2 || b.maxActive > MAX_ACTIVE_TROOPS || b.deploymentLayoutVersion !== 1 || b.layout.ladders.some(l => !l.foot)) normalizeBattleCheckpoint(b);
+  if (b.battleRulesVersion !== RULES_VERSION || b.maxActive > MAX_ACTIVE_TROOPS || b.deploymentLayoutVersion !== 1 || b.layout.ladders.some(l => !l.foot)) normalizeBattleCheckpoint(b);
   if (b.phase !== 'combat' || input.paused || !Number.isFinite(dt) || dt <= 0) return b;
   b.accumulator += Math.min(dt, 2);
   b.pendingInput ||= {};
@@ -1438,7 +1517,7 @@ export function battleResult(b) {
   });
   // A completed legacy save may queue previously deployed survivors to meet
   // the new display cap. Their recorded occupation has already taken place.
-  const occupying = b.units.filter(u => (fighting(u) || b.phase === 'complete' && u.status === 'reserve' && u.wasDeployed && !u.routing) && u.side === b.winner && u.family !== 'siege' && (!b.layout.fortified || b.winner === 1 || u.id === b.securedBy || distance(u, b.layout.objective) < 14));
+  const occupying = b.units.filter(u => (fighting(u) || b.phase === 'complete' && u.status === 'reserve' && u.wasDeployed && !u.routing) && u.side === b.winner && u.family !== 'siege' && (!b.layout.fortified || b.winner === 1 || u.id === b.securedBy || distance(u, b.layout.objective) < (b.layout.castle ? 4 : 14)));
   const sections = [...b.layout.walls, ...(b.layout.gate ? [b.layout.gate] : [])];
   const occupier=occupying.find(u=>u.id===b.securedBy)||occupying[0];
   return { battleId: b.encounterId, encounterId: b.encounterId, complete: b.phase === 'complete', winner: b.winner, armies, walls: Math.max(0, b.fortifications.walls), fortIntegrity: Math.max(0, b.fortifications.fortIntegrity), fortifications: clone(b.fortifications), wallBreaches: sections.filter(w => w.hp <= 0).map(w => w.id), wallSections: sections.map(w => ({ id: w.id, hp: w.hp, maxHp: w.maxHp, ...(w.breach ? {breach:{...w.breach}} : {}) })), occupationSide: occupier ? b.winner : null, occupyingArmyId:occupier?.armyId??null, duration: b.time, commanderId: b.commanderId };
@@ -1501,13 +1580,13 @@ export function finishAutomatically(b) {
 export function validateBattleCheckpoint(b, encounter) {
   if (!b || b.version !== BATTLE_VERSION || b.encounterId !== encounter?.id || !['deployment', 'combat', 'complete'].includes(b.phase) || !Array.isArray(b.units) || !Array.isArray(b.armies)) return false;
   if (!Number.isFinite(b.time) || b.time < 0 || !Number.isFinite(b.rng) || !Number.isFinite(b.accumulator) || !b.layout || !Array.isArray(b.projectiles) || !b.fortifications || !Array.isArray(b.events)) return false;
-  if (b.seed !== (encounter.seed ?? encounter.id) || b.playerOwner !== encounter.playerOwner || !Number.isInteger(b.maxActive) || b.maxActive < 4 || b.maxActive > 240 || !Array.isArray(b.activeCaps)) return false;
+  if (b.seed !== (encounter.seed ?? encounter.id) || b.playerOwner !== encounter.playerOwner || !Number.isInteger(b.maxActive) || b.maxActive < 4 || b.maxActive > (b.battleRulesVersion>=2?MAX_ACTIVE_TROOPS:240) || !Array.isArray(b.activeCaps)) return false;
   // The original allocator could grant one extra opposing slot when the
   // larger side rounded all the way up to maxActive. Accept that legacy
   // shape so normalization can safely reduce it to the current hard cap.
-  const legacyOverflow = b.battleRulesVersion !== 2 && b.activeCaps[0] === b.maxActive && b.activeCaps[1] === 1 ? 1 : 0;
+  const legacyOverflow = (b.battleRulesVersion || 1) < 2 && b.activeCaps[0] === b.maxActive && b.activeCaps[1] === 1 ? 1 : 0;
   if (b.activeCaps.length !== 2 || !b.activeCaps.every(n => Number.isInteger(n) && n >= 0) || b.activeCaps.reduce((n, c) => n + c, 0) > b.maxActive + legacyOverflow) return false;
-  if (b.battleRulesVersion === 2 && (b.maxActive > MAX_ACTIVE_TROOPS || [0, 1].some(side => b.units.filter(u => alive(u) && u.side === side).length > b.activeCaps[side]))) return false;
+  if (b.battleRulesVersion >= 2 && (b.maxActive > MAX_ACTIVE_TROOPS || [0, 1].some(side => b.units.filter(u => alive(u) && u.side === side).length > b.activeCaps[side]))) return false;
   if (b.nextReserveWave !== undefined && (!Number.isFinite(b.nextReserveWave) || b.nextReserveWave < 0)) return false;
   const seen = new Set(), expected = new Map();
   for (const p of encounter.participants || []) {
@@ -1525,7 +1604,8 @@ export function validateBattleCheckpoint(b, encounter) {
     seen.add(u.id);
     const prefix = `${u.armyId}:${u.type}:`, index = Number(String(u.id).slice(prefix.length));
     if (!String(u.id).startsWith(prefix) || !Number.isInteger(index) || index < 0 || index >= (p.units?.[u.type] || 0)) return false;
-    if (![u.x, u.z, u.y, u.hp, u.maxHp, u.morale, u.stamina, u.ammo, u.facing].every(Number.isFinite) || u.hp < 0 || u.hp > u.maxHp || u.maxHp !== PROFILE[u.type].hp || u.ammo < 0 || u.ammo > (PROFILE[u.type].ammo || 0) || u.morale < 0 || u.morale > 100 || u.stamina < 0 || u.stamina > 100) return false;
+    const legacyRam = (b.battleRulesVersion || 1) < RULES_VERSION && u.type === 'ram' && u.maxHp === LEGACY_RAM_HP;
+    if (![u.x, u.z, u.y, u.hp, u.maxHp, u.morale, u.stamina, u.ammo, u.facing].every(Number.isFinite) || u.hp < 0 || u.hp > u.maxHp || u.maxHp !== PROFILE[u.type].hp && !legacyRam || u.ammo < 0 || u.ammo > (PROFILE[u.type].ammo || 0) || u.morale < 0 || u.morale > 100 || u.stamina < 0 || u.stamina > 100) return false;
     if (u.status === 'dead' && u.hp !== 0 || u.status !== 'dead' && u.hp <= 0) return false;
     const key = `${u.armyId}:${u.type}`; totals.set(key, (totals.get(key) || 0) + 1);
     if (!u.order || !Array.isArray(u.path) || u.action && ![u.action.elapsed, u.action.duration, u.action.windup].every(Number.isFinite)) return false;
@@ -1557,6 +1637,7 @@ export function validateBattleCheckpoint(b, encounter) {
     if (!Array.isArray(b.layout.deploymentZones) || b.layout.deploymentZones.length !== 2 || b.layout.deploymentZones.some((zone, i) => !zone || Object.keys(expectedZones[i]).some(key => zone[key] !== expectedZones[i][key]))) return false;
   }
   const tile = encounter.tile || {}, fortMax = tile.building === 'fort' ? [0, 45, 100, 180][clamp(tile.levels?.fort || tile.buildings?.fort || tile.level || tile.buildingLevel || 1, 1, 3)] : 0;
+  if (!matchesCastleLayout(b.layout,tile)) return false;
   const f = b.fortifications;
   if (![f.walls, f.initialWalls, f.fortIntegrity, f.initialFortIntegrity].every(Number.isFinite) || f.initialWalls !== Math.max(0, Number(tile.walls) || 0) || f.initialFortIntegrity !== Math.max(0, Number(tile.fortIntegrity ?? fortMax) || 0)) return false;
   if (f.walls < 0 || f.walls > f.initialWalls || f.fortIntegrity < 0 || f.fortIntegrity > f.initialFortIntegrity) return false;

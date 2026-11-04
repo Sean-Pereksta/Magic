@@ -23,7 +23,9 @@ function sample(layout, x, z) {
     y = bank * y + (1 - bank) * (bridge ? 0 : -.9);
   }
   if (layout.fortified) {
-    const apron = clamp(Math.max(Math.abs(x) - 39, 3 - z, z - 65) / 15, 0, 1);
+    const outer=layout.castle?.outer;
+    const outside=outer?Math.max(outer.left-x,x-outer.right,outer.front-z,z-outer.rear)-3:Math.max(Math.abs(x)-39,3-z,z-65);
+    const apron = clamp(outside / 15, 0, 1);
     y *= apron;
   }
   return y;

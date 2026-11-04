@@ -73,6 +73,23 @@ try{
   await page.locator('[data-battle-action=pause]').click();await page.locator('[data-battle-action=exit]').click();
   assert.equal(await campaignSave(),null);console.log('Custom setup, Fight Now, Deploy First, rematch, New Field and campaign isolation passed.');
 
+  await page.locator('[data-scenario=royal]').click();
+  assert.equal(await page.locator('[name=defenses]').inputValue(),'citadel');
+  assert.equal(await page.locator('[name=limit]').inputValue(),'400');
+  await page.getByRole('button',{name:'Fight Now'}).click();
+  await page.waitForFunction(()=>document.querySelector('#battle-army-counts')?.textContent.includes('400/400'));
+  await page.keyboard.press('Escape');
+  await page.locator('#battle-pause-sensitivity').selectOption('3');
+  assert.equal(await page.locator('#offline-battle-sensitivity').inputValue(),'3');
+  await page.locator('[data-battle-action=exit]').click();
+  await page.locator('[name=limit]').selectOption('100');
+  await page.locator('[name=defenses]').selectOption('town');
+  await page.getByRole('button',{name:'Fight Now'}).click();
+  await page.waitForFunction(()=>document.querySelector('#battle-army-counts')?.textContent.includes('100/100'));
+  await page.keyboard.press('Escape');await page.locator('[data-battle-action=exit]').click();
+  assert.equal(await campaignSave(),null);
+  console.log('Royal City Siege starts with 400 troops, town defenses start at the chosen 100 cap, and mouse sensitivity changes without writing the campaign.');
+
   const campaign=nearlyWonCampaign(),id=campaign.offlineBattle.id, tile=campaign.offlineBattle.tile.id;
   await page.evaluate(({key,s})=>localStorage.setItem(key,JSON.stringify(s)),{key:saveKey,s:campaign});
   await page.reload();await page.locator('#resume').click();await page.locator('[data-battle-action=enter]').click();
@@ -86,5 +103,11 @@ try{
   await page.reload();await page.locator('#resume').click();
   const reloaded=JSON.parse(await campaignSave());assert.deepEqual(reloaded.armies,saved.armies);assert.deepEqual(reloaded.militaryEvents,saved.militaryEvents);
   console.log('Won siege returned to the map, captured the fort, resumed the interrupted turn, and survived reload exactly once.');
+  await page.locator('#menu-button').click();
+  assert.equal(await page.locator('#offline-battle-sensitivity').inputValue(),'3','mouse sensitivity survives a reload');
+  await page.locator('#offline-battle-size').selectOption('100');
+  await page.locator('#new-campaign').click();await page.locator('#custom-battle').click();
+  await page.locator('[data-scenario=royal]').click();
+  assert.equal(await page.locator('[name=limit]').inputValue(),'100','the larger scenario honors the lower menu setting');
   assert.deepEqual(errors,[]);
 }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}

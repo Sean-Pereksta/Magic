@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { customDeployment, balancedArmy, westWallAssault } from '../custom-battle.mjs';
+import { customDeployment, balancedArmy, westWallAssault, royalCitySiege } from '../custom-battle.mjs';
 import { validateBattleCheckpoint } from '../battle-sim.mjs';
 
 test('West Wall Assault starts with both ladders, 72 soldiers, a ram and 48 defenders including 16 archers',()=>{
@@ -18,7 +18,7 @@ test('West Wall Assault starts with both ladders, 72 soldiers, a ram and 48 defe
 test('300 attackers and 200 defenders keep their exact roster at every combined active limit',()=>{
   const settings=westWallAssault();
   settings.armies=[balancedArmy(300,0,0),balancedArmy(200,1,0)];settings.mode='field';settings.playerSide=1;
-  for(const limit of [100,150,200]){
+  for(const limit of [100,150,200,300,400]){
     settings.limit=limit;
     const {battle,encounter}=customDeployment(settings);
     assert.equal(battle.playerSide,1);assert.ok(validateBattleCheckpoint(battle,encounter));
@@ -28,6 +28,15 @@ test('300 attackers and 200 defenders keep their exact roster at every combined 
       assert.equal(units.filter(u=>u.status==='reserve').length,(side?200:300)-active);
     }
   }
+});
+test('Royal City Siege starts with two armies, an upgraded city and 400 active combatants',()=>{
+  const settings=royalCitySiege();
+  const {battle,encounter}=customDeployment(settings);
+  assert.equal(encounter.tile.levels.city,4);
+  assert.equal(encounter.tile.levels.wall,3);
+  assert.equal(battle.units.filter(u=>u.status==='active').length,400);
+  assert.equal(battle.units.length,442);
+  assert.ok(validateBattleCheckpoint(battle,encounter));
 });
 
 test('mixed siege engines remain distinct from soldiers and a human defender starts on the parapet',()=>{

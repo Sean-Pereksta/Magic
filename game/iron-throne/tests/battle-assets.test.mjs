@@ -7,7 +7,7 @@ import {validateBattlePack} from '../battle-assets.mjs';
 import {UNITS,CAMPAIGN_HOUSES} from '../data.mjs';
 import {createBattle,beginBattle,stepBattle,terrainHeight} from '../battle-sim.mjs';
 import {battlefieldClimate,TERRAIN_STEP} from '../battle-terrain.mjs';
-import {battleGroundHeight} from '../battle-renderer.mjs';
+import {battleGroundHeight,polearmFrame,polearmPitch} from '../battle-renderer.mjs';
 test('shipped model package is reproducible and covers every roster entry and House',async()=>{
   const shipped=await readFile(new URL('../assets/battle/v1/pack.json',import.meta.url),'utf8'),pack=validateBattlePack(JSON.parse(shipped));
   assert.equal(JSON.stringify(buildBattlePack()),shipped);
@@ -22,8 +22,37 @@ test('damaged and incomplete asset packages are rejected before combat starts',(
   const missing=buildBattlePack();delete missing.models.trebuchet;assert.throws(()=>validateBattlePack(missing),/trebuchet/);
   const broken=buildBattlePack();broken.meshes.torso.positions[0]=NaN;assert.throws(()=>validateBattlePack(broken),/damaged/);
 });
+test('fresh models and previously cached v1 packs keep visor bars within helmet width',()=>{
+  const pack=buildBattlePack(),models=['heavyInfantry','crossbow','knight','cavalry'];
+  for(const type of models){
+    const visor=pack.models[type].nodes.find(n=>n.name==='visor');
+    assert.equal(visor.position[0],.14);assert.equal(visor.scale[1],.28);
+    Object.assign(visor,{position:[0,-.07,.155],scale:[.22,1.15,.15]});
+  }
+  validateBattlePack(pack);
+  for(const type of models){
+    const visor=pack.models[type].nodes.find(n=>n.name==='visor');
+    assert.ok(Math.abs(visor.position[0])<.16&&Math.abs(visor.position[0]-visor.scale[1])<.16);
+  }
+});
 test('renderer terrain heights match physical movement and picking',()=>{
   for(const terrain of ['plains','forest','hills','river','pass','desert'])for(const [x,z]of [[0,0],[24,-37],[-50,70]])assert.equal(battleGroundHeight({terrain},x,z),terrainHeight({layout:{terrain}},x,z));
+});
+test('mounted, foot, braced, striking, recovering and fallen polearms clear the helmet at both detail levels',()=>{
+  const phases=[{}, {braced:true}, {status:'dead'}, ...[0,.24,.52,.80,1.12].map(elapsed=>({action:{kind:'attack',elapsed,windup:.52,recovery:.70,duration:1.22}}))];
+  for(const yaw of [0,.7,Math.PI])for(const mounted of [true,false])for(const phase of phases)for(const detailed of [false,true]){
+    const c=Math.cos(yaw),s=Math.sin(yaw),roll=phase.status==='dead'?1.45:0,cr=Math.cos(roll),sr=Math.sin(roll);
+    const rider=new Float32Array([c*cr,sr,-s*cr,0,-c*sr,cr,s*sr,0,s,0,c,0,4,mounted?1:0,-3,1]);
+    const head=new Float32Array(rider),hand=new Float32Array(rider);
+    for(let i=0;i<3;i++){
+      head[12+i]+=rider[4+i]*1.78;hand[12+i]+=rider[4+i]*1.43+rider[i]*(detailed?.16:.46);
+    }
+    const frame=polearmFrame(rider,hand,head,polearmPitch({weapon:mounted?'lance':'spear',mounted,...phase}));
+    for(const t of [-.13,0,.5,1,2.81]){
+      const lateral=[0,1,2].reduce((n,i)=>n+(frame[12+i]+frame[4+i]*t-head[12+i])*rider[i],0);
+      assert.ok(lateral>=.429,'shaft crosses the helmet');
+    }
+  }
 });
 test('seeded terrain keeps the same triangulated surface through a save and blocks a shot crossing a ridge',()=>{
   const b=createBattle({id:'ridge-cover',seed:'ridge',playerOwner:'ashen',tile:{terrain:'hills'},participants:[

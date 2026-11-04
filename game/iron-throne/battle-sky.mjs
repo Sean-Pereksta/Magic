@@ -7,13 +7,8 @@ export function createBattleSky(gl, climate, compile) {
   const fragment = compile(gl, gl.FRAGMENT_SHADER, `precision highp float;
     varying vec2 uv;
     uniform vec3 uForward,uRight,uUp,uSun,uHorizon;
-    uniform float uTime,uPhase;
-    float lattice(vec2 p){ vec3 v=fract(vec3(p.xyx)*.1031); v+=dot(v,v.yzx+33.33); return fract((v.x+v.y)*v.z); }
-    float noise(vec2 p) {
-      vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
-      vec4 n=vec4(lattice(i),lattice(i+vec2(1.,0.)),lattice(i+vec2(0.,1.)),lattice(i+1.));
-      return mix(mix(n.x,n.y,f.x),mix(n.z,n.w,f.x),f.y);
-    }
+    uniform float uTime,uPhase;uniform sampler2D uNoise;
+    float noise(vec2 p) {return texture2D(uNoise,(p+.5)/128.).r;}
     void main(){
       vec3 ray=normalize(uForward+uv.x*uRight+uv.y*uUp);
       float high=clamp(ray.y,0.,1.), sun=max(0.,dot(ray,uSun));

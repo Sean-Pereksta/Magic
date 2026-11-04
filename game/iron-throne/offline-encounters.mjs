@@ -9,6 +9,7 @@ import { refreshKnowledge, visionTiles } from './fog.mjs';
 import { changeRelation } from './living.mjs';
 import { emotionalEvent } from './emotions.mjs';
 import { BATTLE_SIZE_OPTIONS, DEFAULT_ACTIVE_TROOPS, finishAutomatically, normalizeBattleCheckpoint, validateBattleCheckpoint } from './battle-sim.mjs';
+import { castleSite } from './battle-siege.mjs';
 
 // The campaign stores only JSON. Neither a renderer nor a running worker is
 // required to recover a pending decision or resume the strategic turn.
@@ -25,7 +26,7 @@ export function configureOfflineBattles(s,options={}) {
   const tacticalTime=options.tacticalTime??s.offlineBattles?.tacticalTime??'real';
   if(!['pause','slow','real'].includes(tacticalTime))fail('Choose paused, slow motion, or real time command.');
   const battleSize=options.battleSize??s.offlineBattles?.battleSize??DEFAULT_ACTIVE_TROOPS;
-  if(!BATTLE_SIZE_OPTIONS.includes(battleSize))fail('Choose 100, 150, or 200 troops on the field.');
+  if(!BATTLE_SIZE_OPTIONS.includes(battleSize))fail(`Choose a supported field limit (${BATTLE_SIZE_OPTIONS.join(', ')}).`);
   s.offlineBattles={...s.offlineBattles,enabled:options.enabled??s.offlineBattles?.enabled??true,preference,tacticalTime,battleSize};
   return s.offlineBattles;
 }
@@ -130,12 +131,16 @@ function validatedResult(e,result) {
     row.losses=Object.fromEntries(Object.keys(UNITS).map(type=>[type,(p.units[type]||0)-row.units[type]]));
   }
   if(!finite(result.walls,0,e.tile.walls||0)||!finite(result.fortIntegrity,0,e.tile.fortIntegrity||0))fail('Battle damage cannot restore or exceed the saved fortifications.');
-  if(result.wallBreaches!==undefined&&(!Array.isArray(result.wallBreaches)||result.wallBreaches.length>6||result.wallBreaches.some(id=>!WALL_SECTIONS.includes(id))||new Set(result.wallBreaches).size!==result.wallBreaches.length))fail('Invalid breached wall sections.');
-  if(result.wallSections!==undefined&&(!Array.isArray(result.wallSections)||result.wallSections.length>6||new Set(result.wallSections.map(w=>w.id)).size!==result.wallSections.length||result.wallSections.some(w=>!WALL_SECTIONS.includes(w.id)||!finite(w.maxHp,1,1000)||!finite(w.hp,0,w.maxHp)||w.breach&&(w.hp!==0||!finite(w.breach.x,-80,80)||!finite(w.breach.z,-80,80)||!finite(w.breach.width,1,72)))))fail('Invalid wall section damage.');
+  const sections=new Set(WALL_SECTIONS);
+  if ((e.checkpoint?.layout?.castle ?? castleSite(e.tile))?.inner) for(const id of WALL_SECTIONS) sections.add('inner-'+id);
+  if(result.wallBreaches!==undefined&&(!Array.isArray(result.wallBreaches)||result.wallBreaches.length>sections.size||result.wallBreaches.some(id=>!sections.has(id))||new Set(result.wallBreaches).size!==result.wallBreaches.length))fail('Invalid breached wall sections.');
+  if(result.wallSections!==undefined&&(!Array.isArray(result.wallSections)||result.wallSections.length>sections.size||new Set(result.wallSections.map(w=>w.id)).size!==result.wallSections.length||result.wallSections.some(w=>!sections.has(w.id)||!finite(w.maxHp,1,1000)||!finite(w.hp,0,w.maxHp)||w.breach&&(w.hp!==0||!finite(w.breach.x,-80,80)||!finite(w.breach.z,-80,80)||!finite(w.breach.width,1,72)))))fail('Invalid wall section damage.');
   if(e.checkpoint){
     if(!validateBattleCheckpoint(e.checkpoint,e))fail('The saved battlefield checkpoint is damaged.');
     for(const row of normalized.armies){const remaining=emptyUnits();for(const u of e.checkpoint.units)if(u.armyId===row.armyId&&u.status!=='dead')remaining[u.type]++;validateCounts(row.units,remaining,'checkpoint surviving');}
     if(result.walls>e.checkpoint.fortifications.walls||result.fortIntegrity>e.checkpoint.fortifications.fortIntegrity)fail('Battle result restores damage already recorded in its checkpoint.');
+    const savedSections=[...e.checkpoint.layout.walls,e.checkpoint.layout.gate].filter(Boolean);
+    if(result.wallSections?.some(section=>!savedSections.some(w=>w.id===section.id && w.maxHp===section.maxHp && w.hp>=section.hp)))fail('Battle result restores or invents a fortress section.');
   }
   // Campaign construction and save validation use integral integrity points.
   // Round damage outward, never heal a fractional point on leaving the scene.
@@ -179,6 +184,8 @@ export function saveEncounterCheckpoint(s,checkpoint) {
     if(checkpoint.time<e.checkpoint.time)fail('The checkpoint is older than the last saved battlefield.');
     const byId=new Map(checkpoint.units.map(u=>[u.id,u]));
     if(e.checkpoint.units.some(u=>u.status==='dead'&&byId.get(u.id)?.status!=='dead')||checkpoint.fortifications.walls>e.checkpoint.fortifications.walls||checkpoint.fortifications.fortIntegrity>e.checkpoint.fortifications.fortIntegrity)fail('The checkpoint restores recorded casualties or damage.');
+    const previous=[...e.checkpoint.layout.walls,e.checkpoint.layout.gate].filter(Boolean), current=[...checkpoint.layout.walls,checkpoint.layout.gate].filter(Boolean);
+    if (current.length!==previous.length || current.some(w=>!previous.some(v=>v.id===w.id && v.hp>=w.hp))) fail('The checkpoint restores or changes a wall section.');
   }
   if(JSON.stringify({...s,offlineBattle:{...e,checkpoint}}).length>12000000)fail('This battlefield checkpoint would exceed the campaign save size limit.');
   e.checkpoint=clone(checkpoint);return {ok:true};

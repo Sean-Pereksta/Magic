@@ -1,6 +1,7 @@
 import {loadBattleAssets,releaseBattleAssets} from './battle-assets.mjs';
 import {battleGroundHeight,battlefieldClimate,TERRAIN_STEP} from './battle-terrain.mjs';
 import {createBattleSky} from './battle-sky.mjs';
+import {drawCastleItems} from './battle-castle-view.mjs';
 export {battleGroundHeight};
 
 const TAU=Math.PI*2;
@@ -28,6 +29,22 @@ const dot=(a,b)=>a.reduce((n,x,i)=>n+x*b[i],0);
 const mix=(a,b,t)=>a+(b-a)*clamp(t,0,1);
 const hash=value=>{let n=2166136261;for(const c of String(value))n=Math.imul(n^c.charCodeAt(0),16777619);return n>>>0;};
 const CORPSE_LIMIT=160,DETAILED_CORPSE_LIMIT=24,BLOOD_LIMIT=96,BLOOD_DISTANCE=32,BLOOD_LIFETIME=.85;
+const carriesPolearm=u=>!u.sidearm&&(['spear','lance'].includes(u.weapon)||!u.weapon&&['spearman','cavalry','knight'].includes(u.type));
+export function polearmPitch(u,pose=battleActionPose(u)){
+  if(u.status==='dead')return .27;
+  if(u.action?.kind==='attack'||u.braced)return pose.shaft;
+  return u.mounted?1.20:.34;
+}
+
+// The pole stays in a plane outside the helmet. Wrist roll and animated arm
+// twist cannot sweep the shaft across the face during recovery or a death fall.
+export function polearmFrame(rider,hand,head,pitch){
+  const grip=new Float32Array(rider),right=normalize([rider[0],rider[1],rider[2]]);
+  const lateral=(hand[12]-head[12])*right[0]+(hand[13]-head[13])*right[1]+(hand[14]-head[14])*right[2];
+  const clearance=Math.max(0,.43-lateral);
+  for(let i=0;i<3;i++)grip[12+i]=hand[12+i]+right[i]*clearance;
+  return multiply(grip,transform([0,0,0],[pitch,0,0]));
+}
 
 // The rig faces +Z. Weapon meshes point up their local Y axis, so the hand mount
 // must counter the arm rotation to put the actual tip forward at impact.
@@ -45,6 +62,15 @@ export function battleActionPose(unit){
 function lookAt(eye,target){const z=normalize(eye.map((v,i)=>v-target[i])),x=normalize(cross([0,1,0],z)),y=cross(z,x);return new Float32Array([x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-dot(x,eye),-dot(y,eye),-dot(z,eye),1]);}
 function perspective(aspect){const f=1/Math.tan(Math.PI/6),near=.15,far=420;return new Float32Array([f/aspect,0,0,0,0,f,0,0,0,0,(far+near)/(near-far),-1,0,0,2*far*near/(near-far),0]);}
 function shader(gl,type,source){const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){const message=gl.getShaderInfoLog(s);gl.deleteShader(s);throw new Error(message);}return s;}
+function surfaceNoise(gl,seed){
+  const size=128,bytes=new Uint8Array(size*size);
+  let state=hash(seed);
+  for(let i=0;i<bytes.length;i++){state=(Math.imul(state,1664525)+1013904223)>>>0;bytes[i]=state>>>24;}
+  const texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,texture);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,size,size,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,bytes);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);
+  gl.generateMipmap(gl.TEXTURE_2D);return texture;
+}
 function program(gl,instanced){
   const vertex=shader(gl,gl.VERTEX_SHADER,`precision highp float;
   attribute vec3 aPosition;attribute vec3 aNormal;
@@ -56,10 +82,8 @@ function program(gl,instanced){
     vColor=${instanced?'iColor':'uColor'}*light;vWorld=w.xyz;vNormal=n;vFog=clamp((distance(w.xz,uEye.xz)-65.)/175.,0.,.86);gl_Position=uViewProjection*w;}`);
   const fragment=shader(gl,gl.FRAGMENT_SHADER,`precision highp float;
     varying vec3 vColor,vWorld,vNormal;varying float vFog;uniform vec3 uHorizon;
-    uniform float uSurface,uFort,uPhase;uniform vec4 uFeet;
-    float hash(vec2 p){vec3 v=fract(vec3(p.xyx)*.1031);v+=dot(v,v.yzx+33.33);return fract((v.x+v.y)*v.z);}
-    float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
-      return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+1.),f.x),f.y);}
+    uniform float uSurface,uFort,uPhase;uniform vec4 uFeet;uniform sampler2D uNoise;
+    float noise(vec2 p){return texture2D(uNoise,(p+.5)/128.).r;}
     void main(){
       vec3 tint=vColor;
       if(uSurface==1.){
@@ -77,7 +101,7 @@ function program(gl,instanced){
         float row=floor(p.y/.53);vec2 uv=vec2((p.x+mod(row,2.)*.65)/1.30,p.y/.53);
         vec2 seam=min(fract(uv),1.-fract(uv));
         float mortar=smoothstep(.01,.045,min(seam.x,seam.y))*.15;
-        tint*=.78+mortar+.11*hash(floor(uv))+.055*noise(p*6.);
+        tint*=.81+mortar*(1.-vFog*.75)+.08*noise(floor(uv))+.05*noise(p*6.);
       }
       gl_FragColor=vec4(mix(tint,uHorizon,vFog),1.);
     }`);
@@ -90,6 +114,9 @@ export async function createBattleRenderer(canvas,battle,options={}) {
   const gl=canvas.getContext('webgl',{antialias:true,alpha:false,powerPreference:'high-performance',preserveDrawingBuffer:false});
   if(!gl)throw new Error('This browser could not start WebGL. Resolve this battle automatically or try another browser.');
   const ext=gl.getExtension('ANGLE_instanced_arrays'),p=program(gl,!!ext),buffers=new Map(),instances=new Map(),staticInstances=new Map();
+  const staticBuffers=new Map(),structureInstances=new Map(),structureBuffers=new Map();let structureKey='',targetBatch=instances;
+  const noiseTexture=surfaceNoise(gl,battle.seed);
+  let resolutionScale=1,lastFrameTime=0,slowFrames=0,fastFrames=0;
   const climate=battle.layout.climate||battlefieldClimate(battle.seed), sky=createBattleSky(gl,climate,shader);
   const uSun=gl.getUniformLocation(p,'uSun'),uHorizon=gl.getUniformLocation(p,'uHorizon');
   const uSurface=gl.getUniformLocation(p,'uSurface'),uFort=gl.getUniformLocation(p,'uFort'),uPhase=gl.getUniformLocation(p,'uPhase'),uFeet=gl.getUniformLocation(p,'uFeet');
@@ -129,12 +156,28 @@ export async function createBattleRenderer(canvas,battle,options={}) {
   }
   for(const [name,mesh]of Object.entries(pack.meshes))upload(name,mesh);
   upload('masonry',pack.meshes.box);
+  const spire={positions:[],normals:[]};
+  for(let i=0;i<8;i++){
+    const a=i*TAU/8,b=(i+1)*TAU/8,points=[[Math.cos(a),0,Math.sin(a)],[0,1,0],[Math.cos(b),0,Math.sin(b)]];
+    const n=normalize(cross(points[1].map((v,j)=>v-points[0][j]),points[2].map((v,j)=>v-points[0][j])));
+    for(const p of points){spire.positions.push(...p);spire.normals.push(...n);}
+  }
+  upload('spire',spire);
   const disc={positions:[],normals:[]};for(let i=0;i<16;i++){const a=i*TAU/16,b=(i+1)*TAU/16;disc.positions.push(0,0,0,Math.sin(a),0,Math.cos(a),Math.sin(b),0,Math.cos(b));disc.normals.push(0,1,0,0,1,0,0,1,0);}upload('shadow',disc);
   const annulus={positions:[],normals:[]};for(let i=0;i<32;i++){const a=i*TAU/32,b=(i+1)*TAU/32,point=(angle,r)=>[Math.sin(angle)*r,0,Math.cos(angle)*r];for(const triangle of [[point(a,.965),point(a,1.035),point(b,1.035)],[point(a,.965),point(b,1.035),point(b,.965)]])for(const v of triangle){annulus.positions.push(...v);annulus.normals.push(0,1,0);}}upload('selectionRing',annulus);
   const drop={positions:[],normals:[]},dropPoints=[[0,.7,0],[-.5,-.3,.35],[.5,-.3,.35],[0,-.3,-.55]];
   for(const ids of [[0,1,2],[0,2,3],[0,3,1],[1,3,2]]){const [a,b,c]=ids.map(i=>dropPoints[i]),n=normalize(cross(b.map((v,i)=>v-a[i]),c.map((v,i)=>v-a[i])));for(const point of [a,b,c]){drop.positions.push(...point);drop.normals.push(...n);}}upload('bloodDrop',drop);
-  function add(name,matrix,tint,target=instances){if(!buffers.has(name))return;let items=target.get(name);if(!items){items=[];target.set(name,items);}items.push(...matrix,...tint);}
-  function object(name,position,scale,tint,rotation=[0,0,0],target=instances){add(name,transform(position,rotation,scale),tint,target);}
+  function add(name,matrix,tint,target=targetBatch){if(!buffers.has(name))return;let items=target.get(name);if(!items){items=[];target.set(name,items);}items.push(...matrix,...tint);}
+  function object(name,position,scale,tint,rotation=[0,0,0],target=targetBatch){add(name,transform(position,rotation,scale),tint,target);}
+  function cacheInstances(source,cache){
+    if(!ext)return;
+    for(const buffer of cache.values())gl.deleteBuffer(buffer);
+    cache.clear();
+    for(const [name,data] of source){
+      const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);cache.set(name,buffer);
+    }
+  }
   const terrainColor=battle.layout.terrain==='desert'?[.65,.55,.34]:battle.layout.terrain==='forest'?[.25,.35,.24]:[.38,.43,.28];
   const height=(x,z)=>battleGroundHeight(battle.layout,x,z);
   function corpseFloor(unit,snapToStep=false){
@@ -162,7 +205,7 @@ export async function createBattleRenderer(canvas,battle,options={}) {
     groups.forEach((group,i)=>{if(!group.positions.length)return;upload('terrain'+i,group);add('terrain'+i,ID(),wear[i-4]||terrainColor.map(c=>c*(.87+i*.05)),staticInstances);});
     const verge={positions:[],normals:[]};
     for(let edge=0;edge<4;edge++){
-      const corner=(t,out)=>{const side=edge%2?d:w,a=(t-.5)*side*(1+out/90),b=((edge%2?w:d)/2+out)*(edge>1?-1:1);return edge%2?[b,a]:[a,b];};
+      const corner=(t,out)=>{const side=edge%2?d:w,a=(t-.5)*(side+2*out),b=((edge%2?w:d)/2+out)*(edge>1?-1:1);return edge%2?[b,a]:[a,b];};
       for(let n=0;n<64;n++){
         const vertices=[corner(n/64,0),corner((n+1)/64,0),corner(n/64,150),corner((n+1)/64,150)];
         for(const i of [0,2,1,1,2,3]){
@@ -201,6 +244,8 @@ export async function createBattleRenderer(canvas,battle,options={}) {
         for(const side of [-1,1])object('box',[o.x+side*(o.width||5)*.28,y+1.8,o.z-(o.depth||5)*.51],[.7,.9,.08],[.16,.20,.18],[0,0,0],staticInstances);
       }else if(o.kind==='water')object('box',[o.x,battle.layout.climate?-.43:-.12,o.z],[o.width||r*2,.12,o.depth||r*2],[.25,.45,.53],[0,0,0],staticInstances);
     }
+    const garrison=battle.armies.find(a=>a.side===1);
+    drawCastleItems(battle.layout.castle,(...args)=>object(...args,staticInstances),height,houseColor(garrison?.owner));
     if(battle.layout.bridges?.length||battle.layout.terrain==='river'){
       // Bridge positions come from legal routes, not decorative obstructions.
       for(const bridge of battle.layout.bridges||[{x:0,z:0,width:10,depth:16}]){
@@ -209,8 +254,8 @@ export async function createBattleRenderer(canvas,battle,options={}) {
       }
     }
   }
-  ground();
-  function wall(w,isGate=false){
+  ground();cacheInstances(staticInstances,staticBuffers);
+  function wall(w,isGate=w.kind==='gate'){
     const state=w.state||((w.hp||0)<=0?'breached':'intact'),ratio=clamp((w.hp??w.maxHp)/(w.maxHp||100),0,1),base=height(w.x,w.z);
     if(state==='breached'||state==='destroyed'||ratio===0){
       const alongX=w.width>w.depth,center=alongX?w.x:w.z,span=alongX?w.width:w.depth,opening=w.breach;
@@ -227,12 +272,23 @@ export async function createBattleRenderer(canvas,battle,options={}) {
       }
       return;
     }
-    const h=w.height||6,tint=isGate?[.31,.22,.14]:[.52,.54,.48];
-    object(isGate?'box':'masonry',[w.x,base,w.z],[w.width||8,h,w.depth||2],tint);
-    if(isGate){for(let i=-2;i<=2;i++)object('beam',[w.x+i*.55,base,w.z-(w.depth||2)*.51],[.7,h,.7],[.16,.19,.18]);}
+    const h=w.height||6,timber=w.material==='timber',tint=isGate?[.37,.25,.16]:timber?[.47,.34,.21]:w.layer==='inner'?[.60,.60,.55]:[.52,.54,.48];
+    object(isGate||timber?'box':'masonry',[w.x,base,w.z],[w.width||8,h,w.depth||2],tint);
+    if(isGate){
+      for(let i=-2;i<=2;i++)object('beam',[w.x+i*w.width/5.3,base,w.z-w.depth*.51],[.7,h,.7],[.22,.17,.13]);
+      for(const y of [.26,.70])object('box',[w.x,base+h*y,w.z-w.depth*.52],[w.width*.97,.18,.10],[.28,.31,.30]);
+      object('box',[w.x,base,w.z-w.depth*.52],[.12,h,.12],[.15,.12,.09]);
+    }else if(timber){
+      const across=w.width>w.depth,span=across?w.width:w.depth;
+      for(let n=.26;n<span;n+=.58){
+        const x=w.x+(across?n-span/2:Math.sign(w.x)*(w.width/2-.06)),z=w.z+(across?(w.id.endsWith('wall-rear')?1:-1)*(w.depth/2-.06):n-span/2);
+        object('shaft',[x,base,z],[11,h+.18,11],[.49+(Math.floor(n)%3)*.015,.35,.22]);
+        object('roof',[x,base+h+.10,z],[.27,.65,.28],[.57,.43,.29]);
+      }
+    }
     // Keep the inner wall top walkable: merlons occupy only the outside edge.
     else if((w.depth||2)>(w.width||8)){const outer=w.x<0?-1:1;for(let z=-(w.depth||2)/2+.7;z<(w.depth||2)/2;z+=2)if(ratio>.6||Math.round(z)%3)object('box',[w.x+outer*((w.width||2)/2-.26),base+h,w.z+z],[.52,1.1,1],[.48,.50,.45]);}
-    else {const outer=w.id==='wall-rear'?1:-1;for(let x=-(w.width||8)/2+.7;x<(w.width||8)/2;x+=2)if(ratio>.6||Math.round(x)%3)object('box',[w.x+x,base+h,w.z+outer*((w.depth||2)/2-.26)],[1,1.1,.52],[.48,.50,.45]);}
+    else {const outer=w.id.endsWith('wall-rear')?1:-1;for(let x=-(w.width||8)/2+.7;x<(w.width||8)/2;x+=2)if(ratio>.6||Math.round(x)%3)object('box',[w.x+x,base+h,w.z+outer*((w.depth||2)/2-.26)],[1,1.1,.52],[.48,.50,.45]);}
     if(ratio<.8)for(let i=0;i<3;i++)object('stone',[w.x+(i-1)*1.3,base+.15,w.z-1.5],[1.5,.8,1.4],[.45,.45,.4]);
   }
   function renderLadder(l,next){
@@ -245,8 +301,8 @@ export async function createBattleRenderer(canvas,battle,options={}) {
     const base=height(foot.x,foot.z)+.04,rise=height(top.x,top.z)+wall.height-base,dz=wall.z-wall.depth/2-.14-foot.z,dx=top.x-foot.x,length=Math.hypot(dx,rise,dz),yaw=Math.atan2(dx,dz);
     const root=transform([foot.x,base,foot.z],[0,yaw,0]),slope=Math.acos(rise/length);
     for(const side of [-1,1])add('beam',multiply(root,transform([side*.5,0,0],[slope,0,0],[.65,length+.28,.65])),palette.wood);
-    for(let i=1;i<=12;i++)add('beam',multiply(root,transform([-.53,rise*i/12,Math.hypot(dx,dz)*i/12],[0,0,-Math.PI/2],[.47,1.06,.47])),[.65,.48,.29]);
-    if(l.held)ring(top.x,base+rise+.07,top.z,.95,[.98,.39,.20]);
+    const rungs=l.rungs||12;
+    for(let i=1;i<=rungs;i++)add('beam',multiply(root,transform([-.53,rise*i/rungs,Math.hypot(dx,dz)*i/rungs],[0,0,-Math.PI/2],[.47,1.06,.47])),[.65,.48,.29]);
   }
   function ramStroke(action){
     if(action?.kind!=='ramStrike')return 0;
@@ -256,28 +312,48 @@ export async function createBattleRenderer(canvas,battle,options={}) {
     return mix(.20,0,(t-impact)/Math.max(.05,action.duration-impact));
   }
   function renderRam(unit,time){
-    const lifted=unit.crewCount>=4&&unit.status==='active';
-    const y=lifted?1.36+Math.sin(time*8)*Math.min(.045,(unit.speed||0)*.035):.30;
     const base=transform([unit.x,unit.y||0,unit.z],[0,unit.facing||0,0]);
-    const root=multiply(base,transform([0,y,ramStroke(unit.action)]));
-    const part=(mesh,offset,scale,tint,rotation=[0,0,0])=>add(mesh,multiply(root,transform(offset,rotation,scale)),tint);
-    part('shaft',[0,0,-2.25],[10,4.68,10],[.48,.32,.18],[Math.PI/2,0,0]);
-    part('box',[0,-.28,2.47],[.54,.55,.68],[.31,.34,.35]);
-    for(const z of [-1.45,0,1.45]){
-      part('beam',[-1.08,.01,z],[.66,2.16,.66],[.48,.35,.23],[0,0,-Math.PI/2]);
-      part('shaft',[0,0,z-.09],[10.8,.18,10.8],[.25,.29,.29],[Math.PI/2,0,0]);
+    const part=(mesh,offset,scale,tint,rotation=[0,0,0])=>add(mesh,multiply(base,transform(offset,rotation,scale)),tint);
+    const wood=[.47,.32,.19],iron=[.30,.33,.33],tire=[.18,.20,.20],roll=(unit.rolledDistance||0)/.57;
+    // The carriage stays on its wheels, including when every pusher lets go.
+    for(const z of [-1.44,1.44]){
+      part('beam',[-1.13,.57,z],[1.26,2.26,1.26],iron,[0,0,-Math.PI/2]);
+      for(const side of [-1,1]){
+        const x=side*1.02;
+        part('wheel',[x,.57,z],[1.5,1.5,1.5],tire,[0,0,Math.PI/2]);
+        part('wheel',[x+side*.095,.57,z],[1.23,.6,1.23],wood,[0,0,Math.PI/2]);
+        for(let i=0;i<3;i++){
+          const a=roll+i*Math.PI/3;
+          part('beam',[x+side*.14,.57-.41*Math.cos(a),z-.41*Math.sin(a)],[.47,.82,.47],iron,[a,0,0]);
+        }
+      }
+    }
+    for(const side of [-1,1]){
+      part('box',[side*.76,.68,0],[.27,.27,4.55],wood);
+      for(const z of [-1.38,1.24])part('beam',[side*.76,.90,z],[1.15,1.38,1.15],wood,[0,0,side*.22]);
+    }
+    part('roof',[0,2.16,-.05],[1.12,.55,2.12],[.33,.29,.23]);
+    for(const z of [-1.75,0,1.75]){
+      part('beam',[-1.42,1.10,z],[.62,2.84,.62],wood,[0,0,-Math.PI/2]);
+    }
+    const stroke=ramStroke(unit.action),beamY=unit.crewCount>=4?1.27:1.05;
+    part('shaft',[0,beamY,-2.31+stroke],[12.5,4.52,12.5],wood,[Math.PI/2,0,0]);
+    part('box',[0,beamY-.31,2.30+stroke],[.69,.64,.60],iron);
+    for(const z of [-1.33,1.20]){
+      part('shaft',[0,beamY,z-.09+stroke],[13.2,.18,13.2],iron,[Math.PI/2,0,0]);
+      for(const side of [-1,1])part('shaft',[side*.24,beamY,z+stroke],[1.7,.92,1.7],[.21,.23,.23],[-stroke*.8,0,0]);
     }
   }
   function siegeTargets(next,kind){
     if(kind==='wall'||kind==='breach'){
       const surfaces=kind==='breach'?[...next.layout.walls,next.layout.gate]:next.layout.walls;
-      return surfaces.filter(s=>s?.hp>0).map(s=>({id:s.id,x:s.x,z:s.z,y:height(s.x,s.z),width:s.width,depth:s.depth,h:s.height+1}));
+      return surfaces.filter(s=>s?.hp>0&&(kind==='breach'||s.kind!=='gate')).map(s=>({id:s.id,x:s.x,z:s.z,y:height(s.x,s.z),width:s.width,depth:s.depth,h:s.height+1}));
     }
     if(kind==='ladder')return next.layout.ladders.filter(l=>next.layout.walls.some(w=>w.hp>0&&(w.id===l.wallId||(!l.wallId&&Math.abs(l.x-w.x)<w.width/2&&Math.abs(l.z-w.z)<w.depth/2)))).map(l=>{
       const foot=l.foot||{x:l.x,z:l.z-3.4},top=l.landing||l;
       return {id:l.id,x:foot.x,z:(foot.z+top.z)/2,y:height(foot.x,foot.z),width:1.55,depth:Math.abs(top.z-foot.z)+.25,h:l.height||6,ladder:true};
     });
-    if(kind==='ram')return next.units.filter(u=>u.type==='ram'&&u.status==='active'&&u.side===next.playerSide).map(u=>({id:u.id,x:u.x,y:u.y,z:u.z,width:2.4,depth:5.4,h:1.75,ram:true}));
+    if(kind==='ram')return next.units.filter(u=>u.type==='ram'&&u.status==='active'&&u.side===next.playerSide).map(u=>({id:u.id,x:u.x,y:u.y,z:u.z,width:2.9,depth:5.6,h:2.72,ram:true}));
     return [];
   }
   function climbingLimbs(unit){
@@ -312,7 +388,7 @@ export async function createBattleRenderer(canvas,battle,options={}) {
     const fall=dead?clamp((time-(unit.deathTime??time-1))/.55,0,1):0,tilt=fall*(mounted?Math.PI/2:1.55),side=hash(unit.id)%2?1:-1;
     const bodyY=dead?mix(unit.y??height(unit.x,unit.z),corpseFloor(unit),fall):unit.y??height(unit.x,unit.z);
     const root=multiply(transform([unit.x,bodyY+fall*(mounted?.48:.23),unit.z],[0,facing,0]),transform([0,0,0],mounted?[0,0,side*tilt]:[tilt,0,side*.12*fall]));
-    const pose=battleActionPose(unit),flinch=recentHits.get(unit.id)||0;
+    const pose=battleActionPose(unit),flinch=recentHits.get(unit.id)||0,polearm=carriesPolearm(unit);
     const limbs=action?.kind==='climb'&&action.phase==='rungs'&&climbingLimbs(unit);
     for(const node of nodes){
       const pos=[...node.position],rot=[...node.rotation],name=node.name;
@@ -349,9 +425,9 @@ export async function createBattleRenderer(canvas,battle,options={}) {
         }
         if(carrying){
           const raised=ram?.crewCount>=4,thrust=ramStroke(ram?.action);
-          if(/^arm[LR]$/.test(name)){rot[0]=raised?-1.5:-.65;rot[2]=name.endsWith('R')?.35:-.35;}
-          if(/^forearm[LR]$/.test(name))rot[0]=raised?-1.25:-.6;
-          if(name==='rider'){rot[0]=raised?.13+thrust*.24:.42;pos[2]+=thrust*.55;pos[1]-=raised?.05:.20;}
+          if(/^arm[LR]$/.test(name)){rot[0]=raised?-1.02:-.7;rot[2]=name.endsWith('R')?.13:-.13;}
+          if(/^forearm[LR]$/.test(name))rot[0]=raised?-.43:-.6;
+          if(name==='rider'){rot[0]=raised?.28+thrust*.24:.10;pos[2]+=thrust*.45;pos[1]-=raised?.12:.04;}
         }
         if(action?.kind==='stairs'){
           if(name==='rider')rot[0]=action.ascending?-.12:.08;
@@ -377,7 +453,11 @@ export async function createBattleRenderer(canvas,battle,options={}) {
         if(name==='rider'&&flinch){rot[0]-=flinch*.22;pos[2]-=flinch*.08;}
         if(name==='armL'&&unit.blocking&&flinch){rot[0]-=flinch*.55;pos[2]-=.12*flinch;}
       }
-      const matrix=multiply(node.parent?frames.get(node.parent)||root:root,transform(pos,rot,node.scale));frames.set(node.name,matrix);
+      if(polearm&&name==='armR'){pos[0]=.43;rot[2]=Math.max(.07,rot[2]);}
+      const matrix=polearm&&name==='weapon'
+        ? polearmFrame(frames.get('rider')||root,frames.get('handR')||root,frames.get('head')||root,polearmPitch(unit,pose))
+        : multiply(node.parent?frames.get(node.parent)||root:root,transform(pos,rot,node.scale));
+      frames.set(node.name,matrix);
       if(node.mesh){const mesh=node.mesh==='heraldry'?(pack.houses[unit.owner]?.mesh||'crest_ashen'):node.mesh;add(mesh,matrix,node.material==='house'?ownerTint:node.material==='accent'?palette.gold:palette[node.material]||palette.cloth);}
     }
     // A standard marks the actual participating commander; it never counts as a troop.
@@ -423,8 +503,27 @@ export async function createBattleRenderer(canvas,battle,options={}) {
     for(const s of [-1,1])part('limb',[s*.16,y+.92,0],[1,2.45,1],palette.leather,[cos*s,0,0]);
     if(u.shield)part('shield',[-.34,y+1.17,.15],[1,1,1],owner);
     if(!u.sidearm&&['bow','crossbow'].includes(u.weapon))part('bow',[.31,y+1.21,.28],[1,1,1],palette.wood,u.weapon==='crossbow'?[0,0,Math.PI/2]:[0,0,0]);
-    else if(['spear','lance'].includes(u.weapon))part('shaft',[.32,y+.68,.12],[1.2,2.62,1.2],palette.wood,[u.action?.kind==='attack'?1.48:.16,0,0]);
+    else if(carriesPolearm(u)){
+      const grip=polearmFrame(root,multiply(root,transform([.46,y+.86,.12])),root,polearmPitch(u));
+      add('shaft',multiply(grip,transform([0,-.13,0],[0,0,0],[1.2,2.5,1.2])),palette.wood);
+      add('blade',multiply(grip,transform([0,2.32,0],[0,0,0],[1,.5,1])),palette.silver);
+    }
     else part('blade',[.33,y+.78,.12],[1,1,1],palette.steel,[u.action?.kind==='attack'?1.65:.4,0,0]);
+  }
+  function distantEngine(u){
+    const root=transform([u.x,u.y,u.z],[0,u.facing||0,0]);
+    const part=(mesh,p,s,tint,r=[0,0,0])=>add(mesh,multiply(root,transform(p,r,s)),tint);
+    const ram=u.type==='ram';
+    part('box',[0,.58,0],[1.65,.32,ram?4.45:3.25],palette.wood);
+    for(const x of [-1,1])for(const z of [-1.35,1.35])part('wheel',[x,.53,z],[1.34,1.25,1.34],palette.darkSteel,[0,0,Math.PI/2]);
+    if(ram){
+      part('roof',[0,2.14,-.05],[1.12,.55,2.12],palette.wood);
+      part('shaft',[0,1.23,-2.28+ramStroke(u.action)],[12,4.8,12],palette.wood,[Math.PI/2,0,0]);
+      part('box',[0,.95,2.25+ramStroke(u.action)],[.70,.61,.65],palette.steel);
+    }else{
+      part('box',[0,.85,0],[.38,u.type==='trebuchet'?2.68:1.52,.48],palette.wood);
+      part('beam',[0,u.type==='trebuchet'?3.3:2.1,0],[1.35,2.45,1.35],palette.wood,[-.7,0,0]);
+    }
   }
   function impactEffects(next){
     let burstCount=0;
@@ -468,19 +567,24 @@ export async function createBattleRenderer(canvas,battle,options={}) {
       frameStats.stains++;
     }
   }
-  function resize(){if(disposed)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(globalThis.devicePixelRatio||1,1.75),w=Math.max(1,Math.round(rect.width*dpr)),h=Math.max(1,Math.round(rect.height*dpr));if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}gl.viewport(0,0,w,h);lastAspect=w/h;}
-  function render(next,camera={}){
-    if(disposed)return;if(lost)throw new Error('The 3D graphics context was lost. Your battle checkpoint is safe; retry or finish automatically.');
-    previousBattle=next;resize();instances.clear();for(const [key,value]of staticInstances)instances.set(key,[...value]);
-    const commander=next.units.find(u=>u.id===next.commanderId),tactical=camera.mode==='tactical'||!commander||commander.status==='dead';
-    const target=camera.target||{x:commander?.x||0,y:commander?.y||0,z:commander?.z||0},yaw=camera.yaw??commander?.facing??0;
-    const pitch=clamp(camera.pitch??(tactical?.9:.32),tactical?.45:.04,1.52),distance=clamp(camera.distance??(tactical?70:7),tactical?12:3,150);
-    lastTarget=Array.isArray(target)?target:[target.x||0,(target.y||0)+(tactical?0:1.5),target.z||0];
-    lastEye=[lastTarget[0]-Math.sin(yaw)*Math.cos(pitch)*distance,lastTarget[1]+Math.sin(pitch)*distance,lastTarget[2]-Math.cos(yaw)*Math.cos(pitch)*distance];
-    frameStats={bloodParticles:0,stains:0,corpses:0,detailedCorpses:0,attacking:0,deploymentZones:0};recentHits.clear();
-    for(const event of next.events||[]){const age=next.time-event.time;if((event.type==='block'||event.type==='hit'&&(event.damageApplied??event.damage)>0)&&age>=0&&age<.22)recentHits.set(event.unitId||event.targetId,1-age/.22);}
-    const vp=multiply(perspective(lastAspect),lookAt(lastEye,lastTarget));
-    deploymentOutlines(next);
+  function resize(){if(disposed)return;const rect=canvas.getBoundingClientRect(),cap=previousBattle.maxActive||150,dpr=Math.min(globalThis.devicePixelRatio||1,cap>=300?1.15:1.75)*resolutionScale,w=Math.max(1,Math.round(rect.width*dpr)),h=Math.max(1,Math.round(rect.height*dpr));if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}gl.viewport(0,0,w,h);lastAspect=w/h;}
+  function tuneResolution(cap){
+    const now=performance.now(),elapsed=now-lastFrameTime;lastFrameTime=now;
+    if(cap<150||elapsed<4||elapsed>350)return;
+    slowFrames=elapsed>38?slowFrames+1:Math.max(0,slowFrames-2);
+    fastFrames=elapsed<19?fastFrames+1:0;
+    if(slowFrames>=12){resolutionScale=Math.max(cap>=300?.68:.80,resolutionScale-.10);slowFrames=0;}
+    if(fastFrames>=100){resolutionScale=Math.min(1,resolutionScale+.05);fastFrames=0;}
+  }
+  function drawStructures(next){
+    // Only rebuild these batches when visible fortification geometry changes.
+    const surfaces=[...(next.layout.walls||[]),next.layout.gate].filter(Boolean);
+    const key=surfaces.map(w=>{
+      const damage=w.hp<=0?3:w.hp/w.maxHp<.6?2:w.hp/w.maxHp<.8?1:0;
+      return [w.id,w.x,w.z,w.width,w.depth,w.height,w.material,damage,w.breach?.x,w.breach?.z,w.breach?.width].join(',');
+    }).join('|')+'-'+(next.layout.stairs?.length||0)+'-'+(next.layout.ladders?.length||0);
+    if(key===structureKey)return;
+    structureKey=key;structureInstances.clear();targetBatch=structureInstances;
     for(const w of next.layout.walls||[])wall(w);if(next.layout.gate)wall(next.layout.gate,true);
     for(const stair of next.layout.stairs||[]){
       const w=next.layout.walls.find(w=>w.id===stair.wallId);if(!w||w.hp<=0)continue;
@@ -494,24 +598,55 @@ export async function createBattleRenderer(canvas,battle,options={}) {
       object('box',[stair.topX,base,stair.topZ],[stair.width||3,rise,.6],[.53,.55,.49],[0,yaw,0]);
     }
     for(const ladder of next.layout.ladders||[]) renderLadder(ladder,next);
+    targetBatch=instances;cacheInstances(structureInstances,structureBuffers);
+  }
+  function renderTroops(next,camera,tactical,vp){
     const viewDistance=unit=>Math.hypot(unit.x-lastEye[0],unit.z-lastEye[2]);
     const corpses=next.units.filter(u=>u.status==='dead'&&viewDistance(u)<180).sort((a,b)=>viewDistance(a)-viewDistance(b)).slice(0,CORPSE_LIMIT);
-    for(const unit of [...next.units.filter(u=>u.status==='active'),...corpses]){
+    const active=next.units.filter(u=>u.status==='active'),large=active.length>=100;
+    const visible=active.filter(u=>{
+      if(!large||u.id===next.commanderId)return true;
+      const x=u.x,y=u.y+1.5,z=u.z,w=vp[3]*x+vp[7]*y+vp[11]*z+vp[15],margin=u.family==='siege'?9:4;
+      return w+margin>0&&Math.abs(vp[0]*x+vp[4]*y+vp[8]*z+vp[12])<=w+margin&&Math.abs(vp[1]*x+vp[5]*y+vp[9]*z+vp[13])<=w+margin;
+    });
+    const budget=active.length>=300?24:active.length>=150?36:52;
+    const score=u=>viewDistance(u)-(u.id===next.commanderId?1000:u.atHandle||u.action?.kind==='climb'?10:0);
+    const detailed=new Set(visible.filter(u=>viewDistance(u)<56||u.id===next.commanderId).sort((a,b)=>score(a)-score(b)).slice(0,large?budget:Infinity));
+    frameStats.culledTroops=active.length-visible.length;
+    const selected=new Set(camera.selected||[]);
+    for(const unit of [...visible,...corpses]){
       // Rendering detail never changes simulation membership or casualties.
       const distance=viewDistance(unit),dead=unit.status==='dead';
       if(distance>220)continue;
       object('shadow',[unit.x,(dead?corpseFloor(unit):unit.wallId||unit.action?.kind==='stairs'?unit.y:height(unit.x,unit.z))+.025,unit.z],[unit.family==='siege'?2:unit.family==='mounted'&&unit.mounted!==false?1.25:.6,1,dead?1.4:unit.family==='siege'?2:unit.family==='mounted'&&unit.mounted!==false?1.6:.4],terrainColor.map(c=>c*.66));
       if(dead){frameStats.corpses++;if(frameStats.detailedCorpses<DETAILED_CORPSE_LIMIT&&distance<65){animatedNodes(unit,next.time);frameStats.detailedCorpses++;}else distantCorpse(unit);}
       else {
-        if(distance>56&&unit.family!=='siege'&&unit.action?.kind!=='climb'&&!unit.atHandle)distantSoldier(unit,next.time);
-        else animatedNodes(unit,next.time);
+        if(detailed.has(unit)){animatedNodes(unit,next.time);frameStats.detailedTroops++;}
+        else if(unit.family==='siege'){distantEngine(unit);frameStats.silhouettes++;}
+        else {distantSoldier(unit,next.time);frameStats.silhouettes++;}
         if(unit.action?.kind==='attack')frameStats.attacking++;
       }
       if(unit.status==='active'){
         if(tactical||unit.id===next.commanderId)ring(unit.x,(unit.y||0)+.035,unit.z,unit.family==='siege'?2:unit.family==='mounted'?1:.55,unit.side===next.playerSide?[.40,.79,.83]:[.82,.34,.27]);
-        if(unit.selected||camera.selected?.includes?.(unit.id))ring(unit.x,(unit.y||0)+.07,unit.z,1.2,[.95,.84,.34]);
+        if(unit.selected||selected.has(unit.id))ring(unit.x,(unit.y||0)+.07,unit.z,1.2,[.95,.84,.34]);
       }
     }
+  }
+  function render(next,camera={}){
+    if(disposed)return;if(lost)throw new Error('The 3D graphics context was lost. Your battle checkpoint is safe; retry or finish automatically.');
+    previousBattle=next;tuneResolution(next.maxActive||150);resize();instances.clear();
+    const commander=next.units.find(u=>u.id===next.commanderId),tactical=camera.mode==='tactical'||!commander||commander.status==='dead';
+    const target=camera.target||{x:commander?.x||0,y:commander?.y||0,z:commander?.z||0},yaw=camera.yaw??commander?.facing??0;
+    const pitch=clamp(camera.pitch??(tactical?.9:.32),tactical?.45:.04,1.52),distance=clamp(camera.distance??(tactical?70:7),tactical?12:3,150);
+    lastTarget=Array.isArray(target)?target:[target.x||0,(target.y||0)+(tactical?0:1.5),target.z||0];
+    lastEye=[lastTarget[0]-Math.sin(yaw)*Math.cos(pitch)*distance,lastTarget[1]+Math.sin(pitch)*distance,lastTarget[2]-Math.cos(yaw)*Math.cos(pitch)*distance];
+    frameStats={bloodParticles:0,stains:0,corpses:0,detailedCorpses:0,attacking:0,deploymentZones:0,detailedTroops:0,silhouettes:0,culledTroops:0};recentHits.clear();
+    for(const event of next.events||[]){const age=next.time-event.time;if((event.type==='block'||event.type==='hit'&&(event.damageApplied??event.damage)>0)&&age>=0&&age<.22)recentHits.set(event.unitId||event.targetId,1-age/.22);}
+    const vp=multiply(perspective(lastAspect),lookAt(lastEye,lastTarget));
+    deploymentOutlines(next);
+    drawStructures(next);
+    for(const ladder of next.layout.ladders||[])if(ladder.held&&next.layout.walls.some(w=>w.id===ladder.wallId&&w.hp>0))ring(ladder.x,height(ladder.x,ladder.z)+ladder.height+.09,ladder.z,.95,[.98,.39,.20]);
+    renderTroops(next,camera,tactical,vp);
     for(const shot of next.projectiles||[]){
       if(!heardShots.has(shot.id)){heardShots.add(shot.id);cue(shot.kind==='stone'?'siege':'arrow',Math.hypot(shot.x-lastTarget[0],shot.z-lastTarget[2]));}
       const dx=shot.targetX-shot.startX,dz=shot.targetZ-shot.startZ,heading=Math.atan2(dx,dz);
@@ -545,16 +680,18 @@ export async function createBattleRenderer(canvas,battle,options={}) {
     }
     gl.clearColor(...sky.horizon,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);gl.useProgram(p);gl.uniformMatrix4fv(uVP,false,vp);gl.uniform3fv(uEye,lastEye);gl.uniform3fv(uSun,climate.sun);gl.uniform3fv(uHorizon,sky.horizon);
     if(ext){ext.vertexAttribDivisorANGLE(aPos,0);ext.vertexAttribDivisorANGLE(aNormal,0);}
+    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,noiseTexture);
     gl.uniform1f(uFort,next.layout.fortified?1:0);gl.uniform1f(uPhase,climate.phase);
     const feet=(next.layout.ladders||[]).slice(0,2).flatMap(l=>[l.x,l.z-5]);while(feet.length<4)feet.push(1000);
     gl.uniform4fv(uFeet,feet);
-    for(const [name,data]of instances){
+    for(const [batch,cache]of [[staticInstances,staticBuffers],[structureInstances,structureBuffers],[instances,null]])for(const [name,data]of batch){
       const geo=buffers.get(name);if(!geo||!data.length)continue;
       gl.uniform1f(uSurface,name==='masonry'?2:name.startsWith('terrain')?1:0);
       gl.bindBuffer(gl.ARRAY_BUFFER,geo.positions);gl.enableVertexAttribArray(aPos);gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,0,0);
       gl.bindBuffer(gl.ARRAY_BUFFER,geo.normals);gl.enableVertexAttribArray(aNormal);gl.vertexAttribPointer(aNormal,3,gl.FLOAT,false,0,0);
       if(ext){
-        gl.bindBuffer(gl.ARRAY_BUFFER,instanceBuffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.DYNAMIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER,cache?cache.get(name):instanceBuffer);
+        if(!cache)gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.DYNAMIC_DRAW);
         for(let i=0;i<4;i++){gl.enableVertexAttribArray(iAttr[i]);gl.vertexAttribPointer(iAttr[i],4,gl.FLOAT,false,76,i*16);ext.vertexAttribDivisorANGLE(iAttr[i],1);}
         gl.enableVertexAttribArray(iColor);gl.vertexAttribPointer(iColor,3,gl.FLOAT,false,76,64);ext.vertexAttribDivisorANGLE(iColor,1);
         ext.drawArraysInstancedANGLE(gl.TRIANGLES,0,geo.count,data.length/19);
@@ -621,6 +758,6 @@ export async function createBattleRenderer(canvas,battle,options={}) {
   }
   const contextLost=event=>{event.preventDefault();lost=true;};canvas.addEventListener('webglcontextlost',contextLost);
   const resizeObserver=typeof ResizeObserver!=='undefined'?new ResizeObserver(resize):null;resizeObserver?.observe(canvas);
-  function dispose(){if(disposed)return;disposed=true;resizeObserver?.disconnect();canvas.removeEventListener('webglcontextlost',contextLost);audioSurface.removeEventListener('pointerdown',unlockAudio);audioContext?.close().catch(()=>{});audioContext=null;heardShots.clear();for(const b of buffers.values()){gl.deleteBuffer(b.positions);gl.deleteBuffer(b.normals);}sky.dispose();gl.deleteBuffer(instanceBuffer);gl.deleteProgram(p);buffers.clear();instances.clear();staticInstances.clear();releaseBattleAssets();}
-  resize();return{render,pick,resize,dispose,setBlood,setMuted(value){audioMuted=!!value;if(audioMuted)audioContext?.suspend().catch(()=>{});},get stats(){return{drawCalls:instances.size,frames:frame,instanced:!!ext,models:Object.keys(pack.models).length,...frameStats};}};
+  function dispose(){if(disposed)return;disposed=true;resizeObserver?.disconnect();canvas.removeEventListener('webglcontextlost',contextLost);audioSurface.removeEventListener('pointerdown',unlockAudio);audioContext?.close().catch(()=>{});audioContext=null;heardShots.clear();for(const b of buffers.values()){gl.deleteBuffer(b.positions);gl.deleteBuffer(b.normals);}for(const cache of [staticBuffers,structureBuffers]){for(const buffer of cache.values())gl.deleteBuffer(buffer);cache.clear();}gl.deleteTexture(noiseTexture);sky.dispose();gl.deleteBuffer(instanceBuffer);gl.deleteProgram(p);buffers.clear();instances.clear();staticInstances.clear();structureInstances.clear();releaseBattleAssets();}
+  resize();return{render,pick,resize,dispose,setBlood,setMuted(value){audioMuted=!!value;if(audioMuted)audioContext?.suspend().catch(()=>{});},get stats(){return{drawCalls:instances.size+staticInstances.size+structureInstances.size,frames:frame,resolutionScale,instanced:!!ext,models:Object.keys(pack.models).length,...frameStats};}};
 }

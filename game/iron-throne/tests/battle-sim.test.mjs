@@ -215,28 +215,28 @@ test('rare recruited siege roles deploy without creating replacement troops', ()
   assert.equal(b.units.filter(u => u.type === 'trebuchet').length, 1);
 });
 
-test('the 200 soldier ceiling includes the commander and both very unequal sides', () => {
-  const b = createBattle(encounter({ levy: 1000 }, { levy: 1 }), { maxActive: 240 });
+test('the 400 troop ceiling includes the commander and both very unequal sides', () => {
+  const b = createBattle(encounter({ levy: 1000 }, { levy: 1 }), { maxActive: 500 });
   assert.equal(b.maxActive, MAX_ACTIVE_TROOPS);
-  assert.deepEqual(b.activeCaps, [199, 1]);
+  assert.deepEqual(b.activeCaps, [399, 1]);
   // Occupied deployment positions can defer a few of the dominant side's
   // troops, but can never add an extra slot beyond the selected ceiling.
-  assert.ok(b.units.filter(u => u.status === 'active').length <= 200);
+  assert.ok(b.units.filter(u => u.status === 'active').length <= MAX_ACTIVE_TROOPS);
   assert.equal(b.units.filter(u => u.side === 1 && u.status === 'active').length, 1);
   assert.equal(b.units.find(u => u.id === b.commanderId).status, 'active');
   assert.equal(b.units.length, 1001);
 });
 
 test('all battle-size presets preserve rosters, refill by waves, and survive saved checkpoints', () => {
-  assert.deepEqual(BATTLE_SIZE_OPTIONS, [100, 150, 200]);
-  const e = encounter({ menAtArms: 100, archer: 50, cavalry: 50 }, { menAtArms: 100, archer: 50, cavalry: 50 });
+  assert.deepEqual(BATTLE_SIZE_OPTIONS, [100, 150, 200, 300, 400]);
+  const e = encounter({ menAtArms: 120, archer: 50, cavalry: 50 }, { menAtArms: 120, archer: 50, cavalry: 50 });
   const defaultBattle = createBattle(e);
-  assert.equal(DEFAULT_ACTIVE_TROOPS, 150);
+  assert.equal(DEFAULT_ACTIVE_TROOPS, 300);
   assert.equal(defaultBattle.maxActive, DEFAULT_ACTIVE_TROOPS);
-  assert.equal(defaultBattle.units.filter(u => u.status === 'active').length, 150);
+  assert.equal(defaultBattle.units.filter(u => u.status === 'active').length, 300);
   for (const cap of BATTLE_SIZE_OPTIONS) {
     const b = createBattle(e, { maxActive: cap });
-    assert.equal(b.units.length, 400);
+    assert.equal(b.units.length, 440);
     assert.equal(b.units.filter(u => u.status === 'active').length, cap);
     beginBattle(b);
     for (const side of [0, 1]) {
@@ -290,7 +290,7 @@ test('casualty replacements wait for reserve waves and enter from the edge', () 
 });
 
 test('legacy overflow is safely queued without healing, rearming or replacing soldiers', () => {
-  const e = encounter({ archer: 150 }, { archer: 150 }), b = createBattle(e);
+  const e = encounter({ archer: 150 }, { archer: 150 }), b = createBattle(e,{maxActive:150});
   delete b.battleRulesVersion; delete b.nextReserveWave;
   b.maxActive = 240; b.activeCaps = [120, 120]; b.time = 12; b.phase = 'combat';
   for (const side of [0, 1]) {
