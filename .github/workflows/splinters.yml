@@ -1,0 +1,16 @@
+name: Splinters
+on:
+  push:
+    paths: ['game/Splinters.html', 'game/splinters/**', 'tests/splinters*.test.mjs', 'lobby/**', '.github/workflows/splinters.yml']
+  pull_request:
+    paths: ['game/Splinters.html', 'game/splinters/**', 'tests/splinters*.test.mjs', 'lobby/**', '.github/workflows/splinters.yml']
+jobs:
+  rules-and-lobby:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tests/splinters.test.mjs tests/splinters-ui.test.mjs
+      - run: node --experimental-vm-modules --test lobby/tests/*.test.cjs lobby/tests/*.test.mjs

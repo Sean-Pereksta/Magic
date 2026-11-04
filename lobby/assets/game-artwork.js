@@ -255,17 +255,17 @@
     },
     "splinters": {
       "key": "splinters",
-      "title": "Splinters (Incomplete)",
-      "desc": "Four-player magical combat.",
+      "title": "Splinters",
+      "desc": "A cozy 3D card table with three curious creatures. Swap drawn symbols, discover magical sets, and burn your matches to cast them.",
       "route": "/game/Splinters.html",
-      "category": "Action",
+      "category": "Cards",
       "modes": [
-        "multi"
+        "single"
       ],
       "originalImagePath": null,
-      "tier": "experimental",
+      "tier": "in-production",
       "provenance": "original-built-in-imagegen",
-      "sourceArtwork": "exec-6cdfb58c-ce09-4cfd-9815-00547af17d03.png",
+      "sourceArtwork": "splinters-cover.png",
       "tile": "game-tiles/splinters.webp",
       "thumb": "game-thumbnails/splinters.webp",
       "hero": "game-tiles/splinters.webp",
@@ -1509,14 +1509,14 @@
     "game-tiles/splinters.webp": {
       "width": 640,
       "height": 360,
-      "bytes": 42808,
-      "sha256": "67d11f34426e07ad237402d78be3631b087f53d40b47fbf5aabbd080a3d6cc15"
+      "bytes": 53856,
+      "sha256": "6327b2c578f76522011091959034a9eb2c20c3651ad5199bf1c74241014744cd"
     },
     "game-thumbnails/splinters.webp": {
       "width": 240,
       "height": 135,
-      "bytes": 6326,
-      "sha256": "fadf3f1b2e0667ff35860f3ecef651b17346986b136a0c5ad1bf9053171b2a5a"
+      "bytes": 8372,
+      "sha256": "88fc2c0fecb891f98be7edae4cb4803a81c84a97ac7ae59edf821724b605ec00"
     },
     "game-tiles/spelltower.webp": {
       "width": 640,

@@ -102,7 +102,7 @@ All rows below have both a dedicated tile and thumbnail. “Retained” means th
 | rock | Rock Paper Scissors MMO (Incomplete) | Party | multi | experimental | New | /game/rock.html |
 | stockkings | Stock Kings (Incomplete) | Strategy | multi | experimental | New | /game/stockkings.html |
 | dutchblitz | Dutch Blitz Arena (Incomplete) | Cards | multi | experimental | New | /game/dutchblitz.html |
-| splinters | Splinters (Incomplete) | Action | multi | experimental | New | /game/Splinters.html |
+| splinters | Splinters | Cards | single | in-production | New | /game/Splinters.html |
 | spelltower | Spell Tower | Party | multi | in-production | New | /game/spelltower.html |
 | zombiezone | Zombie Zone (Incomplete) | Survival | multi | experimental | New | /game/zombiezone.html |
 | biblegame | Bible Game | Faith | single, multi | built-out | New | /game/biblegame.html |

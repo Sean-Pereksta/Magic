@@ -9,6 +9,7 @@ const registry = vm.runInNewContext(core.match(/const GAMES = (\[[\s\S]*?\n\s*\]
 const apes = registry.find(game => game.key === 'apestogetherstrong');
 const forge = registry.find(game => game.key === 'crowncouncil');
 const turncraft = registry.find(game => game.key === 'turncraft');
+const splinters = registry.find(game => game.key === 'splinters');
 
 function harness({username = '', write = () => new Promise(() => {}), rememberedLobby = null} = {}) {
   const saved = new Map(), launches = [], modals = [], warnings = [], lobbyCalls = [];
@@ -119,6 +120,19 @@ test('Faction Forge multiplayer action opens the lobby creator without launching
     joinOnlineGame: () => calls.push('online')
   });
   assert.deepEqual(calls, ['crowncouncil']);
+});
+
+test('Splinters has only a solo action and launches without touching a remembered room', async () => {
+  assert.deepEqual(Array.from(splinters.modes), ['single']);
+  assert.equal(splinters.title, 'Splinters');
+  assert.equal(splinters.category, 'Cards');
+  assert.deepEqual(library.getActions(splinters), [{type: 'single', label: 'Play'}]);
+  const h = harness({rememberedLobby: {id: 'old-splinters-room', gameType: 'splinters', status: 'waiting'}});
+  await library.runAction(splinters, 'single', {playSingle: h.context.playSingle});
+  assert.deepEqual(h.launches, [{url: '/game/Splinters.html', reason: 'single-play'}]);
+  assert.deepEqual(h.lobbyCalls, []);
+  assert.equal(h.saved.get('lastLobby'), 'old-splinters-room');
+  assert.throws(() => library.runAction(splinters, 'lobby', {}), /does not support/);
 });
 
 
