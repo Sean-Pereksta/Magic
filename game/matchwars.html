@@ -3,19 +3,20 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101b27">
 <meta name="description" content="Match runes. Command three lanes. Build an elemental army in Match Wars: The Runeborn Front.">
-<title>Match Wars · The Runeborn Front</title><link rel="stylesheet" href="./matchwars/style.css?v=2">
+<title>Match Wars · The Runeborn Front</title><link rel="stylesheet" href="./matchwars/style.css?v=3">
 </head>
 <body>
 <div class="app-shell">
 <header class="masthead"><a class="back-link" href="/lobby/" aria-label="Back to game library">‹ <span>Library</span></a><div class="brand"><span class="brand-mark" aria-hidden="true">✧</span><div><h1>MATCH <em>WARS</em></h1><p>THE RUNEBORN FRONT</p></div></div><div class="header-actions"><span class="coin-pill">◆ <b id="gold">0</b></span><button id="menu-button" class="icon-button" aria-label="Open game menu">☰</button></div></header>
 <main>
-<div class="campaign-bar"><div><span class="eyebrow" id="chapter-label">CHAPTER I · THE AWAKENING</span><h2 id="stage-name">The Verdant Gate</h2><p class="stage-details" id="stage-details">Battle 1 / 48 · Initiate · 3 waves</p></div><div class="campaign-actions"><span id="stage-counter">Battle 1 / 48</span><button class="text-button" id="campaign-button">Campaign ↗</button><button class="text-button" id="forge-button">Upgrade forge <span id="forge-dot"></span> ↗</button></div></div>
+<div class="campaign-bar"><div><span class="eyebrow" id="chapter-label">CHAPTER I · THE AWAKENING</span><h2 id="stage-name">The Verdant Gate</h2><p class="stage-details" id="stage-details">Battle 1 / 84 · Initiate · 3 waves</p></div><div class="campaign-actions"><span id="stage-counter">Battle 1 / 84</span><button class="text-button" id="army-button">Troop classes ↗</button><button class="text-button" id="campaign-button">Campaign ↗</button><button class="text-button" id="forge-button">Upgrade forge <span id="forge-dot"></span> ↗</button></div></div>
 <div class="war-room">
 <section class="battle-panel panel" aria-label="Three lane battlefield">
 <div class="battle-head"><div class="base-status"><span class="eyebrow">YOUR CITADEL</span><b id="player-hp">100 / 100</b><div class="health-track"><i id="player-health"></i></div></div><div class="wave-status"><span class="live-dot"></span><b id="wave">PREPARE</b><small id="battle-time">00:00</small></div><div class="base-status enemy-status"><span class="eyebrow">THE RIFT</span><b id="enemy-hp">100 / 100</b><div class="health-track"><i id="enemy-health"></i></div></div></div>
 <div class="battlefield-wrap"><canvas id="battlefield" width="1000" height="530" role="img" aria-label="Animated elemental troops fighting across three lanes. Use lane buttons to direct summons."></canvas><div id="battle-banner" class="battle-banner">Choose your lane. Match your army.</div><div class="lane-labels" aria-hidden="true"><span>01</span><span>02</span><span>03</span></div></div>
 <div class="spell-bar"><button class="spell-button" id="spell-meteor" data-spell="meteor"><span class="spell-symbol ember">☄</span><span><b>Meteor</b><small>Lane damage · Q</small></span><i class="cooldown"></i></button><button class="spell-button" id="spell-rally" data-spell="rally"><span class="spell-symbol storm">ϟ</span><span><b>Rally</b><small>Empower allies · W</small></span><i class="cooldown"></i></button><button class="spell-button" id="spell-heal" data-spell="heal"><span class="spell-symbol grove">✚</span><span><b>Renew</b><small>Heal lane · E</small></span><i class="cooldown"></i></button></div>
 <div class="forecast"><span class="eyebrow">INCOMING</span><div id="forecast-list">Scout the next wave before choosing your element.</div><button id="codex-button" class="text-button">Field guide ↗</button></div>
+<div class="formation-bar"><span class="eyebrow" id="formation-lane">LANE 2 BONDS</span><div id="formation-bonds"><span class="bond-hint">Combine colors in this lane</span></div><button class="text-button" id="synergy-button">Synergies ↗</button></div>
 </section>
 <section class="board-panel panel" aria-label="Rune matching board">
 <div class="board-top"><div><span class="eyebrow">SUMMON INTO</span><div class="lane-picker" role="group" aria-label="Deployment lane"><button data-lane="0" aria-pressed="false">1 <span>Upper</span></button><button data-lane="1" aria-pressed="true" class="active">2 <span>Middle</span></button><button data-lane="2" aria-pressed="false">3 <span>Lower</span></button></div></div><div class="combo-display"><b id="combo">×1</b><span id="combo-label">COMBO POWER</span></div></div>
@@ -23,9 +24,9 @@
 <div class="board-bottom"><p id="board-message" aria-live="polite">Swap adjacent runes to summon troops.</p><button id="hint-button" class="text-button" title="Highlight a possible swap (H)">Hint <span>H</span></button></div><div class="charge-track"><i id="charge-fill"></i></div><div class="charge-label"><span id="charge-label">OVERDRIVE</span><span id="charge-count">0 / 50</span></div>
 </section>
 </div>
-<section class="army-section" aria-label="Your elemental troops"><div class="section-heading"><span class="eyebrow">SIX ELEMENTS. ONE ARMY.</span><span class="muted">Tap a troop to inspect its strengths</span></div><div id="roster" class="roster"></div></section>
+<section class="army-section" aria-label="Your elemental troops"><div class="section-heading"><span class="eyebrow">SIX ELEMENTS. YOUR EQUIPPED CLASSES.</span><span class="muted">Tap a troop for its spell and formation partners</span></div><div id="roster" class="roster"></div></section>
 <footer><span>Match 4 → line blast · Match 5 → wild rune · T / L → nova</span><button class="text-button" id="how-button">How to play</button><span class="save-status" id="save-status">Progress saves on this device</span></footer>
 </main></div>
 <div class="modal-backdrop" id="modal-backdrop" hidden><section class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1"><div class="modal-head"><div><span class="eyebrow" id="modal-kicker">MATCH WARS</span><h2 id="modal-title">War council</h2></div><button id="modal-close" class="icon-button" aria-label="Close dialog">×</button></div><div id="modal-content"></div></section></div>
-<div class="toast" id="toast" role="status"></div><script type="module" src="./matchwars/app.mjs?v=2"></script>
+<div class="toast" id="toast" role="status"></div><script type="module" src="./matchwars/app.mjs?v=3"></script>
 </body></html>
