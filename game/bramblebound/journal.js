@@ -11,6 +11,7 @@
   const nfmt = n => n.toLocaleString();
   const utilityStyles=new Set(['heal','shield','stun','freeze']);
   const styleLabel = style => ({mend:'Healing strike',drain:'Lifesteal',heal:'Healing only',shield:'Shield only',stun:'Stun only',freeze:'Freeze only'}[style]||cap(style));
+  const fusionStage=item=>item.recipe?({1:'First-stage fusion',2:'Second-stage fusion',3:'Third-stage fusion'}[item.fusionDepth||1]||'Stage '+item.fusionDepth+' fusion'):'';
   function relicStat(profile,it){
     const d=items[it.id],n=value=>Number(value.toFixed(2)).toLocaleString();
     if((d.style==='stun'||d.style==='freeze')&&E.itemDuration)return n(E.itemDuration(profile,it))+'s '+d.style+' duration';
@@ -24,7 +25,8 @@
   function relicSearchText(item){
     const effect={mend:'healing healer restore health',heal:'healing healer restore health support utility healing only zero damage',drain:'lifesteal life steal life-steal leech siphon',guard:'shield shielding barrier guard',shield:'shield shielding barrier guard support utility shield only zero damage',stun:'stun stunning interrupt control utility stun only zero damage',freeze:'freeze freezing frozen ice control utility freeze only zero damage'}[item.style]||'';
     const home=regions[item.dropRegion];
-    return [item.name,item.element,item.style,effect,item.recipe?(item.recipe.some(id=>items[id].recipe)?'second-stage fusion':'first-stage fusion'):'',item.rarity,item.special||'',item.specialDescription||'',item.counter||'',item.counterDescription||'',home?.name||''].join(' ').toLowerCase();
+    const stage=fusionStage(item);
+    return [item.name,item.element,item.style,effect,stage,stage.replace('-',' '),item.recipe?'stage '+(item.fusionDepth||1):'',item.rarity,item.special||'',item.specialDescription||'',item.counter||'',item.counterDescription||'',home?.name||''].join(' ').toLowerCase();
   }
   const glyph = name => '<i aria-hidden="true" data-glyph="'+name+'"></i>';
   const traitText = {
@@ -80,7 +82,7 @@
     const names = recipe ? item.recipe.map(id => items[id].name).join(' + ') : '';
     return `<button type="button" class="frame guide-card" data-catalog="${esc(item.id)}" data-rarity="${item.rarity}" style="--el:${element.color}">
       <span class="icon-tile">${ItemArt.svg(item.id,40)}</span>
-      <span><b>${esc(item.name)}</b><small>${recipe ? esc(names) : element.name+' · '+styleLabel(item.style)}</small>${recipe?'<small>'+(item.recipe.some(id=>items[id].recipe)?'Second-stage fusion':'First-stage fusion')+' · '+styleLabel(item.style)+'</small>':''}${item.special?'<small class="relic-signature">✦ '+esc(cap(item.special))+'</small>':''}${item.counter?'<small class="relic-counter">Counters · '+esc(cap(item.counter))+'</small>':''}<small>${tierBadge(item)} ${seen ? '✓ Discovered' : 'Undiscovered'}</small></span>
+      <span><b>${esc(item.name)}</b><small>${recipe ? esc(names) : element.name+' · '+styleLabel(item.style)}</small>${recipe?'<small>'+esc(fusionStage(item))+' · '+styleLabel(item.style)+'</small>':''}${item.special?'<small class="relic-signature">✦ '+esc(cap(item.special))+'</small>':''}${item.counter?'<small class="relic-counter">Counters · '+esc(cap(item.counter))+'</small>':''}<small>${tierBadge(item)} ${seen ? '✓ Discovered' : 'Undiscovered'}</small></span>
     </button>`;
   }
   function enemyCard(enemy, seen) {
@@ -108,7 +110,7 @@
         <input id="guide-search" class="search" type="search" value="${esc(query)}" aria-label="${hint}" placeholder="${hint}"></div>
         ${!isUpgrade&&!isEnemy?'<div class="guide-filters"><div class="guide-roles" aria-label="Rarity filter"><span>Rarity</span>'+['all',...Object.keys(window.Catalog.rarities)].map(t=>'<button type="button" data-guide-tier="'+t+'" data-rarity="'+t+'" aria-pressed="'+(tier===t)+'">'+(t==='all'?'All':window.Catalog.rarities[t].name)+'</button>').join('')+'</div>'+(tab==='items'?'<div class="guide-roles" aria-label="Find gear by role"><span>Gear roles</span>'+['Healing','Shield','Stun','Freeze','Lifesteal'].map(role=>'<button type="button" data-gear-role="'+role+'" aria-pressed="'+(query.toLowerCase()===role.toLowerCase())+'">'+role+'</button>').join('')+'</div>':'')+'</div>':''}
         <div class="guide-count" aria-live="polite">${isUpgrade?'LEARNED THIS RUN':isEnemy?'ENCOUNTERED':'DISCOVERED'} ${count} / ${entries.length}${(terms.length||(!isEnemy&&!isUpgrade&&tier!=='all'))?' &nbsp; · &nbsp; '+results.length+' '+(results.length===1?'RESULT':'RESULTS'):''}</div>
-        ${isRecipe ? '<aside class="frame guide-intro"><div><strong>At the forge</strong><p>Drag one ingredient onto its partner to fuse them. Select one relic to make valid partners glow. Tap a glowing partner to preview the fusion. Every fusion gains one level above its highest-level ingredient: Lv 2 + Lv 3 makes Lv 4. Fuse crafted relics again to discover second-stage recipes. Two identical relics at the same level also gain one level.</p></div></aside>':''}
+        ${isRecipe ? '<aside class="frame guide-intro"><div><strong>At the forge</strong><p>Drag one ingredient onto its partner to fuse them. Select one relic to make valid partners glow. Choose Matches, then tap a glowing partner to preview the fusion. Every fusion gains one level above its highest-level ingredient: Lv 2 + Lv 3 makes Lv 4. Fuse crafted relics again to discover second-stage and third-stage recipes. Search by stage or ingredient to follow a crafting chain. Two identical relics at the same level also gain one level.</p></div></aside>':''}
         <div class="guide-grid">${results.length ? results.map(entry=>isUpgrade?
           `<button class="frame guide-card" data-skill="${entry.id}" style="--el:${elements[entry.element].color}"><span class="icon-tile">${ItemArt.svg(entry.icon,40)}</span><span><b>${esc(entry.name)}</b><small>${esc(entry.category)} · ${entry.kind==='ability'?'Auto-cast ability':'Passive'}</small><small>${seen.has(entry.id)?'Rank '+profile.run.skills[entry.id]:'Unlearned'}</small></span></button>`
           :isEnemy?enemyCard(entry,seen.has(entry.id)):relicCard(entry,isRecipe,seen.has(entry.id))).join('') :
@@ -192,5 +194,5 @@
       '<p class="camp-explainer">'+glyph('road')+'<span>Trail memory speeds up cleared waves. Pip returns to 1× on new ground. Gear and expedition talents are collected anew each run.</span></p>'+
       recap+'<div class="camp-actions">'+(traveling?'<button type="button" class="outline" data-nav="expedition">'+glyph('road')+'Return to expedition</button>':'<button type="button" class="primary" data-do="start">'+glyph('play')+(p.deaths?'Start next expedition':'Begin expedition')+'</button>')+'</div>';
   }
-  window.Journal={guide,legacy,debrief,paintPortraits,traitText,afflictionText,elementText,relicEffects,styleLabel,relicStat,relicSearchText,tierBadge,relicSource,routeAtlas,regionDossier};
+  window.Journal={guide,legacy,debrief,paintPortraits,traitText,afflictionText,elementText,relicEffects,styleLabel,fusionStage,relicStat,relicSearchText,tierBadge,relicSource,routeAtlas,regionDossier};
 })();

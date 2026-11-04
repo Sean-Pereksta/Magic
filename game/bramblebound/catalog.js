@@ -537,6 +537,66 @@
     ['winterworld_heart','Winterworld Heart','wintervault_geode','glacierheart_idol','stone','freeze',49,3.25,'idol'],
     ['moon_of_still_tides','Moon of Still Tides','moonfrost_orbiter','dreamice_lantern','spirit','freeze',38,2.95,'orbiter']
   );
+  // Cross-road recipes open new uses for old finds and lead into a third craft.
+  // Every ingredient pair is unique; each generation follows its parents.
+  const crossroadFusions=[
+    // Twenty-four first-stage recipes use only uncrafted base relics.
+    ['vinetongue_spear','Vinetongue Spear','bamboo','leech_harpoon','leaf','drain',22,2.25,'lance','leech'],
+    ['cindersnap_repeater','Cindersnap Repeater','matchbox','squall_repeater','fire','rapid',14,1.3,'repeater','overload'],
+    ['sootbloom_scythe','Sootbloom Scythe','nettle','ember_glaive','fire','poison',24,2.4,'sicklestaff','bloom'],
+    ['rimewire_chakram','Rimewire Chakram','needle','arc_chakram','frost','shock',23,2.2,'chakram','permafrost'],
+    ['galequarry_ballista','Galequarry Ballista','vane','caliper','storm','pierce',25,2.15,'ballista','ricochet'],
+    ['moonflint_scythe','Moonflint Scythe','soul_scythe','pick','spirit','drain',27,2.55,'scythe','soulmark'],
+    ['scarlet_comet_blade','Scarlet Comet Blade','blade','flake','fire','rapid',17,1.5,'saber','execute'],
+    ['thunderbark_maul','Thunderbark Maul','mallet','crank','storm','strike',31,2.7,'hammer','aftershock'],
+    ['glacial_soulbow','Glacial Soulbow','hushwood_bow','dawn_harpbow','frost','mend',27,2.35,'harpbow','renewal'],
+    ['auric_flare_cannon','Auric Flare Cannon','honeycomb_cannon','marble','fire','burn',29,2.2,'cannon','rupture'],
+    ['inkthorn_fan','Inkthorn Fan','brush','nettle','spirit','poison',23,2.25,'fan','bloom'],
+    ['emberreef_lance','Emberreef Lance','barnacle_buckler','fang','fire','pierce',27,2.35,'lance','wardbreak'],
+    ['rosewater_benediction','Rosewater Benediction','dewdrop_chalice','snowmelt_phial','leaf','heal',18,2.45,'cup'],
+    ['warmrain_kettle','Warmrain Kettle','hearth_tea','rain_pearl','storm','heal',20,2.55,'gourd'],
+    ['kinship_salve','Kinship Salve','mineral_salve','kindred_candle','spirit','heal',23,2.8,'mortar'],
+    ['willowice_shelter','Willowice Shelter','barkward_charm','iceward_mirror','frost','shield',23,2.6,'aegis'],
+    ['moonstorm_mantle','Moonstorm Mantle','static_canopy','moonveil_spool','spirit','shield',22,2.4,'scarf'],
+    ['cinderstone_refuge','Cinderstone Refuge','ember_screen','granite_ward','stone','shield',28,3,'pavise'],
+    ['hushroot_carillon','Hushroot Carillon','snaproot_totem','hushbell','leaf','stun',18,2.85,'bell'],
+    ['dreamflash_prism','Dreamflash Prism','flashpowder_pouch','dreamcatcher','spirit','stun',21,2.95,'prism'],
+    ['stormseal_gong','Stormseal Gong','thunderclap_cymbal','stillstone_seal','stone','stun',24,3.1,'gong'],
+    ['wintermoon_seed','Wintermoon Seed','winterseed','pale_moon_orb','spirit','freeze',20,3.3,'seed'],
+    ['coldtempest_beacon','Coldtempest Beacon','coldflame_lantern','sleetwind_chime','storm','freeze',21,3.25,'lantern'],
+    ['saltglass_stillness','Saltglass Stillness','glacier_hourglass','frostsalt_geode','stone','freeze',26,3.55,'hourglass'],
+    // Eighteen second-stage recipes pair first-stage crafts from different roads.
+    ['verdant_eclipse_spear','Verdant Eclipse Spear','vinetongue_spear','ghostthorn','spirit','drain',40,2.1,'lance','leech'],
+    ['sunburst_hive','Sunburst Hive','cindersnap_repeater','swarmbox','fire','rapid',25,1.2,'cannon','overload'],
+    ['plaguefire_harvester','Plaguefire Harvester','sootbloom_scythe','lash','leaf','poison',43,2.15,'sicklestaff','bloom'],
+    ['polar_thunderwheel','Polar Thunderwheel','rimewire_chakram','aurora_crescent','frost','shock',42,2,'chakram','permafrost'],
+    ['horizon_ballista','Horizon Ballista','galequarry_ballista','northstar','storm','pierce',45,1.95,'ballista','chain'],
+    ['midnight_faultreaper','Midnight Faultreaper','moonflint_scythe','gravemoon_reaper','stone','drain',49,2.35,'chainscythe','rupture'],
+    ['crimson_meteor_dance','Crimson Meteor Dance','scarlet_comet_blade','cometskates','fire','rapid',31,1.3,'twinblades','execute'],
+    ['stormroot_colossus','Stormroot Colossus','thunderbark_maul','stormengine','storm','strike',55,2.4,'gravitymaul','aftershock'],
+    ['winterdawn_harp','Winterdawn Harp','glacial_soulbow','seraph_harp','spirit','mend',42,2.15,'harpbow','renewal'],
+    ['caldera_tidebreaker','Caldera Tidebreaker','auric_flare_cannon','emberreef_lance','fire','pierce',49,2.15,'trident','wardbreak'],
+    ['rosepetal_spring','Rosepetal Spring','rosewater_benediction','springwater_ampoule','leaf','heal',34,2.2,'cup'],
+    ['hearthlight_rain','Hearthlight Rain','warmrain_kettle','kinship_salve','spirit','heal',43,2.35,'censer'],
+    ['willowmoon_citadel','Willowmoon Citadel','willowice_shelter','silverthread_veil','frost','shield',44,2.35,'pavise'],
+    ['stormstone_pavilion','Stormstone Pavilion','moonstorm_mantle','cinderstone_refuge','storm','shield',50,2.25,'parasol'],
+    ['rootbound_silence','Rootbound Silence','hushroot_carillon','silence_chimes','leaf','stun',34,2.55,'bell'],
+    ['reverie_thunderbell','Reverie Thunderbell','dreamflash_prism','stormseal_gong','spirit','stun',44,2.65,'gong'],
+    ['moonfrost_garden','Moonfrost Garden','wintermoon_seed','frostbloom_seed','spirit','freeze',38,3,'seed'],
+    ['tempest_glacier_prism','Tempest Glacier Prism','coldtempest_beacon','saltglass_stillness','frost','freeze',48,2.95,'prism'],
+    // Eight third-stage destinations reward an extended fusion plan.
+    ['eclipse_worldreaper','Eclipse Worldreaper','verdant_eclipse_spear','worldtree','spirit','drain',68,1.95,'chainscythe','leech'],
+    ['stellar_hive_engine','Stellar Hive Engine','sunburst_hive','cometfall','fire','rapid',44,1.1,'cannon','overload'],
+    ['stormwinter_singularity','Stormwinter Singularity','polar_thunderwheel','tempest','storm','shock',71,1.85,'orbiter','chain'],
+    ['caldera_skybreaker','Caldera Skybreaker','caldera_tidebreaker','horizon_ballista','fire','pierce',83,1.95,'greatsword','wardbreak'],
+    ['garden_of_first_rain','Garden of First Rain','rosepetal_spring','hearthlight_rain','leaf','heal',74,2.05,'cup'],
+    ['citadel_of_four_skies','Citadel of Four Skies','willowmoon_citadel','stormstone_pavilion','storm','shield',86,2.05,'pavise'],
+    ['last_bell_of_dreams','Last Bell of Dreams','rootbound_silence','reverie_thunderbell','spirit','stun',77,2.35,'bell'],
+    ['winter_beyond_the_moon','Winter Beyond the Moon','moonfrost_garden','tempest_glacier_prism','frost','freeze',82,2.7,'orbiter']
+  ];
+  for(const row of crossroadFusions){
+    recipes.push(row.slice(0,9));if(row[9])signatures[row[0]]=row[9];
+  }
   for(const [id,name,a,b,element,style,power,cooldown,icon] of recipes){
     const pair=[items[a],items[b]];
     const mythic=pair.some(d=>d.rarity==='mythic')||pair.every(d=>d.recipe);
@@ -556,7 +616,14 @@
     verdigris_torrent:'insulated',caldera_heart:'blastguard',silent_solstice:'thaw',winter_bloom:'antivenom',
     savanna_king:'unbinding',ossuary_sentence:'wardbreaker',reverie_harvester:'purify',cathedral_sun:'cleanse',
     cinder_express:'blastguard',winterglass_prism:'thaw',stormglass_apparatus:'insulated',worldroot_reaper:'unbinding',
-    encore_eclipse:'purify',crimson_harvest:'antivenom',heavens_splitter:'cleanse',firstlight_judgment:'wardbreaker'
+    encore_eclipse:'purify',crimson_harvest:'antivenom',heavens_splitter:'cleanse',firstlight_judgment:'wardbreaker',
+    glacial_soulbow:'thaw',galequarry_ballista:'insulated',emberreef_lance:'wardbreaker',
+    rosewater_benediction:'cleanse',warmrain_kettle:'thaw',kinship_salve:'purify',
+    moonstorm_mantle:'insulated',cinderstone_refuge:'blastguard',
+    horizon_ballista:'insulated',midnight_faultreaper:'purify',caldera_tidebreaker:'wardbreaker',
+    rosepetal_spring:'cleanse',hearthlight_rain:'thaw',willowmoon_citadel:'thaw',stormstone_pavilion:'insulated',
+    eclipse_worldreaper:'antivenom',caldera_skybreaker:'wardbreaker',garden_of_first_rain:'cleanse',
+    citadel_of_four_skies:'insulated',last_bell_of_dreams:'purify',winter_beyond_the_moon:'thaw'
   };
   for(const [id,counter] of Object.entries(farCounters))Object.assign(items[id],{counter,counterDescription:counterText[counter]});
   const roster = [

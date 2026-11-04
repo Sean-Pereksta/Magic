@@ -178,6 +178,36 @@ async function main(){
       await page.locator('#equipped .gear-slot[data-uid="1"]').click();await page.locator('#gear-comparison').waitFor({state:'hidden'});
       assert.deepEqual(errors,[]);results.push(width+'px: backpack comparison above equipped cards, exact signed deltas, effect icons and accessible tooltips, selection switching, no overflow or errors');await context.close();
     }
+    for(const width of [1440,390]){
+      const context=await browser.newContext({viewport:{width,height:width===390?844:1050}}),page=await context.newPage(),errors=[];
+      context.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
+      await page.goto(origin+'/game/bramblebound/');await page.locator('#title-play').waitFor();
+      const fixture=await page.evaluate(()=>{
+        const E=GameEngine,C=Catalog,p=E.freshProfile();E.start(p);const r=p.run,d=C.items.winter_beyond_the_moon;
+        r.active=[{uid:1,id:'stick',level:1,cd:0,slot:0}];
+        r.pack=[{uid:2,id:d.recipe[0],level:8.25,cd:0,slot:0},{uid:3,id:d.recipe[1],level:21.5,cd:0,slot:1},{uid:4,id:'wick',level:4.5,cd:0,slot:2}];r.nextUid=5;
+        p.seenItems=[...new Set([...r.active,...r.pack].map(it=>it.id))];
+        return {save:{game:'bramblebound',format:1,profile:E.validate(JSON.parse(JSON.stringify(p))),settings:{audio:false,motion:false}},id:d.id,name:d.name};
+      });
+      await page.evaluate(save=>localStorage.setItem('bramblebound.profile.v1',JSON.stringify(save)),fixture.save);
+      await page.reload();await page.locator('#title-play').waitFor();await page.locator('#title-play').click();await page.locator('#run-btn').click();
+      await page.locator('#pack .gear-slot[data-uid="2"]').click();await page.locator('[data-selection="details"]').click();
+      await page.locator('#dialog-body [data-gear="combine"]').click();await page.locator('[data-pair-with="3"]').click();
+      assert.equal(await page.locator('#dialog-body .dialog-title').innerText(),fixture.name);
+      assert.equal(await page.locator('#dialog-body .level-tag').innerText(),'LEVEL 22.5');assert.match(await page.locator('#dialog-body').innerText(),/freeze duration/i);
+      if(shots){fs.mkdirSync(shots,{recursive:true});await page.screenshot({path:path.join(shots,'third-stage-fusion-preview-'+width+'.png'),fullPage:true});}
+      await page.locator('[data-do="forge"]').click();await page.locator('#modal').waitFor({state:'hidden'});
+      await page.reload();await page.locator('#title-play').waitFor();await page.locator('#title-play').click();await page.locator('#run-btn').click();
+      const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('bramblebound.profile.v1')).profile);
+      assert.equal(saved.run.pack.length,2);assert.equal(saved.run.pack.find(it=>it.id===fixture.id).level,22.5);assert.equal(saved.run.pack.find(it=>it.id==='wick').level,4.5);assert.equal(saved.run.active[0].id,'stick');
+      await page.locator('#pack .gear-slot[data-uid="5"]').click();await page.locator('[data-selection="details"]').click();
+      assert.match(await page.locator('#dialog-body').innerText(),/Third-stage fusion recipe/);await page.locator('#close-btn').click();
+      await page.locator('nav [data-nav="guide"]').click();await page.locator('[data-guide-tab="recipes"]').click();await page.locator('#guide-search').fill('third stage');
+      const cards=page.locator('#guide-page .guide-card[data-catalog]');await cards.first().waitFor();assert.equal(await cards.count(),9);
+      assert.equal(await cards.evaluateAll(nodes=>nodes.every(n=>n.innerText.includes('Third-stage fusion'))),true);
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);
+      results.push(width+'px: new third-stage fusion preview, crafted level22.5 persists through reload with old gear intact, nine third-stage guide recipes; no overflow or errors');await context.close();
+    }
     console.log(results.join('\n'));
   }finally{await browser.close();}
 }

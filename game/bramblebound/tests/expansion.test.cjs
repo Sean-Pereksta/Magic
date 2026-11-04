@@ -168,12 +168,14 @@ test('antivenom and blast guard reduce poison and volatile damage while ward bre
   assert.ok(counter.e.hp<baseline.e.hp);assert.equal(counter.e.ward,0);
 });
 
-test('the expanded catalog offers pure support, control and many two-stage fusion paths',()=>{
+test('the expanded catalog offers pure support, control and 274 fusion paths through three stages',()=>{
   const {C,E}=load(),items=Object.values(C.items),recipes=items.filter(d=>d.recipe);
-  assert.ok(items.length>=380,'the expansion should add a substantial range of relics');
-  assert.ok(items.filter(d=>!d.recipe).length>=156,'at least 24 new base relics must be obtainable');
-  assert.ok(recipes.length>=220,'the forge needs many new recipes');
-  assert.ok(recipes.filter(d=>d.recipe.some(id=>C.items[id].recipe)).length>=40,'second-stage recipes should provide several progression paths');
+  assert.equal(items.length,430,'the catalog includes the additional 50 fusion relics');
+  assert.equal(items.filter(d=>!d.recipe).length,156,'all regular finds remain available');
+  assert.equal(recipes.length,274);
+  assert.equal(recipes.filter(d=>d.fusionDepth===1).length,208);
+  assert.equal(recipes.filter(d=>d.fusionDepth===2).length,57);
+  assert.equal(recipes.filter(d=>d.fusionDepth===3).length,9);
   for(const style of ['heal','shield','stun','freeze']){
     assert.ok(items.filter(d=>d.style===style&&!d.recipe).length>=3,style+' needs several obtainable base relics');
     assert.ok(items.some(d=>d.style===style&&d.recipe),style+' needs fusion upgrades');
@@ -230,6 +232,30 @@ test('second-stage fusions consume the first fusion and remain stronger after sa
   assert.equal(E.previewCombine(p,uid,3).level,21.5);assert.equal(E.act(p,'combine',uid,3).ok,true);
   assert.equal(p.run.active[0].id,final.id);assert.equal(p.run.active[0].level,21.5);assert.equal(p.run.pack.length,0);
   const reloaded=E.validate(copy(p));assert.equal(reloaded.run.active[0].id,final.id);assert.equal(reloaded.run.active[0].level,21.5);
+});
+
+test('a new third-stage chain crafts from base finds, consumes every ingredient, and preserves old gear through reloads',()=>{
+  const {C,E}=load(),final=C.items.winter_beyond_the_moon;assert.ok(final);assert.equal(final.fusionDepth,3);
+  let p=E.freshProfile();E.start(p);p.run.active=[{uid:1,id:'stick',level:1,cd:0,slot:0}];
+  p.run.pack=[{uid:2,id:'wick',level:4.5,cd:.4,slot:0}];p.run.nextUid=3;let leaf=0,slot=1,forged=0;
+  const originalSeed=p.run.seed;
+  function craft(id){
+    const d=C.items[id];
+    if(!d.recipe){
+      const uid=p.run.nextUid++,level=[2.5,7.25,20.5][leaf++%3];p.run.pack.push({uid,id,level,cd:0,slot:slot++});
+      if(!p.seenItems.includes(id))p.seenItems.push(id);return uid;
+    }
+    const a=craft(d.recipe[0]),b=craft(d.recipe[1]),before=p.run.pack.length,preview=E.previewCombine(p,a,b);
+    assert.equal(preview.id,id);const result=E.act(p,'combine',a,b);assert.equal(result.ok,true);forged++;
+    assert.equal(p.run.pack.length,before-1);assert.ok(!p.run.pack.some(it=>it.uid===a||it.uid===b));
+    assert.equal(p.run.pack.find(it=>it.uid===result.uid).level,preview.level);
+    p=E.validate(copy(p));assert.ok(p.seenItems.includes(id));return result.uid;
+  }
+  const uid=craft(final.id),crafted=p.run.pack.find(it=>it.uid===uid);
+  assert.ok(forged>=7,'the full three-stage chain should actually be forged');assert.ok(crafted.level>20.5);
+  assert.equal(crafted.id,final.id);assert.equal(p.run.pack.length,2);assert.deepEqual(copy(p.run.pack.find(it=>it.id==='wick')),{uid:2,id:'wick',level:4.5,cd:.4,slot:0});
+  assert.deepEqual(copy(p.run.active),[{uid:1,id:'stick',level:1,cd:0,slot:0}]);assert.equal(p.run.seed,originalSeed);
+  const restored=E.validate(JSON.stringify(p));assert.deepEqual(copy(restored.run.pack),copy(p.run.pack));
 });
 
 test('pure healing, shielding, stun and freeze never acquire damage from elements, milestones or on-hit techniques',()=>{
