@@ -4,9 +4,63 @@ import { PLAYER, alive, canAfford, kingdom, pay, relation } from './core.mjs';
 import { appendConversation, recordTrade } from './living.mjs';
 import { tradeItems, itemCost, itemText, withItems } from './trade-package.mjs';
 export { tradeInfrastructure, tradeRoute, contractCheck, contractAnchors, economicNeeds, publicEconomy } from './trade-economy.mjs';
-import { tradeRoute, economicNeeds, packageValue, referencePackageValue, buyerTradeTerms } from './trade-economy.mjs';
+import { tradeRoute, economicNeeds, packageValue, buyerTradeTerms } from './trade-economy.mjs';
 import { tradeBriefing, evaluateCommercial } from './trade-negotiation.mjs';
 import { RESOURCE_VALUES } from './data.mjs';
+
+function hardOpening(wanted, exports, terms) {
+  const desired = terms.established ? Math.floor(Math.min(terms.shipment, wanted.need)) : terms.shipment;
+  const quantities = terms.established ? [desired] : [8, 9, 10, 11, 12]
+    .sort((a, b) => Math.abs(a - desired) - Math.abs(b - desired) || a - b);
+  const unitValue = RESOURCE_VALUES[wanted.resource];
+  const ceiling = Math.min(unitValue * .85, terms.maximumValue);
+  const choices = exports.slice(0, 3);
+  let payments;
+  for (const amount of quantities) {
+    const minimum = amount * unitValue * .75 * 10;
+    const maximum = amount * ceiling * 10;
+    const target = amount * unitValue * terms.openingRate * 10;
+    const requested = [{ resource: wanted.resource, amount }];
+    // Preserve the court's preferred export whenever one whole-resource payment fits.
+    for (const choice of choices) {
+      const value = Math.round(RESOURCE_VALUES[choice.resource] * 10);
+      const low = Math.ceil((minimum - 1e-8) / value);
+      const high = Math.min(Math.floor(choice.surplus * .6), Math.floor((maximum + 1e-8) / value));
+      if (low <= high) return {
+        requested,
+        payment: [{ resource: choice.resource, amount: Math.max(low, Math.min(high, Math.round(target / value))) }]
+      };
+    }
+    if (!payments) {
+      // Bounded change-making in tenths of reference value: at most 3 * 816
+      // entries, independent of treasury size. Reuse it across shipment choices.
+      const limit = Math.floor(Math.max(...quantities) * ceiling * 10 + 1e-8);
+      payments = new Map([[0, []]]);
+      for (const choice of choices) {
+        const value = Math.round(RESOURCE_VALUES[choice.resource] * 10);
+        const stock = Math.floor(choice.surplus * .6);
+        const previousPayments = new Map(payments);
+        const used = new Int32Array(limit + 1).fill(-1);
+        for (let paid = 0; paid <= limit; paid++) {
+          if (previousPayments.has(paid)) {
+            used[paid] = 0;
+            continue;
+          }
+          if (paid < value || used[paid - value] < 0 || used[paid - value] >= stock) continue;
+          used[paid] = used[paid - value] + 1;
+          payments.set(paid, [
+            ...previousPayments.get(paid - used[paid] * value),
+            { resource: choice.resource, amount: used[paid] }
+          ]);
+        }
+      }
+    }
+    const prices = [...payments.keys()].filter(value => value >= minimum - 1e-8 && value <= maximum + 1e-8);
+    prices.sort((a, b) => Math.abs(a - target) - Math.abs(b - target) || a - b);
+    if (prices.length) return { requested, payment: payments.get(prices[0]) };
+  }
+  return null;
+}
 
 export function tradeCandidate(s,from,to) {
   if(from===to||!alive(s,to))return null;
@@ -21,13 +75,18 @@ export function tradeCandidate(s,from,to) {
   const exports=ours.filter(n=>n.surplus>=6&&!wanted.some(w=>w.resource===n.resource)).sort((a,b)=>Number(briefing.imports.includes(b.resource))-Number(briefing.imports.includes(a.resource))||b.surplus-a.surplus);
   if(!wanted.length||!exports.length)return null;
   const bargaining=hard?buyerTradeTerms(s,from,to,wanted.map(n=>({resource:n.resource,amount:1})),ours,known):null;
-  const requested=wanted.map(n=>({resource:n.resource,amount:Math.max(1,Math.floor(Math.min(bargaining?.shipment||80,n.need)))}));
-  const payment=[];let budget=hard?referencePackageValue(requested)*bargaining.openingRate:packageValue(ours,requested)*.8;
-  for(const n of exports.slice(0,3)){
-    const value=hard?RESOURCE_VALUES[n.resource]:n.value;
-    const amount=Math.min(Math.floor(n.surplus*.6),Math.max(1,hard?Math.round(budget/value):Math.ceil(budget/value)));
-    if(amount<1)continue;
-    payment.push({resource:n.resource,amount});budget-=amount*value;if(hard?budget<value*.5:budget<=0)break;
+  let requested,payment;
+  if(hard){
+    const opening=hardOpening(wanted[0],exports,bargaining);if(!opening)return null;
+    ({requested,payment}=opening);
+  }else{
+    requested=wanted.map(n=>({resource:n.resource,amount:Math.max(1,Math.floor(Math.min(80,n.need)))}));
+    payment=[];let budget=packageValue(ours,requested)*.8;
+    for(const n of exports.slice(0,3)){
+      const amount=Math.min(Math.floor(n.surplus*.6),Math.max(1,Math.ceil(budget/n.value)));
+      if(amount<1)continue;
+      payment.push({resource:n.resource,amount});budget-=amount*n.value;if(budget<=0)break;
+    }
   }
   if(!payment.length)return null;
   // Offer orientation is from the receiving player's point of view.

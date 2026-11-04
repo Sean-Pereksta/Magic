@@ -34,6 +34,48 @@ test('ordinary Hard first bids ask for one 8–12 unit shipment near 75–85% re
   assert.doesNotMatch(JSON.stringify(offer),/maximumValue|openingRate/);
 });
 
+test('whole tools, arms and horses use the nearest valid small shipment without overbidding',()=>{
+  for(const [resource,expected] of [['horses',[8,12]],['tools',[9,9]],['arms',[10,10]]])for(const [index,paranoia] of [1,0].entries()){
+    const s=market(),buyer=kingdom(s,'wintermere');buyer.paranoia=paranoia;buyer.greed=.5;
+    for(const t of Object.values(s.tiles))if(t.owner===buyer.id&&t.building==='farm'){t.building=null;t.levels.farm=0;}
+    for(const n of economicNeeds(s,buyer.id,{tradeReserves:true}))buyer.resources[n.resource]=Math.ceil(n.goal+Math.max(0,-n.production*3));
+    const food=economicNeeds(s,buyer.id,{tradeReserves:true}).find(n=>n.resource==='food');
+    buyer.resources.food=food.goal-food.production*3-8;buyer.resources[resource]=500;
+    refreshKnowledge(s);
+    const offer=tradeCandidate(s,buyer.id,'ashen');assert.ok(offer);
+    const requested=tradeItems(offer.intent,'give'),payment=tradeItems(offer.intent,'receive');
+    assert.deepEqual(requested,[{resource:'food',amount:expected[index]}]);
+    assert.equal(payment.length,1);assert.equal(payment[0].resource,resource);
+    const value=referencePackageValue(payment),ratio=value/referencePackageValue(requested);
+    assert.ok(ratio>=.75&&ratio<=.85,`${resource} opening ratio ${ratio}`);
+    const needs=economicNeeds(s,buyer.id,{tradeReserves:true});
+    assert.ok(value<=buyerTradeTerms(s,buyer.id,'ashen',requested,needs,planningView(s,buyer.id)).maximumValue);
+    assert.ok(payment[0].amount<=needs.find(n=>n.resource===resource).surplus);
+    assert.equal(evaluateDeal(s,buyer.id,offer.intent).status,'accept');
+  }
+});
+
+test('a Hard buyer skips an opening when its protected surplus cannot fund a fair small shipment',()=>{
+  const s=market(),buyer=kingdom(s,'wintermere');
+  for(const n of economicNeeds(s,buyer.id,{tradeReserves:true}))buyer.resources[n.resource]=Math.ceil(n.goal+Math.max(0,-n.production*3));
+  buyer.resources.iron=0;buyer.resources.food+=6;
+  assert.equal(economicNeeds(s,buyer.id,{tradeReserves:true}).find(n=>n.resource==='food').surplus,6);
+  assert.equal(tradeCandidate(s,buyer.id,'ashen'),null);
+});
+
+test('a Hard buyer can combine limited exports into a valid opening without spending its reserves',()=>{
+  const s=market(),buyer=kingdom(s,'wintermere');buyer.paranoia=1;
+  for(const t of Object.values(s.tiles))if(t.owner===buyer.id&&t.building==='farm'){t.building=null;t.levels.farm=0;}
+  for(const n of economicNeeds(s,buyer.id,{tradeReserves:true}))buyer.resources[n.resource]=Math.ceil(n.goal+Math.max(0,-n.production*3));
+  buyer.resources.food-=8;buyer.resources.stone+=6;buyer.resources.gold+=6;refreshKnowledge(s);
+  const offer=tradeCandidate(s,buyer.id,'ashen');assert.ok(offer);
+  assert.deepEqual(tradeItems(offer.intent,'give'),[{resource:'food',amount:8}]);
+  const payment=tradeItems(offer.intent,'receive');assert.equal(payment.length,2);
+  assert.ok(payment.every(item=>['stone','gold'].includes(item.resource)&&item.amount<=3));
+  assert.equal(referencePackageValue(payment),6);
+  assert.equal(evaluateDeal(s,buyer.id,offer.intent).status,'accept');
+});
+
 test('a credible counter earns a bounded concession and repeated declines do not increase it',()=>{
   const s=market(),opening=tradeCandidate(s,'wintermere','ashen'),wanted=tradeItems(opening.intent,'give')[0].amount;
   const price=tradeItems(opening.intent,'receive').find(x=>x.resource==='wood').amount;

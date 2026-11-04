@@ -56,8 +56,9 @@ try{
  await admin(db=>setDoc(doc(db,prefix),{name:'Browser campaign',gameType:'ironthrone',host:'Sean',hostUid:a.uid,players:['Sean','Alex'],members:{[a.uid]:'Sean',[b.uid]:'Alex'},status:'started',visibility:'private'}));
  for(const r of [a,b])await r.page.goto(`${base}/game/iron-throne/index.html?gameId=${id}&username=${r===a?'Sean':'Alex'}`);
  await Promise.all([a.page.locator('[data-claim="ashen"]').waitFor(),b.page.locator('[data-claim="ashen"]').waitFor()]);
- // A real transaction race in independent browser contexts.
- await Promise.all([a.page.locator('[data-claim="ashen"]').click(),b.page.locator('[data-claim="ashen"]').click()]);
+ // Dispatch competing UI events without Playwright's stability wait: the first
+ // committed claim can otherwise disable the second button before its click.
+ await Promise.all([a.page.locator('[data-claim="ashen"]').dispatchEvent('click'),b.page.locator('[data-claim="ashen"]').dispatchEvent('click')]);
  await eventually(async()=>!!(await read(`${prefix}/iron_throne/meta`)).seats.ashen.uid);
  let m=await read(`${prefix}/iron_throne/meta`);
  assert.equal(Object.values(m.seats).filter(s=>s.uid).length,1);
