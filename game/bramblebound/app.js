@@ -55,11 +55,85 @@
   const compactPack=window.matchMedia('(orientation:portrait), (max-height:680px)');
   const pageSize=()=>compactPack.matches?8:12;
   const modal=$('modal'); let dialogState=null,preDialogFocus=null;
+  const CLOUD_NAME_KEY='bramblebound.cloud.name.v1';
+  let cloudName='',cloudSecret='',cloudBusy=false,cloudTimer=null,cloudStamp=0,cloudLastRaw='',cloudMessage='',cloudAutoPaused=false,pendingCloud=null,cloudService=null,cloudGeneration=0,cloudForgetPending=false;
+  try{cloudName=localStorage.getItem(CLOUD_NAME_KEY)||'';}catch{}
+  function forgetCloudSession(){if(cloudForgetPending&&cloudService&&!cloudService.status().busy&&!cloudService.status().pending){cloudService.forget();cloudForgetPending=false;}}
+  function cloud(){forgetCloudSession();return cloudService||(cloudService=window.BrambleCloud.create({validate:readProfile}));}
+  function cloudStatus(){
+    if(cloudBusy)return 'Contacting Firebase… Local progress is safe.';
+    if(cloudMessage)return cloudMessage;
+    if(cloudName&&cloudSecret&&!cloudAutoPaused)return 'Saved to Firebase · '+cloudName+(cloudStamp?' · '+new Date(cloudStamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'')+' · autosave connected';
+    if(cloudName)return 'Remembered cloud journey: '+cloudName+'. Reopen with its password to connect.';
+    return 'Cloud not connected · local autosave is active.';
+  }
+  function renderCloudStatus(){
+    document.querySelectorAll('[data-cloud-status]').forEach(el=>el.textContent=cloudStatus());
+    if(dialogState?.type==='cloud')for(const el of modal.querySelectorAll('input,button'))el.disabled=cloudBusy;
+    $('close-btn').disabled=cloudBusy&&dialogState?.type==='cloud';
+  }
+  function rememberCloud(name,password,stamp,raw){
+    cloudName=name;cloudSecret=password;cloudStamp=stamp;cloudLastRaw=raw;cloudMessage='';cloudAutoPaused=false;
+    try{localStorage.setItem(CLOUD_NAME_KEY,name);}catch{}
+    renderCloudStatus();
+  }
+  function pauseCloud(){cloudGeneration++;clearTimeout(cloudTimer);cloudTimer=null;cloudSecret='';cloudAutoPaused=true;pendingCloud=null;cloudForgetPending=true;forgetCloudSession();cloudMessage='Cloud autosave paused. Reopen a cloud journey or save under a new name.';renderCloudStatus();}
+  function queueCloud(){
+    if(!cloudSecret||cloudAutoPaused||cloudBusy||pendingCloud||damagedSave||cloudTimer||serialize()===cloudLastRaw)return;
+    cloudTimer=setTimeout(()=>{cloudTimer=null;if(document.hidden||modal.open){queueCloud();return;}void uploadCloud(true);},30000);
+  }
+  async function uploadCloud(automatic=false,name=cloudName,password=cloudSecret){
+    if(cloudBusy)return;
+    if(damagedSave){if(!automatic)showDialog('recovery');return;}
+    cloudBusy=true;cloudMessage='';clearTimeout(cloudTimer);cloudTimer=null;renderCloudStatus();
+    const raw=serialize(),generation=cloudGeneration;
+    try{
+      const result=await cloud().save(name,password,raw);
+      if(generation!==cloudGeneration)return;
+      rememberCloud(result.name,password,result.updatedAtMs,raw);
+      if(!automatic){cloudBusy=false;closeDialog();notify('Journey saved to Firebase: '+result.name);}
+    }catch(error){
+      if(generation!==cloudGeneration)return;
+      cloudAutoPaused=true;cloudMessage=(error?.message||'Cloud save could not be confirmed.')+' Local progress is safe.';
+      if(!automatic)notify('Cloud save not confirmed. Your local journey is unchanged.');
+    }finally{cloudBusy=false;forgetCloudSession();renderCloudStatus();queueCloud();}
+  }
+  async function submitCloud(event){
+    event.preventDefault();if(cloudBusy||dialogState?.type!=='cloud')return;
+    const mode=dialogState.mode||'save',name=$('cloud-name').value,password=$('cloud-password').value;
+    $('cloud-password').value='';
+    if(mode==='save')return uploadCloud(false,name,password);
+    cloudBusy=true;cloudMessage='';clearTimeout(cloudTimer);cloudTimer=null;renderCloudStatus();
+    try{
+      const result=await cloud().load(name,password),loaded=readProfile(result.raw);
+      pendingCloud={result,loaded,password};cloudAutoPaused=true;cloudMessage='Cloud journey downloaded and checked. Local progress has not changed.';cloudBusy=false;showDialog('cloud-confirm');
+    }catch(error){cloudAutoPaused=true;cloudMessage=(error?.message||'Cloud journey could not be opened.')+' Local progress is unchanged.';}
+    finally{cloudBusy=false;renderCloudStatus();}
+  }
+  function restoreCloud(){
+    if(!pendingCloud||cloudBusy)return;
+    const {result,loaded,password}=pendingCloud;
+    const raw=JSON.stringify({game:'bramblebound',format:1,profile:loaded.profile,settings:loaded.prefs,...(loaded.camp?{camp:loaded.camp}:{})});
+    try{
+      const prior=damagedSave||serialize();
+      localStorage.setItem('bramblebound.cloud.backup.v1',prior);
+      localStorage.setItem(KEY,raw);
+    }catch{cloudMessage='The cloud journey is ready, but this device could not keep a local backup. Export your current profile and free storage before restoring.';renderCloudStatus();return;}
+    applyProfile(loaded);pendingCloud=null;rememberCloud(result.name,password,result.updatedAtMs,raw);
+    save();titleMenu(true);notify('Cloud journey reopened. Continue when you are ready.');
+  }
+  function applyProfile(loaded){
+    ({profile,prefs}=loaded);starter=loaded.camp||freshKit();campChanged=!!loaded.camp;damagedSave=null;
+    S?.setEnabled(prefs.audio,true);document.body.classList.toggle('reduced-art',!prefs.motion);
+    closeDialog();manualPause=!!profile.run&&['walk','fight'].includes(profile.run.phase);
+    resetPack();displayedDraft='';effects=[];defeated=null;encounterAge=1;lastHeld=null;heldFor=0;sceneClock=0;structure='';navigate('expedition');
+  }
   function serialize(){return JSON.stringify({game:'bramblebound',format:1,profile,settings:prefs,...(!profile.run&&campChanged?{camp:starter}:{})});}
   function save(){
     if(damagedSave)return;
     try{localStorage.setItem(KEY,serialize());storageOK=true;}catch{storageOK=false;}
     $('save-line').innerHTML='<b class="save-dot"></b>'+ (storageOK?'Saved on this device':'Local save unavailable · export in Profile');
+    queueCloud();
   }
   function notify(message){const el=$('toast');el.textContent=message;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2800);}
   function sound(kind,element){S?.play(kind,element);}
@@ -296,12 +370,18 @@
     $('enemy-sub').textContent=e?(e.affliction?e.affliction+' · Inspect to plan a counter':r.enemies.length>1?'Lead foe · '+e.name:'Weak to '+elName(e.weak)+' · Resists '+elName(e.resist)):r.phase==='dead'?'Resting at camp':active?'Approaching encounter':'The road is quiet';
     for(const it of r.active){const clock=document.querySelector('[data-clock="'+it.uid+'"]'),bar=document.querySelector('[data-fill="'+it.uid+'"]');if(clock)clock.textContent=it.cd>.04&&e?it.cd.toFixed(1)+'s':'Ready';if(bar)bar.style.transform='scaleX('+(it.cd>.04&&e?Math.max(0,1-it.cd/E.itemCooldown(it,r)):1)+')';}
   }
-  function closeDialog(){if(modal.open)modal.close();dialogState=null;pendingImport=null;}
+  function closeDialog(){if(cloudBusy&&dialogState?.type==='cloud')return;if(dialogState?.type==='cloud-confirm'){pendingCloud=null;cloudAutoPaused=true;}if(modal.open)modal.close();dialogState=null;pendingImport=null;}
   function showDialog(type,data={}){
     if(!modal.open)preDialogFocus=document.activeElement;
     dialogState={type,...data};let html='',kicker='FIELD NOTES',portrait=null;
     const r=displayRun(),live=r.phase!=='dead';
-    if(type==='debrief'){
+    if(type==='cloud'){
+      const mode=data.mode||'save';kicker='FIREBASE CLOUD JOURNEY';
+      html='<h2 class="dialog-title">'+(mode==='load'?'Reopen a cloud journey':'Save to Firebase')+'</h2><p class="body-copy">Use a save name and password on any device, just like Arcane Wilds. Your complete profile, current expedition, starting kit and settings travel together.</p><div class="cloud-modes"><button class="outline compact" data-cloud-mode="save" aria-pressed="'+(mode==='save')+'">Save journey</button><button class="outline compact" data-cloud-mode="load" aria-pressed="'+(mode==='load')+'">Reopen journey</button></div><form id="cloud-form"><label>Save name<input id="cloud-name" name="saveName" maxlength="48" minlength="2" required autocomplete="username" value="'+esc(data.name??cloudName)+'" placeholder="My Bramblebound journey"></label><label>Save password<input id="cloud-password" name="savePassword" type="password" minlength="4" required autocomplete="'+(mode==='load'?'current-password':'new-password')+'" placeholder="At least 4 characters"></label><p class="cloud-status" data-cloud-status role="status" aria-live="polite"></p><button id="cloud-submit" class="primary" type="submit">'+(mode==='load'?'Reopen from Firebase':'Save to Firebase')+'</button></form><p class="mini-note">The journey is encrypted before upload. Keep the password to reopen it; Bramblebound remembers only the save name on this device. Once connected, cloud autosaves run about every 30 seconds. Local autosaves continue.</p><p class="mini-note">To resume an existing cloud slot, reopen it first. Use a new name to keep this device’s journey separately.</p>';
+    }else if(type==='cloud-confirm'&&pendingCloud){
+      const p=pendingCloud.loaded.profile;kicker='CLOUD JOURNEY READY';
+      html='<h2 class="dialog-title">Reopen '+esc(pendingCloud.result.name)+'?</h2><p class="body-copy">This replaces the journey on this device with the cloud journey. A local backup is kept. You can export your current profile first.</p><div class="stat-row"><span class="stat-pill">Best round '+p.best+'</span><span class="stat-pill">'+p.points+' trail seeds</span><span class="stat-pill">'+(p.run?'Round '+p.run.round+' · '+C.regions[p.run.region].name:'At camp')+'</span></div><p class="cloud-status" data-cloud-status role="status"></p><div class="dialog-actions"><button class="primary" data-do="cloud-restore">Reopen this journey</button><button class="outline" data-do="export">Export current</button><button class="flat" data-do="cloud-cancel">Keep local journey</button></div>';
+    }else if(type==='debrief'){
       if(r.phase!=='dead')return closeDialog();
       debriefedRun=r;kicker='EXPEDITION COMPLETE';html=J.debrief(profile);
     }else if(type==='draft'){
@@ -380,22 +460,23 @@
         ['At the forge','Two matching copies at the same level gain one level, with no final tier. Different ingredients in a listed recipe give their exact average level. A level 2 and a level 3 make a level 2.5 relic.'],
         ['Growing stronger','Level 3 adds an echo strike, level 5 adds a shield ring, and level 10 adds a damage nova. All three effects stack.'],
         ['After a fall','Earn one seed for setting out, one per cleared wave, and one extra per four defeats. Spend seeds on health, damage, or replay speed in Legacy.'],
-        ['Take your time','Gear details, the field guide, and settings pause battle. Space pauses or resumes on the road. Profiles save locally and can be exported from the top-right settings button.']
+        ['Take your time','Gear details, the field guide, and settings pause battle. Space pauses or resumes on the road. Profiles save locally. Use Firebase cloud saves from the title menu or settings to reopen a password-protected journey on another device. Exported profiles remain available as backups.']
       ].map(([t,p])=>'<div class="dialog-section"><h3>'+t+'</h3><p class="body-copy">'+p+'</p></div>').join('');
     }else if(type==='profile'){
       kicker='TRAVELER’S RECORD';html='<h2 class="dialog-title">Profile & settings</h2><p class="body-copy">'+(storageOK?'Progress saves on this device. Export a copy to move Pip to another browser.':'This browser cannot save locally. Export a profile to keep your progress.')+'</p><div class="stat-row"><span class="stat-pill">Best round '+profile.best+'</span><span class="stat-pill">'+profile.deaths+' completed runs</span></div>'+
-      '<div class="action-row"><button class="outline" data-do="export">Export profile</button><button class="outline" data-do="import">Import profile</button></div><div class="dialog-section"><div class="pref-row"><div><b>Sound effects</b><small>Elemental attacks and trail chimes.</small></div><button class="outline compact" data-do="sound" aria-pressed="'+prefs.audio+'">'+(prefs.audio?'On':'Off')+'</button></div><div class="pref-row"><div><b>Ambient motion</b><small>Moving scenery, particles, and idle animation.</small></div><button class="outline compact" data-do="motion" aria-pressed="'+prefs.motion+'">'+(prefs.motion?'On':'Reduced')+'</button></div></div><button class="text-link" data-dialog="help">'+icon('book')+'Read the trail handbook →</button>';
+      '<div class="action-row"><button class="outline" data-do="export">Export profile</button><button class="outline" data-do="import">Import profile</button></div><section class="dialog-section"><h3>Firebase cloud journey</h3><p class="cloud-status" data-cloud-status role="status"></p><div class="action-row"><button class="primary" data-do="cloud">Save to Firebase</button><button class="outline" data-do="cloud-open">Reopen cloud journey</button><button class="flat" data-do="cloud-forget">Disconnect cloud</button></div><p class="mini-note">Save name + password work across devices. Local progress remains available offline.</p></section><div class="dialog-section"><div class="pref-row"><div><b>Sound effects</b><small>Elemental attacks and trail chimes.</small></div><button class="outline compact" data-do="sound" aria-pressed="'+prefs.audio+'">'+(prefs.audio?'On':'Off')+'</button></div><div class="pref-row"><div><b>Ambient motion</b><small>Moving scenery, particles, and idle animation.</small></div><button class="outline compact" data-do="motion" aria-pressed="'+prefs.motion+'">'+(prefs.motion?'On':'Reduced')+'</button></div></div><button class="text-link" data-dialog="help">'+icon('book')+'Read the trail handbook →</button>';
     }else if(type==='confirm-import'&&pendingImport){
       const p=pendingImport.profile;kicker='PROFILE TRANSFER';html='<h2 class="dialog-title">Use this profile?</h2><p class="body-copy">Replace the current profile with this traveler’s record. You can export the current one first.</p><div class="stat-row"><span class="stat-pill">Best round '+p.best+'</span><span class="stat-pill">'+p.points+' trail seeds</span><span class="stat-pill">'+(p.run?'Round '+p.run.round+' · '+p.run.phase:'At camp')+'</span></div><div class="dialog-actions"><button class="primary" data-do="confirm-import">Import profile</button><button class="outline" data-do="export">Export current</button><button class="flat" data-dialog="profile">Cancel</button></div>';
     }else if(type==='import-error'){
       kicker='PROFILE TRANSFER';html='<h2 class="dialog-title">Couldn’t import profile</h2><p class="body-copy">'+esc(data.message)+'</p><div class="dialog-actions"><button class="outline" data-do="import">Choose another file</button><button class="flat" data-dialog="profile">Back</button></div>';
     }else if(type==='recovery'){
-      kicker='SAVE RECOVERY';html='<h2 class="dialog-title">Local profile could not load</h2><p class="body-copy">Download the original data before starting a fresh profile, or import an exported save.</p><div class="dialog-actions"><button class="outline" data-do="recover">Download original</button><button class="outline" data-do="import">Import profile</button><button class="danger" data-do="fresh">Start fresh</button></div>';
+      kicker='SAVE RECOVERY';html='<h2 class="dialog-title">Local profile could not load</h2><p class="body-copy">Download the original data before starting a fresh profile, or import an exported save.</p><div class="dialog-actions"><button class="outline" data-do="recover">Download original</button><button class="outline" data-do="import">Import profile</button><button class="outline" data-do="cloud-open">Reopen cloud journey</button><button class="danger" data-do="fresh">Start fresh</button></div>';
     }else return;
     $('dialog-kicker').textContent=kicker;$('dialog-body').innerHTML=html;ink($('dialog-body'));modal.classList.toggle('level-dialog',type==='draft');modal.classList.toggle('atlas-dialog',type==='region'||type==='route');modal.classList.toggle('debrief-dialog',type==='debrief');const title=modal.querySelector('.dialog-title');if(title){title.id='dialog-title';modal.setAttribute('aria-labelledby','dialog-title');}
     if(!modal.open)modal.showModal();modal.scrollTop=0;
     if(type==='region')WorldArt.regionPortrait($('region-art'),data.index);
     if(portrait)WorldArt.portrait($('detail-portrait'),portrait.species,portrait.color,portrait.boss);
+    renderCloudStatus();
   }
   function download(raw,file){
     const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),a=document.createElement('a');
@@ -404,6 +485,11 @@
   function toggleAudio(){prefs.audio=!prefs.audio;S?.setEnabled(prefs.audio,true);if(prefs.audio)sound('equip');save();structure='';}
   function handleAction(name){
     const d=dialogState||{};
+    if(name==='cloud'){if(cloudName&&cloudSecret&&!cloudAutoPaused)return void uploadCloud();showDialog('cloud',{mode:'save'});return;}
+    if(name==='cloud-open'){showDialog('cloud',{mode:'load'});return;}
+    if(name==='cloud-restore'){restoreCloud();return;}
+    if(name==='cloud-cancel'){pauseCloud();cloudMessage='Cloud load cancelled. Your local journey is unchanged.';showDialog('profile');return;}
+    if(name==='cloud-forget'){pauseCloud();cloudName='';cloudStamp=0;cloudMessage='Cloud disconnected. Your local journey and Firebase slot are unchanged.';try{localStorage.removeItem(CLOUD_NAME_KEY);}catch{}renderCloudStatus();notify('Cloud disconnected.');return;}
     if(name==='start')return start();
     if(name==='browse-skills'){guideTab='upgrades';query='';navigate('guide');return;}
     if(name==='cancel-pair'){closeDialog();return;}
@@ -421,12 +507,10 @@
     if(name==='export'){download(serialize(),'Bramblebound-profile.json');return;}
     if(name==='import'){$('import-input').value='';$('import-input').click();return;}
     if(name==='confirm-import'&&pendingImport){
-      ({profile,prefs}=pendingImport);starter=pendingImport.camp||freshKit();campChanged=!!pendingImport.camp;damagedSave=null;S?.setEnabled(prefs.audio,true);
-      closeDialog();manualPause=!!profile.run&&['walk','fight'].includes(profile.run.phase);
-      resetPack();displayedDraft='';effects=[];defeated=null;encounterAge=1;lastHeld=null;heldFor=0;sceneClock=0;save();navigate('expedition');notify('Profile imported.');return;
+      const loaded=pendingImport;pauseCloud();applyProfile(loaded);save();notify('Profile imported.');return;
     }
     if(name==='recover'&&damagedSave){download(damagedSave,'Bramblebound-recovery.json');return;}
-    if(name==='fresh'){damagedSave=null;profile=E.freshProfile();starter=freshKit();campChanged=false;prefs=defaultPrefs();closeDialog();save();navigate('expedition');return;}
+    if(name==='fresh'){pauseCloud();damagedSave=null;profile=E.freshProfile();starter=freshKit();campChanged=false;prefs=defaultPrefs();closeDialog();save();navigate('expedition');return;}
   }
   let dragging=null,blockDragClick=false;
   const dragNote='Drag to equip, swap, or fuse. Select a relic to light up its matches.';
@@ -552,6 +636,8 @@
     const el=event.target.closest('button,a[data-nav],a[data-title]');if(!el||el.disabled)return;
     if(prefs.audio)S?.setEnabled(true,true);
     const ds=el.dataset,d=dialogState||{};
+    if(ds.cloudMode){showDialog('cloud',{mode:ds.cloudMode,name:$('cloud-name')?.value||cloudName});return;}
+    if(el.id==='title-cloud'){showDialog('cloud',{mode:cloudName?'load':'save'});return;}
     if('title' in ds){event.preventDefault();closeDialog();titleMenu(true);return;}
     if(el.id==='title-play'){enterFromTitle();return;}
     if(el.id==='title-kit'){enterFromTitle(true);return;}
@@ -605,6 +691,8 @@
     if(el.id==='close-btn')closeDialog();
   });
   $('pack-tier').addEventListener('change',e=>{packTier=e.target.value;packPage=0;renderPack(displayRun());});
+  modal.addEventListener('submit',event=>{if(event.target.id==='cloud-form')void submitCloud(event);});
+  modal.addEventListener('cancel',event=>{if(cloudBusy&&dialogState?.type==='cloud')event.preventDefault();else if(dialogState?.type==='cloud-confirm'){pendingCloud=null;cloudAutoPaused=true;}});
   $('pack-search').addEventListener('input',event=>{packQuery=event.target.value;packPage=0;renderPack(displayRun());});
   $('pack-page').addEventListener('change',event=>{packPage=Number(event.target.value);renderPack(displayRun());});
   compactPack.addEventListener('change',()=>{packPage=0;if(!dragging)renderPack(displayRun());});
@@ -680,6 +768,7 @@
   for(const key of Object.keys(C.rarities))document.documentElement.style.setProperty('--'+key+'-light',C.rarities[key].color);
   ink();fullLabel();S?.setEnabled(prefs.audio);update(true);
   titleMenu(true);
+  renderCloudStatus();
   if(!storageOK)$('save-line').textContent='Local save unavailable · export in Profile';
   if(damagedSave)showDialog('recovery');
   requestAnimationFrame(frame);
