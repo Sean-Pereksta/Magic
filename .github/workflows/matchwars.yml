@@ -1,0 +1,28 @@
+name: Match Wars regression checks
+on:
+  pull_request:
+    paths: ['game/matchwars.html', 'game/matchwars/**', 'tests/matchwars-*', 'lobby/lobby-showcase.js', 'lobby/lobby-catalog-organization.js', '.github/workflows/matchwars.yml']
+  push:
+    branches: [main]
+    paths: ['game/matchwars.html', 'game/matchwars/**', 'tests/matchwars-*', 'lobby/lobby-showcase.js', 'lobby/lobby-catalog-organization.js', '.github/workflows/matchwars.yml']
+permissions:
+  contents: read
+jobs:
+  matchwars:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /game/matchwars/
+            /game/matchwars.html
+            /tests/matchwars-*
+            /lobby/lobby-core.html
+            /lobby/lobby-showcase.js
+            /lobby/lobby-catalog-organization.js
+            /package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run test:matchwars

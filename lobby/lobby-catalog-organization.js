@@ -31,6 +31,7 @@
     "Hearthmouse",
     "Gridbound Realms",
     "Chess Warlord",
+    "Match Wars",
     "Mountain Blade Online"
   ]);
   const TOOL_TITLES=new Set(["PDF Reader","NFL Radio Dial","MTG Catalog & Deck Builder","Fantasy Football Command Center","Verse Memorizer"]);

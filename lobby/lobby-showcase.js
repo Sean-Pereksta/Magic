@@ -24,6 +24,7 @@
     ]),
     // These complete experiences join the flagships/premium games in the top tier.
     builtOut: Object.freeze([
+      {key:'matchwars', label:'Match runes. Command an elemental army.', color:'#e6c589'},
       {key:'ironfield', label:'Every soldier. Every order.', color:'#d7bc88'},
       {key:'bramblebound', label:'A little traveler. An endless road.', color:'#bcd9a4'},
       {key:'mountonline', label:'Raise your banner. Conquer the realm.', color:'#e5bf7c'},
