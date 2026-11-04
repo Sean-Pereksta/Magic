@@ -5,7 +5,7 @@ const assert=require('node:assert/strict');
 global.window=global;
 for(const name of ['data','tactics','impacts','siege','ramparts','engine'])require('../src/'+name+'.js');
 const DT=1/30,SECONDS=600,round=n=>Math.round(n*1000)/1000;
-const preset=GameData.EXPANSION_PRESETS.find(p=>p.map==='fourwinds'),e=new BattleEngine(p),companies=e.regiments.filter(r=>r._rampartJob);
+const preset=GameData.EXPANSION_PRESETS.find(p=>p.map==='fourwinds'),e=new BattleEngine(preset),companies=e.regiments.filter(r=>r._rampartJob);
 const start=performance.now(),everClimbed=new Set();let minimumRatio=Infinity,lastMilestone=0,lastValue=0,reportedStagnation=false;
 const counts=()=>companies.map(r=>({type:r.type,soldiers:r.alive,slots:r._rampartSlots.length,cohesion:round(r.cohesion),status:r.status,stages:r.unitIds.reduce((out,id)=>{const u=e.units[id],stage=u._rampartStage+(u._onRampart&&u._rampartPath.length?'-walking':'');out[stage]=(out[stage]||0)+1;return out;},{})}));
 function progress(reason){console.log('PROGRESS '+round(e.time)+'s · '+reason+' · '+counts().map(c=>c.type+': '+JSON.stringify(c.stages)).join(' · '));}
