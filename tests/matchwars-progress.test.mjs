@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { KEY, LEGACY_KEY, loadProgress, saveProgress, sanitizeProgress } from '../game/matchwars/progress.mjs';
+import { TOTAL_STAGES } from '../game/matchwars/campaign.mjs';
 
 function memoryStorage(initial = {}) {
   const data = new Map(Object.entries(initial));
@@ -32,9 +33,9 @@ test('sanitization bounds stages, currency, ranks and settings without unknown k
   const input = JSON.parse('{"version":2,"gold":-5,"unlocked":999,"stage":999,"completed":[1,1,3,12,13,-1,"2",2.5],"upgrades":{"ember-burn":999,"sun-shield":2.9,"bounty":-4,"combo":"3","__proto__":{"polluted":true},"unknown":3},"settings":{"sound":false,"reducedMotion":"yes","extra":1},"seenIntro":true,"junk":true}');
   const result = sanitizeProgress(input);
   assert.equal(result.gold, 0);
-  assert.equal(result.unlocked, 12);
-  assert.equal(result.stage, 12);
-  assert.deepEqual(result.completed, [1, 3, 12]);
+  assert.equal(result.unlocked, TOTAL_STAGES);
+  assert.equal(result.stage, TOTAL_STAGES);
+  assert.deepEqual(result.completed, [1, 3, 12, 13]);
   assert.deepEqual(result.upgrades, { 'ember-burn': 3, 'sun-shield': 2 });
   assert.deepEqual(result.settings, { sound: false, reducedMotion: false });
   assert.equal(result.junk, undefined);
@@ -81,6 +82,55 @@ test('new valid saves take precedence; a corrupt new save can recover legacy', (
   assert.equal(saveProgress({ version: 2, gold: 40 }, storage), true);
   assert.equal(loadProgress(storage).gold, 40);
   assert.equal(loadProgress(storage).legacyMigrated, false);
+});
+
+test('completed original campaigns unlock stage 13 without regranting rewards', () => {
+  const original = {
+    version: 2, gold: 371, unlocked: 12, stage: 12,
+    completed: Array.from({ length: 12 }, (_, index) => index + 1),
+    upgrades: { 'ember-burn': 2, 'sun-shield': 3, bounty: 1 },
+    settings: { sound: false, reducedMotion: true }, seenIntro: true, legacyMigrated: false,
+  };
+  const storage = memoryStorage({ [KEY]: JSON.stringify(original) });
+  const result = loadProgress(storage);
+  assert.deepEqual(result, { ...original, unlocked: 13 });
+  assert.equal(JSON.parse(storage.getItem(KEY)).unlocked, 12, 'load does not mutate stored data');
+  assert.equal(saveProgress(result, storage), true);
+  assert.deepEqual(loadProgress(storage), result, 'repair is idempotent and does not add rewards');
+});
+
+test('valid completion repairs stale unlocks and preserves sparse campaign history', () => {
+  assert.equal(sanitizeProgress({ version: 2, unlocked: 1, completed: [1] }).unlocked, 2);
+  assert.equal(sanitizeProgress({ version: 2, unlocked: 1, completed: [4, 2, 4] }).unlocked, 5);
+  assert.deepEqual(sanitizeProgress({ version: 2, unlocked: 1, completed: [4, 2, 4] }).completed, [2, 4]);
+  const corrupt = sanitizeProgress({ version: 2, unlocked: 1, stage: 100,
+    completed: [100, 49, 0, -1, '48', 12.5, null] });
+  assert.equal(corrupt.unlocked, 1);
+  assert.equal(corrupt.stage, 1);
+  assert.deepEqual(corrupt.completed, []);
+});
+
+test('stage 48 and complete endgame saves round-trip without unlocking stage 49', () => {
+  assert.equal(TOTAL_STAGES, 48);
+  const endgame = {
+    ...loadProgress(memoryStorage()), gold: 942, unlocked: 48, stage: 48,
+    completed: Array.from({ length: 48 }, (_, index) => index + 1),
+    upgrades: { 'tide-range': 3, 'storm-chain': 2 },
+  };
+  const storage = memoryStorage();
+  assert.equal(saveProgress(endgame, storage), true);
+  assert.deepEqual(loadProgress(storage), endgame);
+  assert.equal(sanitizeProgress({ ...endgame, unlocked: 100, stage: 49 }).stage, 48);
+});
+
+test('original legacy migration remains capped at stage 12 after campaign expansion', () => {
+  const storage = memoryStorage({ [LEGACY_KEY]: JSON.stringify({ v: 1, level: 90, gold: 180 }) });
+  const migrated = loadProgress(storage);
+  assert.equal(migrated.stage, 12);
+  assert.equal(migrated.unlocked, 12);
+  assert.deepEqual(migrated.completed, Array.from({ length: 11 }, (_, index) => index + 1));
+  assert.equal(saveProgress(migrated, storage), true);
+  assert.equal(loadProgress(storage).unlocked, 12);
 });
 
 test('restricted and quota-exceeded storage never crashes campaign play', () => {

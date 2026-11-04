@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Battle, TROOPS, ENEMIES, UPGRADES, elementMultiplier, upgradeCost } from '../game/matchwars/combat.mjs';
+import { Battle, TROOPS, ENEMIES, UPGRADES, elementMultiplier, upgradeCost, difficultyForStage } from '../game/matchwars/combat.mjs';
 import { Board } from '../game/matchwars/board.mjs';
+import { TOTAL_STAGES, getStage } from '../game/matchwars/campaign.mjs';
 
 const advance = (battle, seconds, action = () => {}) => { for (let t = 0; t < seconds && battle.status === 'playing'; t += .1) { action(t); battle.update(.1); } };
 
@@ -187,4 +188,153 @@ test('support abilities and elemental damage change tactical outcomes', () => {
   battle._impactAttack(mage, foe, 10);
   assert.equal(Math.round(before - foe.hp), 15);
   assert.ok(foe.statuses.burn);
+});
+
+test('48 campaign encounters expose finite, steadily increasing difficulty metrics', () => {
+  assert.equal(TOTAL_STAGES, 48);
+  assert.equal(difficultyForStage(-20).stage, 1);
+  assert.equal(difficultyForStage(500).stage, 48);
+  assert.equal(new Battle({ stage: 500 }).stage, 48);
+  let prior;
+  for (let stage = 1; stage <= TOTAL_STAGES; stage++) {
+    const difficulty = difficultyForStage(stage);
+    const battle = new Battle({ stage });
+    assert.ok(Object.values(difficulty).every(Number.isFinite));
+    assert.equal(battle.totalWaves, stage <= 12 ? 3 : stage < 33 ? 4 : 5);
+    assert.equal(battle._schedule.length, difficulty.scheduledUnits);
+    assert.equal(Math.max(...battle._schedule.map(entry => entry.wave)), battle.totalWaves);
+    assert.ok(battle._schedule.every(entry => entry.lane >= 0 && entry.lane <= 2 && entry.time >= 5 && ENEMIES[entry.key]));
+    assert.ok(battle._schedule.every((entry, index, list) => !index || entry.time >= list[index - 1].time));
+    if (prior) {
+      assert.ok(difficulty.pressure > prior.pressure, `stage ${stage} increases normal incoming pressure`);
+      assert.ok(difficulty.healthMultiplier >= prior.healthMultiplier);
+      assert.ok(difficulty.attackMultiplier >= prior.attackMultiplier);
+      assert.ok(difficulty.keepHealth > prior.keepHealth);
+      assert.ok(difficulty.spawnInterval <= prior.spawnInterval);
+      assert.ok(difficulty.waveInterval <= prior.waveInterval);
+    }
+    prior = difficulty;
+  }
+  assert.ok(prior.healthMultiplier < 2.6);
+  assert.ok(prior.attackMultiplier < 2.3);
+});
+
+test('the original twelve stages retain their original opening, waves, and enemy strength', () => {
+  for (let stage = 1; stage <= 12; stage++) {
+    const battle = new Battle({ stage });
+    assert.equal(battle.difficulty.totalWaves, 3);
+    assert.equal(battle.difficulty.waveInterval, 20);
+    assert.equal(battle.difficulty.spawnInterval, 1.65);
+    assert.equal(battle.difficulty.healthMultiplier, Number((1 + (stage - 1) * .055).toFixed(3)));
+    assert.equal(battle.difficulty.attackMultiplier, battle.difficulty.healthMultiplier);
+    assert.equal(battle._schedule[0].time, 5);
+    if (stage % 4 === 0) assert.equal(battle._schedule.find(entry => ENEMIES[entry.key].boss).time, 49);
+  }
+});
+
+test('every chapter has a correctly named, forecast boss and later variants have distinct tactics', () => {
+  const names = new Set(), baseTraits = JSON.stringify(ENEMIES);
+  for (let stage = 4; stage <= 48; stage += 4) {
+    const battle = new Battle({ stage });
+    const bossIndex = battle._schedule.findIndex(entry => ENEMIES[entry.key].boss);
+    const entry = battle._schedule[bossIndex];
+    assert.ok(entry);
+    assert.equal(entry.key, getStage(stage).bossKey);
+    assert.equal(entry.name, getStage(stage).bossName);
+    assert.equal(entry.time, battle.difficulty.bossAt);
+    battle._next = bossIndex;
+    assert.equal(battle.forecast()[0].name, entry.name);
+    assert.equal(battle.forecast()[0].boss, true);
+    assert.equal(battle.enemyBarrier, true);
+    battle._spawnEnemy(entry);
+    const boss = battle.units[0];
+    assert.equal(boss.name, entry.name);
+    assert.ok(boss.maxHp >= ENEMIES[entry.key].hp);
+    assert.ok(boss.attack < 55, 'late bosses do not one-shot a trained army');
+    assert.equal(!!boss.trait.secondWind, stage > 12);
+    names.add(boss.name);
+  }
+  assert.equal(names.size, 12);
+  assert.equal(JSON.stringify(ENEMIES), baseTraits, 'variant traits never mutate shared definitions');
+  const sky = new Battle({ stage: 44 });
+  assert.equal(sky._enemyDefinition(sky._schedule.find(entry => ENEMIES[entry.key].boss)).flying, true);
+  const finale = new Battle({ stage: 48 });
+  const emperor = finale._enemyDefinition(finale._schedule.find(entry => ENEMIES[entry.key].boss));
+  assert.equal(emperor.chain, true);
+  assert.equal(emperor.summonLimit, 6);
+  assert.ok(emperor.shield > 100);
+});
+
+test('later veterans and half-health boss phases are visible, bounded, and activate only once', () => {
+  const events = [];
+  const battle = new Battle({ stage: 48, onEvent: event => events.push(event) });
+  const veteranEntry = battle._schedule.find(entry => entry.elite);
+  battle._spawnEnemy(veteranEntry);
+  const veteran = battle.units[0];
+  assert.equal(veteran.elite, true);
+  assert.match(veteran.name, /^Veteran /);
+  const bossEntry = battle._schedule.find(entry => ENEMIES[entry.key].boss);
+  battle._spawnEnemy(bossEntry);
+  const boss = battle.units[1];
+  boss.hp = boss.maxHp * .45;
+  const originalShield = boss.shield;
+  battle.update(.1);
+  assert.equal(events.filter(event => event.type === 'boss-phase').length, 1);
+  assert.ok(boss.shield > originalShield);
+  assert.ok(boss.statuses.rally);
+  advance(battle, 10);
+  assert.equal(events.filter(event => event.type === 'boss-phase').length, 1);
+  assert.ok(!boss.statuses.rally);
+});
+
+test('a full trained army leaves room for the final boss and resolves the final ward', () => {
+  const battle = new Battle({ stage: 48 });
+  for (let i = 0; i < 100; i++) battle.summon('sun', { count: 49, lane: i % 3, power: 8 });
+  assert.equal(battle.units.length, 40);
+  advance(battle, 240);
+  assert.equal(battle.status, 'won');
+  assert.equal(battle.enemyBarrier, false);
+  assert.ok(battle.time >= battle.difficulty.bossAt);
+  assert.ok(battle.units.length <= 64);
+  assert.ok(battle.projectiles.length <= 100);
+  assert.ok(battle.effects.length <= 120);
+});
+
+test('new fronts and the finale are winnable through real boards with affordable campaign talents', () => {
+  for (const [stage, rank] of [[13, 1], [24, 2], [36, 3], [48, 3]]) {
+    const upgrades = Object.fromEntries(UPGRADES.map(def => [def.id, rank]));
+    const cost = UPGRADES.reduce((sum, def) => sum + Array.from({ length: rank }, (_, level) => upgradeCost(def.id, level)).reduce((a, b) => a + b, 0), 0);
+    const guaranteedGold = 120 + Array.from({ length: stage - 1 }, (_, index) => difficultyForStage(index + 1).rewardBonus + 35).reduce((a, b) => a + b, 0);
+    assert.ok(cost <= guaranteedGold, `stage ${stage} loadout is affordable without replaying or kill rewards`);
+    for (const initialSeed of [278, 417]) {
+      let seed = initialSeed;
+      const rng = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+      const board = new Board({ rng });
+      const battle = new Battle({ stage, upgrades });
+      let nextMove = 0, charge = 0, overdriveUntil = 0;
+      advance(battle, 300, () => {
+        if (battle.time < nextMove) return;
+        const lane = [0, 1, 2].map(lane => ({ lane, pressure:
+          battle.units.filter(u => u.side === 'enemy' && u.lane === lane).reduce((sum, u) => sum + (1000 - u.x) * u.hp / 100, 0) -
+          battle.units.filter(u => u.side === 'player' && u.lane === lane).reduce((sum, u) => sum + u.hp / 100 * 190, 0),
+        })).sort((a, b) => b.pressure - a.pressure)[0].lane;
+        const options = board.legalMoves();
+        const move = options[Math.floor(rng() * options.length)];
+        const result = board.trySwap(move.from, move.to);
+        assert.equal(result.valid, true);
+        for (const step of result.steps) {
+          for (const group of step.groups) battle.summon(group.key, { lane, count: group.count, chain: step.chain, buffs: group.buffs, elite: group.elite, power: battle.time < overdriveUntil ? 1.25 : 1 });
+          charge += step.cleared.length;
+          if (charge >= 50 && battle.time >= overdriveUntil) { charge -= 50; overdriveUntil = battle.time + 10; }
+        }
+        if (battle.time > 15) for (const spell of ['meteor', 'rally', 'heal']) battle.cast(spell, lane);
+        nextMove = battle.time + 3.5 + result.steps.length * .3;
+        assert.ok(battle.units.length <= 64);
+      });
+      assert.equal(battle.status, 'won', `stage ${stage}, board seed ${initialSeed} has a viable strategic path`);
+      assert.ok(battle.time < 300);
+      assert.ok(battle.reward() > difficultyForStage(stage).rewardBonus);
+      assert.ok(battle.units.every(u => Number.isFinite(u.hp) && u.hp <= u.maxHp));
+    }
+  }
 });

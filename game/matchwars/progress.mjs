@@ -1,10 +1,11 @@
 import { UPGRADES } from './combat.mjs';
+import { TOTAL_STAGES } from './campaign.mjs';
 
 /** Only durable campaign progress is saved. Battles always begin afresh. */
 export const KEY = 'matchwars-runeborn-v2';
 export const LEGACY_KEY = 'colorclash-autosave-v1';
 const MAX_GOLD = 1_000_000;
-const LAST_STAGE = 12;
+const LEGACY_LAST_STAGE = 12;
 const owns = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const bounded = (value, low, high, fallback) => typeof value === 'number' && Number.isFinite(value)
@@ -29,12 +30,16 @@ export function sanitizeProgress(input) {
   const result = freshProgress();
   if (!record(input) || input.version !== 2) return result;
   result.gold = bounded(input.gold, 0, MAX_GOLD, result.gold);
-  result.unlocked = bounded(input.unlocked, 1, LAST_STAGE, 1);
-  result.stage = bounded(input.stage, 1, result.unlocked, 1);
+  result.unlocked = bounded(input.unlocked, 1, TOTAL_STAGES, 1);
   if (Array.isArray(input.completed)) {
     result.completed = [...new Set(input.completed.filter(value => Number.isInteger(value)
-      && value >= 1 && value <= LAST_STAGE && value <= result.unlocked))].sort((a, b) => a - b);
+      && value >= 1 && value <= TOTAL_STAGES))].sort((a, b) => a - b);
+    // Completion is authoritative when an older save capped its unlock at 12.
+    // Repair access only: never grant currency, upgrades, or completion rewards.
+    const nextStage = Math.min(TOTAL_STAGES, (result.completed.at(-1) || 0) + 1);
+    result.unlocked = Math.max(result.unlocked, nextStage);
   }
+  result.stage = bounded(input.stage, 1, result.unlocked, 1);
   if (record(input.upgrades)) {
     for (const definition of UPGRADES) {
       if (!owns(input.upgrades, definition.id)) continue;
@@ -56,7 +61,8 @@ function migrateLegacy(input) {
   if (!record(input) || input.v !== 1) return null;
   const result = freshProgress();
   result.gold = bounded(input.gold, 0, MAX_GOLD, 120);
-  result.stage = bounded(input.level, 1, LAST_STAGE, 1);
+  // The pre-Runeborn save format only had the original campaign progression.
+  result.stage = bounded(input.level, 1, LEGACY_LAST_STAGE, 1);
   result.unlocked = result.stage;
   result.completed = Array.from({ length: result.stage - 1 }, (_, index) => index + 1);
   result.legacyMigrated = true;

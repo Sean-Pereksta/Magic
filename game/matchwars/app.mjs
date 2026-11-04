@@ -1,6 +1,7 @@
 import { Board, ELEMENTS } from './board.mjs';
-import { Battle, TROOPS, ENEMIES, ELEMENT_INFO, UPGRADES, upgradeCost, elementMultiplier } from './combat.mjs';
-import { loadProgress, saveProgress } from './progress.mjs';
+import { Battle, TROOPS, ENEMIES, ELEMENT_INFO, UPGRADES, upgradeCost, elementMultiplier, difficultyForStage } from './combat.mjs?v=2';
+import { loadProgress, saveProgress } from './progress.mjs?v=2';
+import { STAGES, CHAPTERS, TOTAL_STAGES, getChapter, getStage } from './campaign.mjs';
 
 const $ = id => document.getElementById(id);
 const boardEl = $('board'), canvas = $('battlefield'), ctx = canvas.getContext('2d');
@@ -17,20 +18,8 @@ const RELICS = {
   haste:{name:'Haste',symbol:'ϟ',color:'#89dbe1',detail:'+25% speed / +20% attack rate'},
   vitality:{name:'Vitality',symbol:'+',color:'#a9d7a4',detail:'+35% health'},
 };
-const STAGES = [
-  ['The Verdant Gate','Meet the raiders at the forest border.','THE AWAKENING'],
-  ['River of Glass','Frost snipers gather by the river.','THE AWAKENING'],
-  ['The Tangled Watch','Break the healers behind their living shields.','THE AWAKENING'],
-  ['The Root King','A regenerating monarch holds the middle lane.','THE AWAKENING'],
-  ['Stormbreak Ridge','Bring lightning hunters down from the skies.','THE FROSTBOUND MARCH'],
-  ['The Golden Bastion','Crack the sun guards with Void Reapers.','THE FROSTBOUND MARCH'],
-  ['A Hollow Promise','Summoners hide behind their shades.','THE FROSTBOUND MARCH'],
-  ['Frostbound Queen','A frost volley threatens every formation.','THE FROSTBOUND MARCH'],
-  ['Ashes at Dawn','Fire, forest, and storm collide.','THE ECLIPSE'],
-  ['Prismfall','Ranged-resistant sentinels demand a new plan.','THE ECLIPSE'],
-  ['The Last Lantern','Keep your healers alive through the darkness.','THE ECLIPSE'],
-  ['The Eclipse Lord','Break the ward. End the invasion.','THE ECLIPSE'],
-];
+const roman = number => ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'][number-1];
+const difficultyName = stage => stage<=12?'Initiate':stage<=24?'Veteran':stage<=36?'Elite':'Mythic';
 let progress = loadProgress(), board, battle, lane = 1, selected = null, busy = false;
 let started = false, session = 0, lastFrame = 0, uiTimer = 0, resolved = false;
 let charge = 0, overdrive = 0, matches = 0, bestChain = 1, summonCount = 0;
@@ -248,6 +237,7 @@ function openModal(title,html,kind='menu',kicker='WAR COUNCIL') {
   lastFocus = backdrop.hidden ? document.activeElement : lastFocus;
   modalKind=kind; $('modal-title').textContent=title; $('modal-kicker').textContent=kicker;
   content.innerHTML=html; backdrop.hidden=false;
+  document.body.style.overflow='hidden';
   document.querySelector('.app-shell').inert=true;
   modal.scrollTop=0; modal.focus();
   $('modal-close').hidden=kind==='intro'||kind==='result';
@@ -263,9 +253,10 @@ function closeModal() {
     return;
   }
   backdrop.hidden=true; document.querySelector('.app-shell').inert=false; modalKind='';
+  document.body.style.overflow='';
   lastFocus?.focus({preventScroll:true});lastFrame=performance.now();
 }
-function dismissModal() { modalKind='';rootDialog=null;backdrop.hidden=true;document.querySelector('.app-shell').inert=false;lastFrame=performance.now(); }
+function dismissModal() { modalKind='';rootDialog=null;backdrop.hidden=true;document.body.style.overflow='';document.querySelector('.app-shell').inert=false;lastFrame=performance.now(); }
 $('modal-close').onclick=closeModal;
 backdrop.addEventListener('click',e=>{if(e.target===backdrop)closeModal();});
 document.addEventListener('keydown',event=>{
@@ -290,7 +281,7 @@ function showIntro() {
   openModal(progress.seenIntro?'Your army awaits.':'Every match turns the tide.',`
     <p class="guide-intro">${progress.seenIntro?`Continue at battle ${progress.stage}: ${STAGES[progress.stage-1][0]}. Your upgrades and campaign progress are saved.`:'The rift is open. Match elemental runes to summon an army, choose where it fights, and turn cascading combos into overwhelming power.'}</p>
     ${progress.legacyMigrated?'<p class="legacy-note">Your original Color Clash gold, levels, and earned upgrades have been carried into Match Wars.</p>':''}
-    <div class="feature-grid"><div class="feature-card"><b>01 · Match & summon</b><p>Tap two neighboring runes or swipe. Lines of 3 summon troops. Longer matches forge special runes.</p></div><div class="feature-card"><b>02 · Read the front</b><p>Choose a lane before matching. Scout the incoming enemies and send the element that counters them.</p></div><div class="feature-card"><b>03 · Build the combo</b><p>Cascades empower every new summon. Match marked relics for attack, shields, haste, or health.</p></div><div class="feature-card"><b>04 · Shape your army</b><p>Win gold across 12 battles. Invest in 18 upgrades, class abilities, and command talents.</p></div></div>
+    <div class="feature-grid"><div class="feature-card"><b>01 · Match & summon</b><p>Tap two neighboring runes or swipe. Lines of 3 summon troops. Longer matches forge special runes.</p></div><div class="feature-card"><b>02 · Read the front</b><p>Choose a lane before matching. Scout the incoming enemies and send the element that counters them.</p></div><div class="feature-card"><b>03 · Build the combo</b><p>Cascades empower every new summon. Match marked relics for attack, shields, haste, or health.</p></div><div class="feature-card"><b>04 · Shape your army</b><p>Win gold across 48 battles. Invest in 18 upgrades, class abilities, and command talents.</p></div></div>
     <div class="modal-actions"><button class="primary-button" data-action="begin">${progress.seenIntro?'Return to the front':'Begin the campaign'} →</button><button class="secondary-button" data-action="forge">Upgrade forge · ◆ ${progress.gold}</button></div>
     <p class="muted">PC: arrows + Enter to match · 1 / 2 / 3 lanes · Q / W / E spells · H hint · P pause. On mobile, tap or swipe.</p>`, 'intro','THE RUNEBORN FRONT');
 }
@@ -304,7 +295,7 @@ function showMenu() {
 }
 
 function showHow() {
-  openModal('A commander’s primer.',`<div class="feature-grid"><div class="feature-card"><b>Matches become troops</b><p>Each match summons one soldier. Matches of 5 or more summon extra troops. Choose your lane first; every cascade uses that lane. Invalid swaps return safely.</p></div><div class="feature-card"><b>Forge special runes</b><p>Match 4 for a line blast, 5 for a wild rune, and a T or L for a nova. Swap a special with any neighbor to activate it. Wilds clear the other rune’s element. Special blasts chain.</p></div><div class="feature-card"><b>Cascades & Overdrive</b><p>Falling runes can match again. Each cascade gives new troops +14% power, increased by Battle Rhythm. Clear 50 runes for 10 seconds of +25% summon power.</p></div><div class="feature-card"><b>Relics empower summons</b><p>Small colored marks are relics. Match them to buff that element’s new soldiers: ↑ Fury, ◇ Aegis, ϟ Haste, + Vitality. Forge talents strengthen these buffs.</p></div><div class="feature-card"><b>Build a formation</b><p>Sun Paladins hold the front while Tide Rangers and Ember Mages attack from behind. Grove Wardens sustain them. Storm Lancers hunt flyers; Reapers punish weakened tanks. Summon the same element 4 / 8 / 12 times to increase its resonance.</p></div><div class="feature-card"><b>Win the battle</b><p>Destroy the rift or defeat all three waves. Defend your citadel with troops and spells. Boss battles 4, 8, and 12 have a ward: defeat the boss to break it. Losses grant some earned gold so you can adapt and retry.</p></div></div><h3>Elemental counters</h3><p>Ember → Grove → Storm → Tide → Ember. A counter deals 1.5× damage; fighting into your weakness deals 0.7×. Sun and Void both deal 1.35× to each other.</p><p>Spells target your selected lane. Meteor damages enemies, Rally grants attack speed and shields, Renew heals troops and repairs your citadel. They recharge during battle.</p><p>Progress saves on this browser and device after battles and purchases. Refreshing restarts the current battle. The forge pauses combat; new class upgrades affect future summons.</p><div class="modal-actions"><button class="primary-button" data-action="resume">${started?'Back to battle':'Start battle'} →</button></div>`, 'how','MATCH · COMMAND · CONQUER');
+  openModal('A commander’s primer.',`<div class="feature-grid"><div class="feature-card"><b>Matches become troops</b><p>Each match summons one soldier. Matches of 5 or more summon extra troops. Choose your lane first; every cascade uses that lane. Invalid swaps return safely.</p></div><div class="feature-card"><b>Forge special runes</b><p>Match 4 for a line blast, 5 for a wild rune, and a T or L for a nova. Swap a special with any neighbor to activate it. Wilds clear the other rune’s element. Special blasts chain.</p></div><div class="feature-card"><b>Cascades & Overdrive</b><p>Falling runes can match again. Each cascade gives new troops +14% power, increased by Battle Rhythm. Clear 50 runes for 10 seconds of +25% summon power.</p></div><div class="feature-card"><b>Relics empower summons</b><p>Small colored marks are relics. Match them to buff that element’s new soldiers: ↑ Fury, ◇ Aegis, ϟ Haste, + Vitality. Forge talents strengthen these buffs.</p></div><div class="feature-card"><b>Build a formation</b><p>Sun Paladins hold the front while Tide Rangers and Ember Mages attack from behind. Grove Wardens sustain them. Storm Lancers hunt flyers; Reapers punish weakened tanks. Summon the same element 4 / 8 / 12 times to increase its resonance.</p></div><div class="feature-card"><b>Win the battle</b><p>Destroy the rift or defeat every wave. Later chapters bring four or five waves, denser formations, and elite enemies. Defend your citadel with troops and spells. Every fourth battle has a boss ward: defeat the chapter boss to break it. Losses grant some earned gold so you can adapt and retry.</p></div></div><h3>Elemental counters</h3><p>Ember → Grove → Storm → Tide → Ember. A counter deals 1.5× damage; fighting into your weakness deals 0.7×. Sun and Void both deal 1.35× to each other.</p><p>Spells target your selected lane. Meteor damages enemies, Rally grants attack speed and shields, Renew heals troops and repairs your citadel. They recharge during battle.</p><p>Progress saves on this browser and device after battles and purchases. Refreshing restarts the current battle. The forge pauses combat; new class upgrades affect future summons.</p><div class="modal-actions"><button class="primary-button" data-action="resume">${started?'Back to battle':'Start battle'} →</button></div>`, 'how','MATCH · COMMAND · CONQUER');
 }
 
 function troopGuide(key) {
@@ -332,8 +323,14 @@ function buyUpgrade(id) {
   persist();sound('match');showForge(def.group);updateUI();
 }
 
-function showCampaign() {
-  openModal('Follow the runes.',`<p>Three chapters. Twelve battles. Boss encounters guard the end of each chapter. Replay cleared battles to try new formations and earn gold.</p><div class="campaign-grid">${STAGES.map(([name,,chapter],i)=>`<button class="stage-card ${i+1===progress.stage?'current':''}" data-stage="${i+1}" ${i+1>progress.unlocked?'disabled':''}><span class="stage-number">${String(i+1).padStart(2,'0')} ${progress.completed.includes(i+1)?'✦':(i+1)%4===0?'♜':''}</span><b>${name}</b><small>${i+1>progress.unlocked?'Locked':(i+1)%4===0?'Boss battle':chapter}</small></button>`).join('')}</div><div class="modal-actions"><button class="secondary-button" data-action="resume">Return</button></div>`,'campaign','THE CAMPAIGN');
+function showCampaign(chapterNumber=getChapter(progress.stage).number) {
+  const index=clamp(Number(chapterNumber)||1,1,CHAPTERS.length)-1,chapter=CHAPTERS[index];
+  const first=index*4+1, stages=STAGES.slice(first-1,first+3), cleared=progress.completed.filter(n=>n>=first&&n<first+4).length;
+  openModal('Beyond the first rift.',`<p>${TOTAL_STAGES} battles across ${CHAPTERS.length} chapters. Each frontier brings stronger armies, tighter waves, and a new boss showdown. ${progress.completed.length} / ${TOTAL_STAGES} cleared.</p>
+    <div class="chapter-navigation"><button class="secondary-button" data-chapter="${chapter.number-1}" aria-label="Previous chapter" ${index===0?'disabled':''}>‹</button><label for="campaign-chapter" class="sr-only">Choose a campaign chapter</label><select id="campaign-chapter">${CHAPTERS.map(c=>`<option value="${c.number}" ${c.number===chapter.number?'selected':''}>${roman(c.number)} · ${escape(c.title)}${progress.unlocked<(c.number-1)*4+1?' · Locked':''}</option>`).join('')}</select><button class="secondary-button" data-chapter="${chapter.number+1}" aria-label="Next chapter" ${index===CHAPTERS.length-1?'disabled':''}>›</button></div>
+    <div class="chapter-summary" style="--chapter-color:${chapter.color}"><span class="eyebrow">CHAPTER ${roman(chapter.number)} · ${difficultyName(first).toUpperCase()} · ${cleared} / 4 CLEARED</span><h3>${escape(chapter.title)}</h3><p>${escape(chapter.description)}</p><small>Chapter boss: ${escape(chapter.bossName)}</small></div>
+    <div class="campaign-grid chapter-stages">${stages.map(([name,description],i)=>{const stage=first+i,difficulty=difficultyForStage(stage);return `<button class="stage-card ${stage===progress.stage?'current':''}" data-stage="${stage}" ${stage>progress.unlocked?'disabled':''}><span class="stage-number">${String(stage).padStart(2,'0')} ${progress.completed.includes(stage)?'✦':stage%4===0?'♜':''}</span><b>${escape(name)}</b><small>${escape(description)}</small><span class="stage-difficulty">${stage>progress.unlocked?'Locked · ':''}${difficulty.totalWaves} waves${stage%4===0?' · Boss ward':''}</span></button>`;}).join('')}</div>
+    <div class="modal-actions"><button class="primary-button" data-stage="${progress.unlocked}">Continue · battle ${progress.unlocked} →</button><button class="secondary-button" data-action="resume">Return</button></div>`, 'campaign','THE 48-BATTLE CAMPAIGN');
 }
 
 function confirmRestart(stage=progress.stage) {
@@ -347,11 +344,13 @@ function startBattle(stage=progress.stage) {
   selected=null;busy=false;resolved=false;charge=0;overdrive=0;matches=0;bestChain=1;summonCount=0;particles=[];floats=[];
   tileNodes.clear();boardEl.replaceChildren();boardEl.setAttribute('aria-busy','false');renderBoard();setLane(1);
   $('stage-name').textContent=STAGES[progress.stage-1][0];
-  $('stage-counter').textContent=`Battle ${progress.stage} / 12`;
-  $('chapter-label').textContent=`CHAPTER ${['I','II','III'][Math.floor((progress.stage-1)/4)]} · ${STAGES[progress.stage-1][2]}`;
+  $('stage-counter').textContent=`Battle ${progress.stage} / ${TOTAL_STAGES}`;
+  $('chapter-label').textContent=`CHAPTER ${roman(getChapter(progress.stage).number)} · ${STAGES[progress.stage-1][2]}`;
+  $('stage-details').textContent=`Battle ${progress.stage} / ${TOTAL_STAGES} · ${difficultyName(progress.stage)} · ${battle.totalWaves} waves${battle.enemyBarrier?' · Boss battle':''}`;
+  document.body.style.setProperty('--chapter-color',getChapter(progress.stage).color);
   $('combo').textContent='×1';$('combo-label').textContent='COMBO POWER';
   $('board-message').textContent='Swap adjacent runes to summon troops.';
-  persist();updateUI();drawBattle();
+  paintScenery();persist();updateUI();drawBattle();
 }
 
 function finishBattle() {
@@ -360,9 +359,9 @@ function finishBattle() {
   const firstClear=won&&!progress.completed.includes(stage);
   const reward=Math.round(battle.reward())+(firstClear?35:0);
   progress.gold+=reward;
-  if(won){if(firstClear)progress.completed.push(stage);progress.unlocked=Math.min(12,Math.max(progress.unlocked,stage+1));}
+  if(won){if(firstClear)progress.completed.push(stage);progress.unlocked=Math.min(TOTAL_STAGES,Math.max(progress.unlocked,stage+1));}
   persist();sound(won?'win':'lose');
-  openModal(won?(stage===12?'The rift is sealed.':'The front is yours.'):'The line has fallen.',`<div class="result-icon">${won?'✦':'♜'}</div><p class="result-intro">${won?(stage===12?'You defeated the Eclipse Lord and completed the Runeborn campaign. Your army’s next story is yours to write.':`${STAGES[stage-1][0]} is secure. Train your army and prepare for the next battle.`):'Scout the enemy elements, protect your ranged attackers, and spend your earned gold before trying again.'}</p><div class="result-stats"><div><b>+${reward}</b><small>GOLD${firstClear?' · FIRST CLEAR +35':''}</small></div><div><b>${battle.kills}</b><small>ENEMIES DEFEATED</small></div><div><b>${bestChain}×</b><small>BEST CASCADE</small></div></div><div class="modal-actions"><button class="primary-button" data-next="${won?Math.min(12,stage+1):stage}">${won&&stage<12?'Next battle':'Play again'} →</button><button class="secondary-button" data-action="forge">Upgrade forge · ◆ ${progress.gold}</button><button class="secondary-button" data-action="campaign">Campaign map</button></div>`,'result',won?'VICTORY':'REGROUP & RETURN');
+  openModal(won?(stage===TOTAL_STAGES?'The final rift is sealed.':'The front is yours.'):'The line has fallen.',`<div class="result-icon">${won?'✦':'♜'}</div><p class="result-intro">${won?(stage===TOTAL_STAGES?`You defeated ${escape(getStage(stage).bossName)} and completed all ${TOTAL_STAGES} battles of the Runeborn campaign. Replay any chapter to master a different army.`:stage===12?'The Eclipse Lord has fallen, but nine new frontiers await. Battle 13 is now unlocked.':`${STAGES[stage-1][0]} is secure. Train your army and prepare for the next battle.`):'Scout the enemy elements, protect your ranged attackers, and spend your earned gold before trying again.'}</p><div class="result-stats"><div><b>+${reward}</b><small>GOLD${firstClear?' · FIRST CLEAR +35':''}</small></div><div><b>${battle.kills}</b><small>ENEMIES DEFEATED</small></div><div><b>${bestChain}×</b><small>BEST CASCADE</small></div></div><div class="modal-actions"><button class="primary-button" data-next="${won?Math.min(TOTAL_STAGES,stage+1):stage}">${won&&stage<TOTAL_STAGES?'Next battle':'Play again'} →</button><button class="secondary-button" data-action="forge">Upgrade forge · ◆ ${progress.gold}</button><button class="secondary-button" data-action="campaign">Campaign map</button></div>`,'result',won?'VICTORY':'REGROUP & RETURN');
 }
 
 function cast(spell) {
@@ -375,6 +374,7 @@ content.addEventListener('click',event=>{
   if(button.dataset.buy){buyUpgrade(button.dataset.buy);return;}
   if(button.dataset.forge){showForge(button.dataset.forge);return;}
   if(button.dataset.guide){showGuide(button.dataset.guide);return;}
+  if(button.dataset.chapter){showCampaign(+button.dataset.chapter);return;}
   if(button.dataset.stage){confirmRestart(+button.dataset.stage);return;}
   if(button.dataset.restart){startBattle(+button.dataset.restart);begin();return;}
   if(button.dataset.next){startBattle(+button.dataset.next);begin();return;}
@@ -389,12 +389,13 @@ content.addEventListener('click',event=>{
   }
 });
 content.addEventListener('change',event=>{
+  if(event.target.id==='campaign-chapter'){showCampaign(+event.target.value);return;}
   if(event.target.id==='sound-setting'){progress.settings.sound=event.target.checked;persist();}
   if(event.target.id==='motion-setting'){progress.settings.reducedMotion=event.target.checked;persist();}
 });
 document.querySelectorAll('[data-lane]').forEach(button=>button.onclick=()=>setLane(+button.dataset.lane));
 document.querySelectorAll('[data-spell]').forEach(button=>button.onclick=()=>cast(button.dataset.spell));
-$('menu-button').onclick=showMenu;$('forge-button').onclick=()=>showForge();$('campaign-button').onclick=showCampaign;
+$('menu-button').onclick=showMenu;$('forge-button').onclick=()=>showForge();$('campaign-button').onclick=()=>showCampaign();
 $('how-button').onclick=showHow;$('codex-button').onclick=()=>showGuide();$('hint-button').onclick=showHint;
 canvas.addEventListener('click',event=>{const rect=canvas.getBoundingClientRect(),y=(event.clientY-rect.top)/rect.height*530;setLane(clamp(Math.round((y-220)/120),0,2));});
 
@@ -403,7 +404,7 @@ function updateUI() {
   $('enemy-hp').textContent=`${Math.ceil(battle.enemyHp)} / ${battle.enemyMax}${battle.enemyBarrier?' · WARD':''}`;
   $('player-health').style.width=`${100*battle.playerHp/battle.playerMax}%`;
   $('enemy-health').style.width=`${100*battle.enemyHp/battle.enemyMax}%`;
-  $('wave').textContent=battle.wave?`WAVE ${battle.wave} / 3`:'PREPARE';
+  $('wave').textContent=battle.wave?`WAVE ${battle.wave} / ${battle.totalWaves}`:'PREPARE';
   $('battle-time').textContent=`${String(Math.floor(battle.time/60)).padStart(2,'0')}:${String(Math.floor(battle.time%60)).padStart(2,'0')}`;
   const upcoming=battle.forecast().slice(0,3);
   $('forecast-list').innerHTML=upcoming.length?upcoming.map(e=>`<span class="forecast-token" title="${escape(e.name+' · '+e.role+' · Counter: '+ELEMENT_INFO[e.counter].name)}"><span style="color:${colors[e.element]}">●</span> L${e.lane+1} ${escape(e.name)} · ${Math.ceil(e.time)}s</span>`).join(''):'<span>All waves deployed. Hold the line.</span>';
@@ -422,10 +423,11 @@ function updateUI() {
 }
 
 function combatEvent(event) {
-  if(event.type==='wave'){banner(`WAVE ${event.wave} · ${event.wave===3&&battle.enemyBarrier?'The boss approaches.':'Watch all three lanes.'}`);sound('spell');}
+  if(event.type==='wave'){banner(`WAVE ${event.wave} / ${battle.totalWaves} · ${event.wave===battle.totalWaves&&battle.enemyBarrier?'The boss approaches.':'Watch all three lanes.'}`);sound('spell');}
   if(event.type==='damage'&&event.amount>=1&&floats.length<55)floats.push({x:event.x,y:laneY(event.lane)-67,text:String(Math.ceil(event.amount)),color:event.effective?'#ffe5a0':event.side==='player'?'#ffb5a7':'#e5eee2',life:.8});
   if(event.type==='heal'&&event.amount>=2&&floats.length<55)floats.push({x:event.x,y:laneY(event.lane)-70,text:'+'+Math.ceil(event.amount),color:'#b7efba',life:.8});
   if(event.type==='spawn'&&event.unit.boss)banner(`${event.unit.name} has entered the middle lane!`,4200);
+  if(event.type==='boss-phase')banner(`${event.name} · SECOND WIND! Break the empowered formation.`,3600);
   if(event.type==='death'){spawnParticles(event.x,laneY(event.lane)-28,event.side==='enemy'?'#c9a7df':'#a5d5be',10);if(event.boss)banner('BOSS DEFEATED · The rift’s ward is broken.');}
 }
 
@@ -452,14 +454,23 @@ sprite.onerror=()=>toast('Sprite artwork could not load. Reload to restore the a
 const scenery=document.createElement('canvas');scenery.width=1000;scenery.height=530;
 const bg=scenery.getContext('2d');
 function paintScenery() {
-  const sky=bg.createLinearGradient(0,0,0,300);sky.addColorStop(0,'#263849');sky.addColorStop(.65,'#62766c');sky.addColorStop(1,'#9a9b76');bg.fillStyle=sky;bg.fillRect(0,0,1000,530);
-  bg.fillStyle='#d2c69b';bg.beginPath();bg.arc(720,64,27,0,Math.PI*2);bg.fill();
+  const palettes={
+    forest:{sky:['#263849','#62766c','#9a9b76'],mountains:['#3b5057','#3a5351','#2e4948'],ground:['#395044','#273d36'],trees:'#1c3537',moon:'#d2c69b'},
+    frost:{sky:['#26394c','#6c8f9c','#b8c5bc'],mountains:['#486879','#557b84','#3b626c'],ground:['#627d7a','#3d5b62'],trees:'#2e4f5b',moon:'#e0e9e0'},
+    storm:{sky:['#252e4b','#586776','#9a9a86'],mountains:['#39475e','#344d61','#2c4458'],ground:['#3e555b','#263d4e'],trees:'#263c51',moon:'#ddd7b6'},
+    ash:{sky:['#362f3b','#886c65','#c09b76'],mountains:['#5d4d54','#624d49','#483f41'],ground:['#635243','#3e3835'],trees:'#372e36',moon:'#e2ad7e'},
+    sun:{sky:['#41414c','#998d6e','#dbc490'],mountains:['#6f6a5d','#7c7258','#5d6251'],ground:['#6e7052','#414d3e'],trees:'#3b4b42',moon:'#fff0b7'},
+    void:{sky:['#24243d','#5b526f','#9c809c'],mountains:['#46435f','#534663','#373c54'],ground:['#484859','#2b3548'],trees:'#262c46',moon:'#d3b5e4'},
+  };
+  const palette=palettes[getChapter(progress.stage).theme]||palettes.forest;
+  const sky=bg.createLinearGradient(0,0,0,300);sky.addColorStop(0,palette.sky[0]);sky.addColorStop(.65,palette.sky[1]);sky.addColorStop(1,palette.sky[2]);bg.fillStyle=sky;bg.fillRect(0,0,1000,530);
+  bg.fillStyle=palette.moon;bg.beginPath();bg.arc(720,64,27,0,Math.PI*2);bg.fill();
   for(let layer=0;layer<3;layer++){
-    bg.fillStyle=['#3b5057','#3a5351','#2e4948'][layer];bg.beginPath();bg.moveTo(0,190+layer*30);
+    bg.fillStyle=palette.mountains[layer];bg.beginPath();bg.moveTo(0,190+layer*30);
     for(let x=0;x<=1100;x+=70)bg.lineTo(x,100+layer*44+Math.sin(x*.008+layer*2)*25+Math.cos(x*.023)*15);
     bg.lineTo(1000,350);bg.lineTo(0,350);bg.fill();
   }
-  const ground=bg.createLinearGradient(0,155,0,530);ground.addColorStop(0,'#395044');ground.addColorStop(1,'#273d36');bg.fillStyle=ground;bg.fillRect(0,176,1000,354);
+  const ground=bg.createLinearGradient(0,155,0,530);ground.addColorStop(0,palette.ground[0]);ground.addColorStop(1,palette.ground[1]);bg.fillStyle=ground;bg.fillRect(0,176,1000,354);
   const rand=(()=>{let n=7351;return()=>{n=(n*1664525+1013904223)>>>0;return n/4294967296;};})();
   for(let l=0;l<3;l++){
     const y=220+l*120;
@@ -474,7 +485,7 @@ function paintScenery() {
   }
   // Distant ruins and forest silhouettes frame the play area.
   for(const x of [12,148,268,812,972]){
-    bg.fillStyle='#1c3537';bg.fillRect(x,109,6,79);
+    bg.fillStyle=palette.trees;bg.fillRect(x,109,6,79);
     for(let i=0;i<3;i++){bg.beginPath();bg.moveTo(x-21+i*3,150-i*19);bg.lineTo(x+3,84-i*8);bg.lineTo(x+29-i*2,150-i*19);bg.fill();}
   }
   castle(bg,65,false);castle(bg,935,true);
@@ -517,7 +528,7 @@ function drawBattle() {
 
 function drawUnit(u) {
   const baseline=laneY(u.lane)+((u.id%3)-1)*5-(u.trait.flying?10+Math.sin(motionTime*5+u.id)*3:0);
-  const size=u.boss?112:79;const walking=u.state==='walk';
+  const size=u.boss?112:u.elite?87:79;const walking=u.state==='walk';
   const frame=reduced()?0:walking?Math.floor(u.anim*8)%3:u.anim<.3?3:1;
   const row=TROOPS[u.key].spriteRow,col=(u.side==='enemy'?4:0)+frame;
   ctx.save();ctx.translate(u.x,baseline);ctx.fillStyle='#071f2366';ctx.beginPath();ctx.ellipse(0,1,size*.28,6,0,0,Math.PI*2);ctx.fill();
@@ -576,4 +587,4 @@ function frame(time) {
 
 document.addEventListener('visibilitychange',()=>{lastFrame=performance.now();if(document.hidden&&started&&backdrop.hidden&&battle.status==='playing')showMenu();});
 window.addEventListener('pagehide',persist);
-paintScenery();makeRoster();startBattle(progress.stage);showIntro();requestAnimationFrame(frame);
+makeRoster();startBattle(progress.completed.includes(progress.stage)&&progress.stage<progress.unlocked?progress.unlocked:progress.stage);showIntro();requestAnimationFrame(frame);
