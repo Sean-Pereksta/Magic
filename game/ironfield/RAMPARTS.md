@@ -2,7 +2,7 @@
 
 Walkable castle walls, towers, and gatehouses have a connected deck above their solid ground footprint. Friendly infantry reaches it by real interior stairs. Opening a gate leaves the gatehouse deck intact; destroying its support removes that section of deck. Ground troops still need an open gate, breach, or assault passage to cross the masonry.
 
-Select a foot formation and use **Man ramparts**, then click a friendly wall. Right-clicking a friendly wall during battle also assigns it. Friendly gates keep their ordinary open/close interaction; use the explicit Man ramparts command to choose a gatehouse deck. Horses and siege engines remain on the ground.
+Select ranged foot troops and right-click a friendly wall to assign them directly, during deployment, battle, or pause. Click the visible wall top or its base; the wall positions preview on hover. Right-clicking the wall also works when another destination command is armed. Foot formations can use **Man ramparts**, then click a friendly wall. Friendly gates keep their ordinary open/close interaction; use the explicit Man ramparts command to choose a gatehouse deck. Horses and siege engines remain on the ground.
 
 The selection panel provides **Depth** (one, two, or three ranks) and **Spacing** (Close, Regular, or Spread). The actual deck width limits the ranks that can fit. The formation can use connected sections, while stairs and landings retain access space. Soldiers who cannot fit wait in the courtyard rather than disappearing. The preview shows real candidate deck positions and does not move troops.
 

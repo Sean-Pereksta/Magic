@@ -2,6 +2,7 @@
 
 - Added connected walkable castle walls, towers, and gatehouse decks with physical interior stairs. Foot formations can man the walls with one to three ranks and adjustable spacing; elevated ranged guards retain rank volleys and receive parapet protection against exterior shots.
 - Added wall-top selection, formation previews, saved guard plans, and custom wall stair sides. Wall and gate collapses trigger a courtyard defense, while intact guards descend and unsupported guards fall. Ground orders continue after safe descent.
+- Ranged foot troops understand a wall right-click during deployment, battle, or pause. Hovering a friendly wall previews their posts; direct wall commands also work with an armed destination order.
 - Raised the battle limit to 40,000 soldiers, 20,000 per army, across simulation, builder, army scaling, scenario imports, and full formation saves. Added 8× army scale.
 - Added eight authored battlefields and ten historical battles, for 30 authored fields, 32 authored scenarios, and 30 historical scenarios.
 - Added roads, mud, marshes, snow, and trenches with movement and cover effects, route costs, and distinct art.

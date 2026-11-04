@@ -803,6 +803,7 @@
     updateRampartPreview();
   }
   function rampartOptions(){return{ranks:clamp(Number($('rampartRanks').value)||rampartDraft.ranks,1,3),spacing:['compact','normal','wide'].includes($('rampartSpacing').value)?$('rampartSpacing').value:rampartDraft.spacing};}
+  function hasRangedFoot(regs){return regs.some(r=>{const t=data.TYPES[r.type];return t.ranged&&!t.mounted&&!t.siege;});}
   function rememberRampartIntent(regs,options,structureId,clear=false){
     if(isDeployment()){rememberDeployment();return;}
     for(const r of regs){const f=config.formations&&config.formations[r.id];if(!f||f.team!==r.team||f.type!==r.type||f.count!==r.initial)continue;
@@ -811,8 +812,9 @@
   }
   function updateRampartPreview(){
     if(!renderer)return;
-    const s=commandMode==='rampart'?structureAtPointer(mouseWorld.x,mouseWorld.y,true):null;
-    renderer.pendingRampart=s&&s.walkable&&!s.breached?Object.assign({structureId:s.id,regimentIds:Array.from(selection)},rampartOptions()):null;
+    const regs=selectedRegiments(),contextual=!editorTool&&hasRangedFoot(regs);
+    const s=commandMode==='rampart'||contextual?structureAtPointer(mouseWorld.x,mouseWorld.y,true):null;
+    renderer.pendingRampart=s&&s.walkable&&!s.breached&&regs.some(r=>r.team===s.team)&&(commandMode==='rampart'||s.type!=='gate')?Object.assign({structureId:s.id,regimentIds:Array.from(selection)},rampartOptions()):null;
   }
   function updateRampartControls(regs){
     const foot=regs.filter(r=>!data.TYPES[r.type].mounted&&!data.TYPES[r.type].siege&&!data.TYPES[r.type].commander);
@@ -1068,15 +1070,16 @@
     commandMode = null; updateSelection();updatePhase();
     acknowledgeOrder(command,accepted,regs);
   }
-  function orderAt(x,y,kind) {
+  function orderAt(x,y,kind,contextualRightClick=false) {
     if(menuOpen)return;
     if (!selection.size || control === 'spectate' || engine.phase === 'ended') return;
     let order=kind||commandMode;
     const regs=selectedRegiments();
     if(!Number.isFinite(x)||!Number.isFinite(y))return;
     if(order!=='face'){x=clamp(x,25,engine.width-25);y=clamp(y,25,engine.height-25);}
-    const wall=structureAtPointer(x,y,order==='rampart');
-    if(order==='rampart'||(!order&&!isDeployment()&&wall&&wall.walkable&&wall.type!=='gate'&&regs.some(r=>r.team===wall.team))){
+    const rangedWallClick=contextualRightClick&&hasRangedFoot(regs);
+    const wall=structureAtPointer(x,y,order==='rampart'||rangedWallClick);
+    if(order==='rampart'||((rangedWallClick||!order&&!isDeployment())&&wall&&wall.walkable&&!wall.breached&&wall.type!=='gate'&&regs.some(r=>r.team===wall.team))){
       if(!wall||!wall.walkable||wall.breached){toast('Choose an intact friendly wall with stairs.');return;}
       const options=rampartOptions(),accepted=engine.siege.manRampart(regs.map(r=>r.id),wall.id,options);
       if(accepted){rememberRampartIntent(regs.filter(r=>r.team===wall.team),options,wall.id);commandMode=null;updateSelection();updatePhase();toast(`${accepted} formation${accepted===1?'':'s'} assigned to the rampart. Troops climb its stairs; surplus soldiers wait in the courtyard.`,4500);}
@@ -1287,6 +1290,7 @@
       const descriptions={forest:'Woodland · cover',hill:'High ground',water:'River · impassable',bridge:'Bridge crossing',rock:'Rock · impassable',road:'Road · faster marching',mud:'Mud · slow ground',marsh:'Marsh · slow ground and cover',snow:'Deep snow · slow ground',trench:'Trench · cover and slow movement',wall:'Defensive wall',gate:'Defensive gate',ramp:'Assault ramp · open',rubble:'Breached fortification · open',plain:'Open ground',ground:'Open ground'};
       const structure=structureAtPointer(mouseWorld.x,mouseWorld.y);
       $('terrainName').textContent=terrain.type==='ramp'?descriptions.ramp:structure&&structure.castleGate?`${structure.open?'Open':'Closed'} ${structure.name||'gate'} · ${Math.ceil(structure.hp)} HP · Select defenders and right-click or tap to ${structure.open?'close':'open'}`:structure?`${structure.breached?'Breach':structure.name||data.STRUCTURE_TYPES?.[structure.structureKind]?.name||(structure.type==='gate'?'Gate':structure.castleTower?'Corner tower':'Wall')}${structure.breached?' · open':` · ${Math.ceil(structure.hp)} / ${structure.maxHp}`}`:descriptions[terrain.type]||'Open ground';
+      if(!editorTool&&structure&&structure.walkable&&!structure.breached&&structure.type!=='gate'&&hasRangedFoot(selectedRegiments().filter(r=>r.team===structure.team)))$('terrainName').textContent+=' · Right-click to man ramparts';
     });
     function finishPointer(e,cancelled){
       if(menuOpen){pointers.clear();drag=null;gesture=null;hadGesture=false;return;}
@@ -1297,7 +1301,7 @@
       const p=pointFromEvent(e),world=renderer.screenToWorld(p.x,p.y);
       if(d.editor){if(d.editor==='troops')placeFormationAt(world.x,world.y);else editTerrain(d.world,world,d.editor);return;}
       if(d.pan||(d.touch&&d.moved))return;
-      if(d.button===2){if(!d.moved)orderAt(world.x,world.y,commandMode);return;}
+      if(d.button===2){if(!d.moved)orderAt(world.x,world.y,commandMode,true);return;}
       if(d.button!==0)return;
       if(d.moved){
         const first=renderer.screenToWorld(d.start.x,d.start.y);

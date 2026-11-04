@@ -71,3 +71,34 @@ for(const s of editor.engine.structures)for(const stair of s.stairs||[])assert(s
 const count=editor.engine.structures.length;paint('wall',80,4500,180,5400);
 assert.equal(editor.engine.structures.length,count,'The editor accepted a staircase outside the field');
 console.log('PASS Custom wall stair sides, walkable gate carving, stair ownership, and field-boundary rejection');
+
+// Contextual right-click must work directly, without arming Man ramparts.
+// Use projected tops outside the ground footprint to exercise visible picking.
+const direct=bootUI(process.argv[2]||path.resolve(__dirname,'..')),control=id=>direct.document.getElementById(id);
+direct.storage.set('ironfield.scenarios.v1',JSON.stringify([{format:'ironfield-scenario',version:2,name:config.name,config}]));
+control('scenariosButton').click();const directList=control('savedScenarios');directList.dispatch('click',{target:directList.querySelector('[data-load-scenario="0"]')});
+const ranged=direct.engine.regiments.find(r=>r.type==='archer');direct.select(ranged);
+const walls=direct.engine.structures.filter(s=>s.team===ranged.team&&s.walkable&&s.type==='wall'&&s.w>s.h&&s.stairs?.length);
+assert(walls.length>=2,'The contextual command fixture requires two distinct friendly wall targets');
+const bodies=()=>direct.engine.units.map(u=>[u.x,u.y,u._rampartZ]),original=bodies();
+function directWallOrder(target,phase,moveArmed=false){
+  assert.equal(direct.engine.phase,phase);
+  if(moveArmed){direct.key('m');assert.match(control('commandHint').textContent,/Move:/,'The conflict control never armed Move');}
+  const x=target.x+target.w/2,y=target.y+8-target.deckHeight;
+  assert.equal(direct.engine.siege.structureAt(x,y),null,'The contextual click must select the projected top rather than the ground footprint');
+  direct.point(x,y,{button:2});
+  assert(ranged._rampartJob,`Right-clicking the visible wall top in ${phase} did not issue a guard order`);
+  assert.equal(ranged._rampartJob.structureId,target.id,`The contextual ${phase} command kept its previous wall target`);
+  assert.equal(direct.window.IRONFIELD.config.formations.find(f=>f.type==='archer').rampart.structureId,target.id,`The contextual ${phase} command did not preserve the selected wall in the battle plan`);
+  assert.equal(direct.engine.phase,phase,'A contextual wall order unexpectedly changed the battle phase');
+  assert.deepEqual(bodies(),original,'Issuing a contextual wall order instantly repositioned troops instead of using stairs');
+}
+directWallOrder(walls[0],'deployment');
+control('scenarioName').value='Direct wall guard plan';control('saveScenario').click();
+const directSaved=JSON.parse(direct.storage.get('ironfield.scenarios.v1'))[0];
+assert.equal(directSaved.config.formations.find(f=>f.type==='archer').rampart.structureId,walls[0].id,'Saving lost the contextual deployment wall target');
+direct.key(' ');assert.equal(direct.engine.phase,'running');
+directWallOrder(walls[1],'running',true);
+direct.key(' ');assert.equal(direct.engine.phase,'paused');
+directWallOrder(walls[0],'paused',true);
+console.log('PASS Direct ranged right-click on visible wall tops in deployment, running and paused battles, including armed Move, saved guard plans, and no instant movement');
