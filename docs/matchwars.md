@@ -4,9 +4,26 @@ Play at `/game/matchwars.html`. The game is listed in the library's **Complete**
 
 ## The battle loop
 
-Select one of three lanes, then swap adjacent runes to make a line of three or more. The matched element summons troops into the selected lane. Watch the incoming-enemy forecast and send counters where they will matter. Each battle has three waves; bosses guard battles 4, 8, and 12.
+Select one of three lanes, then swap adjacent runes to make a line of three or more. The matched element summons troops into the selected lane. Watch the incoming-enemy forecast and send counters where they will matter. Battles 1–12 have three waves, battles 13–32 have four, and battles 33–48 have five. A named boss guards every fourth battle.
 
-The campaign has 12 battles. New campaigns start with 120 gold and an introductory primer, so you can choose an upgrade before the first wave. Earn more gold from enemy kills and battle rewards, buy upgrades in the forge, and revisit unlocked battles to try different army builds. Losing a battle lets you retry and adjust your strategy.
+The campaign has **48 battles across 12 chapters**. The original twelve encounters remain intact; defeating the Eclipse Lord at battle 12 opens nine further frontiers rather than ending the campaign. New campaigns start with 120 gold and an introductory primer, so you can choose an upgrade before the first wave. Earn more gold from enemy kills and battle rewards, buy upgrades in the forge, and revisit unlocked battles to try different army builds. Losing a battle lets you retry and adjust your strategy.
+
+The campaign map shows one chapter at a time, with previous/next controls and a chapter selector. You can inspect locked frontiers, then continue at the highest unlocked battle. Later chapters add denser waves, elite enemies, mixed elemental fronts, and named boss variants. The last battle is against **The Runeless Emperor**.
+
+| Battles | Chapter | Final encounter |
+| --- | --- | --- |
+| 1–4 | The Awakening | The Root King |
+| 5–8 | The Frostbound March | Frostbound Queen |
+| 9–12 | The Eclipse | The Eclipse Lord |
+| 13–16 | The Ironwood Siege | Ironbark Regent |
+| 17–20 | The Thunder Road | Tempest Matriarch |
+| 21–24 | The Sunken Crown | The Drowned Oracle |
+| 25–28 | The Ashen Concord | Cinderheart Colossus |
+| 29–32 | The Prism Crusade | The Prism Tyrant |
+| 33–36 | The Wild Hunt | The Briar Sovereign |
+| 37–40 | The Nightglass Front | The Nightglass Regent |
+| 41–44 | The Shattered Sky | The Skybreaker |
+| 45–48 | The Last Rift | The Runeless Emperor |
 
 ## Elements and troop roles
 
@@ -43,7 +60,7 @@ Specials activate when swapped and can trigger other specials inside their blast
 
 ## Enemy variety and upgrades
 
-There are 21 enemy definitions: three regular enemy roles for each of the six elements and three bosses. Threats include flying Harpies, regenerating Colossi, armored siege troops, shield bearers, healers, shield breakers, ranged casters, and summoners. Their traits matter as much as their element.
+There are 21 base enemy definitions: three regular enemy roles for each of the six elements and three boss archetypes. Later chapters build on them with elite troops and distinct named boss variants. Threats include flying Harpies, regenerating Colossi, armored siege troops, shield bearers, healers, shield breakers, ranged casters, and summoners. Their traits matter as much as their element.
 
 The forge offers **18 upgrade paths**, each with three ranks: two distinctive paths per troop and six command upgrades. Troop paths improve effects such as burn, splash, slow, healing, poison, lightning targets, shields, armor, life stealing, and execution damage. Command paths improve combo power, relic strength, gold rewards, keep health, spellcraft, and keep sentries. Rising rank costs make spending a strategic choice.
 
@@ -61,6 +78,8 @@ The layout adapts from a side-by-side desktop war room to a stacked mobile layou
 
 Progress saves locally on the current device and browser after purchases, battle results, stage selection, and settings changes. Campaign progress, gold, purchased upgrades, and settings survive reloads. Refreshing restarts the selected battle with a new rune board; active troops, spell cooldowns, and unfinished battle rewards are not saved. The earlier Color Clash save is migrated into the new progression when available, preserving gold, a bounded campaign level, and mapped troop-upgrade ranks. The original save remains intact. Browser storage can be unavailable in restrictive/private browsing sessions; the game remains playable and reports a saving limitation.
 
+Existing Match Wars saves retain their gold, upgrades, settings, and cleared battles. A save that completed battle 12 unlocks battle 13 when loaded into the expanded campaign.
+
 The implementation uses native ES modules and Canvas 2D, with no game-framework download. Serve the repository over HTTP when testing locally; opening the HTML directly as a `file:` URL can prevent browsers from loading modules.
 
 ## FAQ
@@ -75,4 +94,4 @@ The implementation uses native ES modules and Canvas 2D, with no game-framework 
 
 ## Checks
 
-Run `npm run test:matchwars` for the 35 dedicated board, combat, save, and catalog checks. They include actual matching-board simulations against the introductory battle and all three boss encounters. The catalog tests load the actual showcase configuration to verify the Complete-shelf promotion rather than relying only on fallback title matching. The Match Wars GitHub workflow runs these checks for relevant changes.
+Run `npm run test:matchwars` for the dedicated board, combat, campaign, save, and catalog checks. They include matching-board combat simulations, campaign-boundary checks, and save compatibility. The catalog tests load the actual showcase configuration to verify the Complete-shelf promotion rather than relying only on fallback title matching. The Match Wars GitHub workflow runs these checks for relevant changes.

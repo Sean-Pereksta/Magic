@@ -1,4 +1,5 @@
 /** Match Wars combat. Coordinates are logical units; time is always seconds. */
+import { TOTAL_STAGES, getStage, getChapter } from './campaign.mjs';
 export const ELEMENT_INFO = {
   ember: { name: 'Ember', color: '#ff805e', icon: 'flame', strong: 'grove', weak: 'tide' },
   tide: { name: 'Tide', color: '#61c7f4', icon: 'drop', strong: 'ember', weak: 'storm' },
@@ -65,6 +66,43 @@ export const UPGRADES = [
 ];
 
 const clamp = (v, low, high) => Math.min(high, Math.max(low, Number.isFinite(v) ? v : low));
+const rounded = (value, digits = 3) => Number(value.toFixed(digits));
+
+/**
+ * Stable campaign tuning, separate from troop talents. The original twelve battles
+ * retain their timings and scaling. Later fronts add waves, formations and veterans
+ * while health and attack scale separately so a max-trained army remains viable.
+ * Pressure is average incoming bodies/second × health × attack, expressed ×100.
+ */
+export function difficultyForStage(value = 1) {
+  const stage = Math.floor(clamp(value, 1, TOTAL_STAGES));
+  const beyond = Math.max(0, stage - 12);
+  const totalWaves = stage <= 12 ? 3 : stage < 33 ? 4 : 5;
+  const unitsPerWave = stage <= 12 ? 4 + Math.min(4, Math.floor(stage / 3)) : 8 + Math.floor((stage - 13) / 9);
+  const healthMultiplier = stage <= 12 ? 1 + (stage - 1) * .055 : 1.605 + beyond * .026;
+  const attackMultiplier = stage <= 12 ? healthMultiplier : 1.605 + beyond * .017;
+  const waveInterval = 20 - beyond * .075;
+  const spawnInterval = 1.65 - beyond * .009;
+  const bossHealthMultiplier = stage <= 12 ? 1 + Math.max(0, stage - 4) * .035 : 1.28 + beyond * .03;
+  const bossAttackMultiplier = stage <= 12 ? bossHealthMultiplier : 1.28 + beyond * .012;
+  const eliteEvery = stage <= 12 ? 0 : Math.max(7, 12 - Math.floor((stage - 13) / 6));
+  const averageUnits = unitsPerWave + (totalWaves - 1) / 2;
+  const waveAttackGrowth = stage <= 12 ? .035 : .018;
+  const pressure = averageUnits / waveInterval * (healthMultiplier + (totalWaves - 1) * .035 / 2) *
+    (attackMultiplier + (totalWaves - 1) * waveAttackGrowth / 2) * 100;
+  return Object.freeze({
+    stage, totalWaves, unitsPerWave, waveInterval: rounded(waveInterval), spawnInterval: rounded(spawnInterval),
+    healthMultiplier: rounded(healthMultiplier), attackMultiplier: rounded(attackMultiplier),
+    bossHealthMultiplier: rounded(bossHealthMultiplier), bossAttackMultiplier: rounded(bossAttackMultiplier),
+    speedMultiplier: rounded(1 + beyond * .0015), waveHealthGrowth: .035, waveAttackGrowth,
+    eliteEvery, eliteChance: eliteEvery ? rounded(1 / eliteEvery) : 0,
+    keepHealth: 180 + stage * 18 + beyond * 10,
+    scheduledUnits: totalWaves * unitsPerWave + totalWaves * (totalWaves - 1) / 2 + (stage % 4 === 0 ? 1 : 0),
+    bossAt: rounded(5 + (totalWaves - 1) * waveInterval + 4 + Math.min(3, beyond * .08)),
+    pressure: rounded(pressure, 2), rewardBonus: 65 + stage * 12 + (stage % 4 === 0 ? 45 : 0),
+  });
+}
+
 export function upgradeCost(id, level = 0) {
   const def = UPGRADES.find(item => item.id === id);
   return def ? Math.round(def.cost * Math.pow(1.65, clamp(level, 0, def.max))) : Infinity;
@@ -81,7 +119,10 @@ export function elementMultiplier(attacker, defender) {
 /** A Battle never reads the DOM, storage, wall clock, or global randomness. */
 export class Battle {
   constructor({ stage = 1, upgrades = {}, rng = Math.random, onEvent = () => {} } = {}) {
-    this.stage = Math.floor(clamp(stage, 1, 99));
+    this.stage = Math.floor(clamp(stage, 1, TOTAL_STAGES));
+    this.difficulty = difficultyForStage(this.stage);
+    this.chapter = getChapter(this.stage);
+    this.stageInfo = getStage(this.stage);
     this.upgrades = Object.fromEntries(UPGRADES.map(def => [def.id, Math.floor(clamp(upgrades[def.id] || 0, 0, def.max))]));
     this.rng = rng;
     this.onEvent = onEvent;
@@ -90,9 +131,9 @@ export class Battle {
     this.effects = [];
     this.time = 0;
     this.wave = 0;
-    this.totalWaves = 3;
+    this.totalWaves = this.difficulty.totalWaves;
     this.playerMax = 180 + this.rank('fortress') * 40;
-    this.enemyMax = 180 + this.stage * 18;
+    this.enemyMax = this.difficulty.keepHealth;
     this.playerHp = this.playerMax;
     this.enemyHp = this.enemyMax;
     this.enemyBarrier = this.stage % 4 === 0;
@@ -120,21 +161,27 @@ export class Battle {
       ['void', 'sun', 'ember'], ['tide', 'storm', 'void'], ['ember', 'grove', 'storm'],
       ['sun', 'tide', 'void'], ['void', 'grove', 'sun'], ['void', 'tide', 'ember'],
     ];
-    const faction = factions[(this.stage - 1) % factions.length];
-    const count = 4 + Math.min(4, Math.floor(this.stage / 3));
+    const faction = this.stage <= 12 ? factions[this.stage - 1] : this.chapter.elements;
+    const count = this.difficulty.unitsPerWave;
     const schedule = [];
-    for (let wave = 1; wave <= 3; wave++) {
+    for (let wave = 1; wave <= this.totalWaves; wave++) {
       for (let index = 0; index < count + wave - 1; index++) {
         const lane = (index + wave - 1) % 3;
         const element = faction[(lane + wave - 1) % 3];
         const roster = Object.values(ENEMIES).filter(def => def.element === element && !def.boss);
         // Stage one previews simple enemies; later encounters deliberately mix roles.
-        const variant = this.stage === 1 && wave === 1 ? 0 : (index + wave + Math.floor(this.stage / 2)) % roster.length;
-        schedule.push({ time: 5 + (wave - 1) * 20 + index * 1.65, wave, lane, key: roster[variant].key });
+        const variant = this.stage <= 12
+          ? this.stage === 1 && wave === 1 ? 0 : (index + wave + Math.floor(this.stage / 2)) % roster.length
+          : [2, 1, 0, 1, 2][Math.floor(index / 3) % 5];
+        const serial = schedule.length + 1;
+        schedule.push({
+          time: rounded(5 + (wave - 1) * this.difficulty.waveInterval + index * this.difficulty.spawnInterval),
+          wave, lane, key: roster[variant].key,
+          elite: !!this.difficulty.eliteEvery && serial % this.difficulty.eliteEvery === 0,
+        });
       }
-      if (wave === 3 && this.stage % 4 === 0) {
-        const boss = this.stage % 12 === 4 ? 'rootking' : this.stage % 12 === 8 ? 'frostqueen' : 'eclipselord';
-        schedule.push({ time: 49, wave, lane: 1, key: boss });
+      if (wave === this.totalWaves && this.stageInfo.boss) {
+        schedule.push({ time: this.difficulty.bossAt, wave, lane: 1, key: this.stageInfo.bossKey, name: this.stageInfo.bossName });
       }
     }
     return schedule.sort((a, b) => a.time - b.time);
@@ -142,10 +189,29 @@ export class Battle {
 
   forecast() {
     return this._schedule.slice(this._next, this._next + 9).map(entry => {
-      const def = ENEMIES[entry.key];
+      const def = this._enemyDefinition(entry);
       const counter = Object.keys(TROOPS).find(key => ELEMENT_INFO[key].strong === def.element) || 'storm';
-      return { ...entry, time: Math.max(0, entry.time - this.time), element: def.element, name: def.name, role: def.role, counter, boss: !!def.boss };
+      return { ...entry, time: Math.max(0, entry.time - this.time), element: def.element, name: def.name, role: def.role, counter, boss: !!def.boss, elite: !!entry.elite };
     });
+  }
+
+  _enemyDefinition(entry) {
+    const base = ENEMIES[entry.key];
+    if (!base.boss) return entry.elite ? { ...base, elite: true, name: `Veteran ${base.name}`, role: `Veteran / ${base.role}`, armor: Math.min(.35, (base.armor || 0) + .04) } : base;
+    const tricks = {
+      4: { shield: 65, armor: .18 },
+      5: { chain: true, flying: true },
+      6: { healer: true, shieldBreak: true },
+      7: { burn: true, splash: 55, shield: 80 },
+      8: { armor: .18, shield: 120, rangedResist: .12 },
+      9: { healer: true, summoner: true, summonLimit: 3, regen: 5 },
+      10: { shieldBreak: true, chain: true },
+      11: { flying: true, chain: true, shield: 100 },
+      12: { chain: true, splash: 55, shield: 160, summonLimit: 6 },
+    };
+    return { ...base, ...tricks[this.chapter.number], name: entry.name || this.stageInfo.bossName || base.name,
+      secondWind: this.stage > 12, phasePower: .12 + Math.max(0, this.stage - 12) * .002,
+    };
   }
 
   summon(key, { lane = 1, power = 1, chain = 1, buffs = [], elite = false, count = 3 } = {}) {
@@ -196,16 +262,22 @@ export class Battle {
       maxHp: def.hp * strength, attack: def.attack * strength, speed: def.speed,
       range: def.range, interval: def.interval, cooldown: .3, state: 'walk', anim: 0,
       shield: def.shield || 0, armor: def.armor || 0, buffs: [], boss: !!def.boss,
-      spriteRow: def.spriteRow, statuses: {}, supportCooldown: .8,
+      spriteRow: def.spriteRow, statuses: {}, supportCooldown: .8, elite: !!def.elite,
       summonCooldown: 7, summons: 0, trait: def, dead: false, hitFlash: 0,
     };
   }
 
   _spawnEnemy(entry) {
     if (this.units.length >= 64) return false;
-    const def = ENEMIES[entry.key];
-    const scaling = def.boss ? 1 + Math.max(0, this.stage - 4) * .035 : 1 + (this.stage - 1) * .055 + (entry.wave - 1) * .035;
-    const u = this._makeUnit(def, 'enemy', entry.lane, scaling);
+    const def = this._enemyDefinition(entry);
+    const healthScale = def.boss ? this.difficulty.bossHealthMultiplier :
+      (this.difficulty.healthMultiplier + (entry.wave - 1) * this.difficulty.waveHealthGrowth) * (entry.elite ? 1.18 : 1);
+    const attackScale = def.boss ? this.difficulty.bossAttackMultiplier :
+      (this.difficulty.attackMultiplier + (entry.wave - 1) * this.difficulty.waveAttackGrowth) * (entry.elite ? 1.1 : 1);
+    const u = this._makeUnit(def, 'enemy', entry.lane, healthScale);
+    u.attack = def.attack * attackScale;
+    u.speed *= this.difficulty.speedMultiplier;
+    if (this.stage > 12) u.shield *= Math.sqrt(healthScale);
     u.x += (this.units.filter(other => other.side === 'enemy' && other.lane === u.lane && other.x > 890).length) * 20;
     this.units.push(u);
     this._emit('spawn', { unit: u, side: 'enemy', key: u.key, lane: u.lane });
@@ -280,6 +352,13 @@ export class Battle {
 
   _tickUnit(u, dt, alive) {
     if (u.dead) return;
+    if (u.boss && u.trait.secondWind && !u.phaseUsed && u.hp < u.maxHp * .5) {
+      u.phaseUsed = true;
+      this._status(u, 'rally', 9, u.trait.phasePower);
+      u.shield += 25 + this.stage;
+      this._effect('rally', u.x, u.lane, u.color, 1);
+      this._emit('boss-phase', { name: u.name, unitId: u.id, lane: u.lane, x: u.x });
+    }
     u.anim += dt;
     u.hitFlash = Math.max(0, u.hitFlash - dt);
     u.cooldown -= dt;
@@ -303,7 +382,7 @@ export class Battle {
     }
     if (u.trait.summoner) {
       u.summonCooldown -= dt;
-      if (u.summonCooldown <= 0 && u.summons < (u.boss ? 4 : 2) && this.units.length < 60) {
+      if (u.summonCooldown <= 0 && u.summons < (u.trait.summonLimit || (u.boss ? 4 : 2)) && this.units.length < 60) {
         const minion = this._makeUnit(ENEMIES.shade, 'enemy', u.lane, .65 + this.stage * .025);
         minion.x = u.x - 25;
         this.units.push(minion);
@@ -476,5 +555,5 @@ export class Battle {
     }
   }
 
-  reward() { return this.status === 'won' ? this.gold + 65 + this.stage * 12 + (this.stage % 4 === 0 ? 45 : 0) : Math.floor(this.gold / 2); }
+  reward() { return this.status === 'won' ? this.gold + this.difficulty.rewardBonus : Math.floor(this.gold / 2); }
 }
