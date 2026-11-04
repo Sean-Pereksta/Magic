@@ -191,10 +191,10 @@
     ensure(entity,time){let state=this.states.get(entity.id);if(!state||state.type!==entity.type||state.kind!==entity.kind){state={id:entity.id,type:entity.type,assetType:assetTypeFor(entity),kind:entity.kind,faction:entity.faction,x:finite(entity.x),y:finite(entity.y),direction:'S',state:'idle',stateAt:time,phaseAt:time,event:null,segment:null,logicalX:entity.x,logicalY:entity.y,visible:false,lastMoveReady:finite(entity.moveReadyAt),lastAttackReady:finite(entity.attackReadyAt),lastHit:finite(entity.lastDamagedAt),lastAbility:finite(entity.abilityReadyAt),lastCast:entity.lastAbilityCastAt,lastDeploy:false};this.states.set(entity.id,state)}return state}
     turn(state,dx,dy,time){const next=directionForVector(dx,dy,state.direction);if(next!==state.direction){state.previousDirection=state.direction;state.turnAt=time;state.direction=next}}
     route(entity,path){const state=this.ensure(entity,this.time);state.pendingPath=path?.slice(0,16).map(p=>({x:p.x,y:p.y}))}
-    move(entity,from,time,duration,{teleport=false,remote=false,maxDistance=8,path}={}){
+    move(entity,from,time,duration,{teleport=false,remote=false,maxDistance=8,path,snapshotInterval=0}={}){
       const state=this.ensure(entity,time),current=sampleSegment(state.segment,time)||{x:state.x,y:state.y},distance=Math.hypot(entity.x-current.x,entity.y-current.y);
       if(teleport||distance>maxDistance||entity.kind!=='unit'){state.segment=null;state.pendingPath=null;state.moving=false;state.x=entity.x;state.y=entity.y;state.arrivedAt=time;state.appearAt=teleport?time:0;if(teleport){entity.px=entity.x;entity.py=entity.y}}
-      else if(distance>.001){const remaining=finite(entity.moveReadyAt)-time;const interval=remote?(remaining>0?Math.min(duration,remaining):Math.min(300,duration)):duration;state.segment={fromX:from?.x??current.x,fromY:from?.y??current.y,toX:entity.x,toY:entity.y,start:time,end:time+Math.max(90,interval)};const route=path||state.pendingPath;state.pendingPath=null;if(route?.length){const end=route.findIndex(p=>p.x===entity.x&&p.y===entity.y);if(end>=0){state.segment.points=[{x:state.segment.fromX,y:state.segment.fromY},...route.slice(0,end+1)];state.segment.length=state.segment.points.reduce((sum,p,i,points)=>i?sum+Math.hypot(p.x-points[i-1].x,p.y-points[i-1].y):sum,0)}}state.moveDistance=state.segment.length||distance;state.moveDuration=interval;if(state.state!=='move')state.phaseAt=time}
+      else if(distance>.001){const remaining=finite(entity.moveReadyAt)-time;const interval=remote?(snapshotInterval>0?clamp(snapshotInterval,90,1500):remaining>0?Math.min(duration,remaining):Math.min(300,duration)):duration;state.segment={fromX:from?.x??current.x,fromY:from?.y??current.y,toX:entity.x,toY:entity.y,start:time,end:time+Math.max(90,interval)};const route=path||state.pendingPath;state.pendingPath=null;if(route?.length){const end=route.findIndex(p=>p.x===entity.x&&p.y===entity.y);if(end>=0){state.segment.points=[{x:state.segment.fromX,y:state.segment.fromY},...route.slice(0,end+1)];state.segment.length=state.segment.points.reduce((sum,p,i,points)=>i?sum+Math.hypot(p.x-points[i-1].x,p.y-points[i-1].y):sum,0)}}state.moveDistance=state.segment.length||distance;state.moveDuration=interval;if(state.state!=='move')state.phaseAt=time}
       if(state.segment){this.turn(state,state.segment.points?.[1]?state.segment.points[1].x-state.segment.fromX:entity.x-state.segment.fromX,state.segment.points?.[1]?state.segment.points[1].y-state.segment.fromY:entity.y-state.segment.fromY,time)}state.logicalX=entity.x;state.logicalY=entity.y;state.lastMoveReady=finite(entity.moveReadyAt);return state;
     }
     signal(entity,kind,time,{target,origin,duration,contactAt,visible=true}={}){
@@ -216,12 +216,12 @@
       const ghost={id:entity.id,type:state.assetType,kind:entity.kind,faction:entity.faction,x:position.x,y:position.y,logicalX:entity.x,logicalY:entity.y,direction:state.direction,start:time,end:time+duration};
       this.ghosts.push(ghost);this.ghostIds.add(entity.id);while(this.ghosts.length>this.budget.ghosts)this.ghostIds.delete(this.ghosts.shift().id);this.states.delete(entity.id);return true;
     }
-    beginFrame(entities,time,{isVisible=()=>true,moveDuration=()=>600,maxDistance=()=>8,workTarget=()=>null,armored=()=>false,remote=false}={}){
+    beginFrame(entities,time,{isVisible=()=>true,moveDuration=()=>600,maxDistance=()=>8,workTarget=()=>null,armored=()=>false,remote=false,remoteInterval=0}={}){
       this.time=time;this.cache.beginFrame();this.entityIndex=new Map(entities.filter(e=>e.alive!==false).map(e=>[e.id,e]));
       const alive=new Set();
       for(const entity of entities){if(entity.alive===false)continue;alive.add(entity.id);const state=this.ensure(entity,time),visible=isVisible(entity);state.visible=visible;
         if(entity.garrisonedIn){state.segment=null;state.x=entity.x;state.y=entity.y;state.logicalX=entity.x;state.logicalY=entity.y;continue}
-        if(state.logicalX!==entity.x||state.logicalY!==entity.y){const reset=entity.px===entity.x&&entity.py===entity.y,blink=entity.lastAbilityId==='phaseStep'&&abilityWasCast(entity,{ability:state.lastAbility,cast:state.lastCast},time);this.move(entity,null,time,Math.max(90,moveDuration(entity)),{teleport:reset||blink,remote,maxDistance:maxDistance(entity)})}
+        if(state.logicalX!==entity.x||state.logicalY!==entity.y){const reset=entity.px===entity.x&&entity.py===entity.y,blink=entity.lastAbilityId==='phaseStep'&&abilityWasCast(entity,{ability:state.lastAbility,cast:state.lastCast},time);this.move(entity,null,time,Math.max(90,moveDuration(entity)),{teleport:reset||blink,remote,maxDistance:maxDistance(entity),snapshotInterval:remoteInterval})}
         const sample=sampleSegment(state.segment,time);if(sample){state.x=sample.x;state.y=sample.y;state.moving=sample.moving;if(!sample.moving)state.segment=null}else state.moving=false;
         // Reuse existing cosmetic coordinates; serializer already explicitly removes them.
         entity.px=state.x;entity.py=state.y;
@@ -239,7 +239,7 @@
         let next=entity.complete===false?'construction':state.event?.end>time?state.event.kind:entity.kind==='cocoon'?'morph':deploying&&(entity.fabricatorDeployAt||entity.tunnelDigging)?'deploy':state.moving?'move':target?'work':entity.queue?.length?'production':'idle';
         if(entity.channelEffectId||entity.warpChannel)next='ability';
         if(target&&!state.moving&&next==='work')this.turn(state,target.x-entity.x,target.y-entity.y,time);
-        if(state.moving&&next==='move'&&state.segment)this.turn(state,sample?.dx??state.segment.toX-state.x,sample?.dy??state.segment.toY-state.y,time);
+        if(state.moving&&state.segment)this.turn(state,sample?.dx??state.segment.toX-state.x,sample?.dy??state.segment.toY-state.y,time);
         if(next!==state.state){state.state=next;state.stateAt=time;if(next==='move')state.phaseAt=time}
       }
       this.updateHealing(entities,time,isVisible);

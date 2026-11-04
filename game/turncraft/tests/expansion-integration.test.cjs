@@ -95,7 +95,7 @@ test('new unit queues use the established cancellation refund and reject the wro
 
 test('multiplayer clients submit abilities once and the controller deduplicates repeated command delivery', async () => {
   const run = simulation('brood');
-  const id = run(`(()=>{const unit=addEntity('unit','broodMatriarch',0,8,8);lobbyId='qa-lobby';isController=false;return unit.id})()`);
+  const id = run(`(()=>{const unit=addEntity('unit','broodMatriarch',0,8,8);lobbyId='qa-lobby';username=players[0].name;auth.currentUser={uid:'qa-player-0'};isController=false;return unit.id})()`);
   await run(`sendCommand({type:'ability',entityId:${id},abilityId:'bloodClutch'})`);
   assert.equal(run("entities.filter(e=>e.type==='broodling'&&e.alive!==false).length"), 0);
   assert.equal(run.network.writes.length, 1);

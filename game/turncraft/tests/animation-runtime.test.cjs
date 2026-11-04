@@ -33,9 +33,10 @@ test('turning draws one facing body at every quality without changing movement o
     draws.length=0;runtime.signal(entity,'attack',1100,{target:{x:0,y:3},contactAt:1100});
     runtime.beginFrame([entity],1155,options);runtime.draw({},entity,1155,{zoom:1});
     assert.equal(draws.length,1,quality+': one body during an attack turn');
-    assert.equal(draws[0].direction,'W');assert.equal(draws[0].alpha,1);
+    assert.equal(draws[0].direction,'E','a moving body follows its actual segment during a lingering attack animation');assert.equal(draws[0].alpha,1);
     assert.equal(draws[0].progress,eventProgress(manifest.assets.rifleman.states.attack,runtime.states.get(1).event,1155));
     assert.equal(runtime.states.get(1).event.end,1620);assert.equal(entity.moveReadyAt,2000);
+    runtime.beginFrame([entity],2000,options);runtime.signal(entity,'attack',2100,{target:{x:0,y:3},contactAt:2100});runtime.beginFrame([entity],2150,options);assert.equal(runtime.states.get(1).direction,'W','stationary attacks face their target');
   }
 });
 

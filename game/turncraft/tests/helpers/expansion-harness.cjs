@@ -59,7 +59,7 @@ function simulation(faction = 'frontier', options = {}) {
     navigator: {}, screen: {}, addEventListener: noop, testClock: 100000
   };
   sandbox.window = sandbox;
-  const html = fs.readFileSync(options.sourceFile || GAME_FILE, 'utf8');
+  const html = fs.readFileSync(options.sourceFile || process.env.TURNCRAFT_TEST_SOURCE || GAME_FILE, 'utf8');
   const module = html.match(/<script type="module">([\s\S]*?)<\/script>/);
   if (!module) throw new Error('Turncraft inline simulation module was not found');
   let code = module[1].replace(/^import .*;$/gm, '');

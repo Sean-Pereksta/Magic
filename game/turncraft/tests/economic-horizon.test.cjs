@@ -37,6 +37,16 @@ test('optional structures cannot spend reserved expansion income',()=>{
   assert.deepEqual(result,{accepted:false,minerals:320,job:null});
 });
 
+test('low remaining mineral amounts reserve a paid replacement before the live-base target falls',()=>{
+  const run=simulation(),r=run.plain(`(()=>{chosenMapId='classic';matchStartedAt=testClock;players[0].ai=true;players[0].aiDifficulty='easy';players[0].minerals=280;addEntity('structure','commandHub',0,6,15);addResourceCluster({x:6,y:15});for(const n of resourceNodes.filter(n=>n.type==='mineral'))n.amount=80;addExpansionCluster(expansionPositions()[0]);addEntity('unit','engineer',0,7,15);addEntity('unit','engineer',0,7,16);const liveBefore=playerStructures(0).filter(isBase).length,goal=aiEconomicTarget(0,DIFFICULTY.easy);aiMaintainEconomy(0,DIFFICULTY.easy);const reserved=players[0].strategy.expansionReserve,optional=aiConstructionBudgetAllows(0,[50,0]);players[0].minerals+=24;const planned=aiExpand(0,DIFFICULTY.easy);return {liveBefore,goal,reserved,optional,planned,expansion:players[0].strategy.buildJob?.expansion}})()`);
+  assert.deepEqual(r,{liveBefore:1,goal:1,reserved:300,optional:false,planned:true,expansion:true});
+});
+
+test('a replacement base already under construction does not reserve another replacement purchase',()=>{
+  const run=simulation(),r=run.plain(`(()=>{players[0].ai=true;addEntity('structure','commandHub',0,6,15);addResourceCluster({x:6,y:15});for(const n of resourceNodes.filter(n=>n.type==='mineral'))n.amount=1;addEntity('structure','commandHub',0,20,15,{complete:false});return aiReplacementExpansionNeeded(0)})()`);
+  assert.equal(r,false);
+});
+
 test('Brood construction preserves its final worker until a replacement is committed',()=>{
   const run=simulation('brood'),result=run.plain(`(()=>{players[0].ai=true;addEntity('structure','hatchery',0,6,15);addEntity('unit','drone',0,7,15);const before=aiBuildNear(0,'spawningPool');const larva=addEntity('larva','larva',0,7,17);larva.kind='cocoon';larva.morphType='drone';larva.morphEnd=testClock+5000;return {before,after:aiBuildNear(0,'spawningPool')}})()`);
   assert.deepEqual(result,{before:false,after:true});
