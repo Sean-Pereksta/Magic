@@ -119,7 +119,7 @@
   function renderPersonal(id,keys,state,empty) {
     const grid=context.document.getElementById(id);if(!grid)return;
     const signature=keys.join('|');
-    if(signatures.get(id)!==signature){signatures.set(id,signature);grid.replaceChildren(...keys.map(key=>context.createCard(context.games.find(game=>game.key===key))));if(!keys.length&&empty){const node=context.document.createElement('p');node.className='empty-state';node.textContent=empty;grid.appendChild(node);}}
+    if(signatures.get(id)!==signature){signatures.set(id,signature);grid.replaceChildren(...keys.map(key=>context.createCard(context.games.find(game=>game.key===key))));if(!keys.length&&empty){const node=context.document.createElement('div');node.className='empty-state';if(root.GameHubArcade)root.GameHubArcade.emptyState(node,{kind:id.includes('Favorites')?'star':'clock',title:id.includes('Favorites')?'Your next favorites live here':'Your next round starts here',description:empty});else node.textContent=empty;grid.appendChild(node);}}
     for(const card of grid.querySelectorAll('.game-card')){const game=context.games.find(game=>game.key===card.dataset.gameKey);if(game)syncCard(card,game,state);}
   }
   function refresh() {
