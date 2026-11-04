@@ -100,11 +100,15 @@ try{
  await a.page.locator('[data-dispatch="thornwall"]').click();await clickChatAction(a.page,'#private-offer-request');
  const builder=a.page.locator('#formal-proposal-builder');await builder.locator('[name=type]').selectOption('AID');await builder.locator('[name=direction]').selectOption('offer');
  await builder.locator('[name=resource0]').selectOption('food');await builder.locator('[name=amount0]').fill('10');await builder.locator('[type=submit]').click();await builder.waitFor({state:'hidden'});
- await eventually(async()=>{const state=await decodePayload((await read(`${prefix}/iron_throne/state`)).payload);return state.cooperation.formalProposals?.some(p=>p.responses.thornwall?.status==='accepted'&&p.responses.thornwall.spoken);});
+ // The empty config deliberately has no Gemini endpoint. The authoritative
+ // voice command must finish without inventing a spoken ruler response.
+ await eventually(async()=>{const state=await decodePayload((await read(`${prefix}/iron_throne/state`)).payload);return state.cooperation.formalProposals?.some(p=>p.responses.thornwall?.status==='accepted'&&p.responses.thornwall.voiceComplete);});
  const afterAid=await decodePayload((await read(`${prefix}/iron_throne/state`)).payload);
  assert.equal(afterAid.kingdoms.find(k=>k.id==='ashen').resources.food,beforeAid.kingdoms.find(k=>k.id==='ashen').resources.food-10);
  assert.equal(afterAid.kingdoms.find(k=>k.id==='thornwall').resources.food,beforeAid.kingdoms.find(k=>k.id==='thornwall').resources.food+10);
  assert.equal(afterAid.cooperation.formalProposals.length,1);assert.equal(afterAid.cooperation.formalProposals[0].status,'resolved');
+ const aidResponse=afterAid.cooperation.formalProposals[0].responses.thornwall;
+ assert.equal(aidResponse.spoken,false);assert.equal(aidResponse.source,'failed');assert.equal(aidResponse.voice,undefined);
  await a.page.locator('[data-close="diplomacy"]').click();console.log('PASS authoritative online formal submission, AI decision, single transfer and voice queue');await a.page.locator('[data-dispatch="wintermere"]').click();await b.page.locator('[data-dispatch="ashen"]').click();
  await a.page.locator('#chat-message').fill('Let us form an alliance.');await a.page.locator('#send-chat').click();
  await eventually(async()=>(await b.page.locator('#messages').textContent()).includes('Let us form an alliance.'));
