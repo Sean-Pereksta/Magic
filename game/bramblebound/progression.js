@@ -29,7 +29,7 @@
     ['spirit','Midnight Ink','Ghost Hands','brush','ribbon']
   ];
   for(const [el,focus,quick,picture,clock] of schools) {
-    bonus(el+'_focus',focus,'Offense',el,picture,.20,'Damage from '+el+' relic hits',{affinity:el});
+    bonus(el+'_focus',focus,'Offense',el,picture,.20,'Power of '+el+' relics',{affinity:el});
     const haste=soft(.12,.65);
     passive(el+'_tempo',quick,'Tempo',el,clock,haste,n=>'Cooldown of '+el+' relics shortened by '+pct(haste(n))+'.',{affinity:el});
   }
@@ -43,18 +43,18 @@
     ['cornered','Cornered Courage','fire','fang',.35,'Relic hits while Pip is below half health',r=>r.hp<r.maxHp*.5],
     ['iron_stance','Iron Stance','stone','shell',.22,'Relic hits while Pip has a shield',r=>r.shield>0],
     ['giantkiller','Giantkiller','storm','vane',.32,'Relic hits against guardians',(r,e)=>e.boss],
-    ['thermal_shock','Thermal Shock','fire','tongs',.27,'Relic hits against chilled or stunned foes',(r,e)=>e.chill>0||e.stun>0],
+    ['thermal_shock','Thermal Shock','fire','tongs',.27,'Relic hits against chilled, frozen or stunned foes',(r,e)=>e.chill>0||e.stun>0||e.freeze>0],
     ['felt_flame','Fever Pitch','leaf','pepper',.25,'Relic hits against burning or poisoned foes',(r,e)=>e.burn>0||e.poison>0]
   ];
   for(const [id,name,el,icon,delta,when] of strikes)bonus(id,name,'Offense',el,icon,delta,when);
-  // Each gear discipline covers a pair of styles, or a visible gear property.
+  // Disciplines apply to the potency of their offensive and utility styles.
   const disciplines=[
     ['needlework','Needlework','frost','needle',['pierce','rapid'],'Pierce and rapid relic hits'],
     ['smokehouse','Smokehouse','fire','oil',['burn','poison'],'Burn and poison relic hits'],
-    ['dreamcraft','Dreamcraft','spirit','seal',['chill','shock'],'Chill and shock relic hits'],
-    ['field_medic','Field Medic','leaf','gourd',['mend','drain'],'Mend and drain relic hits'],
-    ['anvil_school','Anvil School','stone','hammer',['guard','strike'],'Guard and strike relic hits'],
-    ['fused_edge','Fused Edge','storm','coil',null,'Hits from forged relics']
+    ['dreamcraft','Dreamcraft','spirit','seal',['chill','shock','stun','freeze'],'Chill, shock, stun and freeze relic power'],
+    ['field_medic','Field Medic','leaf','gourd',['mend','drain','heal'],'Mend, drain and healing relic power'],
+    ['anvil_school','Anvil School','stone','hammer',['guard','strike','shield'],'Guard, strike and shield relic power'],
+    ['fused_edge','Fused Edge','storm','coil',null,'Power of forged relics']
   ];
   for(const [id,name,el,icon,styles,what] of disciplines)bonus(id,name,'Discipline',el,icon==='hammer'?'mallet':icon,.19,what,styles?{styles}:{forged:true});
   const defenses=[
@@ -140,6 +140,12 @@
     for(const [id,,,,styles] of disciplines)if(rankOf(r,id)&&(styles?styles.includes(d.style):d.recipe))extra+=magnitude(r,id);
     return 1+extra;
   }
+  function utilityMultiplier(r,d) {
+    if(!r)return 1;
+    let extra=read(r,d.element+'_focus');
+    for(const [id,,,,styles] of disciplines)if(rankOf(r,id)&&(styles?styles.includes(d.style):d.recipe))extra+=magnitude(r,id);
+    return 1+extra;
+  }
   function event(ev,kind,element,pattern,label,e,extra) {
     const v={kind,element,pattern,label,age:0,strength:1,...extra};
     if(e){v.targetUid=e.uid;v.enemyId=e.id;v.lane=e.lane;}
@@ -158,7 +164,7 @@
     return value;
   }
   function afterHit(r,enemies,e,damage,d,ev,rng) {
-    if(damage<=0)return;
+    if(damage<=0||['heal','shield','stun','freeze'].includes(d.style))return;
     const proc=id=>rankOf(r,id)>0&&rng()<magnitude(r,id);
     if(rankOf(r,'ricochet')||rankOf(r,'scatter')){
       const others=enemies.filter(target=>target!==e&&target.hp>0);
@@ -254,5 +260,5 @@
     }
     return out.map(d=>d.id);
   }
-  globalThis.Progression={upgrades,abilities,starterChoices,rankOf,apply,offer,describe,duration,cooldown,hitMultiplier,afterHit,incoming,healing,victory,dropBonus,tickAbilities};
+  globalThis.Progression={upgrades,abilities,starterChoices,rankOf,apply,offer,describe,duration,cooldown,hitMultiplier,utilityMultiplier,afterHit,incoming,healing,victory,dropBonus,tickAbilities};
 })();

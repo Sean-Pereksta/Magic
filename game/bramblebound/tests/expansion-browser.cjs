@@ -84,6 +84,100 @@ async function main(){
       results.push(spec.width+'px: saved late-region encounter, four held expansion relics, rendered combat'+(!spec.motion?' with reduced motion':'')+', item effects, 35-stop atlas, five-tier rarity table and working backpack/guide filters, final-region art, enemy counters, searchable counter gear; no errors or missing assets');
       await context.close();
     }
+    for(const width of [1440,390]){
+      const context=await browser.newContext({viewport:{width,height:width===390?844:1050}}),page=await context.newPage(),errors=[];
+      context.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
+      await page.goto(origin+'/game/bramblebound/');await page.locator('#title-play').waitFor();
+      const fixture=await page.evaluate(()=>{
+        const E=GameEngine,C=Catalog,p=E.freshProfile();E.start(p);const r=p.run;
+        const utility=['heal','shield','stun','freeze'].map(style=>Object.values(C.items).find(d=>d.style===style&&!d.recipe));
+        const final=Object.values(C.items).find(d=>d.style==='heal'&&d.fusionDepth===2);
+        const intermediate=C.items[final.recipe.find(id=>C.items[id].recipe)],partner=final.recipe.find(id=>id!==intermediate.id);
+        r.active=utility.map((d,i)=>({uid:i+1,id:d.id,level:10,cd:0,slot:i}));
+        r.pack=[{uid:5,id:intermediate.recipe[0],level:2.5,cd:0,slot:0},{uid:6,id:intermediate.recipe[1],level:7.25,cd:0,slot:1},{uid:7,id:partner,level:20.5,cd:0,slot:2}];r.nextUid=8;
+        p.seenItems=[...new Set([...r.active,...r.pack].map(it=>it.id))];
+        return {save:{game:'bramblebound',format:1,profile:E.validate(JSON.parse(JSON.stringify(p))),settings:{audio:false,motion:false}},intermediate:intermediate.id,final:final.id};
+      });
+      await context.addInitScript(save=>localStorage.setItem('bramblebound.profile.v1',JSON.stringify(save)),fixture.save);
+      await page.reload();await page.locator('#title-play').waitFor();await page.locator('#title-play').click();await page.locator('#run-btn').click();
+      for(const [uid,stat] of [[1,/healing power/i],[2,/shield power/i],[3,/stun duration/i],[4,/freeze duration/i]]){
+        await page.locator('#equipped .gear-slot[data-uid="'+uid+'"]').click();await page.locator('[data-selection="details"]').click();
+        const details=await page.locator('#dialog-body').innerText();assert.match(details,stat);assert.doesNotMatch(details,/base damage/i);assert.match(details,/deals no damage/i);
+        if(shots&&uid===4){fs.mkdirSync(shots,{recursive:true});await page.screenshot({path:path.join(shots,'utility-freeze-details-'+width+'.png'),fullPage:true});}
+        await page.locator('#close-btn').click();
+      }
+      const forge=async(uid,partner,level)=>{
+        // Forging selects its result; clear that selection before starting the
+        // next details flow so tapping it does not toggle it off.
+        const clear=page.locator('[data-selection="clear"]');if(await clear.isVisible())await clear.click();
+        await page.locator('#pack .gear-slot[data-uid="'+uid+'"]').click();await page.locator('[data-selection="details"]').click();
+        await page.locator('#dialog-body [data-gear="combine"]').click();await page.locator('[data-pair-with="'+partner+'"]').click();
+        assert.equal(await page.locator('#dialog-body .level-tag').innerText(),'LEVEL '+level);assert.doesNotMatch(await page.locator('#dialog-body').innerText(),/base damage/i);
+        if(shots&&level===21.5){fs.mkdirSync(shots,{recursive:true});await page.screenshot({path:path.join(shots,'utility-second-stage-preview-'+width+'.png'),fullPage:true});}
+        await page.locator('[data-do="forge"]').click();await page.locator('#modal').waitFor({state:'hidden'});
+      };
+      await forge(5,6,8.25);await page.locator('#pack .gear-slot[data-uid="8"]').waitFor();await forge(8,7,21.5);
+      const crafted=await page.evaluate(()=>JSON.parse(localStorage.getItem('bramblebound.profile.v1')).profile.run.pack);
+      assert.equal(crafted.length,1);assert.equal(crafted[0].id,fixture.final);assert.equal(crafted[0].level,21.5);
+      await page.locator('nav [data-nav="guide"]').click();
+      for(const [role,style] of [['Healing','heal'],['Shield','shield'],['Stun','stun'],['Freeze','freeze']]){
+        await page.locator('#guide-page [data-gear-role="'+role+'"]').click();
+        const cards=page.locator('#guide-page .guide-card[data-catalog]');await cards.first().waitFor();
+        const ids=await cards.evaluateAll(nodes=>nodes.map(n=>n.dataset.catalog));
+        assert.equal(await page.evaluate(({ids,style})=>ids.some(id=>Catalog.items[id].style===style),{ids,style}),true,role+' role must expose pure utility gear');
+      }
+      await page.locator('[data-guide-tab="recipes"]').click();
+      assert.match(await page.locator('#guide-page').innerText(),/one level above its highest-level ingredient/i);
+      assert.match(await page.locator('#guide-page').innerText(),/second-stage fusion/i);
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);
+      results.push(width+'px: pure utility labels, four role filters, fractional first/second-stage forge previews and crafted level 21.5 save; no page errors');await context.close();
+    }
+    for(const width of [1440,390]){
+      const context=await browser.newContext({viewport:{width,height:width===390?844:1050}}),page=await context.newPage(),errors=[];
+      context.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
+      await page.goto(origin+'/game/bramblebound/');await page.locator('#title-play').waitFor();
+      const fixture=await page.evaluate(()=>{
+        const E=GameEngine,C=Catalog,p=E.freshProfile();E.start(p);const r=p.run;
+        const base=style=>Object.values(C.items).find(d=>d.style===style&&!d.recipe).id;
+        const recipe=Object.values(C.items).find(d=>d.recipe?.includes(base('heal'))&&d.recipe.every(id=>!C.items[id].recipe)),compatible=recipe.recipe.find(id=>id!==base('heal'));
+        r.active=['stick',base('shield'),base('drain'),base('freeze')].map((id,i)=>({uid:i+1,id,level:1,cd:0,slot:i}));
+        r.pack=[{uid:5,id:base('heal'),level:10,cd:0,slot:0},{uid:6,id:base('rapid'),level:10,cd:0,slot:1},{uid:7,id:compatible,level:10,cd:0,slot:2}];r.nextUid=8;
+        p.seenItems=[...new Set([...r.active,...r.pack].map(it=>it.id))];
+        return {save:{game:'bramblebound',format:1,profile:E.validate(JSON.parse(JSON.stringify(p))),settings:{audio:false,motion:false}},healer:C.items[r.pack[0].id].name,weapon:C.items[r.pack[1].id].name,compatible:C.items[compatible].name};
+      });
+      await context.addInitScript(save=>localStorage.setItem('bramblebound.profile.v1',JSON.stringify(save)),fixture.save);
+      await page.reload();await page.locator('#title-play').waitFor();await page.locator('#title-play').click();await page.locator('#run-btn').click();
+      await page.locator('#pack .gear-slot[data-uid="5"]').click();await page.locator('#gear-comparison').waitFor();
+      assert.ok((await page.locator('#comparison-name').innerText()).includes(fixture.healer));
+      assert.equal(await page.locator('.comparison-target[data-compare-uid]').count(),4);
+      const placement=await page.evaluate(()=>({comparison:document.getElementById('gear-comparison').getBoundingClientRect().bottom,equipped:document.getElementById('equipped').getBoundingClientRect().top}));
+      assert.ok(placement.comparison<=placement.equipped,'comparison must appear above equipped cards');
+      const expected=await page.evaluate(()=>{
+        const p=JSON.parse(localStorage.getItem('bramblebound.profile.v1')).profile,r=p.run,selected=GameEngine.itemComparison(p,r.pack.find(it=>it.uid===5));
+        return r.active.map(it=>({uid:it.uid,stats:Object.fromEntries(Object.entries(GameEngine.itemComparison(p,it)).map(([key,value])=>[key,selected[key]-value]))}));
+      });
+      for(const target of expected){
+        const row=page.locator('.comparison-target[data-compare-uid="'+target.uid+'"]');
+        const deltas=await row.locator('.comparison-delta[data-stat]').evaluateAll(nodes=>nodes.map(el=>({stat:el.dataset.stat,value:Number(el.dataset.delta),text:el.textContent,title:el.title,label:el.getAttribute('aria-label')})));
+        assert.ok(deltas.length>0,'each equipped item needs its own comparison');
+        for(const delta of deltas){assert.ok(Math.abs(delta.value-target.stats[delta.stat])<1e-8,delta.stat+' delta should compare selected and equipped values');assert.ok(delta.title.length>5);assert.ok(delta.label&&delta.label.length>5);if(delta.value>0)assert.match(delta.text,/\+/);if(delta.value<0)assert.match(delta.text,/−|-/);}
+      }
+      const strike=page.locator('.comparison-target[data-compare-uid="1"]');
+      assert.ok(Number(await strike.locator('[data-stat="damage"]').getAttribute('data-delta'))<0);
+      assert.ok(Number(await strike.locator('[data-stat="heal"]').getAttribute('data-delta'))>0);
+      const effects=page.locator('#comparison-effects .comparison-effect[data-effect]');assert.ok(await effects.count()>0);
+      for(const effect of await effects.evaluateAll(nodes=>nodes.map(el=>({title:el.title,label:el.getAttribute('aria-label')})))){assert.ok(effect.title.length>5);assert.ok(effect.label&&effect.label.length>5);}
+      await page.locator('#comparison-effects [data-effect="style-heal"]').waitFor();
+      if(shots){fs.mkdirSync(shots,{recursive:true});await page.screenshot({path:path.join(shots,'backpack-comparison-'+width+'.png'),fullPage:true});}
+      await page.locator('#pack .gear-slot[data-uid="7"]').click();assert.ok((await page.locator('#comparison-name').innerText()).includes(fixture.compatible));
+      await page.locator('#modal').waitFor({state:'hidden'});
+      await page.locator('#pack .gear-slot[data-uid="6"]').click();assert.ok((await page.locator('#comparison-name').innerText()).includes(fixture.weapon));
+      await page.locator('#comparison-effects [data-effect="style-rapid"]').waitFor();assert.ok(Number(await strike.locator('[data-stat="damage"]').getAttribute('data-delta'))>0);
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+      await page.locator('[data-selection="clear"]').click();await page.locator('#gear-comparison').waitFor({state:'hidden'});
+      await page.locator('#equipped .gear-slot[data-uid="1"]').click();await page.locator('#gear-comparison').waitFor({state:'hidden'});
+      assert.deepEqual(errors,[]);results.push(width+'px: backpack comparison above equipped cards, exact signed deltas, effect icons and accessible tooltips, selection switching, no overflow or errors');await context.close();
+    }
     console.log(results.join('\n'));
   }finally{await browser.close();}
 }

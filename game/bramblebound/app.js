@@ -17,7 +17,17 @@
     mute:'M3 9h4l5-4v14l-5-4H3z M16 9l6 6m0-6-6 6',merge:'M4 4l8 8v8m8-16-8 8m-5 4 5 5 5-5',
     info:'M12 11v6m0-10v.4 M22 12a10 10 0 1 1-20 0 10 10 0 1 1 20 0z',chev:'M9 5l7 7-7 7',swap:'M3 8h16l-4-4m6 12H5l4 4',
     spark:'M12 2l2.5 7.5L22 12l-7.5 2.5L12 22l-2.5-7.5L2 12l7.5-2.5z',
-    trash:'M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 10v7m4-7v7',check:'M3 12l6 6L21 5'
+    trash:'M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 10v7m4-7v7',check:'M3 12l6 6L21 5',
+    shield:'M12 2 3 6v6q0 6 9 10 9-4 9-10V6z',
+    droplet:'M12 2C10 7 4 10 4 15a8 8 0 0 0 16 0c0-5-6-8-8-13z M8 15q0 4 4 4',
+    snowflake:'M12 2v20M3 7l18 10M3 17 21 7M8 4l4 3 4-3M8 20l4-3 4 3M3 11l4 1-1-5M21 13l-4-1 1 5',
+    bolt:'M13 2 4 14h7l-1 8 10-13h-8z',clock:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7v6l4 2',
+    chill:'M10 3v11a4 4 0 1 0 4 0V3z M18 5h3m-3 4h3M12 8v9',
+    flame:'M13 2q1 6-3 9-2-2-2-4-6 5-4 11c3 7 13 6 16 0 3-6-3-9-3-10q0 5-4 6 2-7 0-12z',
+    mountain:'m2 20 7-13 4 7 3-5 6 11z M7 11l2 2 2-2',
+    ghost:'M4 21V10a8 8 0 0 1 16 0v11l-4-3-4 3-4-3z M8 10v2m8-2v2',
+    echo:'M6 6a8 8 0 1 1-1 11M2 3l4 3 3-4M12 7v6l3 1',
+    vial:'M8 2h8M9 2v7L4 18q-1 4 3 4h10q4 0 3-4l-5-9V2M7 15h10'
   };
   function icon(name){return '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="'+(glyphs[name]||glyphs.spark)+'"/></svg>';}
   function ink(root=document){root.querySelectorAll('i[data-glyph]:empty').forEach(n=>n.innerHTML=icon(n.dataset.glyph));}
@@ -206,15 +216,61 @@
     button.setAttribute('aria-pressed',String(!!partnerView));button.disabled=!count&&!partnerView;
     button.title=partnerView?'Show every pack slot':'Show compatible items across your backpack and equipment';
   }
+  const comparisonStats=[
+    ['damage','swords','Base direct damage per activation; includes level and build bonuses. Enemy defenses and conditional effects vary.'],
+    ['lifesteal','droplet','Health stolen as a percentage of damage; includes healing bonuses.'],
+    ['heal','heart','Potential HP restored per activation, before the maximum health cap.'],
+    ['shield','shield','Potential shield per activation, before the shield capacity cap.'],
+    ['stun','bolt','Stun duration per activation in seconds.'],
+    ['freeze','snowflake','Freeze duration per activation in seconds.'],
+    ['chill','chill','Chill duration per activation in seconds.'],
+    ['cooldown','clock','Cooldown in seconds with the current build; a shorter cooldown is better.']
+  ];
+  const comparisonNumber=n=>{
+    const absolute=Math.abs(n);
+    return absolute>0&&absolute<.01?'<0.01':absolute.toLocaleString('en-US',{notation:absolute>=1000?'compact':'standard',maximumFractionDigits:absolute<1?2:1});
+  };
+  function comparisonDelta(key,glyph,description,value,baseline,source,target){
+    const delta=value-baseline;if(Math.abs(delta)<.0001)return '';
+    const percent=key==='lifesteal',seconds=['stun','freeze','chill','cooldown'].includes(key),scale=percent?100:1;
+    const signed=(delta>0?'+':'−')+comparisonNumber(delta*scale)+(percent?'%':seconds?'s':'');
+    const exact=n=>Number((n*scale).toFixed(3)).toLocaleString('en-US')+(percent?'%':seconds?'s':'');
+    const hint=description+' '+C.items[source.id].name+' (Lv '+lv(source.level)+'): '+exact(value)+'. '+C.items[target.id].name+' (Lv '+lv(target.level)+'): '+exact(baseline)+'. Difference '+(delta>0?'+':'−')+exact(Math.abs(delta))+(percent?' (percentage points).':'.');
+    return '<span class="comparison-delta '+((key==='cooldown'?delta<0:delta>0)?'gain':'loss')+'" data-stat="'+key+'" data-delta="'+delta+'" tabindex="0" title="'+esc(hint)+'" aria-label="'+esc(hint)+'">'+icon(glyph)+'<b>'+signed+'</b></span>';
+  }
+  function comparisonEffect(key,glyph,description,color){
+    return '<span class="comparison-effect" data-effect="'+esc(key)+'" tabindex="0" title="'+esc(description)+'" aria-label="'+esc(description)+'"'+(color?' style="--effect:'+color+'"':'')+'>'+icon(glyph)+'</span>';
+  }
+  function renderComparison(r){
+    const box=$('gear-comparison'),source=selectedUid!==null&&r.pack.find(it=>it.uid===selectedUid);
+    box.hidden=!source;if(!source){box.dataset.signature='';return;}
+    const p=equipmentProfile(),d=C.items[source.id],stats=E.itemComparison(p,source);
+    const targets=r.active.slice().sort((a,b)=>a.slot-b.slot).map(target=>{
+      const baseline=E.itemComparison(p,target),hint=d.name+' · Lv '+lv(source.level)+' compared with equipped '+C.items[target.id].name+' · Lv '+lv(target.level)+' in slot '+(target.slot+1);
+      const deltas=comparisonStats.map(([key,glyph,description])=>comparisonDelta(key,glyph,description,stats[key]||0,baseline[key]||0,source,target)).join('');
+      return '<div class="comparison-target" data-compare-uid="'+target.uid+'" data-compare-slot="'+target.slot+'" style="grid-column:'+(target.slot+1)+'" role="group" aria-label="'+esc(hint)+'"><span class="comparison-item" title="'+esc(hint)+'" aria-label="'+esc(hint)+'">'+A.svg(target.id,21)+'</span><div class="comparison-values">'+(deltas||'<span class="comparison-equal" title="Same compared stats" aria-label="Same compared stats">=</span>')+'</div></div>';
+    }).join('');
+    const styleIcons={heal:'heart',mend:'heart',shield:'shield',guard:'shield',stun:'bolt',shock:'bolt',freeze:'snowflake',chill:'chill',drain:'droplet',burn:'flame',poison:'vial',rapid:'speed',pierce:'target',strike:'swords'};
+    const elementIcons={leaf:'sprout',fire:'flame',frost:'snowflake',storm:'bolt',stone:'mountain',spirit:'ghost'};
+    const utility=Object.hasOwn(C.utilityStyles,d.style);
+    let effects=comparisonEffect('style-'+d.style,styleIcons[d.style]||'spark',J.styleLabel(d.style)+'. '+C.effects[d.style],C.elements[d.element].color);
+    effects+=comparisonEffect('element-'+d.element,elementIcons[d.element],elName(d.element)+'. '+(utility?'Affinity for this utility relic; offensive elemental hit effects do not activate.':J.elementText[d.element]),C.elements[d.element].color);
+    if(d.special)effects+=comparisonEffect('special-'+d.special,'spark',d.special+'. '+d.specialDescription,'#f0cc83');
+    if(d.counter)effects+=comparisonEffect('counter-'+d.counter,'shield',d.counter+'. '+d.counterDescription,'#9cdec8');
+    for(const level of [3,5,10])if(source.level>=level)effects+=comparisonEffect('milestone-'+level,utility?styleIcons[d.style]:level===3?'echo':level===5?'shield':'spark','Level '+level+'. '+d.milestones[level],'#d4c6ee');
+    const content='<div class="comparison-title"><span aria-hidden="true">'+A.svg(source.id,19)+'</span><b id="comparison-name">'+esc(d.name)+' · Lv '+lv(source.level)+'</b></div><div class="comparison-grid">'+targets+'</div><div id="comparison-effects" aria-label="Selected relic effects">'+effects+'</div>';
+    if(box.dataset.signature!==content){box.innerHTML=content;box.dataset.signature=content;}
+  }
   function selectGear(uid){
     const r=displayRun(),item=byUid(r,uid);if(!item)return;
     if(r.phase==='dead')return showDialog('item',{uid});
-    if(selectedUid!==null&&uid!==selectedUid&&E.previewCombine(equipmentProfile(),selectedUid,uid).ok){
+    if(selectedUid!==null&&uid!==selectedUid&&(!r.pack.includes(item)||partnerView)&&E.previewCombine(equipmentProfile(),selectedUid,uid).ok){
       showDialog('confirm-pair',{uid:selectedUid,other:uid,fromGrid:true});return;
     }
     exitPartnerView();
     selectedUid=uid===selectedUid?null:uid;
     renderGear(r);
+    if(!$('gear-comparison').hidden)$('gear-comparison').scrollIntoView({block:'nearest'});
     const slot=document.querySelector('.gear-slot[data-uid="'+uid+'"]');
     slot?.focus({preventScroll:true});
   }
@@ -277,7 +333,7 @@
     if(dragging?.moved)markPartners();
   }
   function renderGear(r){
-    refreshSelection(r);renderSelection(r);
+    refreshSelection(r);renderSelection(r);renderComparison(r);
     $('gear-count').textContent=r.active.length+' / '+E.activeCapacity;
     $('equipped').innerHTML=Array.from({length:E.activeCapacity},(_,i)=>gearSlot(r,'active',i)).join('');
     renderPack(r);
@@ -359,6 +415,7 @@
     }
     if(!titleOpen&&active&&r.phase==='dead'&&debriefedRun!==r&&!modal.open&&!dragging)showDialog('debrief');
     updateGrowth(r);
+    if(selectedUid!==null)renderComparison(r);
     $('hp-num').textContent=Math.ceil(r.hp)+' / '+r.maxHp;$('hp-bar').style.width=100*r.hp/r.maxHp+'%';
     const afflicted=Object.entries(r.ailments||{}).filter(([,n])=>n>.1).map(([key])=>({corrosion:'Corroded',snare:'Entangled',hex:'Hexed',burn:'Scorched',chill:'Frostbitten',shock:'Static'}[key]));
     $('hero-sub').textContent=afflicted.length?afflicted.join(' · '):r.shield>.1?'Shield +'+Math.ceil(r.shield):'Trailwalker · '+(active?r.foes:0)+' defeated';
@@ -408,7 +465,7 @@
       const it=type==='item'?byUid(r,data.uid):{id:data.id,level:1},d=C.items[it?.id];if(!d)return closeDialog();
       const held=type==='item'&&r.active.some(i=>i.uid===it.uid);
       kicker=type==='catalog'?'RELIC DOSSIER':held?'EQUIPPED RELIC':'BACKPACK RELIC';
-      html='<div class="dialog-lead">'+tile(d.id,55)+'<div style="--el:'+C.elements[d.element].color+'"><h2 class="dialog-title">'+esc(d.name)+'</h2><div class="eyebrow">'+elName(d.element)+' / '+esc(J.styleLabel(d.style))+' / Level '+lv(it.level)+'</div></div></div><p class="body-copy">'+esc(d.description)+'</p><div class="stat-row"><span class="stat-pill">'+number(E.itemPower(profile,it))+' base damage</span><span class="stat-pill">'+Number(E.itemCooldown(it,r).toFixed(2))+'s cooldown</span></div>';
+      html='<div class="dialog-lead">'+tile(d.id,55)+'<div style="--el:'+C.elements[d.element].color+'"><h2 class="dialog-title">'+esc(d.name)+'</h2><div class="eyebrow">'+elName(d.element)+' / '+esc(J.styleLabel(d.style))+' / Level '+lv(it.level)+'</div></div></div><p class="body-copy">'+esc(d.description)+'</p><div class="stat-row"><span class="stat-pill">'+esc(J.relicStat(equipmentProfile(),it))+'</span><span class="stat-pill">'+Number(E.itemCooldown(it,r).toFixed(2))+'s cooldown</span></div>';
       html+=J.tierBadge(d,true)+'<div class="stat-row"><span class="stat-pill">Rarity power ×'+C.rarities[d.rarity].powerScale+' · included above</span></div>'+J.relicEffects(d);
       if(d.recipe)html+='<div class="subhead">Fusion recipe</div><div class="chip-row">'+d.recipe.map(id=>'<button class="outline compact" data-catalog="'+id+'">'+esc(C.items[id].name)+'</button>').join(' + ')+'</div>';
       html+=J.relicSource(d);
@@ -428,7 +485,7 @@
       html+='<div class="dialog-actions"><button class="outline" data-uid="'+it.uid+'">Back</button><button class="flat" data-find-recipes="'+d.id+'">Find recipes →</button></div>';
     }else if(type==='confirm-pair'){
       const a=byUid(r,data.uid),b=byUid(r,data.other),res=E.previewCombine(equipmentProfile(),data.uid,data.other);if(!res.ok)return closeDialog();
-      kicker=a.id===b.id?'LEVEL UPGRADE':'NEW FUSION';const out=C.items[res.id];html='<div class="dialog-lead">'+tile(out.id,56)+'<div><h2 class="dialog-title">'+esc(out.name)+'</h2><span class="level-tag">LEVEL '+lv(res.level)+'</span> '+J.tierBadge(out)+'</div></div><p class="body-copy">'+esc(out.description)+'</p><div class="stat-row"><span class="stat-pill">'+number(E.itemPower(profile,{id:out.id,level:res.level}))+' base damage</span><span class="stat-pill">'+out.cooldown+'s cooldown</span></div><p class="body-copy">Uses '+esc(C.items[a.id].name)+' (Lv '+lv(a.level)+') and '+esc(C.items[b.id].name)+' (Lv '+lv(b.level)+'). The result goes into your '+(r.active.includes(a)||r.active.includes(b)?'equipped slots':'backpack')+'.</p><div class="dialog-actions"><button class="primary" data-do="forge">'+icon('merge')+(a.id===b.id?'Upgrade item':'Fuse items')+'</button>'+(data.fromGrid?'<button class="outline" data-do="cancel-pair">Cancel</button>':'<button class="outline" data-gear="combine">Back</button>')+'</div>';
+      kicker=a.id===b.id?'LEVEL UPGRADE':'NEW FUSION';const out=C.items[res.id];html='<div class="dialog-lead">'+tile(out.id,56)+'<div><h2 class="dialog-title">'+esc(out.name)+'</h2><span class="level-tag">LEVEL '+lv(res.level)+'</span> '+J.tierBadge(out)+'</div></div><p class="body-copy">'+esc(out.description)+'</p><div class="stat-row"><span class="stat-pill">'+esc(J.relicStat(equipmentProfile(),{id:out.id,level:res.level}))+'</span><span class="stat-pill">'+out.cooldown+'s cooldown</span></div><p class="body-copy">Uses '+esc(C.items[a.id].name)+' (Lv '+lv(a.level)+') and '+esc(C.items[b.id].name)+' (Lv '+lv(b.level)+'). The result goes into your '+(r.active.includes(a)||r.active.includes(b)?'equipped slots':'backpack')+'.</p><div class="dialog-actions"><button class="primary" data-do="forge">'+icon('merge')+(a.id===b.id?'Upgrade item':'Fuse items')+'</button>'+(data.fromGrid?'<button class="outline" data-do="cancel-pair">Cancel</button>':'<button class="outline" data-gear="combine">Back</button>')+'</div>';
     }else if(type==='discard'){
       const it=byUid(r,data.uid);if(!it)return closeDialog();
       kicker='BACKPACK';html='<h2 class="dialog-title">Discard '+esc(C.items[it.id].name)+'?</h2><p class="body-copy">Pip will leave this level '+lv(it.level)+' item on the road.</p><div class="dialog-actions"><button class="danger" data-do="drop">Discard item</button><button class="outline" data-uid="'+it.uid+'">Keep item</button></div>';
@@ -450,15 +507,16 @@
       kicker='THE TRAIL HANDBOOK';html='<h2 class="dialog-title">Walking with Pip</h2>'+[
         ['On the road','Pip starts alone against one foe. The first guardian arrives with two escorts on wave 4. Groups reach four foes on wave 7 and five on wave 11. Every fourth wave is a guardian.'],
         ['Elements with a purpose','Leaf poisons and roots; Fire burns and ignites poison; Frost chills and freezes; Storm disrupts and chains; Stone fractures defenses; Spirit marks foes and returns protective energy. The field guide explains the timings and cross-element reactions.'],
+        ['Support and control','Healing-only relics restore HP, shield-only relics build protection, stun-only relics interrupt a foe, and freeze-only relics encase a foe in ice. Stun and freeze stop enemy attack charge for their listed duration. These roles deal zero damage and do not trigger elemental hit effects. Pair them with an offensive relic to finish the fight.'],
         ['Pack a counter','New backpacks include a Dewglass Vial. Equip it to cleanse ailments whenever it activates. Other relics counter venom, static, frostbite, entanglement, hexes, corrosion, explosive death bursts and wards. Inspect a foe to see its effect and recommended counter relics.'],
         ['Signature relics','The expanded road adds twelve special weapon effects, including ricochets, executions, ailment ruptures, poison blooms and delayed aftershocks. Overload stores charge on its own relic and bursts every third activation. Search the field guide by signature or counter name.'],
-        ['Pack for the next fight','Four equipped relics attack on independent cooldowns. Your backpack holds 400 more. Search by name, element, or effect, or jump to a page by slot number. Drag an item to an empty slot to move it. Drop onto a matching recipe to fuse, or onto an unrelated item to swap. Select a relic to light up every valid partner. Tap a glowing item to preview the result, or choose Details to equip or discard.'],
+        ['Pack for the next fight','Four equipped relics activate on independent cooldowns. Your backpack holds 400 more. Select a backpack relic to compare its damage, lifesteal and effects with every equipped relic; green numbers improve that stat and red numbers reduce it. Hover or focus an icon for details. Search by name, element, or effect, or jump to a page by slot number. Drag an item to an empty slot to move it. Drop onto a matching recipe to fuse, or onto an unrelated item to swap. Select a relic to light up every valid partner. Choose Matches, then tap a glowing partner to preview a fusion, or choose Details to equip or discard.'],
         ['Trail finds','Every defeated enemy can drop a relic into your backpack during the fight. The chance of at least one drop across a full wave is 24%, or 48% in a guardian wave. When the pack is full, a matching copy at the same level upgrades automatically. Other finds stay on the road.'],
         ['Leveling up','Time on the trail and defeated enemies earn XP. At each level, choose one of three random upgrades. Passive bonuses stack, and learned abilities cast automatically on separate cooldowns. Expedition ranks reset when you start another run.'],
         ['Group encounters','Enemies approach together and charge their attacks independently. A green bar shows health, a gold bar shows windup, and a red warning marks an imminent strike. Area attacks can hit multiple foes.'],
         ['Relic rarity','Common, Uncommon, Rare, Epic and Mythic gear has ×1, ×1.12, ×1.28, ×1.5 and ×1.8 rarity power. Stronger weapons and richer special effects sit in higher tiers. High tiers drop less often; guardian waves and later regions improve your odds. Rarity is rolled before duplicate or ingredient bonuses. The atlas lists exact local chances and the field guide filters every tier.'],
-        ['At the forge','Two matching copies at the same level gain one level, with no final tier. Different ingredients in a listed recipe give their exact average level. A level 2 and a level 3 make a level 2.5 relic.'],
-        ['Growing stronger','Level 3 adds an echo strike, level 5 adds a shield ring, and level 10 adds a damage nova. All three effects stack.'],
+        ['At the forge','Two matching copies at the same level gain one level, with no final tier. Every listed fusion gains one level above its highest-level ingredient. Level 2 + level 3 makes level 4; level 2.5 + level 3.5 makes level 4.5. Fuse crafted relics again for second-stage upgrades.'],
+        ['Growing stronger','Offensive relics gain an echo strike at level 3, a shield ring at level 5 and a damage nova at level 10. Healing, shield, stun and freeze relics gain stronger utility at those milestones and continue to deal zero damage. Inspect a relic for its level effects.'],
         ['After a fall','Earn one seed for setting out, one per cleared wave, and one extra per four defeats. Spend seeds on health, damage, or replay speed in Legacy.'],
         ['Take your time','Gear details, the field guide, and settings pause battle. Space pauses or resumes on the road. Profiles save locally. Use Firebase cloud saves from the title menu or settings to reopen a password-protected journey on another device. Exported profiles remain available as backups.']
       ].map(([t,p])=>'<div class="dialog-section"><h3>'+t+'</h3><p class="body-copy">'+p+'</p></div>').join('');
@@ -741,7 +799,7 @@
           if(ev.kind==='round'&&ev.pattern==='encounter')encounterAge=0;
           if(ev.kind==='kill')defeated=ev.enemy||C.enemies.find(foe=>foe.id===ev.enemyId);
           if(['attack','enemy','hit','kill','heal','milestone','status','loot','ability','special'].includes(ev.kind)){
-            if(ev.kind==='attack'){lastHeld=ev.itemId||r.active.find(it=>C.items[it.id].element===ev.element)?.id;heldFor=.7;}
+            if(ev.kind==='attack'||ev.itemId&&['heal','shield','stun','freeze'].includes(C.items[ev.itemId]?.style)){lastHeld=ev.itemId||r.active.find(it=>C.items[it.id].element===ev.element)?.id;heldFor=.7;}
             if(prefs.motion||['enemy','hit','attack','heal','milestone','ability','special'].includes(ev.kind))effects.push({...ev,age:prefs.motion?0:.24});
           }
           sound(ev.kind==='attack'&&ev.label?.includes('WEAK')?'crit':ev.kind==='special'?'ability':ev.kind,ev.element);
@@ -759,7 +817,7 @@
         heldId:heldFor>0&&lastHeld?lastHeld:v.active[0]?.id,
         heldLevel:(v.active.find(it=>it.id===(heldFor>0&&lastHeld?lastHeld:v.active[0]?.id))||v.active[0])?.level||1,heroShield:v.shield,equipped:v.active.map(it=>({id:it.id,level:it.level})),heroAilments:v.ailments};
       const still=!animating||(!prefs.motion&&!effects.length);
-      const stillFrame=still?[v.region,v.phase,v.round,v.hp,v.shield,v.enemies.map(e=>[e.uid,Math.ceil(e.hp),Math.floor(e.attackProgress*8),e.fracture,e.haunt,e.chill>0,e.rooted>0,e.stun>0].join('-')).join(),view.heldId,view.heldLevel,JSON.stringify(v.ailments),view.distance,innerWidth,innerHeight].join('|'):'';
+      const stillFrame=still?[v.region,v.phase,v.round,v.hp,v.shield,v.enemies.map(e=>[e.uid,Math.ceil(e.hp),Math.floor(e.attackProgress*8),e.fracture,e.haunt,e.chill>0,e.rooted>0,e.stun>0,e.freeze>0].join('-')).join(),view.heldId,view.heldLevel,JSON.stringify(v.ailments),view.distance,innerWidth,innerHeight].join('|'):'';
       if(!still||stillFrame!==lastStillFrame)WorldArt.draw($('world'),view,dt);
       lastStillFrame=stillFrame;
     }

@@ -53,6 +53,12 @@
   };
   const items = {};
   const milestones = {3:'Echo • An afterimage follows each activation for 40% damage.',5:'Guard pulse • Each activation adds a shield in a visible ring.',10:'Nova • Each activation adds a burst for 65% damage.'};
+  const utilityStyles = {
+    heal:{name:'Healing',role:'healing',milestones:{3:'Echo • An afterglow adds 40% more healing.',5:'Renewal • Healing grows by another 20% of relic power.',10:'Bloom • A restorative pulse adds 65% more healing.'}},
+    shield:{name:'Protection',role:'protection',milestones:{3:'Echo • A second ring adds 40% more shield.',5:'Bastion • Shield grows by another 20% of relic power.',10:'Sanctuary • A ward pulse adds 65% more shield.'}},
+    stun:{name:'Stun',role:'control',milestones:{3:'Echo • The interruption lasts 40% longer.',5:'Stillness • Stun duration grows by another 20%.',10:'Thunderlock • Stun duration grows by another 65%.'}},
+    freeze:{name:'Freeze',role:'control',milestones:{3:'Echo • The freeze lasts 40% longer.',5:'Deep winter • Freeze duration grows by another 20%.',10:'Permafrost • Freeze duration grows by another 65%.'}}
+  };
   const effects = {
     strike:'Strikes once each cooldown.', rapid:'A second blow follows after 0.13 seconds for 23% of the initial hit’s damage.',
     burn:'Sets the target on fire. The burn starts at 60% of the hit’s damage and smolders over time.',
@@ -60,11 +66,18 @@
     chill:'Chills the target for 2.1 seconds, halving its attack-meter gain.', shock:'Interrupts the attack meter for 0.44 seconds. Overlapping shocks can hold it for up to 0.95 seconds.',
     pierce:'Bypasses a foe’s armor reduction and its protective ward.', guard:'Deals damage and grants shield equal to 60% of relic power. Total shield can reach 40% of maximum HP.',
     drain:'Steals health equal to 23% of the HP removed by the initial hit. Weakness and resistance change the amount stolen.',
-    mend:'Hits a foe and restores HP equal to 55% of relic power. Healing is independent of the damage the foe takes.'
+    mend:'Hits a foe and restores HP equal to 55% of relic power. Healing is independent of the damage the foe takes.',
+    heal:'Restores HP equal to relic power. Deals no damage and applies no offensive elemental effects.',
+    shield:'Builds a shield equal to relic power, up to 40% of maximum HP. Deals no damage and applies no offensive elemental effects.',
+    stun:'Stuns one foe, stopping its attack meter. Duration grows with relic level and potency. Deals no damage.',
+    freeze:'Freezes one foe, stopping its attack meter and movement. Duration grows with relic level and potency. Deals no damage.'
   };
   function item(id,name,element,style,power,cooldown,icon,flavor,recipe=null,rarity='common',unlockRound=1,dropRegion=null) {
-    items[id]={id,name,element,style,power,cooldown,icon,description:flavor+' '+effects[style],milestones,
+    const utility=utilityStyles[style];
+    items[id]={id,name,element,style,power,cooldown,icon,description:flavor+' '+effects[style],milestones:utility?.milestones||milestones,
+      role:utility?.role||'damage',dealsDamage:!utility,effectDescription:effects[style],fusionDepth:0,
       rarity,unlockRound,unlockRegion:Math.floor((unlockRound-1)/4),dropRegion};
+    if(style==='stun'||style==='freeze')items[id].duration=style==='stun'?.75:1;
     if(recipe) items[id].recipe=recipe;
   }
   // Base relics join the regular drop pool. Fusion records are defined below.
@@ -254,6 +267,37 @@
     item(id,name,el,style,power,cd,icon,flavor,null,'common',unlock,region);
     Object.assign(items[id],{counter,counterDescription:counterText[counter]});signatures[id]=special;
   }
+  // Dedicated support relics spend every activation on a single purpose. They
+  // carry no damaging signatures; even their milestone echoes remain support.
+  const supportFinds=[
+    ['dewdrop_chalice','Dewdrop Chalice','leaf','heal',8,2.8,'cup','Morning dew beads along the lip of a living flower.'],
+    ['hearth_tea','Hearth Tea','fire','heal',9,3.1,'gourd','A little earthen pot keeps its soothing tea warm.'],
+    ['snowmelt_phial','Snowmelt Phial','frost','heal',7,2.5,'vial','The first clear water of spring rests in this frosted bottle.'],
+    ['rain_pearl','Rain Pearl','storm','heal',8,2.7,'orb','Gentle rain circles the pearl without falling away.'],
+    ['mineral_salve','Mineral Salve','stone','heal',11,3.4,'mortar','A pale clay poultice closes small wounds.'],
+    ['kindred_candle','Kindred Candle','spirit','heal',9,2.95,'lantern','Its warm flame remembers every friend along the road.'],
+    ['barkward_charm','Barkward Charm','leaf','shield',10,3,'brooch','Layers of soft bark open into a protective shell.'],
+    ['ember_screen','Ember Screen','fire','shield',11,3.2,'fan','A curtain of harmless embers turns incoming blows.'],
+    ['iceward_mirror','Iceward Mirror','frost','shield',9,2.7,'mirror','The face reflects a quiet wall of blue ice.'],
+    ['static_canopy','Static Canopy','storm','shield',8,2.5,'kite','A small cloud spreads a charged shelter overhead.'],
+    ['granite_ward','Granite Ward','stone','shield',13,3.45,'shield','Six smooth stones lock together into a floating wall.'],
+    ['moonveil_spool','Moonveil Spool','spirit','shield',10,2.9,'ribbon','Silver thread weaves a soft mantle around its bearer.'],
+    ['snaproot_totem','Snaproot Totem','leaf','stun',8,3.2,'idol','A tap of the root stills a foe without drawing blood.'],
+    ['flashpowder_pouch','Flashpowder Pouch','fire','stun',9,3.4,'box','A bright, soundless flash steals a moment of attention.'],
+    ['hushbell','Hushbell','frost','stun',7,3,'bell','Its note leaves the air too still for a hostile strike.'],
+    ['thunderclap_cymbal','Thunderclap Cymbal','storm','stun',10,3.3,'gong','One clean clap arrests an enemy in mid-motion.'],
+    ['stillstone_seal','Stillstone Seal','stone','stun',11,3.6,'seal','The old mountain sigil commands a moment of stillness.'],
+    ['dreamcatcher','Dreamcatcher','spirit','stun',8,3.1,'net','Gentle dream threads hold a restless mind for a heartbeat.'],
+    ['winterseed','Winterseed','leaf','freeze',8,3.7,'seed','A sleeping winter waits inside the silver seed coat.'],
+    ['coldflame_lantern','Coldflame Lantern','fire','freeze',9,3.9,'lantern','The pale flame draws warmth away without scorching.'],
+    ['glacier_hourglass','Glacier Hourglass','frost','freeze',10,3.8,'hourglass','Every falling crystal holds a second of frozen time.'],
+    ['sleetwind_chime','Sleetwind Chime','storm','freeze',8,3.5,'bell','Its clear note wraps a foe in motionless sleet.'],
+    ['frostsalt_geode','Frostsalt Geode','stone','freeze',12,4.1,'rock','A hollow stone grows a new lining of bitter frost.'],
+    ['pale_moon_orb','Pale Moon Orb','spirit','freeze',9,3.6,'orb','A winter moon leaves its reflection frozen in the air.']
+  ];
+  for(const [id,name,element,style,power,cd,icon,flavor] of supportFinds){
+    item(id,name,element,style,power,cd,icon,flavor,null,'common',1,Object.keys(elements).indexOf(element));
+  }
   // Recipes are hand matched; order of ingredients is irrelevant.
   const recipes = [
     ['briar','Briar Scepter','stick','thorn','leaf','poison',14,2.1,'staff'],
@@ -418,6 +462,81 @@
     ['atlas_of_returns','Atlas of Returns','orrery_wand','hourglass','spirit','drain',34,2.45,'tome','soulmark']
   ];
   for(const row of farFusions){recipes.push(row.slice(0,9));signatures[row[0]]=row[9];}
+  recipes.push(
+    ['blossom_grail','Blossom Grail','dewdrop_chalice','gourd','leaf','heal',16,2.65,'cup'],
+    ['clover_fountain','Clover Fountain','dewdrop_chalice','clover','leaf','heal',17,2.6,'gourd'],
+    ['sunbrew_kettle','Sunbrew Kettle','hearth_tea','torch','fire','heal',18,2.8,'gourd'],
+    ['emberbalm_censer','Emberbalm Censer','hearth_tea','coalheart_warmer','fire','heal',18,2.75,'censer'],
+    ['springwater_ampoule','Springwater Ampoule','snowmelt_phial','shard','frost','heal',16,2.3,'vial'],
+    ['snowpetal_brooch','Snowpetal Brooch','snowmelt_phial','ribbon','frost','heal',17,2.4,'brooch'],
+    ['cloudburst_chalice','Cloudburst Chalice','rain_pearl','gourd','storm','heal',17,2.5,'cup'],
+    ['rainbow_rosary','Rainbow Rosary','rain_pearl','bead','storm','heal',18,2.55,'beads'],
+    ['earthspring_bowl','Earthspring Bowl','mineral_salve','mortar','stone','heal',22,2.95,'mortar'],
+    ['amberhoney_jar','Amberhoney Jar','mineral_salve','acorn','leaf','heal',20,2.8,'cup'],
+    ['soulsalve_lamp','Soulsalve Lamp','kindred_candle','wick','spirit','heal',19,2.7,'lantern'],
+    ['pilgrim_hymn','Pilgrim’s Hymn','kindred_candle','bead','spirit','heal',18,2.65,'harpbow'],
+    ['oakbark_bastion','Oakbark Bastion','barkward_charm','shell','leaf','shield',21,2.8,'shield'],
+    ['thornweave_mantle','Thornweave Mantle','barkward_charm','nettle','leaf','shield',20,2.7,'scarf'],
+    ['cinder_sanctuary','Cinder Sanctuary','ember_screen','coal','fire','shield',23,2.95,'fan'],
+    ['hearthguard_lantern','Hearthguard Lantern','ember_screen','torch','fire','shield',22,2.8,'lantern'],
+    ['snowglass_barrier','Snowglass Barrier','iceward_mirror','bell','frost','shield',20,2.55,'mirror'],
+    ['rimeplate_aegis','Rimeplate Aegis','iceward_mirror','glacier_sai','frost','shield',21,2.5,'aegis'],
+    ['stormsilk_parasol','Stormsilk Parasol','static_canopy','sail','storm','shield',18,2.3,'parasol'],
+    ['faraday_kite','Faraday Kite','static_canopy','washer','storm','shield',19,2.25,'kite'],
+    ['mountainheart_wall','Mountainheart Wall','granite_ward','idol','stone','shield',27,3.1,'pavise'],
+    ['runic_refuge','Runic Refuge','granite_ward','runic_pavise','stone','shield',26,2.95,'shield'],
+    ['silverthread_veil','Silverthread Veil','moonveil_spool','crown','spirit','shield',21,2.65,'veil'],
+    ['dreamwoven_canopy','Dreamwoven Canopy','moonveil_spool','mask','spirit','shield',22,2.7,'scarf'],
+    ['rootlock_totem','Rootlock Totem','snaproot_totem','stick','leaf','stun',17,2.95,'idol'],
+    ['pollen_hush','Pollen Hush','snaproot_totem','seed','leaf','stun',16,2.8,'puffer'],
+    ['dayflash_prism','Dayflash Prism','flashpowder_pouch','marble','fire','stun',19,3.05,'prism'],
+    ['sunblink_box','Sunblink Box','flashpowder_pouch','matchbox','fire','stun',18,2.9,'box'],
+    ['silence_chimes','Silence Chimes','hushbell','flute','frost','stun',16,2.8,'bell'],
+    ['stillwinter_gong','Stillwinter Gong','hushbell','snowball','frost','stun',18,2.9,'gong'],
+    ['skylock_cymbal','Skylock Cymbal','thunderclap_cymbal','coil','storm','stun',21,3,'gong'],
+    ['stormpause_fork','Stormpause Fork','thunderclap_cymbal','fork','storm','stun',20,2.95,'fork'],
+    ['mountains_command','Mountain’s Command','stillstone_seal','tile','stone','stun',23,3.25,'tablet'],
+    ['gravity_signet','Gravity Signet','stillstone_seal','mallet','stone','stun',22,3.1,'seal'],
+    ['reverie_net','Reverie Net','dreamcatcher','fan','spirit','stun',17,2.85,'net'],
+    ['slumber_score','Slumber Score','dreamcatcher','seal','spirit','stun',18,2.8,'tome'],
+    ['frostbloom_seed','Frostbloom Seed','winterseed','thorn','leaf','freeze',17,3.4,'seed'],
+    ['winterorchid_cup','Winterorchid Cup','winterseed','acorn','leaf','freeze',18,3.35,'cup'],
+    ['blueflame_beacon','Blueflame Beacon','coldflame_lantern','torch','fire','freeze',19,3.55,'lantern'],
+    ['coldstar_censer','Coldstar Censer','coldflame_lantern','coal','fire','freeze',20,3.6,'censer'],
+    ['deepwinter_glass','Deepwinter Glass','glacier_hourglass','shard','frost','freeze',21,3.45,'hourglass'],
+    ['stillfrost_mirror','Stillfrost Mirror','glacier_hourglass','mirror','frost','freeze',22,3.4,'mirror'],
+    ['northwind_bells','Northwind Bells','sleetwind_chime','feather','storm','freeze',18,3.2,'bell'],
+    ['hailcloud_gong','Hailcloud Gong','sleetwind_chime','drum','storm','freeze',21,3.25,'gong'],
+    ['wintervault_geode','Wintervault Geode','frostsalt_geode','pick','stone','freeze',25,3.7,'rock'],
+    ['glacierheart_idol','Glacierheart Idol','frostsalt_geode','idol','stone','freeze',26,3.65,'idol'],
+    ['moonfrost_orbiter','Moonfrost Orbiter','pale_moon_orb','crown','spirit','freeze',19,3.25,'orbiter'],
+    ['dreamice_lantern','Dreamice Lantern','pale_moon_orb','wick','spirit','freeze',20,3.3,'lantern'],
+    // Second-stage fusions consume two crafted relics and keep their pure role.
+    ['everbloom_fountain','Everbloom Fountain','blossom_grail','clover_fountain','leaf','heal',32,2.35,'cup'],
+    ['sunheart_sanctum','Sunheart Sanctum','sunbrew_kettle','emberbalm_censer','fire','heal',35,2.5,'censer'],
+    ['firstspring_chalice','Firstspring Chalice','springwater_ampoule','snowpetal_brooch','frost','heal',31,2.15,'cup'],
+    ['monsoon_benediction','Monsoon Benediction','cloudburst_chalice','rainbow_rosary','storm','heal',34,2.25,'beads'],
+    ['worldspring_cauldron','Worldspring Cauldron','earthspring_bowl','amberhoney_jar','stone','heal',40,2.6,'mortar'],
+    ['kindred_constellation','Kindred Constellation','soulsalve_lamp','pilgrim_hymn','spirit','heal',36,2.4,'harpbow'],
+    ['worldbark_citadel','Worldbark Citadel','oakbark_bastion','thornweave_mantle','leaf','shield',40,2.45,'pavise'],
+    ['sunfire_shelter','Sunfire Shelter','cinder_sanctuary','hearthguard_lantern','fire','shield',44,2.5,'aegis'],
+    ['glacial_sanctuary','Glacial Sanctuary','snowglass_barrier','rimeplate_aegis','frost','shield',40,2.3,'shield'],
+    ['tempest_pavilion','Tempest Pavilion','stormsilk_parasol','faraday_kite','storm','shield',37,2.05,'parasol'],
+    ['titanheart_bastion','Titanheart Bastion','mountainheart_wall','runic_refuge','stone','shield',50,2.7,'pavise'],
+    ['moonlit_haven','Moonlit Haven','silverthread_veil','dreamwoven_canopy','spirit','shield',43,2.4,'veil'],
+    ['heartwood_stillness','Heartwood Stillness','rootlock_totem','pollen_hush','leaf','stun',32,2.5,'idol'],
+    ['noonday_hush','Noonday Hush','dayflash_prism','sunblink_box','fire','stun',35,2.6,'prism'],
+    ['silent_solstice_bells','Silent Solstice Bells','silence_chimes','stillwinter_gong','frost','stun',34,2.5,'bell'],
+    ['thunderous_silence','Thunderous Silence','skylock_cymbal','stormpause_fork','storm','stun',39,2.6,'gong'],
+    ['mountains_verdict','Mountain’s Verdict','mountains_command','gravity_signet','stone','stun',43,2.8,'tablet'],
+    ['dreamless_lullaby','Dreamless Lullaby','reverie_net','slumber_score','spirit','stun',34,2.5,'tome'],
+    ['everwinter_garden','Everwinter Garden','frostbloom_seed','winterorchid_cup','leaf','freeze',34,3,'seed'],
+    ['frozen_sun_beacon','Frozen Sun Beacon','blueflame_beacon','coldstar_censer','fire','freeze',38,3.15,'lantern'],
+    ['eternal_winterglass','Eternal Winterglass','deepwinter_glass','stillfrost_mirror','frost','freeze',42,3,'hourglass'],
+    ['eye_of_the_blizzard','Eye of the Blizzard','northwind_bells','hailcloud_gong','storm','freeze',39,2.9,'gong'],
+    ['winterworld_heart','Winterworld Heart','wintervault_geode','glacierheart_idol','stone','freeze',49,3.25,'idol'],
+    ['moon_of_still_tides','Moon of Still Tides','moonfrost_orbiter','dreamice_lantern','spirit','freeze',38,2.95,'orbiter']
+  );
   for(const [id,name,a,b,element,style,power,cooldown,icon] of recipes){
     const pair=[items[a],items[b]];
     const mythic=pair.some(d=>d.rarity==='mythic')||pair.every(d=>d.recipe);
@@ -703,10 +822,10 @@
     return [...list,...(roadCreatures[region]||[])].map(([name,species,trait,weak,resist,color,affliction],index)=>({id:`r${region}e${index}`,name,species,color,weak,resist,trait,region,boss:index===guardianIndex,...(affliction?{affliction}:{})}));
   });
   // Tier scores estimate sustained damage plus the value of control, sustain,
-  // and signature mechanics. The raw weapon stats and recipe graph stay fixed.
+  // and signature mechanics.
   // Existing mythics keep their identity; the two starter weapons and the
   // first cleansing vial remain accessible common finds.
-  const styleValue={strike:1,rapid:1.23,burn:1.4,poison:1.32,pierce:1.12,guard:1.2,mend:1.3,drain:1.22,chill:1.12,shock:1.12};
+  const styleValue={strike:1,rapid:1.23,burn:1.4,poison:1.32,pierce:1.12,guard:1.2,mend:1.3,drain:1.22,chill:1.12,shock:1.12,heal:1.15,shield:1.1,stun:1.2,freeze:1.25};
   const tierNames=Object.keys(rarities),tierThresholds=[5.8,9.5,12.5,22];
   for(const def of Object.values(items)){
     const score=def.power/def.cooldown*(styleValue[def.style]||1)+(def.special?2.5:0)+(def.counter?.8:0);
@@ -715,7 +834,25 @@
     if(['stick','sling','dewglass_vial'].includes(def.id))rank=0;
     def.rarity=tierNames[rank];def.rarityScore=Math.round(score*100)/100;
   }
+  // Recipes are topologically ordered, so each crafted parent is finalized
+  // before it becomes an ingredient. Keep cooldowns stable for saved runs and
+  // raise potency enough to improve both each activation and sustained output.
+  for(const [id,,a,b] of recipes){
+    const def=items[id],parents=[items[a],items[b]];
+    const rank=Math.max(rarities[def.rarity].rank,...parents.map(d=>rarities[d.rarity].rank));
+    def.rarity=tierNames[rank];
+    const scale=rarities[def.rarity].powerScale;
+    const parentPotency=parents.map(d=>d.power*rarities[d.rarity].powerScale);
+    const potencyFloor=Math.max(...parentPotency)*1.05;
+    const rateFloor=Math.max(...parents.map((d,i)=>parentPotency[i]/d.cooldown))*def.cooldown*1.05;
+    def.power=Math.ceil(Math.max(def.power,potencyFloor/scale,rateFloor/scale)*100)/100;
+    def.fusionDepth=1+Math.max(...parents.map(d=>d.fusionDepth));
+    if(def.style==='stun'||def.style==='freeze'){
+      def.duration=Math.round(Math.max(def.duration,...parents.filter(d=>d.style===def.style).map(d=>d.duration*1.05))*1000)/1000;
+    }
+    def.rarityScore=Math.round((def.power/def.cooldown*(styleValue[def.style]||1)+(def.special?2.5:0)+(def.counter?.8:0))*100)/100;
+  }
   const pairKey=(a,b)=>a<b?a+'|'+b:b+'|'+a;
   const recipeMap=new Map(recipes.map(([id,,a,b])=>[pairKey(a,b),id]));
-  window.Catalog={items,enemies,regions,elements,rarities,starter:['stick','sling'],combo:(a,b)=>recipeMap.get(pairKey(a,b))??null};
+  window.Catalog={items,enemies,regions,elements,rarities,effects,utilityStyles,starter:['stick','sling'],combo:(a,b)=>recipeMap.get(pairKey(a,b))??null};
 })();

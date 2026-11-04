@@ -133,7 +133,7 @@
       const pixels=new Map();
       (drawings[item.icon]||drawings.rock).split('/').forEach((line,y)=>Array.from(line).forEach((v,x)=>{if('1234wab'.includes(v))pixels.set(`${x},${y}`,{x,y,v});}));
       // A two-tone spark in the corner marks an artifact made in the forge.
-      if(item.recipe){const advanced=item.recipe.every(k=>window.Catalog.items[k].recipe);const x=advanced?2:13,y=advanced?3:12;for(const [dx,dy,v] of [[0,-1,'w'],[-1,0,'w'],[0,0,'4'],[1,0,'w'],[0,1,'w']])pixels.set(`${x+dx},${y+dy}`,{x:x+dx,y:y+dy,v});}
+      if(item.recipe){const advanced=item.recipe.some(k=>window.Catalog.items[k].recipe);const x=advanced?2:13,y=advanced?3:12;for(const [dx,dy,v] of [[0,-1,'w'],[-1,0,'w'],[0,0,'4'],[1,0,'w'],[0,1,'w']])pixels.set(`${x+dx},${y+dy}`,{x:x+dx,y:y+dy,v});}
       const rank=['common','uncommon','rare','epic','mythic'].indexOf(item.rarity);
       if(rank>0)for(let i=0;i<rank;i++)pixels.set(`${12+i%2},${11+Math.floor(i/2)}`,{x:12+i%2,y:11+Math.floor(i/2),v:'r'});
       const outlines=new Set();for(const {x,y} of pixels.values()){for(const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1]]){const k=`${x+dx},${y+dy}`;if(!pixels.has(k))outlines.add(k);}}

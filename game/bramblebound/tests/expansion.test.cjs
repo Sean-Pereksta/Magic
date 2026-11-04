@@ -21,7 +21,7 @@ function encounter(element='leaf',count=1,extra={}){
   C.items.__probe={id:'__probe',name:'Combat probe',element,style:'strike',power:10,cooldown:1,rarity:'common',...extra};
   const r=p.run,template=copy(r.enemies[0]);
   r.active=[{uid:1,id:'__probe',level:1,cd:0,slot:0}];r.pack=[];r.hp=50;r.shield=0;r.xp=0;r.phase='fight';r.waveSize=count;r.targetCursor=0;r.enemies=[];
-  for(let i=0;i<count;i++)r.enemies.push({...copy(template),uid:i+1,lane:i,hp:10000,maxHp:10000,damage:0,period:9999,trait:'plain',weak:i===0?element:'none',resist:'none',ward:0,attackProgress:0,echoes:[],...{burn:0,poison:0,chill:0,stun:0}});
+  for(let i=0;i<count;i++)r.enemies.push({...copy(template),uid:i+1,lane:i,hp:10000,maxHp:10000,damage:0,period:9999,trait:'plain',weak:i===0?element:'none',resist:'none',ward:0,attackProgress:0,echoes:[],burn:0,poison:0,chill:0,stun:0,freeze:0,rooted:0,fracture:0,haunt:0,hauntTime:0,leafHits:0,frostHits:0,stormHits:0});
   r.enemy=r.enemies[0];
   const activate=()=>{r.active[0].cd=0;return E.tick(p,.01);};
   return {...game,p,r,e:r.enemies[0],activate};
@@ -29,7 +29,7 @@ function encounter(element='leaf',count=1,extra={}){
 function three(f){return [0,1,2].flatMap(()=>f.activate());}
 
 test('expansion provides 15 complete regions, 72 new relics, specials, and practical early counters',()=>{
-  const {C,E}=load();assert.equal(C.regions.length,35);assert.equal(Object.keys(C.items).length,284);
+  const {C,E}=load();assert.equal(C.regions.length,35);assert.ok(Object.keys(C.items).length>=284);
   for(let region=20;region<35;region++){
     assert.ok(C.enemies.filter(e=>e.region===region&&!e.boss).length>=5,C.regions[region].name+' needs a full group roster');
     assert.equal(C.enemies.filter(e=>e.region===region&&e.boss).length,1);assert.ok(Object.values(C.items).filter(d=>d.dropRegion===region).length>=2);
@@ -166,4 +166,216 @@ test('antivenom and blast guard reduce poison and volatile damage while ward bre
   baseline=encounter('leaf');counter=encounter('leaf',1,{counter:'wardbreaker'});
   for(const f of [baseline,counter]){f.e.trait='armored';f.e.ward=1;f.activate();}
   assert.ok(counter.e.hp<baseline.e.hp);assert.equal(counter.e.ward,0);
+});
+
+test('the expanded catalog offers pure support, control and many two-stage fusion paths',()=>{
+  const {C,E}=load(),items=Object.values(C.items),recipes=items.filter(d=>d.recipe);
+  assert.ok(items.length>=380,'the expansion should add a substantial range of relics');
+  assert.ok(items.filter(d=>!d.recipe).length>=156,'at least 24 new base relics must be obtainable');
+  assert.ok(recipes.length>=220,'the forge needs many new recipes');
+  assert.ok(recipes.filter(d=>d.recipe.some(id=>C.items[id].recipe)).length>=40,'second-stage recipes should provide several progression paths');
+  for(const style of ['heal','shield','stun','freeze']){
+    assert.ok(items.filter(d=>d.style===style&&!d.recipe).length>=3,style+' needs several obtainable base relics');
+    assert.ok(items.some(d=>d.style===style&&d.recipe),style+' needs fusion upgrades');
+    for(const d of items.filter(d=>d.style===style)){
+      assert.ok(d.description&&!d.description.includes('undefined'),d.id+' needs effect text');
+      for(const level of [3,5,10])assert.ok(d.milestones[level],d.id+' needs utility milestone text');
+      if(!d.recipe)assert.ok(E.dropEligible(d,false,d.unlockRound),d.id+' should enter the normal drop pool');
+    }
+  }
+  const pairKeys=new Set();
+  for(const d of recipes){
+    assert.equal(d.recipe.length,2,d.id);
+    const key=[...d.recipe].sort().join('|');assert.ok(!pairKeys.has(key),'ambiguous recipe '+key);pairKeys.add(key);
+    assert.equal(C.combo(...d.recipe),d.id,d.id+' must be discoverable in the forge');
+    for(const id of d.recipe)assert.ok(C.items[id],d.id+' references unknown '+id);
+  }
+});
+
+test('every fusion preview, action and drag destination agrees on a stronger result, including fractional ingredients',()=>{
+  const {C,E}=load(),p=E.freshProfile();E.start(p);
+  const recipes=Object.values(C.items).filter(d=>d.recipe);
+  for(const d of recipes)for(const [left,right] of [[1,1],[2.5,3.25],[27.75,1],[1,40.5]]){
+    const x={uid:1,id:d.recipe[0],level:left,cd:0,slot:0},y={uid:2,id:d.recipe[1],level:right,cd:0,slot:4};
+    p.run.active=[x];p.run.pack=[y];p.run.nextUid=3;
+    const expected=Math.max(left,right)+1,preview=E.previewCombine(p,1,2);
+    assert.equal(preview.ok,true,d.id);assert.equal(preview.id,d.id);assert.equal(preview.level,expected,d.id);
+    assert.equal(E.previewPair(y,x).level,expected,d.id+' reverse order');
+    const result={id:d.id,level:expected};
+    for(const ingredient of [x,y]){
+      assert.ok(E.itemPower(p,result)>E.itemPower(p,ingredient),d.id+' must increase power over '+ingredient.id);
+      assert.ok(E.itemPower(p,result)/d.cooldown>E.itemPower(p,ingredient)/C.items[ingredient.id].cooldown,d.id+' must improve output over '+ingredient.id);
+      assert.ok(C.rarities[d.rarity].rank>=C.rarities[C.items[ingredient.id].rarity].rank,d.id+' must preserve rarity');
+      if(d.style===C.items[ingredient.id].style&&['heal','shield','stun','freeze'].includes(d.style)){
+        const utility=['stun','freeze'].includes(d.style)?E.itemDuration:E.itemUtility,out=utility(p,result),before=utility(p,ingredient);
+        assert.ok(out>=before,d.id+' must preserve actual '+d.style+' strength');
+        assert.ok(out/d.cooldown>=before/C.items[ingredient.id].cooldown,d.id+' must preserve actual '+d.style+' output per second');
+      }
+    }
+    const action=E.act(p,'drop',2,'active',0);
+    assert.equal(action.ok,true,d.id);assert.equal(action.operation,'fuse');assert.equal(p.run.active.length,1);assert.equal(p.run.pack.length,0);
+    assert.equal(p.run.active[0].id,preview.id);assert.equal(p.run.active[0].level,preview.level);assert.equal(p.run.active[0].slot,0);
+  }
+});
+
+test('second-stage fusions consume the first fusion and remain stronger after save and reload',()=>{
+  const {C,E}=load(),final=Object.values(C.items).find(d=>d.recipe&&d.recipe.some(id=>C.items[id].recipe));
+  assert.ok(final);
+  const intermediate=C.items[final.recipe.find(id=>C.items[id].recipe)],partner=final.recipe.find(id=>id!==intermediate.id);
+  let p=E.freshProfile();E.start(p);
+  p.run.active=[{uid:1,id:intermediate.recipe[0],level:2.5,cd:0,slot:0}];
+  p.run.pack=[{uid:2,id:intermediate.recipe[1],level:7.25,cd:0,slot:0},{uid:3,id:partner,level:20.5,cd:0,slot:1}];p.run.nextUid=4;
+  assert.equal(E.act(p,'combine',1,2).ok,true);assert.equal(p.run.active[0].level,8.25);
+  p=E.validate(copy(p));const uid=p.run.active[0].uid;
+  assert.equal(E.previewCombine(p,uid,3).level,21.5);assert.equal(E.act(p,'combine',uid,3).ok,true);
+  assert.equal(p.run.active[0].id,final.id);assert.equal(p.run.active[0].level,21.5);assert.equal(p.run.pack.length,0);
+  const reloaded=E.validate(copy(p));assert.equal(reloaded.run.active[0].id,final.id);assert.equal(reloaded.run.active[0].level,21.5);
+});
+
+test('pure healing, shielding, stun and freeze never acquire damage from elements, milestones or on-hit techniques',()=>{
+  for(const style of ['heal','shield','stun','freeze'])for(const element of ['leaf','fire','frost','storm','stone','spirit'])for(const level of [1,10]){
+    const f=encounter(element,3,{style,duration:1});f.r.active[0].level=level;
+    // All offensive techniques are learned. Any accidental normal-hit path
+    // would damage a foe or apply an unrelated ailment during these activations.
+    for(const id of ['ricochet','scatter','wicklash','nettletip','shiver','interrupt','sip','safety_net'])for(let rank=0;rank<8;rank++)f.P.apply(f.r,id);
+    let events=[];
+    for(let i=0;i<8;i++){f.r.hp=50;f.r.shield=0;events.push(...f.activate());}
+    for(const e of f.r.enemies){
+      assert.equal(e.hp,10000,style+' '+element+' Lv'+level+' damaged a foe');
+      assert.equal(e.poison,0);assert.equal(e.burn,0);assert.equal(e.chill,0);assert.equal(e.rooted,0);assert.equal(e.fracture,0);assert.equal(e.haunt,0);assert.equal(e.echoes.length,0);
+      assert.equal(e.leafHits,0);assert.equal(e.frostHits,0);assert.equal(e.stormHits,0);
+      if(style!=='stun')assert.equal(e.stun,0,'only stun may apply a stun');
+      if(style!=='freeze')assert.equal(e.freeze??0,0,'only freeze may freeze');
+    }
+    assert.ok(!events.some(e=>e.kind==='attack'||e.kind==='hit'||e.kind==='kill'),style+' emitted an offensive event');
+    if(style==='heal'){assert.ok(f.r.hp>50);assert.equal(f.r.shield,0);assert.ok(events.some(e=>e.kind==='heal'&&e.amount>0));}
+    if(style==='shield'){assert.equal(f.r.hp,50);assert.ok(f.r.shield>0);assert.ok(events.some(e=>e.pattern==='guard'&&e.amount>0));}
+    if(style==='stun'||style==='freeze'){assert.equal(f.r.hp,50);assert.equal(f.r.shield,0);assert.ok(events.some(e=>e.pattern===(style==='stun'?'shock':'freeze')||e.pattern===style));}
+  }
+});
+
+test('pure recovery caps at maximum HP or shield and high-level milestones improve that utility',()=>{
+  for(const style of ['heal','shield']){
+    const low=encounter('leaf',1,{style}),high=encounter('leaf',1,{style});high.r.active[0].level=10;
+    const utility=f=>f.E.itemUtility(f.p,f.r.active[0]);assert.ok(utility(high)>utility(low));
+    low.activate();high.activate();
+    if(style==='heal')assert.ok(high.r.hp>low.r.hp);else assert.ok(high.r.shield>low.r.shield);
+    high.r.hp=high.r.maxHp-.25;high.r.shield=high.r.maxHp*.4-.25;
+    const ev=high.activate(),gain=ev.find(e=>e.itemId==='__probe'&&e.amount>0);
+    assert.ok(gain);assert.ok(Math.abs(gain.amount-.25)<1e-9);
+    if(style==='heal')assert.equal(high.r.hp,high.r.maxHp);else assert.equal(high.r.shield,high.r.maxHp*.4);
+    high.activate();assert.ok(high.r.hp<=high.r.maxHp);assert.ok(high.r.shield<=high.r.maxHp*.4);
+  }
+});
+
+test('dedicated control pauses attack meters, expires, and scales its duration with level',()=>{
+  for(const style of ['stun','freeze']){
+    const f=encounter('storm',1,{style,duration:.8});f.e.period=1;f.e.attackProgress=.7;
+    const base=f.E.itemDuration(f.p,f.r.active[0]);assert.ok(base>0&&base<=8);
+    f.r.active[0].level=10;assert.ok(f.E.itemDuration(f.p,f.r.active[0])>base);
+    f.activate();assert.ok(f.e[style]>0);assert.equal(f.e.attackProgress,.7);
+    f.r.active[0].cd=100;const duration=f.e[style];f.E.tick(f.p,duration/2);assert.equal(f.e.attackProgress,.7);
+    f.E.tick(f.p,duration/2+.2);assert.equal(f.e[style],0);assert.ok(f.e.attackProgress>.7||f.e.swings>0,'the meter should resume after control ends');
+    f.r.active[0].level=100000;assert.ok(f.E.itemDuration(f.p,f.r.active[0])<=8,'duration must stay bounded at large saved levels');
+  }
+});
+
+test('stun and freeze survive save/reload and old saves without freeze still load',()=>{
+  for(const style of ['stun','freeze']){
+    const {C,E}=load(),d=Object.values(C.items).find(d=>d.style===style&&!d.recipe),p=E.freshProfile();E.start(p);
+    p.run.active=[{uid:1,id:d.id,level:10,cd:0,slot:0}];p.run.pack=[];p.run.nextUid=2;
+    E.tick(p,3.3);const r=p.run;E.tick(p,.01);assert.ok(r.enemies[0][style]>0);
+    const restored=E.validate(copy(p));assert.equal(restored.run.enemies[0][style],r.enemies[0][style]);
+    restored.run.active[0].cd=10;const before=restored.run.enemies[0].attackProgress;E.tick(restored,.1);assert.equal(restored.run.enemies[0].attackProgress,before);
+    const legacy=copy(p);delete legacy.run.enemies[0].freeze;delete legacy.run.enemy.freeze;
+    assert.equal(E.validate(legacy).run.enemies[0].freeze,0);
+    for(const invalid of [-1,Infinity,9]){const bad=copy(p);bad.run.enemies[0][style]=invalid;assert.throws(()=>E.validate(bad));}
+  }
+});
+
+test('recovery leaves attack targeting alone while control chooses an imminent unheld foe',()=>{
+  for(const style of ['heal','shield']){
+    const f=encounter('leaf',3,{style});f.r.targetCursor=2;f.activate();assert.equal(f.r.targetCursor,2,style+' must not consume an offensive target selection');
+  }
+  for(const style of ['stun','freeze']){
+    const f=encounter('storm',3,{style,duration:1});
+    for(const [i,meter] of [[0,.3],[1,.9],[2,.7]])f.r.enemies[i].attackProgress=meter;
+    f.activate();assert.ok(f.r.enemies[1][style]>0,'first control should stop the nearest attack');assert.equal(f.r.enemies[0][style],0);assert.equal(f.r.enemies[2][style],0);
+    f.activate();assert.ok(f.r.enemies[2][style]>0,'the next activation should cover the next unheld foe');assert.equal(f.r.enemies[0][style],0);
+  }
+});
+
+test('ordinary shock preserves a longer dedicated stun',()=>{
+  const f=encounter('storm',1,{style:'shock'});f.e.stun=3;f.activate();
+  assert.ok(f.e.stun>=2.99,'shock must not replace a long stun with its short overlap cap');
+});
+
+test('an already-full enemy meter waits for control to expire before striking',()=>{
+  for(const status of ['stun','freeze']){
+    const f=encounter('stone',1,{style:'heal'});f.r.active[0].cd=100;f.e[status]=.3;f.e.attackProgress=1;f.e.damage=10;
+    f.E.tick(f.p,.1);assert.equal(f.e.swings,0,status+' should block the queued attack');assert.equal(f.r.hp,50);assert.equal(f.e.attackProgress,1);
+    f.E.tick(f.p,.21);assert.equal(f.e.swings,1,status+' should release the queued attack after expiry');assert.equal(f.r.hp,40);
+  }
+});
+
+test('control expiry charges the meter for only the unheld fraction of a simulation step',()=>{
+  for(const status of ['stun','freeze']){
+    const f=encounter('stone',1,{style:'heal'});f.r.active[0].cd=100;f.e[status]=.03;f.e.period=1;f.e.attackProgress=.5;
+    f.E.tick(f.p,.1);assert.ok(Math.abs(f.e.attackProgress-.57)<1e-10,status+' held .03 seconds of a .1 second update');assert.equal(f.e[status],0);
+  }
+});
+
+test('comparison damage matches a neutral single-target activation including rapid, echo and nova hits',()=>{
+  for(const style of ['strike','rapid'])for(const level of [1,3,5,10]){
+    const f=encounter('stone',1,{style});f.r.active[0].level=level;f.e.weak='none';
+    const before=f.e.hp,comparison=f.E.itemComparison(f.p,f.r.active[0]);f.activate();f.r.active[0].cd=100;f.E.tick(f.p,.4);
+    assert.ok(Math.abs(comparison.damage-(before-f.e.hp))<1e-8,style+' Lv'+level+' comparison should include its direct follow-up hits');
+    assert.equal(comparison.heal,0);assert.equal(comparison.lifesteal,0);assert.ok(comparison.cooldown>0);
+  }
+});
+
+test('comparison includes delayed aftershock damage and the actual chill applied by frost hits',()=>{
+  const shock=encounter('stone',1,{special:'aftershock'});shock.r.active[0].level=10;shock.e.weak='none';
+  const stats=shock.E.itemComparison(shock.p,shock.r.active[0]),before=shock.e.hp;shock.activate();shock.r.active[0].cd=100;shock.E.tick(shock.p,.7);
+  assert.ok(Math.abs(stats.damage-(before-shock.e.hp))<1e-8,'aftershock should count its delayed single-target damage');
+  const frost=encounter('frost',1);frost.e.weak='none';const frostStats=frost.E.itemComparison(frost.p,frost.r.active[0]);frost.activate();
+  assert.ok(Math.abs(frostStats.chill-(frost.e.chill+.01))<1e-9,'offensive frost should show its innate chill duration');
+  const healer=encounter('frost',1,{style:'heal'});assert.equal(healer.E.itemComparison(healer.p,healer.r.active[0]).chill,0,'frost healing should not acquire an offensive chill effect');
+});
+
+test('comparison distinguishes damage, healing, shield and control without granting utility damage',()=>{
+  for(const style of ['heal','shield','stun','freeze'])for(const level of [1,10]){
+    const f=encounter('leaf',1,{style,duration:1});f.r.active[0].level=level;f.r.maxHp=100000;f.r.hp=1;
+    f.P.apply(f.r,'green_thumb');const stats=f.E.itemComparison(f.p,f.r.active[0]);
+    assert.equal(stats.damage,0);assert.equal(stats.lifesteal,0);
+    const ev=f.activate();
+    if(style==='heal'){const gain=ev.find(e=>e.kind==='heal'&&e.itemId==='__probe');assert.ok(Math.abs(stats.heal-gain.amount)<1e-9);assert.equal(stats.shield,0);}
+    if(style==='shield'){const gain=ev.find(e=>e.pattern==='guard'&&e.itemId==='__probe');assert.ok(Math.abs(stats.shield-gain.amount)<1e-9);assert.equal(stats.heal,0);}
+    if(style==='stun'||style==='freeze'){assert.equal(stats[style],f.E.itemDuration(f.p,f.r.active[0]));assert.equal(stats.heal,0);assert.equal(stats.shield,0);}
+  }
+});
+
+test('comparison shows lifesteal as a healing-adjusted fraction rather than guaranteed flat healing',()=>{
+  const f=encounter('spirit',1,{style:'drain',special:'leech'}),it=f.r.active[0];
+  const base=f.E.itemComparison(f.p,it);assert.equal(base.heal,0);assert.ok(Math.abs(base.lifesteal-.41)<1e-12);
+  f.P.apply(f.r,'green_thumb');const boosted=f.E.itemComparison(f.p,it);
+  assert.ok(Math.abs(boosted.lifesteal-.41*1.16)<1e-12);assert.equal(boosted.heal,0);
+});
+
+test('comparison uses levels, permanent power and applicable talent context without changing the simulation',()=>{
+  const {C,E,P}=load(),p=E.freshProfile();E.start(p);
+  const d=Object.values(C.items).find(d=>d.style==='heal'&&!d.recipe),it={uid:800,id:d.id,level:1,cd:.4,slot:0};
+  const initial=E.itemComparison(p,it);it.level=10;const leveled=E.itemComparison(p,it);assert.ok(leveled.heal>initial.heal);assert.equal(leveled.damage,0);
+  p.perks.claw=3;const permanent=E.itemComparison(p,it);assert.ok(permanent.heal>leveled.heal);
+  P.apply(p.run,'field_medic');P.apply(p.run,d.element+'_focus');P.apply(p.run,'green_thumb');P.apply(p.run,'quick_hands');
+  const talented=E.itemComparison(p,it);assert.ok(talented.heal>permanent.heal);assert.ok(talented.cooldown<permanent.cooldown);
+  const offensive={uid:801,id:'stick',level:3,cd:.2,slot:1},plain=E.itemComparison(p,offensive);
+  P.apply(p.run,'long_arm');const longer=E.itemComparison(p,offensive);assert.ok(longer.damage>plain.damage);
+  P.apply(p.run,'first_light');P.apply(p.run,'giantkiller');assert.equal(E.itemComparison(p,offensive).damage,longer.damage,'conditional target bonuses should not misrepresent a neutral comparison');
+  const before=JSON.stringify(p),itemBefore=JSON.stringify(it);
+  for(let i=0;i<10;i++)for(const item of [it,offensive]){
+    const result=E.itemComparison(p,item);for(const value of Object.values(result))assert.ok(Number.isFinite(value)&&value>=0);
+  }
+  assert.equal(JSON.stringify(p),before,'rendering comparisons must not advance cooldowns, targets, RNG or combat');assert.equal(JSON.stringify(it),itemBefore);
+  const camp=E.freshProfile();assert.ok(E.itemComparison(camp,offensive).damage>0,'prepared kits should also be comparable before a journey');
 });

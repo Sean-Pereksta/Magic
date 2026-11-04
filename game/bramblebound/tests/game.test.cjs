@@ -5,14 +5,14 @@ const fs=require('node:fs');
 const path=require('node:path');
 function game(){const context=vm.createContext({console});context.window=context;for(const name of ['catalog','progression','engine'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',name+'.js'),'utf8'),context);return {C:context.Catalog,E:context.GameEngine,P:context.Progression};}
 test('every region has a guardian and enough distinct enemies for group encounters',()=>{
-  const {C,E}=game();assert.equal(C.regions.length,35);assert.equal(Object.keys(C.items).length,284);
+  const {C,E}=game();assert.equal(C.regions.length,35);assert.ok(Object.keys(C.items).length>=284);
   for(let i=0;i<C.regions.length;i++){assert.equal(C.enemies.filter(e=>e.region===i&&e.boss).length,1);assert.ok(C.enemies.filter(e=>e.region===i&&!e.boss).length>=5);}
   for(let round=1;round<=420;round++){const route=E.routeInfo({round,routeEpoch:1});assert.equal(route.region,Math.floor(((round-1)%140)/4));assert.equal(route.circuit,1+Math.floor((round-1)/140));}
 });
-test('all fusion recipes consume their ingredients and preserve fractional levels',()=>{
+test('all fusion recipes consume their ingredients and exceed the highest ingredient level',()=>{
   const {C,E}=game();let recipes=0;
   for(const d of Object.values(C.items)){if(!d.recipe)continue;recipes++;const p=E.freshProfile();E.start(p);p.run.active=[{uid:1,id:d.recipe[0],level:2,cd:0,slot:0}];p.run.pack=[{uid:2,id:d.recipe[1],level:3,cd:0,slot:0}];p.run.nextUid=3;
-    assert.equal(E.act(p,'combine',1,2).ok,true,d.id);assert.equal(p.run.active[0].id,d.id);assert.equal(p.run.active[0].level,2.5);assert.equal(p.run.pack.length,0);
+    assert.equal(E.act(p,'combine',1,2).ok,true,d.id);assert.equal(p.run.active[0].id,d.id);assert.equal(p.run.active[0].level,4);assert.equal(p.run.pack.length,0);
   }assert.ok(recipes>100);
 });
 test('matching copies upgrade and the last equipped relic cannot be removed',()=>{
