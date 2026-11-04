@@ -189,7 +189,13 @@ async function main(){
         p.seenItems=[...new Set([...r.active,...r.pack].map(it=>it.id))];
         return {save:{game:'bramblebound',format:1,profile:E.validate(JSON.parse(JSON.stringify(p))),settings:{audio:false,motion:false}},id:d.id,name:d.name};
       });
-      await page.evaluate(save=>localStorage.setItem('bramblebound.profile.v1',JSON.stringify(save)),fixture.save);
+      // Install once after the outgoing page's autosave. Further reloads must
+      // read the genuinely crafted save instead of reinstalling the fixture.
+      await context.addInitScript(save=>{
+        if(localStorage.getItem('bramblebound.test.fixture.installed')!=='1'){
+          localStorage.setItem('bramblebound.profile.v1',JSON.stringify(save));localStorage.setItem('bramblebound.test.fixture.installed','1');
+        }
+      },fixture.save);
       await page.reload();await page.locator('#title-play').waitFor();await page.locator('#title-play').click();await page.locator('#run-btn').click();
       await page.locator('#pack .gear-slot[data-uid="2"]').click();await page.locator('[data-selection="details"]').click();
       await page.locator('#dialog-body [data-gear="combine"]').click();await page.locator('[data-pair-with="3"]').click();
@@ -201,10 +207,12 @@ async function main(){
       const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('bramblebound.profile.v1')).profile);
       assert.equal(saved.run.pack.length,2);assert.equal(saved.run.pack.find(it=>it.id===fixture.id).level,22.5);assert.equal(saved.run.pack.find(it=>it.id==='wick').level,4.5);assert.equal(saved.run.active[0].id,'stick');
       await page.locator('#pack .gear-slot[data-uid="5"]').click();await page.locator('[data-selection="details"]').click();
-      assert.match(await page.locator('#dialog-body').innerText(),/Third-stage fusion recipe/);await page.locator('#close-btn').click();
-      await page.locator('nav [data-nav="guide"]').click();await page.locator('[data-guide-tab="recipes"]').click();await page.locator('#guide-search').fill('third stage');
-      const cards=page.locator('#guide-page .guide-card[data-catalog]');await cards.first().waitFor();assert.equal(await cards.count(),9);
-      assert.equal(await cards.evaluateAll(nodes=>nodes.every(n=>n.innerText.includes('Third-stage fusion'))),true);
+      assert.match(await page.locator('#dialog-body').innerText(),/Third-stage fusion recipe/i);await page.locator('#close-btn').click();
+      await page.locator('nav [data-nav="guide"]').click();await page.locator('[data-guide-tab="recipes"]').click();
+      for(const query of ['third-stage','third stage','stage 3','stage3']){
+        await page.locator('#guide-search').fill(query);const cards=page.locator('#guide-page .guide-card[data-catalog]');await cards.first().waitFor();assert.equal(await cards.count(),9,query+' should filter the actual fusion stage');
+        assert.equal(await cards.evaluateAll(nodes=>nodes.every(n=>/third-stage fusion/i.test(n.innerText))),true);
+      }
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);
       results.push(width+'px: new third-stage fusion preview, crafted level22.5 persists through reload with old gear intact, nine third-stage guide recipes; no overflow or errors');await context.close();
     }

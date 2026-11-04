@@ -12,6 +12,14 @@
   const utilityStyles=new Set(['heal','shield','stun','freeze']);
   const styleLabel = style => ({mend:'Healing strike',drain:'Lifesteal',heal:'Healing only',shield:'Shield only',stun:'Stun only',freeze:'Freeze only'}[style]||cap(style));
   const fusionStage=item=>item.recipe?({1:'First-stage fusion',2:'Second-stage fusion',3:'Third-stage fusion'}[item.fusionDepth||1]||'Stage '+item.fusionDepth+' fusion'):'';
+  function parseRelicSearch(query){
+    const stages=new Set();
+    const text=String(query).toLocaleLowerCase().replace(/\b(?:(first|second|third)[\s-]*stage|stage[\s-]*(\d+))\b/g,(_,word,digit)=>{
+      stages.add(word?{first:1,second:2,third:3}[word]:Number(digit));return ' ';
+    });
+    return {terms:text.trim().split(/\s+/).filter(Boolean),stages};
+  }
+  const matchesFusionStage=(item,stages)=>!stages.size||!!item.recipe&&stages.has(item.fusionDepth||1);
   function relicStat(profile,it){
     const d=items[it.id],n=value=>Number(value.toFixed(2)).toLocaleString();
     if((d.style==='stun'||d.style==='freeze')&&E.itemDuration)return n(E.itemDuration(profile,it))+'s '+d.style+' duration';
@@ -97,9 +105,10 @@
     const entries = isUpgrade?Object.values(window.Progression.upgrades):isEnemy ? enemies : isRecipe ? recipes : relics;
     const seen = new Set(isUpgrade?Object.keys(profile.run?.skills||{}):isEnemy ? profile.seenEnemies : profile.seenItems);
     const count = entries.filter(entry => seen.has(entry.id)).length;
-    const terms = String(query).toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
+    const {terms,stages} = isEnemy||isUpgrade?{terms:String(query).toLocaleLowerCase().trim().split(/\s+/).filter(Boolean),stages:new Set()}:parseRelicSearch(query);
     const results = entries.filter(entry=>{
       if(!isUpgrade&&!isEnemy&&tier!=='all'&&entry.rarity!==tier)return false;
+      if(!matchesFusionStage(entry,stages))return false;
       const fields = isUpgrade?[entry.name,entry.element,entry.kind,entry.category,entry.description]:isEnemy ? [entry.name, entry.trait, entry.affliction||'',afflictionText[entry.affliction]||'',entry.species, regions[entry.region].name, entry.boss?'guardian boss':'', 'weak '+entry.weak, 'resists '+entry.resist] :
         [relicSearchText(entry),...(isRecipe ? entry.recipe.map(id=>items[id].name) : [])];
       const key = fields.join(' ').toLocaleLowerCase(); return terms.every(term=>key.includes(term));
@@ -109,7 +118,7 @@
       `<div class="tools-row"><div class="tabs" aria-label="Field guide sections">${Object.entries(tabs).map(([key,title])=>`<button type="button" data-guide-tab="${key}" aria-pressed="${key===tab}" class="${key===tab?'selected':''}">${title}</button>`).join('')}</div>
         <input id="guide-search" class="search" type="search" value="${esc(query)}" aria-label="${hint}" placeholder="${hint}"></div>
         ${!isUpgrade&&!isEnemy?'<div class="guide-filters"><div class="guide-roles" aria-label="Rarity filter"><span>Rarity</span>'+['all',...Object.keys(window.Catalog.rarities)].map(t=>'<button type="button" data-guide-tier="'+t+'" data-rarity="'+t+'" aria-pressed="'+(tier===t)+'">'+(t==='all'?'All':window.Catalog.rarities[t].name)+'</button>').join('')+'</div>'+(tab==='items'?'<div class="guide-roles" aria-label="Find gear by role"><span>Gear roles</span>'+['Healing','Shield','Stun','Freeze','Lifesteal'].map(role=>'<button type="button" data-gear-role="'+role+'" aria-pressed="'+(query.toLowerCase()===role.toLowerCase())+'">'+role+'</button>').join('')+'</div>':'')+'</div>':''}
-        <div class="guide-count" aria-live="polite">${isUpgrade?'LEARNED THIS RUN':isEnemy?'ENCOUNTERED':'DISCOVERED'} ${count} / ${entries.length}${(terms.length||(!isEnemy&&!isUpgrade&&tier!=='all'))?' &nbsp; · &nbsp; '+results.length+' '+(results.length===1?'RESULT':'RESULTS'):''}</div>
+        <div class="guide-count" aria-live="polite">${isUpgrade?'LEARNED THIS RUN':isEnemy?'ENCOUNTERED':'DISCOVERED'} ${count} / ${entries.length}${(terms.length||stages.size||(!isEnemy&&!isUpgrade&&tier!=='all'))?' &nbsp; · &nbsp; '+results.length+' '+(results.length===1?'RESULT':'RESULTS'):''}</div>
         ${isRecipe ? '<aside class="frame guide-intro"><div><strong>At the forge</strong><p>Drag one ingredient onto its partner to fuse them. Select one relic to make valid partners glow. Choose Matches, then tap a glowing partner to preview the fusion. Every fusion gains one level above its highest-level ingredient: Lv 2 + Lv 3 makes Lv 4. Fuse crafted relics again to discover second-stage and third-stage recipes. Search by stage or ingredient to follow a crafting chain. Two identical relics at the same level also gain one level.</p></div></aside>':''}
         <div class="guide-grid">${results.length ? results.map(entry=>isUpgrade?
           `<button class="frame guide-card" data-skill="${entry.id}" style="--el:${elements[entry.element].color}"><span class="icon-tile">${ItemArt.svg(entry.icon,40)}</span><span><b>${esc(entry.name)}</b><small>${esc(entry.category)} · ${entry.kind==='ability'?'Auto-cast ability':'Passive'}</small><small>${seen.has(entry.id)?'Rank '+profile.run.skills[entry.id]:'Unlearned'}</small></span></button>`
@@ -194,5 +203,5 @@
       '<p class="camp-explainer">'+glyph('road')+'<span>Trail memory speeds up cleared waves. Pip returns to 1× on new ground. Gear and expedition talents are collected anew each run.</span></p>'+
       recap+'<div class="camp-actions">'+(traveling?'<button type="button" class="outline" data-nav="expedition">'+glyph('road')+'Return to expedition</button>':'<button type="button" class="primary" data-do="start">'+glyph('play')+(p.deaths?'Start next expedition':'Begin expedition')+'</button>')+'</div>';
   }
-  window.Journal={guide,legacy,debrief,paintPortraits,traitText,afflictionText,elementText,relicEffects,styleLabel,fusionStage,relicStat,relicSearchText,tierBadge,relicSource,routeAtlas,regionDossier};
+  window.Journal={guide,legacy,debrief,paintPortraits,traitText,afflictionText,elementText,relicEffects,styleLabel,fusionStage,relicStat,relicSearchText,parseRelicSearch,matchesFusionStage,tierBadge,relicSource,routeAtlas,regionDossier};
 })();

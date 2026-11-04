@@ -304,9 +304,10 @@
   }
   function resetPack(){clearSelection();packPage=0;packQuery='';packTier='all';$('pack-tier').value='all';$('pack-search').value='';}
   function renderPack(r){
-    const size=pageSize(),terms=packQuery.toLowerCase().replace(/\b(?:level|lv)\s*(\d+(?:\.\d+)?)/g,'lv$1').trim().split(/\s+/).filter(Boolean);
-    const matches=(terms.length||partnerView||packTier!=='all')?r.pack.filter(it=>{
+    const size=pageSize(),{terms,stages}=J.parseRelicSearch(packQuery.replace(/\b(?:level|lv)\s*(\d+(?:\.\d+)?)/gi,'lv$1'));
+    const matches=(terms.length||stages.size||partnerView||packTier!=='all')?r.pack.filter(it=>{
       if(packTier!=='all'&&C.items[it.id].rarity!==packTier)return false;
+      if(!J.matchesFusionStage(C.items[it.id],stages))return false;
       if(partnerView&&!partners.has(it.uid))return false;
       const fields=J.relicSearchText(C.items[it.id]);
       return terms.every(word=>/^lv\d/.test(word)?Number(word.slice(2))===it.level:/^p\d+$/.test(word)?Number(word.slice(1))===it.slot+1:fields.includes(word));
@@ -316,7 +317,7 @@
     const from=packPage*size,to=Math.min(total,from+size);
     const indices=matches?matches.slice(from,to).map(it=>it.slot):Array.from({length:to-from},(_,i)=>from+i);
     const grid=$('pack');grid.style.setProperty('--pack-rows',size/4);
-    grid.innerHTML=indices.length?indices.map(i=>gearSlot(r,'pack',i)).join(''):'<p class="pack-miss">'+(partnerView&&!terms.length&&packTier==='all'&&partners.size?'All matches are in your equipped slots above.':'No matching relics in your backpack.')+'</p>';
+    grid.innerHTML=indices.length?indices.map(i=>gearSlot(r,'pack',i)).join(''):'<p class="pack-miss">'+(partnerView&&!terms.length&&!stages.size&&packTier==='all'&&partners.size?'All matches are in your equipped slots above.':'No matching relics in your backpack.')+'</p>';
     const pageHits=new Array(packPages).fill(0);
     if(selectedUid!==null)(matches||r.pack).forEach((it,i)=>{
       if(partners.has(it.uid))pageHits[Math.floor((matches?i:it.slot)/size)]++;
