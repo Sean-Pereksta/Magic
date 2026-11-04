@@ -55,6 +55,14 @@ const root = path.resolve(__dirname, '../..');
       await v.checkpoint(s, true);
       await v.sync();
     });
+    await page.locator('.field-guide summary').click();
+    await page.click('[data-action="element-help"]');
+    assert.equal(await page.locator('.element-table tbody td').count(), 64);
+    await page.selectOption('#element-first', 'leaf');
+    await page.selectOption('#element-second', 'ice');
+    assert.match(await page.locator('#counter-results').innerText(), /Fire\s+4×/);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.click('[data-action="close-dialog"]');
     await page.click('#practice-button');
     await page.click('[data-action="deep-journal"]');
     await page
