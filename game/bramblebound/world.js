@@ -1093,7 +1093,14 @@
     g.save();g.globalAlpha=.8;
     if(e.rooted>0)for(let j=-1;j<=1;j++){let x=tx+j*7;line(g,'#4e7951',x,feet,x-2,feet-13,2);line(g,'#b1e58c',x-2,feet-13,x+4,feet-9);}
     if(e.burn>0)for(let j=0;j<3;j++){let x=tx-8+j*8,ht=4+3*sin(time*9+j);poly(g,'#f9a15c',[x-2,feet-3,x,feet-10-ht,x+3,feet-3]);}
-    if(e.chill>0||e.frozen>0){orbit(g,'#a8eeff',tx,feet,11,.25,0);for(let j=0;j<3;j++)rect(g,'#d1fbff',tx-9+j*9,ty-11+sin(time*2+j)*2,1,3);}
+    if(e.chill>0||e.freeze>0){orbit(g,'#a8eeff',tx,feet,11,.25,0);for(let j=0;j<3;j++)rect(g,'#d1fbff',tx-9+j*9,ty-11+sin(time*2+j)*2,1,3);}
+    if(e.freeze>0){
+      g.globalAlpha=.35;
+      poly(g,'#9ce4f4',[tx-14,feet,tx-18,ty-10,tx-5,ty-23,tx+11,ty-20,tx+18,ty-4,tx+13,feet]);
+      g.globalAlpha=.9;line(g,'#e5fbff',tx-14,feet,tx-18,ty-10);line(g,'#e5fbff',tx-18,ty-10,tx-5,ty-23);line(g,'#e5fbff',tx+11,ty-20,tx+18,ty-4);line(g,'#e5fbff',tx+18,ty-4,tx+13,feet);
+    }else if(e.stun>0){
+      for(let j=0;j<3;j++){const q=time*3+j*2.095,x=tx+cos(q)*11,y=ty-17+sin(q)*3;line(g,'#fff1a8',x-2,y,x+2,y);line(g,'#fff1a8',x,y-2,x,y+2);}
+    }
     if(e.fracture>0)for(let j=0;j<Math.min(5,e.fracture);j++){let q=j*1.257;poly(g,'#e8c18a',[tx+cos(q)*13,ty+sin(q)*12,tx+cos(q)*17,ty+sin(q)*16,tx+cos(q+.15)*13,ty+sin(q+.15)*12]);}
     if(e.haunt>0)for(let j=0;j<Math.min(2,e.haunt);j++){let q=time*1.5+j*Math.PI;oval(g,'#c6a0ee',tx+cos(q)*13,ty-12+sin(q)*6,2,3);rect(g,'#f7e4ff',tx+cos(q)*13,ty-13+sin(q)*6,1,1);}
     if(e.poison>0&&!e.rooted)for(let j=0;j<2;j++){let y=feet-4-((time*9+j*9)%18);orbit(g,'#8ed47b',tx-8+j*15,y,2,.9,0);}
@@ -1183,7 +1190,10 @@
       if(a>.53&&a<.86){
         const y=hand-(a-.53)*27;rect(g,'#b2f8ca',hx-2,y,5,1);rect(g,'#b2f8ca',hx,y-2,1,5);
       }
-    }else if(k==='heal'||pat==='guard'){
+    }else if(pat==='shield'||pat==='guard'){
+      const spread=13+sin(Math.min(1,a)*Math.PI)*7;
+      orbit(g,c,hx,hand,spread,1.2,a*.4);orbit(g,cream,hx,hand,spread-2,.75,-a*.3);
+    }else if(k==='heal'){
       for(let j=0;j<3;j++){let x=hx-15+j*14+sin(j+a*4)*2,y=ground-10-a*22-j%2*6;rect(g,c,x-2,y,5,1);rect(g,c,x,y-2,1,5);}
     }else if(k==='status'){
       if(pat==='root'||pat==='rooted')for(let j=-2;j<=2;j++){const x=fx+j*6;line(g,'#486e42',x,feet,x-3,feet-10,2);line(g,c,x-3,feet-10,x+2,feet-18,2);poly(g,c,[x-3,feet-9,x-8,feet-12,x-5,feet-15,x-1,feet-10]);}
@@ -1193,7 +1203,9 @@
       else if(pat==='wildfire'||pat==='chain'||pat==='superconduct')specialArt(g,pat,a,hx,hand,fx,fy,feet,c);
       else if(pat==='chill')for(let j=0;j<3;j++)poly(g,c,[fx-10+j*8,feet-2,fx-9+j*8,feet-10-j*2,fx-5+j*8,feet-2]);
       else if(pat==='burn')for(let j=0;j<4;j++){let x=fx-12+j*8;poly(g,c,[x,feet-3,x+1,feet-9,x+4,feet-13-sin(a*12+j)*3,x+6,feet-5,x+4,feet-3]);}
-      else if(pat==='shock')line(g,c,fx-8,fy-10,fx+5,fy-7,2);
+      else if(pat==='shock'||pat==='stun'){
+        for(let j=0;j<3;j++){const q=a*4+j*2.095,x=fx+cos(q)*13,y=fy-17+sin(q)*4;line(g,'#fff1a8',x-2,y,x+2,y);line(g,'#fff1a8',x,y-2,x,y+2);}
+      }
       else for(let j=0;j<3;j++)orbit(g,c,fx-8+j*7,feet-7-a*15-(j%2)*6,2,.9,0);
     }else if(k==='milestone'){
       if(pat==='echo'){
@@ -1201,8 +1213,8 @@
       }else if(pat==='ring'){orbit(g,c,hx,hand,13+sin(a*Math.PI)*9,1.22,a);orbit(g,cream,hx,hand,12+sin(a*Math.PI)*8,.47,a);}
       else{const r=5+Math.min(1,a/.65)*28;orbit(g,c,fx,fy,r,.78,a);if(a<.8)burst(g,cream,fx,fy,r+4,10,a);}
     }
-    if(showLabel&&event.label&&a>.16&&['enemy','attack','hit','heal','special'].includes(k)){
-      const hero=incoming||k==='heal',txt=String(event.label),y=R((hero?ground-52:foe.barY-4)-a*10-(i%2)*6);
+    if(showLabel&&event.label&&a>.16&&(['enemy','attack','hit','heal','special'].includes(k)||k==='status'&&['guard','shield','shock','stun','freeze'].includes(pat))){
+      const hero=incoming||k==='heal'||pat==='shield'||pat==='guard',txt=String(event.label),y=R((hero?ground-52:foe.barY-4)-a*10-(i%2)*6);
       g.save();g.globalAlpha=Math.max(0,Math.min(1,(1.12-a)*4));g.textAlign='center';g.font='bold 8px monospace';g.lineWidth=3;g.lineJoin='round';g.strokeStyle='#332e37';
       const x=R(Math.min(g.canvas.width-txt.length*2.5-2,Math.max(txt.length*2.5+2,hero?hx:fx)));
       g.strokeText(txt,x,y);g.fillStyle=incoming?'#ffb6a2':k==='heal'?'#caffac':cream;g.fillText(txt,x,y);g.restore();
@@ -1223,7 +1235,7 @@
   function location(e,count,w,h,t,entry,hit,recoil){
     const lane=Math.max(0,Math.min(count-1,e.lane||0)),[ax,ay,scale]=formations[count][lane];
     const compact=count>1?Math.min(1,Math.max(.65,(w+25)/260)):1;
-    const size=scale*compact*(e.boss?1.18:1),phase=t+lane*.71,near=e.attackProgress>.77;
+    const size=scale*compact*(e.boss?1.18:1),phase=(e.freeze>0?0:t)+lane*.71,near=e.attackProgress>.77&&!(e.stun>0||e.freeze>0);
     let x=w*ax+(sin(phase*1.5)*2.5+sin(phase*.65)*2)*(count===1?1.7:.65);
     if(t>0&&entry<1){const u=Math.max(0,Math.min(1,1-(entry-.055*lane)/.71));x+=(w*(1-ax)+28)*u*u;}
     if(near)x+=R((e.attackProgress-.77)*13);
@@ -1241,14 +1253,16 @@
   };
   function foeGauge(g,z,compact){
     const e=z.e;if(!e.maxHp)return;
-    const w=compact?21:27,y=z.barY,x=R(z.x-w/2),hp=Math.max(0,Math.min(1,e.hp/e.maxHp)),charge=Math.max(0,Math.min(1,e.attackProgress||0)),urgent=charge>=.79&&!(e.stun>0);
+    const w=compact?21:27,y=z.barY,x=R(z.x-w/2),hp=Math.max(0,Math.min(1,e.hp/e.maxHp)),charge=Math.max(0,Math.min(1,e.attackProgress||0)),urgent=charge>=.79&&!(e.stun>0||e.freeze>0);
     rect(g,'#282b2e',x-1,y-1,w+2,8);rect(g,'#51654e',x+6,y,w-7,2);rect(g,'#594744',x+6,y+4,w-7,1);
     if(hp>0)rect(g,hp<.3?'#f29579':'#aaed9c',x+6,y,Math.max(1,(w-7)*hp),2);
-    if(charge>.01)rect(g,e.stun>0||e.chill>0?'#93e6ff':urgent?'#ff8d70':'#edc875',x+6,y+4,Math.max(1,(w-7)*charge),1);
+    if(charge>.01)rect(g,e.stun>0||e.chill>0||e.freeze>0?'#93e6ff':urgent?'#ff8d70':'#edc875',x+6,y+4,Math.max(1,(w-7)*charge),1);
     const sigil=affinitySigils[e.weak],c=elements[e.weak]||'#eed58c';
     if(sigil)sigil.forEach((row,j)=>{for(let i=0;i<row.length;i++)if(row[i]==='1')rect(g,c,x+i,y+j,1,1);});
     if(urgent){
       rect(g,'#4e393c',x+w-2,y-7,5,7);rect(g,'#ffd099',x+w,y-6,1,3);rect(g,'#ffd099',x+w,y-2,1,1);
+    }else if(e.freeze>0){
+      line(g,'#d1fbff',x+w-2,y-5,x+w+2,y-1);line(g,'#d1fbff',x+w+2,y-5,x+w-2,y-1);line(g,'#d1fbff',x+w,y-6,x+w,y);
     }else if(e.stun>0){
       line(g,'#fff1a8',x+w-2,y-3,x+w+2,y-3);line(g,'#fff1a8',x+w,y-5,x+w,y-1);
     }
@@ -1384,7 +1398,7 @@
     // Depth sort keeps rear ranks behind the nearer bodies; gauges are drawn in a separate pass.
     const bodies=[...ghosts,...live].sort((a,b)=>a.y-b.y);
     for(const z of bodies){
-      const e=z.e,x=z.x,y=z.y,phase=t+(e.lane||0)*.71;
+      const e=z.e,x=z.x,y=z.y,phase=(e.freeze>0?0:t)+(e.lane||0)*.71;
       if(z.age!==undefined){
         const u=z.age/.6;g.save();g.globalAlpha=1-u;g.translate(R(x+u*12),y);g.rotate(u*.65);
         place(g,e.species,e.color,phase,'enemy',e.boss,0,R(u*2),z.size);g.restore();
@@ -1392,7 +1406,7 @@
         continue;
       }
       oval(g,mix(p.road,p.earth,.38),x,y+1,Math.max(8,13*z.size),2);
-      if(e.attackProgress>.79&&!(e.stun>0))orbit(g,'#c36a50',x,y+1,12*z.size+(e.attackProgress-.79)*12,.18,0);
+      if(e.attackProgress>.79&&!(e.stun>0||e.freeze>0))orbit(g,'#c36a50',x,y+1,12*z.size+(e.attackProgress-.79)*12,.18,0);
       place(g,e.species,e.color,phase,'enemy',e.boss,x,z.bodyY,z.size);
       afflictionAura(g,z,t,v.reducedMotion);
       statusAura(g,z,t,v.reducedMotion);
@@ -1405,8 +1419,8 @@
     const visibleEffects=effects.length>62?effects.filter((ev,i)=>ev.kind==='loot'||i>=effects.length-62):effects;
     const labelCounts=new Map(),labels=new Set();
     for(let i=visibleEffects.length-1;i>=0;i--){
-      const ev=visibleEffects[i];if(!(ev.age>.16&&ev.label&&['attack','hit','enemy','heal','special'].includes(ev.kind)))continue;
-      const key=ev.kind==='enemy'||ev.kind==='heal'?'pip':ev.targetUid??'foe',n=labelCounts.get(key)||0;
+      const ev=visibleEffects[i];if(!(ev.age>.16&&ev.label&&(['attack','hit','enemy','heal','special'].includes(ev.kind)||ev.kind==='status'&&['guard','shield','shock','stun','freeze'].includes(ev.pattern))))continue;
+      const key=ev.kind==='enemy'||ev.kind==='heal'||ev.pattern==='shield'||ev.pattern==='guard'?'pip':ev.targetUid??'foe',n=labelCounts.get(key)||0;
       if(n<(count>2?1:2)){labels.add(i);labelCounts.set(key,n+1);}
     }
     let firstBolt=null;

@@ -2,7 +2,7 @@
 
 Standalone expedition roguelite for Cat’N Mice. Open `/game/bramblebound/` through any static HTTP server; there is no build or server dependency. `/game/bramblebound.html` is a compatibility redirect.
 
-Guide Pip through 35 regions and repeating circuits, build a loadout from 284 elemental relics, fuse ingredients, choose 64 talents and abilities, battle group encounters and guardians, and purchase permanent Legacy upgrades after each run. Four equipment slots and a searchable 400-slot pack support mouse, keyboard, and touch controls. Space pauses combat. Menus and the title screen pause the simulation.
+Guide Pip through 35 regions and repeating circuits, build a loadout from 380 elemental relics, fuse ingredients, choose 64 talents and abilities, battle group encounters and guardians, and purchase permanent Legacy upgrades after each run. Four equipment slots and a searchable 400-slot pack support mouse, keyboard, and touch controls. Space pauses combat. Menus and the title screen pause the simulation.
 
 Profiles autosave under `bramblebound.profile.v1`. Existing standalone saves remain compatible; the profile menu exports/imports JSON, including prepared starting kits. Saves are device/browser local. Corrupt saves enter recovery without overwriting the original. No account is required.
 
@@ -23,6 +23,14 @@ Run `npm run test:bramblebound` for combat, progression, fusion, save validation
 The expansion adds 15 biomes, 105 enemies, 72 relics, and 30 fusion recipes. Every element has innate combat behavior. Twelve signature weapon mechanics and eight counter types support deliberate loadouts; enemy dossiers and the searchable field guide explain them. A Dewglass Vial is included in every new starting backpack so cleansing is available immediately. Held weapons now have dedicated pixel artwork, elemental trails, rarity markings, and level sockets.
 
 Existing profiles migrate without resetting their run, gear, discoveries, or records. A saved 8- or 20-region circuit finishes before the next circuit opens all 35 regions. New expeditions use 35 regions immediately.
+
+## Support relics and deeper fusions
+
+The support expansion adds 96 relics: 24 regular finds, 48 first-stage fusions, and 24 second-stage fusions. The full catalog contains 156 base relics and 224 recipes, including 40 second-stage recipes. Healing-only relics restore HP, shield-only relics build protection, stun-only relics interrupt enemy attack charge, and freeze-only relics encase an enemy in ice and stop its charge. These four roles deal zero damage at every level; their elemental affinities and level milestones improve utility without adding elemental hits, damaging echoes, or offensive on-hit techniques. The guide offers Healing, Shield, Stun and Freeze role filters, and item details show recovery strength or control duration instead of damage. Combine support with an offensive relic to clear encounters.
+
+Every fusion produces an item exactly one level above its highest-level ingredient: level 2 + level 3 becomes level 4, and level 2.5 + level 3.5 becomes level 4.5. Crafted relics can become ingredients for second-stage recipes. Recipe output power and sustained output are at least 5% above both ingredient definitions before the level gain, and output rarity is never below either ingredient. Two identical relics still require matching levels and upgrade by one level. Existing fractional item levels and all previous item IDs remain compatible with local and cloud saves.
+
+Utility potency increases at levels 3, 5 and 10. Healing remains capped at maximum HP, shields at 40% of maximum HP, and stun/freeze duration at eight seconds. Control durations persist across save/reload; older saves receive an empty freeze state. The regression suite covers every recipe at mixed and fractional levels, first- and second-stage forging, pure utility at milestone levels across all six elements, recovery caps, control timing, and existing save migration. The browser expansion suite also checks utility labels, role filters, and two-stage forging at desktop and phone widths.
 
 ## Rarity and finds
 

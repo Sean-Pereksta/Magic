@@ -5,6 +5,7 @@
   const C = () => root.Catalog;
   const P = () => root.Progression;
   const WALK = 3.2, ACTIVE = 4, PACK = 400, WAVE_RULES=2;
+  const utilityStyles=new Set(['heal','shield','stun','freeze']);
   const dropChances=Object.freeze({normal:.24,guardian:.48});
   const xpNeeded = level => 14+Math.round((level-1)*5.5);
   const OLD_REGIONS=8, WAVES_PER_REGION=4;
@@ -63,6 +64,13 @@
     const d=C().items[it.id];
     return d.power*(C().rarities[d.rarity]?.powerScale||1)*(1+.31*n+.009*n*n)*(1+.08*p.perks.claw);
   }
+  const utilityMilestones=it=>1+(it.level>=3?.4:0)+(it.level>=5?.2:0)+(it.level>=10?.65:0);
+  const utilityMultiplier=(p,d)=>p.run?P().utilityMultiplier(p.run,d):1;
+  function itemUtility(p,it){return itemPower(p,it)*utilityMultiplier(p,C().items[it.id])*utilityMilestones(it);}
+  function itemDuration(p,it){
+    const d=C().items[it.id];
+    return Math.min(8,(d.duration||.75)*Math.pow(itemPower(p,it)/d.power,.25)*Math.pow(utilityMultiplier(p,d),.25)*utilityMilestones(it));
+  }
   const itemCooldown = (it,r) => r ? P().cooldown(r,C().items[it.id]) : C().items[it.id].cooldown;
   function start(p) {
     if (p.run && p.run.phase!=='dead') return fail('A journey is already in progress.');
@@ -110,7 +118,7 @@
     const damage=strike*(boss?(classic?1.25:1.32):1)*traitPower/attackSpread;
     const tempo=d.trait==='swift'?.67:d.trait==='brute'?1.24:d.trait==='swarm'?.78:1;
     const period=(classic?(boss?2.2:2.65):(boss?2.12:2.62)/(1+.22*n/(n+9)))*tempo;
-    return {id:d.id,name:d.name,species:d.species,color:d.color,trait:d.trait,affliction:d.affliction||null,weak:d.weak,resist:d.resist,boss,hp:maxHp,maxHp,damage,period,attackProgress:0,burn:0,poison:0,chill:0,stun:0,statusClock:0,ward:d.trait==='warded'||d.affliction==='bulwark'?1:0,swings:0,echoes:[],rooted:0,fracture:0,haunt:0,hauntTime:0,leafHits:0,frostHits:0,stormHits:0};
+    return {id:d.id,name:d.name,species:d.species,color:d.color,trait:d.trait,affliction:d.affliction||null,weak:d.weak,resist:d.resist,boss,hp:maxHp,maxHp,damage,period,attackProgress:0,burn:0,poison:0,chill:0,stun:0,freeze:0,statusClock:0,ward:d.trait==='warded'||d.affliction==='bulwark'?1:0,swings:0,echoes:[],rooted:0,fracture:0,haunt:0,hauntTime:0,leafHits:0,frostHits:0,stormHits:0};
   }
   function find(r,uid) { return r.active.concat(r.pack).find(i=>i.uid===uid); }
   function previewCombine(p,a,b) {
@@ -127,7 +135,7 @@
     }
     const d=C().items[C().combo(x.id,y.id)];
     if(!d) return fail('These items have no fusion recipe.');
-    const level=x.level+(y.level-x.level)/2;
+    const level=Math.max(x.level,y.level)+1;
     return {ok:true,id:d.id,level,message:`Fuse into ${d.name} · Lv ${levelText(level)}`};
   }
   function next(p) {
@@ -286,6 +294,28 @@
   function fire(p,it,e,ev) {
     const r=p.run,d=C().items[it.id],el=d.element,style=d.style;
     cleanse(r,it,ev);
+    // Dedicated support and control activations never enter the damage path:
+    // no elemental hits, offensive signatures, hit procs, echoes or novas.
+    if(utilityStyles.has(style)){
+      let event;
+      if(style==='heal'){
+        const gain=heal(r,itemUtility(p,it));
+        event=add(ev,'heal',el,it.level,gain>0?(gain<.5?'+<1':`+${Math.round(gain)}`):'Health full','heal');
+        event.amount=gain;
+      }else if(style==='shield'){
+        const before=r.shield;r.shield=Math.min(r.maxHp*.4,before+itemUtility(p,it));
+        const gain=r.shield-before;
+        event=add(ev,'status',el,it.level,gain>0?(gain<.5?'Shield +<1':`Shield +${Math.round(gain)}`):'Shield full','guard');
+        event.amount=gain;
+      }else{
+        const duration=itemDuration(p,it);
+        e[style]=Math.max(e[style]||0,duration);
+        event=add(ev,'status',el,it.level,style==='freeze'?'Frozen':'Stunned',style==='freeze'?'freeze':'shock',e);
+        event.duration=duration;
+      }
+      event.itemId=it.id;event.sourceUid=it.uid;
+      it.cd=itemCooldown(it,r);return;
+    }
     const power=itemPower(p,it);let damage=power*P().hitMultiplier(r,d,e,r.enemies.filter(x=>x.hp>0).length);
     damage*=(1+e.fracture*.035+e.haunt*.03)*(r.ailments.hex>0?.8:1);
     const weak=matches(e.weak,el),resist=matches(e.resist,el);
@@ -302,7 +332,7 @@
     if(style==='burn'){e.burn=Math.max(e.burn,damage*.60);add(ev,'status',el,1,'Burn','burn',e);}
     if(style==='poison'){e.poison+=damage*.23;add(ev,'status',el,1,'Poison','poison',e);}
     if(style==='chill'){e.chill=Math.max(2.1,e.chill);add(ev,'status',el,1,'Slowed','chill',e);}
-    if(style==='shock'){e.stun=Math.min(.95,e.stun+.44);add(ev,'status',el,1,'Stunned','shock',e);}
+    if(style==='shock'){e.stun=Math.max(e.stun,Math.min(.95,e.stun+.44));add(ev,'status',el,1,'Stunned','shock',e);}
     if(style==='rapid') e.echoes.push({delay:.13,damage:damage*.23,el,pattern:'rapid'});
     if(style==='drain'||style==='mend'){
       const drain=style==='drain',h=heal(r,drain?removed*.23:power*.55);
@@ -369,7 +399,7 @@
         return makeItem(r,it.id,it.level);
       }
     }else if(roll<.42){
-      selection=bases.filter(x=>x.style===(roll<.33?'mend':'drain'));
+      selection=bases.filter(x=>(roll<.33?['mend','heal','shield']:['drain','stun','freeze']).includes(x.style));
     }else if(boss && roll>=.84){
       selection=eligible.filter(x=>x.recipe);
     }else if(roll<.62){
@@ -414,7 +444,13 @@
     add(ev,'dead','spirit',1,`+${r.lastAward} points`,'dead');
   }
   function selectTarget(r,it){
-    const n=r.enemies.length,el=C().items[it.id].element;
+    const d=C().items[it.id],n=r.enemies.length,el=d.element;
+    if(d.style==='heal'||d.style==='shield')return r.enemies.find(e=>e.hp>0)||null;
+    if(d.style==='stun'||d.style==='freeze'){
+      // Spread control across foes, prioritizing an unheld enemy about to strike.
+      return r.enemies.filter(e=>e.hp>0).sort((a,b)=>
+        Math.max(a.stun,a.freeze||0)-Math.max(b.stun,b.freeze||0)||b.attackProgress-a.attackProgress)[0]||null;
+    }
     let target,score=-1;
     for(let i=0;i<n;i++){
       const index=(r.targetCursor+i)%n,e=r.enemies[index];if(e.hp<=0)continue;
@@ -437,10 +473,11 @@
       if(e.trait==='regenerating'&&e.hp>0)e.hp=Math.min(e.maxHp,e.hp+e.maxHp*.018);
     }
     if(e.hp<=0 || r.hp<=0)return;
-    if(e.stun<=0)e.attackProgress+=dt/e.period*(e.chill>0?.50:1)*(e.rooted>0?.25:1);
-    e.stun=Math.max(0,e.stun-dt);e.chill=Math.max(0,e.chill-dt);
+    const held=Math.max(e.stun,e.freeze||0),activeTime=Math.max(0,dt-held);
+    e.attackProgress+=activeTime/e.period*(e.chill>0?.50:1)*(e.rooted>0?.25:1);
+    e.stun=Math.max(0,e.stun-dt);e.freeze=Math.max(0,(e.freeze||0)-dt);e.chill=Math.max(0,e.chill-dt);
     e.rooted=Math.max(0,e.rooted-dt);e.hauntTime=Math.max(0,e.hauntTime-dt);if(!e.hauntTime)e.haunt=0;
-    if(e.attackProgress>=1){e.attackProgress-=1;e.swings++;
+    if(e.attackProgress>=1&&held<dt){e.attackProgress-=1;e.swings++;
       const incoming=e.damage*(e.trait==='veteran'&&e.swings%3===0?1.38:1);
       const adjusted=P().incoming(r,incoming,e,ev,()=>rng(r))*(r.ailments.corrosion>0?1.15:1)*(counter(r,'insulated')&&e.affliction==='shocking'?.85:1);
       const dealt=hurt(r,adjusted,'strike',e);
@@ -649,7 +686,7 @@
       if(r.phase==='fight' && e.hp===0)bad();
       e.attackProgress=number(v.attackProgress,0,1);e.ward=integer(v.ward,0,1);e.swings=integer(v.swings);
       e.burn=number(v.burn);e.poison=number(v.poison);e.chill=number(v.chill,0,2.1);
-      e.stun=number(v.stun,0,.95);e.statusClock=number(v.statusClock,0,1);
+      e.stun=number(v.stun,0,8);e.freeze=number(v.freeze??0,0,8);e.statusClock=number(v.statusClock,0,1);
       e.rooted=number(v.rooted??0,0,.8);e.fracture=integer(v.fracture??0,0,5);e.haunt=integer(v.haunt??0,0,2);e.hauntTime=number(v.hauntTime??0,0,4);
       for(const key of ['leafHits','frostHits','stormHits'])e[key]=integer(v[key]??0,0,2);
       e.echoes=array(v.echoes,40).map(x=>{object(x);return {delay:number(x.delay,0,1),damage:number(x.damage),el:id(x.el,elements),pattern:id(x.pattern,new Set(['echo','rapid','soulmark','aftershock']))};});
@@ -658,5 +695,5 @@
     r.enemy=r.enemies[0]||null;
     return p;
   }
-  root.GameEngine={routeInfo,isReplay,lootOdds,dropEligible,dropChances,freshProfile,start,tick,act,validate,xpNeeded,previewPair,previewCombine,slotAt,perks,perkCost,perkPreview,awardBreakdown,maxSpeed,itemPower,itemCooldown,levelText,walkDuration:WALK,activeCapacity:ACTIVE,packCapacity:PACK};
+  root.GameEngine={routeInfo,isReplay,lootOdds,dropEligible,dropChances,freshProfile,start,tick,act,validate,xpNeeded,previewPair,previewCombine,slotAt,perks,perkCost,perkPreview,awardBreakdown,maxSpeed,itemPower,itemUtility,itemDuration,itemCooldown,levelText,walkDuration:WALK,activeCapacity:ACTIVE,packCapacity:PACK};
 })();
