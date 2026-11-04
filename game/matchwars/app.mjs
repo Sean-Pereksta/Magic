@@ -1,0 +1,579 @@
+import { Board, ELEMENTS } from './board.mjs';
+import { Battle, TROOPS, ENEMIES, ELEMENT_INFO, UPGRADES, upgradeCost, elementMultiplier } from './combat.mjs';
+import { loadProgress, saveProgress } from './progress.mjs';
+
+const $ = id => document.getElementById(id);
+const boardEl = $('board'), canvas = $('battlefield'), ctx = canvas.getContext('2d');
+const mobileScreen=matchMedia('(max-width:760px)');
+const laneY=lane=>(220+lane*120)*canvas.height/530;
+function fitBattlefield(){canvas.height=mobileScreen.matches?420:530;}
+fitBattlefield();mobileScreen.addEventListener('change',fitBattlefield);
+const backdrop = $('modal-backdrop'), modal = $('modal'), content = $('modal-content');
+const sprite = new Image(); sprite.src = new URL('./assets/troops.png', import.meta.url).href;
+const colors = Object.fromEntries(ELEMENTS.map(k => [k, ELEMENT_INFO[k].color]));
+const RELICS = {
+  fury:{name:'Fury',symbol:'↑',color:'#ffac81',detail:'+30% attack'},
+  aegis:{name:'Aegis',symbol:'◇',color:'#eadd9a',detail:'+30 shield'},
+  haste:{name:'Haste',symbol:'ϟ',color:'#89dbe1',detail:'+25% speed / +20% attack rate'},
+  vitality:{name:'Vitality',symbol:'+',color:'#a9d7a4',detail:'+35% health'},
+};
+const STAGES = [
+  ['The Verdant Gate','Meet the raiders at the forest border.','THE AWAKENING'],
+  ['River of Glass','Frost snipers gather by the river.','THE AWAKENING'],
+  ['The Tangled Watch','Break the healers behind their living shields.','THE AWAKENING'],
+  ['The Root King','A regenerating monarch holds the middle lane.','THE AWAKENING'],
+  ['Stormbreak Ridge','Bring lightning hunters down from the skies.','THE FROSTBOUND MARCH'],
+  ['The Golden Bastion','Crack the sun guards with Void Reapers.','THE FROSTBOUND MARCH'],
+  ['A Hollow Promise','Summoners hide behind their shades.','THE FROSTBOUND MARCH'],
+  ['Frostbound Queen','A frost volley threatens every formation.','THE FROSTBOUND MARCH'],
+  ['Ashes at Dawn','Fire, forest, and storm collide.','THE ECLIPSE'],
+  ['Prismfall','Ranged-resistant sentinels demand a new plan.','THE ECLIPSE'],
+  ['The Last Lantern','Keep your healers alive through the darkness.','THE ECLIPSE'],
+  ['The Eclipse Lord','Break the ward. End the invasion.','THE ECLIPSE'],
+];
+let progress = loadProgress(), board, battle, lane = 1, selected = null, busy = false;
+let started = false, session = 0, lastFrame = 0, uiTimer = 0, resolved = false;
+let charge = 0, overdrive = 0, matches = 0, bestChain = 1, summonCount = 0;
+let lastFocus = null, modalKind = '', rootDialog = null, toastTimer, bannerTimer, hintTimer;
+let particles = [], floats = [], motionTime = 0, soundContext, lastSound = 0;
+let pointer = null, suppressClick = false;
+const tileNodes = new Map();
+const reduced = () => progress.settings.reducedMotion || matchMedia('(prefers-reduced-motion: reduce)').matches;
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+const delay = ms => new Promise(resolve => setTimeout(resolve, reduced() ? Math.min(40,ms) : ms));
+const escape = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function waitForPlay(token) {
+  while(token===session && (!backdrop.hidden || document.hidden)) await new Promise(resolve=>setTimeout(resolve,100));
+  return token===session;
+}
+
+function rune(key) {
+  const paths = {
+    ember:'<path d="M26 3c1 11 13 12 10 25-1 8-7 13-14 13C9 41 4 26 13 18c0 7 4 8 5 5 2-5 0-11 8-20Z"/><path d="M23 25c6 7 7 10 1 14-7-2-7-7-1-14Z" fill="#ffebbd"/>',
+    tide:'<path d="M24 3C20 12 8 23 8 30a16 16 0 0 0 32 0C40 22 29 11 24 3Z"/><path d="M14 30c0 6 4 10 10 10" fill="none" stroke="#d8f5ff" stroke-width="3" stroke-linecap="round"/>',
+    grove:'<path d="M40 6C18 6 5 14 9 29c3 12 21 13 27-1 3-7 2-14 4-22Z"/><path d="m8 42 22-23M19 31l-1-11m1 11 12-2" fill="none" stroke="#e0f7c6" stroke-width="2.5" stroke-linecap="round"/>',
+    storm:'<path d="M28 3 9 28h13l-3 17 21-28H26l2-14Z"/><path d="m26 8-2 12h10L22 36l3-12H15Z" fill="#fff2bf"/>',
+    sun:'<path d="M24 2 28 10 36 6 36 16 46 20 38 26 42 36 31 35 24 46 18 36 7 39 10 27 2 21 12 16 11 6 21 10Z"/><circle cx="24" cy="24" r="9" fill="#fff4d5"/>',
+    void:'<path d="M35 4C18 2 5 14 8 28c4 17 26 21 36 6-16 5-30-14-9-30Z"/><path d="m35 15 2 6 6 2-6 2-2 6-2-6-6-2 6-2Z" fill="#efe0ff"/>',
+  };
+  return `<svg class="rune" viewBox="0 0 48 48" fill="currentColor" aria-hidden="true">${paths[key]}</svg>`;
+}
+
+function persist() {
+  const okay = saveProgress(progress);
+  $('save-status').textContent = okay ? 'Progress saved on this device' : 'Saving unavailable · keep this tab open';
+  $('gold').textContent = Math.floor(progress.gold);
+  $('forge-dot').hidden = !UPGRADES.some(u => (progress.upgrades[u.id] || 0) < u.max && progress.gold >= upgradeCost(u.id,progress.upgrades[u.id] || 0));
+}
+
+function toast(message) {
+  clearTimeout(toastTimer); $('toast').textContent = message; $('toast').classList.add('show');
+  toastTimer = setTimeout(() => $('toast').classList.remove('show'),2800);
+}
+
+function banner(message, duration=2600) {
+  clearTimeout(bannerTimer); $('battle-banner').textContent = message; $('battle-banner').classList.add('show');
+  bannerTimer = setTimeout(() => $('battle-banner').classList.remove('show'),duration);
+}
+
+function sound(kind='match', chain=1) {
+  if (!progress.settings.sound) return;
+  try {
+    soundContext ||= new (window.AudioContext || window.webkitAudioContext)();
+    if (soundContext.state === 'suspended') soundContext.resume();
+    const now = soundContext.currentTime;
+    if (kind === 'hit' && now-lastSound < .12) return;
+    lastSound = now;
+    const tones = kind === 'match' ? [262,330,392].map(f => f*(1+Math.min(chain-1,6)*.12)) : kind === 'spell' ? [196,392,523] : kind === 'win' ? [330,440,554,660] : kind === 'lose' ? [220,196,147] : [110];
+    tones.forEach((frequency,i) => {
+      const osc = soundContext.createOscillator(), gain = soundContext.createGain();
+      osc.type = kind === 'hit' ? 'triangle' : 'sine'; osc.frequency.value = frequency;
+      gain.gain.setValueAtTime(0,now+i*.055); gain.gain.linearRampToValueAtTime(.035,now+i*.055+.01); gain.gain.exponentialRampToValueAtTime(.0001,now+i*.055+.2);
+      osc.connect(gain); gain.connect(soundContext.destination); osc.start(now+i*.055); osc.stop(now+i*.055+.22);
+    });
+  } catch { /* Audio is optional on browsers that block Web Audio. */ }
+}
+
+function renderBoard(snapshot=board.snapshot(), animate=false) {
+  const ids = new Set();
+  snapshot.forEach((row,r) => row.forEach((tile,c) => {
+    ids.add(tile.id);
+    let node = tileNodes.get(tile.id);
+    const fresh = !node;
+    if (fresh) { node = document.createElement('button'); node.className='tile'; node.type='button'; node.setAttribute('role','gridcell'); tileNodes.set(tile.id,node); boardEl.append(node); }
+    node.dataset.id = tile.id; node.dataset.r = r; node.dataset.c = c;
+    node.dataset.key = tile.key; node.dataset.special = tile.special || '';
+    const signature = `${tile.key}:${tile.special}:${tile.relic}`;
+    if (node.dataset.signature !== signature) {
+      node.dataset.signature = signature;
+      node.style.setProperty('--element', colors[tile.key]);
+      node.innerHTML = `<span class="tile-inner">${rune(tile.key)}${tile.special ? '<span class="special-mark"></span>' : ''}${tile.relic ? `<span class="relic-mark" style="--relic-color:${RELICS[tile.relic].color}">${RELICS[tile.relic].symbol}</span>` : ''}</span>`;
+    }
+    node.classList.remove('clearing','hint','invalid');
+    node.classList.toggle('selected', !!selected && selected.r===r && selected.c===c);
+    node.setAttribute('aria-label',`${TROOPS[tile.key].name}${tile.special ? ', '+tile.special+' special' : ''}${tile.relic ? ', '+RELICS[tile.relic].name+' relic' : ''}. Row ${r+1}, column ${c+1}`);
+    node.setAttribute('aria-rowindex',r+1); node.setAttribute('aria-colindex',c+1);
+    node.setAttribute('aria-selected',String(!!selected && selected.r===r && selected.c===c));
+    node.tabIndex = r===0 && c===0 ? 0 : -1;
+    if (fresh && animate) {
+      node.style.transition='none'; node.style.setProperty('--c',c); node.style.setProperty('--r',-1-(r%3));
+      node.offsetWidth; node.style.transition='';
+    }
+    node.style.setProperty('--r',r); node.style.setProperty('--c',c);
+  }));
+  for (const [id,node] of tileNodes) if (!ids.has(id)) { node.remove(); tileNodes.delete(id); }
+}
+
+function markSelection() {
+  for (const node of tileNodes.values()) {
+    const active = selected && +node.dataset.r===selected.r && +node.dataset.c===selected.c;
+    node.classList.toggle('selected',!!active); node.setAttribute('aria-selected',String(!!active));
+  }
+}
+
+function setLane(value) {
+  lane = clamp(Math.floor(value),0,2);
+  document.querySelectorAll('[data-lane]').forEach(button => { const active = +button.dataset.lane === lane; button.classList.toggle('active',active); button.setAttribute('aria-pressed',String(active)); });
+  if (started && !busy) $('board-message').textContent=`New troops will enter the ${['upper','middle','lower'][lane]} lane.`;
+}
+
+function inputReady() { return started && !busy && backdrop.hidden && battle.status==='playing' && !document.hidden; }
+function selectCell(cell) {
+  if (!inputReady()) return;
+  clearHint();
+  if (selected && Math.abs(cell.r-selected.r)+Math.abs(cell.c-selected.c)===1) { const from = selected; selected=null; swap(from,cell); }
+  else { selected = selected && selected.r===cell.r && selected.c===cell.c ? null : cell; markSelection(); }
+}
+
+async function swap(from,to) {
+  if (!inputReady()) return;
+  const token=session, targetLane=lane, focusWasBoard=boardEl.contains(document.activeElement);
+  busy=true; selected=null; boardEl.setAttribute('aria-busy','true'); markSelection();
+  const old = board.snapshot();
+  const swapped = old.map(row=>row.map(t=>({...t})));
+  [swapped[from.r][from.c],swapped[to.r][to.c]]=[swapped[to.r][to.c],swapped[from.r][from.c]];
+  renderBoard(swapped);
+  await delay(180);
+  if(!await waitForPlay(token)) return;
+  const result=board.trySwap(from,to);
+  if(!result.valid) {
+    renderBoard(old);
+    [from,to].forEach(p=>tileNodes.get(old[p.r][p.c].id)?.classList.add('invalid'));
+    $('board-message').textContent='Make a line of 3, or swap a special rune. Try again.';
+    await delay(220);
+  } else {
+    for(const step of result.steps) {
+      if(!await waitForPlay(token)) return;
+      renderBoard(step.before);
+      step.cleared.forEach(({tile})=>tileNodes.get(tile.id)?.classList.add('clearing'));
+      matches += step.groups.length; bestChain=Math.max(bestChain,step.chain);
+      $('combo').textContent=`×${(1+(step.chain-1)*(.14+(progress.upgrades.combo||0)*.06)).toFixed(2).replace(/0$/,'').replace(/\.0$/,'')}`;
+      $('combo-label').textContent=step.chain>1 ? `CASCADE ${step.chain}` : 'COMBO POWER';
+      document.querySelector('.combo-display').classList.remove('ignite');
+      void $('combo').offsetWidth; document.querySelector('.combo-display').classList.add('ignite');
+      if(step.chain>1 || step.created.length) burst(step.chain>1 ? `${step.chain}× CASCADE` : step.created[0].tile.special==='wild' ? 'WILD RUNE' : 'SPECIAL FORGED');
+      sound('match',step.chain);
+      await delay(190);
+      if(!await waitForPlay(token)) return;
+      for(const group of step.groups) {
+        const spawned=battle.summon(group.key,{lane:targetLane,chain:step.chain,count:group.count,buffs:group.buffs,elite:group.elite,power:overdrive>0 ? 1.25 : 1});
+        summonCount+=spawned.length;
+      }
+      charge += step.cleared.length;
+      if(charge>=50 && overdrive<=0) { charge-=50; overdrive=10; banner('OVERDRIVE · Summons gain +25% power for 10 seconds'); burst('OVERDRIVE'); }
+      renderBoard(step.after,true);
+      const buffs = [...new Set(step.groups.flatMap(g=>g.buffs))];
+      const names = step.groups.map(g=>TROOPS[g.key].name).slice(0,2).join(' + ');
+      $('board-message').textContent = `${names} → lane ${targetLane+1}${buffs.length ? ' · '+buffs.map(k=>RELICS[k].name).join(' + ') : step.chain>1 ? ' · empowered cascade' : ''}`;
+      await delay(240);
+    }
+    if(token!==session) return;
+    if(result.reshuffled) { renderBoard(board.snapshot(),true); toast('No swaps left — the runes have reshuffled.'); }
+  }
+  if(token!==session) return;
+  busy=false; boardEl.setAttribute('aria-busy','false');
+  if(focusWasBoard) { const node=boardEl.querySelector(`[data-r="${to.r}"][data-c="${to.c}"]`); if(node){node.tabIndex=0;node.focus({preventScroll:true});} }
+  updateUI();
+  if(battle.status!=='playing') finishBattle();
+}
+
+function burst(text) { const el=$('board-burst'); el.textContent=text; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); }
+function clearHint() { clearTimeout(hintTimer); for(const node of tileNodes.values())node.classList.remove('hint'); }
+function showHint() {
+  if(!inputReady()) return;
+  clearHint(); selected=null; markSelection();
+  const move=board.hint();
+  if(move) {
+    [move.from,move.to].forEach(p=>tileNodes.get(board.grid[p.r][p.c].id)?.classList.add('hint'));
+    $('board-message').textContent='Swap the two glowing runes. Specials also activate by swapping.';
+    hintTimer=setTimeout(clearHint,4000);
+  }
+}
+
+boardEl.addEventListener('pointerdown',event=>{
+  const tile=event.target.closest('.tile'); if(!tile || !inputReady() || event.button>0)return;
+  pointer={id:event.pointerId,x:event.clientX,y:event.clientY,r:+tile.dataset.r,c:+tile.dataset.c};
+  boardEl.setPointerCapture(event.pointerId);
+});
+boardEl.addEventListener('pointerup',event=>{
+  if(!pointer || pointer.id!==event.pointerId)return;
+  const down=pointer; pointer=null;
+  const dx=event.clientX-down.x,dy=event.clientY-down.y;
+  suppressClick=true;
+  if(Math.hypot(dx,dy)>18) {
+    const to={r:down.r+(Math.abs(dy)>Math.abs(dx)?Math.sign(dy):0),c:down.c+(Math.abs(dx)>=Math.abs(dy)?Math.sign(dx):0)};
+    if(to.r>=0&&to.r<7&&to.c>=0&&to.c<7){selected=null;swap({r:down.r,c:down.c},to);}
+  } else selectCell({r:down.r,c:down.c});
+  setTimeout(()=>suppressClick=false,0);
+});
+boardEl.addEventListener('pointercancel',()=>pointer=null);
+boardEl.addEventListener('click',event=>{
+  if(suppressClick)return;
+  const tile=event.target.closest('.tile'); if(tile)selectCell({r:+tile.dataset.r,c:+tile.dataset.c});
+});
+boardEl.addEventListener('keydown',event=>{
+  const tile=event.target.closest('.tile');if(!tile)return;
+  const moves={ArrowUp:[-1,0],ArrowDown:[1,0],ArrowLeft:[0,-1],ArrowRight:[0,1]};
+  if(moves[event.key]) {
+    event.preventDefault();const [dr,dc]=moves[event.key];
+    const r=clamp(+tile.dataset.r+dr,0,6),c=clamp(+tile.dataset.c+dc,0,6);
+    tile.tabIndex=-1;const next=boardEl.querySelector(`[data-r="${r}"][data-c="${c}"]`);next.tabIndex=0;next.focus({preventScroll:true});
+  }
+});
+
+function openModal(title,html,kind='menu',kicker='WAR COUNCIL') {
+  if(!backdrop.hidden && (modalKind==='intro'||modalKind==='result') && kind!==modalKind) {
+    rootDialog={title:$('modal-title').textContent,html:content.innerHTML,kind:modalKind,kicker:$('modal-kicker').textContent};
+  }
+  lastFocus = backdrop.hidden ? document.activeElement : lastFocus;
+  modalKind=kind; $('modal-title').textContent=title; $('modal-kicker').textContent=kicker;
+  content.innerHTML=html; backdrop.hidden=false;
+  document.querySelector('.app-shell').inert=true;
+  modal.scrollTop=0; modal.focus();
+  $('modal-close').hidden=kind==='intro'||kind==='result';
+  drawPortraits();
+}
+
+function closeModal() {
+  if(modalKind==='intro'||modalKind==='result')return;
+  if(!started){showIntro();return;}
+  if(battle.status!=='playing'&&rootDialog?.kind==='result'){
+    const saved=rootDialog;rootDialog=null;openModal(saved.title,saved.html,saved.kind,saved.kicker);
+    const forgeButton=content.querySelector('[data-action="forge"]');if(forgeButton)forgeButton.textContent=`Upgrade forge · ◆ ${progress.gold}`;
+    return;
+  }
+  backdrop.hidden=true; document.querySelector('.app-shell').inert=false; modalKind='';
+  lastFocus?.focus({preventScroll:true});lastFrame=performance.now();
+}
+function dismissModal() { modalKind='';rootDialog=null;backdrop.hidden=true;document.querySelector('.app-shell').inert=false;lastFrame=performance.now(); }
+$('modal-close').onclick=closeModal;
+backdrop.addEventListener('click',e=>{if(e.target===backdrop)closeModal();});
+document.addEventListener('keydown',event=>{
+  if(!backdrop.hidden) {
+    if(event.key==='Escape'){event.preventDefault();closeModal();}
+    if(event.key==='Tab') {
+      const all=[...modal.querySelectorAll('button:not(:disabled):not([hidden]),a,input')].filter(x=>x.getClientRects().length);
+      if(!all.length){event.preventDefault();return;}
+      if(event.shiftKey&&(document.activeElement===all[0]||document.activeElement===modal)){event.preventDefault();all.at(-1).focus();}
+      else if(!event.shiftKey&&(document.activeElement===all.at(-1)||document.activeElement===modal)){event.preventDefault();all[0].focus();}
+    }
+    return;
+  }
+  if(event.ctrlKey||event.metaKey||event.altKey)return;
+  if(['1','2','3'].includes(event.key)){event.preventDefault();setLane(+event.key-1);}
+  if(event.key.toLowerCase()==='h'){event.preventDefault();showHint();}
+  if(event.key.toLowerCase()==='p'||event.key==='Escape'){event.preventDefault();showMenu();}
+  const spell={q:'meteor',w:'rally',e:'heal'}[event.key.toLowerCase()];if(spell){event.preventDefault();cast(spell);}
+});
+
+function showIntro() {
+  openModal(progress.seenIntro?'Your army awaits.':'Every match turns the tide.',`
+    <p class="guide-intro">${progress.seenIntro?`Continue at battle ${progress.stage}: ${STAGES[progress.stage-1][0]}. Your upgrades and campaign progress are saved.`:'The rift is open. Match elemental runes to summon an army, choose where it fights, and turn cascading combos into overwhelming power.'}</p>
+    ${progress.legacyMigrated?'<p class="legacy-note">Your original Color Clash gold, levels, and earned upgrades have been carried into Match Wars.</p>':''}
+    <div class="feature-grid"><div class="feature-card"><b>01 · Match & summon</b><p>Tap two neighboring runes or swipe. Lines of 3 summon troops. Longer matches forge special runes.</p></div><div class="feature-card"><b>02 · Read the front</b><p>Choose a lane before matching. Scout the incoming enemies and send the element that counters them.</p></div><div class="feature-card"><b>03 · Build the combo</b><p>Cascades empower every new summon. Match marked relics for attack, shields, haste, or health.</p></div><div class="feature-card"><b>04 · Shape your army</b><p>Win gold across 12 battles. Invest in 18 upgrades, class abilities, and command talents.</p></div></div>
+    <div class="modal-actions"><button class="primary-button" data-action="begin">${progress.seenIntro?'Return to the front':'Begin the campaign'} →</button><button class="secondary-button" data-action="forge">Upgrade forge · ◆ ${progress.gold}</button></div>
+    <p class="muted">PC: arrows + Enter to match · 1 / 2 / 3 lanes · Q / W / E spells · H hint · P pause. On mobile, tap or swipe.</p>`, 'intro','THE RUNEBORN FRONT');
+}
+
+function begin() {
+  progress.seenIntro=true; started=true;persist();dismissModal();sound('match');banner('The first wave arrives in 5 seconds. Match your army!');
+}
+
+function showMenu() {
+  openModal('Take a breath.',`<p>Battle is paused. Plan your next move.</p><div class="menu-grid"><button data-action="resume">↗ Return to battle</button><button data-action="forge">◆ Upgrade forge</button><button data-action="campaign">✧ Campaign map</button><button data-action="guide">⌘ Field guide</button><button data-action="how">? How to play</button><button data-action="restart">↻ Restart this battle</button></div><label class="setting-row">Sound effects<input id="sound-setting" type="checkbox" ${progress.settings.sound?'checked':''}></label><label class="setting-row">Reduce visual effects<input id="motion-setting" type="checkbox" ${progress.settings.reducedMotion?'checked':''}></label><div class="modal-actions"><a class="secondary-button" href="/lobby/">‹ Back to the library</a></div>`, 'menu');
+}
+
+function showHow() {
+  openModal('A commander’s primer.',`<div class="feature-grid"><div class="feature-card"><b>Matches become troops</b><p>Each match summons one soldier. Matches of 5 or more summon extra troops. Choose your lane first; every cascade uses that lane. Invalid swaps return safely.</p></div><div class="feature-card"><b>Forge special runes</b><p>Match 4 for a line blast, 5 for a wild rune, and a T or L for a nova. Swap a special with any neighbor to activate it. Wilds clear the other rune’s element. Special blasts chain.</p></div><div class="feature-card"><b>Cascades & Overdrive</b><p>Falling runes can match again. Each cascade gives new troops +14% power, increased by Battle Rhythm. Clear 50 runes for 10 seconds of +25% summon power.</p></div><div class="feature-card"><b>Relics empower summons</b><p>Small colored marks are relics. Match them to buff that element’s new soldiers: ↑ Fury, ◇ Aegis, ϟ Haste, + Vitality. Forge talents strengthen these buffs.</p></div><div class="feature-card"><b>Build a formation</b><p>Sun Paladins hold the front while Tide Rangers and Ember Mages attack from behind. Grove Wardens sustain them. Storm Lancers hunt flyers; Reapers punish weakened tanks. Summon the same element 4 / 8 / 12 times to increase its resonance.</p></div><div class="feature-card"><b>Win the battle</b><p>Destroy the rift or defeat all three waves. Defend your citadel with troops and spells. Boss battles 4, 8, and 12 have a ward: defeat the boss to break it. Losses grant some earned gold so you can adapt and retry.</p></div></div><h3>Elemental counters</h3><p>Ember → Grove → Storm → Tide → Ember. A counter deals 1.5× damage; fighting into your weakness deals 0.7×. Sun and Void both deal 1.35× to each other.</p><p>Spells target your selected lane. Meteor damages enemies, Rally grants attack speed and shields, Renew heals troops and repairs your citadel. They recharge during battle.</p><p>Progress saves on this browser and device after battles and purchases. Refreshing restarts the current battle. The forge pauses combat; new class upgrades affect future summons.</p><div class="modal-actions"><button class="primary-button" data-action="resume">${started?'Back to battle':'Start battle'} →</button></div>`, 'how','MATCH · COMMAND · CONQUER');
+}
+
+function troopGuide(key) {
+  const troop=TROOPS[key], info=ELEMENT_INFO[key];
+  const resonance=Math.min(3,Math.floor((battle.synergy[key]||0)/4));
+  openModal(troop.name,`<canvas class="dialog-portrait" data-portrait="${key}" width="180" height="180"></canvas><p style="color:${info.color}">${troop.role} · ${info.name}</p><p>${troop.description}</p><p>Health <b>${troop.hp}</b> · Attack <b>${troop.attack}</b> · Range <b>${troop.range}</b></p><p>Strong against ${ELEMENT_INFO[info.strong].name}${key==='sun'||key==='void'?' (mutual counter)':' · vulnerable to '+ELEMENT_INFO[info.weak].name}.</p><p>Battle resonance: ${resonance} / 3. Every four summons of this element adds +5% power, up to +15%.</p><h3>Class talents</h3>${UPGRADES.filter(u=>u.group===key).map(u=>`<p><b>${u.name}</b> · rank ${progress.upgrades[u.id]||0} / ${u.max}<br>${u.description}</p>`).join('')}<div class="modal-actions"><button class="primary-button" data-action="forge" data-tab="${key}">Train ${info.name} talents →</button><button class="secondary-button" data-action="resume">Return</button></div>`,'troop','ELEMENTAL ARMORY');
+}
+
+function showGuide(tab='troops') {
+  const entries=tab==='enemies'?Object.values(ENEMIES):Object.values(TROOPS);
+  openModal('Know your battlefield.',`<p>Elemental advantage matters. Pair a frontline, a ranged attacker, and a support in threatened lanes.</p><div class="tabs"><button data-guide="troops" class="${tab==='troops'?'active':''}">6 allied classes</button><button data-guide="enemies" class="${tab==='enemies'?'active':''}">21 enemy types</button><button data-guide="relics" class="${tab==='relics'?'active':''}">Relics & buffs</button></div>${tab==='relics'?`<div class="guide-grid">${Object.entries(RELICS).map(([key,r])=>`<div class="guide-card"><b style="color:${r.color}">${r.symbol} ${r.name}</b><p>${r.detail} for troops summoned by a match containing this relic. Multiple relic types stack. Relic Attunement improves all four.</p></div>`).join('')}</div><p>Shields form gold rings, Fury adds orange sparks, Haste trails cyan light, and Vitality adds a green cross. Burn, poison, frost, and Rally have separate combat effects.</p>`:`<div class="guide-grid">${entries.map(t=>`<div class="guide-card"><canvas class="portrait" data-portrait="${t.element}" ${tab==='enemies'?'data-enemy="true"':''} width="100" height="100"></canvas><b style="color:${colors[t.element]}">${t.name}</b><p>${t.role}</p><p>${t.description||`${ELEMENT_INFO[t.element].name} · ${t.hp} health · ${t.attack} attack${t.boss?' · BOSS':''}`}</p><div class="counter-list"><span>Counter: ${ELEMENT_INFO[Object.keys(TROOPS).find(k=>elementMultiplier(k,t.element)>1)||'storm'].name}</span></div></div>`).join('')}</div>`}`,'guide','THE FIELD GUIDE');
+}
+
+function showForge(tab='command') {
+  openModal('The upgrade forge.',`<p>Build around the army you want to play. <b style="color:var(--gold)">◆ ${progress.gold}</b> available. Purchased troop talents empower future summons; keep and spell talents apply immediately.</p><div class="tabs"><button data-forge="command" class="${tab==='command'?'active':''}">Command</button>${ELEMENTS.map(k=>`<button data-forge="${k}" class="${tab===k?'active':''}" style="${tab!==k?'color:'+colors[k]:''}">${ELEMENT_INFO[k].name}</button>`).join('')}</div><div class="upgrade-grid">${UPGRADES.filter(u=>u.group===tab).map(u=>{const rank=progress.upgrades[u.id]||0,cost=upgradeCost(u.id,rank);return `<div class="upgrade-card"><h3>${u.name}</h3><small>RANK ${rank} / ${u.max}</small><p>${u.description}</p><div class="progress-dots">${Array.from({length:u.max},(_,i)=>`<i class="${i<rank?'filled':''}"></i>`).join('')}</div><button data-buy="${u.id}" ${rank>=u.max||progress.gold<cost?'disabled':''}>${rank>=u.max?'Fully trained':`Train rank ${rank+1} · ◆ ${cost}`}</button></div>`;}).join('')}</div><div class="modal-actions"><button class="primary-button" data-action="resume">${started?'Return to the front':'Start battle'} →</button></div>`,'forge','CRAFT YOUR STRATEGY');
+}
+
+function buyUpgrade(id) {
+  const def=UPGRADES.find(u=>u.id===id);if(!def)return;
+  const rank=progress.upgrades[id]||0,cost=upgradeCost(id,rank);
+  if(rank>=def.max||progress.gold<cost)return;
+  progress.gold-=cost;progress.upgrades[id]=rank+1;
+  battle.upgrades[id]=rank+1;
+  if(id==='fortress'){battle.playerMax+=40;battle.playerHp=Math.min(battle.playerMax,battle.playerHp+40);}
+  persist();sound('match');showForge(def.group);updateUI();
+}
+
+function showCampaign() {
+  openModal('Follow the runes.',`<p>Three chapters. Twelve battles. Boss encounters guard the end of each chapter. Replay cleared battles to try new formations and earn gold.</p><div class="campaign-grid">${STAGES.map(([name,,chapter],i)=>`<button class="stage-card ${i+1===progress.stage?'current':''}" data-stage="${i+1}" ${i+1>progress.unlocked?'disabled':''}><span class="stage-number">${String(i+1).padStart(2,'0')} ${progress.completed.includes(i+1)?'✦':(i+1)%4===0?'♜':''}</span><b>${name}</b><small>${i+1>progress.unlocked?'Locked':(i+1)%4===0?'Boss battle':chapter}</small></button>`).join('')}</div><div class="modal-actions"><button class="secondary-button" data-action="resume">Return</button></div>`,'campaign','THE CAMPAIGN');
+}
+
+function confirmRestart(stage=progress.stage) {
+  if(!started || battle.status!=='playing' || battle.time<1){startBattle(stage);begin();return;}
+  openModal(stage===progress.stage?'Restart this battle?':'Change your battlefield?',`<p>This will restart the battle. Your purchased talents, gold, and cleared campaign battles are saved. Unfinished battle rewards are earned only when you win or lose.</p><div class="modal-actions"><button class="primary-button" data-restart="${stage}">Start battle ${stage} →</button><button class="secondary-button" data-action="resume">Keep playing</button></div>`,'confirm','CAMPAIGN');
+}
+
+function startBattle(stage=progress.stage) {
+  session++;progress.stage=clamp(stage,1,progress.unlocked);board=new Board();
+  battle=new Battle({stage:progress.stage,upgrades:progress.upgrades,onEvent:combatEvent});
+  selected=null;busy=false;resolved=false;charge=0;overdrive=0;matches=0;bestChain=1;summonCount=0;particles=[];floats=[];
+  tileNodes.clear();boardEl.replaceChildren();boardEl.setAttribute('aria-busy','false');renderBoard();setLane(1);
+  $('stage-name').textContent=STAGES[progress.stage-1][0];
+  $('stage-counter').textContent=`Battle ${progress.stage} / 12`;
+  $('chapter-label').textContent=`CHAPTER ${['I','II','III'][Math.floor((progress.stage-1)/4)]} · ${STAGES[progress.stage-1][2]}`;
+  $('combo').textContent='×1';$('combo-label').textContent='COMBO POWER';
+  $('board-message').textContent='Swap adjacent runes to summon troops.';
+  persist();updateUI();drawBattle();
+}
+
+function finishBattle() {
+  if(resolved||busy||battle.status==='playing')return;
+  resolved=true;const won=battle.status==='won',stage=progress.stage;
+  const firstClear=won&&!progress.completed.includes(stage);
+  const reward=Math.round(battle.reward())+(firstClear?35:0);
+  progress.gold+=reward;
+  if(won){if(firstClear)progress.completed.push(stage);progress.unlocked=Math.min(12,Math.max(progress.unlocked,stage+1));}
+  persist();sound(won?'win':'lose');
+  openModal(won?(stage===12?'The rift is sealed.':'The front is yours.'):'The line has fallen.',`<div class="result-icon">${won?'✦':'♜'}</div><p class="result-intro">${won?(stage===12?'You defeated the Eclipse Lord and completed the Runeborn campaign. Your army’s next story is yours to write.':`${STAGES[stage-1][0]} is secure. Train your army and prepare for the next battle.`):'Scout the enemy elements, protect your ranged attackers, and spend your earned gold before trying again.'}</p><div class="result-stats"><div><b>+${reward}</b><small>GOLD${firstClear?' · FIRST CLEAR +35':''}</small></div><div><b>${battle.kills}</b><small>ENEMIES DEFEATED</small></div><div><b>${bestChain}×</b><small>BEST CASCADE</small></div></div><div class="modal-actions"><button class="primary-button" data-next="${won?Math.min(12,stage+1):stage}">${won&&stage<12?'Next battle':'Play again'} →</button><button class="secondary-button" data-action="forge">Upgrade forge · ◆ ${progress.gold}</button><button class="secondary-button" data-action="campaign">Campaign map</button></div>`,'result',won?'VICTORY':'REGROUP & RETURN');
+}
+
+function cast(spell) {
+  if(!started||!backdrop.hidden||battle.status!=='playing')return;
+  if(battle.cast(spell,lane)){sound('spell');banner(`${{meteor:'Meteor strike',rally:'Rally the line',heal:'Renewal'}[spell]} · lane ${lane+1}`);updateUI();}
+}
+
+content.addEventListener('click',event=>{
+  const button=event.target.closest('button');if(!button||button.disabled)return;
+  if(button.dataset.buy){buyUpgrade(button.dataset.buy);return;}
+  if(button.dataset.forge){showForge(button.dataset.forge);return;}
+  if(button.dataset.guide){showGuide(button.dataset.guide);return;}
+  if(button.dataset.stage){confirmRestart(+button.dataset.stage);return;}
+  if(button.dataset.restart){startBattle(+button.dataset.restart);begin();return;}
+  if(button.dataset.next){startBattle(+button.dataset.next);begin();return;}
+  switch(button.dataset.action){
+    case 'begin':begin();break;
+    case 'resume':if(battle.status!=='playing'){closeModal();}else if(!started)begin();else dismissModal();break;
+    case 'forge':showForge(button.dataset.tab||'command');break;
+    case 'campaign':showCampaign();break;
+    case 'guide':showGuide();break;
+    case 'how':showHow();break;
+    case 'restart':confirmRestart();break;
+  }
+});
+content.addEventListener('change',event=>{
+  if(event.target.id==='sound-setting'){progress.settings.sound=event.target.checked;persist();}
+  if(event.target.id==='motion-setting'){progress.settings.reducedMotion=event.target.checked;persist();}
+});
+document.querySelectorAll('[data-lane]').forEach(button=>button.onclick=()=>setLane(+button.dataset.lane));
+document.querySelectorAll('[data-spell]').forEach(button=>button.onclick=()=>cast(button.dataset.spell));
+$('menu-button').onclick=showMenu;$('forge-button').onclick=()=>showForge();$('campaign-button').onclick=showCampaign;
+$('how-button').onclick=showHow;$('codex-button').onclick=()=>showGuide();$('hint-button').onclick=showHint;
+canvas.addEventListener('click',event=>{const rect=canvas.getBoundingClientRect(),y=(event.clientY-rect.top)/rect.height*530;setLane(clamp(Math.round((y-220)/120),0,2));});
+
+function updateUI() {
+  $('player-hp').textContent=`${Math.ceil(battle.playerHp)} / ${battle.playerMax}`;
+  $('enemy-hp').textContent=`${Math.ceil(battle.enemyHp)} / ${battle.enemyMax}${battle.enemyBarrier?' · WARD':''}`;
+  $('player-health').style.width=`${100*battle.playerHp/battle.playerMax}%`;
+  $('enemy-health').style.width=`${100*battle.enemyHp/battle.enemyMax}%`;
+  $('wave').textContent=battle.wave?`WAVE ${battle.wave} / 3`:'PREPARE';
+  $('battle-time').textContent=`${String(Math.floor(battle.time/60)).padStart(2,'0')}:${String(Math.floor(battle.time%60)).padStart(2,'0')}`;
+  const upcoming=battle.forecast().slice(0,3);
+  $('forecast-list').innerHTML=upcoming.length?upcoming.map(e=>`<span class="forecast-token" title="${escape(e.name+' · '+e.role+' · Counter: '+ELEMENT_INFO[e.counter].name)}"><span style="color:${colors[e.element]}">●</span> L${e.lane+1} ${escape(e.name)} · ${Math.ceil(e.time)}s</span>`).join(''):'<span>All waves deployed. Hold the line.</span>';
+  for(const spell of Object.keys(battle.cooldowns)){
+    const button=$('spell-'+spell),cooldown=battle.cooldowns[spell];
+    button.disabled=!started||cooldown>0||battle.status!=='playing';
+    button.querySelector('b').textContent=cooldown>0?`${{meteor:'Meteor',rally:'Rally',heal:'Renew'}[spell]} · ${Math.ceil(cooldown)}s`:{meteor:'Meteor',rally:'Rally',heal:'Renew'}[spell];
+    button.querySelector('.cooldown').style.transform=`scaleX(${clamp(cooldown/battle.spellDurations[spell],0,1)})`;
+    button.setAttribute('aria-label',`${spell} in lane ${lane+1}${cooldown>0?', ready in '+Math.ceil(cooldown)+' seconds':', ready'}`);
+  }
+  document.querySelector('.board-panel').classList.toggle('overdrive',overdrive>0);
+  $('charge-fill').style.width=`${overdrive>0?overdrive*10:Math.min(100,charge*2)}%`;
+  $('charge-label').textContent=overdrive>0?'OVERDRIVE · +25% SUMMON POWER':'OVERDRIVE';
+  $('charge-count').textContent=overdrive>0?`${Math.ceil(overdrive)}s`:`${Math.min(charge,50)} / 50`;
+  if(!busy&&battle.status!=='playing')finishBattle();
+}
+
+function combatEvent(event) {
+  if(event.type==='wave'){banner(`WAVE ${event.wave} · ${event.wave===3&&battle.enemyBarrier?'The boss approaches.':'Watch all three lanes.'}`);sound('spell');}
+  if(event.type==='damage'&&event.amount>=1&&floats.length<55)floats.push({x:event.x,y:laneY(event.lane)-67,text:String(Math.ceil(event.amount)),color:event.effective?'#ffe5a0':event.side==='player'?'#ffb5a7':'#e5eee2',life:.8});
+  if(event.type==='heal'&&event.amount>=2&&floats.length<55)floats.push({x:event.x,y:laneY(event.lane)-70,text:'+'+Math.ceil(event.amount),color:'#b7efba',life:.8});
+  if(event.type==='spawn'&&event.unit.boss)banner(`${event.unit.name} has entered the middle lane!`,4200);
+  if(event.type==='death'){spawnParticles(event.x,laneY(event.lane)-28,event.side==='enemy'?'#c9a7df':'#a5d5be',10);if(event.boss)banner('BOSS DEFEATED · The rift’s ward is broken.');}
+}
+
+function spawnParticles(x,y,color,count=8) {
+  if(reduced())return;
+  for(let i=0;i<count&&particles.length<160;i++)particles.push({x,y,vx:(Math.random()-.5)*90,vy:-20-Math.random()*70,life:.45+Math.random()*.3,color});
+}
+
+function makeRoster() {
+  $('roster').innerHTML=ELEMENTS.map(k=>`<button class="troop-card" data-troop="${k}" style="--element:${colors[k]}"><canvas class="portrait" data-portrait="${k}" width="100" height="100"></canvas><div><h3>${TROOPS[k].name}</h3><p>${TROOPS[k].role}</p><small>${ELEMENT_INFO[k].name} → ${ELEMENT_INFO[ELEMENT_INFO[k].strong].name}</small></div></button>`).join('');
+  $('roster').addEventListener('click',e=>{const button=e.target.closest('[data-troop]');if(button)troopGuide(button.dataset.troop);});
+}
+
+function drawPortraits() {
+  document.querySelectorAll('[data-portrait]').forEach(el=>{
+    const paint=el.getContext('2d');paint.clearRect(0,0,el.width,el.height);
+    if(sprite.complete&&sprite.naturalWidth){const row=ELEMENTS.indexOf(el.dataset.portrait),cell=sprite.naturalWidth/8;paint.imageSmoothingEnabled=true;paint.drawImage(sprite,el.dataset.enemy?4*cell:0,row*cell,cell,cell,0,0,el.width,el.height);}
+  });
+}
+sprite.onload=()=>{drawPortraits();drawBattle();};
+sprite.onerror=()=>toast('Sprite artwork could not load. Reload to restore the animation.');
+
+// Paint the scenery once. Animated layers reuse this surface every frame.
+const scenery=document.createElement('canvas');scenery.width=1000;scenery.height=530;
+const bg=scenery.getContext('2d');
+function paintScenery() {
+  const sky=bg.createLinearGradient(0,0,0,300);sky.addColorStop(0,'#263849');sky.addColorStop(.65,'#62766c');sky.addColorStop(1,'#9a9b76');bg.fillStyle=sky;bg.fillRect(0,0,1000,530);
+  bg.fillStyle='#d2c69b';bg.beginPath();bg.arc(720,64,27,0,Math.PI*2);bg.fill();
+  for(let layer=0;layer<3;layer++){
+    bg.fillStyle=['#3b5057','#3a5351','#2e4948'][layer];bg.beginPath();bg.moveTo(0,190+layer*30);
+    for(let x=0;x<=1100;x+=70)bg.lineTo(x,100+layer*44+Math.sin(x*.008+layer*2)*25+Math.cos(x*.023)*15);
+    bg.lineTo(1000,350);bg.lineTo(0,350);bg.fill();
+  }
+  const ground=bg.createLinearGradient(0,155,0,530);ground.addColorStop(0,'#395044');ground.addColorStop(1,'#273d36');bg.fillStyle=ground;bg.fillRect(0,176,1000,354);
+  const rand=(()=>{let n=7351;return()=>{n=(n*1664525+1013904223)>>>0;return n/4294967296;};})();
+  for(let l=0;l<3;l++){
+    const y=220+l*120;
+    bg.fillStyle='#7a776033';bg.beginPath();bg.roundRect(45,y-16,910,44,20);bg.fill();
+    bg.strokeStyle='#9c998131';bg.lineWidth=1;bg.beginPath();bg.moveTo(70,y+25);bg.lineTo(935,y+25);bg.stroke();
+    for(let i=0;i<85;i++){const x=rand()*1000,sy=y-8+rand()*35;bg.fillStyle=rand()>.5?'#b7ac8133':'#172c2950';bg.fillRect(x,sy,3+rand()*8,1+rand()*3);}
+  }
+  for(let i=0;i<350;i++){
+    const x=rand()*1000,y=175+rand()*355;
+    if([220,340,460].some(l=>Math.abs(y-l)<24))continue;
+    bg.strokeStyle=rand()>.5?'#8eab7155':'#1c302f99';bg.beginPath();bg.moveTo(x,y);bg.lineTo(x-2,y-4-rand()*6);bg.moveTo(x,y);bg.lineTo(x+4,y-3-rand()*5);bg.stroke();
+  }
+  // Distant ruins and forest silhouettes frame the play area.
+  for(const x of [12,148,268,812,972]){
+    bg.fillStyle='#1c3537';bg.fillRect(x,109,6,79);
+    for(let i=0;i<3;i++){bg.beginPath();bg.moveTo(x-21+i*3,150-i*19);bg.lineTo(x+3,84-i*8);bg.lineTo(x+29-i*2,150-i*19);bg.fill();}
+  }
+  castle(bg,65,false);castle(bg,935,true);
+  const vignette=bg.createRadialGradient(500,280,120,500,280,600);vignette.addColorStop(0,'#071a1400');vignette.addColorStop(1,'#071a1470');bg.fillStyle=vignette;bg.fillRect(0,0,1000,530);
+}
+
+function castle(p,x,enemy) {
+  p.save();p.translate(x,0);p.fillStyle='#112a2a88';p.beginPath();p.ellipse(0,460,68,18,0,0,Math.PI*2);p.fill();
+  const wall=p.createLinearGradient(-50,0,50,0);wall.addColorStop(0,enemy?'#393745':'#69746b');wall.addColorStop(.5,enemy?'#59515c':'#94a18d');wall.addColorStop(1,enemy?'#302e3c':'#4c655c');
+  p.fillStyle=wall;p.fillRect(-40,235,80,211);p.fillRect(-52,196,25,255);p.fillRect(27,196,25,255);p.fillRect(-30,152,60,118);
+  p.fillStyle=enemy?'#5b3f56':'#344d4f';for(const tx of [-52,27]){p.beginPath();p.moveTo(tx-6,196);p.lineTo(tx+12,164);p.lineTo(tx+31,196);p.fill();}
+  p.beginPath();p.moveTo(-36,152);p.lineTo(0,108);p.lineTo(36,152);p.fill();
+  p.strokeStyle='#162d2e55';for(let y=210;y<440;y+=20){p.beginPath();p.moveTo(-49,y);p.lineTo(49,y);p.stroke();}
+  p.fillStyle='#142c2e';for(const y of [230,350,430]){p.beginPath();p.roundRect(-14,y-28,28,44,[14,14,0,0]);p.fill();}
+  p.fillStyle=enemy?'#b480ae':'#b7d3ad';p.fillRect(-2,80,3,32);p.beginPath();p.moveTo(1,82);p.lineTo(28,86);p.lineTo(20,103);p.lineTo(1,99);p.fill();
+  p.fillStyle=enemy?'#b58cbd':'#e4ce8c';p.fillRect(-15,164,30,42);p.fillStyle=enemy?'#5c3e63':'#657e65';p.font='25px serif';p.textAlign='center';p.fillText(enemy?'◇':'✧',0,194);
+  p.restore();
+}
+
+function drawBattle() {
+  if(!battle)return;
+  ctx.clearRect(0,0,1000,canvas.height);ctx.drawImage(scenery,0,0,1000,canvas.height);
+  const y=laneY(lane);
+  ctx.fillStyle='#ead3930c';ctx.fillRect(110,y-20,780,46);ctx.strokeStyle='#f0d79855';ctx.setLineDash([8,10]);ctx.lineWidth=1;ctx.strokeRect(112,y-20,776,46);ctx.setLineDash([]);
+  if(battle.enemyBarrier){ctx.strokeStyle='#c29cde66';ctx.lineWidth=3;ctx.beginPath();ctx.ellipse(930,325*canvas.height/530,56,137*canvas.height/530,0,0,Math.PI*2);ctx.stroke();}
+  for(const effect of battle.effects)if(['summon','heal','rally','meteor'].includes(effect.type))drawEffect(effect);
+  const units=[...battle.units].sort((a,b)=>a.lane-b.lane||a.x-b.x);
+  for(const u of units)drawUnit(u);
+  for(const p of battle.projectiles){
+    const py=laneY(p.lane)-31;ctx.strokeStyle=p.color;ctx.lineWidth=p.element==='tide'?3:5;ctx.beginPath();ctx.moveTo(p.x-(p.side==='player'?13:-13),py);ctx.lineTo(p.x,py);ctx.stroke();ctx.fillStyle='#f4e8c0';ctx.beginPath();ctx.arc(p.x,py,p.element==='ember'?5:2.5,0,Math.PI*2);ctx.fill();
+  }
+  for(const effect of battle.effects)if(!['summon','heal','rally','meteor'].includes(effect.type))drawEffect(effect);
+  for(const p of particles){ctx.globalAlpha=clamp(p.life*2,0,1);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,3,3);}
+  ctx.globalAlpha=1;ctx.textAlign='center';
+  for(const f of floats){ctx.globalAlpha=clamp(f.life*2,0,1);ctx.font='bold 16px system-ui';ctx.strokeStyle='#14282d';ctx.lineWidth=3;ctx.strokeText(f.text,f.x,f.y);ctx.fillStyle=f.color;ctx.fillText(f.text,f.x,f.y);}
+  ctx.globalAlpha=1;
+  // Small drifting motes give the empty front a little life.
+  if(!reduced()){ctx.fillStyle='#e9ddb588';for(let i=0;i<9;i++){const x=(i*173+motionTime*(8+i%3))%1000,fy=(130+(i*47)%370)*canvas.height/530+Math.sin(motionTime+i)*8;ctx.globalAlpha=.25+Math.sin(motionTime*1.2+i)*.2;ctx.fillRect(x,fy,2,2);}ctx.globalAlpha=1;}
+}
+
+function drawUnit(u) {
+  const baseline=laneY(u.lane)+((u.id%3)-1)*5-(u.trait.flying?10+Math.sin(motionTime*5+u.id)*3:0);
+  const size=u.boss?112:79;const walking=u.state==='walk';
+  const frame=reduced()?0:walking?Math.floor(u.anim*8)%3:u.anim<.3?3:1;
+  const row=TROOPS[u.key].spriteRow,col=(u.side==='enemy'?4:0)+frame;
+  ctx.save();ctx.translate(u.x,baseline);ctx.fillStyle='#071f2366';ctx.beginPath();ctx.ellipse(0,1,size*.28,6,0,0,Math.PI*2);ctx.fill();
+  if(u.buffs.includes('haste')){ctx.strokeStyle='#8ce2e888';ctx.lineWidth=2;for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(-31, -20-i*10);ctx.lineTo(-44-i*4,-20-i*10);ctx.stroke();}}
+  if(u.shield>0){ctx.strokeStyle='#f4d998aa';ctx.fillStyle='#e9d3900a';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(0,-size*.4,size*.38,size*.46,0,0,Math.PI*2);ctx.fill();ctx.stroke();}
+  if(sprite.complete&&sprite.naturalWidth){
+    const cell=sprite.naturalWidth/8;ctx.save();if(u.side==='enemy')ctx.scale(-1,1);
+    if(u.hitFlash>0&&!reduced())ctx.globalAlpha=.62;
+    ctx.drawImage(sprite,col*cell,row*cell,cell,cell,-size/2,-size*.9,size,size);ctx.restore();
+  }else{ctx.fillStyle=colors[u.key];ctx.beginPath();ctx.arc(0,-28,18,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.font='16px serif';ctx.textAlign='center';ctx.fillText('✧',0,-23);}
+  if(u.buffs.includes('fury')){ctx.fillStyle='#ffa36f';for(let i=0;i<3;i++){const a=motionTime*2+i*2;ctx.fillRect(Math.cos(a)*23,-30+Math.sin(a)*18,3,3);}}
+  if(u.buffs.includes('vitality')){ctx.fillStyle='#b5e3a6';ctx.font='bold 13px system-ui';ctx.fillText('+',19,-size*.57);}
+  if(u.statuses.burn){ctx.fillStyle='#ff9765';for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(-12+i*10,-15);ctx.lineTo(-8+i*10,-30-Math.sin(motionTime*8+i)*4);ctx.lineTo(-4+i*10,-15);ctx.fill();}}
+  if(u.statuses.poison){ctx.fillStyle='#9cd980';for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(-13+i*12,-54,2,0,Math.PI*2);ctx.fill();}}
+  if(u.statuses.slow){ctx.strokeStyle='#9be2ff99';ctx.beginPath();ctx.ellipse(0,-8,24,7,0,0,Math.PI*2);ctx.stroke();}
+  if(u.statuses.rally||u.elite){ctx.fillStyle='#fbe4a6';ctx.textAlign='center';ctx.font='14px serif';ctx.fillText(u.elite?'✦':'↑',0,-size*.93);}
+  const hpWidth=u.boss?64:38,hpY=-size*.88;
+  if(u.hp<u.maxHp||u.side==='enemy'||u.elite){ctx.fillStyle='#10212ac9';ctx.fillRect(-hpWidth/2,hpY,hpWidth,4);ctx.fillStyle=u.side==='enemy'?'#df9a98':'#a8d4b0';ctx.fillRect(-hpWidth/2,hpY,hpWidth*clamp(u.hp/u.maxHp,0,1),4);if(u.shield){ctx.fillStyle='#e9cf91';ctx.fillRect(-hpWidth/2,hpY-2,hpWidth*clamp(u.shield/u.maxHp,0,1),2);}}
+  ctx.fillStyle=colors[u.key];ctx.beginPath();ctx.arc(0,8,3,0,Math.PI*2);ctx.fill();
+  if(u.boss){ctx.font='bold 12px system-ui';ctx.textAlign='center';ctx.fillStyle='#f4e2b8';ctx.fillText(u.name,0,-size-5);}
+  else if(u.side==='enemy'&&(u.trait.healer||u.trait.summoner||u.trait.armor>.15||u.trait.flying)){ctx.fillStyle='#e9e7d7';ctx.font='bold 12px system-ui';ctx.textAlign='center';ctx.fillText(u.trait.healer?'+':u.trait.summoner?'✧':u.trait.flying?'⌃':'◇',21,-51);}
+  ctx.restore();
+}
+
+function drawEffect(e) {
+  if(reduced()&&e.type!=='meteor')return;
+  const y=laneY(e.lane),t=clamp(e.age/e.maxLife,0,1);
+  ctx.save();ctx.globalAlpha=(1-t)*.8;ctx.strokeStyle=e.color;ctx.fillStyle=e.color;ctx.lineWidth=2;
+  if(e.type==='lightning'){
+    ctx.beginPath();ctx.moveTo(e.x,y-30);for(let i=1;i<=6;i++)ctx.lineTo(e.x+(e.toX-e.x)*i/6,y-30+(i%2?8:-8));ctx.stroke();
+  }else if(e.type==='meteor'){
+    for(let i=0;i<5;i++){const mx=200+i*140,my=y-150+t*140;ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(mx-25,my-60);ctx.lineTo(mx,my);ctx.stroke();ctx.beginPath();ctx.arc(mx,my,9,0,Math.PI*2);ctx.fill();}
+  }else if(e.type==='rally'||(e.type==='heal'&&e.x===400)){
+    ctx.fillRect(120,y-60,760,82);ctx.font='32px serif';ctx.textAlign='center';for(let i=0;i<6;i++)ctx.fillText(e.type==='heal'?'+':'↑',180+i*130,y-10-t*20);
+  }else if(e.type==='slash'){
+    ctx.lineWidth=3;ctx.beginPath();ctx.arc(e.x,y-34,20+t*20,-1.1,1);ctx.stroke();
+  }else{
+    ctx.beginPath();ctx.ellipse(e.x,y-15,10+t*36,(e.type==='summon'?8:20)+t*15,0,0,Math.PI*2);ctx.stroke();
+    if(e.type==='heal'){ctx.font='22px system-ui';ctx.textAlign='center';ctx.fillText('+',e.x,y-30-t*20);}
+  }
+  ctx.restore();
+}
+
+function frame(time) {
+  const dt=Math.min(.05,Math.max(0,(time-lastFrame)/1000));lastFrame=time;
+  const playing=started&&backdrop.hidden&&!document.hidden&&battle.status==='playing';
+  if(playing){
+    battle.update(dt);motionTime+=dt;overdrive=Math.max(0,overdrive-dt);
+    for(const p of particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=100*dt;p.life-=dt;}
+    for(const f of floats){f.y-=24*dt;f.life-=dt;}
+    particles=particles.filter(p=>p.life>0);floats=floats.filter(f=>f.life>0);
+  }
+  uiTimer+=dt;const uiDue=uiTimer>.15;if(uiDue){uiTimer=0;updateUI();}
+  if(!document.hidden&&(playing||uiDue))drawBattle();requestAnimationFrame(frame);
+}
+
+document.addEventListener('visibilitychange',()=>{lastFrame=performance.now();if(document.hidden&&started&&backdrop.hidden&&battle.status==='playing')showMenu();});
+window.addEventListener('pagehide',persist);
+paintScenery();makeRoster();startBattle(progress.stage);showIntro();requestAnimationFrame(frame);
