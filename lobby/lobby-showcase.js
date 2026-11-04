@@ -24,6 +24,7 @@
     ]),
     // These complete experiences join the flagships/premium games in the top tier.
     builtOut: Object.freeze([
+      {key:'ironfield', label:'Every soldier. Every order.', color:'#d7bc88'},
       {key:'mountonline', label:'Raise your banner. Conquer the realm.', color:'#e5bf7c'},
       {key:'cheesehold', label:'Build your last line of defense', color:'#e7ca8a'},
       {key:'gridbound', label:'A shared world of adventures', color:'#a8deb3'},
