@@ -7,7 +7,7 @@ import {validateBattlePack} from '../battle-assets.mjs';
 import {UNITS,CAMPAIGN_HOUSES} from '../data.mjs';
 import {createBattle,beginBattle,stepBattle,terrainHeight} from '../battle-sim.mjs';
 import {battlefieldClimate,TERRAIN_STEP} from '../battle-terrain.mjs';
-import {battleGroundHeight,polearmFrame,polearmPitch} from '../battle-renderer.mjs';
+import {battleGroundHeight,obstacleRockMesh,polearmFrame,polearmPitch} from '../battle-renderer.mjs';
 test('shipped model package is reproducible and covers every roster entry and House',async()=>{
   const shipped=await readFile(new URL('../assets/battle/v1/pack.json',import.meta.url),'utf8'),pack=validateBattlePack(JSON.parse(shipped));
   assert.equal(JSON.stringify(buildBattlePack()),shipped);
@@ -37,6 +37,14 @@ test('fresh models and previously cached v1 packs keep visor bars within helmet 
 });
 test('renderer terrain heights match physical movement and picking',()=>{
   for(const terrain of ['plains','forest','hills','river','pass','desert'])for(const [x,z]of [[0,0],[24,-37],[-50,70]])assert.equal(battleGroundHeight({terrain},x,z),terrainHeight({layout:{terrain}},x,z));
+});
+test('pass rocks fill their collision dimensions without projecting beyond any face',()=>{
+  const rock=obstacleRockMesh(buildBattlePack().meshes.stone);
+  for(let axis=0;axis<3;axis++){
+    const values=rock.positions.filter((v,i)=>i%3===axis);
+    assert.equal(Math.min(...values),axis===1?0:-.5);assert.equal(Math.max(...values),axis===1?1:.5);
+  }
+  assert.ok(rock.normals.every(Number.isFinite));
 });
 test('mounted, foot, braced, striking, recovering and fallen polearms clear the helmet at both detail levels',()=>{
   const phases=[{}, {braced:true}, {status:'dead'}, ...[0,.24,.52,.80,1.12].map(elapsed=>({action:{kind:'attack',elapsed,windup:.52,recovery:.70,duration:1.22}}))];

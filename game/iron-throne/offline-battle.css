@@ -167,3 +167,23 @@
   }
   .battlefield .battle-pause section {padding: 12px}
 }
+@media (max-width:700px), (pointer:coarse) {
+  .battlefield .battle-touch-buttons {
+    display:grid; grid-template-columns:repeat(2,minmax(58px,70px)); gap:4px;
+    grid-template-areas:"sprint orders" "heavy interact" "attack block";
+  }
+  .battle-touch-buttons [data-battle-touch=sprint]{grid-area:sprint}
+  .battle-touch-buttons [data-battle-action=commands]{grid-area:orders}
+  .battle-touch-buttons [data-battle-touch=heavy]{grid-area:heavy}
+  .battle-touch-buttons [data-battle-touch=interact]{grid-area:interact}
+  .battle-touch-buttons [data-battle-touch=attack]{grid-area:attack}
+  #battle-touch-block {
+    grid-area:block;display:grid;grid-template-columns:17px auto;justify-content:center;align-content:center;
+    align-items:center;gap:1px 3px;min-height:52px;padding:3px;background:#294955;color:#f6e4ac;
+    border:2px solid #bfa46e;pointer-events:auto;user-select:none;touch-action:none;
+  }
+  #battle-touch-block svg{display:block;width:17px;height:19px}
+  #battle-touch-block strong{font-size:.8rem}
+  #battle-touch-block small{grid-column:1/-1;font-size:.65rem}
+  #battle-touch-block[aria-pressed=true]{color:#182523;background:#e7ca85;border-color:#fff3c4}
+}

@@ -30,6 +30,22 @@ const mix=(a,b,t)=>a+(b-a)*clamp(t,0,1);
 const hash=value=>{let n=2166136261;for(const c of String(value))n=Math.imul(n^c.charCodeAt(0),16777619);return n>>>0;};
 const CORPSE_LIMIT=160,DETAILED_CORPSE_LIMIT=24,BLOOD_LIMIT=96,BLOOD_DISTANCE=32,BLOOD_LIFETIME=.85;
 const carriesPolearm=u=>!u.sidearm&&(['spear','lance'].includes(u.weapon)||!u.weapon&&['spearman','cavalry','knight'].includes(u.type));
+// The projectile and movement simulators use the obstacle's rectangular bounds.
+// Fit the asymmetric rock asset to one centered, ground-based unit box first.
+export function obstacleRockMesh(mesh){
+  const min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];
+  mesh.positions.forEach((v,i)=>{const a=i%3;min[a]=Math.min(min[a],v);max[a]=Math.max(max[a],v);});
+  const size=max.map((v,i)=>Math.max(.0001,v-min[i]));
+  const positions=mesh.positions.map((v,i)=>{const a=i%3;return (v-min[a])/size[a]-(a===1?0:.5);});
+  const normals=[];
+  for(let i=0;i<mesh.normals.length;i+=3)normals.push(...normalize(size.map((s,a)=>s*mesh.normals[i+a])));
+  return {positions,normals};
+}
+function backdropPoint(x,z,width,depth,clearance){
+  const edge=Math.max(Math.abs(x)/(width/2+clearance),Math.abs(z)/(depth/2+clearance));
+  const scale=edge>0&&edge<1?1/edge:1;
+  return [x*scale,z*scale];
+}
 export function polearmPitch(u,pose=battleActionPose(u)){
   if(u.status==='dead')return .27;
   if(u.action?.kind==='attack'||u.braced)return pose.shaft;
@@ -156,6 +172,7 @@ export async function createBattleRenderer(canvas,battle,options={}) {
   }
   for(const [name,mesh]of Object.entries(pack.meshes))upload(name,mesh);
   upload('masonry',pack.meshes.box);
+  upload('outcrop',obstacleRockMesh(pack.meshes.stone));
   const spire={positions:[],normals:[]};
   for(let i=0;i<8;i++){
     const a=i*TAU/8,b=(i+1)*TAU/8,points=[[Math.cos(a),0,Math.sin(a)],[0,1,0],[Math.cos(b),0,Math.sin(b)]];
@@ -193,10 +210,11 @@ export async function createBattleRenderer(canvas,battle,options={}) {
   function ground(){
     const groups=Array.from({length:7},()=>({positions:[],normals:[]})),w=battle.layout.width||160,d=battle.layout.depth||160,step=TERRAIN_STEP;
     const road=z=>2.4*Math.sin(z/17+climate.phase)*Math.min(1,Math.abs(z-12)/20);
+    const wetGround=[...(battle.layout.obstacles||[]).filter(o=>o.kind==='water'),...(battle.layout.bridges||[])];
     for(let x=-w/2;x<w/2;x+=step)for(let z=-d/2;z<d/2;z+=step){
       const cx=x+step/2,cz=z+step/2,noise=Math.sin(cx*.18+cz*.07+climate.phase)*.6+Math.cos(cz*.21-cx*.12)*.4;
       let material=Math.min(3,Math.floor((noise+1)*2));
-      if(battle.layout.bridges?.length&&Math.abs(cz)<7)material=5;
+      if(wetGround.some(o=>Math.abs(cx-o.x)+step/2<=o.width/2&&Math.abs(cz-o.z)+step/2<=o.depth/2))material=5;
       const group=groups[material],pos=group.positions,normals=group.normals;
       const vs=[[x,height(x,z),z],[x+step,height(x+step,z),z],[x,height(x,z+step),z+step],[x+step,height(x+step,z+step),z+step]];
       for(const ids of [[0,2,1],[1,2,3]]){const [a,b,c]=ids.map(i=>vs[i]),n=normalize(cross(b.map((x,i)=>x-a[i]),c.map((x,i)=>x-a[i])));for(const v of [a,b,c]){pos.push(...v);normals.push(...n);}}
@@ -223,21 +241,27 @@ export async function createBattleRenderer(canvas,battle,options={}) {
     }
     for(let i=0;i<74;i++){
       const a=i*TAU/74,band=1.02+.13*Math.sin(3*a+climate.phase),x=Math.sin(a)*w*band,z=Math.cos(a)*d*band;
-      object('stone',[x,-4,z],[85,45+27*Math.sin(a*4+climate.phase),70],[.36,.43,.40],[0,a,0],staticInstances);
+      const [ridgeX,ridgeZ]=backdropPoint(x,z,w,d,24);
+      object('stone',[ridgeX,-4,ridgeZ],[85,45+27*Math.sin(a*4+climate.phase),70],[.36,.43,.40],[0,a,0],staticInstances);
       if(battle.layout.terrain==='forest'||Math.cos(a*6+climate.phase)>.35){
-        for(let j=0;j<3;j++)object('pine',[x*.72+j*2,-1,z*.72],[1.8,2+(i+j)%3*.4,1.8],[.24,.34,.28],[0,a+j,0],staticInstances);
+        for(let j=0;j<3;j++){
+          const [tx,tz]=backdropPoint(x*.72+j*2,z*.72,w,d,4);
+          object('pine',[tx,-1,tz],[1.8,2+(i+j)%3*.4,1.8],[.24,.34,.28],[0,a+j,0],staticInstances);
+        }
       }
       if(battle.layout.fortified&&z>70&&i%3===0){
-        object('box',[x*.67,0,z*.72],[7,4,5],[.48,.48,.42],[0,a,0],staticInstances);
-        object('roof',[x*.67,4,z*.72],[4,2.5,3],[.41,.34,.28],[0,a,0],staticInstances);
+        const [hx,hz]=backdropPoint(x*.67,z*.72,w,d,6);
+        object('box',[hx,0,hz],[7,4,5],[.48,.48,.42],[0,a,0],staticInstances);
+        object('roof',[hx,4,hz],[4,2.5,3],[.41,.34,.28],[0,a,0],staticInstances);
       }
     }
     for(const o of battle.layout.obstacles||[]){
       const y=height(o.x,o.z),r=o.radius||2;
       if(o.kind==='tree'){
         object('shaft',[o.x,y,o.z],[r*5,3.5,r*5],[.30,.23,.15],[0,0,0],staticInstances);
-        object(o.id?.length%2?'pine':'foliage',[o.x,y+2,o.z],[r*.9,(o.height||7)/4,r*.9],[.19+(o.x%7)*.005,.31,.20],[0,o.x,0],staticInstances);
-      }else if(o.kind==='rock')object('stone',[o.x,y+(o.height||4)*.46,o.z],[(o.width||r*2)/.4,(o.height||4)/.44,(o.depth||r*2)/.36],[.42,.45,.43],[0,0,0],staticInstances);
+        const pine=!!(o.id?.length%2),radius=r/(pine?1.4:1.6);
+        object(pine?'pine':'foliage',[o.x,y+2,o.z],[radius,((o.height||7)-2)/(pine?4:3.4),radius],[.19+(o.x%7)*.005,.31,.20],[0,o.x,0],staticInstances);
+      }else if(o.kind==='rock')object('outcrop',[o.x,y,o.z],[o.width||r*2,o.height||4,o.depth||r*2],[.42,.45,.43],[0,0,0],staticInstances);
       else if(o.kind==='building'){
         object('box',[o.x,y,o.z],[o.width||5,o.height||5,o.depth||5],[.65,.59,.46],[0,0,0],staticInstances);
         object('roof',[o.x,y+(o.height||5),o.z],[(o.width||5)*.6,2,(o.depth||5)*.6],[.34,.22,.17],[0,0,0],staticInstances);
@@ -246,12 +270,9 @@ export async function createBattleRenderer(canvas,battle,options={}) {
     }
     const garrison=battle.armies.find(a=>a.side===1);
     drawCastleItems(battle.layout.castle,(...args)=>object(...args,staticInstances),height,houseColor(garrison?.owner));
-    if(battle.layout.bridges?.length||battle.layout.terrain==='river'){
-      // Bridge positions come from legal routes, not decorative obstructions.
-      for(const bridge of battle.layout.bridges||[{x:0,z:0,width:10,depth:16}]){
-        object('box',[bridge.x,-.19,bridge.z],[bridge.width||10,.2,bridge.depth||16],[.47,.37,.25],[0,0,0],staticInstances);
-        for(const s of [-1,1])object('beam',[bridge.x+s*(bridge.width||10)/2,.6,bridge.z-(bridge.depth||16)/2],[.8,bridge.depth||16,.8],[.35,.28,.2],[Math.PI/2,0,0],staticInstances);
-      }
+    for(const bridge of battle.layout.bridges||[]){
+      object('box',[bridge.x,-.19,bridge.z],[bridge.width,.2,bridge.depth],[.47,.37,.25],[0,0,0],staticInstances);
+      for(const s of [-1,1])object('beam',[bridge.x+s*bridge.width/2,.6,bridge.z-bridge.depth/2],[.8,bridge.depth,.8],[.35,.28,.2],[Math.PI/2,0,0],staticInstances);
     }
   }
   ground();cacheInstances(staticInstances,staticBuffers);

@@ -163,6 +163,44 @@ try{
     await page.screenshot({path:process.env.BATTLE_SCREENSHOT.replace(/\.png$/, '-citadel-close.png')});
   }
   await page.evaluate(()=>cityPresentation.dispose());
+  for(const terrain of ['pass','forest','river']){
+    const result=await page.evaluate(async(terrain)=>{
+      const {createBattle}=await import('/game/iron-throne/battle-sim.mjs'),{createBattleRenderer}=await import('/game/iron-throne/battle-renderer.mjs');
+      const field=createBattle({id:'royal-settlement',seed:119,playerOwner:'ashen',playerSide:0,
+        tile:{terrain,building:'city',levels:{city:4,wall:3},walls:180,fortIntegrity:120},
+        participants:[{armyId:'a',owner:'ashen',side:0,units:{spearman:30,menAtArms:22,ram:1}},
+          {armyId:'d',owner:'wintermere',side:1,units:{archer:24,spearman:32,menAtArms:20}}]});
+      field.phase='combat';
+      const outer=field.layout.castle.outer,views={
+        gate:{mode:'third',target:{x:-20,y:0,z:outer.front-9},yaw:.64,pitch:.10,distance:7},
+        courtyard:{mode:'third',target:{x:-17,y:0,z:outer.front+15},yaw:.24,pitch:.09,distance:7}
+      };
+      const canvas=document.querySelector('canvas'),gl=canvas.getContext('webgl'),scene=await createBattleRenderer(canvas,field);
+      // Compare the gate and courtyard against the same field without natural obstacles.
+      const natural=o=>['rock','tree','water'].includes(o.kind),clear=structuredClone(field);
+      clear.layout.obstacles=clear.layout.obstacles.filter(o=>!natural(o));clear.layout.bridges=[];
+      const bare=await createBattleRenderer(canvas,clear),changes={};
+      function area(){
+        const x=Math.floor(canvas.width*.12),w=Math.floor(canvas.width*.76),y=Math.floor(canvas.height*.10),h=Math.floor(canvas.height*.52);
+        const pixels=new Uint8Array(w*h*4);gl.readPixels(x,y,w,h,gl.RGBA,gl.UNSIGNED_BYTE,pixels);return pixels;
+      }
+      for(const [name,camera] of Object.entries(views)){
+        scene.render(field,camera);const actual=area();bare.render(clear,camera);const empty=area();let changed=0;
+        for(let i=0;i<actual.length;i+=4)if(Math.abs(actual[i]-empty[i])+Math.abs(actual[i+1]-empty[i+1])+Math.abs(actual[i+2]-empty[i+2])>8)changed++;
+        changes[name]=changed;
+      }
+      bare.dispose();views.overview={mode:'tactical',target:{x:0,y:4,z:17},yaw:.21,pitch:.64,distance:120};
+      window.settlementFrame=(name)=>scene.render(field,views[name]);window.settlementScene=scene;
+      return {changes,tier:field.layout.castle.tier,natural:field.layout.obstacles.filter(natural).length,glError:gl.getError()};
+    },terrain);
+    assert.equal(result.tier,4);assert.ok(result.natural>0);assert.equal(result.glError,0);
+    assert.deepEqual(result.changes,{gate:0,courtyard:0},`${terrain} scenery stays clear of the gate approach and royal courtyard`);
+    if(process.env.BATTLE_SCREENSHOT)for(const view of ['gate','courtyard','overview']){
+      await page.evaluate(view=>settlementFrame(view),view);
+      await page.screenshot({path:process.env.BATTLE_SCREENSHOT.replace(/\.png$/, '-'+terrain+'-citadel-'+view+'.png')});
+    }
+    await page.evaluate(()=>settlementScene.dispose());
+  }
   const polearms=await page.evaluate(()=>{
     const base=combatSample.units[0],pose={kind:'attack',elapsed:.52,windup:.52,recovery:.7,duration:1.22};
     const units=[{x:-2.5},{x:-.85,braced:true},{x:.85,action:pose},{x:3,mounted:true}].map((u,i)=>({

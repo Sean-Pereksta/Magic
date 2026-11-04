@@ -40,9 +40,76 @@ function nearlyWonCampaign(){
 }
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const url=`http://127.0.0.1:${server.address().port}/game/iron-throne/index.html`;
+async function customFinishIsolation(browser){
+  const context=await browser.newContext({viewport:{width:1280,height:860}});
+  // Whitespace is intentional. Re-serializing the same campaign would change these bytes.
+  const original='\n'+JSON.stringify(createGame(971))+' ';
+  try{
+    await context.addInitScript(({key,original})=>{
+      localStorage.setItem(key,original);window.campaignWrites=[];
+      for(const method of ['setItem','removeItem','clear']){
+        const run=Storage.prototype[method];
+        Storage.prototype[method]=function(...args){
+          if(this===localStorage&&(method==='clear'||String(args[0])===key))window.campaignWrites.push(method);
+          return run.apply(this,args);
+        };
+      }
+    },{key:saveKey,original});
+    let workers=0;
+    await context.route('**/battle-finish-worker.mjs',route=>{
+      if(++workers>1)return route.continue();
+      // Exercise the browser's worker error path once. Retry loads the real resolver.
+      return route.fulfill({contentType:'text/javascript',headers:{'Cache-Control':'no-store'},
+        body:'self.onmessage=()=>{throw new Error("Test worker startup failure");};'});
+    });
+    const page=await context.newPage();
+    page.setDefaultTimeout(30000);
+    await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
+    await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
+    await page.goto(url);await page.locator('#custom-battle').click();
+    await page.locator('[name=mode]').selectOption('field');
+    await page.locator('#custom-total-0').fill('4');await page.locator('#custom-total-1').fill('1');
+    await page.locator('[data-side="0"][data-unit="ram"]').fill('0');
+    const field=await page.locator('#custom-field-note').textContent();
+    await page.evaluate(()=>{
+      const pause=document.querySelector('#battle-pause'),notes=[];
+      window.customPauseNotes=notes;
+      new MutationObserver(()=>{
+        if(!document.querySelector('#battlefield').open||pause.hidden)return;
+        const copy=[pause.querySelector('.eyebrow').textContent,pause.querySelector('#battle-pause-note').textContent,
+          pause.querySelector('[data-battle-action=exit]').textContent].join(' · ');
+        if(copy!==notes.at(-1))notes.push(copy);
+      }).observe(pause,{attributes:true,childList:true,subtree:true});
+    });
+    await page.getByRole('button',{name:'Fight Now'}).click();
+    await page.waitForFunction(()=>document.querySelector('#battle-mode').textContent==='LEAD THE BATTLE');
+    await page.locator('[data-battle-action=pause]').click();
+    const finish=page.locator('[data-battle-action=finish]');
+    await finish.click();
+    await page.waitForFunction(()=>/could not|failed|retry|error/i.test(document.querySelector('#battle-pause-note').textContent));
+    assert.equal(workers,1);assert.equal(await finish.isEnabled(),true);
+    assert.equal(await page.locator('#battle-pause').isVisible(),true,'custom finish failure leaves the live battle available to retry');
+    await finish.click();
+    await page.locator('#custom-rematch').waitFor({timeout:120000});
+    assert.equal(workers,2);assert.equal(await page.locator('#battlefield').isVisible(),false);
+    assert.equal(await page.locator('#custom-setup').isVisible(),true);
+    assert.match(await page.locator('#custom-result').textContent(),/^(Victory|Defeat|Draw) at /);
+    assert.equal(await page.locator('#custom-field-note').textContent(),field);
+    assert.equal(await page.locator('#custom-total-0').inputValue(),'4');
+    assert.equal(await page.locator('#custom-total-1').inputValue(),'1');
+    const audit=await page.evaluate(key=>({bytes:localStorage.getItem(key),writes:window.campaignWrites,notes:window.customPauseNotes}),saveKey);
+    assert.deepEqual(audit.writes,[],'custom pause, finish and retry must never attempt campaign storage writes');
+    assert.equal(audit.bytes,original);
+    assert.ok(audit.notes.length>=3,'pause, resolution and failure status were inspected');
+    for(const note of audit.notes)assert.doesNotMatch(note,/\bsav(?:e|ed|ing)\b|\bcheckpoint\b|campaign paused|your campaign waits/i);
+    console.log('Custom Finish Automatically recovered from a worker failure, returned to setup after retry and never wrote the existing campaign.');
+  }finally{await context.close();}
+}
 let browser;
 try{
   browser=await chromium.launch({headless:true,executablePath:process.env.IRON_THRONE_CHROMIUM||undefined,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+  await customFinishIsolation(browser);
+  if(!process.argv.includes('--finish-only')){
   const page=await browser.newPage({viewport:{width:1280,height:860}}), errors=[];
   page.on('pageerror',error=>errors.push(error.message));
   await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
@@ -110,4 +177,5 @@ try{
   await page.locator('[data-scenario=royal]').click();
   assert.equal(await page.locator('[name=limit]').inputValue(),'100','the larger scenario honors the lower menu setting');
   assert.deepEqual(errors,[]);
+  }
 }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}

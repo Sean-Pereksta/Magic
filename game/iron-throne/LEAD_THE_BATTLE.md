@@ -6,11 +6,11 @@ The encounter shows the location, defenses, armies and commanders, visible oppos
 
 ## Custom Battle
 
-Choose **Custom Battle** on the opening screen. **West Wall Assault** fields 72 soldiers and one ram against 48 defenders, including 16 archers. Send infantry to a ladder with **L**, or select infantry, press **B**, and choose the ram and its target. The ram has 2,400 HP. Four living infantry can roll it into position. Six push faster and recover sooner between blows. A section collapses where the head strikes, opening a route into the fort.
+Choose **Custom Battle** on the opening screen. **West Wall Assault** fields 72 soldiers and one ram against 48 defenders, including 16 archers. Send infantry to a ladder with **L**, or select infantry, press **B**, and choose the ram and its target. At the start of a siege, nearby available infantry take the ram handles automatically. They can replace fallen pushers. A direct recall takes priority, and B lets you pick a different wall or assign specific infantry. The ram has 2,400 HP. Four living infantry can roll it into position. Six push faster and recover sooner between blows. A section collapses where the head strikes, opening a route into the fort.
 
-**Royal City Siege** fields 240 attacking soldiers and two wheeled rams against 200 defenders. The royal citadel has separate outer and inner walls, a chapel, a keep and defenders in both wards. Select **Defenses** to try an open market town, a timber stockade or palisade, a stone fort, or a larger upgraded city. Campaign battles use the actual settlement, fort and wall upgrades on the tile.
+**Royal City Siege** fields 240 attacking soldiers and two wheeled rams against 200 defenders. The royal citadel has separate outer and inner walls, a chapel, a keep and defenders in both wards. Select **Defenses** to try an open market town, a timber stockade or palisade, a stone fort, or a larger upgraded city. Campaign battles use the actual settlement, fort and wall upgrades on the tile. The settlement and its approaches are cleared and levelled before deployment.
 
-Both sides have editable rosters. Their deployment previews show how many soldiers and engines will fight immediately and how many will arrive in waves. **Deploy First** lets you position formations and assign a ram crew. **Fight Now** starts immediately. At the end you return to setup. **Rematch** restores the starting deployment and **New Field** changes the seed. Custom battles use their own in-memory state.
+Both sides have editable rosters. Their deployment previews show how many soldiers and engines will fight immediately and how many will arrive in waves. **Deploy First** lets you position formations and assign a ram crew. **Fight Now** starts immediately. At the end you return to setup. **Rematch** restores the starting deployment and **New Field** changes the seed. Custom battles use their own in-memory state. Finish Automatically resolves the live custom fight and takes you directly back to setup.
 
 ## Playing
 
@@ -25,7 +25,7 @@ Save a selection under **Custom command groups** to name and recall its exact so
 | WASD / movement stick | Move the counted commander; WASD pans the tactical camera |
 | Mouse / swipe | Aim and camera |
 | Left click / Attack | Attack or shoot |
-| Right click / Block | Directional defense |
+| Right click / Block | Face the blow and hold to defend. On phones, use the shield button beside Attack. Raise guard within 0.3 seconds of a frontal melee hit to stun the attacker for 0.7 seconds. |
 | Space / Heavy | Heavy attack with stamina cost |
 | Shift / Sprint | Sprint |
 | E / Interact / Mount | Interact with a ladder or mount/dismount an existing mounted troop |

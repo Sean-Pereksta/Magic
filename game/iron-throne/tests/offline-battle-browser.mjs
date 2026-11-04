@@ -128,6 +128,67 @@ async function checkBattlefieldHotkeys(page,custom){
   await page.keyboard.press('Tab');await page.keyboard.press('q');assert.equal(await page.locator('#battle-command-panel').isVisible(),false);
 }
 let browser;
+async function checkMobileGuard(browser){
+  const initial=fixture();beginEncounter(initial);
+  const b=createBattle(initial.offlineBattle);beginBattle(b);
+  const guard=b.units.find(u=>u.commander),enemy=b.units.find(u=>u.side!==b.playerSide&&u.family==='infantry');
+  // The closing duel isolates the player's timing from other arrows and cavalry.
+  for(const u of b.units)if(u!==guard&&u!==enemy){u.status='escaped';u.action=null;}
+  Object.assign(guard,{status:'active',hp:guard.maxHp,routing:false,x:0,z:-18,y:terrainHeight(b,0,-18),facing:Math.PI});
+  Object.assign(enemy,{x:0,z:-19.8,y:terrainHeight(b,0,-19.8),facing:0,wallId:null,wallPosition:null,fortPost:null,
+    explicitOrder:true,order:{kind:'hold',x:0,z:-19.8},
+    action:{kind:'attack',elapsed:0,windup:1.4,duration:1.85,recovery:.45,targetId:guard.id,targetX:guard.x,targetZ:guard.z,
+      targetY:guard.y,facing:0,ranged:false,impacted:false}});
+  saveEncounterCheckpoint(initial,b);
+  const context=await browser.newContext({viewport:{width:390,height:844},hasTouch:true});
+  try{
+    await context.addInitScript(({initial,key})=>{if(!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify(initial));},{initial,key});
+    const page=await context.newPage();page.setDefaultTimeout(30000);
+    const clockStart=new Date('2026-11-04T12:00:00Z');
+    await page.clock.install({time:clockStart});await page.clock.pauseAt(new Date(+clockStart+1000));
+    await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
+    await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
+    await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click({force:true});
+    await page.locator('[data-battle-action=enter]').click({force:true});
+    for(let i=0;i<300&&await page.locator('#battle-mode').textContent()!=='LEAD THE BATTLE';i++)await page.clock.runFor(50);
+    assert.equal(await page.locator('#battle-mode').textContent(),'LEAD THE BATTLE');
+    const block=page.locator('#battle-touch-block'),attack=page.locator('[data-battle-touch=attack]'),stick=page.locator('#battle-stick');
+    async function controls(){
+      const r=await block.boundingBox(),a=await attack.boundingBox(),s=await stick.boundingBox();
+      assert.ok(r.width>=44&&r.height>=44&&r.x>195&&r.x>a.x&&r.x>s.x+s.width,'right-side shield is touch-sized beside Attack and clear of movement');
+      const exposed=el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));};
+      assert.ok(await block.evaluate(exposed)&&await attack.evaluate(exposed)&&await stick.evaluate(exposed));
+      return [{id:1,x:r.x+r.width/2,y:r.y+r.height/2},{id:2,x:s.x+s.width/2,y:s.y+s.height/2}];
+    }
+    await controls();await page.keyboard.press('h');const [shield,thumb]=await controls();
+    const cdp=await context.newCDPSession(page);
+    const saved=async()=>{
+      await page.keyboard.press('4');
+      return page.evaluate(({key,id})=>{const b=JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint;
+        const guard=b.units.find(u=>u.id===b.commanderId),enemy=b.units.find(u=>u.id===id);
+        return {time:b.time,remaining:enemy.action?enemy.action.windup-enemy.action.elapsed:null,x:guard.x,z:guard.z,blocking:guard.blocking,parry:guard.lastParryAt,status:guard.status,guardHeld:guard.guardHeld};
+      },{key,id:enemy.id});
+    };
+    let state=await saved();
+    for(let i=0;i<40&&state.remaining>.22;i++){await page.clock.runFor(50);state=await saved();}
+    assert.ok(state.remaining>0&&state.remaining<=.22,'the real touch begins just before melee impact');
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[shield]});
+    await page.clock.runFor(65);
+    const raised=await saved();assert.ok(raised.blocking,`shield must be raised before impact: ${JSON.stringify(raised)}`);
+    await page.clock.runFor(350);
+    assert.match(await page.locator('#battle-keyboard-feedback').textContent(),/attacker stunned/);
+    assert.equal(await block.getAttribute('aria-pressed'),'true');
+    const held=await saved();assert.equal(held.blocking,true);assert.ok(held.parry>0);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[shield,thumb]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[shield,{...thumb,x:thumb.x+28}]});
+    await page.clock.runFor(450);
+    const moved=await saved();assert.equal(moved.blocking,true);assert.ok(Math.hypot(moved.x-held.x,moved.z-held.z)>.02,'the commander moves while maintaining guard');
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await cdp.detach();
+    assert.equal(await block.getAttribute('aria-pressed'),'false');await attack.tap();
+    await page.clock.runFor(150);assert.equal((await saved()).blocking,false);
+    console.log('390×844 phone: a real shield press parried an incoming swing; simultaneous stick movement preserved guard in the minimized HUD.');
+  }finally{await context.close();}
+}
 async function checkBattleHUD(browser){
   for(const viewport of [{width:920,height:830},{width:390,height:844}]){
     const mobile=viewport.width<700, context=await browser.newContext({viewport,hasTouch:mobile});
@@ -313,6 +374,7 @@ try{
   if(process.argv.includes('--stress-only'))await stressCommands(browser);
   else if(process.argv.includes('--targets-only'))await checkSiegePicking(browser);
   else if(process.argv.includes('--hud-only'))await checkBattleHUD(browser);
+  else if(process.argv.includes('--block-only'))await checkMobileGuard(browser);
   else {
   for(const viewport of [{width:1365,height:900},{width:390,height:844}]){
     const context=await browser.newContext({viewport,hasTouch:viewport.width<700});
@@ -443,5 +505,6 @@ try{
   console.log('Offline battlefield storage/model failure recovery passed');await context.close();
   await checkSiegePicking(browser);
   await checkBattleHUD(browser);
+  await checkMobileGuard(browser);
   }
 }finally{await browser?.close();await new Promise(r=>server.close(r));}

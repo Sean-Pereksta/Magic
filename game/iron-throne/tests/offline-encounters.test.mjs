@@ -59,6 +59,23 @@ test('manual results atomically apply exact counts and existing siege damage onc
   assert.equal(returnFromEncounter(s).resumeTurn,false);assert.equal(s.offlineBattle,null);
   assert.throws(()=>returnFromEncounter(s));assert.equal(tile.walls,20);
 });
+test('campaign parsing accepts old pass rocks before clearing the saved fortress approaches',()=>{
+  const {s,tile}=fixture({support:false});
+  resolveMovement(s);beginEncounter(s);
+  const e=pendingEncounter(s);tile.terrain=e.tile.terrain='mountain';
+  const b=createBattle(e);
+  delete b.layout.settlementTerrainVersion;
+  const cliff=b.layout.obstacles.find(o=>o.id==='mountain-west');
+  Object.assign(cliff,{x:-52,width:68});
+  b.units[0].hp-=3; b.layout.gate.hp-=11;
+  saveEncounterCheckpoint(s,b);
+  const restored=parseSave(JSON.stringify(s)).offlineBattle.checkpoint;
+  const cut=restored.layout.obstacles.find(o=>o.id==='mountain-west');
+  assert.equal(restored.layout.settlementTerrainVersion,1);
+  assert.ok(cut.x+cut.width/2<restored.layout.castle.outer.left-10);
+  assert.equal(restored.units[0].hp,b.units[0].hp);
+  assert.equal(restored.layout.gate.hp,b.layout.gate.hp);
+});
 test('the campaign checkpoint and resulting map save independent outer and inner ward damage',()=>{
   const {s,tile}=fixture({support:false});
   resolveMovement(s);beginEncounter(s);

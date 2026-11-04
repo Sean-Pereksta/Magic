@@ -1,7 +1,7 @@
 import { UNITS } from './data.mjs';
 import { groundRoute, groundLineClear } from './battle-navigation.mjs';
 import { buildCastle, matchesCastleLayout, provisionLadders, ramHandle, ramApproach, wallHeightAt, battlementHeightAt } from './battle-siege.mjs';
-import { battleGroundHeight, battlefieldClimate } from './battle-terrain.mjs';
+import { battleGroundHeight, battlefieldClimate, fitSettlementTerrain, needsSettlementTerrainRepair, settlementApron, validSettlementTerrain } from './battle-terrain.mjs';
 
 // This module has no DOM, clock or random global dependencies. The entire live
 // simulation is JSON data, including attack phases, missiles and delayed armies.
@@ -13,6 +13,7 @@ export const RESERVE_WAVE_SECONDS = 8;
 const TAU = Math.PI * 2, STEP = 1 / 20;
 const RULES_VERSION = 3, LEGACY_RAM_HP = 280;
 export const WALL_ACCURACY_BONUS = 10;
+const PARRY_WINDOW = .3, PARRY_STUN = .7;
 const clamp = (n, a, z) => Math.max(a, Math.min(z, n));
 const distance = (a, c) => Math.hypot(a.x - c.x, a.z - c.z);
 const facing = (a, c) => Math.atan2(c.x - a.x, c.z - a.z);
@@ -155,9 +156,15 @@ function layoutFor(b, tile) {
     layout.obstacles.push({ id: 'mountain-west', kind: 'rock', x: -52, z: 0, width: 68, depth: 24, height: 13 }, { id: 'mountain-east', kind: 'rock', x: 52, z: 0, width: 68, depth: 24, height: 13 });
   }
   if (tile.river || tile.crossing || terrain === 'river') {
-    layout.bridges = [{ x: -20, z: 0, width: 12, depth: 12 }, { x: 28, z: 0, width: 10, depth: 12 }];
-    for (const [x, width] of [[-53, 42], [5, 34], [56, 46]]) layout.obstacles.push({ id: `water-${x}`, kind: 'water', x, z: 0, width, depth: 10, height: .1 });
+    const apron=settlementApron(layout);
+    // On a fresh map place the whole watercourse and both crossings outside
+    // the approaches. Saved battles retain their original banks and crossings.
+    const z=apron ? Math.min(0,apron.front-12) : 0;
+    if (z) layout.riverZ=z;
+    layout.bridges = [{ x: -20, z, width: 12, depth: 12 }, { x: 28, z, width: 10, depth: 12 }];
+    for (const [x, width] of [[-53, 42], [5, 34], [56, 46]]) layout.obstacles.push({ id: `water-${x}`, kind: 'water', x, z, width, depth: 10, height: .1 });
   }
+  fitSettlementTerrain(layout);
   return layout;
 }
 export function terrainHeight(b, x, z) { return battleGroundHeight(b.layout, x, z); }
@@ -222,6 +229,14 @@ function allocateCaps(b) {
 // ammunition or casualties. Overflow soldiers wait for a later entry wave.
 export function normalizeBattleCheckpoint(b) {
   if (!b || !Array.isArray(b.units) || !Array.isArray(b.armies)) return b;
+  if (needsSettlementTerrainRepair(b.layout)) {
+    if (fitSettlementTerrain(b.layout)) b.layout.navRevision=(b.layout.navRevision || 0)+1;
+    for (const u of b.units.filter(alive)) {
+      if (['stairs','climb'].includes(u.action?.kind)) continue;
+      const wall=u.wallId && b.layout.walls.find(w=>w.id===u.wallId && w.hp>0);
+      u.y=terrainHeight(b,u.x,u.z)+(wall?.height||0);
+    }
+  }
   if ((b.battleRulesVersion || 1) < RULES_VERSION) for (const u of b.units) {
     if (u.type === 'ram' && u.maxHp === LEGACY_RAM_HP) {
       u.hp = u.hp / u.maxHp * PROFILE.ram.hp; u.maxHp = PROFILE.ram.hp;
@@ -548,24 +563,41 @@ function canApproachLayer(b,u,layer) {
   return layer !== 'inner' || inWard(u,b.layout.castle?.outer) || u.wallId ||
     [...b.layout.walls,b.layout.gate].some(w=>w && w.layer!=='inner' && w.hp<=0);
 }
+function canPushRam(b,u,ram){
+  return fighting(u)&&u.owner===ram.owner&&u.side===ram.side&&u.family==='infantry'&&!u.mounted&&!u.wallId&&
+    !['climb','stairs'].includes(u.action?.kind)&&(u.id!==b.commanderId||b.auto);
+}
+function takeRamHandle(u,ram,handle,automatic){
+  u.order={kind:'crew',ramId:ram.id,handle,automatic};u.explicitOrder=true;
+  u.action=null;u.targetId=null;u.path=[];u.pathAt=-10;u.blocking=false;u.atHandle=false;
+}
+function aimRam(ram,wall){
+  if(ram.ramTargetId!==wall.id)ram.action=null;
+  ram.ramTargetId=wall.id;ram.order={kind:'breach',wallId:wall.id};ram.explicitOrder=true;
+}
 function assignRam(b, units, ramId, wallId) {
   const ram = b.units.find(u => u.id === ramId && u.type === 'ram' && u.side === 0 && fighting(u));
   const wall = [...b.layout.walls, b.layout.gate].find(w => w && w.id === wallId && w.hp > 0);
   if (!ram || !wall) return { accepted: false, reason: 'Choose an available ram and an intact exterior wall or gate.' };
   if (!canApproachLayer(b,ram,wall.layer)) return {accepted:false,reason:'Open the outer ward before hauling the ram to the inner defenses.'};
-  const carriers = units.filter(u => u.owner === ram.owner && u.family === 'infantry' && fighting(u) && !u.wallId && !u.action?.ladderId && (b.auto || u.id !== b.commanderId)).sort((a, c) => distance(a, ram) - distance(c, ram));
-  if (!carriers.length) return { accepted: false, reason: 'Select active infantry to push the ram.' };
+  if(!units.some(u=>u.owner===ram.owner))return {accepted:false,reason:'Choose a ram belonging to your army.'};
+  const carriers=units.filter(u=>canPushRam(b,u,ram)).sort((a,c)=>distance(a,ram)-distance(c,ram)||a.id.localeCompare(c.id));
+  aimRam(ram,wall);
   let assigned = 0;
-  const current = b.units.filter(v => fighting(v) && v.order.kind === 'crew' && v.order.ramId === ramId);
-  const taken = new Set(current.map(v => v.order.handle));
-  for (const u of carriers) {
-    if (current.includes(u)) { assigned++; continue; }
-    const open = [0,1,2,3,4,5].find(i => !taken.has(i));
-    u.order = { kind: 'crew', ramId, handle: open ?? null }; u.explicitOrder = true; u.action = null; u.targetId = null;
-    u.path = []; u.pathAt = -10; u.blocking = false; u.atHandle = false; taken.add(open); assigned++;
+  const chosen=carriers.slice(0,6);
+  const handles=Array(6).fill(null);
+  for(const u of b.units)if(fighting(u)&&u.order.kind==='crew'&&u.order.ramId===ramId&&Number.isInteger(u.order.handle))handles[u.order.handle]=u;
+  for(const u of chosen){
+    if(handles.includes(u)){u.order.automatic=false;assigned++;continue;}
+    let handle=handles.indexOf(null);
+    if(handle===-1)handle=handles.findIndex(v=>v.order.automatic&&!chosen.includes(v));
+    if(handle===-1)handle=handles.findIndex(v=>!chosen.includes(v));
+    if(handle===-1)continue;
+    const replaced=handles[handle];
+    if(replaced){replaced.order={kind:'advance'};replaced.explicitOrder=false;replaced.atHandle=false;}
+    handles[handle]=u;takeRamHandle(u,ram,handle,false);assigned++;
   }
-  if (assigned) { ram.ramTargetId = wall.id; ram.action = null; ram.order = { kind: 'breach', wallId }; ram.explicitOrder = true; }
-  return { accepted: assigned > 0, count: assigned, reason: assigned ? null : 'All six handles are occupied.' };
+  return {accepted:true,count:assigned,reason:assigned?null:'Available infantry will fill the handles.'};
 }
 function issueWallOrder(b, units, params) {
   const walls = b.layout.walls.filter(w => w.kind!=='gate' && w.hp > 0 && (!params.wallId || w.id === params.wallId));
@@ -777,7 +809,7 @@ function updateClimb(b, u, a, dt) {
       }
       l.held = true;
       next = Math.min(next, Math.max(a.progress, .80));
-      if (b.time >= (a.nextThrust || 0) && Math.abs(u.y - defender.y) <= 2 && distance(u, defender) <= profileFor(u).reach + .6) {
+      if (u.stagger<=0 && b.time >= (a.nextThrust || 0) && Math.abs(u.y - defender.y) <= 2 && distance(u, defender) <= profileFor(u).reach + .6) {
         u.facing = facing(u, defender); hit(b, u, defender, profileFor(u).damage * .8); a.nextThrust = b.time + 1.25;
       }
     } else l.held = false;
@@ -884,8 +916,15 @@ function hit(b, attacker, target, raw, options = {}) {
     target.stamina = Math.max(0, target.stamina - (axe ? 25 : 10));
     damage *= axe ? .48 : .14;
     target.blockedAt = b.time;
-    if (b.time - target.blockStarted < .3) { attacker.stagger = .5; target.counterUntil = b.time + 1.2; }
     event(b, 'block', 'An attack is blocked.', { x: target.x, z: target.z, unitId: target.id });
+    if (!options.projectile && !target.parrySpent && Number.isFinite(target.blockStarted) && b.time - target.blockStarted < PARRY_WINDOW) {
+      target.parrySpent = true; target.lastParryAt=b.time; target.counterUntil = b.time + 1.2;
+      attacker.stagger = Math.max(attacker.stagger, PARRY_STUN); attacker.stunnedUntil=b.time+PARRY_STUN;
+      attacker.speed=0; attacker.chargeDistance=0; attacker.blocking=false; attacker.braced=false;
+      // Keep traversal actions intact when a climber's crest attack is parried.
+      if (attacker.action?.kind === 'attack') attacker.action = null;
+      event(b, 'parry', 'Timed block · attacker stunned.', { x:target.x, z:target.z, unitId:target.id, sourceId:attacker.id });
+    }
   }
   const armor = UNITS[target.type].armor || (target.family === 'siege' ? .1 : 0);
   damage *= 1 - armor * (options.piercing || attacker.weapon === 'mace' ? .35 : 1);
@@ -950,7 +989,10 @@ function actionImpact(b, u, action) {
   if (wall && distance(u, wall) < p.reach + Math.max(wall.width, wall.depth) / 2) { hitWall(b, u, wall, u.type === 'ram' ? 38 : 3); return; }
   const reach = u.sidearm ? 1.9 : p.reach, maxTargets = action.heavy ? 3 : 1;
   const targets = b.units.filter(v => alive(v) && v.side !== u.side && Math.abs(v.y - u.y) < 2.7 && distance(u, v) < reach + .6 && angle(action.facing, facing(u, v)) < (action.heavy ? 1.1 : .65) && lineClear(b, u, v, u)).sort((a, c) => distance(u, a) - distance(u, c));
-  for (let i = 0; i < Math.min(maxTargets, targets.length); i++) hit(b, u, targets[i], (u.sidearm ? 14 : p.damage) * (action.heavy ? 1.5 : 1) * Math.pow(.65, i), { heavy: action.heavy });
+  for (let i = 0; i < Math.min(maxTargets, targets.length); i++) {
+    hit(b, u, targets[i], (u.sidearm ? 14 : p.damage) * (action.heavy ? 1.5 : 1) * Math.pow(.65, i), { heavy: action.heavy });
+    if (u.stagger > 0) break;
+  }
 }
 function updateAction(b, u, dt) {
   const a = u.action;
@@ -1091,20 +1133,57 @@ function postDefenders(b, troops) {
     }
   }
 }
+function staffRams(b){
+  if(!b.layout.fortified)return;
+  const surfaces=[...b.layout.walls,b.layout.gate].filter(Boolean);
+  const outerOpen=surfaces.some(w=>w.layer!=='inner' && w.hp<=0);
+  const innerClosed=b.layout.castle?.inner && !surfaces.some(w=>w.layer==='inner' && w.hp<=0);
+  const candidates=[];
+  for(const ram of b.units.filter(u=>u.type==='ram'&&u.side===0&&fighting(u))){
+    if(ram.explicitOrder&&ram.order.kind!=='breach')continue;
+    let wall=surfaces.find(w=>w.id===ram.ramTargetId&&w.hp>0);
+    if(!wall){
+      if(outerOpen&&!innerClosed)continue;
+      wall=outerOpen?surfaces.find(w=>w.id==='inner-gate'):ram.owner===b.playerOwner?b.layout.gate:
+        surfaces.find(w=>w.id==='wall-east-front')||b.layout.gate;
+      if(!wall||wall.hp<=0)continue;
+      aimRam(ram,wall);
+      event(b,'ramCrew',`Nearby infantry are crewing the ram for ${wall.id}.`,{unitId:ram.id,wallId:wall.id});
+    }
+    const crew=b.units.filter(u=>fighting(u)&&u.order.kind==='crew'&&u.order.ramId===ram.id);
+    const occupied=new Set(crew.map(u=>u.order.handle));
+    const free=[0,1,2,3,4,5].filter(i=>!occupied.has(i));
+    // Older saves could contain explicitly assigned infantry waiting for a grip.
+    const waiting=crew.filter(u=>u.order.handle===null).sort((a,c)=>distance(a,ram)-distance(c,ram));
+    for(const u of waiting){if(!free.length)break;u.order.handle=free.shift();}
+    if(!free.length)continue;
+    for(const u of b.units){
+      if(!canPushRam(b,u,ram)||u.order.kind==='crew')continue;
+      // A player's recall, defense or ladder assignment takes precedence. AI foot
+      // soldiers still approaching their ladder can reinforce their own ram.
+      if(u.explicitOrder&&!(u.owner!==b.playerOwner&&u.aiAssault&&u.order.kind==='ladder'&&!u.action))continue;
+      candidates.push({u,ram,free,d:(u.x-ram.x)**2+(u.z-ram.z)**2});
+    }
+  }
+  // Match across the entire army so adjacent rams cannot claim the same soldier.
+  candidates.sort((a,c)=>a.d-c.d||a.u.id.localeCompare(c.u.id)||a.ram.id.localeCompare(c.ram.id));
+  for(const {u,ram,free} of candidates){
+    if(!free.length||u.order.kind==='crew')continue;
+    const slot=free.findIndex(handle=>{
+      const point=ramHandle(ram,handle),end=pathTo(b,u,point).at(-1);
+      return end&&end.x===point.x&&end.z===point.z;
+    });
+    if(slot>=0)takeRamHandle(u,ram,free.splice(slot,1)[0],true);
+  }
+}
 function planSiege(b, a, troops) {
   if (!b.layout.fortified || a.owner === b.playerOwner && !b.auto) return;
   if (a.side === 1) { postDefenders(b,troops); return; }
   const surfaces=[...b.layout.walls,b.layout.gate].filter(Boolean);
-  const outerOpen=surfaces.some(w=>w.layer!=='inner' && w.hp<=0);
-  const innerClosed=b.layout.castle?.inner && !surfaces.some(w=>w.layer==='inner' && w.hp<=0);
-  if (outerOpen && !innerClosed) return;
-  const rams = troops.filter(u => u.type === 'ram');
-  for (const ram of rams) {
-    const crew = troops.filter(u => u.order.kind === 'crew' && u.order.ramId === ram.id);
-    const picks = troops.filter(u => u.family === 'infantry' && (!u.explicitOrder || u.order.kind === 'ladder' && !u.wallId && !u.action)).sort((a,c) => distance(a,ram)-distance(c,ram)).slice(0,6-crew.length);
-    const wall = outerOpen ? surfaces.find(w=>w.id==='inner-gate') : b.layout.walls.find(w => w.id === 'wall-east-front' && w.hp > 0) || b.layout.gate;
-    if (picks.length && wall?.hp>0) assignRam(b,picks,ram.id,wall.id);
-  }
+  const outerOpen=surfaces.some(w=>w.layer!=='inner'&&w.hp<=0);
+  const innerClosed=b.layout.castle?.inner&&!surfaces.some(w=>w.layer==='inner'&&w.hp<=0);
+  if(outerOpen&&!innerClosed)return;
+  const rams=troops.filter(u=>u.type==='ram');
   const ladders=usableLadders(b);
   for (const u of troops.filter(u=>u.family==='infantry' && (!u.explicitOrder || u.order.assaultLanding && u.order.cleared || u.aiAssault && u.order.kind==='charge'))) {
     const inner=b.layout.castle?.inner && innerClosed && (outerOpen || inWard(u,b.layout.castle.outer));
@@ -1258,7 +1337,7 @@ function aiUnit(b, u, active, dt, advanceGuide) {
   u.targetId = enemy?.id || null;
   const oldBlock = u.blocking;
   u.blocking = !!enemy && d < 6 && u.shield && u.stamina > 14 && !u.action && (u.formation === 'defensive' || u.formation === 'spearWall' || enemy.action?.elapsed < enemy.action?.windup);
-  if (u.blocking && !oldBlock) u.blockStarted = b.time;
+  if (u.blocking && !oldBlock) { u.blockStarted = b.time; u.parrySpent = false; }
   u.braced = u.type === 'spearman' && u.speed < .7 && !u.action && ['spearWall', 'defensive'].includes(u.formation) && u.stamina > 15;
   const wall = targetWall(b, u);
   if (wall && (u.type === 'ram' || u.ammo > 0)) {
@@ -1330,6 +1409,13 @@ function trackAttackFacing(b, u) {
   action.facing = u.facing = facing(u, target);
   action.targetX = target.x; action.targetZ = target.z; action.targetY = target.y ?? terrainHeight(b, target.x, target.z);
 }
+function preparePlayerGuard(b,u,input) {
+  if (Number.isFinite(input.facing) && !['stairs','climb'].includes(u.action?.kind)) u.facing=input.facing;
+  const held=!!input.block, pressed=input.blockPressed||held&&!u.guardHeld;
+  if (pressed) { u.blockStarted=b.time; u.parrySpent=false; }
+  u.guardHeld=held;
+  u.blocking=!!(held||pressed)&&u.stamina>3&&!u.action&&u.stagger<=0;
+}
 function playerUnit(b, u, input, dt) {
   if (['stairs', 'climb'].includes(u.action?.kind)) return;
   if (input.weapon && !u.action && WEAPONS[input.weapon] && u.family !== 'siege') {
@@ -1337,9 +1423,6 @@ function playerUnit(b, u, input, dt) {
     const hasQuiver = !['bow', 'crossbow'].includes(input.weapon) || u.family === 'ranged';
     if (canEquip && hasQuiver && u.weapon !== input.weapon) { u.weapon = input.weapon; u.sidearm = false; }
   }
-  const oldBlock = u.blocking;
-  u.blocking = !!input.block && u.stamina > 3 && !u.action;
-  if (u.blocking && !oldBlock) u.blockStarted = b.time;
   if (u.blocking) u.stamina = Math.max(0, u.stamina - dt * 5);
   if (Number.isFinite(input.facing)) u.facing = input.facing;
   if (input.sidearm !== undefined) u.sidearm = !!input.sidearm;
@@ -1348,7 +1431,7 @@ function playerUnit(b, u, input, dt) {
   else if (u.order.kind === 'walls') takeWallPosition(b, u, dt);
   else u.speed = Math.max(0, u.speed - dt * 8);
   u.braced = u.weapon === 'spear' && u.blocking && u.speed < .5;
-  if (input.attack) {
+  if (input.attack && !u.blocking) {
     const enemy = nearestEnemy(b, u, b.units.filter(v => angle(u.facing, facing(u, v)) < 1));
     const reach = profileFor(u).reach;
     const point = { x: Number.isFinite(input.aimX) ? input.aimX : u.x + Math.sin(u.facing) * reach, z: Number.isFinite(input.aimZ) ? input.aimZ : u.z + Math.cos(u.facing) * reach };
@@ -1457,9 +1540,13 @@ function tick(b, input) {
   const dt = STEP;
   b.time += dt;
   if (b.time >= b.nextReserves) { deployReserves(b); b.nextReserves = b.time + 1; }
+  if(b.time>=(b.nextRamCrew??0)){staffRams(b);b.nextRamCrew=b.time+1;}
   if (b.time >= b.nextArmyPlan) { planArmies(b); b.nextArmyPlan = b.time + 4; }
   if (b.time >= b.nextMorale) { updateMorale(b); b.nextMorale = b.time + 1; }
   const active = b.units.filter(alive);
+  // Apply the player's guard before either side's weapons reach their impact frame.
+  const player=active.find(u=>u.id===b.commanderId);
+  if(player&&!b.auto&&!input.commanderAI&&!player.routing)preparePlayerGuard(b,player,input);
   const guides = advanceCompanies(active);
   for (const u of active) if (!u.wallId && !['stairs','climb'].includes(u.action?.kind)) u.y=terrainHeight(b,u.x,u.z);
   for (const u of active) {
@@ -1475,6 +1562,7 @@ function tick(b, input) {
       if (u.hp <= 0) { kill(b, u, null); continue; }
     }
     u.stagger = Math.max(0, u.stagger - dt); u.attackCooldown = Math.max(0, u.attackCooldown - dt);
+    if (u.stunnedUntil>b.time) continue;
     if (!u.action && !u.blocking) u.stamina = Math.min(100, u.stamina + dt * 11);
     if (u.id !== b.commanderId || b.auto || input.commanderAI || u.routing) {
       // An already-reformed follower may be defending its slot when the commander turns away.
@@ -1495,14 +1583,14 @@ function tick(b, input) {
   checkVictory(b);
 }
 export function stepBattle(b, dt, input = {}) {
-  if (b.battleRulesVersion !== RULES_VERSION || b.maxActive > MAX_ACTIVE_TROOPS || b.deploymentLayoutVersion !== 1 || b.layout.ladders.some(l => !l.foot)) normalizeBattleCheckpoint(b);
+  if (b.battleRulesVersion !== RULES_VERSION || b.maxActive > MAX_ACTIVE_TROOPS || b.deploymentLayoutVersion !== 1 || b.layout.ladders.some(l => !l.foot) || needsSettlementTerrainRepair(b.layout)) normalizeBattleCheckpoint(b);
   if (b.phase !== 'combat' || input.paused || !Number.isFinite(dt) || dt <= 0) return b;
   b.accumulator += Math.min(dt, 2);
   b.pendingInput ||= {};
-  for (const key of ['attack', 'interact', 'heavy']) if (input[key]) b.pendingInput[key] = true;
+  for (const key of ['attack', 'interact', 'heavy', 'blockPressed']) if (input[key]) b.pendingInput[key] = true;
   while (b.accumulator + 1e-9 >= STEP && b.phase === 'combat') {
     b.accumulator -= STEP;
-    tick(b, { ...input, attack: input.attack || b.pendingInput.attack, interact: input.interact || b.pendingInput.interact, heavy: input.heavy || b.pendingInput.heavy });
+    tick(b, { ...input, attack: input.attack || b.pendingInput.attack, interact: input.interact || b.pendingInput.interact, heavy: input.heavy || b.pendingInput.heavy, blockPressed:!!b.pendingInput.blockPressed });
     b.pendingInput = {};
   }
   return b;
@@ -1637,7 +1725,7 @@ export function validateBattleCheckpoint(b, encounter) {
     if (!Array.isArray(b.layout.deploymentZones) || b.layout.deploymentZones.length !== 2 || b.layout.deploymentZones.some((zone, i) => !zone || Object.keys(expectedZones[i]).some(key => zone[key] !== expectedZones[i][key]))) return false;
   }
   const tile = encounter.tile || {}, fortMax = tile.building === 'fort' ? [0, 45, 100, 180][clamp(tile.levels?.fort || tile.buildings?.fort || tile.level || tile.buildingLevel || 1, 1, 3)] : 0;
-  if (!matchesCastleLayout(b.layout,tile)) return false;
+  if (!matchesCastleLayout(b.layout,tile) || !validSettlementTerrain(b.layout)) return false;
   const f = b.fortifications;
   if (![f.walls, f.initialWalls, f.fortIntegrity, f.initialFortIntegrity].every(Number.isFinite) || f.initialWalls !== Math.max(0, Number(tile.walls) || 0) || f.initialFortIntegrity !== Math.max(0, Number(tile.fortIntegrity ?? fortMax) || 0)) return false;
   if (f.walls < 0 || f.walls > f.initialWalls || f.fortIntegrity < 0 || f.fortIntegrity > f.initialFortIntegrity) return false;

@@ -57,7 +57,7 @@ export function buildCastle(layout, tile) {
   if (tier>=2 || tile.barracks) place('barracks',outer.left+9,outer.front+16,7,7,5);
   if (tier>=2 || tile.stable) place('stable',outer.right-9,outer.front+21,7,6,4.5);
   if (tier>=3 || tile.storehouse) place('storehouse',outer.left+10,outer.rear-22,7,5,5.5);
-  if (tier>=4) place('chapel',inner.right-6,inner.rear-8,5,7,9);
+  if (tier>=4) place('chapel',ward.right-6,ward.rear-8,5,7,9);
   if (tier>=1) place('cart',outer.left+14,outer.front+10,2,3,1.7);
   place('banner',keep.x-keep.width/2-1.5,keep.z-keep.depth/2,1,1,4,false);
   if (!castle.enclosed) return;

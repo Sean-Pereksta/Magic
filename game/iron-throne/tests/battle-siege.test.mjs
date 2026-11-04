@@ -13,6 +13,51 @@ function fort(attack = { menAtArms:12 }, defend = { cavalry:1 }, playerSide = 0)
 function run(b,seconds,input={commanderAI:true}) {
   for(let i=0;i<Math.ceil(seconds*20);i++) stepBattle(b,.05,input);
 }
+test('nearest available infantry crew a player ram automatically and replace losses without overriding recalls',()=>{
+  const {b,attackers}=fort({menAtArms:12,ram:1});
+  const ram=attackers.find(u=>u.type==='ram'), troops=attackers.filter(u=>u.type==='menAtArms'&&!u.commander);
+  beginBattle(b); Object.assign(ram,{x:0,z:-30});
+  troops.forEach((u,i)=>Object.assign(u,{x:i+3,z:-30}));
+  issueOrder(b,[troops[0].id],'hold',{atCurrent:true});
+  stepBattle(b,.05);
+  const assigned=()=>troops.filter(u=>u.status==='active'&&u.order.ramId===ram.id);
+  assert.deepEqual(assigned().map(u=>u.id),troops.slice(1,7).map(u=>u.id));
+  assert.equal(ram.ramTargetId,'gate');assert.equal(ram.crewCount,0);
+  assert.equal(new Set(assigned().map(u=>u.order.handle)).size,6);
+  const casualty=troops[1], recalled=troops[2];
+  casualty.hp=0;casualty.status='dead';
+  issueOrder(b,[recalled.id],'follow');
+  Object.assign(troops[7],{x:ram.x+3,z:ram.z});Object.assign(troops[8],{x:ram.x+5,z:ram.z});
+  run(b,1.1,{});
+  assert.equal(recalled.order.kind,'follow');
+  assert.equal(troops[0].order.kind,'hold');
+  assert.deepEqual(assigned().map(u=>u.id),troops.slice(3,9).map(u=>u.id));
+  issueOrder(b,'all','follow');run(b,2,{});
+  assert.equal(assigned().length,0);assert.equal(ram.crewCount,0);
+});
+test('foot troops behind a sealed gate cannot take a handle from a reachable soldier outside',()=>{
+  const {b,attackers}=fort({menAtArms:8,ram:1});
+  const ram=attackers.find(u=>u.type==='ram'), troops=attackers.filter(u=>u.type==='menAtArms'&&!u.commander);
+  beginBattle(b);Object.assign(ram,{x:0,z:4});Object.assign(troops[0],{x:0,z:16});
+  for(const [i,u] of troops.slice(1).entries())Object.assign(u,{x:i*2,z:-18});
+  stepBattle(b,.05);
+  assert.notEqual(troops[0].order.kind,'crew');
+  assert.ok(troops.slice(1).every(u=>u.order.ramId===ram.id));
+});
+test('two rams share infantry by proximity and B can redirect an automatically crewed engine',()=>{
+  const {b,attackers}=fort({menAtArms:13,ram:2});
+  const rams=attackers.filter(u=>u.type==='ram'), troops=attackers.filter(u=>u.family==='infantry'&&!u.commander);
+  beginBattle(b);
+  rams.forEach((ram,i)=>Object.assign(ram,{x:i?30:-30,z:-35}));
+  troops.forEach((u,i)=>Object.assign(u,{x:rams[i%2].x+(i%3),z:-40-i/3}));
+  stepBattle(b,.05);
+  assert.ok(troops.every((u,i)=>u.order.ramId===rams[i%2].id));
+  for(const ram of rams)assert.equal(new Set(troops.filter(u=>u.order.ramId===ram.id).map(u=>u.order.handle)).size,6);
+  const east=rams[1];
+  assert.ok(issueOrder(b,[east.id],'breach',{ramId:east.id,wallId:'wall-east-front'}).accepted);
+  run(b,1.1,{});
+  assert.equal(east.ramTargetId,'wall-east-front');assert.equal(rams[0].ramTargetId,'gate');
+});
 function unopposed() {
   // The player retains direct control of the archer captain throughout.
   const f=fort({archer:1,menAtArms:12}), {b,defenders}=f;
