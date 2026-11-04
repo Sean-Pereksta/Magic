@@ -213,6 +213,11 @@ async function main(){
         await page.locator('#guide-search').fill(query);const cards=page.locator('#guide-page .guide-card[data-catalog]');await cards.first().waitFor();assert.equal(await cards.count(),9,query+' should filter the actual fusion stage');
         assert.equal(await cards.evaluateAll(nodes=>nodes.every(n=>/third-stage fusion/i.test(n.innerText))),true);
       }
+      await page.locator('nav [data-nav="expedition"]').click();
+      for(const query of ['third stage','stage3','third stage frost lv22.5']){
+        await page.locator('#pack-search').fill(query);const matches=page.locator('#pack .gear-slot[data-uid]');assert.equal(await matches.count(),1);assert.equal(await matches.getAttribute('data-uid'),'5');
+      }
+      await page.locator('#pack-search').fill('');assert.equal(await page.locator('#pack .gear-slot[data-uid]').count(),2);
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);
       results.push(width+'px: new third-stage fusion preview, crafted level22.5 persists through reload with old gear intact, nine third-stage guide recipes; no overflow or errors');await context.close();
     }
