@@ -93,7 +93,12 @@ async function checkBattlefieldHotkeys(page,custom){
   assert.equal(await page.locator('#battle-mode').textContent(),'LEAD THE BATTLE','direct orders retain the third-person camera');
   assert.match(await page.locator('#battle-keyboard-feedback').textContent(),/Archers Charge/);
   assert.match(await page.locator('#battle-live-selection').textContent(),/Archers/);
-  await page.waitForTimeout(150);await page.keyboard.press('F1');
+  await page.evaluate(()=>new Promise(resolve=>{
+    const start=performance.now();let frames=0;
+    function next(now){if(++frames>=3&&now-start>=150)resolve();else requestAnimationFrame(next);}
+    requestAnimationFrame(next);
+  }));
+  await page.keyboard.press('F1');
   const held=await saved();assert.ok(held.time>charged.time,'combat time continues while direct orders are issued');
   assert.ok(archerUnits(held).every(u=>u.order.kind==='hold'&&Math.abs(u.order.x-u.x)<1e-9&&Math.abs(u.order.z-u.z)<1e-9),'Hold here anchors every selected troop at its current location');
   assert.deepEqual(cavalryOrders(held),cavalryOrders(original));
