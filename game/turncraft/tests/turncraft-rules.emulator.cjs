@@ -252,6 +252,21 @@ const {
     await assertSucceeds(
       setDoc(doc(owner, 'lobbies', 'ranked', 'chess_starfront', 'state'), state)
     );
+    // Exercise the actual ordered-command envelope and snapshot serializer,
+    // including durable stream watermarks and rejection receipts, against rules.
+    const {simulation}=require('./helpers/expansion-harness.cjs');
+    const issuing=simulation('frontier',{factions:['frontier','ascendant']});
+    issuing(`lobbyId='custom';username='Peer';PLAYER=1;auth.currentUser={uid:'peer'};isController=false;players[0].name='Owner';players[1].name='Peer';globalThis.orderedUnit=addEntity('unit','dragoon',1,8,8);`);
+    await issuing(`sendCommand({type:'stop',entityId:orderedUnit.id})`);
+    const orderedCommand=JSON.parse(JSON.stringify(issuing.network.writes.find(w=>w.ref.includes('_commands/')).data));
+    await assertSucceeds(setDoc(doc(peer,'lobbies','custom','chess_starfront_commands',orderedCommand.id),orderedCommand));
+    await assertFails(setDoc(doc(peer,'lobbies','custom','chess_starfront_commands',orderedCommand.id),orderedCommand));
+    const controlling=simulation('frontier',{factions:['frontier','ascendant']});
+    controlling(`lobbyId='custom';username='Owner';auth.currentUser={uid:'owner'};controllerLease={ownerUid:'owner',epoch:1};isController=true;players[0].name='Owner';players[1].name='Peer';addEntity('unit','dragoon',1,8,8);enqueueCommand(${JSON.stringify(orderedCommand)});`);
+    const orderedSnapshot=controlling.plain('serializeState()');
+    assert.equal(orderedSnapshot.commandStreams[orderedCommand.clientStream].seq,1);
+    await assertSucceeds(setDoc(doc(owner,'lobbies','custom','chess_starfront','state'),orderedSnapshot));
+    await assertSucceeds(deleteDoc(doc(owner,'lobbies','custom','chess_starfront_commands',orderedCommand.id)));
     await assertSucceeds(
       setDoc(
         doc(peer, 'lobbies', 'custom', 'chess_starfront_presence', 'Peer'),

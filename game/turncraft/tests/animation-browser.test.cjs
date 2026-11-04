@@ -144,12 +144,12 @@ test('the real browser decodes every roster atlas and resolves every required di
   } finally {await browser.close()}
 });
 
-test('tile movement renders continuously through the original cooldown and never changes simulation speed', async () => {
+test('tile movement renders continuously through its short cooldown and preserves the original distance per cooldown', async () => {
   const {browser, page, errors} = await setup();
   try {
     const state = await page.evaluate(() => tcAnimation.run(`(()=>{
       const unit=addEntity('unit','rifleman',0,8,8);updateSpritePresentation();
-      const cooldown=effectiveMoveCd(unit)*1000,at=nowMs();
+      const originalCooldown=effectiveMoveCd(unit)*1000,range=UNITS[unit.type].move,cooldown=movementStepDuration(unit),at=nowMs();
       const moved=moveEntity(unit,9,8);updateSpritePresentation();
       const start={x:unit.x,px:unit.px,ready:unit.moveReadyAt,state:spriteRuntime.states.get(unit.id).state};
       window.animationClock=at+cooldown/2;updateSpritePresentation();
@@ -161,12 +161,13 @@ test('tile movement renders continuously through the original cooldown and never
       const end={x:unit.x,px:unit.px,state:spriteRuntime.states.get(unit.id).state,ready:unit.moveReadyAt};
       const second=moveEntity(unit,10,8);updateSpritePresentation();const boundary=unit.px;
       window.animationClock+=cooldown/4;updateSpritePresentation();
-      return {moved,cooldown,at,start,middle,cameraPosition,early,stopped,end,second,boundary,next:unit.px,saved:serializeEntity(unit)};
+      return {moved,cooldown,originalCooldown,range,at,start,middle,cameraPosition,early,stopped,end,second,boundary,next:unit.px,saved:serializeEntity(unit)};
     })()`));
     assert.equal(state.moved, true);
     assert.equal(state.start.x, 9);
     assert.equal(state.start.px, 8);
     assert.equal(state.start.ready, state.at + state.cooldown);
+    assert.ok(Math.abs(state.cooldown*state.range-state.originalCooldown)<.001);
     assert.equal(state.start.state, 'move');
     assert.ok(Math.abs(state.middle - 8.5) < .01, JSON.stringify(state));
     assert.equal(state.cameraPosition, state.middle, 'camera changes must not advance movement');
@@ -182,6 +183,14 @@ test('tile movement renders continuously through the original cooldown and never
     assert.equal(Object.hasOwn(state.saved, 'py'), false);
     assert.deepEqual(errors, []);
   } finally {await browser.close()}
+});
+
+test('cached unit shadows and ownership rings retain geometry and colors while reusing bounded rasters',async()=>{
+  const {browser,page,errors}=await setup();
+  try{
+    const result=await page.evaluate(()=>tcAnimation.run(`(()=>{clearUnitUnderlays();const failures=[],rows=[],make=()=>{const c=document.createElement('canvas');c.width=256;c.height=256;return c};for(const z of [26,40,60])for(const tinted of [false,true])for(const shadows of [false,true])for(const air of [false,true]){const direct=make(),cached=make(),a=direct.getContext('2d'),b=cached.getContext('2d'),offset=air?-12:0,color=tinted?'#ff334f':'#69b8ff';a.translate(128,96);b.translate(128,96);paintUnitUnderlay(a,z,z*.38,color,tinted,shadows,air,offset);drawUnitUnderlay(b,z,z*.38,color,tinted,shadows,air,offset);const before=unitUnderlayCache.hits;drawUnitUnderlay(make().getContext('2d'),z,z*.38,color,tinted,shadows,air,offset);if(unitUnderlayCache.hits!==before+1)failures.push('cache not reused');const original=a.getImageData(0,0,256,256).data,copy=b.getImageData(0,0,256,256).data;let maxAlpha=0,maxColorError=0,differing=0,totalError=0;for(let i=0;i<original.length;i+=4){maxAlpha=Math.max(maxAlpha,Math.abs(original[i+3]-copy[i+3]));if(original[i+3]!==copy[i+3])differing++;for(let c=0;c<4;c++)totalError+=Math.abs(original[i+c]-copy[i+c]);for(let c=0;c<3;c++)maxColorError=Math.max(maxColorError,Math.abs(original[i+c]*original[i+3]-copy[i+c]*copy[i+3])/255)}if(maxAlpha>2||maxColorError>2||differing>12)failures.push(JSON.stringify({z,tinted,shadows,air,maxAlpha,differing,totalError}));rows.push({z,tinted,shadows,air,maxAlpha,differing})}const previous=[...unitUnderlayCache.entries.values()][0].canvas;drawUnitUnderlay(make().getContext('2d'),61,61*.38,'#69b8ff',false,true,false,0);const zoomReleased=previous.width===0;const limit=unitUnderlayCache.limit;unitUnderlayCache.limit=16384;clearUnitUnderlays();for(let i=0;i<128;i++)drawUnitUnderlay(make().getContext('2d'),61,61*.38,'#'+i.toString(16).padStart(6,'0'),false,true,false,0);const bounded=unitUnderlayCache.bytes<=unitUnderlayCache.limit,evicted=unitUnderlayCache.evictions>0;unitUnderlayCache.limit=limit;clearUnitUnderlays();return {failures,rows:rows.length,zoomReleased,bounded,evicted,bytesAfterClear:unitUnderlayCache.bytes}})()`));
+    assert.deepEqual(result.failures,[]);assert.equal(result.rows,24);assert.equal(result.zoomReleased,true);assert.equal(result.bounded,true);assert.equal(result.evicted,true);assert.equal(result.bytesAfterClear,0);assert.deepEqual(errors,[]);
+  }finally{await browser.close()}
 });
 
 test('remote snapshots retain render continuity, reject stale state and safely correct ability teleports', async () => {
@@ -237,18 +246,20 @@ test('cosmetic movement follows existing obstacle routes and keeps turning conti
     const result = await page.evaluate(() => tcAnimation.run(`(()=>{
       terrain[8*BOARD_W+9]={x:9,y:8,type:'rock',blocked:true};
       const unit=addEntity('unit','rifleman',0,8,8);updateSpritePresentation();
-      const at=nowMs(),cooldown=effectiveMoveCd(unit)*1000,accepted=moveEntity(unit,9,9);
+      const at=nowMs(),cooldown=movementStepDuration(unit),accepted=issueMoveOrder(unit,9,9);
       updateSpritePresentation();
-      window.animationClock=at+cooldown*.25;updateSpritePresentation();const first={px:unit.px,py:unit.py,direction:spriteRuntime.states.get(unit.id).direction};
-      window.animationClock=at+cooldown*.75;updateSpritePresentation();const second={px:unit.px,py:unit.py,direction:spriteRuntime.states.get(unit.id).direction};
-      window.animationClock=at+cooldown;updateSpritePresentation();return {accepted,at,cooldown,first,second,end:{px:unit.px,py:unit.py,x:unit.x,y:unit.y,ready:unit.moveReadyAt}};
+      window.animationClock=at+cooldown*.5;updateSpritePresentation();const first={px:unit.px,py:unit.py,direction:spriteRuntime.states.get(unit.id).direction};
+      window.animationClock=at+cooldown;updateSpritePresentation();updatePersistentOrders();updateSpritePresentation();
+      window.animationClock=at+cooldown*1.5;updateSpritePresentation();const second={px:unit.px,py:unit.py,direction:spriteRuntime.states.get(unit.id).direction};
+      window.animationClock=at+cooldown*2;updateSpritePresentation();return {accepted,at,cooldown,first,second,end:{px:unit.px,py:unit.py,x:unit.x,y:unit.y,ready:unit.moveReadyAt}};
     })()`));
     assert.equal(result.accepted,true);
     assert.ok(Math.abs(result.first.px-8)<.01 && result.first.py>8 && result.first.py<9,'rendered path must go around the rock');
     assert.equal(result.first.direction,'S');
     assert.ok(result.second.px>8 && result.second.px<9 && Math.abs(result.second.py-9)<.01);
     assert.equal(result.second.direction,'E');
-    assert.deepEqual(result.end,{px:9,py:9,x:9,y:9,ready:result.at+result.cooldown});
+    assert.deepEqual({px:result.end.px,py:result.end.py,x:result.end.x,y:result.end.y},{px:9,py:9,x:9,y:9});
+    assert.ok(Math.abs(result.end.ready-result.at-result.cooldown*2)<.001);
     assert.deepEqual(errors,[]);
   } finally {await browser.close()}
 });
@@ -258,7 +269,7 @@ test('touch taps and stationary holds retain moving troop selection without issu
   try {
     const points = await page.evaluate(() => tcAnimation.run(`(()=>{
       const troop=addEntity('unit','rifleman',0,8,8),neighbor=addEntity('unit','rifleman',0,9,9);
-      updateSpritePresentation();moveEntity(troop,10,8);window.animationClock+=effectiveMoveCd(troop)*250;updateSpritePresentation();
+      updateSpritePresentation();issueMoveOrder(troop,10,8);window.animationClock+=movementStepDuration(troop)*.25;updateSpritePresentation();
       const point=e=>worldToScreen((e.px??e.x)+.5,(e.py??e.y)+.5);
       centerOn(9,8);lastCanvasTap={at:0,entityId:null};
       return {troop:{id:troop.id,...point(troop)},neighbor:{id:neighbor.id,...point(neighbor)}};
@@ -277,7 +288,7 @@ test('touch taps and stationary holds retain moving troop selection without issu
     await touch(points.troop,3,'pointerup');
     const held = await page.evaluate(() => tcAnimation.run('({ids:selectedIds.slice(),orders:entities.map(e=>e.moveDestination)})'));
     assert.deepEqual(held.ids.sort((a,b)=>a-b),[points.troop.id,points.neighbor.id].sort((a,b)=>a-b));
-    assert.ok(held.orders.every(order=>order===null),'a held visual target cannot issue a movement order');
+    assert.deepEqual(held.orders,[{x:10,y:8},null],'a held visual target preserves its existing movement order without issuing another');
     const enemy = await page.evaluate(troopId => tcAnimation.run(`(()=>{
       selectEntity(entityById(${troopId}));const foe=addEntity('unit','zergling',1,15,8);
       updateSpritePresentation();moveEntity(foe,13,8);window.animationClock+=effectiveMoveCd(foe)*250;updateSpritePresentation();

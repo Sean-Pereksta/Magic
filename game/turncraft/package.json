@@ -4,7 +4,13 @@
   "scripts": {
     "test": "python3 scripts/cache-visual-assets.py && node --test tests/*.test.cjs shattered-front/tests/*.mjs shattered-front/tests/*.cjs",
     "test:expansion": "node --test tests/shattered-*.test.cjs shattered-front/tests/*.mjs shattered-front/tests/*.cjs",
-    "test:warfare": "node ../../tests/turncraft-warfare-core.cjs && node ../../tests/turncraft-warfare.cjs"
+    "test:warfare": "node ../../tests/turncraft-warfare-core.cjs && node ../../tests/turncraft-warfare.cjs",
+    "test:responsive": "node --test tests/interruptible-movement.test.cjs tests/movement-reconciliation.test.cjs tests/command-ordering.test.cjs tests/order-feedback.test.cjs tests/command-input.test.cjs tests/selection-gesture.test.cjs tests/compact-formations.test.cjs",
+    "test:responsive:browser": "node --test tests/order-feedback-browser.test.cjs",
+    "test:responsive:firebase": "firebase emulators:exec --project demo-turncraft --config ../../firebase.turncraft-test.json --only firestore,auth \"node tests/responsive-firebase.live.cjs\"",
+    "bench:movement": "node tests/movement-benchmark.cjs",
+    "bench:network": "node tests/command-network-benchmark.cjs",
+    "bench:responsive": "node tests/responsive-performance.bench.cjs"
   },
   "devDependencies": {
     "firebase": "^12.0.0",
