@@ -569,7 +569,7 @@
         const stair=part.stairs[0];if(!groundClear(stair.groundX,stair.groundY)||!groundClear(part.courtyardX,part.courtyardY))continue;
         // Another building may not be hidden under the physical stair route.
         let clear=true;for(let step=0;step<=12&&clear;step++){const f=step/12,px=stair.groundX+(stair.deckX-stair.groundX)*f,py=stair.groundY+(stair.deckY-stair.groundY)*f;clear=!regions.some(r=>r!==region&&['wall','gate','rock','water'].includes(r.type)&&inside(px,py,r,0));}
-        if(clear){Object.assign(region,part);break;}
+        if(clear){if(!region.castleGate)delete part.castleGate;Object.assign(region,part);break;}
       }
     }
   }
@@ -1189,9 +1189,13 @@
   ];
   // Keep the west stair's approach queue above the Four Winds ground guard.
   // This changes only access metadata, with no new wall or moved reserve.
-  for(const part of EXPANSION_MAPS.find(m=>m.id==='fourwinds').regions)for(const stair of part.stairs||[])if(stair.id.startsWith('stair-west-')){
+  const fourWindsMap=EXPANSION_MAPS.find(m=>m.id==='fourwinds');
+  for(const part of fourWindsMap.regions)for(const stair of part.stairs||[])if(stair.id.startsWith('stair-west-')){
     stair.y-=60;stair.groundY-=60;stair.deckY-=60;
   }
+  const lowerWestWall=fourWindsMap.regions.find(p=>p.type==='wall'&&p.rampartSide==='west'&&p.y>fourWindsMap.fortress.y+fourWindsMap.fortress.h/2);
+  const lowerAccess=createRampartWall(lowerWestWall.x,lowerWestWall.y,lowerWestWall.w,lowerWestWall.h,{team:lowerWestWall.team,deckHeight:lowerWestWall.deckHeight,courtyardSide:'east',accessAt:(5000-lowerWestWall.y)/lowerWestWall.h}).stairs[0];
+  lowerAccess.id='stair-west-fourwinds-lower-access';lowerWestWall.stairs.push(lowerAccess);
   MAPS.push(...EXPANSION_MAPS);
   function expansionScene(id,name,mapId,description,groups,armyNames,doctrines) {
     const counts=[{},{}],formations=groups.map(g=>historicalGroup(...g));

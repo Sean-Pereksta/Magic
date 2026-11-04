@@ -109,6 +109,30 @@ function register(test){
     assert(result.completed,'Manual Retreat stranded its guard on the wall');assert(descended&&intermediate,'Manual Retreat skipped the actual stair descent');assert(!e._bodyBlocked(u.x,u.y,u._radius));
     return {seconds:Math.round(e.time*100)/100,safelyDescended:true,maximumStep:result.maxStep};
   });
+
+  test('Guards on an intact wall escape with a physical fall when collapse removes their only connected stairs',()=>{
+    const accessWall=D.createRampartWall(4200,2600,120,500,{team:0,courtyardSide:'east'}),guardWall=D.createRampartWall(4200,3100,120,500,{team:0,courtyardSide:'east'});
+    guardWall.stairs=[];
+    const access=accessWall.stairs[0],e=encounter([accessWall,guardWall],[group(0,'swordsman',4,access.groundX+90,access.groundY),group(1,'guardian',1,15000,10000)]),r=e.regiments.find(r=>r.team===0),entry=e.structures[0],post=e.structures[1];
+    assert.equal(e.ramparts.stairs(e.ramparts.component(post.id)).length,1,'The fixture requires exactly one connected stair access');
+    assert.equal(e.siege.manRampart([r.id],post.id,{ranks:1,spacing:'normal'}),1);e.start();
+    assert(advance(e,r,()=>settled(e,r,new Set([post.id])),180).completed,'The guard company did not physically reach the intact adjoining section');
+    const hp=r.unitIds.map(id=>e.units[id].hp),positions=r.unitIds.map(id=>({x:e.units[id].x,y:e.units[id].y,z:e.units[id]._rampartZ})),started=e.time;
+    assert.equal(e.siege.damage(entry,entry.hp),entry.maxHp);assert(entry.breached&&!post.breached&&post.hp===post.maxHp,'The collapse must destroy only the stair-bearing section');
+    assert.equal(e.ramparts.stairs(e.ramparts.component(post.id)).length,0,'The surviving platform still has an unintended stair route');
+    assert.deepEqual(r.unitIds.map(id=>({x:e.units[id].x,y:e.units[id].y,z:e.units[id]._rampartZ})),positions,'Losing the stairs instantly moved or dropped a guard');
+    const falling=new Set(),intermediate=new Set();
+    for(const id of r.unitIds)if(e.units[id]._rampartStage==='falling')falling.add(id);
+    const result=advance(e,r,()=>!r._rampartJob&&r.unitIds.every(id=>{const u=e.units[id];return u.alive&&!u._onRampart&&u._rampartZ===0;}),90,u=>{if(u._rampartStage==='falling')falling.add(u.id);if(u._rampartZ>0&&u._rampartZ<post.deckHeight)intermediate.add(u.id);});
+    assert(result.completed,'The loss of the sole stairs stranded guards on the surviving wall: '+JSON.stringify({job:r._rampartJob,bodies:r.unitIds.map(id=>{const u=e.units[id];return{id,x:u.x,y:u.y,z:u._rampartZ,hp:u.hp,stage:u._rampartStage,fall:u._rampartFallTarget,goal:u._rampartCourtGoal,path:u._rampartGroundPath};})}));
+    assert.equal(falling.size,r.unitIds.length,'A stranded guard bypassed the emergency fall');assert.equal(intermediate.size,r.unitIds.length,'A guard skipped the physical descent to ground level');
+    let totalDamage=0;
+    for(let i=0;i<r.unitIds.length;i++){
+      const u=e.units[r.unitIds[i]];assert(!e._bodyBlocked(u.x,u.y,u._radius)&&e.ramparts.isSupported(u),'An evacuated guard remained floating or embedded in the intact wall');
+      assert(u.x>post.x+post.w+u._radius,'A guard escaped toward the exterior instead of the courtyard');assert(u.hp<hp[i],'Emergency evacuation skipped its fall consequence');totalDamage+=hp[i]-u.hp;
+    }
+    return {guards:r.unitIds.length,intactWallStillStanding:true,secondsAfterCollapse:Math.round((e.time-started)*100)/100,physicalFalls:falling.size,totalFallDamage:Math.round(totalDamage*100)/100,maximumStep:result.maxStep};
+  });
 }
 module.exports=register;
 if(require.main===module){

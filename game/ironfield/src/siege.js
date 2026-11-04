@@ -56,7 +56,7 @@
 
     setGateOpen(id, open, team) {
       const e = this.engine, gate = this.byId.get(id);
-      if (!gate || !gate.castleGate || gate.breached || gate.team !== team ||
+      if (!gate || gate.type !== 'gate' || gate.breached || gate.team !== team ||
           typeof open !== 'boolean' || gate.open === open || e.phase === 'ended') return false;
       if (!open && (gate.passages.length || e.units.some(u => {
         if (!u.alive || u.escaped) return false;

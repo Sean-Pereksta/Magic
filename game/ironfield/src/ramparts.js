@@ -86,14 +86,15 @@
     preview(ids,structureId,options={}) {const wall=this.e.siege.byId.get(structureId);if(!wall||!wall.walkable||wall.breached)return[];const result=[],prior=this.planningSelection;this.planningSelection=new Set(ids||[]);for(const id of ids||[]){const r=this.e.getRegiment(id);if(!r||r.team!==wall.team)continue;const copy={...r};this.settings(copy,options);result.push(...this.assignSlots(copy,wall,true,result));}this.planningSelection=prior;return result;}
     setRampartFormation(ids,options) { let n=0;for(const id of new Set(ids||[])){const r=this.e.getRegiment(id);if(!r)continue;this.settings(r,options);if(r._rampartJob&&!r._rampartJob.leaving){const s=this.e.siege.byId.get(r._rampartJob.structureId);if(s&&!s.breached)this.assignSlots(r,s);}n++;}return n; }
     courtSlots(r,wall){const e=this.e,t=T[r.type],n=r.unitIds.filter(id=>e.units[id].alive).length,pitch=Math.max(30,t.radius*4+8),cols=Math.ceil(Math.sqrt(n*1.4)),rows=Math.ceil(n/cols),w=cols*pitch,h=rows*pitch,b=r._rampartJob.bounds;
-      const access=this.stairs(this.decks(r.team)).find(s=>r._rampartJob.component.includes(s.structureId)),base=access?{x:access.groundX,y:access.groundY}:{x:r.x,y:r.y};
+      const access=this.stairs(this.decks(r.team)).find(s=>r._rampartJob.component.includes(s.structureId)),base=access?{x:access.groundX,y:access.groundY}:e._nearestPassable(wall&&Number.isFinite(wall.courtyardX)?wall.courtyardX:r.x,wall&&Number.isFinite(wall.courtyardY)?wall.courtyardY:r.y,t.radius+1);
       const cx=wall&&Number.isFinite(wall.courtyardX)?wall.courtyardX:base.x,cy=wall&&Number.isFinite(wall.courtyardY)?wall.courtyardY:base.y,reserved=[];
       for(const other of e.regiments)if(other!==r&&other._rampartJob&&other._rampartJob.courtSlots)reserved.push(...other._rampartJob.courtSlots);
       const accesses=this.stairs(this.decks(r.team));
       const free=p=>{if(e._bodyBlocked(p.x,p.y,t.radius+2)||accesses.some(s=>inside(p.x,p.y,s,-t.radius-35))||reserved.some(q=>Math.hypot(p.x-q.x,p.y-q.y)<t.radius+q.radius+9))return false;
         const padding=t.radius+e._maxRadius+9,x0=Math.max(0,Math.floor((p.x-padding)/32)),x1=Math.min(e._bodyCols-1,Math.floor((p.x+padding)/32)),y0=Math.max(0,Math.floor((p.y-padding)/32)),y1=Math.min(e._bodyRows-1,Math.floor((p.y+padding)/32));
         for(let team=0;team<2;team++)for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)for(let id=e._bodyHeads[team][y*e._bodyCols+x];id!==-1;id=e._bodyNext[id]){const u=e.units[id];if(u.regiment!==r.id&&u.alive&&!u.routed&&u._rampartZ<8&&Math.hypot(u.x-p.x,u.y-p.y)<u._radius+t.radius+8)return false;}return true;};
-      for(let ring=0;ring<14;ring++)for(let oy=-ring;oy<=ring;oy++)for(let ox=-ring;ox<=ring;ox++){if(ring&&Math.max(Math.abs(ox),Math.abs(oy))!==ring)continue;const x=cx+ox*(w+35),y=cy+oy*(h+35);if(b&&(x-w/2<b.x+100||x+w/2>b.right-100||y-h/2<b.y+100||y+h/2>b.bottom-100))continue;
+      const enclosed=b&&b.right-b.x>=w+200&&b.bottom-b.y>=h+200;
+      for(let ring=0;ring<14;ring++)for(let oy=-ring;oy<=ring;oy++)for(let ox=-ring;ox<=ring;ox++){if(ring&&Math.max(Math.abs(ox),Math.abs(oy))!==ring)continue;const x=cx+ox*(w+35),y=cy+oy*(h+35);if(enclosed&&(x-w/2<b.x+100||x+w/2>b.right-100||y-h/2<b.y+100||y+h/2>b.bottom-100))continue;
         const slots=Array.from({length:n},(_,i)=>({x:x+(i%cols-(cols-1)/2)*pitch,y:y+(Math.floor(i/cols)-(rows-1)/2)*pitch,radius:t.radius}));
         if(slots.every(free)&&e._findPath(base.x,base.y,x,y,t.radius+1).length){slots.sort((a,b)=>Math.hypot(b.x-base.x,b.y-base.y)-Math.hypot(a.x-base.x,a.y-base.y));r._rampartJob.courtSlots=slots;return slots;}}
       const fallback=Array.from({length:n},(_,i)=>{const p=e._nearestPassable(base.x+(i%cols-(cols-1)/2)*pitch,base.y+100+Math.floor(i/cols)*pitch,t.radius+1);return{...p,radius:t.radius};});r._rampartJob.courtSlots=fallback;return fallback;
@@ -105,9 +106,10 @@
         const ds=u._onRampart?this.component(u._rampartId):this.decks(r.team),choices=this.stairs(ds).map(stair=>({stair,route:u._onRampart?this.route(u._rampartId,stair.structureId):[]})).filter(v=>v.route!==null);
         choices.sort((a,b)=>Math.hypot(u.x-a.stair.deckX,u.y-a.stair.deckY)-Math.hypot(u.x-b.stair.deckX,u.y-b.stair.deckY));const choice=choices[0];
         if(u._onRampart&&choice){const stair={...choice.stair},side=stair.axis==='x'?u.y-stair.deckY:u.x-stair.deckX,offset=(side<0?-1:1)*12;stair.lane=side<0?0:1;if(stair.axis==='x'){stair.groundY+=offset;stair.deckY+=offset;}else{stair.groundX+=offset;stair.deckX+=offset;}u._rampartAccess=stair;u._rampartPath=this.wallPath(u,{x:stair.deckX,y:stair.deckY,structureId:stair.structureId});u._rampartStage='exit-deck';}
+        else if(u._onRampart){this.fall(u);}
         else if(u._rampartStage==='climbing'){u._rampartStage='descending';}
         else if(!u._onRampart&&u._rampartStage!=='falling')u._rampartStage='courtyard';
-        const base=choice?{x:choice.stair.groundX,y:choice.stair.groundY}:{x:u.x,y:u.y};
+        const base=choice?{x:choice.stair.groundX,y:choice.stair.groundY}:u._rampartFallTarget||{x:u.x,y:u.y};
         let goal=court[i]||base;
         if(!this.e._findPath(base.x,base.y,goal.x,goal.y,u._radius+1).length)goal=this.e._nearestPassable(base.x+(i%8-3.5)*22,base.y+100+Math.floor(i/8)*22,u._radius+1);
         u._rampartCourtGoal=goal;i++;

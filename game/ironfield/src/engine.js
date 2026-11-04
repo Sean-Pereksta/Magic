@@ -418,13 +418,23 @@
       const sx = clamp(u.x, u._radius + 9, this.width - u._radius - 9), sy = clamp(u.y, u._radius + 9, this.height - u._radius - 9);
       let point = null;
       const pitch = Math.max(16, u._radius * 2 + 3);
-      for (let ring = 0; ring <= 72 && !point; ring++) {
+      // Deployment occupancy only grows. For an identical origin and radius,
+      // failed candidates stay occupied; a previously chosen point is now
+      // occupied too. Resume that exact scan instead of probing its prefix
+      // again for every body compressed against the same crowded border.
+      if(!occupancy.repairCursors)occupancy.repairCursors=new Map();
+      const key=u._radius+':'+sx+':'+sy,cursor=occupancy.repairCursors.get(key)||{ring:0,sample:0};
+      let nextRing=73,nextSample=0;
+      for (let ring = cursor.ring; ring <= 72 && !point; ring++) {
         const samples = Math.max(1, ring * 8);
-        for (let sample = 0; sample < samples; sample++) {
+        for (let sample = ring===cursor.ring?cursor.sample:0; sample < samples; sample++) {
           const angle = sample / samples * TAU, x = sx + Math.cos(angle) * ring * pitch, y = sy + Math.sin(angle) * ring * pitch;
-          if (this._deploymentFree(x, y, u._radius, occupancy)) { point = { x, y }; break; }
+          if (this._deploymentFree(x, y, u._radius, occupancy)) { point = { x, y };nextRing=sample+1<samples?ring:ring+1;nextSample=sample+1<samples?sample+1:0;break; }
         }
       }
+      // One small record per repeated origin is useful; pathological imports
+      // cannot retain more than this bounded, constructor-local cache.
+      if(occupancy.repairCursors.has(key)||occupancy.repairCursors.size<8192)occupancy.repairCursors.set(key,{ring:nextRing,sample:nextSample});
       if (point) { u.x = point.x; u.y = point.y; }
       const r = this.regiments[u.regiment];
       u._orderOffsetX = u.x - r.x; u._orderOffsetY = u.y - r.y;
@@ -3629,7 +3639,9 @@
             for(let id=heads[cell];id!==-1;id=next[id]){
               if(id===unitId)continue;
               if(!live[id])continue;
-              if(siege&&Math.abs(this.unitAltitude(u)-this._bodyZ[id])>18)continue;
+              // Legacy assault ramps are one continuous crowded walking
+              // surface. Only a real rampart/stair body opens a separate layer.
+              if(siege&&(u._rampartZ>0||units[id]._rampartZ>0)&&Math.abs(this.unitAltitude(u)-this._bodyZ[id])>18)continue;
               const ox=ux-xs[id],oy=uy-ys[id],gap=(radius+radii[id])*.96,reach=gap+amount*2;
               // A departing tower closes its ground footprint to newcomers
               // while walkers already beneath the raised deck finish exiting.

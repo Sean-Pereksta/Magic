@@ -864,7 +864,7 @@
         for (let id = e._bodyHeads[team][cy * e._bodyCols + cx]; id !== -1; id = e._bodyNext[id]) {
           if (++visits > 96) return false;
           const other = e.units[id];
-          if (other.id !== u.id && other.alive && !other.routed && !other._siegeDeployed&&Math.abs(e.unitAltitude(u)-e.unitAltitude(other))<=18) visit(other);
+          if (other.id !== u.id && other.alive && !other.routed && !other._siegeDeployed&&(!(u._rampartZ>0||other._rampartZ>0)||Math.abs(e.unitAltitude(u)-e.unitAltitude(other))<=18)) visit(other);
         }
         return true;
       };

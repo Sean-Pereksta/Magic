@@ -21,6 +21,8 @@ The Four Winds assault demonstrates a manned curtain wall. Its archers and cross
 
 Large garrisons need several minutes of battle time to fill distant posts. Soldiers walk to finite stair entrances, climb in physical queues, and form their wall ranks in order. Ground reserves and other companies still occupy real space, so keep their approach lanes clear.
 
+Four Winds has an additional interior stair on its lower western curtain, giving its crossbows a direct approach that clears the stationary ground defenders. This is access metadata on the existing wall; it adds no ground obstacle or passage through the masonry.
+
 ## Terrain
 
 Road, mud, marsh, snow, and trench regions are passable surfaces. They affect movement and cover; they do not create invisible walls. Roads favor movement, mud is especially slow, marsh provides some cover, snow slows the march, and trenches provide substantial cover at a movement cost. A road does not make deep water passable. A real bridge or causeway must cover the crossing.
@@ -54,3 +56,5 @@ Run `node tests/battlefield-data-test.cjs` to check catalog coverage, physical t
 Run `node tests/rampart-data-test.cjs` to check deck connectivity, stair endpoints and clear ground access on all template sizes, keep platforms, and the Four Winds garrison assignments. `node tests/fortress-navigation-test.cjs` verifies actual infantry and cavalry movement through gates, causeways, and breaches.
 
 `node tests/rampart-runtime-test.cjs` checks physical climbing and descent on every fort style, the separate inner citadel ring, the higher gate keep, supported wall formations, previews, elevated firing, incoming missile protection, larger company traffic, courtyard responses to occupied-wall and adjacent-gate breaches, and a direct ground Move order issued while troops are on the wall. These checks track individual bodies throughout their routes rather than placing them directly on a deck.
+
+The optional `node tests/authored-garrison-test.cjs` audit retains all 3,258 soldiers in the actual Four Winds encounter, holds the other formations, suppresses weapon fire, and requires every one of its 320 ranged guards to occupy a real deck slot within 600 simulated seconds. It checks physical support, nearby-body separation, finite positions, and company cohesion throughout. Progress messages distinguish long queues from 40-second periods without a new climber or occupied post, followed by one JSON result. This lengthy audit stays outside default CI. The validated garrison filled all posts after 387.733 simulated seconds with 100 cohesion and a minimum body-separation ratio of 0.96.

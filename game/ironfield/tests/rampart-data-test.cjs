@@ -62,6 +62,11 @@ function register(test){
     const reserve=p.formations.find(f=>f.name==='Gate reserve');assert(reserve&&!reserve.rampart&&reserve.type==='hoplite');
     const map=D.EXPANSION_MAPS.find(m=>m.id==='fourwinds'),stair=map.regions.flatMap(r=>r.stairs||[]).find(s=>s.id.startsWith('stair-west-'));assert.equal(stair.groundY,2090);assert.equal(stair.deckY,2090);
     for(const offset of [-12,12])for(let x=stair.groundX;x<=stair.groundX+1920;x+=24){assert(!e._bodyBlocked(x,stair.groundY+offset,6));for(const u of e.units)if(u.team===1&&u.type==='guardian')assert(Math.hypot(u.x-x,u.y-stair.groundY-offset)>u._radius+6,'The authored west stair queue intersects its stationary ground guard');}
+    const lower=map.regions.flatMap(r=>r.stairs||[]).find(s=>s.id==='stair-west-fourwinds-lower-access');assert(lower);assert.equal(lower.groundY,5000);assert.equal(lower.deckY,5000);
+    const guards=e.units.filter(u=>u.team===1&&u.type==='guardian'),crossbows=e.units.filter(u=>u.team===1&&u.type==='crossbow');assert.equal(crossbows.length,160);
+    for(const offset of [-12,12]){for(let x=lower.groundX;x<=lower.groundX+1920;x+=24){assert(!e._bodyBlocked(x,lower.groundY+offset,6));for(const v of guards)assert(Math.hypot(v.x-x,v.y-lower.groundY-offset)>v._radius+6,'The lower west stair queue intersects its ground guard');}
+      for(const u of crossbows){const dx=lower.groundX-u.x,dy=lower.groundY+offset-u.y,length=dx*dx+dy*dy;for(const v of guards){const f=Math.max(0,Math.min(1,((v.x-u.x)*dx+(v.y-u.y)*dy)/length));assert(Math.hypot(u.x+dx*f-v.x,u.y+dy*f-v.y)>u._radius+v._radius,'A crossbow approach to its lower wall stairs intersects the stationary garrison');}}
+    }
     assert.equal(D.EXPANSION_MAPS.length,8);assert.equal(D.HISTORICAL_BATTLES.length,30);
     return{garrisonCompanies:assigned.length,garrisonSoldiers:assigned.reduce((n,f)=>n+f.count,0),groundReserve:reserve.count};
   });
@@ -78,7 +83,8 @@ function register(test){
     const results=[];
     for(const[id,x,count]of [['moat',3520,5],['mountainfort',3720,5],['imperialwall',7000,7],['highcitadel',9200,7]]){
       const map=D.MAPS.find(m=>m.id===id),walls=map.regions.filter(r=>['wall','gate'].includes(r.type)&&r.x===x);assert.equal(walls.length,count);const e=new Engine({map:id});
-      for(const wall of walls){assert(wall.walkable&&wall.rampartSide==='west');assert.equal(wall.stairs.length,1);const stair=wall.stairs[0];assert(stair.groundX>wall.x+wall.w);assert(inside(stair.deckX,stair.deckY,wall));assert(!e._bodyBlocked(stair.groundX,stair.groundY,10));assert(!e._bodyBlocked(wall.courtyardX,wall.courtyardY,10));assert(stair.groundX<map.width-20&&stair.groundY>=20&&stair.groundY<map.height-20);if(wall.type==='gate')assert(wall.castleGate);}
+      for(const wall of walls){assert(wall.walkable&&wall.rampartSide==='west');assert.equal(wall.stairs.length,1);const stair=wall.stairs[0];assert(stair.groundX>wall.x+wall.w);assert(inside(stair.deckX,stair.deckY,wall));assert(!e._bodyBlocked(stair.groundX,stair.groundY,10));assert(!e._bodyBlocked(wall.courtyardX,wall.courtyardY,10));assert(stair.groundX<map.width-20&&stair.groundY>=20&&stair.groundY<map.height-20);if(wall.type==='gate')assert(!wall.castleGate,'A bare outer gate was reclassified as an enclosed castle entrance');}
+      for(const gate of e.structures.filter(p=>p.type==='gate'&&p.x===x))assert(e.siege.setGateOpen(gate.id,true,gate.team),'A legacy owned outer gate lost operation when its original classification was preserved');
       results.push({map:id,wallAndGateAccesses:walls.length});
     }
     const borodino=D.HISTORICAL_BATTLES.find(p=>p.id==='historyBorodino'),redoubts=borodino.customMap.regions.filter(r=>r.structureKind==='earthwork');assert.equal(redoubts.length,3);assert(redoubts.every(r=>r.walkable&&r.deckHeight===14));
