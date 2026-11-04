@@ -4,11 +4,13 @@ on:
   pull_request:
     paths:
       - 'lobby/**'
+      - 'index.html'
       - '.github/workflows/lobby-library-tests.yml'
   push:
     branches: [main]
     paths:
       - 'lobby/**'
+      - 'index.html'
       - '.github/workflows/lobby-library-tests.yml'
 
 permissions:
@@ -17,11 +19,27 @@ permissions:
 jobs:
   library:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /lobby/
+            /index.html
+            /game/apes-together-strong.html
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Test real hub source and game launch actions
-        run: node --experimental-vm-modules --test lobby/tests/lobby-library.test.cjs
+        run: node --experimental-vm-modules --test lobby/tests/*.test.cjs lobby/tests/*.test.mjs
+      - name: Install isolated browser test runtime
+        run: npm install --prefix "$RUNNER_TEMP/arcade-browser" --no-save --package-lock=false --ignore-scripts playwright@1.62.1
+      - name: Prepare test browser
+        run: node "$RUNNER_TEMP/arcade-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Check responsive arcade journeys with isolated data
+        env:
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/arcade-browser/node_modules/playwright/index.mjs
+        run: |
+          node lobby/tests/arcade-hub-browser.mjs
+          node lobby/tests/shell-browser.mjs

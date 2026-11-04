@@ -6,7 +6,8 @@
   <title>Cat’N Mice · Arcade Nexus</title>
   <script src="./lobby-showcase.js?v=5"></script>
   <script src="./lobby-library.js?v=2"></script>
-  <script src="./lobby-flagships.js?v=2"></script>
+  <script src="./lobby-flagships.js?v=3"></script>
+  <script src="./lobby-arcade.js?v=1"></script>
 </head>
 <body>
   <script>
@@ -57,7 +58,11 @@
           try{html=globalThis.GameHubFlagships.upgradeHtml(html);}
           catch(error){console.warn("Flagship layout unavailable; using the original hub",error);}
         }
-        const patch='<script src="./lobby-catalog-organization.js?v=4" defer><\/script>';
+        if(globalThis.GameHubArcade){
+          try{html=globalThis.GameHubArcade.upgradeHtml(html);}
+          catch(error){console.warn("Arcade layout unavailable; using the existing hub",error);}
+        }
+        const patch=html.includes('catnmice-arcade:v1')?'':'<script src="./lobby-catalog-organization.js?v=5" defer><\/script>';
         html=html.includes("</body>")?html.replace("</body>",patch+"</body>"):html+patch;
         document.open();
         document.write(html);

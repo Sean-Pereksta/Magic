@@ -1,9 +1,9 @@
-(()=>{
+(function(root){
   "use strict";
 
   const STATUS_ORDER=["showcase","playable","tools","prototype"];
   const STATUS_META={
-    showcase:{label:"Best Games · Built Out",icon:"⭐",short:"Built Out",description:"Our most complete games and flagship experiences, always first.",order:0},
+    showcase:{label:"Complete",icon:"✦",short:"Complete",description:"Our most complete games and flagship experiences.",order:0},
     playable:{label:"In Production",icon:"🛠",short:"In Production",description:"Other projects that are still being built and polished. Play their current versions.",order:1000},
     prototype:{label:"Experimental",icon:"🧪",short:"Experimental",description:"Prototypes, incomplete builds, and early ideas. Explore them when you want something different.",order:3000},
     tools:{label:"Tools & Learning",icon:"🧰",short:"Tool",description:"Useful non-game experiences that live alongside the library.",order:2000}
@@ -63,6 +63,10 @@
     for(const title of PROTOTYPE_ALIASES)if(normalized.includes(title))return "prototype";
     return "playable";
   }
+
+  const api=Object.freeze({statusForTitle,cleanTitle,statusMeta:STATUS_META});
+  if(typeof module==='object'&&module.exports){module.exports=api;return;}
+  root.GameHubCatalog=api;
 
   function injectStyles(){
     if(document.getElementById("catalogOrganizationStyles"))return;
@@ -243,6 +247,7 @@
   }
 
   function setCopy(){
+    if(document.body.classList.contains('arcade-hub')||document.querySelector('link[href*="lobby-arcade.css"]'))return;
     const singleTitle=document.querySelector("#view-singleplayer > .section-head .section-title");
     const singleSub=document.querySelector("#view-singleplayer > .section-head .section-sub");
     if(singleTitle)singleTitle.textContent="Game Library";
@@ -279,7 +284,9 @@
     const lobbyGrid=document.getElementById("lobbyGrid");
     const onlineGrid=document.getElementById("onlineWorldGrid");
 
-    observeGrid(singleGrid,()=>organizeGrid(singleGrid,".game-card",card=>{decorateGameCard(card);return card.dataset.catalogStatus;},{includeTools:true}));
+    // The library owns its sort and explicit status filter. Never reorder it
+    // with CSS or silently hide experimental results.
+    if(!document.querySelector('link[href*="lobby-arcade.css"]'))observeGrid(singleGrid,()=>organizeGrid(singleGrid,".game-card",card=>{decorateGameCard(card);return card.dataset.catalogStatus;},{includeTools:true}));
     observeGrid(lobbyGrid,()=>organizeGrid(lobbyGrid,".lobby-card",decorateLobbyCard));
     observeGrid(onlineGrid,()=>organizeGrid(onlineGrid,".online-world-card",decorateOnlineCard));
 
@@ -300,6 +307,6 @@
 
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot,{once:true});
   else boot();
-})();
+})(globalThis);
 
 

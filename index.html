@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>🎮 Cat’N Mice</title>
+  <title>Cat’N Mice · Your next world awaits</title>
+  <meta name="description" content="Discover original games, gather your friends, and find your next favorite world at Cat’N Mice." />
+  <meta name="theme-color" content="#090e1a" />
+  <link rel="icon" type="image/svg+xml" href="/lobby/assets/catnmice-mark.svg" />
   <style>
     :root{
       --bg:#080d19;
@@ -626,36 +629,119 @@
     }
 
     html{color-scheme:dark} :focus-visible{outline:3px solid #88d9ff;outline-offset:3px}
+
+    /* One viewport, one content scroll. Games retain control of their own canvas. */
+    :root{--bg:#090e1a;--surface:#111a2b;--surface-2:#192337;--ink:#eef2fc;--muted:#a9b6cc;--line:#2b3850;--brand:#7978f6;--brand-dark:#5858d6;--brand-soft:#242342;--bad:#d64f64}
+    html,body{height:100%;height:100dvh;overflow:hidden}
+    body{min-height:0;background:var(--bg)}
+    .appbar{flex:0 0 auto;background:#0d1423;border-color:var(--line);box-shadow:none}
+    .appbar-inner{min-height:68px;padding:10px 24px;gap:20px}
+    .brand{gap:10px}
+    .brand-logo{width:38px;height:38px;border:0;border-radius:0;background:none;box-shadow:none;backdrop-filter:none}
+    .brand-logo img{display:block;width:100%;height:100%}
+    .brand-title{font-size:1.02rem;font-weight:800;letter-spacing:-.035em}
+    .brand-subtitle{font-size:.68rem;font-weight:500;color:var(--muted);margin-top:4px}
+    .header-actions{gap:7px;flex-wrap:nowrap}
+    .header-btn{min-height:40px;gap:7px;padding:8px 11px;border-color:transparent;background:transparent;font-size:.75rem;font-weight:600;border-radius:10px}
+    .header-btn svg{display:block;width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+    .header-btn:hover{background:var(--surface-2);border-color:var(--line);transform:none}
+    .header-btn:disabled{opacity:.5;cursor:wait}
+    .header-btn.fullscreen-active,.header-btn.open{background:var(--brand-soft);color:#dedcff;border-color:#6661b1}
+    .header-btn:focus-visible{outline-offset:1px}
+    .status-pill{font-size:.68rem;font-weight:500;border:0;background:transparent;color:var(--muted);padding:7px 12px 7px 0;backdrop-filter:none}
+    .status-dot{width:6px;height:6px;background:#7edbb9;box-shadow:none}
+    .viewport{padding:0;overflow:hidden;flex:1 1 0;min-height:0}
+    .frame-wrap{min-height:0;width:100%;max-width:none;overflow:hidden;border:0;border-radius:0;box-shadow:none}
+    #contentFrame{width:100%;height:100%;min-height:0;background:var(--bg)}
+    .loader{background:var(--bg)}
+    .loader-card{padding:24px;border:0;background:var(--bg);box-shadow:none}
+    .loader-text{color:var(--muted);font-weight:500}
+    .spinner{width:30px;height:30px;border-width:2px;border-color:var(--line);border-top-color:#a5a0ff}
+    .chat-trigger{position:relative;border-color:var(--line);background:var(--surface)}
+    .chat-trigger .fab-badge{position:static;margin-left:1px;min-width:19px;height:19px;border:0;background:#bdb8ff;color:#171329;font-size:.62rem;box-shadow:none}
+    .chat-trigger .fab-badge[hidden]{display:none}
+    .chat-sheet{top:calc(78px + env(safe-area-inset-top));right:18px;bottom:auto;width:min(410px,calc(100vw - 28px));height:min(620px,calc(100dvh - 96px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));border-radius:18px;box-shadow:0 20px 60px #0008;transform-origin:top right}
+    .chat-head{background:var(--surface);border-bottom:1px solid var(--line);padding:15px}
+    .chat-title-icon{color:#c6bfff;background:var(--brand-soft);border:0}
+    .chat-title-icon svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linejoin:round}
+    .chat-messages{background:var(--bg)}
+    .msg{background:var(--surface)}
+    .msg.mine{border-color:#59568a;background:#252540}
+    .msg.private{background:#231e38;border-color:#675891}
+    .msg.private.mine{background:#30284b;border-color:#8976b6}
+    .private-label{background:#44365e;color:#e2d4ff}
+    .chat-compose-help strong{color:#c5b7fa}
+    .chat-user{color:var(--muted)}
+    .chat-login-note{color:#d4ccff;background:#221f3b;border-color:#484365;font-weight:500}
+    .chat-input input:focus{border-color:#a5a0ff;box-shadow:0 0 0 3px #7978f626}
+    .chat-share-icon{border-color:var(--line);background:var(--surface-2)}
+    .share-lobby-btn{color:#d5d1ff;background:var(--brand-soft);border-color:#665d9c}
+    .send,.join-ad-btn{background:#5858d6;border-color:#7772eb;box-shadow:none}
+    .send:hover,.join-ad-btn:hover{background:#6865e4;transform:none}
+    .msg.lobby-message,.lobby-ad,.lobby-ad-game{background:var(--surface);border-color:#56547e;box-shadow:none}
+    .lobby-ad-status{color:#8be0bc}
+    .toast{bottom:calc(18px + env(safe-area-inset-bottom));background:#252b45;border:1px solid #596382;font-weight:600}
+    .skip-link{position:absolute;left:12px;top:8px;z-index:1400;padding:10px 14px;border-radius:8px;background:#dad7ff;color:#16132e;transform:translateY(-150%);font-size:.8rem;font-weight:700}
+    .skip-link:focus{transform:translateY(0)}
+    @media(max-width:980px){.status-pill{display:none}}
+    @media(max-width:760px){
+      .appbar-inner{min-height:64px;padding:9px 14px;gap:14px}
+      .brand-logo{width:35px;height:35px}
+      .brand-subtitle{display:none}
+      .header-btn{width:auto;padding:8px 9px}
+      .header-btn .label{display:inline}
+      .chat-sheet{top:calc(74px + env(safe-area-inset-top));right:10px;width:min(410px,calc(100vw - 20px));height:min(620px,calc(100dvh - 88px - env(safe-area-inset-top) - env(safe-area-inset-bottom)))}
+    }
+    @media(max-width:540px){
+      .appbar-inner{min-height:0;flex-wrap:wrap;gap:8px;padding:10px 12px 8px}
+      .brand{width:100%;justify-content:center;gap:8px}
+      .brand-logo{width:29px;height:29px}
+      .brand-title{font-size:.95rem}
+      .header-actions{width:100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+      .header-btn{min-width:0;min-height:39px;padding:8px 4px;font-size:.69rem;gap:5px}
+      .header-btn .label{min-width:0;overflow-wrap:anywhere;line-height:1.25}
+      .header-btn svg{width:15px;height:15px}
+      .chat-trigger .fab-badge{position:absolute;right:0;top:-3px;margin:0}
+      .chat-sheet{top:calc(110px + env(safe-area-inset-top));height:calc(100dvh - 122px - env(safe-area-inset-top) - env(safe-area-inset-bottom));border-radius:15px}
+    }
+    /* The embedded hub already owns its navigation and branded header. Hide this
+       game toolbar only after its working Chat relay has been installed there. */
+    body[data-shell-mode="hub"] .appbar{display:none}
+    body[data-shell-mode="hub"] .chat-sheet{top:calc(86px + env(safe-area-inset-top));height:min(620px,calc(100dvh - 106px - env(safe-area-inset-top) - env(safe-area-inset-bottom)))}
+    @media(max-width:1050px){body[data-shell-mode="hub"] .chat-sheet{top:calc(78px + env(safe-area-inset-top));height:calc(100dvh - 164px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}}
+    @media(max-width:600px){body[data-shell-mode="hub"] .chat-sheet{top:calc(74px + env(safe-area-inset-top));height:calc(100dvh - 158px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}}
   </style>
 </head>
 <body>
+  <a class="skip-link" href="#contentFrame">Skip to games</a>
   <header class="appbar">
     <div class="appbar-inner">
       <div class="brand">
-        <div class="brand-logo" aria-hidden="true">🎮</div>
+        <div class="brand-logo" aria-hidden="true"><img src="/lobby/assets/catnmice-mark.svg" alt="" width="38" height="38" /></div>
         <div class="brand-copy">
           <div class="brand-title">Cat’N Mice</div>
-          <div class="brand-subtitle">ARCADE NEXUS 2.0 · Find your next world.</div>
+          <div class="brand-subtitle">A little escape. A new adventure.</div>
         </div>
       </div>
 
-      <div class="header-actions">
+      <div class="header-actions" role="group" aria-label="Game controls">
         <div class="status-pill" title="The Game Hub lobby is loaded below">
           <span class="status-dot"></span>
-          Lobby &amp; Game Library
+          <span id="shellStatus">Your arcade, all in one place</span>
         </div>
-        <button id="returnToLobby" class="header-btn" type="button" title="Leave the current game and return to the lobby">
-          <span aria-hidden="true">⌂</span>
+        <button id="returnToLobby" class="header-btn" type="button" title="Leave the current game and return to the lobby" aria-label="Return to lobby">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7M5 9v12h14V9M9 21v-8h6v8"/></svg>
           <span class="label">Lobby</span>
         </button>
-        <button id="fullscreenLobby" class="header-btn" type="button" title="Toggle fullscreen for the current lobby or game" aria-pressed="false">
-          <span id="fullscreenLobbyIcon" aria-hidden="true">⛶</span>
+        <button id="fullscreenLobby" class="header-btn" type="button" title="Toggle fullscreen for the current lobby or game" aria-label="Fullscreen current game or lobby" aria-pressed="false">
+          <span id="fullscreenLobbyIcon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></span>
           <span id="fullscreenLobbyLabel" class="label">Fullscreen</span>
         </button>
-        <button id="reloadLobby" class="header-btn" type="button" title="Reload the current lobby or game">
-          <span aria-hidden="true">↻</span>
+        <button id="reloadLobby" class="header-btn" type="button" title="Reload the current lobby or game" aria-label="Reload current game or lobby">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2 5M20 12l-3-5"/></svg>
           <span class="label">Reload</span>
         </button>
+        <button id="toggleChat" class="header-btn chat-trigger" type="button" aria-label="Open Game Hub chat" aria-controls="chatContainer" aria-expanded="false" aria-pressed="false"><span id="chatFabIcon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 11a8 8 0 0 1-8 8H8l-5 3V6a3 3 0 0 1 3-3h10a5 5 0 0 1 5 5z"/><path d="M7 8h10M7 12h7"/></svg></span><span class="label">Chat</span><span id="chatUnreadBadge" class="fab-badge" hidden>0</span></button>
       </div>
     </div>
   </header>
@@ -667,7 +753,8 @@
       <iframe
         id="contentFrame"
         src="/lobby/lobby.html"
-        title="Cat’N Mice Game Hub Lobby"
+        title="Cat’N Mice games and lobby"
+        tabindex="0"
         allow="fullscreen *; autoplay https://catnmice.com https://www.iheart.com; microphone https://catnmice.com; geolocation 'self' https://catnmice.com https://www.catnmice.com https://www.iheart.com"
         allowfullscreen="true"
         webkitallowfullscreen="true"
@@ -676,7 +763,7 @@
       <div class="loader" id="frameLoader" aria-live="polite">
         <div class="loader-card">
           <div class="spinner" aria-hidden="true"></div>
-          <div class="loader-text">Loading the Game Hub…</div>
+          <div class="loader-text">Opening your arcade…</div>
         </div>
       </div>
     </div>
@@ -685,7 +772,7 @@
   <section id="chatContainer" class="chat-sheet" aria-hidden="true" aria-label="Lobby chat" inert>
     <div class="chat-head">
       <div class="chat-title">
-        <div class="chat-title-icon" aria-hidden="true">💬</div>
+        <div class="chat-title-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 11a8 8 0 0 1-8 8H8l-5 3V6a3 3 0 0 1 3-3h10a5 5 0 0 1 5 5z"/><path d="M7 8h10M7 12h7"/></svg></div>
         <div>
           <strong>Game Hub Chat</strong>
           <div id="chatUser" class="chat-user">Log in through the lobby to chat</div>
@@ -694,7 +781,7 @@
       <button class="close-chat" id="closeChat" type="button" aria-label="Close chat">✕</button>
     </div>
 
-    <div id="chatMessages" class="chat-messages">
+    <div id="chatMessages" class="chat-messages" role="log" aria-label="Chat messages" aria-live="polite" aria-relevant="additions" tabindex="0">
       <div class="chat-empty">
         <div class="big">💬</div>
         Lobby messages will appear here.
@@ -718,38 +805,39 @@
 
     <div class="chat-compose">
       <div class="chat-input">
-        <input id="chatMessage" type="text" maxlength="500" placeholder="Type a message…" autocomplete="off" list="chatUserSuggestions" disabled />
+        <input id="chatMessage" type="text" maxlength="500" placeholder="Type a message…" aria-label="Chat message" aria-describedby="chatComposeHelp" autocomplete="off" list="chatUserSuggestions" disabled />
         <datalist id="chatUserSuggestions"></datalist>
         <button id="sendBtn" class="send" type="button" disabled>Send</button>
       </div>
-      <div class="chat-compose-help">Private message: start with <strong>@username</strong> (or <strong>@&quot;name with spaces&quot;</strong>).</div>
+      <div id="chatComposeHelp" class="chat-compose-help">Private message: start with <strong>@username</strong> (or <strong>@&quot;name with spaces&quot;</strong>).</div>
     </div>
   </section>
 
-  <button id="toggleChat" class="fab" type="button" aria-label="Open Game Hub chat" aria-pressed="false"><span id="chatFabIcon">💬</span><span id="chatUnreadBadge" class="fab-badge" hidden>0</span></button>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import {
-      getFirestore,
-      collection,
-      addDoc,
-      query,
-      orderBy,
-      limit,
-      onSnapshot,
-      serverTimestamp,
-      doc,
-      getDoc,
-      getDocs,
-      where,
-      writeBatch
-    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-    import {
-      getAuth,
-      signInAnonymously
-    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    // A failed chat-service download must not disable game controls. Failed
+    // operations still reject, so the offline shell never pretends to send chat.
+    function offlineChatSdk(error){
+      const unavailable=()=>Promise.reject(new Error("Chat is temporarily unavailable. Check your connection and reload to reconnect."));
+      const reference=(_db,...parts)=>({path:parts.join("/")});
+      return {initializeApp:()=>({}),getFirestore:()=>({}),getAuth:()=>({currentUser:null}),
+        signInAnonymously:unavailable,collection:reference,doc:reference,
+        query:ref=>ref,orderBy:()=>({}),limit:()=>({}),where:()=>({}),serverTimestamp:()=>null,
+        addDoc:unavailable,getDoc:unavailable,getDocs:unavailable,
+        onSnapshot:(_ref,_success,fail)=>{queueMicrotask(()=>fail?.(error));return ()=>{};},
+        writeBatch:()=>({delete(){},commit:unavailable})};
+    }
+    const sdk=await Promise.all([
+      import("https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"),
+      import("https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js")
+    ]).then(modules=>Object.assign({},...modules)).catch(error=>{
+      console.warn("Chat service unavailable; game controls remain available",error);
+      return offlineChatSdk(error);
+    });
+    const {initializeApp,getFirestore,collection,addDoc,query,orderBy,limit,onSnapshot,
+      serverTimestamp,doc,getDoc,getDocs,where,writeBatch,getAuth,signInAnonymously}=sdk;
 
     const firebaseConfig = {
       apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -796,8 +884,8 @@
       const active = currentFullscreenElement() === frame;
       fullscreenLobby.classList.toggle("fullscreen-active",active);
       fullscreenLobby.setAttribute("aria-pressed",active ? "true" : "false");
-      fullscreenLobbyIcon.textContent = active ? "⛶" : "⛶";
       fullscreenLobbyLabel.textContent = active ? "Exit Fullscreen" : "Fullscreen";
+      fullscreenLobby.setAttribute("aria-label",active ? "Exit fullscreen" : "Fullscreen current game or lobby");
 
       try{
         frame.contentWindow.postMessage({
@@ -897,6 +985,7 @@
     let publicMessageDocs = [];
     let privateMessageDocs = [];
     let privateMessagesUnsub = null;
+    let chatFocusReturn = null;
     const avatarCache = new Map();
     const CHAT_RETENTION_MS = 24*60*60*1000;
 
@@ -977,7 +1066,50 @@
     }
     function setUnreadCount(value){
       unreadMessages=Math.max(0,Number(value)||0);chatUnreadBadge.hidden=!unreadMessages;chatUnreadBadge.textContent=unreadMessages>99?"99+":String(unreadMessages);
-      toggleChat.setAttribute("aria-label",unreadMessages?`Open Game Hub chat, ${unreadMessages} unread message${unreadMessages===1?"":"s"}`:"Open Game Hub chat");
+      const action=chatContainer.classList.contains("open")?"Close":"Open";
+      toggleChat.setAttribute("aria-label",unreadMessages?`${action} Game Hub chat, ${unreadMessages} unread message${unreadMessages===1?"":"s"}`:`${action} Game Hub chat`);
+      syncChatRelay();
+    }
+
+    function syncChatRelay(){
+      try{
+        const relay=frame.contentDocument?.getElementById("shellChatRelay");
+        if(!relay)return;
+        relay.setAttribute("aria-label",toggleChat.getAttribute("aria-label"));
+        relay.setAttribute("aria-expanded",chatContainer.classList.contains("open")?"true":"false");
+        const badge=relay.querySelector(".count-bubble");
+        badge.hidden=!unreadMessages;badge.textContent=unreadMessages>99?"99+":String(unreadMessages);
+      }catch{}
+    }
+
+    function syncFrameShell(){
+      // Games navigate this frame themselves, so its src attribute is not a
+      // reliable signal. Retain the complete toolbar if integration is absent.
+      document.body.dataset.shellMode="game";
+      try{
+        const current=frame.contentWindow.location;
+        const hubDocument=frame.contentDocument;
+        const inLobby=current.pathname==="/lobby/lobby.html"||current.pathname==="/lobby/lobby-core.html";
+        const actions=inLobby&&hubDocument?.querySelector(".topbar .header-actions");
+        frame.title=inLobby?"Cat’N Mice games and lobby":String(hubDocument?.title||"Cat’N Mice current game");
+        document.getElementById("shellStatus").textContent=inLobby?"Your arcade, all in one place":"Game in progress";
+        if(!actions)return;
+        let relay=hubDocument.getElementById("shellChatRelay");
+        if(!relay){
+          relay=hubDocument.createElement("button");
+          relay.id="shellChatRelay";relay.type="button";relay.className="header-btn";
+          relay.innerHTML='<svg class="arcade-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11a8 8 0 0 1-8 8H8l-5 3V6a3 3 0 0 1 3-3h10a5 5 0 0 1 5 5z"/><path d="M7 8h10M7 12h7"/></svg><span class="desktop-label">Chat</span><span class="count-bubble" hidden>0</span>';
+          relay.addEventListener("click",()=>toggleChatPanel());
+          actions.prepend(relay);
+          hubDocument.addEventListener("keydown",event=>{
+            if(event.key==="Escape"&&chatContainer.classList.contains("open")){
+              event.preventDefault();toggleChatPanel(false);
+            }
+          });
+        }
+        syncChatRelay();
+        document.body.dataset.shellMode="hub";
+      }catch{frame.title="Cat’N Mice current game";}
     }
 
     function setLobbyShareState(data,message){
@@ -1083,6 +1215,7 @@
     frame.addEventListener("load",()=>{
       loader.classList.add("hide");
       syncLobbyUsername();
+      syncFrameShell();
     });
 
     returnToLobby.addEventListener("click",async()=>{
@@ -1118,18 +1251,24 @@
     });
 
     function toggleChatPanel(force){
+      const wasOpen=chatContainer.classList.contains("open");
+      const restoreFocus=wasOpen&&chatContainer.contains(document.activeElement);
       const nextOpen = typeof force === "boolean" ? force : !chatContainer.classList.contains("open");
+      if(nextOpen&&!wasOpen){
+        chatFocusReturn=document.activeElement;
+        try{if(chatFocusReturn===frame)chatFocusReturn=frame.contentDocument?.activeElement||toggleChat;}catch{}
+      }
       chatContainer.classList.toggle("open",nextOpen);
       chatContainer.setAttribute("aria-hidden",nextOpen ? "false" : "true");
       chatContainer.inert=!nextOpen;
       toggleChat.setAttribute("aria-pressed",nextOpen ? "true" : "false");
+      toggleChat.setAttribute("aria-expanded",nextOpen ? "true" : "false");
       toggleChat.classList.toggle("open",nextOpen);
-      chatFabIcon.textContent = nextOpen ? "✕" : "💬";
       if(nextOpen)setUnreadCount(0);
+      else setUnreadCount(unreadMessages);
       syncLobbyUsername();
-      if(nextOpen && currentUsername){
-        setTimeout(()=>msgInput.focus(),120);
-      }
+      if(nextOpen)setTimeout(()=>{if(chatContainer.classList.contains("open"))(currentUsername?msgInput:closeChat).focus();},120);
+      else if(restoreFocus)(chatFocusReturn?.isConnected?chatFocusReturn:toggleChat).focus();
     }
 
     function hashColor(str){
@@ -1138,7 +1277,7 @@
         hash = (hash << 5) - hash + str.charCodeAt(i);
         hash |= 0;
       }
-      return `hsl(${Math.abs(hash) % 360}deg 62% 36%)`;
+      return `hsl(${Math.abs(hash) % 360}deg 62% 76%)`;
     }
 
     function formatTime(timestamp){
@@ -1412,7 +1551,7 @@
         chatMessages.innerHTML = `
           <div class="chat-empty">
             <div class="big">⚠️</div>
-            Chat is unavailable until its Firestore rule is enabled.
+            Chat is temporarily unavailable. Check your connection and reload to reconnect.
           </div>`;
       });
     }
@@ -1447,6 +1586,12 @@
 
     toggleChat.addEventListener("click",()=>toggleChatPanel());
     closeChat.addEventListener("click",()=>toggleChatPanel(false));
+    document.addEventListener("keydown",event=>{
+      if(event.key==="Escape"&&chatContainer.classList.contains("open")){
+        event.preventDefault();
+        toggleChatPanel(false);
+      }
+    });
     shareLobbyBtn.addEventListener("click",advertiseActiveLobby);
     sendBtn.addEventListener("click",sendMessage);
     msgInput.addEventListener("keydown",event=>{
@@ -1478,6 +1623,9 @@
     },1200);
 
     syncLobbyUsername();
+    // The iframe can finish before a slow SDK import. Integrate an already
+    // loaded hub too, without depending on catching its earlier load event.
+    syncFrameShell();
 
     signInAnonymously(auth)
       .catch(error=>console.warn("Anonymous Firebase sign-in failed",error))

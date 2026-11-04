@@ -5,7 +5,9 @@ import http from 'node:http';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 
-// Actual loader, core and presentation files; only Firebase and network are isolated.
+// Legacy flagship fallback regression: current arcade enhancement is intentionally
+// unavailable here. arcade-hub-browser.mjs covers the current interface.
+// Actual loader, core and presentation files; Firebase and network are isolated.
 // This is a browser integration fixture, not production auth/Firestore verification.
 const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
@@ -98,6 +100,7 @@ async function open({width=1440,height=1000,user='',saved='discover',reduced=fal
   },{user,saved,data,lowPower,authFailure,emptyLobbies});
   await context.route('**/*',async route=>{
     const url=new URL(route.request().url());
+    if(url.pathname==='/lobby/lobby-arcade.js')return route.fulfill({status:200,contentType:'text/javascript',body:''});
     if(url.hostname==='www.gstatic.com'&&url.pathname.includes('/firebasejs/'))return route.fulfill({status:200,contentType:'text/javascript',body:firebase});
     if(noFlagships&&url.pathname==='/lobby/lobby-flagships.js')return route.fulfill({status:200,contentType:'text/javascript',body:''});
     if(url.pathname.startsWith('/game/')&&url.pathname.endsWith('.html'))return route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><title>Fixture route reached</title><p id="launched">Game navigation recorded</p>'});
@@ -332,12 +335,12 @@ try{
     page=await open({saved:'mygames',noFlagships:true});
     check('missing presentation script retains a usable saved-view fallback',await page.locator('#view-multiplayer.active').isVisible());
     await navigation(page,'singleplayer');
-    check('presentation fallback preserves the full catalog',await page.locator('#singleGameGrid .game-card').count()===68);
+    check('presentation fallback preserves the full catalog',await page.locator('#singleGameGrid .game-card').count()===72);
     await page.context().close();
 
     page=await open({saved:'singleplayer'});
     if(await page.locator('#cnmBuiltOutGrid').count()){
-      await page.waitForFunction(()=>document.querySelectorAll('#singleGameGrid .game-card[data-catalog-status]').length===68);
+      await page.waitForFunction(()=>document.querySelectorAll('#singleGameGrid .game-card[data-catalog-status]').length===72);
       const tierState=await page.locator('#singleGameGrid .game-card').evaluateAll(cards=>{
         const counts={};for(const card of cards)counts[card.dataset.catalogStatus]=(counts[card.dataset.catalogStatus]||0)+1;
         const visible=cards.filter(card=>card.getClientRects().length),best=visible.filter(card=>card.dataset.catalogStatus==='showcase'),others=visible.filter(card=>card.dataset.catalogStatus!=='showcase');
@@ -345,7 +348,7 @@ try{
       });
       results.qualityTiers=tierState.counts;
       check('built-out games appear above every other catalog tier',tierState.bestBottom<=tierState.otherTop+1);
-      for(const [status,label] of [['showcase','Best Games · Built Out'],['playable','In Production'],['prototype','Experimental']])check(`catalog exposes ${label}`,await page.locator(`#singleGameGrid [data-catalog-shelf="${status}"]`).innerText().then(text=>text.includes(label)));
+      for(const [status,label] of [['showcase','Complete'],['playable','In Production'],['prototype','Experimental']])check(`catalog exposes ${label}`,await page.locator(`#singleGameGrid [data-catalog-shelf="${status}"]`).innerText().then(text=>text.includes(label)));
       check('Experimental games are collapsed by default',await page.locator('#singleGameGrid [data-catalog-status="prototype"]').first().isHidden());
       await page.locator('#singleGameGrid .catalog-prototype-toggle').click();check('Experimental games remain available on request',await page.locator('#singleGameGrid [data-catalog-status="prototype"]').first().isVisible());
       await page.locator('#singleGameGrid .catalog-prototype-toggle').click();
@@ -391,14 +394,21 @@ try{
 
     page=await open({width:390,shell:true,data:{'chat/fixture-ad':{username:'Friend',type:'lobby_ad',text:'Looking for players!',timestamp:Date.now(),lobbyId:'friend-room',lobbyName:'Friend room',gameType:'cat',gameTitle:'Cat & Mouse',playerCount:1,maxPlayers:8,host:'Friend'}}});
     check('parent shell embeds the actual upgraded lobby',await page.frameLocator('#contentFrame').locator('#view-discover.active').isVisible());
-    await page.locator('#toggleChat').click();check('parent chat opens',await page.locator('#chatContainer').getAttribute('aria-hidden')==='false');
+    const hubChat=page.frameLocator('#contentFrame').locator('#shellChatRelay');
+    await hubChat.waitFor();
+    check('hub shows one branded header',!await page.locator('.appbar').isVisible());
+    await hubChat.click();check('parent chat opens from integrated hub control',await page.locator('#chatContainer').getAttribute('aria-hidden')==='false');
+    await page.keyboard.press('Escape');
+    check('Escape closes chat and restores hub keyboard focus',await hubChat.evaluate(node=>node.ownerDocument.activeElement===node)&&await page.locator('#chatContainer').getAttribute('aria-hidden')==='true');
+    await hubChat.click();
     await page.locator('#closeChat').click();check('parent chat closes',await page.locator('#chatContainer').getAttribute('aria-hidden')==='true');
     check('parent chat guest composer remains account gated',await page.locator('#chatMessage').isDisabled());
     await page.frameLocator('#contentFrame').locator('#cnmFlagshipGrid [data-game-key="apestogetherstrong"] [data-game-action="single"]').click();
     await page.frameLocator('#contentFrame').locator('#launched').waitFor();check('parent iframe accepts original game navigation');
-    await page.locator('#returnToLobby').click();await page.frameLocator('#contentFrame').locator('#cnmFlagshipGrid .game-card').first().waitFor();check('parent Lobby control returns from a game');
+    check('game opens the compact root toolbar',await page.locator('.appbar').isVisible());
     await page.evaluate(()=>{globalThis.__qa.frameLoads=0;document.getElementById('contentFrame').addEventListener('load',()=>globalThis.__qa.frameLoads++);});
-    await page.locator('#reloadLobby').click();await page.waitForFunction(()=>globalThis.__qa.frameLoads>0);check('parent Reload control reloads the embedded lobby');
+    await page.locator('#reloadLobby').click();await page.waitForFunction(()=>globalThis.__qa.frameLoads>0);check('parent Reload control reloads the running game');
+    check('game reload preserves the current route',await page.frameLocator('#contentFrame').locator('#launched').isVisible());
     if(await page.evaluate(()=>document.fullscreenEnabled)){
       await page.locator('#fullscreenLobby').click();await page.waitForFunction(()=>document.fullscreenElement?.id==='contentFrame');check('parent Fullscreen control targets the game iframe');
       await page.evaluate(()=>document.exitFullscreen());await page.waitForFunction(()=>!document.fullscreenElement);
@@ -419,6 +429,9 @@ try{
     check('parent active fullscreen text has readable contrast',results.parentShell.fullscreen.ratio>=4.5);
     await page.locator('#toggleChat').click();await page.waitForSelector('.lobby-ad-name');check('parent chat renders existing lobby advertisements');
     await capture(page,'parent-shell-chat');await page.locator('#closeChat').click();
+    await page.locator('#returnToLobby').click();await page.frameLocator('#contentFrame').locator('#cnmFlagshipGrid .game-card').first().waitFor();check('parent Lobby control returns from a game');
+    await page.waitForFunction(()=>document.body.dataset.shellMode==='hub');
+    check('returning to hub reinstalls exactly one chat control',await page.frameLocator('#contentFrame').locator('#shellChatRelay').count()===1);
     await capture(page,'parent-shell');
     check('parent shell has no horizontal overflow',await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     await page.context().close();

@@ -1,5 +1,7 @@
 // Real hub/loader DOM checks. Firebase and artwork are isolated fixtures;
 // this never logs into or writes to the production service. No screenshots.
+// This suite intentionally verifies the retained flagship fallback layer;
+// arcade-hub-browser.mjs exercises the current interface end to end.
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
@@ -48,6 +50,7 @@ async function open({width=1280,user='',brokenArt=false,turncraftCover=false,red
   await context.addInitScript(name=>{if(name)localStorage.setItem('gh.username',name);},user);
   await context.route('**/*',route=>{
     const url=new URL(route.request().url());
+    if(url.pathname==='/lobby/lobby-arcade.js')return route.fulfill({contentType:'text/javascript',body:''});
     if(url.hostname==='www.gstatic.com')return route.fulfill({contentType:'text/javascript',body:firebase});
     // Preserve coverage of the original faction-card renderer when the optional
     // new artwork enhancer is unavailable. Nexus artwork has its own browser suite.
