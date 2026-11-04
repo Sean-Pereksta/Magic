@@ -113,6 +113,7 @@ try {
     await page.locator('.treaty-drawer-close').click();
     await page.locator('[data-close="diplomacy"]').click();
     await page.reload(); await page.locator('#resume').click();
+    await page.locator('#welcome').waitFor({state:'hidden'});
     assert.equal(await page.locator('#turn').textContent(), 'Turn 3');
     const resumed = await page.evaluate(() => JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));
     assert.equal(resumed.treaties.find(t => t.type === 'alliance').parties[1], 'wintermere');

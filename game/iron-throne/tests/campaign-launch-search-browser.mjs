@@ -62,6 +62,16 @@ try {
     await page.locator('#menu-button').click(); await page.locator('#save-now').click();
     const restored = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).presentation.board, saveKey);
     assert.deepEqual(restored, position, 'Continue restores selection, camera, zoom and panel');
+    await page.locator('[data-close=menu]').click();
+    const replacementGold = await page.evaluate(key => {
+      const replacement = JSON.parse(localStorage.getItem(key));
+      replacement.kingdoms[0].resources.gold += 7;
+      localStorage.setItem(key, JSON.stringify(replacement));
+      return replacement.kingdoms[0].resources.gold;
+    }, saveKey);
+    await page.reload({waitUntil:'domcontentloaded'});
+    await page.locator('#resume').click(); await page.locator('#welcome').waitFor({state:'hidden'});
+    assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).kingdoms[0].resources.gold, saveKey), replacementGold, 'closing the older page preserves an externally replaced save');
     assert.deepEqual(errors, []);
     console.log(`PASS ${viewport.width}×${viewport.height} menu with stalled artwork, new 12-House campaign and saved position`);
     await context.close();

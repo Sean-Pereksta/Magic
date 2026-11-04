@@ -76,6 +76,23 @@ test('selected construction tiers and the turn-four bonus match their exact boun
   assert.equal(constructionSpec(tile,'fort',s,'ashen').turns,3);
 });
 
+test('delayed Prosperity selection never extends construction acceleration beyond turn six',()=>{
+  const tile={terrain:'plains',building:null,levels:{},road:false};
+  for(const chosenTurn of [2,3,4,5,6]){
+    const s={ambitionVersion:1,phase:'playing',turn:chosenTurn,kingdoms:[{id:'ashen',opening:{decree:null,decreeTurn:null,charterUsed:false}}]};
+    assert.equal(chooseRoyalDecree(s,'ashen','prosperity').ok,true);
+    assert.equal(decreeRemaining(s,'ashen'),7-chosenTurn);
+    for(const type of ['mine','quarry','barracks','range']){
+      s.turn=6;assert.equal(constructionSpec(tile,type,s,'ashen').turns,1);
+      for(const turn of [7,8,9,10,11]){
+        s.turn=turn;
+        assert.equal(constructionSpec(tile,type,s,'ashen').turns,2,`${type}, decree chosen turn ${chosenTurn}, current turn ${turn}`);
+        assert.equal(decreeRemaining(s,'ashen'),0);
+      }
+    }
+  }
+});
+
 test('construction previews and actual projects share all existing efficiency bonuses',()=>{
   for(const bonus of ['workshop','siegeFoundry','lumber']){
     const s=legacyGame();s.turn=10;

@@ -78,7 +78,7 @@ function restoreGeneralVerification(){
 }
 let online=null,onlineUI=null,onlineStatus=null,localHouse='ashen';
 let state = createGame(), selected = '5,6', selectedArmy = null, tab = 'land', orderMode = null, activeRuler = 'wintermere', proposals = [], epoch = 0, toastTimer, outcomeShown = false;
-let loadError = null, launchBusy = false;
+let loadError = null, launchBusy = false, lastSavedCampaign = null;
 let restored = false, config = {}, client = new DiplomacyClient(), turnstileWidget = null, challengeToken = '';
 let turnBusy = false;
 let battleUI = null;
@@ -145,7 +145,7 @@ const queueNotice = status => status === 'verification' ? 'Queued for Gemini. Co
   : status === 'sending' ? 'The council is composing a reply…' : 'Waiting for the current conversation…';
 try {
   const saved = onlineOptions ? null : localStorage.getItem(SAVE_KEY);
-  if (saved) { state = parseSave(saved); abandonRestoredCouncilSequences(); restored = true; }
+  if (saved) { state = parseSave(saved); abandonRestoredCouncilSequences(); restored = true; lastSavedCampaign = saved; }
 } catch (error) { loadError = error; $('load-warning').hidden = false; $('load-warning').textContent = `Your saved campaign could not be loaded: ${error.message} Starting a new reign will replace it.`; }
 installArtFallbacks(document);
 $('resume').disabled = !restored;
@@ -165,7 +165,9 @@ function save() {
   if(onlineOptions)return !!online?.online;
   try { state.presentation ??= { reducedEffects: false };
     state.presentation.board = { x: map.x, y: map.y, zoom: map.zoom, selected, selectedArmy, tab };
-    localStorage.setItem(SAVE_KEY, JSON.stringify(state)); $('save-status').textContent = state.phase==='founding'?'Founding progress saved on this device':`Saved on this device · turn ${state.turn}`; restored = true; $('resume').disabled = false; return true; }
+    const serialized = JSON.stringify(state);
+    localStorage.setItem(SAVE_KEY, serialized); lastSavedCampaign = serialized;
+    $('save-status').textContent = state.phase==='founding'?'Founding progress saved on this device':`Saved on this device · turn ${state.turn}`; restored = true; $('resume').disabled = false; return true; }
   catch { $('save-status').textContent = 'Save unavailable · export a copy'; return false; }
 }
 function changed(preserveOffers=false) { if(!turnBusy)showTurnProgress(null); refreshKnowledge(state); if(onlineOptions){render();return;} epoch++; proposals = []; /* Exact unresolved terms remain available and are revalidated on acceptance. */ save(); render(); }
@@ -436,7 +438,8 @@ async function loadCampaign(kind) {
     launchProgress(kind === 'new' ? 'Preparing your founding expedition' : 'Restoring your saved position', 1, 3);
     await paintLaunch();
     client.cancel(); councilJobs.clear(); councilSequences.clear(); replyDiagnostics.clear();
-    state = next; abandonRestoredCouncilSequences(); epoch++; selectedArmy = null; tab = 'land'; orderMode = null; outcomeShown = false;
+    state = next; if (kind === 'continue') lastSavedCampaign = saved;
+    abandonRestoredCouncilSequences(); epoch++; selectedArmy = null; tab = 'land'; orderMode = null; outcomeShown = false;
     displayedState = knowledgeView(state, localHouse);
     if (kind === 'continue') restoreBoardPosition();
     else { selected = '5,6'; map.home(); }
@@ -458,7 +461,11 @@ $('launch-new').onclick = showNewCampaign;
 $('launch-back').onclick = launchMenu;
 $('new-game-form').addEventListener('submit', e => { e.preventDefault(); void loadCampaign('new'); });
 $('resume').onclick = () => loadCampaign('continue');
-window.addEventListener('pagehide', () => { if (restored && !$('welcome').open) save(); });
+window.addEventListener('pagehide', () => {
+  if (!restored || onlineOptions || $('welcome').open) return;
+  // Closing an older tab must not replace a newer or externally restored save.
+  try { if (localStorage.getItem(SAVE_KEY) === lastSavedCampaign) save(); } catch {}
+});
 function downloadSave() {
   if(onlineOptions)return;
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }), url = URL.createObjectURL(blob), a = document.createElement('a');
