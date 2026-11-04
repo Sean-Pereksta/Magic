@@ -146,7 +146,7 @@ try{
   await page.locator('[name=commanderType]').selectOption('lightCavalry');
   await page.getByRole('button',{name:'Fight Now'}).click();
   await page.waitForFunction(()=>document.querySelector('#battle-army-counts')?.textContent.includes('400/400'));
-  assert.equal(await page.locator('#battle-weapon option[value=lance]').isEnabled(),true);
+  assert.equal(await page.locator('#battle-weapon option[value=lance]').evaluate(option=>option.disabled),false);
   assert.match(await page.locator('#battle-player-status').textContent(),/\/132\b/);
   await page.keyboard.press('Escape');
   await page.locator('#battle-pause-sensitivity').selectOption('3');
@@ -156,7 +156,7 @@ try{
   await page.locator('[name=defenses]').selectOption('town');
   await page.locator('[name=mode]').selectOption('defend');
   assert.equal(await page.locator('[name=commanderType]').inputValue(),'','a side without cavalry falls back to its own roster');
-  assert.ok(await page.locator('[name=commanderType] option[value=lightCavalry]').isDisabled());
+  assert.equal(await page.locator('[name=commanderType] option[value=lightCavalry]').evaluate(option=>option.disabled),true);
   await page.locator('[name=commanderType]').selectOption('spearman');
   await page.getByRole('button',{name:'Fight Now'}).click();
   await page.waitForFunction(()=>document.querySelector('#battle-army-counts')?.textContent.includes('100/100'));
