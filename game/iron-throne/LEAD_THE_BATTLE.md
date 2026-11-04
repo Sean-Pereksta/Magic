@@ -41,6 +41,7 @@ Save a selection under **Custom command groups** to name and recall its exact so
 | B | Assign infantry to the ram and choose a gate or exterior wall |
 | V | Defend a wall |
 | Q / Orders | Expand or collapse formation commands in the current camera |
+| H / Hide UI / Show UI | Hide or restore the battlefield controls. Orders and movement still work while the controls are hidden. |
 | Tab / Tactical view | Elevated command view |
 | Escape / Pause | Cancel targeting, otherwise pause |
 

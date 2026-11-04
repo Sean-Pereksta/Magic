@@ -32,22 +32,27 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
   ui.innerHTML = `<button id="battle-pending" class="battle-pending" hidden>Battle pending · Resume encounter</button>
     <aside id="battle-result-banner" class="battle-result-banner" hidden><span role="status"></span><button data-battle-action="report">View Report</button><button data-battle-action="dismiss-result" aria-label="Dismiss result banner">×</button></aside>
     <dialog id="battle-encounter" class="battle-dialog" aria-labelledby="battle-title"><header class="dialog-header"><div><span class="eyebrow">OFFLINE CAMPAIGN · LEAD THE BATTLE</span><h2 id="battle-title">Encounter</h2></div><button data-battle-action="close" aria-label="Pause this battle decision">×</button></header><div id="battle-brief" class="dialog-body"></div><p id="battle-notice" role="status" class="battle-notice"></p><footer id="battle-choices" class="battle-choices"></footer></dialog>
-    <dialog id="battlefield" class="battlefield" aria-label="Lead the battle"><canvas id="battle-canvas" tabindex="0" aria-label="3D battlefield. WASD move, mouse aim, click attack, right click block, Q commands, Tab tactical view, Escape pause."></canvas>
-      <header class="battle-hud"><div><span class="eyebrow" id="battle-mode">DEPLOYMENT</span><strong id="battle-location"></strong></div><div id="battle-counts"><span id="battle-army-counts"></span><small id="battle-siege-status" role="status"></small></div><div class="battle-hud-actions"><button data-battle-action="camera">Tactical view · Tab</button><button data-battle-action="commands">Orders · Q</button><button data-battle-action="pause">Pause · Esc</button></div></header>
+    <dialog id="battlefield" class="battlefield" aria-label="Lead the battle"><canvas id="battle-canvas" tabindex="0" aria-label="3D battlefield. WASD move, mouse aim, click attack, right click block, Q orders, H hide or show controls, Tab tactical view, Escape pause."></canvas>
+      <button id="battle-hud-toggle" type="button" data-battle-action="hud" aria-expanded="true" aria-keyshortcuts="H" aria-controls="battle-hud battle-command-panel battle-command-strip battle-player"><span>Hide UI</span> <kbd>H</kbd></button>
+      <header id="battle-hud" class="battle-hud"><div><span class="eyebrow" id="battle-mode">DEPLOYMENT</span><strong id="battle-location"></strong></div><div id="battle-counts"><span id="battle-army-counts"></span><small id="battle-siege-status" role="status"></small></div><div class="battle-hud-actions"><button data-battle-action="camera">Tactical view · Tab</button><button data-battle-action="commands">Orders · Q</button><button data-battle-action="pause">Pause · Esc</button></div></header>
       <div id="battle-deployment" class="battle-deployment"><h2>Choose your ground</h2><p>Select a formation, then drag on the field to place it and set its facing. Your army must deploy within its starting area.</p><button class="primary" data-battle-action="begin">Begin Battle</button></div>
-      <aside id="battle-command-panel" class="battle-command-panel" hidden><h2>Command your troops</h2><label>Army <select id="battle-army"><option value="">All your armies</option></select></label><div class="battle-group-row" aria-label="Choose troop type">${groups.map(([id,label],i)=>`<button data-battle-group="${id}" aria-pressed="${id==='all'}"><strong>${i+1} · ${label}</strong><span data-battle-group-count="${id}">0</span></button>`).join('')}</div><p id="battle-selection-status" class="battle-selection-status" role="status"></p><details class="battle-saved-groups"><summary>Custom command groups</summary><label>Saved group <select id="battle-saved-group"><option value="">Choose a saved group</option></select></label><label>Group name <input id="battle-group-name" type="text" maxlength="40" placeholder="e.g. Left flank archers"></label><div class="battle-order-row"><button data-battle-action="save-group">Save selected troops</button><button data-battle-action="remove-group" disabled>Remove group</button></div><p>Save this army and troop selection as a group. Its troops keep their original army and can be selected together again.</p></details><label>Formation <select id="battle-formation"><option value="" disabled>Mixed formations</option>${Object.entries(formations).map(([id,f])=>`<option value="${id}">${esc(f.name)}</option>`).join('')}</select></label><p class="battle-formation-hint">Choosing a formation immediately reforms the selected troops. Drag on the field to move and set their facing.</p><div class="battle-order-row">${orders.map(([id,label])=>`<button data-battle-order="${id}" aria-pressed="${id==='move'}">${orderPrefixes[id]||''}${label}</button>`).join('')}</div><p id="battle-order-status" role="status">Move and face: drag on the field.</p><label>Allied army <select id="battle-ally"></select></label><div class="battle-order-row"><button data-battle-request="flank">Protect a flank</button><button data-battle-request="assault">Support assault</button><button data-battle-request="withdraw">Cover withdrawal</button></div><label>Tactical view <select id="battle-command-time"><option value="pause">Pause combat</option><option value="slow">Slow motion</option><option value="real">Real time</option></select></label></aside>
+      <aside id="battle-command-panel" class="battle-command-panel" hidden><div class="battle-command-heading"><h2>Command your troops</h2><button type="button" data-battle-action="commands" aria-label="Close orders" title="Close orders (Q)">×</button></div><label>Army <select id="battle-army"><option value="">All your armies</option></select></label><div class="battle-group-row" aria-label="Choose troop type">${groups.map(([id,label],i)=>`<button data-battle-group="${id}" aria-pressed="${id==='all'}"><strong>${i+1} · ${label}</strong><span data-battle-group-count="${id}">0</span></button>`).join('')}</div><p id="battle-selection-status" class="battle-selection-status" role="status"></p><details class="battle-saved-groups"><summary>Custom command groups</summary><label>Saved group <select id="battle-saved-group"><option value="">Choose a saved group</option></select></label><label>Group name <input id="battle-group-name" type="text" maxlength="40" placeholder="e.g. Left flank archers"></label><div class="battle-order-row"><button data-battle-action="save-group">Save selected troops</button><button data-battle-action="remove-group" disabled>Remove group</button></div><p>Save this army and troop selection as a group. Its troops keep their original army and can be selected together again.</p></details><label>Formation <select id="battle-formation"><option value="" disabled>Mixed formations</option>${Object.entries(formations).map(([id,f])=>`<option value="${id}">${esc(f.name)}</option>`).join('')}</select></label><p class="battle-formation-hint">Choosing a formation immediately reforms the selected troops. Drag on the field to move and set their facing.</p><div class="battle-order-row">${orders.map(([id,label])=>`<button data-battle-order="${id}" aria-pressed="${id==='move'}">${orderPrefixes[id]||''}${label}</button>`).join('')}</div><p id="battle-order-status" role="status">Move and face: drag on the field.</p><label>Allied army <select id="battle-ally"></select></label><div class="battle-order-row"><button data-battle-request="flank">Protect a flank</button><button data-battle-request="assault">Support assault</button><button data-battle-request="withdraw">Cover withdrawal</button></div><label>Tactical view <select id="battle-command-time"><option value="pause">Pause combat</option><option value="slow">Slow motion</option><option value="real">Real time</option></select></label></aside>
       <div id="battle-event" class="battle-event" role="status" aria-live="polite"></div><div id="battle-reticle" class="battle-reticle" aria-hidden="true">+</div>
-      <nav class="battle-command-strip" aria-label="Battle commands"><select id="battle-quick-group" aria-label="Select troops">
+      <nav id="battle-command-strip" class="battle-command-strip" aria-label="Battle commands"><select id="battle-quick-group" aria-label="Select troops">
         ${groups.map(([id,label],i)=>`<option value="${id}">${i+1} · ${label}</option>`).join('')}</select>
         ${commands.map(([key,id,label])=>`<button type="button" data-battle-key="${id}" title="${label} (${key})"><kbd>${key}</kbd><span>${label}</span></button>`).join('')}
       </nav>
       <aside class="battle-keyboard-hud" aria-label="Current command"><strong id="battle-live-selection">All troops</strong><span id="battle-keyboard-feedback" role="status" aria-live="polite"></span></aside>
-      <footer class="battle-player"><span id="battle-player-status"></span><label>Weapon <select id="battle-weapon"><option value="sword">Sword & shield</option><option value="spear">Spear & shield</option><option value="axe">Two-handed axe</option><option value="mace">Mace</option><option value="bow">Bow & sidearm</option><option value="crossbow">Crossbow & sidearm</option><option value="lance">Mounted lance</option></select></label><span class="battle-help">WASD move · Mouse aim · Click attack · Right click block · Space heavy attack · Shift sprint · E interact / mount · Tab command</span></footer>
+      <footer id="battle-player" class="battle-player"><span id="battle-player-status"></span><label>Weapon <select id="battle-weapon"><option value="sword">Sword & shield</option><option value="spear">Spear & shield</option><option value="axe">Two-handed axe</option><option value="mace">Mace</option><option value="bow">Bow & sidearm</option><option value="crossbow">Crossbow & sidearm</option><option value="lance">Mounted lance</option></select></label><span class="battle-help">WASD move · Mouse aim · Click attack · Right click block · Space heavy attack · Shift sprint · E interact / mount · Tab command</span></footer>
       <div class="battle-touch" id="battle-touch"><div id="battle-stick" aria-label="Movement stick"><span></span></div><div class="battle-touch-buttons"><button data-battle-touch="sprint">Sprint</button><button data-battle-touch="block">Block</button><button data-battle-touch="attack">Attack</button><button data-battle-touch="heavy">Heavy</button><button data-battle-touch="interact">Interact / Mount</button><button data-battle-action="commands">Orders</button></div></div>
       <div id="battle-pause" class="battle-pause" hidden><section><span class="eyebrow">CAMPAIGN PAUSED</span><h2>Battle paused</h2><p id="battle-pause-note">Progress is saved on this device. Your campaign waits here.</p><button class="primary" data-battle-action="resume">Resume</button><button data-battle-action="exit">Save and Exit</button><button data-battle-action="retreat">Retreat</button><button data-battle-action="finish">Finish Automatically</button></section></div>
     </dialog>`;
   document.body.append(ui);
   const $ = id => ui.querySelector(`#${id}`), encounterDialog=$('battle-encounter'), field=$('battlefield'), canvas=$('battle-canvas');
+  const header=$('battle-hud'), headerSize=new ResizeObserver(()=>{
+    if(header.offsetHeight)field.style.setProperty('--battle-header-bottom',`${header.offsetTop+header.offsetHeight}px`);
+  });
+  headerSize.observe(header);headerSize.observe(field);
   const menu=document.querySelector('#menu .menu-actions');
   const settings=document.createElement('div'); settings.dataset.battleUi=''; settings.className='battle-settings';
   settings.innerHTML=`<label>Offline battles<select id="offline-battle-preference"><option value="ask">Ask before battles</option><option value="auto">Resolve automatically</option></select></label><label>Troops on the field<select id="offline-battle-size" aria-describedby="offline-battle-size-note">${sizeOptions(DEFAULT_ACTIVE_TROOPS)}</select></label><p id="offline-battle-size-note" class="fine">Maximum active troops across both sides. Extra troops arrive in waves. Applies to new battles; saved battles keep their size. Choose 100 if battles run slowly.</p><button id="battle-download" type="button">Download battle assets for offline play</button><p id="battle-download-status" class="fine" role="status"></p>`;
@@ -69,11 +74,32 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
   let sim, renderer, battle=null, frame=0, lastTime=0, lastCheckpoint=0, lastEvent='', lastMilestone='', loading=false, paused=false, finishing=false, graphicsError=false, handledCommanderExit=false;
   let group='all', customGroupId='', order='move', drag=null, pointer=null, stickOrigin=null, camera={mode:'tactical',yaw:0,pitch:.8,distance:90};
   let targeting=null, tacticalAim=null, feedbackUntil=0;
+  let hudMinimized=false, ordersOpen=false;
+  try{hudMinimized=localStorage.getItem('ironThrones.hudMinimized')==='true';}catch{}
   let keys=new Set(), touch={x:0,z:0}, input={attack:false,block:false,sprint:false}, sceneAbort=null;
   const mode=()=>battle?.phase==='deployment'?'deployment':camera.mode;
   let custom=null, dismissedReport=null;
   const customSetup=installCustomBattle(session=>{custom=session;void enter();});
   const active=()=>custom?.encounter||(!isOnline() && pendingEncounter(getState()));
+  function setHud(minimized,open){
+    if(minimized!==hudMinimized){
+      hudMinimized=minimized;
+      try{localStorage.setItem('ironThrones.hudMinimized',String(minimized));}catch{}
+    }
+    ordersOpen=open;
+    const showOrders=open&&!minimized, toggle=$('battle-hud-toggle');
+    field.classList.toggle('hud-minimized',minimized);
+    field.classList.toggle('orders-open',showOrders);
+    $('battle-command-panel').hidden=!showOrders;
+    $('battle-command-strip').hidden=minimized||showOrders;
+    toggle.firstElementChild.textContent=minimized?'Show UI':'Hide UI';
+    toggle.setAttribute('aria-expanded',String(!minimized));
+    for(const button of field.querySelectorAll('[data-battle-action="commands"]')){
+      button.setAttribute('aria-controls','battle-command-panel');
+      button.setAttribute('aria-expanded',String(showOrders));
+    }
+    if(showOrders&&battle)refreshSelection(true);
+  }
   function resetInput(){keys.clear();touch={x:0,z:0};input={attack:false,block:false,sprint:false};drag=pointer=stickOrigin=tacticalAim=null;clearTarget();$('battle-stick').firstElementChild.style.transform='';}
   function notice(message){$('battle-notice').textContent=message||'';}
   function transact(operation){
@@ -254,7 +280,7 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
       $('battle-group-name').value='';refreshSavedGroups();refreshSelection(true);storeCommandSelection();
       $('battle-ally').innerHTML=e.participants.filter(p=>p.side===e.playerSide&&p.owner!==e.playerOwner).map(p=>`<option value="${esc(p.armyId)}">${esc(p.name||p.armyId)}</option>`).join('');
       $('battle-command-time').value=custom?'real':getState().offlineBattles?.tacticalTime||'real';
-      $('battle-command-panel').hidden=battle.phase!=='deployment';paused=false;graphicsError=false;handledCommanderExit=false;$('battle-pause').hidden=true;$('battle-pause-note').textContent='Progress is saved on this device. Your campaign waits here.';
+      setHud(hudMinimized,battle.phase==='deployment');paused=false;graphicsError=false;handledCommanderExit=false;$('battle-pause').hidden=true;$('battle-pause-note').textContent='Progress is saved on this device. Your campaign waits here.';
       lastTime=0;lastCheckpoint=battle.time;lastEvent='';checkpoint();canvas.focus();frame=requestAnimationFrame(tick);
       ui.querySelector('[data-battle-action="exit"]').textContent=custom?'Back to setup':'Save and Exit';
       if(custom)$('battle-pause-note').textContent='Paused. Resume fighting or return to custom setup.';
@@ -277,7 +303,7 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     }
     if(p?.status==='reserve'&&!tactical){const escort=battle.units.find(u=>u.side===battle.playerSide&&u.status==='active');if(escort){camera.target={x:escort.x,y:escort.y,z:escort.z};camera.spectating=true;}}
     else if(camera.spectating){delete camera.target;delete camera.spectating;if(p)camera.yaw=p.facing;}
-    if(p&&['dead','escaped'].includes(p.status)&&!handledCommanderExit){handledCommanderExit=true;camera.mode='tactical';camera.distance=90;camera.pitch=.8;$('battle-command-panel').hidden=false;}
+    if(p&&['dead','escaped'].includes(p.status)&&!handledCommanderExit){handledCommanderExit=true;camera.mode='tactical';camera.distance=90;camera.pitch=.8;}
     try{renderer.render(battle,camera);}catch(error){graphicsError=true;setPause(true);$('battle-pause-note').textContent=`${error.message} Choose Resume to reload the battlefield, or Finish Automatically to preserve your progress.`;return;}updateHUD();
     if(battle.phase==='complete'&&!paused&&!finishing){finishResult();return;}
     if(battle.time-lastCheckpoint>=5||milestone()!==lastMilestone){try{checkpoint();}catch(error){setPause(true);$('battle-pause-note').textContent=error.message;}}
@@ -348,9 +374,10 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
       if(name==='auto'){lockSupport();if(active()?.checkpoint){await finishSavedBattle();return;}completeEncounter(active().id);return;}
       if(name==='report'){showReport();return;}
       if(name==='dismiss-result'){dismissedReport=getState().lastOfflineBattleReport?.id;sync();return;}
-      if(name==='begin'){if(custom){custom.initial=structuredClone(battle);custom.deploy=false;}sim.beginBattle(battle);camera.mode='third';camera.distance=10;camera.pitch=.35;delete camera.target;$('battle-command-panel').hidden=true;checkpoint();canvas.focus();return;}
+      if(name==='begin'){if(custom){custom.initial=structuredClone(battle);custom.deploy=false;}sim.beginBattle(battle);camera.mode='third';camera.distance=10;camera.pitch=.35;delete camera.target;setHud(hudMinimized,false);checkpoint();canvas.focus();return;}
       if(name==='camera'){cameraToggle();return;}
-      if(name==='commands'){$('battle-command-panel').hidden=!$('battle-command-panel').hidden;canvas.focus();return;}
+      if(name==='hud'){setHud(!hudMinimized,ordersOpen);canvas.focus({preventScroll:true});return;}
+      if(name==='commands'){setHud(false,hudMinimized||!ordersOpen);canvas.focus({preventScroll:true});return;}
       if(name==='pause'){setPause(true);return;}
       if(name==='resume'){if(graphicsError){if(custom)custom.saved=structuredClone(battle);disposeScene();await enter();}else{setPause(false);canvas.focus();}return;}
       if(name==='exit'){if(custom){leaveCustom(null,'Returned to setup.');return;}checkpoint();disposeScene();showEncounter();return;}
@@ -393,10 +420,10 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     if(event.code==='Escape'&&!finishing){event.preventDefault();event.stopPropagation();if(!event.repeat)escapeBattle();return;}
     if(paused||finishing)return;
     if(commandKeys[event.code]||groupKeys[event.code]||event.code in savedGroupKeys){event.preventDefault();event.stopPropagation();if(!event.repeat)battlefieldHotkey(event.code);return;}
-    if(event.target.closest('button,summary')&&event.code==='Space'||!movementKeys.has(event.code)&&!['Tab','KeyQ','KeyE'].includes(event.code))return;
+    if(event.target.closest('button,summary')&&event.code==='Space'||!movementKeys.has(event.code)&&!['Tab','KeyQ','KeyH','KeyE'].includes(event.code))return;
     event.preventDefault();event.stopPropagation();
     if(event.repeat){if(movementKeys.has(event.code))keys.add(event.code);return;}
-    if(event.code==='Tab')cameraToggle();else if(event.code==='KeyQ')action('commands');else if(event.code==='KeyE')input.interact=true;else keys.add(event.code);
+    if(event.code==='Tab')cameraToggle();else if(event.code==='KeyQ')action('commands');else if(event.code==='KeyH')action('hud');else if(event.code==='KeyE')input.interact=true;else keys.add(event.code);
   });
   field.addEventListener('keyup',event=>{if(keys.delete(event.code))event.stopPropagation();});
   canvas.addEventListener('contextmenu',e=>e.preventDefault());
@@ -443,5 +470,5 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
   const onUnload=()=>{if(battle)try{checkpoint();}catch{}};window.addEventListener('pagehide',onUnload);
   encounterDialog.addEventListener('close',sync);field.addEventListener('close',sync);
   configureOfflineBattles(getState());sync();
-  return {sync,show:showEncounter,isPending:()=>!!pendingEncounter(getState()),dispose(){disposeScene();customSetup.dispose();document.removeEventListener('visibilitychange',onVisibility);window.removeEventListener('blur',onBlur);window.removeEventListener('pagehide',onUnload);ui.remove();settings.remove();}};
+  return {sync,show:showEncounter,isPending:()=>!!pendingEncounter(getState()),dispose(){disposeScene();headerSize.disconnect();customSetup.dispose();document.removeEventListener('visibilitychange',onVisibility);window.removeEventListener('blur',onBlur);window.removeEventListener('pagehide',onUnload);ui.remove();settings.remove();}};
 }

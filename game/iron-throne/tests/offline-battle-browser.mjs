@@ -99,6 +99,82 @@ async function checkBattlefieldHotkeys(page,custom){
   await page.keyboard.press('Tab');await page.keyboard.press('q');assert.equal(await page.locator('#battle-command-panel').isVisible(),false);
 }
 let browser;
+async function checkBattleHUD(browser){
+  for(const viewport of [{width:920,height:830},{width:390,height:844}]){
+    const mobile=viewport.width<700, context=await browser.newContext({viewport,hasTouch:mobile});
+    try{
+      const page=await context.newPage(),errors=[];
+      page.setDefaultTimeout(30000);
+      page.on('pageerror',e=>errors.push(e.message));
+      await context.addInitScript(({initial,key})=>{if(!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify(initial));},{initial:fixture(),key});
+      await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
+      await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
+      const toggle=page.locator('#battle-hud-toggle'),panel=page.locator('#battle-command-panel'),strip=page.locator('.battle-command-strip');
+      const saved=()=>page.evaluate(key=>JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,key);
+      const commander=s=>s.units.find(u=>u.id===s.commanderId);
+      const assertMinimized=async()=>{
+        assert.match(await toggle.textContent(),/Show UI/i);
+        for(const selector of ['.battle-hud','#battle-command-panel','.battle-command-strip','.battle-player','#battle-live-selection']){
+          assert.equal(await page.locator(selector).isVisible(),false,`${selector} leaves the field clear`);
+        }
+      };
+      await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
+      await page.locator('[data-battle-action=enter]').click();await toggle.waitFor();
+      await page.waitForFunction(key=>JSON.parse(localStorage.getItem(key)).offlineBattle?.checkpoint?.phase==='deployment',key);
+      if(!await panel.isVisible())await page.keyboard.press('q');
+      await panel.waitFor();
+      await (mobile?toggle.tap():toggle.click());await assertMinimized();
+      await page.keyboard.press('h');assert.match(await toggle.textContent(),/Hide UI/i);
+      assert.equal(await panel.isVisible(),true,'H remembers that the full orders list was open');
+      assert.equal(await strip.isVisible(),false,'the expanded list has no duplicate edge strip');
+      await page.keyboard.press('h');await assertMinimized();
+      await page.locator('[data-battle-action=begin]').click();
+      await page.waitForFunction(()=>document.querySelector('#battle-mode').textContent==='LEAD THE BATTLE');
+      await assertMinimized();await page.keyboard.press('4');await page.keyboard.press('F2');
+      const recalled=await saved(),archers=recalled.units.filter(u=>u.owner===recalled.playerOwner&&u.type==='archer');
+      assert.ok(archers.length&&archers.every(u=>u.order.kind==='follow'),'hidden HUD still accepts troop and order hotkeys');
+      if(mobile){
+        const stick=page.locator('#battle-stick'),attack=page.locator('[data-battle-touch=attack]');
+        const unobstructed=el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));};
+        assert.ok(await stick.evaluate(unobstructed)&&await attack.evaluate(unobstructed),'both touch controls are exposed');
+        const r=await stick.boundingBox(),x=r.x+r.width/2,y=r.y+r.height/2,cdp=await context.newCDPSession(page);
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y-30}]});
+        await page.waitForTimeout(450);
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await cdp.detach();
+        await page.keyboard.press('F1');const moved=commander(await saved()),was=commander(recalled);
+        assert.ok(Math.hypot(moved.x-was.x,moved.z-was.z)>.02,'touch stick moves commander with HUD hidden');
+        await attack.tap();
+      }
+      await page.keyboard.press('q');await panel.waitFor();
+      assert.equal(await strip.isVisible(),false);
+      assert.equal(await page.locator('#battle-mode').textContent(),'LEAD THE BATTLE','Q opens orders in the current camera');
+      await page.keyboard.press('q');await panel.waitFor({state:'hidden'});
+      if(/Hide UI/i.test(await toggle.textContent()))await toggle.click();
+      await page.keyboard.press('Tab');
+      await page.waitForFunction(()=>document.querySelector('#battle-mode').textContent.includes('TACTICAL'));
+      await assertMinimized();
+      await page.keyboard.press('Escape');await page.locator('#battle-pause').waitFor();
+      await page.locator('[data-battle-action=exit]').click();await page.locator('#battle-encounter').waitFor();
+      await page.reload();await page.locator('#custom-battle').click();await page.getByRole('button',{name:'Fight Now'}).click();
+      await page.waitForFunction(()=>document.querySelector('#battle-mode').textContent==='LEAD THE BATTLE');
+      await assertMinimized();await page.keyboard.press('h');
+      assert.match(await toggle.textContent(),/Hide UI/i);
+      await page.keyboard.press('Escape');await page.locator('[data-battle-action=exit]').click();
+      await page.locator('#custom-setup').waitFor();
+
+      const recovery=fixture();beginEncounter(recovery);const b=createBattle(recovery.offlineBattle);beginBattle(b);
+      Object.assign(commander(b),{status:'dead',hp:0,action:null});saveEncounterCheckpoint(recovery,b);
+      await page.evaluate(({key,recovery})=>localStorage.setItem(key,JSON.stringify(recovery)),{key,recovery});
+      await page.reload();await page.locator('#resume').click();await page.locator('[data-battle-action=enter]').click();
+      await page.waitForFunction(()=>document.querySelector('#battle-mode').textContent.includes('TACTICAL'));
+      assert.match(await toggle.textContent(),/Hide UI/i);
+      assert.equal(await panel.isVisible(),false,'incapacitation changes camera without forcing the full panel open');
+      assert.deepEqual(errors,[]);
+      console.log(`Battle HUD visibility, hotkeys, preferences and commander recovery passed at ${viewport.width}×${viewport.height}`);
+    }finally{await context.close();}
+  }
+}
 async function checkSiegePicking(browser){
   const width=1280,height=800;
   for(const defending of [false,true]){
@@ -193,6 +269,7 @@ try{
   browser=await chromium.launch({headless:true,executablePath:process.env.IRON_THRONE_CHROMIUM||undefined,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
   if(process.argv.includes('--stress-only'))await stressCommands(browser);
   else if(process.argv.includes('--targets-only'))await checkSiegePicking(browser);
+  else if(process.argv.includes('--hud-only'))await checkBattleHUD(browser);
   else {
   for(const viewport of [{width:1365,height:900},{width:390,height:844}]){
     const context=await browser.newContext({viewport,hasTouch:viewport.width<700});
