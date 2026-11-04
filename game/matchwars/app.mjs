@@ -1,7 +1,9 @@
 import { Board, ELEMENTS } from './board.mjs';
-import { Battle, TROOPS, ENEMIES, ELEMENT_INFO, UPGRADES, upgradeCost, elementMultiplier, difficultyForStage } from './combat.mjs?v=2';
-import { loadProgress, saveProgress } from './progress.mjs?v=2';
-import { STAGES, CHAPTERS, TOTAL_STAGES, getChapter, getStage } from './campaign.mjs';
+import { Battle, TROOPS, ENEMIES, ELEMENT_INFO, UPGRADES, upgradeCost, elementMultiplier, difficultyForStage } from './combat.mjs?v=3';
+import { loadProgress, saveProgress } from './progress.mjs?v=3';
+import { STAGES, CHAPTERS, TOTAL_STAGES, getChapter, getStage } from './campaign.mjs?v=3';
+import { CLASSES, CLASS_CHOICES, DEFAULT_LOADOUT, COMBOS, getTroop, normalizeLoadout, isClassUnlocked } from './classes.mjs?v=3';
+import { drawSpellEffect, drawCastingRune } from './vfx.mjs?v=3';
 
 const $ = id => document.getElementById(id);
 const boardEl = $('board'), canvas = $('battlefield'), ctx = canvas.getContext('2d');
@@ -10,7 +12,8 @@ const laneY=lane=>(220+lane*120)*canvas.height/530;
 function fitBattlefield(){canvas.height=mobileScreen.matches?420:530;}
 fitBattlefield();mobileScreen.addEventListener('change',fitBattlefield);
 const backdrop = $('modal-backdrop'), modal = $('modal'), content = $('modal-content');
-const sprite = new Image(); sprite.src = new URL('./assets/troops.png', import.meta.url).href;
+const atlases=Object.fromEntries(['troops','classes','enemies'].map(key=>{const img=new Image();img.src=new URL(`./assets/${key}.png`,import.meta.url).href;return [key,img];}));
+const sprite=atlases.troops;
 const colors = Object.fromEntries(ELEMENTS.map(k => [k, ELEMENT_INFO[k].color]));
 const RELICS = {
   fury:{name:'Fury',symbol:'↑',color:'#ffac81',detail:'+30% attack'},
@@ -18,19 +21,21 @@ const RELICS = {
   haste:{name:'Haste',symbol:'ϟ',color:'#89dbe1',detail:'+25% speed / +20% attack rate'},
   vitality:{name:'Vitality',symbol:'+',color:'#a9d7a4',detail:'+35% health'},
 };
-const roman = number => ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'][number-1];
-const difficultyName = stage => stage<=12?'Initiate':stage<=24?'Veteran':stage<=36?'Elite':'Mythic';
+const roman = number => {let rest=number,result='';for(const [n,s] of [[50,'L'],[40,'XL'],[10,'X'],[9,'IX'],[5,'V'],[4,'IV'],[1,'I']])while(rest>=n){result+=s;rest-=n;}return result;};
+const difficultyName = stage => stage<=12?'Initiate':stage<=24?'Veteran':stage<=36?'Elite':stage<=48?'Mythic':stage<=60?'Ascendant':stage<=72?'Legendary':'Worldbreaker';
 let progress = loadProgress(), board, battle, lane = 1, selected = null, busy = false;
 let started = false, session = 0, lastFrame = 0, uiTimer = 0, resolved = false;
 let charge = 0, overdrive = 0, matches = 0, bestChain = 1, summonCount = 0;
 let lastFocus = null, modalKind = '', rootDialog = null, toastTimer, bannerTimer, hintTimer;
-let particles = [], floats = [], motionTime = 0, soundContext, lastSound = 0;
+let particles = [], floats = [], motionTime = 0, soundContext, lastSound = 0, lastCastSound=0;
 let pointer = null, suppressClick = false;
 const tileNodes = new Map();
 const reduced = () => progress.settings.reducedMotion || matchMedia('(prefers-reduced-motion: reduce)').matches;
 const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
 const delay = ms => new Promise(resolve => setTimeout(resolve, reduced() ? Math.min(40,ms) : ms));
 const escape = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const activeTroop=key=>battle?.troopFor?.(key)||getTroop(key,progress.loadout[key]);
+const classPortrait=(def,css='portrait')=>`<canvas class="${css}" data-portrait="${def.key}" data-class="${def.id}" width="180" height="180"></canvas>`;
 async function waitForPlay(token) {
   while(token===session && (!backdrop.hidden || document.hidden)) await new Promise(resolve=>setTimeout(resolve,100));
   return token===session;
@@ -77,7 +82,7 @@ function sound(kind='match', chain=1) {
     tones.forEach((frequency,i) => {
       const osc = soundContext.createOscillator(), gain = soundContext.createGain();
       osc.type = kind === 'hit' ? 'triangle' : 'sine'; osc.frequency.value = frequency;
-      gain.gain.setValueAtTime(0,now+i*.055); gain.gain.linearRampToValueAtTime(.035,now+i*.055+.01); gain.gain.exponentialRampToValueAtTime(.0001,now+i*.055+.2);
+      gain.gain.setValueAtTime(0,now+i*.055); gain.gain.linearRampToValueAtTime(kind==='cast'?.009:.035,now+i*.055+.01); gain.gain.exponentialRampToValueAtTime(.0001,now+i*.055+.2);
       osc.connect(gain); gain.connect(soundContext.destination); osc.start(now+i*.055); osc.stop(now+i*.055+.22);
     });
   } catch { /* Audio is optional on browsers that block Web Audio. */ }
@@ -100,7 +105,7 @@ function renderBoard(snapshot=board.snapshot(), animate=false) {
     }
     node.classList.remove('clearing','hint','invalid');
     node.classList.toggle('selected', !!selected && selected.r===r && selected.c===c);
-    node.setAttribute('aria-label',`${TROOPS[tile.key].name}${tile.special ? ', '+tile.special+' special' : ''}${tile.relic ? ', '+RELICS[tile.relic].name+' relic' : ''}. Row ${r+1}, column ${c+1}`);
+    node.setAttribute('aria-label',`${activeTroop(tile.key).name}${tile.special ? ', '+tile.special+' special' : ''}${tile.relic ? ', '+RELICS[tile.relic].name+' relic' : ''}. Row ${r+1}, column ${c+1}`);
     node.setAttribute('aria-rowindex',r+1); node.setAttribute('aria-colindex',c+1);
     node.setAttribute('aria-selected',String(!!selected && selected.r===r && selected.c===c));
     node.tabIndex = r===0 && c===0 ? 0 : -1;
@@ -172,7 +177,7 @@ async function swap(from,to) {
       if(charge>=50 && overdrive<=0) { charge-=50; overdrive=10; banner('OVERDRIVE · Summons gain +25% power for 10 seconds'); burst('OVERDRIVE'); }
       renderBoard(step.after,true);
       const buffs = [...new Set(step.groups.flatMap(g=>g.buffs))];
-      const names = step.groups.map(g=>TROOPS[g.key].name).slice(0,2).join(' + ');
+      const names = step.groups.map(g=>activeTroop(g.key).name).slice(0,2).join(' + ');
       $('board-message').textContent = `${names} → lane ${targetLane+1}${buffs.length ? ' · '+buffs.map(k=>RELICS[k].name).join(' + ') : step.chain>1 ? ' · empowered cascade' : ''}`;
       await delay(240);
     }
@@ -281,8 +286,8 @@ function showIntro() {
   openModal(progress.seenIntro?'Your army awaits.':'Every match turns the tide.',`
     <p class="guide-intro">${progress.seenIntro?`Continue at battle ${progress.stage}: ${STAGES[progress.stage-1][0]}. Your upgrades and campaign progress are saved.`:'The rift is open. Match elemental runes to summon an army, choose where it fights, and turn cascading combos into overwhelming power.'}</p>
     ${progress.legacyMigrated?'<p class="legacy-note">Your original Color Clash gold, levels, and earned upgrades have been carried into Match Wars.</p>':''}
-    <div class="feature-grid"><div class="feature-card"><b>01 · Match & summon</b><p>Tap two neighboring runes or swipe. Lines of 3 summon troops. Longer matches forge special runes.</p></div><div class="feature-card"><b>02 · Read the front</b><p>Choose a lane before matching. Scout the incoming enemies and send the element that counters them.</p></div><div class="feature-card"><b>03 · Build the combo</b><p>Cascades empower every new summon. Match marked relics for attack, shields, haste, or health.</p></div><div class="feature-card"><b>04 · Shape your army</b><p>Win gold across 48 battles. Invest in 18 upgrades, class abilities, and command talents.</p></div></div>
-    <div class="modal-actions"><button class="primary-button" data-action="begin">${progress.seenIntro?'Return to the front':'Begin the campaign'} →</button><button class="secondary-button" data-action="forge">Upgrade forge · ◆ ${progress.gold}</button></div>
+    <div class="feature-grid"><div class="feature-card"><b>01 · Match & summon</b><p>Tap two neighboring runes or swipe. Lines of 3 summon your equipped class. Longer matches forge special runes.</p></div><div class="feature-card"><b>02 · Build a formation</b><p>Troops cast their own spells. Pair colors in the same lane for healing covenants, frozen shatters, or armies of the dead.</p></div><div class="feature-card"><b>03 · Choose your classes</b><p>Unlock 12 additional classes at campaign milestones. Equip one class for each color before battle.</p></div><div class="feature-card"><b>04 · Conquer the frontiers</b><p>Fight across ${TOTAL_STAGES} battles. Spend gold on 18 upgrade paths and adapt to ${Object.keys(ENEMIES).length} enemy types.</p></div></div>
+    <div class="modal-actions"><button class="primary-button" data-action="begin">${progress.seenIntro?'Return to the front':'Begin the campaign'} →</button><button class="secondary-button" data-action="army">Choose classes</button><button class="secondary-button" data-action="forge">Upgrade forge · ◆ ${progress.gold}</button></div>
     <p class="muted">PC: arrows + Enter to match · 1 / 2 / 3 lanes · Q / W / E spells · H hint · P pause. On mobile, tap or swipe.</p>`, 'intro','THE RUNEBORN FRONT');
 }
 
@@ -291,22 +296,48 @@ function begin() {
 }
 
 function showMenu() {
-  openModal('Take a breath.',`<p>Battle is paused. Plan your next move.</p><div class="menu-grid"><button data-action="resume">↗ Return to battle</button><button data-action="forge">◆ Upgrade forge</button><button data-action="campaign">✧ Campaign map</button><button data-action="guide">⌘ Field guide</button><button data-action="how">? How to play</button><button data-action="restart">↻ Restart this battle</button></div><label class="setting-row">Sound effects<input id="sound-setting" type="checkbox" ${progress.settings.sound?'checked':''}></label><label class="setting-row">Reduce visual effects<input id="motion-setting" type="checkbox" ${progress.settings.reducedMotion?'checked':''}></label><div class="modal-actions"><a class="secondary-button" href="/lobby/">‹ Back to the library</a></div>`, 'menu');
+  openModal('Take a breath.',`<p>Battle is paused. Plan your next move.</p><div class="menu-grid"><button data-action="resume">↗ Return to battle</button><button data-action="army">✦ Troop classes</button><button data-action="forge">◆ Upgrade forge</button><button data-action="campaign">✧ Campaign map</button><button data-action="guide">⌘ Field guide</button><button data-action="bonds">◇ Formation bonds</button><button data-action="how">? How to play</button><button data-action="restart">↻ Restart this battle</button></div><label class="setting-row">Sound effects<input id="sound-setting" type="checkbox" ${progress.settings.sound?'checked':''}></label><label class="setting-row">Reduce visual effects<input id="motion-setting" type="checkbox" ${progress.settings.reducedMotion?'checked':''}></label><div class="modal-actions"><a class="secondary-button" href="/lobby/">‹ Back to the library</a></div>`, 'menu');
 }
 
 function showHow() {
-  openModal('A commander’s primer.',`<div class="feature-grid"><div class="feature-card"><b>Matches become troops</b><p>Each match summons one soldier. Matches of 5 or more summon extra troops. Choose your lane first; every cascade uses that lane. Invalid swaps return safely.</p></div><div class="feature-card"><b>Forge special runes</b><p>Match 4 for a line blast, 5 for a wild rune, and a T or L for a nova. Swap a special with any neighbor to activate it. Wilds clear the other rune’s element. Special blasts chain.</p></div><div class="feature-card"><b>Cascades & Overdrive</b><p>Falling runes can match again. Each cascade gives new troops +14% power, increased by Battle Rhythm. Clear 50 runes for 10 seconds of +25% summon power.</p></div><div class="feature-card"><b>Relics empower summons</b><p>Small colored marks are relics. Match them to buff that element’s new soldiers: ↑ Fury, ◇ Aegis, ϟ Haste, + Vitality. Forge talents strengthen these buffs.</p></div><div class="feature-card"><b>Build a formation</b><p>Sun Paladins hold the front while Tide Rangers and Ember Mages attack from behind. Grove Wardens sustain them. Storm Lancers hunt flyers; Reapers punish weakened tanks. Summon the same element 4 / 8 / 12 times to increase its resonance.</p></div><div class="feature-card"><b>Win the battle</b><p>Destroy the rift or defeat every wave. Later chapters bring four or five waves, denser formations, and elite enemies. Defend your citadel with troops and spells. Every fourth battle has a boss ward: defeat the chapter boss to break it. Losses grant some earned gold so you can adapt and retry.</p></div></div><h3>Elemental counters</h3><p>Ember → Grove → Storm → Tide → Ember. A counter deals 1.5× damage; fighting into your weakness deals 0.7×. Sun and Void both deal 1.35× to each other.</p><p>Spells target your selected lane. Meteor damages enemies, Rally grants attack speed and shields, Renew heals troops and repairs your citadel. They recharge during battle.</p><p>Progress saves on this browser and device after battles and purchases. Refreshing restarts the current battle. The forge pauses combat; new class upgrades affect future summons.</p><div class="modal-actions"><button class="primary-button" data-action="resume">${started?'Back to battle':'Start battle'} →</button></div>`, 'how','MATCH · COMMAND · CONQUER');
+  openModal('A commander’s primer.',`<div class="feature-grid"><div class="feature-card"><b>Matches become troops</b><p>Each match summons one soldier. Matches of 5 or more summon extra troops. Choose your lane first; every cascade uses that lane. Invalid swaps return safely.</p></div><div class="feature-card"><b>Forge special runes</b><p>Match 4 for a line blast, 5 for a wild rune, and a T or L for a nova. Swap a special with any neighbor to activate it. Wilds clear the other rune’s element. Special blasts chain.</p></div><div class="feature-card"><b>Cascades & Overdrive</b><p>Falling runes can match again. Each cascade gives new troops +14% power, increased by Battle Rhythm. Clear 50 runes for 10 seconds of +25% summon power.</p></div><div class="feature-card"><b>Relics empower summons</b><p>Small colored marks are relics. Match them to buff that element’s new soldiers: ↑ Fury, ◇ Aegis, ϟ Haste, + Vitality. Forge talents strengthen these buffs.</p></div><div class="feature-card"><b>Build a formation</b><p>Sun Paladins hold the front while Tide Rangers and Ember Mages attack from behind. Grove Wardens sustain them. Storm Lancers hunt flyers; Reapers punish weakened tanks. Summon the same element 4 / 8 / 12 times to increase its resonance.</p></div><div class="feature-card"><b>Win the battle</b><p>Destroy the rift or defeat every wave. Later chapters bring more waves, denser formations, and elite enemies. Defend your citadel with troops and spells. Every fourth battle has a boss ward: defeat the chapter boss to break it. Losses grant some earned gold so you can adapt and retry.</p></div></div><h3>Elemental counters</h3><p>Ember → Grove → Storm → Tide → Ember. A counter deals 1.5× damage; fighting into your weakness deals 0.7×. Sun and Void both deal 1.35× to each other.</p><p>Spells target your selected lane. Meteor damages enemies, Rally grants attack speed and shields, Renew heals troops and repairs your citadel. They recharge during battle.</p><p>Progress saves on this browser and device after battles and purchases. Refreshing restarts the current battle. The forge pauses combat; new class upgrades affect future summons.</p><div class="modal-actions"><button class="primary-button" data-action="resume">${started?'Back to battle':'Start battle'} →</button></div>`, 'how','MATCH · COMMAND · CONQUER');
 }
 
 function troopGuide(key) {
-  const troop=TROOPS[key], info=ELEMENT_INFO[key];
+  const troop=activeTroop(key), info=ELEMENT_INFO[key];
   const resonance=Math.min(3,Math.floor((battle.synergy[key]||0)/4));
-  openModal(troop.name,`<canvas class="dialog-portrait" data-portrait="${key}" width="180" height="180"></canvas><p style="color:${info.color}">${troop.role} · ${info.name}</p><p>${troop.description}</p><p>Health <b>${troop.hp}</b> · Attack <b>${troop.attack}</b> · Range <b>${troop.range}</b></p><p>Strong against ${ELEMENT_INFO[info.strong].name}${key==='sun'||key==='void'?' (mutual counter)':' · vulnerable to '+ELEMENT_INFO[info.weak].name}.</p><p>Battle resonance: ${resonance} / 3. Every four summons of this element adds +5% power, up to +15%.</p><h3>Class talents</h3>${UPGRADES.filter(u=>u.group===key).map(u=>`<p><b>${u.name}</b> · rank ${progress.upgrades[u.id]||0} / ${u.max}<br>${u.description}</p>`).join('')}<div class="modal-actions"><button class="primary-button" data-action="forge" data-tab="${key}">Train ${info.name} talents →</button><button class="secondary-button" data-action="resume">Return</button></div>`,'troop','ELEMENTAL ARMORY');
+  openModal(troop.name,`${classPortrait(troop,'dialog-portrait')}<p style="color:${info.color}">${troop.role} · ${info.name}</p><p>${troop.description}</p><p>Health <b>${troop.hp}</b> · Attack <b>${troop.attack}</b> · Range <b>${troop.range}</b></p><div class="spell-detail"><b>${troop.spell.name}</b><small>Automatic spell · ${troop.spell.cooldown}s recharge</small><p>${troop.spell.description}</p></div><p>Strong against ${ELEMENT_INFO[info.strong].name}${key==='sun'||key==='void'?' (mutual counter)':' · vulnerable to '+ELEMENT_INFO[info.weak].name}.</p><p>Battle resonance: ${resonance} / 3. Every four summons adds +5% power, up to +15%.</p><h3>Formation partners</h3>${COMBOS.filter(c=>c.elements.includes(key)).map(c=>`<p><b>${c.name}</b> · ${c.elements.map(k=>ELEMENT_INFO[k].name).join(' + ')}<br>${c.description}</p>`).join('')}<div class="modal-actions"><button class="primary-button" data-army="${key}">Choose ${info.name} class →</button><button class="secondary-button" data-action="forge" data-tab="${key}">Train talents</button><button class="secondary-button" data-action="resume">Return</button></div>`,'troop','ELEMENTAL ARMORY');
+}
+
+function showArmory(key='ember') {
+  if(!CLASS_CHOICES[key])key='ember';
+  const chosen=progress.loadout[key],pending=started&&battle.status==='playing'&&battle.loadout[key]!==chosen;
+  const earned=Object.values(CLASSES).filter(c=>isClassUnlocked(c.id,progress.unlocked)).length;
+  openModal('Your colors. Your classes.',`<p>Equip one class for each color. Troops cast spells automatically when suitable targets are in reach. <b>${earned} / ${Object.keys(CLASSES).length}</b> classes unlocked.</p><p class="armory-rule">${started&&battle.status==='playing'?'Changes are saved for your next battle. Your current formation keeps its equipped classes.':'Choose your formation before the first wave. Class choices are free once unlocked.'}</p><div class="tabs class-tabs">${ELEMENTS.map(k=>`<button data-army="${k}" class="${k===key?'active':''}" style="${k===key?'':'color:'+colors[k]}">${ELEMENT_INFO[k].name}</button>`).join('')}</div><div class="class-grid">${CLASS_CHOICES[key].map(def=>{
+    const unlocked=isClassUnlocked(def.id,progress.unlocked),selected=def.id===chosen;
+    return `<article class="class-card ${selected?'equipped':''} ${unlocked?'':'locked'}" style="--element:${def.color}"><div class="class-portrait-wrap">${classPortrait(def,'class-portrait')}<span>${selected?'EQUIPPED':unlocked?'AVAILABLE':`BATTLE ${def.unlockLevel}`}</span></div><h3>${def.name}</h3><small class="class-role">${def.role}</small><p>${def.description}</p><div class="class-statline"><span>${def.hp} HP</span><span>${def.attack} ATK</span><span>${def.range} RANGE</span></div><div class="spell-detail"><b>${def.spell.name}</b><small>Auto cast · ${def.spell.cooldown}s</small><p>${def.spell.description}</p></div><button class="${selected?'secondary-button':'primary-button'}" data-equip="${def.id}" ${!unlocked||selected?'disabled':''}>${selected?'Equipped':unlocked?'Equip class':`Reach battle ${def.unlockLevel} to unlock`}</button></article>`;
+  }).join('')}</div><p class="class-swipe-hint">Swipe across the cards to compare all three classes.</p>${pending?'<p class="pending-note">New class equipped for the next battle.</p>':''}<h3>Build a bond</h3><p>${COMBOS.filter(c=>c.elements.includes(key)).map(c=>`<b>${c.name}</b>: ${c.elements.map(k=>ELEMENT_INFO[k].name).join(' + ')}. ${c.description}`).join('<br>')}</p><div class="modal-actions"><button class="primary-button" data-action="resume">${started?'Return to the front':'Start with this army'} →</button>${started&&battle.status==='playing'?'<button class="secondary-button" data-action="restart">Restart with this army</button>':''}<button class="secondary-button" data-action="bonds">All formation bonds</button></div>`,'army','THE CLASS ARMORY');
+  if(mobileScreen.matches){const grid=content.querySelector('.class-grid'),card=content.querySelector('.class-card.equipped');if(grid&&card)grid.scrollLeft+=card.getBoundingClientRect().left-grid.getBoundingClientRect().left;}
+}
+
+function equipClass(id) {
+  const def=CLASSES[id];if(!def||!isClassUnlocked(id,progress.unlocked))return;
+  progress.loadout[def.key]=id;progress.loadout=normalizeLoadout(progress.loadout,progress.unlocked);persist();
+  if(!started&&battle.time===0)startBattle(progress.stage);
+  showArmory(def.key);sound('match');
+}
+
+function showBonds() {
+  const active=new Set((battle.activeCombos?.(lane)||[]).map(c=>c.id));
+  openModal('Stronger together.',`<p>Keep both colors alive in the same lane to activate a formation bond. Choose classes that supply the healing, shields, or status effects the bond needs.</p><div class="guide-grid">${COMBOS.map(c=>`<div class="guide-card bond-card"><span class="bond-status ${active.has(c.id)?'on':''}">${active.has(c.id)?'ACTIVE IN LANE '+(lane+1):'FORMATION BOND'}</span><h3>${c.name}</h3><div class="bond-colors">${c.elements.map(k=>`<span style="color:${colors[k]}">${ELEMENT_INFO[k].name}</span>`).join(' + ')}</div><p>${c.description}</p><small>${c.condition}</small></div>`).join('')}</div><div class="modal-actions"><button class="primary-button" data-action="army">Build your army →</button><button class="secondary-button" data-action="resume">Return</button></div>`,'bonds','LANE FORMATIONS');
 }
 
 function showGuide(tab='troops') {
-  const entries=tab==='enemies'?Object.values(ENEMIES):Object.values(TROOPS);
-  openModal('Know your battlefield.',`<p>Elemental advantage matters. Pair a frontline, a ranged attacker, and a support in threatened lanes.</p><div class="tabs"><button data-guide="troops" class="${tab==='troops'?'active':''}">6 allied classes</button><button data-guide="enemies" class="${tab==='enemies'?'active':''}">21 enemy types</button><button data-guide="relics" class="${tab==='relics'?'active':''}">Relics & buffs</button></div>${tab==='relics'?`<div class="guide-grid">${Object.entries(RELICS).map(([key,r])=>`<div class="guide-card"><b style="color:${r.color}">${r.symbol} ${r.name}</b><p>${r.detail} for troops summoned by a match containing this relic. Multiple relic types stack. Relic Attunement improves all four.</p></div>`).join('')}</div><p>Shields form gold rings, Fury adds orange sparks, Haste trails cyan light, and Vitality adds a green cross. Burn, poison, frost, and Rally have separate combat effects.</p>`:`<div class="guide-grid">${entries.map(t=>`<div class="guide-card"><canvas class="portrait" data-portrait="${t.element}" ${tab==='enemies'?'data-enemy="true"':''} width="100" height="100"></canvas><b style="color:${colors[t.element]}">${t.name}</b><p>${t.role}</p><p>${t.description||`${ELEMENT_INFO[t.element].name} · ${t.hp} health · ${t.attack} attack${t.boss?' · BOSS':''}`}</p><div class="counter-list"><span>Counter: ${ELEMENT_INFO[Object.keys(TROOPS).find(k=>elementMultiplier(k,t.element)>1)||'storm'].name}</span></div></div>`).join('')}</div>`}`,'guide','THE FIELD GUIDE');
+  const entries=tab==='enemies'?Object.values(ENEMIES):Object.values(CLASSES);
+  const tabs=`<div class="tabs"><button data-guide="troops" class="${tab==='troops'?'active':''}">${Object.keys(CLASSES).length} troop classes</button><button data-guide="enemies" class="${tab==='enemies'?'active':''}">${Object.keys(ENEMIES).length} enemy types</button><button data-guide="relics" class="${tab==='relics'?'active':''}">Relics & buffs</button><button data-action="bonds">Formation bonds</button></div>`;
+  const relics=`<div class="guide-grid">${Object.values(RELICS).map(r=>`<div class="guide-card"><b style="color:${r.color}">${r.symbol} ${r.name}</b><p>${r.detail} for troops summoned by a match containing this relic. Relic types stack; Relic Attunement improves all four.</p></div>`).join('')}</div><p>Gold shield rings, orange Fury sparks, cyan Haste trails, and green Vitality crosses identify empowered troops. Roots, frost, curses, and regeneration have distinct effects.</p>`;
+  const cards=`<div class="guide-grid">${entries.map(t=>`<div class="guide-card">${tab==='enemies'?`<canvas class="portrait" data-portrait="${t.element}" data-enemy="${t.key}" width="180" height="180"></canvas>`:classPortrait(t)}<b style="color:${colors[t.element]}">${t.name}</b><p>${t.role}</p><p>${t.description||`${ELEMENT_INFO[t.element].name} · ${t.hp} health · ${t.attack} attack${t.boss?' · BOSS':''}`}</p>${t.spell?`<p><b>${t.spell.name}</b> · ${t.spell.cooldown}s<br>${t.spell.description||''}</p>`:''}<div class="counter-list"><span>Counter: ${ELEMENT_INFO[Object.keys(TROOPS).find(k=>elementMultiplier(k,t.element)>1)||'storm'].name}</span>${t.unlockLevel?`<span>${isClassUnlocked(t.id,progress.unlocked)?'Unlocked':'Reach battle '+t.unlockLevel}</span>`:''}</div></div>`).join('')}</div>`;
+  openModal('Know your battlefield.',`<p>Pair a frontline, a ranged attacker, and a support. Enemy spellcasters and undead create new threats to counter.</p>${tabs}${tab==='relics'?relics:cards}`,'guide','THE FIELD GUIDE');
 }
 
 function showForge(tab='command') {
@@ -330,7 +361,7 @@ function showCampaign(chapterNumber=getChapter(progress.stage).number) {
     <div class="chapter-navigation"><button class="secondary-button" data-chapter="${chapter.number-1}" aria-label="Previous chapter" ${index===0?'disabled':''}>‹</button><label for="campaign-chapter" class="sr-only">Choose a campaign chapter</label><select id="campaign-chapter">${CHAPTERS.map(c=>`<option value="${c.number}" ${c.number===chapter.number?'selected':''}>${roman(c.number)} · ${escape(c.title)}${progress.unlocked<(c.number-1)*4+1?' · Locked':''}</option>`).join('')}</select><button class="secondary-button" data-chapter="${chapter.number+1}" aria-label="Next chapter" ${index===CHAPTERS.length-1?'disabled':''}>›</button></div>
     <div class="chapter-summary" style="--chapter-color:${chapter.color}"><span class="eyebrow">CHAPTER ${roman(chapter.number)} · ${difficultyName(first).toUpperCase()} · ${cleared} / 4 CLEARED</span><h3>${escape(chapter.title)}</h3><p>${escape(chapter.description)}</p><small>Chapter boss: ${escape(chapter.bossName)}</small></div>
     <div class="campaign-grid chapter-stages">${stages.map(([name,description],i)=>{const stage=first+i,difficulty=difficultyForStage(stage);return `<button class="stage-card ${stage===progress.stage?'current':''}" data-stage="${stage}" ${stage>progress.unlocked?'disabled':''}><span class="stage-number">${String(stage).padStart(2,'0')} ${progress.completed.includes(stage)?'✦':stage%4===0?'♜':''}</span><b>${escape(name)}</b><small>${escape(description)}</small><span class="stage-difficulty">${stage>progress.unlocked?'Locked · ':''}${difficulty.totalWaves} waves${stage%4===0?' · Boss ward':''}</span></button>`;}).join('')}</div>
-    <div class="modal-actions"><button class="primary-button" data-stage="${progress.unlocked}">Continue · battle ${progress.unlocked} →</button><button class="secondary-button" data-action="resume">Return</button></div>`, 'campaign','THE 48-BATTLE CAMPAIGN');
+    <div class="modal-actions"><button class="primary-button" data-stage="${progress.unlocked}">Continue · battle ${progress.unlocked} →</button><button class="secondary-button" data-action="army">Troop classes</button><button class="secondary-button" data-action="resume">Return</button></div>`, 'campaign',`THE ${TOTAL_STAGES}-BATTLE CAMPAIGN`);
 }
 
 function confirmRestart(stage=progress.stage) {
@@ -340,7 +371,7 @@ function confirmRestart(stage=progress.stage) {
 
 function startBattle(stage=progress.stage) {
   session++;progress.stage=clamp(stage,1,progress.unlocked);board=new Board();
-  battle=new Battle({stage:progress.stage,upgrades:progress.upgrades,onEvent:combatEvent});
+  battle=new Battle({stage:progress.stage,upgrades:progress.upgrades,loadout:progress.loadout,onEvent:combatEvent});
   selected=null;busy=false;resolved=false;charge=0;overdrive=0;matches=0;bestChain=1;summonCount=0;particles=[];floats=[];
   tileNodes.clear();boardEl.replaceChildren();boardEl.setAttribute('aria-busy','false');renderBoard();setLane(1);
   $('stage-name').textContent=STAGES[progress.stage-1][0];
@@ -350,18 +381,27 @@ function startBattle(stage=progress.stage) {
   document.body.style.setProperty('--chapter-color',getChapter(progress.stage).color);
   $('combo').textContent='×1';$('combo-label').textContent='COMBO POWER';
   $('board-message').textContent='Swap adjacent runes to summon troops.';
-  paintScenery();persist();updateUI();drawBattle();
+  makeRoster();paintScenery();persist();updateUI();drawBattle();
+}
+
+function showClassUnlocks(definitions) {
+  const panel=document.createElement('div');
+  panel.innerHTML=definitions.map(def=>`<div class="class-unlock">${classPortrait(def)}<div><span class="eyebrow">NEW CLASS UNLOCKED</span><h3>${def.name}</h3><p>${def.role} · ${def.spell.name}</p></div><button class="text-button" data-army="${def.key}">Choose class →</button></div>`).join('');
+  content.prepend(panel);drawPortraits();
 }
 
 function finishBattle() {
   if(resolved||busy||battle.status==='playing')return;
   resolved=true;const won=battle.status==='won',stage=progress.stage;
   const firstClear=won&&!progress.completed.includes(stage);
+  const previousUnlock=progress.unlocked;
   const reward=Math.round(battle.reward())+(firstClear?35:0);
   progress.gold+=reward;
   if(won){if(firstClear)progress.completed.push(stage);progress.unlocked=Math.min(TOTAL_STAGES,Math.max(progress.unlocked,stage+1));}
+  const newClasses=won?Object.values(CLASSES).filter(def=>def.unlockLevel>previousUnlock&&def.unlockLevel<=progress.unlocked):[];
   persist();sound(won?'win':'lose');
-  openModal(won?(stage===TOTAL_STAGES?'The final rift is sealed.':'The front is yours.'):'The line has fallen.',`<div class="result-icon">${won?'✦':'♜'}</div><p class="result-intro">${won?(stage===TOTAL_STAGES?`You defeated ${escape(getStage(stage).bossName)} and completed all ${TOTAL_STAGES} battles of the Runeborn campaign. Replay any chapter to master a different army.`:stage===12?'The Eclipse Lord has fallen, but nine new frontiers await. Battle 13 is now unlocked.':`${STAGES[stage-1][0]} is secure. Train your army and prepare for the next battle.`):'Scout the enemy elements, protect your ranged attackers, and spend your earned gold before trying again.'}</p><div class="result-stats"><div><b>+${reward}</b><small>GOLD${firstClear?' · FIRST CLEAR +35':''}</small></div><div><b>${battle.kills}</b><small>ENEMIES DEFEATED</small></div><div><b>${bestChain}×</b><small>BEST CASCADE</small></div></div><div class="modal-actions"><button class="primary-button" data-next="${won?Math.min(TOTAL_STAGES,stage+1):stage}">${won&&stage<TOTAL_STAGES?'Next battle':'Play again'} →</button><button class="secondary-button" data-action="forge">Upgrade forge · ◆ ${progress.gold}</button><button class="secondary-button" data-action="campaign">Campaign map</button></div>`,'result',won?'VICTORY':'REGROUP & RETURN');
+  openModal(won?(stage===TOTAL_STAGES?'The final rift is sealed.':'The front is yours.'):'The line has fallen.',`<div class="result-icon">${won?'✦':'♜'}</div><p class="result-intro">${won?(stage===TOTAL_STAGES?`You defeated ${escape(getStage(stage).bossName)} and completed all ${TOTAL_STAGES} battles of the Runeborn campaign. Replay any chapter to master a different army.`:stage===12?'The Eclipse Lord has fallen, but more frontiers await. Battle 13 is now unlocked.':`${STAGES[stage-1][0]} is secure. Train your army and prepare for the next battle.`):'Scout the enemy elements, protect your ranged attackers, and spend your earned gold before trying again.'}</p><div class="result-stats"><div><b>+${reward}</b><small>GOLD${firstClear?' · FIRST CLEAR +35':''}</small></div><div><b>${battle.kills}</b><small>ENEMIES DEFEATED</small></div><div><b>${bestChain}×</b><small>BEST CASCADE</small></div></div><div class="modal-actions"><button class="primary-button" data-next="${won?Math.min(TOTAL_STAGES,stage+1):stage}">${won&&stage<TOTAL_STAGES?'Next battle':'Play again'} →</button><button class="secondary-button" data-action="forge">Upgrade forge · ◆ ${progress.gold}</button><button class="secondary-button" data-action="campaign">Campaign map</button></div>`,'result',won?'VICTORY':'REGROUP & RETURN');
+  if(newClasses.length)showClassUnlocks(newClasses);
 }
 
 function cast(spell) {
@@ -374,6 +414,8 @@ content.addEventListener('click',event=>{
   if(button.dataset.buy){buyUpgrade(button.dataset.buy);return;}
   if(button.dataset.forge){showForge(button.dataset.forge);return;}
   if(button.dataset.guide){showGuide(button.dataset.guide);return;}
+  if(button.dataset.army){showArmory(button.dataset.army);return;}
+  if(button.dataset.equip){equipClass(button.dataset.equip);return;}
   if(button.dataset.chapter){showCampaign(+button.dataset.chapter);return;}
   if(button.dataset.stage){confirmRestart(+button.dataset.stage);return;}
   if(button.dataset.restart){startBattle(+button.dataset.restart);begin();return;}
@@ -384,6 +426,8 @@ content.addEventListener('click',event=>{
     case 'forge':showForge(button.dataset.tab||'command');break;
     case 'campaign':showCampaign();break;
     case 'guide':showGuide();break;
+    case 'army':showArmory(button.dataset.key||'ember');break;
+    case 'bonds':showBonds();break;
     case 'how':showHow();break;
     case 'restart':confirmRestart();break;
   }
@@ -397,6 +441,7 @@ document.querySelectorAll('[data-lane]').forEach(button=>button.onclick=()=>setL
 document.querySelectorAll('[data-spell]').forEach(button=>button.onclick=()=>cast(button.dataset.spell));
 $('menu-button').onclick=showMenu;$('forge-button').onclick=()=>showForge();$('campaign-button').onclick=()=>showCampaign();
 $('how-button').onclick=showHow;$('codex-button').onclick=()=>showGuide();$('hint-button').onclick=showHint;
+$('army-button').onclick=()=>showArmory();$('synergy-button').onclick=showBonds;
 canvas.addEventListener('click',event=>{const rect=canvas.getBoundingClientRect(),y=(event.clientY-rect.top)/rect.height*530;setLane(clamp(Math.round((y-220)/120),0,2));});
 
 function updateUI() {
@@ -406,6 +451,9 @@ function updateUI() {
   $('enemy-health').style.width=`${100*battle.enemyHp/battle.enemyMax}%`;
   $('wave').textContent=battle.wave?`WAVE ${battle.wave} / ${battle.totalWaves}`:'PREPARE';
   $('battle-time').textContent=`${String(Math.floor(battle.time/60)).padStart(2,'0')}:${String(Math.floor(battle.time%60)).padStart(2,'0')}`;
+  const bonds=battle.activeCombos?.(lane)||[];
+  $('formation-bonds').innerHTML=bonds.length?bonds.map(c=>`<span class="bond-chip" title="${escape(c.description)}">${c.name}</span>`).join(''):'<span class="bond-hint">Combine colors in this lane</span>';
+  $('formation-lane').textContent=`LANE ${lane+1} BONDS`;
   const upcoming=battle.forecast().slice(0,3);
   $('forecast-list').innerHTML=upcoming.length?upcoming.map(e=>`<span class="forecast-token" title="${escape(e.name+' · '+e.role+' · Counter: '+ELEMENT_INFO[e.counter].name)}"><span style="color:${colors[e.element]}">●</span> L${e.lane+1} ${escape(e.name)} · ${Math.ceil(e.time)}s</span>`).join(''):'<span>All waves deployed. Hold the line.</span>';
   for(const spell of Object.keys(battle.cooldowns)){
@@ -428,6 +476,11 @@ function combatEvent(event) {
   if(event.type==='heal'&&event.amount>=2&&floats.length<55)floats.push({x:event.x,y:laneY(event.lane)-70,text:'+'+Math.ceil(event.amount),color:'#b7efba',life:.8});
   if(event.type==='spawn'&&event.unit.boss)banner(`${event.unit.name} has entered the middle lane!`,4200);
   if(event.type==='boss-phase')banner(`${event.name} · SECOND WIND! Break the empowered formation.`,3600);
+  if(event.type==='troop-spell'){
+    spawnParticles(event.x,laneY(event.lane)-35,colors[event.key]||'#d9c2f2',5);
+    if(floats.filter(f=>f.spell).length<9)floats.push({x:event.x,y:laneY(event.lane)-82,text:event.name,color:colors[event.key]||'#e3d3f7',life:1.2,spell:true});
+    if(performance.now()-lastCastSound>400){lastCastSound=performance.now();sound('cast');}
+  }
   if(event.type==='death'){spawnParticles(event.x,laneY(event.lane)-28,event.side==='enemy'?'#c9a7df':'#a5d5be',10);if(event.boss)banner('BOSS DEFEATED · The rift’s ward is broken.');}
 }
 
@@ -437,18 +490,24 @@ function spawnParticles(x,y,color,count=8) {
 }
 
 function makeRoster() {
-  $('roster').innerHTML=ELEMENTS.map(k=>`<button class="troop-card" data-troop="${k}" style="--element:${colors[k]}"><canvas class="portrait" data-portrait="${k}" width="100" height="100"></canvas><div><h3>${TROOPS[k].name}</h3><p>${TROOPS[k].role}</p><small>${ELEMENT_INFO[k].name} → ${ELEMENT_INFO[ELEMENT_INFO[k].strong].name}</small></div></button>`).join('');
-  $('roster').addEventListener('click',e=>{const button=e.target.closest('[data-troop]');if(button)troopGuide(button.dataset.troop);});
+  $('roster').innerHTML=ELEMENTS.map(k=>{const troop=activeTroop(k);return `<button class="troop-card" data-troop="${k}" style="--element:${colors[k]}">${classPortrait(troop)}<div><h3>${troop.name}</h3><p>${troop.role}</p><small>${troop.spell.name}</small></div></button>`;}).join('');
+  $('roster').onclick=e=>{const button=e.target.closest('[data-troop]');if(button)troopGuide(button.dataset.troop);};
+  drawPortraits();
 }
 
 function drawPortraits() {
   document.querySelectorAll('[data-portrait]').forEach(el=>{
     const paint=el.getContext('2d');paint.clearRect(0,0,el.width,el.height);
-    if(sprite.complete&&sprite.naturalWidth){const row=ELEMENTS.indexOf(el.dataset.portrait),cell=sprite.naturalWidth/8;paint.imageSmoothingEnabled=true;paint.drawImage(sprite,el.dataset.enemy?4*cell:0,row*cell,cell,cell,0,0,el.width,el.height);}
+    const enemy=el.dataset.enemy?ENEMIES[el.dataset.enemy]:null;
+    const def=enemy||(el.dataset.class?CLASSES[el.dataset.class]:activeTroop(el.dataset.portrait));
+    const atlas=atlases[def?.spriteAtlas||'troops'],row=(def?.spriteRow??ELEMENTS.indexOf(el.dataset.portrait))%6,col=def?.spriteColumn??(enemy?4:0);
+    if(atlas?.complete&&atlas.naturalWidth){const cell=atlas.naturalWidth/8;paint.imageSmoothingEnabled=true;paint.drawImage(atlas,col*cell,row*cell,cell,cell,0,0,el.width,el.height);}
   });
 }
-sprite.onload=()=>{drawPortraits();drawBattle();};
-sprite.onerror=()=>toast('Sprite artwork could not load. Reload to restore the animation.');
+for(const atlas of Object.values(atlases)){
+  atlas.onload=()=>{drawPortraits();drawBattle();};
+  atlas.onerror=()=>toast('Sprite artwork could not load. Reload to restore the animation.');
+}
 
 // Paint the scenery once. Animated layers reuse this surface every frame.
 const scenery=document.createElement('canvas');scenery.width=1000;scenery.height=530;
@@ -510,6 +569,9 @@ function drawBattle() {
   ctx.clearRect(0,0,1000,canvas.height);ctx.drawImage(scenery,0,0,1000,canvas.height);
   const y=laneY(lane);
   ctx.fillStyle='#ead3930c';ctx.fillRect(110,y-20,780,46);ctx.strokeStyle='#f0d79855';ctx.setLineDash([8,10]);ctx.lineWidth=1;ctx.strokeRect(112,y-20,776,46);ctx.setLineDash([]);
+  for(const corpse of battle.corpses||[]){
+    ctx.save();ctx.globalAlpha=.5;ctx.strokeStyle='#a9a4bc';ctx.lineWidth=2;const cy=laneY(corpse.lane);ctx.beginPath();ctx.moveTo(corpse.x-7,cy-3);ctx.lineTo(corpse.x+7,cy-3);ctx.moveTo(corpse.x,cy-9);ctx.lineTo(corpse.x,cy+3);ctx.stroke();ctx.restore();
+  }
   if(battle.enemyBarrier){ctx.strokeStyle='#c29cde66';ctx.lineWidth=3;ctx.beginPath();ctx.ellipse(930,325*canvas.height/530,56,137*canvas.height/530,0,0,Math.PI*2);ctx.stroke();}
   for(const effect of battle.effects)if(['summon','heal','rally','meteor'].includes(effect.type))drawEffect(effect);
   const units=[...battle.units].sort((a,b)=>a.lane-b.lane||a.x-b.x);
@@ -520,7 +582,7 @@ function drawBattle() {
   for(const effect of battle.effects)if(!['summon','heal','rally','meteor'].includes(effect.type))drawEffect(effect);
   for(const p of particles){ctx.globalAlpha=clamp(p.life*2,0,1);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,3,3);}
   ctx.globalAlpha=1;ctx.textAlign='center';
-  for(const f of floats){ctx.globalAlpha=clamp(f.life*2,0,1);ctx.font='bold 16px system-ui';ctx.strokeStyle='#14282d';ctx.lineWidth=3;ctx.strokeText(f.text,f.x,f.y);ctx.fillStyle=f.color;ctx.fillText(f.text,f.x,f.y);}
+  for(const f of floats){ctx.globalAlpha=clamp(f.life*2,0,1);ctx.font=f.spell?'bold 12px system-ui':'bold 16px system-ui';ctx.strokeStyle='#14282d';ctx.lineWidth=3;const fx=clamp(f.x,75,925);ctx.strokeText(f.text,fx,f.y);ctx.fillStyle=f.color;ctx.fillText(f.text,fx,f.y);}
   ctx.globalAlpha=1;
   // Small drifting motes give the empty front a little life.
   if(!reduced()){ctx.fillStyle='#e9ddb588';for(let i=0;i<9;i++){const x=(i*173+motionTime*(8+i%3))%1000,fy=(130+(i*47)%370)*canvas.height/530+Math.sin(motionTime+i)*8;ctx.globalAlpha=.25+Math.sin(motionTime*1.2+i)*.2;ctx.fillRect(x,fy,2,2);}ctx.globalAlpha=1;}
@@ -529,31 +591,42 @@ function drawBattle() {
 function drawUnit(u) {
   const baseline=laneY(u.lane)+((u.id%3)-1)*5-(u.trait.flying?10+Math.sin(motionTime*5+u.id)*3:0);
   const size=u.boss?112:u.elite?87:79;const walking=u.state==='walk';
-  const frame=reduced()?0:walking?Math.floor(u.anim*8)%3:u.anim<.3?3:1;
-  const row=TROOPS[u.key].spriteRow,col=(u.side==='enemy'?4:0)+frame;
+  const frame=reduced()?0:u.casting?3:walking?Math.floor(u.anim*8)%3:u.anim<.3?3:1;
+  const row=(u.spriteRow??TROOPS[u.key].spriteRow)%6,col=(u.spriteColumn??(u.side==='enemy'?4:0))+frame;
+  const sheet=atlases[u.spriteAtlas||'troops'];
+  drawCastingRune(ctx,u,baseline,motionTime,reduced());
   ctx.save();ctx.translate(u.x,baseline);ctx.fillStyle='#071f2366';ctx.beginPath();ctx.ellipse(0,1,size*.28,6,0,0,Math.PI*2);ctx.fill();
   if(u.buffs.includes('haste')){ctx.strokeStyle='#8ce2e888';ctx.lineWidth=2;for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(-31, -20-i*10);ctx.lineTo(-44-i*4,-20-i*10);ctx.stroke();}}
   if(u.shield>0){ctx.strokeStyle='#f4d998aa';ctx.fillStyle='#e9d3900a';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(0,-size*.4,size*.38,size*.46,0,0,Math.PI*2);ctx.fill();ctx.stroke();}
-  if(sprite.complete&&sprite.naturalWidth){
-    const cell=sprite.naturalWidth/8;ctx.save();if(u.side==='enemy')ctx.scale(-1,1);
+  if(sheet?.complete&&sheet.naturalWidth){
+    const cell=sheet.naturalWidth/8;ctx.save();if(u.side==='enemy')ctx.scale(-1,1);
+    if(u.undead){ctx.shadowColor='#bd9de7';ctx.shadowBlur=9;}
     if(u.hitFlash>0&&!reduced())ctx.globalAlpha=.62;
-    ctx.drawImage(sprite,col*cell,row*cell,cell,cell,-size/2,-size*.9,size,size);ctx.restore();
+    ctx.drawImage(sheet,col*cell,row*cell,cell,cell,-size/2,-size*.9,size,size);ctx.restore();
   }else{ctx.fillStyle=colors[u.key];ctx.beginPath();ctx.arc(0,-28,18,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.font='16px serif';ctx.textAlign='center';ctx.fillText('✧',0,-23);}
   if(u.buffs.includes('fury')){ctx.fillStyle='#ffa36f';for(let i=0;i<3;i++){const a=motionTime*2+i*2;ctx.fillRect(Math.cos(a)*23,-30+Math.sin(a)*18,3,3);}}
   if(u.buffs.includes('vitality')){ctx.fillStyle='#b5e3a6';ctx.font='bold 13px system-ui';ctx.fillText('+',19,-size*.57);}
   if(u.statuses.burn){ctx.fillStyle='#ff9765';for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(-12+i*10,-15);ctx.lineTo(-8+i*10,-30-Math.sin(motionTime*8+i)*4);ctx.lineTo(-4+i*10,-15);ctx.fill();}}
   if(u.statuses.poison){ctx.fillStyle='#9cd980';for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(-13+i*12,-54,2,0,Math.PI*2);ctx.fill();}}
   if(u.statuses.slow){ctx.strokeStyle='#9be2ff99';ctx.beginPath();ctx.ellipse(0,-8,24,7,0,0,Math.PI*2);ctx.stroke();}
+  if(u.statuses.root||u.statuses.freeze){ctx.strokeStyle=u.statuses.freeze?'#c4edff':'#a6d38c';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-19,-7);ctx.lineTo(-11,-23);ctx.lineTo(0,-9);ctx.lineTo(13,-24);ctx.lineTo(20,-6);ctx.stroke();}
+  if(u.statuses.curse){ctx.strokeStyle='#df9dee';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(0,-76);ctx.lineTo(8,-66);ctx.lineTo(0,-56);ctx.lineTo(-8,-66);ctx.closePath();ctx.stroke();}
+  if(u.statuses.regeneration){ctx.fillStyle='#b1e8ac';ctx.font='bold 14px system-ui';ctx.fillText('+',-22,-48-Math.sin(motionTime*2)*5);}
   if(u.statuses.rally||u.elite){ctx.fillStyle='#fbe4a6';ctx.textAlign='center';ctx.font='14px serif';ctx.fillText(u.elite?'✦':'↑',0,-size*.93);}
   const hpWidth=u.boss?64:38,hpY=-size*.88;
   if(u.hp<u.maxHp||u.side==='enemy'||u.elite){ctx.fillStyle='#10212ac9';ctx.fillRect(-hpWidth/2,hpY,hpWidth,4);ctx.fillStyle=u.side==='enemy'?'#df9a98':'#a8d4b0';ctx.fillRect(-hpWidth/2,hpY,hpWidth*clamp(u.hp/u.maxHp,0,1),4);if(u.shield){ctx.fillStyle='#e9cf91';ctx.fillRect(-hpWidth/2,hpY-2,hpWidth*clamp(u.shield/u.maxHp,0,1),2);}}
   ctx.fillStyle=colors[u.key];ctx.beginPath();ctx.arc(0,8,3,0,Math.PI*2);ctx.fill();
+  const unitSpell=u.spell||u.trait?.spell||(u.classId?CLASSES[u.classId]?.spell:null);
+  if(unitSpell&&Number.isFinite(u.spellCooldown)){
+    ctx.fillStyle='#0b1d2a';ctx.fillRect(-19,12,38,2);ctx.fillStyle=colors[u.key];ctx.fillRect(-19,12,38*clamp(1-u.spellCooldown/unitSpell.cooldown,0,1),2);
+  }
   if(u.boss){ctx.font='bold 12px system-ui';ctx.textAlign='center';ctx.fillStyle='#f4e2b8';ctx.fillText(u.name,0,-size-5);}
   else if(u.side==='enemy'&&(u.trait.healer||u.trait.summoner||u.trait.armor>.15||u.trait.flying)){ctx.fillStyle='#e9e7d7';ctx.font='bold 12px system-ui';ctx.textAlign='center';ctx.fillText(u.trait.healer?'+':u.trait.summoner?'✧':u.trait.flying?'⌃':'◇',21,-51);}
   ctx.restore();
 }
 
 function drawEffect(e) {
+  if(drawSpellEffect(ctx,e,laneY(e.lane),motionTime,reduced()))return;
   if(reduced()&&e.type!=='meteor')return;
   const y=laneY(e.lane),t=clamp(e.age/e.maxLife,0,1);
   ctx.save();ctx.globalAlpha=(1-t)*.8;ctx.strokeStyle=e.color;ctx.fillStyle=e.color;ctx.lineWidth=2;

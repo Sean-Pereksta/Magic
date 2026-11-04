@@ -1,5 +1,16 @@
 # Match Wars sprite artwork
 
+## Classes and Sorcery expansion
+
+The expansion adds two original, transparent animation atlases made with the built-in image generation tool. Both use the same eight-column, six-row grid with four frames per character (three walk frames and one cast/attack frame):
+
+- [`classes.png`](classes.png): twelve additional allied classes, with exact prompts, reference, and cell mapping in [`classes-art.md`](classes-art.md).
+- [`enemies.png`](enemies.png): twelve distinct enemy species, with exact prompts, reference, and cell mapping in [`enemies-art.md`](enemies-art.md).
+
+Each new sheet is 1448 × 1086 RGBA with 181-pixel square cells. Preserve the original alpha channel. The runtime selects each class or species by its atlas, row, and base column; enemy sprites are mirrored in battle. Pixel/chunk/alpha integrity and all animation mappings are covered by the game asset checks.
+
+## Original army atlas
+
 `troops.png` was generated with the built-in image generation tool for this game on November 4, 2026. It is a transparent RGBA atlas, 1448 × 1086 pixels, arranged in eight columns and six rows. Each cell is exactly 181 × 181 pixels.
 
 Rows: Ember, Tide, Grove, Storm, Sun, Void. In every row, columns 0–3 are the allied character and columns 4–7 are the enemy. The first three frames provide a walk cycle; the fourth is an attack pose. All source characters face right. Enemy sprites should be mirrored at render time. Use the image's alpha channel directly and crop each cell exactly; attack effects extend to some cell edges.

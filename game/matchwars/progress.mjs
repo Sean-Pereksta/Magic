@@ -1,5 +1,6 @@
-import { UPGRADES } from './combat.mjs';
-import { TOTAL_STAGES } from './campaign.mjs';
+import { UPGRADES } from './combat.mjs?v=3';
+import { TOTAL_STAGES } from './campaign.mjs?v=3';
+import { DEFAULT_LOADOUT, normalizeLoadout } from './classes.mjs?v=3';
 
 /** Only durable campaign progress is saved. Battles always begin afresh. */
 export const KEY = 'matchwars-runeborn-v2';
@@ -19,6 +20,7 @@ function freshProgress() {
     stage: 1,
     completed: [],
     upgrades: {},
+    loadout: { ...DEFAULT_LOADOUT },
     settings: { sound: true, reducedMotion: false },
     seenIntro: false,
     legacyMigrated: false,
@@ -40,6 +42,7 @@ export function sanitizeProgress(input) {
     result.unlocked = Math.max(result.unlocked, nextStage);
   }
   result.stage = bounded(input.stage, 1, result.unlocked, 1);
+  result.loadout = normalizeLoadout(record(input.loadout) ? input.loadout : {}, result.unlocked);
   if (record(input.upgrades)) {
     for (const definition of UPGRADES) {
       if (!owns(input.upgrades, definition.id)) continue;
