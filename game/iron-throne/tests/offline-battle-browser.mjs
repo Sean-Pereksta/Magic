@@ -128,6 +128,137 @@ async function checkBattlefieldHotkeys(page,custom){
   await page.keyboard.press('Tab');await page.keyboard.press('q');assert.equal(await page.locator('#battle-command-panel').isVisible(),false);
 }
 let browser;
+async function checkCommanderMovement(browser){
+  for(const commanderType of ['knight','spearman']){
+    const initial=fixture();beginEncounter(initial);
+    const b=createBattle(initial.offlineBattle,{commanderType});beginBattle(b);
+    const officer=b.units.find(u=>u.commander);
+    assert.equal(officer.type,commanderType);
+    assert.ok(b.units.some(u=>u.armyId===officer.armyId&&u.type==='menAtArms'),'the commander belongs to a mixed campaign army');
+    Object.assign(officer,{x:0,z:-37,y:terrainHeight(b,0,-37),facing:0,speed:0});
+    issueOrder(b,'all','hold',{atCurrent:true});saveEncounterCheckpoint(initial,b);
+    const context=await browser.newContext({viewport:{width:1200,height:800}});
+    try{
+      await context.addInitScript(({initial,key})=>{if(!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify(initial));},{initial,key});
+      const page=await context.newPage(),start=new Date('2026-11-04T12:00:00Z');
+      await page.clock.install({time:start});await page.clock.pauseAt(new Date(+start+1000));
+      await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
+      await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
+      await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click({force:true});
+      await page.locator('[data-battle-action=enter]').click({force:true});
+      for(let n=0;n<300&&await page.locator('#battle-mode').textContent()!=='LEAD THE BATTLE';n++)await page.clock.runFor(50);
+      assert.equal(await page.locator('#battle-mode').textContent(),'LEAD THE BATTLE');
+      const sample=async()=>{
+        await page.keyboard.press('4');
+        return page.evaluate(key=>{
+          const b=JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint,u=b.units.find(u=>u.commander);
+          return {time:b.time,type:u.type,weapon:u.weapon,mounted:u.mounted,heading:u.facing,x:u.x,z:u.z,speed:u.speed,travel:u.rideDistance||0};
+        },key);
+      };
+      // Position the cursor while paused, so the measured mouse move begins from a known point.
+      const x=600,y=400,lookPixels=140,look=lookPixels*.006;
+      await page.keyboard.press('Escape');await page.mouse.move(x,y);await page.keyboard.press('Escape');
+      await page.clock.runFor(100);
+      const rest=await sample();
+      await page.mouse.move(x+lookPixels,y);await page.clock.runFor(55);
+      const looking=await sample();
+      if(commanderType==='spearman'){
+        const dt=looking.time-rest.time,turn=looking.heading-rest.heading;
+        assert.equal(looking.weapon,'spear');assert.ok(!looking.mounted);
+        assert.ok(dt>0&&turn>0&&turn<=2.1*dt+.001&&turn<look,'spear facing advances at its turn rate instead of snapping to the reticle');
+        await page.clock.runFor(600);
+        assert.ok(Math.abs((await sample()).heading-rest.heading-look)<.004,'the spearman eventually faces the mouse aim');
+        continue;
+      }
+      assert.ok(looking.mounted);assert.equal(looking.heading,rest.heading,'mouse look leaves the resting horse facing forward');
+      assert.equal(looking.speed,0);assert.deepEqual([looking.x,looking.z],[rest.x,rest.z]);
+      await page.keyboard.down('w');await page.clock.runFor(65);
+      const first=await sample(),dt=first.time-looking.time;
+      assert.ok(first.speed>0&&first.speed<=2.8*dt+.001&&first.travel>0,'W accelerates the horse from rest');
+      assert.ok(first.heading>rest.heading&&first.heading-rest.heading<=1.85*dt+.001&&first.heading-rest.heading<look,'W steers gradually toward the newly turned camera');
+      await page.mouse.move(x,y);await page.clock.runFor(1400);
+      const straight=await sample();assert.ok(straight.speed>3&&straight.speed>first.speed&&straight.travel>first.travel);
+      await page.keyboard.up('w');await page.keyboard.down('d');await page.clock.runFor(250);
+      const bent=await sample(),arc=bent.heading-straight.heading;
+      const dx=bent.x-straight.x,dz=bent.z-straight.z;
+      const forward=dx*Math.sin(straight.heading)+dz*Math.cos(straight.heading);
+      const side=dx*Math.cos(straight.heading)-dz*Math.sin(straight.heading);
+      assert.ok(arc>0&&arc<=1.85*(bent.time-straight.time)+.001&&forward>.3&&side>0&&side<forward*.5,'D bends the existing forward path into a right-hand arc');
+      await page.keyboard.up('d');await page.clock.runFor(200);const coast=await sample();
+      assert.ok(coast.speed>0&&coast.speed<bent.speed&&coast.travel>bent.travel,'releasing D slows the horse while it still covers ground');
+      await page.clock.runFor(1500);const stopped=await sample();assert.equal(stopped.speed,0);
+      await page.clock.runFor(250);assert.equal((await sample()).travel,stopped.travel,'a fully stopped mount stays in place');
+      await page.keyboard.down('a');await page.clock.runFor(300);const left=await sample();
+      assert.ok(left.heading<stopped.heading&&left.speed>0,'A steers the mount left');
+      await page.keyboard.up('a');await page.keyboard.down('s');await page.clock.runFor(200);const back=await sample();
+      const towardBack=h=>Math.abs(Math.atan2(Math.sin(Math.PI-h),Math.cos(Math.PI-h)));
+      assert.ok(towardBack(back.heading)<towardBack(left.heading)&&towardBack(back.heading)>1&&back.speed<=left.speed,'S brakes into a turnaround without snapping the horse backwards');
+      await page.keyboard.up('s');
+    }finally{await context.close();}
+  }
+  console.log('Mounted commander accelerates, steers toward independent mouse look, turns on D and coasts. A foot spearman tracks the same mouse input at a bounded rate.');
+}
+async function checkPlayerLadder(browser){
+  for(const scenario of ['desktop','phone-occupied','phone-destroyed']){
+    const mobile=scenario!=='desktop',initial=fixture();beginEncounter(initial);
+    const b=createBattle(initial.offlineBattle);beginBattle(b);
+    const player=b.units.find(u=>u.commander),other=b.units.find(u=>u.side===player.side&&u!==player&&u.family==='infantry'),enemy=b.units.find(u=>u.side!==player.side);
+    const ladder=b.layout.ladders[mobile?1:0],wall=b.layout.walls.find(w=>w.id===ladder.wallId);
+    for(const u of b.units)if(u!==player&&u!==other&&u!==enemy)u.status='escaped';
+    Object.assign(player,{x:ladder.foot.x+1,z:ladder.foot.z,y:terrainHeight(b,ladder.foot.x+1,ladder.foot.z),facing:0});
+    Object.assign(enemy,{x:0,z:50,wallId:null,wallPosition:null,explicitOrder:true,holdFire:true,order:{kind:'hold',x:0,z:50}});
+    if(scenario==='phone-occupied'){
+      Object.assign(other,ladder.foot);issueOrder(b,[other.id],'ladder',{ladderId:ladder.id});
+      stepBattle(b,.05);assert.equal(other.action?.ladderId,ladder.id);
+    }else other.status='escaped';
+    if(scenario==='phone-destroyed'){wall.hp=0;wall.state='breached';}
+    saveEncounterCheckpoint(initial,b);
+    const context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1280,height:860},hasTouch:mobile});
+    try{
+      await context.addInitScript(({initial,key})=>{if(!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify(initial));},{initial,key});
+      const page=await context.newPage();page.setDefaultTimeout(30000);
+      const start=new Date('2026-11-04T12:00:00Z');
+      await page.clock.install({time:start});await page.clock.pauseAt(new Date(+start+1000));
+      await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
+      await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
+      await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click({force:true});
+      await page.locator('[data-battle-action=enter]').click({force:true});
+      for(let i=0;i<300&&await page.locator('#battle-mode').textContent()!=='LEAD THE BATTLE';i++)await page.clock.runFor(50);
+      assert.equal(await page.locator('#battle-mode').textContent(),'LEAD THE BATTLE');
+      const button=page.locator('#battle-player-climb');
+      const savedPlayer=async()=>{await page.keyboard.press('4');return page.evaluate(key=>{
+        const b=JSON.parse(localStorage.getItem(key)).offlineBattle.checkpoint;return b.units.find(u=>u.commander);
+      },key);};
+      if(scenario==='phone-destroyed'){
+        assert.equal(await button.isVisible(),false);await page.keyboard.press('e');await page.clock.runFor(100);
+        assert.equal((await savedPlayer()).action,null);continue;
+      }
+      assert.equal(await button.isVisible(),true);
+      assert.ok((await button.textContent()).includes('Climb Ladder'));assert.ok((await button.textContent()).includes(ladder.name));
+      assert.equal(await button.getAttribute('data-ladder'),ladder.id);
+      await page.keyboard.press('Tab');assert.equal(await button.isVisible(),false,'personal climbing is unavailable from the tactical camera');
+      await page.keyboard.press('Tab');
+      const exposed=el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));};
+      if(mobile){
+        assert.equal(await button.isDisabled(),true);assert.match(await button.textContent(),/Foot occupied/);
+        await page.keyboard.press('h');assert.equal(await button.isVisible(),true);
+        await page.clock.runFor(1600);assert.equal(await button.isEnabled(),true);
+        assert.ok(await button.evaluate(exposed)&&await page.locator('#battle-touch-block').evaluate(exposed)&&await page.locator('#battle-stick').evaluate(exposed));
+      }else assert.ok(await button.evaluate(exposed));
+      if(process.env.IRON_BATTLE_SCREENSHOTS){
+        await mkdir(process.env.IRON_BATTLE_SCREENSHOTS,{recursive:true});
+        await page.screenshot({path:path.join(process.env.IRON_BATTLE_SCREENSHOTS,`iron-thrones-player-climb-${mobile?'phone':'desktop'}.png`)});
+      }
+      if(mobile)await button.tap({force:true});else await button.click({force:true});
+      await page.clock.runFor(220);
+      const climbing=await savedPlayer();assert.equal(climbing.action?.ladderId,ladder.id);assert.equal(climbing.action.personal,true);assert.ok(climbing.y>0);
+      assert.equal(await button.isVisible(),false);
+      await page.clock.runFor(6100);
+      const landed=await savedPlayer();assert.equal(landed.wallId,wall.id);assert.ok(Math.abs(landed.x-ladder.landing.x)>1);
+    }finally{await context.close();}
+  }
+  console.log('Commander Climb Ladder: desktop click and minimized-phone tap landed on their named parapets; occupied and destroyed ladder entries were respected.');
+}
 async function checkMobileGuard(browser){
   const initial=fixture();beginEncounter(initial);
   const b=createBattle(initial.offlineBattle);beginBattle(b);
@@ -375,6 +506,8 @@ try{
   else if(process.argv.includes('--targets-only'))await checkSiegePicking(browser);
   else if(process.argv.includes('--hud-only'))await checkBattleHUD(browser);
   else if(process.argv.includes('--block-only'))await checkMobileGuard(browser);
+  else if(process.argv.includes('--player-climb-only'))await checkPlayerLadder(browser);
+  else if(process.argv.includes('--mounted-controls-only'))await checkCommanderMovement(browser);
   else {
   for(const viewport of [{width:1365,height:900},{width:390,height:844}]){
     const context=await browser.newContext({viewport,hasTouch:viewport.width<700});
@@ -506,5 +639,7 @@ try{
   await checkSiegePicking(browser);
   await checkBattleHUD(browser);
   await checkMobileGuard(browser);
+  await checkPlayerLadder(browser);
+  await checkCommanderMovement(browser);
   }
 }finally{await browser?.close();await new Promise(r=>server.close(r));}

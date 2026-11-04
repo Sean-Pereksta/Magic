@@ -11,7 +11,8 @@ export const MAX_ACTIVE_TROOPS = 400;
 export const BATTLE_SIZE_OPTIONS = Object.freeze([100, 150, 200, 300, MAX_ACTIVE_TROOPS]);
 export const RESERVE_WAVE_SECONDS = 8;
 const TAU = Math.PI * 2, STEP = 1 / 20;
-const RULES_VERSION = 3, LEGACY_RAM_HP = 280;
+const RULES_VERSION = 4, LEGACY_RAM_HP = 280;
+const HERO_HEALTH = 1.2, HERO_WEAPON_DAMAGE = 1.1;
 export const WALL_ACCURACY_BONUS = 10;
 const PARRY_WINDOW = .3, PARRY_STUN = .7;
 const clamp = (n, a, z) => Math.max(a, Math.min(z, n));
@@ -25,7 +26,7 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const countTypes = list => { const out = {}; for (const u of list) out[u.type] = (out[u.type] || 0) + 1; return out; };
 const PROFILE = {
   levy: { hp: 70, damage: 16, reach: 1.9, speed: 3.5, weapon: 'axe', shield: false, windup: .45, recovery: .7 },
-  spearman: { hp: 85, damage: 18, reach: 3.7, speed: 3.3, weapon: 'spear', shield: true, windup: .52, recovery: .7 },
+  spearman: { hp: 85, damage: 15, reach: 4, speed: 3.3, weapon: 'spear', shield: true, windup: .74, recovery: 1.06 },
   menAtArms: { hp: 100, damage: 25, reach: 2.1, speed: 3.3, weapon: 'sword', shield: true, windup: .3, recovery: .45 },
   heavyInfantry: { hp: 135, damage: 35, reach: 2.3, speed: 2.6, weapon: 'mace', shield: true, windup: .65, recovery: .9 },
   archer: { hp: 62, damage: 21, reach: 40, accuracy: 58, speed: 3.6, weapon: 'bow', ammo: 24, windup: .75, recovery: 1.4 },
@@ -41,16 +42,61 @@ const PROFILE = {
   siege: { hp: 160, damage: 48, reach: 60, speed: 1.3, weapon: 'catapult', ammo: 16, windup: 2.1, recovery: 5.5 }
 };
 export const TACTICAL_PROFILES = PROFILE;
+function isPlayerHero(b,u){
+  return u.id===b.commanderId && u.owner===b.playerOwner && UNITS[u.type].family!=='siege';
+}
+function troopMaxHp(b,u){
+  const base=PROFILE[u.type].hp;
+  return isPlayerHero(b,u)?Math.round(base*HERO_HEALTH):base;
+}
+function hasLegacyHealth(b,u){
+  const version=b.battleRulesVersion||1;
+  return (version<3&&u.type==='ram'&&u.maxHp===LEGACY_RAM_HP) ||
+    (version<4&&isPlayerHero(b,u)&&u.maxHp===PROFILE[u.type].hp);
+}
 const WEAPONS = {
   sword: { damage: 24, reach: 2.1, windup: .3, recovery: .45 },
-  spear: { damage: 22, reach: 3.7, windup: .52, recovery: .7 },
+  spear: { damage: 14, reach: 4, windup: .76, recovery: 1.08 },
   axe: { damage: 30, reach: 2.3, windup: .6, recovery: .85 },
   mace: { damage: 32, reach: 2, windup: .65, recovery: .9 },
   bow: { damage: 23, reach: 44, windup: .7, recovery: 1.4 },
   crossbow: { damage: 44, reach: 46, windup: .6, recovery: 3.1 },
   lance: { damage: 31, reach: 4.1, windup: .4, recovery: .9 }
 };
-function profileFor(u) { const p = PROFILE[u.type]; return u.weapon === p.weapon || !WEAPONS[u.weapon] ? p : { ...p, ...WEAPONS[u.weapon] }; }
+function wieldedWeapon(u) { return u.sidearm || u.weapon==='lance' && !u.mounted ? 'sword' : u.weapon; }
+function profileFor(u) {
+  const p=PROFILE[u.type], weapon=wieldedWeapon(u);
+  return weapon===p.weapon || !WEAPONS[weapon] ? p : {...p,...WEAPONS[weapon]};
+}
+const MELEE_SWEEPS = {
+  sword: {arc:.85,heavyArc:1.15,heavyTargets:3},
+  axe: {arc:.72,heavyArc:.95,heavyTargets:2},
+  mace: {arc:.55,heavyArc:.72,heavyTargets:1}
+};
+const footSpear = u => !u.mounted && !u.sidearm && u.weapon === 'spear';
+function turnSpear(b, u, desired, dt) {
+  const error=Math.atan2(Math.sin(desired-u.facing),Math.cos(desired-u.facing));
+  const rate=u.action?.kind==='attack' ? .95 : u.braced ? 1.45 : 2.1;
+  if (u.spearTurnAt!==b.time) { u.spearTurnAt=b.time; u.spearTurnUsed=0; }
+  const remaining=Math.max(0,rate*dt-u.spearTurnUsed), turn=clamp(error,-remaining,remaining);
+  u.facing+=turn; u.spearTurnUsed+=Math.abs(turn);
+  if (u.action?.kind==='attack' && !u.action.impacted) u.action.facing=u.facing;
+}
+function faceHeading(b,u,heading,dt) {
+  if (footSpear(u)) turnSpear(b,u,heading,dt);
+  else u.facing=heading;
+}
+
+function inWeaponPath(u,v,action,reach) {
+  const weapon=wieldedWeapon(u), dx=v.x-u.x, dz=v.z-u.z;
+  if (weapon==='spear' || weapon==='lance') {
+    const sin=Math.sin(action.facing), cos=Math.cos(action.facing);
+    const ahead=dx*sin+dz*cos, lateral=Math.abs(dx*cos-dz*sin);
+    return ahead>.1 && ahead<reach+.35 && lateral<(v.mounted?.79:.53)+(action.heavy?.08:0);
+  }
+  const sweep=MELEE_SWEEPS[weapon] || MELEE_SWEEPS.sword;
+  return Math.hypot(dx,dz)<reach+.6 && angle(action.facing,Math.atan2(dx,dz)) < (action.heavy?sweep.heavyArc:sweep.arc);
+}
 
 function hash(value) { let n = 2166136261; for (const c of String(value)) n = Math.imul(n ^ c.charCodeAt(0), 16777619); return n >>> 0 || 1; }
 export function rangedAccuracy(b, u) {
@@ -229,6 +275,7 @@ function allocateCaps(b) {
 // ammunition or casualties. Overflow soldiers wait for a later entry wave.
 export function normalizeBattleCheckpoint(b) {
   if (!b || !Array.isArray(b.units) || !Array.isArray(b.armies)) return b;
+  for (const u of b.units) if (u.weapon==='lance' && !u.mounted) u.sidearm=true;
   if (needsSettlementTerrainRepair(b.layout)) {
     if (fitSettlementTerrain(b.layout)) b.layout.navRevision=(b.layout.navRevision || 0)+1;
     for (const u of b.units.filter(alive)) {
@@ -238,8 +285,10 @@ export function normalizeBattleCheckpoint(b) {
     }
   }
   if ((b.battleRulesVersion || 1) < RULES_VERSION) for (const u of b.units) {
-    if (u.type === 'ram' && u.maxHp === LEGACY_RAM_HP) {
-      u.hp = u.hp / u.maxHp * PROFILE.ram.hp; u.maxHp = PROFILE.ram.hp;
+    if(hasLegacyHealth(b,u)){
+      const maxHp=troopMaxHp(b,u);
+      u.hp=u.hp/u.maxHp*maxHp;
+      u.maxHp=maxHp;
     }
   }
   if (b.layout.ladders.some(l => !l.foot)) provisionLadders(b.layout);
@@ -366,8 +415,12 @@ export function createBattle(encounter, options = {}) {
   const commanderArmy = b.armies.find(a => a.owner === b.playerOwner && !a.arrivalSeconds) || b.armies.find(a => a.owner === b.playerOwner) || b.armies.find(a => a.playerControlled);
   if (commanderArmy) {
     const roster = b.units.filter(u => u.armyId === commanderArmy.armyId);
-    const u = roster.find(u => u.family !== 'siege') || roster[0];
-    if (u) { b.commanderId = u.id; b.playerSide = u.side; b.commanderName = commanderArmy.general?.name || commanderArmy.general || `${commanderArmy.name || commanderArmy.owner} Captain`; u.commander = true; }
+    const u = roster.find(u=>u.type===options.commanderType&&u.family!=='siege') || roster.find(u => u.family !== 'siege') || roster[0];
+    if (u) {
+      b.commanderId=u.id;b.playerSide=u.side;u.commander=true;
+      b.commanderName=commanderArmy.general?.name || commanderArmy.general || `${commanderArmy.name || commanderArmy.owner} Captain`;
+      u.hp=u.maxHp=troopMaxHp(b,u);
+    }
   }
   allocateCaps(b); deployReserves(b, true);
   if (b.layout.fortified) postDefenders(b, b.units.filter(u => fighting(u) && u.side === 1 && (u.owner !== b.playerOwner || options.autoGarrison)));
@@ -472,7 +525,8 @@ export function issueOrder(b, selection, order, params = {}) {
       u.order = { kind: 'hold', x: u.x, z: u.z, facing: Number.isFinite(params.facing) ? params.facing : u.facing, lockFacing: Number.isFinite(params.facing) };
       if (u.wallId) u.order.wallId = u.wallId;
       if (u.status === 'reserve') u.order.anchorOnArrival = true;
-      u.explicitOrder = true; u.path = []; u.pathAt = -10; u.speed = 0; u.chargeDistance = 0;
+      u.explicitOrder = true; u.path = []; u.pathAt = -10; u.chargeDistance = 0;
+      if (!u.mounted || b.phase === 'deployment') u.speed = 0;
     }
     event(b, 'order', `Hold current ground: ${units.length} troops.`);
     return { accepted: true, count: units.length };
@@ -510,7 +564,10 @@ export function issueOrder(b, selection, order, params = {}) {
     }
     if (params.formation) u.formation = params.formation;
     if (order !== 'retreat') recallRetreat(b,u);
-    if (order === 'face') { u.facing = f; u.order = { kind: 'hold', x: u.x, z: u.z, facing: f, lockFacing: true }; u.explicitOrder = true; return; }
+    if (order === 'face') {
+      if (b.phase==='deployment' || !u.mounted && !footSpear(u)) u.facing=f;
+      u.order={kind:'hold',x:u.x,z:u.z,facing:f,lockFacing:true}; u.explicitOrder=true; return;
+    }
     const { x, z } = offsets[slotOrder.indexOf(u) % offsets.length];
     const destination = nearestBattlePosition(b, { x: pos.x + x * Math.cos(f) + z * Math.sin(f), z: pos.z - x * Math.sin(f) + z * Math.cos(f) }, u);
     u.order = { kind: order === 'formation' ? 'move' : order, x: destination.x, z: destination.z, facing: f, lockFacing: Number.isFinite(params.facing), targetArmyId: params.targetArmyId || null, targetId: params.targetId || null, offsetX: x, offsetZ: z };
@@ -557,6 +614,21 @@ function assignLadders(b, units, ladderId, announce=true) {
 }
 function usableLadders(b) {
   return b.layout.ladders.filter(l => b.layout.walls.some(w => w.id === l.wallId && w.hp > 0));
+}
+function ladderEntryBlocker(b,u,ladder) {
+  if(u.action || u.stagger>0)return 'Finish current action';
+  const occupied=b.units.some(v=>alive(v)&&v.action?.kind==='climb'&&v.action.ladderId===ladder.id&&(!v.action.ascending||v.action.progress<.23));
+  return occupied?'Foot occupied':null;
+}
+export function playerLadderOption(b,u) {
+  if(b.phase!=='combat'||!u||u.id!==b.commanderId||!fighting(u)||u.mounted||u.family==='siege'||u.wallId||['climb','stairs'].includes(u.action?.kind))return null;
+  let ladder=null,range=2.5;
+  for(const candidate of usableLadders(b)){
+    if(!candidate.foot||candidate.active===false)continue;
+    const d=distance(u,candidate.foot);
+    if(d<range){range=d;ladder=candidate;}
+  }
+  return ladder?{ladder,blocked:ladderEntryBlocker(b,u,ladder)}:null;
 }
 function inWard(u,ward) { return !!ward && u.x>=ward.left && u.x<=ward.right && u.z>=ward.front && u.z<=ward.rear; }
 function canApproachLayer(b,u,layer) {
@@ -640,22 +712,23 @@ function moveOnWall(b, u, target, dt, keepFacing = false) {
   if (!w || w.hp <= 0) return;
   const x = clamp(target.x, w.x - w.width / 2 + .3, w.x + w.width / 2 - .3), z = clamp(target.z, w.z - w.depth / 2 + .3, w.z + w.depth / 2 - .3);
   const d = Math.hypot(x - u.x, z - u.z), step = Math.min(d, profileFor(u).speed * dt * .65);
-  if (d > .05) { if (!keepFacing) u.facing = Math.atan2(x - u.x, z - u.z); u.x += (x - u.x) / d * step; u.z += (z - u.z) / d * step; }
+  if (d > .05) { if (!keepFacing) faceHeading(b,u,Math.atan2(x-u.x,z-u.z),dt); u.x += (x - u.x) / d * step; u.z += (z - u.z) / d * step; }
   u.y = terrainHeight(b, u.x, u.z) + w.height; u.speed = d > .05 ? step / dt : 0;
 }
 function startStairs(b, u, stair, ascending) {
-  if (u.action || b.units.some(v => v.id !== u.id && alive(v) && v.action?.kind === 'stairs' && v.action.stairId === stair.id && (v.action.ascending !== ascending || v.action.elapsed < 1.1))) return false;
+  if (u.mounted || u.action || b.units.some(v => v.id !== u.id && alive(v) && v.action?.kind === 'stairs' && v.action.stairId === stair.id && (v.action.ascending !== ascending || v.action.elapsed < 1.1))) return false;
   u.action = { kind: 'stairs', stairId: stair.id, wallId: stair.wallId, ascending, elapsed: 0, duration: 4, windup: 4, recovery: 0, fromX: u.x, fromZ: u.z, fromY: u.y, targetX: ascending ? stair.topX : stair.x, targetZ: ascending ? stair.topZ : stair.z };
   u.speed = 0; u.blocking = false; u.braced = false;
   return true;
 }
-function takeWallPosition(b, u, dt) {
+function takeWallPosition(b, u, dt, keepFacing = false) {
   const slot = u.wallPosition, wall = slot && b.layout.walls.find(w => w.id === slot.wallId);
   if (!wall || wall.hp <= 0) { u.order = { kind: 'hold', x: u.x, z: u.z, facing: u.facing }; return false; }
   if (u.action?.kind === 'stairs' || u.action?.kind === 'climb') return true;
   if (u.wallId === wall.id) {
     if (distance(u, slot) > .3) { moveOnWall(b, u, slot, dt); return true; }
-    u.facing = slot.facing; u.speed = 0; return false;
+    if (!keepFacing) faceHeading(b,u,slot.facing,dt);
+    u.speed = 0; return false;
   }
   const stair = b.layout.stairs?.find(s => s.wallId === wall.id);
   if (!stair) return false;
@@ -678,6 +751,34 @@ export function requestAlliedOrder(b, armyId, order) {
   return { accepted: true };
 }
 
+const HORSE_BRAKING = 5;
+function moveHorse(b,u,heading,targetSpeed,dt){
+  // A rider may steer during a swing as well as during the AI movement pass.
+  // Advance this horse's position exactly once per simulation step.
+  if(u.horseStepAt===b.time||u.wallId||!u.mounted)return;
+  u.horseStepAt=b.time;
+  if(u.stagger>0){heading=u.facing;targetSpeed=0;}
+  const speed=Math.max(0,u.speed||0),error=Math.atan2(Math.sin(heading-u.facing),Math.cos(heading-u.facing));
+  const turnRate=Math.min(1.85,5.2/Math.max(1,speed));
+  const turn=clamp(error,-turnRate*dt,turnRate*dt);
+  // Tight reversals shed speed while the mount continues along its old bearing.
+  const desired=Math.max(0,targetSpeed)*Math.max(0,Math.cos(Math.max(0,Math.abs(error)-.20)));
+  const nextSpeed=speed+clamp(desired-speed,-HORSE_BRAKING*dt,2.8*dt);
+  const meters=(speed+nextSpeed)*.5*dt,travel=u.facing+turn*.5;
+  u.facing=Math.atan2(Math.sin(u.facing+turn),Math.cos(u.facing+turn));
+  const lean=-clamp((turn/dt)*nextSpeed*.038,-.21,.21);
+  u.horseLean=(u.horseLean||0)+clamp(lean-(u.horseLean||0),-dt,dt);
+  u.speed=nextSpeed;
+  const slices=Math.max(1,Math.ceil(meters/.32)),dx=Math.sin(travel)*meters/slices,dz=Math.cos(travel)*meters/slices;
+  for(let i=0;i<slices&&meters>0;i++){
+    const x=u.x+dx,z=u.z+dz;
+    if(obstruction(b,x,z,u)){u.speed=0;u.chargeDistance=0;u.horseLean=0;u.pathAt=-10;break;}
+    u.x=x;u.z=z;u.y=terrainHeight(b,x,z);
+    u.rideDistance=(u.rideDistance||0)+meters/slices;
+  }
+  if(u.speed>4&&desired>4&&Math.abs(error)<.55)u.chargeDistance=(u.chargeDistance||0)+meters;
+  else u.chargeDistance=Math.max(0,(u.chargeDistance||0)-dt*5);
+}
 function moveUnit(b, u, destination, dt, options = {}) {
   const profile = profileFor(u);
   if (u.stagger > 0 || ['climb', 'stairs'].includes(u.action?.kind)) return;
@@ -724,7 +825,11 @@ function moveUnit(b, u, destination, dt, options = {}) {
     target = u.path[0] || destination;
   }
   const dx = target.x - u.x, dz = target.z - u.z, d = Math.hypot(dx, dz);
-  if (d < (u.path.length>1 ? .03 : .3)) { u.speed *= .5; return; }
+  if (d < (u.path.length>1 ? .03 : .3)) {
+    if(u.mounted)moveHorse(b,u,u.order.lockFacing?u.order.facing:u.facing,0,dt);
+    else u.speed*=.5;
+    return;
+  }
   let speed = profile.speed * (options.speedScale ?? 1) * (options.sprint && u.stamina > 5 ? 1.45 : 1);
   if (u.family === 'mounted' && !u.mounted) speed = 3.3 * (options.sprint ? 1.45 : 1);
   if (u.family === 'mounted' && b.layout.terrain === 'forest') speed *= .55;
@@ -733,26 +838,31 @@ function moveUnit(b, u, destination, dt, options = {}) {
   if (u.action) speed *= .4;
   const slope = terrainHeight(b, target.x, target.z) - u.y;
   if (slope > 0) speed *= clamp(1 - slope * .06, .6, 1);
+  if(u.mounted){
+    if(!options.direct&&u.path.length<=1&&['hold','follow','move','withdraw','advance'].includes(u.order.kind))
+      speed=Math.min(speed,Math.sqrt(2*HORSE_BRAKING*Math.max(0,d-.15)));
+    moveHorse(b,u,Math.atan2(dx,dz),speed,dt);
+    if(options.sprint&&u.speed>4)u.stamina=Math.max(0,u.stamina-dt*13);
+    return;
+  }
   u.speed = Math.min(speed, u.speed + dt * (u.family === 'mounted' ? 2.8 : 10));
   const step = Math.min(d, u.speed * dt), nx = u.x + dx / d * step, nz = u.z + dz / d * step;
   const blocked = obstruction(b, nx, nz, u);
   if (blocked) {
     u.chargeDistance = 0; u.speed = 0;
     if (options.direct && u.side === 0 && !u.wallId && !u.mounted && dz > 0) {
-      const l = usableLadders(b).find(l => distance(u, l.foot) <= 2.3);
+      const l = u.id===b.commanderId ? playerLadderOption(b,u)?.ladder : usableLadders(b).find(l => distance(u, l.foot) <= 2.3);
       if (l) startClimb(b, u, l, true);
     }
     return;
   }
-  if (u.mounted && u.speed > 4) u.chargeDistance += step; else u.chargeDistance = Math.max(0, u.chargeDistance - dt * 3);
-  if (!options.keepFacing) u.facing = Math.atan2(dx, dz);
+  u.chargeDistance = Math.max(0, u.chargeDistance - dt * 3);
+  if (!options.keepFacing) faceHeading(b,u,Math.atan2(dx,dz),dt);
   u.x = nx; u.z = nz; u.y = terrainHeight(b, nx, nz);
   if (options.sprint) u.stamina = Math.max(0, u.stamina - dt * 13);
 }
 function startClimb(b, u, l, personal = false) {
-  if (u.action || u.mounted || u.family === 'siege') return false;
-  const onLane = b.units.filter(v => alive(v) && v.action?.kind === 'climb' && v.action.ladderId === l.id);
-  if (onLane.some(v => !v.action.ascending || v.action.progress < .23)) return false;
+  if (u.mounted || u.family === 'siege' || ladderEntryBlocker(b,u,l)) return false;
   u.x = l.foot.x; u.z = l.foot.z; u.facing = 0; u.speed = 0; u.blocking = false;
   u.action = { kind: 'climb', ladderId: l.id, wallId: l.wallId, elapsed: 0, duration: 5.8, windup: 4.8, recovery: 1, progress: 0, phase: 'rungs', ascending: true, personal };
   event(b, 'ladder', `${l.name} in use.`, { x: l.x, z: l.z, unitId: u.id });
@@ -879,7 +989,7 @@ function startAttack(b, u, target, heavy = false, point = null) {
   }
   u.stamina -= heavy ? 24 : ranged ? 8 : 11;
   if (target) u.targetId = target.id;
-  u.action = { kind, elapsed: 0, windup: ranged || u.family === 'siege' ? p.windup : u.sidearm ? .35 : p.windup * (heavy ? 1.25 : 1), recovery: u.sidearm ? .65 : p.recovery, duration: 0, heavy, targetId: target?.id || null, targetX: targetPoint.x, targetZ: targetPoint.z, targetY: Number.isFinite(targetPoint.y) ? targetPoint.y : terrainHeight(b, targetPoint.x, targetPoint.z), ranged, impacted: false, facing: u.facing };
+  u.action = { kind, elapsed: 0, windup: ranged || u.family === 'siege' ? p.windup : p.windup * (heavy ? 1.25 : 1), recovery: p.recovery, duration: 0, heavy, targetId: target?.id || null, targetX: targetPoint.x, targetZ: targetPoint.z, targetY: Number.isFinite(targetPoint.y) ? targetPoint.y : terrainHeight(b, targetPoint.x, targetPoint.z), ranged, impacted: false, facing: u.facing };
   u.action.duration = u.action.windup + u.action.recovery;
   return true;
 }
@@ -896,9 +1006,17 @@ function kill(b, u, attacker) {
 }
 function hit(b, attacker, target, raw, options = {}) {
   if (!alive(target)) return;
-  let damage = raw, blocked = false;
+  let damage = isPlayerHero(b,attacker)?raw*HERO_WEAPON_DAMAGE:raw, blocked = false;
   const incoming = facing(target, attacker), frontal = angle(target.facing, incoming) < 1.08;
+  if (options.spearThrust) {
+    // A shaft crowded inside its point has little leverage. A presented horse
+    // is a larger target for the same fully extended thrust.
+    const extension=clamp((distance(attacker,target)-.7)/1.8,.35,1);
+    damage*=extension*(target.mounted ? (frontal?2.15:1.55) : 1);
+  }
+  if (!options.projectile && !frontal && !attacker.mounted && attacker.family==='infantry' && footSpear(target)) damage*=1.2;
   const charge = attacker.mounted && attacker.speed > 4.5 && attacker.chargeDistance > 8 && !options.projectile;
+  if (options.lanceThrust && !charge) damage*=.65;
   if (charge && target.braced && frontal && target.weapon === 'spear') {
     attacker.hp -= 25 + (UNITS[target.type].antiCavalry || 1) * 14;
     attacker.speed = 0; attacker.chargeDistance = 0; attacker.stagger = 1.5; attacker.morale = Math.max(0, attacker.morale - 12);
@@ -912,7 +1030,7 @@ function hit(b, attacker, target, raw, options = {}) {
   }
   if (target.blocking && frontal && target.stamina >= 7 && (target.shield || !options.projectile)) {
     blocked = true;
-    const axe = attacker.weapon === 'axe' || options.heavy;
+    const axe = !options.projectile && wieldedWeapon(attacker) === 'axe' || options.heavy;
     target.stamina = Math.max(0, target.stamina - (axe ? 25 : 10));
     damage *= axe ? .48 : .14;
     target.blockedAt = b.time;
@@ -927,7 +1045,7 @@ function hit(b, attacker, target, raw, options = {}) {
     }
   }
   const armor = UNITS[target.type].armor || (target.family === 'siege' ? .1 : 0);
-  damage *= 1 - armor * (options.piercing || attacker.weapon === 'mace' ? .35 : 1);
+  damage *= 1 - armor * (options.piercing || !options.projectile && wieldedWeapon(attacker) === 'mace' ? .35 : 1);
   if (options.projectile && target.wallId && target.y > attacker.y + 2 && attacker.family !== 'siege' && b.layout.walls.some(w => w.id === target.wallId && w.hp > 0)) damage *= .6;
   if (attacker.counterUntil > b.time) damage *= 1.25;
   if (!frontal && !options.projectile) target.morale = Math.max(0, target.morale - 2.5);
@@ -936,6 +1054,19 @@ function hit(b, attacker, target, raw, options = {}) {
   target.hp -= damageApplied;
   event(b, 'hit', 'A weapon hits.', { x: target.x, y: target.y + (target.mounted ? 1.8 : 1.05), z: target.z, damage: Math.round(damageApplied), damageApplied, unitId: target.id, targetId: target.id, sourceId: attacker.id, targetType: target.type, targetFamily: target.family, directionX: Math.sin(direction), directionZ: Math.cos(direction), blocked });
   if (target.hp <= 0) kill(b, target, attacker);
+  else if (options.spearThrust && frontal && distance(attacker,target)>1.85 && !(attacker.stunnedUntil>b.time)) {
+    if (!blocked && target.mounted && target.speed>4.5 && target.chargeDistance>8) {
+      target.speed=0; target.chargeDistance=0; target.stagger=Math.max(target.stagger,.45);
+      event(b,'brace','A spear catches the charging horse.',{unitId:target.id,x:target.x,z:target.z});
+    } else if (target.family==='infantry' && !target.wallId && !target.atHandle &&
+        !['climb','stairs'].includes(target.action?.kind) && b.time>=(target.spearRecoilUntil || 0)) {
+      const recoil=blocked?.2:.48, x=target.x+Math.sin(direction)*recoil,z=target.z+Math.cos(direction)*recoil;
+      if (!obstruction(b,x,z,target)) {
+        target.x=x; target.z=z; target.y=terrainHeight(b,x,z);
+        target.speed*=.4; target.spearRecoilUntil=b.time+.25;
+      }
+    }
+  }
 }
 function updateFortifications(b) {
   const f = b.fortifications, remaining = [...b.layout.walls, ...(b.layout.gate ? [b.layout.gate] : [])].reduce((sum, w) => sum + Math.max(0, w.hp), 0);
@@ -987,10 +1118,11 @@ function actionImpact(b, u, action) {
     return;
   }
   if (wall && distance(u, wall) < p.reach + Math.max(wall.width, wall.depth) / 2) { hitWall(b, u, wall, u.type === 'ram' ? 38 : 3); return; }
-  const reach = u.sidearm ? 1.9 : p.reach, maxTargets = action.heavy ? 3 : 1;
-  const targets = b.units.filter(v => alive(v) && v.side !== u.side && Math.abs(v.y - u.y) < 2.7 && distance(u, v) < reach + .6 && angle(action.facing, facing(u, v)) < (action.heavy ? 1.1 : .65) && lineClear(b, u, v, u)).sort((a, c) => distance(u, a) - distance(u, c));
+  const weapon=wieldedWeapon(u), reach = p.reach;
+  const maxTargets=action.heavy ? MELEE_SWEEPS[weapon]?.heavyTargets || 1 : 1;
+  const targets = b.units.filter(v => alive(v) && v.side !== u.side && Math.abs(v.y - u.y) < 2.7 && inWeaponPath(u,v,action,reach) && lineClear(b, u, v, u)).sort((a, c) => distance(u, a) - distance(u, c));
   for (let i = 0; i < Math.min(maxTargets, targets.length); i++) {
-    hit(b, u, targets[i], (u.sidearm ? 14 : p.damage) * (action.heavy ? 1.5 : 1) * Math.pow(.65, i), { heavy: action.heavy });
+    hit(b, u, targets[i], p.damage * (action.heavy ? 1.5 : 1) * Math.pow(.65, i), { heavy: action.heavy, spearThrust:weapon==='spear', lanceThrust:weapon==='lance' });
     if (u.stagger > 0) break;
   }
 }
@@ -1244,8 +1376,10 @@ function advanceCompanies(active) {
   return guides;
 }
 function aiUnit(b, u, active, dt, advanceGuide) {
-  const a = b.armies.find(a => a.armyId === u.armyId), p = profileFor(u);
+  const a = b.armies.find(a => a.armyId === u.armyId);
+  let p = profileFor(u);
   if (['stairs', 'climb'].includes(u.action?.kind)) return;
+  if (!u.routing && u.order.kind==='hold' && u.order.lockFacing && footSpear(u)) turnSpear(b,u,u.order.facing,dt);
   if (u.order.kind === 'crew' && !u.routing) { carryRam(b,u,dt); return; }
   if (u.order.kind === 'ladder' && !u.routing && approachLadder(b,u,dt)) return;
   if (u.routing || u.order.kind === 'retreat') {
@@ -1268,19 +1402,22 @@ function aiUnit(b, u, active, dt, advanceGuide) {
         return;
       }
     }
-    u.speed = 0;
+    if(!u.mounted)u.speed=0;
   }
   if (['move', 'withdraw'].includes(u.order.kind)) {
     moveUnit(b, u, u.order, dt, { keepFacing: u.order.kind === 'withdraw' });
     if (distance(u, u.order) >= .6) return;
-    u.order.kind = 'hold'; u.speed = 0;
-    if (u.order.lockFacing) u.facing = u.order.facing;
+    u.order.kind = 'hold';
+    if(u.mounted)return;
+    u.speed = 0;
+    if (u.order.lockFacing) faceHeading(b,u,u.order.facing,dt);
   }
   // Keep the visible weapon swing committed through impact and recovery.
   // Re-targeting/moving every frame previously made fighters turn their backs
   // during a strike and caused the saved strike direction to miss the enemy.
   if (u.action && ['attack', 'shoot', 'siege'].includes(u.action.kind)) {
-    u.speed = Math.max(0, u.speed - dt * 12); u.blocking = false; return;
+    if(!u.mounted)u.speed=Math.max(0,u.speed-dt*12);
+    u.blocking = false; return;
   }
   let enemy = nearestEnemy(b, u, active);
   if (u.wallId && enemy) {
@@ -1333,12 +1470,12 @@ function aiUnit(b, u, active, dt, advanceGuide) {
   if (advanceGuide && d > Math.max(p.reach, 4)) {
     moveUnit(b, u, advanceGuide, dt); return;
   }
-  if (u.order.kind === 'walls' && takeWallPosition(b, u, dt)) return;
+  if (u.order.kind === 'walls' && takeWallPosition(b, u, dt, footSpear(u) && d<p.reach+2)) return;
   u.targetId = enemy?.id || null;
   const oldBlock = u.blocking;
   u.blocking = !!enemy && d < 6 && u.shield && u.stamina > 14 && !u.action && (u.formation === 'defensive' || u.formation === 'spearWall' || enemy.action?.elapsed < enemy.action?.windup);
   if (u.blocking && !oldBlock) { u.blockStarted = b.time; u.parrySpent = false; }
-  u.braced = u.type === 'spearman' && u.speed < .7 && !u.action && ['spearWall', 'defensive'].includes(u.formation) && u.stamina > 15;
+  u.braced = footSpear(u) && u.speed < .7 && !u.action && ['spearWall', 'defensive'].includes(u.formation) && u.stamina > 15;
   const wall = targetWall(b, u);
   if (wall && (u.type === 'ram' || u.ammo > 0)) {
     const approach = { x: wall.x, z: wall.z - (u.type === 'ram' ? 3.5 : p.reach * .75) };
@@ -1348,14 +1485,20 @@ function aiUnit(b, u, active, dt, advanceGuide) {
   }
   if (!enemy) {
     if (b.securing && u.side === 0 && u.family !== 'siege') moveUnit(b, u, b.layout.objective, dt);
-    else u.speed *= .8;
+    else if(!u.mounted)u.speed*=.8;
     return;
   }
   const mayFaceEnemy = !u.order.lockFacing;
-  const canStrike = mayFaceEnemy || angle(u.facing, facing(u, enemy)) < .65;
-  if (mayFaceEnemy) u.facing = facing(u, enemy);
+  const toward = facing(u,enemy);
+  if (mayFaceEnemy) {
+    if (u.mounted) {
+      if (d < p.reach+.3) faceMountedTarget(b,u,toward,dt);
+    } else faceHeading(b,u,toward,dt);
+  }
+  const canStrike = angle(u.facing,toward) < (footSpear(u) ? .28 : .65);
   const ranged = ['bow', 'crossbow'].includes(u.weapon) && u.ammo > 0 || u.family === 'siege' && u.type !== 'ram' && u.ammo > 0;
-  u.sidearm = u.family === 'ranged' && (u.ammo <= 0 || d < 3 && Math.abs(u.y - enemy.y) < 2.7) || u.family === 'siege' && u.type !== 'ram' && u.ammo <= 0;
+  const sidearm = u.weapon==='lance' && !u.mounted || ['bow','crossbow'].includes(u.weapon) && (u.ammo<=0 || d<3 && Math.abs(u.y-enemy.y)<2.7) || u.family==='siege' && u.type!=='ram' && u.ammo<=0;
+  if (sidearm!==u.sidearm) { u.sidearm=sidearm; p=profileFor(u); }
   if (ranged && !u.sidearm) {
     if (d < 10 && !['hold', 'walls', 'follow'].includes(u.order.kind)) { moveUnit(b, u, { x: u.x + (u.x - enemy.x), z: u.z + (u.z - enemy.z) }, dt, { keepFacing: true }); u.facing = facing(u, enemy); }
     else if (canStrike && d < p.reach && !u.holdFire && (u.wallId&&u.family==='ranged'?u.wallSightId===enemy.id:lineClear(b, u, enemy, u, u.family === 'ranged'))) {
@@ -1368,16 +1511,24 @@ function aiUnit(b, u, active, dt, advanceGuide) {
     else if (!['hold', 'walls', 'follow'].includes(u.order.kind)) moveUnit(b, u, enemy, dt, { keepFacing: mayFaceEnemy });
     return;
   }
-  const reach = u.sidearm ? 1.9 : p.reach;
-  if (canStrike && d < reach + .3 && Math.abs(u.y - enemy.y) < 2.7 && lineClear(b, u, enemy, u)) {
-    startAttack(b, u, enemy, u.type === 'heavyInfantry' && random(b) < .2); u.speed *= .8;
+  const reach = p.reach;
+  // Begin setting the point as a closing opponent enters the windup, so a
+  // full-speed approach is met near the tip rather than already at the hilt.
+  const closing = footSpear(u) && angle(enemy.facing,facing(enemy,u))<.8 ? Math.min(1.65,enemy.speed*p.windup*.6) : 0;
+  if (canStrike && d < reach + .3 + closing && Math.abs(u.y - enemy.y) < 2.7 && lineClear(b, u, enemy, u)) {
+    startAttack(b, u, enemy, u.type === 'heavyInfantry' && random(b) < .2);
+    if (!u.mounted) u.speed *= .8;
     return;
   }
-  if (u.order.kind === 'walls' || u.order.kind === 'follow') { u.speed = 0; return; }
+  if (d < reach+.3 && !canStrike && (u.mounted || footSpear(u))) {
+    if (!u.mounted) u.speed=Math.max(0,u.speed-dt*8);
+    return;
+  }
+  if (u.order.kind === 'walls' || u.order.kind === 'follow') { if(!u.mounted)u.speed=0;return; }
   if (u.order.kind === 'hold' && u.wallId) { u.speed = 0; return; }
   if (u.order.kind === 'hold' && (u.explicitOrder || u.order.lockFacing || distance(enemy, u.order) > 8)) {
     moveUnit(b, u, u.order, dt, { keepFacing: true });
-    if (u.order.lockFacing) u.facing = u.order.facing;
+    if(u.order.lockFacing&&!u.mounted)faceHeading(b,u,u.order.facing,dt);
     return;
   }
   if (enemy.wallId && enemy.wallId !== u.wallId && u.family !== 'siege') {
@@ -1401,16 +1552,27 @@ function aiUnit(b, u, active, dt, advanceGuide) {
   }
   moveUnit(b, u, destination, dt, { sprint: u.order.kind === 'charge' && d > 5, keepFacing: u.family !== 'mounted' && mayFaceEnemy });
 }
+function faceMountedTarget(b,u,heading,dt) {
+  const committed=u.speed>4.5 && u.chargeDistance>8 && angle(u.facing,heading)<.5;
+  moveHorse(b,u,heading,committed?u.speed:0,dt);
+}
 function trackAttackFacing(b, u) {
   const action = u.action;
   if (!action || action.impacted || !['attack', 'shoot', 'siege'].includes(action.kind) || u.order.lockFacing || u.routing || ['move', 'withdraw', 'retreat'].includes(u.order.kind)) return;
   const target = b.units.find(v => v.id === action.targetId && alive(v)) || [...b.layout.walls, ...(b.layout.gate ? [b.layout.gate] : [])].find(w => w.id === action.targetId && w.hp > 0);
   if (!target) return;
-  action.facing = u.facing = facing(u, target);
+  const heading=facing(u,target);
+  if (u.mounted) { faceMountedTarget(b,u,heading,STEP); action.facing=u.facing; }
+  else if (footSpear(u)) turnSpear(b,u,heading,STEP);
+  else action.facing=u.facing=heading;
   action.targetX = target.x; action.targetZ = target.z; action.targetY = target.y ?? terrainHeight(b, target.x, target.z);
 }
 function preparePlayerGuard(b,u,input) {
-  if (Number.isFinite(input.facing) && !['stairs','climb'].includes(u.action?.kind)) u.facing=input.facing;
+  if (Number.isFinite(input.facing) && !u.mounted && !['stairs','climb'].includes(u.action?.kind)) {
+    if (footSpear(u) || input.weapon==='spear' && u.weapon!=='spear' && !u.action && u.family!=='siege') turnSpear(b,u,input.facing,STEP);
+    else u.facing=input.facing;
+  }
+  if (u.mounted && u.action?.kind==='attack' && !u.action.impacted) u.action.facing=u.facing;
   const held=!!input.block, pressed=input.blockPressed||held&&!u.guardHeld;
   if (pressed) { u.blockStarted=b.time; u.parrySpent=false; }
   u.guardHeld=held;
@@ -1419,18 +1581,19 @@ function preparePlayerGuard(b,u,input) {
 function playerUnit(b, u, input, dt) {
   if (['stairs', 'climb'].includes(u.action?.kind)) return;
   if (input.weapon && !u.action && WEAPONS[input.weapon] && u.family !== 'siege') {
-    const canEquip = input.weapon !== 'lance' || u.family === 'mounted';
+    const canEquip = input.weapon !== 'lance' || u.mounted;
     const hasQuiver = !['bow', 'crossbow'].includes(input.weapon) || u.family === 'ranged';
     if (canEquip && hasQuiver && u.weapon !== input.weapon) { u.weapon = input.weapon; u.sidearm = false; }
   }
   if (u.blocking) u.stamina = Math.max(0, u.stamina - dt * 5);
-  if (Number.isFinite(input.facing)) u.facing = input.facing;
-  if (input.sidearm !== undefined) u.sidearm = !!input.sidearm;
+  if (!u.action && input.sidearm !== undefined) u.sidearm = !!input.sidearm;
+  if (!u.mounted && u.weapon==='lance') u.sidearm=true;
   const mx = clamp(Number(input.moveX ?? input.move?.x) || 0, -1, 1), mz = clamp(Number(input.moveZ ?? input.move?.z) || 0, -1, 1), norm = Math.hypot(mx, mz);
   if (norm > .05) moveUnit(b, u, { x: u.x + mx / Math.max(1, norm) * 5, z: u.z + mz / Math.max(1, norm) * 5 }, dt, { direct: true, sprint: !!input.sprint, keepFacing: true });
-  else if (u.order.kind === 'walls') takeWallPosition(b, u, dt);
+  else if(u.mounted)moveHorse(b,u,(input.attack||u.blocking)&&Number.isFinite(input.facing)?input.facing:u.facing,0,dt);
+  else if (u.order.kind === 'walls') takeWallPosition(b, u, dt, Number.isFinite(input.facing));
   else u.speed = Math.max(0, u.speed - dt * 8);
-  u.braced = u.weapon === 'spear' && u.blocking && u.speed < .5;
+  u.braced = footSpear(u) && u.blocking && u.speed < .5;
   if (input.attack && !u.blocking) {
     const enemy = nearestEnemy(b, u, b.units.filter(v => angle(u.facing, facing(u, v)) < 1));
     const reach = profileFor(u).reach;
@@ -1440,12 +1603,17 @@ function playerUnit(b, u, input, dt) {
     if (enemy && distance(u, enemy) <= reach && angle(u.facing, facing(u, enemy)) < .12 && ['bow', 'crossbow'].includes(u.weapon)) Object.assign(point, { x: enemy.x, z: enemy.z, y: enemy.y });
     startAttack(b, u, enemy && distance(u, enemy) <= reach ? enemy : null, !!input.heavy, point);
   }
-  if (input.interact && !u.interactHeld) {
-    const ladder = !u.wallId && usableLadders(b).find(l => distance(u, l.foot) < 2.5);
+  if (input.climbLadderId || input.interact && !u.interactHeld) {
+    const option = playerLadderOption(b,u);
     const stair = b.layout.stairs?.find(s => u.wallId === s.wallId ? Math.hypot(u.x - s.topX, u.z - s.topZ) < 3 : distance(u, s) < 3);
-    if (stair) startStairs(b, u, stair, !u.wallId);
-    else if (ladder) startClimb(b,u,ladder,true);
-    else if (u.family === 'mounted' && !u.action) { u.mounted = !u.mounted; u.speed = 0; u.chargeDistance = 0; event(b, 'mount', u.mounted ? 'You mount your horse.' : 'You dismount. Your mount stays with you.'); }
+    if (option || input.climbLadderId) {
+      if (option && !option.blocked && (!input.climbLadderId || option.ladder.id===input.climbLadderId)) startClimb(b,u,option.ladder,true);
+    } else if (stair&&!u.mounted) startStairs(b, u, stair, !u.wallId);
+    else if (u.family === 'mounted' && !u.wallId&&!u.action) {
+      u.mounted=!u.mounted;u.speed=0;u.horseLean=0;u.chargeDistance=0;
+      if (u.weapon==='lance') u.sidearm=!u.mounted;
+      event(b,'mount',u.mounted?'You mount your horse.':'You dismount. Your mount stays with you.');
+    }
   }
   u.interactHeld = !!input.interact;
 }
@@ -1576,6 +1744,7 @@ function tick(b, input) {
     if (!alive(u)) continue;
     if (u.id === b.commanderId && !b.auto && !input.commanderAI && !u.routing) playerUnit(b, u, input, dt);
     else aiUnit(b, u, active, dt, guides.get(u.id));
+    if(u.mounted&&alive(u)&&u.speed>0&&u.horseStepAt!==b.time)moveHorse(b,u,u.facing,0,dt);
   }
   separateUnits(b, active.filter(alive), dt); updateProjectiles(b, dt);
   for (const ram of active) if (ram.type==='ram' && alive(ram)) updateRam(b,ram,dt);
@@ -1588,9 +1757,10 @@ export function stepBattle(b, dt, input = {}) {
   b.accumulator += Math.min(dt, 2);
   b.pendingInput ||= {};
   for (const key of ['attack', 'interact', 'heavy', 'blockPressed']) if (input[key]) b.pendingInput[key] = true;
+  if (input.climbLadderId) b.pendingInput.climbLadderId=input.climbLadderId;
   while (b.accumulator + 1e-9 >= STEP && b.phase === 'combat') {
     b.accumulator -= STEP;
-    tick(b, { ...input, attack: input.attack || b.pendingInput.attack, interact: input.interact || b.pendingInput.interact, heavy: input.heavy || b.pendingInput.heavy, blockPressed:!!b.pendingInput.blockPressed });
+    tick(b, { ...input, attack: input.attack || b.pendingInput.attack, interact: input.interact || b.pendingInput.interact, heavy: input.heavy || b.pendingInput.heavy, blockPressed:!!b.pendingInput.blockPressed, climbLadderId:b.pendingInput.climbLadderId });
     b.pendingInput = {};
   }
   return b;
@@ -1629,7 +1799,8 @@ export function finishAutomatically(b) {
       for (const u of b.units) if (fighting(u)) {
         const ammunition = u.type === 'ram' ? 0 : u.family === 'ranged' ? u.ammo > 0 ? 1 : .45 : u.family === 'siege' ? u.ammo > 0 ? .8 : .2 : 1;
         const health = .35 + .65 * u.hp / u.maxHp, morale = .3 + .7 * u.morale / 100;
-        forces[u.side] += (UNITS[u.type].attack + UNITS[u.type].defense) * ammunition * health * morale;
+        const attack=UNITS[u.type].attack*(isPlayerHero(b,u)?HERO_WEAPON_DAMAGE:1);
+        forces[u.side] += (attack + UNITS[u.type].defense) * ammunition * health * morale;
         living[u.side].push(u);
       }
       if (!living[0].length || !living[1].length) {
@@ -1692,11 +1863,16 @@ export function validateBattleCheckpoint(b, encounter) {
     seen.add(u.id);
     const prefix = `${u.armyId}:${u.type}:`, index = Number(String(u.id).slice(prefix.length));
     if (!String(u.id).startsWith(prefix) || !Number.isInteger(index) || index < 0 || index >= (p.units?.[u.type] || 0)) return false;
-    const legacyRam = (b.battleRulesVersion || 1) < RULES_VERSION && u.type === 'ram' && u.maxHp === LEGACY_RAM_HP;
-    if (![u.x, u.z, u.y, u.hp, u.maxHp, u.morale, u.stamina, u.ammo, u.facing].every(Number.isFinite) || u.hp < 0 || u.hp > u.maxHp || u.maxHp !== PROFILE[u.type].hp && !legacyRam || u.ammo < 0 || u.ammo > (PROFILE[u.type].ammo || 0) || u.morale < 0 || u.morale > 100 || u.stamina < 0 || u.stamina > 100) return false;
+    if (![u.x, u.z, u.y, u.hp, u.maxHp, u.morale, u.stamina, u.ammo, u.facing].every(Number.isFinite) || u.hp < 0 || u.hp > u.maxHp || u.maxHp !== troopMaxHp(b,u) && !hasLegacyHealth(b,u) || u.ammo < 0 || u.ammo > (PROFILE[u.type].ammo || 0) || u.morale < 0 || u.morale > 100 || u.stamina < 0 || u.stamina > 100) return false;
     if (u.status === 'dead' && u.hp !== 0 || u.status !== 'dead' && u.hp <= 0) return false;
     const key = `${u.armyId}:${u.type}`; totals.set(key, (totals.get(key) || 0) + 1);
     if (!u.order || !Array.isArray(u.path) || u.action && ![u.action.elapsed, u.action.duration, u.action.windup].every(Number.isFinite)) return false;
+    if(u.family==='mounted'){
+      if(u.speed!==undefined&&(!Number.isFinite(u.speed)||u.speed<0||u.speed>20))return false;
+      if(u.rideDistance!==undefined&&(!Number.isFinite(u.rideDistance)||u.rideDistance<0))return false;
+      if(u.horseLean!==undefined&&(!Number.isFinite(u.horseLean)||Math.abs(u.horseLean)>.22))return false;
+      if(u.horseStepAt!==undefined&&(!Number.isFinite(u.horseStepAt)||u.horseStepAt<0||u.horseStepAt>b.time+1e-6))return false;
+    }
     if (u.wallId && !b.layout.walls?.some(w => w.id === u.wallId)) return false;
     if (u.wallPosition && (![u.wallPosition.x, u.wallPosition.z, u.wallPosition.facing].every(Number.isFinite) || !b.layout.walls?.some(w => w.id === u.wallPosition.wallId))) return false;
     if (u.action?.kind === 'stairs' && (![u.action.fromX, u.action.fromZ, u.action.fromY, u.action.targetX, u.action.targetZ].every(Number.isFinite) || !b.layout.stairs?.some(s => s.id === u.action.stairId && s.wallId === u.action.wallId))) return false;

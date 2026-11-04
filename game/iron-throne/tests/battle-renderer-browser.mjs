@@ -213,6 +213,34 @@ try{
   });
   assert.equal(polearms,4);
   if(process.env.BATTLE_SCREENSHOT)await page.screenshot({path:process.env.BATTLE_SCREENSHOT.replace(/\.png$/, '-spears.png')});
+  const horseFrames=await page.evaluate(async()=>{
+    const {createBattle,beginBattle,stepBattle}=await import('/game/iron-throne/battle-sim.mjs');
+    const {createBattleRenderer}=await import('/game/iron-throne/battle-renderer.mjs');
+    const canvas=document.querySelector('canvas'),gl=canvas.getContext('webgl');
+    const field=createBattle({id:'horse-turn',seed:26,playerOwner:'ashen',playerSide:0,tile:{terrain:'plains'},
+      participants:[{armyId:'a',side:0,owner:'ashen',units:{cavalry:1}},{armyId:'d',side:1,owner:'vesper',units:{levy:1}}]});
+    beginBattle(field);const [horse,enemy]=field.units;
+    Object.assign(horse,{x:0,z:-28,facing:0});Object.assign(enemy,{x:60,z:65,order:{kind:'hold',x:60,z:65},explicitOrder:true});
+    for(let n=0;n<72;n++)stepBattle(field,.05,{moveZ:1,sprint:true});
+    for(let n=0;n<12;n++)stepBattle(field,.05,{moveX:1,sprint:true,facing:Math.PI});
+    const scene=await createBattleRenderer(canvas,field);window.horsePresentation=scene;
+    const camera={mode:'third',target:{x:horse.x,y:horse.y+.2,z:horse.z},yaw:horse.facing+1.55,pitch:.16,distance:8};
+    function pixels(){
+      scene.render(field,camera);const p=new Uint8Array(canvas.width*canvas.height*4);
+      gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,p);return p;
+    }
+    function difference(a,b){let changed=0;for(let i=0;i<a.length;i+=4)if(Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2])>12)changed++;return changed;}
+    const pose=pixels(),distance=horse.rideDistance,lean=horse.horseLean;
+    horse.rideDistance+=.9;const stride=difference(pose,pixels());
+    horse.rideDistance=distance;horse.horseLean=0;const banking=difference(pose,pixels());
+    horse.horseLean=lean;scene.render(field,camera);
+    return {stride,banking,lean,heading:horse.facing,glError:gl.getError()};
+  });
+  assert.ok(horseFrames.heading>0&&horseFrames.heading<Math.PI/2);
+  assert.ok(horseFrames.lean<-.06&&horseFrames.banking>30&&horseFrames.stride>30);
+  assert.equal(horseFrames.glError,0);
+  if(process.env.BATTLE_SCREENSHOT)await page.screenshot({path:process.env.BATTLE_SCREENSHOT.replace(/\.png$/, '-horse-turn.png')});
+  await page.evaluate(()=>horsePresentation.dispose());
   const corpses=await page.evaluate(()=>{
     const sample=structuredClone(combatSample),dead=sample.units[2];sample.events=[];sample.units=Array.from({length:200},(_,i)=>({...dead,id:`corpse-${i}`,x:i%20-10,z:Math.floor(i/20)*2-5}));
     renderer.render(sample,{mode:'tactical',target:{x:0,y:0,z:5},yaw:0,pitch:.8,distance:42});const present={...renderer.stats};sample.time+=120;renderer.render(sample,{mode:'tactical',target:{x:0,y:0,z:5},yaw:0,pitch:.8,distance:42});return{present,later:{...renderer.stats}};

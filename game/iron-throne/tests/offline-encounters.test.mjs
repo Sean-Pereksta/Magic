@@ -204,6 +204,19 @@ test('configuring the existing campaign preserves tactical timing preferences',(
   const {s}=fixture();configureOfflineBattles(s,{tacticalTime:'slow'});configureOfflineBattles(s);
   assert.equal(s.offlineBattles.tacticalTime,'slow');assert.throws(()=>configureOfflineBattles(s,{tacticalTime:'invalid'}));
 });
+test('resuming a campaign upgrades only its counted commander and preserves the wound percentage',()=>{
+  const {s}=fixture({support:false,fort:false});
+  resolveMovement(s);beginEncounter(s);
+  const b=createBattle(pendingEncounter(s));
+  const hero=b.units.find(u=>u.id===b.commanderId),peer=b.units.find(u=>u.id!==hero.id&&u.type===hero.type);
+  b.battleRulesVersion=3;hero.maxHp=peer.maxHp;hero.hp=hero.maxHp/4;peer.hp=32;
+  saveEncounterCheckpoint(s,b);
+  const loaded=parseSave(JSON.stringify(s)), resumed=loaded.offlineBattle.checkpoint;
+  const upgraded=resumed.units.find(u=>u.id===hero.id);
+  assert.equal(upgraded.maxHp,84);assert.equal(upgraded.hp,21);
+  assert.equal(resumed.units.find(u=>u.id===peer.id).hp,32);
+  assert.deepEqual(parseSave(JSON.stringify(loaded)).offlineBattle.checkpoint,resumed);
+});
 
 test('battle size preferences persist and cannot resize a saved encounter',()=>{
   const {s}=fixture({support:false,fort:false,defenders:100});assert.equal(s.offlineBattles.battleSize,300);

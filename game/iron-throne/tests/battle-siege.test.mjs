@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createBattle, beginBattle, issueOrder, stepBattle, battleResult, validateBattleCheckpoint, nearestBattlePosition } from '../battle-sim.mjs';
+import { createBattle, beginBattle, issueOrder, stepBattle, battleResult, validateBattleCheckpoint, nearestBattlePosition, playerLadderOption } from '../battle-sim.mjs';
 import { ramApproach, ramHandle } from '../battle-siege.mjs';
 
 function fort(attack = { menAtArms:12 }, defend = { cavalry:1 }, playerSide = 0) {
@@ -94,6 +94,32 @@ test('a player interacting at the foot uses the rungs, mantle and side step onto
   run(b,4,{});
   assert.equal(commander.wallId,ladder.wallId); assert.equal(commander.y,6);
   assert.ok(Math.abs(commander.x-ladder.landing.x)>1);
+});
+test('E and the contextual button choose the same nearest ladder; a stale tap cannot climb another one',()=>{
+  const {b}=fort({menAtArms:2});beginBattle(b);
+  const player=b.units.find(u=>u.commander),[west,east]=b.layout.ladders;
+  Object.assign(east.foot,{x:west.foot.x+1.7,z:west.foot.z});Object.assign(player,east.foot);
+  assert.equal(playerLadderOption(b,player).ladder.id,east.id,'closest reachable foot wins even when listed second');
+  const key=structuredClone(b),button=structuredClone(b);
+  stepBattle(key,.05,{interact:true});
+  stepBattle(button,.02,{climbLadderId:east.id});stepBattle(button,.03,{});
+  const a=key.units.find(u=>u.commander).action,c=button.units.find(u=>u.commander).action;
+  assert.equal(a.ladderId,east.id);assert.deepEqual(c,a);
+  b.layout.walls.find(w=>w.id===east.wallId).hp=0;
+  assert.equal(playerLadderOption(b,player).ladder.id,west.id);
+  stepBattle(b,.05,{climbLadderId:east.id});assert.equal(player.action,null);
+  b.layout.walls.find(w=>w.id===west.wallId).hp=0;
+  assert.equal(playerLadderOption(b,player),null);stepBattle(b,.05,{interact:true});assert.equal(player.action,null);
+});
+test('a player at an occupied foot can board once the leading soldier clears its rungs',()=>{
+  const {b}=fort({menAtArms:2});beginBattle(b);
+  const player=b.units.find(u=>u.commander),other=b.units.find(u=>u.side===player.side&&u!==player),ladder=b.layout.ladders[0];
+  Object.assign(player,ladder.foot);Object.assign(other,ladder.foot);issueOrder(b,[other.id],'ladder',{ladderId:ladder.id});
+  stepBattle(b,.05);assert.equal(other.action?.kind,'climb');
+  assert.equal(playerLadderOption(b,player).blocked,'Foot occupied');
+  stepBattle(b,.05,{climbLadderId:ladder.id});assert.equal(player.action,null);
+  run(b,1.6,{});assert.equal(playerLadderOption(b,player).blocked,null);
+  stepBattle(b,.05,{climbLadderId:ladder.id});assert.equal(player.action?.ladderId,ladder.id);
 });
 test('a company larger than the wall walk keeps landing as the forward ranks take the stairs',()=>{
   const {b,attackers,defenders}=fort({archer:1,menAtArms:28},{cavalry:1});

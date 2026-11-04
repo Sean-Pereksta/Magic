@@ -98,6 +98,9 @@
 .battlefield.is-targeting #battle-reticle {color: #f4d27c}
 .battlefield .battle-pause {z-index: 6}
 .battlefield .battle-pause section {max-height: calc(100dvh - 16px); overflow: auto; box-sizing: border-box}
+.battle-combat-guide{margin-top:12px;padding-top:8px;border-top:1px solid #bca37455}
+.battle-combat-guide summary{cursor:pointer;color:#ebcf9c;padding:4px 0}
+.battle-combat-guide p{margin:8px 0;font-size:.82rem}
 
 /* In the clear view the reticle, touch controls, deployment action, pause and short order feedback stay usable. */
 .battlefield.hud-minimized :is(.battle-hud,.battle-command-panel,.battle-command-strip,.battle-player,.battle-event,#battle-live-selection) {display: none}
@@ -186,4 +189,22 @@
   #battle-touch-block strong{font-size:.8rem}
   #battle-touch-block small{grid-column:1/-1;font-size:.65rem}
   #battle-touch-block[aria-pressed=true]{color:#182523;background:#e7ca85;border-color:#fff3c4}
+}
+.battlefield #battle-player-climb {
+  position:absolute; z-index:3; left:50%; top:calc(50% + 54px); transform:translateX(-50%);
+  display:flex; align-items:center; gap:9px; min-height:50px; max-width:calc(100% - 20px); padding:6px 12px;
+  color:#fff4d5; background:#503e22f2; border:2px solid #e5c478; border-radius:8px;
+  box-shadow:0 2px 10px #0009; text-align:left; touch-action:manipulation;
+}
+#battle-player-climb kbd {display:grid; place-items:center; min-width:25px; height:26px; border:1px solid #dbc590; border-radius:4px; color:#ffe2a1}
+#battle-player-climb span {display:grid; gap:1px}
+#battle-player-climb strong {font-size:.9rem}
+#battle-player-climb small {color:#e7cca3; font-size:.74rem}
+.battlefield #battle-player-climb:disabled {opacity:1; color:#e0dad1; background:#30332ff2; border-color:#a39a7d}
+#battle-player-climb:focus-visible {outline:2px solid #ffedbe; outline-offset:3px}
+@media (max-width:700px), (pointer:coarse) {
+  .battlefield #battle-player-climb {top:auto; bottom:calc(var(--hud-bottom) + 194px)}
+}
+@media (max-height:560px) and (orientation:landscape) {
+  .battlefield #battle-player-climb {top:53%; bottom:auto}
 }

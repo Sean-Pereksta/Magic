@@ -14,6 +14,8 @@ Both sides have editable rosters. Their deployment previews show how many soldie
 
 ## Playing
 
+In Custom Battle, **Your commander** lets you lead as a troop already in your chosen army. Choose **Cavalry rider** to ride with a mixed force or **Spearman** to fight on foot. The player commander gets 20% extra maximum health, rounded to the nearest hit point, and deals 10% more personal weapon damage. Older battles retain the commander’s wound percentage on reload.
+
 Enter Battle opens deployment. Attackers and defenders begin in separate zones at opposite ends of the field, facing each other, even when their campaign approach directions coincide. Fort defenders start inside their defenses. Zone outlines show the starting areas; placement checks terrain and occupied space so troops cannot be stacked on another formation or placed among opponents. Select troop families or a particular player army, choose a formation, and drag on the ground to place the group and set its facing. Archers, crossbows and cavalry have separate selection cards with deployed and reserve counts. Choosing a formation immediately rearranges the selected troops. Begin Battle switches to third-person commander control.
 
 Choose **Troops on the field** in campaign settings, at a new encounter, or in Custom Battle. Both armies share the selected limit of 100, 150, 200, 300, or 400 active troops. Extra soldiers arrive in waves. New campaigns default to 300. Existing campaigns keep their chosen limit. Saved battles retain their starting limit.
@@ -52,6 +54,12 @@ The compact on-field command guide shows the current selection and acknowledges 
 Adjust **Mouse look sensitivity** in the campaign menu or battle pause panel, from 0.5× through 4×. A posted archer gains 10 accuracy points on an intact wall walk. Individual training and weapon type affect aim, and moving targets can dodge an arrow after it leaves the bow.
 
 Tactical view runs in real time by default. Slow motion and pause remain available in the command panel. In real time, the commander follows formation orders while the player commands. A knocked-out commander stays knocked out; surviving troops remain controllable. Ranged loadouts require a ranged commander, and lances require a mounted commander. Weapon changes never refill a quiver or add troops.
+
+**Personal climbing.** Walk to the foot of an intact ladder. The **Climb Ladder** button names the ladder within reach. Click, tap or press **E** to climb to its parapet. If the lowest rungs are occupied, wait for space. The prompt stays available when the rest of the HUD is hidden.
+
+**Weapon handling.** A sword makes quick cuts in close quarters. A spear reaches about four metres in a narrow forward lane. A well-placed thrust checks advancing infantry and hits an oncoming horse harder. A spearman takes time to bring the point around, so swordsmen can close from the side. Axes put pressure on shields, maces work against armor, and a lance does its best work on a committed charge. See **Weapons and riding** in the pause menu for a short guide.
+
+**Mounted steering.** Use the movement keys or stick to steer the horse. At speed it turns in an arc and carries forward as it slows. **Hold Here** cancels a charge immediately and the horse brakes to a stop. Start a turn before the corner and line up the lance before contact. You can look around with the camera while riding straight ahead.
 
 Orders cover move/facing, hold, defend walls, advance, charge, follow, attack a selected enemy army, attack nearest, fire/hold fire, withdrawal and retreat. Defend walls places infantry and ranged troops on intact parapets during deployment; during combat they walk to the inside stairs and climb. Leaving a wall uses the same stairs. Elevated archers can shoot down over the parapet while ground troops need a route up to engage them. Formation spacing and behavior implement balanced, defensive line, spear wall, aggressive charge, skirmish and flanking. Allies accept or decline broad requests and retain their own command.
 

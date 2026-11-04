@@ -38,6 +38,14 @@ test('Royal City Siege starts with two armies, an upgraded city and 400 active c
   assert.equal(battle.units.length,442);
   assert.ok(validateBattleCheckpoint(battle,encounter));
 });
+test('a mixed custom army can be led from horseback without changing the roster',()=>{
+  const settings={...westWallAssault(),commanderType:'lightCavalry'};
+  const {battle,encounter}=customDeployment(settings);
+  const commander=battle.units.find(u=>u.id===battle.commanderId);
+  assert.equal(commander.type,'lightCavalry');assert.equal(commander.mounted,true);assert.equal(commander.maxHp,132);
+  assert.equal(battle.units.filter(u=>u.side===0&&u.type==='lightCavalry').length,settings.armies[0].lightCavalry);
+  assert.ok(validateBattleCheckpoint(battle,encounter));
+});
 
 test('mixed siege engines remain distinct from soldiers and a human defender starts on the parapet',()=>{
   const settings=westWallAssault();

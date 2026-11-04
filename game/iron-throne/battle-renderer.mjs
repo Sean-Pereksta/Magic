@@ -30,6 +30,9 @@ const mix=(a,b,t)=>a+(b-a)*clamp(t,0,1);
 const hash=value=>{let n=2166136261;for(const c of String(value))n=Math.imul(n^c.charCodeAt(0),16777619);return n>>>0;};
 const CORPSE_LIMIT=160,DETAILED_CORPSE_LIMIT=24,BLOOD_LIMIT=96,BLOOD_DISTANCE=32,BLOOD_LIFETIME=.85;
 const carriesPolearm=u=>!u.sidearm&&(['spear','lance'].includes(u.weapon)||!u.weapon&&['spearman','cavalry','knight'].includes(u.type));
+function horseStride(u,time){
+  return (u.rideDistance??time*(u.speed||0))*TAU/3.6+(hash(u.id)%17);
+}
 // The projectile and movement simulators use the obstacle's rectangular bounds.
 // Fit the asymmetric rock asset to one centered, ground-based unit box first.
 export function obstacleRockMesh(mesh){
@@ -404,11 +407,11 @@ export async function createBattleRenderer(canvas,battle,options={}) {
     const dead=unit.status==='dead',action=unit.action,moving=(unit.speed||0)>.15||action?.kind==='stairs',progress=action?clamp(action.elapsed/Math.max(.01,action.duration||1),0,1):0;
     const carrying=unit.atHandle&&unit.order?.kind==='crew';
     const ram=carrying&&previousBattle.units.find(u=>u.id===unit.order.ramId);
-    const phase=carrying?time*8:time*(mounted?13:9)+(hash(unit.id)%17),walk=moving?Math.sin(phase)*.55:Math.sin(time*2)*.015;
+    const phase=carrying?time*8:mounted?horseStride(unit,time):time*9+(hash(unit.id)%17),walk=moving?Math.sin(phase)*.55:Math.sin(time*2)*.015;
     const facing=dead?(unit.deathFacing??unit.facing??0):action?.kind==='stairs'?Math.atan2(action.targetX-action.fromX,action.targetZ-action.fromZ):unit.facing||0;
     const fall=dead?clamp((time-(unit.deathTime??time-1))/.55,0,1):0,tilt=fall*(mounted?Math.PI/2:1.55),side=hash(unit.id)%2?1:-1;
     const bodyY=dead?mix(unit.y??height(unit.x,unit.z),corpseFloor(unit),fall):unit.y??height(unit.x,unit.z);
-    const root=multiply(transform([unit.x,bodyY+fall*(mounted?.48:.23),unit.z],[0,facing,0]),transform([0,0,0],mounted?[0,0,side*tilt]:[tilt,0,side*.12*fall]));
+    const root=multiply(transform([unit.x,bodyY+fall*(mounted?.48:.23),unit.z],[0,facing,0]),transform([0,0,0],mounted?[0,0,dead?side*tilt:unit.horseLean||0]:[tilt,0,side*.12*fall]));
     const pose=battleActionPose(unit),flinch=recentHits.get(unit.id)||0,polearm=carriesPolearm(unit);
     const limbs=action?.kind==='climb'&&action.phase==='rungs'&&climbingLimbs(unit);
     for(const node of nodes){
@@ -429,7 +432,7 @@ export async function createBattleRenderer(canvas,battle,options={}) {
         if(/^thigh[LR]$/.test(name)&&!mounted)rot[0]+=walk*(name.endsWith('R')?-1:1);
         if(/^shin[LR]$/.test(name)&&!mounted)rot[0]+=Math.max(0,-walk*(name.endsWith('R')?-1:1))*.7;
         if(/^arm[LR]$/.test(name))rot[0]-=walk*(name.endsWith('R')?-1:1)*.65;
-        if(/^horseLeg[FB][LR]$/.test(name))rot[0]+=Math.sin(phase+(name.includes('FR')||name.includes('BL')?Math.PI:0))*(moving?.6:.01);
+        if(/^horseLeg[FB][LR]$/.test(name))rot[0]+=Math.sin(phase+(name.includes('FR')||name.includes('BL')?Math.PI:0))*Math.min(.65,(unit.speed||0)*.14);
         if(name.startsWith('wheel')&&moving)rot[1]+=time*unit.speed*2;
         if(name==='tail')rot[2]+=Math.sin(time*3)*.18;
         if(name==='cape'||name.startsWith('horseCloth'))rot[0]+=Math.sin(time*5+unit.x)*.1;
@@ -470,7 +473,7 @@ export async function createBattleRenderer(canvas,battle,options={}) {
           if(name==='ramHead')pos[2]+=Math.sin(progress*TAU)*.65;
           if(name.includes('crew')&&name.includes('arm'))rot[0]=-1.2+Math.sin(progress*TAU)*.3;
         }
-        if(name==='rider')pos[1]+=moving?Math.abs(Math.sin(phase))*(mounted?.08:.035):Math.sin(time*2)*.015;
+        if(name==='rider')pos[1]+=moving?Math.abs(Math.sin(phase))*(mounted?Math.min(.085,unit.speed*.016):.035):Math.sin(time*2)*.015;
         if(name==='rider'&&flinch){rot[0]-=flinch*.22;pos[2]-=flinch*.08;}
         if(name==='armL'&&unit.blocking&&flinch){rot[0]-=flinch*.55;pos[2]-=.12*flinch;}
       }
@@ -515,10 +518,14 @@ export async function createBattleRenderer(canvas,battle,options={}) {
     if(mounted)object('horseBody',[unit.x+.7,y+.30,unit.z],[1.1,1.4,1.1],palette.horse,[0,unit.deathFacing??unit.facing??0,Math.PI/2]);
   }
   function distantSoldier(u,time){
-    const mount=u.mounted, root=transform([u.x,u.y,u.z],[0,u.facing||0,0]);
+    const mount=u.mounted,root=transform([u.x,u.y,u.z],[0,u.facing||0,mount?u.horseLean||0:0]);
     const part=(mesh,p,s,tint,rotation=[0,0,0])=>add(mesh,multiply(root,transform(p,rotation,s)),tint);
     const y=mount?1:0,cos=Math.cos(time*8+u.x)*Math.min(.26,(u.speed||0)*.09);
-    if(mount){part('horseBody',[0,1.22,0],[1,1,1],palette.horse);part('horseHead',[0,1.75,.89],[1,1,1],palette.horse);}
+    if(mount){
+      part('horseBody',[0,1.22,0],[1,1,1],palette.horse);part('horseHead',[0,1.75,.89],[1,1,1],palette.horse);
+      const step=Math.sin(horseStride(u,time))*Math.min(.65,(u.speed||0)*.14);
+      for(const x of [-1,1])for(const z of [-1,1])part('horseLeg',[x*.24,1.12,z*.48],[1,1.50,1],palette.horse,[step*x*z,0,0]);
+    }
     const owner=houseColor(u.owner);
     part('torso',[0,y+1.03,0],[1.22,1.08,1],owner);part('head',[0,y+1.76,0],[1,1,1],palette.skin);part('helm',[0,y+1.8,0],[1.06,1.05,1],palette.steel);
     for(const s of [-1,1])part('limb',[s*.16,y+.92,0],[1,2.45,1],palette.leather,[cos*s,0,0]);

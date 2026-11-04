@@ -134,9 +134,12 @@ test('hold-current anchors each selected troop in place without reforming or loc
 test('hold-current immediately cancels a charge while permitting nearby defensive attacks', () => {
   const { b, a, d } = duel('cavalry', 'levy');
   Object.assign(a, { speed: 7, chargeDistance: 12, order: { kind: 'charge' } });
+  d.z=4;d.order.z=4;
   issueOrder(b, [a.id], 'hold', { atCurrent: true });
-  assert.equal(a.speed, 0); assert.equal(a.chargeDistance, 0);
+  assert.equal(a.speed, 7); assert.equal(a.chargeDistance, 0);
   assert.equal(a.order.lockFacing, false);
+  stepBattle(b,.05,{commanderAI:true});
+  assert.ok(a.speed<7&&a.z>0,'the horse is braking when Hold Here cancels its charge');
   run(b, .8, { commanderAI: true });
   assert.ok(d.hp < d.maxHp);
   assert.equal(b.events.some(e => e.type === 'charge'), false);

@@ -22,6 +22,15 @@ const prompts = {ground:'Choose highlighted ground',ladder:'Choose an assault la
 const groupKeys = {Digit1:'all',Digit2:'infantry',Digit3:'spearmen',Digit4:'archers',Digit5:'crossbow',Digit6:'cavalry',Digit7:'siege'};
 const savedGroupKeys = {Digit8:0,Digit9:1,Digit0:2};
 const movementKeys = new Set(['KeyW','KeyA','KeyS','KeyD','ShiftLeft','ShiftRight','Space']);
+const weaponNotes={
+  sword:'Fast sweeping cuts are useful in close quarters and on a spearman’s flank.',
+  spear:'Keep the point facing the approach. A long thrust can stop a foot soldier’s advance or hit an oncoming horse hard. Turning and recovering take time.',
+  axe:'A heavy chop drains a blocking opponent’s stamina.',
+  mace:'A slower blow gets through more armor.',
+  bow:'Loose arrows at range. Draw the sidearm when the quiver is empty.',
+  crossbow:'Bolts penetrate armor, but reloading takes longer than drawing a bow.',
+  lance:'Build up speed and line up the charge. A stationary jab does less damage. Dismounting draws the sword.'
+};
 const sizeOptions = selected => [...BATTLE_SIZE_OPTIONS,...(BATTLE_SIZE_OPTIONS.includes(selected)?[]:[selected])].map(size=>`<option value="${size}" ${size===selected?'selected':''}>${size} · ${{100:'Lighter',150:'Balanced',200:'Large',300:'Grand',400:'Massed armies'}[size]||'Saved battle'}</option>`).join('');
 
 // This controller owns only presentation and input. Campaign writes always go
@@ -43,12 +52,22 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
         ${commands.map(([key,id,label])=>`<button type="button" data-battle-key="${id}" title="${label} (${key})"><kbd>${key}</kbd><span>${label}</span></button>`).join('')}
       </nav>
       <aside class="battle-keyboard-hud" aria-label="Current command"><strong id="battle-live-selection">All troops</strong><span id="battle-keyboard-feedback" role="status" aria-live="polite"></span></aside>
+      <button type="button" id="battle-player-climb" data-battle-action="climb" aria-keyshortcuts="E" hidden><kbd>E</kbd><span><strong>Climb Ladder</strong><small id="battle-climb-target"></small></span></button>
       <footer id="battle-player" class="battle-player"><span id="battle-player-status"></span><label>Weapon <select id="battle-weapon"><option value="sword">Sword & shield</option><option value="spear">Spear & shield</option><option value="axe">Two-handed axe</option><option value="mace">Mace</option><option value="bow">Bow & sidearm</option><option value="crossbow">Crossbow & sidearm</option><option value="lance">Mounted lance</option></select></label><span class="battle-help">WASD move · Mouse aim · Click attack · Right click block · Space heavy attack · Shift sprint · E interact / mount · Tab command</span></footer>
       <div class="battle-touch" id="battle-touch"><div id="battle-stick" aria-label="Movement stick"><span></span></div><div class="battle-touch-buttons"><button data-battle-touch="sprint">Sprint</button><button data-battle-touch="block" id="battle-touch-block" aria-pressed="false" aria-label="Block. Hold to guard. Press just before a melee hit to stun the attacker."><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 21 5v6c0 5-3.4 8.7-9 11-5.6-2.3-9-6-9-11V5l9-3Zm0 3.2L6 7v4c0 3.5 2 6.1 6 8 4-1.9 6-4.5 6-8V7l-6-1.8Z"/></svg><strong>Block</strong><small id="battle-block-state">Hold</small></button><button data-battle-touch="attack">Attack</button><button data-battle-touch="heavy">Heavy</button><button data-battle-touch="interact">Interact / Mount</button><button data-battle-action="commands">Orders</button></div></div>
       <div id="battle-pause" class="battle-pause" hidden><section><span id="battle-pause-mode" class="eyebrow"></span><h2>Battle paused</h2><p id="battle-pause-note"></p><button class="primary" data-battle-action="resume">Resume</button><button data-battle-action="exit">Save and Exit</button><button data-battle-action="retreat">Retreat</button><button data-battle-action="finish">Finish Automatically</button></section></div>
     </dialog>`;
   document.body.append(ui);
   const $ = id => ui.querySelector(`#${id}`), encounterDialog=$('battle-encounter'), field=$('battlefield'), canvas=$('battle-canvas');
+  const guide=document.createElement('details');
+  guide.className='battle-combat-guide';
+  guide.innerHTML='<summary>Weapons and riding</summary><p>Steer early on horseback. At speed, your horse takes a wider turn and travels on while slowing down.</p>';
+  for(const option of $('battle-weapon').options){
+    option.title=weaponNotes[option.value];
+    const entry=document.createElement('p'),name=document.createElement('strong');
+    name.textContent=option.textContent;entry.append(name,' · ',option.title);guide.append(entry);
+  }
+  $('battle-pause').querySelector('section').append(guide);
   const header=$('battle-hud'), headerSize=new ResizeObserver(()=>{
     if(header.offsetHeight)field.style.setProperty('--battle-header-bottom',`${header.offsetTop+header.offsetHeight}px`);
   });
@@ -123,6 +142,7 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
   }
   function resetInput(){keys.clear();touch={x:0,z:0};input={attack:false,block:false,sprint:false};drag=pointer=stickOrigin=tacticalAim=null;clearTarget();$('battle-stick').firstElementChild.style.transform='';
     for(const ids of touchPointers.values())ids.clear();
+    $('battle-player-climb').hidden=true;
     $('battle-touch-block').setAttribute('aria-pressed','false');$('battle-block-state').textContent='Hold';}
   function notice(message){$('battle-notice').textContent=message||'';}
   function transact(operation){
@@ -338,7 +358,7 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     if(tactical&&p){camera.target||={x:p.x,z:p.z};camera.target.x+=strafe*dt*24;camera.target.z+=forward*dt*24;}
     if(!paused&&!finishing&&battle.phase==='combat'){
       sim.stepBattle(battle,dt*timeScale,tactical?{commanderAI:true}:{...input,moveX:Math.sin(camera.yaw)*forward+Math.cos(camera.yaw)*strafe,moveZ:Math.cos(camera.yaw)*forward-Math.sin(camera.yaw)*strafe,facing:camera.yaw,attack:input.attack||input.attackTap||touchHeld('attack')||touchHeld('heavy')||keys.has('Space'),heavy:input.heavyTap||touchHeld('heavy')||keys.has('Space'),block:input.block||touchHeld('block'),sprint:touchHeld('sprint')||keys.has('ShiftLeft')||keys.has('ShiftRight'),weapon:$('battle-weapon').value,aimX:p?p.x+Math.sin(camera.yaw)*70:0,aimZ:p?p.z+Math.cos(camera.yaw)*70:0});
-      if(dt*timeScale>0)input.blockPressed=input.attackTap=input.heavyTap=false;
+      if(dt*timeScale>0){input.blockPressed=input.attackTap=input.heavyTap=false;delete input.climbLadderId;}
       input.interact=false;
     }
     if(p?.status==='reserve'&&!tactical){const escort=battle.units.find(u=>u.side===battle.playerSide&&u.status==='active');if(escort){camera.target={x:escort.x,y:escort.y,z:escort.z};camera.spectating=true;}}
@@ -352,8 +372,21 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     frame=requestAnimationFrame(tick);
   }
   function updateHUD(){
+    const climb=$('battle-player-climb'), option=!paused&&!finishing&&!targeting&&camera.mode==='third'&&sim.playerLadderOption(battle,player());
+    climb.hidden=!option;
+    if(option){
+      climb.dataset.ladder=option.ladder.id;climb.disabled=!!option.blocked;
+      const label=(option.ladder.name||option.ladder.id)+(option.blocked?' · '+option.blocked:'');
+      if($('battle-climb-target').textContent!==label)$('battle-climb-target').textContent=label;
+    }
     if(!targeting&&performance.now()>feedbackUntil&&$('battle-keyboard-feedback').textContent)$('battle-keyboard-feedback').textContent='';
     const p=player(), e=active(), side=battle.playerSide??e?.playerSide??0;
+    if(p){
+      const lance=$('battle-weapon').querySelector('[value="lance"]');
+      const label=p.weapon==='lance'&&!p.mounted?'Sidearm sword · lance stowed':'Mounted lance';
+      if(lance.textContent!==label)lance.textContent=label;
+      lance.disabled=!p.mounted;
+    }
     field.classList.toggle('is-deploying',battle.phase==='deployment');
     $('battle-mode').textContent=battle.phase==='deployment'?'DEPLOYMENT':paused?'PAUSED':camera.mode==='tactical'?`TACTICAL COMMAND · ${$('battle-command-time').selectedOptions[0].textContent.toUpperCase()}`:'LEAD THE BATTLE';
     $('battle-deployment').hidden=battle.phase!=='deployment';$('battle-reticle').hidden=camera.mode==='tactical';
@@ -443,6 +476,9 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
       if(name==='dismiss-result'){dismissedReport=getState().lastOfflineBattleReport?.id;sync();return;}
       if(name==='begin'){if(custom){custom.initial=structuredClone(battle);custom.deploy=false;}sim.beginBattle(battle);camera.mode='third';camera.distance=10;camera.pitch=.35;delete camera.target;setHud(hudMinimized,false);checkpoint();canvas.focus();return;}
       if(name==='camera'){cameraToggle();return;}
+      if(name==='climb'&&battle&&!paused&&camera.mode==='third'){
+        input.climbLadderId=$('battle-player-climb').dataset.ladder;canvas.focus({preventScroll:true});return;
+      }
       if(name==='hud'){setHud(!hudMinimized,ordersOpen);canvas.focus({preventScroll:true});return;}
       if(name==='commands'){setHud(false,hudMinimized||!ordersOpen);canvas.focus({preventScroll:true});return;}
       if(name==='pause'){setPause(true);return;}

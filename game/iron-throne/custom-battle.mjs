@@ -49,7 +49,7 @@ export function customDeployment(settings){
       if([...roles.map(([type])=>units[type]),...siege].some(n=>!Number.isSafeInteger(n)||n<0)||soldierCount(units)<1||soldierCount(units)>1000||siege.reduce((sum,n)=>sum+n,0)>20)throw new Error('Each side needs 1–1,000 soldiers and can bring up to 20 engines.');
       return {armyId:`custom-side-${side}`,owner:side===0?'ashen':'wintermere',name:armyNames[side],side,playerControlled:side===playerSide,morale:1,units:{...units}};
     })};
-  return {encounter,battle:createBattle(encounter,{maxActive:limit,autoGarrison:true})};
+  return {encounter,battle:createBattle(encounter,{maxActive:limit,autoGarrison:true,commanderType:settings.commanderType})};
 }
 
 export function installCustomBattle(start,getPreferredLimit=()=>null){
@@ -68,6 +68,7 @@ export function installCustomBattle(start,getPreferredLimit=()=>null){
     <form class="dialog-body"><p id="custom-result" role="status"></p><div class="button-row" aria-label="Ready armies"><button type="button" data-scenario="west">West Wall Assault</button><button type="button" data-scenario="royal">Royal City Siege</button></div><div class="custom-options">
     <label>Battle <select name="mode">${options({field:'Field Battle',attack:'Attack a Fort',defend:'Defend a Fort'})}</select></label>
     <label>Command <select name="side">${options({0:'Attackers',1:'Defenders'})}</select></label>
+    <label>Your commander <select name="commanderType"><option value="">Automatic</option>${options({menAtArms:'Man-at-arms',spearman:'Spearman',archer:'Archer',crossbow:'Crossbowman',lightCavalry:'Cavalry rider'})}</select></label>
     <label>Terrain <select name="terrain">${options(terrains)}</select></label>
     <label>Defenses <select name="defenses">${options(Object.fromEntries(Object.entries(defenses).map(([id,site])=>[id,id==='fort'?'Stone fort':site.name])))}</select></label>
     <label>Combined active limit <select name="limit">${options(Object.fromEntries(BATTLE_SIZE_OPTIONS.map(n=>[n,n])))}</select></label></div>
@@ -88,6 +89,10 @@ export function installCustomBattle(start,getPreferredLimit=()=>null){
   }
   function preview(){
     prepared=null;
+    const commanderSelect=form.elements.commanderType;
+    for(const option of commanderSelect.options)option.disabled=!!option.value&&!(settings.armies[settings.playerSide][option.value]>0);
+    if(!settings.armies[settings.playerSide][settings.commanderType])settings.commanderType='';
+    commanderSelect.value=settings.commanderType;
     const note=get('custom-field-note');
     try{
       if(!form.checkValidity())throw new Error('Enter a whole number within the displayed range.');
