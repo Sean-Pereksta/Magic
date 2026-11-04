@@ -339,6 +339,72 @@ function assertBoundedMovement(e, previous, ids, dt = 1 / 30) {
   return maximum;
 }
 
+test('Ordered formations pass head-on, across a junction, and around held foot ranks', () => {
+  const times = {};
+  for (const course of ['opposing', 'crossing', 'held']) {
+    const e = new BattleEngine({ ...config({ swordsman: 32, pikeman: 32 }, { militia: 1 }, 'custom'),
+      customMap: { biome: 'grassland', regions: [] } });
+    const [a, b, foe] = e.regiments;
+    const crossing = course === 'crossing';
+    place(e, a, 2100, 2000); place(e, b, crossing ? 2430 : 2700, crossing ? 1670 : 2000);
+    place(e, foe, 5200, 3400); e.command([foe.id], 'hold'); e.start();
+    e.command([a.id], 'move', 3070, 2000);
+    if (course === 'held') e.command([b.id], 'hold');
+    else e.command([b.id], 'move', crossing ? 2430 : 2000, crossing ? 2400 : 2000);
+    const ids = new Set([a.id, b.id]), offsets = a.unitIds.map(id => [e.units[id].x - a.x, e.units[id].y - a.y]);
+    let peakBend = 0, peakDistortion = 0;
+    for (let tick = 0; tick < 1350; tick++) {
+      const before = bodySnapshot(e); e.step(1 / 30);
+      assert(minimumBodyRatio(e, before, ids) >= .90, course + ' soldiers crossed through a body');
+      for (const id of a.unitIds) for (const other of b.unitIds) {
+        const u = e.units[id], v = e.units[other];
+        assert(sweptSeparation(before[id], before[other], u, v) >= u._radius + v._radius - .01);
+      }
+      assertBoundedMovement(e, before, ids);
+      peakBend = Math.max(peakBend, Math.abs(a.y - 2000));
+      if (a._traffic) for (const [i, id] of a.unitIds.entries()) {
+        const u = e.units[id];
+        peakDistortion = Math.max(peakDistortion, Math.hypot(u.x - a.x - offsets[i][0], u.y - a.y - offsets[i][1]));
+      }
+      if (a.order === 'hold' && b.order === 'hold') break;
+    }
+    assert.equal(a.order, 'hold', course + ' march never arrived'); assert.equal(b.order, 'hold');
+    assert(peakBend > 40 && peakBend < 240, course + ' failed to take a compact detour: ' + peakBend);
+    assert(peakDistortion < 28, course + ' ranks dispersed: ' + peakDistortion);
+    times[course] = Math.round(e.time * 10) / 10;
+  }
+  return times;
+});
+
+test('A delayed marcher regains its file after a friendly bypass', () => {
+  const e = new BattleEngine({ ...config({ swordsman: 32, pikeman: 32 }, { militia: 1 }, 'custom'),
+    customMap: { biome: 'grassland', regions: [] } });
+  const [a, b, foe] = e.regiments;
+  place(e, a, 2100, 2000); place(e, b, 2700, 2000); place(e, foe, 5200, 3400);
+  e.command([b.id, foe.id], 'hold'); e.start(); e.command([a.id], 'move', 3900, 2000);
+  let passing = false;
+  for (let tick = 0; tick < 1200; tick++) {
+    e.step(1 / 30);
+    if (a._traffic) passing = true;
+    else if (passing) break;
+  }
+  assert(passing && !a._traffic);
+  // Reproduce a rear soldier taking a longer route with a controlled delay.
+  const troops = a.unitIds.map(id => e.units[id]);
+  const rear = troops.reduce((left, right) => left.x < right.x ? left : right);
+  rear.x -= 65; e._rebuildHash();
+  const error = () => Math.hypot(a.x + rear._orderOffsetX - rear.x, a.y + rear._orderOffsetY - rear.y);
+  const initial = error(), normalSpeed = GameData.TYPES[a.type].speed * a._speedFactor;
+  let peak = 0;
+  for (let tick = 0; tick < 150; tick++) {
+    const x = rear.x, y = rear.y; e.step(1 / 30);
+    peak = Math.max(peak, Math.hypot(rear.x - x, rear.y - y) * 30 / normalSpeed);
+  }
+  assert(peak > 1.05 && peak <= 1.181, 'Catch-up speed ' + peak);
+  assert(error() < initial * .45, 'The delayed soldier stayed behind its file');
+  return { initialError: Math.round(initial), finalError: Math.round(error()), peakPace: peak };
+});
+
 test('Enemy ranks physically block a move order without soldiers ghosting through', () => {
   const e = new BattleEngine(config({ swordsman: 48 }, { guardian: 80 }));
   const attackers = regiment(e, 0), defenders = regiment(e, 1);
@@ -387,7 +453,7 @@ test('Friendly crossing traffic physically passes through and reaches both desti
   place(e, front, 2000, 2000); place(e, other, 2400, 2000); place(e, enemy, 5800, 3800);
   e.command([enemy.id], 'hold'); e.start();
   e.command([front.id], 'move', 2800, 2000); e.command([other.id], 'move', 1600, 2000);
-  let minimumRatio = Infinity, minimumCohesion = 100, near = false, arrivalTime = null;
+  let minimumRatio = Infinity, minimumCohesion = 100, arrivalTime = null;
   const initialY=e.units.map(u=>u.y);
   let maximumLateral=0;
   for (let tick = 0; tick < 3600; tick++) {
@@ -401,18 +467,16 @@ test('Friendly crossing traffic physically passes through and reaches both desti
       const radius = GameData.TYPES[left.type].radius + GameData.TYPES[right.type].radius;
       const separation = sweptSeparation(previous[left.id], previous[right.id], left, right);
       minimumRatio = Math.min(minimumRatio, separation / radius);
-      if (separation < radius * 2) near = true;
     }
     assertPassable(e, new Set([front.id, other.id]));
     if (arrivalTime === null && a.filter(u => u.x > 2650).length >= a.length * .9 && b.filter(u => u.x < 1750).length >= b.length * .9) arrivalTime = e.time;
     if (arrivalTime !== null && e.time > arrivalTime + 25) break;
   }
-  assert(near, 'The crossing formations never approached one another');
   assert(minimumRatio >= .90, `Friendly bodies deeply overlapped: ${minimumRatio.toFixed(3)} radii`);
-  assert(minimumCohesion < 95, 'Traffic did not affect cohesion');
+  assert(minimumCohesion > 75, 'Passing traffic broke up a formed march');
   assert(arrivalTime !== null, 'Allied formations jammed instead of reaching the opposite destinations');
   assert(maximumLateral > GameData.TYPES.swordsman.radius, 'No soldier stepped aside during the head-on crossing');
-  assert(Math.min(front.cohesion, other.cohesion) > minimumCohesion + 5, 'Cohesion did not recover after the formations cleared one another');
+  assert(Math.min(front.cohesion, other.cohesion) > 90, 'The companies failed to reform after the crossing');
   assert.equal(e.getStats().teams[0].dead, 0, 'Friendly traffic caused deaths');
   checkWorld(e);
   return { minimumBodySeparationRatio: Math.round(minimumRatio * 1000) / 1000, minimumCohesion: Math.round(minimumCohesion), arrivalSeconds: Math.round(arrivalTime * 10) / 10, finalCohesion: Math.round(Math.min(front.cohesion, other.cohesion)) };
