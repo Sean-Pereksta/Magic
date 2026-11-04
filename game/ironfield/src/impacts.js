@@ -40,6 +40,9 @@
 
     recordMove(u, distance) {
       this._startMotion(u); u._motionDistance += Math.max(0, distance);
+      this.engine._bodyX[u.id] = u.x; this.engine._bodyY[u.id] = u.y;
+      this.engine._bodyZ[u.id] = this.engine.unitAltitude(u);
+      if (u._bulkStepTick === this.engine._tick) this.engine.regiments[u.regiment]._rigidContinuityTick = -1;
       // Buckets are rebuilt once per simulation step. A cooperative sidestep
       // can move an already visited rider, so later searches include the
       // largest real displacement since that rebuild.
@@ -861,7 +864,7 @@
         for (let id = e._bodyHeads[team][cy * e._bodyCols + cx]; id !== -1; id = e._bodyNext[id]) {
           if (++visits > 96) return false;
           const other = e.units[id];
-          if (other.id !== u.id && other.alive && !other.routed && !other._siegeDeployed) visit(other);
+          if (other.id !== u.id && other.alive && !other.routed && !other._siegeDeployed&&(!(u._rampartZ>0||other._rampartZ>0)||Math.abs(e.unitAltitude(u)-e.unitAltitude(other))<=18)) visit(other);
         }
         return true;
       };

@@ -1,4 +1,25 @@
-# IRONFIELD 2.6 validation
+# IRONFIELD 2.7 validation
+
+- Capacity: 40,000 actual soldiers, 20,000 per side. Standard and Colossal deployment checks require bodies to remain in bounds, off solid terrain, and separated. Large-army tests verify every soldier moves once per step, cooldowns and body caches advance correctly, certified marches preserve internal distances, and fresh orders and impacts restore individual movement.
+- Interface: 40,000 soldiers and all saved offsets survive Save and actual file import. All five new terrain brushes, six castle choices, four building tools, material names, Undo, road overlays, and secondary gate-ground checks pass. The atlas contains 30 authored fields, 32 authored scenarios, and 30 historical scenarios.
+- Navigation: actual infantry and cavalry cross all five new fortress styles, both concentric rings, and all four moat causeways. Closed-to-open gates and breached earthworks release existing movement orders without changing their destinations. Houses, watchtowers, and barricades cause real detours. Sampled movement checks enforce solid-terrain clearance, body separation, and bounded step distances.
+- Browser: source and standalone entry points pass desktop and 390px checks with no browser errors. All 30 historical and eight new authored deployments are bounded and clear of solid terrain. The real castle brush places the selected star-fort material.
+- Ramparts: runtime checks cover physical climbing and descent, intermediate height, support and body separation, connected wall sections, larger companies, adjustable slots, elevated shots and synchronized musket ranks. Incoming-shot samples compare the same wall target from outside and from the courtyard. Breached decks cause real falls, adjacent gate breaches order intact guards down, and accepted ground orders resume after descent. UI checks cover projected wall and troop picking, pure previews, saved plans, custom stair sides, gate carving, and restored ground controls.
+- The full authored Four Winds garrison retains all 3,258 battle participants and physically fills all 320 ranged guard posts by 387.733 simulated seconds. Both 160-soldier companies keep 100% cohesion and stay supported, finite, and separated, with a minimum nearby-body ratio of 0.96. Finite stair queues and distant posts take several simulated minutes to fill.
+- Command checks cover disjoint previews, physical transfers between separate castles, melee defense against a real deployed assault platform, safe Retreat, and the loss of a garrison's only stair. In the last case, four guards drop from an intact stranded wall, take fall damage, and reach the courtyard without hovering or retaining a stuck guard order.
+- Graphics: 40 checks cover troop animation, new terrain and structure art, elevated guards and projectiles, overview representation of every visible soldier, detailed sprites at close zoom, and terrain-cache invalidation. Cached terrain and direct drawing have identical compared pixels.
+
+## Large-army performance measurements
+
+The repeatable mixed 40,000-soldier open-field march improved from about **321 ms to 39.5 ms median simulation step time** in Node, approximately 8.1 times faster. The optimized default deployment gives companies real space, state storage avoids slow dictionary objects, unnecessary navigation work is skipped, and geometrically clear distant companies can share marching calculations. Contacts, turns, terrain, and nearby formations use the individual solver.
+
+The actual Chromium run retained all 40,000 living visible soldiers with finite in-bounds coordinates. At a full-field view it measured **67.7 ms median simulation**, **21.4 ms rendering**, and **88.4 ms combined**, about **11.3 updates per second**. The close view kept 3,716 detailed sprites and measured about 10 updates per second. These are measurements on this machine; the maximum-size case remains CPU-heavy. Renderer-only speedups are not claims of total game frame rate.
+
+Append-only deployment repair skips candidate positions already proved occupied. Complete before/after state hashes match for Standard and Colossal 40,000-soldier deployments, dense explicit imports, and an extreme malformed all-types roster. The last case improved from 122.58 to 55.87 seconds; that impossible-density import remains expensive. Ordinary mixed 40,000-soldier construction measured about 0.2–0.25 seconds.
+
+Run `node tests/grand-performance-bench.cjs` for the local simulation benchmark. Run `node tests/engine-test.cjs` for the full simulation, capacity, terrain, and fortress regressions; `node tests/expansion-ui-test.cjs` checks the new editor and large file roundtrip. The command, menu, graphics, and animation tests listed below remain applicable.
+
+## IRONFIELD 2.6 validation
 
 - The rank-volley fixture fires twelve musketeers together at approximately 0.03, 8.03, 16.03, and 24.03 seconds. Each soldier waits at least 24 seconds between shots. A three-file column fires three men in each physical row. Movement stops fire, close combat disrupts the entire company, and fire resumes together after reforming. Casualty compaction preserves three rank numbers.
 - Automatic companies are limited to 90 musketeers. Explicit authored battalions retain their count. Historical named sectors survive capture and load.

@@ -51,6 +51,11 @@
   const STORAGE = 'ironfield.scenarios.v1';
   const PREFS = 'ironfield.preferences.v1';
   let data, engine, renderer, config, chosenPreset, customScaleBase = null, deployment = [];
+  const armyLimit=()=>Math.floor((data.MAX_UNITS||40000)/2);
+  const terrainLimit=()=>data.MAX_TERRAIN_REGIONS||192;
+  const structureKey=value=>typeof value==='string'&&/^fort-\d+$/.test(value)&&Number(value.slice(5))<terrainLimit()?value:Number.isInteger(value)&&value>=0&&value<terrainLimit()?'fort-'+value:undefined;
+  const STRUCTURE_KINDS=['stone','palisade','earthwork','house','watchtower','barricade','keep'];
+  let rampartDraft={ranks:2,spacing:'normal'};
   let editorTool = null, terrainHistory = [];
   let activeTeam = 0, control = '0', speed = 1, selection = new Set(), commandMode = null;
   let troopCategory = 'all';
@@ -106,7 +111,13 @@
   }
   const audio = new BattlefieldAudio();
 
-  function mapKind(map){if((map.regions||[]).some(r=>r.castleTower))return 'Walled castle';return(map.regions||[]).some(r=>r.type==='wall'||r.type==='gate')?'Fortified siege':map.biome==='desert'?'Desert theater':map.biome==='tundra'?'Winter theater':map.biome==='wetland'?'River & marsh':map.biome==='woodland'?'Woodland theater':map.biome==='highland'?'Mountain theater':'Open battlefield';}
+  function mapKind(map){
+    if(map.fortress&&data.FORTRESS_TYPES?.[map.fortress.kind])return data.FORTRESS_TYPES[map.fortress.kind].name;
+    const regions=map.regions||[];
+    if(regions.some(r=>r.castleGate))return regions.filter(r=>r.castleTower).length>=4?'Walled castle':'Fortified siege';
+    if(regions.some(r=>r.structureKind==='house'))return 'Village theater';
+    return regions.some(r=>r.type==='wall'||r.type==='gate')?'Fortified ground':map.biome==='desert'?'Desert theater':map.biome==='tundra'?'Winter theater':map.biome==='wetland'?'River & marsh':map.biome==='woodland'?'Woodland theater':map.biome==='highland'?'Mountain theater':'Open battlefield';
+  }
   function mapArea(map){return(map.width*map.height/(6400*4400)).toFixed(2).replace(/\.00$/,'');}
   function mapSizeName(map){const area=map.width*map.height;return area>=16000*11000?'Colossal':area>=12800*8800?'Huge':area>6400*4400?'Large':'Standard';}
   function mapSizeLabel(map){return`${mapSizeName(map)} · ${mapArea(map)}× area`;}
@@ -116,7 +127,7 @@
     const terrain=(map.regions||[]).map(r=>{
       const x=r.x*scaleX,y=r.y*scaleY,w=r.w*scaleX,h=r.h*scaleY;
       if(r.type==='hill')return`<ellipse cx="${x+w/2}" cy="${y+h/2}" rx="${w/2}" ry="${h/2}" fill="#c3c28c14" stroke="#bdc7a230"/><ellipse cx="${x+w/2}" cy="${y+h/2}" rx="${w*.37}" ry="${h*.37}" fill="none" stroke="#bdc7a225"/>`;
-      const fill={forest:'#223d2b',rock:'#7f836c',water:'#315a65',bridge:'#c6ad78',wall:'#d6cdb1',gate:'#ad7744'}[r.type]||'#70846a';
+      const fill={forest:'#223d2b',rock:'#7f836c',water:'#315a65',bridge:'#c6ad78',wall:r.structureKind==='palisade'?'#96714b':r.structureKind==='earthwork'?'#8c8563':r.structureKind==='house'?'#a36f52':'#d6cdb1',gate:'#ad7744',road:'#b8a17a',mud:'#66503b',marsh:'#52786d',snow:'#d3ded5',trench:'#3c3829'}[r.type]||'#70846a';
       return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r.type==='forest'?Math.min(w,h)*.2:r.type==='rock'?5:0}" fill="${fill}" fill-opacity="${r.type==='forest'?.8:1}" stroke="#17241c55" stroke-width="1"/>`;
     }).join('');
     let ranks='';
@@ -215,7 +226,8 @@
     menuFilter=filter;
     all('[data-map-filter]').forEach(b=>{const active=b.dataset.mapFilter===filter;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
     const cards=all('[data-menu-map]');
-    cards.forEach(b=>{const map=data.MAPS.find(m=>m.id===b.dataset.menuMap);b.hidden=filter==='large'?map.width*map.height<=6400*4400:filter==='siege'?!map.regions.some(r=>r.type==='wall'||r.type==='gate'):false;});
+    const additions=new Set((data.EXPANSION_MAPS||[]).map(m=>typeof m==='string'?m:m.id));
+    cards.forEach(b=>{const map=data.MAPS.find(m=>m.id===b.dataset.menuMap);b.hidden=filter==='new'?!additions.has(map.id):filter==='large'?map.width*map.height<=6400*4400:filter==='siege'?!map.regions.some(r=>r.type==='wall'||r.type==='gate'):false;});
     const selected=cards.find(b=>b.dataset.menuMap===menuMapId);
     if(!selected||selected.hidden){const first=cards.find(b=>!b.hidden);if(first)updateMenuMap(first.dataset.menuMap);}
     $('menuMapGrid').scrollTop=0;
@@ -302,7 +314,7 @@
     const result = {name:typeof raw.name === 'string' ? raw.name.slice(0,64) : 'Custom battle',map:map.id,seed:clamp(Math.floor(Number(raw.seed) || 142857),1,2147483647),armies:[]};
     raw.armies.forEach((army, team) => {
       if (!army || typeof army !== 'object') throw new Error('Invalid army data.');
-      let remaining = 10000;
+      let remaining = armyLimit();
       const roster = {};
       data.TYPE_ORDER.forEach(id => {
         let n = Number(army.roster && army.roster[id]);
@@ -315,11 +327,19 @@
       const source=raw.customMap&&typeof raw.customMap==='object'?raw.customMap:{};
       const biomes=['grassland','wetland','desert','tundra','woodland','highland','ashland'];
       result.customMap={name:typeof source.name==='string'?source.name.slice(0,64):'Custom Battlefield',biome:biomes.includes(source.biome)?source.biome:'grassland',width:map.width,height:map.height,regions:[]};
-      if(Array.isArray(source.regions))for(const r of source.regions.slice(0,96)){
-        if(!r||!['forest','hill','rock','water','bridge','wall','gate'].includes(r.type)||![r.x,r.y,r.w,r.h].every(Number.isFinite)||r.w<=0||r.h<=0)continue;
+      if(Array.isArray(source.regions))for(const r of source.regions.slice(0,terrainLimit())){
+        if(!r||!['forest','hill','rock','water','bridge','wall','gate','road','mud','marsh','snow','trench'].includes(r.type)||![r.x,r.y,r.w,r.h].every(Number.isFinite)||r.w<=0||r.h<=0)continue;
         const x=clamp(r.x,0,map.width-20),y=clamp(r.y,0,map.height-20);
         const region={type:r.type,x,y,w:clamp(r.w,20,map.width-x),h:clamp(r.h,20,map.height-y)};
         if(r.type==='wall'||r.type==='gate'){region.team=r.team===0?0:1;region.hp=clamp(Number(r.hp)||(r.type==='gate'?1000:2200),200,10000);}
+        if((r.type==='wall'||r.type==='gate')&&STRUCTURE_KINDS.includes(r.structureKind))region.structureKind=r.structureKind;
+        if(typeof r.name==='string')region.name=r.name.slice(0,64);
+        if((r.type==='wall'||r.type==='gate')&&r.walkable===true){
+          region.walkable=true;region.deckHeight=clamp(Number(r.deckHeight)||36,8,80);
+          if(['north','south','east','west'].includes(r.rampartSide))region.rampartSide=r.rampartSide;
+          if(Number.isFinite(r.courtyardX)&&Number.isFinite(r.courtyardY)){region.courtyardX=clamp(r.courtyardX,20,map.width-20);region.courtyardY=clamp(r.courtyardY,20,map.height-20);}
+          if(Array.isArray(r.stairs))region.stairs=r.stairs.slice(0,8).filter(s=>s&&['x','y'].includes(s.axis)&&[s.x,s.y,s.w,s.h,s.groundX,s.groundY,s.deckX,s.deckY].every(Number.isFinite)&&s.w>0&&s.h>0&&s.x>=0&&s.y>=0&&s.x+s.w<=map.width&&s.y+s.h<=map.height&&[s.groundX,s.deckX].every(n=>n>=0&&n<=map.width)&&[s.groundY,s.deckY].every(n=>n>=0&&n<=map.height)).map(s=>({id:String(s.id||'stair').slice(0,64),x:s.x,y:s.y,w:s.w,h:s.h,axis:s.axis,dir:s.dir===-1?-1:1,width:clamp(Number(s.width)||64,24,160),height:clamp(Number(s.height)||region.deckHeight,8,80),groundX:s.groundX,groundY:s.groundY,deckX:s.deckX,deckY:s.deckY}));
+        }
         if(r.type==='wall'&&r.castleTower===true)region.castleTower=true;
         if(r.type==='gate'&&r.castleGate===true)region.castleGate=true;
         result.customMap.regions.push(region);
@@ -327,14 +347,18 @@
     }
     if(Array.isArray(raw.formations)){
       const remaining=result.armies.map(army=>Object.assign({},army.roster));
-      let offsetBudget=20000;
+      let offsetBudget=data.MAX_UNITS;
       result.formations=[];
       for(const f of raw.formations.slice(0,512)){
         if(!f||![0,1].includes(f.team)||!data.TYPES[f.type]||![f.count,f.x,f.y].every(Number.isFinite)||f.count<1)continue;
-        const count=Math.min(Math.floor(f.count),remaining[f.team][f.type],data.TYPES[f.type].commander?1:10000);
+        const count=Math.min(Math.floor(f.count),remaining[f.team][f.type],data.TYPES[f.type].commander?1:armyLimit());
         if(!count)continue;
         const group={team:f.team,type:f.type,count,x:clamp(f.x,35,map.width-35),y:clamp(f.y,35,map.height-35),formation:Object.hasOwn(data.FORMATIONS,f.formation)?f.formation:data.TYPES[f.type].id==='musketeer'?'volley':'line'};
         if(typeof f.name==='string')group.name=f.name.slice(0,64);
+        if(f.rampart&&typeof f.rampart==='object'){
+          group.rampart={ranks:clamp(Math.floor(Number(f.rampart.ranks)||2),1,3),spacing:['compact','normal','wide'].includes(f.rampart.spacing)?f.rampart.spacing:'normal'};
+          const id=structureKey(f.rampart.structureId);if(id!==undefined)group.rampart.structureId=id;
+        }
         if(Number.isFinite(f.facing))group.facing=Math.atan2(Math.sin(f.facing),Math.cos(f.facing));
         // A split keeps the soldiers' actual footprint. Rebuilding a standard
         // rectangle at each half's center can otherwise put both halves atop
@@ -434,7 +458,7 @@
     customScaleBase = null; terrainHistory=[];
     const raw = clone(preset);
     raw.armies.forEach(a => {
-      const total = totalRoster(a), scale = Math.min(factor,10000 / Math.max(1,total));
+      const total = totalRoster(a), scale = Math.min(factor,armyLimit() / Math.max(1,total));
       data.TYPE_ORDER.forEach(t => { a.roster[t] = Array.isArray(raw.formations)&&data.TYPES[t].commander?a.roster[t]:Math.round(a.roster[t] * scale); });
     });
     // Scale every authored formation proportionally, preserving its place in
@@ -484,16 +508,19 @@
     $('customWorldSize').disabled=locked;
     $('customSizeHelp').textContent=`${mapSizeLabel(engine.map)} · ${fmt(engine.width)} × ${fmt(engine.height)}. Enlarging keeps your troops and terrain in place.`;
     $('placeArmyLabel').textContent=config.armies[activeTeam].name;
-    $('terrainCount').textContent=`${custom&&config.customMap?config.customMap.regions.length:0} / 96 terrain areas`;
+    $('terrainCount').textContent=`${custom&&config.customMap?config.customMap.regions.length:0} / ${terrainLimit()} terrain areas`;
     all('[data-terrain-tool]').forEach(b=>{b.disabled=locked;b.classList.toggle('active',editorTool===b.dataset.terrainTool);b.setAttribute('aria-pressed',String(editorTool===b.dataset.terrainTool));});
-    ['terrainBiome','terrainDefender','placeTroop','placeCount','placeFormationButton','finishTerrain','clearTerrain'].forEach(id=>{$(id).disabled=locked;});
+    ['terrainBiome','terrainDefender','fortressStyle','wallStairSide','placeTroop','placeCount','placeFormationButton','finishTerrain','clearTerrain'].forEach(id=>{$(id).disabled=locked;});
+    $('wallAccessOptions').hidden=editorTool!=='wall'&&editorTool!=='gate';
+    const fortress=(data.FORTRESS_TYPES||{})[$('fortressStyle').value];
+    $('fortressDescription').textContent=fortress?fortress.description:'Choose a castle plan, then use the Castle brush to place its walls and gates.';
     const defender=$('terrainDefender');
     for(let i=0;i<2;i++)if(defender.options&&defender.options[i])defender.options[i].textContent=config.armies[i].name;
     $('placeCount').max=data.TYPES[$('placeTroop').value||'swordsman'].groupSize||400;
     $('undoTerrain').disabled=locked||!terrainHistory.length;
-    const label={forest:'Forest',hill:'Hill',rock:'Rocks',water:'Water',bridge:'Bridge',wall:'Defensive wall',gate:'Defensive gate',erase:'Erase terrain'}[editorTool];
+    const label={forest:'Forest',hill:'Hill',rock:'Rocks',water:'Water',bridge:'Bridge',road:'Road',mud:'Mud',marsh:'Marsh',snow:'Snow',trench:'Trench',wall:'Defensive wall',gate:'Defensive gate',house:'House',watchtower:'Watchtower',barricade:'Barricade',keep:'Keep',erase:'Erase terrain'}[editorTool];
     const fortHelp=editorTool==='wall'||editorTool==='gate'?` Defended by ${config.armies[Number(defender.value)===0?0:1].name}.${editorTool==='gate'?' Place across a wall to cut a real gate opening.':''}`:'';
-    const text=editorTool==='castle'?'Drag the castle perimeter or click for a square keep. The gate faces west. Set the defender below.':editorTool==='troops'?`Click open ground to place ${$('placeCount').value||160} ${data.TYPES[$('placeTroop').value||'swordsman'].shortName} for ${config.armies[activeTeam].name}.`:label?`${label}: drag an area on the field, or click for a standard size.${fortHelp} Escape finishes editing.`:'Choose a terrain tool and drag on the field. Place formations below, or adjust the army roster.';
+    const text=editorTool==='castle'?`${fortress?fortress.name:'Castle'}: drag its footprint or click for the standard plan. Gates and crossings are included. Set the defender below.`:editorTool==='troops'?`Click open ground to place ${$('placeCount').value||160} ${data.TYPES[$('placeTroop').value||'swordsman'].shortName} for ${config.armies[activeTeam].name}.`:label?`${label}: drag an area on the field, or click for a standard size.${fortHelp} Escape finishes editing.`:'Choose a terrain or building brush and drag on the field. Castle plans include their gates and crossings.';
     $('editorHelp').textContent=locked?'Reset the battle to edit this encounter.':text;
     if(editorTool){$('commandHint').textContent=text;$('commandHint').hidden=false;}
     canvas.style.cursor=editorTool||commandMode?'crosshair':'';
@@ -546,7 +573,8 @@
   }
   function editTerrain(start,end,tool){
     if(!isDeployment()||config.map!=='custom')return;
-    const defaults={forest:[360,300],hill:[440,360],rock:[180,180],water:[240,520],bridge:[420,160],wall:[80,480],gate:[80,180],castle:[1200,1200],erase:[180,180]};
+    const fortress=(data.FORTRESS_TYPES||{})[$('fortressStyle').value];
+    const defaults={forest:[360,300],hill:[440,360],rock:[180,180],water:[240,520],bridge:[420,200],road:[900,180],mud:[420,320],marsh:[480,360],snow:[500,360],trench:[100,640],wall:[80,480],gate:[80,240],castle:[fortress?.defaultWidth||1600,fortress?.defaultHeight||1600],house:[180,140],watchtower:[120,120],barricade:[70,400],keep:[760,760],erase:[180,180]};
     const dragged=Math.hypot(end.x-start.x,end.y-start.y)>45;
     const sizes=defaults[tool]||defaults.forest;
     let w=dragged?Math.max(60,Math.abs(end.x-start.x)):sizes[0],h=dragged?Math.max(60,Math.abs(end.y-start.y)):sizes[1];
@@ -560,23 +588,39 @@
       if(kept.length===regions.length){toast('No terrain areas intersect that selection.');return;}
       if(applyTerrain(kept))toast(`${regions.length-kept.length} terrain area${regions.length-kept.length===1?'':'s'} removed.`);return;
     }
-    if(regions.length>=96){toast('This encounter has 96 terrain areas. Erase an area before adding another.');return;}
+    if(regions.length>=terrainLimit()){toast(`This encounter has ${terrainLimit()} terrain areas. Erase an area before adding another.`);return;}
     if(tool==='castle'){
-      if(rect.w<320||rect.h<320){toast('Give the castle at least 320 units on each side, or click for a square keep.');return;}
-      const parts=data.castleWalls(rect.x,rect.y,rect.w,rect.h,{team:Number($('terrainDefender').value)===0?0:1});
-      if(regions.length+parts.length>96){toast(`This castle needs ${parts.length} terrain areas. Erase some terrain first.`);return;}
+      const minSize=fortress?.minSize||800;
+      if(rect.w<minSize||rect.h<minSize){toast(`This castle needs at least ${minSize} units on each side. Click to use its standard plan.`);return;}
+      const parts=data.createFortress?data.createFortress($('fortressStyle').value,rect.x,rect.y,rect.w,rect.h,{team:Number($('terrainDefender').value)===0?0:1}):data.castleWalls(rect.x,rect.y,rect.w,rect.h,{team:Number($('terrainDefender').value)===0?0:1});
+      if(!parts.length){toast('Give this castle more room or choose its standard plan.');return;}
+      if(parts.some(p=>p.x<12||p.y<12||p.x+p.w>engine.width-12||p.y+p.h>engine.height-12)){toast('Leave more room around this castle for its walls, moat, and crossings.');return;}
+      if(regions.length+parts.length>terrainLimit()){toast(`This castle needs ${parts.length} terrain areas. Erase some terrain first.`);return;}
       if(parts.some(part=>regions.some(r=>['wall','gate','rock'].includes(r.type)&&overlap(part,r)))){
         toast('Place the perimeter clear of existing walls, gates and rocks.');return;
       }
-      const gate=parts.find(r=>r.type==='gate');
-      if(bodyBlockedByTerrain(gate.x+gate.w/2,gate.y+gate.h/2,12,regions)){
-        toast('The entrance needs passable ground. Place a bridge first or move the castle.');return;
+      const entranceGround=regions.concat(parts.filter(r=>r.type==='bridge'));
+      if(parts.filter(r=>r.type==='gate').some(gate=>bodyBlockedByTerrain(gate.x+gate.w/2,gate.y+gate.h/2,12,entranceGround))){
+        toast('Every entrance needs passable ground. Place a bridge first or move the castle.');return;
       }
       if(applyTerrain(regions.concat(parts)))toast('Castle built. Place the garrison inside the courtyard.');
       return;
     }
+    if(['house','watchtower','barricade','keep'].includes(tool)){
+      const parts=data.createBattlefieldStructure(tool,rect.x,rect.y,rect.w,rect.h,{team:Number($('terrainDefender').value)===0?0:1});
+      if(!parts.length||parts.some(p=>p.x<12||p.y<12||p.x+p.w>engine.width-12||p.y+p.h>engine.height-12)){toast('Give this building more clear ground inside the battlefield.');return;}
+      if(regions.length+parts.length>terrainLimit()){toast('Erase an area before adding this building.');return;}
+      if(parts.some(part=>regions.some(r=>['wall','gate','rock','water'].includes(r.type)&&overlap(part,r)))){toast('Place buildings on clear ground, with room around their walls.');return;}
+      if(applyTerrain(regions.concat(parts)))toast(`${{house:'House',watchtower:'Watchtower',barricade:'Barricade',keep:'Keep'}[tool]} built. Troops find their way around its footprint.`,2600);
+      return;
+    }
     if(tool==='wall'||tool==='gate'){
       rect.team=Number($('terrainDefender').value)===0?0:1;rect.hp=tool==='gate'?1000:2200;
+      if(data.createRampartWall){
+        const positive=$('wallStairSide').value!=='negative',side=rect.h>=rect.w?(positive?'east':'west'):(positive?'south':'north');
+        rect=data.createRampartWall(rect.x,rect.y,rect.w,rect.h,{team:rect.team,type:tool,hp:rect.hp,courtyardSide:side,worldWidth:engine.width,worldHeight:engine.height});
+        if(!rect||!rect.walkable||(rect.stairs||[]).some(s=>s.x<0||s.y<0||s.x+s.w>engine.width||s.y+s.h>engine.height||bodyBlockedByTerrain(s.groundX,s.groundY,12,regions))){toast('Leave clear ground on the chosen stair side, or choose the opposite side.');return;}
+      }
       if(tool==='gate'){
         // A gate painted across a wall replaces the intersecting masonry.
         // Keeping a hidden wall beneath a gate would make its breach useless.
@@ -590,11 +634,11 @@
           if(region.type!=='wall'||!overlap(rect,region)){carved.push(region);continue;}
           const x1=Math.max(rect.x,region.x),x2=Math.min(rect.x+rect.w,region.x+region.w),y1=Math.max(rect.y,region.y),y2=Math.min(rect.y+rect.h,region.y+region.h);
           for(const part of [{x:region.x,y:region.y,w:region.w,h:y1-region.y},{x:region.x,y:y2,w:region.w,h:region.y+region.h-y2},{x:region.x,y:y1,w:x1-region.x,h:y2-y1},{x:x2,y:y1,w:region.x+region.w-x2,h:y2-y1}]){
-            if(part.w>=20&&part.h>=20)carved.push(Object.assign({},region,part));
+            if(part.w>=20&&part.h>=20){const section=Object.assign({},region,part);if(section.stairs)section.stairs=section.stairs.filter(s=>s.deckX>=section.x&&s.deckX<=section.x+section.w&&s.deckY>=section.y&&s.deckY<=section.y+section.h);carved.push(section);}
           }
         }
         regions=carved;
-        if(regions.length>=96){toast('This gate would exceed the terrain limit. Erase a nearby area first.');return;}
+        if(regions.length>=terrainLimit()){toast('This gate would exceed the terrain limit. Erase a nearby area first.');return;}
       }
     }
     if(tool==='bridge'){
@@ -606,15 +650,16 @@
     if(['rock','water','wall','gate'].includes(tool)&&engine.units.some(u=>u.alive&&overlap(rect,{x:u.x-data.TYPES[u.type].radius,y:u.y-data.TYPES[u.type].radius,w:data.TYPES[u.type].radius*2,h:data.TYPES[u.type].radius*2}))){
       toast('Move the formations out of this area before placing impassable terrain.');return;
     }
-    regions.push(rect);if(applyTerrain(regions))toast(`${{forest:'Forest',hill:'High ground',rock:'Rocks',water:'Water',bridge:'Bridge',wall:'Wall',gate:'Gate'}[tool]} placed.`,1800);
+    regions.push(rect);if(applyTerrain(regions))toast(`${{forest:'Forest',hill:'High ground',rock:'Rocks',water:'Water',bridge:'Bridge',road:'Road',mud:'Mud',marsh:'Marsh',snow:'Snow',trench:'Trench',wall:'Wall',gate:'Gate'}[tool]} placed.`,1800);
   }
   function placeFormationAt(x,y){
     if(!isDeployment()||config.map!=='custom')return;
     const type=$('placeTroop').value,t=data.TYPES[type];if(!t)return;
-    const army=config.armies[activeTeam],remaining=Math.min(10000-totalRoster(army),(t.maxCount||10000)-army.roster[type]);
+    const army=config.armies[activeTeam],remaining=Math.min(armyLimit()-totalRoster(army),(t.maxCount||armyLimit())-army.roster[type]);
     const requested=Math.floor(Number($('placeCount').value)||1),count=clamp(requested,1,Math.min(400,t.groupSize|| (t.commander?1:400)));
     if(count>remaining){toast('This formation would exceed the army or troop limit. Reduce its size first.');return;}
-    const spacing=t.siege?48:type==='elephant'?56:t.mounted?28:17,columns=Math.ceil(Math.sqrt(count*1.6)),rows=Math.ceil(count/columns);
+    const formation=type==='musketeer'?'volley':'line';
+    const spacing=(t.siege?48:type==='elephant'?56:t.mounted?28:17)*(data.FORMATIONS[formation].spacing||1),columns=type==='musketeer'?Math.ceil(count/3):Math.ceil(Math.sqrt(count*1.6)),rows=Math.ceil(count/columns);
     const radius=t.radius,regions=engine.map.regions||[];
     for(let slot=0;slot<count;slot++){
       const row=Math.floor(slot/columns),col=slot%columns,side=activeTeam===0?1:-1,px=x+(((rows-1)/2-row)*spacing)*side,py=y+(col-(columns-1)/2)*spacing*side;
@@ -625,7 +670,7 @@
     if(engine.units.some(u=>u.alive&&Math.abs(u.x-x)<halfX+data.TYPES[u.type].radius&&Math.abs(u.y-y)<halfY+data.TYPES[u.type].radius)){toast('Leave space between formations. Choose clear ground beside the existing ranks.');return;}
     if(engine.regiments.length>=512){toast('This encounter already has 512 formations.');return;}
     rememberDeployment();const forms=config.formations||[];
-    forms.push({team:activeTeam,type,count,x,y,formation:'line',facing:activeTeam===0?0:Math.PI});config.formations=forms;army.roster[type]+=count;
+    forms.push({team:activeTeam,type,count,x,y,formation,facing:activeTeam===0?0:Math.PI});config.formations=forms;army.roster[type]+=count;
     editorTool=null;newBattle(config,{preserveCamera:true});$('presetSelect').value='custom';$('scaleSelect').value='1';
     const placed=engine.regiments.filter(r=>r.team===activeTeam&&r.type===type).sort((a,b)=>Math.hypot(a.x-x,a.y-y)-Math.hypot(b.x-x,b.y-y))[0];
     if(placed)selectRegiments([placed.id]);
@@ -649,7 +694,7 @@
   }
   function updatePlaceCount() {
     const t=data.TYPES[$('placeTroop').value];
-    $('placeCount').value=t.groupSize||(t.commander?1:t.siege?12:t.id==='elephant'?16:t.mounted?80:160);
+    $('placeCount').value=t.groupSize||(t.commander?1:t.siege?12:t.id==='elephant'?16:t.mounted?80:t.id==='musketeer'?90:160);
   }
   function chooseTroopCategory(tab) {
     troopCategory=tab.dataset.troopCategory;
@@ -674,7 +719,7 @@
     if(picker.value!==previous)updatePlaceCount();
     $('armyList').innerHTML = displayTypes.map(id => {
       const t = data.TYPES[id], description = `${t.description}\n${counterDescription(t)}\nHealth ${t.hp} | Armor points ${t.armor} | Attack ${t.damage} | Range ${t.range}`;
-      return `<article class="troop-card ${id==='commander'?'commander-card':''}" title="${esc(description)}"><div class="troop-visual"><span class="troop-role">${esc(t.role)}</span><canvas data-portrait="${id}" width="88" height="88" aria-label="${esc(t.name)}"></canvas></div><h3>${esc(t.shortName)}</h3>${armorBadge(t)}${t.missile?`<p class="troop-behavior" title="${esc(t.missile.description)}">${esc(t.missile.label)}</p>`:''}<p class="troop-counter-summary"><span>Good targets:</span> ${esc(counterNames(t.matchups.strongAgainst))}</p><button class="counter-link" data-counter-type="${id}" aria-label="Compare ${esc(t.name)} matchups">Matchups &amp; counters</button><span class="troop-cost">${fmt(t.cost)} POINTS / ${t.siege?'ENGINE':id==='elephant'?'ELEPHANT':id==='commander'?'LEADER':'SOLDIER'}</span><div class="troop-stepper"><button data-count-type="${id}" data-delta="-1" aria-label="Remove ${esc(t.shortName)}">−</button><input type="number" data-roster="${id}" aria-label="${esc(t.name)} count" min="0" max="${t.maxCount||10000}" step="1" value="${army.roster[id]}"><button data-count-type="${id}" data-delta="1" aria-label="Add ${esc(t.shortName)}">+</button></div></article>`;
+      return `<article class="troop-card ${id==='commander'?'commander-card':''}" title="${esc(description)}"><div class="troop-visual"><span class="troop-role">${esc(t.role)}</span><canvas data-portrait="${id}" width="88" height="88" aria-label="${esc(t.name)}"></canvas></div><h3>${esc(t.shortName)}</h3>${armorBadge(t)}${t.missile?`<p class="troop-behavior" title="${esc(t.missile.description)}">${esc(t.missile.label)}</p>`:''}<p class="troop-counter-summary"><span>Good targets:</span> ${esc(counterNames(t.matchups.strongAgainst))}</p><button class="counter-link" data-counter-type="${id}" aria-label="Compare ${esc(t.name)} matchups">Matchups &amp; counters</button><span class="troop-cost">${fmt(t.cost)} POINTS / ${t.siege?'ENGINE':id==='elephant'?'ELEPHANT':id==='commander'?'LEADER':'SOLDIER'}</span><div class="troop-stepper"><button data-count-type="${id}" data-delta="-1" aria-label="Remove ${esc(t.shortName)}">−</button><input type="number" data-roster="${id}" aria-label="${esc(t.name)} count" min="0" max="${t.maxCount||armyLimit()}" step="1" value="${army.roster[id]}"><button data-count-type="${id}" data-delta="1" aria-label="Add ${esc(t.shortName)}">+</button></div></article>`;
     }).join('');
     $('armyList').querySelectorAll('[data-portrait]').forEach(c => renderer.drawUnitIcon(c,c.dataset.portrait,activeTeam));
     updateTally();
@@ -731,9 +776,9 @@
   function setRosterCount(type, value) {
     if (!isDeployment()) return;
     const army = config.armies[activeTeam];
-    const maximum = Math.min(10000-totalRoster(army)+army.roster[type],data.TYPES[type].maxCount||10000);
+    const maximum = Math.min(armyLimit()-totalRoster(army)+army.roster[type],data.TYPES[type].maxCount||armyLimit());
     const count = clamp(Math.floor(Number(value) || 0),0,maximum);
-    if (Number(value) > maximum) toast(data.TYPES[type].maxCount&&Number(value)>data.TYPES[type].maxCount?`Each army can field up to ${data.TYPES[type].maxCount} ${type==='commander'?'commanders':data.TYPES[type].shortName.toLowerCase()}.`:'Each army can field up to 10,000 combatants.');
+    if (Number(value) > maximum) toast(data.TYPES[type].maxCount&&Number(value)>data.TYPES[type].maxCount?`Each army can field up to ${data.TYPES[type].maxCount} ${type==='commander'?'commanders':data.TYPES[type].shortName.toLowerCase()}.`:`Each army can field up to ${fmt(armyLimit())} combatants.`);
     army.roster[type] = count;
     const input = document.querySelector(`[data-roster="${type}"]`); if (input) input.value = count;
     scheduleRebuild();
@@ -752,9 +797,40 @@
       b.setAttribute('aria-pressed',String(active));
       b.disabled=!regs.length||control==='spectate'||engine.phase==='ended';
     });
-    $('splitFormation').disabled=!regs.some(r=>r.alive>=2&&r.type!=='commander'&&r.status!=='routing')||control==='spectate'||engine.phase==='ended'||engine.regiments.length>=512;
+    $('splitFormation').disabled=!regs.some(r=>r.alive>=2&&r.type!=='commander'&&r.status!=='routing')||regs.some(r=>r._rampartJob)||control==='spectate'||engine.phase==='ended'||engine.regiments.length>=512;
     canvas.style.cursor=commandMode||editorTool?'crosshair':'';
     if(renderer)renderer.pendingFacing=commandMode==='face'?{x:mouseWorld.x,y:mouseWorld.y}:null;
+    updateRampartPreview();
+  }
+  function rampartOptions(){return{ranks:clamp(Number($('rampartRanks').value)||rampartDraft.ranks,1,3),spacing:['compact','normal','wide'].includes($('rampartSpacing').value)?$('rampartSpacing').value:rampartDraft.spacing};}
+  function hasRangedFoot(regs){return regs.some(r=>{const t=data.TYPES[r.type];return t.ranged&&!t.mounted&&!t.siege;});}
+  function rememberRampartIntent(regs,options,structureId,clear=false){
+    if(isDeployment()){rememberDeployment();return;}
+    for(const r of regs){const f=config.formations&&config.formations[r.id];if(!f||f.team!==r.team||f.type!==r.type||f.count!==r.initial)continue;
+      if(clear)delete f.rampart;else{f.rampart=Object.assign({},f.rampart||{},options);const id=structureKey(structureId);if(id!==undefined)f.rampart.structureId=id;}
+    }
+  }
+  function updateRampartPreview(){
+    if(!renderer)return;
+    const regs=selectedRegiments(),contextual=!editorTool&&hasRangedFoot(regs);
+    const s=commandMode==='rampart'||contextual?structureAtPointer(mouseWorld.x,mouseWorld.y,true):null;
+    renderer.pendingRampart=s&&s.walkable&&!s.breached&&regs.some(r=>r.team===s.team)&&(commandMode==='rampart'||s.type!=='gate')?Object.assign({structureId:s.id,regimentIds:Array.from(selection)},rampartOptions()):null;
+  }
+  function updateRampartControls(regs){
+    const foot=regs.filter(r=>!data.TYPES[r.type].mounted&&!data.TYPES[r.type].siege&&!data.TYPES[r.type].commander);
+    const active=foot.filter(r=>r._rampartJob),hasWall=(engine.structures||[]).some(s=>s.walkable&&!s.breached&&foot.some(r=>r.team===s.team));
+    $('rampartControls').hidden=!foot.length||(!hasWall&&!active.length);
+    const locked=control==='spectate'||engine.phase==='ended';
+    $('manRampartButton').disabled=locked||!hasWall;$('leaveRampartButton').disabled=locked||!active.length;
+    $('rampartRanks').disabled=$('rampartSpacing').disabled=locked;
+    const ranks=new Set(active.map(r=>r.rampartRanks||2)),spaces=new Set(active.map(r=>r.rampartSpacing||'normal'));
+    if(document.activeElement!==$('rampartRanks'))$('rampartRanks').value=active.length?(ranks.size===1?String(ranks.values().next().value):'mixed'):String(rampartDraft.ranks);
+    if(document.activeElement!==$('rampartSpacing'))$('rampartSpacing').value=active.length?(spaces.size===1?spaces.values().next().value:'mixed'):rampartDraft.spacing;
+    let onWall=0,climbing=0,total=0;for(const r of active)for(const id of r.unitIds){const u=engine.units[id];if(!u.alive||u.routed)continue;total++;if(u._onRampart)onWall++;else if(u._rampartClimb)climbing++;}
+    const labels={approaching:'Approaching the stairs',climbing:'Climbing the stairs',ascending:'Climbing the stairs',forming:'Forming on the wall',guarding:'Guarding the rampart',courtyard:'Preparing in the courtyard',reforming:'Reforming in the courtyard',descending:'Descending to the courtyard',falling:'Falling from the wall'};
+    const status=active.length===1?(labels[active[0].rampartStatus]||active[0].rampartStatus||'Rampart duty'):active.length?'Rampart duty':foot.some(r=>r.rampartStatus==='Courtyard reorganized')?'Courtyard defense ready':'Choose a friendly wall';
+    $('rampartStatus').textContent=active.length?`${status} · ${onWall}/${total} on wall${climbing?' · '+climbing+' climbing':''}`:status;
+    $('rampartStatus').title='Troops use real stairs and form into the available wall width. Surplus troops wait in the courtyard. Wall or gate breaches trigger a courtyard defense.';
   }
   function updateSelectedOrder(regs) {
     const el=$('selectedOrder');
@@ -794,6 +870,7 @@
     updateCommandButtons();
     updateSelectedOrder(selectedRegiments());
     $('formationSelect').disabled=!selection.size||control==='spectate'||engine.phase==='ended'||Array.from(selection).every(id=>{const r=engine.getRegiment(id);return r&&r.type==='commander';});
+    if(selectedRegiments().some(r=>r._rampartJob))$('formationSelect').disabled=true;
     updateEncounterEditor();
   }
   function startBattle() {
@@ -831,6 +908,7 @@
     const regs = Array.from(selection).map(id=>engine.getRegiment(id)).filter(r=>r && r.alive>0);
     selection = new Set(regs.map(r=>r.id));
     $('selectionPanel').hidden = !regs.length;
+    updateRampartControls(regs);
     if (!regs.length) {commandMode=null;$('commandHint').hidden=true;$('formationSelect').disabled=true;$('rallyLabel').textContent='Rally';updateCommandButtons(regs);return;}
     updateCommandButtons(regs);updateSelectedOrder(regs);
     const alive = regs.reduce((s,r)=>s+r.alive,0);
@@ -851,6 +929,7 @@
     const formation=formations.size===1?(regs[0].formation||'line'):'mixed';
     if(document.activeElement!==$('formationSelect'))$('formationSelect').value=formation;
     $('formationSelect').disabled=control==='spectate'||engine.phase==='ended'||regs.every(r=>r.type==='commander');
+    if(regs.some(r=>r._rampartJob))$('formationSelect').disabled=true;
     const recovering=regs.filter(r=>r.fallingBack||r.status==='rallying');
     const statusNames={steady:'Steady',shaken:'Shaken',fallingBack:'Falling back',rallying:'Reforming',routing:'Routing'};
     const turning=regs.filter(r=>r.commandStatus==='turning');
@@ -970,10 +1049,10 @@
     if (!selection.size) {toast('Select one or more formations first.');return;}
     if (control === 'spectate' || engine.phase === 'ended') return;
     editorTool=null;canvas.focus({preventScroll:true});
-    if (command === 'move' || command === 'attack' || command === 'chargeTarget' || command === 'face') {
+    if (command === 'move' || command === 'attack' || command === 'chargeTarget' || command === 'face' || command==='rampart') {
       if(command==='chargeTarget'&&isDeployment()){toast('Targeted charges are available after the battle starts.');return;}
       commandMode = command==='chargeTarget'?'charge':command;
-      $('commandHint').textContent = command==='chargeTarget'?'Charge target: click or tap an enemy formation. Escape cancels.':command==='face'?'Face: click or tap the direction to face. The formation stays here. Left or right click confirms. Escape cancels.':`${command === 'move' ? 'Move' : 'Attack-move'}: click or tap a destination. Left or right click confirms. Escape cancels.`;
+      $('commandHint').textContent = command==='rampart'?'Man ramparts: click or tap a friendly wall. Troops climb the stairs and form on its deck. Escape cancels.':command==='chargeTarget'?'Charge target: click or tap an enemy formation. Escape cancels.':command==='face'?'Face: click or tap the direction to face. The formation stays here. Left or right click confirms. Escape cancels.':`${command === 'move' ? 'Move' : 'Attack-move'}: click or tap a destination. Left or right click confirms. Escape cancels.`;
       updatePhase(); return;
     }
     if (isDeployment()) {toast('Use Move to position your troops and Face / T to set their direction. Combat orders are available after the battle starts.');return;}
@@ -991,16 +1070,25 @@
     commandMode = null; updateSelection();updatePhase();
     acknowledgeOrder(command,accepted,regs);
   }
-  function orderAt(x,y,kind) {
+  function orderAt(x,y,kind,contextualRightClick=false) {
     if(menuOpen)return;
     if (!selection.size || control === 'spectate' || engine.phase === 'ended') return;
     let order=kind||commandMode;
     const regs=selectedRegiments();
     if(!Number.isFinite(x)||!Number.isFinite(y))return;
     if(order!=='face'){x=clamp(x,25,engine.width-25);y=clamp(y,25,engine.height-25);}
+    const rangedWallClick=contextualRightClick&&hasRangedFoot(regs);
+    const wall=structureAtPointer(x,y,order==='rampart'||rangedWallClick);
+    if(order==='rampart'||((rangedWallClick||!order&&!isDeployment())&&wall&&wall.walkable&&!wall.breached&&wall.type!=='gate'&&regs.some(r=>r.team===wall.team))){
+      if(!wall||!wall.walkable||wall.breached){toast('Choose an intact friendly wall with stairs.');return;}
+      const options=rampartOptions(),accepted=engine.siege.manRampart(regs.map(r=>r.id),wall.id,options);
+      if(accepted){rememberRampartIntent(regs.filter(r=>r.team===wall.team),options,wall.id);commandMode=null;updateSelection();updatePhase();toast(`${accepted} formation${accepted===1?'':'s'} assigned to the rampart. Troops climb its stairs; surplus soldiers wait in the courtyard.`,4500);}
+      else toast('Choose foot troops and a friendly rampart with room and a safe stair approach.');
+      return;
+    }
     if(!isDeployment()&&(!order||order==='attack'||order==='charge')&&engine.siege&&engine.siege.structureAt){
-      const structure=engine.siege.structureAt(x,y);
-      if(!order&&structure&&structure.castleGate&&regs.every(r=>r.team===structure.team)){
+      const structure=wall;
+      if(!order&&structure&&structure.type==='gate'&&regs.every(r=>r.team===structure.team)){
         const opened=!structure.open;
         if(engine.siege.setGateOpen(structure.id,opened,structure.team)){
           toast(opened?'Gate opened. Both armies can pass.':'Gate closed.',2200);
@@ -1112,6 +1200,7 @@
     }else accumulator=0;
     if(mouseScreen)mouseWorld=renderer.screenToWorld(mouseScreen.x,mouseScreen.y);
     renderer.pendingFacing=commandMode==='face'?{x:mouseWorld.x,y:mouseWorld.y}:null;
+    updateRampartPreview();
     if(engine.phase==='running'||now-lastRendered>=32){renderer.render(now/1000,selection);lastRendered=now;}
     const miniInterval=engine.units.length>8000?350:220;
     if(now-lastMinimap>miniInterval){
@@ -1126,6 +1215,18 @@
   function pointFromEvent(e, element=canvas) {
     const rect=element.getBoundingClientRect();return{x:e.clientX-rect.left,y:e.clientY-rect.top};
   }
+  function structureAtPointer(x,y,preferDeck=false){
+    if(!engine.siege||!engine.siege.structureAt)return null;
+    const ground=engine.siege.structureAt(x,y);if(ground&&!preferDeck)return ground;
+    const structures=engine.structures||[];for(let i=structures.length-1;i>=0;i--){const s=structures[i];if(!s.walkable||s.breached)continue;const height=Number(s.deckHeight)||36;
+      if(x>=s.x&&x<=s.x+s.w&&y+height>=s.y&&y+height<=s.y+s.h)return s;
+    }return ground;
+  }
+  function regimentsInProjectedRect(x1,y1,x2,y2){
+    const result=new Set();for(const u of engine.units){if(!u.alive||u.routed||(control!=='both'&&u.team!==Number(control)))continue;
+      const y=u.y-(u._rampartZ||0);if(u.x>=x1&&u.x<=x2&&y>=y1&&y<=y2)result.add(u.regiment);
+    }return Array.from(result);
+  }
   function pickRegiment(world, hostile = false) {
     const threshold=Math.max(26,15/renderer.camera.zoom);
     const teams=hostile?new Set(selectedRegiments().map(r=>r.team)):null;
@@ -1133,7 +1234,7 @@
     let best=threshold*threshold,result=null;
     for(const u of engine.units){
       if(!u.alive||u.routed||!eligible(u.team))continue;
-      const d=(u.x-world.x)**2+(u.y-world.y)**2;
+      const d=(u.x-world.x)**2+(u.y-(u._rampartZ||0)-world.y)**2;
       if(d<best){best=d;result=u.regiment;}
     }
     // Standards remain clickable when their formation has stretched out.
@@ -1186,9 +1287,10 @@
         drag.last=p;
       }
       const terrain=engine.terrainAt(mouseWorld.x,mouseWorld.y);
-      const descriptions={forest:'Woodland · cover',hill:'High ground',water:'River · impassable',bridge:'Bridge crossing',rock:'Rock · impassable',wall:'Defensive wall',gate:'Defensive gate',ramp:'Assault ramp · open',rubble:'Breached fortification · open',plain:'Open ground',ground:'Open ground'};
-      const structure=engine.siege&&engine.siege.structureAt?engine.siege.structureAt(mouseWorld.x,mouseWorld.y):null;
-      $('terrainName').textContent=terrain.type==='ramp'?descriptions.ramp:structure&&structure.castleGate?`${structure.open?'Open':'Closed'} gate · ${Math.ceil(structure.hp)} HP · Select defenders and right-click or tap to ${structure.open?'close':'open'}`:structure?`${structure.breached?'Breach':structure.type==='gate'?'Gate':structure.castleTower?'Corner tower':'Wall'}${structure.breached?' · open':` · ${Math.ceil(structure.hp)} / ${structure.maxHp}`}`:descriptions[terrain.type]||'Open ground';
+      const descriptions={forest:'Woodland · cover',hill:'High ground',water:'River · impassable',bridge:'Bridge crossing',rock:'Rock · impassable',road:'Road · faster marching',mud:'Mud · slow ground',marsh:'Marsh · slow ground and cover',snow:'Deep snow · slow ground',trench:'Trench · cover and slow movement',wall:'Defensive wall',gate:'Defensive gate',ramp:'Assault ramp · open',rubble:'Breached fortification · open',plain:'Open ground',ground:'Open ground'};
+      const structure=structureAtPointer(mouseWorld.x,mouseWorld.y);
+      $('terrainName').textContent=terrain.type==='ramp'?descriptions.ramp:structure&&structure.castleGate?`${structure.open?'Open':'Closed'} ${structure.name||'gate'} · ${Math.ceil(structure.hp)} HP · Select defenders and right-click or tap to ${structure.open?'close':'open'}`:structure?`${structure.breached?'Breach':structure.name||data.STRUCTURE_TYPES?.[structure.structureKind]?.name||(structure.type==='gate'?'Gate':structure.castleTower?'Corner tower':'Wall')}${structure.breached?' · open':` · ${Math.ceil(structure.hp)} / ${structure.maxHp}`}`:descriptions[terrain.type]||'Open ground';
+      if(!editorTool&&structure&&structure.walkable&&!structure.breached&&structure.type!=='gate'&&hasRangedFoot(selectedRegiments().filter(r=>r.team===structure.team)))$('terrainName').textContent+=' · Right-click to man ramparts';
     });
     function finishPointer(e,cancelled){
       if(menuOpen){pointers.clear();drag=null;gesture=null;hadGesture=false;return;}
@@ -1199,17 +1301,17 @@
       const p=pointFromEvent(e),world=renderer.screenToWorld(p.x,p.y);
       if(d.editor){if(d.editor==='troops')placeFormationAt(world.x,world.y);else editTerrain(d.world,world,d.editor);return;}
       if(d.pan||(d.touch&&d.moved))return;
-      if(d.button===2){if(!d.moved)orderAt(world.x,world.y,commandMode);return;}
+      if(d.button===2){if(!d.moved)orderAt(world.x,world.y,commandMode,true);return;}
       if(d.button!==0)return;
       if(d.moved){
         const first=renderer.screenToWorld(d.start.x,d.start.y);
-        const ids=engine.getUnitsInRect(Math.min(first.x,world.x),Math.min(first.y,world.y),Math.max(first.x,world.x),Math.max(first.y,world.y),control==='both'?undefined:Number(control));
+        const ids=regimentsInProjectedRect(Math.min(first.x,world.x),Math.min(first.y,world.y),Math.max(first.x,world.x),Math.max(first.y,world.y));
         selectRegiments(ids,d.additive);return;
       }
       if(commandMode){orderAt(world.x,world.y,commandMode);return;}
       if(d.touch&&!isDeployment()&&selection.size&&engine.siege){
-        const gate=engine.siege.structureAt(world.x,world.y);
-        if(gate&&gate.castleGate&&selectedRegiments().every(r=>r.team===gate.team)){orderAt(world.x,world.y);return;}
+        const gate=structureAtPointer(world.x,world.y);
+        if(gate&&gate.type==='gate'&&selectedRegiments().every(r=>r.team===gate.team)){orderAt(world.x,world.y);return;}
       }
       const id=pickRegiment(world);selectRegiments(id===null?[]:[id],d.additive,d.additive);
     }
@@ -1369,6 +1471,8 @@
     $('terrainBiome').addEventListener('change',e=>{if(!isDeployment()||config.map!=='custom')return;rememberDeployment();config.customMap.biome=e.target.value;newBattle(config,{preserveCamera:true,preserveEditor:true});});
     $('customWorldSize').addEventListener('change',e=>resizeCustomWorld(e.target.value));
     $('terrainDefender').addEventListener('change',updateEncounterEditor);
+    $('fortressStyle').addEventListener('change',updateEncounterEditor);
+    $('wallStairSide').addEventListener('change',updateEncounterEditor);
     $('placeFormationButton').addEventListener('click',()=>chooseEditorTool('troops'));
     $('placeTroop').addEventListener('change',()=>{updatePlaceCount();updateEncounterEditor();});
     $('placeCount').addEventListener('change',()=>{$('placeCount').value=clamp(Math.floor(Number($('placeCount').value)||1),1,data.TYPES[$('placeTroop').value||'swordsman'].groupSize||400);updateEncounterEditor();});
@@ -1379,6 +1483,16 @@
       const info=data.FORMATIONS&&data.FORMATIONS[e.target.value];
       updateSelection();toast(`${info?info.name:'Formation'} ordered. Its bonuses depend on keeping the ranks cohesive.`,3500);
       canvas.focus({preventScroll:true});
+    });
+    $('manRampartButton').addEventListener('click',()=>setCommand('rampart'));
+    $('leaveRampartButton').addEventListener('click',()=>{
+      const regs=selectedRegiments(),accepted=engine.siege&&engine.siege.leaveRamparts?engine.siege.leaveRamparts(regs.map(r=>r.id)):0;
+      if(accepted){rememberRampartIntent(regs,null,null,true);commandMode=null;updateSelection();updatePhase();toast('Rampart troops descend and form to defend the courtyard.',3500);}
+    });
+    for(const id of ['rampartRanks','rampartSpacing'])$(id).addEventListener('change',()=>{
+      rampartDraft=rampartOptions();const regs=selectedRegiments();
+      if(engine.siege&&engine.siege.setRampartFormation){engine.siege.setRampartFormation(regs.map(r=>r.id),rampartDraft);rememberRampartIntent(regs.filter(r=>r._rampartJob),rampartDraft);}
+      updateSelection();updateRampartPreview();
     });
     $('zoomInButton').addEventListener('click',()=>{const r=canvas.getBoundingClientRect();renderer.zoomAt(1.5,r.width/2,r.height/2);});
     $('zoomOutButton').addEventListener('click',()=>{const r=canvas.getBoundingClientRect();renderer.zoomAt(1/1.5,r.width/2,r.height/2);});
@@ -1406,8 +1520,8 @@
       if(!customScaleBase)customScaleBase=clone(config);
       const raw=clone(customScaleBase);
       raw.armies.forEach((army,team)=>{
-        const scale=Math.min(factor,10000/Math.max(1,totalRoster(army)));
-        data.TYPE_ORDER.forEach(id=>{army.roster[id]=Math.floor(army.roster[id]*scale);});
+        const scale=Math.min(factor,armyLimit()/Math.max(1,totalRoster(army)));
+        data.TYPE_ORDER.forEach(id=>{army.roster[id]=Array.isArray(raw.formations)&&data.TYPES[id].commander?army.roster[id]:Math.floor(army.roster[id]*scale);});
         if(raw.formations)raw.formations.filter(f=>f.team===team).forEach(f=>{
           // Keep arranged soldiers in place. Extra recruits form additional
           // groups; smaller armies retain a subset of each saved footprint.
@@ -1466,7 +1580,7 @@
     $('importScenario').addEventListener('click',()=>$('scenarioFile').click());
     $('scenarioFile').addEventListener('change',async e=>{
       const file=e.target.files[0];if(!file)return;
-      try{if(file.size>4*1024*1024)throw new Error('Scenario files must be smaller than 4 MB.');loadScenario(JSON.parse(await file.text()));}catch(error){toast('Could not import this scenario. '+error.message,6000);}finally{e.target.value='';}
+      try{if(file.size>8*1024*1024)throw new Error('Scenario files must be smaller than 8 MB.');loadScenario(JSON.parse(await file.text()));}catch(error){toast('Could not import this scenario. '+error.message,6000);}finally{e.target.value='';}
     });
     $('savedScenarios').addEventListener('click',e=>{
       const load=e.target.closest('[data-load-scenario]'),remove=e.target.closest('[data-delete-scenario]');const saved=safeRead(STORAGE,[]);if(!Array.isArray(saved))return;
@@ -1488,7 +1602,7 @@
   }
   function boot(){
     data=window.GameData;
-    if(!data||!window.BattleTactics||!window.BattleImpacts||!window.BattleSiege||!window.BattleEngine||!window.BattleRenderer)throw new Error('A required game source file is missing.');
+    if(!data||!window.BattleTactics||!window.BattleImpacts||!window.BattleSiege||!window.BattleRamparts||!window.BattleEngine||!window.BattleRenderer)throw new Error('A required game source file is missing.');
     for(const id of ['doctrineSelect','plan0Select','plan1Select'])$(id).innerHTML=doctrineOptions();
     const mapFor=p=>p.customMap||data.MAPS.find(m=>m.id===p.map)||data.MAPS[0];
     const scenarioOptions=presets=>presets.map(p=>`<option value="${p.id}">${historicalInfo(p)?esc(historicalYear(historicalInfo(p).year)):esc(mapSizeLabel(mapFor(p)))} — ${esc(p.name)}</option>`).join('');
@@ -1496,9 +1610,11 @@
     $('formationSelect').innerHTML=Object.values(data.FORMATIONS).map(f=>`<option value="${f.id}">${esc(f.name)}</option>`).join('')+'<option value="mixed" disabled>Mixed formations</option>';
     $('mapSelect').innerHTML=data.MAPS.filter(m=>m.id!=='custom').sort(largestMapsFirst).map(m=>`<option value="${m.id}">${esc(mapSizeLabel(m))} — ${esc(m.name)}</option>`).join('')+'<option value="custom">Custom Map · Choose battlefield size</option>';
     $('customWorldSize').innerHTML=data.WORLD_SIZES.map(s=>`<option value="${s.id}">${esc(mapSizeLabel(s))} · ${fmt(s.width)} × ${fmt(s.height)}</option>`).join('');
+    $('fortressStyle').innerHTML=Object.values(data.FORTRESS_TYPES||{}).map(f=>`<option value="${f.id}">${esc(f.name)}</option>`).join('');
+    $('fortressStyle').value='classic';
     loadPreset(data.PRESETS[0].id);
     bindControls();bindBattlefieldInput();bindMenu();
-    window.IRONFIELD=Object.freeze({version:'2.6.0',get engine(){return engine;},get renderer(){return renderer;},get config(){return clone(config);},get menuOpen(){return menuOpen;},loadPreset,showResults});
+    window.IRONFIELD=Object.freeze({version:'2.7.0',get engine(){return engine;},get renderer(){return renderer;},get config(){return clone(config);},get menuOpen(){return menuOpen;},loadPreset,showResults});
     requestAnimationFrame(frame);
     if(window.innerWidth<=760)setBuilder(false);
   }

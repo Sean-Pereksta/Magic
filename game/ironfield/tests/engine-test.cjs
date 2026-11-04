@@ -5,7 +5,7 @@ const { performance } = require('node:perf_hooks');
 global.window = global;
 require('../src/data.js');
 require('../src/tactics.js');
-for (const name of ['impacts', 'siege']) {
+for (const name of ['impacts', 'siege', 'ramparts']) {
   const file = require('node:path').join(__dirname, '../src/' + name + '.js');
   if (require('node:fs').existsSync(file)) require(file);
 }
@@ -91,10 +91,10 @@ test('Default scenario: 2,400 individuals, eighteen troop types, and independent
 
 test('All authored battlefields and scenarios provide valid terrain and complete rosters', () => {
   assert.equal(GameData.TYPE_ORDER.length, 23);
-  assert.equal(GameData.MAPS.length, 23);
-  assert.equal(GameData.PRESETS.length, 24 + GameData.HISTORICAL_BATTLES.length);
+  assert.equal(GameData.MAPS.length, 23 + GameData.EXPANSION_MAPS.length);
+  assert.equal(GameData.PRESETS.length, 24 + GameData.HISTORICAL_BATTLES.length + GameData.EXPANSION_PRESETS.length);
   for (const id of ['halberdier', 'javelin', 'slinger', 'ballista']) assert(GameData.TYPES[id]);
-  const allowedTerrain = new Set(['forest', 'hill', 'water', 'bridge', 'rock', 'wall', 'gate']);
+  const allowedTerrain = new Set(Object.keys(GameData.TERRAIN_TYPES));
   for (const map of GameData.MAPS) {
     assert(Number.isFinite(map.width) && Number.isFinite(map.height) && map.width > 0 && map.height > 0);
     for (const region of map.regions) {
@@ -266,7 +266,7 @@ test('Imported army counts and malformed values remain bounded and finite', () =
   const oversized = Object.fromEntries(GameData.TYPE_ORDER.map(id => [id, 99999999]));
   const e = new BattleEngine(config(oversized, oversized, 'not-a-real-map', 888));
   assert(e.units.length <= GameData.MAX_UNITS);
-  assert(e.getStats().teams.every(t => t.initial <= 10000));
+  assert(e.getStats().teams.every(t => t.initial <= GameData.MAX_UNITS / 2));
   checkWorld(e);
   const malformed = new BattleEngine(config({ swordsman: -25, archer: 'banana', cavalry: Infinity, militia: 10 }, { pikeman: 20.7 }));
   checkWorld(malformed);
@@ -1556,7 +1556,7 @@ test('Custom encounters begin empty and clone bounded terrain without altering s
     ...Array.from({ length: 130 }, (_, i) => ({ type: i % 2 ? 'forest' : 'hill', x: 100 + i * 30, y: 500, w: 70, h: 70 })),
     { type: 'water', x: -1000, y: -1000, w: 1000000, h: 1000000 }];
   const bounded = new BattleEngine({ ...config({}, {}, 'custom'), customMap: { regions: invalid } });
-  assert(bounded.map.regions.length <= 96, 'Custom terrain exceeded the region cap');
+  assert(bounded.map.regions.length <= GameData.MAX_TERRAIN_REGIONS, 'Custom terrain exceeded the region cap');
   for (const r of bounded.map.regions) {
     assert(['forest', 'hill', 'water', 'rock', 'bridge'].includes(r.type));
     assert([r.x, r.y, r.w, r.h].every(Number.isFinite) && r.x >= 0 && r.y >= 0 && r.w > 0 && r.h > 0);
@@ -1682,6 +1682,12 @@ require('./club-sweep-test.cjs')(test);
 require('./ordnance-test.cjs')(test);
 require('./rank-volley-test.cjs')(test);
 require('./historical-battles-test.cjs')(test);
+require('./battlefield-data-test.cjs')(test);
+require('./fortress-navigation-test.cjs')(test);
+require('./grand-scale-test.cjs')(test);
+require('./rampart-data-test.cjs')(test);
+require('./rampart-runtime-test.cjs')(test);
+require('./rampart-command-test.cjs')(test);
 require('./gunline-charge-test.cjs')(test);
 require('./expanded-battlefields-test.cjs')(test);
 require('./army-plans-test.cjs')(test);
@@ -1699,7 +1705,7 @@ test('12,000 soldiers stay stable through 10 simulated seconds', () => {
   return { units: e.units.length, millisecondsPerStep: Math.round(milliseconds / 300 * 100) / 100 };
 });
 
-test('20,000-soldier cap remains stable while moving', () => {
+test('20,000 soldiers remain stable while moving', () => {
   const e = new BattleEngine(config({ swordsman: 7000, archer: 2000, cavalry: 1000 }, { pikeman: 7000, archer: 2000, lancer: 1000 }));
   assert.equal(e.units.length, 20000);
   e.start();

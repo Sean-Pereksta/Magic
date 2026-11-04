@@ -8,6 +8,7 @@
   const within = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
   const gap = (u, s) => Math.hypot(Math.max(0, s.x - u.x, u.x - s.x - s.w), Math.max(0, s.y - u.y, u.y - s.y - s.h));
   const ready = r => r.alive > 0 && !r._routed && !r.fallingBack && r._rallyTime <= 0 && r.order === 'auto';
+  const STRUCTURE_HEIGHT = Object.freeze({ stone: 36, palisade: 28, earthwork: 14, house: 32, watchtower: 64, barricade: 16, keep: 56 });
 
   class BattleSiege {
     constructor(engine) {
@@ -17,14 +18,22 @@
       this._claims = new Map();
       engine.structures = engine._fortifications.map((region, i) => {
         const hp = clamp(Number(region.hp) || (region.type === 'gate' ? 1000 : 2200), 200, 10000);
+        const structureKind = Object.prototype.hasOwnProperty.call(STRUCTURE_HEIGHT, region.structureKind) ? region.structureKind : 'stone';
         Object.assign(region, { id: 'fort-' + i, team: region.team === 0 ? 0 : 1,
+          structureKind, structureHeight: region.castleTower && structureKind === 'stone' ? 68 : region.type === 'gate' && structureKind === 'stone' ? 29 : STRUCTURE_HEIGHT[structureKind],
+          name: typeof region.name === 'string' ? region.name.replace(/[<>]/g, '').trim().slice(0, 80) : '',
           hp, maxHp: hp, breached: false, open: false, lastHit: -1000, passages: [] });
         return region;
       });
       this.structures = engine.structures;
       this.byId = new Map(this.structures.map(s => [s.id, s]));
       for (const r of engine.regiments) this._initialize(r);
+      for(const s of this.structures)if(s.walkable)s.structureHeight=(Number(s.deckHeight)||36)+8;
     }
+    manRampart(ids,structureId,options){return this.engine.ramparts?this.engine.ramparts.manRampart(ids,structureId,options):0;}
+    setRampartFormation(ids,options){return this.engine.ramparts?this.engine.ramparts.setRampartFormation(ids,options):0;}
+    leaveRamparts(ids){return this.engine.ramparts?this.engine.ramparts.leaveRamparts(ids,true):0;}
+    previewRampart(ids,structureId,options){return this.engine.ramparts?this.engine.ramparts.preview(ids,structureId,options):[];}
 
     _initialize(r) {
       r._siegeJob = null; r.siegeStatus = ''; r._siegeManualTarget = null;
@@ -47,7 +56,7 @@
 
     setGateOpen(id, open, team) {
       const e = this.engine, gate = this.byId.get(id);
-      if (!gate || !gate.castleGate || gate.breached || gate.team !== team ||
+      if (!gate || gate.type !== 'gate' || gate.breached || gate.team !== team ||
           typeof open !== 'boolean' || gate.open === open || e.phase === 'ended') return false;
       if (!open && (gate.passages.length || e.units.some(u => {
         if (!u.alive || u.escaped) return false;
@@ -251,6 +260,7 @@
     }
 
     stepUnit(u, dt) {
+      if(this.engine.ramparts&&this.engine.ramparts.stepUnit(u,dt))return true;
       const e = this.engine, r = e.regiments[u.regiment], t = TYPES[u.type], job = r._siegeJob;
       if (u._siegeUndocking) {
         let clear = false;
@@ -373,6 +383,7 @@
       this.engine._effect(x, y, 'siegeHit', 24, attacker ? attacker.team : 1 - s.team, .55);
       if (!s.hp) {
         s.breached = true;
+        if(this.engine.ramparts)this.engine.ramparts.collapse(s);
         this.engine._refreshTerrainNavigation();
         this.engine._event((s.type === 'gate' ? 'The gate' : 'A section of wall') + ' has been breached. Troops can advance through the rubble.', attacker ? attacker.team : 1 - s.team, 'siege');
       }

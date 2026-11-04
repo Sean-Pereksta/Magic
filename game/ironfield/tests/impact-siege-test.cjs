@@ -221,7 +221,7 @@ function register(test) {
   ]:[{type:'wall',x:3200,y:0,w:80,h:4400,team:1,hp:2200}];
 
   test('Siege catalog, equipment caps and authored fortifications are complete and independently cloned',()=>{
-    assert.equal(D.TYPE_ORDER.length,23);assert.equal(D.MAPS.length,23);assert.equal(D.PRESETS.filter(p=>!p.historical).length,24);assert.equal(D.PRESETS.length,24+(D.HISTORICAL_BATTLES||[]).length);
+    assert.equal(D.TYPE_ORDER.length,23);assert.equal(D.MAPS.length,23+D.EXPANSION_MAPS.length);assert.equal(D.PRESETS.filter(p=>!p.historical).length,24+D.EXPANSION_PRESETS.length);assert.equal(D.PRESETS.length,24+D.EXPANSION_PRESETS.length+(D.HISTORICAL_BATTLES||[]).length);
     for(const id of ['siegeTower','batteringRam']){assert(D.TYPES[id].equipment&&D.TYPES[id].groupSize===1);assert.equal(D.TYPES[id].maxCount,12);}
     const initial=JSON.stringify(D.MAPS),source=cfg({siegeTower:999,batteringRam:999},{guardian:1},undefined,wallLine());
     const e=new Engine(source);assert(e.siege&&e.structures.length===3,'Fortification metadata produced no functional structures');

@@ -1,4 +1,16 @@
-# IRONFIELD 2.6 — Fire by ranks and the Campaign Atlas
+# IRONFIELD 2.7 — Grand battlefields and rampart defense
+
+- Added connected walkable castle walls, towers, and gatehouse decks with physical interior stairs. Foot formations can man the walls with one to three ranks and adjustable spacing; elevated ranged guards retain rank volleys and receive parapet protection against exterior shots.
+- Added wall-top selection, formation previews, saved guard plans, and custom wall stair sides. Wall and gate collapses trigger a courtyard defense, while intact guards descend and unsupported guards fall. Ground orders continue after safe descent.
+- Ranged foot troops understand a wall right-click during deployment, battle, or pause. Hovering a friendly wall previews their posts; direct wall commands also work with an armed destination order.
+- Raised the battle limit to 40,000 soldiers, 20,000 per army, across simulation, builder, army scaling, scenario imports, and full formation saves. Added 8× army scale.
+- Added eight authored battlefields and ten historical battles, for 30 authored fields, 32 authored scenarios, and 30 historical scenarios.
+- Added roads, mud, marshes, snow, and trenches with movement and cover effects, route costs, and distinct art.
+- Added timber palisades, curtain castles, moated castles, bastioned star forts, and concentric citadels, while retaining the original square keep. Added houses, watchtowers, barricades, and hollow gate keeps.
+- Preserved structure materials and names through the editor and saves. Gate checks cover every entrance, and moat templates include physical causeways. Expanded custom terrain capacity to 192 areas.
+- Added a faster distant-army drawing pass and cached terrain views while retaining detailed sprites and animation at close range. Optimized soldier state, collision access, and unnecessary navigation work. On clear distant ground, large formed companies can share marching calculations; terrain, nearby formations, turns, and combat return them to the individual solver.
+
+## IRONFIELD 2.6 — Fire by ranks and the Campaign Atlas
 
 - Musketeers use a regiment schedule: synchronized successive rank volleys, 24-second reloads and 78 base shot damage. Added three-rank volley and three-file column styles, melee disruption, reforming, and visible rank status.
 - Cannon and trebuchet blasts throw enemies farther; catapult impacts also displace and lift troops.

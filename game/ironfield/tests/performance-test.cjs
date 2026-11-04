@@ -14,7 +14,7 @@ if (!selected) {
   // A fresh VM for each case avoids prior maps changing V8's specialization
   // and makes the before/after cases reproducible in the same order.
   const { spawnSync } = require('node:child_process');
-  const cases = ['charge', 'basin', 'epic'].map(id => {
+  const cases = ['charge', 'basin', 'epic', 'grand40k'].map(id => {
     const run = spawnSync(process.execPath, [__filename, root, String(seconds)], {
       env: { ...process.env, IRONFIELD_PERF_PRESET: id }, encoding: 'utf8'
     });
@@ -28,7 +28,7 @@ if (!selected) {
 global.window = global;
 require(path.join(root, 'src/data.js'));
 if (fs.existsSync(path.join(root, 'src/tactics.js'))) require(path.join(root, 'src/tactics.js'));
-for (const name of ['impacts', 'siege']) {
+for (const name of ['impacts', 'siege', 'ramparts']) {
   const file = path.join(root, 'src', name + '.js');
   if (require('node:fs').existsSync(file)) require(file);
 }
@@ -42,13 +42,18 @@ const phases = times => {
 };
 const results = [];
 for (const id of selected ? [selected] : ['charge', 'basin', 'epic']) {
-  const source = GameData.PRESETS.find(p => p.id === id);
+  const source = id === 'grand40k' || id === 'grand40k-contact' ? {
+    map: 'custom', seed: 430247,
+    customMap: { width: id === 'grand40k' ? 16000 : 6400, height: id === 'grand40k' ? 11000 : 4400, biome: 'grassland', regions: [] },
+    armies: [0,1].map(() => ({ roster: { swordsman: 10000, pikeman: 5000, archer: 3000, cavalry: 2000 } }))
+  } : GameData.PRESETS.find(p => p.id === id);
   assert(source, 'Unknown benchmark preset ' + id);
   const e = new BattleEngine(JSON.parse(JSON.stringify(source)));
   const start = performance.now(); e.start(); const startMS = performance.now() - start;
-  const times = [], buckets = [];
+  const times = [], buckets = [], fastCounts = [];
   for (let tick = 0; tick < Math.round(seconds * 30) && e.phase === 'running'; tick++) {
     const began = performance.now(); e.step(1 / 30); times.push(performance.now() - began);
+    fastCounts.push(e.fastMarchUnits || 0);
     if ((tick + 1) % 300 === 0 || tick + 1 === Math.round(seconds * 30)) buckets.push({ throughSeconds: round(e.time), ...phases(times.slice(Math.floor(tick / 300) * 300)) });
   }
   for (const u of e.units) {
@@ -60,6 +65,10 @@ for (const id of selected ? [selected] : ['charge', 'basin', 'epic']) {
   const result = { preset: id, map: e.config.map, seed: e.seed, units: e.units.length,
     formations: e.regiments.length, simulatedSeconds: round(e.time), startMS: round(startMS),
     ...phases(times), buckets, casualties: teams.map(t => t.dead),
+    meanCertifiedMarchSoldiers: round(fastCounts.reduce((sum,n)=>sum+n,0)/Math.max(1,fastCounts.length)),
+    peakCertifiedMarchSoldiers: Math.max(0,...fastCounts),
+    limitation: id === 'grand40k' ? 'Colossal open-ground approach; this does not measure dense melee, siege traffic, browser rendering, or guarantee 30 FPS.' : id === 'grand40k-contact' ? 'Dense Standard-size deployment; inspect casualties/attacks to distinguish approach from actual fighting.' : 'Authored scenario simulation.',
+    soldiersWhoAttacked: e.units.filter(u=>u._lastAttack>0).length,
     physicalStateSHA: crypto.createHash('sha256').update(JSON.stringify(e.units.map(u => [u.x, u.y, u.hp, u.alive]))).digest('hex') };
   results.push(result);
 }

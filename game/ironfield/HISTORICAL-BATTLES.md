@@ -1,6 +1,6 @@
 # Historical battle collection
 
-Twenty playable, sourced scenarios span 490 BCE to 1815 CE. Each uses an explicit opening deployment, named army sectors, terrain, flank forces, and reserves rather than the generic roster auto-placement.
+Thirty playable, sourced scenarios span 490 BCE to 1815 CE. Each uses an explicit opening deployment, named army sectors, terrain, flank forces, and reserves rather than the generic roster auto-placement.
 
 These are representative game adaptations. Troop totals and distances are compressed independently for playability; they are not a single numerical scale, a claim of exact force ratios, or a surveyed map. Historical sources describe the arrangement and tactical situation. The game’s weapon ranges, damage, armor, movement, and outcomes remain game rules. Some battlefield locations and precise deployments are disputed.
 
@@ -15,6 +15,128 @@ Historical outcomes are not forced. Reinforcement arrival schedules, command fai
 ## Sources and scenario notes
 
 Sources consulted 4 November 2026. The public links are also available beside each battle in the historical menu.
+
+### Thermopylae · 480 BCE
+
+Malis, Greece · Ancient.
+
+Greek heavy foot occupy the pass with supporting contingents behind them. Persian assault bodies wait in separate depths outside the constricted entrance, with missile troops supporting the approach.
+
+Equipment, armor, and movement use IRONFIELD troop archetypes rather than exact period statistics.
+
+The opening pass defense is represented, including allied Greeks. The later mountain-path encirclement and final stand are not scripted; the pass is widened for playable body clearance.
+
+- [Herodotus: Histories Book VII · Fordham University](https://sourcebooks.web.fordham.edu/ancient/herodotus-thermopylae.asp)
+
+### Hydaspes · 326 BCE
+
+Punjab, South Asia · Ancient.
+
+Porus places elephants in front of his infantry, with cavalry on both flanks. Macedonian pikes and light troops approach the center while a mounted striking force occupies the right.
+
+Pikes and cavalry represent Macedonian roles; elephant howdahs and all armor use generic game artwork. Indian chariots have no direct roster equivalent and are omitted.
+
+This begins after Alexander’s crossing. River ferries, prior diversions, and the precise historical elephant spacing are outside the scenario.
+
+- [Arrian: Anabasis V.15 · public-domain translation](https://en.wikisource.org/wiki/The_Anabasis_of_Alexander/Book_V/Chapter_XV)
+
+### Zama · 202 BCE
+
+North Africa · Ancient.
+
+Roman companies stand in aligned passages rather than a closed checkerboard, with Laelius on the left and Massinissa on the right. Carthaginian elephants lead mercenaries, native infantry, and a distant veteran reserve.
+
+Swordsmen stand for Roman and Carthaginian foot. Cavalry approximate Numidian light horse without adding bows. The simulator does not impose historical elephant panic.
+
+
+
+- [Polybius: Histories XV.9–16 · University of Chicago](https://penelope.uchicago.edu/Thayer/E/Roman/Texts/Polybius/15%2A.html)
+
+### Stirling Bridge · 1297 CE
+
+Stirling, Scotland · Medieval.
+
+The Scots occupy rising ground near the bridgehead. A selected English vanguard has already crossed, while further infantry and horse stand on the far bank behind a single crossing.
+
+Equipment, armor, and movement use IRONFIELD troop archetypes rather than exact period statistics.
+
+The river loop is simplified and the crossing widened for practical navigation. The bridge does not collapse; neither timed crossings nor the historical cut-off are forced.
+
+- [Stirling Bridge battlefield inventory · Historic Environment Scotland](https://portal.historicenvironment.scot/apex/f?p=1505%3A300%3A%3A%3A%3A%3AVIEWTYPE%2CVIEWREF%3Adesignation%2CBTL28)
+
+### Flodden · 1513 CE
+
+Northumberland, England · Pike & shot.
+
+Huntly and Home occupy the Scottish left, James the center, Lennox and Argyll the right, with Bothwell in reserve. English divisions oppose the hill while Stanley’s wing is offset to threaten the Scottish right.
+
+Halberdiers approximate English bills; generic pikes represent Scottish continental-length weapons. Equipment and gun effects remain game rules.
+
+
+
+- [Flodden battlefield report · Historic England](https://historicengland.org.uk/content/docs/listing/battlefields/flodden/)
+
+### Pinkie Cleugh · 1547 CE
+
+Musselburgh, Scotland · Pike & shot.
+
+English foot form three supporting battle sectors with shot, bowmen, artillery, and mounted wings. Scottish strength lies in deep pike divisions, backed by a smaller missile element.
+
+Equipment, armor, and movement use IRONFIELD troop archetypes rather than exact period statistics.
+
+The land battle is represented; English naval support is omitted. Pike depths and frontage are compressed, and firearms follow the game’s three-rank drill.
+
+- [Pinkie battlefield inventory · Historic Environment Scotland](https://portal.historicenvironment.scot/apex/f?p=1505%3A300%3A%3A%3A%3A%3AVIEWTYPE%2CVIEWREF%3Adesignation%2CBTL15)
+
+### Trenton · 1776 CE
+
+New Jersey, North America · Musket age.
+
+One American body approaches the town from the west while Greene’s body and Washington approach from the north. Hessian regiments assemble within the open street sectors, with Assunpink Creek behind the town.
+
+Equipment, armor, and movement use IRONFIELD troop archetypes rather than exact period statistics.
+
+The scenario begins with the garrison forming. Surprise, fatigue, building interiors, and the earlier Delaware crossing are not scripted.
+
+- [Battle of Trenton · George Washington’s Mount Vernon](https://www.mountvernon.org/library/digitalhistory/digital-encyclopedia/article/battle-of-trenton)
+
+### Princeton · 1777 CE
+
+New Jersey, North America · Musket age.
+
+A forward American detachment confronts the British 17th Foot near the orchard. Additional American infantry and Moulder’s battery stand farther back, while British supporting bodies occupy a second depth.
+
+Equipment, armor, and movement use IRONFIELD troop archetypes rather than exact period statistics.
+
+Reinforcements are present from the opening rather than arriving on a clock. Rifle and bayonet differences use generic musket infantry rules.
+
+- [Princeton Battlefield State Park · New Jersey DEP](https://dep.nj.gov/parksandforests/state-park/princeton-battlefield-state-park/)
+- [Moulder’s Battery battlefield interpretation · Borough of Princeton / NJ State Parks](https://www.princetonnj.gov/DocumentCenter/View/15452/Battle-Window-at-Moulder-s-Battery_submission-for-ABPP-Rev-and-Princeton-Sec-106-Rvw_122023-PDF)
+
+### Austerlitz · 1805 CE
+
+Moravia, Central Europe · Napoleonic.
+
+A strong French center stands opposite the Pratzen plateau while the right wing is comparatively thin. Allied strength concentrates in southern columns, leaving a smaller central force and a separate northern wing.
+
+Equipment, armor, and movement use IRONFIELD troop archetypes rather than exact period statistics.
+
+The scenario depicts the developing central opportunity. Mist, timed arrivals, frozen ponds, and each prior maneuver are not simulated.
+
+- [The Battle of Austerlitz and the Principles of War · Fondation Napoléon](https://www.napoleon.org/en/history-of-the-two-empires/articles/the-battle-of-austerlitz-and-the-principles-of-war)
+
+### Borodino · 1812 CE
+
+Western Russia · Napoleonic.
+
+Russian foot hold successive sectors behind the central redoubt and southern fieldworks, with a northern village sector and reserves. French infantry faces the works with supporting cavalry and concentrated gun batteries.
+
+Trenches and short rectangular earthwork panels approximate the redoubt and flèches, whose exact angular geometry is not reproduced. Musket and gun effects are game balance.
+
+
+
+- [Napoleon’s Russian campaign: Borodino · Fondation Napoléon](https://www.napoleon.org/en/history-of-the-two-empires/timelines/napoleons-russian-campaign-from-the-niemen-to-moscow)
+- [Contemporary Borodino map · Service historique de la Défense](https://www.servicehistorique.sga.defense.gouv.fr/les-tresors-du-shd/carte-de-la-bataille-de-borodino)
 
 ### Marathon · 490 BCE
 
@@ -260,4 +382,4 @@ Opening deployments only: Prussian arrivals and later cavalry-versus-square phas
 
 ## Verification
 
-Run `node tests/historical-battles-test.cjs` from this game directory. The checks verify unique IDs, source metadata, troop totals, explicit formation coverage, named sectors, valid formations, finite starting bodies, map bounds, terrain clearance, and physical separation for all twenty encounters. Separate layout checks verify Marathon’s stronger wings, Leuctra’s deep Theban left, Cannae’s projecting center, Cowpens’s three positions, and Waterloo’s forward outposts.
+Run `node tests/historical-battles-test.cjs` from this game directory. The checks verify unique IDs, source metadata, troop totals, explicit formation coverage, named sectors, valid formations, finite starting bodies, map bounds, terrain clearance, and physical separation for all thirty encounters. Separate layout checks verify Marathon’s stronger wings, Leuctra’s deep Theban left, Cannae’s projecting center, Cowpens’s three positions, and Waterloo’s forward outposts.

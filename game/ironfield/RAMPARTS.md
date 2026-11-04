@@ -1,0 +1,17 @@
+# Rampart defense
+
+Walkable castle walls, towers, and gatehouses have a connected deck above their solid ground footprint. Friendly infantry reaches it by real interior stairs. Opening a gate leaves the gatehouse deck intact; destroying its support removes that section of deck. Ground troops still need an open gate, breach, or assault passage to cross the masonry.
+
+Select ranged foot troops and right-click a friendly wall to assign them directly, during deployment, battle, or pause. Click the visible wall top or its base; the wall positions preview on hover. Right-clicking the wall also works when another destination command is armed. Foot formations can use **Man ramparts**, then click a friendly wall. Friendly gates keep their ordinary open/close interaction; use the explicit Man ramparts command to choose a gatehouse deck. Horses and siege engines remain on the ground.
+
+The selection panel provides **Depth** (one, two, or three ranks) and **Spacing** (Close, Regular, or Spread). The actual deck width limits the ranks that can fit. The formation can use connected sections, while stairs and landings retain access space. Soldiers who cannot fit wait in the courtyard rather than disappearing. The preview shows real candidate deck positions and does not move troops.
+
+Assignments can be made during deployment. They store a guard plan and do not teleport soldiers onto the wall. Saved scenarios preserve the selected wall, drill, deck metadata, stair endpoints, and courtyard position; they reload the starting deployment. The regular ground formation selector and Split are unavailable during active wall duty. Use Form in courtyard to descend and recover those controls.
+
+Ranged troops aim from their actual elevation, and projectiles travel between launch and target height. Musketeers keep synchronized rank volleys on their assigned wall ranks. Troops on a different floor cannot exchange ordinary ground-level melee blows through the wall. Parapets reduce incoming ranged accuracy from the exterior side; an attacker who enters the courtyard does not retain that outside-wall accuracy penalty.
+
+Destroying an occupied wall deck makes its supported soldiers fall, with a physical fall consequence. Other guards leave through surviving connected decks and stairs, then form on courtyard ground. If their only stair access is destroyed, stranded guards make an emergency drop toward the courtyard and take fall damage. A gate breach also triggers the courtyard response, even when the company occupies an adjacent intact wall. Ordinary Move or Retreat orders use a safe descent before continuing on the ground.
+
+For a prepared example, choose **Castle of Four Winds** and its authored assault. The 160 archers and 160 crossbows begin on courtyard ground with wall assignments; a hoplite reserve stays below. Choose the defending army or Command both to change their drill. All castle templates and hollow gate keeps include stairs. In the custom editor, individual walls can also have a stair approach on either side; keep those approaches clear of buildings and deep water.
+
+The stair and deck runtime checks verify intermediate climbing height, physical separation, bounded movement, connected support, larger companies, elevated firing, outside-versus-courtyard incoming shots, safe descent, wall and gate collapse, and accepted order continuity. The UI checks cover wall-top picking, elevated troop selection, rank and spacing controls, pure previews, saved wall IDs, and restored ground controls.

@@ -17,8 +17,9 @@
   const BODY_CELL = 32;
   const NAV = 80;
   const MAX_EFFECTS = 420;
-  const MAX_PROJECTILES = 16000;
+  const MAX_PROJECTILES = Math.max(16000, Math.floor((DATA.MAX_UNITS || 40000) * .8));
   const EMPTY_TERRAIN = Object.freeze({ type: 'plain', speed: 1, cover: 0, elevation: 0, blocked: false });
+  const ground = id => Object.freeze({ type: id, speed: DATA.TERRAIN_TYPES[id].speed, cover: DATA.TERRAIN_TYPES[id].cover, elevation: 0, blocked: false });
   const TERRAINS = {
     forest: Object.freeze({ type: 'forest', speed: .78, cover: .36, elevation: 0, blocked: false }),
     hill: Object.freeze({ type: 'hill', speed: .88, cover: .06, elevation: 1, blocked: false }),
@@ -28,8 +29,13 @@
     wall: Object.freeze({ type: 'wall', speed: 0, cover: .65, elevation: 1, blocked: true }),
     gate: Object.freeze({ type: 'gate', speed: 0, cover: .50, elevation: 0, blocked: true }),
     rubble: Object.freeze({ type: 'rubble', speed: .78, cover: .12, elevation: 0, blocked: false }),
-    ramp: Object.freeze({ type: 'ramp', speed: .70, cover: .18, elevation: 1, blocked: false })
+    ramp: Object.freeze({ type: 'ramp', speed: .70, cover: .18, elevation: 1, blocked: false }),
+    road: ground('road'), mud: ground('mud'), marsh: ground('marsh'), snow: ground('snow'), trench: ground('trench')
   };
+  const GROUND_CODES = Object.freeze({ forest: 1, hill: 2, road: 3, mud: 4, marsh: 5, snow: 6, trench: 7 });
+  const GROUND_COST = Object.freeze([1, 1 / .78, 1 / .88, ...['road', 'mud', 'marsh', 'snow', 'trench'].map(id => 1 / TERRAINS[id].speed)]);
+  const GROUND_OVERLAYS = new Set(['road', 'mud', 'marsh', 'snow', 'trench']);
+  const STRUCTURE_KINDS = new Set(['stone', 'palisade', 'earthwork', 'house', 'watchtower', 'barricade', 'keep']);
 
   function inside(x, y, r, margin) {
     margin = margin || 0;
@@ -92,6 +98,7 @@
       this._lastStallEvent = 0;
       this._stats = [0, 1].map(() => ({ initial: 0, alive: 0, dead: 0, routed: 0, kills: 0, morale: 0, power: 0, fallingBack: 0, rallied: 0 }));
       this._regions = this.map.regions || [];
+      this._minimumGroundCost = this._regions.some(r => r.type === 'road') ? 1 / TERRAINS.road.speed : 1;
       this._fortifications = this._regions.filter(r => r.type === 'wall' || r.type === 'gate');
       this.terrainRevision = 0;
       this.structures = [];
@@ -129,7 +136,7 @@
         for (let x = 0; x < this._navCols; x++) {
           this._navBlocked[y * this._navCols + x] = this._blocked((x + .5) * NAV, (y + .5) * NAV) ? 1 : 0;
           const terrain = this.terrainAt((x + .5) * NAV, (y + .5) * NAV);
-          this._navTerrain[y * this._navCols + x] = terrain.type === 'forest' ? 1 : terrain.type === 'hill' ? 2 : 0;
+          this._navTerrain[y * this._navCols + x] = GROUND_CODES[terrain.type] || 0;
         }
       }
       this._navClearance.set(0, this._navBlocked);
@@ -139,10 +146,24 @@
       const navCount = this._navBlocked.length;
       this._routeScratch = { cost: new Float64Array(navCount), parent: new Int32Array(navCount), seen: new Uint32Array(navCount), closed: new Uint32Array(navCount), heap: new Int32Array(navCount * 8), priority: new Float64Array(navCount * 8), generation: 0 };
       this._buildArmies();
+      // The first few literals can retain superseded numeric field layouts
+      // while the roster initializes. Canonicalize those warm-up records to
+      // the final shape before any consumer holds a soldier reference.
+      if (this.units.length > 32) {
+        const template = this.units[this.units.length - 1];
+        for (let i = 0; i < 20; i++) this.units[i] = Object.assign({ ...template }, this.units[i]);
+      }
       this._next = new Int32Array(this.units.length);
       this._bodyNext = new Int32Array(this.units.length);
       this._collisionCandidates = new Int32Array(this.units.length);
       this._solidNext = new Int32Array(this.units.length);
+      // Compact hot geometry keeps broad-phase neighbor scans out of each
+      // soldier's much larger animation/command/combat record. These values
+      // are synchronized after every real voluntary or forced displacement.
+      this._bodyX = new Float64Array(this.units.length); this._bodyY = new Float64Array(this.units.length);
+      this._bodyRadius = new Float64Array(this.units.length); this._bodyLive = new Uint8Array(this.units.length);
+      this._bodyTeam = new Uint8Array(this.units.length); this._bodyRegiment = new Uint16Array(this.units.length);
+      this._bodyZ = new Float64Array(this.units.length);
       this._collisionDX = new Float64Array(this.units.length);
       this._collisionDY = new Float64Array(this.units.length);
       this._collisionGap = new Float64Array(this.units.length);
@@ -156,13 +177,15 @@
       this._rebuildHash();
       this._refreshStats();
       this.impacts = global.BattleImpacts ? new global.BattleImpacts(this) : null;
+      this.ramparts = global.BattleRamparts ? new global.BattleRamparts(this) : null;
+      if (this.ramparts) this.ramparts.initializeOrders();
       this._event('Armies assembled. Position your formations, then sound the advance.', null, 'deployment');
     }
 
     _normalizeConfig(input) {
       const source = input && typeof input === 'object' ? input : DATA.DEFAULT_CONFIG;
       const validMap = DATA.MAPS.find(m => m.id === source.map);
-      const cap = Math.floor((DATA.MAX_UNITS || 20000) / 2);
+      const cap = Math.floor((DATA.MAX_UNITS || 40000) / 2);
       const armies = [0, 1].map(team => {
         const army = (Array.isArray(source.armies) && source.armies[team]) || {};
         const raw = army.roster && typeof army.roster === 'object' ? army.roster : {};
@@ -198,8 +221,8 @@
         worldWidth = size.width; worldHeight = size.height;
         const biomes = ['grassland', 'wetland', 'desert', 'tundra', 'woodland', 'highland', 'ashland'];
         normalized.customMap = { name: String(custom.name || 'Custom Map').slice(0, 64), biome: biomes.includes(custom.biome) ? custom.biome : 'grassland', width: worldWidth, height: worldHeight, regions: [] };
-        for (const raw of (Array.isArray(custom.regions) ? custom.regions : []).slice(0, 96)) {
-          if (!raw || !['forest', 'hill', 'rock', 'water', 'bridge', 'wall', 'gate'].includes(raw.type) || ![raw.x, raw.y, raw.w, raw.h].every(Number.isFinite) || raw.w <= 0 || raw.h <= 0) continue;
+        for (const raw of (Array.isArray(custom.regions) ? custom.regions : []).slice(0, DATA.MAX_TERRAIN_REGIONS || 192)) {
+          if (!raw || !['forest', 'hill', 'rock', 'water', 'bridge', 'wall', 'gate', 'road', 'mud', 'marsh', 'snow', 'trench'].includes(raw.type) || ![raw.x, raw.y, raw.w, raw.h].every(Number.isFinite) || raw.w <= 0 || raw.h <= 0) continue;
           const x = clamp(raw.x, 0, worldWidth - 20), y = clamp(raw.y, 0, worldHeight - 20);
           const region = { type: raw.type, x, y, w: clamp(raw.w, 20, worldWidth - x), h: clamp(raw.h, 20, worldHeight - y) };
           if (raw.type === 'wall' || raw.type === 'gate') {
@@ -207,6 +230,11 @@
             region.hp = Number.isFinite(raw.hp) ? clamp(raw.hp, 200, 10000) : raw.type === 'wall' ? 2200 : 1000;
             if (raw.type === 'wall' && raw.castleTower === true) region.castleTower = true;
             if (raw.type === 'gate' && raw.castleGate === true) region.castleGate = true;
+            region.structureKind = STRUCTURE_KINDS.has(raw.structureKind) ? raw.structureKind : 'stone';
+            if (typeof raw.name === 'string' && raw.name.trim()) region.name = raw.name.replace(/[<>]/g, '').trim().slice(0, 80);
+            if(raw.walkable===true){region.walkable=true;region.deckHeight=clamp(Number(raw.deckHeight)||36,8,100);region.rampartSide=['west','east','north','south'].includes(raw.rampartSide)?raw.rampartSide:'';
+              if(Number.isFinite(raw.courtyardX)&&Number.isFinite(raw.courtyardY)){region.courtyardX=clamp(raw.courtyardX,20,worldWidth-20);region.courtyardY=clamp(raw.courtyardY,20,worldHeight-20);}
+              if(Array.isArray(raw.stairs))region.stairs=raw.stairs.slice(0,8).filter(s=>s&&[s.x,s.y,s.w,s.h,s.groundX,s.groundY,s.deckX,s.deckY].every(Number.isFinite)&&s.w>0&&s.h>0).map(s=>({id:String(s.id||'stairs').slice(0,80),x:s.x,y:s.y,w:s.w,h:s.h,axis:s.axis==='y'?'y':'x',dir:s.dir===-1?-1:1,width:clamp(Number(s.width)||64,24,200),height:region.deckHeight,groundX:s.groundX,groundY:s.groundY,deckX:s.deckX,deckY:s.deckY}));}
           }
           normalized.customMap.regions.push(region);
         }
@@ -220,6 +248,7 @@
           if (!count) continue;
           const group = { team: raw.team, type: raw.type, count, x: clamp(raw.x, 35, worldWidth - 35), y: clamp(raw.y, 35, worldHeight - 35), formation: FORMATIONS[raw.formation] ? raw.formation : raw.type === 'musketeer' ? 'volley' : 'line' };
           if (typeof raw.name === 'string' && raw.name.trim()) group.name = raw.name.replace(/[<>]/g, '').trim().slice(0, 80);
+          if(raw.rampart&&typeof raw.rampart==='object')group.rampart={structureId:typeof raw.rampart.structureId==='string'?raw.rampart.structureId.slice(0,80):'',ranks:clamp(Math.floor(Number(raw.rampart.ranks)||2),1,3),spacing:['compact','normal','wide'].includes(raw.rampart.spacing)?raw.rampart.spacing:'normal'};
           if (Number.isFinite(raw.facing)) group.facing = Math.atan2(Math.sin(raw.facing), Math.cos(raw.facing));
           if (Array.isArray(raw.offsets) && raw.offsets.length >= count) {
             const offsets = raw.offsets.slice(0, count);
@@ -250,6 +279,7 @@
         this._createRegiment(group.team, group.type, group.count, number, group.x, group.y, group.facing);
         const r = this.regiments[this.regiments.length - 1];
         if (group.name) r.name = group.name;
+        if (group.rampart) r._initialRampart = group.rampart;
         if (group.formation !== r.formation && !TYPES[group.type].commander) this.setFormation([r.id], group.formation);
         if (group.offsets) {
           // A detached half is a real body of troops, not a newly generated
@@ -268,7 +298,8 @@
       // Explicit deployments keep their real bodies. New roster additions
       // need an empty footprint rather than restarting on the first occupied
       // army-grid position. Repair only an invalid imported/map-edited slot.
-      const occupancy = explicit.length ? { cells: new Map(), maxRadius: Math.max(...Object.values(TYPES).map(t => t.radius)) } : null;
+      const largeDeployment = this.config.armies.reduce((sum, army) => sum + Object.values(army.roster).reduce((n, count) => n + count, 0), 0) > 20000;
+      const occupancy = explicit.length || largeDeployment ? { cells: new Map(), maxRadius: Math.max(...Object.values(TYPES).map(t => t.radius)) } : null;
       if (occupancy) {
         const repair = [];
         for (const u of this.units) {
@@ -315,12 +346,29 @@
         // Saved formation positions above remain exact and keep their own fit.
         const rowSpacing = Math.min(requiredRowSpacing, (this.height - 650) / Math.max(1, rowCount - 1));
         const top = this.height / 2 - (rowCount - 1) * rowSpacing / 2;
+        const packed = [];
+        if (largeDeployment) {
+          // Pack actual company footprints into vertical shelves. A fixed
+          // 1950-unit army grid interlocked deep companies at the new cap.
+          let offset = 0, shelfDepth = 0, cursor = 55;
+          const shelfGap = this.width >= 9600 ? 280 : 24;
+          for (const group of groups) {
+            const t = TYPES[group.type], pitch = t.siege ? 48 : group.type === 'elephant' ? 56 : t.mounted ? 28 : 17;
+            const columns = group.type === 'musketeer' ? Math.ceil(group.amount / 3) : Math.ceil(Math.sqrt(group.amount * 1.6));
+            const rows = Math.ceil(group.amount / columns);
+            const width = (columns - 1) * pitch + t.radius * 2, depth = (rows - 1) * pitch + t.radius * 2;
+            if (cursor + width > this.height - 55 && cursor > 55) { offset += shelfDepth + shelfGap; shelfDepth = 0; cursor = 55; }
+            packed.push({ x: team === 0 ? this.width * .42 - offset - depth / 2 : this.width * .58 + offset + depth / 2, y: cursor + width / 2 });
+            cursor += width + 24; shelfDepth = Math.max(shelfDepth, depth);
+          }
+        }
         for (let i = 0; i < groups.length; i++) {
           const group = groups[i];
           const col = Math.floor(i / rowCount);
           const row = i % rowCount;
           let x = team === 0 ? this.width * .38 - col * columnSpacing : this.width * .62 + col * columnSpacing;
           let y = top + row * rowSpacing;
+          if (largeDeployment) { x = packed[i].x; y = packed[i].y; }
           if (occupancy) {
             const point = this._emptyDeploymentOrigin(team, group.type, group.amount, x, y, occupancy);
             x = point.x; y = point.y;
@@ -370,13 +418,23 @@
       const sx = clamp(u.x, u._radius + 9, this.width - u._radius - 9), sy = clamp(u.y, u._radius + 9, this.height - u._radius - 9);
       let point = null;
       const pitch = Math.max(16, u._radius * 2 + 3);
-      for (let ring = 0; ring <= 72 && !point; ring++) {
+      // Deployment occupancy only grows. For an identical origin and radius,
+      // failed candidates stay occupied; a previously chosen point is now
+      // occupied too. Resume that exact scan instead of probing its prefix
+      // again for every body compressed against the same crowded border.
+      if(!occupancy.repairCursors)occupancy.repairCursors=new Map();
+      const key=u._radius+':'+sx+':'+sy,cursor=occupancy.repairCursors.get(key)||{ring:0,sample:0};
+      let nextRing=73,nextSample=0;
+      for (let ring = cursor.ring; ring <= 72 && !point; ring++) {
         const samples = Math.max(1, ring * 8);
-        for (let sample = 0; sample < samples; sample++) {
+        for (let sample = ring===cursor.ring?cursor.sample:0; sample < samples; sample++) {
           const angle = sample / samples * TAU, x = sx + Math.cos(angle) * ring * pitch, y = sy + Math.sin(angle) * ring * pitch;
-          if (this._deploymentFree(x, y, u._radius, occupancy)) { point = { x, y }; break; }
+          if (this._deploymentFree(x, y, u._radius, occupancy)) { point = { x, y };nextRing=sample+1<samples?ring:ring+1;nextSample=sample+1<samples?sample+1:0;break; }
         }
       }
+      // One small record per repeated origin is useful; pathological imports
+      // cannot retain more than this bounded, constructor-local cache.
+      if(occupancy.repairCursors.has(key)||occupancy.repairCursors.size<8192)occupancy.repairCursors.set(key,{ring:nextRing,sample:nextSample});
       if (point) { u.x = point.x; u.y = point.y; }
       const r = this.regiments[u.regiment];
       u._orderOffsetX = u.x - r.x; u._orderOffsetY = u.y - r.y;
@@ -476,7 +534,13 @@
         fireBehavior: t.missile ? t.missile.label : '',
         nextVolleyRank: 1, nextVolleyAt: 0, volleyRankCount: type === 'musketeer' ? rows : 0,
         volleyStatus: type === 'musketeer' ? 'forming' : '', lastVolleyAt: -1000, lastVolleyRank: 0,
-        _volleyNext: 0, _volleyBrokenUntil: 0, _volleyDispatch: false, _volleyLayout: ''
+        _volleyNext: 0, _volleyBrokenUntil: 0, _volleyDispatch: false, _volleyLayout: '',
+        _siegeJob: null, siegeStatus: '', _siegeManualTarget: null, _siegeManualEpoch: -1, _siegeReachRevision: -1,
+        _lancerPass: null,
+        _rigidMinX: Infinity, _rigidMaxX: -Infinity, _rigidMinY: Infinity, _rigidMaxY: -Infinity,
+        _rigidCenterX: 0, _rigidCenterY: 0, _rigidAngleDelta: 0,
+        _rigidCertifiedEpoch: -1, _rigidContinuityTick: -1, _rigidCount: 0, _rigidCheckAfter: 0
+        ,_initialRampart:null,_rampartJob:null,_rampartSlots:[],rampartRanks:2,rampartSpacing:'normal',rampartStatus:''
       };
       this.regiments.push(r);
       for (let slot = 0; slot < amount; slot++) {
@@ -524,11 +588,16 @@
           _friendlyOffsetX: 0, _friendlyOffsetY: 0, _friendlyUntil: 0,
           _friendlySource: -1, _friendlySourceEpoch: -1, _friendlyEpoch: -1,
           _friendlyTick: -1, _friendlyDistance: 0, _friendlyDX: 0, _friendlyDY: 0,
-          _friendlyFlowTick: -1, _friendlyCarryTick: -1
+          _friendlyFlowTick: -1, _friendlyCarryTick: -1,
+          _braceTime: 0, _chargeCheckedUntil: 0,
+          _pushSource: -1, _pushSpeed: 0, _pushForce: 0, _pushEpoch: -1, _pushUntil: 0, _pushDepth: 0,
+          _pushNX: 0, _pushNY: 0, _lastPush: -1000,
+          _siegeStage: '', _siegeTarget: null, _siegeProgress: 0, _siegeDeployed: false,
+          _siegeRamp: null, _siegeEnemy: -1, _siegeUndocking: false, _siegeUndockCheck: 0, _siegeOccupants: null,
+          _bulkStepTick: -1,
+          _onRampart:false,_rampartId:'',_rampartZ:0,_rampartClimb:0,_rampartStage:'',_rampartAccess:null,
+          _rampartGroundPath:[],_rampartPath:[],_rampartSlot:-1,_rampartRank:0,_rampartCourtGoal:null,_rampartFallTarget:null,_rampartFallDamage:0
         };
-        u._braceTime = 0; u._chargeCheckedUntil = 0;
-        u._pushSource = -1; u._pushSpeed = 0; u._pushForce = 0; u._pushEpoch = -1; u._pushUntil = 0; u._pushDepth = 0;
-        u._pushNX = 0; u._pushNY = 0; u._lastPush = -1000;
         r.unitIds.push(u.id);
         this.units.push(u);
       }
@@ -538,6 +607,7 @@
 
     start() {
       if (this.phase !== 'deployment') return false;
+      this._rebuildHash();
       for (const r of this.regiments) if (r.alive > 0) this._captureMarchLayout(r);
       this.phase = 'running';
       this._event('The advance is sounded. The armies march.', null, 'start');
@@ -610,6 +680,7 @@
 
     captureFormations() {
       return this.regiments.filter(r => r.unitIds.length > 0).map(r => ({ team: r.team, type: r.type, name: r.name, count: r.unitIds.length, x: r.x, y: r.y, formation: r.formation, facing: r.facing,
+        ...(r._rampartJob&&!r._rampartJob.leaving?{rampart:{structureId:r._rampartJob.structureId,ranks:r.rampartRanks,spacing:r.rampartSpacing}}:{}),
         offsets: r.unitIds.map(id => ({ x: this.units[id].x - r.x, y: this.units[id].y - r.y })) }));
     }
 
@@ -929,6 +1000,7 @@
         const moved = Math.hypot(mx, my);
         u.travelDistance += moved;
         if (this.impacts) this.impacts.recordMove(u, moved);
+        else { this._bodyX[u.id] = u.x; this._bodyY[u.id] = u.y; }
         if (mx * nx + my * ny > .001) { source._lastPush = this.time; u._braceTime = 0; }
       }
       // Pressure can pass through touching lighter allies. Every body gets
@@ -982,7 +1054,7 @@
       const destinations = hasPoint && (order === 'move' || order === 'attack') ? this._commandDestinations(ready, x, y) : null;
       for (let i = 0; i < targets.length; i++) {
         const r = targets[i];
-        if (order === 'retreat') { if (this._startFallback(r, true)) accepted.push(r); continue; }
+        if (order === 'retreat') { if (this._startFallback(r, true)) { if(this.ramparts)this.ramparts.onCommand(r,order);accepted.push(r); } continue; }
         if (recall && (r.fallingBack || r._rallyTime > 0)) {
           r.fallingBack = r._manualFallback = false; r._rallyTime = 0;
           r.status = r.morale < 42 || r.cohesion < 40 ? 'shaken' : 'steady';
@@ -990,7 +1062,9 @@
         }
         if (r.fallingBack || r._rallyTime > 0) { r.commandStatus = r.fallingBack ? 'withdrawing' : 'regrouping'; continue; }
         if (order === 'charge' && specifiedTarget && (!explicitTarget || explicitTarget.team === r.team || explicitTarget.alive <= 0 || explicitTarget._routed)) continue;
+        if(order==='charge'&&explicitTarget&&TYPES[r.type].mounted&&explicitTarget.unitIds.every(id=>!this.units[id].alive||this.units[id]._onRampart))continue;
         accepted.push(r);
+        if(this.ramparts)this.ramparts.onCommand(r,order);
         this._resetCommandIntent(r);
         const center = this._currentCenter(r);
         const anchor = this._nearestPassable(center.x, center.y, TYPES[r.type].radius + 2);
@@ -1215,6 +1289,13 @@
       }
       if (this.siege && this.siege.ramps.length && this.siege.ramps.some(r => inside(x, y, r))) return TERRAINS.ramp;
       for (let i = 0; i < this._bridges.length; i++) if (inside(x, y, this._bridges[i])) return TERRAINS.bridge;
+      // Roads and other newly painted ground override older passable ground.
+      // Solid rocks/water still own the body and projectile geometry.
+      for (const block of this._blocks) if (block.type !== 'wall' && block.type !== 'gate' && inside(x, y, block)) return TERRAINS[block.type];
+      for (let i = this._regions.length - 1; i >= 0; i--) {
+        const region = this._regions[i];
+        if (GROUND_OVERLAYS.has(region.type) && inside(x, y, region)) return TERRAINS[region.type];
+      }
       for (let i = 0; i < this._regions.length; i++) {
         const r = this._regions[i];
         if (r.type === 'wall' || r.type === 'gate') continue;
@@ -1222,6 +1303,7 @@
       }
       return EMPTY_TERRAIN;
     }
+    unitAltitude(u){return u?(u._rampartZ||this.siege&&this.siege.ramps.length&&this.siege.heightAt(u.x,u.y)||0):0;}
 
     _blocked(x, y) {
       if (x < 8 || y < 8 || x > this.width - 8 || y > this.height - 8) return true;
@@ -1267,7 +1349,7 @@
         const i = y * this._navCols + x, xx = (x + .5) * NAV, yy = (y + .5) * NAV;
         this._navBlocked[i] = this._blocked(xx, yy) ? 1 : 0;
         const terrain = this.terrainAt(xx, yy);
-        this._navTerrain[i] = terrain.type === 'forest' ? 1 : terrain.type === 'hill' ? 2 : 0;
+        this._navTerrain[i] = GROUND_CODES[terrain.type] || 0;
       }
       this._navClearance.clear(); this._navClearance.set(0, this._navBlocked);
       this._approachNext = 0; this._strategyTimer = 0;
@@ -1402,30 +1484,44 @@
       return simplified;
     }
 
-    _rebuildHash() {
+    _rebuildHash(useCache) {
       this._bodyHashDrift = 0;
       this._heads[0].fill(-1); this._heads[1].fill(-1);
       this._cellCounts[0].fill(0); this._cellCounts[1].fill(0);
       this._bodyHeads[0].fill(-1); this._bodyHeads[1].fill(-1);
       this._smallSolidHeads[0].fill(-1);this._smallSolidHeads[1].fill(-1);
       this._largeSolidHeads[0].fill(-1);this._largeSolidHeads[1].fill(-1);
+      const compact = useCache && this.units.length > 20000 && this.structures.length === 0;
+      if (!compact) this._bodyLive.fill(0);
+      if (this.units.length > 20000) for (const r of this.regiments) {
+        r._rigidMinX = r._rigidMinY = Infinity; r._rigidMaxX = r._rigidMaxY = -Infinity;
+        r._rigidCenterX = r._rigidCenterY = 0;
+      }
       for (let i = 0; i < this.units.length; i++) {
-        const u = this.units[i];
-        if (!u.alive || u.routed) continue;
-        const cell = clamp(Math.floor(u.y / CELL), 0, this._rows - 1) * this._cols + clamp(Math.floor(u.x / CELL), 0, this._cols - 1);
-        this._next[i] = this._heads[u.team][cell];
-        this._heads[u.team][cell] = i;
-        this._cellCounts[u.team][cell]++;
+        const u = compact ? null : this.units[i];
+        if (compact ? !this._bodyLive[i] : !u.alive || u.routed&&!this.regiments[u.regiment]._rampartJob) continue;
+        if (!compact) { this._bodyX[i] = u.x; this._bodyY[i] = u.y; this._bodyRadius[i] = u._radius; this._bodyLive[i] = 1; this._bodyTeam[i] = u.team; this._bodyRegiment[i] = u.regiment; this._bodyZ[i]=this.unitAltitude(u); }
+        const px = this._bodyX[i], py = this._bodyY[i], radius = this._bodyRadius[i], team = this._bodyTeam[i];
+        if (this.units.length > 20000) {
+          const r = this.regiments[this._bodyRegiment[i]];
+          r._rigidMinX = Math.min(r._rigidMinX, px - radius); r._rigidMaxX = Math.max(r._rigidMaxX, px + radius);
+          r._rigidMinY = Math.min(r._rigidMinY, py - radius); r._rigidMaxY = Math.max(r._rigidMaxY, py + radius);
+          r._rigidCenterX += px; r._rigidCenterY += py;
+        }
+        const cell = clamp(Math.floor(py / CELL), 0, this._rows - 1) * this._cols + clamp(Math.floor(px / CELL), 0, this._cols - 1);
+        this._next[i] = this._heads[team][cell];
+        this._heads[team][cell] = i;
+        this._cellCounts[team][cell]++;
         // A deployed tower is a raised platform; its crew remains targetable,
         // while soldiers cross the visible ramp underneath its firing deck.
-        if (u._siegeDeployed && !u._siegeUndocking) continue;
-        const body = clamp(Math.floor(u.y / BODY_CELL), 0, this._bodyRows - 1) * this._bodyCols + clamp(Math.floor(u.x / BODY_CELL), 0, this._bodyCols - 1);
-        this._bodyNext[i] = this._bodyHeads[u.team][body];
-        this._bodyHeads[u.team][body] = i;
-        if(u._radius<=12){this._solidNext[i]=this._smallSolidHeads[u.team][body];this._smallSolidHeads[u.team][body]=i;}
+        if (!compact && u._siegeDeployed && !u._siegeUndocking) continue;
+        const body = clamp(Math.floor(py / BODY_CELL), 0, this._bodyRows - 1) * this._bodyCols + clamp(Math.floor(px / BODY_CELL), 0, this._bodyCols - 1);
+        this._bodyNext[i] = this._bodyHeads[team][body];
+        this._bodyHeads[team][body] = i;
+        if(radius<=12){this._solidNext[i]=this._smallSolidHeads[team][body];this._smallSolidHeads[team][body]=i;}
         else{
-          const large=clamp(Math.floor(u.y/128),0,this._largeBodyRows-1)*this._largeBodyCols+clamp(Math.floor(u.x/128),0,this._largeBodyCols-1);
-          this._solidNext[i]=this._largeSolidHeads[u.team][large];this._largeSolidHeads[u.team][large]=i;
+          const large=clamp(Math.floor(py/128),0,this._largeBodyRows-1)*this._largeBodyCols+clamp(Math.floor(px/128),0,this._largeBodyCols-1);
+          this._solidNext[i]=this._largeSolidHeads[team][large];this._largeSolidHeads[team][large]=i;
         }
       }
     }
@@ -1476,7 +1572,7 @@
         heap[index] = id; priority[index] = value; return result;
       };
       const fx = finish % cols, fy = Math.floor(finish / cols);
-      const heuristic = id => { const x = Math.abs(id % cols - fx), y = Math.abs(Math.floor(id / cols) - fy); return Math.max(x, y) + Math.min(x, y) * .41421356; };
+      const heuristic = id => { const x = Math.abs(id % cols - fx), y = Math.abs(Math.floor(id / cols) - fy); return (Math.max(x, y) + Math.min(x, y) * .41421356) * this._minimumGroundCost; };
       seen[start] = generation; cost[start] = 0; parent[start] = start; push(start, heuristic(start));
       const directions = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
       let found = false, expanded = 0;
@@ -1493,7 +1589,7 @@
           if (blocked[next] || closed[next] === generation || (i >= 4 && (blocked[y * cols + xx] || blocked[yy * cols + x]))) continue;
           const terrain = this._navTerrain[next];
           const forestMultiplier = Number.isFinite(t.forestSpeed) ? t.forestSpeed : t.mounted ? .62 : 1;
-          const ground = terrain === 1 ? 1 / (.78 * forestMultiplier) : terrain === 2 ? 1 / .88 : 1;
+          const ground = terrain === 1 ? 1 / (.78 * forestMultiplier) : GROUND_COST[terrain] || 1;
           const ownDistance = Math.hypot((xx + .5) * NAV - r.x, (yy + .5) * NAV - r.y);
           const traffic = ownDistance > r.depth + 70 ? Math.min(2, Math.max(0, this._cellCounts[r.team][next] - 7) / 18) * .65 : 0;
           const candidate = cost[current] + (i < 4 ? 1 : Math.SQRT2) * (ground + traffic);
@@ -1551,6 +1647,7 @@
         for (let id = heads[y * this._bodyCols + x]; id !== -1; id = this._bodyNext[id]) {
           const enemy = this.units[id];
           if (!enemy.alive || enemy.routed) continue;
+          if(Math.abs(this.unitAltitude(u)-this.unitAltitude(enemy))>18)continue;
           const dx = enemy.x - u.x, dy = enemy.y - u.y, d2 = dx * dx + dy * dy;
           if (d2 > (reach + enemy._radius) * (reach + enemy._radius)) continue;
           const value = d2 + Math.min(3, Math.max(0, this._targetClaims[id] - 1)) * 20;
@@ -1578,6 +1675,7 @@
           for (let id = heads[y * this._cols + x]; id !== -1; id = this._next[id]) {
             const enemy = this.units[id];
             if (!enemy.alive || enemy.routed) continue;
+            if(Math.abs(this.unitAltitude(u)-this.unitAltitude(enemy))>18)continue;
             const dx = enemy.x - u.x, dy = enemy.y - u.y, d2 = dx * dx + dy * dy;
             if (d2 > radius * radius) continue;
             const lateral = enemy.x * r._frontTX + enemy.y * r._frontTY - lane;
@@ -1686,7 +1784,7 @@
             // cells. The field leads toward all real enemy fronts, allowing
             // them to circulate around an occupied line to another opening.
             const crowd = Math.max(0, this._cellCounts[team][next] - 7) * .16;
-            const terrain = this._navTerrain[next] === 1 ? 1.38 : this._navTerrain[next] === 2 ? 1.15 : 1;
+            const terrain = this._navTerrain[next] === 1 ? 1.38 : this._navTerrain[next] === 2 ? 1.15 : GROUND_COST[this._navTerrain[next]] || 1;
             const candidate = value + (i < 4 ? 1 : Math.SQRT2) * (terrain + crowd);
             if (candidate + .0001 < field[next]) { field[next] = candidate; push(next, candidate); }
           }
@@ -2127,6 +2225,7 @@
     }
 
     _assignMusketRanks(r, missiles) {
+      if(r._rampartJob){let ranks=1;for(const id of r.unitIds){const u=this.units[id];u._volleyRank=u._rampartRank;ranks=Math.max(ranks,u._volleyRank+1);}r.volleyRankCount=ranks;r._volleyNext%=ranks;r.nextVolleyRank=r._volleyNext+1;return;}
       const form = FORMATIONS[r.formation] || {};
       const columns = missiles ? r._missileColumns : form.files ? Math.min(r.alive, form.files) : form.ranks ? Math.ceil(r.alive / form.ranks) : r.formation === 'wedge' ? r._shapeColumns : Math.ceil(r.alive / 3);
       const wedge = !missiles && r.formation === 'wedge';
@@ -2147,7 +2246,8 @@
     }
 
     _musketMelee(u, enemy) {
-      if (!enemy || !enemy.alive || enemy.routed || u._meleeCooldown > 0 || Math.hypot(enemy.x - u.x, enemy.y - u.y) > 32 + enemy._radius || !this._lineClear(u.x, u.y, enemy.x, enemy.y)) return;
+      if(enemy&&Math.abs(this.unitAltitude(u)-this.unitAltitude(enemy))>18)return;
+      if (!enemy || !enemy.alive || enemy.routed || u._meleeCooldown > 0 || Math.hypot(enemy.x - u.x, enemy.y - u.y) > 32 + enemy._radius || !this._meleeLineClear(u,enemy)) return;
       u.angle = Math.atan2(enemy.y - u.y, enemy.x - u.x);
       u._meleeCooldown = 1.7; u._lastMusketMelee = u._lastAttack = this.time; u.attackFlash = 1; u.state = 'attack';
       this._hit(u, enemy, 9, false, false);
@@ -2160,13 +2260,14 @@
         const columns = missiles ? r._missileColumns : (FORMATIONS[r.formation] || {}).files || ((FORMATIONS[r.formation] || {}).ranks ? Math.ceil(r.alive / FORMATIONS[r.formation].ranks) : r.formation === 'wedge' ? r._shapeColumns : Math.ceil(r.alive / 3));
         const layout = [missiles ? 'fire' : 'march', r.formation, columns, r.alive].join(':');
         if (layout !== r._volleyLayout) this._assignMusketRanks(r, missiles);
-        const soldiers = r.unitIds.map(id => this.units[id]).filter(u => u.alive && !u.routed);
+        const soldiers = r.unitIds.map(id => this.units[id]).filter(u => u.alive && !u.routed&&(!r._rampartJob||(u._onRampart&&!u._rampartPath.length&&!r._rampartJob.leaving)));
+        if(r._rampartJob)this._assignMusketRanks(r,true);
         const rankMembers = Array.from({ length: r.volleyRankCount }, () => []);
         for (const u of soldiers) rankMembers[u._volleyRank].push(u);
         let contact = false;
         for (const u of soldiers) {
           const id = this._nearestEnemy(u, 42);
-          if (id >= 0 && this._lineClear(u.x, u.y, this.units[id].x, this.units[id].y)) {
+          if (id >= 0 && Math.abs(this.unitAltitude(u)-this.unitAltitude(this.units[id]))<=18 && this._meleeLineClear(u,this.units[id])) {
             contact = true;
             this._musketMelee(u, this.units[id]);
           }
@@ -2190,6 +2291,7 @@
           const rank = (r._volleyNext + attempt) % r.volleyRankCount;
           const members = rankMembers[rank];
           if (!members.length) continue;
+          if(r._rampartJob&&r.unitIds.some(id=>{const u=this.units[id];return u.alive&&!u.routed&&u._volleyRank===rank&&(!u._onRampart||u._rampartPath.length);}))continue;
           const ready = members.every(u => u._cooldown <= 1e-8 && u._impactUntil <= this.time && u._vx * u._vx + u._vy * u._vy <= 25);
           if (!ready) continue;
           const shots = [];
@@ -3120,7 +3222,11 @@
         }
         r._bridge = null;
         for (const bridge of this._bridges) {
-          if (r.x > bridge.x - r.depth * .6 - 80 && r.x < bridge.x + bridge.w + r.depth * .6 + 80 && Math.abs(r.y - (bridge.y + bridge.h / 2)) < 300) { r._bridge = bridge; break; }
+          const horizontal = bridge.w >= bridge.h;
+          const along = horizontal ? r.x : r.y, side = horizontal ? r.y : r.x;
+          const start = horizontal ? bridge.x : bridge.y, length = horizontal ? bridge.w : bridge.h;
+          const middle = horizontal ? bridge.y + bridge.h / 2 : bridge.x + bridge.w / 2;
+          if (along > start - r.depth * .6 - 80 && along < start + length + r.depth * .6 + 80 && Math.abs(side - middle) < Math.max(300, (horizontal ? bridge.h : bridge.w) / 2)) { r._bridge = bridge; break; }
         }
         // These properties are shared by every member during this fixed
         // step. Compute them once per regiment instead of thousands of
@@ -3129,7 +3235,7 @@
         r._deployCombat = this._canDeployForCombat(r); r._deployMissiles = this._canDeployMissiles(r);
         r._marchNX = Math.cos(r._marchAngle); r._marchNY = Math.sin(r._marchAngle);
         const adapted = r.maneuver !== 'formed' || Math.abs(r._adaptiveOffset) > 1;
-        r._slotAngle = r._bridge ? (r._goalX >= r.x ? 0 : Math.PI) : adapted || r.order === 'move' || this._advancingAttack(r) ? r._travelAngle : r.facing;
+        r._slotAngle = r._bridge ? r._bridge.w >= r._bridge.h ? (r._goalX >= r.x ? 0 : Math.PI) : (r._goalY >= r.y ? Math.PI / 2 : -Math.PI / 2) : adapted || r.order === 'move' || this._advancingAttack(r) ? r._travelAngle : r.facing;
         r._slotNX = Math.cos(r._slotAngle); r._slotNY = Math.sin(r._slotAngle);
         r._speedFactor = this._formationFactor(r, 'speed');
         r._steadyBraceScale = tactic && tactic.movingBrace && (r.formation === 'line' || r.formation === 'shieldwall') && !r._frontTurning && !r._traffic && !r._bridge && r._terrainPressure < .2 && r.cohesion >= 45 &&
@@ -3137,10 +3243,97 @@
           Math.abs(r._marchAngle - marchStartAngle) < .002 ? r.type === 'pikeman' ? .58 : r.type === 'hoplite' ? .52 : r.type === 'halberdier' ? .40 : .24 : 0;
         if (this.impacts) this.impacts.guideRegiment(r, dt, marchStartX, marchStartY, marchStartAngle);
         if (directMarch) r.facing = r._travelAngle;
+        r._rigidAngleDelta = Math.abs(r._marchAngle - marchStartAngle);
+      }
+    }
+
+    _stepClearMarches(dt) {
+      this.fastMarchUnits = 0;
+      if (this.units.length <= 20000) return;
+      const neighborTravel = 162 * dt * 1.7;
+      for (const r of this.regiments) {
+        const t = TYPES[r.type];
+        const horse = this.impacts && this.impacts.isHorse(r);
+        if (r.alive <= 0 || r._rampartJob || (t.mounted && !horse) || t.siege || t.commander || !r._marchActive || r._combatActive || r._missileActive ||
+            (r.order !== 'auto' && r.order !== 'move' && !(r.order === 'attack' && this._advancingAttack(r))) ||
+            r._traffic || r._bridge || r.fallingBack || r._rallyTime > 0 || r._frontTurning || r._tacticalMovement || r._tacticalHold ||
+            r._rigidAngleDelta > 1e-10 || r._marchTurnUntil > this.time || r._formationPressureUntil > this.time ||
+            (r._tactic && r._tactic.movingBrace) ||
+            r._terrainPressure > .001 || r._nearestEnemyDistance < Math.max(1700, t.range + r.depth + 400) ||
+            r.cohesion < 80 || this.time < r._rigidCheckAfter) continue;
+        const speed = t.speed * r._speedFactor * r._movementScale, limit = speed * dt;
+        const cx = r._rigidCenterX / r.alive, cy = r._rigidCenterY / r.alive;
+        const dx = r.x - cx, dy = r.y - cy, distance = Math.hypot(dx, dy);
+        if (distance < .001 || limit <= 0) continue;
+        let amount = Math.min(limit, distance), mx = dx / distance * amount, my = dy / distance * amount;
+        const padding = amount + neighborTravel + 2;
+        const left = r._rigidMinX - padding, right = r._rigidMaxX + padding, top = r._rigidMinY - padding, bottom = r._rigidMaxY + padding;
+        if (left < 12 || top < 12 || right > this.width - 12 || bottom > this.height - 12) continue;
+        let blocked = false;
+        for (const region of this._regions) if (left < region.x + region.w && right > region.x && top < region.y + region.h && bottom > region.y) { blocked = true; break; }
+        if (blocked) continue;
+        for (const other of this.regiments) if (other !== r && other.alive > 0 && left < other._rigidMaxX && right > other._rigidMinX && top < other._rigidMaxY && bottom > other._rigidMinY) { blocked = true; break; }
+        if (blocked) continue;
+        const fresh = r._rigidCertifiedEpoch !== r._commandEpoch || r._rigidContinuityTick !== this._tick - 1 || r._rigidCount !== r.alive;
+        const nx = r._marchNX, ny = r._marchNY;
+        // With no projectiles or active forced motion, a continuously
+        // certified body cannot acquire a new internal contact between these
+        // identical translations. External swept bounds are still checked.
+        const inspect = fresh || this.projectiles.length > 0 || (this.impacts && this.impacts.active.size > 0) || r._recentHits > 0;
+        if (inspect) for (const id of r.unitIds) {
+          const u = this.units[id];
+          if (!u.alive || u.routed) continue;
+          if (u.target >= 0 || u._contact || u._impactUntil > this.time || u._pushUntil > this.time || u._marchTurnEnd > this.time ||
+              u._terrain.type !== 'plain' || u._portalGoal || u._localPath.length || u._jamTime > .1 ||
+              (horse && (Math.abs(u._friendlyOffsetX) + Math.abs(u._friendlyOffsetY) > .01 || u._friendlyUntil > this.time)) ||
+              (fresh && Math.hypot(u.x - cx - u._marchOX * nx + u._marchOY * r._marchSqueeze * ny, u.y - cy - u._marchOX * ny - u._marchOY * r._marchSqueeze * nx) > 3) ||
+              (fresh && this._collideMovement(u, 0, 0, 0).blocked)) { blocked = true; break; }
+        }
+        if (blocked) { r._rigidCheckAfter = this.time + .5; continue; }
+        const driveNX = dx / distance, driveNY = dy / distance;
+        if (horse) {
+          let drive = speed;
+          for (const id of r.unitIds) {
+            const u = this.units[id];
+            if (!u.alive || u.routed) continue;
+            this.impacts.beginUnit(u);
+            drive = Math.min(drive, this.impacts.speedFor(u, speed, driveNX, driveNY, dt));
+          }
+          amount = Math.min(amount, drive * dt); mx = dx / distance * amount; my = dy / distance * amount;
+        }
+        // This translation preserves every internal distance. The expanded
+        // swept bounds above exclude all external bodies, obstacles, terrain
+        // transitions, and edges for this entire fixed step. Contacts always
+        // return to the individual collision solver on the following step.
+        const vx = mx / dt, vy = my / dt, heading = Math.atan2(my, mx);
+        for (const id of r.unitIds) {
+          const u = this.units[id];
+          if (!u.alive || u.routed) continue;
+          u.anim += dt; u.attackFlash = Math.max(0, u.attackFlash - dt * 3.7);
+          u._cooldown -= dt; u._meleeCooldown -= dt; u._sense -= dt; u._terrainTimer -= dt; u._contactSense -= dt;
+          u._localTimer -= dt;
+          if (u._localTimer <= 0) u._localTimer = .7 + u._jitter * .55;
+          if (u._sense <= 0) u._sense = .65 + u._jitter * .3;
+          if (u._terrainTimer <= 0) u._terrainTimer = .4 + u._jitter * .25;
+          u._flex = Math.max(0, u._flex - dt * .7); u._stuck = Math.max(0, u._stuck - dt * 2); u._jamTime = Math.max(0, u._jamTime - dt * 2);
+          u.x += mx; u.y += my; u._vx = vx; u._vy = vy; u._contact = false;
+          u._moveIntentNX = driveNX; u._moveIntentNY = driveNY; u._moveIntentTime = this.time;
+          u._motionTick = this._tick; u._motionDistance = horse ? 0 : amount; u.travelDistance += amount;
+          u._braceTime = 0; u._idleContactTime = 0; u.state = 'move';
+          if (r.order === 'move') u.angle += clamp(Math.atan2(Math.sin(heading - u.angle), Math.cos(heading - u.angle)), -12 * dt, 12 * dt);
+          else u.angle = heading;
+          if (horse) this.impacts.afterMove(u, mx, my, dt, amount, false);
+          else if (this.time >= u._chargeCheckedUntil) u._charge = Math.min(200, u._charge + amount);
+          u._bulkStepTick = this._tick; this._bodyX[id] = u.x; this._bodyY[id] = u.y;
+          this.fastMarchUnits++;
+        }
+        r._moveAttempts += r.alive; this._bodyHashDrift = Math.max(this._bodyHashDrift, amount);
+        r._rigidCertifiedEpoch = r._commandEpoch; r._rigidContinuityTick = this._tick; r._rigidCount = r.alive;
       }
     }
 
     _formationGoal(u, r, rigid) {
+      if(r._rampartJob)return u._onRampart&&!u._rampartPath.length&&!r._rampartJob.leaving?(r._rampartSlots[u._rampartSlot]||u):{x:u.x,y:u.y};
       const formation = FORMATIONS[r.formation] || {};
       if (r.order === 'hold' && !r._traffic && u._holdPosition) return u._holdPosition;
       const tacticalHold = this._inUnitStep ? r._tacticalHold : r.order === 'auto' && r._tactic && r._tactic.hold && !r.fallingBack && r._rallyTime <= 0;
@@ -3180,14 +3373,18 @@
       const adapted = (r.maneuver !== 'formed' || Math.abs(r._adaptiveOffset) > 1) && this.phase !== 'deployment';
       let columns = adapted ? Math.max(1, r._travelSlots ? r._travelSlotColumns : Math.round(r._adaptiveColumns)) : formation.files ? Math.min(r.alive, formation.files) : formation.ranks ? Math.ceil(r.alive / formation.ranks) : r.type === 'musketeer' && r.formation !== 'wedge' ? Math.ceil(r.alive / 3) : r.formation === 'shieldwall' ? Math.ceil(r._columns * 1.25) : r._columns;
       let spacing = adapted ? r._shapeSpacing : r._spacing * (formation.spacing || 1);
-      if (r._bridge) columns = Math.max(1, Math.min(columns, Math.floor((r._bridge.h - 55) / spacing)));
+      if (r._bridge) columns = Math.max(1, Math.min(columns, Math.floor((Math.min(r._bridge.w, r._bridge.h) - 55) / spacing)));
       if (r._bridge) {
-        const bridge = r._bridge, middle = bridge.x + bridge.w / 2;
-        const direction = r._goalX > middle + 60 ? 1 : r._goalX < middle - 60 ? -1 : 0;
-        const notAcross = direction === 1 ? u.x < bridge.x + bridge.w + 90 : direction === -1 ? u.x > bridge.x - 90 : false;
+        const bridge = r._bridge, horizontal = bridge.w >= bridge.h;
+        const start = horizontal ? bridge.x : bridge.y, length = horizontal ? bridge.w : bridge.h, middle = start + length / 2;
+        const goal = horizontal ? r._goalX : r._goalY, along = horizontal ? u.x : u.y;
+        const direction = goal > middle + 60 ? 1 : goal < middle - 60 ? -1 : 0;
+        const notAcross = direction === 1 ? along < start + length + 90 : direction === -1 ? along > start - 90 : false;
         if (notAcross) {
           const lane = u._slot % columns;
-          return { x: direction === 1 ? bridge.x + bridge.w + 160 : bridge.x - 160, y: bridge.y + bridge.h / 2 + (lane - (columns - 1) / 2) * spacing };
+          const across = (lane - (columns - 1) / 2) * spacing;
+          return horizontal ? { x: direction === 1 ? bridge.x + bridge.w + 160 : bridge.x - 160, y: bridge.y + bridge.h / 2 + across } :
+            { x: bridge.x + bridge.w / 2 - direction * across, y: direction === 1 ? bridge.y + bridge.h + 160 : bridge.y - 160 };
         }
       }
       const slot = r._travelSlots && u._moveSlot >= 0 ? u._moveSlot : u._slot;
@@ -3199,7 +3396,7 @@
       }
       const ox = ((rows - 1) / 2 - row) * spacing;
       const oy = (col - (columns - 1) / 2) * spacing * (adapted ? r._marchSqueeze : 1) + (adapted ? r._adaptiveOffset : 0);
-      const angle = this._inUnitStep ? r._slotAngle : r._bridge ? (r._goalX >= r.x ? 0 : Math.PI) : adapted || r.order === 'move' || this._advancingAttack(r) ? r._travelAngle : r.facing;
+      const angle = this._inUnitStep ? r._slotAngle : r._bridge ? r._bridge.w >= r._bridge.h ? (r._goalX >= r.x ? 0 : Math.PI) : (r._goalY >= r.y ? Math.PI / 2 : -Math.PI / 2) : adapted || r.order === 'move' || this._advancingAttack(r) ? r._travelAngle : r.facing;
       const cos = this._inUnitStep ? r._slotNX : Math.cos(angle), sin = this._inUnitStep ? r._slotNY : Math.sin(angle);
       const goal = { x: r.x + ox * cos - oy * sin, y: r.y + ox * sin + oy * cos };
       if (r._travelSlots && this.time < r._approachBlendUntil && !r._bridge && r._terrainPressure < .2 && !(r.order === 'charge' && TYPES[r.type].ranged)) {
@@ -3324,8 +3521,19 @@
         gx = friendlyGoal.x; gy = friendlyGoal.y;
       }
       if ((gx - u.x) * (gx - u.x) + (gy - u.y) * (gy - u.y) < 4) { u._vx = u._vy = 0; return false; }
-      let target = this._localNavigation(u, this._waterGoal(u, gx, gy), dt);
-      const dx = target.x - u.x, dy = target.y - u.y;
+      // An obstacle-free field has no water detour or local route to plan.
+      // Keep navigation's timer phase identical while avoiding two temporary
+      // points and their dispatch for every freely marching body. Solid-region
+      // arrays retain breached structures, so their full solver stays active.
+      let targetX = gx, targetY = gy;
+      if (!this._blocks.length && !this._waters.length && !u._localPath.length && !u._portalGoal && !u._portalCorner && !u._detour) {
+        u._localTimer -= dt;
+        if (u._localTimer <= 0) u._localTimer = .7 + u._jitter * .55;
+      } else {
+        const target = this._localNavigation(u, this._waterGoal(u, gx, gy), dt);
+        targetX = target.x; targetY = target.y;
+      }
+      const dx = targetX - u.x, dy = targetY - u.y;
       const distance = length2(dx, dy);
       if (distance < 2) { u._vx = u._vy = 0; return false; }
       const moveNX = dx / distance, moveNY = dy / distance;
@@ -3390,7 +3598,7 @@
         if (mountedImpact) impacts.afterMove(u, movedX, movedY, dt, movedDistance,
           (collision.ally || u._friendlyFlowTick === this._tick) && !collision.enemy && !terrainBlocked);
         else impacts.recordMove(u, movedDistance);
-      }
+      } else { this._bodyX[u.id] = u.x; this._bodyY[u.id] = u.y; }
       u.travelDistance += movedDistance;
       if (collision.ally && movedDistance < amount * .28) u._jamTime += dt;
       else u._jamTime = Math.max(0, u._jamTime - dt * 2);
@@ -3413,6 +3621,7 @@
       // bodies, while rare large bodies occupy their own coarser grid. Cache
       // relative geometry once for both constraint passes and the final sweep.
       const ux=u.x,uy=u.y,radius=u._radius,unitId=u.id,unitTeam=u.team,units=this.units,next=this._solidNext,siege=this.structures.length>0;
+      const xs=this._bodyX,ys=this._bodyY,radii=this._bodyRadius,live=this._bodyLive;
       const candidates=this._collisionCandidates,dxs=this._collisionDX,dys=this._collisionDY;
       const gaps=this._collisionGap,distances=this._collisionDistance2;
       let count=0,blocked=false,ally=false,enemy=false;
@@ -3429,10 +3638,14 @@
           for(let cy=minY;cy<=maxY;cy++)for(let cell=cy*cols+minX,end=cy*cols+maxX;cell<=end;cell++){
             for(let id=heads[cell];id!==-1;id=next[id]){
               if(id===unitId)continue;
-              const other=units[id];if(!other.alive||other.routed)continue;
-              const ox=ux-other.x,oy=uy-other.y,gap=(radius+other._radius)*.96,reach=gap+amount*2;
+              if(!live[id])continue;
+              // Legacy assault ramps are one continuous crowded walking
+              // surface. Only a real rampart/stair body opens a separate layer.
+              if(siege&&(u._rampartZ>0||units[id]._rampartZ>0)&&Math.abs(this.unitAltitude(u)-this._bodyZ[id])>18)continue;
+              const ox=ux-xs[id],oy=uy-ys[id],gap=(radius+radii[id])*.96,reach=gap+amount*2;
               // A departing tower closes its ground footprint to newcomers
               // while walkers already beneath the raised deck finish exiting.
+              const other=siege?units[id]:null;
               if(siege&&other._siegeDeployed){
                 if(!other._siegeUndocking)continue;
                 if(other._siegeOccupants&&other._siegeOccupants.has(unitId)){
@@ -3556,6 +3769,7 @@
     }
 
     _stepUnit(u, dt, orderedMarch) {
+      if (u._bulkStepTick === this._tick) return;
       const t = TYPES[u.type], r = this.regiments[u.regiment], impacts = this.impacts;
       const mountedImpact = impacts && (u.type === 'cavalry' || u.type === 'lancer' || u.type === 'horseArcher');
       const stream = mountedImpact && r._mountedStream;
@@ -3770,8 +3984,11 @@
       this._moveUnit(u, goal.x, goal.y, dt, r.order === 'charge' ? 1.15 : 1);
     }
 
+    _meleeLineClear(a,b){const az=this.unitAltitude(a),bz=this.unitAltitude(b);return az>8||bz>8?!this._projectileBarrier(a.x,a.y,b.x,b.y,0,0,1,az+14,bz+14):this._lineClear(a.x,a.y,b.x,b.y);}
+
     _attack(attacker, target) {
       const t = TYPES[attacker.type];
+      if(!t.ranged&&Math.abs(this.unitAltitude(attacker)-this.unitAltitude(target))>18)return;
       if (attacker.type === 'musketeer' && this._inUnitStep && !this.regiments[attacker.regiment]._volleyDispatch) return;
       const distance = Math.hypot(target.x - attacker.x, target.y - attacker.y);
       const bodyReach = t.ranged ? 0 : target._radius;
@@ -3789,11 +4006,11 @@
       attacker.attackFlash = 1;
       attacker.state = 'attack';
       if (t.ranged) {
-        if (distance < 48 && !t.siege && attacker.type !== 'musketeer') {
+        if (distance < 48 && !t.siege && attacker.type !== 'musketeer' && Math.abs(this.unitAltitude(attacker)-this.unitAltitude(target))<=18) {
           this._hit(attacker, target, Math.max(4, t.damage * .32), false, false);
           return;
         }
-        if (t.siege && !t.equipment && !ordnance && distance < 85) {
+        if (t.siege && !t.equipment && !ordnance && distance < 85 && Math.abs(this.unitAltitude(attacker)-this.unitAltitude(target))<=18) {
           this._hit(attacker, target, 3, false, false);
           return;
         }
@@ -3931,6 +4148,19 @@
     }
 
     _launchProjectile(p) {
+      const source=this.units[p.attacker],aim=this.units[p.target],altitude=u=>u?(u._rampartZ||this.siege&&this.siege.heightAt(u.x,u.y)||0):0;
+      if(p.launchZ===undefined)p.launchZ=altitude(source)+(p.type==='trebuchet'?87:p.type==='siegeTower'?116:p.type==='catapult'?40:p.type==='ballista'?25:20);
+      if(p.targetZ===undefined)p.targetZ=altitude(aim)+14;
+      p.rampartTrajectory=!!((source&&source._rampartZ>0)||(aim&&aim._rampartZ>0));
+      const support=aim&&aim._onRampart&&this.siege&&this.siege.byId.get(aim._rampartId);
+      let exterior=!!(source&&support&&(support.rampartSide==='west'?source.x<support.x+support.w/2:
+        support.rampartSide==='east'?source.x>support.x+support.w/2:
+        support.rampartSide==='north'?source.y<support.y+support.h/2:
+        support.rampartSide==='south'?source.y>support.y+support.h/2:false));
+      if(source&&support&&support.castleTower){const cx=support.x+support.w/2,cy=support.y+support.h/2;
+        exterior=exterior||(Number.isFinite(support.courtyardX)&&(cx<support.courtyardX-8?source.x<cx:cx>support.courtyardX+8&&source.x>cx))||
+          (Number.isFinite(support.courtyardY)&&(cy<support.courtyardY-8?source.y<cy:cy>support.courtyardY+8&&source.y>cy));}
+      p.rampartMiss=!!(exterior&&this.unitAltitude(source)<this.unitAltitude(aim)-8&&this._random()>.52);
       const gun = p.type === 'musketeer' || p.type === 'cannon';
       p.ordnance = gun || p.type === 'trebuchet';
       if (p.ordnance) {
@@ -3939,6 +4169,7 @@
         if (gun) {
           const flash = this._effect(u.x, u.y, p.type === 'cannon' ? 'cannonMuzzle' : 'musketMuzzle', p.type === 'cannon' ? 30 : 12, p.team, .25, u.id);
           if (flash) flash.angle = u.angle;
+          if(flash)flash.z=u._rampartZ||0;
         }
       }
       if (this.projectiles.length < MAX_PROJECTILES) this.projectiles.push(p);
@@ -3948,7 +4179,7 @@
       }
     }
 
-    _projectileBarrier(x, y, dx, dy, arc, from, to) {
+    _projectileBarrier(x, y, dx, dy, arc, from, to, launchZ=0, targetZ=0) {
       let first = null;
       const x0 = x + dx * from, x1 = x + dx * to, y0 = y + dy * from, y1 = y + dy * to;
       const left = Math.min(x0, x1), right = Math.max(x0, x1), top = Math.min(y0, y1), bottom = Math.max(y0, y1);
@@ -3960,8 +4191,12 @@
         const exit = Math.min(span[1], to);
         if (entry > exit) continue;
         // The stone clears the parapet only between its rising and falling crossings.
-        const height = block.type === 'rock' ? 32 : 36;
-        if (arc > height) {
+        const height = block.type === 'rock' ? 32 : block.structureHeight || 36;
+        if(launchZ||targetZ){
+          let hit=null;const steps=24;
+          for(let i=0;i<=steps;i++){const at=entry+(exit-entry)*i/steps,z=launchZ+(targetZ-launchZ)*at+Math.sin(at*Math.PI)*arc;if(z<=height+.01){hit=at;break;}}
+          if(hit===null)continue;entry=hit;
+        } else if (arc > height) {
           const rise = Math.asin(height / arc) / Math.PI;
           if (entry > rise && entry < 1 - rise) entry = 1 - rise;
           if (entry > exit) continue;
@@ -3988,9 +4223,9 @@
 
     _traceOrdnance(p, from, to) {
       const dx = p.tx - p.sx, dy = p.ty - p.sy, length = Math.hypot(dx, dy);
-      const barrier = this._projectileBarrier(p.sx, p.sy, dx, dy, p.arc, from, to);
+      const barrier = this._projectileBarrier(p.sx, p.sy, dx, dy, p.arc, from, to,p.launchZ||0,p.targetZ||0);
       let stop = barrier ? barrier.at : Infinity, hit = null;
-      if (p.type !== 'trebuchet' && length > .001) {
+      if (p.ordnance && !p.rampartMiss && p.type !== 'trebuchet' && length > .001) {
         const nx = dx / length, ny = dy / length, shotRadius = p.type === 'cannon' ? 4 : 1;
         this._ordnanceNeighbors(1 - p.team, p.sx + dx * from, p.sy + dy * from, p.sx + dx * to, p.sy + dy * to, shotRadius, u => {
           const ox = u.x - p.sx, oy = u.y - p.sy, lateral = ox * ny - oy * nx;
@@ -3999,10 +4234,13 @@
           const along = ox * nx + oy * ny, half = Math.sqrt(radius * radius - lateral * lateral);
           if ((along + half) / length < from) return;
           const entry = Math.max(from, (along - half) / length);
+          const z=(p.launchZ||0)+((p.targetZ||0)-(p.launchZ||0))*entry+Math.sin(entry*Math.PI)*p.arc;
+          if(z<this.unitAltitude(u)-3||z>this.unitAltitude(u)+28)return;
           if (entry <= to && entry < stop) { stop = entry; hit = u; }
         });
       }
       if (!Number.isFinite(stop)) return false;
+      p.impactZ=(p.launchZ||0)+((p.targetZ||0)-(p.launchZ||0))*stop+Math.sin(stop*Math.PI)*p.arc;
       p.tx = p.sx + dx * stop; p.ty = p.sy + dy * stop;
       p.contact = hit ? hit.id : -1;
       // A projectile that met an intervening body or rock never damages the original wall.
@@ -4019,7 +4257,7 @@
           this._hit(attacker, target, p.damage, true, false);
           if (this.impacts) this.impacts.weaponImpulse(attacker, target, nx, ny, 74, .31, 0);
         }
-        this._effect(p.tx, p.ty, 'musketHit', 10, p.team, .23);
+        const effect=this._effect(p.tx, p.ty, 'musketHit', 10, p.team, .23);if(effect)effect.z=Math.max(0,(p.impactZ===undefined?p.targetZ:p.impactZ)-14);
         return;
       }
       const stone = p.type === 'trebuchet', radius = TYPES[p.type].splash;
@@ -4028,14 +4266,14 @@
       const x = p.tx - nx * .05, y = p.ty - ny * .05;
       this._ordnanceNeighbors(1 - p.team, x, y, x, y, radius, target => {
         const ox = target.x - x, oy = target.y - y, d = Math.hypot(ox, oy);
-        if (d > radius + target._radius || this._projectileBarrier(x, y, ox, oy, 0, 0, 1)) return;
+        if (d > radius + target._radius || this._projectileBarrier(x, y, ox, oy, 0, 0, 1,p.targetZ||0,(target._rampartZ||0)+14)) return;
         const strength = 1 - .65 * Math.min(1, d / radius);
         this._hit(attacker, target, p.damage * strength, true, false, true);
         if (this.impacts) this.impacts.weaponImpulse(attacker, target, d > .1 ? ox / d : nx, d > .1 ? oy / d : ny,
           (stone ? 520 : 440) * strength, (stone ? 1.8 : 1.5) * (.55 + strength * .45), (stone ? 180 : 145) * strength);
       });
       if (wall) this.siege.damage(wall, p.damage * (stone ? 3.4 : 2.2), attacker);
-      this._effect(p.tx, p.ty, stone ? 'trebuchetImpact' : 'cannonImpact', radius, p.team, stone ? 1.1 : .72);
+      const effect=this._effect(p.tx, p.ty, stone ? 'trebuchetImpact' : 'cannonImpact', radius, p.team, stone ? 1.1 : .72);if(effect)effect.z=Math.max(0,(p.impactZ===undefined?p.targetZ:p.impactZ)-14);
     }
 
     _impact(p) {
@@ -4044,6 +4282,7 @@
       const attacker = this.units[p.attacker];
       if (!attacker) return;
       const target = this.units[p.target];
+      if(p.rampartMiss)return;
       if (TYPES[p.type].splash > 0) {
         this._splash(p.tx, p.ty, TYPES[p.type].splash, attacker, p.damage, -1, true);
         this._effect(p.tx, p.ty, 'explosion', TYPES[p.type].splash, p.team, .8);
@@ -4055,6 +4294,7 @@
     _kill(u, attacker) {
       if (!u.alive || u.routed) return;
       u.alive = false; u.hp = 0; u.state = 'dead'; u.target = -1;
+      this._bodyLive[u.id] = 0;
       u._pushUntil = 0;
       u._deathTime = this.time;
       this.deadUnitIds.push(u.id);
@@ -4150,6 +4390,7 @@
         const u = this.units[id];
         if (u.alive && !u.routed) { this._setTarget(u, -1); if (!manual) u.state = 'fallBack'; u._detour = null; u._holdPosition = null; }
       }
+      if(this.ramparts)this.ramparts.onCommand(r,'retreat');
       this._event(r.name + ' falls back to regroup' + (support ? ' with ' + support.name : '') + '.', r.team, 'fallback');
       return true;
     }
@@ -4203,7 +4444,7 @@
       let amount = 0;
       for (const id of r.unitIds) {
         const u = this.units[id];
-        if (u.alive && !u.routed) { u.routed = true; u.state = 'rout'; u.target = -1; u._pushUntil = 0; amount++; }
+        if (u.alive && !u.routed) { u.routed = true; u.state = 'rout'; u.target = -1; u._pushUntil = 0; this._bodyLive[u.id] = 0; amount++; }
       }
       r._routed = true; r.alive = 0; r.morale = 0; r.order = 'retreat'; r.fallingBack = false; r.status = 'routing';
       this._stats[r.team].alive -= amount; this._stats[r.team].routed += amount;
@@ -4264,7 +4505,8 @@
           r.x += (cx - r.x) * .65; r.y += (cy - r.y) * .65;
         }
         const rankFirmness = r.formation !== 'loose' && r._terrainPressure < .2 ? (t.rankStiffness || 0) : 0;
-        const targetCohesion = clamp(100 - displacement * .22 * (1 - rankFirmness * .45) - obstruction * (r.order === 'hold' ? 8 : 36) * (1 - rankFirmness * .5) - r._flankHits / Math.max(1, r.alive) * 38 - r.deformation * .28 - r.trafficPressure * 12, 8, 100);
+        let targetCohesion = clamp(100 - displacement * .22 * (1 - rankFirmness * .45) - obstruction * (r.order === 'hold' ? 8 : 36) * (1 - rankFirmness * .5) - r._flankHits / Math.max(1, r.alive) * 38 - r.deformation * .28 - r.trafficPressure * 12, 8, 100);
+        if(r._rampartJob){r.x=cx;r.y=cy;if(!r._rampartJob.leaving)targetCohesion=Math.max(80,100-r._recentHits/Math.max(1,r.alive*t.hp)*40);}
         r.cohesion += (targetCohesion - r.cohesion) * (targetCohesion < r.cohesion ? .16 : .08);
         r.morale = Math.max(0, r.morale - r._recentHits / Math.max(1, r.initial * t.hp) * 14 - r._flankHits / Math.max(1, r.initial) * 5);
         let commander = null;
@@ -4353,9 +4595,10 @@
       this.time += dt; this._tick++;
       this._strategyTimer -= dt; this._moraleTimer -= dt;
       if (this._strategyTimer <= 0) { this._strategize(); this._strategyTimer = .55; }
-      this._rebuildHash();
+      this._rebuildHash(true);
       if (this.impacts) this.impacts.beginStep(dt);
       this._stepRegiments(dt);
+      this._stepClearMarches(dt);
       this._prepareMountedStreams();
       this._inUnitStep = true;
       // Alternate traversal order to avoid granting one team the first strike every tick.
@@ -4381,7 +4624,7 @@
         p.x = p.sx + (p.tx - p.sx) * progress;
         p.y = p.sy + (p.ty - p.sy) * progress;
         p.z = Math.sin(progress * Math.PI) * p.arc;
-        if ((p.ordnance && this._traceOrdnance(p, previous, progress)) || progress >= 1) {
+        if (((p.ordnance||p.rampartTrajectory) && this._traceOrdnance(p, previous, progress)) || progress >= 1) {
           this._impact(p);
           this.projectiles[i] = this.projectiles[this.projectiles.length - 1];
           this.projectiles.pop();
