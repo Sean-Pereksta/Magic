@@ -62,6 +62,8 @@ Promote any of these after reviewing its actual game loop/content, controls and 
 
 These entries are explicitly marked `(Incomplete)` in the original registry. The key-based curation system can override that default when the owner intentionally reclassifies a game; it must not infer maturity from an attractive new image. Experimental entries are grouped lower and remain available through expansion/search and their correct solo/room/world/matchmaking actions.
 
+The 2026-11-04 Flag Capture: Riftbound upgrade renames `flag` and changes its gameplay category to Strategy. Its existing Experimental placement is now explicit in `lobby-showcase.js`, so that display-name change does not also change the editorial tier. The registry key, solo action, and `/game/Flag.html` route remain unchanged.
+
 `thegame` is a useful nuance: its tracked README documents substantial multiplayer consistency and presentation work with deterministic protocol tests. That establishes maintenance and a real cooperative card system, but the authoritative lobby title still explicitly marks it incomplete, and its recorded browser validation had not run in that change. This audit therefore preserves its lower tier rather than silently declaring it released. It is a candidate for a future owner-reviewed promotion.
 
 ## Tools & Learning — 5 utilities
