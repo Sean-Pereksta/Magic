@@ -55,6 +55,24 @@ export const DIFFICULTIES = Object.freeze([
   Object.freeze({ id: 'hard', name: 'Wicked', thinkMs: 4200, memory: 24, hints: 0, mistakeChance: 0, lookCount: 2, cycleChance: 1 }),
 ]);
 
+export const GAME_MODES = Object.freeze([
+  Object.freeze({ id: 'classic', name: 'Ember Race', description: 'Burn exact recipes and be first to 60 embers.', goal: 60, goalKind: 'points', botPace: 1, openTable: false }),
+  Object.freeze({ id: 'quickfire', name: 'Quickfire', description: 'A brisk race to 30 embers with quicker creature turns.', goal: 30, goalKind: 'points', botPace: 0.75, openTable: false }),
+  Object.freeze({ id: 'lantern', name: 'Lanternlight', description: 'Every center symbol stays revealed. Plan your exchanges in the light.', goal: 60, goalKind: 'points', botPace: 1, openTable: true }),
+  Object.freeze({ id: 'hunt', name: 'Recipe Hunt', description: 'Be first to burn five different recipes. Repeats score embers but add no discoveries.', goal: 5, goalKind: 'recipes', botPace: 1, openTable: false }),
+]);
+
+export function gameMode(state) { return GAME_MODES.find(mode => mode.id === state?.mode) || GAME_MODES[0]; }
+export function progressFor(state, playerIndex = 0) {
+  const player = state?.players?.[playerIndex];
+  if (!player) return 0;
+  return gameMode(state).goalKind === 'recipes' ? new Set(player.discoveries || []).size : player.score;
+}
+export function isFaceUp(state, card, now = Date.now()) {
+  return Boolean(card) && (gameMode(state).openTable || card.faceUntil > now);
+}
+const faceDownUntil = state => gameMode(state).openTable ? Infinity : 0;
+
 export const HAND_SIZE = 7;
 export const CENTER_SIZE = 12;
 export const MAX_CENTER_SIZE = 24;
@@ -92,20 +110,21 @@ function refill(state) {
   }
   const fresh = [];
   while (state.center.length < CENTER_SIZE) {
-    const value = { ...card(state), faceUntil: 0 }; fresh.push(value); state.center.push(value);
+    const value = { ...card(state), faceUntil: faceDownUntil(state) }; fresh.push(value); state.center.push(value);
   }
   if (fresh.length) emit(state, 'fall', { player: null, cards: fresh });
   if (state.center.length > MAX_CENTER_SIZE) {
     const retired = state.center.splice(0, state.center.length - MAX_CENTER_SIZE);
     emit(state, 'retire', { cards: retired });
   }
+  if (gameMode(state).openTable) for (const card of state.center) card.faceUntil = Infinity;
 }
 function checkFinish(state) {
   if (!playing(state)) return;
-  if (state.players.some(player => player.score >= state.goal) || state.turn >= state.maxTurns) {
-    const high = Math.max(...state.players.map(player => player.score));
+  if (state.players.some((_, index) => progressFor(state, index) >= state.goal) || state.turn >= state.maxTurns) {
+    const high = Math.max(...state.players.map((_, index) => progressFor(state, index)));
     state.status = 'finished';
-    state.winners = state.players.flatMap((player, i) => player.score === high ? [i] : []);
+    state.winners = state.players.flatMap((_, i) => progressFor(state, i) === high ? [i] : []);
     state.pendingGrab = null;
     emit(state, 'finish', { winners: [...state.winners] });
   }
@@ -126,7 +145,7 @@ function scatter(state, player, target, amount) {
   const hand = state.players[target].hand, scattered = [];
   for (let i = 0; i < amount && hand.length; i++) {
     const value = hand.splice(Math.floor(random(state) * hand.length), 1)[0];
-    scattered.push(value); state.center.push({ ...value, faceUntil: 0 });
+    scattered.push(value); state.center.push({ ...value, faceUntil: faceDownUntil(state) });
   }
   emit(state, 'scuttle', { player, target, cards: scattered });
 }
@@ -134,10 +153,11 @@ function scatter(state, player, target, amount) {
 export function createGame(rng = Math.random, difficulty = 'normal') {
   const options = typeof rng === 'object' && rng ? rng : { rng, difficulty };
   const selectedDifficulty = DIFFICULTIES.find(value => value.id === options.difficulty) || DIFFICULTIES[1];
+  const selectedMode = GAME_MODES.find(value => value.id === options.mode) || GAME_MODES[0];
   const state = { players: ['You', 'Mossback', 'Madame Moth', 'Rook'].map((name, id) =>
-    ({ id, name, hand: [], score: 0, shield: false })), center: [], pendingGrab: null,
+    ({ id, name, hand: [], score: 0, shield: false, discoveries: [] })), center: [], pendingGrab: null,
     events: [], nextCardId: 1, nextEventId: 1, turn: 0, status: 'playing', winners: [],
-    goal: options.goal || GOAL, maxTurns: options.maxTurns || MAX_TURNS,
+    goal: options.goal || selectedMode.goal, maxTurns: options.maxTurns || MAX_TURNS, mode: selectedMode.id,
     aiMemory: [{}, {}, {}, {}], aiMemoryOrder: [[], [], [], []],
     aiTurns: [0, 0, 0, 0], aiRecentDiscards: [[], [], [], []],
     difficulty: selectedDifficulty.id, botTurns: 0 };
@@ -158,7 +178,8 @@ export function availableRecipes(state, playerIndex = 0) {
 export function pursueRecipes(state, playerIndex = 0, limit = 3) {
   const hand = state.players[playerIndex]?.hand;
   if (!hand) return [];
-  return RECIPES.map(recipe => {
+  const discoveries = state.players[playerIndex].discoveries;
+  return RECIPES.filter(recipe => gameMode(state).goalKind !== 'recipes' || !discoveries.includes(recipe.id)).map(recipe => {
     const missing = [...recipe.cards], keep = [];
     for (const card of hand) {
       const i = missing.indexOf(card.type);
@@ -175,6 +196,10 @@ export function flipCard(state, centerId, now = Date.now()) {
   if (state.pendingGrab) return result(false, 'Choose a card from your hand to return first.');
   const value = state.center.find(value => value.id === centerId);
   if (!value) return result(false, 'That card is no longer in the center.');
+  if (gameMode(state).openTable) {
+    value.faceUntil = Infinity;
+    return result(true, 'The lanterns keep every center symbol revealed. Take a card to exchange it.');
+  }
   value.faceUntil = value.faceUntil > now ? 0 : now + 4500;
   const event = emit(state, 'flip', { card: value.id, until: value.faceUntil });
   return result(true, value.faceUntil ? `${SYMBOLS.find(symbol => symbol.id === value.type).name} revealed. Remember its place.` : 'Card turned face down.', [event]);
@@ -203,7 +228,7 @@ export function discardCard(state, handCardId) {
   if (index < 0 || centerIndex < 0) return result(false, 'Choose a card in your hand.');
   const incoming = state.center[centerIndex], outgoing = hand[index];
   hand[index] = { id: incoming.id, type: incoming.type };
-  state.center[centerIndex] = { ...outgoing, faceUntil: 0 };
+  state.center[centerIndex] = { ...outgoing, faceUntil: faceDownUntil(state) };
   state.pendingGrab = null;
   const event = emit(state, 'swap', { player: 0, incoming: hand[index], outgoing });
   return result(true, 'One card taken. One card returned.', [event]);
@@ -222,6 +247,7 @@ export function lockRecipe(state, recipeId, target = {}, playerIndex = 0) {
     return result(false, 'Choose a card in that rival’s hand.', [], { needsTarget: 'card' });
   }
   const firstEvent = state.nextEventId, remaining = [...value.cards], burned = [];
+  if (!owner.discoveries.includes(value.id)) owner.discoveries.push(value.id);
   owner.hand = owner.hand.filter(card => {
     const i = remaining.indexOf(card.type);
     if (i < 0) return true;
@@ -238,7 +264,7 @@ export function lockRecipe(state, recipeId, target = {}, playerIndex = 0) {
     emit(state, 'trade', { player: playerIndex, target: target.player, given, taken });
   }
   if (value.effect === 'reveal') {
-    const until = Date.now() + 7000;
+    const until = gameMode(state).openTable ? Infinity : Date.now() + 7000;
     for (const card of state.center) card.faceUntil = until;
     emit(state, 'reveal', { until });
   }
@@ -255,13 +281,20 @@ export function lockRecipe(state, recipeId, target = {}, playerIndex = 0) {
   return result(true, `${owner.name} burned ${value.name} for ${value.points} points.`, since(state, firstEvent), { recipe: value });
 }
 
-function handQuality(hand, difficulty) {
+function recipeQuality(hand, recipe, difficulty, discoveries = null) {
+  return (recipe.cards.length - needed(hand, recipe.cards)) / recipe.cards.length * 100 +
+    recipe.points / (difficulty === 'hard' ? 5 : 100) +
+    (discoveries && !discoveries.includes(recipe.id) ? 12 : 0);
+}
+function handQuality(hand, difficulty, discoveries = null) {
   // Favor getting close to a particular recipe rather than merely collecting duplicates.
-  return Math.max(...RECIPES.map(value => (value.cards.length - needed(hand, value.cards)) / value.cards.length * 100 + value.points / (difficulty === 'hard' ? 5 : 100)));
+  return Math.max(...RECIPES.map(value => recipeQuality(hand, value, difficulty, discoveries)));
 }
 function aiTurn(state, playerIndex, now) {
   const player = state.players[playerIndex], memory = state.aiMemory[playerIndex];
   const setting = DIFFICULTIES.find(value => value.id === state.difficulty) || DIFFICULTIES[1];
+  const mode = gameMode(state), discoveries = mode.goalKind === 'recipes' ? player.discoveries : null;
+  const memoryLimit = mode.openTable ? MAX_CENTER_SIZE : setting.memory;
   const order = state.aiMemoryOrder[playerIndex];
   const ownTurn = ++state.aiTurns[playerIndex];
   const recent = state.aiRecentDiscards[playerIndex] = state.aiRecentDiscards[playerIndex].filter(value => value.until >= ownTurn);
@@ -272,7 +305,7 @@ function aiTurn(state, playerIndex, now) {
     order.push(value.id);
   };
   // Rivals learn only cards that have actually been shown. Hidden card types are never evaluated.
-  for (const value of state.center) if (value.faceUntil > now) remember(value);
+  for (const value of state.center) if (isFaceUp(state, value, now)) remember(value);
   for (const id of Object.keys(memory)) if (!state.center.some(value => value.id === id)) delete memory[id];
   for (let i = order.length - 1; i >= 0; i--) if (!memory[order[i]]) order.splice(i, 1);
   let ready = availableRecipes(state, playerIndex);
@@ -284,12 +317,12 @@ function aiTurn(state, playerIndex, now) {
       newlySeen.add(value.id);
       emit(state, 'flip', { card: value.id, until: value.faceUntil, player: playerIndex });
     }
-    while (order.length > setting.memory) delete memory[order.shift()];
+    while (order.length > memoryLimit) delete memory[order.shift()];
     const known = state.center.filter(value => memory[value.id]);
-    let best = null, quality = handQuality(player.hand, state.difficulty);
+    let best = null, quality = handQuality(player.hand, state.difficulty, discoveries);
     for (const value of known) for (let i = 0; i < player.hand.length; i++) {
       const candidate = [...player.hand]; candidate[i] = { id: value.id, type: memory[value.id] };
-      const q = handQuality(candidate, state.difficulty);
+      const q = handQuality(candidate, state.difficulty, discoveries);
       if (q > quality + 0.001) { best = { value, i }; quality = q; }
     }
     if (known.length && random(state) < setting.mistakeChance) best = { value: pick(state, known), i: Math.floor(random(state) * player.hand.length) };
@@ -297,9 +330,7 @@ function aiTurn(state, playerIndex, now) {
     // Rank only remembered cards; preserve the best recipe's core and avoid buying
     // back a card this creature discarded during its previous two turns.
     if (!best && known.length && random(state) < setting.cycleChance) {
-      const plan = [...RECIPES].sort((a, b) =>
-        ((b.cards.length - needed(player.hand, b.cards)) / b.cards.length * 100 + b.points / (state.difficulty === 'hard' ? 5 : 100)) -
-        ((a.cards.length - needed(player.hand, a.cards)) / a.cards.length * 100 + a.points / (state.difficulty === 'hard' ? 5 : 100)))[0];
+      const plan = [...RECIPES].sort((a, b) => recipeQuality(player.hand, b, state.difficulty, discoveries) - recipeQuality(player.hand, a, state.difficulty, discoveries))[0];
       const missing = [...plan.cards], keep = new Set();
       for (const card of player.hand) {
         const at = missing.indexOf(card.type);
@@ -311,7 +342,7 @@ function aiTurn(state, playerIndex, now) {
         const outgoing = player.hand[i], incomingType = memory[value.id];
         if (state.difficulty === 'hard' && keep.has(outgoing.id)) continue;
         const hand = [...player.hand]; hand[i] = { id: value.id, type: incomingType };
-        candidates.push({ value, i, rank: handQuality(hand, state.difficulty) * 1000 +
+        candidates.push({ value, i, rank: handQuality(hand, state.difficulty, discoveries) * 1000 +
           (missing.includes(incomingType) ? 10 : 0) + (newlySeen.has(value.id) ? 2 : 0) +
           (!keep.has(outgoing.id) ? 1 : 0) + Math.max(0, have[outgoing.type] - (want[outgoing.type] || 0)) / 10 });
       }
@@ -327,16 +358,18 @@ function aiTurn(state, playerIndex, now) {
       player.hand[best.i] = incoming; state.center[centerIndex] = { ...outgoing, faceUntil: 0 };
       delete memory[incoming.id]; remember(outgoing);
       recent.push({ id: outgoing.id, until: ownTurn + 2 });
-      while (order.length > setting.memory) delete memory[order.shift()];
+      while (order.length > memoryLimit) delete memory[order.shift()];
       emit(state, 'swap', { player: playerIndex, incoming, outgoing });
     }
     ready = availableRecipes(state, playerIndex);
   }
   if (ready.length) {
-    const utility = recipe => recipe.points + (recipe.effect === 'scuttle' ? 3 : recipe.effect === 'ward' && !player.shield ? 2 : recipe.effect === 'drain' ? 4 : 0);
-    const best = state.difficulty === 'easy' ? pick(state, ready) : [...ready].sort((a, b) => utility(b) - utility(a))[0];
+    const utility = recipe => recipe.points + (recipe.effect === 'scuttle' ? 3 : recipe.effect === 'ward' && !player.shield ? 2 : recipe.effect === 'drain' ? 4 : 0) +
+      (discoveries && !discoveries.includes(recipe.id) ? 1000 : 0);
+    const novel = discoveries ? ready.filter(recipe => !discoveries.includes(recipe.id)) : [];
+    const best = state.difficulty === 'easy' ? pick(state, novel.length ? novel : ready) : [...ready].sort((a, b) => utility(b) - utility(a))[0];
     const rivals = state.players.map((_, i) => i).filter(i => i !== playerIndex);
-    const targetPlayer = state.difficulty === 'easy' ? pick(state, rivals) : [...rivals].sort((a, b) => state.players[b].score - state.players[a].score)[0];
+    const targetPlayer = state.difficulty === 'easy' ? pick(state, rivals) : [...rivals].sort((a, b) => progressFor(state, b) - progressFor(state, a))[0];
     const target = { player: targetPlayer, card: pick(state, state.players[targetPlayer].hand).id };
     lockRecipe(state, best.id, target, playerIndex);
   }

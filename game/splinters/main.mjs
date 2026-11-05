@@ -1,4 +1,4 @@
-import { SYMBOLS, RECIPES, DIFFICULTIES, createGame, availableRecipes, pursueRecipes, flipCard, grabCard, discardCard, cancelGrab, lockRecipe, botStep } from './engine.mjs';
+import { SYMBOLS, RECIPES, DIFFICULTIES, GAME_MODES, gameMode, progressFor, createGame, availableRecipes, pursueRecipes, flipCard, grabCard, discardCard, cancelGrab, lockRecipe, botStep } from './engine.mjs';
 import { cardImage, backImage } from './art.mjs';
 import { createScene } from './scene.mjs';
 
@@ -7,7 +7,7 @@ const canvas = $('table');
 const panels = ['intro', 'pause', 'results', 'book'];
 const modeNames = {easy:'Hearthside', normal:'After Dark', hard:'Witching Hour'};
 const touchMode=()=>window.matchMedia('(pointer:coarse)').matches||window.innerWidth<560;
-let difficulty = 'normal', state = createGame({difficulty}), started = false;
+let difficulty = 'normal', gameModeId = 'classic', state = createGame({difficulty,mode:gameModeId}), started = false;
 let paused = true, overlay = 'intro', targetRecipe = null, targetPlayer = null;
 let nextBots = [], pauseAt = Date.now(), lastFrame = 0, hover = null, showingResults = false;
 let soundEnabled = false, audio = null, view, explicitRelease = false, wasLocked = false;
@@ -92,13 +92,34 @@ function act(result, quiet=false) {
 function currentHints() {
   return pursueRecipes(state,0,DIFFICULTIES.find(value=>value.id===difficulty).hints);
 }
+function botInterval() {
+  return DIFFICULTIES.find(value=>value.id===state.difficulty).thinkMs * gameMode(state).botPace;
+}
+function readyRecipes() {
+  const ready=availableRecipes(state);
+  return gameMode(state).goalKind==='recipes'
+    ? [...ready].sort((a,b)=>Number(state.players[0].discoveries.includes(a.id))-Number(state.players[0].discoveries.includes(b.id)))
+    : ready;
+}
+function goalText(mode, goal=mode.goal) {
+  return mode.goalKind==='recipes'?`First to ${goal} different recipes`:`First to ${goal} embers`;
+}
+function updateModeChoice() {
+  const selected=GAME_MODES.find(mode=>mode.id===gameModeId)||GAME_MODES[0];
+  document.querySelectorAll('[data-mode]').forEach(node=>{
+    const active=node.dataset.mode===selected.id;node.classList.toggle('selected',active);node.setAttribute('aria-pressed',String(active));
+  });
+  $('modeDescription').textContent=selected.description;$('modeGoal').textContent=goalText(selected);
+}
 function render(force=false) {
-  const stamp=JSON.stringify([state.players.map(p=>[p.hand.map(c=>c.id),p.score,p.shield]),state.pendingGrab,targetRecipe?.id,forecastChoice,difficulty]);
+  const stamp=JSON.stringify([state.mode,state.players.map(p=>[p.hand.map(c=>c.id),p.score,p.shield,p.discoveries]),state.pendingGrab,targetRecipe?.id,forecastChoice,difficulty]);
   if (!force && stamp===renderStamp) return;
   renderStamp=stamp;
   $('scores').replaceChildren(...state.players.map((p,i)=> {
     const node=el('div','score'+(i===0?' you':''));
-    node.append(el('span','',p.name),el('strong','',`${p.score}`));
+    const hunt=gameMode(state).goalKind==='recipes';
+    node.append(el('span','',p.name),el('strong','',hunt?`${progressFor(state,i)}/${state.goal}`:`${p.score}`));
+    if(hunt)node.append(el('small','recipeProgress',`recipes · ${p.score} embers`));
     if (p.shield) node.append(el('span','shield','Warded'));
     return node;
   }));
@@ -119,7 +140,9 @@ function render(force=false) {
     return node;
   }));
   $('instruction').textContent=state.pendingGrab?(touchMode()?'Tap a hand card to return it':'Click a hand card or press 1–7 to return it · Esc cancels'):targetRecipe?'Choose a rival for your recipe':touchMode()?'Drag · look  /  Tap · flip  /  Hold · take':'Left · flip  /  Right · take  /  1–7 · return a hand card';
-  $('difficultyLabel').textContent=`${modeNames[difficulty]} · First to ${state.goal}`;
+  const mode=gameMode(state);
+  $('modeCaption').textContent=mode.name;
+  $('difficultyLabel').textContent=`${modeNames[difficulty]} · ${state.goal} ${mode.goalKind==='recipes'?'different recipes':'embers'}`;
   const forecast=$('forecast'); forecast.replaceChildren();
   if (hints.length) {
     forecast.append(el('div','forecastHeading','A LITTLE FORECAST'));
@@ -134,11 +157,12 @@ function render(force=false) {
       forecast.append(item);
     }
   }
-  const ready=availableRecipes(state);
+  const ready=readyRecipes();
   $('castPanel').replaceChildren();
   if (ready.length) for(const recipe of ready.slice(0,2)) {
     const card=el('div','readyRecipe');
     card.append(el('div','eyebrow','RECIPE READY'),el('h3','',recipe.name),el('p','',recipe.description));
+    if(mode.goalKind==='recipes')card.append(el('p','huntNotice',state.players[0].discoveries.includes(recipe.id)?'Already discovered · points and effect only':'New discovery · advances your hunt'));
     const cast=button(`Lock in · ${recipe.points} embers${recipe===ready[0]?'  [R]':''}`,()=>beginCast(recipe));
     cast.disabled=Boolean(state.pendingGrab)||Boolean(targetRecipe)||state.status!=='playing';card.append(cast);$('castPanel').append(card);
   } else {
@@ -178,7 +202,9 @@ function renderTargets() {
   node.append(el('p','',targetPlayer===null?'Choose a creature at the table or use their name below.':'Choose one of their face-down cards. Its symbol is a secret.'));
   const choices=el('div','targetChoices');
   if (targetPlayer===null) {
-    state.players.forEach((p,i)=>{if(i)choices.append(button(`${p.name} · ${p.score}${p.shield?' · Warded':''}`,()=>selectTarget(i)));});
+    state.players.forEach((p,i)=>{
+      if(i){const progress=gameMode(state).goalKind==='recipes'?`${progressFor(state,i)}/${state.goal} recipes`:`${p.score} embers`;choices.append(button(`${p.name} · ${progress}${p.shield?' · Warded':''}`,()=>selectTarget(i)));}
+    });
   } else {
     state.players[targetPlayer].hand.forEach((card,i)=>{
       const b=button('',()=>selectTarget(targetPlayer,card.id),'targetCard');
@@ -224,6 +250,7 @@ function openBook() {
     const symbols=el('div','recipeSymbols');
     recipe.cards.forEach(type=>{const img=el('img');img.src=cardImage(type);img.alt=type;img.title=type;symbols.append(img);});
     entry.append(head,symbols,el('div','recipeKind',recipe.effect==='points'?'Embers only':effectName(recipe.effect)),el('p','',recipe.description));
+    if(gameMode(state).goalKind==='recipes'&&state.players[0].discoveries.includes(recipe.id))entry.append(el('div','discovered','✓ Discovered'));
     if(ready.has(recipe.id))entry.append(button('Ready · return & cast',()=>{showPanel(null);beginCast(recipe);}));
     return entry;
   }));
@@ -233,20 +260,22 @@ function showResults() {
   if(state.status!=='finished')return;
   const win=state.winners.includes(0), tied=state.winners.length>1;
   $('results').replaceChildren(el('div','eyebrow','THE LAST EMBER'),el('h2','',win?(tied?'A shared victory.':'The table is yours.'):`${state.players[state.winners[0]].name} wins.`));
-  const ranking=[...state.players].sort((a,b)=>b.score-a.score);
-  ranking.forEach(p=>$('results').append(el('p','',`${p.name} · ${p.score} embers`)));
-  $('results').append(button('Another round',()=>newGame(false),'primary'),button('Change difficulty',()=>newGame(true)));
+  const mode=gameMode(state);
+  $('results').append(el('p','resultMode',mode.name));
+  const ranking=state.players.map((p,i)=>({p,progress:progressFor(state,i)})).sort((a,b)=>b.progress-a.progress);
+  ranking.forEach(({p,progress})=>$('results').append(el('p','',mode.goalKind==='recipes'?`${p.name} · ${progress} different recipes · ${p.score} embers`:`${p.name} · ${p.score} embers`)));
+  $('results').append(button('Another round',()=>newGame(false),'primary'),button('Change mode or difficulty',()=>newGame(true)));
   showPanel('results');
 }
 function startGame() {
   clearTimeout(resultsTimer);resultsTimer=null;
   started=true;showingResults=false;targetRecipe=null;targetPlayer=null;$('targetPanel').hidden=true;
-  state=createGame({difficulty});
-  const setting=DIFFICULTIES.find(v=>v.id===difficulty);
-  const now=Date.now();nextBots=[0,now+setting.thinkMs,now+setting.thinkMs*1.34,now+setting.thinkMs*1.67];
+  state=createGame({difficulty,mode:gameModeId});
+  const interval=botInterval();
+  const now=Date.now();nextBots=[0,now+interval,now+interval*1.34,now+interval*1.67];
   messages.length=0;forecastChoice=null;renderStamp='';
   pauseAt=now;showPanel(null);view.sync(state);render(true);
-  tell('Welcome to the Hollow Inn. Three embers in hand… find the fourth.');
+  tell(`${gameMode(state).name}: ${goalText(gameMode(state),state.goal)}. ${gameMode(state).openTable?'Every center symbol is in plain sight.':'Three embers in hand… find the fourth.'}`);
   lockMouse();
 }
 function newGame(changeDifficulty=false) {
@@ -258,16 +287,16 @@ function wait() {
   if(paused||state.pendingGrab||targetRecipe||state.status!=='playing')return;
   const i=nextBots.slice(1).indexOf(Math.min(...nextBots.slice(1)))+1;
   act(botStep(state,i),true);tell(`${state.players[i].name} takes a turn.`);
-  nextBots[i]=Date.now()+DIFFICULTIES.find(v=>v.id===difficulty).thinkMs;
+  nextBots[i]=Date.now()+botInterval();
 }
 function frame(now) {
   requestAnimationFrame(frame);
   if(now-lastFrame>1000/50) {
     lastFrame=now;view.tick(now);
     if(started&&!paused&&!state.pendingGrab&&!targetRecipe&&state.status==='playing') {
-      const time=Date.now(),setting=DIFFICULTIES.find(v=>v.id===difficulty);
+      const time=Date.now(),interval=botInterval();
       for(let i=1;i<4;i++) if(time>=nextBots[i]) {
-        act(botStep(state,i,time),true);nextBots[i]=time+setting.thinkMs;
+        act(botStep(state,i,time),true);nextBots[i]=time+interval;
         if(state.status!=='playing')break;
       }
     }
@@ -275,6 +304,8 @@ function frame(now) {
 }
 function registerControls() {
   $('startBtn').addEventListener('click',startGame);
+  document.querySelectorAll('[data-mode]').forEach(node=>node.addEventListener('click',()=>{gameModeId=node.dataset.mode;updateModeChoice();}));
+  updateModeChoice();
   document.querySelectorAll('[data-difficulty]').forEach(node=>node.addEventListener('click',()=>{
     difficulty=node.dataset.difficulty;
     document.querySelectorAll('[data-difficulty]').forEach(b=>{b.classList.toggle('selected',b===node);b.setAttribute('aria-pressed',String(b===node));});
@@ -317,7 +348,7 @@ function registerControls() {
     if(key==='b'){event.preventDefault();openBook();}
     if(paused||!started)return;
     if(key==='e'){event.preventDefault();if(document.pointerLockElement)releaseMouse();else lockMouse();}
-    if(key==='r'){const recipe=availableRecipes(state)[0];if(recipe)beginCast(recipe);}
+    if(key==='r'){const recipe=readyRecipes()[0];if(recipe)beginCast(recipe);}
     if(/^[1-7]$/.test(key)){event.preventDefault();const card=state.players[0].hand[Number(key)-1];if(card)chooseHand(card.id);}
     if(key===' '){event.preventDefault();wait();}
   });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SYMBOLS, RECIPES, DIFFICULTIES, createGame, availableRecipes, pursueRecipes, flipCard, grabCard, discardCard, cancelGrab, lockRecipe, botStep, advanceTurn, HAND_SIZE, CENTER_SIZE, MAX_CENTER_SIZE } from '../game/splinters/engine.mjs';
+import { SYMBOLS, RECIPES, DIFFICULTIES, GAME_MODES, gameMode, progressFor, isFaceUp, createGame, availableRecipes, pursueRecipes, flipCard, grabCard, discardCard, cancelGrab, lockRecipe, botStep, advanceTurn, HAND_SIZE, CENTER_SIZE, MAX_CENTER_SIZE } from '../game/splinters/engine.mjs';
 
 function seeded(seed = 12345) {
   return () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
@@ -277,4 +277,113 @@ test('harder planning earns more points over equal move budgets across seeded ta
   }
   assert.ok(totals.hard > totals.normal, JSON.stringify(totals));
   assert.ok(totals.normal > totals.easy, JSON.stringify(totals));
+});
+
+test('game modes have separate goals and pacing without changing selected difficulty', () => {
+  assert.deepEqual(GAME_MODES.map(mode => [mode.id, mode.goal, mode.goalKind, mode.botPace, mode.openTable]), [
+    ['classic', 60, 'points', 1, false], ['quickfire', 30, 'points', 0.75, false],
+    ['lantern', 60, 'points', 1, true], ['hunt', 5, 'recipes', 1, false],
+  ]);
+  assert.equal(gameMode(createGame()).id, 'classic');
+  assert.equal(gameMode(createGame({ mode: 'unknown' })).id, 'classic');
+  for (const mode of GAME_MODES) {
+    const state = createGame({ rng: seeded(), mode: mode.id, difficulty: 'hard' });
+    assert.equal(state.mode, mode.id);
+    assert.equal(state.goal, mode.goal);
+    assert.equal(state.difficulty, 'hard');
+    assert.equal(progressFor(state, 0), 0);
+    assert.deepEqual(state.players.map(player => player.discoveries), [[], [], [], []]);
+  }
+});
+
+test('each point-race mode ends at its own goal, while Hunt requires five different valid burns', () => {
+  for (const mode of GAME_MODES.filter(mode => mode.goalKind === 'points')) {
+    const state = createGame({ rng: seeded(), mode: mode.id });
+    state.players[0].score = mode.goal - 10;
+    dealRecipe(state, RECIPES[0]);
+    assert.equal(lockRecipe(state, RECIPES[0].id).ok, true);
+    assert.equal(progressFor(state), mode.goal);
+    assert.equal(state.status, 'finished');
+    assert.deepEqual(state.winners, [0]);
+  }
+  const hunt = createGame({ rng: seeded(), mode: 'hunt' });
+  for (let i = 0; i < 5; i++) {
+    dealRecipe(hunt, RECIPES[i]); lockRecipe(hunt, RECIPES[i].id);
+    assert.equal(progressFor(hunt), i + 1);
+    if (i === 0) {
+      dealRecipe(hunt, RECIPES[0]); lockRecipe(hunt, RECIPES[0].id);
+      assert.equal(progressFor(hunt), 1, 'repeat recipes do not advance the hunt');
+      assert.equal(hunt.players[0].score, 20, 'repeat recipes still award their points');
+    }
+    assert.equal(hunt.status, i === 4 ? 'finished' : 'playing');
+  }
+  assert.deepEqual(hunt.winners, [0]);
+});
+
+test('target validation remains atomic in every mode, including Hunt discovery progress', () => {
+  for (const mode of GAME_MODES) {
+    const state = createGame({ rng: seeded(), mode: mode.id });
+    const recipe = RECIPES.find(recipe => recipe.id === 'borrowed-key');
+    dealRecipe(state, recipe);
+    const before = JSON.stringify(state);
+    assert.equal(lockRecipe(state, recipe.id, { player: 1, card: 'missing' }).ok, false);
+    assert.equal(JSON.stringify(state), before);
+    assert.equal(progressFor(state), 0);
+    assert.equal(lockRecipe(state, recipe.id, { player: 1, card: state.players[1].hand[0].id }).ok, true);
+    assert.deepEqual(state.players[0].discoveries, [recipe.id]);
+  }
+});
+
+test('Lanternlight keeps every center card face up through flips, swaps, scatter, renewal, and bot play', () => {
+  const state = createGame({ rng: seeded(), mode: 'lantern', difficulty: 'easy' });
+  const visible = () => assert.ok(state.center.every(card => card.faceUntil === Infinity && isFaceUp(state, card, Number.MAX_SAFE_INTEGER)));
+  visible();
+  const value = state.center[0];
+  assert.equal(flipCard(state, value.id, 10000).ok, true);
+  visible();
+  grabCard(state, value.id); discardCard(state, state.players[0].hand[0].id); visible();
+  for (const id of ['dust-to-dust', 'rattle-wind', 'smoke-and-mirrors']) {
+    dealRecipe(state, RECIPES.find(recipe => recipe.id === id));
+    assert.equal(lockRecipe(state, id, { player: 1 }).ok, true); visible(); invariant(state);
+  }
+  botStep(state, 1, 100000); visible(); invariant(state);
+  assert.ok(Object.keys(state.aiMemory[1]).length >= CENTER_SIZE - 1, 'even patient rivals can see the open table instead of forgetting printed symbols');
+  const classic = createGame(seeded());
+  assert.equal(isFaceUp(classic, classic.center[0], 10000), false);
+  flipCard(classic, classic.center[0].id, 10000);
+  assert.equal(isFaceUp(classic, classic.center[0], 11000), true);
+  assert.equal(isFaceUp(classic, classic.center[0], 15000), false);
+});
+
+test('all modes finish at the round limit; Hunt ties use discoveries and ignore unequal point totals', () => {
+  for (const mode of GAME_MODES) {
+    const state = createGame({ rng: seeded(), mode: mode.id, goal: 10000, maxTurns: 1 });
+    state.botTurns = 2;
+    state.players[0].score = 99;
+    if (mode.id === 'hunt') {
+      state.players[0].discoveries = RECIPES.slice(0, 2).map(recipe => recipe.id);
+      state.players[1].discoveries = [...state.players[0].discoveries];
+    }
+    botStep(state, 3, 10000);
+    assert.equal(state.status, 'finished');
+    assert.deepEqual(state.winners, mode.id === 'hunt' ? [0, 1] : [0]);
+    assert.equal(botStep(state, 3).ok, false);
+  }
+});
+
+test('Hunt forecasts, recipe choices, and hostile targets prefer discovery progress', () => {
+  const state = createGame({ rng: seeded(), mode: 'hunt', difficulty: 'hard', goal: 100 });
+  state.players[0].discoveries = ['hearthfire'];
+  assert.ok(!pursueRecipes(state, 0, 32).some(hint => hint.recipe.id === 'hearthfire'));
+  // Both Ashen Crown and Hearthfire are ready; the novel lower-value recipe wins.
+  dealRecipe(state, RECIPES.find(recipe => recipe.id === 'ashen-crown'), 1);
+  state.players[1].discoveries = ['ashen-crown'];
+  const cast = botStep(state, 1, 10000).events.find(event => event.type === 'burn');
+  assert.equal(cast.recipe, 'hearthfire');
+  const attack = createGame({ rng: seeded(), mode: 'hunt', difficulty: 'hard', goal: 100 });
+  dealRecipe(attack, RECIPES.find(recipe => recipe.id === 'dust-to-dust'), 1);
+  attack.players[0].score = 100;
+  attack.players[2].discoveries = ['hearthfire', 'moonwell'];
+  const scatter = botStep(attack, 1, 10000).events.find(event => event.type === 'scuttle');
+  assert.equal(scatter.target, 2, 'Hunt leader is determined by discoveries rather than embers');
 });

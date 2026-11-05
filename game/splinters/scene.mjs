@@ -257,10 +257,7 @@ export function createScene(canvas, { onInteract = () => {}, onHover = () => {} 
     obj.number.visible = kind === 'hand';
     if (kind === 'hand') obj.number.material.map = numberTexture(index + 1);
     if (kind === 'center') {
-      const cols = count > 16 ? 6 : count > 12 ? 5 : 4, rows = Math.ceil(count / cols), gap = count > 16 ? .94 : 1.12;
-      obj.target.set((index % cols - (cols - 1) / 2) * gap, 2.12, (Math.floor(index / cols) - (rows - 1) / 2) * 1.26 - .25);
-      obj.rotation.set(Math.PI / 2 + .16, 0, Math.sin(index * 3.7) * .08);
-      obj.group.scale.setScalar(1.18);
+      placeCenter(obj, count);
     } else if (player === 0) {
       obj.group.scale.setScalar(1);
       const offset = index - (count - 1) / 2;
@@ -276,6 +273,21 @@ export function createScene(canvas, { onInteract = () => {}, onHover = () => {} 
       obj.rotation.set(.1, angle, (index - 3) * -.045);
     }
     return obj;
+  }
+  function placeCenter(obj, count) {
+    const portrait = camera.aspect < .8, large = count > 16;
+    const cols = large ? 6 : 4, rows = Math.ceil(count / cols), row = Math.floor(obj.index / cols);
+    const rowCount = Math.min(cols, count - row * cols);
+    const narrow = portrait ? Math.min(1, camera.aspect / (391 / 844)) : 1;
+    const gapX = (portrait ? large ? .84 : 1.22 : large ? 1.15 : 1.35) * narrow;
+    const gapZ = count > 12 ? 1.65 : 1.8;
+    const rowRise = count > 12 && !large ? .35 : .3;
+    const originZ = portrait ? large ? -1.65 : count > 12 ? -1.25 : -.65 : -.25;
+    // The shallow staircase also separates rows on screen: a flat grid leaves
+    // the back edge of a near card covering the next card at a seated eye level.
+    obj.target.set((obj.index % cols - (rowCount - 1) / 2) * gapX, 1.85 + (rows - 1 - row) * rowRise, (row - (rows - 1) / 2) * gapZ + originZ);
+    obj.rotation.set(Math.PI / 2 + .16, 0, Math.sin(obj.index * 3.7) * .08);
+    obj.group.scale.setScalar((portrait ? large ? .8 : 1.03 : large ? 1 : 1.08) * narrow);
   }
 
   const particleCount = 500, particlePositions = new Float32Array(particleCount * 3), particleColors = new Float32Array(particleCount * 3);
@@ -397,12 +409,12 @@ export function createScene(canvas, { onInteract = () => {}, onHover = () => {} 
     const handDistance = 2.7;
     const handHalfHeight = Math.tan(camera.fov * Math.PI / 360) * handDistance;
     const handWidth = handHalfHeight * camera.aspect * 2;
-    const handScale = camera.aspect < .8 ? .42 : .58;
+    const handScale = camera.aspect < .8 ? .38 : .52;
     const footerSpace = 58 * (handHalfHeight * 2) / Math.max(1, canvas.clientHeight);
     for (const obj of objects.values()) {
       let faceUp = false;
       if (obj.kind === 'center') {
-        faceUp = obj.card.faceUntil > realNow || (state?.revealUntil || 0) > realNow;
+        faceUp = state?.mode === 'lantern' || obj.card.faceUntil > realNow || (state?.revealUntil || 0) > realNow;
         obj.rotation.x = faceUp ? -Math.PI / 2 + .3 : Math.PI / 2 + .16;
       }
       const pending = state?.pendingGrab?.cardId === obj.card.id;
@@ -461,6 +473,7 @@ export function createScene(canvas, { onInteract = () => {}, onHover = () => {} 
     const width = Math.max(1, canvas.clientWidth || window.innerWidth), height = Math.max(1, canvas.clientHeight || window.innerHeight);
     renderer.setSize(width, height, false); camera.aspect = width / height;
     camera.fov = camera.aspect < 1 ? 76 : 61; camera.updateProjectionMatrix();
+    for (const obj of objects.values()) if (obj.kind === 'center') placeCenter(obj, obj.count);
   }
   resize();
   return {
