@@ -63,9 +63,12 @@ function hardOpening(wanted, exports, terms) {
 }
 
 export function tradeCandidate(s,from,to) {
+  return candidateFor(s,from,to,{});
+}
+function candidateFor(s,from,to,context) {
   if(from===to||!alive(s,to))return null;
-  const known=planningView(s,from),route=tradeRoute(known,from,to);if(!route.safe)return null;
-  const ours=economicNeeds(s,from,{tradeReserves:true});
+  const known=context.known ||= planningView(s,from),route=tradeRoute(known,from,to);if(!route.safe)return null;
+  const ours=context.needs ||= economicNeeds(s,from,{tradeReserves:true});
   // Foreign needs are authorized disclosures, never a treasury query by the
   // proposing ruler. Exact availability is checked later by the recipient.
   const foreign=Object.values(known.tiles).filter(t=>t.owner===to&&t.fog==='visible');
@@ -112,7 +115,10 @@ export function aiResourceTrade(s,onlyOwner=null) {
   if(s.turn%3)return;
   for(const k of s.kingdoms.filter(k=>isAiHouse(s,k.id)&&alive(s,k.id)&&(!onlyOwner||k.id===onlyOwner))){
     if(s.turn-(s.commerce.aiTrades[k.id]||0)<4)continue;
-    const options=s.kingdoms.filter(o=>isAiHouse(s,o.id)&&o.id!==k.id&&alive(s,o.id)).map(o=>({partner:o.id,offer:tradeCandidate(s,k.id,o.id)})).filter(x=>x.offer).sort((a,b)=>b.offer.score-a.offer.score);
+    // Supplier options only read the same buyer state. This context ends before
+    // negotiation can move resources; the next buyer always gets a fresh view.
+    const context={};
+    const options=s.kingdoms.filter(o=>isAiHouse(s,o.id)&&o.id!==k.id&&alive(s,o.id)).map(o=>({partner:o.id,offer:candidateFor(s,k.id,o.id,context)})).filter(x=>x.offer).sort((a,b)=>b.offer.score-a.offer.score);
     for(const best of options){
       const other=kingdom(s,best.partner);let i=best.offer.intent;
       if(s.difficulty==='hard'){

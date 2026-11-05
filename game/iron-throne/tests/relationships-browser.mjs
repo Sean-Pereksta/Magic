@@ -30,17 +30,34 @@ try{
   browser=await chromium.launch({headless:true,executablePath:process.env.IRON_THRONE_CHROMIUM||undefined,args:['--no-sandbox']});
   for(const viewport of [{width:1280,height:850},{width:390,height:844}]){
     const context=await browser.newContext({viewport,hasTouch:viewport.width<900});
-    await context.addInitScript(initial=>{if(!localStorage.getItem('catnmice.iron-throne.v1'))localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(initial));},initial);
-    const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+    await context.addInitScript(initial=>{
+      if(!localStorage.getItem('catnmice.iron-throne.v1'))localStorage.setItem('catnmice.iron-throne.v1',JSON.stringify(initial));
+      let verification;
+      globalThis.turnstile={render:(_el,options)=>{verification=options;queueMicrotask(()=>options.callback('test-token'));return 1;},reset:()=>queueMicrotask(()=>verification.callback('fresh-test-token'))};
+    },initial);
+    const page=await context.newPage(),errors=[],marriageRequests=[];page.on('pageerror',error=>errors.push(error.message));
     await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
-    await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
+    // Dialogue and proposed terms arrive through the Gemini response contract;
+    // an unconfigured client intentionally supplies neither of them.
+    await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{diplomacyEndpoint:'https://worker.example/diplomacy',turnstileSiteKey:'test-public-key'}}));
+    await page.route('https://worker.example/session',route=>route.fulfill({json:{token:'test-session',expires:Date.now()+1800000}}));
+    await page.route('https://worker.example/diplomacy',route=>{
+      const body=route.request().postDataJSON();
+      if(body.mode==='allianceCouncil')return route.fulfill({json:{responses:body.world.participants.filter(p=>p.ai).map(p=>({speakerHouseId:p.id,message:'The written dispatch records the current situation.'}))}});
+      if(body.rulerId!=='wintermere'||!body.world.marriageDiscussion&&!body.world.formalDecision)return route.fulfill({json:{reply:'The written dispatch records the current situation.',tone:'neutral',intents:[]}});
+      marriageRequests.push(body);
+      if(body.world.formalDecision)return route.fulfill({json:{reply:'The recorded decision reflects my position on these terms.',tone:'neutral',intents:[]}});
+      const discussion=body.world.marriageDiscussion;assert.ok(discussion,'the request includes the authoritative marriage discussion');
+      return route.fulfill({json:{reply:discussion.intents.length?'We may discuss these settlement terms. Nothing is binding until ratification.':'My family will consider the request. Return on a later turn to discuss settlement terms.',tone:'guarded',intents:discussion.intents}});
+    });
     await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#resume').click();
-    const open=async()=>{await page.locator('[data-tab="council"]').click();await page.locator('[data-talk="wintermere"]').click();};
+    const open=async()=>{await page.locator('[data-tab="council"]').click();await page.locator('[data-talk="wintermere"]').click();await page.waitForFunction(()=>document.getElementById('chat-notice').textContent.includes('session is active'));};
     const send=async text=>{await page.locator('#chat-message').fill(text);await page.locator('#send-chat').click();await page.waitForFunction(()=>document.getElementById('send-chat').textContent==='Send envoy →');};
     const saved=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));
     await open();assert.equal(await page.locator('#offer-type option[value="MARRIAGE"]').count(),0);
     await send('Would you consider joining our families? I seek the hand of your daughter.');
     assert.match(await page.locator('#messages').textContent(),/later turn/);assert.equal((await saved()).royalBonds.marriages.length,0);
+    assert.equal((await saved()).conversations.wintermere.at(-1).source,'gemini');
     assert.equal(await page.locator('#offer-type option[value="MARRIAGE"]').count(),1);
     await page.locator('[data-close="diplomacy"]').click();await page.locator('#end-turn').click();
     await page.waitForFunction(()=>document.getElementById('turn').textContent==='Turn 11');
@@ -52,10 +69,11 @@ try{
     await page.locator('#marriage-shipmentResource').selectOption('iron');
     await page.locator('#marriage-shipmentAmount').fill('2');await page.locator('#marriage-shipmentTurns').fill('3');
     const before=await saved();await page.locator('#offer-form button[type="submit"]').click();
-    await page.waitForFunction(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).cooperation.formalProposals?.at(-1)?.status==='resolved');
+    await page.waitForFunction(()=>{const proposal=JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')).cooperation.formalProposals?.at(-1);return proposal?.status==='resolved'&&proposal.responses.wintermere.voiceComplete;});
     await page.locator('.treaty-drawer-close').click();
     assert.match(await page.locator('#private-formal-proposals').textContent(),/2 iron per turn for 3 turns/);
     const response=(await saved()).cooperation.formalProposals.at(-1).responses.wintermere;
+    assert.equal(response.source,'gemini');assert.equal(response.spoken,true);
     if(response.status==='counter')await page.locator('[data-formal-answer][data-decision=accept]').click();
     else assert.equal(response.status,'accepted',response.message);
     const after=await saved();assert.equal(after.royalBonds.marriages.length,1);
@@ -64,7 +82,7 @@ try{
     assert.match(await page.locator('#council-records-body').textContent(),/Royal marriage.*active/s);
     await page.reload();await page.locator('#resume').click();await open();
     assert.match(await page.locator('#relations-summary').textContent(),/Royal marriage · active/);
-    assert.equal((await saved()).royalBonds.marriages.length,1);assert.deepEqual(errors,[]);
+    assert.equal((await saved()).royalBonds.marriages.length,1);assert.equal(marriageRequests.length,3);assert.deepEqual(errors,[]);
     await context.close();
   }
   console.log('Marriage council passed on desktop and mobile: discussion, deliberation, editable settlement, ratification, ledger, reload.');
