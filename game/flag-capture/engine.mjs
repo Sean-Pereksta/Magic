@@ -1,0 +1,633 @@
+/* Flag Capture: Riftbound. Deterministic cooldown strategy; no wall clocks or DOM. */
+const ability = (name, description, cooldown, kind, range = 0) => ({ name, description, cooldown:cooldown*2+4, kind, range });
+const troop = (name, hp, damage, move, range, cost, skill, description) => ({ name, hp, damage, move, range, cost, moveCooldown:move===3?2:hp>=12?3.5:hp>=10?3:2.8, ability: skill, description });
+export const DRAFT_BUDGET = 24;
+export const DEFAULT_ARMY = ['leader','scout','scout','brute','mystic'];
+const DRAFT_COSTS = {leader:6,scout:3,brute:5,mystic:4};
+export function draftCost(role) {return Object.hasOwn(DRAFT_COSTS,role)?DRAFT_COSTS[role]:Infinity;}
+export function armyCost(army) {return Array.isArray(army)?army.reduce((cost,role)=>cost+draftCost(role),0):Infinity;}
+export function defaultArmyForBudget(money=DRAFT_BUDGET) {
+  const army=[];for(const role of DEFAULT_ARMY)if(armyCost(army)+draftCost(role)<=money)army.push(role);return army;
+}
+
+export const FACTIONS = {
+  bloom: {
+    key: 'bloom', name: 'Lumen Brood', tagline: 'Life from another light.', color: '#55dfbd',
+    lore: 'A migrating reef of curious space organisms. They plant living light wherever their many feet wander.',
+    passive: 'Root network: start in a grove for +1 move range. Photosynthesis restores 1 HP in groves every 6 seconds; capturing a beacon restores 2 HP.',
+    units: {
+      leader: troop('Prism Matriarch', 10, 2, 2, 2, 0, ability('Bloomcall', 'Restore 3 HP to yourself and allies within 2 tiles.', 3, 'bloomcall', 2), 'A luminous hive mother who keeps the expedition growing.'),
+      scout: troop('Skitterglow', 6, 2, 3, 1, 4, ability('Sporehop', 'Blink to an empty tile within 4; leave a healing grove behind.', 2, 'sporehop', 4), 'A six-legged seed courier, built for impossible shortcuts.'),
+      brute: troop('Reefback Grazer', 12, 3, 2, 1, 6, ability('Gravity Belch', 'Deal 2 damage, pull a foe one tile closer, and root it for 2.5 seconds.', 3, 'belch', 3), 'A walking coral garden with a small black hole for a stomach.'),
+      mystic: troop('Lantern Polyp', 7, 2, 2, 3, 5, ability('Sporeburst', 'Deal 3 damage to enemies within 1 tile of the target.', 3, 'sporeburst', 3), 'A floating lantern full of delightfully explosive pollen.')
+    }
+  },
+  chaos: {
+    key: 'chaos', name: 'Crooked Carnival', tagline: 'Reality has stage fright.', color: '#fb879e',
+    lore: 'A parade of impossible beasts escaped from a broken dream. Their tricks are ridiculous. Their teeth are real.',
+    passive: 'Wild temper: injured Carnival troops deal +1 damage with basic attacks.',
+    units: {
+      leader: troop('Mawring Maestro', 11, 3, 2, 1, 0, ability('Wrong Note', 'Deal 2 damage and root every enemy within 2 tiles for 2.5 seconds.', 3, 'wrongnote', 2), 'An accordion-mouthed conductor of glorious disorder.'),
+      scout: troop('Blinkmutt', 6, 2, 3, 1, 4, ability('Sideways Bite', 'Warp beside a foe within 3 tiles and bite for 3 damage.', 2, 'blinkbite', 3), 'Three eyes, too many elbows, and absolutely no sense of direction.'),
+      brute: troop('Mobius Ram', 12, 3, 2, 1, 6, ability('Foldhorn', 'Ram a foe within 2 for 4 damage and knock it back. A blocked knockback deals +1.', 3, 'foldhorn', 2), 'A woolly knot that charges through the folds of space.'),
+      mystic: troop('Teacup Oracle', 7, 2, 2, 3, 5, ability('Bad Omen', 'Deal 2 damage to a foe within 3. Its next incoming hit deals +2.', 2, 'omen', 3), 'A many-eyed fortune teller who drinks tomorrow for breakfast.')
+    }
+  },
+  choir: {
+    key: 'choir', name: 'Aureate Choir', tagline: 'Make the impossible harmonious.', color: '#f8d77c',
+    lore: 'Living bells, little comets, and watchful rings of light. These celestial beings build harmony one battlefield at a time.',
+    passive: 'Resonance: gain 1 shield beside an ally every 6 seconds, up to 3.',
+    units: {
+      leader: troop('Halo Architect', 10, 2, 2, 2, 0, ability('Concordance', 'Other allies within 2 refresh their move/attack cooldown and gain 1 shield.', 3, 'concordance', 2), 'A winged blueprint dreaming a kinder geometry.'),
+      scout: troop('Cherub Comet', 7, 2, 3, 1, 4, ability('Mercy Arc', 'Restore 4 HP to an ally within 3 and cleanse roots and curses.', 2, 'mercy', 3), 'A tiny star with huge wings and a habit of arriving just in time.'),
+      brute: troop('Belltower Seraph', 13, 3, 2, 1, 6, ability('Sanctuary', 'Give yourself and allies within 1 tile 4 shield, up to 5.', 3, 'sanctuary', 1), 'A gentle walking bell tower that refuses to let its friends fall.'),
+      mystic: troop('Ophanim Lens', 7, 2, 2, 3, 5, ability('Judgment Ray', 'Deal 3 damage to every enemy in a straight line up to 5 tiles.', 3, 'ray', 5), 'A wheel of watchful eyes that focuses dawn into a beam.')
+    }
+  }
+};
+
+const secondarySkills = {
+  bloom:{leader:ability('Seedgrove','Plant a living grove on an empty ground tile within 3.',2,'seedgrove',3),mystic:ability('Nectar Mote','Restore 2 HP to an ally within 3 tiles.',2,'nectar',3)},
+  chaos:{leader:ability('Laughing Hex','Curse a foe within 3 tiles. Its next incoming hit deals +2.',2,'laughinghex',3),mystic:ability('Crooked Swap','Swap places with a foe within 3 tiles. Both landing tiles must suit their movement.',3,'crookedswap',3)},
+  choir:{leader:ability('Starstep','Teleport to an empty tile within 3 and gain 2 shield. May land on water, never rocks.',3,'starstep',3),mystic:ability('Ward Ray','Give an ally within 3 tiles 3 shield, up to 5.',2,'wardray',3)}
+};
+const summonSkills = {
+  bloom:{leader:ability('Broodlings','Summon up to 2 tiny Glowgrubs on empty ground within 2 and an adjacent tile. Army limit 8.',4,'broodlings',2)},
+  chaos:{mystic:ability('Pocket Maws','Summon up to 2 tiny Pocket Maws on empty ground within 2 and an adjacent tile. Army limit 8.',4,'pocketmaws',2)},
+  choir:{mystic:ability('Bell Motes','Summon up to 2 tiny flying Bell Motes on empty ground within 2 and an adjacent tile. Army limit 8.',4,'bellmotes',2)}
+};
+for(const [faction,name]of [['bloom','Glowgrub'],['chaos','Pocket Maw'],['choir','Bell Mote']]) {
+  FACTIONS[faction].units.minion=troop(name,3,1,2,1,0,null,'A tiny summoned companion. Move, attack, and guard; no special abilities.');
+  FACTIONS[faction].units.minion.moveCooldown=2.4;
+}
+for(const [faction,f]of Object.entries(FACTIONS))for(const [role,d]of Object.entries(f.units)) {
+  d.abilities=d.ability?[d.ability,...(secondarySkills[faction]?.[role]?[secondarySkills[faction][role]]:[]),...(summonSkills[faction]?.[role]?[summonSkills[faction][role]]:[])]:[];
+  d.draftCost=draftCost(role);
+  d.groveMoveBonus=faction==='bloom'?1:0;
+  d.movement=faction==='choir'&&role!=='brute'?'Flight':faction==='chaos'&&role==='scout'?'Phasewalk':faction==='bloom'?(role==='scout'?'Skitter':'Rootbound'):'Ground';
+  d.movementDescription=d.movement==='Flight'?'Fly over rocks, water, and troops. Land on empty land or water, never rocks.':
+    d.movement==='Phasewalk'?'Walk through enemy troops, but land only on an empty ground tile.':
+    faction==='bloom'?'Root network: starting in a grove adds 1 tile to your movement range. Ground obstacles still block you.':
+    'Ground movement: rocks, water, and enemy troops block your path.';
+}
+
+export const MAPS = {
+  glade: { key: 'glade', name: 'Prism Glade', subtitle: 'Living groves & open flanks', rocks: [[1,2],[7,4]], water: [[4,1],[4,5]], groves: [[2,2],[6,4],[6,2],[2,4]] },
+  fracture: { key: 'fracture', name: 'The Great Fracture', subtitle: 'Broken paths & close encounters', rocks: [[1,1],[7,5],[3,2],[5,4]], water: [[4,2],[4,4]], groves: [[1,4],[7,2]] },
+  sanctuary: { key: 'sanctuary', name: 'Bellglass Sanctuary', subtitle: 'Sheltered groves & a contested center', rocks: [[1,3],[7,3]], water: [[3,1],[5,5]], groves: [[2,2],[3,3],[5,3],[6,4],[6,2],[2,4]] }
+};
+
+export const MODES = {
+  beacons:{key:'beacons',name:'Beacon Rush',description:'Claim flags by entering them. Hold their light to reach 30 points.',goal:30},
+  control:{key:'control',name:'Zone Control',description:'Most troops within one orthogonal tile control each flag. Tied zones are contested; reach 20 points.',goal:20},
+  elimination:{key:'elimination',name:'Last Army Standing',description:'Defeat every enemy. At the time limit, remaining health wins, then held flags.',goal:0},
+  reinforcements:{key:'reinforcements',name:'Reinforcement Clash',description:'Capture persistent flags and reach 30 light. Spend coins and beacon income on fresh reinforcements.',goal:30}
+};
+export const DIFFICULTIES = {
+  story:{key:'story',name:'Story',description:'A patient opponent that gives you time to learn, favors flags, and guards before pressing an attack.',interval:4.8,grace:8},
+  easy:{key:'easy',name:'Relaxed',description:'A gentle commander with a generous opening, slower decisions, and a preference for objectives and defense.',interval:3.2,grace:6},
+  normal:{key:'normal',name:'Balanced',description:'A measured opponent that combines objectives, attacks, and troop abilities.',interval:1.7,grace:3},
+  hard:{key:'hard',name:'Tactician',description:'A decisive commander that exploits vulnerable troops and coordinates its unusual abilities.',interval:1,grace:2},
+  expert:{key:'expert',name:'Riftlord',description:'A relentless opponent with fast decisions and a short opening. Troop stats and cooldowns stay the same.',interval:0.6,grace:1.5}
+};
+export const BOARD_SIZES = [
+  {key:'compact',name:'Pocket Rift',width:7,height:5},
+  {key:'standard',name:'Standard Rift',width:9,height:7},
+  {key:'grand',name:'Grand Rift',width:11,height:9}
+];
+
+const SIDES = ['player', 'ai'];
+const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
+const distance = (a,b) => Math.abs(a.x-b.x) + Math.abs(a.y-b.y);
+const inside = (s,x,y) => Number.isInteger(x) && Number.isInteger(y) && x>=0 && y>=0 && x<s.width && y<s.height;
+const key = (x,y) => `${x},${y}`;
+const other = side => side === 'player' ? 'ai' : 'player';
+const living = (s,side) => s.units.filter(u => u.hp>0 && (!side || u.side===side));
+const tileAt = (s,x,y) => s.tiles[y*s.width+x];
+const blocked = (s,x,y) => !inside(s,x,y) || ['rock','water'].includes(tileAt(s,x,y).terrain);
+export const unitDef = unit => FACTIONS[unit.faction]?.units[unit.role];
+export const skillDef = (unit,index=0) => Number.isInteger(index)&&index>=0?unitDef(unit)?.abilities[index]:undefined;
+export const skillReadyAt = (unit,index=0) => index===0?unit.abilityReadyAt:(unit.abilityReadyAts?.[index]??0);
+export const at = (s,x,y) => s.units.find(u => u.hp>0 && u.x===x && u.y===y) || null;
+export const movementRange = (s,u) => unitDef(u).move+(tileAt(s,u.x,u.y).terrain==='grove'?unitDef(u).groveMoveBonus:0);
+function movementBlocked(s,u,x,y,landing=false) {
+  if(!inside(s,x,y))return true;
+  if(unitDef(u).movement==='Flight')return landing&&tileAt(s,x,y).terrain==='rock';
+  return blocked(s,x,y);
+}
+
+function nextRandom(s) {
+  s.rng = (Math.imul(s.rng, 1664525) + 1013904223) >>> 0;
+  return s.rng / 4294967296;
+}
+
+function spawn(s,side,role,x,y,ready=true,factionOverride) {
+  const faction = factionOverride??s.factions[side], def = FACTIONS[faction].units[role];
+  const delay=ready?0:DIFFICULTIES[s.difficulty].grace;
+  const u = { id: `u${++s.nextId}`, side, faction, role, x, y, hp:def.hp, maxHp:def.hp, readyAt:s.time+delay, abilityReadyAt:def.abilities.length?s.time+delay:0, abilityReadyAts:def.abilities.map(()=>s.time+delay), shield:0, rootedUntil:0, cursed:0 };
+  s.units.push(u);
+  return u;
+}
+
+export function createGame({ playerFaction='bloom', aiFaction='chaos', difficulty='normal', map='glade', seed=1, mode='beacons', width=9, height=7, terrain='balanced', goal, duration=180, opponentMode='ai', startingMoney=DRAFT_BUDGET, playerArmy, aiArmy, playerDeployment, aiDeployment }={}) {
+  if (!FACTIONS[playerFaction] || !FACTIONS[aiFaction]) throw new Error('Choose a valid faction.');
+  if (!MAPS[map]) throw new Error('Choose a valid battlefield.');
+  if (!MODES[mode]) throw new Error('Choose a valid battle mode.');
+  if (!['ai','local'].includes(opponentMode))throw new Error('Choose AI or local two-player.');
+  if (![7,9,11].includes(width)||![5,7,9].includes(height))throw new Error('Choose a supported battlefield size.');
+  if (!['sparse','balanced','wild'].includes(terrain))throw new Error('Choose a valid terrain density.');
+  if(goal!==undefined&&(!Number.isFinite(goal)||goal<1||goal>60))throw new Error('Choose a light goal between 1 and 60.');
+  if(!Number.isFinite(duration)||duration<60||duration>300)throw new Error('Choose a duration between 60 and 300 seconds.');
+  if(!Number.isInteger(startingMoney)||startingMoney<12||startingMoney>40)throw new Error('Choose starting coins between 12 and 40.');
+  const armies={player:playerArmy===undefined?defaultArmyForBudget(startingMoney):playerArmy,ai:aiArmy===undefined?defaultArmyForBudget(startingMoney):aiArmy};
+  for(const [side,army]of Object.entries(armies)) {
+    if(!Array.isArray(army)||army.length<1||army.length>8||army.filter(role=>role==='leader').length!==1||army.some(role=>!Number.isFinite(draftCost(role))))throw new Error(`${side==='player'?'Player 1':'Player 2'} must field 1–8 troops with exactly one commander.`);
+    if(armyCost(army)>startingMoney)throw new Error(`${side==='player'?'Player 1':'Player 2'} army exceeds ${startingMoney} starting coins.`);
+    armies[side]=army.slice();
+  }
+  const centerX=Math.floor(width/2),centerY=Math.floor(height/2),offset=Math.round(width/4);
+  const slots=[[centerX,height-1],[centerX-2,height-2],[centerX+2,height-2],[centerX-1,height-1],[centerX+1,height-1],[centerX-2,height-1],[centerX+2,height-1],[centerX,height-2]];
+  const deployments={player:playerDeployment,ai:aiDeployment};
+  for(const side of SIDES) {
+    const positions=deployments[side]===undefined?slots.slice(0,armies[side].length).map(([x,y])=>({x:side==='player'?x:width-1-x,y:side==='player'?y:height-1-y})):deployments[side];
+    if(!Array.isArray(positions)||positions.length!==armies[side].length||positions.some(p=>!p||!Number.isInteger(p.x)||!Number.isInteger(p.y)||p.x<0||p.x>=width||p.y<0||p.y>=height||(side==='player'?p.y<height-2:p.y>1))||new Set(positions.map(p=>key(p.x,p.y))).size!==positions.length)throw new Error(`${side==='player'?'Player 1':'Player 2'} deployment must use unique squares in its own two home rows.`);
+    deployments[side]=positions.map(({x,y})=>({x,y}));
+  }
+  const challenge=DIFFICULTIES[difficulty]||DIFFICULTIES.normal;
+  const s = {
+    width, height, map, mode, terrain, opponentMode, difficulty:challenge.key, startingMoney,armies,deployments,
+    factions:{player:playerFaction,ai:aiFaction}, units:[], tiles:[],
+    flags:[{x:centerX-offset,y:centerY,name:'Dewlight',owner:null,contested:false},{x:centerX,y:centerY,name:'Heartlight',owner:null,contested:false},{x:centerX+offset,y:centerY,name:'Starlight',owner:null,contested:false}],
+    activeSide:'player', scores:{player:0,ai:0}, supplies:{player:startingMoney-armyCost(armies.player),ai:startingMoney-armyCost(armies.ai)}, goal:mode==='elimination'?0:Math.round(goal??MODES[mode].goal),
+    time:0, nextPulseAt:6, duration, nextAiAt:challenge.grace, aiRecruitAt:challenge.grace,
+    winner:null, log:[], nextId:0, rng:(Number(seed)>>>0)||1
+  };
+  for (const side of SIDES) {
+    armies[side].forEach((role,index)=>{const {x,y}=deployments[side][index];spawn(s,side,role,x,y,side==='player'||opponentMode==='local');});
+  }
+  generateTerrain(s);
+  if(mode==='control')updateControl(s,[]);
+  logEvent(s, {type:'start',x:centerX,y:height-1,text:`${FACTIONS[playerFaction].name} take the field. ${mode==='elimination'?'Defeat the enemy army.':`Control the flags and reach ${s.goal} light.`}`});
+  return s;
+}
+
+function generateTerrain(s) {
+  for(let y=0;y<s.height;y++)for(let x=0;x<s.width;x++)s.tiles.push({x,y,terrain:'grass'});
+  const centerY=Math.floor(s.height/2),flagColumns=s.flags.map(f=>f.x);
+  const protectedTile=(x,y)=>y<=1||y>=s.height-2||y===centerY||flagColumns.includes(x)||s.units.some(u=>u.x===x&&u.y===y);
+  const motif=MAPS[s.map];
+  for(const [kind,points]of [['rock',motif.rocks],['water',motif.water],['grove',motif.groves]])for(const [baseX,baseY]of points) {
+    const x=Math.round(baseX*(s.width-1)/8),y=Math.round(baseY*(s.height-1)/6);
+    if(kind==='grove'||!protectedTile(x,y)) {
+      tileAt(s,x,y).terrain=kind;
+      tileAt(s,s.width-1-x,s.height-1-y).terrain=kind;
+    }
+  }
+  const density={sparse:0.06,balanced:0.14,wild:0.22}[s.terrain],groveDensity={sparse:0.08,balanced:0.14,wild:0.22}[s.terrain];
+  const candidates=s.tiles.filter(t=>!protectedTile(t.x,t.y)).map(t=>({...t,order:nextRandom(s)})).sort((a,b)=>a.order-b.order);
+  const target=Math.round(s.width*s.height*density);
+  const count=kind=>s.tiles.filter(t=>kind?t.terrain===kind:['rock','water'].includes(t.terrain)).length;
+  // Add mirrored obstacles so every commander receives the same terrain opportunities.
+  for(const t of candidates) {
+    if(count()>=target)break;
+    const mx=s.width-1-t.x,my=s.height-1-t.y;
+    if(protectedTile(mx,my))continue;
+    const kind=count('water')===0?'water':count('rock')===0?'rock':nextRandom(s)<0.35?'water':'rock';
+    tileAt(s,t.x,t.y).terrain=kind;tileAt(s,mx,my).terrain=kind;
+  }
+  const groves=Math.round(s.width*s.height*groveDensity);
+  for(const t of s.tiles.map(t=>({...t,order:nextRandom(s)})).sort((a,b)=>a.order-b.order)) {
+    if(count('grove')>=groves)break;
+    if(blocked(s,t.x,t.y)||s.units.some(u=>u.x===t.x&&u.y===t.y))continue;
+    tileAt(s,t.x,t.y).terrain='grove';
+    const mx=s.width-1-t.x,my=s.height-1-t.y;
+    if(!blocked(s,mx,my)&&!s.units.some(u=>u.x===mx&&u.y===my))tileAt(s,mx,my).terrain='grove';
+  }
+  // The cross and flag columns connect every deployment and objective. If a side
+  // pocket was enclosed by random obstacles, carve its shortest horizontal exit.
+  const visited=new Set(),queue=[{x:0,y:0}];
+  for(let i=0;i<queue.length;i++) {
+    const p=queue[i],k=key(p.x,p.y);if(visited.has(k)||blocked(s,p.x,p.y))continue;visited.add(k);
+    for(const[dx,dy]of DIRS)if(inside(s,p.x+dx,p.y+dy))queue.push({x:p.x+dx,y:p.y+dy});
+  }
+  for(const t of s.tiles)if(!blocked(s,t.x,t.y)&&!visited.has(key(t.x,t.y))) {
+    const targetX=flagColumns.slice().sort((a,b)=>Math.abs(a-t.x)-Math.abs(b-t.x))[0];
+    for(let x=Math.min(t.x,targetX);x<=Math.max(t.x,targetX);x++) {
+      tileAt(s,x,t.y).terrain='grass';
+      tileAt(s,s.width-1-x,s.height-1-t.y).terrain='grass';
+    }
+  }
+  for(const u of s.units)tileAt(s,u.x,u.y).terrain='grass';
+}
+
+function logEvent(s,event,events) {
+  if (event.text) { s.log.unshift(event.text); s.log.length=Math.min(s.log.length,80); }
+  if (events) events.push(event);
+}
+
+function lineClear(s,a,b) {
+  let x=a.x,y=a.y;
+  const dx=Math.abs(b.x-x),dy=Math.abs(b.y-y),sx=x<b.x?1:-1,sy=y<b.y?1:-1;
+  let error=dx-dy;
+  while(x!==b.x || y!==b.y) {
+    const e=error*2;
+    if(e>-dy){error-=dy;x+=sx;}
+    if(e<dx){error+=dx;y+=sy;}
+    if(blocked(s,x,y)) return false;
+  }
+  return true;
+}
+
+function reachable(s,u) {
+  const def=unitDef(u),max=u.rootedUntil>s.time?0:movementRange(s,u), queue=[{x:u.x,y:u.y,d:0}], seen=new Set([key(u.x,u.y)]), result=[];
+  for(let i=0;i<queue.length;i++) {
+    const p=queue[i];
+    if(p.d>=max) continue;
+    for(const [dx,dy] of DIRS) {
+      const x=p.x+dx,y=p.y+dy,k=key(x,y);
+      if(seen.has(k)||movementBlocked(s,u,x,y)) continue;
+      const occupant=at(s,x,y);
+      if(occupant && occupant.side!==u.side&&!['Flight','Phasewalk'].includes(def.movement)) continue;
+      seen.add(k);
+      const next={x,y,d:p.d+1};
+      queue.push(next);
+      if(!occupant&&!movementBlocked(s,u,x,y,true)) result.push(next);
+    }
+  }
+  return result;
+}
+
+function blinkSpot(s,u,v) {
+  return DIRS.map(([dx,dy])=>({x:v.x+dx,y:v.y+dy})).filter(p=>!blocked(s,p.x,p.y)&&(!at(s,p.x,p.y)||at(s,p.x,p.y)?.id===u.id))
+    .sort((a,b)=>distance(a,u)-distance(b,u)||a.y-b.y||a.x-b.x)[0];
+}
+
+function skillTargets(s,u,skillIndex=0) {
+  const skill=skillDef(u,skillIndex), allies=living(s,u.side), enemies=living(s,other(u.side));
+  if(['broodlings','pocketmaws','bellmotes'].includes(skill.kind))return allies.length>=8?[]:s.tiles.filter(p=>distance(u,p)<=skill.range&&!blocked(s,p.x,p.y)&&!at(s,p.x,p.y)).map(p=>({x:p.x,y:p.y}));
+  if(skill.kind==='seedgrove')return s.tiles.filter(p=>distance(u,p)<=skill.range&&!blocked(s,p.x,p.y)&&!at(s,p.x,p.y)&&p.terrain!=='grove').map(p=>({x:p.x,y:p.y}));
+  if(skill.kind==='nectar')return allies.filter(v=>distance(u,v)<=skill.range&&v.hp<v.maxHp).map(v=>({x:v.x,y:v.y,targetId:v.id}));
+  if(skill.kind==='wardray')return allies.filter(v=>distance(u,v)<=skill.range&&v.shield<5).map(v=>({x:v.x,y:v.y,targetId:v.id}));
+  if(skill.kind==='starstep')return u.rootedUntil>s.time?[]:s.tiles.filter(p=>distance(u,p)>0&&distance(u,p)<=skill.range&&!at(s,p.x,p.y)&&!movementBlocked(s,u,p.x,p.y,true)).map(p=>({x:p.x,y:p.y}));
+  if(['bloomcall','wrongnote','concordance','sanctuary'].includes(skill.kind)) {
+    const useful=skill.kind==='bloomcall'?allies.some(v=>distance(u,v)<=skill.range&&v.hp<v.maxHp):
+      skill.kind==='wrongnote'?enemies.some(v=>distance(u,v)<=skill.range):
+      skill.kind==='concordance'?allies.some(v=>v.id!==u.id&&distance(u,v)<=skill.range&&(v.readyAt>s.time||v.shield<3)):
+      allies.some(v=>distance(u,v)<=skill.range&&v.shield<5);
+    return useful?[{x:u.x,y:u.y,targetId:u.id}]:[];
+  }
+  if(skill.kind==='sporehop') {
+    if(u.rootedUntil>s.time) return [];
+    return s.tiles.filter(p=>distance(u,p)>0&&distance(u,p)<=skill.range&&!blocked(s,p.x,p.y)&&!at(s,p.x,p.y)).map(p=>({x:p.x,y:p.y}));
+  }
+  if(skill.kind==='mercy') return allies.filter(v=>distance(u,v)<=skill.range&&(v.hp<v.maxHp||v.rootedUntil>s.time||v.cursed)).map(v=>({x:v.x,y:v.y,targetId:v.id}));
+  return enemies.filter(v=>distance(u,v)<=skill.range&&lineClear(s,u,v)&&
+    (skill.kind!=='ray'||u.x===v.x||u.y===v.y)&&
+    (skill.kind!=='laughinghex'||!v.cursed)&&
+    (skill.kind!=='crookedswap'||u.rootedUntil<=s.time&&!movementBlocked(s,u,v.x,v.y,true)&&!movementBlocked(s,v,u.x,u.y,true))&&
+    (skill.kind!=='blinkbite'||u.rootedUntil<=s.time&&blinkSpot(s,u,v))).map(v=>({x:v.x,y:v.y,targetId:v.id}));
+}
+
+export function legalActions(s,unitId) {
+  const u=s.units.find(v=>v.id===unitId);
+  if(s.winner||!u||u.hp<=0) return [];
+  const def=unitDef(u), actions=[];
+  if(u.readyAt<=s.time) {
+    for(const p of reachable(s,u))actions.push({type:'move',unitId,x:p.x,y:p.y,label:'Move'});
+    for(const v of living(s,other(u.side))) if(distance(u,v)<=def.range&&lineClear(s,u,v))
+      actions.push({type:'attack',unitId,x:v.x,y:v.y,targetId:v.id,label:'Attack'});
+    actions.push({type:'guard',unitId,x:u.x,y:u.y,targetId:u.id,label:'Guard'});
+  }
+  for(let skillIndex=0;skillIndex<def.abilities.length;skillIndex++)if(skillReadyAt(u,skillIndex)<=s.time)for(const target of skillTargets(s,u,skillIndex))actions.push({type:'ability',unitId,skillIndex,...target,label:def.abilities[skillIndex].name});
+  return actions;
+}
+
+function capture(s,u,events) {
+  if(s.mode==='control')return;
+  const flag=s.flags.find(f=>f.x===u.x&&f.y===u.y);
+  if(!flag||flag.owner===u.side) return;
+  flag.owner=u.side;
+  logEvent(s,{type:'capture',unitId:u.id,x:u.x,y:u.y,text:`${unitDef(u).name} claimed ${flag.name}.`},events);
+  if(u.faction==='bloom') heal(s,u,2,events);
+}
+
+function updateControl(s,events) {
+  if(s.mode!=='control')return;
+  for(const flag of s.flags) {
+    const nearby=living(s).filter(u=>distance(u,flag)<=1);
+    const player=nearby.filter(u=>u.side==='player').length,ai=nearby.length-player;
+    const owner=player>ai?'player':ai>player?'ai':null,contested=player===ai&&player>0;
+    if(flag.owner===owner&&flag.contested===contested)continue;
+    flag.owner=owner;flag.contested=contested;
+    logEvent(s,{type:'capture',side:owner,x:flag.x,y:flag.y,text:contested?`${flag.name} is contested.`:owner?`${FACTIONS[s.factions[owner]].name} control ${flag.name}.`:`${flag.name} is uncontrolled.`},events);
+    if(owner) {
+      const claimant=nearby.filter(u=>u.side===owner&&u.faction==='bloom').sort((a,b)=>distance(a,flag)-distance(b,flag))[0];
+      if(claimant)heal(s,claimant,2,events);
+    }
+  }
+}
+
+function heal(s,u,value,events) {
+  const restored=Math.min(value,u.maxHp-u.hp);
+  if(restored<=0) return;
+  u.hp+=restored;
+  logEvent(s,{type:'heal',unitId:u.id,x:u.x,y:u.y,value:restored,text:`${unitDef(u).name} recovered ${restored} HP.`},events);
+}
+
+function shield(s,u,value,cap,events) {
+  const gained=Math.max(0,Math.min(value,cap-u.shield));
+  if(!gained)return;
+  u.shield+=gained;
+  logEvent(s,{type:'shield',unitId:u.id,x:u.x,y:u.y,value:gained,text:`${unitDef(u).name} gained ${gained} shield.`},events);
+}
+
+function damage(s,source,target,value,events,{ranged=false}={}) {
+  if(target.hp<=0)return;
+  if(target.cursed){value+=2;target.cursed=0;}
+  if(ranged&&tileAt(s,target.x,target.y).terrain==='grove')value=Math.max(1,value-1);
+  const absorbed=Math.min(target.shield,value);
+  target.shield-=absorbed;
+  const dealt=Math.min(target.hp,value-absorbed);
+  target.hp-=dealt;
+  logEvent(s,{type:'damage',unitId:target.id,sourceId:source.id,x:target.x,y:target.y,value:dealt,absorbed,text:`${unitDef(source).name} hit ${unitDef(target).name} for ${dealt}${absorbed?` (${absorbed} shield absorbed)`:''}.`},events);
+  if(target.hp<=0) {
+    logEvent(s,{type:'death',unitId:target.id,x:target.x,y:target.y,text:`${unitDef(target).name} fell.`},events);
+  }
+}
+
+function relocate(s,u,x,y,events,kind='move') {
+  const fromX=u.x,fromY=u.y;
+  u.x=x;u.y=y;
+  logEvent(s,{type:kind,unitId:u.id,x,y,fromX,fromY,text:`${unitDef(u).name} moved to ${String.fromCharCode(65+x)}${s.height-y}.`},events);
+  capture(s,u,events);
+}
+
+function useAbility(s,u,action,events) {
+  const skillIndex=action.skillIndex??0,skill=skillDef(u,skillIndex), target=action.targetId?s.units.find(v=>v.id===action.targetId):null;
+  logEvent(s,{type:'ability',unitId:u.id,skillIndex,kind:skill.kind,x:action.x,y:action.y,text:`${unitDef(u).name} used ${skill.name}.`},events);
+  switch(skill.kind) {
+    case 'bloomcall': for(const v of living(s,u.side))if(distance(u,v)<=2)heal(s,v,3,events);break;
+    case 'sporehop': tileAt(s,u.x,u.y).terrain='grove';relocate(s,u,action.x,action.y,events);break;
+    case 'belch': {
+      damage(s,u,target,2,events);
+      if(target.hp>0) {
+        target.rootedUntil=s.time+2.5;
+        const candidates=DIRS.map(([dx,dy])=>({x:target.x+dx,y:target.y+dy})).filter(p=>distance(p,u)<distance(target,u)&&!blocked(s,p.x,p.y)&&!at(s,p.x,p.y)).sort((a,b)=>distance(a,u)-distance(b,u));
+        if(candidates[0])relocate(s,target,candidates[0].x,candidates[0].y,events);
+      } break;
+    }
+    case 'sporeburst': for(const v of living(s,other(u.side)))if(distance(v,action)<=1)damage(s,u,v,3,events);break;
+    case 'wrongnote': for(const v of living(s,other(u.side)))if(distance(u,v)<=2){damage(s,u,v,2,events);if(v.hp>0)v.rootedUntil=s.time+2.5;}break;
+    case 'blinkbite': {const p=blinkSpot(s,u,target);relocate(s,u,p.x,p.y,events);damage(s,u,target,3,events);break;}
+    case 'foldhorn': {
+      const dx=target.x-u.x,dy=target.y-u.y;
+      const p={x:target.x+(Math.abs(dx)>=Math.abs(dy)?Math.sign(dx):0),y:target.y+(Math.abs(dx)<Math.abs(dy)?Math.sign(dy):0)};
+      const open=!blocked(s,p.x,p.y)&&!at(s,p.x,p.y);
+      damage(s,u,target,open?4:5,events);
+      if(target.hp>0&&open)relocate(s,target,p.x,p.y,events);
+      break;
+    }
+    case 'omen': damage(s,u,target,2,events);if(target.hp>0)target.cursed=1;break;
+    case 'concordance': for(const v of living(s,u.side))if(v.id!==u.id&&distance(u,v)<=2){v.readyAt=s.time;shield(s,v,1,3,events);}break;
+    case 'mercy': heal(s,target,4,events);target.rootedUntil=0;target.cursed=0;break;
+    case 'sanctuary': for(const v of living(s,u.side))if(distance(u,v)<=1)shield(s,v,4,5,events);break;
+    case 'ray': {
+      const dx=Math.sign(target.x-u.x),dy=Math.sign(target.y-u.y);
+      for(let n=1;n<=5;n++) {
+        const x=u.x+dx*n,y=u.y+dy*n;
+        if(blocked(s,x,y))break;
+        const v=at(s,x,y);
+        if(v&&v.side!==u.side)damage(s,u,v,3,events,{ranged:true});
+      } break;
+    }
+    case 'seedgrove':tileAt(s,action.x,action.y).terrain='grove';break;
+    case 'nectar':heal(s,target,2,events);break;
+    case 'laughinghex':target.cursed=1;break;
+    case 'crookedswap': {
+      const ux=u.x,uy=u.y,vx=target.x,vy=target.y;
+      u.x=vx;u.y=vy;target.x=ux;target.y=uy;
+      for(const [troop,fromX,fromY]of [[u,ux,uy],[target,vx,vy]]) {
+        logEvent(s,{type:'move',unitId:troop.id,x:troop.x,y:troop.y,fromX,fromY,text:`${unitDef(troop).name} swapped through the rift.`},events);
+        capture(s,troop,events);
+      }
+      break;
+    }
+    case 'starstep':relocate(s,u,action.x,action.y,events);shield(s,u,2,5,events);break;
+    case 'wardray':shield(s,target,3,5,events);break;
+    case 'broodlings':case 'pocketmaws':case 'bellmotes': {
+      const positions=[{x:action.x,y:action.y},...DIRS.map(([dx,dy])=>({x:action.x+dx,y:action.y+dy}))];
+      let count=0;
+      for(const p of positions) {
+        if(count>=2||living(s,u.side).length>=8)break;
+        if(blocked(s,p.x,p.y)||at(s,p.x,p.y))continue;
+        const tiny=spawn(s,u.side,'minion',p.x,p.y,true,u.faction);tiny.readyAt=s.time+1;
+        logEvent(s,{type:'summon',sourceId:u.id,unitId:tiny.id,x:p.x,y:p.y,text:`${unitDef(u).name} summoned a ${unitDef(tiny).name}.`},events);
+        capture(s,tiny,events);count++;
+      }
+      break;
+    }
+  }
+  if(!Array.isArray(u.abilityReadyAts))u.abilityReadyAts=unitDef(u).abilities.map((_,i)=>i===0?u.abilityReadyAt:0);
+  u.abilityReadyAts[skillIndex]=s.time+skill.cooldown;
+  if(skillIndex===0)u.abilityReadyAt=u.abilityReadyAts[0];
+}
+
+function checkWinner(s,events) {
+  if(s.winner)return;
+  const player=living(s,'player'),ai=living(s,'ai');
+  if(!player.length||!ai.length)s.winner=!player.length&&!ai.length?'draw':player.length?'player':'ai';
+  else if(s.time>=s.duration||(s.mode!=='elimination'&&(s.scores.player>=s.goal||s.scores.ai>=s.goal))) {
+    const p=s.scores.player-s.scores.ai;
+    const hp=player.reduce((n,u)=>n+u.hp,0)-ai.reduce((n,u)=>n+u.hp,0);
+    const flags=s.flags.filter(f=>f.owner==='player').length-s.flags.filter(f=>f.owner==='ai').length;
+    const primary=s.mode==='elimination'?hp:p,secondary=s.mode==='elimination'?flags:hp;
+    s.winner=primary>0?'player':primary<0?'ai':secondary>0?'player':secondary<0?'ai':'draw';
+  }
+  if(s.winner)logEvent(s,{type:'win',x:Math.floor(s.width/2),y:Math.floor(s.height/2),text:s.winner==='draw'?'The rift settles in a draw.':`${FACTIONS[s.factions[s.winner]].name} won the skirmish!`},events);
+}
+
+export function applyAction(s,requested) {
+  if(!requested||typeof requested!=='object')return{ok:false,error:'Choose an action.',events:[]};
+  if(requested.type==='recruit')return recruit(s,requested.role,requested.side||'player');
+  if(requested.type==='ability'&&(!Number.isInteger(requested.skillIndex??0)||(requested.skillIndex??0)<0))return{ok:false,error:'Choose a valid special ability.',events:[]};
+  const candidate=legalActions(s,requested.unitId).find(a=>a.type===requested.type&&a.x===requested.x&&a.y===requested.y&&(!requested.targetId||a.targetId===requested.targetId)&&(a.type!=='ability'||a.skillIndex===(requested.skillIndex??0)));
+  if(!candidate)return{ok:false,error:'That action is not available.',events:[]};
+  const u=s.units.find(v=>v.id===candidate.unitId),events=[];
+  const sharedReadyAt=s.time+unitDef(u).moveCooldown;
+  if(candidate.type==='move') {u.readyAt=sharedReadyAt;relocate(s,u,candidate.x,candidate.y,events);}
+  if(candidate.type==='attack') {
+    const target=s.units.find(v=>v.id===candidate.targetId),def=unitDef(u);
+    u.readyAt=sharedReadyAt;
+    damage(s,u,target,def.damage+(u.faction==='chaos'&&u.hp<u.maxHp?1:0),events,{ranged:distance(u,target)>1});
+  }
+  if(candidate.type==='ability'){u.readyAt=Math.max(u.readyAt,sharedReadyAt);useAbility(s,u,candidate,events);}
+  if(candidate.type==='guard'){u.readyAt=sharedReadyAt;shield(s,u,2,5,events);}
+  updateControl(s,events);
+  checkWinner(s,events);
+  return{ok:true,events};
+}
+
+function passivePulse(s,events) {
+  for(const u of living(s)) {
+    if(u.faction==='bloom'&&tileAt(s,u.x,u.y).terrain==='grove')heal(s,u,1,events);
+    if(u.faction==='choir'&&living(s,u.side).some(v=>v.id!==u.id&&distance(u,v)===1))shield(s,u,1,3,events);
+  }
+}
+
+export function recruit(s,role,side='player') {
+  const events=[];
+  if(!SIDES.includes(side))return{ok:false,error:'Choose a valid army.',events};
+  if(s.winner)return{ok:false,error:'The skirmish is over.',events};
+  if(s.mode!=='reinforcements')return{ok:false,error:'Buying reinforcements is only available in Reinforcement Clash.',events};
+  if(!['scout','brute','mystic'].includes(role))return{ok:false,error:'Recruit a scout, brute, or mystic.',events};
+  const def=FACTIONS[s.factions[side]].units[role];
+  if(living(s,side).length>=8)return{ok:false,error:'Your army is full (8 troops).',events};
+  if(s.supplies[side]<def.cost)return{ok:false,error:`You need ${def.cost} supplies.`,events};
+  const rows=side==='player'?[s.height-1,s.height-2]:[0,1];
+  let spot=null;
+  const columns=Array.from({length:s.width},(_,x)=>x).sort((a,b)=>Math.abs(a-(s.width-1)/2)-Math.abs(b-(s.width-1)/2)||a-b);
+  for(const y of rows)for(const x of columns)if(!spot&&!blocked(s,x,y)&&!at(s,x,y))spot={x,y};
+  if(!spot)return{ok:false,error:'Clear a tile in your deployment zone.',events};
+  s.supplies[side]-=def.cost;
+  const u=spawn(s,side,role,spot.x,spot.y,false);
+  u.readyAt=s.time+def.moveCooldown;
+  u.abilityReadyAts=def.abilities.map(skill=>s.time+skill.cooldown);
+  u.abilityReadyAt=u.abilityReadyAts[0];
+  logEvent(s,{type:'recruit',unitId:u.id,x:u.x,y:u.y,text:`${def.name} arrived. Ready in ${def.moveCooldown} seconds.`},events);
+  updateControl(s,events);
+  return{ok:true,events};
+}
+
+function pathDistance(s,start,goal,side,unit) {
+  const queue=[{...start,d:0}],seen=new Set([key(start.x,start.y)]);
+  for(let i=0;i<queue.length;i++) {
+    const p=queue[i];
+    if(p.x===goal.x&&p.y===goal.y)return p.d;
+    for(const[dx,dy]of DIRS){const x=p.x+dx,y=p.y+dy,k=key(x,y),u=at(s,x,y);if(seen.has(k)||(unit?movementBlocked(s,unit,x,y):blocked(s,x,y))||u&&u.side!==side&&!['Flight','Phasewalk'].includes(unit&&unitDef(unit).movement)&&!(x===goal.x&&y===goal.y))continue;seen.add(k);queue.push({x,y,d:p.d+1});}
+  }
+  return 30;
+}
+
+function actionScore(s,u,a) {
+  const def=unitDef(u),foes=living(s,other(u.side)),allies=living(s,u.side),target=a.targetId?s.units.find(v=>v.id===a.targetId):null;
+  if(a.type==='guard')return 0.3+(u.hp<u.maxHp/2?0.8:0);
+  if(a.type==='attack') {
+    const dmg=def.damage+(u.faction==='chaos'&&u.hp<u.maxHp?1:0)+(target.cursed?2:0);
+    return 9+Math.min(target.hp,Math.max(0,dmg-target.shield))*2+(target.hp+target.shield<=dmg?13:0)+(s.flags.some(f=>f.x===target.x&&f.y===target.y)?4:0);
+  }
+  if(a.type==='ability') {
+    const kind=skillDef(u,a.skillIndex??0).kind;
+    if(['broodlings','pocketmaws','bellmotes'].includes(kind))return 9+Math.min(2,8-allies.length)*3+(s.flags.some(f=>f.owner!==u.side&&distance(f,a)<=1)?7:0)+(foes.some(v=>distance(v,a)<=3)?3:0);
+    if(kind==='seedgrove')return 2+allies.filter(v=>distance(v,a)<=1).reduce((n,v)=>n+(v.hp<v.maxHp?3:1),0)+(s.flags.some(f=>distance(f,a)<=1)?3:0);
+    if(kind==='nectar')return Math.min(2,target.maxHp-target.hp)*5-1;
+    if(kind==='laughinghex')return 12+(target.hp<=5?3:0);
+    if(kind==='crookedswap')return 8+allies.filter(v=>v.id!==u.id&&distance(v,u)<=2).length*3+(s.flags.some(f=>f.x===target.x&&f.y===target.y&&f.owner!==u.side)?8:0);
+    if(kind==='starstep')return moveScore(s,u,a)+2;
+    if(kind==='wardray')return Math.min(3,5-target.shield)*(foes.some(v=>distance(v,target)<=3)?5:1)-1;
+    if(kind==='bloomcall')return allies.filter(v=>distance(u,v)<=2).reduce((n,v)=>n+Math.min(3,v.maxHp-v.hp)*4,0)-1;
+    if(kind==='mercy')return Math.min(4,target.maxHp-target.hp)*4+(target.rootedUntil>s.time?3:0)+(target.cursed?2:0)-1;
+    if(kind==='concordance')return allies.filter(v=>v.id!==u.id&&distance(u,v)<=2).reduce((n,v)=>n+(v.readyAt>s.time?8:0)+(v.shield<3?1:0),0)-1;
+    if(kind==='sanctuary')return allies.filter(v=>distance(u,v)<=1).reduce((n,v)=>n+Math.min(4,5-v.shield)*(foes.some(e=>distance(v,e)<=3)?2:0.35),0)-1;
+    if(kind==='sporehop')return moveScore(s,u,a)+1;
+    if(kind==='sporeburst')return foes.filter(v=>distance(v,a)<=1).reduce((n,v)=>n+8+Math.min(v.hp,Math.max(0,3-v.shield))*2+(v.hp+v.shield<=3?12:0),0);
+    if(kind==='wrongnote')return foes.filter(v=>distance(u,v)<=2).reduce((n,v)=>n+11+(v.hp+v.shield<=2?12:0),0);
+    if(kind==='ray'){
+      const dx=Math.sign(target.x-u.x),dy=Math.sign(target.y-u.y);
+      return foes.filter(v=>(dx?v.y===u.y&&Math.sign(v.x-u.x)===dx:v.x===u.x&&Math.sign(v.y-u.y)===dy)&&distance(u,v)<=5&&lineClear(s,u,v)).reduce((n,v)=>n+13+(v.hp+v.shield<=3?12:0),0);
+    }
+    const dmg=kind==='foldhorn'?4:kind==='blinkbite'?3:2;
+    return 11+Math.min(target.hp,Math.max(0,dmg-target.shield))*2+(target.hp+target.shield<=dmg?13:0)+(kind==='omen'?3:0)+(kind==='belch'?3:0);
+  }
+  return moveScore(s,u,a);
+}
+
+function moveScore(s,u,a) {
+  const targets=s.mode==='elimination'?[]:s.flags.filter(f=>f.owner!==u.side),foes=living(s,other(u.side));
+  let score=-1;
+  if(targets.length) {
+    const before=Math.min(...targets.map(f=>pathDistance(s,u,f,u.side,u)));
+    const after=Math.min(...targets.map(f=>pathDistance(s,a,f,u.side,u)));
+    score+=(before-after)*3;
+    if(targets.some(f=>f.x===a.x&&f.y===a.y))score+=24;
+  } else {
+    // With all beacons held, advance toward opponents while protecting the center.
+    const before=Math.min(...foes.map(v=>distance(u,v))),after=Math.min(...foes.map(v=>distance(a,v)));
+    score+=(before-after)*1.4;
+  }
+  const standing=s.flags.find(f=>f.x===u.x&&f.y===u.y&&f.owner===u.side);
+  if(standing&&foes.some(v=>distance(v,standing)<=3))score-=5;
+  const threat=foes.filter(v=>distance(v,a)<=unitDef(v).range).reduce((n,v)=>n+unitDef(v).damage,0);
+  if(!['story','easy'].includes(s.difficulty))score-=threat*(u.hp<5?1.1:0.25);
+  if(foes.some(v=>distance(v,a)<=unitDef(u).range&&lineClear(s,a,v)))score+=4;
+  if(u.faction==='bloom'&&tileAt(s,a.x,a.y).terrain==='grove'&&u.hp<u.maxHp)score+=1.5;
+  return score;
+}
+
+export function chooseAIAction(s) {
+  if(s.winner||s.opponentMode==='local')return null;
+  const army=living(s,'ai');
+  if(s.mode==='reinforcements'&&army.length<7&&s.time>=s.aiRecruitAt&&s.supplies.ai>=4) {
+    const roster=army.map(u=>u.role),role=!roster.includes('mystic')&&s.supplies.ai>=5?'mystic':!roster.includes('brute')&&s.supplies.ai>=6?'brute':'scout';
+    const rows=[0,1],room=s.tiles.some(t=>rows.includes(t.y)&&!blocked(s,t.x,t.y)&&!at(s,t.x,t.y));
+    if(room) {s.aiRecruitAt=s.time+6;return{type:'recruit',role,side:'ai'};}
+  }
+  const ranked=[];
+  for(const u of army)for(const action of legalActions(s,u.id)) {
+    const noise=(nextRandom(s)-0.5)*({story:8,easy:5,normal:2,hard:0.4,expert:0.1}[s.difficulty]??2);
+    let score=actionScore(s,u,action);
+    if(['story','easy'].includes(s.difficulty)) {
+      const foes=living(s,'player'),target=action.targetId?s.units.find(v=>v.id===action.targetId):null;
+      const kind=action.type==='ability'?skillDef(u,action.skillIndex??0).kind:null;
+      const offensive=action.type==='attack'||action.type==='ability'&&['belch','sporeburst','wrongnote','blinkbite','foldhorn','omen','ray','laughinghex','crookedswap'].includes(kind);
+      const adjacent=target&&target.side!==u.side?distance(u,target)<=1:foes.some(v=>distance(u,v)<=1);
+      if(offensive&&!adjacent)score=Math.min(score*(s.difficulty==='story'?0.2:0.4),s.difficulty==='story'?4:5);
+      if(action.type==='guard'&&u.shield<5&&foes.some(v=>distance(u,v)<=3))score+=foes.some(v=>distance(u,v)<=1)?2:s.difficulty==='story'?13:11;
+      if(action.type==='guard'&&u.shield>=5)score-=5;
+      if(action.type==='move'&&s.flags.some(f=>f.owner!==u.side&&f.x===action.x&&f.y===action.y))score+=s.difficulty==='story'?8:5;
+    }
+    ranked.push({action,score:score+noise});
+  }
+  ranked.sort((a,b)=>b.score-a.score);
+  return ranked[0]?.action||null;
+}
+
+/** Advance only while the app is playing. Large/background deltas cannot skip battles. */
+export function advance(s,dtSeconds) {
+  if(s.winner||!Number.isFinite(dtSeconds)||dtSeconds<=0)return[];
+  const events=[];
+  s.time=Math.min(s.duration,Math.round((s.time+Math.min(1,dtSeconds))*1e6)/1e6);
+  updateControl(s,events);
+  while(s.nextPulseAt<=s.time) {
+    for(const side of SIDES) {
+      const held=s.flags.filter(f=>f.owner===side).length;
+      if(s.mode!=='elimination')s.scores[side]+=held;
+      if(s.mode==='reinforcements')s.supplies[side]=Math.min(40,s.supplies[side]+2+held);
+      if(held&&s.mode!=='elimination')logEvent(s,{type:'score',side,x:Math.floor(s.width/2),y:Math.floor(s.height/2),value:held,text:`${FACTIONS[s.factions[side]].name} gained ${held} light.`},events);
+    }
+    passivePulse(s,events);
+    s.nextPulseAt+=6;
+    checkWinner(s,events);
+    if(s.winner)return events;
+  }
+  checkWinner(s,events);
+  if(s.winner)return events;
+  if(s.opponentMode!=='local'&&s.time>=s.nextAiAt) {
+    const action=chooseAIAction(s);
+    if(action)events.push(...applyAction(s,action).events);
+    s.nextAiAt=s.time+(DIFFICULTIES[s.difficulty]||DIFFICULTIES.normal).interval;
+  }
+  return events;
+}
+
+export const RULES = {
+  actions: 'Each troop has its own move/attack cooldown: scouts 2s, leaders 3s, brutes 3.5s, mystics 2.8s. Move, attack, or guard when ready.',
+  beacons: 'Enter a beacon to claim it. Ownership lasts until an enemy enters. Every 6 seconds each held beacon gives 1 light. First to 30 light wins.',
+  terrain: 'Rocks and water block ground movement and sight. Groves reduce ranged basic attacks and Judgment Ray damage by 1, to a minimum of 1.',
+  movement: 'Brood starting in groves move 1 extra tile. Chaos scouts phase through enemy troops. Choir leaders, scouts, and mystics fly across obstacles and troops, landing on empty ground or water, never rocks.',
+  modes: 'Beacon Rush keeps claimed flags. Zone Control awards majority presence within one orthogonal tile; ties are contested. Last Army Standing awards no light; defeat the enemy or lead in remaining HP at the time limit.',
+  opponents: 'Face an AI commander or share the screen in local two-player. Local armies act independently with the same cooldowns; both start ready.',
+  reinforcements: 'Only Reinforcement Clash allows purchases and gains 2 coins plus 1 per held beacon every 6 seconds, up to 40. Unspent starting coins carry into battle. Recruit up to 8 living troops.',
+  drafting: 'Choose 1–8 starting troops, including exactly one commander, and arrange them in your home two rows. Commanders cost 6, scouts 3, brutes 5, mystics 4. Start with 24 coins, or choose a custom budget of 12–40.',
+  abilities: 'Specials have independent 8–12 second cooldowns and work while movement is recovering. Broodlings, Pocket Maws, and Bell Motes summon up to 2 tiny troops, army cap 8. Roots last 2.5 seconds. Guard gives 2 shield, up to 5.',
+  victory: 'Win at 30 light or by defeating the entire enemy army. At 180 seconds, most light wins; remaining HP breaks a tie.'
+};

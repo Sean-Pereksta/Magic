@@ -1,0 +1,27 @@
+name: Flag Capture strategy checks
+on:
+  pull_request:
+    paths: ['game/Flag.html', 'game/flag-capture/**', 'lobby/lobby-core.html', 'lobby/lobby-showcase.js', 'lobby/tests/flag-capture-catalog.test.cjs', '.github/workflows/flag-capture.yml']
+  push:
+    paths: ['game/Flag.html', 'game/flag-capture/**', 'lobby/lobby-core.html', 'lobby/lobby-showcase.js', 'lobby/tests/flag-capture-catalog.test.cjs', '.github/workflows/flag-capture.yml']
+permissions:
+  contents: read
+jobs:
+  strategy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /game/Flag.html
+            /game/flag-capture/
+            /lobby/*.js
+            /lobby/*.html
+            /lobby/tests/flag-capture-catalog.test.cjs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --check game/flag-capture/app.mjs
+      - run: node --test game/flag-capture/*.test.mjs lobby/tests/flag-capture-catalog.test.cjs

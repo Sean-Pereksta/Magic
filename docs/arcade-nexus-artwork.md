@@ -112,7 +112,7 @@ All rows below have both a dedicated tile and thumbnail. “Retained” means th
 | thegame | The Game  (Incomplete) | Cards | multi | experimental | New | /game/thegame.html |
 | matchwars | Match Wars | Arcade | single | in-production | New | /game/matchwars.html |
 | catmobile | Cat vs Mouse Mobile (Incomplete) | Party | multi | experimental | New | /game/catmousemobile.html |
-| flag | Flag (Incomplete) | Action | single | experimental | New | /game/Flag.html |
+| flag | Flag Capture: Riftbound | Strategy | single | experimental | New | /game/Flag.html |
 | microwars | Micro Wars (Incomplete) | Strategy | single | experimental | New | /game/microwars.html |
 | microwars2 | Monster Quest (Incomplete) | RPG | single | experimental | New | /game/microwaves2.html |
 | swarm | Swarm Wars (Incomplete) | Strategy | single | experimental | New | /game/swarms.html |
