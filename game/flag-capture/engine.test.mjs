@@ -82,6 +82,21 @@ test('rocks and water block ranged sight; shield absorption never heals a target
 test('guard shares movement cooldown and caps shield at five',()=>{
   const s=arena(),u=add(s,'player','bloom','brute',4,4,{shield:4});add(s,'ai','chaos','leader',4,0);
   play(s,u,'guard');assert.equal(u.readyAt,3.5);assert.equal(u.shield,5);assert.equal(find(s,u,'guard'),undefined);
+  tick(s,3.5);assert.equal(find(s,u,'guard'),undefined);
+  const ready=u.readyAt;assert.equal(applyAction(s,{type:'guard',unitId:u.id,x:u.x,y:u.y}).ok,false);assert.equal(u.readyAt,ready);
+});
+
+test('water shields the ground beyond it, while hovering troops remain targetable',()=>{
+  const s=arena(),u=add(s,'player','chaos','mystic',2,3),v=add(s,'ai','choir','scout',4,3);
+  s.tiles[3*9+4].terrain='water';assert.ok(find(s,u,'attack',v));play(s,u,'attack',v);assert.equal(v.hp,5);
+  u.readyAt=0;const beyond=add(s,'ai','choir','leader',5,3);assert.equal(find(s,u,'attack',beyond),undefined);
+  s.tiles[3*9+4].terrain='rock';assert.equal(find(s,u,'attack',v),undefined);
+});
+
+test('Judgment Ray hits a hovering water occupant and stops before troops beyond the water',()=>{
+  const s=arena(),u=add(s,'player','choir','mystic',1,3),v=add(s,'ai','choir','scout',3,3),beyond=add(s,'ai','chaos','leader',4,3);
+  s.tiles[3*9+3].terrain='water';cast(s,u,0,v);assert.equal(v.hp,v.maxHp-3);assert.equal(beyond.hp,beyond.maxHp);
+  u.abilityReadyAt=0;v.hp=0;assert.equal(legalActions(s,u.id).some(a=>a.type==='ability'&&a.skillIndex===0),false);
 });
 
 test('Bloomcall heals allies in radius, never enemies, and starts a ten-second special cooldown',()=>{
@@ -486,6 +501,25 @@ test('custom deployment preserves ordering, validates home rows and guarantees p
   assert.throws(()=>createGame({aiArmy,aiDeployment:[{x:0,y:6},{x:1,y:0}]}));
 });
 
+test('deployment previews retain identical seeded terrain and RNG when troops or their placements change',()=>{
+  let groveStarts=0;
+  for(const size of BOARD_SIZES)for(const map of Object.keys(MAPS))for(const terrain of ['sparse','balanced','wild']) {
+    const options={...size,map,terrain,seed:391,playerFaction:'bloom'},preview=createGame(options);
+    const playerArmy=['leader','scout','mystic'],aiArmy=['leader','brute'];
+    const playerDeployment=[{x:0,y:size.height-1},{x:size.width-1,y:size.height-2},{x:1,y:size.height-1}],aiDeployment=[{x:0,y:0},{x:size.width-1,y:1}];
+    const arranged=createGame({...options,playerArmy,aiArmy,playerDeployment,aiDeployment});
+    assert.deepEqual(arranged.tiles,preview.tiles);assert.equal(arranged.rng,preview.rng);
+    const grove=preview.tiles.find(t=>t.terrain==='grove'&&t.y>=size.height-2);
+    if(grove) {
+      groveStarts++;
+      const rooted=createGame({...options,playerArmy:['leader'],playerDeployment:[grove]});
+      assert.deepEqual(rooted.tiles,preview.tiles);assert.equal(rooted.rng,preview.rng);
+      assert.equal(movementRange(rooted,rooted.units.find(u=>u.side==='player')),3,'Brood can deliberately deploy in a stable grove');
+    }
+  }
+  assert.ok(groveStarts>0,'seeded battlefields offer deliberate grove deployment');
+});
+
 test('purchases and automatic buying are exclusive to Reinforcement Clash',()=>{
   for(const mode of ['beacons','control','elimination']) {
     const s=createGame({mode,startingMoney:40});s.supplies.ai=40;s.aiRecruitAt=0;
@@ -534,4 +568,31 @@ test('AI can summon and then issue legal commands to the tiny troops without aut
     const action=chooseAIAction(s);assert.equal(action.type,'ability');assert.equal(action.skillIndex,2);assert.equal(applyAction(s,action).ok,true);
     assert.equal(s.units.filter(v=>v.role==='minion').length,2);tick(s,1);const next=chooseAIAction(s);assert.equal(s.units.find(v=>v.id===next.unitId).role,'minion');assert.equal(applyAction(s,next).ok,true);
   }
+});
+
+test('elimination pursuit takes a route around terrain even when it first leads away from the enemy',()=>{
+  const s=arena({mode:'elimination',difficulty:'hard'}),u=add(s,'ai','chaos','leader',0,1,{shield:5,abilityReadyAt:1000,abilityReadyAts:[1000,1000]}),foe=add(s,'player','bloom','leader',0,6);
+  for(const[x,y]of [[0,2],[1,2],[0,3],[1,3]])s.tiles[y*9+x].terrain='rock';
+  const action=chooseAIAction(s);assert.equal(action.type,'move');assert.equal(action.unitId,u.id);assert.ok(action.x>=1);assert.equal(applyAction(s,action).ok,true);
+  assert.ok(Math.abs(u.x-foe.x)+Math.abs(u.y-foe.y)>=5,'the escape from the wall need not reduce straight-line distance');
+});
+
+test('ground AI approaches a shoreline to fight a flying enemy on water',()=>{
+  const s=arena({mode:'elimination',difficulty:'expert'}),u=add(s,'ai','chaos','brute',4,6,{shield:5,abilityReadyAt:1000,abilityReadyAts:[1000]});
+  add(s,'player','choir','scout',4,1);s.tiles[1*9+4].terrain='water';
+  const action=chooseAIAction(s);assert.equal(action.type,'move');assert.equal(action.unitId,u.id);assert.ok(action.y<6);assert.equal(applyAction(s,action).ok,true);
+});
+
+test('Zone Control AI preserves sole defenders instead of leaving every held zone to chase a distant foe',()=>{
+  const s=arena({mode:'control',difficulty:'expert'});add(s,'player','bloom','leader',8,6);
+  for(const f of s.flags){add(s,'ai','chaos','scout',f.x,f.y,{shield:5,abilityReadyAt:1000,abilityReadyAts:[1000]});f.owner='ai';}
+  const action=chooseAIAction(s);if(action)assert.equal(applyAction(s,action).ok,true);
+  tick(s,.1);assert.equal(s.flags.filter(f=>f.owner==='ai').length,3);
+});
+
+test('Zone Control AI can win a contested zone from beside an occupied flag',()=>{
+  const s=arena({mode:'control',difficulty:'expert'});s.flags=[{x:4,y:3,name:'Center',owner:null,contested:true}];
+  add(s,'ai','chaos','leader',4,3,{shield:5,readyAt:1000,abilityReadyAt:1000,abilityReadyAts:[1000,1000]});add(s,'player','bloom','leader',4,2);
+  const u=add(s,'ai','chaos','scout',4,5,{shield:5,abilityReadyAt:1000,abilityReadyAts:[1000]});
+  const action=chooseAIAction(s);assert.equal(action.type,'move');assert.equal(action.unitId,u.id);assert.equal(applyAction(s,action).ok,true);assert.equal(s.flags[0].owner,'ai');
 });

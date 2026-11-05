@@ -10,7 +10,7 @@ A cooldown-based strategy game at the existing `/game/Flag.html` arcade route. C
 | Crooked Carnival (`chaos`) | Surreal Chaos beasts that bend bodies and battlefield positions. | Injured troops deal +1 basic attack damage. |
 | Aureate Choir (`choir`) | Angelic beings of ivory, gold, wings, and celestial geometry. | Troops beside an ally gain 1 shield every six seconds, up to 3. |
 
-Every faction has its own troop definitions and abilities. In single-player battles, the command dock sits directly below the gameplay board, with movement, attack, every available special ability, and guard within easy reach. Ability buttons use original drawn icons, names, and cooldown indicators. Leaders and mystics have two or three specials, while scouts and brutes have one, for 21 faction-specific skills in total. The four main roles are faction-specific creatures rather than shared units with different colors. Buy and arrange your starting warband before deployment in any mode, including the campaign.
+Every faction has its own troop definitions and abilities. In single-player battles, the command dock sits directly below the gameplay board, with movement, attack, every available special ability, and guard within easy reach. Ability buttons use original drawn icons, names, and cooldown indicators. Leaders and mystics have two or three specials, while scouts and brutes have one, for 21 faction-specific skills in total. The four main roles are faction-specific creatures rather than shared units with different colors. Buy your starting warband, choose Arrange troops, then position it on the actual seeded battlefield before starting the countdown. This flow applies to every mode and campaign mission.
 
 The battle view keeps the board, command bars, and a menu button visible. The selected creature's health bar appears beside its name, so its condition stays visible during commands. Open the menu when you want creature details, the battle journal, settings, or help. Reinforcement Clash also offers recruitment there. Creature details explain health, movement identity, attack range, faction doctrine, and ability rules; they are optional during play.
 
@@ -46,7 +46,7 @@ Movement also changes how each army approaches the same map:
 - Eliminate the entire opposing army to win immediately in any mode. Otherwise, each mode's score goal or time-limit tiebreak decides the battle.
 - Standard battles use the armies chosen before deployment. Mid-battle purchases are available only in Reinforcement Clash: unspent starting coins become your supply wallet, and each pulse adds 2 supplies plus your held-beacon count. Recruit scouts for 4 supplies, brutes for 6, or mystics for 5 at your home edge. Recruits wait a full movement/attack cooldown before using standard commands and a full special cooldown before using an ability.
 - Summoning abilities work in every mode and recharge in 12 seconds. Choose an empty ground tile within two cells of the caster to summon up to two little allies there and on an adjacent cell, subject to open space and the eight-creature cap. Each tiny ally has 3 HP, 1 attack damage, 2 movement range, no specials, and a one-second arrival delay. Glowgrubs benefit from the Brood's grove network, Pocket Maws move on the ground, and Bell Motes fly. Both sides obey the same army and summoning rules.
-- Guard adds 2 shield, up to 5, and starts the piece's standard cooldown.
+- Guard adds 2 shield, up to 5, and starts the piece's standard cooldown. Guard is unavailable at full shield.
 - Pause freezes the battle clock, scoring, cooldowns, and AI commands.
 
 Choose factions, an opponent type, map, and battle settings before a new match. AI battles also offer a difficulty choice. Select a troop, choose its command using the large command buttons or hotkeys, then select a highlighted destination or target. Cooldown indicators tell you when each piece can act again. You can also drag pieces to valid destinations on the board.
@@ -125,3 +125,16 @@ node --test lobby/tests/flag-capture-catalog.test.cjs
 ```
 
 The focused catalog tests verify the actual loader output, the stable route/key/mode, the existing user-initiated Play handler, no online lobby action, and preserved editorial placement.
+
+## Responsive controls and deployment
+
+Battle updates retain the board, buttons, creature tokens, focus, and running effects. A troop slides with its health, cooldown and shield indicators in a 210ms animation; unrelated commands do not restart that movement. Dragging shows a fingertip preview and valid drop feedback. Each gesture remembers its original troop, owner, command, and special slot. Local players can issue independent commands.
+
+Legal geometry stays visible during recharge. An order entered at most 0.55 seconds early is buffered once per troop; the latest valid order replaces it. An hourglass marks its destination, and its command timer reads Queued. The engine revalidates it before execution. Death, movement, changed ownership, new obstacles, pause, countdown, and victory cancel stale orders. Simulation checks queued commands every 50ms. Arrow keys navigate board focus.
+
+Deployment uses the same seed, terrain and purchased formation as the battle. Moving a troop never rerolls terrain. Auto arrange places scouts and brutes forward and commander/support behind; all placements can be changed manually. Local players can arrange either army or drag their own troops concurrently.
+
+- `input.mjs`: legal target previews, bounded command buffering, gesture snapshots.
+- `battle-renderer.mjs`: persistent battlefield and control updates.
+- `battle-integration.test.mjs` / `deployment-integration.test.mjs`: actual application handlers exercised with real rules and draft state.
+- `PLAYTEST.md` / `playtest.mjs`: reproducible strategic diagnostics and measured browser results.

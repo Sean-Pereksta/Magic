@@ -4,6 +4,8 @@ import {actionColor, displayTargets} from './targeting.mjs';
 import {parseBattleSave} from './save.mjs';
 import {abilityIcon} from './icons.mjs';
 import {createDraft,resizeDraft,renderDraft,applyDraftAction} from './draft-ui.mjs';
+import {previewActions,createInputController} from './input.mjs';
+import {patchBattleMarkup} from './battle-renderer.mjs';
 
 const $ = q => document.querySelector(q);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -16,6 +18,7 @@ const flagSVG = '<svg viewBox="0 0 64 70" aria-hidden="true"><ellipse cx="31" cy
 const STORAGE = 'riftbound-battle-v2';
 let scene='setup', chosen='bloom', opponent='chaos', difficulty='easy', map='glade';
 let setupMode='custom', battleMode='beacons', boardSize='9x7', terrain='balanced', campaignLevel=1, progress=readProgress(null);
+let setupStep='army', setupSeed=Date.now()>>>0, deploymentSide='player';
 let opponentMode='ai', activeSeat='player', seatSelections={player:null,ai:null}, seatModes={player:'auto',ai:'auto'};
 let selectedSkillIndex=0, seatSkills={player:0,ai:0};
 let startingMoney=24;
@@ -24,6 +27,9 @@ const consumedPointers=new Map(),heldPointers=new Set();
 let deferredEvents=[];
 let countdownRemainingMs=0, countdownNumber=0;
 const pointers=new Map();
+const deploymentPointers=new Map();
+const input=createInputController();
+const renderStats={calls:0,boardMounts:0,samples:[]};
 let game=null, selectedId=null, mode='auto', paused=false, logOpen=false, inspectResult=false, saved=null;
 let sound=false, audio=null, toastTimer=null, lastFrame=0, accumulated=0, lastReadySignature='';
 const motionReduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -82,9 +88,39 @@ function draftFor(side){
   if(!draftCache.has(key))draftCache.set(key,createDraft(options));else resizeDraft(draftCache.get(key),options);
   return draftCache.get(key);
 }
+function buildBattleOptions(){
+  const level=CAMPAIGN[campaignLevel-1],[width,height]=boardSize.split('x').map(Number);
+  const draft=draftFor('player'),otherDraft=opponentMode==='local'&&setupMode!=='campaign'?draftFor('ai'):null;
+  const draftOptions={startingMoney:draft.money,playerArmy:[...draft.army],playerDeployment:draft.positions.map(p=>({...p})),...(otherDraft?{aiArmy:[...otherDraft.army],aiDeployment:otherDraft.positions.map(p=>({...p}))}:{})};
+  return setupMode==='campaign'?{...createCampaignBattle(level.id),...draftOptions}:{playerFaction:chosen,aiFaction:opponent,difficulty,map,mode:battleMode,width,height,terrain,opponentMode,seed:setupSeed,...draftOptions};
+}
+function setupStepsHTML(){
+  return `<ol class="setup-steps" aria-label="Prepare your battle"><li ${setupStep==='army'?'aria-current="step"':''}><span>${setupStep==='deploy'?'✓':'1'}</span><strong>Choose your army</strong></li><li ${setupStep==='deploy'?'aria-current="step"':''}><span>2</span><strong>Lay out your troops</strong></li><li><span>3</span><strong>Battle!</strong></li></ol>`;
+}
+function deploymentBoardHTML(preview){
+  const local=preview.opponentMode==='local';
+  return `<div class="deployment-board" style="--deploy-columns:${preview.width};--deploy-rows:${preview.height}" role="group" aria-label="Deployment battlefield. Place your troops in the two highlighted home rows.">${preview.tiles.map(tile=>{
+    const {x,y,terrain}=tile,side=y>=preview.height-2?'player':y<=1?'ai':null,editable=side==='player'||side==='ai'&&local;
+    const draft=editable?draftFor(side):null,index=draft?draft.positions.findIndex(p=>p.x===x&&p.y===y):-1,u=at(preview,x,y),selected=editable&&side===deploymentSide&&index===draft.selectedIndex;
+    const flag=preview.mode==='elimination'?null:preview.flags.find(f=>f.x===x&&f.y===y),zone=preview.mode==='control'&&preview.flags.some(f=>Math.abs(f.x-x)+Math.abs(f.y-y)<=1);
+    const coord=`${String.fromCharCode(65+x)}${preview.height-y}`,name=u?unitDef(u).name:'empty';
+    const classes=`deployment-cell ${terrain} ${side?`deploy-home-${side}`:''} ${editable?'is-placeable':''} ${u?'is-occupied':''} ${selected?'is-selected':''} ${zone?'deployment-zone':''}`;
+    const content=`<small class="deployment-coordinate" aria-hidden="true">${coord}</small>${terrainHTML(terrain,x,y)}${flag?`<span class="flag-marker">${flagSVG}<span>${flag.name.replace('light','').toUpperCase()}</span></span>`:''}${u?`<span class="deployment-token">${sprite(u.faction,u.role)}${u.role==='leader'?'<span class="deployment-crown" aria-hidden="true">★</span>':''}</span>`:''}${editable&&!u?'<span class="deployment-dot" aria-hidden="true">·</span>':''}`;
+    return editable?`<button type="button" class="${classes}" data-draft-action="place" data-side="${side}" data-x="${x}" data-y="${y}" ${index>=0?`data-index="${index}"`:''} aria-label="${coord}, ${terrain}, ${local?(side==='player'?'Player 1':'Player 2')+' home rows':'your home rows'}, ${esc(name)}. Place selected troop here." aria-pressed="${selected}">${content}</button>`:`<div class="${classes}" aria-label="${coord}, ${terrain}, ${esc(name)}${flag?', objective':''}">${content}</div>`;
+  }).join('')}</div>`;
+}
+function deploymentHTML(){
+  const preview=createGame(buildBattleOptions()),local=preview.opponentMode==='local',level=CAMPAIGN[campaignLevel-1];
+  if(!local)deploymentSide='player';
+  const modeName={beacons:'Flag Capture',control:'Zone Control',elimination:'Last Army',reinforcements:'Reinforcement Clash'}[preview.mode];
+  const objective={beacons:`Step onto flags to claim them. They stay yours until an enemy steps on them; first to ${preview.goal} light wins. Split your scouts between flags.`,control:`Outnumber enemies on a beacon and its four neighboring squares to hold the zone. Ties stop scoring; first to ${preview.goal} light wins. Keep a healer near your defenders.`,elimination:'Defeat the enemy army. Surviving health breaks a tie when time runs out. Protect your healer and focus attacks on one exposed enemy.',reinforcements:`Claim persistent flags for ${preview.goal} light. Unspent coins and beacon income buy reinforcements. Choose between a strong opening army and savings for later.`}[preview.mode];
+  return `<section class="setup deployment-setup">${setupStepsHTML()}<div class="deployment-intro"><div><span class="eyebrow">YOUR ARMY IS READY. MAKE YOUR FIRST MOVE.</span><h1>Find your <em>formation.</em></h1><p>${esc(objective)}</p></div><div class="deployment-summary"><strong>${setupMode==='campaign'?esc(level.title):modeName}</strong><span>${preview.width} × ${preview.height} · ${MAPS[preview.map].name} · ${local?'2 players':({story:'Story',easy:'Relaxed',normal:'Balanced',hard:'Tactician',expert:'Riftlord'})[preview.difficulty]}</span></div></div><div class="deployment-layout"><div class="deployment-field"><div class="deployment-field-label"><span>${local?'PLAYER 2':'AI'} · ${FACTIONS[preview.factions.ai].name}</span>${setupMode==='custom'?'<button type="button" data-command="reroll-map" class="deployment-reroll" aria-label="Generate a new battlefield">↻ New terrain</button>':''}</div>${deploymentBoardHTML(preview)}<div class="deployment-field-label player-label"><span>${local?'PLAYER 1':'YOU'} · ${FACTIONS[preview.factions.player].name}</span><small>Two home rows · tap to place, or drag a troop</small></div></div><aside class="deployment-controls">${local?`<nav class="deployment-seats" aria-label="Choose army to arrange"><button type="button" data-deploy-side="player" class="${deploymentSide==='player'?'active':''}" aria-pressed="${deploymentSide==='player'}">Player 1 <small>${FACTIONS[preview.factions.player].name}</small></button><button type="button" data-deploy-side="ai" class="${deploymentSide==='ai'?'active':''}" aria-pressed="${deploymentSide==='ai'}">Player 2 <small>${FACTIONS[preview.factions.ai].name}</small></button></nav>`:''}${renderDraft(draftFor(deploymentSide),{phase:'deploy',showGrid:false})}<div class="deployment-tip"><strong>Small choices, big openings.</strong><p>Scouts on the flanks reach objectives sooner. Keep healers behind your front line and leave a path for allies.</p><p>${FACTIONS[preview.factions[deploymentSide]].passive}</p></div></aside></div><div class="deployment-footer"><button type="button" class="secondary" data-command="setup-back">← Edit army</button><span>${local?'Both players ready?':'Happy with your formation?'}<small>The battle begins after a 3-second countdown.</small></span><button type="button" class="primary" data-command="start">Start battle <span aria-hidden="true">→</span></button></div></section>`;
+}
 function setupHTML(){
-  if(setupMode==='campaign')return campaignHTML().replace('<div class="campaign-briefing"',`${renderDraft(draftFor('player'))}<div class="campaign-briefing"`);
-  return factionSetupHTML().replace('<section class="setup">',`<section class="setup">${councilTabs()}`).replace('<div class="setup-bottom">',`${customSettingsHTML()}${renderDraft(draftFor('player'))}${opponentMode==='local'?renderDraft(draftFor('ai')):''}<div class="setup-bottom">`);
+  if(setupStep==='deploy')return deploymentHTML();
+  const nextButton='<button class="primary start-button" data-command="setup-next">Arrange troops <span aria-hidden="true">→</span></button>';
+  if(setupMode==='campaign')return campaignHTML().replace('<section class="setup">',`<section class="setup">${setupStepsHTML()}`).replace('<div class="campaign-briefing"',`${renderDraft(draftFor('player'),{phase:'army'})}<div class="campaign-briefing"`).replace(/<button class="primary" data-command="start">.*?<\/button>/,nextButton);
+  return factionSetupHTML().replace('<section class="setup">',`<section class="setup">${councilTabs()}${setupStepsHTML()}`).replace('<div class="setup-bottom">',`${customSettingsHTML()}${renderDraft(draftFor('player'),{phase:'army'})}${opponentMode==='local'?renderDraft(draftFor('ai'),{phase:'army'}):''}<div class="setup-bottom">`).replace(/<button class="primary start-button" data-command="start">.*?<\/button>/,nextButton);
 }
 function terrainHTML(terrain,x,y){
   if(terrain==='rock')return '<svg class="terrain-art" viewBox="0 0 70 70" aria-hidden="true"><ellipse cx="35" cy="58" rx="28" ry="7" fill="#354f49" opacity=".4"/><path d="M9 49l9-26 22-12 22 17 3 24-29 9z" fill="#a2b2a1" stroke="#4c6c62" stroke-width="3"/><path d="M18 23l16 20 28-15M34 43l2 18" fill="none" stroke="#718e7c" stroke-width="3"/><path d="M22 23l16-6 12 9" fill="none" stroke="#c7d3b8" stroke-width="3"/></svg>';
@@ -95,10 +131,10 @@ function terrainHTML(terrain,x,y){
 function colorFor(action,u){
   return actionColor(action,u,unitDef);
 }
-function targetActions(side=activeSeat){
-  const u=current(side),chosenMode=commandMode(side);
+function targetActions(side=activeSeat,gesture=null){
+  const u=gesture?game.units.find(v=>v.id===gesture.unitId&&v.hp>0):current(side),chosenMode=gesture?.mode??commandMode(side),index=gesture?.skillIndex??skillIndex(side);
   if(!u||(!localGame()&&u.side!=='player')||game.winner)return [];
-  const actions=legalActions(game,u.id).filter(a=>chosenMode==='auto'?['move','attack'].includes(a.type):a.type===chosenMode&&(chosenMode!=='ability'||(a.skillIndex||0)===skillIndex(side)));
+  const actions=previewActions(game,u.id).filter(a=>chosenMode==='auto'?['move','attack'].includes(a.type):a.type===chosenMode&&(chosenMode!=='ability'||(a.skillIndex||0)===index));
   if(chosenMode!=='ability')return actions;
   return displayTargets(game,u,actions,unitDef);
 }
@@ -106,10 +142,11 @@ function tileHTML(tile,hints){
   const {x,y,terrain}=tile,u=at(game,x,y),f=game.flags.find(f=>f.x===x&&f.y===y),action=hints.find(a=>(a.displayX??a.x)===x&&(a.displayY??a.y)===y);
   const d=u&&unitDef(u),color=action&&colorFor(action,game.units.find(v=>v.id===action.unitId));
   const zone=game.mode==='control'?game.flags.find(f=>Math.abs(f.x-x)+Math.abs(f.y-y)<=1):null;
+  const influence=f&&game.mode==='control'?['player','ai'].map(side=>alive(side).filter(t=>Math.abs(t.x-f.x)+Math.abs(t.y-f.y)<=1).length):null;
   const isSelected=u&&(localGame()?Object.values(seatSelections).includes(u.id):selectedId===u.id);
   const classes=['tile',terrain,y===game.height-1?'home-player':y===0?'home-ai':'',u?'has-unit':'',u?.side==='ai'?'enemy-unit':'',u&&remaining(u)>0?'spent':'',isSelected?'selected':'',action?`hint-${color}`:'',zone?`zone-${zone.contested?'contested':zone.owner||'neutral'}`:''].filter(Boolean).join(' ');
   const label=[coordinate(x,y),terrain,u?`${u.side==='player'?'Player 1':localGame()?'Player 2':'Enemy'} ${d.name}, ${u.hp} of ${u.maxHp} health, ${cooldownLabel(remaining(u))}`:'',f?`${f.name} flag, ${f.contested?'contested':f.owner||'unclaimed'}`:'',zone?'Control zone':'',action?`${action.type==='ability'?abilities(game.units.find(v=>v.id===action.unitId))[action.skillIndex||0].name:action.type} target`:''].filter(Boolean).join(', ');
-  return `<button class="${classes}" data-cell="${x},${y}" ${u?`data-unit="${u.id}"`:''} aria-label="${esc(label)}" ${selectedId===u?.id?'aria-pressed="true"':''}><span class="tile-coord" aria-hidden="true">${coordinate(x,y)}</span>${terrainHTML(terrain,x,y)}${f?`<span class="flag-marker ${f.owner||''}">${flagSVG}<span>${f.name.replace('light','').toUpperCase()}</span></span>`:''}${u?`<span class="unit-base" aria-hidden="true"></span>${sprite(u.faction,u.role)}${u.role==='leader'?'<span class="leader-crown" aria-hidden="true">★</span>':''}${u.shield?`<span class="shield-badge" aria-hidden="true">◇ ${u.shield}</span>`:''}<span class="unit-health" aria-hidden="true"><i style="width:${u.hp/u.maxHp*100}%"></i></span><span class="unit-cooldown" aria-hidden="true"><i style="width:${(1-Math.min(1,remaining(u)/d.moveCooldown))*100}%"></i></span>`:''}</button>`;
+  return `<button class="${classes}" data-cell="${x},${y}" ${u?`data-unit="${u.id}"`:''} aria-label="${esc(label)}" ${selectedId===u?.id?'aria-pressed="true"':''}><span class="tile-coord" aria-hidden="true">${coordinate(x,y)}</span>${terrainHTML(terrain,x,y)}${f?`<span class="flag-marker ${f.owner||''}">${flagSVG}<span>${f.name.replace('light','').toUpperCase()}</span>${influence?`<small class="zone-count" aria-label="Player 1 influence ${influence[0]}, ${localGame()?'Player 2':'AI'} influence ${influence[1]}">${influence[0]} : ${influence[1]}</small>`:''}</span>`:''}${u?`<span class="unit-token" data-unit-token="${u.id}"><span class="unit-base" aria-hidden="true"></span>${sprite(u.faction,u.role)}${u.role==='leader'?'<span class="leader-crown" aria-hidden="true">★</span>':''}${u.shield?`<span class="shield-badge" aria-hidden="true">◇ ${u.shield}</span>`:''}<span class="unit-health" aria-hidden="true"><i style="width:${u.hp/u.maxHp*100}%"></i></span><span class="unit-cooldown" aria-hidden="true"><i style="width:${(1-Math.min(1,remaining(u)/d.moveCooldown))*100}%"></i></span></span>`:''}</button>`;
 }
 function resultHTML(){
   const won=game.winner==='player',draw=game.winner==='draw';
@@ -121,14 +158,14 @@ function resultHTML(){
 }
 function abilityDockHTML(side){
   const u=current(side),d=u&&unitDef(u),all=u?abilities(u):[],selectedMode=commandMode(side),local=localGame(),keys=side==='ai'?['Q','W','E','R','F','T']:['1','2','3','4','5','G'],disabled=!u||game.winner||(!local&&u.side!=='player');
-  const actionButton=(type,label,key)=>`<button class="dock-command ${type}-command ${selectedMode===type||(type==='move'&&selectedMode==='auto')?'active':''}" ${type==='guard'?'data-command="guard"':`data-mode="${type}"`} data-side="${side}" ${disabled?'disabled':''} aria-label="${label}">${abilityIcon(type)}<kbd>${key}</kbd><span>${label}</span><small data-command-timer="${type}">${u?cooldownLabel(remaining(u)):'—'}</small></button>`;
+  const actionButton=(type,label,key)=>`<button class="dock-command ${type}-command ${selectedMode===type||(type==='move'&&selectedMode==='auto')?'active':''}" ${type==='guard'?'data-command="guard"':`data-mode="${type}"`} data-side="${side}" ${disabled||(type==='guard'&&u?.shield>=5)?'disabled':''} aria-label="${label}">${abilityIcon(type)}<kbd>${key}</kbd><span>${label}</span><small data-command-timer="${type}">${type==='guard'&&u?.shield>=5?'Shield full':u?cooldownLabel(remaining(u)):'—'}</small></button>`;
   return `<section class="command-dock icon-dock ${side==='ai'?'p2-dock':'p1-dock'} ${activeSeat===side?'active-seat':''}" data-side="${side}" aria-label="${local?(side==='player'?'Player 1':'Player 2'):'Your'} commands"><div class="dock-identity">${u?sprite(u.faction,u.role):'<span class="dock-empty">⌖</span>'}<div><span class="dock-player">${local?(side==='player'?'PLAYER 1':'PLAYER 2'):paused?'PAUSED · MENU TO RESUME':'YOUR COMMANDS'}</span><strong>${d?d.name:'Select a troop on the board'}</strong></div>${u?`<div class="dock-health-wrap"><span>${u.hp} / ${u.maxHp} HP</span><div class="dock-health" role="progressbar" aria-label="${d.name} health" aria-valuenow="${u.hp}" aria-valuemin="0" aria-valuemax="${u.maxHp}"><i style="width:${u.hp/u.maxHp*100}%"></i></div></div>`:''}</div><div class="dock-actions" style="grid-template-columns:repeat(${all.length+3},minmax(0,1fr))">${actionButton('move','Move',keys[0])}${actionButton('attack','Attack',keys[1])}${all.map((skill,index)=>`<button class="dock-command special-command skill-${colorFor({type:'ability',skillIndex:index},u)} ${selectedMode==='ability'&&skillIndex(side)===index?'active':''}" data-mode="ability" data-skill-index="${index}" data-side="${side}" ${disabled?'disabled':''} aria-label="${esc(skill.name)}. ${esc(skill.description)}" title="${esc(skill.name)} · ${esc(skill.description)} · ${skill.cooldown}s recharge">${abilityIcon(skill.kind)}<kbd>${keys[index+2]}</kbd><span>${esc(skill.name)}</span><small data-command-timer="ability" data-skill-index="${index}">${cooldownLabel(remaining(u,true,index))}</small><i class="skill-fill" data-skill-index="${index}" style="transform:scaleX(${1-Math.min(1,remaining(u,true,index)/skill.cooldown)})"></i></button>`).join('')}${actionButton('guard','Guard',keys[5])}</div></section>`;
 }
 function countdownHTML(){const count=Math.ceil(countdownRemainingMs/1000);return count>0?`<div class="battle-countdown" aria-live="assertive"><span>${count}</span><small>GET READY</small></div>`:'';}
 function compactBattleHTML(){
   const local=localGame(),p=FACTIONS[game.factions.player],p2=FACTIONS[game.factions.ai],hints=targetActions();
   const scores=game.mode==='elimination'?{player:alive('player').reduce((n,u)=>n+u.hp,0),ai:alive('ai').reduce((n,u)=>n+u.hp,0)}:game.scores;
-  return `<section class="compact-battle ${local?'local-battle':''}"><div class="compact-shell" style="--cols:${game.width};--rows:${game.height}">${local?abilityDockHTML('ai'):''}<div class="arena-panel"><div class="compact-scorebar"><div class="compact-army" style="--faction:${p.color}"><b>${scores.player}</b><span>${local?'P1 · ':''}${p.name}</span></div><div class="compact-clock"><strong id="clock">${formatTime(game.duration-game.time)}</strong><small>${game.mode==='elimination'?'ARMY HP':`GOAL ${game.goal}`}</small></div><div class="compact-army army-two" style="--faction:${p2.color}"><b>${scores.ai}</b><span>${local?'P2':'AI'} · ${p2.name}</span></div><button class="menu-button" data-command="menu" aria-label="Open game menu">☰ <span>Menu</span></button></div><div class="arena"><div class="board" style="--columns:${game.width};--rows:${game.height}" aria-label="Battlefield, ${game.width} columns and ${game.height} rows">${game.tiles.map(t=>tileHTML(t,hints)).join('')}</div>${countdownHTML()}</div></div>${abilityDockHTML('player')}<span class="sr-only" id="ready-count"></span>${game.winner&&!inspectResult?resultHTML():''}</div></section>`;
+  return `<section class="compact-battle ${local?'local-battle':''}"><div class="compact-shell" style="--cols:${game.width};--rows:${game.height}">${local?abilityDockHTML('ai'):''}<div class="arena-panel"><div class="compact-scorebar"><div class="compact-army" style="--faction:${p.color}"><b>${scores.player}</b><span>${local?'P1 · ':''}${p.name}</span></div><div class="compact-clock"><strong id="clock">${formatTime(game.duration-game.time)}</strong><small>${paused?'PAUSED':game.mode==='elimination'?'SURVIVING HP':`${({beacons:'FLAGS',control:'ZONES',reinforcements:'CLASH'})[game.mode]} · GOAL ${game.goal}`}</small></div><div class="compact-army army-two" style="--faction:${p2.color}"><b>${scores.ai}</b><span>${local?'P2':'AI'} · ${p2.name}</span></div><button class="menu-button" data-command="menu" aria-label="Open game menu">☰ <span>Menu</span></button></div><div class="arena"><div class="board" style="--columns:${game.width};--rows:${game.height}" aria-label="Battlefield, ${game.width} columns and ${game.height} rows">${game.tiles.map(t=>tileHTML(t,hints)).join('')}</div>${countdownHTML()}</div></div>${abilityDockHTML('player')}<span class="sr-only" id="ready-count"></span>${game.winner&&!inspectResult?resultHTML():''}</div></section>`;
 }
 function menuHTML(){
   const local=localGame();
@@ -141,20 +178,29 @@ function creatureHTML(){
 }
 for(const [id,cls] of [['battle-menu','compact-menu'],['creature-info','creature-dialog']]){const el=document.createElement('dialog');el.id=id;el.className=`guide-dialog ${cls}`;document.body.append(el);}
 function render(){
-  const previous=new Map();
-  if(!motionReduced&&scene==='battle')document.querySelectorAll('.tile[data-unit]').forEach(el=>{const r=el.querySelector('.sprite')?.getBoundingClientRect();if(r)previous.set(el.dataset.unit,r);});
-  const active=document.activeElement,focusCell=active?.dataset.cell,focusMode=active?.dataset.mode,focusCommand=active?.dataset.command,focusSide=active?.dataset.side,focusSkill=active?.dataset.skillIndex;
-  const details=$('.log-panel');if(details)logOpen=details.open;
+  const started=performance.now(),previous=new Map(),app=$('#app'),oldBoard=$('.board');
+  if(!motionReduced&&scene==='battle')document.querySelectorAll('[data-unit-token]').forEach(el=>{const unit=game.units.find(u=>u.id===el.dataset.unitToken),cell=el.closest('.tile').dataset.cell;if(unit&&unit.hp>0&&cell!==`${unit.x},${unit.y}`)previous.set(unit.id,{rect:el.getBoundingClientRect(),cell});});
   document.body.classList.toggle('playing',scene==='battle');
-  $('#app').innerHTML=scene==='setup'?setupHTML():compactBattleHTML();
+  if(scene==='battle'&&oldBoard)patchBattleMarkup(app,compactBattleHTML());
+  else {app.innerHTML=scene==='setup'?setupHTML():compactBattleHTML();if(scene==='battle')renderStats.boardMounts++;}
   if(scene==='battle'){
-    if(focusCell)$(`[data-cell="${focusCell}"]`)?.focus({preventScroll:true});
-    else if(focusMode)$(`[data-mode="${focusMode}"]${focusSide?`[data-side="${focusSide}"]`:''}${focusSkill!==undefined?`[data-skill-index="${focusSkill}"]`:''}`)?.focus({preventScroll:true});
-    else if(focusCommand)$(`#app [data-command="${focusCommand}"]${focusSide?`[data-side="${focusSide}"]`:''}`)?.focus({preventScroll:true});
-    if($('#victory'))$('#victory').showModal();
-    if(!motionReduced)document.querySelectorAll('.tile[data-unit]').forEach(el=>{const image=el.querySelector('.sprite'),old=previous.get(el.dataset.unit);if(!old||!image)return;const r=image.getBoundingClientRect(),dx=old.x-r.x,dy=old.y-r.y;if(Math.abs(dx)+Math.abs(dy)>2&&Math.abs(dx)+Math.abs(dy)<1800){el.classList.add('moving');setTimeout(()=>el.classList.remove('moving'),390);image.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'translate(0,0)'}],{duration:370,easing:'cubic-bezier(.2,.7,.2,1)'});const ring=el.querySelector('.unit-base');ring?.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'translate(0,0)'}],{duration:370,easing:'ease-out'});}});
+    const victory=$('#victory');if(victory&&!victory.open)victory.showModal();
+    if(!motionReduced)document.querySelectorAll('[data-unit-token]').forEach(el=>{
+      const old=previous.get(el.dataset.unitToken),tile=el.closest('.tile');if(!old||old.cell===tile.dataset.cell)return;
+      el.getAnimations().forEach(animation=>animation.cancel());
+      const r=el.getBoundingClientRect(),dx=old.rect.x-r.x,dy=old.rect.y-r.y;
+      if(Math.abs(dx)+Math.abs(dy)>2&&Math.abs(dx)+Math.abs(dy)<1800){
+        tile.classList.add('moving');
+        el.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'translate(0,0)'}],{duration:210,easing:'cubic-bezier(.16,.7,.25,1)'}).finished.catch(()=>{}).finally(()=>tile.classList.remove('moving'));
+      }
+    });
+    document.querySelectorAll('.queued-target').forEach(el=>el.classList.remove('queued-target'));
+    for(const {action} of input.pending())$(`[data-cell="${action.x},${action.y}"]`)?.classList.add('queued-target');
   }
   lastReadySignature=readySignature();
+  renderStats.calls++;renderStats.samples.push(performance.now()-started);
+  if(renderStats.samples.length>200)renderStats.samples.shift();
+  app.dataset.renderStats=JSON.stringify(renderStats);
 }
 function formatTime(t){return `${Math.floor(Math.max(0,t)/60)}:${String(Math.floor(Math.max(0,t)%60)).padStart(2,'0')}`;}
 function drawAttack(event){
@@ -180,7 +226,7 @@ function updateTimers(){
     const tile=$(`[data-unit="${u.id}"]`);if(!tile)continue;
     const fill=tile.querySelector('.unit-cooldown i');if(fill)fill.style.width=`${(1-Math.min(1,remaining(u)/unitDef(u).moveCooldown))*100}%`;
   }
-  document.querySelectorAll('.command-dock').forEach(dock=>{const u=current(dock.dataset.side);if(!u)return;dock.querySelectorAll('[data-command-timer]').forEach(el=>el.textContent=cooldownLabel(remaining(u,el.dataset.commandTimer==='ability',Number(el.dataset.skillIndex)||0)));dock.querySelectorAll('.skill-fill').forEach(fill=>{const index=Number(fill.dataset.skillIndex)||0;fill.style.transform=`scaleX(${1-Math.min(1,remaining(u,true,index)/abilities(u)[index].cooldown)})`;});});
+  document.querySelectorAll('.command-dock').forEach(dock=>{const u=current(dock.dataset.side);if(!u)return;dock.querySelectorAll('[data-command-timer]').forEach(el=>el.textContent=el.dataset.commandTimer==='guard'&&u.shield>=5?'Shield full':input.pending().some(p=>p.action.unitId===u.id&&p.action.type===el.dataset.commandTimer&&(el.dataset.commandTimer!=='ability'||(p.action.skillIndex||0)===(Number(el.dataset.skillIndex)||0)))?'Queued':cooldownLabel(remaining(u,el.dataset.commandTimer==='ability',Number(el.dataset.skillIndex)||0)));dock.querySelectorAll('.skill-fill').forEach(fill=>{const index=Number(fill.dataset.skillIndex)||0;fill.style.transform=`scaleX(${1-Math.min(1,remaining(u,true,index)/abilities(u)[index].cooldown)})`;});});
 }
 function drawSpecial(event){
   const target=$(`[data-cell="${event.x},${event.y}"]`);if(!target)return;
@@ -201,6 +247,7 @@ function showEvents(events=[]){
   for(const e of events){
     if(e.type==='win')continue;
     const tile=$(`[data-cell="${e.x},${e.y}"]`);if(!tile)continue;
+    if(e.type==='death'&&!motionReduced){const fallen=game.units.find(u=>u.id===e.unitId),r=tile.getBoundingClientRect();if(fallen){const farewell=document.createElement('div');farewell.className='fallen-fx';farewell.style.cssText=`left:${r.x+scrollX}px;top:${r.y+scrollY}px;width:${r.width}px;height:${r.height}px`;farewell.innerHTML=sprite(fallen.faction,fallen.role)+'<span>✧</span>';document.body.append(farewell);setTimeout(()=>farewell.remove(),650);}}
     if(['damage','heal','capture','shield','ability','recruit','summon'].includes(e.type)){
       const el=document.createElement('span');el.className=`effect ${e.type}`;el.textContent=e.type==='damage'?`−${e.value??''}`:e.type==='heal'?`+${e.value??''}`:e.type==='shield'?`◇ +${e.value??''}`:e.type==='capture'?'CLAIMED':e.type==='recruit'?'NEW!':'✦';tile.append(el);
       const burst=document.createElement('i');burst.className='burst';tile.append(burst);
@@ -212,13 +259,22 @@ function showEvents(events=[]){
   }
   tone(events.find(e=>['damage','heal','capture','ability'].includes(e.type))?.type||events[0].type);
 }
-function perform(action){
-  if(countdownRemainingMs>0){toast('The battle begins after the countdown.');return;}
-  if(paused){toast('Resume the battle to issue this command · Space');return;}
-  if(game?.winner)return;
+function executeOrder(action){
   const result=applyAction(game,action);
+  if(result.ok&&action.type==='ability')setMode('auto',game.units.find(u=>u.id===action.unitId)?.side||activeSeat);
+  return result;
+}
+function resetInput(){input.reset();pointers.forEach(p=>p.ghost?.remove());pointers.clear();heldPointers.clear();document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));}
+function perform(action){
+  const side=game?.units.find(u=>u.id===action.unitId)?.side||activeSeat;
+  const offered=input.offer(game,action,{side,paused,countdown:countdownRemainingMs>0});
+  if(offered.status==='queued'){render();announce('Command queued. Executes when ready.');return;}
+  if(offered.status==='rejected'){
+    const message={paused:'Battle paused · Space to resume',countdown:'Get ready…',recovering:`Recharging · ${Math.max(0,(offered.readyAt||0)-game.time).toFixed(1)}s`,target:'That target is no longer available.'}[offered.reason];
+    if(message)toast(message);return;
+  }
+  const result=executeOrder(offered.action);
   if(!result.ok){toast(result.error||'That command is not available yet.');return;}
-  if(action.type==='ability')setMode('auto',game.units.find(u=>u.id===action.unitId)?.side||activeSeat);
   persist();render();showEvents(result.events);updateTimers();
 }
 function chooseMode(next,side=activeSeat,index=0){
@@ -227,42 +283,44 @@ function chooseMode(next,side=activeSeat,index=0){
   if(next==='ability'&&!abilities(u)[index]){toast('This creature has one special ability.');return;}
   if(localGame())seatSkills[side]=index;else selectedSkillIndex=index;
   setMode(next,side);render();
-  if(remaining(u,next==='ability',index)>0)toast(`${next==='ability'?abilities(u)[index].name:u.role==='scout'?'Scout':'Troop'} recharging · ${cooldownLabel(remaining(u,next==='ability',index))}`);
-  else if(!targetActions().length)toast(next==='ability'?'No valid targets for that skill yet.':next==='attack'?'No enemy in attack range.':'No open squares in movement range.');
+  announce(`${next==='ability'?abilities(u)[index].name:next} selected. ${targetActions(side).length} available target squares.`);
 }
 function start(){
+  resetDeploymentPointers();
+  if(setupStep!=='deploy'){setupStep='deploy';deploymentSide='player';render();window.scrollTo({top:0,behavior:'instant'});return;}
   const level=CAMPAIGN[campaignLevel-1];
-  const [width,height]=boardSize.split('x').map(Number);
-  const draft=draftFor('player'),otherDraft=opponentMode==='local'&&setupMode!=='campaign'?draftFor('ai'):null;
-  const draftOptions={startingMoney:draft.money,playerArmy:[...draft.army],playerDeployment:draft.positions.map(p=>({...p})),...(otherDraft?{aiArmy:[...otherDraft.army],aiDeployment:otherDraft.positions.map(p=>({...p}))}:{})};
-  game=createGame(setupMode==='campaign'?{...createCampaignBattle(level.id),...draftOptions}:{playerFaction:chosen,aiFaction:opponent,difficulty,map,mode:battleMode,width,height,terrain,opponentMode,seed:Date.now(),...draftOptions});
+  game=createGame(buildBattleOptions());
   if(setupMode==='campaign')game.campaignId=level.id;
-  scene='battle';activeSeat='player';seatSelections={player:game.units.find(u=>u.side==='player'&&u.role==='scout')?.id||null,ai:game.units.find(u=>u.side==='ai'&&u.role==='scout')?.id||null};selectedId=seatSelections.player;seatModes={player:'auto',ai:'auto'};mode='auto';deferredEvents=[];heldPointers.clear();pointers.clear();selectedSkillIndex=0;seatSkills={player:0,ai:0};paused=false;countdownRemainingMs=3000;countdownNumber=3;inspectResult=false;accumulated=0;persist();render();window.scrollTo({top:0,behavior:'instant'});announce('Get ready. Battle begins in three seconds.');
+  resetInput();scene='battle';activeSeat='player';seatSelections={player:game.units.find(u=>u.side==='player'&&u.role==='scout')?.id||null,ai:game.units.find(u=>u.side==='ai'&&u.role==='scout')?.id||null};selectedId=seatSelections.player;seatModes={player:'auto',ai:'auto'};mode='auto';deferredEvents=[];heldPointers.clear();pointers.clear();selectedSkillIndex=0;seatSkills={player:0,ai:0};paused=false;countdownRemainingMs=3000;countdownNumber=3;inspectResult=false;accumulated=0;persist();render();window.scrollTo({top:0,behavior:'instant'});announce('Get ready. Battle begins in three seconds.');
 }
 function council(){
-  $('#restart').close();$('#victory')?.close();$('#battle-menu').close();$('#creature-info').close();paused=true;scene='setup';selectedId=null;render();window.scrollTo({top:0,behavior:'instant'});
+  resetDeploymentPointers();
+  $('#restart').close();$('#victory')?.close();$('#battle-menu').close();$('#creature-info').close();resetInput();paused=true;scene='setup';setupStep='army';setupSeed=(Math.imul(setupSeed,1664525)+1013904223)>>>0;deploymentSide='player';selectedId=null;render();window.scrollTo({top:0,behavior:'instant'});
 }
 document.addEventListener('click',event=>{
-  if(event.target.closest('[data-cell]')&&(consumedPointers.get(event.pointerId)||0)>performance.now())return;
+  if(event.target.closest('[data-cell],[data-draft-action]')&&(consumedPointers.get(event.pointerId)||0)>performance.now())return;
   const draftButton=event.target.closest('[data-draft-action]');
-  if(draftButton){const data=draftButton.dataset,result=applyDraftAction(draftFor(data.side),{type:data.draftAction,role:data.role,index:data.index,x:data.x,y:data.y});if(!result.ok)toast(result.error);else render();return;}
-  const tab=event.target.closest('[data-setup]');if(tab){setupMode=tab.dataset.setup;render();return;}
-  const levelButton=event.target.closest('[data-level]');if(levelButton){campaignLevel=Number(levelButton.dataset.level);render();return;}
+  if(draftButton){const data=draftButton.dataset;if(setupStep==='deploy'&&data.side!==deploymentSide){deploymentSide=data.side;if(data.index!==undefined)applyDraftAction(draftFor(data.side),{type:'select',index:data.index});render();announce(`${data.side==='ai'?'Player 2':'Player 1'} army selected.`);return;}const result=applyDraftAction(draftFor(data.side),{type:data.draftAction,role:data.role,index:data.index,x:data.x,y:data.y});if(!result.ok)toast(result.error);else{render();if(result.message)announce(result.message);}return;}
+  const deploymentSeat=event.target.closest('[data-deploy-side]');if(deploymentSeat){deploymentSide=deploymentSeat.dataset.deploySide;render();return;}
+  const setupCommand=event.target.closest('[data-command="setup-next"],[data-command="setup-back"],[data-command="reroll-map"]');
+  if(setupCommand){resetDeploymentPointers();const command=setupCommand.dataset.command;if(command==='reroll-map'){setupSeed=(Math.imul(setupSeed,1664525)+1013904223)>>>0;render();announce('New terrain ready. Your troop positions are preserved.');}else{setupStep=command==='setup-next'?'deploy':'army';deploymentSide='player';render();window.scrollTo({top:0,behavior:'instant'});announce(setupStep==='deploy'?'Lay out your troops in the two home rows, then start battle.':'Choose your army.');}return;}
+  const tab=event.target.closest('[data-setup]');if(tab){setupMode=tab.dataset.setup;setupStep='army';deploymentSide='player';render();return;}
+  const levelButton=event.target.closest('[data-level]');if(levelButton){campaignLevel=Number(levelButton.dataset.level);setupStep='army';render();return;}
   const factionButton=event.target.closest('[data-faction]');
   if(factionButton){chosen=factionButton.dataset.faction;if(opponent===chosen)opponent=factionKeys.find(k=>k!==chosen);render();$(`[data-faction="${chosen}"]`).focus({preventScroll:true});return;}
   const commandButton=event.target.closest('[data-command]');
   if(commandButton){
     const c=commandButton.dataset.command;
-    if(c==='menu'){paused=true;render();$('#battle-menu').innerHTML=menuHTML();$('#battle-menu').showModal();}
+    if(c==='menu'){resetInput();paused=true;render();$('#battle-menu').innerHTML=menuHTML();$('#battle-menu').showModal();}
     if(c==='resume-live'){$('#battle-menu').close();$('#creature-info').close();paused=false;render();}
     if(c==='details'){$('#battle-menu').close();$('#creature-info').innerHTML=creatureHTML();$('#creature-info').showModal();}
     if(c==='sound-toggle'){$('#sound').click();$('#battle-menu').innerHTML=menuHTML();}
     if(c==='help'){$('#battle-menu').close();if(game&&scene==='battle'){paused=true;render();}$('#guide').showModal();}
     if(c==='start')start();
-    if(c==='pause'){paused=!paused;persist();render();announce(paused?'Battle paused.':'Battle resumed.');}
+    if(c==='pause'){resetInput();paused=!paused;persist();render();announce(paused?'Battle paused.':'Battle resumed.');}
     if(c==='restart'){$('#battle-menu').close();paused=true;render();$('#restart').showModal();}
     if(c==='council')council();
-    if(c==='resume'&&saved){game=structuredClone(saved.game);chosen=game.factions.player;opponent=game.factions.ai;map=game.map;difficulty=game.difficulty;opponentMode=game.opponentMode;activeSeat='player';seatSelections={player:game.units.find(u=>u.side==='player'&&u.hp>0)?.id||null,ai:game.units.find(u=>u.side==='ai'&&u.hp>0)?.id||null};selectedId=seatSelections.player;seatModes={player:'auto',ai:'auto'};scene='battle';paused=false;countdownRemainingMs=game.winner?0:3000;countdownNumber=3;inspectResult=false;render();window.scrollTo({top:0,behavior:'instant'});}
+    if(c==='resume'&&saved){resetInput();game=structuredClone(saved.game);chosen=game.factions.player;opponent=game.factions.ai;map=game.map;difficulty=game.difficulty;opponentMode=game.opponentMode;activeSeat='player';seatSelections={player:game.units.find(u=>u.side==='player'&&u.hp>0)?.id||null,ai:game.units.find(u=>u.side==='ai'&&u.hp>0)?.id||null};selectedId=seatSelections.player;seatModes={player:'auto',ai:'auto'};scene='battle';paused=false;countdownRemainingMs=game.winner?0:3000;countdownNumber=3;inspectResult=false;render();window.scrollTo({top:0,behavior:'instant'});}
     if(c==='inspect-result'){inspectResult=true;$('#victory').close();render();}
     if(c==='guard'){activeSeat=commandButton.dataset.side||activeSeat;const u=current();if(u&&(u.side==='player'||localGame()))perform({type:'guard',unitId:u.id,x:u.x,y:u.y});else toast('Select one of your troops first.');}
     return;
@@ -285,7 +343,8 @@ document.addEventListener('change',event=>{if(event.target.id==='opponent-mode')
 $('#sound').addEventListener('click',()=>{sound=!sound;$('#sound').textContent=sound?'Sound on':'Sound off';$('#sound').setAttribute('aria-pressed',sound);$('#sound').setAttribute('aria-label',`${sound?'Disable':'Enable'} sound`);if(sound)tone('capture');});
 document.addEventListener('keydown',event=>{
   if(scene!=='battle'||event.repeat||event.ctrlKey||event.metaKey||event.altKey||document.querySelector('dialog[open]')||['INPUT','SELECT','TEXTAREA'].includes(event.target.tagName))return;
-  if(event.code==='Space'){event.preventDefault();if(!game.winner){paused=!paused;render();announce(paused?'Battle paused.':'Battle resumed.');}return;}
+  if(event.key.startsWith('Arrow')&&event.target.dataset.cell){const [x,y]=event.target.dataset.cell.split(',').map(Number),[dx,dy]=({ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]})[event.key]||[0,0];event.preventDefault();$(`[data-cell="${Math.max(0,Math.min(game.width-1,x+dx))},${Math.max(0,Math.min(game.height-1,y+dy))}"]`)?.focus({preventScroll:true});return;}
+  if(event.code==='Space'){event.preventDefault();if(!game.winner){resetInput();paused=!paused;render();announce(paused?'Battle paused.':'Battle resumed.');}return;}
   if(event.key==='Escape'){if(localGame())seatSelections[activeSeat]=null;selectedId=null;setMode('auto');render();return;}
   if(game.winner)return;
   const modes={'1':'move','2':'attack','3':'ability'};
@@ -301,31 +360,80 @@ document.addEventListener('keydown',event=>{
     if(key==='t'){event.preventDefault();activeSeat='ai';const u=current('ai');if(u)perform({type:'guard',unitId:u.id,x:u.x,y:u.y});}
   }
 });
+function resetDeploymentPointers(){
+  for(const [pointerId,p] of deploymentPointers){p.ghost?.remove();if($('#app')?.hasPointerCapture(pointerId))$('#app').releasePointerCapture(pointerId);}
+  deploymentPointers.clear();document.querySelectorAll('.deployment-drag-over').forEach(el=>{el.classList.remove('deployment-drag-over');delete el.dataset.deployPointer;});
+}
 document.addEventListener('pointerdown',event=>{
-  heldPointers.add(event.pointerId);
-  const tile=event.target.closest?.('.tile[data-unit]');if(!tile||scene!=='battle'||event.button!==0||game.winner)return;
-  const u=game.units.find(v=>v.id===tile.dataset.unit&&v.hp>0);if(!u||(!localGame()&&u.side!=='player'))return;
-  pointers.set(event.pointerId,{unitId:u.id,side:u.side,x:event.clientX,y:event.clientY,dragging:false});
+  const cell=event.target.closest?.('.deployment-cell.is-occupied[data-index]');
+  if(!cell||scene!=='setup'||setupStep!=='deploy'||event.button!==0)return;
+  const side=cell.dataset.side;if([...deploymentPointers.values()].some(p=>p.side===side))return;
+  const sprite=cell.querySelector('.sprite'),rect=cell.getBoundingClientRect();
+  deploymentPointers.set(event.pointerId,{side,index:Number(cell.dataset.index),x:event.clientX,y:event.clientY,width:rect.width,height:rect.height,sprite:sprite?.cloneNode(true),dragging:false,ghost:null});
 });
 document.addEventListener('pointermove',event=>{
-  const p=pointers.get(event.pointerId);if(!p||p.dragging||Math.hypot(event.clientX-p.x,event.clientY-p.y)<9)return;
-  p.dragging=true;const u=game.units.find(v=>v.id===p.unitId&&v.hp>0);if(!u)return;
-  if(current(p.side)?.id!==u.id)selectUnit(u);else activeSeat=p.side;
-  $('#app').setPointerCapture(event.pointerId);render();event.preventDefault();
+  const p=deploymentPointers.get(event.pointerId);if(!p)return;
+  if(!p.dragging&&Math.hypot(event.clientX-p.x,event.clientY-p.y)<8)return;
+  if(!p.dragging){
+    p.dragging=true;deploymentSide=p.side;applyDraftAction(draftFor(p.side),{type:'select',index:p.index});render();$('#app').setPointerCapture(event.pointerId);
+    p.ghost=document.createElement('div');p.ghost.className='drag-ghost';p.ghost.style.width=`${p.width}px`;p.ghost.style.height=`${p.height}px`;if(p.sprite)p.ghost.append(p.sprite);document.body.append(p.ghost);
+  }
+  p.ghost.style.left=`${event.clientX}px`;p.ghost.style.top=`${event.clientY}px`;
+  document.querySelectorAll(`.deployment-drag-over[data-deploy-pointer="${event.pointerId}"]`).forEach(el=>{el.classList.remove('deployment-drag-over');delete el.dataset.deployPointer;});
+  const target=document.elementFromPoint(event.clientX,event.clientY)?.closest('.deployment-cell[data-draft-action="place"]');
+  if(target?.dataset.side===p.side){target.classList.add('deployment-drag-over');target.dataset.deployPointer=event.pointerId;}
+  event.preventDefault();
+},{passive:false});
+function finishDeploymentPointer(event,cancelled=false){
+  const p=deploymentPointers.get(event.pointerId);if(!p)return;
+  deploymentPointers.delete(event.pointerId);p.ghost?.remove();if($('#app').hasPointerCapture(event.pointerId))$('#app').releasePointerCapture(event.pointerId);
+  document.querySelectorAll(`.deployment-drag-over[data-deploy-pointer="${event.pointerId}"]`).forEach(el=>{el.classList.remove('deployment-drag-over');delete el.dataset.deployPointer;});
+  if(!p.dragging)return;
+  event.preventDefault();consumedPointers.set(event.pointerId,performance.now()+500);setTimeout(()=>consumedPointers.delete(event.pointerId),550);
+  if(cancelled||scene!=='setup'||setupStep!=='deploy')return;
+  const target=document.elementFromPoint(event.clientX,event.clientY)?.closest('.deployment-cell[data-draft-action="place"]');
+  if(target?.dataset.side!==p.side){announce('Drop a troop in its own two home rows.');return;}
+  const draft=draftFor(p.side);applyDraftAction(draft,{type:'select',index:p.index});const result=applyDraftAction(draft,{type:'place',x:target.dataset.x,y:target.dataset.y});
+  deploymentSide=p.side;if(result.ok){render();if(result.message)announce(result.message);}else toast(result.error);
+}
+document.addEventListener('pointerup',event=>finishDeploymentPointer(event),{passive:false});
+document.addEventListener('pointercancel',event=>finishDeploymentPointer(event,true),{passive:false});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)resetDeploymentPointers();});
+document.addEventListener('pointerdown',event=>{
+  const tile=event.target.closest?.('.tile[data-unit]');if(!tile||scene!=='battle'||event.button!==0||game.winner||paused||countdownRemainingMs)return;
+  const u=game.units.find(v=>v.id===tile.dataset.unit&&v.hp>0);if(!u||(!localGame()&&u.side!=='player'))return;
+  const selected=current(u.side)?.id===u.id;
+  input.beginPointer(event.pointerId,{unitId:u.id,side:u.side,mode:selected?commandMode(u.side):'auto',skillIndex:selected?skillIndex(u.side):0,x:event.clientX,y:event.clientY});
+  pointers.set(event.pointerId,{unitId:u.id,side:u.side});
+});
+document.addEventListener('pointermove',event=>{
+  const gesture=input.movePointer(event.pointerId,{x:event.clientX,y:event.clientY}),p=pointers.get(event.pointerId);if(!gesture?.dragging||!p)return;
+  if(!p.ghost){
+    const u=game.units.find(v=>v.id===p.unitId&&v.hp>0);if(!u)return;
+    if(current(p.side)?.id!==u.id)selectUnit(u);else activeSeat=p.side;
+    render();$('#app').setPointerCapture(event.pointerId);
+    const token=$(`[data-unit-token="${u.id}"]`),r=token.getBoundingClientRect();
+    p.ghost=document.createElement('div');p.ghost.className='drag-ghost';p.ghost.style.width=`${r.width}px`;p.ghost.style.height=`${r.height}px`;p.ghost.innerHTML=sprite(u.faction,u.role);document.body.append(p.ghost);
+  }
+  p.ghost.style.left=`${event.clientX}px`;p.ghost.style.top=`${event.clientY}px`;
+  document.querySelectorAll(`.drag-over[data-drag-pointer="${event.pointerId}"]`).forEach(el=>{el.classList.remove('drag-over');delete el.dataset.dragPointer;});
+  const cell=document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-cell]');
+  if(cell){const [x,y]=cell.dataset.cell.split(',').map(Number);if(targetActions(p.side,gesture).some(a=>(a.displayX??a.x)===x&&(a.displayY??a.y)===y)){cell.classList.add('drag-over');cell.dataset.dragPointer=event.pointerId;}}
+  event.preventDefault();
 },{passive:false});
 document.addEventListener('pointerup',event=>{
-  heldPointers.delete(event.pointerId);
-  const p=pointers.get(event.pointerId);pointers.delete(event.pointerId);if(!p?.dragging)return;
+  const gesture=input.endPointer(event.pointerId),p=pointers.get(event.pointerId);pointers.delete(event.pointerId);p?.ghost?.remove();
+  document.querySelectorAll(`.drag-over[data-drag-pointer="${event.pointerId}"]`).forEach(el=>{el.classList.remove('drag-over');delete el.dataset.dragPointer;});
+  if(!gesture?.dragging)return;
   event.preventDefault();consumedPointers.set(event.pointerId,performance.now()+500);setTimeout(()=>consumedPointers.delete(event.pointerId),550);
-  const board=$('.board');if(!board)return;const r=board.getBoundingClientRect(),gap=parseFloat(getComputedStyle(board).gap)||0;
-  if(event.clientX<r.left||event.clientX>=r.right||event.clientY<r.top||event.clientY>=r.bottom)return;
-  const x=Math.floor((event.clientX-r.left)/((r.width+gap)/game.width)),y=Math.floor((event.clientY-r.top)/((r.height+gap)/game.height));
-  activeSeat=p.side;
-  const action=targetActions(p.side).find(a=>a.unitId===p.unitId&&(a.displayX??a.x)===x&&(a.displayY??a.y)===y);
-  if(action){const {displayX,displayY,...canonical}=action;perform(canonical);}else toast('Drag to a highlighted destination or target.');
+  const cell=document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-cell]');if(!cell)return;
+  const [x,y]=cell.dataset.cell.split(',').map(Number);
+  const action=targetActions(gesture.side,gesture).find(a=>(a.displayX??a.x)===x&&(a.displayY??a.y)===y);
+  if(action){const {displayX,displayY,...canonical}=action;perform(canonical);}
 },{passive:false});
-document.addEventListener('pointercancel',event=>{pointers.delete(event.pointerId);heldPointers.delete(event.pointerId);});
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&game&&scene==='battle'){paused=true;persist();render();}});
+document.addEventListener('pointercancel',event=>{input.cancelPointer(event.pointerId);pointers.get(event.pointerId)?.ghost?.remove();pointers.delete(event.pointerId);document.querySelectorAll(`.drag-over[data-drag-pointer="${event.pointerId}"]`).forEach(el=>el.classList.remove('drag-over'));});
+document.addEventListener('lostpointercapture',event=>{if(event.target!==$('#app'))return;finishDeploymentPointer(event,true);input.cancelPointer(event.pointerId);pointers.get(event.pointerId)?.ghost?.remove();pointers.delete(event.pointerId);document.querySelectorAll(`.drag-over[data-drag-pointer="${event.pointerId}"]`).forEach(el=>{el.classList.remove('drag-over');delete el.dataset.dragPointer;});});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&game&&scene==='battle'){resetInput();paused=true;persist();render();}});
 window.addEventListener('pagehide',persist);
 function frame(ms){
   const elapsedMs=lastFrame?Math.min(1000,ms-lastFrame):0,dt=elapsedMs/1000;lastFrame=ms;
@@ -337,11 +445,11 @@ function frame(ms){
       countdownRemainingMs=0;countdownNumber=0;if(countEl){countEl.textContent='GO!';countEl.parentElement.classList.add('countdown-go');const overlay=countEl.parentElement;setTimeout(()=>overlay.remove(),450);}announce('Go! Capture the rift.');
     }
     accumulated+=dt;
-    if(accumulated>=.1){
-      const events=[];
-      while(accumulated>=.1&&!game.winner){events.push(...advance(game,.1));accumulated-=.1;}
+    if(accumulated>=.05){
+      const events=[],pendingBefore=JSON.stringify(input.pending());
+      while(accumulated>=.05&&!game.winner){events.push(...advance(game,.05));for(const action of input.drain(game)){const result=executeOrder(action);if(result.ok)events.push(...result.events);}accumulated-=.05;}
       if(events.length)deferredEvents.push(...events);
-      if(!heldPointers.size&&(deferredEvents.length||readySignature()!==lastReadySignature)){if(!current()){if(localGame())seatSelections[activeSeat]=null;selectedId=null;}render();showEvents(deferredEvents);if(deferredEvents.length)persist();deferredEvents=[];}
+      if(deferredEvents.length||readySignature()!==lastReadySignature||pendingBefore!==JSON.stringify(input.pending())){if(!current()){if(localGame())seatSelections[activeSeat]=null;selectedId=null;}render();showEvents(deferredEvents);if(deferredEvents.length)persist();deferredEvents=[];}
       updateTimers();
     }
   }
