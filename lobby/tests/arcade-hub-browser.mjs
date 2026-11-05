@@ -7,6 +7,8 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 const browserModule=process.env.PLAYWRIGHT_MODULE||'playwright';
 const {chromium}=await import(path.isAbsolute(browserModule)?pathToFileURL(browserModule).href:browserModule);
 const root=path.resolve(fileURLToPath(new URL('../..',import.meta.url)));
+const expectedGameKeys=Object.keys(JSON.parse(fs.readFileSync(path.join(root,'lobby/assets/game-artwork.json'),'utf8')).games);
+const expectedGameCount=expectedGameKeys.length;
 const firebase=String.raw`
 const fixture=globalThis.__fixture,clean=value=>JSON.parse(JSON.stringify(value));
 const snap=ref=>({ref,id:ref.path.split('/').at(-1),exists:()=>Object.hasOwn(fixture.data,ref.path),data:()=>clean(fixture.data[ref.path])});
@@ -67,9 +69,10 @@ async function nav(page,view){const selector=await page.locator('.main-nav').isV
 async function keys(page){return page.locator('#singleGameGrid .game-card').evaluateAll(cards=>cards.map(card=>card.dataset.gameKey));}
 try{
   let page=await open({saved:'singleplayer'});
-  await page.locator('#singleGameGrid .game-card').nth(71).waitFor({state:'attached'});
-  check('all 72 catalog entries remain available',(await keys(page)).length===72);
+  await page.locator('#singleGameGrid .game-card').nth(expectedGameCount-1).waitFor({state:'attached'});
+  check('every registered catalog entry remains available',(await keys(page)).length===expectedGameCount);
   const full=await keys(page);
+  check('catalog keys match the complete artwork registry',JSON.stringify([...full].sort())===JSON.stringify([...expectedGameKeys].sort()));
   await page.locator('#gameStatus').selectOption('prototype');
   check('Experimental filter reveals actual prototype cards',await page.locator('#singleGameGrid .game-card').evaluateAll(cards=>cards.length>0&&cards.every(card=>card.dataset.catalogStatus==='prototype'&&card.getClientRects().length>0)));
   await page.locator('#gameStatus').selectOption('tools');
@@ -78,7 +81,7 @@ try{
   check('combined unsupported mode and status produces a useful empty state',(await keys(page)).length===0&&(await page.locator('#singleGameGrid').innerText()).length>20);
   check('result count announces zero matches',/\b0\b/.test(await page.locator('#gameResultCount').innerText()));
   await page.locator('#clearGameFilters').click();
-  check('Clear restores every game and resets status/mode/genre/search',(await keys(page)).length===72&&await page.locator('#gameStatus').inputValue()==='all'&&await page.locator('#gameMode').inputValue()==='all'&&await page.locator('#gameSearch').inputValue()==='');
+  check('Clear restores every game and resets status/mode/genre/search',(await keys(page)).length===expectedGameCount&&await page.locator('#gameStatus').inputValue()==='all'&&await page.locator('#gameMode').inputValue()==='all'&&await page.locator('#gameSearch').inputValue()==='');
   await page.locator('#gameStatus').selectOption('playable');
   check('In production remains discoverable',await page.locator('#singleGameGrid .game-card').evaluateAll(cards=>cards.length>0&&cards.every(card=>card.dataset.catalogStatus==='playable')));
   await page.locator('#gameStatus').selectOption('showcase');
@@ -182,12 +185,12 @@ try{
 
   page=await open({saved:'singleplayer',missingCatalog:true});
   await page.locator('#singleGameGrid .game-card').nth(71).waitFor({state:'attached'});
-  check('missing catalog helper leaves all 72 games available',(await keys(page)).length===72);
+  check('missing catalog helper leaves every registered game available',(await keys(page)).length===expectedGameCount);
   check('missing catalog helper disables only the unavailable status filter',await page.locator('#gameStatus').isDisabled()&&/unavailable/i.test(await page.locator('#gameStatus option:checked').innerText())&&await page.locator('#gameSearch').isEnabled());
   await nav(page,'discover');await page.locator('#cnmSearch').fill('War Realms');await page.locator('#cnmSearchForm [type="submit"]').click();
   check('search still opens the matching game when the catalog helper is missing',(await keys(page)).join(',')==='warrealms');
   await page.locator('#clearGameFilters').click();
-  check('clearing search restores all 72 games without the catalog helper',(await keys(page)).length===72);
+  check('clearing search restores every registered game without the catalog helper',(await keys(page)).length===expectedGameCount);
   await nav(page,'profile');check('profile navigation still renders without the catalog helper',await page.locator('#profileGuest').isVisible());
   await nav(page,'multiplayer');check('multiplayer navigation still renders without the catalog helper',await page.locator('#lobbySearch').isVisible());
   await page.context().close();
@@ -195,7 +198,7 @@ try{
   page=await open({saved:'singleplayer',failedArcadeUpgrade:true});
   await page.locator('#singleGameGrid .catalog-shelf-heading').first().waitFor({state:'attached'});
   check('rejected arcade transformation keeps the legacy layout despite the API global',await page.evaluate(()=>!!globalThis.GameHubArcade&&!document.body.classList.contains('arcade-hub')&&!document.querySelector('link[href*="lobby-arcade.css"]')));
-  check('rejected arcade transformation preserves legacy catalog grouping and every game',(await keys(page)).length===72&&await page.locator('#singleGameGrid .catalog-status-badge').count()===72&&await page.locator('#singleGameGrid .catalog-prototype-toggle').count()===1);
+  check('rejected arcade transformation preserves legacy catalog grouping and every game',(await keys(page)).length===expectedGameCount&&await page.locator('#singleGameGrid .catalog-status-badge').count()===expectedGameCount&&await page.locator('#singleGameGrid .catalog-prototype-toggle').count()===1);
   await page.locator('#singleGameGrid .catalog-prototype-toggle').click();
   check('legacy experimental controls remain functional after a rejected transformation',await page.locator('#singleGameGrid .catalog-prototype-card').evaluateAll(cards=>cards.length>0&&cards.every(card=>card.getClientRects().length>0)));
   await page.context().close();
