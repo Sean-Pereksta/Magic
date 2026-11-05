@@ -118,3 +118,98 @@ test('purchased and placed warbands can start a legal engine battle unchanged', 
   assert.deepEqual(state.units.filter(unit => unit.side === 'player').map(unit => ({x: unit.x, y: unit.y})), player.positions);
   assert.deepEqual(state.units.filter(unit => unit.side === 'ai').map(unit => ({x: unit.x, y: unit.y})), rival.positions);
 });
+
+test('army and deployment phases expose only the controls needed for that preparation step', () => {
+  const draft = createDraft();
+  const army = renderDraft(draft, {phase: 'army'});
+  assert.equal((army.match(/data-draft-action="buy"/g) || []).length, 3);
+  assert.equal((army.match(/data-draft-action="remove"/g) || []).length, draft.army.length);
+  assert.doesNotMatch(army, /data-draft-action="place"|data-draft-action="arrange"/);
+  assert.match(army, /Scouts claim ground/);
+  const deployment = renderDraft(draft, {phase: 'deploy'});
+  assert.equal((deployment.match(/data-draft-action="place"/g) || []).length, draft.width * 2);
+  assert.doesNotMatch(deployment, /data-draft-action="buy"|data-draft-action="remove"/);
+  assert.match(deployment, /data-draft-action="arrange" data-side="player"/);
+  assert.match(deployment, /Place Prism Matriarch/);
+  assert.match(deployment, /Front line.*Back line/);
+  assert.match(deployment, /data-phase="deploy"/);
+  assert.match(renderDraft(draft, {phase: 'unknown'}), /data-phase="all"/);
+});
+
+test('default formations lead with mobile and sturdy troops while protecting commander and mystic', () => {
+  for (const [width, height] of [[7, 5], [9, 7], [11, 9]]) {
+    const draft = createDraft({width, height});
+    for (const [index, role] of draft.army.entries()) {
+      assert.equal(draft.positions[index].y, role === 'scout' || role === 'brute' ? height - 2 : height - 1);
+    }
+    assert.equal(draft.positions[0].x, Math.floor(width / 2));
+    assert.ok(draft.positions[1].x < draft.positions[2].x, 'the two default scouts cover opposite flanks');
+    assert.equal(draft.positions[3].x, Math.floor(width / 2), 'the default brute starts at the front center');
+    validDeployment(draft);
+  }
+});
+
+test('auto arrangement is deterministic, mirrors both players, and never changes purchases or selection', () => {
+  for (const [width, height] of [[7, 5], [9, 7], [11, 9]]) for (const army of [
+    ['leader', 'scout', 'scout', 'brute', 'mystic'],
+    ['leader', 'mystic', 'mystic', 'mystic', 'mystic', 'mystic', 'mystic', 'mystic'],
+    ['leader', 'scout', 'scout', 'scout', 'scout', 'scout', 'scout', 'scout']
+  ]) {
+    const player = createDraft({money: 40, width, height, army});
+    const rival = createDraft({money: 40, width, height, side: 'ai', army});
+    const purchases = [...player.army];
+    applyDraftAction(player, {type: 'select', index: player.army.length - 1});
+    applyDraftAction(player, {type: 'place', x: 0, y: height - 1});
+    const selected = player.selectedIndex;
+    const result = applyDraftAction(player, {type: 'arrange'});
+    assert.equal(result.ok, true);
+    assert.match(result.message, /Formation arranged/);
+    assert.deepEqual(player.army, purchases);
+    assert.equal(player.selectedIndex, selected);
+    const once = structuredClone(player.positions);
+    applyDraftAction(player, {type: 'arrange'});
+    assert.deepEqual(player.positions, once);
+    assert.deepEqual(rival.positions, player.positions.map(point => ({x: width - 1 - point.x, y: height - 1 - point.y})));
+    validDeployment(player);
+    validDeployment(rival);
+  }
+});
+
+test('buying or resizing preserves manual placements and places new troops in their preferred line', () => {
+  const draft = createDraft({money: 40, army: ['leader', 'scout']});
+  applyDraftAction(draft, {type: 'select', index: 0});
+  applyDraftAction(draft, {type: 'place', x: 0, y: 6});
+  const commander = {...draft.positions[0]};
+  applyDraftAction(draft, {type: 'buy', role: 'brute'});
+  assert.deepEqual(draft.positions[0], commander);
+  assert.equal(draft.positions.at(-1).y, 5);
+  resizeDraft(draft, {faction: 'choir'});
+  assert.deepEqual(draft.positions[0], commander);
+});
+
+test('deployment cells identify their creature index and selection feedback names the exact destination', () => {
+  const draft = createDraft({side: 'ai'});
+  applyDraftAction(draft, {type: 'select', index: 2});
+  const html = renderDraft(draft, {phase: 'deploy'});
+  const point = draft.positions[2];
+  assert.match(html, new RegExp(`data-x="${point.x}" data-y="${point.y}" data-index="2"`));
+  const result = applyDraftAction(draft, {type: 'place', x: 0, y: 1});
+  assert.equal(result.ok, true);
+  assert.match(result.message, /Skitterglow placed at A6/);
+  assert.match(renderDraft(draft, {phase: 'deploy'}), /Tap a cell to move it/);
+});
+
+test('full battlefield integrations can retain placement controls without duplicating the small deployment grid', () => {
+  const draft = createDraft();
+  const html = renderDraft(draft, {phase: 'deploy', showGrid: false});
+  assert.match(html, /data-draft-action="select"/);
+  assert.match(html, /data-draft-action="arrange"/);
+  assert.match(html, /Place [^<]+/);
+  assert.doesNotMatch(html, /class="draft-deployment"/);
+  assert.doesNotMatch(html, /data-draft-action="place"/);
+  assert.doesNotMatch(html, /data-draft-action="buy"/);
+  const purchases = [...draft.army];
+  applyDraftAction(draft, {type: 'select', index: 1});
+  assert.deepEqual(draft.army, purchases);
+  assert.match(renderDraft(draft, {phase: 'army'}), /data-draft-action="buy"/);
+});

@@ -174,7 +174,7 @@ export function createGame({ playerFaction='bloom', aiFaction='chaos', difficult
 function generateTerrain(s) {
   for(let y=0;y<s.height;y++)for(let x=0;x<s.width;x++)s.tiles.push({x,y,terrain:'grass'});
   const centerY=Math.floor(s.height/2),flagColumns=s.flags.map(f=>f.x);
-  const protectedTile=(x,y)=>y<=1||y>=s.height-2||y===centerY||flagColumns.includes(x)||s.units.some(u=>u.x===x&&u.y===y);
+  const protectedTile=(x,y)=>y<=1||y>=s.height-2||y===centerY||flagColumns.includes(x);
   const motif=MAPS[s.map];
   for(const [kind,points]of [['rock',motif.rocks],['water',motif.water],['grove',motif.groves]])for(const [baseX,baseY]of points) {
     const x=Math.round(baseX*(s.width-1)/8),y=Math.round(baseY*(s.height-1)/6);
@@ -198,10 +198,10 @@ function generateTerrain(s) {
   const groves=Math.round(s.width*s.height*groveDensity);
   for(const t of s.tiles.map(t=>({...t,order:nextRandom(s)})).sort((a,b)=>a.order-b.order)) {
     if(count('grove')>=groves)break;
-    if(blocked(s,t.x,t.y)||s.units.some(u=>u.x===t.x&&u.y===t.y))continue;
+    if(blocked(s,t.x,t.y))continue;
     tileAt(s,t.x,t.y).terrain='grove';
     const mx=s.width-1-t.x,my=s.height-1-t.y;
-    if(!blocked(s,mx,my)&&!s.units.some(u=>u.x===mx&&u.y===my))tileAt(s,mx,my).terrain='grove';
+    if(!blocked(s,mx,my))tileAt(s,mx,my).terrain='grove';
   }
   // The cross and flag columns connect every deployment and objective. If a side
   // pocket was enclosed by random obstacles, carve its shortest horizontal exit.
@@ -217,7 +217,9 @@ function generateTerrain(s) {
       tileAt(s,s.width-1-x,s.height-1-t.y).terrain='grass';
     }
   }
-  for(const u of s.units)tileAt(s,u.x,u.y).terrain='grass';
+  // Deployment must not reroll terrain or erase a chosen grove. Both complete
+  // home zones exclude obstacles; retain this safeguard for future map motifs.
+  for(const u of s.units)if(blocked(s,u.x,u.y))tileAt(s,u.x,u.y).terrain='grass';
 }
 
 function logEvent(s,event,events) {
@@ -233,7 +235,9 @@ function lineClear(s,a,b) {
     const e=error*2;
     if(e>-dy){error-=dy;x+=sx;}
     if(e<dx){error+=dx;y+=sy;}
-    if(blocked(s,x,y)) return false;
+    // Water blocks a shot travelling through it, not a visible flying target
+    // hovering over the endpoint. Otherwise a legal water landing is invulnerable.
+    if(blocked(s,x,y)&&!(x===b.x&&y===b.y&&tileAt(s,x,y).terrain==='water'&&at(s,x,y))) return false;
   }
   return true;
 }
@@ -296,7 +300,7 @@ export function legalActions(s,unitId) {
     for(const p of reachable(s,u))actions.push({type:'move',unitId,x:p.x,y:p.y,label:'Move'});
     for(const v of living(s,other(u.side))) if(distance(u,v)<=def.range&&lineClear(s,u,v))
       actions.push({type:'attack',unitId,x:v.x,y:v.y,targetId:v.id,label:'Attack'});
-    actions.push({type:'guard',unitId,x:u.x,y:u.y,targetId:u.id,label:'Guard'});
+    if(u.shield<5)actions.push({type:'guard',unitId,x:u.x,y:u.y,targetId:u.id,label:'Guard'});
   }
   for(let skillIndex=0;skillIndex<def.abilities.length;skillIndex++)if(skillReadyAt(u,skillIndex)<=s.time)for(const target of skillTargets(s,u,skillIndex))actions.push({type:'ability',unitId,skillIndex,...target,label:def.abilities[skillIndex].name});
   return actions;
@@ -395,9 +399,12 @@ function useAbility(s,u,action,events) {
       const dx=Math.sign(target.x-u.x),dy=Math.sign(target.y-u.y);
       for(let n=1;n<=5;n++) {
         const x=u.x+dx*n,y=u.y+dy*n;
-        if(blocked(s,x,y))break;
+        if(!inside(s,x,y))break;
         const v=at(s,x,y);
+        const barrier=blocked(s,x,y);
+        if(barrier&&!(tileAt(s,x,y).terrain==='water'&&v))break;
         if(v&&v.side!==u.side)damage(s,u,v,3,events,{ranged:true});
+        if(barrier)break;
       } break;
     }
     case 'seedgrove':tileAt(s,action.x,action.y).terrain='grove';break;
@@ -498,22 +505,44 @@ export function recruit(s,role,side='player') {
   return{ok:true,events};
 }
 
-function pathDistance(s,start,goal,side,unit) {
-  const queue=[{...start,d:0}],seen=new Set([key(start.x,start.y)]);
-  for(let i=0;i<queue.length;i++) {
-    const p=queue[i];
-    if(p.x===goal.x&&p.y===goal.y)return p.d;
-    for(const[dx,dy]of DIRS){const x=p.x+dx,y=p.y+dy,k=key(x,y),u=at(s,x,y);if(seen.has(k)||(unit?movementBlocked(s,unit,x,y):blocked(s,x,y))||u&&u.side!==side&&!['Flight','Phasewalk'].includes(unit&&unitDef(unit).movement)&&!(x===goal.x&&y===goal.y))continue;seen.add(k);queue.push({x,y,d:p.d+1});}
+function plannedDistance(s,u,start,goal,cache) {
+  const movement=unitDef(u).movement,id=`${u.side}/${movement}/${goal.x},${goal.y}`;
+  if(!cache.has(id)) {
+    // One reverse search serves every possible move toward this destination.
+    // The occupied endpoint is an approach marker, including a flying enemy on
+    // water: ground troops can reach the shore without planning a water landing.
+    const field=new Map([[key(goal.x,goal.y),0]]),queue=[{x:goal.x,y:goal.y,d:0}];
+    for(let i=0;i<queue.length;i++)for(const[dx,dy]of DIRS) {
+      const p=queue[i],x=p.x+dx,y=p.y+dy,k=key(x,y),occupant=at(s,x,y);
+      if(field.has(k)||movementBlocked(s,u,x,y)||occupant&&occupant.side!==u.side&&!['Flight','Phasewalk'].includes(movement))continue;
+      field.set(k,p.d+1);queue.push({x,y,d:p.d+1});
+    }
+    cache.set(id,field);
   }
-  return 30;
+  return cache.get(id).get(key(start.x,start.y))??30;
 }
 
-function actionScore(s,u,a) {
+function controlValue(s,u,position) {
+  let value=0;
+  for(const flag of s.flags) {
+    let allies=0,foes=0;
+    for(const troop of living(s))if(distance(troop.id===u.id?position:troop,flag)<=1) {
+      if(troop.side===u.side)allies++;else foes++;
+    }
+    value+=Math.sign(allies-foes);
+    // An extra defender matters under pressure, but empty friendly zones should
+    // not draw the entire army away from other flags.
+    if(allies>foes&&foes>0)value+=Math.min(1,allies-foes-1)*0.15;
+  }
+  return value;
+}
+
+function actionScore(s,u,a,cache) {
   const def=unitDef(u),foes=living(s,other(u.side)),allies=living(s,u.side),target=a.targetId?s.units.find(v=>v.id===a.targetId):null;
   if(a.type==='guard')return 0.3+(u.hp<u.maxHp/2?0.8:0);
   if(a.type==='attack') {
     const dmg=def.damage+(u.faction==='chaos'&&u.hp<u.maxHp?1:0)+(target.cursed?2:0);
-    return 9+Math.min(target.hp,Math.max(0,dmg-target.shield))*2+(target.hp+target.shield<=dmg?13:0)+(s.flags.some(f=>f.x===target.x&&f.y===target.y)?4:0);
+    return 9+Math.min(target.hp,Math.max(0,dmg-target.shield))*2+(target.hp+target.shield<=dmg?13:0)+(s.flags.some(f=>distance(f,target)<=(s.mode==='control'?1:0))?s.mode==='control'?6:4:0);
   }
   if(a.type==='ability') {
     const kind=skillDef(u,a.skillIndex??0).kind;
@@ -522,13 +551,13 @@ function actionScore(s,u,a) {
     if(kind==='nectar')return Math.min(2,target.maxHp-target.hp)*5-1;
     if(kind==='laughinghex')return 12+(target.hp<=5?3:0);
     if(kind==='crookedswap')return 8+allies.filter(v=>v.id!==u.id&&distance(v,u)<=2).length*3+(s.flags.some(f=>f.x===target.x&&f.y===target.y&&f.owner!==u.side)?8:0);
-    if(kind==='starstep')return moveScore(s,u,a)+2;
+    if(kind==='starstep')return moveScore(s,u,a,cache)+2;
     if(kind==='wardray')return Math.min(3,5-target.shield)*(foes.some(v=>distance(v,target)<=3)?5:1)-1;
     if(kind==='bloomcall')return allies.filter(v=>distance(u,v)<=2).reduce((n,v)=>n+Math.min(3,v.maxHp-v.hp)*4,0)-1;
     if(kind==='mercy')return Math.min(4,target.maxHp-target.hp)*4+(target.rootedUntil>s.time?3:0)+(target.cursed?2:0)-1;
     if(kind==='concordance')return allies.filter(v=>v.id!==u.id&&distance(u,v)<=2).reduce((n,v)=>n+(v.readyAt>s.time?8:0)+(v.shield<3?1:0),0)-1;
     if(kind==='sanctuary')return allies.filter(v=>distance(u,v)<=1).reduce((n,v)=>n+Math.min(4,5-v.shield)*(foes.some(e=>distance(v,e)<=3)?2:0.35),0)-1;
-    if(kind==='sporehop')return moveScore(s,u,a)+1;
+    if(kind==='sporehop')return moveScore(s,u,a,cache)+1;
     if(kind==='sporeburst')return foes.filter(v=>distance(v,a)<=1).reduce((n,v)=>n+8+Math.min(v.hp,Math.max(0,3-v.shield))*2+(v.hp+v.shield<=3?12:0),0);
     if(kind==='wrongnote')return foes.filter(v=>distance(u,v)<=2).reduce((n,v)=>n+11+(v.hp+v.shield<=2?12:0),0);
     if(kind==='ray'){
@@ -538,22 +567,24 @@ function actionScore(s,u,a) {
     const dmg=kind==='foldhorn'?4:kind==='blinkbite'?3:2;
     return 11+Math.min(target.hp,Math.max(0,dmg-target.shield))*2+(target.hp+target.shield<=dmg?13:0)+(kind==='omen'?3:0)+(kind==='belch'?3:0);
   }
-  return moveScore(s,u,a);
+  return moveScore(s,u,a,cache);
 }
 
-function moveScore(s,u,a) {
+function moveScore(s,u,a,cache) {
   const targets=s.mode==='elimination'?[]:s.flags.filter(f=>f.owner!==u.side),foes=living(s,other(u.side));
   let score=-1;
   if(targets.length) {
-    const before=Math.min(...targets.map(f=>pathDistance(s,u,f,u.side,u)));
-    const after=Math.min(...targets.map(f=>pathDistance(s,a,f,u.side,u)));
+    const zone=s.mode==='control'?1:0;
+    const before=Math.min(...targets.map(f=>Math.max(0,plannedDistance(s,u,u,f,cache)-zone)));
+    const after=Math.min(...targets.map(f=>Math.max(0,plannedDistance(s,u,a,f,cache)-zone)));
     score+=(before-after)*3;
-    if(targets.some(f=>f.x===a.x&&f.y===a.y))score+=24;
+    if(targets.some(f=>distance(f,a)<=zone))score+=zone?12:24;
   } else {
-    // With all beacons held, advance toward opponents while protecting the center.
-    const before=Math.min(...foes.map(v=>distance(u,v))),after=Math.min(...foes.map(v=>distance(a,v)));
+    // Follow traversable routes instead of repeatedly guarding behind a wall.
+    const before=Math.min(...foes.map(v=>plannedDistance(s,u,u,v,cache))),after=Math.min(...foes.map(v=>plannedDistance(s,u,a,v,cache)));
     score+=(before-after)*1.4;
   }
+  if(s.mode==='control')score+=(controlValue(s,u,a)-controlValue(s,u,u))*24;
   const standing=s.flags.find(f=>f.x===u.x&&f.y===u.y&&f.owner===u.side);
   if(standing&&foes.some(v=>distance(v,standing)<=3))score-=5;
   const threat=foes.filter(v=>distance(v,a)<=unitDef(v).range).reduce((n,v)=>n+unitDef(v).damage,0);
@@ -571,10 +602,10 @@ export function chooseAIAction(s) {
     const rows=[0,1],room=s.tiles.some(t=>rows.includes(t.y)&&!blocked(s,t.x,t.y)&&!at(s,t.x,t.y));
     if(room) {s.aiRecruitAt=s.time+6;return{type:'recruit',role,side:'ai'};}
   }
-  const ranked=[];
+  const ranked=[],cache=new Map();
   for(const u of army)for(const action of legalActions(s,u.id)) {
     const noise=(nextRandom(s)-0.5)*({story:8,easy:5,normal:2,hard:0.4,expert:0.1}[s.difficulty]??2);
-    let score=actionScore(s,u,action);
+    let score=actionScore(s,u,action,cache);
     if(['story','easy'].includes(s.difficulty)) {
       const foes=living(s,'player'),target=action.targetId?s.units.find(v=>v.id===action.targetId):null;
       const kind=action.type==='ability'?skillDef(u,action.skillIndex??0).kind:null;
@@ -588,7 +619,7 @@ export function chooseAIAction(s) {
     ranked.push({action,score:score+noise});
   }
   ranked.sort((a,b)=>b.score-a.score);
-  return ranked[0]?.action||null;
+  return ranked[0]?.score>0.15?ranked[0].action:null;
 }
 
 /** Advance only while the app is playing. Large/background deltas cannot skip battles. */
