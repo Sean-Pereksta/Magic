@@ -47,3 +47,28 @@
   .field-tools{bottom:calc(172px + env(safe-area-inset-bottom, 0px))}
 }
 
+/* Keep ability keys and cooldowns readable in the compact command panel. */
+.ability-button{position:relative;min-height:54px;align-content:center;flex-wrap:wrap;padding:6px 5px;gap:3px;float:none;display:inline-flex;vertical-align:top}
+.ability-button>span:first-child{font-size:15px;margin-right:10px}
+.ability-button>span:nth-child(2){min-width:0}
+.ability-button kbd{display:block;position:absolute;right:3px;top:3px;margin:0;padding:1px 3px;font-size:9px;line-height:12px;color:#38554b;border-color:#9eaf91;background:#f8f6eb}
+.ability-button .ability-status{display:block;width:100%;font-size:9px;line-height:13px;color:#52724c;font-variant-numeric:tabular-nums}
+.ability-button:disabled{opacity:.65}
+.ability-button:disabled .ability-status{color:#716d54}
+.ability-button.active{border-color:#cf873e;background:#f3e2b7;box-shadow:inset 0 0 0 1px #cf873e}
+.actions-panel{overscroll-behavior:contain}
+.ability-button,.command-button{touch-action:manipulation}
+@media(max-width:760px){
+ .ability-button{min-height:53px;padding:5px 2px;gap:2px}
+ .ability-button b{font-size:9px}.ability-button kbd{font-size:8px;right:2px;top:2px;padding:0 2px}
+ .ability-button .ability-status{font-size:8px;line-height:12px}
+ .command-button{min-height:40px}
+ .sidebar .panel-eyebrow button{width:30px;height:30px;right:-8px;top:-8px}
+}
+@media(max-width:400px){
+ .sidebar{max-width:calc(100vw - 125px)}
+ .ability-button>span:first-child{display:none}
+ .ability-button{padding-top:16px}.ability-button b{font-size:8px}
+ .ability-button .ability-status{font-size:8px}
+}
+

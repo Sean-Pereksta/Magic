@@ -87,12 +87,12 @@ test('a failed transfer into a full CD preserves a troop\'s existing boarding or
 });
 
 test('multiple CDs fly over obstacles and unload every passenger into separate safe ground slots',()=>{
-  const g=arena(),cds=[spawn(g,'cd',0,900,800),spawn(g,'cd',0,950,800)];
-  const troops=Array.from({length:12},(_,i)=>spawn(g,['rock','paper','scissors'][i%3],0,900+i*3,800));
+  const g=arena(),cds=[spawn(g,'cd',0,1900,1600),spawn(g,'cd',0,1950,1600)];
+  const troops=Array.from({length:12},(_,i)=>spawn(g,['rock','paper','scissors'][i%3],0,1900+i*3,1600));
   assert(g.loadTransport(troops.map(e=>e.id),cds.map(e=>e.id)).ok);
   const allIds=cds.flatMap(cd=>cd.cargo);assert.equal(allIds.length,12);
-  assert(g.dropTransports(cds.map(e=>e.id),1200,590).ok,'drop target is inside a book');
-  advance(g,.5);assert(troops.every(e=>e.transportedBy),'cargo remains aboard while flying');
+  assert(g.dropTransports(cds.map(e=>e.id),2400,1180).ok,'drop target is inside a book');
+  advance(g,1.2);assert(troops.every(e=>e.transportedBy),'cargo remains aboard while flying');
   assert(cds.some(cd=>g._blocked(cd.x,cd.y,cd.r)),'flight crosses impassable ground');
   advance(g,3);assert(cds.every(cd=>cd.cargo.length===0));
   assert(troops.every(e=>!e.transportedBy&&!g._blocked(e.x,e.y,e.r)));
