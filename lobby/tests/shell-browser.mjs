@@ -8,6 +8,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 const moduleName=process.env.PLAYWRIGHT_MODULE||'playwright';
 const {chromium}=await import(path.isAbsolute(moduleName)?pathToFileURL(moduleName).href:moduleName);
 const root=path.resolve(fileURLToPath(new URL('../..',import.meta.url)));
+const expectedGameCount=Object.keys(JSON.parse(fs.readFileSync(path.join(root,'lobby/assets/game-artwork.json'),'utf8')).games).length;
 const fixtureSource=fs.readFileSync(path.join(root,'lobby/tests/arcade-nexus-browser.mjs'),'utf8');
 const firebase=fixtureSource.match(/const firebase=String.raw`([\s\S]*?)`;/)[1];
 const output=process.env.SHELL_QA_OUTPUT&&path.resolve(process.env.SHELL_QA_OUTPUT);
@@ -77,9 +78,9 @@ try{
     check(`${width}px Escape restores focus to hub Chat`,await relay.evaluate(node=>node.ownerDocument.activeElement===node));
     const nav=await hub.locator('.main-nav').isVisible()?'.main-nav':'.mobile-nav';
     await hub.locator(`${nav} [data-view="singleplayer"]`).click();
-    await hub.locator('#singleGameGrid .game-card').nth(71).waitFor({state:'attached'});
+    await hub.locator('#singleGameGrid .game-card').nth(expectedGameCount-1).waitFor({state:'attached'});
     await page.waitForTimeout(300);
-    check(`${width}px complete library remains available`,await hub.locator('#singleGameGrid .game-card').count()===72);
+    check(`${width}px complete library remains available`,await hub.locator('#singleGameGrid .game-card').count()===expectedGameCount);
     const toolbar=await hub.locator('.library-toolbar').evaluate(node=>{const style=getComputedStyle(node);return{columns:style.gridTemplateColumns,rows:style.gridTemplateRows,children:[...node.children].map(child=>{const css=getComputedStyle(child),box=child.getBoundingClientRect();return{id:child.id,column:css.gridColumn,row:css.gridRow,width:box.width,left:box.left};})};});
     layouts.push({width,toolbar});
     if(width===360){

@@ -14,6 +14,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 const args=process.argv.slice(2);
 const option=(key,fallback)=>args.includes(key)?args[args.indexOf(key)+1]:fallback;
 const repo=path.resolve(option('--root',fileURLToPath(new URL('../..',import.meta.url))));
+const expectedGameCount=Object.keys(JSON.parse(fs.readFileSync(path.join(repo,'lobby/assets/game-artwork.json'),'utf8')).games).length;
 const assetRoot=path.resolve(option('--asset-root',repo));
 const output=path.resolve(option('--output',path.join(repo,'..','qa-artifacts')));
 const label=option('--label','after');
@@ -335,12 +336,12 @@ try{
     page=await open({saved:'mygames',noFlagships:true});
     check('missing presentation script retains a usable saved-view fallback',await page.locator('#view-multiplayer.active').isVisible());
     await navigation(page,'singleplayer');
-    check('presentation fallback preserves the full catalog',await page.locator('#singleGameGrid .game-card').count()===72);
+    check('presentation fallback preserves the full catalog',await page.locator('#singleGameGrid .game-card').count()===expectedGameCount);
     await page.context().close();
 
     page=await open({saved:'singleplayer'});
     if(await page.locator('#cnmBuiltOutGrid').count()){
-      await page.waitForFunction(()=>document.querySelectorAll('#singleGameGrid .game-card[data-catalog-status]').length===72);
+      await page.waitForFunction(count=>document.querySelectorAll('#singleGameGrid .game-card[data-catalog-status]').length===count,expectedGameCount);
       const tierState=await page.locator('#singleGameGrid .game-card').evaluateAll(cards=>{
         const counts={};for(const card of cards)counts[card.dataset.catalogStatus]=(counts[card.dataset.catalogStatus]||0)+1;
         const visible=cards.filter(card=>card.getClientRects().length),best=visible.filter(card=>card.dataset.catalogStatus==='showcase'),others=visible.filter(card=>card.dataset.catalogStatus!=='showcase');

@@ -184,7 +184,7 @@ try{
   check('invite confirmation joins only after explicit action',await page.evaluate(()=>__fixture.data['lobbies/friend-room'].players.includes('Tester')));await page.context().close();
 
   page=await open({saved:'singleplayer',missingCatalog:true});
-  await page.locator('#singleGameGrid .game-card').nth(71).waitFor({state:'attached'});
+  await page.locator('#singleGameGrid .game-card').nth(expectedGameCount-1).waitFor({state:'attached'});
   check('missing catalog helper leaves every registered game available',(await keys(page)).length===expectedGameCount);
   check('missing catalog helper disables only the unavailable status filter',await page.locator('#gameStatus').isDisabled()&&/unavailable/i.test(await page.locator('#gameStatus option:checked').innerText())&&await page.locator('#gameSearch').isEnabled());
   await nav(page,'discover');await page.locator('#cnmSearch').fill('War Realms');await page.locator('#cnmSearchForm [type="submit"]').click();
