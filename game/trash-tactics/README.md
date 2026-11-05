@@ -8,10 +8,10 @@ Run `npm start` in this folder, then open the local address printed in the termi
 
 ## Controls
 
-- **Desktop:** click a unit or building; drag a box to select a squad. Shift adds to the selection. Right-click to move, gather from a trash can, or attack an enemy. Press **A**, then right-click an area to attack-move toward it. The Attack button targets the nearest enemy. Pan with the arrow keys or middle-mouse drag; use the mouse wheel to zoom.
+- **Desktop:** click a unit or building; drag a box to select a squad. Shift adds to the selection. Right-click to move, gather from a trash can, or attack an enemy. Press **A**, then right-click an area to attack-move toward it. The Attack button targets the nearest visible valid enemy. Pan with the arrow keys, middle-mouse drag, or by hovering at the battlefield edge; use the mouse wheel to zoom. Click or drag the minimap to navigate across the battlefield.
 - **Mobile:** tap to select; hold, then sweep to box-select. Tap the ground to move or an enemy to attack. Drag empty ground to pan. Use **X** to clear selection and the Attack button to fight the nearest enemy.
-- **Shortcuts:** **F2** selects your army; **F3** selects idle workers; **Space** returns home. Select troops and hold **1–4** to assign a command group (or use **Ctrl+1–4**); press the key to select it and double press to center the camera. On mobile, hold one of the four group boxes at the bottom to assign selected troops, tap to select, and double tap to center the camera. **E** uses an unlocked ability; **S** stops selected units. **X** clears selection. **Esc** opens or closes the pause menu; **P** also pauses.
-- Select a desk to train twigs; select a printer to train troops or research upgrades. Select a twig, choose a building, then choose clear ground to build.
+- **Shortcuts:** **F2** selects your army; **F3** selects idle workers; **Space** returns home. Select troops and hold **1–4** to assign a command group (or use **Ctrl+1–4**); press the key to select it and double press to center the camera. On mobile, hold one of the four group boxes at the bottom to assign selected troops, tap to select, and double tap to center the camera. **Q** launches rocks, **W** crumples paper, and **E** sweeps scissors after researching their upgrades. Each key affects only that troop type in a mixed squad. **S** stops selected units. **X** clears selection. **Esc** opens or closes the pause menu; **P** also pauses.
+- Select a desk to train twigs (**Q**); select a printer to train rock/paper/scissors (**Q/W/E**, with **R** also training scissors) or research upgrades. Select a twig, choose a building, then choose clear, currently visible ground to build. Ability buttons show their key, research lock, and cooldown.
 
 The battlefield fills the screen, with a compact selection panel and no top menu bar. Use the small pause button or **Esc** for the menu. The tutorial is available through **Learn the ropes** in the lobby, **How to play** in the pause menu, or **? / F1** during play.
 
@@ -23,11 +23,21 @@ Rocks, paper, and scissors each cost **50 trash** and use one supply. Rock beats
 
 Squads move in formations, push apart to avoid stacking, and find routes through obstacles and narrow choke points. Use wider routes for large armies and keep your resource lanes clear.
 
+## Terrain and scouting
+
+All six layouts are **4800 × 3200 world pixels**, double the original width and height and four times the playable area. Unit sizes, movement speeds, weapon ranges, and local harvesting trips retain their original scale. Each layout has **4–6 raised areas**, **10–11 expansion locations**, broad ramps, layered cliff edges, secondary cover clusters, and marked resource fields. Desktop Meadow combines paper groves, cork flats, and circuit yards; Breakroom Blitz adds napkin groves, service tiles, and coffee basins. Ground units must use ramps to reach elevated areas; flying CDs and Rock Launch can cross cliffs. Buildings cannot block the ramps.
+
+High ground grants an extra **100 world pixels of sight**. Low-ground troops cannot see uphill or through a raised shelf, while flying CDs can scout over it. These vision rules apply to every team, including bots. Elevation changes sight and access; it does not add a damage bonus.
+
+The battlefield and minimap distinguish three scouting states: unexplored ground is dark, previously explored terrain is dimmed, and currently visible ground is clear. Enemies, resource cans, projectiles, and effects require current vision. Hidden enemy units cannot be clicked or targeted; attack-move into the fog to scout and engage what your troops discover. Explored terrain stays remembered after your scouts leave. New construction requires current sight of its location.
+
+Static scenery and fog textures are cached, with the scenery cache capped at eight megapixels. Offscreen units are culled before sorting, and unchanged HUD values avoid repeated DOM writes. Squads share cached navigation clearance, invalidated when buildings change, and new routes are scheduled across frames. Vision refreshes eight times per second and the HUD checks ten times per second, while movement and drawing continue each animation frame. Resizing preserves the camera's world center.
+
 Each troop's printer upgrade costs **150 trash**:
 
-- **Rock — Launch:** leap toward a chosen spot; selected rocks land in a close formation.
-- **Scissors — Sweep:** slash a short forward arc, defeating paper caught inside it.
-- **Paper — Crumple:** become invulnerable for 3 seconds and move faster; paper cannot attack while crumpled.
+- **Rock — Launch (Q):** choose a target spot; selected ready rocks leap and land in a close formation.
+- **Scissors — Sweep (E):** choose a direction; selected ready scissors slash a short forward arc, defeating paper caught inside it.
+- **Paper — Crumple (W):** immediately become invulnerable for 3 seconds and move faster; paper cannot attack while crumpled.
 
 Opponents gather trash, train troops, construct buildings, expand, research, and attack. Difficulty changes their planning speed and aggression rather than granting free resources.
 

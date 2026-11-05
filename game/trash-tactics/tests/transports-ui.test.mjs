@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {pathToFileURL} from 'node:url';
+
 
 // Run the real input and sidebar code; graphics and browser timing are the only stubs.
 class Element {
@@ -36,7 +36,7 @@ async function harness() {
     setTimeout:(fn,ms)=>{const id=nextTimer++;timers.set(id,{at:now+ms,fn});return id;},clearTimeout:id=>timers.delete(id)});
   const fakeRender=`export class Renderer {constructor(canvas,game){this.canvas=canvas;this.game=game;this.camera={zoom:1};this.centers=[];}resize(){}centerOn(x,y){this.centers.push({x,y});}screenToWorld(x,y){return {x,y};}worldToScreen(x,y){return {x,y};}pan(){}zoomAt(){}draw(){}drawMinimap(){}}export function drawIcon(){}`;
   const source=(await readFile(new URL('../game.js',import.meta.url),'utf8'))
-    .replace("'./engine.js'",JSON.stringify(pathToFileURL(new URL('../engine.js',import.meta.url).pathname).href))
+    .replace("'./engine.js'",JSON.stringify(new URL('../engine.js',import.meta.url).href))
     .replace("'./render.js'",JSON.stringify('data:text/javascript;base64,'+Buffer.from(fakeRender).toString('base64')));
   await import('data:text/javascript;base64,'+Buffer.from(source+`\n//# sourceURL=trash-tactics-transports-under-test-${++harnessId}.js`).toString('base64'));
   element('startButton').click();
@@ -121,8 +121,8 @@ test('L loads nearest troops, U targets the minimap, and an empty Load reports w
   h.select(cd);h.key('l');h.tick(1);
   assert.equal(rock.transportedBy,cd.id);
   h.key('u');
-  // The fake minimap is 800 by 600; this position maps to (1200, 800).
-  h.element('minimap').dispatch('pointerdown',{clientX:400,clientY:300,pointerType:'touch'});
+  // Map a nearby drop zone through the minimap's current world dimensions.
+  h.element('minimap').dispatch('pointerdown',{clientX:1200/h.game.width*800,clientY:800/h.game.height*600,pointerType:'touch'});
   assert.equal(cd.order.type,'drop');
   h.tick(4);
   assert.equal(cd.cargo.length,0);assert(!rock.transportedBy);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {pathToFileURL} from 'node:url';
+
 
 // Exercise the actual game input handlers without needing a browser or graphics assets.
 class Element {
@@ -43,7 +43,7 @@ async function harness(){
   const fakeRender=`export class Renderer { constructor(canvas,game){this.canvas=canvas;this.game=game;this.camera={zoom:1};this.centers=[];} resize(){} centerOn(x,y){this.centers.push({x,y});} screenToWorld(x,y){return {x,y};} worldToScreen(x,y){return {x,y};} pan(){} zoomAt(){} draw(){} drawMinimap(){} } export function drawIcon(){}`;
   const renderUrl='data:text/javascript;base64,'+Buffer.from(fakeRender).toString('base64');
   const source=(await readFile(new URL('../game.js',import.meta.url),'utf8'))
-    .replace("'./engine.js'",JSON.stringify(pathToFileURL(new URL('../engine.js',import.meta.url).pathname).href))
+    .replace("'./engine.js'",JSON.stringify(new URL('../engine.js',import.meta.url).href))
     .replace("'./render.js'",JSON.stringify(renderUrl));
   await import('data:text/javascript;base64,'+Buffer.from(source+'\n//# sourceURL=trash-tactics-game-under-test.js').toString('base64'));
   element('startButton').click();

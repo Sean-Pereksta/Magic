@@ -98,10 +98,10 @@ test('a mouse destroying a loaded CD releases passengers safely and records one 
 
 test('bots pay for a mouse near a desk threatened by a hostile CD and avoid duplicate defenses',()=>{
   const g=new Game();g._think=Infinity;g.teams[1].trash=250;
-  const cd=g._spawn('cd',0,1100,800);
+  const home=g.starts[1],cd=g._spawn('cd',0,home.x-1100,home.y);
   g._bot(1);assert(!g.entities.some(e=>e.team===1&&e.type==='mouse'),'distant CDs do not trigger new defenses');
   const bank=g.teams[1].trash;assert.equal(bank,175,'ordinary worker and troop production still cost trash');
-  cd.x=1850;g._bot(1);
+  cd.x=home.x-220;g._bot(1);
   const defenses=g.entities.filter(e=>e.team===1&&e.type==='mouse');assert.equal(defenses.length,1);
   assert(defenses[0].constructing>0);assert.equal(g.teams[1].trash,bank-TYPES.mouse.cost);
   const desk=g.entities.find(e=>e.team===1&&e.type==='desk');
@@ -111,7 +111,7 @@ test('bots pay for a mouse near a desk threatened by a hostile CD and avoid dupl
   const h=new Game();h._think=Infinity;h.time=50;h.teams[1].trash=2000;
   const worker=h.entities.find(e=>e.team===1&&e.type==='twig');
   h.entities=h.entities.filter(e=>e.team!==1||e.type!=='twig'||e.id===worker.id);
-  h._spawn('cd',0,1850,800);h._bot(1);
+  h._spawn('cd',0,h.starts[1].x-220,h.starts[1].y);h._bot(1);
   const defense=h.entities.find(e=>e.team===1&&e.type==='mouse');
   assert.equal(worker.order.targetId,defense.id,'later production expansion must not take the defense builder');
 });

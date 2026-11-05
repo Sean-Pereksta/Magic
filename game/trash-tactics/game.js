@@ -8,14 +8,15 @@ const descriptions={twig:'A scrappy little worker. Carries 5 trash per trip. Can
 descriptions.cdreader='Summon flying CDs to carry your army over the desk. Each CD holds six troops. No twigs aboard.';
 descriptions.cd='A flying troop carrier. Select troops and tap a CD to board. Load finds the nearest troops; Drop chooses where to land. Holds six troops, no twigs.';
 descriptions.mouse='A defensive computer mouse. Fires pointer clicks at enemy CDs, rocks, paper, and scissors. Each hit keeps damaging its target briefly.';
-const skills={rock:{name:'Launch',icon:'↗',desc:'Leap to a spot in formation',cooldown:11},paper:{name:'Crumple',icon:'◉',desc:'3s invincible · faster · no attacks',cooldown:12},scissors:{name:'Sweep',icon:'✂',desc:'Cut every paper in a short arc',cooldown:10}};
-let game,renderer, selected=new Set(),mode=null,abilityType=null,pointer={x:600,y:800},drag=null;
+const skills={rock:{name:'Launch',key:'Q',icon:'↗',desc:'Leap to a spot in formation',cooldown:11},paper:{name:'Crumple',key:'W',icon:'◉',desc:'3s invincible · faster · no attacks',cooldown:12},scissors:{name:'Sweep',key:'E',icon:'✂',desc:'Cut every paper in a short arc',cooldown:10}};
+const abilityKeys={q:'rock',w:'paper',e:'scissors'};
+let game,renderer, selected=new Set(),mode=null,abilityType=null,pointer={x:0,y:0},drag=null;
 let paused=false,started=false,inLobby=true,chosenMap='desktop',chosenDifficulty='normal',chosenPlayers=2;
 let groups={},lastGroup={key:'',at:0},lastFrame=performance.now(),uiTick=0,signature='',endShown=false,toastTimeout;
 const GROUP_HOLD_MS=550, GROUP_DOUBLE_MS=350;
 let groupKeyPress=null;
 const groupPointerPresses=new Map();
-let keys=new Set(), pointerState=null,touches=new Map(),pinch=null,guideWasPaused=false;
+let keys=new Set(), pointerState=null,touches=new Map(),pinch=null,guideWasPaused=false,mouseHover=null,minimapDrag=null;
 let muted=false;try{muted=localStorage.getItem('trash-tactics-muted')==='true';}catch{}
 let audioContext,lastHitSound=0;
 function sound(kind='click'){
@@ -33,23 +34,25 @@ function updateSound(){ $('soundButton').textContent=muted?'♪̸':'♫';$('soun
 function toast(message){if(!message)return;$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>$('toast').hidden=true,3200);}
 function onEvent(e){
  if(e.type==='toast'&&(!('team'in e)||e.team===0))toast(e.message);
- if(e.type==='hit'&&!paused&&!inLobby)sound('hit');
+ if(e.type==='hit'&&!paused&&!inLobby&&(!e.target||e.target.team===0||visibleEntity(e.target)))sound('hit');
  if(e.type==='deposit'&&e.team===0&&Math.random()<.13&&!paused&&!inLobby)sound('deposit');
 }
-function resetGame(){cancelGroupPresses();lastGroup={key:'',at:0};game=new Game({map:chosenMap,difficulty:chosenDifficulty,players:chosenPlayers,onEvent});selected.clear();groups={};mode=null;abilityType=null;drag=null;endShown=false;signature='';if(renderer){renderer.game=game;renderer.resize();}else renderer=new Renderer(canvas,game);renderer.camera.zoom=window.innerWidth<761?.72:.94;const d=game.entities.find(e=>e.team===0&&e.type==='desk');renderer.centerOn(d.x,d.y+40);$('matchLabel').textContent=names[chosenMap].toUpperCase()+' · '+chosenPlayers+' PLAYERS · '+chosenDifficulty.toUpperCase();$('operationName').textContent=chosenMap==='desktop'?'The great desk takeover':'A little breakroom business';updateUI(true);}
-function start(){sound();resetGame();started=true;inLobby=false;paused=false;lastFrame=performance.now();$('lobby').hidden=true;$('pauseOverlay').hidden=true;$('endOverlay').hidden=true;const desk=game.entities.find(e=>e.team===0&&e.type==='desk');selected=new Set([desk.id]);updateUI(true);toast('Your twigs are gathering. Train a squad, then give the rival a little trouble.');canvas.focus({preventScroll:true});}
+function resetGame(){cancelGroupPresses();lastGroup={key:'',at:0};game=new Game({map:chosenMap,difficulty:chosenDifficulty,players:chosenPlayers,onEvent});selected.clear();groups={};mode=null;abilityType=null;drag=null;mouseHover=null;endShown=false;signature='';if(renderer){renderer.game=game;renderer.resize();}else renderer=new Renderer(canvas,game);renderer.camera.zoom=window.innerWidth<761?.72:.94;const d=game.entities.find(e=>e.team===0&&e.type==='desk');pointer={x:d.x,y:d.y};renderer.centerOn(d.x,d.y+40);$('matchLabel').textContent=names[chosenMap].toUpperCase()+' · '+chosenPlayers+' PLAYERS · '+chosenDifficulty.toUpperCase();$('operationName').textContent=chosenMap==='desktop'?'The great desk takeover':'A little breakroom business';updateUI(true);}
+function start(){sound();resetGame();started=true;inLobby=false;paused=false;lastFrame=performance.now();$('lobby').hidden=true;$('pauseOverlay').hidden=true;$('endOverlay').hidden=true;const desk=game.entities.find(e=>e.team===0&&e.type==='desk');selected=new Set([desk.id]);updateUI(true);toast('Scout through the fog. Use ramps to reach high ground; Q / W / E activate troop abilities.');canvas.focus({preventScroll:true});}
 function setMode(next,type=null){mode=next;abilityType=type;const label=BUILDINGS.includes(mode)?`Place ${TYPES[mode].label.toLowerCase()} · choose clear ground`:mode==='drop'?'Drop troops · tap a destination for your selected CDs':mode==='ability'?`${type?skills[type].name:'Special abilities'} · choose a target or direction`:mode==='attack'?'Attack move · choose a spot to fight toward':'';$('modeBanner').textContent=label+(label?' · X cancel · Esc menu':'');$('modeBanner').hidden=!label;canvas.style.cursor=next?'crosshair':'default';updateUI(true);}
 function unselect(){selected.clear();setMode(null);sound('select');}
 function ownSelected(){return [...selected].map(id=>game.getEntity(id)).filter(e=>e?.team===0&&!e.transportedBy);}
-function selectEntities(entities,add=false){if(!add)selected.clear();for(const e of entities)if(e.team===0&&!e.transportedBy)selected.add(e.id);setMode(null);sound('select');updateUI(true);}
+function visibleEntity(entity){return !!entity&&(game.isVisible?game.isVisible(entity,0):true);}
+function selectEntities(entities,add=false){if(!add)selected.clear();for(const e of entities)if(e.team===0&&!e.transportedBy)selected.add(e.id);setMode(null);sound('select');}
 function centerHome(){const d=game.entities.find(e=>e.team===0&&e.type==='desk'&&e.hp>0);if(d)renderer.centerOn(d.x+90,d.y);}
 function selectArmy(){const army=game.entities.filter(e=>e.team===0&&COMBAT.includes(e.type)&&e.hp>0&&!e.transportedBy);selectEntities(army);if(!army.length)toast('No ground troops ready. Select a CD to drop its passengers, or a printer to train troops.');}
 function selectWorkers(){const ws=game.entities.filter(e=>e.team===0&&e.type==='twig'&&e.hp>0&&['idle','stop'].includes(e.order?.type));selectEntities(ws);if(!ws.length)toast('All your twigs are busy. Keep the trash coming!');}
 function result(r,success){if(r?.ok){sound();if(success)toast(success);}else{sound('hit');toast(r?.reason||'That command is unavailable.');}updateUI(true);return !!r?.ok;}
 function issue(world,hit=null,forceAttack=false){
  const own=ownSelected();if(!own.length)return;
+ if(hit&&!visibleEntity(hit))hit=null;
  if(mode==='drop'){if(result(game.dropTransports(own.filter(e=>e.type==='cd').map(e=>e.id),world.x,world.y),'CDs heading to the drop zone.')){renderer.marker={...world,type:'drop',life:.8};setMode(null);}return;}
- if(BUILDINGS.includes(mode)){if(result(game.build(own.filter(e=>e.type==='twig').map(e=>e.id),mode,world.x,world.y),'Building started. Your twig will get right to it.'))setMode(null);return;}
+ if(BUILDINGS.includes(mode)){if(game.canSee&&!game.canSee(0,world.x,world.y)){toast('Scout this ground before building here.');return;}if(result(game.build(own.filter(e=>e.type==='twig').map(e=>e.id),mode,world.x,world.y),'Building started. Your twig will get right to it.'))setMode(null);return;}
  if(mode==='ability'){const ids=own.filter(e=>!abilityType||e.type===abilityType).map(e=>e.id);if(result(game.ability(ids,world.x,world.y))){sound('ability');setMode(null);}return;}
  const troops=own.filter(e=>!TYPES[e.type].building),buildings=own.filter(e=>TYPES[e.type].building);
  if(!mode&&hit?.team===0&&hit.type==='cd'&&troops.some(e=>COMBAT.includes(e.type))){if(result(game.loadTransport(troops.map(e=>e.id),[hit.id]),'Troops boarding the CD. Six seats; no twigs.'))selectEntities([hit]);return;}
@@ -58,17 +61,26 @@ function issue(world,hit=null,forceAttack=false){
  let order;if(mode==='attack'||forceAttack)order={type:'attackMove',...world};else if(hit?.team>0)order={type:'attack',targetId:hit.id,...world};else if(hit?.type==='trash')order={type:'gather',targetId:hit.id,...world};else order={type:'move',...world};
  if(result(game.command(troops.map(e=>e.id),order))){renderer.marker={...world,type:order.type.startsWith('attack')?'attack':'move',life:.8};setMode(null);}
 }
-function nearestAttack(){const own=ownSelected().filter(e=>COMBAT.includes(e.type));if(!own.length){toast('Select combat troops first.');return;}const center={x:own.reduce((n,e)=>n+e.x,0)/own.length,y:own.reduce((n,e)=>n+e.y,0)/own.length};const enemy=game.entities.filter(e=>own.some(u=>game.canTarget(u,e))).sort((a,b)=>Math.hypot(a.x-center.x,a.y-center.y)-Math.hypot(b.x-center.x,b.y-center.y))[0];if(enemy){game.command(own.map(e=>e.id),{type:'attackMove',x:enemy.x,y:enemy.y});renderer.marker={x:enemy.x,y:enemy.y,type:'attack',life:.8};sound();setMode(null);}else toast('No valid enemy target. Troops cannot target their exact counter.');}
+function nearestAttack(){const own=ownSelected().filter(e=>COMBAT.includes(e.type));if(!own.length){toast('Select combat troops first.');return;}const center={x:own.reduce((n,e)=>n+e.x,0)/own.length,y:own.reduce((n,e)=>n+e.y,0)/own.length};const enemy=game.entities.filter(e=>visibleEntity(e)&&own.some(u=>game.canTarget(u,e))).sort((a,b)=>Math.hypot(a.x-center.x,a.y-center.y)-Math.hypot(b.x-center.x,b.y-center.y))[0];if(enemy){game.command(own.map(e=>e.id),{type:'attackMove',x:enemy.x,y:enemy.y});renderer.marker={x:enemy.x,y:enemy.y,type:'attack',life:.8};sound();setMode(null);}else toast('No visible enemy you can target. Scout ahead or attack-move into the fog.');}
 function loadSelected(){result(game.loadNearest(ownSelected().filter(e=>e.type==='cd').map(e=>e.id)),'Nearest troops boarding. Six seats per CD; no twigs.');}
 function chooseDrop(){const cds=ownSelected().filter(e=>e.type==='cd');if(!cds.some(e=>e.cargo?.length)){toast('Load troops into a CD first.');return;}setMode(mode==='drop'?null:'drop');}
-function activateAbility(type=null){const units=ownSelected().filter(e=>COMBAT.includes(e.type)&&(!type||e.type===type)&&game.teams[0].upgrades[e.type]);if(!units.length){toast('Research special abilities at a printer first.');return;}if(units.every(e=>e.type==='paper')){result(game.ability(units.map(e=>e.id),units[0].x,units[0].y));sound('ability');return;}setMode('ability',type);}
+function activateAbility(type){
+ const units=ownSelected().filter(e=>e.type===type),skill=skills[type];
+ if(!skill||!units.length)return;
+ if(!game.teams[0].upgrades[type]){toast(`Research ${skill.name} at a printer first.`);return;}
+ const ready=units.filter(e=>e.abilityCooldown<=0&&!e.leap);
+ if(!ready.length){toast(`${skill.name} is recharging · ${Math.max(1,Math.ceil(Math.min(...units.map(e=>e.abilityCooldown))))}s.`);return;}
+ if(type==='paper'){if(result(game.ability(ready.map(e=>e.id),ready[0].x,ready[0].y))){sound('ability');setMode(null);}return;}
+ setMode(mode==='ability'&&abilityType===type?null:'ability',type);
+}
 function icons(root=document){root.querySelectorAll('canvas[data-icon]').forEach(c=>{const size=c.width;drawIcon(c.getContext('2d'),c.dataset.icon,size/2,size/2,size*.8,0,{sprite:true});});}
 function icon(type,size=60){return `<canvas data-icon="${type}" width="${size}" height="${size}" aria-hidden="true"></canvas>`;}
 function actionCard(type,hotkey,action='train'){const cost=TYPES[type].cost;return `<button class="action-card" data-action="${action}" data-type="${type}" title="${descriptions[type]} Costs ${cost} trash."><span class="hotkey">${hotkey||''}</span>${icon(type,60)}<b>${type==='desk'?'Home desk':TYPES[type].label}</b><span class="cost">♻ ${cost}</span></button>`;}
 function queueHtml(e){if(!e.queue?.length)return '';return `<div class="production"><div class="section-label">IN THE QUEUE <small>${e.queue.length} / 6</small></div>${e.queue.map((q,i)=>`<div class="queue-item">${icon(q.type,32)}<div><b>${q.kind==='research'?skills[q.type].name+' research':TYPES[q.type].label}</b><small>${i===0?Math.ceil(q.remaining)+'s':'QUEUED'}</small><div class="queue-bar"><span style="width:${i===0?Math.max(0,100*(1-q.remaining/q.total)):0}%"></span></div></div></div>`).join('')}</div>`;}
+function setText(element,value){if(element.textContent!==value)element.textContent=value;}
 function updateUI(force=false){
- const supply=game.getSupply(0),team=game.teams[0];$('trashCount').textContent=Math.floor(team.trash).toLocaleString();$('supplyCount').textContent=`${supply.used} / ${supply.cap}`;$('supplyCount').style.color=supply.used>=supply.cap?'#ca7555':'';
- const seconds=Math.floor(game.time);$('timer').textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
+ const supply=game.getSupply(0),team=game.teams[0];setText($('trashCount'),Math.floor(team.trash).toLocaleString());setText($('supplyCount'),`${supply.used} / ${supply.cap}`);$('supplyCount').style.color=supply.used>=supply.cap?'#ca7555':'';
+ const seconds=Math.floor(game.time);setText($('timer'),String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0'));
  updateGroups();
  for(const id of selected)if(!game.getEntity(id)||game.getEntity(id).transportedBy)selected.delete(id);
  const own=ownSelected(),e=own[0],units=own.filter(e=>!TYPES[e.type].building),workers=units.filter(e=>e.type==='twig'),combat=units.filter(e=>COMBAT.includes(e.type)),cds=units.filter(e=>e.type==='cd');
@@ -86,19 +98,19 @@ function updateUI(force=false){
   if(e.constructing&&own.length===1)actions=`<div class="section-label">UNDER CONSTRUCTION <small>${Math.ceil(e.constructing)}s</small></div><div class="queue-bar"><span style="width:${100*(1-e.constructing/e.buildTotal)}%"></span></div><p class="action-note">Your twig is putting the pieces together.</p>`;
   else if(e.type==='desk'&&own.length===1)actions=`<div class="section-label">GROW YOUR ECONOMY <small>4s / TWIG</small></div><div class="action-grid">${actionCard('twig','Q')}</div><p class="action-note">New twigs automatically find a trash can. Right click to set a rally point.</p>${queueHtml(e)}`;
   else if(e.type==='cdreader'&&own.length===1)actions=`<div class="section-label">SUMMON A TRANSPORT <small>8s / CD</small></div><div class="action-grid">${actionCard('cd','Q')}</div><p class="action-note">Flying CDs carry six combat troops each. Right click to set a flight rally point.</p>${queueHtml(e)}`;
-  else if(e.type==='printer'&&own.length===1){actions=`<div class="section-label">PRINT SOME TROUBLE <small>5s / TROOP</small></div><div class="action-grid">${actionCard('rock','Q')}${actionCard('paper','W')}${actionCard('scissors','R')}</div><div class="section-label" style="margin-top:23px">A LITTLE EXTRA POWER <small>150 TRASH EACH</small></div><div class="research-grid">${COMBAT.map(type=>{const researched=team.upgrades[type],pending=game.entities.some(b=>b.team===0&&b.queue?.some(q=>q.kind==='research'&&q.type===type));return `<button class="research-card ${researched?'unlocked':''}" data-action="research" data-type="${type}" ${researched||pending?'disabled':''} title="${skills[type].desc}">${icon(type,44)}<span><strong>${skills[type].name}</strong><small>${skills[type].desc}</small></span><span class="research-cost">${researched?'✓':pending?'…':'♻ 150'}</span></button>`;}).join('')}</div>${queueHtml(e)}`;}
+  else if(e.type==='printer'&&own.length===1){actions=`<div class="section-label">PRINT SOME TROUBLE <small>5s / TROOP</small></div><div class="action-grid">${actionCard('rock','Q')}${actionCard('paper','W')}${actionCard('scissors','E')}</div><div class="section-label" style="margin-top:23px">A LITTLE EXTRA POWER <small>150 TRASH EACH</small></div><div class="research-grid">${COMBAT.map(type=>{const researched=team.upgrades[type],pending=game.entities.some(b=>b.team===0&&b.queue?.some(q=>q.kind==='research'&&q.type===type));return `<button class="research-card ${researched?'unlocked':''}" data-action="research" data-type="${type}" ${researched||pending?'disabled':''} title="${skills[type].desc}">${icon(type,44)}<span><strong>${skills[type].name}</strong><small>${skills[type].desc}</small></span><span class="research-cost">${researched?'✓':pending?'…':'♻ 150'}</span></button>`;}).join('')}</div>${queueHtml(e)}`;}
   else if(e.type==='cabinet'&&own.length===1)actions='<div class="section-label">A PLACE FOR EVERYONE</div><p class="action-note">Your cabinet gives you 8 more supply. Select a twig to build more and grow your army.</p>';
   if(e.type==='mouse'&&own.length===1&&!e.constructing)actions='<div class="defense-status"><strong>Pointer defense</strong><span>Targets enemy CDs and combat troops</span><small>Each click deals impact damage, then damage over time.</small></div>';
   if(workers.length){actions+=`<div class="section-label">BUILD YOUR BASE <small>CHOOSE + PLACE</small></div><div class="action-grid">${actionCard('desk','D','build')}${actionCard('cabinet','C','build')}${actionCard('printer','B','build')}${actionCard('cdreader','V','build')}${actionCard('mouse','M','build')}</div><p class="action-note">Choose a building, then a clear spot. Put new desks near fresh trash cans.</p>`;}
   if(cds.length){const passengers=cds.reduce((n,e)=>n+(e.cargo?.length||0),0);actions+=`<div class="transport-manifest" role="status"><strong>${passengers} / ${cds.length*6} aboard</strong><span>${cds.length} ${cds.length===1?'CD':'CDs'} · No twigs</span><div class="transport-seats">${cds.map(cd=>`<span title="CD ${cd.id}: ${cd.cargo?.length||0} / 6 troops">${Array.from({length:6},(_,i)=>`<i class="${i<(cd.cargo?.length||0)?'occupied':''}"></i>`).join('')}</span>`).join('')}</div></div><div class="command-grid transport-commands"><button class="command-button" data-action="load" title="Board the nearest combat troops into each selected CD"><span class="command-symbol">↥</span> Load <small>L</small></button><button class="command-button ${mode==='drop'?'active':''}" data-action="drop" ${!passengers?'disabled':''} title="Fly to a chosen location and drop all passengers"><span class="command-symbol">↧</span> Drop <small>U</small></button></div>`;}
-  if(units.length){actions+=`<div class="section-label">GIVE AN ORDER</div><div class="command-grid">${combat.length?`<button class="command-button ${mode==='attack'?'active':''}" data-action="attack"><span class="command-symbol">⌖</span> Attack nearest <small>A</small></button>`:''}<button class="command-button" data-action="stop"><span class="command-symbol">□</span> Stop <small>S</small></button></div>`;if(combat.length)actions+=COMBAT.filter(type=>combat.some(e=>e.type===type)).map(type=>{const unlocked=team.upgrades[type],ready=combat.filter(e=>e.type===type).some(e=>e.abilityCooldown<=0),wait=Math.ceil(Math.min(...combat.filter(e=>e.type===type).map(e=>e.abilityCooldown)));return `<button class="ability-button" data-action="ability" data-type="${type}" ${!unlocked||!ready?'disabled':''}><span>${skills[type].icon}</span><span><b>${skills[type].name}</b><small>${!unlocked?'Unlock at a printer':!ready?'Recharging · '+wait+'s':skills[type].desc}</small></span><kbd>E</kbd></button>`;}).join('');}
+  if(units.length){actions+=`<div class="section-label">GIVE AN ORDER</div><div class="command-grid">${combat.length?`<button class="command-button ${mode==='attack'?'active':''}" data-action="attack"><span class="command-symbol">⌖</span> Attack nearest <small>A</small></button>`:''}<button class="command-button" data-action="stop"><span class="command-symbol">□</span> Stop <small>S</small></button></div>`;if(combat.length)actions+=COMBAT.filter(type=>combat.some(e=>e.type===type)).map(type=>{const skill=skills[type],unlocked=team.upgrades[type],ready=combat.filter(e=>e.type===type).some(e=>e.abilityCooldown<=0&&!e.leap),wait=Math.max(1,Math.ceil(Math.min(...combat.filter(e=>e.type===type).map(e=>e.abilityCooldown)))),status=!unlocked?'Unlock at a printer':!ready?'Recharging · '+wait+'s':skill.desc;return `<button class="ability-button ${mode==='ability'&&abilityType===type?'active':''}" data-action="ability" data-type="${type}" aria-keyshortcuts="${skill.key}" title="${skill.name} (${skill.key}) · ${status}" ${!unlocked||!ready?'disabled':''}><span>${skill.icon}</span><span><b>${skill.name}</b><small>${status}</small></span><kbd>${skill.key}</kbd><span class="ability-status">${!unlocked?'🔒':!ready?wait+'s':'Ready'}</span></button>`;}).join('');}
  }
  $('selectionInfo').innerHTML=info;$('actionContent').innerHTML=actions;$('unitRoster').innerHTML=roster;icons($('selectionInfo'));icons($('actionContent'));icons($('unitRoster'));
 }
 $('actionContent').addEventListener('click',evt=>{const b=evt.target.closest('[data-action]');if(!b||b.disabled||inLobby||paused)return;const own=ownSelected(),e=own[0],type=b.dataset.type;switch(b.dataset.action){case 'train':if(e)result(game.train(e.id,type),TYPES[type].label+' added to the queue.');break;case 'research':if(e)result(game.research(e.id,type),skills[type].name+' research queued.');break;case 'build':setMode(type);sound();break;case 'load':loadSelected();break;case 'drop':chooseDrop();break;case 'attack':nearestAttack();break;case 'stop':game.command([...selected],{type:'stop'});setMode(null);sound();break;case 'ability':activateAbility(type);break;case 'selectDesk':case 'selectPrinter':{const target=game.entities.find(t=>t.team===0&&t.hp>0&&t.type===(b.dataset.action==='selectDesk'?'desk':'printer'));if(target){selectEntities([target]);renderer.centerOn(target.x,target.y);}break;}}});
 $('unitRoster').addEventListener('click',e=>{const b=e.target.closest('[data-unit]');if(b){const unit=game.getEntity(Number(b.dataset.unit));if(unit)selectEntities([unit],e.shiftKey);}});
-function hitTest(world){const distance=e=>Math.hypot(e.x-world.x,e.y-(e.type==='cd'?27:0)-world.y);return game.entities.filter(e=>e.hp>0&&!e.transportedBy&&distance(e)<Math.max(e.r+10,22/renderer.camera.zoom)).sort((a,b)=>(a.type==='cd'?-1:TYPES[a.type].building?1:0)-(b.type==='cd'?-1:TYPES[b.type].building?1:0)||distance(a)-distance(b))[0];}
-function localPoint(e){const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
+function hitTest(world){const distance=e=>Math.hypot(e.x-world.x,e.y-(e.type==='cd'?27:0)-world.y);return game.entities.filter(e=>e.hp>0&&!e.transportedBy&&visibleEntity(e)&&distance(e)<Math.max(e.r+10,22/renderer.camera.zoom)).sort((a,b)=>(a.type==='cd'?-1:TYPES[a.type].building?1:0)-(b.type==='cd'?-1:TYPES[b.type].building?1:0)||distance(a)-distance(b))[0];}
+function localPoint(e){const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,width:r.width,height:r.height};}
 function usable(){return started&&!inLobby&&!paused&&game.winner===null&&$('guide').hidden;}
 // Groups store unit IDs so their membership follows the same troops as they move.
 function groupUnits(key){
@@ -112,9 +124,10 @@ function updateGroups(){
   const key=String(i),button=$('group-'+key);if(!button)continue;
   const units=groupUnits(key),count=units.length;
   const active=count>0&&selected.size===count&&units.every(e=>selected.has(e.id));
+  const status=String(count)+':'+active;if(button.dataset.status===status)continue;button.dataset.status=status;
   button.classList.toggle('assigned',count>0);button.classList.toggle('selected',active);
   button.dataset.count=String(count);
-  const countLabel=button.querySelector('[data-group-count]');if(countLabel)countLabel.textContent=count?String(count):'—';
+  const countLabel=button.querySelector('[data-group-count]');if(countLabel)setText(countLabel,count?String(count):'—');
   button.setAttribute('aria-label',`Command group ${key}, ${count} ${count===1?'troop':'troops'}. Tap to select, double tap to center, hold to assign.`);
   button.setAttribute('aria-pressed',String(active));
  }
@@ -180,6 +193,7 @@ canvas.addEventListener('pointerdown',e=>{
 });
 canvas.addEventListener('pointermove',e=>{
  const point=localPoint(e);pointer=renderer.screenToWorld(e.clientX,e.clientY);
+ mouseHover=e.pointerType==='mouse'?{...point,clientX:e.clientX,clientY:e.clientY}:null;
  if(e.pointerType==='touch'&&touches.has(e.pointerId))touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
  if(pinch&&touches.size>=2){const p=[...touches.values()],distance=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y),x=(p[0].x+p[1].x)/2,y=(p[0].y+p[1].y)/2;renderer.zoomAt(distance/Math.max(1,pinch.distance),x,y);renderer.pan(x-pinch.x,y-pinch.y);pinch={distance,x,y};return;}
  const s=pointerState;if(!s||s.id!==e.pointerId||!usable())return;
@@ -201,14 +215,22 @@ function pointerUp(e){
  if(!e.shiftKey)unselect();
 }
 canvas.addEventListener('pointerup',pointerUp);
-canvas.addEventListener('pointercancel',e=>{touches.delete(e.pointerId);clearTimeout(pointerState?.hold);pointerState=null;pinch=null;drag=null;});
+canvas.addEventListener('pointerleave',()=>{mouseHover=null;});
+canvas.addEventListener('pointercancel',e=>{touches.delete(e.pointerId);clearTimeout(pointerState?.hold);pointerState=null;pinch=null;drag=null;mouseHover=null;});
 canvas.addEventListener('dblclick',e=>{if(!usable())return;const hit=hitTest(renderer.screenToWorld(e.clientX,e.clientY));if(hit?.team===0&&!TYPES[hit.type].building){selectEntities(game.entities.filter(t=>t.team===0&&t.type===hit.type&&t.hp>0&&!t.transportedBy&&Math.hypot(t.x-hit.x,t.y-hit.y)<700));}});
 canvas.addEventListener('wheel',e=>{e.preventDefault();if(!inLobby)renderer.zoomAt(Math.exp(-e.deltaY*.001),e.clientX,e.clientY);},{passive:false});
-$('minimap').addEventListener('pointerdown',e=>{e.preventDefault();if(!usable())return;const r=e.currentTarget.getBoundingClientRect();const w={x:(e.clientX-r.left)/r.width*game.width,y:(e.clientY-r.top)/r.height*game.height};if(e.button===2||mode==='attack'||mode==='drop')issue(w,null,mode==='attack');else renderer.centerOn(w.x,w.y);});
+function minimapPoint(e){const r=$('minimap').getBoundingClientRect();return{x:Math.max(0,Math.min(game.width,(e.clientX-r.left)/r.width*game.width)),y:Math.max(0,Math.min(game.height,(e.clientY-r.top)/r.height*game.height))};}
+$('minimap').addEventListener('pointerdown',e=>{e.preventDefault();mouseHover=null;if(!usable())return;const w=minimapPoint(e);if(e.button===2||mode==='attack'||mode==='drop'||mode==='ability')issue(w,null,mode==='attack');else{minimapDrag=e.pointerId;e.currentTarget.setPointerCapture(e.pointerId);renderer.centerOn(w.x,w.y);}});
+$('minimap').addEventListener('pointermove',e=>{if(minimapDrag!==e.pointerId||!usable())return;e.preventDefault();const w=minimapPoint(e);renderer.centerOn(w.x,w.y);});
+for(const type of ['pointerup','pointercancel','lostpointercapture'])$('minimap').addEventListener(type,()=>{minimapDrag=null;});
 $('minimap').addEventListener('contextmenu',e=>e.preventDefault());
 window.addEventListener('keydown',e=>{
- if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
- const key=e.key.toLowerCase();if([' ','arrowup','arrowdown','arrowleft','arrowright','f2','f3'].includes(key)||key==='a'&&usable())e.preventDefault();
+ const focused=document.activeElement;
+ if(e.defaultPrevented||e.isComposing||['INPUT','TEXTAREA','SELECT'].includes(focused?.tagName)||focused?.isContentEditable)return;
+ const key=e.key.toLowerCase();
+ if(focused?.tagName==='BUTTON'&&(key===' '||key==='enter'))return;
+ if(e.altKey||(e.ctrlKey||e.metaKey)&&!(/^[1-4]$/.test(key)&&usable()))return;
+ if([' ','arrowup','arrowdown','arrowleft','arrowright','f2','f3'].includes(key)||key==='a'&&usable())e.preventDefault();
  keys.add(key);if(e.repeat){if(/^[1-4]$/.test(key)&&usable())e.preventDefault();return;}
  if(key==='escape'){e.preventDefault();if(!$('guide').hidden){closeGuide();return;}if(!inLobby&&started){setMode(null);togglePause();}return;}
  if(key==='x'&&usable()){unselect();return;}
@@ -224,12 +246,12 @@ window.addEventListener('keydown',e=>{
   groupKeyPress=press;return;
  }
  const own=ownSelected(),b=own.length===1?own[0]:null;
- if(b?.type==='printer'&&['q','w','r'].includes(key)){result(game.train(b.id,{q:'rock',w:'paper',r:'scissors'}[key]));return;}
+ if(b?.type==='printer'&&['q','w','e','r'].includes(key)){result(game.train(b.id,{q:'rock',w:'paper',e:'scissors',r:'scissors'}[key]));return;}
  if(b?.type==='desk'&&key==='q'){result(game.train(b.id,'twig'));return;}
  if(b?.type==='cdreader'&&key==='q'){result(game.train(b.id,'cd'));return;}
  if(own.some(e=>e.type==='cd')&&key==='l'){loadSelected();return;}
  if(own.some(e=>e.type==='cd')&&key==='u'){chooseDrop();return;}
- if(key==='a'){setMode(mode==='attack'?null:'attack');return;}if(key==='e'){activateAbility();return;}
+ if(key==='a'){setMode(mode==='attack'?null:'attack');return;}if(abilityKeys[key]){activateAbility(abilityKeys[key]);return;}
  if(own.some(e=>e.type==='twig')&&['d','c','b','v','m'].includes(key)){setMode({d:'desk',c:'cabinet',b:'printer',v:'cdreader',m:'mouse'}[key]);return;}
  if(key==='s'&&!e.ctrlKey&&!e.metaKey){game.command([...selected],{type:'stop'});setMode(null);sound();return;}
 });
@@ -237,11 +259,11 @@ window.addEventListener('keyup',e=>{
  const key=e.key.toLowerCase();keys.delete(key);
  if(groupKeyPress?.key===key){const press=groupKeyPress;clearTimeout(press.timer);groupKeyPress=null;if(!press.held)recallGroup(key,press.add);}
 });
-window.addEventListener('blur',()=>{keys.clear();cancelGroupPresses();clearTimeout(pointerState?.hold);pointerState=null;drag=null;});
-function togglePause(){if(inLobby||!started||game.winner!==null||endShown)return;cancelGroupPresses();paused=!paused;$('pauseOverlay').hidden=!paused;$('pauseButton').textContent=paused?'▶':'Ⅱ';keys.clear();sound();}
-function openGuide(){if(!$('guide').hidden)return;cancelGroupPresses();guideWasPaused=paused;paused=true;$('guide').hidden=false;icons($('guide'));sound();}
+window.addEventListener('blur',()=>{keys.clear();cancelGroupPresses();clearTimeout(pointerState?.hold);pointerState=null;drag=null;mouseHover=null;minimapDrag=null;});
+function togglePause(){if(inLobby||!started||game.winner!==null||endShown)return;cancelGroupPresses();mouseHover=null;paused=!paused;$('pauseOverlay').hidden=!paused;$('pauseButton').textContent=paused?'▶':'Ⅱ';keys.clear();sound();}
+function openGuide(){if(!$('guide').hidden)return;cancelGroupPresses();mouseHover=null;minimapDrag=null;guideWasPaused=paused;paused=true;$('guide').hidden=false;icons($('guide'));sound();}
 function closeGuide(){$('guide').hidden=true;paused=guideWasPaused;sound();}
-function openLobby(){cancelGroupPresses();if(started&&game.winner===null){$('resumeFromLobby').hidden=false;}else $('resumeFromLobby').hidden=true;inLobby=true;paused=true;$('pauseOverlay').hidden=true;$('lobby').hidden=false;setMode(null);sound();}
+function openLobby(){cancelGroupPresses();mouseHover=null;minimapDrag=null;if(started&&game.winner===null){$('resumeFromLobby').hidden=false;}else $('resumeFromLobby').hidden=true;inLobby=true;paused=true;$('pauseOverlay').hidden=true;$('lobby').hidden=false;setMode(null);sound();}
 $('startButton').addEventListener('click',start);$('playAgain').addEventListener('click',()=>{$('endOverlay').hidden=true;openLobby();});
 document.querySelectorAll('[data-map]').forEach(b=>b.addEventListener('click',()=>{chosenMap=b.dataset.map;document.querySelectorAll('[data-map]').forEach(x=>x.classList.toggle('active',x===b));sound();}));
 document.querySelectorAll('[data-difficulty]').forEach(b=>b.addEventListener('click',()=>{chosenDifficulty=b.dataset.difficulty;document.querySelectorAll('[data-difficulty]').forEach(x=>x.classList.toggle('active',x===b));sound();}));
@@ -252,15 +274,24 @@ for(const id of ['pauseButton','resumeButton','compactMenu'])$(id).addEventListe
 $('soundButton').addEventListener('click',()=>{muted=!muted;try{localStorage.setItem('trash-tactics-muted',String(muted));}catch{}updateSound();if(!muted)sound();});
 $('pauseSound').addEventListener('click',()=>{$('soundButton').click();$('pauseSound').textContent=muted?'Sound: off':'Sound: on';});
 $('homeButton').addEventListener('click',centerHome);$('clearButton').addEventListener('click',unselect);$('armyButton').addEventListener('click',selectArmy);$('workersButton').addEventListener('click',selectWorkers);$('zoomIn').addEventListener('click',()=>renderer.zoomAt(1.16));$('zoomOut').addEventListener('click',()=>renderer.zoomAt(1/1.16));
-window.addEventListener('resize',()=>renderer.resize());
+window.addEventListener('resize',()=>{mouseHover=null;renderer.resize();});
 function endMatch(){cancelGroupPresses();endShown=true;paused=true;const won=game.winner===0;$('endSymbol').textContent=won?'✦':'☂';$('endEyebrow').textContent=won?'THE DESK IS YOURS':'A MINOR PAPERWORK INCIDENT';$('endTitle').textContent=won?'Beautifully trashed.':'Back to the drawing desk.';$('endMessage').textContent=won?'Your scrap pack took down every rival desk. Tiny troops, tremendous teamwork.':'The rival destroyed your desks. Try an earlier expansion, more workers, or a different troop mix.';$('endStats').innerHTML=`<div><b>${Math.floor(game.time/60)}:${String(Math.floor(game.time)%60).padStart(2,'0')}</b>TIME</div><div><b>${game.stats?.collected?.[0]??0}</b>TRASH GATHERED</div><div><b>${game.stats?.trained?.[0]??0}</b>UNITS TRAINED</div>`;$('endOverlay').hidden=false;sound(won?'victory':'defeat');}
 function frame(now){const dt=Math.min(.05,(now-lastFrame)/1000);lastFrame=now;
  if(usable()){
-  let dx=0,dy=0;if(keys.has('arrowleft'))dx+=480*dt;if(keys.has('arrowright'))dx-=480*dt;if(keys.has('arrowup'))dy+=480*dt;if(keys.has('arrowdown'))dy-=480*dt;if(dx||dy)renderer.pan(dx,dy);
+  let dx=0,dy=0;if(keys.has('arrowleft'))dx+=480*dt;if(keys.has('arrowright'))dx-=480*dt;if(keys.has('arrowup'))dy+=480*dt;if(keys.has('arrowdown'))dy-=480*dt;
+  // Desktop edge scrolling follows the cursor only over the battlefield itself.
+  // A captured drag, touch, or the HUD must never start moving the camera.
+  if(mouseHover&&!pointerState&&!drag&&!pinch&&!touches.size){
+   const edge=26;
+   const edgeSpeed=(at,size)=>at<edge?Math.min(1,(edge-at)/edge):at>size-edge?-Math.min(1,(at-size+edge)/edge):0;
+   let ex=edgeSpeed(mouseHover.x,mouseHover.width),ey=edgeSpeed(mouseHover.y,mouseHover.height);const length=Math.hypot(ex,ey);if(length>1){ex/=length;ey/=length;}
+   dx+=ex*680*dt;dy+=ey*680*dt;
+  }
+  if(dx||dy){renderer.pan(dx,dy);if(mouseHover)pointer=renderer.screenToWorld(mouseHover.clientX,mouseHover.clientY);}
   game.update(dt);if((game.winner!==null||game.teams[0].eliminated)&&!endShown)endMatch();
  }
- renderer.draw({selected,pointer,drag,mode,paused:paused||inLobby,time:game.time});
- uiTick+=dt;if(uiTick>.2){uiTick=0;updateUI();renderer.drawMinimap($('minimap'));}
+ renderer.draw({selected,pointer,drag,mode,abilityType,paused:paused||inLobby,time:game.time});
+ uiTick+=dt;if(uiTick>=.1){uiTick=0;updateUI();renderer.drawMinimap($('minimap'));}
  requestAnimationFrame(frame);
 }
 resetGame();updateSound();icons();requestAnimationFrame(frame);

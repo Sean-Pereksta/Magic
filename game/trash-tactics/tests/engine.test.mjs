@@ -133,8 +133,9 @@ test('a twig walks to a construction site; cabinets add supply only when complet
   game._think = Infinity;
   const worker = own(game, 'twig')[0];
   const initial = game.getSupply(0).cap;
-  assert(!game.build([worker.id], 'cabinet', 330, 800).ok, 'cannot overlap the desk');
-  const result = game.build([worker.id], 'cabinet', 600, 1000);
+  const home=game.starts[0];
+  assert(!game.build([worker.id], 'cabinet', home.x, home.y).ok, 'cannot overlap the desk');
+  const result = game.build([worker.id], 'cabinet', home.x+270, home.y+200);
   assert(result.ok);
   const building = game.getEntity(result.entityId);
   assert.equal(game.getSupply(0).cap, initial);
@@ -212,16 +213,17 @@ test('scissors sweep kills paper in the chosen forward arc only', () => {
 
 test('grouped rocks land in separate nearby positions, respecting impassable scenery', () => {
   const game = arena('breakroom'); game.teams[0].upgrades.rock = true;
-  const rocks = [spawn(game, 'rock', 0, 800, 700), spawn(game, 'rock', 0, 830, 700), spawn(game, 'rock', 0, 860, 700)];
-  assert(game.ability(rocks.map(e => e.id), 1200, 700).ok);
+  const rocks = [spawn(game, 'rock', 0, 1960, 1440), spawn(game, 'rock', 0, 1990, 1440), spawn(game, 'rock', 0, 2020, 1440)];
+  assert(game.ability(rocks.map(e => e.id), 2360, 1440).ok);
   const destinations = rocks.map(e => ({x:e.leap.toX, y:e.leap.toY}));
   assert.equal(new Set(destinations.map(p => `${p.x},${p.y}`)).size, rocks.length);
-  for (const p of destinations) assert(Math.hypot(p.x - 1200, p.y - 700) < 100);
+  for (const p of destinations) assert(Math.hypot(p.x - 2360, p.y - 1440) < 100);
   advance(game, .7);
   assert(rocks.every(e => !e.leap));
   rocks.forEach((e, i) => assert(Math.hypot(e.x - destinations[i].x, e.y - destinations[i].y) < 5));
   const rock = rocks[0]; rock.abilityCooldown = 0;
-  assert(game.ability([rock.id], 1200, 520).ok, 'targeting scenery finds a nearby valid landing');
+  assert(game._blocked(2360,1080,rock.r),'the leap target is inside the enlarged cup');
+  assert(game.ability([rock.id], 2360, 1080).ok, 'targeting scenery finds a nearby valid landing');
   const landing = {x:rock.leap.toX, y:rock.leap.toY};
   for (const o of game.map.obstacles) assert(!(landing.x > o.x - rock.r && landing.x < o.x + o.w + rock.r && landing.y > o.y - rock.r && landing.y < o.y + o.h + rock.r));
 });
@@ -229,10 +231,10 @@ test('grouped rocks land in separate nearby positions, respecting impassable sce
 test('move commands navigate around scenery on both maps', () => {
   for (const map of Object.keys(MAPS)) {
     const game = arena(map);
-    const unit = spawn(game, 'rock', 0, 850, map === 'breakroom' ? 520 : 590);
-    const target = {x:1800, y:unit.y};
+    const unit = spawn(game, 'rock', 0, 1700, map === 'breakroom' ? 1040 : 1180);
+    const target = {x:3600, y:unit.y};
     game.command([unit.id], {type:'move', ...target});
-    advance(game, 17, () => {
+    advance(game, 34, () => {
       for (const o of game.map.obstacles) assert(!(unit.x > o.x - unit.r + .5 && unit.x < o.x + o.w + unit.r - .5 && unit.y > o.y - unit.r + .5 && unit.y < o.y + o.h + unit.r - .5));
     });
     assert(Math.hypot(unit.x - target.x, unit.y - target.y) < 18, `${map} route reaches its destination`);
@@ -268,7 +270,7 @@ test('placing a blueprint over ground units clears its footprint immediately', (
 
 test('fifty troops push apart, travel through a corridor, and retain separate footprints at rest', t => {
   const game = arena('breakroom');
-  const squad = Array.from({length:50}, (_, i) => spawn(game, 'rock', 0, 720 + i % 5 * 4, 780 + Math.floor(i / 5) * 4));
+  const squad = Array.from({length:50}, (_, i) => spawn(game, 'rock', 0, 1440 + i % 5 * 4, 1560 + Math.floor(i / 5) * 4));
   const minDistance = () => {
     let min = Infinity;
     for (let i = 0; i < squad.length; i++) for (let j = i + 1; j < squad.length; j++) min = Math.min(min, Math.hypot(squad[i].x - squad[j].x, squad[i].y - squad[j].y));
@@ -276,9 +278,9 @@ test('fifty troops push apart, travel through a corridor, and retain separate fo
   };
   advance(game, 1);
   assert(minDistance() >= 36, 'an initially packed squad separates into physical footprints');
-  game.command(squad.map(e => e.id), {type:'move', x:1660, y:800});
+  game.command(squad.map(e => e.id), {type:'move', x:3320, y:1600});
   let minimumMoving = Infinity;
-  advance(game, 18, () => {
+  advance(game, 36, () => {
     minimumMoving = Math.min(minimumMoving, minDistance());
     for (const unit of squad) {
       for (const o of game.map.obstacles) assert(!(unit.x > o.x - unit.r + .5 && unit.x < o.x + o.w + unit.r - .5 && unit.y > o.y - unit.r + .5 && unit.y < o.y + o.h + unit.r - .5), 'pushback cannot place a troop inside scenery');
@@ -287,7 +289,7 @@ test('fifty troops push apart, travel through a corridor, and retain separate fo
   });
   assert(minimumMoving >= 35.9, 'troop bodies stay apart while the group moves');
   assert(minDistance() >= 40.8, 'resting troops keep a visible gap');
-  assert(squad.every(e => e.x > 1400), 'the whole squad clears the corridor');
+  assert(squad.every(e => e.x > 2800), 'the whole squad clears the corridor');
   assert.equal(new Set(squad.map(e => `${Math.round(e.x)},${Math.round(e.y)}`)).size, 50);
   t.diagnostic(`50 troops: minimum moving spacing ${minimumMoving.toFixed(2)}, resting spacing ${minDistance().toFixed(2)} world pixels (36-pixel bodies).`);
 });
@@ -315,6 +317,7 @@ test('all six map layouts have equal starting economies, safe camps and strategi
   for (const map of Object.keys(MAPS)) for (const players of [2, 3, 4]) {
     const game = new Game({map, players});
     assert.equal(game.teams.length, players);
+    assert.equal(game.width,4800);assert.equal(game.height,3200);
     assert.equal(game.stats.collected.length, players);
     assert(game.map.lanes.length >= 3);
     assert(game.map.expansions.length >= 5);
@@ -341,18 +344,18 @@ test('sizeable squads can cross every map layout without terrain or formation go
   for (const map of Object.keys(MAPS)) for (const players of [2, 3, 4]) {
     const game = arena(map, players), start = game.starts[0], enemy = game.starts[1];
     for (const e of game.entities) e.hp = 1e8;
-    const len = Math.hypot(1200 - start.x, 800 - start.y), fx = (1200 - start.x) / len, fy = (800 - start.y) / len;
+    const len = Math.hypot(game.width/2 - start.x, game.height/2 - start.y), fx = (game.width/2 - start.x) / len, fy = (game.height/2 - start.y) / len;
     const reserved = [], squad = [];
     for (let i = 0; i < 50; i++) {
       const p = game._freePoint(start.x + fx * 300 + (i % 10 - 4.5) * 44, start.y + fy * 300 + (Math.floor(i / 10) - 2) * 44, 18, reserved);
       reserved.push({...p, r:18}); squad.push(spawn(game, 'rock', 0, p.x, p.y));
     }
-    const elen = Math.hypot(1200 - enemy.x, 800 - enemy.y);
-    game.command(squad.map(e => e.id), {type:'move', x:enemy.x + (1200 - enemy.x) / elen * 250, y:enemy.y + (800 - enemy.y) / elen * 250});
+    const elen = Math.hypot(game.width/2 - enemy.x, game.height/2 - enemy.y);
+    game.command(squad.map(e => e.id), {type:'move', x:enemy.x + (game.width/2 - enemy.x) / elen * 250, y:enemy.y + (game.height/2 - enemy.y) / elen * 250});
     const goals = squad.map(e => ({x:e.order.x, y:e.order.y, arrival:e.order.arrivalRadius||10}));
     for (let i = 0; i < squad.length; i++) assert(!game._blocked(goals[i].x, goals[i].y, squad[i].r));
     const reached = new Set(); let simulated = 0;
-    while (simulated < 40 && reached.size < 50) {
+    while (simulated < 80 && reached.size < 50) {
       game.update(.08); simulated += .08;
       squad.forEach((e, i) => {
         const remaining = Math.hypot(e.x - goals[i].x, e.y - goals[i].y);
@@ -369,8 +372,9 @@ test('sizeable squads can cross every map layout without terrain or formation go
 
 test('commands aimed inside a terrain obstacle project the entire formation onto reachable ground', () => {
   const game = arena();
-  const squad = Array.from({length:24}, (_, i) => spawn(game, 'rock', 0, 700 + i % 6 * 44, 650 + Math.floor(i / 6) * 44));
-  game.command(squad.map(e => e.id), {type:'move', x:1200, y:590});
+  const squad = Array.from({length:24}, (_, i) => spawn(game, 'rock', 0, 1700 + i % 6 * 44, 1300 + Math.floor(i / 6) * 44));
+  assert(game._blocked(2400,1180,18),'the command target is inside an enlarged book');
+  game.command(squad.map(e => e.id), {type:'move', x:2400, y:1180});
   const goals = squad.map(e => ({x:e.order.x, y:e.order.y}));
   for (let i = 0; i < squad.length; i++) assert(!game._blocked(goals[i].x, goals[i].y, squad[i].r));
   advance(game, 35);
@@ -398,7 +402,7 @@ for (const players of [3, 4]) {
       };
     }
     const started = performance.now();
-    advance(game, players === 4 ? 180 : 110, () => {
+    advance(game, players === 4 ? 240 : 170, () => {
       for (let team = 1; team < players; team++) assert.equal(game.teams[team].trash, 300 + game.stats.collected[team] - spent[team], 'each bot pays from its own gathered income');
     });
     for (let team = 1; team < players; team++) {
@@ -445,10 +449,10 @@ for (const difficulty of ['easy', 'normal', 'hard']) {
       };
     }
     let sawAttack = false;
-    advance(game, difficulty === 'easy' ? 210 : 175, () => {
+    advance(game, difficulty === 'easy' ? 250 : 215, () => {
       assert(game.teams[1].trash >= 0, 'AI cannot overspend');
       assert.equal(game.teams[1].trash, 300 + game.stats.collected[1] - spent, 'AI receives no free resources');
-      if (game.entities.some(e => e.team === 1 && ['rock','paper','scissors'].includes(e.type) && e.x < 1100)) sawAttack = true;
+      if (game.entities.some(e => e.team === 1 && ['rock','paper','scissors'].includes(e.type) && e.x < game.width/2-100)) sawAttack = true;
     });
     assert(game.stats.collected[1] > 1000);
     assert(game.stats.trained[1] > 10);

@@ -125,7 +125,7 @@ function drawTrash(c,options={}){
 
 export class Renderer {
  constructor(canvas,game){this.canvas=canvas;this.ctx=canvas.getContext('2d');this.game=game;this.camera={x:0,y:0,zoom:.9};this.width=800;this.height=600;this.marker=null;this.lastDraw=performance.now();this.motion=new Map();this.resize();this.centerOn(600,800);}
- resize(){const rect=this.canvas.getBoundingClientRect();this.width=Math.max(1,rect.width);this.height=Math.max(1,rect.height);const dpr=Math.min(window.devicePixelRatio||1,2);this.dpr=dpr;this.canvas.width=Math.round(this.width*dpr);this.canvas.height=Math.round(this.height*dpr);this.clampCamera();}
+ resize(){const center={x:this.camera.x+this.width/this.camera.zoom/2,y:this.camera.y+this.height/this.camera.zoom/2};const rect=this.canvas.getBoundingClientRect();this.width=Math.max(1,rect.width);this.height=Math.max(1,rect.height);const dpr=Math.min(window.devicePixelRatio||1,2);this.dpr=dpr;this.canvas.width=Math.round(this.width*dpr);this.canvas.height=Math.round(this.height*dpr);this.camera.x=center.x-this.width/this.camera.zoom/2;this.camera.y=center.y-this.height/this.camera.zoom/2;this.clampCamera();}
  clampCamera(){const g=this.game;const w=g.width||2400,h=g.height||1600;const vw=this.width/this.camera.zoom,vh=this.height/this.camera.zoom;this.camera.x=Math.max(-80,Math.min(w-vw+80,this.camera.x));this.camera.y=Math.max(-80,Math.min(h-vh+80,this.camera.y));if(vw>w+160)this.camera.x=(w-vw)/2;if(vh>h+160)this.camera.y=(h-vh)/2;}
  centerOn(x,y){this.camera.x=x-this.width/this.camera.zoom/2;this.camera.y=y-this.height/this.camera.zoom/2;this.clampCamera();}
  pan(dx,dy){this.camera.x-=dx/this.camera.zoom;this.camera.y-=dy/this.camera.zoom;this.clampCamera();}
@@ -134,16 +134,19 @@ export class Renderer {
  worldToScreen(x,y){return{x:(x-this.camera.x)*this.camera.zoom,y:(y-this.camera.y)*this.camera.zoom};}
  draw(state={}){
  const c=this.ctx,g=this.game,cam=this.camera;const now=performance.now(),dt=Math.min(.1,(now-this.lastDraw)/1000);this.lastDraw=now;this.time=state.time??g.time??now/1000;
+ if(this._motionGame!==g){this.motion.clear();this._motionGame=g;}
+ else if(this.motion.size>(g.entities?.length||0)+64){const live=new Set((g.entities||[]).filter(e=>e.hp>0).map(e=>e.id));for(const id of this.motion.keys())if(!live.has(id))this.motion.delete(id);}
  c.setTransform(this.dpr,0,0,this.dpr,0,0);c.clearRect(0,0,this.width,this.height);c.fillStyle='#e2d8c3';c.fillRect(0,0,this.width,this.height);c.save();c.scale(cam.zoom,cam.zoom);c.translate(-cam.x,-cam.y);this.drawGround(c);
- const entities=(g.entities||[]).filter(e=>e.hp>0&&!e.transportedBy);const selected=state.selected||new Set();
+ this.drawFog(c);
+ const entities=(g.entities||[]).filter(e=>e.hp>0&&!e.transportedBy&&this.entityVisible(e));const selected=state.selected||new Set();
  // Defense coverage is painted on the ground before troops and structures.
  for(const e of entities)if(e.type==='mouse'&&e.team===0&&selected.has(e.id)){c.save();c.setLineDash([7,9]);ellipse(c,e.x,e.y,310,310,teamColor(e.team)+'05',teamColor(e.team)+'60',1.4/cam.zoom);c.restore();}
- for(const e of entities)if(e.type==='trash')this.drawEntity(c,e,selected.has(e.id));
- for(const e of entities.filter(e=>e.type!=='trash'&&e.type!=='cd').sort((a,b)=>a.y-b.y))if(this.visible(e.x,e.y,110))this.drawEntity(c,e,selected.has(e.id));
+ for(const e of entities)if(e.type==='trash'&&this.visible(e.x,e.y,80))this.drawEntity(c,e,selected.has(e.id));
+ for(const e of entities.filter(e=>e.type!=='trash'&&e.type!=='cd'&&this.visible(e.x,e.y,110)).sort((a,b)=>a.y-b.y))this.drawEntity(c,e,selected.has(e.id));
  // Air transports stay above every ground troop, structure, and obstacle.
  for(const e of entities)if(e.type==='cd'&&this.visible(e.x,e.y,110))this.drawEntity(c,e,selected.has(e.id));
- for(const projectile of g.projectiles||[])this.drawProjectile(c,projectile);
- for(const fx of g.effects||[])this.drawEffect(c,fx);
+ for(const projectile of g.projectiles||[])if(this.pointVisible(projectile.x,projectile.y))this.drawProjectile(c,projectile);
+ for(const fx of g.effects||[])if(this.pointVisible(fx.x,fx.y))this.drawEffect(c,fx);
  if(this.marker){this.marker.life-=dt;if(this.marker.life>0){const m=this.marker;const color=m.type==='attack'?'#e56d54':TEAL;const p=1-m.life/.8;c.strokeStyle=color;c.lineWidth=2.5/cam.zoom;c.globalAlpha=1-p;ellipse(c,m.x,m.y,12+p*25,6+p*12,null,color,2.5/cam.zoom);line(c,[[m.x-6,m.y],[m.x+6,m.y]],color,2/cam.zoom);line(c,[[m.x,m.y-6],[m.x,m.y+6]],color,2/cam.zoom);c.globalAlpha=1;}else this.marker=null;}
  this.drawPlacement(c,state);
  c.restore();
@@ -151,13 +154,38 @@ export class Renderer {
  c.setTransform(1,0,0,1,0,0);
  }
  visible(x,y,r=0){return x+r>this.camera.x&&y+r>this.camera.y&&x-r<this.camera.x+this.width/this.camera.zoom&&y-r<this.camera.y+this.height/this.camera.zoom;}
+ pointVisible(x,y){return this.game.canSee?.(0,x,y)??true;}
+ entityVisible(e){return e.team===0||(this.game.isVisible?.(e,0)??this.pointVisible(e.x,e.y));}
+ drawFog(c){
+ const g=this.game,fog=g.fog;if(!fog?.teams?.[0])return;
+ if(this._fogGame!==g||this._fogRevision!==fog.revision||!this._fogCanvas){
+  this._fogGame=g;this._fogRevision=fog.revision;
+  if(!this._fogCanvas)this._fogCanvas=document.createElement('canvas');
+  const surface=this._fogCanvas;surface.width=fog.cols;surface.height=fog.rows;
+  const f=surface.getContext('2d'),team=fog.teams[0];
+  // Row runs keep a large unexplored map to a single opaque fill rather than
+  // thousands of tiny Canvas calls. The low-resolution texture softens edges.
+  f.fillStyle='#142427';f.fillRect(0,0,fog.cols,fog.rows);f.fillStyle='rgba(20,36,39,.68)';
+  const stateAt=i=>team.visible[i]?2:team.explored[i]?1:0;
+  for(let y=0;y<fog.rows;y++)for(let x=0;x<fog.cols;){
+   const start=x,state=stateAt(y*fog.cols+x);while(x<fog.cols&&stateAt(y*fog.cols+x)===state)x++;
+   if(state){f.clearRect(start,y,x-start,1);if(state===1)f.fillRect(start,y,x-start,1);}
+  }
+ }
+ c.save();c.imageSmoothingEnabled=true;c.drawImage(this._fogCanvas,0,0,g.width,g.height);c.restore();
+ }
  drawGround(c){
  const g=this.game,w=g.width||2400,h=g.height||1600;
  if(this._groundMap!==g.map||!this._groundCanvas){
-  this._groundMap=g.map;this._groundCanvas=document.createElement('canvas');this._groundCanvas.width=w;this._groundCanvas.height=h;this.paintGround(this._groundCanvas.getContext('2d'));
+  this._groundMap=g.map;this._groundCanvas=document.createElement('canvas');
+  // Keep very large battlefields under 8 MP of scenery memory. Troops, effects,
+  // selection rings and the viewport always render at the device's full scale.
+  this._groundPixelScale=Math.min(1,Math.sqrt(8000000/(w*h)),4096/w,4096/h);
+  this._groundCanvas.width=Math.max(1,Math.floor(w*this._groundPixelScale));this._groundCanvas.height=Math.max(1,Math.floor(h*this._groundPixelScale));
+  const ground=this._groundCanvas.getContext('2d');ground.setTransform(this._groundPixelScale,0,0,this._groundPixelScale,0,0);this.paintGround(ground);
  }
- c.drawImage(this._groundCanvas,0,0);
- for(const e of g.entities||[])if(e.type==='desk'&&e.hp>0){ellipse(c,e.x,e.y+12,135,90,teamColor(e.team)+'0a');}
+ c.drawImage(this._groundCanvas,0,0,w,h);
+ for(const e of g.entities||[])if(e.type==='desk'&&e.hp>0&&this.entityVisible(e)){ellipse(c,e.x,e.y+12,135,90,teamColor(e.team)+'0a');}
  }
  paintGround(c){
  const g=this.game,w=g.width||2400,h=g.height||1600,breakroom=g.map?.id==='breakroom';
@@ -175,13 +203,15 @@ export class Renderer {
   for(let y=105;y<h-80;y+=115){ellipse(c,74,y,8,10,'#c7b99b33');ellipse(c,72,y-1,6,8,'#af9c7635');line(c,[[39,y-4],[67,y-4]],'#7e8b7a44',3);line(c,[[39,y-1],[67,y-1]],'#ebe6d2',1);}
  }
  // Slightly uneven paper grain makes the tabletop feel drawn, without obscuring units.
- for(let i=0;i<2200;i++){const x=42+(i*593.113)%(w-95),y=43+(i*367.831)%(h-100);ellipse(c,x,y,.5+(i%3)*.22,.35,'#8e8b6020');}
+ for(let i=0;i<Math.ceil(2200*w*h/3840000);i++){const x=42+(i*593.113)%(w-95),y=43+(i*367.831)%(h-100);ellipse(c,x,y,.5+(i%3)*.22,.35,'#8e8b6020');}
+ this.paintRegions(c,breakroom);
  const lanes=g.map?.lanes||[
   [[330,800],[590,800],[840,800],[1200,800],[1560,800],[1810,800],[2070,800]],
   [[460,710],[670,410],[1030,390],[1370,390],[1730,410],[1940,710]],
   [[460,895],[680,1220],[1030,1240],[1370,1240],[1720,1220],[1940,895]]
  ];
- lanes.forEach((path,i)=>{const points=Array.isArray(path)?path:(path.points||[]);if(points.length<2)return;c.save();c.lineJoin='round';c.lineCap='round';line(c,points,breakroom?'#c5ceb52c':'#d4c9a837',i===0?173:135);line(c,points,breakroom?'#f3f0dc77':'#f7f0db77',i===0?154:116);line(c,points,'#fff8e52a',i===0?120:87);c.restore();});
+ lanes.forEach((path,i)=>{const points=Array.isArray(path)?path:(path.points||[]);if(points.length<2)return;c.save();c.lineJoin='round';c.lineCap='round';line(c,points,breakroom?'#9ba98e38':'#b5a47735',i===0?178:142);line(c,points,breakroom?'#dce1ca':'#e6d9b5',i===0?166:130);line(c,points,breakroom?'#edf0dc':'#f5ebcf',i===0?147:111);line(c,points,'#fff8e542',i===0?104:77);c.setLineDash([3,17]);line(c,points,breakroom?'#a9b5a05c':'#c5ae7e60',1.2);c.restore();});
+ this.paintTerrain(c,breakroom);
  // Flattened sticky notes and napkins mark the sheltered starting yards.
  for(const desk of (g.entities||[]).filter(e=>e.type==='desk')){
   const x=desk.x; c.save();c.translate(x,desk.y+15);c.rotate(x<w/2?-.025:.025);rr(c,-182,-186,365,382,4);shape(c,teamColor(desk.team)+'08','#c6cbaa35',1);line(c,[[-175,-180],[174,-180]],'#fff7e54d',2);rr(c,-42,-194,85,21,2);shape(c,'#e5d4a13d',null);c.restore();
@@ -190,23 +220,103 @@ export class Renderer {
  for(const e of g.entities||[])if(e.type==='trash'){
   ellipse(c,e.x,e.y+15,43,29,breakroom?'#bdc8a31b':'#b6bf8d16');c.save();c.setLineDash([3,7]);ellipse(c,e.x,e.y+14,47,31,null,'#99ad8130',1);c.restore();
  }
- for(const e of g.map?.expansions||[]){const x=Array.isArray(e)?e[0]:e.x,y=Array.isArray(e)?e[1]:e.y;ellipse(c,x,y,117,79,'#eff1d42a');for(const sx of [-1,1])for(const sy of [-1,1])line(c,[[x+sx*92,y+sy*48],[x+sx*92,y+sy*61],[x+sx*78,y+sy*61]],'#91ab7c35',2);}
+ for(const e of g.map?.expansions||[]){const x=Array.isArray(e)?e[0]:e.x,y=Array.isArray(e)?e[1]:e.y;ellipse(c,x,y,117,79,'#eff1d42a');for(const sx of [-1,1])for(const sy of [-1,1])line(c,[[x+sx*92,y+sy*48],[x+sx*92,y+sy*61],[x+sx*78,y+sy*61]],'#718c6570',2);c.save();c.translate(x+82,y+61);c.rotate(-.05);rr(c,-20,-9,40,18,2);shape(c,'#e5d3949c','#a28f5a66',.8);c.fillStyle='#7b8056';c.font='bold 8px "Trebuchet MS",sans-serif';c.textAlign='center';c.fillText('EXPAND',0,3);c.restore();}
  // Peripheral cable, coffee marks and little paper scraps add scale, staying flat under play.
  this.paintDecor(c,breakroom);
  c.restore();
- for(const o of g.map?.obstacles||[])this.drawObstacle(c,o,true);
+ for(const o of g.map?.obstacles||[])if(o.type!=='cliff')this.drawObstacle(c,o,true);
  // The paper curls at two corners, leaving the warm wooden table visible beneath.
  c.beginPath();c.moveTo(w-44,h-118);c.lineTo(w-44,h-46);c.lineTo(w-115,h-46);c.quadraticCurveTo(w-74,h-72,w-44,h-118);shape(c,'#ded3b5','#c5b697',1.2);c.beginPath();c.moveTo(w-44,h-118);c.quadraticCurveTo(w-74,h-72,w-115,h-46);shape(c,null,'#f8f1d9',2);
+ }
+ paintRegions(c,breakroom){
+ const g=this.game,w=g.width||2400,h=g.height||1600;
+ const regions=g.map?.regions||[],patch=(x,y,rx,ry,seed)=>{
+  c.beginPath();for(let j=0;j<18;j++){const a=j*Math.PI/9,r=.88+Math.sin(j*2.71+seed)*.1,px=x+Math.cos(a)*rx*r,py=y+Math.sin(a)*ry*r;j?c.lineTo(px,py):c.moveTo(px,py);}c.closePath();
+ };
+ // Broad neighborhoods give the map readable landmarks between its routes.
+ // These are flat surface materials; only outlined solid props block movement.
+ const cols=Math.max(2,Math.ceil(w/850)),rows=Math.max(2,Math.ceil(h/750));
+ for(let iy=0;iy<rows;iy++)for(let ix=0;ix<cols;ix++){
+  const seed=iy*cols+ix,x=(ix+.46+(iy%2)*.08)*w/cols,y=(iy+.52)*h/rows,kind=(ix+iy*2)%3,rx=w/cols*.46,ry=h/rows*.41;
+  c.save();patch(x,y,rx,ry,seed);const wash=c.createRadialGradient(x-rx*.2,y-ry*.25,10,x,y,rx);wash.addColorStop(0,breakroom?['#c5d0b6b0','#b6c4bd99','#c8b98e80'][kind]:['#c6d2a9b5','#d0c69baa','#b9cbc5a0'][kind]);wash.addColorStop(1,breakroom?'#c2c9ae22':'#c4cba222');shape(c,wash,breakroom?'#9faa8c30':'#9baa7e33',1.5);c.clip();
+  if(kind===2){
+   // Paper/cardboard layering stays shallow and textured, like cut desk mats.
+   for(let j=0;j<8;j++){const yy=y-ry+j*ry*.29;line(c,[[x-rx,yy],[x-rx*.2,yy-12],[x+rx,yy+22]],breakroom?'#ac9b7055':'#ad9d6c55',2);line(c,[[x-rx,yy+4],[x+rx,yy+26]],'#fff6d955',2);}
+  }else if(kind===1){
+   // Reclaimed circuit-board tracery is printed into the low-ground material.
+   for(let j=0;j<9;j++){const xx=x-rx+j*rx*.25,yy=y-ry+(j%4)*ry*.37;line(c,[[xx,y+ry],[xx,yy+25],[xx+25,yy],[xx+rx*.25,yy]],breakroom?'#76938b55':'#789b8c44',2);ellipse(c,xx+rx*.25,yy,4,4,breakroom?'#91a89877':'#93b39477');}
+  }else{
+   for(let j=0;j<35;j++){const xx=x-rx+(j*113.7)%(rx*2),yy=y-ry+(j*79.91)%(ry*2);c.save();c.translate(xx,yy);c.rotate(j*2.399);ellipse(c,0,0,15+j%4*2,3,breakroom?'#95a87944':'#89a67655');line(c,[[-9,0],[10,0]],'#6c8d6a44',1);c.restore();}
+  }
+  c.restore();
+ }
+ regions.forEach((r,i)=>{
+  const x=r.x,y=r.y,radius=r.r||180,kind=i%3;
+  c.save();patch(x,y,radius*1.2,radius*.84,i+7);shape(c,breakroom?['#d7ddbdcc','#b4c5b9bb','#d4bea0bb'][kind]:['#d4dfb9cc','#d8c392b5','#bbd0c5bb'][kind],breakroom?'#9ba87a66':'#94aa7c66',2);c.clip();
+  if(breakroom&&kind===2){
+   for(let j=0;j<3;j++){const rradius=radius*(.82-j*.08);c.beginPath();c.ellipse(x,y,rradius,rradius*.66,-.12,.15,Math.PI*1.94);shape(c,null,'#98724c45',j?2:9);}for(let j=0;j<8;j++)ellipse(c,x-radius*.6+(j*47)%(radius*1.3),y-radius*.4+(j*71)%(radius*.9),4+j%4,2+j%3,'#af8a5c66');
+  }else if(kind===1){
+   const tile=40;for(let xx=x-radius*1.3;xx<x+radius*1.3;xx+=tile)for(let yy=y-radius;yy<y+radius;yy+=tile){rr(c,xx+2,yy+2,tile-4,tile-4,3);shape(c,breakroom?'#e6e8d0aa':'#e8d6a6aa',breakroom?'#a7b39444':'#bda46b44',1);}
+  }else{
+   for(let j=0;j<34;j++){const angle=j*2.399,rad=radius*(.4+(j%7)*.07),xx=x+Math.cos(angle)*rad,yy=y+Math.sin(angle)*rad*.62;c.save();c.translate(xx,yy);c.rotate(angle);if(j%3===0){rr(c,-14,-6,28,12,1);shape(c,'#f4edcc88','#a9ad8160',.8);line(c,[[-8,-1],[8,-1]],'#bac19688',1);}else{ellipse(c,0,0,9+j%4,3,breakroom?'#9eb38977':'#8faa7888');line(c,[[-6,0],[6,0]],'#708c5c88',1);}c.restore();}
+  }
+  c.restore();
+  const label=breakroom?['NAPKIN GROVE','SERVICE TILES','COFFEE BASIN'][kind]:['PAPER GROVE','CORK FLATS','CIRCUIT YARD'][kind];
+  c.save();c.translate(x+radius*.25,y+radius*.7);c.rotate(-.025);rr(c,-55,-10,110,20,2);shape(c,'#f2ecc2bb','#9ea57b66',1);c.fillStyle='#6c7f61';c.font='bold 9px "Trebuchet MS",sans-serif';c.textAlign='center';c.fillText(label,0,3);c.restore();
+ });
+ }
+ paintTerrain(c,breakroom){
+ const g=this.game,plateaus=g.map?.plateaus||[],ramps=g.map?.ramps||[];
+ const upper=breakroom?'#d1ddc2':'#e9dcae',rim=breakroom?'#819d80':'#a59361',face=breakroom?'#a2b292':'#c1ab78';
+ for(const p of plateaus){
+  // Stacked desk mats and cork islands provide an unmistakable raised silhouette.
+  rr(c,p.x+5,p.y+10,p.w,p.h,12);shape(c,'#354b3a25',null);
+  rr(c,p.x,p.y,p.w,p.h,10);shape(c,upper,rim,1.6);
+  c.save();c.beginPath();c.roundRect(p.x+6,p.y+6,p.w-12,p.h-12,7);c.clip();
+  const surface=c.createLinearGradient(p.x,p.y,p.x+p.w,p.y+p.h);surface.addColorStop(0,breakroom?'#e2e9cf':'#f6eac1');surface.addColorStop(1,upper);c.fillStyle=surface;c.fillRect(p.x,p.y,p.w,p.h);
+  for(let y=p.y+18;y<p.y+p.h;y+=27)line(c,[[p.x+8,y],[p.x+p.w-8,y]],breakroom?'#91a57c19':'#b49c631b',1);
+  for(let i=0;i<Math.round(p.w*p.h/600);i++){const x=p.x+10+(i*73.17)%(p.w-20),y=p.y+10+(i*109.43)%(p.h-20);ellipse(c,x,y,.8+(i%3)*.5,.6,breakroom?'#788e6450':'#a48b5050');}
+  // Broken contours reinforce elevation without looking like a selectable unit.
+  c.setLineDash([6,8]);rr(c,p.x+14,p.y+14,p.w-28,p.h-28,6);shape(c,null,breakroom?'#8da58277':'#b49c6066',1.2);c.setLineDash([]);
+  c.restore();
+  const labelX=p.x+p.w/2,labelY=p.y+Math.min(45,p.h*.2);
+  c.save();c.globalAlpha=.7;c.fillStyle=breakroom?'#5d795d':'#827042';c.font='bold 12px "Trebuchet MS",sans-serif';c.textAlign='center';c.fillText((p.label||'LOOKOUT').toUpperCase(),labelX,labelY-15);c.font='bold 9px "Trebuchet MS",sans-serif';c.fillText('HIGH GROUND  +1',labelX,labelY);line(c,[[labelX-66,labelY-3],[labelX-60,labelY-9],[labelX-54,labelY-3]],c.fillStyle,1.4);c.restore();
+ }
+ for(const cliff of g.map?.cliffs||[]){
+  const{x,y,w,h}=cliff,vertical=h>w;
+  // These are the exact solid cliff footprints used by pathfinding.
+  rr(c,x+2,y+5,w,h,2);shape(c,'#475a372b',null);rr(c,x,y,w,h,2);shape(c,face,rim,1.2);
+  if(vertical){line(c,[[x+2,y+3],[x+2,y+h-3]],'#f6edceaa',1.8);line(c,[[x+w-3,y+3],[x+w-3,y+h-3]],rim,1);for(let yy=y+10;yy<y+h-4;yy+=16)line(c,[[x+3,yy],[x+w-3,yy+4]],rim+'88',1);}
+  else{line(c,[[x+3,y+2],[x+w-3,y+2]],'#f6edceaa',2);line(c,[[x+3,y+h-3],[x+w-3,y+h-3]],rim,1);for(let xx=x+10;xx<x+w-4;xx+=18)line(c,[[xx,y+3],[xx+4,y+h-3]],rim+'88',1);}
+ }
+ for(const r of ramps){
+  const{x,y,w,h,side}=r,vertical=side==='north'||side==='south',dx=side==='west'?1:side==='east'?-1:0,dy=side==='north'?1:side==='south'?-1:0;
+  const fromX=dx<0?x+w:x,fromY=dy<0?y+h:y,toX=dx>0?x+w:x,toY=dy>0?y+h:y;
+  const slope=c.createLinearGradient(fromX,fromY,toX,toY);slope.addColorStop(0,breakroom?'#b6c4a5':'#cbb583');slope.addColorStop(1,breakroom?'#e2e9cf':'#f6eac1');
+  rr(c,x,y,w,h,3);shape(c,slope,rim,1.4);
+  // Crosswise treads and inward chevrons make every traversable ramp legible.
+  if(vertical){for(let yy=y+9;yy<y+h-3;yy+=12)line(c,[[x+4,yy],[x+w-4,yy]],rim+'66',1);line(c,[[x+3,y+2],[x+3,y+h-2]],'#fff5d2ba',2);line(c,[[x+w-3,y+2],[x+w-3,y+h-2]],'#fff5d2ba',2);}
+  else{for(let xx=x+9;xx<x+w-3;xx+=12)line(c,[[xx,y+4],[xx,y+h-4]],rim+'66',1);line(c,[[x+2,y+3],[x+w-2,y+3]],'#fff5d2ba',2);line(c,[[x+2,y+h-3],[x+w-2,y+h-3]],'#fff5d2ba',2);}
+  c.save();c.translate(x+w/2,y+h/2);c.rotate(Math.atan2(dy,dx));for(const step of [-9,9])line(c,[[step-5,-7],[step+2,0],[step-5,7]],breakroom?'#668467aa':'#9a814caa',2);c.restore();
+ }
  }
  paintDecor(c,breakroom){
  const g=this.game,w=g.width||2400,h=g.height||1600;
  const safe=(x,y,r=30)=>!(g.map?.obstacles||[]).some(o=>x>o.x-r&&x<o.x+o.w+r&&y>o.y-r&&y<o.y+o.h+r)&&!(g.entities||[]).some(e=>e.type==='trash'?Math.hypot(x-e.x,y-e.y)<r+65:['desk','printer','cabinet','cdreader','mouse'].includes(e.type)&&Math.hypot(x-e.x,y-e.y)<r+100);
  c.save();c.globalAlpha=.52;c.beginPath();c.moveTo(82,460);c.bezierCurveTo(180,265,325,300,455,180);c.bezierCurveTo(550,100,630,170,730,90);shape(c,null,'#a5a990',5);c.beginPath();c.moveTo(w-84,h-420);c.bezierCurveTo(w-180,h-265,w-325,h-300,w-455,h-180);c.bezierCurveTo(w-550,h-100,w-630,h-170,w-730,h-90);shape(c,null,'#a5a990',5);c.restore();
- const rings=breakroom?[[630,210,79],[1780,1340,69],[1800,240,43],[575,1360,48]]:[[610,220,65],[1780,1380,48]];
+ const rings=(breakroom?[[630,210,79],[1780,1340,69],[1800,240,43],[575,1360,48]]:[[610,220,65],[1780,1380,48]]).map(([x,y,r])=>[x*w/2400,y*h/1600,r]);
  for(const [x,y,r]of rings){if(!safe(x,y,r))continue;c.save();c.translate(x,y);c.rotate(.27);c.beginPath();c.ellipse(0,0,r,r*.9,0,.1,Math.PI*1.96);shape(c,null,'#b8996d20',6);c.beginPath();c.ellipse(-2,1,r-5,r*.9-4,0,.15,Math.PI*1.92);shape(c,null,'#bea47c18',2);ellipse(c,r*.8,r*.78,7,4,'#b99a6e13');c.restore();}
- for(let i=0;i<88;i++){
+ // Small botanical/crumb islands break up the open areas. They are flat markings,
+ // while every impassable prop retains a solid outline and physical footprint.
+ for(let i=0;i<Math.ceil(46*w*h/3840000);i++){
+  const x=175+(i*457.27)%(w-350),y=125+(i*293.71)%(h-250);if(!safe(x,y,45))continue;
+  c.save();c.translate(x,y);c.rotate(i*.73);ellipse(c,0,1,24+i%5*4,13+i%4*2,breakroom?'#8ca77b1d':'#96a97620');
+  for(let j=0;j<7;j++){const a=j*2.399,px=Math.cos(a)*(8+j*2),py=Math.sin(a)*(5+j);if(breakroom){ellipse(c,px,py,2+j%3,1.5,'#ac986965');line(c,[[px-2,py-1],[px+1,py-2]],'#e5d69d88',.8);}else{c.save();c.translate(px,py);c.rotate(a);ellipse(c,0,0,4,1.8,j%2?'#94a97d7d':'#b8bf8f99');line(c,[[-2,0],[3,0]],'#70886480',.7);c.restore();}}
+  c.restore();
+ }
+ for(let i=0;i<Math.ceil(148*w*h/3840000);i++){
   const x=180+(i*137.47)%(w-340),y=105+(i*219.83)%(h-205);if(!safe(x,y,23))continue;c.save();c.translate(x,y);c.rotate(i*1.173);
-  if(i%5===0){rr(c,-10,-5,21,10,2);shape(c,'#c8d2c333','#9fac9a55',1.1);rr(c,-6,-2,12,4,1);shape(c,null,'#9fac9a55',.9);}
+  if(i%5===0){rr(c,-10,-5,21,10,3);shape(c,'#d7ddd059','#8d9e8b99',1.2);rr(c,-6,-2,12,4,2);shape(c,null,'#8d9e8b99',1);}
   else if(i%5===1){c.beginPath();c.moveTo(-8,-6);c.lineTo(5,-8);c.lineTo(10,4);c.lineTo(-4,7);c.closePath();shape(c,'#f6f0dc77','#c5bca13b',.8);line(c,[[-3,-2],[4,1]],'#c7b78e55',1);}
   else if(i%5===2){c.beginPath();c.arc(0,0,9,.2,4.7);shape(c,null,'#cbad714a',2.7);line(c,[[3,-9],[8,-5]],'#b99b6640',1);}
   else if(i%5===3){line(c,[[-7,4],[0,-4],[6,4]],'#8d9c7055',1.2);line(c,[[0,6],[0,-8]],'#8d9c7055',1.2);ellipse(c,-4,-4,3,1.5,'#a2b68133');}
@@ -323,8 +433,8 @@ export class Renderer {
  drawPlacement(c,state){
  const p=state.pointer;if(!p||!state.mode)return;const mode=state.mode;
  if(mode==='mouse'){c.save();c.setLineDash([7,9]);ellipse(c,p.x,p.y,310,310,TEAL+'05',TEAL+'60',1.4/this.camera.zoom);c.restore();}
- if(['desk','cabinet','printer','cdreader','mouse'].includes(mode)){const raw=this.game.canBuild?.(mode,p.x,p.y);const valid=typeof raw==='object'?raw.ok:raw!==false;const r=mode==='desk'?64:['printer','cdreader'].includes(mode)?50:mode==='mouse'?42:39;c.save();c.globalAlpha=.55;drawIcon(c,mode,p.x,p.y,mode==='desk'?112:mode==='cdreader'?98:mode==='mouse'?80:mode==='printer'?94:74,0);ellipse(c,p.x,p.y+12,r,r*.5,valid?'#32a18c11':'#df715c22',valid?TEAL:CORAL,2);c.restore();}
- else if(mode==='ability'){const selection=(this.game.entities||[]).filter(e=>state.selected?.has(e.id));if(selection.some(e=>e.type==='scissors')){for(const e of selection.filter(e=>e.type==='scissors')){c.save();c.translate(e.x,e.y);c.rotate(Math.atan2(p.y-e.y,p.x-e.x));c.beginPath();c.moveTo(0,0);c.arc(0,0,125,-Math.PI*.34,Math.PI*.34);c.closePath();shape(c,'#eac45a20','#d1a23e99',1.5);c.restore();}}ellipse(c,p.x,p.y,24,12,'#eac45a15','#c49635',1.5);}
+ if(['desk','cabinet','printer','cdreader','mouse'].includes(mode)){const scouted=this.pointVisible(p.x,p.y),raw=scouted?this.game.canBuild?.(mode,p.x,p.y):false;const valid=typeof raw==='object'?raw.ok:raw!==false;const r=mode==='desk'?64:['printer','cdreader'].includes(mode)?50:mode==='mouse'?42:39;c.save();c.globalAlpha=.55;drawIcon(c,mode,p.x,p.y,mode==='desk'?112:mode==='cdreader'?98:mode==='mouse'?80:mode==='printer'?94:74,0);ellipse(c,p.x,p.y+12,r,r*.5,valid?'#32a18c11':scouted?'#df715c22':'#9aa9a522',valid?TEAL:scouted?CORAL:'#9aa9a5',2);c.restore();}
+ else if(mode==='ability'){const selection=(this.game.entities||[]).filter(e=>state.selected?.has(e.id)&&(!state.abilityType||e.type===state.abilityType));for(const e of selection){if(e.type==='scissors'){c.save();c.translate(e.x,e.y);c.rotate(Math.atan2(p.y-e.y,p.x-e.x));c.beginPath();c.moveTo(0,0);c.arc(0,0,125,-Math.PI*.34,Math.PI*.34);c.closePath();shape(c,'#eac45a20','#d1a23e99',1.5);c.restore();}else if(e.type==='rock'){c.save();c.setLineDash([5,9]);ellipse(c,e.x,e.y,420,420,null,'#b28e4255',1/this.camera.zoom);c.restore();line(c,[[e.x,e.y],[p.x,p.y]],'#b28e4277',1.2);}}ellipse(c,p.x,p.y,24,12,'#eac45a15','#c49635',1.5);}
  else if(mode==='drop'){
   const cds=(this.game.entities||[]).filter(e=>e.type==='cd'&&state.selected?.has(e.id)&&e.hp>0);
   c.save();c.setLineDash([5,5]);ellipse(c,p.x,p.y,42+Math.sin(this.time*4)*3,24,'#269b9810',TEAL,2);
@@ -336,10 +446,12 @@ export class Renderer {
  else if(mode==='attack'){line(c,[[p.x-9,p.y],[p.x+9,p.y]],CORAL,2);line(c,[[p.x,p.y-9],[p.x,p.y+9]],CORAL,2);ellipse(c,p.x,p.y,15,15,null,CORAL,1);}
  }
  drawMinimap(canvas){
- const c=canvas.getContext('2d');const rect=canvas.getBoundingClientRect();const dpr=Math.min(window.devicePixelRatio||1,2);if(canvas.width!==Math.round(rect.width*dpr)||canvas.height!==Math.round(rect.height*dpr)){canvas.width=Math.round(rect.width*dpr);canvas.height=Math.round(rect.height*dpr);}const w=rect.width,h=rect.height,g=this.game,sx=w/(g.width||2400),sy=h/(g.height||1600);c.setTransform(dpr,0,0,dpr,0,0);c.fillStyle='#ece7d5';c.fillRect(0,0,w,h);c.strokeStyle='#d7d1bb';c.lineWidth=.5;for(let x=0;x<w;x+=20){c.beginPath();c.moveTo(x,0);c.lineTo(x,h);c.stroke();}for(let y=0;y<h;y+=20){c.beginPath();c.moveTo(0,y);c.lineTo(w,y);c.stroke();}
- for(const o of g.map?.obstacles||[]){c.fillStyle='#c6c5ae';c.fillRect(o.x*sx,o.y*sy,o.w*sx,o.h*sy);}
- for(const e of g.entities||[]){if(e.hp<=0||e.transportedBy)continue;const building=['desk','printer','cabinet','cdreader','mouse'].includes(e.type);const r=building?3:e.type==='trash'?2.3:1.5;c.fillStyle=e.type==='trash'?'#94ac82':teamColor(e.team);if(building)c.fillRect(e.x*sx-r,e.y*sy-r,r*2,r*2);else if(e.type==='cd'){c.beginPath();c.moveTo(e.x*sx,e.y*sy-3);c.lineTo(e.x*sx+3,e.y*sy);c.lineTo(e.x*sx,e.y*sy+3);c.lineTo(e.x*sx-3,e.y*sy);c.closePath();c.fill();}else{c.beginPath();c.arc(e.x*sx,e.y*sy,r,0,Math.PI*2);c.fill();}}
- c.fillStyle='#ffffff15';c.strokeStyle='#667a6f';c.lineWidth=1.5;const cam=this.camera;c.fillRect(cam.x*sx,cam.y*sy,this.width/cam.zoom*sx,this.height/cam.zoom*sy);c.strokeRect(cam.x*sx,cam.y*sy,this.width/cam.zoom*sx,this.height/cam.zoom*sy);c.setTransform(1,0,0,1,0,0);
+ const c=canvas.getContext('2d');const rect=canvas.getBoundingClientRect();const dpr=Math.min(window.devicePixelRatio||1,2);if(canvas.width!==Math.round(rect.width*dpr)||canvas.height!==Math.round(rect.height*dpr)){canvas.width=Math.round(rect.width*dpr);canvas.height=Math.round(rect.height*dpr);}const w=rect.width,h=rect.height,g=this.game,sx=w/(g.width||2400),sy=h/(g.height||1600);c.setTransform(dpr,0,0,dpr,0,0);c.fillStyle='#d6dcc7';c.fillRect(0,0,w,h);
+ if(this._groundMap===g.map&&this._groundCanvas)c.drawImage(this._groundCanvas,0,0,w,h);
+ else{for(const p of g.map?.plateaus||[]){c.fillStyle='#bbc795';c.fillRect(p.x*sx,p.y*sy,p.w*sx,p.h*sy);}for(const o of g.map?.obstacles||[]){c.fillStyle='#939e7d';c.fillRect(o.x*sx,o.y*sy,o.w*sx,o.h*sy);}}
+ c.save();c.scale(sx,sy);this.drawFog(c);c.restore();
+ for(const e of g.entities||[]){if(e.hp<=0||e.transportedBy||!this.entityVisible(e))continue;const building=['desk','printer','cabinet','cdreader','mouse'].includes(e.type);const r=building?3:e.type==='trash'?2.3:1.5;c.fillStyle=e.type==='trash'?'#afc594':teamColor(e.team);if(building)c.fillRect(e.x*sx-r,e.y*sy-r,r*2,r*2);else if(e.type==='cd'){c.beginPath();c.moveTo(e.x*sx,e.y*sy-3);c.lineTo(e.x*sx+3,e.y*sy);c.lineTo(e.x*sx,e.y*sy+3);c.lineTo(e.x*sx-3,e.y*sy);c.closePath();c.fill();}else{c.beginPath();c.arc(e.x*sx,e.y*sy,r,0,Math.PI*2);c.fill();}}
+ c.fillStyle='#ffffff15';c.strokeStyle='#f2f4de';c.lineWidth=1.4;const cam=this.camera;c.fillRect(cam.x*sx,cam.y*sy,this.width/cam.zoom*sx,this.height/cam.zoom*sy);c.strokeRect(cam.x*sx,cam.y*sy,this.width/cam.zoom*sx,this.height/cam.zoom*sy);c.setTransform(1,0,0,1,0,0);
  }
 }
 
