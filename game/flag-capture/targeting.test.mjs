@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FACTIONS, unitDef } from './engine.mjs';
-import { actionColor, displayTargets } from './targeting.mjs';
+import { actionColor, displayTargets, groundPreviewCells } from './targeting.mjs';
 
 const colors = {
   bloomcall: 'heal', sporehop: 'move', belch: 'attack', sporeburst: 'attack',
@@ -9,7 +9,10 @@ const colors = {
   concordance: 'support', mercy: 'heal', sanctuary: 'support', ray: 'attack',
   nectar: 'heal', seedgrove: 'support', wardray: 'support', starstep: 'move',
   laughinghex: 'attack', crookedswap: 'attack',
-  broodlings: 'support', pocketmaws: 'support', bellmotes: 'support'
+  broodlings: 'support', pocketmaws: 'support', bellmotes: 'support',
+  rootguard:'support',thornfield:'attack',pinshot:'attack',pollenstep:'move',mycelium:'support',germinate:'heal',
+  grinward:'support',cinders:'attack',crosscut:'attack',riftstep:'move',rift:'support',detonate:'attack',
+  aegislink:'support',sanctum:'support',sunlance:'attack',prismwall:'support',dawnseal:'support',choirswap:'move'
 };
 const creature = (id, side, x, y, extra = {}) => ({
   id, side, x, y, hp: 8, maxHp: 10, shield: 0, readyAt: 0,
@@ -18,11 +21,65 @@ const creature = (id, side, x, y, extra = {}) => ({
 const selfAction = unit => ({ type: 'ability', unitId: unit.id, targetId: unit.id, x: unit.x, y: unit.y, label: 'Canonical skill' });
 const stateWith = (...units) => ({ width: 14, height: 11, time: 5, units });
 
-test('all twenty-one unique skills use their gameplay color; only healing skills are green', () => {
+test('ground footprint previews retain their canonical center and exclude unpaintable terrain',()=>{
+  const caster=creature('caster','player',1,1,{role:'shaper'}),definition=unitDef(caster);
+  const skillIndex=definition.abilities.findIndex(skill=>skill.groundKind==='mycelium');
+  const action={type:'ability',unitId:caster.id,skillIndex,x:2,y:2},snapshot=structuredClone(action);
+  const tiles=Array.from({length:25},(_,i)=>({x:i%5,y:Math.floor(i/5),terrain:'grass'}));
+  tiles[2*5+3].terrain='rock';tiles[3*5+2].terrain='water';tiles[2*5+2].terrain='grove';
+  const state={width:5,height:5,tiles,units:[caster]};
+  assert.deepEqual(groundPreviewCells(state,caster,action,unitDef),[{x:2,y:1},{x:1,y:2},{x:2,y:2}]);
+  assert.deepEqual(action,snapshot,'paint footprint does not turn neighboring squares into different command centers');
+  assert.deepEqual(groundPreviewCells(state,caster,{type:'move',x:2,y:2},unitDef),[]);
+  assert.deepEqual(groundPreviewCells(state,null,action,unitDef),[]);
+});
+
+test('edge footprints clip to the board and non-ground abilities never claim painted cells',()=>{
+  const caster=creature('caster','player',0,0,{role:'shaper'}),definition=unitDef(caster),skillIndex=definition.abilities.findIndex(skill=>skill.groundKind==='mycelium');
+  const state={tiles:Array.from({length:9},(_,i)=>({x:i%3,y:Math.floor(i/3),terrain:'grass'}))};
+  assert.deepEqual(groundPreviewCells(state,caster,{type:'ability',skillIndex,x:0,y:0},unitDef),[{x:0,y:0},{x:1,y:0},{x:0,y:1}]);
+  const healer=creature('healer','player',0,0);
+  assert.deepEqual(groundPreviewCells(state,healer,{type:'ability',skillIndex:0,x:0,y:0},unitDef),[]);
+});
+
+test('Pollen Skate and Riftstep preview both departure and arrival without claiming the intervening route',()=>{
+  const state={tiles:Array.from({length:25},(_,i)=>({x:i%5,y:Math.floor(i/5),terrain:'grass'}))};
+  for(const faction of ['bloom','chaos']){
+    const caster=creature('hop','player',0,2,{faction,role:'ranger'}),skillIndex=1,action={type:'ability',skillIndex,x:3,y:2};
+    assert.deepEqual(groundPreviewCells(state,caster,action,unitDef),[{x:0,y:2},{x:3,y:2}]);
+    assert.equal(actionColor(action,caster,unitDef),'move');
+  }
+});
+
+test('Curtain Collapse previews the blast across shorelines because flying enemies there can be damaged',()=>{
+  const caster=creature('jester','player',1,3,{faction:'chaos',role:'shaper'});
+  const state={tiles:Array.from({length:25},(_,i)=>({x:i%5,y:Math.floor(i/5),terrain:i===7?'water':i===13?'rock':'grass'}))};
+  const action={type:'ability',skillIndex:1,x:2,y:2},preview=groundPreviewCells(state,caster,action,unitDef);
+  assert.deepEqual(preview,[{x:2,y:1},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:2,y:3}]);
+  assert.equal(actionColor(action,caster,unitDef),'attack');assert.equal(action.x,2);assert.equal(action.y,2);
+});
+
+test('Rootguard and Grinning Ward show shieldable allies while retaining their canonical self center',()=>{
+  for(const faction of ['bloom','chaos']){
+    const caster=creature('guardian','player',2,2,{faction,role:'guardian',shield:5}),friend=creature('friend','player',3,2,{shield:4}),full=creature('full','player',2,3,{shield:5}),enemy=creature('enemy','ai',1,2);
+    const action={...selfAction(caster),skillIndex:0},before=structuredClone(action),result=displayTargets(stateWith(caster,friend,full,enemy),caster,[action],unitDef);
+    assert.deepEqual(result,[{...action,displayX:3,displayY:2}]);assert.deepEqual(action,before);
+    assert.equal(actionColor(result[0],caster,unitDef),'support');
+  }
+});
+
+test('Grinning Ward keeps a gold caster target when its root is useful but every friendly shield is full',()=>{
+  const caster=creature('gate','player',2,2,{faction:'chaos',role:'guardian',shield:5}),friend=creature('friend','player',3,2,{shield:5}),enemy=creature('enemy','ai',1,2),action={...selfAction(caster),skillIndex:0};
+  assert.deepEqual(displayTargets(stateWith(caster,friend,enemy),caster,[action],unitDef),[action]);
+  assert.deepEqual(displayTargets(stateWith(caster,friend),caster,[action],unitDef),[]);
+  assert.equal(actionColor(action,caster,unitDef),'support');
+});
+
+test('all thirty-nine unique skills use their gameplay color; only healing skills are green', () => {
   const expectedCounts = {
-    bloom: {leader:3,scout:1,brute:1,mystic:2,minion:0},
-    chaos: {leader:2,scout:1,brute:1,mystic:3,minion:0},
-    choir: {leader:2,scout:1,brute:1,mystic:3,minion:0}
+    bloom: {leader:3,scout:1,brute:1,mystic:2,guardian:2,ranger:2,shaper:2,minion:0},
+    chaos: {leader:2,scout:1,brute:1,mystic:3,guardian:2,ranger:2,shaper:2,minion:0},
+    choir: {leader:2,scout:1,brute:1,mystic:3,guardian:2,ranger:2,shaper:2,minion:0}
   };
   const kinds = new Set();
   for (const faction of Object.keys(FACTIONS)) {
@@ -35,14 +92,14 @@ test('all twenty-one unique skills use their gameplay color; only healing skills
         kinds.add(kind);
         const actual = actionColor({ type: 'ability', skillIndex }, unit, unitDef);
         assert.equal(actual, colors[kind], kind);
-        assert.equal(actual === 'heal', ['bloomcall', 'mercy', 'nectar'].includes(kind), kind);
+        assert.equal(actual === 'heal', ['bloomcall', 'mercy', 'nectar', 'germinate'].includes(kind), kind);
       }
       assert.equal(actionColor({ type: 'move' }, unit, unitDef), 'move');
       assert.equal(actionColor({ type: 'attack' }, unit, unitDef), 'attack');
       assert.equal(actionColor({ type: 'guard' }, unit, unitDef), 'support');
     }
   }
-  assert.equal(kinds.size, 21);
+  assert.equal(kinds.size, 39);
 });
 
 test('all three summons retain direct empty-square targets and use support gold', () => {

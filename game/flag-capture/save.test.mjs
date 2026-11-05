@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGame, MODES, DIFFICULTIES, DEFAULT_ARMY, advance, legalActions, applyAction, unitDef } from './engine.mjs';
+import { createGame, MODES, DIFFICULTIES, DEFAULT_ARMY, GROUND_EFFECTS, advance, legalActions, applyAction, unitDef } from './engine.mjs';
 import { CAMPAIGN, createCampaignBattle } from './campaign.mjs';
 import { parseBattleSave } from './save.mjs';
 
@@ -287,4 +287,65 @@ test('draft metadata rejects overspending, invalid roles and invalid initial dep
     game => { game.deployments.player[0] = {...game.deployments.player[1]}; }
   ];
   changes.forEach((change, index) => rejects(change, `malformed draft ${index}`));
+});
+
+function paintedSave(faction='bloom',role='shaper',kind='mycelium'){
+  const save=saveFor({playerFaction:faction,aiFaction:'chaos',opponentMode:'local',startingMoney:40,playerArmy:['leader',role],aiArmy:['leader','guardian']});
+  save.game.tiles.forEach(tile=>tile.terrain='grass');
+  const caster=save.game.units.find(unit=>unit.side==='player'&&unit.role===role),skillIndex=unitDef(caster).abilities.findIndex(skill=>skill.groundKind===kind);
+  assert.ok(skillIndex>=0,`${faction} ${role} paints ${kind}`);
+  const action=legalActions(save.game,caster.id).find(candidate=>candidate.type==='ability'&&candidate.skillIndex===skillIndex);
+  assert.ok(action);assert.equal(applyAction(save.game,action).ok,true);assert.ok(save.game.groundEffects.length>0);
+  return save;
+}
+
+test('all nine tactical troop types and all six lasting ground effects round-trip after real abilities',()=>{
+  for(const faction of ['bloom','chaos','choir']){
+    const save=saveFor({playerFaction:faction,aiFaction:faction,opponentMode:'local',startingMoney:40,playerArmy:['leader','guardian','ranger','shaper'],aiArmy:['leader','guardian','ranger','shaper']});
+    assert.deepEqual(parseBattleSave(JSON.stringify(save)),save,`${faction} tactical roster`);
+  }
+  for(const [faction,role,kind] of [['bloom','shaper','mycelium'],['bloom','guardian','thornfield'],['chaos','shaper','rift'],['chaos','guardian','cinders'],['choir','guardian','sanctum'],['choir','ranger','prismwall']]){
+    const save=paintedSave(faction,role,kind);
+    advance(save.game,1);
+    assert.deepEqual(parseBattleSave(save),save,`${kind} object`);
+    assert.deepEqual(parseBattleSave(JSON.stringify(save)),save,`${kind} JSON`);
+  }
+});
+
+test('legacy battles migrate missing ground state without mutating their saved source',()=>{
+  const save=saveFor();delete save.game.groundEffects;delete save.game.nextGroundId;
+  const before=structuredClone(save),parsed=parseBattleSave(save);
+  assert.deepEqual(parsed.game.groundEffects,[]);assert.equal(parsed.game.nextGroundId,0);
+  assert.deepEqual(save,before);parsed.game.groundEffects.push({kind:'mycelium'});assert.equal(save.game.groundEffects,undefined);
+});
+
+test('ground can outlive its caster, retain an expiry boundary, and coexist with hostile paint',()=>{
+  const save=paintedSave(),effect=save.game.groundEffects[0],caster=save.game.units.find(unit=>unit.id===effect.sourceId);
+  caster.hp=0;assert.ok(parseBattleSave(save),'fallen caster remains a valid source');
+  const rival=save.game.units.find(unit=>unit.side==='ai'&&unit.role==='guardian');
+  save.game.groundEffects.push({...effect,id:`g${++save.game.nextGroundId}`,kind:'cinders',side:'ai',sourceId:rival.id,expiresAt:effect.createdAt+GROUND_EFFECTS.cinders.duration});
+  assert.deepEqual(parseBattleSave(JSON.stringify(save)),save,'opposite sides may paint the same cell');
+  save.game.time=effect.expiresAt;assert.ok(parseBattleSave(save),'a paused expiry boundary is safe to resume');
+  advance(save.game,.1);assert.equal(save.game.groundEffects.length,0);
+});
+
+test('malformed ground ids, timers, ownership, terrain and duplicate layers fail closed without mutation',()=>{
+  const mutations=[
+    game=>{game.groundEffects={};},game=>{game.groundEffects=[null];},game=>{game.groundEffects=Array(game.width*game.height*2+1).fill(game.groundEffects[0]);},
+    game=>{game.nextGroundId=-1;},game=>{game.nextGroundId=0;},game=>{game.groundEffects[0].id='g999999';},
+    game=>{game.groundEffects[0].id='g1\" onclick=\"bad()';},game=>{game.groundEffects[0].kind='toString';},
+    game=>{game.groundEffects[0].kind='sanctum';},game=>{game.groundEffects[0].side='enemy';},
+    game=>{game.groundEffects[0].side='ai';},game=>{game.groundEffects[0].sourceId='u99999';},
+    game=>{game.groundEffects[0].x=-1;},game=>{game.groundEffects[0].y=1.5;},
+    game=>{game.groundEffects[0].createdAt=game.time+1;},game=>{game.groundEffects[0].createdAt=-1;},
+    game=>{game.groundEffects[0].expiresAt=game.groundEffects[0].createdAt;},game=>{game.groundEffects[0].expiresAt=9999;},
+    game=>{game.groundEffects[0].nextTickAt=Infinity;},game=>{game.groundEffects[0].nextTickAt=-1;},game=>{game.groundEffects[0].nextTickAt=9999;},
+    game=>{const effect=game.groundEffects[0];game.tiles[effect.y*game.width+effect.x].terrain='water';},
+    game=>{game.groundEffects.push({...game.groundEffects[0]});},
+    game=>{game.groundEffects.push({...game.groundEffects[0],id:`g${++game.nextGroundId}`});}
+  ];
+  for(const [index,change]of mutations.entries()){
+    const save=paintedSave();change(save.game);const before=structuredClone(save);
+    assert.equal(parseBattleSave(save),null,`malformed ground ${index}`);assert.deepEqual(save,before,`source preserved ${index}`);
+  }
 });

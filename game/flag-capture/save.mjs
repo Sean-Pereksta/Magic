@@ -1,4 +1,4 @@
-import { FACTIONS, MAPS, MODES, DIFFICULTIES, DEFAULT_ARMY, armyCost } from './engine.mjs';
+import { FACTIONS, MAPS, MODES, DIFFICULTIES, DEFAULT_ARMY, DRAFT_ROLES, GROUND_EFFECTS, armyCost } from './engine.mjs';
 import { CAMPAIGN } from './campaign.mjs';
 
 const SIDES = ['player', 'ai'];
@@ -28,13 +28,15 @@ export function parseBattleSave(value) {
   if (game.terrain === undefined) game.terrain = 'balanced';
   if (game.opponentMode === undefined) game.opponentMode = 'ai';
   if (game.startingMoney === undefined) game.startingMoney = 24;
+  if (game.groundEffects === undefined) game.groundEffects = [];
+  if (game.nextGroundId === undefined) game.nextGroundId = 0;
   if (game.armies === undefined) game.armies = {player:[...DEFAULT_ARMY],ai:[...DEFAULT_ARMY]};
   if (!own(MODES, game.mode) || !DENSITIES.has(game.terrain) || !own(DIFFICULTIES, game.difficulty)) return null;
   if (!['ai', 'local'].includes(game.opponentMode)) return null;
   if (!integer(game.startingMoney, 12, 40) || !record(game.armies)) return null;
   for (const side of SIDES) {
     const army = game.armies[side];
-    if (!Array.isArray(army) || army.length < 1 || army.length > 8 || !army.every(role => ['leader','scout','brute','mystic'].includes(role)) || army.filter(role => role === 'leader').length !== 1 || armyCost(army) > game.startingMoney) return null;
+    if (!Array.isArray(army) || army.length < 1 || army.length > 8 || !army.every(role => DRAFT_ROLES.includes(role)) || army.filter(role => role === 'leader').length !== 1 || armyCost(army) > game.startingMoney) return null;
   }
   if (game.deployments !== undefined) {
     if (!record(game.deployments)) return null;
@@ -95,6 +97,19 @@ export function parseBattleSave(value) {
       if (!passable(unit, definition.movement) || occupied.has(position(unit)) || ++counts[unit.side] > 8) return null;
       occupied.add(position(unit));
     }
+  }
+  if (!integer(game.nextGroundId) || !Array.isArray(game.groundEffects) || game.groundEffects.length > game.width*game.height*2) return null;
+  const effectIds=new Set(),paintedCells=new Set();
+  for(const effect of game.groundEffects){
+    if(!coordinate(game,effect)||!own(GROUND_EFFECTS,effect.kind)||!SIDES.includes(effect.side)||!passable(effect))return null;
+    if(typeof effect.id!=='string'||!/^g[1-9]\d*$/.test(effect.id)||effectIds.has(effect.id)||!integer(Number(effect.id.slice(1)),1,game.nextGroundId))return null;
+    const source=game.units.find(unit=>unit.id===effect.sourceId),cell=`${effect.side}:${position(effect)}`;
+    if(!source||source.side!==effect.side||paintedCells.has(cell))return null;
+    const allowed=Object.values(FACTIONS[source.faction].units).some(def=>def.abilities.some(skill=>skill.groundKind===effect.kind));
+    if(!allowed)return null;
+    if(!finite(effect.createdAt,0,game.time+1e-7)||!finite(effect.expiresAt,effect.createdAt)||effect.expiresAt<=effect.createdAt||effect.expiresAt>effect.createdAt+GROUND_EFFECTS[effect.kind].duration+1e-7)return null;
+    if(!finite(effect.nextTickAt,effect.createdAt,effect.expiresAt+3+1e-7))return null;
+    effectIds.add(effect.id);paintedCells.add(cell);
   }
   return { version: 2, game };
 }

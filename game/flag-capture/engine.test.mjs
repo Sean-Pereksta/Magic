@@ -18,7 +18,7 @@ const play=(s,u,type,target)=>{const a=find(s,u,type,target);assert.ok(a,`${unit
 const cast=(s,u,index,target)=>{const a=legalActions(s,u.id).find(a=>a.type==='ability'&&a.skillIndex===index&&(!target||a.x===target.x&&a.y===target.y));assert.ok(a,`${unitDef(u).name} can use ${skillDef(u,index).name}`);const r=applyAction(s,a);assert.equal(r.ok,true);return r;};
 function tick(s,seconds) {const events=[];while(seconds>0){const dt=Math.min(0.1,seconds);events.push(...advance(s,dt));seconds-=dt;}return events;}
 
-test('factions have 21 unique skills; player pieces start ready and AI respects the opening grace',()=>{
+test('factions have 39 unique skills; player pieces start ready and AI respects the opening grace',()=>{
   const names=new Set();
   for(const faction of Object.keys(FACTIONS))for(const map of Object.keys(MAPS)) {
     const s=createGame({playerFaction:faction,map});
@@ -29,10 +29,10 @@ test('factions have 21 unique skills; player pieces start ready and AI respects 
   }
   for(const f of Object.values(FACTIONS))for(const [role,d]of Object.entries(f.units)) {
     if(role==='minion'){assert.equal(d.ability,null);assert.equal(d.abilities.length,0);continue;}
-    assert.equal(d.ability,d.abilities[0]);const summons=d.abilities.some(a=>['broodlings','pocketmaws','bellmotes'].includes(a.kind));assert.equal(d.abilities.length,['leader','mystic'].includes(role)?2+(summons?1:0):1);
+    assert.equal(d.ability,d.abilities[0]);const summons=d.abilities.some(a=>['broodlings','pocketmaws','bellmotes'].includes(a.kind));assert.equal(d.abilities.length,['leader','mystic'].includes(role)?2+(summons?1:0):['guardian','ranger','shaper'].includes(role)?2:1);
     for(const skill of d.abilities){names.add(skill.kind);assert.ok(skill.cooldown>=8);assert.ok(skill.cooldown<=12);}
   }
-  assert.equal(names.size,21);
+  assert.equal(names.size,39);
   assert.throws(()=>createGame({map:'missing'}));assert.throws(()=>createGame({playerFaction:'missing'}));
 });
 

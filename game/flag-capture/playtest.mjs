@@ -16,6 +16,7 @@ function commandFor(s,side,recruitAt){
     view.units=view.units.map(u=>({...point(s,u),side:swap(u.side)}));
     view.tiles=view.tiles.map(t=>point(s,t)).sort((a,b)=>a.y-b.y||a.x-b.x);
     view.flags=view.flags.map(f=>({...point(s,f),owner:swap(f.owner)}));
+    view.groundEffects=(view.groundEffects||[]).map(effect=>({...point(s,effect),side:swap(effect.side)}));
     for(const name of ['factions','scores','supplies','armies'])view[name]={player:s[name].ai,ai:s[name].player};
   }
   view.aiRecruitAt=recruitAt;

@@ -1,6 +1,8 @@
-import {FACTIONS, draftCost, armyCost} from './engine.mjs';
+import {FACTIONS, DRAFT_ROLES, RECRUIT_ROLES, draftCost, armyCost} from './engine.mjs';
 
-const ROLES = ['leader', 'scout', 'brute', 'mystic'];
+const ROLES = DRAFT_ROLES;
+const TACTICAL_ROLES = ['guardian', 'ranger', 'shaper'];
+const ROLE_LABELS = {leader:'Commander',scout:'Scout',brute:'Bruiser',mystic:'Mystic',guardian:'Guardian',ranger:'Ranger',shaper:'Shaper'};
 const FACTION_KEYS = ['bloom', 'chaos', 'choir'];
 const DEFAULT_ROLES = ['leader', 'scout', 'scout', 'brute', 'mystic'];
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
@@ -16,9 +18,9 @@ function preferredCells(draft, role) {
   const center = (draft.width - 1) / 2;
   const centerOut = Array.from({length: draft.width}, (_, x) => x).sort((a, b) => Math.abs(a - center) - Math.abs(b - center) || a - b);
   const flanks = [Math.round((draft.width - 1) / 4), Math.round((draft.width - 1) * 3 / 4), 0, draft.width - 1];
-  const columns = role === 'scout' ? [...new Set([...flanks, ...centerOut])] : centerOut;
+  const columns = ['scout','ranger'].includes(role) ? [...new Set([...flanks, ...centerOut])] : centerOut;
   const front = draft.height - 2, back = draft.height - 1;
-  const rows = role === 'scout' || role === 'brute' ? [front, back] : [back, front];
+  const rows = ['scout','brute','guardian'].includes(role) ? [front, back] : [back, front];
   return rows.flatMap(y => columns.map(x => draft.side === 'ai' ? {x: draft.width - 1 - x, y: draft.height - 1 - y} : {x, y}));
 }
 
@@ -84,10 +86,10 @@ export function applyDraftAction(draft, action = {}) {
   if (action.type === 'arrange') {
     draft.positions = [];
     repairPositions(draft);
-    return {ok: true, message: 'Formation arranged: scouts and brutes forward, commander and mystics behind.'};
+    return {ok: true, message: 'Formation arranged: scouts and guardians forward, ranged troops and support behind.'};
   }
   if (action.type === 'buy') {
-    if (!['scout', 'brute', 'mystic'].includes(action.role)) return fail('Choose a scout, brute, or mystic. Your commander is already included.');
+    if (!RECRUIT_ROLES.includes(action.role)) return fail('Choose a troop from your faction shop. Your commander is already included.');
     if (draft.army.length >= 8) return fail('Your warband is full: eight creatures.');
     if (armyCost(draft.army) + draftCost(action.role) > draft.money) return fail('You need more starting money for that creature.');
     draft.army.push(action.role);
@@ -120,7 +122,12 @@ export function applyDraftAction(draft, action = {}) {
 }
 
 function sprite(draft, role) {
-  return `<span class="draft-sprite" style="background-position:${ROLES.indexOf(role) * 100 / 3}% ${FACTION_KEYS.indexOf(draft.faction) * 50}%" aria-hidden="true"></span>`;
+  const tactical=TACTICAL_ROLES.includes(role),column=tactical?TACTICAL_ROLES.indexOf(role)*50:ROLES.indexOf(role)*100/3,row=FACTION_KEYS.indexOf(draft.faction);
+  return `<span class="draft-sprite${tactical?' tactical-sprite':''}" style="background-position:${column}% ${tactical?[0,48,94][row]:row*50}%" aria-hidden="true"></span>`;
+}
+
+function skillDetails(definition){
+  return `<p>${esc(definition.description)}</p><p class="draft-movement"><strong>${esc(definition.movement)}</strong> · ${esc(definition.movementDescription)}</p><ul>${definition.abilities.map(skill=>`<li><strong>${esc(skill.name)}</strong><span>${esc(skill.description)} <b>${skill.cooldown}s recharge</b></span></li>`).join('')}</ul>`;
 }
 
 /** Army and deployment phases share one state and the same delegated actions. */
@@ -132,13 +139,13 @@ export function renderDraft(draft, {phase = 'all', showGrid = true} = {}) {
   const attrs = `data-side="${draft.side}"`;
   const roster = draft.army.map((role, index) => {
     const def = faction.units[role], position = cellName(draft, draft.positions[index]);
-    const subtitle = phase === 'army' ? `${role === 'leader' ? 'Commander' : role} · ${def.hp} HP · ${def.move} move` : `${role === 'leader' ? 'Commander' : role} · ${position}`;
+    const subtitle = phase === 'army' ? `${ROLE_LABELS[role]} · ${def.hp} HP · ${def.move} move` : `${ROLE_LABELS[role]} · ${position}`;
     const refund = showArmy ? `<button type="button" class="draft-remove" data-draft-action="remove" ${attrs} data-index="${index}" aria-label="${role === 'leader' ? 'Commander is required' : `Remove ${esc(def.name)} and refund ${draftCost(role)} coins`}" ${role === 'leader' ? 'disabled' : ''}>${role === 'leader' ? '★' : '×'}</button>` : '';
     return `<div class="draft-troop ${index === draft.selectedIndex ? 'is-selected' : ''}" role="listitem"><button type="button" class="draft-select" data-draft-action="select" ${attrs} data-index="${index}" aria-pressed="${index === draft.selectedIndex}" aria-label="Select ${esc(def.name)}, ${role === 'leader' ? 'commander' : role}${phase === 'army' ? `, ${draftCost(role)} coins` : `, ${position}`}">${sprite(draft, role)}<span><strong>${esc(def.name)}</strong><small>${esc(subtitle)}</small></span></button>${refund}</div>`;
   }).join('');
-  const shop = ['scout', 'brute', 'mystic'].map(role => {
+  const shop = RECRUIT_ROLES.filter(role=>faction.units[role]).map(role => {
     const def = faction.units[role], cost = draftCost(role);
-    return `<button type="button" class="draft-buy" data-draft-action="buy" ${attrs} data-role="${role}" ${remaining < cost || draft.army.length >= 8 ? 'disabled' : ''} aria-label="Buy ${esc(def.name)} for ${cost} coins">${sprite(draft, role)}<span><strong>+ ${esc(def.name)}</strong><small>${role} · ${def.hp} HP · ${def.range} range</small></span><b class="draft-price">${cost}<small>coins</small></b></button>`;
+    return `<article class="draft-offer"><button type="button" class="draft-buy" data-draft-action="buy" ${attrs} data-role="${role}" ${remaining < cost || draft.army.length >= 8 ? 'disabled' : ''} aria-label="Buy ${esc(def.name)} for ${cost} coins">${sprite(draft, role)}<span><strong>+ ${esc(def.name)}</strong><small>${ROLE_LABELS[role]} · ${def.hp} HP · ${def.damage} damage</small><small>${def.move} move · ${def.range} range</small><em>${esc(def.abilities.map(skill=>skill.name).join(' · '))}</em></span><b class="draft-price">${cost}<small>coins</small></b></button><details class="draft-creature-notes"><summary>Skills & tactics <span class="sr-only">for ${esc(def.name)}</span></summary>${skillDetails(def)}</details></article>`;
   }).join('');
   const cells = homeRows(draft).flatMap(y => Array.from({length: draft.width}, (_, x) => {
     const index = draft.positions.findIndex(point => point.x === x && point.y === y), role = draft.army[index], name = role ? faction.units[role].name : 'empty';
@@ -152,5 +159,6 @@ export function renderDraft(draft, {phase = 'all', showGrid = true} = {}) {
   const money = showArmy ? `<div class="draft-money" role="status" aria-live="polite"><strong>${remaining}<small> coins left</small></strong><span>${spent} / ${draft.money} spent</span></div>` : `<span class="draft-ready-count">${draft.army.length} / ${draft.army.length}<small>placed</small></span>`;
   const rowLabels = (draft.side === 'ai' ? ['Back line', 'Front line'] : ['Front line', 'Back line']).map(label => `<span>${label}<small>${label === 'Front line' ? 'toward enemy' : 'protected'}</small></span>`).join('');
   const deployment = showDeployment ? `<div class="draft-deployment-heading"><div class="draft-placement-hint" aria-live="polite">${sprite(draft, draft.army[draft.selectedIndex])}<span><strong>Place ${esc(selected.name)}</strong><small>Tap a cell to move it. Tap an occupied cell to swap.</small></span></div><button type="button" class="draft-arrange" data-draft-action="arrange" ${attrs}>Auto arrange</button></div>${showGrid ? `<div class="draft-placement-layout"><div class="draft-row-labels" aria-hidden="true">${rowLabels}</div><div class="draft-deployment" role="group" aria-label="${draft.side === 'ai' ? 'Player 2' : 'Player 1'} deployment, two home rows">${cells}</div></div><p class="draft-deployment-note">${draft.side === 'ai' ? '↓' : '↑'} Enemy territory · front-line troops can contest ground sooner.</p>` : ''}` : '';
-  return `<section class="draft-builder draft-phase-${phase}" data-side="${draft.side}" data-phase="${phase}" style="--draft-faction:${faction.color};--draft-columns:${draft.width}" aria-labelledby="draft-title-${draft.side}"><header class="draft-heading"><div><h3 id="draft-title-${draft.side}">${heading}</h3><p>${description}</p></div>${money}</header><div class="draft-roster" role="list" aria-label="Purchased creatures">${roster}</div>${showArmy ? `<div class="draft-shop" role="group" aria-label="Buy starting creatures">${shop}</div><p class="draft-composition-tip">${tip}</p>` : ''}${deployment}</section>`;
+  const inspect=`<details class="draft-inspect"><summary>${esc(selected.name)} · abilities & formation</summary>${skillDetails(selected)}<div class="draft-doctrine"><strong>${esc(faction.formation?.name||'Faction formation')}</strong><p>${esc(faction.formation?.description||faction.passive)}</p></div></details>`;
+  return `<section class="draft-builder draft-phase-${phase}" data-side="${draft.side}" data-phase="${phase}" style="--draft-faction:${faction.color};--draft-columns:${draft.width}" aria-labelledby="draft-title-${draft.side}"><header class="draft-heading"><div><h3 id="draft-title-${draft.side}">${heading}</h3><p>${description}</p></div>${money}</header><div class="draft-roster" role="list" aria-label="Purchased creatures">${roster}</div>${showArmy ? `<p class="draft-shop-instruction">Trade creatures with × to free coins. Your commander stays.</p><div class="draft-shop" role="group" aria-label="Buy starting creatures">${shop}</div><p class="draft-composition-tip">${tip}</p>` : ''}${deployment}${inspect}</section>`;
 }
