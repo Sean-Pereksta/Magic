@@ -10,3 +10,25 @@
 @media(min-width:761px){.lobby-card{height:min(660px,calc(100dvh - 40px));grid-template-rows:minmax(0,1fr)}.lobby-art{min-height:0;height:auto}.lobby-settings{min-height:0;overflow-y:auto}}
 @media(max-width:760px){.lobby-card{height:auto;grid-template-rows:160px auto}.lobby-art{min-height:160px;height:160px}.lobby-settings{min-height:0}}
 @media(max-height:540px) and (max-width:900px) and (orientation:landscape){.lobby-card{height:calc(100dvh - 24px);grid-template-rows:minmax(0,1fr)}.lobby-art{min-height:0;height:auto}.lobby-settings{overflow-y:auto}}
+
+/* A separate bottom row keeps the command groups clear of the minimap and unit panel. */
+.command-groups{position:absolute;left:50%;bottom:calc(8px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);display:flex;align-items:center;gap:5px;padding:4px 6px;border:1.5px solid #62745a;border-radius:9px;background:#f7f3e8ed;box-shadow:0 3px 0 #374b3820;z-index:7;user-select:none;-webkit-user-select:none}
+.group-label{padding:0 5px;color:#536452;font-size:9px;font-weight:800;letter-spacing:.08em}
+.command-groups .group-button{width:45px;height:40px;display:flex;align-items:center;justify-content:center;gap:4px;padding:0;border:1px solid #abbba0;border-radius:6px;background:#e7eddb;color:#536452;touch-action:none;-webkit-touch-callout:none}
+.command-groups .group-button.assigned{background:#dbead0;border-color:#789a70;color:#345d4d}
+.command-groups .group-button.selected{box-shadow:inset 0 0 0 2px #4d9a89}
+.command-groups .group-button:focus-visible{outline:3px solid #e89951;outline-offset:2px}
+.group-number{font-size:15px;font-weight:900}.group-count{font-size:10px;font-weight:800}
+.sidebar{bottom:calc(69px + env(safe-area-inset-bottom, 0px))}
+.minimap-wrap{bottom:calc(67px + env(safe-area-inset-bottom, 0px))}
+.quick-select{bottom:calc(153px + env(safe-area-inset-bottom, 0px))}
+.field-tools{bottom:calc(185px + env(safe-area-inset-bottom, 0px))}
+@media(max-width:760px){
+  .command-groups{bottom:calc(5px + env(safe-area-inset-bottom, 0px));padding:3px 5px;gap:4px}
+  .group-label{display:none}
+  .command-groups .group-button{width:44px;height:40px}
+  .sidebar{bottom:calc(62px + env(safe-area-inset-bottom, 0px))}
+  .minimap-wrap{bottom:calc(62px + env(safe-area-inset-bottom, 0px))}
+  .quick-select{bottom:calc(142px + env(safe-area-inset-bottom, 0px))}
+  .field-tools{bottom:calc(172px + env(safe-area-inset-bottom, 0px))}
+}
