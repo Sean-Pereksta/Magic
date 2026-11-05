@@ -9,6 +9,9 @@ const skills={rock:{name:'Launch',icon:'↗',desc:'Leap to a spot in formation',
 let game,renderer, selected=new Set(),mode=null,abilityType=null,pointer={x:600,y:800},drag=null;
 let paused=false,started=false,inLobby=true,chosenMap='desktop',chosenDifficulty='normal',chosenPlayers=2;
 let groups={},lastGroup={key:'',at:0},lastFrame=performance.now(),uiTick=0,signature='',endShown=false,toastTimeout;
+const GROUP_HOLD_MS=550, GROUP_DOUBLE_MS=350;
+let groupKeyPress=null;
+const groupPointerPresses=new Map();
 let keys=new Set(), pointerState=null,touches=new Map(),pinch=null,guideWasPaused=false;
 let muted=false;try{muted=localStorage.getItem('trash-tactics-muted')==='true';}catch{}
 let audioContext,lastHitSound=0;
@@ -30,7 +33,7 @@ function onEvent(e){
  if(e.type==='hit'&&!paused&&!inLobby)sound('hit');
  if(e.type==='deposit'&&e.team===0&&Math.random()<.13&&!paused&&!inLobby)sound('deposit');
 }
-function resetGame(){game=new Game({map:chosenMap,difficulty:chosenDifficulty,players:chosenPlayers,onEvent});selected.clear();groups={};mode=null;abilityType=null;drag=null;endShown=false;signature='';if(renderer){renderer.game=game;renderer.resize();}else renderer=new Renderer(canvas,game);renderer.camera.zoom=window.innerWidth<761?.72:.94;const d=game.entities.find(e=>e.team===0&&e.type==='desk');renderer.centerOn(d.x,d.y+40);$('matchLabel').textContent=names[chosenMap].toUpperCase()+' · '+chosenPlayers+' PLAYERS · '+chosenDifficulty.toUpperCase();$('operationName').textContent=chosenMap==='desktop'?'The great desk takeover':'A little breakroom business';updateUI(true);}
+function resetGame(){cancelGroupPresses();lastGroup={key:'',at:0};game=new Game({map:chosenMap,difficulty:chosenDifficulty,players:chosenPlayers,onEvent});selected.clear();groups={};mode=null;abilityType=null;drag=null;endShown=false;signature='';if(renderer){renderer.game=game;renderer.resize();}else renderer=new Renderer(canvas,game);renderer.camera.zoom=window.innerWidth<761?.72:.94;const d=game.entities.find(e=>e.team===0&&e.type==='desk');renderer.centerOn(d.x,d.y+40);$('matchLabel').textContent=names[chosenMap].toUpperCase()+' · '+chosenPlayers+' PLAYERS · '+chosenDifficulty.toUpperCase();$('operationName').textContent=chosenMap==='desktop'?'The great desk takeover':'A little breakroom business';updateUI(true);}
 function start(){sound();resetGame();started=true;inLobby=false;paused=false;lastFrame=performance.now();$('lobby').hidden=true;$('pauseOverlay').hidden=true;$('endOverlay').hidden=true;const desk=game.entities.find(e=>e.team===0&&e.type==='desk');selected=new Set([desk.id]);updateUI(true);toast('Your twigs are gathering. Train a squad, then give the rival a little trouble.');canvas.focus({preventScroll:true});}
 function setMode(next,type=null){mode=next;abilityType=type;const label=BUILDINGS.includes(mode)?`Place ${TYPES[mode].label.toLowerCase()} · choose clear ground`:mode==='ability'?`${type?skills[type].name:'Special abilities'} · choose a target or direction`:mode==='attack'?'Attack move · choose a spot to fight toward':'';$('modeBanner').textContent=label+(label?' · X cancel · Esc menu':'');$('modeBanner').hidden=!label;canvas.style.cursor=next?'crosshair':'default';updateUI(true);}
 function unselect(){selected.clear();setMode(null);sound('select');}
@@ -59,6 +62,7 @@ function queueHtml(e){if(!e.queue?.length)return '';return `<div class="producti
 function updateUI(force=false){
  const supply=game.getSupply(0),team=game.teams[0];$('trashCount').textContent=Math.floor(team.trash).toLocaleString();$('supplyCount').textContent=`${supply.used} / ${supply.cap}`;$('supplyCount').style.color=supply.used>=supply.cap?'#ca7555':'';
  const seconds=Math.floor(game.time);$('timer').textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
+ updateGroups();
  for(const id of selected)if(!game.getEntity(id))selected.delete(id);
  const own=ownSelected(),e=own[0],units=own.filter(e=>!TYPES[e.type].building),workers=units.filter(e=>e.type==='twig'),combat=units.filter(e=>COMBAT.includes(e.type));
  document.querySelector('.sidebar').classList.toggle('empty',!own.length);document.querySelector('.sidebar').classList.toggle('narrow',own.length===1&&e.type==='cabinet');document.querySelector('.sidebar').dataset.selection=own.length>1?(workers.length===own.length?'twig':'squad'):(e?.type||'none');
@@ -86,6 +90,73 @@ $('unitRoster').addEventListener('click',e=>{const b=e.target.closest('[data-uni
 function hitTest(world){return game.entities.filter(e=>e.hp>0&&Math.hypot(e.x-world.x,e.y-world.y)<Math.max(e.r+10,22/renderer.camera.zoom)).sort((a,b)=>(TYPES[a.type].building?1:0)-(TYPES[b.type].building?1:0)||Math.hypot(a.x-world.x,a.y-world.y)-Math.hypot(b.x-world.x,b.y-world.y))[0];}
 function localPoint(e){const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
 function usable(){return started&&!inLobby&&!paused&&game.winner===null&&$('guide').hidden;}
+// Groups store unit IDs so their membership follows the same troops as they move.
+function groupUnits(key){
+ const units=(groups[key]||[]).map(id=>game.getEntity(id)).filter(e=>e&&e.team===0&&e.hp>0&&TYPES[e.type]&&!TYPES[e.type].building&&e.type!=='trash');
+ if(groups[key])groups[key]=units.map(e=>e.id);
+ return units;
+}
+function updateGroups(){
+ for(let i=1;i<=4;i++){
+  const key=String(i),button=$('group-'+key);if(!button)continue;
+  const units=groupUnits(key),count=units.length;
+  const active=count>0&&selected.size===count&&units.every(e=>selected.has(e.id));
+  button.classList.toggle('assigned',count>0);button.classList.toggle('selected',active);
+  button.dataset.count=String(count);
+  const countLabel=button.querySelector('[data-group-count]');if(countLabel)countLabel.textContent=count?String(count):'—';
+  button.setAttribute('aria-label',`Command group ${key}, ${count} ${count===1?'troop':'troops'}. Tap to select, double tap to center, hold to assign.`);
+  button.setAttribute('aria-pressed',String(active));
+ }
+}
+function assignGroup(key){
+ if(!usable())return;
+ const units=ownSelected().filter(e=>e.hp>0&&TYPES[e.type]&&!TYPES[e.type].building&&e.type!=='trash');
+ if(!units.length){toast('Select troops before assigning a command group.');return;}
+ groups[key]=units.map(e=>e.id);lastGroup={key:'',at:0};updateGroups();sound('select');
+ toast(`Group ${key} assigned · ${units.length} ${units.length===1?'troop':'troops'}.`);
+}
+function recallGroup(key,add=false){
+ if(!usable())return;
+ const units=groupUnits(key);updateGroups();
+ if(!units.length){lastGroup={key:'',at:0};toast(`Group ${key} is empty. Select troops and hold to assign.`);return;}
+ const now=performance.now(),center=lastGroup.key===key&&now-lastGroup.at<GROUP_DOUBLE_MS;
+ selectEntities(units,add);
+ if(center)renderer.centerOn(units.reduce((n,u)=>n+u.x,0)/units.length,units.reduce((n,u)=>n+u.y,0)/units.length);
+ lastGroup=center?{key:'',at:0}:{key,at:now};updateGroups();
+}
+function cancelGroupPresses(){
+ if(groupKeyPress){clearTimeout(groupKeyPress.timer);groupKeyPress=null;}
+ for(const press of groupPointerPresses.values())clearTimeout(press.timer);
+ groupPointerPresses.clear();
+}
+for(let i=1;i<=4;i++){
+ const key=String(i),button=$('group-'+key);if(!button)continue;
+ let suppressClickUntil=0;
+ button.addEventListener('pointerdown',e=>{
+  if(!usable()||e.button!==0||groupPointerPresses.has(key))return;
+  e.preventDefault();suppressClickUntil=performance.now()+1000;button.setPointerCapture(e.pointerId);
+  const press={id:e.pointerId,x:e.clientX,y:e.clientY,held:false,timer:null};
+  press.timer=setTimeout(()=>{if(groupPointerPresses.get(key)===press){press.held=true;assignGroup(key);}},GROUP_HOLD_MS);
+  groupPointerPresses.set(key,press);
+ });
+ button.addEventListener('pointermove',e=>{
+  const press=groupPointerPresses.get(key);if(press?.id===e.pointerId&&Math.hypot(e.clientX-press.x,e.clientY-press.y)>12){clearTimeout(press.timer);groupPointerPresses.delete(key);}
+ });
+ button.addEventListener('pointerup',e=>{
+  const press=groupPointerPresses.get(key);if(!press||press.id!==e.pointerId)return;
+  e.preventDefault();suppressClickUntil=performance.now()+1000;clearTimeout(press.timer);groupPointerPresses.delete(key);
+  if(!press.held)recallGroup(key,e.shiftKey);
+ });
+ const cancel=e=>{const press=groupPointerPresses.get(key);if(press?.id===e.pointerId){clearTimeout(press.timer);groupPointerPresses.delete(key);}};
+ button.addEventListener('pointercancel',cancel);button.addEventListener('lostpointercapture',cancel);
+ button.addEventListener('contextmenu',e=>e.preventDefault());
+ // Keyboard activation of a focused button remains available for assistive technology.
+ button.addEventListener('keydown',e=>{if(e.key===' '||e.key==='Enter'){suppressClickUntil=0;e.stopPropagation();}});
+ button.addEventListener('click',e=>{
+  if(e.detail!==0||performance.now()<suppressClickUntil){e.preventDefault();return;}
+  recallGroup(key,e.shiftKey);
+ });
+}
 function finishDrag(add){if(!drag)return;const minX=Math.min(drag.x1,drag.x2),maxX=Math.max(drag.x1,drag.x2),minY=Math.min(drag.y1,drag.y2),maxY=Math.max(drag.y1,drag.y2);let found=game.entities.filter(e=>{const s=renderer.worldToScreen(e.x,e.y);return e.team===0&&e.hp>0&&s.x>=minX&&s.x<=maxX&&s.y>=minY&&s.y<=maxY;});if(found.some(e=>!TYPES[e.type].building))found=found.filter(e=>!TYPES[e.type].building);selectEntities(found,add);drag=null;}
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
 canvas.addEventListener('pointerdown',e=>{
@@ -126,13 +197,20 @@ $('minimap').addEventListener('contextmenu',e=>e.preventDefault());
 window.addEventListener('keydown',e=>{
  if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
  const key=e.key.toLowerCase();if([' ','arrowup','arrowdown','arrowleft','arrowright','f2','f3'].includes(key)||key==='a'&&usable())e.preventDefault();
- keys.add(key);if(e.repeat)return;
+ keys.add(key);if(e.repeat){if(/^[1-4]$/.test(key)&&usable())e.preventDefault();return;}
  if(key==='escape'){e.preventDefault();if(!$('guide').hidden){closeGuide();return;}if(!inLobby&&started){setMode(null);togglePause();}return;}
  if(key==='x'&&usable()){unselect();return;}
  if(key==='?'||key==='f1'){e.preventDefault();openGuide();return;}
  if(key==='p'&&!inLobby){togglePause();return;}if(!usable())return;
  if(key==='f2'){selectArmy();return;}if(key==='f3'){selectWorkers();return;}if(key===' '){centerHome();return;}
- if(/^[1-9]$/.test(key)){if(e.ctrlKey||e.metaKey){groups[key]=[...selected];toast('Squad '+key+' saved.');}else if(groups[key]){selectEntities(groups[key].map(id=>game.getEntity(id)).filter(Boolean),e.shiftKey);if(lastGroup.key===key&&performance.now()-lastGroup.at<350){const es=ownSelected();if(es.length)renderer.centerOn(es.reduce((n,u)=>n+u.x,0)/es.length,es.reduce((n,u)=>n+u.y,0)/es.length);}lastGroup={key,at:performance.now()};}e.preventDefault();return;}
+ if(/^[1-4]$/.test(key)){
+  e.preventDefault();
+  if(e.ctrlKey||e.metaKey){assignGroup(key);return;}
+  if(groupKeyPress){clearTimeout(groupKeyPress.timer);groupKeyPress=null;}
+  const press={key,held:false,add:e.shiftKey,timer:null};
+  press.timer=setTimeout(()=>{if(groupKeyPress===press){press.held=true;assignGroup(key);}},GROUP_HOLD_MS);
+  groupKeyPress=press;return;
+ }
  const own=ownSelected(),b=own.length===1?own[0]:null;
  if(b?.type==='printer'&&['q','w','r'].includes(key)){result(game.train(b.id,{q:'rock',w:'paper',r:'scissors'}[key]));return;}
  if(b?.type==='desk'&&key==='q'){result(game.train(b.id,'twig'));return;}
@@ -140,11 +218,15 @@ window.addEventListener('keydown',e=>{
  if(own.some(e=>e.type==='twig')&&['d','c','b'].includes(key)){setMode({d:'desk',c:'cabinet',b:'printer'}[key]);return;}
  if(key==='s'&&!e.ctrlKey&&!e.metaKey){game.command([...selected],{type:'stop'});setMode(null);sound();return;}
 });
-window.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>{keys.clear();clearTimeout(pointerState?.hold);pointerState=null;drag=null;});
-function togglePause(){if(inLobby||!started||game.winner!==null||endShown)return;paused=!paused;$('pauseOverlay').hidden=!paused;$('pauseButton').textContent=paused?'▶':'Ⅱ';keys.clear();sound();}
-function openGuide(){if(!$('guide').hidden)return;guideWasPaused=paused;paused=true;$('guide').hidden=false;icons($('guide'));sound();}
+window.addEventListener('keyup',e=>{
+ const key=e.key.toLowerCase();keys.delete(key);
+ if(groupKeyPress?.key===key){const press=groupKeyPress;clearTimeout(press.timer);groupKeyPress=null;if(!press.held)recallGroup(key,press.add);}
+});
+window.addEventListener('blur',()=>{keys.clear();cancelGroupPresses();clearTimeout(pointerState?.hold);pointerState=null;drag=null;});
+function togglePause(){if(inLobby||!started||game.winner!==null||endShown)return;cancelGroupPresses();paused=!paused;$('pauseOverlay').hidden=!paused;$('pauseButton').textContent=paused?'▶':'Ⅱ';keys.clear();sound();}
+function openGuide(){if(!$('guide').hidden)return;cancelGroupPresses();guideWasPaused=paused;paused=true;$('guide').hidden=false;icons($('guide'));sound();}
 function closeGuide(){$('guide').hidden=true;paused=guideWasPaused;sound();}
-function openLobby(){if(started&&game.winner===null){$('resumeFromLobby').hidden=false;}else $('resumeFromLobby').hidden=true;inLobby=true;paused=true;$('pauseOverlay').hidden=true;$('lobby').hidden=false;setMode(null);sound();}
+function openLobby(){cancelGroupPresses();if(started&&game.winner===null){$('resumeFromLobby').hidden=false;}else $('resumeFromLobby').hidden=true;inLobby=true;paused=true;$('pauseOverlay').hidden=true;$('lobby').hidden=false;setMode(null);sound();}
 $('startButton').addEventListener('click',start);$('playAgain').addEventListener('click',()=>{$('endOverlay').hidden=true;openLobby();});
 document.querySelectorAll('[data-map]').forEach(b=>b.addEventListener('click',()=>{chosenMap=b.dataset.map;document.querySelectorAll('[data-map]').forEach(x=>x.classList.toggle('active',x===b));sound();}));
 document.querySelectorAll('[data-difficulty]').forEach(b=>b.addEventListener('click',()=>{chosenDifficulty=b.dataset.difficulty;document.querySelectorAll('[data-difficulty]').forEach(x=>x.classList.toggle('active',x===b));sound();}));
@@ -156,7 +238,7 @@ $('soundButton').addEventListener('click',()=>{muted=!muted;try{localStorage.set
 $('pauseSound').addEventListener('click',()=>{$('soundButton').click();$('pauseSound').textContent=muted?'Sound: off':'Sound: on';});
 $('homeButton').addEventListener('click',centerHome);$('clearButton').addEventListener('click',unselect);$('armyButton').addEventListener('click',selectArmy);$('workersButton').addEventListener('click',selectWorkers);$('zoomIn').addEventListener('click',()=>renderer.zoomAt(1.16));$('zoomOut').addEventListener('click',()=>renderer.zoomAt(1/1.16));
 window.addEventListener('resize',()=>renderer.resize());
-function endMatch(){endShown=true;paused=true;const won=game.winner===0;$('endSymbol').textContent=won?'✦':'☂';$('endEyebrow').textContent=won?'THE DESK IS YOURS':'A MINOR PAPERWORK INCIDENT';$('endTitle').textContent=won?'Beautifully trashed.':'Back to the drawing desk.';$('endMessage').textContent=won?'Your scrap pack took down every rival desk. Tiny troops, tremendous teamwork.':'The rival destroyed your desks. Try an earlier expansion, more workers, or a different troop mix.';$('endStats').innerHTML=`<div><b>${Math.floor(game.time/60)}:${String(Math.floor(game.time)%60).padStart(2,'0')}</b>TIME</div><div><b>${game.stats?.collected?.[0]??0}</b>TRASH GATHERED</div><div><b>${game.stats?.trained?.[0]??0}</b>UNITS TRAINED</div>`;$('endOverlay').hidden=false;sound(won?'victory':'defeat');}
+function endMatch(){cancelGroupPresses();endShown=true;paused=true;const won=game.winner===0;$('endSymbol').textContent=won?'✦':'☂';$('endEyebrow').textContent=won?'THE DESK IS YOURS':'A MINOR PAPERWORK INCIDENT';$('endTitle').textContent=won?'Beautifully trashed.':'Back to the drawing desk.';$('endMessage').textContent=won?'Your scrap pack took down every rival desk. Tiny troops, tremendous teamwork.':'The rival destroyed your desks. Try an earlier expansion, more workers, or a different troop mix.';$('endStats').innerHTML=`<div><b>${Math.floor(game.time/60)}:${String(Math.floor(game.time)%60).padStart(2,'0')}</b>TIME</div><div><b>${game.stats?.collected?.[0]??0}</b>TRASH GATHERED</div><div><b>${game.stats?.trained?.[0]??0}</b>UNITS TRAINED</div>`;$('endOverlay').hidden=false;sound(won?'victory':'defeat');}
 function frame(now){const dt=Math.min(.05,(now-lastFrame)/1000);lastFrame=now;
  if(usable()){
   let dx=0,dy=0;if(keys.has('arrowleft'))dx+=480*dt;if(keys.has('arrowright'))dx-=480*dt;if(keys.has('arrowup'))dy+=480*dt;if(keys.has('arrowdown'))dy-=480*dt;if(dx||dy)renderer.pan(dx,dy);
