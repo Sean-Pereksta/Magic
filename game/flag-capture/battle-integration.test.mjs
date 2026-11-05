@@ -37,7 +37,7 @@ function fixture(){
       addEventListener(type,callback){handlers.set(type,callback);},elementFromPoint(){return context.hit;},
       createElement(){return {style:{},classList:classes(),remove(){},innerHTML:''};},body:{append(){}}},
     $:selector=>selector==='#app'?{setPointerCapture:id=>calls.captures.push(id)}:selector==='.battle-countdown span'?countdown:{getBoundingClientRect:()=>({x:0,y:0,width:60,height:60})},
-    sprite:()=>'<span></span>',announce:message=>calls.announcements.push(message),toast:message=>calls.announcements.push(message),persist(){},updateTimers(){},
+    sprite:()=>'<span></span>',previewGroundAt(){},clearGroundPreview(){},announce:message=>calls.announcements.push(message),toast:message=>calls.announcements.push(message),persist(){},updateTimers(){},
     showEvents:events=>calls.events.push(...events),
     applyAction(state,action){calls.orders.push({...action});return applyAction(state,action);},
     render(){calls.render++;calls.pending.push(context.input.pending());context.lastReadySignature=context.readySignature();}

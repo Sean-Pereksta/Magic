@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {armyCost, createGame} from './engine.mjs';
+import {armyCost, createGame, FACTIONS, DRAFT_ROLES, RECRUIT_ROLES, draftCost} from './engine.mjs';
 import {createDraft, resizeDraft, renderDraft, applyDraftAction} from './draft-ui.mjs';
 
 function validDeployment(draft) {
@@ -97,7 +97,7 @@ test('rendered UI exposes purchases, individual selections, refunds, and two ful
   assert.match(html, /Player 2 warband/);
   assert.match(html, /aria-live="polite"/);
   assert.match(html, /aria-pressed="true"/);
-  assert.equal((html.match(/data-draft-action="buy"/g) || []).length, 3);
+  assert.equal((html.match(/data-draft-action="buy"/g) || []).length, RECRUIT_ROLES.length);
   assert.equal((html.match(/data-draft-action="select"/g) || []).length, draft.army.length);
   assert.equal((html.match(/data-draft-action="place"/g) || []).length, 22);
   assert.match(html, /data-role="scout"/);
@@ -122,7 +122,7 @@ test('purchased and placed warbands can start a legal engine battle unchanged', 
 test('army and deployment phases expose only the controls needed for that preparation step', () => {
   const draft = createDraft();
   const army = renderDraft(draft, {phase: 'army'});
-  assert.equal((army.match(/data-draft-action="buy"/g) || []).length, 3);
+  assert.equal((army.match(/data-draft-action="buy"/g) || []).length, RECRUIT_ROLES.length);
   assert.equal((army.match(/data-draft-action="remove"/g) || []).length, draft.army.length);
   assert.doesNotMatch(army, /data-draft-action="place"|data-draft-action="arrange"/);
   assert.match(army, /Scouts claim ground/);
@@ -212,4 +212,49 @@ test('full battlefield integrations can retain placement controls without duplic
   applyDraftAction(draft, {type: 'select', index: 1});
   assert.deepEqual(draft.army, purchases);
   assert.match(renderDraft(draft, {phase: 'army'}), /data-draft-action="buy"/);
+});
+
+test('each faction offers all six alternatives with readable skills, movement and prices before buying',()=>{
+  assert.equal(DRAFT_ROLES.length,7);assert.equal(RECRUIT_ROLES.length,6);
+  for(const faction of Object.keys(FACTIONS)){
+    const draft=createDraft({faction,money:40,army:['leader']}),html=renderDraft(draft,{phase:'army'});
+    for(const role of RECRUIT_ROLES){
+      const def=FACTIONS[faction].units[role];
+      assert.match(html,new RegExp(`data-role="${role}"`));
+      assert.ok(html.includes(`Buy ${def.name} for ${draftCost(role)} coins`));
+      assert.ok(html.includes(`${def.damage} damage`));
+      for(const skill of def.abilities)assert.ok(html.includes(skill.description),`${def.name}: readable ${skill.name}`);
+    }
+    assert.equal((html.match(/<details class="draft-creature-notes">/g)||[]).length,6);
+    assert.match(html,/<details class="draft-inspect">/);
+    assert.ok(html.includes(FACTIONS[faction].formation.description));
+  }
+});
+
+test('new guardians, rangers and shapers can be bought, positioned, refunded and started for either player',()=>{
+  for(const faction of Object.keys(FACTIONS))for(const side of ['player','ai']){
+    const draft=createDraft({faction,side,money:40,army:['leader']});
+    for(const role of ['guardian','ranger','shaper'])assert.equal(applyDraftAction(draft,{type:'buy',role}).ok,true);
+    assert.equal(armyCost(draft.army),20);validDeployment(draft);
+    const front=side==='player'?5:1,back=side==='player'?6:0;
+    assert.equal(draft.positions[1].y,front,'guardian protects the front');
+    assert.equal(draft.positions[2].y,back,'ranger starts behind the front');
+    assert.equal(draft.positions[3].y,back,'shaper starts protected');
+    const options={playerFaction:faction,aiFaction:faction,opponentMode:'local',startingMoney:40};
+    options[side==='player'?'playerArmy':'aiArmy']=draft.army;
+    options[side==='player'?'playerDeployment':'aiDeployment']=draft.positions;
+    const state=createGame(options);
+    assert.deepEqual(state.units.filter(u=>u.side===side).map(u=>u.role),draft.army);
+    assert.equal(applyDraftAction(draft,{type:'remove',index:2}).ok,true);
+    assert.equal(armyCost(draft.army),16);validDeployment(draft);
+  }
+});
+
+test('tactical troop sprites select their own atlas columns while original troop art remains unchanged',()=>{
+  const draft=createDraft({money:40,army:['leader','guardian','ranger','shaper']});
+  const html=renderDraft(draft,{phase:'deploy'});
+  for(const position of [0,50,100])assert.ok(html.includes(`class="draft-sprite tactical-sprite" style="background-position:${position}% 0%"`));
+  assert.ok(html.includes('class="draft-sprite" style="background-position:0% 0%"'));
+  assert.equal((html.match(/data-draft-action="select"/g)||[]).length,4);
+  assert.doesNotMatch(html,/data-draft-action="buy"/);
 });

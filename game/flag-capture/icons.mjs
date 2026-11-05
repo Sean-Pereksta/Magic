@@ -24,5 +24,25 @@ const drawings={
   pocketmaws:'<path d="M2 11q6-9 13 0v12q-6 7-13 0ZM17 17q6-9 13 0v10q-6 6-13 0Z" fill="#c39be6"/><path d="m4 12 3 6 3-6m9 7 3 6 3-6" fill="#fff0c7"/><path d="m19 7 3-5 6 3" fill="none" stroke="#ffbd9f" stroke-width="3"/>',
   bellmotes:'<path d="M11 25q7-4 5-14 5-7 10 0-2 10 5 14Z" fill="#f7d68f"/><circle cx="21" cy="28" r="3" fill="#e9adbc"/><path d="M15 13Q2 16 2 6q8 5 13 1m10 5Q34 12 31 4l-8 4" fill="#fff6d6"/><ellipse cx="19" cy="3" rx="7" ry="2" fill="#fff0ae"/>'
 };
+Object.assign(drawings,{
+  rootguard:'<path d="M17 2 29 7v12L17 31 5 19V7Z" fill="#8bd5b6"/><path d="M17 9v17m0-9-8-6m8 10 9-7m-9 9-7 4m7-1 8 3" stroke="#ecf7bd"/>',
+  thornfield:'<path d="M3 27Q7 8 26 13M6 8q17 3 21 20" stroke="#89caaa" stroke-width="6"/><path d="m9 16-4-9 11 4m0 8 7-10 1 11m-6 4-8 7 1-11m13 0 7 8-12-2" fill="#f5b3d4"/>',
+  pinshot:'<path d="m5 29 21-22m-5-3 9-1-1 10M12 15l7 7" stroke="#b9e8ac" stroke-width="4"/><path d="m18 7 3 8 8 3-8 2-4 8-2-9-8-3 8-2Z" fill="#e6c0e2"/>',
+  pollenstep:'<ellipse cx="19" cy="24" rx="12" ry="7" fill="#96cfe1"/><path d="M5 19Q0 9 7 5q5-1 6 6l-2 10 5 3-4 5-8-5Z" fill="#c7ecc0"/><circle cx="25" cy="7" r="4" fill="#efb7d6"/><path d="m22 15 5 3m-8-9-3-3"/>',
+  mycelium:'<path d="M10 18v11m14-14v13M4 30l6-5 7 5 7-4 7 4" stroke="#9ee1c2" stroke-width="3"/><path d="M2 17Q9 0 18 17ZM17 14q7-16 15 0Z" fill="#b8a9e4"/><g fill="#f4f3c8"><circle cx="9" cy="12" r="2"/><circle cx="25" cy="9" r="2"/></g>',
+  germinate:'<path d="M11 29V15Q0 16 3 6q11-2 10 12 0-12 12-12 1 10-12 13" fill="#a1e8ba"/><circle cx="24" cy="23" r="9" fill="#fff0b5"/><path d="M24 18v10m-5-5h10" stroke="#618f78" stroke-width="3"/>',
+  grinward:'<path d="M17 2 29 8l-2 15-10 8L7 23 4 8Z" fill="#c4a2dd"/><path d="m8 14 4-2m10 0 4 2M8 19q9 13 18 0Z" fill="#ffdfac"/><path d="M14 21v5m6-5v5"/>',
+  cinders:'<path d="M7 27Q-1 17 10 9q-1 10 7 7Q12 6 22 2q-2 13 7 16 7 17-13 14Z" fill="#f29d99"/><path d="M12 27q-5-8 3-12 1 9 7 7 4 10-10 5" fill="#ffe3a0"/>',
+  crosscut:'<path d="m4 4 25 25m1-25L5 29" stroke="#c5a4e7" stroke-width="6"/><path d="m3 8 8-5-1 9ZM22 3l9 5-8 4ZM4 24l7 3-7 5Zm21 0 7 8-8-4Z" fill="#ffe4b7"/>',
+  riftstep:'<ellipse cx="17" cy="23" rx="14" ry="8" fill="#765b99"/><path d="m14 7-3 8 8 4-6 9" stroke="#ffb7dc" stroke-width="3"/><ellipse cx="22" cy="17" rx="5" ry="4" fill="#f8c29e"/><g fill="#f8c29e"><circle cx="18" cy="9" r="3"/><circle cx="24" cy="7" r="3"/><circle cx="29" cy="11" r="3"/></g>',
+  rift:'<ellipse cx="17" cy="18" rx="13" ry="11" fill="#c49be4"/><ellipse cx="17" cy="18" rx="8" ry="6" fill="#4f4679"/><path d="m19 2-5 9 8 5-11 6 7 10" stroke="#ffd3eb" stroke-width="3"/>',
+  detonate:'<path d="m17 2 3 9 10-6-5 12 7 6-12 1-4 9-4-10-10 2 6-9-6-7 10 2Z" fill="#f1a8bd"/><circle cx="17" cy="18" r="6" fill="#ffe1a2"/><path d="m14 15 6 6m0-6-6 6"/>',
+  aegislink:'<path d="M10 4 19 8v12l-9 8-8-8V8Z" fill="#fff0c5"/><path d="M24 6 32 10v12l-8 8-8-8V10Z" fill="#acd9df"/><path d="M12 16h10m-5-5v10" stroke="#ead182" stroke-width="3"/>',
+  sanctum:'<ellipse cx="17" cy="5" rx="10" ry="3" fill="#fff1b0"/><path d="M8 29 11 12h12l4 17Z" fill="#f3d69a"/><path d="M17 14v12m-5-6h10" stroke="#fff9db" stroke-width="3"/><path d="m9 16-7-4 3 10m20-6 7-4-3 10" fill="#e4efd8"/>',
+  sunlance:'<circle cx="11" cy="11" r="7" fill="#ffe0a0"/><path d="M11 1v3M1 11h3m12-6 3-3M5 17l-3 3" stroke="#f8e5b4"/><path d="m9 26 17-18 6-1-2 7-18 17Z" fill="#e4f1db"/><path d="m21 18 6 6" stroke="#ead187" stroke-width="3"/>',
+  prismwall:'<path d="M2 26 7 10l8 13 3-20 9 14 5-7v18L17 32Z" fill="#add7e3"/><path d="m7 10 1 16 10-23-1 29 10-15 1 11" stroke="#fff0ba" stroke-width="2"/>',
+  dawnseal:'<path d="m17 10 5-4 5 5 6 3-4 6 1 7-8 1-5 5-5-5-7-1 1-7-4-6 6-3 4-5Z" fill="#edd395"/><circle cx="17" cy="19" r="7" fill="#fff4d4"/><path d="m13 19 3 4 6-9" stroke="#8fae9b" stroke-width="3"/>',
+  choirswap:'<path d="M4 10h23l-4-5M30 24H7l4 5" stroke="#f6d58c" stroke-width="3"/><circle cx="9" cy="21" r="5" fill="#e4f0db"/><circle cx="25" cy="13" r="5" fill="#b5dbe1"/><path d="m4 17-3-4m11 4 3-4m6-4-3-4m11 4 3-4" stroke="#fff0be"/>',
+});
 export function abilityIcon(kind){return `<svg class="ability-icon" viewBox="0 0 34 34" aria-hidden="true" fill="none" stroke="#173740" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${drawings[kind]||drawings.guard}</svg>`;}
 export const ABILITY_ICON_KEYS=Object.freeze(Object.keys(drawings));

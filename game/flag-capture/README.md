@@ -10,7 +10,7 @@ A cooldown-based strategy game at the existing `/game/Flag.html` arcade route. C
 | Crooked Carnival (`chaos`) | Surreal Chaos beasts that bend bodies and battlefield positions. | Injured troops deal +1 basic attack damage. |
 | Aureate Choir (`choir`) | Angelic beings of ivory, gold, wings, and celestial geometry. | Troops beside an ally gain 1 shield every six seconds, up to 3. |
 
-Every faction has its own troop definitions and abilities. In single-player battles, the command dock sits directly below the gameplay board, with movement, attack, every available special ability, and guard within easy reach. Ability buttons use original drawn icons, names, and cooldown indicators. Leaders and mystics have two or three specials, while scouts and brutes have one, for 21 faction-specific skills in total. The four main roles are faction-specific creatures rather than shared units with different colors. Buy your starting warband, choose Arrange troops, then position it on the actual seeded battlefield before starting the countdown. This flow applies to every mode and campaign mission.
+Every faction has seven main troop choices and 39 faction-specific skills across all three armies. Guardians, rangers, and shapers join the original commanders, scouts, brutes, and mystics; each new creature has two distinct specials. In single-player battles, the command dock stays directly below the board, with every special visible as a drawn icon alongside its name and cooldown. Buy your starting warband, choose Arrange troops, then position it on the actual seeded battlefield before starting the countdown. This flow applies to every mode and campaign mission.
 
 The battle view keeps the board, command bars, and a menu button visible. The selected creature's health bar appears beside its name, so its condition stays visible during commands. Open the menu when you want creature details, the battle journal, settings, or help. Reinforcement Clash also offers recruitment there. Creature details explain health, movement identity, attack range, faction doctrine, and ability rules; they are optional during play.
 
@@ -19,8 +19,8 @@ Movement also changes how each army approaches the same map:
 | Army | Movement identity |
 | --- | --- |
 | Lumen Brood | Starting a move in a grove grants one extra tile of movement. Groves become both healing stations and launch points. |
-| Crooked Carnival | Blinkmutt scouts can phase through enemy-occupied cells, but must finish on an empty cell. Other Carnival troops use ground paths. |
-| Aureate Choir | The Halo Architect, Cherub Comet, and Ophanim Lens fly over obstacles and troops. They may land on water, but never on rocks or occupied cells. The Belltower Seraph remains grounded. |
+| Crooked Carnival | Blinkmutt scouts and Rift Jackal rangers phase through enemy-occupied cells, but finish on empty ground. Friendly Rift Ink lets other troops phase through foes and grants +1 movement when starting there. |
+| Aureate Choir | Commanders, scouts, mystics, rangers, and shapers fly over obstacles and troops. They may land on water, but never on rocks or occupied cells. Brutes and guardians remain grounded. |
 
 | Faction | Troop | Role | Abilities |
 | --- | --- | --- | --- |
@@ -36,6 +36,38 @@ Movement also changes how each army approaches the same map:
 | Aureate Choir | Cherub Comet | Scout | **Mercy Arc:** heal an ally and cleanse roots and curses. |
 | Aureate Choir | Belltower Seraph | Brute | **Sanctuary:** shield himself and nearby allies. |
 | Aureate Choir | Ophanim Lens | Mystic | **Judgment Ray:** damage enemies in a straight line. **Ward Ray:** give an ally within three tiles 3 shield, up to 5. **Bell Motes:** summon tiny flying Bell Motes. |
+| Lumen Brood | Mossplate Bulwark | Guardian | **Rootguard:** shield an adjacent group. **Briar Circle:** plant a lasting thornfield. |
+| Lumen Brood | Thornskate | Ranger | **Pinning Quill:** damage and root a foe. **Pollen Skate:** hop, leaving mycelium at both ends. |
+| Lumen Brood | Mycelium Weaver | Shaper | **Living Carpet:** paint healing, slowing mycelium. **Germinate:** heal an ally, refreshing its standard cooldown on friendly mycelium. |
+| Crooked Carnival | Grinlock Bastion | Guardian | **Grinning Ward:** shield allies and briefly root adjacent foes. **Cinder Confetti:** scatter damaging cinders. |
+| Crooked Carnival | Rift Jackal | Ranger | **Crosscut:** strike harder through a pincer. **Riftstep:** hop, leaving Rift Ink at both ends. |
+| Crooked Carnival | Inkmaw Jester | Shaper | **Rift Ink:** create phasewalking launch marks that curse enemies. **Curtain Collapse:** consume friendly marks for an area strike. |
+| Aureate Choir | Aegis Cantor | Guardian | **Aegis Link:** shield and cleanse an ally. **Quiet Sanctuary:** consecrate ground for recurring protection. |
+| Aureate Choir | Sunlance Kite | Ranger | **Sunlance:** attack along a clear row or column, ignoring some shield. **Prism Lattice:** strengthen ranged fire from marked ground. |
+| Aureate Choir | Halo Scribe | Shaper | **Dawn Seal:** erase hostile ground and consecrate it. **Procession:** swap with an ally and shield both. |
+
+## Formations and lasting ground
+
+Positioning grants different rewards for each faction. Brood want a connected living network; Carnival want enemies caught between separated hunters; Choir want a straight, consecutive procession. Formation rules are computed from living troops after every move, so breaking a shape immediately removes its benefit.
+
+| Formation | Condition | Benefit |
+| --- | --- | --- |
+| Living Constellation · Brood | At least three friendly troops connected edge-to-edge. | Every connected troop gains +1 movement and heals 1 HP each six-second pulse. |
+| Impossible Pincer · Carnival | You and an ally stand directly opposite one another across an adjacent enemy. | Basic attacks against that flanked enemy gain +1 damage. |
+| Choir Procession · Choir | At least three friendly troops occupy consecutive squares in one row or column. | They take 1 less ranged damage, minimum 1, and resonance can build up to 5 shield. |
+
+Painted effects remain on individual ground cells, with their ownership and remaining duration visible. They do not replace the map's underlying terrain. Area casts paint the center and its four orthogonal neighbors where those cells are ground; rocks and water remain unpaintable. Periodic effects trigger every three seconds. One side has at most one effect on a cell: repainting replaces its old mark, while opposing marks may coexist. Repainting never produces stacked damage or extra healing ticks.
+
+| Ground effect | Duration | Tactical use and counterplay |
+| --- | --- | --- |
+| Living Mycelium | 12s | Allies heal 1 HP per tick; enemy ground steps cost 2 movement. Germinate refreshes standard commands on friendly mycelium. |
+| Briar Field | 12s | Enemy ground troops take 1 damage per tick. Fliers ignore it; stepping off the marked ground avoids later ticks. |
+| Rift Ink | 12s | Allies starting there phase through foes and move +1. Enemy arrivals and ticks apply a curse. Consume it with Curtain Collapse to trade mobility for damage. |
+| Cinder Confetti | 10s | Enemies take 1 damage on arrival and each tick, including fliers. Avoid the mark, leave it, or erase it with Dawn Seal. |
+| Quiet Sanctuary | 12s | Allies gain 1 shield, up to 5, and cleanse roots/curses each tick. It rewards holding a position, rather than chasing every target. |
+| Prism Lattice | 12s | Friendly ranged basic attacks gain +1 damage while standing there. Enemy ground steps cost 2 movement. Fliers cross it freely. |
+
+The army shop offers six purchasable alternatives per faction, and native expandable **Skills & tactics** cards make their exact effects readable on touchscreens before spending coins. Remove a creature with × to refund its starting price and try another role. The selected-creature inspector also explains its movement and faction formation during deployment.
 
 ## Battle rules
 
@@ -44,7 +76,7 @@ Movement also changes how each army approaches the same map:
 - Reachable cells and valid targets are highlighted. Rocks and water block ground movement, with faction movement exceptions described above. Groves reduce ranged attack damage by one. The engine validates every command, including AI commands.
 - Objectives depend on the selected battle mode. Scoring and faction passives use a common six-second pulse for both armies; Reinforcement Clash also awards supplies on that pulse.
 - Eliminate the entire opposing army to win immediately in any mode. Otherwise, each mode's score goal or time-limit tiebreak decides the battle.
-- Standard battles use the armies chosen before deployment. Mid-battle purchases are available only in Reinforcement Clash: unspent starting coins become your supply wallet, and each pulse adds 2 supplies plus your held-beacon count. Recruit scouts for 4 supplies, brutes for 6, or mystics for 5 at your home edge. Recruits wait a full movement/attack cooldown before using standard commands and a full special cooldown before using an ability.
+- Standard battles use the armies chosen before deployment. Mid-battle purchases are available only in Reinforcement Clash: unspent starting coins become your supply wallet, and each pulse adds 2 supplies plus your held-beacon count. Recruit scouts for 4 supplies, brutes or guardians for 6, mystics or rangers for 5, or shapers for 6 at your home edge. Recruits wait a full movement/attack cooldown before using standard commands and a full special cooldown before using an ability.
 - Summoning abilities work in every mode and recharge in 12 seconds. Choose an empty ground tile within two cells of the caster to summon up to two little allies there and on an adjacent cell, subject to open space and the eight-creature cap. Each tiny ally has 3 HP, 1 attack damage, 2 movement range, no specials, and a one-second arrival delay. Glowgrubs benefit from the Brood's grove network, Pocket Maws move on the ground, and Bell Motes fly. Both sides obey the same army and summoning rules.
 - Guard adds 2 shield, up to 5, and starts the piece's standard cooldown. Guard is unavailable at full shield.
 - Pause freezes the battle clock, scoring, cooldowns, and AI commands.
@@ -64,7 +96,7 @@ An exact tiebreak tie is a draw. Zone control refreshes immediately after comman
 
 Custom battles offer Pocket (7 × 5), Classic (9 × 7), and Expanse (11 × 9) boards; sparse, balanced, or wild terrain; and five AI challenges: **Story**, **Relaxed**, **Balanced**, **Tactician**, and **Riftlord**. Story gives new commanders the gentlest introduction; choose a higher setting as you learn your army's tricks. Choose Prism Glade, The Great Fracture, or Bellglass Sanctuary as the battlefield theme. Both factions follow the same legal movement, attack, ability, capture, and recruitment rules.
 
-Before every battle, use the warband builder to buy or sell starting troops and arrange their positions. A warband has 1–8 main creatures and exactly one commander, the leader role. Starting prices are leader 6, scout 3, brute 5, and mystic 4. The default starting-money budget is 24; custom battles can set it from 12 to 40, while campaign missions use 24. Repeat any non-leader role while staying within the budget and troop limit.
+Before every battle, use the warband builder to buy or sell starting troops and arrange their positions. A warband has 1–8 main creatures and exactly one commander, the leader role. Starting prices are leader 6, scout 3, brute 5, mystic 4, guardian 5, ranger 4, and shaper 5. The default starting-money budget is 24; custom battles can set it from 12 to 40, while campaign missions use 24. Repeat any non-leader role while staying within the budget and troop limit.
 
 Place your purchased troops on distinct cells within your own two deployment rows before beginning the countdown. In same-screen play, both players buy and arrange their own warbands. Against AI, the opposing army uses an affordable starting formation. The campaign supplies a suggested warband that you may edit before beginning each mission. Mid-battle purchases remain exclusive to Reinforcement Clash.
 

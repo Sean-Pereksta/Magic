@@ -45,3 +45,32 @@ On the same desktop browser/viewport, a paused default 9 × 7 local Flag Capture
 The persistent renderer preserves creature/control identity and skips unchanged artwork. The app records the last 200 render durations and board mounts in the invisible app element's data-render-stats attribute for repeatable diagnostics. Timings vary with device and load; this small sample does not prove universal frame rate.
 
 Actual UI checks covered buying an extra scout, two-player placement, stable terrain while arranging, the preserved formation after countdown, auto arrangement, campaign preparation, movement into a contested zone, red attack targets, a strike reducing a scout from 6 to 4 HP, a separate healing special restoring it to 6 HP with green targets and effects, pause/menu, and both local command docks at 390 × 844. No browser warnings or errors appeared during these checks. Physical simultaneous two-finger hardware was unavailable; independent multi-pointer ownership, drop validation, click suppression and cleanup were exercised in actual-handler integration tests.
+
+## Tactical expansion
+
+The tactical update adds nine troops (seven main choices per faction), eighteen abilities (39 total), three formation rules, and six kinds of temporary ground effects. Formation bonuses and field effects are actual engine rules; the UI reads the same definitions.
+
+Run the focused rules and expanded bot exercise from the repository root:
+
+```sh
+node --test game/flag-capture/engine.test.mjs game/flag-capture/tactical-engine.test.mjs
+node game/flag-capture/tactical-playtest.mjs
+node game/flag-capture/playtest.mjs
+```
+
+The rules suites pass 83 checks. The 20 new tactical scenarios cover formation geometry and breakage; ranged defense and pincer damage; weighted movement through hostile fields; every new ability; three-second healing, damage and shield ticks; expiry; repainting without stacking; cleansing and detonating ground; fields persisting after a caster falls; and entry effects during ordinary moves, forced swaps, summons and recruitment. Existing Story/Relaxed pacing and simple opening-plan winnability regressions still pass.
+
+The expanded exercise runs 24 deterministic matches: four modes and all six directed faction pairings, across three map themes and balanced/wild terrain. Both sides field all seven main roles at a 40-coin budget and issue one command every 1.8 seconds. The mirrored player-side policy also mirrors field positions and ownership, so both bots evaluate the same ground rules.
+
+| Exercise | Legally resolved | Finished before the time limit |
+| --- | --- | --- |
+| Classic 48-match sample | 48 / 48 | 46 / 48 |
+| Expanded seven-role sample | 24 / 24 | 21 / 24 |
+
+All 39 abilities, all six field kinds, and every troop role were used in the expanded matches. Orders issued while a formation was active included 354 Brood, 27 Carnival, and 376 Choir orders. This confirms that the different formation requirements occur during play; it does not imply equal frequency or faction balance. Five matches across both samples used the normal time-limit tiebreak.
+
+On the Node test host, the final expanded sample measured median/p95 AI decision times of 0.86/2.02ms; the classic sample measured 0.70/1.92ms. These figures include the new field and formation decisions but do not measure browser drawing or input latency. They vary with the machine and concurrent work.
+
+At Balanced and higher difficulty, the AI selects deterministic five-troop compositions containing guardians, rangers or shapers, each costing 21 starting coins. Story and Relaxed keep the familiar gentle starting roster; players can purchase every new role at any difficulty. Mid-battle buying remains exclusive to Reinforcement Clash, where both players and AI may recruit the expanded roles.
+
+Earlier sections record the preceding game-feel release's comparison and timing evidence. These new diagnostics establish legality and exercise the expanded mechanics, rather than proving human enjoyment or universal faction balance.
