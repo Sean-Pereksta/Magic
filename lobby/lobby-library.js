@@ -3,6 +3,9 @@
 
   const TURNCRAFT_COVER = "https://pub-cb55798f1eeb4f80a85463da3612ed61.r2.dev/effects/ui/turncraft-lobby.webp";
   const turncraftCoverLoads = new WeakMap();
+  const FLAG_FACTIONS = `<div class="fc-factions" aria-label="Three factions: Lumen Brood, Crooked Carnival and Aureate Choir">
+    <span class="fc-brood" title="Lumen Brood">✧ Brood</span><span class="fc-carnival" title="Crooked Carnival">◈ Carnival</span><span class="fc-choir" title="Aureate Choir">◎ Choir</span>
+  </div>`;
   const TURNCRAFT_ART = `<div class="tc-faction-art" aria-hidden="true">
     <span class="tc-portrait tc-frontier"><img src="/game/turncraft/assets/factions/frontier.webp" alt="" loading="lazy" decoding="async"></span>
     <span class="tc-portrait tc-ascendant"><img src="/game/turncraft/assets/factions/ascendant.webp" alt="" loading="lazy" decoding="async"></span>
@@ -81,19 +84,22 @@
     const actions = getActions(game);
     const card = document.createElement("article");
     const isTurncraft = game.key === "turncraft" && !root.GameHubArtwork;
-    card.className = isTurncraft ? "game-card tc-tile" : "game-card";
+    const isFlagCapture = game.key === "flag";
+    const artwork = isTurncraft ? TURNCRAFT_ART : gameVisual(game, "art");
+    const cover = isFlagCapture ? artwork.replace(/ sizes="[^"]*"/, ' sizes="auto, (max-width:600px) 92vw, (max-width:1000px) 45vw, 320px"') : artwork;
+    card.className = isTurncraft ? "game-card tc-tile" : isFlagCapture ? "game-card fc-tile" : "game-card";
     card.dataset.gameKey = game.key;
-    card.style.setProperty("--game", gameColor(game.key));
+    card.style.setProperty("--game", isFlagCapture ? "#8de4d6" : gameColor(game.key));
     const favorite = favorites.has(game.key);
-    const modeTags = game.modes.map(mode => `<span class="tag">${mode === "single" ? "Solo" : "Multiplayer"}</span>`).join("");
+    const modeTags = isFlagCapture ? '<span class="tag fc-mode">AI / local 2P</span><span class="tag">5-mission campaign</span>' : game.modes.map(mode => `<span class="tag">${mode === "single" ? "Solo" : "Multiplayer"}</span>`).join("");
     const download = game.downloadRoute
       ? `<a class="btn secondary small download-game-btn" href="${escapeHtml(game.downloadRoute)}" download>Download</a>` : "";
     const buttons = actions.map((action, index) =>
       `<button type="button" class="btn small play-game-btn${index === 0 && actions.length > 1 ? " secondary" : ""}" data-game-action="${action.type}" aria-label="${escapeHtml(`${action.label}: ${game.title}`)}">${escapeHtml(action.label)}</button>`
     ).join("");
     card.innerHTML = `
-      <div class="game-art">${isTurncraft ? TURNCRAFT_ART : gameVisual(game, "art")}<button type="button" class="favorite-btn ${favorite ? "active" : ""}" title="Favorite" aria-label="Favorite ${escapeHtml(game.title)}" aria-pressed="${favorite}">${favorite ? "★" : "☆"}</button></div>
-      <div class="game-content">${isTurncraft ? '<p class="tc-card-kicker">Build. Command. Conquer.</p>' : ""}<div class="game-name">${escapeHtml(game.title)}</div><div class="game-description">${escapeHtml(game.desc)}</div>${isTurncraft ? TURNCRAFT_FACTIONS : ""}<div class="game-meta"><span class="tag">${escapeHtml(game.category)}</span>${modeTags}</div>
+      <div class="game-art">${cover}${isFlagCapture ? '<span class="fc-art-badge">COOLDOWN TACTICS</span>' : ""}<button type="button" class="favorite-btn ${favorite ? "active" : ""}" title="Favorite" aria-label="Favorite ${escapeHtml(game.title)}" aria-pressed="${favorite}">${favorite ? "★" : "☆"}</button></div>
+      <div class="game-content">${isTurncraft ? '<p class="tc-card-kicker">Build. Command. Conquer.</p>' : ""}<div class="game-name">${escapeHtml(game.title)}</div>${isFlagCapture ? FLAG_FACTIONS : ""}<div class="game-description">${escapeHtml(game.desc)}</div>${isFlagCapture ? '<p class="fc-features">21 troops <span>·</span> formations <span>·</span> living ground</p>' : ""}${isTurncraft ? TURNCRAFT_FACTIONS : ""}<div class="game-meta"><span class="tag">${escapeHtml(game.category)}</span>${modeTags}</div>
       <div class="game-bottom"><span class="play-count">🎮 ${Number(gamePlayCounts[game.key]) || 0} plays</span><span class="game-actions">${download}${buttons}</span></div></div>`;
     if (isTurncraft) loadTurncraftCover(card, document);
     card.querySelector(".favorite-btn").addEventListener("click", event => {
@@ -122,6 +128,25 @@
   const MARKER = "<!-- game-hub-library:v1 -->";
   const COPY = "Every game in one place. Play solo, create a multiplayer lobby, or enter a shared online world.";
   const STYLES = `<style id="gameLibraryStyles">
+    .arcade-hub .game-card.fc-tile,.game-card.fc-tile{background:linear-gradient(145deg,#21464b,#142f37);border-color:#416c6a;overflow:hidden}
+    .game-card.fc-tile .game-art{position:relative;aspect-ratio:16/9;background:#163a42;overflow:hidden}
+    .game-card.fc-tile .game-visual-art{position:absolute;inset:0;width:100%;height:100%}
+    .game-card.fc-tile .game-visual-art img{width:100%;height:100%;object-fit:cover;object-position:center}
+    .game-card.fc-tile .fc-art-badge{position:absolute;left:12px;top:12px;z-index:2;padding:6px 8px;border:1px solid #a1dfcf88;border-radius:6px;background:#10343de8;color:#d3f4dc;font:800 8px 'Segoe UI',sans-serif;letter-spacing:1.1px;pointer-events:none;box-shadow:0 2px 8px #0c25376b}
+    .game-card.fc-tile .favorite-btn{z-index:3}
+    .game-card.fc-tile .game-content{gap:8px}
+    .game-card.fc-tile .game-name{font-family:'Trebuchet MS','Segoe UI',sans-serif;color:#f3f3db}
+    .game-card.fc-tile .game-description{color:#b9cfcc}
+    .game-card.fc-tile .fc-factions{display:flex;flex-wrap:wrap;gap:5px;margin:0}
+    .fc-factions>span{border:1px solid currentColor;border-radius:5px;padding:3px 6px;font:700 9px 'Segoe UI',sans-serif;line-height:1.1;white-space:nowrap;background:#102e345c}
+    .fc-factions .fc-brood{color:#9ee8ca}.fc-factions .fc-carnival{color:#ffb4c3}.fc-factions .fc-choir{color:#f2db91}
+    .game-card.fc-tile .fc-features{margin:0;color:#d6e8d2;font-size:10px;line-height:1.5;font-weight:650}
+    .fc-features>span{color:#679e93;margin:0 3px}
+    .game-card.fc-tile .game-meta{gap:5px}.game-card.fc-tile .tag{font-size:9px;border-color:#46716d;background:#1d4148;color:#c4ded5}
+    .game-card.fc-tile .fc-mode{color:#d0f3db}.game-card.fc-tile .play-game-btn{background:#a2e8c3;border-color:#a2e8c3;color:#173c40}
+    .arcade-hub .game-card.fc-tile:hover{border-color:#8ed7c4;box-shadow:0 10px 26px #061c2f50}
+    @media(max-width:600px){.game-card.fc-tile .fc-art-badge{left:10px;top:10px}.game-card.fc-tile .fc-factions>span{font-size:10px}.game-card.fc-tile .fc-features{font-size:11px}.game-card.fc-tile .tag{font-size:10px}}
+    .arcade-hub #cnmRecentGrid .game-card.fc-tile .fc-art-badge,.arcade-hub #cnmRecentGrid .game-card.fc-tile .fc-factions,.arcade-hub #cnmRecentGrid .game-card.fc-tile .fc-features{display:none}
     .game-card[data-game-key="crowncouncil"] .game-art{position:relative;overflow:hidden;background:#17232b}
     .game-card[data-game-key="crowncouncil"] .game-visual-art{width:100%;height:100%;position:absolute;inset:0}
     .game-card[data-game-key="crowncouncil"] .game-visual-art img{object-fit:cover;object-position:center 30%}
