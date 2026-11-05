@@ -6,7 +6,7 @@ import { PLAYER, atWar, kingdom, relation } from './core.mjs';
 import { planningView } from './ai-knowledge.mjs';
 import { court, isHumanHouse } from './house-control.mjs';
 import { appendConversation, borderThreat, changeRelation, economicRelationship, tradeBlocked } from './living.mjs';
-import { economicNeeds, packageValue, tradeRoute } from './trade-economy.mjs';
+import { availableTradeAmount, buyerTradeTerms, economicNeeds, packageValue, referencePackageValue, tradeRoute } from './trade-economy.mjs';
 
 export const COMMERCIAL_TYPES = new Set(['TRADE', 'EXCHANGE', 'RECURRING']);
 const VALUES = RESOURCE_VALUES;
@@ -75,7 +75,7 @@ export function parseCommercialOffer(message) {
 function facts(s, ruler, actor) {
   const k = kingdom(s, ruler), r = relation(s, ruler, actor);
   const view = planningView(s, ruler);
-  return { k, r, needs: economicNeeds(s, ruler), military: borderThreat(view, ruler, actor),
+  return { k, r, known:view, needs: economicNeeds(s, ruler,{tradeReserves:true}), military: borderThreat(view, ruler, actor),
     economy: economicRelationship(s, ruler, actor), route: tradeRoute(view, ruler, actor) };
 }
 
@@ -109,7 +109,7 @@ function speechAssessment(s, ruler, message, actor) {
   const offer = /\b(?:i|we)\b.{0,35}\b(?:have|offer|provide|supply|send|trade)\b/.test(text);
   if (needsQuestion(text) && /\b(?:neighbou?rs?|relationship|both|mutual|together|cooperat\w*|help|offer|have)\b/.test(text) || /\b(?:both|mutual|together|each other|our (?:people|realms|houses))\b/.test(text) && /\b(?:benefit|prosper|help|cooperat\w*|gain|peace|trade)\b/.test(text)) out.push({ kind: 'mutual_interest', key: 'first-interest' });
   if (offer && !refusesTrade(text)) {
-    const needs = economicNeeds(s, ruler), match = mentionedResources(text).find(id => needs.some(n => n.resource === id && n.need > 5));
+    const needs = economicNeeds(s, ruler,{tradeReserves:true}), match = mentionedResources(text).find(id => needs.some(n => n.resource === id && n.need > 5));
     if (match) out.push({ kind: 'relevant_supply', key: match });
   }
   if (/\b(?:small|smaller|modest|limited|trial|one[- ]time|single)\b/.test(text) && /\b(?:exchange|trade|shipment|commitment|start|begin|risk|first)\b/.test(text)) out.push({ kind: 'limited_trial', key: 'first-trial' });
@@ -197,9 +197,12 @@ function assessment(s, ruler, actor, i, f) {
   const duration=i.type==='RECURRING'?i.duration:1;
   for(const x of receive){
     const n=f.needs.find(n=>n.resource===x.resource);
-    const required=x.amount*duration;
-    const available=i.type==='RECURRING'?n.surplus+Math.max(0,n.production)*Math.max(0,duration-1):n.surplus;
-    if(required>available)return deny('protected_reserve',`We need our ${x.resource} for reserves, committed deliveries and planned spending; only ${Math.max(0,Math.floor(available/duration))} per shipment is available.`);
+    const available=availableTradeAmount(s,ruler,n,duration);
+    if(x.amount>available)return deny('protected_reserve',`We need our ${x.resource} for reserves, committed deliveries and planned spending; only ${available} per shipment is available.`);
+  }
+  if(s.difficulty==='hard'&&give.some(x=>f.needs.find(n=>n.resource===x.resource).need>0)){
+    const terms=buyerTradeTerms(s,ruler,actor,give,f.needs,f.known);
+    if(referencePackageValue(receive)>terms.maximumValue+1e-8)return deny('reservation_price','Those quantities exceed what this shipment is worth to our court. We can discuss a smaller payment or shipment.');
   }
   const packageGiven=packageValue(f.needs,give),packageReceived=packageValue(f.needs,receive);
   const premiumRate=Math.max(0,k.greed-.65)*.25+(i.type==='RECURRING'&&r.trust<20?.03+k.paranoia*.03:0);
@@ -217,7 +220,7 @@ function sizedExchange(i, cap=12){return {...scalePackage(i,Math.min(1,cap/Math.
 function packageCounters(s,ruler,i,actor,judge,f,result){
   const candidates=[],give=tradeItems(i,'give'),receive=tradeItems(i,'receive');
   if(i.type==='RECURRING')candidates.push(sizedExchange(i));
-  const actorNeeds=economicNeeds(s,actor);
+  const actorNeeds=economicNeeds(s,actor,{tradeReserves:true});
   const bases=[i];
   for(const scale of [.9,.75,.5,.25,.1]){
     const rows=receive.map(x=>({...x,amount:Math.min(Math.max(1,Math.floor(x.amount*scale)),Math.floor(f.needs.find(n=>n.resource===x.resource).surplus/(i.type==='RECURRING'?i.duration:1)))}));

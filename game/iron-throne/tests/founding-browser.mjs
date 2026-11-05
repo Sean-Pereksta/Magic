@@ -22,11 +22,11 @@ try{
   const context=await browser.newContext({viewport,hasTouch:viewport.width<900}),page=await context.newPage(),errors=[];
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',dialog=>{errors.push(`Unexpected prompt: ${dialog.message()}`);void dialog.dismiss();});
   await page.route('https://pub-*.r2.dev/**',r=>r.fulfill({status:404,body:''}));await page.route('**/game/iron-throne/config.json',r=>r.fulfill({json:{}}));
-  await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#preset').selectOption('great-basin');await page.locator('#start-game').click();
+  await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#launch-new').click();await page.locator('#preset').selectOption('great-basin');await page.locator('#start-game').click();await page.locator('#welcome').waitFor({state:'hidden'});
   assert.equal(await page.locator('#turn').textContent(),'Founding');assert.equal(await page.locator('#end-turn').isDisabled(),true);assert.equal(await page.locator('#preset option').count(),8);
   const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));assert.equal(saved.mapProfile,'great-basin');assert.equal(saved.turn,0);
   await select(page,'0,0');assert.equal(await page.locator('[data-found-city]').isDisabled(),true);assert.match(await page.locator('#panel').textContent(),/cannot be founded on water/);
-  await page.reload();await page.locator('#resume').click();assert.equal(await page.locator('#turn').textContent(),'Founding');
+  await page.reload();await page.locator('#resume').click();await page.locator('#welcome').waitFor({state:'hidden'});assert.equal(await page.locator('#turn').textContent(),'Founding');
   const site=await page.evaluate(async()=>{const {planFoundings}=await import('./founding.mjs');const s=JSON.parse(localStorage.getItem('catnmice.iron-throne.v1'));return planFoundings(s)[0].capital;});
   await select(page,site);assert.match(await page.locator('#panel').textContent(),/FOUNDING OUTLOOK/);assert.equal(await page.locator('[data-found-city]').isEnabled(),true);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
@@ -35,7 +35,7 @@ try{
   const natural=s=>Object.values(s.tiles).map(t=>[t.id,t.terrain,t.resource,t.quality,t.river]);assert.deepEqual(natural(founded),natural(saved));
   await page.locator('[data-recruit="levy"]').click();assert.match(await page.locator('#panel').textContent(),/36 troops/);
   await page.locator('#end-turn').click();await page.waitForFunction(()=>document.getElementById('turn').textContent==='Turn 2'&&!document.getElementById('end-turn').disabled);
-  await page.reload();await page.locator('#resume').click();assert.equal(await page.locator('#turn').textContent(),'Turn 2');
+  await page.reload();await page.locator('#resume').click();await page.locator('#welcome').waitFor({state:'hidden'});assert.equal(await page.locator('#turn').textContent(),'Turn 2');
   assert.deepEqual(errors,[]);console.log(`PASS ${viewport.width}×${viewport.height}: map selection, founding preview, invalid land, one-click founding without prompts, six capitals, untouched terrain, recruit, turn and resume`);await context.close();
  }
 }finally{await browser.close();server.closeAllConnections();await new Promise(r=>server.close(r));}

@@ -29,8 +29,8 @@ try {
     await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
     await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
     await page.goto(`${base}/game/iron-throne/index.html`);
-    await page.locator('#start-game').waitFor({state:'visible'});
-    await page.locator('#game-size').selectOption('12');await page.locator('#start-game').click();
+    await page.locator('#launch-new').click();await page.locator('#start-game').waitFor({state:'visible'});
+    await page.locator('#game-size').selectOption('12');await page.locator('#start-game').click();await page.locator('#welcome').waitFor({state:'hidden'});
     let saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')));
     assert.equal(saved.width,WORLD_SIZES[12].width);assert.equal(saved.height,WORLD_SIZES[12].height);assert.equal(saved.kingdoms.length,12);assert.deepEqual(saved.fog.houses,{});
     assert.match(await page.locator('#panel').textContent(),/12 HOUSES/);await page.locator('#fit-map').click();

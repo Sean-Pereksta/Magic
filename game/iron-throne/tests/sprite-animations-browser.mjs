@@ -18,6 +18,16 @@ const server=http.createServer(async(req,res)=>{
   }catch{res.writeHead(404);res.end();}
 });
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
+async function sampleRedraws(page,duration) {
+  // Keep the measurement inside the browser so protocol/CI delays cannot add
+  // extra animation frames between the end of the wait and reading the count.
+  return page.evaluate(async milliseconds=>{
+    frames=0;draws=[];
+    const start=performance.now();
+    await new Promise(resolve=>setTimeout(resolve,milliseconds));
+    return {frames,milliseconds:performance.now()-start};
+  },duration);
+}
 let browser;
 try {
   browser=await chromium.launch({headless:true,executablePath:process.env.IRON_THRONE_CHROMIUM||undefined,args:['--no-sandbox']});
@@ -94,43 +104,63 @@ try {
     assert.equal(initial.draws.some(d=>d.ok),available);
     assert.ok(initial.draws.some(d=>d.path==='sprites/construction/stage_2.png'));
     const sprites=requests.filter(p=>p.startsWith('sprites/'));assert.equal(new Set(sprites).size,sprites.length,'share image requests across frames');
-    await page.evaluate(()=>{frames=0;draws=[];});await page.waitForTimeout(1100);
-    const idleFrames=await page.evaluate(()=>frames);assert.ok(idleFrames<=12,`idle whole-map renders must be throttled: ${idleFrames}`);
-    await page.evaluate(()=>{draws=[];Object.assign(state.armies[0],{order:'move',target:'2,1',path:['2,1']});map.draw();});await page.waitForTimeout(1500);
-    await page.evaluate(()=>{draws=[];map.draw();});await page.waitForTimeout(200);
-    const walking=await page.evaluate(()=>draws.filter(d=>d.path.includes('/troops/')));
-    assert.ok(walking.some(d=>d.action==='march'&&d.elapsed>=1500));
+    const idle=await sampleRedraws(page,1100),idleFrames=idle.frames;
+    assert.ok(idleFrames<=12,`idle whole-map renders must be throttled: ${JSON.stringify(idle)}`);
+    const walking=await page.evaluate(async()=>{
+      Object.assign(state.armies[0],{order:'move',target:'2,1',path:['2,1']});
+      // Begin playback synchronously, then explicitly render the final sample.
+      // A delayed initial RAF must not shorten the tested animation lifetime.
+      map.render();
+      await new Promise(resolve=>setTimeout(resolve,1550));
+      draws=[];map.render();
+      return draws.filter(d=>d.path.includes('/troops/'));
+    });
+    assert.ok(walking.some(d=>d.action==='march'&&d.elapsed>=1500),JSON.stringify(walking));
     assert.equal(walking.some(d=>d.action==='idle'),false,'queued march remains active past the old timeout');
-    await page.evaluate(()=>{draws=[];Object.assign(state.armies[0],{tile:'2,1',order:'hold',target:null,path:[]});map.draw();});await page.waitForTimeout(200);
-    assert.ok((await page.evaluate(()=>draws)).some(d=>d.path.includes('/troops/')&&d.action==='march'));
-    await page.evaluate(()=>{draws=[];state.militaryEvents.push({id:1,turn:1,action:'battle',attacker:'ashen',defender:'wintermere',attackerArmyId:'a',tile:'2,1'});map.draw();});await page.waitForTimeout(200);
-    assert.ok((await page.evaluate(()=>draws)).some(d=>d.path.includes('/troops/')&&d.action==='attack'));
-    await page.waitForTimeout(2200);await page.evaluate(()=>{draws=[];map.draw();});await page.waitForTimeout(100);
-    const attacking=await page.evaluate(()=>draws.filter(d=>d.path.includes('/troops/')));
-    assert.ok(attacking.some(d=>d.action==='attack'&&d.elapsed>=2200));
+    const arrived=await page.evaluate(()=>{draws=[];Object.assign(state.armies[0],{tile:'2,1',order:'hold',target:null,path:[]});map.render();return draws;});
+    assert.ok(arrived.some(d=>d.path.includes('/troops/')&&d.action==='march'));
+    const battleStart=await page.evaluate(()=>{draws=[];state.militaryEvents.push({id:1,turn:1,action:'battle',attacker:'ashen',defender:'wintermere',attackerArmyId:'a',tile:'2,1'});map.render();return draws;});
+    assert.ok(battleStart.some(d=>d.path.includes('/troops/')&&d.action==='attack'));
+    const attacking=await page.evaluate(async()=>{
+      await new Promise(resolve=>setTimeout(resolve,2250));
+      draws=[];map.render();
+      return draws.filter(d=>d.path.includes('/troops/'));
+    });
+    assert.ok(attacking.some(d=>d.action==='attack'&&d.elapsed>=2200),JSON.stringify(attacking));
     assert.equal(attacking.some(d=>d.action==='idle'),false,'combat loops for the whole turn');
     if(available){
-      await page.evaluate(()=>{frames=0;draws=[];});await page.waitForTimeout(450);
-      const loop=await page.evaluate(()=>({frames,elapsed:draws.filter(d=>d.path.includes('/troops/')).map(d=>d.elapsed)}));
-      assert.ok(loop.frames>0&&loop.frames<=6,'attack redraws remain throttled to sprite FPS');
+      const loop=await page.evaluate(async()=>{
+        // Construction and idle ships have independent frame boundaries. Test
+        // the attack's redraw budget on its own, then restore the mixed scene.
+        const project=state.tiles['1,1'].project,fleets=state.fleets;
+        try {
+          state.tiles['1,1'].project=null;state.fleets=[];map.render();
+          frames=0;draws=[];
+          const start=performance.now();
+          await new Promise(resolve=>setTimeout(resolve,450));
+          return {frames,milliseconds:performance.now()-start,elapsed:draws.filter(d=>d.path.includes('/troops/')).map(d=>d.elapsed)};
+        } finally {
+          state.tiles['1,1'].project=project;state.fleets=fleets;map.draw();
+        }
+      });
+      assert.ok(loop.frames>0&&loop.frames<=6,`attack redraws remain throttled to sprite FPS: ${JSON.stringify(loop)}`);
       assert.ok(new Set(loop.elapsed.map(ms=>Math.floor(ms*8/1000)%8)).size>1,'the attack loop advances frames after one second');
     }
-    await page.evaluate(()=>{state.turn++;draws=[];map.draw();});await page.waitForTimeout(100);
-    assert.ok((await page.evaluate(()=>draws)).some(d=>d.path.includes('/troops/')&&d.action==='idle'));
-    await page.evaluate(()=>{Object.assign(state.armies[0],{order:'attack',target:'3,1'});Object.assign(state.fleets[0],{order:'move',path:['sea:4,2'],target:'sea:4,2'});draws=[];map.draw();});await page.waitForTimeout(150);
-    const ordered=await page.evaluate(()=>draws);
+    const nextTurn=await page.evaluate(()=>{state.turn++;draws=[];map.render();return draws;});
+    assert.ok(nextTurn.some(d=>d.path.includes('/troops/')&&d.action==='idle'));
+    const ordered=await page.evaluate(()=>{Object.assign(state.armies[0],{order:'attack',target:'3,1'});Object.assign(state.fleets[0],{order:'move',path:['sea:4,2'],target:'sea:4,2'});draws=[];map.render();return draws;});
     assert.ok(ordered.some(d=>d.path.includes('/troops/')&&d.action==='attack'));
     assert.ok(ordered.some(d=>d.path.includes('/ships/')&&d.action==='sailing'));
     await page.evaluate(()=>{state.tiles['1,1'].project=null;state.tiles['2,1'].fog='unknown';state.tiles['4,1'].fog='explored';draws=[];map.draw();});await page.waitForTimeout(250);
     assert.equal((await page.evaluate(()=>draws)).length,0,'fog and completed construction must stop animation rendering');
     await page.evaluate(()=>{state.tiles['2,1'].fog='visible';state.tiles['4,1'].fog='visible';map.draw();});
-    await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(300);await page.evaluate(()=>{frames=0;});await page.waitForTimeout(600);
-    assert.equal(await page.evaluate(()=>frames),0,'reduced motion must not idle-redraw');
-    await page.emulateMedia({reducedMotion:'no-preference'});await page.waitForTimeout(100);
-    await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));frames=0;});await page.waitForTimeout(350);
-    assert.equal(await page.evaluate(()=>frames),0,'hidden tab cancels coordinated animation');
-    await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});await page.waitForTimeout(150);
-    assert.ok(await page.evaluate(()=>frames>0));assert.deepEqual(errors,[]);
+    await page.emulateMedia({reducedMotion:'reduce'});await page.waitForFunction(()=>map.spriteReduced===true);
+    assert.equal((await sampleRedraws(page,600)).frames,0,'reduced motion must not idle-redraw');
+    await page.emulateMedia({reducedMotion:'no-preference'});await page.waitForFunction(()=>map.spriteReduced===false);
+    await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
+    assert.equal((await sampleRedraws(page,350)).frames,0,'hidden tab cancels coordinated animation');
+    await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
+    await page.waitForFunction(()=>frames>0);assert.deepEqual(errors,[]);
     console.log(`PASS sprites ${available?'available':'missing'}: cropping, standing orders, turn-long movement/combat, next-turn reset, construction, fog, badges, throttling, reduced motion, hidden/resume; idle renders=${idleFrames}`);
     if(available) {
       const result=await page.evaluate(()=>{

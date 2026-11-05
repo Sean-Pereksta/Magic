@@ -53,9 +53,9 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
       </nav>
       <aside class="battle-keyboard-hud" aria-label="Current command"><strong id="battle-live-selection">All troops</strong><span id="battle-keyboard-feedback" role="status" aria-live="polite"></span></aside>
       <button type="button" id="battle-player-climb" data-battle-action="climb" aria-keyshortcuts="E" hidden><kbd>E</kbd><span><strong>Climb Ladder</strong><small id="battle-climb-target"></small></span></button>
-      <footer id="battle-player" class="battle-player"><span id="battle-player-status"></span><label>Weapon <select id="battle-weapon"><option value="sword">Sword & shield</option><option value="spear">Spear & shield</option><option value="axe">Two-handed axe</option><option value="mace">Mace</option><option value="bow">Bow & sidearm</option><option value="crossbow">Crossbow & sidearm</option><option value="lance">Mounted lance</option></select></label><span class="battle-help">WASD move · Mouse aim · Click attack · Right click block · Space heavy attack · Shift sprint · E interact / mount · Tab command</span></footer>
+      <footer id="battle-player" class="battle-player"><span id="battle-player-status"></span><label>Weapon <select id="battle-weapon"><option value="sword">Sword & shield</option><option value="spear">Spear & shield</option><option value="axe">Two-handed axe</option><option value="mace">Mace</option><option value="bow">Bow & sidearm</option><option value="crossbow">Crossbow & sidearm</option><option value="lance">Mounted lance</option></select></label><span class="battle-help">WASD move · Mouse aim · Click attack · Right click block · Space heavy attack · Shift sprint · E stairs / ladder / mount · Tab command</span></footer>
       <div class="battle-touch" id="battle-touch"><div id="battle-stick" aria-label="Movement stick"><span></span></div><div class="battle-touch-buttons"><button data-battle-touch="sprint">Sprint</button><button data-battle-touch="block" id="battle-touch-block" aria-pressed="false" aria-label="Block. Hold to guard. Press just before a melee hit to stun the attacker."><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 21 5v6c0 5-3.4 8.7-9 11-5.6-2.3-9-6-9-11V5l9-3Zm0 3.2L6 7v4c0 3.5 2 6.1 6 8 4-1.9 6-4.5 6-8V7l-6-1.8Z"/></svg><strong>Block</strong><small id="battle-block-state">Hold</small></button><button data-battle-touch="attack">Attack</button><button data-battle-touch="heavy">Heavy</button><button data-battle-touch="interact">Interact / Mount</button><button data-battle-action="commands">Orders</button></div></div>
-      <div id="battle-pause" class="battle-pause" hidden><section><span id="battle-pause-mode" class="eyebrow"></span><h2>Battle paused</h2><p id="battle-pause-note"></p><button class="primary" data-battle-action="resume">Resume</button><button data-battle-action="exit">Save and Exit</button><button data-battle-action="retreat">Retreat</button><button data-battle-action="finish">Finish Automatically</button></section></div>
+      <div id="battle-pause" class="battle-pause" hidden><section><span id="battle-pause-mode" class="eyebrow"></span><h2>Battle paused</h2><p id="battle-pause-note"></p><button class="primary" data-battle-action="resume">Resume</button><button data-battle-action="exit">Save and Exit</button><button data-battle-action="retreat">Order troops to retreat</button><button data-battle-action="finish">Finish Automatically</button></section></div>
     </dialog>`;
   document.body.append(ui);
   const $ = id => ui.querySelector(`#${id}`), encounterDialog=$('battle-encounter'), field=$('battlefield'), canvas=$('battle-canvas');
@@ -208,7 +208,7 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     transact(s=>saveEncounterCheckpoint(s,battle));
     lastCheckpoint=battle.time;lastMilestone=milestone();
   }
-  function availableOwnTroops(){return battle?.units.filter(u=>u.owner===battle.playerOwner&&['active','reserve'].includes(u.status))||[];}
+  function availableOwnTroops(){return battle?.units.filter(u=>u.owner===battle.playerOwner&&u.id!==battle.commanderId&&['active','reserve'].includes(u.status))||[];}
   function selectedTroops(){
     const own=availableOwnTroops(),saved=battle?.commandGroups?.find(g=>g.id===customGroupId);
     if(saved){const ids=new Set(saved.unitIds);return own.filter(u=>ids.has(u.id));}
@@ -235,7 +235,7 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
   function storeCommandSelection(){battle.commandSelection={armyId:$('battle-army').value,group,customGroupId};}
   function saveCommands(){try{storeCommandSelection();checkpoint();}catch(error){setPause(true);$('battle-pause-note').textContent=error.message;}}
   function refreshSavedGroups(){
-    $('battle-saved-group').innerHTML='<option value="">Choose a saved group</option>'+(battle.commandGroups||[]).map(g=>`<option value="${esc(g.id)}">${esc(g.name)} · ${g.unitIds.length} troops</option>`).join('');
+    $('battle-saved-group').innerHTML='<option value="">Choose a saved group</option>'+(battle.commandGroups||[]).map(g=>`<option value="${esc(g.id)}">${esc(g.name)} · ${g.unitIds.filter(id=>id!==battle.commanderId).length} troops</option>`).join('');
     $('battle-saved-group').value=customGroupId;
     const quick=$('battle-quick-group');quick.querySelectorAll('[data-saved]').forEach(option=>option.remove());
     for(const [i,g] of (battle.commandGroups||[]).entries()){
@@ -274,6 +274,7 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     const description=selectedOrder==='formation'?`${formations[$('battle-formation').value]?.name||'Formation'} applied`:orders.find(([id])=>id===selectedOrder)?.[1]||selectedOrder;
     $('battle-order-status').textContent=result?.accepted?`${description} · ${result.count} ${selectionName().toLowerCase()}${params.x!==undefined?` to ${Math.round(params.x)}, ${Math.round(params.z)}`:''}.${result.reason?` ${result.reason}`:''}`:result?.message||result?.error||result?.reason||'No troops accepted this order.';
     commandFeedback(result?.accepted?`${selectionName()} ${selectedOrder==='follow'?'following':description} · ${result.count} soldiers`:$('battle-order-status').textContent);
+    if(result?.accepted&&selectedOrder==='retreat')commandFeedback('Troops retreating. Move through your rear battlefield edge to leave personally.');
     if(result?.accepted){refreshSelection();saveCommands();}
   }
   function clearTarget(){targeting=null;delete camera.targetKind;delete camera.groundTarget;field.classList.remove('is-targeting');}
@@ -357,8 +358,8 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     const commandTime=$('battle-command-time').value, timeScale=paused||finishing?0:tactical?(commandTime==='pause'?0:commandTime==='slow'?.18:1):1;
     if(tactical&&p){camera.target||={x:p.x,z:p.z};camera.target.x+=strafe*dt*24;camera.target.z+=forward*dt*24;}
     if(!paused&&!finishing&&battle.phase==='combat'){
-      sim.stepBattle(battle,dt*timeScale,tactical?{commanderAI:true}:{...input,moveX:Math.sin(camera.yaw)*forward+Math.cos(camera.yaw)*strafe,moveZ:Math.cos(camera.yaw)*forward-Math.sin(camera.yaw)*strafe,facing:camera.yaw,attack:input.attack||input.attackTap||touchHeld('attack')||touchHeld('heavy')||keys.has('Space'),heavy:input.heavyTap||touchHeld('heavy')||keys.has('Space'),block:input.block||touchHeld('block'),sprint:touchHeld('sprint')||keys.has('ShiftLeft')||keys.has('ShiftRight'),weapon:$('battle-weapon').value,aimX:p?p.x+Math.sin(camera.yaw)*70:0,aimZ:p?p.z+Math.cos(camera.yaw)*70:0});
-      if(dt*timeScale>0){input.blockPressed=input.attackTap=input.heavyTap=false;delete input.climbLadderId;}
+      sim.stepBattle(battle,dt*timeScale,tactical?{}:{...input,moveX:Math.sin(camera.yaw)*forward+Math.cos(camera.yaw)*strafe,moveZ:Math.cos(camera.yaw)*forward-Math.sin(camera.yaw)*strafe,facing:camera.yaw,attack:input.attack||input.attackTap||touchHeld('attack')||touchHeld('heavy')||keys.has('Space'),heavy:input.heavyTap||touchHeld('heavy')||keys.has('Space'),block:input.block||touchHeld('block'),sprint:touchHeld('sprint')||keys.has('ShiftLeft')||keys.has('ShiftRight'),weapon:$('battle-weapon').value,aimX:p?p.x+Math.sin(camera.yaw)*70:0,aimZ:p?p.z+Math.cos(camera.yaw)*70:0});
+      if(dt*timeScale>0){input.blockPressed=input.attackTap=input.heavyTap=false;delete input.climbLadderId;delete input.stairId;}
       input.interact=false;
     }
     if(p?.status==='reserve'&&!tactical){const escort=battle.units.find(u=>u.side===battle.playerSide&&u.status==='active');if(escort){camera.target={x:escort.x,y:escort.y,z:escort.z};camera.spectating=true;}}
@@ -372,11 +373,13 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
     frame=requestAnimationFrame(tick);
   }
   function updateHUD(){
-    const climb=$('battle-player-climb'), option=!paused&&!finishing&&!targeting&&camera.mode==='third'&&sim.playerLadderOption(battle,player());
+    const climb=$('battle-player-climb'), option=!paused&&!finishing&&!targeting&&camera.mode==='third'&&(sim.playerLadderOption(battle,player())||sim.playerStairOption(battle,player()));
     climb.hidden=!option;
     if(option){
-      climb.dataset.ladder=option.ladder.id;climb.disabled=!!option.blocked;
-      const label=(option.ladder.name||option.ladder.id)+(option.blocked?' · '+option.blocked:'');
+      climb.dataset.ladder=option.ladder?.id||'';climb.dataset.stair=option.stair?.id||'';climb.disabled=!!option.blocked;
+      climb.querySelector('strong').textContent=option.stair?(option.ascending?'Ascend Stairs':'Descend Stairs'):'Climb Ladder';
+      const target=option.ladder||option.stair;
+      const label=(target.name||target.id)+(option.blocked?' · '+option.blocked:'');
       if($('battle-climb-target').textContent!==label)$('battle-climb-target').textContent=label;
     }
     if(!targeting&&performance.now()>feedbackUntil&&$('battle-keyboard-feedback').textContent)$('battle-keyboard-feedback').textContent='';
@@ -477,14 +480,16 @@ export function installOfflineBattleUI({getState,replaceState,save,render,contin
       if(name==='begin'){if(custom){custom.initial=structuredClone(battle);custom.deploy=false;}sim.beginBattle(battle);camera.mode='third';camera.distance=10;camera.pitch=.35;delete camera.target;setHud(hudMinimized,false);checkpoint();canvas.focus();return;}
       if(name==='camera'){cameraToggle();return;}
       if(name==='climb'&&battle&&!paused&&camera.mode==='third'){
-        input.climbLadderId=$('battle-player-climb').dataset.ladder;canvas.focus({preventScroll:true});return;
+        const button=$('battle-player-climb');
+        if(button.dataset.stair)input.stairId=button.dataset.stair;else input.climbLadderId=button.dataset.ladder;
+        canvas.focus({preventScroll:true});return;
       }
       if(name==='hud'){setHud(!hudMinimized,ordersOpen);canvas.focus({preventScroll:true});return;}
       if(name==='commands'){setHud(false,hudMinimized||!ordersOpen);canvas.focus({preventScroll:true});return;}
       if(name==='pause'){setPause(true);return;}
       if(name==='resume'){if(graphicsError){if(custom)custom.saved=structuredClone(battle);disposeScene();await enter();}else{setPause(false);canvas.focus();}return;}
       if(name==='exit'){if(custom){leaveCustom(null,'Returned to setup.');return;}checkpoint();disposeScene();showEncounter();return;}
-      if(name==='retreat'){order='retreat';sim.issueOrder(battle,'all','retreat',{});setPause(false);camera.mode='third';checkpoint();return;}
+      if(name==='retreat'){order='retreat';sim.issueOrder(battle,'all','retreat',{});setPause(false);camera.mode='third';commandFeedback('Troops retreating. Move through your rear battlefield edge to leave personally.');checkpoint();return;}
       if(name==='finish'){await finishBattleAutomatically();return;}
     }catch(error){if(battle){setPause(true);$('battle-pause-note').textContent=error.message;}notice(error.message);toast(error.message);}
   }

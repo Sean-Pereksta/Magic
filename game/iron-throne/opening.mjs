@@ -1,6 +1,7 @@
 import { BUILDINGS, UNITS } from './data.mjs';
 
-export const OPENING_RESOURCES = Object.freeze({food:220,wood:170,stone:140,iron:75,gold:300,horses:16,tools:0,arms:0});
+export const FOUNDING_WAGON = Object.freeze({wood:30,stone:20,gold:40});
+export const OPENING_RESOURCES = Object.freeze({food:220,wood:200,stone:160,iron:75,gold:340,horses:16,tools:0,arms:0});
 export const ROYAL_DECREES = Object.freeze({
   prosperity:{id:'prosperity',name:'Prosperity Decree',duration:6,benefits:['+10% food, wood, stone, iron and horse production from developed land.','First-level farms, lumber camps, mines, quarries, roads, barracks and ranges take one fewer turn through turn 6.']},
   mobilization:{id:'mobilization',name:'Mobilization Decree',duration:6,benefits:['Levies, spearmen, archers and scouts cost 10% fewer resources (rounded up).','Land armies receive +1 movement per turn.']},
@@ -17,6 +18,10 @@ export const openingProductionFactor=(s,owner)=>hasRoyalDecree(s,owner,'prosperi
 export function initializeOpeningHouse(s,owner,capital) {
   if(!openingEnabled(s,owner))return;
   const k=house(s,owner),tiles=Object.values(s.tiles).filter(t=>t.owner===owner);
+  if(k.opening.foundingWagonReceived===false){
+    for(const [resource,amount] of Object.entries(FOUNDING_WAGON))k.resources[resource]+=amount;
+    k.opening.foundingWagonReceived=true;
+  }
   const infrastructure=tiles.reduce((n,t)=>n+(t.workshop?(t.levels?.workshop||1):0)+(t.building==='city'?(BUILDINGS.city.levels[(t.levels?.city||1)-1].orders||0):0),0);
   k.commands=Math.min(8,5+infrastructure);
   if(s.armies.some(a=>a.owner===owner&&a.scout))return;
@@ -34,7 +39,8 @@ export function applyOpeningConstruction(s,owner,t,type,spec) {
   if(!spec||!openingEnabled(s,owner)||spec.repair)return spec;
   const first=spec.level===1||spec.level===undefined&&!t.levels?.[type]&&t.building!==type&&!t[type];
   const charter=type==='town'&&first&&!house(s,owner).opening.charterUsed;
-  const basic=first&&['farm','lumber','mine','quarry','road','barracks','range'].includes(type)&&(openingCommandBonus(s,owner)>0||hasRoyalDecree(s,owner,'prosperity'));
+  const extended=first&&['mine','quarry','barracks','range'].includes(type)&&s.turn>=0&&s.turn<=4;
+  const basic=first&&['farm','lumber','mine','quarry','road','barracks','range'].includes(type)&&(extended||openingCommandBonus(s,owner)>0||hasRoyalDecree(s,owner,'prosperity'));
   if(!charter&&!basic)return spec;
   return {...spec,turns:Math.max(1,spec.turns-1),cost:charter?Object.fromEntries(Object.entries(spec.cost).map(([r,n])=>[r,r==='gold'?n:Math.ceil(n*.75)])):{...spec.cost},openingBonus:charter?'First Frontier Charter':'Opening construction',charter};
 }
@@ -48,6 +54,7 @@ export function validateOpening(s) {
     if(s.ambitionVersion===undefined){if(k.opening!==undefined)fail();continue;}
     const o=k.opening;
     if(!o||typeof o!=='object'||Array.isArray(o)||typeof o.charterUsed!=='boolean'||o.decree!==null&&!Object.hasOwn(ROYAL_DECREES,o.decree))fail();
+    if(o.foundingWagonReceived!==undefined&&typeof o.foundingWagonReceived!=='boolean')fail();
     if(o.decree===null?o.decreeTurn!==null:!Number.isInteger(o.decreeTurn)||o.decreeTurn<1||o.decreeTurn>Math.min(6,s.turn))fail();
   }
   for(const a of s.armies)if(a.scout!==undefined&&typeof a.scout!=='boolean')fail();

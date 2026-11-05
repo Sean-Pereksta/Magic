@@ -35,6 +35,7 @@ try {
     await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
     await page.goto(`${base}/game/iron-throne/index.html`);
     await page.locator('#resume').click();
+    await page.locator('#welcome').waitFor({state:'hidden'});
     await page.evaluate(()=>{
       window.progressSeen=[];window.framesDuringTurn=0;
       new MutationObserver(()=>window.progressSeen.push(document.querySelector('#turn-progress-label').textContent))
@@ -47,7 +48,8 @@ try {
     assert.equal(await page.locator('#turn').textContent(),'Turn 2','double click resolves only one round');
     assert.equal(await page.locator('#end-turn').isEnabled(),true);
     const feedback=await page.evaluate(()=>({seen:progressSeen,frames:framesDuringTurn,overflow:document.documentElement.scrollWidth>innerWidth}));
-    assert.ok(feedback.seen.some(x=>/AI turns: [1-5] \/ 5/.test(x)),JSON.stringify(feedback));
+    assert.ok(feedback.seen.some(x=>/Enemy Houses: [1-5] \/ 5/.test(x)),JSON.stringify(feedback));
+    assert.ok(feedback.seen.includes('Resolving round…'),'round processing has a distinct progress phase');
     assert.ok(feedback.frames>0,'browser paints while AI runs');
     assert.equal(feedback.overflow,false);
     // Module-worker loading failure leaves the saved campaign intact and unlocks retry.

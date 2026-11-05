@@ -20,7 +20,7 @@ try{
   for(const viewport of [{width:1280,height:850},{width:390,height:844},{width:844,height:390}]){
     const context=await browser.newContext({viewport}),page=await context.newPage(),errors=[];
     page.on('pageerror',e=>errors.push(e.message));await page.route('https://pub-*.r2.dev/**',r=>r.fulfill({status:404,body:''}));await page.route('**/game/iron-throne/config.json',r=>r.fulfill({json:{}}));
-    await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#start-game').click();
+    await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#launch-new').click();await page.locator('#start-game').click();await page.locator('#welcome').waitFor({state:'hidden'});
     const site=await page.evaluate(async()=>{const {planFoundings}=await import('./founding.mjs');return planFoundings(JSON.parse(localStorage.getItem('catnmice.iron-throne.v1')))[0].capital;});
     await select(page,site);await page.locator('[data-found-city]').click();await page.waitForFunction(()=>document.getElementById('turn').textContent==='Turn 1');
     assert.equal(await page.locator('[data-decree]').count(),3);assert.match(await page.locator('.royal-opening').textContent(),/after turn 6/);assert.match(await page.locator('.charter-status').textContent(),/25%/);

@@ -23,9 +23,9 @@ export function showTurnProgress(progress) {
   container.hidden = !progress;
   if (!progress) return;
   const {phase,completed,total,ended} = progress;
-  label.textContent = phase === 'ai' ? `AI turns: ${completed} / ${total}` :
+  label.textContent = phase === 'ai' ? `Enemy Houses: ${completed} / ${total}` :
     phase === 'complete' ? (ended ? 'Campaign complete' : 'Your turn') :
-    phase === 'resolving' ? 'Resolving round…' : 'Preparing AI turns…';
+    phase === 'resolving' ? 'Resolving round…' : 'Preparing enemy Houses…';
   // This measures completed Houses, not a misleading estimate of seconds left.
   if (phase === 'ai') { bar.max = Math.max(1,total); bar.value = completed; }
   else if (phase === 'complete') { bar.max = 1; bar.value = 1; }

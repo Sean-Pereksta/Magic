@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createBattle,beginBattle,stepBattle,issueOrder,validateBattleCheckpoint,terrainHeight} from '../battle-sim.mjs';
 
-function arena(){
+function arena(commandTroop = false){
   const encounter={id:'horse-movement',seed:23,playerOwner:'ashen',playerSide:0,tile:{terrain:'plains'},
-    participants:[{armyId:'a',side:0,owner:'ashen',units:{cavalry:1}},{armyId:'d',side:1,owner:'vesper',units:{levy:1}}]};
+    participants:[{armyId:'a',side:0,owner:'ashen',units:{cavalry:commandTroop?2:1}},{armyId:'d',side:1,owner:'vesper',units:{levy:1}}]};
   const b=createBattle(encounter);beginBattle(b);
-  const [horse,enemy]=b.units;
+  const horse=b.units.find(u=>u.side===0&&(!commandTroop||!u.commander)),enemy=b.units.find(u=>u.side===1);
   Object.assign(horse,{x:0,z:-30,facing:0});
   Object.assign(enemy,{x:64,z:66,explicitOrder:true,order:{kind:'hold',x:64,z:66}});
   return {b,horse,enemy,encounter};
@@ -57,7 +57,7 @@ test('the horse stops at solid cover and the map edge, while dismounting restore
 });
 
 test('AI cavalry uses the same steering on a move order and cannot lance an enemy behind it instantly',()=>{
-  const {b,horse,enemy}=arena();Object.assign(horse,{speed:8,z:0});
+  const {b,horse,enemy}=arena(true);Object.assign(horse,{speed:8,z:0});
   issueOrder(b,[horse.id],'move',{x:17,z:0});
   ride(b,1,{commanderAI:true});assert.ok(horse.z>.35&&horse.x<.025&&horse.facing<.04);
   ride(b,105,{commanderAI:true});assert.ok(horse.x>13&&Math.abs(horse.z)<4);

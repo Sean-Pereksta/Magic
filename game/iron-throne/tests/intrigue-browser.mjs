@@ -26,7 +26,7 @@ try {
     page.on('pageerror',e=>errors.push(e.message));
     await page.route('https://pub-*.r2.dev/**',route=>route.fulfill({status:404,body:''}));
     await page.route('**/game/iron-throne/config.json',route=>route.fulfill({json:{}}));
-    await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#start-game').click();
+    await page.goto(`${base}/game/iron-throne/index.html`);await page.locator('#launch-new').click();await page.locator('#start-game').click();await page.locator('#welcome').waitFor({state:'hidden'});
     await page.evaluate(async()=>{
       const {declareWar}=await import('./core.mjs');const {createGame}=await import('./tests/fixtures/legacy-game.mjs');const s=createGame(100);
       const t=s.tiles['5,6'];t.intelligenceOffice=true;t.levels.intelligenceOffice=3;

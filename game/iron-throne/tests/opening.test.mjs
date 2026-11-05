@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { OPENING_RESOURCES, chooseRoyalDecree, decreeRemaining, openingEnabled } from '../opening.mjs';
+import { FOUNDING_WAGON, OPENING_RESOURCES, chooseRoyalDecree, decreeRemaining, initializeOpeningHouse, openingEnabled } from '../opening.mjs';
 import { createGame, kingdom, commandLimit, build, buildCheck, recruit, recruitmentCost, parseSave, resolveEconomy, economyProjection, resolveMovement } from '../core.mjs';
-import { constructionSpec, buildingLevel, productionPlan, emptyUnits } from '../economy.mjs';
+import { constructionDuration, constructionSpec, buildingLevel, productionPlan, emptyUnits } from '../economy.mjs';
 import { foundCity, foundAIKingdoms, planFoundings } from '../founding.mjs';
 import { movementBudget, effectiveArmySpeed, armyArrivalTurns } from '../movement-timing.mjs';
 import { createArmyDraft, moveDraftUnits, reorganizeArmy } from '../army-organization.mjs';
@@ -11,6 +11,7 @@ import { knowledgeView } from '../fog.mjs';
 import { createGame as legacyGame } from './fixtures/legacy-game.mjs';
 import { onlineGame, activateForTest } from './fixtures/online-game.mjs';
 import { applyCommand } from '../multiplayer-commands.mjs';
+import { constructionBrowser } from '../expansion-ui.mjs';
 
 let baseline;
 function campaign(){
@@ -29,6 +30,90 @@ test('new Houses receive resources, capped opening orders and weak scouts under 
   const cap=Object.values(s.tiles).find(t=>t.capital==='ashen');cap.workshop=true;cap.levels.workshop=3;cap.levels.city=3;
   assert.equal(commandLimit(s,'ashen'),8);
   const view=knowledgeView(s,'ashen');assert.equal(view.kingdoms.find(k=>k.id==='wintermere').opening,undefined);
+});
+
+test('the founding wagon is delivered once per new House and never re-granted on load',()=>{
+  const s=campaign();
+  for(const k of s.kingdoms){
+    assert.equal(k.opening.foundingWagonReceived,true);
+    assert.deepEqual([k.resources.wood,k.resources.stone,k.resources.gold,k.resources.tools,k.resources.arms],[200,160,340,0,0]);
+    const capital=Object.values(s.tiles).find(t=>t.capital===k.id);
+    k.resources.wood-=FOUNDING_WAGON.wood;
+    initializeOpeningHouse(s,k.id,capital);
+    assert.equal(k.resources.wood,170);
+  }
+  const restored=parseSave(JSON.stringify(s));
+  assert.deepEqual(restored.kingdoms.map(k=>k.resources),s.kingdoms.map(k=>k.resources));
+  delete restored.kingdoms[0].opening.foundingWagonReceived;
+  initializeOpeningHouse(restored,'ashen',Object.values(restored.tiles).find(t=>t.capital==='ashen'));
+  assert.equal(restored.kingdoms[0].resources.wood,170,'pre-update saves gain no wagon retroactively');
+});
+
+test('selected construction tiers and the turn-four bonus match their exact boundaries',()=>{
+  const s=campaign(),tile={terrain:'plains',building:null,levels:{},road:false};
+  for(const type of ['tradeOutpost','fishingDock','watchtower','envoyOffice']){
+    assert.equal(constructionSpec(tile,type).turns,1);
+    const built={...tile,building:type,[type]:true,levels:{[type]:1}};
+    assert.equal(constructionSpec(built,type).turns,3);
+  }
+  for(const type of ['farm','lumber']){
+    assert.equal(constructionSpec({...tile,building:type,levels:{[type]:1}},type).turns,1);
+    assert.equal(constructionSpec({...tile,building:type,levels:{[type]:2}},type).turns,3);
+  }
+  for(const type of ['quarry','mine','barracks','range']){
+    s.turn=4;assert.equal(constructionSpec(tile,type,s,'ashen').turns,1);
+    s.turn=5;assert.equal(constructionSpec(tile,type,s,'ashen').turns,2);
+    const k=kingdom(s,'ashen');k.opening.decree='prosperity';k.opening.decreeTurn=1;
+    s.turn=6;assert.equal(constructionSpec(tile,type,s,'ashen').turns,1);
+    s.turn=7;assert.equal(constructionSpec(tile,type,s,'ashen').turns,2);
+    const built={...tile,building:type,[type]:true,levels:{[type]:1}};
+    s.turn=4;assert.equal(constructionSpec(built,type,s,'ashen').turns,3);
+    k.opening.decree=null;k.opening.decreeTurn=null;
+  }
+  s.turn=4;
+  const capital=Object.values(s.tiles).find(t=>t.capital==='ashen');
+  assert.match(constructionBrowser(s,capital),/data-build="envoyOffice"[^]*?Ready turn 5/);
+  assert.equal(constructionSpec(tile,'fort',s,'ashen').turns,3);
+});
+
+test('delayed Prosperity selection never extends construction acceleration beyond turn six',()=>{
+  const tile={terrain:'plains',building:null,levels:{},road:false};
+  for(const chosenTurn of [2,3,4,5,6]){
+    const s={ambitionVersion:1,phase:'playing',turn:chosenTurn,kingdoms:[{id:'ashen',opening:{decree:null,decreeTurn:null,charterUsed:false}}]};
+    assert.equal(chooseRoyalDecree(s,'ashen','prosperity').ok,true);
+    assert.equal(decreeRemaining(s,'ashen'),7-chosenTurn);
+    for(const type of ['mine','quarry','barracks','range']){
+      s.turn=6;assert.equal(constructionSpec(tile,type,s,'ashen').turns,1);
+      for(const turn of [7,8,9,10,11]){
+        s.turn=turn;
+        assert.equal(constructionSpec(tile,type,s,'ashen').turns,2,`${type}, decree chosen turn ${chosenTurn}, current turn ${turn}`);
+        assert.equal(decreeRemaining(s,'ashen'),0);
+      }
+    }
+  }
+});
+
+test('construction previews and actual projects share all existing efficiency bonuses',()=>{
+  for(const bonus of ['workshop','siegeFoundry','lumber']){
+    const s=legacyGame();s.turn=10;
+    const capital=Object.values(s.tiles).find(t=>t.capital==='ashen'),k=kingdom(s,'ashen');
+    for(const resource of Object.keys(k.resources))k.resources[resource]=1000;
+    let type='city';
+    if(bonus==='workshop'){capital.workshop=true;capital.levels.workshop=3;}
+    if(bonus==='siegeFoundry'){
+      capital.workshop=true;capital.levels.workshop=1;
+      capital.siegeFoundry=true;capital.levels.siegeFoundry=1;
+      capital.siegeWorks=true;capital.levels.siegeWorks=1;type='siegeWorks';
+    }
+    if(bonus==='lumber'){
+      const lumber=Object.values(s.tiles).find(t=>t.owner==='ashen'&&t.building==='lumber');lumber.levels.lumber=3;
+    }
+    const spec=constructionSpec(capital,type,s,'ashen'),turns=constructionDuration(s,'ashen',capital,type,spec);
+    assert.equal(turns,spec.turns-1);
+    assert.match(constructionBrowser(s,capital),new RegExp(`data-build="${type}"[^]*?${turns} turns · Ready turn ${s.turn+turns}`));
+    assert.equal(build(s,'ashen',capital.id,type).ok,true);
+    assert.equal(capital.project.remaining,turns);assert.equal(capital.project.total,turns);
+  }
 });
 test('First Frontier Charter pays real discounted materials once, keeps terrain checks and completes in two turns',()=>{
   const s=campaign(),k=kingdom(s,'ashen'),tile=Object.values(s.tiles).find(t=>!buildCheck(s,'ashen',t.id,'town'));

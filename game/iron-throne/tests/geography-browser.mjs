@@ -31,7 +31,7 @@ try {
     });
     await page.route('**/config.json',route=>route.fulfill({json:{}}));
     await page.goto(`http://127.0.0.1:${server.address().port}/game/iron-throne/index.html`);
-    await page.locator('#start-game').click();
+    await page.locator('#launch-new').click();await page.locator('#start-game').click();await page.locator('#welcome').waitFor({state:'hidden'});
     const result=await page.evaluate(async(remote)=>{
       const {GeographyArt,edgePort}=await import('../iron-throne/geography-art.mjs');
       const {HEX_DIRECTIONS,oppositeEdge}=await import('../iron-throne/geography.mjs');

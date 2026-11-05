@@ -114,6 +114,9 @@ BUILDINGS.chancery.requires = {envoyOffice: 1};
 BUILDINGS.fort.levels[2].turns = 6;
 BUILDINGS.road.levels[2].cost.gold = 18;
 BUILDINGS.road.levels[2].cost.stone = 18;
+// Accelerate only these tiers; later upgrades retain their existing lead time.
+for(const id of ['tradeOutpost','fishingDock','watchtower','envoyOffice'])BUILDINGS[id].levels[0].turns=1;
+for(const id of ['farm','lumber'])BUILDINGS[id].levels[1].turns=1;
 export const FORMATIONS = {
   balanced: {name:'Balanced', description:'Flexible ranks with no specialized bonus.'},
   defensive: {name:'Defensive Line', description:'25% stronger infantry defense; slower marching.'},

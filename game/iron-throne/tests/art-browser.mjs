@@ -22,10 +22,11 @@ for(const width of [1280,390]){
  await page.route('https://pub-*.r2.dev/**',async route=>{requests.push(route.request().url());if(route.request().url().endsWith('plains_04.png'))return route.fulfill({status:404,body:''});await route.fulfill({contentType:'image/png',body:process.env.IRON_ART_PROBE&&route.request().url().endsWith('lumber_1.png')?await readFile(process.env.IRON_ART_PROBE):png});});
  await page.route('**/config.json',r=>r.fulfill({json:{}}));
  await page.goto(`http://127.0.0.1:${server.address().port}/game/iron-throne/index.html`);
- await page.waitForFunction(()=>document.getElementById('art-status')?.textContent.includes('ready'));
+ await page.locator('#resume').waitFor({state:'visible'});
+ const artwork = await page.evaluate(async()=>{const {preloadAllArt}=await import('./asset-manifest.mjs');return preloadAllArt();});
  await page.waitForFunction(()=>!document.getElementById('start-game').disabled);
  assert.equal(new Set(requests.filter(url=>!new URL(url).pathname.startsWith('/sprites/'))).size,ALL_ART_PATHS.length);assert.ok(requests[0].endsWith('buildings/lumber_1.png'));
- assert.match(await page.locator('#art-status').textContent(),/1 unavailable/);
+ assert.equal(artwork.failed,1);
  await page.locator('#resume').click();await page.waitForTimeout(200);
  assert.equal(await page.locator('#turn').textContent(),'Turn 1');
  assert.equal(await page.locator('#resources img').count(),8);

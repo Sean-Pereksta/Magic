@@ -55,7 +55,7 @@ export function customDeployment(settings){
 export function installCustomBattle(start,getPreferredLimit=()=>null){
   const button=document.createElement('button');
   button.type='button';button.id='custom-battle';button.textContent='Custom Battle';
-  document.querySelector('#start-game').after(button);
+  document.getElementById('launch-menu').append(button);
   const dialog=document.createElement('dialog');dialog.id='custom-setup';dialog.dataset.battleUi='';
   const options=(items)=>Object.entries(items).map(([value,label])=>`<option value="${value}">${label}</option>`).join('');
   const armyFields=side=>`<fieldset class="custom-army"><legend>${side?'Defenders':'Attackers'}</legend>

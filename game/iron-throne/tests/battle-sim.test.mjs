@@ -10,9 +10,9 @@ function encounter(a = { menAtArms: 5 }, d = { levy: 5 }, extras = {}) {
   ], ...extras };
 }
 function run(b, seconds, input = {}) { for (let n = 0; n < Math.round(seconds * 20); n++) stepBattle(b, .05, input); return b; }
-function duel(type = 'menAtArms', enemy = 'menAtArms', enemyFacing = Math.PI) {
-  const b = createBattle(encounter({ [type]: 1 }, { [enemy]: 1 })); beginBattle(b);
-  const a = b.units[0], d = b.units[1];
+function duel(type = 'menAtArms', enemy = 'menAtArms', enemyFacing = Math.PI, commandTroop = false) {
+  const b = createBattle(encounter({ [type]: commandTroop ? 2 : 1 }, { [enemy]: 1 })); beginBattle(b);
+  const a = b.units.find(u => u.side === 0 && (!commandTroop || !u.commander)), d = b.units.find(u => u.side === 1);
   Object.assign(a, { x: 0, z: 0, facing: 0, explicitOrder: true });
   Object.assign(d, { x: 0, z: 1.9, facing: enemyFacing, explicitOrder: true, order: { kind: 'hold', x: 0, z: 1.9, facing: enemyFacing } });
   return { b, a, d };
@@ -132,7 +132,7 @@ test('hold-current anchors each selected troop in place without reforming or loc
 });
 
 test('hold-current immediately cancels a charge while permitting nearby defensive attacks', () => {
-  const { b, a, d } = duel('cavalry', 'levy');
+  const { b, a, d } = duel('cavalry', 'levy', Math.PI, true);
   Object.assign(a, { speed: 7, chargeDistance: 12, order: { kind: 'charge' } });
   d.z=4;d.order.z=4;
   issueOrder(b, [a.id], 'hold', { atCurrent: true });
@@ -167,7 +167,7 @@ test('hold-current keeps wall defenders on the parapet, including when the enemy
   const b = createBattle(e);
   issueOrder(b, 'all', 'walls', { wallId: 'wall-west-front' });
   beginBattle(b);
-  const defender = b.units.find(u => u.side === 1), attacker = b.units.find(u => u.side === 0);
+  const defender = b.units.find(u => u.side === 1 && !u.commander), attacker = b.units.find(u => u.side === 0);
   Object.assign(attacker, { x: defender.x, z: defender.z - 2, y: 0, explicitOrder: true, order: { kind: 'hold', x: defender.x, z: defender.z - 2 } });
   const before = { x: defender.x, y: defender.y, z: defender.z, wallId: defender.wallId };
   issueOrder(b, 'all', 'hold', { atCurrent: true });
@@ -178,7 +178,7 @@ test('hold-current keeps wall defenders on the parapet, including when the enemy
 
 test('parapet assignments check physical occupants even when their saved slot metadata is stale', () => {
   const e = encounter({ levy: 1 }, { archer: 4 }, { playerOwner: 'vesper', playerSide: 1, tile: { building: 'fort', walls: 60, fortIntegrity: 45 } });
-  const b = createBattle(e), defenders = b.units.filter(u => u.side === 1);
+  const b = createBattle(e), defenders = b.units.filter(u => u.side === 1 && !u.commander);
   issueOrder(b, [defenders[0].id], 'walls', { wallId: 'wall-west-front' });
   defenders[0].wallPosition.slot = 'stale-slot';
   defenders[0].order = { kind: 'hold', x: defenders[0].x, z: defenders[0].z };
@@ -367,7 +367,7 @@ test('AI face their opponent through windup, land hits, and leave a persistent c
 });
 
 test('an explicit facing or movement order overrides automatic enemy facing', () => {
-  const { b, a, d } = duel(); d.explicitOrder = true; d.order = { kind: 'move', x: 15, z: 1.9 };
+  const { b, a, d } = duel('menAtArms', 'menAtArms', Math.PI, true); d.explicitOrder = true; d.order = { kind: 'move', x: 15, z: 1.9 };
   issueOrder(b, [a.id], 'face', { facing: Math.PI });
   run(b, .1, { commanderAI: true });
   assert.equal(a.facing, Math.PI); assert.equal(a.action, null);
@@ -464,6 +464,11 @@ test('withdrawal preserves unarrived and undeployed troops without overlapping r
   e.participants.push({ armyId: 'late-friends', owner: 'ashen', side: 0, units: { archer: 9 }, morale: .8, arrivalSeconds: 50 });
   const b = createBattle(e, { maxActive: 30 }); beginBattle(b);
   issueOrder(b, 'all', 'retreat'); run(b, .1);
+  assert.equal(b.phase, 'combat');
+  const commander = b.units.find(u => u.id === b.commanderId);
+  assert.equal(commander.routing, false);
+  commander.z = -76.1;
+  stepBattle(b, .05, { moveZ: -1 });
   const r = battleResult(b);
   assert.equal(b.phase, 'complete'); assert.equal(r.winner, 1);
   const late = r.armies.find(a => a.armyId === 'late-friends');
@@ -593,7 +598,7 @@ test('sieges retain exact breached gates and wall sections between encounters', 
 
 function defenseBattle() {
   const e = encounter({ levy: 3 }, { archer: 2, menAtArms: 1, cavalry: 1 }, { playerOwner: 'vesper', playerSide: 1, tile: { terrain: 'plains', building: 'fort', walls: 60, fortIntegrity: 45 } });
-  const b = createBattle(e);
+  const b = createBattle(e, { commanderType: 'cavalry' });
   for (const u of b.units.filter(u => u.side === 0)) { u.explicitOrder = true; u.order = { kind: 'hold', x: u.x, z: u.z, facing: 0 }; }
   return { b, e };
 }
@@ -637,9 +642,9 @@ test('move orders descend a real stair before leaving the defended wall', () => 
 
 test('wall archers shoot downhill and cannot be struck by a ground level melee swing', () => {
   const { b } = defenseBattle(); issueOrder(b, 'ranged', 'walls'); beginBattle(b);
-  const archer = b.units.find(u => u.id === b.commanderId), attacker = b.units.find(u => u.side === 0);
+  const archer = b.units.find(u => u.side === 1 && u.type === 'archer'), attacker = b.units.find(u => u.side === 0);
   attacker.x = archer.x; attacker.z = -8; attacker.order = { kind: 'hold', x: attacker.x, z: attacker.z };
-  run(b, 1.5, { attack: true, facing: Math.PI, aimX: attacker.x, aimZ: attacker.z });
+  run(b, 1.5);
   assert.ok(attacker.hp < attacker.maxHp); assert.ok(archer.ammo < 24);
   attacker.x = archer.x; attacker.z = archer.z - 1.5; attacker.facing = 0;
   attacker.action = { kind: 'attack', elapsed: .44, windup: .45, recovery: .7, duration: 1.15, targetId: archer.id, facing: 0, impacted: false };
@@ -649,7 +654,7 @@ test('wall archers shoot downhill and cannot be struck by a ground level melee s
 
 test('destroyed parapets drop occupants and cannot receive new wall defense orders', () => {
   const { b } = defenseBattle(); issueOrder(b, 'ranged', 'walls', { wallId: 'wall-west-front' }); beginBattle(b);
-  const archer = b.units.find(u => u.id === b.commanderId), before = archer.hp;
+  const archer = b.units.find(u => u.side === 1 && u.type === 'archer'), before = archer.hp;
   b.layout.walls.find(w => w.id === archer.wallId).hp = 0;
   stepBattle(b, .05, {});
   assert.equal(archer.wallId, null); assert.equal(archer.y, 0); assert.ok(archer.hp < before);
@@ -668,8 +673,8 @@ test('assault infantry can climb to occupied parapets and reach wall defenders',
 
 test('parapet cover reduces incoming arrows without making the defender invulnerable', () => {
   function shot(onWall) {
-    const e = encounter({ archer: 1 }, { menAtArms: 1 }, { playerOwner: 'vesper', playerSide: 1, tile: { building: 'fort', walls: 60, fortIntegrity: 45 } });
-    const b = createBattle(e); if (onWall) issueOrder(b, 'all', 'walls', { wallId: 'wall-west-front' }); beginBattle(b);
+    const e = encounter({ archer: 1 }, { menAtArms: 1, cavalry: 1 }, { playerOwner: 'vesper', playerSide: 1, tile: { building: 'fort', walls: 60, fortIntegrity: 45 } });
+    const b = createBattle(e, { commanderType: 'cavalry' }); if (onWall) issueOrder(b, 'all', 'walls', { wallId: 'wall-west-front' }); beginBattle(b);
     const a = b.units.find(u => u.side === 0), d = b.units.find(u => u.side === 1);
     if (!onWall) { d.x = -29.8; d.z = -8; }
     a.x = d.x; a.z = d.z - 15; a.explicitOrder = true; a.order = { kind: 'hold', x: a.x, z: a.z };

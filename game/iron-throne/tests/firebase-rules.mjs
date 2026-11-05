@@ -101,8 +101,9 @@ try{
  await assertFails(updateDoc(doc(a,path('iron_throne','meta')),{epoch:2,lease:actual.lease}));
  await assertFails(updateDoc(doc(a,path('iron_throne_commands',command.id)),{status:'accepted',error:'',stateVersionApplied:1,resolvedAt:serverTimestamp()}));
  await assertSucceeds(getDoc(doc(b,path('iron_throne','state'))));
- // The additive namespace restriction must leave an existing game working.
- await assertSucceeds(setDoc(doc(a,'lobbies/legacy-game'),{gameType:'turncraft',status:'started',players:['A']}));
+ // Seed an existing legacy lobby: new Turncraft lobbies must use the v1 schema.
+ // The additive namespace restriction must leave this existing game working.
+ await env.withSecurityRulesDisabled(async ctx=>{await setDoc(doc(ctx.firestore(),'lobbies/legacy-game'),{gameType:'turncraft',status:'started',players:['A']});});
  await assertSucceeds(setDoc(doc(a,'lobbies/legacy-game/turncraft/state'),{turn:1}));
  await assertSucceeds(setDoc(doc(a,'lobbies/legacy-without-type'),{status:'started'}));
  console.log('PASS atomic conflicting founding, phase gates, all-six transition and Firestore rules: UID membership, concurrent seats, private data, command forgery, controller fencing, legacy paths');
