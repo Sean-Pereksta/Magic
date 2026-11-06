@@ -17,6 +17,12 @@ Twigs construct the **Prototype Workshop** for **275 trash / 16 seconds**, after
 
 Supply includes every queued unit at its full weight. A CD has six passenger seats: Tier 1 and Tier 2 ground troops may board; workers, airplanes, and Tier 3 troops cannot.
 
+## Fortifications update
+
+Mouse towers now have **850 HP**, **360 range**, and fire **28 damage** every **1.25s**, with **6 damage/s for 3s** after impact. Cost remains **175 trash**.
+
+Twigs build **Wall blocks (Z)** for **20 trash**, with **1,200 HP** and a **3s** build time. The 48px grid connects square blocks into sealed ground barriers. Repeat click/tap to extend; Done placing or Esc ends placement while Twigs finish their queued jobs. Dismantle an owned block to open a passage with no refund. Aircraft and projectiles pass over the walls. Paper Airplanes now have **900px scouting vision**.
+
 ## Commands
 
 Select a Twig and use **N** to place a Workshop or **O** to place a Laboratory. At either production building, **Q / W / E** train the three troops in the table's order. Right-click a destination to set its rally point.

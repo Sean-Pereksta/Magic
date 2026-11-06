@@ -78,3 +78,15 @@ test('fog refresh uses cached sight footprints and construction requires current
   const cache=g._sightCache.size;g._updateVision();assert.equal(g._sightCache.size,cache,'stationary sources reuse their terrain rays');
   assert(g.fog.teams[0].visible instanceof Uint8Array);assert.equal(g.fog.teams[0].visible.length,g.fog.cols*g.fog.rows);
 });
+
+test('Paper Airplanes scout a dedicated 900-pixel air radius and preserve exploration after leaving',()=>{
+  const g=arena(),cd=g._spawn('cd',0,1500,1400),enemy=g._spawn('scissors',1,2300,1400),far=g._spawn('rock',1,2500,1400);
+  assert(!g.isVisible(enemy,0),'ordinary transport vision does not reach this distant lane');
+  const airplane=g._spawn('airplane',0,1500,1400);assert.equal(TYPES.airplane.vision,900);
+  assert(g.isVisible(enemy,0),'the scouting airplane reveals enemies well beyond ordinary troop and CD vision');
+  assert(!g.isVisible(far,0),'scouting still has a finite range');
+  const cache=g._sightCache.size;g._updateVision();assert.equal(g._sightCache.size,cache);
+  airplane.x=3800;airplane.y=2600;g._updateVision();
+  assert(!g.isVisible(enemy,0));assert(g.isExplored(0,enemy.x,enemy.y));
+  assert(cd.hp>0,'transport rules and normal CD sight remain available');
+});

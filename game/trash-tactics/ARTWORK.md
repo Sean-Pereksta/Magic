@@ -60,3 +60,13 @@ The runtime prefers the optimized `.webp` counterpart of every new portrait and 
 Static map artwork remains in the existing cache capped at eight million pixels. Troops, belts and spell effects draw at full display resolution. Troop portraits, animation sheets and effect sheets preload once and reuse the decoded images. Offscreen ability geometry, projectiles and map animation are culled; hidden entities and effects retain fog checks. Original Tier 1 raster portraits and their animation remain intact.
 
 Validation: `node --test tests/warfare-art.test.mjs tests/render-terrain.test.mjs` covers all new icons, real animation-row selection and loops, individual frame cropping, all eighteen effect-frame crops, loading fallbacks, both maps with two to four players, finite spell and projectile geometry, air layering, fog checks, scenery caching, reversed conveyor graphics and route previews.
+
+## Connected wall blocks and reinforced mouse defenses
+
+`wall-art.js` supplies original shaded Canvas illustrations in the same warm, outlined style as the office buildings. Each wall is an exactly filled 48 × 48 world-pixel square built from a corrugated cardboard slab, beveled paper surface, wooden pencil coping, binder-clip reinforcement, translucent tape, team-colour trim and bolted metal corner plates. The renderer uses the shared `walls.js` geometry and north/east/south/west neighbor mask. Exposed edges receive endcaps; adjoining tiles receive metal couplers and hairline seams. Straight runs, corners, T junctions and crosses remain visibly continuous, with no round-unit placeholders or gaps through the solid core.
+
+Construction reveals the block from the bottom while retaining a square blueprint. Damaged walls gain branching cracks and chipped cardboard. The placement ghost uses the same snapped 48-pixel square and previews actual neighboring connections. Selection brackets and minimap tiles are rectangular and preserve the real wall footprint.
+
+The defensive computer mouse retains its cable, split buttons and scroll wheel, with a reinforced metal desk mount, side armor pods, twin pointer launch rails and a pulsing charge lens. Firing lights both button housings. Its coverage circle reads `TYPES.mouse.range`, keeping both placement and selection graphics synchronized with the weapon's actual reach.
+
+Validation: `node --test tests/wall-art.test.mjs` checks all sixteen connected patterns, filled square footprints, construction and damage states, snapped placement, fog-safe preview, continuous minimap tiles and mouse coverage against the live weapon definition.

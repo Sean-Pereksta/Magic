@@ -1,11 +1,14 @@
 // Trash Tactics: deterministic, browser-local RTS simulation.
 import {enrichTerrain,terrainHeight,terrainSight} from './terrain.js';
 import {findPath} from './navigation.js';
+import {WALL_TYPE,snapWallPoint,canPlaceWall,wallOverlapsPoint,wallSegmentBlocked,wallPointDistance2,wallBuildPosition,wallBuilderCanReach,structureBuildPosition} from './walls.js';
 import {WARFARE_TYPES,PRODUCTION,familyOf,isCombat,canTransport,familyCanDamage,initializeWarfare,useAbility,tickWarfare,tickSpecialist,specialistCombat,moveAircraft,updateDart,specialistBot} from './warfare.js';
 import {EXPANSION_MAPS,createBattlefield,initBattlefield,updateBattlefield,reverseConveyor,conveyorVelocity,dynamicBarrierBlocked,dynamicBarrierCrossed,divisionBarrierCrossed,divisionShotBlocked} from './battlefields.js';
 export {familyOf,isCombat,canTransport} from './warfare.js';
+export {WALL_SIZE,snapWallPoint} from './walls.js';
 export const TYPES = {
   ...WARFARE_TYPES,
+  wall:WALL_TYPE,
   twig: {label:'Twig',cost:25,hp:40,r:13,speed:150,trainTime:4,supply:1,worker:true},
   rock: {family:'rock',tier:1,label:'Rock',cost:50,hp:100,r:18,speed:123,trainTime:5,supply:1,beats:'scissors',range:43},
   paper: {family:'paper',tier:1,label:'Paper',cost:50,hp:100,r:17,speed:132,trainTime:5,supply:1,beats:'rock',range:48},
@@ -15,7 +18,7 @@ export const TYPES = {
   printer: {label:'Printer',cost:150,hp:550,r:44,buildTime:10,supplyCap:0,building:true},
   cdreader: {label:'CD reader',cost:175,hp:500,r:45,buildTime:10,supplyCap:0,building:true},
   cd: {label:'Flying CD',cost:75,hp:180,r:25,speed:220,trainTime:8,supply:1,flying:true,capacity:6},
-  mouse: {label:'Defensive mouse',cost:175,hp:450,r:34,buildTime:8,supplyCap:0,building:true,range:310,shotInterval:2},
+  mouse: {label:'Defensive mouse',cost:175,hp:850,r:34,buildTime:8,supplyCap:0,building:true,range:360,shotInterval:1.25,impactDamage:28,clickDps:6,clickDuration:3},
   trash: {label:'Trash can',hp:1,r:27,building:false,resource:true}
 };
 export const MAPS = {
@@ -127,7 +130,7 @@ export class Game {
       if(source.hp<=0||source.team<0||source.transportedBy||this.teams[source.team]?.eliminated)continue;
       const flying=!!TYPES[source.type].flying,cx=clamp(Math.floor(source.x/cell),0,cols-1),cy=clamp(Math.floor(source.y/cell),0,rows-1);
       const point={x:cx*cell+cell/2,y:cy*cell+cell/2},height=this.elevationAt(point.x,point.y);
-      const radius=flying?520:(source.type==='desk'?460:TYPES[source.type].building?360:340)+(height>.55?100:0);
+      const radius=TYPES[source.type].vision??(flying?520:(source.type==='desk'?460:TYPES[source.type].building?360:340)+(height>.55?100:0));
       const key=`${cx},${cy},${radius},${flying?1:0}`;
       let footprint=this._sightCache.get(key);
       if(!footprint){
@@ -194,32 +197,59 @@ export class Game {
     if(this.teams[b.team].trash<150)return fail('This upgrade costs 150 trash.');
     this.teams[b.team].trash-=150;b.queue.push({kind:'research',type,total:14,remaining:14});return ok();
   }
-  canBuild(type,x,y){
+  isStructure(e){return !!TYPES[e.type]?.building;}
+  canBuild(type,x,y,team=0){
+    if(type==='wall'){const p=snapWallPoint(x,y);return !dynamicBarrierBlocked(this,p.x,p.y,Math.SQRT2*24)&&canPlaceWall(this,p.x,p.y);}
     if(!TYPES[type]?.building||TYPES[type].neutral)return false;
     const r=TYPES[type].r+10;
     if(dynamicBarrierBlocked(this,x,y,r))return false;
     if(x<r||y<r||x>this.width-r||y>this.height-r)return false;
     if(this.map.obstacles.some(o=>x>o.x-r&&x<o.x+o.w+r&&y>o.y-r&&y<o.y+o.h+r))return false;
     if(this.map.ramps.some(o=>x>o.x-r&&x<o.x+o.w+r&&y>o.y-r&&y<o.y+o.h+r))return false;
-    return !this.entities.some(e=>e.hp>0&&(TYPES[e.type].building||e.type==='trash')&&Math.hypot(e.x-x,e.y-y)<e.r+r+8);
+    return !this.entities.some(e=>e.hp>0&&(TYPES[e.type].building||e.type==='trash')&&(e.type==='wall'?wallPointDistance2(e,x,y)<(r+8)**2:Math.hypot(e.x-x,e.y-y)<e.r+r+8));
   }
   build(workerIds,type,x,y){
-    const workers=workerIds.map(id=>this.getEntity(id)).filter(e=>e?.type==='twig');
+    let workers=workerIds.map(id=>this.getEntity(id)).filter(e=>e?.type==='twig');
     if(!workers.length)return fail('Select a twig to build.');
     const team=workers[0].team,t=TYPES[type];
+    if(type==='wall')({x,y}=snapWallPoint(x,y));
     if(!t?.building||t.neutral)return fail('Choose a building.');
     for(const prerequisite of t.requires||[])if(!this.entities.some(e=>e.hp>0&&e.team===team&&e.type===prerequisite&&!e.constructing))return fail(`Requires a completed ${TYPES[prerequisite].label}.`);
     if(!this.canSee(team,x,y))return fail('Scout this ground before building here.');
-    if(!this.canBuild(type,x,y))return fail('Leave space around buildings and trash cans.');
+    if(!this.canBuild(type,x,y,team))return fail('Leave space around buildings and trash cans.');
     if(this.teams[team].trash<t.cost)return fail('Not enough trash.');
+    if(type==='wall'){workers=workers.filter(w=>w.team===team&&wallBuilderCanReach(this,{x,y},w));if(!workers.length)return fail('This block would leave a paid plan unreachable. Leave a gate or select a Twig on this side.');}
+    else if(this._hasWalls()){workers=workers.filter(w=>w.team===team&&structureBuildPosition(this,{type,x,y,r:t.r},w));if(!workers.length)return fail('No selected Twig can reach this construction site. Leave a gate or choose a worker on this side.');}
     this.teams[team].trash-=t.cost;
     const b=this._spawn(type,team,x,y,{constructing:t.buildTime,buildTotal:t.buildTime,hp:Math.round(t.hp*.2)});
     const moved=[];
-    for(const u of this.entities)if(u.id!==b.id&&!TYPES[u.type].building&&u.type!=='trash'&&!TYPES[u.type].flying&&!u.transportedBy&&!u.leap&&dist(u,b)<u.r+b.r+3){const free=this._freePoint(u.x,u.y,u.r,moved);u.x=free.x;u.y=free.y;u.path=null;moved.push({...free,r:u.r});}
-    const w=workers.sort((a,b)=>Math.hypot(a.x-x,a.y-y)-Math.hypot(b.x-x,b.y-y))[0];
-    this._releaseCan(w);w.order={type:'build',targetId:b.id};w.path=null;
-    b.builderId=w.id;this._effect('build',x,y,{team});return {...ok(),entityId:b.id};
+    for(const u of this.entities)if(u.id!==b.id&&!TYPES[u.type].building&&u.type!=='trash'&&!TYPES[u.type].flying&&!u.transportedBy&&!u.leap&&(b.type==='wall'?wallOverlapsPoint(b,u.x,u.y,u.r,3):dist(u,b)<u.r+b.r+3)){const free=this._freePoint(u.x,u.y,u.r,moved);u.x=free.x;u.y=free.y;u.path=null;moved.push({...free,r:u.r});}
+    const busy=w=>w.order.type==='build'&&this.getEntity(w.order.targetId)?.constructing;
+    const w=workers.filter(e=>e.team===team).sort((a,b)=>((a.buildQueue?.length||0)+(busy(a)?1:0))-((b.buildQueue?.length||0)+(busy(b)?1:0))||Math.hypot(a.x-x,a.y-y)-Math.hypot(b.x-x,b.y-y))[0];
+    let queued=false;
+    if(busy(w)&&(type==='wall'||this.getEntity(w.order.targetId)?.type==='wall'||w.buildQueue?.length)){
+      w.buildQueue??=[];w.wallBuildQueue=w.buildQueue;w.buildQueue.push(b.id);queued=true;
+    }else {this._releaseCan(w);w.order={type:'build',targetId:b.id};w.path=null;w.wallBuildPoint=null;}
+    b.builderId=w.id;if(type==='wall')this._wallsChanged();this._effect('build',x,y,{team});return {...ok(),entityId:b.id,x,y,queued};
   }
+  _hasWalls(){if(this._wallSource!==this.entities||this._wallSourceLength!==this.entities.length){this._wallSource=this.entities;this._wallSourceLength=this.entities.length;this._wallPresent=this.entities.some(e=>e.type==='wall'&&e.hp>0);}return this._wallPresent;}
+  _wallCrossed(ax,ay,bx,by,r){return this._hasWalls()&&this.entities.some(e=>e.type==='wall'&&e.hp>0&&wallSegmentBlocked(e,ax,ay,bx,by,r));}
+  _wallsChanged(){this._wallSource=null;this._barrierRevision++;this._navigation=null;this._collisionBuildings=null;for(const e of this.entities){e.path=null;e.pathRefresh=0;e.detour=null;e.wallBuildPoint=null;}}
+  _nextBuild(worker){
+    while(worker.buildQueue?.length){const target=this.getEntity(worker.buildQueue.shift());if(!target?.constructing)continue;target.builderId=worker.id;worker.order={type:'build',targetId:target.id};worker.path=null;worker.wallBuildPoint=null;return true;}
+    return false;
+  }
+  removeWall(id,team=0){
+    const wall=this.getEntity(id);if(wall?.type!=='wall'||wall.team!==team)return fail('Choose one of your own wall blocks.');
+    wall.hp=0;this._wallsChanged();
+    for(const worker of this.entities){
+      if(worker.type!=='twig')continue;
+      if(worker.buildQueue){worker.buildQueue=worker.buildQueue.filter(targetId=>targetId!==id);worker.wallBuildQueue=worker.buildQueue;}
+      if(worker.order.type==='build'&&worker.order.targetId===id&&!this._nextBuild(worker))worker.order={type:'idle'};
+    }
+    return ok();
+  }
+
   command(ids,order){
     const units=ids.map(id=>this.getEntity(id)).filter(e=>e&&!TYPES[e.type].building&&e.type!=='trash'&&!e.transportedBy);
     const moving=order.type==='move'||order.type==='attackMove';
@@ -387,7 +417,7 @@ export class Game {
     this._updatePointers(dt);
     this._updateClickDamage();
     this._separate(dt);
-    for(const e of this.entities)if(e.hp<=0&&!e.deadHandled){if(e.type==='cd')this._unloadTransport(e,true);e.deadHandled=true;this._releaseCan(e);this._effect('death',e.x,e.y,{team:e.team});this._event('death',{entity:e});}
+    for(const e of this.entities)if(e.hp<=0&&!e.deadHandled){if(e.type==='cd')this._unloadTransport(e,true);if(e.type==='wall')this._wallsChanged();e.deadHandled=true;this._releaseCan(e);this._effect('death',e.x,e.y,{team:e.team});this._event('death',{entity:e});}
     this.entities=this.entities.filter(e=>e.hp>0);
     this._think-=dt;if(this._think<=0){this._think=configs[this.difficulty].think;for(let team=1;team<this.players;team++)if(!this.teams[team].eliminated)this._bot(team);}
     this._victoryCheck-=dt;if(this._victoryCheck<=0){
@@ -447,12 +477,12 @@ export class Game {
       const dx=target.x-p.x,dy=target.y-p.y,len=Math.hypot(dx,dy),step=520*dt;
       p.angle=Math.atan2(dy,dx);
       if(len<=step+target.r){
-        this._damage(target,12,p.source);
+        this._damage(target,TYPES.mouse.impactDamage,p.source);
         if(target.hp>0){
           target.clickDamage??=[];
           const previous=target.clickDamage.find(mark=>mark.sourceId===p.sourceId);
-          if(previous){previous.expires=this.time+3;previous.remaining=3;}
-          else target.clickDamage.push({sourceId:p.sourceId,team:p.team,source:p.source,expires:this.time+3,remaining:3,nextTick:this.time+.5});
+          if(previous){previous.expires=this.time+TYPES.mouse.clickDuration;previous.remaining=TYPES.mouse.clickDuration;}
+          else target.clickDamage.push({sourceId:p.sourceId,team:p.team,source:p.source,expires:this.time+TYPES.mouse.clickDuration,remaining:TYPES.mouse.clickDuration,nextTick:this.time+.5});
         }
         this._effect('click',target.x,target.y,{team:p.team});
       }else{
@@ -470,7 +500,7 @@ export class Game {
         if(this.teams[mark.team]?.eliminated)continue;
         while(mark.nextTick<=this.time+1e-8&&mark.nextTick<=mark.expires+1e-8&&target.hp>0){
           if(this._mouseTarget(mark.source,target)){
-            this._damage(target,2,mark.source);
+            this._damage(target,TYPES.mouse.clickDps*.5,mark.source);
             this._effect('clickTick',target.x,target.y,{team:mark.team});
           }
           mark.nextTick+=.5;
@@ -485,10 +515,14 @@ export class Game {
     const order=e.order;
     if(order.type==='build'){
       const b=this.getEntity(order.targetId);
-      if(!b||!b.constructing){e.order={type:'idle'};return;}
-      if(dist(e,b)>b.r+e.r+14){this._move(e,b.x,b.y,dt,b.r+e.r+10,b.id);return;}
+      if(!b||!b.constructing){if(!this._nextBuild(e))e.order={type:'idle'};return;}
+      if(b.type==='wall'){
+        if(!e.wallBuildPoint||e.wallBuildPoint.targetId!==b.id||this._blocked(e.wallBuildPoint.x,e.wallBuildPoint.y,e.r)){const p=wallBuildPosition(this,b,e);e.wallBuildPoint=p?{...p,targetId:b.id}:null;}
+        const p=e.wallBuildPoint;if(!p)return;
+        if(dist(e,p)>8){this._move(e,p.x,p.y,dt,6);return;}
+      }else if(dist(e,b)>b.r+e.r+14){this._move(e,b.x,b.y,dt,b.r+e.r+10,b.id);return;}
       const before=b.constructing;b.constructing=Math.max(0,b.constructing-dt);b.hp=Math.min(b.maxHp,b.hp+b.maxHp*.8*dt/b.buildTotal);
-      if(before>0&&b.constructing===0){b.hp=Math.round(Math.min(b.maxHp,b.hp));this._effect('build',b.x,b.y,{team:b.team});if(b.team===0)this._event('toast',{message:`${TYPES[b.type].label} complete.`});const can=this._chooseCan(e);if(can){e.order={type:'gather',targetId:can.id};e.resourceId=can.id;e.workState='toCan';}else e.order={type:'idle'};
+      if(before>0&&b.constructing===0){b.hp=Math.round(Math.min(b.maxHp,b.hp));this._effect('build',b.x,b.y,{team:b.team});if(b.team===0)this._event('toast',{message:`${TYPES[b.type].label} complete.`});if(!this._nextBuild(e)){const can=this._chooseCan(e);if(can){e.order={type:'gather',targetId:can.id};e.resourceId=can.id;e.workState='toCan';}else e.order={type:'idle'};}
         if(b.type==='desk'&&b.team>0){const nearbyCans=this.entities.filter(c=>c.type==='trash'&&c.amount>0&&dist(c,b)<440).sort((a,c)=>dist(a,b)-dist(c,b));const transfer=this.entities.filter(w=>w.type==='twig'&&w.team===b.team&&w.order.type==='gather').sort((a,c)=>dist(a,b)-dist(c,b)).slice(0,3);transfer.forEach((w,i)=>{const c=nearbyCans[i%nearbyCans.length];if(c)this.command([w.id],{type:'gather',targetId:c.id});});}
       }
       return;
@@ -588,7 +622,7 @@ export class Game {
     if(dynamicBarrierBlocked(this,x,y,r))return true;
     if(this.map.obstacles.some(o=>x>o.x-r&&x<o.x+o.w+r&&y>o.y-r&&y<o.y+o.h+r))return true;
     if(!this._collisionBuildings||this._collisionSource!==this.entities){this._collisionBuildings=this.entities.filter(e=>TYPES[e.type].building);this._collisionSource=this.entities;}
-    return this._collisionBuildings.some(e=>e.id!==ignoreId&&e.hp>0&&(x-e.x)**2+(y-e.y)**2<(r+e.r+2)**2);
+    return this._collisionBuildings.some(e=>e.id!==ignoreId&&e.hp>0&&(e.type==='wall'?wallOverlapsPoint(e,x,y,r):(x-e.x)**2+(y-e.y)**2<(r+e.r+2)**2));
   }
   _freePoint(x,y,r,reserved=[]){
     const available=(px,py)=>!this._blocked(px,py,r)&&!reserved.some(p=>Math.hypot(px-p.x,py-p.y)<r+p.r+5);
@@ -596,7 +630,7 @@ export class Game {
     for(let ring=1;ring<25;ring++)for(let i=0;i<24;i++){const a=i/24*Math.PI*2,px=clamp(x+Math.cos(a)*ring*24,r,this.width-r),py=clamp(y+Math.sin(a)*ring*24,r,this.height-r);if(available(px,py))return {x:px,y:py};}
     return {x:clamp(x,r,this.width-r),y:clamp(y,r,this.height-r)};
   }
-  _lineFree(ax,ay,bx,by,r,ignoreId,ignoreBuildings=false,ignoreBarriers=false){
+  _lineFree(ax,ay,bx,by,r,ignoreId,ignoreBuildings=false,ignoreBarriers=false,ignoreWalls=false){
     if(!ignoreBarriers&&dynamicBarrierCrossed(this,ax,ay,bx,by,r))return false;
     if(bx<r||by<r||bx>this.width-r||by>this.height-r)return false;
     const dx=bx-ax,dy=by-ay;
@@ -613,6 +647,7 @@ export class Game {
     const length2=dx*dx+dy*dy;
     for(const e of this._collisionBuildings){
       if(e.id===ignoreId||e.hp<=0)continue;
+      if(e.type==='wall'){if(!ignoreWalls&&wallSegmentBlocked(e,ax,ay,bx,by,r))return false;continue;}
       const t=length2?clamp(((e.x-ax)*dx+(e.y-ay)*dy)/length2,0,1):0;
       if((ax+dx*t-e.x)**2+(ay+dy*t-e.y)**2<(r+e.r+2-1e-6)**2)return false;
     }
@@ -635,7 +670,7 @@ export class Game {
     }
     let px=tx,py=ty;
     if(!directClear){
-      if(!e.path||(!e.path.length&&!this.forceFields.length&&!this.divisions.length)||!e.pathGoal||e.pathBarrierRevision!==this._barrierRevision||Math.hypot(e.pathGoal.x-tx,e.pathGoal.y-ty)>75||this.time>(e.pathRefresh||0)){
+      if(!e.path||(!e.path.length&&!this.forceFields.length&&!this.divisions.length&&!this._hasWalls())||!e.pathGoal||e.pathBarrierRevision!==this._barrierRevision||Math.hypot(e.pathGoal.x-tx,e.pathGoal.y-ty)>75||this.time>(e.pathRefresh||0)){
         // Spread new squad routes over frames while existing paths keep moving.
         if(this._pathsRemaining===0)return false;
         if(this._pathsRemaining!==undefined)this._pathsRemaining--;
@@ -647,7 +682,7 @@ export class Game {
     }else e.path=null;
     // An enclosed troop keeps its order and waits for the cached route refresh
     // or a barrier revision, rather than rebuilding an impossible path each frame.
-    if(!directClear&&!e.path?.length&&(this.forceFields.length||this.divisions.length))return false;
+    if(!directClear&&!e.path?.length&&(this.forceFields.length||this.divisions.length||this._hasWalls()))return false;
     // A brief local detour lets late arrivals walk around a resting squad.
     // Terrain remains the authority: every candidate must have a clear segment.
     if(!e.moveSample||this.time-e.moveSample.time>.7){
@@ -697,18 +732,18 @@ export class Game {
           if(len<.0001){const angle=((a.id*97+b.id*31)%360)*Math.PI/180;dx=Math.cos(angle);dy=Math.sin(angle);len=1;}
           const penetration=min-len+.01,nx=dx/len,ny=dy/len,half=penetration*.5;
           const ax=a.x-nx*half,ay=a.y-ny*half,bx=b.x+nx*half,by=b.y+ny*half;
-          const aFree=!this._blocked(ax,ay,a.r)&&!dynamicBarrierCrossed(this,a.x,a.y,ax,ay,a.r),bFree=!this._blocked(bx,by,b.r)&&!dynamicBarrierCrossed(this,b.x,b.y,bx,by,b.r);
+          const aFree=!this._blocked(ax,ay,a.r)&&!dynamicBarrierCrossed(this,a.x,a.y,ax,ay,a.r)&&!this._wallCrossed(a.x,a.y,ax,ay,a.r),bFree=!this._blocked(bx,by,b.r)&&!dynamicBarrierCrossed(this,b.x,b.y,bx,by,b.r)&&!this._wallCrossed(b.x,b.y,bx,by,b.r);
           if(aFree&&bFree){a.x=ax;a.y=ay;b.x=bx;b.y=by;}
-          else if(aFree&&!this._blocked(a.x-nx*penetration,a.y-ny*penetration,a.r)&&!dynamicBarrierCrossed(this,a.x,a.y,a.x-nx*penetration,a.y-ny*penetration,a.r)){a.x-=nx*penetration;a.y-=ny*penetration;}
-          else if(bFree&&!this._blocked(b.x+nx*penetration,b.y+ny*penetration,b.r)&&!dynamicBarrierCrossed(this,b.x,b.y,b.x+nx*penetration,b.y+ny*penetration,b.r)){b.x+=nx*penetration;b.y+=ny*penetration;}
+          else if(aFree&&!this._blocked(a.x-nx*penetration,a.y-ny*penetration,a.r)&&!dynamicBarrierCrossed(this,a.x,a.y,a.x-nx*penetration,a.y-ny*penetration,a.r)&&!this._wallCrossed(a.x,a.y,a.x-nx*penetration,a.y-ny*penetration,a.r)){a.x-=nx*penetration;a.y-=ny*penetration;}
+          else if(bFree&&!this._blocked(b.x+nx*penetration,b.y+ny*penetration,b.r)&&!dynamicBarrierCrossed(this,b.x,b.y,b.x+nx*penetration,b.y+ny*penetration,b.r)&&!this._wallCrossed(b.x,b.y,b.x+nx*penetration,b.y+ny*penetration,b.r)){b.x+=nx*penetration;b.y+=ny*penetration;}
           else {if(aFree){a.x=ax;a.y=ay;}if(bFree){b.x=bx;b.y=by;}}
           // Head-on traffic takes opposite sides instead of forming a deadlock.
           if(pass===0){
             const aForward=(a.desiredVX*nx+a.desiredVY*ny)>10,bForward=(b.desiredVX*nx+b.desiredVY*ny)<-10;
             const aRest=Math.hypot(a.desiredVX||0,a.desiredVY||0)<1,bRest=Math.hypot(b.desiredVX||0,b.desiredVY||0)<1;
             const side=dt*45,tx=-ny*side,ty=nx*side;
-            if(aForward&&(bForward||bRest)&&!this._blocked(a.x+tx,a.y+ty,a.r)&&!dynamicBarrierCrossed(this,a.x,a.y,a.x+tx,a.y+ty,a.r)){a.x+=tx;a.y+=ty;}
-            if(bForward&&(aForward||aRest)&&!this._blocked(b.x-tx,b.y-ty,b.r)&&!dynamicBarrierCrossed(this,b.x,b.y,b.x-tx,b.y-ty,b.r)){b.x-=tx;b.y-=ty;}
+            if(aForward&&(bForward||bRest)&&!this._blocked(a.x+tx,a.y+ty,a.r)&&!dynamicBarrierCrossed(this,a.x,a.y,a.x+tx,a.y+ty,a.r)&&!this._wallCrossed(a.x,a.y,a.x+tx,a.y+ty,a.r)){a.x+=tx;a.y+=ty;}
+            if(bForward&&(aForward||aRest)&&!this._blocked(b.x-tx,b.y-ty,b.r)&&!dynamicBarrierCrossed(this,b.x,b.y,b.x-tx,b.y-ty,b.r)&&!this._wallCrossed(b.x,b.y,b.x-tx,b.y-ty,b.r)){b.x-=tx;b.y-=ty;}
           }
         }
       }

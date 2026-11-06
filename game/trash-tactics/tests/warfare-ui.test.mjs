@@ -98,3 +98,41 @@ test('Army selection includes all new combat families and workers expose both ne
  assert.match(h.element('actionContent').innerHTML,/Prototype Workshop/);
  assert.match(h.element('actionContent').innerHTML,/Shredder Laboratory/);
 });
+
+test('wall placement stays armed, snaps connected blocks and keeps every paid construction order',async()=>{
+ const h=await harness(),worker=h.spawn('twig',1008,900);h.game.teams[0].trash=200;
+ h.select(worker);assert.match(h.element('actionContent').innerHTML,/data-type="wall"/);
+ h.key('z');h.point(1002,1001);h.point(1054,1003);h.refresh();
+ const walls=h.game.entities.filter(e=>e.type==='wall');assert.equal(walls.length,2);
+ assert.deepEqual(walls.map(e=>[e.x,e.y]),[[1008,1008],[1056,1008]]);
+ assert.equal(h.game.teams[0].trash,160);assert.equal(h.state.renderer.lastDraw.mode,'wall');
+ assert.match(h.element('actionContent').innerHTML,/Done placing/);
+ assert(worker.buildQueue.length>0,'second wall waits behind the active construction');
+ h.action('cancelTarget');h.tick(9);
+ assert(walls.every(e=>e.constructing===0&&e.hp===1200),'leaving placement mode does not cancel the work');
+ assert.deepEqual(h.state.selected,[worker.id]);
+});
+
+test('touch wall placement and the Done button preserve selection, and Z toggles targeting',async()=>{
+ const h=await harness(),worker=h.spawn('twig',1008,900);h.game.teams[0].trash=200;h.select(worker);
+ h.action('build','wall');h.point(1002,1002,{pointerType:'touch'});h.refresh();
+ assert.equal(h.game.entities.filter(e=>e.type==='wall').length,1);
+ assert.equal(h.state.renderer.lastDraw.mode,'wall');h.action('cancelTarget');h.refresh();
+ assert.equal(h.state.renderer.lastDraw.mode,null);assert.deepEqual(h.state.selected,[worker.id]);
+ h.key('z');h.refresh();assert.equal(h.state.renderer.lastDraw.mode,'wall');
+ h.key('z');h.refresh();assert.equal(h.state.renderer.lastDraw.mode,null);
+});
+
+test('mouse selection reports the buffed stats and airplane description reports its scouting radius',async()=>{
+ const h=await harness(),mouse=h.spawn('mouse',1000,800),plane=h.spawn('airplane',1300,800);
+ h.select(mouse);const html=h.element('actionContent').innerHTML;
+ assert.match(html,/850 HP · 360 range/);assert.match(html,/28 impact every 1.25s/);assert.match(html,/6 damage\/s for 3s/);
+ h.point(plane.x,plane.y-27);assert.match(h.element('selectionInfo').innerHTML,/900 pixels/);
+});
+
+test('selected owned wall exposes deliberate dismantling and opens its space without a refund',async()=>{
+ const h=await harness(),wall=h.spawn('wall',1008,1008);h.game.teams[0].trash=123;
+ h.select(wall);assert.match(h.element('actionContent').innerHTML,/data-action="dismantleWall"/);
+ h.action('dismantleWall');assert(!h.game.getEntity(wall.id));assert.equal(h.game.teams[0].trash,123);
+ assert(!h.game._blocked(1008,1008,17));assert.equal(h.state.selected.length,0);
+});
