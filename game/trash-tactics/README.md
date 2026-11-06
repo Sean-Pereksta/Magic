@@ -52,7 +52,15 @@ Select a twig and build a **CD reader** for **175 trash** (hotkey **V**, 10 seco
 - Choose **Drop / U**, then click/tap a world or minimap destination. Every selected loaded CD flies over scenery to the area and unloads onto separate clear ground positions. A destroyed CD releases surviving passengers on safe nearby ground.
 - CDs show six seat pips and a passenger count; the selection panel shows combined cargo. Recalling a command group whose troops are aboard selects their CDs, then returns to the original troops after landing.
 
-Build a **defensive computer mouse** with a twig for **175 trash** (**M**, 8 seconds of construction). It fires visible computer-pointer projectiles at enemy CDs and ground rock, paper, and scissors troops within 310 world pixels. Each click deals **12 impact damage**, then **4 damage per second for 3 seconds**. Repeated clicks from one mouse refresh its lingering damage; separate mice each apply their own damage. It ignores workers, friendly units, buildings, and embarked troops; paper's invulnerability protects it. Ground troops can destroy defensive mice as buildings. Bots spend their own trash on mouse defenses when hostile CDs approach their desks.
+Build a **defensive computer mouse** with a twig for **175 trash** (**M**, 8 seconds of construction). It fires visible computer-pointer projectiles at enemy CDs and ground rock, paper, and scissors troops within 360 world pixels. Each click deals **28 impact damage**, then **6 damage per second for 3 seconds**. Repeated clicks from one mouse refresh its lingering damage; separate mice each apply their own damage. It ignores workers, friendly units, buildings, and embarked troops; paper's invulnerability protects it. Ground troops can destroy defensive mice as buildings. Bots spend their own trash on mouse defenses when hostile CDs approach their desks.
+
+## Fortifications and scouting
+
+Select a Twig and use **Wall / Z** to place **20-trash, 1,200-HP wall blocks**. Each takes **3 seconds** to build and snaps to a **48 × 48** square grid. Adjacent blocks connect into continuous rows, corners and junctions. Placement stays active for repeated clicks or taps; **Done placing / Esc** exits the mode without canceling construction. Twigs complete their current job before building queued blocks. Unreachable placement is rejected before payment.
+
+Walls block both armies' ground movement. Aircraft and projectiles pass over them. Individual blocks can be destroyed to open a breach; normal troops can use a single-block opening, while large Rolling Rocks need a wider opening. Select an owned block and choose **Dismantle block** to remove it without a refund. The artwork includes shaded cardboard layers, pencil rails, binder clips, metal couplers, team trim, construction progress and battle damage.
+
+Defensive mice now have **850 HP**, **360 range**, and fire **28 impact damage** every **1.25 seconds**, plus **6 damage per second for 3 seconds**. Their reinforced mounts and twin pointer launchers show the strength increase. Paper Airplanes now scout a **900-pixel radius**, with air vision across cliffs; Flying CDs retain their 520-pixel radius. Walls reveal only their immediate surroundings.
 
 ## Artwork
 

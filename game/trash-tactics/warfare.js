@@ -2,7 +2,7 @@
 import {conveyorVelocity,divisionPlacementValid} from './battlefields.js';
 export const WARFARE_TYPES={
   sniper:{label:'Scissors Sniper',family:'scissors',tier:2,cost:150,hp:85,r:18,speed:126,trainTime:11,supply:2,range:420,damage:17,interval:1.7},
-  airplane:{label:'Paper Airplane',family:'paper',tier:2,cost:130,hp:80,r:22,speed:245,trainTime:9,supply:2,range:265,damage:22,interval:.9,flying:true},
+  airplane:{label:'Paper Airplane',family:'paper',tier:2,vision:900,cost:130,hp:80,r:22,speed:245,trainTime:9,supply:2,range:265,damage:22,interval:.9,flying:true},
   mage:{label:'Rock Mage',family:'rock',tier:2,cost:170,hp:110,r:20,speed:112,trainTime:12,supply:2,range:210,damage:18,interval:1.6},
   divider:{label:'Paper Divider',family:'paper',tier:3,cost:500,hp:160,r:27,speed:103,trainTime:25,supply:6,range:225,damage:25,interval:1.8},
   rollingrock:{label:'Rolling Rock',family:'rock',tier:3,cost:350,hp:360,r:33,speed:91,trainTime:16,supply:4,range:58,damage:78,interval:2},
@@ -24,7 +24,7 @@ const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const fail=reason=>({ok:false,reason});
 const success=extra=>({ok:true,...extra});
 const point=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y);
-const staticShot=(g,a,b)=>g._lineFree(a.x,a.y,b.x,b.y,0,b.id,false,true);
+const staticShot=(g,a,b)=>g._lineFree(a.x,a.y,b.x,b.y,0,b.id,false,true,true);
 const reset=e=>{e.path=null;e.detour=null;e.combatTarget=null;e.formationGoal=null;e.aim=null;};
 function segmentDistance(p,a,b){const dx=b.x-a.x,dy=b.y-a.y,t=clamp(((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy||1),0,1);return Math.hypot(p.x-a.x-dx*t,p.y-a.y-dy*t);}
 function clearMovement(g,e,p,ignoreDivision=false){

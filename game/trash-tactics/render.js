@@ -1,5 +1,8 @@
 /* Trash Tactics — illustrated, resolution-independent battlefield renderer. */
 import {drawExpansionIcon,drawExpansionSprite,drawWarfareEntityOverlay,drawWarfareFields,drawWarfareProjectile,drawWarfareEffect,drawWarfarePlacement,paintWarfareMap,animateWarfareMap,drawWarfareObstacle,loadWarfareEffects,warfareEffectsLoaded} from './warfare-art.js';
+import {TYPES} from './engine.js';
+import {drawWallBlock,drawWallEntity,drawWallPlacement} from './wall-art.js';
+import {WALL_SIZE} from './walls.js';
 const INK='#354549', TEAL='#269b98', CORAL='#ed795d';
 const TEAM_COLORS=[TEAL,CORAL,'#9e7bc5','#d4aa4e'];
 const teamColor=t=>TEAM_COLORS[t]||'#91a588';
@@ -18,6 +21,7 @@ function limbs(c,type,walk=0,t=0){const sw=Math.sin(walk)*3;line(c,[[-11,6],[-19
 /** Paint a cheerful unit or building icon. x/y is its center; size is full nominal width. */
 export function drawIcon(c,type,x,y,size=50,team=0,options={}){
  c.save();c.translate(x,y);c.scale(size/50,size/50);c.lineJoin='round';c.lineCap='round';const tc=teamColor(team);const walk=options.walk||0;
+ if(type==='wall'){drawWallBlock(c,{mask:options.mask||0,team,health:options.health??1,size:46,shadow:true});c.restore();return;}
  if(!options.vector&&drawExpansionSprite(c,type,SPRITES[type],tc,{...options,sheet:options.battlefield?ANIMATION_SHEETS[type]:null})){c.restore();return;}
  if(drawExpansionIcon(c,type,tc,options)){c.restore();return;}
  const sprite=SPRITES[type];
@@ -103,7 +107,10 @@ function drawCDReader(c,tc,options={}){
  if(active){c.save();c.translate(0,-32-Math.sin(phase*4)*2);c.scale(.6,.6);drawCD(c,tc,{spin:phase*3});c.restore();}
 }
 function drawMouse(c,tc,options={}){
- const pressing=(options.attackAnim||0)>0;
+ const pressing=(options.attackAnim||0)>0,phase=options.phase||0,cooldown=options.entity?.cooldown||0,charge=Math.max(0,Math.min(1,1-cooldown/TYPES.mouse.shotInterval));
+ // A reinforced desk mount and metal side pods communicate the stronger defense.
+ rr(c,-26,5,52,24,5);shape(c,'#71898b',INK,2);rr(c,-23,7,46,17,3);shape(c,'#afbfaf',INK,1.2);line(c,[[-20,23],[20,23]],tc,3);
+ for(const x of [-22,22]){rr(c,x-4,-5,8,24,2);shape(c,'#8aa3a1',INK,1.5);line(c,[[x-2,-2],[x-2,13]],'#d4e3d3',1.1);ellipse(c,x,20,1.5,1.5,'#d5d9be',INK,.6);}
  // Cable, separated mouse buttons, and wheel make this read as a computer mouse.
  c.beginPath();c.moveTo(0,-20);c.bezierCurveTo(0,-34,-22,-24,-16,-36);shape(c,null,INK,2.6);
  c.beginPath();c.moveTo(-20,-2);c.bezierCurveTo(-20,-25,20,-25,20,-2);c.lineTo(20,6);c.bezierCurveTo(20,31,-20,31,-20,6);c.closePath();shape(c,'#91a7ad',INK,2.5);
@@ -111,6 +118,9 @@ function drawMouse(c,tc,options={}){
  c.beginPath();c.moveTo(-1,-21);c.bezierCurveTo(-11,-21,-19,-17,-19,-5);c.lineTo(-1,-3);c.closePath();shape(c,pressing?'#a9d3c5':'#fbf9eb',INK,1.2);
  c.beginPath();c.moveTo(1,-21);c.bezierCurveTo(11,-21,19,-17,19,-5);c.lineTo(1,-3);c.closePath();shape(c,'#d6e1d7',INK,1.2);
  rr(c,-3,-16,6,11,2.5);shape(c,'#6d8587',INK,1);for(let i=0;i<3;i++)line(c,[[-1,-13+i*2],[1,-13+i*2]],'#c9d7cc',.7);
+ // Both buttons house visible pointer launch rails without hiding the mouse body.
+ for(const x of [-11,11]){rr(c,x-4,-23,8,12,2);shape(c,'#607d81',INK,1);rr(c,x-2.5,-24+(pressing?1:0),5,5,1);shape(c,pressing?'#fff0b1':tc,INK,.7);line(c,[[x-2,-16],[x+2,-16]],'#cdded2',.8);}
+ const glow=pressing?.7:.08+charge*.13+Math.sin(phase*4)*.025;ellipse(c,0,-23,11,5,tc+Math.round(Math.max(0,glow)*255).toString(16).padStart(2,'0'));ellipse(c,0,-23,3.1,2.2,pressing?'#fff6c2':charge>.85?'#b8ead0':'#759a95',INK,.8);
  c.beginPath();c.ellipse(0,1,18,22,0,.15,Math.PI-.15);shape(c,null,tc,2.5);
  // Printed pointer insignia links the defensive building to its shots.
  c.beginPath();c.moveTo(-4,2);c.lineTo(-4,14);c.lineTo(-1,11);c.lineTo(2,16);c.lineTo(5,14);c.lineTo(2,9);c.lineTo(7,9);c.closePath();shape(c,tc,INK,.8);
@@ -148,7 +158,7 @@ export class Renderer {
  animateWarfareMap(this,c);this.drawFog(c);drawWarfareFields(this,c,'ground');
  const entities=(g.entities||[]).filter(e=>e.hp>0&&!e.transportedBy&&this.entityVisible(e));const selected=state.selected||new Set();
  // Defense coverage is painted on the ground before troops and structures.
- for(const e of entities)if(e.type==='mouse'&&e.team===0&&selected.has(e.id)){c.save();c.setLineDash([7,9]);ellipse(c,e.x,e.y,310,310,teamColor(e.team)+'05',teamColor(e.team)+'60',1.4/cam.zoom);c.restore();}
+ for(const e of entities)if(e.type==='mouse'&&e.team===0&&selected.has(e.id)){const range=TYPES.mouse.range;c.save();c.setLineDash([7,9]);ellipse(c,e.x,e.y,range,range,teamColor(e.team)+'05',teamColor(e.team)+'60',1.4/cam.zoom);c.restore();}
  for(const e of entities)if(e.type==='trash'&&this.visible(e.x,e.y,80))this.drawEntity(c,e,selected.has(e.id));
  for(const e of entities.filter(e=>e.type!=='trash'&&!['cd','airplane'].includes(e.type)&&this.visible(e.x,e.y,e.type==='staplergate'?230:130)).sort((a,b)=>a.y-b.y))this.drawEntity(c,e,selected.has(e.id));
  // Air transports stay above every ground troop, structure, and obstacle.
@@ -366,6 +376,7 @@ export class Renderer {
  c.restore();
  } drawEntity(c,e,selected){
  if(e.transportedBy)return;
+ if(e.type==='wall'){drawWallEntity(this,c,e,selected);return;}
  const baseUnit=['rock','paper','scissors','twig'].includes(e.type),isUnit=baseUnit||['sniper','airplane','mage','divider','rollingrock','shears'].includes(e.type),isCD=e.type==='cd',isAir=isCD||e.type==='airplane',isTrash=e.type==='trash',tc=teamColor(e.team);let size=({sniper:59,airplane:66,mage:60,divider:85,rollingrock:90,shears:66,workshop:111,laboratory:136,staplergate:310,gate:310,station:82,controlstation:82})[e.type]||(isUnit?49:e.type==='desk'?112:e.type==='printer'?94:e.type==='cdreader'?98:e.type==='mouse'?80:e.type==='cabinet'?74:68);
  const old=this.motion.get(e.id);const moving=old&&Math.hypot(e.x-old.x,e.y-old.y)>.08;this.motion.set(e.id,{x:e.x,y:e.y});const bob=isUnit&&moving?Math.sin(this.time*13+Number(e.id)*.8)*1.8:Math.sin(this.time*2.5+(Number(e.id)||0))*0.7;
  const leap=isAir?(e.type==='airplane'?(e.crash?.diving?Math.max(0,(e.crash.remaining??.4)*65):32):18)+Math.sin(this.time*3+e.id)*2:e.type==='divider'?8+Math.sin(this.time*2+e.id)*2:e.leap?Math.sin(Math.PI*(1-e.leap.remaining/e.leap.total))*75:0;
@@ -444,9 +455,10 @@ export class Renderer {
  c.restore();
  }
  drawPlacement(c,state){
+ if(drawWallPlacement(this,c,state))return;
  drawWarfarePlacement(this,c,state);
  const p=state.pointer;if(!p||!state.mode)return;const mode=state.mode;
- if(mode==='mouse'){c.save();c.setLineDash([7,9]);ellipse(c,p.x,p.y,310,310,TEAL+'05',TEAL+'60',1.4/this.camera.zoom);c.restore();}
+ if(mode==='mouse'){const range=TYPES.mouse.range;c.save();c.setLineDash([7,9]);ellipse(c,p.x,p.y,range,range,TEAL+'05',TEAL+'60',1.4/this.camera.zoom);c.restore();}
  if(['desk','cabinet','printer','cdreader','mouse'].includes(mode)){const scouted=this.pointVisible(p.x,p.y),raw=scouted?this.game.canBuild?.(mode,p.x,p.y):false;const valid=typeof raw==='object'?raw.ok:raw!==false;const r=mode==='desk'?64:['printer','cdreader'].includes(mode)?50:mode==='mouse'?42:39;c.save();c.globalAlpha=.55;drawIcon(c,mode,p.x,p.y,mode==='desk'?112:mode==='cdreader'?98:mode==='mouse'?80:mode==='printer'?94:74,0);ellipse(c,p.x,p.y+12,r,r*.5,valid?'#32a18c11':scouted?'#df715c22':'#9aa9a522',valid?TEAL:scouted?CORAL:'#9aa9a5',2);c.restore();}
  else if(mode==='ability'){const selection=(this.game.entities||[]).filter(e=>state.selected?.has(e.id)&&(!state.abilityType||e.type===state.abilityType));for(const e of selection){if(e.type==='scissors'){c.save();c.translate(e.x,e.y);c.rotate(Math.atan2(p.y-e.y,p.x-e.x));c.beginPath();c.moveTo(0,0);c.arc(0,0,125,-Math.PI*.34,Math.PI*.34);c.closePath();shape(c,'#eac45a20','#d1a23e99',1.5);c.restore();}else if(e.type==='rock'){c.save();c.setLineDash([5,9]);ellipse(c,e.x,e.y,420,420,null,'#b28e4255',1/this.camera.zoom);c.restore();line(c,[[e.x,e.y],[p.x,p.y]],'#b28e4277',1.2);}}ellipse(c,p.x,p.y,24,12,'#eac45a15','#c49635',1.5);}
  else if(mode==='drop'){
@@ -464,7 +476,7 @@ export class Renderer {
  if(this._groundMap===g.map&&this._groundCanvas)c.drawImage(this._groundCanvas,0,0,w,h);
  else{for(const p of g.map?.plateaus||[]){c.fillStyle='#bbc795';c.fillRect(p.x*sx,p.y*sy,p.w*sx,p.h*sy);}for(const o of g.map?.obstacles||[]){c.fillStyle='#939e7d';c.fillRect(o.x*sx,o.y*sy,o.w*sx,o.h*sy);}}
  c.save();c.scale(sx,sy);this.drawFog(c);c.restore();
- for(const e of g.entities||[]){if(e.hp<=0||e.transportedBy||!this.entityVisible(e))continue;const building=['desk','printer','cabinet','cdreader','mouse','workshop','laboratory','staplergate','station'].includes(e.type);const r=building?3:e.type==='trash'?2.3:1.5;c.fillStyle=e.type==='trash'?'#afc594':teamColor(e.team);if(building)c.fillRect(e.x*sx-r,e.y*sy-r,r*2,r*2);else if(['cd','airplane'].includes(e.type)){c.beginPath();c.moveTo(e.x*sx,e.y*sy-3);c.lineTo(e.x*sx+3,e.y*sy);c.lineTo(e.x*sx,e.y*sy+3);c.lineTo(e.x*sx-3,e.y*sy);c.closePath();c.fill();}else{c.beginPath();c.arc(e.x*sx,e.y*sy,r,0,Math.PI*2);c.fill();}}
+ for(const e of g.entities||[]){if(e.hp<=0||e.transportedBy||!this.entityVisible(e))continue;if(e.type==='wall'){c.fillStyle=teamColor(e.team);c.fillRect((e.x-WALL_SIZE/2)*sx,(e.y-WALL_SIZE/2)*sy,WALL_SIZE*sx,WALL_SIZE*sy);continue;}const building=['desk','printer','cabinet','cdreader','mouse','workshop','laboratory','staplergate','station'].includes(e.type);const r=building?3:e.type==='trash'?2.3:1.5;c.fillStyle=e.type==='trash'?'#afc594':teamColor(e.team);if(building)c.fillRect(e.x*sx-r,e.y*sy-r,r*2,r*2);else if(['cd','airplane'].includes(e.type)){c.beginPath();c.moveTo(e.x*sx,e.y*sy-3);c.lineTo(e.x*sx+3,e.y*sy);c.lineTo(e.x*sx,e.y*sy+3);c.lineTo(e.x*sx-3,e.y*sy);c.closePath();c.fill();}else{c.beginPath();c.arc(e.x*sx,e.y*sy,r,0,Math.PI*2);c.fill();}}
  c.fillStyle='#ffffff15';c.strokeStyle='#f2f4de';c.lineWidth=1.4;const cam=this.camera;c.fillRect(cam.x*sx,cam.y*sy,this.width/cam.zoom*sx,this.height/cam.zoom*sy);c.strokeRect(cam.x*sx,cam.y*sy,this.width/cam.zoom*sx,this.height/cam.zoom*sy);c.setTransform(1,0,0,1,0,0);
  }
 }

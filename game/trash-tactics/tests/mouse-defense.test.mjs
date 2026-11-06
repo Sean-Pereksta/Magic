@@ -6,6 +6,15 @@ function arena(){const g=new Game();g._think=Infinity;g.entities=g.entities.filt
 function advance(g,seconds){for(let t=0;t<seconds-1e-9;){const dt=Math.min(.02,seconds-t);g.update(dt);t+=dt;}}
 function enemy(g,type,x=920,y=800){const e=g._spawn(type,1,x,y);e.cooldown=100;return e;}
 
+test('fortified mice retain their price and build time while covering farther lanes and firing faster',()=>{
+  const g=arena(),mouse=g._spawn('mouse',0,700,800),cd=enemy(g,'cd',1040);
+  assert.equal(mouse.hp,850);assert.equal(TYPES.mouse.cost,175);assert.equal(TYPES.mouse.buildTime,8);
+  assert.equal(TYPES.mouse.range,360);assert.equal(TYPES.mouse.shotInterval,1.25);
+  advance(g,.02);assert.equal(g.projectiles[0]?.targetId,cd.id,'the wider defense reaches beyond the former coverage edge');
+  advance(g,1.3);assert(mouse.cooldown>0);assert(g.projectiles.some(p=>p.type==='pointer'),'the second pointer is already in flight');
+  assert.equal(TYPES.mouse.impactDamage,28);assert.equal(TYPES.mouse.clickDps,6);assert.equal(TYPES.mouse.clickDuration,3);
+});
+
 test('workers build paid mouse defenses, which provide no supply and cannot fire unfinished',()=>{
   const g=arena();g.teams[0].trash=1000;
   const twig=g._spawn('twig',0,650,800),supply=g.getSupply(0).cap;
@@ -25,26 +34,26 @@ test('mouse fires visible travelling pointer shots and prioritizes flying CDs ov
   assert.equal(shot.type,'pointer');assert.equal(shot.targetId,cd.id);
   assert(shot.x>mouse.x&&shot.x<cd.x);assert.equal(cd.hp,cd.maxHp,'damage waits for pointer impact');
   const x=shot.x;advance(g,.1);assert(shot.x>x);
-  advance(g,.5);assert.equal(cd.hp,cd.maxHp-12);assert.equal(rock.hp,rock.maxHp);
+  advance(g,.5);assert.equal(cd.hp,cd.maxHp-TYPES.mouse.impactDamage);assert.equal(rock.hp,rock.maxHp);
   assert.equal(g.projectiles.length,0);assert.equal(cd.clickDamage.length,1);
 });
 
 test('pointer impact is followed by three seconds of damage, which ends without extra ticks',()=>{
   const g=arena(),mouse=g._spawn('mouse',0,700,800),cd=enemy(g,'cd',920);
   advance(g,.02);mouse.cooldown=100;
-  advance(g,.5);assert.equal(cd.hp,168);
-  advance(g,.5);assert.equal(cd.hp,166);
-  advance(g,2.6);assert.equal(cd.hp,156,'one hit deals 12 impact plus six 2-damage ticks');
+  advance(g,.5);assert.equal(cd.hp,cd.maxHp-TYPES.mouse.impactDamage);
+  advance(g,.5);assert.equal(cd.hp,cd.maxHp-TYPES.mouse.impactDamage-TYPES.mouse.clickDps*.5);
+  advance(g,2.6);assert.equal(cd.hp,cd.maxHp-TYPES.mouse.impactDamage-TYPES.mouse.clickDps*TYPES.mouse.clickDuration,'one hit deals its configured impact plus six half-second damage ticks');
   assert.equal(cd.clickDamage.length,0);
-  advance(g,3);assert.equal(cd.hp,156,'expired click damage stops');
+  advance(g,3);assert.equal(cd.hp,cd.maxHp-TYPES.mouse.impactDamage-TYPES.mouse.clickDps*TYPES.mouse.clickDuration,'expired click damage stops');
 });
 
 test('mouse defenses can damage each rock-paper-scissors type without a counter restriction',()=>{
   for(const type of ['rock','paper','scissors']){
     const g=arena(),mouse=g._spawn('mouse',0,700,800),troop=enemy(g,type,920);
     assert(g.canTarget(mouse,troop));advance(g,.02);mouse.cooldown=100;advance(g,.6);
-    assert.equal(troop.hp,88,`${type} receives pointer impact`);
-    advance(g,3.1);assert.equal(troop.hp,76,`${type} receives lingering click damage`);
+    assert.equal(troop.hp,troop.maxHp-TYPES.mouse.impactDamage,`${type} receives pointer impact`);
+    advance(g,3.1);assert.equal(troop.hp,troop.maxHp-TYPES.mouse.impactDamage-TYPES.mouse.clickDps*TYPES.mouse.clickDuration,`${type} receives lingering click damage`);
   }
 });
 
@@ -74,10 +83,10 @@ test('shots track a moving CD and invalid targets disappear without hitting pass
 
 test('active click damage honors paper invulnerability and stops when troops embark',()=>{
   const g=arena(),mouse=g._spawn('mouse',0,700,800),paper=enemy(g,'paper',920);
-  advance(g,.02);mouse.cooldown=100;advance(g,.5);assert.equal(paper.hp,88);
-  paper.paperInvulnerable=1.1;advance(g,1);assert.equal(paper.hp,88);
+  advance(g,.02);mouse.cooldown=100;advance(g,.5);assert.equal(paper.hp,paper.maxHp-TYPES.mouse.impactDamage);
+  paper.paperInvulnerable=1.1;advance(g,1);assert.equal(paper.hp,paper.maxHp-TYPES.mouse.impactDamage);
   const cd=enemy(g,'cd',paper.x,paper.y);assert(g.loadTransport([paper.id],[cd.id]).ok);
-  advance(g,2);assert.equal(paper.hp,88);assert.equal(paper.clickDamage.length,0);
+  advance(g,2);assert.equal(paper.hp,paper.maxHp-TYPES.mouse.impactDamage);assert.equal(paper.clickDamage.length,0);
 });
 
 test('repeat clicks refresh one damage mark per mouse and still permit separate defensive mice',()=>{
