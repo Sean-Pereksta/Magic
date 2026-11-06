@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trash Tactics — Warfare in motion</title>
+<style>
+ :root{font-family:Trebuchet MS,system-ui,sans-serif;color:#354549;background:#f3eddc;font-synthesis:none}*{box-sizing:border-box}body{margin:0;padding:32px;max-width:1320px;margin-inline:auto}header{display:flex;gap:24px;justify-content:space-between;align-items:center;margin-bottom:24px}h1{font-size:34px;letter-spacing:-1px;margin:0 0 8px}p{margin:0;color:#6c8175;line-height:1.5}.controls{display:flex;gap:8px;flex-wrap:wrap}button{font:700 14px inherit;border:1px solid #8d9f8a;border-radius:9px;background:#e4ead5;color:#354549;padding:12px 18px;cursor:pointer}button.active{background:#269b98;color:#fffdf0;border-color:#218d88}section{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-bottom:32px}article{background:#e8e2ce;border:1px solid #d2c6a9;border-radius:18px;overflow:hidden;box-shadow:0 4px 0 #d4cab136;text-align:center;padding:12px 12px 20px}canvas{display:block;width:100%;height:auto;aspect-ratio:1.5}h2{font-size:23px;margin:32px 0 14px}h3{font-size:19px;margin:2px 0 4px}small{color:#6b8174;font-size:11px;letter-spacing:1px;text-transform:uppercase}footer{border-top:1px solid #d1c4a6;padding:18px 0;color:#6c8175;font-size:13px}a{color:#238d86}.state{color:#269b98;font-size:13px;font-weight:bold}@media(max-width:720px){body{padding:18px}header{display:block}h1{font-size:28px}.controls{margin-top:18px}section{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}h3{font-size:15px}button{padding:9px 12px}}
+</style>
+<header><div><h1>Warfare in motion.</h1><p>Six specialists. Three families. A whole new kind of office battle.</p></div><div class="controls"><button id="play" class="active">Pause</button><button data-state="idle">Idle</button><button data-state="move" class="active">Move</button><button data-state="attack">Attack</button><button data-state="special">Special</button></div></header>
+<section id="troops" aria-label="Animated troop artwork"></section>
+<h2>A little battlefield magic.</h2><p>Precision shots, paper crashes, shadow cuts and spells — animated as they appear in battle.</p>
+<section id="effects" aria-label="Animated battlefield effects"></section>
+<footer><a href="./">Play Trash Tactics</a><span class="state" id="status" style="float:right">Move</span></footer>
+<script type="module">
+import {drawIcon,loadWarfareArtwork,warfareArtworkStatus} from './render.js';
+import {drawWarfareEffect} from './warfare-art.js';
+const troops=[['sniper','Scissors Sniper','Tier 2 · Scissors'],['airplane','Paper Airplane','Tier 2 · Paper'],['mage','Rock Mage','Tier 2 · Rock'],['divider','Paper Divider','Tier 3 · Paper'],['rollingrock','Rolling Rock','Tier 3 · Rock'],['shears','Shadow Shears','Tier 3 · Scissors']];
+const effects=[['snipe','Precision impact'],['crash','Crash landing'],['shadowSlash','Shadow cut'],['forcefield','Dome pulse'],['division','Triple Division'],['rollhit','Crushing impact']];
+const cards=(id,entries)=>entries.map(([type,label,tier])=>{const article=document.createElement('article'),canvas=document.createElement('canvas');canvas.width=520;canvas.height=340;article.append(canvas);const name=document.createElement('h3');name.textContent=label;article.append(name);if(tier){const sub=document.createElement('small');sub.textContent=tier;article.append(sub);}document.getElementById(id).append(article);return {type,canvas,c:canvas.getContext('2d')};});
+const army=cards('troops',troops),spells=cards('effects',effects);let playing=true,state='move',elapsed=0,previous=performance.now();
+document.getElementById('play').onclick=()=>{playing=!playing;document.getElementById('play').textContent=playing?'Pause':'Play';document.getElementById('play').classList.toggle('active',playing);};
+for(const button of document.querySelectorAll('[data-state]'))button.onclick=()=>{state=button.dataset.state;document.getElementById('status').textContent=button.textContent;for(const b of document.querySelectorAll('[data-state]'))b.classList.toggle('active',b===button);};
+const renderer={game:{},camera:{zoom:1},visible:()=>true,pointVisible:()=>true,time:0};
+function paint(now){if(playing)elapsed+=Math.min(.05,(now-previous)/1000);previous=now;renderer.time=elapsed;
+ for(const {type,c,canvas}of army){c.clearRect(0,0,canvas.width,canvas.height);c.fillStyle='#899b771a';c.beginPath();c.ellipse(260,270,99,19,0,0,Math.PI*2);c.fill();const entity={id:1};if(state==='special'){if(type==='sniper')entity.aim={remaining:1.5-((elapsed*1.2)%1.5),total:1.5};if(type==='airplane')entity.crash={diving:true,remaining:.5};if(type==='mage')entity.mageCasting=.3;if(type==='divider')entity.divisionCast=1;if(type==='rollingrock')entity.roll={};if(type==='shears')entity.shadow={};}drawIcon(c,type,260,180,type==='airplane'?235:225,0,{entity,battlefield:true,animationState:state,animationTime:elapsed,phase:elapsed,walk:state==='move'?elapsed*8:0,attackAnim:state==='attack'?.2:0,facing:0});}
+ for(const {type,c,canvas}of spells){c.clearRect(0,0,canvas.width,canvas.height);const progress=(elapsed*.65)%1,scale=type==='division'?1.5:['crash','forcefield'].includes(type)?2:2.5;c.save();c.translate(260,175);c.scale(scale,scale);c.translate(-260,-175);drawWarfareEffect(renderer,c,{type,x:260,y:175,radius:type==='division'?95:75,life:1-progress,total:1,team:0,fromX:type==='snipe'?80:undefined,fromY:175});c.restore();}
+ window.warfareGallery={state,time:elapsed,playing,artwork:warfareArtworkStatus(),seek:seconds=>{elapsed=Math.max(0,Number(seconds)||0);}};requestAnimationFrame(paint);}
+await loadWarfareArtwork();requestAnimationFrame(paint);
+</script>
+</html>
