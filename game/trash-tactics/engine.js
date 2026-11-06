@@ -1,11 +1,15 @@
 // Trash Tactics: deterministic, browser-local RTS simulation.
 import {enrichTerrain,terrainHeight,terrainSight} from './terrain.js';
 import {findPath} from './navigation.js';
+import {WARFARE_TYPES,PRODUCTION,familyOf,isCombat,canTransport,familyCanDamage,initializeWarfare,useAbility,tickWarfare,tickSpecialist,specialistCombat,moveAircraft,updateDart,specialistBot} from './warfare.js';
+import {EXPANSION_MAPS,createBattlefield,initBattlefield,updateBattlefield,reverseConveyor,conveyorVelocity,dynamicBarrierBlocked,dynamicBarrierCrossed,divisionBarrierCrossed,divisionShotBlocked} from './battlefields.js';
+export {familyOf,isCombat,canTransport} from './warfare.js';
 export const TYPES = {
+  ...WARFARE_TYPES,
   twig: {label:'Twig',cost:25,hp:40,r:13,speed:150,trainTime:4,supply:1,worker:true},
-  rock: {label:'Rock',cost:50,hp:100,r:18,speed:123,trainTime:5,supply:1,beats:'scissors',range:43},
-  paper: {label:'Paper',cost:50,hp:100,r:17,speed:132,trainTime:5,supply:1,beats:'rock',range:48},
-  scissors: {label:'Scissors',cost:50,hp:100,r:18,speed:138,trainTime:5,supply:1,beats:'paper',range:46},
+  rock: {family:'rock',tier:1,label:'Rock',cost:50,hp:100,r:18,speed:123,trainTime:5,supply:1,beats:'scissors',range:43},
+  paper: {family:'paper',tier:1,label:'Paper',cost:50,hp:100,r:17,speed:132,trainTime:5,supply:1,beats:'rock',range:48},
+  scissors: {family:'scissors',tier:1,label:'Scissors',cost:50,hp:100,r:18,speed:138,trainTime:5,supply:1,beats:'paper',range:46},
   desk: {label:'Home desk',cost:200,hp:850,r:55,buildTime:12,supplyCap:12,building:true},
   cabinet: {label:'Cabinet',cost:75,hp:400,r:37,buildTime:7,supplyCap:8,building:true},
   printer: {label:'Printer',cost:150,hp:550,r:44,buildTime:10,supplyCap:0,building:true},
@@ -15,6 +19,7 @@ export const TYPES = {
   trash: {label:'Trash can',hp:1,r:27,building:false,resource:true}
 };
 export const MAPS = {
+  ...EXPANSION_MAPS,
   desktop: {id:'desktop',name:'Desktop Meadow',color:'#e9ddba',obstacles:[
     {x:1040,y:470,w:320,h:250,type:'book'},
     {x:1040,y:880,w:320,h:250,type:'book'},
@@ -33,6 +38,7 @@ export const MAPS = {
   ],lanes:[[[330,800],[1200,800],[2070,800]],[[330,800],[790,350],[1200,335],[1420,260],[1800,260],[2070,800]],[[330,800],[600,1330],[1200,1220],[1800,1200],[2070,800]]]}
 };
 function layoutMap(id,players){
+  const expansion=createBattlefield(id,players);if(expansion)return expansion;
   const map=structuredClone(MAPS[id]||MAPS.desktop),deskTheme=map.id==='desktop';
   map.expansions=[{x:790,y:800},{x:1610,y:800},{x:1200,y:800},{x:1200,y:390},{x:1200,y:1210}];
   map.camps=players===4?[{x:650,y:250},{x:1750,y:250},{x:1750,y:1350},{x:650,y:1350}]:players===3?[{x:350,y:1220},{x:2050,y:1220},{x:1200,y:260}]:[{x:330,y:800},{x:2070,y:800}];
@@ -71,7 +77,7 @@ export class Game {
     this.map=layoutMap(map,this.players);this.width=this.map.width;this.height=this.map.height;this.center={x:this.width/2,y:this.height/2};this.starts=this.map.camps.map(c=>({...c}));
     this.difficulty=difficulty in configs?difficulty:'normal';
     this.onEvent=onEvent; this.entities=[]; this.effects=[]; this.projectiles=[]; this.time=0;
-    this.winner=null; this._id=1; this._think=0;
+    this.winner=null; this._id=1; this._think=0;initializeWarfare(this);
     this._victoryCheck=0; this._separation=0;
     this.stats={trained:Array(this.players).fill(0),destroyed:Array(this.players).fill(0),collected:Array(this.players).fill(0)};
     this.teams=this.starts.map(start=>({trash:300,upgrades:{rock:false,paper:false,scissors:false},eliminated:false,start:{...start}}));
@@ -109,7 +115,7 @@ export class Game {
     }
     const cell=40,cols=Math.ceil(this.width/cell),rows=Math.ceil(this.height/cell);
     this.fog={cell,cols,rows,revision:0,teams:this.teams.map(()=>({visible:new Uint8Array(cols*rows),explored:new Uint8Array(cols*rows)}))};
-    this._sightCache=new Map();this._visionDue=0;this._updateVision();
+    this._sightCache=new Map();this._visionDue=0;initBattlefield(this);this._updateVision();
   }
   elevationAt(x,y){return terrainHeight(this.map,x,y);}
   _fogIndex(x,y){const {cell,cols,rows}=this.fog;return x>=0&&y>=0&&x<this.width&&y<this.height?Math.min(rows-1,Math.floor(y/cell))*cols+Math.min(cols-1,Math.floor(x/cell)):-1;}
@@ -142,7 +148,10 @@ export class Game {
   canSee(team,x,y){this._ensureVision();const index=this._fogIndex(x,y);return index>=0&&!!this.fog.teams[team]?.visible[index];}
   isExplored(team,x,y){this._ensureVision();const index=this._fogIndex(x,y);return index>=0&&!!this.fog.teams[team]?.explored[index];}
   isVisible(entity,team=0){return !!(entity&&entity.hp>0&&!entity.transportedBy&&(entity.team===team||this.canSee(team,entity.x,entity.y)));}
-  getEntity(id){return this.entities.find(e=>e.id===id&&e.hp>0);}
+  getEntity(id){
+    if(this._entityIndexSource!==this.entities||this._entityIndexCount!==this.entities.length){this._entityIndexSource=this.entities;this._entityIndexCount=this.entities.length;this._entityIndex=new Map(this.entities.map(e=>[e.id,e]));}
+    const entity=this._entityIndex.get(id);return entity?.hp>0?entity:undefined;
+  }
   _spawn(type,team,x,y,extra={}){
     const t=TYPES[type];
     const e={id:this._id++,type,team,x,y,hp:t.hp,maxHp:t.hp,r:t.r,
@@ -150,24 +159,25 @@ export class Game {
       order:{type:'idle'},queue:[],constructing:0,carrying:0,workTimer:0,...extra};
     if(type==='trash')e.maxAmount=e.amount||1500;
     if(type==='cd')e.cargo=[];
-    this.entities.push(e);this._fogDirty=true;if(t.building)this._collisionBuildings=null;return e;
+    if(type==='mage'){e.mageCharges=2;e.mageRecharge=0;}
+    this.entities.push(e);if(this._entityIndexSource===this.entities){this._entityIndex.set(e.id,e);this._entityIndexCount=this.entities.length;}this._fogDirty=true;if(t.building)this._collisionBuildings=null;return e;
   }
   _event(type,details={}){this.onEvent({type,...details});}
   _effect(type,x,y,extra={}){const life=type==='death'?.7:type==='sweep'?.45:.5;this.effects.push({type,x,y,life,total:life,...extra});}
   getSupply(team){
     const own=this.entities.filter(e=>e.team===team&&e.hp>0);
     let cap=0,units=0,reserved=0;
-    for(const e of own){if(TYPES[e.type].building){if(!e.constructing)cap+=TYPES[e.type].supplyCap||0;for(const q of e.queue)if(q.kind==='train')reserved++;}else units++;}
+    for(const e of own){if(TYPES[e.type].building){if(!e.constructing)cap+=TYPES[e.type].supplyCap||0;for(const q of e.queue)if(q.kind==='train')reserved+=TYPES[q.type]?.supply||0;}else units+=TYPES[e.type].supply||0;}
     return {used:units+reserved,cap:Math.min(100,cap),reserved,units};
   }
   train(buildingId,type){
     const b=this.getEntity(buildingId),t=TYPES[type];
     if(!b||!t)return fail('Choose a production building.');
-    if(!({desk:['twig'],printer:COMBAT,cdreader:['cd']}[b.type]||[]).includes(type))return fail('Choose a desk for twigs, a printer for troops, or a CD reader for flying CDs.');
+    if(!(PRODUCTION[b.type]||[]).includes(type))return fail('Choose a desk for twigs, a printer for troops, or a CD reader for flying CDs.');
     if(b.constructing)return fail('This building is still being built.');
     if(b.queue.length>=6)return fail('The production queue is full.');
     const supply=this.getSupply(b.team);
-    if(supply.used>=supply.cap)return fail('Supply full. Build a cabinet.');
+    if(supply.used+(t.supply||0)>supply.cap)return fail('Supply full. Build a cabinet.');
     if(this.teams[b.team].trash<t.cost)return fail('Not enough trash.');
     this.teams[b.team].trash-=t.cost;
     b.queue.push({kind:'train',type,total:t.trainTime,remaining:t.trainTime});
@@ -185,8 +195,9 @@ export class Game {
     this.teams[b.team].trash-=150;b.queue.push({kind:'research',type,total:14,remaining:14});return ok();
   }
   canBuild(type,x,y){
-    if(!TYPES[type]?.building)return false;
+    if(!TYPES[type]?.building||TYPES[type].neutral)return false;
     const r=TYPES[type].r+10;
+    if(dynamicBarrierBlocked(this,x,y,r))return false;
     if(x<r||y<r||x>this.width-r||y>this.height-r)return false;
     if(this.map.obstacles.some(o=>x>o.x-r&&x<o.x+o.w+r&&y>o.y-r&&y<o.y+o.h+r))return false;
     if(this.map.ramps.some(o=>x>o.x-r&&x<o.x+o.w+r&&y>o.y-r&&y<o.y+o.h+r))return false;
@@ -196,7 +207,8 @@ export class Game {
     const workers=workerIds.map(id=>this.getEntity(id)).filter(e=>e?.type==='twig');
     if(!workers.length)return fail('Select a twig to build.');
     const team=workers[0].team,t=TYPES[type];
-    if(!t?.building)return fail('Choose a building.');
+    if(!t?.building||t.neutral)return fail('Choose a building.');
+    for(const prerequisite of t.requires||[])if(!this.entities.some(e=>e.hp>0&&e.team===team&&e.type===prerequisite&&!e.constructing))return fail(`Requires a completed ${TYPES[prerequisite].label}.`);
     if(!this.canSee(team,x,y))return fail('Scout this ground before building here.');
     if(!this.canBuild(type,x,y))return fail('Leave space around buildings and trash cans.');
     if(this.teams[team].trash<t.cost)return fail('Not enough trash.');
@@ -215,6 +227,8 @@ export class Game {
     const destinations=[];
     units.forEach((e,i)=>{
       this._releaseCan(e);e.path=null;e.detour=null;e.moveSample=null;e.goalProgress=null;e.combatTarget=null;e.formationGoal=null;
+      if(e.crash?.diving)return;
+      e.crash=null;e.aim=null;e.roll=null;e.shadow=null;
       const o={...order};
       if(e.type==='cd'){
         if(moving)e.order={type:'move',x:clamp(order.x,e.r,this.width-e.r),y:clamp(order.y,e.r,this.height-e.r)};
@@ -222,7 +236,7 @@ export class Game {
         return;
       }
       if(o.type==='attack'&&!this.canTarget(e,this.getEntity(o.targetId))){e.order={type:'idle'};return;}
-      if(moving){const desiredX=clamp(order.x+(i%cols-(cols-1)/2)*44,22,this.width-22),desiredY=clamp(order.y+(Math.floor(i/cols)-(Math.ceil(units.length/cols)-1)/2)*44,22,this.height-22);const free=this._freePoint(desiredX,desiredY,e.r,destinations);o.x=free.x;o.y=free.y;o.arrivalRadius=units.length>1?Math.min(60,10+Math.sqrt(units.length)*6):10;destinations.push({...free,r:e.r});}
+      if(moving){const desiredX=clamp(order.x+(i%cols-(cols-1)/2)*44,22,this.width-22),desiredY=clamp(order.y+(Math.floor(i/cols)-(Math.ceil(units.length/cols)-1)/2)*44,22,this.height-22);const free=TYPES[e.type].flying?{x:desiredX,y:desiredY}:this._freePoint(desiredX,desiredY,e.r,destinations);o.x=free.x;o.y=free.y;o.arrivalRadius=units.length>1?Math.min(60,10+Math.sqrt(units.length)*6):10;destinations.push({...free,r:e.r});}
       e.formationGoal=moving&&units.length>1?{type:o.type,x:o.x,y:o.y,arrivalRadius:o.arrivalRadius}:null;
       if(o.type==='gather'&&e.type==='twig'){
         const can=this.getEntity(o.targetId);
@@ -230,6 +244,7 @@ export class Game {
       }else if(o.type==='gather')e.order={type:'move',x:o.x??e.x,y:o.y??e.y};
       else if(o.type==='stop')e.order={type:'idle'};
       else e.order=o;
+      if(e.divisionId)e.divisionSavedOrder={...e.order};
     });
     return ok();
   }
@@ -238,14 +253,14 @@ export class Game {
     return cd.cargo;
   }
   _boarders(cd,excluded=new Set()){
-    return this.entities.filter(e=>e.hp>0&&!e.transportedBy&&e.team===cd.team&&COMBAT.includes(e.type)&&e.order.type==='board'&&e.order.targetId===cd.id&&!excluded.has(e.id));
+    return this.entities.filter(e=>e.hp>0&&!e.transportedBy&&e.team===cd.team&&canTransport(e.type)&&e.order.type==='board'&&e.order.targetId===cd.id&&!excluded.has(e.id));
   }
   loadTransport(troopIds,cdIds){
     const cds=[...new Set(cdIds)].map(id=>this.getEntity(id)).filter(e=>e?.type==='cd');
     if(!cds.length)return fail('Select a friendly flying CD.');
     const team=cds[0].team,transports=cds.filter(e=>e.team===team);
-    const troops=[...new Set(troopIds)].map(id=>this.getEntity(id)).filter(e=>e?.team===team&&COMBAT.includes(e.type)&&!e.transportedBy&&!e.leap);
-    if(!troops.length)return fail('Only rock, paper, and scissors can board. No twigs.');
+    const troops=[...new Set(troopIds)].map(id=>this.getEntity(id)).filter(e=>e?.team===team&&canTransport(e.type)&&!e.transportedBy&&!e.leap);
+    if(!troops.length)return fail('Only Tier 1 and Tier 2 ground combat troops can board. No twigs or Tier 3 troops.');
     const reserved=new Map(transports.map(cd=>[cd.id,this._cargo(cd).length+this._boarders(cd).length])),planned=[];
     for(const troop of troops){
       const previous=troop.order.type==='board'?transports.find(cd=>cd.id===troop.order.targetId):null;
@@ -269,7 +284,7 @@ export class Game {
     for(const cd of cds){
       const slots=TYPES.cd.capacity-this._cargo(cd).length-this._boarders(cd).length;
       if(slots<=0)continue;
-      const troops=this.entities.filter(e=>e.hp>0&&e.team===cd.team&&COMBAT.includes(e.type)&&!e.transportedBy&&!e.leap&&!reserved.has(e.id)).sort((a,b)=>d2(a,cd)-d2(b,cd)||a.id-b.id).slice(0,slots);
+      const troops=this.entities.filter(e=>e.hp>0&&e.team===cd.team&&canTransport(e.type)&&!e.transportedBy&&!e.leap&&!reserved.has(e.id)).sort((a,b)=>d2(a,cd)-d2(b,cd)||a.id-b.id).slice(0,slots);
       if(!troops.length)continue;
       const r=this.loadTransport(troops.map(e=>e.id),[cd.id]);
       if(r.ok){assigned+=r.assigned;for(const e of troops)reserved.add(e.id);}
@@ -289,7 +304,7 @@ export class Game {
   }
   _board(e,dt){
     const cd=this.getEntity(e.order.targetId);
-    if(!cd||cd.type!=='cd'||cd.team!==e.team||!COMBAT.includes(e.type)||e.transportedBy||this._cargo(cd).length>=TYPES.cd.capacity){e.order={type:'idle'};return;}
+    if(!cd||cd.type!=='cd'||cd.team!==e.team||!canTransport(e.type)||e.transportedBy||this._cargo(cd).length>=TYPES.cd.capacity){e.order={type:'idle'};return;}
     if(dist(e,cd)>cd.r+e.r+24){
       // A disc may hover over scenery. Board from the nearest reachable ground.
       const p=this._freePoint(cd.x,cd.y,e.r);
@@ -344,7 +359,7 @@ export class Game {
       } else {
         const angle=Math.atan2(y-e.y,x-e.x);e.facing=angle;e.abilityCooldown=10;
         this._effect('sweep',e.x,e.y,{angle,radius:125,team:e.team});
-        for(const target of this.entities){if(target.team<0||target.team===e.team||target.type!=='paper'||target.transportedBy||target.hp<=0||target.paperInvulnerable>0)continue;
+        for(const target of this.entities){if(target.team<0||target.team===e.team||familyOf(target)!=='paper'||target.transportedBy||target.hp<=0||target.paperInvulnerable>0)continue;
           const len=dist(e,target),a=Math.atan2(target.y-e.y,target.x-e.x),diff=Math.atan2(Math.sin(a-angle),Math.cos(a-angle));
           if(len<125&&Math.abs(diff)<Math.PI*.34)this._damage(target,target.hp,e);
         }
@@ -354,16 +369,17 @@ export class Game {
   }
   update(dt){
     if(this.winner!==null)return;
-    dt=clamp(dt,0,.08);this.time+=dt;this._pathsRemaining=6;
+    dt=clamp(dt,0,.08);this.time+=dt;this._pathsRemaining=6;tickWarfare(this,dt);updateBattlefield(this,dt);
     this._ensureVision();
     this.effects=this.effects.filter(e=>(e.life-=dt)>0);
     for(const e of [...this.entities]){
       if(e.hp<=0||e.type==='trash')continue;
       if(e.transportedBy){const cd=this.getEntity(e.transportedBy);if(cd){e.x=cd.x;e.y=cd.y;}continue;}
-      e.cooldown=Math.max(0,e.cooldown-dt);e.attackAnim=Math.max(0,(e.attackAnim||0)-dt);e.abilityCooldown=Math.max(0,e.abilityCooldown-dt);e.paperInvulnerable=Math.max(0,e.paperInvulnerable-dt);
+      e.knockback=Math.max(0,(e.knockback||0)-dt);e.cooldown=Math.max(0,e.cooldown-dt);e.attackAnim=Math.max(0,(e.attackAnim||0)-dt);e.abilityCooldown=Math.max(0,e.abilityCooldown-dt);e.paperInvulnerable=Math.max(0,e.paperInvulnerable-dt);
       if(TYPES[e.type].building){this._building(e,dt);continue;}
       e.desiredVX=0;e.desiredVY=0;
       if(e.leap){const l=e.leap;l.remaining-=dt;const t=1-Math.max(0,l.remaining)/l.total;e.x=l.fromX+(l.toX-l.fromX)*t;e.y=l.fromY+(l.toY-l.fromY)*t;if(l.remaining<=0){e.leap=null;this._effect('leap',e.x,e.y,{team:e.team,radius:60});}continue;}
+      if(tickSpecialist(this,e,dt))continue;
       if(e.type==='cd')this._transport(e,dt);
       else if(e.order.type==='board')this._board(e,dt);
       else if(e.type==='twig')this._worker(e,dt);else this._fighter(e,dt);
@@ -407,7 +423,7 @@ export class Game {
     }
   }
   _mouseTarget(mouse,target){
-    return !!(target&&target.hp>0&&target.team>=0&&target.team!==mouse.team&&!target.transportedBy&&!target.leap&&target.paperInvulnerable<=0&&(target.type==='cd'||COMBAT.includes(target.type)));
+    return !!(target&&target.hp>0&&target.team>=0&&target.team!==mouse.team&&!target.transportedBy&&!target.leap&&target.paperInvulnerable<=0&&(target.type==='cd'||isCombat(target.type)));
   }
   _mouse(mouse){
     if(mouse.cooldown>0)return;
@@ -424,6 +440,7 @@ export class Game {
   _updatePointers(dt){
     const active=[];
     for(const p of this.projectiles){
+      if(p.type==='dart'){if(updateDart(this,p,dt))active.push(p);continue;}
       p.life-=dt;
       const target=this.getEntity(p.targetId);
       if(p.life<=0||this.teams[p.team]?.eliminated||!this._mouseTarget(p.source,target))continue;
@@ -502,6 +519,7 @@ export class Game {
     }
   }
   _fighter(e,dt){
+    if(specialistCombat(this,e,dt))return;
     // Traffic may push a resting squad outward. Rejoin its assigned area when
     // displaced, but let troops already engaged in combat hold their ground.
     if(e.order.type==='idle'&&e.formationGoal&&!e.combatTarget&&dist(e,e.formationGoal)>Math.min(140,Math.max(90,e.formationGoal.arrivalRadius*3))){e.order={...e.formationGoal};e.goalProgress=null;e.path=null;}
@@ -526,14 +544,25 @@ export class Game {
       if(this._move(e,o.x,o.y,dt,o.arrivalRadius||10))e.order={type:'idle'};
     }
   }
-  canTarget(e,t){if(e?.type==='mouse')return e.hp>0&&!e.constructing&&this._mouseTarget(e,t)&&this.isVisible(t,e.team);return !!(e&&t&&e.hp>0&&t.hp>0&&!e.transportedBy&&!t.transportedBy&&!TYPES[e.type].flying&&!TYPES[t.type].flying&&t.team>=0&&t.team!==e.team&&(!COMBAT.includes(e.type)||!COMBAT.includes(t.type)||t.type===e.type||TYPES[e.type].beats===t.type)&&this.isVisible(t,e.team));}
+  useAbility(ids,name,target={}){return useAbility(this,ids,name,target);}
+  reverseConveyor(id,team=0){return reverseConveyor(this,id,team);}
+  _divisionAirBlocked(e,p){return divisionBarrierCrossed(this,e.x,e.y,p.x,p.y,e.r);}
+  canTarget(e,t){
+    if(e?.type==='mouse')return e.hp>0&&!e.constructing&&this._mouseTarget(e,t)&&this.isVisible(t,e.team)&&!divisionShotBlocked(this,e,t);
+    if(!e||!t||e.hp<=0||t.hp<=0||e.transportedBy||t.transportedBy||e.team===t.team||t.type==='station'||t.type==='trash')return false;
+    if(t.team<0&&t.type!=='staplergate')return false;
+    if(e.type==='cd'||TYPES[e.type].building)return false;
+    if(e.type==='airplane'){if(!TYPES[t.type].flying)return false;}
+    else if(TYPES[t.type].flying&&e.type!=='sniper')return false;
+    return familyCanDamage(e,t)&&this.isVisible(t,e.team)&&!divisionShotBlocked(this,e,t);
+  }
   _canHurt(e,t){return this.canTarget(e,t);}
   _damage(target,amount,source){
     source.attackAnim=.25;source.attackTarget={x:target.x,y:target.y};
-    if(source.transportedBy||target.transportedBy||target.paperInvulnerable>0||target.leap||target.hp<=0)return;
+    if(!familyCanDamage(source,target)||divisionShotBlocked(this,source,target)||source.transportedBy||target.transportedBy||target.paperInvulnerable>0||target.leap||target.hp<=0)return;
     target.hp-=amount;target.lastHit=this.time;this._effect('hit',target.x,target.y,{team:source.team});
     this._event('hit',{source,target,amount});
-    if(target.hp<=0&&source)this.stats.destroyed[source.team]++;
+    if(target.hp<=0&&source&&source.team>=0)this.stats.destroyed[source.team]++;
   }
   _releaseCan(e){
     if(e.type!=='twig')return;
@@ -556,6 +585,7 @@ export class Game {
   _nearest(point,predicate){let best=null,score=Infinity;for(const e of this.entities)if(e.hp>0&&predicate(e)){const d=d2(point,e);if(d<score){score=d;best=e;}}return best;}
   _blocked(x,y,r=17,ignoreId=null){
     if(x<r||y<r||x>this.width-r||y>this.height-r)return true;
+    if(dynamicBarrierBlocked(this,x,y,r))return true;
     if(this.map.obstacles.some(o=>x>o.x-r&&x<o.x+o.w+r&&y>o.y-r&&y<o.y+o.h+r))return true;
     if(!this._collisionBuildings||this._collisionSource!==this.entities){this._collisionBuildings=this.entities.filter(e=>TYPES[e.type].building);this._collisionSource=this.entities;}
     return this._collisionBuildings.some(e=>e.id!==ignoreId&&e.hp>0&&(x-e.x)**2+(y-e.y)**2<(r+e.r+2)**2);
@@ -566,7 +596,8 @@ export class Game {
     for(let ring=1;ring<25;ring++)for(let i=0;i<24;i++){const a=i/24*Math.PI*2,px=clamp(x+Math.cos(a)*ring*24,r,this.width-r),py=clamp(y+Math.sin(a)*ring*24,r,this.height-r);if(available(px,py))return {x:px,y:py};}
     return {x:clamp(x,r,this.width-r),y:clamp(y,r,this.height-r)};
   }
-  _lineFree(ax,ay,bx,by,r,ignoreId,ignoreBuildings=false){
+  _lineFree(ax,ay,bx,by,r,ignoreId,ignoreBuildings=false,ignoreBarriers=false){
+    if(!ignoreBarriers&&dynamicBarrierCrossed(this,ax,ay,bx,by,r))return false;
     if(bx<r||by<r||bx>this.width-r||by>this.height-r)return false;
     const dx=bx-ax,dy=by-ay;
     for(const o of this.map.obstacles){
@@ -590,6 +621,7 @@ export class Game {
   _path(e,tx,ty,ignoreId){return findPath(this,e,tx,ty,ignoreId);}
   _move(e,tx,ty,dt,stop=8,ignoreId=null){
     if(!Number.isFinite(tx)||!Number.isFinite(ty))return true;
+    if(TYPES[e.type].flying)return moveAircraft(this,e,tx,ty,dt,stop);
     const distance=Math.hypot(e.x-tx,e.y-ty),directClear=this._lineFree(e.x,e.y,tx,ty,e.r,ignoreId);
     if(distance<=stop&&directClear){e.path=null;return true;}
     if((e.order.arrivalRadius||0)>10){
@@ -603,16 +635,19 @@ export class Game {
     }
     let px=tx,py=ty;
     if(!directClear){
-      if(!e.path||!e.path.length||!e.pathGoal||Math.hypot(e.pathGoal.x-tx,e.pathGoal.y-ty)>75||this.time>(e.pathRefresh||0)){
+      if(!e.path||(!e.path.length&&!this.forceFields.length&&!this.divisions.length)||!e.pathGoal||e.pathBarrierRevision!==this._barrierRevision||Math.hypot(e.pathGoal.x-tx,e.pathGoal.y-ty)>75||this.time>(e.pathRefresh||0)){
         // Spread new squad routes over frames while existing paths keep moving.
         if(this._pathsRemaining===0)return false;
         if(this._pathsRemaining!==undefined)this._pathsRemaining--;
-        e.path=this._path(e,tx,ty,ignoreId);e.pathGoal={x:tx,y:ty};e.pathRefresh=this.time+2+(e.id%7)*.025;
+        e.path=this._path(e,tx,ty,ignoreId);e.pathBarrierRevision=this._barrierRevision;e.pathGoal={x:tx,y:ty};e.pathRefresh=this.time+2+(e.id%7)*.025;
       }
       while(e.path?.length&&Math.hypot(e.x-e.path[0].x,e.y-e.path[0].y)<18&&(!e.path[1]||this._lineFree(e.x,e.y,e.path[1].x,e.path[1].y,e.r,ignoreId)))e.path.shift();
       for(let i=(e.path?.length||0)-1;i>0;i--)if(this._lineFree(e.x,e.y,e.path[i].x,e.path[i].y,e.r,ignoreId)){e.path=e.path.slice(i);break;}
       if(e.path?.length){px=e.path[0].x;py=e.path[0].y;}
     }else e.path=null;
+    // An enclosed troop keeps its order and waits for the cached route refresh
+    // or a barrier revision, rather than rebuilding an impossible path each frame.
+    if(!directClear&&!e.path?.length&&(this.forceFields.length||this.divisions.length))return false;
     // A brief local detour lets late arrivals walk around a resting squad.
     // Terrain remains the authority: every candidate must have a clear segment.
     if(!e.moveSample||this.time-e.moveSample.time>.7){
@@ -632,15 +667,15 @@ export class Game {
     const dx=px-e.x,dy=py-e.y,len=Math.hypot(dx,dy);if(len<.1)return false;
     e.facing=Math.atan2(dy,dx);const speed=TYPES[e.type].speed*(e.paperInvulnerable>0?1.85:1),step=Math.min(speed*dt,len,directClear?Math.max(0,distance-stop+1):len);
     e.desiredVX=dx/len*speed;e.desiredVY=dy/len*speed;
-    const vx=dx/len*step,vy=dy/len*step;
-    if(!this._blocked(e.x+vx,e.y+vy,e.r,ignoreId)){e.x+=vx;e.y+=vy;}
-    else if(!this._blocked(e.x+vx,e.y,e.r,ignoreId))e.x+=vx;
-    else if(!this._blocked(e.x,e.y+vy,e.r,ignoreId))e.y+=vy;
+    let {vx,vy}=conveyorVelocity(this,e,dx/len*step,dy/len*step,dt);
+    if(!dynamicBarrierCrossed(this,e.x,e.y,e.x+vx,e.y+vy,e.r)&&!this._blocked(e.x+vx,e.y+vy,e.r,ignoreId)){e.x+=vx;e.y+=vy;}
+    else if(!dynamicBarrierCrossed(this,e.x,e.y,e.x+vx,e.y,e.r)&&!this._blocked(e.x+vx,e.y,e.r,ignoreId))e.x+=vx;
+    else if(!dynamicBarrierCrossed(this,e.x,e.y,e.x,e.y+vy,e.r)&&!this._blocked(e.x,e.y+vy,e.r,ignoreId))e.y+=vy;
     else {e.path=null;e.pathRefresh=0;}
     return false;
   }
   _separate(dt){
-    const units=this.entities.filter(e=>e.hp>0&&!TYPES[e.type].building&&e.type!=='trash'&&!TYPES[e.type].flying&&!e.transportedBy&&!e.leap);
+    const units=this.entities.filter(e=>e.hp>0&&!TYPES[e.type].building&&e.type!=='trash'&&!TYPES[e.type].flying&&!e.transportedBy&&!e.leap&&!e.shadow&&!e.roll&&!e.divisionPull);
     // A positional contact solver makes moving and resting squads take up space.
     // All teams participate equally; airborne rocks do not block the ground.
     // Rebuilding nearby buckets each pass avoids checking every distant pair.
@@ -662,18 +697,18 @@ export class Game {
           if(len<.0001){const angle=((a.id*97+b.id*31)%360)*Math.PI/180;dx=Math.cos(angle);dy=Math.sin(angle);len=1;}
           const penetration=min-len+.01,nx=dx/len,ny=dy/len,half=penetration*.5;
           const ax=a.x-nx*half,ay=a.y-ny*half,bx=b.x+nx*half,by=b.y+ny*half;
-          const aFree=!this._blocked(ax,ay,a.r),bFree=!this._blocked(bx,by,b.r);
+          const aFree=!this._blocked(ax,ay,a.r)&&!dynamicBarrierCrossed(this,a.x,a.y,ax,ay,a.r),bFree=!this._blocked(bx,by,b.r)&&!dynamicBarrierCrossed(this,b.x,b.y,bx,by,b.r);
           if(aFree&&bFree){a.x=ax;a.y=ay;b.x=bx;b.y=by;}
-          else if(aFree&&!this._blocked(a.x-nx*penetration,a.y-ny*penetration,a.r)){a.x-=nx*penetration;a.y-=ny*penetration;}
-          else if(bFree&&!this._blocked(b.x+nx*penetration,b.y+ny*penetration,b.r)){b.x+=nx*penetration;b.y+=ny*penetration;}
+          else if(aFree&&!this._blocked(a.x-nx*penetration,a.y-ny*penetration,a.r)&&!dynamicBarrierCrossed(this,a.x,a.y,a.x-nx*penetration,a.y-ny*penetration,a.r)){a.x-=nx*penetration;a.y-=ny*penetration;}
+          else if(bFree&&!this._blocked(b.x+nx*penetration,b.y+ny*penetration,b.r)&&!dynamicBarrierCrossed(this,b.x,b.y,b.x+nx*penetration,b.y+ny*penetration,b.r)){b.x+=nx*penetration;b.y+=ny*penetration;}
           else {if(aFree){a.x=ax;a.y=ay;}if(bFree){b.x=bx;b.y=by;}}
           // Head-on traffic takes opposite sides instead of forming a deadlock.
           if(pass===0){
             const aForward=(a.desiredVX*nx+a.desiredVY*ny)>10,bForward=(b.desiredVX*nx+b.desiredVY*ny)<-10;
             const aRest=Math.hypot(a.desiredVX||0,a.desiredVY||0)<1,bRest=Math.hypot(b.desiredVX||0,b.desiredVY||0)<1;
             const side=dt*45,tx=-ny*side,ty=nx*side;
-            if(aForward&&(bForward||bRest)&&!this._blocked(a.x+tx,a.y+ty,a.r)){a.x+=tx;a.y+=ty;}
-            if(bForward&&(aForward||aRest)&&!this._blocked(b.x-tx,b.y-ty,b.r)){b.x-=tx;b.y-=ty;}
+            if(aForward&&(bForward||bRest)&&!this._blocked(a.x+tx,a.y+ty,a.r)&&!dynamicBarrierCrossed(this,a.x,a.y,a.x+tx,a.y+ty,a.r)){a.x+=tx;a.y+=ty;}
+            if(bForward&&(aForward||aRest)&&!this._blocked(b.x-tx,b.y-ty,b.r)&&!dynamicBarrierCrossed(this,b.x,b.y,b.x-tx,b.y-ty,b.r)){b.x-=tx;b.y-=ty;}
           }
         }
       }
@@ -682,10 +717,12 @@ export class Game {
   }
   _bot(team=1){
     const cfg=configs[this.difficulty],bank=this.teams[team],state=this._bots[team],start=this.starts[team];
-    const own=this.entities.filter(e=>e.team===team&&e.hp>0),workers=own.filter(e=>e.type==='twig'),desks=own.filter(e=>e.type==='desk'&&!e.constructing),printers=own.filter(e=>e.type==='printer'&&!e.constructing),army=own.filter(e=>COMBAT.includes(e.type)&&!e.transportedBy);
+    const own=this.entities.filter(e=>e.team===team&&e.hp>0),workers=own.filter(e=>e.type==='twig'),desks=own.filter(e=>e.type==='desk'&&!e.constructing),printers=own.filter(e=>e.type==='printer'&&!e.constructing),army=own.filter(e=>isCombat(e.type)&&!e.transportedBy);
     const planningExpansion=this.time>cfg.expand&&this.time-state.lastExpansion>70&&desks.length<3&&!own.some(e=>e.type==='desk'&&e.constructing);
     const planningResearch=!planningExpansion&&this.time>100&&!COMBAT.every(t=>bank.upgrades[t])&&!own.some(e=>e.queue.some(q=>q.kind==='research'));
-    const reserve=planningExpansion?200:planningResearch?150:0;
+    const specialistPlan=specialistBot(this,team);
+    const tierReserve=this.time>150&&!own.some(e=>e.type==='laboratory')&&own.some(e=>e.type==='workshop'&&!e.constructing)?400:this.time>65&&!own.some(e=>e.type==='workshop')?275:0;
+    const reserve=Math.max(tierReserve,specialistPlan.reserveTrash,planningExpansion?200:planningResearch?150:0);
     for(const w of workers)if(w.order.type==='idle'){
       const unfinished=own.find(b=>b.constructing&&!this.getEntity(b.builderId));
       if(unfinished){unfinished.builderId=w.id;w.order={type:'build',targetId:unfinished.id};continue;}
@@ -705,19 +742,19 @@ export class Game {
     };
     const forwardLength=dist(this.center,start),fx=(this.center.x-start.x)/forwardLength,fy=(this.center.y-start.y)/forwardLength,px=-fy,py=fx;
     if(bank.trash>=TYPES.mouse.cost){
-      const threatened=desks.find(d=>!own.some(e=>e.type==='mouse'&&dist(e,d)<350)&&this.entities.some(e=>e.hp>0&&e.team>=0&&e.team!==team&&e.type==='cd'&&this.isVisible(e,team)&&dist(e,d)<700));
+      const threatened=desks.find(d=>!own.some(e=>e.type==='mouse'&&dist(e,d)<350)&&this.entities.some(e=>e.hp>0&&e.team>=0&&e.team!==team&&TYPES[e.type].flying&&this.isVisible(e,team)&&dist(e,d)<700));
       if(threatened){
-        const carrier=this._nearest(threatened,e=>e.team>=0&&e.team!==team&&e.type==='cd'&&this.isVisible(e,team));
+        const carrier=this._nearest(threatened,e=>e.team>=0&&e.team!==team&&TYPES[e.type].flying&&this.isVisible(e,team));
         const angle=Math.atan2(carrier.y-threatened.y,carrier.x-threatened.x);
         // Finish assigning this defense before another construction task can take its builder.
         if(constructNear('mouse',threatened.x+Math.cos(angle)*125,threatened.y+Math.sin(angle)*125))return;
       }
     }
-    if(supply.cap-supply.used<4&&supply.cap<cfg.cap&&!pending.some(e=>e.type==='cabinet')&&bank.trash>=75)constructNear('cabinet',start.x+px*245-fx*40,start.y+py*245-fy*40);
+    if(supply.cap-supply.used<Math.max(4,specialistPlan.reserveSupply+2)&&supply.cap<(own.some(e=>e.type==='workshop'||e.type==='laboratory')?100:cfg.cap)&&!pending.some(e=>e.type==='cabinet')&&bank.trash>=75)constructNear('cabinet',start.x+px*245-fx*40,start.y+py*245-fy*40);
     if(printers.length<(this.time>120?3:2)&&this.time>35&&bank.trash>220+reserve&&!pending.some(e=>e.type==='printer'))constructNear('printer',start.x+fx*190+px*155,start.y+fy*190+py*155);
-    for(const p of printers)if(p.queue.length<2&&army.length+this.getSupply(team).reserved<cfg.cap-8&&bank.trash>=50+reserve){
+    for(const p of printers)if(p.queue.length<2&&army.length+this.getSupply(team).reserved<cfg.cap-8&&bank.trash>=50+reserve&&this.getSupply(team).used+1+specialistPlan.reserveSupply<=this.getSupply(team).cap){
       const counts=COMBAT.map(t=>army.filter(e=>e.type===t).length);
-      const observed=this.entities.filter(e=>e.team>=0&&e.team!==team&&COMBAT.includes(e.type)&&!e.transportedBy&&this.isVisible(e,team));
+      const observed=this.entities.filter(e=>e.team>=0&&e.team!==team&&isCombat(e.type)&&!e.transportedBy&&this.isVisible(e,team));
       const desired=COMBAT.map(t=>observed.filter(e=>e.type===TYPES[t].beats).length*1.6-counts[COMBAT.indexOf(t)]);
       const index=desired.indexOf(Math.max(...desired));this.train(p.id,COMBAT[index]);
     }
@@ -732,11 +769,11 @@ export class Game {
         }
       }
     }
-    if(!planningExpansion&&this.time>80&&bank.trash>=150)for(const type of COMBAT){
+    if(!planningExpansion&&!tierReserve&&this.time>80&&bank.trash>=150+specialistPlan.reserveTrash)for(const type of COMBAT){
       if(!bank.upgrades[type]&&!own.some(e=>e.queue.some(q=>q.kind==='research'&&q.type===type))){const p=printers.find(e=>e.queue.length<2);if(p){this.research(p.id,type);break;}}
     }
     // React to raids and then send reinforced waves toward the nearest enemy desk.
-    const intruder=this.entities.find(e=>e.team>=0&&e.team!==team&&COMBAT.includes(e.type)&&!e.transportedBy&&this.isVisible(e,team)&&own.some(b=>TYPES[b.type].building&&dist(e,b)<340));
+    const intruder=this.entities.find(e=>e.team>=0&&e.team!==team&&isCombat(e.type)&&!e.transportedBy&&this.isVisible(e,team)&&own.some(b=>TYPES[b.type].building&&dist(e,b)<340));
     if(intruder){for(const e of army.filter(a=>dist(a,start)<650)){e.formationGoal=null;e.order={type:'attackMove',x:intruder.x,y:intruder.y};}}
     else if(this.time>=state.nextAttack&&army.length>=cfg.group){
       let target=this._nearest(start,e=>e.team>=0&&e.team!==team&&!this.teams[e.team].eliminated&&e.type==='desk'&&this.isVisible(e,team));
@@ -750,11 +787,11 @@ export class Game {
         if(!unscouted.length){state.scouted.clear();unscouted=points;}
         target=unscouted.sort((a,b)=>(this.starts.includes(a)?0:1)-(this.starts.includes(b)?0:1)||dist(a,start)-dist(b,start))[0];
       }
-      if(target){this.command(army.map(e=>e.id),{type:'attackMove',x:target.x,y:target.y});state.nextAttack=this.time+(this.difficulty==='hard'?25:this.difficulty==='normal'?38:55);}
+      if(target){this.command(army.filter(e=>!e.aim&&!e.crash&&!e.roll&&!e.shadow&&!e.divisionCast&&!e.divisionPull).map(e=>e.id),{type:'attackMove',x:target.x,y:target.y});state.nextAttack=this.time+(this.difficulty==='hard'?25:this.difficulty==='normal'?38:55);}
     }
     if(this.difficulty!=='easy')for(const e of army){
       if(!bank.upgrades[e.type]||e.abilityCooldown>0)continue;
-      const enemy=this._nearest(e,t=>t.team>=0&&t.team!==team&&COMBAT.includes(t.type)&&!t.transportedBy&&this.isVisible(t,team));
+      const enemy=this._nearest(e,t=>t.team>=0&&t.team!==team&&isCombat(t.type)&&!t.transportedBy&&this.isVisible(t,team));
       if(!enemy)continue;
       const d=dist(e,enemy);
       if(e.type==='paper'&&e.hp<60&&d<150)this.ability([e.id],e.x,e.y);

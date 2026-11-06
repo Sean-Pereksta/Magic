@@ -3,7 +3,7 @@
 const inside=(x,y,r)=>x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h;
 
 export function enrichTerrain(map){
-  const layouts=map.players===2?
+  const layouts=map.terrainLayouts?map.terrainLayouts.map(row=>[...row]):map.players===2?
     [[1280,640,600,320,'Northwest overlook'],[2920,2240,600,320,'Southeast overlook'],[2920,640,600,320,'Northeast overlook'],[1280,2240,600,320,'Southwest overlook'],[2200,1490,400,220,'Center crossing']]:map.players===3?
     [[840,980,600,560,'West terrace'],[3360,980,600,560,'East terrace'],[1980,800,840,320,'Northern overlook'],[2120,2460,560,320,'Southern lookout']]:
     [[2040,140,720,400,'North lookout'],[2040,2660,720,400,'South lookout'],[2080,1440,640,320,'Center crossing'],[680,1350,500,500,'West flank'],[3620,1350,500,500,'East flank'],[2120,720,560,240,'Northern ridge']];
@@ -39,7 +39,7 @@ export function enrichTerrain(map){
   }
   map.obstacles.push(...map.cliffs.filter(o=>o.w>0&&o.h>0));
   const overlaps=(a,b,pad=0)=>a.x<b.x+b.w+pad&&a.x+a.w>b.x-pad&&a.y<b.y+b.h+pad&&a.y+a.h>b.y-pad;
-  const candidates=[[180,600],[180,1250],[180,2050],[180,2700],[4380,600],[4380,1250],[4380,2050],[4380,2700],[700,100],[1500,100],[3100,100],[3900,100],[700,2950],[1500,2950],[3100,2950],[3900,2950]];
+  const candidates=map.terrainLayouts?[]:[[180,600],[180,1250],[180,2050],[180,2700],[4380,600],[4380,1250],[4380,2050],[4380,2700],[700,100],[1500,100],[3100,100],[3900,100],[700,2950],[1500,2950],[3100,2950],[3900,2950]];
   let clusters=0;
   for(const [x,y] of candidates){
     const first={x,y,w:200,h:130,type:map.id==='desktop'?'book':'cup'},second={x:x+85,y:y+185,w:240,h:65,type:map.id==='desktop'?'ruler':'eraser'},box={x,y,w:325,h:250};

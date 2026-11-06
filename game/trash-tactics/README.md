@@ -1,5 +1,7 @@
 # Trash Tactics
 
+The **Tier 2 and Tier 3 warfare expansion** adds six specialists, two production buildings, animated character/effect sheets, Stapler Canyon and Conveyor Chaos. See [the expansion guide](WARFARE.md) for troop statistics, controls, map mechanics and validation, or open [the animated artwork gallery](warfare-gallery.html).
+
 A quick, cartoony RTS about turning office trash into a tiny empire. Desktop Meadow and Breakroom Blitz each have 2-, 3-, and 4-player layouts: six battleground layouts in all. Play a free-for-all against one, two, or three rival bots at Easy, Normal, or Hard difficulty. Destroy every rival desk to win.
 
 ## Play locally

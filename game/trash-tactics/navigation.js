@@ -1,5 +1,6 @@
 // A shared clearance graph avoids rebuilding the same ramp routes for each
 // member of a squad. Dynamic building footprints invalidate it automatically.
+import {conveyorTravelCost} from './battlefields.js';
 const DIRS=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
 class Frontier {
@@ -12,8 +13,8 @@ export function findPath(game,e,tx,ty,ignoreId){
   const cell=64,cols=Math.ceil(game.width/cell),rows=Math.ceil(game.height/cell),size=cols*rows;
   const key=(x,y)=>y*cols+x,sx=clamp(Math.floor(e.x/cell),0,cols-1),sy=clamp(Math.floor(e.y/cell),0,rows-1),gx=clamp(Math.floor(tx/cell),0,cols-1),gy=clamp(Math.floor(ty/cell),0,rows-1);
   const start=key(sx,sy),goal=key(gx,gy);
-  const buildings=game.entities.filter(b=>b.hp>0&&b.type!=='trash'&&b.queue&&['desk','printer','cabinet','mouse','cdreader'].includes(b.type));
-  const signature=buildings.map(b=>`${b.id}:${b.x}:${b.y}:${b.r}`).join('|');
+  const buildings=game.entities.filter(b=>b.hp>0&&b.type!=='trash'&&b.queue&&['desk','printer','cabinet','mouse','cdreader','workshop','laboratory','staplergate','station'].includes(b.type));
+  const signature=`${game._barrierRevision||0}:`+buildings.map(b=>`${b.id}:${b.x}:${b.y}:${b.r}`).join('|');
   if(!game._navigation||game._navigation.obstacles!==game.map.obstacles||game._navigation.signature!==signature||game._navigation.cols!==cols||game._navigation.rows!==rows){
     game._navigation={obstacles:game.map.obstacles,signature,cols,rows,graphs:new Map()};
   }
@@ -40,7 +41,7 @@ export function findPath(game,e,tx,ty,ignoreId){
       const special=current===start||current===goal||id===start||id===goal,edge=current*8+direction;
       if(special){if(!game._lineFree(currentX,currentY,nodeX,nodeY,e.r,ignoreId))continue;}
       else{if(!graph.edges[edge])graph.edges[edge]=game._lineFree(currentX,currentY,nodeX,nodeY,e.r,ignoreId)?1:2;if(graph.edges[edge]===2)continue;}
-      const next=cost[current]+(dx&&dy?1.414:1);
+      const next=cost[current]+(dx&&dy?1.414:1)*conveyorTravelCost(game,nodeX,nodeY,dx,dy);
       if(next<cost[id]){cost[id]=next;came[id]=current;frontier.push(id,next+Math.hypot(gx-nx,gy-ny),next);}
     }
   }
