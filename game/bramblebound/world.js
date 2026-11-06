@@ -979,7 +979,31 @@
     const u=Math.min(1,a/.60),wave=sin(Math.PI*u);
     const leaf=(x,y,w,h,c)=>poly(g,c,[x-w,y+2,x-w*.4,y-h*.6,x+w*.5,y-h,x+w,y-h,x+w*.5,y-1,x-w*.25,y+3]);
     g.save();g.globalAlpha=Math.min(1,(.88-a)*4);
-    if(pattern==='razor_bloom'){
+    if(pattern==='briar_barrage'){
+      for(let j=0;j<3;j++){const q=Math.min(1,Math.max(0,(a-j*.08)/.4)),x=hx+(tx-hx)*q,y=hy+(ty-hy)*q-sin(q*Math.PI)*14;
+        line(g,'#426d49',hx,hy,x,y,2);leaf(x,y,4,7,'#a8ed76');rect(g,'#efffc3',x,y-3,2,2);}
+      if(a>.3)orbit(g,'#83d964',tx,ty,4+u*15,.55,0);
+    }else if(pattern==='inferno_ring'){
+      for(let j=0;j<12;j++){const q=j*Math.PI/6,x=tx+cos(q)*(7+u*31),y=ty+sin(q)*(5+u*16);
+        poly(g,j%2?'#ffb253':'#ea6547',[x-3,y+3,x-1,y-8-wave*7,x+3,y+1]);}
+      orbit(g,'#fff0a8',tx,ty,8+u*26,.6,0,2);
+    }else if(pattern==='crystal_chorus'){
+      for(let j=0;j<5;j++){const x=tx+(j-2)*7,y=ground-(8+wave*22)*(1-Math.abs(j-2)*.13);
+        poly(g,j%2?'#b9f5ff':'#79c9ed',[x-4,ground,x-3,y,x,y-7,x+4,y+1,x+3,ground]);line(g,'#f3ffff',x,y-3,x+1,ground-3);}
+      orbit(g,'#c7faff',tx,ty,10+wave*16,1.1,0);
+    }else if(pattern==='chainstorm'){
+      for(let j=0;j<4;j++){let px=hx,py=hy-j*3;for(let z=1;z<=8;z++){const q=z/8,x=hx+(tx-hx)*q,y=hy+(ty-hy)*q+sin(z*29+j*6+floor(a*20))*6;
+        line(g,j%2?'#e4d2ff':'#fff1a1',px,py,x,y,j===0?2:1);px=x;py=y;}}
+      burst(g,'#f5eeff',tx,ty,8+wave*16,8,a);
+    }else if(pattern==='avalanche_guard'){
+      const rad=20+wave*4;poly(g,'#5b716e',[hx-rad,ground,hx-rad*.8,hy-18,hx,hy-31,hx+rad*.8,hy-18,hx+rad,ground]);
+      orbit(g,'#ffe2a0',hx,hy,rad,1.3,0,2);orbit(g,'#d8f2d9',hx,hy,rad-4,1.3,0);
+      for(let j=0;j<3;j++)rect(g,'#fff2ba',hx-1,hy-19+j*11,3,5);
+    }else if(pattern==='spectral_guardian'){
+      const x=hx+(tx-hx)*u*.65,y=hy-10-wave*8;g.globalAlpha*=.8;
+      poly(g,'#bda0eb',[x-10,y+15,x-9,y-6,x-4,y-13,x+4,y-13,x+9,y-6,x+10,y+15,x+4,y+10,x,y+16,x-4,y+10]);
+      rect(g,'#fff6ff',x-5,y-5,3,3);rect(g,'#fff6ff',x+3,y-5,3,3);line(g,'#ead7ff',x+9,y,x+18,y-9,2);
+    }else if(pattern==='razor_bloom'){
       for(let i=0;i<3;i++){
         const p=Math.min(1,Math.max(0,(a-i*.07)/.38));if(!p||p>=1)continue;
         const x=hx+(tx-hx)*p,y=hy+(ty-hy)*p-(9+i*5)*sin(p*Math.PI);
@@ -1141,6 +1165,20 @@
     }else if(k==='ability'){
       const ox=chain?chain.x:hx,oy=chain?chain.center:hand;
       abilityArt(g,pat,a,ox,oy,fx,fy,feet);
+      if(!['razor_bloom','seismic_bell','cinder_swarm','whiteout','forked_sky','jade_shelter','moon_siphon','clockwork_lunge','briar_barrage','inferno_ring','crystal_chorus','chainstorm','avalanche_guard','spectral_guardian'].includes(pat)){
+        const mythic=['perpetual_circuit','tempest_of_seasons','the_sixfold_crown','chronobloom','phoenix'].includes(pat),radius=5+Math.min(1,a/.6)*(mythic?42:19);
+        if(pat==='phoenix'){
+          for(let wing=-1;wing<=1;wing+=2)for(let j=0;j<4;j++)line(g,j%2?cream:'#ffad5c',hx,hand,hx+wing*(14+j*9)*sin(Math.min(1,a/.65)*Math.PI),hand-9-j*7,3);
+          orbit(g,'#ffd27d',hx,hand,radius,1.1,0,2);
+        }else if(pat==='chronobloom'||pat==='perpetual_circuit'){
+          for(let j=0;j<4;j++){const q=a*4+j*Math.PI/2;orbit(g,j%2?cream:c,hx+cos(q)*radius,hand+sin(q)*radius*.6,5,.8,q);}
+          line(g,cream,hx,hand,hx+cos(-a*10)*radius,hand+sin(-a*10)*radius*.6);
+        }else if(pat==='tempest_of_seasons'||pat==='the_sixfold_crown'){
+          const tones=Object.values(elements);for(let j=0;j<(pat==='the_sixfold_crown'?6:3);j++){const q=a*5+j*Math.PI/3;line(g,tones[j],fx+cos(q)*radius,fy+sin(q)*radius,fx+cos(q+.7)*(radius+10),fy+sin(q+.7)*(radius+10),2);}
+          orbit(g,cream,fx,fy,radius,.85,a);
+        }else elementalStrike(g,event.element,'rapid',a,ox,oy,fx,fy,feet,3);
+        if(a<.8)burst(g,mythic?cream:c,fx,fy,radius,mythic?12:6,a);
+      }
     }else if(k==='loot'){
       const sprite=window.ItemArt?.sprite(event.id);if(!sprite)return;
       const lane=event.lane??0,full=event.outcome==='full',delay=.09+(lane%3)*.045;
@@ -1354,6 +1392,18 @@
     if(v.heroShield>0){g.save();g.globalAlpha=.34;orbit(g,'#b8e4bd',heroX,ground-23,25,1.2,0,2);g.restore();for(let j=0;j<3;j++){const q=(v.reducedMotion?0:t*.8)+j*2.095;rect(g,'#d9f0bd',heroX+cos(q)*25,ground-23+sin(q)*29,2,2);}}
     const equippedElements=[...new Set((v.equipped||[]).map(it=>window.Catalog?.items[it.id]?.element).filter(Boolean))];
     if(equippedElements.length>1&&v.phase!=='dead')for(let j=0;j<equippedElements.length;j++){let q=(v.reducedMotion?0:t*.46)+j*Math.PI*2/equippedElements.length;rect(g,elements[equippedElements[j]],heroX+cos(q)*17,ground+sin(q)*3,2,1);}
+    // Draw at most twelve allies; the simulation retains every capped summon.
+    // Their stable positions and element palettes keep crowded Mythic builds readable.
+    if(v.phase!=='dead')for(const [i,ally] of (v.companions||[]).slice(0,12).entries()){
+      const clock=v.reducedMotion?0:t,stone=ally.id==='colossus',spirit=ally.element==='spirit',x=heroX-16-(i%4)*11+(i>3?37:0),y=ground-((i/4)|0)*12-2-sin(clock*2.6+i)*2,color=elements[ally.element]||elements.leaf;
+      g.save();g.globalAlpha=spirit?.65:.95;
+      oval(g,mix(p.road,p.earth,.3),x,ground+1,stone?12:6,2);
+      if(stone){poly(g,'#817d70',[x-10,y,x-12,y-20,x-7,y-29,x+5,y-31,x+11,y-19,x+9,y]);rect(g,'#e6cf98',x-6,y-23,4,3);rect(g,'#e6cf98',x+2,y-23,4,3);line(g,color,x-3,y-17,x+4,y-8,2);}
+      else if(spirit){poly(g,color,[x-6,y,x-6,y-12,x-3,y-17,x+3,y-17,x+6,y-12,x+6,y,x+2,y-3,x,y+1,x-2,y-3]);rect(g,'#fff0ff',x-3,y-12,2,2);rect(g,'#fff0ff',x+2,y-12,2,2);}
+      else{line(g,'#4a8050',x,y,x,y-12,3);poly(g,color,[x,y-8,x-8,y-13,x-6,y-17,x,y-13,x+5,y-20,x+9,y-17,x+4,y-10]);rect(g,'#f2ffd4',x-2,y-14,2,2);}
+      if(ally.timer<.3&&!v.reducedMotion)orbit(g,color,x,y-10,8,.65,clock);
+      g.restore();
+    }
     if(v.phase==='dead'){
       g.save();g.translate(heroX,ground-5);g.rotate(-Math.PI/2);place(g,'monkey',null,t,'dead',false,-17,3,k);g.restore();
     }else place(g,'monkey',null,t,stride||'walk',false,heroX,ground,k);

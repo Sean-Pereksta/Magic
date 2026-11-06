@@ -4,6 +4,7 @@
   const root = globalThis;
   const C = () => root.Catalog;
   const P = () => root.Progression;
+  const L = () => root.Legacy;
   const WALK = 3.2, ACTIVE = 4, PACK = 400, WAVE_RULES=2;
   const utilityStyles=new Set(['heal','shield','stun','freeze']);
   const dropChances=Object.freeze({normal:.24,guardian:.48});
@@ -25,6 +26,7 @@
   const owns = (obj, key) => Object.prototype.hasOwnProperty.call(obj,key);
   function freshProfile() { return {version:1,worldRegions:C().regions.length,points:0,best:0,deaths:0,routeMarks:Array(C().regions.length*WAVES_PER_REGION).fill(0),seenItems:[],seenEnemies:[],perks:{heart:0,claw:0,pace:0},run:null}; }
   function perkCost(p,key) {
+    if(L())return L().cost(p,key);
     if (!owns(perks,key) || p.perks[key]>=perks[key].max) return null;
     const rank=p.perks[key];
     return key==='pace' ? [2,6,12][rank] : 1+rank*2+Math.floor(rank*rank/4);
@@ -35,7 +37,7 @@
     return {current:value(rank),next:rank<perks[key].max?value(rank+1):null};
   }
   function awardBreakdown(r){return [
-    {label:'Journey completed',amount:1},{label:'Waves cleared',amount:r.kills},{label:'Guardian waves cleared',amount:Math.floor(r.kills/4)}
+    ...(r.legacyAwards||[]),{label:'Journey completed',amount:1},{label:'Waves cleared',amount:r.kills},{label:'Guardian waves cleared',amount:Math.floor(r.kills/4)}
   ];}
   function discover(arr,id){if(!arr.includes(id))arr.push(id);}
   const maxSpeed = p => 1+p.perks.pace;
@@ -62,14 +64,14 @@
   function itemPower(p,it) {
     const n=it.level-1;
     const d=C().items[it.id];
-    return d.power*(C().rarities[d.rarity]?.powerScale||1)*(1+.31*n+.009*n*n)*(1+.08*p.perks.claw);
+    return d.power*(C().rarities[d.rarity]?.powerScale||1)*(1+.31*n+.009*n*n)*(1+.08*p.perks.claw)*(1+(d.recipe?(p.run?.legacy?.ranks.mastercraft||0)*.03:0))*(1+(p.run?.legacy?.ranks.celestial_canopy||0)*.05);
   }
   const utilityMilestones=it=>1+(it.level>=3?.4:0)+(it.level>=5?.2:0)+(it.level>=10?.65:0);
   const utilityMultiplier=(p,d)=>p.run?P().utilityMultiplier(p.run,d):1;
   function itemUtility(p,it){return itemPower(p,it)*utilityMultiplier(p,C().items[it.id])*utilityMilestones(it);}
   function itemDuration(p,it){
     const d=C().items[it.id];
-    return Math.min(8,(d.duration||.75)*Math.pow(itemPower(p,it)/d.power,.25)*Math.pow(utilityMultiplier(p,d),.25)*utilityMilestones(it));
+    return Math.min(8,(d.duration||.75)*Math.pow(itemPower(p,it)/d.power,.25)*Math.pow(utilityMultiplier(p,d),.25)*utilityMilestones(it)*(d.element==='frost'?1+.03*(p.run?.legacy?.masteries.frost||0):1));
   }
   const itemCooldown = (it,r) => r ? P().cooldown(r,C().items[it.id]) : C().items[it.id].cooldown;
   function itemComparison(p,it){
@@ -86,7 +88,8 @@
     // bonuses and direct follow-ups; conditional hits and damage over time are
     // described by effect icons rather than a misleading total damage estimate.
     const reach=r?P().upgrades.long_arm.value(P().rankOf(r,'long_arm')):0;
-    const initial=power*(utilityMultiplier(p,d)+reach);
+    const stoneShield=d.element==='stone'?1+.04*(r?.legacy?.masteries.stone||0):1;
+    const initial=power*(utilityMultiplier(p,d)/(d.style==='guard'?stoneShield:1)+reach);
     stats.damage=initial*(1+(d.style==='rapid'?.23:0)+(d.special==='aftershock'?.45:0)+(it.level>=3?.4:0)+(it.level>=10?.65:0));
     if(d.style==='mend')stats.heal=power*.55;
     if(d.style==='guard')stats.shield=power*.60;
@@ -99,6 +102,8 @@
     if(d.special==='leech')stats.lifesteal+=.18;
     if(d.special==='renewal'){stats.heal+=initial*.13;stats.shield+=initial*.12;}
     if(d.special==='permafrost'){stats.stun=Math.max(stats.stun,.9);stats.chill=2.1;}
+    stats.shield*=stoneShield;
+    if(d.element==='spirit')stats.lifesteal*=1+.04*(r?.legacy?.masteries.spirit||0);
     stats.heal=healing(stats.heal);stats.lifesteal=healing(stats.lifesteal);
     return stats;
   }
@@ -118,6 +123,7 @@
     if(C().items.dewglass_vial)r.pack.push(makeItem(r,'dewglass_vial'));
     for(const zone of [r.active,r.pack]) zone.forEach((it,slot)=>{it.slot=slot;discover(p.seenItems,it.id);});
     p.run=r;
+    if(L()){L().start(p,r,(id)=>makeItem(r,id));P().onStart?.(r,[]);draftBonus(r);}
     return ok('A new journey begins.');
   }
   function spawn(p,ev) {
@@ -134,6 +140,7 @@
       e.uid=r.nextEnemyUid++;e.lane=lane;e.attackProgress=lane*.11;
       r.enemies.push(e);discover(p.seenEnemies,d.id);
     }
+    if(L())L().recordRegion(p,r);P().onSpawn?.(r,ev);
     r.enemy=r.enemies[0];add(ev,'round','leaf',1,r.enemy.name,'encounter');
   }
   function buildEnemy(round,d,count,rules) {
@@ -186,6 +193,7 @@
     const r=p.run, level=res.level, cd=Math.min(Math.max(x.cd,y.cd),C().items[res.id].cooldown);
     remove(r.active.includes(x)?r.active:r.pack,x);remove(r.active.includes(y)?r.active:r.pack,y);
     const it=makeItem(r,res.id,level,cd);it.slot=slot;dest.push(it);discover(p.seenItems,it.id);
+    if(x.id!==y.id&&(r.legacy?.ranks.fusion_fortune||0)&&rng(r)<r.legacy.ranks.fusion_fortune*.025&&r.pack.length<PACK){const copy=makeItem(r,rng(r)<.5?x.id:y.id);copy.slot=firstOpen(r.pack);r.pack.push(copy);}
     return {...ok(res.message),operation:x.id===y.id?'upgrade':'fuse',uid:it.uid};
   }
   function transfer(p,x,zone,slot,merge=true) {
@@ -203,7 +211,10 @@
   }
   function act(p,action,...args) {
     const r=p.run, [a,b]=args;
+    if(action==='legacyBuy')return L()?L().purchase(p,a):fail('Camp unavailable.');
+    if(action==='respec')return L()?L().respec(p):fail('Camp unavailable.');
     if(action==='buy') {
+      if(L())return L().purchase(p,a);
       if(r&&r.phase!=='dead') return fail('Visit camp between journeys to spend points.');
       const cost=perkCost(p,a);
       if(cost===null) return fail('That upgrade is unavailable.');
@@ -211,9 +222,12 @@
       p.points-=cost; p.perks[a]++; return ok(`${perks[a].name} upgraded.`);
     }
     if(!r||r.phase==='dead') return fail('Begin a journey first.');
+    if(action==='rerollDraft'){if(!r.draft.length||!(r.draftRerolls>0))return fail('No rerolls remain.');r.draftRerolls--;r.draft=P().offer(r,()=>rng(r),3,'reroll');return ok('Destiny redrawn.');}
+    if(action==='banishTalent'){if(!r.draft.includes(a)||!(r.banishes>0))return fail('Choose an offered talent and an available banish.');r.banishes--;r.banished??=[];r.banished.push(a);r.draft=P().offer(r,()=>rng(r),3,'reroll');return ok('Talent banished for this expedition.');}
+    if(action==='echoTalent'){if(!r.draft.includes(a)||!(r.echoesLeft>0))return fail('Choose an offered talent and an available echo.');r.echoesLeft--;r.echoChoices??=[];r.echoChoices.push({id:a,drafts:2});return ok('Talent remembered for two drafts.');}
     if(action==='chooseUpgrade') {
       if(!r.draft.includes(a))return fail('Choose one of the three offered upgrades.');
-      P().apply(r,a);r.draft=[];levelUp(r,[]);
+      P().apply(r,a);if(r.draftIsBonus){r.bonusTalentsChosen=(r.bonusTalentsChosen||0)+1;r.draftIsBonus=false;}r.draft=[];if(!draftBonus(r))levelUp(r,[]);
       return ok(P().upgrades[a].name+' upgraded.');
     }
     if(action==='speed') {
@@ -252,18 +266,21 @@
     if(target){event.targetUid=target.uid;event.enemyId=target.id;event.lane=target.lane;}
     events.push(event);return event;
   }
+  function draftBonus(r){if(!(r.bonusTalentCredits>0)||r.draft.length||r.phase==='dead')return false;r.bonusTalentCredits--;r.draftIsBonus=true;r.draft=P().offer(r,()=>rng(r),3,'bonus');return true;}
   function levelUp(r,ev){
     const threshold=xpNeeded(r.level);
-    if(r.phase==='dead'||r.draft.length||r.xp<threshold)return;
+    if(r.phase==='dead'||r.draft.length)return;if(draftBonus(r))return;if(r.xp<threshold)return;
     r.xp-=threshold;r.level++;r.draft=P().offer(r,()=>rng(r),3);
     add(ev,'level','spirit',r.level,'Level '+r.level,'level');
   }
   function matches(tag,element) {return Array.isArray(tag)?tag.includes(element):tag===element;}
-  function heal(r,n){const before=r.hp;r.hp=Math.min(r.maxHp,r.hp+P().healing(r,n));return r.hp-before;}
-  function hurt(r,n,kind,enemy){
+  function heal(r,n){const before=r.hp,total=P().healing(r,n);r.hp=Math.min(r.maxHp,r.hp+total);P().afterHealing?.(r,total,r.hp-before);return r.hp-before;}
+  function hurt(r,n,kind,enemy,ev=[]){
+    if(kind==='venom'||kind==='scorch')n*=(1-(r.legacy?.ranks.venom_resistance||0)*.05)*(1-(r.legacy?.ranks.thickened_bark||0)*.015);
     const absorbed=Math.min(n,r.shield),damage=n-absorbed,before=r.hp;
     r.shield-=absorbed;r.hp=Math.max(0,before-damage);
-    if(before>0 && r.hp===0){r.deathCause={kind,damage};if(enemy)r.deathCause.enemyId=enemy.id;}
+    P().onHurt?.(r,n,enemy,ev,absorbed);
+    if(before>0 && r.hp===0){r.deathCause={kind,damage};if(enemy)r.deathCause.enemyId=enemy.id;P().survive?.(r,r.enemies,ev);}
     return damage;
   }
   function secondary(ev,e,amount,element,pattern,it){
@@ -274,10 +291,10 @@
     const r=p.run,el=C().items[it.id].element,others=r.enemies.filter(x=>x!==e&&x.hp>0);
     const status=(label,pattern)=>Object.assign(add(ev,'status',el,it.level,label,pattern,e),{itemId:it.id});
     if(el==='leaf'){
-      e.poison=Math.max(e.poison,Math.min(e.maxHp*.08,e.poison+damage*.07));
+      e.poison=Math.max(e.poison,Math.min(e.maxHp*.08,e.poison+damage*.07*(1+.05*(r.legacy?.masteries.leaf||0))));
       e.leafHits=(e.leafHits+1)%3;if(e.leafHits===0){e.rooted=.8;status('Rooted','root');}
     }else if(el==='fire'){
-      e.burn=Math.max(e.burn,damage*.22);
+      e.burn=Math.max(e.burn,damage*.22*(1+.05*(r.legacy?.masteries.fire||0)));
       if(e.poison>0){e.poison*=.5;secondary(ev,e,damage*.18,el,'wildfire',it);for(const foe of others.slice(0,2)){foe.burn=Math.max(foe.burn,damage*.12);secondary(ev,foe,damage*.12,el,'wildfire',it);}}
     }else if(el==='frost'){
       e.chill=Math.max(e.chill,1.1);e.frostHits=(e.frostHits+1)%3;
@@ -287,11 +304,11 @@
       if(e.stormHits===0){e.stun=Math.max(e.stun,.22);status('Charged arc','chain');for(const foe of others.slice(0,2))secondary(ev,foe,damage*.32,el,'chain',it);}
       if(e.chill>0&&others.length){secondary(ev,others[0],damage*.18,el,'superconduct',it);others[0].stun=Math.max(others[0].stun,.2);}
     }else if(el==='stone'){
-      e.fracture=Math.min(5,e.fracture+1);e.attackProgress=Math.max(0,e.attackProgress-.06);status('Fracture '+e.fracture,'fracture');
+      e.fracture=Math.min(5+2*P().rankOf(r,'fracture_point'),e.fracture+1);e.attackProgress=Math.max(0,e.attackProgress-.06);status('Fracture '+e.fracture,'fracture');
     }else if(el==='spirit'){
       e.hauntTime=4;e.haunt++;
       r.shield=Math.min(r.maxHp*.4,r.shield+damage*.045);
-      if(e.haunt>=3){e.haunt=0;e.echoes.push({delay:.48,damage:damage*.35,el,pattern:'soulmark'});status('Soul echo','haunt');}
+      if(e.haunt>=Math.max(1,3-P().rankOf(r,'haunt_amplifier'))){e.haunt=0;e.echoes.push({delay:.48,damage:damage*.35*(1+.04*(r.legacy?.masteries.spirit||0)),el,pattern:'soulmark'});status('Soul echo','haunt');}
     }
   }
   function special(p,it,e,damage,removed,ev){
@@ -302,13 +319,13 @@
     if(id==='execute'){if(e.hp>0&&e.hp/e.maxHp<.3)strike(e,damage*.65);else triggered=false;}
     if(id==='rupture'){if(e.burn||e.poison||e.chill||e.haunt){strike(e,damage*.4);e.burn*=.5;e.poison*=.5;}else triggered=false;}
     if(id==='chain')for(const foe of others.slice(0,2))strike(foe,damage*.28);
-    if(id==='leech'){const n=heal(r,removed*.18);Object.assign(add(ev,'heal',d.element,1,'+'+Math.ceil(n),'drain',e),{itemId:it.id,amount:n,sourceUid:e.uid});}
-    if(id==='wardbreak'){e.ward=0;e.fracture=Math.min(5,e.fracture+2);}
-    if(id==='bloom')for(const foe of others.slice(0,2)){foe.poison=Math.max(foe.poison,Math.min(foe.maxHp*.08,foe.poison+damage*.12));strike(foe,damage*.1);}
+    if(id==='leech'){const n=heal(r,removed*.18*(1+(d.element==='spirit'?.04*(r.legacy?.masteries.spirit||0):0)));Object.assign(add(ev,'heal',d.element,1,'+'+Math.ceil(n),'drain',e),{itemId:it.id,amount:n,sourceUid:e.uid});}
+    if(id==='wardbreak'){e.ward=0;e.fracture=Math.min(5+2*P().rankOf(r,'fracture_point'),e.fracture+2);}
+    if(id==='bloom')for(const foe of others.slice(0,2)){foe.poison=Math.max(foe.poison,Math.min(foe.maxHp*.08,foe.poison+damage*.12*(1+.05*(r.legacy?.masteries.leaf||0))));strike(foe,damage*.1);}
     if(id==='permafrost'){e.chill=2.1;e.stun=Math.max(e.stun,.9);}
     if(id==='aftershock')e.echoes.push({delay:.6,damage:damage*.45,el:d.element,pattern:'aftershock'});
     if(id==='soulmark'){e.haunt=Math.min(2,e.haunt+1);e.hauntTime=4;}
-    if(id==='renewal'){heal(r,damage*.13);r.shield=Math.min(r.maxHp*.4,r.shield+damage*.12);}
+    if(id==='renewal'){heal(r,damage*.13);r.shield=Math.min(r.maxHp*.4,r.shield+damage*.12*(d.element==='stone'?1+.04*(r.legacy?.masteries.stone||0):1));}
     if(id==='overload'){
       it.charges=((it.charges||0)+1)%3;
       if(it.charges===0){for(const foe of [e,...others].slice(0,3))strike(foe,damage*.42);}else triggered=false;
@@ -344,6 +361,7 @@
         event.duration=duration;
       }
       event.itemId=it.id;event.sourceUid=it.uid;
+      P().onActivation?.(r,r.enemies,e,d,0,ev,()=>rng(r));
       it.cd=itemCooldown(it,r);return;
     }
     const power=itemPower(p,it);let damage=power*P().hitMultiplier(r,d,e,r.enemies.filter(x=>x.hp>0).length);
@@ -359,31 +377,32 @@
     add(ev,'attack',el,it.level,weak?`${amount} WEAK`:resist?`${amount} RESIST`:`${amount}`,style,e);
     Object.assign(ev[ev.length-1],{itemId:it.id,special:d.special||null,specialId:d.special||null});
     elemental(p,it,e,damage,ev);
-    if(style==='burn'){e.burn=Math.max(e.burn,damage*.60);add(ev,'status',el,1,'Burn','burn',e);}
-    if(style==='poison'){e.poison+=damage*.23;add(ev,'status',el,1,'Poison','poison',e);}
+    if(style==='burn'){e.burn=Math.max(e.burn,damage*.60*(1+.05*(r.legacy?.masteries.fire||0)));add(ev,'status',el,1,'Burn','burn',e);}
+    if(style==='poison'){e.poison+=damage*.23*(1+.05*(r.legacy?.masteries.leaf||0));add(ev,'status',el,1,'Poison','poison',e);}
     if(style==='chill'){e.chill=Math.max(2.1,e.chill);add(ev,'status',el,1,'Slowed','chill',e);}
     if(style==='shock'){e.stun=Math.max(e.stun,Math.min(.95,e.stun+.44));add(ev,'status',el,1,'Stunned','shock',e);}
     if(style==='rapid') e.echoes.push({delay:.13,damage:damage*.23,el,pattern:'rapid'});
     if(style==='drain'||style==='mend'){
-      const drain=style==='drain',h=heal(r,drain?removed*.23:power*.55);
+      const drain=style==='drain',h=heal(r,drain?removed*.23*(1+(el==='spirit'?.04*(r.legacy?.masteries.spirit||0):0)):power*.55);
       if(h>0){
         const gain=add(ev,'heal',el,1,h<.5?'+<1':`+${Math.round(h)}`,drain?'drain':'heal',drain?e:null);
         gain.amount=h;gain.itemId=it.id;if(drain)gain.sourceUid=e.uid;
       }
     }
     if(style==='guard'){
-      const before=r.shield;r.shield=Math.min(r.maxHp*.40,before+power*.60);
+      const before=r.shield;r.shield=Math.min(r.maxHp*.40,before+power*.60*(el==='stone'?1+.04*(r.legacy?.masteries.stone||0):1));
       const gain=r.shield-before;
       const guard=add(ev,'status',el,1,gain>0?(gain<.5?'Shield +<1':`Shield +${Math.round(gain)}`):'Shield full','guard');
       guard.amount=gain;guard.itemId=it.id;
     }
     if(it.level>=3){e.echoes.push({delay:.32,damage:damage*.4,el,pattern:'echo'});add(ev,'milestone',el,3,'','echo',e);}
-    if(it.level>=5){r.shield=Math.min(r.maxHp*.40,r.shield+1+.12*power);add(ev,'milestone',el,5,'','ring');}
+    if(it.level>=5){r.shield=Math.min(r.maxHp*.40,r.shield+(1+.12*power)*(el==='stone'?1+.04*(r.legacy?.masteries.stone||0):1));add(ev,'milestone',el,5,'','ring');}
     if(it.level>=10){const nova=damage*.65;
       for(const foe of r.enemies){if(foe!==e&&foe.hp<=0)continue;foe.hp=Math.max(0,foe.hp-nova);add(ev,'milestone',el,10,`+${Math.round(nova)}`,'nova',foe);}
     }
     special(p,it,e,damage,removed,ev);
     P().afterHit(r,r.enemies,e,removed,d,ev,()=>rng(r));
+    P().onActivation?.(r,r.enemies,e,d,removed,ev,()=>rng(r));
     it.cd=itemCooldown(it,r);
   }
   const rarityOf=d=>d.rarity||'common';
@@ -402,13 +421,15 @@
       rare:pools.rare.length?(boss?.16:.10)+band*.012:0,
       epic:pools.epic.length?(boss?.065:.035)+band*.006:0,
       mythic:pools.mythic.length?(boss?.018:.008)+band*(boss?.004:.002):0};
+    if(r.legacy){const shift=(r.legacy.ranks.legendary_scent||0);if(pools.epic.length)odds.epic+=shift*.0035;if(pools.mythic.length)odds.mythic+=shift*.0008;}
     odds.common=1-odds.uncommon-odds.rare-odds.epic-odds.mythic;return odds;
   }
   function localPick(r,pool){
     let total=0;
-    for(const d of pool)total+=d.dropRegion===r.region?3:1;
+    const weight=d=>{let n=d.dropRegion===r.region?3:1;const l=r.legacy;if(l){if(l.config.favoredElement===d.element)n*=2.25;if(l.config.style===d.style)n*=1.75;if(!l.seenItems.includes(d.id))n*=1+(l.ranks.relic_hunter||0)*.08;if(r.active.concat(r.pack).some(it=>C().combo(it.id,d.id)))n*=1+(l.ranks.ingredient_sense||0)*.06;}return n;};
+    for(const d of pool)total+=weight(d);
     let draw=rng(r)*total;
-    for(const d of pool){draw-=d.dropRegion===r.region?3:1;if(draw<0)return d;}
+    for(const d of pool){draw-=weight(d);if(draw<0)return d;}
     return pool[pool.length-1];
   }
   function rollDrop(r,boss){
@@ -448,29 +469,32 @@
       const match=r.active.concat(r.pack).find(x=>x.id===item.id && x.level===item.level);
       if(match){match.level++;drop.outcome='upgraded';drop.level=match.level;drop.uid=match.uid;}
     }
-    discover(p.seenItems,item.id);r.lastDrop={...drop};return drop;
+    if(!p.seenItems.includes(item.id))r.relicDiscoveries=(r.relicDiscoveries||0)+1;
+    r.dropsThisWave=(r.dropsThisWave||0)+1;discover(p.seenItems,item.id);r.lastDrop={...drop};return drop;
   }
   function enemyDrop(p,foe,ev){
     const r=p.run;
     // Independent kill rolls, normalized to the original headcount. The chance
     // Preserve a 24%/48% chance of at least one find across the whole wave,
     // independent of group size. Rarity is rolled separately, before item bias.
-    const miss=Math.pow(1-dropChances.normal,1/r.waveSize);
-    const chance=foe.boss ? 1-(1-dropChances.guardian)/Math.pow(miss,r.waveSize-1) : 1-miss;
-    if(rng(r)>=chance)return;
-    const item=rollDrop(r,foe.boss);item.level+=P().dropBonus(r,()=>rng(r));
-    ev.push(collectDrop(p,item,foe));
+    const extra=(r.legacy?.ranks.treasure_nose||0)*.01;const miss=Math.pow(1-Math.min(.8,dropChances.normal+extra),1/r.waveSize);
+    const chance=foe.boss ? 1-(1-Math.min(.9,dropChances.guardian+extra))/Math.pow(miss,r.waveSize-1) : 1-miss;
+    let copies=rng(r)<chance?1:0;
+    if(foe.boss&&(r.legacy?.ranks.guardian_hoard||0)&&rng(r)<r.legacy.ranks.guardian_hoard*.05)copies++;
+    for(let i=0;i<copies;i++){const item=rollDrop(r,foe.boss);item.level+=P().dropBonus(r,()=>rng(r));if((r.legacy?.ranks.anvil_blessing||0)&&rng(r)<r.legacy.ranks.anvil_blessing*.03)item.level++;ev.push(collectDrop(p,item,foe));}
   }
   function finish(p,ev){
     const r=p.run,boss=r.round%4===0;
+    if(L()){if(boss)L().guardian(p,r);r.emptyWaves=r.dropsThisWave?0:(r.emptyWaves||0)+1;const luck=r.legacy?.ranks.lucky_streak||0;if(luck&&r.emptyWaves>=7-luck){ev.push(collectDrop(p,rollDrop(r,boss)));r.emptyWaves=0;}r.dropsThisWave=0;}
     r.kills++;p.best=Math.max(p.best,r.round);
     const slot=routeSlot(r);p.routeMarks[slot]=Math.max(p.routeMarks[slot],r.round);
     const h=heal(r,r.maxHp*(boss?.17:.075));if(h>=.5)add(ev,'heal','leaf',1,`+${Math.round(h)}`,'rest');
     P().victory(r,ev);
+    for(let i=0;i<(r.bonusDrops||0);i++)ev.push(collectDrop(p,rollDrop(r,boss)));r.bonusDrops=0;
     next(p);add(ev,'round','leaf',1,`Round ${r.round}`,'round');
   }
   function die(p,ev){
-    const r=p.run;r.phase='dead';r.hp=0;r.speed=1;r.lastAward=awardBreakdown(r).reduce((sum,row)=>sum+row.amount,0);p.points+=r.lastAward;p.deaths++;
+    const r=p.run;if(L())L().completed(p,r);r.phase='dead';r.hp=0;r.speed=1;r.lastAward=awardBreakdown(r).reduce((sum,row)=>sum+row.amount,0);p.points+=r.lastAward;p.deaths++;
     add(ev,'dead','spirit',1,`+${r.lastAward} points`,'dead');
   }
   function selectTarget(r,it){
@@ -510,7 +534,7 @@
     if(e.attackProgress>=1&&held<dt){e.attackProgress-=1;e.swings++;
       const incoming=e.damage*(e.trait==='veteran'&&e.swings%3===0?1.38:1);
       const adjusted=P().incoming(r,incoming,e,ev,()=>rng(r))*(r.ailments.corrosion>0?1.15:1)*(counter(r,'insulated')&&e.affliction==='shocking'?.85:1);
-      const dealt=hurt(r,adjusted,'strike',e);
+      const dealt=hurt(r,adjusted,'strike',e,ev);
       if(e.trait==='venom' && adjusted>0)r.venom=Math.min(e.damage*.42,r.venom+e.damage*.14*(counter(r,'antivenom')?.15:1));
       if(e.trait==='leech')e.hp=Math.min(e.maxHp,e.hp+dealt*.45);
       if(e.trait==='warded'&&e.swings%3===0)e.ward=1;
@@ -540,7 +564,7 @@
     if(a.corrosion>0)r.shield=Math.max(0,r.shield-dt*r.maxHp*.01);
   }
   function step(p,dt,ev){
-    const r=p.run;r.time+=dt;r.xp+=dt*.45*expeditionXpRate;
+    const r=p.run;r.time+=dt;r.xp+=dt*.45*expeditionXpRate*(1+(r.legacy?.ranks.guardian_wisdom||0)*.05);
     protect(r,dt);
     if(r.phase==='walk'){
       r.distance+=dt*41;r.walkLeft=Math.max(0,r.walkLeft-dt);
@@ -555,20 +579,22 @@
       P().tickAbilities(r,r.enemies,dt*(r.ailments.shock>0?.6:1),ev);
       for(const e of r.enemies)advanceFoe(r,e,dt,ev);
       r.venomClock+=dt;
-      if(r.venomClock>=1){r.venomClock-=1;if(r.venom>0){hurt(r,r.venom,'venom');r.venom=Math.max(0,r.venom-.6);}if(r.ailments.burn>0){const n=r.ailments.burn*.5;hurt(r,n,'scorch');r.ailments.burn=Math.max(0,r.ailments.burn-n);add(ev,'enemy','fire',1,'−'+Math.ceil(n),'scorching');}}
-      for(const e of r.enemies){
-        if(e.hp>0)continue;
+      if(r.venomClock>=1){r.venomClock-=1;if(r.venom>0){hurt(r,r.venom,'venom',null,ev);r.venom=Math.max(0,r.venom-.6);}if(r.ailments.burn>0){const n=r.ailments.burn*.5;hurt(r,n,'scorch',null,ev);r.ailments.burn=Math.max(0,r.ailments.burn-n);add(ev,'enemy','fire',1,'−'+Math.ceil(n),'scorching');}}
+      const resolvedDeaths=new Set();
+      while(r.enemies.some(e=>e.hp<=0&&!resolvedDeaths.has(e.uid)))for(const e of r.enemies){
+        if(e.hp>0||resolvedDeaths.has(e.uid))continue;resolvedDeaths.add(e.uid);
         const event=add(ev,'kill',e.weak,1,e.name,'kill',e);
         event.enemy={uid:e.uid,lane:e.lane,name:e.name,id:e.id,species:e.species,color:e.color,boss:e.boss,hp:0,maxHp:e.maxHp};
-        r.foes++;r.xp+=((e.boss?17:8)+Math.sqrt(r.round)*1.4)*expeditionXpRate;
+        r.foes++;r.xp+=((e.boss?17:8)+Math.sqrt(r.round)*1.4)*expeditionXpRate*(1+(r.legacy?.ranks.guardian_wisdom||0)*.05);
+        P().onDeaths?.(r,[e],r.enemies,ev,()=>rng(r));
         enemyDrop(p,e,ev);
         if(e.trait==='volatile'){
-          const damage=P().incoming(r,e.damage*.48*(counter(r,'blastguard')?.25:1),e,ev,()=>rng(r)), n=hurt(r,damage,'burst',e);
+          const damage=P().incoming(r,e.damage*.48*(counter(r,'blastguard')?.25:1),e,ev,()=>rng(r)), n=hurt(r,damage,'burst',e,ev);
           add(ev,'enemy','fire',1,`−${Math.round(n)}`,'volatile',e).sourceUid=e.uid;
         }
       }
       r.enemies=r.enemies.filter(e=>e.hp>0);r.enemy=r.enemies[0]||null;
-      if(r.hp<=0)die(p,ev);
+      if(r.hp<=0&&!P().survive?.(r,r.enemies,ev))die(p,ev);
       else if(!r.enemies.length)finish(p,ev);
     }
     levelUp(r,ev);
@@ -608,8 +634,21 @@
     p.seenItems=journal(src.seenItems,itemIds);p.seenEnemies=journal(src.seenEnemies,enemyIds);
     const ranks=object(src.perks);
     for(const key of Object.keys(perks))p.perks[key]=integer(ranks[key],0,perks[key].max);
+    if(L())L().migrate(p,src.legacy);
     if(src.run===null)return p;
     const s=object(src.run),r=expeditionDefaults();p.run=r;
+    if(L()){
+      const snap=s.legacy===undefined?L().snapshot(p):L().validateSnapshot(s.legacy,p);r.legacy=L().snapshot(p);if(snap.version!==2)bad();
+      for(const key of ['ranks','masteries','milestones','constellations','oaths','config','seenItems','seenEnemies']){if(JSON.stringify(snap[key])!==JSON.stringify(r.legacy[key])){
+        if(key==='seenItems')r.legacy.seenItems=journal(snap.seenItems,itemIds);else if(key==='seenEnemies')r.legacy.seenEnemies=journal(snap.seenEnemies,enemyIds);else if(s.phase!=='dead')bad();
+      }}
+      if(s.phase==='dead')r.legacy=snap;
+      for(const key of ['guardians','dropsThisWave','emptyWaves','legacyRewards','relicDiscoveries','draftRerolls','banishes','echoesLeft','bonusTalentCredits','startingTalentCredits','bonusTalentsChosen'])r[key]=integer(s[key]??0);
+      r.draftIsBonus=!!s.draftIsBonus;r.campUnlocksAtStart=array(s.campUnlocksAtStart||[],9).map(v=>id(v,new Set(['heartwood','wayfinder','forge','fate','grove','mythic','constellations','convergence','endgame'])));r.banished=array(s.banished||[],Object.keys(P().upgrades).length).map(v=>id(v,new Set(Object.keys(P().upgrades))));
+      r.echoChoices=array(s.echoChoices||[],2).map(v=>({id:id(v.id,new Set(Object.keys(P().upgrades))),drafts:integer(v.drafts,0,2)}));
+      r.legacyAwards=array(s.legacyAwards||[],50).map(v=>{object(v);if(typeof v.label!=='string'||v.label.length>80)bad();return {label:v.label,amount:integer(v.amount)};});if(r.legacyAwards.reduce((n,a)=>n+a.amount,0)!==r.legacyRewards)bad();
+    }
+    if(P().validateLivingState&&s.living!==undefined)r.living=P().validateLivingState(s.living);
     r.waveRules=s.waveRules===undefined?1:integer(s.waveRules,1,WAVE_RULES);
     r.bestAtStart=s.bestAtStart==null?null:integer(s.bestAtStart,0,p.best);
     if(s.deathCause!=null){
@@ -638,12 +677,12 @@
     r.distance=number(s.distance);r.time=number(s.time);r.kills=integer(s.kills);
     if((r.phase==='dead')!==(r.hp===0))bad();
     if(r.kills!==r.round-(r.phase==='loot'?0:1)||p.best<r.kills)bad();
-    r.speed=integer(s.speed,1,maxSpeed(p));r.paceChoice=integer(s.paceChoice,1,maxSpeed(p));
+    r.speed=integer(s.speed,1,r.phase==='dead'?4:maxSpeed(p));r.paceChoice=integer(s.paceChoice,1,r.phase==='dead'?4:maxSpeed(p));
     if(!isReplay(p,r)||r.phase==='dead')r.speed=1;
     const maxHealth=88+14*p.perks.heart;
-    if(r.phase==='dead' ? r.maxHp>maxHealth || (r.maxHp-88)%14!==0 || r.maxHp<88 : r.maxHp!==maxHealth)bad();
+    if(r.phase==='dead' ? (r.maxHp-88)%14!==0 || r.maxHp<88 : r.maxHp!==maxHealth)bad();
     r.walkLeft=number(s.walkLeft,0,WALK);r.lastAward=integer(s.lastAward);
-    if(r.lastAward!==(r.phase==='dead'?1+r.kills+Math.floor(r.kills/4):0))bad();
+    if(r.lastAward!==(r.phase==='dead'?1+r.kills+Math.floor(r.kills/4)+(r.legacyRewards||0):0))bad();
     r.nextUid=integer(s.nextUid,1);r.seed=integer(s.seed,1,4294967295);r.venom=number(s.venom);
     if(s.ailments!==undefined){const a=object(s.ailments);for(const key of Object.keys(r.ailments))r.ailments[key]=number(a[key]??0,0,key==='burn'?Number.MAX_SAFE_INTEGER:6);}
     const uids=new Set();
@@ -672,13 +711,13 @@
     if(upgraded){
       const upgradeIds=new Set(Object.keys(P().upgrades));
       r.level=integer(s.level,1);r.xp=number(s.xp);r.foes=integer(s.foes,r.kills);
-      r.draft=array(s.draft,3).map(choice=>id(choice,upgradeIds));
-      if(r.draft.length!==0 && (r.draft.length!==3 || new Set(r.draft).size!==3))bad();
+      r.draft=array(s.draft,5).map(choice=>id(choice,upgradeIds));
+      if(r.draft.length!==0 && (r.draft.length<3 || new Set(r.draft).size!==r.draft.length))bad();
       const chosen=object(s.skills),timers=object(s.abilityTimers);let ranks=0;
       for(const [key,value] of Object.entries(chosen)){
         id(key,upgradeIds);r.skills[key]=integer(value,1);ranks+=value;
       }
-      if(ranks!==r.level-1-(r.draft.length?1:0))bad();
+      if(ranks!==r.level-1-(r.draft.length&&!r.draftIsBonus?1:0)+(r.bonusTalentsChosen||0))bad();
       for(const [key,time] of Object.entries(timers)){
         id(key,upgradeIds);
         const cooldown=P().upgrades[key].cooldown;
@@ -715,9 +754,9 @@
       e.hp=number(v.hp,0,e.maxHp);
       if(r.phase==='fight' && e.hp===0)bad();
       e.attackProgress=number(v.attackProgress,0,1);e.ward=integer(v.ward,0,1);e.swings=integer(v.swings);
-      e.burn=number(v.burn);e.poison=number(v.poison);e.chill=number(v.chill,0,2.1);
+      e.burn=number(v.burn);e.poison=number(v.poison);e.chill=number(v.chill,0,8);
       e.stun=number(v.stun,0,8);e.freeze=number(v.freeze??0,0,8);e.statusClock=number(v.statusClock,0,1);
-      e.rooted=number(v.rooted??0,0,.8);e.fracture=integer(v.fracture??0,0,5);e.haunt=integer(v.haunt??0,0,2);e.hauntTime=number(v.hauntTime??0,0,4);
+      e.rooted=number(v.rooted??0,0,8);e.fracture=number(v.fracture??0,0,35);e.haunt=integer(v.haunt??0,0,20);e.hauntTime=number(v.hauntTime??0,0,4);
       for(const key of ['leafHits','frostHits','stormHits'])e[key]=integer(v[key]??0,0,2);
       e.echoes=array(v.echoes,40).map(x=>{object(x);return {delay:number(x.delay,0,1),damage:number(x.damage),el:id(x.el,elements),pattern:id(x.pattern,new Set(['echo','rapid','soulmark','aftershock']))};});
       return e;

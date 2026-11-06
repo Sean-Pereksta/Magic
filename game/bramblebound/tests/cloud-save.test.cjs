@@ -10,7 +10,7 @@ const secret='a private journey password';
 
 function game(){
   const context=vm.createContext({console});context.window=context;
-  for(const name of ['catalog','progression','engine'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',name+'.js'),'utf8'),context);
+  for(const name of ['catalog','legacy','progression','living-combat','engine'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',name+'.js'),'utf8'),context);
   return context.GameEngine;
 }
 const E=game();
@@ -78,6 +78,22 @@ test('real encryption transfers complete validated profiles, prepared kits and s
   validate(reopened.raw);assert.equal(JSON.parse(reopened.raw).camp.run.active.length,3);
   const savedAgain=await a.save('Forest Pilgrim',secret,raw);assert.equal(savedAgain.revision,2);assert.equal(backend.state.writes,2);
   assert.notDeepEqual(backend.record().iv,record.iv,'each revision uses a fresh encryption nonce');
+});
+
+test('expanded Legacy, two Oaths, elemental ownership and live companion timers survive encrypted transfer',async()=>{
+  const data=JSON.parse(bundle()),p=E.freshProfile();p.points=10000;p.best=64;p.deaths=4;
+  for(const id of ['oath_worldroot','oath_phoenix','convergence','fate_rerolls','banishing_ink','expanded_destiny'])assert.equal(E.act(p,'legacyBuy',id).ok,true,id);
+  for(const el of ['leaf','fire'])for(let i=0;i<3;i++)assert.equal(E.act(p,'legacyBuy','mastery_'+el).ok,true);
+  assert.equal(E.act(p,'legacyBuy','ashroot').ok,true);
+  p.legacy.activeOaths=['worldroot','phoenix'];E.start(p);E.tick(p,3.3);
+  assert.ok(p.run.living.companions.length);data.profile=E.validate(p);
+  const raw=JSON.stringify(data),backend=fakeFirebase();
+  await client(backend).save('Living Legacy',secret,raw);
+  const loaded=await client(backend).load('Living Legacy',secret),restored=E.validate(JSON.parse(loaded.raw).profile);
+  assert.equal(JSON.stringify(restored),JSON.stringify(data.profile));
+  assert.deepEqual(Array.from(restored.run.legacy.oaths),['worldroot','phoenix']);
+  assert.equal(restored.run.draftRerolls,1);assert.equal(restored.run.banishes,1);
+  assert.equal(restored.run.living.companions[0].timer,p.run.living.companions[0].timer);
 });
 
 test('wrong passwords and corrupted ciphertext never write or return a partial profile',async()=>{

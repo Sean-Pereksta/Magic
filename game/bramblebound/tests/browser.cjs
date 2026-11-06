@@ -10,7 +10,7 @@ const server=http.createServer((req,res)=>{let file;try{file=path.resolve(root,'
 async function main(){
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const origin='http://127.0.0.1:'+server.address().port;
-  const options={headless:true};
+  const options={headless:true}; if(process.env.BRAMBLEBOUND_BROWSER)options.executablePath=process.env.BRAMBLEBOUND_BROWSER;
   const edge='C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
   if(process.platform==='win32'&&fs.existsSync(edge))options.executablePath=edge;
   const browser=await chromium.launch(options);

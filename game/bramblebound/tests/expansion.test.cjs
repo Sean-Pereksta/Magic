@@ -8,7 +8,7 @@ const root=path.resolve(__dirname,'../../..');
 const dir=path.resolve(__dirname,'..');
 function load(){
   const context=vm.createContext({console});context.window=context;
-  for(const name of ['catalog','progression','engine'])vm.runInContext(fs.readFileSync(path.join(dir,name+'.js'),'utf8'),context);
+  for(const name of ['catalog','legacy','progression','living-combat','engine'])vm.runInContext(fs.readFileSync(path.join(dir,name+'.js'),'utf8'),context);
   return {C:context.Catalog,E:context.GameEngine,P:context.Progression};
 }
 const copy=value=>JSON.parse(JSON.stringify(value));
