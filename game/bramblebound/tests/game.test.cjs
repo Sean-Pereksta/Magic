@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 const path=require('node:path');
-function game(){const context=vm.createContext({console});context.window=context;for(const name of ['catalog','progression','engine'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',name+'.js'),'utf8'),context);return {C:context.Catalog,E:context.GameEngine,P:context.Progression};}
+function game(){const context=vm.createContext({console});context.window=context;for(const name of ['catalog','legacy','progression','living-combat','engine'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',name+'.js'),'utf8'),context);return {C:context.Catalog,E:context.GameEngine,P:context.Progression};}
 test('every region has a guardian and enough distinct enemies for group encounters',()=>{
   const {C,E}=game();assert.equal(C.regions.length,35);assert.ok(Object.keys(C.items).length>=284);
   for(let i=0;i<C.regions.length;i++){assert.equal(C.enemies.filter(e=>e.region===i&&e.boss).length,1);assert.ok(C.enemies.filter(e=>e.region===i&&!e.boss).length>=5);}

@@ -11,7 +11,7 @@ const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript'
 const server=http.createServer((req,res)=>{try{let file=path.resolve(root,'.'+decodeURIComponent(new URL(req.url,'http://localhost').pathname));if(!file.startsWith(root+path.sep)||file.includes(path.sep+'.git'))throw Error();if(fs.statSync(file).isDirectory())file=path.join(file,'index.html');res.setHeader('Content-Type',mime[path.extname(file)]||'application/octet-stream');fs.createReadStream(file).on('error',()=>res.end()).pipe(res);}catch{res.writeHead(404).end();}});
 function profile(points,prepared=false){
   const context=vm.createContext({console});context.window=context;
-  for(const name of ['catalog','progression','engine'])vm.runInContext(fs.readFileSync(path.join(gameDir,name+'.js'),'utf8'),context);
+  for(const name of ['catalog','legacy','progression','living-combat','engine'])vm.runInContext(fs.readFileSync(path.join(gameDir,name+'.js'),'utf8'),context);
   const E=context.GameEngine,p=E.freshProfile();p.points=points;
   const data={game:'bramblebound',format:1,profile:p,settings:{audio:false,motion:false}};
   if(prepared){const camp=E.freshProfile();E.start(camp);const a=camp.run.active[0],b=camp.run.pack.find(item=>item.id===a.id);E.act(camp,'combine',a.uid,b.uid);data.camp=camp;}
@@ -34,7 +34,7 @@ function installFixture({raw}){
 }
 async function main(){
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin='http://127.0.0.1:'+server.address().port;
-  const options={headless:true};const edge='C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';if(process.platform==='win32'&&fs.existsSync(edge))options.executablePath=edge;
+  const options={headless:true}; if(process.env.BRAMBLEBOUND_BROWSER)options.executablePath=process.env.BRAMBLEBOUND_BROWSER;const edge='C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';if(process.platform==='win32'&&fs.existsSync(edge))options.executablePath=edge;
   const browser=await chromium.launch(options),results=[],records=new Map(),versions=new Map(),heldWrites=[];let failWrites=false,holdWrites=false,writes=0;
   const commit=message=>{if(failWrites)throw Error('Simulated Firebase outage.');if(message.reads.some(read=>(versions.get(read.path)||0)!==read.version))return {conflict:true};for(const entry of message.writes){records.set(entry.path,entry.record);versions.set(entry.path,(versions.get(entry.path)||0)+1);writes++;}return {conflict:false};};
   const transport=message=>{if(message.op==='get')return {record:records.get(message.path)||null,version:versions.get(message.path)||0};if(message.op==='commit'){if(holdWrites)return new Promise((resolve,reject)=>heldWrites.push({message,resolve,reject}));return commit(message);}throw Error('Unknown isolated transport action.');};

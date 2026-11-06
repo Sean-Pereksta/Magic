@@ -59,7 +59,7 @@
   let titleOpen=true;
   let page='expedition', guideTab='items',guideTier='all',query='',manualPause=!!profile.run&&['walk','fight'].includes(profile.run.phase);
   let effects=[],defeated=null,sceneClock=0, demoDistance=0,previousTime=null,hudTimer=0,saveTimer=0,structure='',toastTimer,pendingImport=null,encounterAge=1;
-  let packPage=0,packQuery='',packTier='all',displayedDraft='',packPages=1;
+  let packPage=0,packQuery='',packTier='all',displayedDraft='',packPages=1,campArea='heartwood',campGroveView='masteries';
   let selectedUid=null,partnerView=null,debriefedRun=null;
   const partners=new Map();
   const compactPack=window.matchMedia('(orientation:portrait), (max-height:680px)');
@@ -177,13 +177,15 @@
     window.scrollTo(0,0);
   }
   function renderGuide(){const pane=$('guide-page');pane.innerHTML=J.guide(profile,guideTab,query,guideTier);ink(pane);J.paintPortraits(pane);}
-  function renderLegacy(){const pane=$('legacy-page');pane.innerHTML=J.legacy(profile);ink(pane);}
+  function renderLegacy(){const pane=$('legacy-page'),paths=new Map([...pane.querySelectorAll('[data-camp-path]')].map(el=>[el.dataset.campPath,el.open]));pane.innerHTML=window.CampUI?CampUI.render(profile,campArea,campGroveView):J.legacy(profile);for(const el of pane.querySelectorAll('[data-camp-path]'))if(paths.has(el.dataset.campPath))el.open=paths.get(el.dataset.campPath);ink(pane);}
+  function campResult(result,focusId){if(!result?.ok){notify(result?.message||'This preparation is unavailable.');return false;}save();structure='';renderLegacy();sound('combine');notify(result.message);if(focusId){const node=$('legacy-page').querySelector('[data-upgrade="'+focusId+'"]');node?.classList.add('echo-purchased');node?.querySelector('button')?.focus({preventScroll:true});}return true;}
   function start(){
     const ready=profile.run===null;
     const result=E.start(profile);if(!result.ok)return notify(result.message);
-    if(ready){
+    if(ready&&campChanged&&(profile.legacy?.selectedKit??-1)<0){
       const r=profile.run,loadout=starter.run;
-      r.active=loadout.active.map(it=>({...it}));r.pack=loadout.pack.map(it=>({...it}));r.nextUid=loadout.nextUid;
+      if(window.Legacy?.applyPrepared)Legacy.applyPrepared(profile,r,loadout);
+      else {r.active=loadout.active.map(it=>({...it}));r.pack=loadout.pack.map(it=>({...it}));r.nextUid=loadout.nextUid;}
       for(const id of starter.seenItems)if(!profile.seenItems.includes(id))profile.seenItems.push(id);
     }
     resetPack();displayedDraft='';manualPause=false;effects=[];defeated=null;lastHeld=null;heldFor=0;encounterAge=1;structure='';closeDialog();save();sound('start');navigate('expedition');
@@ -344,7 +346,7 @@
   function skillTitle(u){return u.kind==='ability'?'Auto-cast ability':u.category;}
   function skillCard(r,id,mode){
     const u=P.upgrades[id],rank=abilityRank(r,id),next=mode==='draft',n=next?rank+1:Math.max(1,rank);
-    return '<button class="skill-card" style="--el:'+C.elements[u.element].color+'" '+(next?'data-learn':'data-skill')+'="'+id+'">'+tile(u.icon,40)+'<span class="skill-copy"><small>'+esc(skillTitle(u))+(u.kind==='ability'?' · '+number(P.duration(r,id))+'s':'')+'</small><b>'+esc(u.name)+'</b><span>'+esc(P.describe(id,n))+'</span></span><span class="skill-rank">'+(next?(rank?'R'+rank+' → '+n:'RANK 1'):'RANK '+n)+'</span></button>';
+    return '<button class="skill-card" data-talent-rarity="'+(u.rarity||'common')+'" style="--el:'+C.elements[u.element].color+'" '+(next?'data-learn':'data-skill')+'="'+id+'">'+tile(u.icon,40)+'<span class="skill-copy"><small>'+esc((u.rarity||'common')+' · '+skillTitle(u))+(u.kind==='ability'?' · '+number(P.duration(r,id))+'s':'')+'</small><b>'+esc(u.name)+'</b><span>'+esc(P.describe(id,n))+'</span></span><span class="skill-rank">'+(next?(rank?'R'+rank+' → '+n:'RANK 1'):'RANK '+n)+'</span></button>';
   }
   function renderAbilities(r){
     const ids=P.abilities.filter(u=>abilityRank(r,u.id)>0);
@@ -441,23 +443,23 @@
       html='<h2 class="dialog-title">Reopen '+esc(pendingCloud.result.name)+'?</h2><p class="body-copy">This replaces the journey on this device with the cloud journey. A local backup is kept. You can export your current profile first.</p><div class="stat-row"><span class="stat-pill">Best round '+p.best+'</span><span class="stat-pill">'+p.points+' trail seeds</span><span class="stat-pill">'+(p.run?'Round '+p.run.round+' · '+C.regions[p.run.region].name:'At camp')+'</span></div><p class="cloud-status" data-cloud-status role="status"></p><div class="dialog-actions"><button class="primary" data-do="cloud-restore">Reopen this journey</button><button class="outline" data-do="export">Export current</button><button class="flat" data-do="cloud-cancel">Keep local journey</button></div>';
     }else if(type==='debrief'){
       if(r.phase!=='dead')return closeDialog();
-      debriefedRun=r;kicker='EXPEDITION COMPLETE';html=J.debrief(profile);
+      debriefedRun=r;kicker='EXPEDITION COMPLETE';html=window.CampUI?CampUI.debrief(profile):J.debrief(profile);
     }else if(type==='draft'){
       if(!r.draft.length)return showDialog('build');
       displayedDraft=r.draft;kicker='LEVEL '+r.level+' / EXPEDITION UPGRADE';
-      html='<h2 class="dialog-title">Choose an upgrade</h2><p class="body-copy">Pip reached level '+r.level+'. Pick one for this expedition. Picking it again adds another rank.</p><div class="skill-list">'+r.draft.map(id=>skillCard(r,id,'draft')).join('')+'</div><p class="mini-note">The encounter waits while you choose.</p>';
+      html='<h2 class="dialog-title">Choose an upgrade</h2><p class="body-copy">Pip reached level '+r.level+'. Pick one for this expedition. Picking it again adds another rank.</p><div class="skill-list">'+r.draft.map(id=>'<div class="skill-choice">'+skillCard(r,id,'draft')+((r.banishes||r.echoesLeft)?'<div class="draft-side-tools"><button type="button" data-draft-banish="'+id+'" '+(!r.banishes?'disabled':'')+' aria-label="Banish '+esc(P.upgrades[id].name)+'">Banish</button><button type="button" data-draft-echo="'+id+'" '+(!r.echoesLeft?'disabled':'')+' aria-label="Echo '+esc(P.upgrades[id].name)+'">Echo</button></div>':'')+'</div>').join('')+'</div><div class="draft-tools"><button class="outline compact" data-draft-reroll '+(!r.draftRerolls?'disabled':'')+'>Reroll · '+(r.draftRerolls||0)+' remaining</button><small>'+(r.banishes||0)+' banishes · '+(r.echoesLeft||0)+' echoes. Echo preserves an unchosen talent for two drafts. Combat waits while you choose.</small></div>';
     }else if(type==='build'){
       kicker='PIP’S EXPEDITION BUILD';const entries=Object.keys(r.skills).filter(id=>r.skills[id]>0);
-      html='<h2 class="dialog-title">Level '+r.level+' trailwalker</h2><p class="body-copy">Travel and combat earn XP. At each level, choose one of three upgrades. Your ranks last for this run.</p><div class="stat-row"><span class="stat-pill">'+Math.floor(r.xp)+' / '+E.xpNeeded(r.level)+' XP</span><span class="stat-pill">'+r.foes+' foes defeated</span></div>';
+      html='<h2 class="dialog-title">Level '+r.level+' trailwalker</h2><p class="body-copy">Travel and combat earn XP. At each level, choose from your talent draft. Your ranks last for this run.</p><div class="stat-row"><span class="stat-pill">'+Math.floor(r.xp)+' / '+E.xpNeeded(r.level)+' XP</span><span class="stat-pill">'+r.foes+' foes defeated</span></div>';
       if(r.draft.length)html+='<button data-dialog="draft" class="primary">Choose your upgrade →</button>';
-      html+=entries.length?'<div class="skill-list">'+entries.map(id=>skillCard(r,id,'owned')).join('')+'</div>':'<p class="empty-note">Your first level-up opens three choices.</p>';
+      html+=entries.length?'<div class="skill-list">'+entries.map(id=>skillCard(r,id,'owned')).join('')+'</div>':'<p class="empty-note">Your first level-up opens a talent draft.</p>';
       html+='<button class="text-link" data-do="browse-skills">'+icon('book')+'Browse all '+Object.keys(P.upgrades).length+' upgrades →</button>';
     }else if(type==='skill'){
       const u=P.upgrades[data.id];if(!u)return closeDialog();const rank=abilityRank(r,u.id);
       kicker=skillTitle(u).toUpperCase();
       html='<div class="dialog-lead">'+tile(u.icon,52)+'<div><h2 class="dialog-title">'+esc(u.name)+'</h2><div class="eyebrow">'+elName(u.element)+' · '+(rank?'Rank '+rank:'Unlearned')+'</div></div></div><p class="body-copy">'+esc(u.description)+'</p>';
       if(rank)html+='<div class="subhead">Current rank '+rank+'</div><p class="body-copy">'+esc(P.describe(u.id,rank))+'</p>';
-      html+='<div class="subhead">Rank '+(rank+1)+'</div><p class="body-copy">'+esc(P.describe(u.id,rank+1))+'</p>';
+      if(!u.maxRank||rank<u.maxRank)html+='<div class="subhead">Rank '+(rank+1)+'</div><p class="body-copy">'+esc(P.describe(u.id,rank+1))+'</p>';else html+='<p class="body-copy">Fully awakened for this expedition.</p>';
       if(u.kind==='ability'&&rank)html+='<div class="stat-row"><span class="stat-pill">'+number(P.duration(r,u.id))+'s cooldown</span></div>';
       html+='<button class="text-link" data-dialog="build">View expedition build →</button>';
     }else if(type==='foes'){
@@ -521,6 +523,8 @@
         ['After a fall','Earn one seed for setting out, one per cleared wave, and one extra per four defeats. Spend seeds on health, damage, or replay speed in Legacy.'],
         ['Take your time','Gear details, the field guide, and settings pause battle. Space pauses or resumes on the road. Profiles save locally. Use Firebase cloud saves from the title menu or settings to reopen a password-protected journey on another device. Exported profiles remain available as backups.']
       ].map(([t,p])=>'<div class="dialog-section"><h3>'+t+'</h3><p class="body-copy">'+p+'</p></div>').join('');
+    }else if(type==='camp-respec'){
+      const spend=Object.values(Legacy.ensure(profile).spent).reduce((a,b)=>a+b,0);kicker='A NEW PATH THROUGH THE CAMP';html='<h2 class="dialog-title">Redistribute your legacy?</h2><p class="body-copy">Refund '+number(spend)+' Trail Seeds and rebuild permanent progression. Camp unlocks, discoveries, saved kit designs and expedition records stay with you. All purchased ranks, masteries, constellations and Oaths are refunded; Oaths and preferences are unequipped.</p><div class="dialog-actions"><button class="primary" data-do="camp-respec-confirm">Refund '+number(spend)+' seeds</button><button class="outline" data-nav="legacy">Keep this legacy</button></div>';
     }else if(type==='profile'){
       kicker='TRAVELER’S RECORD';html='<h2 class="dialog-title">Profile & settings</h2><p class="body-copy">'+(storageOK?'Progress saves on this device. Export a copy to move Pip to another browser.':'This browser cannot save locally. Export a profile to keep your progress.')+'</p><div class="stat-row"><span class="stat-pill">Best round '+profile.best+'</span><span class="stat-pill">'+profile.deaths+' completed runs</span></div>'+
       '<div class="action-row"><button class="outline" data-do="export">Export profile</button><button class="outline" data-do="import">Import profile</button></div><section class="dialog-section"><h3>Firebase cloud journey</h3><p class="cloud-status" data-cloud-status role="status"></p><div class="action-row"><button class="primary" data-do="cloud">Save to Firebase</button><button class="outline" data-do="cloud-open">Reopen cloud journey</button><button class="flat" data-do="cloud-forget">Disconnect cloud</button></div><p class="mini-note">Save name + password work across devices. Local progress remains available offline.</p></section><div class="dialog-section"><div class="pref-row"><div><b>Sound effects</b><small>Elemental attacks and trail chimes.</small></div><button class="outline compact" data-do="sound" aria-pressed="'+prefs.audio+'">'+(prefs.audio?'On':'Off')+'</button></div><div class="pref-row"><div><b>Ambient motion</b><small>Moving scenery, particles, and idle animation.</small></div><button class="outline compact" data-do="motion" aria-pressed="'+prefs.motion+'">'+(prefs.motion?'On':'Reduced')+'</button></div></div><button class="text-link" data-dialog="help">'+icon('book')+'Read the trail handbook →</button>';
@@ -550,6 +554,7 @@
     if(name==='cloud-cancel'){pauseCloud();cloudMessage='Cloud load cancelled. Your local journey is unchanged.';showDialog('profile');return;}
     if(name==='cloud-forget'){pauseCloud();cloudName='';cloudStamp=0;cloudMessage='Cloud disconnected. Your local journey and Firebase slot are unchanged.';try{localStorage.removeItem(CLOUD_NAME_KEY);}catch{}renderCloudStatus();notify('Cloud disconnected.');return;}
     if(name==='start')return start();
+    if(name==='camp-respec-confirm'){const result=Legacy.respec(profile);closeDialog();campResult(result);return;}
     if(name==='browse-skills'){guideTab='upgrades';query='';navigate('guide');return;}
     if(name==='cancel-pair'){closeDialog();return;}
     if(name==='forge'){
@@ -695,6 +700,14 @@
     const el=event.target.closest('button,a[data-nav],a[data-title]');if(!el||el.disabled)return;
     if(prefs.audio)S?.setEnabled(true,true);
     const ds=el.dataset,d=dialogState||{};
+    if(ds.campGroveView){campGroveView=ds.campGroveView;renderLegacy();$('legacy-page').querySelector('[data-camp-grove-view="'+campGroveView+'"]')?.focus({preventScroll:true});return;}
+    if(ds.campArea){campArea=ds.campArea;renderLegacy();$('legacy-page').querySelector('[data-camp-area="'+campArea+'"]')?.focus({preventScroll:true});return;}
+    if(ds.campBuy){campResult(Legacy.purchase(profile,ds.campBuy),ds.campBuy);return;}
+    if('campRespec' in ds){showDialog('camp-respec');return;}
+    if('campSelectKit' in ds){campResult(Legacy.selectKit(profile,Number(ds.campSelectKit)));return;}
+    if(ds.campOath){const active=Legacy.ensure(profile).activeOaths.slice(),index=active.indexOf(ds.campOath);if(index>=0)active.splice(index,1);else if(Legacy.oathSlots(profile)===1)active.splice(0,active.length,ds.campOath);else if(active.length<Legacy.oathSlots(profile))active.push(ds.campOath);else return notify('Unequip an Oath to free a slot.');campResult(Legacy.selectOaths(profile,active));return;}
+    if('draftReroll' in ds||ds.draftBanish||ds.draftEcho){const action=ds.draftBanish?'banishTalent':ds.draftEcho?'echoTalent':'rerollDraft';if(runCommand(action,ds.draftBanish||ds.draftEcho)){displayedDraft='';showDialog('draft');}return;}
+    if(el.id==='title-camp'){titleMenu(false);navigate('legacy');return;}
     if(ds.cloudMode){showDialog('cloud',{mode:ds.cloudMode,name:$('cloud-name')?.value||cloudName});return;}
     if(el.id==='title-cloud'){showDialog('cloud',{mode:cloudName?'load':'save'});return;}
     if('title' in ds){event.preventDefault();closeDialog();titleMenu(true);return;}
@@ -751,6 +764,7 @@
   });
   $('pack-tier').addEventListener('change',e=>{packTier=e.target.value;packPage=0;renderPack(displayRun());});
   modal.addEventListener('submit',event=>{if(event.target.id==='cloud-form')void submitCloud(event);});
+  document.addEventListener('submit',event=>{const form=event.target;if(form.id==='camp-config-form'){event.preventDefault();const data=new FormData(form),patch={};for(const key of ['favoredElement','style','build'])if(data.has(key))patch[key]=data.get(key);campResult(Legacy.configure(profile,patch));}else if(form.matches('[data-camp-kit-form]')){event.preventDefault();const data=new FormData(form),items=[0,1,2,3].map(i=>data.get('item'+i)).filter(Boolean);campResult(Legacy.saveKit(profile,Number(form.dataset.campKitForm),{name:data.get('kitName'),items}));}});
   modal.addEventListener('cancel',event=>{if(cloudBusy&&dialogState?.type==='cloud')event.preventDefault();else if(dialogState?.type==='cloud-confirm'){pendingCloud=null;cloudAutoPaused=true;}});
   $('pack-search').addEventListener('input',event=>{packQuery=event.target.value;packPage=0;renderPack(displayRun());});
   $('pack-page').addEventListener('change',event=>{packPage=Number(event.target.value);renderPack(displayRun());});
@@ -799,7 +813,7 @@
         for(const ev of events){
           if(ev.kind==='round'&&ev.pattern==='encounter')encounterAge=0;
           if(ev.kind==='kill')defeated=ev.enemy||C.enemies.find(foe=>foe.id===ev.enemyId);
-          if(['attack','enemy','hit','kill','heal','milestone','status','loot','ability','special'].includes(ev.kind)){
+          if(['attack','enemy','hit','kill','heal','milestone','status','loot','ability','special','companion'].includes(ev.kind)){
             if(ev.kind==='attack'||ev.itemId&&['heal','shield','stun','freeze'].includes(C.items[ev.itemId]?.style)){lastHeld=ev.itemId||r.active.find(it=>C.items[it.id].element===ev.element)?.id;heldFor=.7;}
             if(prefs.motion||['enemy','hit','attack','heal','milestone','ability','special'].includes(ev.kind))effects.push({...ev,age:prefs.motion?0:.24});
           }
@@ -815,7 +829,7 @@
 
       const view={time:sceneClock,reducedMotion:!prefs.motion,distance:prefs.motion?(r?v.distance:demoDistance):0,region:v.region,round:v.round,phase:r?v.phase:'walk',
         heroHP:v.hp,heroMax:v.maxHp,heroX:.30,enemyX:.69+.008*standing,enemy:r?v.enemy:null,enemies:r?v.enemies:[],waveSize:v.waveSize,encounterAge:prefs.motion?encounterAge:1,defeated:deathFX?defeated:null,defeatAge:deathFX?.age??1,effects,paused:!running,
-        heldId:heldFor>0&&lastHeld?lastHeld:v.active[0]?.id,
+        companions:v.living?.companions||[],skills:v.skills||{},oaths:v.legacy?.oaths||[],heldId:heldFor>0&&lastHeld?lastHeld:v.active[0]?.id,
         heldLevel:(v.active.find(it=>it.id===(heldFor>0&&lastHeld?lastHeld:v.active[0]?.id))||v.active[0])?.level||1,heroShield:v.shield,equipped:v.active.map(it=>({id:it.id,level:it.level})),heroAilments:v.ailments};
       const still=!animating||(!prefs.motion&&!effects.length);
       const stillFrame=still?[v.region,v.phase,v.round,v.hp,v.shield,v.enemies.map(e=>[e.uid,Math.ceil(e.hp),Math.floor(e.attackProgress*8),e.fracture,e.haunt,e.chill>0,e.rooted>0,e.stun>0,e.freeze>0].join('-')).join(),view.heldId,view.heldLevel,JSON.stringify(v.ailments),view.distance,innerWidth,innerHeight].join('|'):'';

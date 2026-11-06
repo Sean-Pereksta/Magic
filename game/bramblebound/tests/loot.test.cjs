@@ -6,7 +6,7 @@ const path=require('node:path');
 const tiers=['common','uncommon','rare','epic','mythic'];
 function load(){
   const context=vm.createContext({console});context.window=context;
-  for(const name of ['catalog','progression','engine'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',name+'.js'),'utf8'),context);
+  for(const name of ['catalog','legacy','progression','living-combat','engine'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',name+'.js'),'utf8'),context);
   return {C:context.Catalog,E:context.GameEngine};
 }
 const tally=()=>Object.fromEntries(tiers.map(t=>[t,0]));

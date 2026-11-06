@@ -152,9 +152,9 @@
     ev.push(v);
   }
   function deal(e,value){const removed=Math.min(e.hp,value);e.hp=Math.max(0,e.hp-value);return removed;}
-  function healing(r,value){return value*(1+read(r,'green_thumb'));}
+  function healing(r,value){return value*(1+read(r,'green_thumb'))*(1+.02*(r.legacy?.ranks?.medicinal_sap||0));}
   function shield(r,value){const old=r.shield;r.shield=boundedHp(old+value,r.maxHp*.4);return r.shield-old;}
-  function restore(r,value){const old=r.hp;r.hp=boundedHp(old+healing(r,value),r.maxHp);return r.hp-old;}
+  function restore(r,value){if(r.hp<=0)return 0;const old=r.hp,total=healing(r,value);r.hp=boundedHp(old+total,r.maxHp);globalThis.Progression.afterHealing?.(r,total,r.hp-old);return r.hp-old;}
   function incoming(r,value,e,ev,rng) {
     if(value<=0)return 0;
     if(rankOf(r,'sidestep')&&rng()<magnitude(r,'sidestep')){
@@ -177,12 +177,12 @@
       }
     }
     if(e.hp>0){
-      if(proc('wicklash')){e.burn+=damage*.60;event(ev,'status','fire','burn','Burn',e);}
-      if(proc('nettletip')){e.poison+=damage*.14;event(ev,'status','leaf','poison','Poison',e);}
+      if(proc('wicklash')){e.burn+=damage*.60*(1+.05*(r.legacy?.masteries?.fire||0));event(ev,'status','fire','burn','Burn',e);}
+      if(proc('nettletip')){e.poison+=damage*.14*(1+.05*(r.legacy?.masteries?.leaf||0));event(ev,'status','leaf','poison','Poison',e);}
       if(proc('shiver')){e.chill=Math.max(e.chill,1.4);event(ev,'status','frost','chill','Chill',e);}
       if(proc('interrupt')){e.stun=Math.max(e.stun,.45);event(ev,'status','storm','shock','Stun',e);}
     }
-    if(proc('sip')){const n=restore(r,damage*.18);if(n>.01)event(ev,'heal','spirit','lifesteal','+'+Math.ceil(n),e,{sourceUid:e.uid});}
+    if(proc('sip')){const n=restore(r,damage*.18*(1+.04*(r.legacy?.masteries?.spirit||0)));if(n>.01)event(ev,'heal','spirit','lifesteal','+'+Math.ceil(n),e,{sourceUid:e.uid});}
     if(proc('safety_net')){const n=shield(r,damage*.30);if(n>.01)event(ev,'status','leaf','guard','Shield +'+Math.ceil(n));}
   }
   function victory(r,ev){
@@ -218,10 +218,10 @@
     for(const target of chosen){
       const removed=deal(target,n);
       if(id==='seismic_bell')target.attackProgress=Math.max(0,target.attackProgress-.25);
-      if(id==='cinder_swarm')target.burn+=n*.8;
+      if(id==='cinder_swarm')target.burn+=n*.8*(1+.05*(r.legacy?.masteries?.fire||0));
       if(id==='whiteout')target.chill=Math.max(target.chill,2.1);
       if(id==='forked_sky')target.stun=Math.max(target.stun,.65);
-      if(id==='moon_siphon'){const hp=restore(r,removed*.4);if(hp>.01)event(ev,'heal','spirit','lifesteal','+'+Math.ceil(hp),target,{sourceUid:target.uid});}
+      if(id==='moon_siphon'){const hp=restore(r,removed*.4*(1+.04*(r.legacy?.masteries?.spirit||0)));if(hp>.01)event(ev,'heal','spirit','lifesteal','+'+Math.ceil(hp),target,{sourceUid:target.uid});}
       event(ev,'ability',d.element,id,String(Math.ceil(removed)),target,extra);
     }
   }
