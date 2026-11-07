@@ -2261,7 +2261,7 @@
       // Find the main body from actual positions. A broad line or long column
       // stays connected, while a distant pair cannot vouch for each other.
       if (r._rampartJob || soldiers.length <= 1) return soldiers;
-      const cell = 2.5 * Math.max(r._shapeSpacing, r._missileSpacing);
+      const cell = 3 * Math.max(r._shapeSpacing, r._missileSpacing);
       const stride = Math.ceil(this.width / cell) + 2, cells = new Map();
       for (const u of soldiers) {
         const key = Math.floor(u.x / cell) + Math.floor(u.y / cell) * stride;
@@ -2310,7 +2310,12 @@
           r._fireLocked = false;
           continue;
         }
-        if (r.fallingBack || r._rallyTime > 0 || r.order === 'move' || r.order === 'face' || this._advancingAttack(r) || r._traffic || r._bridge) {
+        // Let the guns come up during the final file-length of an approach,
+        // or once heads have turned on Face, while the feet finish aligning.
+        const approaching = (r.order === 'move' || this._advancingAttack(r)) &&
+          Math.hypot(r.x - r.targetX, r.y - r.targetY) > 28 + r._shapeSpacing;
+        const turningHeads = r.order === 'face' && this.time - r._faceStart < .35;
+        if (r.fallingBack || r._rallyTime > 0 || approaching || turningHeads || r._traffic || r._bridge) {
           r.volleyStatus = 'marching'; continue;
         }
         if (this.time + 1e-8 < r.nextVolleyAt) { r.volleyStatus = 'reloading'; continue; }
@@ -2339,7 +2344,7 @@
           const target = targets.get(u) || reference;
           const aim = Math.atan2(target.y - u.y, target.x - u.x);
           const delta = Math.atan2(Math.sin(aim - u.angle), Math.cos(aim - u.angle));
-          if (Math.abs(delta) <= Math.PI / 3) facing++;
+          if (Math.abs(delta) <= 75 * Math.PI / 180) facing++;
           if (u._impactUntil <= this.time) u.angle += clamp(delta, -3 * dt, 3 * dt);
         }
         if (facing * 2 <= strength) { r.volleyStatus = 'aiming'; continue; }
