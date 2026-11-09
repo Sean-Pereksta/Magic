@@ -105,6 +105,8 @@ for (const [winner, loser] of [['rock','scissors'], ['scissors','paper'], ['pape
     const game = arena();
     const a = spawn(game, winner, 0, 900, 800), b = spawn(game, loser, 1, 940, 800);
     advance(game, 2);
+    assert(b.hp > 0, 'opening counter hits leave time to react');
+    advance(game, 2.1);
     assert(!game.getEntity(b.id));
     assert.equal(a.hp, a.maxHp);
     assert(game.stats.destroyed[0] >= 1);
@@ -175,13 +177,13 @@ test('crumple gives exactly three seconds of invulnerability and prevents attack
   assert.equal(paper.paperInvulnerable, 3);
   advance(game, 2.96);
   assert(paper.paperInvulnerable > 0 && paper.paperInvulnerable < .05);
-  assert.equal(paper.hp, 100, 'scissors cannot hurt crumpled paper');
-  assert.equal(rock.hp, 100, 'crumpled paper cannot attack');
+  assert.equal(paper.hp, paper.maxHp, 'scissors cannot hurt crumpled paper');
+  assert.equal(rock.hp, rock.maxHp, 'crumpled paper cannot attack');
   advance(game, .08);
   assert.equal(paper.paperInvulnerable, 0);
-  assert(rock.hp < 100, 'attacks resume after the invulnerability period');
+  assert(rock.hp < rock.maxHp, 'attacks resume after the invulnerability period');
   advance(game, 1);
-  assert(paper.hp < 100, 'paper becomes vulnerable again');
+  assert(paper.hp < paper.maxHp, 'paper becomes vulnerable again');
   assert(!game.ability([paper.id], 900, 800).ok, 'ability has a cooldown');
 });
 
@@ -195,7 +197,7 @@ test('crumpled paper can move faster while its attacks are disabled', () => {
   assert(fast.x - 650 > (normal.x - 650) * 1.7);
 });
 
-test('scissors sweep kills paper in the chosen forward arc only', () => {
+test('scissors sweep damages paper in the chosen forward arc and leaves healthy troops time to react', () => {
   const game = arena(); game.teams[0].upgrades.scissors = true;
   const scissors = spawn(game, 'scissors', 0, 900, 800);
   const front1 = spawn(game, 'paper', 1, 990, 800);
@@ -206,7 +208,9 @@ test('scissors sweep kills paper in the chosen forward arc only', () => {
   const friendly = spawn(game, 'paper', 0, 950, 800);
   const invulnerable = spawn(game, 'paper', 1, 960, 780); invulnerable.paperInvulnerable = 3;
   assert(game.ability([scissors.id], 1200, 800).ok);
-  assert(front1.hp <= 0 && front2.hp <= 0);
+  assert.equal(front1.hp, front1.maxHp - 135);
+  assert.equal(front2.hp, front2.maxHp - 135);
+  assert(front1.hp > 0 && front2.hp > 0, 'one sweep does not erase a healthy paper squad');
   for (const unit of [behind, distant, rock, friendly, invulnerable]) assert.equal(unit.hp, unit.maxHp);
   assert(game.effects.some(e => e.type === 'sweep' && e.angle === 0));
 });

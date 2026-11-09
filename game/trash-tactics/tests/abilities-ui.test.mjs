@@ -37,6 +37,7 @@ async function harness() {
   const fakeRender=`export class Renderer {constructor(canvas,game){this.canvas=canvas;this.game=game;this.camera={zoom:1};this.centers=[];}resize(){}centerOn(x,y){this.centers.push({x,y});}screenToWorld(x,y){return {x,y};}worldToScreen(x,y){return {x,y};}pan(dx,dy){(this.pans??=[]).push({dx,dy});}zoomAt(){}draw(state){this.lastDraw=state;}drawMinimap(){}}export function drawIcon(){}`;
   const source=(await readFile(new URL('../game.js',import.meta.url),'utf8'))
     .replace("'./engine.js'",JSON.stringify(new URL('../engine.js',import.meta.url).href))
+    .replace("'./ability-icons.js'",JSON.stringify(new URL('../ability-icons.js',import.meta.url).href))
     .replace("'./render.js'",JSON.stringify('data:text/javascript;base64,'+Buffer.from(fakeRender).toString('base64')));
   await import('data:text/javascript;base64,'+Buffer.from(source+`\n//# sourceURL=trash-tactics-abilities-under-test-${++harnessId}.js`).toString('base64'));
   element('startButton').click();
@@ -99,19 +100,97 @@ test('production keys remain contextual and the previous scissors training key s
  assert.equal(desk.queue[0].type,'twig');
 });
 
-test('pointer, nearest-attack, and construction controls never reveal hidden enemies or ground',async()=>{
+test('recalled printer groups distribute one training order per press to the shortest ready queue',async()=>{
+ const h=await harness(),a=h.spawn('printer',700,800),b=h.spawn('printer',900,800);
+ h.game.teams[0].trash=5000;
+ h.select(b);h.select(a,{shiftKey:true});h.key('2',{ctrlKey:true});
+ h.select(h.game.entities.find(e=>e.type==='desk'&&e.team===0));h.key('2');
+ assert.deepEqual(new Set(h.state.selected),new Set([a.id,b.id]));
+ assert.match(h.element('actionContent').innerHTML,/GROUP QUEUES/);
+ assert.match(h.element('actionContent').innerHTML,/class="production production-group"/,'group queue summary has its visible HUD style hook');
+ assert.match(h.element('actionContent').innerHTML,/data-type="rock"/);
+ h.key('q');assert.deepEqual(a.queue.map(q=>q.type),['rock']);assert.equal(b.queue.length,0,'stable id tie-break chooses one building');
+ h.key('q');assert.deepEqual(b.queue.map(q=>q.type),['rock'],'the next press goes to the shorter queue');
+ h.key('w');h.action('train','scissors');
+ assert.deepEqual(a.queue.map(q=>q.type),['rock','paper']);assert.deepEqual(b.queue.map(q=>q.type),['rock','scissors']);
+ assert.equal(h.game.teams[0].trash,4800,'each key or click pays for exactly one troop');
+ h.action('research','rock');
+ assert.equal(a.queue.filter(q=>q.kind==='research').length,1);assert.equal(b.queue.filter(q=>q.kind==='research').length,0);
+ assert.equal(h.game.teams[0].trash,4650,'group research is queued and paid once');
+ a.constructing=5;h.key('e');assert.equal(a.queue.length,3);assert.equal(b.queue.length,3,'construction is excluded from group production');
+ while(b.queue.length<6)h.game.train(b.id,'rock');
+ const trash=h.game.teams[0].trash;h.key('q');
+ assert.equal(b.queue.length,6);assert.equal(h.game.teams[0].trash,trash,'full and unfinished buildings cannot consume resources');
+ assert.match(h.element('toast').textContent,/queue is full/);
+});
+
+test('every homogeneous production-building group keeps contextual training controls',async()=>{
+ const h=await harness();h.game.teams[0].trash=20000;
+ for(let i=0;i<10;i++)h.spawn('cabinet',1600+i*90,1600);
+ const production={desk:'twig',printer:'rock',cdreader:'cd',workshop:'sniper',laboratory:'divider'};
+ for(const [i,[type,unit]] of Object.entries(production).entries()){
+  const a=h.spawn(type,600,800+i*190),b=h.spawn(type,900,800+i*190);
+  h.select(a);h.select(b,{shiftKey:true});
+  assert.match(h.element('actionContent').innerHTML,new RegExp(`data-action="train" data-type="${unit}"`));
+  h.key('q');assert.equal(a.queue.length+b.queue.length,1);assert.equal(a.queue[0].type,unit);
+ }
+});
+
+test('pointer, attack targeting, and construction controls never reveal hidden enemies or ground',async()=>{
  const h=await harness(),rock=h.spawn('rock',700,800),enemy=h.spawn('scissors',900,800,1),worker=h.spawn('twig',700,1000);
  h.game.isVisible=e=>e.team===0;h.game.canSee=()=>false;
  h.select(rock);h.point(enemy.x,enemy.y,{button:2});
  assert.equal(rock.order.type,'move','right clicking an unseen enemy is a ground move');
  assert(!rock.order.targetId,'hidden enemy ID never enters the order');
  h.action('attack');
- assert.match(h.element('toast').textContent,/No visible enemy/);
+ h.refresh();assert.equal(h.state.renderer.lastDraw.mode,'attack','Attack button arms the same targeting mode as A');
+ h.point(enemy.x,enemy.y);
+ assert.equal(rock.order.type,'attackMove');assert(!rock.order.targetId,'attack targeting never reveals a hidden enemy');
  h.select(worker);h.key('b');h.point(900,1000);
  assert.equal(h.game.entities.filter(e=>e.type==='printer').length,0);
  assert.match(h.element('toast').textContent,/Scout this ground/);
  h.key('a');h.point(1200,1000,{button:2});
  assert.equal(worker.order.type,'attackMove','players can scout unknown ground with attack move');
+});
+
+test('A and the Attack button target enemies or attack-move to ground, and F2 selects only the ready army',async()=>{
+ const h=await harness(),rock=h.spawn('rock',700,800),paper=h.spawn('paper',700,900),worker=h.spawn('twig',700,1100),enemy=h.spawn('scissors',900,800,1),cd=h.spawn('cd',1000,1000);
+ h.game.isVisible=()=>true;
+ h.select(rock);h.key('a');h.point(enemy.x,enemy.y);
+ assert.equal(rock.order.type,'attack');assert.equal(rock.order.targetId,enemy.id,'A-click on visible enemy targets that enemy');
+ h.action('attack');h.point(1100,800,{button:2});
+ assert.equal(rock.order.type,'attackMove');assert(!rock.order.targetId);
+ paper.transportedBy=cd.id;h.select(worker);h.key('f2');
+ assert.deepEqual(h.state.selected,[rock.id],'army hotkey excludes workers, buildings, transports and embarked troops');
+ h.key('f2',{ctrlKey:true});assert.deepEqual(h.state.selected,[rock.id],'modified shortcuts do not change selection');
+ h.refresh();assert.match(h.element('actionContent').innerHTML,/data-action="attack" aria-keyshortcuts="A"/);
+});
+
+test('workers have padded click and box-selection bounds without larger collision footprints',async()=>{
+ const h=await harness(),worker=h.spawn('twig',700,1000),r=worker.r;
+ h.point(worker.x+29,worker.y-29);
+ assert.deepEqual(h.state.selected,[worker.id],'clicking near the worker silhouette selects its padded box');
+ h.key('x');const canvas=h.element('world');
+ canvas.dispatch('pointerdown',{clientX:worker.x+25,clientY:worker.y-30});
+ canvas.dispatch('pointermove',{clientX:worker.x+45,clientY:worker.y-15});
+ canvas.dispatch('pointerup',{clientX:worker.x+45,clientY:worker.y-15});
+ assert.deepEqual(h.state.selected,[worker.id],'a drag intersecting the worker box catches the worker');
+ assert.equal(worker.r,r,'selection padding leaves navigation and collision geometry unchanged');
+});
+
+test('A-click respects each family counter and leaves buildings and ineligible troops alone',async()=>{
+ const h=await harness(),rock=h.spawn('rock',700,800),scissors=h.spawn('scissors',700,900),printer=h.spawn('printer',500,1000),enemy=h.spawn('paper',1000,800,1);
+ h.game.isVisible=()=>true;
+ h.game.command([rock.id],{type:'move',x:1200,y:1000});const rockOrder={...rock.order};
+ printer.rally={x:1500,y:1000};const rally={...printer.rally};
+ h.select(rock);h.select(scissors,{shiftKey:true});h.select(printer,{shiftKey:true});
+ h.key('a');h.point(enemy.x,enemy.y);
+ assert.equal(scissors.order.type,'attack');assert.equal(scissors.order.targetId,enemy.id);
+ assert.deepEqual(rock.order,rockOrder,'rock cannot attack paper and retains its previous order');
+ assert.deepEqual(printer.rally,rally,'mixed selected buildings never receive troop orders');
+ h.select(rock);h.key('a');h.point(enemy.x,enemy.y);h.refresh();
+ assert.deepEqual(rock.order.type,'move');assert.equal(h.state.renderer.lastDraw.mode,'attack','an invalid target keeps targeting armed');
+ assert.match(h.element('toast').textContent,/cannot attack that target/);
 });
 
 test('desktop edge scrolling pauses over HUD, touch, menus, and drags',async()=>{

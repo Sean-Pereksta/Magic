@@ -1,4 +1,5 @@
 /* Original painted sprites and Canvas animation for the Warfare expansion. */
+import {ABILITIES,FORCE_FIELD_RADIUS} from './warfare.js';
 const INK='#354549', GOLD='#e6b454', PAPER='#fff9df', VIOLET='#9276c6';
 const COLORS=['#269b98','#ed795d','#9e7bc5','#d4aa4e'];
 const team=t=>COLORS[t]||'#9da78c';
@@ -130,6 +131,31 @@ export function drawExpansionIcon(c,type,tc,options={}){
 
 export function drawWarfareEntityOverlay(renderer,c,e,selected){
  const t=renderer.time||0,g=renderer.game,tc=team(e.team);
+ if(selected&&e.team===0&&e.pendingAbility){
+  const pending=e.pendingAbility,col=pending.name==='division'?VIOLET:pending.name==='snipe'?GOLD:'#53bdb1';
+  const entityTarget=pending.target?.targetId?g.getEntity?.(pending.target.targetId):null;
+  const target=entityTarget||(!pending.target?.targetId?pending.target:null),range=pending.range||ABILITIES[pending.name]?.range||420;
+  const targetVisible=target&&Number.isFinite(target.x)&&Number.isFinite(target.y)&&(entityTarget?(renderer.entityVisible?.(entityTarget)??renderer.pointVisible(target.x,target.y)):renderer.pointVisible(target.x,target.y));
+  c.save();
+  if(targetVisible){
+   const dx=target.x-e.x,dy=target.y-e.y,distance=Math.hypot(dx,dy),advance=Math.max(0,distance-range+10),a=Math.atan2(dy,dx),castX=e.x+Math.cos(a)*advance,castY=e.y+Math.sin(a)*advance;
+   c.setLineDash([5,8]);stroke(c,[[e.x,e.y+8],[target.x,target.y]],col+'88',1.1/renderer.camera.zoom);c.setLineDash([]);
+   if(advance>0){c.save();c.translate(castX,castY);c.rotate(a);stroke(c,[[-8,-6],[0,0],[-8,6]],col,2);c.restore();}
+   const radius=pending.name==='forcefield'?FORCE_FIELD_RADIUS:pending.name==='division'?350:18;
+   c.setLineDash([5,8]);oval(c,target.x,target.y,radius,radius,col+'06',col+'a0',1.2);c.setLineDash([]);
+  }
+  oval(c,e.x,e.y+9,30,12,null,col+'99',1.4);
+  c.textAlign='center';c.font='bold 9px "Trebuchet MS",sans-serif';c.fillStyle=col;c.strokeStyle='#fff7e5';c.lineWidth=3;c.strokeText('MOVING TO CAST',e.x,e.y+48);c.fillText('MOVING TO CAST',e.x,e.y+48);c.restore();
+ }
+ // A visible diving aircraft telegraphs its actual impact footprint. This also
+ // gives opponents a short chance to react; an unseen destination stays hidden.
+ if(e.crash&&renderer.pointVisible(e.crash.x,e.crash.y)){
+  const p=e.crash,col=e.team===0?tc:'#dc795e',pulse=.55+Math.sin(t*13)*.2,progress=p.diving?clamp(1-(p.remaining??.65)/.65):0;
+  c.save();c.globalAlpha=p.diving?.9:.5;c.setLineDash([6,7]);oval(c,p.x,p.y,75,75,col+'0c',col,1.6);c.setLineDash([]);
+  oval(c,p.x,p.y,Math.max(5,75*(1-progress)),Math.max(5,75*(1-progress)),null,col+'b0',1.1);
+  for(let i=0;i<4;i++){const a=i*Math.PI/2;c.globalAlpha=pulse;stroke(c,[[p.x+Math.cos(a)*82,p.y+Math.sin(a)*82],[p.x+Math.cos(a)*66,p.y+Math.sin(a)*66]],col,2.4);}
+  c.restore();
+ }
  if(e.aim){const target=g.getEntity?.(e.aim.targetId);if(target&&renderer.entityVisible(target)){const progress=clamp(1-e.aim.remaining/(e.aim.total||1.5));c.save();c.setLineDash([6,5]);stroke(c,[[e.x,e.y-14],[target.x,target.y-12]],tc+'b0',1.2/renderer.camera.zoom);c.setLineDash([]);oval(c,target.x,target.y-12,18,18,null,GOLD,1.5);for(let i=0;i<4;i++){const a=i*Math.PI/2+t*.6;stroke(c,[[target.x+Math.cos(a)*15,target.y-12+Math.sin(a)*15],[target.x+Math.cos(a)*23,target.y-12+Math.sin(a)*23]],'#fff4c7',1.6);}c.beginPath();c.arc(e.x,e.y-16,33,-Math.PI/2,-Math.PI/2+progress*TAU);paint(c,null,GOLD,3);c.restore();}}
  if(e.crash){const p=e.crash;c.save();c.setLineDash([5,8]);if(selected){stroke(c,[[e.x,e.y],[p.x,p.y]],tc+'88',1);oval(c,p.x,p.y,19,10,null,COLORS[1],1.5);}c.setLineDash([]);const a=Number.isFinite(e.facing)?e.facing:Math.atan2(p.y-e.y,p.x-e.x);for(let i=0;i<6;i++){const age=(t*3+i*.16)%1,back=18+age*65;c.globalAlpha=(1-age)*.5;oval(c,e.x-Math.cos(a)*back,e.y-25-Math.sin(a)*back-18*age,3+age*7,2+age*5,i%2?'#fff5dc':'#9c9d91',null);}c.restore();}
  if(e.roll){const a=Number.isFinite(e.facing)?e.facing:Math.atan2(e.roll.y-e.y,e.roll.x-e.x);c.save();for(let i=0;i<6;i++){const p=(t*3+i/6)%1,x=e.x-Math.cos(a)*(25+p*65)+Math.sin(a)*Math.sin(i*4)*14,y=e.y-Math.sin(a)*(25+p*65)-Math.cos(a)*Math.sin(i*4)*14;c.globalAlpha=(1-p)*.36;oval(c,x,y+12,6+p*15,4+p*8,'#c4ad80',null);}c.globalAlpha=1;if(selected){stroke(c,[[e.roll.x-8,e.roll.y],[e.roll.x+8,e.roll.y]],GOLD,1.6);stroke(c,[[e.roll.x,e.roll.y-8],[e.roll.x,e.roll.y+8]],GOLD,1.6);}c.restore();}
@@ -143,7 +169,7 @@ export function drawWarfareEntityOverlay(renderer,c,e,selected){
 /** Ground fills precede troops; translucent shield caps sit above them. */
 export function drawWarfareFields(renderer,c,layer='ground'){
  const g=renderer.game,t=renderer.time||0;
- for(const f of g.forceFields||[]){const r=f.r||110;if(!renderer.visible(f.x,f.y,r+40)||!renderer.pointVisible(f.x,f.y))continue;const fade=clamp((f.remaining??10)/1.7),tc=team(f.team);c.save();c.globalAlpha=fade;
+ for(const f of g.forceFields||[]){const r=f.r||FORCE_FIELD_RADIUS;if(!renderer.visible(f.x,f.y,r+40)||!renderer.pointVisible(f.x,f.y))continue;const fade=clamp((f.remaining??10)/1.7),tc=team(f.team);c.save();c.globalAlpha=fade;
   if(layer==='ground'){oval(c,f.x,f.y,r,r,tc+'12',tc,2);oval(c,f.x,f.y,r-5,r-5,null,'#c8fff394',1);for(let i=0;i<10;i++){const a=t*.5+i*TAU/10;glint(c,f.x+Math.cos(a)*r,f.y+Math.sin(a)*r,tc,2.5);}}
   else{const glow=c.createLinearGradient(f.x,f.y-r*.9,f.x,f.y+r);glow.addColorStop(0,'#c7fff524');glow.addColorStop(.5,tc+'0a');glow.addColorStop(1,tc+'19');c.beginPath();c.ellipse(f.x,f.y,r,r,0,0,Math.PI);c.bezierCurveTo(f.x-r,f.y-r*1.25,f.x+r,f.y-r*1.25,f.x+r,f.y);paint(c,glow,tc+'90',1.5);c.save();c.beginPath();c.ellipse(f.x,f.y,r,r,0,0,Math.PI);c.bezierCurveTo(f.x-r,f.y-r*1.25,f.x+r,f.y-r*1.25,f.x+r,f.y);c.clip();for(let j=0;j<6;j++){const yy=f.y-r*.7+j*r*.25;stroke(c,[[f.x-r,yy],[f.x+r,yy-r*.1]],'#c2fff52b',1);}c.beginPath();c.ellipse(f.x,f.y,r*.58,r*.88,0,Math.PI,TAU);paint(c,null,'#c2fff53a',1);c.restore();c.beginPath();c.ellipse(f.x,f.y,r,r*.72,0,Math.PI*1.1,Math.PI*1.65);paint(c,null,'#e1fff590',2);}
   c.restore();
@@ -191,7 +217,7 @@ export function drawWarfarePlacement(renderer,c,state){
  if(mode==='workshop'||mode==='laboratory'){const r=mode==='laboratory'?62:53,size=mode==='laboratory'?116:102,scouted=renderer.pointVisible(p.x,p.y),raw=scouted?renderer.game.canBuild?.(mode,p.x,p.y):false,valid=typeof raw==='object'?raw.ok:raw!==false;c.save();c.globalAlpha=.6;c.translate(p.x,p.y);c.scale(size/50,size/50);drawExpansionIcon(c,mode,team(0),{phase:renderer.time});c.restore();oval(c,p.x,p.y+12,r,r*.5,null,valid?team(0):scouted?COLORS[1]:'#9aa9a5',2);return;}
  if(!colors[key])return;const col=colors[key],selected=(renderer.game.entities||[]).filter(e=>state.selected?.has(e.id)&&e.hp>0),range={snipe:700,forcefield:420,division:600};c.save();
  if(range[key]){c.setLineDash([5,10]);for(const e of selected)if(({snipe:'sniper',forcefield:'mage',division:'divider'})[key]===e.type&&renderer.visible(e.x,e.y,range[key]))oval(c,e.x,e.y,range[key],range[key],null,col+'44',1);c.setLineDash([]);}
- const radius={forcefield:110,division:350,crash:Math.max(75,Math.sqrt(selected.filter(e=>e.type==='airplane').length)*35)}[key];if(radius)oval(c,p.x,p.y,radius,radius,col+'0b',col+'bb',1.8);
+ const radius={forcefield:FORCE_FIELD_RADIUS,division:350,crash:Math.max(75,Math.sqrt(selected.filter(e=>e.type==='airplane').length)*35)}[key];if(radius)oval(c,p.x,p.y,radius,radius,col+'0b',col+'bb',1.8);
  if(key==='division')for(let i=0;i<3;i++){const a=-Math.PI/2+i*TAU/3;stroke(c,[[p.x,p.y],[p.x+Math.cos(a)*350,p.y+Math.sin(a)*350]],col+'aa',1.5);familyMark(c,['rock','paper','scissors'][i],p.x+Math.cos(a+Math.PI/3)*210,p.y+Math.sin(a+Math.PI/3)*210,20);}
  const points=state.routePoints||state.abilityPoints||state.pathPoints||state.path||[];if(Array.isArray(points)&&points.length){const route=points.map(v=>Array.isArray(v)?v:[v.x,v.y]);if(route.every(v=>v.every(Number.isFinite))){stroke(c,route,col+'33',11);stroke(c,route,col,2);for(const [x,y]of route)oval(c,x,y,3,3,PAPER,col,1);c.setLineDash([6,6]);stroke(c,[route[route.length-1],[p.x,p.y]],col+'a0',1.5);c.setLineDash([]);}}
  if(['roll','shadowpath','intercept'].includes(key))for(const e of selected)stroke(c,[[e.x,e.y],[p.x,p.y]],col+'66',1.3);

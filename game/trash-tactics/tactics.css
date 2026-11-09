@@ -1,0 +1,63 @@
+/* Square command tiles keep a mixed army's full toolkit in view. */
+.sidebar{max-height:min(240px,32dvh);grid-template-rows:minmax(0,1fr)}
+.sidebar .actions-panel{min-height:0;max-height:min(218px,calc(32dvh - 22px));overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#79916a #e4e8d8;overscroll-behavior:contain}
+.sidebar .actions-panel::-webkit-scrollbar{width:7px}
+.sidebar .actions-panel::-webkit-scrollbar-track{background:#e4e8d8;border-radius:5px}
+.sidebar .actions-panel::-webkit-scrollbar-thumb{background:#79916a;border:1px solid #e4e8d8;border-radius:5px}
+.sidebar .actions-panel .command-grid:not(.transport-commands){position:sticky;top:0;z-index:3;background:#f3f1e3;padding-bottom:5px}
+.sidebar[data-selection="squad"]{width:410px}
+.ability-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px;clear:both}
+.ability-grid .ability-button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;aspect-ratio:1;width:100%;min-width:0;min-height:0;height:auto;margin:0;padding:9px 4px 5px;gap:3px;float:none;border:1.5px solid #9eaf91;border-radius:9px;background:#f2f1e3;box-shadow:0 2px 0 #3e50471a;overflow:hidden;isolation:isolate}
+.ability-grid .ability-button>span:first-child{display:flex;margin:0;flex:none;width:43%;min-width:27px;max-width:45px;font-size:inherit}
+.ability-icon{display:block;width:100%;height:auto;filter:drop-shadow(0 1px 0 #34463f20)}
+.ability-grid .ability-button>span:nth-child(2){flex:none;display:block;width:100%;min-width:0;text-align:center}
+.ability-grid .ability-button b{display:block;color:#34463f;font-size:10px;line-height:1.15;overflow-wrap:normal}
+.ability-grid .ability-button small{display:none}
+.ability-grid .ability-button kbd{display:block;position:absolute;top:4px;right:4px;min-width:19px;margin:0;padding:2px 4px;color:#fffdf0;background:#405a50;border:1px solid #2c453b;border-bottom:3px solid #253b32;border-radius:4px;font-size:11px;font-weight:900;line-height:14px;box-shadow:0 1px 2px #34463f20}
+.ability-grid .ability-button .ability-status{display:block;flex:none;width:100%;margin:0;white-space:normal;text-align:center;font-size:9px;line-height:12px;font-weight:700;color:#4b7762}
+.ability-grid .ability-button:disabled{opacity:1;background:#e9e7da;border-color:#c3c3b3;box-shadow:none}
+.ability-grid .ability-button:disabled .ability-icon{opacity:.55;filter:grayscale(.65)}
+.ability-grid .ability-button:disabled kbd{background:#8b9183;border-color:#71796c;color:#f7f5e9}
+.ability-grid .ability-button:disabled .ability-status{color:#716b58}
+.ability-grid .ability-button.active{border-color:#b47635;background:#f6e6bf;box-shadow:inset 0 0 0 2px #dca35d,0 2px 0 #3e50471a}
+.ability-grid .ability-button:not(:disabled):hover{background:#e3edda;border-color:#588c74;transform:translateY(-1px)}
+.ability-grid .ability-button:focus-visible,.quick-select button:focus-visible,.command-button:focus-visible{outline:3px solid #e0a157;outline-offset:2px}
+.quick-select kbd{display:inline-block;margin-left:3px;padding:1px 3px;border-radius:3px;font-size:9px;background:#e3e8d7;border:1px solid #acbba1;color:#365648;line-height:12px}
+.quick-select button{height:29px;min-width:70px;font-size:9px}
+.command-grid .command-button{position:relative;min-height:37px;font-size:10px}
+.command-grid .command-button small{display:inline-block;margin-left:auto;font-size:11px;font-weight:900;color:#365648}
+.command-grid .command-button kbd{display:inline-block;margin-left:auto;padding:2px 5px;font-size:11px;font-weight:900;line-height:14px;color:#fffdf0;background:#405a50;border:1px solid #2c453b;border-bottom:3px solid #253b32;border-radius:4px}
+.command-grid .command-button.active{background:#f4e2b6;border-color:#c68942}
+.production-group{display:block;padding-top:7px;color:#4b6b59}
+.production-group .section-label{display:block;font-size:9px;font-weight:800;margin:0 0 4px}
+.production-group .action-note{display:block;font-size:9px;line-height:1.5;margin:0}
+@media(max-width:760px){
+ .sidebar[data-selection="squad"]{width:340px}
+ .sidebar{max-width:calc(100vw - 128px);max-height:min(230px,30dvh)}
+ .sidebar .actions-panel{max-height:min(210px,calc(30dvh - 20px))}
+ .ability-grid{gap:4px;margin-top:6px}
+ .ability-grid .ability-button{padding:18px 2px 4px;gap:2px;min-height:77px;aspect-ratio:auto}
+ .ability-grid .ability-button>span:first-child{width:30px;min-width:24px;display:flex}
+ .ability-grid .ability-button b{font-size:9px;line-height:11px}
+ .ability-grid .ability-button kbd{font-size:10px;line-height:12px;min-width:17px;padding:1px 3px;top:3px;right:3px}
+ .ability-grid .ability-button .ability-status{font-size:8px;line-height:11px}
+ .quick-select button{font-size:8px;height:28px;padding:4px 5px;min-width:0}
+ .quick-select kbd{display:inline-block;font-size:8px;margin-left:1px}
+ .quick-select{flex-direction:column;align-items:flex-start}
+ .quick-select button{width:104px;justify-content:space-between}
+ .field-tools{bottom:calc(207px + env(safe-area-inset-bottom,0px))}
+ .command-grid .command-button{font-size:9px;min-height:38px;padding:5px}
+ .command-grid .command-button small{font-size:10px}
+}
+@media(max-width:480px){
+ .ability-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .ability-grid .ability-button{aspect-ratio:1;min-height:86px;padding:14px 3px 4px}
+ .ability-grid .ability-button>span:first-child{width:34px}
+ .ability-grid .ability-button b{font-size:9px;line-height:12px}
+}
+@media(max-height:540px) and (orientation:landscape){
+ .sidebar,.sidebar[data-selection="squad"]{width:355px;max-height:min(180px,34dvh)}
+ .sidebar .actions-panel{max-height:min(160px,calc(34dvh - 20px))}
+ .ability-grid .ability-button{min-height:76px;aspect-ratio:auto}
+}
+@media(prefers-reduced-motion:reduce){.ability-grid .ability-button{transition:none}.ability-grid .ability-button:not(:disabled):hover{transform:none}}

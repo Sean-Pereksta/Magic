@@ -78,7 +78,7 @@ test('shots track a moving CD and invalid targets disappear without hitting pass
   advance(h,.8);assert.equal(paper.hp,paper.maxHp);assert.equal(h.projectiles.length,0);
   const k=arena(),m=k._spawn('mouse',0,700,800),p=enemy(k,'paper',950);
   advance(k,.02);m.cooldown=100;p.paperInvulnerable=3;
-  advance(k,1);assert.equal(p.hp,100);assert.equal(k.projectiles.length,0);assert(!p.clickDamage?.length);
+  advance(k,1);assert.equal(p.hp,p.maxHp);assert.equal(k.projectiles.length,0);assert(!p.clickDamage?.length);
 });
 
 test('active click damage honors paper invulnerability and stops when troops embark',()=>{

@@ -38,15 +38,15 @@ test('every tier inherits family damage immunity and new transport sizes preserv
 
 test('each snipe click chooses one nearest ready sniper, aims visibly, and interrupts on fog, cover or Crumple',()=>{
   const g=arena(),a=spawn(g,'sniper',0,1500,1400),b=spawn(g,'sniper',0,1460,1400),paper=spawn(g,'divider',1,1750,1400);stop(paper);
-  assert(g.useAbility([a.id,b.id],'snipe',{targetId:paper.id}).ok);assert(a.aim);assert(!b.aim);advance(g,1.4);assert.equal(paper.hp,160);advance(g,.15);assert(!g.getEntity(paper.id));
-  const target=spawn(g,'paper',1,1750,1400);stop(target);assert(g.useAbility([b.id],'snipe',{targetId:target.id}).ok);target.paperInvulnerable=3;advance(g,.1);assert(!b.aim);assert.equal(target.hp,100);
-  b.abilityCooldown=0;target.paperInvulnerable=0;assert(g.useAbility([b.id],'snipe',{targetId:target.id}).ok);g.map.obstacles.push({x:1600,y:1300,w:30,h:200});advance(g,.1);assert(!b.aim);assert.equal(target.hp,100);
+  assert(g.useAbility([a.id,b.id],'snipe',{targetId:paper.id}).ok);assert(a.aim);assert(!b.aim);advance(g,1.4);assert.equal(paper.hp,paper.maxHp);advance(g,.15);assert(!g.getEntity(paper.id));
+  const target=spawn(g,'paper',1,1750,1400);stop(target);assert(g.useAbility([b.id],'snipe',{targetId:target.id}).ok);target.paperInvulnerable=3;advance(g,.1);assert(!b.aim);assert.equal(target.hp,target.maxHp);
+  b.abilityCooldown=0;target.paperInvulnerable=0;assert(g.useAbility([b.id],'snipe',{targetId:target.id}).ok);g.map.obstacles.push({x:1600,y:1300,w:30,h:200});advance(g,.1);assert(!b.aim);assert.equal(target.hp,target.maxHp);
   g.map.obstacles=[];b.abilityCooldown=0;assert(g.useAbility([b.id],'snipe',{targetId:target.id}).ok);target.x=4000;advance(g,.1);assert(!b.aim);
 });
 
 test('airplanes intercept moving CDs using real darts and never automatically crash or attack Scissors aircraft',()=>{
   const g=arena(),plane=spawn(g,'airplane',0,1500,1400),cd=spawn(g,'cd',1,1750,1400);plane.cooldown=0;
-  assert(g.useAbility([plane.id],'intercept',{targetId:cd.id}).ok);advance(g,.04);assert(g.projectiles.some(p=>p.type==='dart'));advance(g,.6);assert(cd.hp<180);assert(!plane.crash);assert(plane.hp>0);
+  assert(g.useAbility([plane.id],'intercept',{targetId:cd.id}).ok);advance(g,.04);assert(g.projectiles.some(p=>p.type==='dart'));advance(g,.6);assert(cd.hp<cd.maxHp);assert(!plane.crash);assert(plane.hp>0);
   const invalid=spawn(g,'shears',1,1700,1400);TYPES.shears.flying=true;try{assert(!g.canTarget(plane,invalid),'Scissors aircraft remain immune to Paper aircraft');}finally{delete TYPES.shears.flying;}
   assert(g.useAbility([plane.id],'patrol',{points:[{x:1400,y:1200},{x:1800,y:1200},{x:1800,y:1600}]}).ok);assert.equal(plane.order.points.length,3);
 });
@@ -59,7 +59,7 @@ test('thirty crash orders assign distinct impacts, consume surviving aircraft, s
   assert(Math.max(...impacts.map(p=>p.x))-Math.min(...impacts.map(p=>p.x))>250);
   g.command([planes[0].id],{type:'stop'});assert(!planes[0].crash);planes[1].hp=0;
   const rock=spawn(g,'rollingrock',1,impacts[2].x,impacts[2].y),friend=spawn(g,'paper',0,impacts[2].x+10,impacts[2].y),scissors=spawn(g,'shears',1,impacts[2].x,impacts[2].y+15);[rock,friend,scissors].forEach(stop);
-  advance(g,5);assert(rock.hp<360);assert.equal(friend.hp,100);assert.equal(scissors.hp,170);
+  advance(g,5);assert(rock.hp<rock.maxHp);assert.equal(friend.hp,friend.maxHp);assert.equal(scissors.hp,scissors.maxHp);
   assert.equal(impactsSeen.length,28,'an intercepted plane and a canceled plane produce no crash blast');
   assert(impactsSeen.every(p=>impacts.some(assigned=>Math.hypot(p.x-assigned.x,p.y-assigned.y)<.01)),'each aircraft impacts its own assigned destination');
   assert.equal(g.effects.filter(e=>e.type==='crash').length,0,'impact effects expire without growing unbounded');
@@ -77,10 +77,10 @@ test('one dome per click uses independent two-cast recharge cycles and solid ove
   const g=arena(),a=spawn(g,'mage',0,1450,1400),b=spawn(g,'mage',0,1300,1400);
   assert(g.useAbility([a.id,b.id],'forcefield',{x:1650,y:1400}).ok);assert.equal(g.forceFields.length,1);assert.equal(a.mageCharges,1);assert.equal(b.mageCharges,2);
   assert(g.useAbility([a.id,b.id],'forcefield',{x:1700,y:1400}).ok);assert.equal(g.forceFields.length,2);assert.equal(a.mageCharges,0);
-  assert(g._blocked(1540,1400,18));assert(!g._lineFree(1480,1400,1800,1400,18));
-  const trapped=spawn(g,'rock',0,1650,1400);g.command([trapped.id],{type:'move',x:1900,y:1400});advance(g,2);assert(Math.hypot(trapped.x-1650,trapped.y-1400)<110);
+  assert.equal(g.forceFields[0].r,80);assert(g._blocked(1570,1400,18));assert(!g._lineFree(1480,1400,1800,1400,18));
+  const trapped=spawn(g,'rock',0,1650,1400);g.command([trapped.id],{type:'move',x:1900,y:1400});advance(g,2);assert(g.forceFields.every(f=>Math.hypot(trapped.x-f.x,trapped.y-f.y)>=f.r+trapped.r));
   advance(g,3.1);assert.equal(a.mageCharges,2);assert.equal(b.mageCharges,2);
-  advance(g,5.1);assert.equal(g.forceFields.length,0);advance(g,4);assert(trapped.x>1750,'the original order resumes after barriers expire');
+  advance(g,5.1);assert.equal(g.forceFields.length,0);advance(g,4);assert(trapped.x>1750,'pushed troops retain their movement order');
 });
 
 test('Triple Division continuously sorts a large mixed army and friendlies into free, separated sectors then releases orders',()=>{
@@ -99,7 +99,7 @@ test('Triple Division continuously sorts a large mixed army and friendlies into 
 
 test('Crushing Roll accelerates, damages multiple eligible enemies, protects Paper and stops at solid scenery',()=>{
   const g=arena(),rock=spawn(g,'rollingrock',0,1200,1400),targets=[spawn(g,'scissors',1,1400,1400),spawn(g,'rollingrock',1,1500,1400)],paper=spawn(g,'paper',1,1700,1450);[...targets,paper].forEach(stop);
-  assert(g.useAbility([rock.id],'roll',{x:1950,y:1400}).ok);advance(g,.2);assert(rock.x>1200&&rock.x<1220);advance(g,2);assert(targets.every(t=>t.hp<t.maxHp));assert.equal(paper.hp,100);
+  assert(g.useAbility([rock.id],'roll',{x:1950,y:1400}).ok);advance(g,.2);assert(rock.x>1200&&rock.x<1220);advance(g,2);assert(targets.every(t=>t.hp<t.maxHp));assert.equal(paper.hp,paper.maxHp);
   const other=spawn(g,'rollingrock',0,1200,1800);g.map.obstacles.push({x:1400,y:1750,w:60,h:100});assert(g.useAbility([other.id],'roll',{x:1900,y:1800}).ok);advance(g,3);assert(other.x<1400-other.r);assert(!other.roll);
 });
 
@@ -119,7 +119,7 @@ test('division sorting routes around solid terrain and packs all reachable heavy
 test('Shadow Path follows bends, hits each target once, creates group lanes and stops at barriers',()=>{
   const g=arena(),a=spawn(g,'shears',0,1200,1300),b=spawn(g,'shears',0,1200,1350),paper=spawn(g,'divider',1,1450,1550),rock=spawn(g,'rollingrock',1,1460,1500);[paper,rock].forEach(stop);
   const route=[{x:1200,y:1550},{x:1600,y:1550},{x:1600,y:1800}];assert(g.useAbility([a.id,b.id],'shadowpath',{points:route}).ok);assert.notDeepEqual(a.shadow.points,b.shadow.points);
-  advance(g,.2);assert(a.y>1300&&Math.abs(a.x-1200)<30,'starts down the drawn bend, not toward the final point');advance(g,1.4);assert(paper.hp<160);assert.equal(rock.hp,360);assert(!a.shadow);assert(!b.shadow);
+  advance(g,.2);assert(a.y>1300&&Math.abs(a.x-1200)<30,'starts down the drawn bend, not toward the final point');advance(g,1.4);assert(paper.hp<paper.maxHp);assert.equal(rock.hp,rock.maxHp);assert(!a.shadow);assert(!b.shadow);
   const c=spawn(g,'shears',0,1200,2200);g.forceFields.push({id:999,x:1500,y:2200,r:110,remaining:10,total:10,team:0});assert(g.useAbility([c.id],'shadowpath',{points:[{x:1800,y:2200}]}).ok);advance(g,2);assert(c.x<1390);assert(!c.shadow);
 });
 

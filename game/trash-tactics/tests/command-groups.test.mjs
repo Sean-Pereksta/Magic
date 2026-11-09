@@ -16,7 +16,7 @@ class Element {
       key:'',pointerId:1,pointerType:'touch',button:0,clientX:0,clientY:0,...props};
     for(const fn of this.listeners[type]??[])fn(event);
   }
-  setAttribute(){} focus(){} setPointerCapture(){} releasePointerCapture(){}
+  setAttribute(name,value){(this.attributes??={})[name]=value;} focus(){} setPointerCapture(){} releasePointerCapture(){}
   hasPointerCapture(){return true;}
   querySelectorAll(){return [];} querySelector(){return null;} closest(){return null;}
   getBoundingClientRect(){return {left:0,top:0,width:800,height:600};}
@@ -44,18 +44,20 @@ async function harness(){
   const renderUrl='data:text/javascript;base64,'+Buffer.from(fakeRender).toString('base64');
   const source=(await readFile(new URL('../game.js',import.meta.url),'utf8'))
     .replace("'./engine.js'",JSON.stringify(new URL('../engine.js',import.meta.url).href))
+    .replace("'./ability-icons.js'",JSON.stringify(new URL('../ability-icons.js',import.meta.url).href))
     .replace("'./render.js'",JSON.stringify(renderUrl));
   await import('data:text/javascript;base64,'+Buffer.from(source+'\n//# sourceURL=trash-tactics-game-under-test.js').toString('base64'));
   element('startButton').click();
   const state=window.trashTactics;
   const key=(type,key,more={})=>window.dispatch(type,{key,...more});
   const pointer=(slot,type,more={})=>element('group-'+slot).dispatch(type,more);
-  const select=unit=>{const canvas=element('world');const event={pointerType:'mouse',clientX:unit.x,clientY:unit.y};canvas.dispatch('pointerdown',event);canvas.dispatch('pointerup',event);};
+  const select=(unit,more={})=>{const canvas=element('world');const event={pointerType:'mouse',clientX:unit.x,clientY:unit.y,...more};canvas.dispatch('pointerdown',event);canvas.dispatch('pointerup',event);};
   return {state,element,key,pointer,select,advance};
 }
 
 test('command groups save, recall, center, prune, reset, and cancel input',async()=>{
   const h=await harness();
+  assert.match(h.element('group-1').attributes['aria-label'],/Command group 1, empty/);
   const unit=h.state.game.entities.find(e=>e.team===0&&e.type==='rock');
   const other=h.state.game.entities.find(e=>e.team===0&&e.type==='paper');
   h.select(unit);
@@ -81,11 +83,26 @@ test('command groups save, recall, center, prune, reset, and cancel input',async
   assert.equal(h.state.renderer.centers.length,beforeRepeat);
   h.select(other);h.key('keydown','3');h.key('keyup','3');
   assert.deepEqual(h.state.selected,[unit.id]);
-  // An empty/building selection must not erase an assigned group.
+  // A building can replace a group and retain its contextual production shortcut.
   const desk=h.state.game.entities.find(e=>e.team===0&&e.type==='desk');
   h.select(desk);h.pointer(2,'pointerdown');h.advance(1000);h.pointer(2,'pointerup');
+  h.select(unit);
   h.key('keydown','2');h.key('keyup','2');
-  assert.deepEqual(h.state.selected,[other.id]);
+  assert.deepEqual(h.state.selected,[desk.id],'buildings are assignable by touch hold');
+  assert.match(h.element('group-2').attributes['aria-label'],/1 building\./);
+  h.key('keydown','q');h.key('keyup','q');
+  assert.equal(desk.queue.at(-1).type,'twig','a recalled building exposes production hotkeys');
+  h.select(other);h.key('keydown','2',{ctrlKey:true});h.key('keyup','2');
+  assert.match(h.element('group-2').attributes['aria-label'],/1 troop\./,'same-size reassignment refreshes group kind label');
+  // Mixed groups preserve buildings without changing their rally points on troop orders.
+  h.select(unit);h.select(desk,{shiftKey:true});h.key('keydown','3',{ctrlKey:true});h.key('keyup','3');
+  h.select(other);h.key('keydown','3');h.key('keyup','3');
+  assert.deepEqual(new Set(h.state.selected),new Set([unit.id,desk.id]));
+  const oldRally=desk.rally;
+  h.element('world').dispatch('pointerdown',{button:2,pointerType:'mouse',clientX:desk.x+350,clientY:desk.y+350});
+  assert.equal(unit.order.type,'move');assert.deepEqual(desk.rally,oldRally,'mixed groups do not set building rally points');
+  desk.hp=0;h.select(other);h.key('keydown','3');h.key('keyup','3');
+  assert.deepEqual(h.state.selected,[unit.id],'destroyed buildings are pruned from a mixed group');
   // Pointer cancellation and movement should never replace the group.
   h.select(unit);h.pointer(2,'pointerdown');h.pointer(2,'pointercancel');h.advance(1000);
   h.key('keydown','2');h.key('keyup','2');
