@@ -41,18 +41,19 @@ function clearedWaves(game,{samples=5000,guardian=false,count=5,carryMythic=fals
   return result;
 }
 
-test('five rarity tiers are represented in real gear and grant progressively stronger damage',()=>{
-  const {C,E}=load();assert.deepEqual(Object.keys(C.rarities).sort(),[...tiers].sort());
-  const scales={common:1,uncommon:1.12,rare:1.28,epic:1.5,mythic:1.8};
+test('six gear tiers grant progressively stronger damage, with Ancient above Mythic',()=>{
+  const gearTiers=[...tiers,'ancient'];
+  const {C,E}=load();assert.deepEqual(Object.keys(C.rarities).sort(),[...gearTiers].sort());
+  const scales={common:1,uncommon:1.12,rare:1.28,epic:1.5,mythic:1.8,ancient:2.6};
   const p=E.freshProfile();C.items.__rarityProbe={id:'__rarityProbe',name:'Rarity comparison',power:10,cooldown:1,element:'stone',style:'strike',rarity:'common'};
-  for(const tier of tiers){
+  for(const tier of gearTiers){
     assert.ok(Object.values(C.items).some(d=>d.id!=='__rarityProbe'&&d.rarity===tier),'no actual '+tier+' equipment');
     assert.equal(C.rarities[tier].powerScale,scales[tier]);
   }
   for(const level of [1,3,10])for(const rank of [0,9]){
     p.perks.claw=rank;C.items.__rarityProbe.rarity='common';const common=E.itemPower(p,{id:'__rarityProbe',level});
     let previous=0;
-    for(const tier of tiers){C.items.__rarityProbe.rarity=tier;const power=E.itemPower(p,{id:'__rarityProbe',level});near(power/common,scales[tier],1e-10,tier+' damage scale');assert.ok(power>previous);previous=power;}
+    for(const tier of gearTiers){C.items.__rarityProbe.rarity=tier;const power=E.itemPower(p,{id:'__rarityProbe',level});near(power/common,scales[tier],1e-10,tier+' damage scale');assert.ok(power>previous);previous=power;}
   }
 });
 

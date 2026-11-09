@@ -2,7 +2,7 @@
 
 Standalone expedition roguelite for Cat’N Mice. Open `/game/bramblebound/` through any static HTTP server; there is no build or server dependency. `/game/bramblebound.html` is a compatibility redirect.
 
-Guide Pip through 35 regions and repeating circuits, build a loadout from 430 elemental relics, fuse ingredients, choose 147 talents and abilities, battle group encounters and guardians, and develop the Camp of Echoes between expeditions. Four equipment slots and a searchable 400-slot pack support mouse, keyboard, and touch controls. Space pauses combat. Menus and the title screen pause the simulation.
+Guide Pip through 35 regions and repeating circuits, build a loadout from 441 elemental relics, fuse ingredients, choose 147 talents and abilities, battle group encounters, guardians and ten-round Titans, and develop the Camp of Echoes between expeditions. Four equipment slots and a searchable 400-slot pack support mouse, keyboard, and touch controls. Space pauses combat. Menus and the title screen pause the simulation.
 
 Profiles autosave under `bramblebound.profile.v1`. Existing standalone saves remain compatible; the profile menu exports/imports JSON, including prepared starting kits. Saves are device/browser local. Corrupt saves enter recovery without overwriting the original. No account is required.
 
@@ -42,7 +42,7 @@ Existing profiles migrate without resetting their run, gear, discoveries, or rec
 
 ## Support relics and deeper fusions
 
-The support expansion adds 96 relics: 24 regular finds, 48 first-stage fusions, and 24 second-stage fusions. A further 50 fusions add 24 first-stage, 18 second-stage and eight third-stage recipes. The full catalog contains 156 base relics and 274 recipes: 208 first-stage, 57 second-stage and nine third-stage fusions. Healing-only relics restore HP, shield-only relics build protection, stun-only relics interrupt enemy attack charge, and freeze-only relics encase an enemy in ice and stop its charge. These four roles deal zero damage at every level; their elemental affinities and level milestones improve utility without adding elemental hits, damaging echoes, or offensive on-hit techniques. The guide offers Healing, Shield, Stun and Freeze role filters, and item details show recovery strength or control duration instead of damage. Combine support with an offensive relic to clear encounters.
+The support expansion adds 96 relics: 24 regular finds, 48 first-stage fusions, and 24 second-stage fusions. A further 50 fusions add 24 first-stage, 18 second-stage and eight third-stage recipes. Before the Ancient expansion, the catalog contained 156 base relics and 274 recipes: 208 first-stage, 57 second-stage and nine third-stage fusions. Healing-only relics restore HP, shield-only relics build protection, stun-only relics interrupt enemy attack charge, and freeze-only relics encase an enemy in ice and stop its charge. These four roles deal zero damage at every level; their elemental affinities and level milestones improve utility without adding elemental hits, damaging echoes, or offensive on-hit techniques. The guide offers Healing, Shield, Stun and Freeze role filters, and item details show recovery strength or control duration instead of damage. Combine support with an offensive relic to clear encounters.
 
 Every fusion produces an item exactly one level above its highest-level ingredient: level 2 + level 3 becomes level 4, and level 2.5 + level 3.5 becomes level 4.5. Crafted relics can become ingredients for second- and third-stage recipes. For example, Moonfrost Garden and Tempest Glacier Prism fuse into the third-stage Winter Beyond the Moon. Recipe output power and sustained output are at least 5% above both ingredient definitions before the level gain, and output rarity is never below either ingredient. Two identical relics still require matching levels and upgrade by one level. Existing fractional item levels and all previous item IDs remain compatible with local and cloud saves.
 
@@ -52,6 +52,43 @@ Selecting a backpack relic opens a compact comparison above the equipped cards. 
 
 ## Rarity and finds
 
-Five tiers classify sustained damage, utility and signature effects: Common, Uncommon, Rare, Epic and Mythic. Their rarity power multipliers are 1×, 1.12×, 1.28×, 1.5× and 1.8×; item details include this bonus in displayed damage. Tier changes preserve existing item IDs, levels and recipes. Rare finds receive stronger ornament and auras.
+Six tiers classify sustained damage, utility and signature effects: Common, Uncommon, Rare, Epic, Mythic and Ancient. Their rarity power multipliers are 1×, 1.12×, 1.28×, 1.5×, 1.8× and 2.6×; item details include this bonus in displayed damage. Ancient artifacts can only be forged from two Mythics and never enter random loot pools. Tier changes preserve existing item IDs, levels and recipes. Rare finds receive stronger ornament and auras.
 
 The chance of at least one relic in a normal wave is now 24% (previously 16%); guardian waves have a 48% chance (previously 37%), independent of enemy headcount. Rarity is chosen before duplicate, support or ingredient bias. At the first region with all tiers unlocked, ordinary finds are 65.7% Common, 20% Uncommon, 10% Rare, 3.5% Epic and 0.8% Mythic. Guardians and later regions improve high-tier odds, shown exactly in the atlas. Fusion remains an alternate route to strong gear. Tests include 28,000 cleared waves and verify rarity frequencies, headcount normalization and owned-Mythic independence.
+
+## Ten-round Titans
+
+Every freshly spawned tenth round replaces the ordinary formation with a colossal Titan and two regional escorts. Six unique encounters rotate through the road, returning with stronger round scaling after round 60. The regional guardian cycle continues on other rounds. The boss banner shows its health, phase and named attack warning; each Titan has two alternating powers and enrages at half health, gaining faster casts and stronger abilities. Control pauses its windup, so control relics and the counter advice in each dossier remain useful. Defeating a Titan grants a guaranteed eligible Mythic find for the Ancient forge, and clearing its formation restores 25% maximum HP.
+
+| Round | Titan | Signature powers |
+| --- | --- | --- |
+| 10 | Yggra, Worldroot Behemoth | Thorn eruptions snare Pip; a living canopy heals and wards its formation. |
+| 20 | Pyraxis, the Sun Eater | A collapsing sun leaves persistent fire; a meteor barrage strikes repeatedly. |
+| 30 | Isolde, Winter Empress | An ice cathedral chills relic recharge; mirror ice restores her defenses. |
+| 40 | Raikora, Tempest Roc | Repeated lightning disrupts abilities; a hurricane hastens its next strike. |
+| 50 | Gravemaw, Mountain Heart | A worldbreaking fault corrodes defenses; continental armor restores its ward. |
+| 60 | Nyxara, Eclipse Sovereign | A soul eclipse steals life and hexes relics; spectral tides consume shields. |
+
+Titan warning progress, phase, cast count and simulation timers survive local and cloud saves. Existing active encounters are preserved when loading an older profile; the next newly spawned tenth round uses the Titan system.
+
+## Ancient artifact forge
+
+Eleven Ancient recipes raise the catalog to 441 relics and 285 fusion recipes. Each uses exactly two existing Mythics, consumes both ingredients, and creates an Ancient one level above the higher ingredient, including fractional levels. Their base potency and sustained output exceed both ingredients before that level gain. Upgrading two identical Ancients at equal levels follows the existing copy-upgrade rule. The backpack and field guide include an Ancient filter, and dossiers show the recipe, Ancient power and character aura.
+
+| Ancient | Two Mythic ingredients | Power and character effect |
+| --- | --- | --- |
+| Trident of the Genesis Tide | Kingtide Conch + Mother-Root Crook | A formation-wide living tide, healing and protection; luminous waves and turquoise antlers. |
+| Crown of the First Grove | Worldtree Staff + Ambrosia Flask | Poison eruptions, roots and healing; a living crown with orbiting seed stars. |
+| Sunforged Cataclysm | Volcano Heart + Eclipse Talon | Formation-wide solar blasts and intense burning; solar wings and molten foot runes. |
+| Heart of the Endless Winter | Oracle’s Weatherglass + Cometfall | Freezes the entire formation and grants protection; ice halo and aurora mantle. |
+| Regalia of the Storm Sovereign | Tempest Crown + Daybreak Mantle | Six interrupting thunderbolts and protection; lightning motes and a storm cloak. |
+| Aegis of the World Titan | Titan Carapace + Gravity Maul | Fills shields and reduces incoming direct hits; floating spectral stone armor. |
+| Eclipse of a Thousand Souls | Lantern of Lost Stars + Phoenix Diadem | A soul wave that drains the entire formation; a black moon and violet soul wings. |
+| Orrery of Falling Heavens | Firstlight Judgment + Atlas of Returns | Three ward-breaking meteors that fracture foes; orbiting planets and golden star trails. |
+| Grail of the Eternal Dawn | Everbloom Fountain + Sunheart Sanctum | Powerful healing, protection and complete cleansing; radiant lotus petals and golden ribbons. |
+| Hourglass Before the First Storm | Thunderous Silence + Silent Solstice Bells | Formation-wide stun and faster allied relic recharge; shattered clock rings and teal shards. |
+| Voidheart of the Unmade World | Eclipse Worldreaper + Stormwinter Singularity | A ward-stripping singularity and stronger guardian damage; a gravitational halo and violet stars. |
+
+The four pure utility Ancients (freeze, shield, healing and stun) remain harmless: their additional powers improve protection or control without introducing damage. Secondary Ancient attacks never recurse into primary activation effects. Character auras appear while the artifact is equipped; activation effects use the simulation clock and respect reduced motion. Rendering caps visual particles without reducing combat effects.
+
+`node game/bramblebound/tests/ancient-boss-browser.cjs` verifies actual two-Mythic forging, ingredient consumption, fractional levels, Ancient filters and dossiers, equipped-item reload, round-ten spawning, saved attack warnings, live ability casts with reduced motion and enraged rendering at desktop and phone widths. It also checks distinct renderings of all six Titans, twelve boss powers and eleven equipped Ancient transformations. Set `BRAMBLEBOUND_SCREENSHOTS` to capture the forge, boss scenes and visual overview galleries.

@@ -5,7 +5,8 @@
   const C = () => root.Catalog;
   const P = () => root.Progression;
   const L = () => root.Legacy;
-  const WALK = 3.2, ACTIVE = 4, PACK = 400, WAVE_RULES=2;
+  const T = () => root.Titans;
+  const WALK = 3.2, ACTIVE = 4, PACK = 400, WAVE_RULES=3;
   const utilityStyles=new Set(['heal','shield','stun','freeze']);
   const dropChances=Object.freeze({normal:.24,guardian:.48});
   const xpNeeded = level => 14+Math.round((level-1)*5.5);
@@ -127,20 +128,21 @@
     return ok('A new journey begins.');
   }
   function spawn(p,ev) {
-    const r=p.run, guardian=r.round%4===0;
+    const r=p.run, titan=T()?.bossForRound(r.round),guardian=r.round%4===0;
     // A solo encounter teaches the road. Escorts join the first guardian, then
     // additional lanes enter as the first circuit progresses.
-    const count = r.round===1?1:r.round<4?2:r.round<7?3:r.round<11?4:5;
+    const count = titan?3:r.round===1?1:r.round<4?2:r.round<7?3:r.round<11?4:5;
     r.waveRules=WAVE_RULES;
     const pool=C().enemies.filter(e=>e.region===r.region && !e.boss);
     r.waveSize=count;r.enemies=[];r.targetCursor=0;r.phase='fight';
     for(let lane=0;lane<count;lane++){
-      const d=guardian&&lane===0?C().enemies.find(e=>e.region===r.region&&e.boss):pool.splice(Math.floor(rng(r)*pool.length),1)[0];
+      const d=titan&&lane===0?titan:!titan&&guardian&&lane===0?C().enemies.find(e=>e.region===r.region&&e.boss):pool.splice(Math.floor(rng(r)*pool.length),1)[0];
       const e=buildEnemy(r.round,d,count,r.waveRules);
       e.uid=r.nextEnemyUid++;e.lane=lane;e.attackProgress=lane*.11;
       r.enemies.push(e);discover(p.seenEnemies,d.id);
     }
     if(L())L().recordRegion(p,r);P().onSpawn?.(r,ev);
+    if(titan)T().arrive(r.enemies[0],ev);
     r.enemy=r.enemies[0];add(ev,'round','leaf',1,r.enemy.name,'encounter');
   }
   function buildEnemy(round,d,count,rules) {
@@ -151,11 +153,11 @@
     const healthSpread=1+(classic?.67:.43)*(count-1), attackSpread=1+(classic?.72:.44)*(count-1);
     const traitPower=d.trait==='brute'?1.32:d.trait==='swarm'?.82:1;
     // Compare imported enemy stats exactly, including historical FP order.
-    const maxHp=Math.round(vitality*(boss?(classic?1.42:1.56):1)/healthSpread);
-    const damage=strike*(boss?(classic?1.25:1.32):1)*traitPower/attackSpread;
+    const maxHp=Math.round(vitality*(boss?(classic?1.42:1.56):1)/healthSpread*(d.titan?d.vitality:1));
+    const damage=strike*(boss?(classic?1.25:1.32):1)*traitPower/attackSpread*(d.titan?d.force:1);
     const tempo=d.trait==='swift'?.67:d.trait==='brute'?1.24:d.trait==='swarm'?.78:1;
-    const period=(classic?(boss?2.2:2.65):(boss?2.12:2.62)/(1+.22*n/(n+9)))*tempo;
-    return {id:d.id,name:d.name,species:d.species,color:d.color,trait:d.trait,affliction:d.affliction||null,weak:d.weak,resist:d.resist,boss,hp:maxHp,maxHp,damage,period,attackProgress:0,burn:0,poison:0,chill:0,stun:0,freeze:0,statusClock:0,ward:d.trait==='warded'||d.affliction==='bulwark'?1:0,swings:0,echoes:[],rooted:0,fracture:0,haunt:0,hauntTime:0,leafHits:0,frostHits:0,stormHits:0};
+    const period=(classic?(boss?2.2:2.65):(boss?2.12:2.62)/(1+.22*n/(n+9)))*tempo*(d.titan?1.35:1);
+    return {id:d.id,name:d.name,species:d.species,color:d.color,trait:d.trait,affliction:d.affliction||null,weak:d.weak,resist:d.resist,boss,hp:maxHp,maxHp,damage,period,attackProgress:0,burn:0,poison:0,chill:0,stun:0,freeze:0,statusClock:0,ward:d.trait==='warded'||d.affliction==='bulwark'?1:0,swings:0,echoes:[],rooted:0,fracture:0,haunt:0,hauntTime:0,leafHits:0,frostHits:0,stormHits:0,...(d.titan?{titanId:d.id,titan:T().state()}:{} )};
   }
   function find(r,uid) { return r.active.concat(r.pack).find(i=>i.uid===uid); }
   function previewCombine(p,a,b) {
@@ -361,7 +363,7 @@
         event.duration=duration;
       }
       event.itemId=it.id;event.sourceUid=it.uid;
-      P().onActivation?.(r,r.enemies,e,d,0,ev,()=>rng(r));
+      P().onActivation?.(r,r.enemies,e,d,0,ev,()=>rng(r),it,itemPower(p,it));
       it.cd=itemCooldown(it,r);return;
     }
     const power=itemPower(p,it);let damage=power*P().hitMultiplier(r,d,e,r.enemies.filter(x=>x.hp>0).length);
@@ -402,11 +404,12 @@
     }
     special(p,it,e,damage,removed,ev);
     P().afterHit(r,r.enemies,e,removed,d,ev,()=>rng(r));
-    P().onActivation?.(r,r.enemies,e,d,removed,ev,()=>rng(r));
+    P().onActivation?.(r,r.enemies,e,d,removed,ev,()=>rng(r),it,power);
     it.cd=itemCooldown(it,r);
   }
   const rarityOf=d=>d.rarity||'common';
   function dropEligible(d,boss,round){
+    if(d.forgeOnly)return false;
     if((d.unlockRound||1)>round)return false;
     return !d.recipe || (boss && d.recipe.every(id=>!C().items[id].recipe));
   }
@@ -474,6 +477,13 @@
   }
   function enemyDrop(p,foe,ev){
     const r=p.run;
+    if(foe.titanId){
+      // Titans supply the two-Mythic forge economy without allowing Ancients to
+      // bypass their recipes. Their guaranteed cache is separate from luck.
+      const myths=Object.values(C().items).filter(d=>d.rarity==='mythic'&&!d.recipe&&dropEligible(d,true,r.round));
+      if(myths.length)ev.push(collectDrop(p,makeItem(r,localPick(r,myths).id,1+Math.floor((r.round-1)/5)),foe));
+      T().defeated(foe,ev);return;
+    }
     // Independent kill rolls, normalized to the original headcount. The chance
     // Preserve a 24%/48% chance of at least one find across the whole wave,
     // independent of group size. Rarity is rolled separately, before item bias.
@@ -484,11 +494,11 @@
     for(let i=0;i<copies;i++){const item=rollDrop(r,foe.boss);item.level+=P().dropBonus(r,()=>rng(r));if((r.legacy?.ranks.anvil_blessing||0)&&rng(r)<r.legacy.ranks.anvil_blessing*.03)item.level++;ev.push(collectDrop(p,item,foe));}
   }
   function finish(p,ev){
-    const r=p.run,boss=r.round%4===0;
+    const r=p.run,titan=r.waveRules>=3&&!!T()?.bossForRound(r.round),boss=r.round%4===0||titan;
     if(L()){if(boss)L().guardian(p,r);r.emptyWaves=r.dropsThisWave?0:(r.emptyWaves||0)+1;const luck=r.legacy?.ranks.lucky_streak||0;if(luck&&r.emptyWaves>=7-luck){ev.push(collectDrop(p,rollDrop(r,boss)));r.emptyWaves=0;}r.dropsThisWave=0;}
     r.kills++;p.best=Math.max(p.best,r.round);
     const slot=routeSlot(r);p.routeMarks[slot]=Math.max(p.routeMarks[slot],r.round);
-    const h=heal(r,r.maxHp*(boss?.17:.075));if(h>=.5)add(ev,'heal','leaf',1,`+${Math.round(h)}`,'rest');
+    const h=heal(r,r.maxHp*(titan?.25:boss?.17:.075));if(h>=.5)add(ev,'heal','leaf',1,`+${Math.round(h)}`,'rest');
     P().victory(r,ev);
     for(let i=0;i<(r.bonusDrops||0);i++)ev.push(collectDrop(p,rollDrop(r,boss)));r.bonusDrops=0;
     next(p);add(ev,'round','leaf',1,`Round ${r.round}`,'round');
@@ -528,6 +538,13 @@
     }
     if(e.hp<=0 || r.hp<=0)return;
     const held=Math.max(e.stun,e.freeze||0),activeTime=Math.max(0,dt-held);
+    if(e.titanId)T().advance(r,e,activeTime,ev,{damage:(amount,element,enemy,events)=>{
+      const adjusted=P().incoming(r,amount,enemy,events,()=>rng(r))*(r.ailments.corrosion>0?1.15:1);
+      const dealt=hurt(r,adjusted,'strike',enemy,events);
+      add(events,'enemy',element,2,dealt<.5?'Blocked':`−${Math.round(dealt)}`,'titan-impact',enemy).sourceUid=enemy.uid;
+      return dealt;
+    }});
+    if(r.hp<=0||e.hp<=0)return;
     e.attackProgress+=activeTime/e.period*(e.chill>0?.50:1)*(e.rooted>0?.25:1);
     e.stun=Math.max(0,e.stun-dt);e.freeze=Math.max(0,(e.freeze||0)-dt);e.chill=Math.max(0,e.chill-dt);
     e.rooted=Math.max(0,e.rooted-dt);e.hauntTime=Math.max(0,e.hauntTime-dt);if(!e.hauntTime)e.haunt=0;
@@ -584,7 +601,7 @@
       while(r.enemies.some(e=>e.hp<=0&&!resolvedDeaths.has(e.uid)))for(const e of r.enemies){
         if(e.hp>0||resolvedDeaths.has(e.uid))continue;resolvedDeaths.add(e.uid);
         const event=add(ev,'kill',e.weak,1,e.name,'kill',e);
-        event.enemy={uid:e.uid,lane:e.lane,name:e.name,id:e.id,species:e.species,color:e.color,boss:e.boss,hp:0,maxHp:e.maxHp};
+        event.enemy={uid:e.uid,lane:e.lane,name:e.name,id:e.id,species:e.species,color:e.color,boss:e.boss,hp:0,maxHp:e.maxHp,...(e.titanId?{titanId:e.titanId,titan:e.titan}:{})};
         r.foes++;r.xp+=((e.boss?17:8)+Math.sqrt(r.round)*1.4)*expeditionXpRate*(1+(r.legacy?.ranks.guardian_wisdom||0)*.05);
         P().onDeaths?.(r,[e],r.enemies,ev,()=>rng(r));
         enemyDrop(p,e,ev);
@@ -703,7 +720,7 @@
       if(outcome!=='full')r.lastDrop.uid=integer(entry.uid,1,r.nextUid-1);
       if(entry.enemyId!==undefined){
         const enemyId=id(entry.enemyId,enemyIds),foe=C().enemies.find(e=>e.id===enemyId);
-        if(foe.region!==routeInfo(r,r.lastDrop.round).region)bad();
+        if(foe.titan?T()?.bossForRound(r.lastDrop.round)?.id!==foe.id:foe.region!==routeInfo(r,r.lastDrop.round).region)bad();
         Object.assign(r.lastDrop,{enemyId,enemyName:foe.name,targetUid:integer(entry.targetUid,1,integer(s.nextEnemyUid,2)-1),lane:integer(entry.lane,0,4)});
       }
     }
@@ -744,13 +761,16 @@
     const enemyUids=new Set(), lanes=new Set();
     r.enemies=stored.map(rawEnemy=>{
       const v=object(rawEnemy),enemyId=id(v.id,enemyIds),d=C().enemies.find(e=>e.id===enemyId);
-      if(d.region!==r.region)bad();
+      if(!d.titan&&d.region!==r.region)bad();
       const lane=upgraded?integer(v.lane,0,r.waveSize-1):0;
-      if(d.boss!==(r.round%4===0 && lane===0))bad();
+      const titanRound=r.waveRules>=3?T()?.bossForRound(r.round):null;
+      if(d.titan){if(!titanRound||d.id!==titanRound.id||lane!==0||r.waveSize!==3)bad();}
+      else if(d.boss!==(!titanRound&&r.round%4===0&&lane===0))bad();
       const uid=upgraded?integer(v.uid,1,r.nextEnemyUid-1):r.nextEnemyUid++;
       if(enemyUids.has(uid)||lanes.has(lane))bad();enemyUids.add(uid);lanes.add(lane);
       const e=buildEnemy(r.round,d,r.waveSize,r.waveRules);e.uid=uid;e.lane=lane;
       if(v.boss!==e.boss || v.maxHp!==e.maxHp || v.damage!==e.damage || v.period!==e.period)bad();
+      if(d.titan)e.titan=T().validateState(v.titan);
       e.hp=number(v.hp,0,e.maxHp);
       if(r.phase==='fight' && e.hp===0)bad();
       e.attackProgress=number(v.attackProgress,0,1);e.ward=integer(v.ward,0,1);e.swings=integer(v.swings);

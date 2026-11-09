@@ -168,14 +168,16 @@ test('antivenom and blast guard reduce poison and volatile damage while ward bre
   assert.ok(counter.e.hp<baseline.e.hp);assert.equal(counter.e.ward,0);
 });
 
-test('the expanded catalog offers pure support, control and 274 fusion paths through three stages',()=>{
+test('the expanded catalog preserves 274 fusion paths and adds eleven Ancient destinations',()=>{
   const {C,E}=load(),items=Object.values(C.items),recipes=items.filter(d=>d.recipe);
-  assert.equal(items.length,430,'the catalog includes the additional 50 fusion relics');
+  const ordinary=items.filter(d=>!d.ancient),ordinaryRecipes=recipes.filter(d=>!d.ancient);
+  assert.equal(ordinary.length,430,'all previous expansion relics remain');
+  assert.equal(items.filter(d=>d.ancient).length,11);
   assert.equal(items.filter(d=>!d.recipe).length,156,'all regular finds remain available');
-  assert.equal(recipes.length,274);
-  assert.equal(recipes.filter(d=>d.fusionDepth===1).length,208);
-  assert.equal(recipes.filter(d=>d.fusionDepth===2).length,57);
-  assert.equal(recipes.filter(d=>d.fusionDepth===3).length,9);
+  assert.equal(ordinaryRecipes.length,274);
+  assert.equal(ordinaryRecipes.filter(d=>d.fusionDepth===1).length,208);
+  assert.equal(ordinaryRecipes.filter(d=>d.fusionDepth===2).length,57);
+  assert.equal(ordinaryRecipes.filter(d=>d.fusionDepth===3).length,9);
   for(const style of ['heal','shield','stun','freeze']){
     assert.ok(items.filter(d=>d.style===style&&!d.recipe).length>=3,style+' needs several obtainable base relics');
     assert.ok(items.some(d=>d.style===style&&d.recipe),style+' needs fusion upgrades');

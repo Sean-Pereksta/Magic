@@ -134,8 +134,13 @@
       (drawings[item.icon]||drawings.rock).split('/').forEach((line,y)=>Array.from(line).forEach((v,x)=>{if('1234wab'.includes(v))pixels.set(`${x},${y}`,{x,y,v});}));
       // A two-tone spark in the corner marks an artifact made in the forge.
       if(item.recipe){const advanced=item.recipe.some(k=>window.Catalog.items[k].recipe);const x=advanced?2:13,y=advanced?3:12;for(const [dx,dy,v] of [[0,-1,'w'],[-1,0,'w'],[0,0,'4'],[1,0,'w'],[0,1,'w']])pixels.set(`${x+dx},${y+dy}`,{x:x+dx,y:y+dy,v});}
-      const rank=['common','uncommon','rare','epic','mythic'].indexOf(item.rarity);
+      const rank=['common','uncommon','rare','epic','mythic','ancient'].indexOf(item.rarity);
       if(rank>0)for(let i=0;i<rank;i++)pixels.set(`${12+i%2},${11+Math.floor(i/2)}`,{x:12+i%2,y:11+Math.floor(i/2),v:'r'});
+      if(item.ancient){
+        // An Ancient has a split celestial seal and luminous runes in its own
+        // silhouette, visible even without CSS glow or animation.
+        for(const [x,y,v] of [[1,1,'r'],[0,2,'r'],[2,2,'r'],[1,3,'4'],[14,1,'4'],[13,2,'r'],[15,2,'r'],[14,3,'r'],[3,13,'r'],[5,14,'4'],[7,13,'r']])pixels.set(x+','+y,{x,y,v});
+      }
       const outlines=new Set();for(const {x,y} of pixels.values()){for(const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1]]){const k=`${x+dx},${y+dy}`;if(!pixels.has(k))outlines.add(k);}}
       const paths={outline:[...outlines].map(k=>'M'+k+'h1v1h-1z')};for(const {x,y,v} of pixels.values())(paths[v]??=[]).push(`M${x},${y}h1v1h-1z`);
       const layers=Object.entries(paths).map(([k,v])=>({fill:palette[k]||'#1b2230',d:v.join('')}));
@@ -168,7 +173,7 @@
     if(heldCache.has(id))return heldCache.get(id);
     const canvas=document.createElement('canvas');canvas.width=42;canvas.height=49;
     const g=canvas.getContext('2d'),color=window.Catalog.elements[item.element].color;
-    const rank=Math.max(0,['common','uncommon','rare','epic','mythic'].indexOf(item.rarity));
+    const rank=Math.max(0,['common','uncommon','rare','epic','mythic','ancient'].indexOf(item.rarity));
     const tierColor=window.Catalog.rarities[item.rarity]?.color||'#b8c6a6';
     const ink='#292b34',metal=shade(color,[240,245,227],.57),shadeMetal=shade(color,[30,40,51],.45),gold=rank?tierColor:'#9da790';
     const B=(c,x,y,w,h)=>{g.fillStyle=c;g.fillRect(Math.round(x),Math.round(y),w,h);};
@@ -217,6 +222,10 @@
     for(let i=0;i<12;i++)if(hash&(1<<i)){B(metal,17+(i%3)*2,17+Math.floor(i/3)*3,1,1);}
     if(item.special){B(ink,14,29,7,5);B(gold,15,30,5,3);B(color,17,29,1,5);}
     if(rank){B(ink,6,33,8,3);B(tierColor,7,34,6,1);for(let i=0;i<rank;i++)B(tierColor,8+(i%2)*3,37+Math.floor(i/2)*3,2,2);}
+    if(item.ancient){
+      for(const [x,y] of [[5,7],[32,9],[6,24],[34,27]]){B(ink,x-2,y-2,5,5);B(tierColor,x-1,y,3,1);B(tierColor,x,y-1,1,3);B('#fffde1',x,y,1,1);}
+      L('#80ffe2',14,18,21,11);B('#fffde1',20,10,2,3);
+    }
     const result={canvas,grip:{x:12,y:36},family,element:item.element};heldCache.set(id,result);return result;
   }
   window.ItemArt={svg,sprite,held};

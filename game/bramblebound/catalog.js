@@ -49,7 +49,8 @@
     uncommon:{name:'Uncommon',color:'#8ed18a',rank:1,powerScale:1.12},
     rare:{name:'Rare',color:'#79bfff',rank:2,powerScale:1.28},
     epic:{name:'Epic',color:'#c59aff',rank:3,powerScale:1.5},
-    mythic:{name:'Mythic',color:'#ffd17a',rank:4,powerScale:1.8}
+    mythic:{name:'Mythic',color:'#ffd17a',rank:4,powerScale:1.8},
+    ancient:{name:'Ancient',color:'#75ffe2',rank:5,powerScale:2.6}
   };
   const items = {};
   const milestones = {3:'Echo • An afterimage follows each activation for 40% damage.',5:'Guard pulse • Each activation adds a shield in a visible ring.',10:'Nova • Each activation adds a burst for 65% damage.'};
@@ -918,6 +919,60 @@
       def.duration=Math.round(Math.max(def.duration,...parents.filter(d=>d.style===def.style).map(d=>d.duration*1.05))*1000)/1000;
     }
     def.rarityScore=Math.round((def.power/def.cooldown*(styleValue[def.style]||1)+(def.special?2.5:0)+(def.counter?.8:0))*100)/100;
+  }
+  // Ancient artifacts are deliberately finalized after the ordinary recipe
+  // graph: only two finalized Mythics can create one, and none enter loot pools.
+  // Each is a substantial potency/rate increase before the usual +1 fusion level.
+  const ancientRecipes=[
+    ['ancient_genesis_tide','Trident of the Genesis Tide','kingtide_conch','mycelium_crook','storm','guard',68,2.05,'conch','tidal',
+      'Each activation unleashes a living tide for 120% power against every foe, restores 8% maximum HP and grants 8% maximum HP as shield. Removes corrosion and snare.',
+      'Luminous waves and branching turquoise antlers crown the traveler.'],
+    ['ancient_worldroot_crown','Crown of the First Grove','worldtree','ambrosia','leaf','poison',72,1.9,'crown','worldroot',
+      'Each activation erupts across every foe for 90% power, adds 120% power as poison and roots for 1.8 seconds. Restores 6% maximum HP.',
+      'A living antler crown unfurls emerald leaves and orbiting seed stars.'],
+    ['ancient_sunforged_cataclysm','Sunforged Cataclysm','volcano','suntalon','fire','burn',96,2.25,'greatsword','sunfire',
+      'Each activation detonates every foe for 160% power and ignites them for another 160% power. Burning targets suffer an additional 80% blast.',
+      'Solar wings flare behind the bearer while molten runes circle their feet.'],
+    ['ancient_winterheart','Heart of the Endless Winter','oracle','cometfall','frost','freeze',75,2.9,'shard','winter',
+      'Each activation freezes the entire formation for at least 2.8 seconds, growing with relic level up to eight seconds, and grants 10% maximum HP as shield. Deals no damage.',
+      'An ice crystal halo sheds snowflakes over a flowing aurora mantle.'],
+    ['ancient_stormsovereign','Regalia of the Storm Sovereign','tempest','daybreak','storm','shock',82,1.95,'coil','storm',
+      'Each activation calls six thunderbolts at 75% power each, cycling through living foes, and grants 8% maximum HP as shield. Bolts interrupt attack charge.',
+      'Six lightning motes orbit an electric crown and a crackling storm cloak.'],
+    ['ancient_titan_aegis','Aegis of the World Titan','titanshell','gravity_maul','stone','shield',110,2.35,'shell','titan',
+      'Each activation fills the shield to its 40% maximum HP cap. While equipped, direct incoming hits are reduced by 30%. Deals no damage.',
+      'Floating stone plates form colossal spectral armor around the bearer.'],
+    ['ancient_eclipse_reaper','Eclipse of a Thousand Souls','nightjar','phoenix_diadem','spirit','drain',88,2.15,'scythe','eclipse',
+      'Each activation sends a soul wave through every foe for 140% power and restores HP equal to 30% of the damage removed by that wave.',
+      'A black moon halo frames violet soul wings and drifting silver spirits.'],
+    ['ancient_starfall_orrery','Orrery of Falling Heavens','firstlight_judgment','atlas_of_returns','spirit','strike',120,2.3,'wand','starfall',
+      'Each activation drops three meteors at 130% power each, cycling through living foes. Meteor impacts strip wards and add three fracture, up to the fracture cap.',
+      'Miniature planets orbit the traveler as gold star trails sweep overhead.'],
+    ['ancient_everdawn_grail','Grail of the Eternal Dawn','everbloom_fountain','sunheart_sanctum','leaf','heal',105,2.4,'gourd','everdawn',
+      'Each activation adds 18% maximum HP healing, grants 15% maximum HP as shield and cleanses every traveler ailment and venom. Deals no damage.',
+      'Radiant lotus petals and golden healing ribbons surround the traveler.'],
+    ['ancient_tempest_hourglass','Hourglass Before the First Storm','thunderous_silence','silent_solstice_bells','storm','stun',82,2.6,'hourglass','hourglass',
+      'Each activation stuns the entire formation for at least 2.6 seconds, growing with relic level up to eight seconds, and advances other relic cooldowns by 0.8 seconds. Deals no damage.',
+      'Shattered clock rings and teal time shards turn around the traveler.'],
+    ['ancient_voidheart','Voidheart of the Unmade World','eclipse_worldreaper','stormwinter_singularity','spirit','pierce',180,2.65,'orb','void',
+      'Each activation collapses every foe into a singularity for 220% power, removes wards and roots them for 2.5 seconds. While equipped, primary relic hits against guardians deal 50% more damage.',
+      'A dark gravitational halo bends violet stars around a luminous event horizon.']
+  ];
+  for(const [id,name,a,b,el,style,power,cooldown,icon,aura,ancientPower,auraDescription] of ancientRecipes){
+    const parents=[items[a],items[b]];
+    if(parents.some(d=>!d||d.rarity!=='mythic'))throw new Error('Ancient artifacts require two Mythics: '+id);
+    item(id,name,el,style,power,cooldown,icon,'An artifact older than the road itself.',[a,b],'ancient',Math.max(...parents.map(d=>d.unlockRound)));
+    const def=items[id],scale=rarities.ancient.powerScale;
+    const potency=Math.max(...parents.map(d=>d.power*rarities.mythic.powerScale))*1.8;
+    const rate=Math.max(...parents.map(d=>d.power*rarities.mythic.powerScale/d.cooldown))*cooldown*1.8;
+    Object.assign(def,{ancient:true,forgeOnly:true,aura,ancientPower,auraDescription,
+      power:Math.ceil(Math.max(power,potency/scale,rate/scale)*100)/100,
+      fusionDepth:1+Math.max(...parents.map(d=>d.fusionDepth)),
+      description:'Forge two Mythics to awaken an Ancient. '+ancientPower+' '+auraDescription});
+    if(style==='freeze')def.duration=2.8;
+    if(style==='stun')def.duration=2.6;
+    def.rarityScore=Math.round(def.power/cooldown*(styleValue[style]||1)*100)/100;
+    recipes.push([id,name,a,b,el,style,def.power,cooldown,icon]);
   }
   const pairKey=(a,b)=>a<b?a+'|'+b:b+'|'+a;
   const recipeMap=new Map(recipes.map(([id,,a,b])=>[pairKey(a,b),id]));
