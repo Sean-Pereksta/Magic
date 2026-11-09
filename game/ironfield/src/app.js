@@ -976,7 +976,7 @@
       }
       reload.textContent=`${loaded}/${total} loaded${Number.isFinite(next)?' · Next ready in '+next.toFixed(1)+' s':''}`;
       if(selectedType.id==='musketeer'){
-        const r=regs[0],status={melee:'Line broken · Close combat',reforming:'Reforming the firing line',marching:'Marching · Hold to form ranks',forming:'Forming ranks',ready:'Waiting for targets in range',aiming:'Aiming the company volley',reloading:'Reloading the company volley'}[r.volleyStatus]||'Forming ranks';
+        const r=regs[0],status={melee:'Line broken · Close combat',reforming:'Reforming the firing line',marching:'Moving into firing position',forming:'Forming ranks',ready:'Waiting for targets in range',aiming:'Aiming the company volley',reloading:'Reloading the company volley'}[r.volleyStatus]||'Forming ranks';
         const wait=Math.max(0,(r.nextVolleyAt||0)-engine.time);
         reload.textContent=`${status}${wait>.1&&r.volleyStatus!=='melee'?' · '+wait.toFixed(1)+' s':''} · ${loaded}/${total} loaded`;
       }
