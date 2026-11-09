@@ -41,7 +41,7 @@ async function main(){
         const chosen=[...new Set([weapons[0],...weapons.filter(d=>d.element!==weapons[0].element)])].slice(0,4);
         if(chosen.length!==4)throw Error('Four distinct expansion weapons required');
         r.active=chosen.map((d,i)=>({uid:i+1,id:d.id,level:20,cd:i*.07,slot:i}));
-        r.pack=Object.keys(C.rarities).map((tier,i)=>({uid:i+5,id:Object.values(C.items).find(d=>d.rarity===tier&&!d.recipe).id,level:20,cd:0,slot:i}));r.nextUid=10;
+        r.pack=Object.keys(C.rarities).map((tier,i)=>({uid:i+5,id:Object.values(C.items).find(d=>d.rarity===tier&&(tier==='ancient'||!d.recipe)).id,level:20,cd:0,slot:i}));r.nextUid=5+r.pack.length;
         p.seenItems=[...new Set([...chosen.map(d=>d.id),...r.pack.map(it=>it.id)])];r.walkLeft=.001;E.tick(p,.002);
         const normalized=E.validate(JSON.parse(JSON.stringify(p)));
         return {save:{game:'bramblebound',format:1,profile:normalized,settings:{audio:false,motion}},itemId:chosen[0].id,itemName:chosen[0].name,region:C.regions[r.region].name};
@@ -55,21 +55,21 @@ async function main(){
       const art=await page.locator('#world').evaluate(canvasPainted);assert.ok(art.opaque>art.width*art.height*.8);assert.ok(art.colors>50,'expanded scene and held weapons must paint actual artwork');
       if(!spec.motion)assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('reduced-art')),true);
       if(shots){fs.mkdirSync(shots,{recursive:true});await page.screenshot({path:path.join(shots,'expansion-combat-'+spec.width+'.png'),fullPage:true});}
-      const tiers=['common','uncommon','rare','epic','mythic'];
+      const tiers=['common','uncommon','rare','epic','mythic','ancient'];
       assert.deepEqual(await page.locator('#pack-tier option').evaluateAll(options=>options.map(o=>o.value)),['all',...tiers]);
       for(const tier of tiers){await page.locator('#pack-tier').selectOption(tier);assert.equal(await page.locator('#pack .gear-slot[data-uid]').count(),1);assert.equal(await page.locator('#pack .gear-slot[data-uid]').getAttribute('data-rarity'),tier);}
-      await page.locator('#pack-tier').selectOption('all');assert.equal(await page.locator('#pack .gear-slot[data-uid]').count(),5);
+      await page.locator('#pack-tier').selectOption('all');assert.equal(await page.locator('#pack .gear-slot[data-uid]').count(),6);
       await page.locator('#equipped .gear-slot[data-uid="1"]').click();await page.locator('[data-selection="details"]').click();
       const details=await page.locator('#dialog-body').innerText();assert.ok(details.includes(fixture.itemName));assert.match(details,/Element ·/i);assert.match(details,/Signature ·/i);assert.match(details,/Counter ·/i);assert.match(details,/Rarity power ×/i);
       await page.locator('#close-btn').click();
       await page.locator('[data-dialog="route"]').click();await page.locator('#modal[open] .atlas-grid').waitFor();assert.equal(await page.locator('#modal .atlas-stop').count(),35);
-      assert.equal(await page.locator('#modal .rarity-odds tbody tr').count(),5);assert.deepEqual(await page.locator('#modal .rarity-odds tbody tr th').allTextContents(),['Common','Uncommon','Rare','Epic','Mythic']);
+      assert.equal(await page.locator('#modal .rarity-odds tbody tr').count(),6);assert.deepEqual(await page.locator('#modal .rarity-odds tbody tr th').allTextContents(),['Common','Uncommon','Rare','Epic','Mythic','Ancient']);assert.match(await page.locator('#modal .rarity-odds tbody tr').last().innerText(),/Forge only/i);
       await page.locator('#modal .atlas-stop[data-region="34"]').click();assert.equal(await page.locator('#modal .dialog-title').innerText(),'Everdawn Observatory');
       const regionArt=await page.locator('#region-art').evaluate(canvasPainted);assert.ok(regionArt.colors>30);assert.ok(regionArt.opaque>regionArt.width*regionArt.height*.8);
       await page.locator('#modal [data-species]').first().click();assert.match(await page.locator('#dialog-body').innerText(),/Enemy effect ·/i);assert.match(await page.locator('#dialog-body').innerText(),/Counter/i);
       await page.locator('#close-btn').click();
       await page.locator('nav [data-nav="guide"]').click();
-      assert.equal(await page.locator('#guide-page [data-guide-tier]').count(),6);
+      assert.equal(await page.locator('#guide-page [data-guide-tier]').count(),7);
       for(const tier of tiers){
         await page.locator('#guide-page [data-guide-tier="'+tier+'"]').click();const tierCards=page.locator('#guide-page .guide-card[data-catalog]');await tierCards.first().waitFor();
         assert.equal(await tierCards.evaluateAll((nodes,tier)=>nodes.every(n=>n.dataset.rarity===tier),tier),true,'field guide '+tier+' filter');
@@ -81,7 +81,7 @@ async function main(){
       await matches.first().click();assert.match(await page.locator('#dialog-body').innerText(),/Counter · wardbreaker/i);await page.locator('#close-btn').click();
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
       assert.deepEqual(errors,[]);assert.deepEqual(missing,[]);
-      results.push(spec.width+'px: saved late-region encounter, four held expansion relics, rendered combat'+(!spec.motion?' with reduced motion':'')+', item effects, 35-stop atlas, five-tier rarity table and working backpack/guide filters, final-region art, enemy counters, searchable counter gear; no errors or missing assets');
+      results.push(spec.width+'px: saved late-region encounter, four held expansion relics, rendered combat'+(!spec.motion?' with reduced motion':'')+', item effects, 35-stop atlas, five loot tiers plus forge-only Ancient and six-tier backpack/guide filters, final-region art, enemy counters, searchable counter gear; no errors or missing assets');
       await context.close();
     }
     for(const width of [1440,390]){

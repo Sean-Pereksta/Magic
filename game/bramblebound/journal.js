@@ -11,7 +11,7 @@
   const nfmt = n => n.toLocaleString();
   const utilityStyles=new Set(['heal','shield','stun','freeze']);
   const styleLabel = style => ({mend:'Healing strike',drain:'Lifesteal',heal:'Healing only',shield:'Shield only',stun:'Stun only',freeze:'Freeze only'}[style]||cap(style));
-  const fusionStage=item=>item.recipe?({1:'First-stage fusion',2:'Second-stage fusion',3:'Third-stage fusion'}[item.fusionDepth||1]||'Stage '+item.fusionDepth+' fusion'):'';
+  const fusionStage=item=>item.ancient?'Ancient fusion · 2 Mythics':item.recipe?({1:'First-stage fusion',2:'Second-stage fusion',3:'Third-stage fusion'}[item.fusionDepth||1]||'Stage '+item.fusionDepth+' fusion'):'';
   function parseRelicSearch(query){
     const stages=new Set();
     const text=String(query).toLocaleLowerCase().replace(/\b(?:(first|second|third)[\s-]*stage|stage[\s-]*(\d+))\b/g,(_,word,digit)=>{
@@ -19,7 +19,7 @@
     });
     return {terms:text.trim().split(/\s+/).filter(Boolean),stages};
   }
-  const matchesFusionStage=(item,stages)=>!stages.size||!!item.recipe&&stages.has(item.fusionDepth||1);
+  const matchesFusionStage=(item,stages)=>!stages.size||!item.ancient&&!!item.recipe&&stages.has(item.fusionDepth||1);
   function relicStat(profile,it){
     const d=items[it.id],n=value=>Number(value.toFixed(2)).toLocaleString();
     if((d.style==='stun'||d.style==='freeze')&&E.itemDuration)return n(E.itemDuration(profile,it))+'s '+d.style+' duration';
@@ -28,13 +28,14 @@
   }
   const elementText={leaf:'Every hit adds poison. Every third hit roots the foe, slowing attack charge by 75% for 0.8s.',fire:'Every hit leaves a burning ember. Fire ignites poisoned foes into a wildfire that splashes nearby enemies.',frost:'Every hit chills attack charge. Every third hit freezes the foe for 0.65s.',storm:'Hits disrupt windups. Every third hit chains lightning to two other foes; chilled foes conduct an extra arc.',stone:'Hits stagger windups and stack up to five Fractures. Each fracture increases direct relic damage taken by 3.5%.',spirit:'Hits leave a four-second haunt and grant a small shield. Every third spirit hit releases a delayed soul echo.'};
   const afflictionText={corrosive:'Corrosion: incoming damage rises 15% and shields erode for six seconds. Counter: Purify.',entangling:'Entangle: relics recharge 30% more slowly for 2.5 seconds. Counter: Unbinding.',hexed:'Hex: relics deal 20% less damage for four seconds. Counter: Purify.',scorching:'Scorch: strikes leave lingering fire damage. Counter: Blastguard cuts it 75%; Thaw reduces it; Cleanse removes it.',freezing:'Frostbite: relics recharge 35% more slowly for 2.5 seconds. Counter: Thaw.',shocking:'Static: abilities recharge 40% more slowly for 0.8 seconds. Counter: Insulated also reduces these strikes 15%.',bulwark:'Bulwark: begins warded and renews its ward every second strike. Counter: Wardbreaker, pierce attacks, or a Wardbreak signature.'};
-  function relicEffects(item){return '<div class="subhead">'+(utilityStyles.has(item.style)?'Utility · ':'Element · ')+esc(elements[item.element].name)+'</div><p class="body-copy">'+esc(utilityStyles.has(item.style)?'This relic deals no damage. Its activations and level milestones strengthen its '+({heal:'healing',shield:'shield',stun:'stun',freeze:'freeze'}[item.style])+' effect. Its element supports affinity talents; elemental hit effects require an offensive relic.':elementText[item.element])+'</p>'+(item.special?'<div class="subhead">Signature · '+esc(item.special)+'</div><p class="body-copy">'+esc(item.specialDescription)+'</p>':'')+(item.counter?'<div class="subhead">Counter · '+esc(item.counter)+'</div><p class="body-copy">'+esc(item.counterDescription)+'</p>':'');}
+  function ancientNotes(item){return item.ancient?'<section class="ancient-notes"><div class="eyebrow">ANCIENT · ABOVE MYTHIC</div><div class="subhead">Ancient power</div><p class="body-copy">'+esc(item.ancientPower)+'</p><div class="subhead">Character aura</div><p class="body-copy">'+esc(item.auraDescription)+'</p></section>':'';}
+  function relicEffects(item){return ancientNotes(item)+'<div class="subhead">'+(utilityStyles.has(item.style)?'Utility · ':'Element · ')+esc(elements[item.element].name)+'</div><p class="body-copy">'+esc(utilityStyles.has(item.style)?'This relic deals no damage. Its activations and level milestones strengthen its '+({heal:'healing',shield:'shield',stun:'stun',freeze:'freeze'}[item.style])+' effect. Its element supports affinity talents; elemental hit effects require an offensive relic.':elementText[item.element])+'</p>'+(item.special?'<div class="subhead">Signature · '+esc(item.special)+'</div><p class="body-copy">'+esc(item.specialDescription)+'</p>':'')+(item.counter?'<div class="subhead">Counter · '+esc(item.counter)+'</div><p class="body-copy">'+esc(item.counterDescription)+'</p>':'');}
   function elementHandbook(){return '<details class="element-handbook frame"><summary>Element effects & counter gear</summary><div class="element-notes">'+Object.entries(elementText).map(([id,text])=>'<article style="--el:'+elements[id].color+'"><strong>'+esc(elements[id].name)+'</strong><p>'+esc(text)+'</p></article>').join('')+'</div><p>Healing-only relics restore HP, shield-only relics build protection, and stun-only or freeze-only relics stop enemy attack charge. These four roles deal no damage, including at milestone levels. Offensive relics apply the elemental hit effects above.</p><p>Counter gear works while equipped. Cleansers remove ailments when their relic activates. Search for Cleanse, Antivenom, Insulated, Thaw, Unbinding, Purify, Blastguard, or Wardbreaker. Inspect enemies to plan your loadout.</p></details>';}
   function relicSearchText(item){
     const effect={mend:'healing healer restore health',heal:'healing healer restore health support utility healing only zero damage',drain:'lifesteal life steal life-steal leech siphon',guard:'shield shielding barrier guard',shield:'shield shielding barrier guard support utility shield only zero damage',stun:'stun stunning interrupt control utility stun only zero damage',freeze:'freeze freezing frozen ice control utility freeze only zero damage'}[item.style]||'';
     const home=regions[item.dropRegion];
     const stage=fusionStage(item);
-    return [item.name,item.element,item.style,effect,stage,stage.replace('-',' '),item.recipe?'stage '+(item.fusionDepth||1):'',item.rarity,item.special||'',item.specialDescription||'',item.counter||'',item.counterDescription||'',home?.name||''].join(' ').toLowerCase();
+    return [item.name,item.element,item.style,effect,stage,stage.replace('-',' '),item.recipe&&!item.ancient?'stage '+(item.fusionDepth||1):'',item.rarity,item.ancientPower||'',item.auraDescription||'',item.special||'',item.specialDescription||'',item.counter||'',item.counterDescription||'',home?.name||''].join(' ').toLowerCase();
   }
   const glyph = name => '<i aria-hidden="true" data-glyph="'+name+'"></i>';
   const traitText = {
@@ -58,6 +59,7 @@
     return '<span class="tier-badge" data-rarity="'+tier+'">'+esc(window.Catalog.rarities[tier].name)+'</span>';
   }
   function relicSource(item){
+    if(item.ancient)return '<div class="subhead">Ancient forge</div><p class="body-copy">Combine the two Mythic relics listed above. Both ingredients are consumed; the Ancient is one level above the higher ingredient. Ancients can only be forged and never drop as loot.</p>';
     const firstOrder=item.recipe?.every(id=>!items[id].recipe),forgeOnly=item.recipe&&!firstOrder;
     let line=forgeOnly?'Forge the two ingredients listed above. This relic is available only through fusion.':
       (firstOrder?'Guardians can drop this fusion starting at wave '+item.unlockRound+'. You can also forge it whenever you have both ingredients.':
@@ -71,9 +73,9 @@
       const start=info.circuitStart+i*4+(i>=info.regionsPerCircuit?info.regionsPerCircuit*4:0),here=i===r.region;
       return '<button data-region="'+i+'" class="atlas-stop'+(here?' here':'')+'" style="--region-color:'+reg.color+'" '+(here?'aria-current="step"':'')+'><span class="atlas-number">'+String(i+1).padStart(2,'0')+'</span><span><b>'+esc(reg.name)+'</b><small>Waves '+start+'–'+(start+3)+(here?' · You are here':'')+'</small></span></button>';
     }).join('');
-    const odds=E.lootOdds(r),boss=E.lootOdds({...r,round:info.regionEnd},true),pct=f=>Number((f*100).toFixed(2))+'%';
+    const odds=E.lootOdds(r),boss=E.lootOdds({...r,round:info.regionEnd},true),pct=f=>Number(((f||0)*100).toFixed(2))+'%';
     return '<h2 class="dialog-title">Route atlas</h2><p class="body-copy">'+n+' regions · '+(n*4)+' waves per full circuit. Select a stop to see the landscape, its creatures and its relics.'+(info.regionsPerCircuit<n?' Your saved '+info.regionsPerCircuit+'-region circuit will finish before the expanded road begins next circuit.':'')+'</p><div class="atlas-grid">'+rows+'</div>'+
-      '<div class="subhead">Finds & rarity · '+esc(regions[r.region].name)+'</div><p class="body-copy">A normal wave has a '+pct(E.dropChances.normal)+' chance of at least one relic; a guardian wave has a '+pct(E.dropChances.guardian)+' chance, regardless of group size. These are the rarity odds for each relic that drops:</p><table class="rarity-odds"><thead><tr><th>Tier</th><th>Normal</th><th>Guardian</th><th>Power</th></tr></thead><tbody>'+Object.entries(window.Catalog.rarities).map(([key,tier])=>'<tr><th style="color:'+tier.color+'">'+esc(tier.name)+'</th><td>'+pct(odds[key])+'</td><td>'+pct(boss[key])+'</td><td>×'+tier.powerScale+'</td></tr>').join('')+'</tbody></table><p class="mini-note">Unavailable tiers have zero odds until their relics unlock. Fusion recipes still let you craft stronger gear from the right ingredients.</p>';
+      '<div class="subhead">Finds & rarity · '+esc(regions[r.region].name)+'</div><p class="body-copy">A normal wave has a '+pct(E.dropChances.normal)+' chance of at least one relic; a guardian wave has a '+pct(E.dropChances.guardian)+' chance, regardless of group size. These are the rarity odds for each relic that drops:</p><table class="rarity-odds"><thead><tr><th>Tier</th><th>Normal</th><th>Guardian</th><th>Power</th></tr></thead><tbody>'+Object.entries(window.Catalog.rarities).map(([key,tier])=>'<tr><th style="color:'+tier.color+'">'+esc(tier.name)+'</th><td>'+(key==='ancient'?'Forge only':pct(odds[key]))+'</td><td>'+(key==='ancient'?'Forge only':pct(boss[key]))+'</td><td>×'+tier.powerScale+'</td></tr>').join('')+'</tbody></table><p class="mini-note">Unavailable tiers have zero odds until their relics unlock. Fusion recipes still let you craft stronger gear from the right ingredients.</p>';
   }
   function regionDossier(r,i){
     const reg=regions[i],start=E.routeInfo(r).circuitStart+4*i,roster=enemies.filter(e=>e.region===i);
@@ -96,7 +98,7 @@
   function enemyCard(enemy, seen) {
     return `<button type="button" class="frame guide-card" data-species="${esc(enemy.id)}">
       <canvas class="icon-tile" data-portrait-id="${esc(enemy.id)}" width="48" height="48" style="--el:${enemy.color}" aria-hidden="true"></canvas>
-      <span><b>${esc(enemy.name)}</b><small>${esc(regions[enemy.region].name)} · ${enemy.boss ? 'Guardian' : cap(enemy.trait)}</small>${enemy.affliction?'<small>'+esc(cap(enemy.affliction))+'</small>':''}<small>${seen ? '✓ Encountered' : 'Unseen'}</small></span>
+      <span><b>${esc(enemy.name)}</b><small>${esc(enemy.titan?'Ten-round Titan':regions[enemy.region].name)} · ${enemy.titan?'First at round '+((globalThis.Titans.definitions.indexOf(enemy)+1)*10):enemy.boss ? 'Guardian' : cap(enemy.trait)}</small>${enemy.affliction?'<small>'+esc(cap(enemy.affliction))+'</small>':''}<small>${seen ? '✓ Encountered' : 'Unseen'}</small></span>
     </button>`;
   }
   function guide(profile, tab='items', query='', tier='all') {
@@ -109,7 +111,7 @@
     const results = entries.filter(entry=>{
       if(!isUpgrade&&!isEnemy&&tier!=='all'&&entry.rarity!==tier)return false;
       if(!matchesFusionStage(entry,stages))return false;
-      const fields = isUpgrade?[entry.name,entry.element,entry.kind,entry.category,entry.description]:isEnemy ? [entry.name, entry.trait, entry.affliction||'',afflictionText[entry.affliction]||'',entry.species, regions[entry.region].name, entry.boss?'guardian boss':'', 'weak '+entry.weak, 'resists '+entry.resist] :
+      const fields = isUpgrade?[entry.name,entry.element,entry.kind,entry.category,entry.description]:isEnemy ? [entry.name, entry.trait, entry.affliction||'',afflictionText[entry.affliction]||'',entry.species, regions[entry.region]?.name||'Ten-round Titan',entry.description||'',...(entry.moves||[]).map(m=>m.name+' '+m.description), entry.boss?'guardian boss':'', 'weak '+entry.weak, 'resists '+entry.resist] :
         [relicSearchText(entry),...(isRecipe ? entry.recipe.map(id=>items[id].name) : [])];
       const key = fields.join(' ').toLocaleLowerCase(); return terms.every(term=>key.includes(term));
     });
@@ -119,7 +121,7 @@
         <input id="guide-search" class="search" type="search" value="${esc(query)}" aria-label="${hint}" placeholder="${hint}"></div>
         ${!isUpgrade&&!isEnemy?'<div class="guide-filters"><div class="guide-roles" aria-label="Rarity filter"><span>Rarity</span>'+['all',...Object.keys(window.Catalog.rarities)].map(t=>'<button type="button" data-guide-tier="'+t+'" data-rarity="'+t+'" aria-pressed="'+(tier===t)+'">'+(t==='all'?'All':window.Catalog.rarities[t].name)+'</button>').join('')+'</div>'+(tab==='items'?'<div class="guide-roles" aria-label="Find gear by role"><span>Gear roles</span>'+['Healing','Shield','Stun','Freeze','Lifesteal'].map(role=>'<button type="button" data-gear-role="'+role+'" aria-pressed="'+(query.toLowerCase()===role.toLowerCase())+'">'+role+'</button>').join('')+'</div>':'')+'</div>':''}
         <div class="guide-count" aria-live="polite">${isUpgrade?'LEARNED THIS RUN':isEnemy?'ENCOUNTERED':'DISCOVERED'} ${count} / ${entries.length}${(terms.length||stages.size||(!isEnemy&&!isUpgrade&&tier!=='all'))?' &nbsp; · &nbsp; '+results.length+' '+(results.length===1?'RESULT':'RESULTS'):''}</div>
-        ${isRecipe ? '<aside class="frame guide-intro"><div><strong>At the forge</strong><p>Drag one ingredient onto its partner to fuse them. Select one relic to make valid partners glow. Choose Matches, then tap a glowing partner to preview the fusion. Every fusion gains one level above its highest-level ingredient: Lv 2 + Lv 3 makes Lv 4. Fuse crafted relics again to discover second-stage and third-stage recipes. Search by stage or ingredient to follow a crafting chain. Two identical relics at the same level also gain one level.</p></div></aside>':''}
+        ${isRecipe ? '<aside class="frame guide-intro"><div><strong>At the forge</strong><p>Drag one ingredient onto its partner to fuse them. Select one relic to make valid partners glow. Choose Matches, then tap a glowing partner to preview the fusion. Every fusion gains one level above its highest-level ingredient: Lv 2 + Lv 3 makes Lv 4. Fuse crafted relics again to discover second-stage and third-stage recipes. Ancients sit above Mythic: fuse the two named Mythics to awaken their power and character aura. They never drop. Search by stage or ingredient to follow a crafting chain. Two identical relics at the same level also gain one level.</p></div></aside>':''}
         <div class="guide-grid">${results.length ? results.map(entry=>isUpgrade?
           `<button class="frame guide-card" data-skill="${entry.id}" style="--el:${elements[entry.element].color}"><span class="icon-tile">${ItemArt.svg(entry.icon,40)}</span><span><b>${esc(entry.name)}</b><small>${esc(entry.category)} · ${entry.kind==='ability'?'Auto-cast ability':'Passive'}</small><small>${seen.has(entry.id)?'Rank '+profile.run.skills[entry.id]:'Unlearned'}</small></span></button>`
           :isEnemy?enemyCard(entry,seen.has(entry.id)):relicCard(entry,isRecipe,seen.has(entry.id))).join('') :
@@ -129,7 +131,7 @@
     if(typeof window.WorldArt?.portrait!=='function') return;
     root.querySelectorAll('canvas[data-portrait-id]').forEach(canvas=>{
       const d=enemies.find(e=>e.id===canvas.dataset.portraitId);
-      if(d) window.WorldArt.portrait(canvas,d.species,d.color);
+      if(d) window.WorldArt.portrait(canvas,d.species,d.color,d.boss,d.titan?d.id:null);
     });
   }
   const seeds = n => nfmt(n)+' '+(n===1?'seed':'seeds');

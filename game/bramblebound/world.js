@@ -1046,10 +1046,13 @@
     g.restore();
   }
   function relicGlow(g,rarity,x,y,size,t){
-    const rank=['common','uncommon','rare','epic','mythic'].indexOf(rarity);if(rank<1)return;
+    const rank=['common','uncommon','rare','epic','mythic','ancient'].indexOf(rarity);if(rank<1)return;
     const mythic=rarity==='mythic',tone=window.Catalog.rarities[rarity]?.color||elements.leaf,r=size*.50+1;
-    g.save();g.globalAlpha*=[0,.10,.17,.22,.28][rank];oval(g,tone,x,y,r,r*.81);g.restore();
-    if(mythic){
+    g.save();g.globalAlpha*=[0,.10,.17,.22,.28,.35][rank];oval(g,tone,x,y,r,r*.81);g.restore();
+    if(rarity==='ancient'){
+      orbit(g,'#fff5d5',x,y,r+3,.9,t*.2);orbit(g,tone,x,y,r+4,.45,-t*.2);
+      for(let j=0;j<6;j++){const a=t*1.4+j*Math.PI/3,xx=x+cos(a)*(r+4),yy=y+sin(a)*(r+4)*.8;poly(g,tone,[xx,yy-3,xx+2,yy,xx,yy+3,xx-2,yy]);rect(g,'#fffde2',xx,yy,1,1);}
+    }else if(mythic){
       orbit(g,'#735b3c',x,y,r+1,.72,0,2);orbit(g,tone,x,y,r+1,.72,0);
       for(let j=0;j<3;j++){const a=t*2.8+j*2.095;let xx=x+cos(a)*(r+1),yy=y+sin(a)*(r+1)*.72;
         poly(g,'#73523c',[xx,yy-3,xx+3,yy,xx,yy+3,xx-3,yy]);rect(g,j===1?'#ffd17a':'#fff1ac',xx-1,yy-1,3,2);}
@@ -1273,16 +1276,16 @@
   function location(e,count,w,h,t,entry,hit,recoil){
     const lane=Math.max(0,Math.min(count-1,e.lane||0)),[ax,ay,scale]=formations[count][lane];
     const compact=count>1?Math.min(1,Math.max(.65,(w+25)/260)):1;
-    const size=scale*compact*(e.boss?1.18:1),phase=(e.freeze>0?0:t)+lane*.71,near=e.attackProgress>.77&&!(e.stun>0||e.freeze>0);
-    let x=w*ax+(sin(phase*1.5)*2.5+sin(phase*.65)*2)*(count===1?1.7:.65);
+    const size=e.titanId?Math.min(2.05,Math.max(1.65,w/250)):scale*compact*(e.boss?1.18:1),phase=(e.freeze>0?0:t)+lane*.71,near=e.attackProgress>.77&&!(e.stun>0||e.freeze>0);
+    let x=w*(e.titanId?.67:ax)+(sin(phase*1.5)*2.5+sin(phase*.65)*2)*(count===1?1.7:.65);
     if(t>0&&entry<1){const u=Math.max(0,Math.min(1,1-(entry-.055*lane)/.71));x+=(w*(1-ax)+28)*u*u;}
     if(near)x+=R((e.attackProgress-.77)*13);
     if(hit)x+=sin((hit.age-.16)/.29*Math.PI)*3;
     if(recoil)x-=Math.max(0,1-recoil.age/.3)*6;
-    const y=R(h*ay),airborne=['bat','bird','moth','wisp','ray','owl','dragonfly','jellyfish'].includes(e.species);
+    const y=R(h*(e.titanId?.86:ay)),airborne=['bat','bird','moth','wisp','ray','owl','dragonfly','jellyfish'].includes(e.species);
     const hop=airborne?R(sin(phase*3)*2):e.species==='frog'?R(Math.max(0,sin(phase*5))*4):R(Math.abs(sin(phase*5)));
-    const bodyY=y-hop,head=e.boss?Math.min(63,Math.max(51,(stature[e.species]||34)+11)):(stature[e.species]||32);
-    return {x:R(x),y,size,bodyY,center:R(bodyY-(torsos[e.species]||18)*size),barY:R(bodyY-head*size-9),e};
+    const bodyY=y-hop,head=e.titanId?72:e.boss?Math.min(63,Math.max(51,(stature[e.species]||34)+11)):(stature[e.species]||32);
+    return {x:R(x),y,size,bodyY,center:R(bodyY-(e.titanId?32:(torsos[e.species]||18))*size),barY:R(Math.max(9,bodyY-head*size-9)),e};
   }
   const affinitySigils={
     leaf:['00111','01110','11110','11100','10000'],fire:['00100','00110','10110','11111','01110'],
@@ -1404,9 +1407,11 @@
       if(ally.timer<.3&&!v.reducedMotion)orbit(g,color,x,y-10,8,.65,clock);
       g.restore();
     }
+    if(v.phase!=='dead')window.EpicArt?.ancientAura(g,v.equipped||[],heroX,ground,t,v.reducedMotion);
     if(v.phase==='dead'){
       g.save();g.translate(heroX,ground-5);g.rotate(-Math.PI/2);place(g,'monkey',null,t,'dead',false,-17,3,k);g.restore();
     }else place(g,'monkey',null,t,stride||'walk',false,heroX,ground,k);
+    if(v.phase!=='dead')window.EpicArt?.ancientAura(g,v.equipped||[],heroX,ground,t,v.reducedMotion,true);
     if(v.heldId&&v.phase!=='dead'&&window.ItemArt?.sprite){
       const art=window.ItemArt.held?.(v.heldId),sprite=window.ItemArt.sprite(v.heldId),item=window.Catalog?.items[v.heldId];
       if(sprite&&item){
@@ -1427,7 +1432,7 @@
           g.drawImage(art.canvas,-art.grip.x,-art.grip.y);
           const sockets=level>=10?3:level>=5?2:level>=3?1:0;
           for(let q=0;q<sockets;q++){rect(g,'#252a32',2-q*2,-7+q*5,4,4);rect(g,q===2?'#fff0ae':color,3-q*2,-6+q*5,2,2);}
-          const tierRank=Math.max(0,['common','uncommon','rare','epic','mythic'].indexOf(item.rarity));
+          const tierRank=Math.max(0,['common','uncommon','rare','epic','mythic','ancient'].indexOf(item.rarity));
           if(!v.reducedMotion&&tierRank)for(let q=0;q<tierRank;q++){const a=clock*1.7+q*Math.PI*2/tierRank,x=cx+cos(a)*13,y=cy+sin(a)*17;rect(g,q%2?'#fff4d1':window.Catalog.rarities[item.rarity].color,x,y,1,2);}
           if(item.special){line(g,color,3,-8,7,-8);line(g,'#fff0c1',5,-10,5,-6);}
         }else g.drawImage(sprite,-5,-20,25,25);
@@ -1451,13 +1456,14 @@
       const e=z.e,x=z.x,y=z.y,phase=(e.freeze>0?0:t)+(e.lane||0)*.71;
       if(z.age!==undefined){
         const u=z.age/.6;g.save();g.globalAlpha=1-u;g.translate(R(x+u*12),y);g.rotate(u*.65);
-        place(g,e.species,e.color,phase,'enemy',e.boss,0,R(u*2),z.size);g.restore();
+        if(e.titanId)window.EpicArt?.boss(g,{...z,x:0,bodyY:R(u*2)},phase,v.reducedMotion);else place(g,e.species,e.color,phase,'enemy',e.boss,0,R(u*2),z.size);g.restore();
         if(u<.85)burst(g,p.light,x,z.center,5+u*14,7,u);
         continue;
       }
       oval(g,mix(p.road,p.earth,.38),x,y+1,Math.max(8,13*z.size),2);
       if(e.attackProgress>.79&&!(e.stun>0||e.freeze>0))orbit(g,'#c36a50',x,y+1,12*z.size+(e.attackProgress-.79)*12,.18,0);
-      place(g,e.species,e.color,phase,'enemy',e.boss,x,z.bodyY,z.size);
+      if(e.titanId){window.EpicArt?.bossAura(g,z,t,v.reducedMotion);window.EpicArt?.boss(g,z,t,v.reducedMotion);}
+      else place(g,e.species,e.color,phase,'enemy',e.boss,x,z.bodyY,z.size);
       afflictionAura(g,z,t,v.reducedMotion);
       statusAura(g,z,t,v.reducedMotion);
     }
@@ -1487,16 +1493,18 @@
       }else z=z||fallback;
       const fork=ev.kind==='ability'&&ev.pattern==='forked_sky';
       const chain=fork&&firstBolt&&Math.abs(firstBolt.age-ev.age)<.002&&firstBolt.z!==z?firstBolt.z:null;
-      cast(g,ev,heroX,ground,z,i,labels.has(i),chain,v.reducedMotion);
+      if(ev.kind==='boss'||ev.kind==='ancient')window.EpicArt?.cast(g,ev,heroX,ground,z,v.reducedMotion);
+      else cast(g,ev,heroX,ground,z,i,labels.has(i),chain,v.reducedMotion);
       if(fork)firstBolt={age:ev.age,z};
     });
     for(const z of live)foeGauge(g,z,count>2||W<210);
 
   }
-  function portrait(canvas,species,color,boss=false){
+  function portrait(canvas,species,color,boss=false,titanId=null){
     canvas.width=64;canvas.height=64;
     const g=canvas.getContext('2d');g.clearRect(0,0,64,64);g.imageSmoothingEnabled=false;
-    place(g,species,color,0,'enemy',boss,33,boss?59:54,boss?.93:1);
+    if(titanId)window.EpicArt?.boss(g,{x:32,bodyY:62,size:.8,e:{species,color,titanId,titan:{phase:1}}},0,true);
+    else place(g,species,color,0,'enemy',boss,33,boss?59:54,boss?.93:1);
   }
   function regionPortrait(canvas,index){
     canvas.width=368;canvas.height=136;
