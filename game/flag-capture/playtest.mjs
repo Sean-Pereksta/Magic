@@ -17,7 +17,8 @@ function commandFor(s,side,recruitAt){
     view.tiles=view.tiles.map(t=>point(s,t)).sort((a,b)=>a.y-b.y||a.x-b.x);
     view.flags=view.flags.map(f=>({...point(s,f),owner:swap(f.owner)}));
     view.groundEffects=(view.groundEffects||[]).map(effect=>({...point(s,effect),side:swap(effect.side)}));
-    for(const name of ['factions','scores','supplies','armies'])view[name]={player:s[name].ai,ai:s[name].player};
+    view.telegraphs=(view.telegraphs||[]).map(mark=>({...mark,side:swap(mark.side),x:s.width-1-mark.x,y:s.height-1-mark.y,fromX:s.width-1-mark.fromX,fromY:s.height-1-mark.fromY}));
+    for(const name of ['factions','scores','supplies','armies','orders'])if(s[name])view[name]={player:s[name].ai,ai:s[name].player};
   }
   view.aiRecruitAt=recruitAt;
   const before=performance.now();
@@ -44,7 +45,7 @@ function runCase({mode,playerFaction,aiFaction,map,seed,roster}){
         const response=E.applyAction(s,choice.action);if(!response.ok)throw Error(`Illegal playtest action ${JSON.stringify(choice.action)}`);
         if(mode==='control'&&choice.action.type==='move')result.netZoneLosses+=Math.max(0,heldBefore-s.flags.filter(f=>f.owner===side).length);
         result.actions++;if(choice.action.type==='move')result.moves++;if(choice.action.type==='attack')result.attacks++;if(choice.action.type==='ability')result.specials++;
-        if(choice.action.type==='guard'){result.guards++;if(!response.events.some(e=>e.type==='shield'))result.emptyGuards++;}
+        if(choice.action.type==='guard'){result.guards++;if(!response.events.some(e=>e.type==='brace'||e.type==='shield'))result.emptyGuards++;}
         note(response.events);
       }
     }

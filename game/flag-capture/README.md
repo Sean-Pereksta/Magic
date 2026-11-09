@@ -1,6 +1,6 @@
 # Flag Capture: Riftbound
 
-A cooldown-based strategy game at the existing `/game/Flag.html` arcade route. Command one of three original factions against an AI army or a friend on the same device. Custom battles offer AI and same-screen play; the five-mission campaign is a solo faction tour. Every piece has its own movement/attack recovery, and each special ability has an independent cooldown. Every new battle begins with a 3–2–1 countdown, then both armies act during live play. Pause gives you time to inspect the battlefield.
+A cooldown-based strategy game at the existing `/game/Flag.html` arcade route. Command one of three original factions against an AI army or a friend on the same device. Custom battles offer AI and same-screen play; the five-mission campaign is a solo faction tour. Each army spends a common supply of orders. Each piece recovers after acting, and a special also has its own recharge time. Every new battle begins with a 3–2–1 countdown, then both armies act during live play. Pause gives you time to inspect the battlefield.
 
 ## Factions
 
@@ -8,7 +8,7 @@ A cooldown-based strategy game at the existing `/game/Flag.html` arcade route. C
 | --- | --- | --- |
 | Lumen Brood (`bloom`) | Bioluminescent aliens with living armor and strange symbiotic powers. | Recover 1 HP in a grove every six seconds and 2 HP when capturing a beacon. |
 | Crooked Carnival (`chaos`) | Surreal Chaos beasts that bend bodies and battlefield positions. | Injured troops deal +1 basic attack damage. |
-| Aureate Choir (`choir`) | Angelic beings of ivory, gold, wings, and celestial geometry. | Troops beside an ally gain 1 shield every six seconds, up to 3. |
+| Aureate Choir (`choir`) | Angelic beings of ivory, gold, wings, and celestial geometry. | Beside an ally, refresh a 1-point ward every six seconds. A straight three-troop formation refreshes a 2-point ward. |
 
 Every faction has seven main troop choices and 39 faction-specific skills across all three armies. Guardians, rangers, and shapers join the original commanders, scouts, brutes, and mystics; each new creature has two distinct specials. In single-player battles, the command dock stays directly below the board, with every special visible as a drawn icon alongside its name and cooldown. Buy your starting warband, choose Arrange troops, then position it on the actual seeded battlefield before starting the countdown. This flow applies to every mode and campaign mission.
 
@@ -30,12 +30,12 @@ Movement also changes how each army approaches the same map:
 | Lumen Brood | Lantern Polyp | Mystic | **Sporeburst:** damage enemies around a target. **Nectar Mote:** restore 2 HP to an ally within three tiles. |
 | Crooked Carnival | Mawring Maestro | Leader | **Wrong Note:** damage and root nearby enemies. **Laughing Hex:** curse a foe within three tiles so its next incoming hit deals 2 extra damage. |
 | Crooked Carnival | Blinkmutt | Scout | **Sideways Bite:** warp beside an enemy and bite. |
-| Crooked Carnival | Mobius Ram | Brute | **Foldhorn:** ram and knock back a target; blocked knockback adds damage. |
+| Crooked Carnival | Mobius Ram | Brute | **Foldhorn:** mark an enemy square in the same row or column. After three seconds, hit that square and knock its occupant back. An obstruction adds damage. Brace holds the defender in place. |
 | Crooked Carnival | Teacup Oracle | Mystic | **Bad Omen:** damage and curse an enemy so its next incoming hit is stronger. **Crooked Swap:** exchange places with a foe within three tiles when both landing cells are legal. **Pocket Maws:** summon tiny Pocket Maws. |
 | Aureate Choir | Halo Architect | Leader | **Concordance:** refresh nearby allies' movement/attack cooldowns and add shields. **Starstep:** teleport to an empty tile within three and gain 2 shield. |
 | Aureate Choir | Cherub Comet | Scout | **Mercy Arc:** heal an ally and cleanse roots and curses. |
 | Aureate Choir | Belltower Seraph | Brute | **Sanctuary:** shield himself and nearby allies. |
-| Aureate Choir | Ophanim Lens | Mystic | **Judgment Ray:** damage enemies in a straight line. **Ward Ray:** give an ally within three tiles 3 shield, up to 5. **Bell Motes:** summon tiny flying Bell Motes. |
+| Aureate Choir | Ophanim Lens | Mystic | **Judgment Ray:** damage enemies in a straight line. **Ward Ray:** refresh a 3-point ward on an ally within three tiles. **Bell Motes:** summon tiny flying Bell Motes. |
 | Lumen Brood | Mossplate Bulwark | Guardian | **Rootguard:** shield an adjacent group. **Briar Circle:** plant a lasting thornfield. |
 | Lumen Brood | Thornskate | Ranger | **Pinning Quill:** damage and root a foe. **Pollen Skate:** hop, leaving mycelium at both ends. |
 | Lumen Brood | Mycelium Weaver | Shaper | **Living Carpet:** paint healing, slowing mycelium. **Germinate:** heal an ally, refreshing its standard cooldown on friendly mycelium. |
@@ -54,7 +54,7 @@ Positioning grants different rewards for each faction. Brood want a connected li
 | --- | --- | --- |
 | Living Constellation · Brood | At least three friendly troops connected edge-to-edge. | Every connected troop gains +1 movement and heals 1 HP each six-second pulse. |
 | Impossible Pincer · Carnival | You and an ally stand directly opposite one another across an adjacent enemy. | Basic attacks against that flanked enemy gain +1 damage. |
-| Choir Procession · Choir | At least three friendly troops occupy consecutive squares in one row or column. | They take 1 less ranged damage, minimum 1, and resonance can build up to 5 shield. |
+| Choir Procession · Choir | At least three friendly troops occupy consecutive squares in one row or column. | They take 1 less ranged damage, minimum 1, and resonance refreshes a 2-point ward. |
 
 Painted effects remain on individual ground cells, with their ownership and remaining duration visible. They do not replace the map's underlying terrain. Area casts paint the center and its four orthogonal neighbors where those cells are ground; rocks and water remain unpaintable. Periodic effects trigger every three seconds. One side has at most one effect on a cell: repainting replaces its old mark, while opposing marks may coexist. Repainting never produces stacked damage or extra healing ticks.
 
@@ -64,21 +64,21 @@ Painted effects remain on individual ground cells, with their ownership and rema
 | Briar Field | 12s | Enemy ground troops take 1 damage per tick. Fliers ignore it; stepping off the marked ground avoids later ticks. |
 | Rift Ink | 12s | Allies starting there phase through foes and move +1. Enemy arrivals and ticks apply a curse. Consume it with Curtain Collapse to trade mobility for damage. |
 | Cinder Confetti | 10s | Enemies take 1 damage on arrival and each tick, including fliers. Avoid the mark, leave it, or erase it with Dawn Seal. |
-| Quiet Sanctuary | 12s | Allies gain 1 shield, up to 5, and cleanse roots/curses each tick. It rewards holding a position, rather than chasing every target. |
+| Quiet Sanctuary | 12s | Allies refresh a 1-point ward and cleanse roots and curses each tick. It rewards holding a position, rather than chasing every target. |
 | Prism Lattice | 12s | Friendly ranged basic attacks gain +1 damage while standing there. Enemy ground steps cost 2 movement. Fliers cross it freely. |
 
 The army shop offers six purchasable alternatives per faction, and native expandable **Skills & tactics** cards make their exact effects readable on touchscreens before spending coins. Remove a creature with × to refund its starting price and try another role. The selected-creature inspector also explains its movement and faction formation during deployment.
 
 ## Battle rules
 
-- Move, attack, and guard share an individual cooldown: scouts 2 seconds, leaders 3 seconds, brutes 3.5 seconds, and mystics 2.8 seconds. Each troop recovers independently.
-- Every special has its own 8–12-second cooldown and can be used while standard commands or another special recover. Using a special also starts that troop's movement/attack cooldown. Roots prevent movement for 2.5 seconds.
+- Each army starts with one order, gains one every 2.4 seconds and can save two. Moving, attacking, bracing, casting or recruiting spends one. Selecting a troop and inspecting targets are free.
+- A troop must finish its recovery before its next move, attack, Brace or special. Scouts recover in 2 seconds and brutes in 3.5. Each special also has an 8–12-second cooldown.
 - Reachable cells and valid targets are highlighted. Rocks and water block ground movement, with faction movement exceptions described above. Groves reduce ranged attack damage by one. The engine validates every command, including AI commands.
 - Objectives depend on the selected battle mode. Scoring and faction passives use a common six-second pulse for both armies; Reinforcement Clash also awards supplies on that pulse.
 - Eliminate the entire opposing army to win immediately in any mode. Otherwise, each mode's score goal or time-limit tiebreak decides the battle.
 - Standard battles use the armies chosen before deployment. Mid-battle purchases are available only in Reinforcement Clash: unspent starting coins become your supply wallet, and each pulse adds 2 supplies plus your held-beacon count. Recruit scouts for 4 supplies, brutes or guardians for 6, mystics or rangers for 5, or shapers for 6 at your home edge. Recruits wait a full movement/attack cooldown before using standard commands and a full special cooldown before using an ability.
 - Summoning abilities work in every mode and recharge in 12 seconds. Choose an empty ground tile within two cells of the caster to summon up to two little allies there and on an adjacent cell, subject to open space and the eight-creature cap. Each tiny ally has 3 HP, 1 attack damage, 2 movement range, no specials, and a one-second arrival delay. Glowgrubs benefit from the Brood's grove network, Pocket Maws move on the ground, and Bell Motes fly. Both sides obey the same army and summoning rules.
-- Guard adds 2 shield, up to 5, and starts the piece's standard cooldown. Guard is unavailable at full shield.
+- Brace covers up to 2 damage from the next hit for three seconds. Moving or attacking ends it. A braced defender holds position against Foldhorn. Wards refresh to the stronger value and the strongest protection applies per hit.
 - Pause freezes the battle clock, scoring, cooldowns, and AI commands.
 
 Choose factions, an opponent type, map, and battle settings before a new match. AI battles also offer a difficulty choice. Select a troop, choose its command using the large command buttons or hotkeys, then select a highlighted destination or target. Cooldown indicators tell you when each piece can act again. You can also drag pieces to valid destinations on the board.
@@ -100,7 +100,7 @@ Before every battle, use the warband builder to buy or sell starting troops and 
 
 Place your purchased troops on distinct cells within your own two deployment rows before beginning the countdown. In same-screen play, both players buy and arrange their own warbands. Against AI, the opposing army uses an affordable starting formation. The campaign supplies a suggested warband that you may edit before beginning each mission. Mid-battle purchases remain exclusive to Reinforcement Clash.
 
-Choose **2 players · same screen** for a local battle. Player 1 controls the army at the bottom and uses the bottom command dock. Player 2 controls the army at the top and uses the top dock. Each player keeps an independent troop selection and command mode. Both armies use their cooldowns simultaneously, and a touchscreen supports separate fingers dragging pieces for both players. The shared pause control freezes the whole match. Local play stays on one device and does not use online rooms or matchmaking.
+Choose **2 players · same screen** for a local battle. In portrait, Player 1 uses the lower dock and Player 2 uses the upper dock. In short landscape windows, the docks sit beside the board. Each player keeps an independent troop selection and command mode. Both armies use their cooldowns simultaneously, and a touchscreen supports separate fingers dragging pieces for both players. The shared pause control freezes the whole match. Local play stays on one device and does not use online rooms or matchmaking.
 
 ## Short campaign
 
@@ -108,7 +108,7 @@ The five missions tour all three factions and introduce capture, battlefield con
 
 | Mission | Your faction | Mode | Difficulty | Battlefield |
 | --- | --- | --- | --- | --- |
-| First Light | Lumen Brood | Beacon Rush | Story | 7 × 5, sparse |
+| First Light | Lumen Brood | Zone Control · Heartlight | Story | 7 × 5, sparse |
 | Crooked Ground | Crooked Carnival | Zone Control | Relaxed | 9 × 5, sparse |
 | Choir Practice | Aureate Choir | Beacon Rush | Balanced | 9 × 7, balanced |
 | Wild Frontier | Lumen Brood | Zone Control | Balanced | 11 × 7, wild |
@@ -125,11 +125,11 @@ A victory unlocks the next mission. Completed missions remain replayable, and re
 | `3` | `E` | First special ability |
 | `4` | `R` | Second special ability, when the creature has one |
 | `5` | `F` | Third special ability, when the creature has one |
-| `G` | `T` | Guard |
+| `G` | `T` | Brace |
 | `Space` | Shared | Pause or resume |
 | `Escape` | Shared | Cancel the current command |
 
-The single-player command bar stays directly below gameplay; in local play, Player 2's bar sits above the board and Player 1's below it. All specials belonging to the selected creature stay visible together; there is no ability-page switch. Tiny summoned creatures have no special buttons. Click or tap a troop, select its command icon, then choose a colored target. Drag a ready piece onto a valid board destination for direct movement. In same-screen play, each dock retains its own selection while the other player acts. Player 1 uses `1`, `2`, `3`, `4`, `5`, and `G`; Player 2 uses `Q`, `W`, `E`, `R`, `F`, and `T`.
+In portrait, the single-player command bar sits below the board. In local play, Player 2's bar sits above the board and Player 1's below it. Short landscape windows place the controls alongside the board. All specials belonging to the selected creature stay visible together; there is no ability-page switch. Tiny summoned creatures have no special buttons. Click or tap a troop, select its command icon, then choose a colored target. Drag a ready piece onto a valid board destination for direct movement. In same-screen play, each dock retains its own selection while the other player acts. Player 1 uses `1`, `2`, `3`, `4`, `5`, and `G`; Player 2 uses `Q`, `W`, `E`, `R`, `F`, and `T`.
 
 ## Files
 

@@ -2,9 +2,9 @@
 export const CAMPAIGN = Object.freeze([
   {
     id: 'first-light', title: 'First Light', subtitle: '01 · The Lumen landing',
-    briefing: 'The Brood has found a glade full of sleeping beacons. Send your Skitterglows ahead, claim the lights, and use groves and Bloomcall to keep the expedition alive.',
+    briefing: 'Hold Heartlight. Each pulse awards one light to the army with more creatures on the beacon and its four neighboring squares. Watch the Mobius Ram mark a square for Foldhorn. Dodge the mark, brace the defender, or pull the Ram out of position with Gravity Belch before it strikes.',
     playerFaction: 'bloom', aiFaction: 'chaos', map: 'glade', difficulty: 'story',
-    mode: 'beacons', width: 7, height: 5, terrain: 'sparse', goal: 12, duration: 150,
+    mode: 'control', width: 7, height: 5, terrain: 'sparse', goal: 6, duration: 120,
     rewardText: 'The Carnival route opens. Your light has caught something strange\u2019s attention.'
   },
   {
@@ -75,5 +75,10 @@ export function createCampaignBattle(levelId) {
   const index = levelIndex(levelId);
   if (index < 0) throw new RangeError('Choose an existing campaign mission.');
   const {playerFaction, aiFaction, map, difficulty, mode, width, height, terrain, goal, duration} = CAMPAIGN[index];
-  return {playerFaction, aiFaction, map, difficulty, mode, width, height, terrain, goal, duration, seed: 3401 + index * 997};
+  const options = {campaignId: levelId, playerFaction, aiFaction, map, difficulty, mode, width, height, terrain, goal, duration, seed: 3401 + index * 997};
+  if (levelId === 'first-light') {
+    options.aiArmy = ['leader', 'brute', 'scout'];
+    options.aiDeployment = [{x:2,y:0}, {x:3,y:1}, {x:4,y:1}];
+  }
+  return options;
 }

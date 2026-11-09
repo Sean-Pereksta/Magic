@@ -8,7 +8,8 @@ function choose(s,side){
     const point=p=>({...p,x:s.width-1-p.x,y:s.height-1-p.y});
     view.units=view.units.map(u=>({...point(u),side:swap(u.side)}));view.tiles=view.tiles.map(point).sort((a,b)=>a.y-b.y||a.x-b.x);
     view.flags=view.flags.map(f=>({...point(f),owner:swap(f.owner)}));view.groundEffects=view.groundEffects.map(e=>({...point(e),side:swap(e.side)}));
-    for(const key of ['factions','scores','supplies','armies'])view[key]={player:s[key].ai,ai:s[key].player};
+    view.telegraphs=(view.telegraphs||[]).map(mark=>({...mark,side:swap(mark.side),x:s.width-1-mark.x,y:s.height-1-mark.y,fromX:s.width-1-mark.fromX,fromY:s.height-1-mark.fromY}));
+    for(const key of ['factions','scores','supplies','armies','orders'])view[key]={player:s[key].ai,ai:s[key].player};
   }
   const started=performance.now(),action=chooseAIAction(view);timings.push(performance.now()-started);s.rng=view.rng;
   if(action&&side==='player'){if(action.type==='recruit')action.side='player';else {action.x=s.width-1-action.x;action.y=s.height-1-action.y;}}
