@@ -2,7 +2,7 @@
 
 The **Tier 2 and Tier 3 warfare expansion** adds six specialists, two production buildings, animated character/effect sheets, Stapler Canyon and Conveyor Chaos. See [the expansion guide](WARFARE.md) for troop statistics, controls, map mechanics and validation, or open [the animated artwork gallery](warfare-gallery.html).
 
-A quick, cartoony RTS about turning office trash into a tiny empire. Desktop Meadow and Breakroom Blitz each have 2-, 3-, and 4-player layouts: six battleground layouts in all. Play a free-for-all against one, two, or three rival bots at Easy, Normal, or Hard difficulty. Destroy every rival desk to win.
+A quick, cartoony RTS about turning office trash into a tiny empire. Desktop Meadow, Breakroom Blitz, Stapler Canyon and Conveyor Chaos each support 2-, 3-, and 4-player matches: twelve battleground layouts in all. Play a free-for-all against one, two, or three rival bots at Easy, Normal, or Hard difficulty. Destroy every rival desk to win.
 
 ## Play locally
 
@@ -10,10 +10,10 @@ Run `npm start` in this folder, then open the local address printed in the termi
 
 ## Controls
 
-- **Desktop:** click a unit or building; drag a box to select a squad. Shift adds to the selection. Right-click to move, gather from a trash can, or attack an enemy. Press **A**, then right-click an area to attack-move toward it. The Attack button targets the nearest visible valid enemy. Pan with the arrow keys, middle-mouse drag, or by hovering at the battlefield edge; use the mouse wheel to zoom. Click or drag the minimap to navigate across the battlefield.
-- **Mobile:** tap to select; hold, then sweep to box-select. Tap the ground to move or an enemy to attack. Drag empty ground to pan. Use **X** to clear selection and the Attack button to fight the nearest enemy.
-- **Shortcuts:** **F2** selects your army; **F3** selects idle workers; **Space** returns home. Select troops and hold **1–4** to assign a command group (or use **Ctrl+1–4**); press the key to select it and double press to center the camera. On mobile, hold one of the four group boxes at the bottom to assign selected troops, tap to select, and double tap to center the camera. **Q** launches rocks, **W** crumples paper, and **E** sweeps scissors after researching their upgrades. Each key affects only that troop type in a mixed squad. **S** stops selected units. **X** clears selection. **Esc** opens or closes the pause menu; **P** also pauses.
-- Select a desk to train twigs (**Q**); select a printer to train rock/paper/scissors (**Q/W/E**, with **R** also training scissors) or research upgrades. Select a twig, choose a building, then choose clear, currently visible ground to build. Ability buttons show their key, research lock, and cooldown.
+- **Desktop:** click a unit or building; drag a box to select a squad. Shift adds to the selection. Right-click to move, gather from a trash can, or attack an enemy. Press **A**, then left- or right-click an area to attack-move toward it. The **Attack / A** tile enters the same attack-move targeting mode. Pan with the arrow keys, middle-mouse drag, or by hovering at the battlefield edge; use the mouse wheel to zoom. Click or drag the minimap to navigate across the battlefield.
+- **Mobile:** tap to select; hold, then sweep to box-select. Tap the ground to move or an enemy to attack. Drag empty ground to pan. Use **X** to clear selection and the Attack tile, then tap a destination to fight toward it.
+- **Shortcuts:** **F2** selects your army; **F3** selects idle workers; **Space** returns home. Select troops or buildings and hold **1–4** to assign a command group (or use **Ctrl+1–4**); press the key to select it and double press to center the camera. On mobile, hold one of the four group boxes at the bottom to assign selected troops or buildings, tap to select, and double tap to center the camera. **Q** launches rocks, **W** crumples paper, and **E** sweeps scissors after researching their upgrades. Each key affects only that troop type in a mixed squad. **S** stops selected units. **X** clears selection. **Esc** opens or closes the pause menu; **P** also pauses.
+- Select a desk to train twigs (**Q**); select a printer to train rock/paper/scissors (**Q/W/E**, with **R** also training scissors) or research upgrades. Select a twig, choose a building, then choose clear, currently visible ground to build. Square ability tiles show original illustrated icons, a prominent keycap, research lock, and cooldown. Mixed armies share a three-column ability grid (two columns on narrow phones). The command panel is capped at about a third of screen height, with internal scrolling and sticky Attack/Stop controls. Worker hit targets are wider for clicking and box selection without changing their movement footprint.
 
 The battlefield fills the screen, with a compact selection panel and no top menu bar. Use the small pause button or **Esc** for the menu. The tutorial is available through **Learn the ropes** in the lobby, **How to play** in the pause menu, or **? / F1** during play.
 
@@ -21,13 +21,13 @@ The battlefield fills the screen, with a compact selection panel and no top menu
 
 Twigs cost **25 trash**. Each carries **5 trash per trip** from a trash can back to a home desk. One twig can collect from each can at a time. Everyone can attack twigs, so protect your economy and build desks near new resources.
 
-Rocks, paper, and scissors each cost **50 trash** and use one supply. Rock beats scissors, scissors beat paper, and paper beats rock. Combat troops attack once every **1.25 seconds**. Troops refuse both automatic and explicit targets that are their exact counter (rock cannot target paper, paper cannot target scissors, scissors cannot target rock). Matching types can fight, and combat troops can damage buildings and twigs. A home desk costs **200 trash** and provides 12 supply; a cabinet costs **75** and provides 8 more; a printer costs **150** and produces troops.
+Rocks, paper, and scissors each cost **50 trash** and use one supply. Rock beats scissors, scissors beat paper, and paper beats rock. Tier 1 troops now have **180 HP** and attack once every **1.25 seconds**. Standard favorable counter duels take four hits, giving time to retreat, flank, or activate an ability. Specialists have roughly 75–82% more health; Flying CDs have **320 HP**. Worker health, costs, movement footprints, and attack intervals are unchanged. Troops refuse both automatic and explicit targets that are their exact counter (rock cannot target paper, paper cannot target scissors, scissors cannot target rock). Matching types can fight, and combat troops can damage buildings and twigs. A home desk costs **200 trash** and provides 12 supply; a cabinet costs **75** and provides 8 more; a printer costs **150** and produces troops.
 
 Squads move in formations, push apart to avoid stacking, and find routes through obstacles and narrow choke points. Use wider routes for large armies and keep your resource lanes clear.
 
 ## Terrain and scouting
 
-All six layouts are **4800 × 3200 world pixels**, double the original width and height and four times the playable area. Unit sizes, movement speeds, weapon ranges, and local harvesting trips retain their original scale. Each layout has **4–6 raised areas**, **10–11 expansion locations**, broad ramps, layered cliff edges, secondary cover clusters, and marked resource fields. Desktop Meadow combines paper groves, cork flats, and circuit yards; Breakroom Blitz adds napkin groves, service tiles, and coffee basins. Ground units must use ramps to reach elevated areas; flying CDs and Rock Launch can cross cliffs. Buildings cannot block the ramps.
+All twelve layouts are **4800 × 3200 world pixels**, double the original width and height and four times the playable area. Unit sizes, movement speeds, weapon ranges, and local harvesting trips retain their original scale. Each layout has **2–6 raised areas**, **10–14 expansion locations**, broad ramps, layered cliff edges, secondary cover clusters, and marked resource fields. Desktop Meadow combines paper groves, cork flats, and circuit yards; Breakroom Blitz adds napkin groves, service tiles, and coffee basins. Ground units must use ramps to reach elevated areas; flying CDs and Rock Launch can cross cliffs. Buildings cannot block the ramps.
 
 High ground grants an extra **100 world pixels of sight**. Low-ground troops cannot see uphill or through a raised shelf, while flying CDs can scout over it. These vision rules apply to every team, including bots. Elevation changes sight and access; it does not add a damage bonus.
 
@@ -38,7 +38,7 @@ Static scenery and fog textures are cached, with the scenery cache capped at eig
 Each troop's printer upgrade costs **150 trash**:
 
 - **Rock — Launch (Q):** choose a target spot; selected ready rocks leap and land in a close formation.
-- **Scissors — Sweep (E):** choose a direction; selected ready scissors slash a short forward arc, defeating paper caught inside it.
+- **Scissors — Sweep (E):** choose a direction; selected ready scissors slash a short forward arc, dealing **135 damage** to paper caught inside it. A healthy paper survives one sweep; combined attacks finish it.
 - **Paper — Crumple (W):** immediately become invulnerable for 3 seconds and move faster; paper cannot attack while crumpled.
 
 Opponents gather trash, train troops, construct buildings, expand, research, and attack. Difficulty changes their planning speed and aggression rather than granting free resources.
@@ -68,3 +68,15 @@ The game includes original raster artwork created with built-in image generation
 
 
 The CD reader, flying CDs, defensive computer mouse, cursor projectiles, and transport effects use resolution-independent Canvas artwork matching the existing building illustrations. Disc surfaces spin and shimmer, the mouse clicks as it fires, and cursor trails show each shot in flight.
+
+
+## Tactical controls and visual update
+
+Command groups can contain troops, buildings, or both. Recall a production building or a group of matching production buildings to train with its usual Q/W/E shortcuts. Each press queues exactly one unit at the ready building with the shortest available queue; full queues and unfinished buildings are skipped. Research is queued once at one eligible printer. Right-click to set the selected buildings’ rally points. Mixed groups issue movement orders only to units. F2 selects every living, fielded combat unit, including aircraft, while leaving workers and transports separate.
+
+Eleven original SVG ability icons live in `assets/abilities/` and share their source in `ability-icons.js`. Abilities use square cards in three columns on desktop and two on narrow phones, with visible keycaps and status text. The small Army / F2 and Idle twigs / F3 controls keep their keys visible.
+
+Cached map scenery adds office-surface marks, paper scraps, themed props, resource-field detail, and approach markings. Combat feedback uses family-specific impacts, directional strike trails, damage bursts, launch takeoff/landing graphics, and Crumple pulses while respecting fog and zoom.
+
+
+Force Fields use a smaller **80-pixel radius** and push ground troops of either team outside the dome. Walls and terrain constrain the push. Force Field and Triple Division casters walk toward distant ground targets and cast once they are in range and have sight. Snipers approach distant visible targets before aiming. Charges and cooldowns begin at the cast, and Stop or a replacement order cancels a pending approach.

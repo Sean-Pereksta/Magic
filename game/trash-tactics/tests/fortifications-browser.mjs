@@ -38,7 +38,7 @@ try{
  });
  await clickWorld(page,1200,1152);await page.evaluate(()=>{const g=window.trashTactics.game;for(let i=0;i<40;i++)g.update(.05);});await page.waitForTimeout(100);
  assert.match(await page.locator('#actionContent').innerText(),/850 HP.*360 range/);
- const combat=await page.evaluate(()=>{const g=window.trashTactics.game,e=g.entities.find(e=>e.type==='rollingrock'&&e.team===1),m=g.getEntity(window.fixtureMouse);return{hp:e?.hp,mouse:m?.hp,cooldown:m?.cooldown,visible:e&&g.isVisible(e,0),shots:g.projectiles.length,time:g.time};});assert(combat.hp<360,'reinforced mouse damages an attacker through its own short walls: '+JSON.stringify(combat));
+ const combat=await page.evaluate(()=>{const g=window.trashTactics.game,e=g.entities.find(e=>e.type==='rollingrock'&&e.team===1),m=g.getEntity(window.fixtureMouse);return{hp:e?.hp,maxHp:e?.maxHp,mouse:m?.hp,cooldown:m?.cooldown,visible:e&&g.isVisible(e,0),shots:g.projectiles.length,time:g.time};});assert(combat.hp<combat.maxHp,'reinforced mouse damages an attacker through its own short walls: '+JSON.stringify(combat));
  await page.screenshot({path:path.join(output,'wall-fortifications-gameplay.png')});
  const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});await begin(mobile);
  await clickWorld(mobile,1008,900,true);await mobile.locator('[data-action="build"][data-type="wall"]').tap();

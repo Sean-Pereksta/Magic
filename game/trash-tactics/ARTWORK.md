@@ -70,3 +70,10 @@ Construction reveals the block from the bottom while retaining a square blueprin
 The defensive computer mouse retains its cable, split buttons and scroll wheel, with a reinforced metal desk mount, side armor pods, twin pointer launch rails and a pulsing charge lens. Firing lights both button housings. Its coverage circle reads `TYPES.mouse.range`, keeping both placement and selection graphics synchronized with the weapon's actual reach.
 
 Validation: `node --test tests/wall-art.test.mjs` checks all sixteen connected patterns, filled square footprints, construction and damage states, snapped placement, fog-safe preview, continuous minimap tiles and mouse coverage against the live weapon definition.
+
+
+## Tactical command icons and map detail
+
+The eleven new ability illustrations are original vector artwork in `ability-icons.js`, exported as standalone SVGs in `assets/abilities/`: Launch, Crumple, Sweep, Precision Snipe, Intercept, Patrol, Crash Landing, Force Field Dome, Triple Division, Crushing Roll and Shadow Path. They use the existing charcoal outlines and cream, teal, ochre and lavender palette. They are geometric vector designs, not image-generated raster artwork. The matching `tactics.css` displays them in square three-column tiles with prominent hotkeys.
+
+The map and fighting additions extend the existing Canvas renderer. Static decorative detail is cached with the terrain; combat effects are short-lived, fog-aware graphics. Existing painted unit sprites and effects remain in use.

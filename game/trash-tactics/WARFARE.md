@@ -8,12 +8,12 @@ Twigs construct the **Prototype Workshop** for **275 trash / 16 seconds**, after
 
 | Building | Troop | Family | Trash | HP | Supply | Training |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
-| Workshop | Scissors Sniper | Scissors | 150 | 85 | 2 | 11s |
-| Workshop | Paper Airplane | Paper | 130 | 80 | 2 | 9s |
-| Workshop | Rock Mage | Rock | 170 | 110 | 2 | 12s |
-| Laboratory | Paper Divider | Paper | 500 | 160 | 6 | 25s |
-| Laboratory | Rolling Rock | Rock | 350 | 360 | 4 | 16s |
-| Laboratory | Shadow Shears | Scissors | 325 | 170 | 3 | 15s |
+| Workshop | Scissors Sniper | Scissors | 150 | 150 | 2 | 11s |
+| Workshop | Paper Airplane | Paper | 130 | 140 | 2 | 9s |
+| Workshop | Rock Mage | Rock | 170 | 200 | 2 | 12s |
+| Laboratory | Paper Divider | Paper | 500 | 280 | 6 | 25s |
+| Laboratory | Rolling Rock | Rock | 350 | 640 | 4 | 16s |
+| Laboratory | Shadow Shears | Scissors | 325 | 300 | 3 | 15s |
 
 Supply includes every queued unit at its full weight. A CD has six passenger seats: Tier 1 and Tier 2 ground troops may board; workers, airplanes, and Tier 3 troops cannot.
 
@@ -23,30 +23,34 @@ Mouse towers now have **850 HP**, **360 range**, and fire **28 damage** every **
 
 Twigs build **Wall blocks (Z)** for **20 trash**, with **1,200 HP** and a **3s** build time. The 48px grid connects square blocks into sealed ground barriers. Repeat click/tap to extend; Done placing or Esc ends placement while Twigs finish their queued jobs. Dismantle an owned block to open a passage with no refund. Aircraft and projectiles pass over the walls. Paper Airplanes now have **900px scouting vision**.
 
+## Tactical pacing
+
+Tier 1 Rock, Paper and Scissors have **180 HP**. Flying CDs have **320 HP**. Basic attack damage, attack cadence and counter restrictions remain intact, so favorable basic duels take four hits. Sweep deals **135 damage** instead of executing a whole Paper squad. Precision Snipe retains its single-target execution after a visible, interruptible **1.5s** aim.
+
 ## Commands
 
 Select a Twig and use **N** to place a Workshop or **O** to place a Laboratory. At either production building, **Q / W / E** train the three troops in the table's order. Right-click a destination to set its rally point.
 
 | Key | Ability | Use |
 | --- | --- | --- |
-| F | Precision Snipe | Click a visible enemy Paper troop within 700 pixels; aim for 1.5s. 18s cooldown. Cover, fog, or Crumple interrupts the shot. |
+| F | Precision Snipe | Click a visible enemy Paper troop; approach within 700 pixels, then aim for 1.5s. 18s cooldown. Cover, fog, or Crumple interrupts the shot. |
 | I | Intercept | Click an enemy aircraft the Paper family can attack. |
 | J | Patrol | Tap two or more waypoints, then Finish route / Enter. |
 | K | Crash Landing | Choose an area; each selected airplane receives a separate impact point. 145 center damage, 75-pixel splash; consumes the plane. |
-| G | Force Field Dome | Click within 420 pixels. 110-pixel physical ring lasts 10s. Each mage has two charges per five-second recharge cycle. |
-| T | Triple Division | Click within 600 pixels; 1.5s cast, 350-pixel radius, 9s containment, 38s cooldown. |
+| G | Force Field Dome | Choose a location; approach within 420 pixels and sight. 80-pixel dome pushes ground troops outside its footprint and lasts 10s. Each mage has two charges per five-second recharge cycle. |
+| T | Triple Division | Choose a location; approach within 600 pixels and sight; 1.5s cast, 350-pixel radius, 9s containment, 38s cooldown. |
 | Y | Crushing Roll | Choose a destination up to 750 pixels away. Parallel lanes, 1s acceleration to 300px/s, 130 first contact / 40 repeated contact, 17s cooldown. |
 | H | Shadow Path | Drag and release, or tap waypoints then Finish route / Enter. 900-pixel route, 650px/s, 115 damage once per target, 18s cooldown. |
 
-Snipe, Force Field and Triple Division select **one nearest eligible caster per click** and remain armed for additional clicks. Intercept, Crash, Roll and Shadow Path apply to the ready selected group. Crash points and dash/roll lanes spread across formations. **Esc** cancels targeting before opening the menu; **X** clears selection. **Stop / S** cancels a crash before its final dive. Once diving, the airplane is committed.
+Snipe, Force Field and Triple Division select **one nearest eligible caster per click** and remain armed for additional clicks. Intercept, Crash, Roll and Shadow Path apply to the ready selected group. Crash points and dash/roll lanes spread across formations. **Esc** cancels targeting before opening the menu; **X** clears selection. Far Force Field and Triple Division targets queue movement into range and sight before casting; a distant visible Snipe target queues approach before the 1.5s aim. Charges and cooldowns start only when the cast begins. Stop or a new command cancels a pending cast. **Stop / S** cancels a crash before its final dive. Once diving, the airplane is committed.
 
-Buttons provide touch equivalents. Shadow Path supports finger drawing. Original Q/W/E abilities, Shift/box selection, groups 1–4, minimap commands, attack-move, camera navigation and fullscreen battlefield controls retain their original behavior.
+Square icon tiles provide touch equivalents, with clear keycaps and ready/recharge status. **A**, then either left- or right-click chooses an attack-move destination; the Attack tile follows the same flow. **F2** selects the fielded army. **Ctrl+1–4** or holding a group number assigns troops and/or buildings; tap to recall and double-tap to center. Shadow Path supports finger drawing. Original Q/W/E abilities, Shift/box selection, groups 1–4, minimap commands, attack-move, camera navigation and fullscreen battlefield controls retain their original behavior.
 
 ## Families and barriers
 
 Rock damages Rock/Scissors, Paper damages Paper/Rock, and Scissors damages Scissors/Paper at every tier. Every splash/dash/roll victim is checked independently. Crumple still protects Paper. Control spells affect both sides and all families without dealing damage.
 
-Domes physically block ground travel in either direction, including overlapping rings. Troops route around them or wait safely for expiry. Aircraft, projectiles and vision pass over/through ordinary domes.
+Domes push ground troops of either team beyond their smaller 80-pixel footprint, then block ground travel through their interior. Pushes respect walls, terrain, other fields and troop footprints. Aircraft, projectiles and vision pass over/through ordinary domes.
 
 Triple Division sorts ground and airborne family troops into equal Rock/Paper/Scissors sectors using continuous displacement through reachable terrain. CDs are excluded. Terrain, building, body and wall clearances determine valid destinations; unreachable terrain pockets cannot teleport through obstacles. Containment walls block movement and attacks. Expiring barriers invalidate route caches and release the original orders.
 

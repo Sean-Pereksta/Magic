@@ -1,12 +1,12 @@
 // Shared family rules and specialist abilities. Distances are world pixels.
 import {conveyorVelocity,divisionPlacementValid} from './battlefields.js';
 export const WARFARE_TYPES={
-  sniper:{label:'Scissors Sniper',family:'scissors',tier:2,cost:150,hp:85,r:18,speed:126,trainTime:11,supply:2,range:420,damage:17,interval:1.7},
-  airplane:{label:'Paper Airplane',family:'paper',tier:2,vision:900,cost:130,hp:80,r:22,speed:245,trainTime:9,supply:2,range:265,damage:22,interval:.9,flying:true},
-  mage:{label:'Rock Mage',family:'rock',tier:2,cost:170,hp:110,r:20,speed:112,trainTime:12,supply:2,range:210,damage:18,interval:1.6},
-  divider:{label:'Paper Divider',family:'paper',tier:3,cost:500,hp:160,r:27,speed:103,trainTime:25,supply:6,range:225,damage:25,interval:1.8},
-  rollingrock:{label:'Rolling Rock',family:'rock',tier:3,cost:350,hp:360,r:33,speed:91,trainTime:16,supply:4,range:58,damage:78,interval:2},
-  shears:{label:'Shadow Shears',family:'scissors',tier:3,cost:325,hp:170,r:22,speed:185,trainTime:15,supply:3,range:55,damage:56,interval:1.1},
+  sniper:{label:'Scissors Sniper',family:'scissors',tier:2,cost:150,hp:150,r:18,speed:126,trainTime:11,supply:2,range:420,damage:17,interval:1.7},
+  airplane:{label:'Paper Airplane',family:'paper',tier:2,vision:900,cost:130,hp:140,r:22,speed:245,trainTime:9,supply:2,range:265,damage:22,interval:.9,flying:true},
+  mage:{label:'Rock Mage',family:'rock',tier:2,cost:170,hp:200,r:20,speed:112,trainTime:12,supply:2,range:210,damage:18,interval:1.6},
+  divider:{label:'Paper Divider',family:'paper',tier:3,cost:500,hp:280,r:27,speed:103,trainTime:25,supply:6,range:225,damage:25,interval:1.8},
+  rollingrock:{label:'Rolling Rock',family:'rock',tier:3,cost:350,hp:640,r:33,speed:91,trainTime:16,supply:4,range:58,damage:78,interval:2},
+  shears:{label:'Shadow Shears',family:'scissors',tier:3,cost:325,hp:300,r:22,speed:185,trainTime:15,supply:3,range:55,damage:56,interval:1.1},
   workshop:{label:'Prototype Workshop',tier:2,cost:275,hp:650,r:51,buildTime:16,supplyCap:0,building:true,requires:['printer']},
   laboratory:{label:'Shredder Laboratory',tier:3,cost:400,hp:850,r:62,buildTime:20,supplyCap:0,building:true,requires:['printer','workshop']},
   staplergate:{label:'Stapler Gate',hp:1800,r:180,building:true,neutral:true,supplyCap:0},
@@ -18,6 +18,7 @@ export const isCombat=type=>!!familyOf(type);
 export const canTransport=type=>isCombat(type)&&!WARFARE_TYPES[typeof type==='string'?type:type?.type]?.flying&&(WARFARE_TYPES[typeof type==='string'?type:type?.type]?.tier||1)<3;
 export const familyCanDamage=(a,b)=>!familyOf(a)||!familyOf(b)||familyOf(a)===familyOf(b)||({rock:'scissors',paper:'rock',scissors:'paper'}[familyOf(a)]===familyOf(b));
 export const PRODUCTION={desk:['twig'],printer:['rock','paper','scissors'],cdreader:['cd'],workshop:['sniper','airplane','mage'],laboratory:['divider','rollingrock','shears']};
+export const FORCE_FIELD_RADIUS=80;
 export const ABILITIES={snipe:{type:'sniper',cooldown:18,range:700},intercept:{type:'airplane'},patrol:{type:'airplane'},crash:{type:'airplane'},forcefield:{type:'mage',range:420},division:{type:'divider',cooldown:38,range:600},roll:{type:'rollingrock',cooldown:17,range:750},shadowpath:{type:'shears',cooldown:18,range:900}};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -25,7 +26,45 @@ const fail=reason=>({ok:false,reason});
 const success=extra=>({ok:true,...extra});
 const point=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y);
 const staticShot=(g,a,b)=>g._lineFree(a.x,a.y,b.x,b.y,0,b.id,false,true,true);
-const reset=e=>{e.path=null;e.detour=null;e.combatTarget=null;e.formationGoal=null;e.aim=null;};
+const reset=e=>{e.path=null;e.detour=null;e.combatTarget=null;e.formationGoal=null;e.aim=null;delete e.pendingAbility;};
+function queueCast(e,name,target,position){
+  reset(e);e.pendingAbility={name,target:{...target},range:ABILITIES[name].range};
+  e.order={type:'cast',ability:name,x:position.x,y:position.y,...(target.targetId?{targetId:target.targetId}:{})};
+  return success({casterId:e.id,queued:true,ability:name});
+}
+function stopQueuedCast(g,e,reason){
+  delete e.pendingAbility;if(e.order.type==='cast')e.order={type:'idle'};e.path=null;e.detour=null;
+  if(reason&&e.team===0)g._event?.('toast',{message:reason,team:e.team});
+}
+// Plan every displacement before spending a charge. Only clear, continuous
+// ground segments qualify, so a dome cannot throw a troop through scenery,
+// an existing barrier, or a wall into an inaccessible terrain pocket.
+function fieldPushPlan(g,field){
+  const ground=g.entities.filter(e=>e.hp>0&&!e.transportedBy&&!e.leap&&(isCombat(e.type)||e.type==='twig')&&!WARFARE_TYPES[e.type]?.flying);
+  const affected=ground.filter(e=>dist(e,field)<field.r+e.r+4).sort((a,b)=>b.r-a.r||a.id-b.id),affectedIds=new Set(affected.map(e=>e.id));
+  if(!affected.length)return [];
+  const reserved=ground.filter(e=>!affectedIds.has(e.id)).map(e=>({x:e.x,y:e.y,r:e.r})),plan=[];
+  for(const troop of affected){
+    const angle=dist(troop,field)>.01?Math.atan2(troop.y-field.y,troop.x-field.x):(troop.id*2.399963229728653),choices=[];
+    for(const extra of [0,24,48,80,120,160,200])for(let i=0;i<96;i++){
+      const turn=i===0?0:Math.ceil(i/2)*(i%2?1:-1)*Math.PI/48,radius=field.r+troop.r+5+extra;
+      const p={x:field.x+Math.cos(angle+turn)*radius,y:field.y+Math.sin(angle+turn)*radius};
+      choices.push({...p,score:(p.x-troop.x)**2+(p.y-troop.y)**2});
+    }
+    choices.sort((a,b)=>a.score-b.score);
+    const destination=choices.find(p=>!g._blocked(p.x,p.y,troop.r)&&reserved.every(other=>dist(p,other)>=troop.r+other.r+2)&&g._lineFree(troop.x,troop.y,p.x,p.y,troop.r));
+    if(!destination)return null;
+    reserved.push({...destination,r:troop.r});plan.push({troop,x:destination.x,y:destination.y});
+  }
+  return plan;
+}
+function applyFieldPushes(g,field,pushes){
+  for(const {troop,x,y} of pushes){
+    const fromX=troop.x,fromY=troop.y;troop.x=x;troop.y=y;troop.path=null;troop.detour=null;troop.moveSample=null;troop.knockback=.2;
+    g._effect('forcefieldPush',x,y,{team:field.team,fromX,fromY,radius:troop.r,life:.4,total:.4});
+  }
+  if(pushes.length)g._fogDirty=true;
+}
 function segmentDistance(p,a,b){const dx=b.x-a.x,dy=b.y-a.y,t=clamp(((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy||1),0,1);return Math.hypot(p.x-a.x-dx*t,p.y-a.y-dy*t);}
 function clearMovement(g,e,p,ignoreDivision=false){
   const divisions=g.divisions;
@@ -63,30 +102,28 @@ export function useAbility(g,ids,name,target={}){
   if(name==='snipe'){
     const victim=g.getEntity(target.targetId);
     if(!victim||familyOf(victim)!=='paper'||victim.paperInvulnerable>0)return fail('Choose a vulnerable enemy Paper troop.');
-    const caster=units.filter(e=>g.canTarget(e,victim)&&dist(e,victim)<=700&&staticShot(g,e,victim)).sort((a,b)=>dist(a,victim)-dist(b,victim)||a.id-b.id)[0];
-    if(!caster)return fail('No ready sniper has a visible, clear shot within 700 pixels.');
+    const eligible=units.filter(e=>g.canTarget(e,victim)).sort((a,b)=>dist(a,victim)-dist(b,victim)||a.id-b.id);
+    const caster=eligible.find(e=>dist(e,victim)<=def.range&&staticShot(g,e,victim))||eligible.find(e=>dist(e,victim)>def.range);
+    if(!caster)return fail('Choose a visible Paper target with a clear shot.');
+    if(dist(caster,victim)>def.range)return queueCast(caster,name,{targetId:victim.id},victim);
     reset(caster);caster.order={type:'idle'};caster.aim={targetId:victim.id,remaining:1.5,total:1.5};caster.abilityCooldown=18;return success({casterId:caster.id});
   }
   if(name==='shadowpath')return shadowPath(g,units,target);
   if(!point(target))return fail('Choose a battlefield location.');
   const center={x:clamp(target.x,25,g.width-25),y:clamp(target.y,25,g.height-25)};
   if(name==='forcefield'||name==='division'){
-    if(!g.canSee(team,center.x,center.y))return fail('Scout the target location first.');
-    const caster=units.filter(e=>dist(e,center)<=def.range&&(name!=='forcefield'||(e.mageCharges??2)>0)).sort((a,b)=>dist(a,center)-dist(b,center)||a.id-b.id)[0];
-    if(!caster)return fail('No ready caster is within range.');
+    const caster=units.filter(e=>name!=='forcefield'||(e.mageCharges??2)>0).sort((a,b)=>dist(a,center)-dist(b,center)||a.id-b.id)[0];
+    if(!caster)return fail('Wait for a mage charge to recharge.');
+    if(dist(caster,center)>def.range||!g.canSee(team,center.x,center.y))return queueCast(caster,name,center,center);
     if(name==='forcefield'){
+      const field={id:g._warfareId,x:center.x,y:center.y,r:FORCE_FIELD_RADIUS,team,remaining:10,total:10},pushes=fieldPushPlan(g,field);
+      if(!pushes)return fail('The dome needs clear ground to push every troop safely outside.');
+      reset(caster);caster.order={type:'idle'};
       caster.mageCasting=Math.max(caster.mageCasting||0,.65);caster.mageCharges=(caster.mageCharges??2)-1;if(!(caster.mageRecharge>0))caster.mageRecharge=5;
-      const field={id:g._warfareId++,x:center.x,y:center.y,r:110,team,remaining:10,total:10};
-      // A ring appearing under a footprint must leave that troop on its
-      // original side; resolve the overlap before making the ring solid.
-      for(const troop of g.entities){
-        if(troop.hp<=0||troop.transportedBy||troop.leap||!isCombat(troop.type)&&troop.type!=='twig'||WARFARE_TYPES[troop.type]?.flying)continue;
-        const distance=dist(troop,field);if(Math.abs(distance-field.r)>=troop.r+4)continue;
-        const radius=distance<field.r?field.r-troop.r-5:field.r+troop.r+5,angle=Math.atan2(troop.y-field.y,troop.x-field.x);
-        for(const offset of [0,.15,-.15,.3,-.3,.6,-.6]){const p={x:field.x+Math.cos(angle+offset)*radius,y:field.y+Math.sin(angle+offset)*radius};if(!g._blocked(p.x,p.y,troop.r)){troop.x=p.x;troop.y=p.y;troop.path=null;break;}}
-      }
-      g.forceFields.push(field);barriersChanged(g);g._effect('forcefield',center.x,center.y,{team,radius:110});
+      applyFieldPushes(g,field,pushes);
+      g._warfareId++;g.forceFields.push(field);barriersChanged(g);g._effect('forcefield',center.x,center.y,{team,radius:FORCE_FIELD_RADIUS});g._fogDirty=true;
     }else{
+      reset(caster);caster.order={type:'idle'};
       caster.abilityCooldown=38;caster.divisionCast=1.5;
       g.divisions.push({id:g._warfareId++,x:center.x,y:center.y,r:350,team,remaining:9,total:9,casting:1.5,casterId:caster.id});g._effect('division',center.x,center.y,{team,radius:350,life:1.5,total:1.5});
     }
@@ -117,6 +154,16 @@ function barriersChanged(g){g._barrierRevision++;g._navigation=null;for(const e 
 export function tickWarfare(g,dt){
   let changed=false;
   for(const field of g.forceFields){field.remaining-=dt;if(field.remaining<=0){changed=true;g._effect('forcefieldEnd',field.x,field.y,{team:field.team,radius:field.r});}}
+  g.forceFields=g.forceFields.filter(f=>f.remaining>0);
+  // Landing rocks and other late arrivals must not create a trapped interior.
+  // Normal production and transport placement already exclude the solid disk.
+  for(const field of [...g.forceFields]){
+    field.pushCheck=(field.pushCheck||0)-dt;if(field.pushCheck>0)continue;field.pushCheck=.1;
+    const fields=g.forceFields;g.forceFields=fields.filter(other=>other!==field);let pushes;
+    try{pushes=fieldPushPlan(g,field);}finally{g.forceFields=fields;}
+    if(pushes)applyFieldPushes(g,field,pushes);
+    else{field.remaining=0;changed=true;g._effect('forcefieldEnd',field.x,field.y,{team:field.team,radius:field.r});}
+  }
   g.forceFields=g.forceFields.filter(f=>f.remaining>0);
   for(const division of g.divisions){
     if(division.casting>0){
@@ -171,6 +218,25 @@ export function tickSpecialist(g,e,dt){
   if(e.divisionPull){
     const pull=e.divisionPull,p=pull.points[pull.index],result=moveAlong(g,e,p,Math.max(450,dist(e,p)*2)*dt,!!WARFARE_TYPES[e.type]?.flying,true);
     if(result==='blocked'){delete e.divisionPull;return true;}if(result===true&&++pull.index>=pull.points.length)delete e.divisionPull;return true;
+  }
+  if(e.pendingAbility){
+    const pending=e.pendingAbility,def=ABILITIES[pending.name];
+    if(e.order.type!=='cast'||e.order.ability!==pending.name){delete e.pendingAbility;return false;}
+    const victim=pending.target.targetId?g.getEntity(pending.target.targetId):null,position=victim||pending.target;
+    const valid=pending.name==='snipe'?victim&&familyOf(victim)==='paper'&&victim.paperInvulnerable<=0&&g.canTarget(e,victim):point(position);
+    if(!valid){stopQueuedCast(g,e,'Queued cast canceled: the target is no longer visible or valid.');return true;}
+    if((e.abilityCooldown||0)>0||pending.name==='forcefield'&&(e.mageCharges??2)<=0){stopQueuedCast(g,e,'Queued cast canceled: the ability is no longer ready.');return true;}
+    e.order.x=position.x;e.order.y=position.y;
+    const visible=pending.name==='snipe'||g.canSee(e.team,position.x,position.y);
+    if(dist(e,position)>def.range||!visible){
+      if(!pending.lastPosition||dist(e,pending.lastPosition)>4){pending.lastPosition={x:e.x,y:e.y};pending.lastMoveAt=g.time;}
+      if(g.time-pending.lastMoveAt>8){stopQueuedCast(g,e,'Queued cast canceled: no clear route to the target.');return true;}
+      g._move(e,position.x,position.y,dt,visible?def.range-8:8,victim?.id);return true;
+    }
+    delete e.pendingAbility;e.order={type:'idle'};e.path=null;e.detour=null;
+    const result=useAbility(g,[e.id],pending.name,pending.target);
+    if(!result.ok&&e.team===0)g._event?.('toast',{message:result.reason,team:e.team});
+    return true;
   }
   if(e.aim){
     const aim=e.aim,target=g.getEntity(aim.targetId);
@@ -272,7 +338,7 @@ export function specialistBot(g,team){
     if(e.type==='divider'&&nearby.length>=7&&new Set(nearby.map(t=>familyOf(t))).size>=2){const cluster=nearby.slice(0,15),x=cluster.reduce((n,t)=>n+t.x,0)/cluster.length,y=cluster.reduce((n,t)=>n+t.y,0)/cluster.length;g.useAbility([e.id],'division',{x,y});}
     if(e.type==='rollingrock'&&nearby.filter(t=>familyOf(t)==='scissors').length>=2&&!nearby.some(t=>familyOf(t)==='paper'&&dist(e,t)<150))rolls.push({unit:e,target:nearby.find(t=>familyOf(t)==='scissors')});
     if(e.type==='shears'&&papers.length){const t=papers[0],angle=Math.atan2(t.y-e.y,t.x-e.x);g.useAbility([e.id],'shadowpath',{points:[{x:e.x-Math.sin(angle)*110,y:e.y+Math.cos(angle)*110},{x:t.x+Math.cos(angle)*80,y:t.y+Math.sin(angle)*80}]});}
-    if(e.type==='airplane'&&!e.crash){const air=g._nearest(e,t=>t.team>=0&&t.team!==team&&(t.type==='cd'||WARFARE_TYPES[t.type]?.flying)&&g.canTarget(e,t)&&dist(e,t)<750);if(air)g.useAbility([e.id],'intercept',{targetId:air.id});else if(nearby.filter(t=>familyCanDamage(e,t)&&!WARFARE_TYPES[t.type]?.flying).length>=5||e.hp<35&&nearby.filter(t=>familyCanDamage(e,t)).length>=2)crashes.push(e);else if(e.order.type==='idle')g.useAbility([e.id],'patrol',{points:[{x:start.x,y:start.y},{x:clamp(start.x+(g.center.x-start.x)*.55,30,g.width-30),y:clamp(start.y+(g.center.y-start.y)*.55,30,g.height-30)}]});}
+    if(e.type==='airplane'&&!e.crash){const air=g._nearest(e,t=>t.team>=0&&t.team!==team&&(t.type==='cd'||WARFARE_TYPES[t.type]?.flying)&&g.canTarget(e,t)&&dist(e,t)<750);if(air)g.useAbility([e.id],'intercept',{targetId:air.id});else if(nearby.filter(t=>familyCanDamage(e,t)&&!WARFARE_TYPES[t.type]?.flying).length>=5||e.hp<e.maxHp*.4375&&nearby.filter(t=>familyCanDamage(e,t)).length>=2)crashes.push(e);else if(e.order.type==='idle')g.useAbility([e.id],'patrol',{points:[{x:start.x,y:start.y},{x:clamp(start.x+(g.center.x-start.x)*.55,30,g.width-30),y:clamp(start.y+(g.center.y-start.y)*.55,30,g.height-30)}]});}
   }
   if(rolls.length){const target=rolls[0].target,group=rolls.filter(r=>dist(r.unit,rolls[0].unit)<500);g.useAbility(group.map(r=>r.unit.id),'roll',{x:target.x,y:target.y});}
   if(crashes.length){const targets=enemies.filter(t=>familyCanDamage(crashes[0],t));if(targets.length){const t=targets.sort((a,b)=>dist(a,crashes[0])-dist(b,crashes[0]))[0];g.useAbility(crashes.map(e=>e.id),'crash',{x:t.x,y:t.y});}}

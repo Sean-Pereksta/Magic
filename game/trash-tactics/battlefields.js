@@ -175,7 +175,7 @@ function ringCrossed(field,ax,ay,bx,by,r){
   return true;
 }
 export function dynamicBarrierBlocked(game,x,y,r=17){
-  for(const field of game.forceFields||EMPTY_FIELDS)if(isActive(field)&&ringBlocked(field,x,y,r))return true;
+  for(const field of game.forceFields||EMPTY_FIELDS)if(isActive(field)&&(x-field.x)**2+(y-field.y)**2<(field.r+r+2)**2)return true;
   const clearance=(r+3)**2;
   for(const field of game.divisions||EMPTY_FIELDS){
     if(!isActive(field)||Math.abs(x-field.x)>field.r+r+3||Math.abs(y-field.y)>field.r+r+3)continue;
@@ -198,7 +198,14 @@ export function divisionBarrierCrossed(game,ax,ay,bx,by,r=0){
   return false;
 }
 export function dynamicBarrierCrossed(game,ax,ay,bx,by,r=17){
-  for(const field of game.forceFields||EMPTY_FIELDS)if(isActive(field)&&ringCrossed(field,ax,ay,bx,by,r))return true;
+  for(const field of game.forceFields||EMPTY_FIELDS){
+    if(!isActive(field))continue;
+    const outer=(field.r+r+2)**2,from=(ax-field.x)**2+(ay-field.y)**2,to=(bx-field.x)**2+(by-field.y)**2;
+    // Unexpected interior arrivals can escape outward; the safety push moves
+    // their full footprint clear before normal ground movement resumes.
+    if(from<outer&&to>=from)continue;
+    if(pointSegmentDistanceSquared(field.x,field.y,ax,ay,bx,by)<outer)return true;
+  }
   return divisionBarrierCrossed(game,ax,ay,bx,by,r);
 }
 export function divisionShotBlocked(game,a,b){return divisionBarrierCrossed(game,a.x,a.y,b.x,b.y,0);}

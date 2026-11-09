@@ -10,14 +10,14 @@ export const TYPES = {
   ...WARFARE_TYPES,
   wall:WALL_TYPE,
   twig: {label:'Twig',cost:25,hp:40,r:13,speed:150,trainTime:4,supply:1,worker:true},
-  rock: {family:'rock',tier:1,label:'Rock',cost:50,hp:100,r:18,speed:123,trainTime:5,supply:1,beats:'scissors',range:43},
-  paper: {family:'paper',tier:1,label:'Paper',cost:50,hp:100,r:17,speed:132,trainTime:5,supply:1,beats:'rock',range:48},
-  scissors: {family:'scissors',tier:1,label:'Scissors',cost:50,hp:100,r:18,speed:138,trainTime:5,supply:1,beats:'paper',range:46},
+  rock: {family:'rock',tier:1,label:'Rock',cost:50,hp:180,r:18,speed:123,trainTime:5,supply:1,beats:'scissors',range:43},
+  paper: {family:'paper',tier:1,label:'Paper',cost:50,hp:180,r:17,speed:132,trainTime:5,supply:1,beats:'rock',range:48},
+  scissors: {family:'scissors',tier:1,label:'Scissors',cost:50,hp:180,r:18,speed:138,trainTime:5,supply:1,beats:'paper',range:46},
   desk: {label:'Home desk',cost:200,hp:850,r:55,buildTime:12,supplyCap:12,building:true},
   cabinet: {label:'Cabinet',cost:75,hp:400,r:37,buildTime:7,supplyCap:8,building:true},
   printer: {label:'Printer',cost:150,hp:550,r:44,buildTime:10,supplyCap:0,building:true},
   cdreader: {label:'CD reader',cost:175,hp:500,r:45,buildTime:10,supplyCap:0,building:true},
-  cd: {label:'Flying CD',cost:75,hp:180,r:25,speed:220,trainTime:8,supply:1,flying:true,capacity:6},
+  cd: {label:'Flying CD',cost:75,hp:320,r:25,speed:220,trainTime:8,supply:1,flying:true,capacity:6},
   mouse: {label:'Defensive mouse',cost:175,hp:850,r:34,buildTime:8,supplyCap:0,building:true,range:360,shotInterval:1.25,impactDamage:28,clickDps:6,clickDuration:3},
   trash: {label:'Trash can',hp:1,r:27,building:false,resource:true}
 };
@@ -258,7 +258,7 @@ export class Game {
     units.forEach((e,i)=>{
       this._releaseCan(e);e.path=null;e.detour=null;e.moveSample=null;e.goalProgress=null;e.combatTarget=null;e.formationGoal=null;
       if(e.crash?.diving)return;
-      e.crash=null;e.aim=null;e.roll=null;e.shadow=null;
+      e.crash=null;e.aim=null;e.roll=null;e.shadow=null;delete e.pendingAbility;
       const o={...order};
       if(e.type==='cd'){
         if(moving)e.order={type:'move',x:clamp(order.x,e.r,this.width-e.r),y:clamp(order.y,e.r,this.height-e.r)};
@@ -300,7 +300,7 @@ export class Game {
       reserved.set(cd.id,reserved.get(cd.id)+1);planned.push({troop,cd});
     }
     for(const {troop,cd} of planned){
-      troop.order={type:'board',targetId:cd.id};troop.path=null;troop.detour=null;troop.combatTarget=null;troop.formationGoal=null;
+      troop.order={type:'board',targetId:cd.id};troop.path=null;troop.detour=null;troop.combatTarget=null;troop.formationGoal=null;delete troop.pendingAbility;
       cd.order=this._blocked(cd.x,cd.y,TYPES.rock.r)?{type:'move',...this._freePoint(cd.x,cd.y,TYPES.rock.r)}:{type:'idle'};
       this._board(troop,0);
     }
@@ -378,20 +378,20 @@ export class Game {
     let rockIndex=0;const rocks=available.filter(e=>e.type==='rock').length,landings=[];
     for(const e of available){
       if(e.type==='paper'){
-        e.paperInvulnerable=3;e.abilityCooldown=12;this._effect('crumple',e.x,e.y,{team:e.team});
+        e.paperInvulnerable=3;e.abilityCooldown=12;this._effect('crumple',e.x,e.y,{team:e.team,sourceId:e.id,sourceType:e.type,radius:e.r+14,life:.65,total:.65});
       } else if(e.type==='rock'){
         let dx=x-e.x,dy=y-e.y,len=Math.hypot(dx,dy);const max=420;
         if(len>max){dx=dx/len*max;dy=dy/len*max;}
         const cols=Math.ceil(Math.sqrt(rocks));let tx=clamp(e.x+dx+(rockIndex%cols-(cols-1)/2)*40,25,this.width-25);
         let ty=clamp(e.y+dy+(Math.floor(rockIndex/cols)-(Math.ceil(rocks/cols)-1)/2)*40,25,this.height-25);rockIndex++;
         const free=this._freePoint(tx,ty,e.r,landings);tx=free.x;ty=free.y;landings.push({...free,r:e.r});
-        e.leap={fromX:e.x,fromY:e.y,toX:tx,toY:ty,remaining:.65,total:.65};e.abilityCooldown=11;e.formationGoal=null;e.order={type:'attackMove',x:tx,y:ty};
+        e.leap={fromX:e.x,fromY:e.y,toX:tx,toY:ty,remaining:.65,total:.65};this._effect('abilityCast',e.x,e.y,{ability:'launch',sourceId:e.id,sourceType:e.type,team:e.team,toX:tx,toY:ty,radius:30,life:.45,total:.45});e.abilityCooldown=11;e.formationGoal=null;e.order={type:'attackMove',x:tx,y:ty};
       } else {
         const angle=Math.atan2(y-e.y,x-e.x);e.facing=angle;e.abilityCooldown=10;
-        this._effect('sweep',e.x,e.y,{angle,radius:125,team:e.team});
+        this._effect('sweep',e.x,e.y,{angle,radius:125,team:e.team,sourceId:e.id,sourceType:e.type,damage:135});
         for(const target of this.entities){if(target.team<0||target.team===e.team||familyOf(target)!=='paper'||target.transportedBy||target.hp<=0||target.paperInvulnerable>0)continue;
           const len=dist(e,target),a=Math.atan2(target.y-e.y,target.x-e.x),diff=Math.atan2(Math.sin(a-angle),Math.cos(a-angle));
-          if(len<125&&Math.abs(diff)<Math.PI*.34)this._damage(target,target.hp,e);
+          if(len<125&&Math.abs(diff)<Math.PI*.34)this._damage(target,135,e);
         }
       }
     }
@@ -408,7 +408,7 @@ export class Game {
       e.knockback=Math.max(0,(e.knockback||0)-dt);e.cooldown=Math.max(0,e.cooldown-dt);e.attackAnim=Math.max(0,(e.attackAnim||0)-dt);e.abilityCooldown=Math.max(0,e.abilityCooldown-dt);e.paperInvulnerable=Math.max(0,e.paperInvulnerable-dt);
       if(TYPES[e.type].building){this._building(e,dt);continue;}
       e.desiredVX=0;e.desiredVY=0;
-      if(e.leap){const l=e.leap;l.remaining-=dt;const t=1-Math.max(0,l.remaining)/l.total;e.x=l.fromX+(l.toX-l.fromX)*t;e.y=l.fromY+(l.toY-l.fromY)*t;if(l.remaining<=0){e.leap=null;this._effect('leap',e.x,e.y,{team:e.team,radius:60});}continue;}
+      if(e.leap){const l=e.leap;l.remaining-=dt;const t=1-Math.max(0,l.remaining)/l.total;e.x=l.fromX+(l.toX-l.fromX)*t;e.y=l.fromY+(l.toY-l.fromY)*t;if(l.remaining<=0){e.leap=null;this._effect('leap',e.x,e.y,{team:e.team,sourceId:e.id,sourceType:e.type,fromX:l.fromX,fromY:l.fromY,radius:60,life:.7,total:.7});}continue;}
       if(tickSpecialist(this,e,dt))continue;
       if(e.type==='cd')this._transport(e,dt);
       else if(e.order.type==='board')this._board(e,dt);
@@ -594,7 +594,7 @@ export class Game {
   _damage(target,amount,source){
     source.attackAnim=.25;source.attackTarget={x:target.x,y:target.y};
     if(!familyCanDamage(source,target)||divisionShotBlocked(this,source,target)||source.transportedBy||target.transportedBy||target.paperInvulnerable>0||target.leap||target.hp<=0)return;
-    target.hp-=amount;target.lastHit=this.time;this._effect('hit',target.x,target.y,{team:source.team});
+    target.hp-=amount;target.lastHit=this.time;this._effect('hit',target.x,target.y,{team:source.team,sourceType:source.type,targetType:target.type,family:familyOf(source),fromX:source.x,fromY:source.y,damage:amount,lethal:target.hp<=0,radius:target.r,life:.38,total:.38});
     this._event('hit',{source,target,amount});
     if(target.hp<=0&&source&&source.team>=0)this.stats.destroyed[source.team]++;
   }
@@ -829,7 +829,7 @@ export class Game {
       const enemy=this._nearest(e,t=>t.team>=0&&t.team!==team&&isCombat(t.type)&&!t.transportedBy&&this.isVisible(t,team));
       if(!enemy)continue;
       const d=dist(e,enemy);
-      if(e.type==='paper'&&e.hp<60&&d<150)this.ability([e.id],e.x,e.y);
+      if(e.type==='paper'&&e.hp<e.maxHp*.6&&d<150)this.ability([e.id],e.x,e.y);
       else if(e.type==='scissors'&&enemy.type==='paper'&&d<115)this.ability([e.id],enemy.x,enemy.y);
       else if(e.type==='rock'&&enemy.type==='scissors'&&d>160&&d<400)this.ability([e.id],enemy.x,enemy.y);
     }

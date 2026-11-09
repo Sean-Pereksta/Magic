@@ -58,10 +58,10 @@ test('destroying the neutral stapler permanently removes the central collision o
   updateBattlefield(game,1);assert.equal(game._barrierRevision,1,'opening happens once');
 });
 
-test('overlapping dome rings block entry, exit and tunneling while preserving their interiors',()=>{
+test('overlapping domes exclude interior placement and block entry and tunneling',()=>{
   const game=fieldGame();game.forceFields=[{id:1,x:500,y:500,r:110,remaining:10},{id:2,x:660,y:500,r:110,remaining:10}];
-  assert(!dynamicBarrierBlocked(game,500,500,17));assert(dynamicBarrierBlocked(game,610,500,17));
-  assert(dynamicBarrierCrossed(game,500,500,700,500,17),'a trapped troop cannot leave');
+  assert(dynamicBarrierBlocked(game,500,500,17));assert(dynamicBarrierBlocked(game,610,500,17));
+  assert(!dynamicBarrierCrossed({...game,forceFields:[game.forceFields[0]]},500,500,700,500,17),'unexpected interior troops may escape outward');
   assert(dynamicBarrierCrossed(game,300,500,800,500,17),'a long step cannot skip both ring boundaries');
   assert(!dynamicBarrierCrossed(game,300,300,800,300,17),'a route around the domes stays usable');
   assert(dynamicBarrierBlocked(game,580,575,17),'overlap intersections have no gap');
@@ -132,14 +132,14 @@ test('every team has reachable attack routes on original and expansion maps',()=
   }
 });
 
-test('trapped ground units stay inside overlapping fields and resume their order after expiry',()=>{
+test('late interior ground arrivals are pushed out of overlapping fields and retain their orders',()=>{
   const game=new Game();game._think=Infinity;game.entities=game.entities.filter(e=>e.type==='desk');game.map.obstacles=[];
   const trapped=game._spawn('rock',0,1200,1000),outside=game._spawn('rock',0,900,1200);
   game.forceFields=[{id:100,x:1200,y:1000,r:110,remaining:10,total:10},{id:101,x:1360,y:1000,r:110,remaining:10,total:10}];game._barrierRevision++;
   game.command([trapped.id],{type:'move',x:1600,y:1000});game.command([outside.id],{type:'move',x:1600,y:1200});
-  for(let t=0;t<9;t+=.05){game.update(.05);assert(Math.hypot(trapped.x-1200,trapped.y-1000)<110,'the inner troop cannot cross a dome');assert(!game._blocked(trapped.x,trapped.y,trapped.r));}
+  for(let t=0;t<9;t+=.05){game.update(.05);assert(game.forceFields.every(f=>Math.hypot(trapped.x-f.x,trapped.y-f.y)>=f.r+trapped.r),'the troop stays outside every dome');assert(!game._blocked(trapped.x,trapped.y,trapped.r));}
   assert(outside.x>1500,'the outside troop finds a clear route');
-  advance(game,5);assert.equal(game.forceFields.length,0);assert(trapped.x>1500,'the cached movement order resumes when the fields expire');
+  advance(game,5);assert.equal(game.forceFields.length,0);assert(trapped.x>1500,'the pushed troop completes its original movement order');
 });
 
 test('conveyor control survives an eliminated owner in a multiplayer match',()=>{

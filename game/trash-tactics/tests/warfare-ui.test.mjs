@@ -37,6 +37,7 @@ async function harness() {
   const fakeRender=`export class Renderer {constructor(canvas,game){this.canvas=canvas;this.game=game;this.camera={zoom:1};this.centers=[];}resize(){}centerOn(x,y){this.centers.push({x,y});}screenToWorld(x,y){return {x,y};}worldToScreen(x,y){return {x,y};}pan(dx,dy){(this.pans??=[]).push({dx,dy});}zoomAt(){}draw(state){this.lastDraw=state;}drawMinimap(){}}export function drawIcon(){}`;
   const source=(await readFile(new URL('../game.js',import.meta.url),'utf8'))
     .replace("'./engine.js'",JSON.stringify(new URL('../engine.js',import.meta.url).href))
+    .replace("'./ability-icons.js'",JSON.stringify(new URL('../ability-icons.js',import.meta.url).href))
     .replace("'./render.js'",JSON.stringify('data:text/javascript;base64,'+Buffer.from(fakeRender).toString('base64')));
   await import('data:text/javascript;base64,'+Buffer.from(source+`\n//# sourceURL=trash-tactics-abilities-under-test-${++harnessId}.js`).toString('base64'));
   element('startButton').click();
@@ -74,6 +75,24 @@ test('a mage group keeps targeting armed and casts exactly one dome on each clic
  h.key('escape');h.refresh();assert.equal(h.state.renderer.lastDraw.mode,null);
  assert.equal(h.element('pauseOverlay').hidden,true,'Escape cancels a targeting mode before opening the menu');
 });
+
+test('queued specialist casts explain their approach and cancel cleanly without disabling ready group members',async()=>{
+ const h=await harness(),mage=h.spawn('mage',600,800),other=h.spawn('mage',650,900);
+ h.select(mage);h.select(other,{shiftKey:true});h.key('g');
+ assert.match(h.element('modeBanner').textContent,/80 radius · pushes ground troops out/);
+ assert.match(h.element('modeBanner').textContent,/moves into range when needed/);
+ h.point(1500,800);h.refresh();
+ assert.equal(h.game.forceFields.length,0,'the click queues movement before a distant cast');
+ assert.equal([mage,other].filter(e=>e.pendingAbility?.name==='forcefield').length,1);
+ assert.match(h.element('toast').textContent,/Moving into range to cast Force Field Dome\. Stop or a new order cancels\./);
+ const html=h.element('actionContent').innerHTML;
+ assert.match(html,/<span class="ability-status">Moving<\/span>/);
+ assert.doesNotMatch(html,/<button[^>]*data-type="forcefield"[^>]*disabled/,'another ready caster keeps the card available');
+ assert.equal(h.state.renderer.marker.type,'move','approach orders do not show a cast impact marker');
+ h.key('s');h.refresh();
+ assert(!mage.pendingAbility&&!other.pendingAbility);
+ assert.doesNotMatch(h.element('actionContent').innerHTML,/<span class="ability-status">Moving<\/span>/,'cancellation refreshes the card status');
+});
 test('sniper targeting uses one caster and retains the selected enemy id',async()=>{
  const h=await harness(),a=h.spawn('sniper',600,800),b=h.spawn('sniper',650,900),enemy=h.spawn('paper',950,800,1);
  h.select(a);h.select(b,{shiftKey:true});h.key('f');h.point(enemy.x,enemy.y);
@@ -97,6 +116,16 @@ test('Army selection includes all new combat families and workers expose both ne
  const worker=h.spawn('twig',600,1100);h.select(worker);
  assert.match(h.element('actionContent').innerHTML,/Prototype Workshop/);
  assert.match(h.element('actionContent').innerHTML,/Shredder Laboratory/);
+});
+
+test('a mixed army presents all eleven illustrated abilities in one keyboard-labelled grid',async()=>{
+ const h=await harness();Object.assign(h.game.teams[0].upgrades,{rock:true,paper:true,scissors:true});
+ for(const [i,type] of ['rock','paper','scissors','sniper','airplane','mage','divider','rollingrock','shears'].entries())h.spawn(type,600+i*80,800);
+ h.key('f2');const html=h.element('actionContent').innerHTML;
+ assert.equal((html.match(/class="ability-grid"/g)||[]).length,1,'all ability families share the same grid');
+ assert.equal((html.match(/class="ability-art"/g)||[]).length,11,'every ability gets custom art');
+ assert.equal((html.match(/class="ability-icon"/g)||[]).length,11,'art is real SVG, not fallback glyphs');
+ for(const key of ['Q','W','E','F','I','J','K','G','T','Y','H'])assert.match(html,new RegExp(`<kbd>${key}</kbd>`));
 });
 
 test('wall placement stays armed, snaps connected blocks and keeps every paid construction order',async()=>{

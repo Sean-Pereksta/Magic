@@ -3,6 +3,8 @@ import {drawExpansionIcon,drawExpansionSprite,drawWarfareEntityOverlay,drawWarfa
 import {TYPES} from './engine.js';
 import {drawWallBlock,drawWallEntity,drawWallPlacement} from './wall-art.js';
 import {WALL_SIZE} from './walls.js';
+import {paintTabletopDetails} from './tabletop-details.js';
+import {drawBattleEffect} from './battle-fx.js';
 const INK='#354549', TEAL='#269b98', CORAL='#ed795d';
 const TEAM_COLORS=[TEAL,CORAL,'#9e7bc5','#d4aa4e'];
 const teamColor=t=>TEAM_COLORS[t]||'#91a588';
@@ -243,6 +245,7 @@ export class Renderer {
  // Peripheral cable, coffee marks and little paper scraps add scale, staying flat under play.
  if(!['canyon','conveyor'].includes(g.map?.id))this.paintDecor(c,breakroom);
  paintWarfareMap(this,c);
+ paintTabletopDetails(this,c);
  c.restore();
  for(const o of g.map?.obstacles||[])if(!['cliff','canyon','staplergate','gate','gatebarrier'].includes(o.type))this.drawObstacle(c,o,true);
  // The paper curls at two corners, leaving the warm wooden table visible beneath.
@@ -432,6 +435,7 @@ export class Renderer {
  drawPointer(c,x,y,angle,tc,.8);c.restore();
  }
  drawEffect(c,fx){
+ if(drawBattleEffect(this,c,fx))return;
  if(drawWarfareEffect(this,c,fx))return;
  if(!this.visible(fx.x,fx.y,160))return;const t=Math.max(0,Math.min(1,1-fx.life/(fx.total||.6)));c.save();c.globalAlpha=1-t;const tc=teamColor(fx.team);
  if(fx.type==='sweep'){c.translate(fx.x,fx.y);c.rotate(fx.angle||0);c.beginPath();c.moveTo(0,0);c.arc(0,0,(fx.radius||125)*(.6+t*.4),-Math.PI*.34,Math.PI*.34);c.closePath();shape(c,'#f8d27744','#e8ac45',3);for(let i=0;i<3;i++){c.beginPath();c.arc(0,0,(fx.radius||125)*(.45+i*.2),-Math.PI*.32,Math.PI*.32);shape(c,null,'#fff4c7',2);}
