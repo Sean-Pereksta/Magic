@@ -12,13 +12,13 @@ export function tabletopDetailPlacements(game){
  const map=game.map||{},w=game.width||4800,h=game.height||3200,placements=[];
  const blocked=[...(map.obstacles||[]),...(map.ramps||[]),...(map.conveyors||[]),...(map.bridges||[])];
  const protectedPoints=[...(map.camps||[]).map(p=>({...p,r:250})),...(map.expansions||[]).map(p=>({...p,r:145})),...(game.entities||[]).filter(e=>e.type==='trash').map(p=>({...p,r:95}))];
- const lanes=(map.lanes||[]).map(p=>Array.isArray(p)?p:p.points||[]);
- for(let i=0;i<Math.min(180,Math.ceil(w*h/110000));i++){
+ const lanes=(map.lanes||[]).map((p,i)=>({points:Array.isArray(p)?p:p.points||[],clearance:Math.max(150,(map.laneInfo?.[i]?.width||178)/2+60)}));
+ for(let i=0;i<Math.min(480,Math.ceil(w*h/110000));i++){
   const p={x:125+(i*719.371)%(Math.max(1,w-250)),y:125+(i*431.719)%(Math.max(1,h-250)),kind:i%6,angle:Math.sin(i*1.97)*.28,seed:i};
   if(blocked.some(b=>boxContains(p,b,75))||protectedPoints.some(q=>Math.hypot(p.x-q.x,p.y-q.y)<q.r))continue;
   // Main routes are up to 178 px wide; keep the whole rotated illustration
   // (up to 60 px from its center), rather than just its center, off that surface.
-  if(lanes.some(points=>points.some((b,j)=>j&&segmentDistance(p,points[j-1],b)<150)))continue;
+  if(lanes.some(lane=>lane.points.some((b,j)=>j&&segmentDistance(p,lane.points[j-1],b)<lane.clearance)))continue;
   placements.push(p);
  }
  return placements;
@@ -60,11 +60,11 @@ function botanical(c,palette){
 export function paintTabletopDetails(renderer,c){
  const game=renderer.game,map=game.map||{},id=map.id;
  const palette=id==='breakroom'?{paper:'#f5efd38a',fold:'#b4c49663',edge:'#7b916c80',rule:'#9baf8870',tape:'#d4c99570',stain:'#9f74402e'}:
- id==='conveyor'?{paper:'#dfe6ce77',fold:'#adbfab63',edge:'#637d7580',rule:'#87a89870',tape:'#d7bc7b66',stain:'#526b6233'}:
- id==='canyon'?{paper:'#f5e3bb88',fold:'#d2b27b68',edge:'#9e875e88',rule:'#ad996a77',tape:'#d4bb8366',stain:'#9b73412b'}:
+ ['conveyor','serverstack','inkdelta'].includes(id)?{paper:'#dfe6ce77',fold:'#adbfab63',edge:'#637d7580',rule:'#87a89870',tape:'#d7bc7b66',stain:'#526b6233'}:
+ ['canyon','corkcross'].includes(id)?{paper:'#f5e3bb88',fold:'#d2b27b68',edge:'#9e875e88',rule:'#ad996a77',tape:'#d4bb8366',stain:'#9b73412b'}:
  {paper:'#fff6da99',fold:'#d1d9b66b',edge:'#899b7b88',rule:'#a5b28b77',tape:'#e0c57e66',stain:'#a67c3d2b'};
  const motifs=[memo,clipPrint,coffee,circuit,carton,botanical];
- for(const p of tabletopDetailPlacements(game)){c.save();c.translate(p.x,p.y);c.rotate(p.angle);c.globalAlpha=.85;motifs[(p.kind+(id==='conveyor'?3:id==='canyon'?4:0))%motifs.length](c,palette,p.seed);c.restore();}
+ for(const p of tabletopDetailPlacements(game)){c.save();c.translate(p.x,p.y);c.rotate(p.angle);c.globalAlpha=.85;motifs[(p.kind+(['conveyor','serverstack'].includes(id)?3:['canyon','corkcross'].includes(id)?4:0))%motifs.length](c,palette,p.seed);c.restore();}
  // Scuffs follow actual solid props, reinforcing their footprint and scale.
  for(const [index,o]of (map.obstacles||[]).entries()){
   if(['cliff','canyon','gatebarrier','gate','staplergate'].includes(o.type))continue;

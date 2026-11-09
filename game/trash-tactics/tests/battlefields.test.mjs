@@ -6,10 +6,10 @@ import {Game,TYPES} from '../engine.js';
 function fieldGame(){return {time:0,forceFields:[],divisions:[]};}
 function advance(game,seconds){for(let t=0;t<seconds;t+=.05)game.update(.05);}
 
-test('expansion maps preserve 4800 by 3200 geometry for every player count',()=>{
+test('expansion maps provide 9600 by 6400 geometry for every player count',()=>{
   for(const id of ['canyon','conveyor'])for(const players of [2,3,4]){
     const map=createBattlefield(id,players);
-    assert.equal(map.width,4800);assert.equal(map.height,3200);assert.equal(map.camps.length,players);
+    assert.equal(map.width,9600);assert.equal(map.height,6400);assert.equal(map.camps.length,players);
     assert(map.plateaus.length>=2);assert.equal(map.ramps.length,map.plateaus.length*2);
     assert(map.expansions.length>=8);assert(map.lanes.length>=3);
     for(const camp of map.camps)assert(!map.obstacles.some(o=>camp.x>o.x-100&&camp.x<o.x+o.w+100&&camp.y>o.y-100&&camp.y<o.y+o.h+100),`${id}: headquarters has clear ground`);
@@ -19,18 +19,18 @@ test('expansion maps preserve 4800 by 3200 geometry for every player count',()=>
 
 test('canyon has solid chasms, a narrow northern bridge and a broader southern crossing',()=>{
   const map=createBattlefield('canyon',2),blocked=(x,y)=>map.obstacles.some(o=>x>o.x&&x<o.x+o.w&&y>o.y&&y<o.y+o.h);
-  assert(blocked(2400,100));assert(blocked(2400,1100));assert(blocked(2400,2100));assert(blocked(2400,3100));
-  assert(!blocked(2400,590));assert(!blocked(2400,2680));assert(blocked(2400,1600),'gate initially closes the center');
+  assert(blocked(4800,200));assert(blocked(4800,2200));assert(blocked(4800,4200));assert(blocked(4800,6200));
+  assert(!blocked(4800,1180));assert(!blocked(4800,5360));assert(blocked(4800,3200),'gate initially closes the center');
   assert(map.bridges[1].h>map.bridges[0].h,'the southern route accommodates wider formations');
 });
 
 test('conveyors accelerate, resist and drift ground movement while aircraft ignore them',()=>{
-  const game={map:createBattlefield('conveyor',2),time:0},unit={type:'rock',x:1500,y:1600};
+  const game={map:createBattlefield('conveyor',2),time:0},unit={type:'rock',x:3000,y:3200};
   assert.deepEqual(conveyorVelocity(game,unit,100,0),{vx:145,vy:0});
   assert.deepEqual(conveyorVelocity(game,unit,-100,0),{vx:-75,vy:0});
   const crossing=conveyorVelocity(game,unit,0,100);assert.equal(crossing.vx,12);assert.equal(crossing.vy,100);
   for(const type of ['airplane','cd'])assert.deepEqual(conveyorVelocity(game,{...unit,type},100,0),{vx:100,vy:0});
-  assert(conveyorTravelCost(game,1500,1600,1,0)<conveyorTravelCost(game,1500,1600,-1,0));
+  assert(conveyorTravelCost(game,3000,3200,1,0)<conveyorTravelCost(game,3000,3200,-1,0));
   game.map.conveyors[0].reversedUntil=18;
   assert.equal(conveyorVelocity(game,unit,100,0).vx,75);
   game.time=19;assert.equal(conveyorVelocity(game,unit,100,0).vx,145);
@@ -84,13 +84,13 @@ test('division walls contain movement and shots but permit movement inside each 
 test('integrated expansion navigation routes ground armies through genuine canyon crossings',()=>{
   const game=new Game({map:'canyon'});game._think=Infinity;
   assert.equal(game.map.id,'canyon');
-  assert(game._blocked(2400,1100,18));assert(!game._lineFree(1800,1100,3000,1100,18));
-  const rock=game._spawn('rock',0,1900,590),target={x:2900,y:590};
+  assert(game._blocked(4800,2200,18));assert(!game._lineFree(3600,2200,6000,2200,18));
+  const rock=game._spawn('rock',0,3800,1180),target={x:5800,y:1180};
   const route=game._path(rock,target.x,target.y);assert(route.length);
   let previous=rock;for(const p of route){assert(game._lineFree(previous.x,previous.y,p.x,p.y,rock.r));previous=p;}
   assert(Math.hypot(previous.x-target.x,previous.y-target.y)<1);
-  game.command([rock.id],{type:'move',...target});advance(game,10);
-  assert(rock.x>2550,'the northern ruler bridge is traversable');
+  game.command([rock.id],{type:'move',...target});advance(game,20);
+  assert(rock.x>5100,'the northern ruler bridge is traversable');
   for(const id of ['canyon','conveyor']){
     const g=new Game({map:id});for(const can of g.entities.filter(e=>e.type==='trash'))assert(!g._blocked(can.x,can.y,can.r),`${id}: trash resources have valid ground`);
     for(const building of g.entities.filter(e=>TYPES[e.type].building&&e.team>=0))assert(!g.map.obstacles.some(o=>building.x>o.x&&building.x<o.x+o.w&&building.y>o.y&&building.y<o.y+o.h));
@@ -101,9 +101,9 @@ test('a large ground formation crosses the narrow ruler bridge without freezing 
   const game=new Game({map:'canyon'});game._think=Infinity;
   game.entities=game.entities.filter(e=>['desk','staplergate'].includes(e.type));
   const troops=[];
-  for(let i=0;i<40;i++)troops.push(game._spawn('rock',0,1800-Math.floor(i/4)*48,520+(i%4)*46));
-  game.command(troops.map(e=>e.id),{type:'move',x:3100,y:590});advance(game,30);
-  assert.equal(troops.filter(e=>e.x>2600).length,40);
+  for(let i=0;i<40;i++)troops.push(game._spawn('rock',0,3600-Math.floor(i/4)*48,1080+(i%4)*46));
+  game.command(troops.map(e=>e.id),{type:'move',x:6200,y:1180});advance(game,45);
+  assert.equal(troops.filter(e=>e.x>5200).length,40);
   assert(troops.every(e=>!game._blocked(e.x,e.y,e.r)),'formation members finish on valid ground');
 });
 
@@ -156,10 +156,10 @@ test('conveyor control survives an eliminated owner in a multiplayer match',()=>
 test('ordinary melee troops destroy the full-health gate and traverse the newly opened center',()=>{
   const game=new Game({map:'canyon'});game._think=Infinity;game.entities=game.entities.filter(e=>['desk','staplergate'].includes(e.type));
   const gate=game.entities.find(e=>e.type==='staplergate'),troops=[];
-  for(let i=0;i<12;i++)troops.push(game._spawn('rock',0,2160-Math.floor(i/4)*45,1530+(i%4)*45));
+  for(let i=0;i<12;i++)troops.push(game._spawn('rock',0,4440-Math.floor(i/4)*45,3130+(i%4)*45));
   assert(game.canTarget(troops[0],gate));game.command(troops.map(e=>e.id),{type:'attack',targetId:gate.id});advance(game,35);
   assert.equal(gate.hp,0);assert(game.map.gate.open);
-  game.command(troops.map(e=>e.id),{type:'move',x:2900,y:1600});advance(game,15);
-  assert(troops.every(e=>Math.hypot(e.x-2900,e.y-1600)<180),'the central crossing now leads to the far bank');
+  game.command(troops.map(e=>e.id),{type:'move',x:5800,y:3200});advance(game,20);
+  assert(troops.every(e=>Math.hypot(e.x-5800,e.y-3200)<180),'the central crossing now leads to the far bank');
   assert(troops.every(e=>!game._blocked(e.x,e.y,e.r)));
 });

@@ -1,5 +1,7 @@
 # Trash Tactics
 
+The **Frontiers update** adds seven vast maps, a native map dropdown with real layout previews, eleven illustrated death animations, and four bot difficulties. See [Frontiers: maps, rival plans and Impossible economy](FRONTIERS.md).
+
 The **Tier 2 and Tier 3 warfare expansion** adds six specialists, two production buildings, animated character/effect sheets, Stapler Canyon and Conveyor Chaos. See [the expansion guide](WARFARE.md) for troop statistics, controls, map mechanics and validation, or open [the animated artwork gallery](warfare-gallery.html).
 
 A quick, cartoony RTS about turning office trash into a tiny empire. Desktop Meadow, Breakroom Blitz, Stapler Canyon and Conveyor Chaos each support 2-, 3-, and 4-player matches: twelve battleground layouts in all. Play a free-for-all against one, two, or three rival bots at Easy, Normal, or Hard difficulty. Destroy every rival desk to win.
@@ -19,15 +21,15 @@ The battlefield fills the screen, with a compact selection panel and no top menu
 
 ## Economy and combat
 
-Twigs cost **25 trash**. Each carries **5 trash per trip** from a trash can back to a home desk. One twig can collect from each can at a time. Everyone can attack twigs, so protect your economy and build desks near new resources.
+Twigs cost **25 trash** and have **75 HP**, surviving two standard 30-damage melee hits. Each carries **5 trash per trip** from a trash can back to a home desk. One twig can collect from each can at a time. Everyone can attack twigs, so protect your economy and build desks near new resources.
 
-Rocks, paper, and scissors each cost **50 trash** and use one supply. Rock beats scissors, scissors beat paper, and paper beats rock. Tier 1 troops now have **180 HP** and attack once every **1.25 seconds**. Standard favorable counter duels take four hits, giving time to retreat, flank, or activate an ability. Specialists have roughly 75–82% more health; Flying CDs have **320 HP**. Worker health, costs, movement footprints, and attack intervals are unchanged. Troops refuse both automatic and explicit targets that are their exact counter (rock cannot target paper, paper cannot target scissors, scissors cannot target rock). Matching types can fight, and combat troops can damage buildings and twigs. A home desk costs **200 trash** and provides 12 supply; a cabinet costs **75** and provides 8 more; a printer costs **150** and produces troops.
+Rocks, paper, and scissors each cost **50 trash** and use one supply. Rock beats scissors, scissors beat paper, and paper beats rock. Tier 1 troops now have **180 HP** and attack once every **1.25 seconds**. Standard favorable counter duels take four hits, giving time to retreat, flank, or activate an ability. Specialists have roughly 75–82% more health; Flying CDs have **320 HP**. Worker health is now **75 HP** to give defenders time to react to a drop raid. Costs, movement footprints, and basic attack intervals retain their original scale. Troops refuse both automatic and explicit targets that are their exact counter (rock cannot target paper, paper cannot target scissors, scissors cannot target rock). Matching types can fight, and combat troops can damage buildings and twigs. A home desk costs **200 trash** and provides 12 supply; a cabinet costs **75** and provides 8 more; a printer costs **150** and produces troops.
 
 Squads move in formations, push apart to avoid stacking, and find routes through obstacles and narrow choke points. Use wider routes for large armies and keep your resource lanes clear.
 
 ## Terrain and scouting
 
-All twelve layouts are **4800 × 3200 world pixels**, double the original width and height and four times the playable area. Unit sizes, movement speeds, weapon ranges, and local harvesting trips retain their original scale. Each layout has **2–6 raised areas**, **10–14 expansion locations**, broad ramps, layered cliff edges, secondary cover clusters, and marked resource fields. Desktop Meadow combines paper groves, cork flats, and circuit yards; Breakroom Blitz adds napkin groves, service tiles, and coffee basins. Ground units must use ramps to reach elevated areas; flying CDs and Rock Launch can cross cliffs. Buildings cannot block the ramps.
+All **21 layouts are 9600 × 6400 world pixels**, twice the previous width and height and **four times the previous area**. Troop footprints, speeds, weapon ranges and six starting trash cans retain their scale. Each camp has a sheltered natural expansion about 620–900 pixels away. Named main roads, flanks, crossings, high-ground routes and richer outer fields make scouting and expansion defense worthwhile. The preview draws the actual terrain, routes, resource fields and player starts.
 
 High ground grants an extra **100 world pixels of sight**. Low-ground troops cannot see uphill or through a raised shelf, while flying CDs can scout over it. These vision rules apply to every team, including bots. Elevation changes sight and access; it does not add a damage bonus.
 
@@ -41,7 +43,7 @@ Each troop's printer upgrade costs **150 trash**:
 - **Scissors — Sweep (E):** choose a direction; selected ready scissors slash a short forward arc, dealing **135 damage** to paper caught inside it. A healthy paper survives one sweep; combined attacks finish it.
 - **Paper — Crumple (W):** immediately become invulnerable for 3 seconds and move faster; paper cannot attack while crumpled.
 
-Opponents gather trash, train troops, construct buildings, expand, research, and attack. Difficulty changes their planning speed and aggression rather than granting free resources.
+Opponents gather trash, train troops, construct buildings, expand, research, and attack. Easy, Normal and Hard use the same resource rules as the player. Higher difficulty improves scouting, counter production, defense and coordinated attacks. **Impossible explicitly cheats economically**: +300 starting trash, 2× gathering credit, and a 2-trash/second stipend capped at 1,200 per bot.
 
 ## Flying CDs and pointer defense
 
@@ -80,3 +82,6 @@ Cached map scenery adds office-surface marks, paper scraps, themed props, resour
 
 
 Force Fields use a smaller **80-pixel radius** and push ground troops of either team outside the dome. Walls and terrain constrain the push. Force Field and Triple Division casters walk toward distant ground targets and cast once they are in range and have sight. Snipers approach distant visible targets before aiming. Charges and cooldowns begin at the cast, and Stop or a replacement order cancels a pending approach.
+
+
+Every troop now has a distinct illustrated death sequence. The unit leaves the simulation immediately while its body collapses, tears, fractures or disassembles visually. Original painted remains and exported sprite sheets are included in `assets/`; the [knockout gallery](death-gallery.html) offers pause, replay and frame scrubbing.

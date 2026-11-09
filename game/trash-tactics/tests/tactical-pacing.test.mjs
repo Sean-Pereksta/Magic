@@ -11,10 +11,10 @@ function arena(){
 }
 function advance(game,seconds){for(let elapsed=0;elapsed<seconds;elapsed+=.04)game.update(.04);}
 
-test('all troop tiers and transports receive the higher health budget without changing worker or building health',()=>{
+test('all troop tiers and transports retain the tactical health budget and workers survive longer raids',()=>{
  const expected={rock:180,paper:180,scissors:180,sniper:150,airplane:140,mage:200,divider:280,rollingrock:640,shears:300,cd:320};
  for(const [type,hp] of Object.entries(expected))assert.equal(TYPES[type].hp,hp,type);
- assert.equal(TYPES.twig.hp,40);assert.equal(TYPES.desk.hp,850);
+ assert.equal(TYPES.twig.hp,75);assert.equal(TYPES.desk.hp,850);
 });
 
 test('a matching duel survives its opening exchange long enough to retreat',()=>{

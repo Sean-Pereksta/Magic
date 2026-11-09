@@ -77,3 +77,14 @@ Validation: `node --test tests/wall-art.test.mjs` checks all sixteen connected p
 The eleven new ability illustrations are original vector artwork in `ability-icons.js`, exported as standalone SVGs in `assets/abilities/`: Launch, Crumple, Sweep, Precision Snipe, Intercept, Patrol, Crash Landing, Force Field Dome, Triple Division, Crushing Roll and Shadow Path. They use the existing charcoal outlines and cream, teal, ochre and lavender palette. They are geometric vector designs, not image-generated raster artwork. The matching `tactics.css` displays them in square three-column tiles with prominent hotkeys.
 
 The map and fighting additions extend the existing Canvas renderer. Static decorative detail is cached with the terrain; combat effects are short-lived, fog-aware graphics. Existing painted unit sprites and effects remain in use.
+
+
+## Eleven illustrated death animations
+
+`death-art.js` supplies a distinct collapse/disassembly lifecycle for Twig, Rock, Paper, Scissors, Flying CD, Scissors Sniper, Paper Airplane, Rock Mage, Paper Divider, Rolling Rock and Shadow Shears. Painted body fragments tumble, fold, tear or fracture into bespoke remains. The new transparent 4×3 remains atlas was created with the built-in image generator; `assets/death-art-prompts.json` preserves its exact prompt, reference roles, tile order and mode. `assets/death-remains.png` and `.webp` are project-bound reusable exports. `assets/death-animation.json` records animation playback.
+
+Runtime death drawing uses actual sprite frames and bounded cached fallbacks, with immediate removal from simulation and supply. Artwork respects fog and the viewport. `death-gallery.html` shows every lifecycle with replay, pause and a frame scrubber.
+
+## Frontier map illustrations
+
+`frontier-art.js` paints broad route beds and real collider artwork for ink pools, server racks, cork bundles and pin trays. Expansion pads identify sheltered naturals, contested caches, elevated scrap and rich outer fields. Theme-specific circuit traces, cork grain, ink stains, paper marks and lane signage are cached with the terrain under the existing scenery memory cap. `skirmish-menu.js` paints the lobby preview from the same map geometry used by movement and combat.

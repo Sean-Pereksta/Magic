@@ -1,5 +1,6 @@
 // Short, bounded impact illustrations share the simulation's existing effect
 // lifetime. No extra particles/entities or persistent per-frame allocations.
+import {drawDeathAnimation} from './death-art.js';
 const TAU=Math.PI*2,INK='#354549',colors=['#269b98','#ed795d','#9e7bc5','#d4aa4e'];
 function line(c,points,col,width=2){c.beginPath();points.forEach((p,i)=>i?c.lineTo(...p):c.moveTo(...p));c.strokeStyle=col;c.lineWidth=width;c.lineCap='round';c.lineJoin='round';c.stroke();}
 function oval(c,x,y,rx,ry,fill,stroke=null,width=1.5){c.beginPath();c.ellipse(x,y,Math.max(.01,rx),Math.max(.01,ry),0,0,TAU);if(fill){c.fillStyle=fill;c.fill();}if(stroke){c.strokeStyle=stroke;c.lineWidth=width;c.stroke();}}
@@ -7,6 +8,7 @@ function chip(c,x,y,r,a,fill){c.save();c.translate(x,y);c.rotate(a);c.beginPath(
 function burst(c,x,y,p,r,col,count=7){for(let i=0;i<count;i++){const a=i*TAU/count+.15,inner=r*(.38+p*.8),outer=inner+8*(1-p);line(c,[[x+Math.cos(a)*inner,y+Math.sin(a)*inner*.7],[x+Math.cos(a)*outer,y+Math.sin(a)*outer*.7]],col,1.7*(1-p)+.5);}}
 
 export function drawBattleEffect(renderer,c,fx){
+ if(drawDeathAnimation(renderer,c,fx))return true;
  if(!['hit','death','leap','abilityCast','crumple','forcefieldPush'].includes(fx.type))return false;
  const radius=Math.min(100,fx.radius||24);if(!renderer.visible(fx.x,fx.y,Math.max(130,radius*2)))return true;
  const p=Math.max(0,Math.min(1,1-(fx.life||0)/(fx.total||.5))),tc=colors[fx.team]||'#a7b48c',family=fx.family||({sniper:'scissors',shears:'scissors',airplane:'paper',divider:'paper',rollingrock:'rock',mage:'rock'})[fx.sourceType]||fx.sourceType;

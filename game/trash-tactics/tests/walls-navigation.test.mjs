@@ -119,9 +119,10 @@ test('valid ground beside wall corners permits movement and Shadow Path away fro
 });
 
 test('walls can seal the Canyon ruler bridge and a destroyed block restores its short crossing',()=>{
-  const game=arena('canyon'),troop=game._spawn('rock',0,1900,590),target={x:2900,y:590},blocks=[];
-  for(const y of [528,576,624,672]){assert(game.canBuild('wall',2400,y));blocks.push(wall(game,2400,y));}
-  const detour=game._path(troop,target.x,target.y);assert(reachable(game,troop,target));assert(detour.some(p=>p.y>2400),'the sealed bridge sends ground forces to the southern crossing');
-  blocks.find(e=>e.y===576).hp=0;game._barrierRevision++;
-  const breach=game._path(troop,target.x,target.y);assert(reachable(game,troop,target));assert(breach.every(p=>p.y<800),'a one-block breach makes the northern route usable again');
+  const game=arena('canyon'),bridge=game.map.bridges[0],cx=bridge.x+bridge.w/2,cy=bridge.y+bridge.h/2,troop=game._spawn('rock',0,bridge.x-400,cy),target={x:bridge.x+bridge.w+400,y:cy},blocks=[];
+  const first=Math.ceil((bridge.y+24)/48)*48,last=Math.floor((bridge.y+bridge.h-24)/48)*48;
+  for(let y=first;y<=last;y+=48){assert(game.canBuild('wall',cx,y));blocks.push(wall(game,cx,y));}
+  const detour=game._path(troop,target.x,target.y);assert(reachable(game,troop,target));assert(detour.some(p=>p.y>game.height*.7),'the sealed bridge sends ground forces to the southern crossing');
+  blocks.reduce((best,e)=>Math.abs(e.y-cy)<Math.abs(best.y-cy)?e:best).hp=0;game._barrierRevision++;
+  const breach=game._path(troop,target.x,target.y);assert(reachable(game,troop,target));assert(breach.every(p=>p.y<bridge.y+bridge.h+100),'a one-block breach makes the northern route usable again');
 });

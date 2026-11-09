@@ -24,11 +24,11 @@ try{
  page.on('pageerror',e=>errors.push(e.message));
  await page.goto(url);
  await page.waitForFunction(()=>!!window.trashTactics);
- assert.equal(await page.locator('[data-map]').count(),4);
+ assert.equal(await page.locator('#mapSelect option').count(),7);
  await page.screenshot({path:path.join(output,'expansion-lobby.png')});
  for(const map of ['canyon','conveyor']){
   if(map==='conveyor'){await page.keyboard.press('p');await page.locator('#newMatchButton').click();}
-  await page.locator(`[data-map="${map}"]`).click();await page.locator('#startButton').click();
+  await page.locator('#mapSelect').selectOption(map);await page.locator('#startButton').click();
   assert.equal(await page.evaluate(()=>window.trashTactics.game.map.id),map);
   await page.evaluate(()=>{const {game:g,renderer:r}=window.trashTactics;g._think=Infinity;g.canSee=()=>true;g.isVisible=()=>true;r.drawFog=()=>{};r.camera.zoom=.36;r.centerOn(2400,1600);});
   await page.waitForTimeout(180);
@@ -58,7 +58,7 @@ try{
  await page.locator('#art-gallery').evaluate(e=>e.remove());
  const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1});
  mobile.on('pageerror',e=>errors.push(e.message));await mobile.goto(url);await mobile.waitForFunction(()=>!!window.trashTactics);
- assert.equal(await mobile.locator('[data-map]').count(),4);await mobile.locator('[data-map="canyon"]').tap();await mobile.locator('#startButton').tap();
+ assert.equal(await mobile.locator('#mapSelect option').count(),7);await mobile.locator('#mapSelect').selectOption('canyon');await mobile.locator('#startButton').tap();
  await mobile.screenshot({path:path.join(output,'mobile-canyon.png')});
  assert(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'mobile layout fits viewport');
  assert.deepEqual(errors,[],'desktop and touch screens have no runtime errors');

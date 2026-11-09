@@ -5,6 +5,8 @@ import {drawWallBlock,drawWallEntity,drawWallPlacement} from './wall-art.js';
 import {WALL_SIZE} from './walls.js';
 import {paintTabletopDetails} from './tabletop-details.js';
 import {drawBattleEffect} from './battle-fx.js';
+import {loadDeathArtwork,deathArtworkStatus} from './death-art.js';
+import {paintFrontierMap,drawFrontierObstacle} from './frontier-art.js';
 const INK='#354549', TEAL='#269b98', CORAL='#ed795d';
 const TEAM_COLORS=[TEAL,CORAL,'#9e7bc5','#d4aa4e'];
 const teamColor=t=>TEAM_COLORS[t]||'#91a588';
@@ -12,8 +14,8 @@ const SPECIALISTS=['sniper','airplane','mage','divider','rollingrock','shears'];
 function paintedImage(name){const img=new Image();img.onerror=()=>{if(!img._pngFallback){img._pngFallback=true;img.src=new URL('./assets/'+name+'.png',import.meta.url).href;}};img.src=new URL('./assets/'+name+'.webp',import.meta.url).href;return img;}
 const SPRITES={}; if(typeof Image!=='undefined')for(const type of ['rock','paper','scissors','twig',...SPECIALISTS]){if(SPECIALISTS.includes(type))SPRITES[type]=paintedImage(type+'-icon');else{const img=new Image();img.src=new URL('./assets/'+type+'-icon.png',import.meta.url).href;SPRITES[type]=img;}}
 const ANIMATION_SHEETS={};if(typeof Image!=='undefined')for(const type of SPECIALISTS)ANIMATION_SHEETS[type]=paintedImage(type+'-sheet');
-export const loadWarfareArtwork=()=>Promise.allSettled([...Object.values(SPRITES),...Object.values(ANIMATION_SHEETS)].map(img=>img.decode?.()||Promise.resolve()).concat(loadWarfareEffects()));
-export const warfareArtworkStatus=()=>({sheets:Object.fromEntries(['sniper','airplane','mage','divider','rollingrock','shears'].map(type=>[type,!!(ANIMATION_SHEETS[type]?.complete&&ANIMATION_SHEETS[type].naturalWidth)])),effects:warfareEffectsLoaded()});
+export const loadWarfareArtwork=()=>Promise.allSettled([...Object.values(SPRITES),...Object.values(ANIMATION_SHEETS)].map(img=>img.decode?.()||Promise.resolve()).concat(loadWarfareEffects(),loadDeathArtwork()));
+export const warfareArtworkStatus=()=>({sheets:Object.fromEntries(['sniper','airplane','mage','divider','rollingrock','shears'].map(type=>[type,!!(ANIMATION_SHEETS[type]?.complete&&ANIMATION_SHEETS[type].naturalWidth)])),effects:warfareEffectsLoaded(),deaths:deathArtworkStatus()});
 function rr(c,x,y,w,h,r=8){c.beginPath();c.roundRect(x,y,w,h,r);}
 function shape(c,fill,stroke=INK,width=2){if(fill){c.fillStyle=fill;c.fill();}if(stroke){c.strokeStyle=stroke;c.lineWidth=width;c.stroke();}}
 function line(c,points,color=INK,width=3){c.beginPath();points.forEach((p,i)=>i?c.lineTo(...p):c.moveTo(...p));c.strokeStyle=color;c.lineWidth=width;c.lineCap='round';c.lineJoin='round';c.stroke();}
@@ -162,7 +164,7 @@ export class Renderer {
  // Defense coverage is painted on the ground before troops and structures.
  for(const e of entities)if(e.type==='mouse'&&e.team===0&&selected.has(e.id)){const range=TYPES.mouse.range;c.save();c.setLineDash([7,9]);ellipse(c,e.x,e.y,range,range,teamColor(e.team)+'05',teamColor(e.team)+'60',1.4/cam.zoom);c.restore();}
  for(const e of entities)if(e.type==='trash'&&this.visible(e.x,e.y,80))this.drawEntity(c,e,selected.has(e.id));
- for(const e of entities.filter(e=>e.type!=='trash'&&!['cd','airplane'].includes(e.type)&&this.visible(e.x,e.y,e.type==='staplergate'?230:130)).sort((a,b)=>a.y-b.y))this.drawEntity(c,e,selected.has(e.id));
+ for(const e of entities.filter(e=>e.type!=='trash'&&!['cd','airplane'].includes(e.type)&&this.visible(e.x,e.y,e.type==='staplergate'?(e.r||180)+100:130)).sort((a,b)=>a.y-b.y))this.drawEntity(c,e,selected.has(e.id));
  // Air transports stay above every ground troop, structure, and obstacle.
  for(const e of entities)if(['cd','airplane'].includes(e.type)&&this.visible(e.x,e.y,130))this.drawEntity(c,e,selected.has(e.id));
  drawWarfareFields(this,c,'shield');
@@ -226,6 +228,7 @@ export class Renderer {
  // Slightly uneven paper grain makes the tabletop feel drawn, without obscuring units.
  for(let i=0;i<Math.ceil(2200*w*h/3840000);i++){const x=42+(i*593.113)%(w-95),y=43+(i*367.831)%(h-100);ellipse(c,x,y,.5+(i%3)*.22,.35,'#8e8b6020');}
  if(!['canyon','conveyor'].includes(g.map?.id))this.paintRegions(c,breakroom);
+ paintFrontierMap(this,c,'base');
  const lanes=g.map?.lanes||[
   [[330,800],[590,800],[840,800],[1200,800],[1560,800],[1810,800],[2070,800]],
   [[460,710],[670,410],[1030,390],[1370,390],[1730,410],[1940,710]],
@@ -245,6 +248,7 @@ export class Renderer {
  // Peripheral cable, coffee marks and little paper scraps add scale, staying flat under play.
  if(!['canyon','conveyor'].includes(g.map?.id))this.paintDecor(c,breakroom);
  paintWarfareMap(this,c);
+ paintFrontierMap(this,c);
  paintTabletopDetails(this,c);
  c.restore();
  for(const o of g.map?.obstacles||[])if(!['cliff','canyon','staplergate','gate','gatebarrier'].includes(o.type))this.drawObstacle(c,o,true);
@@ -350,6 +354,7 @@ export class Renderer {
  for(const [x,y,rot]of [[210,56,-.12],[w-230,60,.1],[170,h-62,.14]]){c.save();c.translate(x,y);c.rotate(rot);rr(c,-48,-13,96,26,2);shape(c,'#c6b7882c',null);for(let j=-35;j<40;j+=12)line(c,[[j,-10],[j+8,10]],'#b2a06a0d',1);c.restore();}
  } drawObstacle(c,o,all=false){
  if(!all&&!this.visible(o.x+o.w/2,o.y+o.h/2,Math.max(o.w,o.h)))return;
+ if(drawFrontierObstacle(this,c,o))return;
  if(drawWarfareObstacle(this,c,o))return;
  const{x,y,w,h}=o,kind=o.type||o.kind||'eraser';c.save();c.translate(x,y);rr(c,5,9,w,h,12);shape(c,'#625f4824',null);
  if(kind==='pencil'||kind==='ruler'){
@@ -381,6 +386,7 @@ export class Renderer {
  if(e.transportedBy)return;
  if(e.type==='wall'){drawWallEntity(this,c,e,selected);return;}
  const baseUnit=['rock','paper','scissors','twig'].includes(e.type),isUnit=baseUnit||['sniper','airplane','mage','divider','rollingrock','shears'].includes(e.type),isCD=e.type==='cd',isAir=isCD||e.type==='airplane',isTrash=e.type==='trash',tc=teamColor(e.team);let size=({sniper:59,airplane:66,mage:60,divider:85,rollingrock:90,shears:66,workshop:111,laboratory:136,staplergate:310,gate:310,station:82,controlstation:82})[e.type]||(isUnit?49:e.type==='desk'?112:e.type==='printer'?94:e.type==='cdreader'?98:e.type==='mouse'?80:e.type==='cabinet'?74:68);
+ if(e.type==='staplergate')size=(e.r||180)*100/68; // The gate's 68-unit illustration spans its actual blocking diameter.
  const old=this.motion.get(e.id);const moving=old&&Math.hypot(e.x-old.x,e.y-old.y)>.08;this.motion.set(e.id,{x:e.x,y:e.y});const bob=isUnit&&moving?Math.sin(this.time*13+Number(e.id)*.8)*1.8:Math.sin(this.time*2.5+(Number(e.id)||0))*0.7;
  const leap=isAir?(e.type==='airplane'?(e.crash?.diving?Math.max(0,(e.crash.remaining??.4)*65):32):18)+Math.sin(this.time*3+e.id)*2:e.type==='divider'?8+Math.sin(this.time*2+e.id)*2:e.leap?Math.sin(Math.PI*(1-e.leap.remaining/e.leap.total))*75:0;
  c.save();

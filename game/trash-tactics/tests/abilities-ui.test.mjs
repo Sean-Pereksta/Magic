@@ -27,7 +27,9 @@ let harnessId=0;
 async function harness() {
   const elements=new Map(),element=id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);};
   element('guide').hidden=true;
-  const document={getElementById:element,querySelector:()=>element('sidebar'),querySelectorAll:()=>[],activeElement:null};
+  const difficulties=['easy','normal','hard','impossible'].map(type=>{const e=element('difficulty-'+type);e.dataset.difficulty=type;return e;});
+  const players=[2,3,4].map(count=>{const e=element('players-'+count);e.dataset.players=String(count);return e;});
+  const document={getElementById:element,querySelector:()=>element('sidebar'),querySelectorAll:selector=>selector==='[data-difficulty]'?difficulties:selector==='[data-players]'?players:[],activeElement:null};
   const window=new Element('window');window.innerWidth=1000;window.innerHeight=700;
   let now=10000,nextTimer=1,frame;const timers=new Map();
   const advance=ms=>{now+=ms;for(const [id,timer] of [...timers])if(timer.at<=now){timers.delete(id);timer.fn();}};
@@ -38,6 +40,7 @@ async function harness() {
   const source=(await readFile(new URL('../game.js',import.meta.url),'utf8'))
     .replace("'./engine.js'",JSON.stringify(new URL('../engine.js',import.meta.url).href))
     .replace("'./ability-icons.js'",JSON.stringify(new URL('../ability-icons.js',import.meta.url).href))
+    .replace("'./skirmish-menu.js'",JSON.stringify(new URL('../skirmish-menu.js',import.meta.url).href))
     .replace("'./render.js'",JSON.stringify('data:text/javascript;base64,'+Buffer.from(fakeRender).toString('base64')));
   await import('data:text/javascript;base64,'+Buffer.from(source+`\n//# sourceURL=trash-tactics-abilities-under-test-${++harnessId}.js`).toString('base64'));
   element('startButton').click();
@@ -52,6 +55,21 @@ async function harness() {
   const spawn=(type,x,y,team=0)=>game._spawn(type,team,x,y);
   return {state,game,element,select,point,key,tick,refresh,action,spawn};
 }
+
+test('native map dropdown updates the real preview and starts the chosen map, player count and Impossible economy',async()=>{
+ const h=await harness(),select=h.element('mapSelect');
+ select.value='serverstack';select.dispatch('change');h.element('players-4').click();h.element('difficulty-impossible').click();
+ assert.match(h.element('mapBriefTitle').textContent,/corridors/);
+ assert.match(h.element('mapBriefStats').textContent,/4× area/);
+ assert.match(h.element('difficultyHint').textContent,/Impossible cheats.*2×/);
+ h.element('startButton').click();const game=h.state.game;
+ assert.equal(game.map.id,'serverstack');assert.equal(game.players,4);assert.equal(game.difficulty,'impossible');
+ assert.equal(game.teams[0].trash,300,'player resources do not receive Impossible bonuses');assert.equal(game.teams[1].trash,600);
+ select.value='not-a-map';select.dispatch('change');h.element('startButton').click();assert.equal(h.state.game.map.id,'serverstack','an invalid select value cannot alter the next match');
+ const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
+ assert.match(html,/<label[^>]+for="mapSelect"/);assert.match(html,/<select id="mapSelect"/);
+ assert.equal((html.match(/<option value=/g)||[]).length,7);assert(!html.includes('class="map-options"'),'the old card grid is replaced');
+});
 
 test('Q, W, E activate only their troop ability in a mixed squad and expose their exact keys',async()=>{
  const h=await harness(),rock=h.spawn('rock',600,800),paper=h.spawn('paper',600,900),scissors=h.spawn('scissors',600,1000);

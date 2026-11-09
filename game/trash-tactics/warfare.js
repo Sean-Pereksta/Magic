@@ -303,42 +303,51 @@ export function updateDart(g,p,dt){
   p.x+=(target.x-p.x)/length*step;p.y+=(target.y-p.y)/length*step;return true;
 }
 export function specialistBot(g,team){
-  const own=g.entities.filter(e=>e.hp>0&&e.team===team),workers=own.filter(e=>e.type==='twig'&&e.order.type!=='build'),start=g.starts[team],bank=g.teams[team];
+  const cfg=g.botConfig||{micro:1,workshopAt:65,laboratoryAt:150},own=g.entities.filter(e=>e.hp>0&&e.team===team),workers=own.filter(e=>e.type==='twig'&&e.order.type!=='build'&&!e.aiTask),start=g.starts[team],bank=g.teams[team];
   const buildNear=type=>{if(!workers.length)return false;for(let ring=1;ring<6;ring++)for(let i=0;i<16;i++){const a=i/16*Math.PI*2,x=start.x+Math.cos(a)*ring*95,y=start.y+Math.sin(a)*ring*95;if(g.canBuild(type,x,y)&&g.canSee(team,x,y)&&g.build(workers.map(e=>e.id),type,x,y).ok)return true;}return false;};
   const workshop=own.find(e=>e.type==='workshop'),laboratory=own.find(e=>e.type==='laboratory');
-  if(g.time>65&&!workshop&&bank.trash>=275)buildNear('workshop');
-  if(g.time>150&&workshop&&!workshop.constructing&&!laboratory&&bank.trash>=400)buildNear('laboratory');
+  const transportReserve=g._bots[team].transportReserve||0;
+  if(g.time>cfg.workshopAt&&!workshop&&bank.trash>=275+transportReserve)buildNear('workshop');
+  if(g.time>cfg.laboratoryAt&&workshop&&!workshop.constructing&&!laboratory&&bank.trash>=400+transportReserve)buildNear('laboratory');
   // Independent rotations and alternating economic priority keep both tiers
   // in the army. Lower-tier queues reserve the chosen purchase and six supply.
   const labs=own.filter(e=>e.type==='laboratory'&&!e.constructing),workshops=own.filter(e=>e.type==='workshop'&&!e.constructing),advanced=!!workshop,state=g._bots[team];
   state.nextTierProduction??=3;
-  const nextUnit=b=>PRODUCTION[b.type][(b.aiProductionIndex||0)%3];
+  const visibleAircraft=g.entities.filter(e=>e.hp>0&&e.team>=0&&e.team!==team&&WARFARE_TYPES[e.type]?.flying&&g.isVisible(e,team));
+  const nextUnit=b=>cfg.micro>=2&&b.type==='workshop'&&visibleAircraft.length>=3&&own.filter(e=>e.type==='sniper').length<Math.ceil(visibleAircraft.length/2)?'sniper':PRODUCTION[b.type][(b.aiProductionIndex||0)%3];
   for(const building of labs){
     if(state.nextTierProduction===2&&workshops.length||building.queue.length)continue;
     const type=nextUnit(building);
-    if(g.train(building.id,type).ok){building.aiProductionIndex=(building.aiProductionIndex||0)+1;state.nextTierProduction=2;}
+    if(bank.trash>=WARFARE_TYPES[type].cost+transportReserve&&g.train(building.id,type).ok){building.aiProductionIndex=(building.aiProductionIndex||0)+1;state.nextTierProduction=2;}
   }
   let wanted=state.nextTierProduction===2&&workshops.length?workshops:labs;
   const plan={reserveTrash:labs.length&&wanted.length?Math.min(...wanted.map(b=>WARFARE_TYPES[nextUnit(b)].cost)):laboratory?500:0,reserveSupply:advanced?6:0};
   for(const building of workshops){
-    if(building.queue.length||g.time>150&&!laboratory)continue;
+    if(building.queue.length||g.time>cfg.laboratoryAt&&!laboratory)continue;
     if(labs.length&&state.nextTierProduction!==2)continue;
     const type=nextUnit(building),spec=WARFARE_TYPES[type],supply=g.getSupply(team);
-    if(!labs.length&&bank.trash-spec.cost<plan.reserveTrash||supply.used+spec.supply+plan.reserveSupply>supply.cap)continue;
+    if(bank.trash-spec.cost<transportReserve||!labs.length&&bank.trash-spec.cost<plan.reserveTrash+transportReserve||supply.used+spec.supply+plan.reserveSupply>supply.cap)continue;
     if(g.train(building.id,type).ok){building.aiProductionIndex=(building.aiProductionIndex||0)+1;if(labs.length)state.nextTierProduction=3;}
   }
   wanted=state.nextTierProduction===2&&workshops.length?workshops:labs;
   if(labs.length&&wanted.length)plan.reserveTrash=Math.min(...wanted.map(b=>WARFARE_TYPES[nextUnit(b)].cost));
+  if(!cfg.micro)return plan;
   const enemies=g.entities.filter(t=>t.hp>0&&t.team>=0&&t.team!==team&&isCombat(t.type)&&g.isVisible(t,team));
-  const crashes=[],rolls=[];
-  for(const e of own.filter(e=>isCombat(e.type)&&!e.transportedBy)){
+  const crashes=[],rolls=[],claimedSnipe=new Set(own.filter(e=>e.aim||e.pendingAbility?.name==='snipe').map(e=>e.aim?.targetId||e.pendingAbility.target.targetId));
+  for(const e of own.filter(e=>isCombat(e.type)&&!e.transportedBy&&!e.pendingAbility&&!e.aim&&!e.roll&&!e.shadow&&!e.divisionCast&&!e.divisionPull&&!['retreat','scout','evacuate'].includes(e.aiTask))){
     const nearby=enemies.filter(t=>dist(e,t)<650),papers=nearby.filter(t=>familyOf(t)==='paper').sort((a,b)=>(WARFARE_TYPES[b.type]?.tier||1)-(WARFARE_TYPES[a.type]?.tier||1)||dist(e,a)-dist(e,b));
-    if(e.type==='sniper'&&papers.length)g.useAbility([e.id],'snipe',{targetId:papers[0].id});
-    if(e.type==='mage'&&nearby.filter(t=>dist(e,t)<400).length>=3){const enemy=nearby[0],angle=Math.atan2(e.y-enemy.y,e.x-enemy.x),p={x:enemy.x+Math.cos(angle)*90,y:enemy.y+Math.sin(angle)*90};const existing=g.forceFields.find(f=>dist(f,p)<80);if(existing){p.x+=-Math.sin(angle)*145;p.y+=Math.cos(angle)*145;}if(!g.forceFields.some(f=>dist(f,p)<80))g.useAbility([e.id],'forcefield',p);}
-    if(e.type==='divider'&&nearby.length>=7&&new Set(nearby.map(t=>familyOf(t))).size>=2){const cluster=nearby.slice(0,15),x=cluster.reduce((n,t)=>n+t.x,0)/cluster.length,y=cluster.reduce((n,t)=>n+t.y,0)/cluster.length;g.useAbility([e.id],'division',{x,y});}
+    if(e.type==='sniper'&&papers.length){const target=papers.find(t=>!claimedSnipe.has(t.id));if(target&&g.useAbility([e.id],'snipe',{targetId:target.id}).ok)claimedSnipe.add(target.id);}
+    if(e.type==='mage'&&nearby.filter(t=>dist(e,t)<400).length>=(cfg.micro>=2?3:5)){
+      const cluster=nearby.filter(t=>dist(e,t)<400),enemy={x:cluster.reduce((n,t)=>n+t.x,0)/cluster.length,y:cluster.reduce((n,t)=>n+t.y,0)/cluster.length},angle=Math.atan2(enemy.y-e.y,enemy.x-e.x),p={x:enemy.x+Math.cos(angle)*100,y:enemy.y+Math.sin(angle)*100};
+      // Cut off enemy reinforcements behind their front line, leaving our
+      // own formation and its immediate approach clear of the solid dome.
+      const blocksFriends=own.some(a=>a.id!==e.id&&!a.transportedBy&&!WARFARE_TYPES[a.type]?.flying&&(isCombat(a.type)||a.type==='twig')&&dist(a,p)<FORCE_FIELD_RADIUS+a.r+35);
+      if(!blocksFriends&&dist(e,p)<=420&&!g.forceFields.some(f=>dist(f,p)<FORCE_FIELD_RADIUS*2+25))g.useAbility([e.id],'forcefield',p);
+    }
+    if(e.type==='divider'&&nearby.length>=(cfg.micro>=3?5:cfg.micro>=2?7:10)&&new Set(nearby.map(t=>familyOf(t))).size>=2){const cluster=nearby.slice(0,15),x=cluster.reduce((n,t)=>n+t.x,0)/cluster.length,y=cluster.reduce((n,t)=>n+t.y,0)/cluster.length;g.useAbility([e.id],'division',{x,y});}
     if(e.type==='rollingrock'&&nearby.filter(t=>familyOf(t)==='scissors').length>=2&&!nearby.some(t=>familyOf(t)==='paper'&&dist(e,t)<150))rolls.push({unit:e,target:nearby.find(t=>familyOf(t)==='scissors')});
     if(e.type==='shears'&&papers.length){const t=papers[0],angle=Math.atan2(t.y-e.y,t.x-e.x);g.useAbility([e.id],'shadowpath',{points:[{x:e.x-Math.sin(angle)*110,y:e.y+Math.cos(angle)*110},{x:t.x+Math.cos(angle)*80,y:t.y+Math.sin(angle)*80}]});}
-    if(e.type==='airplane'&&!e.crash){const air=g._nearest(e,t=>t.team>=0&&t.team!==team&&(t.type==='cd'||WARFARE_TYPES[t.type]?.flying)&&g.canTarget(e,t)&&dist(e,t)<750);if(air)g.useAbility([e.id],'intercept',{targetId:air.id});else if(nearby.filter(t=>familyCanDamage(e,t)&&!WARFARE_TYPES[t.type]?.flying).length>=5||e.hp<e.maxHp*.4375&&nearby.filter(t=>familyCanDamage(e,t)).length>=2)crashes.push(e);else if(e.order.type==='idle')g.useAbility([e.id],'patrol',{points:[{x:start.x,y:start.y},{x:clamp(start.x+(g.center.x-start.x)*.55,30,g.width-30),y:clamp(start.y+(g.center.y-start.y)*.55,30,g.height-30)}]});}
+    if(e.type==='airplane'&&!e.crash){const air=g._nearest(e,t=>t.team>=0&&t.team!==team&&(t.type==='cd'||WARFARE_TYPES[t.type]?.flying)&&g.canTarget(e,t)&&dist(e,t)<750);if(air)g.useAbility([e.id],'intercept',{targetId:air.id});else if(nearby.filter(t=>familyCanDamage(e,t)&&!WARFARE_TYPES[t.type]?.flying).length>=5||e.hp<e.maxHp*.4375&&nearby.filter(t=>familyCanDamage(e,t)).length>=2)crashes.push(e);else if(e.order.type==='idle'&&!e.aiSquad)g.useAbility([e.id],'patrol',{points:[{x:start.x,y:start.y},{x:clamp(start.x+(g.center.x-start.x)*.55,30,g.width-30),y:clamp(start.y+(g.center.y-start.y)*.55,30,g.height-30)}]});}
   }
   if(rolls.length){const target=rolls[0].target,group=rolls.filter(r=>dist(r.unit,rolls[0].unit)<500);g.useAbility(group.map(r=>r.unit.id),'roll',{x:target.x,y:target.y});}
   if(crashes.length){const targets=enemies.filter(t=>familyCanDamage(crashes[0],t));if(targets.length){const t=targets.sort((a,b)=>dist(a,crashes[0])-dist(b,crashes[0]))[0];g.useAbility(crashes.map(e=>e.id),'crash',{x:t.x,y:t.y});}}
