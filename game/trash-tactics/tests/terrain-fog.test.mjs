@@ -17,7 +17,7 @@ test('all six maps have reachable elevated scrap fields and two useful ramps per
       const troop=g._spawn('rock',0,start.x,start.y);
       assert(!g._blocked(troop.x,troop.y,troop.r),`${map}/${players}: ramp approach is clear`);
       assert(g._lineFree(start.x,start.y,center.x,center.y,troop.r),`${map}/${players}: broad ramp connects both elevations`);
-      g.command([troop.id],{type:'move',...center});advance(g,5);
+      g.command([troop.id],{type:'move',...center});advance(g,Math.hypot(start.x-center.x,start.y-center.y)/TYPES.rock.speed+2);
       assert(Math.hypot(troop.x-center.x,troop.y-center.y)<15,`${map}/${players}: a troop walks up the ramp`);
       assert(g.elevationAt(troop.x,troop.y)>.9);
       troop.hp=0;
@@ -63,10 +63,10 @@ test('exploration persists after a scout leaves but hidden enemies cannot be tar
 
 test('flying CDs scout over cliffs; embarked troops add no independent vision',()=>{
   const g=arena(),p=g.map.plateaus[0],x=p.x+p.w/2,y=p.y+p.h/2;
-  const cd=g._spawn('cd',0,p.x-180,y),enemy=g._spawn('scissors',1,x,y),troop=g._spawn('rock',0,cd.x,cd.y);
+  const cd=g._spawn('cd',0,p.x-100,y),enemy=g._spawn('scissors',1,p.x+120,y),troop=g._spawn('rock',0,cd.x,cd.y);
   assert(g.loadTransport([troop.id],[cd.id]).ok);assert(troop.transportedBy);
   assert(g.isVisible(enemy,0),'airborne scouts can see onto elevated shelves');
-  cd.x=2250;cd.y=1400;troop.x=x;troop.y=y;g._updateVision();
+  cd.x=g.width-300;cd.y=g.height-300;troop.x=x;troop.y=y;g._updateVision();
   assert(!g.isVisible(enemy,0),'a passenger has no sight separate from its carrier');
   assert(!g.isVisible(troop,0),'passengers are absent from the ground battlefield');
 });

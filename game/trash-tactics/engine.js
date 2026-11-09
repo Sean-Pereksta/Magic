@@ -1,6 +1,8 @@
 // Trash Tactics: deterministic, browser-local RTS simulation.
 import {enrichTerrain,terrainHeight,terrainSight} from './terrain.js';
 import {findPath} from './navigation.js';
+import {FRONTIER_MAPS,createFrontierBattlefield,finalizeFrontierMap} from './frontier-maps.js';
+import {BOT_CONFIGS,initializeBotState,updateBotResources,chooseBotTroop,updateBotStrategy} from './bot-strategies.js';
 import {WALL_TYPE,snapWallPoint,canPlaceWall,wallOverlapsPoint,wallSegmentBlocked,wallPointDistance2,wallBuildPosition,wallBuilderCanReach,structureBuildPosition} from './walls.js';
 import {WARFARE_TYPES,PRODUCTION,familyOf,isCombat,canTransport,familyCanDamage,initializeWarfare,useAbility,tickWarfare,tickSpecialist,specialistCombat,moveAircraft,updateDart,specialistBot} from './warfare.js';
 import {EXPANSION_MAPS,createBattlefield,initBattlefield,updateBattlefield,reverseConveyor,conveyorVelocity,dynamicBarrierBlocked,dynamicBarrierCrossed,divisionBarrierCrossed,divisionShotBlocked} from './battlefields.js';
@@ -9,7 +11,7 @@ export {WALL_SIZE,snapWallPoint} from './walls.js';
 export const TYPES = {
   ...WARFARE_TYPES,
   wall:WALL_TYPE,
-  twig: {label:'Twig',cost:25,hp:40,r:13,speed:150,trainTime:4,supply:1,worker:true},
+  twig: {label:'Twig',cost:25,hp:75,r:13,speed:150,trainTime:4,supply:1,worker:true},
   rock: {family:'rock',tier:1,label:'Rock',cost:50,hp:180,r:18,speed:123,trainTime:5,supply:1,beats:'scissors',range:43},
   paper: {family:'paper',tier:1,label:'Paper',cost:50,hp:180,r:17,speed:132,trainTime:5,supply:1,beats:'rock',range:48},
   scissors: {family:'scissors',tier:1,label:'Scissors',cost:50,hp:180,r:18,speed:138,trainTime:5,supply:1,beats:'paper',range:46},
@@ -23,6 +25,7 @@ export const TYPES = {
 };
 export const MAPS = {
   ...EXPANSION_MAPS,
+  ...FRONTIER_MAPS,
   desktop: {id:'desktop',name:'Desktop Meadow',color:'#e9ddba',obstacles:[
     {x:1040,y:470,w:320,h:250,type:'book'},
     {x:1040,y:880,w:320,h:250,type:'book'},
@@ -40,7 +43,8 @@ export const MAPS = {
     {x:1340,y:1310,w:340,h:110,type:'eraser'}
   ],lanes:[[[330,800],[1200,800],[2070,800]],[[330,800],[790,350],[1200,335],[1420,260],[1800,260],[2070,800]],[[330,800],[600,1330],[1200,1220],[1800,1200],[2070,800]]]}
 };
-function layoutMap(id,players){
+export function layoutMap(id,players){
+  const frontier=createFrontierBattlefield(id,players);if(frontier)return frontier;
   const expansion=createBattlefield(id,players);if(expansion)return expansion;
   const map=structuredClone(MAPS[id]||MAPS.desktop),deskTheme=map.id==='desktop';
   map.expansions=[{x:790,y:800},{x:1610,y:800},{x:1200,y:800},{x:1200,y:390},{x:1200,y:1210}];
@@ -60,7 +64,7 @@ function layoutMap(id,players){
   map.camps=map.camps.map(p=>({x:p.x*2,y:p.y*2}));
   map.expansions=map.expansions.map(p=>({x:p.x*2,y:p.y*2}));
   map.lanes=map.lanes.map(lane=>lane.map(([x,y])=>[x*2,y*2]));
-  map.width=4800;map.height=3200;map.players=players;return enrichTerrain(map);
+  map.width=4800;map.height=3200;map.players=players;return finalizeFrontierMap(enrichTerrain(map),{scale:2});
 }
 const COMBAT=['rock','paper','scissors'];
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
@@ -68,23 +72,20 @@ const d2=(a,b)=>(a.x-b.x)**2+(a.y-b.y)**2;
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const ok=()=>({ok:true});
 const fail=reason=>({ok:false,reason});
-const configs={
-  easy:{think:2.0,attack:95,group:7,workers:8,expand:150,cap:34},
-  normal:{think:1.05,attack:65,group:9,workers:11,expand:90,cap:50},
-  hard:{think:.55,attack:42,group:7,workers:15,expand:65,cap:70}
-};
+const configs=BOT_CONFIGS;
 
 export class Game {
   constructor({map='desktop',difficulty='normal',players=2,onEvent=()=>{}}={}) {
     this.players=clamp(Math.floor(Number(players)||2),2,4);
     this.map=layoutMap(map,this.players);this.width=this.map.width;this.height=this.map.height;this.center={x:this.width/2,y:this.height/2};this.starts=this.map.camps.map(c=>({...c}));
     this.difficulty=difficulty in configs?difficulty:'normal';
+    this.botConfig=configs[this.difficulty];
     this.onEvent=onEvent; this.entities=[]; this.effects=[]; this.projectiles=[]; this.time=0;
     this.winner=null; this._id=1; this._think=0;initializeWarfare(this);
     this._victoryCheck=0; this._separation=0;
-    this.stats={trained:Array(this.players).fill(0),destroyed:Array(this.players).fill(0),collected:Array(this.players).fill(0)};
-    this.teams=this.starts.map(start=>({trash:300,upgrades:{rock:false,paper:false,scissors:false},eliminated:false,start:{...start}}));
-    this._bots=this.starts.map((_,team)=>({nextAttack:configs[this.difficulty].attack+team*2,lastExpansion:0}));
+    this.stats={trained:Array(this.players).fill(0),destroyed:Array(this.players).fill(0),collected:Array(this.players).fill(0),botBonus:Array(this.players).fill(0),botStipend:Array(this.players).fill(0)};
+    this.teams=this.starts.map((start,team)=>{const bonus=team>0?this.botConfig.initialBonus:0;this.stats.botBonus[team]=bonus;return {trash:300+bonus,resourceMultiplier:team>0?this.botConfig.resourceMultiplier:1,upgrades:{rock:false,paper:false,scissors:false},eliminated:false,start:{...start}};});
+    this._bots=this.starts.map((_,team)=>initializeBotState(this,team));
     for(let team=0;team<this.players;team++){
       const start=this.starts[team],length=dist(this.center,start),fx=(this.center.x-start.x)/length,fy=(this.center.y-start.y)/length,px=-fy,py=fx;
       const position=(forward,side)=>({x:start.x+fx*forward+px*side,y:start.y+fy*forward+py*side});
@@ -107,10 +108,10 @@ export class Game {
     }
     const neutralCans=this.map.expansions.flatMap(p=>{
       const height=this.elevationAt(p.x,p.y);
-      return [[-90,-170],[0,-190],[90,-170],[-90,170],[0,190],[90,170],[-180,0],[180,0]].map(([dx,dy])=>[p.x+dx,p.y+dy]).filter(([x,y])=>Math.abs(this.elevationAt(x,y)-height)<.2&&!this._blocked(x,y,TYPES.trash.r)).slice(0,3);
+      return [[-90,-170],[0,-190],[90,-170],[-90,170],[0,190],[90,170],[-180,0],[180,0]].map(([dx,dy])=>({x:p.x+dx,y:p.y+dy,expansionId:p.id,expansionRole:p.role,amountMultiplier:p.amountMultiplier||1})).filter(({x,y})=>Math.abs(this.elevationAt(x,y)-height)<.2&&!this._blocked(x,y,TYPES.trash.r)).slice(0,3);
     });
-    for(const [x,y] of neutralCans){
-      if(!this._blocked(x,y,TYPES.trash.r)&&!this.entities.some(e=>e.type==='trash'&&dist(e,{x,y})<70))this._spawn('trash',-1,x,y,{amount:1800,collectorId:null});
+    for(const {x,y,expansionId,expansionRole,amountMultiplier} of neutralCans){
+      if(!this._blocked(x,y,TYPES.trash.r)&&!this.entities.some(e=>e.type==='trash'&&dist(e,{x,y})<70))this._spawn('trash',-1,x,y,{amount:Math.round(1800*amountMultiplier),collectorId:null,expansionId,expansionRole,amountMultiplier});
     }
     for(const plateau of this.map.plateaus){
       const x=plateau.x+plateau.w/2,y=plateau.y+plateau.h/2;
@@ -150,7 +151,13 @@ export class Game {
   _ensureVision(){if(this.fog&&(this._fogDirty||this._fogPopulation!==this.entities.length||this.time>=this._visionDue))this._updateVision();}
   canSee(team,x,y){this._ensureVision();const index=this._fogIndex(x,y);return index>=0&&!!this.fog.teams[team]?.visible[index];}
   isExplored(team,x,y){this._ensureVision();const index=this._fogIndex(x,y);return index>=0&&!!this.fog.teams[team]?.explored[index];}
-  isVisible(entity,team=0){return !!(entity&&entity.hp>0&&!entity.transportedBy&&(entity.team===team||this.canSee(team,entity.x,entity.y)));}
+  isVisible(entity,team=0){
+    if(!entity||entity.hp<=0||entity.transportedBy)return false;
+    if(entity.team===team||this.canSee(team,entity.x,entity.y))return true;
+    // A widened public gate can be seen at its near edge before its center
+    // enters sight; ordinary ground troops must be able to target that edge.
+    return entity.type==='staplergate'&&[[entity.r*.8,0],[-entity.r*.8,0],[0,entity.r*.8],[0,-entity.r*.8]].some(([dx,dy])=>this.canSee(team,entity.x+dx,entity.y+dy));
+  }
   getEntity(id){
     if(this._entityIndexSource!==this.entities||this._entityIndexCount!==this.entities.length){this._entityIndexSource=this.entities;this._entityIndexCount=this.entities.length;this._entityIndex=new Map(this.entities.map(e=>[e.id,e]));}
     const entity=this._entityIndex.get(id);return entity?.hp>0?entity:undefined;
@@ -399,7 +406,7 @@ export class Game {
   }
   update(dt){
     if(this.winner!==null)return;
-    dt=clamp(dt,0,.08);this.time+=dt;this._pathsRemaining=6;tickWarfare(this,dt);updateBattlefield(this,dt);
+    dt=clamp(dt,0,.08);this.time+=dt;updateBotResources(this,dt);this._pathsRemaining=6;tickWarfare(this,dt);updateBattlefield(this,dt);
     this._ensureVision();
     this.effects=this.effects.filter(e=>(e.life-=dt)>0);
     for(const e of [...this.entities]){
@@ -417,7 +424,7 @@ export class Game {
     this._updatePointers(dt);
     this._updateClickDamage();
     this._separate(dt);
-    for(const e of this.entities)if(e.hp<=0&&!e.deadHandled){if(e.type==='cd')this._unloadTransport(e,true);if(e.type==='wall')this._wallsChanged();e.deadHandled=true;this._releaseCan(e);this._effect('death',e.x,e.y,{team:e.team});this._event('death',{entity:e});}
+    for(const e of this.entities)if(e.hp<=0&&!e.deadHandled){if(e.type==='cd')this._unloadTransport(e,true);if(e.type==='wall')this._wallsChanged();e.deadHandled=true;this._releaseCan(e);const life=TYPES[e.type].building ? .7 : e.type==='rollingrock' ? 1.45 : 1.3;this._effect('death',e.x,e.y,{team:e.team,entityType:e.type,facing:e.facing||0,radius:e.r,seed:e.id,life,total:life});this._event('death',{entity:e});}
     this.entities=this.entities.filter(e=>e.hp>0);
     this._think-=dt;if(this._think<=0){this._think=configs[this.difficulty].think;for(let team=1;team<this.players;team++)if(!this.teams[team].eliminated)this._bot(team);}
     this._victoryCheck-=dt;if(this._victoryCheck<=0){
@@ -534,8 +541,8 @@ export class Game {
         const desk=this._nearest(e,t=>t.team===e.team&&t.type==='desk'&&!t.constructing);
         if(!desk){e.order={type:'idle'};return;}
         if(dist(e,desk)>desk.r+e.r+10){this._move(e,desk.x,desk.y,dt,desk.r+e.r+8,desk.id);return;}
-        this.teams[e.team].trash+=e.carrying;this.stats.collected[e.team]+=e.carrying;
-        this._effect('deposit',e.x,e.y,{team:e.team,value:e.carrying});this._event('deposit',{team:e.team,amount:e.carrying,x:e.x,y:e.y});e.carrying=0;e.workState='toCan';e.path=null;
+        const bonus=e.carrying*((this.teams[e.team].resourceMultiplier||1)-1);this.teams[e.team].trash+=e.carrying+bonus;this.stats.collected[e.team]+=e.carrying;this.stats.botBonus[e.team]+=bonus;
+        this._effect('deposit',e.x,e.y,{team:e.team,value:e.carrying});this._event('deposit',{team:e.team,amount:e.carrying,credited:e.carrying+bonus,bonus,x:e.x,y:e.y});e.carrying=0;e.workState='toCan';e.path=null;
       }else{
         if(can.collectorId&&!this.getEntity(can.collectorId))can.collectorId=null;
         if(dist(e,can)>can.r+e.r+8){this._move(e,can.x,can.y,dt,can.r+e.r+6,can.id);return;}
@@ -628,6 +635,24 @@ export class Game {
     const available=(px,py)=>!this._blocked(px,py,r)&&!reserved.some(p=>Math.hypot(px-p.x,py-p.y)<r+p.r+5);
     if(available(x,y))return {x,y};
     for(let ring=1;ring<25;ring++)for(let i=0;i<24;i++){const a=i/24*Math.PI*2,px=clamp(x+Math.cos(a)*ring*24,r,this.width-r),py=clamp(y+Math.sin(a)*ring*24,r,this.height-r);if(available(px,py))return {x:px,y:py};}
+    // Large books and server racks can be deeper than the near search. Project
+    // onto their actual edges first, including overlaps, before a wider scan.
+    let candidates=[{x,y}];const visited=new Set();
+    for(let pass=0;pass<3;pass++){
+      const next=[];
+      for(const point of candidates){
+        const key=`${Math.round(point.x)},${Math.round(point.y)}`;if(visited.has(key))continue;visited.add(key);
+        if(available(point.x,point.y))return {x:point.x,y:point.y};
+        for(const o of this.map.obstacles)if(point.x>o.x-r&&point.x<o.x+o.w+r&&point.y>o.y-r&&point.y<o.y+o.h+r){
+          const left=o.x-r-2,right=o.x+o.w+r+2,top=o.y-r-2,bottom=o.y+o.h+r+2;
+          next.push({x:left,y:clamp(y,top,bottom)},{x:right,y:clamp(y,top,bottom)},{x:clamp(x,left,right),y:top},{x:clamp(x,left,right),y:bottom},{x:left,y:top},{x:right,y:top},{x:left,y:bottom},{x:right,y:bottom});
+        }
+      }
+      candidates=next.map(p=>({x:clamp(p.x,r,this.width-r),y:clamp(p.y,r,this.height-r)})).sort((a,b)=>d2(a,{x,y})-d2(b,{x,y}));
+    }
+    for(const p of candidates)if(available(p.x,p.y))return {x:p.x,y:p.y};
+    const limit=Math.hypot(this.width,this.height);
+    for(let radius=600;radius<limit;radius+=96)for(let i=0;i<32;i++){const a=i/32*Math.PI*2,px=clamp(x+Math.cos(a)*radius,r,this.width-r),py=clamp(y+Math.sin(a)*radius,r,this.height-r);if(available(px,py))return {x:px,y:py};}
     return {x:clamp(x,r,this.width-r),y:clamp(y,r,this.height-r)};
   }
   _lineFree(ax,ay,bx,by,r,ignoreId,ignoreBuildings=false,ignoreBarriers=false,ignoreWalls=false){
@@ -753,12 +778,13 @@ export class Game {
   _bot(team=1){
     const cfg=configs[this.difficulty],bank=this.teams[team],state=this._bots[team],start=this.starts[team];
     const own=this.entities.filter(e=>e.team===team&&e.hp>0),workers=own.filter(e=>e.type==='twig'),desks=own.filter(e=>e.type==='desk'&&!e.constructing),printers=own.filter(e=>e.type==='printer'&&!e.constructing),army=own.filter(e=>isCombat(e.type)&&!e.transportedBy);
-    const planningExpansion=this.time>cfg.expand&&this.time-state.lastExpansion>70&&desks.length<3&&!own.some(e=>e.type==='desk'&&e.constructing);
+    const planningExpansion=this.time>cfg.expand&&this.time-state.lastExpansion>70&&desks.length<cfg.desks&&!own.some(e=>e.type==='desk'&&e.constructing);
     const planningResearch=!planningExpansion&&this.time>100&&!COMBAT.every(t=>bank.upgrades[t])&&!own.some(e=>e.queue.some(q=>q.kind==='research'));
+    state.transportReserve=state.wantTransport&&this.time>=cfg.dropAt&&own.filter(e=>e.type==='cd').length<(cfg.micro>=2?2:1)?own.some(e=>e.type==='cdreader')?75:175:0;
     const specialistPlan=specialistBot(this,team);
-    const tierReserve=this.time>150&&!own.some(e=>e.type==='laboratory')&&own.some(e=>e.type==='workshop'&&!e.constructing)?400:this.time>65&&!own.some(e=>e.type==='workshop')?275:0;
-    const reserve=Math.max(tierReserve,specialistPlan.reserveTrash,planningExpansion?200:planningResearch?150:0);
-    for(const w of workers)if(w.order.type==='idle'){
+    const tierReserve=this.time>cfg.laboratoryAt&&!own.some(e=>e.type==='laboratory')&&own.some(e=>e.type==='workshop'&&!e.constructing)?400:this.time>cfg.workshopAt&&!own.some(e=>e.type==='workshop')?275:0;
+    const reserve=Math.max(tierReserve,specialistPlan.reserveTrash,planningExpansion?200:planningResearch?150:0)+state.transportReserve;
+    for(const w of workers)if(w.order.type==='idle'&&!w.aiTask){
       const unfinished=own.find(b=>b.constructing&&!this.getEntity(b.builderId));
       if(unfinished){unfinished.builderId=w.id;w.order={type:'build',targetId:unfinished.id};continue;}
       const can=this._chooseCan(w);if(can){w.resourceId=can.id;w.order={type:'gather',targetId:can.id};w.workState=w.carrying?'toDesk':'toCan';}
@@ -766,10 +792,10 @@ export class Game {
     const queuedWorkers=desks.reduce((n,d)=>n+d.queue.filter(q=>q.type==='twig').length,0);
     if(workers.length+queuedWorkers<cfg.workers)for(const d of desks)if(d.queue.length<1)this.train(d.id,'twig');
     const supply=this.getSupply(team);
-    const builders=workers.filter(w=>w.order.type!=='build');
+    const builders=workers.filter(w=>w.order.type!=='build'&&!w.aiTask);
     const pending=own.filter(e=>e.constructing);
     const constructNear=(type,x,y)=>{
-      if(!builders.length)return false;
+      if(!builders.length||!this.canSee(team,x,y))return false;
       for(let ring=0;ring<5;ring++)for(let i=0;i<10;i++){
         const a=i/10*Math.PI*2,px=x+Math.cos(a)*ring*80,py=y+Math.sin(a)*ring*80;
         if(this.canBuild(type,px,py)){const result=this.build(builders.map(w=>w.id),type,px,py);if(result.ok)return true;}
@@ -785,16 +811,15 @@ export class Game {
         if(constructNear('mouse',threatened.x+Math.cos(angle)*125,threatened.y+Math.sin(angle)*125))return;
       }
     }
-    if(supply.cap-supply.used<Math.max(4,specialistPlan.reserveSupply+2)&&supply.cap<(own.some(e=>e.type==='workshop'||e.type==='laboratory')?100:cfg.cap)&&!pending.some(e=>e.type==='cabinet')&&bank.trash>=75)constructNear('cabinet',start.x+px*245-fx*40,start.y+py*245-fy*40);
-    if(printers.length<(this.time>120?3:2)&&this.time>35&&bank.trash>220+reserve&&!pending.some(e=>e.type==='printer'))constructNear('printer',start.x+fx*190+px*155,start.y+fy*190+py*155);
+    if(supply.cap-supply.used<Math.max(4,specialistPlan.reserveSupply+2)&&supply.cap<cfg.cap+cfg.workers+8&&!pending.some(e=>e.type==='cabinet')&&bank.trash>=75)constructNear('cabinet',start.x+px*245-fx*40,start.y+py*245-fy*40);
+    if(printers.length<(this.time>120?cfg.printers:Math.min(2,cfg.printers))&&this.time>35&&bank.trash>220+reserve&&!pending.some(e=>e.type==='printer'))constructNear('printer',start.x+fx*190+px*155,start.y+fy*190+py*155);
     for(const p of printers)if(p.queue.length<2&&army.length+this.getSupply(team).reserved<cfg.cap-8&&bank.trash>=50+reserve&&this.getSupply(team).used+1+specialistPlan.reserveSupply<=this.getSupply(team).cap){
-      const counts=COMBAT.map(t=>army.filter(e=>e.type===t).length);
-      const observed=this.entities.filter(e=>e.team>=0&&e.team!==team&&isCombat(e.type)&&!e.transportedBy&&this.isVisible(e,team));
-      const desired=COMBAT.map(t=>observed.filter(e=>e.type===TYPES[t].beats).length*1.6-counts[COMBAT.indexOf(t)]);
-      const index=desired.indexOf(Math.max(...desired));this.train(p.id,COMBAT[index]);
+      const observed=this.entities.filter(e=>e.hp>0&&e.team>=0&&e.team!==team&&isCombat(e.type)&&!e.transportedBy&&this.isVisible(e,team));
+      this.train(p.id,chooseBotTroop(this,team,army,observed,cfg));
     }
     if(planningExpansion&&bank.trash>=200&&!pending.some(e=>e.type==='desk')){
-      const candidates=this.map.expansions.filter(p=>desks.every(d=>dist(p,d)>320)).sort((a,b)=>dist(a,start)-dist(b,start));
+      const expansionScore=p=>dist(p,start)/(1+(cfg.micro>=2?((p.richness||1)-1)*.5:0))+(p.risk==='contested'&&army.length<cfg.group?800:0);
+      const candidates=this.map.expansions.filter(p=>desks.every(d=>dist(p,d)>320)).sort((a,b)=>expansionScore(a)-expansionScore(b));
       for(const target of candidates){
         if(constructNear('desk',target.x,target.y)){state.lastExpansion=this.time;break;}
         if(!this.canSee(team,target.x,target.y)){
@@ -807,23 +832,12 @@ export class Game {
     if(!planningExpansion&&!tierReserve&&this.time>80&&bank.trash>=150+specialistPlan.reserveTrash)for(const type of COMBAT){
       if(!bank.upgrades[type]&&!own.some(e=>e.queue.some(q=>q.kind==='research'&&q.type===type))){const p=printers.find(e=>e.queue.length<2);if(p){this.research(p.id,type);break;}}
     }
-    // React to raids and then send reinforced waves toward the nearest enemy desk.
-    const intruder=this.entities.find(e=>e.team>=0&&e.team!==team&&isCombat(e.type)&&!e.transportedBy&&this.isVisible(e,team)&&own.some(b=>TYPES[b.type].building&&dist(e,b)<340));
-    if(intruder){for(const e of army.filter(a=>dist(a,start)<650)){e.formationGoal=null;e.order={type:'attackMove',x:intruder.x,y:intruder.y};}}
-    else if(this.time>=state.nextAttack&&army.length>=cfg.group){
-      let target=this._nearest(start,e=>e.team>=0&&e.team!==team&&!this.teams[e.team].eliminated&&e.type==='desk'&&this.isVisible(e,team));
-      if(!target){
-        // Starting camps and resource fields are public map features; hidden
-        // armies and expansions are learned only by physically scouting them.
-        state.scouted??=new Set();
-        const points=[...this.starts.filter((_,i)=>i!==team&&!this.teams[i].eliminated),...this.map.expansions];
-        for(const p of points)if(this.canSee(team,p.x,p.y)&&!this.entities.some(e=>e.hp>0&&e.team>=0&&e.team!==team&&TYPES[e.type].building&&dist(e,p)<220&&this.isVisible(e,team)))state.scouted.add(`${p.x},${p.y}`);
-        let unscouted=points.filter(p=>!state.scouted.has(`${p.x},${p.y}`));
-        if(!unscouted.length){state.scouted.clear();unscouted=points;}
-        target=unscouted.sort((a,b)=>(this.starts.includes(a)?0:1)-(this.starts.includes(b)?0:1)||dist(a,start)-dist(b,start))[0];
-      }
-      if(target){this.command(army.filter(e=>!e.aim&&!e.crash&&!e.roll&&!e.shadow&&!e.divisionCast&&!e.divisionPull).map(e=>e.id),{type:'attackMove',x:target.x,y:target.y});state.nextAttack=this.time+(this.difficulty==='hard'?25:this.difficulty==='normal'?38:55);}
+    if(state.wantTransport&&this.time>=cfg.dropAt&&cfg.micro){
+      const reader=own.find(e=>e.type==='cdreader'&&!e.constructing);
+      if(!reader&&!pending.some(e=>e.type==='cdreader')&&bank.trash>=175)constructNear('cdreader',start.x-fx*180-px*175,start.y-fy*180-py*175);
+      if(reader&&own.filter(e=>e.type==='cd').length<(cfg.micro>=2?2:1)&&!reader.queue.length&&bank.trash>=75)this.train(reader.id,'cd');
     }
+    updateBotStrategy(this,team,cfg);
     if(this.difficulty!=='easy')for(const e of army){
       if(!bank.upgrades[e.type]||e.abilityCooldown>0)continue;
       const enemy=this._nearest(e,t=>t.team>=0&&t.team!==team&&isCombat(t.type)&&!t.transportedBy&&this.isVisible(t,team));

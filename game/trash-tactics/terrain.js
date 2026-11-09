@@ -12,16 +12,20 @@ export function enrichTerrain(map){
   }
   if(map.players===2&&map.id==='desktop')layouts[4]=[2200,1440,400,320,'Center crossing'];
   map.plateaus=[];map.ramps=[];map.cliffs=[];
-  for(const [index,[x,y,w,h,label]] of layouts.entries()){
-    const id=`lookout-${index}`,height=1,opening=Math.min(240,h-32),ry=y+(h-opening)/2;
+  for(const [index,[x,y,w,h,label,options={}]] of layouts.entries()){
+    const id=`lookout-${index}`,height=1,sides=options.sides||['west','east'],depth=options.depth||200;
     const plateau={id,x,y,w,h,height,label,ramps:[]};
-    for(const side of ['west','east']){
-      const ramp={id:`${id}-${side}`,plateauId:id,side,x:side==='west'?x-100:x+w-100,y:ry,w:200,h:opening,height};
+    for(const side of sides){
+      const vertical=side==='west'||side==='east',opening=Math.min(options.opening||240,(vertical?h:w)-32);
+      const ramp={id:`${id}-${side}`,plateauId:id,side,x:vertical?(side==='west'?x-depth/2:x+w-depth/2):x+(w-opening)/2,y:vertical?y+(h-opening)/2:side==='north'?y-depth/2:y+h-depth/2,w:vertical?depth:opening,h:vertical?opening:depth,height};
       plateau.ramps.push(ramp);map.ramps.push(ramp);
     }
     const cliff=(cx,cy,cw,ch)=>map.cliffs.push({x:cx,y:cy,w:cw,h:ch,type:'cliff',terrain:true,plateauId:id,height});
-    cliff(x-7,y-7,w+14,14);cliff(x-7,y+h-7,w+14,14);
-    for(const cx of [x-7,x+w-7]){cliff(cx,y+7,14,ry-y-7);cliff(cx,ry+opening,14,y+h-7-ry-opening);}
+    for(const side of ['west','east','north','south']){
+      const ramp=plateau.ramps.find(r=>r.side===side),vertical=side==='west'||side==='east';
+      if(vertical){const cx=side==='west'?x-7:x+w-7;if(ramp){cliff(cx,y+7,14,ramp.y-y-7);cliff(cx,ramp.y+ramp.h,14,y+h-7-ramp.y-ramp.h);}else cliff(cx,y+7,14,h-14);}
+      else{const cy=side==='north'?y-7:y+h-7;if(ramp){cliff(x-7,cy,ramp.x-x+7,14);cliff(ramp.x+ramp.w,cy,x+w+7-ramp.x-ramp.w,14);}else cliff(x-7,cy,w+14,14);}
+    }
     map.plateaus.push(plateau);
   }
   // Natural expansions shorten the first economical step outward, while side

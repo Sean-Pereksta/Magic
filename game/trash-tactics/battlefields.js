@@ -1,6 +1,7 @@
 // Expansion battlefields share their geometry with the simulation, navigation,
 // main renderer and minimap. Coordinates here are already in world pixels.
 import {enrichTerrain} from './terrain.js';
+import {finalizeFrontierMap} from './frontier-maps.js';
 
 export const EXPANSION_MAPS={
   canyon:{id:'canyon',name:'Stapler Canyon',color:'#dfbc86'},
@@ -38,12 +39,14 @@ export function createBattlefield(id,players=2){
     map.expansions=[{x:1960,y:1080},{x:2840,y:2120},{x:2130,y:1830},{x:2670,y:1370},{x:1160,y:740},{x:3640,y:2460}];
     map.lanes=[[[640,1600],[1350,1600],[2400,1600],[3450,1600],[4160,1600]],[[640,1600],[740,530],[2400,530],[4070,530],[4160,1600]],[[640,1600],[740,2680],[2400,2680],[4070,2680],[4160,1600]],[[2400,800],[2400,1600],[2400,2400]]];
   }
-  return enrichTerrain(map);
+  return finalizeFrontierMap(enrichTerrain(map),{scale:2});
 }
 
 export function initBattlefield(game){
   if(game.map.gate){
-    const g=game.map.gate,e=game._spawn('staplergate',-1,g.x,g.y,{neutral:true});
+    // This is map infrastructure: its attack surface must reach the banks of
+    // the widened gate obstacle, while playable troop footprints stay fixed.
+    const g=game.map.gate,e=game._spawn('staplergate',-1,g.x,g.y,{neutral:true,r:Math.max(180,g.w/2+20)});
     g.entityId=e.id;game.map.gateObstacle.entityId=e.id;
   }
   for(const station of game.map.stations||[]){
@@ -101,7 +104,7 @@ export function updateBattlefield(game,dt){
     game._battlefieldPlans??=[];
     for(let team=1;team<(game.players||0);team++){
       if(game.teams[team].eliminated||game.time<(game._battlefieldPlans[team]||0))continue;
-      const troops=game.entities.filter(e=>e.hp>0&&e.team===team&&e.type!=='twig'&&GROUND_TYPES.has(e.type)&&!e.transportedBy&&!e.dash&&!e.roll&&!e.aim);
+      const troops=game.entities.filter(e=>e.hp>0&&e.team===team&&e.type!=='twig'&&GROUND_TYPES.has(e.type)&&!e.transportedBy&&!e.dash&&!e.roll&&!e.aim&&!e.aiSquad&&!e.aiTask);
       const gateEntity=gate&&!gate.open?game.getEntity(gate.entityId):null;
       if(gateEntity&&game.isVisible(gateEntity,team)){
         const attackers=troops.filter(e=>distance(e,gateEntity)<850&&game.canTarget(e,gateEntity));

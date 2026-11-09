@@ -11,9 +11,9 @@ function context(){
  return new Proxy({calls},{get(o,k){if(k==='createLinearGradient'||k==='createRadialGradient')return ()=>gradient;if(k in o)return o[k];return (...args)=>{for(const n of args)if(typeof n==='number')assert(Number.isFinite(n),`${String(k)} has finite coordinates`);calls.push({method:k,args,color:o.strokeStyle||o.fillStyle});};},set(o,k,v){o[k]=v;return true;}});
 }
 test('new map illustrations are deterministic, bounded and clear of ramps, lanes and resources',()=>{
- for(const map of ['desktop','breakroom','canyon','conveyor'])for(const players of [2,3,4]){
+ for(const map of ['desktop','breakroom','canyon','conveyor','inkdelta','corkcross','serverstack'])for(const players of [2,3,4]){
   const g=new Game({map,players}),points=tabletopDetailPlacements(g);
-  assert.deepEqual(points,tabletopDetailPlacements(g));assert(points.length>5&&points.length<=180);
+  assert.deepEqual(points,tabletopDetailPlacements(g));assert(points.length>5&&points.length<=480);
   for(const p of points){
    for(const r of g.map.ramps)assert(!(p.x>r.x-75&&p.x<r.x+r.w+75&&p.y>r.y-75&&p.y<r.y+r.h+75));
    for(const resource of g.entities.filter(e=>e.type==='trash'))assert(Math.hypot(p.x-resource.x,p.y-resource.y)>=95);
@@ -33,7 +33,7 @@ test('every combat family has a distinct readable impact and finite effect lifec
  }
  assert.equal(new Set(signatures).size,3);
  for(const type of ['hit','death','leap','crumple','abilityCast','forcefieldPush'])for(const life of [.7,.35,0]){
-  const c=context();assert(drawBattleEffect(renderer,c,{type,x:400,y:400,sourceType:'mage',life,total:.7,team:0}));assert(c.calls.length>10);
+  const c=context();assert(drawBattleEffect(renderer,c,{type,x:400,y:400,sourceType:'mage',life,total:.7,team:0}));if(type==='death'&&life===0)assert.equal(c.calls.length,0,'completed troop deaths stop drawing');else assert(c.calls.length>10);
  }
  const c=context();assert(drawBattleEffect({visible:()=>false},c,{type:'hit',x:5000,y:400,life:.3,total:.38}));assert.equal(c.calls.length,0,'offscreen bursts incur no drawing');
 });

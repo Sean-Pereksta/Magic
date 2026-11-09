@@ -91,13 +91,14 @@ test('desk rallies send new twigs to a chosen trash can or movement destination'
   const first = own(game, 'twig').at(-1);
   assert.equal(first.order.type, 'gather');
   assert.equal(first.resourceId, can.id);
-  desk.rally = {x:700, y:1100, targetId:null};
+  const rally={x:desk.x+350,y:desk.y-200};
+  desk.rally = {...rally, targetId:null};
   assert(game.train(desk.id, 'twig').ok);
   advance(game, 4.1);
   const second = own(game, 'twig').at(-1);
-  assert.deepEqual(second.order, {type:'move', x:700, y:1100});
+  assert.deepEqual(second.order, {type:'move', ...rally});
   advance(game, 6);
-  assert(Math.hypot(second.x - 700, second.y - 1100) < 15);
+  assert(Math.hypot(second.x-rally.x,second.y-rally.y)<15);
 });
 
 for (const [winner, loser] of [['rock','scissors'], ['scissors','paper'], ['paper','rock']]) {
@@ -125,7 +126,7 @@ test('every troop type can damage buildings and defeat vulnerable twigs', () => 
     assert(cabinet.hp < hp, `${type} damages a building`);
     const twig = spawn(game, 'twig', 1, unit.x + 20, unit.y);
     game.command([unit.id], {type:'attack', targetId:twig.id});
-    advance(game, 2);
+    advance(game, 4);
     assert(!game.getEntity(twig.id), `${type} defeats a twig`);
   }
 });
@@ -226,17 +227,21 @@ test('grouped rocks land in separate nearby positions, respecting impassable sce
   assert(rocks.every(e => !e.leap));
   rocks.forEach((e, i) => assert(Math.hypot(e.x - destinations[i].x, e.y - destinations[i].y) < 5));
   const rock = rocks[0]; rock.abilityCooldown = 0;
-  assert(game._blocked(2360,1080,rock.r),'the leap target is inside the enlarged cup');
-  assert(game.ability([rock.id], 2360, 1080).ok, 'targeting scenery finds a nearby valid landing');
+  const cup=game.map.obstacles.find(o=>o.type==='cup'),target={x:cup.x+100,y:cup.y+cup.h/2};rock.x=cup.x-220;rock.y=target.y;
+  assert(game._blocked(target.x,target.y,rock.r),'the leap target is inside the actual enlarged cup');
+  assert(game.ability([rock.id], target.x,target.y).ok, 'targeting scenery finds a nearby valid landing');
   const landing = {x:rock.leap.toX, y:rock.leap.toY};
   for (const o of game.map.obstacles) assert(!(landing.x > o.x - rock.r && landing.x < o.x + o.w + rock.r && landing.y > o.y - rock.r && landing.y < o.y + o.h + rock.r));
 });
 
-test('move commands navigate around scenery on both maps', () => {
+test('move commands navigate around real scenery on all seven maps', () => {
   for (const map of Object.keys(MAPS)) {
     const game = arena(map);
-    const unit = spawn(game, 'rock', 0, 1700, map === 'breakroom' ? 1040 : 1180);
-    const target = {x:3600, y:unit.y};
+    const obstacle=game.map.obstacles.find(o=>!o.terrain&&o.w>150&&o.h>100&&!game._blocked(o.x-120,o.y+o.h/2,18)&&!game._blocked(o.x+o.w+120,o.y+o.h/2,18));
+    assert(obstacle,`${map} has a clear approach to a real scenery detour`);
+    const unit = spawn(game, 'rock', 0, obstacle.x-120,obstacle.y+obstacle.h/2);
+    const target = {x:obstacle.x+obstacle.w+120, y:unit.y};
+    assert(!game._lineFree(unit.x,unit.y,target.x,target.y,unit.r),'the direct route crosses the actual object');
     game.command([unit.id], {type:'move', ...target});
     advance(game, 34, () => {
       for (const o of game.map.obstacles) assert(!(unit.x > o.x - unit.r + .5 && unit.x < o.x + o.w + unit.r - .5 && unit.y > o.y - unit.r + .5 && unit.y < o.y + o.h + unit.r - .5));
@@ -317,11 +322,11 @@ test('opposing ground units push symmetrically, pass head-on traffic, and exclud
   assert.equal(ground.x, before.x); assert.equal(ground.y, before.y);
 });
 
-test('all six map layouts have equal starting economies, safe camps and strategic routes', () => {
+test('all twenty-one map layouts have equal standard starting economies, safe camps and strategic routes', () => {
   for (const map of Object.keys(MAPS)) for (const players of [2, 3, 4]) {
     const game = new Game({map, players});
     assert.equal(game.teams.length, players);
-    assert.equal(game.width,4800);assert.equal(game.height,3200);
+    assert.equal(game.width,9600);assert.equal(game.height,6400);
     assert.equal(game.stats.collected.length, players);
     assert(game.map.lanes.length >= 3);
     assert(game.map.expansions.length >= 5);
@@ -359,7 +364,7 @@ test('sizeable squads can cross every map layout without terrain or formation go
     const goals = squad.map(e => ({x:e.order.x, y:e.order.y, arrival:e.order.arrivalRadius||10}));
     for (let i = 0; i < squad.length; i++) assert(!game._blocked(goals[i].x, goals[i].y, squad[i].r));
     const reached = new Set(); let simulated = 0;
-    while (simulated < 80 && reached.size < 50) {
+    while (simulated < 160 && reached.size < 50) {
       game.update(.08); simulated += .08;
       squad.forEach((e, i) => {
         const remaining = Math.hypot(e.x - goals[i].x, e.y - goals[i].y);
@@ -376,9 +381,10 @@ test('sizeable squads can cross every map layout without terrain or formation go
 
 test('commands aimed inside a terrain obstacle project the entire formation onto reachable ground', () => {
   const game = arena();
-  const squad = Array.from({length:24}, (_, i) => spawn(game, 'rock', 0, 1700 + i % 6 * 44, 1300 + Math.floor(i / 6) * 44));
-  assert(game._blocked(2400,1180,18),'the command target is inside an enlarged book');
-  game.command(squad.map(e => e.id), {type:'move', x:2400, y:1180});
+  const book=game.map.obstacles.find(o=>o.type==='book'),target={x:book.x+book.w/2,y:book.y+book.h/2};
+  const squad = Array.from({length:24}, (_, i) => spawn(game, 'rock', 0, book.x-600+i%6*44, target.y-100+Math.floor(i/6)*44));
+  assert(game._blocked(target.x,target.y,18),'the command target is inside the actual enlarged book');
+  game.command(squad.map(e => e.id), {type:'move', ...target});
   const goals = squad.map(e => ({x:e.order.x, y:e.order.y}));
   for (let i = 0; i < squad.length; i++) assert(!game._blocked(goals[i].x, goals[i].y, squad[i].r));
   advance(game, 35);

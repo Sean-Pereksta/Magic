@@ -1,11 +1,12 @@
-import {Game,TYPES,isCombat,canTransport,snapWallPoint} from './engine.js';
+import {Game,TYPES,isCombat,canTransport,snapWallPoint,layoutMap} from './engine.js';
 import {Renderer,drawIcon} from './render.js';
 import {abilityIcon} from './ability-icons.js';
+import {MAP_BRIEFS,DIFFICULTY_BRIEFS,paintBattlefieldPreview} from './skirmish-menu.js';
 
 const $=id=>document.getElementById(id), canvas=$('world');
 const COMBAT=['rock','paper','scissors'], BUILDINGS=['desk','cabinet','printer','cdreader','mouse','workshop','laboratory','wall'];
-const names={desktop:'Desktop Meadow',breakroom:'Breakroom Blitz',canyon:'Stapler Canyon',conveyor:'Conveyor Chaos'};
-const descriptions={twig:'A scrappy little worker. Carries 5 trash per trip. Can build your entire base.',rock:'A solid choice. Crushes scissors. Watch out for paper.',paper:'A clean sheet with a mean streak. Wraps rocks. Scissors are trouble.',scissors:'Sharp, speedy, and slightly unhinged. Cuts paper. Avoid rocks.',desk:'Home, sweet headquarters. Twigs return their trash here. Train more workers or expand.',printer:'Print a little trouble. Train your army and research a special ability for each troop.',cabinet:'Room for more mischief. Adds 8 supply to your little empire.'};
+const names=Object.fromEntries(Object.entries(MAP_BRIEFS).map(([id,map])=>[id,map.name]));
+const descriptions={twig:'A scrappy little worker with 75 health. Carries 5 trash per trip. Protect workers with reinforcements when raiders drop in.',rock:'A solid choice. Crushes scissors. Watch out for paper.',paper:'A clean sheet with a mean streak. Wraps rocks. Scissors are trouble.',scissors:'Sharp, speedy, and slightly unhinged. Cuts paper. Avoid rocks.',desk:'Home, sweet headquarters. Twigs return their trash here. Train more workers or expand.',printer:'Print a little trouble. Train your army and research a special ability for each troop.',cabinet:'Room for more mischief. Adds 8 supply to your little empire.'};
 descriptions.cdreader='Summon flying CDs to carry your army over the desk. Each CD holds six troops. No twigs aboard.';
 descriptions.cd='A flying troop carrier. Select troops and tap a CD to board. Load finds the nearest troops; Drop chooses where to land. Holds six troops, no twigs.';
 descriptions.mouse='Reinforced pointer defense. 850 health, 360 range, 28 impact damage every 1.25s, plus 6 damage per second for 3s. Targets enemy aircraft and combat troops.';
@@ -60,7 +61,14 @@ function onEvent(e){
  if(e.type==='hit'&&!paused&&!inLobby&&(!e.target||e.target.team===0||visibleEntity(e.target)))sound('hit');
  if(e.type==='deposit'&&e.team===0&&Math.random()<.13&&!paused&&!inLobby)sound('deposit');
 }
-function resetGame(){cancelGroupPresses();lastGroup={key:'',at:0};game=new Game({map:chosenMap,difficulty:chosenDifficulty,players:chosenPlayers,onEvent});selected.clear();groups={};mode=null;abilityType=null;drag=null;mouseHover=null;endShown=false;signature='';if(renderer){renderer.game=game;renderer.resize();}else renderer=new Renderer(canvas,game);renderer.camera.zoom=window.innerWidth<761?.72:.94;const d=game.entities.find(e=>e.team===0&&e.type==='desk');pointer={x:d.x,y:d.y};renderer.centerOn(d.x,d.y+40);$('matchLabel').textContent=names[chosenMap].toUpperCase()+' · '+chosenPlayers+' PLAYERS · '+chosenDifficulty.toUpperCase();$('operationName').textContent={desktop:'The great desk takeover',breakroom:'A little breakroom business',canyon:'Control the crossings',conveyor:'Keep the factory moving'}[chosenMap];updateUI(true);}
+function updateLobbyBrief(){
+ const brief=MAP_BRIEFS[chosenMap],map=layoutMap(chosenMap,chosenPlayers);$('mapSelect').value=chosenMap;
+ $('mapBriefTitle').textContent=brief.tag;$('mapBriefPlan').textContent=brief.plan;
+ $('mapBriefStats').textContent='Vast battlefield · 4× area · '+map.lanes.length+' marked routes · '+map.expansions.length+' expansion fields';
+ $('mapBriefPreview').setAttribute('aria-label',brief.name+': '+brief.tag+'. '+map.expansions.length+' expansion fields.');paintBattlefieldPreview($('mapBriefPreview'),map);
+}
+function updateDifficultyHint(){const hint=$('difficultyHint');hint.textContent=DIFFICULTY_BRIEFS[chosenDifficulty];hint.classList.toggle('cheating',chosenDifficulty==='impossible');}
+function resetGame(){cancelGroupPresses();lastGroup={key:'',at:0};game=new Game({map:chosenMap,difficulty:chosenDifficulty,players:chosenPlayers,onEvent});selected.clear();groups={};mode=null;abilityType=null;drag=null;mouseHover=null;endShown=false;signature='';if(renderer){renderer.game=game;renderer.resize();}else renderer=new Renderer(canvas,game);renderer.camera.zoom=window.innerWidth<761?.72:.94;const d=game.entities.find(e=>e.team===0&&e.type==='desk');pointer={x:d.x,y:d.y};renderer.centerOn(d.x,d.y+40);$('matchLabel').textContent=names[chosenMap].toUpperCase()+' · '+chosenPlayers+' PLAYERS · '+chosenDifficulty.toUpperCase();$('operationName').textContent=MAP_BRIEFS[chosenMap].tag;updateUI(true);}
 function start(){sound();resetGame();started=true;inLobby=false;paused=false;lastFrame=performance.now();$('lobby').hidden=true;$('pauseOverlay').hidden=true;$('endOverlay').hidden=true;const desk=game.entities.find(e=>e.team===0&&e.type==='desk');selected=new Set([desk.id]);updateUI(true);toast('F2 selects your army. A + click attacks; Q / W / E activate troop abilities.');canvas.focus({preventScroll:true});}
 function setMode(next,type=null){routePoints=[];routeDrawing=false;mode=next;abilityType=type;const label=mode==='wall'?'Place connected walls · 20 trash · 1,200 HP · tap repeatedly to extend':BUILDINGS.includes(mode)?`Place ${TYPES[mode].label.toLowerCase()} · choose clear ground`:mode==='drop'?'Drop troops · tap a destination for your selected CDs':mode==='ability'?`${type?skills[type].name:'Special abilities'} · choose a target or direction`:mode==='specialist'?`${specialistSkills[type].name} · ${specialistSkills[type].route?'draw a route or tap waypoints, then Finish route':specialistSkills[type].desc}${['snipe','forcefield','division'].includes(type)?' · moves into range when needed':''}`:mode==='attack'?'Attack move · choose a spot to fight toward':'';$('modeBanner').textContent=label+(label?' · X cancel · Esc menu':'');$('modeBanner').hidden=!label;canvas.style.cursor=next?'crosshair':'default';updateUI(true);}
 function unselect(){selected.clear();setMode(null);sound('select');}
@@ -369,9 +377,9 @@ function openGuide(){if(!$('guide').hidden)return;cancelGroupPresses();mouseHove
 function closeGuide(){$('guide').hidden=true;paused=guideWasPaused;sound();}
 function openLobby(){cancelGroupPresses();mouseHover=null;minimapDrag=null;if(started&&game.winner===null){$('resumeFromLobby').hidden=false;}else $('resumeFromLobby').hidden=true;inLobby=true;paused=true;$('pauseOverlay').hidden=true;$('lobby').hidden=false;setMode(null);sound();}
 $('startButton').addEventListener('click',start);$('playAgain').addEventListener('click',()=>{$('endOverlay').hidden=true;openLobby();});
-document.querySelectorAll('[data-map]').forEach(b=>b.addEventListener('click',()=>{chosenMap=b.dataset.map;document.querySelectorAll('[data-map]').forEach(x=>x.classList.toggle('active',x===b));sound();}));
-document.querySelectorAll('[data-difficulty]').forEach(b=>b.addEventListener('click',()=>{chosenDifficulty=b.dataset.difficulty;document.querySelectorAll('[data-difficulty]').forEach(x=>x.classList.toggle('active',x===b));sound();}));
-document.querySelectorAll('[data-players]').forEach(b=>b.addEventListener('click',()=>{chosenPlayers=Number(b.dataset.players);document.querySelectorAll('[data-players]').forEach(x=>x.classList.toggle('active',x===b));sound();}));
+$('mapSelect').addEventListener('change',e=>{const id=e.currentTarget.value;if(!Object.hasOwn(MAP_BRIEFS,id))return;chosenMap=id;updateLobbyBrief();sound();});
+document.querySelectorAll('[data-difficulty]').forEach(b=>b.addEventListener('click',()=>{chosenDifficulty=b.dataset.difficulty;document.querySelectorAll('[data-difficulty]').forEach(x=>x.classList.toggle('active',x===b));updateDifficultyHint();sound();}));
+document.querySelectorAll('[data-players]').forEach(b=>b.addEventListener('click',()=>{chosenPlayers=Number(b.dataset.players);document.querySelectorAll('[data-players]').forEach(x=>x.classList.toggle('active',x===b));updateLobbyBrief();sound();}));
 $('resumeFromLobby').addEventListener('click',()=>{inLobby=false;paused=false;$('lobby').hidden=true;sound();});
 for(const id of ['guideButton','lobbyGuide','pauseGuide'])$(id).addEventListener('click',openGuide);for(const id of ['closeGuide','guideDone'])$(id).addEventListener('click',closeGuide);
 for(const id of ['pauseButton','resumeButton','compactMenu'])$(id).addEventListener('click',togglePause);for(const id of ['menuButton','brandButton','newMatchButton'])$(id).addEventListener('click',openLobby);
@@ -398,7 +406,7 @@ function frame(now){const dt=Math.min(.05,(now-lastFrame)/1000);lastFrame=now;
  uiTick+=dt;if(uiTick>=.1){uiTick=0;updateUI();renderer.drawMinimap($('minimap'));}
  requestAnimationFrame(frame);
 }
-resetGame();updateSound();icons();requestAnimationFrame(frame);
+resetGame();updateLobbyBrief();updateDifficultyHint();updateSound();icons();requestAnimationFrame(frame);
 // Small, read-only friendly integration handle for an embedding game lobby.
 window.trashTactics={get game(){return game;},get renderer(){return renderer;},get selected(){return [...selected];}};
 

@@ -1,6 +1,6 @@
 # Tier 2 and Tier 3 warfare
 
-Trash Tactics now has six specialists, two production buildings, and two new 4800 × 3200 battlefields. The original maps, economy, upgrades, fog, formations, groups, mouse defenses, and CD transports remain available.
+The warfare expansion introduced six specialists, two production buildings and two additional battlefields. The Frontiers update now expands all seven maps to 9600 × 6400; see [Frontiers](FRONTIERS.md) for the map dropdown, rival strategies and Impossible resource rules. The original maps, economy, upgrades, fog, formations, groups, mouse defenses, and CD transports remain available.
 
 ## Production
 
