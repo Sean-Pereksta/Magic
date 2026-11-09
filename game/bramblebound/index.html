@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#10221e">
   <title>Bramblebound · The Endless Road</title>
-  <meta name="description" content="Walk the endless road with Pip. Forge 441 elemental relics with 285 fusion recipes, build healing and control loadouts, and face guardians across 35 regions.">
+  <meta name="description" content="Walk the endless road with Pip. Forge 441 relics, awaken three elemental sets, gather combat supplies, and face Titans across 35 regions.">
   <meta property="og:title" content="Bramblebound · The Endless Road">
   <meta property="og:description" content="A little traveler. An endless road. A new build with every journey. Play on Cat’N Mice.">
   <meta property="og:image" content="https://www.catnmice.com/game/bramblebound/assets/title.webp">
   <meta property="og:type" content="website">
   <link rel="icon" href="brand.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
   <link rel="stylesheet" href="legacy.css?v=3">
   <link rel="stylesheet" href="camp.css?v=1">
   <link rel="stylesheet" href="title.css?v=2">
@@ -19,17 +19,19 @@
   <script defer src="titans.js?v=1"></script>
   <script defer src="icons.js?v=4"></script>
   <script defer src="epic-art.js?v=1"></script>
-  <script defer src="world.js?v=5"></script>
+  <script defer src="world.js?v=6"></script>
   <script defer src="progression.js?v=5"></script>
-  <script defer src="legacy.js?v=1"></script>
+  <script defer src="legacy.js?v=2"></script>
   <script defer src="living-combat.js?v=1"></script>
   <script defer src="ancient-artifacts.js?v=1"></script>
-  <script defer src="engine.js?v=5"></script>
+  <script defer src="synergies.js?v=1"></script>
+  <script defer src="provisions.js?v=1"></script>
+  <script defer src="engine.js?v=6"></script>
   <script defer src="sound.js?v=2"></script>
   <script defer src="journal.js?v=5"></script>
   <script defer src="cloud-save.js?v=1"></script>
   <script defer src="camp.js?v=1"></script>
-  <script defer src="app.js?v=7"></script>
+  <script defer src="app.js?v=8"></script>
 </head>
 <body class="on-expedition title-open">
   <section id="title-screen" class="title-screen" aria-labelledby="title-heading">
@@ -65,6 +67,7 @@
             <button id="growth-btn" class="growth-button" title="View expedition upgrades"><span id="level-text" class="level-badge">LV 1</span><span class="xp-track"><span id="xp-bar"></span></span><span id="xp-text"></span><span id="growth-hint">Run build ›</span></button>
             <div id="ability-strip" class="ability-strip" hidden aria-label="Ability cooldowns"></div>
           </div>
+          <button id="provisions-btn" class="provisions-button" data-dialog="provisions" aria-label="Open consumable pouch"><i data-glyph="vial"></i><span><b>Trail pouch</b><small id="provisions-count">Run supplies</small></span><span id="provisions-preview" aria-hidden="true"></span><span aria-hidden="true">›</span></button>
           <div class="vitals">
             <div class="vital hero-vital"><div class="vital-title"><i data-glyph="heart"></i><b>Pip</b><span id="hp-num"></span></div><div class="meter"><span id="hp-bar"></span></div><div class="vital-sub" id="hero-sub"></div></div>
             <div class="vital enemy-vital"><div class="vital-title"><i data-glyph="target"></i><b id="enemy-name">Open trail</b><span id="enemy-num"></span></div><div class="meter"><span id="enemy-bar"></span></div><div class="vital-sub" id="enemy-sub"></div></div>
@@ -78,9 +81,11 @@
           <div class="kit-content">
             <div id="gear-comparison" hidden role="region" aria-label="Selected backpack relic compared with equipped relics"></div>
             <section class="gear-panel"><div class="section-heading"><h3><i data-glyph="swords"></i> Equipped</h3><span class="count" id="gear-count"></span></div><div id="equipped" class="equipped"></div></section>
+            <button id="synergies-btn" class="set-summary" data-dialog="synergies"><i data-glyph="spark"></i><span>Element sets</span><b id="synergies-count">Explore combinations</b><span aria-hidden="true">›</span></button>
             <section class="pack-panel"><div class="section-heading"><h3><i data-glyph="pack"></i> Pack slots</h3><span class="count" id="pack-count"></span></div>
-              <div class="pack-tools"><input type="search" id="pack-search" placeholder="Find gear…" aria-label="Search backpack by item, element or effect"><select id="pack-tier" aria-label="Filter backpack by rarity"><option value="all">All tiers</option><option value="common">Common</option><option value="uncommon">Uncommon</option><option value="rare">Rare</option><option value="epic">Epic</option><option value="mythic">Mythic</option><option value="ancient">Ancient</option></select><div class="page-controls"><button data-pack-step="-1" aria-label="Previous backpack page" title="Previous page">‹</button><select id="pack-page" aria-label="Choose backpack page"></select><button data-pack-step="1" aria-label="Next backpack page" title="Next page">›</button></div></div>
-              <div id="pack" class="pack-grid"></div></section>
+              <div class="pack-tools"><input type="search" id="pack-search" placeholder="Find gear…" aria-label="Search backpack by item, element or effect"><select id="pack-tier" aria-label="Filter backpack by rarity"><option value="all">All tiers</option><option value="common">Common</option><option value="uncommon">Uncommon</option><option value="rare">Rare</option><option value="epic">Epic</option><option value="mythic">Mythic</option><option value="ancient">Ancient</option></select></div>
+              <div class="pack-filterbar"><button id="pack-combinable" aria-pressed="false" title="Show relics with a valid fusion or matching-level copy anywhere in your kit"><i data-glyph="merge"></i>Combinable</button><select id="pack-sort" aria-label="Sort backpack" title="Strongest first ranks sustained damage or utility, including level and build bonuses"><option value="slots">Slot order</option><option value="strongest">Strongest first</option></select><div class="page-controls"><button data-pack-step="-1" aria-label="Previous backpack page" title="Previous page">‹</button><select id="pack-page" aria-label="Choose backpack page"></select><button data-pack-step="1" aria-label="Next backpack page" title="Next page">›</button></div></div>
+              <div id="pack" class="pack-grid" aria-label="Backpack relics. Swipe left or right to turn pages; hold a relic to drag it."></div><span id="pack-page-status" class="sr-only" role="status"></span></section>
             <div class="workbench"><div id="drag-note" class="drag-note" role="status">Drag to equip, swap, or fuse. Select a relic to light up its matches.</div><div class="workbench-actions"><button id="recipe-btn" class="text-link"><i data-glyph="book"></i> Recipes</button><button id="discard-zone" class="discard-zone" data-dialog="discard-picker"><i data-glyph="trash"></i> Discard</button></div></div>
             <section class="finds" aria-label="Latest trail find"><div class="eyebrow">LATEST FIND</div><div id="recent-find" role="status">Fallen enemies can drop gear straight into your backpack.</div></section>
           </div>

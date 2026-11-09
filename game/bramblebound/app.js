@@ -59,7 +59,7 @@
   let titleOpen=true;
   let page='expedition', guideTab='items',guideTier='all',query='',manualPause=!!profile.run&&['walk','fight'].includes(profile.run.phase);
   let effects=[],defeated=null,sceneClock=0, demoDistance=0,previousTime=null,hudTimer=0,saveTimer=0,structure='',toastTimer,pendingImport=null,encounterAge=1;
-  let packPage=0,packQuery='',packTier='all',displayedDraft='',packPages=1,campArea='heartwood',campGroveView='masteries';
+  let packPage=0,packQuery='',packTier='all',packCombinable=false,packSort='slots',displayedDraft='',packPages=1,campArea='heartwood',campGroveView='masteries';
   let selectedUid=null,partnerView=null,debriefedRun=null;
   const partners=new Map();
   const compactPack=window.matchMedia('(orientation:portrait), (max-height:680px)');
@@ -305,16 +305,36 @@
     const marker=result?'<span class="match-badge" aria-hidden="true">'+(verb==='Upgrade'?'+1':'✦')+'</span>':'';
     return '<button class="gear-slot'+state+'" '+attrs+' data-uid="'+it.uid+'" data-rarity="'+d.rarity+'" aria-pressed="'+selected+'" style="--el:'+C.elements[d.element].color+'" aria-label="'+name+(tier?', '+tier:'')+', level '+level+', '+place+' slot '+(index+1)+esc(hint)+'" title="'+name+(tier?' · '+tier:'')+' · Lv '+level+esc(hint)+'">'+stamp+marker+'<span class="level-tag">Lv '+level+'</span><span class="relic-picture">'+A.svg(it.id,58)+'</span><span class="slot-name">'+name+'</span>'+(equipped?'<span class="cd-text" data-clock="'+it.uid+'"></span><span class="cd-fill" data-fill="'+it.uid+'"></span>':'<span class="slot-type">'+elName(d.element)+' · '+J.styleLabel(d.style)+'</span>')+'</button>';
   }
-  function resetPack(){clearSelection();packPage=0;packQuery='';packTier='all';$('pack-tier').value='all';$('pack-search').value='';}
+  function resetPack(){clearSelection();packPage=0;packQuery='';packTier='all';packCombinable=false;packSort='slots';$('pack-tier').value='all';$('pack-search').value='';$('pack-sort').value='slots';$('pack-combinable').setAttribute('aria-pressed','false');}
+  let combinableKey='',combinableUids=new Set();
+  function combinables(r){
+    const items=allItems(r),key=items.map(it=>[it.uid,it.id,it.level].join('/')).join('|');
+    if(key!==combinableKey){
+      combinableKey=key;combinableUids=new Set();
+      for(let i=0;i<items.length;i++)for(let j=i+1;j<items.length;j++){
+        if(E.previewPair(items[i],items[j]).ok){combinableUids.add(items[i].uid);combinableUids.add(items[j].uid);}
+      }
+    }
+    return combinableUids;
+  }
+  function strength(it){
+    const stats=E.itemComparison(equipmentProfile(),it);
+    // Compare sustained output. Control uses an eight-potency-per-second
+    // equivalent; the sort is a convenience, while the comparison retains units.
+    return (stats.damage*(1+stats.lifesteal)+stats.heal+stats.shield+8*(stats.stun+stats.freeze))/Math.max(.15,stats.cooldown);
+  }
   function renderPack(r){
     const size=pageSize(),{terms,stages}=J.parseRelicSearch(packQuery.replace(/\b(?:level|lv)\s*(\d+(?:\.\d+)?)/gi,'lv$1'));
-    const matches=(terms.length||stages.size||partnerView||packTier!=='all')?r.pack.filter(it=>{
+    const possible=packCombinable?combinables(r):null;
+    const scores=packSort==='strongest'?new Map(r.pack.map(it=>[it.uid,strength(it)])):null;
+    const matches=(terms.length||stages.size||partnerView||packCombinable||packSort!=='slots'||packTier!=='all')?r.pack.filter(it=>{
       if(packTier!=='all'&&C.items[it.id].rarity!==packTier)return false;
       if(!J.matchesFusionStage(C.items[it.id],stages))return false;
       if(partnerView&&!partners.has(it.uid))return false;
+      if(possible&&!possible.has(it.uid))return false;
       const fields=J.relicSearchText(C.items[it.id]);
       return terms.every(word=>/^lv\d/.test(word)?Number(word.slice(2))===it.level:/^p\d+$/.test(word)?Number(word.slice(1))===it.slot+1:fields.includes(word));
-    }).sort((a,b)=>a.slot-b.slot):null;
+    }).sort(scores?(a,b)=>scores.get(b.uid)-scores.get(a.uid)||a.slot-b.slot:(a,b)=>a.slot-b.slot):null;
     const total=matches?matches.length:E.packCapacity;
     packPages=Math.max(1,Math.ceil(total/size));packPage=Math.min(Math.max(0,packPage),packPages-1);
     const from=packPage*size,to=Math.min(total,from+size);
@@ -334,6 +354,7 @@
     document.querySelector('[data-pack-step="-1"]').disabled=packPage===0;
     document.querySelector('[data-pack-step="1"]').disabled=packPage===packPages-1;
     $('pack-count').textContent=matches?total+' found · '+r.pack.length+' / '+E.packCapacity:r.pack.length+' / '+E.packCapacity;
+    $('pack-page-status').textContent='Backpack page '+(packPage+1)+' of '+packPages;
     if(dragging?.moved)markPartners();
   }
   function renderGear(r){
@@ -341,6 +362,7 @@
     $('gear-count').textContent=r.active.length+' / '+E.activeCapacity;
     $('equipped').innerHTML=Array.from({length:E.activeCapacity},(_,i)=>gearSlot(r,'active',i)).join('');
     renderPack(r);
+    renderSetSummary(r);
   }
   function advancePage(step){packPage+=step;renderPack(displayRun());}
   function abilityRank(r,id){return r.skills[id]||0;}
@@ -353,6 +375,27 @@
     const ids=P.abilities.filter(u=>abilityRank(r,u.id)>0);
     const el=$('ability-strip');el.hidden=!ids.length;
     el.innerHTML=ids.map(u=>'<button data-skill="'+u.id+'" class="ability-chip" style="--el:'+C.elements[u.element].color+'" title="'+esc(u.name)+'"><span class="ability-pic">'+A.svg(u.icon,24)+'</span><span><b>'+esc(u.name)+'</b><small data-ability-time="'+u.id+'"></small></span><span class="ability-fill" data-ability-fill="'+u.id+'"></span></button>').join('');
+  }
+  const elementGlyph={leaf:'sprout',fire:'flame',frost:'snowflake',storm:'bolt',stone:'mountain',spirit:'ghost'};
+  function setIcons(elements){return '<span class="set-icons">'+elements.map(id=>'<span style="color:'+C.elements[id].color+'">'+icon(elementGlyph[id])+'</span>').join('')+'</span>';}
+  function renderSetSummary(r){
+    const sets=window.Synergies?.describe(r)||[],active=sets.filter(s=>s.active);
+    $('synergies-count').textContent=active.length?active.map(s=>s.name+(s.tier>=3?' III':' II')).join(' · '):'0 active · discover 3 sets';
+    $('synergies-btn').classList.toggle('has-set',!!active.length);
+  }
+  function renderProvisions(r){
+    const summary=window.Provisions?.summary(r);if(!summary)return;
+    const active=!!profile.run&&r.phase!=='dead';
+    $('provisions-count').textContent=!active?'Collect and use during runs':summary.count+' / '+summary.capacity+' supplies'+(summary.cooldown>.05?' · recovering':'');
+    const content=summary.items.filter(d=>d.count).map(d=>'<span title="'+esc(d.name)+'">'+Provisions.icon(d.id,20)+'<small>'+d.count+'</small></span>').join('');
+    const preview=$('provisions-preview');if(preview.dataset.signature!==content){preview.innerHTML=content;preview.dataset.signature=content;}
+    $('provisions-btn').classList.toggle('has-supplies',active&&summary.count>0);
+  }
+  function provisionsDialog(r){
+    const summary=Provisions.summary(r),active=!!profile.run&&r.phase!=='dead';
+    return '<h2 class="dialog-title">Trail pouch</h2><p class="body-copy">Gather supplies on the road. Open the pouch to pause and choose; using a supply returns you to the trail. Supplies stack here, separate from relics, and last for this expedition.</p><div class="pouch-meta"><span>'+summary.count+' / '+summary.capacity+' packed</span><span>Potency ×'+number(summary.quality)+'</span></div>'+
+      (!active?'<p class="pouch-note">Begin an expedition to receive your starting supplies.</p>':summary.cooldown>.05?'<p class="pouch-note">Pouch recovering · '+number(summary.cooldown)+'s of trail time. Close the pouch and resume to recharge.</p>':'<p class="pouch-note">Choose your moment. Combat waits while this screen is open.</p>')+
+      '<div class="provision-list">'+summary.items.map(d=>'<article class="provision-card" style="--el:'+C.elements[d.element].color+'"><span class="provision-art">'+Provisions.icon(d.id,46)+'</span><div><h3>'+esc(d.name)+'</h3><p>'+esc(d.description)+'</p><small>'+(d.count?d.count+' packed':'Find on the trail')+'</small></div><button class="outline compact" data-use-consumable="'+d.id+'" '+(!active||!d.usable?'disabled':'')+' title="'+esc(!active?'Begin an expedition first':d.reason||'Use '+d.name)+'">Use<span class="sr-only"> '+esc(d.name)+'</span></button></article>').join('')+'</div><p class="mini-note">Upgrade Provision Pockets and Field Alchemy at the Wayfinder’s Lodge to begin with more supplies and improve their potency. A shared recovery prevents rapid use; it advances only while the run is moving.</p>';
   }
   function updateGrowth(r){
     const need=E.xpNeeded(r.level),pending=r.draft.length>0;
@@ -416,10 +459,11 @@
       $('speed-btn').innerHTML=icon('speed')+r.speed+'× pace';$('audio-btn').innerHTML=icon(prefs.audio?'audio':'mute')+(prefs.audio?'Sound on':'Sound off');
       $('audio-btn').setAttribute('aria-pressed',String(prefs.audio));$('pause-glass').hidden=!(manualPause&&active&&['walk','fight'].includes(r.phase));
       $('world').setAttribute('aria-label','Pip in '+C.regions[r.region].name+(r.enemy?', facing '+r.enemy.name:'.'));
-      const gear=r.active.concat(r.pack).map(it=>[it.uid,it.id,it.level,it.slot].join('/')).join('|')+';'+r.active.map(it=>it.uid).join('/');
+      const gear=r.active.concat(r.pack).map(it=>[it.uid,it.id,it.level,it.slot].join('/')).join('|')+';'+r.active.map(it=>it.uid).join('/')+(packSort==='strongest'?JSON.stringify(r.skills):'');
       if(!dragging&&(gear!==previousGear||force||r.phase==='dead'&&selectedUid!==null)){renderGear(r);previousGear=gear;}
       renderFind(r);renderEncounter(r);renderAbilities(r);
     }
+    renderProvisions(r);
     if(!titleOpen&&active&&r.phase==='dead'&&debriefedRun!==r&&!modal.open&&!dragging)showDialog('debrief');
     updateGrowth(r);
     if(selectedUid!==null)renderComparison(r);
@@ -464,9 +508,15 @@
       if(!r.draft.length)return showDialog('build');
       displayedDraft=r.draft;kicker='LEVEL '+r.level+' / EXPEDITION UPGRADE';
       html='<h2 class="dialog-title">Choose an upgrade</h2><p class="body-copy">Pip reached level '+r.level+'. Pick one for this expedition. Picking it again adds another rank.</p><div class="skill-list">'+r.draft.map(id=>'<div class="skill-choice">'+skillCard(r,id,'draft')+((r.banishes||r.echoesLeft)?'<div class="draft-side-tools"><button type="button" data-draft-banish="'+id+'" '+(!r.banishes?'disabled':'')+' aria-label="Banish '+esc(P.upgrades[id].name)+'">Banish</button><button type="button" data-draft-echo="'+id+'" '+(!r.echoesLeft?'disabled':'')+' aria-label="Echo '+esc(P.upgrades[id].name)+'">Echo</button></div>':'')+'</div>').join('')+'</div><div class="draft-tools"><button class="outline compact" data-draft-reroll '+(!r.draftRerolls?'disabled':'')+'>Reroll · '+(r.draftRerolls||0)+' remaining</button><small>'+(r.banishes||0)+' banishes · '+(r.echoesLeft||0)+' echoes. Echo preserves an unchosen talent for two drafts. Combat waits while you choose.</small></div>';
+    }else if(type==='provisions'){
+      kicker='SUPPLIES FOR THE ROAD';html=provisionsDialog(r);
+    }else if(type==='synergies'){
+      kicker='ELEMENTAL SETS';const sets=Synergies.describe(r);
+      html='<h2 class="dialog-title">Build a reaction</h2><p class="body-copy">Only equipped relics count. Equip both elements in a pair to awaken its set. A third relic from that pair strengthens it, or split your four slots between two sets.</p><div class="set-list">'+sets.map(s=>'<article class="set-card '+(s.active?'active':'')+'">'+setIcons(s.elements)+'<div class="set-title"><h3>'+esc(s.name)+'</h3><span>'+ (s.active?'ACTIVE · '+s.count+' PIECES':s.count+' PIECES')+'</span></div><p class="set-requirement">'+esc(s.requirement)+'</p><p>'+esc(s.description)+'</p><div class="set-bonus">'+esc(s.bonus)+'</div></article>').join('')+'</div><p class="mini-note">Carried relics do not activate sets. Healing, shielding, freeze and stun relics keep their support roles.</p>';
     }else if(type==='build'){
       kicker='PIP’S EXPEDITION BUILD';const entries=Object.keys(r.skills).filter(id=>r.skills[id]>0);
       html='<h2 class="dialog-title">Level '+r.level+' trailwalker</h2><p class="body-copy">Travel and combat earn XP. At each level, choose from your talent draft. Your ranks last for this run.</p><div class="stat-row"><span class="stat-pill">'+Math.floor(r.xp)+' / '+E.xpNeeded(r.level)+' XP</span><span class="stat-pill">'+r.foes+' foes defeated</span></div>';
+      html+='<button class="text-link" data-dialog="synergies">'+icon('spark')+'View elemental sets →</button>';
       if(r.draft.length)html+='<button data-dialog="draft" class="primary">Choose your upgrade →</button>';
       html+=entries.length?'<div class="skill-list">'+entries.map(id=>skillCard(r,id,'owned')).join('')+'</div>':'<p class="empty-note">Your first level-up opens a talent draft.</p>';
       html+='<button class="text-link" data-do="browse-skills">'+icon('book')+'Browse all '+Object.keys(P.upgrades).length+' upgrades →</button>';
@@ -512,7 +562,7 @@
       const e=C.enemies.find(x=>x.id===data.id);if(!e)return;
       kicker=e.titan?'TEN-ROUND TITAN':e.boss?'GUARDIAN DOSSIER':'CREATURE DOSSIER';portrait=e;
       html='<div class="dialog-lead"><canvas id="detail-portrait" class="dialog-portrait" aria-hidden="true"></canvas><div><h2 class="dialog-title">'+esc(e.name)+'</h2><div class="eyebrow">'+esc(e.titan?'Appears every 60 rounds · First encounter '+((Titans.definitions.indexOf(e)+1)*10):C.regions[e.region].name)+'</div></div></div><div class="stat-row"><span class="stat-pill">Weak to '+elName(e.weak)+' · 1.68×</span><span class="stat-pill">Resists '+elName(e.resist)+' · 0.60×</span></div><div class="subhead">'+esc(e.trait)+'</div><p class="body-copy">'+esc(e.titan?e.description:J.traitText[e.trait])+'</p>'+(e.affliction?'<div class="subhead">Enemy effect · '+esc(e.affliction)+'</div><p class="body-copy">'+esc(J.afflictionText[e.affliction])+'</p>':'')+'<div class="subhead">Relics to try</div><div class="chip-row">'+enemyRelics(e).map(d=>'<button class="outline compact" data-catalog="'+d.id+'">'+esc(d.name)+'</button>').join('')+'</div>';
-      if(e.titan)html+='<section class="titan-dossier"><div class="subhead">Titan signature powers</div>'+e.moves.map(m=>'<article><b>'+esc(m.name)+'</b><p class="body-copy">'+esc(m.description)+'</p></article>').join('')+'<div class="subhead">Phase II · Enraged at 50% health</div><p class="body-copy">Signature powers charge more quickly and hit harder. Warnings pause while the Titan is frozen or stunned. Clear the Titan and its two escorts to recover 25% max HP. The Titan drops one guaranteed unlocked base Mythic: collect pairs for the Ancient forge.</p></section>';
+      if(e.titan)html+='<section class="titan-dossier"><div class="subhead">Titan signature powers</div>'+e.moves.map(m=>'<article><b>'+esc(m.name)+'</b><p class="body-copy">'+esc(m.description)+'</p></article>').join('')+'<div class="subhead">Phase II · Enraged at 50% health</div><p class="body-copy">Signature powers charge more quickly and hit harder. Warnings pause while the Titan is frozen or stunned. Clear the Titan and its two escorts to recover 25% max HP. Titans drop an Epic cache with a 10% chance to upgrade to an eligible base Mythic. Every fiftieth round guarantees a Mythic to keep the Ancient forge within reach.</p></section>';
     }else if(type==='region'){
       const i=data.index;if(!C.regions[i])return closeDialog();
       kicker='FIELD ATLAS / REGION '+pad(i+1)+' OF '+C.regions.length;html=J.regionDossier(r,i);
@@ -527,6 +577,9 @@
       kicker='THE TRAIL HANDBOOK';html='<h2 class="dialog-title">Walking with Pip</h2>'+[
         ['On the road','Pip starts alone against one foe. The first guardian arrives with two escorts on wave 4. Groups reach four foes on wave 7 and five on wave 11. Every fourth wave is a guardian. Every tenth round brings a giant Titan with two escorts, two signature powers and an enraged second phase. Six Titans rotate, growing stronger on later cycles. Read its warning and dossier to plan your build.'],
         ['Elements with a purpose','Leaf poisons and roots; Fire burns and ignites poison; Frost chills and freezes; Storm disrupts and chains; Stone fractures defenses; Spirit marks foes and returns protective energy. The field guide explains the timings and cross-element reactions.'],
+        ['Three elemental sets','Equip both elements of Fire/Frost, Leaf/Storm, or Stone/Spirit to awaken Emberglass, Bramble Circuit, or Soulstone. A third relic from that pair improves the reaction. Split four slots into two pairs for two active sets. Open Element sets below your equipment to see exact requirements and bonuses.'],
+        ['Supplies at the right moment','Open Trail pouch below the scene to pause and choose a supply. Moss Tonic heals and cleanses, Bark Ward shields, Ember Bomb hits the group, Frost Bell freezes it, and Quicksilver recharges relics and abilities. Using one returns to the road. Supplies have their own pouch and a shared 1.25-second recovery that advances while the run moves. Gather more after battles; upgrade Provision Pockets and Field Alchemy at the Wayfinder’s Lodge for more and better starting supplies.'],
+        ['Quick pack controls','Combinable shows relics with a valid partner anywhere in your kit. Strongest first ranks sustained damage or utility and keeps your saved slots intact. Combine either control with search and rarity. Swipe left or right across filled or empty pack slots to change pages. On touch, hold a relic briefly before dragging it to equip, swap or fuse.'],
         ['Support and control','Healing-only relics restore HP, shield-only relics build protection, stun-only relics interrupt a foe, and freeze-only relics encase a foe in ice. Stun and freeze stop enemy attack charge for their listed duration. These roles deal zero damage and do not trigger elemental hit effects. Pair them with an offensive relic to finish the fight.'],
         ['Pack a counter','New backpacks include a Dewglass Vial. Equip it to cleanse ailments whenever it activates. Other relics counter venom, static, frostbite, entanglement, hexes, corrosion, explosive death bursts and wards. Inspect a foe to see its effect and recommended counter relics.'],
         ['Signature relics','The expanded road adds twelve special weapon effects, including ricochets, executions, ailment ruptures, poison blooms and delayed aftershocks. Overload stores charge on its own relic and bursts every third activation. Search the field guide by signature or counter name.'],
@@ -593,8 +646,8 @@
     if(name==='recover'&&damagedSave){download(damagedSave,'Bramblebound-recovery.json');return;}
     if(name==='fresh'){pauseCloud();damagedSave=null;profile=E.freshProfile();starter=freshKit();campChanged=false;prefs=defaultPrefs();closeDialog();save();navigate('expedition');return;}
   }
-  let dragging=null,blockDragClick=false;
-  const dragNote='Drag to equip, swap, or fuse. Select a relic to light up its matches.';
+  let dragging=null,blockDragClick=false,packTouch=null;
+  const dragNote='Swipe pages · Hold to drag · Select a relic to find matches.';
   const kit=document.querySelector('.kit-col');
   function hitSlot(x,y){return document.elementFromPoint(x,y)?.closest('.gear-slot,#discard-zone')||null;}
   function dragIntent(target){
@@ -675,8 +728,38 @@
     }
     structure='';update(true);
   }
+  function clearPackTouch(){if(packTouch)clearTimeout(packTouch.hold);packTouch=null;}
+  $('pack').addEventListener('pointerdown',e=>{
+    if(e.pointerType==='mouse'||!e.isPrimary||e.button!==0||modal.open||dragging)return;
+    clearPackTouch();blockDragClick=false;
+    const node=e.target.closest('.gear-slot[data-uid]');
+    const gesture={pid:e.pointerId,x:e.clientX,y:e.clientY,lastX:e.clientX,lastY:e.clientY,swiping:false,hold:null};packTouch=gesture;
+    if(node&&displayRun().phase!=='dead')gesture.hold=setTimeout(()=>{
+      if(packTouch!==gesture)return;
+      packTouch=null;dragging={pid:gesture.pid,uid:Number(node.dataset.uid),node,x:gesture.x,y:gesture.y,moved:false,chip:null,target:null};
+    },280);
+  });
+  document.addEventListener('pointermove',e=>{
+    const g=packTouch;if(!g||g.pid!==e.pointerId)return;
+    g.lastX=e.clientX;g.lastY=e.clientY;
+    const dx=e.clientX-g.x,dy=e.clientY-g.y;
+    if(Math.hypot(dx,dy)>9)clearTimeout(g.hold);
+    if(!g.swiping&&Math.abs(dy)>12&&Math.abs(dy)>Math.abs(dx)){clearPackTouch();return;}
+    if(Math.abs(dx)>16&&Math.abs(dx)>Math.abs(dy)*1.35){g.swiping=true;e.preventDefault();}
+  },{passive:false});
+  document.addEventListener('pointerup',e=>{
+    const g=packTouch;if(!g||g.pid!==e.pointerId)return;
+    const dx=e.clientX-g.x,dy=e.clientY-g.y;
+    clearPackTouch();
+    if(g.swiping){
+      blockDragClick=true;e.preventDefault();
+      if(Math.abs(dx)>=42&&Math.abs(dx)>Math.abs(dy)*1.35){advancePage(dx<0?1:-1);}
+    }
+  });
+  document.addEventListener('pointercancel',e=>{if(packTouch?.pid===e.pointerId)clearPackTouch();});
   document.addEventListener('pointerdown',e=>{
     if(dragging||!e.isPrimary||e.button!==0)return;
+    if(e.pointerType!=='mouse'&&e.target.closest('#pack'))return;
     blockDragClick=false;
     const node=e.target.closest('.gear-slot[data-uid]');
     if(node&&page==='expedition'&&!modal.open&&displayRun().phase!=='dead'){
@@ -688,7 +771,7 @@
   document.addEventListener('pointercancel',e=>{if(dragging?.pid===e.pointerId)endDrag(false);});
   kit.addEventListener('lostpointercapture',e=>{if(e.target===kit&&dragging?.pid===e.pointerId)endDrag(false);});
   kit.addEventListener('contextmenu',e=>{if(e.target.closest('.gear-slot'))e.preventDefault();});
-  window.addEventListener('blur',()=>{if(dragging)endDrag(false);});
+  window.addEventListener('blur',()=>{clearPackTouch();if(dragging)endDrag(false);});
   document.addEventListener('click',e=>{if(blockDragClick&&e.detail){e.preventDefault();e.stopImmediatePropagation();blockDragClick=false;}},true);
 
   let expanded=false;
@@ -717,6 +800,13 @@
     const el=event.target.closest('button,a[data-nav],a[data-title]');if(!el||el.disabled)return;
     if(prefs.audio)S?.setEnabled(true,true);
     const ds=el.dataset,d=dialogState||{};
+    if(ds.useConsumable){
+      const result=E.act(profile,'useConsumable',ds.useConsumable);
+      if(!result.ok){notify(result.message);showDialog('provisions');return;}
+      for(const ev of result.events||[])effects.push({...ev,age:prefs.motion?0:.24});
+      save();closeDialog();structure='';update(true);sound('ability',Provisions.definitions[ds.useConsumable]?.element);notify(result.message);return;
+    }
+    if(el.id==='pack-combinable'){packCombinable=!packCombinable;packPage=0;el.setAttribute('aria-pressed',String(packCombinable));renderPack(displayRun());return;}
     if(ds.campGroveView){campGroveView=ds.campGroveView;renderLegacy();$('legacy-page').querySelector('[data-camp-grove-view="'+campGroveView+'"]')?.focus({preventScroll:true});return;}
     if(ds.campArea){campArea=ds.campArea;renderLegacy();$('legacy-page').querySelector('[data-camp-area="'+campArea+'"]')?.focus({preventScroll:true});return;}
     if(ds.campBuy){campResult(Legacy.purchase(profile,ds.campBuy),ds.campBuy);return;}
@@ -780,6 +870,7 @@
     if(el.id==='close-btn')closeDialog();
   });
   $('pack-tier').addEventListener('change',e=>{packTier=e.target.value;packPage=0;renderPack(displayRun());});
+  $('pack-sort').addEventListener('change',e=>{packSort=e.target.value;packPage=0;renderPack(displayRun());});
   modal.addEventListener('submit',event=>{if(event.target.id==='cloud-form')void submitCloud(event);});
   document.addEventListener('submit',event=>{const form=event.target;if(form.id==='camp-config-form'){event.preventDefault();const data=new FormData(form),patch={};for(const key of ['favoredElement','style','build'])if(data.has(key))patch[key]=data.get(key);campResult(Legacy.configure(profile,patch));}else if(form.matches('[data-camp-kit-form]')){event.preventDefault();const data=new FormData(form),items=[0,1,2,3].map(i=>data.get('item'+i)).filter(Boolean);campResult(Legacy.saveKit(profile,Number(form.dataset.campKitForm),{name:data.get('kitName'),items}));}});
   modal.addEventListener('cancel',event=>{if(cloudBusy&&dialogState?.type==='cloud')event.preventDefault();else if(dialogState?.type==='cloud-confirm'){pendingCloud=null;cloudAutoPaused=true;}});
@@ -830,13 +921,13 @@
         for(const ev of events){
           if(ev.kind==='round'&&ev.pattern==='encounter')encounterAge=0;
           if(ev.kind==='kill')defeated=ev.enemy||C.enemies.find(foe=>foe.id===ev.enemyId);
-          if(['attack','enemy','hit','kill','heal','milestone','status','loot','ability','special','companion','boss','ancient'].includes(ev.kind)){
+          if(['attack','enemy','hit','kill','heal','milestone','status','loot','ability','special','companion','boss','ancient','synergy','consumable','supply-find'].includes(ev.kind)){
             if(ev.kind==='attack'||ev.itemId&&['heal','shield','stun','freeze'].includes(C.items[ev.itemId]?.style)){lastHeld=ev.itemId||r.active.find(it=>C.items[it.id].element===ev.element)?.id;heldFor=.7;}
-            if(prefs.motion||['enemy','hit','attack','heal','milestone','ability','special','boss','ancient'].includes(ev.kind))effects.push({...ev,age:prefs.motion?0:.24});
+            if(prefs.motion||['enemy','hit','attack','heal','milestone','ability','special','boss','ancient','synergy','consumable','supply-find'].includes(ev.kind))effects.push({...ev,age:prefs.motion?0:.24});
           }
-          sound(['boss','ancient'].includes(ev.kind)?'ability':ev.kind==='attack'&&ev.label?.includes('WEAK')?'crit':ev.kind==='special'?'ability':ev.kind,ev.element);
+          sound(['boss','ancient','synergy','consumable'].includes(ev.kind)?'ability':ev.kind==='supply-find'?'loot':ev.kind==='attack'&&ev.label?.includes('WEAK')?'crit':ev.kind==='special'?'ability':ev.kind,ev.element);
         }
-        if(r.draft.length||events.some(ev=>['loot','dead','round','level'].includes(ev.kind)))save();
+        if(r.draft.length||events.some(ev=>['loot','dead','round','level','supply-find'].includes(ev.kind)))save();
         if(r.phase==='walk'||r.phase==='fight'){saveTimer+=dt;if(saveTimer>=3){saveTimer=0;save();}}
       }
       hudTimer+=dt;if(hudTimer>=.10||!structure){update();hudTimer=0;}

@@ -6,6 +6,8 @@
   const P = () => root.Progression;
   const L = () => root.Legacy;
   const T = () => root.Titans;
+  const Y = () => root.Synergies;
+  const V = () => root.Provisions;
   const WALK = 3.2, ACTIVE = 4, PACK = 400, WAVE_RULES=3;
   const utilityStyles=new Set(['heal','shield','stun','freeze']);
   const dropChances=Object.freeze({normal:.24,guardian:.48});
@@ -125,6 +127,8 @@
     for(const zone of [r.active,r.pack]) zone.forEach((it,slot)=>{it.slot=slot;discover(p.seenItems,it.id);});
     p.run=r;
     if(L()){L().start(p,r,(id)=>makeItem(r,id));P().onStart?.(r,[]);draftBonus(r);}
+    if(Y())r.synergies=Y().validate();
+    V()?.start(r);
     return ok('A new journey begins.');
   }
   function spawn(p,ev) {
@@ -224,6 +228,12 @@
       p.points-=cost; p.perks[a]++; return ok(`${perks[a].name} upgraded.`);
     }
     if(!r||r.phase==='dead') return fail('Begin a journey first.');
+    if(action==='useConsumable'){
+      if(!V())return fail('Supplies unavailable.');
+      const events=[],result=V().use(r,a,events,{heal:amount=>heal(r,amount)});
+      if(result.ok){if(r.phase==='fight')resolveDeaths(p,events);levelUp(r,events);}
+      return {...result,events};
+    }
     if(action==='rerollDraft'){if(!r.draft.length||!(r.draftRerolls>0))return fail('No rerolls remain.');r.draftRerolls--;r.draft=P().offer(r,()=>rng(r),3,'reroll');return ok('Destiny redrawn.');}
     if(action==='banishTalent'){if(!r.draft.includes(a)||!(r.banishes>0))return fail('Choose an offered talent and an available banish.');r.banishes--;r.banished??=[];r.banished.push(a);r.draft=P().offer(r,()=>rng(r),3,'reroll');return ok('Talent banished for this expedition.');}
     if(action==='echoTalent'){if(!r.draft.includes(a)||!(r.echoesLeft>0))return fail('Choose an offered talent and an available echo.');r.echoesLeft--;r.echoChoices??=[];r.echoChoices.push({id:a,drafts:2});return ok('Talent remembered for two drafts.');}
@@ -364,9 +374,11 @@
       }
       event.itemId=it.id;event.sourceUid=it.uid;
       P().onActivation?.(r,r.enemies,e,d,0,ev,()=>rng(r),it,itemPower(p,it));
+      Y()?.onActivation(r,e,d,0,ev);
       it.cd=itemCooldown(it,r);return;
     }
     const power=itemPower(p,it);let damage=power*P().hitMultiplier(r,d,e,r.enemies.filter(x=>x.hp>0).length);
+    damage*=Y()?.hitMultiplier(r,d,e)??1;
     damage*=(1+e.fracture*.035+e.haunt*.03)*(r.ailments.hex>0?.8:1);
     const weak=matches(e.weak,el),resist=matches(e.resist,el);
     damage*=weak?1.68:resist?.60:1;
@@ -405,6 +417,7 @@
     special(p,it,e,damage,removed,ev);
     P().afterHit(r,r.enemies,e,removed,d,ev,()=>rng(r));
     P().onActivation?.(r,r.enemies,e,d,removed,ev,()=>rng(r),it,power);
+    Y()?.onActivation(r,e,d,removed,ev);
     it.cd=itemCooldown(it,r);
   }
   const rarityOf=d=>d.rarity||'common';
@@ -423,8 +436,8 @@
       uncommon:pools.uncommon.length?(boss?.25:.20)+band*.01:0,
       rare:pools.rare.length?(boss?.16:.10)+band*.012:0,
       epic:pools.epic.length?(boss?.065:.035)+band*.006:0,
-      mythic:pools.mythic.length?(boss?.018:.008)+band*(boss?.004:.002):0};
-    if(r.legacy){const shift=(r.legacy.ranks.legendary_scent||0);if(pools.epic.length)odds.epic+=shift*.0035;if(pools.mythic.length)odds.mythic+=shift*.0008;}
+      mythic:pools.mythic.length?(boss?.006:.002)+band*(boss?.001:.0005):0};
+    if(r.legacy){const shift=(r.legacy.ranks.legendary_scent||0);if(pools.epic.length)odds.epic+=shift*.0035;if(pools.mythic.length)odds.mythic+=shift*.0002;}
     odds.common=1-odds.uncommon-odds.rare-odds.epic-odds.mythic;return odds;
   }
   function localPick(r,pool){
@@ -478,10 +491,12 @@
   function enemyDrop(p,foe,ev){
     const r=p.run;
     if(foe.titanId){
-      // Titans supply the two-Mythic forge economy without allowing Ancients to
-      // bypass their recipes. Their guaranteed cache is separate from luck.
-      const myths=Object.values(C().items).filter(d=>d.rarity==='mythic'&&!d.recipe&&dropEligible(d,true,r.round));
-      if(myths.length)ev.push(collectDrop(p,makeItem(r,localPick(r,myths).id,1+Math.floor((r.round-1)/5)),foe));
+      // A Titan remains worth hunting without flooding a run with Mythics.
+      // Every fiftieth round preserves a predictable path to Ancient forging.
+      const rarity=r.round%50===0||rng(r)<.10?'mythic':'epic';
+      let pool=Object.values(C().items).filter(d=>d.rarity===rarity&&(rarity!=='mythic'||!d.recipe)&&dropEligible(d,true,r.round));
+      if(!pool.length)pool=Object.values(C().items).filter(d=>d.rarity==='epic'&&dropEligible(d,true,r.round));
+      if(pool.length)ev.push(collectDrop(p,makeItem(r,localPick(r,pool).id,1+Math.floor((r.round-1)/5)),foe));
       T().defeated(foe,ev);return;
     }
     // Independent kill rolls, normalized to the original headcount. The chance
@@ -501,6 +516,7 @@
     const h=heal(r,r.maxHp*(titan?.25:boss?.17:.075));if(h>=.5)add(ev,'heal','leaf',1,`+${Math.round(h)}`,'rest');
     P().victory(r,ev);
     for(let i=0;i<(r.bonusDrops||0);i++)ev.push(collectDrop(p,rollDrop(r,boss)));r.bonusDrops=0;
+    V()?.afterWave(r,boss,()=>rng(r),ev);
     next(p);add(ev,'round','leaf',1,`Round ${r.round}`,'round');
   }
   function die(p,ev){
@@ -582,6 +598,7 @@
   }
   function step(p,dt,ev){
     const r=p.run;r.time+=dt;r.xp+=dt*.45*expeditionXpRate*(1+(r.legacy?.ranks.guardian_wisdom||0)*.05);
+    Y()?.tick(r,dt);V()?.tick(r,dt);
     protect(r,dt);
     if(r.phase==='walk'){
       r.distance+=dt*41;r.walkLeft=Math.max(0,r.walkLeft-dt);
@@ -597,24 +614,27 @@
       for(const e of r.enemies)advanceFoe(r,e,dt,ev);
       r.venomClock+=dt;
       if(r.venomClock>=1){r.venomClock-=1;if(r.venom>0){hurt(r,r.venom,'venom',null,ev);r.venom=Math.max(0,r.venom-.6);}if(r.ailments.burn>0){const n=r.ailments.burn*.5;hurt(r,n,'scorch',null,ev);r.ailments.burn=Math.max(0,r.ailments.burn-n);add(ev,'enemy','fire',1,'−'+Math.ceil(n),'scorching');}}
-      const resolvedDeaths=new Set();
-      while(r.enemies.some(e=>e.hp<=0&&!resolvedDeaths.has(e.uid)))for(const e of r.enemies){
-        if(e.hp>0||resolvedDeaths.has(e.uid))continue;resolvedDeaths.add(e.uid);
-        const event=add(ev,'kill',e.weak,1,e.name,'kill',e);
-        event.enemy={uid:e.uid,lane:e.lane,name:e.name,id:e.id,species:e.species,color:e.color,boss:e.boss,hp:0,maxHp:e.maxHp,...(e.titanId?{titanId:e.titanId,titan:e.titan}:{})};
-        r.foes++;r.xp+=((e.boss?17:8)+Math.sqrt(r.round)*1.4)*expeditionXpRate*(1+(r.legacy?.ranks.guardian_wisdom||0)*.05);
-        P().onDeaths?.(r,[e],r.enemies,ev,()=>rng(r));
-        enemyDrop(p,e,ev);
-        if(e.trait==='volatile'){
-          const damage=P().incoming(r,e.damage*.48*(counter(r,'blastguard')?.25:1),e,ev,()=>rng(r)), n=hurt(r,damage,'burst',e,ev);
-          add(ev,'enemy','fire',1,`−${Math.round(n)}`,'volatile',e).sourceUid=e.uid;
-        }
-      }
-      r.enemies=r.enemies.filter(e=>e.hp>0);r.enemy=r.enemies[0]||null;
-      if(r.hp<=0&&!P().survive?.(r,r.enemies,ev))die(p,ev);
-      else if(!r.enemies.length)finish(p,ev);
+      resolveDeaths(p,ev);
     }
     levelUp(r,ev);
+  }
+  function resolveDeaths(p,ev){
+    const r=p.run,resolvedDeaths=new Set();
+    while(r.enemies.some(e=>e.hp<=0&&!resolvedDeaths.has(e.uid)))for(const e of r.enemies){
+      if(e.hp>0||resolvedDeaths.has(e.uid))continue;resolvedDeaths.add(e.uid);
+      const event=add(ev,'kill',e.weak,1,e.name,'kill',e);
+      event.enemy={uid:e.uid,lane:e.lane,name:e.name,id:e.id,species:e.species,color:e.color,boss:e.boss,hp:0,maxHp:e.maxHp,...(e.titanId?{titanId:e.titanId,titan:e.titan}:{})};
+      r.foes++;r.xp+=((e.boss?17:8)+Math.sqrt(r.round)*1.4)*expeditionXpRate*(1+(r.legacy?.ranks.guardian_wisdom||0)*.05);
+      P().onDeaths?.(r,[e],r.enemies,ev,()=>rng(r));
+      enemyDrop(p,e,ev);
+      if(e.trait==='volatile'){
+        const damage=P().incoming(r,e.damage*.48*(counter(r,'blastguard')?.25:1),e,ev,()=>rng(r)), n=hurt(r,damage,'burst',e,ev);
+        add(ev,'enemy','fire',1,`−${Math.round(n)}`,'volatile',e).sourceUid=e.uid;
+      }
+    }
+    r.enemies=r.enemies.filter(e=>e.hp>0);r.enemy=r.enemies[0]||null;
+    if(r.hp<=0&&!P().survive?.(r,r.enemies,ev))die(p,ev);
+    else if(!r.enemies.length)finish(p,ev);
   }
   function tick(p,dt){
     const r=p.run,ev=[];if(!r||!Number.isFinite(dt)||dt<=0)return ev;
@@ -666,6 +686,7 @@
       r.legacyAwards=array(s.legacyAwards||[],50).map(v=>{object(v);if(typeof v.label!=='string'||v.label.length>80)bad();return {label:v.label,amount:integer(v.amount)};});if(r.legacyAwards.reduce((n,a)=>n+a.amount,0)!==r.legacyRewards)bad();
     }
     if(P().validateLivingState&&s.living!==undefined)r.living=P().validateLivingState(s.living);
+    if(Y())r.synergies=Y().validate(s.synergies);
     r.waveRules=s.waveRules===undefined?1:integer(s.waveRules,1,WAVE_RULES);
     r.bestAtStart=s.bestAtStart==null?null:integer(s.bestAtStart,0,p.best);
     if(s.deathCause!=null){
@@ -711,6 +732,7 @@
       });
     }
     r.active=slots(s.active,ACTIVE);r.pack=slots(s.pack,PACK);if(!r.active.length)bad();
+    if(V())r.provisions=V().validate(s.provisions,r);
     r.lastDrop=null;
     if(s.lastDrop!=null){
       const entry=object(s.lastDrop), itemId=id(entry.id,itemIds),def=C().items[itemId];

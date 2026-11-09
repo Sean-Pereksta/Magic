@@ -72,6 +72,16 @@ test('tier odds sum to one, respect unlocks, and make stronger tiers rarer',()=>
   assert.ok(late.epic+late.mythic>early.epic+early.mythic,'later regions should improve high-tier finds');
 });
 
+test('Mythics remain exceptional at every depth, including fully upgraded scent',()=>{
+  const {E}=load();
+  near(E.lootOdds({round:137,region:0}).mythic,.002,1e-12,'ordinary base Mythic chance');
+  near(E.lootOdds({round:140,region:0},true).mythic,.006,1e-12,'guardian base Mythic chance');
+  near(E.lootOdds({round:137,region:34}).mythic,.0035,1e-12,'deep ordinary Mythic chance');
+  near(E.lootOdds({round:140,region:34},true).mythic,.009,1e-12,'deep guardian Mythic chance');
+  const boosted=E.lootOdds({round:140,region:34,legacy:{ranks:{legendary_scent:10}}},true);
+  near(boosted.mythic,.011,1e-12,'scent remains a small rarity increase');
+});
+
 test('ten thousand complete waves confirm increased drops and the real tier distribution',()=>{
   const game=load(),{E}=game;
   assert.equal(E.dropChances.normal,.24);assert.equal(E.dropChances.guardian,.48);

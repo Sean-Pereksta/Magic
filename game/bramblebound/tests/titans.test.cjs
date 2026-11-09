@@ -58,15 +58,29 @@ test('all six titans resolve two distinct powers, enrage once, and respect count
   }
 });
 
-test('titan deaths guarantee an unlocked base Mythic once, and caches reload while escorts remain',()=>{
-  const {C,E,p,r,e}=spawn();r.active.forEach(it=>it.cd=C.items[it.id].cooldown);e.hp=.01;e.poison=1;e.statusClock=.99;
+test('the fiftieth round guarantees one unlocked Mythic, and caches reload while escorts remain',()=>{
+  const {C,E,p,r,e}=spawn(50);r.active.forEach(it=>it.cd=C.items[it.id].cooldown);e.hp=.01;e.poison=1;e.statusClock=.99;
   const ev=E.tick(p,.04),finds=ev.filter(v=>v.kind==='loot'&&v.enemyId===e.id);
-  assert.equal(finds.length,1);const d=C.items[finds[0].id];assert.equal(d.rarity,'mythic');assert.ok(!d.recipe&&!d.forgeOnly);assert.ok(d.unlockRound<=10);
+  assert.equal(finds.length,1);const d=C.items[finds[0].id];assert.equal(d.rarity,'mythic');assert.ok(!d.recipe&&!d.forgeOnly);assert.ok(d.unlockRound<=50);
   assert.equal(ev.filter(v=>v.pattern==='titan-defeated').length,1);assert.equal(r.phase,'fight');assert.equal(r.enemies.length,2);
   const saved=E.validate(JSON.stringify(p));assert.equal(saved.run.lastDrop.enemyId,e.id);assert.ok(saved.run.pack.some(it=>it.id===d.id));
   const more=E.tick(saved,.05);assert.ok(!more.some(v=>v.pattern==='titan-defeated'));
   for(const other of saved.run.enemies){other.hp=.01;other.poison=1;other.statusClock=.99;}E.tick(saved,.04);
-  assert.equal(saved.run.round,11);assert.equal(saved.run.phase,'walk');assert.equal(saved.run.guardians,1);assert.ok(E.validate(JSON.stringify(saved)));
+  assert.equal(saved.run.round,51);assert.equal(saved.run.phase,'walk');assert.equal(saved.run.guardians,1);assert.ok(E.validate(JSON.stringify(saved)));
+});
+
+test('ordinary Titan caches are Epic with only a ten percent Mythic upgrade',()=>{
+  const g=game(),{C,E}=g;let mythics=0,epics=0;
+  for(let sample=0;sample<1000;sample++){
+    const p=E.freshProfile();E.start(p);const r=p.run;
+    r.round=10;r.region=E.routeInfo(r).region;r.kills=r.foes=9;p.best=9;r.walkLeft=0;E.tick(p,.001);
+    r.seed=(Math.imul(sample+1,0x9e3779b9)>>>0)||1;r.active.forEach(it=>it.cd=C.items[it.id].cooldown);
+    const titan=r.enemies[0];titan.hp=0;
+    const loot=E.tick(p,.001).filter(v=>v.kind==='loot'&&v.enemyId===titan.id);
+    assert.equal(loot.length,1);const d=C.items[loot[0].id];assert.ok(!d.forgeOnly);
+    if(d.rarity==='mythic')mythics++;else{assert.equal(d.rarity,'epic');epics++;}
+  }
+  assert.ok(mythics>=75&&mythics<=125,'ten percent cache upgrade: '+mythics+'/1000');assert.equal(mythics+epics,1000);
 });
 
 test('saved pre-titan round-ten encounters finish with their original foes and rules',()=>{
