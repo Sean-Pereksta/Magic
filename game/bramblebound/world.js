@@ -973,6 +973,109 @@
   function burst(g,c,x,y,r,count,age){
     for(let i=0;i<count;i++){let a=i*Math.PI*2/count-2.1,rr=r*(.85+.15*sin(i*71+1));line(g,c,x+cos(a)*(rr-3),y+sin(a)*(rr-3),x+cos(a)*rr,y+sin(a)*rr,age<.36?2:1);}
   }
+  // Sparks are analytic, rather than a second particle simulation. Their seed,
+  // position and lifetime come entirely from the event, so pausing/reloading
+  // cannot advance them and a large hit never allocates hundreds of particles.
+  const impactKinds=new Set(['attack','hit','kill','enemy','ability','special','synergy','consumable','supply']);
+  const heroPower=event=>event.kind==='supply-find'||(!event.targetUid&&(['consumable','supply'].includes(event.kind)||event.kind==='synergy'&&event.pattern==='soulstone'));
+  const sparkShades={leaf:['#cfff9c','#73c976','#376f51'],fire:['#fff3b1','#ffa451','#cc5940'],frost:['#f0ffff','#95e7ff','#5b99c7'],storm:['#fffbc4','#ffe57e','#b593e0'],stone:['#ffe7b2','#d8ac73','#8c6b56'],spirit:['#ffedff','#d8adff','#8f75c3']};
+  function impactSparks(g,event,hx,ground,foe,reducedMotion){
+    const kind=event.kind;if(!impactKinds.has(kind))return;
+    const age=event.age||0,delay=['attack','enemy','ability'].includes(kind)?.18:0,a=age-delay;
+    if(a<0||a>.66)return;
+    const incoming=kind==='enemy',el=event.element||'fire',colors=sparkShades[el]||sparkShades.fire;
+    const hero=incoming||event.hero===true||heroPower(event);
+    const x=hero?hx:foe.x,y=hero?ground-24:foe.center;
+    const major=['kill','special','synergy','consumable','supply'].includes(kind),power=Math.min(2.2,Math.max(1,Math.sqrt(event.strength||1)));
+    g.save();g.globalAlpha*=Math.min(1,(.68-a)*3.5);
+    if(reducedMotion){
+      // Keep a quiet, stationary impact mark; no travel, shrapnel or strobing.
+      const r=major?9:5;orbit(g,colors[1],x,y,r,.72,0);
+      for(let j=0;j<4;j++){const q=j*Math.PI/2;rect(g,colors[0],x+cos(q)*(r+2),y+sin(q)*(r+2),1,1);}
+      g.restore();return;
+    }
+    const seed=(event.targetUid||0)*.73+(event.itemId?.length||event.pattern?.length||3)*.31;
+    const count=major?14:8,spread=(major?27:18)*power,u=a/.66;
+    if(a<.15){
+      const r=(major?7:4)*(1-a/.17);
+      poly(g,colors[0],[x-r*1.7,y,x-r*.35,y-r*.35,x,y-r*1.6,x+r*.35,y-r*.35,x+r*1.7,y,x+r*.35,y+r*.35,x,y+r*1.6,x-r*.35,y+r*.35]);
+    }
+    if(major||el==='storm'||el==='stone'){
+      orbit(g,colors[1],x,hero?ground-1:foe.y,5+u*spread*1.2,.22,0,1);
+      if(a<.4)orbit(g,colors[0],x,y,4+u*spread*.7,.74,0,1);
+    }
+    for(let j=0;j<count;j++){
+      const q=j*Math.PI*2/count+sin(j*19+seed)*.32,speed=.53+.47*(sin(j*43+seed)*.5+.5),r=3+u*spread*speed;
+      const xx=x+cos(q)*r,yy=y+sin(q)*r*.76+u*u*(el==='frost'?8:14)-u*5;
+      const tail=2+(1-u)*(major?5:3),tone=colors[j%3===0?0:1];
+      if(el==='leaf'){
+        poly(g,j%3?colors[1]:colors[2],[xx-2,yy,xx,yy-3,xx+3,yy-2,xx+1,yy+1]);
+        if(j%3===0)rect(g,colors[0],xx,yy-1,1,1);
+      }else if(el==='frost'){
+        poly(g,tone,[xx-2,yy,xx,yy-3,xx+2,yy,xx,yy+2]);
+      }else if(el==='stone'){
+        rect(g,colors[j%3],xx,yy,j%3?2:3,j%2?2:3);rect(g,colors[0],xx,yy,1,1);
+      }else{
+        line(g,tone,xx-cos(q)*tail,yy-sin(q)*tail*.76,xx,yy,j%4===0&&a<.35?2:1);
+        if(j%3===0&&a<.45){rect(g,colors[0],xx-1,yy,3,1);rect(g,colors[0],xx,yy-1,1,3);}
+      }
+    }
+    g.restore();
+  }
+  function expeditionPowerArt(g,event,a,hx,hand,foe,reducedMotion){
+    const kind=event.kind,pat=event.pattern||event.supplyId||event.id||'',c=elements[event.element]||elements.leaf;
+    const support=!event.targetUid&&(kind!=='synergy'||pat==='soulstone'),x=support?hx:foe.x,y=support?hand:foe.center;
+    const u=Math.min(1,a/.7),r=10+(reducedMotion?0:sin(u*Math.PI)*15);
+    if(a>.94)return;
+    g.save();g.globalAlpha*=Math.min(1,(1-a)*4);
+    if(kind==='synergy'){
+      const second=elements[event.secondaryElement]||({fire:elements.frost,frost:elements.storm,leaf:elements.stone,stone:elements.spirit,storm:elements.frost,spirit:elements.leaf})[event.element]||elements.storm;
+      orbit(g,c,x,y,r,.7,reducedMotion?-.55:-.55+a*.7,2);orbit(g,second,x,y,r,.7,reducedMotion?.55:.55-a*.7,2);
+      const clock=reducedMotion?0:a*3;
+      for(let j=0;j<6;j++){const q=j*Math.PI/3+clock;rect(g,j%2?c:second,x+cos(q)*(r+3),y+sin(q)*(r+3)*.7,2,2);}
+      if(pat==='emberglass')for(let j=0;j<3;j++){const xx=x+(j-1)*8,yy=y-7-(reducedMotion?0:a*12);orbit(g,j%2?c:second,xx,yy,3+j,.7,0);}
+      else if(pat==='bramble_circuit')for(let j=0;j<3;j++){const q=j*2.095+clock,xx=x+cos(q)*r,yy=y+sin(q)*r*.7;line(g,second,xx-3,yy-4,xx,yy-1,2);line(g,second,xx,yy-1,xx-2,yy+3);}
+      else if(pat==='soulstone')for(let j=0;j<3;j++){const q=j*2.095+clock,xx=x+cos(q)*(r+3),yy=y+sin(q)*(r+3)*.7;poly(g,j%2?c:second,[xx-3,yy-3,xx+2,yy-3,xx+4,yy+1,xx,yy+4,xx-4,yy]);}
+      if(!reducedMotion&&a<.3)line(g,'#fff6d3',x-r,y+r*.55,x+r,y-r*.55,2);
+    }else if(pat==='quicksilver'){
+      orbit(g,c,x,y,r,1,0,2);orbit(g,'#fff9cc',x,y,r-3,1,0);
+      for(let j=0;j<4;j++){const q=j*Math.PI/2;rect(g,'#fff9cc',x+cos(q)*(r-6),y+sin(q)*(r-6),2,2);}
+      const q=reducedMotion?-.8:-Math.PI/2-a*8;line(g,'#fff9cc',x,y,x+cos(q)*(r-7),y+sin(q)*(r-7),2);line(g,c,x,y,x-4,y-4);
+    }else if(pat==='frost_bell'){
+      orbit(g,c,x,y,r,.65,0);for(let j=-2;j<=2;j++){const xx=x+j*5,ht=(10-Math.abs(j)*2)*(reducedMotion?1:sin(u*Math.PI));poly(g,j%2?'#f0ffff':c,[xx-2,foe.y,xx,foe.y-ht,xx+3,foe.y]);}
+    }else if(/ward|shield|bark|guard/.test(pat)){
+      poly(g,'#42635e',[x-r*.65,y-r,x+r*.65,y-r,x+r*.6,y+r*.45,x,y+r,x-r*.6,y+r*.45]);
+      orbit(g,c,x,y,r,1.2,0,2);line(g,'#f7ffcd',x,y-r*.55,x,y+r*.45,2);line(g,'#f7ffcd',x-r*.34,y-r*.08,x+r*.34,y-r*.08,2);
+    }else if(support){
+      for(let j=0;j<3;j++){const xx=x-11+j*11,yy=y+(reducedMotion?0:-a*13)+(j%2?4:-3);rect(g,j%2?'#fff4c9':c,xx-3,yy,7,2);rect(g,j%2?'#fff4c9':c,xx,yy-3,2,7);}
+      orbit(g,c,x,hand+20,r,.23,0);
+    }else{
+      orbit(g,c,x,y,r,.85,0,2);orbit(g,'#fff1c8',x,y,r*.58,.85,0);
+      if(!reducedMotion)for(let j=0;j<5;j++){const q=j*Math.PI*2/5-a*2;poly(g,c,[x+cos(q)*(r+5),y+sin(q)*(r+5),x+cos(q+.15)*(r+10),y+sin(q+.15)*(r+10),x+cos(q+.3)*(r+5),y+sin(q+.3)*(r+5)]);}
+    }
+    g.restore();
+  }
+  function supplyPickupArt(g,event,a,hx,hand,foe,reducedMotion){
+    const c=elements[event.element]||elements.leaf,pat=event.supplyId||event.pattern||'',full=event.outcome==='full';
+    const u=Math.min(1,Math.max(0,(a-.06)/.68)),travel=u*u*(3-2*u);
+    const x=reducedMotion?hx-13:full?foe.x:foe.x+(hx-13-foe.x)*travel;
+    const y=reducedMotion?hand-10:full?foe.center-a*9:foe.center+(hand-10-foe.center)*travel-sin(u*Math.PI)*25;
+    g.save();g.globalAlpha*=Math.min(1,(1.1-a)*4);
+    oval(g,'#2b3b3a',x,y,9,9);orbit(g,c,x,y,9,1,0);
+    if(pat==='bark_ward'){
+      poly(g,'#ad8c59',[x-5,y-6,x+5,y-6,x+4,y+3,x,y+7,x-4,y+3]);poly(g,'#cbe6a7',[x-3,y-4,x+3,y-4,x+2,y+2,x,y+5,x-2,y+2]);
+    }else if(pat==='ember_bomb'){
+      oval(g,'#9f5145',x,y+1,6,6);line(g,'#ffe0a0',x+1,y-5,x+5,y-8,2);poly(g,c,[x-3,y+4,x-2,y-2,x+1,y+1,x+3,y-4,x+4,y+4]);
+    }else if(pat==='frost_bell'){
+      poly(g,'#beeaf1',[x-5,y+4,x-4,y-3,x-1,y-5,x+1,y-5,x+4,y-3,x+5,y+4]);rect(g,'#f9e5a5',x-6,y+4,13,2);rect(g,'#f9e5a5',x-1,y+6,3,2);line(g,'#507e9d',x,y-3,x,y+2);
+    }else{
+      rect(g,'#dec694',x-3,y-7,7,3);poly(g,c,[x-3,y-4,x+3,y-4,x+3,y-1,x+6,y+3,x+5,y+6,x-5,y+6,x-6,y+3,x-3,y-1]);
+      if(pat==='quicksilver')poly(g,'#fff2b7',[x+1,y-3,x-3,y+2,x,y+2,x-1,y+5,x+4,y,x+1,y]);
+      else poly(g,'#e2ffc1',[x-3,y+1,x-1,y-2,x+3,y,x+1,y+3,x-2,y+4]);
+    }
+    if(!reducedMotion&&!full&&u<1)for(let j=0;j<3;j++){const q=j*2.095+a*5;rect(g,j%2?c:'#fff4d1',x+cos(q)*12,y+sin(q)*10,1,2);}
+    g.restore();
+  }
   // Spell artwork is drawn at the actors' current positions so entry and recoil never detach a projectile.
   function abilityArt(g,pattern,a,hx,hy,tx,ty,ground){
     if(a>.86)return;
@@ -1163,7 +1266,11 @@
     if(a>1.1)return;
     const fx=foe.x,fy=foe.center,feet=foe.y,hand=ground-24,incoming=k==='enemy';
     const sx=incoming?fx-5:hx+11,sy=incoming?fy:hand,ex=incoming?hx+4:fx,ey=incoming?hand:fy;
-    if(k==='special'){
+    if(k==='supply-find'){
+      supplyPickupArt(g,event,a,hx,hand,foe,reducedMotion);
+    }else if(k==='synergy'||k==='consumable'||k==='supply'){
+      expeditionPowerArt(g,event,a,hx,hand,foe,reducedMotion);
+    }else if(k==='special'){
       specialArt(g,event.specialId||event.special||pat,a,hx,hand,fx,fy,feet,c);
     }else if(k==='ability'){
       const ox=chain?chain.x:hx,oy=chain?chain.center:hand;
@@ -1254,8 +1361,8 @@
       }else if(pat==='ring'){orbit(g,c,hx,hand,13+sin(a*Math.PI)*9,1.22,a);orbit(g,cream,hx,hand,12+sin(a*Math.PI)*8,.47,a);}
       else{const r=5+Math.min(1,a/.65)*28;orbit(g,c,fx,fy,r,.78,a);if(a<.8)burst(g,cream,fx,fy,r+4,10,a);}
     }
-    if(showLabel&&event.label&&a>.16&&(['enemy','attack','hit','heal','special'].includes(k)||k==='status'&&['guard','shield','shock','stun','freeze'].includes(pat))){
-      const hero=incoming||k==='heal'||pat==='shield'||pat==='guard',txt=String(event.label),y=R((hero?ground-52:foe.barY-4)-a*10-(i%2)*6);
+    if(showLabel&&event.label&&a>.16&&(['enemy','attack','hit','heal','special','synergy','consumable','supply','supply-find'].includes(k)||k==='status'&&['guard','shield','shock','stun','freeze'].includes(pat))){
+      const hero=incoming||k==='heal'||pat==='shield'||pat==='guard'||heroPower(event),txt=String(event.label),y=R((hero?ground-52:foe.barY-4)-(reducedMotion?0:a*10)-(i%2)*6);
       g.save();g.globalAlpha=Math.max(0,Math.min(1,(1.12-a)*4));g.textAlign='center';g.font='bold 8px monospace';g.lineWidth=3;g.lineJoin='round';g.strokeStyle='#332e37';
       const x=R(Math.min(g.canvas.width-txt.length*2.5-2,Math.max(txt.length*2.5+2,hero?hx:fx)));
       g.strokeText(txt,x,y);g.fillStyle=incoming?'#ffb6a2':k==='heal'?'#caffac':cream;g.fillText(txt,x,y);g.restore();
@@ -1475,11 +1582,14 @@
     const visibleEffects=effects.length>62?effects.filter((ev,i)=>ev.kind==='loot'||i>=effects.length-62):effects;
     const labelCounts=new Map(),labels=new Set();
     for(let i=visibleEffects.length-1;i>=0;i--){
-      const ev=visibleEffects[i];if(!(ev.age>.16&&ev.label&&(['attack','hit','enemy','heal','special'].includes(ev.kind)||ev.kind==='status'&&['guard','shield','shock','stun','freeze'].includes(ev.pattern))))continue;
-      const key=ev.kind==='enemy'||ev.kind==='heal'||ev.pattern==='shield'||ev.pattern==='guard'?'pip':ev.targetUid??'foe',n=labelCounts.get(key)||0;
+      const ev=visibleEffects[i];if(!(ev.age>.16&&ev.label&&(['attack','hit','enemy','heal','special','synergy','consumable','supply','supply-find'].includes(ev.kind)||ev.kind==='status'&&['guard','shield','shock','stun','freeze'].includes(ev.pattern))))continue;
+      const key=ev.kind==='enemy'||ev.kind==='heal'||ev.pattern==='shield'||ev.pattern==='guard'||heroPower(ev)?'pip':ev.targetUid??'foe',n=labelCounts.get(key)||0;
       if(n<(count>2?1:2)){labels.add(i);labelCounts.set(key,n+1);}
     }
     let firstBolt=null;
+    // The impact layer has its own small budget independent of the combat event
+    // count. Every hit still resolves, even during a formation-wide combo.
+    const sparkEvents=new Set(visibleEffects.filter(ev=>impactKinds.has(ev.kind)).slice(-16));
     visibleEffects.forEach((ev,i)=>{
       const uid=ev.kind==='enemy'||ev.kind==='heal'?(ev.sourceUid??ev.targetUid):ev.targetUid;
       let z=camera.slots.get(uid);
@@ -1495,6 +1605,7 @@
       const chain=fork&&firstBolt&&Math.abs(firstBolt.age-ev.age)<.002&&firstBolt.z!==z?firstBolt.z:null;
       if(ev.kind==='boss'||ev.kind==='ancient')window.EpicArt?.cast(g,ev,heroX,ground,z,v.reducedMotion);
       else cast(g,ev,heroX,ground,z,i,labels.has(i),chain,v.reducedMotion);
+      if(sparkEvents.has(ev))impactSparks(g,ev,heroX,ground,z,v.reducedMotion);
       if(fork)firstBolt={age:ev.age,z};
     });
     for(const z of live)foeGauge(g,z,count>2||W<210);

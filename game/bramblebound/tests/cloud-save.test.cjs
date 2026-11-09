@@ -10,7 +10,7 @@ const secret='a private journey password';
 
 function game(){
   const context=vm.createContext({console});context.window=context;
-  for(const name of ['catalog','legacy','progression','living-combat','engine'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',name+'.js'),'utf8'),context);
+  for(const name of ['catalog','legacy','progression','living-combat','synergies','provisions','engine'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',name+'.js'),'utf8'),context);
   return context.GameEngine;
 }
 const E=game();
@@ -94,6 +94,26 @@ test('expanded Legacy, two Oaths, elemental ownership and live companion timers 
   assert.deepEqual(Array.from(restored.run.legacy.oaths),['worldroot','phoenix']);
   assert.equal(restored.run.draftRerolls,1);assert.equal(restored.run.banishes,1);
   assert.equal(restored.run.living.companions[0].timer,p.run.living.companions[0].timer);
+});
+
+test('encrypted transfer keeps spent supplies, upgraded potency and active set cooldowns without refilling',async()=>{
+  const data=JSON.parse(bundle()),p=E.freshProfile();p.points=10000;p.best=64;p.deaths=2;
+  for(const id of ['provision_pockets','provision_pockets','field_alchemy'])assert.equal(E.act(p,'legacyBuy',id).ok,true,id);
+  E.start(p);const r=p.run;
+  r.active=['torch','flake'].map((id,slot)=>({uid:r.nextUid++,id,slot,level:1,cd:1}));
+  for(const it of r.active)if(!p.seenItems.includes(it.id))p.seenItems.push(it.id);
+  r.walkLeft=0;E.tick(p,.001);r.enemies[0].chill=2;r.active[0].cd=0;r.active[1].cd=1;r.hp=r.maxHp*.5;
+  assert.equal(E.act(p,'useConsumable','moss_tonic').ok,true);const events=E.tick(p,.01);
+  assert.ok(events.some(v=>v.kind==='synergy'&&v.pattern==='emberglass'));
+  assert.ok(r.synergies.timers.emberglass>0);assert.ok(r.provisions.cooldown>0);assert.equal(r.provisions.used,1);assert.equal(r.provisions.counts.moss_tonic,0);
+  const original=E.validate(p);data.profile=original;const backend=fakeFirebase(),raw=JSON.stringify(data);
+  await client(backend).save('Sets and supplies',secret,raw);
+  const loaded=await client(backend).load('Sets and supplies',secret),restored=E.validate(JSON.parse(loaded.raw).profile);
+  assert.equal(JSON.stringify(restored.run.provisions),JSON.stringify(original.run.provisions));
+  assert.equal(JSON.stringify(restored.run.synergies),JSON.stringify(original.run.synergies));
+  assert.equal(restored.run.legacy.ranks.field_alchemy,1);assert.equal(restored.run.legacy.ranks.provision_pockets,2);
+  const expected=E.tick(original,.3),actual=E.tick(restored,.3);
+  assert.equal(JSON.stringify(actual),JSON.stringify(expected));assert.equal(JSON.stringify(restored),JSON.stringify(original));
 });
 
 test('wrong passwords and corrupted ciphertext never write or return a partial profile',async()=>{
