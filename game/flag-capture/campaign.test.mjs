@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {CAMPAIGN, readProgress, completeLevel, createCampaignBattle} from './campaign.mjs';
-import {createGame, legalActions} from './engine.mjs';
+import {advance, applyAction, createGame, legalActions} from './engine.mjs';
+import {createDraft} from './draft-ui.mjs';
 
 test('campaign is a five-mission faction tour with progressively broader battles', () => {
   assert.equal(CAMPAIGN.length, 5);
@@ -82,5 +83,51 @@ test('every mission starts a legal battle using its advertised board, mode, and 
     assert.equal(state.units.filter(unit => unit.side === 'player').length, 5, level.id);
     assert.equal(state.winner, null, level.id);
     assert.ok(state.units.filter(unit => unit.side === 'player').some(unit => legalActions(state, unit.id).some(action => action.type === 'move')), level.id);
+  }
+});
+
+test('First Light gives the default draft a counter before scoring and requires continued control', () => {
+  for (const plan of ['idle','flanks','center']) {
+    const mission = createCampaignBattle('first-light');
+    const draft = createDraft({width:mission.width, height:mission.height});
+    const state = createGame({...mission, playerArmy:draft.army, playerDeployment:draft.positions});
+    const [leader,leftScout,rightScout,grazer] = state.units.filter(u=>u.side==='player');
+    const center = state.flags[0];
+    assert.deepEqual(state.flags.map(f=>f.name), ['Heartlight']);
+    const order = (unit,type,x,y) => {
+      const action = legalActions(state,unit.id).find(a=>a.type===type&&a.x===x&&a.y===y);
+      assert.ok(action,`${plan} ${type} at ${state.time}`);
+      assert.ok(applyAction(state,action).ok);
+    };
+    while (!state.winner) {
+      advance(state,.05);
+      if (state.time===3) {
+        const mark=state.telegraphs[0];
+        assert.ok(mark);
+        assert.deepEqual([mark.x,mark.y], [grazer.x,grazer.y]);
+        assert.ok(mark.resolvesAt>state.nextOrderAt && mark.resolvesAt<state.nextPulseAt);
+      }
+      if (plan==='flanks') {
+        if(state.time===1)order(leftScout,'move',1,2);
+        if(state.time===3.5)order(leftScout,'ability',3,2);
+        if(state.time===5)order(rightScout,'move',5,2);
+      }
+      if (plan==='center') {
+        if(state.time===1)order(leftScout,'move',2,2);
+        if(state.time===3.2)order(grazer,'guard',grazer.x,grazer.y);
+        if(state.time===6)assert.equal(grazer.hp,grazer.maxHp-2);
+        if(state.time===6.2)order(rightScout,'move',4,2);
+        if(state.time>=10 && Number.isInteger(state.time) && state.orders.player && !state.winner){
+          const army=state.units.filter(u=>u.side===leader.side&&u.hp>0);
+          const near=p=>Math.abs(p.x-center.x)+Math.abs(p.y-center.y)<=1;
+          const reinforce=army.filter(u=>!near(u)).flatMap(u=>legalActions(state,u.id)).find(a=>a.type==='move'&&near(a));
+          const attacks=army.flatMap(u=>legalActions(state,u.id)).filter(a=>a.type==='attack');
+          const hp=a=>state.units.find(u=>u.id===a.targetId).hp;
+          const next=reinforce||attacks.sort((a,b)=>hp(a)-hp(b))[0];
+          if(next)assert.ok(applyAction(state,next).ok);
+        }
+      }
+    }
+    assert.equal(state.winner,plan==='center'?'player':'ai',plan);
   }
 });

@@ -1,4 +1,4 @@
-import { FACTIONS, MAPS, MODES, DIFFICULTIES, DEFAULT_ARMY, DRAFT_ROLES, GROUND_EFFECTS, armyCost } from './engine.mjs';
+import { FACTIONS, MAPS, MODES, DIFFICULTIES, DEFAULT_ARMY, DRAFT_ROLES, GROUND_EFFECTS, ORDER_CAP, ORDER_INTERVAL, armyCost } from './engine.mjs';
 import { CAMPAIGN } from './campaign.mjs';
 
 const SIDES = ['player', 'ai'];
@@ -51,6 +51,11 @@ export function parseBattleSave(value) {
     }
   }
   if (!finite(game.duration, 60, 300) || !finite(game.time, 0, game.duration)) return null;
+  if (game.orders === undefined) game.orders = {player:1, ai:1};
+  if (game.nextOrderAt === undefined) game.nextOrderAt = game.time + ORDER_INTERVAL;
+  if (game.telegraphs === undefined) game.telegraphs = [];
+  if (!record(game.orders) || !SIDES.every(side => integer(game.orders[side], 0, ORDER_CAP))) return null;
+  if (!finite(game.nextOrderAt, 0, game.time + ORDER_INTERVAL + 1e-6)) return null;
   if (game.mode === 'elimination' ? game.goal !== 0 : !integer(game.goal, 1, 100)) return null;
   if (!SIDES.includes(game.activeSide) || ![null, 'player', 'ai', 'draw'].includes(game.winner)) return null;
   if (game.campaignId !== undefined && !CAMPAIGN_IDS.has(game.campaignId)) return null;
@@ -65,7 +70,8 @@ export function parseBattleSave(value) {
     const terrain = game.tiles[value.y * game.width + value.x].terrain;
     return terrain !== 'rock' && (terrain !== 'water' || movement === 'Flight');
   };
-  if (!Array.isArray(game.flags) || game.flags.length !== 3) return null;
+  const flagCount = game.campaignId === 'first-light' && game.mode === 'control' ? 1 : 3;
+  if (!Array.isArray(game.flags) || game.flags.length !== flagCount) return null;
   const flagPositions = new Set();
   for (const flag of game.flags) {
     if (!coordinate(game, flag) || !passable(flag) || ![null, ...SIDES].includes(flag.owner)) return null;
@@ -85,6 +91,8 @@ export function parseBattleSave(value) {
     ids.add(unit.id);
     const definition = FACTIONS[unit.faction].units[unit.role];
     if (unit.maxHp !== definition.hp || !finite(unit.hp, 0, unit.maxHp)) return null;
+    if (unit.braceUntil === undefined) unit.braceUntil = 0;
+    if (!finite(unit.braceUntil, 0, game.time + 3 + 1e-6)) return null;
     if (!['readyAt', 'abilityReadyAt', 'rootedUntil'].every(key => finite(unit[key]))) return null;
     const abilities = definition.abilities || (definition.ability ? [definition.ability] : []);
     if (unit.abilityReadyAts === undefined) unit.abilityReadyAts = abilities.map((_, index) => index === 0 ? unit.abilityReadyAt : 0);
@@ -97,6 +105,17 @@ export function parseBattleSave(value) {
       if (!passable(unit, definition.movement) || occupied.has(position(unit)) || ++counts[unit.side] > 8) return null;
       occupied.add(position(unit));
     }
+  }
+  if (!Array.isArray(game.telegraphs) || game.telegraphs.length > 16) return null;
+  const charging = new Set();
+  for (const aim of game.telegraphs) {
+    if (!coordinate(game, aim) || aim.kind !== 'foldhorn' || charging.has(aim.unitId)) return null;
+    const ram = game.units.find(unit => unit.id === aim.unitId);
+    if (!ram || ram.hp <= 0 || ram.side !== aim.side || ram.faction !== 'chaos' || ram.role !== 'brute') return null;
+    if (ram.x !== aim.fromX || ram.y !== aim.fromY || !finite(aim.resolvesAt, game.time, game.time + 3 + 1e-6)) return null;
+    const dx = Math.abs(aim.x - ram.x), dy = Math.abs(aim.y - ram.y);
+    if ((dx && dy) || dx + dy < 1 || dx + dy > 3) return null;
+    charging.add(ram.id);
   }
   if (!integer(game.nextGroundId) || !Array.isArray(game.groundEffects) || game.groundEffects.length > game.width*game.height*2) return null;
   const effectIds=new Set(),paintedCells=new Set();

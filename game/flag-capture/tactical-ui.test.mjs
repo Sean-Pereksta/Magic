@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
-import {createGame,unitDef,at,legalActions,applyAction,formationStatus,groundEffectsAt,GROUND_EFFECTS,FACTIONS} from './engine.mjs';
+import {ORDER_CAP,ORDER_INTERVAL,braceActive,canBrace,createGame,unitDef,at,legalActions,applyAction,formationStatus,groundEffectsAt,GROUND_EFFECTS,FACTIONS} from './engine.mjs';
 import {createInputController,previewActions} from './input.mjs';
 import {actionColor,displayTargets,groundPreviewCells} from './targeting.mjs';
 import {abilityIcon} from './icons.mjs';
@@ -26,7 +26,7 @@ function fixture(){
   const app=makeNode(),board=makeNode(),clock=makeNode(),ready=makeNode();
   app.setPointerCapture=id=>calls.captures.push(id);app.contains=()=>true;
   for(const tile of game.tiles){const cell=makeNode();cell.dataset.cell=`${tile.x},${tile.y}`;cell.classList.add('tile');const unit=at(game,tile.x,tile.y);if(unit)cell.dataset.unit=unit.id;cell.closest=selector=>selector==='.board'?board:selector.split(',').some(s=>s==='[data-cell]'||s==='.tile[data-cell]'||s==='.tile[data-unit]'&&cell.dataset.unit)?cell:null;cells.set(cell.dataset.cell,cell);}
-  const context={game,FACTIONS,GROUND_EFFECTS,groundEffectsAt,formationStatus,unitDef,at,previewActions,actionColor,displayTargets,groundPreviewCells,groundLayerHTML,groundDescription,formationOverlayHTML,groundArt,abilityIcon,
+  const context={game,ORDER_CAP,ORDER_INTERVAL,braceActive,canBrace,FACTIONS,GROUND_EFFECTS,groundEffectsAt,formationStatus,unitDef,at,previewActions,actionColor,displayTargets,groundPreviewCells,groundLayerHTML,groundDescription,formationOverlayHTML,groundArt,abilityIcon,
     roles:['leader','scout','brute','mystic'],tacticalRoles:['guardian','ranger','shaper'],factionKeys:['bloom','chaos','choir'],flagSVG:'<svg></svg>',
     esc:value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),
     scene:'battle',paused:false,countdownRemainingMs:0,inspectResult:false,activeSeat:'player',selectedId:caster.id,mode:'ability',selectedSkillIndex:0,
@@ -49,7 +49,7 @@ function fixture(){
   };
   context.$=selector=>selector==='#app'?app:selector==='.board'?board:selector==='#clock'?clock:selector==='#ready-count'?ready:selector==='.tile:hover'?context.hoverCell:selector==='#victory'?null:selector.startsWith('[data-cell=')?cells.get(/"([^"\]]+)"/.exec(selector)?.[1]):selector.startsWith('[data-unit-token=')?makeNode():selector.startsWith('[data-unit=')?cells.get(`${game.units.find(u=>u.id===/"([^"\]]+)"/.exec(selector)?.[1])?.x},${game.units.find(u=>u.id===/"([^"\]]+)"/.exec(selector)?.[1])?.y}`):null;
   vm.createContext(context);
-  for(const name of ['sprite','coordinate','alive','localGame','current','commandMode','abilities','skillIndex','setMode','selectUnit','remaining','cooldownLabel','terrainHTML','colorFor','targetActions','tileHTML','abilityDockHTML','countdownHTML','compactBattleHTML','render','formatTime','readySignature','updateTimers','drawSpecial','clearGroundPreview','previewGroundAt'])vm.runInContext(functionSource(name),context);
+  for(const name of ['sprite','coordinate','alive','localGame','current','commandMode','abilities','skillIndex','setMode','selectUnit','remaining','cooldownLabel','terrainHTML','colorFor','targetActions','sideName','orderMeterHTML','foldhornForecast','battleForecastHTML','commandStatus','tileHTML','combatOutcome','abilityDockHTML','countdownHTML','compactBattleHTML','render','formatTime','readySignature','updateTimers','drawSpecial','clearGroundPreview','previewGroundAt'])vm.runInContext(functionSource(name),context);
   const start=source.indexOf("document.addEventListener('pointerdown',event=>{\n  const tile="),end=source.indexOf("document.addEventListener('visibilitychange'",start);
   vm.runInContext(source.slice(start,end),context);
   const dispatch=(type,event)=>{for(const handler of handlers.get(type)||[])handler(event);};
@@ -125,4 +125,32 @@ test('all nine new creature sprites use their matching atlas row without replaci
     const html=context.sprite(faction,role);assert.match(html,/tactical-sprite/);assert.ok(html.includes(`background-position:${column*50}% ${[0,48,94][row]}%`));
   }
   assert.doesNotMatch(context.sprite('bloom','leader'),/tactical-sprite/);assert.doesNotMatch(context.sprite('chaos','minion'),/tactical-sprite/);
+});
+
+test('battle HUD distinguishes order reserves, contested light and actual ward damage',()=>{
+  const {context,game,caster}=fixture();
+  game.orders={player:0,ai:2};game.mode='control';
+  game.flags.forEach((flag,index)=>Object.assign(flag,{owner:index===1?'ai':null,contested:index===0}));
+  caster.shield=3;
+  let html=context.compactBattleHTML();
+  assert.match(html,/P1 · 0 of 2 orders/);assert.match(html,/P2 · 2 of 2 orders/);
+  assert.match(html,/P1 \+0 · P2 \+1/);assert.match(html,/TIE /);assert.match(html,/OPEN /);assert.match(html,/3 ward/);
+  assert.match(html,/data-command-timer="ability"[^>]*>Order /);
+  assert.equal(context.combatOutcome({type:'capture',side:null,contested:true}).main,'Contested');
+  assert.equal(context.combatOutcome({type:'capture',side:null,contested:false}).main,'Uncontrolled');
+  const result=context.combatOutcome({type:'damage',value:2,wardBroken:true,wardAbsorbed:1,absorbed:1});
+  assert.equal(result.main,'−2 HP');assert.equal(result.detail,'Ward broken');
+  game.mode='elimination';html=context.battleForecastHTML();assert.doesNotMatch(html,/Light pulse/);
+});
+
+test('Foldhorn shows contact and push tiles separately, with updated outcomes when the defender braces or dodges',()=>{
+  const {context,game,caster}=fixture();
+  const mark={kind:'foldhorn',unitId:'ram',side:'ai',fromX:1,fromY:4,x:4,y:4,resolvesAt:3};
+  game.telegraphs=[mark];
+  let html=context.compactBattleHTML();assert.match(html,/threat-impact/);assert.match(html,/threat-row/);
+  assert.match(html,/threat-push/);assert.match(html,/push to F3/);
+  game.tiles.find(t=>t.x===5&&t.y===4).terrain='rock';assert.match(context.battleForecastHTML(),/Blocked landing/);
+  caster.braceUntil=2;assert.match(context.battleForecastHTML(),/brace expires/);
+  caster.braceUntil=3;html=context.compactBattleHTML();assert.doesNotMatch(html,/threat-push/);assert.match(html,/Braced · holds position/);
+  caster.x=5;caster.y=3;html=context.compactBattleHTML();assert.match(html,/Clear square · will miss/);assert.match(html,/threat-impact/);
 });

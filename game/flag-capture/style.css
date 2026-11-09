@@ -41,3 +41,68 @@ body.playing{position:fixed;inset:0;width:100%;height:100dvh;overscroll-behavior
 /* Tactical troop silhouettes and persistent, owned ground marks. */
 .sprite.tactical-sprite{background-image:url('./assets/tactical-units-atlas.png');background-size:300% 300%}.tile .sprite.tactical-sprite{width:155%;height:165%;left:-27.5%;bottom:-16%}.dock-identity>.tactical-sprite,.creature-heading>.tactical-sprite{transform:scale(1.45)}.deployment-token>.tactical-sprite{width:145%;height:145%;left:-22.5%;top:-22.5%}.unit-token{z-index:5}.board{position:relative}.ground-layers,.ground-paint{position:absolute;inset:0;pointer-events:none}.ground-layers{z-index:2;overflow:hidden;border-radius:inherit}.ground-paint{isolation:isolate;animation:ground-arrive .28s ease-out both}.ground-paint:before{content:'';position:absolute;inset:0;background:#93e3ba38;border-radius:inherit}.ground-paint.ground-hostile:before{background:#e891b52e}.ground-art{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;filter:drop-shadow(0 2px 0 #15353955)}.ground-paint>.ground-art{animation:ground-breathe 3s ease-in-out infinite;opacity:.85}.ground-layers:has(.ground-paint+.ground-paint) .ground-paint:first-child{opacity:.48}.ground-badges{position:absolute;top:3px;right:3px;display:flex;flex-direction:column;align-items:flex-end;gap:1px;z-index:9;pointer-events:none}.ground-clock{display:block;font:800 8px 'Segoe UI';line-height:1.3;border-radius:4px;padding:1px 3px;background:#214d43eb;color:#dcffe6;border:1px solid #b5ebae88;box-shadow:0 1px 2px #133b4b66;white-space:nowrap}.ground-clock.ground-hostile{background:#67415fe8;color:#ffe6f1;border-color:#f6b5cb99}.ground-more{font-size:7px;background:#24444a;color:#fff2c8;border-radius:3px;padding:0 3px}.affected-ground>.tile-coord{color:#183d4c}.formation-links{position:absolute;inset:0;width:100%;height:100%;z-index:3;overflow:visible;pointer-events:none;color:#bcf9db}.formation-links path{stroke:currentColor;stroke-width:3;stroke-dasharray:4 4;fill:none;opacity:.9}.formation-links circle{stroke:currentColor;stroke-width:2;fill:none;opacity:.8}.formation-chaos{color:#ffc5da}.formation-choir{color:#fff0ab}.formation-member .unit-base{box-shadow:0 0 8px #c9fada66;border-width:3px}.ground-preview:before{content:'';position:absolute;inset:5%;z-index:8;border:2px dashed #ffe6a0;border-radius:7px;pointer-events:none;background:repeating-linear-gradient(135deg,#ffe6a040 0 3px,transparent 3px 8px)}.ground-preview.preview-attack:before{border-color:#ffb7b6;background:repeating-linear-gradient(135deg,#ff9e9e50 0 3px,transparent 3px 8px)}.ground-preview.preview-heal:before{border-color:#c5ffc7;background:repeating-linear-gradient(135deg,#b6f5b850 0 3px,transparent 3px 8px)}.ground-preview.preview-center:before{border-style:solid;border-width:3px}.dock-identity>div:nth-child(2){min-width:0}.dock-identity strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dock-formation{display:block;border:0;background:none;padding:2px 0 0;color:#a7c5c5;font:700 8px 'Segoe UI';text-align:left;max-width:210px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dock-formation.is-active{color:#c8f3b5;text-shadow:0 0 8px #9fe4bc50}.dock-formation:hover{text-decoration:underline;filter:none}.dock-field{display:block;font-size:7px;color:#f0ddb3;padding-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:190px}.ground-guide{margin-top:15px;border:1px solid #4b6665;border-radius:8px;padding:12px}.ground-guide>summary{font-size:12px;font-weight:700;cursor:pointer;color:#bee8cd}.ground-guide>p{font-size:11px!important;margin:12px 0}.ground-guide-row{display:flex;align-items:center;gap:12px;margin:10px 0}.ground-guide-row>.ground-art{position:static;flex-shrink:0;width:44px;height:44px}.ground-guide-row strong{display:block;font-size:12px;color:#ecf4d9}.ground-guide-row small{display:block;font-size:10px;line-height:1.6;color:#b4cbc7;margin-top:4px}.ground-guide+.menu-journal{margin-top:12px}@keyframes ground-arrive{from{opacity:0;scale:.7}to{opacity:1;scale:1}}@keyframes ground-breathe{0%,100%{opacity:.75}50%{opacity:.95}}@media(max-width:520px){.ground-clock{font-size:6px;padding:0 2px}.ground-badges{top:2px;right:1px}.dock-formation{font-size:7px;max-width:155px}.dock-field{font-size:6px;max-width:150px}.ground-preview:before{border-width:1px;border-radius:4px}.formation-links path{stroke-width:2}.formation-links circle{stroke-width:1.5}.dock-health-wrap{width:80px}.dock-identity strong{font-size:10px}}@media(prefers-reduced-motion:reduce){.ground-paint,.ground-paint>.ground-art{animation:none}}
 .deployment-board .deployment-token>.sprite.tactical-sprite{position:absolute;width:155%;height:155%;left:-27.5%;top:-20%;max-width:none;max-height:none}
+
+/* Command reserves, pulse forecast and telegraphed strikes */
+.compact-army>div{display:grid;min-width:0;gap:3px}
+.compact-army .army-name{display:block}
+.compact-army .order-meter{display:flex;align-items:center;gap:5px;color:#cbdcdd;overflow:visible}
+.compact-army .order-meter>span:last-child{font:650 10px/1.2 system-ui}
+.compact-army .order-pips{display:inline-flex;gap:3px;overflow:visible}
+.order-pips i{display:block;width:8px;height:8px;transform:rotate(45deg);border:1px solid var(--faction);border-radius:2px}
+.order-pips .charged{background:var(--faction)}
+.battle-forecast,.ram-warning{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:3px 10px;padding:5px 12px;font:600 11px/1.4 system-ui;border-top:1px solid #52666a}
+.battle-forecast{background:#203c42;color:#d5e3df}
+.battle-forecast time,.ram-warning time{font-variant-numeric:tabular-nums}
+.pulse-readout{display:flex;align-items:baseline;gap:10px}.pulse-readout strong{color:#ffe6ae}.refill-readout{color:#b8d7db}
+.ram-warning{justify-content:flex-start;background:#4d2e2e;color:#ffdecb;border-color:#bd7568}
+.ram-warning time{background:#ffe0b8;color:#512a21;border-radius:4px;padding:0 4px}
+.ram-warning span{font-weight:500}
+.defense-mark{display:flex;align-items:center;gap:2px;position:absolute;top:3px;left:2px;z-index:8;font:800 clamp(8px,1.1vmin,12px)/1.2 system-ui;pointer-events:none}
+.defense-mark b,.defense-mark i{padding:1px 3px;border-radius:3px;font-style:normal;background:#daf1ff;color:#18465b;box-shadow:0 1px 2px #15333f80}
+.defense-mark b{background:#ffe4b4;color:#633a25}
+.tile.threat-impact{outline:3px double #701f2b;outline-offset:-4px}
+.impact-reticle{position:absolute;inset:3px;z-index:7;border:2px dashed #ffedf0;border-radius:7px;display:flex;align-items:flex-start;justify-content:flex-end;font:900 15px/1 system-ui;color:white;text-shadow:0 1px 3px #3f0d18;background:linear-gradient(225deg,#992638 0 15%,transparent 16%);pointer-events:none}
+.tile.threat-row,.tile.threat-column{background-image:repeating-linear-gradient(135deg,transparent 0 6px,#8e26334d 7px 11px)}
+.tile.threat-source{outline:2px dotted #a73236;outline-offset:-3px}
+.tile.threat-push{outline:2px dashed #623226;outline-offset:-3px}
+.effect.outcome{z-index:26;top:2%;left:50%;transform:translateX(-50%);color:white;background:#173b40ed;padding:3px 5px;border-radius:4px;text-shadow:none;font:800 clamp(9px,1.4vmin,15px)/1.05 system-ui;text-align:center;text-transform:none;animation:rift-outcome 1.2s ease forwards}
+.effect.outcome.damage{background:#743539}.effect.outcome.brace,.effect.outcome.shield{background:#275466}
+.effect.outcome small{display:block;padding-top:2px;font-size:.75em;font-weight:600}
+@keyframes rift-outcome{0%{opacity:.9}70%{opacity:1}100%{opacity:0;transform:translate(-50%,-7px)}}
+@media(prefers-reduced-motion:reduce){.effect.outcome{display:block;animation:none}}
+@media(max-width:520px){.battle-forecast,.ram-warning{padding:4px 7px;font-size:10px;gap:2px 6px}.pulse-readout{gap:5px}.compact-army .order-meter>span:last-child{font-size:8px}.order-pips i{width:6px;height:6px}.defense-mark{left:1px;top:1px}.defense-mark b,.defense-mark i{padding:0 2px}}
+.compact-shell{--available:calc(100dvh - 285px)}.local-battle .compact-shell{--available:calc(100dvh - 415px)}
+@media(max-height:500px) and (min-width:600px){.compact-shell{--available:calc(100dvh - 193px)}.local-battle .compact-shell{--available:calc(100dvh - 283px)}.battle-forecast,.ram-warning{font-size:9px;padding-block:2px}.ram-warning span{display:none}}
+@media(orientation:landscape) and (max-height:550px) and (min-width:500px){
+  .compact-battle{padding:4px}
+  .compact-shell,.local-battle .compact-shell{display:grid;align-items:center;gap:5px;--board-room:calc((100dvh - 100px) * var(--cols,9) / var(--rows,7) * 1.08)}
+  .compact-shell{--dock-width:clamp(96px,20vw,184px);width:min(100%,calc(var(--board-room) + var(--dock-width) + 5px));grid-template-columns:minmax(0,1fr) var(--dock-width)}
+  .local-battle .compact-shell{width:min(100%,calc(var(--board-room) + var(--dock-width) * 2 + 10px));grid-template-columns:var(--dock-width) minmax(0,1fr) var(--dock-width)}
+  .compact-battle .arena-panel{grid-row:1;grid-column:1}
+  .local-battle .arena-panel,.compact-battle .p1-dock{grid-column:2}
+  .local-battle .p1-dock{grid-column:3}.local-battle .p2-dock{grid-column:1}
+  .command-dock{grid-row:1;min-width:0}.dock-actions{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:3px}
+  .command-dock .dock-identity{display:flex;gap:4px}.dock-identity>.sprite,.dock-identity .dock-formation,.dock-identity .dock-field,.dock-health-wrap{display:none}
+  .dock-identity strong{font-size:10px}.icon-dock .dock-command{height:44px}
+  .compact-battle .arena{padding:4px}.compact-battle .board{gap:2px}
+}
+
+@media(orientation:portrait) and (max-width:520px) and (min-height:660px){
+  .compact-clock strong{font-size:15px}.compact-clock small{font-size:8px}
+  .compact-army .army-name{font-size:10px}.compact-army .order-meter>span:last-child{font-size:10px}
+  .battle-forecast,.ram-warning{font-size:12px;padding-block:6px}
+  .pulse-readout{flex-wrap:wrap;gap:2px 6px}
+  .command-dock .dock-identity strong{font-size:13px}.dock-health-wrap{font-size:10px}
+  .compact-battle:not(.local-battle) .dock-actions:has(> :nth-child(5)){grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .icon-dock .dock-command>span{font-size:11px;white-space:normal;text-align:center}
+  .icon-dock .dock-command>small{font-size:10px}
+}
+@media(orientation:landscape) and (max-height:550px) and (min-width:650px){
+  .icon-dock .dock-command{height:54px}
+  .icon-dock .dock-command>span{font-size:11px;line-height:1.05;white-space:normal;text-align:center}
+  .icon-dock .dock-command>small{font-size:10px}
+}
+
+@media(orientation:portrait) and (max-width:520px) and (min-height:800px){
+  .local-battle .dock-actions:has(> :nth-child(5)){grid-template-columns:repeat(3,minmax(0,1fr))!important}
+}

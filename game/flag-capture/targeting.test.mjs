@@ -61,7 +61,7 @@ test('Curtain Collapse previews the blast across shorelines because flying enemi
 
 test('Rootguard and Grinning Ward show shieldable allies while retaining their canonical self center',()=>{
   for(const faction of ['bloom','chaos']){
-    const caster=creature('guardian','player',2,2,{faction,role:'guardian',shield:5}),friend=creature('friend','player',3,2,{shield:4}),full=creature('full','player',2,3,{shield:5}),enemy=creature('enemy','ai',1,2);
+    const caster=creature('guardian','player',2,2,{faction,role:'guardian',shield:5}),friend=creature('friend','player',3,2,{shield:1}),full=creature('full','player',2,3,{shield:5}),enemy=creature('enemy','ai',1,2);
     const action={...selfAction(caster),skillIndex:0},before=structuredClone(action),result=displayTargets(stateWith(caster,friend,full,enemy),caster,[action],unitDef);
     assert.deepEqual(result,[{...action,displayX:3,displayY:2}]);assert.deepEqual(action,before);
     assert.equal(actionColor(result[0],caster,unitDef),'support');
@@ -182,9 +182,9 @@ test('Wrong Note shows enemy effect squares while retaining the self-targeted ac
   assert.equal(actionColor(result[0], caster, unitDef), 'attack');
 });
 
-test('Sanctuary highlights only allies below the five-shield cap', () => {
+test('Sanctuary highlights only allies who can improve to a four-point ward', () => {
   const caster = creature('bell', 'player', 4, 4, { faction: 'choir', role: 'brute', shield: 5 });
-  const ally = creature('ally', 'player', 4, 5, { shield: 4 });
+  const ally = creature('ally', 'player', 4, 5, { shield: 3 });
   const capped = creature('capped', 'player', 5, 4, { shield: 5 });
   const enemy = creature('enemy', 'ai', 3, 4);
   const diagonal = creature('diagonal', 'player', 5, 5);
@@ -196,7 +196,7 @@ test('Sanctuary highlights only allies below the five-shield cap', () => {
 test('Concordance highlights other allies that can gain a refresh or shield', () => {
   const caster = creature('halo', 'player', 5, 5, { faction: 'choir', shield: 0 });
   const cooling = creature('cooling', 'player', 6, 5, { shield: 3, readyAt: 6 });
-  const lowShield = creature('low-shield', 'player', 5, 6, { shield: 2, readyAt: 5 });
+  const lowShield = creature('low-shield', 'player', 5, 6, { shield: 0, readyAt: 5 });
   const readyCapped = creature('ready-capped', 'player', 4, 5, { shield: 3, readyAt: 5 });
   const enemy = creature('enemy', 'ai', 5, 4);
   const result = displayTargets(stateWith(caster, cooling, lowShield, readyCapped, enemy), caster, [selfAction(caster)], unitDef);

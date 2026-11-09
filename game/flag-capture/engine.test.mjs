@@ -51,18 +51,21 @@ test('both sides act independently with no turn switch; allies allow passage but
   play(s,u,'move',{x:2,y:0});play(s,v,'move',{x:6,y:6});assert.equal(u.readyAt,2);assert.equal(v.readyAt,2);
 });
 
-test('specials remain available during movement recovery and have their own cooldown',()=>{
-  const s=arena(),u=add(s,'player','bloom','scout',2,5);add(s,'ai','chaos','leader',8,0);
-  play(s,u,'move',{x:2,y:4});assert.equal(find(s,u,'move'),undefined);
-  play(s,u,'ability',{x:2,y:3});assert.equal(u.abilityReadyAt,8);assert.equal(u.readyAt,2);
-  assert.equal(find(s,u,'ability'),undefined);tick(s,2);assert.ok(find(s,u,'move'));assert.equal(find(s,u,'ability'),undefined);
-  tick(s,6);assert.ok(find(s,u,'ability'));
+test('basic and special orders share troop recovery and the army order pool',()=>{
+  const s=arena(),u=add(s,'player','bloom','scout',2,5),ally=add(s,'player','bloom','brute',1,5);add(s,'ai','chaos','leader',8,0);
+  assert.deepEqual(s.orders,{player:1,ai:1});
+  const invalid={type:'move',unitId:u.id,x:8,y:6};assert.equal(applyAction(s,invalid).ok,false);assert.equal(s.orders.player,1);
+  play(s,u,'move',{x:2,y:4});assert.equal(s.orders.player,0);assert.deepEqual(legalActions(s,ally.id),[]);
+  tick(s,2);assert.equal(find(s,u,'ability'),undefined);
+  tick(s,.4);play(s,u,'ability',{x:2,y:3});assert.equal(u.abilityReadyAt,10.4);assert.equal(u.readyAt,4.4);
+  tick(s,4.8);assert.deepEqual(s.orders,{player:2,ai:2});assert.ok(find(s,u,'move'));assert.equal(find(s,u,'ability'),undefined);
+  tick(s,3.2);assert.ok(find(s,u,'ability'));assert.deepEqual(s.orders,{player:2,ai:2});
 });
 
 test('beacon capture persists after leaving and scores exactly at the common 6-second pulse',()=>{
   const s=arena(),u=add(s,'player','bloom','scout',2,4,{hp:3});add(s,'ai','chaos','leader',8,0);
   const r=play(s,u,'move',{x:2,y:3});assert.ok(r.events.some(e=>e.type==='capture'));assert.equal(u.hp,5);
-  tick(s,2);play(s,u,'move',{x:1,y:3});tick(s,3.9);assert.equal(s.scores.player,0);assert.equal(s.supplies.player,3);
+  tick(s,2.4);play(s,u,'move',{x:1,y:3});tick(s,3.5);assert.equal(s.scores.player,0);assert.equal(s.supplies.player,3);
   tick(s,0.1);assert.equal(s.scores.player,1);assert.equal(s.supplies.player,3);assert.equal(s.supplies.ai,3);assert.equal(s.flags[0].owner,'player');
 });
 
@@ -79,11 +82,16 @@ test('rocks and water block ranged sight; shield absorption never heals a target
   s.tiles[3*9+3].terrain='grass';play(s,u,'attack',v);assert.equal(v.hp,v.maxHp);assert.equal(v.shield,3);
 });
 
-test('guard shares movement cooldown and caps shield at five',()=>{
-  const s=arena(),u=add(s,'player','bloom','brute',4,4,{shield:4});add(s,'ai','chaos','leader',4,0);
-  play(s,u,'guard');assert.equal(u.readyAt,3.5);assert.equal(u.shield,5);assert.equal(find(s,u,'guard'),undefined);
-  tick(s,3.5);assert.equal(find(s,u,'guard'),undefined);
-  const ready=u.readyAt;assert.equal(applyAction(s,{type:'guard',unitId:u.id,x:u.x,y:u.y}).ok,false);assert.equal(u.readyAt,ready);
+test('Brace blocks one hit for up to three seconds and never stacks with a ward',()=>{
+  const s=arena(),u=add(s,'player','bloom','scout',4,4,{shield:1}),foe=add(s,'ai','chaos','leader',4,3);
+  const result=play(s,u,'guard');assert.equal(result.events[0].type,'brace');assert.equal(u.braceUntil,3);assert.equal(u.shield,1);
+  const hit=play(s,foe,'attack',u).events.find(e=>e.type==='damage');
+  assert.deepEqual([hit.value,hit.braceAbsorbed,hit.wardAbsorbed,u.shield,u.braceUntil],[1,2,0,1,0]);
+  tick(s,3);u.shield=3;play(s,u,'guard');const second=play(s,foe,'attack',u).events.find(e=>e.type==='damage');
+  assert.deepEqual([second.value,second.wardAbsorbed,second.wardBroken,u.shield,u.braceUntil],[0,3,true,0,0]);
+  tick(s,3);play(s,u,'guard');tick(s,2);assert.equal(find(s,u,'guard'),undefined);
+  play(s,u,'move',{x:3,y:4});assert.equal(u.braceUntil,0);
+  tick(s,3);play(s,u,'guard');tick(s,3.1);assert.ok(find(s,u,'guard'));
 });
 
 test('water shields the ground beyond it, while hovering troops remain targetable',()=>{
@@ -132,15 +140,41 @@ test('Sideways Bite warps beside its target, deals damage, and claims a landing 
   play(s,u,'ability',v);assert.equal(Math.abs(u.x-v.x)+Math.abs(u.y-v.y),1);assert.equal(v.hp,7);assert.equal(s.flags[0].owner,'player');
 });
 
-test('Foldhorn knocks back or deals bonus damage when the landing tile is blocked',()=>{
+test('Foldhorn marks its square for three seconds before a push or blocked-push bonus',()=>{
   for(const obstacle of [false,true]) {
     const s=arena(),u=add(s,'player','chaos','brute',4,5),v=add(s,'ai','bloom','leader',4,3);if(obstacle)s.tiles[2*9+4].terrain='rock';
-    play(s,u,'ability',v);assert.equal(v.hp,obstacle?5:6);assert.equal(v.y,obstacle?3:2);
+    play(s,u,'ability',v);assert.equal(s.telegraphs[0].resolvesAt,3);assert.equal(v.hp,10);
+    tick(s,2.9);assert.equal(v.hp,10);tick(s,0.1);
+    assert.equal(v.hp,obstacle?5:6);assert.equal(v.y,obstacle?3:2);assert.equal(s.telegraphs.length,0);
+  }
+});
+
+test('Foldhorn can be dodged, braced or interrupted, and strikes a new foe on the marked square',()=>{
+  for(const counter of ['dodge','brace','pull','root','kill','switch']) {
+    const s=arena({opponentMode:'local'}),ram=add(s,'ai','chaos','brute',4,2);
+    const v=add(s,'player','bloom','scout',4,4);
+    const help=add(s,'player','bloom',counter==='root'?'ranger':counter==='kill'?'mystic':'brute',5,3);
+    if(counter==='kill')ram.hp=2;
+    const diagonal=legalActions(s,ram.id).find(a=>a.type==='ability'&&a.targetId===help.id);
+    assert.equal(diagonal,undefined);
+    play(s,ram,'ability',v);
+    if(counter==='brace')play(s,v,'guard',v);
+    else if(counter==='dodge'||counter==='switch')play(s,v,'move',{x:3,y:4});
+    else play(s,help,'ability',ram);
+    if(['pull','root','kill'].includes(counter))assert.equal(s.telegraphs.length,0,counter);
+    if(counter==='switch'){tick(s,2.4);play(s,help,'move',{x:4,y:4});}
+    if(counter==='brace'){tick(s,2.9);advance(s,0.4);} // Cross impact and brace expiry in one step.
+    else tick(s,3);
+    assert.equal(s.telegraphs.length,0,counter);
+    assert.equal(v.hp,counter==='brace'?v.maxHp-2:v.maxHp,counter);
+    if(counter==='brace')assert.equal(v.y,4);
+    if(counter==='switch'){assert.equal(help.hp,help.maxHp-4);assert.equal(help.y,5);}
   }
 });
 
 test('Bad Omen modifies one incoming hit and leaves an independent cooldown',()=>{
   const s=arena(),u=add(s,'player','chaos','mystic',4,5),ally=add(s,'player','chaos','leader',4,4),v=add(s,'ai','bloom','leader',4,3);
+  s.orders.player=2;
   play(s,u,'ability',v);assert.equal(v.hp,8);assert.equal(v.cursed,1);assert.equal(u.abilityReadyAt,8);
   play(s,ally,'attack',v);assert.equal(v.hp,3);assert.equal(v.cursed,0);
 });
@@ -152,6 +186,7 @@ test('Concordance refreshes other allies shared cooldown without refreshing itse
 
 test('Mercy Arc heals and cleanses while Sanctuary shields nearby allies',()=>{
   const s=arena(),u=add(s,'player','choir','scout',4,5),ally=add(s,'player','choir','brute',4,4,{hp:5,rootedUntil:2.5,cursed:1});add(s,'ai','chaos','leader',8,0);
+  s.orders.player=2;
   play(s,u,'ability',ally);assert.equal(ally.hp,9);assert.equal(ally.rootedUntil,0);assert.equal(ally.cursed,0);
   play(s,ally,'ability',ally);assert.equal(u.shield,4);assert.equal(ally.shield,4);
 });
@@ -172,8 +207,8 @@ test('recruitment enforces costs, cap, side, deployment and independent startup 
   assert.equal(recruit(s,'leader').ok,false);assert.equal(recruit(s,'brute').ok,false);assert.equal(recruit(s,'scout','invalid').ok,false);
   assert.equal(recruit(s,'scout').ok,true);assert.equal(s.supplies.player,1);
   const fresh=s.units.at(-1);assert.equal(fresh.side,'player');assert.equal(fresh.readyAt,2);assert.equal(fresh.abilityReadyAt,8);assert.equal(legalActions(s,fresh.id).length,0);
-  tick(s,2);assert.ok(find(s,fresh,'move'));assert.equal(find(s,fresh,'ability'),undefined);
-  s.supplies.player=20;assert.equal(recruit(s,'scout').ok,true);assert.equal(recruit(s,'scout').ok,true);assert.equal(recruit(s,'scout').ok,false);
+  tick(s,2.4);assert.ok(find(s,fresh,'move'));assert.equal(find(s,fresh,'ability'),undefined);
+  s.supplies.player=20;assert.equal(recruit(s,'scout').ok,true);assert.equal(recruit(s,'scout').ok,false);assert.equal(s.supplies.player,16);tick(s,2.4);assert.equal(recruit(s,'scout').ok,true);tick(s,2.4);assert.equal(recruit(s,'scout').ok,false);
   assert.equal(recruit(s,'scout','ai').ok,true);assert.equal(s.units.at(-1).side,'ai');
 });
 
@@ -320,11 +355,11 @@ test('local players share the same cooldown, supply, recruitment and simultaneou
   const s=arena({opponentMode:'local',mode:'reinforcements',startingMoney:26}),p=add(s,'player','bloom','scout',2,4),q=add(s,'ai','chaos','scout',6,2);
   play(s,p,'move',{x:2,y:3});play(s,q,'move',{x:6,y:3});
   assert.equal(p.readyAt,2);assert.equal(q.readyAt,2);assert.equal(find(s,p,'move'),undefined);assert.equal(find(s,q,'move'),undefined);
-  tick(s,2);assert.ok(find(s,p,'move'));assert.ok(find(s,q,'move'));
+  tick(s,2.4);assert.ok(find(s,p,'move'));assert.ok(find(s,q,'move'));
   assert.equal(recruit(s,'scout','player').ok,true);assert.equal(recruit(s,'scout','ai').ok,true);
   assert.equal(s.supplies.player,1);assert.equal(s.supplies.ai,1);
-  const recruits=s.units.slice(-2);assert.ok(recruits.every(u=>u.readyAt===4&&u.abilityReadyAt===10));
-  tick(s,4);assert.deepEqual(s.scores,{player:1,ai:1});assert.deepEqual(s.supplies,{player:4,ai:4});
+  const recruits=s.units.slice(-2);assert.ok(recruits.every(u=>u.readyAt===4.4&&u.abilityReadyAt===10.4));
+  tick(s,3.6);assert.deepEqual(s.scores,{player:1,ai:1});assert.deepEqual(s.supplies,{player:4,ai:4});
   assert.ok(recruits.every(u=>legalActions(s,u.id).some(a=>a.type==='move')));
 });
 
@@ -336,13 +371,14 @@ test('local scoring resolves both armies on a common pulse, including fair tied 
   const win=arena({opponentMode:'local',goal:1});add(win,'player','bloom','leader',0,6);add(win,'ai','bloom','leader',8,0);win.flags[2].owner='ai';tick(win,6);assert.equal(win.winner,'ai');
 });
 
-test('two specials recharge independently while the primary timestamp alias remains compatible',()=>{
-  const s=arena(),u=add(s,'player','bloom','mystic',4,5),ally=add(s,'player','bloom','scout',5,5,{hp:3}),foe=add(s,'ai','chaos','leader',4,3);
-  cast(s,u,0,foe);assert.equal(u.abilityReadyAt,10);assert.deepEqual(u.abilityReadyAts,[10,0]);assert.ok(legalActions(s,u.id).some(a=>a.type==='ability'&&a.skillIndex===1));
-  cast(s,u,1,ally);assert.deepEqual(u.abilityReadyAts,[10,8]);assert.equal(u.abilityReadyAt,10);assert.equal(skillReadyAt(u,1),8);
-  assert.equal(legalActions(s,u.id).some(a=>a.type==='ability'),false);
-  tick(s,8);assert.ok(legalActions(s,u.id).some(a=>a.type==='ability'&&a.skillIndex===1));assert.equal(legalActions(s,u.id).some(a=>a.type==='ability'&&a.skillIndex===0),false);
-  tick(s,2);assert.ok(legalActions(s,u.id).some(a=>a.type==='ability'&&a.skillIndex===0));
+test('separate skill timers still require the same troop to recover between casts',()=>{
+  const s=arena(),u=add(s,'player','bloom','mystic',4,5),ally=add(s,'player','bloom','scout',5,5,{hp:1}),foe=add(s,'ai','chaos','leader',4,3);
+  s.orders.player=2;
+  cast(s,u,0,foe);assert.equal(u.abilityReadyAt,10);assert.deepEqual(u.abilityReadyAts,[10,0]);assert.deepEqual(legalActions(s,u.id),[]);
+  tick(s,2.8);cast(s,u,1,ally);assert.deepEqual(u.abilityReadyAts,[10,10.8]);assert.equal(skillReadyAt(u,1),10.8);
+  tick(s,7.2);assert.ok(legalActions(s,u.id).some(a=>a.type==='ability'&&a.skillIndex===0));
+  assert.equal(legalActions(s,u.id).some(a=>a.type==='ability'&&a.skillIndex===1),false);
+  tick(s,.8);assert.ok(legalActions(s,u.id).some(a=>a.type==='ability'&&a.skillIndex===1));
 });
 
 test('ability indexes enforce exact target rules and omitted indexes retain primary behavior',()=>{
@@ -375,6 +411,7 @@ test('Nectar Mote restores two HP only to injured allies',()=>{
 
 test('Laughing Hex deals no immediate damage and amplifies one subsequent hit',()=>{
   const s=arena(),u=add(s,'player','chaos','leader',4,5),ally=add(s,'player','chaos','brute',4,4),foe=add(s,'ai','bloom','leader',4,3);
+  s.orders.player=2;
   cast(s,u,1,foe);assert.equal(foe.hp,10);assert.equal(foe.cursed,1);
   play(s,ally,'attack',foe);assert.equal(foe.hp,5);assert.equal(foe.cursed,0);
 });
@@ -390,22 +427,30 @@ test('Crooked Swap moves both troops atomically and updates beacon claims',()=>{
 test('Starstep crosses barriers, lands on water, shields the caster and respects roots',()=>{
   const s=arena(),u=add(s,'player','choir','leader',4,5,{shield:4});add(s,'ai','chaos','leader',8,0);s.tiles[2*9+4].terrain='water';s.tiles[3*9+4].terrain='rock';
   assert.equal(legalActions(s,u.id).some(a=>a.type==='ability'&&a.skillIndex===1&&a.x===4&&a.y===3),false);
-  cast(s,u,1,{x:4,y:2});assert.equal(u.y,2);assert.equal(u.shield,5);assert.equal(u.abilityReadyAts[1],10);assert.equal(u.abilityReadyAt,0);
-  u.abilityReadyAts[1]=0;u.rootedUntil=2.5;assert.equal(legalActions(s,u.id).some(a=>a.type==='ability'&&a.skillIndex===1),false);
+  cast(s,u,1,{x:4,y:2});assert.equal(u.y,2);assert.equal(u.shield,4);assert.equal(u.abilityReadyAts[1],10);assert.equal(u.abilityReadyAt,0);
+  tick(s,10);u.rootedUntil=s.time+2.5;assert.equal(legalActions(s,u.id).some(a=>a.type==='ability'&&a.skillIndex===1),false);
 });
 
-test('Ward Ray shields allies to the cap without healing or affecting enemies',()=>{
-  const s=arena(),u=add(s,'player','choir','mystic',4,5),ally=add(s,'player','choir','scout',4,4,{hp:3,shield:4}),foe=add(s,'ai','chaos','leader',4,3);
+test('Ward Ray refreshes a three-point ward without healing or affecting enemies',()=>{
+  const s=arena(),u=add(s,'player','choir','mystic',4,5),ally=add(s,'player','choir','scout',4,4,{hp:3,shield:1}),foe=add(s,'ai','chaos','leader',4,3);
   assert.equal(legalActions(s,u.id).some(a=>a.type==='ability'&&a.skillIndex===1&&a.targetId===foe.id),false);
-  cast(s,u,1,ally);assert.equal(ally.shield,5);assert.equal(ally.hp,3);assert.equal(foe.shield,0);
+  cast(s,u,1,ally);assert.equal(ally.shield,3);assert.equal(ally.hp,3);assert.equal(foe.shield,0);
 });
 
 test('AI can choose and legally use each of the six secondary specials',()=>{
   for(const [faction,role]of [['bloom','leader'],['bloom','mystic'],['chaos','leader'],['chaos','mystic'],['choir','leader'],['choir','mystic']]) {
-    const s=arena(),u=add(s,'ai',faction,role,4,3,{readyAt:1000,abilityReadyAt:1000});u.abilityReadyAts=unitDef(u).abilities.map((_,i)=>i===1?0:1000);
-    add(s,'player','chaos','leader',4,5);
-    if(faction==='bloom'&&role==='mystic'||faction==='choir'&&role==='mystic')add(s,'ai',faction,'scout',5,3,{hp:2,readyAt:1000,abilityReadyAt:1000,abilityReadyAts:[1000]});
-    const action=chooseAIAction(s);assert.ok(action,`${faction} ${role}`);assert.equal(action.type,'ability');assert.equal(action.skillIndex,1);assert.equal(action.unitId,u.id);assert.equal(applyAction(s,action).ok,true);
+    const s=arena(),u=add(s,'ai',faction,role,4,3,{hp:3,abilityReadyAt:1000});u.abilityReadyAts=unitDef(u).abilities.map((_,i)=>i===1?0:1000);
+    const foe=add(s,'player','chaos','leader',4,faction==='chaos'?5:6);
+    if(faction!=='choir'||role!=='leader')for(const flag of s.flags)flag.owner='ai';
+    if(faction==='bloom'||faction==='choir'&&role==='mystic')u.rootedUntil=5;
+    if(faction==='bloom'&&role==='mystic')foe.x=8;
+    if(faction==='choir'&&role==='mystic')foe.x=6;
+    if(faction==='chaos'&&role==='mystic'){
+      foe.x=6;foe.y=3;foe.shield=3;s.flags[2].owner='player';
+      add(s,'ai',faction,'scout',4,4,{readyAt:1000});
+    }
+    if(faction!=='chaos'&&role==='mystic')add(s,'ai',faction,'scout',5,3,{hp:2,readyAt:1000,abilityReadyAt:1000,abilityReadyAts:[1000]});
+    const action=chooseAIAction(s);assert.ok(action,`${faction} ${role}`);assert.equal(action.type,'ability',`${faction} ${role} preferred ${action.label}`);assert.equal(action.skillIndex,1);assert.equal(action.unitId,u.id);assert.equal(applyAction(s,action).ok,true);
   }
 });
 
@@ -418,7 +463,7 @@ test('five difficulty levels have distinct opening grace and global decision int
     const positions=s.units.map(u=>[u.x,u.y]);tick(s,grace-0.1);assert.equal(s.units.length,10);assert.deepEqual(s.units.map(u=>[u.x,u.y]),positions);
     advance(s,0.1);assert.equal(s.units.length,11);assert.ok(Math.abs(s.nextAiAt-(grace+interval))<1e-6);
     const afterRecruit=s.units.map(u=>[u.x,u.y]);tick(s,interval-0.1);assert.deepEqual(s.units.map(u=>[u.x,u.y]),afterRecruit);
-    advance(s,0.1);assert.notDeepEqual(s.units.map(u=>[u.x,u.y]),afterRecruit);
+    advance(s,0.1);if(grace+interval>=2.4)assert.notDeepEqual(s.units.map(u=>[u.x,u.y]),afterRecruit);else assert.deepEqual(s.units.map(u=>[u.x,u.y]),afterRecruit);
     for(const u of s.units.filter(u=>u.side==='ai')) {
       assert.equal(u.maxHp,FACTIONS[u.faction].units[u.role].hp);
       if(u.readyAt>s.time&&u.readyAt!==grace)assert.ok(u.readyAt-s.time<=unitDef(u).moveCooldown+1e-6);
@@ -426,11 +471,11 @@ test('five difficulty levels have distinct opening grace and global decision int
   }
 });
 
-test('Story and Relaxed prefer useful defense over distant aggression but respond to adjacent foes',()=>{
+test('Story and Relaxed claim an open flag instead of pre-bracing, and respond to adjacent foes',()=>{
   for(const difficulty of ['story','easy']) {
     const s=arena({difficulty,seed:11}),u=add(s,'ai','chaos','mystic',4,3),foe=add(s,'player','bloom','leader',4,5);u.abilityReadyAts[2]=1000;
-    for(const f of s.flags)f.owner='ai';
-    const defensive=chooseAIAction(s);assert.equal(defensive.type,'guard');assert.equal(defensive.unitId,u.id);
+    for(const f of s.flags)f.owner='ai';s.flags[0].owner=null;
+    const capture=chooseAIAction(s);assert.equal(capture.type,'move');assert.equal(capture.x,s.flags[0].x);s.flags[0].owner='ai';
     foe.y=4;const response=chooseAIAction(s);assert.ok(['attack','ability'].includes(response.type));assert.equal(response.targetId,foe.id);
   }
 });
@@ -462,7 +507,7 @@ test('gentle levels remain winnable with a simple opening capture plan and no co
     for(let seed=1;seed<=8;seed++) {
       const s=createGame({difficulty,seed});
       const order=(id,x,y)=>{const a=legalActions(s,id).find(a=>a.type==='move'&&a.x===x&&a.y===y);assert.ok(a);assert.equal(applyAction(s,a).ok,true);};
-      order('u2',2,3);order('u3',6,3);order('u1',4,4);
+      order('u2',2,3);tick(s,2.4);order('u3',6,3);tick(s,2.4);order('u1',4,4);
       tick(s,3);order('u1',4,3);
       while(!s.winner&&s.time<180)advance(s,0.1);
       if(s.winner==='player')wins++;
@@ -539,7 +584,7 @@ test('all three summoning skills create controllable tiny troops in every battle
     const r=cast(s,u,2,{x:3,y:3}),tiny=s.units.filter(v=>v.role==='minion');assert.equal(tiny.length,2);assert.equal(r.events.filter(e=>e.type==='summon'&&e.sourceId===u.id).length,2);
     assert.equal(u.abilityReadyAts[2],12);assert.equal(u.abilityReadyAt,0);assert.equal(u.abilityReadyAts[1],0);
     for(const v of tiny) {const d=unitDef(v);assert.equal(v.hp,3);assert.equal(d.damage,1);assert.equal(d.move,2);assert.equal(d.range,1);assert.deepEqual(d.abilities,[]);assert.deepEqual(v.abilityReadyAts,[]);assert.equal(v.abilityReadyAt,0);assert.equal(v.readyAt,1);assert.deepEqual(legalActions(s,v.id),[]);}
-    tick(s,1);assert.ok(tiny.every(v=>legalActions(s,v.id).some(a=>a.type==='move')));assert.ok(tiny.every(v=>legalActions(s,v.id).every(a=>a.type!=='ability')));
+    tick(s,2.4);assert.ok(tiny.every(v=>legalActions(s,v.id).some(a=>a.type==='move')));assert.ok(tiny.every(v=>legalActions(s,v.id).every(a=>a.type!=='ability')));
     assert.equal(unitDef(tiny[0]).movement==='Flight',faction==='choir');assert.equal(unitDef(tiny[0]).groveMoveBonus,faction==='bloom'?1:0);
   }
 });
@@ -558,15 +603,18 @@ test('summoning can produce one troop when adjacent ground is unavailable, and t
   const s=arena(),u=add(s,'player','chaos','mystic',2,3),foe=add(s,'ai','bloom','leader',4,3);
   for(const[x,y]of [[2,2],[1,1],[3,1],[2,0]])s.tiles[y*9+x].terrain='rock';
   cast(s,u,2,{x:2,y:1});const tiny=s.units.filter(v=>v.role==='minion');assert.equal(tiny.length,1);assert.deepEqual([tiny[0].x,tiny[0].y],[2,1]);
-  s.tiles[1*9+3].terrain='grass';tick(s,1);play(s,tiny[0],'move',{x:3,y:2});tick(s,2.4);foe.x=3;foe.y=3;
+  s.tiles[1*9+3].terrain='grass';tick(s,2.4);play(s,tiny[0],'move',{x:3,y:2});tick(s,2.4);foe.x=3;foe.y=3;
   play(s,tiny[0],'attack',foe);assert.equal(foe.hp,9);assert.equal(tiny[0].readyAt,s.time+2.4);
 });
 
 test('AI can summon and then issue legal commands to the tiny troops without automatic recruitment',()=>{
   for(const [faction,role]of [['bloom','leader'],['chaos','mystic'],['choir','mystic']]) {
-    const s=arena({aiFaction:faction}),u=add(s,'ai',faction,role,4,3,{readyAt:1000,abilityReadyAt:1000,abilityReadyAts:[1000,1000,0]});add(s,'player','chaos','leader',8,6);
+    const s=arena({aiFaction:faction}),u=add(s,'ai',faction,role,4,3,{rootedUntil:3,abilityReadyAt:1000,abilityReadyAts:[1000,1000,0]});add(s,'player','chaos','leader',8,6);
     const action=chooseAIAction(s);assert.equal(action.type,'ability');assert.equal(action.skillIndex,2);assert.equal(applyAction(s,action).ok,true);
-    assert.equal(s.units.filter(v=>v.role==='minion').length,2);tick(s,1);const next=chooseAIAction(s);assert.equal(s.units.find(v=>v.id===next.unitId).role,'minion');assert.equal(applyAction(s,next).ok,true);
+    const minions=s.units.filter(v=>v.role==='minion');assert.equal(minions.length,2);
+    const foe=s.units.find(v=>v.side==='player'),spot=s.tiles.find(t=>!at(s,t.x,t.y)&&Math.abs(t.x-minions[0].x)+Math.abs(t.y-minions[0].y)===1);
+    Object.assign(foe,{x:spot.x,y:spot.y,hp:1});
+    tick(s,2.4);const next=chooseAIAction(s);assert.ok(next);assert.equal(s.units.find(v=>v.id===next.unitId).role,'minion');assert.equal(applyAction(s,next).ok,true);
   }
 });
 

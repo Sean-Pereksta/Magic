@@ -42,13 +42,31 @@ test('ready orders pass through immediately; long recovery and illegal destinati
   assert.equal(input.pending().length,0);
 });
 
-test('secondary specials buffer independently of the primary special and normal recovery',()=>{
+test('secondary specials respect troop recovery, their own timer and the army refill',()=>{
   const {state,unit}=battle('leader'),input=createInputController();
   unit.readyAt=5;unit.abilityReadyAt=10;unit.abilityReadyAts=[10,.3,8];
   const action={type:'ability',skillIndex:1,unitId:unit.id,x:1,y:3};
+  assert.equal(input.offer(state,action).reason,'recovering');
+  unit.readyAt=.2;state.orders.player=0;state.nextOrderAt=.4;
   assert.equal(input.offer(state,action).status,'queued');state.time=.3;
+  assert.deepEqual(input.drain(state),[]);state.time=.4;state.orders.player=1;
   const [ready]=input.drain(state);assert.equal(ready.skillIndex,1);assert.equal(applyAction(state,ready).ok,true);
-  assert.equal(unit.abilityReadyAt,10);assert.equal(unit.abilityReadyAts[1],8.3);
+  assert.equal(unit.abilityReadyAt,10);assert.equal(unit.abilityReadyAts[1],8.4);
+});
+
+test('an empty army can inspect targets, and one refill releases only one buffered order',()=>{
+  const {state,unit}=battle(),input=createInputController();
+  const second={...unit,id:'other',x:3,y:3};state.units.push(second);
+  state.orders.player=0;state.nextOrderAt=2.4;
+  assert.ok(previewActions(state,unit.id).some(a=>a.type==='move'));
+  assert.equal(input.offer(state,move(unit)).reason,'orders');
+  state.time=2;
+  assert.equal(input.offer(state,move(unit)).status,'queued');
+  assert.equal(input.offer(state,previewActions(state,second.id).find(a=>a.type==='move')).status,'queued');
+  state.time=2.4;state.orders.player=1;
+  const ready=input.drain(state);assert.equal(ready.length,1);
+  assert.equal(applyAction(state,ready[0]).ok,true);assert.equal(state.orders.player,0);
+  assert.deepEqual(input.drain(state),[]);
 });
 
 test('a troop has one intent and the latest valid command replaces an earlier one',()=>{

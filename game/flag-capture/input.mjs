@@ -14,7 +14,7 @@ export function previewActions(state,unitId) {
   const unit=alive(state,unitId);
   if(!unit || state.winner)return [];
   const copy={...unit,readyAt:state.time,abilityReadyAt:state.time,abilityReadyAts:unitDef(unit).abilities.map(()=>state.time)};
-  const preview={...state,units:state.units.map(value=>value===unit?copy:value)};
+  const preview={...state,orders:{...state.orders,[unit.side]:1},units:state.units.map(value=>value===unit?copy:value)};
   return legalActions(preview,unitId);
 }
 
@@ -34,9 +34,11 @@ class InputController {
     if(!unit||unit.side!==side||(side==='ai'&&state.opponentMode!=='local'))return {status:'rejected',reason:'ownership'};
     const action=previewActions(state,unit.id).find(candidate=>sameAction(candidate,requested));
     if(!action)return {status:'rejected',reason:'target'};
-    const readyAt=action.type==='ability'?skillReadyAt(unit,skillNumber(action)):unit.readyAt;
+    const troopReadyAt=Math.max(unit.readyAt,action.type==='ability'?skillReadyAt(unit,skillNumber(action)):0);
+    const armyReadyAt=state.orders[side]>0?state.time:state.nextOrderAt;
+    const readyAt=Math.max(troopReadyAt,armyReadyAt);
     if(readyAt<=state.time){this.intents.delete(unit.id);return {status:'ready',action:{...action}};}
-    if(readyAt-state.time>this.bufferSeconds+1e-7)return {status:'rejected',reason:'recovering',readyAt};
+    if(readyAt-state.time>this.bufferSeconds+1e-7)return {status:'rejected',reason:armyReadyAt>troopReadyAt?'orders':'recovering',readyAt};
     const target=action.targetId&&alive(state,action.targetId);
     const intent={action:{...action},side,source:stamp(unit),target:target?stamp(target):null,readyAt,expiresAt:state.time+this.bufferSeconds};
     this.intents.set(unit.id,intent);
@@ -46,15 +48,16 @@ class InputController {
   /** Return each ready order once. Movement, death, changed teams, and stale targets cancel it. */
   drain(state,{paused=false,countdown=false}={}) {
     if(paused||countdown||state?.winner){this.clear();return [];}
-    const result=[];
+    const result=[],available={...state.orders};
     for(const [id,intent] of this.intents){
       const unit=alive(state,id),target=intent.target&&alive(state,intent.target.id);
       if(state.time>intent.expiresAt+1e-7 || !sameStamp(unit,intent.source) || unit.side!==intent.side || (intent.side==='ai'&&state.opponentMode!=='local') ||
         (intent.target&&!sameStamp(target,intent.target))){this.intents.delete(id);continue;}
       const candidate=previewActions(state,id).find(action=>sameAction(action,intent.action));
       if(!candidate){this.intents.delete(id);continue;}
+      if(!available[intent.side])continue;
       const ready=legalActions(state,id).find(action=>sameAction(action,intent.action));
-      if(ready){this.intents.delete(id);result.push({...ready});}
+      if(ready){this.intents.delete(id);available[intent.side]--;result.push({...ready});}
     }
     return result;
   }

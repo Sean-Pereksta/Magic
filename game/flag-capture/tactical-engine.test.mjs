@@ -42,12 +42,12 @@ test('Brood connected formation uses orthogonal living members, extends movement
 test('Carnival pincer requires exact opposite squares and affects only the flanked enemy',()=>{
   const s=arena('chaos','bloom'),a=add(s,'player','scout',3,3),b=add(s,'player','ranger',5,3),target=add(s,'ai','brute',4,3);
   assert.equal(formationStatus(s,a).active,true);assert.deepEqual(formationStatus(s,a).targetIds,[target.id]);hit(s,a,target);assert.equal(target.hp,target.maxHp-3);
-  b.y=2;assert.equal(formationStatus(s,a).active,false);a.readyAt=s.time;hit(s,a,target);assert.equal(target.hp,target.maxHp-5);
+  b.y=2;assert.equal(formationStatus(s,a).active,false);tick(s,2.4);hit(s,a,target);assert.equal(target.hp,target.maxHp-5);
 });
 
-test('Choir consecutive procession grants ranged defense and a higher resonance cap; gaps break it',()=>{
+test('Choir consecutive procession grants ranged defense and a stronger resonance ward; gaps break it',()=>{
   const s=arena('choir','bloom'),a=add(s,'player','guardian',2,3,{shield:3}),b=add(s,'player','ranger',3,3),c=add(s,'player','shaper',4,3),foe=add(s,'ai','mystic',3,1);
-  assert.equal(formationStatus(s,b).active,true);hit(s,foe,b);assert.equal(b.hp,b.maxHp-1);s.nextPulseAt=6;tick(s,6);assert.equal(a.shield,4);
+  assert.equal(formationStatus(s,b).active,true);hit(s,foe,b);assert.equal(b.hp,b.maxHp-1);s.nextPulseAt=6;tick(s,6);assert.equal(a.shield,3);assert.equal(b.shield,2);
   c.x=5;b.shield=0;assert.equal(formationStatus(s,b).active,false);foe.readyAt=s.time;hit(s,foe,b);assert.equal(b.hp,b.maxHp-3);
 });
 
@@ -66,30 +66,31 @@ test('briar fields harm ground foes, spare flyers and allies, and expire without
 
 test('cinders hurt on arrival and periodically, while repainting a live identical field never stacks damage',()=>{
   const s=arena('chaos','bloom'),caster=add(s,'player','guardian',3,4),foe=add(s,'ai','brute',4,3),runner=add(s,'ai','scout',6,3);
-  cast(s,caster,'cinders',{x:4,y:3});assert.equal(foe.hp,foe.maxHp-1);caster.abilityReadyAts[1]=s.time;cast(s,caster,'cinders',{x:4,y:3});assert.equal(foe.hp,foe.maxHp-1);assert.equal(s.groundEffects.length,5);
+  s.orders.player=2;
+  cast(s,caster,'cinders',{x:4,y:3});assert.equal(foe.hp,foe.maxHp-1);const second=add(s,'player','guardian',4,4);cast(s,second,'cinders',{x:4,y:3});assert.equal(foe.hp,foe.maxHp-1);assert.equal(s.groundEffects.length,5);
   move(s,runner,5,3);assert.equal(runner.hp,runner.maxHp-1);tick(s,3);assert.equal(foe.hp,foe.maxHp-2);assert.equal(runner.hp,runner.maxHp-2);
 });
 
 test('rifts curse enemies and grant a whole move of phasing only when an ally begins on one',()=>{
   const s=arena('chaos','bloom'),caster=add(s,'player','shaper',1,3),ally=add(s,'player','guardian',4,3),foe=add(s,'ai','brute',5,3);
   assert.equal(legalActions(s,ally.id).some(a=>a.type==='move'&&a.x===6&&a.y===3),false);cast(s,caster,'rift',{x:4,y:3});assert.equal(foe.cursed,1);assert.equal(movementRange(s,ally),3);
-  move(s,ally,6,3);assert.equal(movementRange(s,ally),2);assert.equal(groundEffectsAt(s,4,3)[0].kind,'rift');
+  tick(s,2.4);move(s,ally,6,3);assert.equal(movementRange(s,ally),2);assert.equal(groundEffectsAt(s,4,3)[0].kind,'rift');
 });
 
-test('sanctuary cleanses roots and curses while building only bounded shields',()=>{
+test('sanctuary cleanses roots and curses while its ward preserves stronger protection',()=>{
   const s=arena('choir','chaos'),caster=add(s,'player','guardian',3,4),ally=add(s,'player','brute',4,3,{shield:4,rootedUntil:99,cursed:1});
-  cast(s,caster,'sanctum',{x:4,y:3});tick(s,3);assert.equal(ally.shield,5);assert.equal(ally.cursed,0);assert.equal(ally.rootedUntil,0);tick(s,3);assert.equal(ally.shield,5);
+  cast(s,caster,'sanctum',{x:4,y:3});tick(s,3);assert.equal(ally.shield,4);assert.equal(ally.cursed,0);assert.equal(ally.rootedUntil,0);ally.shield=0;tick(s,3);assert.equal(ally.shield,1);tick(s,3);assert.equal(ally.shield,1);
 });
 
 test('prism lattice strengthens ranged basic attacks, while Dawn Seal purges hostile marks in its area',()=>{
   const s=arena('choir','chaos'),ranger=add(s,'player','ranger',3,3),scribe=add(s,'player','shaper',3,5),foe=add(s,'ai','mystic',3,1),enemyCaster=s.units.find(u=>u.side==='ai');
-  cast(s,ranger,'prismwall',{x:3,y:3});tick(s,2);hit(s,ranger,foe);assert.equal(foe.hp,foe.maxHp-3);
-  field(s,enemyCaster,'cinders',4,3);field(s,enemyCaster,'rift',7,3);cast(s,scribe,'dawnseal',{x:4,y:3});assert.equal(groundEffectsAt(s,4,3).some(e=>e.side==='ai'),false);assert.equal(groundEffectsAt(s,4,3)[0].kind,'sanctum');assert.equal(groundEffectsAt(s,7,3)[0].kind,'rift');
+  cast(s,ranger,'prismwall',{x:3,y:3});tick(s,2.4);hit(s,ranger,foe);assert.equal(foe.hp,foe.maxHp-3);
+  tick(s,2.4);field(s,enemyCaster,'cinders',4,3);field(s,enemyCaster,'rift',7,3);cast(s,scribe,'dawnseal',{x:4,y:3});assert.equal(groundEffectsAt(s,4,3).some(e=>e.side==='ai'),false);assert.equal(groundEffectsAt(s,4,3)[0].kind,'sanctum');assert.equal(groundEffectsAt(s,7,3)[0].kind,'rift');
 });
 
 test('Curtain Collapse consumes its marked patch and converts a curse into one amplified burst',()=>{
   const s=arena('chaos','bloom'),caster=add(s,'player','shaper',3,5),foe=add(s,'ai','brute',4,3);
-  cast(s,caster,'rift',{x:4,y:3});assert.equal(foe.cursed,1);cast(s,caster,'detonate',{x:4,y:3});assert.equal(foe.hp,foe.maxHp-4);assert.equal(foe.cursed,0);assert.equal(s.groundEffects.length,0);
+  cast(s,caster,'rift',{x:4,y:3});assert.equal(foe.cursed,1);tick(s,2.8);cast(s,caster,'detonate',{x:4,y:3});assert.equal(foe.hp,foe.maxHp-4);assert.equal(foe.cursed,0);assert.equal(s.groundEffects.length,0);
   assert.equal(legalActions(s,caster.id).some(a=>a.type==='ability'&&a.skillIndex===1),false);
 });
 
@@ -102,7 +103,7 @@ test('Pollen Skate and Riftstep leave exactly two visible lasting marks and resp
 
 test('Germinate refreshes only the standard order on friendly mycelium and never another special',()=>{
   const s=arena(),caster=add(s,'player','shaper',3,4),ally=add(s,'player','scout',4,3,{hp:2,readyAt:5,abilityReadyAt:10,abilityReadyAts:[10]});
-  cast(s,caster,'germinate',ally);assert.equal(ally.hp,5);assert.equal(ally.readyAt,5);caster.abilityReadyAts[1]=s.time;
+  cast(s,caster,'germinate',ally);assert.equal(ally.hp,5);assert.equal(ally.readyAt,5);tick(s,2.8);caster.abilityReadyAts[1]=s.time;
   field(s,caster,'mycelium',ally.x,ally.y);cast(s,caster,'germinate',ally);assert.equal(ally.hp,6);assert.equal(ally.readyAt,s.time);assert.equal(ally.abilityReadyAt,10);
 });
 
@@ -114,7 +115,7 @@ test('pinning quills root, crosscuts reward pincers, and Sunlance requires a lan
 
 test('Rootguard, Grinning Ward and Aegis Link support allies without granting healing',()=>{
   for(const [faction,kind]of [['bloom','rootguard'],['chaos','grinward']]){
-    const s=arena(faction),caster=add(s,'player','guardian',3,3,{hp:5}),ally=add(s,'player','scout',3,4,{hp:3,shield:4}),foe=add(s,'ai','scout',4,3);cast(s,caster,kind);assert.equal(caster.shield,2);assert.equal(ally.shield,5);assert.equal(caster.hp,5);assert.equal(ally.hp,3);if(faction==='chaos')assert.equal(foe.rootedUntil,1);
+    const s=arena(faction),caster=add(s,'player','guardian',3,3,{hp:5}),ally=add(s,'player','scout',3,4,{hp:3,shield:4}),foe=add(s,'ai','scout',4,3);cast(s,caster,kind);assert.equal(caster.shield,2);assert.equal(ally.shield,4);assert.equal(caster.hp,5);assert.equal(ally.hp,3);if(faction==='chaos')assert.equal(foe.rootedUntil,1);
   }
   const s=arena('choir'),caster=add(s,'player','guardian',3,3),ally=add(s,'player','scout',5,3,{hp:3,rootedUntil:10,cursed:1});cast(s,caster,'aegislink',ally);assert.equal(ally.hp,3);assert.equal(ally.shield,3);assert.equal(ally.cursed,0);assert.equal(ally.rootedUntil,0);
 });
@@ -131,7 +132,7 @@ test('ground persists after its caster falls, cannot stack same-side layers, and
 
 test('forced swaps and new arrivals trigger the same hostile ground rule as ordinary movement',()=>{
   const s=arena('chaos','choir'),caster=add(s,'player','mystic',3,3),guardian=add(s,'player','guardian',3,5),foe=add(s,'ai','guardian',4,3);
-  cast(s,guardian,'cinders',{x:3,y:3});const afterPainting=foe.hp;cast(s,caster,'crookedswap',foe);assert.equal(foe.x,3);assert.equal(foe.hp,afterPainting-1);
+  cast(s,guardian,'cinders',{x:3,y:3});const afterPainting=foe.hp;tick(s,2.4);cast(s,caster,'crookedswap',foe);assert.equal(foe.x,3);assert.equal(foe.hp,afterPainting-1);
   const summon=arena('bloom','chaos'),leader=summon.units.find(u=>u.side==='player'),enemy=summon.units.find(u=>u.side==='ai');field(summon,enemy,'cinders',1,6);
   cast(summon,leader,'broodlings',{x:1,y:6});assert.equal(summon.units.find(u=>u.role==='minion'&&u.x===1&&u.y===6).hp,2);
   const clash=createGame({playerFaction:'bloom',mode:'reinforcements',startingMoney:40,playerArmy:['leader'],opponentMode:'local'}),source=clash.units.find(u=>u.side==='ai');field(clash,source,'cinders',3,6);
@@ -146,8 +147,8 @@ test('all new troop roles can be recruited only in Clash with their own startup 
 
 test('new-special AI decisions remain legal with mixed formations and simultaneous opposing ground layers',()=>{
   for(const faction of Object.keys(FACTIONS)){
-    const s=createGame({playerFaction:'bloom',aiFaction:faction,startingMoney:40,aiArmy:DRAFT_ROLES,difficulty:'hard',seed:4});s.time=5;
+    const s=createGame({playerFaction:'bloom',aiFaction:faction,startingMoney:40,aiArmy:DRAFT_ROLES,difficulty:'hard',seed:4});s.nextAiAt=Infinity;tick(s,5);
     for(const u of s.units)if(u.side==='ai'){u.readyAt=0;u.abilityReadyAt=0;u.abilityReadyAts=unitDef(u).abilities.map(()=>0);}
-    for(let n=0;n<15&&!s.winner;n++){const action=chooseAIAction(s);assert.ok(action);const result=applyAction(s,action);assert.equal(result.ok,true);tick(s,.5);}
+    for(let n=0;n<15&&!s.winner;n++){const action=chooseAIAction(s);assert.ok(action);const result=applyAction(s,action);assert.equal(result.ok,true);tick(s,2.4);}
   }
 });

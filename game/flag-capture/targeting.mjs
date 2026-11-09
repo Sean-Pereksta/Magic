@@ -45,8 +45,9 @@ export function displayTargets(state, unit, actions, unitDef) {
       if (skill.kind === 'wrongnote') return target.side !== unit.side;
       if (target.side !== unit.side) return false;
       if (skill.kind === 'bloomcall') return target.hp < target.maxHp;
-      if (['sanctuary','rootguard','grinward'].includes(skill.kind)) return (target.shield ?? 0) < 5;
-      return target.id !== unit.id && (target.readyAt > state.time || (target.shield ?? 0) < 3);
+      if (skill.kind === 'sanctuary') return target.shield < 4;
+      if (['rootguard','grinward'].includes(skill.kind)) return target.shield < 2;
+      return target.id !== unit.id && (target.readyAt > state.time || target.shield < 1);
     });
     if(skill.kind==='grinward'&&!targets.length&&state.units.some(target=>target.hp>0&&target.side!==unit.side&&distance(unit,target)<=skill.range))return [action];
     return targets.map(target => ({ ...action, displayX: target.x, displayY: target.y }));

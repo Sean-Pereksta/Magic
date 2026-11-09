@@ -349,3 +349,32 @@ test('malformed ground ids, timers, ownership, terrain and duplicate layers fail
     assert.equal(parseBattleSave(save),null,`malformed ground ${index}`);assert.deepEqual(save,before,`source preserved ${index}`);
   }
 });
+
+test('old battles resume with an order per side and current tactical state survives reload', () => {
+  const save = saveFor({opponentMode:'local', playerFaction:'chaos', aiFaction:'bloom'});
+  const {game} = save, ram = game.units.find(u=>u.side==='player' && u.role==='brute');
+  const foe = game.units.find(u=>u.side==='ai' && u.role==='scout');
+  game.units = [ram,foe];
+  Object.assign(ram,{x:2,y:2});Object.assign(foe,{x:4,y:2});
+  for (const tile of game.tiles) tile.terrain='grass';
+  const charge = legalActions(game,ram.id).find(a=>a.type==='ability' && a.targetId===foe.id);
+  assert.equal(applyAction(game,charge).ok,true);
+  const brace = legalActions(game,foe.id).find(a=>a.type==='guard');
+  assert.equal(applyAction(game,brace).ok,true);
+  assert.equal(game.telegraphs.length,1);assert.deepEqual(game.orders,{player:0,ai:0});
+  assert.deepEqual(parseBattleSave(JSON.stringify(save)),save);
+  const restored=parseBattleSave(save).game;
+  for(let i=0;i<61;i++)assert.deepEqual(advance(restored,.05),advance(game,.05));
+  assert.deepEqual(restored,game);
+  const legacy=saveFor();delete legacy.game.orders;delete legacy.game.nextOrderAt;delete legacy.game.telegraphs;
+  for (const unit of legacy.game.units) delete unit.braceUntil;
+  const migrated=parseBattleSave(legacy).game;
+  assert.deepEqual(migrated.orders,{player:1,ai:1});assert.equal(migrated.nextOrderAt,2.4);
+  assert.deepEqual(migrated.telegraphs,[]);assert.ok(migrated.units.every(u=>u.braceUntil===0));
+});
+
+test('invalid tactical state and fabricated charges cannot enter a resumed battle', () => {
+  rejects(game=>{game.orders.ai=3;});rejects(game=>{game.orders.player=-1;});
+  rejects(game=>{game.nextOrderAt=900;});rejects(game=>{game.units[0].braceUntil=90;});
+  rejects(game=>{game.telegraphs=[{kind:'foldhorn',unitId:game.units[0].id,side:'player',fromX:0,fromY:0,x:0,y:2,resolvesAt:3}];});
+});
