@@ -1,10 +1,12 @@
 # Trash Tactics
 
+The **Command & Intel update** adds mixed building plans for workers, red minimap attack alerts, frozen last-seen scouting information, and an interactive post-match report. See [construction, intelligence and match analysis](COMMAND-INTEL.md).
+
 The **Frontiers update** adds seven vast maps, a native map dropdown with real layout previews, eleven illustrated death animations, and four bot difficulties. See [Frontiers: maps, rival plans and Impossible economy](FRONTIERS.md).
 
 The **Tier 2 and Tier 3 warfare expansion** adds six specialists, two production buildings, animated character/effect sheets, Stapler Canyon and Conveyor Chaos. See [the expansion guide](WARFARE.md) for troop statistics, controls, map mechanics and validation, or open [the animated artwork gallery](warfare-gallery.html).
 
-A quick, cartoony RTS about turning office trash into a tiny empire. Desktop Meadow, Breakroom Blitz, Stapler Canyon and Conveyor Chaos each support 2-, 3-, and 4-player matches: twelve battleground layouts in all. Play a free-for-all against one, two, or three rival bots at Easy, Normal, or Hard difficulty. Destroy every rival desk to win.
+A quick, cartoony RTS about turning office trash into a tiny empire. Desktop Meadow, Breakroom Blitz, Stapler Canyon, Conveyor Chaos, Inkspill Delta, Corkboard Crossroads and Server Stack each support 2-, 3-, and 4-player matches: **21 battleground layouts**. Play a free-for-all against one, two, or three rival bots at **Easy, Normal, Hard or Impossible** difficulty. Destroy every rival desk to win.
 
 ## Play locally
 
@@ -16,6 +18,7 @@ Run `npm start` in this folder, then open the local address printed in the termi
 - **Mobile:** tap to select; hold, then sweep to box-select. Tap the ground to move or an enemy to attack. Drag empty ground to pan. Use **X** to clear selection and the Attack tile, then tap a destination to fight toward it.
 - **Shortcuts:** **F2** selects your army; **F3** selects idle workers; **Space** returns home. Select troops or buildings and hold **1–4** to assign a command group (or use **Ctrl+1–4**); press the key to select it and double press to center the camera. On mobile, hold one of the four group boxes at the bottom to assign selected troops or buildings, tap to select, and double tap to center the camera. **Q** launches rocks, **W** crumples paper, and **E** sweeps scissors after researching their upgrades. Each key affects only that troop type in a mixed squad. **S** stops selected units. **X** clears selection. **Esc** opens or closes the pause menu; **P** also pauses.
 - Select a desk to train twigs (**Q**); select a printer to train rock/paper/scissors (**Q/W/E**, with **R** also training scissors) or research upgrades. Select a twig, choose a building, then choose clear, currently visible ground to build. Square ability tiles show original illustrated icons, a prominent keycap, research lock, and cooldown. Mixed armies share a three-column ability grid (two columns on narrow phones). The command panel is capped at about a third of screen height, with internal scrolling and sticky Attack/Stop controls. Worker hit targets are wider for clicking and box selection without changing their movement footprint.
+- **Build plans:** a busy Twig finishes its current building before starting the next paid structure. Hold **Shift** while placing, or turn on **Queue builds** for repeated placement on desktop or touch; choose another building card to mix structure types. The **Build plan** lists active and queued jobs. **Done placing** exits targeting without clearing the plan. **Stop / S** or a new movement command releases worker assignments; paid blueprints stay ready for a selected Twig to resume.
 
 The battlefield fills the screen, with a compact selection panel and no top menu bar. Use the small pause button or **Esc** for the menu. The tutorial is available through **Learn the ropes** in the lobby, **How to play** in the pause menu, or **? / F1** during play.
 
@@ -33,7 +36,9 @@ All **21 layouts are 9600 × 6400 world pixels**, twice the previous width and h
 
 High ground grants an extra **100 world pixels of sight**. Low-ground troops cannot see uphill or through a raised shelf, while flying CDs can scout over it. These vision rules apply to every team, including bots. Elevation changes sight and access; it does not add a damage bonus.
 
-The battlefield and minimap distinguish three scouting states: unexplored ground is dark, previously explored terrain is dimmed, and currently visible ground is clear. Enemies, resource cans, projectiles, and effects require current vision. Hidden enemy units cannot be clicked or targeted; attack-move into the fog to scout and engage what your troops discover. Explored terrain stays remembered after your scouts leave. New construction requires current sight of its location.
+The battlefield and minimap distinguish three scouting states: unexplored ground is dark, previously explored terrain is dimmed, and currently visible ground is clear. Live enemies, resources, projectiles and effects require current vision. After sight is lost, observed units, buildings and resource cans leave desaturated **LAST SEEN** snapshots at their observed positions, including frozen observed health, construction, front production progress and occupied CD seats. These observations cannot be selected or targeted and never update from hidden activity. Revisit the entire remembered footprint to clear an observation that is no longer there. New construction requires current sight of its location.
+
+Real hits on your own units or buildings create red minimap pulses at the victim's location, including lingering pointer damage. Nearby hits cluster within 260 world pixels; up to five alerts remain visible for six simulation seconds after their latest hit. Alerts reveal no hidden attacker position and preserve ordinary minimap navigation.
 
 Static scenery and fog textures are cached, with the scenery cache capped at eight megapixels. Offscreen units are culled before sorting, and unchanged HUD values avoid repeated DOM writes. Squads share cached navigation clearance, invalidated when buildings change, and new routes are scheduled across frames. Vision refreshes eight times per second and the HUD checks ten times per second, while movement and drawing continue each animation frame. Resizing preserves the camera's world center.
 
@@ -63,6 +68,12 @@ Select a Twig and use **Wall / Z** to place **20-trash, 1,200-HP wall blocks**. 
 Walls block both armies' ground movement. Aircraft and projectiles pass over them. Individual blocks can be destroyed to open a breach; normal troops can use a single-block opening, while large Rolling Rocks need a wider opening. Select an owned block and choose **Dismantle block** to remove it without a refund. The artwork includes shaded cardboard layers, pencil rails, binder clips, metal couplers, team trim, construction progress and battle damage.
 
 Defensive mice now have **850 HP**, **360 range**, and fire **28 impact damage** every **1.25 seconds**, plus **6 damage per second for 3 seconds**. Their reinforced mounts and twin pointer launchers show the strength increase. Paper Airplanes now scout a **900-pixel radius**, with air vision across cliffs; Flying CDs retain their 520-pixel radius. Walls reveal only their immediate surroundings.
+
+## After the scrap
+
+Victory or elimination opens a frozen match report with **Overview, Economy, Army and Timeline** tabs. Compare all teams or focus on one; switch between gathering, spending, bank, difficulty bonus, army value, army size and worker charts. Exact chart values are available in tables. Production, losses, worker casualties, expansions and key events explain how the match developed.
+
+Accounting records actual successful payments, completed production, damage and losses. Physical worker gathering stays separate from Impossible bonuses, including its extra starting grant. Curves use real observations every five simulation seconds plus the endpoint. Long histories are progressively thinned while retaining the beginning and endpoint; exact cumulative totals, first expansion and army peaks remain intact. The report is available only once the match ends for you and can be reopened from the lobby with **View last match report** until another match starts.
 
 ## Artwork
 

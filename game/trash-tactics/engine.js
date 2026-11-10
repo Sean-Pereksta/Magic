@@ -3,6 +3,8 @@ import {enrichTerrain,terrainHeight,terrainSight} from './terrain.js';
 import {findPath} from './navigation.js';
 import {FRONTIER_MAPS,createFrontierBattlefield,finalizeFrontierMap} from './frontier-maps.js';
 import {BOT_CONFIGS,initializeBotState,updateBotResources,chooseBotTroop,updateBotStrategy} from './bot-strategies.js';
+import {initializeTelemetry,recordTelemetrySpend,recordTelemetryEvent,recordTelemetryDeath,updateTelemetry,getMatchReport} from './match-telemetry.js';
+import {updateScoutMemory,getRememberedEntities} from './scout-memory.js';
 import {WALL_TYPE,snapWallPoint,canPlaceWall,wallOverlapsPoint,wallSegmentBlocked,wallPointDistance2,wallBuildPosition,wallBuilderCanReach,structureBuildPosition} from './walls.js';
 import {WARFARE_TYPES,PRODUCTION,familyOf,isCombat,canTransport,familyCanDamage,initializeWarfare,useAbility,tickWarfare,tickSpecialist,specialistCombat,moveAircraft,updateDart,specialistBot} from './warfare.js';
 import {EXPANSION_MAPS,createBattlefield,initBattlefield,updateBattlefield,reverseConveyor,conveyorVelocity,dynamicBarrierBlocked,dynamicBarrierCrossed,divisionBarrierCrossed,divisionShotBlocked} from './battlefields.js';
@@ -119,7 +121,7 @@ export class Game {
     }
     const cell=40,cols=Math.ceil(this.width/cell),rows=Math.ceil(this.height/cell);
     this.fog={cell,cols,rows,revision:0,teams:this.teams.map(()=>({visible:new Uint8Array(cols*rows),explored:new Uint8Array(cols*rows)}))};
-    this._sightCache=new Map();this._visionDue=0;initBattlefield(this);this._updateVision();
+    this._sightCache=new Map();this._visionDue=0;initBattlefield(this);this._updateVision();initializeTelemetry(this,TYPES);
   }
   elevationAt(x,y){return terrainHeight(this.map,x,y);}
   _fogIndex(x,y){const {cell,cols,rows}=this.fog;return x>=0&&y>=0&&x<this.width&&y<this.height?Math.min(rows-1,Math.floor(y/cell))*cols+Math.min(cols-1,Math.floor(x/cell)):-1;}
@@ -146,11 +148,12 @@ export class Game {
       }
       const sight=teams[source.team];for(const index of footprint){sight.visible[index]=1;sight.explored[index]=1;}
     }
-    this._fogPopulation=this.entities.length;this._fogDirty=false;this._visionDue=this.time+.125;this.fog.revision++;
+    this._fogPopulation=this.entities.length;this._fogDirty=false;this._visionDue=this.time+.125;this.fog.revision++;updateScoutMemory(this);
   }
   _ensureVision(){if(this.fog&&(this._fogDirty||this._fogPopulation!==this.entities.length||this.time>=this._visionDue))this._updateVision();}
   canSee(team,x,y){this._ensureVision();const index=this._fogIndex(x,y);return index>=0&&!!this.fog.teams[team]?.visible[index];}
   isExplored(team,x,y){this._ensureVision();const index=this._fogIndex(x,y);return index>=0&&!!this.fog.teams[team]?.explored[index];}
+  getRememberedEntities(team=0){this._ensureVision();return getRememberedEntities(this,team);}
   isVisible(entity,team=0){
     if(!entity||entity.hp<=0||entity.transportedBy)return false;
     if(entity.team===team||this.canSee(team,entity.x,entity.y))return true;
@@ -172,7 +175,8 @@ export class Game {
     if(type==='mage'){e.mageCharges=2;e.mageRecharge=0;}
     this.entities.push(e);if(this._entityIndexSource===this.entities){this._entityIndex.set(e.id,e);this._entityIndexCount=this.entities.length;}this._fogDirty=true;if(t.building)this._collisionBuildings=null;return e;
   }
-  _event(type,details={}){this.onEvent({type,...details});}
+  _event(type,details={}){recordTelemetryEvent(this,type,details);this.onEvent({type,...details});}
+  getMatchReport(){return getMatchReport(this);}
   _effect(type,x,y,extra={}){const life=type==='death'?.7:type==='sweep'?.45:.5;this.effects.push({type,x,y,life,total:life,...extra});}
   getSupply(team){
     const own=this.entities.filter(e=>e.team===team&&e.hp>0);
@@ -190,6 +194,7 @@ export class Game {
     if(supply.used+(t.supply||0)>supply.cap)return fail('Supply full. Build a cabinet.');
     if(this.teams[b.team].trash<t.cost)return fail('Not enough trash.');
     this.teams[b.team].trash-=t.cost;
+    recordTelemetrySpend(this,b.team,'train',type,t.cost);
     b.queue.push({kind:'train',type,total:t.trainTime,remaining:t.trainTime});
     return ok();
   }
@@ -202,7 +207,7 @@ export class Game {
     if(this.entities.some(e=>e.team===b.team&&e.queue.some(q=>q.kind==='research'&&q.type===type)))return fail('That upgrade is already in the queue.');
     if(b.queue.length>=6)return fail('The production queue is full.');
     if(this.teams[b.team].trash<150)return fail('This upgrade costs 150 trash.');
-    this.teams[b.team].trash-=150;b.queue.push({kind:'research',type,total:14,remaining:14});return ok();
+    this.teams[b.team].trash-=150;recordTelemetrySpend(this,b.team,'research',type,150);b.queue.push({kind:'research',type,total:14,remaining:14});return ok();
   }
   isStructure(e){return !!TYPES[e.type]?.building;}
   canBuild(type,x,y,team=0){
@@ -215,8 +220,8 @@ export class Game {
     if(this.map.ramps.some(o=>x>o.x-r&&x<o.x+o.w+r&&y>o.y-r&&y<o.y+o.h+r))return false;
     return !this.entities.some(e=>e.hp>0&&(TYPES[e.type].building||e.type==='trash')&&(e.type==='wall'?wallPointDistance2(e,x,y)<(r+8)**2:Math.hypot(e.x-x,e.y-y)<e.r+r+8));
   }
-  build(workerIds,type,x,y){
-    let workers=workerIds.map(id=>this.getEntity(id)).filter(e=>e?.type==='twig');
+  build(workerIds,type,x,y,options={}){
+    let workers=[...new Set(workerIds)].map(id=>this.getEntity(id)).filter(e=>e?.type==='twig'&&!e.transportedBy);
     if(!workers.length)return fail('Select a twig to build.');
     const team=workers[0].team,t=TYPES[type];
     if(type==='wall')({x,y}=snapWallPoint(x,y));
@@ -225,30 +230,59 @@ export class Game {
     if(!this.canSee(team,x,y))return fail('Scout this ground before building here.');
     if(!this.canBuild(type,x,y,team))return fail('Leave space around buildings and trash cans.');
     if(this.teams[team].trash<t.cost)return fail('Not enough trash.');
+    const busy=w=>w.order.type==='build'&&this.getEntity(w.order.targetId)?.constructing;
+    const preserve=w=>!!options.queue||type==='wall'||this.getEntity(w.order.targetId)?.type==='wall'||!!w.buildQueue?.length;
     if(type==='wall'){workers=workers.filter(w=>w.team===team&&wallBuilderCanReach(this,{x,y},w));if(!workers.length)return fail('This block would leave a paid plan unreachable. Leave a gate or select a Twig on this side.');}
-    else if(this._hasWalls()){workers=workers.filter(w=>w.team===team&&structureBuildPosition(this,{type,x,y,r:t.r},w));if(!workers.length)return fail('No selected Twig can reach this construction site. Leave a gate or choose a worker on this side.');}
+    else if(this._hasWalls()||options.queue){workers=workers.filter(w=>w.team===team&&this._builderCanReachPlan(w,{type,x,y,r:t.r},preserve(w)));if(!workers.length)return fail('No selected Twig can reach every paid construction site. Leave a gate or choose a worker on this side.');}
+    workers=workers.filter(w=>w.team===team);
+    if(!workers.length)return fail('Select one of your own Twigs to build.');
+    const workload=w=>{
+      const jobs=this.getBuildQueue(w.id);let total=0,previous=w;
+      if(preserve(w))for(const job of jobs){total+=job.remaining+dist(previous,job)/TYPES.twig.speed;previous=job;}
+      return total+dist(previous,{x,y})/TYPES.twig.speed;
+    };
+    const w=workers.map(worker=>({worker,load:workload(worker)})).sort((a,b)=>a.load-b.load||a.worker.id-b.worker.id)[0].worker;
     this.teams[team].trash-=t.cost;
+    recordTelemetrySpend(this,team,'build',type,t.cost);
     const b=this._spawn(type,team,x,y,{constructing:t.buildTime,buildTotal:t.buildTime,hp:Math.round(t.hp*.2)});
     const moved=[];
     for(const u of this.entities)if(u.id!==b.id&&!TYPES[u.type].building&&u.type!=='trash'&&!TYPES[u.type].flying&&!u.transportedBy&&!u.leap&&(b.type==='wall'?wallOverlapsPoint(b,u.x,u.y,u.r,3):dist(u,b)<u.r+b.r+3)){const free=this._freePoint(u.x,u.y,u.r,moved);u.x=free.x;u.y=free.y;u.path=null;moved.push({...free,r:u.r});}
-    const busy=w=>w.order.type==='build'&&this.getEntity(w.order.targetId)?.constructing;
-    const w=workers.filter(e=>e.team===team).sort((a,b)=>((a.buildQueue?.length||0)+(busy(a)?1:0))-((b.buildQueue?.length||0)+(busy(b)?1:0))||Math.hypot(a.x-x,a.y-y)-Math.hypot(b.x-x,b.y-y))[0];
     let queued=false;
-    if(busy(w)&&(type==='wall'||this.getEntity(w.order.targetId)?.type==='wall'||w.buildQueue?.length)){
+    if(busy(w)&&preserve(w)){
       w.buildQueue??=[];w.wallBuildQueue=w.buildQueue;w.buildQueue.push(b.id);queued=true;
-    }else {this._releaseCan(w);w.order={type:'build',targetId:b.id};w.path=null;w.wallBuildPoint=null;}
+    }else {this._cancelBuildAssignments(w);this._releaseCan(w);w.order={type:'build',targetId:b.id};w.path=null;w.wallBuildPoint=null;}
     b.builderId=w.id;if(type==='wall')this._wallsChanged();this._effect('build',x,y,{team});return {...ok(),entityId:b.id,x,y,queued};
+  }
+  getBuildQueue(workerId){
+    const worker=this.getEntity(workerId);if(worker?.type!=='twig')return [];
+    const ids=[...(worker.order.type==='build'?[worker.order.targetId]:[]),...(worker.buildQueue||[])],seen=new Set(),jobs=[];
+    for(const id of ids){if(seen.has(id))continue;seen.add(id);const b=this.getEntity(id);if(!b?.constructing||b.team!==worker.team||b.builderId&&b.builderId!==worker.id)continue;
+      jobs.push({id:b.id,type:b.type,x:b.x,y:b.y,remaining:b.constructing,buildTotal:b.buildTotal,status:worker.order.type==='build'&&worker.order.targetId===id?'active':'queued',workerId:worker.id});
+    }return jobs;
+  }
+  _builderCanReachPlan(worker,proposed,preserve=true){
+    const probe={...proposed,hp:1,id:-1,queue:[]},geometry=Object.create(this);geometry.entities=[...this.entities,probe];geometry._collisionBuildings=null;geometry._navigation=null;
+    let source=worker;if(dist(source,probe)<source.r+probe.r+3)source={...worker,...geometry._freePoint(worker.x,worker.y,worker.r)};
+    const jobs=preserve?this.getBuildQueue(worker.id):[];
+    for(const job of [...jobs,probe]){const target=job.id===-1?probe:this.getEntity(job.id);if(!target)continue;const position=structureBuildPosition(geometry,target,source);if(!position)return false;source={...worker,...position};}
+    return true;
+  }
+  _cancelBuildAssignments(worker){
+    if(worker.type!=='twig')return;
+    const ids=[...(worker.order.type==='build'?[worker.order.targetId]:[]),...(worker.buildQueue||[])];
+    for(const id of ids){const b=this.getEntity(id);if(b?.builderId===worker.id)delete b.builderId;}
+    worker.buildQueue=[];worker.wallBuildQueue=worker.buildQueue;worker.wallBuildPoint=null;
   }
   _hasWalls(){if(this._wallSource!==this.entities||this._wallSourceLength!==this.entities.length){this._wallSource=this.entities;this._wallSourceLength=this.entities.length;this._wallPresent=this.entities.some(e=>e.type==='wall'&&e.hp>0);}return this._wallPresent;}
   _wallCrossed(ax,ay,bx,by,r){return this._hasWalls()&&this.entities.some(e=>e.type==='wall'&&e.hp>0&&wallSegmentBlocked(e,ax,ay,bx,by,r));}
   _wallsChanged(){this._wallSource=null;this._barrierRevision++;this._navigation=null;this._collisionBuildings=null;for(const e of this.entities){e.path=null;e.pathRefresh=0;e.detour=null;e.wallBuildPoint=null;}}
   _nextBuild(worker){
-    while(worker.buildQueue?.length){const target=this.getEntity(worker.buildQueue.shift());if(!target?.constructing)continue;target.builderId=worker.id;worker.order={type:'build',targetId:target.id};worker.path=null;worker.wallBuildPoint=null;return true;}
+    while(worker.buildQueue?.length){const target=this.getEntity(worker.buildQueue.shift());if(!target?.constructing||target.team!==worker.team||target.builderId&&target.builderId!==worker.id&&this.getEntity(target.builderId))continue;target.builderId=worker.id;worker.order={type:'build',targetId:target.id};worker.path=null;worker.wallBuildPoint=null;return true;}
     return false;
   }
   removeWall(id,team=0){
     const wall=this.getEntity(id);if(wall?.type!=='wall'||wall.team!==team)return fail('Choose one of your own wall blocks.');
-    wall.hp=0;this._wallsChanged();
+    wall._telemetryRemovalReason='dismantled';wall.hp=0;this._wallsChanged();
     for(const worker of this.entities){
       if(worker.type!=='twig')continue;
       if(worker.buildQueue){worker.buildQueue=worker.buildQueue.filter(targetId=>targetId!==id);worker.wallBuildQueue=worker.buildQueue;}
@@ -258,11 +292,16 @@ export class Game {
   }
 
   command(ids,order){
-    const units=ids.map(id=>this.getEntity(id)).filter(e=>e&&!TYPES[e.type].building&&e.type!=='trash'&&!e.transportedBy);
+    let units=ids.map(id=>this.getEntity(id)).filter(e=>e&&!TYPES[e.type].building&&e.type!=='trash'&&!e.transportedBy);
+    if(order.type==='build'){
+      const target=this.getEntity(order.targetId),builders=units.filter(e=>e.type==='twig'&&target?.team===e.team&&target.constructing&&structureBuildPosition(this,target,e)).sort((a,b)=>dist(a,target)-dist(b,target)||a.id-b.id);
+      if(!builders.length)return fail('No selected Twig can reach this unfinished friendly building.');units=[builders[0]];
+    }
     const moving=order.type==='move'||order.type==='attackMove';
     const cols=Math.ceil(Math.sqrt(units.length));
     const destinations=[];
     units.forEach((e,i)=>{
+      this._cancelBuildAssignments(e);
       this._releaseCan(e);e.path=null;e.detour=null;e.moveSample=null;e.goalProgress=null;e.combatTarget=null;e.formationGoal=null;
       if(e.crash?.diving)return;
       e.crash=null;e.aim=null;e.roll=null;e.shadow=null;delete e.pendingAbility;
@@ -279,6 +318,14 @@ export class Game {
         const can=this.getEntity(o.targetId);
         if(can?.type==='trash'&&can.amount>0){e.resourceId=can.id;e.workState=e.carrying?'toDesk':'toCan';e.order=o;}else e.order={type:'idle'};
       }else if(o.type==='gather')e.order={type:'move',x:o.x??e.x,y:o.y??e.y};
+      else if(o.type==='build'){
+        const target=this.getEntity(o.targetId),previous=this.getEntity(target.builderId);
+        if(previous?.type==='twig'&&previous.id!==e.id){
+          previous.buildQueue=(previous.buildQueue||[]).filter(id=>id!==target.id);previous.wallBuildQueue=previous.buildQueue;
+          if(previous.order.type==='build'&&previous.order.targetId===target.id&&!this._nextBuild(previous))previous.order={type:'idle'};
+        }
+        target.builderId=e.id;e.order=o;
+      }
       else if(o.type==='stop')e.order={type:'idle'};
       else e.order=o;
       if(e.divisionId)e.divisionSavedOrder={...e.order};
@@ -424,18 +471,19 @@ export class Game {
     this._updatePointers(dt);
     this._updateClickDamage();
     this._separate(dt);
-    for(const e of this.entities)if(e.hp<=0&&!e.deadHandled){if(e.type==='cd')this._unloadTransport(e,true);if(e.type==='wall')this._wallsChanged();e.deadHandled=true;this._releaseCan(e);const life=TYPES[e.type].building ? .7 : e.type==='rollingrock' ? 1.45 : 1.3;this._effect('death',e.x,e.y,{team:e.team,entityType:e.type,facing:e.facing||0,radius:e.r,seed:e.id,life,total:life});this._event('death',{entity:e});}
+    for(const e of this.entities)if(e.hp<=0&&!e.deadHandled){if(e.type==='cd')this._unloadTransport(e,true);if(e.type==='wall')this._wallsChanged();this._cancelBuildAssignments(e);e.deadHandled=true;this._releaseCan(e);const life=TYPES[e.type].building ? .7 : e.type==='rollingrock' ? 1.45 : 1.3;this._effect('death',e.x,e.y,{team:e.team,entityType:e.type,facing:e.facing||0,radius:e.r,seed:e.id,life,total:life});this._event('death',{entity:e});}
     this.entities=this.entities.filter(e=>e.hp>0);
     this._think-=dt;if(this._think<=0){this._think=configs[this.difficulty].think;for(let team=1;team<this.players;team++)if(!this.teams[team].eliminated)this._bot(team);}
     this._victoryCheck-=dt;if(this._victoryCheck<=0){
       this._victoryCheck=1;
       for(let team=0;team<this.players;team++)if(!this.teams[team].eliminated&&!this.entities.some(e=>e.team===team&&e.type==='desk')){
-        this.teams[team].eliminated=true;for(const e of this.entities)if(e.team===team)e.hp=0;
+        this.teams[team].eliminated=true;for(const e of this.entities)if(e.team===team&&e.hp>0){recordTelemetryDeath(this,e,'eliminated');this._cancelBuildAssignments(e);e.hp=0;}
         this._event('eliminated',{team});
       }
       const survivors=this.teams.map((t,i)=>t.eliminated?-1:i).filter(i=>i>=0);
       if(survivors.length===1){this.winner=survivors[0];this._event('victory',{winner:this.winner});}
     }
+    updateTelemetry(this);
   }
   _building(b,dt){
     if(b.constructing)return;
@@ -445,6 +493,7 @@ export class Game {
     b.queue.shift();
     if(q.kind==='research'){
       this.teams[b.team].upgrades[q.type]=true;
+      this._event('researchCompleted',{team:b.team,researchType:q.type});
       if(b.team===0)this._event('toast',{message:`${TYPES[q.type].label} ability ready! Select troops and use Special.`});
     }else{
       const p=TYPES[q.type].flying?{x:clamp(b.x+(b.team?-72:72),TYPES[q.type].r,this.width-TYPES[q.type].r),y:clamp(b.y+65,TYPES[q.type].r,this.height-TYPES[q.type].r)}:this._freePoint(b.x+(b.team?-72:72),b.y+65,TYPES[q.type].r);
@@ -522,14 +571,15 @@ export class Game {
     const order=e.order;
     if(order.type==='build'){
       const b=this.getEntity(order.targetId);
-      if(!b||!b.constructing){if(!this._nextBuild(e))e.order={type:'idle'};return;}
+      if(!b||!b.constructing||b.team!==e.team||b.builderId&&b.builderId!==e.id&&this.getEntity(b.builderId)){if(!this._nextBuild(e))e.order={type:'idle'};return;}
+      b.builderId=e.id;
       if(b.type==='wall'){
         if(!e.wallBuildPoint||e.wallBuildPoint.targetId!==b.id||this._blocked(e.wallBuildPoint.x,e.wallBuildPoint.y,e.r)){const p=wallBuildPosition(this,b,e);e.wallBuildPoint=p?{...p,targetId:b.id}:null;}
         const p=e.wallBuildPoint;if(!p)return;
         if(dist(e,p)>8){this._move(e,p.x,p.y,dt,6);return;}
       }else if(dist(e,b)>b.r+e.r+14){this._move(e,b.x,b.y,dt,b.r+e.r+10,b.id);return;}
       const before=b.constructing;b.constructing=Math.max(0,b.constructing-dt);b.hp=Math.min(b.maxHp,b.hp+b.maxHp*.8*dt/b.buildTotal);
-      if(before>0&&b.constructing===0){b.hp=Math.round(Math.min(b.maxHp,b.hp));this._effect('build',b.x,b.y,{team:b.team});if(b.team===0)this._event('toast',{message:`${TYPES[b.type].label} complete.`});if(!this._nextBuild(e)){const can=this._chooseCan(e);if(can){e.order={type:'gather',targetId:can.id};e.resourceId=can.id;e.workState='toCan';}else e.order={type:'idle'};}
+      if(before>0&&b.constructing===0){b.hp=Math.round(Math.min(b.maxHp,b.hp));delete b.builderId;this._effect('build',b.x,b.y,{team:b.team});this._event('buildingCompleted',{entity:b,builderId:e.id});if(b.team===0)this._event('toast',{message:`${TYPES[b.type].label} complete.`});if(!this._nextBuild(e)){const can=this._chooseCan(e);if(can){e.order={type:'gather',targetId:can.id};e.resourceId=can.id;e.workState='toCan';}else e.order={type:'idle'};}
         if(b.type==='desk'&&b.team>0){const nearbyCans=this.entities.filter(c=>c.type==='trash'&&c.amount>0&&dist(c,b)<440).sort((a,c)=>dist(a,b)-dist(c,b));const transfer=this.entities.filter(w=>w.type==='twig'&&w.team===b.team&&w.order.type==='gather').sort((a,c)=>dist(a,b)-dist(c,b)).slice(0,3);transfer.forEach((w,i)=>{const c=nearbyCans[i%nearbyCans.length];if(c)this.command([w.id],{type:'gather',targetId:c.id});});}
       }
       return;

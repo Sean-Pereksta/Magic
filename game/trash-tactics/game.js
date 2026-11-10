@@ -2,6 +2,8 @@ import {Game,TYPES,isCombat,canTransport,snapWallPoint,layoutMap} from './engine
 import {Renderer,drawIcon} from './render.js';
 import {abilityIcon} from './ability-icons.js';
 import {MAP_BRIEFS,DIFFICULTY_BRIEFS,paintBattlefieldPreview} from './skirmish-menu.js';
+import {recordAttackAlert} from './minimap-alerts.js';
+import {renderMatchReport} from './match-report.js';
 
 const $=id=>document.getElementById(id), canvas=$('world');
 const COMBAT=['rock','paper','scissors'], BUILDINGS=['desk','cabinet','printer','cdreader','mouse','workshop','laboratory','wall'];
@@ -33,7 +35,7 @@ Object.assign(descriptions,{
  rollingrock:'Heavy Rock juggernaut. Charges in parallel lanes and knocks troops aside. Paper stops its charge.',
  shears:'Scissors assassin. Draw a flanking route for a rapid cutting dash. Rocks are immune; terrain and barriers stop the dash.'
 });
-let routePoints=[],routeDrawing=false;
+let routePoints=[],routeDrawing=false,queueBuildMode=false,lastReport=null,reportCleanup=null;
 let game,renderer, selected=new Set(),mode=null,abilityType=null,pointer={x:0,y:0},drag=null;
 let paused=false,started=false,inLobby=true,chosenMap='desktop',chosenDifficulty='normal',chosenPlayers=2;
 let groups={},lastGroup={key:'',at:0},lastFrame=performance.now(),uiTick=0,signature='',endShown=false,toastTimeout;
@@ -57,6 +59,7 @@ function sound(kind='click'){
 function updateSound(){ $('soundButton').textContent=muted?'♪̸':'♫';$('soundButton').setAttribute('aria-pressed',String(!muted));$('soundButton').title=muted?'Enable sound':'Mute sound';}
 function toast(message){if(!message)return;$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>$('toast').hidden=true,3200);}
 function onEvent(e){
+ if(e.type==='hit'&&game)recordAttackAlert(game,e);
  if(e.type==='toast'&&(!('team'in e)||e.team===0))toast(e.message);
  if(e.type==='hit'&&!paused&&!inLobby&&(!e.target||e.target.team===0||visibleEntity(e.target)))sound('hit');
  if(e.type==='deposit'&&e.team===0&&Math.random()<.13&&!paused&&!inLobby)sound('deposit');
@@ -68,7 +71,7 @@ function updateLobbyBrief(){
  $('mapBriefPreview').setAttribute('aria-label',brief.name+': '+brief.tag+'. '+map.expansions.length+' expansion fields.');paintBattlefieldPreview($('mapBriefPreview'),map);
 }
 function updateDifficultyHint(){const hint=$('difficultyHint');hint.textContent=DIFFICULTY_BRIEFS[chosenDifficulty];hint.classList.toggle('cheating',chosenDifficulty==='impossible');}
-function resetGame(){cancelGroupPresses();lastGroup={key:'',at:0};game=new Game({map:chosenMap,difficulty:chosenDifficulty,players:chosenPlayers,onEvent});selected.clear();groups={};mode=null;abilityType=null;drag=null;mouseHover=null;endShown=false;signature='';if(renderer){renderer.game=game;renderer.resize();}else renderer=new Renderer(canvas,game);renderer.camera.zoom=window.innerWidth<761?.72:.94;const d=game.entities.find(e=>e.team===0&&e.type==='desk');pointer={x:d.x,y:d.y};renderer.centerOn(d.x,d.y+40);$('matchLabel').textContent=names[chosenMap].toUpperCase()+' · '+chosenPlayers+' PLAYERS · '+chosenDifficulty.toUpperCase();$('operationName').textContent=MAP_BRIEFS[chosenMap].tag;updateUI(true);}
+function resetGame(){reportCleanup?.();reportCleanup=null;lastReport=null;queueBuildMode=false;$('lastReportButton').hidden=true;$('matchReport').innerHTML='';cancelGroupPresses();lastGroup={key:'',at:0};game=new Game({map:chosenMap,difficulty:chosenDifficulty,players:chosenPlayers,onEvent});selected.clear();groups={};mode=null;abilityType=null;drag=null;mouseHover=null;endShown=false;signature='';if(renderer){renderer.game=game;renderer.resize();}else renderer=new Renderer(canvas,game);renderer.camera.zoom=window.innerWidth<761?.72:.94;const d=game.entities.find(e=>e.team===0&&e.type==='desk');pointer={x:d.x,y:d.y};renderer.centerOn(d.x,d.y+40);$('matchLabel').textContent=names[chosenMap].toUpperCase()+' · '+chosenPlayers+' PLAYERS · '+chosenDifficulty.toUpperCase();$('operationName').textContent=MAP_BRIEFS[chosenMap].tag;updateUI(true);}
 function start(){sound();resetGame();started=true;inLobby=false;paused=false;lastFrame=performance.now();$('lobby').hidden=true;$('pauseOverlay').hidden=true;$('endOverlay').hidden=true;const desk=game.entities.find(e=>e.team===0&&e.type==='desk');selected=new Set([desk.id]);updateUI(true);toast('F2 selects your army. A + click attacks; Q / W / E activate troop abilities.');canvas.focus({preventScroll:true});}
 function setMode(next,type=null){routePoints=[];routeDrawing=false;mode=next;abilityType=type;const label=mode==='wall'?'Place connected walls · 20 trash · 1,200 HP · tap repeatedly to extend':BUILDINGS.includes(mode)?`Place ${TYPES[mode].label.toLowerCase()} · choose clear ground`:mode==='drop'?'Drop troops · tap a destination for your selected CDs':mode==='ability'?`${type?skills[type].name:'Special abilities'} · choose a target or direction`:mode==='specialist'?`${specialistSkills[type].name} · ${specialistSkills[type].route?'draw a route or tap waypoints, then Finish route':specialistSkills[type].desc}${['snipe','forcefield','division'].includes(type)?' · moves into range when needed':''}`:mode==='attack'?'Attack move · choose a spot to fight toward':'';$('modeBanner').textContent=label+(label?' · X cancel · Esc menu':'');$('modeBanner').hidden=!label;canvas.style.cursor=next?'crosshair':'default';updateUI(true);}
 function unselect(){selected.clear();setMode(null);sound('select');}
@@ -92,7 +95,7 @@ function nextProductionBuilding(buildings){
 }
 function trainSelected(type,announce=false){const b=nextProductionBuilding(productionSelection());return result(b?game.train(b.id,type):{ok:false,reason:'Select matching production buildings first.'},announce?TYPES[type].label+' added to the queue.':null);}
 function researchSelected(type){const b=nextProductionBuilding(productionSelection().filter(e=>e.type==='printer'));return result(b?game.research(b.id,type):{ok:false,reason:'Select a printer first.'},skills[type].name+' research queued.');}
-function issue(world,hit=null,forceAttack=false){
+function issue(world,hit=null,forceAttack=false,keepPlacement=false){
  const own=ownSelected();if(!own.length)return;
  if(hit&&!visibleEntity(hit))hit=null;
  if(mode==='specialist'){
@@ -104,11 +107,18 @@ function issue(world,hit=null,forceAttack=false){
   return;
  }
  if(mode==='drop'){if(result(game.dropTransports(own.filter(e=>e.type==='cd').map(e=>e.id),world.x,world.y),'CDs heading to the drop zone.')){renderer.marker={...world,type:'drop',life:.8};setMode(null);}return;}
- if(BUILDINGS.includes(mode)){const site=mode==='wall'?snapWallPoint(world.x,world.y):world;if(game.canSee&&!game.canSee(0,site.x,site.y)){toast('Scout this ground before building here.');return;}const placed=game.build(own.filter(e=>e.type==='twig').map(e=>e.id),mode,site.x,site.y);if(result(placed,mode==='wall'?(placed.queued?'Wall queued. Your twig will finish its current block first.':'Wall started. Tap the next grid space to extend it.'):'Building started. Your twig will get right to it.')){renderer.marker={...site,type:'move',life:.8};if(mode!=='wall')setMode(null);}return;}
+ if(BUILDINGS.includes(mode)){
+  const type=mode,site=type==='wall'?snapWallPoint(world.x,world.y):world;
+  if(game.canSee&&!game.canSee(0,site.x,site.y)){toast('Scout this ground before building here.');return;}
+  const placed=game.build(own.filter(e=>e.type==='twig').map(e=>e.id),type,site.x,site.y,{queue:true});
+  if(result(placed,placed.queued?TYPES[type].label+' queued. Your twig will finish its current building first.':TYPES[type].label+' started.')){
+   renderer.marker={...site,type:'move',life:.8};if(type!=='wall'&&!queueBuildMode&&!keepPlacement)setMode(null);
+  }return;
+ }
  if(mode==='ability'){const ids=own.filter(e=>!abilityType||e.type===abilityType).map(e=>e.id);if(result(game.ability(ids,world.x,world.y))){sound('ability');setMode(null);}return;}
  const troops=own.filter(e=>!TYPES[e.type].building),buildings=own.filter(e=>TYPES[e.type].building);
  if(!mode&&hit?.team===0&&hit.type==='cd'&&troops.some(e=>canTransport(e.type))){if(result(game.loadTransport(troops.map(e=>e.id),[hit.id]),'Troops boarding the CD. Six seats; no twigs.'))selectEntities([hit]);return;}
- if(!mode&&hit?.team===0&&hit.constructing){const worker=troops.filter(e=>e.type==='twig').sort((a,b)=>Math.hypot(a.x-hit.x,a.y-hit.y)-Math.hypot(b.x-hit.x,b.y-hit.y))[0];if(worker){hit.builderId=worker.id;game.command([worker.id],{type:'build',targetId:hit.id});sound();toast('Your twig is finishing construction.');return;}}
+ if(!mode&&hit?.team===0&&hit.constructing){const workers=troops.filter(e=>e.type==='twig');if(workers.length){if(result(game.command(workers.map(w=>w.id),{type:'build',targetId:hit.id}),'Your twig is finishing construction.'))sound();return;}}
  if(!troops.length){for(const b of buildings)if(['desk','printer','cdreader','workshop','laboratory'].includes(b.type))b.rally={x:world.x,y:world.y,targetId:hit?.type==='trash'?hit.id:null};toast('Rally point set. New units will head here.');renderer.marker={...world,type:'move',life:.8};return;}
  let order;if((mode==='attack'||forceAttack)&&hit&&(hit.team>0||hit.type==='staplergate'))order={type:'attack',targetId:hit.id,...world};else if(mode==='attack'||forceAttack)order={type:'attackMove',...world};else if(hit&&(hit.team>0||hit.type==='staplergate'))order={type:'attack',targetId:hit.id,...world};else if(hit?.type==='trash')order={type:'gather',targetId:hit.id,...world};else order={type:'move',...world};
  const ordered=order.type==='attack'?troops.filter(e=>game.canTarget(e,hit)):troops;
@@ -154,6 +164,11 @@ function productionQueueHtml(buildings){
  if(buildings.length===1)return queueHtml(buildings[0]);
  return `<div class="production production-group"><div class="section-label">GROUP QUEUES <small>${buildings.reduce((n,b)=>n+b.queue.length,0)} TOTAL</small></div><p class="action-note">${buildings.map((b,i)=>`${TYPES[b.type].label} ${i+1} · ${b.constructing?'Building · '+Math.ceil(b.constructing)+'s':b.queue.length+' / 6 queued'}`).join('<br>')}</p></div>`;
 }
+function workerPlanHtml(workers){
+ const jobs=workers.flatMap(w=>game.getBuildQueue?.(w.id)||[]);if(!jobs.length)return '';
+ const active=jobs.filter(j=>j.status==='active').length,queued=jobs.length-active;
+ return `<div class="build-plan" data-workers="${workers.map(w=>w.id).join(',')}"><div class="build-plan-heading"><b>BUILD PLAN</b><span>${active} active · ${queued} queued</span></div><div class="build-job-list">${jobs.map((j,i)=>`<div class="build-job ${j.status==='active'?'active':''}" title="${TYPES[j.type].label}: ${j.status==='active'?'building, '+Math.ceil(j.remaining)+' seconds left':'queued and paid'}"><em>${i+1}</em>${icon(j.type,36)}<b>${TYPES[j.type].label}</b><small>${j.status==='active'?Math.ceil(j.remaining)+'s':'Queued'}</small></div>`).join('')}</div><p class="build-plan-note">Stop / S clears worker assignments. Paid blueprints stay ready to resume.</p></div>`;
+}
 function setText(element,value){if(element.textContent!==value)element.textContent=value;}
 function updateUI(force=false){
  const supply=game.getSupply(0),team=game.teams[0];setText($('trashCount'),Math.floor(team.trash).toLocaleString());setText($('supplyCount'),`${supply.used} / ${supply.cap}`);$('supplyCount').style.color=supply.used>=supply.cap?'#ca7555':'';
@@ -163,7 +178,7 @@ function updateUI(force=false){
  const own=ownSelected(),e=own[0],structures=own.filter(e=>TYPES[e.type].building),units=own.filter(e=>!TYPES[e.type].building),workers=units.filter(e=>e.type==='twig'),combat=units.filter(e=>isCombat(e.type)),cds=units.filter(e=>e.type==='cd');
  const production=productionSelection(own),productionType=production[0]?.type;
  document.querySelector('.sidebar').classList.toggle('empty',!own.length);document.querySelector('.sidebar').classList.toggle('narrow',own.length===1&&e.type==='cabinet');document.querySelector('.sidebar').dataset.selection=own.length>1?(workers.length===own.length?'twig':'squad'):(e?.type||'none');
- const sig=own.map(e=>[e.id,Math.ceil(e.hp),Math.ceil(e.constructing||0),Math.ceil(e.abilityCooldown||0),e.pendingAbility?.name,e.cargo?.join(','),e.mageCharges,Math.ceil(e.mageRecharge||0),e.aim?.remaining,e.crash?.diving,e.buildQueue?.join(','),e.order?.targetId,e.queue?.map(q=>q.type+Math.ceil(q.remaining)).join(',')].join(':')).join('|')+JSON.stringify(team.upgrades)+mode+abilityType+routePoints.length;
+ const sig=own.map(e=>[e.id,Math.ceil(e.hp),Math.ceil(e.constructing||0),Math.ceil(e.abilityCooldown||0),e.pendingAbility?.name,e.cargo?.join(','),e.mageCharges,Math.ceil(e.mageRecharge||0),e.aim?.remaining,e.crash?.diving,e.buildQueue?.join(','),e.type==='twig'?(game.getBuildQueue?.(e.id)||[]).map(j=>j.id+':'+Math.ceil(j.remaining)).join(','):'',e.order?.targetId,e.queue?.map(q=>q.type+Math.ceil(q.remaining)).join(',')].join(':')).join('|')+JSON.stringify(team.upgrades)+mode+abilityType+routePoints.length+queueBuildMode;
  if(!force&&sig===signature)return;signature=sig;
  $('clearButton').disabled=!own.length;
  let info='',actions='',roster='';
@@ -181,7 +196,11 @@ function updateUI(force=false){
   else if(e.type==='cabinet'&&own.length===1)actions='<div class="section-label">A PLACE FOR EVERYONE</div><p class="action-note">Your cabinet gives you 8 more supply. Select a twig to build more and grow your army.</p>';
   if(e.type==='mouse'&&own.length===1&&!e.constructing)actions=`<div class="defense-status"><strong>Pointer defense · reinforced</strong><span>${TYPES.mouse.hp} HP · ${TYPES.mouse.range} range</span><small>${TYPES.mouse.impactDamage} impact every ${TYPES.mouse.shotInterval}s + ${TYPES.mouse.clickDps} damage/s for ${TYPES.mouse.clickDuration}s</small></div>`;
   if(e.type==='wall'&&own.length===1)actions+='<div class="fortification-status"><strong>Connected ground barrier</strong><span>1,200 HP · 20 trash per block</span><small>Build adjacent blocks with a Twig. Aircraft fly over.</small><button class="command-button" data-action="dismantleWall" title="Remove this owned block to open a passage. No trash refund.">Dismantle block</button></div>';
-  if(workers.length){const pending=workers.reduce((n,w)=>n+(w.buildQueue?.length||0)+(game.getEntity(w.order?.targetId)?.type==='wall'?1:0),0);if(mode==='wall')actions+=`<div class="wall-controls"><span>Tap to extend · ${pending} ${pending===1?'block':'blocks'} planned</span><button class="command-button" data-action="cancelTarget">✓ Done placing</button></div>`;actions+=`<div class="section-label">BUILD YOUR BASE <small>CHOOSE + PLACE</small></div><div class="action-grid">${actionCard('desk','D','build')}${actionCard('cabinet','C','build')}${actionCard('wall','Z','build')}${actionCard('printer','B','build')}${actionCard('cdreader','V','build')}${actionCard('mouse','M','build')}${actionCard('workshop','N','build')}${actionCard('laboratory','O','build')}</div><p class="action-note">Choose a building, then a clear spot. Walls snap together; keep tapping to extend them.</p>`;}
+  if(workers.length){
+   actions+=`<div class="build-controls"><button class="command-button queue-toggle ${queueBuildMode?'active':''}" data-action="toggleBuildQueue" aria-pressed="${queueBuildMode}" title="Keep building placement active for multiple structures. Shift-click also places another. Busy workers finish their existing jobs first.">Queue builds <small>${queueBuildMode?'On':'Shift'}</small></button>${BUILDINGS.includes(mode)?'<button class="command-button" data-action="cancelTarget">Done placing</button>':''}</div>`;
+   actions+=workerPlanHtml(workers);
+   actions+=`<div class="section-label">BUILD YOUR BASE <small>CHOOSE + PLACE</small></div><div class="action-grid">${actionCard('desk','D','build')}${actionCard('cabinet','C','build')}${actionCard('wall','Z','build')}${actionCard('printer','B','build')}${actionCard('cdreader','V','build')}${actionCard('mouse','M','build')}${actionCard('workshop','N','build')}${actionCard('laboratory','O','build')}</div><p class="action-note">Choose and place buildings. Shift or Queue builds keeps placement active; busy workers finish jobs in order.</p>`;
+  }
   if(cds.length){const passengers=cds.reduce((n,e)=>n+(e.cargo?.length||0),0);actions+=`<div class="transport-manifest" role="status"><strong>${passengers} / ${cds.length*6} aboard</strong><span>${cds.length} ${cds.length===1?'CD':'CDs'} · No twigs</span><div class="transport-seats">${cds.map(cd=>`<span title="CD ${cd.id}: ${cd.cargo?.length||0} / 6 troops">${Array.from({length:6},(_,i)=>`<i class="${i<(cd.cargo?.length||0)?'occupied':''}"></i>`).join('')}</span>`).join('')}</div></div><div class="command-grid transport-commands"><button class="command-button" data-action="load" title="Board the nearest combat troops into each selected CD"><span class="command-symbol">↥</span> Load <small>L</small></button><button class="command-button ${mode==='drop'?'active':''}" data-action="drop" ${!passengers?'disabled':''} title="Fly to a chosen location and drop all passengers"><span class="command-symbol">↧</span> Drop <small>U</small></button></div>`;}
   if(e.type==='station'&&own.length===1)actions+='<button class="command-button" data-action="reverse">⇄ Reverse conveyor</button><p class="action-note">Keep ground troops nearby to hold this control station.</p>';
   if(units.length){
@@ -196,15 +215,16 @@ function updateUI(force=false){
   }
   if(mode==='specialist'&&specialistSkills[abilityType]?.route)actions+=`<div class="route-controls"><b>${routePoints.length} route points</b><button class="command-button" data-action="finishRoute">✓ Finish route <small>Enter</small></button><button class="command-button" data-action="cancelTarget">× Cancel</button></div>`;
  }
- $('selectionInfo').innerHTML=info;$('actionContent').innerHTML=actions;$('unitRoster').innerHTML=roster;icons($('selectionInfo'));icons($('actionContent'));icons($('unitRoster'));
+ const oldPlan=$('actionContent').querySelector('.build-plan'),planScroll=oldPlan?.dataset.workers===workers.map(w=>w.id).join(',')?oldPlan.querySelector('.build-job-list')?.scrollLeft||0:0;
+ $('selectionInfo').innerHTML=info;$('actionContent').innerHTML=actions;$('unitRoster').innerHTML=roster;icons($('selectionInfo'));icons($('actionContent'));icons($('unitRoster'));const planList=$('actionContent').querySelector('.build-job-list');if(planList)planList.scrollLeft=planScroll;
 }
-$('actionContent').addEventListener('click',evt=>{const b=evt.target.closest('[data-action]');if(!b||b.disabled||inLobby||paused)return;const own=ownSelected(),e=own[0],type=b.dataset.type;switch(b.dataset.action){case 'train':trainSelected(type,true);break;case 'research':researchSelected(type);break;case 'build':setMode(type);sound();break;case 'load':loadSelected();break;case 'drop':chooseDrop();break;case 'attack':chooseAttack();break;case 'stop':game.command([...selected],{type:'stop'});setMode(null);sound();break;case 'ability':activateAbility(type);break;case 'specialist':activateSpecialist(type);break;case 'finishRoute':finishRoute();break;case 'cancelTarget':setMode(null);break;case 'dismantleWall':if(e)result(game.removeWall(e.id,0),'Wall dismantled. The passage is open.');break;case 'reverse':if(e)result(game.reverseConveyor(e.id,0),'Conveyor reversed.');break;case 'selectDesk':case 'selectPrinter':{const target=game.entities.find(t=>t.team===0&&t.hp>0&&t.type===(b.dataset.action==='selectDesk'?'desk':'printer'));if(target){selectEntities([target]);renderer.centerOn(target.x,target.y);}break;}}});
+$('actionContent').addEventListener('click',evt=>{const b=evt.target.closest('[data-action]');if(!b||b.disabled||inLobby||paused)return;const own=ownSelected(),e=own[0],type=b.dataset.type;switch(b.dataset.action){case 'train':trainSelected(type,true);break;case 'research':researchSelected(type);break;case 'build':setMode(type);sound();break;case 'toggleBuildQueue':queueBuildMode=!queueBuildMode;updateUI(true);sound();break;case 'load':loadSelected();break;case 'drop':chooseDrop();break;case 'attack':chooseAttack();break;case 'stop':game.command([...selected],{type:'stop'});setMode(null);sound();break;case 'ability':activateAbility(type);break;case 'specialist':activateSpecialist(type);break;case 'finishRoute':finishRoute();break;case 'cancelTarget':setMode(null);break;case 'dismantleWall':if(e)result(game.removeWall(e.id,0),'Wall dismantled. The passage is open.');break;case 'reverse':if(e)result(game.reverseConveyor(e.id,0),'Conveyor reversed.');break;case 'selectDesk':case 'selectPrinter':{const target=game.entities.find(t=>t.team===0&&t.hp>0&&t.type===(b.dataset.action==='selectDesk'?'desk':'printer'));if(target){selectEntities([target]);renderer.centerOn(target.x,target.y);}break;}}});
 $('unitRoster').addEventListener('click',e=>{const b=e.target.closest('[data-unit]');if(b){const unit=game.getEntity(Number(b.dataset.unit));if(unit)selectEntities([unit],e.shiftKey);}});
 // Selection padding is independent from collision and navigation footprints.
 function workerSelectionBounds(e){const zoom=renderer.camera.zoom;return {x:e.x,y:e.y-5,w:Math.max(e.r+17,26/zoom),h:Math.max(e.r+21,30/zoom)};}
 function hitTest(world){const distance=e=>Math.hypot(e.x-world.x,e.y-(TYPES[e.type].flying?27:0)-world.y);return game.entities.filter(e=>{if(e.hp<=0||e.transportedBy||!visibleEntity(e))return false;if(e.type==='twig'){const b=workerSelectionBounds(e);return Math.abs(world.x-b.x)<=b.w&&Math.abs(world.y-b.y)<=b.h;}return distance(e)<Math.max(e.r+10,22/renderer.camera.zoom);}).sort((a,b)=>(a.type==='cd'?-1:TYPES[a.type].building?1:0)-(b.type==='cd'?-1:TYPES[b.type].building?1:0)||distance(a)-distance(b))[0];}
 function localPoint(e){const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,width:r.width,height:r.height};}
-function usable(){return started&&!inLobby&&!paused&&game.winner===null&&$('guide').hidden;}
+function usable(){return started&&!inLobby&&!paused&&!endShown&&!game.teams[0].eliminated&&game.winner===null&&$('guide').hidden;}
 // Groups retain both troops and buildings; transported troops recall their carriers.
 function groupUnits(key){
  const members=(groups[key]||[]).map(id=>game.getEntity(id)).filter(e=>e&&e.team===0&&e.hp>0&&TYPES[e.type]&&e.type!=='trash');
@@ -293,7 +313,7 @@ canvas.addEventListener('pointerdown',e=>{
  e.preventDefault();canvas.focus({preventScroll:true});if(!usable())return;
  canvas.setPointerCapture(e.pointerId);const point=localPoint(e);pointer=renderer.screenToWorld(e.clientX,e.clientY);
  if(e.pointerType==='touch'){touches.set(e.pointerId,{x:e.clientX,y:e.clientY});if(touches.size>=2){clearTimeout(pointerState?.hold);drag=null;pointerState=null;const p=[...touches.values()];pinch={distance:Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y),x:(p[0].x+p[1].x)/2,y:(p[0].y+p[1].y)/2};return;}}
- if(e.button===2){issue(pointer,hitTest(pointer));return;}
+ if(e.button===2){issue(pointer,hitTest(pointer),false,e.shiftKey);return;}
  if(mode==='specialist'&&abilityType==='shadowpath'&&e.button===0){routeDrawing=true;if(!routePoints.length){const unit=ownSelected().find(e=>e.type==='shears');if(unit)routePoints.push({x:unit.x,y:unit.y});}routePoints.push({...pointer});}
  pointerState={id:e.pointerId,button:e.button,start:point,last:point,startedAt:performance.now(),touch:e.pointerType==='touch',selecting:false,panning:e.button===1||keys.has(' '),moved:false,hold:null};
  if(pointerState.touch&&!mode)pointerState.hold=setTimeout(()=>{if(pointerState&&!pointerState.moved&&!pinch){pointerState.selecting=true;drag={x1:point.x,y1:point.y,x2:point.x,y2:point.y};sound('select');}},320);
@@ -316,7 +336,7 @@ function pointerUp(e){
  if(routeDrawing&&mode==='specialist'&&abilityType==='shadowpath'){routeDrawing=false;const end=renderer.screenToWorld(e.clientX,e.clientY);if(Math.hypot(end.x-routePoints.at(-1).x,end.y-routePoints.at(-1).y)>4)routePoints.push(end);if(s.moved)finishRoute();else updateUI(true);return;}
  if(s.selecting&&s.moved){finishDrag(e.shiftKey);return;}if(s.panning||s.moved){drag=null;return;}
  drag=null;const w=renderer.screenToWorld(e.clientX,e.clientY),hit=hitTest(w);
- if(mode){issue(w,hit);return;}
+ if(mode){issue(w,hit,false,e.shiftKey);return;}
  if(!e.shiftKey&&hit?.team===0&&hit.type==='cd'&&ownSelected().some(e=>isCombat(e.type))){issue(w,hit);return;}
  if(s.touch&&hit?.team===0&&hit.constructing&&ownSelected().some(e=>e.type==='twig')){issue(w,hit);return;}
  if(hit?.team===0){selectEntities([hit],e.shiftKey);return;}
@@ -375,19 +395,28 @@ window.addEventListener('blur',()=>{keys.clear();cancelGroupPresses();clearTimeo
 function togglePause(){if(inLobby||!started||game.winner!==null||endShown)return;cancelGroupPresses();mouseHover=null;paused=!paused;$('pauseOverlay').hidden=!paused;$('pauseButton').textContent=paused?'▶':'Ⅱ';keys.clear();sound();}
 function openGuide(){if(!$('guide').hidden)return;cancelGroupPresses();mouseHover=null;minimapDrag=null;guideWasPaused=paused;paused=true;$('guide').hidden=false;icons($('guide'));sound();}
 function closeGuide(){$('guide').hidden=true;paused=guideWasPaused;sound();}
-function openLobby(){cancelGroupPresses();mouseHover=null;minimapDrag=null;if(started&&game.winner===null){$('resumeFromLobby').hidden=false;}else $('resumeFromLobby').hidden=true;inLobby=true;paused=true;$('pauseOverlay').hidden=true;$('lobby').hidden=false;setMode(null);sound();}
+function openLobby(){cancelGroupPresses();mouseHover=null;minimapDrag=null;if(started&&!endShown&&!game.teams[0].eliminated&&game.winner===null){$('resumeFromLobby').hidden=false;}else $('resumeFromLobby').hidden=true;inLobby=true;paused=true;$('pauseOverlay').hidden=true;$('lobby').hidden=false;setMode(null);sound();}
+$('lastReportButton').addEventListener('click',()=>{if(lastReport)$('endOverlay').hidden=false;});
+$('reportLobbyButton').addEventListener('click',()=>{$('endOverlay').hidden=true;openLobby();});
 $('startButton').addEventListener('click',start);$('playAgain').addEventListener('click',()=>{$('endOverlay').hidden=true;openLobby();});
 $('mapSelect').addEventListener('change',e=>{const id=e.currentTarget.value;if(!Object.hasOwn(MAP_BRIEFS,id))return;chosenMap=id;updateLobbyBrief();sound();});
 document.querySelectorAll('[data-difficulty]').forEach(b=>b.addEventListener('click',()=>{chosenDifficulty=b.dataset.difficulty;document.querySelectorAll('[data-difficulty]').forEach(x=>x.classList.toggle('active',x===b));updateDifficultyHint();sound();}));
 document.querySelectorAll('[data-players]').forEach(b=>b.addEventListener('click',()=>{chosenPlayers=Number(b.dataset.players);document.querySelectorAll('[data-players]').forEach(x=>x.classList.toggle('active',x===b));updateLobbyBrief();sound();}));
-$('resumeFromLobby').addEventListener('click',()=>{inLobby=false;paused=false;$('lobby').hidden=true;sound();});
+$('resumeFromLobby').addEventListener('click',()=>{if(endShown||game.teams[0].eliminated||game.winner!==null)return;inLobby=false;paused=false;$('lobby').hidden=true;sound();});
 for(const id of ['guideButton','lobbyGuide','pauseGuide'])$(id).addEventListener('click',openGuide);for(const id of ['closeGuide','guideDone'])$(id).addEventListener('click',closeGuide);
 for(const id of ['pauseButton','resumeButton','compactMenu'])$(id).addEventListener('click',togglePause);for(const id of ['menuButton','brandButton','newMatchButton'])$(id).addEventListener('click',openLobby);
 $('soundButton').addEventListener('click',()=>{muted=!muted;try{localStorage.setItem('trash-tactics-muted',String(muted));}catch{}updateSound();if(!muted)sound();});
 $('pauseSound').addEventListener('click',()=>{$('soundButton').click();$('pauseSound').textContent=muted?'Sound: off':'Sound: on';});
 $('homeButton').addEventListener('click',centerHome);$('clearButton').addEventListener('click',unselect);$('armyButton').addEventListener('click',selectArmy);$('workersButton').addEventListener('click',selectWorkers);$('zoomIn').addEventListener('click',()=>renderer.zoomAt(1.16));$('zoomOut').addEventListener('click',()=>renderer.zoomAt(1/1.16));
 window.addEventListener('resize',()=>{mouseHover=null;renderer.resize();});
-function endMatch(){cancelGroupPresses();endShown=true;paused=true;const won=game.winner===0;$('endSymbol').textContent=won?'✦':'☂';$('endEyebrow').textContent=won?'THE DESK IS YOURS':'A MINOR PAPERWORK INCIDENT';$('endTitle').textContent=won?'Beautifully trashed.':'Back to the drawing desk.';$('endMessage').textContent=won?'Your scrap pack took down every rival desk. Tiny troops, tremendous teamwork.':'The rival destroyed your desks. Try an earlier expansion, more workers, or a different troop mix.';$('endStats').innerHTML=`<div><b>${Math.floor(game.time/60)}:${String(Math.floor(game.time)%60).padStart(2,'0')}</b>TIME</div><div><b>${game.stats?.collected?.[0]??0}</b>TRASH GATHERED</div><div><b>${game.stats?.trained?.[0]??0}</b>UNITS TRAINED</div>`;$('endOverlay').hidden=false;sound(won?'victory':'defeat');}
+function endMatch(){
+ cancelGroupPresses();endShown=true;paused=true;const won=game.winner===0;
+ $('endSymbol').textContent=won?'✦':'☂';$('endEyebrow').textContent=won?'THE DESK IS YOURS':'A MINOR PAPERWORK INCIDENT';
+ $('endTitle').textContent=won?'Beautifully trashed.':'Back to the drawing desk.';
+ $('endMessage').textContent=won?'Your scrap pack took down every rival desk. See how your plan came together.':'Your desks fell. Review the economy, army and losses to plan the next scrap.';
+ lastReport=game.getMatchReport();reportCleanup?.();reportCleanup=renderMatchReport($('matchReport'),lastReport,{playerTeam:0});
+ $('lastReportButton').hidden=false;$('endOverlay').hidden=false;$('endTitle').focus?.({preventScroll:true});sound(won?'victory':'defeat');
+}
 function frame(now){const dt=Math.min(.05,(now-lastFrame)/1000);lastFrame=now;
  if(usable()){
   let dx=0,dy=0;if(keys.has('arrowleft'))dx+=480*dt;if(keys.has('arrowright'))dx-=480*dt;if(keys.has('arrowup'))dy+=480*dt;if(keys.has('arrowdown'))dy-=480*dt;

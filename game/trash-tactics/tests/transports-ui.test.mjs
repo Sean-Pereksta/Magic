@@ -39,6 +39,8 @@ async function harness() {
     .replace("'./engine.js'",JSON.stringify(new URL('../engine.js',import.meta.url).href))
     .replace("'./ability-icons.js'",JSON.stringify(new URL('../ability-icons.js',import.meta.url).href))
     .replace("'./skirmish-menu.js'",JSON.stringify(new URL('../skirmish-menu.js',import.meta.url).href))
+    .replace("'./minimap-alerts.js'",JSON.stringify(new URL('../minimap-alerts.js',import.meta.url).href))
+    .replace("'./match-report.js'",JSON.stringify(new URL('../match-report.js',import.meta.url).href))
     .replace("'./render.js'",JSON.stringify('data:text/javascript;base64,'+Buffer.from(fakeRender).toString('base64')));
   await import('data:text/javascript;base64,'+Buffer.from(source+`\n//# sourceURL=trash-tactics-transports-under-test-${++harnessId}.js`).toString('base64'));
   element('startButton').click();
