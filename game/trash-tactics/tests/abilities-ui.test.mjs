@@ -41,6 +41,8 @@ async function harness() {
     .replace("'./engine.js'",JSON.stringify(new URL('../engine.js',import.meta.url).href))
     .replace("'./ability-icons.js'",JSON.stringify(new URL('../ability-icons.js',import.meta.url).href))
     .replace("'./skirmish-menu.js'",JSON.stringify(new URL('../skirmish-menu.js',import.meta.url).href))
+    .replace("'./minimap-alerts.js'",JSON.stringify(new URL('../minimap-alerts.js',import.meta.url).href))
+    .replace("'./match-report.js'",JSON.stringify(new URL('../match-report.js',import.meta.url).href))
     .replace("'./render.js'",JSON.stringify('data:text/javascript;base64,'+Buffer.from(fakeRender).toString('base64')));
   await import('data:text/javascript;base64,'+Buffer.from(source+`\n//# sourceURL=trash-tactics-abilities-under-test-${++harnessId}.js`).toString('base64'));
   element('startButton').click();
@@ -239,3 +241,44 @@ test('minimap click and drag use current map dimensions and clamp outside captur
  assert.equal(h.state.renderer.centers.length,count,'hovering minimap after release never moves the camera');
 });
 
+
+test('workers queue mixed paid buildings through Shift and the touch toggle without abandoning active work',async()=>{
+ const h=await harness(),w=h.spawn('twig',700,1000);h.game.teams[0].trash=2000;h.game.canSee=()=>true;h.game.map.plateaus=[];h.game.map.ramps=[];
+ h.select(w);h.key('b');h.point(900,1000,{shiftKey:true});h.refresh();
+ const first=h.game.getEntity(w.order.targetId);assert.equal(first.type,'printer');assert.equal(h.state.renderer.lastDraw.mode,'printer','Shift keeps placement active');
+ h.key('c');h.point(1150,1000);h.key('v');h.point(1400,1000);h.refresh();
+ assert.deepEqual(h.game.getBuildQueue(w.id).map(j=>[j.type,j.status]),[['printer','active'],['cabinet','queued'],['cdreader','queued']]);
+ assert.equal(w.order.targetId,first.id);assert.equal(h.game.teams[0].trash,1600,'each paid plan is charged exactly once');
+ assert.match(h.element('actionContent').innerHTML,/1 active · 2 queued/);assert.match(h.element('actionContent').innerHTML,/BUILD PLAN/);
+ h.action('toggleBuildQueue');h.key('c');h.point(1650,1000,{pointerType:'touch'});h.refresh();
+ assert.equal(h.state.renderer.lastDraw.mode,'cabinet','touch toggle keeps placement active');assert.equal(h.game.getBuildQueue(w.id).length,4);
+ h.action('cancelTarget');h.refresh();assert.equal(h.state.renderer.lastDraw.mode,null);assert.equal(h.game.getBuildQueue(w.id).length,4,'Done placing preserves paid plans');
+ h.tick(65);assert(h.game.entities.filter(e=>['printer','cabinet','cdreader'].includes(e.type)).every(e=>!e.constructing),'one worker finishes every planned structure');assert.equal(h.game.getBuildQueue(w.id).length,0);
+});
+
+test('Stop clears displayed build assignments and another worker can resume paid construction',async()=>{
+ const h=await harness(),a=h.spawn('twig',700,1000),b=h.spawn('twig',600,1150);h.game.teams[0].trash=2000;h.game.canSee=()=>true;h.game.map.plateaus=[];h.game.map.ramps=[];
+ h.select(a);h.key('b');h.point(900,1000);h.key('c');h.point(1150,1000);const plans=h.game.getBuildQueue(a.id),paid=h.game.teams[0].trash;
+ h.key('s');assert.equal(h.game.getBuildQueue(a.id).length,0);assert(plans.every(j=>!h.game.getEntity(j.id).builderId));
+ assert(!h.element('actionContent').innerHTML.includes('BUILD PLAN'));h.select(b);const target=h.game.getEntity(plans[0].id);h.point(target.x,target.y,{button:2});
+ assert.equal(b.order.type,'build');assert.equal(b.order.targetId,target.id);assert.equal(target.builderId,b.id);assert.equal(h.game.teams[0].trash,paid,'resuming never pays twice');
+ h.select(a);h.point(target.x,target.y,{button:2});assert.equal(a.order.targetId,target.id);assert.equal(b.order.type,'idle','reassignment releases the previous builder');
+});
+
+test('finished match opens the frozen charts, can reopen from setup, and clears when a new match starts',async()=>{
+ const h=await harness();h.element('endOverlay').hidden=true;
+ assert.equal(h.game.getMatchReport(),null,'live matches expose no report');
+ for(const e of h.game.entities)if(e.team===1)e.hp=0;h.refresh();
+ assert.equal(h.game.winner,0);assert.equal(h.element('endOverlay').hidden,false);assert.match(h.element('matchReport').innerHTML,/THE AFTER-SCRAP/);assert.match(h.element('matchReport').innerHTML,/data-report-tab="economy"/);assert.match(h.element('matchReport').innerHTML,/<svg/);
+ assert.equal(h.element('lastReportButton').hidden,false);const snapshot=h.game.getMatchReport();assert(Object.isFrozen(snapshot));
+ h.element('reportLobbyButton').click();assert.equal(h.element('endOverlay').hidden,true);h.element('lastReportButton').click();assert.equal(h.element('endOverlay').hidden,false);
+ h.element('playAgain').click();h.element('startButton').click();assert.equal(h.element('lastReportButton').hidden,true);assert.equal(h.element('matchReport').innerHTML,'');assert.equal(h.state.game.getMatchReport(),null);
+});
+
+test('an eliminated player cannot resume the ended three-team match behind the final report',async()=>{
+ const h=await harness();h.element('players-3').click();h.element('startButton').click();const game=h.state.game;game._think=Infinity;
+ for(const e of game.entities)if(e.team===0&&e.type==='desk')e.hp=0;h.refresh();
+ assert.equal(game.teams[0].eliminated,true);assert.equal(game.winner,null);assert.equal(h.element('endOverlay').hidden,false);
+ const report=game.getMatchReport(),time=game.time;h.element('reportLobbyButton').click();assert.equal(h.element('resumeFromLobby').hidden,true);
+ h.element('resumeFromLobby').click();h.refresh();assert.equal(game.time,time,'completed simulation remains frozen');assert.equal(game.getMatchReport(),report);
+});
