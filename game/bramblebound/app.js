@@ -169,8 +169,17 @@
     $('run-btn').focus({preventScroll:true});
   }
   function runCommand(name,...args){const owner=['equip','stow','swap','combine','discard'].includes(name)?equipmentProfile():profile;const res=E.act(owner,name,...args);if(!res.ok){notify(res.message);return false;}if(owner===starter)campChanged=true;save();structure='';return true;}
+  function combineGear(uid,other){
+    const owner=equipmentProfile(),result=E.act(owner,'combine',uid,other);
+    if(!result.ok){notify(result.message);return false;}
+    if(owner===starter)campChanged=true;
+    const item=byUid(owner.run,result.uid);
+    if(selectedUid===uid||selectedUid===other){exitPartnerView();selectedUid=item.uid;}
+    save();closeDialog();sound('combine',C.items[item.id].element);notify(result.message);update(true);return true;
+  }
   function navigate(next){
     if(!['expedition','guide','legacy'].includes(next))return;
+    clearGearHold();clearPackTouch();if(dragging)endDrag(false);
     closeDialog();page=next;document.body.classList.toggle('on-expedition',page==='expedition');document.querySelectorAll('.page').forEach(p=>p.hidden=p.id!==next+'-page');
     document.querySelectorAll('nav [data-nav]').forEach(b=>{const active=b.dataset.nav===page;b.classList.toggle('current',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
     if(next==='guide')renderGuide();else if(next==='legacy')renderLegacy();else update(true);
@@ -196,6 +205,7 @@
     packQuery=partnerView.query;packPage=partnerView.page;packTier=partnerView.tier;$('pack-search').value=packQuery;$('pack-tier').value=packTier;partnerView=null;
   }
   function clearSelection(){
+    clearGearHold();
     exitPartnerView();selectedUid=null;partners.clear();
   }
   function refreshSelection(r){
@@ -265,6 +275,7 @@
     if(box.dataset.signature!==content){box.innerHTML=content;box.dataset.signature=content;}
   }
   function selectGear(uid){
+    clearGearHold();
     const r=displayRun(),item=byUid(r,uid);if(!item)return;
     if(r.phase==='dead')return showDialog('item',{uid});
     if(selectedUid!==null&&uid!==selectedUid&&(!r.pack.includes(item)||partnerView)&&E.previewCombine(equipmentProfile(),selectedUid,uid).ok){
@@ -492,6 +503,7 @@
   }
   function closeDialog(){if(cloudBusy&&dialogState?.type==='cloud')return;if(dialogState?.type==='cloud-confirm'){pendingCloud=null;cloudAutoPaused=true;}if(modal.open)modal.close();dialogState=null;pendingImport=null;}
   function showDialog(type,data={}){
+    clearGearHold();clearPackTouch();if(dragging)endDrag(false);
     if(!modal.open)preDialogFocus=document.activeElement;
     dialogState={type,...data};let html='',kicker='FIELD NOTES',portrait=null;
     const r=displayRun(),live=r.phase!=='dead';
@@ -579,11 +591,11 @@
         ['Elements with a purpose','Leaf poisons and roots; Fire burns and ignites poison; Frost chills and freezes; Storm disrupts and chains; Stone fractures defenses; Spirit marks foes and returns protective energy. The field guide explains the timings and cross-element reactions.'],
         ['Three elemental sets','Equip both elements of Fire/Frost, Leaf/Storm, or Stone/Spirit to awaken Emberglass, Bramble Circuit, or Soulstone. A third relic from that pair improves the reaction. Split four slots into two pairs for two active sets. Open Element sets below your equipment to see exact requirements and bonuses.'],
         ['Supplies at the right moment','Open Trail pouch below the scene to pause and choose a supply. Moss Tonic heals and cleanses, Bark Ward shields, Ember Bomb hits the group, Frost Bell freezes it, and Quicksilver recharges relics and abilities. Using one returns to the road. Supplies have their own pouch and a shared 1.25-second recovery that advances while the run moves. Gather more after battles; upgrade Provision Pockets and Field Alchemy at the Wayfinder’s Lodge for more and better starting supplies.'],
-        ['Quick pack controls','Combinable shows relics with a valid partner anywhere in your kit. Strongest first ranks sustained damage or utility and keeps your saved slots intact. Combine either control with search and rarity. Swipe left or right across filled or empty pack slots to change pages. On touch, hold a relic briefly before dragging it to equip, swap or fuse.'],
+        ['Quick pack controls','Combinable shows relics with a valid partner anywhere in your kit. Strongest first ranks sustained damage or utility and keeps your saved slots intact. Combine either control with search and rarity. Swipe left or right across unselected or empty pack slots to change pages. Select a relic, then drag it immediately to equip, swap or fuse. You can also hold an unselected relic briefly before dragging. Hold a glowing partner to combine it with your selected relic.'],
         ['Support and control','Healing-only relics restore HP, shield-only relics build protection, stun-only relics interrupt a foe, and freeze-only relics encase a foe in ice. Stun and freeze stop enemy attack charge for their listed duration. These roles deal zero damage and do not trigger elemental hit effects. Pair them with an offensive relic to finish the fight.'],
         ['Pack a counter','New backpacks include a Dewglass Vial. Equip it to cleanse ailments whenever it activates. Other relics counter venom, static, frostbite, entanglement, hexes, corrosion, explosive death bursts and wards. Inspect a foe to see its effect and recommended counter relics.'],
         ['Signature relics','The expanded road adds twelve special weapon effects, including ricochets, executions, ailment ruptures, poison blooms and delayed aftershocks. Overload stores charge on its own relic and bursts every third activation. Search the field guide by signature or counter name.'],
-        ['Pack for the next fight','Four equipped relics activate on independent cooldowns. Your backpack holds 400 more. Select a backpack relic to compare its damage, lifesteal and effects with every equipped relic; green numbers improve that stat and red numbers reduce it. Hover or focus an icon for details. Search by name, element, or effect, or jump to a page by slot number. Drag an item to an empty slot to move it. Drop onto a matching recipe to fuse, or onto an unrelated item to swap. Select a relic to light up every valid partner. Choose Matches, then tap a glowing partner to preview a fusion, or choose Details to equip or discard.'],
+        ['Pack for the next fight','Four equipped relics activate on independent cooldowns. Your backpack holds 400 more. Select a backpack relic to compare its damage, lifesteal and effects with every equipped relic; green numbers improve that stat and red numbers reduce it. Hover or focus an icon for details. Search by name, element, or effect, or jump to a page by slot number. Drag an item to an empty slot to move it. Drop onto a matching recipe to fuse, or onto an unrelated item to swap. Select a relic to light up every valid partner. Hold a glowing partner to combine immediately. Choose Matches, then tap a glowing partner to preview a fusion, or choose Details to equip or discard.'],
         ['Trail finds','Every defeated enemy can drop a relic into your backpack during the fight. The chance of at least one drop across a full wave is 24%, or 48% in a guardian wave. When the pack is full, a matching copy at the same level upgrades automatically. Other finds stay on the road.'],
         ['Leveling up','Time on the trail and defeated enemies earn XP. At each level, choose one of three random upgrades. Passive bonuses stack, and learned abilities cast automatically on separate cooldowns. Expedition ranks reset when you start another run.'],
         ['Group encounters','Enemies approach together and charge their attacks independently. A green bar shows health, a gold bar shows windup, and a red warning marks an imminent strike. Area attacks can hit multiple foes.'],
@@ -627,14 +639,7 @@
     if(name==='camp-respec-confirm'){const result=Legacy.respec(profile);closeDialog();campResult(result);return;}
     if(name==='browse-skills'){guideTab='upgrades';query='';navigate('guide');return;}
     if(name==='cancel-pair'){closeDialog();return;}
-    if(name==='forge'){
-      const owner=equipmentProfile(),result=E.act(owner,'combine',d.uid,d.other);
-      if(!result.ok){notify(result.message);return;}
-      if(owner===starter)campChanged=true;
-      const item=byUid(owner.run,result.uid);
-      if(selectedUid===d.uid||selectedUid===d.other){exitPartnerView();selectedUid=item.uid;}
-      save();closeDialog();sound('combine',C.items[item.id].element);notify(result.message);update(true);return;
-    }
+    if(name==='forge')return combineGear(d.uid,d.other);
     if(name==='drop'){if(runCommand('discard',d.uid)){closeDialog();notify('Item discarded.');update(true);}return;}
     if(name==='sound'){toggleAudio();showDialog('profile');return;}
     if(name==='motion'){prefs.motion=!prefs.motion;document.body.classList.toggle('reduced-art',!prefs.motion);save();showDialog('profile');return;}
@@ -646,8 +651,8 @@
     if(name==='recover'&&damagedSave){download(damagedSave,'Bramblebound-recovery.json');return;}
     if(name==='fresh'){pauseCloud();damagedSave=null;profile=E.freshProfile();starter=freshKit();campChanged=false;prefs=defaultPrefs();closeDialog();save();navigate('expedition');return;}
   }
-  let dragging=null,blockDragClick=false,packTouch=null;
-  const dragNote='Swipe pages · Hold to drag · Select a relic to find matches.';
+  let dragging=null,blockDragClick=false,packTouch=null,gearHold=null;
+  const dragNote='Select, then drag · Hold a glowing match to combine · Swipe pages.';
   const kit=document.querySelector('.kit-col');
   function hitSlot(x,y){return document.elementFromPoint(x,y)?.closest('.gear-slot,#discard-zone')||null;}
   function dragIntent(target){
@@ -689,6 +694,7 @@
     const g=dragging;if(!g||g.pid!==e.pointerId)return;
     if(!g.moved){
       if(Math.hypot(e.clientX-g.x,e.clientY-g.y)<6)return;
+      clearGearHold();
       g.moved=true;g.node.classList.add('drag-source');document.body.classList.add('dragging-gear');
       kit.setPointerCapture(e.pointerId);
       const p=equipmentProfile(),item=byUid(p.run,g.uid);if(!item){endDrag(false);return;}
@@ -729,10 +735,31 @@
     structure='';update(true);
   }
   function clearPackTouch(){if(packTouch)clearTimeout(packTouch.hold);packTouch=null;}
+  function clearGearHold(){if(gearHold)clearTimeout(gearHold.timer);gearHold=null;}
+  document.addEventListener('pointerdown',e=>{
+    if(!e.isPrimary||e.button!==0)return;
+    clearGearHold();
+    const node=e.target.closest('.gear-slot[data-uid]'),uid=Number(node?.dataset.uid);
+    const owner=equipmentProfile(),run=owner.run,selected=selectedUid;
+    if(!node||titleOpen||page!=='expedition'||modal.open||run.phase==='dead'||selected===null||uid===selected||!E.previewCombine(owner,selected,uid).ok)return;
+    const hold={pid:e.pointerId,x:e.clientX,y:e.clientY,node,uid,selected,owner,run,timer:null};gearHold=hold;
+    hold.timer=setTimeout(()=>{
+      if(gearHold!==hold)return;
+      clearGearHold();
+      if(titleOpen||page!=='expedition'||modal.open||equipmentProfile()!==owner||owner.run!==run||run.phase==='dead'||selectedUid!==selected||!node.isConnected||dragging?.moved)return;
+      if(E.slotAt(run,node.dataset.zone,Number(node.dataset.index))?.uid!==uid||!E.previewCombine(owner,selected,uid).ok)return;
+      clearPackTouch();if(dragging?.pid===hold.pid)endDrag(false);
+      blockDragClick=true;combineGear(selected,uid);
+    },280);
+  },true);
+  document.addEventListener('pointermove',e=>{if(gearHold?.pid===e.pointerId&&Math.hypot(e.clientX-gearHold.x,e.clientY-gearHold.y)>=6)clearGearHold();},{passive:true});
+  document.addEventListener('pointerup',e=>{if(gearHold?.pid===e.pointerId)clearGearHold();});
+  document.addEventListener('pointercancel',e=>{if(gearHold?.pid===e.pointerId)clearGearHold();});
   $('pack').addEventListener('pointerdown',e=>{
     if(e.pointerType==='mouse'||!e.isPrimary||e.button!==0||modal.open||dragging)return;
     clearPackTouch();blockDragClick=false;
     const node=e.target.closest('.gear-slot[data-uid]');
+    if(node&&Number(node.dataset.uid)===selectedUid)return;
     const gesture={pid:e.pointerId,x:e.clientX,y:e.clientY,lastX:e.clientX,lastY:e.clientY,swiping:false,hold:null};packTouch=gesture;
     if(node&&displayRun().phase!=='dead')gesture.hold=setTimeout(()=>{
       if(packTouch!==gesture)return;
@@ -759,7 +786,7 @@
   document.addEventListener('pointercancel',e=>{if(packTouch?.pid===e.pointerId)clearPackTouch();});
   document.addEventListener('pointerdown',e=>{
     if(dragging||!e.isPrimary||e.button!==0)return;
-    if(e.pointerType!=='mouse'&&e.target.closest('#pack'))return;
+    if(e.pointerType!=='mouse'&&e.target.closest('#pack')&&Number(e.target.closest('.gear-slot[data-uid]')?.dataset.uid)!==selectedUid)return;
     blockDragClick=false;
     const node=e.target.closest('.gear-slot[data-uid]');
     if(node&&page==='expedition'&&!modal.open&&displayRun().phase!=='dead'){
@@ -771,7 +798,7 @@
   document.addEventListener('pointercancel',e=>{if(dragging?.pid===e.pointerId)endDrag(false);});
   kit.addEventListener('lostpointercapture',e=>{if(e.target===kit&&dragging?.pid===e.pointerId)endDrag(false);});
   kit.addEventListener('contextmenu',e=>{if(e.target.closest('.gear-slot'))e.preventDefault();});
-  window.addEventListener('blur',()=>{clearPackTouch();if(dragging)endDrag(false);});
+  window.addEventListener('blur',()=>{clearGearHold();clearPackTouch();if(dragging)endDrag(false);});
   document.addEventListener('click',e=>{if(blockDragClick&&e.detail){e.preventDefault();e.stopImmediatePropagation();blockDragClick=false;}},true);
 
   let expanded=false;
