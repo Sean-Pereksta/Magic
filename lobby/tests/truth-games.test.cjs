@@ -71,15 +71,24 @@ test('a user Play action navigates directly to every Truth game URL', async () =
   assert.equal(launches.length, 6);
 });
 
-test('each Truth tile uses its own local game artwork', async () => {
+test('each Truth game has its own generated WebP tile, thumbnail and hero', async () => {
   const games = registry(await load());
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'assets/game-artwork.json'), 'utf8'));
+  const prompts = JSON.parse(fs.readFileSync(path.join(root, 'assets/truth-game-art-prompts.json'), 'utf8'));
   const sources = new Set();
   for (const key of Object.keys(expected)) {
     const game = games.find(item => item.key === key);
-    assert.match(game.imagePath, /^\/lobby\/assets\/game-tiles\/[a-z-]+\.jpg$/);
+    const art = manifest.games[key];
+    assert.match(game.imagePath, /^\/lobby\/assets\/game-tiles\/[a-z-]+-v2\.webp$/);
     sources.add(game.imagePath);
-    const image = fs.readFileSync(path.join(root, game.imagePath.replace('/lobby/', '')));
-    assert.equal(image.readUInt16BE(0), 0xffd8, `${key} has a valid JPEG header`);
+    assert.equal(art.imagePath, game.imagePath);
+    assert.equal(art.provenance, 'original-built-in-imagegen');
+    assert.ok(prompts.images.some(image => image.key === key && image.prompt.length > 100));
+    for (const variant of ['tile', 'thumb', 'hero']) {
+      const image = fs.readFileSync(path.join(root, 'assets', art[variant]));
+      assert.equal(image.toString('ascii', 0, 4), 'RIFF', `${key} ${variant} has a RIFF header`);
+      assert.equal(image.toString('ascii', 8, 12), 'WEBP', `${key} ${variant} is WebP`);
+    }
   }
   assert.equal(sources.size, 6);
 });
