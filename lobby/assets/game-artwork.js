@@ -1342,6 +1342,132 @@
       "hero": "game-heroes/trashtactics.webp",
       "ready": true,
       "heroProvenance": "original-built-in-imagegen"
+    },
+    "bannerlands": {
+      "key": "bannerlands",
+      "title": "Bannerlands · The War of Crowns",
+      "emoji": "🏰",
+      "imagePath": "/lobby/assets/game-tiles/bannerlands.jpg",
+      "desc": "Command armies, conquer an isometric battlefield, and unite the realm in a war of rival houses.",
+      "route": "https://sean-pereksta.github.io/Truth/games/bannerlands/",
+      "category": "Strategy",
+      "modes": [
+        "single"
+      ],
+      "featured": false,
+      "originalImagePath": "/lobby/assets/game-tiles/bannerlands.jpg",
+      "tier": "playable",
+      "provenance": "reused-game-artwork",
+      "sourceArtwork": "Screenshot of the current Bannerlands browser game",
+      "tile": "game-tiles/bannerlands.jpg",
+      "thumb": "game-thumbnails/bannerlands.jpg",
+      "hero": "game-tiles/bannerlands.jpg",
+      "ready": true
+    },
+    "monstermallexpanded": {
+      "key": "monstermallexpanded",
+      "title": "Monster Mall — Expanded Edition",
+      "emoji": "🛍️",
+      "imagePath": "/lobby/assets/game-tiles/monster-mall-expanded.jpg",
+      "desc": "Survive a deserted 3D shopping mall after hours. Face five difficulty levels with keyboard, touch, or controller controls.",
+      "route": "https://sean-pereksta.github.io/Truth/games/monster-mall-expanded/",
+      "category": "Survival",
+      "modes": [
+        "single"
+      ],
+      "featured": false,
+      "originalImagePath": "/lobby/assets/game-tiles/monster-mall-expanded.jpg",
+      "tier": "playable",
+      "provenance": "reused-game-artwork",
+      "sourceArtwork": "Screenshot of the current Monster Mall browser game",
+      "tile": "game-tiles/monster-mall-expanded.jpg",
+      "thumb": "game-thumbnails/monster-mall-expanded.jpg",
+      "hero": "game-tiles/monster-mall-expanded.jpg",
+      "ready": true
+    },
+    "pacmanblackout": {
+      "key": "pacmanblackout",
+      "title": "Pac-Man: Blackout",
+      "emoji": "👻",
+      "imagePath": "/lobby/assets/game-tiles/pacman-blackout.jpg",
+      "desc": "The maze is watching. Build a base, command units, and fight through fog of war in a Pac-Man strategy game with four AI difficulties.",
+      "route": "https://sean-pereksta.github.io/Truth/games/pacman/",
+      "category": "Strategy",
+      "modes": [
+        "single"
+      ],
+      "featured": false,
+      "originalImagePath": "/lobby/assets/game-tiles/pacman-blackout.jpg",
+      "tier": "playable",
+      "provenance": "reused-game-artwork",
+      "sourceArtwork": "Screenshot of the current Pac-Man: Blackout browser game",
+      "tile": "game-tiles/pacman-blackout.jpg",
+      "thumb": "game-thumbnails/pacman-blackout.jpg",
+      "hero": "game-tiles/pacman-blackout.jpg",
+      "ready": true
+    },
+    "pirates": {
+      "key": "pirates",
+      "title": "Pirates — Crown of the Tides",
+      "emoji": "🏴‍☠️",
+      "imagePath": "/lobby/assets/game-tiles/pirates.jpg",
+      "desc": "Sail the seas, trade for fortune, battle rival ships, and board enemy decks in a pirate adventure.",
+      "route": "https://sean-pereksta.github.io/Truth/games/pirates/",
+      "category": "Adventure",
+      "modes": [
+        "single"
+      ],
+      "featured": false,
+      "originalImagePath": "/lobby/assets/game-tiles/pirates.jpg",
+      "tier": "playable",
+      "provenance": "reused-game-artwork",
+      "sourceArtwork": "Pirates/Source/dist/assets/cover.png",
+      "tile": "game-tiles/pirates.jpg",
+      "thumb": "game-thumbnails/pirates.jpg",
+      "hero": "game-tiles/pirates.jpg",
+      "ready": true
+    },
+    "academystandards": {
+      "key": "academystandards",
+      "title": "Academy Standards · The Banner Trial",
+      "emoji": "🏳️",
+      "imagePath": "/lobby/assets/game-tiles/academy-standards.jpg",
+      "desc": "Command your students, capture rival banners, and unite ten houses in a tactical academy contest.",
+      "route": "https://sean-pereksta.github.io/Truth/games/academy-standards/",
+      "category": "Strategy",
+      "modes": [
+        "single"
+      ],
+      "featured": false,
+      "originalImagePath": "/lobby/assets/game-tiles/academy-standards.jpg",
+      "tier": "playable",
+      "provenance": "reused-game-artwork",
+      "sourceArtwork": "Academy Standards/menu-art.png",
+      "tile": "game-tiles/academy-standards.jpg",
+      "thumb": "game-thumbnails/academy-standards.jpg",
+      "hero": "game-tiles/academy-standards.jpg",
+      "ready": true
+    },
+    "operationwhiskerfall": {
+      "key": "operationwhiskerfall",
+      "title": "Operation Whiskerfall · MeowQuest",
+      "emoji": "🐈",
+      "imagePath": "/lobby/assets/game-tiles/operation-whiskerfall.jpg",
+      "desc": "Explore and liberate animal kingdoms in an open-world action adventure. Play solo or with a second player on the same device.",
+      "route": "https://sean-pereksta.github.io/Truth/games/operation-whiskerfall/",
+      "category": "Adventure",
+      "modes": [
+        "single"
+      ],
+      "featured": false,
+      "originalImagePath": "/lobby/assets/game-tiles/operation-whiskerfall.jpg",
+      "tier": "playable",
+      "provenance": "reused-game-artwork",
+      "sourceArtwork": "Operation-Whiskerfall/assets/ui/meowquest-cover.png",
+      "tile": "game-tiles/operation-whiskerfall.jpg",
+      "thumb": "game-thumbnails/operation-whiskerfall.jpg",
+      "hero": "game-tiles/operation-whiskerfall.jpg",
+      "ready": true
     }
   },
   "files": {

@@ -20,11 +20,17 @@ async function catalog() {
   return vm.runInNewContext('('+output.match(/const GAMES = (\[[\s\S]*?\n\s*\]);/)[1]+')');
 }
 
-test('every effective catalog route and alternate action points to a tracked file', async () => {
+test('every effective catalog route points to a tracked file or its explicit Truth game', async () => {
   const games = await catalog();
   const tracked = new Set(execFileSync('git', ['ls-tree','-r','--name-only','HEAD'], {cwd:root,encoding:'utf8'}).trim().split('\n'));
+  const truthGames = {bannerlands:'bannerlands',monstermallexpanded:'monster-mall-expanded',pacmanblackout:'pacman',pirates:'pirates',academystandards:'academy-standards',operationwhiskerfall:'operation-whiskerfall'};
   for (const game of games) for (const field of ['route','singleRoute','multiplayerRoute','dmRoute','downloadRoute']) {
     if (!game[field]) continue;
+    if (/^https?:\/\//.test(game[field])) {
+      assert.ok(Object.hasOwn(truthGames,game.key), `unexpected external game ${game.key}`);
+      assert.equal(game[field],`https://sean-pereksta.github.io/Truth/games/${truthGames[game.key]}/`);
+      continue;
+    }
     const name = decodeURIComponent(game[field].split('?')[0]).replace(/^\//, '');
     assert.ok(tracked.has(name) || tracked.has(name+'index.html'), `${game.key}: missing ${field} ${name}`);
   }
