@@ -1,0 +1,58 @@
+name: Monkey Trails walking
+
+on:
+  pull_request:
+    paths:
+      - 'game/monkey-trails/**'
+      - 'game/monkey-trails.html'
+      - 'index.html'
+      - '.github/workflows/monkey-trails-walking.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'game/monkey-trails/**'
+      - 'game/monkey-trails.html'
+      - 'index.html'
+      - '.github/workflows/monkey-trails-walking.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  walking:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /game/monkey-trails/
+            /game/monkey-trails.html
+            /index.html
+            /package.json
+            !/game/monkey-trails/art-pack/
+            !/game/monkey-trails/assets/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check steps and existing accepted walking progression
+        run: >-
+          node --test
+          game/monkey-trails/pedometer-tests.mjs
+          game/monkey-trails/test.mjs
+          game/monkey-trails/sessions-tests.mjs
+          game/monkey-trails/directional-temple-tests.mjs
+          game/monkey-trails/walking-revival-tests.mjs
+          game/monkey-trails/lands-tests.mjs
+          game/monkey-trails/lineup-foraging-tests.mjs
+      - name: Install isolated browser test runtime
+        run: npm install --prefix "$RUNNER_TEMP/monkey-trails-browser" --no-save --package-lock=false --ignore-scripts playwright@1.62.1
+      - name: Prepare test browser
+        run: node "$RUNNER_TEMP/monkey-trails-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Check treadmill and existing GPS journeys
+        env:
+          MONKEY_TRAILS_PLAYWRIGHT: ${{ runner.temp }}/monkey-trails-browser/node_modules/playwright
+        run: |
+          npm run test:monkey-trails:treadmill
+          npm run test:monkey-trails:location

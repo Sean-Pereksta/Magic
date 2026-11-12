@@ -406,3 +406,37 @@ Collected monkeys can join the lineup while knocked out, provided the resulting 
 ### Directional temples and pack merchants
 
 See [Temples and Merchants](TEMPLES_AND_MERCHANTS.md) for saved cardinal walking challenges, merchant purchases using pack crafting value, and spare equipment as forge ingredients, and grove fruit baskets that require another 500 feet before collecting 3–5 fruit.
+
+
+## Treadmill walking
+
+The regular Walk screen has a **Treadmill mode** switch next to **Start walking**
+(and in Settings). GPS remains the default. Changing sources pauses tracking;
+tap Start walking again to begin the selected source. The selected mode and
+heading are remembered on this browser.
+
+In treadmill mode, slide the analog stick to choose any heading. It stays in
+place after release; cardinal buttons and keyboard arrows provide alternatives.
+Only motion-detected steps move the fantasy map, using an estimated **0.762 m
+(2.5 ft) per step**. Carry the phone as you walk and keep the game visible. A
+phone resting on treadmill equipment cannot count the user's steps. This is a
+browser motion estimate, not the phone's native health/pedometer history.
+
+Steps feed the existing accepted-distance rules for discoveries, XP, recovery,
+regional progress, directional temples, and walking recaps. Session step counts
+are stored with the encrypted walking recap; heading and display preferences
+remain local. No motion samples or fabricated geographic coordinates are saved.
+Physical GPS proximity and nearby-player location still require actual location;
+use an Ultra's existing safe-route walking challenge indoors.
+
+Motion permission is requested from the Start walking gesture on browsers that
+require it. HTTPS and working phone motion sensors are required. Missing, denied
+or unavailable sensors show an explanation and add no distance. Both trackers
+stop on pause, hidden/locked pages, combat, and page exit, discarding stale
+callbacks and untracked gaps. The root lobby iframe delegates accelerometer and
+gyroscope access to both existing game origins.
+
+Validation: `npm run test:monkey-trails` includes motion-detector/lifecycle tests;
+`npm run test:monkey-trails:treadmill` exercises the actual mobile UI with mocked
+motion and GPS. As with outdoor GPS, confirm real phone sensor behavior on the
+HTTPS-hosted game; synthetic browser tests do not calibrate physical step counts.
