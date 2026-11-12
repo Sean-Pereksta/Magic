@@ -1,0 +1,39 @@
+/* Treadmill input chooses a persistent heading; the pedometer supplies movement. */
+.walking-start-row{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
+.tracking-controls .walking-start-row>#tracking-button{width:auto;flex:1;min-width:115px}
+.treadmill-toggle{display:flex;align-items:center;gap:7px;min-height:46px;margin:0;cursor:pointer;white-space:nowrap;font-size:11px;color:#3e624b}
+.treadmill-toggle input{appearance:none;position:relative;width:35px;min-width:35px;height:21px;min-height:21px;margin:0;padding:0;border:1px solid #a8b897;border-radius:99px;background:#d8dfc8;cursor:pointer}
+.treadmill-toggle input:before{content:"";position:absolute;top:3px;left:3px;width:13px;height:13px;border-radius:50%;background:#fffbed;box-shadow:0 1px 3px #264e3c33;transition:transform .15s}
+.treadmill-toggle input:checked{background:#426c4c;border-color:#426c4c}
+.treadmill-toggle input:checked:before{transform:translateX(14px)}
+.treadmill-toggle input:focus-visible{outline:3px solid #a47d32;outline-offset:3px}
+.treadmill-controls{margin:10px 0 4px;padding:12px;border:1px solid #c5cfb2;border-radius:17px;background:linear-gradient(135deg,#f7f4e4,#eaf0db);text-align:left;color:#355b43}
+.treadmill-steering{display:flex;align-items:center;justify-content:center;gap:18px;min-width:0}
+.treadmill-stick{--treadmill-east:0;--treadmill-north:1;--treadmill-angle:0deg;position:relative;flex:0 0 104px;width:104px;height:104px;border:1px solid #bcc8a8;border-radius:50%;background:radial-gradient(circle at 45% 35%,#fffdf0,#dce6c8);box-shadow:inset 0 2px 8px #31523a10;touch-action:none;user-select:none;-webkit-user-select:none;cursor:crosshair}
+.treadmill-stick:focus-visible{outline:3px solid #a47d32;outline-offset:3px}
+.treadmill-stick-ring{position:absolute;inset:22px;border:1px dashed #9eaf8f;border-radius:50%;pointer-events:none}
+.treadmill-stick-ring:before,.treadmill-stick-ring:after{content:"";position:absolute;background:#aab99a70}
+.treadmill-stick-ring:before{left:50%;top:0;bottom:0;width:1px}
+.treadmill-stick-ring:after{top:50%;left:0;right:0;height:1px}
+.treadmill-bearing{position:absolute;font-size:10px;font-weight:700;line-height:1;color:#718461;pointer-events:none}
+.treadmill-north{left:50%;top:7px;transform:translateX(-50%)}
+.treadmill-east{right:8px;top:50%;transform:translateY(-50%)}
+.treadmill-south{left:50%;bottom:7px;transform:translateX(-50%)}
+.treadmill-west{left:7px;top:50%;transform:translateY(-50%)}
+.treadmill-stick-knob{position:absolute;left:50%;top:50%;display:grid;place-items:center;width:32px;height:32px;border:1px solid #426342;border-radius:50%;background:linear-gradient(145deg,#6d8c58,#3e6547);box-shadow:0 3px 6px #284d3933;transform:translate(calc(-50% + var(--treadmill-east) * 27px),calc(-50% - var(--treadmill-north) * 27px));pointer-events:none}
+.treadmill-stick-knob svg{display:block;width:19px;height:19px;fill:#f6efd5;transform:rotate(var(--treadmill-angle));pointer-events:none}
+.treadmill-readout{min-width:0}
+.treadmill-eyebrow{display:block;font-size:9px;font-weight:700;letter-spacing:.1em;color:#7b8765}
+.treadmill-readout strong{display:flex;align-items:baseline;gap:6px;margin:3px 0 6px;font-size:18px;line-height:1.2;color:#355b43}
+.treadmill-readout strong small{font:600 10px 'DM Sans',system-ui,sans-serif;color:#87906e}
+.treadmill-step-line{display:block;font-size:11px;color:#607653}
+.treadmill-step-line b{font-variant-numeric:tabular-nums;color:#355b43}
+.treadmill-tracking{display:block;margin-top:5px;font-size:10px;color:#758364}
+.tracking-controls .treadmill-directions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;max-width:248px;margin:8px auto 0}
+.tracking-controls .treadmill-directions button{width:100%;min-width:44px;min-height:44px;padding:7px;border:1px solid #c4cfb1;border-radius:10px;background:#f9f7e9;color:#607851;font-size:11px;box-shadow:none}
+.tracking-controls .treadmill-directions button[aria-pressed=true]{border-color:#789568;background:#dce7c8;color:#365a3b}
+.tracking-controls .treadmill-directions button:hover{background:#e6edda}
+.treadmill-controls .treadmill-help{max-width:340px;margin:8px auto 0;text-align:center;font-size:10px;line-height:1.5;color:#6b7e5d}
+@media(max-width:360px){.walking-start-row{gap:7px}.treadmill-toggle{font-size:10px;gap:5px}.treadmill-steering{gap:12px}.treadmill-readout strong{font-size:16px}.treadmill-controls{padding:10px}}
+@media(prefers-reduced-motion:reduce){.treadmill-toggle input:before{transition:none}}
+.reduce-motion .treadmill-toggle input:before{transition:none}
