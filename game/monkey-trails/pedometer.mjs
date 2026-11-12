@@ -64,7 +64,7 @@ export class TrailPedometer {
   }
   setHeading(east,north){
     if(!Number.isFinite(east)||!Number.isFinite(north))return;
-    const length=Math.hypot(east,north);if(length<.001)return;
+    const length=Math.hypot(east,north);if(!Number.isFinite(length)||length<.001)return;
     this.direction={east:east/length,north:north/length};
   }
   status(reason,extra={}){this.onStatus({reason,source:'treadmill',mph:null,accuracy:null,steps:this.steps,...extra});}

@@ -61,7 +61,7 @@ async function savedState(page){
     const {Vault}=await import('/game/monkey-trails/storage.mjs');
     const vault=new Vault(()=>{},localStorage,async()=>{throw Error('Offline test');});
     const state=await vault.open(saveName,password,{mode:'gps'});vault.retire();
-    return {distance:state.run.distance,phase:state.run.phase,xp:state.run.monkey.xp};
+    return {distance:state.run.distance,phase:state.run.phase,xp:state.run.monkey.training+state.run.monkey.xpRemainder};
   },{saveName,password});
 }
 async function checkClean(page,errors){
@@ -72,7 +72,7 @@ async function checkClean(page,errors){
 
 (async()=>{
   const browser=await chromium.launch({headless:true,...(process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE?{executablePath:process.env.MONKEY_TRAILS_BROWSER_EXECUTABLE}:{})}),report=[];
-  const run=async(name,options,test)=>{const {page,context,errors}=await setup(browser,options);try{await test(page);await checkClean(page,errors);report.push({scenario:name,errors:0});}finally{await context.close();}};
+  const run=async(name,options,test)=>{const {page,context,errors}=await setup(browser,options);try{await test(page);await checkClean(page,errors);report.push({scenario:name,errors:0});console.log(`PASS ${name}`);}finally{await context.close();}};
   try{
     await run('steps move the selected heading, while idle and steering do not',{},async page=>{
       await openTrail(page);assert.equal(await page.locator('#treadmill-mode').isChecked(),false,'GPS remains the default');
