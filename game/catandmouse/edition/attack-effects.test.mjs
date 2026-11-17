@@ -115,3 +115,44 @@ test('launch animation uses the painted muzzle and optional trails respect reduc
   fx.drawProjectileTrail(scene.board, rocket, { x: 2, y: 2 }, reduced);
   assert.equal(scene.calls.length, 0);
 });
+
+test('rocket and powder blasts begin with a painted flash and settle into rising smoke', () => {
+  for (const [type, kind] of [['impact', 'rocket'], ['attack', 'powder-blast']]) {
+    const fx = new AttackEffects();
+    const scene = harness();
+    const settings = { reduced: false, quality: 'low' };
+    assert.ok(fx.add(event(type, kind, { radius: 1.6 }), 100));
+    fx.drawForeground(scene.board, 100, settings, scene.drawSprite);
+    const early = scene.calls.filter(call => call[0] === 'sprite');
+    assert.deepEqual(early.map(call => call[1]), [5, 4]);
+    scene.calls.length = 0;
+    fx.drawForeground(scene.board, 100, standard, scene.drawSprite);
+    assert.ok(scene.count('lineTo') > 0, 'high detail adds flying embers and debris');
+    scene.calls.length = 0;
+    scene.board.state.time = 600;
+    fx.drawForeground(scene.board, 600, settings, scene.drawSprite);
+    const [smoke] = scene.calls.filter(call => call[0] === 'sprite');
+    assert.equal(smoke[1], 6);
+    assert.ok(smoke[3] < early[0][3], 'smoke should lift above the original burst');
+    assert.equal(scene.count('lineTo'), 0, 'low detail skips flying fragments');
+  }
+});
+
+test('reduced-motion blasts stay still and direct-hit rockets never imply splash damage', () => {
+  const fx = new AttackEffects();
+  const scene = harness();
+  assert.ok(fx.add(event('impact', 'rocket', { radius: 0 }), 100));
+  fx.drawForeground(scene.board, 100, reduced, scene.drawSprite);
+  assert.equal(scene.count('ellipse'), 0);
+  const initial = scene.calls.find(call => call[0] === 'sprite');
+  scene.calls.length = 0;
+  scene.board.state.time = 390;
+  fx.drawForeground(scene.board, 390, reduced, scene.drawSprite);
+  assert.deepEqual(scene.calls.find(call => call[0] === 'sprite'), initial);
+  fx.clear();
+  scene.calls.length = 0;
+  scene.board.state.time = 100;
+  assert.ok(fx.add(event('impact', 'rocket', { radius: 1.8 }), 100));
+  fx.drawForeground(scene.board, 100, reduced, scene.drawSprite);
+  assert.equal(scene.calls.find(call => call[0] === 'ellipse')[3], 1.8 * scene.board.tileX * Math.SQRT2);
+});

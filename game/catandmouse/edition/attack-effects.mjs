@@ -11,9 +11,13 @@ const danger = {
 const weapons = {
   bullet: { color: '#ffce7c', width: 1.2, reach: .33, launch: 25, impact: 27, duration: 290, sprite: 4 },
   rabbit: { color: '#d7f2a1', width: 1.6, reach: .32, launch: 18, impact: 30, duration: 310, sprite: 4 },
-  rocket: { color: '#fda55d', width: 4, reach: .64, launch: 33, impact: 67, duration: 670, sprite: 5 },
+  rocket: { color: '#fda55d', width: 4, reach: .64, launch: 33, duration: 760 },
   acorn: { color: '#e6ba79', width: 2.1, reach: .33, launch: 23, impact: 44, duration: 440, sprite: 6 },
   web: { color: '#d7f1f5', width: 2, reach: .45, launch: 26, impact: 45, duration: 690, sprite: 1 },
+};
+const blasts = {
+  rocket: { color: '#ffcc87', ember: '#fff2b9', debris: '#b77a57', width: 76, smokeRise: 39, spread: 1, fragments: 6 },
+  'powder-blast': { color: '#ffb665', ember: '#ffce81', debris: '#86573e', width: 98, smokeRise: 24, spread: 1.22, fragments: 8 },
 };
 const strikes = {
   claw: { color: '#ff886d', radius: 1, size: 50, count: 3, duration: 370 },
@@ -47,7 +51,7 @@ function duration(event, start) {
   if (event.type === 'impact') return event.reason === 'expired' ? 0 : (weapons[event.kind]?.duration ?? 350);
   if (event.type === 'attack') return event.kind === 'mend' ? 620
     : event.kind === 'cat-charge' ? (event.duration ?? 450) + 120
-      : danger[event.kind] ? 720 : (strikes[event.kind]?.duration ?? 380);
+      : event.kind === 'powder-blast' ? 820 : danger[event.kind] ? 720 : (strikes[event.kind]?.duration ?? 380);
   if (event.type === 'activation') return 540;
   if (event.type === 'interrupt') return 300;
   if (event.type === 'heal' || event.type === 'charge-end') return 510;
@@ -202,6 +206,98 @@ function sparks(ctx, x, y, progress, scale, color, count, salt) {
   }
 }
 
+function blastFragments(ctx, x, y, size, progress, style, salt) {
+  if (progress >= .72) return;
+  const flight = progress / .72;
+  const opacity = (1 - flight) ** 1.35;
+  ctx.globalAlpha = opacity;
+  ctx.lineWidth = Math.max(1, size * .023);
+  ctx.strokeStyle = style.ember;
+  ctx.beginPath();
+  for (let i = 0; i < style.fragments; i++) {
+    const angle = TAU * (i / style.fragments + salt * .17);
+    const distance = size * (.48 + (i % 3) * .16);
+    const reach = distance * (.14 + .86 * flight);
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle) * .56;
+    const height = size * .52 * flight * (1 - flight);
+    const tail = reach - size * (.14 - flight * .09);
+    ctx.moveTo(x + dx * tail, y + dy * tail - height * .8);
+    ctx.lineTo(x + dx * reach, y + dy * reach - height);
+  }
+  ctx.stroke();
+
+  const chipSize = Math.max(.8, size * .036 * (1 - flight * .48));
+  ctx.globalAlpha = opacity * .94;
+  ctx.fillStyle = style.debris;
+  ctx.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const angle = TAU * (i / 4 + .11 + salt * .17);
+    const reach = size * (.13 + flight * (.41 + (i % 2) * .24));
+    const left = x + Math.cos(angle) * reach;
+    const top = y + Math.sin(angle) * reach * .4 - size * 1.13 * flight * (1 - flight);
+    ctx.moveTo(left - chipSize, top);
+    ctx.lineTo(left + chipSize * .26, top - chipSize);
+    ctx.lineTo(left + chipSize * .85, top + chipSize * .56);
+    ctx.closePath();
+  }
+  ctx.fill();
+}
+
+function explosion(board, event, progress, settings, drawSprite) {
+  const powder = event.kind === 'powder-blast';
+  const style = blasts[event.kind];
+  const ctx = board.ctx;
+  const zoom = board.camera.zoom;
+  const [x, y] = centered(event, powder);
+  const [sx, sy] = board.project(x, y);
+  const radius = event.radius ?? (powder ? danger['powder-blast'].radius : 0);
+  const size = style.width * zoom * clamp(.83 + radius * .1, .83, 1.1);
+
+  if (radius > 0 && progress < .62) {
+    const shock = progress / .62;
+    const reach = settings.reduced ? radius : radius * (1 - .61 * (1 - shock) ** 3);
+    ctx.globalAlpha = .85 * (1 - shock);
+    ring(board, x, y, reach, style.color, 2.15);
+  }
+
+  if (settings.reduced) {
+    ctx.globalAlpha = .73 * (1 - progress);
+    drawSprite(5, sx, sy - 8 * zoom, size, size, .54);
+    return;
+  }
+
+  const detailed = settings.quality !== 'low';
+  const direction = (event.id ?? 0) % 2 ? -1 : 1;
+  if (progress > .14) {
+    const smoke = (progress - .14) / .86;
+    const opacity = Math.min(smoke * 4, 1) * (1 - smoke) ** 1.45;
+    const breadth = size * (.62 + smoke * .5);
+    ctx.globalAlpha = .65 * opacity;
+    drawSprite(6, sx + direction * smoke * 13 * zoom, sy - (7 + style.smokeRise * smoke) * zoom,
+      breadth * style.spread, breadth, .48);
+    if (detailed && powder) {
+      ctx.globalAlpha = .38 * opacity;
+      drawSprite(6, sx - direction * smoke * 20 * zoom, sy - (3 + 13 * smoke) * zoom,
+        breadth * 1.1, breadth * .7, .55);
+    }
+  }
+
+  if (progress < .52) {
+    const fire = progress / .52;
+    const breadth = size * (.67 + .39 * (1 - (1 - fire) ** 3));
+    ctx.globalAlpha = (1 - fire) ** 1.3;
+    drawSprite(5, sx, sy - (8 + 9 * fire) * zoom, breadth * style.spread, breadth, .53);
+  }
+  if (progress < .17) {
+    const flash = progress / .17;
+    const spark = size * (.48 + .15 * flash);
+    ctx.globalAlpha = .91 * (1 - flash) ** 2;
+    drawSprite(4, sx, sy - 16 * zoom, spark, spark, .5);
+  }
+  if (detailed) blastFragments(ctx, sx, sy - 11 * zoom, size, progress, style, event.id ?? 0);
+}
+
 function support(board, event, progress, settings) {
   const { kind } = event;
   const style = utility[kind];
@@ -279,12 +375,16 @@ function melee(board, event, progress, settings, drawSprite) {
 }
 
 function special(board, event, progress, settings, drawSprite) {
+  if (event.kind === 'powder-blast') {
+    explosion(board, event, progress, settings, drawSprite);
+    return;
+  }
   const style = danger[event.kind];
   const ctx = board.ctx;
   const [x, y] = centered(event, event.kind !== 'tail-sweep');
   const [sx, sy] = board.project(x, y);
   const zoom = board.camera.zoom;
-  const scale = (event.kind === 'powder-blast' ? 96 : 78) * zoom;
+  const scale = 78 * zoom;
   ctx.globalAlpha = 1 - progress * .88;
   if (event.kind === 'cat-charge') {
     lane(board, event, event.radius ?? style.radius, { ...style, fill: '#fba56b35' }, progress, settings.reduced);
@@ -301,8 +401,7 @@ function special(board, event, progress, settings, drawSprite) {
   } else {
     const radius = (event.radius ?? style.radius) * (settings.reduced ? 1 : .56 + .44 * progress);
     ring(board, x, y, radius, style.color, 2.4);
-    drawSprite(event.kind === 'powder-blast' ? (progress < .47 ? 5 : 6) : 11,
-      sx, sy - 8 * zoom, scale, scale, .57);
+    drawSprite(11, sx, sy - 8 * zoom, scale, scale, .57);
   }
   if (!settings.reduced && settings.quality !== 'low') {
     sparks(ctx, sx, sy - 8 * zoom, progress, scale, style.color, 9, event.id ?? 2);
@@ -382,18 +481,19 @@ export class AttackEffects {
         const width = missile.launch * zoom * (settings.reduced ? .75 : 1.03 - .4 * progress);
         ctx.globalAlpha = 1 - progress * .9;
         drawSprite(event.kind === 'web' ? 1 : 4, mx, my, width, width, .5);
+      } else if (event.type === 'impact' && event.kind === 'rocket') {
+        explosion(board, event, progress, settings, drawSprite);
       } else if (event.type === 'impact') {
         const width = missile.impact * zoom * (settings.reduced ? 1 : .75 + .53 * progress);
         ctx.globalAlpha = 1 - progress * .9;
-        if (event.kind === 'rocket' || event.kind === 'web') {
-          ring(board, event.x, event.y, (event.radius || (event.kind === 'rocket' ? 1.15 : .45))
-            * (settings.reduced ? 1 : .42 + .58 * progress), missile.color, event.kind === 'rocket' ? 2.7 : 1.4);
+        if (event.kind === 'web') {
+          ring(board, event.x, event.y, (event.radius || .45)
+            * (settings.reduced ? 1 : .42 + .58 * progress), missile.color, 1.4);
         }
-        const sprite = event.kind === 'rocket' && progress > .5 ? 6
-          : event.reason === 'terrain' && !['rocket', 'web'].includes(event.kind) ? 6 : missile.sprite;
+        const sprite = event.reason === 'terrain' && event.kind !== 'web' ? 6 : missile.sprite;
         drawSprite(sprite, x, y - 11 * zoom, width, width, .52);
         if (!settings.reduced && settings.quality !== 'low') {
-          sparks(ctx, x, y - 11 * zoom, progress, width, missile.color, event.kind === 'rocket' ? 10 : 4, event.id ?? 2);
+          sparks(ctx, x, y - 11 * zoom, progress, width, missile.color, 4, event.id ?? 2);
         }
       } else if (event.type === 'attack') {
         if (event.kind === 'laser' || event.kind === 'tesla') beam(board, event, progress, settings);

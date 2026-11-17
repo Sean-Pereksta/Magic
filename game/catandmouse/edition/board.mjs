@@ -113,7 +113,6 @@ export function prepareBattlefield(mapId) {
 }
 
 const shots = { bullet: 0, rabbit: 0, rocket: 2, acorn: 3, web: 1 };
-const colors = { runner: '#edbb6c', stink: '#a6c676', ox: '#da8362', vulture: '#b9a3d4', king: '#edd472', sapper: '#f28451', mender: '#6fd4b4', cat: '#f28f63' };
 const unitScale = { mouse: 49, rat: 43, runner: 38, stink: 51, ox: 61, vulture: 44, king: 62, sapper: 61, mender: 53, cat: 105, rabbit: 43, flea: 28 };
 const pivotHeads = {
   turret: { cell: 1, width: 54, pin: .31 },
@@ -541,7 +540,7 @@ export class Battlefield {
       sheet = 'cat-moves';
       cell = preparing ? move.prepare : move.landing && age > strikeTime * .5 ? move.landing : move.strike;
     }
-    if (entity.id === this.localId || colors[type]) this.diamond(point.x, point.y, colors[type] || '#fff1ac', '#251f1744');
+    if (entity.id === this.localId) this.diamond(point.x, point.y, '#fff1ac', '#251f1744');
     ctx.save();
     ctx.translate(x, y + (type === 'vulture' ? -12 * zoom : 2 * zoom));
     ctx.scale(useVertical ? 1 : this.facing.get(entity.id) || 1, 1);
