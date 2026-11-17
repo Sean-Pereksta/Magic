@@ -229,9 +229,87 @@ function terracePump(w,p,dir,f) {
  groundShadow(w,[x,y,top],[x+span,y,top],29);
 }
 
+function bookClip(w,o,f) {
+ const x=o.x+o.w*.68,y=o.y+o.h*.25,z=62,s=Math.min(o.w,o.h)/3.8;
+ w.box(o.x+12,o.y+12,o.w-24,o.h-24,z,10,f.oxide,f.brass);
+ for(let line=0;line<4;line++)w.top(o.x+o.w*.16,o.y+o.h*(.53+line*.071),o.w*(.34+line*.087),3,z+10.4,f.porcelain);
+ for(const dir of [-1,1]){
+  const end=x+dir*s*.45;
+  w.box(end-6,y-20,12,41,z+10,21,f.dark,f.iron);
+  wire(w,[end,y-12,z+30],[end+dir*12,y+23,z+s*.52],f.brass,4.8);
+  wire(w,[end+dir*12,y+23,z+s*.52],[x+dir*s*.11,y+36,z+s*.59],f.brass,4.8);
+ }
+ wire(w,[x-s*.11,y+36,z+s*.59],[x+s*.11,y+36,z+s*.59],f.brass,4.8);
+}
+
+function cupRim(w,o,f) {
+ const x=o.x+o.w/2,y=o.y+o.h/2,r=Math.min(o.w,o.h)*.465,z=139;
+ const rim=a=>[x+Math.cos(a)*r,y+Math.sin(a)*r,z];
+ tube(w,[x,y,z-6],[x,y,z+.8],r*.91,f.dark,30,r*.91);
+ for(let i=0;i<32;i++)wire(w,rim(i*TAU/32),rim((i+1)*TAU/32),f.porcelain,5);
+ const coffee=w.material('#775039',-2);
+ tube(w,[x,y,z+.8],[x,y,z+1.4],r*.79,coffee,28,r*.81);
+ for(let i=0;i<13;i++){
+  const foam=a=>[x+r*.56*Math.cos(a),y+r*.56*Math.sin(a),z+2];
+  wire(w,foam(i*.18+.44),foam((i+1)*.18+.44),f.seal,3.5);
+ }
+}
+
+function rackCooling(w,o,f) {
+ const x=o.x+o.w*.5,y=o.y+o.h*.5,r=Math.min(112,o.h*.28),z=122+Math.min(35,o.w*.025);
+ for(const cy of [y-o.h*.22,y+o.h*.22]){
+  tube(w,[x,cy,z],[x,cy,z+22],r,f.teal,16,r*.96);
+  tube(w,[x,cy,z+22],[x,cy,z+24],r*.81,f.dark,16);
+  tube(w,[x,cy,z+24],[x,cy,z+32],r*.23,f.iron,10);
+  for(let i=0;i<8;i++){
+   const a=i*TAU/8,start=[x+Math.cos(a)*r*.23,cy+Math.sin(a)*r*.23,z+26];
+   wire(w,start,[x+Math.cos(a+.27)*r*.7,cy+Math.sin(a+.27)*r*.7,z+27],f.glass,7);
+  }
+ }
+}
+
+function pinHeads(w,o,f) {
+ const radius=Math.min(o.w*.048,o.h*.10),y=o.y+o.h*.37,z=130;
+ for(const [i,color] of [f.teal,f.oxide,f.brass].entries()){
+  const x=o.x+o.w*(.29+.21*i),lean=(i-1)*13;
+  tube(w,[x,y,z-16],[x+lean,y+12,z+42],radius*.20,f.iron,8);
+  tube(w,[x+lean,y+12,z+38],[x+lean*1.25,y+20,z+53],radius*.68,color,10,radius);
+  tube(w,[x+lean*1.25,y+20,z+53],[x+lean*1.35,y+24,z+68],radius,color,10,radius*.78);
+ }
+}
+
+function inkSpindles(w,o,f) {
+ const x=o.x+o.w*.54,y=o.y+o.h*.5,z=-24,r=Math.min(48,o.w*.085);
+ for(const [i,j] of [-1,1].entries()){
+  const a=[x-o.w*.28,y+j*r*1.4,z+i*5],b=[x+o.w*.31,y+j*r*.87,z+i*5];
+  tube(w,a,b,r,i?f.oxide:f.teal,12,r*.86);
+  tube(w,b,along(a,b,1.24),r*.86,f.porcelain,12,5);
+  tube(w,a,along(a,b,.10),r*1.10,f.brass,12);
+  groundShadow(w,a,b,r*2,-63);
+ }
+}
+
+function paintClassicLandmarks(w,map,holes,f) {
+ const props=(map.obstacles||[]).filter(o=>o.w>=460&&o.h>=220);
+ if(map.id==='desktop')for(const o of props)if(o.type==='book')bookClip(w,o,f);
+ if(map.id==='breakroom')for(const o of props)if(o.type==='cup')cupRim(w,o,f);
+ if(map.id==='canyon'||map.id==='inkdelta'){
+  for(const bridge of map.bridges||[])bridgeLights(w,bridge,f);
+  if(map.id==='inkdelta')for(const o of holes)if(o.h>=700)inkSpindles(w,o,f);
+ }
+ if(map.id==='conveyor')for(const o of props)if(o.type==='recycler'){
+  gantry(w,[o.x+o.w*.44,o.y+o.h*.5,104],o.x<map.width/2?1:-1,.72,f);
+ }
+ if(map.id==='corkcross')for(const o of props)if(o.type==='pinbox'||o.type==='corkbundle')pinHeads(w,o,f);
+ if(map.id==='serverstack')for(const o of props)if(o.type==='serverrack')rackCooling(w,o,f);
+}
+
 export function paintLandmarks(w,map,holes) {
- if(map.id!=='rainyard'&&map.id!=='cartonworks')return;
  const rain=map.id==='rainyard',f=finishes(w,map.id);
+ if(!rain&&map.id!=='cartonworks'){
+  paintClassicLandmarks(w,map,holes,f);
+  return;
+ }
  for(const [index,p] of (map.plateaus||[]).entries()){
   dockStencil(w,p,p.campTeam===undefined?index+1:p.campTeam+1,f,rain);
   if(p.campTeam===undefined) {

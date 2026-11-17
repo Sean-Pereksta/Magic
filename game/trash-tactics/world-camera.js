@@ -36,6 +36,12 @@ export function billboardBasis(camera) {
  return viewOrientation(camera).basis;
 }
 
+export function projectHeading(camera, angle) {
+ const {cosYaw,sinYaw,sinPitch}=viewOrientation(camera);
+ const x=Math.cos(angle),y=Math.sin(angle);
+ return Math.atan2((sinYaw*x+cosYaw*y)*sinPitch,cosYaw*x-sinYaw*y);
+}
+
 export function projectWorld(camera, width, height, x, y, z = 0) {
  const {cosYaw,sinYaw,sinPitch,cosPitch}=viewOrientation(camera);
  const dx = x - camera.x;

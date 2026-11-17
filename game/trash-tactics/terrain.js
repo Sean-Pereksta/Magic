@@ -127,6 +127,20 @@ export function terrainHeight(map,x,y){
   return (local.plateaus||[]).some(p=>inside(x,y,p))?1:0;
 }
 
+export function aircraftTerrainHeight(map,x,y,radius=0){
+  const approach=180;
+  let height=0;
+  // Round off the flight path outside cliffs and ramp edges. Start the climb
+  // early enough for the whole aircraft to clear the raised surface.
+  for(const areas of [map?.plateaus,map?.ramps])for(const area of areas||[]){
+    const dx=Math.max(area.x-x,0,x-area.x-area.w),dy=Math.max(area.y-y,0,y-area.y-area.h);
+    if(dx>=approach+radius||dy>=approach+radius)continue;
+    const t=Math.max(0,1-Math.max(0,Math.hypot(dx,dy)-radius)/approach);
+    height=Math.max(height,(area.height??1)*t*t*(3-2*t));
+  }
+  return height;
+}
+
 export function terrainSight(map,source,x,y,flying=false){
   if(flying)return true;
   const height=terrainHeight(map,source.x,source.y);

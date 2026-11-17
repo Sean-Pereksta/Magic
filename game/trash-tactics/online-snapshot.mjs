@@ -25,7 +25,7 @@ function visualEntity(entity) {
   view.queue = entity.queue?.[0] ? [pick(entity.queue[0], ['remaining','total'])] : [];
   if (entity.cargo) view.cargo = entity.cargo.map(() => null);
   if (entity.leap) view.leap = pick(entity.leap,['remaining','total']);
-  if (entity.crash) view.crash = pick(entity.crash,['diving','diveFor','diveTotal']);
+  if (entity.crash) view.crash = pick(entity.crash,['diving','remaining','total']);
   if (entity.roll) view.roll = true;
   if (entity.shadow) view.shadow = true;
   if (entity.aim) view.aim = pick(entity.aim,['remaining','total']);

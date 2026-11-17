@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {layoutMap,MAPS} from '../engine.js';
-import {billboardBasis,BILLBOARD_RIGHT,BILLBOARD_UP,ELEVATION,getViewMatrix,pickGround,projectGround,projectWorld} from '../world-camera.js';
+import {billboardBasis,BILLBOARD_RIGHT,BILLBOARD_UP,ELEVATION,getViewMatrix,pickGround,projectGround,projectHeading,projectWorld} from '../world-camera.js';
 import {buildTerrainMesh} from '../world-mesh.js';
 
 const dimensions=[1440,920];
@@ -53,5 +53,17 @@ test('all battlegrounds build bounded finite triangle data with solid and shadow
    lower||=terrain.solids[i]===0;
   }
   assert(upper&&lower,id);
+ }
+});
+
+test('aircraft headings track the projected path when the camera orbits',()=>{
+ for(const yaw of [0,14,123,230,-45])for(const pitch of [28,44,75]){
+  const camera={x:400,y:300,zoom:1.2,yaw,pitch};
+  const start=projectWorld(camera,...dimensions,430,310,75);
+  for(const angle of [-Math.PI,-2.5,-Math.PI/2,-.3,0,.8,Math.PI/2,2.1,Math.PI]){
+   const ahead=projectWorld(camera,...dimensions,430+Math.cos(angle)*20,310+Math.sin(angle)*20,75);
+   const actual=Math.atan2(ahead.y-start.y,ahead.x-start.x);
+   assert(Math.cos(actual-projectHeading(camera,angle))>1-1e-12);
+  }
  }
 });

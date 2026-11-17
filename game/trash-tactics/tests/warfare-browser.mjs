@@ -25,6 +25,23 @@ try{
  await page.goto(url);
  await page.waitForFunction(()=>!!window.trashTactics);
  assert.equal(await page.locator('#mapSelect option').count(),9);
+ const mapOptions=page.locator('#mapSelect');
+ const terrainPreview=page.locator('#mapScenePreview');
+ const layoutPreview=page.locator('#mapBriefPreview');
+ const previewSwitch=page.locator('.map-preview-switch');
+ const maps=await mapOptions.locator('option').evaluateAll(options=>options.map(option=>option.value));
+ for(const map of maps){
+  await mapOptions.selectOption(map);
+  await terrainPreview.waitFor({state:'visible'});
+  const source=await terrainPreview.evaluate(async image=>{await image.decode();return new URL(image.src).pathname;});
+  assert(source.endsWith(`/map-preview-${map}.webp`));
+  await previewSwitch.click();
+  await layoutPreview.waitFor({state:'visible'});
+  await previewSwitch.click();
+  await terrainPreview.waitFor({state:'visible'});
+ }
+ await mapOptions.selectOption('desktop');
+ await terrainPreview.waitFor({state:'visible'});
  await page.screenshot({path:path.join(output,'expansion-lobby.png')});
  for(const map of ['canyon','conveyor']){
   if(map==='conveyor'){await page.keyboard.press('p');await page.locator('#newMatchButton').click();}
@@ -64,5 +81,5 @@ try{
  await mobile.screenshot({path:path.join(output,'mobile-canyon.png')});
  assert(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'mobile layout fits viewport');
  assert.deepEqual(errors,[],'desktop and touch screens have no runtime errors');
- console.log(JSON.stringify({ok:true,checks:['four map choices','canyon and conveyor render','live specialist production','all eight new artwork icons','mobile map selection and layout'],output}));
+ console.log(JSON.stringify({ok:true,checks:['all nine screenshots and tactical layout toggles','canyon and conveyor render','live specialist production','all eight new artwork icons','mobile map selection and layout'],output}));
 }finally{await browser.close();server?.kill();}

@@ -5,6 +5,7 @@ const INK='#354549', GOLD='#e6b454', PAPER='#fff9df', VIOLET='#9276c6';
 const COLORS=['#269b98','#ed795d','#9e7bc5','#d4aa4e'];
 const team=t=>COLORS[t]||'#9da78c';
 const TAU=Math.PI*2;
+const AIRPLANE_TILT=Math.PI*.35;
 function effectImage(name){if(typeof Image==='undefined')return null;const img=new Image();img.onerror=()=>{if(!img._pngFallback){img._pngFallback=true;img.src=new URL('./assets/'+name+'.png',import.meta.url).href;}};img.src=new URL('./assets/'+name+'.webp',import.meta.url).href;return img;}
 const EFFECT_TEXTURE=effectImage('warfare-effects');
 const EFFECT_SHEET=effectImage('warfare-effects-sheet');
@@ -36,6 +37,15 @@ export function getAnimationFrame(type,options={}){
  return {state,row:ANIMATION_ROWS[state],frame,index:ANIMATION_ROWS[state]*4+frame,fps};
 }
 
+function orientAirplane(c,facing=0,bank=0,tiltLimit=AIRPLANE_TILT){
+ const across=Math.cos(facing),side=across<-1e-8?-1:1;
+ // The cutout has an illustrated top. Mirror the nose into the other
+ // hemisphere and use a bounded tilt to show travel toward or away from us.
+ const tilt=Math.atan2(side*Math.sin(facing),Math.abs(across))*tiltLimit/(Math.PI/2);
+ c.rotate(tilt+bank*across*across);
+ if(side<0)c.scale(-1,1);
+}
+
 /** Uses real frame crops for troops; portraits remain the interface artwork. */
 export function drawExpansionSprite(c,type,sprite,tc,options={}){
  if(!['sniper','airplane','mage','divider','rollingrock','shears'].includes(type))return false;
@@ -43,7 +53,13 @@ export function drawExpansionSprite(c,type,sprite,tc,options={}){
  if(!sheetReady&&(!sprite?.complete||!sprite.naturalWidth))return false;
  const e=options.entity||{},t=options.phase||options.time||0,walk=options.walk||0,attack=clamp((options.attackAnim||0)/.25),facing=Number.isFinite(options.facing)?options.facing:0,alpha=typeof c.globalAlpha==='number'?c.globalAlpha:1;
  c.save();
- if(type==='airplane'){c.rotate(facing+Math.sin(t*4+(e.id||0))*(walk?.1:.025));if(e.crash?.diving)c.scale(1,.72);c.translate(-attack*2,0);}
+ if(type==='airplane'){
+  const diving=e.crash?.diving;
+  // The dive sheet already pitches the nose steeply down.
+  orientAirplane(c,facing,Math.sin(t*4+(e.id||0))*(walk?.1:.025),diving?.08:AIRPLANE_TILT);
+  if(diving)c.scale(1,.72);
+  c.translate(-attack*2,0);
+ }
  else if(type==='rollingrock'&&e.roll)c.rotate(t*9);
  else{c.rotate(walk?Math.sin(walk)*.035:Math.sin(t*1.8)*.009);if(type==='sniper'){if(Math.abs(facing)>Math.PI/2)c.scale(-1,1);c.translate(-attack*4,e.aim?2:0);if(e.aim)c.scale(1,.94);}else if(type==='shears'&&Math.abs(facing)>Math.PI/2)c.scale(-1,1);}
  const width=58,height=58,ratio=sheetReady?(sheet.naturalWidth/sheet.naturalHeight):sprite.naturalWidth/(sprite.naturalHeight||sprite.naturalWidth),dw=ratio>1?width:height*ratio,dh=ratio>1?width/ratio:height;
@@ -75,7 +91,7 @@ export function drawExpansionIcon(c,type,tc,options={}){
   if(attack>0){path(c,[[41,-2],[48,-7],[46,-1],[52,2],[43,2]],'#fff3b3',GOLD,1.2);}c.restore();
  }else if(type==='airplane'){
   const dive=e.crash?.diving,bank=options.walk?Math.sin(t*4+(e.id||0))*.09:Math.sin(t*2)*.035;
-  c.rotate((Number.isFinite(options.facing)?options.facing:0)+bank);c.scale(1,dive?.72:1);
+  orientAirplane(c,Number.isFinite(options.facing)?options.facing:0,bank+(dive?.18:0));c.scale(1,dive?.72:1);
   path(c,[[-26,-21],[29,0],[-26,21],[-11,1]],'#e4e9d8',INK,2);path(c,[[-26,-21],[5,-3],[29,0],[-9,1]],'#fffbed',INK,1.7);path(c,[[-26,21],[-9,1],[29,0],[5,5]],'#ccded6',INK,1.6);path(c,[[-11,1],[1,-5],[29,0]],'#f5f1d1',INK,1.2);
   stroke(c,[[-20,-15],[-5,-8]],tc,3);stroke(c,[[-20,15],[-5,8]],tc,3);stroke(c,[[-17,-11],[-10,-8]],'#f9d28a',1);oval(c,6,-3,1.7,2.4,INK,null);oval(c,6,4,1.7,2.4,INK,null);stroke(c,[[14,-2],[17,0],[14,2]],INK,1.2);rect(c,-3,-2,13,4,'#7e9b9b',INK,1,1);
   if(attack>0)glint(c,23,0,'#f0bd5d',4+attack*4);

@@ -250,7 +250,11 @@ export function tickSpecialist(g,e,dt){
   }
   if(e.divisionCast>0){e.divisionCast-=dt;return true;}
   if(e.crash){
-    const c=e.crash;if(!c.diving&&dist(e,c)<=155){c.diving=true;c.fromX=e.x;c.fromY=e.y;c.total=.65;}
+    const c=e.crash;
+    if(!c.diving&&dist(e,c)<=155){
+      c.diving=true;c.fromX=e.x;c.fromY=e.y;c.total=.65;
+      if(dist(e,c)>.01)e.facing=Math.atan2(c.y-e.y,c.x-e.x);
+    }
     if(c.diving){
       c.remaining-=dt;const t=1-Math.max(0,c.remaining)/.65;e.x=c.fromX+(c.x-c.fromX)*t;e.y=c.fromY+(c.y-c.fromY)*t;
       if(c.remaining<=0){for(const enemy of g.entities){const distance=dist(c,enemy);if(enemy.hp>0&&enemy.team!==e.team&&(enemy.team>=0||enemy.type==='staplergate')&&enemy.type!=='station'&&!enemy.transportedBy&&distance<75+enemy.r&&familyCanDamage(e,enemy))g._damage(enemy,145*Math.max(.15,1-distance/(75+enemy.r)),e);}g._effect('crash',c.x,c.y,{team:e.team,radius:75,life:1.4,total:1.4});e.hp=0;e.crash=null;}

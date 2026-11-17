@@ -1,6 +1,6 @@
 import {OnlineConnection} from './online-client.mjs';
 import {OFFICIAL_ORIGIN,SITE_ORIGINS} from './online-rules.mjs';
-import {MAP_BRIEFS} from './skirmish-menu.js';
+import {MAP_BRIEFS,mapScreenshotUrl} from './skirmish-menu.js';
 import {renderLeaderboard,renderRankProfile} from './rank-ui.mjs';
 
 export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResult,onRating,onStatus,onClosed}) {
@@ -24,6 +24,15 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
   const matchBox=find('onlineMatch');
   const mapSelect=find('onlineMap');
   for (const [id,brief] of Object.entries(MAP_BRIEFS)) mapSelect.add(new Option(brief.name,id));
+  const mapPicker=document.createElement('div');
+  const selectedMapImage=document.createElement('img');
+  selectedMapImage.alt='';
+  selectedMapImage.className='online-map-icon';
+  mapPicker.className='online-map-picker';
+  mapSelect.before(mapPicker);
+  mapPicker.append(selectedMapImage,mapSelect);
+  const showMapIcon=()=>{selectedMapImage.src=mapScreenshotUrl(mapSelect.value);};
+  mapSelect.addEventListener('change',showMapIcon);
   let connection,room,health,poll,link,loading=0,connecting=false,running=false;
   try {handle.value=localStorage.getItem('trash-tactics-multiplayer-name') || '';} catch {}
   const note=message=>{status.textContent=message;};
@@ -82,15 +91,27 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     const sorted=[...list].sort((a,b)=>Number(b.id===inviteCode)-Number(a.id===inviteCode));
     for (const entry of sorted) {
       const item=text('li','');
+      const mapDetails=text('div','');
+      mapDetails.className='online-room-map';
+      const screenshot=mapScreenshotUrl(entry.map);
+      if(screenshot){
+        const image=document.createElement('img');
+        image.className='online-map-icon';
+        image.alt='';
+        image.loading='lazy';
+        image.src=screenshot;
+        mapDetails.append(image);
+      }
       const desc=text('span','');
       desc.append(text('strong',entry.name),text('small',(MAP_BRIEFS[entry.map]?.name || entry.map)+' · '+(entry.ranked?'Ranked':entry.community?'Community':'Casual')+' · '+entry.count+'/'+entry.capacity));
+      mapDetails.append(desc);
       const action=button('Join',()=>{
         if (entry.community && !hosted) {
           const url=new URL(entry.url);
           if (url.protocol==='https:' && /^[a-z0-9-]+\.trycloudflare\.com$/.test(url.hostname)) location.assign(url);
         } else void connect({type:'join',room:entry.id},entry.ranked);
       });
-      item.append(desc,action); rows.append(item);
+      item.append(mapDetails,action); rows.append(item);
     }
     if (!list.length) rows.append(text('li','No open lobbies. Create one or join with an invite.'));
   }
@@ -177,6 +198,7 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     pane.hidden=false;
     find('soloLobby').hidden=true;
     mapSelect.value=selectedMap();
+    showMapIcon();
     clearInterval(poll);
     poll=setInterval(()=>void refresh(),4000);
     void refresh();
