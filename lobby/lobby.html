@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Cat’N Mice · Arcade Nexus</title>
   <script src="./lobby-showcase.js?v=6"></script>
-  <script src="./lobby-library.js?v=4"></script>
+  <script src="./lobby-library.js?v=5"></script>
   <script src="./lobby-flagships.js?v=3"></script>
   <script src="./lobby-arcade.js?v=2"></script>
 </head>
@@ -17,6 +17,7 @@
         if(!response.ok)throw new Error(`Could not load Game Hub core (${response.status}).`);
         let html=await response.text();
         const gamesMarker='const GAMES = [';
+        const catEdition={title:"Cat & Mouse",localEditionRoute:"/game/catandmouse/edition/download.html"};
         const truthGames=[
           {key:"bannerlands",title:"Bannerlands · The War of Crowns",emoji:"🏰",imagePath:"/lobby/assets/game-tiles/bannerlands-v2.webp",desc:"Command armies, conquer an isometric battlefield, and unite the realm in a war of rival houses.",route:"https://sean-pereksta.github.io/Truth/games/bannerlands/",category:"Strategy",modes:["single","multi"],liveLobbyGame:"bannerlands",localEditionRoute:"https://sean-pereksta.github.io/Truth/games/bannerlands/download.html",featured:false},
           {key:"monstermallexpanded",title:"Monster Mall — Expanded Edition",emoji:"🛍️",imagePath:"/lobby/assets/game-tiles/monster-mall-expanded-v2.webp",desc:"Survive a deserted 3D shopping mall after hours. Face five difficulty levels with keyboard, touch, or controller controls.",route:"https://sean-pereksta.github.io/Truth/games/monster-mall-expanded/",category:"Survival",modes:["single"],featured:false},
@@ -39,7 +40,7 @@
         const quipClashEntry='{key:"quipclash",title:"Quip Clash",emoji:"💬⚡",imagePath:"/game/quip-clash/assets/quip-clash.svg",desc:"Write outrageous answers, vote for your favorites, and battle for the biggest laugh. Two prompts each, double-point round two, and a triple-point finale. Play together on your phones with 4–12 account holders.",route:"/game/quip-clash.html",multiplayerRoute:"/game/quip-clash.html",joinLabel:"Play with Friends",category:"Party",modes:["multi"],launchMode:"lobby",minPlayers:4,maxPlayers:12,autoRedirect:true,autoUsername:true,requiresUser:true,featured:false},';
         const monkeyTrailsEntry='{key:"monkeytrails",title:"Monkey Trails · Wild Companions",emoji:"🐒🧭",imagePath:"/game/monkey-trails/tile.svg",desc:"Turn a walk into an adventure: collect 60 animated monkeys, lead a team of three, discover elemental supplies, and hunt eight extraordinary Ultras on your own safe route. Tactical team battles, a permanent sanctuary, and encrypted saves.",route:"/game/monkey-trails.html",category:"Adventure",modes:["single"],featured:false},';
         // Trash Tactics lobby tile.
-        const trashTacticsEntry='{key:"trashtactics",title:"Trash Tactics",emoji:"♻️✂️",imagePath:"/game/trash-tactics/assets/lobby-tile.jpg",desc:"Command painted cut-out armies, defend high-ground bases, and outmaneuver rivals in solo skirmishes or online 1v1 matches.",route:"/game/trash-tactics/index.html",multiplayerRoute:"/game/trash-tactics/?online=1",joinLabel:"Browse Lobbies",onlineStatus:"Online 1v1",category:"Strategy",modes:["single","multi"],launchMode:"matchmaking",badges:["Casual PvP","Ranked Ladder"],featured:false},';
+        const trashTacticsEntry='{key:"trashtactics",title:"Trash Tactics",emoji:"♻️✂️",imagePath:"/game/trash-tactics/assets/lobby-tile.jpg",desc:"Command painted cut-out armies, defend high-ground bases, and outmaneuver rivals in solo skirmishes or online 1v1 matches.",route:"/game/trash-tactics/index.html",multiplayerRoute:"/game/trash-tactics/?online=1",localEditionRoute:"/game/trash-tactics/download.html",joinLabel:"Browse Lobbies",onlineStatus:"Online 1v1",category:"Strategy",modes:["single","multi"],launchMode:"matchmaking",badges:["Casual PvP","Ranked Ladder"],featured:false},';
         if(html.includes(gamesMarker)&&!html.includes('key:"trashtactics"')){
           html=html.replace(gamesMarker,`${gamesMarker}\n      ${trashTacticsEntry}`);
         }
@@ -73,7 +74,7 @@
         });
         html=html.replace(/\{key:"cat",[^\n]*\}/,record=>record
           .replace('desc:"Classic multiplayer chase."','desc:"Gather cheese, build a fortress, and survive the Cat in painted battlefields."')
-          .replace('modes:["multi"]','modes:["single","multi"],liveLobbyGame:"catandmouse",paintedTile:"/game/catandmouse/edition/art/title-v1.webp",singleRoute:"/game/catandmouse/edition/index.html",localEditionRoute:"/game/catandmouse/edition/download.html"'));
+          .replace('modes:["multi"]',`modes:["single","multi"],liveLobbyGame:"catandmouse",paintedTile:"/game/catandmouse/edition/art/title-v1.webp",singleRoute:"/game/catandmouse/edition/index.html",localEditionRoute:"${catEdition.localEditionRoute}"`));
         // Run inside the existing loader so every injected game participates.
         html=globalThis.GameHubLibrary.upgradeHtml(html);
         // A presentation failure must not prevent the existing hub from opening.
@@ -85,6 +86,8 @@
           try{html=globalThis.GameHubArcade.upgradeHtml(html);}
           catch(error){console.warn("Arcade layout unavailable; using the existing hub",error);}
         }
+        const escapeHtml=value=>value.replace(/[&"<>]/g,c=>({"&":"&amp;",'"':"&quot;","<":"&lt;",">":"&gt;"}[c]));
+        const hostButton=game=>globalThis.GameHubLibrary.hostButton(game,escapeHtml);
         const liveLobbies=`<section id="live-lobbies" class="card live-lobbies" aria-labelledby="live-lobbies-title">
           <div class="live-lobbies-head">
             <div><h2 id="live-lobbies-title">Live Lobbies</h2><p>Join a room hosted by another player.</p></div>
@@ -95,14 +98,14 @@
             </div>
           </div>
           <div class="live-lobbies-games">
-            <section data-live-section="catandmouse" aria-labelledby="live-lobbies-cat"><h3 id="live-lobbies-cat">Cat &amp; Mouse</h3><p data-live-status role="status">Checking the directory…</p><ul data-live-rooms></ul></section>
-            <section data-live-section="bannerlands" aria-labelledby="live-lobbies-banner"><h3 id="live-lobbies-banner">Bannerlands</h3><p data-live-status role="status">Checking the directory…</p><ul data-live-rooms></ul></section>
+            <section data-live-section="catandmouse" aria-labelledby="live-lobbies-cat"><div class="live-lobbies-game-head"><h3 id="live-lobbies-cat">Cat &amp; Mouse</h3>${hostButton(catEdition)}</div><p data-live-status role="status">Checking the directory…</p><ul data-live-rooms></ul></section>
+            <section data-live-section="bannerlands" aria-labelledby="live-lobbies-banner"><div class="live-lobbies-game-head"><h3 id="live-lobbies-banner">Bannerlands</h3>${hostButton(truthGames.find(game=>game.key==="bannerlands"))}</div><p data-live-status role="status">Checking the directory…</p><ul data-live-rooms></ul></section>
           </div>
         </section>`;
         const main='<main class="shell" id="mainContent" tabindex="-1">';
         if(!html.includes('id="live-lobbies"')){
           html=html.replace(main,main+liveLobbies)
-            .replace("</head>",'<link rel="stylesheet" href="./live-lobbies.css"><script type="module" src="./live-lobbies.mjs"><\/script></head>');
+            .replace("</head>",'<link rel="stylesheet" href="./live-lobbies.css?v=2"><script type="module" src="./live-lobbies.mjs?v=2"><\/script></head>');
         }
         const desktopDownload=`<aside class="desktop-hub-download" aria-labelledby="desktop-hub-heading">
           <img src="/lobby/assets/catnmice-mark.svg" alt="" width="52" height="52">

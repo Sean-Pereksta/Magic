@@ -53,19 +53,25 @@ test('six Truth games join the shared catalog exactly once', async () => {
   }
 });
 
-test('both Local Editions expose their guest routes independently of Active Games', async () => {
+test('the three Windows host editions preserve their guest routes and expose their download links', async () => {
   const html = await load();
   const games = registry(html);
   const cat = games.find(game => game.key === 'cat');
   const banner = games.find(game => game.key === 'bannerlands');
+  const trash = games.find(game => game.key === 'trashtactics');
   assert.equal(cat.singleRoute, '/game/catandmouse/edition/index.html');
   assert.equal(cat.route, '/game/catandmouse.html');
   assert.match(cat.paintedTile, /\/game\/catandmouse\/edition\/art\/.*\.webp$/);
   assert.equal(cat.localEditionRoute, '/game/catandmouse/edition/download.html');
   assert.equal(banner.localEditionRoute, 'https://sean-pereksta.github.io/Truth/games/bannerlands/download.html');
+  assert.equal(trash.localEditionRoute, '/game/trash-tactics/download.html');
+  assert.equal(trash.multiplayerRoute, '/game/trash-tactics/?online=1');
   for (const output of [html, await load(html)]) {
     assert.equal(output.match(/id="live-lobbies"/g).length, 1);
-    assert.equal(output.match(/src="\.\/live-lobbies\.mjs"/g).length, 1);
+    assert.equal(output.match(/src="\.\/live-lobbies\.mjs\?v=\d+"/g).length, 1);
+    assert.equal(output.match(/id="hostDownloadDialog"/g).length, 1);
+    assert.ok(output.includes(`data-host-download="${cat.localEditionRoute}"`));
+    assert.ok(output.includes(`data-host-download="${banner.localEditionRoute}"`));
     assert.match(output, /data-live-filter="all"/);
     assert.match(output, /data-live-filter="catandmouse"/);
     assert.match(output, /data-live-filter="bannerlands"/);

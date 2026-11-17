@@ -221,6 +221,13 @@ function mount(section) {
 }
 
 if (typeof document !== "undefined") {
+  const hostDialog = document.getElementById("hostDownloadDialog");
+  if (hostDialog) document.addEventListener("click", event => {
+    const trigger = event.target.closest("[data-host-download]");
+    if (!trigger) return;
+    document.getElementById("hostDownloadLink").href = trigger.dataset.hostDownload;
+    hostDialog.showModal();
+  });
   const section = document.getElementById("live-lobbies");
   if (section) mount(section);
 }
