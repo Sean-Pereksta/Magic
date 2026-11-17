@@ -94,7 +94,7 @@ function title() {
   mount('title', `<section class="title-view"><span class="eyebrow">THE FLOUR MILL</span><h1>Cat <em>&amp;</em><br>Mouse</h1>
     <p class="subtitle">Gather cheese, build a fortress, and hold the mill against the gathering swarm.</p>
     <div class="title-actions">${button('Singleplayer <span>→</span>', 'solo-setup', '')}
-      ${button('Multiplayer <span>→</span>', 'multiplayer')}${button('Settings <span>→</span>', 'settings')}</div>
+      ${button('Multiplayer <span>→</span>', 'multiplayer')}<a href="https://www.catnmice.com/hub/ranked.html?game=catandmouse" target="_top">Ranked Survival Challenge</a>${button('Settings <span>→</span>', 'settings')}</div>
   </section>`);
 }
 
@@ -463,6 +463,7 @@ async function startSolo() {
 
 function receiveState(next, effects = next.events) {
   if (!state || state.matchId !== next.matchId) {
+    document.documentElement.dataset.catnmicePlaying='true';window.dispatchEvent(new Event('catnmice-game-started'));if(location.protocol==='https:'&&location.hostname.endsWith('.trycloudflare.com')){void import('https://www.catnmice.com/hub/community-activity.mjs').then(m=>m.recordCommunity('cat')).catch(()=>{});}
     board.reset(next.mapId);
     board.camera.follow = settings.follow;
     selected = null;

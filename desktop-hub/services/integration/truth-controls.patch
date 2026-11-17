@@ -1,0 +1,35 @@
+diff --git a/games/bannerlands/app.js b/games/bannerlands/app.js
+--- a/games/bannerlands/app.js
++++ b/games/bannerlands/app.js
+@@ -491,3 +491,2 @@
+  edgeMouse=null;
+- document.documentElement.dataset.catnmicePlaying='true';window.dispatchEvent(new Event('catnmice-game-started'));
+  game=new Game({house:chosenHouse,landscape:$('landscapeSelect').value,mode:$('modeSelect').value,enemies:+$('enemySelect').value,difficulty:$('difficultySelect').value,scale:$('scaleSelect').value,fogOfWar:$('fogSelect').value==='on',seed:Math.floor(Math.random()*1e9)});
+@@ -497,3 +496,3 @@
+  document.querySelector('.house-card .crest use').setAttribute('href','#i-'+game.teams[game.playerTeam??0].sigil);
+- buildActionLists();paintBuildingIcons();showTab('army');battleHud.close();home();updatePause();updateHud();initAudio();tone(390);canvas.focus();toast(game.mode.kingSurvival?'Protect your king. Press F to find him. Central flag waves bring reinforcements.':game.mode.controlGoal?'Hold the central crown for '+game.mode.controlGoal+' uncontested seconds.':game.mode.teams?'You share a color with your bot ally. Use Call assault or Call defense to coordinate.':'Capture ruined castles for +60 troop capacity each. Hold a ruin for 60 seconds.');
++ buildActionLists();paintBuildingIcons();showTab('army');battleHud.close();home();updatePause();updateHud();initAudio();tone(390);canvas.focus();document.documentElement.dataset.catnmicePlaying='true';window.dispatchEvent(new Event('catnmice-game-started'));if(location.protocol==='https:'&&location.hostname.endsWith('.trycloudflare.com')){void import('https://www.catnmice.com/hub/community-activity.mjs').then(m=>m.recordCommunity('bannerlands')).catch(()=>{});}toast(game.mode.kingSurvival?'Protect your king. Press F to find him. Central flag waves bring reinforcements.':game.mode.controlGoal?'Hold the central crown for '+game.mode.controlGoal+' uncontested seconds.':game.mode.teams?'You share a color with your bot ally. Use Call assault or Call defense to coordinate.':'Capture ruined castles for +60 troop capacity each. Hold a ruin for 60 seconds.');
+ }
+@@ -505,3 +504,3 @@
+ function enterOnlineCampaign(remote){
+- document.documentElement.dataset.catnmicePlaying='true';window.dispatchEvent(new Event('catnmice-game-started'));
++ document.documentElement.dataset.catnmicePlaying='true';window.dispatchEvent(new Event('catnmice-game-started'));if(location.protocol==='https:'&&location.hostname.endsWith('.trycloudflare.com')){void import('https://www.catnmice.com/hub/community-activity.mjs').then(m=>m.recordCommunity('bannerlands')).catch(()=>{});}
+  game=remote;started=true;menuOpen=false;speed=1;lastResult=null;lastEvent=0;lastBattle=0;accumulator=0;edgeMouse=null;
+diff --git a/hub/play-signal.mjs b/hub/play-signal.mjs
+--- a/hub/play-signal.mjs
++++ b/hub/play-signal.mjs
+@@ -8,2 +8,9 @@
+ const surfaces='canvas,[data-gameplay-surface],#board,#gameBoard,#game-board,#battlefield,#hand,#playerHand,#player-hand,#playArea,.game-board,.chessboard,.game-grid,.game-cell,.hand-card,.battle-grid,.board-cell,.tile-grid';
++const controls={
++  biblegame:'#wordSubmitBtn,#referenceSubmitBtn,#bookOptions button',bibleroguelike:'#wordSubmitBtn,#referenceSubmitBtn,#bookOptions button',
++  crowncouncil:'.cardRow button,.cardRow [data-pick]',catmobile:'#moveJoy,#buildJoy,#grid',grass:'#rollBtn,#acceptRollBtn,#rerollBtn,#endTurnBtn,#quickEndTurnBtn,#shopEndTurnBtn',
++  knightwarfare:'#submitAnswer,#mapStage #gridLayer',quipclash:'[data-submit-answers],[data-action="vote"]',rock:'#map',
++  roguecards:'#grid,#benchBoard',rogueduel:'#grid,#draftChoices,#relicChoices',warrealms:'#endTurnBtn,#handRow,#attackTargetsBoard',
++  trumprev:'#boardGrid,#battleGrid',microwars2:'#mapView',spelltower:'#endTurnBtn',cardrealms:'#attackAuthorityBtn,#endTurnBtn',cardrealmsmulti:'#attackAuthorityBtn,#endTurnBtn'
++};
+ let recorded=false;
+@@ -30,3 +37,3 @@
+     if(!event.isTrusted||event.button!==0||event.target.closest('a,dialog,input,textarea,select,nav,[role="dialog"]'))return;
+-    const surface=event.target.closest(surfaces);
++    const surface=event.target.closest(controls[assigned]?surfaces+','+controls[assigned]:surfaces);
+     if(surface&&!/preview|avatar|portrait|thumbnail|icon|logo/i.test(surface.id+' '+surface.className))void played();

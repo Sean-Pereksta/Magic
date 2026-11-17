@@ -1,0 +1,190 @@
+diff --git a/games/academy-standards/index.html b/games/academy-standards/index.html
+--- a/games/academy-standards/index.html
++++ b/games/academy-standards/index.html
+@@ -3,2 +3,4 @@
+ <head>
++<script type="module" src="/Truth/hub/play-signal.mjs" data-catnmice-game="academystandards"></script>
++
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+diff --git a/games/bannerlands/app.js b/games/bannerlands/app.js
+--- a/games/bannerlands/app.js
++++ b/games/bannerlands/app.js
+@@ -491,2 +491,3 @@
+  edgeMouse=null;
++ document.documentElement.dataset.catnmicePlaying='true';window.dispatchEvent(new Event('catnmice-game-started'));
+  game=new Game({house:chosenHouse,landscape:$('landscapeSelect').value,mode:$('modeSelect').value,enemies:+$('enemySelect').value,difficulty:$('difficultySelect').value,scale:$('scaleSelect').value,fogOfWar:$('fogSelect').value==='on',seed:Math.floor(Math.random()*1e9)});
+@@ -504,2 +505,3 @@
+ function enterOnlineCampaign(remote){
++ document.documentElement.dataset.catnmicePlaying='true';window.dispatchEvent(new Event('catnmice-game-started'));
+  game=remote;started=true;menuOpen=false;speed=1;lastResult=null;lastEvent=0;lastBattle=0;accumulator=0;edgeMouse=null;
+diff --git a/games/bannerlands/index.html b/games/bannerlands/index.html
+--- a/games/bannerlands/index.html
++++ b/games/bannerlands/index.html
+@@ -3,2 +3,4 @@
+ <head>
++<script type="module" src="/Truth/hub/play-signal.mjs" data-catnmice-game="bannerlands" data-confirmed="engine"></script>
++
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+@@ -161,2 +163,3 @@
+     <div class="online-menu-actions" aria-label="More multiplayer options">
++     <a href="https://www.catnmice.com/hub/ranked.html?game=bannerlands" target="_top">Ranked 1v1</a>
+      <button type="button" id="hostLobbyButton" hidden>Host lobby</button>
+diff --git a/games/monster-mall-expanded/index.html b/games/monster-mall-expanded/index.html
+--- a/games/monster-mall-expanded/index.html
++++ b/games/monster-mall-expanded/index.html
+@@ -3,2 +3,4 @@
+ <head>
++<script type="module" src="/Truth/hub/play-signal.mjs" data-catnmice-game="monstermallexpanded"></script>
++
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+diff --git a/games/operation-whiskerfall/index.html b/games/operation-whiskerfall/index.html
+--- a/games/operation-whiskerfall/index.html
++++ b/games/operation-whiskerfall/index.html
+@@ -3,2 +3,4 @@
+ <head>
++<script type="module" src="/Truth/hub/play-signal.mjs" data-catnmice-game="operationwhiskerfall"></script>
++
+   <meta charset="UTF-8">
+diff --git a/games/pacman/index.html b/games/pacman/index.html
+--- a/games/pacman/index.html
++++ b/games/pacman/index.html
+@@ -3,2 +3,4 @@
+ <head>
++<script type="module" src="/Truth/hub/play-signal.mjs" data-catnmice-game="pacmanblackout"></script>
++
+   <meta charset="utf-8">
+diff --git a/games/pirates/index.html b/games/pirates/index.html
+--- a/games/pirates/index.html
++++ b/games/pirates/index.html
+@@ -3,2 +3,4 @@
+ <head>
++<script type="module" src="/Truth/hub/play-signal.mjs" data-catnmice-game="pirates"></script>
++
+   <meta charset="utf-8">
+diff --git a/hub/activity.mjs b/hub/activity.mjs
+new file mode 100644
+--- /dev/null
++++ b/hub/activity.mjs
+@@ -0,0 +1,53 @@
++// Call gameplayStarted only after the game confirms play. Keep unacknowledged
++// activity for the identity that played, independent of the current sign-in.
++export function createActivityClient({storage=localStorage,origin='https://hub.catnmice.com',fetchImpl=fetch,getAccount,guestProfile='default',withLock=task=>navigator.locks.request('catnmice.hub.sync',task)}) {
++  const guestKey='catnmice.hub.guest.'+guestProfile;
++  const pendingKey='catnmice.hub.pending.v1';
++  const countKey='catnmice.hub.counts.v1';
++  const read=(key,initial)=>JSON.parse(storage.getItem(key)||JSON.stringify(initial));
++  const write=(key,value)=>storage.setItem(key,JSON.stringify(value));
++  function guest() {
++    let value=storage.getItem(guestKey);
++    if(!value){
++      const random=crypto.getRandomValues(new Uint8Array(32));
++      value=btoa(String.fromCharCode(...random)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
++      storage.setItem(guestKey,value);
++    }
++    return value;
++  }
++  async function request(path,body,auth) {
++    const res=await fetchImpl(new URL(path,origin),{method:'POST',headers:{'Content-Type':'application/json',Authorization:auth},body:JSON.stringify(body),credentials:'omit',redirect:'error',signal:AbortSignal.timeout(8000)});
++    if(!res.ok)throw new Error('Activity service returned '+res.status);
++    return res.json();
++  }
++  async function gameplayStarted(game,owner) {
++    await withLock(()=>{const pending=read(pendingKey,{}),actor=owner?'a:'+owner:'g:'+guest();
++      pending[actor]=[...new Set([...(pending[actor]||[]),game])];write(pendingKey,pending);});
++  }
++  async function sync() {
++    const account=await getAccount?.().catch(()=>null);
++    const batches=await withLock(()=>Object.entries(read(pendingKey,{})));
++    for(const [actor,games] of batches) {
++      const accountOwned=actor.startsWith('a:');
++      if(accountOwned&&account?.username!==actor.slice(2))continue;
++      const auth=accountOwned?'Bearer '+await account.token():'Guest '+actor.slice(2);
++      await request('/v1/activity',{games,username:accountOwned?account.username:undefined},auth);
++      await withLock(()=>{const pending=read(pendingKey,{});pending[actor]=(pending[actor]||[]).filter(game=>!games.includes(game));if(!pending[actor].length)delete pending[actor];write(pendingKey,pending);});
++    }
++  }
++  async function linkCurrentGuest() {
++    const account=await getAccount();
++    if(!account)throw new Error('Sign in to link this guest.');
++    const credential=await withLock(()=>guest());
++    await request('/v1/link',{guest:credential,username:account.username},'Bearer '+await account.token());
++    // Future anonymous play starts from a new guest profile on shared devices.
++    await withLock(()=>{if(storage.getItem(guestKey)===credential)storage.removeItem(guestKey);});
++  }
++  async function refreshCounts() {
++    const res=await fetchImpl(new URL('/v1/counts',origin),{signal:AbortSignal.timeout(6000),credentials:'omit',redirect:'error',cache:'no-store'});
++    if(!res.ok)throw new Error('Lifetime counts are unavailable.');
++    const counts=await res.json();if(!Number.isFinite(Date.parse(counts.asOf))||!counts.hub||!counts.games)throw new Error('Invalid count response.');
++    write(countKey,counts);return counts;
++  }
++  return {gameplayStarted,sync,linkCurrentGuest,refreshCounts,lastCounts:()=>read(countKey,null)};
++}
+diff --git a/hub/play-signal.mjs b/hub/play-signal.mjs
+new file mode 100644
+--- /dev/null
++++ b/hub/play-signal.mjs
+@@ -0,0 +1,39 @@
++// Imported by published game documents. Play never waits on analytics.
++const tag=document.querySelector('script[data-catnmice-game]');
++const assigned=tag?.dataset.catnmiceGame;
++const site='https://www.catnmice.com', truth='https://sean-pereksta.github.io';
++const isOfficial=[site,'https://catnmice.com'].includes(location.origin);
++const isTruth=location.origin===truth&&location.pathname.startsWith('/Truth/games/');
++const trustedParent=(()=>{try{const ref=new URL(document.referrer);return [site,'https://catnmice.com'].includes(ref.origin)?ref.origin:null;}catch{return null;}})();
++const surfaces='canvas,[data-gameplay-surface],#board,#gameBoard,#game-board,#battlefield,#hand,#playerHand,#player-hand,#playArea,.game-board,.chessboard,.game-grid,.game-cell,.hand-card,.battle-grid,.board-cell,.tile-grid';
++let recorded=false;
++function key(){
++  if(assigned==='biblegame'&&(new URLSearchParams(location.search).get('mode')==='roguelike'||localStorage.getItem('gh.lastGameType')==='bibleroguelike'&&new URLSearchParams(location.search).has('lobby')))return 'bibleroguelike';
++  return assigned;
++}
++async function played(){
++  if(recorded||!assigned||!isOfficial&&!isTruth||navigator.userAgent.includes('Electron/'))return;
++  recorded=true;
++  const game=key();
++  try{
++    if(isTruth&&trustedParent&&parent!==self){parent.postMessage({type:'catnmice-gameplay-started',game},trustedParent);return;}
++    const {recordGameplay}=await import('./web-account.mjs');
++    await recordGameplay(game,isOfficial);
++  }catch{recorded=false;}
++}
++const explicit=tag?.dataset.confirmed==='engine';
++if(explicit){
++  window.addEventListener('catnmice-game-started',played);
++  if(document.documentElement.dataset.catnmicePlaying==='true')void played();
++}else{
++  window.addEventListener('pointerdown',event=>{
++    if(!event.isTrusted||event.button!==0||event.target.closest('a,dialog,input,textarea,select,nav,[role="dialog"]'))return;
++    const surface=event.target.closest(surfaces);
++    if(surface&&!/preview|avatar|portrait|thumbnail|icon|logo/i.test(surface.id+' '+surface.className))void played();
++  },{capture:true,passive:true});
++  window.addEventListener('keydown',event=>{
++    if(!event.isTrusted||event.repeat||!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','Space'].includes(event.code)||event.target.closest('button,input,textarea,select,dialog,nav,[role="dialog"]'))return;
++    const view=[...document.querySelectorAll('canvas')].find(e=>e.clientWidth>=200&&e.clientHeight>=120&&e.checkVisibility?.()!==false&&!/preview|avatar|portrait|thumbnail/i.test(e.id+' '+e.className));
++    if(view){const box=view.getBoundingClientRect();if(document.elementFromPoint(box.x+box.width/2,box.y+box.height/2)===view)void played();}
++  },true);
++}
+diff --git a/hub/web-account.mjs b/hub/web-account.mjs
+new file mode 100644
+--- /dev/null
++++ b/hub/web-account.mjs
+@@ -0,0 +1,20 @@
++import {createActivityClient} from './activity.mjs';
++const official=['https://www.catnmice.com','https://catnmice.com'].includes(location.origin);
++const username=()=>official?localStorage.getItem('gh.username')||null:null;
++let authPromise;
++async function account(){
++  const name=username();if(!name)return null;
++  authPromise??=Promise.all([import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js'),import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js'),import('/lobby/firebase-config.mjs')]).then(([apps,auth,config])=>auth.getAuth(apps.getApps().find(a=>a.name==='[DEFAULT]')||apps.initializeApp(config.firebaseConfig))).catch(e=>{authPromise=null;throw e;});
++  const auth=await authPromise;await auth.authStateReady();
++  if(!auth.currentUser||username()!==name)return null;
++  return {username:name,token:()=>auth.currentUser.getIdToken()};
++}
++const activity=createActivityClient({getAccount:account});
++export async function recordGameplay(game,fromSite) {
++  await activity.gameplayStarted(game,fromSite?username():null);
++  void activity.sync().catch(()=>{});
++}
++export const sync=()=>activity.sync();
++export const linkGuest=()=>activity.linkCurrentGuest();
++addEventListener('online',()=>void sync().catch(()=>{}));
++void sync().catch(()=>{});

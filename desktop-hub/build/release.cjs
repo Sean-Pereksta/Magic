@@ -1,0 +1,18 @@
+const fs=require('node:fs');
+const path=require('node:path');
+const crypto=require('node:crypto');
+const dir=path.resolve(process.argv[2]);
+const config=path.resolve(process.argv[3]);
+const key=crypto.createPrivateKey(process.env.HUB_UPDATE_PRIVATE_KEY);
+if(key.asymmetricKeyType!=='ed25519')throw Error('Use the Catnmice Ed25519 update-signing key.');
+const publicKey=crypto.createPublicKey(key).export({type:'spki',format:'pem'});
+const parts=JSON.parse(fs.readFileSync(path.join(dir,'components.json'),'utf8'));
+const number=Number(process.env.GITHUB_RUN_NUMBER),revision=process.env.GITHUB_SHA;
+if(!Number.isSafeInteger(number)||number<1||!/^([a-f\d]{40})$/.test(revision))throw Error('Missing immutable release information.');
+const tag='catnmice-hub-'+number+'-'+revision.slice(0,8);
+const base='https://github.com/Sean-Pereksta/Magic/releases/download/'+tag+'/';
+const manifest={schema:1,sequence:number,source:require('../content/catalog.json').source,items:parts.map(p=>({...p,url:base+p.id+'.zip',version:tag,...(p.id==='hub'?{runtime:require('../package.json').devDependencies.electron}:{})}))};
+const bytes=Buffer.from(JSON.stringify(manifest));
+fs.writeFileSync(path.join(dir,'stable.json'),JSON.stringify({payload:bytes.toString('base64'),signature:crypto.sign(null,bytes,key).toString('base64')}));
+fs.writeFileSync(config,JSON.stringify({key:publicKey,components:Object.fromEntries(parts.map(p=>[p.id,p.sha256]))}));
+fs.appendFileSync(process.env.GITHUB_ENV,'HUB_RELEASE_TAG='+tag+'\n');

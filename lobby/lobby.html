@@ -104,6 +104,13 @@
           html=html.replace(main,main+liveLobbies)
             .replace("</head>",'<link rel="stylesheet" href="./live-lobbies.css"><script type="module" src="./live-lobbies.mjs"><\/script></head>');
         }
+        const desktopDownload=`<aside class="desktop-hub-download" aria-labelledby="desktop-hub-heading">
+          <img src="/lobby/assets/catnmice-mark.svg" alt="" width="52" height="52">
+          <div><h2 id="desktop-hub-heading">Take Catnmice to your desktop</h2>
+            <p>Install offline games and join your usual lobbies with Catnmice Game Hub for Windows.</p></div>
+          <a href="/hub/download.html" target="_top">Download Game Hub <span>Windows x64 ↓</span></a>
+        </aside>`;
+        html=html.replace(main,main+desktopDownload).replace('</head>','<link rel="stylesheet" href="/hub/download-panel.css"></head>');
         const patch=html.includes('catnmice-arcade:v1')?'':'<script src="./lobby-catalog-organization.js?v=6" defer><\/script>';
         html=html.includes("</body>")?html.replace("</body>",patch+"</body>"):html+patch;
         document.open();
