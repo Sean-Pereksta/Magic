@@ -1,0 +1,45 @@
+name: Cat & Mouse Local Edition
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'cat-mouse-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+      - name: Test the match service
+        working-directory: game/catandmouse/edition
+        shell: pwsh
+        run: |
+          npm install --omit=dev --omit=optional --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:host
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          $Compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path -LiteralPath $Compiler)) { choco install innosetup -y --no-progress }
+      - name: Build and check the package
+        shell: pwsh
+        env:
+          CAT_MOUSE_DIRECTORY_URL: ${{ vars.CAT_MOUSE_DIRECTORY_URL }}
+        run: |
+          ./game/catandmouse/edition/desktop/package-win-x64.ps1 -DirectoryUrl $env:CAT_MOUSE_DIRECTORY_URL
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CatMouseLocal-win-x64
+          path: |
+            game/catandmouse/edition/dist/*.exe
+            game/catandmouse/edition/dist/*.zip
+            game/catandmouse/edition/dist/SHA256SUMS.txt
+          if-no-files-found: error
