@@ -76,8 +76,10 @@ export function enrichTerrain(map){
   for(const p of map.plateaus){
     const point={x:p.x+p.w/2,y:p.y+p.h/2,lookout:true};
     if(!map.expansions.some(e=>Math.hypot(e.x-point.x,e.y-point.y)<180))map.expansions.push(point);
-    const cy=p.y+p.h/2;
-    map.lanes.push([[p.x-300,cy],[p.x+p.w/2,cy],[p.x+p.w+300,cy]]);
+    if(!map.authoredLanes){
+      const cy=p.y+p.h/2;
+      map.lanes.push([[p.x-300,cy],[p.x+p.w/2,cy],[p.x+p.w+300,cy]]);
+    }
   }
   const candidates=map.terrainLayouts?[]:[[180,600],[180,1250],[180,2050],[180,2700],[4380,600],[4380,1250],[4380,2050],[4380,2700],[700,100],[1500,100],[3100,100],[3900,100],[700,2950],[1500,2950],[3100,2950],[3900,2950]];
   let clusters=0;

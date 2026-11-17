@@ -6,8 +6,8 @@ export const MAP_BRIEFS={
  inkdelta:{name:'Inkspill Delta',tag:'Three causeways · rich outer fields',plan:'Hold a causeway while scouting the others. Outer expansions pay more, but leave your supply lines exposed.'},
  corkcross:{name:'Corkboard Crossroads',tag:'Central heights · radial flanks',plan:'Trade central vision against safer outer routes. A second army can threaten expansions while your main force holds the crossroads.'},
  serverstack:{name:'Server Stack',tag:'Service corridors · divided fronts',plan:'Use the broad service lanes to split pressure. Aircraft can bypass the racks, so keep anti-air near your economy.'},
- rainyard:{name:'Rain Gutter Run',tag:'Storm drains · three crossings',plan:'Guard the narrow middle crossing from the ledges or send a second squad across a wider spillway.'},
- cartonworks:{name:'Carton Works',tag:'Raised shipping yard · open flanks',plan:'Climb any of four shipping-yard ramps to contest the center. Use the loading lanes to threaten rivals’ outer scrap fields.'}
+ rainyard:{name:'Rain Gutter Run',tag:'Gutter bridge · two spillway flanks',plan:'Expand onto your loading apron, then scout the bridge approach from a raised ledge. Take a wider spillway around enemies guarding the flood gates.'},
+ cartonworks:{name:'Carton Works',tag:'Shipping deck · bent packing lanes',plan:'Four ramps lead to the shipping-deck reserve. The packing bypasses loop around the carton stacks toward rival workers, while the inspection docks watch the lower lanes.'}
 };
 export const DIFFICULTY_BRIEFS={
  easy:'Easy learns slowly: smaller attack groups, later expansions, and more time to recover. Standard resources.',

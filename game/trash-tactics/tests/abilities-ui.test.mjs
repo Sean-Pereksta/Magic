@@ -205,6 +205,67 @@ test('workers have padded click and box-selection bounds without larger collisio
  assert.equal(worker.r,r,'selection padding leaves navigation and collision geometry unchanged');
 });
 
+test('perspective selection uses the visible front actor and box selection honors seat two',async()=>{
+ const h=await harness();
+ const rear=h.spawn('rock',700,800),front=h.spawn('paper',780,900),rival=h.spawn('scissors',1240,1300,1);
+ const depths=new Map([[rear.id,2],[front.id,5],[rival.id,8]]);
+ h.game.isVisible=(entity,team)=>entity.team===team;
+ h.state.renderer.actorBounds=entity=>depths.has(entity.id)?{x:95,y:80,width:50,height:80,depth:depths.get(entity.id)}:null;
+ const canvas=h.element('world');
+ canvas.getBoundingClientRect=()=>({left:75,top:60,width:800,height:600});
+ h.point(194,168);
+ assert.deepEqual(h.state.selected,[front.id],'clicking the front silhouette selects it even far from its ground position');
+ h.game.localTeam=1;
+ canvas.dispatch('pointerdown',{clientX:175,clientY:170});
+ canvas.dispatch('pointermove',{clientX:216,clientY:199});
+ canvas.dispatch('pointerup',{clientX:216,clientY:199});
+ assert.deepEqual(h.state.selected,[rival.id],'the other seat box-selects its own troops by projected position');
+});
+
+test('a moving pinch zooms around the original midpoint before panning it into place',async()=>{
+ const h=await harness(),canvas=h.element('world'),camera=[];
+ h.state.renderer.zoomAt=(...args)=>camera.push(['zoom',...args]);
+ h.state.renderer.pan=(...args)=>camera.push(['pan',...args]);
+ canvas.dispatch('pointerdown',{pointerId:1,pointerType:'touch',clientX:100,clientY:200});
+ canvas.dispatch('pointerdown',{pointerId:2,pointerType:'touch',clientX:200,clientY:200});
+ canvas.dispatch('pointermove',{pointerId:2,pointerType:'touch',clientX:240,clientY:210});
+ assert.deepEqual(camera,[['zoom',Math.hypot(140,10)/100,150,200],['pan',20,5]]);
+});
+
+test('Alt drag orbits without selecting, and Home resets the perspective to the active base',async()=>{
+ const h=await harness(),canvas=h.element('world'),renderer=h.state.renderer,orbit=[];
+ renderer.scene3d={};renderer.orbit=(...args)=>orbit.push(args);
+ const selection=h.state.selected;
+ canvas.dispatch('pointerdown',{altKey:true,clientX:110,clientY:210});
+ canvas.dispatch('pointermove',{altKey:true,clientX:160,clientY:235});
+ canvas.dispatch('pointerup',{altKey:true,clientX:160,clientY:235});
+ assert.deepEqual(orbit,[[12,-6]]);
+ assert.deepEqual(h.state.selected,selection);
+
+ let resets=0;renderer.resetView=()=>resets++;
+ h.game.localTeam=1;
+ const base=h.game.entities.find(e=>e.team===1&&e.type==='desk');
+ h.key('Home');
+ assert.equal(resets,1);
+ assert.deepEqual(renderer.centers.at(-1),{x:base.x,y:base.y});
+ h.element('homeButton').click();
+ assert.equal(resets,2,'the camera button uses the same reset action');
+});
+
+test('twisting two touch points rotates the view while preserving pan and pinch',async()=>{
+ const h=await harness(),canvas=h.element('world'),renderer=h.state.renderer,camera=[];
+ renderer.scene3d={};
+ renderer.zoomAt=(...args)=>camera.push(['zoom',...args]);
+ renderer.orbit=(...args)=>camera.push(['orbit',...args]);
+ renderer.pan=(...args)=>camera.push(['pan',...args]);
+ canvas.dispatch('pointerdown',{pointerId:1,pointerType:'touch',clientX:110,clientY:200});
+ canvas.dispatch('pointerdown',{pointerId:2,pointerType:'touch',clientX:210,clientY:200});
+ canvas.dispatch('pointermove',{pointerId:2,pointerType:'touch',clientX:190,clientY:260});
+ assert.deepEqual(camera[0],['zoom',1,160,200]);
+ assert.equal(camera[1][0],'orbit');assert(Math.abs(camera[1][1]-36.87)<.01);assert.equal(camera[1][2],0);
+ assert.deepEqual(camera[2],['pan',-10,30]);
+});
+
 test('A-click respects each family counter and leaves buildings and ineligible troops alone',async()=>{
  const h=await harness(),rock=h.spawn('rock',700,800),scissors=h.spawn('scissors',700,900),printer=h.spawn('printer',500,1000),enemy=h.spawn('paper',1000,800,1);
  h.game.isVisible=()=>true;

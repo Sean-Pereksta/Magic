@@ -4,6 +4,7 @@ import {Game,TYPES,MAPS} from '../engine.js';
 import {createFrontierBattlefield,finalizeFrontierMap,FRONTIER_MAPS} from '../frontier-maps.js';
 import {paintFrontierMap,drawFrontierObstacle} from '../frontier-art.js';
 import {tabletopDetailPlacements} from '../tabletop-details.js';
+import {terrainSight} from '../terrain.js';
 
 const ids=['desktop','breakroom','canyon','conveyor',...Object.keys(FRONTIER_MAPS)];
 function advancePoint(g,team,r=18){const camp=g.starts[team],dx=g.width/2-camp.x,dy=g.height/2-camp.y,d=Math.hypot(dx,dy);return {x:camp.x+dx/d*310,y:camp.y+dy/d*310,r,type:'rock'};}
@@ -65,6 +66,48 @@ test('new maps have actual separate crossings, four-sided crown access and an ae
  const ink=createFrontierBattlefield('inkdelta',2);assert(ink.obstacles.filter(o=>o.type==='inkpool').length>=4);assert.equal(ink.bridges.length,3);assert(ink.laneInfo.filter(l=>l.role==='crossing'||l.role==='main').length>=3);
  const cork=createFrontierBattlefield('corkcross',2),crown=cork.plateaus.find(p=>p.label==='The cork crown');assert.equal(crown.ramps.length,4);assert.deepEqual(new Set(crown.ramps.map(r=>r.side)),new Set(['west','east','north','south']));
  const server=createFrontierBattlefield('serverstack',2);assert.equal(server.obstacles.filter(o=>o.type==='serverrack').length,6);assert.equal(server.airLanes.length,1);assert(server.laneInfo.filter(l=>l.role==='crossing').length>=2);
+});
+
+test('Rain Gutter Run and Carton Works have direct, navigable routes and fair 1v1 economy',()=>{
+ for(const map of ['rainyard','cartonworks'])for(const players of [2,3,4]){
+  const g=new Game({map,players});g.entities=[];
+  for(const lane of g.map.laneInfo)for(let i=1;i<lane.points.length;i++){
+   assert(g._lineFree(...lane.points[i-1],...lane.points[i],75),`${map}/${players}: ${lane.name} has ground clearance at leg ${i}`);
+  }
+  if(players!==2)continue;
+  const natural=team=>g.map.expansions.find(p=>p.naturalTeam===team);
+  for(const [team,camp] of g.map.camps.entries()){
+   const field=natural(team);
+   assert.equal(Math.hypot(field.x-camp.x,field.y-camp.y),760);
+   assert.equal(g.elevationAt(field.x,field.y),0);
+   assert(g._lineFree(camp.x,camp.y,field.x,field.y,75),`${field.label} has a direct ramp from the base`);
+  }
+  for(const field of g.map.expansions){
+   assert(g.map.expansions.some(opposite=>opposite.x===g.width-field.x&&opposite.y===g.height-field.y&&
+    opposite.richness===field.richness&&opposite.role===field.role),`${field.label} has equivalent contest value across the map`);
+  }
+ }
+});
+
+test('Rain Gutter forces terrain crossing while the Carton deck rewards claiming a ramp',()=>{
+ const rain=new Game({map:'rainyard'});rain.entities=[];
+ assert.equal(rain.map.bridges.length,3);
+ assert(!rain._lineFree(3950,1950,5700,1950,18),'the upper flood channel blocks a direct ground crossing');
+ assert(rain._lineFree(3950,3200,5700,3200,75),'the gutter bridge creates an open corridor');
+ const shelf=rain.map.plateaus.find(p=>p.label==='Pumphouse watch ledge');
+ const crest={x:shelf.x+shelf.w/2,y:shelf.y+shelf.h-110},bridgeMouth={x:4000,y:3160};
+ assert(terrainSight(rain.map,crest,bridgeMouth.x,bridgeMouth.y));
+ assert(!terrainSight(rain.map,bridgeMouth,crest.x,crest.y));
+
+ const carton=new Game({map:'cartonworks'});carton.entities=carton.entities.filter(e=>e.type==='desk');carton._think=Infinity;
+ const deck=carton.map.plateaus.find(p=>p.label==='Shipping deck');
+ assert.equal(deck.ramps.length,4);
+ assert(!carton._lineFree(3920,2750,4800,3200,18),'a direct move from the carton corner cannot cut into the deck');
+ const troop=carton._spawn('rock',0,4800,2200);
+ carton.command([troop.id],{type:'move',x:4800,y:3200});
+ for(let i=0;i<150;i++)carton.update(.08);
+ assert(Math.hypot(troop.x-4800,troop.y-3200)<25,'troop ascends the north ramp and reaches the contested cache');
+ assert.equal(carton.elevationAt(troop.x,troop.y),1);
 });
 
 test('legacy finalization scales shared references once and is safe to call again',()=>{

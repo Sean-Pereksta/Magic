@@ -835,7 +835,8 @@ export class Game {
     const specialistPlan=specialistBot(this,team);
     const tierReserve=this.time>cfg.laboratoryAt&&!own.some(e=>e.type==='laboratory')&&own.some(e=>e.type==='workshop'&&!e.constructing)?400:this.time>cfg.workshopAt&&!own.some(e=>e.type==='workshop')?275:0;
     const printerCost=TYPES.printer.cost, needsSecondPrinter=cfg.printers>1&&printers.length===1&&this.time>35&&!own.some(e=>e.type==='printer'&&e.constructing);
-    const reserve=Math.max(tierReserve,specialistPlan.reserveTrash,planningExpansion?200:planningResearch?150:0,needsSecondPrinter?printerCost:0)+state.transportReserve;
+    const competingReserve=Math.max(tierReserve,specialistPlan.reserveTrash,planningExpansion?200:planningResearch?150:0);
+    const reserve=Math.max(competingReserve,needsSecondPrinter?printerCost:0)+state.transportReserve;
     for(const w of workers)if(w.order.type==='idle'&&!w.aiTask){
       const unfinished=own.find(b=>b.constructing&&!this.getEntity(b.builderId));
       if(unfinished){unfinished.builderId=w.id;w.order={type:'build',targetId:unfinished.id};continue;}
@@ -864,7 +865,7 @@ export class Game {
       }
     }
     if(supply.cap-supply.used<Math.max(4,specialistPlan.reserveSupply+2)&&supply.cap<cfg.cap+cfg.workers+8&&!pending.some(e=>e.type==='cabinet')&&bank.trash>=75)constructNear('cabinet',start.x+px*245-fx*40,start.y+py*245-fy*40);
-    const printerBudget=needsSecondPrinter?printerCost+state.transportReserve:220+reserve;
+    const printerBudget=needsSecondPrinter?printerCost+competingReserve+state.transportReserve:220+reserve;
     if(printers.length<(this.time>120?cfg.printers:Math.min(2,cfg.printers))&&this.time>35&&bank.trash>=printerBudget&&!pending.some(e=>e.type==='printer'))constructNear('printer',start.x+fx*190+px*155,start.y+fy*190+py*155);
     for(const p of printers)if(p.queue.length<2&&army.length+this.getSupply(team).reserved<cfg.cap-8&&bank.trash>=50+reserve&&this.getSupply(team).used+1+specialistPlan.reserveSupply<=this.getSupply(team).cap){
       const observed=this.entities.filter(e=>e.hp>0&&e.team>=0&&e.team!==team&&isCombat(e.type)&&!e.transportedBy&&this.isVisible(e,team));

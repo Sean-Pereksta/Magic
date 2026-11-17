@@ -6,8 +6,8 @@ export const FRONTIER_MAPS={
  inkdelta:{id:'inkdelta',name:'Inkspill Delta',color:'#c9d5d1',tagline:'Three causeways across a flooded desk',brief:'Control three broad crossings, scout the ink banks, and protect exposed scrap islands.',features:['Three causeways','Ink rivers','Rich outer banks']},
  corkcross:{id:'corkcross',name:'Corkboard Crossroads',color:'#d6bf92',tagline:'A four-ramp crown with open flanking routes',brief:'Hold the central cork crown or bypass it along the north and south pinboard routes.',features:['Four-ramp center','Outer flanks','Elevated scrap']},
  serverstack:{id:'serverstack',name:'Server Stack',color:'#b8cfca',tagline:'Circuit corridors below an open air route',brief:'Split armies between rack corridors, defend service junctions, or fly over the server walls.',features:['Dual ground routes','Rack corridors','Open air lanes']},
- rainyard:{id:'rainyard',name:'Rain Gutter Run',color:'#8593a6',tagline:'Cross the flood line between raised loading yards',brief:'Split troops between three gaps in the storm drains. Exposed service ledges overlook the narrow middle crossing.',features:['Three storm crossings','Exposed watch ledges','Wet asphalt']},
- cartonworks:{id:'cartonworks',name:'Carton Works',color:'#d0aa75',tagline:'Two packing lines around a raised shipping yard',brief:'Control the center shipping yard or flank through the loading lanes between stacked boxes.',features:['Crossed packing lines','Shipping yard ramps','Rich loading docks']}
+ rainyard:{id:'rainyard',name:'Rain Gutter Run',color:'#8593a6',tagline:'Flood gates · spillway flanks',brief:'The gutter bridge is the quickest crossing. Patrol the raised service ledges and send raiders through the bends in the outer spillways.',features:['Three storm crossings','Twin lookout ledges','Rich edge salvage']},
+ cartonworks:{id:'cartonworks',name:'Carton Works',color:'#d0aa75',tagline:'Shipping deck · bent packing lanes',brief:'Fight over the shipping deck or skirt the carton stacks to cut off the rival loading aprons.',features:['Four shipping-yard ramps','Two bypasses','Contested loading docks']}
 };
 const legacyBriefs={desktop:{tagline:'Wide paper roads and raised desk-mat lookouts',brief:'Choose the central road, high-ground shelves or the exposed outer paper lanes.'},breakroom:{tagline:'Service routes around cups and napkin terraces',brief:'Contest the tile junctions while protecting side routes around the breakroom shelves.'},canyon:{tagline:'Three strategic crossings over a deep desk divide',brief:'Use the broad bridges, or break the central Stapler Gate to open a direct route.'},conveyor:{tagline:'A giant recycling line with reversible transport routes',brief:'Capture belt consoles, exploit conveyor speed and flank through the outer factory loop.'}};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -72,34 +72,86 @@ function serverstack(players){
  return map;
 }
 
+function halfTurn([x,y]){return [FRONTIER_WIDTH-x,FRONTIER_HEIGHT-y];}
+function pairedObstacles(map,footprints){
+ for(const [x,y,w,h,type] of footprints){
+  const [oppositeX,oppositeY]=halfTurn([x+w,y+h]);
+  map.obstacles.push({x,y,w,h,type,terrain:type==='inkpool'},{x:oppositeX,y:oppositeY,w,h,type,terrain:type==='inkpool'});
+ }
+}
+function pairedExpansion(map,x,y,label,otherLabel,role,risk,richness){
+ addExpansion(map,x,y,label,role,risk,richness);
+ addExpansion(map,...halfTurn([x,y]),otherLabel,role,risk,richness);
+}
+function diagonalCamps(map,x,y,label,otherLabel){
+ if(map.players!==2)return;
+ const [rivalX,rivalY]=halfTurn([x,y]);
+ map.camps=[{x,y},{x:rivalX,y:rivalY}];
+ map.naturalSites=[{x:x+760,y,label},{x:rivalX-760,y:rivalY,label:otherLabel}];
+}
+
 function rainyard(players){
  const map=template('rainyard',players);
- if(players===3)map.camps[2]={x:4800,y:1020};
- for(const [y,h] of [[0,620],[1690,1210],[3500,1220],[5810,590]])map.obstacles.push({x:4460,y,w:680,h,type:'inkpool',terrain:true});
- for(const [y,h,name] of [[1150,1050,'North spillway'],[3200,600,'Gutter crossing'],[5265,1070,'South spillway']]){
-  map.bridges.push({x:4290,y:y-h/2,w:1020,h,type:'blotterbridge',label:name});
-  addRoute(map,route(name,y===3200?'main':'crossing',[[2100,y],[4800,y],[7500,y]],Math.min(520,h-60)));
- }
- for(const x of [3050,6550])addRoute(map,route(x<4800?'West drainage lane':'East drainage lane','flank',[[x,1150],[x,3200],[x,5265]],440,'exposed'));
- map.terrainLayouts=[[3420,2170,720,630,'West service ledge',{opening:360,depth:260}],[5460,3600,720,630,'East service ledge',{opening:360,depth:260}]];
- for(const [x,y,w,h] of [[1800,2050,760,430],[7040,3900,760,430],[1910,3990,650,340],[7040,2070,650,340]])map.obstacles.push({x,y,w,h,type:'serverrack'});
- for(const [x,y,label] of [[900,1000,'Northwest drain salvage'],[8700,1000,'Northeast drain salvage'],[900,5400,'Southwest drain salvage'],[8700,5400,'Southeast drain salvage']])addExpansion(map,x,y,label);
- for(const [x,y,label] of [[4800,3200,'Gutter center cache'],[3050,1150,'West spillway scrap'],[6550,5265,'East spillway scrap']])addExpansion(map,x,y,label,'center','contested',1.35);
- appendApproaches(map,[{x:3050,y:1150},{x:6550,y:1150},{x:3050,y:5265},{x:6550,y:5265}]);
+ map.authoredLanes=true;
+ diagonalCamps(map,1090,2660,'Pumphouse apron','Outfall apron');
+ if(players===3)map.camps=[{x:2050,y:5650},{x:7550,y:5650},{x:4800,y:1060}];
+ pairedObstacles(map,[
+  [4490,0,620,540,'inkpool'],[4380,1590,820,1270,'inkpool'],[4190,1830,210,520,'inkpool'],
+  [850,1650,690,300,'serverrack'],[2450,2000,610,340,'serverrack'],[2700,4070,690,300,'serverrack'],
+  [3300,350,550,290,'serverrack']
+ ]);
+ map.terrainLayouts=[
+  [3330,2210,800,570,'Pumphouse watch ledge',{sides:['west','south'],opening:360,depth:280}],
+  [5470,3620,800,570,'Outfall watch ledge',{sides:['east','north'],opening:360,depth:280}]
+ ];
+ map.bridges=[
+  {x:4200,y:840,w:1200,h:410,type:'blotterbridge',label:'North overflow plates'},
+  {x:4200,y:2900,w:1200,h:600,type:'blotterbridge',label:'Gutter gate bridge'},
+  {x:4200,y:5150,w:1200,h:410,type:'blotterbridge',label:'South overflow plates'}
+ ];
+ const push=[[1850,2660],[2640,2720],[3090,3010],[3820,3200]];
+ addRoute(map,route('Gutter gate advance','main',[...push,[4800,3200],...push.map(halfTurn).reverse()],500));
+ const north=[[1630,2250],[1910,1760],[2480,1410],[3210,1300],[3860,1080],[4460,1020],[5160,1060],[5850,1270],[6590,1300],[7330,1650],[7880,2530]];
+ addRoute(map,route('North overflow bend','flank',north,520,'exposed'));
+ addRoute(map,route('South overflow bend','flank',north.map(halfTurn).reverse(),520,'exposed'));
+ const lookout=[[2880,2495],[3730,2495],[3730,3180]];
+ addRoute(map,route('Pumphouse ledge approach','highground',lookout,330));
+ addRoute(map,route('Outfall ledge approach','highground',lookout.map(halfTurn),330));
+ pairedExpansion(map,970,1120,'Rain barrel salvage','Drain basket salvage');
+ pairedExpansion(map,1010,5160,'Overflow filter scrap','Gutter screen scrap');
+ pairedExpansion(map,3120,1150,'North spillway grate','South spillway grate','center','contested',1.35);
+ pairedExpansion(map,3970,3430,'West gutter checkpoint','East gutter checkpoint','center','contested',1.35);
+ pairedExpansion(map,3730,2495,'Pumphouse filter cache','Outfall filter cache','highground','contested',1.25);
  return map;
 }
 
 function cartonworks(players){
  const map=template('cartonworks',players);
- map.terrainLayouts=[[4110,2580,1380,1240,'Shipping yard',{sides:['west','east','north','south'],opening:570,depth:350}],[2200,2490,670,490,'West loading dock',{opening:345,depth:250}],[6730,3420,670,490,'East loading dock',{opening:345,depth:250}]];
- for(const [x,y,w,h,type] of [[3090,1190,850,730,'cardboard'],[5660,4480,850,730,'cardboard'],[3120,4480,600,510,'corkbundle'],[5880,1410,600,510,'corkbundle'],[1630,1570,460,300,'tape'],[7510,4530,460,300,'tape']])map.obstacles.push({x,y,w,h,type});
- addRoute(map,route('Packing line west–east','main',[[1100,3200],[4800,3200],[8500,3200]],530));
- addRoute(map,route('Loading line north–south','highground',[[4800,900],[4800,3200],[4800,5500]],490));
- addRoute(map,route('North packing bypass','flank',[[1670,2480],[2650,2150],[4800,2090],[6960,2170],[7930,2480]],440,'exposed'));
- addRoute(map,route('South packing bypass','flank',[[1670,3930],[2650,4180],[4800,4270],[6960,4180],[7930,3930]],440,'exposed'));
- for(const [x,y,label] of [[990,2030,'Upper west packaging'],[8610,2030,'Upper east packaging'],[990,4370,'Lower west packaging'],[8610,4370,'Lower east packaging']])addExpansion(map,x,y,label);
- for(const [x,y,label] of [[4800,3200,'Shipping yard stock'],[4800,2030,'North belt stock'],[4800,4370,'South belt stock']])addExpansion(map,x,y,label,'center','contested',1.45);
- appendApproaches(map,[{x:2500,y:2160},{x:7100,y:2160},{x:2500,y:4230},{x:7100,y:4230},{x:4800,y:1640}]);
+ map.authoredLanes=true;
+ diagonalCamps(map,1080,3470,'Returns loading apron','Dispatch loading apron');
+ map.terrainLayouts=[
+  [4100,2550,1400,1300,'Shipping deck',{sides:['west','east','north','south'],opening:570,depth:350}],
+  [2520,3840,790,450,'Returns inspection dock',{opening:348,depth:260}],
+  [6290,2110,790,450,'Dispatch inspection dock',{opening:348,depth:260}]
+ ];
+ pairedObstacles(map,[
+  [2780,2400,920,670,'cardboard'],[2950,960,980,710,'cardboard'],
+  [5710,770,1080,810,'corkbundle'],[1050,1520,610,360,'tape']
+ ]);
+ const approach=[[1840,3470],[2620,3530],[3230,3490],[3640,3200]];
+ addRoute(map,route('Barcode concourse','main',[...approach,[4800,3200],...approach.map(halfTurn).reverse()],530));
+ addRoute(map,route('Shipping deck transfer','highground',[[4800,1400],[4800,2550],[4800,3850],[4800,5000]],490));
+ const north=[[1740,2900],[1930,2250],[2380,2030],[3150,1890],[3850,2050],[4800,2070],[5600,1740],[6400,1700],[7360,1840],[7850,2560],[7760,2930]];
+ addRoute(map,route('North label-room bypass','flank',north,440,'exposed'));
+ addRoute(map,route('South returns bypass','flank',north.map(halfTurn).reverse(),440,'exposed'));
+ const inspect=[[2160,4065],[2920,4065],[3620,4065]];
+ addRoute(map,route('Returns dock inspection lane','highground',inspect,320));
+ addRoute(map,route('Dispatch dock inspection lane','highground',inspect.map(halfTurn),320));
+ pairedExpansion(map,935,1040,'Upper returns wrapping','Lower dispatch wrapping');
+ pairedExpansion(map,1120,4780,'Pallet label reserve','Packing tape reserve');
+ pairedExpansion(map,4800,1990,'Inbound belt stock','Outbound belt stock','center','contested',1.38);
+ pairedExpansion(map,2915,4065,'Returns inspection stock','Dispatch inspection stock','highground','contested',1.25);
+ addExpansion(map,4800,3200,'Shipping deck reserve','highground','contested',1.55);
  return map;
 }
 
@@ -114,10 +166,13 @@ function scaleGeometry(map,scale){
  map.width*=scale;map.height*=scale;
 }
 function safeNatural(map,camp,team){
+ const authored=map.naturalSites?.[team];
+ const natural=point=>({...point,natural:true,naturalTeam:team,role:'natural',risk:'safe',richness:1,amountMultiplier:1,label:point.label||`Camp ${team+1} natural scrap`});
+ if(authored&&frontierClear(map,authored,225)&&clearLine(map,camp,authored,50))return natural(authored);
  const base=Math.atan2(map.height/2-camp.y,map.width/2-camp.x),desired=680;
  for(const length of [desired,760,900])for(const turn of [0,.3,-.3,.6,-.6,.9,-.9,1.2,-1.2]){
   const p={x:Math.round(camp.x+Math.cos(base+turn)*length),y:Math.round(camp.y+Math.sin(base+turn)*length)};
-  if(frontierClear(map,p,225)&&clearLine(map,camp,p,50))return {...p,natural:true,naturalTeam:team,role:'natural',risk:'safe',richness:1,amountMultiplier:1,label:`Camp ${team+1} natural scrap`};
+  if(frontierClear(map,p,225)&&clearLine(map,camp,p,50))return natural(p);
  }
  throw new Error(`${map.id}/${map.players}: no safe natural expansion for camp ${team+1}`);
 }
