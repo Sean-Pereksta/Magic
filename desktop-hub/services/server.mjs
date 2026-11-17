@@ -3,9 +3,11 @@ import net from 'node:net';
 import {readFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {createRequire} from 'node:module';
 import {createLedger,guestKey,accountKey} from './ledger.mjs';
 import {createEngineFactory} from './engines.mjs';
 import {manageMatches} from './matches.mjs';
+import {createDesktopAuthorization,createDesktopTokenIssuer} from './desktop-authorization.mjs';
 
 const officialSite='https://www.catnmice.com', publicService='https://hub.catnmice.com';
 const error=(status,message)=>Object.assign(new Error(message),{status});
@@ -41,8 +43,9 @@ function proxy(req,res,entry,path) {
   upstream.on('error',()=>{if(!res.headersSent)json(res,503,{error:'The match ended or is unreachable.'});else res.destroy();});
   res.on('close',()=>{if(!res.writableEnded)upstream.destroy();});req.pipe(upstream);
 }
-export function createHubService({ledger,identity,engineFactory,serviceOrigin=publicService,siteOrigin=officialSite}) {
+export function createHubService({ledger,identity,engineFactory,mintDesktopToken,serviceOrigin=publicService,siteOrigin=officialSite}) {
   const matches=manageMatches(ledger,engineFactory);
+  const desktop=mintDesktopToken&&createDesktopAuthorization({mint:mintDesktopToken,site:siteOrigin});
   const rate=new Map();
   const upkeep=setInterval(()=>{matches.tick().catch(()=>console.error('Ranked processing will retry.'));for(const [key,bucket] of rate)if(bucket.start<Date.now()-60000)rate.delete(key);},500);upkeep.unref();
   const server=http.createServer({requestTimeout:15000,headersTimeout:10000},(req,res)=>{handle(req,res).catch(e=>{if(!res.headersSent)json(res,e.status||503,{error:e.status?e.message:'The service is temporarily unavailable.'});else res.destroy();});});
@@ -77,6 +80,10 @@ export function createHubService({ledger,identity,engineFactory,serviceOrigin=pu
     if(++bucket.n>240)return json(res,429,{error:'Try again shortly.'});
     if(req.method==='GET'){
       if(path==='/v1/health')return json(res,200,{available:true,queues:['bannerlands','catandmouse']});
+      if(path==='/v1/desktop/profile'){
+        if(origin!==siteOrigin)throw error(403,'Open the official Catnmice website.');
+        const player=await verified(req);return json(res,200,{username:player.username});
+      }
       if(path==='/v1/counts')return json(res,200,ledger.counts());
       if(path==='/v1/leaderboard')return json(res,200,ledger.leaderboard(url.searchParams.get('game'),url.searchParams.get('season')||undefined));
       if(path==='/v1/history'){const player=await verified(req);return json(res,200,{matches:ledger.history(player.username)});}
@@ -88,6 +95,26 @@ export function createHubService({ledger,identity,engineFactory,serviceOrigin=pu
     if(req.method!=='POST')throw error(404,'Unknown route.');
     if(origin&&!fromSite&&origin!==serviceOrigin&&!guestTelemetry)throw error(403,'Unsupported origin.');
     const message=await body(req);
+    if(path.startsWith('/v1/desktop/')){
+      if(!desktop)throw error(503,'Desktop authorization is unavailable.');
+      if(path==='/v1/desktop/approve'||path==='/v1/desktop/deny'){
+        if(origin!==siteOrigin)throw error(403,'Authorize the launcher on the official Catnmice website.');
+        if(typeof message.username!=='string'||!message.username)throw error(400,'Choose a signed-in Catnmice profile.');
+        const player=await verified(req,message.username);
+        if(path.endsWith('/deny'))return json(res,200,desktop.deny(message.id,message.code));
+        if(message.consent!==true)throw error(400,'Confirm authorization for your launcher.');
+        return json(res,200,desktop.approve(message.id,message.code,player));
+      }
+      // The verifier belongs to the native main process, not a web origin.
+      if(origin)throw error(403,'Start this action in the Catnmice desktop launcher.');
+      if(path==='/v1/desktop/start')return json(res,201,desktop.start(message.challenge,key));
+      if(path==='/v1/desktop/cancel')return json(res,200,desktop.cancel(message.id,message.verifier));
+      if(path==='/v1/desktop/redeem'){
+        const result=await desktop.redeem(message.id,message.verifier);
+        return json(res,result.state==='pending'?202:200,result);
+      }
+      throw error(404,'Unknown desktop action.');
+    }
     if(path==='/v1/activity'){
       const guest=/^Guest (.+)$/.exec(req.headers.authorization||'');
       if(guestTelemetry&&!guest)throw error(403,'Account activity uses the official website.');
@@ -121,9 +148,15 @@ if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.u
   const config=JSON.parse(await readFile(CATALOG_PATH,'utf8'));
   const catalog=(Array.isArray(config)?config:config.games).map(g=>g.id||g.key);
   const lib=await import(pathToFileURL(join(MAGIC_ROOT,'game/trash-tactics/rankings.mjs')).href);
-  const rankings=await lib.createCatnmiceRankings();
+  const requireFromMagic=createRequire(join(resolve(MAGIC_ROOT),'package.json'));
+  const {applicationDefault,initializeApp}=requireFromMagic('firebase-admin/app');
+  const {getAuth}=requireFromMagic('firebase-admin/auth');
+  const {getFirestore}=requireFromMagic('firebase-admin/firestore');
+  const app=initializeApp({projectId:'bible-game-246c0',credential:applicationDefault()},'catnmice-official-hub');
+  const permissions={auth:getAuth(app),db:getFirestore(app)};
+  const rankings=lib.createRankings(permissions);
   const ledger=createLedger(HUB_DATABASE,catalog);
-  const gateway=createHubService({ledger,identity:rankings.identity,engineFactory:createEngineFactory({bannerlands:join(TRUTH_ROOT,'games/bannerlands'),catEdition:join(MAGIC_ROOT,'game/catandmouse/edition')})});
+  const gateway=createHubService({ledger,identity:rankings.identity,mintDesktopToken:createDesktopTokenIssuer(permissions),engineFactory:createEngineFactory({bannerlands:join(TRUTH_ROOT,'games/bannerlands'),catEdition:join(MAGIC_ROOT,'game/catandmouse/edition')})});
   gateway.server.listen(Number(process.env.PORT||57292),'127.0.0.1');
   process.once('SIGTERM',async()=>{await gateway.close();ledger.close();});
 }

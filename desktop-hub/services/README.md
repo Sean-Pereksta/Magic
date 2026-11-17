@@ -8,6 +8,18 @@ Apply `integration/magic.patch` followed by `integration/magic-controls.patch` t
 
 The official Catnmice page `/hub/ranked.html?game=bannerlands` or `?game=catandmouse` opens from the corresponding game's menu. It acquires a Firebase token through the existing website session. The service checks revocation and the existing verified name and account bindings through Magic's Trash Tactics implementation. The same verified account can enter either queue on either client. The original guest, invitation and community-room flows stay available.
 
+### Authorizing the Windows launcher
+
+Publish `authorize-desktop.html`, `authorize-desktop.mjs`, `desktop-session.html`, `desktop-session.mjs`, `desktop-account.mjs` and `desktop-auth.css` from the service's `web` directory together under `https://www.catnmice.com/hub/`. Serve the two HTML pages with `Cache-Control: no-store`, `Referrer-Policy: no-referrer` and `Content-Security-Policy: frame-ancestors 'none'` when the static host supports response headers. Both pages also check the canonical top-level origin.
+
+A player who already has a verified Catnmice browser profile can select verified desktop sign-in in the launcher. The launcher opens that browser, displays an eight-character code, and retains a high-entropy verifier in main-process memory. The player checks the account name on the official page, enters the code from their launcher and approves. The desktop redeems the five-minute request using its verifier and exchanges the custom token through the Firebase client SDK on the official site origin in the profile's game partition. The ordinary games then use their existing Firebase session and exact verified UID. Guest play and the original website password login continue to work.
+
+The service bounds active requests and per-client starts, limits incorrect confirmation codes, and consumes an approved request before starting the single Admin signing operation. Only the browser's public transaction identifier appears in the link fragment. Exclude request and response bodies and authorization headers from observability tools. Confirmation codes, verifiers, browser ID tokens and custom tokens are transient. Firebase manages the signed-in session used by the website and games.
+
+Firebase Admin must have signing permission in addition to its existing account and Firestore access. On Google-managed credentials this typically requires IAM Service Account Credentials API and `iam.serviceAccounts.signBlob` on the specific signing service account. The Admin SDK's custom token expires after one hour, and the launcher exchanges it immediately. The five-minute handoff and the Firebase session have separate lifetimes. [Firebase Admin custom tokens](https://firebase.google.com/docs/auth/admin/create-custom-tokens)
+
+Only an already-verified account binding qualifies. The original legacy username/password login does not create a binding. The operator can use Magic's existing verified migration procedure after independently confirming ownership. No page in this flow creates or transfers ownership records.
+
 ## Operating the service
 
 Use Node 24. Install Magic's pinned root server dependencies for Firebase Admin and the pinned Cat & Mouse edition dependency `ws`. Prepare a read/write deployment copy of both source revisions together with the hub release. From the hub's root, generate the official Cat & Mouse engine once.
@@ -44,6 +56,7 @@ The original profile that played owns each queued activity record. A verified us
 
 ```sh
 node --test services/service.test.mjs
+node --test services/desktop-authorization.test.mjs
 node --test services/engine.test.mjs
 node --test services/complete-match.test.mjs
 ```

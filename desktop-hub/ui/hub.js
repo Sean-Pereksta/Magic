@@ -138,6 +138,7 @@ function gameControls(game) {
       out.push(btn(label,'play',{id:game.id,mode:'online',kind:action.type},'glass'));
     }
   } else out.push(launchButton(game));
+  if (state.online && ids(state.saveSyncGames).includes(game.id)) out.push(btn('Sync game saves','play',{id:game.id,mode:'save-sync'},'glass','disc'));
   return out.join('');
 }
 function card(game) {
@@ -274,7 +275,8 @@ function showDialog(label,content) {
 function accounts() {
   const profiles = Array.isArray(state.profiles) ? state.profiles : [];
   const profilesList = profiles.length ? `<div class="profile-choices"><h3>Local profiles</h3><div class="choice-list">${profiles.map(p=>btn(profileName(p),'account',{mode:'switch',id:p.id},'',p.id===state.profile?.id ? 'check' : 'user')).join('')}</div></div>` : '';
-  showDialog('Player profiles',`<p class="dialog-copy">Use your Catnmice account to bring your profile and rankings into the hub.</p><div class="choice-list">${btn('Log In','account',{mode:'login'},'gold','user')}${btn('Create Profile','account',{mode:'register'},'','external')}${btn('Continue as Guest','account',{mode:'guest'},'','gamepad')}</div>${profilesList}`);
+  showDialog('Player profiles',`<p class="dialog-copy">Use your Catnmice account to bring your profile and rankings into the hub.</p><div class="choice-list">${btn('Log In','account',{mode:'login'},'gold','user')}${btn('Create Profile','account',{mode:'register'},'','external')}${btn('Continue as Guest','account',{mode:'guest'},'','gamepad')}</div>${profilesList}
+    <div class="profile-choices"><h3>Verified rankings</h3><p class="dialog-copy" id="verified-profile-note">Open the official Catnmice site in your default browser to authorize sharing your existing verified ranking identity with the launcher.</p><div class="choice-list"><button class="button" data-action="account" data-mode="verified" aria-describedby="verified-profile-note">${icon('external')} Use verified browser profile</button></div></div>`);
 }
 function browse() {
   if (detailId || page !== 'Library') navigate('Library');

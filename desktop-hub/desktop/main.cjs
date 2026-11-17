@@ -6,7 +6,9 @@ const {spawn}=require('node:child_process');
 const {newProfile,writeJson,readState,inDir}=require('./storage.cjs');
 const {SITE,LOBBY,isLobby,cardScript,onLobby,validInvite,snapshot,pause}=require('./official.cjs');
 const {startOffline}=require('./offline.cjs');
+const {supportsSaveSync,configureSaveSession}=require('./save-sync.cjs');
 const {gameOnPage}=require('./gameplay.cjs');
+const {authorizeDesktop}=require('./verified.cjs');
 const {createGames,busy,focusGame}=require('./windows.cjs');
 const {getFeed,stageItem,isRejectedUpdate,markRejectedUpdate,prepareSaveDirectory}=require('./updates.cjs');
 const importLocal=filename=>import(pathToFileURL(filename).href);
@@ -38,7 +40,7 @@ function start({root,bundled,data,ready,startupFailed}){
   const publicProfile=({id,name,guest,avatar,username})=>({id,name,guest,avatar,username});
   let lib,open,model,clientFactory,online=false,updateCheck=null;
   const notify=()=>{if(lib && !lib.isDestroyed())lib.webContents.send('changed');};
-  const snapshots=new Map(),activities=new Map(),inFlight=new Map(),launching=new Set(),touched=new Set();
+  const snapshots=new Map(),openingSessions=new Map(),activities=new Map(),inFlight=new Map(),launching=new Set(),touched=new Set();
   function profileChanged(p,s){
     p.username=s.username;p.name=s.name||s.username;p.guest=false;p.avatar=s.avatar;
     if(Array.isArray(s.favorites))p.favorites=s.favorites.filter(id=>catalog.games.some(g=>g.id===id));
@@ -47,6 +49,12 @@ function start({root,bundled,data,ready,startupFailed}){
     save();notify();
   }
   async function officialSession(p){
+    const key=p.partition;
+    if(openingSessions.has(key))return openingSessions.get(key);
+    const opening=loadOfficialSession(p).finally(()=>openingSessions.delete(key));
+    openingSessions.set(key,opening);return opening;
+  }
+  async function loadOfficialSession(p){
     const current=snapshots.get(p.id);
     if(current && !current.isDestroyed() && isLobby(current.webContents.getURL()))return current.webContents;
     const win=new BrowserWindow({show:false,webPreferences:{partition:p.partition,sandbox:true,nodeIntegration:false,contextIsolation:true}});
@@ -76,13 +84,18 @@ function start({root,bundled,data,ready,startupFailed}){
     try{const r=await net.fetch(LOBBY,{method:'HEAD',cache:'no-store',signal:AbortSignal.timeout(5000)});online=r.ok;}catch{online=false;}
     notify();
     if(!online)return;
+    const active=profile();
+    if(!active.guest){
+      officialSession(active).then(snapshot).then(remote=>{if(remote?.username===active.username)profileChangedIfNeeded(active,remote);}).catch(()=>{});
+    }
     for(const p of state.profiles)activity(p).sync().catch(()=>{});
     try{const counts=await model.getCounts();if(counts.hub && counts.games && Number.isFinite(Date.parse(counts.asOf))){state.counts=counts;save();notify();}}catch{}
   }
   function getState(){
     const c=state.counts;
     const rollbackAvailable=Object.keys(state.packs).filter(id=>state.packs[id].canRollback);
-    return {version:app.getVersion(),catalog,profile:publicProfile(profile()),profiles:state.profiles.map(publicProfile),online,installed:catalog.games.filter(installed).map(g=>g.id),recent:profile().recent,favorites:profile().favorites,settings:state.settings,counts:c.hub?{...c,hub:{...c.hub,asOf:c.asOf},games:Object.fromEntries(Object.entries(c.games).map(([id,row])=>[id,{...row,asOf:c.asOf}]))}:{},downloads:state.downloads,rollbackAvailable,publisherUpdates:!!release.key};
+    const saveSyncGames=catalog.games.filter(g=>supportsSaveSync(g.id)&&installed(g)).map(g=>g.id);
+    return {version:app.getVersion(),catalog,profile:publicProfile(profile()),profiles:state.profiles.map(publicProfile),online,installed:catalog.games.filter(installed).map(g=>g.id),recent:profile().recent,favorites:profile().favorites,settings:state.settings,counts:c.hub?{...c,hub:{...c.hub,asOf:c.asOf},games:Object.fromEntries(Object.entries(c.games).map(([id,row])=>[id,{...row,asOf:c.asOf}]))}:{},downloads:state.downloads,rollbackAvailable,saveSyncGames,publisherUpdates:!!release.key};
   }
   function currentHash(id){if(id==='hub')return root===bundled?null:path.basename(root);return state.packs[id]?.active;}
   function pointer(item){
@@ -159,29 +172,41 @@ function start({root,bundled,data,ready,startupFailed}){
   }
   async function play({id,mode,action}){
     const game=known(id),p=profile();
-    if(focusGame(id)||launching.has(id))return;
+    if(focusGame(id,mode)||launching.has(id))return;
     launching.add(id);
-    let server;
+    let server,disconnect;
+    const closeLocal=()=>{disconnect?.();server?.close();};
     try{
-      if(mode==='offline'){
+      if(mode==='offline'||mode==='save-sync'){
+        if(mode==='save-sync' && (!online||!supportsSaveSync(id)))throw Error('Connect to Catnmice to use the game’s cloud save.');
         if(state.packs[id]?.active && !installed(game) && state.packs[id].canRollback){
           rollback(id);row(id,'restored','Restored the previous game pack and its saves');
         }
         if(!installed(game))await install(id);
         const ses=saveSession(game,p);
-        server=await startOffline({...game,offline:packSpec(id)},installedDir(id));
+        server=await startOffline({...game,offline:packSpec(id)},installedDir(id),undefined,{sync:mode==='save-sync'});
         const origin=new URL(server.url).origin;
-        ses.webRequest.onBeforeRequest((details,cb)=>{const u=new URL(details.url);cb({cancel:['http:','https:','ws:','wss:'].includes(u.protocol)&&!((u.origin===origin)||(u.protocol==='ws:'&&u.host===new URL(origin).host))});});
-        await open({title:game.title,game,player:p,url:server.url,session:ses,offline:true,close:server.close});
+        disconnect=configureSaveSession(ses,{gameId:id,origin,sync:mode==='save-sync'});
+        await open({title:mode==='save-sync'?game.title+' · Cloud saves':game.title,game,mode,player:p,url:server.url,session:ses,offline:true,close:closeLocal});
       }else{
         const chosen=action||game.actions.find(a=>a.type!=='single')?.type||game.actions[0].type;
         if(!game.actions.some(a=>a.type===chosen))throw Error('The website does not support this action.');
-        await open({title:game.title,game,player:p,url:LOBBY,session:session.fromPartition(p.partition),action:chosen,initial:cardScript(id,chosen),onProfile:s=>{if(p.username===s.username)profileChangedIfNeeded(p,s);}});
+        await open({title:game.title,game,mode:'online',player:p,url:LOBBY,session:session.fromPartition(p.partition),action:chosen,initial:cardScript(id,chosen),onProfile:s=>{if(p.username===s.username)profileChangedIfNeeded(p,s);}});
       }
-    }catch(e){server?.close();throw e;}finally{launching.delete(id);}
+    }catch(e){closeLocal();throw e;}finally{launching.delete(id);}
   }
   function profileChangedIfNeeded(p,s){
-    if(p.name!==s.name || p.avatar!==s.avatar || JSON.stringify(p.favorites)!==JSON.stringify(s.favorites))profileChanged(p,s);
+    if(p.name!==s.name || p.avatar!==s.avatar || JSON.stringify(p.favorites)!==JSON.stringify(s.favorites) || s.recent?.some(r=>!p.recent.includes(typeof r==='string'?r:r.key)))profileChanged(p,s);
+  }
+  function saveSignedIn(pending,s){
+    let p=state.profiles.find(p=>!p.guest&&p.username===s.username);
+    if(!p){p=pending;state.profiles.push(p);}else{
+      p.partition=pending.partition;
+      const old=snapshots.get(p.id);if(old&&!old.isDestroyed())old.destroy();
+      const fresh=snapshots.get(pending.id);snapshots.delete(pending.id);snapshots.delete(p.id);
+      if(fresh)snapshots.set(p.id,fresh);
+    }
+    state.active=p.id;profileChanged(p,s);
   }
   async function account({mode,id}){
     if(mode==='guest'||mode==='switch'){
@@ -189,13 +214,17 @@ function start({root,bundled,data,ready,startupFailed}){
       if(!p)throw Error('Unknown local profile.');
       state.active=p.id;save();notify();return;
     }
-    if(!['login','register'].includes(mode))throw Error('Unknown account action.');
+    if(!['login','register','verified'].includes(mode))throw Error('Unknown account action.');
     const pending=newProfile(),ses=session.fromPartition(pending.partition);
+    if(mode==='verified'){
+      const username=await authorizeDesktop(root,pending.partition);
+      const wc=await officialSession(pending);
+      for(let i=0;i<60;i++){const s=await snapshot(wc);if(s?.username===username){saveSignedIn(pending,s);return;}await pause(200);}
+      throw Error('Browser approval succeeded, but the official lobby has not loaded the profile. Try again when connected.');
+    }
     const tab=mode==='login'?'showLoginTab':'showCreateTab';
     await open({title:mode==='login'?'Log In · Catnmice':'Create a Catnmice Profile',url:LOBBY,mode,session:ses,initial:'(()=>{const b=document.querySelector("#accountButton"),t=document.getElementById("'+tab+'");if(!b||!t||!document.querySelector("[data-game-key]"))return false;b.click();t.click();return true})()',onProfile:s=>{
-      let p=state.profiles.find(p=>!p.guest&&p.username===s.username);
-      if(!p){p=pending;state.profiles.push(p);}else{p.partition=pending.partition;const old=snapshots.get(p.id);if(old&&!old.isDestroyed())old.destroy();snapshots.delete(p.id);}
-      state.active=p.id;profileChanged(p,s);
+      saveSignedIn(pending,s);
     }});
   }
   async function favorite(id){
@@ -231,7 +260,14 @@ function start({root,bundled,data,ready,startupFailed}){
         else if(d.section!=='rankings')throw Error('Unknown community destination.');
         await open({title:'Catnmice · '+d.section,url,initial,player:profile(),session:session.fromPartition(profile().partition)});return;
       }
-      case 'linkGuest':{const p=profile();if(p.guest)throw Error('Sign in first.');const guest=state.profiles.find(g=>g.guest);if(!guest)throw Error('No local guest.');const accountActivity=activity(p);const guestKey='catnmice.hub.guest.'+guest.id;const accountGuestKey='catnmice.hub.guest.'+p.id;if(!state.activity[guestKey])return;state.activity[accountGuestKey]=state.activity[guestKey];save();await accountActivity.linkCurrentGuest();delete state.activity[guestKey];save();return;}
+      case 'linkGuest':{
+        const p=profile();if(p.guest)throw Error('Sign in first.');
+        const guest=state.profiles.find(g=>g.guest);if(!guest)throw Error('No local guest.');
+        const accountActivity=activity(p),guestKey='catnmice.hub.guest.'+guest.id;
+        const proof=state.activity[guestKey];if(!proof)return;
+        state.activity['catnmice.hub.guest.'+p.id]=proof;save();await accountActivity.linkCurrentGuest();
+        if(state.activity[guestKey]===proof)delete state.activity[guestKey];save();return;
+      }
       default:throw Error('Unknown launcher command.');
     }
   }

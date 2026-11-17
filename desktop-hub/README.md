@@ -2,6 +2,12 @@
 
 The Windows x64 launcher uses Magic’s published `lobby/lobby.html` and its generated game cards to open online games. The bundled catalog also includes the Truth-hosted games. Web sign-in, invitations, favorites and game-specific account gates run in a persistent Catnmice browser session. The game window has a Library button and F11 fullscreen. Alt+Left returns from fullscreen to the library. Offline games run on a per-title loopback origin with external requests blocked. Each local player has a separate save directory.
 
+## Profiles and cloud saves
+
+Under Player profiles, Log In and Create Profile open the website's account form. Players with an existing ranked binding can choose **Use verified browser profile**, enter the launcher's code on the official website, and approve the device. This carries the verified identity into its game session. The profile remains selectable for offline games.
+
+When connected, the detail pages for Bramblebound, Dwarf World and Space Tyrants offer **Sync game saves**. Choose the game's existing cloud Save or Reopen control, slot and password. These games manage their own encrypted slots and conflicts.
+
 ## Build on Windows
 
 Use 64-bit Node 24, Python 3.12 and full checkouts of Magic and Truth. For the reviewed preview, the two source revisions are recorded in `content/catalog.json`. From this directory:
