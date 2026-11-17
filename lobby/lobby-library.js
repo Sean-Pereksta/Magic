@@ -49,6 +49,7 @@
   // not a hosted room: retain its working entry action instead of creating a
   // lobby that the game's networking code cannot use.
   function getActions(game) {
+    if (!game) return [];
     const modes = Array.isArray(game?.modes) ? game.modes : [];
     const single = modes.includes("single");
     const multi = modes.includes("multi");

@@ -1,0 +1,132 @@
+diff --git a/game/Cheesehold_3D_Progression_Upgrade_core.html b/game/Cheesehold_3D_Progression_Upgrade_core.html
+--- a/game/Cheesehold_3D_Progression_Upgrade_core.html
++++ b/game/Cheesehold_3D_Progression_Upgrade_core.html
+@@ -3,2 +3,4 @@
+ <head>
++<script type="module" src="/hub/play-signal.mjs" data-catnmice-game="cheesehold"></script>
++
+ <meta charset="utf-8">
+diff --git a/game/DwarfWorld-core.html b/game/DwarfWorld-core.html
+--- a/game/DwarfWorld-core.html
++++ b/game/DwarfWorld-core.html
+@@ -3,2 +3,4 @@
+ <head>
++<script type="module" src="/hub/play-signal.mjs" data-catnmice-game="dwarfworld"></script>
++
+   <meta charset="utf-8" />
+diff --git a/game/Gridbound_RPG_MMO_core.html b/game/Gridbound_RPG_MMO_core.html
+--- a/game/Gridbound_RPG_MMO_core.html
++++ b/game/Gridbound_RPG_MMO_core.html
+@@ -3,2 +3,4 @@
+ <head>
++<script type="module" src="/hub/play-signal.mjs" data-catnmice-game="gridbound"></script>
++
+ <meta charset="UTF-8" />
+diff --git a/game/battle.html b/game/battle.html
+--- a/game/battle.html
++++ b/game/battle.html
+@@ -3,2 +3,4 @@
+ <head>
++<script type="module" src="/hub/play-signal.mjs" data-catnmice-game="village"></script>
++
+ <script>
+diff --git a/game/catandmouse-core.html b/game/catandmouse-core.html
+--- a/game/catandmouse-core.html
++++ b/game/catandmouse-core.html
+@@ -3,2 +3,4 @@
+ <head>
++<script type="module" src="/hub/play-signal.mjs" data-catnmice-game="cat"></script>
++
+   <meta charset="UTF-8" />
+diff --git a/game/catandmouse/edition/app.mjs b/game/catandmouse/edition/app.mjs
+--- a/game/catandmouse/edition/app.mjs
++++ b/game/catandmouse/edition/app.mjs
+@@ -465,3 +465,3 @@
+   if (!state || state.matchId !== next.matchId) {
+-    document.documentElement.dataset.catnmicePlaying='true';window.dispatchEvent(new Event('catnmice-game-started'));
++    document.documentElement.dataset.catnmicePlaying='true';window.dispatchEvent(new Event('catnmice-game-started'));if(location.protocol==='https:'&&location.hostname.endsWith('.trycloudflare.com')){void import('https://www.catnmice.com/hub/community-activity.mjs').then(m=>m.recordCommunity('cat')).catch(()=>{});}
+     board.reset(next.mapId);
+diff --git a/game/createvillage.html b/game/createvillage.html
+--- a/game/createvillage.html
++++ b/game/createvillage.html
+@@ -3,2 +3,4 @@
+ <head>
++<script type="module" src="/hub/play-signal.mjs" data-catnmice-game="village"></script>
++
+   <meta charset="UTF-8" />
+diff --git a/game/gateguard-core.html b/game/gateguard-core.html
+--- a/game/gateguard-core.html
++++ b/game/gateguard-core.html
+@@ -3,2 +3,4 @@
+ <head>
++<script type="module" src="/hub/play-signal.mjs" data-catnmice-game="gateguard"></script>
++
+   <meta charset="UTF-8">
+diff --git a/game/space-tyrants-core.html b/game/space-tyrants-core.html
+--- a/game/space-tyrants-core.html
++++ b/game/space-tyrants-core.html
+@@ -3,2 +3,4 @@
+ <head>
++<script type="module" src="/hub/play-signal.mjs" data-catnmice-game="spacetyrants"></script>
++
+ <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#050817">
+diff --git a/game/trash-tactics/game.js b/game/trash-tactics/game.js
+--- a/game/trash-tactics/game.js
++++ b/game/trash-tactics/game.js
+@@ -79,3 +79,3 @@
+ function resetGame(next){reportCleanup?.();reportCleanup=null;lastReport=null;queueBuildMode=false;$('lastReportButton').hidden=true;$('matchReport').innerHTML='';cancelGroupPresses();lastGroup={key:'',at:0};game=next || new Game({map:chosenMap,difficulty:chosenDifficulty,players:chosenPlayers,onEvent});selected.clear();groups={};mode=null;abilityType=null;drag=null;mouseHover=null;endShown=false;signature='';if(renderer){renderer.game=game;renderer.resize();}else renderer=new Renderer(canvas,game);renderer.resetView?.();renderer.camera.zoom=window.innerWidth<761?.72:.94;const d=game.entities.find(e=>e.team===playerTeam()&&e.type==='desk');pointer={x:d.x,y:d.y};renderer.centerOn(d.x,d.y+40);$('matchLabel').textContent=names[game.map.id].toUpperCase()+' · '+chosenPlayers+' PLAYERS · '+chosenDifficulty.toUpperCase();$('operationName').textContent=MAP_BRIEFS[game.map.id].tag;updateUI(true);}
+-function enterMatch(){document.documentElement.dataset.catnmicePlaying='true';window.dispatchEvent(new Event('catnmice-game-started'));started=true;inLobby=false;paused=false;lastFrame=performance.now();$('lobby').hidden=true;$('pauseOverlay').hidden=true;$('endOverlay').hidden=true;const desk=game.entities.find(e=>e.team===playerTeam()&&e.type==='desk');selected=new Set([desk.id]);updateUI(true);toast('F2 selects your army. A + click attacks; Q / W / E activate troop abilities.');canvas.focus({preventScroll:true});}
++function enterMatch(){document.documentElement.dataset.catnmicePlaying='true';window.dispatchEvent(new Event('catnmice-game-started'));if(location.protocol==='https:'&&location.hostname.endsWith('.trycloudflare.com')){void import('https://www.catnmice.com/hub/community-activity.mjs').then(m=>m.recordCommunity('trashtactics')).catch(()=>{});}started=true;inLobby=false;paused=false;lastFrame=performance.now();$('lobby').hidden=true;$('pauseOverlay').hidden=true;$('endOverlay').hidden=true;const desk=game.entities.find(e=>e.team===playerTeam()&&e.type==='desk');selected=new Set([desk.id]);updateUI(true);toast('F2 selects your army. A + click attacks; Q / W / E activate troop abilities.');canvas.focus({preventScroll:true});}
+ async function loadMatch(next,online=false) {
+diff --git a/hub/community-activity.mjs b/hub/community-activity.mjs
+new file mode 100644
+--- /dev/null
++++ b/hub/community-activity.mjs
+@@ -0,0 +1,14 @@
++import {recordGameplay} from './web-account.mjs';
++const website='https://www.catnmice.com';
++let recorded=false;
++export async function recordCommunity(game) {
++  if(recorded||!['bannerlands','cat','trashtactics'].includes(game)||navigator.userAgent.includes('Electron/')||!/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(location.origin))return;
++  recorded=true;
++  try{
++    if(parent!==self&&document.referrer&&[website,'https://catnmice.com'].includes(new URL(document.referrer).origin)){
++      parent.postMessage({type:'catnmice-gameplay-started',game},new URL(document.referrer).origin);
++      return;
++    }
++    await recordGameplay(game,false);
++  }catch{recorded=false;}
++}
+diff --git a/hub/play-signal.mjs b/hub/play-signal.mjs
+--- a/hub/play-signal.mjs
++++ b/hub/play-signal.mjs
+@@ -8,2 +8,9 @@
+ const surfaces='canvas,[data-gameplay-surface],#board,#gameBoard,#game-board,#battlefield,#hand,#playerHand,#player-hand,#playArea,.game-board,.chessboard,.game-grid,.game-cell,.hand-card,.battle-grid,.board-cell,.tile-grid';
++const controls={
++  biblegame:'#wordSubmitBtn,#referenceSubmitBtn,#bookOptions button',bibleroguelike:'#wordSubmitBtn,#referenceSubmitBtn,#bookOptions button',
++  crowncouncil:'.cardRow button,.cardRow [data-pick]',catmobile:'#moveJoy,#buildJoy,#grid',grass:'#rollBtn,#acceptRollBtn,#rerollBtn,#endTurnBtn,#quickEndTurnBtn,#shopEndTurnBtn',
++  knightwarfare:'#submitAnswer,#mapStage #gridLayer',quipclash:'[data-submit-answers],[data-action="vote"]',rock:'#map',
++  roguecards:'#grid,#benchBoard',rogueduel:'#grid,#draftChoices,#relicChoices',warrealms:'#endTurnBtn,#handRow,#attackTargetsBoard',
++  trumprev:'#boardGrid,#battleGrid',microwars2:'#mapView',spelltower:'#endTurnBtn',cardrealms:'#attackAuthorityBtn,#endTurnBtn',cardrealmsmulti:'#attackAuthorityBtn,#endTurnBtn'
++};
+ let recorded=false;
+@@ -30,3 +37,3 @@
+     if(!event.isTrusted||event.button!==0||event.target.closest('a,dialog,input,textarea,select,nav,[role="dialog"]'))return;
+-    const surface=event.target.closest(surfaces);
++    const surface=event.target.closest(controls[assigned]?surfaces+','+controls[assigned]:surfaces);
+     if(surface&&!/preview|avatar|portrait|thumbnail|icon|logo/i.test(surface.id+' '+surface.className))void played();
+diff --git a/hub/shell-activity.mjs b/hub/shell-activity.mjs
+--- a/hub/shell-activity.mjs
++++ b/hub/shell-activity.mjs
+@@ -5,7 +5,9 @@
+ window.addEventListener('message',event=>{
+-  if(event.source!==frame?.contentWindow||event.origin!==truth||event.data?.type!=='catnmice-gameplay-started')return;
++  if(event.source!==frame?.contentWindow||event.data?.type!=='catnmice-gameplay-started')return;
+   const id=event.data.game;
++  const allowed=event.origin===truth&&Object.hasOwn(truthRoutes,id)||
++    /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(event.origin)&&['bannerlands','cat','trashtactics'].includes(id);
+   // Cross-origin documents cannot read site storage. The official lobby set
+   // the catalog key during the user's launch action.
+-  if(!Object.hasOwn(truthRoutes,id)||localStorage.getItem('gh.lastGameType')!==id)return;
++  if(!allowed||localStorage.getItem('gh.lastGameType')!==id)return;
+   void recordGameplay(id,true).catch(()=>{});
