@@ -105,7 +105,7 @@ export function updateTelemetry(g){
 }
 function freezeDeep(value){if(value&&typeof value==='object'&&!Object.isFrozen(value)){for(const child of Object.values(value))freezeDeep(child);Object.freeze(value);}return value;}
 export function getMatchReport(g){
- if(g.winner===null&&!g.teams[0]?.eliminated)return null;
+ if(g.winner===null&&!g.teams[0]?.eliminated&&!g.matchComplete)return null;
  const telemetry=g.telemetry;if(!telemetry)return null;if(telemetry.report)return telemetry.report;
  captureTelemetry(g);
  const finalCounts=g.teams.map(()=>({}));for(const e of g.entities)if(e.hp>0&&finalCounts[e.team])finalCounts[e.team][e.type]=(finalCounts[e.team][e.type]||0)+1;

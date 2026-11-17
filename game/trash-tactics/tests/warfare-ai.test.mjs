@@ -11,6 +11,16 @@ function productionArena(){
   return {g,printer,workshop,lab,team,start};
 }
 
+test('AI can build its second Printer at exact cost with no competing commitments',()=>{
+  const {g,workshop,lab,team}=productionArena();
+  g.time=55;
+  g.entities=g.entities.filter(e=>e!==workshop&&e!==lab);
+  g.teams[team].trash=TYPES.printer.cost;
+  g._bot(team);
+  assert(g.entities.some(e=>e.team===team&&e.type==='printer'&&e.constructing));
+  assert.equal(g.teams[team].trash,0);
+});
+
 test('AI saves the next laboratory purchase instead of spending its trash and weighted supply on lower tiers',()=>{
   const {g,printer,workshop,lab,team,start}=productionArena();
   for(let i=0;i<40;i++)g._spawn('rock',team,start.x-600+(i%8)*42,start.y-500+Math.floor(i/8)*42);

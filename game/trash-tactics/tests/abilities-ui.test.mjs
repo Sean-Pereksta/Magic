@@ -13,20 +13,24 @@ class Element {
   dispatch(type,props={}) {
     const event={type,target:this,currentTarget:this,preventDefault(){},stopPropagation(){},key:'',
       pointerId:1,pointerType:'mouse',button:0,clientX:0,clientY:0,...props};
-    for(const fn of this.listeners[type]??[])fn(event);
+    let result;
+    for(const fn of this.listeners[type]??[])result=fn(event);
+    return result;
   }
   setAttribute(){}focus(){}setPointerCapture(){}releasePointerCapture(){}
   hasPointerCapture(){return true;}
   querySelectorAll(){return [];}querySelector(){return null;}closest(){return null;}
   getBoundingClientRect(){return {left:0,top:0,width:800,height:600};}
   getContext(){return {};}
-  click(){this.dispatch('click');}
+  replaceChildren(){this.innerHTML='';}
+  click(){return this.dispatch('click');}
 }
 
 let harnessId=0;
 async function harness() {
   const elements=new Map(),element=id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);};
   element('guide').hidden=true;
+  element('mapLoading').hidden=true;
   const difficulties=['easy','normal','hard','impossible'].map(type=>{const e=element('difficulty-'+type);e.dataset.difficulty=type;return e;});
   const players=[2,3,4].map(count=>{const e=element('players-'+count);e.dataset.players=String(count);return e;});
   const document={getElementById:element,querySelector:()=>element('sidebar'),querySelectorAll:selector=>selector==='[data-difficulty]'?difficulties:selector==='[data-players]'?players:[],activeElement:null};
@@ -39,13 +43,15 @@ async function harness() {
   const fakeRender=`export class Renderer {constructor(canvas,game){this.canvas=canvas;this.game=game;this.camera={zoom:1};this.centers=[];}resize(){}centerOn(x,y){this.centers.push({x,y});}screenToWorld(x,y){return {x,y};}worldToScreen(x,y){return {x,y};}pan(dx,dy){(this.pans??=[]).push({dx,dy});}zoomAt(){}draw(state){this.lastDraw=state;}drawMinimap(){}}export function drawIcon(){}`;
   const source=(await readFile(new URL('../game.js',import.meta.url),'utf8'))
     .replace("'./engine.js'",JSON.stringify(new URL('../engine.js',import.meta.url).href))
+    .replace("'./online-client.mjs'",JSON.stringify(new URL('../online-client.mjs',import.meta.url).href))
+    .replace("'./online-ui.mjs'",JSON.stringify('data:text/javascript,export function setupOnlineLobby(){}'))
     .replace("'./ability-icons.js'",JSON.stringify(new URL('../ability-icons.js',import.meta.url).href))
     .replace("'./skirmish-menu.js'",JSON.stringify(new URL('../skirmish-menu.js',import.meta.url).href))
     .replace("'./minimap-alerts.js'",JSON.stringify(new URL('../minimap-alerts.js',import.meta.url).href))
     .replace("'./match-report.js'",JSON.stringify(new URL('../match-report.js',import.meta.url).href))
     .replace("'./render.js'",JSON.stringify('data:text/javascript;base64,'+Buffer.from(fakeRender).toString('base64')));
   await import('data:text/javascript;base64,'+Buffer.from(source+`\n//# sourceURL=trash-tactics-abilities-under-test-${++harnessId}.js`).toString('base64'));
-  element('startButton').click();
+  await element('startButton').click();
   const state=window.trashTactics,game=state.game;
   game._think=Infinity;game.entities=game.entities.filter(e=>e.type==='desk');game._collisionBuildings=null;game.map.obstacles=[];
   const point=(x,y,more={})=>{const event={clientX:x,clientY:y,...more};element('world').dispatch('pointerdown',event);element('world').dispatch('pointerup',event);};
@@ -64,13 +70,14 @@ test('native map dropdown updates the real preview and starts the chosen map, pl
  assert.match(h.element('mapBriefTitle').textContent,/corridors/);
  assert.match(h.element('mapBriefStats').textContent,/4× area/);
  assert.match(h.element('difficultyHint').textContent,/Impossible cheats.*2×/);
- h.element('startButton').click();const game=h.state.game;
+ await h.element('startButton').click();const game=h.state.game;
  assert.equal(game.map.id,'serverstack');assert.equal(game.players,4);assert.equal(game.difficulty,'impossible');
  assert.equal(game.teams[0].trash,300,'player resources do not receive Impossible bonuses');assert.equal(game.teams[1].trash,600);
- select.value='not-a-map';select.dispatch('change');h.element('startButton').click();assert.equal(h.state.game.map.id,'serverstack','an invalid select value cannot alter the next match');
+ select.value='not-a-map';select.dispatch('change');await h.element('startButton').click();assert.equal(h.state.game.map.id,'serverstack','an invalid select value cannot alter the next match');
  const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
  assert.match(html,/<label[^>]+for="mapSelect"/);assert.match(html,/<select id="mapSelect"/);
- assert.equal((html.match(/<option value=/g)||[]).length,7);assert(!html.includes('class="map-options"'),'the old card grid is replaced');
+ const mapOptions=html.match(/<select id="mapSelect"[^>]*>([\s\S]*?)<\/select>/)[1];
+ assert.equal((mapOptions.match(/<option value=/g)||[]).length,9);assert(!html.includes('class="map-options"'),'the old card grid is replaced');
 });
 
 test('Q, W, E activate only their troop ability in a mixed squad and expose their exact keys',async()=>{
@@ -198,6 +205,67 @@ test('workers have padded click and box-selection bounds without larger collisio
  assert.equal(worker.r,r,'selection padding leaves navigation and collision geometry unchanged');
 });
 
+test('perspective selection uses the visible front actor and box selection honors seat two',async()=>{
+ const h=await harness();
+ const rear=h.spawn('rock',700,800),front=h.spawn('paper',780,900),rival=h.spawn('scissors',1240,1300,1);
+ const depths=new Map([[rear.id,2],[front.id,5],[rival.id,8]]);
+ h.game.isVisible=(entity,team)=>entity.team===team;
+ h.state.renderer.actorBounds=entity=>depths.has(entity.id)?{x:95,y:80,width:50,height:80,depth:depths.get(entity.id)}:null;
+ const canvas=h.element('world');
+ canvas.getBoundingClientRect=()=>({left:75,top:60,width:800,height:600});
+ h.point(194,168);
+ assert.deepEqual(h.state.selected,[front.id],'clicking the front silhouette selects it even far from its ground position');
+ h.game.localTeam=1;
+ canvas.dispatch('pointerdown',{clientX:175,clientY:170});
+ canvas.dispatch('pointermove',{clientX:216,clientY:199});
+ canvas.dispatch('pointerup',{clientX:216,clientY:199});
+ assert.deepEqual(h.state.selected,[rival.id],'the other seat box-selects its own troops by projected position');
+});
+
+test('a moving pinch zooms around the original midpoint before panning it into place',async()=>{
+ const h=await harness(),canvas=h.element('world'),camera=[];
+ h.state.renderer.zoomAt=(...args)=>camera.push(['zoom',...args]);
+ h.state.renderer.pan=(...args)=>camera.push(['pan',...args]);
+ canvas.dispatch('pointerdown',{pointerId:1,pointerType:'touch',clientX:100,clientY:200});
+ canvas.dispatch('pointerdown',{pointerId:2,pointerType:'touch',clientX:200,clientY:200});
+ canvas.dispatch('pointermove',{pointerId:2,pointerType:'touch',clientX:240,clientY:210});
+ assert.deepEqual(camera,[['zoom',Math.hypot(140,10)/100,150,200],['pan',20,5]]);
+});
+
+test('Alt drag orbits without selecting, and Home resets the perspective to the active base',async()=>{
+ const h=await harness(),canvas=h.element('world'),renderer=h.state.renderer,orbit=[];
+ renderer.scene3d={};renderer.orbit=(...args)=>orbit.push(args);
+ const selection=h.state.selected;
+ canvas.dispatch('pointerdown',{altKey:true,clientX:110,clientY:210});
+ canvas.dispatch('pointermove',{altKey:true,clientX:160,clientY:235});
+ canvas.dispatch('pointerup',{altKey:true,clientX:160,clientY:235});
+ assert.deepEqual(orbit,[[12,-6]]);
+ assert.deepEqual(h.state.selected,selection);
+
+ let resets=0;renderer.resetView=()=>resets++;
+ h.game.localTeam=1;
+ const base=h.game.entities.find(e=>e.team===1&&e.type==='desk');
+ h.key('Home');
+ assert.equal(resets,1);
+ assert.deepEqual(renderer.centers.at(-1),{x:base.x,y:base.y});
+ h.element('homeButton').click();
+ assert.equal(resets,2,'the camera button uses the same reset action');
+});
+
+test('twisting two touch points rotates the view while preserving pan and pinch',async()=>{
+ const h=await harness(),canvas=h.element('world'),renderer=h.state.renderer,camera=[];
+ renderer.scene3d={};
+ renderer.zoomAt=(...args)=>camera.push(['zoom',...args]);
+ renderer.orbit=(...args)=>camera.push(['orbit',...args]);
+ renderer.pan=(...args)=>camera.push(['pan',...args]);
+ canvas.dispatch('pointerdown',{pointerId:1,pointerType:'touch',clientX:110,clientY:200});
+ canvas.dispatch('pointerdown',{pointerId:2,pointerType:'touch',clientX:210,clientY:200});
+ canvas.dispatch('pointermove',{pointerId:2,pointerType:'touch',clientX:190,clientY:260});
+ assert.deepEqual(camera[0],['zoom',1,160,200]);
+ assert.equal(camera[1][0],'orbit');assert(Math.abs(camera[1][1]-36.87)<.01);assert.equal(camera[1][2],0);
+ assert.deepEqual(camera[2],['pan',-10,30]);
+});
+
 test('A-click respects each family counter and leaves buildings and ineligible troops alone',async()=>{
  const h=await harness(),rock=h.spawn('rock',700,800),scissors=h.spawn('scissors',700,900),printer=h.spawn('printer',500,1000),enemy=h.spawn('paper',1000,800,1);
  h.game.isVisible=()=>true;
@@ -272,11 +340,11 @@ test('finished match opens the frozen charts, can reopen from setup, and clears 
  assert.equal(h.game.winner,0);assert.equal(h.element('endOverlay').hidden,false);assert.match(h.element('matchReport').innerHTML,/THE AFTER-SCRAP/);assert.match(h.element('matchReport').innerHTML,/data-report-tab="economy"/);assert.match(h.element('matchReport').innerHTML,/<svg/);
  assert.equal(h.element('lastReportButton').hidden,false);const snapshot=h.game.getMatchReport();assert(Object.isFrozen(snapshot));
  h.element('reportLobbyButton').click();assert.equal(h.element('endOverlay').hidden,true);h.element('lastReportButton').click();assert.equal(h.element('endOverlay').hidden,false);
- h.element('playAgain').click();h.element('startButton').click();assert.equal(h.element('lastReportButton').hidden,true);assert.equal(h.element('matchReport').innerHTML,'');assert.equal(h.state.game.getMatchReport(),null);
+ h.element('playAgain').click();await h.element('startButton').click();assert.equal(h.element('lastReportButton').hidden,true);assert.equal(h.element('matchReport').innerHTML,'');assert.equal(h.state.game.getMatchReport(),null);
 });
 
 test('an eliminated player cannot resume the ended three-team match behind the final report',async()=>{
- const h=await harness();h.element('players-3').click();h.element('startButton').click();const game=h.state.game;game._think=Infinity;
+ const h=await harness();h.element('players-3').click();await h.element('startButton').click();const game=h.state.game;game._think=Infinity;
  for(const e of game.entities)if(e.team===0&&e.type==='desk')e.hp=0;h.refresh();
  assert.equal(game.teams[0].eliminated,true);assert.equal(game.winner,null);assert.equal(h.element('endOverlay').hidden,false);
  const report=game.getMatchReport(),time=game.time;h.element('reportLobbyButton').click();assert.equal(h.element('resumeFromLobby').hidden,true);

@@ -99,7 +99,7 @@ export function updateBattlefield(game,dt){
       if(team===0)game._event?.('toast',{message:`${belt.label} captured. Belt reversed for 18 seconds.`});
     }
   }
-  if(game.time>=45&&game.time>=(game._battlefieldThink||0)&&game.command){
+  if(!game.online&&game.time>=45&&game.time>=(game._battlefieldThink||0)&&game.command){
     game._battlefieldThink=game.time+3;
     game._battlefieldPlans??=[];
     for(let team=1;team<(game.players||0);team++){

@@ -324,7 +324,8 @@
     .profile-stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}.profile-stat{padding:9px 12px;border-radius:13px;background:rgba(255,255,255,.12);font-size:.78rem}.profile-stat strong{display:block;font-size:1.02rem}
     .profile-layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,.75fr);gap:18px;margin-top:18px}
     .activity-list{display:grid;gap:8px}.activity-row{display:flex;justify-content:space-between;gap:12px;padding:11px;border-radius:12px;background:var(--surface-2)}
-    .rank-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:13px}
+    .rank-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px;margin-top:13px}
+    .profile-avatar.trash-tactics-ranked,.public-avatar.trash-tactics-ranked{border:2px solid var(--trash-tactics-rank);box-shadow:0 0 0 2px #101827,0 0 0 4px var(--trash-tactics-rank)}
     .rank-card{--rank:#7c3aed;padding:13px;border-radius:15px;border:1px solid color-mix(in srgb,var(--rank) 28%,#293750);background:linear-gradient(145deg,var(--surface-2),color-mix(in srgb,var(--rank) 12%,var(--surface)));min-width:0}
     .rank-game{font-size:.72rem;color:var(--muted);font-weight:850}.rank-title{margin-top:5px;color:color-mix(in srgb,var(--rank) 55%,#fff);font-weight:950;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rank-elo{margin-top:3px;font-size:.78rem;font-weight:850;color:#b4c2d9}
     .profile-summary-button{width:100%;border:0;background:transparent;padding:0;color:inherit;text-align:left;cursor:pointer}
@@ -742,6 +743,7 @@
 
     import { firebaseConfig } from "./firebase-config.mjs";
     import { memberActivity, filterMembers } from "./lobby-admin-members.mjs";
+    import { trashTacticsRank } from "../game/trash-tactics/rank-tiers.mjs";
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -1021,6 +1023,8 @@
       const chessRaw=chessData.elo??chessData.rating??bundle?.chess?.chessWarlordElo;
       const bibleData=bundle?.bible?.bibleGame||{};
       const bibleRaw=bibleData.elo??bundle?.bible?.bibleGameElo;
+      const trashTactics=bundle?.base?.gameStats?.trashTactics;
+      const trashRank=trashTacticsRank(trashTactics);
       const crownElo=Number(crownRaw),chessElo=Number(chessRaw),bibleElo=Number(bibleRaw);
       const crown=Number.isFinite(crownElo)?crownRank(crownElo):["👑","Unranked"];
       const chess=Number.isFinite(chessElo)?tierFor(chessElo,CHESS_RANKS):[0,"♛","Unranked"];
@@ -1028,11 +1032,17 @@
       return [
         {game:"Faction Forge",emoji:crown[0],title:crown[1],elo:Number.isFinite(crownElo)?Math.round(crownElo):null,color:"#b45309"},
         {game:"Chess Warlord",emoji:chess[1],title:chess[2],elo:Number.isFinite(chessElo)?Math.round(chessElo):null,color:"#2563eb"},
-        {game:"Bible Game",emoji:bible[1],title:bible[2],elo:Number.isFinite(bibleElo)?Math.round(bibleElo):null,color:"#7c3aed"}
+        {game:"Bible Game",emoji:bible[1],title:bible[2],elo:Number.isFinite(bibleElo)?Math.round(bibleElo):null,color:"#7c3aed"},
+        {game:"Trash Tactics",emoji:"♻️",title:trashRank.title,elo:trashRank.title==="Unranked"?null:trashTactics.rating,color:trashRank.color}
       ];
     }
     function renderRankCards(target,bundle){
       target.innerHTML=ranksForBundle(bundle).map(rank=>`<div class="rank-card" style="--rank:${rank.color}"><div class="rank-game">${escapeHtml(rank.game)}</div><div class="rank-title">${rank.emoji} ${escapeHtml(rank.title)}</div><div class="rank-elo">${rank.elo===null?"No games recorded":`${rank.elo} ELO`}</div></div>`).join("");
+    }
+    function setTrashTacticsProfileBorder(node,profile){
+      const rank=trashTacticsRank(profile?.gameStats?.trashTactics);
+      node.classList.toggle("trash-tactics-ranked",rank.title!=="Unranked");
+      node.style.setProperty("--trash-tactics-rank",rank.color);
     }
     function mostPlayedGame(data={}){
       const counts=data.gamePlayCounts&&typeof data.gamePlayCounts==="object"?data.gamePlayCounts:{};
@@ -1063,8 +1073,9 @@
       if(!name)return;
       $("publicProfileLoading").hidden=false;$("publicProfileContent").hidden=true;openModal("publicProfileModal");
       try{
-        const bundle=await getProfileBundle(name);
+        const bundle=await getProfileBundle(name,true);
         const d=bundle.base||{};setAvatarNode($("publicProfileAvatar"),d.avatar||"🎮",`${name} profile icon`);
+        setTrashTacticsProfileBorder($("publicProfileAvatar"),d);
         $("publicProfileName").textContent=d.displayName||name;$("publicProfileBio").textContent=d.bio||"Game Hub player";
         $("publicProfileMostPlayed").textContent=mostPlayedLabel(d);renderRankCards($("publicProfileRanks"),bundle);
         $("publicProfileLoading").hidden=true;$("publicProfileContent").hidden=false;
@@ -1077,7 +1088,7 @@
       document.querySelectorAll("[data-view]").forEach(btn=>btn.classList.toggle("active",btn.dataset.view===view));
       save(SK.lastView,view);
       if(view==="singleplayer"&&libraryDirty)renderSingleLibrary();
-      if(view==="profile")renderProfile();
+      if(view==="profile")renderProfile(true);
       syncLobbyBrowserPolling();
       if(view==="profile"&&canViewAdminMembers()&&!adminMembersLoaded)void loadAdminMembers();
       if(view==="multiplayer"&&firebaseAuthReady)void refreshLobbyBrowser();
@@ -1338,6 +1349,11 @@
         if(!requireUser({type:"online",gameKey:game.key}))return;
         launchGameUrl(`${game.multiplayerRoute}?mode=browse&username=${encodeURIComponent(username)}`,"matchmaking-join");return;
       }
+      if(game.key==="trashtactics"){
+        if(launchingGame)return;
+        void logGamePlay(game).catch(error=>console.warn("Play logging skipped",error));
+        save(SK.lastGame,game.key);launchGameUrl(game.multiplayerRoute,"matchmaking-join");return;
+      }
       if(game.key==="quipclash"){
         if(!requireUser({type:"online",gameKey:game.key}))return;
         launchGameUrl(`${game.multiplayerRoute}?mode=browse&username=${encodeURIComponent(username)}`,"matchmaking-join");return;
@@ -1358,8 +1374,9 @@
       const card=document.createElement("article"),mode=getLaunchMode(game);
       const badges=Array.isArray(game.badges)?game.badges:(mode===MULTIPLAYER_LAUNCH_MODES.REALM?["Always Online","Shared World","No Host"]:["Automatic Matchmaking","No Host"]);
       const actionLabel=game.joinLabel||(mode===MULTIPLAYER_LAUNCH_MODES.MATCHMAKING?"Find Match":"Enter World");
+      const status=game.onlineStatus||(mode===MULTIPLAYER_LAUNCH_MODES.MATCHMAKING?"Matchmaking Available":"World Available");
       card.className="online-world-card";card.dataset.gameKey=game.key;card.style.setProperty("--game",gameColor(game.key));
-      card.innerHTML=`<div class="online-world-head"><div class="game-mark" style="--game:${gameColor(game.key)}">${gameVisual(game,"mark")}</div><div class="online-world-copy"><div class="online-world-title">${escapeHtml(game.title)}</div><div class="online-world-desc">${escapeHtml(game.desc)}</div></div></div><div class="online-world-status">${mode===MULTIPLAYER_LAUNCH_MODES.MATCHMAKING?"Matchmaking Available":"World Available"}</div><div class="online-world-badges">${badges.map(label=>`<span class="tag">${escapeHtml(label)}</span>`).join("")}</div><div class="online-world-actions"><button type="button" class="btn join-online-world">${escapeHtml(actionLabel)}</button></div>`;
+      card.innerHTML=`<div class="online-world-head"><div class="game-mark" style="--game:${gameColor(game.key)}">${gameVisual(game,"mark")}</div><div class="online-world-copy"><div class="online-world-title">${escapeHtml(game.title)}</div><div class="online-world-desc">${escapeHtml(game.desc)}</div></div></div><div class="online-world-status">${escapeHtml(status)}</div><div class="online-world-badges">${badges.map(label=>`<span class="tag">${escapeHtml(label)}</span>`).join("")}</div><div class="online-world-actions"><button type="button" class="btn join-online-world">${escapeHtml(actionLabel)}</button></div>`;
       card.querySelector(".join-online-world").addEventListener("click",()=>joinOnlineGame(game,true));
       return card;
     }
@@ -1989,13 +2006,17 @@
     $("adminMemberSearch").addEventListener("input",renderAdminMembers);
     $("adminMemberSort").addEventListener("change",renderAdminMembers);
 
-    function renderProfile(){
+    function renderProfile(refreshRanks=false){
       renderAdminMembersAccess();
       const logged=!!username;$("profileGuest").hidden=logged;$("profileContent").hidden=!logged;if(!logged)return;
       const d=currentUserData||{},display=d.displayName||username,avatar=d.avatar||"🎮",bio=d.bio||"Game Hub player";
       setAvatarNode($("profileAvatar"),avatar,`${display} profile icon`);$("profileName").textContent=display;$("profileBio").textContent=bio;$("profileWins").textContent=d.wins||0;$("profileFavoriteCount").textContent=favorites.size;$("profileRecentCount").textContent=recentGames.length;$("profileMostPlayed").textContent=mostPlayedGame(d)?.game?.title||"—";
+      setTrashTacticsProfileBorder($("profileAvatar"),d);
       const seq=++ownProfileRenderSeq;$("profileRanks").innerHTML='<div class="help">Loading saved game ranks…</div>';
-      getProfileBundle(username).then(bundle=>{if(seq===ownProfileRenderSeq&&username)renderRankCards($("profileRanks"),bundle);});
+      getProfileBundle(username,refreshRanks).then(bundle=>{if(seq===ownProfileRenderSeq&&username){
+        renderRankCards($("profileRanks"),bundle);
+        setTrashTacticsProfileBorder($("profileAvatar"),bundle.base);
+      }});
       const fav=$("profileFavorites");fav.innerHTML="";[...favorites].map(getGame).slice(0,8).forEach(g=>fav.appendChild(gameCard(g,true)));if(!fav.children.length)fav.innerHTML='<div class="empty-state" style="grid-column:1/-1;padding:25px">No favorite games yet. Use the star on a game card.</div>';
       const rec=$("profileRecent");rec.innerHTML="";recentGames.slice(0,10).forEach(item=>{const key=typeof item==="string"?item:item.key,g=getGame(key),date=typeof item==="string"?null:item.playedAt;const row=document.createElement("div");row.className="activity-row";row.innerHTML=`<span style="display:flex;align-items:center">${gameVisual(g,"tiny")}<strong>${escapeHtml(g.title)}</strong></span><span class="help">${date?fmtAge(date):"Recently"}</span>`;rec.appendChild(row);});if(!rec.children.length)rec.innerHTML='<div class="empty-state" style="padding:25px">Play a game to begin your history.</div>';
       $("profileDetails").innerHTML=`<div class="activity-list"><div class="activity-row"><span>Username</span><strong>${escapeHtml(username)}</strong></div><div class="activity-row"><span>Favorite category</span><strong>${escapeHtml(d.favoriteCategory||"Not selected")}</strong></div><div class="activity-row"><span>Account</span><strong>Game Hub Member</strong></div><div class="activity-row"><span>Lobby invites</span><strong>${inviteCache.size}</strong></div></div>`;

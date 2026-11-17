@@ -14,19 +14,23 @@ class Element {
   dispatch(type,props={}){
     const event={type,target:this,currentTarget:this,preventDefault(){},stopPropagation(){},
       key:'',pointerId:1,pointerType:'touch',button:0,clientX:0,clientY:0,...props};
-    for(const fn of this.listeners[type]??[])fn(event);
+    let result;
+    for(const fn of this.listeners[type]??[])result=fn(event);
+    return result;
   }
   setAttribute(name,value){(this.attributes??={})[name]=value;} focus(){} setPointerCapture(){} releasePointerCapture(){}
   hasPointerCapture(){return true;}
   querySelectorAll(){return [];} querySelector(){return null;} closest(){return null;}
   getBoundingClientRect(){return {left:0,top:0,width:800,height:600};}
   getContext(){return {};}
-  click(){this.dispatch('click');}
+  replaceChildren(){this.innerHTML='';}
+  click(){return this.dispatch('click');}
 }
 
 async function harness(){
   const elements=new Map(), element=id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);};
   element('guide').hidden=true;
+  element('mapLoading').hidden=true;
   const document={getElementById:element,querySelector:()=>element('sidebar'),querySelectorAll:()=>[],activeElement:null};
   const window=new Element('window');window.innerWidth=1000;window.innerHeight=700;
   let now=10000,nextTimer=1; const timers=new Map();
@@ -44,13 +48,15 @@ async function harness(){
   const renderUrl='data:text/javascript;base64,'+Buffer.from(fakeRender).toString('base64');
   const source=(await readFile(new URL('../game.js',import.meta.url),'utf8'))
     .replace("'./engine.js'",JSON.stringify(new URL('../engine.js',import.meta.url).href))
+    .replace("'./online-client.mjs'",JSON.stringify(new URL('../online-client.mjs',import.meta.url).href))
+    .replace("'./online-ui.mjs'",JSON.stringify('data:text/javascript,export function setupOnlineLobby(){}'))
     .replace("'./ability-icons.js'",JSON.stringify(new URL('../ability-icons.js',import.meta.url).href))
     .replace("'./skirmish-menu.js'",JSON.stringify(new URL('../skirmish-menu.js',import.meta.url).href))
     .replace("'./minimap-alerts.js'",JSON.stringify(new URL('../minimap-alerts.js',import.meta.url).href))
     .replace("'./match-report.js'",JSON.stringify(new URL('../match-report.js',import.meta.url).href))
     .replace("'./render.js'",JSON.stringify(renderUrl));
   await import('data:text/javascript;base64,'+Buffer.from(source+'\n//# sourceURL=trash-tactics-game-under-test.js').toString('base64'));
-  element('startButton').click();
+  await element('startButton').click();
   const state=window.trashTactics;
   const key=(type,key,more={})=>window.dispatch(type,{key,...more});
   const pointer=(slot,type,more={})=>element('group-'+slot).dispatch(type,more);
@@ -124,7 +130,7 @@ test('command groups save, recall, center, prune, reset, and cancel input',async
   h.key('keydown','4');h.key('keyup','4');assert.deepEqual(h.state.selected,[unit.id]);
   unit.hp=0;h.select(other);h.pointer(1,'pointerdown');h.pointer(1,'pointerup');
   assert(!h.state.selected.includes(unit.id),'dead troops are not recalled');
-  h.element('startButton').click();h.select(h.state.game.entities.find(e=>e.team===0&&e.type==='paper'));
+  await h.element('startButton').click();h.select(h.state.game.entities.find(e=>e.team===0&&e.type==='paper'));
   const selected=h.state.selected.slice();h.pointer(2,'pointerdown');h.pointer(2,'pointerup');
   assert.deepEqual(h.state.selected,selected,'starting another match clears old groups');
 });

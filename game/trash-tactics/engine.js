@@ -77,11 +77,12 @@ const fail=reason=>({ok:false,reason});
 const configs=BOT_CONFIGS;
 
 export class Game {
-  constructor({map='desktop',difficulty='normal',players=2,onEvent=()=>{}}={}) {
+  constructor({map='desktop',difficulty='normal',players=2,online=false,onEvent=()=>{}}={}) {
     this.players=clamp(Math.floor(Number(players)||2),2,4);
     this.map=layoutMap(map,this.players);this.width=this.map.width;this.height=this.map.height;this.center={x:this.width/2,y:this.height/2};this.starts=this.map.camps.map(c=>({...c}));
     this.difficulty=difficulty in configs?difficulty:'normal';
     this.botConfig=configs[this.difficulty];
+    this.online=online;
     this.onEvent=onEvent; this.entities=[]; this.effects=[]; this.projectiles=[]; this.time=0;
     this.winner=null; this._id=1; this._think=0;initializeWarfare(this);
     this._victoryCheck=0; this._separation=0;
@@ -473,7 +474,7 @@ export class Game {
     this._separate(dt);
     for(const e of this.entities)if(e.hp<=0&&!e.deadHandled){if(e.type==='cd')this._unloadTransport(e,true);if(e.type==='wall')this._wallsChanged();this._cancelBuildAssignments(e);e.deadHandled=true;this._releaseCan(e);const life=TYPES[e.type].building ? .7 : e.type==='rollingrock' ? 1.45 : 1.3;this._effect('death',e.x,e.y,{team:e.team,entityType:e.type,facing:e.facing||0,radius:e.r,seed:e.id,life,total:life});this._event('death',{entity:e});}
     this.entities=this.entities.filter(e=>e.hp>0);
-    this._think-=dt;if(this._think<=0){this._think=configs[this.difficulty].think;for(let team=1;team<this.players;team++)if(!this.teams[team].eliminated)this._bot(team);}
+    this._think-=dt;if(!this.online&&this._think<=0){this._think=configs[this.difficulty].think;for(let team=1;team<this.players;team++)if(!this.teams[team].eliminated)this._bot(team);}
     this._victoryCheck-=dt;if(this._victoryCheck<=0){
       this._victoryCheck=1;
       for(let team=0;team<this.players;team++)if(!this.teams[team].eliminated&&!this.entities.some(e=>e.team===team&&e.type==='desk')){
@@ -833,7 +834,9 @@ export class Game {
     state.transportReserve=state.wantTransport&&this.time>=cfg.dropAt&&own.filter(e=>e.type==='cd').length<(cfg.micro>=2?2:1)?own.some(e=>e.type==='cdreader')?75:175:0;
     const specialistPlan=specialistBot(this,team);
     const tierReserve=this.time>cfg.laboratoryAt&&!own.some(e=>e.type==='laboratory')&&own.some(e=>e.type==='workshop'&&!e.constructing)?400:this.time>cfg.workshopAt&&!own.some(e=>e.type==='workshop')?275:0;
-    const reserve=Math.max(tierReserve,specialistPlan.reserveTrash,planningExpansion?200:planningResearch?150:0)+state.transportReserve;
+    const printerCost=TYPES.printer.cost, needsSecondPrinter=cfg.printers>1&&printers.length===1&&this.time>35&&!own.some(e=>e.type==='printer'&&e.constructing);
+    const competingReserve=Math.max(tierReserve,specialistPlan.reserveTrash,planningExpansion?200:planningResearch?150:0);
+    const reserve=Math.max(competingReserve,needsSecondPrinter?printerCost:0)+state.transportReserve;
     for(const w of workers)if(w.order.type==='idle'&&!w.aiTask){
       const unfinished=own.find(b=>b.constructing&&!this.getEntity(b.builderId));
       if(unfinished){unfinished.builderId=w.id;w.order={type:'build',targetId:unfinished.id};continue;}
@@ -862,7 +865,8 @@ export class Game {
       }
     }
     if(supply.cap-supply.used<Math.max(4,specialistPlan.reserveSupply+2)&&supply.cap<cfg.cap+cfg.workers+8&&!pending.some(e=>e.type==='cabinet')&&bank.trash>=75)constructNear('cabinet',start.x+px*245-fx*40,start.y+py*245-fy*40);
-    if(printers.length<(this.time>120?cfg.printers:Math.min(2,cfg.printers))&&this.time>35&&bank.trash>220+reserve&&!pending.some(e=>e.type==='printer'))constructNear('printer',start.x+fx*190+px*155,start.y+fy*190+py*155);
+    const printerBudget=needsSecondPrinter?printerCost+competingReserve+state.transportReserve:220+reserve;
+    if(printers.length<(this.time>120?cfg.printers:Math.min(2,cfg.printers))&&this.time>35&&bank.trash>=printerBudget&&!pending.some(e=>e.type==='printer'))constructNear('printer',start.x+fx*190+px*155,start.y+fy*190+py*155);
     for(const p of printers)if(p.queue.length<2&&army.length+this.getSupply(team).reserved<cfg.cap-8&&bank.trash>=50+reserve&&this.getSupply(team).used+1+specialistPlan.reserveSupply<=this.getSupply(team).cap){
       const observed=this.entities.filter(e=>e.hp>0&&e.team>=0&&e.team!==team&&isCombat(e.type)&&!e.transportedBy&&this.isVisible(e,team));
       this.train(p.id,chooseBotTroop(this,team,army,observed,cfg));

@@ -1,0 +1,63 @@
+name: Trash Tactics Windows host
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - trash-tactics-host-v*
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: game/trash-tactics
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Sean-Pereksta/Truth
+          ref: 232b8658273a93eb234a858fb9fb876654508c3a
+          path: runtime-notices
+          sparse-checkout: games/bannerlands/source/hosting/licenses
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+      - name: Build the portable bundle
+        shell: pwsh
+        run: |
+          $binary = Join-Path $env:RUNNER_TEMP 'cloudflared.exe'
+          Invoke-WebRequest -Uri 'https://github.com/cloudflare/cloudflared/releases/download/2026.11.0/cloudflared-windows-amd64.exe' -OutFile $binary
+          node game/trash-tactics/hosting/build-windows.mjs --cloudflared $binary --notices runtime-notices/games/bannerlands/source/hosting/licenses --output dist/host --source $env:GITHUB_SHA
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trash-tactics-windows-x64
+          path: dist/host/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/trash-tactics-host-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: trash-tactics-windows-x64
+          path: dist/host
+      - name: Publish the tagged bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$RELEASE_REPO" > /dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/host/* --repo "$RELEASE_REPO" --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/host/* --repo "$RELEASE_REPO" --verify-tag --latest=false --title "Trash Tactics Host ${RELEASE_TAG#trash-tactics-host-}" --notes "Extract the ZIP and open Start Trash Tactics Host.cmd to host community PvP on Windows x64."
+          fi

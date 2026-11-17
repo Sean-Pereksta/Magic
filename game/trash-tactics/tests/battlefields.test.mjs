@@ -10,7 +10,7 @@ test('expansion maps provide 9600 by 6400 geometry for every player count',()=>{
   for(const id of ['canyon','conveyor'])for(const players of [2,3,4]){
     const map=createBattlefield(id,players);
     assert.equal(map.width,9600);assert.equal(map.height,6400);assert.equal(map.camps.length,players);
-    assert(map.plateaus.length>=2);assert.equal(map.ramps.length,map.plateaus.length*2);
+    assert(map.plateaus.length>=2+players);assert.equal(map.ramps.length,map.plateaus.reduce((count,p)=>count+p.ramps.length,0));
     assert(map.expansions.length>=8);assert(map.lanes.length>=3);
     for(const camp of map.camps)assert(!map.obstacles.some(o=>camp.x>o.x-100&&camp.x<o.x+o.w+100&&camp.y>o.y-100&&camp.y<o.y+o.h+100),`${id}: headquarters has clear ground`);
   }
