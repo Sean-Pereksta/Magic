@@ -104,7 +104,7 @@ export class CatMouseDirectory extends DurableObject {
 
     try {
       const upstream = await fetch(listing.serverUrl + '/health', {
-        redirect: 'error', signal: AbortSignal.timeout(5_000)
+        redirect: 'manual', signal: AbortSignal.timeout(5_000)
       });
       if (!upstream.ok) throw new Error('Origin returned ' + upstream.status);
       const proof = await upstream.json();
