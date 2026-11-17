@@ -1,14 +1,18 @@
 export const MAP_BRIEFS={
- desktop:{name:'Desktop Meadow',tag:'Open routes · raised lookouts',plan:'Scout the wide flanks, claim a natural expansion, and use the raised desks to watch the main approach.'},
- breakroom:{name:'Breakroom Blitz',tag:'Cliff ramps · cover pockets',plan:'Control the ramps before committing. Cover protects expansions, while the long outer routes reward a split army.'},
- canyon:{name:'Stapler Canyon',tag:'Three crossings · breakable gate',plan:'Watch both bridges. The central gate offers a direct push, while the southern crossing leaves space for a flank.'},
- conveyor:{name:'Conveyor Chaos',tag:'Moving lanes · capture controls',plan:'Capture belt controls to move reinforcements faster. Scout the outer loop to catch raids before they reach your workers.'},
- inkdelta:{name:'Inkspill Delta',tag:'Three causeways · rich outer fields',plan:'Hold a causeway while scouting the others. Outer expansions pay more, but leave your supply lines exposed.'},
- corkcross:{name:'Corkboard Crossroads',tag:'Central heights · radial flanks',plan:'Trade central vision against safer outer routes. A second army can threaten expansions while your main force holds the crossroads.'},
- serverstack:{name:'Server Stack',tag:'Service corridors · divided fronts',plan:'Use the broad service lanes to split pressure. Aircraft can bypass the racks, so keep anti-air near your economy.'},
- rainyard:{name:'Rain Gutter Run',tag:'Gutter bridge · two spillway flanks',plan:'Expand onto your loading apron, then scout the bridge approach from a raised ledge. Take a wider spillway around enemies guarding the flood gates.'},
- cartonworks:{name:'Carton Works',tag:'Shipping deck · bent packing lanes',plan:'Four ramps lead to the shipping-deck reserve. The packing bypasses loop around the carton stacks toward rival workers, while the inspection docks watch the lower lanes.'}
+ desktop:{name:'Desktop Meadow',tag:'Open routes · raised lookouts',plan:'Scout the wide flanks, claim a natural expansion, and use the raised desks to watch the main approach.',scene:'Warm wood grain, clipped notebooks and raised desktop lookouts.'},
+ breakroom:{name:'Breakroom Blitz',tag:'Cliff ramps · cover pockets',plan:'Control the ramps before committing. Cover protects expansions, while the long outer routes reward a split army.',scene:'A coffee cup, mint-colored napkin terraces and sloped service lanes.'},
+ canyon:{name:'Stapler Canyon',tag:'Three crossings · breakable gate',plan:'Watch both bridges. The central gate offers a direct push, while the southern crossing leaves space for a flank.',scene:'An illuminated ruler bridge across the canyon between ramped overlooks.'},
+ conveyor:{name:'Conveyor Chaos',tag:'Moving lanes · capture controls',plan:'Capture belt controls to move reinforcements faster. Scout the outer loop to catch raids before they reach your workers.',scene:'Intersecting conveyor belts, factory controls and a recycling crane.'},
+ inkdelta:{name:'Inkspill Delta',tag:'Three causeways · rich outer fields',plan:'Hold a causeway while scouting the others. Outer expansions pay more, but leave your supply lines exposed.',scene:'A lit causeway and oversized pens in the dark ink river.'},
+ corkcross:{name:'Corkboard Crossroads',tag:'Central heights · radial flanks',plan:'Trade central vision against safer outer routes. A second army can threaten expansions while your main force holds the crossroads.',scene:'The raised cork crown, a broad ramp and boxes topped with colored pushpins.'},
+ serverstack:{name:'Server Stack',tag:'Service corridors · divided fronts',plan:'Use the broad service lanes to split pressure. Aircraft can bypass the racks, so keep anti-air near your economy.',scene:'Vent-topped server racks framing broad green circuit-board corridors.'},
+ rainyard:{name:'Rain Gutter Run',tag:'Gutter bridge · two spillway flanks',plan:'Expand onto your loading apron, then scout the bridge approach from a raised ledge. Take a wider spillway around enemies guarding the flood gates.',scene:'Stone ledges and a lit bridge over drainage channels.'},
+ cartonworks:{name:'Carton Works',tag:'Shipping deck · bent packing lanes',plan:'Four ramps lead to the shipping-deck reserve. The packing bypasses loop around the carton stacks toward rival workers, while the inspection docks watch the lower lanes.',scene:'A raised shipping deck, loading lanes, cranes and stacked parcels.'}
 };
+
+export const mapScreenshotUrl=id=>Object.hasOwn(MAP_BRIEFS,id)
+ ? new URL('./assets/map-preview-'+id+'.webp',import.meta.url).href : '';
+
 export const DIFFICULTY_BRIEFS={
  easy:'Easy learns slowly: smaller attack groups, later expansions, and more time to recover. Standard resources.',
  normal:'Normal scouts, expands, and rotates attack plans. Standard resources for both sides.',

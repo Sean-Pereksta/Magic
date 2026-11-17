@@ -1,9 +1,11 @@
 /* Trash Tactics — illustrated, resolution-independent battlefield renderer. */
 import {drawExpansionIcon,drawExpansionSprite,drawWarfareEntityOverlay,drawWarfareFields,drawWarfareProjectile,drawWarfareEffect,drawWarfarePlacement,paintWarfareMap,animateWarfareMap,drawWarfareObstacle,loadWarfareEffects,warfareEffectsLoaded} from './warfare-art.js';
 import {createWorld3D,loadWorld3DArtwork} from './world-3d.js';
-import {projectGround as ground3D,pickGround as pick3D,projectWorld,panVector,DEFAULT_YAW,DEFAULT_PITCH} from './world-camera.js';
+import {projectGround as ground3D,pickGround as pick3D,projectHeading,projectWorld,panVector,billboardBasis,ELEVATION,DEFAULT_YAW,DEFAULT_PITCH} from './world-camera.js';
 import {ActorBillboards,actorBounds} from './actor-billboards.js';
 import {TYPES} from './engine.js';
+import {actorLift,actorTerrainHeight} from './flight-visual.js';
+import {terrainHeight} from './terrain.js';
 import {drawWallBlock,drawWallEntity,drawWallPlacement} from './wall-art.js';
 import {WALL_SIZE} from './walls.js';
 import {paintTabletopDetails} from './tabletop-details.js';
@@ -11,7 +13,7 @@ import {drawAbilityParticles,drawBattleEffect} from './battle-fx.js';
 import {loadDeathArtwork,deathArtworkStatus} from './death-art.js';
 import {paintFrontierMap,drawFrontierObstacle} from './frontier-art.js';
 import {drawAttackAlerts} from './minimap-alerts.js';
-import {loadWorldArtwork,loadStructureArtwork,drawPaintedStructure,worldArtworkReady,paintLowGround,paintCliffWorld,projectGround,pickGround,projectTerrainFog} from './world-art.js';
+import {loadWorldArtwork,loadStructureArtwork,drawPaintedStructure,drawDiscHeading,worldArtworkReady,paintLowGround,paintCliffWorld,projectGround,pickGround,projectTerrainFog,TERRAIN_OFFSET} from './world-art.js';
 const INK='#354549', TEAL='#269b98', CORAL='#ed795d';
 const TEAM_COLORS=[TEAL,CORAL,'#9e7bc5','#d4aa4e'];
 const teamColor=t=>TEAM_COLORS[t]||'#91a588';
@@ -115,8 +117,9 @@ function drawCD(c,tc,options={}){
  for(let i=0;i<3;i++){const a=i*Math.PI*2/3;c.beginPath();c.moveTo(Math.cos(a)*7,Math.sin(a)*7);c.arc(0,0,22,a,a+.22);c.lineTo(Math.cos(a+.22)*7,Math.sin(a+.22)*7);c.closePath();shape(c,'#fffefa99',null);}
  for(const r of [15,19,22])ellipse(c,0,0,r,r,null,'#fffef65e',.65);
  c.restore();ellipse(c,0,0,9,5.4,'#edf5e8','#9baeb0',1.1);ellipse(c,0,0,4,2.4,'#465f65',INK,1.1);
- // Team stripe and a tiny forward beacon remain fixed as the surface spins.
- c.beginPath();c.ellipse(0,0,25,15,0,.12,Math.PI-.12);shape(c,null,tc,2.5);ellipse(c,0,13,2.2,1.7,'#f8df8e',INK,.8);
+ c.beginPath();c.ellipse(0,0,25,15,0,.12,Math.PI-.12);shape(c,null,tc,2.5);
+ if(Number.isFinite(options.facing))drawDiscHeading(c,options.facing,0,0,22,12);
+ else ellipse(c,0,13,2.2,1.7,'#f8df8e',INK,.8);
 }
 function drawCDReader(c,tc,options={}){
  const active=options.active,phase=options.phase||0,slide=active?2+Math.sin(phase*3)*1.5:0;
@@ -188,7 +191,18 @@ export class Renderer {
  zoomAt(factor,clientX,clientY){const rect=this.canvas.getBoundingClientRect();const x=(clientX??rect.left+this.width/2)-rect.left,y=(clientY??rect.top+this.height/2)-rect.top;if(this.scene3d){const target=pick3D(this.game.map,this.camera,this.width,this.height,x,y);this.camera.zoom=Math.max(.24,Math.min(1.9,this.camera.zoom*factor));const p=this.worldToScreen(target.x,target.y),v=panVector(this.camera,p.x-x,p.y-y);this.camera.x+=v.x;this.camera.y+=v.y;this.clampCamera();return;}const wx=this.camera.x+x/this.camera.zoom,wy=this.camera.y+y/this.camera.zoom;this.camera.zoom=Math.max(.4,Math.min(1.65,this.camera.zoom*factor));this.camera.x=wx-x/this.camera.zoom;this.camera.y=wy-y/this.camera.zoom;this.clampCamera();}
  screenToWorld(clientX,clientY){const r=this.canvas.getBoundingClientRect();if(this.scene3d)return pick3D(this.game.map,this.camera,this.width,this.height,clientX-r.left,clientY-r.top);return pickGround(this.game.map,this.camera.x+(clientX-r.left)/this.camera.zoom,this.camera.y+(clientY-r.top)/this.camera.zoom);}
  worldToScreen(x,y){if(this.scene3d)return ground3D(this.game.map,this.camera,this.width,this.height,x,y);const [px,py]=projectGround(this.game.map,x,y);return{x:(px-this.camera.x)*this.camera.zoom,y:(py-this.camera.y)*this.camera.zoom};}
- actorBounds(e){return this.scene3d?actorBounds(this,e):null;}
+ aircraftOffset(e){
+  const map=this.game.map,delta=actorTerrainHeight(map,e)-terrainHeight(map||{},e.x,e.y);
+  if(this.scene3d)return {x:0,y:-delta*ELEVATION*billboardBasis(this.camera).up[2]};
+  return {x:-delta*TERRAIN_OFFSET.x,y:-delta*TERRAIN_OFFSET.y};
+ }
+ actorBounds(e){
+  if(this.scene3d)return actorBounds(this,e);
+  if(!TYPES[e.type]?.flying)return null;
+  const p=this.worldToScreen(e.x,e.y),offset=this.aircraftOffset(e),z=this.camera.zoom;
+  const width=e.r*2.6*z,height=e.r*1.8*z,lift=actorLift(e,this.time||0);
+  return {x:p.x+offset.x*z-width/2,y:p.y+(offset.y-lift-9)*z-height/2,width,height,depth:0};
+ }
  applyGroundTransform(c,x,y){
   if(!this.scene3d){const [px,py]=projectGround(this.game.map,x,y);c.translate(px-x,py-y);return;}
   const p=this.worldToScreen(x,y),v=projectWorld(this.camera,this.width,this.height,0,0),a=projectWorld(this.camera,this.width,this.height,1,0),b=projectWorld(this.camera,this.width,this.height,0,1);
@@ -259,9 +273,11 @@ export class Renderer {
  // live orders, wall connections, cargo targets and this frame's animation.
  const unit=['rock','paper','scissors','twig','sniper','airplane','mage','divider','rollingrock','shears'].includes(e.type),size=({sniper:59,airplane:66,mage:60,divider:85,rollingrock:90,shears:66,workshop:111,laboratory:136,staplergate:Math.max(310,(e.r||180)*1.8),station:82})[e.type]||(unit?49:e.type==='wall'?50:e.type==='desk'?112:e.type==='printer'?94:e.type==='cdreader'?98:e.type==='mouse'?80:e.type==='cabinet'?74:68),col=e.type==='trash'?'#91a488':'#a6978b',lift=e.lift||0;
  const [px,py]=this.scene3d?[e.x,e.y]:projectGround(this.game.map,e.x,e.y);
- c.save();c.translate(px-e.x,py-e.y);c.globalAlpha=.46;c.filter='grayscale(.85) saturate(.4)';
+ const offset=TYPES[e.type]?.flying?this.aircraftOffset(e):{x:0,y:0};
+ const facing=this.scene3d&&TYPES[e.type]?.flying?projectHeading(this.camera,e.facing||0):e.facing||0;
+ c.save();c.translate(px-e.x+offset.x,py-e.y+offset.y);c.globalAlpha=.46;c.filter='grayscale(.85) saturate(.4)';
  if(e.paperInvulnerable>0){ellipse(c,e.x,e.y-6-lift,17,17,'#eee8d0',INK,2);for(let i=0;i<4;i++){const a=i*Math.PI/2;line(c,[[e.x+Math.cos(a)*12,e.y-6-lift+Math.sin(a)*12],[e.x+Math.cos(a+1)*5,e.y-6-lift+Math.sin(a+1)*5]],'#9caa9b',1.2);}}
- else drawIcon(c,e.type,e.x,e.y-9-lift,size,e.team,{entity:e,sprite:['rock','paper','scissors','twig'].includes(e.type),phase:e.lastSeen||0,spin:(e.lastSeen||0)*2+(Number(e.id)||0),facing:e.facing||0,amount:e.amount,mask:e.wallMask||0,health:e.maxHp?e.hp/e.maxHp:1,active:!!e.queue?.length});
+ else drawIcon(c,e.type,e.x,e.y-9-lift,size,e.team,{entity:e,sprite:['rock','paper','scissors','twig'].includes(e.type),phase:e.lastSeen||0,spin:(e.lastSeen||0)*2+(Number(e.id)||0),facing,amount:e.amount,mask:e.wallMask||0,health:e.maxHp?e.hp/e.maxHp:1,active:!!e.queue?.length});
  // Annotation geometry follows the full illustration, rather than the smaller
  // collision footprint. Screen-sized text stays readable at the widest zoom.
  const zoom=Math.max(.1,this.camera.zoom||1),ui=1/zoom,artY=e.y-9-lift,artTop=artY-size*.72,artBottom=artY+size*.72,barWidth=Math.max(unit?28:34,Math.min(80,size*.65*zoom))*ui;
@@ -464,7 +480,7 @@ export class Renderer {
  const moving=distance>.08||(old&&this.time-old.movedAt<.19);
  if(!this.scene3d)this.motion.set(e.id,{x:e.x,y:e.y,walk,movedAt:distance>.08?this.time:old?.movedAt??-1});
  const bob=isUnit&&moving?Math.sin(walk*2)*1.85:Math.sin(this.time*2.5+(Number(e.id)||0))*.7;
- const leap=isAir?(e.type==='airplane'?(e.crash?.diving?Math.max(0,(e.crash.remaining??.4)*65):32):18)+Math.sin(this.time*3+e.id)*2:e.type==='divider'?8+Math.sin(this.time*2+e.id)*2:e.leap?Math.sin(Math.PI*(1-e.leap.remaining/e.leap.total))*75:0;
+ const leap=actorLift(e,this.time||0),offset=isAir?this.aircraftOffset(e):null;
  c.save();
  // In 3D the depth-tested pass has already drawn the figure and its footprint.
  if(!this.scene3d){
@@ -474,8 +490,9 @@ export class Renderer {
  if(selected){ellipse(c,e.x,e.y+10,isUnit?Math.max(25,size*.5):size*.54,isUnit?Math.max(12,size*.22):size*.23,'#2ba79d10',TEAL,2.2/this.camera.zoom);if(!isUnit){const rradius=size*.56;line(c,[[e.x-rradius,e.y-rradius*.6],[e.x-rradius,e.y-rradius*.8],[e.x-rradius+12,e.y-rradius*.8]],TEAL,2);line(c,[[e.x+rradius,e.y-rradius*.6],[e.x+rradius,e.y-rradius*.8],[e.x+rradius-12,e.y-rradius*.8]],TEAL,2);}}
  else if(e.team>=0)ellipse(c,e.x,e.y+10,isCD?31:size*.43,isCD?11:size*.17,tc+'22',tc+'ce',isUnit?1.8:2.6);
  if(e.constructing>0){const progress=1-e.constructing/(e.buildTotal||10);c.globalAlpha=.3+progress*.5;c.setLineDash([5,5]);rr(c,e.x-size*.5,e.y-size*.4,size,size*.8,8);shape(c,tc+'15',tc,2);c.setLineDash([]);}
+ if(offset)c.translate(offset.x,offset.y);
  if(e.paperInvulnerable>0){c.save();c.translate(e.x,e.y-6-leap);ellipse(c,0,0,25+Math.sin(this.time*10)*2,25+Math.sin(this.time*10)*2,tc+'30',tc,1.8);c.rotate(this.time*(moving?12:3));ellipse(c,0,0,16,16,'#fffdec',INK,2);for(let i=0;i<5;i++){c.rotate(Math.PI*2/5);line(c,[[12,-4],[3,0],[8,10]],'#a1b6ad',1.3);}c.restore();}else drawIcon(c,e.type,e.x,e.y-9+bob-leap,size,e.team,{entity:e,battlefield:true,walk:moving?walk:0,amount:e.amount,sprite:baseUnit,attackAnim:e.attackAnim,facing:e.facing,spin:this.time*(moving?6:2)+e.id,active:['cdreader','workshop','laboratory'].includes(e.type)&&!!e.queue?.length,phase:this.time});
-  }else if(e.paperInvulnerable>0){ellipse(c,e.x,e.y-size*.43,21,21,tc+'33',tc,2);}
+  }else if(offset){c.translate(offset.x,offset.y);}else if(e.paperInvulnerable>0){ellipse(c,e.x,e.y-size*.43,21,21,tc+'33',tc,2);}
  c.globalAlpha=1;
  if(e.clickDamage?.length){
   const yy=e.y-9-leap,flash=.45+Math.sin(this.time*7+e.id)*.12;
@@ -483,11 +500,11 @@ export class Renderer {
   drawPointer(c,e.x+size*.28,yy-size*.24,-Math.PI*.72,'#d98145',.38);
  }
  if(isCD){
-  const count=e.cargo?.length||0,by=e.y+25;
+  const count=e.cargo?.length||0,by=e.y-leap+25;
   rr(c,e.x-31,by-7,62,16,6);shape(c,'#fbf7e9ed',tc,1.2);
   for(let i=0;i<6;i++)ellipse(c,e.x-23+i*6,by,2.1,2.1,i<count?tc:'#d5dccc');
   c.font='bold 9px \"Trebuchet MS\",sans-serif';c.textAlign='right';c.textBaseline='middle';c.fillStyle=INK;c.fillText(count+'/6',e.x+26,by+.4);
-  if(selected&&e.order?.type==='drop'){line(c,[[e.x,e.y+12],[e.x,e.y+18]],tc,1.5);}
+  if(selected&&e.order?.type==='drop'){line(c,[[e.x,by-13],[e.x,by-7]],tc,1.5);}
  }
  if(isUnit&&(e.carrying>0)){rr(c,e.x+10,e.y-18,12,12,2);shape(c,'#deb76f',INK,1.3);line(c,[[e.x+13,e.y-14],[e.x+19,e.y-14]],'#fff4c9',1);}
  if(e.type==='twig'&&e.workState==='collecting'){
@@ -502,14 +519,22 @@ export class Renderer {
   c.beginPath();c.arc(19,0,18,-.8+p*.9,.8+p*.9);shape(c,null,e.type==='scissors'?'#d1e5e8':e.type==='paper'?'#fffceb':'#cfac79',3.5);c.restore();
  }
  const damaged=e.hp<e.maxHp-.1;const queue=e.queue?.[0];
- if((selected||damaged)&&!isTrash){const barW=isUnit?Math.max(36,size*.7):size*.75,y=this.scene3d?e.y-(this.actorBounds(e).height/this.camera.zoom)-leap-7:e.y-size*.57-leap;rr(c,e.x-barW/2,y,barW,5,2);shape(c,'#64716844',null);rr(c,e.x-barW/2,y,barW*Math.max(0,e.hp/e.maxHp),5,2);shape(c,e.hp/e.maxHp<.3?'#e67659':tc,null);}
+ if((selected||damaged)&&!isTrash){
+  const barW=isUnit?Math.max(36,size*.7):size*.75;
+  let y=e.y-size*.57-leap;
+  if(this.scene3d){
+   const bounds=this.actorBounds(e),ground=this.worldToScreen(e.x,e.y);
+   y=e.y+(bounds.y-ground.y)/this.camera.zoom-(offset?.y??0)-7;
+  }
+  rr(c,e.x-barW/2,y,barW,5,2);shape(c,'#64716844',null);rr(c,e.x-barW/2,y,barW*Math.max(0,e.hp/e.maxHp),5,2);shape(c,e.hp/e.maxHp<.3?'#e67659':tc,null);
+ }
  if(e.constructing>0||queue){const total=e.constructing>0?(e.buildTotal||10):queue.total;const remaining=e.constructing>0?e.constructing:queue.remaining;const y=e.y+size*.48;rr(c,e.x-size*.42,y,size*.84,5,2);shape(c,'#c5c6ae',null);rr(c,e.x-size*.42,y,size*.84*Math.max(0,Math.min(1,1-remaining/total)),5,2);shape(c,'#e6b34d',null);}
  if(isTrash){
   const amount=Math.max(0,e.amount??1500),ratio=Math.min(1,amount/(e.maxAmount||1500)),barW=36;
   rr(c,e.x-barW/2,e.y+34,barW,3,1.5);shape(c,'#71836624',null);
   if(ratio>0){rr(c,e.x-barW/2,e.y+34,barW*ratio,3,1.5);shape(c,ratio<.18?'#bfa16b':'#7f9f73',null);}
   if(e.collectorId)ellipse(c,e.x+23,e.y-23,3.2,3.2,'#e0b55b','#6b8065',.8);
- } drawWarfareEntityOverlay(this,c,e,selected);c.restore();
+ } if(offset)c.translate(-offset.x,-offset.y);drawWarfareEntityOverlay(this,c,e,selected);c.restore();
  }
  drawProjectile(c,p){
  if(drawWarfareProjectile(this,c,p))return;

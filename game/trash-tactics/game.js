@@ -269,7 +269,7 @@ $('unitRoster').addEventListener('click',e=>{const b=e.target.closest('[data-uni
 // Selection padding is independent from collision and navigation footprints.
 function workerSelectionBounds(e){const zoom=renderer.camera.zoom;return {x:e.x,y:e.y-5,w:Math.max(e.r+17,26/zoom),h:Math.max(e.r+21,30/zoom)};}
 function hitTest(world,screen){
- const distance=e=>Math.hypot(e.x-world.x,e.y-(TYPES[e.type].flying?27:0)-world.y);
+ const distance=e=>Math.hypot(e.x-world.x,e.y-world.y);
  const priority=e=>e.type==='cd'?-1:TYPES[e.type].building?1:0;
  const fallback=[];
  let front=null;
@@ -373,7 +373,7 @@ function finishDrag(add){
   const b=renderer.actorBounds?.(e);
   if(b){const x=b.x+b.width/2;return inside(x,b.y+b.height/2)||inside(x,b.y+b.height);}
   if(e.type==='twig'){const b=workerSelectionBounds(e),tl=renderer.worldToScreen(b.x-b.w,b.y-b.h),br=renderer.worldToScreen(b.x+b.w,b.y+b.h);return br.x>=minX&&tl.x<=maxX&&br.y>=minY&&tl.y<=maxY;}
-  const s=renderer.worldToScreen(e.x,e.y-(TYPES[e.type].flying?27:0));return inside(s.x,s.y);
+  const s=renderer.worldToScreen(e.x,e.y);return inside(s.x,s.y);
  });
  if(found.some(e=>!TYPES[e.type].building))found=found.filter(e=>!TYPES[e.type].building);
  selectEntities(found,add);drag=null;

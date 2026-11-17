@@ -36,6 +36,30 @@ test('painted troop sprites animate in field and icon coordinates, with a loadin
  }
 });
 
+test('airplane artwork banks and mirrors with its heading without turning upside down',()=>{
+ const sheet={complete:true,naturalWidth:1024,naturalHeight:1024};
+ for(const diving of [false,true])for(let i=0;i<32;i++){
+  const facing=i*Math.PI/16,entity={crash:diving?{diving:true}:null},options={facing,entity,sheet,phase:1.2,walk:2};
+  for(const draw of [c=>drawExpansionSprite(c,'airplane',null,'#269b98',options),c=>drawExpansionIcon(c,'airplane','#269b98',options)]){
+   const {ctx}=surface();assert(draw(ctx));
+   const bank=ctx.calls.find(c=>c.method==='rotate').args[0];
+   assert(Math.abs(bank)<Math.PI*.4);
+   assert.equal(ctx.calls.some(c=>c.method==='scale'&&c.args[0]===-1),Math.cos(facing)<-1e-8);
+  }
+ }
+});
+
+test('Flying CD beacon follows the full heading independently of the spinning disc',()=>{
+ for(let i=0;i<16;i++){
+  const facing=i*Math.PI/8,{ctx}=surface(),spin=1.3;
+  drawIcon(ctx,'cd',100,100,50,0,{vector:true,spin,facing});
+  const rotations=ctx.calls.filter(c=>c.method==='rotate');
+  assert.equal(rotations[0].args[0],spin);
+  const [yaw]=rotations[1].args,screenHeading=Math.atan2(Math.sin(yaw)*12/22,Math.cos(yaw));
+  assert(Math.cos(facing-screenHeading)>1-1e-12);
+ }
+});
+
 test('real troop frame rows advance and loop at their designated rates',()=>{
  for(const [state,row,fps]of [['idle',0,4],['move',1,8],['attack',2,12],['special',3,8]]){
   for(let frame=0;frame<4;frame++)assert.deepEqual(getAnimationFrame('sniper',{animationState:state,phase:(frame+.01)/fps}),{state,row,frame,index:row*4+frame,fps});

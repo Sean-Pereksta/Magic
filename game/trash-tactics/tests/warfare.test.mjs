@@ -68,7 +68,9 @@ test('thirty crash orders assign distinct impacts, consume surviving aircraft, s
 
 test('a final dive commits its aircraft and mouse anti-air can destroy it without a crash explosion',()=>{
   const g=arena(),plane=spawn(g,'airplane',0,1500,1400);let crashes=0;const effect=g._effect.bind(g);g._effect=(type,x,y,extra)=>{if(type==='crash')crashes++;return effect(type,x,y,extra);};
+  plane.facing=Math.PI;
   assert(g.useAbility([plane.id],'crash',{x:1600,y:1400}).ok);advance(g,.04);assert(plane.crash.diving);
+  assert.equal(plane.facing,0,'the airplane faces its target even when it begins within dive range');
   g.command([plane.id],{type:'stop'});assert(plane.crash.diving,'a committed dive cannot be canceled');
   const mice=Array.from({length:7},(_,i)=>spawn(g,'mouse',1,1580+i*4,1425));for(const mouse of mice){mouse.cooldown=0;assert(g.canTarget(mouse,plane));}advance(g,.04);assert(g.projectiles.some(p=>p.type==='pointer'));advance(g,1);assert.equal(crashes,0);assert(!g.getEntity(plane.id));
 });

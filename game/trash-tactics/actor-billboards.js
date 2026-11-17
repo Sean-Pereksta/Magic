@@ -1,7 +1,8 @@
-import {billboardBasis,DEFAULT_YAW,ELEVATION,projectGround} from './world-camera.js';
+import {billboardBasis,ELEVATION,projectHeading,projectWorld} from './world-camera.js';
 import {getAnimationFrame} from './warfare-art.js';
 import {terrainHeight} from './terrain.js';
 import {wallConnections} from './walls.js';
+import {actorLift,actorTerrainHeight} from './flight-visual.js';
 
 const CELL=128, PAGE=2048, PER_ROW=PAGE/CELL;
 const PALETTE=[[.14,.86,.80],[1,.43,.29],[.69,.47,.94],[1,.77,.25]];
@@ -9,6 +10,7 @@ const WHITE=[1,1,1];
 const unitSize={rock:49,paper:49,scissors:49,twig:49,sniper:59,airplane:66,mage:60,divider:85,rollingrock:90,shears:66};
 const structureSize={workshop:111,laboratory:136,station:82,wall:50,desk:112,printer:94,cdreader:98,mouse:80,cabinet:74};
 const ART_SIZE=76;
+const FACING_STEP=Math.PI/8;
 const BASE_TYPES=new Set(['twig','rock','paper','scissors']);
 const SHEET_TYPES=new Set(['sniper','airplane','mage','divider','rollingrock','shears']);
 const DECAL=new Set(['@shade','@ring','@selected']);
@@ -16,18 +18,13 @@ const QUAD=[0,1,2,0,2,3];
 
 function sizeOf(e){return unitSize[e.type]||structureSize[e.type]||(e.type==='staplergate'?(e.r||180)*100/68:68);}
 function elevation(map,x,y){return terrainHeight(map||{},x,y)*ELEVATION;}
-function flight(e,time){
- if(e.leap)return Math.sin(Math.PI*(1-e.leap.remaining/e.leap.total))*75;
- if(e.type==='airplane')return e.crash?.diving?Math.max(0,(e.crash.remaining??.4)*65):32;
- if(e.type==='cd'||e.type==='divider')return (e.type==='cd'?21:8)+Math.sin(time*3+e.id)*2;
- return 0;
-}
 export function actorBounds(renderer,e){
- const g=projectGround(renderer.game.map,renderer.camera,renderer.width,renderer.height,e.x,e.y);
+ const z=actorTerrainHeight(renderer.game.map,e)*ELEVATION+1.5;
+ const g=projectWorld(renderer.camera,renderer.width,renderer.height,e.x,e.y,z);
  const box=renderer.billboards?.bounds.get(e.id);
  const nominal=sizeOf(e),scale=renderer.camera.zoom;
  const [left,bottom,width,height]=box?.dimensions||[-nominal*.51,0,nominal*1.02,nominal];
- const lift=flight(e,renderer.time||0);
+ const lift=actorLift(e,renderer.time||0);
  return {x:g.x+left*scale,y:g.y-(height+bottom+lift)*scale,width:width*scale,height:height*scale,depth:g.depth+(box?.depthOffset||0)};
 }
 function compile(gl,type,source){
@@ -101,10 +98,10 @@ export class ActorBillboards {
    const old=renderer.motion.get(e.id),delta=old?Math.hypot(e.x-old.x,e.y-old.y):0;
    const walk=(old?.walk||0)+delta/12,movedAt=delta>.04?time:old?.movedAt??-1,moving=movingUnit&&time-movedAt<.21;
    renderer.motion.set(e.id,{x:e.x,y:e.y,walk,movedAt});
-   const lift=flight(e,time),phase=moving?Math.floor(walk*8/(Math.PI*2))%8:0,attack=(e.attackAnim||0)>.08;
+   const lift=actorLift(e,time),phase=moving?Math.floor(walk*8/(Math.PI*2))%8:0,attack=(e.attackAnim||0)>.08;
    const mask=e.type==='wall'?(renderer.game.elevationAt?wallConnections(renderer.game,e):e.wallMask||0):0;
-   const direction=(e.facing||0)+(renderer.camera.yaw??DEFAULT_YAW)*Math.PI/180;
-   const facing=e.type==='airplane'?Math.round(direction*4/Math.PI)*Math.PI/4:Math.cos(direction)<0?Math.PI:0;
+   const direction=projectHeading(renderer.camera,e.facing||0),aircraft=e.type==='airplane'||e.type==='cd';
+   const facing=aircraft?(Math.round(direction/FACING_STEP)+16)%16*FACING_STEP:Math.cos(direction)<0?Math.PI:0;
    const opts={entity:e,battlefield:true,sprite:BASE_TYPES.has(e.type),facing,
     walk:moving?((phase+.1)*Math.PI/4):0,attackAnim:attack?.2:0,phase:phase/8,animationTime:time,
     active:!!e.queue?.length,amount:e.amount,mask,crumpled:e.paperInvulnerable>0};
@@ -113,9 +110,10 @@ export class ActorBillboards {
    const tile=this.addCell(key,e.type,e.team,opts);
    const scale=size/ART_SIZE,w=(tile.r-tile.l)*scale,h=(tile.b-tile.t)*scale,left=(tile.l-64)*scale;
    const bob=moving?Math.abs(Math.sin(walk))*1.9:0;
-   const z=elevation(map,e.x,e.y)+1.5;
+   const z=actorTerrainHeight(map,e)*ELEVATION+1.5;
    const point=(u,v)=>[e.x+right[0]*u+up[0]*v,e.y+right[1]*u+up[1]*v,z+up[2]*v];
-   const base=bob-(tile.b-tile.contact)*scale;
+   // A turned aircraft keeps its center anchored as the painted bounds change.
+   const base=bob+(aircraft?(64-tile.b)*scale+size*(e.type==='cd'?.45:.35):-(tile.b-tile.contact)*scale);
    const low=lift+base;quad(mesh,tile,[point(left,low),point(left+w,low),point(left+w,low+h),point(left,low+h)],WHITE,e.constructing>0?.55:1);
    this.bounds.set(e.id,{dimensions:[left,base,w,h]});
    const radius=e.type==='wall'?22:Math.min(size*.52,Math.max(size*.25,(e.r||20)*1.1));

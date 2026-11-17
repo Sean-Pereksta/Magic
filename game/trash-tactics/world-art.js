@@ -58,6 +58,15 @@ const structureBounds = {
  workshop: [12,816,410,394], laboratory: [440,801,428,408], cd: [905,841,368,300]
 };
 
+export function drawDiscHeading(c,facing,x,y,rx,ry,color='#ffdb84') {
+ // Rotate the forward marker on the saucer's plane. Its antenna and underside
+ // keep their expected top and bottom as the disc yaws through a full turn.
+ const yaw=Math.atan2(Math.sin(facing)*rx/ry,Math.cos(facing));
+ c.save();c.translate(x,y);c.scale(1,ry/rx);c.rotate(yaw);
+ c.beginPath();c.moveTo(rx-7,-4);c.lineTo(rx+1,0);c.lineTo(rx-7,4);c.lineTo(rx-5,0);c.closePath();
+ c.fillStyle=color;c.fill();c.strokeStyle='#625243';c.lineWidth=1.5;c.stroke();c.restore();
+}
+
 export function drawPaintedStructure(c, type, options) {
  const bounds = structureBounds[type];
  if (!bounds || !structures?.naturalWidth) return false;
@@ -67,9 +76,15 @@ export function drawPaintedStructure(c, type, options) {
  const shift = options.battlefield ? -height*.38 : -height*.5;
  c.save();
  if (type === 'trash' && options.amount === 0) c.globalAlpha *= .48;
- if (type === 'cd' && options.battlefield) c.rotate(Math.sin(options.spin || 0) * .08);
+ const facingDisc = type === 'cd' && Number.isFinite(options.facing);
+ const bank = facingDisc ? Math.cos(options.facing) * .12 : 0;
+ const mirror = bank < -1e-8;
+ if (facingDisc) c.rotate(bank);
  if (type === 'mouse' && options.attackAnim > 0) c.translate(0, -1.5);
+ if (mirror) c.scale(-1,1);
  c.drawImage(structures,x,y,w,h,-width/2,shift,width,height);
+ if (mirror) c.scale(-1,1);
+ if (facingDisc) drawDiscHeading(c,options.facing-bank,mirror?2:-2,shift+height*.61,23,7);
  c.restore();
  return true;
 }

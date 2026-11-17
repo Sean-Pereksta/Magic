@@ -1,7 +1,5 @@
-const terrainPreviews = {
-  rainyard: 'Rain Gutter Run’s stone ledges and covered drainage channels.',
-  cartonworks: 'Carton Works’ raised shipping deck, loading lanes and stacked parcels.',
-};
+import {MAP_BRIEFS,mapScreenshotUrl} from './skirmish-menu.js';
+
 const select = document.getElementById('mapSelect');
 const layout = document.getElementById('mapBriefPreview');
 const legend = layout.closest('figure').querySelector('.map-preview-legend');
@@ -33,11 +31,12 @@ let selection = 0;
 async function showSelection() {
   const current = ++selection;
   const map = select.value;
+  const screenshot = mapScreenshotUrl(map);
   toggle.hidden = true;
   showTerrain(false);
-  if (!Object.hasOwn(terrainPreviews, map)) return;
-  scenery.alt = terrainPreviews[map];
-  scenery.src = new URL('./assets/map-preview-' + map + '.webp', import.meta.url);
+  if (!screenshot) return;
+  scenery.alt = `${MAP_BRIEFS[map].name}. ${MAP_BRIEFS[map].scene}`;
+  scenery.src = screenshot;
   try {
     await scenery.decode();
   } catch {
