@@ -53,8 +53,10 @@
     const single = modes.includes("single");
     const multi = modes.includes("multi");
     const actions = [];
-    if (single) actions.push({ type: "single", label: multi ? "Play Offline" : "Play" });
-    if (multi) {
+    if (single) actions.push({ type: "single", label: game.liveLobbyGame ? "Play in Browser" : multi ? "Play Offline" : "Play" });
+    if (game.liveLobbyGame) {
+      actions.push({ type: "live", label: "Live Multiplayer", href: "#live-lobbies" });
+    } else if (multi) {
       if (game.multiplayerRoute) {
         actions.push({ type: "online", label: game.joinLabel || "Join Match" });
       } else if (game.launchMode === "realm") {
@@ -75,6 +77,7 @@
       throw new Error("This game does not support the selected action.");
     }
     if (action === "single") return hooks.playSingle(game, true);
+    if (action === "live") return hooks.openLiveLobbies(game.liveLobbyGame);
     if (action === "lobby") return hooks.openCreateLobby(game.key);
     return hooks.joinOnlineGame(game, true);
   }
@@ -85,7 +88,9 @@
     const card = document.createElement("article");
     const isTurncraft = game.key === "turncraft" && !root.GameHubArtwork;
     const isFlagCapture = game.key === "flag";
-    const artwork = isTurncraft ? TURNCRAFT_ART : gameVisual(game, "art");
+    const artwork = game.paintedTile
+      ? '<span class="game-visual game-visual-art has-image" aria-hidden="true"><img src="'+escapeHtml(game.paintedTile)+'" alt="" width="640" height="360" loading="lazy" decoding="async"></span>'
+      : isTurncraft ? TURNCRAFT_ART : gameVisual(game, "art");
     const cover = isFlagCapture ? artwork.replace(/ sizes="[^"]*"/, ' sizes="auto, (max-width:600px) 92vw, (max-width:1000px) 45vw, 320px"') : artwork;
     card.className = isTurncraft ? "game-card tc-tile" : isFlagCapture ? "game-card fc-tile" : "game-card";
     card.dataset.gameKey = game.key;
@@ -94,13 +99,16 @@
     const modeTags = isFlagCapture ? '<span class="tag fc-mode">AI / local 2P</span><span class="tag">5-mission campaign</span>' : game.modes.map(mode => `<span class="tag">${mode === "single" ? "Solo" : "Multiplayer"}</span>`).join("");
     const download = game.downloadRoute
       ? `<a class="btn secondary small download-game-btn" href="${escapeHtml(game.downloadRoute)}" download>Download</a>` : "";
-    const buttons = actions.map((action, index) =>
-      `<button type="button" class="btn small play-game-btn${index === 0 && actions.length > 1 ? " secondary" : ""}" data-game-action="${action.type}" aria-label="${escapeHtml(`${action.label}: ${game.title}`)}">${escapeHtml(action.label)}</button>`
+    const localEdition = game.localEditionRoute
+      ? `<a class="btn secondary small" href="${escapeHtml(game.localEditionRoute)}">Local Edition</a>` : "";
+    const buttons = actions.map((action, index) => action.href
+      ? `<a class="btn secondary small" data-live-game="${escapeHtml(game.liveLobbyGame)}" href="${action.href}">${escapeHtml(action.label)}</a>`
+      : `<button type="button" class="btn small play-game-btn${index === 0 && actions.length > 1 ? " secondary" : ""}" data-game-action="${action.type}" aria-label="${escapeHtml(`${action.label}: ${game.title}`)}">${escapeHtml(action.label)}</button>`
     ).join("");
     card.innerHTML = `
       <div class="game-art">${cover}${isFlagCapture ? '<span class="fc-art-badge">COOLDOWN TACTICS</span>' : ""}<button type="button" class="favorite-btn ${favorite ? "active" : ""}" title="Favorite" aria-label="Favorite ${escapeHtml(game.title)}" aria-pressed="${favorite}">${favorite ? "★" : "☆"}</button></div>
       <div class="game-content">${isTurncraft ? '<p class="tc-card-kicker">Build. Command. Conquer.</p>' : ""}<div class="game-name">${escapeHtml(game.title)}</div>${isFlagCapture ? FLAG_FACTIONS : ""}<div class="game-description">${escapeHtml(game.desc)}</div>${isFlagCapture ? '<p class="fc-features">21 troops <span>·</span> formations <span>·</span> living ground</p>' : ""}${isTurncraft ? TURNCRAFT_FACTIONS : ""}<div class="game-meta"><span class="tag">${escapeHtml(game.category)}</span>${modeTags}</div>
-      <div class="game-bottom"><span class="play-count">🎮 ${Number(gamePlayCounts[game.key]) || 0} plays</span><span class="game-actions">${download}${buttons}</span></div></div>`;
+      <div class="game-bottom"><span class="play-count">🎮 ${Number(gamePlayCounts[game.key]) || 0} plays</span><span class="game-actions">${download}${buttons}${localEdition}</span></div></div>`;
     if (isTurncraft) loadTurncraftCover(card, document);
     card.querySelector(".favorite-btn").addEventListener("click", event => {
       event.stopPropagation();
@@ -199,7 +207,11 @@
     html = html.slice(0, start) + `    function gameCard(game,compact=false){
       return globalThis.GameHubLibrary.createGameCard(game,{
         document,escapeHtml,gameColor,gameVisual,favorites,gamePlayCounts,
-        toggleFavorite,playSingle,openCreateLobby,joinOnlineGame,toast
+        toggleFavorite,playSingle,openCreateLobby,joinOnlineGame,toast,
+        openLiveLobbies:game=>{
+          location.hash="live-lobbies";
+          document.querySelector('[data-live-filter="'+game+'"]')?.click();
+        }
       });
     }
 ` + html.slice(end);

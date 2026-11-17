@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Cat’N Mice · Arcade Nexus</title>
   <script src="./lobby-showcase.js?v=6"></script>
-  <script src="./lobby-library.js?v=3"></script>
+  <script src="./lobby-library.js?v=4"></script>
   <script src="./lobby-flagships.js?v=3"></script>
   <script src="./lobby-arcade.js?v=2"></script>
 </head>
@@ -18,7 +18,7 @@
         let html=await response.text();
         const gamesMarker='const GAMES = [';
         const truthGames=[
-          {key:"bannerlands",title:"Bannerlands · The War of Crowns",emoji:"🏰",imagePath:"/lobby/assets/game-tiles/bannerlands-v2.webp",desc:"Command armies, conquer an isometric battlefield, and unite the realm in a war of rival houses.",route:"https://sean-pereksta.github.io/Truth/games/bannerlands/",category:"Strategy",modes:["single"],featured:false},
+          {key:"bannerlands",title:"Bannerlands · The War of Crowns",emoji:"🏰",imagePath:"/lobby/assets/game-tiles/bannerlands-v2.webp",desc:"Command armies, conquer an isometric battlefield, and unite the realm in a war of rival houses.",route:"https://sean-pereksta.github.io/Truth/games/bannerlands/",category:"Strategy",modes:["single","multi"],liveLobbyGame:"bannerlands",localEditionRoute:"https://sean-pereksta.github.io/Truth/games/bannerlands/download.html",featured:false},
           {key:"monstermallexpanded",title:"Monster Mall — Expanded Edition",emoji:"🛍️",imagePath:"/lobby/assets/game-tiles/monster-mall-expanded-v2.webp",desc:"Survive a deserted 3D shopping mall after hours. Face five difficulty levels with keyboard, touch, or controller controls.",route:"https://sean-pereksta.github.io/Truth/games/monster-mall-expanded/",category:"Survival",modes:["single"],featured:false},
           {key:"pacmanblackout",title:"Pac-Man: Blackout",emoji:"👻",imagePath:"/lobby/assets/game-tiles/pacman-blackout-v2.webp",desc:"The maze is watching. Build a base, command units, and fight through fog of war in a Pac-Man strategy game with four AI difficulties.",route:"https://sean-pereksta.github.io/Truth/games/pacman/",category:"Strategy",modes:["single"],featured:false},
           {key:"pirates",title:"Pirates — Crown of the Tides",emoji:"🏴‍☠️",imagePath:"/lobby/assets/game-tiles/pirates-v2.webp",desc:"Sail the seas, trade for fortune, battle rival ships, and board enemy decks in a pirate adventure.",route:"https://sean-pereksta.github.io/Truth/games/pirates/",category:"Adventure",modes:["single"],featured:false},
@@ -71,6 +71,9 @@
             return entry.replace(/\}$/,`,featured:${shouldFeature}}`);
           });
         });
+        html=html.replace(/\{key:"cat",[^\n]*\}/,record=>record
+          .replace('desc:"Classic multiplayer chase."','desc:"Gather cheese, build a fortress, and survive the Cat in painted battlefields."')
+          .replace('modes:["multi"]','modes:["single","multi"],liveLobbyGame:"catandmouse",paintedTile:"/game/catandmouse/edition/art/title-v1.webp",singleRoute:"/game/catandmouse/edition/index.html",localEditionRoute:"/game/catandmouse/edition/download.html"'));
         // Run inside the existing loader so every injected game participates.
         html=globalThis.GameHubLibrary.upgradeHtml(html);
         // A presentation failure must not prevent the existing hub from opening.
@@ -81,6 +84,25 @@
         if(globalThis.GameHubArcade){
           try{html=globalThis.GameHubArcade.upgradeHtml(html);}
           catch(error){console.warn("Arcade layout unavailable; using the existing hub",error);}
+        }
+        const liveLobbies=`<section id="live-lobbies" class="card live-lobbies" aria-labelledby="live-lobbies-title">
+          <div class="live-lobbies-head">
+            <div><h2 id="live-lobbies-title">Live Lobbies</h2><p>Join a room hosted by another player.</p></div>
+            <div class="live-lobbies-filters" role="group" aria-label="Filter live lobbies">
+              <button type="button" data-live-filter="all" aria-pressed="true">All Games</button>
+              <button type="button" data-live-filter="catandmouse" aria-pressed="false">Cat &amp; Mouse</button>
+              <button type="button" data-live-filter="bannerlands" aria-pressed="false">Bannerlands</button>
+            </div>
+          </div>
+          <div class="live-lobbies-games">
+            <section data-live-section="catandmouse" aria-labelledby="live-lobbies-cat"><h3 id="live-lobbies-cat">Cat &amp; Mouse</h3><p data-live-status role="status">Checking the directory…</p><ul data-live-rooms></ul></section>
+            <section data-live-section="bannerlands" aria-labelledby="live-lobbies-banner"><h3 id="live-lobbies-banner">Bannerlands</h3><p data-live-status role="status">Checking the directory…</p><ul data-live-rooms></ul></section>
+          </div>
+        </section>`;
+        const main='<main class="shell" id="mainContent" tabindex="-1">';
+        if(!html.includes('id="live-lobbies"')){
+          html=html.replace(main,main+liveLobbies)
+            .replace("</head>",'<link rel="stylesheet" href="./live-lobbies.css"><script type="module" src="./live-lobbies.mjs"><\/script></head>');
         }
         const patch=html.includes('catnmice-arcade:v1')?'':'<script src="./lobby-catalog-organization.js?v=6" defer><\/script>';
         html=html.includes("</body>")?html.replace("</body>",patch+"</body>"):html+patch;

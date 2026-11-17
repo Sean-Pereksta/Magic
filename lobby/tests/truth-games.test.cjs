@@ -34,7 +34,7 @@ function registry(html) {
   return vm.runInNewContext(html.match(/const GAMES = (\[[\s\S]*?\n\s*\]);/)[1]);
 }
 
-test('six Truth games join the shared catalog exactly once and retain only Play', async () => {
+test('six Truth games join the shared catalog exactly once', async () => {
   const html = await load();
   for (const output of [html, await load(html)]) {
     const games = registry(output);
@@ -42,10 +42,33 @@ test('six Truth games join the shared catalog exactly once and retain only Play'
       const matches = games.filter(game => game.key === key);
       assert.equal(matches.length, 1, key);
       assert.equal(matches[0].route, `https://sean-pereksta.github.io/Truth/games/${slug}/`);
-      assert.deepEqual(library.getActions(matches[0]), [{type: 'single', label: 'Play'}]);
+      const actions = key === 'bannerlands' ? [
+        {type: 'single', label: 'Play in Browser'},
+        {type: 'live', label: 'Live Multiplayer', href: '#live-lobbies'}
+      ] : [{type: 'single', label: 'Play'}];
+      assert.deepEqual(library.getActions(matches[0]), actions);
       assert.ok(!matches[0].requiresUser, `${key} remains playable as a guest`);
     }
     assert.match(output, /let games=GAMES\.filter\(/);
+  }
+});
+
+test('both Local Editions expose their guest routes independently of Active Games', async () => {
+  const html = await load();
+  const games = registry(html);
+  const cat = games.find(game => game.key === 'cat');
+  const banner = games.find(game => game.key === 'bannerlands');
+  assert.equal(cat.singleRoute, '/game/catandmouse/edition/index.html');
+  assert.equal(cat.route, '/game/catandmouse.html');
+  assert.match(cat.paintedTile, /\/game\/catandmouse\/edition\/art\/.*\.webp$/);
+  assert.equal(cat.localEditionRoute, '/game/catandmouse/edition/download.html');
+  assert.equal(banner.localEditionRoute, 'https://sean-pereksta.github.io/Truth/games/bannerlands/download.html');
+  for (const output of [html, await load(html)]) {
+    assert.equal(output.match(/id="live-lobbies"/g).length, 1);
+    assert.equal(output.match(/src="\.\/live-lobbies\.mjs"/g).length, 1);
+    assert.match(output, /data-live-filter="all"/);
+    assert.match(output, /data-live-filter="catandmouse"/);
+    assert.match(output, /data-live-filter="bannerlands"/);
   }
 });
 
