@@ -12,6 +12,17 @@ const MAX_ALLIES = 36;
 const MAX_EVENTS = 128;
 const BUILD_RANGE = 6;
 const NONE = Object.freeze({ ok: true });
+const MELEE_MOVES = {
+  rat: 'rat-bite', runner: 'rat-bite', stink: 'rat-bite', ox: 'ram', vulture: 'talon',
+  king: 'king-bash', sapper: 'rat-bite', mender: 'rat-bite', cat: 'claw',
+};
+const SPECIAL_MOVES = {
+  pounce: { windup: 760, radius: 1.5, range: 4.8, interval: 6300, damage: 22 },
+  'powder-blast': { windup: 850, radius: 1.7, range: 5.35, interval: 5150, damage: 12 },
+  mend: { windup: 725, radius: 2.4, range: 3.3, interval: 4900, heal: 10 },
+  'tail-sweep': { windup: 1050, radius: 2.6, range: 2.25, interval: 5450, damage: 16 },
+  'cat-charge': { windup: 1050, radius: 0.95, range: 7.1, interval: 7500, damage: 12, duration: 450 },
+};
 
 const refuse = code => ({ ok: false, code });
 const position = entity => ({ x: entity.x, y: entity.y });
@@ -68,8 +79,8 @@ function bestWithin(origin, candidates, range, score, accepts = isAlive) {
 function publicEntity(entity) {
   const {
     path, destination, inputX, inputY, previousX, previousY, aiCell, nextAttackAt,
-    targetId, producerId, expiresAt, shieldUntil, attackTarget, lastPounceAt, spawn,
-    attackKind, damage, splash, bonusUntil, bornTick, laneOffsetX, laneOffsetY,
+    targetId, producerId, expiresAt, shieldUntil, attackTarget, specialTimes, spawn,
+    damage, splash, bonusUntil, bornTick, laneOffsetX, laneOffsetY, charge, abilityFxAt,
     ...publicFields
   } = entity;
   return entity.loadout ? { ...publicFields, loadout: entity.loadout.slice() } : publicFields;
@@ -230,11 +241,13 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
 
   function advancePlayers() {
     for (const actor of team.values()) {
+      actor.previousX = actor.x;
+      actor.previousY = actor.y;
       if (!actor.hp) {
         if (actor.reviveAt <= time) {
           const safe = passable(actor.spawn.x, actor.spawn.y) ? actor.spawn
             : map.playerSpawns.find(({ x, y }) => passable(x, y)) ?? actor.spawn;
-          Object.assign(actor, safe, { hp: actor.maxHp, reviveAt: 0 });
+          Object.assign(actor, safe, { previousX: safe.x, previousY: safe.y, hp: actor.maxHp, reviveAt: 0 });
           event('revive', actor, { entityId: actor.id });
         }
         continue;
@@ -276,6 +289,14 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       if (wave < minimum) continue;
       pendingSpawns.push({ time: time + minimum * 650, type, lane: (minimum + firstLane) % map.spawns.length });
     }
+    if (wave >= 6) {
+      const groups = rules.catSweep ? 2 : 1;
+      for (let group = 0; group < groups; group++) {
+        const lane = (firstLane + group * 2 + 1) % map.spawns.length;
+        pendingSpawns.push({ time: time + 3550 + group * 2000, type: 'sapper', lane });
+        pendingSpawns.push({ time: time + 4650 + group * 2000, type: 'mender', lane });
+      }
+    }
     if (wave === WAVE_SIZES.length) pendingSpawns.push({ time: time + 3400, type: 'cat', lane: firstLane });
     pendingSpawns.sort((a, b) => a.time - b.time);
     nextWaveAt = wave === WAVE_SIZES.length ? null : time + (wave < 3 ? 27000 : 30000);
@@ -301,8 +322,9 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
         id: `enemy-${nextEntityId++}`, type, x: x + laneOffsetX, y: y + laneOffsetY, laneOffsetX, laneOffsetY,
         hp, maxHp: hp, vx: 0, vy: 0, facing: 0,
         spawnedAt: time, lastAttackAt: -1000000, lastHitAt: -1000000, nextAttackAt: 0,
-        windupUntil: 0, slowUntil: 0, trapUntil: 0, lastPounceAt: time - 3200,
-        attackTarget: null, attackKind: null, aiCell: null,
+        windupUntil: 0, slowUntil: 0, trapUntil: 0,
+        specialTimes: type === 'cat' ? { pounce: time - 3200 } : {},
+        attackTarget: null, attackKind: null, lastAttackKind: null, aiCell: null,
       };
       enemies.set(enemy.id, enemy);
       actors.set(enemy.id, enemy);
@@ -345,53 +367,180 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     actors.delete(target.id);
   }
 
-  function pounce(enemy) {
-    const target = bestWithin(enemy, team.values(), 4.8);
-    if (!target || terrainHit(map, enemy.x, enemy.y, target.x, target.y, (x, y) => !passable(x, y)) !== null) return false;
-    const landing = position(target);
-    enemy.lastPounceAt = time;
-    enemy.attackKind = 'pounce';
-    enemy.attackTarget = landing;
-    enemy.windupUntil = time + 760;
-    setFacing(enemy, landing);
-    event('windup', enemy, { entityId: enemy.id, targetId: target.id, targetX: landing.x, targetY: landing.y, kind: 'pounce', until: enemy.windupUntil });
+  const clearPath = (origin, target) =>
+    terrainHit(map, origin.x, origin.y, target.x, target.y, (x, y) => !passable(x, y)) === null;
+  const clearTerrain = (origin, target) => terrainHit(map, origin.x, origin.y, target.x, target.y) === null;
+
+  function attackFields(entity, kind, targetId = entity.attackTarget) {
+    return {
+      entityId: entity.id, kind, targetId,
+      targetX: entity.attackX, targetY: entity.attackY, radius: entity.attackRadius,
+    };
+  }
+
+  function armAttack(entity, kind, target, duration, radius = 0) {
+    Object.assign(entity, {
+      attackKind: kind, attackTarget: target.id ?? null,
+      attackX: target.x, attackY: target.y, attackRadius: radius,
+      windupUntil: time + duration,
+    });
+    setFacing(entity, target);
+    event('windup', entity, { ...attackFields(entity, kind), until: entity.windupUntil, duration });
+  }
+
+  function clearAttack(entity) {
+    entity.windupUntil = 0;
+    entity.attackKind = null;
+    entity.attackTarget = null;
+  }
+
+  function trackAttack(entity, target) {
+    entity.attackX = target.x;
+    entity.attackY = target.y;
+    setFacing(entity, target);
+  }
+
+  function startSpecial(enemy, kind, target) {
+    const def = SPECIAL_MOVES[kind];
+    if (!target || time - (enemy.specialTimes[kind] ?? -Infinity) < def.interval) return false;
+    enemy.specialTimes[kind] = time;
+    armAttack(enemy, kind, target, def.windup, def.radius);
     return true;
+  }
+
+  function nearbyDefender(enemy, range) {
+    return bestWithin(enemy, team.values(), range, null, target => isAlive(target) && clearTerrain(enemy, target))
+      ?? bestWithin(enemy, structures.values(), range, null, target => isAlive(target) && clearTerrain(enemy, target))
+      ?? bestWithin(enemy, objectives, range, null, target => isAlive(target) && clearTerrain(enemy, target));
+  }
+
+  function chooseSpecial(enemy) {
+    if (time < enemy.nextAttackAt) return false;
+    if (enemy.type === 'cat') {
+      const charge = SPECIAL_MOVES['cat-charge'];
+      const sweep = SPECIAL_MOVES['tail-sweep'];
+      if (rules.catCharge) {
+        const target = nearbyDefender(enemy, charge.range);
+        if (target && distanceSquared(enemy, target) >= 2.45 ** 2 && startSpecial(enemy, 'cat-charge', target)) return true;
+      }
+      if (rules.catSweep && nearbyDefender(enemy, sweep.range) && startSpecial(enemy, 'tail-sweep', position(enemy))) return true;
+      const pounce = bestWithin(enemy, team.values(), SPECIAL_MOVES.pounce.range, null,
+        target => isAlive(target) && clearPath(enemy, target));
+      return startSpecial(enemy, 'pounce', pounce);
+    }
+    if (enemy.type === 'sapper') {
+      const def = SPECIAL_MOVES['powder-blast'];
+      const target = bestWithin(enemy, structures.values(), def.range,
+        (structure, distance) => distance - (TOWERS[structure.type].role === 'Defense' ? 0 : 0.8),
+        structure => isAlive(structure) && clearTerrain(enemy, structure));
+      return startSpecial(enemy, 'powder-blast', target);
+    }
+    if (enemy.type === 'mender') {
+      const def = SPECIAL_MOVES.mend;
+      const target = bestWithin(enemy, enemies.values(), def.range,
+        (rat, distance) => distance - Math.min(def.heal, rat.maxHp - rat.hp) * 0.75,
+        rat => rat !== enemy && rat.type !== 'cat' && rat.hp <= rat.maxHp - 4 && clearTerrain(enemy, rat));
+      return startSpecial(enemy, 'mend', target);
+    }
+    return false;
+  }
+
+  function hurtArea(enemy, center, kind, def) {
+    const targets = [...team.values(), ...structures.values(), ...allies.values(), ...objectives];
+    for (const target of targets) {
+      if (distanceSquared(center, target) > def.radius ** 2 || !clearTerrain(center, target)) continue;
+      const structure = structures.get(cellAt(target.x, target.y)) === target;
+      const scale = kind === 'powder-blast' && !structure ? 0.65 : 1;
+      damage(target, Math.ceil(def.damage * scale * rules.damage), enemy, kind);
+    }
+  }
+
+  function moveCharge(enemy) {
+    const charge = enemy.charge;
+    const def = SPECIAL_MOVES['cat-charge'];
+    const fraction = Math.min(1, (time - charge.startedAt) / def.duration);
+    const nextX = charge.x + (charge.endX - charge.x) * fraction;
+    const nextY = charge.y + (charge.endY - charge.y) * fraction;
+    const dx = nextX - enemy.x;
+    const dy = nextY - enemy.y;
+    const blocked = terrainHit(map, enemy.x, enemy.y, nextX, nextY, (x, y) => !passable(x, y));
+    const caught = enemy.trapUntil > time;
+    const travel = caught ? 0 : blocked === null ? 1 : Math.max(0, blocked - 0.025 / Math.max(Math.hypot(dx, dy), 0.025));
+    for (const target of [...team.values(), ...structures.values(), ...allies.values(), ...objectives]) {
+      if (caught || !target.hp || charge.hits.has(target.id)) continue;
+      const hit = movingCircleHit(enemy.x, enemy.y, dx * travel, dy * travel, target, def.radius);
+      if (hit === null) continue;
+      charge.hits.add(target.id);
+      const scale = structures.get(cellAt(target.x, target.y)) === target ? 1 : 0.75;
+      damage(target, Math.ceil(def.damage * scale * rules.damage), enemy, 'cat-charge');
+    }
+    enemy.x += dx * travel;
+    enemy.y += dy * travel;
+    enemy.vx = dx * travel / STEP_SECONDS;
+    enemy.vy = dy * travel / STEP_SECONDS;
+    if (travel < 1 || fraction === 1) {
+      event('charge-end', enemy, { entityId: enemy.id, kind: 'cat-charge', radius: def.radius });
+      enemy.charge = null;
+      enemy.chargeUntil = 0;
+      enemy.aiCell = null;
+    }
+  }
+
+  function resolveSpecial(enemy, kind, def) {
+    const target = { x: enemy.attackX, y: enemy.attackY };
+    const fields = { ...attackFields(enemy, kind), duration: def.duration || 360 };
+    if (kind === 'pounce') {
+      const land = clearPath(enemy, target) ? target : position(enemy);
+      event('attack', enemy, { ...fields, targetX: land.x, targetY: land.y });
+      Object.assign(enemy, land, { previousX: land.x, previousY: land.y, aiCell: null });
+      for (const mouse of team.values()) {
+        if (distanceSquared(mouse, enemy) <= def.radius ** 2) damage(mouse, Math.ceil(def.damage * rules.damage), enemy, kind);
+      }
+      return;
+    }
+    event('attack', enemy, fields);
+    if (kind === 'mend') {
+      const wounded = [...enemies.values()].filter(rat => rat !== enemy && rat.type !== 'cat' && rat.hp < rat.maxHp
+        && distanceSquared(rat, target) <= def.radius ** 2 && clearTerrain(target, rat));
+      wounded.sort((a, b) => (b.maxHp - b.hp) - (a.maxHp - a.hp));
+      for (const rat of wounded.slice(0, 3)) {
+        const healed = Math.min(def.heal, rat.maxHp - rat.hp);
+        rat.hp += healed;
+        event('heal', rat, { kind, entityId: rat.id, sourceId: enemy.id, value: healed });
+      }
+    } else if (kind === 'cat-charge') {
+      enemy.charge = { ...position(enemy), endX: target.x, endY: target.y, startedAt: time, hits: new Set() };
+      enemy.chargeUntil = time + def.duration;
+    } else {
+      hurtArea(enemy, target, kind, def);
+    }
   }
 
   function contact(enemy) {
     const def = ENEMIES[enemy.type];
+    const kind = enemy.attackKind;
     enemy.lastAttackAt = time;
+    enemy.lastAttackKind = kind;
     enemy.nextAttackAt = time + def.cooldown;
-    if (enemy.attackKind === 'pounce') {
-      const land = enemy.attackTarget;
-      const clear = terrainHit(map, enemy.x, enemy.y, land.x, land.y, (x, y) => !passable(x, y));
-      if (clear === null) Object.assign(enemy, land, { previousX: land.x, previousY: land.y });
-      for (const mouse of team.values()) {
-        if (distanceSquared(mouse, enemy) <= 1.5 ** 2) damage(mouse, Math.ceil(22 * rules.damage), enemy, 'pounce');
-      }
-      event('attack', enemy, { entityId: enemy.id, kind: 'pounce', targetX: land.x, targetY: land.y });
+    if (SPECIAL_MOVES[kind]) {
+      resolveSpecial(enemy, kind, SPECIAL_MOVES[kind]);
     } else {
       const target = actors.get(enemy.attackTarget);
-      if (target?.hp && distanceSquared(enemy, target) <= (def.reach + 0.46) ** 2) {
+      const hit = Boolean(target?.hp && distanceSquared(enemy, target) <= (def.reach + 0.46) ** 2);
+      if (target) trackAttack(enemy, target);
+      event('attack', enemy, { ...attackFields(enemy, kind), hit, duration: 290 });
+      if (hit) {
         const supported = enemy.type !== 'king' && bestWithin(enemy, enemies.values(), 3.1, null, candidate => candidate.type === 'king');
         const breach = enemy.type === 'ox' && structures.get(cellAt(target.x, target.y)) === target ? 1.45 : 1;
         const amount = Math.ceil(def.damage * rules.damage * (supported ? 1.3 : 1) * breach);
-        damage(target, amount, enemy, 'claw');
-        event('attack', enemy, { entityId: enemy.id, targetId: target.id, kind: 'claw', targetX: target.x, targetY: target.y });
+        damage(target, amount, enemy, kind);
       }
     }
-    enemy.windupUntil = 0;
-    enemy.attackTarget = null;
-    enemy.attackKind = null;
+    clearAttack(enemy);
   }
 
   function windup(enemy, target) {
-    if (time < enemy.nextAttackAt) return;
-    enemy.attackKind = 'claw';
-    enemy.attackTarget = target.id;
-    enemy.windupUntil = time + ENEMIES[enemy.type].windup;
-    setFacing(enemy, target);
-    event('windup', enemy, { entityId: enemy.id, targetId: target.id, targetX: target.x, targetY: target.y, kind: 'claw', until: enemy.windupUntil });
+    if (time >= enemy.nextAttackAt) armAttack(enemy, MELEE_MOVES[enemy.type], target, ENEMIES[enemy.type].windup);
   }
 
   function stepEnemies() {
@@ -402,12 +551,22 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       enemy.previousY = enemy.y;
       enemy.vx = 0;
       enemy.vy = 0;
-      if (enemy.trapUntil > time) continue;
+      if (enemy.charge) {
+        moveCharge(enemy);
+        continue;
+      }
+      if (enemy.trapUntil > time) {
+        if (enemy.windupUntil) {
+          event('interrupt', enemy, attackFields(enemy, enemy.attackKind));
+          clearAttack(enemy);
+        }
+        continue;
+      }
       if (enemy.windupUntil) {
         if (enemy.windupUntil <= time) contact(enemy);
         continue;
       }
-      if (enemy.type === 'cat' && time >= enemy.nextAttackAt && time - enemy.lastPounceAt >= 6300 && pounce(enemy)) continue;
+      if (chooseSpecial(enemy)) continue;
 
       const mouseRange = enemy.type === 'vulture' ? 5.3 : enemy.type === 'cat' ? 4.6 : 2.1;
       const nearbyMouse = bestWithin(enemy, team.values(), mouseRange);
@@ -418,7 +577,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
         windup(enemy, localTarget);
         continue;
       }
-      if (nearbyMouse && terrainHit(map, enemy.x, enemy.y, nearbyMouse.x, nearbyMouse.y, (x, y) => !passable(x, y)) === null) {
+      if (nearbyMouse && clearPath(enemy, nearbyMouse)) {
         enemy.aiCell = null;
         approach(enemy, nearbyMouse, speed, passable);
         continue;
@@ -445,14 +604,19 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     if (tick % 5 === 0) {
       for (const enemy of enemies.values()) {
         if (enemy.type !== 'stink' || enemy.trapUntil > time) continue;
+        let newlyDisrupted = false;
         for (const dx of [-2, -1, 0, 1, 2]) {
           for (const dy of [-2, -1, 0, 1, 2]) {
             const structure = structures.get(cellAt(enemy.x + dx, enemy.y + dy));
             if (!structure || TOWERS[structure.type].role === 'Defense' || distanceSquared(enemy, structure) > 2.05 ** 2) continue;
-            if (structure.disabledUntil <= time) event('disrupt', structure, { entityId: structure.id, sourceId: enemy.id });
+            if (structure.disabledUntil <= time) {
+              newlyDisrupted = true;
+              event('disrupt', structure, { kind: 'stink-cloud', entityId: structure.id, sourceId: enemy.id });
+            }
             structure.disabledUntil = time + 850;
           }
         }
+        if (newlyDisrupted) event('activation', enemy, { entityId: enemy.id, kind: 'stink-cloud', radius: 2.05 });
       }
     }
   }
@@ -473,7 +637,8 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     projectiles.set(shot.id, shot);
     event('shot', shot, {
       kind, projectileId: shot.id, shooterId: shooter.id, targetId: target.id,
-      targetX: aimX, targetY: aimY, vx: shot.vx, vy: shot.vy, lifetime: def.lifetime,
+      targetX: aimX, targetY: aimY, sourceX: shooter.x, sourceY: shooter.y,
+      vx: shot.vx, vy: shot.vy, lifetime: def.lifetime,
     });
   }
 
@@ -481,7 +646,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     projectiles.delete(shot.id);
     event('impact', shot, {
       kind: shot.kind, projectileId: shot.id, shooterId: shot.shooterId,
-      targetId: target?.id ?? null, reason,
+      targetId: target?.id ?? null, radius: shot.splash, reason,
     });
     if (target) {
       const boss = ['ox', 'king', 'cat'].includes(target.type);
@@ -538,14 +703,17 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       candidate => candidate.hp && canShoot(origin, candidate, def.kind));
   }
 
-  function aim(shooter, target) {
-    shooter.aimX = target.x;
-    shooter.aimY = target.y;
-    setFacing(shooter, target);
+  function aim(shooter, target, kind) {
+    const def = SHOTS[kind];
+    const point = def ? interceptPoint(shooter, target, def.speed, def.lifetime) : target;
+    shooter.aimX = point.x;
+    shooter.aimY = point.y;
+    setFacing(shooter, point);
   }
 
   function discharge(structure, target, def) {
     structure.lastAttackAt = time;
+    structure.lastAttackKind = def.kind || structure.type;
     if (def.kind) {
       const count = def.burst || 1;
       for (let index = 0; index < count; index++) launch(structure, target, def, (index - (count - 1) / 2) * 0.055);
@@ -560,7 +728,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       targets.push(...neighbors.slice(0, 2));
     }
     for (const [index, enemy] of targets.entries()) {
-      event('attack', previous, { entityId: structure.id, kind, targetId: enemy.id, targetX: enemy.x, targetY: enemy.y });
+      event('attack', previous, { entityId: structure.id, kind, targetId: enemy.id, targetX: enemy.x, targetY: enemy.y, duration: 300 });
       damage(enemy, Math.max(1, Math.floor(def.damage * (1 - index * 0.22))), structure, kind);
       previous = enemy;
     }
@@ -605,6 +773,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
 
   function utility(structure, def) {
     const { type } = structure;
+    let effect = false;
     if (type === 'generator') team.get(structure.ownerId).cheese++;
     if (type === 'farm') {
       const spot = DIRECTIONS.map(([dx, dy]) => ({ x: structure.x + dx, y: structure.y + dy }))
@@ -614,7 +783,13 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     }
     if ((type === 'rabbit' || type === 'flea') && !spawnAlly(structure)) return false;
     if (type === 'repair') {
-      const repair = target => { target.hp = Math.min(target.maxHp, target.hp + 3); };
+      const repair = target => {
+        const hp = Math.min(target.maxHp, target.hp + 3);
+        if (target.hp < hp) {
+          target.hp = hp;
+          effect = true;
+        }
+      };
       nearbyStructures(structure, def.range, repair);
       for (const objective of objectives) {
         if (objective.hp && distanceSquared(structure, objective) <= def.range ** 2) repair(objective);
@@ -623,12 +798,16 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     if (type === 'shield') {
       nearbyStructures(structure, def.range, target => {
         if (target.shieldUntil > time) return;
-        target.shield = Math.min(Math.ceil(target.maxHp * 0.52), target.shield + 2);
+        const shield = Math.min(Math.ceil(target.maxHp * 0.52), target.shield + 2);
+        if (shield > target.shield) effect = true;
+        target.shield = shield;
       });
     }
     if (type === 'slime') {
       for (const enemy of enemies.values()) {
-        if (distanceSquared(structure, enemy) <= def.range ** 2) enemy.slowUntil = Math.max(enemy.slowUntil, time + 500);
+        if (distanceSquared(structure, enemy) > def.range ** 2) continue;
+        enemy.slowUntil = Math.max(enemy.slowUntil, time + 500);
+        effect = true;
       }
     }
     if (type === 'drum') {
@@ -637,7 +816,10 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
         if (distanceSquared(structure, ally) <= def.range ** 2) ally.bonusUntil = time + 2400;
       }
     }
-    if (type !== 'slime' && type !== 'shield') event('activation', structure, { entityId: structure.id, kind: type });
+    if (!['slime', 'shield', 'repair'].includes(type) || (effect && time - (structure.abilityFxAt ?? -Infinity) >= 950)) {
+      event('activation', structure, { entityId: structure.id, kind: type, radius: def.range });
+      structure.abilityFxAt = time;
+    }
     return true;
   }
 
@@ -647,6 +829,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       if (structure.disabledUntil > time) {
         structure.targetId = null;
         structure.windupUntil = 0;
+        structure.attackKind = null;
         continue;
       }
       const base = TOWERS[structure.type];
@@ -662,10 +845,11 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       }
       if (structure.windupUntil) {
         const target = enemies.get(structure.targetId);
-        if (target) aim(structure, target);
+        if (target) aim(structure, target, def.kind);
         if (structure.windupUntil > time) continue;
         structure.windupUntil = 0;
         structure.targetId = null;
+        structure.attackKind = null;
         if (!target || !canShoot(structure, target, def.kind)) continue;
         discharge(structure, target, def);
         structure.nextAttackAt = time + cooldown;
@@ -676,11 +860,13 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
         structure.nextAttackAt = time + 150;
         continue;
       }
-      aim(structure, target);
+      aim(structure, target, def.kind);
       structure.targetId = target.id;
+      structure.attackKind = def.kind || structure.type;
       structure.windupUntil = time + def.windup;
       event('windup', structure, {
-        entityId: structure.id, targetX: target.x, targetY: target.y, kind: def.kind || structure.type, until: structure.windupUntil,
+        entityId: structure.id, targetId: target.id, targetX: structure.aimX, targetY: structure.aimY,
+        kind: structure.attackKind, until: structure.windupUntil, duration: def.windup,
       });
     }
   }
@@ -697,27 +883,37 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       }
       const rabbit = ally.type === 'rabbit';
       const range = rabbit ? 5 : 0.95;
+      const kind = rabbit ? 'rabbit' : 'flea-bite';
+      const cooldown = (rabbit ? 1100 : 725) * (ally.bonusUntil > time ? 0.82 : 1);
+      if (ally.windupUntil) {
+        const target = enemies.get(ally.attackTarget);
+        if (target) trackAttack(ally, target);
+        if (ally.windupUntil > time) continue;
+        const hit = target && distanceSquared(ally, target) <= (range + 0.37) ** 2 && canShoot(ally, target, kind);
+        ally.lastAttackAt = time;
+        ally.lastAttackKind = kind;
+        ally.nextAttackAt = time + cooldown - (rabbit ? 220 : 135);
+        if (rabbit && hit) launch(ally, target, { kind, damage: 9 });
+        else event('attack', ally, { ...attackFields(ally, kind), hit: Boolean(hit), duration: 230 });
+        if (!rabbit && hit) {
+          target.slowUntil = Math.max(target.slowUntil, time + 550);
+          damage(target, 4, ally, kind);
+        }
+        clearAttack(ally);
+        continue;
+      }
       const enemy = bestWithin(ally, enemies.values(), rabbit ? 7 : 4.5, null,
         candidate => canShoot(ally, candidate, 'rabbit') && distanceSquared(candidate, ally.spawn) <= 8 ** 2);
       if (!enemy) {
         if (distanceSquared(ally, ally.spawn) > 0.6 ** 2) approach(ally, ally.spawn, 1.8, passable);
         continue;
       }
-      const cooldown = (rabbit ? 1100 : 725) * (ally.bonusUntil > time ? 0.82 : 1);
       if (distanceSquared(ally, enemy) > range ** 2) {
         approach(ally, enemy, rabbit ? 2 : 3.3, passable);
         continue;
       }
       if (time < ally.nextAttackAt) continue;
-      aim(ally, enemy);
-      ally.lastAttackAt = time;
-      ally.nextAttackAt = time + cooldown;
-      if (rabbit) launch(ally, enemy, { kind: 'rabbit', damage: 9 });
-      else {
-        enemy.slowUntil = Math.max(enemy.slowUntil, time + 550);
-        damage(enemy, 4, ally, 'claw');
-        event('attack', ally, { entityId: ally.id, kind: 'claw', targetId: enemy.id, targetX: enemy.x, targetY: enemy.y });
-      }
+      armAttack(ally, kind, enemy, rabbit ? 220 : 135);
     }
   }
 

@@ -8,9 +8,30 @@ import { buildEnemyField, interceptPoint, movingCircleHit, terrainHit, tileAt } 
 
 const mill = MAPS['flour-mill'];
 const mouse = { id: 'solo', name: 'Mill Mouse' };
+const plan = [
+  [2, 21, 26], [2, 24, 27], [2, 22, 28],
+  [1, 21, 24], [1, 25, 24], [1, 23, 27], [1, 26, 25], [1, 23, 22],
+  [1, 24, 22], [1, 22, 23], [1, 25, 23], [1, 26, 24], [1, 24, 25], [1, 21, 28],
+  [2, 23, 28], [2, 24, 28], [2, 25, 28],
+  [3, 22, 26], [3, 25, 26], [3, 24, 24], [3, 22, 25],
+  [4, 24, 26], [4, 20, 26], [4, 26, 27], [5, 23, 25], [5, 22, 22], [6, 22, 27], [6, 26, 23],
+  [3, 23, 24], [3, 26, 28], [3, 28, 26], [3, 20, 24],
+];
 
 function tick(simulation, count) {
   for (let i = 0; i < count; i++) simulation.step();
+}
+
+function reinforce(sim, state, step) {
+  if (step % 20 !== 0) return;
+  for (const [slot, x, y] of plan) {
+    if (state.structures.some(structure => structure.x === x && structure.y === y)) continue;
+    if (sim.command(mouse.id, { type: 'build', slot, x, y }).code === 'not-enough-cheese') break;
+  }
+  if (step <= 2400) return;
+  for (const [slot, x, y] of plan) {
+    if (slot === 1 || slot === 3) sim.command(mouse.id, { type: 'upgrade', x, y, branch: slot === 1 ? 'marksman' : 'cluster' });
+  }
 }
 
 test('loadouts preserve legal slots, fill vacancies and reject repeated towers', () => {
@@ -121,37 +142,18 @@ test('projectiles sweep through moving targets and collide with the leading terr
 
 test('a seeded offline battle can be won and each shot and result happen once', () => {
   const sim = createSimulation({ matchId: 'wintry', difficulty: 'normal', players: [mouse] });
-  const plan = [
-    [2, 21, 26], [2, 24, 27], [2, 22, 28],
-    [1, 21, 24], [1, 25, 24], [1, 23, 27], [1, 26, 25], [1, 23, 22],
-    [1, 24, 22], [1, 22, 23], [1, 25, 23], [1, 26, 24], [1, 24, 25], [1, 21, 28],
-    [2, 23, 28], [2, 24, 28], [2, 25, 28],
-    [3, 22, 26], [3, 25, 26], [3, 24, 24], [3, 22, 25],
-    [4, 24, 26], [4, 20, 26], [4, 26, 27], [5, 23, 25], [5, 22, 22], [6, 22, 27], [6, 26, 23],
-    [3, 23, 24], [3, 26, 28], [3, 28, 26], [3, 20, 24],
-  ];
   const launches = new Map();
   const impacts = new Map();
   const simultaneousHits = new Map();
   const defeatingHits = new Set();
   const waveSizes = new Map();
+  const lateEnemies = new Set();
   let seenLiveFlight = false;
   let latest = 0;
   let results = 0;
   let state = sim.snapshot();
   for (let step = 0; step < 4700 && state.status === 'active'; step++) {
-    if (step % 20 === 0) {
-      for (const [slot, x, y] of plan) {
-        if (state.structures.some(structure => structure.x === x && structure.y === y)) continue;
-        const built = sim.command(mouse.id, { type: 'build', slot, x, y });
-        if (built.code === 'not-enough-cheese') break;
-      }
-      if (step > 2400) {
-        for (const [slot, x, y] of plan) {
-          if (slot === 1 || slot === 3) sim.command(mouse.id, { type: 'upgrade', x, y, branch: slot === 1 ? 'marksman' : 'cluster' });
-        }
-      }
-    }
+    reinforce(sim, state, step);
     sim.step();
     state = sim.snapshot();
     for (const projectile of state.projectiles) {
@@ -161,6 +163,12 @@ test('a seeded offline battle can be won and each shot and result happen once', 
     for (const event of state.events) {
       if (event.id <= latest) continue;
       latest = event.id;
+      assert.notEqual(event.kind, 'tail-sweep');
+      assert.notEqual(event.kind, 'cat-charge');
+      if (event.type === 'spawn' && (event.kind === 'sapper' || event.kind === 'mender')) {
+        assert.ok(state.wave >= 6);
+        lateEnemies.add(event.kind);
+      }
       if (event.type === 'shot') launches.set(event.projectileId, event);
       if (event.type === 'impact') {
         assert.equal(impacts.has(event.projectileId), false);
@@ -185,6 +193,7 @@ test('a seeded offline battle can be won and each shot and result happen once', 
   }
   assert.equal(state.status, 'won');
   assert.equal(state.wave, 7);
+  assert.deepEqual([...lateEnemies].sort(), ['mender', 'sapper']);
   assert.ok(waveSizes.get(7) >= 24);
   assert.ok(results === 1 && seenLiveFlight && launches.size > 50);
   assert.ok([...impacts.values()].some(impact => impact.reason === 'target'));
@@ -192,6 +201,66 @@ test('a seeded offline battle can be won and each shot and result happen once', 
   const finished = sim.snapshot();
   tick(sim, 5);
   assert.deepEqual(sim.snapshot(), finished);
+});
+
+test('harder battles telegraph real special attacks and support actions', () => {
+  const skills = new Set(['powder-blast', 'mend', 'tail-sweep', 'cat-charge']);
+  for (const difficulty of ['hard', 'nightmare']) {
+    const sim = createSimulation({ matchId: 'combat-balance', difficulty, players: [mouse] });
+    const warnings = new Map();
+    const resolved = new Set();
+    const interrupted = new Set();
+    const effects = new Set();
+    const chargedTargets = new Set();
+    let latest = 0;
+    let traversed = false;
+    let state = sim.snapshot();
+    for (let step = 0; step < 4700 && state.status === 'active'; step++) {
+      reinforce(sim, state, step);
+      sim.step();
+      state = sim.snapshot();
+      for (const { type, chargeUntil, vx, vy } of state.enemies) {
+        if (type === 'cat' && chargeUntil > state.time && Math.hypot(vx, vy) > 4) traversed = true;
+      }
+      for (const event of state.events) {
+        if (event.id <= latest) continue;
+        latest = event.id;
+        if (!skills.has(event.kind)) continue;
+        if (difficulty === 'hard') assert.notEqual(event.kind, 'cat-charge');
+        if (event.type === 'windup') {
+          assert.ok(event.duration >= 700 && event.until > event.time);
+          assert.ok(event.radius > 0 && Number.isFinite(event.targetX) && Number.isFinite(event.targetY));
+          warnings.set(event.entityId, event);
+        } else if (event.type === 'attack') {
+          const warning = warnings.get(event.entityId);
+          assert.equal(event.kind, warning?.kind);
+          assert.ok(event.time >= warning.until && event.time < warning.until + STEP_MS);
+          assert.equal(event.radius, warning.radius);
+          resolved.add(event.kind);
+          if (event.kind === 'cat-charge') chargedTargets.clear();
+        } else if (event.type === 'interrupt') {
+          const warning = warnings.get(event.entityId);
+          assert.equal(event.kind, warning?.kind);
+          interrupted.add(event.kind);
+        } else if (event.type === 'damage' || event.type === 'heal') {
+          assert.ok(resolved.has(event.kind));
+          assert.ok(event.value > 0);
+          effects.add(event.kind);
+          if (event.kind === 'mend') assert.ok(event.value <= 10);
+          if (event.kind === 'cat-charge') {
+            assert.equal(chargedTargets.has(event.entityId), false);
+            chargedTargets.add(event.entityId);
+          }
+        }
+      }
+    }
+    assert.equal(state.status, 'won');
+    assert.ok(effects.has('tail-sweep') || interrupted.has('tail-sweep'));
+    if (difficulty === 'nightmare') {
+      assert.ok(traversed);
+      assert.deepEqual([...effects].sort(), [...skills].sort());
+    }
+  }
 });
 
 test('an ignored match defeats the team and produces identical state for the same seed', () => {

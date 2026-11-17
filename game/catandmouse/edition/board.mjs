@@ -1,8 +1,12 @@
-import { MAPS } from './battlefield.mjs';
+import { AttackEffects } from './attack-effects.mjs';
+import { ENEMIES, MAPS } from './battlefield.mjs';
 import { isWall, wallConnections, wallKey } from './walls.mjs';
 
 const artRoot = new URL('./art/', import.meta.url);
-const sources = { title: 0, 'mill-preview': 0, ground: 0, walls: 0, terrain: 160, units: 160, facing: 160, towers: 160, effects: 112 };
+const sources = {
+  title: 0, 'mill-preview': 0, ground: 0, walls: 0, terrain: 160, units: 160,
+  facing: 160, towers: 160, effects: 112, pivot: 160, 'late-rats': 160, 'cat-moves': 160,
+};
 const art = {};
 const groundCache = new Map();
 const tilePixels = 24;
@@ -109,8 +113,23 @@ export function prepareBattlefield(mapId) {
 }
 
 const shots = { bullet: 0, rabbit: 0, rocket: 2, acorn: 3, web: 1 };
-const colors = { runner: '#edbb6c', stink: '#a6c676', ox: '#da8362', vulture: '#b9a3d4', king: '#edd472', cat: '#f28f63' };
-const unitScale = { mouse: 49, rat: 43, runner: 38, stink: 51, ox: 61, vulture: 44, king: 62, cat: 105, rabbit: 43, flea: 28 };
+const colors = { runner: '#edbb6c', stink: '#a6c676', ox: '#da8362', vulture: '#b9a3d4', king: '#edd472', sapper: '#f28451', mender: '#6fd4b4', cat: '#f28f63' };
+const unitScale = { mouse: 49, rat: 43, runner: 38, stink: 51, ox: 61, vulture: 44, king: 62, sapper: 61, mender: 53, cat: 105, rabbit: 43, flea: 28 };
+const pivotHeads = {
+  turret: { cell: 1, width: 54, pin: .31 },
+  marksman: { cell: 2, width: 65, pin: .27 },
+  burst: { cell: 3, width: 53, pin: .33 },
+  rocket: { cell: 5, width: 60, pin: .31 },
+  payload: { cell: 6, width: 65, pin: .34 },
+  cluster: { cell: 7, width: 61, pin: .33 },
+};
+const powerLights = { generator: '#efb850', farm: '#edbc64', repair: '#8cd9d4', shield: '#73c9e4', drum: '#fac98b' };
+const catMoves = {
+  claw: { prepare: 0, strike: 1, recovery: 250 },
+  pounce: { prepare: 0, strike: 2, landing: 3, recovery: 440 },
+  'tail-sweep': { prepare: 4, strike: 5, recovery: 390 },
+  'cat-charge': { prepare: 6, strike: 7, recovery: 460 },
+};
 const clamp = (x, lower, upper) => Math.max(lower, Math.min(upper, x));
 const mix = (from, to, amount) => from + (to - from) * amount;
 
@@ -130,8 +149,10 @@ export class Battlefield {
     this.minimap = minimap;
     this.mini = minimap.getContext('2d', { alpha: false });
     this.camera = { x: 23, y: 25, zoom: 1, follow: true };
-    this.effects = [];
+    this.effects = new AttackEffects();
     this.facing = new Map();
+    this.towerAngles = new Map();
+    this.muzzles = new Map();
   }
 
   reset(mapId) {
@@ -141,8 +162,10 @@ export class Battlefield {
     this.camera.x = this.map.playerSpawns[0].x;
     this.camera.y = this.map.playerSpawns[0].y;
     this.camera.follow = true;
-    this.effects = [];
+    this.effects.clear();
     this.facing.clear();
+    this.towerAngles.clear();
+    this.muzzles.clear();
     this.eventId = 0;
     this.lastMini = -Infinity;
     this.lastFrame = 0;
@@ -182,11 +205,10 @@ export class Battlefield {
     for (const event of events || []) {
       if (event.id <= this.eventId) continue;
       this.eventId = event.id;
+      this.effects.add(event, state.time);
+      if (event.type === 'destroy') this.towerAngles.delete(event.entityId);
+      if (event.type === 'defeat') this.facing.delete(event.entityId);
       if (event.time < state.time - 400 || (event.type === 'impact' && event.reason === 'expired')) continue;
-      const type = event.type === 'shot' ? 'launch'
-        : event.type === 'attack' ? ({ tesla: 'arc', laser: 'beam', claw: 'claw', pounce: 'claw' }[event.kind] || event.type)
-          : event.type;
-      this.effects.push({ ...event, type, birth: now });
       recent.push(event);
     }
     return recent;
@@ -236,6 +258,7 @@ export class Battlefield {
     const fraction = clamp((now - this.received) / this.duration, 0, 1);
     const elapsed = Math.min(100, now - (this.lastFrame || now - 16));
     this.lastFrame = now;
+    this.muzzles.clear();
     const player = this.state.players.find(entry => entry.id === this.localId);
     if (player && this.camera.follow) {
       const point = this.position(player, fraction);
@@ -247,11 +270,18 @@ export class Battlefield {
     ctx.fillRect(0, 0, this.width, this.height);
     const waterTime = this.previous ? mix(this.previous.time, this.state.time, fraction) : this.state.time;
     this.drawGround(waterTime, settings.reduced);
+    this.effects.drawGround(this, now, settings);
     const walls = new Map(this.state.structures.filter(entry => isWall(entry.type)).map(entry => [wallKey(entry.x, entry.y), entry]));
+    let plannedWalls;
     if (target) {
-      this.diamond(target.x, target.y, '#efcc78', '#efcc7840');
-      if (isWall(target.type) && !walls.has(wallKey(target.x, target.y))) {
-        this.wall(target, target, walls, true);
+      const tile = this.map.tiles[target.y]?.[target.x];
+      const occupied = this.state.structures.some(entry => entry.x === target.x && entry.y === target.y)
+        || this.state.objectives.some(entry => entry.x === target.x && entry.y === target.y);
+      const available = (tile === '.' || tile === ':') && !occupied;
+      this.diamond(target.x, target.y, available ? '#efcc78' : '#e88675', available ? '#efcc7840' : '#cc595240');
+      if (isWall(target.type) && available) {
+        plannedWalls = new Map(walls);
+        plannedWalls.set(wallKey(target.x, target.y), target);
       }
     }
     const depth = [];
@@ -272,16 +302,23 @@ export class Battlefield {
       sprite(ctx, 'effects', 8, x, y - (settings.reduced ? 0 : Math.sin(now / 310 + p.x) * 2), 24 * this.camera.zoom);
     });
     enqueue(this.state.structures, (e, p) => {
-      if (isWall(e.type)) this.wall(e, p, walls);
-      else this.structure(e, p, settings);
+      if (isWall(e.type)) this.wall(e, p, walls, false, plannedWalls);
+      else this.structure(e, p, settings, elapsed);
     });
+    if (plannedWalls) enqueue([target], (e, p) => this.wall(e, p, plannedWalls, true));
     enqueue(this.state.players, (e, p) => this.unit(e, p, 'mouse', now, settings));
     enqueue(this.state.enemies, (e, p) => this.unit(e, p, e.type, now, settings));
     enqueue(this.state.allies, (e, p) => this.unit(e, p, e.type, now, settings));
     enqueue(this.scenery, (e, p) => this.prop(e.index, p, 1.08));
     depth.sort((a, b) => a.depth - b.depth).forEach(item => item.draw());
-    this.state.projectiles.forEach(shot => this.projectile(shot, this.position(shot, fraction)));
-    this.drawEffects(now, settings);
+    this.state.projectiles.forEach(shot => {
+      const point = this.position(shot, fraction);
+      this.effects.drawProjectileTrail(this, shot, point, settings);
+      this.projectile(shot, point);
+    });
+    this.effects.drawForeground(this, now, settings, (index, x, y, width, height, anchor) =>
+      sprite(ctx, 'effects', index, x, y, width, height, anchor),
+    );
     if (now - this.lastMini > 125) {
       this.drawMinimap();
       this.lastMini = now;
@@ -347,7 +384,7 @@ export class Battlefield {
     ctx.fillRect(x - 15, y + 1, 30 * clamp(hp / maxHp, 0, 1), 3);
   }
 
-  wall(entity, point, walls, ghost = false) {
+  wall(entity, point, walls, ghost = false, plannedWalls) {
     const ctx = this.ctx;
     const [x, y] = this.project(point.x, point.y);
     const thick = entity.type === 'barricade';
@@ -355,6 +392,7 @@ export class Battlefield {
     const size = art.walls.height;
     const cell = thick ? 2 : 0;
     const arms = wallConnections(entity, walls);
+    const previewArms = plannedWalls ? wallConnections(entity, plannedWalls).filter(direction => !arms.includes(direction)) : [];
     ctx.save();
     if (ghost || entity.readyAt > this.state.time) ctx.globalAlpha = .57;
     if (entity.hp < entity.maxHp * .38) ctx.filter = 'saturate(.68) brightness(.75)';
@@ -369,15 +407,20 @@ export class Battlefield {
       ctx.drawImage(art.walls, cell * size, 0, size, size, 0, -height, 1, height);
       ctx.restore();
     };
-    arms.filter(direction => direction.x + direction.y < 0).forEach(arm);
-    arms.filter(direction => direction.x + direction.y > 0).forEach(arm);
-    const postWidth = height * .66;
+    if (previewArms.length) {
+      ctx.save();
+      ctx.globalAlpha *= .55;
+      previewArms.forEach(arm);
+      ctx.restore();
+    }
+    arms.forEach(arm);
+    const postWidth = height * (arms.length ? .66 : .84);
     ctx.drawImage(art.walls, size, 0, size, size, x - postWidth / 2, y - height * 1.12, postWidth, height * 1.19);
     ctx.restore();
     if (!ghost) this.health(x, y - height * 1.18, entity.hp, entity.maxHp, '#e5b161');
   }
 
-  structure(entity, point, settings) {
+  structure(entity, point, settings, elapsed) {
     const [x, y] = this.project(point.x, point.y);
     const ctx = this.ctx;
     const time = this.state.time;
@@ -385,21 +428,78 @@ export class Battlefield {
     if (entity.readyAt > time) this.diamond(point.x, point.y, '#e7ba69', '#e7ba692f');
     ctx.save();
     ctx.translate(x, y);
-    const facing = (entity.aimX - entity.x) - (entity.aimY - entity.y);
-    if (facing < -.12) ctx.scale(-1, 1);
-    const recoil = !settings.reduced && time - entity.lastAttackAt < 140 ? 3 * zoom : 0;
     if (entity.disabledUntil > time) ctx.filter = 'saturate(.4) brightness(.75)';
     else if (entity.hp < entity.maxHp * .38) ctx.filter = 'saturate(.7) brightness(.72)';
     if (entity.readyAt > time) ctx.globalAlpha = .5;
-    sprite(ctx, 'towers', towerCell(entity.branch || entity.type), -recoil, 6 * zoom, 57 * zoom);
-    if (entity.windupUntil > time || entity.branch === 'payload' || entity.branch === 'cluster') {
-      ctx.fillStyle = entity.branch === 'cluster' ? '#81d8cb' : '#fac578';
-      ctx.beginPath();
-      ctx.arc(11 * zoom, -24 * zoom, 2.7 * zoom, 0, Math.PI * 2);
-      ctx.fill();
+    if (entity.type === 'turret' || entity.type === 'rocket') {
+      this.pivotTower(entity, elapsed, settings);
+    } else {
+      const facing = (entity.aimX - entity.x) - (entity.aimY - entity.y);
+      if (Number.isFinite(entity.aimX) && facing < -.12) ctx.scale(-1, 1);
+      const recoil = !settings.reduced && time - entity.lastAttackAt < 140 ? 3 * zoom : 0;
+      sprite(ctx, 'towers', towerCell(entity.type), -recoil, 6 * zoom, 57 * zoom);
+      if (entity.windupUntil > time) {
+        ctx.fillStyle = '#f8c472';
+        ctx.beginPath();
+        ctx.arc(11 * zoom, -24 * zoom, 2.7 * zoom, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      const light = powerLights[entity.type];
+      if (light && entity.readyAt <= time && !(entity.disabledUntil > time)) {
+        ctx.globalAlpha *= settings.reduced ? .68 : .58 + Math.sin(time / 460 + entity.x * .3) * .16;
+        ctx.fillStyle = light;
+        ctx.beginPath();
+        ctx.arc(3 * zoom, -20 * zoom, 2.3 * zoom, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     ctx.restore();
     this.health(x, y - 43 * zoom, entity.hp, entity.maxHp, '#e5b161');
+  }
+
+  pivotTower(entity, elapsed, settings) {
+    const ctx = this.ctx;
+    const zoom = this.camera.zoom;
+    const rocket = entity.type === 'rocket';
+    const head = pivotHeads[entity.branch] || pivotHeads[entity.type];
+    const pivotY = -(rocket ? 26 : 24) * zoom;
+    const oldAngle = this.towerAngles.get(entity.id) ?? .12;
+    const hasAim = Number.isFinite(entity.aimX) && Number.isFinite(entity.aimY) &&
+      Math.hypot(entity.aimX - entity.x, entity.aimY - entity.y) > .01;
+    const aim = hasAim ? Math.atan2((entity.aimX - entity.x + entity.aimY - entity.y) * this.tileY,
+      (entity.aimX - entity.x - entity.aimY + entity.y) * this.tileX) : oldAngle;
+    const turn = Math.atan2(Math.sin(aim - oldAngle), Math.cos(aim - oldAngle));
+    const age = this.state.time - entity.lastAttackAt;
+    const angle = oldAngle + turn * (settings.reduced || (age >= 0 && age < 55) ? 1 : 1 - Math.exp(-elapsed / 42));
+    this.towerAngles.set(entity.id, Math.atan2(Math.sin(angle), Math.cos(angle)));
+
+    sprite(ctx, 'pivot', rocket ? 4 : 0, 0, 4 * zoom, 58 * zoom, 52 * zoom, .94);
+    const width = head.width * zoom;
+    const recoil = !settings.reduced && age >= 0 ? (rocket ? 7 : 4.5) * zoom * clamp(1 - age / 180, 0, 1) ** 2 : 0;
+    const muzzle = width * (.96 - head.pin) - recoil;
+    ctx.save();
+    ctx.translate(0, pivotY);
+    ctx.rotate(angle);
+    if (Math.cos(angle) < 0) ctx.scale(1, -1);
+    const cell = sources.pivot;
+    ctx.drawImage(art.pivot, head.cell % 4 * cell, Math.floor(head.cell / 4) * cell, cell, cell,
+      -width * head.pin - recoil, -width / 2, width, width);
+    if (entity.windupUntil > this.state.time && entity.readyAt <= this.state.time) {
+      const lit = ctx.globalAlpha;
+      ctx.globalAlpha *= .74;
+      ctx.fillStyle = entity.branch === 'cluster' ? '#9de7ee' : '#ffd694';
+      ctx.beginPath();
+      ctx.arc(muzzle, 0, (rocket ? 3.3 : 2.1) * zoom, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = lit;
+    }
+    ctx.restore();
+    const [x, y] = this.project(entity.x, entity.y);
+    this.muzzles.set(entity.id, [x + Math.cos(angle) * muzzle, y + pivotY + Math.sin(angle) * muzzle]);
+  }
+
+  muzzlePoint(shooterId) {
+    return this.muzzles.get(shooterId);
   }
 
   unit(entity, point, type, now, settings) {
@@ -408,25 +508,58 @@ export class Battlefield {
     const time = this.state.time;
     const zoom = this.camera.zoom;
     const previous = this.previousEntities.get(entity.id);
-    const { horizontal, vertical, moving } = screenDirection(entity, previous);
+    let { horizontal, vertical, moving } = screenDirection(entity, previous);
+    const preparing = entity.windupUntil > time;
+    const kind = preparing ? entity.attackKind : entity.lastAttackKind;
+    if (preparing && Number.isFinite(entity.attackX) && Number.isFinite(entity.attackY)) {
+      const dx = entity.attackX - entity.x;
+      const dy = entity.attackY - entity.y;
+      if (Math.hypot(dx, dy) > .06) {
+        horizontal = dx - dy;
+        vertical = (dx + dy) / 2;
+      }
+    }
     if (Math.abs(horizontal) > .045) this.facing.set(entity.id, Math.sign(horizontal));
     const useVertical = type === 'mouse' && Math.abs(vertical) > .045 && Math.abs(horizontal) < Math.abs(vertical) * .65;
-    const attacking = entity.windupUntil > time || time - entity.lastAttackAt < 150;
+    const move = type === 'cat' ? (catMoves[kind] || catMoves.claw) : null;
+    const age = time - entity.lastAttackAt;
+    const strikeTime = move?.recovery || 225;
+    const striking = age >= 0 && age < strikeTime;
+    const anticipated = preparing ? clamp(1 - (entity.windupUntil - time) / (ENEMIES[type]?.windup || 420), 0, 1) : 0;
+    const lunge = striking ? Math.sin(Math.PI * age / strikeTime) : 0;
     const hit = time - entity.lastHitAt < 140;
-    const phase = attacking ? 3 : moving && !settings.reduced ? 1 + Math.floor(now / 102) % 2 : 0;
+    const phase = striking || (preparing && (anticipated > .5 || settings.reduced))
+      ? 3 : moving && !settings.reduced && !preparing ? 1 + Math.floor(now / 102) % 2 : 0;
     const row = type === 'mouse' ? 0 : type === 'cat' ? 2 : type === 'rabbit' || type === 'flea' ? 3 : 1;
+    let sheet = useVertical ? 'facing' : 'units';
+    let cell = useVertical ? (vertical < 0 ? 4 : 0) + phase : row * 4 + phase;
+    if (type === 'sapper' || type === 'mender') {
+      sheet = 'late-rats';
+      cell = (type === 'mender' ? 4 : 0) + phase;
+    }
+    if (move && (preparing || striking)) {
+      sheet = 'cat-moves';
+      cell = preparing ? move.prepare : move.landing && age > strikeTime * .5 ? move.landing : move.strike;
+    }
     if (entity.id === this.localId || colors[type]) this.diamond(point.x, point.y, colors[type] || '#fff1ac', '#251f1744');
     ctx.save();
     ctx.translate(x, y + (type === 'vulture' ? -12 * zoom : 2 * zoom));
     ctx.scale(useVertical ? 1 : this.facing.get(entity.id) || 1, 1);
+    if (!settings.reduced) {
+      const isGroundedStrike = kind !== 'cat-charge' && kind !== 'pounce';
+      const airborne = kind === 'pounce' && striking && age < strikeTime / 2;
+      const lift = airborne ? Math.sin(Math.PI * age / (strikeTime / 2)) * 10 * zoom : 0;
+      ctx.translate(isGroundedStrike ? (lunge * (move ? 9 : 4) - anticipated * 2) * zoom : 0, -lift);
+      ctx.scale(1 + anticipated * .045, 1 - anticipated * .08 + lunge * .035);
+    }
     if (hit) ctx.filter = 'brightness(1.55) saturate(.65)';
     else if (type === 'stink') ctx.filter = 'sepia(.3) hue-rotate(36deg)';
     else if (type === 'vulture') ctx.filter = 'grayscale(.62)';
     else if (type === 'king') ctx.filter = 'sepia(.55) saturate(1.5)';
     if (entity.hp <= 0) ctx.globalAlpha = .35;
     const width = (unitScale[type] || 44) * zoom;
-    sprite(ctx, useVertical ? 'facing' : 'units', useVertical ? (vertical < 0 ? 4 : 0) + phase : row * 4 + phase,
-      0, 0, width * (1 + (phase === 0 && !settings.reduced ? Math.sin(now / 310) * .012 : 0)), width);
+    sprite(ctx, sheet, cell, 0, 0,
+      width * (1 + (phase === 0 && !settings.reduced ? Math.sin(now / 310) * .012 : 0)), width);
     ctx.restore();
     this.health(x, y - (type === 'cat' ? 73 : 33) * zoom, entity.hp, entity.maxHp, row === 1 || row === 2 ? '#ed856e' : '#90d2a1', type === 'cat');
   }
@@ -441,40 +574,6 @@ export class Battlefield {
     if (shot.kind !== 'web') ctx.rotate(Math.atan2((shot.vx + shot.vy) * this.tileY, (shot.vx - shot.vy) * this.tileX));
     sprite(ctx, 'effects', shots[shot.kind] ?? 0, 0, 0, width, width, .53);
     ctx.restore();
-  }
-
-  drawEffects(now, settings) {
-    const ctx = this.ctx;
-    this.effects = this.effects.filter(event => now - event.birth < (event.type === 'windup' ? 1000 : 530)).slice(-140);
-    for (const event of this.effects) {
-      const age = now - event.birth;
-      const hasTarget = Number.isFinite(event.targetX) && Number.isFinite(event.targetY);
-      if (event.type === 'windup' && hasTarget && event.kind === 'pounce') {
-        this.diamond(event.targetX, event.targetY, '#ff9a6a', '#c2423a65');
-      }
-      if (!Number.isFinite(event.x) || !Number.isFinite(event.y)) continue;
-      const [x, y] = this.project(event.x, event.y);
-      const zoom = this.camera.zoom;
-      if (event.type === 'impact' || event.type === 'launch' || event.type === 'destroy' || event.type === 'defeat' || event.type === 'shield-break' || event.type === 'claw') {
-        const index = event.type === 'launch' ? 4 : event.type === 'shield-break' ? 7 : event.type === 'destroy' ? 9 : event.type === 'claw' ? 10 : age < 150 ? 5 : 6;
-        if ((event.type === 'launch' && age > 120) || (settings.quality === 'low' && age > 190)) continue;
-        ctx.save();
-        ctx.globalAlpha = clamp(1 - age / 600, 0, 1);
-        sprite(ctx, 'effects', index, x, y - (event.type === 'launch' ? 16 * zoom : 0),
-          (event.kind === 'rocket' ? 62 : 35) * zoom * (settings.reduced ? 1 : 1 + age / 900));
-        ctx.restore();
-      }
-      if (hasTarget && (event.type === 'beam' || event.type === 'arc') && age < 240) {
-        const [tx, ty] = this.project(event.targetX, event.targetY);
-        ctx.strokeStyle = event.type === 'arc' ? '#9ae0ff' : '#fdd687';
-        ctx.lineWidth = 2.2 * zoom;
-        ctx.beginPath();
-        ctx.moveTo(x, y - 23 * zoom);
-        if (event.type === 'arc') ctx.lineTo((x + tx) / 2 + 9 * zoom, (y + ty) / 2 - 17 * zoom);
-        ctx.lineTo(tx, ty - 14 * zoom);
-        ctx.stroke();
-      }
-    }
   }
 
   drawMinimap() {

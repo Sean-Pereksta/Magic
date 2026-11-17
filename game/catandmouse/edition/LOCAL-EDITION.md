@@ -4,7 +4,9 @@
 
 Install the Windows x64 setup or extract the portable ZIP, then open **Cat & Mouse Local Edition** or **Play Cat Mouse.vbs**. Choose **Singleplayer** for an offline match. The bundled game opens on your computer and stores your settings and progression in your browser.
 
-Use WASD, the arrow keys, or tap the battlefield to walk. Select a wall and press **R** or tap **Rotate** to orient a standalone placement. Adjacent walls connect automatically, including corners and junctions.
+Use WASD, the arrow keys, or tap the battlefield to walk. Place a wall beside another wall to extend, turn, or branch the line. The placement preview shows which sides will join.
+
+Gather cheese and use the opening waves to build up income and firepower. Sappers threaten groups of buildings, and Menders heal nearby rats. Leave room to dodge the Cat's marked attacks. Hard adds a tail sweep, and Nightmare adds a charge across the battlefield.
 
 To host, choose **Multiplayer → Host Lobby** and set the room, battlefield, difficulty, seat count, and visibility. A public room appears under **Live Lobbies** in the Arcade after its connection verifies. For an invite-only room, copy the guest invitation and share it with the people you want to play with. Guests can use their regular browser.
 

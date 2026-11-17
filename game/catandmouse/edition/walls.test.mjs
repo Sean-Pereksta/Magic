@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { WALL_DIRECTIONS, isWall, wallConnections, wallKey } from './walls.mjs';
 
-const [west, north, east, south] = WALL_DIRECTIONS;
+const [, north, east, south] = WALL_DIRECTIONS;
 const center = { type: 'wall', x: 8, y: 11, axis: 'y' };
 
 function index(...structures) {
@@ -14,11 +14,11 @@ function neighbor({ x, y }, type = 'wall') {
   return { x: center.x + x, y: center.y + y, type };
 }
 
-test('standalone walls use two opposite arms along the selected axis', () => {
+test('standalone walls have no arms even when an older snapshot provides an axis', () => {
   const walls = index(center);
-  assert.deepEqual(wallConnections(center, walls), [north, south]);
-  assert.deepEqual(wallConnections({ ...center, axis: 'x' }, walls), [west, east]);
-  assert.deepEqual(wallConnections({ ...center, axis: undefined }, walls), [west, east]);
+  assert.deepEqual(wallConnections(center, walls), []);
+  assert.deepEqual(wallConnections({ ...center, axis: 'x' }, walls), []);
+  assert.deepEqual(wallConnections({ ...center, axis: undefined }, walls), []);
 });
 
 test('adjacent wall and barricade types form L, T and cross junctions', () => {
@@ -30,9 +30,9 @@ test('adjacent wall and barricade types form L, T and cross junctions', () => {
   assert.deepEqual(wallConnections(center, index(center, ...WALL_DIRECTIONS.map(direction => neighbor(direction)))), WALL_DIRECTIONS);
 });
 
-test('diagonals and other towers do not connect, and removing a neighbor restores the standalone axis', () => {
+test('diagonals and other towers do not connect, and removing a neighbor restores the standalone wall', () => {
   const walls = index(center, neighbor(east), neighbor({ x: 1, y: 1 }), neighbor(north, 'turret'));
   assert.deepEqual(wallConnections(center, walls), [east]);
   walls.delete(wallKey(center.x + east.x, center.y + east.y));
-  assert.deepEqual(wallConnections(center, walls), [north, south]);
+  assert.deepEqual(wallConnections(center, walls), []);
 });

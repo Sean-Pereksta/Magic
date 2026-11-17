@@ -68,8 +68,8 @@ export const MAPS = Object.freeze({ [flourMill.id]: flourMill });
 export const DIFFICULTIES = Object.freeze({
   easy: Object.freeze({ name: 'Easy', health: 0.82, damage: 0.72, waveBonus: 0, openingCheese: 30 }),
   normal: Object.freeze({ name: 'Normal', health: 1, damage: 1, waveBonus: 0, openingCheese: 26 }),
-  hard: Object.freeze({ name: 'Hard', health: 1.18, damage: 1.16, waveBonus: 3, openingCheese: 25 }),
-  nightmare: Object.freeze({ name: 'Nightmare', health: 1.36, damage: 1.30, waveBonus: 5, openingCheese: 24 }),
+  hard: Object.freeze({ name: 'Hard', health: 1.18, damage: 1.16, waveBonus: 3, openingCheese: 25, catSweep: true }),
+  nightmare: Object.freeze({ name: 'Nightmare', health: 1.36, damage: 1.30, waveBonus: 5, openingCheese: 24, catSweep: true, catCharge: true }),
 });
 
 const towerDefinitions = {
@@ -142,6 +142,8 @@ export const ENEMIES = Object.freeze({
   ox: Object.freeze({ hp: 75, speed: 1.52, damage: 12, reach: 1.04, windup: 530, cooldown: 1490, radius: 0.55, cheese: 5 }),
   vulture: Object.freeze({ hp: 29, speed: 2.63, damage: 6, reach: 0.88, windup: 310, cooldown: 1030, radius: 0.41, cheese: 3 }),
   king: Object.freeze({ hp: 92, speed: 1.57, damage: 10, reach: 1, windup: 430, cooldown: 1250, radius: 0.53, cheese: 6 }),
+  sapper: Object.freeze({ hp: 59, speed: 1.77, damage: 5, reach: 0.83, windup: 360, cooldown: 1200, radius: 0.45, cheese: 5 }),
+  mender: Object.freeze({ hp: 42, speed: 1.86, damage: 4, reach: 0.83, windup: 330, cooldown: 1225, radius: 0.43, cheese: 4 }),
   cat: Object.freeze({ hp: 288, speed: 2.05, damage: 15, reach: 1.15, windup: 560, cooldown: 1410, radius: 0.67, cheese: 10 }),
 });
 

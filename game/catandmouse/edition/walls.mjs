@@ -14,8 +14,7 @@ export function wallKey(x, y) {
 }
 
 export function wallConnections(wall, wallsByCell) {
-  const connections = WALL_DIRECTIONS.filter(({ x, y }) =>
+  return WALL_DIRECTIONS.filter(({ x, y }) =>
     isWall(wallsByCell.get(wallKey(wall.x + x, wall.y + y))?.type),
   );
-  return connections.length ? connections : WALL_DIRECTIONS.filter(direction => direction[wall.axis === 'y' ? 'y' : 'x']);
 }

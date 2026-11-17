@@ -25,7 +25,6 @@ let view = '';
 let network, lobby, host, hostTimer, solo, state, playerId, previousFrame, battleTime, selected, cursor, audio;
 let hostPolling = false;
 let lastHud = 0;
-let wallAxis = 'x';
 let paused = false;
 let resultsOpen = false;
 let preserveStatus = false;
@@ -72,6 +71,12 @@ const link = (label, url, kind = 'secondary') => `<a class="button ${kind}" href
 const panel = (title, content, back = 'title') => `<section class="panel">${back ? button('← Back', back, 'quiet') : ''}<h1>${title}</h1>${content}</section>`;
 const options = (entries, value) => entries.map(([key, label]) => `<option value="${escape(key)}" ${String(value) === key ? 'selected' : ''}>${escape(label)}</option>`).join('');
 const difficultyOptions = value => options(Object.entries(DIFFICULTIES).map(([id, difficulty]) => [id, difficulty.name]), value);
+const difficultyNote = {
+  easy: 'More starting cheese and lighter enemy damage. Watch for the Cat’s marked pounce.',
+  normal: 'Late waves send Sappers to attack clustered defenses and Menders to heal the swarm.',
+  hard: 'Spread out your defenses and give yourself room to dodge the Cat’s tail sweep.',
+  nightmare: 'Watch the ground for the Cat’s sweep and charge. Keep an escape route open.',
+};
 const mapOptions = () => options(Object.entries(MAPS).map(([id, map]) => [id, map.name]), mill.id);
 const mount = (id, html) => {
   if (view === 'browse' && id !== 'browse') clearTimeout(directoryPoll);
@@ -109,7 +114,8 @@ function soloSetup() {
   mount('solo-setup', panel('Singleplayer', `<div class="form-grid">
     <label>Map<select id="solo-map">${mapOptions()}</select></label>
     <label>Difficulty<select id="solo-difficulty">${difficultyOptions(soloDraft.difficulty)}</select></label>
-    </div><div class="map-card">${mill.name}<small>48 × 48 · four rat entrances</small></div>
+    </div><p class="difficulty-note" id="solo-difficulty-note">${difficultyNote[soloDraft.difficulty]}</p>
+    <div class="map-card">${mill.name}<small>48 × 48 · four rat entrances</small></div>
     <h2>Eight-slot loadout</h2>${kitForm(soloDraft.kit)}
     <div class="actions">${button('Start Game', 'start-solo', '', !isCompleteLoadout(soloDraft.kit))}
       ${button('Use Starter Kit', 'starter')}</div><p id="view-status" role="status"></p>`));
@@ -187,7 +193,7 @@ function settingsMarkup() {
     <label class="check"><input type="checkbox" id="reduced" ${settings.reduced ? 'checked' : ''}> Reduced motion</label>
     <label class="check"><input type="checkbox" id="follow" ${settings.follow ? 'checked' : ''}> Follow my mouse with the camera</label>
     <label class="check"><input type="checkbox" id="touch" ${settings.touch ? 'checked' : ''}> Touch controls</label>
-    <p>Walk with WASD, arrow keys, or a tap. Choose a tower with 1–8 and select a tile. Press R or tap Rotate when placing a standalone wall. Use the minimap to pan.</p>`;
+    <p>Walk with WASD, arrow keys, or a tap. Choose a tower with 1–8 and select a tile. Adjacent walls connect automatically. Use the minimap to pan.</p>`;
 }
 
 function renderSettings() {
@@ -202,7 +208,8 @@ function hostSetup() {
     <label>Difficulty<select id="room-difficulty">${difficultyOptions(draftRoom.difficulty)}</select></label>
     <label>Seats<select id="capacity">${options([['1', '1 seat'], ['2', '2 seats'], ['3', '3 seats'], ['4', '4 seats']], draftRoom.capacity)}</select></label>
     <label>Visibility<select id="visibility">${options([['public', 'Public'], ['invite', 'Invite only']], draftRoom.visibility)}</select></label>
-    </div><div class="actions">${button('Start Server', 'host-start', '')}</div><p id="view-status" role="status"></p>`, 'multiplayer'));
+    </div><p class="difficulty-note" id="room-difficulty-note">${difficultyNote[draftRoom.difficulty]}</p>
+    <div class="actions">${button('Start Server', 'host-start', '')}</div><p id="view-status" role="status"></p>`, 'multiplayer'));
 }
 
 async function control(method = 'GET', body, suffix = '') {
@@ -512,19 +519,14 @@ function renderBuild(kit) {
 function updateSelected() {
   $('build-bar').querySelectorAll('[data-build]').forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.build) === selected)));
   const type = selectedTower();
-  $('rotate-wall').hidden = !isWall(type);
   $('build-info').textContent = !type ? 'WASD or arrow keys to move · tap the floor to walk'
-    : isWall(type) ? 'Walls join automatically. Rotate a standalone wall.'
+    : isWall(type) ? 'Place beside a wall to extend it or form a corner.'
       : `${TOWERS[type].description} Select a tile to build.`;
 }
 
 function selectedTower() {
   const player = state?.players.find(entry => entry.id === playerId);
   return selected === null ? null : (player?.loadout || STARTER_LOADOUT)[selected];
-}
-
-function rotateWall() {
-  if (isWall(selectedTower())) wallAxis = wallAxis === 'x' ? 'y' : 'x';
 }
 
 const commandErrors = {
@@ -546,10 +548,23 @@ function updateHud() {
   if (!player) return;
   $('cheese').textContent = player.cheese;
   $('health').textContent = `${Math.ceil(player.hp)}/${player.maxHp}`;
-  $('wave-title').textContent = state.enemies.some(entry => entry.type === 'cat') ? 'The Cat has arrived' : state.wave ? `Wave ${state.wave}` : 'Build your defenses';
+  const cat = state.enemies.find(entry => entry.type === 'cat');
+  const warning = cat?.windupUntil > state.time ? {
+    pounce: 'Pounce incoming', 'tail-sweep': 'Tail sweep incoming', 'cat-charge': 'Charge incoming',
+  }[cat.attackKind] : null;
+  $('wave-title').textContent = cat ? 'The Cat has arrived' : state.wave ? `Wave ${state.wave}` : 'Build your defenses';
   const until = Math.max(0, Math.ceil((state.nextWaveAt - state.time) / 1000));
-  $('wave-clock').textContent = Number.isFinite(until) && state.nextWaveAt ? until ? `Next wave in ${until}s` : 'Wave incoming' : state.status === 'active' ? 'Hold the mill' : '';
+  $('wave-clock').textContent = warning || (Number.isFinite(until) && state.nextWaveAt
+    ? until ? `Next wave in ${until}s` : 'Wave incoming'
+    : state.status === 'active' ? 'Hold the mill' : '');
   $('objective').textContent = `${state.objectives.filter(entry => entry.hp > 0).length}/${state.objectives.length} objectives standing`;
+  const activeEnemies = state.enemies;
+  const hint = activeEnemies.some(enemy => enemy.type === 'sapper' && enemy.windupUntil > state.time)
+    ? 'Sapper blast · spread out' : activeEnemies.some(enemy => enemy.type === 'mender')
+      ? 'Menders heal nearby rats' : activeEnemies.some(enemy => enemy.type === 'sapper')
+        ? 'Sappers attack clustered towers' : '';
+  $('threat-hint').hidden = !hint;
+  $('threat-hint').textContent = hint;
   $('teammates').innerHTML = state.players.filter(entry => entry.id !== playerId).map(entry => {
     const connection = lobby?.players.find(player => player.id === entry.id);
     return `<div>${escape(entry.name)} · ${connection?.connected === false ? 'Offline' : Math.ceil(entry.hp) + ' HP'}</div>`;
@@ -570,7 +585,7 @@ function frame(now) {
       updateHud();
       lastHud = now;
     }
-    board.draw(now, settings, selected !== null && cursor ? { ...cursor, axis: wallAxis, type: selectedTower() } : null);
+    board.draw(now, settings, selected !== null && cursor ? { ...cursor, type: selectedTower() } : null);
   } else if (view === 'waiting' && lobby?.phase === 'countdown') {
     const seconds = Math.max(1, Math.ceil((lobby.countdownUntil - Date.now()) / 1000));
     const label = `Battle starts in ${seconds}…`;
@@ -697,7 +712,11 @@ document.addEventListener('click', event => {
 
 document.addEventListener('change', event => {
   const element = event.target;
-  if (element.id === 'solo-difficulty') soloDraft.difficulty = element.value;
+  if (element.id === 'solo-difficulty') {
+    soloDraft.difficulty = element.value;
+    $('solo-difficulty-note').textContent = difficultyNote[element.value];
+  }
+  if (element.id === 'room-difficulty') $('room-difficulty-note').textContent = difficultyNote[element.value];
   if (element.dataset.slot !== undefined) {
     const kit = view === 'waiting' ? lobbyKit : soloDraft.kit;
     const updated = Number(element.dataset.slot);
@@ -742,9 +761,6 @@ window.addEventListener('keydown', event => {
   } else if (/^[1-8]$/.test(key)) {
     selected = Number(key) - 1;
     updateSelected();
-  } else if (key === 'r' && isWall(selectedTower())) {
-    event.preventDefault();
-    if (!event.repeat) rotateWall();
   } else if (key === 'escape') {
     if (selected !== null) { selected = null; updateSelected(); }
     else battleMenu();
@@ -764,7 +780,7 @@ canvas.addEventListener('pointerdown', event => {
   const point = board.coordinates(event.offsetX, event.offsetY);
   const x = Math.round(point.x);
   const y = Math.round(point.y);
-  if (selected !== null) return sendCommand({ type: 'build', x, y, slot: selected, axis: wallAxis });
+  if (selected !== null) return sendCommand({ type: 'build', x, y, slot: selected });
   const tower = state.structures.find(entry => entry.x === x && entry.y === y && entry.ownerId === playerId && !entry.branch && TOWERS[entry.type]?.upgrades);
   if (tower) {
     stopWalking();
@@ -788,7 +804,6 @@ canvas.addEventListener('wheel', event => {
 }, { passive: false });
 $('zoom-in').onclick = () => board.scale(1);
 $('zoom-out').onclick = () => board.scale(-1);
-$('rotate-wall').onclick = rotateWall;
 $('camera').onclick = () => { board.camera.follow = !board.camera.follow; };
 $('minimap').onclick = event => {
   if (!state) return;
