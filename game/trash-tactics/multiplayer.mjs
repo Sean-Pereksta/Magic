@@ -102,6 +102,7 @@ export function attachMultiplayer(server, {rankings=null,community=false,hostTok
   }
   function removePlayer(player, intentional=false) {
     const room=player.room;
+    if (room.phase === 'finished') {player.disconnectUntil=null;return;}
     if (room.phase === 'playing') {
       if (intentional) {
         const opponent=room.seats[1-player.team];
@@ -110,7 +111,7 @@ export function attachMultiplayer(server, {rankings=null,community=false,hostTok
       return;
     }
     if (room.phase === 'loading') cancelLoading(room,'A player left the loading screen.');
-    if (player.team === 0 || room.phase === 'finished') {
+    if (player.team === 0) {
       clearRoom(room,'The lobby closed.');
       return;
     }
@@ -202,7 +203,7 @@ export function attachMultiplayer(server, {rankings=null,community=false,hostTok
         break;
       case 'leave':
         removePlayer(player,true);
-        player.ws=null; ws.player=null; player.disconnectUntil=Date.now();
+        player.ws=null; ws.player=null; player.disconnectUntil=null;
         break;
       case 'order':
         if (room.phase==='playing' && room.commands.length < 80 && Number.isSafeInteger(data.seq) && data.seq>player.lastSeq) {

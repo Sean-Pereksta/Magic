@@ -460,7 +460,15 @@ function endMatch(onlineResult){
  $('endSymbol').textContent=won?'✦':'☂';$('endEyebrow').textContent=won?'THE DESK IS YOURS':'A MINOR PAPERWORK INCIDENT';
  $('endTitle').textContent=won?'Beautifully trashed.':'Back to the drawing desk.';
  $('endMessage').textContent=won?'Your scrap pack took down every rival desk. See how your plan came together.':'Your desks fell. Review the economy, army and losses to plan the next scrap.';
- lastReport=game.getMatchReport();reportCleanup?.();reportCleanup=renderMatchReport($('matchReport'),lastReport,{playerTeam:playerTeam()});
+ if(onlineResult?.winner===null){
+  $('endSymbol').textContent='◇';$('endEyebrow').textContent='DRAW';$('endTitle').textContent='The desks stand even.';
+ }
+ if(onlineResult?.reason==='forfeit')$('endMessage').textContent=won?'Your opponent forfeited.':'The match ended when a player left.';
+ if(onlineResult?.reason==='draw')$('endMessage').textContent='The battlefield ended in a draw.';
+ showRating({status:onlineResult?.ratingStatus,ratings:onlineResult?.ratings});
+ lastReport=onlineResult?.report || game.getMatchReport();reportCleanup?.();
+ $('matchReport').replaceChildren();
+ reportCleanup=lastReport?renderMatchReport($('matchReport'),lastReport,{playerTeam:playerTeam()}):null;
  $('lastReportButton').hidden=false;$('endOverlay').hidden=false;$('endTitle').focus?.({preventScroll:true});sound(won?'victory':'defeat');
 }
 function frame(now){const dt=Math.min(.05,(now-lastFrame)/1000);lastFrame=now;
