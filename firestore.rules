@@ -598,6 +598,9 @@ service cloud.firestore {
       return !exists(/databases/$(database)/documents/factionForgeNames/$(username))
         || get(/databases/$(database)/documents/factionForgeNames/$(username)).data.uid == request.auth.uid;
     }
+    // Ranked Trash Tactics standings and settlement receipts are written by the trusted match server.
+    match /trashTacticsRankedResults/{matchId} { allow read, write: if false; }
+
     match /users/{userId} {
       allow read: if isAuthed();
       // Keep existing unrelated profile fields compatible; migrated usernames
@@ -605,9 +608,11 @@ service cloud.firestore {
       // competitive ratings stay protected by turncraftProfileUpdate().
       allow create: if isAuthed() && forgeBoundOwner(userId)
         && turncraftProfileCreate()
+        && !request.resource.data.get('gameStats', {}).keys().hasAny(['trashTactics'])
         && !request.resource.data.keys().hasAny(forgeProtectedProfileFields());
       allow update: if isAuthed() && forgeBoundOwner(userId)
         && turncraftProfileUpdate(userId)
+        && !request.resource.data.get('gameStats', {}).diff(resource.data.get('gameStats', {})).affectedKeys().hasAny(['trashTactics'])
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(forgeProtectedProfileFields());
       allow delete: if false;
 

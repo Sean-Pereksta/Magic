@@ -14,13 +14,15 @@ function assertRoute(g,start,target,label){
  return path;
 }
 
-test('all seven maps provide four times the former area and preserve the local starting economy',()=>{
- assert.equal(Object.keys(MAPS).length,7);
+test('all nine maps have elevated headquarters and preserve the local starting economy',()=>{
+ assert.equal(Object.keys(MAPS).length,9);
  for(const map of ids)for(const players of [2,3,4]){
   const g=new Game({map,players});assert.equal(g.width,9600);assert.equal(g.height,6400);assert.equal(g.map.camps.length,players);
   assert(g.map.expansions.length>=10);assert.equal(g.map.laneInfo.length,g.map.lanes.length);
   for(let team=0;team<players;team++){
    const home=g.entities.find(e=>e.type==='desk'&&e.team===team),cans=g.entities.filter(e=>e.homeTeam===team);
+   assert.equal(g.elevationAt(home.x,home.y),1);
+   assert(g.map.plateaus.find(p=>p.campTeam===team).ramps.length>=2);
    assert.equal(cans.length,6);assert(cans.every(e=>e.amount===1500&&Math.abs(Math.hypot(e.x-home.x,e.y-home.y)-205)<.01),'home harvesting distances and yields retain unit scale');
    assert.equal(g.entities.filter(e=>e.team===team&&e.type==='twig').length,5);
    for(const e of g.entities.filter(e=>e.team===team))assert(!g._blocked(e.x,e.y,e.r,e.id),`${map}/${players}: ${e.type} starts on usable ground`);

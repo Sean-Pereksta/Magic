@@ -25,6 +25,10 @@ const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const fail=reason=>({ok:false,reason});
 const success=extra=>({ok:true,...extra});
 const point=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y);
+const castEffect=(g,e,type,to=e)=>g._effect(type,e.x,e.y,{
+  team:e.team,sourceId:e.id,sourceType:e.type,
+  angle:Math.atan2(to.y-e.y,to.x-e.x),life:.62,total:.62
+});
 const staticShot=(g,a,b)=>g._lineFree(a.x,a.y,b.x,b.y,0,b.id,false,true,true);
 const reset=e=>{e.path=null;e.detour=null;e.combatTarget=null;e.formationGoal=null;e.aim=null;delete e.pendingAbility;};
 function queueCast(e,name,target,position){
@@ -89,13 +93,13 @@ export function useAbility(g,ids,name,target={}){
   if(!units.length)return fail('Select troops with this ability.');
   const team=units[0].team;units=units.filter(e=>e.team===team);
   if(name==='intercept'){
-    const enemy=g.getEntity(target.targetId);if(!enemy||!g.canTarget(units[0],enemy))return fail('Choose a visible enemy aircraft this family can attack.');
-    for(const e of units){reset(e);e.crash=null;e.order={type:'attack',targetId:enemy.id};}return success({count:units.length});
+    const enemy=g.getEntity(target.targetId);if(!enemy||(enemy.type!=='cd'&&!WARFARE_TYPES[enemy.type]?.flying)||!g.canTarget(units[0],enemy))return fail('Choose a visible enemy aircraft this family can attack.');
+    for(const e of units){reset(e);e.crash=null;e.order={type:'attack',targetId:enemy.id};castEffect(g,e,'interceptCast',enemy);}return success({count:units.length});
   }
   if(name==='patrol'){
     const points=(target.points||[]).filter(point).map(p=>({x:clamp(p.x,25,g.width-25),y:clamp(p.y,25,g.height-25)}));
     if(points.length<2)return fail('Choose at least two patrol points.');
-    for(const e of units){reset(e);e.crash=null;e.order={type:'patrol',points:points.map(p=>({...p})),index:0};}return success({count:units.length});
+    for(const e of units){reset(e);e.crash=null;e.order={type:'patrol',points:points.map(p=>({...p})),index:0};castEffect(g,e,'patrolCast',points[0]);}return success({count:units.length});
   }
   units=units.filter(e=>(e.abilityCooldown||0)<=0&&!e.aim);
   if(!units.length)return fail('Wait for an ability to recharge.');
@@ -106,7 +110,7 @@ export function useAbility(g,ids,name,target={}){
     const caster=eligible.find(e=>dist(e,victim)<=def.range&&staticShot(g,e,victim))||eligible.find(e=>dist(e,victim)>def.range);
     if(!caster)return fail('Choose a visible Paper target with a clear shot.');
     if(dist(caster,victim)>def.range)return queueCast(caster,name,{targetId:victim.id},victim);
-    reset(caster);caster.order={type:'idle'};caster.aim={targetId:victim.id,remaining:1.5,total:1.5};caster.abilityCooldown=18;return success({casterId:caster.id});
+    reset(caster);caster.order={type:'idle'};caster.aim={targetId:victim.id,remaining:1.5,total:1.5};caster.abilityCooldown=18;castEffect(g,caster,'snipeCast',victim);return success({casterId:caster.id});
   }
   if(name==='shadowpath')return shadowPath(g,units,target);
   if(!point(target))return fail('Choose a battlefield location.');
@@ -131,11 +135,11 @@ export function useAbility(g,ids,name,target={}){
   }
   if(name==='crash'){
     const radius=units.length===1?0:Math.min(285,35*Math.sqrt(units.length));
-    units.forEach((e,i)=>{reset(e);const angle=i*2.399963229728653,rad=units.length===1?0:radius*Math.sqrt((i+.5)/units.length);e.crash={x:clamp(center.x+Math.cos(angle)*rad,e.r,g.width-e.r),y:clamp(center.y+Math.sin(angle)*rad,e.r,g.height-e.r),diving:false,remaining:.65};e.order={type:'crash'};});
+    units.forEach((e,i)=>{reset(e);const angle=i*2.399963229728653,rad=units.length===1?0:radius*Math.sqrt((i+.5)/units.length);e.crash={x:clamp(center.x+Math.cos(angle)*rad,e.r,g.width-e.r),y:clamp(center.y+Math.sin(angle)*rad,e.r,g.height-e.r),diving:false,remaining:.65};e.order={type:'crash'};castEffect(g,e,'crashCast',e.crash);});
     return success({count:units.length});
   }
   if(name==='roll'){
-    units.forEach((e,i)=>{reset(e);const a=Math.atan2(center.y-e.y,center.x-e.x),lane=(i-(units.length-1)/2)*76,dx=center.x-Math.sin(a)*lane-e.x,dy=center.y+Math.cos(a)*lane-e.y,len=Math.hypot(dx,dy),distance=Math.min(750,len);e.roll={x:e.x+dx/(len||1)*distance,y:e.y+dy/(len||1)*distance,elapsed:0,remainingDistance:distance,hits:new Map()};e.abilityCooldown=17;e.order={type:'idle'};});return success({count:units.length});
+    units.forEach((e,i)=>{reset(e);const a=Math.atan2(center.y-e.y,center.x-e.x),lane=(i-(units.length-1)/2)*76,dx=center.x-Math.sin(a)*lane-e.x,dy=center.y+Math.cos(a)*lane-e.y,len=Math.hypot(dx,dy),distance=Math.min(750,len);e.roll={x:e.x+dx/(len||1)*distance,y:e.y+dy/(len||1)*distance,elapsed:0,remainingDistance:distance,hits:new Map()};e.abilityCooldown=17;e.order={type:'idle'};castEffect(g,e,'rollCast',e.roll);});return success({count:units.length});
   }
   return fail('This ability is unavailable.');
 }
@@ -147,7 +151,7 @@ function shadowPath(g,units,target){
       const next=route[j],before=route[j-1]||e,angle=Math.atan2(next.y-before.y,next.x-before.x),desired={x:clamp(next.x-Math.sin(angle)*lane,e.r,g.width-e.r),y:clamp(next.y+Math.cos(angle)*lane,e.r,g.height-e.r)},length=dist(previous,desired);
       if(length<2)continue;const scale=Math.min(1,budget/length),p={x:previous.x+(desired.x-previous.x)*scale,y:previous.y+(desired.y-previous.y)*scale};points.push(p);budget-=length*scale;previous=p;
     }
-    if(points.length){reset(e);e.shadow={points,index:0,hits:new Set()};e.abilityCooldown=18;e.order={type:'idle'};}
+    if(points.length){reset(e);e.shadow={points,index:0,hits:new Set()};e.abilityCooldown=18;e.order={type:'idle'};castEffect(g,e,'shadowCast',points[0]);}
   });return success({count:units.length});
 }
 function barriersChanged(g){g._barrierRevision++;g._navigation=null;for(const e of g.entities){e.path=null;e.pathRefresh=0;e.detour=null;}}

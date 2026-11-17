@@ -7,6 +7,61 @@ function oval(c,x,y,rx,ry,fill,stroke=null,width=1.5){c.beginPath();c.ellipse(x,
 function chip(c,x,y,r,a,fill){c.save();c.translate(x,y);c.rotate(a);c.beginPath();c.moveTo(-r,-r*.7);c.lineTo(r*.7,-r);c.lineTo(r,r*.3);c.lineTo(-r*.3,r*.6);c.closePath();c.fillStyle=fill;c.fill();c.strokeStyle=INK+'80';c.lineWidth=.7;c.stroke();c.restore();}
 function burst(c,x,y,p,r,col,count=7){for(let i=0;i<count;i++){const a=i*TAU/count+.15,inner=r*(.38+p*.8),outer=inner+8*(1-p);line(c,[[x+Math.cos(a)*inner,y+Math.sin(a)*inner*.7],[x+Math.cos(a)*outer,y+Math.sin(a)*outer*.7]],col,1.7*(1-p)+.5);}}
 
+const spellParticles = {
+ abilityCast:    { colors:['#fff7cf','#f5b857','#a77949'], count:12, radius:35, rise:47 },
+ leap:           { colors:['#fff3c0','#d3a75f','#8c7964'], count:18, radius:64, rise:29 },
+ sweep:          { colors:['#f8fbfb','#9cdbeb','#ffe5a0'], count:18, radius:115, spread:1.85 },
+ crumple:        { colors:['#fffcea','#77d8b2','#e4fdb9'], count:16, radius:42, swirl:2.4, rise:35 },
+ snipeCast:      { colors:['#fffce9','#f7c46d','#ca7f42'], count:8, radius:43, spread:.58, cast:true },
+ snipe:          { colors:['#fffce9','#f7c46d','#d99553'], count:10, radius:58, rise:19 },
+ interceptCast:  { colors:['#e3ffff','#9adaff','#7cabdf'], count:12, radius:82, spread:.75, rear:true, air:true, cast:true },
+ patrolCast:     { colors:['#f4ffe5','#a6efcf','#a7c5ed'], count:14, radius:52, swirl:2.2, air:true, cast:true },
+ crashCast:      { colors:['#fff5d6','#ffcf70','#f08858'], count:12, radius:72, spread:1.2, rear:true, air:true, cast:true },
+ crash:          { colors:['#fff5c4','#ffcc66','#e57748'], count:24, radius:114, rise:72 },
+ forcefield:     { colors:['#efffff','#7afae1','#adf3cb'], count:22, radius:85, swirl:1.3, rise:38 },
+ forcefieldEnd:  { colors:['#e6fff4','#8cf3d2','#80d2d1'], count:18, radius:88, swirl:1.7, rise:20 },
+ division:       { colors:['#ffc993','#a8f3e9','#dbb5ff'], count:27, radius:215, swirl:1.3, rise:63 },
+ divisionEnd:    { colors:['#ffc993','#a8f3e9','#dbb5ff'], count:22, radius:210, swirl:2, rise:40 },
+ rollCast:       { colors:['#e8e8d4','#b0c2c9','#e2b677'], count:12, radius:67, spread:1.9, rear:true, cast:true },
+ rollhit:        { colors:['#e8e8d4','#b0c2c9','#e2b677'], count:16, radius:65, rise:23 },
+ shadowCast:     { colors:['#fde7ff','#ce9cf9','#796bae'], count:12, radius:85, spread:.91, cast:true },
+ shadowSlash:    { colors:['#fde7ff','#ce9cf9','#796bae'], count:14, radius:62, swirl:1.6 },
+ shadowFinish:   { colors:['#fde7ff','#ce9cf9','#796bae'], count:12, radius:83, rise:25 },
+ transportLoad:  { colors:['#f2ffff','#9fdaf8','#d2bdff'], count:12, radius:38, rise:51, swirl:1.6 },
+ transportDrop:  { colors:['#f2ffff','#9fdaf8','#f6e4a9'], count:12, radius:48, rise:40 },
+ capture:        { colors:['#f3ffce','#9cf6c1','#f2c47a'], count:12, radius:63, rise:22 }
+};
+
+// Derive the particle frame from simulation time. Reconnects and observers
+// render the same effects without replaying any past commands.
+export function drawAbilityParticles(renderer,c,fx){
+ const style=spellParticles[fx.type];
+ if(!style)return false;
+ if(!renderer.visible(fx.x,fx.y,style.radius+95))return style.cast===true;
+ const p=Math.max(0,Math.min(1,1-fx.life/fx.total));
+ const facing=(fx.angle||0)+(style.rear?Math.PI:0);
+ const reach=style.radius*(.18+.82*(1-(1-p)**2));
+ c.save();
+ for(let i=0;i<style.count;i++){
+  const fraction=(i+.5)/style.count;
+  const radius=reach*(.54+(i%7)*.082);
+  const angle=style.spread?facing+(fraction-.5)*style.spread:i*2.39996+p*(style.swirl||0);
+  const rise=Math.sin(p*Math.PI)*((style.rise||15)*(i%4+1)/4);
+  const dx=Math.cos(angle),dy=Math.sin(angle),x=fx.x+dx*radius,y=fx.y+dy*radius*.65-rise-(style.air?30:9);
+  const size=(i%4+2)*(1-p)*1.35+.4;
+  const pigment=style.colors[i%style.colors.length];
+  c.globalAlpha=(1-p)**.77;
+  if(i%3===0)chip(c,x,y,size,angle+p*3,pigment);
+  else {
+   const tail=size*(style.spread?3:1.6);
+   line(c,[[x-dx*tail,y-dy*tail],[x,y]],pigment,Math.max(1,size*.52));
+   if(i%2===0)oval(c,x,y,size*.32,size*.32,'#fffef3');
+  }
+ }
+ c.restore();
+ return style.cast===true;
+}
+
 export function drawBattleEffect(renderer,c,fx){
  if(drawDeathAnimation(renderer,c,fx))return true;
  if(!['hit','death','leap','abilityCast','crumple','forcefieldPush'].includes(fx.type))return false;

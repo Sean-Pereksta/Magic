@@ -5,7 +5,9 @@ export const MAP_BRIEFS={
  conveyor:{name:'Conveyor Chaos',tag:'Moving lanes · capture controls',plan:'Capture belt controls to move reinforcements faster. Scout the outer loop to catch raids before they reach your workers.'},
  inkdelta:{name:'Inkspill Delta',tag:'Three causeways · rich outer fields',plan:'Hold a causeway while scouting the others. Outer expansions pay more, but leave your supply lines exposed.'},
  corkcross:{name:'Corkboard Crossroads',tag:'Central heights · radial flanks',plan:'Trade central vision against safer outer routes. A second army can threaten expansions while your main force holds the crossroads.'},
- serverstack:{name:'Server Stack',tag:'Service corridors · divided fronts',plan:'Use the broad service lanes to split pressure. Aircraft can bypass the racks, so keep anti-air near your economy.'}
+ serverstack:{name:'Server Stack',tag:'Service corridors · divided fronts',plan:'Use the broad service lanes to split pressure. Aircraft can bypass the racks, so keep anti-air near your economy.'},
+ rainyard:{name:'Rain Gutter Run',tag:'Storm drains · three crossings',plan:'Guard the narrow middle crossing from the ledges or send a second squad across a wider spillway.'},
+ cartonworks:{name:'Carton Works',tag:'Raised shipping yard · open flanks',plan:'Climb any of four shipping-yard ramps to contest the center. Use the loading lanes to threaten rivals’ outer scrap fields.'}
 };
 export const DIFFICULTY_BRIEFS={
  easy:'Easy learns slowly: smaller attack groups, later expansions, and more time to recover. Standard resources.',
@@ -23,7 +25,7 @@ export function paintBattlefieldPreview(canvas,map){
  c.strokeStyle='#89987822';c.lineWidth=1/scale;
  for(let x=0;x<map.width;x+=600){c.beginPath();c.moveTo(x,0);c.lineTo(x,map.height);c.stroke();}
  for(let y=0;y<map.height;y+=600){c.beginPath();c.moveTo(0,y);c.lineTo(map.width,y);c.stroke();}
- for(const p of map.plateaus||[]){c.fillStyle='#899f7750';c.fillRect(p.x,p.y,p.w,p.h);}
+ for(const p of map.plateaus||[]){c.fillStyle=p.campTeam===undefined?'#899f7750':'#f5e4a3bf';c.fillRect(p.x,p.y,p.w,p.h);}
  for(const o of map.obstacles||[]){c.fillStyle=['canyon','inkpool'].includes(o.type)?'#6b727b':'#8b856c80';c.fillRect(o.x,o.y,o.w,o.h);}
  for(const [i,lane]of (map.lanes||[]).entries()){
   const info=map.laneInfo?.[i],points=Array.isArray(lane)?lane:lane.points||[];if(points.length<2)continue;

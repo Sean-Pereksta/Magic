@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createBattlefield} from '../battlefields.js';
 import {drawExpansionIcon,drawExpansionSprite,getAnimationFrame,drawWarfareFields,drawWarfareEffect,drawWarfareProjectile,animateWarfareMap,drawWarfarePlacement} from '../warfare-art.js';
+import {drawAbilityParticles} from '../battle-fx.js';
 
 function surface(width=1200,height=800){
  const calls=[],gradient={addColorStop(){}};
@@ -88,6 +89,11 @@ test('fields and division barriers respect fog and remain finite through casting
 test('all special attack effects and projectiles remain finite during their full lifetime',()=>{
  const game={map:{},entities:[],width:4800,height:3200,getEntity:()=>({x:500,y:500})},renderer=new Renderer(surface(),game);renderer.centerOn(400,400);
  for(const type of ['snipe','dart','crash','forcefield','forcefieldEnd','division','divisionEnd','divisionCollapse','rollhit','shadowSlash','shadowEnd','shadowFinish','capture','gateCollapse'])for(const life of [1,.5,0])assert(drawWarfareEffect(renderer,renderer.ctx,{type,x:400,y:400,fromX:300,fromY:300,radius:110,life,total:1,team:0}));
+ for(const type of ['abilityCast','leap','crumple','sweep','snipeCast','interceptCast','patrolCast','crashCast','forcefield','division','rollCast','shadowCast','transportLoad','transportDrop','capture']){
+  const {ctx}=surface();
+  drawAbilityParticles(renderer,ctx,{type,x:400,y:400,angle:1.3,life:.48,total:.6,team:1});
+  assert(ctx.calls.some(c=>c.method==='lineTo'),`${type} paints its own particle frame`);
+ }
  for(const type of ['snipe','dart','magic','stonebolt'])assert(drawWarfareProjectile(renderer,renderer.ctx,{type,x:400,y:400,fromX:300,fromY:300,life:1,team:0,targetId:1}));
 });
 

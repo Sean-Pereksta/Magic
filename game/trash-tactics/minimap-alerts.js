@@ -5,7 +5,7 @@ export const ATTACK_ALERT_LIFETIME=6,ATTACK_ALERT_LIMIT=5;
 function stateFor(game){let state=alerts.get(game);const now=Number.isFinite(game.time)?game.time:0;if(!state||now<state.time){state={items:[],nextId:1,time:now};alerts.set(game,state);}state.time=now;state.items=state.items.filter(item=>now-item.lastHit<=ATTACK_ALERT_LIFETIME);return state;}
 export function recordAttackAlert(game,event){
  const target=event?.target;
- if(!game||event?.type!=='hit'||!(event.amount>0)||target?.team!==0||!Number.isFinite(target.x)||!Number.isFinite(target.y))return false;
+ if(!game||event?.type!=='hit'||!(event.amount>0)||target?.team!==(game.localTeam??0)||!Number.isFinite(target.x)||!Number.isFinite(target.y))return false;
  const state=stateFor(game),now=state.time;
  let item=state.items.find(item=>Math.hypot(item.x-target.x,item.y-target.y)<260);
  if(item){item.lastHit=now;if(now-item.pulseAt>=.8){item.pulseAt=now;item.x=target.x;item.y=target.y;}}

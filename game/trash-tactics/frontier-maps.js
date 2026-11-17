@@ -1,11 +1,13 @@
 // Large tabletop battlefields share their actual collision geometry, routes and
 // resource roles with simulation, AI, lobby previews and cached world artwork.
-import {enrichTerrain,terrainHeight} from './terrain.js';
+import {addCampPlateaus,enrichTerrain,terrainHeight} from './terrain.js';
 export const FRONTIER_WIDTH=9600,FRONTIER_HEIGHT=6400;
 export const FRONTIER_MAPS={
  inkdelta:{id:'inkdelta',name:'Inkspill Delta',color:'#c9d5d1',tagline:'Three causeways across a flooded desk',brief:'Control three broad crossings, scout the ink banks, and protect exposed scrap islands.',features:['Three causeways','Ink rivers','Rich outer banks']},
  corkcross:{id:'corkcross',name:'Corkboard Crossroads',color:'#d6bf92',tagline:'A four-ramp crown with open flanking routes',brief:'Hold the central cork crown or bypass it along the north and south pinboard routes.',features:['Four-ramp center','Outer flanks','Elevated scrap']},
- serverstack:{id:'serverstack',name:'Server Stack',color:'#b8cfca',tagline:'Circuit corridors below an open air route',brief:'Split armies between rack corridors, defend service junctions, or fly over the server walls.',features:['Dual ground routes','Rack corridors','Open air lanes']}
+ serverstack:{id:'serverstack',name:'Server Stack',color:'#b8cfca',tagline:'Circuit corridors below an open air route',brief:'Split armies between rack corridors, defend service junctions, or fly over the server walls.',features:['Dual ground routes','Rack corridors','Open air lanes']},
+ rainyard:{id:'rainyard',name:'Rain Gutter Run',color:'#8593a6',tagline:'Cross the flood line between raised loading yards',brief:'Split troops between three gaps in the storm drains. Exposed service ledges overlook the narrow middle crossing.',features:['Three storm crossings','Exposed watch ledges','Wet asphalt']},
+ cartonworks:{id:'cartonworks',name:'Carton Works',color:'#d0aa75',tagline:'Two packing lines around a raised shipping yard',brief:'Control the center shipping yard or flank through the loading lanes between stacked boxes.',features:['Crossed packing lines','Shipping yard ramps','Rich loading docks']}
 };
 const legacyBriefs={desktop:{tagline:'Wide paper roads and raised desk-mat lookouts',brief:'Choose the central road, high-ground shelves or the exposed outer paper lanes.'},breakroom:{tagline:'Service routes around cups and napkin terraces',brief:'Contest the tile junctions while protecting side routes around the breakroom shelves.'},canyon:{tagline:'Three strategic crossings over a deep desk divide',brief:'Use the broad bridges, or break the central Stapler Gate to open a direct route.'},conveyor:{tagline:'A giant recycling line with reversible transport routes',brief:'Capture belt consoles, exploit conveyor speed and flank through the outer factory loop.'}};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -25,7 +27,7 @@ function appendApproaches(map,hubs){
 }
 function inkdelta(players){
  const map=template('inkdelta',players);
- for(const [y,h]of [[0,400],[1800,950],[3650,900],[6100,300]])map.obstacles.push({x:4380,y,w:840,h,type:'inkpool',terrain:true});
+ for(const [y,h]of [[0,310],[1800,950],[3650,900],[6100,300]])map.obstacles.push({x:4380,y,w:840,h,type:'inkpool',terrain:true});
  const crossings=[{y:1100,h:1400,name:'Northern blotter causeway'},{y:3200,h:900,name:'Center card causeway'},{y:5325,h:1550,name:'Southern cork causeway'}];
  for(const crossing of crossings){map.bridges.push({x:4140,y:crossing.y-crossing.h/2,w:1320,h:crossing.h,type:'blotterbridge',label:crossing.name});addRoute(map,route(crossing.name,crossing.y===3200?'main':'crossing',[[1650,crossing.y],[3550,crossing.y],[4800,crossing.y],[6050,crossing.y],[7950,crossing.y]],Math.min(620,crossing.h-180),crossing.y===3200?'contested':'exposed'));}
  for(const x of [3400,6200])addRoute(map,route(x<4800?'West bank flank':'East bank flank','flank',[[x,900],[x,3200],[x,5500]],400,'exposed'));
@@ -38,7 +40,8 @@ function inkdelta(players){
 }
 function corkcross(players){
  const map=template('corkcross',players);
- map.terrainLayouts=[[3900,2550,1800,1300,'The cork crown',{sides:['west','east','north','south'],opening:600,depth:440}],[1500,2380,1100,640,'West pin terrace',{opening:440,depth:360}],[7000,2380,1100,640,'East pin terrace',{opening:440,depth:360}],[3700,1080,900,560,'North memo shelf',{opening:400,depth:340}],[5000,4800,900,560,'South memo shelf',{opening:400,depth:340}]];
+ if(players===2)map.camps=[{x:800,y:3200},{x:8800,y:3200}];
+ map.terrainLayouts=[[3900,2550,1800,1300,'The cork crown',{sides:['west','east','north','south'],opening:600,depth:440}],[1500,2380,1100,640,'West pin terrace',{opening:440,depth:360}],[7000,2380,1100,640,'East pin terrace',{opening:440,depth:360}],[3380,1080,900,560,'North memo shelf',{opening:400,depth:340}],[5000,4800,900,560,'South memo shelf',{opening:400,depth:340}]];
  for(const [x,y,w,h,type]of [[3150,2180,510,460,'corkbundle'],[5940,3760,510,460,'corkbundle'],[3150,3800,510,440,'pinbox'],[5940,2180,510,440,'pinbox'],[1000,3600,600,340,'book'],[8000,3600,600,340,'book'],[680,1400,560,280,'ruler'],[8360,1400,560,280,'ruler']])map.obstacles.push({x,y,w,h,type});
  addRoute(map,route('Crown east-west ramp road','main',[[1100,3200],[2900,3200],[4800,3200],[6700,3200],[8500,3200]],540));
  addRoute(map,route('Crown north-south ramp road','main',[[4800,700],[4800,2000],[4800,3200],[4800,4400],[4800,5700]],540));
@@ -53,6 +56,7 @@ function corkcross(players){
 }
 function serverstack(players){
  const map=template('serverstack',players);
+ if(players===2)map.camps=[{x:800,y:3200},{x:8800,y:3200}];
  for(const x of [3100,5700])for(const [y,h]of [[0,1750],[2450,1500],[4650,1750]])map.obstacles.push({x,y,w:800,h,type:'serverrack',terrain:true});
  // North/south service breaks and three vertical corridors have generous
  // formation clearance; aircraft can fly directly above the solid rack banks.
@@ -68,6 +72,37 @@ function serverstack(players){
  return map;
 }
 
+function rainyard(players){
+ const map=template('rainyard',players);
+ if(players===3)map.camps[2]={x:4800,y:1020};
+ for(const [y,h] of [[0,620],[1690,1210],[3500,1220],[5810,590]])map.obstacles.push({x:4460,y,w:680,h,type:'inkpool',terrain:true});
+ for(const [y,h,name] of [[1150,1050,'North spillway'],[3200,600,'Gutter crossing'],[5265,1070,'South spillway']]){
+  map.bridges.push({x:4290,y:y-h/2,w:1020,h,type:'blotterbridge',label:name});
+  addRoute(map,route(name,y===3200?'main':'crossing',[[2100,y],[4800,y],[7500,y]],Math.min(520,h-60)));
+ }
+ for(const x of [3050,6550])addRoute(map,route(x<4800?'West drainage lane':'East drainage lane','flank',[[x,1150],[x,3200],[x,5265]],440,'exposed'));
+ map.terrainLayouts=[[3420,2170,720,630,'West service ledge',{opening:360,depth:260}],[5460,3600,720,630,'East service ledge',{opening:360,depth:260}]];
+ for(const [x,y,w,h] of [[1800,2050,760,430],[7040,3900,760,430],[1910,3990,650,340],[7040,2070,650,340]])map.obstacles.push({x,y,w,h,type:'serverrack'});
+ for(const [x,y,label] of [[900,1000,'Northwest drain salvage'],[8700,1000,'Northeast drain salvage'],[900,5400,'Southwest drain salvage'],[8700,5400,'Southeast drain salvage']])addExpansion(map,x,y,label);
+ for(const [x,y,label] of [[4800,3200,'Gutter center cache'],[3050,1150,'West spillway scrap'],[6550,5265,'East spillway scrap']])addExpansion(map,x,y,label,'center','contested',1.35);
+ appendApproaches(map,[{x:3050,y:1150},{x:6550,y:1150},{x:3050,y:5265},{x:6550,y:5265}]);
+ return map;
+}
+
+function cartonworks(players){
+ const map=template('cartonworks',players);
+ map.terrainLayouts=[[4110,2580,1380,1240,'Shipping yard',{sides:['west','east','north','south'],opening:570,depth:350}],[2200,2490,670,490,'West loading dock',{opening:345,depth:250}],[6730,3420,670,490,'East loading dock',{opening:345,depth:250}]];
+ for(const [x,y,w,h,type] of [[3090,1190,850,730,'cardboard'],[5660,4480,850,730,'cardboard'],[3120,4480,600,510,'corkbundle'],[5880,1410,600,510,'corkbundle'],[1630,1570,460,300,'tape'],[7510,4530,460,300,'tape']])map.obstacles.push({x,y,w,h,type});
+ addRoute(map,route('Packing line west–east','main',[[1100,3200],[4800,3200],[8500,3200]],530));
+ addRoute(map,route('Loading line north–south','highground',[[4800,900],[4800,3200],[4800,5500]],490));
+ addRoute(map,route('North packing bypass','flank',[[1670,2480],[2650,2150],[4800,2090],[6960,2170],[7930,2480]],440,'exposed'));
+ addRoute(map,route('South packing bypass','flank',[[1670,3930],[2650,4180],[4800,4270],[6960,4180],[7930,3930]],440,'exposed'));
+ for(const [x,y,label] of [[990,2030,'Upper west packaging'],[8610,2030,'Upper east packaging'],[990,4370,'Lower west packaging'],[8610,4370,'Lower east packaging']])addExpansion(map,x,y,label);
+ for(const [x,y,label] of [[4800,3200,'Shipping yard stock'],[4800,2030,'North belt stock'],[4800,4370,'South belt stock']])addExpansion(map,x,y,label,'center','contested',1.45);
+ appendApproaches(map,[{x:2500,y:2160},{x:7100,y:2160},{x:2500,y:4230},{x:7100,y:4230},{x:4800,y:1640}]);
+ return map;
+}
+
 // Legacy terrain arrays deliberately share references (cliffs also belong to
 // obstacles, ramps belong to plateaus). Scale each object exactly once.
 function scaleGeometry(map,scale){
@@ -79,10 +114,10 @@ function scaleGeometry(map,scale){
  map.width*=scale;map.height*=scale;
 }
 function safeNatural(map,camp,team){
- const base=Math.atan2(map.height/2-camp.y,map.width/2-camp.x),desired=620;
+ const base=Math.atan2(map.height/2-camp.y,map.width/2-camp.x),desired=680;
  for(const length of [desired,760,900])for(const turn of [0,.3,-.3,.6,-.6,.9,-.9,1.2,-1.2]){
   const p={x:Math.round(camp.x+Math.cos(base+turn)*length),y:Math.round(camp.y+Math.sin(base+turn)*length)};
-  if(frontierClear(map,p,225)&&clearLine(map,camp,p,90)&&Math.abs(terrainHeight(map,p.x,p.y)-terrainHeight(map,camp.x,camp.y))<.1)return {...p,natural:true,naturalTeam:team,role:'natural',risk:'safe',richness:1,amountMultiplier:1,label:`Camp ${team+1} natural scrap`};
+  if(frontierClear(map,p,225)&&clearLine(map,camp,p,50))return {...p,natural:true,naturalTeam:team,role:'natural',risk:'safe',richness:1,amountMultiplier:1,label:`Camp ${team+1} natural scrap`};
  }
  throw new Error(`${map.id}/${map.players}: no safe natural expansion for camp ${team+1}`);
 }
@@ -93,6 +128,7 @@ export function finalizeFrontierMap(map,{scale=1}={}){
  map.frontier=true;map.frontierFinalized=true;map.width=FRONTIER_WIDTH;map.height=FRONTIER_HEIGHT;
  Object.assign(map,legacyBriefs[map.id]||{});
  map.expansions=(map.expansions||[]).filter(p=>!p.natural);
+ addCampPlateaus(map);
  for(let team=0;team<map.camps.length;team++)map.expansions.unshift(safeNatural(map,map.camps[team],team));
  if(!FRONTIER_MAPS[map.id])for(const [x,y,label]of [[850,850,'Northwest outer salvage'],[8750,850,'Northeast outer salvage'],[850,5550,'Southwest outer salvage'],[8750,5550,'Southeast outer salvage']])if(frontierClear(map,{x,y},220)&&map.camps.every(c=>distance(c,{x,y})>650)&&map.expansions.every(e=>distance(e,{x,y})>360))addExpansion(map,x,y,label);
  // Expansion pads need a buildable desk center, and their resource clusters
@@ -105,12 +141,12 @@ export function finalizeFrontierMap(map,{scale=1}={}){
  const prior=map.laneInfo||[];
  map.laneInfo=map.lanes.map((points,i)=>({id:`${map.id}-lane-${i+1}`,name:i===0?'Main road':i===1?'Northern flank':i===2?'Southern flank':`Lookout route ${i-2}`,role:i===0?'main':i<3?'flank':'highground',width:i===0?500:400,risk:i===0?'contested':'exposed',...(prior[i]||{}),points}));
  map.regions=map.expansions.map((p,i)=>({x:p.x,y:p.y,r:230+i%3*28,type:map.id==='serverstack'?'circuit':map.id==='inkdelta'?'ink':map.id==='corkcross'?'cork':map.id==='breakroom'?'tile':'scrap',label:p.label,role:p.role}));
- map.strategic={area:map.width*map.height,startingCans:6,naturalDistance:620,minimumLaneWidth:400,resourceFields:map.expansions.length,theme:map.id};
+ map.strategic={area:map.width*map.height,startingCans:6,naturalDistance:680,minimumLaneWidth:400,resourceFields:map.expansions.length,theme:map.id};
  return map;
 }
 
 export function createFrontierBattlefield(id,players=2){
  if(!FRONTIER_MAPS[id])return null;
- const map=({inkdelta,corkcross,serverstack})[id](Math.max(2,Math.min(4,players)));
+ const map=({inkdelta,corkcross,serverstack,rainyard,cartonworks})[id](Math.max(2,Math.min(4,players)));
  return finalizeFrontierMap(enrichTerrain(map));
 }

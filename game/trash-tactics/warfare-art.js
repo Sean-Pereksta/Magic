@@ -1,5 +1,6 @@
 /* Original painted sprites and Canvas animation for the Warfare expansion. */
 import {ABILITIES,FORCE_FIELD_RADIUS} from './warfare.js';
+import {projectGround} from './world-art.js';
 const INK='#354549', GOLD='#e6b454', PAPER='#fff9df', VIOLET='#9276c6';
 const COLORS=['#269b98','#ed795d','#9e7bc5','#d4aa4e'];
 const team=t=>COLORS[t]||'#9da78c';
@@ -131,7 +132,7 @@ export function drawExpansionIcon(c,type,tc,options={}){
 
 export function drawWarfareEntityOverlay(renderer,c,e,selected){
  const t=renderer.time||0,g=renderer.game,tc=team(e.team);
- if(selected&&e.team===0&&e.pendingAbility){
+ if(selected&&e.team===(g.localTeam??0)&&e.pendingAbility){
   const pending=e.pendingAbility,col=pending.name==='division'?VIOLET:pending.name==='snipe'?GOLD:'#53bdb1';
   const entityTarget=pending.target?.targetId?g.getEntity?.(pending.target.targetId):null;
   const target=entityTarget||(!pending.target?.targetId?pending.target:null),range=pending.range||ABILITIES[pending.name]?.range||420;
@@ -150,7 +151,7 @@ export function drawWarfareEntityOverlay(renderer,c,e,selected){
  // A visible diving aircraft telegraphs its actual impact footprint. This also
  // gives opponents a short chance to react; an unseen destination stays hidden.
  if(e.crash&&renderer.pointVisible(e.crash.x,e.crash.y)){
-  const p=e.crash,col=e.team===0?tc:'#dc795e',pulse=.55+Math.sin(t*13)*.2,progress=p.diving?clamp(1-(p.remaining??.65)/.65):0;
+  const p=e.crash,col=e.team===(g.localTeam??0)?tc:'#dc795e',pulse=.55+Math.sin(t*13)*.2,progress=p.diving?clamp(1-(p.remaining??.65)/.65):0;
   c.save();c.globalAlpha=p.diving?.9:.5;c.setLineDash([6,7]);oval(c,p.x,p.y,75,75,col+'0c',col,1.6);c.setLineDash([]);
   oval(c,p.x,p.y,Math.max(5,75*(1-progress)),Math.max(5,75*(1-progress)),null,col+'b0',1.1);
   for(let i=0;i<4;i++){const a=i*Math.PI/2;c.globalAlpha=pulse;stroke(c,[[p.x+Math.cos(a)*82,p.y+Math.sin(a)*82],[p.x+Math.cos(a)*66,p.y+Math.sin(a)*66]],col,2.4);}
@@ -170,11 +171,13 @@ export function drawWarfareEntityOverlay(renderer,c,e,selected){
 export function drawWarfareFields(renderer,c,layer='ground'){
  const g=renderer.game,t=renderer.time||0;
  for(const f of g.forceFields||[]){const r=f.r||FORCE_FIELD_RADIUS;if(!renderer.visible(f.x,f.y,r+40)||!renderer.pointVisible(f.x,f.y))continue;const fade=clamp((f.remaining??10)/1.7),tc=team(f.team);c.save();c.globalAlpha=fade;
+  const [x,y]=projectGround(g.map,f.x,f.y);c.translate(x-f.x,y-f.y);
   if(layer==='ground'){oval(c,f.x,f.y,r,r,tc+'12',tc,2);oval(c,f.x,f.y,r-5,r-5,null,'#c8fff394',1);for(let i=0;i<10;i++){const a=t*.5+i*TAU/10;glint(c,f.x+Math.cos(a)*r,f.y+Math.sin(a)*r,tc,2.5);}}
   else{const glow=c.createLinearGradient(f.x,f.y-r*.9,f.x,f.y+r);glow.addColorStop(0,'#c7fff524');glow.addColorStop(.5,tc+'0a');glow.addColorStop(1,tc+'19');c.beginPath();c.ellipse(f.x,f.y,r,r,0,0,Math.PI);c.bezierCurveTo(f.x-r,f.y-r*1.25,f.x+r,f.y-r*1.25,f.x+r,f.y);paint(c,glow,tc+'90',1.5);c.save();c.beginPath();c.ellipse(f.x,f.y,r,r,0,0,Math.PI);c.bezierCurveTo(f.x-r,f.y-r*1.25,f.x+r,f.y-r*1.25,f.x+r,f.y);c.clip();for(let j=0;j<6;j++){const yy=f.y-r*.7+j*r*.25;stroke(c,[[f.x-r,yy],[f.x+r,yy-r*.1]],'#c2fff52b',1);}c.beginPath();c.ellipse(f.x,f.y,r*.58,r*.88,0,Math.PI,TAU);paint(c,null,'#c2fff53a',1);c.restore();c.beginPath();c.ellipse(f.x,f.y,r,r*.72,0,Math.PI*1.1,Math.PI*1.65);paint(c,null,'#e1fff590',2);}
   c.restore();
  }
  for(const f of g.divisions||[]){const r=f.r||350;if(!renderer.visible(f.x,f.y,r+30)||!renderer.pointVisible(f.x,f.y))continue;const casting=typeof f.casting==='number'&&f.casting>0,fade=clamp((f.remaining??9)/1.5),reveal=casting?clamp(1-f.casting/1.5):1,rotation=f.angle??-Math.PI/2,colors=['#b7a06b','#50b8b0','#a58bd0'];c.save();c.globalAlpha=fade*(casting?.55:1);
+  const [x,y]=projectGround(g.map,f.x,f.y);c.translate(x-f.x,y-f.y);
   if(layer==='ground'){for(let i=0;i<3;i++){const a=rotation+i*TAU/3;c.beginPath();c.moveTo(f.x,f.y);c.arc(f.x,f.y,r*(casting?.2+reveal*.8:1),a,a+TAU/3);c.closePath();paint(c,colors[i]+'1c',colors[i]+'aa',2);familyMark(c,['rock','paper','scissors'][i],f.x+Math.cos(a+Math.PI/3)*r*.64,f.y+Math.sin(a+Math.PI/3)*r*.64,24);}oval(c,f.x,f.y,r,r,null,'#e2d2f4',3);oval(c,f.x,f.y,r+7,r+7,null,VIOLET+'90',1.3);for(let i=0;i<24;i++){const a=i*TAU/24+t*.08;stroke(c,[[f.x+Math.cos(a)*(r-9),f.y+Math.sin(a)*(r-9)],[f.x+Math.cos(a)*(r+3),f.y+Math.sin(a)*(r+3)]],'#f4e9ff',i%3?1:2);}}
   else{for(let i=0;i<3;i++){const a=rotation+i*TAU/3,x=f.x+Math.cos(a)*r,y=f.y+Math.sin(a)*r;path(c,[[f.x,f.y],[x,y],[x,y-34],[f.x,f.y-34]],colors[i]+'18',colors[i]+'a0',1.5);stroke(c,[[f.x,f.y-34],[x,y-34]],'#eadfff',2);for(let j=0;j<4;j++){const p=(t*.3+j/4)%1,xx=f.x+(x-f.x)*p,yy=f.y+(y-f.y)*p-34;glint(c,xx,yy,colors[i],2.5);}}for(let i=0;i<7;i++){const a=t*.35+i*TAU/7,x=f.x+Math.cos(a)*r*.9,y=f.y+Math.sin(a)*r*.9-24;c.save();c.translate(x,y);c.rotate(a);path(c,[[-9,-3],[8,-4],[12,4],[-5,3]],PAPER+'b0',VIOLET,1);c.restore();}}
   c.restore();
@@ -199,7 +202,7 @@ export function drawWarfareEffect(renderer,c,fx){
   const animated=texture===EFFECT_SHEET,cw=texture.naturalWidth/3,ch=texture.naturalHeight/(animated?6:2),column=animated?Math.min(2,Math.floor(p*3)):tile%3,row=animated?tile:Math.floor(tile/3),size=({crash:radius*2.8,forcefield:radius*2.1,forcefieldEnd:radius*2.1,division:radius*1.9,divisionEnd:radius*1.9,divisionCollapse:radius*1.9,rollhit:105,snipe:110,snipeShot:70,dartImpact:45})[fx.type]||110;
   c.save();c.translate(fx.x,fx.y-12);c.rotate(['shadowSlash','shadowEnd','shadowFinish'].includes(fx.type)?fx.angle||0:fx.type.startsWith('division')?p*.3:0);const scale=.55+p*.75;c.scale(scale,scale);c.globalAlpha=(1-p)*(['division','divisionEnd','forcefield','forcefieldEnd'].includes(fx.type)?.55:.95);c.drawImage(texture,column*cw,row*ch,cw,ch,-size/2,-size/2,size,size);c.restore();
  }
- if(['snipe','snipeShot','dart','dartImpact','magic','stonebolt'].includes(fx.type)){const rifle=fx.type==='snipe'||fx.type==='snipeShot',magic=fx.type==='magic'||fx.type==='stonebolt';if(Number.isFinite(fx.fromX)){const end=rifle&&p<.4?{x:fx.fromX+(fx.x-fx.fromX)*clamp(p*3),y:fx.fromY+(fx.y-fx.fromY)*clamp(p*3)}:fx;stroke(c,[[fx.fromX,fx.fromY-14],[end.x,end.y-14]],rifle?'#fff3c7':tc+'99',rifle?2.8:1.6);}glint(c,fx.x,fx.y-12,magic?'#b8f5e5':'#ffe09b',8+p*9);oval(c,fx.x,fx.y-12,9+p*16,7+p*10,null,magic?tc:GOLD,2);}
+ if(['snipe','snipeShot','dart','dartImpact','magic','stonebolt'].includes(fx.type)){const rifle=fx.type==='snipe'||fx.type==='snipeShot',magic=fx.type==='magic'||fx.type==='stonebolt';if(Number.isFinite(fx.fromX)&&(renderer.pointVisible?.(fx.fromX,fx.fromY)??true)){const end=rifle&&p<.4?{x:fx.fromX+(fx.x-fx.fromX)*clamp(p*3),y:fx.fromY+(fx.y-fx.fromY)*clamp(p*3)}:fx;stroke(c,[[fx.fromX,fx.fromY-14],[end.x,end.y-14]],rifle?'#fff3c7':tc+'99',rifle?2.8:1.6);}glint(c,fx.x,fx.y-12,magic?'#b8f5e5':'#ffe09b',8+p*9);oval(c,fx.x,fx.y-12,9+p*16,7+p*10,null,magic?tc:GOLD,2);}
  else if(fx.type==='snipeInterrupted'){const x=fx.x,y=fx.y-27;stroke(c,[[x-5,y-5],[x+5,y+5]],'#dc9970',2);stroke(c,[[x-5,y+5],[x+5,y-5]],'#dc9970',2);}
  else if(fx.type==='crash'){const r=radius*(.2+p);oval(c,fx.x,fx.y,r,r*.65,'#f3c57d'+(p<.3?'55':'11'),GOLD,4*(1-p)+1);oval(c,fx.x,fx.y,r*.65,r*.43,null,'#fff4c8',3);for(let i=0;i<15;i++){const a=i*2.399,rr=(18+p*radius)*(i%3?.8:1.3),x=fx.x+Math.cos(a)*rr,y=fx.y+Math.sin(a)*rr*.7-Math.sin(p*Math.PI)*(15+i%4*5);c.save();c.translate(x,y);c.rotate(a+p*6);if(i%3===0)oval(c,0,-p*10,8+p*11,6+p*8,'#a49e8c55',null);else path(c,[[-4,-3],[5,-2],[3,5],[-3,4]],i%2?PAPER:'#d9e8de',INK,.6);c.restore();}if(p<.35)glint(c,fx.x,fx.y-7,'#fffbe2',28*(1-p));}
  else if(fx.type==='forcefield'||fx.type==='forcefieldEnd'){const r=radius*(fx.type==='forcefieldEnd'?1-p:.2+p);oval(c,fx.x,fx.y,r,r,null,'#acf7e6',3);for(let i=0;i<8;i++){const a=i*TAU/8;glint(c,fx.x+Math.cos(a)*r,fx.y+Math.sin(a)*r,tc,3);}}

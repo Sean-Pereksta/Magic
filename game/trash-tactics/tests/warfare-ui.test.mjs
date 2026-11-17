@@ -13,20 +13,24 @@ class Element {
   dispatch(type,props={}) {
     const event={type,target:this,currentTarget:this,preventDefault(){},stopPropagation(){},key:'',
       pointerId:1,pointerType:'mouse',button:0,clientX:0,clientY:0,...props};
-    for(const fn of this.listeners[type]??[])fn(event);
+    let result;
+    for(const fn of this.listeners[type]??[])result=fn(event);
+    return result;
   }
   setAttribute(){}focus(){}setPointerCapture(){}releasePointerCapture(){}
   hasPointerCapture(){return true;}
   querySelectorAll(){return [];}querySelector(){return null;}closest(){return null;}
   getBoundingClientRect(){return {left:0,top:0,width:800,height:600};}
   getContext(){return {};}
-  click(){this.dispatch('click');}
+  replaceChildren(){this.innerHTML='';}
+  click(){return this.dispatch('click');}
 }
 
 let harnessId=0;
 async function harness() {
   const elements=new Map(),element=id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);};
   element('guide').hidden=true;
+  element('mapLoading').hidden=true;
   const document={getElementById:element,querySelector:()=>element('sidebar'),querySelectorAll:()=>[],activeElement:null};
   const window=new Element('window');window.innerWidth=1000;window.innerHeight=700;
   let now=10000,nextTimer=1,frame;const timers=new Map();
@@ -37,13 +41,15 @@ async function harness() {
   const fakeRender=`export class Renderer {constructor(canvas,game){this.canvas=canvas;this.game=game;this.camera={zoom:1};this.centers=[];}resize(){}centerOn(x,y){this.centers.push({x,y});}screenToWorld(x,y){return {x,y};}worldToScreen(x,y){return {x,y};}pan(dx,dy){(this.pans??=[]).push({dx,dy});}zoomAt(){}draw(state){this.lastDraw=state;}drawMinimap(){}}export function drawIcon(){}`;
   const source=(await readFile(new URL('../game.js',import.meta.url),'utf8'))
     .replace("'./engine.js'",JSON.stringify(new URL('../engine.js',import.meta.url).href))
+    .replace("'./online-client.mjs'",JSON.stringify(new URL('../online-client.mjs',import.meta.url).href))
+    .replace("'./online-ui.mjs'",JSON.stringify('data:text/javascript,export function setupOnlineLobby(){}'))
     .replace("'./ability-icons.js'",JSON.stringify(new URL('../ability-icons.js',import.meta.url).href))
     .replace("'./skirmish-menu.js'",JSON.stringify(new URL('../skirmish-menu.js',import.meta.url).href))
     .replace("'./minimap-alerts.js'",JSON.stringify(new URL('../minimap-alerts.js',import.meta.url).href))
     .replace("'./match-report.js'",JSON.stringify(new URL('../match-report.js',import.meta.url).href))
     .replace("'./render.js'",JSON.stringify('data:text/javascript;base64,'+Buffer.from(fakeRender).toString('base64')));
   await import('data:text/javascript;base64,'+Buffer.from(source+`\n//# sourceURL=trash-tactics-abilities-under-test-${++harnessId}.js`).toString('base64'));
-  element('startButton').click();
+  await element('startButton').click();
   const state=window.trashTactics,game=state.game;
   game._think=Infinity;game.entities=game.entities.filter(e=>e.type==='desk');game._collisionBuildings=null;game.map.obstacles=[];game.map.plateaus=[];game.map.ramps=[];game.canSee=()=>true;game.isVisible=()=>true;
   const point=(x,y,more={})=>{const event={clientX:x,clientY:y,...more};element('world').dispatch('pointerdown',event);element('world').dispatch('pointerup',event);};

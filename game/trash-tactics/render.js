@@ -4,10 +4,11 @@ import {TYPES} from './engine.js';
 import {drawWallBlock,drawWallEntity,drawWallPlacement} from './wall-art.js';
 import {WALL_SIZE} from './walls.js';
 import {paintTabletopDetails} from './tabletop-details.js';
-import {drawBattleEffect} from './battle-fx.js';
+import {drawAbilityParticles,drawBattleEffect} from './battle-fx.js';
 import {loadDeathArtwork,deathArtworkStatus} from './death-art.js';
 import {paintFrontierMap,drawFrontierObstacle} from './frontier-art.js';
 import {drawAttackAlerts} from './minimap-alerts.js';
+import {loadWorldArtwork,loadStructureArtwork,drawPaintedStructure,worldArtworkReady,paintLowGround,paintCliffWorld,projectGround,pickGround,projectTerrainFog} from './world-art.js';
 const INK='#354549', TEAL='#269b98', CORAL='#ed795d';
 const TEAM_COLORS=[TEAL,CORAL,'#9e7bc5','#d4aa4e'];
 const teamColor=t=>TEAM_COLORS[t]||'#91a588';
@@ -17,6 +18,22 @@ const SPRITES={}; if(typeof Image!=='undefined')for(const type of ['rock','paper
 const ANIMATION_SHEETS={};if(typeof Image!=='undefined')for(const type of SPECIALISTS)ANIMATION_SHEETS[type]=paintedImage(type+'-sheet');
 export const loadWarfareArtwork=()=>Promise.allSettled([...Object.values(SPRITES),...Object.values(ANIMATION_SHEETS)].map(img=>img.decode?.()||Promise.resolve()).concat(loadWarfareEffects(),loadDeathArtwork()));
 export const warfareArtworkStatus=()=>({sheets:Object.fromEntries(['sniper','airplane','mage','divider','rollingrock','shears'].map(type=>[type,!!(ANIMATION_SHEETS[type]?.complete&&ANIMATION_SHEETS[type].naturalWidth)])),effects:warfareEffectsLoaded(),deaths:deathArtworkStatus()});
+export async function loadBattlefieldArtwork(_map,onProgress=()=>{}){
+ if(typeof Image==='undefined')return;
+ const image=async img=>{
+  try{await img.decode();}catch{if(!img._pngFallback)throw new Error('A painted sprite could not be decoded.');await img.decode();}
+  if(!img.naturalWidth)throw new Error('A painted sprite could not be loaded.');
+ };
+ const ready=async(load,check,message)=>{await load();if(!check())throw new Error(message);};
+ const assets=[
+  loadWorldArtwork(),loadStructureArtwork(),
+  ...[...Object.values(SPRITES),...Object.values(ANIMATION_SHEETS)].map(image),
+  ready(loadWarfareEffects,warfareEffectsLoaded,'The painted ability effects could not be loaded.'),
+  ready(loadDeathArtwork,()=>deathArtworkStatus().remains,'The knockout artwork could not be loaded.')
+ ];
+ let loaded=0;onProgress(loaded,assets.length);
+ await Promise.all(assets.map(asset=>asset.then(()=>onProgress(++loaded,assets.length))));
+}
 function rr(c,x,y,w,h,r=8){c.beginPath();c.roundRect(x,y,w,h,r);}
 function shape(c,fill,stroke=INK,width=2){if(fill){c.fillStyle=fill;c.fill();}if(stroke){c.strokeStyle=stroke;c.lineWidth=width;c.stroke();}}
 function line(c,points,color=INK,width=3){c.beginPath();points.forEach((p,i)=>i?c.lineTo(...p):c.moveTo(...p));c.strokeStyle=color;c.lineWidth=width;c.lineCap='round';c.lineJoin='round';c.stroke();}
@@ -27,18 +44,21 @@ function limbs(c,type,walk=0,t=0){const sw=Math.sin(walk)*3;line(c,[[-11,6],[-19
 export function drawIcon(c,type,x,y,size=50,team=0,options={}){
  c.save();c.translate(x,y);c.scale(size/50,size/50);c.lineJoin='round';c.lineCap='round';const tc=teamColor(team);const walk=options.walk||0;
  if(type==='wall'){drawWallBlock(c,{mask:options.mask||0,team,health:options.health??1,size:46,shadow:true});c.restore();return;}
+ if(!options.vector&&drawPaintedStructure(c,type,options)){c.restore();return;}
  if(!options.vector&&drawExpansionSprite(c,type,SPRITES[type],tc,{...options,sheet:options.battlefield?ANIMATION_SHEETS[type]:null})){c.restore();return;}
  if(drawExpansionIcon(c,type,tc,options)){c.restore();return;}
  const sprite=SPRITES[type];
  if(options.sprite&&sprite?.complete&&sprite.naturalWidth){
   const attack=Math.max(0,Math.min(1,(options.attackAnim||0)/.25));const angle=options.facing||0;
-  c.translate(Math.cos(angle)*attack*8,Math.sin(angle)*attack*5);c.rotate(walk?Math.sin(walk)*.045:0);c.scale(1+attack*.08,1-attack*.06);
+  const gait=Math.sin(walk),stride=walk?Math.sin(walk*2):0;
+  c.translate(Math.cos(angle)*attack*8,Math.sin(angle)*attack*5-stride*1.3);c.rotate(walk?gait*.055:0);c.scale(1+attack*.08,1-attack*.06+stride*.024);
+  if(options.battlefield&&Math.cos(angle)<-.05)c.scale(-1,1);
   if(walk){
    // Paper-cut puppet animation: body sway and independently stepping feet.
-   const iw=sprite.naturalWidth,ih=sprite.naturalHeight,cut=Math.round(ih*.76),split=Math.round(iw/2),step=Math.sin(walk)*2.4;
-   c.drawImage(sprite,0,0,iw,cut,-29,-30,58,58*cut/ih);
+   const iw=sprite.naturalWidth,ih=sprite.naturalHeight,cut=Math.round(ih*.75),split=Math.round(iw/2),step=gait*2.7;
    c.drawImage(sprite,0,cut,split,ih-cut,-29,-30+58*cut/ih-step,29,58*(ih-cut)/ih);
    c.drawImage(sprite,split,cut,iw-split,ih-cut,0,-30+58*cut/ih+step,29,58*(ih-cut)/ih);
+   c.drawImage(sprite,0,0,iw,cut+3,-29,-30,58,58*(cut+3)/ih);
   }else c.drawImage(sprite,-29,-30,58,58);
   c.restore();return;
  }
@@ -150,14 +170,16 @@ export class Renderer {
  constructor(canvas,game){this.canvas=canvas;this.ctx=canvas.getContext('2d');this.game=game;this.artSprites=SPRITES;this.artSheets=ANIMATION_SHEETS;this.camera={x:0,y:0,zoom:.9};this.width=800;this.height=600;this.marker=null;this.lastDraw=performance.now();this.motion=new Map();this.resize();this.centerOn(600,800);}
  resize(){const center={x:this.camera.x+this.width/this.camera.zoom/2,y:this.camera.y+this.height/this.camera.zoom/2};const rect=this.canvas.getBoundingClientRect();this.width=Math.max(1,rect.width);this.height=Math.max(1,rect.height);const dpr=Math.min(window.devicePixelRatio||1,2);this.dpr=dpr;this.canvas.width=Math.round(this.width*dpr);this.canvas.height=Math.round(this.height*dpr);this.camera.x=center.x-this.width/this.camera.zoom/2;this.camera.y=center.y-this.height/this.camera.zoom/2;this.clampCamera();}
  clampCamera(){const g=this.game;const w=g.width||2400,h=g.height||1600;const vw=this.width/this.camera.zoom,vh=this.height/this.camera.zoom;this.camera.x=Math.max(-80,Math.min(w-vw+80,this.camera.x));this.camera.y=Math.max(-80,Math.min(h-vh+80,this.camera.y));if(vw>w+160)this.camera.x=(w-vw)/2;if(vh>h+160)this.camera.y=(h-vh)/2;}
- centerOn(x,y){this.camera.x=x-this.width/this.camera.zoom/2;this.camera.y=y-this.height/this.camera.zoom/2;this.clampCamera();}
+ get localTeam(){return this.game.localTeam??0;}
+ centerOn(x,y){const [px,py]=projectGround(this.game.map,x,y);this.camera.x=px-this.width/this.camera.zoom/2;this.camera.y=py-this.height/this.camera.zoom/2;this.clampCamera();}
  pan(dx,dy){this.camera.x-=dx/this.camera.zoom;this.camera.y-=dy/this.camera.zoom;this.clampCamera();}
  zoomAt(factor,clientX,clientY){const rect=this.canvas.getBoundingClientRect();const x=(clientX??rect.left+this.width/2)-rect.left,y=(clientY??rect.top+this.height/2)-rect.top;const wx=this.camera.x+x/this.camera.zoom,wy=this.camera.y+y/this.camera.zoom;this.camera.zoom=Math.max(.4,Math.min(1.65,this.camera.zoom*factor));this.camera.x=wx-x/this.camera.zoom;this.camera.y=wy-y/this.camera.zoom;this.clampCamera();}
- screenToWorld(clientX,clientY){const r=this.canvas.getBoundingClientRect();return{x:this.camera.x+(clientX-r.left)/this.camera.zoom,y:this.camera.y+(clientY-r.top)/this.camera.zoom};}
- worldToScreen(x,y){return{x:(x-this.camera.x)*this.camera.zoom,y:(y-this.camera.y)*this.camera.zoom};}
+ screenToWorld(clientX,clientY){const r=this.canvas.getBoundingClientRect();return pickGround(this.game.map,this.camera.x+(clientX-r.left)/this.camera.zoom,this.camera.y+(clientY-r.top)/this.camera.zoom);}
+ worldToScreen(x,y){const [px,py]=projectGround(this.game.map,x,y);return{x:(px-this.camera.x)*this.camera.zoom,y:(py-this.camera.y)*this.camera.zoom};}
+ onTerrain(c,x,y,paint){const [px,py]=projectGround(this.game.map,x,y);c.save();c.translate(px-x,py-y);paint();c.restore();}
  draw(state={}){
  const c=this.ctx,g=this.game,cam=this.camera;const now=performance.now(),dt=Math.min(.1,(now-this.lastDraw)/1000);this.lastDraw=now;this.time=state.time??g.time??now/1000;
- const remembered=g.getRememberedEntities?.(0)||[];
+ const remembered=g.getRememberedEntities?.(this.localTeam)||[];
  if(this._motionGame!==g){this.motion.clear();this._motionGame=g;}
  else if(this.motion.size>(g.entities?.length||0)+64){const live=new Set((g.entities||[]).filter(e=>e.hp>0).map(e=>e.id));for(const id of this.motion.keys())if(!live.has(id))this.motion.delete(id);}
  c.setTransform(this.dpr,0,0,this.dpr,0,0);c.clearRect(0,0,this.width,this.height);c.fillStyle='#e2d8c3';c.fillRect(0,0,this.width,this.height);c.save();c.scale(cam.zoom,cam.zoom);c.translate(-cam.x,-cam.y);this.drawGround(c);
@@ -166,25 +188,26 @@ export class Renderer {
  drawWarfareFields(this,c,'ground');
  const entities=(g.entities||[]).filter(e=>e.hp>0&&!e.transportedBy&&this.entityVisible(e));const selected=state.selected||new Set();
  // Defense coverage is painted on the ground before troops and structures.
- for(const e of entities)if(e.type==='mouse'&&e.team===0&&selected.has(e.id)){const range=TYPES.mouse.range;c.save();c.setLineDash([7,9]);ellipse(c,e.x,e.y,range,range,teamColor(e.team)+'05',teamColor(e.team)+'60',1.4/cam.zoom);c.restore();}
- for(const e of entities)if(e.type==='trash'&&this.visible(e.x,e.y,80))this.drawEntity(c,e,selected.has(e.id));
- for(const e of entities.filter(e=>e.type!=='trash'&&!['cd','airplane'].includes(e.type)&&this.visible(e.x,e.y,e.type==='staplergate'?(e.r||180)+100:130)).sort((a,b)=>a.y-b.y))this.drawEntity(c,e,selected.has(e.id));
+ for(const e of entities)if(e.type==='mouse'&&e.team===this.localTeam&&selected.has(e.id)){const range=TYPES.mouse.range;this.onTerrain(c,e.x,e.y,()=>{c.setLineDash([7,9]);ellipse(c,e.x,e.y,range,range,teamColor(e.team)+'05',teamColor(e.team)+'60',1.4/cam.zoom);});}
+ const drawAtHeight=e=>this.onTerrain(c,e.x,e.y,()=>this.drawEntity(c,e,selected.has(e.id)));
+ for(const e of entities)if(e.type==='trash'&&this.visible(e.x,e.y,140))drawAtHeight(e);
+ for(const e of entities.filter(e=>e.type!=='trash'&&!['cd','airplane'].includes(e.type)&&this.visible(e.x,e.y,e.type==='staplergate'?(e.r||180)+150:190)).sort((a,b)=>a.y-b.y))drawAtHeight(e);
  // Air transports stay above every ground troop, structure, and obstacle.
- for(const e of entities)if(['cd','airplane'].includes(e.type)&&this.visible(e.x,e.y,130))this.drawEntity(c,e,selected.has(e.id));
+ for(const e of entities)if(['cd','airplane'].includes(e.type)&&this.visible(e.x,e.y,190))drawAtHeight(e);
  drawWarfareFields(this,c,'shield');
- for(const projectile of g.projectiles||[])if(this.pointVisible(projectile.x,projectile.y))this.drawProjectile(c,projectile);
- for(const fx of g.effects||[])if(this.pointVisible(fx.x,fx.y))this.drawEffect(c,fx);
- if(this.marker){this.marker.life-=dt;if(this.marker.life>0){const m=this.marker;const color=m.type==='attack'?'#e56d54':TEAL;const p=1-m.life/.8;c.strokeStyle=color;c.lineWidth=2.5/cam.zoom;c.globalAlpha=1-p;ellipse(c,m.x,m.y,12+p*25,6+p*12,null,color,2.5/cam.zoom);line(c,[[m.x-6,m.y],[m.x+6,m.y]],color,2/cam.zoom);line(c,[[m.x,m.y-6],[m.x,m.y+6]],color,2/cam.zoom);c.globalAlpha=1;}else this.marker=null;}
- this.drawPlacement(c,state);
+ for(const projectile of g.projectiles||[])if(this.pointVisible(projectile.x,projectile.y))this.onTerrain(c,projectile.x,projectile.y,()=>this.drawProjectile(c,projectile));
+ for(const fx of g.effects||[])if(this.pointVisible(fx.x,fx.y))this.onTerrain(c,fx.x,fx.y,()=>this.drawEffect(c,fx));
+ if(this.marker){this.marker.life-=dt;if(this.marker.life>0){const m=this.marker;const color=m.type==='attack'?'#e56d54':TEAL;const p=1-m.life/.8;this.onTerrain(c,m.x,m.y,()=>{c.strokeStyle=color;c.lineWidth=2.5/cam.zoom;c.globalAlpha=1-p;ellipse(c,m.x,m.y,12+p*25,6+p*12,null,color,2.5/cam.zoom);line(c,[[m.x-6,m.y],[m.x+6,m.y]],color,2/cam.zoom);line(c,[[m.x,m.y-6],[m.x,m.y+6]],color,2/cam.zoom);});}else this.marker=null;}
+ if(state.pointer)this.onTerrain(c,state.pointer.x,state.pointer.y,()=>this.drawPlacement(c,state));else this.drawPlacement(c,state);
  c.restore();
  if(state.drag){const d=state.drag;const x=Math.min(d.x1,d.x2),y=Math.min(d.y1,d.y2),w=Math.abs(d.x2-d.x1),h=Math.abs(d.y2-d.y1);rr(c,x,y,w,h,3);shape(c,'#3baaa024',TEAL,1.7);}
  c.setTransform(1,0,0,1,0,0);
  }
  visible(x,y,r=0){return x+r>this.camera.x&&y+r>this.camera.y&&x-r<this.camera.x+this.width/this.camera.zoom&&y-r<this.camera.y+this.height/this.camera.zoom;}
- pointVisible(x,y){return this.game.canSee?.(0,x,y)??true;}
- entityVisible(e){return e.team===0||(this.game.isVisible?.(e,0)??this.pointVisible(e.x,e.y));}
+ pointVisible(x,y){return this.game.canSee?.(this.localTeam,x,y)??true;}
+ entityVisible(e){return e.team===this.localTeam||(this.game.isVisible?.(e,this.localTeam)??this.pointVisible(e.x,e.y));}
  withFogClip(c,kind,paint){
- const fog=this.game.fog,grid=fog?.teams?.[0]?.[kind];if(!grid){paint();return;}
+ const fog=this.game.fog,grid=fog?.teams?.[this.localTeam]?.[kind];if(!grid){paint();return;}
  const cell=fog.cell,cam=this.camera,left=Math.max(0,Math.floor(cam.x/cell)),top=Math.max(0,Math.floor(cam.y/cell)),right=Math.min(fog.cols-1,Math.floor((cam.x+this.width/cam.zoom)/cell)),bottom=Math.min(fog.rows-1,Math.floor((cam.y+this.height/cam.zoom)/cell));
  c.save();c.beginPath();let any=false;
  for(let y=top;y<=bottom;y++)for(let x=left;x<=right;){if(!grid[y*fog.cols+x]){x++;continue;}const start=x;while(x<=right&&grid[y*fog.cols+x])x++;c.rect(start*cell,y*cell,(x-start)*cell,cell);any=true;}
@@ -194,7 +217,8 @@ export class Renderer {
  // Use only the immutable observation. Calling drawEntity here would consult
  // live orders, wall connections, cargo targets and this frame's animation.
  const unit=['rock','paper','scissors','twig','sniper','airplane','mage','divider','rollingrock','shears'].includes(e.type),size=({sniper:59,airplane:66,mage:60,divider:85,rollingrock:90,shears:66,workshop:111,laboratory:136,staplergate:Math.max(310,(e.r||180)*1.8),station:82})[e.type]||(unit?49:e.type==='wall'?50:e.type==='desk'?112:e.type==='printer'?94:e.type==='cdreader'?98:e.type==='mouse'?80:e.type==='cabinet'?74:68),col=e.type==='trash'?'#91a488':'#a6978b',lift=e.lift||0;
- c.save();c.globalAlpha=.46;c.filter='grayscale(.85) saturate(.4)';
+ const [px,py]=projectGround(this.game.map,e.x,e.y);
+ c.save();c.translate(px-e.x,py-e.y);c.globalAlpha=.46;c.filter='grayscale(.85) saturate(.4)';
  if(e.paperInvulnerable>0){ellipse(c,e.x,e.y-6-lift,17,17,'#eee8d0',INK,2);for(let i=0;i<4;i++){const a=i*Math.PI/2;line(c,[[e.x+Math.cos(a)*12,e.y-6-lift+Math.sin(a)*12],[e.x+Math.cos(a+1)*5,e.y-6-lift+Math.sin(a+1)*5]],'#9caa9b',1.2);}}
  else drawIcon(c,e.type,e.x,e.y-9-lift,size,e.team,{entity:e,sprite:['rock','paper','scissors','twig'].includes(e.type),phase:e.lastSeen||0,spin:(e.lastSeen||0)*2+(Number(e.id)||0),facing:e.facing||0,amount:e.amount,mask:e.wallMask||0,health:e.maxHp?e.hp/e.maxHp:1,active:!!e.queue?.length});
  // Annotation geometry follows the full illustration, rather than the smaller
@@ -211,12 +235,13 @@ export class Renderer {
  c.globalAlpha=.94;c.fillStyle='#e0e2cb';c.font=`bold ${9*ui}px "Trebuchet MS",sans-serif`;c.textAlign='center';c.fillText('LAST SEEN',e.x,labelTop+10.5*ui);c.restore();
  }
  drawFog(c){
- const g=this.game,fog=g.fog;if(!fog?.teams?.[0])return;
- if(this._fogGame!==g||this._fogRevision!==fog.revision||!this._fogCanvas){
-  this._fogGame=g;this._fogRevision=fog.revision;
+ const g=this.game,fog=g.fog,seat=this.localTeam;if(!fog?.teams?.[seat])return;
+ if(this._fogGame!==g||this._fogRevision!==fog.revision||this._fogTeam!==seat||!this._fogCanvas){
+  this._fogGame=g;this._fogRevision=fog.revision;this._fogTeam=seat;
   if(!this._fogCanvas)this._fogCanvas=document.createElement('canvas');
-  const surface=this._fogCanvas;surface.width=fog.cols;surface.height=fog.rows;
-  const f=surface.getContext('2d'),team=fog.teams[0];
+  const surface=this._fogCanvas;
+  if(surface.width!==fog.cols||surface.height!==fog.rows){surface.width=fog.cols;surface.height=fog.rows;}
+  const f=surface.getContext('2d'),team=fog.teams[seat];
   // Row runs keep a large unexplored map to a single opaque fill rather than
   // thousands of tiny Canvas calls. The low-resolution texture softens edges.
   f.fillStyle='#142427';f.fillRect(0,0,fog.cols,fog.rows);f.fillStyle='rgba(20,36,39,.68)';
@@ -225,21 +250,29 @@ export class Renderer {
    const start=x,state=stateAt(y*fog.cols+x);while(x<fog.cols&&stateAt(y*fog.cols+x)===state)x++;
    if(state){f.clearRect(start,y,x-start,1);if(state===1)f.fillRect(start,y,x-start,1);}
   }
+  const projected=this._projectedFog??=document.createElement('canvas');
+  if(projected.width!==fog.cols||projected.height!==fog.rows){projected.width=fog.cols;projected.height=fog.rows;}
+  projectTerrainFog(projected.getContext('2d'),surface,g.map,g.width,g.height);
  }
- c.save();c.imageSmoothingEnabled=true;c.drawImage(this._fogCanvas,0,0,g.width,g.height);c.restore();
+ c.save();c.imageSmoothingEnabled=true;c.drawImage(this._projectedFog,0,0,g.width,g.height);c.restore();
  }
- drawGround(c){
+ prepareBattlefield(){
  const g=this.game,w=g.width||2400,h=g.height||1600;
- if(this._groundMap!==g.map||!this._groundCanvas){
-  this._groundMap=g.map;this._groundCanvas=document.createElement('canvas');
+ const painted=worldArtworkReady();
+ if(this._groundMap!==g.map||Boolean(this._groundPainted)!==painted||!this._groundCanvas){
+  this._groundMap=g.map;this._groundPainted=painted;this._groundCanvas=document.createElement('canvas');
   // Keep very large battlefields under 8 MP of scenery memory. Troops, effects,
   // selection rings and the viewport always render at the device's full scale.
   this._groundPixelScale=Math.min(1,Math.sqrt(8000000/(w*h)),4096/w,4096/h);
   this._groundCanvas.width=Math.max(1,Math.floor(w*this._groundPixelScale));this._groundCanvas.height=Math.max(1,Math.floor(h*this._groundPixelScale));
   const ground=this._groundCanvas.getContext('2d');ground.setTransform(this._groundPixelScale,0,0,this._groundPixelScale,0,0);this.paintGround(ground);
  }
+ }
+ drawGround(c){
+ const g=this.game,w=g.width||2400,h=g.height||1600;
+ this.prepareBattlefield();
  c.drawImage(this._groundCanvas,0,0,w,h);
- for(const e of g.entities||[])if(e.type==='desk'&&e.hp>0&&this.entityVisible(e)){ellipse(c,e.x,e.y+12,135,90,teamColor(e.team)+'0a');}
+ for(const e of g.entities||[])if(e.type==='desk'&&e.hp>0&&this.entityVisible(e)){this.onTerrain(c,e.x,e.y,()=>ellipse(c,e.x,e.y+12,135,90,teamColor(e.team)+'17'));}
  }
  paintGround(c){
  const g=this.game,w=g.width||2400,h=g.height||1600,breakroom=g.map?.id==='breakroom';
@@ -248,17 +281,10 @@ export class Renderer {
  for(let y=18;y<h;y+=23){c.beginPath();c.moveTo(0,y);c.bezierCurveTo(w*.25,y+Math.sin(y)*5,w*.7,y+Math.sin(y*.2)*7,w,y+2);shape(c,null,y%2?'#b0915e20':'#f9e3b333',1);}
  rr(c,43,48,w-79,h-83,20);shape(c,'#5c5e4521',null);rr(c,34,36,w-78,h-82,17);shape(c,breakroom?'#e9e9d8':'#eee7cc','#d1c2a1',2);
  c.save();c.beginPath();c.roundRect(35,37,w-80,h-84,16);c.clip();
- if(breakroom){
-  const tile=120;for(let x=34;x<w-44;x+=tile)for(let y=36;y<h-46;y+=tile){const odd=(Math.round((x-34)/tile)+Math.round((y-36)/tile))%2;c.fillStyle=odd?'#e3e7d4':'#eeebd9';c.fillRect(x+1,y+1,tile-2,tile-2);line(c,[[x+3,y+tile-2],[x+tile-2,y+tile-2]],'#bfcbb53a',1);}
- }else{
-  const paper=c.createLinearGradient(0,0,w,h);paper.addColorStop(0,'#f4edd6');paper.addColorStop(.5,'#eae4c9');paper.addColorStop(1,'#f4edd8');c.fillStyle=paper;c.fillRect(35,37,w-80,h-84);
-  for(let x=96;x<w-50;x+=60)line(c,[[x,38],[x,h-48]],'#9eaf9b21',1);for(let y=80;y<h-50;y+=60)line(c,[[36,y],[w-46,y]],'#9eaf9b21',1);
-  line(c,[[143,38],[143,h-48]],'#d795842c',2);line(c,[[151,38],[151,h-48]],'#d7958418',1);
-  for(let y=105;y<h-80;y+=115){ellipse(c,74,y,8,10,'#c7b99b33');ellipse(c,72,y-1,6,8,'#af9c7635');line(c,[[39,y-4],[67,y-4]],'#7e8b7a44',3);line(c,[[39,y-1],[67,y-1]],'#ebe6d2',1);}
- }
+ paintLowGround(c,g.map,w,h);
  // Slightly uneven paper grain makes the tabletop feel drawn, without obscuring units.
  for(let i=0;i<Math.ceil(2200*w*h/3840000);i++){const x=42+(i*593.113)%(w-95),y=43+(i*367.831)%(h-100);ellipse(c,x,y,.5+(i%3)*.22,.35,'#8e8b6020');}
- if(!['canyon','conveyor'].includes(g.map?.id))this.paintRegions(c,breakroom);
+ if(['desktop','breakroom'].includes(g.map?.id))this.paintRegions(c,breakroom);
  paintFrontierMap(this,c,'base');
  const lanes=g.map?.lanes||[
   [[330,800],[590,800],[840,800],[1200,800],[1560,800],[1810,800],[2070,800]],
@@ -266,11 +292,8 @@ export class Renderer {
   [[460,895],[680,1220],[1030,1240],[1370,1240],[1720,1220],[1940,895]]
  ];
  lanes.forEach((path,i)=>{const points=Array.isArray(path)?path:(path.points||[]);if(points.length<2)return;c.save();c.lineJoin='round';c.lineCap='round';line(c,points,breakroom?'#9ba98e38':'#b5a47735',i===0?178:142);line(c,points,breakroom?'#dce1ca':'#e6d9b5',i===0?166:130);line(c,points,breakroom?'#edf0dc':'#f5ebcf',i===0?147:111);line(c,points,'#fff8e542',i===0?104:77);c.setLineDash([3,17]);line(c,points,breakroom?'#a9b5a05c':'#c5ae7e60',1.2);c.restore();});
- this.paintTerrain(c,breakroom);
- // Flattened sticky notes and napkins mark the sheltered starting yards.
- for(const desk of (g.entities||[]).filter(e=>e.type==='desk')){
-  const x=desk.x; c.save();c.translate(x,desk.y+15);c.rotate(x<w/2?-.025:.025);rr(c,-182,-186,365,382,4);shape(c,teamColor(desk.team)+'08','#c6cbaa35',1);line(c,[[-175,-180],[174,-180]],'#fff7e54d',2);rr(c,-42,-194,85,21,2);shape(c,'#e5d4a13d',null);c.restore();
- }
+ // Pads are positioned from world geometry, including online play before the
+ // first authoritative frame arrives.
  // Resource pads are drawn into the surface, with ample clean space for gathering.
  for(const e of g.entities||[])if(e.type==='trash'){
   ellipse(c,e.x,e.y+15,43,29,breakroom?'#bdc8a31b':'#b6bf8d16');c.save();c.setLineDash([3,7]);ellipse(c,e.x,e.y+14,47,31,null,'#99ad8130',1);c.restore();
@@ -283,6 +306,10 @@ export class Renderer {
  paintTabletopDetails(this,c);
  c.restore();
  for(const o of g.map?.obstacles||[])if(!['cliff','canyon','staplergate','gate','gatebarrier'].includes(o.type))this.drawObstacle(c,o,true);
+ paintCliffWorld(c,g.map);
+ for(const [team,camp] of (g.map?.camps||[]).entries()){
+  this.onTerrain(c,camp.x,camp.y,()=>{const x=camp.x,y=camp.y;rr(c,x-172,y-150,344,320,13);shape(c,teamColor(team)+'1b',teamColor(team)+'8a',2.5);for(const sx of [-1,1])for(const sy of [-1,1])line(c,[[x+sx*154,y+sy*133],[x+sx*154,y+sy*155],[x+sx*122,y+sy*155]],'#fff6dbb0',3);});
+ }
  // The paper curls at two corners, leaving the warm wooden table visible beneath.
  c.beginPath();c.moveTo(w-44,h-118);c.lineTo(w-44,h-46);c.lineTo(w-115,h-46);c.quadraticCurveTo(w-74,h-72,w-44,h-118);shape(c,'#ded3b5','#c5b697',1.2);c.beginPath();c.moveTo(w-44,h-118);c.quadraticCurveTo(w-74,h-72,w-115,h-46);shape(c,null,'#f8f1d9',2);
  }
@@ -322,41 +349,6 @@ export class Renderer {
   const label=breakroom?['NAPKIN GROVE','SERVICE TILES','COFFEE BASIN'][kind]:['PAPER GROVE','CORK FLATS','CIRCUIT YARD'][kind];
   c.save();c.translate(x+radius*.25,y+radius*.7);c.rotate(-.025);rr(c,-55,-10,110,20,2);shape(c,'#f2ecc2bb','#9ea57b66',1);c.fillStyle='#6c7f61';c.font='bold 9px "Trebuchet MS",sans-serif';c.textAlign='center';c.fillText(label,0,3);c.restore();
  });
- }
- paintTerrain(c,breakroom){
- const g=this.game,plateaus=g.map?.plateaus||[],ramps=g.map?.ramps||[];
- const upper=breakroom?'#d1ddc2':'#e9dcae',rim=breakroom?'#819d80':'#a59361',face=breakroom?'#a2b292':'#c1ab78';
- for(const p of plateaus){
-  // Stacked desk mats and cork islands provide an unmistakable raised silhouette.
-  rr(c,p.x+5,p.y+10,p.w,p.h,12);shape(c,'#354b3a25',null);
-  rr(c,p.x,p.y,p.w,p.h,10);shape(c,upper,rim,1.6);
-  c.save();c.beginPath();c.roundRect(p.x+6,p.y+6,p.w-12,p.h-12,7);c.clip();
-  const surface=c.createLinearGradient(p.x,p.y,p.x+p.w,p.y+p.h);surface.addColorStop(0,breakroom?'#e2e9cf':'#f6eac1');surface.addColorStop(1,upper);c.fillStyle=surface;c.fillRect(p.x,p.y,p.w,p.h);
-  for(let y=p.y+18;y<p.y+p.h;y+=27)line(c,[[p.x+8,y],[p.x+p.w-8,y]],breakroom?'#91a57c19':'#b49c631b',1);
-  for(let i=0;i<Math.round(p.w*p.h/600);i++){const x=p.x+10+(i*73.17)%(p.w-20),y=p.y+10+(i*109.43)%(p.h-20);ellipse(c,x,y,.8+(i%3)*.5,.6,breakroom?'#788e6450':'#a48b5050');}
-  // Broken contours reinforce elevation without looking like a selectable unit.
-  c.setLineDash([6,8]);rr(c,p.x+14,p.y+14,p.w-28,p.h-28,6);shape(c,null,breakroom?'#8da58277':'#b49c6066',1.2);c.setLineDash([]);
-  c.restore();
-  const labelX=p.x+p.w/2,labelY=p.y+Math.min(45,p.h*.2);
-  c.save();c.globalAlpha=.7;c.fillStyle=breakroom?'#5d795d':'#827042';c.font='bold 12px "Trebuchet MS",sans-serif';c.textAlign='center';c.fillText((p.label||'LOOKOUT').toUpperCase(),labelX,labelY-15);c.font='bold 9px "Trebuchet MS",sans-serif';c.fillText('HIGH GROUND  +1',labelX,labelY);line(c,[[labelX-66,labelY-3],[labelX-60,labelY-9],[labelX-54,labelY-3]],c.fillStyle,1.4);c.restore();
- }
- for(const cliff of g.map?.cliffs||[]){
-  const{x,y,w,h}=cliff,vertical=h>w;
-  // These are the exact solid cliff footprints used by pathfinding.
-  rr(c,x+2,y+5,w,h,2);shape(c,'#475a372b',null);rr(c,x,y,w,h,2);shape(c,face,rim,1.2);
-  if(vertical){line(c,[[x+2,y+3],[x+2,y+h-3]],'#f6edceaa',1.8);line(c,[[x+w-3,y+3],[x+w-3,y+h-3]],rim,1);for(let yy=y+10;yy<y+h-4;yy+=16)line(c,[[x+3,yy],[x+w-3,yy+4]],rim+'88',1);}
-  else{line(c,[[x+3,y+2],[x+w-3,y+2]],'#f6edceaa',2);line(c,[[x+3,y+h-3],[x+w-3,y+h-3]],rim,1);for(let xx=x+10;xx<x+w-4;xx+=18)line(c,[[xx,y+3],[xx+4,y+h-3]],rim+'88',1);}
- }
- for(const r of ramps){
-  const{x,y,w,h,side}=r,vertical=side==='north'||side==='south',dx=side==='west'?1:side==='east'?-1:0,dy=side==='north'?1:side==='south'?-1:0;
-  const fromX=dx<0?x+w:x,fromY=dy<0?y+h:y,toX=dx>0?x+w:x,toY=dy>0?y+h:y;
-  const slope=c.createLinearGradient(fromX,fromY,toX,toY);slope.addColorStop(0,breakroom?'#b6c4a5':'#cbb583');slope.addColorStop(1,breakroom?'#e2e9cf':'#f6eac1');
-  rr(c,x,y,w,h,3);shape(c,slope,rim,1.4);
-  // Crosswise treads and inward chevrons make every traversable ramp legible.
-  if(vertical){for(let yy=y+9;yy<y+h-3;yy+=12)line(c,[[x+4,yy],[x+w-4,yy]],rim+'66',1);line(c,[[x+3,y+2],[x+3,y+h-2]],'#fff5d2ba',2);line(c,[[x+w-3,y+2],[x+w-3,y+h-2]],'#fff5d2ba',2);}
-  else{for(let xx=x+9;xx<x+w-3;xx+=12)line(c,[[xx,y+4],[xx,y+h-4]],rim+'66',1);line(c,[[x+2,y+3],[x+w-2,y+3]],'#fff5d2ba',2);line(c,[[x+2,y+h-3],[x+w-2,y+h-3]],'#fff5d2ba',2);}
-  c.save();c.translate(x+w/2,y+h/2);c.rotate(Math.atan2(dy,dx));for(const step of [-9,9])line(c,[[step-5,-7],[step+2,0],[step-5,7]],breakroom?'#668467aa':'#9a814caa',2);c.restore();
- }
  }
  paintDecor(c,breakroom){
  const g=this.game,w=g.width||2400,h=g.height||1600;
@@ -418,15 +410,20 @@ export class Renderer {
  if(e.type==='wall'){drawWallEntity(this,c,e,selected);return;}
  const baseUnit=['rock','paper','scissors','twig'].includes(e.type),isUnit=baseUnit||['sniper','airplane','mage','divider','rollingrock','shears'].includes(e.type),isCD=e.type==='cd',isAir=isCD||e.type==='airplane',isTrash=e.type==='trash',tc=teamColor(e.team);let size=({sniper:59,airplane:66,mage:60,divider:85,rollingrock:90,shears:66,workshop:111,laboratory:136,staplergate:310,gate:310,station:82,controlstation:82})[e.type]||(isUnit?49:e.type==='desk'?112:e.type==='printer'?94:e.type==='cdreader'?98:e.type==='mouse'?80:e.type==='cabinet'?74:68);
  if(e.type==='staplergate')size=(e.r||180)*100/68; // The gate's 68-unit illustration spans its actual blocking diameter.
- const old=this.motion.get(e.id);const moving=old&&Math.hypot(e.x-old.x,e.y-old.y)>.08;this.motion.set(e.id,{x:e.x,y:e.y});const bob=isUnit&&moving?Math.sin(this.time*13+Number(e.id)*.8)*1.8:Math.sin(this.time*2.5+(Number(e.id)||0))*0.7;
+ const old=this.motion.get(e.id),distance=old?Math.hypot(e.x-old.x,e.y-old.y):0;
+ const walk=(old?.walk||0)+distance/12;
+ const moving=distance>.08||(old&&this.time-old.movedAt<.19);
+ this.motion.set(e.id,{x:e.x,y:e.y,walk,movedAt:distance>.08?this.time:old?.movedAt??-1});
+ const bob=isUnit&&moving?Math.sin(walk*2)*1.85:Math.sin(this.time*2.5+(Number(e.id)||0))*.7;
  const leap=isAir?(e.type==='airplane'?(e.crash?.diving?Math.max(0,(e.crash.remaining??.4)*65):32):18)+Math.sin(this.time*3+e.id)*2:e.type==='divider'?8+Math.sin(this.time*2+e.id)*2:e.leap?Math.sin(Math.PI*(1-e.leap.remaining/e.leap.total))*75:0;
  c.save();
  // Ground footprint and team ring.
- ellipse(c,e.x,e.y+11,isUnit?size*.38:size*.4,isUnit?size*.14:size*.14,'#565b4021');
+ ellipse(c,e.x+size*.12,e.y+size*.2,size*.44,size*.19,'#18231e29');
+ ellipse(c,e.x+size*.04,e.y+size*.15,size*.36,size*.13,'#15232254');
  if(selected){ellipse(c,e.x,e.y+10,isUnit?Math.max(25,size*.5):size*.54,isUnit?Math.max(12,size*.22):size*.23,'#2ba79d10',TEAL,2.2/this.camera.zoom);if(!isUnit){const rradius=size*.56;line(c,[[e.x-rradius,e.y-rradius*.6],[e.x-rradius,e.y-rradius*.8],[e.x-rradius+12,e.y-rradius*.8]],TEAL,2);line(c,[[e.x+rradius,e.y-rradius*.6],[e.x+rradius,e.y-rradius*.8],[e.x+rradius-12,e.y-rradius*.8]],TEAL,2);}}
- else if(isUnit||isCD)ellipse(c,e.x,e.y+10,isCD?31:size*.39,isCD?11:size*.16,tc+'16',tc+'cc',1.8);
+ else if(e.team>=0)ellipse(c,e.x,e.y+10,isCD?31:size*.43,isCD?11:size*.17,tc+'22',tc+'ce',isUnit?1.8:2.6);
  if(e.constructing>0){const progress=1-e.constructing/(e.buildTotal||10);c.globalAlpha=.3+progress*.5;c.setLineDash([5,5]);rr(c,e.x-size*.5,e.y-size*.4,size,size*.8,8);shape(c,tc+'15',tc,2);c.setLineDash([]);}
- if(e.paperInvulnerable>0){c.save();c.translate(e.x,e.y-6-leap);ellipse(c,0,0,25+Math.sin(this.time*10)*2,25+Math.sin(this.time*10)*2,tc+'30',tc,1.8);c.rotate(this.time*(moving?12:3));ellipse(c,0,0,16,16,'#fffdec',INK,2);for(let i=0;i<5;i++){c.rotate(Math.PI*2/5);line(c,[[12,-4],[3,0],[8,10]],'#a1b6ad',1.3);}c.restore();}else drawIcon(c,e.type,e.x,e.y-9+bob-leap,size,e.team,{entity:e,battlefield:true,walk:moving?this.time*14:0,amount:e.amount,sprite:baseUnit,attackAnim:e.attackAnim,facing:e.facing,spin:this.time*(moving?6:2)+e.id,active:['cdreader','workshop','laboratory'].includes(e.type)&&!!e.queue?.length,phase:this.time});
+ if(e.paperInvulnerable>0){c.save();c.translate(e.x,e.y-6-leap);ellipse(c,0,0,25+Math.sin(this.time*10)*2,25+Math.sin(this.time*10)*2,tc+'30',tc,1.8);c.rotate(this.time*(moving?12:3));ellipse(c,0,0,16,16,'#fffdec',INK,2);for(let i=0;i<5;i++){c.rotate(Math.PI*2/5);line(c,[[12,-4],[3,0],[8,10]],'#a1b6ad',1.3);}c.restore();}else drawIcon(c,e.type,e.x,e.y-9+bob-leap,size,e.team,{entity:e,battlefield:true,walk:moving?walk:0,amount:e.amount,sprite:baseUnit,attackAnim:e.attackAnim,facing:e.facing,spin:this.time*(moving?6:2)+e.id,active:['cdreader','workshop','laboratory'].includes(e.type)&&!!e.queue?.length,phase:this.time});
  c.globalAlpha=1;
  if(e.clickDamage?.length){
   const yy=e.y-9-leap,flash=.45+Math.sin(this.time*7+e.id)*.12;
@@ -472,6 +469,7 @@ export class Renderer {
  drawPointer(c,x,y,angle,tc,.8);c.restore();
  }
  drawEffect(c,fx){
+ if(drawAbilityParticles(this,c,fx))return;
  if(drawBattleEffect(this,c,fx))return;
  if(drawWarfareEffect(this,c,fx))return;
  if(!this.visible(fx.x,fx.y,160))return;const t=Math.max(0,Math.min(1,1-fx.life/(fx.total||.6)));c.save();c.globalAlpha=1-t;const tc=teamColor(fx.team);
@@ -500,7 +498,7 @@ export class Renderer {
  drawWarfarePlacement(this,c,state);
  const p=state.pointer;if(!p||!state.mode)return;const mode=state.mode;
  if(mode==='mouse'){const range=TYPES.mouse.range;c.save();c.setLineDash([7,9]);ellipse(c,p.x,p.y,range,range,TEAL+'05',TEAL+'60',1.4/this.camera.zoom);c.restore();}
- if(['desk','cabinet','printer','cdreader','mouse'].includes(mode)){const scouted=this.pointVisible(p.x,p.y),raw=scouted?this.game.canBuild?.(mode,p.x,p.y):false;const valid=typeof raw==='object'?raw.ok:raw!==false;const r=mode==='desk'?64:['printer','cdreader'].includes(mode)?50:mode==='mouse'?42:39;c.save();c.globalAlpha=.55;drawIcon(c,mode,p.x,p.y,mode==='desk'?112:mode==='cdreader'?98:mode==='mouse'?80:mode==='printer'?94:74,0);ellipse(c,p.x,p.y+12,r,r*.5,valid?'#32a18c11':scouted?'#df715c22':'#9aa9a522',valid?TEAL:scouted?CORAL:'#9aa9a5',2);c.restore();}
+ if(['desk','cabinet','printer','cdreader','mouse'].includes(mode)){const scouted=this.pointVisible(p.x,p.y),raw=scouted?this.game.canBuild?.(mode,p.x,p.y,this.localTeam):false;const valid=typeof raw==='object'?raw.ok:raw!==false;const r=mode==='desk'?64:['printer','cdreader'].includes(mode)?50:mode==='mouse'?42:39;c.save();c.globalAlpha=.55;drawIcon(c,mode,p.x,p.y,mode==='desk'?112:mode==='cdreader'?98:mode==='mouse'?80:mode==='printer'?94:74,this.localTeam);ellipse(c,p.x,p.y+12,r,r*.5,valid?'#32a18c11':scouted?'#df715c22':'#9aa9a522',valid?TEAL:scouted?CORAL:'#9aa9a5',2);c.restore();}
  else if(mode==='ability'){const selection=(this.game.entities||[]).filter(e=>state.selected?.has(e.id)&&(!state.abilityType||e.type===state.abilityType));for(const e of selection){if(e.type==='scissors'){c.save();c.translate(e.x,e.y);c.rotate(Math.atan2(p.y-e.y,p.x-e.x));c.beginPath();c.moveTo(0,0);c.arc(0,0,125,-Math.PI*.34,Math.PI*.34);c.closePath();shape(c,'#eac45a20','#d1a23e99',1.5);c.restore();}else if(e.type==='rock'){c.save();c.setLineDash([5,9]);ellipse(c,e.x,e.y,420,420,null,'#b28e4255',1/this.camera.zoom);c.restore();line(c,[[e.x,e.y],[p.x,p.y]],'#b28e4277',1.2);}}ellipse(c,p.x,p.y,24,12,'#eac45a15','#c49635',1.5);}
  else if(mode==='drop'){
   const cds=(this.game.entities||[]).filter(e=>e.type==='cd'&&state.selected?.has(e.id)&&e.hp>0);
@@ -513,7 +511,7 @@ export class Renderer {
  else if(mode==='attack'){line(c,[[p.x-9,p.y],[p.x+9,p.y]],CORAL,2);line(c,[[p.x,p.y-9],[p.x,p.y+9]],CORAL,2);ellipse(c,p.x,p.y,15,15,null,CORAL,1);}
  }
  drawMinimap(canvas){
- const c=canvas.getContext('2d');const rect=canvas.getBoundingClientRect();const dpr=Math.min(window.devicePixelRatio||1,2);if(canvas.width!==Math.round(rect.width*dpr)||canvas.height!==Math.round(rect.height*dpr)){canvas.width=Math.round(rect.width*dpr);canvas.height=Math.round(rect.height*dpr);}const w=rect.width,h=rect.height,g=this.game,sx=w/(g.width||2400),sy=h/(g.height||1600),remembered=g.getRememberedEntities?.(0)||[];c.setTransform(dpr,0,0,dpr,0,0);c.fillStyle='#d6dcc7';c.fillRect(0,0,w,h);
+ const c=canvas.getContext('2d');const rect=canvas.getBoundingClientRect();const dpr=Math.min(window.devicePixelRatio||1,2);if(canvas.width!==Math.round(rect.width*dpr)||canvas.height!==Math.round(rect.height*dpr)){canvas.width=Math.round(rect.width*dpr);canvas.height=Math.round(rect.height*dpr);}const w=rect.width,h=rect.height,g=this.game,sx=w/(g.width||2400),sy=h/(g.height||1600),remembered=g.getRememberedEntities?.(this.localTeam)||[];c.setTransform(dpr,0,0,dpr,0,0);c.fillStyle='#d6dcc7';c.fillRect(0,0,w,h);
  if(this._groundMap===g.map&&this._groundCanvas)c.drawImage(this._groundCanvas,0,0,w,h);
  else{for(const p of g.map?.plateaus||[]){c.fillStyle='#bbc795';c.fillRect(p.x*sx,p.y*sy,p.w*sx,p.h*sy);}for(const o of g.map?.obstacles||[]){c.fillStyle='#939e7d';c.fillRect(o.x*sx,o.y*sy,o.w*sx,o.h*sy);}}
  c.save();c.scale(sx,sy);this.drawFog(c);c.restore();

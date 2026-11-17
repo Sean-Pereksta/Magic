@@ -234,7 +234,7 @@ test('grouped rocks land in separate nearby positions, respecting impassable sce
   for (const o of game.map.obstacles) assert(!(landing.x > o.x - rock.r && landing.x < o.x + o.w + rock.r && landing.y > o.y - rock.r && landing.y < o.y + o.h + rock.r));
 });
 
-test('move commands navigate around real scenery on all seven maps', () => {
+test('move commands navigate around real scenery on all nine maps', () => {
   for (const map of Object.keys(MAPS)) {
     const game = arena(map);
     const obstacle=game.map.obstacles.find(o=>!o.terrain&&o.w>150&&o.h>100&&!game._blocked(o.x-120,o.y+o.h/2,18)&&!game._blocked(o.x+o.w+120,o.y+o.h/2,18));
@@ -322,7 +322,7 @@ test('opposing ground units push symmetrically, pass head-on traffic, and exclud
   assert.equal(ground.x, before.x); assert.equal(ground.y, before.y);
 });
 
-test('all twenty-one map layouts have equal standard starting economies, safe camps and strategic routes', () => {
+test('all twenty-seven map layouts have equal standard starting economies, safe camps and strategic routes', () => {
   for (const map of Object.keys(MAPS)) for (const players of [2, 3, 4]) {
     const game = new Game({map, players});
     assert.equal(game.teams.length, players);

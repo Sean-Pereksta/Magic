@@ -5,11 +5,11 @@ import {Game,MAPS,TYPES} from '../engine.js';
 const advance=(g,seconds)=>{for(let t=0;t<seconds;t+=.05)g.update(.05);};
 function arena(map='desktop',players=2){const g=new Game({map,players});g._think=Infinity;g.entities=g.entities.filter(e=>e.type==='desk');return g;}
 
-test('all six maps have reachable elevated scrap fields and two useful ramps per lookout',()=>{
+test('all six original layouts have reachable elevated scrap fields and useful lookout ramps',()=>{
   for(const map of ['desktop','breakroom'])for(const players of [2,3,4]){
     const g=arena(map,players);
-    assert(g.map.plateaus.length>=4);assert.equal(g.map.ramps.length,g.map.plateaus.length*2);assert(g.map.expansions.length>=10);assert(g.map.coverClusters>=8);
-    for(const p of g.map.plateaus){
+    assert(g.map.plateaus.length>=4+players);assert.equal(g.map.ramps.length,g.map.plateaus.reduce((count,p)=>count+p.ramps.length,0));assert(g.map.expansions.length>=10);assert(g.map.coverClusters>=8);
+    for(const p of g.map.plateaus.filter(p=>p.campTeam===undefined)){
       const center={x:p.x+p.w/2,y:p.y+p.h/2};
       assert.equal(g.elevationAt(center.x,center.y),1);
       const ramp=p.ramps[0],start={x:ramp.x-20,y:ramp.y+ramp.h/2};

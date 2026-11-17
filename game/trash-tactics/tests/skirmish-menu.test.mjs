@@ -10,5 +10,5 @@ test('map briefing draws actual obstacles, lanes, expansions and player camps wi
  assert(calls.some(q=>q.method==='fillRect'&&q.args[0]===4200&&q.args[2]===500));
  assert(calls.some(q=>q.method==='lineTo'&&q.args[0]===4800&&q.args[1]===3200));
  assert(calls.some(q=>q.method==='arc'&&q.args[0]===1900&&q.args[1]===3000));
- assert.equal(Object.keys(MAP_BRIEFS).length,7);assert.equal(Object.keys(DIFFICULTY_BRIEFS).length,4);
+ assert.equal(Object.keys(MAP_BRIEFS).length,9);assert.equal(Object.keys(DIFFICULTY_BRIEFS).length,4);
 });

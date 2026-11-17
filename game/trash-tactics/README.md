@@ -1,12 +1,14 @@
 # Trash Tactics
 
+The **High Ground update** adds Rain Gutter Run and Carton Works, raised starting bases on all nine battlegrounds, painted terrain and prop textures, particle effects, and a map loading screen. Choose **Online PvP** for live 1v1 matches with a lobby browser, invitations, and reconnects. The [Windows host and ranked service guide](ONLINE.md) covers community hosting and Catnmice profiles.
+
 The **Command & Intel update** adds mixed building plans for workers, red minimap attack alerts, frozen last-seen scouting information, and an interactive post-match report. See [construction, intelligence and match analysis](COMMAND-INTEL.md).
 
 The **Frontiers update** adds seven vast maps, a native map dropdown with real layout previews, eleven illustrated death animations, and four bot difficulties. See [Frontiers: maps, rival plans and Impossible economy](FRONTIERS.md).
 
 The **Tier 2 and Tier 3 warfare expansion** adds six specialists, two production buildings, animated character/effect sheets, Stapler Canyon and Conveyor Chaos. See [the expansion guide](WARFARE.md) for troop statistics, controls, map mechanics and validation, or open [the animated artwork gallery](warfare-gallery.html).
 
-A quick, cartoony RTS about turning office trash into a tiny empire. Desktop Meadow, Breakroom Blitz, Stapler Canyon, Conveyor Chaos, Inkspill Delta, Corkboard Crossroads and Server Stack each support 2-, 3-, and 4-player matches: **21 battleground layouts**. Play a free-for-all against one, two, or three rival bots at **Easy, Normal, Hard or Impossible** difficulty. Destroy every rival desk to win.
+A quick, cartoony RTS about turning office trash into a tiny empire. Desktop Meadow, Breakroom Blitz, Stapler Canyon, Conveyor Chaos, Inkspill Delta, Corkboard Crossroads, Server Stack, Rain Gutter Run, and Carton Works each support two, three, or four players across **27 skirmish layouts**. Play a free-for-all against up to three rival bots at **Easy, Normal, Hard, or Impossible** difficulty. Destroy every rival desk to win.
 
 ## Play locally
 
@@ -32,7 +34,9 @@ Squads move in formations, push apart to avoid stacking, and find routes through
 
 ## Terrain and scouting
 
-All **21 layouts are 9600 × 6400 world pixels**, twice the previous width and height and **four times the previous area**. Troop footprints, speeds, weapon ranges and six starting trash cans retain their scale. Each camp has a sheltered natural expansion about 620–900 pixels away. Named main roads, flanks, crossings, high-ground routes and richer outer fields make scouting and expansion defense worthwhile. The preview draws the actual terrain, routes, resource fields and player starts.
+All **27 layouts are 9600 × 6400 world pixels**. Each headquarters and its starting economy sit on an upper terrace with ramps to the lower battlefield. The nearest expansion is about 680–900 pixels from camp. Named main roads, flanks, crossings, high-ground routes, and richer outer fields make scouting and expansion defense worthwhile. The preview shows the terrain, routes, resource fields, and player starts.
+
+Each map has a painted material set for lower ground, elevated surfaces, and cliff faces. Troops are animated 2D cutouts placed on the terrain at the appropriate height. The loading screen waits for the scenery, sprites, and effect art before the match begins.
 
 High ground grants an extra **100 world pixels of sight**. Low-ground troops cannot see uphill or through a raised shelf, while flying CDs can scout over it. These vision rules apply to every team, including bots. Elevation changes sight and access; it does not add a damage bonus.
 

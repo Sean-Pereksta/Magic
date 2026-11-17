@@ -1,6 +1,6 @@
 # Frontiers: a larger desk war
 
-Seven maps support every 2-, 3- and 4-player setup: **21 layouts**. Every map is **9600 × 6400**, twice the previous width and height and four times its area. Troop sizes, walking speeds, attack ranges, home economy distances and six 1,500-trash starting cans retain their scale. A sheltered natural expansion is close enough to establish early; contested centers and rich outer fields create reasons to scout beyond it.
+Nine maps support two-, three-, and four-player skirmishes across **27 layouts**. Every map is **9600 × 6400** and begins each headquarters on an elevated camp with ramps down to the battlefield. Six 1,500-trash cans support the starting economy, while contested centers and rich outer fields reward scouting beyond the nearest expansion.
 
 The map dropdown replaces the card grid. Its preview draws actual obstacles, heights, lanes, expansion sites and player starts, and updates when the player count changes.
 
@@ -13,6 +13,8 @@ The map dropdown replaces the card grid. Its preview draws actual obstacles, hei
 | Inkspill Delta | Three broad causeways across ink rivers; exposed rich outer banks. |
 | Corkboard Crossroads | A central crown with four real ramps; radial and perimeter flanks. |
 | Server Stack | Dual service crossings and vertical circuit corridors; solid racks with open air overflight. |
+| Rain Gutter Run | Two wide spillways and a narrow central route beside raised service ledges. |
+| Carton Works | Four ramps to the central shipping yard and loading lanes around stacked boxes. |
 
 Main roads, flanks, crossings and lookout approaches have named metadata shared by the bots and map graphics. Expansion markers identify safe naturals, contested central fields, elevated caches and rich exposed salvage. Rich fields contain more trash; gathering trips still carry five trash under standard rules. New cliff ramps and crossing clearances allow large formations to pass.
 
