@@ -165,6 +165,9 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     if (!Number.isInteger(action.slot) || action.slot < 0 || action.slot >= actor.loadout.length) return refuse('invalid-slot');
     const type = actor.loadout[action.slot];
     const def = TOWERS[type];
+    const hasAxis = type === 'wall' || type === 'barricade';
+    const axis = action.axis === undefined ? 'x' : action.axis;
+    if (hasAxis && axis !== 'x' && axis !== 'y') return refuse('invalid-axis');
     if (!passable(action.x, action.y) || map.spawns.some(spawn => distanceSquared(spawn, action) < 4)
       || map.playerSpawns.some(spawn => distanceSquared(spawn, action) === 0)) return refuse('blocked');
     if (structures.size >= MAX_STRUCTURES) return refuse('structure-limit');
@@ -183,6 +186,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       nextAttackAt: time + 700, lastAttackAt: -1000000, lastHitAt: -1000000,
       bonusUntil: 0, disabledUntil: 0, windupUntil: 0, targetId: null,
     };
+    if (hasAxis) structure.axis = axis;
     structures.set(cellAt(x, y), structure);
     actors.set(structure.id, structure);
     field = null;

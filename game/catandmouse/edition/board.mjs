@@ -1,8 +1,12 @@
 import { MAPS } from './battlefield.mjs';
+import { isWall, wallConnections, wallKey } from './walls.mjs';
 
 const artRoot = new URL('./art/', import.meta.url);
-const sources = { title: 0, 'mill-preview': 0, terrain: 160, units: 160, facing: 160, towers: 160, effects: 112 };
+const sources = { title: 0, 'mill-preview': 0, ground: 0, walls: 0, terrain: 160, units: 160, facing: 160, towers: 160, effects: 112 };
 const art = {};
+const groundCache = new Map();
+const tilePixels = 24;
+const waterSwatch = 260;
 const towers = {
   wall: 0, turret: 1, generator: 2, rocket: 3, repair: 4, acorn: 5, web: 6, rabbit: 7,
   marksman: 8, burst: 9, tesla: 10, laser: 11, barricade: 0, farm: 2, shield: 10,
@@ -25,6 +29,83 @@ function sprite(ctx, sheet, index, x, y, width, height = width, anchor = .91) {
   const size = sources[sheet];
   ctx.drawImage(art[sheet], index % 4 * size, Math.floor(index / 4) * size, size, size,
     x - width / 2, y - height * anchor, width, height);
+}
+
+function pattern(ctx, column, row, pixelSpan) {
+  const swatch = document.createElement('canvas');
+  swatch.width = swatch.height = pixelSpan * 2;
+  const brush = swatch.getContext('2d');
+  const size = art.ground.width / 2;
+  for (let y = 0; y < 2; y++) {
+    for (let x = 0; x < 2; x++) {
+      brush.save();
+      brush.translate(x * pixelSpan + (x ? pixelSpan : 0), y * pixelSpan + (y ? pixelSpan : 0));
+      brush.scale(x ? -1 : 1, y ? -1 : 1);
+      brush.drawImage(art.ground, column * size, row * size, size, size, 0, 0, pixelSpan, pixelSpan);
+      brush.restore();
+    }
+  }
+  return ctx.createPattern(swatch, 'repeat');
+}
+
+function paintGround(map) {
+  if (groundCache.has(map.id)) return groundCache.get(map.id);
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = map.size * tilePixels;
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const floor = pattern(ctx, 0, 0, 155);
+  const path = pattern(ctx, 1, 0, 180);
+  const water = pattern(ctx, 0, 1, waterSwatch);
+  const damp = pattern(ctx, 1, 1, 190);
+  ctx.fillStyle = floor;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  for (const [tile, paint] of [[':', path], ['#', damp], ['~', water]]) {
+    ctx.fillStyle = paint;
+    map.tiles.forEach((line, row) => [...line].forEach((cell, column) => {
+      if (cell === tile) ctx.fillRect(column * tilePixels, row * tilePixels, tilePixels, tilePixels);
+    }));
+  }
+  const shoreline = new Path2D();
+  const waterShape = new Path2D();
+  const waterBounds = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
+  map.tiles.forEach((row, y) => [...row].forEach((tile, x) => {
+    if (tile !== '~') return;
+    const left = x * tilePixels;
+    const top = y * tilePixels;
+    const right = left + tilePixels;
+    const bottom = top + tilePixels;
+    waterShape.rect(left, top, tilePixels, tilePixels);
+    waterBounds.left = Math.min(waterBounds.left, x - .5);
+    waterBounds.top = Math.min(waterBounds.top, y - .5);
+    waterBounds.right = Math.max(waterBounds.right, x + .5);
+    waterBounds.bottom = Math.max(waterBounds.bottom, y + .5);
+    if (map.tiles[y - 1]?.[x] !== '~') { shoreline.moveTo(left, top); shoreline.lineTo(right, top); }
+    if (map.tiles[y + 1]?.[x] !== '~') { shoreline.moveTo(left, bottom); shoreline.lineTo(right, bottom); }
+    if (row[x - 1] !== '~') { shoreline.moveTo(left, top); shoreline.lineTo(left, bottom); }
+    if (row[x + 1] !== '~') { shoreline.moveTo(right, top); shoreline.lineTo(right, bottom); }
+  }));
+  strokeShore(ctx, shoreline);
+  const ground = { canvas, water, waterShape, shoreline, waterBounds };
+  groundCache.set(map.id, ground);
+  return ground;
+}
+
+function strokeShore(ctx, shoreline) {
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = '#172c2bc7';
+  ctx.stroke(shoreline);
+  ctx.lineWidth = 2.6;
+  ctx.strokeStyle = '#a69269c7';
+  ctx.stroke(shoreline);
+}
+
+export function prepareBattlefield(mapId) {
+  const map = MAPS[mapId];
+  if (!map || map.tiles.length !== map.size || map.tiles.some(row => row.length !== map.size)) {
+    throw new Error('The battlefield file is invalid.');
+  }
+  paintGround(map);
 }
 
 const shots = { bullet: 0, rabbit: 0, rocket: 2, acorn: 3, web: 1 };
@@ -64,6 +145,11 @@ export class Battlefield {
     this.facing.clear();
     this.eventId = 0;
     this.lastMini = -Infinity;
+    this.lastFrame = 0;
+    this.ground = paintGround(this.map);
+    this.scenery = this.map.tiles.flatMap((line, y) => [...line].flatMap((tile, x) =>
+      tile === '#' ? [{ x, y, index: (x + y * 3) % 4 === 0 ? 4 : 5 }] : [],
+    ));
     const canvas = document.createElement('canvas');
     canvas.width = this.map.size;
     canvas.height = this.map.size;
@@ -148,19 +234,31 @@ export class Battlefield {
     this.tileX = (this.width < 600 ? 23 : 31) * this.camera.zoom;
     this.tileY = this.tileX / 2;
     const fraction = clamp((now - this.received) / this.duration, 0, 1);
+    const elapsed = Math.min(100, now - (this.lastFrame || now - 16));
+    this.lastFrame = now;
     const player = this.state.players.find(entry => entry.id === this.localId);
     if (player && this.camera.follow) {
       const point = this.position(player, fraction);
-      this.camera.x = mix(this.camera.x, point.x, settings.reduced ? 1 : .27);
-      this.camera.y = mix(this.camera.y, point.y, settings.reduced ? 1 : .27);
+      const follow = settings.reduced ? 1 : 1 - Math.exp(-elapsed / 58);
+      this.camera.x = mix(this.camera.x, point.x, follow);
+      this.camera.y = mix(this.camera.y, point.y, follow);
     }
     ctx.fillStyle = '#142722';
     ctx.fillRect(0, 0, this.width, this.height);
-    this.drawGround();
-    if (target) this.diamond(target.x, target.y, '#efcc78', '#efcc7840');
+    const waterTime = this.previous ? mix(this.previous.time, this.state.time, fraction) : this.state.time;
+    this.drawGround(waterTime, settings.reduced);
+    const walls = new Map(this.state.structures.filter(entry => isWall(entry.type)).map(entry => [wallKey(entry.x, entry.y), entry]));
+    if (target) {
+      this.diamond(target.x, target.y, '#efcc78', '#efcc7840');
+      if (isWall(target.type) && !walls.has(wallKey(target.x, target.y))) {
+        this.wall(target, target, walls, true);
+      }
+    }
     const depth = [];
     const enqueue = (group, draw) => group.forEach(entity => {
       const position = this.position(entity, fraction);
+      const [x, y] = this.project(position.x, position.y);
+      if (x < -100 || x > this.width + 100 || y < -65 || y > this.height + 150) return;
       depth.push({ depth: position.x + position.y, draw: () => draw(entity, position) });
     });
     enqueue(this.map.spawns, (e, p) => this.prop(6, p, 1.6));
@@ -173,11 +271,14 @@ export class Battlefield {
       const [x, y] = this.project(p.x, p.y);
       sprite(ctx, 'effects', 8, x, y - (settings.reduced ? 0 : Math.sin(now / 310 + p.x) * 2), 24 * this.camera.zoom);
     });
-    enqueue(this.state.structures, (e, p) => this.structure(e, p, settings));
+    enqueue(this.state.structures, (e, p) => {
+      if (isWall(e.type)) this.wall(e, p, walls);
+      else this.structure(e, p, settings);
+    });
     enqueue(this.state.players, (e, p) => this.unit(e, p, 'mouse', now, settings));
     enqueue(this.state.enemies, (e, p) => this.unit(e, p, e.type, now, settings));
     enqueue(this.state.allies, (e, p) => this.unit(e, p, e.type, now, settings));
-    this.propQueue.forEach(item => depth.push(item));
+    enqueue(this.scenery, (e, p) => this.prop(e.index, p, 1.08));
     depth.sort((a, b) => a.depth - b.depth).forEach(item => item.draw());
     this.state.projectiles.forEach(shot => this.projectile(shot, this.position(shot, fraction)));
     this.drawEffects(now, settings);
@@ -187,23 +288,34 @@ export class Battlefield {
     }
   }
 
-  drawGround() {
-    this.propQueue = [];
+  waterInView(bounds) {
+    if (!Number.isFinite(bounds.left)) return false;
+    const corners = [this.project(bounds.left, bounds.top), this.project(bounds.right, bounds.top),
+      this.project(bounds.left, bounds.bottom), this.project(bounds.right, bounds.bottom)];
+    const xs = corners.map(point => point[0]);
+    const ys = corners.map(point => point[1]);
+    return Math.max(...xs) >= 0 && Math.min(...xs) <= this.width
+      && Math.max(...ys) >= 0 && Math.min(...ys) <= this.height;
+  }
+
+  drawGround(time, reduced) {
     const ctx = this.ctx;
-    const { size, tiles } = this.map;
-    const half = this.tileX;
-    const width = half * 2 + 1;
-    for (let depth = 0; depth < size * 2 - 1; depth++) {
-      for (let x = Math.max(0, depth - size + 1); x <= Math.min(depth, size - 1); x++) {
-        const y = depth - x;
-        const [sx, sy] = this.project(x, y);
-        if (sx < -width || sx > this.width + width || sy < -width || sy > this.height + width) continue;
-        const tile = tiles[y][x];
-        const index = tile === ':' ? 1 : tile === '~' ? 3 : tile === '#' || (x * 11 + y * 17) % 5 === 0 ? 2 : 0;
-        ctx.drawImage(art.terrain, index * 160, 40, 160, 80, sx - width / 2, sy - width / 4, width, width / 2);
-        if (tile === '#') this.propQueue.push({ depth, draw: () => this.prop((x + y * 3) % 4 === 0 ? 4 : 5, { x, y }, 1.08) });
-      }
+    const { canvas, water, waterShape, shoreline, waterBounds } = this.ground;
+    const [x, y] = this.project(-.5, -.5);
+    ctx.save();
+    ctx.transform(this.tileX / tilePixels, this.tileY / tilePixels,
+      -this.tileX / tilePixels, this.tileY / tilePixels, x, y);
+    ctx.drawImage(canvas, 0, 0);
+    if (!reduced && this.waterInView(waterBounds)) {
+      // Shift the seamless painted current in world space and keep the shoreline fixed.
+      const drift = 8 * Math.sin(time / 4300);
+      const flow = (time * .015) % (waterSwatch * 2);
+      water.setTransform(new DOMMatrix().translate(drift, flow));
+      ctx.fillStyle = water;
+      ctx.fill(waterShape);
+      strokeShore(ctx, shoreline);
     }
+    ctx.restore();
   }
 
   prop(index, point, scale) {
@@ -233,6 +345,36 @@ export class Battlefield {
     ctx.fillRect(x - 16, y, 32, 5);
     ctx.fillStyle = color;
     ctx.fillRect(x - 15, y + 1, 30 * clamp(hp / maxHp, 0, 1), 3);
+  }
+
+  wall(entity, point, walls, ghost = false) {
+    const ctx = this.ctx;
+    const [x, y] = this.project(point.x, point.y);
+    const thick = entity.type === 'barricade';
+    const height = (thick ? 39 : 29) * this.camera.zoom;
+    const size = art.walls.height;
+    const cell = thick ? 2 : 0;
+    const arms = wallConnections(entity, walls);
+    ctx.save();
+    if (ghost || entity.readyAt > this.state.time) ctx.globalAlpha = .57;
+    if (entity.hp < entity.maxHp * .38) ctx.filter = 'saturate(.68) brightness(.75)';
+    const arm = direction => {
+      const [toX, toY] = this.project(point.x + direction.x * .51, point.y + direction.y * .51);
+      const left = toX < x;
+      const startX = left ? toX : x;
+      const startY = left ? toY : y;
+      const endY = left ? y : toY;
+      ctx.save();
+      ctx.transform(Math.abs(toX - x) + .5, endY - startY, 0, 1, startX, startY);
+      ctx.drawImage(art.walls, cell * size, 0, size, size, 0, -height, 1, height);
+      ctx.restore();
+    };
+    arms.filter(direction => direction.x + direction.y < 0).forEach(arm);
+    arms.filter(direction => direction.x + direction.y > 0).forEach(arm);
+    const postWidth = height * .66;
+    ctx.drawImage(art.walls, size, 0, size, size, x - postWidth / 2, y - height * 1.12, postWidth, height * 1.19);
+    ctx.restore();
+    if (!ghost) this.health(x, y - height * 1.18, entity.hp, entity.maxHp, '#e5b161');
   }
 
   structure(entity, point, settings) {

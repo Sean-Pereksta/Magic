@@ -57,7 +57,7 @@ try {
     }
     Push-Location -LiteralPath $Payload.FullName
     try {
-        & (Join-Path $NodeRoot "npm.cmd") install --omit=dev --omit=optional --ignore-scripts --no-audit --no-fund
+        & (Join-Path $NodeRoot "npm.cmd") install --omit=dev --omit=optional --ignore-scripts --no-audit --no-fund --prefer-offline
         if ($LASTEXITCODE -ne 0) { throw "The match server dependency could not be installed." }
         Copy-Item -LiteralPath (Join-Path $Payload.FullName "node_modules\ws\LICENSE") -Destination (Join-Path $Licenses.FullName "ws-LICENSE.txt")
         & (Join-Path $Runtime.FullName "node.exe") (Join-Path $PSScriptRoot "verify-payload.mjs") $Payload.FullName

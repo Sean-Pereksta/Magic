@@ -48,6 +48,19 @@ test('commands authenticate actors and guard resources, placement and structure 
   assert.equal(sim.snapshot().structures[0].branch, 'marksman');
 });
 
+test('wall axes persist in snapshots and both directions occupy one tile', () => {
+  const loadout = normalizeLoadout(['wall', 'barricade', 'turret']);
+  const sim = createSimulation({ matchId: 'directional-walls', players: [{ ...mouse, loadout }] });
+  const place = (slot, x, y, axis) => sim.command(mouse.id, { type: 'build', slot, x, y, axis });
+  assert.equal(place(0, 21, 26, 'diagonal').code, 'invalid-axis');
+  assert.equal(place(0, 21, 26).ok, true);
+  assert.equal(place(1, 22, 26, 'y').ok, true);
+  assert.equal(place(2, 24, 24, 'y').ok, true);
+  assert.deepEqual(sim.snapshot().structures.map(({ axis }) => axis), ['x', 'y', undefined]);
+  for (const x of [21, 22]) assert.equal(sim.command(mouse.id, { type: 'move', x, y: 26 }).code, 'blocked');
+  assert.equal(sim.command(mouse.id, { type: 'move', x: 22, y: 25 }).ok, true);
+});
+
 test('click movement avoids structures, gathers cheese and preserves last idle facing', () => {
   const sim = createSimulation({ matchId: 'movement', players: [mouse] });
   assert.equal(sim.command(mouse.id, { type: 'build', slot: 0, x: 22, y: 26 }).ok, true);

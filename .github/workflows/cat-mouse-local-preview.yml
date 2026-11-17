@@ -23,6 +23,8 @@ jobs:
         run: |
           npm install --omit=dev --omit=optional --ignore-scripts --no-audit --no-fund
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test simulation.test.mjs walls.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run test:host
       - name: Install Inno Setup
         shell: pwsh

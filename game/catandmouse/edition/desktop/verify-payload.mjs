@@ -12,7 +12,7 @@ const css = [...startup.matchAll(/<link\b[^>]*href=["']([^"']+\.css)["']/g)].map
 const art = await readdir(join(root, 'art'), { recursive: true, withFileTypes: true });
 const painted = art.filter(item => item.isFile() && ['.png', '.jpg', '.webp'].includes(extname(item.name)));
 assert.ok(scripts.length && css.length && painted.length, 'The offline package needs its client, styles and painted artwork.');
-for (const file of ['title', 'terrain', 'units', 'towers', 'effects', 'facing', 'mill-preview']) {
+for (const file of ['title', 'terrain', 'units', 'towers', 'effects', 'facing', 'mill-preview', 'walls', 'ground']) {
   assert.ok(painted.some(item => item.name === file + '-v1.webp'), 'Missing the painted ' + file + ' atlas.');
 }
 const sim = await import(pathToFileURL(join(root, 'simulation.mjs')));

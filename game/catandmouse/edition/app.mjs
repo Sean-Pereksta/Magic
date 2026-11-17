@@ -1,7 +1,8 @@
 import { createSimulation } from './simulation.mjs';
 import { DIFFICULTIES, isCompleteLoadout, MAPS, STARTER_LOADOUT, STEP_MS, TOWERS } from './battlefield.mjs';
 import { CAT_DIRECTORY_URL, PROTOCOL_VERSION } from './directory-config.mjs';
-import { artUrl, Battlefield, loadPaintings, towerCell } from './board.mjs';
+import { Battlefield, loadPaintings, prepareBattlefield, towerCell } from './board.mjs';
+import { isWall } from './walls.mjs';
 
 const $ = id => document.getElementById(id);
 const screen = $('screen');
@@ -24,6 +25,7 @@ let view = '';
 let network, lobby, host, hostTimer, solo, state, playerId, previousFrame, battleTime, selected, cursor, audio;
 let hostPolling = false;
 let lastHud = 0;
+let wallAxis = 'x';
 let paused = false;
 let resultsOpen = false;
 let preserveStatus = false;
@@ -185,7 +187,7 @@ function settingsMarkup() {
     <label class="check"><input type="checkbox" id="reduced" ${settings.reduced ? 'checked' : ''}> Reduced motion</label>
     <label class="check"><input type="checkbox" id="follow" ${settings.follow ? 'checked' : ''}> Follow my mouse with the camera</label>
     <label class="check"><input type="checkbox" id="touch" ${settings.touch ? 'checked' : ''}> Touch controls</label>
-    <p>Walk with WASD, arrow keys, or a tap. Choose a tower with 1–8 and select a tile. Use the minimap to pan.</p>`;
+    <p>Walk with WASD, arrow keys, or a tap. Choose a tower with 1–8 and select a tile. Press R or tap Rotate when placing a standalone wall. Use the minimap to pan.</p>`;
 }
 
 function renderSettings() {
@@ -337,8 +339,7 @@ function openSocket(connection) {
       try {
         await loadPaintings();
         if (network === connection && connection.socket === socket && MAPS[data.map]) {
-          const map = MAPS[data.map];
-          if (map.tiles.length !== map.size || map.tiles.some(row => row.length !== map.size)) throw new Error('Invalid map');
+          prepareBattlefield(data.map);
           transmit({ type: 'loaded', matchId: data.matchId });
         }
       } catch { message('The painted battlefield did not load. Try rejoining the room.', true); }
@@ -442,6 +443,7 @@ async function startSolo() {
   try {
     await loadPaintings();
     if (view !== screenId || solo) return;
+    prepareBattlefield(mill.id);
     playerId = 'solo-mouse';
     solo = createSimulation({
       matchId: crypto.randomUUID(), mapId: mill.id, difficulty: soloDraft.difficulty,
@@ -509,9 +511,20 @@ function renderBuild(kit) {
 
 function updateSelected() {
   $('build-bar').querySelectorAll('[data-build]').forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.build) === selected)));
+  const type = selectedTower();
+  $('rotate-wall').hidden = !isWall(type);
+  $('build-info').textContent = !type ? 'WASD or arrow keys to move · tap the floor to walk'
+    : isWall(type) ? 'Walls join automatically. Rotate a standalone wall.'
+      : `${TOWERS[type].description} Select a tile to build.`;
+}
+
+function selectedTower() {
   const player = state?.players.find(entry => entry.id === playerId);
-  $('build-info').textContent = selected === null ? 'WASD or arrow keys to move · tap the floor to walk'
-    : `${TOWERS[(player?.loadout || STARTER_LOADOUT)[selected]].description} Select a tile to build.`;
+  return selected === null ? null : (player?.loadout || STARTER_LOADOUT)[selected];
+}
+
+function rotateWall() {
+  if (isWall(selectedTower())) wallAxis = wallAxis === 'x' ? 'y' : 'x';
 }
 
 const commandErrors = {
@@ -557,7 +570,7 @@ function frame(now) {
       updateHud();
       lastHud = now;
     }
-    board.draw(now, settings, selected !== null ? cursor : null);
+    board.draw(now, settings, selected !== null && cursor ? { ...cursor, axis: wallAxis, type: selectedTower() } : null);
   } else if (view === 'waiting' && lobby?.phase === 'countdown') {
     const seconds = Math.max(1, Math.ceil((lobby.countdownUntil - Date.now()) / 1000));
     const label = `Battle starts in ${seconds}…`;
@@ -729,6 +742,9 @@ window.addEventListener('keydown', event => {
   } else if (/^[1-8]$/.test(key)) {
     selected = Number(key) - 1;
     updateSelected();
+  } else if (key === 'r' && isWall(selectedTower())) {
+    event.preventDefault();
+    if (!event.repeat) rotateWall();
   } else if (key === 'escape') {
     if (selected !== null) { selected = null; updateSelected(); }
     else battleMenu();
@@ -748,7 +764,7 @@ canvas.addEventListener('pointerdown', event => {
   const point = board.coordinates(event.offsetX, event.offsetY);
   const x = Math.round(point.x);
   const y = Math.round(point.y);
-  if (selected !== null) return sendCommand({ type: 'build', x, y, slot: selected });
+  if (selected !== null) return sendCommand({ type: 'build', x, y, slot: selected, axis: wallAxis });
   const tower = state.structures.find(entry => entry.x === x && entry.y === y && entry.ownerId === playerId && !entry.branch && TOWERS[entry.type]?.upgrades);
   if (tower) {
     stopWalking();
@@ -772,6 +788,7 @@ canvas.addEventListener('wheel', event => {
 }, { passive: false });
 $('zoom-in').onclick = () => board.scale(1);
 $('zoom-out').onclick = () => board.scale(-1);
+$('rotate-wall').onclick = rotateWall;
 $('camera').onclick = () => { board.camera.follow = !board.camera.follow; };
 $('minimap').onclick = event => {
   if (!state) return;

@@ -106,11 +106,12 @@ export class CatMouseDirectory extends DurableObject {
       const upstream = await fetch(listing.serverUrl + '/health', {
         redirect: 'error', signal: AbortSignal.timeout(5_000)
       });
-      if (!upstream.ok) throw new Error('Origin unavailable');
+      if (!upstream.ok) throw new Error('Origin returned ' + upstream.status);
       const proof = await upstream.json();
       if (proof.game !== 'catandmouse' || proof.roomId !== id || proof.version !== listing.version
         || proof.listingProof !== owner) throw new Error('Room identity differed');
-    } catch {
+    } catch (error) {
+      console.warn('Room origin verification failed:', error.message);
       return response({ error: 'The room origin could not be verified' }, 422);
     }
 

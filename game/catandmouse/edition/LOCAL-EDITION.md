@@ -4,6 +4,8 @@
 
 Install the Windows x64 setup or extract the portable ZIP, then open **Cat & Mouse Local Edition** or **Play Cat Mouse.vbs**. Choose **Singleplayer** for an offline match. The bundled game opens on your computer and stores your settings and progression in your browser.
 
+Use WASD, the arrow keys, or tap the battlefield to walk. Select a wall and press **R** or tap **Rotate** to orient a standalone placement. Adjacent walls connect automatically, including corners and junctions.
+
 To host, choose **Multiplayer → Host Lobby** and set the room, battlefield, difficulty, seat count, and visibility. A public room appears under **Live Lobbies** in the Arcade after its connection verifies. For an invite-only room, copy the guest invitation and share it with the people you want to play with. Guests can use their regular browser.
 
 Use **Start** when all configured seats are filled and ready, or confirm **Force Start** to include the connected players and fill unfinished loadouts. The server gives players 20 seconds to load before a three-second countdown. A forced start can continue with the players who finish loading, provided the host finishes. Keep the host computer awake and online while playing.
