@@ -1,8 +1,21 @@
 const { createHash } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const { bundleFromJSON, isBundleWithDsseEnvelope } = require('@sigstore/bundle');
+const { crypto: sigstoreCrypto } = require('@sigstore/core');
 const { TrustedRoot } = require('@sigstore/protobuf-specs');
 const { Verifier, toSignedEntity, toTrustMaterial } = require('@sigstore/verify');
+
+// Sigstore omits the digest for P-256 log and envelope signatures. Node's
+// OpenSSL defaults to SHA-256; Electron's BoringSSL requires the digest name.
+// Configure only the private Sigstore verifier shipped with this module.
+const verifySignature = sigstoreCrypto.verify;
+sigstoreCrypto.verify = (data, key, signature, algorithm) => {
+  if (algorithm === undefined && key.asymmetricKeyType === 'ec' &&
+      key.asymmetricKeyDetails?.namedCurve === 'prime256v1') {
+    algorithm = 'sha256';
+  }
+  return verifySignature(data, key, signature, algorithm);
+};
 
 // Public Good Instance trust material, from sigstore/root-signing at
 // c6464baef4866a4787943a18f7edc3d4199e304b, targets/trusted_root.json.
