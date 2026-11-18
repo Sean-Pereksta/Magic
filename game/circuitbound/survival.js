@@ -4,6 +4,7 @@
   else root.CircuitSurvival=factory();
 })(typeof globalThis==='object'?globalThis:this,function(){
   'use strict';
+  const foundry = typeof module === 'object' && module.exports ? require('./foundry-combat.js') : globalThis.CircuitFoundryCombat;
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
   const finite=(n,f=0)=>Number.isFinite(n)?n:f;
   const DIFFICULTIES={
@@ -18,6 +19,13 @@
     {id:'industrial',name:'Forgotten Industrial Depths',color:'#d5a271',depth:65/84,tier:3},
     {id:'abyss',name:'Reactor Abyss',color:'#dc83a7',depth:74/84,tier:4}
   ];
+  const EXPEDITION_ENEMIES={
+    faultGalleries:['crawler','burrower','leech'],
+    osmiumBasin:['siege','crawler','drone'],
+    gravityHollows:['drone','wisp','drone','sentinel'],
+    nullCrystalVaults:['leech','wisp','sentinel','leech'],
+    starcoreMantle:['siege','sentinel','siege','drone']
+  };
   const ENEMIES={
     beetle:{name:'Scrap Beetle',hp:28,speed:36,damage:7,reach:25,wind:.62,cool:1.5,w:21,h:13,color:'#b89058',loot:{scrap:2,copper:1},move:'crawl'},
     crawler:{name:'Rust Crawler',hp:43,speed:64,damage:10,reach:28,wind:.52,cool:1.25,w:23,h:19,color:'#c96c51',loot:{scrap:3,iron:1},move:'ground'},
@@ -39,7 +47,8 @@
     coilLance:{name:'Coil Lance',damage:78,range:680,cool:.78,kind:'pierce',energy:15,speed:640,targets:5,color:'#7ee8ff'},
     voidPulser:{name:'Void Pulser',damage:115,range:325,cool:1.45,kind:'pulse',energy:24,speed:390,radius:108,color:'#dd9cff'},
     siegeRailcannon:{name:'Siege Railcannon',damage:285,range:880,cool:1.95,kind:'rail',ammo:'railSlug',ammoLabel:'Siege Slug',color:'#ffab78'},
-    sunspikeLaser:{name:'Sunspike Laser',damage:39,range:820,cool:4.2,kind:'beam',energy:28,ammo:'sunspikeCell',ammoLabel:'Sunspike Charge',charge:.24,duration:.78,interval:.12,targets:4,color:'#ffe6a9'}
+    sunspikeLaser:{name:'Sunspike Laser',damage:39,range:820,cool:4.2,kind:'beam',energy:28,ammo:'sunspikeCell',ammoLabel:'Sunspike Charge',charge:.24,duration:.78,interval:.12,targets:4,color:'#ffe6a9'},
+    ...foundry?.CATALOG
   };
   const EQUIPMENT=[
     ['reinforcedPickaxe','Reinforced Pickaxe','⛏',{iron:5,copper:3,wood:2},'Mine stone and copper 1.7× faster.','mining',1],
@@ -86,6 +95,7 @@
       });
     }
     if(!recipes.some(r=>r.key==='ammo'))recipes.push({key:'ammo',name:'Scrap Ammunition',icon:'•',cost:{iron:1,copper:1},out:6,desc:'Launcher and turret ammunition. Automated manufacture is more efficient.',category:'weapons',chapter:1});
+    foundry?.install(items, recipes);
   }
   function rayEntry(x,y,dx,dy,enemy,margin){
     const halfW=enemy.w/2+margin,halfH=enemy.h/2+margin;
@@ -127,6 +137,7 @@
     reset(){
       this.enemies=[];this.projectiles=[];this.effects=[];this.caches=[];this.nextEnemy=1;this.nextCache=1;this.elapsed=0;
       this.difficulty='standard';this.energy=100;this.maxEnergy=100;this.weapon=this.inventory?.hammer?'hammer':'tool';this.attackCooldown=0;this.attackAnimation=0;this.beam=null;this.sunspikeReadyAt=0;
+      foundry?.reset(this);
       this.invulnerable=4;this.lastDamage=-100;this.spawnClock=8;this.worldClock=0;this.spawnFailures=0;this.nextRaid=260;
       this.raid={state:'quiet',remaining:0,count:0,id:0};this.completed=[];this.discoveredRegions=['scrapyard'];this.chapter=1;this.powered=[];this.machineKeys=[];
       this.maxDepth=0;this.verticalBuilt=0;this.powerCapacity=0;this.runningKinds=0;this.poweredLamp=false;this.runningMachine=false;this.bossSpawned=false;
@@ -134,7 +145,7 @@
       if(this.player){this.player.maxHealth=100;this.player.health=clamp(finite(this.player.health,100),1,100);}
       this.grid.rebuild(this.enemies);
     }
-    regionAt(x,y){let region=REGIONS[0];for(const r of REGIONS)if(y/this.height>=r.depth)region=r;return region;}
+    regionAt(x,y){if(this.regionForDepth)return this.regionForDepth(y);let region=REGIONS[0];for(const r of REGIONS)if(y/this.height>=r.depth)region=r;return region;}
     config(){return DIFFICULTIES[this.difficulty];}
     setDifficulty(name){const value=String(name).toLowerCase();if(!DIFFICULTIES[value])return false;this.difficulty=value;if(this.elapsed<10&&this.raid.state==='quiet')this.nextRaid=260*this.config().raid;return true;}
     center(){return{x:this.player.x+(this.player.w||15)/2,y:this.player.y+(this.player.h||34)/2};}
@@ -188,7 +199,7 @@
     }
     chooseType(){
       const p=this.center(),r=this.regionAt(p.x/this.tile,p.y/this.tile),night=(Math.sin(this.elapsed*.012)+1)/2<.35;
-      let pool=r.tier===0?['beetle','beetle','crawler']:r.tier===1?['crawler','beetle','burrower']:r.tier===2?['wisp','burrower','drone']:r.tier===3?['drone','sentinel','siege']:['sentinel','siege','wisp'];
+      let pool=EXPEDITION_ENEMIES[r.id]||(r.tier===0?['beetle','beetle','crawler']:r.tier===1?['crawler','beetle','burrower']:r.tier===2?['wisp','burrower','drone']:r.tier===3?['drone','sentinel','siege']:['sentinel','siege','wisp']);
       if(night&&r.tier<2)pool=pool.concat(['wisp']);if(this.powered.length>=4&&this.chapter>=2)pool=pool.concat(['leech']);
       return pool[Math.floor(this.random()*pool.length)];
     }
@@ -231,15 +242,16 @@
       return {dx,dy,length,hits};
     }
     attack(targetX,targetY){
-      if(this.attackCooldown>0||this.beam||this.player.health<=0)return false;
+      if(this.attackCooldown>0||this.beam||this.foundryCharge||this.player.health<=0)return false;
       if(!this.availableWeapons().includes(this.weapon))this.weapon='tool';
       const w=WEAPONS[this.weapon],p=this.center();
+      const dx=finite(targetX,p.x+this.player.facing*80)-p.x,dy=finite(targetY,p.y)-p.y,angle=Math.atan2(dy,dx);
+      if(foundry?.CATALOG[this.weapon])return foundry.attack(this,this.weapon,p,angle,Math.hypot(dx,dy));
       if(w.kind==='beam'&&this.sunspikeReadyAt>this.elapsed){
         this.notify('Sunspike cooling · '+(this.sunspikeReadyAt-this.elapsed).toFixed(1)+'s');
         return false;
       }
       if(!this.canFire(w))return false;
-      const dx=finite(targetX,p.x+this.player.facing*80)-p.x,dy=finite(targetY,p.y)-p.y,angle=Math.atan2(dy,dx);
       if(w.kind==='beam'){
         if(!this.standingStill()){this.notify('Stand still to charge the Sunspike Laser');return false;}
         this.player.facing=Math.cos(angle)>=0?1:-1;
@@ -275,6 +287,8 @@
         this.effects.push({x:p.x+Math.cos(angle)*w.range*.6,y:p.y+Math.sin(angle)*w.range*.6,life:.18,max:.18,kind:'slash',angle,color:w.color||(w.kind==='stun'?'#8cffff':'#ffdc8a')});
       }return true;
     }
+    dodge(direction){return foundry?.dodge(this,direction) || false;}
+    cancelCharge(){if(!this.foundryCharge)return;this.foundryCharge=null;this.attackAnimation=0;}
     updateBeam(dt){
       const beam=this.beam,weapon=WEAPONS.sunspikeLaser;
       if(!beam)return;
@@ -304,10 +318,13 @@
       }
       if(beam.remaining<=0)this.beam=null;
     }
-    hit(enemy,amount,source='player'){
-      if(!enemy||enemy.hp<=0||!Number.isFinite(amount)||amount<=0)return false;
+    canHit(enemy){
+      if(!enemy||enemy.hp<=0)return false;
       // Burrowers are vulnerable when exposed; the wind-up always emerges into clear air.
-      if(enemy.type==='burrower'&&this.blocked(enemy.x,enemy.y,enemy.w,enemy.h)&&enemy.wind<=0)return false;
+      return enemy.type!=='burrower'||enemy.wind>0||!this.blocked(enemy.x,enemy.y,enemy.w,enemy.h);
+    }
+    hit(enemy,amount,source='player'){
+      if(!Number.isFinite(amount)||amount<=0||!this.canHit(enemy))return false;
       enemy.hp-=amount;enemy.flash=.14;this.effects.push({x:enemy.x,y:enemy.y,life:.23,max:.23,kind:'hit',color:'#ffeaa0',amount:Math.ceil(amount)});
       if(enemy.hp<=0){
         this.stats.kills=(this.stats.kills||0)+1;if(['turret','arc','tesla','trap','defense','electric'].includes(source))this.stats.defenseKills=(this.stats.defenseKills||0)+1;
@@ -326,9 +343,9 @@
     }
     inventoryRoom(){return Math.max(0,(this.inventoryCapacity||2048)-Object.values(this.inventory).reduce((n,v)=>n+(Number.isFinite(v)?Math.max(0,v):0),0));}
     grantReward(key,count){const n=Math.min(count,this.inventoryRoom());if(n)this.inventory[key]=(this.inventory[key]||0)+n;if(n<count){const p=this.center();this.rewardDrop(key,count-n,p.x,p.y);}}
-    damagePlayer(amount,source='impact'){
+    damagePlayer(amount,source='impact',threat=null){
       if(this.invulnerable>0||this.player.health<=0||!Number.isFinite(amount)||amount<=0)return false;
-      let damage=amount*this.config().damage*(1-this.armor().reduction);
+      let damage=amount*this.config().damage*(1-this.armor().reduction)*(foundry?.guardFactor(this,threat)??1);
       if(this.inventory.insulatedArmor&&['wisp','energy','electric','leech'].includes(source))damage*=.65;
       if(this.inventory.shieldModule&&this.energy>0){const absorbed=Math.min(damage*.5,this.energy/1.5);damage-=absorbed;this.energy-=absorbed*1.5;}
       this.player.health=Math.max(0,this.player.health-damage);this.lastDamage=this.elapsed;this.invulnerable=.55;this.player.hurt=.2;
@@ -354,6 +371,7 @@
     }
     respawn(){
       this.beam=null;this.attackAnimation=0;
+      foundry?.reset(this);
       const p=this.center(),items={},loss=this.config().loss;
       for(const key of ['dirt','stone','wood','copper','iron','crystal','obsidian','scrap','steel','ammo']){const n=Math.floor((this.inventory[key]||0)*loss);if(n){this.inventory[key]-=n;items[key]=n;}}
       if(Object.keys(items).length)this.caches.push({id:this.nextCache++,x:p.x,y:p.y,items,kind:'recovery'});
@@ -381,8 +399,16 @@
         if(id===this.T.LAMP&&m.powered&&m.signalOK!==false)this.poweredLamp=true;
         if((m.running||m.working)&&id!==this.T.LAMP){this.runningMachine=true;kinds.add(id);}
       }
-      // Structures without machine metadata are deliberately counted too.
-      for(let y=Math.floor(this.height*.44);y<this.height-1;y++)for(let x=0;x<this.width;x++)if(this.defs[this.get(x,y)]?.ladder||this.defs[this.get(x,y)]?.rope)this.verticalBuilt++;
+      // Count constructed ladders and ropes, including those without machine metadata.
+      const routeStart=Math.floor((this.campaignHeight||this.height)*.44);
+      if(this.placedKeys){
+        for(const key of this.placedKeys()){
+          const y=Math.floor(key/this.width);
+          if(y>=routeStart&&y<this.height-1){const d=this.defs[this.get(key%this.width,y)];if(d?.ladder||d?.rope)this.verticalBuilt++;}
+        }
+      }else{
+        for(let y=routeStart;y<this.height-1;y++)for(let x=0;x<this.width;x++)if(this.defs[this.get(x,y)]?.ladder||this.defs[this.get(x,y)]?.rope)this.verticalBuilt++;
+      }
       this.engine?.rebuild?.();
       // Generation milestones require one actual connected grid with a consumer.
       this.powerCapacity=Math.max(0,...(this.engine?.powerNets||[]).map(net=>net.some(k=>this.defs[this.get(k%this.width,Math.floor(k/this.width))]?.load>0&&!this.getMeta().get(k)?.disabled)?net.reduce((total,k)=>total+(this.getMeta().get(k)?.disabled?0:this.defs[this.get(k%this.width,Math.floor(k/this.width))]?.source||0),0):0));
@@ -393,10 +419,10 @@
       const obj=(id,label,current,target)=>({id,label,current:typeof current==='boolean'?Number(current):finite(current),target,complete:current>=target});
       return[
         [obj('copper','Mine 8 copper ore',s.copperMined||0,8),obj('tool','Craft a reinforced pickaxe or engineering hammer',tool,1),obj('machine','Operate a powered machine',this.runningMachine||s.machineOperated,1),obj('core','Restore the outpost Foundry Core',s.coreReached,1)],
-        [obj('shaft','Build a 12-section route into the mine',this.verticalBuilt,12),obj('depth','Descend into the Iron Caverns',depth,Math.ceil(this.height*.53)),obj('mine','Extract 8 real ore with automated mining',Math.max(metrics.mined||0,s.autoMined||0,s.automined||0),8)],
+        [obj('shaft','Build a 12-section route into the mine',this.verticalBuilt,12),obj('depth','Descend into the Iron Caverns',depth,Math.ceil((this.campaignHeight||this.height)*.53)),obj('mine','Extract 8 real ore with automated mining',Math.max(metrics.mined||0,s.autoMined||0,s.automined||0),8)],
         [obj('fight','Defeat 6 mechanical enemies',s.kills||0,6),obj('defense','Defeat 3 enemies using connected defenses',s.defenseKills||0,3),obj('raid','Survive a warned attack on the base',s.raidsSurvived||0,1)],
         [obj('production','Manufacture 12 outputs in production machines',Math.max(metrics.produced||0,s.produced||0),12),obj('factory','Operate 3 kinds of machinery together',this.runningKinds,3),obj('power','Build at least 36 connected generation capacity',this.powerCapacity,36)],
-        [obj('abyss','Reach the Reactor Abyss',depth,Math.ceil(this.height*74/84)),obj('equipment','Craft powered mining or energy equipment',!!(this.inventory.poweredMiningTool||this.inventory.energyRifle),1),obj('guardian','Defeat the Reactor Guardian',!!s.guardianDefeated,1)]
+        [obj('abyss','Reach the Reactor Abyss',depth,Math.ceil((this.campaignHeight||this.height)*74/84)),obj('equipment','Craft powered mining or energy equipment',!!(this.inventory.poweredMiningTool||this.inventory.energyRifle),1),obj('guardian','Defeat the Reactor Guardian',!!s.guardianDefeated,1)]
       ];
     }
     progress(){
@@ -408,7 +434,8 @@
     getJournal(){const data=this.objectiveData(),chapters=CHAPTERS.map(c=>({...c,loot:undefined,complete:this.completed.includes(c.id),active:c.id===this.chapter,objectives:data[c.id-1]}));return{chapters,chapter:this.chapter,current:chapters.find(c=>c.active)?.objectives.find(o=>!o.complete)||null,unlocks:[...CHAPTERS.filter(c=>this.completed.includes(c.id)).flatMap(c=>c.unlocks),...(Array.isArray(this.stats.schematics)?this.stats.schematics.map(key=>'Schematic: '+key):[])],discoveredRegions:this.discoveredRegions.slice(),difficulty:this.difficulty,raidsSurvived:this.stats.raidsSurvived||0,kills:this.stats.kills||0};}
     missions(){return this.getJournal();}
     canCraft(recipe){
-      const definition=typeof recipe==='string'&&Object.hasOwn(EXOTIC_WEAPONS,recipe)?
+      const definition=typeof recipe==='string'&&foundry?.CATALOG[recipe]?
+        {schematic:recipe,requiresSchematic:true}:typeof recipe==='string'&&Object.hasOwn(EXOTIC_WEAPONS,recipe)?
         {chapter:5,schematic:recipe,requiresSchematic:true}:recipe;
       const chapter=typeof definition==='object'?(definition?.chapter||1):(EQUIPMENT.find(e=>e[0]===definition)?.[6]||1);
       const hasPlan=!!(definition?.schematic&&Array.isArray(this.stats.schematics)&&this.stats.schematics.includes(definition.schematic));
@@ -436,11 +463,12 @@
         for(let i=0;i<count;i++){const a=angle+(i-(count-1)/2)*(e.type==='guardian'?.2:.14);this.projectiles.push({x:e.x,y:e.y,vx:Math.cos(a)*(e.type==='guardian'?150:180),vy:Math.sin(a)*(e.type==='guardian'?150:180),life:3,damage:d.damage,owner:'enemy',kind:'electric',color:e.type==='guardian'?'#ff837c':'#f9bf6b'});}
         this.effects.push({x:e.x,y:e.y,life:.25,max:.25,kind:'burst',color:d.color});
       }else if(distance<d.reach+Math.max(this.player.w||15,this.player.h||34)/2&&this.lineOfSight(e.x,e.y,p.x,p.y)){
-        if(this.damagePlayer(d.damage,e.type)){const push=Math.sign(p.x-e.x)*80;if(!this.blocked(p.x+push*.08,p.y,this.player.w||15,this.player.h||34))this.player.vx=push;}
+        if(this.damagePlayer(d.damage,e.type,e)){const push=Math.sign(p.x-e.x)*80;if(!this.blocked(p.x+push*.08,p.y,this.player.w||15,this.player.h||34))this.player.vx=push;}
       }
     }
     updateEnemy(e,dt){
       const d=ENEMIES[e.type],p=this.center();e.age+=dt;e.cool=Math.max(0,e.cool-dt);e.flash=Math.max(0,e.flash-dt);e.jump=Math.max(0,e.jump-dt);e.stun=Math.max(0,e.stun-dt);
+      if(foundry?.controlEnemy(this,e,dt))return;
       if(e.stun>0){e.wind=0;return;}
       if(e.wind>0){e.wind-=dt;if(e.wind<=0)this.finishAttack(e);return;}
       let target={x:p.x,y:p.y},machine=null;
@@ -448,7 +476,7 @@
         machine=e.raid?this.raidMachine(e.x,e.y):this.nearestMachine(e.x,e.y,e.type==='leech');if(machine&&((e.type==='leech'||e.raid)||machine.distance<Math.hypot(p.x-e.x,p.y-e.y)))target=machine;else machine=null;
       }
       const distance=Math.hypot(target.x-e.x,target.y-e.y),dir=Math.sign(target.x-e.x)||1;e.facing=dir;
-      if(distance<(machine?d.reach+this.tile:d.reach)&&e.cool<=0&&this.lineOfSight(e.x,e.y,target.x,target.y,!!machine)){
+      if(distance<(machine?d.reach+this.tile:d.reach)&&e.cool<=0&&!(e.foundryJam>0)&&this.lineOfSight(e.x,e.y,target.x,target.y,!!machine)){
         if(e.type!=='burrower'||!this.blocked(e.x,e.y,e.w,e.h)){this.startAttack(e,target,machine);return;}
       }
       const oldX=e.x,oldY=e.y;
@@ -474,7 +502,7 @@
         const speed=d.speed*(d.move==='crawl'?(.75+.25*Math.sin(e.age*4)):1),drive=moveDir*speed;
         if(target.y<e.y-this.tile*.8&&Math.abs(target.x-e.x)<this.tile*3&&e.ground&&e.jump<=0){e.vy=-285;e.jump=.9;}
         e.vx=e.vx*.8+drive*.2;e.vy=Math.min(440,e.vy+700*dt);const obstacle=this.move(e,e.vx*dt,e.vy*dt);
-        if(obstacle&&e.jump<=0){e.vy=-245;e.jump=.85;if((e.type==='siege'||e.type==='guardian'||e.raid)&&e.cool<=0){const tx=Math.floor((e.x+dir*(e.w/2+3))/this.tile),ty=Math.floor(e.y/this.tile),id=this.get(tx,ty);if(id>=9&&id!==this.T.CORE)this.startAttack(e,{x:(tx+.5)*this.tile,y:(ty+.5)*this.tile},{key:this.tileKey(tx,ty)});}}
+        if(obstacle&&e.jump<=0){e.vy=-245;e.jump=.85;if((e.type==='siege'||e.type==='guardian'||e.raid)&&e.cool<=0&&!(e.foundryJam>0)){const tx=Math.floor((e.x+dir*(e.w/2+3))/this.tile),ty=Math.floor(e.y/this.tile),id=this.get(tx,ty);if(id>=9&&id!==this.T.CORE)this.startAttack(e,{x:(tx+.5)*this.tile,y:(ty+.5)*this.tile},{key:this.tileKey(tx,ty)});}}
         if(d.move==='boss'&&e.age%9<dt&&e.ground)e.vy=-280;
       }
       if(Math.hypot(e.x-oldX,e.y-oldY)<.12&&distance>d.reach)e.stuck+=dt;else e.stuck=Math.max(0,e.stuck-dt*.5);
@@ -501,7 +529,7 @@
           shot.x=x;shot.y=y;
           if(shot.owner==='enemy'){
             if(Math.abs(p.x-x)<(this.player.w||15)/2+4&&Math.abs(p.y-y)<(this.player.h||34)/2+4){
-              this.damagePlayer(shot.damage,shot.kind);shot.life=0;break;
+              this.damagePlayer(shot.damage,shot.kind,{x:x-shot.vx*.12,y:y-shot.vy*.12});shot.life=0;break;
             }
             continue;
           }
@@ -559,14 +587,14 @@
         if(distance>this.tile*55&&!e.raid&&e.type!=='guardian'){e.hp=-1;continue;}
         if(distance>this.tile*35&&!e.raid){e.sleep=(e.sleep||0)+dt;if(e.sleep<.5)continue;const slept=e.sleep;e.sleep=0;this.updateEnemy(e,Math.min(slept,.1));}else this.updateEnemy(e,dt);
       }
-      this.enemies=this.enemies.filter(e=>e.hp>0);this.grid.rebuild(this.enemies);this.updateProjectiles(dt);this.updateBeam(dt);
+      this.enemies=this.enemies.filter(e=>e.hp>0);this.grid.rebuild(this.enemies);this.updateProjectiles(dt);this.updateBeam(dt);foundry?.tick(this,dt);
       this.spawnClock-=dt;if(this.spawnClock<=0&&this.elapsed>this.config().grace){
         const target=clamp(2+region.tier*2+this.chapter+Math.floor(this.powered.length/8),3,this.config().max);
         if(this.enemies.length<target){const e=this.findSpawn(this.chooseType());this.spawnFailures=e?0:this.spawnFailures+1;}
         this.spawnClock=(7+this.random()*5)*this.config().spawn/(1+region.tier*.13);
       }
       this.updateRaid(dt);
-      if(this.chapter>=5&&region.tier>=4&&!this.stats.guardianDefeated&&!this.bossSpawned){const e=this.findSpawn('guardian');if(e){this.bossSpawned=true;this.notify('Reactor Guardian awakened — watch its attack indicators');}}
+      if(this.chapter>=5&&region.id==='abyss'&&!this.stats.guardianDefeated&&!this.bossSpawned){const e=this.findSpawn('guardian');if(e){this.bossSpawned=true;this.notify('Reactor Guardian awakened — watch its attack indicators');}}
       for(const f of this.effects)f.life-=dt;this.effects=this.effects.filter(f=>f.life>0).slice(-110);
     }
     export(){return{version:1,difficulty:this.difficulty,elapsed:this.elapsed,energy:this.energy,weapon:this.weapon,sunspikeReadyAt:this.sunspikeReadyAt,enemies:this.enemies.map(e=>({...e})),projectiles:this.projectiles.map(p=>({...p})),caches:this.caches.map(c=>({...c,items:{...c.items}})),nextEnemy:this.nextEnemy,nextCache:this.nextCache,checkpoint:{...this.checkpoint},completed:this.completed.slice(),chapter:this.chapter,discoveredRegions:this.discoveredRegions.slice(),maxDepth:this.maxDepth,nextRaid:this.nextRaid,raid:{...this.raid},bossSpawned:this.bossSpawned};}
@@ -578,11 +606,14 @@
       // Keep a contiguous campaign history: a later malformed completion must not
       // prevent its chapter from being earned after the missing earlier chapter.
       this.completed=[];let next=1;while(claimed.has(next)){this.completed.push(next);next++;}this.chapter=Math.min(next,6);
-      this.discoveredRegions=Array.isArray(data.discoveredRegions)?[...new Set(['scrapyard',...data.discoveredRegions.filter(id=>REGIONS.some(r=>r.id===id))])]:['scrapyard'];
+      const regions=this.regionForDepth&&typeof CircuitDeepWorld!=='undefined'?CircuitDeepWorld.REGIONS:REGIONS;
+      this.discoveredRegions=Array.isArray(data.discoveredRegions)?[...new Set(['scrapyard',...data.discoveredRegions.filter(id=>regions.some(r=>r.id===id))])]:['scrapyard'];
       this.maxDepth=clamp(finite(data.maxDepth),0,this.height);this.nextRaid=Math.max(this.elapsed+15,finite(data.nextRaid,this.elapsed+200));
       if(data.checkpoint&&Number.isFinite(data.checkpoint.x)&&Number.isFinite(data.checkpoint.y))this.checkpoint={x:clamp(data.checkpoint.x,this.tile,(this.width-2)*this.tile),y:clamp(data.checkpoint.y,this.tile,(this.height-2)*this.tile)};
       this.enemies=(Array.isArray(data.enemies)?data.enemies:[]).filter(e=>ENEMIES[e.type]&&Number.isFinite(e.x)&&Number.isFinite(e.y)&&Number.isFinite(e.hp)&&e.hp>0&&e.x>0&&e.x<this.width*this.tile&&e.y>0&&e.y<this.height*this.tile).slice(0,this.config().max).map(e=>{const d=ENEMIES[e.type];return{...e,w:d.w,h:d.h,maxHealth:clamp(finite(e.maxHealth,d.hp),1,10000),hp:clamp(e.hp,1,10000),vx:clamp(finite(e.vx),-500,500),vy:clamp(finite(e.vy),-500,500),wind:clamp(finite(e.wind),0,d.wind),cool:clamp(finite(e.cool,1),0,10),stun:0,flash:0,jump:0,stuck:0,age:finite(e.age),facing:e.facing===-1?-1:1,anchorX:finite(e.anchorX,e.x),anchorY:finite(e.anchorY,e.y)};}).filter(e=>e.type==='burrower'||!this.blocked(e.x,e.y,e.w,e.h));
       this.projectiles=[];this.beam=null; // Combat flights and channels expire when loading.
+      foundry?.reset(this);
+      for(const enemy of this.enemies){delete enemy.foundryMotion;delete enemy.foundryJam;delete enemy.foundryPin;}
       this.caches=(Array.isArray(data.caches)?data.caches:[]).filter(c=>Number.isFinite(c.x)&&Number.isFinite(c.y)&&c.items&&typeof c.items==='object').map(c=>({...c,x:clamp(c.x,this.tile,(this.width-1)*this.tile),y:clamp(c.y,this.tile,(this.height-1)*this.tile),items:Object.fromEntries(Object.entries(c.items).filter(([key,n])=>/^[a-zA-Z][a-zA-Z0-9]*$/.test(key)&&Number.isFinite(n)&&n>0).map(([key,n])=>[key,Math.floor(n)]))})).filter(c=>Object.keys(c.items).length);
       this.nextEnemy=Math.max(1,finite(data.nextEnemy,1),...this.enemies.map(e=>finite(e.id)+1));this.nextCache=Math.max(1,finite(data.nextCache,1),...this.caches.map(c=>finite(c.id)+1));
       if(data.raid&&['quiet','warning','attack'].includes(data.raid.state))this.raid={state:data.raid.state,remaining:clamp(finite(data.raid.remaining),0,120),count:clamp(finite(data.raid.count),0,12),id:Math.max(0,finite(data.raid.id))};
@@ -612,7 +643,7 @@
         if(!['wisp','drone','leech'].includes(e.type)){ctx.fillStyle='#19292f';ctx.fillRect(e.facing>0?e.w/2-6:-e.w/2+3,-e.h/2+4,3,3);}
         }
         if(e.hp<e.maxHealth||e.type==='guardian'){ctx.fillStyle='#283337';ctx.fillRect(-e.w/2,-e.h/2-7,e.w,3);ctx.fillStyle='#ef8d79';ctx.fillRect(-e.w/2,-e.h/2-7,e.w*e.hp/e.maxHealth,3);}
-        if(e.stun>0){ctx.fillStyle='#a6ffff';ctx.fillRect(-4,-e.h/2-13,8,2);}ctx.restore();
+        if(e.stun>0||e.foundryPin>0||e.foundryJam>0){ctx.fillStyle=e.foundryJam>0?'#e5aeff':'#a6ffff';ctx.fillRect(-4,-e.h/2-13,8,2);}ctx.restore();
       }
       for(const shot of this.projectiles){
         const x=shot.x-cx,y=shot.y-cy;
@@ -643,6 +674,7 @@
         }
         ctx.restore();
       }
+      foundry?.draw(this,ctx,camera,viewWidth,viewHeight);
       if(this.beam){
         const {ray,angle,charge}=this.beam,weapon=WEAPONS.sunspikeLaser;
         if(ray)drawRay(ctx,ray.x-cx,ray.y-cy,ray.endX-cx,ray.endY-cy,weapon.color,18);

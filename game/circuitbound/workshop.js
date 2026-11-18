@@ -418,6 +418,15 @@
         element('p', 'workshop-requirement', `${recipe.stationName || STATIONS[recipe.station]} · ${yieldLabel}${technology ? ` · ${technology}` : ''}`),
         element('p', 'workshop-description', recipe.desc)
       );
+      if (recipe.attackProfile) {
+        const { range, cooldown, charge, energy, ammo } = recipe.attackProfile;
+        const metrics = [`${(range / tile).toFixed(1)} tiles reach`, `${cooldown}s recovery`];
+        if (charge) metrics.push(`${charge}s windup`);
+        if (energy) metrics.push(`${energy} energy`);
+        if (ammo) metrics.push(`${ammo} ammo`);
+        detail.append(element('p', 'workshop-requirement', metrics.join(' · ')));
+      }
+      if (recipe.unlockSource) detail.append(element('p', 'workshop-requirement', `Schematic cache · ${recipe.unlockSource}`));
       if (recipe.station === 'powered') {
         addPoweredActions(detail, recipe, stations);
         addPlacement(detail, recipe.output);
@@ -478,7 +487,7 @@
       if (state.station === 'workbench' && !stations.has(T.WORKBENCH)) state.station = 'hand';
       const list = element('div', 'workshop-recipe-list');
       const visible = knownRecipes.filter(recipe => {
-        const label = `${recipe.name} ${recipe.desc} ${recipe.category || ''} ${recipe.stationName || STATIONS[recipe.station]} ${Object.keys(recipe.cost).map(formatName).join(' ')}`.toLowerCase();
+        const label = `${recipe.name} ${recipe.desc} ${recipe.category || ''} ${recipe.stationName || STATIONS[recipe.station]} ${recipe.unlockSource || ''} ${Object.keys(recipe.cost).map(formatName).join(' ')}`.toLowerCase();
         if (state.query && !label.includes(state.query)) return false;
         if (state.showAll) return true;
         if (recipe.station !== 'powered') return craftLimit(recipe, stations) > 0;

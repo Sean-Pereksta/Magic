@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {game}=require('./harness.cjs');
-function clean(g){g.api.world.fill(0);g.api.meta.clear();g.engine.reset();g.player.x=25*24;g.player.y=20*24;}
+function clean(g){g.clearTerrain();g.api.meta.clear();g.engine.reset();g.player.x=25*24;g.player.y=20*24;}
 function aim(g,x,y){Object.assign(g.api.pointer,{tx:x,ty:y,wx:x*24+12,wy:y*24+12,aimed:true});g.player.x=(x-3)*24;g.player.y=y*24;}
 function advance(g,n=1){for(let i=0;i<n;i++){g.simulateNetworks(.05);g.updateMachines(.05);g.engine.logistics(.05)}}
 test('real game boots, renders frames, leaves manual closed and powers starter lamp',()=>{

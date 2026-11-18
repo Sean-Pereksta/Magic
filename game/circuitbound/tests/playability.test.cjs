@@ -2,7 +2,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const {game}=require('./harness.cjs');
 const {blueprints}=require('../interface.js');
-function clean(g){g.api.world.fill(0);g.api.meta.clear();g.engine.reset();g.survival.reset();g.player.x=9*24;g.player.y=10*24;}
+function clean(g){g.clearTerrain();g.api.meta.clear();g.engine.reset();g.survival.reset();g.player.x=9*24;g.player.y=10*24;}
 function aim(g,x,y){Object.assign(g.api.pointer,{tx:x,ty:y,wx:x*24+12,wy:y*24+12,aimed:true});}
 function step(g,seconds){for(let t=0;t<seconds;t+=.05)g.simulationStep(.05);}
 function select(g,key){g.selectItem(key);}

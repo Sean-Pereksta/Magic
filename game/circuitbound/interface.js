@@ -117,6 +117,7 @@
     on(byId('craftBtn'),'click',()=>openWorkshop('craft'));
     on(byId('backpackBtn'),'click',()=>openWorkshop('backpack'));
     on(byId('journalBtn'),'click',()=>openPanel('journalPanel'));
+    on(byId('foundryMapBtn'),'click',()=>openPanel('foundryMapPanel'));
     on(byId('blueprintBtn'),'click',()=>openPanel('blueprintPanel'));
     on(byId('startBtn'),'click',()=>{adapter.setDifficulty?.(byId('welcomeDifficulty')?.value||'standard');openPanel('welcomePanel',false);adapter.start?.();});
     on(byId('inspectorClose'),'click',()=>{if(adapter.closeInspector)adapter.closeInspector();else byId('lensBtn')?.click();});
@@ -140,6 +141,7 @@
       if(event.code==='KeyJ'){event.preventDefault();event.stopImmediatePropagation();openPanel('journalPanel');}
       if(event.code==='KeyB'){event.preventDefault();event.stopImmediatePropagation();openPanel('blueprintPanel');}
       if(event.code==='KeyI'){event.preventDefault();event.stopImmediatePropagation();openWorkshop('backpack');}
+      if(event.code==='KeyM'){event.preventDefault();event.stopImmediatePropagation();openPanel('foundryMapPanel');}
     },true);
     for(const id of ['viewBtn','linkModeBtn']){const button=byId(id);if(button&&utilityMenu)utilityMenu.append(button);}
     function renderJournal() {
@@ -201,6 +203,7 @@
           button.textContent=s.smartCursor?'Smart':'Aim';
         }
         if(button.dataset.touch==='interact'){button.hidden=s.canInteract===false;button.textContent=s.flying?'Exit':'Use';}
+        if(button.dataset.touch==='dodge')button.hidden=s.flying||mode!=='combat'||s.selected?.key!=='phaseSabers';
       }
       const lens=byId('lensBtn'),lensActive=!!s.lens||lens?.classList.contains('active');
       lens?.setAttribute('aria-pressed',String(!!lensActive));

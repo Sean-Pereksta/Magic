@@ -11,6 +11,22 @@ function setup(){
   f.counter=()=>{f.put(10,10,f.T.COUNTERWEIGHT);f.put(11,10,f.T.COUNTERWEIGHT);const group=[[10,10],[11,10]];f.sim.link(group.map(p=>f.key(...p)));return group;};
   return f;
 }
+test('a continuous magnetic guide extends a cargo lift beyond the original cable limit',()=>{
+  const f=fixture(32,130),{T}=f;
+  const m={running:true},x=5,y=3;
+  f.put(5,53,T.STORAGE,{contents:{iron:7}});
+  f.sim.link([f.key(5,53)]);
+  const move=(gy,dy)=>V.moveLift({group:[[x,gy]],x,y,m,dy,torque:16,engine:f.sim,get:f.get,set:f.put,meta:()=>f.meta,defs:f.defs,T});
+  assert.equal(move(53,1),false);
+  assert.match(m.fault,/CABLE LIMIT/);
+  for(let gy=y+1;gy<=80;gy++)f.put(x+1,gy,T.MAGNETIC_RAIL);
+  assert.equal(move(53,1),true);
+  assert.equal(f.sim.data(f.key(5,54)).contents.iron,7);
+  f.put(x+1,55,T.RAIL);
+  assert.equal(move(54,1),false);
+  assert.match(m.fault,/CABLE LIMIT/);
+  assert.equal(move(54,-1),true);
+});
 test('a heavy unbalanced elevator stalls while a real separate counterweight assists the same drive',()=>{
   const f=setup(),load=f.load();assert.equal(V.moveLift(f.options(load)),false);assert.match(f.m.fault,/STALLED/);assert.ok(f.m.requiredTorque>15);
   const counter=f.counter();assert.equal(V.moveLift(f.options(load,counter)),true);

@@ -28,6 +28,19 @@ const server=http.createServer((request,response)=>{
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/game/circuitbound.html`);
     await page.waitForFunction(()=>document.querySelectorAll('#hotbar .slot').length===10);
+    await page.waitForFunction(()=>CircuitboundFoundryArt.ready('deepcoreBorer')&&CircuitboundFoundryArt.ready('faultRock'));
+    const painted = await page.evaluate(()=>{
+      const canvas=document.createElement('canvas');canvas.width=96;canvas.height=96;
+      const ctx=canvas.getContext('2d',{willReadFrequently:true}),art=CircuitboundFoundryArt;
+      const keys=[...Object.keys(CircuitFoundryCombat.CATALOG),...CircuitDeepIndustry.rigs.map(rig=>rig.key),
+        ...CircuitDeepIndustry.ores.map(ore=>ore.key),...Object.keys(CircuitFoundryAutomation.roles)];
+      const drawn=keys.every(key=>art.draw(ctx,key,0,0,96,96));
+      const regionDrawn=art.drawRegion(ctx,'starcoreMantle',0,0,96,96);
+      function pixels(time){ctx.clearRect(0,0,96,96);art.draw(ctx,'freightDrone',0,0,96,96,{time,working:true});return ctx.getImageData(0,0,96,96).data;}
+      const idle=pixels(0),moving=pixels(.12);
+      return {count:keys.length,drawn,regionDrawn,animated:idle.some((value,i)=>value!==moving[i])};
+    });
+    assert.deepEqual(painted,{count:36,drawn:true,regionDrawn:true,animated:true});
     await page.waitForTimeout(300);
     let moveRight=true;
     async function assertMovement(label){
@@ -48,6 +61,18 @@ const server=http.createServer((request,response)=>{
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('.modal.show').count(),0,'Escape closes the journal');
     await assertMovement('closing the journal');
+    await page.keyboard.press('m');
+    await page.locator('#foundryMapPanel.show').waitFor();
+    assert.match(await page.locator('#foundryMapReadout').innerText(),/Depth \d+/);
+    await page.locator('#foundryOutpostName').fill('Test outpost');
+    await page.locator('#foundryAddOutpost').click();
+    assert.match(await page.locator('#foundrySelection').innerText(),/Test outpost/);
+    await page.locator('#foundryPin').click();
+    assert.equal(await page.locator('#foundryPin').innerText(),'Unpin route');
+    await page.keyboard.press('Escape');
+    await page.locator('#foundryWaypoint').waitFor();
+    assert.match(await page.locator('#foundryWaypoint').innerText(),/Test outpost/);
+    await assertMovement('closing the expedition map');
     await page.locator('#utilityBtn').click();await page.locator('#blueprintBtn').click();
     assert.equal(await page.locator('#blueprintDetail .blueprint-cell.filled').count(),6,'Miner preview contains all real components');
     assert.ok(await page.locator('#blueprintDetail .blueprint-cost').count()>3,'Preview displays component costs');

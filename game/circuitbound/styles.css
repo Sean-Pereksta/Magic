@@ -362,6 +362,11 @@ body.engineering-active #missions, body.lens-active #missions { top: calc(var(--
 .machine-actions:empty { display: none; }
 .machine-actions .icon-btn { min-height: 36px; white-space: normal; }
 .machine-actions select { max-width: 100%; }
+.foundry-fleet-controls { flex: 0 0 100%; min-width: 0; }
+.foundry-fleet-controls details { margin-block: 5px; padding: 3px 7px; border: 1px solid #365159; border-radius: 5px; }
+.foundry-fleet-controls p { margin-block: 4px; line-height: 1.35; }
+.foundry-fleet-controls .icon-btn { margin: 2px 4px 2px 0; }
+.foundry-fleet-controls select, .foundry-fleet-controls input { margin: 2px 4px 2px 0; max-width: 100%; }
 #lensPanel summary { cursor: pointer; margin: 6px 0; }
 #lensPanel select, .workshop-assignment select {
   color: var(--ink);
@@ -500,3 +505,16 @@ body.machine-open .crosshair-label { visibility: hidden; }
   pointer-events: auto;
 }
 .flight-status[hidden] { display: none; }
+/* The map opens on demand and leaves exploration controls in their original positions. */
+.foundry-map.modal{display:none;position:absolute;pointer-events:auto;width:min(810px,calc(100% - 24px));max-height:calc(100dvh - 30px);overflow:auto}
+.foundry-map.modal.show{display:block}
+.foundry-map canvas{display:block;width:100%;height:auto;position:static;border:1px solid var(--line,#435964);border-radius:8px;cursor:crosshair}
+.foundry-map-tools{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin:8px 0}
+.foundry-map-tools label{display:flex;gap:6px;align-items:center}
+.foundry-map-tools input,.foundry-map-tools select{min-width:0;max-width:100%;border:1px solid #55717b;border-radius:6px;background:#142832;color:#f5efe1;padding:6px 8px;font:inherit}
+.foundry-selection{margin-right:auto;color:#e7e1d1}
+.foundry-locations{display:flex;gap:7px;max-height:80px;overflow:auto;flex-wrap:wrap;align-content:flex-start;min-height:28px}
+.foundry-location[aria-pressed="true"]{border-color:#88e8c6;color:#abffde}
+.foundry-map-status{margin:0;color:#a8e5cf;min-height:1.2em}
+.foundry-waypoint{position:absolute;top:78px;left:50%;transform:translateX(-50%);max-width:calc(100% - 28px);padding:4px 8px;font-size:11px;color:#bcffe1;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:650px){.foundry-map.modal{padding:10px}.foundry-waypoint{top:105px}.foundry-map-tools .icon-btn{min-height:32px}}
