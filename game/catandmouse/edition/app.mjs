@@ -1,5 +1,5 @@
 import { createSimulation, getPlacementError } from './simulation.mjs';
-import { DIFFICULTIES, isCompleteLoadout, MAPS, STARTER_LOADOUT, STEP_MS, TOWERS } from './battlefield.mjs';
+import { DIFFICULTIES, isCompleteLoadout, MAPS, STARTER_LOADOUT, STARTING_WAVES, STEP_MS, TOWERS } from './battlefield.mjs';
 import { CAT_DIRECTORY_URL, PROTOCOL_VERSION } from './directory-config.mjs';
 import { Battlefield, loadPaintings, prepareBattlefield, towerCell } from './board.mjs';
 import { isWall } from './walls.mjs';
@@ -38,9 +38,9 @@ let preserveStatus = false;
 let directoryPoll;
 let profile = read('cat-mouse-profile-v1', { matches: {} });
 let settings = { volume: .4, quality: 'high', reduced: matchMedia('(prefers-reduced-motion: reduce)').matches, follow: true, touch: true, ...read('cat-mouse-settings-v1', {}) };
-let soloDraft = { difficulty: 'normal', kit: [...STARTER_LOADOUT] };
+let soloDraft = { difficulty: 'normal', startingWave: 1, kit: [...STARTER_LOADOUT] };
 let lobbyKit = [...STARTER_LOADOUT];
-let draftRoom = { roomName: 'The Flour Mill', hostName: read('cat-mouse-name-v1', browserName), difficulty: 'normal', capacity: 3, visibility: 'public' };
+let draftRoom = { roomName: 'The Flour Mill', hostName: read('cat-mouse-name-v1', browserName), difficulty: 'normal', startingWave: 1, capacity: 3, visibility: 'public' };
 const keys = new Set();
 
 function read(key, fallback, storage = localStorage) {
@@ -78,9 +78,10 @@ const link = (label, url, kind = 'secondary') => `<a class="button ${kind}" href
 const panel = (title, content, back = 'title') => `<section class="panel">${back ? button('← Back', back, 'quiet') : ''}<h1>${title}</h1>${content}</section>`;
 const options = (entries, value) => entries.map(([key, label]) => `<option value="${escape(key)}" ${String(value) === key ? 'selected' : ''}>${escape(label)}</option>`).join('');
 const difficultyOptions = value => options(Object.entries(DIFFICULTIES).map(([id, difficulty]) => [id, difficulty.name]), value);
+const startingWaveOptions = value => options(STARTING_WAVES.map(wave => [String(wave), `Wave ${wave}`]), value);
 const difficultyNote = {
   easy: 'More starting cheese and lighter enemy damage. Watch for the Cat’s marked pounce.',
-  normal: 'Late waves send Sappers to attack clustered defenses and Menders to heal the swarm.',
+  normal: 'Sappers attack clustered defenses. Menders can heal the Cat and nearby rats.',
   hard: 'Spread out your defenses and give yourself room to dodge the Cat’s tail sweep.',
   nightmare: 'Watch the ground for the Cat’s sweep and charge. Keep an escape route open.',
 };
@@ -99,7 +100,7 @@ function recordSummary() {
 function title() {
   recordSummary();
   mount('title', `<section class="title-view"><span class="eyebrow">THE FLOUR MILL</span><h1>Cat <em>&amp;</em><br>Mouse</h1>
-    <p class="subtitle">Gather cheese, build defenses, and stay one step ahead of the Cat.</p>
+    <p class="subtitle">Gather cheese and build defenses to defeat the Cat before he grows stronger.</p>
     <div class="title-actions">${button('Singleplayer <span>→</span>', 'solo-setup', '')}
       ${button('Multiplayer <span>→</span>', 'multiplayer')}<a href="https://www.catnmice.com/hub/ranked.html?game=catandmouse" target="_top">Ranked Survival Challenge</a>${button('Settings <span>→</span>', 'settings')}</div>
   </section>`);
@@ -121,7 +122,9 @@ function soloSetup() {
   mount('solo-setup', panel('Singleplayer', `<div class="form-grid">
     <label>Map<select id="solo-map">${mapOptions()}</select></label>
     <label>Difficulty<select id="solo-difficulty">${difficultyOptions(soloDraft.difficulty)}</select></label>
+    <label>Starting wave<select id="solo-starting-wave" aria-describedby="start-wave-note">${startingWaveOptions(soloDraft.startingWave)}</select></label>
     </div><p class="difficulty-note" id="solo-difficulty-note">${difficultyNote[soloDraft.difficulty]}</p>
+    <p class="difficulty-note" id="start-wave-note">Higher starting waves give the Cat more health and bring tougher enemies.</p>
     <div class="map-card">${mill.name}<small>48 × 48 · four rat entrances</small></div>
     <h2>Eight-slot loadout</h2>${kitForm(soloDraft.kit)}
     <div class="actions">${button('Start Game', 'start-solo', '', !isCompleteLoadout(soloDraft.kit))}
@@ -202,7 +205,8 @@ function settingsMarkup() {
     <label class="check"><input type="checkbox" id="reduced" ${settings.reduced ? 'checked' : ''}> Reduced motion</label>
     <label class="check"><input type="checkbox" id="follow" ${settings.follow ? 'checked' : ''}> Follow my mouse with the camera</label>
     <label class="check"><input type="checkbox" id="touch" ${settings.touch ? 'checked' : ''}> Touch controls</label>
-    <p>Tap the floor to walk. On touch, open Build, choose a structure, tap a tile, then tap Place. With a keyboard and mouse, use WASD or arrows to walk and 1–8 to build. You can walk through your own structures.</p>`;
+    <p>Tap the floor to walk. On touch, open Build, choose a structure, tap a tile, then tap Place. With a keyboard and mouse, use WASD or arrows to walk and 1–8 to build. You can walk through your own structures.</p>
+    <p>Defeat the Cat to win. His maximum health grows over time, and Menders or a break in combat can restore some of his health.</p>`;
 }
 
 function renderSettings() {
@@ -215,6 +219,7 @@ function hostSetup() {
     <label>Host name<input id="host-name" maxlength="30" value="${escape(draftRoom.hostName)}"></label>
     <label>Map<select id="room-map">${mapOptions()}</select></label>
     <label>Difficulty<select id="room-difficulty">${difficultyOptions(draftRoom.difficulty)}</select></label>
+    <label>Starting wave<select id="room-starting-wave">${startingWaveOptions(draftRoom.startingWave)}</select></label>
     <label>Seats<select id="capacity">${options([['1', '1 seat'], ['2', '2 seats'], ['3', '3 seats'], ['4', '4 seats']], draftRoom.capacity)}</select></label>
     <label>Visibility<select id="visibility">${options([['public', 'Public'], ['invite', 'Invite only']], draftRoom.visibility)}</select></label>
     </div><p class="difficulty-note" id="room-difficulty-note">${difficultyNote[draftRoom.difficulty]}</p>
@@ -285,7 +290,7 @@ function updateLobby() {
       screen.querySelector('[data-action="copy-invite"]').id = 'copy-invite';
     }
   }
-  $('room-summary').textContent = `${MAPS[lobby.map]?.name || lobby.map} · ${DIFFICULTIES[lobby.difficulty]?.name || lobby.difficulty} · ${lobby.players.length}/${lobby.capacity} seats`;
+  $('room-summary').textContent = `${MAPS[lobby.map]?.name || lobby.map} · ${DIFFICULTIES[lobby.difficulty]?.name || lobby.difficulty} · Starts at wave ${lobby.startingWave ?? 1} · ${lobby.players.length}/${lobby.capacity} seats`;
   $('roster').innerHTML = lobby.players.map(entry => `<li><b>${escape(entry.name)}${entry.isHost ? ' · Host' : ''}</b>
     <span>${entry.connected ? 'Connected' : 'Disconnected'} · ${entry.ready ? 'Ready' : 'Choosing loadout'}${entry.loaded ? ' · Battlefield loaded' : ''}
     · ${escape((entry.loadout || []).filter(type => TOWERS[type]).map(type => TOWERS[type].name).join(', '))}</span></li>`).join('');
@@ -464,6 +469,7 @@ async function startSolo() {
     playerId = 'solo-mouse';
     solo = createSimulation({
       matchId: crypto.randomUUID(), mapId: mill.id, difficulty: soloDraft.difficulty,
+      startingWave: soloDraft.startingWave,
       players: [{ id: playerId, name: 'Mouse', loadout: soloDraft.kit }],
     });
     battleTime = 0;
@@ -505,12 +511,13 @@ function finish(next) {
   resultsOpen = true;
   profile.matches = { ...profile.matches, ...read('cat-mouse-profile-v1', { matches: {} }).matches };
   if (!Object.hasOwn(profile.matches, next.matchId)) {
-    profile.matches[next.matchId] = { result: next.status, map: next.mapId, date: new Date().toISOString(), wave: next.wave };
+    profile.matches[next.matchId] = { result: next.status, map: next.mapId, date: new Date().toISOString(), wave: next.wave, startingWave: next.startingWave ?? 1 };
     write('cat-mouse-profile-v1', profile);
   }
   resetPlacement();
-  showOverlay(next.status === 'won' ? 'You survived!' : 'The mice were caught',
-    `<p>${next.status === 'won' ? 'You outlasted every wave and escaped the Cat.' : 'The Cat and his swarm caught every mouse.'}</p>
+  const wave = Math.max(next.startingWave ?? 1, next.wave);
+  showOverlay(next.status === 'won' ? 'The Cat is defeated!' : 'The mice were caught',
+    `<p>${next.status === 'won' ? `You defeated the Cat on wave ${wave}.` : `The Cat and his swarm caught every mouse on wave ${wave}.`}</p>
     <div class="actions">${button('Main Menu', 'exit-battle', '')}</div>`);
 }
 
@@ -643,16 +650,17 @@ function updateHud() {
   const warning = cat?.windupUntil > state.time ? {
     pounce: 'Pounce incoming', 'tail-sweep': 'Tail sweep incoming', 'cat-charge': 'Charge incoming',
   }[cat.attackKind] : null;
-  $('wave-title').textContent = state.wave ? `Wave ${state.wave}` : 'Wave 1 ahead';
+  const startingWave = state.startingWave ?? 1;
+  $('wave-title').textContent = state.wave < startingWave ? `Wave ${startingWave} ahead` : `Wave ${state.wave}`;
   const until = Math.max(0, Math.ceil((state.nextWaveAt - state.time) / 1000));
-  $('wave-clock').textContent = warning || (Number.isFinite(until) && state.nextWaveAt
+  $('wave-clock').textContent = !player.hp ? 'Mouse caught' : warning || (Number.isFinite(until) && state.nextWaveAt
     ? until ? `Next wave in ${until}s` : 'Wave incoming'
-    : state.status === 'active' ? 'Survive the chase' : '');
-  $('objective').textContent = !player.hp ? 'Mouse caught' : cat ? 'Cat on the hunt' : 'Stay alive';
+    : '');
+  $('objective').textContent = cat ? `Cat ${Math.ceil(cat.hp)}/${cat.maxHp} HP` : state.status === 'won' ? 'Cat defeated' : '';
   const activeEnemies = state.enemies;
   const hint = activeEnemies.some(enemy => enemy.type === 'sapper' && enemy.windupUntil > state.time)
     ? 'Sapper blast · spread out' : activeEnemies.some(enemy => enemy.type === 'mender')
-      ? 'Menders heal nearby rats' : activeEnemies.some(enemy => enemy.type === 'sapper')
+      ? 'Menders can heal the Cat' : activeEnemies.some(enemy => enemy.type === 'sapper')
         ? 'Sappers attack clustered towers' : '';
   $('threat-hint').hidden = !hint;
   $('threat-hint').textContent = hint;
@@ -742,7 +750,8 @@ async function action(id) {
   }
   if (id === 'host-start') {
     draftRoom = { roomName: $('room-name').value.trim(), hostName: $('host-name').value.trim(), map: $('room-map').value,
-      difficulty: $('room-difficulty').value, capacity: Number($('capacity').value), visibility: $('visibility').value };
+      difficulty: $('room-difficulty').value, startingWave: Number($('room-starting-wave').value),
+      capacity: Number($('capacity').value), visibility: $('visibility').value };
     if (!draftRoom.roomName || !draftRoom.hostName) return message('Enter a room name and host name.', true);
     write('cat-mouse-name-v1', draftRoom.hostName);
     hostingStatus();
@@ -843,6 +852,7 @@ document.addEventListener('change', event => {
     $('solo-difficulty-note').textContent = difficultyNote[element.value];
   }
   if (element.id === 'room-difficulty') $('room-difficulty-note').textContent = difficultyNote[element.value];
+  if (element.id === 'solo-starting-wave') soloDraft.startingWave = Number(element.value);
   if (element.dataset.slot !== undefined) {
     const kit = view === 'waiting' ? lobbyKit : soloDraft.kit;
     const updated = Number(element.dataset.slot);
