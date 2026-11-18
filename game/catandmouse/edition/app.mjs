@@ -2,7 +2,6 @@ import { createSimulation, getPlacementError } from './simulation.mjs';
 import { DIFFICULTIES, isCompleteLoadout, MAPS, STARTER_LOADOUT, STARTING_WAVES, STEP_MS, TOWERS } from './battlefield.mjs';
 import { CAT_DIRECTORY_URL, PROTOCOL_VERSION } from './directory-config.mjs';
 import { Battlefield, loadPaintings, prepareBattlefield, towerCell } from './board.mjs';
-import { isWall } from './walls.mjs';
 
 const $ = id => document.getElementById(id);
 const screen = $('screen');
@@ -80,10 +79,10 @@ const options = (entries, value) => entries.map(([key, label]) => `<option value
 const difficultyOptions = value => options(Object.entries(DIFFICULTIES).map(([id, difficulty]) => [id, difficulty.name]), value);
 const startingWaveOptions = value => options(STARTING_WAVES.map(wave => [String(wave), `Wave ${wave}`]), value);
 const difficultyNote = {
-  easy: 'More starting cheese and lighter enemy damage. Watch for the Cat’s marked pounce.',
-  normal: 'Sappers attack clustered defenses. Menders can heal the Cat and nearby rats.',
-  hard: 'Spread out your defenses and give yourself room to dodge the Cat’s tail sweep.',
-  nightmare: 'Watch the ground for the Cat’s sweep and charge. Keep an escape route open.',
+  easy: 'Lighter enemy damage and the Cat’s lowest starting health.',
+  normal: 'Use the slower opening to build an economy. Menders can heal the Cat later.',
+  hard: 'The Cat has much more health and learns a tail sweep late in the game.',
+  nightmare: 'The Cat has the most health and gains a sweeping tail and a charge late in the game.',
 };
 const mapOptions = () => options(Object.entries(MAPS).map(([id, map]) => [id, map.name]), mill.id);
 const mount = (id, html) => {
@@ -107,6 +106,7 @@ function title() {
 }
 
 function cardIcon(type) {
+  if (type === 'barricade') return '<span class="kit-art kit-art-super-wall" aria-hidden="true"></span>';
   const cell = towerCell(type);
   return `<span class="kit-art" aria-hidden="true" style="background-position:${cell % 4 * 100 / 3}% ${Math.floor(cell / 4) * 50}%"></span>`;
 }
@@ -205,7 +205,7 @@ function settingsMarkup() {
     <label class="check"><input type="checkbox" id="reduced" ${settings.reduced ? 'checked' : ''}> Reduced motion</label>
     <label class="check"><input type="checkbox" id="follow" ${settings.follow ? 'checked' : ''}> Follow my mouse with the camera</label>
     <label class="check"><input type="checkbox" id="touch" ${settings.touch ? 'checked' : ''}> Touch controls</label>
-    <p>Tap the floor to walk. On touch, open Build, choose a structure, tap a tile, then tap Place. With a keyboard and mouse, use WASD or arrows to walk and 1–8 to build. You can walk through your own structures.</p>
+    <p>Move with WASD, with the arrow keys when no structure is selected, or by clicking or tapping the floor. Choose a structure with 1–8 or the build menu, then click a tile or use the arrow keys to build on one of the four adjacent tiles. Press Esc to clear the selection. On touch, tap a tile and press Place. You can walk through your own structures.</p>
     <p>Defeat the Cat to win. His maximum health grows over time, and Menders or a break in combat can restore some of his health.</p>`;
 }
 
@@ -573,6 +573,9 @@ function finishPlacement() {
 function selectSlot(slot, useTouch) {
   if (pendingBuild) return;
   if (slot === selected && touchAim === useTouch) return resetPlacement();
+  const movingKeys = keys.size;
+  for (const key of Object.keys(arrowDirections)) keys.delete(key);
+  if (keys.size !== movingKeys) walk();
   selected = slot;
   touchAim = useTouch;
   aimTile = null;
@@ -592,9 +595,8 @@ function updateSelected() {
 function updatePlacement() {
   const type = selectedTower();
   const error = type && aimTile && getPlacementError(state, playerId, type, aimTile.x, aimTile.y);
-  const prompt = !type ? 'WASD or arrow keys to move · tap the floor to walk'
-    : isWall(type) ? 'Place beside a wall to extend it or form a corner.'
-      : `${TOWERS[type].description} Select a tile to build.`;
+  const prompt = !type ? 'WASD or arrows to move · 1–8 to select a build'
+    : `${TOWERS[type].name} · Click a tile or use an arrow key to build beside you · Esc to clear`;
   let status = placementMessage || prompt;
   if (pendingBuild) status = 'Placing…';
   else if (touchAim && type) {
@@ -870,10 +872,16 @@ document.addEventListener('change', event => {
   write('cat-mouse-settings-v1', settings);
 });
 
+const arrowDirections = { arrowup: [0, -1], arrowright: [1, 0], arrowdown: [0, 1], arrowleft: [-1, 0] };
 const directionKeys = {
-  w: [0, -1], arrowup: [0, -1], s: [0, 1], arrowdown: [0, 1],
-  a: [-1, 0], arrowleft: [-1, 0], d: [1, 0], arrowright: [1, 0],
+  ...arrowDirections, w: arrowDirections.arrowup, a: arrowDirections.arrowleft,
+  s: arrowDirections.arrowdown, d: arrowDirections.arrowright,
 };
+
+function placeSelected(x, y) {
+  placementMessage = '';
+  sendCommand({ type: 'build', x, y, slot: selected });
+}
 
 function walk() {
   const vectors = [...new Set([...keys].map(key => directionKeys[key]))];
@@ -889,8 +897,23 @@ function stopWalking() {
 }
 
 window.addEventListener('keydown', event => {
-  if (!state || overlay.open || event.target.matches('input,select,textarea')) return;
+  if (!state || overlay.open || event.target.matches?.('input,select,textarea,[contenteditable="true"]')) return;
   const key = event.key.toLowerCase();
+  if (selected !== null && Object.hasOwn(arrowDirections, key)) {
+    event.preventDefault();
+    if (event.repeat || pendingBuild) return;
+    const player = state.players.find(entry => entry.id === playerId);
+    if (!player) return;
+    const [dx, dy] = arrowDirections[key];
+    if (touchAim) {
+      touchAim = false;
+      aimTile = null;
+      updateSelected();
+      canvas.focus({ preventScroll: true });
+    }
+    placeSelected(Math.round(player.x) + dx, Math.round(player.y) + dy);
+    return;
+  }
   if (Object.hasOwn(directionKeys, key)) {
     event.preventDefault();
     if (!keys.has(key)) { keys.add(key); walk(); }
@@ -933,7 +956,7 @@ function useBattlefield(event) {
       updateSelected();
       return;
     }
-    return sendCommand({ type: 'build', x, y, slot: selected });
+    return placeSelected(x, y);
   }
   const tower = !pendingBuild && state.structures.find(entry => entry.x === x && entry.y === y && entry.ownerId === playerId && !entry.branch && TOWERS[entry.type]?.upgrades);
   if (tower) {
