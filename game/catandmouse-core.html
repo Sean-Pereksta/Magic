@@ -1330,6 +1330,41 @@
       #topHud{padding-right:88px!important;}
     }
 
+
+    #mobileBuildToggle, #mobileBuildAim { display:none; }
+    @media (max-width: 768px), (pointer: coarse) {
+      body.classic-touch-match { padding-bottom:0; overflow:hidden; }
+      .classic-touch-match #gameLayout { padding:0; margin:0!important; }
+      .classic-touch-match #gridWrapper {
+        position:fixed; inset:0; width:100%!important; height:100dvh!important;
+        margin:0; border:0; border-radius:0; touch-action:none;
+      }
+      .classic-touch-match #topHud { position:fixed!important; inset:0 0 auto; padding:6px max(6px, env(safe-area-inset-right)) 6px max(6px, env(safe-area-inset-left))!important; gap:6px!important; }
+      .classic-touch-match :is(#hudPlayer,#hudWins,#hudBuild,#hudRole,#fullscreenBtn,#musicToggleBtn,#bottomDock,#sidePanelButtons) { display:none!important; }
+      .classic-touch-match #mobileControls { position:fixed; inset:auto 0 0; width:100%; box-sizing:border-box; margin:0!important; padding:0; background:none; border:0; box-shadow:none; pointer-events:none; }
+      .classic-touch-match #mobileControls .controls-top { position:absolute; display:flex; width:auto; bottom:max(8px,env(safe-area-inset-bottom)); right:max(8px,env(safe-area-inset-right)); }
+      .classic-touch-match #mobileControls .controls-top button { min-width:44px; min-height:44px; pointer-events:auto; }
+      .classic-touch-match #mobileControls .controls-top button[hidden] { display:none; }
+      .classic-touch-match #mobileControls .mobile-row:not(.controls-top) { justify-content:flex-start; margin:0; padding:0 0 max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left)); box-sizing:border-box; }
+      .classic-touch-match #mobileControls .analog-control { pointer-events:auto; }
+      .classic-touch-match #mobileControls .analog-control:has(#buildAnalogStick), .classic-touch-match #mobileControls .analog-label { display:none; }
+      .classic-touch-match #mobileBuildToggle { display:block; }
+      .classic-touch-match #mobileBuildDock { display:none; position:absolute; bottom:calc(max(8px,env(safe-area-inset-bottom)) + 49px); right:max(8px,env(safe-area-inset-right)); width:min(calc(100vw - 16px),460px); padding:5px; background:#1e293bf2; border-radius:8px; pointer-events:auto; }
+      .classic-touch-match #mobileControls[data-build-mode="tray"] #mobileBuildDock { display:grid; }
+      .classic-touch-match #mobileBuildDock button { min-height:48px; }
+      .classic-touch-match #mobileControls[data-build-mode="aim"] #mobileBuildAim { display:flex; gap:4px; align-items:center; }
+      .classic-touch-match #mobileControls[data-build-mode="aim"] :is(#mobileBuildToggle,[data-upgrade],[data-blink],[data-trap]) { display:none; }
+      .classic-touch-match #mobileBuildStatus { position:absolute; bottom:calc(100% + 2px); right:0; background:#172538f5; color:#fff; border-radius:7px; padding:6px 9px; width:max-content; max-width:calc(100vw - 22px); }
+      .classic-touch-match #catHealthContainer { position:fixed; z-index:26; pointer-events:none; inset:47px 0 auto; margin:0!important; }
+      .classic-touch-match #catHealthBar { height:14px; width:min(46vw,300px)!important; }
+      .classic-touch-match #catHealthText { font-size:10px; }
+      .classic-touch-match .build-preview-target { box-shadow:inset 0 0 0 3px #fff4a1!important; }
+      .classic-touch-match #status { position:fixed; z-index:30; inset:auto 0 100px; pointer-events:none; }
+      .classic-touch-match #returnButton { position:fixed; z-index:36; inset:80px auto auto 50%; transform:translateX(-50%); }
+      .classic-touch-match #leftRail:has(#upgradeMenu[style*="block"]) { display:block!important; position:fixed; inset:70px 12px auto; z-index:40; pointer-events:none; }
+      .classic-touch-match #leftRail:has(#upgradeMenu[style*="block"]) > :not(#upgradeMenu) { display:none!important; }
+      .classic-touch-match #upgradeMenu { pointer-events:auto; }
+    }
   </style>
 </head>
 
@@ -1489,6 +1524,12 @@
       <div id="mobileControls" style="margin-top:20px; display:none;">
         <div id="mobileBuildDock" aria-label="Build dock"></div>
         <div class="mobile-row controls-top">
+          <button type="button" class="mobile-mini-btn" id="mobileBuildToggle" aria-controls="mobileBuildDock" aria-expanded="false">Build</button>
+          <div id="mobileBuildAim">
+            <span id="mobileBuildStatus" role="status"></span>
+            <button type="button" class="mobile-mini-btn" id="mobileBuildCancel">Cancel</button>
+            <button type="button" class="mobile-mini-btn" id="mobileBuildPlace" disabled>Place</button>
+          </div>
           <button class="mobile-mini-btn" data-upgrade>🛠️</button>
           <button class="mobile-mini-btn" data-blink>🌀</button>
           <button class="mobile-mini-btn" data-trap>🪤</button>
@@ -2603,8 +2644,10 @@
         e?.stopPropagation?.();
         selectBuild(String(buildId));
       };
-      btn.addEventListener("pointerdown", choose);
-      btn.addEventListener("click", choose);
+      btn.addEventListener("click", e => {
+        choose(e);
+        if (isClassicTouchMatch()) setMobileBuildMode("aim");
+      });
       dock.appendChild(btn);
     });
   }
@@ -3960,7 +4003,49 @@
     for (const key of Object.keys(previousEnemyPositions)) if(!entries.some(e=>e.key===key))delete previousEnemyPositions[key];
   }
 
+  let mobileBuildMode = "closed";
+  let mobileBuildTile = null;
+  const classicBuildDirections = [["w",0,-1],["s",0,1],["a",-1,0],["d",1,0]];
+
+  function isClassicTouchMatch(){
+    return gameStarted && window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
+  }
+
+  function updateClassicBuildAim(){
+    const status = document.getElementById("mobileBuildStatus");
+    const confirm = document.getElementById("mobileBuildPlace");
+    if (!status || !confirm) return;
+    const def = BUILD_DEFS[selectedBuild];
+    const x = mobileBuildTile?.x, y = mobileBuildTile?.y;
+    const dir = classicBuildDirections.find(([,dx,dy])=>x === playerPos.x+dx && y === playerPos.y+dy)?.[0];
+    let reason = "";
+    if (!isAlive || !def) reason = "Building is unavailable.";
+    else if (!mobileBuildTile) reason = "Tap a tile for " + def.name + ".";
+    else if (!dir) reason = "Choose a tile beside your mouse.";
+    else if (!isLegallyBuildableCell(x,y)) reason = "That tile is blocked.";
+    else if (cheeseCount < def.cost) reason = "Not enough cheese.";
+    else if (!canBuild || buildPurchasePromise) reason = "Building is cooling down.";
+    const next = reason || (def.name + " · " + def.cost + " cheese");
+    if (status.textContent !== next) status.textContent = next;
+    confirm.disabled = Boolean(reason);
+    return reason ? null : dir;
+  }
+
+  function setMobileBuildMode(mode){
+    mobileBuildMode = mode;
+    mobileBuildTile = null;
+    const controls = document.getElementById("mobileControls");
+    if (controls) controls.dataset.buildMode = mode;
+    document.getElementById("mobileBuildToggle")?.setAttribute("aria-expanded", String(mode === "tray"));
+    if (mode === "aim") updateClassicBuildAim();
+    requestRender("mobileBuildMode");
+  }
+
   function getBuildPreviewCells(){
+    const touch = isClassicTouchMatch();
+    document.body?.classList?.toggle("classic-touch-match", touch);
+    if (touch && mobileBuildMode !== "aim") return [];
+    if (touch) updateClassicBuildAim();
     if (!gameStarted || !isAlive || !selectedBuild) return [];
     const dirs = [[0,-1],[0,1],[-1,0],[1,0]];
     return dirs.map(([dx,dy])=>({x:playerPos.x+dx,y:playerPos.y+dy})).filter(c=>c.x>=0&&c.x<gridSize&&c.y>=0&&c.y<gridSize);
@@ -4205,13 +4290,14 @@
 
     renderIsoStructures(persistentStructureLayer, structureEntries);
 
-    tileLayer.querySelectorAll(".build-preview-valid,.build-preview-blocked").forEach(el => el.classList.remove("build-preview-valid","build-preview-blocked"));
+    tileLayer.querySelectorAll(".build-preview-valid,.build-preview-blocked,.build-preview-target").forEach(el => el.classList.remove("build-preview-valid","build-preview-blocked","build-preview-target"));
     const previewCells = getBuildPreviewCells();
     for (const c of previewCells){
       const tile = document.getElementById(`cell-${c.x}-${c.y}`);
       if (!tile) continue;
-      const open = grid[c.y]?.[c.x] === "";
+      const open = isLegallyBuildableCell(c.x,c.y);
       tile.classList.add(open ? "build-preview-valid" : "build-preview-blocked");
+      tile.classList.toggle("build-preview-target", isClassicTouchMatch() && mobileBuildTile?.x === c.x && mobileBuildTile?.y === c.y);
     }
 
     renderBattleUnits();
@@ -6412,12 +6498,31 @@
 
     updateMobileBuildDisplay();
 
+    document.getElementById("mobileBuildToggle")?.addEventListener("click", ()=>setMobileBuildMode(mobileBuildMode === "tray" ? "closed" : "tray"));
+    document.getElementById("mobileBuildCancel")?.addEventListener("click", ()=>setMobileBuildMode("closed"));
+    document.getElementById("mobileBuildPlace")?.addEventListener("click", ()=>{
+      const dir = updateClassicBuildAim();
+      if (mobileBuildMode !== "aim" || !dir) return;
+      place(dir);
+      setMobileBuildMode("closed");
+    });
+
     gridElement.addEventListener("click", (e) => {
       const cell = e.target.closest?.(".cell");
       if (!cell || !cell.id?.startsWith("cell-")) return;
       const [, xs, ys] = cell.id.split("-");
       const x = parseInt(xs,10), y = parseInt(ys,10);
       if (!Number.isInteger(x) || !Number.isInteger(y)) return;
+      if (isClassicTouchMatch() && mobileBuildMode === "aim") {
+        mobileBuildTile = {x,y};
+        updateClassicBuildAim();
+        requestRender("mobileBuildTile");
+        return;
+      }
+      if (isClassicTouchMatch() && mobileBuildMode === "tray") {
+        setMobileBuildMode("closed");
+        return;
+      }
       openStructurePopup(x, y);
     });
   }
