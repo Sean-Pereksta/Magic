@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {game}=require('./harness.cjs');
 function clean(g){g.api.world.fill(0);g.api.meta.clear();g.engine.reset();g.player.x=25*24;g.player.y=20*24;}
-function aim(g,x,y){Object.assign(g.api.pointer,{tx:x,ty:y});g.player.x=(x-3)*24;g.player.y=y*24;}
+function aim(g,x,y){Object.assign(g.api.pointer,{tx:x,ty:y,wx:x*24+12,wy:y*24+12,aimed:true});g.player.x=(x-3)*24;g.player.y=y*24;}
 function advance(g,n=1){for(let i=0;i<n;i++){g.simulateNetworks(.05);g.updateMachines(.05);g.engine.logistics(.05)}}
 test('real game boots, renders frames, leaves manual closed and powers starter lamp',()=>{
   const g=game();assert.equal(g.ids.get('manual').classList.contains('show'),false);
@@ -13,12 +13,15 @@ test('real game boots, renders frames, leaves manual closed and powers starter l
 });
 test('entrypoint loads readable source and open-modal CSS beats default ID display rules',()=>{
   const root=path.join(__dirname,'..');const html=fs.readFileSync(path.join(root,'../circuitbound.html'),'utf8'),css=fs.readFileSync(path.join(root,'styles.css'),'utf8');
-  assert.doesNotMatch(html,/document\.write|part-\d|atob/);for(const file of ['engineering.js','vertical.js','survival.js','interface.js','app.js','styles.css']){assert.ok(html.includes('./circuitbound/'+file)||html.includes('/game/circuitbound/'+file));assert.ok(fs.existsSync(path.join(root,file)))}
-  assert.match(css,/#craftPanel\.show,#manual\.show,#pausePanel\.show\{display:block\}/);
+  assert.doesNotMatch(html,/document\.write|part-\d|atob/);for(const file of ['engineering.js','vertical.js','survival.js','interface.js','workshop.js','guides.js','robotics-catalog.js','robotics-world.js','robotics.js','starship.js','art.js','app.js','styles.css']){assert.ok(html.includes('./circuitbound/'+file)||html.includes('/game/circuitbound/'+file));assert.ok(fs.existsSync(path.join(root,file)))}
+  assert.match(css,/\.modal\.show/);assert.match(css,/#lensPanel\.show/);
 });
 test('placing and configuring an advanced part updates simulation state and inventory',()=>{
-  const g=game();clean(g);const {T}=g;aim(g,8,10);g.api.selected=g.items.findIndex(i=>i.key==='timer');g.inventory.timer=1;
-  g.useOrPlace();assert.equal(g.get(8,10),T.TIMER);assert.equal(g.inventory.timer,0);g.useOrPlace();assert.equal(g.api.meta.get(g.idx(8,10)).delay,2);
+  const g=game();clean(g);const {T}=g;aim(g,8,10);g.inventory.timer=1;g.selectItem('timer');
+  g.doPrimary();assert.equal(g.get(8,10),T.TIMER);assert.equal(g.inventory.timer,0);
+  assert.equal(g.api.meta.get(g.idx(8,10)).delay ?? 1,1);
+  g.interactAtPointer();const settings=g.ids.get('machineActions').querySelectorAll('button').find(b=>b.textContent==='Change settings');
+  assert.ok(settings);settings.click();assert.equal(g.api.meta.get(g.idx(8,10)).delay,2);
 });
 test('piston moves only its selected assembly and obeys sustained control for retraction',()=>{
   const g=game();clean(g);const {T}=g;

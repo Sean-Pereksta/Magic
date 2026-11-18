@@ -5,11 +5,11 @@
 })(typeof globalThis === 'object' ? globalThis : this, function () {
   'use strict';
   const modes = {
-    mine: 'Hold on a block to mine',
-    combat: 'Attack toward your aim · Tab changes weapon · Z heals',
-    build: 'Place the selected component · R rotates',
-    interact: 'Use doors, switches, storage and machines',
-    inspect: 'Aim at a component to read its connections'
+    mine: 'Hold to mine',
+    combat: 'Attack toward your aim',
+    build: 'Place · R rotates',
+    interact: 'Use doors and machines',
+    inspect: 'Aim to read connections'
   };
   const craftCategoryLabels={all:'All',resources:'Resources',mining:'Mining',structure:'Structures',vertical:'Vertical Movement',power:'Power',motion:'Mechanical',logic:'Logic',logistics:'Logistics',weapons:'Weapons and Defense',defense:'Defenses',automation:'Automation'};
   const difficultyText = {
@@ -50,6 +50,11 @@
         placement('sensor',1,0,1),placement('signal',1,1),placement('autoDoor',1,2),placement('generator',1,3)
       ],'The door opens when the nearby player activates the sensor. Use the Lens to distinguish the signal path from the power connection.')
   ];
+  const guidedPlans=['automatic-miner','sensor-door','elevator','counterweight-lift'];
+  const orderedBlueprints=[
+    ...guidedPlans.map(id=>blueprints.find(plan=>plan.id===id)),
+    ...blueprints.filter(plan=>!guidedPlans.includes(plan.id))
+  ];
   const icons={generator:'⚡',motor:'⚙',drill:'▼',excavator:'▧',hopper:'▽',storage:'▤',platform:'═',winch:'◎',switch:'⇄',crusher:'✥',smelter:'♨',turret:'⌖',enemySensor:'◉',sensor:'◉',signal:'⌁',autoDoor:'▯'};
   const names={autoDoor:'Automated Door',enemySensor:'Enemy Sensor',ammoFabricator:'Ammunition Fabricator',platform:'Wood Platform',storage:'Storage Bin',signal:'Signal Wire'};
   function readable(key) {return names[key]||String(key).replace(/([a-z])([A-Z])/g,'$1 $2').replace(/^./,s=>s.toUpperCase());}
@@ -60,6 +65,19 @@
     const on=(el,name,fn,options)=>{if(!el)return;el.addEventListener(name,fn,options);events.push(()=>el.removeEventListener(name,fn,options));};
     const state=()=>adapter.getState?.()||{};
     const el=(tag,className,text)=>{const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=String(text);return node;};
+    const utilityButton=byId('utilityBtn'),utilityMenu=byId('utilityMenu');
+    function toggleUtility(open,focus=false) {
+      if(!utilityMenu||!utilityButton)return;
+      utilityMenu.hidden=!open;
+      utilityButton.setAttribute('aria-expanded',String(open));
+      if(focus)(open?utilityMenu.querySelector('button:not([hidden])'):utilityButton)?.focus();
+    }
+    function openWorkshop(view) {
+      toggleUtility(false);
+      if(adapter.openWorkshop)adapter.openWorkshop(view);
+      else openPanel('craftPanel');
+      syncDialog();
+    }
     function closePanels() {
       const visible=document.querySelector('.modal.show');
       if (visible) adapter.openModal?.(visible.id,false);
@@ -78,38 +96,52 @@
     function syncDialog() {
       const visible=document.querySelector('.modal.show');
       document.body.classList.toggle('dialog-open',!!visible);
-      if(visible?.id==='craftPanel')for(const category of document.querySelectorAll('[data-craft-category]'))category.textContent=craftCategoryLabels[category.dataset.craftCategory]||readable(category.dataset.craftCategory);
+      document.body.classList.toggle('edge-drawer-open',visible?.id==='craftPanel');
+      document.body.classList.toggle('machine-open',!!byId('lensPanel')?.classList.contains('show'));
       if(visible===currentDialog)return;
-      if(visible){if(!currentDialog)previousFocus=document.activeElement;currentDialog=visible;queueMicrotask(()=>{if(!destroyed&&visible.classList.contains('show'))(visible.querySelector('button,input,select,[tabindex="0"]')||visible).focus?.();});}
-      else {currentDialog=null;previousFocus?.focus?.();previousFocus=null;}
+      if(visible){
+        if(!currentDialog)previousFocus=document.activeElement;
+        currentDialog=visible;
+        toggleUtility(false);
+        queueMicrotask(()=>{if(!destroyed&&visible.classList.contains('show'))(visible.querySelector('button,input,select,[tabindex="0"]')||visible).focus?.({preventScroll:true});});
+      } else {
+        currentDialog=null;
+        const focus=previousFocus?.closest?.('#utilityMenu')?utilityButton:previousFocus;
+        focus?.focus?.({preventScroll:true});
+        previousFocus=null;
+      }
     }
-    function setMode(mode) {if(!modes[mode])return;adapter.setMode?.(mode);refresh();}
+    on(utilityButton,'click',event=>toggleUtility(!!utilityMenu?.hidden,event.detail===0));
+    on(utilityMenu,'click',event=>{if(event.target.closest('button'))toggleUtility(false);});
+    on(document,'pointerdown',event=>{if(!event.target.closest?.('.top-actions'))toggleUtility(false);});
+    on(byId('craftBtn'),'click',()=>openWorkshop('craft'));
+    on(byId('backpackBtn'),'click',()=>openWorkshop('backpack'));
     on(byId('journalBtn'),'click',()=>openPanel('journalPanel'));
     on(byId('blueprintBtn'),'click',()=>openPanel('blueprintPanel'));
     on(byId('startBtn'),'click',()=>{adapter.setDifficulty?.(byId('welcomeDifficulty')?.value||'standard');openPanel('welcomePanel',false);adapter.start?.();});
     on(byId('inspectorClose'),'click',()=>{if(adapter.closeInspector)adapter.closeInspector();else byId('lensBtn')?.click();});
-    on(byId('missionToggle'),'click',()=>{const missions=byId('missions'),collapsed=missions.classList.toggle('collapsed');byId('missionToggle').textContent=collapsed?'+':'−';byId('missionToggle').setAttribute('aria-expanded',String(!collapsed));byId('missionToggle').setAttribute('aria-label',collapsed?'Expand objectives':'Collapse objectives');});
-    for(const button of document.querySelectorAll('[data-mode]'))on(button,'click',()=>setMode(button.dataset.mode));
+    on(byId('missionToggle'),'click',()=>{const missions=byId('missions'),collapsed=missions.classList.toggle('collapsed');byId('missionToggle').textContent=collapsed?'+':'−';byId('missionToggle').setAttribute('aria-expanded',String(!collapsed));byId('missionToggle').setAttribute('aria-label',collapsed?'Show pinned objective':'Hide pinned objective');});
     for(const id of ['difficultySelect','welcomeDifficulty'])on(byId(id),'change',e=>{adapter.setDifficulty?.(e.target.value);refresh();});
     for(const id of ['soundVolume','musicVolume'])on(byId(id),'input',e=>{const value=Number(e.target.value)/100;adapter.setAudio?.({[id]:value});const output=byId(id==='soundVolume'?'soundValue':'musicValue');if(output)output.textContent=`${Math.round(value*100)}%`;});
     on(byId('smartPlacement'),'change',event=>{adapter.setSmartPlacement?.(event.target.checked);});
+    on(byId('smartCursor'),'change',event=>{adapter.setSmartCursor?.(event.target.checked);refresh();});
     on(byId('blueprintCancel'),'click',()=>{adapter.cancelBlueprint?.();refresh();});
-    // App.js owns the original controls; these dialogs also work if it only knows older menu IDs.
-    for(const button of document.querySelectorAll('#journalPanel [data-close],#blueprintPanel [data-close],#welcomePanel [data-close]'))on(button,'click',()=>openPanel(button.dataset.close,false));
+    on(byId('guideToggle'),'click',()=>{if(state().guide?.paused)adapter.resumeGuide?.();else adapter.pauseGuide?.();refresh();});
     on(document,'keydown',event=>{
       const typing=event.target?.matches?.('input,select,textarea,[contenteditable="true"]');
       if(event.code==='Escape'){
         if(document.querySelector('.modal.show')){event.preventDefault();event.stopImmediatePropagation();closePanels();return;}
+        if(utilityMenu&&!utilityMenu.hidden){event.preventDefault();event.stopImmediatePropagation();toggleUtility(false,true);return;}
+        if(byId('lensPanel')?.classList.contains('show')){event.preventDefault();event.stopImmediatePropagation();adapter.closeInspector?.();refresh();return;}
         if(state().blueprint){event.preventDefault();event.stopImmediatePropagation();adapter.cancelBlueprint?.();refresh();return;}
       }
       if(event.code==='Tab'&&currentDialog){const controls=[...currentDialog.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex="0"]')].filter(n=>n.getClientRects().length);if(!controls.length){event.preventDefault();currentDialog.focus();return;}const first=controls[0],last=controls[controls.length-1];if(event.shiftKey&&(document.activeElement===first||!currentDialog.contains(document.activeElement))){event.preventDefault();last.focus();}else if(!event.shiftKey&&(document.activeElement===last||!currentDialog.contains(document.activeElement))){event.preventDefault();first.focus();}}
       if(typing||event.repeat||event.ctrlKey||event.metaKey||event.altKey)return;
       if(event.code==='KeyJ'){event.preventDefault();event.stopImmediatePropagation();openPanel('journalPanel');}
       if(event.code==='KeyB'){event.preventDefault();event.stopImmediatePropagation();openPanel('blueprintPanel');}
+      if(event.code==='KeyI'){event.preventDefault();event.stopImmediatePropagation();openWorkshop('backpack');}
     },true);
-    const lensTools=el('div','lens-mobile-tools');
-    for(const [source,label] of [['viewBtn','Cycle lens view'],['linkModeBtn','Cycle link mode'],['manualBtn','Field manual']]){const button=el('button','icon-btn',label);on(button,'click',()=>byId(source)?.click());lensTools.append(button);}
-    byId('lensPanel')?.append(lensTools);
+    for(const id of ['viewBtn','linkModeBtn']){const button=byId(id);if(button&&utilityMenu)utilityMenu.append(button);}
     function renderJournal() {
       const s=state(),journal=s.progression||s.journal||{},chapters=journal.chapters||[];
       const summary=byId('journalSummary'),body=byId('journalChapters');if(!summary||!body)return;
@@ -129,44 +161,80 @@
     function renderBlueprint() {
       const list=byId('blueprintList'),detail=byId('blueprintDetail');if(!list||!detail)return;
       list.replaceChildren();
-      for(const blueprint of blueprints){const button=el('button','blueprint-choice'+(blueprint===currentPlan?' active':''));button.setAttribute('aria-pressed',String(blueprint===currentPlan));button.append(el('b','',blueprint.title),el('small','',blueprint.subtitle));button.onclick=()=>{currentPlan=blueprint;renderBlueprint();};list.append(button);}
+      for(const blueprint of orderedBlueprints){const button=el('button','blueprint-choice'+(blueprint===currentPlan?' active':''));button.setAttribute('aria-pressed',String(blueprint===currentPlan));button.append(el('b','',blueprint.title),el('small','',blueprint.subtitle));button.onclick=()=>{currentPlan=blueprint;renderBlueprint();};list.append(button);}
       detail.replaceChildren(el('h3','',currentPlan.title),el('p','',currentPlan.description));
       const blocks=currentPlan.placements,minX=Math.min(...blocks.map(b=>b.x))-1,maxX=Math.max(...blocks.map(b=>b.x))+1,minY=Math.min(...blocks.map(b=>b.y)),maxY=Math.max(...blocks.map(b=>b.y)),grid=el('div','blueprint-grid');
       grid.style.setProperty('--cols',String(maxX-minX+1));grid.setAttribute('role','img');grid.setAttribute('aria-label',`${currentPlan.title}, ${blocks.length} real components. ${currentPlan.subtitle}.`);
-      for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++){const block=blocks.find(b=>b.x===x&&b.y===y),cell=el('span','blueprint-cell');if(block){const part=itemDetails(block.key),kind=['generator'].includes(block.key)?'power':['motor','winch','platform'].includes(block.key)?'mechanical':['sensor','enemySensor','signal','autoDoor'].includes(block.key)?'signal':'item';cell.classList.add('filled',kind);cell.textContent=part.icon;cell.title=`${part.name} · ${['right','down','left','up'][block.rot||0]}`;cell.append(el('span','orientation',['→','↓','←','↑'][block.rot||0]));}grid.append(cell);}detail.append(grid);
+      for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++){const block=blocks.find(b=>b.x===x&&b.y===y),cell=el('span','blueprint-cell');if(block){const part=itemDetails(block.key),kind=['generator'].includes(block.key)?'power':['motor','winch','platform'].includes(block.key)?'mechanical':['sensor','enemySensor','signal','autoDoor'].includes(block.key)?'signal':'item';cell.classList.add('filled',kind);cell.title=`${part.name} · ${['right','down','left','up'][block.rot||0]}`;cell.append(globalThis.CircuitArt?.icon(block.key,part.icon)||el('span','',part.icon),el('span','orientation',['→','↓','←','↑'][block.rot||0]));}grid.append(cell);}detail.append(grid);
       const inventory=state().inventory||{},costs=el('div','blueprint-costs');let missing=0;
       for(const [key,count] of Object.entries(currentPlan.cost)){const have=inventory[key]||0,part=itemDetails(key);if(have<count)missing+=count-have;costs.append(el('span','blueprint-cost'+(have<count?' missing':''),`${part.name} ${have}/${count}`));}detail.append(costs,el('p','blueprint-note',currentPlan.notes));
-      const preview=el('button','blueprint-preview','Preview in the world →');preview.onclick=()=>{adapter.selectBlueprint?.(currentPlan);openPanel('blueprintPanel',false);refresh();};detail.append(preview);
-      const status=adapter.getBlueprintStatus?.(currentPlan);detail.append(el('div','blueprint-status'+(missing||status?.canBuild===false?' warning':''),status?.reason||(missing?`Missing ${missing} component${missing===1?'':'s'}. You can preview now and fabricate the remaining parts.`:'Components ready. Aim at clear space; confirm placement in Build mode.')));
+      if(guidedPlans.includes(currentPlan.id)&&adapter.startGuide){
+        const guide=state().guide;
+        const label=guide?.id===currentPlan.id&&guide.paused?'Resume guided build':'Start guided build';
+        const guided=el('button','blueprint-preview primary',label);
+        guided.onclick=()=>{adapter.startGuide(currentPlan);openPanel('blueprintPanel',false);refresh();};
+        detail.append(guided);
+      }
+      const preview=el('button','blueprint-preview blueprint-atomic','Preview full assembly');preview.onclick=()=>{adapter.selectBlueprint?.(currentPlan);openPanel('blueprintPanel',false);refresh();};detail.append(preview);
+      const status=adapter.getBlueprintStatus?.(currentPlan);detail.append(el('div','blueprint-status'+(missing||status?.canBuild===false?' warning':''),status?.reason||(missing?`Missing ${missing} component${missing===1?'':'s'}. Preview the layout while you gather parts.`:'Aim at a clear area and use your primary action to build.')));
     }
     function refresh() {
       if(destroyed)return;const s=state(),mode=modes[s.mode]?s.mode:'mine';
-      for(const button of document.querySelectorAll('[data-mode]')){const selected=button.dataset.mode===mode;button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected));}
-      if(byId('modeHint'))byId('modeHint').textContent=modes[mode];
+      const selected=s.selected,placing=!!s.blueprint||!!(s.guide?.active&&s.guide.placing);
+      const link=selected?.key==='link'&&!placing,hud=s.hud||{};
+      const heldName=(mode==='mine'?hud.tool:mode==='combat'?hud.weapon:selected?.name)||selected?.name||'Pickaxe';
+      const selection=typeof heldName==='object'?heldName.name:heldName;
       if(byId('smartPlacement'))byId('smartPlacement').checked=s.smartPlacement!==false;
-      for(const button of document.querySelectorAll('.context-action')){const visible=button.dataset.touch===(mode==='build'?'place':mode==='interact'?'interact':mode==='mine'?'mine':null);button.setAttribute('aria-hidden',String(!visible));}
+      if(byId('smartCursor'))byId('smartCursor').checked=!!s.smartCursor;
+      const primary=s.flying?'':placing||mode==='build'?'place':mode==='combat'?'attack':mode==='mine'?'mine':'';
+      for(const button of document.querySelectorAll('[data-touch]')){
+        if(button.classList.contains('context-action'))button.hidden=button.dataset.touch!==primary;
+        if(button.dataset.touch==='place'){
+          button.textContent=link?'Link':'Place';
+          button.setAttribute('aria-label',link?'Link structure':'Place selected component');
+        }
+        if(button.dataset.touch==='rotate')button.hidden=mode!=='build'||link||placing;
+        if(button.dataset.touch==='aim'){
+          button.hidden=s.flying||mode==='combat'||link;
+          button.setAttribute('aria-pressed',String(!!s.smartCursor));
+          button.setAttribute('aria-label',s.smartCursor?'Smart cursor on. Switch to exact targeting':'Exact targeting on. Switch to smart cursor');
+          button.textContent=s.smartCursor?'Smart':'Aim';
+        }
+        if(button.dataset.touch==='interact'){button.hidden=s.canInteract===false;button.textContent=s.flying?'Exit':'Use';}
+      }
+      const lens=byId('lensBtn'),lensActive=!!s.lens||lens?.classList.contains('active');
+      lens?.setAttribute('aria-pressed',String(!!lensActive));
+      document.body.classList.toggle('engineering-active',!!(lensActive||s.inspectorOpen||byId('lensPanel')?.classList.contains('show')));
       const difficulty=difficultyText[s.difficulty]?s.difficulty:'standard';for(const id of ['difficultySelect','welcomeDifficulty'])if(byId(id)&&document.activeElement!==byId(id))byId(id).value=difficulty;if(byId('difficultyDescription'))byId('difficultyDescription').textContent=difficultyText[difficulty];
       for(const [id,fallback,output] of [['soundVolume',.65,'soundValue'],['musicVolume',.2,'musicValue']]){const value=Number.isFinite(s[id])?s[id]:fallback;if(byId(id)&&document.activeElement!==byId(id))byId(id).value=String(Math.round(value*100));if(byId(output))byId(output).textContent=`${Math.round(value*100)}%`;}
-      const hud=s.hud||{},region=typeof hud.region==='object'?hud.region?.name:hud.region;if(region&&byId('regionReadout'))byId('regionReadout').textContent=region;
-      const inventory=s.inventory||{},miningTool=inventory.poweredMiningTool?'Powered Mining Tool':inventory.steelDrillTool?'Steel Drill Tool':inventory.reinforcedPickaxe?'Reinforced Pickaxe':'Basic Pickaxe';
+      const region=typeof hud.region==='object'?hud.region?.name:hud.region;if(region&&byId('regionReadout'))byId('regionReadout').textContent=region;
+      const inventory=s.inventory||{};
       for(const button of document.querySelectorAll('.combat-action'))button.hidden=mode!=='combat';
-      if(byId('healBtn'))byId('healBtn').textContent='✚'+((inventory.medkit||0)+(inventory.repairKit||0));
-      const equipment=mode==='build'&&s.selected?.name?`Build: ${s.selected.name}`:mode==='combat'?hud.weapon:hud.tool||s.toolName||miningTool;
-      if(equipment&&byId('equipmentReadout'))byId('equipmentReadout').textContent=typeof equipment==='object'?equipment.name:equipment;
-      if(byId('energyReadout')){byId('energyReadout').hidden=!Number.isFinite(hud.energy);if(Number.isFinite(hud.energy))byId('energyReadout').textContent=`Energy ${Math.max(0,Math.round(hud.energy))}`;}
+      if(byId('healBtn'))byId('healBtn').textContent=`Heal · ${(inventory.medkit||0)+(inventory.repairKit||0)} [Z]`;
+      if(selection&&byId('equipmentReadout'))byId('equipmentReadout').textContent=selection;
+      if(byId('energyReadout')){byId('energyReadout').hidden=!Number.isFinite(hud.energy)||Math.round(hud.energy)>=100;if(Number.isFinite(hud.energy))byId('energyReadout').textContent=`Energy ${Math.max(0,Math.round(hud.energy))}`;}
       const journal=s.progression||s.journal||{},activeChapter=(journal.chapters||[]).find(chapter=>chapter.active);
       if(byId('missionTitle'))byId('missionTitle').textContent=activeChapter?.title||(journal.chapter>5?'Endless engineering':'Wake the Foundry');
       const raid=hud.raid||{},raidActive=raid.state==='warning'||raid.state==='attack',raidElement=byId('raidReadout');
       document.body.classList.toggle('raid-active',raidActive);
       if(raidElement){raidElement.hidden=!raidActive;raidElement.classList.toggle('attack',raid.state==='attack');if(raidActive)raidElement.textContent=raid.state==='warning'?`⚠ Base attack in ${Math.max(0,Math.ceil(raid.remaining||0))}s · Prepare your defenses`:`⚔ Base under attack · ${Math.max(0,raid.count||0)} hostiles remaining`;}
       const active=s.blueprint,activePanel=byId('blueprintActive');if(activePanel){activePanel.hidden=!active;if(active&&byId('blueprintActiveText'))byId('blueprintActiveText').textContent=`${active.title||active.name||readable(active.id||active)} · Aim to preview, place to build`;}
+      const guide=s.guide,guidePanel=byId('guideActive');
+      if(guidePanel){
+        guidePanel.hidden=!guide?.active&&!guide?.paused;
+        if(guide&&!guidePanel.hidden){
+          const button=byId('guideToggle'),action=guide.paused?'Resume':'Pause';
+          button.textContent=action;
+          button.title=`${action} ${guide.title}`;
+        }
+      }
       if(byId('journalPanel')?.classList.contains('show'))renderJournal();
       syncDialog();
     }
-    const observer=typeof MutationObserver==='function'?new MutationObserver(syncDialog):null;for(const modal of document.querySelectorAll('.modal'))observer?.observe(modal,{attributes:true,attributeFilter:['class']});
+    const observer=typeof MutationObserver==='function'?new MutationObserver(syncDialog):null;for(const modal of document.querySelectorAll('.modal,#lensPanel'))observer?.observe(modal,{attributes:true,attributeFilter:['class']});
     refresh();
     if(state().firstRun)openPanel('welcomePanel',true);
-    return {refresh,renderJournal,renderBlueprint,openPanel,closePanels,destroy(){destroyed=true;for(const dispose of events)dispose();observer?.disconnect();lensTools.remove();}};
+    return {refresh,renderJournal,renderBlueprint,openPanel,closePanels,destroy(){destroyed=true;for(const dispose of events)dispose();observer?.disconnect();}};
   }
   return {create,blueprints,modes,difficultyText,craftCategoryLabels};
 });

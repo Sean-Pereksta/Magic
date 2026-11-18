@@ -6,11 +6,12 @@
   'use strict';
   const EPS=.01;
   const overlap=(a,b)=>a.x<b.x+b.w-EPS&&a.x+a.w>b.x+EPS&&a.y<b.y+b.h-EPS&&a.y+a.h>b.y+EPS;
+  const isGuide=(id,T)=>id===T.RAIL||id===T.MAGNETIC_RAIL;
   function guideContacts(group,get,T){
     if(T.RAIL===undefined)return [];
     const rows=new Map(),contacts=[];
     for(const [x,y] of group){const row=rows.get(y)||{left:x,right:x};row.left=Math.min(row.left,x);row.right=Math.max(row.right,x);rows.set(y,row);}
-    for(const [y,row] of rows)for(const x of [row.left-1,row.right+1])if(get(x,y)===T.RAIL)contacts.push([x,y]);
+    for(const [y,row] of rows)for(const x of [row.left-1,row.right+1])if(isGuide(get(x,y),T))contacts.push([x,y]);
     return contacts;
   }
   function hasGuide(group,get,T){return guideContacts(group,get,T).length>0;}
@@ -58,8 +59,8 @@
     const moving=[...group.map(([gx,gy])=>({x:gx,y:gy,dy,side:0})),...counterGroup.map(([gx,gy])=>({x:gx,y:gy,dy:-dy,side:1}))];
     const mainGuides=guideContacts(group,get,T),counterGuides=guideContacts(counterGroup,get,T);
     m.guided=mainGuides.length+counterGuides.length>0;
-    for(const [gx,gy] of mainGuides)if(get(gx,gy+dy)!==T.RAIL)return fail('GUIDE RAIL ENDS BEFORE THE NEXT LOAD POSITION');
-    for(const [gx,gy] of counterGuides)if(get(gx,gy-dy)!==T.RAIL)return fail('COUNTERWEIGHT GUIDE RAIL ENDS');
+    for(const [gx,gy] of mainGuides)if(!isGuide(get(gx,gy+dy),T))return fail('GUIDE RAIL ENDS BEFORE THE NEXT LOAD POSITION');
+    for(const [gx,gy] of counterGuides)if(!isGuide(get(gx,gy-dy),T))return fail('COUNTERWEIGHT GUIDE RAIL ENDS');
 
     const riderOn=coordinates=>!!player&&coordinates.some(([gx,gy])=>Math.abs(player.y+player.h-gy*tile)<5&&player.x+player.w>gx*tile&&player.x<(gx+1)*tile);
     const mainRider=riderOn(group),counterRider=riderOn(counterGroup);

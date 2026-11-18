@@ -6,9 +6,9 @@ A playable engineering survival sandbox: **explore → mine → craft → build 
 
 Open `game/circuitbound.html` in a modern browser, or serve the repository and visit `/game/circuitbound.html`. No backend, account or mandatory server is required. Saves use browser local storage; opening the game from another origin uses another save location.
 
-A new expedition starts at an outpost with a lit generator circuit, an incomplete motor connection, storage, a Foundry Core and a ladder into accessible copper and iron. Mine eight copper, fabricate a reinforced pickaxe or engineering hammer, operate a powered machine and restore the Core. The Journal tracks the current objective. Existing saves retain their terrain.
+A new expedition starts beside the outpost. Follow the pinned objective to mine and collect 6 wood and 4 stone. Open **Craft**, make a **Field Workbench**, select it in the hotbar, place it at the highlighted spot and use it. Opening Craft within reach of the Workbench also gives access to its recipes. The Journal tracks the campaign as you explore the nearby copper and iron.
 
-To repair this outpost, bridge the missing wire at **(9, 27)** and place the field-kit generator at **(11, 28)**, behind the motor. The Core and motor use separate branches so the tutorial stays within wire capacity.
+The next pinned task marks the two outpost repair tiles. Bridge the missing wire at **(9, 27)** and place the field-kit generator at **(11, 28)** behind the motor. The Core and motor use separate branches so the tutorial stays within wire capacity.
 
 The chapters are **Wake the Foundry → Into the Depths → Under Siege → The Industrial Network → The Reactor Below**. Progress rewards actual machine operation, a descent route, automated extraction, defense kills, raid survival, manufacturing, stronger generation and defeating the boss. Equipment unlocks and material costs connect these goals to exploration. Casual, Standard and Hardcore adjust damage, populations, raid timing and recoverable resource loss.
 
@@ -18,29 +18,37 @@ The chapters are **Wake the Foundry → Into the Depths → Under Siege → The 
 | --- | --- |
 | Walk / jump | A/D or Left/Right; Space |
 | Climb / descend / drop through platforms | W/S or Up/Down; Space jumps off a ladder or rope |
-| Mine | Mine mode; hold left mouse on a reachable block |
-| Build | Build mode; click or drag ladders, supported ropes and platforms |
-| Interact / inspect / combat | Select that mode, then left mouse |
-| Quick placement or configuration | Right mouse; machine configuration cycles its recipe |
+| Select hotbar slot | 1 through 0, or click a slot |
+| Mine | Select a pickaxe and hold the left mouse button on a reachable tile |
+| Place | Select a block or component and left-click. Drag compatible pieces and release to build the valid previewed run |
+| Use machine, door or switch | Right-click the target. Machine controls stay on the selected machine |
 | Rotate held / aimed component | R / Shift+R |
-| Fabricator / Field Manual | E / H |
+| Switch exact / smart cursor | G |
+| Craft / backpack | E / I |
 | Journal / Blueprints | J / B |
+| Field manual | H |
 | Engineer's Lens / cycle lens view | C / V |
 | Link Tool / cycle link mode | 0 selects Link Tool; L cycles New, Add, Remove, Inspect |
-| Withdraw / insert materials | F takes contents from aimed machinery; Shift+F inserts one selected item |
+| Use or collect / insert materials | F collects contents from aimed storage or production equipment and uses other components. Shift+F inserts one selected item |
 | Drop held item | X |
-| Attack / cycle weapon / heal | Q / Tab / Z |
-| Pause / close dialog | Escape |
+| Attack / cycle weapon / heal | Left-click with a weapon selected, or Q. Tab cycles weapons and Z heals |
+| Close panel / pause | Escape |
 
-On-screen modes, movement and context actions support touch. Aim in the world first, then hold Mine or use the selected action. Fight mode adds compact weapon-cycle and healing buttons to the top bar. Dialogs pause gameplay and support keyboard focus navigation. The hotbar scrolls through components and materials.
+On touch, tap the world to aim. Hold **Mine** or tap **Place**, **Attack**, or **Use**. Drag in the world to preview a run of compatible parts, then tap **Place** to commit it. With the Link Tool held, aim and tap **Link** at each corner of the selection. **Turn** rotates the current component and **Aim** switches cursor behavior. Movement and jump remain on the screen edges.
 
-Interact with item machinery to open its inspector. **Load material**, **Next recipe**, **Collect finished goods** and **Recover inputs** buttons support production without keyboard modifiers; ordinary storage has a **Take contents** button. These actions obey reach, input capacity and player inventory capacity.
+The ten hotbar slots retain their assignments when you collect items. Choose a carried item in **Pack** and use **Assign to hotbar** to move it to a slot. Open **Menu** for the Journal, Blueprints, Field Manual and Engineer’s Lens.
+
+## Crafting and machine controls
+
+Crafting includes hand recipes, Field Workbench recipes and powered machine batches. Search by output, ingredient or use. Turn on **Show all recipes** to read a blocked recipe’s materials, station and chapter requirements. Selecting an ingredient explains where to find it or how to make it. **Craft one** and **Craft max** use your backpack materials and report the finished quantity.
+
+Use item machinery to open its controls. Select the desired recipe directly and choose **Load**, **Collect finished goods** or **Recover inputs**. Storage has **Take contents**. The drawer shows the machine’s operating state, next action and port connections, with detailed grid and drive readings expandable.
 
 Hold-to-mine shows progress and cracks. Broken blocks become physical resources, collected nearby when reachable and inventory space is available. Mining a container recovers its block, ingredients and finished output. Inventory holds 2,048 items; excess goods remain recoverable.
 
 ## Ports and power
 
-Ports rotate with the component: **0 right, 1 down, 2 left, 3 up**. The Lens shows yellow power, cyan rotation, red signal, green item and purple structural connections, with directional arrows. Inspect machines for power, torque, recipe, ingredients, outputs, progress, efficiency and specific faults. Smart placement chooses an orientation only when compatibility is unambiguous; manual rotation remains available.
+Ports rotate with the component. **0 faces right, 1 down, 2 left and 3 up.** The Lens shows yellow power, cyan rotation, red signal, green items and purple structural connections. A placement preview shows matching nearby ports and direction. Smart rotation chooses an orientation when compatibility is unambiguous. R keeps your chosen direction.
 
 | Component facing right | Rear / left | Top | Front / right | Bottom |
 | --- | --- | --- | --- | --- |
@@ -91,7 +99,7 @@ Input buffers hold 24 items and output buffers 16; turrets hold 48 rounds, stora
 
 ## Working layouts
 
-Coordinates below are offsets in cleared terrain; rotations follow the numeric convention above. Every component must come from inventory. Blueprint previews show component counts, missing materials and placement conflicts.
+Coordinates below are offsets in cleared terrain. Rotations follow the numeric convention above. Blueprint previews show component counts, missing materials and placement conflicts. **Start guided build** walks through the automatic miner, sensor-operated door, winch lift and counterweighted lift one component at a time. Pause a guide and resume it from the saved site. The guide and full-assembly preview both use the actual parts in your hotbar or backpack.
 
 **Drill → hopper → driven conveyor → storage:**
 
@@ -119,6 +127,55 @@ The drill mines downward from (8, 5) and exports left. Fill storage and transpor
 
 The Blueprint panel also includes a crusher/smelter/storage line. Plans are ordinary connected components and obey inventory, power, reach and collision rules.
 
+## Industrial expansion
+
+Recover technology plans from deep vaults and meet each recipe’s chapter requirement. Search Crafting for an ore, device, or part and enable **Show all recipes** to check the exact ingredients and station. Use a Field Workbench for assembly and powered machinery for refining and Foundry batches.
+
+| Ore | Where to look | Extraction |
+| --- | --- | --- |
+| Cobalt | Lower Iron Caverns and Crystal Hollows | Steel Drill Tool or a higher-tier mining system |
+| Iridium | Forgotten Industrial Depths and nearby veins | Charged Powered Mining Tool, Ion Bore, or Plasma Excavator |
+| Aetherium | Reactor Abyss | Plasma Excavator |
+
+| Device | Role |
+| --- | --- |
+| Induction Smelter | Draws 11 power and turns rare ores into ingots |
+| Robotics Foundry | Draws 14 power and produces precision bearings, frames, servo cores, flux cells, survey lenses, diamond drill heads, superalloy, phase lenses, quantum controllers, ammunition, and Flight Cells |
+| Ion Bore | Draws 10 power and 15 torque to mine a fourteen-tile line. Place an ore receiver at its output |
+| Plasma Excavator | Draws 18 power and 25 torque to mine up to five lanes, including aetherium |
+| High-Torque Servo Motor and Servo Shaft | The motor turns 10 power into 32 torque. The shaft carries rotation to heavy machinery |
+| Compact Reactor Generator and Reactor Battery | The generator supplies 42 power. The battery buffers up to 480 energy |
+| Industrial Power Bus, Superconducting Cable, and Fiber Signal Line | Carry up to 45 power, up to 85 power, or control signals, respectively |
+| Cargo Silo and Alloy Rack | Provide 240-item and 96-item logistics buffers |
+
+Use Cobalt Plate, Iridium Shell, Aetherium Panel, Tempered Glass, Refractory Brick, Honeycomb Frame, Truss Beam, and Armored Bulkhead for walls and machinery frames. Use Armored Platform, Gantry Deck, Flight Deck, Hangar Grate, Armored Scaffold, and Service Ladder around hangars and factories. Magnetic Guide Rail, Anchor Pylon, and Ballast Core support working lifts and gantries. Link the ballast separately from the lift deck.
+
+### Drone stations
+
+Build a Drone Chassis and its role kit at the Workbench. Power the matching dock, leave open air beside it, then use **Deploy** in the dock controls. The inspector shows the roster, charge, cargo, and next action. A powered Drone Beacon marks a work area and a Drone Charger supports longer routes.
+
+| Drone | Dock | Working storage |
+| --- | --- | --- |
+| Collection | Reclaimer Dock, up to 3 drones | Salvage Collection Bin, 128 items |
+| Mining | Mining Drone Dock, up to 2 drones | Ore Collection Bin, 128 items |
+| Defense | Defense Drone Dock, up to 2 drones | Defense Supply Bin, 96 turret rounds |
+
+Collection drones retrieve loose goods and accessible machine outputs. Mining drones cut exposed ordinary ore and return the real drops. Both roles can use a 160-item Drone Cargo Depot and pause when compatible storage fills or becomes unreachable. Defense drones draw ammunition from their dock and engage hostile machines in sight. Use **Take contents** on a collection bin or connect its output to factory logistics. To dismantle a dock, recall its drones, wait for them to return, and pack them from the dock controls.
+
+### Schematic weapons
+
+| Weapon | Combat role |
+| --- | --- |
+| Phase Blade | A short sweep restores energy for each enemy hit |
+| Coil Lance | A bolt pierces several enemies and loses damage with each hit |
+| Void Pulser | An orb bursts on impact or at full range and stuns exposed targets |
+| Siege Railcannon | A heavy instant shot strikes the first exposed target and spends one Siege Slug |
+| Sunspike Laser | Stand still to prime a sweeping beam. Firing spends one Sunspike Charge and 28 energy. Movement interrupts the beam and cooldown carries through saves |
+
+### Starship flight
+
+Recover the Starflight plan. Use Foundry components and a Workbench to assemble the hull, flight controller, two plasma thrusters, flux tank, and complete Starship. Connect 12 power to a Starship Pad and clear a two-tile-wide approach above it. Bring a Flight Cell and choose **Launch starship**. Use movement controls to steer and climb, and hold Down to land. Use the landed Starship to board or disembark, and press U or use **Refuel** beside it to load a Flight Cell. A ship that runs out of charge glides down. Pack a parked ship into your backpack or recall it from a powered pad for one Flight Cell.
+
 ## Survival
 
 Surface Scrapyards lead into Iron Caverns, Crystal Hollows, Forgotten Industrial Depths and the Reactor Abyss. Veins, caves, abandoned storage, ruined lifts and a reactor chamber reward exploration. Ladders, supported ropes, rope ladders, scaffolds, bridges, one-way platforms, anchors and rails support a return route. Drag to extend compatible structures.
@@ -129,9 +186,13 @@ Craft melee/ranged/energy weapons, armor and shields. Turrets consume power and 
 
 ## Saves
 
-Schema **version 3** retains `circuitbound-save-v1`. The last valid prior save is kept under `circuitbound-save-v1-backup`; loading falls back to it when the main save is invalid. World tiles, inventories, production buffers/progress, battery energy, signal memory, structures, loose cargo, survival state, checkpoints, recovery caches, progression and settings persist.
+Schema **version 5** retains `circuitbound-save-v1`. The last valid prior save is kept under `circuitbound-save-v1-backup` and loads as a fallback. World tiles, inventories, production buffers, battery energy, signal memory, structures, loose cargo, survival state, checkpoints, recovery caches, campaign progress and settings persist alongside hotbar assignments, guided builds, rare geology, recovered schematics, commissioned drones, and the deployed Starship’s fuel and location.
 
-Original IDs stay stable: **door 52, ladder 53, ledge 54**; added engineering tiles begin at 55. Old linked flags migrate into connected assemblies. Existing worlds preserve terrain and inventory; generating a new world resets engineering and survival state.
+Existing tile IDs stay stable. The Field Workbench uses **100**. Old linked flags migrate into connected assemblies and expeditions from before version 4 receive a Workbench in their backpack. Existing expeditions receive rare geology and vaults on eligible terrain and keep placed structures and machines.
+
+## Art
+
+`art.js` loads painted sprite sheets and biome scenery from the game directory. It packs the sprites into in-memory atlases and caches scaled scenery. Machines share their painted icons with crafting, blueprints and the hotbar. Active machines and moving structures have animated surfaces while the simulation retains tile-aligned placement and collision.
 
 ## Validate
 
@@ -144,7 +205,7 @@ node game/circuitbound/tests/gameplay-browser.cjs
 node game/circuitbound/tests/performance.cjs
 ```
 
-Unit/integration tests use Node's built-in runner and the actual catalog/application harness. Browser checks use Playwright and an installed Chromium, Chrome or Edge; `CIRCUITBOUND_PLAYWRIGHT` and `CIRCUITBOUND_BROWSER` can specify package/browser paths. Interface checks use a temporary local server with browser routing for restricted environments; the gameplay check routes repository files directly. Interface checks cover desktop and mobile portrait/landscape layouts, closing every dialog, restored movement, crafting, previews and settings.
+Unit and integration tests use Node's built-in runner and the game harness. Browser checks use Playwright and an installed Chromium, Chrome or Edge. Use `CIRCUITBOUND_PLAYWRIGHT` and `CIRCUITBOUND_BROWSER` to specify package and browser paths. Interface checks cover desktop and mobile portrait and landscape layouts, restored movement after closing dialogs, the fixed hotbar, Backpack, recipe search, blueprint previews, guided plans and settings.
 
 The gameplay browser check first uses an unchanged, reproducibly seeded generated world: actual keyboard movement/jumping, ladder climbing, resource-debited platforms, mouse hold-mining of eight generated copper ore, useful equipment crafting and repair of the actual outpost Core/motor. It then explicitly creates a **terrain fixture**: a connected cleared quarry, solid ground and 92 real copper/iron ore tiles. This later phase is a controlled regression scenario, not a claim that the whole sequence was navigated through untouched random terrain.
 

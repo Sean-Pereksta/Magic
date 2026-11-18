@@ -78,6 +78,96 @@ test('ranged combat consumes real ammunition and energy; projectiles cannot pass
   f.inventory.energyRifle=1;s.selectWeapon('energyRifle');s.attackCooldown=0;s.energy=6;assert.equal(s.attack(1000,700),false);s.energy=50;assert.equal(s.attack(1000,700),true);assert.equal(s.energy,43);
 });
 
+test('exotic recipes require both Chapter Five and their own recovered plans',()=>{
+  const f=fixture(),s=f.survival,items=[],recipes=[];
+  S.install(f.T,f.defs,items,recipes);
+  const keys=['phaseBlade','coilLance','voidPulser','siegeRailcannon','sunspikeLaser'];
+  for(const key of keys){
+    const recipe=recipes.find(recipe=>recipe.key===key);
+    assert.ok(items.some(item=>item.key===key&&item.weapon));
+    assert.ok(recipe.cost.iridiumIngot>0);
+    s.chapter=4;f.stats.schematics=[key];assert.equal(s.canCraft(recipe),false);
+    s.chapter=5;f.stats.schematics=['reactor'];assert.equal(s.canCraft(key),false);
+    f.stats.schematics.push(key);assert.equal(s.canCraft(recipe),true);
+  }
+  s.chapter=1;f.stats.schematics=['reactor'];
+  assert.equal(s.canCraft({chapter:4,schematic:'reactor'}),true,'Earlier alternate schematic unlocks still work');
+});
+
+test('phase blades charge on real hits while coil lances pierce once per enemy and stop at terrain',()=>{
+  const f=fixture(),s=f.survival,p=s.center(),first=f.enemy('siege',26),second=f.enemy('siege',80);
+  f.inventory.phaseBlade=1;s.selectWeapon('phaseBlade');s.energy=56;
+  assert.equal(s.attack(p.x+95,p.y),true);
+  assert.equal(first.maxHealth-first.hp,S.WEAPONS.phaseBlade.damage);
+  assert.equal(second.maxHealth-second.hp,S.WEAPONS.phaseBlade.damage);
+  assert.equal(s.energy,66);
+
+  const g=fixture(),lance=g.survival,aim=lance.center(),a=g.enemy('siege',70),b=g.enemy('siege',130),c=g.enemy('siege',220);
+  const wall=Math.floor((aim.x+180)/g.tile);
+  for(let y=26;y<30;y++)g.set(wall,y,g.T.STONE);
+  g.inventory.coilLance=1;lance.selectWeapon('coilLance');
+  assert.equal(lance.attack(aim.x+680,aim.y),true);
+  for(let i=0;i<10;i++)lance.updateProjectiles(.05);
+  assert.equal(lance.energy,85);
+  assert.equal(a.maxHealth-a.hp,S.WEAPONS.coilLance.damage);
+  assert.ok(Math.abs(b.maxHealth-b.hp-S.WEAPONS.coilLance.damage*.82)<1e-8);
+  assert.equal(c.hp,c.maxHealth);
+  assert.equal(lance.projectiles.length,0);
+});
+
+test('void bursts damage nearby exposed targets and preserve enemies behind cover',()=>{
+  const f=fixture(),s=f.survival,p=s.center();
+  const exposed=s.spawn('wisp',p.x+80,p.y-50,{ignoreDistance:true});
+  exposed.hp=exposed.maxHealth=180;
+  const sheltered=s.spawn('wisp',p.x+150,p.y-1,{ignoreDistance:true});
+  for(let y=24;y<30;y++)f.set(65,y,f.T.STONE);
+  f.inventory.voidPulser=1;s.selectWeapon('voidPulser');
+  assert.equal(s.attack(p.x+325,p.y),true);
+  for(let i=0;i<8;i++)s.updateProjectiles(.05);
+  assert.equal(s.energy,76);
+  assert.ok(exposed.hp<exposed.maxHealth);
+  assert.ok(exposed.stun>0);
+  assert.equal(sheltered.hp,sheltered.maxHealth);
+  assert.equal(s.effects.filter(effect=>effect.kind==='pulse').length,1);
+});
+
+test('the siege railcannon spends its own ammo and stops at the first exposed target',()=>{
+  const f=fixture(),s=f.survival,p=s.center(),first=f.enemy('siege',85),second=f.enemy('siege',172);
+  f.inventory.siegeRailcannon=1;f.inventory.ammo=12;s.selectWeapon('siegeRailcannon');
+  assert.equal(s.attack(p.x+880,p.y),false);
+  f.inventory.railSlug=1;
+  assert.equal(s.attack(p.x+880,p.y),true);
+  assert.equal(f.inventory.railSlug,0);assert.equal(f.inventory.ammo,12);
+  assert.ok(first.hp<=0);
+  assert.equal(second.hp,second.maxHealth);
+});
+
+test('Sunspike charges safely, channels a costly beam, and persists its cooldown',()=>{
+  const f=fixture(),s=f.survival,p=s.center(),guardian=f.enemy('guardian',125);
+  f.inventory.sunspikeLaser=1;f.inventory.sunspikeCell=2;s.selectWeapon('sunspikeLaser');
+  f.player.vx=40;
+  assert.equal(s.attack(guardian.x,guardian.y),false);
+  f.player.vx=0;
+  assert.equal(s.attack(guardian.x,guardian.y),true);
+  s.updateBeam(.1);
+  f.player.vx=40;s.updateBeam(.05);f.player.vx=0;
+  assert.equal(s.beam,null);
+  assert.equal(s.energy,100);assert.equal(f.inventory.sunspikeCell,2);
+  assert.equal(s.attack(guardian.x,guardian.y),true);
+  for(let i=0;i<22;i++)s.updateBeam(.05);
+  assert.equal(s.beam,null);
+  assert.equal(s.energy,72);assert.equal(f.inventory.sunspikeCell,1);
+  assert.ok(guardian.maxHealth-guardian.hp>=S.WEAPONS.sunspikeLaser.damage*5);
+  assert.equal(s.attack(p.x+100,p.y),false);
+  const restored=fixture();
+  Object.assign(restored.inventory,{sunspikeLaser:1,sunspikeCell:1});
+  restored.survival.restore(s.export());
+  assert.equal(restored.survival.beam,null);
+  assert.equal(restored.survival.attack(p.x+100,p.y),false);
+  restored.advance(5.1);
+  assert.equal(restored.survival.attack(p.x+100,p.y),true);
+});
+
 test('crafted armor, shields, healing, and powered mining have measurable costs and benefits',()=>{
   const f=fixture(),s=f.survival;s.invulnerable=0;f.inventory.miningArmor=1;s.damagePlayer(20);assert.equal(f.player.health,84);
   s.invulnerable=0;f.inventory.shieldModule=1;s.energy=100;s.damagePlayer(20);assert.equal(f.player.health,76);assert.equal(s.energy,88);
