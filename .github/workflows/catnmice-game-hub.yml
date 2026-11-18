@@ -129,6 +129,8 @@ jobs:
           $install = Join-Path $env:RUNNER_TEMP hub-install
           $setup = Start-Process -FilePath dist/Catnmice-Game-Hub-Setup.exe -ArgumentList "/S",("/TESTROOT=`""+$install+"`"") -PassThru -Wait
           if ($setup.ExitCode) { throw "Setup failed $($setup.ExitCode)" }
+          node build/check-installed-release.cjs "$install" test/fixtures/catnmice-build-7/github-stable.json test/fixtures/catnmice-build-7/github-stable.sigstore.json
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node build/smoke.cjs "$install/Catnmice Game Hub.exe" "$env:RUNNER_TEMP/hub-qa-profile" --offline-all
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node build/check-online.cjs "$install/Catnmice Game Hub.exe" "$env:RUNNER_TEMP/hub-qa-online"
@@ -146,7 +148,7 @@ jobs:
     needs: [plan, windows]
     if: needs.plan.outputs.publish == 'true' && github.ref == 'refs/heads/main' && github.repository == 'Sean-Pereksta/Magic'
     environment: catnmice-production
-    runs-on: ubuntu-latest
+    runs-on: windows-2025
     permissions:
       contents: write
       attestations: write
@@ -177,17 +179,22 @@ jobs:
         with:
           node-version: '24.19.0'
       - name: Install the launcher's release verifier
+        shell: pwsh
         run: npm ci --prefix desktop-hub/desktop/provenance --omit=dev --ignore-scripts --no-audit --no-fund
-      - name: Verify provenance and publish the Windows download
+      - name: Stage the signed update proof
+        shell: pwsh
+        env:
+          MANIFEST_BUNDLE: ${{ steps.manifest.outputs.bundle-path }}
+        run: Copy-Item -LiteralPath $env:MANIFEST_BUNDLE -Destination publish/channel/github-stable.sigstore.json
+      - name: Verify with the installed Windows launcher and publish the download
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TRUTH_SHA: ${{ needs.plan.outputs.truth }}
-          MANIFEST_BUNDLE: ${{ steps.manifest.outputs.bundle-path }}
         run: |
-          cp "$MANIFEST_BUNDLE" publish/channel/github-stable.sigstore.json
-          node desktop-hub/desktop/provenance/verify.cjs publish/channel/github-stable.json "$MANIFEST_BUNDLE"
-          gh attestation verify publish/channel/github-stable.json --bundle "$MANIFEST_BUNDLE" \
+          node desktop-hub/desktop/provenance/verify.cjs publish/channel/github-stable.json publish/channel/github-stable.sigstore.json
+          gh attestation verify publish/channel/github-stable.json --bundle publish/channel/github-stable.sigstore.json \
             --repo "$GH_REPO" --signer-workflow "$GH_REPO/.github/workflows/catnmice-game-hub.yml" \
             --source-ref refs/heads/main --source-digest "$GITHUB_SHA" --deny-self-hosted-runners
           bash desktop-hub/build/publish-release.sh
