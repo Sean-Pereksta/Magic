@@ -24,14 +24,14 @@ function tick(simulation, count) {
   for (let i = 0; i < count; i++) simulation.step();
 }
 
-function reinforce(sim, state, step) {
+function reinforce(sim, state, step, buildOrder = plan) {
   if (step % 20 !== 0) return;
-  for (const [slot, x, y] of plan) {
+  for (const [slot, x, y] of buildOrder) {
     if (state.structures.some(structure => structure.x === x && structure.y === y)) continue;
     if (sim.command(mouse.id, { type: 'build', slot, x, y }).code === 'not-enough-cheese') break;
   }
   if (step <= 2400) return;
-  for (const [slot, x, y] of plan) {
+  for (const [slot, x, y] of buildOrder) {
     if (slot === 1 || slot === 3) sim.command(mouse.id, { type: 'upgrade', x, y, branch: slot === 1 ? 'marksman' : 'cluster' });
   }
 }
@@ -117,10 +117,13 @@ test('commands authenticate actors and guard resources, placement and structure 
   assert.equal(sim.command(mouse.id, upgrade).code, 'under-construction');
   tick(sim, 700 / STEP_MS);
   assert.equal(sim.command('guest', upgrade).code, 'not-your-structure');
+  assert.equal(sim.command(mouse.id, upgrade).code, 'not-enough-cheese');
+  assert.equal(sim.command(mouse.id, { type: 'move', x: 21, y: 25 }).ok, true);
+  tick(sim, 25);
   assert.equal(sim.command(mouse.id, upgrade).ok, true);
   assert.equal(sim.command(mouse.id, upgrade).code, 'already-upgraded');
-  assert.equal(sim.snapshot().players[0].cheese, 14);
-  assert.equal(sim.snapshot().players[1].cheese, 26);
+  assert.equal(sim.snapshot().players[0].cheese, 1);
+  assert.equal(sim.snapshot().players[1].cheese, 10);
   assert.equal(sim.snapshot().structures[0].branch, 'marksman');
 });
 
@@ -160,7 +163,7 @@ test('mouse movement passes through owned walls while respecting teammate walls'
   }
   const player = sim.snapshot().players[0];
   assert.deepEqual([player.x, player.y, player.vx, player.vy, player.facing], [21, 25, 0, 0, lastHeading]);
-  assert.equal(player.cheese, 28);
+  assert.equal(player.cheese, 12);
   assert.equal(sim.command(mouse.id, { type: 'move', dx: 1, dy: -1 }).ok, true);
   sim.step();
   const moving = sim.snapshot().players[0];
@@ -257,7 +260,8 @@ test('the opening Cat hunts until a normal battle is won by dealing the killing 
     }
   }
   assert.equal(state.status, 'won');
-  assert.ok(state.wave >= 1);
+  assert.ok(state.resultAt >= 120_000, 'the Cat withstands the opening defense before the eventual victory');
+  assert.ok(state.wave >= 3);
   assert.ok(state.nextWaveAt > state.time);
   assert.equal(state.enemies.some(enemy => enemy.type === 'cat'), false);
   assert.ok(defeatingHits.has(cat.id));
@@ -269,21 +273,19 @@ test('the opening Cat hunts until a normal battle is won by dealing the killing 
   assert.deepEqual(sim.snapshot(), finished);
 });
 
-test('harder battles telegraph real Cat attacks', () => {
+test('harder ranked battles keep their late Cat attack telegraphs', () => {
   const skills = new Set(['tail-sweep', 'cat-charge']);
   for (const difficulty of ['hard', 'nightmare']) {
-    const sim = createSimulation({ matchId: 'combat-balance', difficulty, players: [mouse] });
+    const sim = createSimulation({ matchId: 'wintry', difficulty, ranked: true, players: [mouse] });
     const warnings = new Map();
     const resolved = new Set();
-    const interrupted = new Set();
     const effects = new Set();
     const chargedTargets = new Set();
     let latest = 0;
     let traversed = false;
     let state = sim.snapshot();
     for (let step = 0; step < 4700 && state.status === 'active'; step++) {
-      if (step >= 260) dodgeCat(sim, state, step);
-      reinforce(sim, state, step);
+      if (state.wave < 7) reinforce(sim, state, step);
       sim.step();
       state = sim.snapshot();
       for (const { type, chargeUntil, vx, vy } of state.enemies) {
@@ -292,6 +294,11 @@ test('harder battles telegraph real Cat attacks', () => {
       for (const event of state.events) {
         if (event.id <= latest) continue;
         latest = event.id;
+        if (event.type === 'wave' && event.wave === 7) {
+          const x = Math.max(3, Math.min(44, event.x));
+          const y = Math.max(3, Math.min(44, event.y));
+          assert.equal(sim.command(mouse.id, { type: 'move', x, y }).ok, true);
+        }
         if (!skills.has(event.kind)) continue;
         if (difficulty === 'hard') assert.notEqual(event.kind, 'cat-charge');
         if (event.type === 'windup') {
@@ -308,7 +315,6 @@ test('harder battles telegraph real Cat attacks', () => {
         } else if (event.type === 'interrupt') {
           const warning = warnings.get(event.entityId);
           assert.equal(event.kind, warning?.kind);
-          interrupted.add(event.kind);
         } else if (event.type === 'damage' || event.type === 'heal') {
           assert.ok(resolved.has(event.kind));
           assert.ok(event.value > 0);
@@ -320,12 +326,9 @@ test('harder battles telegraph real Cat attacks', () => {
         }
       }
     }
-    assert.equal(state.status, 'won');
-    assert.ok(effects.has('tail-sweep') || interrupted.has('tail-sweep'));
-    if (difficulty === 'nightmare') {
-      assert.ok(traversed);
-      assert.deepEqual([...effects].sort(), [...skills].sort());
-    }
+    assert.equal(state.wave, 7);
+    assert.ok(effects.has(difficulty === 'hard' ? 'tail-sweep' : 'cat-charge'));
+    if (difficulty === 'nightmare') assert.ok(traversed);
   }
 });
 
@@ -339,20 +342,39 @@ test('later starts give the Cat more initial health and schedule stronger rats b
     const before = sim.snapshot();
     assert.equal(before.startingWave, startingWave);
     assert.equal(before.wave, startingWave - 1);
+    assert.equal(before.players[0].cheese, 10);
+    assert.equal(before.nextWaveAt, 30_000);
     const cat = before.enemies.find(enemy => enemy.type === 'cat');
     assert.equal(cat.hp, cat.maxHp);
     bossHealth.push(cat.maxHp);
-    tick(sim, before.nextWaveAt / STEP_MS);
-    const after = sim.snapshot();
+    const after = runPerimeter(sim, before.nextWaveAt / STEP_MS, () => {});
     assert.equal(after.status, 'active');
     assert.equal(after.wave, startingWave);
-    assert.ok(after.nextWaveAt > after.time);
+    assert.equal(after.nextWaveAt - after.time, startingWave === 1 ? 45_000 : 30_000);
     assert.ok(after.events.find(event => event.type === 'wave' && event.count > 0));
     ratHealth.push(after.enemies.find(enemy => enemy.type === 'rat').maxHp);
   }
-  assert.deepEqual(bossHealth, [550, 908, 1348]);
+  assert.deepEqual(bossHealth, [8_250, 13_613, 20_213]);
   assert.equal(ratHealth[0], ENEMIES.rat.hp);
   assert.ok(ratHealth[0] < ratHealth[1] && ratHealth[1] < ratHealth[2]);
+});
+
+test('the opening Cat stalks slowly and claws without special attacks even on a high-wave Nightmare start', () => {
+  const hp = ['easy', 'normal', 'hard', 'nightmare'].map(difficulty => {
+    const sim = createSimulation({ matchId: 'slow-opening', difficulty, players: [mouse] });
+    return sim.snapshot().enemies[0].maxHp;
+  });
+  assert.deepEqual(hp, [4_510, 8_250, 14_278, 22_440]);
+  for (const startingWave of STARTING_WAVES) {
+    const sim = createSimulation({ matchId: 'east', startingWave, difficulty: 'nightmare', players: [mouse] });
+    tick(sim, 1_000 / STEP_MS);
+    const cat = sim.snapshot().enemies[0];
+    assert.ok(Math.hypot(cat.vx, cat.vy) > 0 && Math.hypot(cat.vx, cat.vy) < 1.25);
+    tick(sim, 26_000 / STEP_MS);
+    const attacks = sim.snapshot().events.filter(event => event.type === 'windup' && event.entityId === cat.id);
+    assert.ok(attacks.length > 0);
+    assert.ok(attacks.every(event => event.kind === 'claw'));
+  }
 });
 
 test('an active Cat grows five percent per minute and recovers small amounts after a lull', () => {
@@ -362,7 +384,7 @@ test('an active Cat grows five percent per minute and recovers small amounts aft
   const recoveries = [];
   const growths = [];
   let lastDamage = -Infinity;
-  const state = runPerimeter(sim, 72_000 / STEP_MS, (_, events) => {
+  const state = runPerimeter(sim, 96_000 / STEP_MS, (_, events) => {
     for (const event of events) {
       if (event.entityId !== firstCat.id) continue;
       if (event.type === 'damage') lastDamage = event.time;
@@ -387,15 +409,24 @@ test('an active Cat grows five percent per minute and recovers small amounts aft
 });
 
 test('nearby Menders can heal a wounded Cat a little during a high-wave fight', () => {
-  const sim = createSimulation({ matchId: 'prolonged-chase', startingWave: 10, players: [mouse] });
-  assert.equal(sim.command(mouse.id, { type: 'build', slot: 1, x: 24, y: 24 }).ok, true);
-  const cat = sim.snapshot().enemies[0];
+  const sim = createSimulation({ matchId: 'heals20', difficulty: 'easy', startingWave: 10, players: [mouse] });
+  const opening = [[1, 21, 24], [2, 21, 26], [0, 22, 25], [0, 23, 24], [1, 25, 24], [1, 23, 27], [2, 24, 27]];
+  const buildOrder = [...opening, ...plan.filter(slot => !opening.some(preferred => preferred.join() === slot.join()))];
   const heals = [];
-  runPerimeter(sim, 26_000 / STEP_MS, (_, events) => {
-    for (const event of events) {
+  let state = sim.snapshot();
+  const cat = state.enemies[0];
+  let latest = 0;
+  for (let step = 0; step < 60_000 / STEP_MS && state.status === 'active'; step++) {
+    reinforce(sim, state, step, buildOrder);
+    dodgeCat(sim, state, step);
+    sim.step();
+    state = sim.snapshot();
+    for (const event of state.events) {
+      if (event.id <= latest) continue;
+      latest = event.id;
       if (event.type === 'heal' && event.kind === 'mend' && event.entityId === cat.id) heals.push(event);
     }
-  });
+  }
   assert.equal(heals.length, 1);
   assert.ok(heals[0].value > 0 && heals[0].value <= 5 && heals[0].sourceId !== cat.id);
 });
@@ -406,6 +437,8 @@ test('ranked survival keeps the fixed late Cat and scores completed waves and ma
   const sim = create();
   let state = sim.snapshot();
   assert.equal(state.enemies.length, 0);
+  assert.equal(state.players[0].cheese, 26);
+  assert.equal(state.nextWaveAt, 12_500);
   assert.deepEqual(sim.rankedScore, { waves: 0, timeMs: 0 });
   let bossAt;
   for (let i = 0; i < 4700 && sim.status === 'active'; i++) {
@@ -444,11 +477,12 @@ test('the Cat can breach a wall its owner walks through', () => {
   const wall = sim.command(mouse.id, { type: 'build', slot: 0, x: 22, y: 26 });
   assert.equal(wall.ok, true);
   assert.equal(sim.command(mouse.id, { type: 'move', x: 22, y: 26 }).ok, true);
-  tick(sim, 240);
+  tick(sim, 535);
   const state = sim.snapshot();
   const cat = state.enemies.find(enemy => enemy.type === 'cat');
   const attack = state.events.find(event => event.type === 'damage' && event.sourceId === cat.id);
   assert.equal(attack?.entityId, wall.id);
+  assert.equal(attack?.kind, 'claw');
   assert.equal(state.players[0].x, 22);
 });
 
@@ -457,7 +491,7 @@ test('a surviving teammate keeps co-op active while the Cat changes targets', ()
   assert.equal(sim.command('guest', { type: 'move', x: 2, y: 24 }).ok, true);
   let caught;
   let revived;
-  for (let step = 0; step < 600 && !revived; step++) {
+  for (let step = 0; step < 1200 && !revived; step++) {
     sim.step();
     const state = sim.snapshot();
     if (state.players[0].hp === 0 && !caught) caught = state;
