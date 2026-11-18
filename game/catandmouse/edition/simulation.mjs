@@ -1,17 +1,28 @@
-import { DIFFICULTIES, ENEMIES, MAPS, SHOTS, STEP_MS, TOWERS, normalizeLoadout } from './battlefield.mjs';
+import { DIFFICULTIES, ENEMIES, MAPS, SHOTS, STARTING_WAVES, STEP_MS, TOWERS, normalizeLoadout } from './battlefield.mjs';
 import { DIRECTIONS, buildEnemyField, distanceSquared, findPath, interceptPoint, movingCircleHit, terrainHit, tileAt } from './navigation.mjs';
 
-export { DIFFICULTIES, ENEMIES, MAPS, SHOTS, STARTER_LOADOUT, STEP_MS, TOWERS, isCompleteLoadout, normalizeLoadout } from './battlefield.mjs';
+export { DIFFICULTIES, ENEMIES, MAPS, SHOTS, STARTER_LOADOUT, STARTING_WAVES, STEP_MS, TOWERS, isCompleteLoadout, normalizeLoadout } from './battlefield.mjs';
 
 const STEP_SECONDS = STEP_MS / 1000;
 const WAVE_SIZES = Object.freeze([2, 5, 8, 12, 17, 24, 26]);
+const STARTING_TIERS = Object.freeze({
+  1: { catHealth: 1, cheese: 0 },
+  5: { catHealth: 1.65, cheese: 8 },
+  10: { catHealth: 2.45, cheese: 18 },
+});
+const CAT_GROWTH_INTERVAL = 60_000;
+const CAT_GROWTH_FACTOR = 1.05;
+const CAT_MAX_HEALTH = Number.MAX_SAFE_INTEGER;
+const CAT_RECOVERY_DELAY = 14_000;
+const CAT_HEAL_INTERVAL = 10_000;
+const RANKED_CAT_HP = 288;
+const CAT_TEAM_HP = 110;
 const MAX_STRUCTURES = 420;
 const MAX_PROJECTILES = 150;
 const MAX_ENEMIES = 75;
 const MAX_ALLIES = 36;
 const MAX_EVENTS = 128;
 const BUILD_RANGE = 6;
-const CAT_STAGGER_MS = 1050;
 const NONE = Object.freeze({ ok: true });
 const MELEE_MOVES = {
   rat: 'rat-bite', runner: 'rat-bite', stink: 'rat-bite', ox: 'ram', vulture: 'talon',
@@ -116,15 +127,18 @@ function publicEntity(entity) {
     path, destination, inputX, inputY, previousX, previousY, aiCell, nextAttackAt,
     targetId, producerId, expiresAt, shieldUntil, attackTarget, specialTimes, spawn,
     damage, splash, bonusUntil, bornTick, laneOffsetX, laneOffsetY, charge, abilityFxAt, staggerReadyAt,
+    damageScale, nextHealAt, spawnWave,
     ...publicFields
   } = entity;
   return entity.loadout ? { ...publicFields, loadout: entity.loadout.slice() } : publicFields;
 }
 
-export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = 'normal', players, seed = matchId } = {}) {
+export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = 'normal', startingWave = 1, ranked = false, players, seed = matchId } = {}) {
   if (typeof matchId !== 'string' || !matchId.length) throw new TypeError('A match ID is required.');
   if (!Object.hasOwn(MAPS, mapId)) throw new RangeError('Unknown battlefield.');
   if (!Object.hasOwn(DIFFICULTIES, difficulty)) throw new RangeError('Unknown difficulty.');
+  if (!STARTING_WAVES.includes(startingWave)) throw new TypeError('Choose starting wave 1, 5, or 10.');
+  if (typeof ranked !== 'boolean' || (ranked && startingWave !== 1)) throw new TypeError('Ranked matches start at wave 1.');
   if (!Array.isArray(players) || players.length < 1 || players.length > 4
     || players.some(player => !player || typeof player.id !== 'string' || !player.id.length)
     || new Set(players.map(player => player.id)).size !== players.length) {
@@ -133,6 +147,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
 
   const map = MAPS[mapId];
   const rules = DIFFICULTIES[difficulty];
+  const tier = STARTING_TIERS[startingWave];
   if (players.some(({ id }) => /^(?:structure|enemy|ally|shot|cheese)-\d+$/.test(id))) {
     throw new TypeError('A player ID conflicts with a battlefield entity.');
   }
@@ -143,7 +158,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     const actor = {
       id, name: String(name || `Mouse ${index + 1}`), color: index,
       ...spawn, spawn, facing: -Math.PI / 2, vx: 0, vy: 0, inputX: 0, inputY: 0,
-      maxHp: 62, hp: 62, cheese: rules.openingCheese, loadout: normalizeLoadout(loadout),
+      maxHp: 62, hp: 62, cheese: rules.openingCheese + tier.cheese, loadout: normalizeLoadout(loadout),
       reviveAt: 0, lastHitAt: -1000000, path: [], destination: null,
     };
     return [id, actor];
@@ -161,7 +176,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
   let time = 0;
   let status = 'active';
   let resultAt = null;
-  let wave = 0;
+  let wave = startingWave - 1;
   let nextWaveAt = 12500;
   let field = null;
   let mouseCells = '';
@@ -300,45 +315,54 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
 
   for (const actor of team.values()) actors.set(actor.id, actor);
   for (const cheese of map.cheese) putCheese(cheese.x, cheese.y, 3, Infinity);
-  spawnEnemy('cat', Math.floor(random() * map.spawns.length));
+  let cat = ranked ? null : spawnEnemy('cat', Math.floor(random() * map.spawns.length), wave);
 
   function beginWave() {
     wave++;
-    const count = Math.min(48, WAVE_SIZES[wave - 1] + (team.size - 1) * (1 + Math.floor(wave / 2))
+    // A wave lasts longer than its scheduled arrivals. Drop any arrivals still queued at the live enemy cap.
+    if (!ranked) pendingSpawns.length = 0;
+    const schedule = (type, delay, lane) => pendingSpawns.push({ time: time + delay, type, lane, wave });
+    const soloCount = WAVE_SIZES[wave - 1] ?? (WAVE_SIZES.at(-1) + (wave - WAVE_SIZES.length) * 2);
+    const count = Math.min(48, soloCount + (team.size - 1) * (1 + Math.floor(wave / 2))
       + Math.floor(rules.waveBonus * (wave - 1) / 6));
     const firstLane = Math.floor(random() * map.spawns.length);
     for (let index = 0; index < count; index++) {
       const type = wave >= 3 && index % 5 === 4 ? 'runner' : 'rat';
-      pendingSpawns.push({ time: time + 550 * Math.floor(index / 3), type, lane: (firstLane + index) % map.spawns.length });
+      schedule(type, 550 * Math.floor(index / 3), (firstLane + index) % map.spawns.length);
     }
     const specials = [[2, 'stink'], [3, 'vulture'], [4, 'ox'], [5, 'king'], [6, 'stink'], [7, 'ox']];
     for (const [minimum, type] of specials) {
       if (wave < minimum) continue;
-      pendingSpawns.push({ time: time + minimum * 650, type, lane: (minimum + firstLane) % map.spawns.length });
+      schedule(type, minimum * 650, (minimum + firstLane) % map.spawns.length);
     }
     if (wave >= 6) {
       const groups = rules.catSweep ? 2 : 1;
       for (let group = 0; group < groups; group++) {
         const lane = (firstLane + group * 2 + 1) % map.spawns.length;
-        pendingSpawns.push({ time: time + 3550 + group * 2000, type: 'sapper', lane });
-        pendingSpawns.push({ time: time + 4650 + group * 2000, type: 'mender', lane });
+        schedule('sapper', 3550 + group * 2000, lane);
+        schedule('mender', 4650 + group * 2000, lane);
       }
     }
+    const finalRankedWave = ranked && wave === WAVE_SIZES.length;
+    if (finalRankedWave) schedule('cat', 3400, firstLane);
     pendingSpawns.sort((a, b) => a.time - b.time);
-    nextWaveAt = wave === WAVE_SIZES.length ? null : time + (wave < 3 ? 27000 : 30000);
-    for (const mouse of team.values()) mouse.cheese += 2 + Math.floor(wave / 2);
+    nextWaveAt = finalRankedWave ? null : time + (wave < 3 ? 27000 : 30000);
+    for (const mouse of team.values()) mouse.cheese += Math.min(14, 2 + Math.floor(wave / 2));
     const countByEntrance = Object.fromEntries(map.spawns.map((spawn, lane) =>
       [spawn.id, pendingSpawns.filter(entry => entry.lane === lane).length],
     ));
     event('wave', map.spawns[firstLane], { wave, count: pendingSpawns.length, nextWaveAt, countByEntrance });
   }
 
-  function spawnEnemy(type, lane) {
+  function spawnEnemy(type, lane, spawnWave) {
     const entrance = map.spawns[lane];
     const { x, y } = entrance;
     const def = ENEMIES[type];
-    const playerBonus = type === 'cat' ? 35 * (team.size - 1) : 0;
-    const hp = Math.round((def.hp + playerBonus) * rules.health);
+    const boss = type === 'cat';
+    const teamBonus = CAT_TEAM_HP * (team.size - 1);
+    const normalHp = boss ? (def.hp + teamBonus) * tier.catHealth : def.hp * (1 + (spawnWave - 1) * 0.08);
+    const rankedHp = boss ? RANKED_CAT_HP + teamBonus : def.hp;
+    const hp = Math.round(rules.health * (ranked ? rankedHp : normalHp));
     const laneOffsetX = (random() - 0.5) * 0.72;
     const laneOffsetY = (random() - 0.5) * 0.72;
     const enemy = {
@@ -346,19 +370,23 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       hp, maxHp: hp, vx: 0, vy: 0, facing: 0,
       spawnedAt: time, lastAttackAt: -1000000, lastHitAt: -1000000, nextAttackAt: 0,
       windupUntil: 0, slowUntil: 0, trapUntil: 0,
-      specialTimes: type === 'cat' ? { pounce: time - 3200 } : {},
+      damageScale: boss || ranked ? 1 : 1 + (spawnWave - 1) * 0.045,
+      spawnWave,
+      specialTimes: boss ? { pounce: time - 3200 } : {},
       attackTarget: null, attackKind: null, lastAttackKind: null, aiCell: null,
     };
     enemies.set(enemy.id, enemy);
     actors.set(enemy.id, enemy);
     event('spawn', enemy, { entityId: enemy.id, kind: type, entrance: entrance.id });
+    return enemy;
   }
 
   function spawnEnemies() {
     if (nextWaveAt !== null && time >= nextWaveAt) beginWave();
     while (pendingSpawns.length && pendingSpawns[0].time <= time && enemies.size < MAX_ENEMIES) {
-      const { type, lane } = pendingSpawns.shift();
-      spawnEnemy(type, lane);
+      const { type, lane, wave: spawnWave } = pendingSpawns.shift();
+      const enemy = spawnEnemy(type, lane, spawnWave);
+      if (type === 'cat') cat = enemy;
     }
   }
 
@@ -376,11 +404,6 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     target.lastHitAt = time;
     event('damage', target, { entityId: target.id, sourceId: source.id, value: amount - absorption, shield: absorption, kind });
     if (target.hp > 0) return;
-    if (target.type === 'cat') {
-      target.hp = target.maxHp;
-      staggerCat(target, CAT_STAGGER_MS);
-      return;
-    }
     event('defeat', target, { entityId: target.id, sourceId: source.id, kind: target.type || 'mouse' });
     if (team.has(target.id)) {
       Object.assign(target, {
@@ -388,7 +411,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       });
       return;
     }
-    if (enemies.delete(target.id)) {
+    if (enemies.delete(target.id) && ENEMIES[target.type].cheese > 0) {
       putCheese(target.x, target.y, ENEMIES[target.type].cheese);
     }
     if (structures.get(cellAt(target.x, target.y)) === target) {
@@ -398,6 +421,27 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     }
     allies.delete(target.id);
     actors.delete(target.id);
+  }
+
+  function healEnemy(enemy, amount, kind, sourceId) {
+    if (!enemy.hp || enemy.hp >= enemy.maxHp || (enemy.nextHealAt ?? 0) > time) return;
+    const healed = Math.min(amount, enemy.maxHp - enemy.hp);
+    enemy.hp += healed;
+    if (enemy.type === 'cat') enemy.nextHealAt = time + CAT_HEAL_INTERVAL;
+    event('heal', enemy, { kind, entityId: enemy.id, sourceId, value: healed });
+  }
+
+  function advanceCatHealth() {
+    if (!cat.hp) return;
+    if (time % CAT_GROWTH_INTERVAL === 0 && cat.maxHp < CAT_MAX_HEALTH) {
+      const maxHp = Math.min(CAT_MAX_HEALTH, Math.ceil(cat.maxHp * CAT_GROWTH_FACTOR));
+      cat.hp = Math.max(1, Math.floor(cat.hp * maxHp / cat.maxHp));
+      event('cat-growth', cat, { kind: 'cat-growth', entityId: cat.id, value: maxHp - cat.maxHp, maxHp });
+      cat.maxHp = maxHp;
+    }
+    if (time - cat.lastHitAt >= CAT_RECOVERY_DELAY) {
+      healEnemy(cat, Math.min(8, Math.ceil(cat.maxHp * 0.0125)), 'cat-recover', cat.id);
+    }
   }
 
   function staggerCat(cat, duration) {
@@ -474,7 +518,8 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       const def = SPECIAL_MOVES.mend;
       const target = bestWithin(enemy, enemies.values(), def.range,
         (rat, distance) => distance - Math.min(def.heal, rat.maxHp - rat.hp) * 0.75,
-        rat => rat !== enemy && rat.type !== 'cat' && rat.hp <= rat.maxHp - 4 && clearTerrain(enemy, rat));
+        rat => rat !== enemy && (!ranked || rat.type !== 'cat') && rat.hp <= rat.maxHp - 4
+          && (rat.nextHealAt ?? 0) <= time && clearTerrain(enemy, rat));
       return startSpecial(enemy, 'mend', target);
     }
     return false;
@@ -486,7 +531,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       if (distanceSquared(center, target) > def.radius ** 2 || !clearTerrain(center, target)) continue;
       const structure = structures.get(cellAt(target.x, target.y)) === target;
       const scale = kind === 'powder-blast' && !structure ? 0.65 : 1;
-      damage(target, Math.ceil(def.damage * scale * rules.damage), enemy, kind);
+      damage(target, Math.ceil(def.damage * scale * rules.damage * enemy.damageScale), enemy, kind);
     }
   }
 
@@ -537,13 +582,12 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     }
     event('attack', enemy, fields);
     if (kind === 'mend') {
-      const wounded = [...enemies.values()].filter(rat => rat !== enemy && rat.type !== 'cat' && rat.hp < rat.maxHp
-        && distanceSquared(rat, target) <= def.radius ** 2 && clearTerrain(target, rat));
+      const wounded = [...enemies.values()].filter(rat => rat !== enemy && (!ranked || rat.type !== 'cat') && rat.hp < rat.maxHp
+        && (rat.nextHealAt ?? 0) <= time && distanceSquared(rat, target) <= def.radius ** 2 && clearTerrain(target, rat));
       wounded.sort((a, b) => (b.maxHp - b.hp) - (a.maxHp - a.hp));
       for (const rat of wounded.slice(0, 3)) {
-        const healed = Math.min(def.heal, rat.maxHp - rat.hp);
-        rat.hp += healed;
-        event('heal', rat, { kind, entityId: rat.id, sourceId: enemy.id, value: healed });
+        const amount = rat.type === 'cat' ? Math.min(5, Math.ceil(rat.maxHp * 0.01)) : def.heal;
+        healEnemy(rat, amount, kind, enemy.id);
       }
     } else if (kind === 'cat-charge') {
       enemy.charge = { ...position(enemy), endX: target.x, endY: target.y, startedAt: time, hits: new Set() };
@@ -571,7 +615,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
         const supported = enemy.type !== 'king' && bestWithin(enemy, enemies.values(), 3.1, null, candidate => candidate.type === 'king');
         const breach = (enemy.type === 'cat' || enemy.type === 'ox')
           && structures.get(cellAt(target.x, target.y)) === target ? 1.45 : 1;
-        const amount = Math.ceil(def.damage * rules.damage * (supported ? 1.3 : 1) * breach);
+        const amount = Math.ceil(def.damage * rules.damage * enemy.damageScale * (supported ? 1.3 : 1) * breach);
         damage(target, amount, enemy, kind);
       }
     }
@@ -619,7 +663,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       const nearbyMouse = visibleMouse(enemy, mouseRange);
       const nearbyAlly = bestWithin(enemy, allies.values(), 1.2);
       const localTarget = nearbyMouse ?? nearbyAlly;
-      const speed = def.speed * (enemy.slowUntil > time ? 0.52 : 1);
+      const speed = (ranked && enemy.type === 'cat' ? 2.05 : def.speed) * (enemy.slowUntil > time ? 0.52 : 1);
       if (localTarget && distanceSquared(enemy, localTarget) <= (def.reach + 0.19) ** 2) {
         windup(enemy, localTarget);
         continue;
@@ -973,9 +1017,10 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     stepStructures();
     stepAllies();
     stepProjectiles();
+    if (!ranked) advanceCatHealth();
     const survivor = [...team.values()].find(isAlive);
     if (!survivor) status = 'lost';
-    else if (nextWaveAt === null && !pendingSpawns.length && [...enemies.values()].every(enemy => enemy.type === 'cat')) status = 'won';
+    else if (cat && !cat.hp) status = 'won';
     if (status !== 'active') {
       resultAt = time;
       event('result', survivor ?? team.values().next().value, { status });
@@ -984,7 +1029,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
 
   function snapshot() {
     return {
-      matchId, mapId, difficulty, size: map.size, time, tick, status, resultAt, wave, nextWaveAt,
+      matchId, mapId, difficulty, startingWave, size: map.size, time, tick, status, resultAt, wave, nextWaveAt,
       pendingSpawns: pendingSpawns.length,
       players: [...team.values()].map(publicEntity), structures: [...structures.values()].map(publicEntity),
       enemies: [...enemies.values()].map(publicEntity), allies: [...allies.values()].map(publicEntity),
@@ -999,5 +1044,11 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     command, step, snapshot,
     get status() { return status; },
     get tick() { return tick; },
+    get rankedScore() {
+      if (!ranked) return null;
+      const unfinished = new Set([...enemies.values()].map(enemy => enemy.spawnWave));
+      for (const entry of pendingSpawns) unfinished.add(entry.wave);
+      return { waves: wave - unfinished.size, timeMs: resultAt ?? time };
+    },
   });
 }
