@@ -18,6 +18,8 @@ const controlParams = new URLSearchParams(location.hash.slice(1));
 const localHost = ['127.0.0.1', 'localhost'].includes(location.hostname);
 const controlPort = Number(controlParams.get('control'));
 const desktop = localHost && controlPort > 0 && controlPort < 65536 && controlParams.get('desktop');
+const wantsToHost = new URLSearchParams(location.search).get('host') === '1';
+const hostConnectionError = 'Could not connect to the lobby host service. Open Cat & Mouse Local Edition from the Windows Start menu and choose Multiplayer → Host Lobby.';
 const expectedRoom = controlParams.get('room');
 const inviteCode = controlParams.get('invite');
 const browserName = 'Mouse';
@@ -101,7 +103,8 @@ function title() {
   mount('title', `<section class="title-view"><span class="eyebrow">THE FLOUR MILL</span><h1>Cat <em>&amp;</em><br>Mouse</h1>
     <p class="subtitle">Gather cheese and build defenses to defeat the Cat before he grows stronger.</p>
     <div class="title-actions">${button('Singleplayer <span>→</span>', 'solo-setup', '')}
-      ${button('Multiplayer <span>→</span>', 'multiplayer')}<a href="https://www.catnmice.com/hub/ranked.html?game=catandmouse" target="_top">Ranked Survival Challenge</a>${button('Settings <span>→</span>', 'settings')}</div>
+      ${button('Multiplayer <span>→</span>', 'multiplayer')}${button('Host Lobby <span>→</span>', 'host')}
+      <a href="https://www.catnmice.com/hub/ranked.html?game=catandmouse" target="_top">Ranked Survival Challenge</a>${button('Settings <span>→</span>', 'settings')}</div>
   </section>`);
 }
 
@@ -136,8 +139,8 @@ function multiplayer() {
     ${button('Browse Lobbies <span>→</span>', 'browse', '')}
     ${button('Join by Invite <span>→</span>', 'invite')}
     ${button('Host Lobby <span>→</span>', 'host')}
-    </div><p id="view-status" role="status" hidden></p>
-    <div id="host-download" class="actions" hidden>${link('Download Local Edition', './download.html', '')}</div>`));
+    </div><p id="view-status" role="status"></p>
+    <div id="host-download" class="actions" hidden><a class="button" href="https://www.catnmice.com/game/catandmouse/edition/download.html" target="_blank" rel="noopener">Get Cat &amp; Mouse Local Edition</a></div>`));
 }
 
 function joinByInvite() {
@@ -213,6 +216,28 @@ function renderSettings() {
   mount('settings', panel('Settings', settingsMarkup() + `<p><a href="https://www.catnmice.com/game/catandmouse.html">Classic edition and account history</a></p>`));
 }
 
+function showHostConnectionError() {
+  message(hostConnectionError, true);
+  const download = $('host-download');
+  if (download) download.hidden = false;
+}
+
+async function openHost() {
+  if (!desktop) return showHostConnectionError();
+  const hostButton = screen.querySelector('[data-action="host"]');
+  hostButton.disabled = true;
+  message('Connecting to the lobby host service…');
+  try {
+    const status = await control();
+    if (!hostButton.isConnected) return;
+    if (!resumeHosting(status)) hostSetup();
+  } catch {
+    if (hostButton.isConnected) showHostConnectionError();
+  } finally {
+    hostButton.disabled = false;
+  }
+}
+
 function hostSetup() {
   mount('host', panel('Host Lobby', `<div class="form-grid">
     <label>Room name<input id="room-name" maxlength="60" value="${escape(draftRoom.roomName)}"></label>
@@ -227,13 +252,29 @@ function hostSetup() {
 }
 
 async function control(method = 'GET', body, suffix = '') {
-  const response = await fetch(`http://127.0.0.1:${controlPort}/host${suffix}`, {
-    method, headers: { Authorization: 'Bearer ' + desktop, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(4500),
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.message || result.error || 'The host controls are unavailable.');
+  let response, result;
+  try {
+    response = await fetch(`http://127.0.0.1:${controlPort}/host${suffix}`, {
+      method, headers: { Authorization: 'Bearer ' + desktop, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(4500),
+    });
+    result = await response.json();
+  } catch { throw new Error(hostConnectionError); }
+  if (response.status === 401 || response.status === 403) throw new Error(hostConnectionError);
+  if (!response.ok) {
+    const detail = result.message || result.error;
+    throw new Error(response.status >= 500 ? [detail,hostConnectionError].filter(Boolean).join(' ') : detail || 'The host controls are unavailable.');
+  }
   return result;
+}
+
+function resumeHosting(status) {
+  if (!status.serverUrl || !status.lobbyId) return false;
+  host = status;
+  hostPolling = true;
+  hostingStatus();
+  void refreshHost();
+  return true;
 }
 
 async function refreshHost() {
@@ -247,22 +288,32 @@ async function refreshHost() {
       connect(host.serverUrl, host.lobbyId, { name: draftRoom.hostName, hostToken: host.hostToken });
     }
     showHostStatus();
-  } catch (error) { message(error.message, true); }
+  } catch (error) {
+    const line = $('host-status');
+    if (hostPolling && line) {
+      line.textContent = error.message;
+      line.classList.add('error');
+    }
+  }
   if (hostPolling) hostTimer = setTimeout(refreshHost, 1500);
 }
 
 function showHostStatus() {
   const line = $('host-status');
   if (!line || !host) return;
-  line.textContent = [host.message, host.directoryStatus].filter(Boolean).join(' · ');
+  const failed = host.stage === 'failed';
+  const details = failed ? 'Check the connection and retry from Cat & Mouse Local Edition.' : host.directoryStatus;
+  line.textContent = [host.message, details].filter(Boolean).join(' · ');
+  line.classList.toggle('error', failed);
   $('copy-invite').disabled = !host.inviteUrl;
   $('retry-tunnel').hidden = host.stage !== 'failed';
 }
 
-function hostingStatus() {
+function hostingStatus(starting = false) {
   mount('hosting', panel('Opening the lobby', `<p id="host-status" role="status">Starting the match server…</p><p id="view-status" role="status"></p>
-    <div class="actions">${button('Cancel', 'host-stop')}${button('Retry Tunnel', 'host-retry')}${button('Copy Invitation', 'copy-invite', 'secondary', true)}</div>`, null));
+    <div class="actions">${button('Cancel', 'host-stop', 'secondary', starting)}${button('Retry Tunnel', 'host-retry', 'secondary', starting)}${button('Copy Invitation', 'copy-invite', 'secondary', true)}</div>`, null));
   screen.querySelector('[data-action="host-retry"]').id = 'retry-tunnel';
+  $('retry-tunnel').hidden = true;
   screen.querySelector('[data-action="copy-invite"]').id = 'copy-invite';
   showHostStatus();
 }
@@ -728,11 +779,8 @@ async function action(id) {
   if (id === 'browse') await browse();
   if (id === 'settings') renderSettings();
   if (id === 'host') {
-    if (desktop) hostSetup();
-    else {
-      message('To host online, download and launch Cat & Mouse Local Edition.', true);
-      $('host-download').hidden = false;
-    }
+    if (view === 'title') multiplayer();
+    await openHost();
   }
   if (id === 'starter') { soloDraft.kit = [...STARTER_LOADOUT]; soloSetup(); }
   if (id === 'start-solo') await startSolo();
@@ -756,13 +804,19 @@ async function action(id) {
       capacity: Number($('capacity').value), visibility: $('visibility').value };
     if (!draftRoom.roomName || !draftRoom.hostName) return message('Enter a room name and host name.', true);
     write('cat-mouse-name-v1', draftRoom.hostName);
-    hostingStatus();
+    host = null;
+    hostingStatus(true);
     try {
       host = await control('POST', draftRoom);
       hostPolling = true;
+      screen.querySelector('[data-action="host-stop"]').disabled = false;
+      $('retry-tunnel').disabled = false;
       showHostStatus();
       await refreshHost();
-    } catch (error) { message(error.message, true); }
+    } catch (error) {
+      hostSetup();
+      message(error.message, true);
+    }
   }
   if (id === 'host-retry') {
     try { host = await control('POST', null, '/retry'); showHostStatus(); } catch (error) { message(error.message, true); }
@@ -1009,14 +1063,12 @@ requestAnimationFrame(frame);
 if (expectedRoom) {
   joinPrompt();
   if (read('cat-mouse-seat:' + location.origin + ':' + expectedRoom, null, sessionStorage)) $('guest-name') && action('join-room');
-} else if (desktop) {
+} else if (wantsToHost) {
+  multiplayer();
+  void openHost();
+} else {
   title();
-  control().then(status => {
-    if (status.serverUrl && status.lobbyId) {
-      host = status;
-      hostPolling = true;
-      hostingStatus();
-      refreshHost();
-    }
+  if (desktop) control().then(status => {
+    if (view === 'title') resumeHosting(status);
   }).catch(() => {});
-} else title();
+}

@@ -192,6 +192,10 @@ function start({root,bundled,data,ready,startupFailed}){
         const origin=new URL(server.url).origin;
         disconnect=configureSaveSession(ses,{gameId:id,origin,sync:mode==='save-sync'});
         await open({title:mode==='save-sync'?game.title+' · Cloud saves':game.title,game,mode,player:p,url:server.url,session:ses,offline:true,close:closeLocal});
+      }else if(mode==='host'){
+        if(!game.hostRoute)throw Error('This game does not have a Host Lobby action.');
+        const url=validInvite(new URL(game.hostRoute,SITE).href);
+        await open({title:game.title+' · Host Lobby',game,mode,player:p,url,session:session.fromPartition(p.partition),action:'host'});
       }else{
         const chosen=action||game.actions.find(a=>a.type!=='single')?.type||game.actions[0].type;
         if(!game.actions.some(a=>a.type===chosen))throw Error('The website does not support this action.');

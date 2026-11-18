@@ -106,6 +106,9 @@ function onlinePlay(game) {
   const actions = game.actions || [];
   return actions.find(a => a.type !== 'single') || actions[0] || {};
 }
+function hostLobby(game) {
+  return game.hostRoute ? btn('Host Lobby','play',{id:game.id,mode:'host'},'glass','lobbies') : '';
+}
 function launchButton(game, compact = false) {
   const offline = state.online === false && installed(game.id);
   const mode = offline ? 'offline' : 'online';
@@ -138,6 +141,7 @@ function gameControls(game) {
       out.push(btn(label,'play',{id:game.id,mode:'online',kind:action.type},'glass'));
     }
   } else out.push(launchButton(game));
+  out.push(hostLobby(game));
   if (state.online && ids(state.saveSyncGames).includes(game.id)) out.push(btn('Sync game saves','play',{id:game.id,mode:'save-sync'},'glass','disc'));
   return out.join('');
 }
@@ -201,7 +205,7 @@ function lobbies() {
   const ids = ['trashtactics','bannerlands','cat'].map(matches).filter(Boolean);
   return `<section class="intro-art"><img src="art/trashtactics-hero.webp" alt=""><h2>Live Lobbies</h2><p>Browse the same rooms as Catnmice browser players. Your game’s lobby handles invites, teams and match starts.</p><div class="controls">${btn('Browse official lobbies','community',{section:'lobbies'},'gold','lobbies')}</div></section>
     <section class="panel"><h2>Join with an invite</h2><form id="invite-form" class="form-row"><input class="field" name="invite" type="url" required placeholder="Paste a Catnmice or game invite link" aria-label="Invite link"><button class="button" type="submit">${icon('link')} Open invite</button></form></section>
-    <section class="panel"><h2>Game lobbies</h2><div class="line-list">${ids.map(g => `<div class="list-item"><img src="${attr(imageFor(g))}" alt=""><div class="item-main"><strong>${esc(title(g))}</strong><small>${esc(onlinePlay(g).label || 'Multiplayer')}</small></div>${btn('Open lobby','play',{id:g.id,mode:'online',kind:onlinePlay(g).type},'','arrow')}</div>`).join('')}</div></section>`;
+    <section class="panel"><h2>Game lobbies</h2><div class="line-list">${ids.map(g => `<div class="list-item"><img src="${attr(imageFor(g))}" alt=""><div class="item-main"><strong>${esc(title(g))}</strong><small>${esc(onlinePlay(g).label || 'Multiplayer')}</small></div><div class="controls">${btn('Open lobby','play',{id:g.id,mode:'online',kind:onlinePlay(g).type},'','arrow')}${hostLobby(g)}</div></div>`).join('')}</div></section>`;
 }
 function rankings() {
   return `<section class="panel"><div class="tools" aria-label="Select a ranked game">${rankingIds.filter(matches).map(id => `<button class="chip" data-action="rank" data-id="${id}" aria-pressed="${rankGame===id}">${esc(title(matches(id)))}</button>`).join('')}</div><div id="rank-result" role="status" aria-busy="true"><p>Loading leaderboard…</p></div></section>`;

@@ -5,9 +5,10 @@ import {renderLeaderboard,renderRankProfile} from './rank-ui.mjs';
 
 export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResult,onRating,onStatus,onClosed}) {
   const find=id=>root.querySelector('#'+id);
+  const menu=find('mainMenu'), solo=find('soloLobby'), singleplayer=find('singleplayerOpen');
   const pane=find('onlineLobby'), status=find('onlineStatus'), form=find('onlineCreate'), rows=find('onlineRooms');
   const play=find('onlineStart'), roster=find('onlineRoster'), invite=find('onlineInvite'), rank=find('onlineRanked');
-  const createDetails=find('onlineCreateDetails'), hostStatus=find('onlineHostStatus');
+  const hostStatus=find('onlineHostStatus'), titleInput=find('onlineTitle');
   const current=new URL(location.href);
   const local=location.hostname==='localhost' || location.hostname==='127.0.0.1';
   const hosted=local || location.hostname.endsWith('.trycloudflare.com');
@@ -49,7 +50,6 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     return el;
   };
   const sameService=target=>target===origin;
-  const canHost=()=>local && (!!token || health?.community===false);
   const canRank=()=>fromSite && !!health?.ranked;
   async function request(path,base=origin) {
     const response=await fetch(new URL(path,base),{signal:AbortSignal.timeout(5000)});
@@ -58,7 +58,6 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
   }
   function setControls() {
     form.hidden=!!room;
-    createDetails.hidden=!canHost() && !canRank();
     rank.hidden=!canRank();
     matchBox.hidden=!room;
     rows.hidden=!!room;
@@ -118,7 +117,7 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
       });
       item.append(mapDetails,action); rows.append(item);
     }
-    if (!list.length) rows.append(text('li','No open lobbies. You can still join with an invite.'));
+    if (!list.length) rows.append(text('li','No open lobbies. Host a lobby or join with an invite.'));
   }
   async function refresh() {
     if (pane.hidden) return;
@@ -126,11 +125,10 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
       health=await request('/api/health');
       const data=await request('/api/lobbies');
       renderRooms(data.rooms);
-      if (!room && !connecting) {
+      if (!room && !connecting && !hostStatus.textContent) {
         if (inviteCode && !data.rooms.some(entry=>entry.id===inviteCode)) note('This invite does not have an open seat.');
         else if (inviteCode) note('Your invitation is ready. Choose Join to take the open seat.');
-        else if (canHost() || canRank()) note('Choose a lobby or create one.');
-        else note('Choose an open lobby to join.');
+        else note('Choose an open lobby or host your own.');
       }
       if (health.community && token) {
         find('onlineDirectory').textContent={
@@ -141,13 +139,21 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
         }[health.directory] || '';
       }
     } catch {
-      if (!room && !connecting) note('The online service is unreachable. Solo skirmish is available.');
+      if (!room && !connecting && !hostStatus.textContent) note('The online service is unreachable. Solo skirmish is available.');
     }
     setControls();
   }
   async function connect(payload,ranked=false) {
     if (connecting || room) return;
     connecting=true;
+    hostStatus.textContent='';
+    const hosting=payload.type==='create' && !ranked;
+    function reportError(message) {
+      if (hosting && !room) {
+        note('');
+        hostStatus.textContent=message+' Try hosting from the Trash Tactics Local Edition.';
+      } else note(message);
+    }
     try {
       const name=handle.value.trim();
       try {localStorage.setItem('trash-tactics-multiplayer-name',name);} catch {}
@@ -193,19 +199,22 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
       bind('error',data=>{
         if (data.code==='SESSION_EXPIRED') {leave(data.message,false);return;}
         if (!room) {connecting=false;client.close(false);}
-        note(data.message);
+        reportError(data.message);
       });
       note('Connecting to the host…');
       client.open({...payload,name});
-    } catch (error) {connecting=false;note(error.message);}
+    } catch (error) {connecting=false;reportError(error.message);}
   }
-  function open() {
-    pane.hidden=false;
-    find('soloLobby').hidden=true;
+  function show(panel,focusTarget) {
+    for (const view of [menu,solo,pane]) view.hidden=view!==panel;
+    focusTarget.focus();
+  }
+  function open(focusTarget=find('onlineHeading')) {
     mapSelect.value=selectedMap();
     showMapIcon();
     hostStatus.textContent='';
     setControls();
+    show(pane,focusTarget);
     clearInterval(poll);
     poll=setInterval(()=>void refresh(),4000);
     void refresh();
@@ -219,10 +228,13 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     if (message) note(message);
     setTimeout(()=>void refresh(),3000);
   }
-  launch.addEventListener('click',open);
+  singleplayer.addEventListener('click',()=>show(solo,find('soloHeading')));
+  find('soloBack').addEventListener('click',()=>show(menu,singleplayer));
+  launch.addEventListener('click',()=>open());
   find('onlineBack').addEventListener('click',()=>{
     if (room || connecting) leave();
-    pane.hidden=true;find('soloLobby').hidden=false;clearInterval(poll);
+    clearInterval(poll);
+    show(menu,launch);
   });
   find('onlineLeave').addEventListener('click',()=>leave('You left the lobby.'));
   find('onlineRefresh').addEventListener('click',()=>void refresh());
@@ -231,12 +243,7 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     event.preventDefault();
     const ranked=event.submitter===rank;
     if (ranked && !canRank()) return;
-    if (!ranked && !canHost()) {
-      hostStatus.textContent='To host online, download and launch the Trash Tactics Windows host.';
-      return;
-    }
-    hostStatus.textContent='';
-    void connect({type:'create',map:mapSelect.value,title:find('onlineTitle').value,ranked,hostToken:token},ranked);
+    void connect({type:'create',map:mapSelect.value,title:titleInput.value,ranked,hostToken:token},ranked);
   });
   find('onlineCopy').addEventListener('click',async()=>{
     try {await navigator.clipboard.writeText(link);note('Invite copied.');}
@@ -255,6 +262,7 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     try {renderRankProfile(card,(await request('/api/profile?username='+encodeURIComponent(username),OFFICIAL_ORIGIN)).player);}
     catch {card.textContent='No ranked profile found. Check the Catnmice username.';}
   });
-  if (token || inviteCode || current.searchParams.has('online')) open();
+  if (!inviteCode && current.searchParams.get('host')==='1') open(titleInput);
+  else if (token || inviteCode || current.searchParams.has('online')) open();
   return {open,leave};
 }

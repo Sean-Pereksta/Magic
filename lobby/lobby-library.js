@@ -84,8 +84,8 @@
   }
 
   function hostButton(game, escapeHtml) {
-    if (!game.localEditionRoute) return "";
-    return `<button type="button" class="btn secondary small" data-host-download="${escapeHtml(game.localEditionRoute)}" aria-haspopup="dialog" aria-label="${escapeHtml(`Host Lobby: ${game.title}`)}">Host Lobby</button>`;
+    if (!game.hostRoute) return "";
+    return `<a class="btn secondary small" href="${escapeHtml(game.hostRoute)}" aria-label="${escapeHtml(`Host Lobby: ${game.title}`)}">Host Lobby</a>`;
   }
 
   function createGameCard(game, hooks) {

@@ -7,7 +7,7 @@ const here=path.dirname(fileURLToPath(import.meta.url));
 const catalog=JSON.parse(fs.readFileSync(path.join(here,'catalog.json'),'utf8'));
 const checks=[];
 for(const game of catalog.games){
-  for(const field of ['route','singleRoute','multiplayerRoute','localEditionRoute','downloadRoute','dmRoute']){
+  for(const field of ['route','singleRoute','multiplayerRoute','hostRoute','localEditionRoute','downloadRoute','dmRoute']){
     if(game[field]) checks.push({id:game.id,field,url:new URL(game[field],catalog.site).href});
   }
 }

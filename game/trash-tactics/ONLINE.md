@@ -1,10 +1,10 @@
 # Online PvP
 
-Open **Online PvP** from Trash Tactics or **Browse Lobbies** from the Catnmice Game Hub. Choose an open lobby to join. On Catnmice, players with a verified profile can also select **Create ranked 1v1 lobby**. The host starts the match when both seats are filled. Both players finish loading the artwork before the match timer begins. Guests play in their browsers.
+Choose **Multiplayer** in Trash Tactics or **Browse Lobbies** in the Catnmice Game Hub. Select **Host Lobby** or join an open lobby. On Catnmice, players with a verified profile can also select **Create ranked 1v1 lobby**. The host starts the match when both seats are filled. Both players finish loading the artwork before the match timer begins. Guests play in their browsers.
 
 ## Host on Windows
 
-Download and extract the Windows x64 host ZIP, then open **Start Trash Tactics Host.cmd**. Keep the launcher open. It starts the game locally and opens a temporary Cloudflare URL. Select **Host Online** in the browser window the launcher opens, then share the public invite. The lobby also appears in the Catnmice browser while a seat is open and the directory is reachable. Stopping the launcher closes the tunnel and match. Community matches do not change Elo.
+Download and extract the Windows x64 host ZIP, then open **Start Trash Tactics Host.cmd**. Keep the launcher open. It starts the game locally and opens a temporary Cloudflare URL. Select **Host Lobby** in the browser window the launcher opens, then share the public invite. The lobby also appears in the Catnmice browser while a seat is open and the directory is reachable. Stopping the launcher closes the tunnel and match. Community matches do not change Elo.
 
 From source, run `npm ci` and `npm start` in this game directory for browser play at `http://127.0.0.1:57291/`. Use two browser windows to test a casual lobby. The launcher offers public hosting using a temporary Quick Tunnel. The GitHub Actions **Trash Tactics Windows host** workflow builds the portable ZIP. A tag matching `trash-tactics-host-v*` publishes the ZIP and checksum to GitHub Releases for the in-game download page.
 
