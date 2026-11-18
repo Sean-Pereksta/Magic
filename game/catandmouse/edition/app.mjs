@@ -1,4 +1,4 @@
-import { createSimulation } from './simulation.mjs';
+import { createSimulation, getPlacementError } from './simulation.mjs';
 import { DIFFICULTIES, isCompleteLoadout, MAPS, STARTER_LOADOUT, STEP_MS, TOWERS } from './battlefield.mjs';
 import { CAT_DIRECTORY_URL, PROTOCOL_VERSION } from './directory-config.mjs';
 import { Battlefield, loadPaintings, prepareBattlefield, towerCell } from './board.mjs';
@@ -9,6 +9,7 @@ const screen = $('screen');
 const overlay = $('overlay');
 const canvas = $('field');
 const board = new Battlefield(canvas, $('minimap'));
+const mobileLayout = matchMedia('(pointer: coarse), (max-width: 570px)');
 const mill = MAPS['flour-mill'];
 const arcade = 'https://www.catnmice.com/lobby/lobby.html#live-lobbies';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, character => (
@@ -23,6 +24,12 @@ const inviteCode = controlParams.get('invite');
 const browserName = 'Mouse';
 let view = '';
 let network, lobby, host, hostTimer, solo, state, playerId, previousFrame, battleTime, selected, cursor, audio;
+let touchAim = false;
+let aimTile = null;
+let pendingBuild = null;
+let placementMessage = '';
+let placementMessageUntil = 0;
+let fieldTouch = null;
 let hostPolling = false;
 let lastHud = 0;
 let paused = false;
@@ -92,7 +99,7 @@ function recordSummary() {
 function title() {
   recordSummary();
   mount('title', `<section class="title-view"><span class="eyebrow">THE FLOUR MILL</span><h1>Cat <em>&amp;</em><br>Mouse</h1>
-    <p class="subtitle">Gather cheese, build a fortress, and hold the mill against the gathering swarm.</p>
+    <p class="subtitle">Gather cheese, build defenses, and stay one step ahead of the Cat.</p>
     <div class="title-actions">${button('Singleplayer <span>→</span>', 'solo-setup', '')}
       ${button('Multiplayer <span>→</span>', 'multiplayer')}<a href="https://www.catnmice.com/hub/ranked.html?game=catandmouse" target="_top">Ranked Survival Challenge</a>${button('Settings <span>→</span>', 'settings')}</div>
   </section>`);
@@ -195,7 +202,7 @@ function settingsMarkup() {
     <label class="check"><input type="checkbox" id="reduced" ${settings.reduced ? 'checked' : ''}> Reduced motion</label>
     <label class="check"><input type="checkbox" id="follow" ${settings.follow ? 'checked' : ''}> Follow my mouse with the camera</label>
     <label class="check"><input type="checkbox" id="touch" ${settings.touch ? 'checked' : ''}> Touch controls</label>
-    <p>Walk with WASD, arrow keys, or a tap. Choose a tower with 1–8 and select a tile. Adjacent walls connect automatically. Use the minimap to pan.</p>`;
+    <p>Tap the floor to walk. On touch, open Build, choose a structure, tap a tile, then tap Place. With a keyboard and mouse, use WASD or arrows to walk and 1–8 to build. You can walk through your own structures.</p>`;
 }
 
 function renderSettings() {
@@ -361,7 +368,7 @@ function openSocket(connection) {
       if (state?.tick !== data.baseTick) transmit({ type: 'resync' });
       else receiveState({ ...state, ...data.changes }, data.events);
     } else if (data.type === 'action-result' && !data.ok) {
-      $('build-info').textContent = commandErrors[data.code] || `That command was refused (${data.code}).`;
+      reportCommandError(data.code);
     } else if (data.type === 'error') {
       if (!socketHasSeat(connection, socket) || ['room-changed', 'started', 'load-timeout', 'seat-expired'].includes(data.code)) {
         if (data.code === 'seat-expired') clearSeat(connection);
@@ -369,7 +376,7 @@ function openSocket(connection) {
         clearTimeout(watchdog);
         terminal(data.message || 'This room is unavailable.');
       } else if (lobby?.phase === 'running' || !$('battle').hidden) {
-        $('build-info').textContent = data.message || data.code || 'This command was refused.';
+        reportCommandError(data.code, data.message);
       } else {
         preserveStatus = true;
         message(data.message || 'The room declined that request.', true);
@@ -384,6 +391,7 @@ function openSocket(connection) {
       return;
     }
     connection.attempt++;
+    if (pendingBuild) reportCommandError('connection-lost');
     networkNotice('Reconnecting to the host…');
     message('Reconnecting to the host…');
     connection.retry = setTimeout(() => openSocket(connection), Math.min(5000, 400 + connection.attempt * 460));
@@ -468,8 +476,8 @@ function receiveState(next, effects = next.events) {
     document.documentElement.dataset.catnmicePlaying='true';window.dispatchEvent(new Event('catnmice-game-started'));if(location.protocol==='https:'&&location.hostname.endsWith('.trycloudflare.com')){void import('https://www.catnmice.com/hub/community-activity.mjs').then(m=>m.recordCommunity('cat')).catch(()=>{});}
     board.reset(next.mapId);
     board.camera.follow = settings.follow;
-    selected = null;
-    cursor = null;
+    resetPlacement();
+    syncBattleLayout();
     resultsOpen = false;
     $('menu').hidden = true;
     $('battle').hidden = false;
@@ -478,6 +486,13 @@ function receiveState(next, effects = next.events) {
   }
   state = next;
   const recent = board.push(next, effects, playerId);
+  if (pendingBuild) {
+    const matchesBuild = entry => entry.ownerId === playerId && entry.x === pendingBuild.x && entry.y === pendingBuild.y;
+    if (next.structures.some(entry => entry.type === pendingBuild.type && matchesBuild(entry))
+      || recent.some(event => event.type === 'build' && event.kind === pendingBuild.type && matchesBuild(event))) {
+      finishPlacement();
+    }
+  }
   const active = recent.filter(event => event.time >= next.time - 175);
   if (active.some(event => event.type === 'impact')) sound('impact');
   if (active.some(event => event.type === 'collect' && event.entityId === playerId)) sound('pickup');
@@ -492,8 +507,9 @@ function finish(next) {
     profile.matches[next.matchId] = { result: next.status, map: next.mapId, date: new Date().toISOString(), wave: next.wave };
     write('cat-mouse-profile-v1', profile);
   }
-  showOverlay(next.status === 'won' ? 'The mill stands' : 'The mill has fallen',
-    `<p>${next.status === 'won' ? 'You defeated the Cat and defended the mill.' : 'The swarm overran the mill.'}</p>
+  resetPlacement();
+  showOverlay(next.status === 'won' ? 'You survived!' : 'The mice were caught',
+    `<p>${next.status === 'won' ? 'You outlasted every wave and escaped the Cat.' : 'The Cat and his swarm caught every mouse.'}</p>
     <div class="actions">${button('Main Menu', 'exit-battle', '')}</div>`);
 }
 
@@ -502,8 +518,7 @@ function leaveBattle() {
   state = null;
   paused = false;
   resultsOpen = false;
-  selected = null;
-  cursor = null;
+  resetPlacement();
   keys.clear();
   networkNotice('');
   $('battle').hidden = true;
@@ -519,12 +534,69 @@ function renderBuild(kit) {
   updateSelected();
 }
 
+function setBuildTray(open) {
+  $('build-toggle').setAttribute('aria-expanded', String(open));
+}
+
+function syncBattleLayout() {
+  $('battle-overview').open = !mobileLayout.matches;
+  setBuildTray(false);
+}
+
+function resetPlacement() {
+  selected = null;
+  cursor = null;
+  aimTile = null;
+  touchAim = false;
+  pendingBuild = null;
+  placementMessage = '';
+  placementMessageUntil = 0;
+  fieldTouch = null;
+  setBuildTray(false);
+  updateSelected();
+}
+
+function finishPlacement() {
+  resetPlacement();
+  if (mobileLayout.matches) $('build-toggle').focus({ preventScroll: true });
+  else canvas.focus({ preventScroll: true });
+}
+
+function selectSlot(slot, useTouch) {
+  if (pendingBuild) return;
+  if (slot === selected && touchAim === useTouch) return resetPlacement();
+  selected = slot;
+  touchAim = useTouch;
+  aimTile = null;
+  placementMessage = '';
+  setBuildTray(false);
+  updateSelected();
+  if (touchAim) $('build-cancel').focus({ preventScroll: true });
+  else canvas.focus({ preventScroll: true });
+}
+
 function updateSelected() {
   $('build-bar').querySelectorAll('[data-build]').forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.build) === selected)));
+  $('battle').classList.toggle('touch-aim', touchAim);
+  updatePlacement();
+}
+
+function updatePlacement() {
   const type = selectedTower();
-  $('build-info').textContent = !type ? 'WASD or arrow keys to move · tap the floor to walk'
+  const error = type && aimTile && getPlacementError(state, playerId, type, aimTile.x, aimTile.y);
+  const prompt = !type ? 'WASD or arrow keys to move · tap the floor to walk'
     : isWall(type) ? 'Place beside a wall to extend it or form a corner.'
       : `${TOWERS[type].description} Select a tile to build.`;
+  let status = placementMessage || prompt;
+  if (touchAim && type) {
+    if (pendingBuild) status = 'Placing…';
+    else if (!aimTile) status = `Tap a tile for ${TOWERS[type].name}.`;
+    else status = placementMessage || (error ? commandErrors[error] || 'Choose another tile.' : `${TOWERS[type].name} · ${TOWERS[type].cost} cheese`);
+  }
+  if ($('build-info').textContent !== status) $('build-info').textContent = status;
+  $('battle').classList.toggle('action-status', !touchAim && Boolean(placementMessage));
+  $('build-place').disabled = !touchAim || !aimTile || Boolean(error || pendingBuild);
+  $('build-cancel').disabled = Boolean(pendingBuild);
 }
 
 function selectedTower() {
@@ -533,17 +605,32 @@ function selectedTower() {
 }
 
 const commandErrors = {
-  occupied: 'This tile is occupied.', 'too-far': 'Move closer to build here.', 'not-enough-cheese': 'You need more cheese.',
-  'blocked-terrain': 'This terrain cannot be built on.', 'route-blocked': 'Leave a route from the rat entrances to the mill.',
+  occupied: 'This tile is occupied.', 'out-of-reach': 'Move closer to build here.', 'not-enough-cheese': 'You need more cheese.',
+  blocked: 'This terrain cannot be built on.', 'spawn-protected': 'Keep the entrance clear.', 'invalid-cell': 'Choose a tile inside the map.',
+  'structure-limit': 'The battlefield is at its building limit.', 'economy-limit': 'You’ve reached the limit for this building.',
+  'mouse-caught': 'Your mouse has been caught.', 'match-ended': 'The match has ended.', 'under-construction': 'Wait for this building to finish.',
+  'connection-lost': 'Connection lost. Try again when you reconnect.',
 };
 
+function reportCommandError(code, detail) {
+  pendingBuild = null;
+  placementMessage = detail || commandErrors[code] || 'That action could not be completed.';
+  placementMessageUntil = performance.now() + 3200;
+  updatePlacement();
+}
+
 function sendCommand(command) {
-  if (!state || paused || state.status !== 'active') return;
-  if (!solo) return transmit({ type: 'input', command });
+  if (!state || paused || state.status !== 'active') return false;
+  if (!solo) {
+    const sent = transmit({ type: 'input', command });
+    if (!sent && command.type !== 'move') reportCommandError('connection-lost');
+    return sent;
+  }
   const response = solo.command(playerId, command);
   if (response && !response.ok && command.type !== 'move') {
-    $('build-info').textContent = commandErrors[response.code] || `Cannot place this here (${response.code || 'invalid action'}).`;
+    reportCommandError(response.code);
   }
+  return Boolean(response?.ok);
 }
 
 function updateHud() {
@@ -555,12 +642,12 @@ function updateHud() {
   const warning = cat?.windupUntil > state.time ? {
     pounce: 'Pounce incoming', 'tail-sweep': 'Tail sweep incoming', 'cat-charge': 'Charge incoming',
   }[cat.attackKind] : null;
-  $('wave-title').textContent = cat ? 'The Cat has arrived' : state.wave ? `Wave ${state.wave}` : 'Build your defenses';
+  $('wave-title').textContent = state.wave ? `Wave ${state.wave}` : 'Wave 1 ahead';
   const until = Math.max(0, Math.ceil((state.nextWaveAt - state.time) / 1000));
   $('wave-clock').textContent = warning || (Number.isFinite(until) && state.nextWaveAt
     ? until ? `Next wave in ${until}s` : 'Wave incoming'
-    : state.status === 'active' ? 'Hold the mill' : '');
-  $('objective').textContent = `${state.objectives.filter(entry => entry.hp > 0).length}/${state.objectives.length} objectives standing`;
+    : state.status === 'active' ? 'Survive the chase' : '');
+  $('objective').textContent = !player.hp ? 'Mouse caught' : cat ? 'Cat on the hunt' : 'Stay alive';
   const activeEnemies = state.enemies;
   const hint = activeEnemies.some(enemy => enemy.type === 'sapper' && enemy.windupUntil > state.time)
     ? 'Sapper blast · spread out' : activeEnemies.some(enemy => enemy.type === 'mender')
@@ -570,8 +657,13 @@ function updateHud() {
   $('threat-hint').textContent = hint;
   $('teammates').innerHTML = state.players.filter(entry => entry.id !== playerId).map(entry => {
     const connection = lobby?.players.find(player => player.id === entry.id);
-    return `<div>${escape(entry.name)} · ${connection?.connected === false ? 'Offline' : Math.ceil(entry.hp) + ' HP'}</div>`;
+    return `<div>${escape(entry.name)} · ${connection?.connected === false ? 'Offline' : entry.hp > 0 ? Math.ceil(entry.hp) + ' HP' : 'Caught'}</div>`;
   }).join('');
+  $('build-bar').querySelectorAll('[data-build]').forEach(button => {
+    const item = TOWERS[player.loadout[Number(button.dataset.build)]];
+    button.classList.toggle('unaffordable', player.cheese < item.cost);
+  });
+  updatePlacement();
 }
 
 function frame(now) {
@@ -585,10 +677,15 @@ function frame(now) {
       }
     }
     if (now - lastHud >= 125) {
+      if (pendingBuild && now > pendingBuild.deadline) reportCommandError(null, 'Placement wasn’t confirmed. Check the tile and try again.');
+      if (!touchAim && now > placementMessageUntil) placementMessage = '';
       updateHud();
       lastHud = now;
     }
-    board.draw(now, settings, selected !== null && cursor ? { ...cursor, type: selectedTower() } : null);
+    const type = selectedTower();
+    const tile = touchAim ? aimTile : cursor;
+    const target = type && tile ? { ...tile, type, fixed: touchAim, available: !getPlacementError(state, playerId, type, tile.x, tile.y) } : null;
+    board.draw(now, settings, target);
   } else if (view === 'waiting' && lobby?.phase === 'countdown') {
     const seconds = Math.max(1, Math.ceil((lobby.countdownUntil - Date.now()) / 1000));
     const label = `Battle starts in ${seconds}…`;
@@ -712,12 +809,31 @@ document.addEventListener('click', event => {
   if (!target || target.disabled) return;
   if (target.dataset.action) action(target.dataset.action).catch(error => message(error.message, true));
   if (target.dataset.build !== undefined) {
-    const slot = Number(target.dataset.build);
-    selected = slot === selected ? null : slot;
-    updateSelected();
-    canvas.focus({ preventScroll: true });
+    selectSlot(Number(target.dataset.build), mobileLayout.matches || event.pointerType === 'touch');
   }
 });
+
+$('build-toggle').onclick = () => {
+  if (!state || overlay.open) return;
+  const open = $('build-toggle').getAttribute('aria-expanded') !== 'true';
+  resetPlacement();
+  setBuildTray(open);
+};
+$('build-cancel').onclick = finishPlacement;
+$('build-place').onclick = () => {
+  if (!touchAim || !aimTile || pendingBuild || overlay.open) return;
+  const type = selectedTower();
+  const { x, y } = aimTile;
+  const error = getPlacementError(state, playerId, type, x, y);
+  if (error) return reportCommandError(error);
+  const command = { type: 'build', slot: selected, x, y };
+  if (sendCommand(command)) {
+    if (solo) finishPlacement();
+    else pendingBuild = { x, y, type, deadline: performance.now() + 5000 };
+    updatePlacement();
+  }
+};
+mobileLayout.addEventListener('change', syncBattleLayout);
 
 document.addEventListener('change', event => {
   const element = event.target;
@@ -768,28 +884,47 @@ window.addEventListener('keydown', event => {
     event.preventDefault();
     if (!keys.has(key)) { keys.add(key); walk(); }
   } else if (/^[1-8]$/.test(key)) {
-    selected = Number(key) - 1;
-    updateSelected();
+    const slot = Number(key) - 1;
+    if (slot !== selected || touchAim) selectSlot(slot, false);
   } else if (key === 'escape') {
-    if (selected !== null) { selected = null; updateSelected(); }
+    if (pendingBuild) return;
+    if (selected !== null || $('build-toggle').getAttribute('aria-expanded') === 'true') finishPlacement();
     else battleMenu();
   }
 });
 window.addEventListener('keyup', event => { if (keys.delete(event.key.toLowerCase())) walk(); });
 window.addEventListener('blur', stopWalking);
 canvas.addEventListener('pointermove', event => {
+  if (event.pointerType === 'touch') {
+    if (fieldTouch?.id === event.pointerId && Math.hypot(event.clientX - fieldTouch.x, event.clientY - fieldTouch.y) > 12) fieldTouch = null;
+    return;
+  }
   if (!state || !board.tileX) return;
   const point = board.coordinates(event.offsetX, event.offsetY);
   cursor = { x: Math.round(point.x), y: Math.round(point.y) };
 });
 canvas.addEventListener('pointerleave', () => { cursor = null; });
-canvas.addEventListener('pointerdown', event => {
-  if (!state || !board.tileX || event.button !== 0 || (event.pointerType === 'touch' && !settings.touch)) return;
+
+function useBattlefield(event) {
+  if (!state || !board.tileX || overlay.open || pendingBuild) return;
   unlockAudio();
+  if ($('build-toggle').getAttribute('aria-expanded') === 'true') {
+    setBuildTray(false);
+    return;
+  }
   const point = board.coordinates(event.offsetX, event.offsetY);
   const x = Math.round(point.x);
   const y = Math.round(point.y);
-  if (selected !== null) return sendCommand({ type: 'build', x, y, slot: selected });
+  placementMessage = '';
+  if (selected !== null) {
+    if (touchAim || event.pointerType === 'touch') {
+      touchAim = true;
+      aimTile = { x, y };
+      updateSelected();
+      return;
+    }
+    return sendCommand({ type: 'build', x, y, slot: selected });
+  }
   const tower = state.structures.find(entry => entry.x === x && entry.y === y && entry.ownerId === playerId && !entry.branch && TOWERS[entry.type]?.upgrades);
   if (tower) {
     stopWalking();
@@ -799,7 +934,21 @@ canvas.addEventListener('pointerdown', event => {
     keys.clear();
     sendCommand({ type: 'move', x, y });
   }
+}
+
+canvas.addEventListener('pointerdown', event => {
+  if (event.button !== 0) return;
+  if (event.pointerType !== 'touch') return useBattlefield(event);
+  if (!settings.touch) return;
+  fieldTouch = event.isPrimary ? { id: event.pointerId, x: event.clientX, y: event.clientY } : null;
 });
+canvas.addEventListener('pointerup', event => {
+  if (event.pointerType !== 'touch' || fieldTouch?.id !== event.pointerId) return;
+  const { x, y } = fieldTouch;
+  fieldTouch = null;
+  if (Math.hypot(event.clientX - x, event.clientY - y) <= 12) useBattlefield(event);
+});
+canvas.addEventListener('pointercancel', () => { fieldTouch = null; });
 document.addEventListener('click', event => {
   const value = event.target.closest('button')?.dataset.action;
   if (!value?.startsWith('upgrade/')) return;
