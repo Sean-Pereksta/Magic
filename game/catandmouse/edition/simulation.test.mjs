@@ -341,3 +341,23 @@ test('the Cat can breach a wall its owner walks through', () => {
   assert.equal(attack?.entityId, wall.id);
   assert.equal(state.players[0].x, 22);
 });
+
+test('a surviving teammate keeps co-op active while the Cat changes targets', () => {
+  const sim = createSimulation({ matchId: 'east', players: [mouse, { id: 'guest' }] });
+  assert.equal(sim.command('guest', { type: 'move', x: 2, y: 24 }).ok, true);
+  let caught;
+  let revived;
+  for (let step = 0; step < 600 && !revived; step++) {
+    sim.step();
+    const state = sim.snapshot();
+    if (state.players[0].hp === 0 && !caught) caught = state;
+    if (caught && state.players[0].hp > 0) revived = state;
+  }
+  assert.ok(caught && revived);
+  assert.equal(caught.status, 'active');
+  assert.equal(revived.status, 'active');
+  assert.ok(revived.players[1].hp > 0);
+  const caughtCat = caught.enemies.find(enemy => enemy.type === 'cat');
+  const revivedCat = revived.enemies.find(enemy => enemy.type === 'cat');
+  assert.ok(distanceSquared(revivedCat, revived.players[1]) < distanceSquared(caughtCat, caught.players[1]));
+});
