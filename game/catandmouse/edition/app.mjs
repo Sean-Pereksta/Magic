@@ -125,8 +125,9 @@ function multiplayer() {
   mount('multiplayer', panel('Multiplayer', `<div class="stack">
     ${button('Browse Lobbies <span>→</span>', 'browse', '')}
     ${button('Join by Invite <span>→</span>', 'invite')}
-    ${desktop ? button('Host Lobby <span>→</span>', 'host') : link('Host Lobby →', './download.html')}
-    </div>`));
+    ${button('Host Lobby <span>→</span>', 'host')}
+    </div><p id="view-status" role="status" hidden></p>
+    <div id="host-download" class="actions" hidden>${link('Download Local Edition', './download.html', '')}</div>`));
 }
 
 function joinByInvite() {
@@ -144,6 +145,7 @@ function allowedJoin(url) {
 function message(text, isError = false) {
   const status = $('view-status');
   if (status) {
+    status.hidden = false;
     status.textContent = text;
     status.classList.toggle('error', isError);
   }
@@ -617,7 +619,13 @@ async function action(id) {
   if (id === 'invite') joinByInvite();
   if (id === 'browse') await browse();
   if (id === 'settings') renderSettings();
-  if (id === 'host') hostSetup();
+  if (id === 'host') {
+    if (desktop) hostSetup();
+    else {
+      message('To host online, download and launch Cat & Mouse Local Edition.', true);
+      $('host-download').hidden = false;
+    }
+  }
   if (id === 'starter') { soloDraft.kit = [...STARTER_LOADOUT]; soloSetup(); }
   if (id === 'start-solo') await startSolo();
   if (id === 'open-invite') {

@@ -43,7 +43,7 @@ const origin=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{})});
 const checks=[],contexts=[],errors=[];
 const check=(message,value=true)=>{assert.ok(value,message);checks.push(message);};
-async function open({width=1440,user='',saved='discover',recent=[],favorites=[],reduced=false,missingArt=false,missingCatalog=false,failedArcadeUpgrade=false,query=''}={}){
+async function open({width=1440,user='',saved='discover',recent=[],favorites=[],reduced=false,missingArt=false,missingCatalog=false,failedArcadeUpgrade=false,missingFirebase=false,query=''}={}){
   const context=await browser.newContext({viewport:{width,height:1000},reducedMotion:reduced?'reduce':'no-preference'});contexts.push(context);context.setDefaultTimeout(12000);
   await context.addInitScript(({user,saved,recent,favorites})=>{
     globalThis.__fixture={data:{'users/Tester':{username:'Tester',password:'fixture-password',displayName:'Tester',favoriteGames:favorites,recentlyPlayed:recent,gamePlayCounts:{warrealms:99,cat:20}},'users/Friend':{username:'Friend',password:'fixture-password'},'gameStats/warrealms':{plays:99},'gameStats/cat':{plays:20},'lobbies/friend-room':{name:'Friend room',gameType:'cat',status:'waiting',players:['Friend'],host:'Friend',visibility:'public',createdAt:Date.now()}},listeners:[],sequence:0};
@@ -51,7 +51,7 @@ async function open({width=1440,user='',saved='discover',recent=[],favorites=[],
   },{user,saved,recent,favorites});
   await context.route('**/*',route=>{
     const url=new URL(route.request().url());
-    if(url.hostname==='www.gstatic.com'&&url.pathname.includes('/firebasejs/'))return route.fulfill({contentType:'text/javascript',body:firebase});
+    if(url.hostname==='www.gstatic.com'&&url.pathname.includes('/firebasejs/'))return missingFirebase?route.abort():route.fulfill({contentType:'text/javascript',body:firebase});
     if(url.origin!==origin)return route.abort();
     if(missingCatalog&&url.pathname==='/lobby/lobby-catalog-organization.js')return route.abort();
     if(failedArcadeUpgrade&&url.pathname==='/lobby/lobby-arcade.js')return route.fulfill({contentType:'text/javascript',body:fs.readFileSync(path.join(root,'lobby/lobby-arcade.js'),'utf8')+'\nglobalThis.GameHubArcade={...globalThis.GameHubArcade,upgradeHtml(){throw new Error("Fixture: arcade transformation unavailable");}};'});
@@ -61,18 +61,40 @@ async function open({width=1440,user='',saved='discover',recent=[],favorites=[],
   });
   const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
   await page.goto(origin+'/lobby/lobby.html'+query);
-  await page.locator('#cnmFlagshipGrid .game-card').nth(3).waitFor({state:'attached'});
+  if(missingFirebase)await page.locator('#live-lobbies').waitFor();
+  else await page.locator('#cnmFlagshipGrid .game-card').nth(3).waitFor({state:'attached'});
   if(user)await page.waitForFunction(()=>document.getElementById('accountButtonText').textContent==='Tester');
   return page;
 }
 async function nav(page,view){const selector=await page.locator('.main-nav').isVisible()?'.main-nav':'.mobile-nav';await page.locator(`${selector} [data-view="${view}"]`).click();await page.locator(`#view-${view}.active`).waitFor();}
 async function keys(page){return page.locator('#singleGameGrid .game-card').evaluateAll(cards=>cards.map(card=>card.dataset.gameKey));}
+async function checkHostDownload(page, button, download){
+  const currentUrl=page.url(), dialog=page.locator('#hostDownloadDialog');
+  await button.click();
+  await dialog.waitFor({state:'visible'});
+  assert.match(await dialog.innerText(), /Hosting requires the Windows download/);
+  assert.equal(await dialog.getByRole('link', {name:'Get the Windows edition'}).getAttribute('href'), download);
+  assert.equal(page.url(), currentUrl);
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({state:'hidden'});
+  assert.ok(await button.evaluate(button=>button===document.activeElement));
+}
 try{
   let page=await open({saved:'singleplayer'});
   await page.locator('#singleGameGrid .game-card').nth(expectedGameCount-1).waitFor({state:'attached'});
   check('every registered catalog entry remains available',(await keys(page)).length===expectedGameCount);
   const full=await keys(page);
   check('catalog keys match the complete artwork registry',JSON.stringify([...full].sort())===JSON.stringify([...expectedGameKeys].sort()));
+  const downloads={
+    bannerlands:'https://sean-pereksta.github.io/Truth/games/bannerlands/download.html',
+    cat:'/game/catandmouse/edition/download.html',
+    trashtactics:'/game/trash-tactics/download.html'
+  };
+  for(const [game, download] of Object.entries(downloads)){
+    const host=page.locator(`#singleGameGrid [data-game-key="${game}"]`).getByRole('button', {name:/Host Lobby/});
+    await checkHostDownload(page, host, download);
+    check(`${game}: Arcade Host Lobby points to the downloaded Windows edition`);
+  }
   await page.locator('#gameStatus').selectOption('prototype');
   check('Experimental filter reveals actual prototype cards',await page.locator('#singleGameGrid .game-card').evaluateAll(cards=>cards.length>0&&cards.every(card=>card.dataset.catalogStatus==='prototype'&&card.getClientRects().length>0)));
   await page.locator('#gameStatus').selectOption('tools');
@@ -99,6 +121,14 @@ try{
   await page.locator('#gameSearch').fill('Chess Warlord');check('name search combines with active filters',(await keys(page)).join(',')==='chesswarlord');
   await page.locator('#clearGameFilters').click();check('clear keeps selected sort',await page.locator('#gameSort').inputValue()==='title');
   await page.locator('#gameSearch').fill('unmatched-search-87269');check('no results includes a clear next action',await page.locator('#singleGameGrid button,#singleGameGrid a').count()>0);
+  await page.context().close();
+
+  page=await open({missingFirebase:true});
+  for(const [section, download] of [['catandmouse',downloads.cat], ['bannerlands',downloads.bannerlands]]){
+    const host=page.locator(`[data-live-section="${section}"]`).getByRole('button', {name:/Host Lobby/});
+    await checkHostDownload(page, host, download);
+    check(`${section}: Live Lobbies offers the host download when Firebase cannot load`);
+  }
   await page.context().close();
 
   page=await open({user:'Tester',recent:[{key:'cat',playedAt:Date.now()},'warrealms','cat','deleted'],favorites:['warrealms']});
@@ -135,12 +165,12 @@ try{
   const realm=new URL(page.url());check('online world action keeps the persistent realm identity',realm.searchParams.get('realm')==='public-gridbound-realm'&&realm.searchParams.get('username')==='Tester');await page.context().close();
 
   page=await open();
-  const guestAction=page.locator('#cnmFlagshipGrid [data-game-key="cat"] [data-game-action="lobby"]');
+  const guestAction=page.locator('#cnmFlagshipGrid [data-game-key="warrealms"] [data-game-action="lobby"]');
   const waitForGuestFocus=async()=>{
     // Closing visibility and restoring focus are separate MutationObserver work.
     // Wait for the user-visible focus state, retaining a strict opener assertion.
     try{
-      await page.waitForFunction(()=>document.activeElement===document.querySelector('#cnmFlagshipGrid [data-game-key="cat"] [data-game-action="lobby"]'),{},{timeout:3000});
+      await page.waitForFunction(()=>document.activeElement===document.querySelector('#cnmFlagshipGrid [data-game-key="warrealms"] [data-game-action="lobby"]'),{},{timeout:3000});
     }catch(error){
       const focus=await guestAction.evaluate(node=>({opener:{connected:node.isConnected,disabled:node.disabled,visible:!!node.getClientRects().length},active:{tag:document.activeElement?.tagName,id:document.activeElement?.id,action:document.activeElement?.getAttribute('data-game-action'),game:document.activeElement?.closest('[data-game-key]')?.getAttribute('data-game-key')},modalHidden:document.getElementById('modalLayer').hidden}));
       throw new Error('Dialog closed without restoring its original action: '+JSON.stringify(focus),{cause:error});

@@ -7,11 +7,12 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
   const find=id=>root.querySelector('#'+id);
   const pane=find('onlineLobby'), status=find('onlineStatus'), form=find('onlineCreate'), rows=find('onlineRooms');
   const play=find('onlineStart'), roster=find('onlineRoster'), invite=find('onlineInvite'), rank=find('onlineRanked');
+  const createDetails=find('onlineCreateDetails'), hostStatus=find('onlineHostStatus');
   const current=new URL(location.href);
-  const hosted=location.hostname==='localhost' || location.hostname==='127.0.0.1' || location.hostname.endsWith('.trycloudflare.com');
+  const local=location.hostname==='localhost' || location.hostname==='127.0.0.1';
+  const hosted=local || location.hostname.endsWith('.trycloudflare.com');
   const origin=hosted ? location.origin : OFFICIAL_ORIGIN;
   const fromSite=SITE_ORIGINS.includes(location.origin) && location.origin!==OFFICIAL_ORIGIN;
-  const local=location.hostname==='localhost' || location.hostname==='127.0.0.1';
   let token=local ? new URLSearchParams(current.hash.slice(1)).get('host') || '' : '';
   if (local) try {
     if (token) sessionStorage.setItem('trash-tactics-host-token',token);
@@ -48,14 +49,17 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     return el;
   };
   const sameService=target=>target===origin;
+  const canHost=()=>local && (!!token || health?.community===false);
+  const canRank=()=>fromSite && !!health?.ranked;
   async function request(path,base=origin) {
     const response=await fetch(new URL(path,base),{signal:AbortSignal.timeout(5000)});
     if (!response.ok) throw new Error('Service unavailable');
     return response.json();
   }
   function setControls() {
-    form.hidden=!!room || !health || (health.community && !token);
-    rank.parentElement.hidden=!health?.ranked || !fromSite;
+    form.hidden=!!room;
+    createDetails.hidden=!canHost() && !canRank();
+    rank.hidden=!canRank();
     matchBox.hidden=!room;
     rows.hidden=!!room;
     play.hidden=!room || connection?.seat?.team!==0 || room.phase!=='waiting';
@@ -64,6 +68,7 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
   }
   function renderRoom(next) {
     room=next;
+    hostStatus.textContent='';
     find('onlineRoomTitle').textContent=next.name;
     find('onlineRoomMap').textContent=(MAP_BRIEFS[next.map]?.name || next.map)+' · '+(next.ranked?'Ranked 1v1':'Casual 1v1');
     roster.replaceChildren();
@@ -113,7 +118,7 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
       });
       item.append(mapDetails,action); rows.append(item);
     }
-    if (!list.length) rows.append(text('li','No open lobbies. Create one or join with an invite.'));
+    if (!list.length) rows.append(text('li','No open lobbies. You can still join with an invite.'));
   }
   async function refresh() {
     if (pane.hidden) return;
@@ -124,8 +129,8 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
       if (!room && !connecting) {
         if (inviteCode && !data.rooms.some(entry=>entry.id===inviteCode)) note('This invite does not have an open seat.');
         else if (inviteCode) note('Your invitation is ready. Choose Join to take the open seat.');
-        else if (health.community && !token) note('Join an open lobby on this host.');
-        else note('Choose a lobby or create one.');
+        else if (canHost() || canRank()) note('Choose a lobby or create one.');
+        else note('Choose an open lobby to join.');
       }
       if (health.community && token) {
         find('onlineDirectory').textContent={
@@ -199,6 +204,8 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     find('soloLobby').hidden=true;
     mapSelect.value=selectedMap();
     showMapIcon();
+    hostStatus.textContent='';
+    setControls();
     clearInterval(poll);
     poll=setInterval(()=>void refresh(),4000);
     void refresh();
@@ -222,7 +229,14 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
   play.addEventListener('click',()=>connection?.send({type:'start'}));
   form.addEventListener('submit',event=>{
     event.preventDefault();
-    void connect({type:'create',map:mapSelect.value,title:find('onlineTitle').value,ranked:rank.checked,hostToken:token},rank.checked);
+    const ranked=event.submitter===rank;
+    if (ranked && !canRank()) return;
+    if (!ranked && !canHost()) {
+      hostStatus.textContent='To host online, download and launch the Trash Tactics Windows host.';
+      return;
+    }
+    hostStatus.textContent='';
+    void connect({type:'create',map:mapSelect.value,title:find('onlineTitle').value,ranked,hostToken:token},ranked);
   });
   find('onlineCopy').addEventListener('click',async()=>{
     try {await navigator.clipboard.writeText(link);note('Invite copied.');}

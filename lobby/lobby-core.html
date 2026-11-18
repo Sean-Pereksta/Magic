@@ -614,6 +614,12 @@
     <button data-view="profile"><span>👤</span>Profile</button>
   </nav>
 
+  <dialog id="hostDownloadDialog" class="modal" aria-labelledby="hostDownloadTitle" aria-describedby="hostDownloadMessage">
+    <div class="modal-head"><div id="hostDownloadTitle" class="modal-title">Hosting requires the Windows download</div><form method="dialog"><button class="modal-close" aria-label="Close dialog">×</button></form></div>
+    <div class="modal-body"><p id="hostDownloadMessage">Open the downloaded Windows edition to host a lobby. Guests can join from their browser.</p></div>
+    <div class="modal-foot"><a class="btn" id="hostDownloadLink">Get the Windows edition</a></div>
+  </dialog>
+
   <div id="modalLayer" class="modal-layer" hidden>
     <div id="accountGateModal" class="modal" hidden>
       <div class="modal-head"><div class="modal-title">Create a user to join multiplayer</div><button class="modal-close" data-close-modal>×</button></div>
@@ -1376,7 +1382,8 @@
       const actionLabel=game.joinLabel||(mode===MULTIPLAYER_LAUNCH_MODES.MATCHMAKING?"Find Match":"Enter World");
       const status=game.onlineStatus||(mode===MULTIPLAYER_LAUNCH_MODES.MATCHMAKING?"Matchmaking Available":"World Available");
       card.className="online-world-card";card.dataset.gameKey=game.key;card.style.setProperty("--game",gameColor(game.key));
-      card.innerHTML=`<div class="online-world-head"><div class="game-mark" style="--game:${gameColor(game.key)}">${gameVisual(game,"mark")}</div><div class="online-world-copy"><div class="online-world-title">${escapeHtml(game.title)}</div><div class="online-world-desc">${escapeHtml(game.desc)}</div></div></div><div class="online-world-status">${escapeHtml(status)}</div><div class="online-world-badges">${badges.map(label=>`<span class="tag">${escapeHtml(label)}</span>`).join("")}</div><div class="online-world-actions"><button type="button" class="btn join-online-world">${escapeHtml(actionLabel)}</button></div>`;
+      const host = globalThis.GameHubLibrary?.hostButton?.(game, escapeHtml) || "";
+      card.innerHTML=`<div class="online-world-head"><div class="game-mark" style="--game:${gameColor(game.key)}">${gameVisual(game,"mark")}</div><div class="online-world-copy"><div class="online-world-title">${escapeHtml(game.title)}</div><div class="online-world-desc">${escapeHtml(game.desc)}</div></div></div><div class="online-world-status">${escapeHtml(status)}</div><div class="online-world-badges">${badges.map(label=>`<span class="tag">${escapeHtml(label)}</span>`).join("")}</div><div class="online-world-actions"><button type="button" class="btn join-online-world">${escapeHtml(actionLabel)}</button>${host}</div>`;
       card.querySelector(".join-online-world").addEventListener("click",()=>joinOnlineGame(game,true));
       return card;
     }

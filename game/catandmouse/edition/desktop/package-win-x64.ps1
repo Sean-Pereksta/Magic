@@ -39,6 +39,9 @@ try {
     Invoke-WebRequest -Uri "https://raw.githubusercontent.com/cloudflare/cloudflared/$CloudflaredVersion/LICENSE" -OutFile (Join-Path $Licenses.FullName "cloudflared-LICENSE.txt")
 
     Get-ChildItem -LiteralPath $EditionRoot -File | Where-Object { $_.Extension -in ".html", ".css", ".mjs", ".md" } | Copy-Item -Destination $Payload.FullName
+    $Startup = Join-Path $Payload.FullName "index.html"
+    (Get-Content -LiteralPath $Startup -Raw) -replace '(?m)^<script type="module" src="/hub/play-signal\.mjs"[^>]*></script>\r?\n', '' |
+        Set-Content -LiteralPath $Startup -Encoding utf8 -NoNewline
     Copy-Item -LiteralPath (Join-Path $EditionRoot "art") -Destination $Payload.FullName -Recurse
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "Play Cat Mouse.vbs") -Destination $Payload.FullName
     Get-ChildItem -LiteralPath (Join-Path $EditionRoot "server") -Filter "*.mjs" -File |

@@ -83,6 +83,11 @@
     return hooks.joinOnlineGame(game, true);
   }
 
+  function hostButton(game, escapeHtml) {
+    if (!game.localEditionRoute) return "";
+    return `<button type="button" class="btn secondary small" data-host-download="${escapeHtml(game.localEditionRoute)}" aria-haspopup="dialog" aria-label="${escapeHtml(`Host Lobby: ${game.title}`)}">Host Lobby</button>`;
+  }
+
   function createGameCard(game, hooks) {
     const { document, escapeHtml, gameColor, gameVisual, favorites, gamePlayCounts } = hooks;
     const actions = getActions(game);
@@ -100,8 +105,7 @@
     const modeTags = isFlagCapture ? '<span class="tag fc-mode">AI / local 2P</span><span class="tag">5-mission campaign</span>' : game.modes.map(mode => `<span class="tag">${mode === "single" ? "Solo" : "Multiplayer"}</span>`).join("");
     const download = game.downloadRoute
       ? `<a class="btn secondary small download-game-btn" href="${escapeHtml(game.downloadRoute)}" download>Download</a>` : "";
-    const localEdition = game.localEditionRoute
-      ? `<a class="btn secondary small" href="${escapeHtml(game.localEditionRoute)}">Local Edition</a>` : "";
+    const host = hostButton(game, escapeHtml);
     const buttons = actions.map((action, index) => action.href
       ? `<a class="btn secondary small" data-live-game="${escapeHtml(game.liveLobbyGame)}" href="${action.href}">${escapeHtml(action.label)}</a>`
       : `<button type="button" class="btn small play-game-btn${index === 0 && actions.length > 1 ? " secondary" : ""}" data-game-action="${action.type}" aria-label="${escapeHtml(`${action.label}: ${game.title}`)}">${escapeHtml(action.label)}</button>`
@@ -109,7 +113,7 @@
     card.innerHTML = `
       <div class="game-art">${cover}${isFlagCapture ? '<span class="fc-art-badge">COOLDOWN TACTICS</span>' : ""}<button type="button" class="favorite-btn ${favorite ? "active" : ""}" title="Favorite" aria-label="Favorite ${escapeHtml(game.title)}" aria-pressed="${favorite}">${favorite ? "★" : "☆"}</button></div>
       <div class="game-content">${isTurncraft ? '<p class="tc-card-kicker">Build. Command. Conquer.</p>' : ""}<div class="game-name">${escapeHtml(game.title)}</div>${isFlagCapture ? FLAG_FACTIONS : ""}<div class="game-description">${escapeHtml(game.desc)}</div>${isFlagCapture ? '<p class="fc-features">21 troops <span>·</span> formations <span>·</span> living ground</p>' : ""}${isTurncraft ? TURNCRAFT_FACTIONS : ""}<div class="game-meta"><span class="tag">${escapeHtml(game.category)}</span>${modeTags}</div>
-      <div class="game-bottom"><span class="play-count">🎮 ${Number(gamePlayCounts[game.key]) || 0} plays</span><span class="game-actions">${download}${buttons}${localEdition}</span></div></div>`;
+      <div class="game-bottom"><span class="play-count">🎮 ${Number(gamePlayCounts[game.key]) || 0} plays</span><span class="game-actions">${download}${buttons}${host}</span></div></div>`;
     if (isTurncraft) loadTurncraftCover(card, document);
     card.querySelector(".favorite-btn").addEventListener("click", event => {
       event.stopPropagation();
@@ -220,7 +224,7 @@
     return html;
   }
 
-  const api = Object.freeze({ getActions, runAction, createGameCard, upgradeHtml });
+  const api = Object.freeze({ getActions, runAction, hostButton, createGameCard, upgradeHtml });
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GameHubLibrary = api;
 })(globalThis);
