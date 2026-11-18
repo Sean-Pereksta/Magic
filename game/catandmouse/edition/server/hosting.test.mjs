@@ -4,11 +4,19 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { STARTER_LOADOUT } from '../simulation.mjs';
 import { PROTOCOL_VERSION } from '../directory-config.mjs';
 import { createMatchServer } from './match-server.mjs';
+import { readLobbySettings } from './hosting-config.mjs';
 
 const options = {
   roomName: 'Flour Watch', hostName: 'Pip', map: 'flour-mill',
   difficulty: 'normal', capacity: 3, visibility: 'public'
 };
+
+test('starting wave defaults for older host options and admits only supported tiers', () => {
+  assert.equal(readLobbySettings(options).startingWave, 1);
+  for (const startingWave of [1, 5, 10]) assert.equal(readLobbySettings({ ...options, startingWave }).startingWave, startingWave);
+  assert.throws(() => readLobbySettings({ ...options, startingWave: 50 }), /starting wave/);
+  assert.throws(() => readLobbySettings({ ...options, startingWave: '5' }), /starting wave/);
+});
 
 async function peer(match) {
   const socket = new WebSocket(match.url.replace(/^http:/, 'ws:') + '/socket');
@@ -37,8 +45,9 @@ async function peer(match) {
 }
 
 test('normal start locks admission, checks loading and resynchronizes a reclaimed seat', { timeout: 12_000 }, async t => {
-  const match = await createMatchServer(options);
+  const match = await createMatchServer({ ...options, startingWave: 5 });
   t.after(() => match.close());
+  assert.equal(match.getLobby().startingWave, 5);
   const host = await peer(match);
   const guestA = await peer(match);
   const guestB = await peer(match);
@@ -67,12 +76,16 @@ test('normal start locks admission, checks loading and resynchronizes a reclaime
   host.send('start', { force: true });
   const prepared = await Promise.all([host, guestA, finalSeat.accepted].map(player => player.next('prepare')));
   assert.equal(new Set(prepared.map(message => message.matchId)).size, 1);
+  assert.ok(prepared.every(message => message.startingWave === 5));
   finalSeat.rejected.join();
   await finalSeat.rejected.next('error', message => message.code === 'started');
   for (const player of [host, guestA, finalSeat.accepted]) player.send('loaded', { matchId: prepared[0].matchId });
   const snapshot = await guestA.next('snapshot');
   assert.equal(snapshot.state.matchId, prepared[0].matchId);
   assert.equal(snapshot.state.players.length, 3);
+  assert.equal(snapshot.state.startingWave, 5);
+  assert.equal(snapshot.state.wave, 4);
+  assert.ok(snapshot.state.enemies.some(enemy => enemy.type === 'cat'));
   const delta = await guestA.next('delta');
   assert.equal(delta.baseTick, snapshot.state.tick);
   guestA.close();

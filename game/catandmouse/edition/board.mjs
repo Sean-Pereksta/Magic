@@ -273,12 +273,12 @@ export class Battlefield {
     const walls = new Map(this.state.structures.filter(entry => isWall(entry.type)).map(entry => [wallKey(entry.x, entry.y), entry]));
     let plannedWalls;
     if (target) {
-      const tile = this.map.tiles[target.y]?.[target.x];
-      const occupied = this.state.structures.some(entry => entry.x === target.x && entry.y === target.y)
-        || this.state.objectives.some(entry => entry.x === target.x && entry.y === target.y);
-      const available = (tile === '.' || tile === ':') && !occupied;
-      this.diamond(target.x, target.y, available ? '#efcc78' : '#e88675', available ? '#efcc7840' : '#cc595240');
-      if (isWall(target.type) && available) {
+      ctx.save();
+      ctx.lineWidth = 2;
+      if (!target.available) ctx.setLineDash([4, 3]);
+      this.diamond(target.x, target.y, target.available ? '#b7efad' : '#ff9a81', target.available ? '#b7efad55' : '#cc595255');
+      ctx.restore();
+      if (isWall(target.type) && target.available) {
         plannedWalls = new Map(walls);
         plannedWalls.set(wallKey(target.x, target.y), target);
       }
@@ -291,11 +291,6 @@ export class Battlefield {
       depth.push({ depth: position.x + position.y, draw: () => draw(entity, position) });
     });
     enqueue(this.map.spawns, (e, p) => this.prop(6, p, 1.6));
-    enqueue(this.state.objectives.filter(e => e.hp > 0), (e, p) => {
-      this.prop(e.id === 'sacks' ? 4 : e.id === 'hoist' ? 5 : 7, p, 1.4);
-      const [x, y] = this.project(p.x, p.y);
-      this.health(x, y - 49 * this.camera.zoom, e.hp, e.maxHp, '#eed095', true);
-    });
     enqueue(this.state.pickups, (e, p) => {
       const [x, y] = this.project(p.x, p.y);
       sprite(ctx, 'effects', 8, x, y - (settings.reduced ? 0 : Math.sin(now / 310 + p.x) * 2), 24 * this.camera.zoom);
@@ -305,11 +300,20 @@ export class Battlefield {
       else this.structure(e, p, settings, elapsed);
     });
     if (plannedWalls) enqueue([target], (e, p) => this.wall(e, p, plannedWalls, true));
+    else if (target?.available) enqueue([target], (entity, point) => {
+      const [x, y] = this.project(point.x, point.y);
+      const zoom = this.camera.zoom;
+      ctx.save();
+      ctx.globalAlpha = .58;
+      sprite(ctx, 'towers', towerCell(entity.type), x, y + 6 * zoom, 57 * zoom);
+      ctx.restore();
+    });
     enqueue(this.state.players, (e, p) => this.unit(e, p, 'mouse', now, settings));
     enqueue(this.state.enemies, (e, p) => this.unit(e, p, e.type, now, settings));
     enqueue(this.state.allies, (e, p) => this.unit(e, p, e.type, now, settings));
     enqueue(this.scenery, (e, p) => this.prop(e.index, p, 1.08));
     depth.sort((a, b) => a.depth - b.depth).forEach(item => item.draw());
+    if (target?.fixed) this.placementMarker(target);
     this.state.projectiles.forEach(shot => {
       const point = this.position(shot, fraction);
       this.effects.drawProjectileTrail(this, shot, point, settings);
@@ -372,6 +376,33 @@ export class Battlefield {
     ctx.strokeStyle = stroke;
     ctx.fill();
     ctx.stroke();
+  }
+
+  placementMarker(target) {
+    const [x, tileY] = this.project(target.x, target.y);
+    const y = tileY - 46 * this.camera.zoom;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = '#142722';
+    ctx.strokeStyle = target.available ? '#b7efad' : '#ff9a81';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - 4, y);
+    if (target.available) {
+      ctx.lineTo(x - 1, y + 3);
+      ctx.lineTo(x + 5, y - 4);
+    } else {
+      ctx.moveTo(x - 4, y - 4);
+      ctx.lineTo(x + 4, y + 4);
+      ctx.moveTo(x - 4, y + 4);
+      ctx.lineTo(x + 4, y - 4);
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   health(x, y, hp, maxHp, color, always = false) {
@@ -587,9 +618,9 @@ export class Battlefield {
     };
     plot(this.map.spawns, '#dfa473', 2.5);
     plot(this.state.structures, '#dbc19a', 1);
-    plot(this.state.objectives.filter(e => e.hp > 0), '#edcd75', 2.5);
-    plot(this.state.enemies, '#f98268', 1);
-    plot(this.state.players, '#a3e4ab', 2);
+    plot(this.state.enemies.filter(e => e.type !== 'cat'), '#f98268', 1);
+    plot(this.state.enemies.filter(e => e.type === 'cat'), '#ff654a', 3);
+    plot(this.state.players.filter(e => e.hp > 0), '#a3e4ab', 2);
     ctx.strokeStyle = '#fff4ca';
     ctx.lineWidth = 1;
     ctx.strokeRect(this.camera.x * scale - 6, this.camera.y * scale - 6, 12, 12);

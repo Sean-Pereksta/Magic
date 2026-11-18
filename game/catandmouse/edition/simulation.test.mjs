@@ -2,13 +2,15 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
-  MAPS, STARTER_LOADOUT, STEP_MS, createSimulation, isCompleteLoadout, normalizeLoadout,
+  ENEMIES, MAPS, STARTER_LOADOUT, STARTING_WAVES, STEP_MS, createSimulation, getPlacementError, isCompleteLoadout, normalizeLoadout,
 } from './simulation.mjs';
-import { buildEnemyField, interceptPoint, movingCircleHit, terrainHit, tileAt } from './navigation.mjs';
+import { buildEnemyField, distanceSquared, interceptPoint, movingCircleHit, terrainHit, tileAt } from './navigation.mjs';
 
 const mill = MAPS['flour-mill'];
 const mouse = { id: 'solo', name: 'Mill Mouse' };
 const plan = [
+  ...[[22, 25], [23, 24], [24, 23], [26, 23], [27, 25], [27, 27], [25, 29], [23, 29], [21, 27], [21, 25]]
+    .map(([x, y]) => [0, x, y]),
   [2, 21, 26], [2, 24, 27], [2, 22, 28],
   [1, 21, 24], [1, 25, 24], [1, 23, 27], [1, 26, 25], [1, 23, 22],
   [1, 24, 22], [1, 22, 23], [1, 25, 23], [1, 26, 24], [1, 24, 25], [1, 21, 28],
@@ -34,6 +36,54 @@ function reinforce(sim, state, step) {
   }
 }
 
+function dodgeCat(sim, state, step) {
+  if (step % 4 !== 0) return;
+  const player = state.players[0];
+  const cat = state.enemies.find(enemy => enemy.type === 'cat');
+  if (!cat) return;
+  const windup = cat.windupUntil > state.time;
+  const danger = windup ? { x: cat.attackX, y: cat.attackY } : cat;
+  const base = { x: 23.5, y: 25.5 };
+  const threatened = windup || distanceSquared(player, cat) < 36;
+  let bestScore = -Infinity;
+  let destination;
+  for (const dx of [-1, 0, 1]) {
+    for (const dy of [-1, 0, 1]) {
+      const length = Math.max(1, Math.hypot(dx, dy));
+      const point = { x: player.x + dx / length * 2.4, y: player.y + dy / length * 2.4 };
+      if (['#', '~'].includes(tileAt(mill, point.x, point.y))) continue;
+      const escape = Math.min(10, Math.sqrt(distanceSquared(point, cat)));
+      const margin = windup ? Math.min(7, Math.sqrt(distanceSquared(point, danger))) : 0;
+      const score = (threatened ? escape * 0.83 + margin * 1.55 : 0) - Math.sqrt(distanceSquared(point, base)) * 0.74;
+      if (score > bestScore) {
+        bestScore = score;
+        destination = { x: Math.round(point.x), y: Math.round(point.y) };
+      }
+    }
+  }
+  if (destination) sim.command(mouse.id, { type: 'move', ...destination });
+}
+
+function runPerimeter(sim, ticks, onStep) {
+  const route = [{ x: 24, y: 4 }, { x: 42, y: 4 }, { x: 44, y: 21 }, { x: 43, y: 35 }, { x: 43, y: 44 },
+    { x: 26, y: 44 }, { x: 9, y: 44 }, { x: 9, y: 25 }, { x: 4, y: 22 }, { x: 18, y: 22 }];
+  let state = sim.snapshot();
+  let waypoint = 0;
+  let lastEvent = state.events.at(-1)?.id ?? 0;
+  for (let step = 0; step < ticks && state.status === 'active'; step++) {
+    if (step % 400 === 0 || distanceSquared(state.players[0], route[waypoint]) < 4) {
+      waypoint = (waypoint + 1) % route.length;
+      sim.command(mouse.id, { type: 'move', ...route[waypoint] });
+    }
+    sim.step();
+    state = sim.snapshot();
+    const recent = state.events.filter(event => event.id > lastEvent);
+    if (recent.length) lastEvent = recent.at(-1).id;
+    onStep(state, recent);
+  }
+  return state;
+}
+
 test('loadouts preserve legal slots, fill vacancies and reject repeated towers', () => {
   const partial = ['turret', 'turret', null, '__proto__', 'flea'];
   const loadout = normalizeLoadout(partial);
@@ -55,9 +105,14 @@ test('commands authenticate actors and guard resources, placement and structure 
   assert.equal(sim.command(mouse.id, { ...build, slot: 100 }).code, 'invalid-slot');
   assert.equal(sim.command(mouse.id, { ...build, x: 25.3 }).code, 'invalid-cell');
   assert.equal(sim.command(mouse.id, { ...build, x: 2, y: 2 }).code, 'out-of-reach');
-  assert.equal(sim.command(mouse.id, { ...build, x: 23, y: 23 }).code, 'blocked');
+  for (const [x, y, code] of [[25.3, 24, 'invalid-cell'], [2, 2, 'out-of-reach'], [23, 26, 'spawn-protected']]) {
+    assert.equal(getPlacementError(sim.snapshot(), mouse.id, 'turret', x, y), code);
+    assert.equal(sim.command(mouse.id, { ...build, x, y }).code, code);
+  }
+  assert.equal(getPlacementError(sim.snapshot(), mouse.id, 'turret', build.x, build.y), null);
   assert.equal(sim.command(mouse.id, build).ok, true);
-  assert.equal(sim.command(mouse.id, build).code, 'blocked');
+  assert.equal(sim.command(mouse.id, build).code, 'occupied');
+  assert.equal(getPlacementError(sim.snapshot(), mouse.id, 'turret', build.x, build.y), 'occupied');
   const upgrade = { type: 'upgrade', x: build.x, y: build.y, branch: 'marksman' };
   assert.equal(sim.command(mouse.id, upgrade).code, 'under-construction');
   tick(sim, 700 / STEP_MS);
@@ -78,21 +133,29 @@ test('wall axes persist in snapshots and both directions occupy one tile', () =>
   assert.equal(place(1, 22, 26, 'y').ok, true);
   assert.equal(place(2, 24, 24, 'y').ok, true);
   assert.deepEqual(sim.snapshot().structures.map(({ axis }) => axis), ['x', 'y', undefined]);
-  for (const x of [21, 22]) assert.equal(sim.command(mouse.id, { type: 'move', x, y: 26 }).code, 'blocked');
+  for (const x of [21, 22]) assert.equal(sim.command(mouse.id, { type: 'move', x, y: 26 }).ok, true);
+  assert.equal(sim.command(mouse.id, { type: 'move', x: 24, y: 24 }).ok, true);
   assert.equal(sim.command(mouse.id, { type: 'move', x: 22, y: 25 }).ok, true);
 });
 
-test('click movement avoids structures, gathers cheese and preserves last idle facing', () => {
-  const sim = createSimulation({ matchId: 'movement', players: [mouse] });
+test('mouse movement passes through owned walls while respecting teammate walls', () => {
+  const sim = createSimulation({ matchId: 'movement', players: [mouse, { id: 'guest' }] });
   assert.equal(sim.command(mouse.id, { type: 'build', slot: 0, x: 22, y: 26 }).ok, true);
+  assert.equal(sim.command('guest', { type: 'build', slot: 0, x: 24, y: 26 }).ok, true);
   assert.equal(sim.command(mouse.id, { type: 'move', dx: Infinity, dy: 0 }).code, 'invalid-movement');
-  assert.equal(sim.command(mouse.id, { type: 'move', x: 22, y: 26 }).code, 'blocked');
+  assert.equal(sim.command(mouse.id, { type: 'move', x: 24, y: 26 }).code, 'blocked');
+  assert.equal(sim.command('guest', { type: 'move', x: 22, y: 26 }).code, 'blocked');
+  assert.equal(sim.command(mouse.id, { type: 'move', dx: -1, dy: 0 }).ok, true);
+  tick(sim, 5);
+  assert.equal(Math.round(sim.snapshot().players[0].x), 22);
+  assert.equal(sim.command(mouse.id, { type: 'move', x: 22, y: 26 }).ok, true);
+  tick(sim, 2);
+  assert.equal(sim.snapshot().players[0].x, 22);
   assert.equal(sim.command(mouse.id, { type: 'move', x: 21, y: 25 }).ok, true);
   let lastHeading;
   for (let i = 0; i < 27; i++) {
     sim.step();
     const { x, y, vx, vy, facing } = sim.snapshot().players[0];
-    assert.notDeepEqual([Math.round(x), Math.round(y)], [22, 26]);
     if (vx || vy) lastHeading = facing;
   }
   const player = sim.snapshot().players[0];
@@ -105,18 +168,18 @@ test('click movement avoids structures, gathers cheese and preserves last idle f
   assert.equal(moving.facing, -Math.PI / 4);
 });
 
-test('all entrances retain routes through dense defense rings to a breachable objective', () => {
+test('all entrances retain routes through dense defense rings to the mice', () => {
   const structures = new Map();
-  const objectives = mill.objectives.map(def => ({ ...def, hp: def.maxHp }));
-  const goals = new Set(objectives.map(goal => goal.y * mill.size + goal.x));
-  for (const goal of objectives) {
+  const targets = mill.playerSpawns;
+  const goals = new Set(targets.map(goal => goal.y * mill.size + goal.x));
+  for (const goal of targets) {
     for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
       const x = goal.x + dx;
       const y = goal.y + dy;
       structures.set(y * mill.size + x, { x, y, maxHp: 88 });
     }
   }
-  const field = buildEnemyField(mill, objectives, structures);
+  const field = buildEnemyField(mill, targets, structures);
   for (const spawn of mill.spawns) {
     const visited = new Set();
     let cell = spawn.y * mill.size + spawn.x;
@@ -140,22 +203,29 @@ test('projectiles sweep through moving targets and collide with the leading terr
   assert.deepEqual(predicted, { x: 4, y: 0 });
 });
 
-test('a seeded offline battle can be won and each shot and result happen once', () => {
+test('the opening Cat hunts until a normal battle is won by dealing the killing blow', () => {
   const sim = createSimulation({ matchId: 'wintry', difficulty: 'normal', players: [mouse] });
   const launches = new Map();
   const impacts = new Map();
   const simultaneousHits = new Map();
   const defeatingHits = new Set();
-  const waveSizes = new Map();
-  const lateEnemies = new Set();
   let seenLiveFlight = false;
   let latest = 0;
   let results = 0;
   let state = sim.snapshot();
+  const cat = state.enemies.find(enemy => enemy.type === 'cat');
+  assert.ok(cat && distanceSquared(cat, state.players[0]) > 18 ** 2);
+  assert.equal(state.objectives.length, 0);
   for (let step = 0; step < 4700 && state.status === 'active'; step++) {
+    dodgeCat(sim, state, step);
     reinforce(sim, state, step);
     sim.step();
     state = sim.snapshot();
+    const pursuingCat = state.enemies.find(enemy => enemy.type === 'cat');
+    if (state.status === 'active') {
+      assert.equal(pursuingCat?.id, cat.id);
+      assert.ok(pursuingCat.hp > 0);
+    }
     for (const projectile of state.projectiles) {
       const previous = launches.get(projectile.id);
       if (previous && (previous.x !== projectile.x || previous.y !== projectile.y)) seenLiveFlight = true;
@@ -165,10 +235,6 @@ test('a seeded offline battle can be won and each shot and result happen once', 
       latest = event.id;
       assert.notEqual(event.kind, 'tail-sweep');
       assert.notEqual(event.kind, 'cat-charge');
-      if (event.type === 'spawn' && (event.kind === 'sapper' || event.kind === 'mender')) {
-        assert.ok(state.wave >= 6);
-        lateEnemies.add(event.kind);
-      }
       if (event.type === 'shot') launches.set(event.projectileId, event);
       if (event.type === 'impact') {
         assert.equal(impacts.has(event.projectileId), false);
@@ -187,14 +253,14 @@ test('a seeded offline battle can be won and each shot and result happen once', 
         assert.equal(defeatingHits.has(event.entityId), false);
         defeatingHits.add(event.entityId);
       }
-      if (event.type === 'wave') waveSizes.set(event.wave, event.count);
       if (event.type === 'result') results++;
     }
   }
   assert.equal(state.status, 'won');
-  assert.equal(state.wave, 7);
-  assert.deepEqual([...lateEnemies].sort(), ['mender', 'sapper']);
-  assert.ok(waveSizes.get(7) >= 24);
+  assert.ok(state.wave >= 1);
+  assert.ok(state.nextWaveAt > state.time);
+  assert.equal(state.enemies.some(enemy => enemy.type === 'cat'), false);
+  assert.ok(defeatingHits.has(cat.id));
   assert.ok(results === 1 && seenLiveFlight && launches.size > 50);
   assert.ok([...impacts.values()].some(impact => impact.reason === 'target'));
   assert.ok([...simultaneousHits.values()].some(shooters => shooters.size > 1));
@@ -203,8 +269,8 @@ test('a seeded offline battle can be won and each shot and result happen once', 
   assert.deepEqual(sim.snapshot(), finished);
 });
 
-test('harder battles telegraph real special attacks and support actions', () => {
-  const skills = new Set(['powder-blast', 'mend', 'tail-sweep', 'cat-charge']);
+test('harder battles telegraph real Cat attacks', () => {
+  const skills = new Set(['tail-sweep', 'cat-charge']);
   for (const difficulty of ['hard', 'nightmare']) {
     const sim = createSimulation({ matchId: 'combat-balance', difficulty, players: [mouse] });
     const warnings = new Map();
@@ -216,6 +282,7 @@ test('harder battles telegraph real special attacks and support actions', () => 
     let traversed = false;
     let state = sim.snapshot();
     for (let step = 0; step < 4700 && state.status === 'active'; step++) {
+      if (step >= 260) dodgeCat(sim, state, step);
       reinforce(sim, state, step);
       sim.step();
       state = sim.snapshot();
@@ -246,7 +313,6 @@ test('harder battles telegraph real special attacks and support actions', () => 
           assert.ok(resolved.has(event.kind));
           assert.ok(event.value > 0);
           effects.add(event.kind);
-          if (event.kind === 'mend') assert.ok(event.value <= 10);
           if (event.kind === 'cat-charge') {
             assert.equal(chargedTargets.has(event.entityId), false);
             chargedTargets.add(event.entityId);
@@ -263,6 +329,104 @@ test('harder battles telegraph real special attacks and support actions', () => 
   }
 });
 
+test('later starts give the Cat more initial health and schedule stronger rats beyond wave seven', () => {
+  const create = startingWave => createSimulation({ matchId: 'start-tier', startingWave, players: [mouse] });
+  for (const invalid of [0, 7, 11, '5', null, NaN]) assert.throws(() => create(invalid), TypeError);
+  const ratHealth = [];
+  const bossHealth = [];
+  for (const startingWave of STARTING_WAVES) {
+    const sim = create(startingWave);
+    const before = sim.snapshot();
+    assert.equal(before.startingWave, startingWave);
+    assert.equal(before.wave, startingWave - 1);
+    const cat = before.enemies.find(enemy => enemy.type === 'cat');
+    assert.equal(cat.hp, cat.maxHp);
+    bossHealth.push(cat.maxHp);
+    tick(sim, before.nextWaveAt / STEP_MS);
+    const after = sim.snapshot();
+    assert.equal(after.status, 'active');
+    assert.equal(after.wave, startingWave);
+    assert.ok(after.nextWaveAt > after.time);
+    assert.ok(after.events.find(event => event.type === 'wave' && event.count > 0));
+    ratHealth.push(after.enemies.find(enemy => enemy.type === 'rat').maxHp);
+  }
+  assert.deepEqual(bossHealth, [550, 908, 1348]);
+  assert.equal(ratHealth[0], ENEMIES.rat.hp);
+  assert.ok(ratHealth[0] < ratHealth[1] && ratHealth[1] < ratHealth[2]);
+});
+
+test('an active Cat grows five percent per minute and recovers small amounts after a lull', () => {
+  const sim = createSimulation({ matchId: 'combat-balance', players: [mouse] });
+  assert.equal(sim.command(mouse.id, { type: 'build', slot: 1, x: 24, y: 24 }).ok, true);
+  const firstCat = sim.snapshot().enemies[0];
+  const recoveries = [];
+  const growths = [];
+  let lastDamage = -Infinity;
+  const state = runPerimeter(sim, 72_000 / STEP_MS, (_, events) => {
+    for (const event of events) {
+      if (event.entityId !== firstCat.id) continue;
+      if (event.type === 'damage') lastDamage = event.time;
+      if (event.type === 'heal') {
+        assert.equal(event.kind, 'cat-recover');
+        assert.ok(event.time - lastDamage >= 14_000);
+        assert.ok(event.time - (recoveries.at(-1)?.time ?? -Infinity) >= 10_000);
+        assert.ok(event.value > 0 && event.value <= 8);
+        recoveries.push(event);
+      }
+      if (event.type === 'cat-growth') growths.push(event);
+    }
+  });
+  assert.equal(state.status, 'active');
+  assert.ok(recoveries.length > 1);
+  assert.equal(growths.length, 1);
+  assert.equal(growths[0].time, 60_000);
+  const current = state.enemies.find(enemy => enemy.type === 'cat');
+  assert.equal(current.id, firstCat.id);
+  assert.equal(current.maxHp, Math.ceil(firstCat.maxHp * 1.05));
+  assert.ok(current.hp > 0 && current.hp <= current.maxHp);
+});
+
+test('nearby Menders can heal a wounded Cat a little during a high-wave fight', () => {
+  const sim = createSimulation({ matchId: 'prolonged-chase', startingWave: 10, players: [mouse] });
+  assert.equal(sim.command(mouse.id, { type: 'build', slot: 1, x: 24, y: 24 }).ok, true);
+  const cat = sim.snapshot().enemies[0];
+  const heals = [];
+  runPerimeter(sim, 26_000 / STEP_MS, (_, events) => {
+    for (const event of events) {
+      if (event.type === 'heal' && event.kind === 'mend' && event.entityId === cat.id) heals.push(event);
+    }
+  });
+  assert.equal(heals.length, 1);
+  assert.ok(heals[0].value > 0 && heals[0].value <= 5 && heals[0].sourceId !== cat.id);
+});
+
+test('ranked survival keeps the fixed late Cat and scores completed waves and match time', () => {
+  const create = options => createSimulation({ matchId: 'ranked-survival', ranked: true, players: [mouse], ...options });
+  assert.throws(() => create({ startingWave: 5 }), TypeError);
+  const sim = create();
+  let state = sim.snapshot();
+  assert.equal(state.enemies.length, 0);
+  assert.deepEqual(sim.rankedScore, { waves: 0, timeMs: 0 });
+  let bossAt;
+  for (let i = 0; i < 4700 && sim.status === 'active'; i++) {
+    reinforce(sim, state, i);
+    dodgeCat(sim, state, i);
+    sim.step();
+    state = sim.snapshot();
+    const cat = state.enemies.find(enemy => enemy.type === 'cat');
+    if (cat && !bossAt) {
+      bossAt = state.wave;
+      assert.equal(state.nextWaveAt, null);
+      assert.equal(cat.maxHp, 288);
+    }
+    assert.ok(sim.rankedScore.waves <= state.wave);
+  }
+  assert.equal(bossAt, 7);
+  assert.equal(state.status, 'won');
+  assert.equal(sim.rankedScore.timeMs, state.resultAt);
+  assert.ok(sim.rankedScore.waves >= 6 && sim.rankedScore.waves <= 7);
+});
+
 test('an ignored match defeats the team and produces identical state for the same seed', () => {
   const first = createSimulation({ matchId: 'bare', players: [mouse] });
   const second = createSimulation({ matchId: 'bare', players: [mouse] });
@@ -270,5 +434,40 @@ test('an ignored match defeats the team and produces identical state for the sam
   tick(second, 1400);
   assert.equal(first.snapshot().status, 'lost');
   assert.deepEqual(first.snapshot(), second.snapshot());
-  assert.ok(first.snapshot().objectives.every(objective => objective.hp === 0));
+  assert.equal(first.snapshot().players[0].hp, 0);
+  assert.equal(first.snapshot().enemies[0].type, 'cat');
+  assert.ok(first.snapshot().events.some(event => event.type === 'damage' && event.entityId === mouse.id));
+});
+
+test('the Cat can breach a wall its owner walks through', () => {
+  const sim = createSimulation({ matchId: 'wall-pursuit', players: [mouse] });
+  const wall = sim.command(mouse.id, { type: 'build', slot: 0, x: 22, y: 26 });
+  assert.equal(wall.ok, true);
+  assert.equal(sim.command(mouse.id, { type: 'move', x: 22, y: 26 }).ok, true);
+  tick(sim, 240);
+  const state = sim.snapshot();
+  const cat = state.enemies.find(enemy => enemy.type === 'cat');
+  const attack = state.events.find(event => event.type === 'damage' && event.sourceId === cat.id);
+  assert.equal(attack?.entityId, wall.id);
+  assert.equal(state.players[0].x, 22);
+});
+
+test('a surviving teammate keeps co-op active while the Cat changes targets', () => {
+  const sim = createSimulation({ matchId: 'east', players: [mouse, { id: 'guest' }] });
+  assert.equal(sim.command('guest', { type: 'move', x: 2, y: 24 }).ok, true);
+  let caught;
+  let revived;
+  for (let step = 0; step < 600 && !revived; step++) {
+    sim.step();
+    const state = sim.snapshot();
+    if (state.players[0].hp === 0 && !caught) caught = state;
+    if (caught && state.players[0].hp > 0) revived = state;
+  }
+  assert.ok(caught && revived);
+  assert.equal(caught.status, 'active');
+  assert.equal(revived.status, 'active');
+  assert.ok(revived.players[1].hp > 0);
+  const caughtCat = caught.enemies.find(enemy => enemy.type === 'cat');
+  const revivedCat = revived.enemies.find(enemy => enemy.type === 'cat');
+  assert.ok(distanceSquared(revivedCat, revived.players[1]) < distanceSquared(caughtCat, caught.players[1]));
 });

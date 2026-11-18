@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import vm from 'node:vm';
 import { eligibleHostCandidate, stateFieldPatch } from './sync.mjs';
+import { createBattleRuntime } from './runtime-fixture.mjs';
 
 const core=readFileSync(new URL('../catandmouse-core.html',import.meta.url),'utf8');
 const loader=readFileSync(new URL('../catandmouse.html',import.meta.url),'utf8');
@@ -176,7 +177,7 @@ function listenerHarness() {
     enemyRegistryEntry:()=>({collection:()=>[{id:'rat-one'}]}),
     playerWriter:{cancel:()=>cancelled++,resume(){}},
     stateFieldPatch,applyDifficulty(){},updateHostDisplay(){},updateCatHealthBar(){},updateDifficultyUI(){},
-    renderSelectionOverlay:()=>menus++,ensureLocalBuildControls(){},playGameMusic(){},startHostLoops(){},
+    renderSelectionOverlay:()=>menus++,ensureLocalBuildControls(){},playGameMusic(){},startHostLoops(){},handleCatDefeated:async()=>{},
     clearInterval(){},console:{error(){}},setTimeout(){},activateSoloRuntime(){}
   });
   vm.runInContext(section('  function presentMouseCapture(', '  function renderBattleUnits(){'),ctx);
@@ -251,6 +252,86 @@ test('playing transition hides selection once and host loss cancels pending stat
   assert.equal(h.ctx.isHost,false);assert.equal(h.cancelled,1);assert.equal(h.ctx.gameStarted,true);assert.equal(h.menus,1);
   h.deliver([{id:'state',data:{hostUid:'other',hostHeartbeatAt:200,phase:'playing',cat:{x:29,y:29,health:100}}}]);
   assert.equal(h.menus,1);
+});
+
+test('only the host can set a starting wave and the committed tier seeds the Cat and enemy power', async () => {
+  const { fixture } = await createBattleRuntime(false, { scenarioExtra: `
+    window.__battleFixture.startAt = async (wave, hostUid = uid) => {
+      let state = { hostUid, phase:'selection', difficulty:'medium', startingWave:1, cat:{x:29,y:29,health:1500} };
+      gameStarted = false;
+      startingWave = 1;
+      players = { [uid]:{uid,lastSeen:Date.now(),alive:true,assetsReady:true} };
+      selectionStates = { [uid]:{done:true} };
+      difficultyVotes = { [uid]:'medium' };
+      globalThis.runTransaction = async (_db, run) => run({
+        get:async () => ({data:() => state}), update:(_ref, patch) => { state = {...state,...patch}; }
+      });
+      await changeStartingWave(wave);
+      await tryHostFinalizeSelection();
+      return state;
+    };`
+  });
+  for (const [wave, health, power] of [[1, 1500, 1], [5, 2475, 2], [10, 3675, 3]]) {
+    const state = await fixture.startAt(wave);
+    assert.equal(state.phase, 'playing');
+    assert.equal(state.startingWave, wave);
+    assert.equal(state.ratWave, wave - 1);
+    assert.equal(state.ratPower, power);
+    assert.equal(state.cat.health, health);
+    assert.equal(state.cat.maxHealth, health);
+  }
+  assert.equal((await fixture.startAt(10, 'another-host')).phase, 'selection');
+  assert.equal((await fixture.startAt(100)).startingWave, 1);
+});
+
+test('Classic continues spawning stronger rats after wave 200', async () => {
+  const { fixture, advance } = await createBattleRuntime(false, { scenarioExtra: `
+    window.__battleFixture.clearForLateWave = () => {
+      startingWave = 10;
+      ratWave = 199;
+      catPower = 50;
+      nextRatWaveAt = Date.now();
+    };
+    window.__battleFixture.spawnNext = async () => {
+      rats = []; oxen = []; stinkRats = []; ratKings = []; vultures = []; termites = [];
+      await waveSchedulerTick();
+      return { wave:ratWave, hp:rats[0]?.health, next:nextRatWaveAt };
+    };`
+  });
+  fixture.clearForLateWave();
+  const opening = await fixture.spawnNext();
+  advance(32000);
+  const later = await fixture.spawnNext();
+  assert.equal(opening.wave, 200);
+  assert.equal(later.wave, 201);
+  assert.ok(later.hp > opening.hp);
+  assert.equal(later.next, opening.next + 32000);
+});
+
+test('Classic Cat max HP grows by five percent and recovery is limited to the living Cat', async () => {
+  const { fixture, advance } = await createBattleRuntime(false, { scenarioExtra: `
+    window.__battleFixture.beginCatGrowth = () => {
+      catHealth = 500;
+      maxCatHealth = 1000;
+      nextCatGrowthAt = Date.now() + CAT_GROWTH_INTERVAL;
+      ratKings = [];
+    };
+    window.__battleFixture.catGrowth = async () => {
+      await advanceCatPressure();
+      return [catHealth, maxCatHealth];
+    };
+    window.__battleFixture.supportCat = () => { ratKings = [{...catPos,health:100}]; };
+    window.__battleFixture.finishCat = () => { catHealth = 0; };`
+  });
+  fixture.beginCatGrowth();
+  advance(60000);
+  assert.deepEqual([...await fixture.catGrowth()], [525, 1050]);
+  fixture.supportCat();
+  assert.deepEqual([...await fixture.catGrowth()], [533, 1050]);
+  assert.deepEqual([...await fixture.catGrowth()], [533, 1050]);
+  fixture.finishCat();
+  advance(60000);
+  assert.deepEqual([...await fixture.catGrowth()], [0, 1050]);
 });
 
 test('healthy host causes zero polling transactions; only elected replacement attempts takeover',async()=>{
