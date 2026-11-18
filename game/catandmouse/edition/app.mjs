@@ -104,7 +104,8 @@ function title() {
   mount('title', `<section class="title-view"><span class="eyebrow">THE FLOUR MILL</span><h1>Cat <em>&amp;</em><br>Mouse</h1>
     <p class="subtitle">Gather cheese and build defenses to defeat the Cat before he grows stronger.</p>
     <div class="title-actions">${button('Singleplayer <span>→</span>', 'solo-setup', '')}
-      ${button('Multiplayer <span>→</span>', 'multiplayer')}<a href="https://www.catnmice.com/hub/ranked.html?game=catandmouse" target="_top">Ranked Survival Challenge</a>${button('Settings <span>→</span>', 'settings')}</div>
+      ${button('Multiplayer <span>→</span>', 'multiplayer')}${button('Host Lobby <span>→</span>', 'host')}
+      <a href="https://www.catnmice.com/hub/ranked.html?game=catandmouse" target="_top">Ranked Survival Challenge</a>${button('Settings <span>→</span>', 'settings')}</div>
   </section>`);
 }
 
@@ -260,7 +261,10 @@ async function control(method = 'GET', body, suffix = '') {
     result = await response.json();
   } catch { throw new Error(hostConnectionError); }
   if (response.status === 401 || response.status === 403) throw new Error(hostConnectionError);
-  if (!response.ok) throw new Error(result.message || result.error || 'The host controls are unavailable.');
+  if (!response.ok) {
+    const detail = result.message || result.error;
+    throw new Error(response.status >= 500 ? [detail,hostConnectionError].filter(Boolean).join(' ') : detail || 'The host controls are unavailable.');
+  }
   return result;
 }
 
@@ -772,7 +776,10 @@ async function action(id) {
   if (id === 'invite') joinByInvite();
   if (id === 'browse') await browse();
   if (id === 'settings') renderSettings();
-  if (id === 'host') await openHost();
+  if (id === 'host') {
+    if (view === 'title') multiplayer();
+    await openHost();
+  }
   if (id === 'starter') { soloDraft.kit = [...STARTER_LOADOUT]; soloSetup(); }
   if (id === 'start-solo') await startSolo();
   if (id === 'open-invite') {
