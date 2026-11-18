@@ -122,6 +122,28 @@ try{
   await page.locator('#gameSearch').fill('unmatched-search-87269');check('no results includes a clear next action',await page.locator('#singleGameGrid button,#singleGameGrid a').count()>0);
   await page.context().close();
 
+  const rallyUrl='https://sean-pereksta.github.io/Truth/games/acorn-rally/';
+  for(const [width,button,target] of [[360,'Private Rooms',rallyUrl+'?room=join'],[1440,'Play in Browser',rallyUrl]]){
+    page=await open({width,saved:'singleplayer'});
+    await page.locator('#gameMode').selectOption(width===360?'multi':'single');
+    await page.locator('#categoryPills .category-btn').filter({hasText:/^Racing$/}).click();
+    await page.locator('#gameSearch').fill('Acorn Rally');
+    assert.deepEqual(await keys(page),['acornrally']);
+    const card=page.locator('#singleGameGrid [data-game-key="acornrally"]');
+    const image=card.locator('.game-art img').first();
+    await image.scrollIntoViewIfNeeded();
+    await image.evaluate(img=>img.decode());
+    check(width+'px Acorn Rally tile has its own loaded artwork',await image.evaluate(img=>img.naturalWidth>0&&img.currentSrc.includes('acorn-rally-v2.webp')));
+    check(width+'px Acorn Rally card keeps its accessible favorite button',await card.getByRole('button',{name:'Favorite Acorn Rally'}).isVisible());
+    const action=card.getByRole('button',{name:button+': Acorn Rally',exact:true});
+    await page.route(target,route=>route.fulfill({contentType:'text/html',body:'<title>Acorn Rally launch target</title>'}));
+    await action.focus();
+    await page.keyboard.press('Enter');
+    await page.waitForURL(target);
+    check(width+'px guest keyboard launch reaches '+button,page.url()===target);
+    await page.context().close();
+  }
+
   page=await open({missingFirebase:true});
   for(const [section, destination] of [['catandmouse',hostRoutes.cat], ['bannerlands',hostRoutes.bannerlands]]){
     const host=page.locator(`[data-live-section="${section}"]`).getByRole('link', {name:/Host Lobby/});

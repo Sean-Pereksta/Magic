@@ -54,7 +54,7 @@
     const single = modes.includes("single");
     const multi = modes.includes("multi");
     const actions = [];
-    if (single) actions.push({ type: "single", label: game.liveLobbyGame ? "Play in Browser" : multi ? "Play Offline" : "Play" });
+    if (single) actions.push({ type: "single", label: game.singleLabel || (game.liveLobbyGame ? "Play in Browser" : multi ? "Play Offline" : "Play") });
     if (game.liveLobbyGame) {
       actions.push({ type: "live", label: "Live Multiplayer", href: "#live-lobbies" });
     } else if (multi) {

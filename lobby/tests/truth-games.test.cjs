@@ -10,6 +10,7 @@ const root = path.join(__dirname, '..');
 const core = fs.readFileSync(path.join(root, 'lobby-core.html'), 'utf8').replace(/\r\n/g, '\n');
 const loader = fs.readFileSync(path.join(root, 'lobby.html'), 'utf8').match(/<script>\s*([\s\S]*?)<\/script>/)[1];
 const expected = {
+  acornrally: 'acorn-rally',
   bannerlands: 'bannerlands',
   monstermallexpanded: 'monster-mall-expanded',
   pacmanblackout: 'pacman',
@@ -34,7 +35,7 @@ function registry(html) {
   return vm.runInNewContext(html.match(/const GAMES = (\[[\s\S]*?\n\s*\]);/)[1]);
 }
 
-test('six Truth games join the shared catalog exactly once', async () => {
+test('Truth games join the shared catalog exactly once', async () => {
   const html = await load();
   for (const output of [html, await load(html)]) {
     const games = registry(output);
@@ -42,7 +43,10 @@ test('six Truth games join the shared catalog exactly once', async () => {
       const matches = games.filter(game => game.key === key);
       assert.equal(matches.length, 1, key);
       assert.equal(matches[0].route, `https://sean-pereksta.github.io/Truth/games/${slug}/`);
-      const actions = key === 'bannerlands' ? [
+      const actions = key === 'acornrally' ? [
+        {type: 'single', label: 'Play in Browser'},
+        {type: 'online', label: 'Private Rooms'}
+      ] : key === 'bannerlands' ? [
         {type: 'single', label: 'Play in Browser'},
         {type: 'live', label: 'Live Multiplayer', href: '#live-lobbies'}
       ] : [{type: 'single', label: 'Play'}];
@@ -99,7 +103,23 @@ test('a user Play action navigates directly to every Truth game URL', async () =
     await context.playSingle(game, true);
     assert.equal(launches.at(-1), game.route);
   }
-  assert.equal(launches.length, 6);
+  assert.equal(launches.length, Object.keys(expected).length);
+});
+
+test('Acorn Rally opens its own private rooms as a guest and offers the Windows host', async () => {
+  const html = await load();
+  const game = registry(html).find(item => item.key === 'acornrally');
+  const launches = [];
+  const sandbox = vm.createContext({
+    launchingGame: false, logGamePlay: async () => {}, save() {}, SK: {lastGame: 'lastGame'}, console,
+    launchGameUrl(url, reason) {launches.push({url, reason});},
+    toast(message) {assert.fail(message);}
+  });
+  vm.runInContext(core.match(/    async function joinOnlineGame\([^]*?\n    \}/)[0], sandbox);
+  await sandbox.joinOnlineGame(game, true);
+  assert.deepEqual(launches, [{url: 'https://sean-pereksta.github.io/Truth/games/acorn-rally/?room=join', reason: 'matchmaking-join'}]);
+  assert.equal(game.category, 'Racing');
+  assert.equal(game.localEditionRoute, 'https://sean-pereksta.github.io/Truth/games/acorn-rally/assets/Acorn-Rally-PC.zip');
 });
 
 test('each Truth game has its own generated WebP tile, thumbnail and hero', async () => {
@@ -121,5 +141,5 @@ test('each Truth game has its own generated WebP tile, thumbnail and hero', asyn
       assert.equal(image.toString('ascii', 8, 12), 'WEBP', `${key} ${variant} is WebP`);
     }
   }
-  assert.equal(sources.size, 6);
+  assert.equal(sources.size, Object.keys(expected).length);
 });

@@ -1486,6 +1486,41 @@
       "heroProvenance": "original-built-in-imagegen",
       "reference": "Game screenshot used as visual reference only; menu and UI excluded",
       "promptFile": "truth-game-art-prompts.json"
+    },
+    "acornrally": {
+      "key": "acornrally",
+      "title": "Acorn Rally",
+      "emoji": "🏁",
+      "imagePath": "/lobby/assets/game-tiles/acorn-rally-v2.webp",
+      "desc": "Race eight woodland drivers across forest, canyon, and coastal courses. Drift through time trials, share a split screen, or join friends in a private room.",
+      "route": "https://sean-pereksta.github.io/Truth/games/acorn-rally/",
+      "multiplayerRoute": "https://sean-pereksta.github.io/Truth/games/acorn-rally/?room=join",
+      "localEditionRoute": "https://sean-pereksta.github.io/Truth/games/acorn-rally/assets/Acorn-Rally-PC.zip",
+      "category": "Racing",
+      "modes": [
+        "single",
+        "multi"
+      ],
+      "launchMode": "matchmaking",
+      "guestMultiplayer": true,
+      "joinLabel": "Private Rooms",
+      "onlineStatus": "Private racing rooms",
+      "badges": [
+        "Up to 8 racers",
+        "Windows host"
+      ],
+      "featured": false,
+      "originalImagePath": "/lobby/assets/game-tiles/acorn-rally-v2.webp",
+      "tier": "playable",
+      "provenance": "original-built-in-imagegen",
+      "sourceArtwork": "Original Acorn Rally key art, created for the game with built-in image generation.",
+      "tile": "game-tiles/acorn-rally-v2.webp",
+      "thumb": "game-thumbnails/acorn-rally-v2.webp",
+      "hero": "game-heroes/acorn-rally-v2.webp",
+      "ready": true,
+      "heroProvenance": "original-built-in-imagegen",
+      "reference": "Cropped from the game’s original art/hero.webp; no interface elements are included.",
+      "promptFile": "truth-game-art-prompts.json"
     }
   },
   "files": {
@@ -2503,6 +2538,24 @@
       "height": 720,
       "bytes": 359686,
       "sha256": "8cf5b840708dbea4c4489bbf1cdd9570d112aba8c74d013d15f25ac7c33b2741"
+    },
+    "game-tiles/acorn-rally-v2.webp": {
+      "width": 640,
+      "height": 360,
+      "bytes": 79310,
+      "sha256": "5230f27aa863dd3be5dfabdeae26d1ac61894e32263d23c6c0b5e7704b422352"
+    },
+    "game-thumbnails/acorn-rally-v2.webp": {
+      "width": 240,
+      "height": 135,
+      "bytes": 14116,
+      "sha256": "ee78e50282a65e1b53cf2aa5361514aa59d0f3c4fa1007d52ea5d306845bdadf"
+    },
+    "game-heroes/acorn-rally-v2.webp": {
+      "width": 1280,
+      "height": 720,
+      "bytes": 245984,
+      "sha256": "7620f848f481cfb8928bd245da497669100fa9c001ad249f5c72aa78b424454e"
     }
   },
   "interfaceFiles": {
