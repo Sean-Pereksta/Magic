@@ -70,14 +70,14 @@ function pop(queue) {
 }
 
 // Paths favor open lanes while retaining routes through structures the rats can breach.
-export function buildEnemyField(map, objectives, structures) {
+export function buildEnemyField(map, goals, structures) {
   const { size } = map;
   const nextCell = new Int32Array(size * size).fill(-1);
   const costs = new Float64Array(nextCell.length).fill(Infinity);
   const queue = [];
-  for (const objective of objectives) {
-    if (objective.hp === 0) continue;
-    const cell = objective.y * size + objective.x;
+  for (const goal of goals) {
+    if (goal.hp === 0) continue;
+    const cell = goal.y * size + goal.x;
     costs[cell] = 0;
     nextCell[cell] = cell;
     push(queue, cell, 0);
