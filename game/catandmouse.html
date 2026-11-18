@@ -16,7 +16,7 @@
 <body>
   <main class="boot" role="status" aria-live="polite">
     <div class="title">🐭 Preparing Cat &amp; Mouse</div>
-    <div class="copy">Loading a smoother battlefield with fewer, faster enemies.</div>
+    <div class="copy">Loading the battlefield and your defenses.</div>
     <div class="track"><div class="fill"></div></div>
     <div id="status" class="status">Loading battle engine…</div>
   </main>
@@ -41,21 +41,6 @@
 
   function applyPerformancePass(source){
     let html = source;
-
-    html = replacePattern(html,
-      /  const DIFFICULTY_UI_META = \{[\s\S]*?\n  \};\n  const DIFFICULTY_SETTINGS = \{[\s\S]*?\n  \};/,
-`  const DIFFICULTY_UI_META = {
-    easy: { icon:"🧀", label:"Easy", subtitle:"Calm cheese run", className:"difficulty-easy" },
-    medium: { icon:"🐱", label:"Normal", subtitle:"Balanced survival", className:"difficulty-normal" },
-    hard: { icon:"🐀", label:"Hard", subtitle:"Faster hunters, harder hits", className:"difficulty-hard" },
-    insane: { icon:"💀", label:"Nightmare", subtitle:"Relentless pursuit", className:"difficulty-nightmare" }
-  };
-  const DIFFICULTY_SETTINGS = {
-    easy:   { label:"Easy",   catStartHealth:1000, ratBaseHealth:4, oxBaseHealth:18, enemySpeed:0.92, ratSpawnBonus:2 },
-    medium: { label:"Medium", catStartHealth:1500, ratBaseHealth:5, oxBaseHealth:26, enemySpeed:1.00, ratSpawnBonus:2 },
-    hard:   { label:"Hard",   catStartHealth:2000, ratBaseHealth:6, oxBaseHealth:34, enemySpeed:1.10, ratSpawnBonus:3 },
-    insane: { label:"Insane", catStartHealth:3000, ratBaseHealth:8, oxBaseHealth:44, enemySpeed:1.20, ratSpawnBonus:3 }
-  };`, 'difficulty metadata');
 
     html = replacePattern(html, /const MAX_RATS = \d+;/, 'const MAX_RATS = 13;', 'MAX_RATS');
     html = replacePattern(html, /const MAX_FLEAS = \d+;/, 'const MAX_FLEAS = 8;', 'MAX_FLEAS');
@@ -166,10 +151,6 @@
       /(function getNearestStructureContactTarget\([^)]*\)\{\s*let best = null;\s*)for \(const s of getAllStructures\(\)\)\{/,
       '$1for (const s of getStructurePathCandidates(startX, startY)){', 'contact structure shortlist');
 
-    html = replacePattern(html,
-      /const speed = Math\.max\(190, Math\.floor\(\(1300 - catPower \* 40\) \/ CAT_SPEED_MULTIPLIER\)\);/,
-      'const difficultySpeed = DIFFICULTY_SETTINGS[currentDifficulty]?.enemySpeed ?? 1;\n    const speed = Math.max(165, Math.floor((1300 - catPower * 40) / (CAT_SPEED_MULTIPLIER * difficultySpeed)));', 'cat speed');
-
     html = replaceExact(html,
       '    const RAT_THINK_INTERVAL_MS = 350;\n    const RAT_REPATH_JITTER_MS = 200;',
       '    // Fast movement is separated from expensive thinking/repathing.\n    const RAT_THINK_INTERVAL_MS = 500;\n    const RAT_REPATH_JITTER_MS = 260;', 'rat think budget');
@@ -211,7 +192,7 @@
 `      <div class="menu-feature-strip" aria-label="Current run pressure">
         <div><strong id="menuThreatCap">15</strong><span>Hostile cap</span></div>
         <div><strong id="menuEnemySpeed">1.00×</strong><span>Enemy speed</span></div>
-        <div><strong id="menuCatAbilities">0</strong><span>Cat abilities</span></div>
+        <div><strong id="menuCatAbilities">0</strong><span>Late Cat abilities</span></div>
         <div><strong id="menuDifficultyPressure">Medium</strong><span>Selected danger</span></div>
       </div>
 
@@ -219,7 +200,7 @@
 
     html = replacePattern(html,
       /    const label = DIFFICULTY_SETTINGS\[currentDifficulty\]\?\.label \|\| "Medium";\s*const myVoteLabel = myDifficultyVote \? \(DIFFICULTY_SETTINGS\[myDifficultyVote\]\?\.label \|\| myDifficultyVote\) : "none";/,
-      '    const label = DIFFICULTY_SETTINGS[currentDifficulty]?.label || "Medium";\n    const myVoteLabel = myDifficultyVote ? (DIFFICULTY_SETTINGS[myDifficultyVote]?.label || myDifficultyVote) : "none";\n    const previewCaps = getEnemyCaps();\n    const previewScaling = getEnemyScaling(Math.max(1, catPower || ratPower || 1));\n    const threatCapEl = document.getElementById("menuThreatCap");\n    const enemySpeedEl = document.getElementById("menuEnemySpeed");\n    const catAbilitiesEl = document.getElementById("menuCatAbilities");\n    const pressureEl = document.getElementById("menuDifficultyPressure");\n    if (threatCapEl) threatCapEl.textContent = String(previewCaps.total);\n    if (enemySpeedEl) enemySpeedEl.textContent = previewScaling.speedMultiplier.toFixed(2) + "×";\n    if (catAbilitiesEl) catAbilitiesEl.textContent = currentDifficulty === "insane" ? "2" : currentDifficulty === "hard" ? "1" : "0";\n    if (pressureEl) pressureEl.textContent = label;', 'menu pressure data');
+      '    const label = DIFFICULTY_SETTINGS[currentDifficulty]?.label || "Medium";\n    const myVoteLabel = myDifficultyVote ? (DIFFICULTY_SETTINGS[myDifficultyVote]?.label || myDifficultyVote) : "none";\n    const previewCaps = getEnemyCaps();\n    const previewScaling = getEnemyScaling(Math.max(1, catPower || ratPower || 1));\n    const threatCapEl = document.getElementById("menuThreatCap");\n    const enemySpeedEl = document.getElementById("menuEnemySpeed");\n    const catAbilitiesEl = document.getElementById("menuCatAbilities");\n    const pressureEl = document.getElementById("menuDifficultyPressure");\n    if (threatCapEl) threatCapEl.textContent = String(previewCaps.total);\n    if (enemySpeedEl) enemySpeedEl.textContent = previewScaling.speedMultiplier.toFixed(2) + "×";\n    if (catAbilitiesEl) catAbilitiesEl.textContent = String(selectCatAbilitiesForDifficulty(currentDifficulty).length);\n    if (pressureEl) pressureEl.textContent = label;', 'menu pressure data');
 
     const required = [
       'rat:[0,7,8,9,10][n]+ratBonus',
