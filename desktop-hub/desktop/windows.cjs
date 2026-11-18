@@ -1,7 +1,7 @@
-const {BrowserWindow,WebContentsView,ipcMain}=require('electron');
+const {BrowserWindow,WebContentsView,ipcMain,shell}=require('electron');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {isLobby,onLobby,cardScript,snapshot,LOBBY}=require('./official.cjs');
+const {isLobby,onLobby,snapshot,SITE,validInvite}=require('./official.cjs');
 const windows=new Map(),byGame=new Map();
 function createGames({library,root,icon,played,resolveGame,onClosed}) {
   ipcMain.on('game-control',(e,a)=>windows.get(e.sender.id)?.control(a));
@@ -13,6 +13,8 @@ function createGames({library,root,icon,played,resolveGame,onClosed}) {
     }
   });
   return async function open({title,url,game,player,offline,session,mode,onProfile,action,initial,close}) {
+    const localEdition=game?.hostRoute && game.localEditionRoute
+      ? validInvite(new URL(game.localEditionRoute,SITE).href) : null;
     const w=new BrowserWindow({title,width:1360,height:850,minWidth:650,minHeight:410,backgroundColor:'#11171d',icon,autoHideMenuBar:true,webPreferences:{preload:path.join(root,'desktop/toolbar-preload.cjs'),sandbox:true}});
     const view=new WebContentsView({webPreferences:{session,preload:path.join(root,'desktop/play-preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webviewTag:false}});
     const wc=view.webContents;
@@ -23,11 +25,15 @@ function createGames({library,root,icon,played,resolveGame,onClosed}) {
       const [width,height]=w.getContentSize(),bar=w.isFullScreen()?0:44;
       view.setBounds({x:0,y:bar,width,height:shown?Math.max(0,height-bar):0});
     }
-    const status=msg=>{if(!dead)w.webContents.send('game-status',msg);};
+    const status=(msg,showLocalEdition=false)=>{if(!dead)w.webContents.send('game-status',{msg,showLocalEdition});};
+    const openLocalEdition=()=>shell.openExternal(localEdition).catch(()=>{
+      status('Could not open the Local Edition page. Try opening it from the Catnmice website.',true);
+    });
     const safe=raw=>{try{const u=new URL(raw);return offline?u.origin===new URL(url).origin:(u.protocol==='https:'&&!u.username&&!u.password);}catch{return false;}};
     const control=a=>{
       if(a==='back'){w.close();return;}
       if(a==='full'){w.setFullScreen(!w.isFullScreen());return;}
+      if(a==='local-edition' && localEdition){void openLocalEdition();return;}
       if(a==='reload'){load(wc.getURL() && safe(wc.getURL())?wc.getURL():url);}
     };
     function shortcut(e,k){
@@ -36,11 +42,20 @@ function createGames({library,root,icon,played,resolveGame,onClosed}) {
       if(k.alt && k.key==='ArrowLeft'){e.preventDefault();control('back');}
     }
     const row={w,game,mode,player,control,armed:false,counted:false};windows.set(w.webContents.id,row);byGame.set(wc.id,row);
-    function failure(message){shown=false;layout();row.failed=true;status(message+'  Select Reload to try again or Library to return.');}
+    function failure(message){
+      shown=false;layout();row.failed=true;
+      if(mode==='host'){
+        status('Could not connect to online hosting. Select Reload to try again, or try the game’s Local Edition.',!!localEdition);
+      }else status(message+'  Select Reload to try again or Library to return.');
+    }
     async function load(target){
       try{await wc.loadURL(target);}catch(e){if(!dead && e.code!=='ERR_ABORTED')failure('Could not open this page. '+(e.code||'Check the connection.'));}
     }
-    wc.setWindowOpenHandler(({url:target})=>{if(safe(target))setImmediate(()=>load(target));return {action:'deny'};});
+    wc.setWindowOpenHandler(({url:target})=>{
+      if(offline && localEdition && target===localEdition)setImmediate(openLocalEdition);
+      else if(safe(target))setImmediate(()=>load(target));
+      return {action:'deny'};
+    });
     wc.on('will-navigate',(e,href)=>{if(!safe(href))e.preventDefault();});
     wc.on('will-redirect',(e,href)=>{if(!safe(href))e.preventDefault();});
     wc.on('did-fail-load',(_,code,desc,href,main)=>{if(main && code!==-3)failure('Page unavailable. '+desc);});

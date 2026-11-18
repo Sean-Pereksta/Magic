@@ -68,16 +68,15 @@ async function open({width=1440,user='',saved='discover',recent=[],favorites=[],
 }
 async function nav(page,view){const selector=await page.locator('.main-nav').isVisible()?'.main-nav':'.mobile-nav';await page.locator(`${selector} [data-view="${view}"]`).click();await page.locator(`#view-${view}.active`).waitFor();}
 async function keys(page){return page.locator('#singleGameGrid .game-card').evaluateAll(cards=>cards.map(card=>card.dataset.gameKey));}
-async function checkHostDownload(page, button, download){
-  const currentUrl=page.url(), dialog=page.locator('#hostDownloadDialog');
-  await button.click();
-  await dialog.waitFor({state:'visible'});
-  assert.match(await dialog.innerText(), /Hosting requires the Windows download/);
-  assert.equal(await dialog.getByRole('link', {name:'Get the Windows edition'}).getAttribute('href'), download);
-  assert.equal(page.url(), currentUrl);
-  await page.keyboard.press('Escape');
-  await dialog.waitFor({state:'hidden'});
-  assert.ok(await button.evaluate(button=>button===document.activeElement));
+async function checkHostRoute(page, link, destination){
+  const url=new URL(destination,origin).href;
+  await page.route(target=>target.href===url,route=>route.fulfill({
+    contentType:'text/html',body:'<!doctype html><title>Hosting</title><main id="launched">Hosting route reached</main>'
+  }));
+  assert.equal(await link.getAttribute('href'),destination);
+  await Promise.all([page.waitForURL(url),link.click()]);
+  await page.locator('#launched').waitFor();
+  await page.goBack();
 }
 try{
   let page=await open({saved:'singleplayer'});
@@ -85,15 +84,15 @@ try{
   check('every registered catalog entry remains available',(await keys(page)).length===expectedGameCount);
   const full=await keys(page);
   check('catalog keys match the complete artwork registry',JSON.stringify([...full].sort())===JSON.stringify([...expectedGameKeys].sort()));
-  const downloads={
-    bannerlands:'https://sean-pereksta.github.io/Truth/games/bannerlands/download.html',
-    cat:'/game/catandmouse/edition/download.html',
-    trashtactics:'/game/trash-tactics/download.html'
+  const hostRoutes={
+    bannerlands:'https://sean-pereksta.github.io/Truth/games/bannerlands/?host=1',
+    cat:'/game/catandmouse/edition/?host=1',
+    trashtactics:'/game/trash-tactics/?online=1&host=1'
   };
-  for(const [game, download] of Object.entries(downloads)){
-    const host=page.locator(`#singleGameGrid [data-game-key="${game}"]`).getByRole('button', {name:/Host Lobby/});
-    await checkHostDownload(page, host, download);
-    check(`${game}: Arcade Host Lobby points to the downloaded Windows edition`);
+  for(const [game, destination] of Object.entries(hostRoutes)){
+    const host=page.locator(`#singleGameGrid [data-game-key="${game}"]`).getByRole('link', {name:/Host Lobby/});
+    await checkHostRoute(page, host, destination);
+    check(`${game}: Arcade Host Lobby opens the game's hosting screen`);
   }
   await page.locator('#gameStatus').selectOption('prototype');
   check('Experimental filter reveals actual prototype cards',await page.locator('#singleGameGrid .game-card').evaluateAll(cards=>cards.length>0&&cards.every(card=>card.dataset.catalogStatus==='prototype'&&card.getClientRects().length>0)));
@@ -124,10 +123,10 @@ try{
   await page.context().close();
 
   page=await open({missingFirebase:true});
-  for(const [section, download] of [['catandmouse',downloads.cat], ['bannerlands',downloads.bannerlands]]){
-    const host=page.locator(`[data-live-section="${section}"]`).getByRole('button', {name:/Host Lobby/});
-    await checkHostDownload(page, host, download);
-    check(`${section}: Live Lobbies offers the host download when Firebase cannot load`);
+  for(const [section, destination] of [['catandmouse',hostRoutes.cat], ['bannerlands',hostRoutes.bannerlands]]){
+    const host=page.locator(`[data-live-section="${section}"]`).getByRole('link', {name:/Host Lobby/});
+    await checkHostRoute(page, host, destination);
+    check(`${section}: Host Lobby opens the game's hosting screen when Firebase cannot load`);
   }
   await page.context().close();
 

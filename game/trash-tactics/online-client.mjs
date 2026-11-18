@@ -92,7 +92,6 @@ export class OnlineConnection extends EventTarget {
       let data;
       try {data=JSON.parse(event.data);} catch {return;}
       if (data.type==='hello') {
-        clearTimeout(timeout);
         if (data.version!==ONLINE_VERSION) {
           this.emit('error',{message:'This lobby uses a different game version. Refresh the page.'});
           this.close(false);return;
@@ -102,6 +101,7 @@ export class OnlineConnection extends EventTarget {
         return;
       }
       if (data.type==='seat') {
+        clearTimeout(timeout);
         this.seat=data;this.attempt=0;this.retryUntil=0;this.emit('connection',{connected:true});
       }
       if (data.type==='error' && data.code==='SESSION_EXPIRED') this.close(false);
