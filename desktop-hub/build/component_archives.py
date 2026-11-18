@@ -32,5 +32,8 @@ for game in catalog['games']:
     if game['offline']:
         base=content/'packs'/game['id']
         if not (base/game['offline']['entry'].split('?')[0]).is_file(): raise ValueError(game['id'])
-        pack(game['id'],base,files(base),game['offline'])
+        # The catalog records both source commits. Keep the installable archive
+        # stable when an unrelated game changes in the same repository.
+        descriptor = {**game['offline'], 'version': game['offline']['digest']}
+        pack(game['id'],base,files(base),descriptor)
 (out/'components.json').write_text(json.dumps(components),encoding='utf8')

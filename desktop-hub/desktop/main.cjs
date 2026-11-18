@@ -17,6 +17,7 @@ function start({root,bundled,data,ready,startupFailed}){
   const state=readState(data),save=()=>writeJson(path.join(data,'library.json'),state);
   const prefs=path.join(bundled,'release.json');
   const release=fs.existsSync(prefs)?JSON.parse(fs.readFileSync(prefs,'utf8')):{};
+  const publisherUpdates=release.provider==='github'||!!release.key;
   const baseContent=path.join(bundled,'content');
   const original=JSON.parse(fs.readFileSync(path.join(baseContent,'catalog.json'),'utf8'));
   const versionDir=(id,hash)=>path.join(data,'versions',id,hash);
@@ -95,7 +96,7 @@ function start({root,bundled,data,ready,startupFailed}){
     const c=state.counts;
     const rollbackAvailable=Object.keys(state.packs).filter(id=>state.packs[id].canRollback);
     const saveSyncGames=catalog.games.filter(g=>supportsSaveSync(g.id)&&installed(g)).map(g=>g.id);
-    return {version:app.getVersion(),catalog,profile:publicProfile(profile()),profiles:state.profiles.map(publicProfile),online,installed:catalog.games.filter(installed).map(g=>g.id),recent:profile().recent,favorites:profile().favorites,settings:state.settings,counts:c.hub?{...c,hub:{...c.hub,asOf:c.asOf},games:Object.fromEntries(Object.entries(c.games).map(([id,row])=>[id,{...row,asOf:c.asOf}]))}:{},downloads:state.downloads,rollbackAvailable,saveSyncGames,publisherUpdates:!!release.key};
+    return {version:app.getVersion(),catalog,profile:publicProfile(profile()),profiles:state.profiles.map(publicProfile),online,installed:catalog.games.filter(installed).map(g=>g.id),recent:profile().recent,favorites:profile().favorites,settings:state.settings,counts:c.hub?{...c,hub:{...c.hub,asOf:c.asOf},games:Object.fromEntries(Object.entries(c.games).map(([id,row])=>[id,{...row,asOf:c.asOf}]))}:{},downloads:state.downloads,rollbackAvailable,saveSyncGames,publisherUpdates};
   }
   function currentHash(id){if(id==='hub')return root===bundled?null:path.basename(root);return state.packs[id]?.active;}
   function pointer(item){
@@ -137,10 +138,11 @@ function start({root,bundled,data,ready,startupFailed}){
     }
   }
   async function check(id){
-    updateCheck??=getFeed(release.key,state.sequence||0).finally(()=>{updateCheck=null;});
+    updateCheck??=getFeed(release,state.sequence||0).finally(()=>{updateCheck=null;});
     const feed=await updateCheck;
     state.sequence=feed.sequence;save();
     if(id && !feed.items.some(i=>i.id===id))throw Error('No package is available on the release channel for this game.');
+    let changed=0;
     for(const item of feed.items){
       if(id && item.id!==id)continue;
       if(isRejectedUpdate(data,item))continue;
@@ -149,7 +151,9 @@ function start({root,bundled,data,ready,startupFailed}){
       if(currentHash(item.id)===item.sha256 || (!currentHash(item.id) && release.components?.[item.id]===item.sha256 && (!g||installed(g))))continue;
       if(item.runtime && item.runtime!==process.versions.electron)throw Error('This release needs a newer Windows runtime. Run the latest full Setup.');
       await apply(item);
+      changed++;
     }
+    return {changed,source:feed.source};
   }
   async function install(id){
     const g=known(id);if(!g.offline)throw Error('This game is online only.');
@@ -293,7 +297,7 @@ function start({root,bundled,data,ready,startupFailed}){
     const usable=await lib.webContents.executeJavaScript(`(async()=>{const deadline=Date.now()+12000;while(Date.now()<deadline){if(document.querySelector('.game-card') && (await window.hub.invoke('state')).catalog.games.length===${catalog.games.length})return true;await new Promise(r=>setTimeout(r,120))}return false})()`);
     if(!usable)throw Error('The launcher interface did not load.');
     ready();afterClose();void networkTick();setInterval(networkTick,60000).unref();
-    const automatic=()=>{if(state.settings.autoUpdate && release.key)check().catch(e=>row('hub','paused',e.message));};
+    const automatic=()=>{if(state.settings.autoUpdate && publisherUpdates)check().catch(e=>row('hub','paused',e.message));};
     automatic();setInterval(automatic,4*3600*1000).unref();
   }).catch(e=>{if(startupFailed?.(e))return;dialog.showErrorBox('Catnmice Game Hub',e.message);app.exit(1);});
 }

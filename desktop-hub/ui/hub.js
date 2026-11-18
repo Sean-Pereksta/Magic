@@ -222,13 +222,16 @@ async function loadRankings() {
 }
 function downloads() {
   const downloadState = Array.isArray(state.downloads) ? state.downloads : [];
-  return `<section class="intro-art"><img src="art/bannerlands-hero.webp" alt=""><h2>Launcher updates</h2><p>${state.version ? 'Installed version '+esc(state.version)+'. ' : ''}Check for a new launcher or an update to your installed games.</p><div class="controls">${btn('Check for updates','update',{},'gold','refresh')}</div></section>
+  const updateInfo = state.publisherUpdates === false
+    ? 'Install the latest Windows launcher from catnmice.com/hub/download.html to enable updates.'
+    : 'Check for published updates from Magic and Truth for the launcher, game catalog and your installed games.';
+  return `<section class="intro-art"><img src="art/bannerlands-hero.webp" alt=""><h2>Launcher updates</h2><p>${state.version ? 'Installed version '+esc(state.version)+'. ' : ''}${updateInfo}</p>${state.publisherUpdates === false ? '' : `<div class="controls">${btn('Check for updates','update',{},'gold','refresh')}</div>`}</section>
     ${downloadState.length ? `<section class="panel"><h2>Download activity</h2><div class="line-list">${downloadState.map(d=>`<div class="list-item"><div class="item-main"><strong>${esc(d.title || (d.id==='hub'?'Game Hub':d.id==='catalog'?'Game catalog':title(matches(d.id) || {id:d.id,title:d.id})) || 'Update')}</strong><small>${esc([d.status,d.message].filter(Boolean).join(' · ') || 'In progress')}${Number.isFinite(d.progress)?' · '+Math.round(d.progress)+'%':''}</small></div></div>`).join('')}</div></section>` : ''}
     <section class="panel"><div class="section-title">${titleLine('Offline game packs',packs().length)}</div><div class="line-list">${packs().length ? packs().map(g=>`<div class="list-item"><img src="${attr(imageFor(g))}" alt=""><div class="item-main"><strong>${esc(title(g))}</strong><small>${installed(g.id)?'Installed':'Available to install'}${g.offline.bytes ? ' · '+fmt(Math.ceil(g.offline.bytes/1048576))+' MB':''}</small></div>${installed(g.id)?btn('Play Offline','play',{id:g.id,mode:'offline'},'','play'):btn('Install','install',{id:g.id},'','downloads')}${ids(state.rollbackAvailable).includes(g.id) ? btn('Restore previous version','rollback',{id:g.id}) : ''}</div>`).join(''):'<p>No offline packs are available in this catalog.</p>'}</div></section>`;
 }
 function settings() {
   return `<section class="panel"><h2>Player profile</h2><p>Playing as <strong>${esc(profileName(state.profile))}</strong>.</p><div class="controls">${btn('Manage profiles','accounts',{},'gold','user')}${guest()?'':btn('View website profile','community',{section:'profile'},'','external')+btn('Link guest activity','ask-link',{},'','link')}</div></section>
-    <section class="panel"><h2>Launcher preferences</h2><label class="preference"><span><strong>Automatic updates</strong><small>Check for launcher and game updates when connected.</small></span><input type="checkbox" data-setting="autoUpdate" ${state.settings.autoUpdate !== false?'checked':''}></label>
+    <section class="panel"><h2>Launcher preferences</h2><label class="preference"><span><strong>Automatic updates</strong><small>${state.publisherUpdates === false ? 'Install the latest Windows launcher to enable updates.' : 'Check GitHub for launcher and installed-game updates when connected.'}</small></span><input type="checkbox" data-setting="autoUpdate" ${state.publisherUpdates === false ? 'disabled' : state.settings.autoUpdate !== false ? 'checked' : ''}></label>
     <label class="preference"><span><strong>Reduce motion</strong><small>Use static transitions throughout the launcher.</small></span><input type="checkbox" data-setting="reducedMotion" ${state.settings.reducedMotion?'checked':''}></label></section>`;
 }
 function render() {
@@ -255,6 +258,13 @@ function render() {
 function cleanError(error) {
   return String(error?.message || error || 'The action could not be completed.').replace(/^Error invoking remote method ['"][^'"]+['"]:\s*(Error:\s*)?/, '').slice(0,500);
 }
+function updateSummary(result) {
+  if (result?.changed === 0) return 'No new updates to apply.';
+  if (Number.isInteger(result?.changed) && result.changed > 0) {
+    return result.changed + (result.changed === 1 ? ' update found.' : ' updates found.') + ' See Download activity for details.';
+  }
+  return 'Update check completed.';
+}
 async function dispatch(action, payload, success) {
   if (!host) {message('Open the Windows launcher to use this action.');return;}
   const key = JSON.stringify([action,payload]);
@@ -263,7 +273,7 @@ async function dispatch(action, payload, success) {
   try {
     const result = await host.invoke(action,payload);
     if (result && (result.ok === false || result.error)) throw new Error(result.error || result.message || 'The action could not be completed.');
-    if (success || result?.message) message(result?.message || success);
+    if (success || result?.message) message(result?.message || (typeof success === 'function' ? success(result) : success));
     await refresh();
   } catch(error) {message(cleanError(error));}
   finally {inProgress.delete(key);}
@@ -299,7 +309,7 @@ function onAction(el) {
     }
     case 'play': dispatch('play',{id,mode,action:kind});break;
     case 'install': dispatch('install',{id},'Game pack installation completed.');break;
-    case 'update': dispatch('update',id ? {id} : {},'Update check completed.');break;
+    case 'update': dispatch('update',id ? {id} : {},updateSummary);break;
     case 'rollback': dispatch('rollback',{id},'Previous game version restored.');break;
     case 'previous': case 'next': case 'slide': {
       const total = spotlights.filter(matches).length;
