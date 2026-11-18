@@ -142,10 +142,18 @@ test('abandoned machinery repairs consume materials and leave it requiring a rea
 test('a fresh outpost supplies enough wood and stone to build and open the first workbench',()=>{
   const g=game();
   assert.equal(g.inventory.wood,0);assert.equal(g.inventory.stone,0);
-  for(const [x,y] of [[7,26],[8,26],[7,25],[8,25],[7,24],[8,24],[9,26],[9,25],[11,26],[11,25]]){
+  for(const [x,y] of [[7,26],[8,26],[7,25],[8,25],[7,24],[8,24]]){
+    assert.equal(g.get(x,y),g.T.WOOD);
     aim(g,x,y);g.doPrimary();g.mineStep(2);g.clearActions();assert.equal(g.get(x,y),g.T.AIR);
   }
   step(g,1);
+  g.player.x=6*24;
+  for(const [x,y] of [[6,26],[5,26],[6,25],[5,25]]){
+    assert.equal(g.get(x,y),g.T.STONE);
+    aim(g,x,y);g.doPrimary();g.mineStep(2);g.clearActions();assert.equal(g.get(x,y),g.T.AIR);
+  }
+  step(g,1);
+  g.player.x=9*24;
   const recipe=key=>g.recipes.find(r=>r.key===key);
   assert.equal(g.inventory.wood,6);assert.equal(g.inventory.stone,4);
   assert.equal(g.workshop.craft(recipe('timer')),false);

@@ -125,9 +125,9 @@
     for(let y=24;y<=27;y++)set(10,y,T.WIRE,{});set(10,23,T.CORE,{});
     set(10,28,T.AIR);set(11,28,T.AIR);set(12,28,T.MOTOR,{rot:0});
     set(14,28,T.STORAGE,{rot:0,contents:{wood:8}});
-    // Reachable scrap wood and exposed stone introduce mining without a trip below the outpost.
+    // Keep starter resources to the left so there is jump clearance toward the motor and shaft.
     for(const [x,y] of [[7,24],[8,24],[7,25],[8,25],[7,26],[8,26]])set(x,y,T.WOOD);
-    for(const [x,y] of [[9,25],[9,26],[11,25],[11,26]])set(x,y,T.STONE);
+    for(const [x,y] of CircuitGuides.starterStone)set(x,y,T.STONE);
     for(let y=44;y<79;y++)for(let x=32;x<36;x++)set(x,y,T.AIR);
     for(const [cx,cy,kind,schematic] of [[35,49,T.IRON,'refining'],[76,58,T.CRYSTAL,'electrical'],[128,68,T.IRON,'fabrication'],[180,77,T.OBSIDIAN,'reactor']]){
       for(let x=cx-7;x<=cx+7;x++)for(let y=cy-3;y<=cy+3;y++)if(inside(x,y)&&((x-cx)/7)**2+((y-cy)/3)**2<1)set(x,y,T.AIR);

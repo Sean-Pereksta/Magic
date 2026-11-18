@@ -17,7 +17,25 @@ const injected=String.raw`
     select(key){if(!items.some(i=>i.key===key))throw Error('Unknown item '+key);selectItem(key);},
     advance(seconds,fight=false){for(let left=seconds;left>1e-7;left-=.05){const dt=Math.min(.05,left);if(modalOpen)throw Error('Simulation paused by dialog');gameTime+=dt;for(let part=dt;part>0;part-=.016)movePlayer(Math.min(.016,part));mineStep(dt);simulationStep(dt);if(fight){const p={x:player.x+player.w/2,y:player.y+player.h/2},e=survival.enemies.filter(e=>e.hp>0&&Math.hypot(e.x-p.x,e.y-p.y)<65).sort((a,b)=>Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0];if(e)survival.attack(e.x,e.y);const above=survival.enemies.some(e=>e.hp>0&&e.y<p.y-40&&Math.hypot(e.x-p.x,e.y-p.y)<125);if(this.jumpCombat&&above)keys.Space=true;if(this.serviceLadder){const low=survival.enemies.some(e=>e.hp>0&&e.y>TILE*55&&Math.abs(e.x-p.x)<TILE*6),high=survival.enemies.some(e=>e.hp>0&&e.y<TILE*54&&Math.abs(e.x-p.x)<TILE*6),target=TILE*(high?53:low?55:53);keys.KeyS=p.y<target-4;keys.KeyW=p.y>target+4;}if(player.health<42)survival.heal();}}if(seconds>.1)tick(last);return this.read();},
     walk(x,limit=15){const target=(x+.5)*TILE-player.w/2;let old=player.x,stuck=0;for(let n=0;n<limit/.05;n++){const delta=target-player.x;if(Math.abs(delta)<5&&Math.abs(player.vx)<12)break;keys.KeyD=delta>5;keys.KeyA=delta< -5;if(Math.abs(player.x-old)<.1)stuck++;else stuck=0;old=player.x;if(stuck>4)keys.Space=true;this.advance(.05,true);}keys.KeyD=keys.KeyA=false;this.advance(.15,true);if(Math.abs(target-player.x)>12)throw Error('Walk failed to '+x+' at '+player.x/TILE+','+player.y/TILE);return this.read();},
-    climb(y,limit=15){const target=y*TILE-player.h/2;for(let n=0;n<limit/.05;n++){const delta=target-player.y;if(Math.abs(delta)<5)break;keys.KeyS=delta>0;keys.KeyW=delta<0;this.advance(.05,true);}keys.KeyS=keys.KeyW=false;this.advance(.1,true);if(Math.abs(player.y-target)>16)throw Error('Climb failed to '+y+' at '+player.x/TILE+','+player.y/TILE);return this.read();},
+    climb(y,column=null){
+      const target=y*TILE-player.h/2;
+      const center=column===null?null:(column+.5)*TILE-player.w/2;
+      keys.Space=false;
+      for(let n=0;n<300;n++){
+        const delta=target-player.y;
+        if(Math.abs(delta)<5)break;
+        if(center!==null){keys.KeyD=player.x<center-2;keys.KeyA=player.x>center+2;}
+        keys.KeyS=delta>0;keys.KeyW=delta<0;this.advance(.05,true);
+      }
+      if(center!==null)keys.KeyD=keys.KeyA=false;
+      keys.KeyS=keys.KeyW=false;this.advance(.1,true);
+      if(Math.abs(player.y-target)>16){
+        const column=Math.floor((player.x+player.w/2)/TILE),row=Math.floor(player.y/TILE);
+        const shaft=[-2,-1,0,1,2].map(offset=>get(column,row+offset));
+        throw Error('Climb failed to '+y+' at '+player.x/TILE+','+player.y/TILE+' shaft '+shaft.map(id=>defs[id].name).join(', '));
+      }
+      return this.read();
+    },
     craft(key,count=1){const recipe=recipes.find(r=>r.key===key);for(let i=0;i<count;i++)if(!workshop.craft(recipe))throw Error('Cannot craft '+key+' from '+JSON.stringify(inventory));return this.read();},
     place(key,x,y,rot=0){if(get(x,y)!==T.AIR)throw Error('Occupied placement '+x+','+y+' '+defs[get(x,y)].name);this.select(key);rotation=rot;manualRotation=true;this.aim(x,y);const before=inventory[key]||0;placeAtAim();if((inventory[key]||0)!==before-1||get(x,y)!==items[selected].tile)throw Error('Placement failed '+key+' '+x+','+y+' reach='+distanceToTile(x,y)+' '+document.getElementById('toast').textContent);return this.tile(x,y);},
     mine(x,y){const original=get(x,y);if(!original)throw Error('Nothing to mine '+x+','+y);this.select('pickaxe');this.aim(x,y);doPrimary();for(let n=0;n<110&&get(x,y)===original;n++)this.advance(.05,true);releasePointer(false);if(get(x,y)!==T.AIR)throw Error('Mining failed '+x+','+y+' reach='+distanceToTile(x,y));this.advance(.4,true);return this.read();},
@@ -31,7 +49,23 @@ const injected=String.raw`
     attack(x,y){return survival.attack(x*TILE,y*TILE);},
     spawn(){const e=survival.findSpawn('beetle');return e?{...e}:null;},
     save(){saveGame();return localStorage.getItem(SAVE_KEY);},
-    quarry(){let carved=0,ores=0;for(let x=14;x<=100;x++)for(let y=43;y<=57;y++){const id=get(x,y);if(id>=1&&id<=8){set(x,y,T.AIR);carved++;}}for(let x=14;x<=100;x++)for(let y=58;y<=73;y++)if(get(x,y)<=8)set(x,y,T.STONE);for(let x=20;x<=39;x++)for(let y=52;y<=55;y++){set(x,y,y===52?T.COPPER:T.IRON);ores++;}for(const x of [58,60])for(let y=55;y<=60;y++){set(x,y,T.IRON);ores++;}set(18,54,T.STORAGE,{rot:0,contents:{wood:30,stone:34}});set(19,54,T.STORAGE,{rot:0,contents:{stone:20,iron:4}});simulateNetworks();return {carved,oreTiles:ores,description:'Carved connected quarry x14..100 y43..57, stone floor58 and solid terrain below; copper/iron ceiling veins and two real six-block drill deposits. Construction caches supply harvestable materials for the longer test. Existing inventory preserved.'};}
+    quarry(){
+      const isTerrain=id=>(id>=T.GRASS&&id<=T.OBSIDIAN)||defs[id]?.rareOre;
+      let carved=0,oreTiles=0;
+      for(let x=14;x<=100;x++)for(let y=43;y<=57;y++){
+        if(isTerrain(get(x,y))){set(x,y,T.AIR);carved++;}
+      }
+      for(let x=14;x<=100;x++)for(let y=58;y<=73;y++){
+        const id=get(x,y);
+        if(id===T.AIR||isTerrain(id))set(x,y,T.STONE);
+      }
+      for(let x=20;x<=39;x++)for(let y=52;y<=55;y++){set(x,y,y===52?T.COPPER:T.IRON);oreTiles++;}
+      for(const x of [58,60])for(let y=55;y<=60;y++){set(x,y,T.IRON);oreTiles++;}
+      set(18,54,T.STORAGE,{rot:0,contents:{wood:30,stone:34}});
+      set(19,54,T.STORAGE,{rot:0,contents:{stone:20,iron:4}});
+      simulateNetworks();
+      return {carved,oreTiles,description:'The connected quarry has a stone floor, copper and iron ceiling veins, two six-block drill deposits, and construction caches. Inventory is preserved.'};
+    }
   };
 `;
 async function prepare(context,saved){
@@ -39,7 +73,11 @@ async function prepare(context,saved){
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('http://circuitbound.test/**',async route=>{const file=path.resolve(root,'.'+new URL(route.request().url()).pathname);if(!file.startsWith(root+path.sep)||!fs.existsSync(file)){await route.fulfill({status:404,body:''});return;}let body=fs.readFileSync(file);if(file.endsWith(path.join('circuitbound','app.js')))body=Buffer.from(body.toString().replace(/\}\)\(\);\s*$/,injected+'\n})();'));await route.fulfill({contentType:{'.html':'text/html','.css':'text/css','.js':'text/javascript','.mjs':'text/javascript','.png':'image/png','.webp':'image/webp'}[path.extname(file)]||'text/plain',body});});
   await page.goto('http://circuitbound.test/game/circuitbound.html');await page.waitForFunction(()=>window.testAPI);
-  if(await page.locator('#welcomePanel').isVisible())await page.locator('#startBtn').click();return{page,errors};
+  if(await page.locator('#welcomePanel').isVisible()){
+    await page.locator('#welcomeDifficulty').selectOption('casual');
+    await page.locator('#startBtn').click();
+  }
+  return{page,errors};
 }
 const act=(page,method,...args)=>page.evaluate(({method,args})=>testAPI[method](...args),{method,args});
 const read=page=>act(page,'read');
@@ -55,8 +93,20 @@ async function phase(page,label){const s=await read(page);console.log(label,JSON
  await act(page,'select','pickaxe');
  for(let x=20;x<=27;x++){const target=await act(page,'screen',x,35);await page.mouse.move(target.x,target.y);await page.mouse.down();await act(page,'advance',1.4);await page.mouse.up();assert.equal((await act(page,'tile',x,35)).id,0,'Normal generated copper is removed by hold-to-mine');await act(page,'advance',.4);}
  await act(page,'walk',20);await act(page,'walk',26);s=await read(page);assert.equal(s.stats.copperMined,8);assert.ok(s.inventory.copper>=20,'Normal mining yields real collected copper');
- const mobileSave=await act(page,'save');await page.screenshot({path:path.join(shots,'01-normal-copper.png')});await phase(page,'normal movement, mining, platforms and climbing');
+ await page.screenshot({path:path.join(shots,'01-normal-copper.png')});await phase(page,'normal movement, mining, platforms and climbing');
  await act(page,'walk',17);await act(page,'climb',28.5);await page.keyboard.down('Space');await act(page,'advance',.2);await page.keyboard.up('Space');await act(page,'walk',9);
+ // Harvest the workbench materials from the unchanged starter terrain.
+ for(const y of [26,25,24])for(const x of [8,7])await act(page,'mine',x,y);
+ for(const y of [26,25])for(const x of [6,5])await act(page,'mine',x,y);
+ await act(page,'walk',6);await act(page,'walk',9);
+ s=await read(page);assert.equal(s.inventory.wood,6);assert.equal(s.inventory.stone,4);
+ await page.keyboard.press('e');
+ await page.getByRole('button',{name:'Craft one',exact:true}).click();
+ await page.keyboard.press('Escape');
+ await act(page,'take',14,28);
+ const mobileSave=await act(page,'save');
+ await act(page,'place','workbench',10,28);
+ await act(page,'craft','reinforcedPickaxe');
  // The outpost repair uses the same component placement rules as player builds.
  await act(page,'place','wire',9,27);await act(page,'place','generator',11,28);await act(page,'advance',1.5);
  s=await read(page);assert.equal(s.stats.coreReached,true,'Outpost core is restored through real power');assert.equal(s.chapter,2,'Working machinery and core complete chapter one');await act(page,'craft','miningArmor');await act(page,'mine',10,28);
@@ -85,7 +135,7 @@ async function phase(page,label){const s=await read(page);console.log(label,JSON
  // Begin defense with the legitimately earned chapter reward, then manufacture its replacement ammunition.
  await act(page,'walk',43);await act(page,'craft','crusher');await act(page,'craft','smelter');await act(page,'craft','turret');
  const processing=[['generator',45,52,0],['motor',45,53,1],['crusher',45,54,0],['generator',45,55,0],['hopper',44,54,0],['smelter',46,54,0],['copperBlock',46,55,0],['storage',47,54,0],['copperBlock',47,55,0],['turret',48,54,0],['generator',48,55,0]];
- await act(page,'craft','ladder');await act(page,'walk',42.85);for(let y=53;y<=57;y++)await act(page,'place','ladder',43,y);await act(page,'climb',53);for(const p of processing)await act(page,'place',...p);await act(page,'insert','ammo',8,48,54);await act(page,'advance',1,true);await act(page,'checkpoint');await act(page,'climb',53);await act(page,'service',true);
+ await act(page,'craft','ladder');await act(page,'walk',43);for(let y=53;y<=57;y++)await act(page,'place','ladder',43,y);await act(page,'climb',53,43);for(const p of processing)await act(page,'place',...p);await act(page,'insert','ammo',8,48,54);await act(page,'advance',1,true);await act(page,'checkpoint');await act(page,'climb',53,43);await act(page,'service',true);
  
  await act(page,'insert','iron',8,44,54);await act(page,'advance',25,true);
  assert.equal((await act(page,'tile',47,54)).meta.contents.ironIngot,8,'Crusher and smelter manufacture eight ingots from eight real iron ore');
@@ -108,15 +158,25 @@ async function phase(page,label){const s=await read(page);console.log(label,JSON
  await page.keyboard.press('2');await act(page,'weapon','hammer');
  for(let swing=0;swing<4&&(await read(page)).enemies.some(e=>e.id===spawned.id);swing++){await act(page,'approachEnemy',spawned.id);s=await read(page);const foe=s.enemies.find(e=>e.id===spawned.id);if(!foe)break;const enemyTarget=await act(page,'screen',foe.x/24-.5,foe.y/24-.5);await page.mouse.move(enemyTarget.x,enemyTarget.y);await page.keyboard.press('q');await act(page,'advance',.7,false);}
  assert.equal((await read(page)).enemies.some(e=>e.id===spawned.id),false,'Actual Q attack defeats the naturally spawned beetle');
- await act(page,'walk',42.85);await act(page,'climb',53);await act(page,'service',true);await phase(page,'processing, manufactured ammunition and Q combat');
+ await act(page,'walk',43);await act(page,'climb',53,43);await act(page,'service',true);await phase(page,'processing, manufactured ammunition and Q combat');
  // Keep the genuine input hopper supplied while the normal scheduler produces a warned raid.
  // Warning and attack were observed while constructing and operating this same factory.
  for(let loop=0;loop<180;loop++){
    s=await read(page);if(s.hud.raid.state==='warning'){if(!sawWarning){await page.screenshot({path:path.join(shots,'04-raid-warning.png')});sawWarning=true;}}
    if(s.hud.raid.state==='attack'){if(!sawAttack){await page.screenshot({path:path.join(shots,'05-base-attack.png')});sawAttack=true;}}
+   if((s.stats.raidsSurvived||0)>raidsBefore&&sawWarning&&sawAttack)break;
+   const raider=s.hud.raid.state==='attack'&&s.hud.raid.count===1&&s.hud.raid.remaining<80&&
+     s.enemies.find(enemy=>enemy.raid===s.hud.raid.id&&enemy.y>55*24);
+   if(raider){
+     // The factory blocks sight to the floor below it. Defend that approach on foot.
+     await act(page,'service',false);
+     await act(page,'climb',57,43);
+     await act(page,'approachEnemy',raider.id);
+     await act(page,'advance',3,true);
+     await act(page,'walk',43);await act(page,'climb',53,43);await act(page,'service',true);
+   }
    const hopper=await act(page,'tile',44,54),room=8-Object.values(hopper.meta.contents||{}).reduce((a,b)=>a+b,0),feed=Math.min(room,s.inventory.iron||0);
    if(feed>0)await act(page,'insert','iron',feed,44,54);
-   if((s.stats.raidsSurvived||0)>raidsBefore&&sawWarning&&sawAttack)break;
    await act(page,'advance',3,true);
  }
  s=await read(page);assert.ok(sawWarning&&sawAttack,'The normal elapsed-time spawn manager warns and starts a real base attack');
@@ -135,7 +195,7 @@ async function phase(page,label){const s=await read(page);console.log(label,JSON
  await phone.locator('#hotbar [data-item="ladder"]').tap();const ladderTarget=await act(phone,'screen',18,40);await phone.touchscreen.tap(ladderTarget.x,ladderTarget.y);const laddersBefore=(await read(phone)).inventory.ladder;await touchHold('[data-touch="place"]',.05);
  assert.equal((await act(phone,'tile',18,40)).name,'Ladder','Actual touch placement builds the targeted section');assert.equal((await read(phone)).inventory.ladder,laddersBefore-1,'Touch construction consumes its real inventory component');
  await act(phone,'climb',28.5);await phone.keyboard.down('Space');await act(phone,'advance',.2);await phone.keyboard.up('Space');await act(phone,'walk',9);
- await act(phone,'craft','hammer');await phone.locator('#hotbar [data-item="tool"]').tap();
+ await act(phone,'place','workbench',11,28);await act(phone,'craft','hammer');await phone.locator('#hotbar [data-item="tool"]').tap();
  const firstWeapon=(await read(phone)).hud.weapon;
  await phone.locator('#utilityBtn').tap();await phone.locator('#weaponBtn').tap();
  assert.notEqual((await read(phone)).hud.weapon,firstWeapon,'Actual touch cycles among owned weapons');

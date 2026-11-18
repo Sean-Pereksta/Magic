@@ -9,6 +9,8 @@
   const structure = new Set(['platform', 'ladder']);
   const movingParts = new Set(['platform', 'counterweight']);
   const orientationMatters = new Set(['motor', 'drill', 'hopper', 'storage', 'sensor', 'autoDoor', 'winch', 'switch']);
+  const starterStone = [[6, 26], [5, 26], [6, 25], [5, 25]];
+  const legacyStarterStone = [[9, 26], [11, 26], [9, 25], [11, 25]];
   const explanations = {
     generator: 'Supplies power to the adjacent machine.',
     motor: 'Turns electrical power into drive at its front port.',
@@ -74,7 +76,7 @@
         const markers = [];
         for (const [missing, id, label, spots] of [
           [wood, T.WOOD, 'Mine wood', [[7, 26], [8, 26], [7, 25], [8, 25], [7, 24], [8, 24]]],
-          [stone, T.STONE, 'Mine stone', [[9, 26], [11, 26], [9, 25], [11, 25]]]
+          [stone, T.STONE, 'Mine stone', [...starterStone, ...legacyStarterStone]]
         ]) {
           const at = missing && spots.find(([x, y]) => get(x, y) === id);
           if (at) markers.push({ at, label });
@@ -344,5 +346,5 @@
       reset: () => { progress = fresh(false); }, export: () => structuredClone(progress), restore };
   }
 
-  return { create };
+  return { create, starterStone };
 });
