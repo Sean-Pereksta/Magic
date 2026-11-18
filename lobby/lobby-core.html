@@ -412,7 +412,7 @@
     @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
   </style>
 <script src="./lobby-showcase.js?v=6"></script>
-<script src="./assets/game-artwork.js?v=10"></script>
+<script src="./assets/game-artwork.js?v=11"></script>
 <script src="./lobby-artwork.js?v=2"></script>
 </head>
 <body>
@@ -1349,7 +1349,7 @@
         if(!requireUser({type:"online",gameKey:game.key}))return;
         launchGameUrl(`${game.multiplayerRoute}?mode=browse&username=${encodeURIComponent(username)}`,"matchmaking-join");return;
       }
-      if(game.key==="trashtactics"){
+      if(game.key==="trashtactics"||(game.guestMultiplayer&&game.multiplayerRoute)){
         if(launchingGame)return;
         void logGamePlay(game).catch(error=>console.warn("Play logging skipped",error));
         save(SK.lastGame,game.key);launchGameUrl(game.multiplayerRoute,"matchmaking-join");return;
