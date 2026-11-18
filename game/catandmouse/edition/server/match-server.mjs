@@ -78,8 +78,9 @@ function fail(socket, code, message) {
   send(socket, { type: 'error', code, message });
 }
 
-export async function createMatchServer(options, { onLobbyChange = () => {}, desktopOrigin } = {}) {
-  const settings = readLobbySettings(options);
+export async function createMatchServer(options, { onLobbyChange = () => {}, desktopOrigin, rankedSeed } = {}) {
+  const ranked = rankedSeed !== undefined;
+  const settings = readLobbySettings(ranked ? { ...options, startingWave: 1 } : options);
   const id = randomUUID();
   const hostToken = secret();
   const invite = secret();
@@ -122,7 +123,7 @@ export async function createMatchServer(options, { onLobbyChange = () => {}, des
 
   function prepare(player) {
     send(player.socket, {
-      type: 'prepare', matchId, map: settings.map, difficulty: settings.difficulty,
+      type: 'prepare', matchId, map: settings.map, difficulty: settings.difficulty, startingWave: settings.startingWave,
       deadline: loadDeadline
     });
   }
@@ -403,7 +404,8 @@ export async function createMatchServer(options, { onLobbyChange = () => {}, des
     if (phase === 'loading') resolveLoading(now);
     if (phase === 'countdown' && now >= countdownUntil) {
       simulation = createSimulation({
-        matchId, mapId: settings.map, difficulty: settings.difficulty,
+        matchId, mapId: settings.map, difficulty: settings.difficulty, startingWave: settings.startingWave,
+        ...(ranked ? { ranked, seed: rankedSeed } : {}),
         players: [...included].map(playerId => {
           const { id, name, loadout } = players.get(playerId);
           return { id, name, loadout };
@@ -454,6 +456,8 @@ export async function createMatchServer(options, { onLobbyChange = () => {}, des
 
   return {
     url: origin, id, hostToken, invite, listingToken, getLobby,
+    ...(ranked ? { seatToken: host.token } : {}),
+    get score() { return ranked && phase === 'finished' ? simulation.rankedScore : null; },
     async close() {
       phase = 'closed';
       clearInterval(heartbeat);
