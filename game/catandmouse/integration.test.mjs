@@ -257,7 +257,7 @@ test('playing transition hides selection once and host loss cancels pending stat
 test('only the host can set a starting wave and the committed tier seeds the Cat and enemy power', async () => {
   const { fixture } = await createBattleRuntime(false, { scenarioExtra: `
     window.__battleFixture.startAt = async (wave, hostUid = uid) => {
-      let state = { hostUid, phase:'selection', difficulty:'medium', startingWave:1, cat:{x:29,y:29,health:1500} };
+      let state = { hostUid, phase:'selection', difficulty:'medium', startingWave:1, cat:{x:29,y:29,health:22500} };
       gameStarted = false;
       startingWave = 1;
       players = { [uid]:{uid,lastSeen:Date.now(),alive:true,assetsReady:true} };
@@ -271,7 +271,7 @@ test('only the host can set a starting wave and the committed tier seeds the Cat
       return state;
     };`
   });
-  for (const [wave, health, power] of [[1, 1500, 1], [5, 2475, 2], [10, 3675, 3]]) {
+  for (const [wave, health, power] of [[1, 22500, 1], [5, 37125, 2], [10, 55125, 3]]) {
     const state = await fixture.startAt(wave);
     assert.equal(state.phase, 'playing');
     assert.equal(state.startingWave, wave);
@@ -279,9 +279,52 @@ test('only the host can set a starting wave and the committed tier seeds the Cat
     assert.equal(state.ratPower, power);
     assert.equal(state.cat.health, health);
     assert.equal(state.cat.maxHealth, health);
+    assert.equal(state.nextRatWave - state.updatedAt, 45000);
   }
   assert.equal((await fixture.startAt(10, 'another-host')).phase, 'selection');
   assert.equal((await fixture.startAt(100)).startingWave, 1);
+});
+
+test('new mice start with ten cheese and reconnecting does not refill it', async () => {
+  const { fixture } = await createBattleRuntime(false, { scenarioExtra: `
+    window.__battleFixture.registerTwice = async () => {
+      let player = null;
+      globalThis.runTransaction = async (_db, run) => run({
+        get: async () => ({ exists: () => player !== null }),
+        set: (_ref, fields) => { player = { ...player, ...fields }; }
+      });
+      await upsertMyPlayerDoc();
+      const starting = player.cheese;
+      player.cheese -= 7;
+      await upsertMyPlayerDoc();
+      return [starting, player.cheese];
+    };`
+  });
+  assert.deepEqual([...await fixture.registerTwice()], [10, 3]);
+});
+
+test('the Cat starts slowly and pounces only in late, nearby encounters', async () => {
+  const { fixture } = await createBattleRuntime(false, { scenarioExtra: `
+    window.__battleFixture.catTier = mode => startingCatHealth(mode, 1);
+    window.__battleFixture.catEncounter = async (mode, start, wave, playerX) => {
+      currentDifficulty = mode;
+      startingWave = start;
+      ratWave = wave;
+      catPos = { x: 10, y: 10 };
+      players = { [uid]:{ x: playerX, y: 10, alive: true } };
+      initializeCatAbilityLoadout(mode);
+      await maybeUseCatAbilities();
+      return [catMovementCadence(), catAbilityState.pouncePending];
+    };`
+  });
+  assert.deepEqual(['easy','medium','hard','insane'].map(mode => fixture.catTier(mode)), [10000,22500,44000,75000]);
+  assert.deepEqual([...await fixture.catEncounter('medium',1,0,16)], [2450,null]);
+  assert.deepEqual([...await fixture.catEncounter('insane',10,9,16)], [2000,null]);
+  assert.equal((await fixture.catEncounter('medium',10,14,16))[1], null);
+  assert.equal((await fixture.catEncounter('medium',1,10,26))[1], null);
+  const [pace, landing] = await fixture.catEncounter('medium',1,10,16);
+  assert.equal(pace, 950);
+  assert.ok(landing && Math.abs(landing.x - 10) + Math.abs(landing.y - 10) <= 8);
 });
 
 test('Classic continues spawning stronger rats after wave 200', async () => {
