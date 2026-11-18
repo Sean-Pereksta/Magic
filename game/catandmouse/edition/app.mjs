@@ -490,7 +490,8 @@ function receiveState(next, effects = next.events) {
     const matchesBuild = entry => entry.ownerId === playerId && entry.x === pendingBuild.x && entry.y === pendingBuild.y;
     if (next.structures.some(entry => entry.type === pendingBuild.type && matchesBuild(entry))
       || recent.some(event => event.type === 'build' && event.kind === pendingBuild.type && matchesBuild(event))) {
-      finishPlacement();
+      pendingBuild = null;
+      updatePlacement();
     }
   }
   const active = recent.filter(event => event.time >= next.time - 175);
@@ -588,15 +589,15 @@ function updatePlacement() {
     : isWall(type) ? 'Place beside a wall to extend it or form a corner.'
       : `${TOWERS[type].description} Select a tile to build.`;
   let status = placementMessage || prompt;
-  if (touchAim && type) {
-    if (pendingBuild) status = 'Placing…';
-    else if (!aimTile) status = `Tap a tile for ${TOWERS[type].name}.`;
+  if (pendingBuild) status = 'Placing…';
+  else if (touchAim && type) {
+    if (!aimTile) status = `Tap a tile for ${TOWERS[type].name}.`;
     else status = placementMessage || (error ? commandErrors[error] || 'Choose another tile.' : `${TOWERS[type].name} · ${TOWERS[type].cost} cheese`);
   }
   if ($('build-info').textContent !== status) $('build-info').textContent = status;
-  $('battle').classList.toggle('action-status', !touchAim && Boolean(placementMessage));
+  $('battle').classList.toggle('action-status', !touchAim && Boolean(placementMessage || pendingBuild));
+  $('build-toggle').disabled = Boolean(pendingBuild);
   $('build-place').disabled = !touchAim || !aimTile || Boolean(error || pendingBuild);
-  $('build-cancel').disabled = Boolean(pendingBuild);
 }
 
 function selectedTower() {
@@ -828,8 +829,8 @@ $('build-place').onclick = () => {
   if (error) return reportCommandError(error);
   const command = { type: 'build', slot: selected, x, y };
   if (sendCommand(command)) {
-    if (solo) finishPlacement();
-    else pendingBuild = { x, y, type, deadline: performance.now() + 5000 };
+    finishPlacement();
+    if (!solo) pendingBuild = { x, y, type, deadline: performance.now() + 5000 };
     updatePlacement();
   }
 };
@@ -887,7 +888,6 @@ window.addEventListener('keydown', event => {
     const slot = Number(key) - 1;
     if (slot !== selected || touchAim) selectSlot(slot, false);
   } else if (key === 'escape') {
-    if (pendingBuild) return;
     if (selected !== null || $('build-toggle').getAttribute('aria-expanded') === 'true') finishPlacement();
     else battleMenu();
   }
@@ -906,7 +906,7 @@ canvas.addEventListener('pointermove', event => {
 canvas.addEventListener('pointerleave', () => { cursor = null; });
 
 function useBattlefield(event) {
-  if (!state || !board.tileX || overlay.open || pendingBuild) return;
+  if (!state || !board.tileX || overlay.open) return;
   unlockAudio();
   if ($('build-toggle').getAttribute('aria-expanded') === 'true') {
     setBuildTray(false);
@@ -925,7 +925,7 @@ function useBattlefield(event) {
     }
     return sendCommand({ type: 'build', x, y, slot: selected });
   }
-  const tower = state.structures.find(entry => entry.x === x && entry.y === y && entry.ownerId === playerId && !entry.branch && TOWERS[entry.type]?.upgrades);
+  const tower = !pendingBuild && state.structures.find(entry => entry.x === x && entry.y === y && entry.ownerId === playerId && !entry.branch && TOWERS[entry.type]?.upgrades);
   if (tower) {
     stopWalking();
     const choices = Object.entries(TOWERS[tower.type].upgrades).map(([branch, details]) => `<p>${escape(details.description)}</p>${button(`${escape(details.name)} · ${details.cost} cheese`, `upgrade/${x}/${y}/${branch}`, '')}`).join('');
