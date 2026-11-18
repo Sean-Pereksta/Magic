@@ -1,6 +1,6 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {game}=require('./harness.cjs');
+const {game,E}=require('./harness.cjs');
 const {blueprints}=require('../interface.js');
 function clean(g){g.clearTerrain();g.api.meta.clear();g.engine.reset();g.survival.reset();g.player.x=9*24;g.player.y=10*24;}
 function aim(g,x,y){Object.assign(g.api.pointer,{tx:x,ty:y,wx:x*24+12,wy:y*24+12,aimed:true});}
@@ -28,6 +28,42 @@ test('full inventory leaves mined resources in physical drops and pickup never p
   assert.equal(g.engine.drops.find(d=>d.key==='copper').count,1);assert.equal(g.inventory.copper,undefined);
   g.inventory.stone=0;g.set(10,10,g.T.STONE);g.engine.drops[0].x=11.5;g.collectDrops(true);assert.equal(g.inventory.copper,undefined);
   g.set(10,10,g.T.AIR);g.collectDrops(true);assert.equal(g.inventory.copper,1);
+});
+
+test('a stack lands on a platform and the player can pick it back up after reloading',()=>{
+  const g=game();clean(g);
+  g.set(11,12,g.T.PLATFORM);
+  g.inventory.copperBlock=2;
+  select(g,'copperBlock');aim(g,11,10);g.dropHeldItem();
+  step(g,1);
+  assert.equal(g.inventory.copperBlock,1);
+  assert.equal(g.engine.drops.length,1);
+  assert.equal(g.engine.drops[0].y,12-E.DROP_HALF);
+  assert.equal(g.saveGame(),true);
+  const loaded=game(JSON.parse(g.storage.get('circuitbound-save-v1')));
+  assert.equal(loaded.inventory.copperBlock,1);
+  assert.equal(loaded.engine.drops[0].count,1);
+  aim(loaded,11,11);
+  loaded.listeners.keydown({code:'KeyF',target:loaded.document.body,preventDefault(){}});
+  assert.equal(loaded.inventory.copperBlock,2);
+  assert.equal(loaded.engine.drops.length,0);
+});
+
+test('aiming a drop at a platform puts it on top and dismantling returns the built item',()=>{
+  const g=game();clean(g);
+  g.set(11,12,g.T.PLATFORM);
+  g.inventory.copperBlock=2;
+  select(g,'copperBlock');aim(g,11,12);g.dropHeldItem();
+  assert.equal(g.engine.drops[0].y,12-E.DROP_HALF);
+  aim(g,11,11);g.interactAtPointer();
+  assert.equal(g.inventory.copperBlock,2);
+
+  aim(g,11,11);g.placeAtAim();
+  assert.equal(g.get(11,11),g.T.COPPER_BLOCK);
+  assert.equal(g.inventory.copperBlock,1);
+  select(g,'pickaxe');aim(g,11,11);g.api.pointer.down=true;g.mineStep(4);
+  assert.equal(g.get(11,11),g.T.AIR);
+  assert.equal(g.inventory.copperBlock,2);
 });
 
 test('world collision boundaries cannot be mined into free resources',()=>{

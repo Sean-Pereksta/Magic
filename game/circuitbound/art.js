@@ -208,10 +208,11 @@
     draw(ctx, sprite, x + (w - sw) / 2, y + (h - sh) / (bottom ? 1 : 2), sw, sh);
   }
 
-  function item(ctx, key, x, y, size) {
+  function item(ctx, key, x, y, size, grounded = false) {
+    if (globalThis.CircuitboundFoundryArt?.draw(ctx, key, x, y, size, size, {grounded})) return true;
     const sprite = imageFor(key);
     if (!sprite) return false;
-    fit(ctx, sprite, x, y, size, size);
+    fit(ctx, sprite, x, y, size, size, grounded);
     return true;
   }
 
@@ -384,7 +385,7 @@
     return sprite;
   }
 
-  function paintTile(ctx, key, state, time, size) {
+  function paintTile(ctx, key, state, time, size, platform) {
     const door = key === 'door' || key === 'autoDoor';
     const lit = state?.active || state?.on || state?.powered;
     const running = state?.running || state?.working || state?.firing || state?.extended
@@ -397,7 +398,7 @@
     const sprite = (door && state?.open ? imageFor('doorOpen') : null) || animated || imageFor(key);
     if (!sprite) return false;
     const angle = (state?.rot || 0) * Math.PI / 2;
-    const rotated = angle && !uprightTiles.has(key) && !fullTiles.has(key) && !narrowTiles.has(key);
+    const rotated = angle && !platform && !uprightTiles.has(key) && !fullTiles.has(key) && !narrowTiles.has(key);
     if (rotated) {
       ctx.save();
       ctx.translate(size / 2, size / 2);
@@ -412,8 +413,8 @@
       draw(ctx, sprite, size * .74, 0, size * .26, size);
     } else if (fullTiles.has(key)) {
       draw(ctx, sprite, 0, 0, size, size);
-    } else if (horizontalTiles.has(key)) {
-      draw(ctx, sprite, 0, size * .23, size, size * .55);
+    } else if (platform || horizontalTiles.has(key)) {
+      draw(ctx, sprite, 0, platform ? 0 : size * .23, size, size * .55);
     } else if (narrowTiles.has(key)) {
       draw(ctx, sprite, size * .36, 0, size * .28, size);
     } else if (key === 'shaft') {
@@ -473,7 +474,7 @@
       if (id != null) keys.set(id, key);
     }
     return {
-      tile: (ctx, id, state, time = 0, size = 24) => paintTile(ctx, keys.get(id) || defs[id]?.drop, state, time, size),
+      tile: (ctx, id, state, time = 0, size = 24) => paintTile(ctx, keys.get(id) || defs[id]?.drop, state, time, size, defs[id]?.platform),
       item, icon, player, scenery, frame, vehicle, drone
     };
   }

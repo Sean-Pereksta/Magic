@@ -103,7 +103,7 @@
     });
   }
 
-  function create({ T, defs, get, set, engine, inventory, stats, player, tile, inside, placementBlock, notify }) {
+  function create({ T, defs, get, set, engine, inventory, stats, player, tile, inside, placementBlock, recoverItems, notify }) {
     const controllers = new Set();
     const data = (x, y) => engine.getMeta().get(engine.key(x, y));
     const strip = rig => rig.id === T.SEISMIC_STRIP_MINER;
@@ -424,14 +424,16 @@
           for (const [key, n] of Object.entries(stock || {})) if (n > 0) cargo[key] = (cargo[key] || 0) + n;
         }
       }
-      if (engine.drops.length + Object.keys(cargo).length > 512) return { ok: false, message: 'Collect loose items before dismantling the rig.' };
-      for (const [key, n] of Object.entries(cargo)) engine.spawn(key, n, c.x + .5, c.y + .5);
+      const entries = Object.entries(cargo);
+      const recovered = recoverItems ? recoverItems(entries, c.x, c.y) : engine.spawnBatch(entries, c.x + .5, c.y + .5);
+      if (!recovered) return { ok: false, message: 'Make room in your backpack or collect a nearby pile first.' };
       for (const cell of cells) {
         const m = data(cell.x, cell.y);
         if (m?.foundryX === c.x && m?.foundryY === c.y) set(cell.x, cell.y, T.AIR);
       }
       controllers.delete(engine.key(c.x, c.y));
-      return { ok: true, message: c.rig.name + ' recovered with its cargo.' };
+      const message = recovered.loose ? c.rig.name + ' recovered. ' + recovered.loose + ' items left on the ground.' : c.rig.name + ' recovered with its cargo.';
+      return { ok: true, message };
     }
 
     function visible(left, top, right, bottom, draw) {

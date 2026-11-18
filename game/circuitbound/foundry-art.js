@@ -24,16 +24,25 @@
     return image;
   }
 
-  const atlas = load('foundry-objects.webp');
+  const atlas = load('foundry-objects.webp?view=front');
   const landscapes = load('foundry-regions.webp');
   const cell = 96;
+  // Opaque bounds inside each atlas cell, in catalog order. Crop the padding before anchoring a sprite.
+  const frames = [
+    [7,2,82,92], [2,11,92,74], [4,2,88,92], [2,4,92,88], [2,5,92,86], [2,10,92,76],
+    [2,5,92,86], [2,7,92,82], [2,13,92,69], [2,11,92,73], [13,2,69,92], [2,18,92,60],
+    [2,15,92,65], [2,6,92,83], [2,13,92,69], [2,15,92,66], [2,9,92,77], [2,3,92,90],
+    [2,16,92,64], [2,24,92,48], [2,26,92,44], [2,21,92,53], [2,18,92,60], [2,5,92,85],
+    [2,20,92,55], [11,2,73,92], [2,21,92,53], [2,12,92,72], [3,2,90,92], [2,11,92,74],
+    [2,31,92,33], [2,15,92,65], [2,20,92,55], [2,2,92,91], [4,2,87,92], [2,6,92,83]
+  ];
   const loaded = image => !!image.naturalWidth;
 
   function ready(key) {
     return rock.has(key) ? loaded(landscapes) : indexed.has(key) && loaded(atlas);
   }
 
-  function draw(ctx, key, x, y, w, h, { time = 0, working = false, facing = 1, phase } = {}) {
+  function draw(ctx, key, x, y, w, h, { time = 0, working = false, facing = 1, phase, grounded = false } = {}) {
     if (!ready(key)) return false;
     if (rock.has(key)) {
       const region = rock.get(key);
@@ -45,20 +54,23 @@
     const index = indexed.get(key);
     const flying = index >= 6 && index <= 13;
     const driving = index >= 14 && index <= 17;
-    const weapon = index >= 18 && index <= 33;
     const ore = index === 4 || index === 5 || index >= 34;
     const orePulse = ore && working ? .8 + .2 * Math.sin(time * 2.5 + index) : 1;
-    const movement = flying ? Math.sin(time * (working ? 13 : 5)) * h * .04 : driving && working ? Math.sin(time * 20) * h * .023 : 0;
+    const movement = flying && !grounded ? Math.sin(time * (working ? 13 : 5)) * h * .04 : 0;
+    const [left, top, sourceWidth, sourceHeight] = frames[index];
+    const scale = Math.min(w / (sourceWidth + 4), h / (sourceHeight + 4));
+    const frameWidth = sourceWidth * scale;
+    const frameHeight = sourceHeight * scale;
+    const suspension = grounded && driving && working ? 1 + Math.sin(time * 20) * .028 : 1;
     ctx.save();
-    ctx.translate(x + w / 2, y + h / 2 + movement);
-    ctx.scale(facing < 0 ? -1 : 1, 1);
-    if (flying && working) ctx.rotate(Math.sin(time * 12) * .075);
+    ctx.translate(x + w / 2, grounded ? y + h : y + h / 2 + movement);
+    ctx.scale(facing < 0 ? -1 : 1, suspension);
+    if (flying && working && !grounded) ctx.rotate(Math.sin(time * 12) * .075);
     if (phase === 'charge') ctx.filter = `brightness(${1.18 + Math.sin(time * 21) * .18})`;
     else if (phase === 'fire') ctx.filter = 'brightness(1.35)';
     else if (orePulse !== 1) ctx.globalAlpha *= orePulse;
-    const frameWidth = weapon ? Math.min(w, h * 1.5) : w;
-    ctx.drawImage(atlas, index % 6 * cell, Math.floor(index / 6) * cell, cell, cell,
-      -frameWidth / 2, -h / 2, frameWidth, h);
+    ctx.drawImage(atlas, index % 6 * cell + left, Math.floor(index / 6) * cell + top, sourceWidth, sourceHeight,
+      -frameWidth / 2, grounded ? -frameHeight : -frameHeight / 2, frameWidth, frameHeight);
     ctx.restore();
     return true;
   }
