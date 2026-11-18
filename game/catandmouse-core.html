@@ -1332,6 +1332,11 @@
 
 
     #mobileBuildToggle, #mobileBuildAim { display:none; }
+    #bottomDock .desktop-build-mode { border:1px solid #53735d; border-radius:10px; padding:8px 12px; color:#f0fdf4; background:#234333; white-space:nowrap; }
+    #bottomDock .desktop-build-mode[aria-pressed="true"] { border-color:#facc15; color:#fef3c7; background:#574015; }
+    .build-preview-target { box-shadow:inset 0 0 0 3px #fff4a1!important; }
+    .iso-structure.iso-super-wall .structure-art { transform:scale(1.08); transform-origin:50% 82%; filter:drop-shadow(0 2px 3px #031918) drop-shadow(0 0 3px #57d9eaa0); }
+    .iso-structure.ultra-wall-visual .structure-art { transform:scale(1.23); filter:drop-shadow(0 2px 3px #120f30) drop-shadow(0 0 5px #bb8dffc7); }
     @media (max-width: 768px), (pointer: coarse) {
       body.classic-touch-match { padding-bottom:0; overflow:hidden; }
       .classic-touch-match #gameLayout { padding:0; margin:0!important; }
@@ -1358,7 +1363,6 @@
       .classic-touch-match #catHealthContainer { position:fixed; z-index:26; pointer-events:none; inset:47px 0 auto; margin:0!important; }
       .classic-touch-match #catHealthBar { height:14px; width:min(46vw,300px)!important; }
       .classic-touch-match #catHealthText { font-size:10px; }
-      .classic-touch-match .build-preview-target { box-shadow:inset 0 0 0 3px #fff4a1!important; }
       .classic-touch-match #status { position:fixed; z-index:30; inset:auto 0 100px; pointer-events:none; }
       .classic-touch-match #returnButton { position:fixed; z-index:36; inset:80px auto auto 50%; transform:translateX(-50%); }
       .classic-touch-match #leftRail:has(#upgradeMenu[style*="block"]) { display:block!important; position:fixed; inset:70px 12px auto; z-index:40; pointer-events:none; }
@@ -1473,7 +1477,7 @@
             <div class="section-heading-row compact"><div><span class="section-kicker">QUICK GUIDE</span><h2>How to survive</h2></div></div>
             <div class="how-to-grid">
               <div><span>🧀</span><p><strong>Gather</strong>Collect cheese to fund defenses.</p></div>
-              <div><span>🏗️</span><p><strong>Fortify</strong>Build beside your mouse with WASD.</p></div>
+              <div><span>🏗️</span><p><strong>Fortify</strong>Pick a building, then click or press an arrow key to place it beside your mouse.</p></div>
               <div><span>🐀</span><p><strong>Adapt</strong>Counter specialized enemy waves.</p></div>
               <div><span>🤝</span><p><strong>Coordinate</strong>Protect teammates and shared objectives.</p></div>
             </div>
@@ -2198,15 +2202,17 @@
     insane: { icon:"💀", label:"Nightmare", subtitle:"The cat is hunting", className:"difficulty-nightmare" }
   };
   const DIFFICULTY_SETTINGS = {
-    easy:   { label:"Easy",   catStartHealth:1000, ratBaseHealth:4, oxBaseHealth:18, ratSpawnBonus:2 },
-    medium: { label:"Medium", catStartHealth:1500, ratBaseHealth:5, oxBaseHealth:26, ratSpawnBonus:2 },
-    hard:   { label:"Hard",   catStartHealth:2000, ratBaseHealth:6, oxBaseHealth:34, ratSpawnBonus:3 },
-    insane: { label:"Insane", catStartHealth:3000, ratBaseHealth:8, oxBaseHealth:44, ratSpawnBonus:3 }
+    easy:   { label:"Easy",   catStartHealth:10000, catOpeningStep:2700, catLateStep:1150, ratBaseHealth:4, oxBaseHealth:18, enemySpeed:0.92, ratSpawnBonus:2 },
+    medium: { label:"Medium", catStartHealth:22500, catOpeningStep:2450, catLateStep:950,  ratBaseHealth:5, oxBaseHealth:26, enemySpeed:1.00, ratSpawnBonus:2 },
+    hard:   { label:"Hard",   catStartHealth:44000, catOpeningStep:2200, catLateStep:760,  ratBaseHealth:6, oxBaseHealth:34, enemySpeed:1.10, ratSpawnBonus:3 },
+    insane: { label:"Insane", catStartHealth:75000, catOpeningStep:2000, catLateStep:640,  ratBaseHealth:8, oxBaseHealth:44, enemySpeed:1.20, ratSpawnBonus:3 }
   };
   const CAT_START_HEALTH_TIERS = Object.freeze({ 1:1, 5:1.65, 10:2.45 });
   const CAT_GROWTH_INTERVAL = 60000;
   const CAT_HEAL_INTERVAL = 10000;
   const CAT_PRESSURE_INTERVAL = 20000;
+  const STARTING_CHEESE = 10;
+  const OPENING_RAT_WAVE_INTERVAL = 45000;
   const RAT_WAVE_INTERVAL = 32000;
 
   function normalizeStartingWave(value){
@@ -2227,7 +2233,6 @@
   let canMove = true;
   let canBuild = true;
   let moveCooldown = 170; // Faster local movement; network writes are coalesced below.
-  const CAT_SPEED_MULTIPLIER = 1.28;
   const RAT_SPEED_MULTIPLIER = 1.85;
   const MAX_RATS = 19;
   const MAX_FLEAS = 24;
@@ -2604,7 +2609,7 @@
 
   const slots = getActiveBuildSlots();
   const signature = JSON.stringify([slots, selectedBuild, failedAssetPaths.size, slots.map(id => [cheeseCount >= (BUILD_DEFS[id]?.cost || 0), isBuildUnlockedForLocalPlayer(id)])]);
-  if (dock.dataset.renderSignature === signature && dock.children.length === slots.length) return;
+    if (dock.dataset.renderSignature === signature && dock.children.length === slots.length + 1) return;
   dock.dataset.renderSignature = signature;
 
   if (!Array.isArray(slots) || !slots.length) {
@@ -2613,6 +2618,16 @@
   }
 
   dock.innerHTML = "";
+
+    const mode = document.createElement("button");
+    mode.id = "desktopBuildMode";
+    mode.type = "button";
+    mode.className = "desktop-build-mode";
+    mode.textContent = "Build (Q)";
+    mode.title = "Toggle building with the arrow keys or a click";
+    mode.setAttribute("aria-pressed", String(desktopBuildArmed));
+    mode.onclick = () => setDesktopBuildArmed(!desktopBuildArmed);
+    dock.appendChild(mode);
 
   slots.forEach((buildId, idx) => {
     const b = BUILD_DEFS[buildId];
@@ -2650,6 +2665,7 @@
         return;
       }
       selectBuild(String(buildId));
+      setDesktopBuildArmed(true);
     };
 
     dock.appendChild(item);
@@ -3069,6 +3085,10 @@
     const hudBuild = document.getElementById("hudBuild");
     if (!hudBuild) return;
     const def = BUILD_DEFS[selectedBuild];
+    if (desktopBuildArmed && def){
+      hudBuild.textContent = `${def.name} (${def.cost}) · Place with click or arrows · Esc to move`;
+      return;
+    }
     hudBuild.textContent = def ? `🏗 Build: ${def.symbol} ${def.name} (${def.cost})` : "🏗 Build: None";
   }
 
@@ -4087,10 +4107,17 @@
 
   let mobileBuildMode = "closed";
   let mobileBuildTile = null;
+  let desktopBuildArmed = false;
+  let boardPickingReady = false;
   const classicBuildDirections = [["w",0,-1],["s",0,1],["a",-1,0],["d",1,0]];
+  const buildDirectionKeys = { ArrowUp:"w", ArrowDown:"s", ArrowLeft:"a", ArrowRight:"d" };
 
   function isClassicTouchMatch(){
     return gameStarted && window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
+  }
+
+  function buildDirectionForTile(x, y){
+    return classicBuildDirections.find(([,dx,dy])=>x === playerPos.x+dx && y === playerPos.y+dy)?.[0];
   }
 
   function updateClassicBuildAim(){
@@ -4099,7 +4126,7 @@
     if (!status || !confirm) return;
     const def = BUILD_DEFS[selectedBuild];
     const x = mobileBuildTile?.x, y = mobileBuildTile?.y;
-    const dir = classicBuildDirections.find(([,dx,dy])=>x === playerPos.x+dx && y === playerPos.y+dy)?.[0];
+    const dir = buildDirectionForTile(x,y);
     let reason = "";
     if (!isAlive || !def) reason = "Building is unavailable.";
     else if (!mobileBuildTile) reason = "Tap a tile for " + def.name + ".";
@@ -4123,11 +4150,19 @@
     requestRender("mobileBuildMode");
   }
 
+  function setDesktopBuildArmed(armed){
+    desktopBuildArmed = Boolean(armed && gameStarted && isAlive && selectedBuild);
+    document.getElementById("desktopBuildMode")?.setAttribute("aria-pressed", String(desktopBuildArmed));
+    updateHudBuildDisplay();
+    requestRender("desktopBuildMode");
+  }
+
   function getBuildPreviewCells(){
     const touch = isClassicTouchMatch();
     document.body?.classList?.toggle("classic-touch-match", touch);
     if (touch && mobileBuildMode !== "aim") return [];
     if (touch) updateClassicBuildAim();
+    if (!touch && !desktopBuildArmed) return [];
     if (!gameStarted || !isAlive || !selectedBuild) return [];
     const dirs = [[0,-1],[0,1],[-1,0],[1,0]];
     return dirs.map(([dx,dy])=>({x:playerPos.x+dx,y:playerPos.y+dy})).filter(c=>c.x>=0&&c.x<gridSize&&c.y>=0&&c.y<gridSize);
@@ -4751,25 +4786,28 @@
 
   async function upsertMyPlayerDoc(assetsReady = false, assetFailures = []){
     const pRef = ccRef(ID.player(uid));
-    await setDoc(pRef, {
-      kind: "player",
-      uid,
-      displayName: username,
-      nameKey: usernameNorm,
-      x: playerPos.x,
-      y: playerPos.y,
-      facing: playerFacing || "se",
-      cheese: 0,
-      alive: true,
-      online: true,
-      assetsReady,
-      assetFailures:assetFailures.slice(0,20),
-      assetManifestVersion:ASSET_MANIFEST_VERSION,
-      joinedAt: Date.now(),
-      lastSeen: Date.now(),
-      clientSeq: 0,
-      updatedAt: Date.now()
-    }, { merge:true });
+    await runTransaction(db, async transaction => {
+      const existing = await transaction.get(pRef);
+      transaction.set(pRef, {
+        kind: "player",
+        uid,
+        displayName: username,
+        nameKey: usernameNorm,
+        x: playerPos.x,
+        y: playerPos.y,
+        facing: playerFacing || "se",
+        ...(!existing.exists() ? { cheese:STARTING_CHEESE } : {}),
+        alive: true,
+        online: true,
+        assetsReady,
+        assetFailures:assetFailures.slice(0,20),
+        assetManifestVersion:ASSET_MANIFEST_VERSION,
+        joinedAt: Date.now(),
+        lastSeen: Date.now(),
+        clientSeq: 0,
+        updatedAt: Date.now()
+      }, { merge:true });
+    });
   }
 
   async function publishAssetReadiness(failures = []){
@@ -5284,9 +5322,16 @@
     return candidates[0] || null;
   }
   const delayedEnemySteps = new Map();
+  function catMovementCadence(){
+    const { catOpeningStep, catLateStep } = DIFFICULTY_SETTINGS[currentDifficulty];
+    const wavesPlayed = Math.max(0, ratWave - startingWave + 1);
+    const progress = Math.min(1, wavesPlayed / 8);
+    return Math.round(catOpeningStep + (catLateStep - catOpeningStep) * progress);
+  }
+
   function enemyMovementCadence(kind){
+    if(kind === "cat") return catMovementCadence();
     const scaling=getEnemyScaling().speedMultiplier || 1;
-    if(kind === "cat") return Math.max(165,Math.floor((1300-catPower*40)/(CAT_SPEED_MULTIPLIER*(DIFFICULTY_SETTINGS[currentDifficulty]?.enemySpeed || 1))));
     const profile={rat:[760/RAT_SPEED_MULTIPLIER,190,1.05],ox:[800,430,.88],ratking:[700,390,.95],vulture:[600,300,1.08],stinkrat:[700,360,1.02],termite:[400,220,1.12],flea:[700,360,1.05] }[kind] || [2000,2000,1];
     return Math.max(profile[1],Math.floor(profile[0]/Math.max(.85,scaling*profile[2])));
   }
@@ -5379,9 +5424,9 @@
   }
 
   function selectCatAbilitiesForDifficulty(mode){
-    const all = Object.keys(CAT_ABILITY_DEFS);
-    if (mode === "hard") return [all[Math.floor(Math.random() * all.length)]];
-    if (mode === "insane") return [...all].sort(() => Math.random() - 0.5).slice(0, 2);
+    if (mode === "medium") return ["pounce"];
+    if (mode === "hard") return ["pounce", "rend"];
+    if (mode === "insane") return Object.keys(CAT_ABILITY_DEFS);
     return [];
   }
 
@@ -5403,6 +5448,7 @@
         const ty = p.y + oy;
         if (!canCatLandOnCell(tx, ty)) continue;
         const d = Math.abs(tx-catPos.x) + Math.abs(ty-catPos.y);
+        if (!d || d > 8) continue;
         const path = findPath(catPos.x, catPos.y, tx, ty, false);
         const blockedByWalls = !path;
         const score = (blockedByWalls ? 1000 : 0) - d;
@@ -5508,6 +5554,11 @@
 
   async function maybeUseCatAbilities(){
     if (!catAbilityLoadout.length) return;
+    // Jumping into a later starting tier still gives the mice time to build defenses.
+    if (ratWave < Math.max(10, startingWave + 5)) {
+      catAbilityState.pouncePending = null;
+      return;
+    }
     await resolvePendingPounce();
 
     const ready = catAbilityLoadout.filter(isCatAbilityReady);
@@ -5524,7 +5575,7 @@
     if (catMoveInterval) clearInterval(catMoveInterval);
     catMoveInterval = null;
     if (!canRunHostSimulation()) return;
-    const speed = Math.max(190, Math.floor((1300 - catPower * 40) / CAT_SPEED_MULTIPLIER));
+    const speed = catMovementCadence();
     catMoveInterval = setInterval(() => {
       if (!canRunHostSimulation()) return;
       catBehavior().catch(err => console.warn("Cat simulation tick failed", err));
@@ -6298,7 +6349,8 @@
     if (isHost && typeof nextRatWaveAt === "number" && now >= nextRatWaveAt){
       ratWave = Math.max(startingWave, ratWave + 1);
       ratPower = Math.max(ratPower, 1 + Math.floor((ratWave - 1) / 4));
-      nextRatWaveAt = now + RAT_WAVE_INTERVAL;
+      const wavesPlayed = ratWave - startingWave + 1;
+      nextRatWaveAt = now + (wavesPlayed < 3 ? OPENING_RAT_WAVE_INTERVAL : RAT_WAVE_INTERVAL);
       await runtimeUpdateDoc(ccRef(ID.STATE), { ratWave, ratPower, nextRatWave:nextRatWaveAt, updatedAt:now });
       await spawnRatWave();
     }
@@ -6594,6 +6646,12 @@
       setMobileBuildMode("closed");
     });
 
+    setupBoardPicking();
+  }
+
+  function setupBoardPicking(){
+    if (boardPickingReady) return;
+    boardPickingReady = true;
     gridElement.addEventListener("click", (e) => {
       const cell = e.target.closest?.(".cell");
       if (!cell || !cell.id?.startsWith("cell-")) return;
@@ -6608,6 +6666,12 @@
       }
       if (isClassicTouchMatch() && mobileBuildMode === "tray") {
         setMobileBuildMode("closed");
+        return;
+      }
+      if (!isClassicTouchMatch() && desktopBuildArmed && gameStarted && isAlive){
+        const dir = buildDirectionForTile(x,y);
+        if (dir) place(dir);
+        else showToast?.("Choose a tile beside your mouse.", "warn");
         return;
       }
       openStructurePopup(x, y);
@@ -7061,7 +7125,7 @@
           cat: { x: gridSize-1, y: gridSize-1, health: startingCatHealth("medium", 1), maxHealth:startingCatHealth("medium", 1), nextHealAt:0 },
           catPower: 0,
           ratPower: 1,
-          nextRatWave: Date.now() + 22000,
+          nextRatWave: Date.now() + OPENING_RAT_WAVE_INTERVAL,
           catWeakenedUntil: 0,
           objectives: {
             supplyDrop: { active:false },
@@ -7339,7 +7403,7 @@
           phase:"playing",
           matchId:nextMatchId,
           runtimeMode:participantIds.length === 1 ? "solo" : "multiplayer",
-          nextRatWave:now + 22000,
+          nextRatWave:now + OPENING_RAT_WAVE_INTERVAL,
           nextCatGrowthAt:now + CAT_GROWTH_INTERVAL
         };
       });
@@ -7350,6 +7414,17 @@
   // Keyboard input (kept with your behavior)
   // ============================================================
   window.addEventListener("keydown", async (e) => {
+    if (e.target?.closest?.("input, select, textarea, [contenteditable=true]")) return;
+    if (e.key.toLowerCase() === "q" && gameStarted && !isClassicTouchMatch()){
+      e.preventDefault();
+      if (!e.repeat) setDesktopBuildArmed(!desktopBuildArmed);
+      return;
+    }
+    if (e.key === "Escape" && desktopBuildArmed){
+      e.preventDefault();
+      setDesktopBuildArmed(false);
+      return;
+    }
     if (e.key.toLowerCase() === "h"){
       focusMode = !focusMode;
       document.getElementById("sidePanelButtons").style.display = focusMode ? "none" : "flex";
@@ -7358,7 +7433,13 @@
     }
     if (!isAlive) return;
 
-    if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) e.preventDefault();
+    if (Object.hasOwn(buildDirectionKeys,e.key)){
+      e.preventDefault();
+      if (desktopBuildArmed && !isClassicTouchMatch()){
+        place(buildDirectionKeys[e.key]);
+        return;
+      }
+    }
 
     if (e.key === " "){
       toggleUpgradeMenu();
@@ -7410,7 +7491,10 @@
     if (!upgradeMenuOpen && ["1","2","3","4","5","6","7","8"].includes(e.key)){
       const idx = Number(e.key) - 1;
       const buildId = getActiveBuildSlots()[idx];
-      if (buildId) selectBuild(String(buildId));
+      if (buildId){
+        selectBuild(String(buildId));
+        if (gameStarted && !isClassicTouchMatch()) setDesktopBuildArmed(true);
+      }
     }
 
     if (["w","a","s","d"].includes(e.key)){
@@ -7429,7 +7513,7 @@
       document.getElementById("fullscreenBtn").style.display = "inline-block";
       renderMobileUpgradeButtons();
       setupMobileControls();
-    }
+    } else setupBoardPicking();
 
     document.querySelectorAll('.difficulty-vote').forEach(btn => {
       const meta = DIFFICULTY_UI_META[btn.dataset.diff] || { icon:"🎚️", label:btn.dataset.diff, subtitle:"Vote" };
@@ -7963,8 +8047,8 @@
 
         const map = {
           stats: `<b>Stats</b><br>Wins: ${playerWins}<br>Cheese: ${cheeseCount}<br>Status: ${isAlive ? "Alive" : "Dead"}`,
-          buildings: `<b>Buildings</b><br>Use bottom dock for quick build.<br>Press 1-8 or click dock.`,
-          settings: `<b>Settings</b><br>H: Focus mode<br>Space: Upgrades<br>Arrows: Move`,
+          buildings: `<b>Buildings</b><br>Pick a slot with 1–8 or the dock, then click a nearby tile or press an arrow.<br>WASD also places directly.`,
+          settings: `<b>Settings</b><br>H: Focus mode<br>Space: Upgrades<br>Q: Toggle build mode<br>Esc: Return to movement`,
           help: `<b>Help</b><br>Collect cheese, build defenses, survive waves.`
         };
 

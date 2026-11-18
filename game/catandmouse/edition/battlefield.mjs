@@ -62,10 +62,10 @@ export const MAPS = Object.freeze({ [flourMill.id]: flourMill });
 export const STARTING_WAVES = Object.freeze([1, 5, 10]);
 
 export const DIFFICULTIES = Object.freeze({
-  easy: Object.freeze({ name: 'Easy', health: 0.82, damage: 0.72, waveBonus: 0, openingCheese: 30 }),
-  normal: Object.freeze({ name: 'Normal', health: 1, damage: 1, waveBonus: 0, openingCheese: 26 }),
-  hard: Object.freeze({ name: 'Hard', health: 1.18, damage: 1.16, waveBonus: 3, openingCheese: 25, catSweep: true }),
-  nightmare: Object.freeze({ name: 'Nightmare', health: 1.36, damage: 1.30, waveBonus: 5, openingCheese: 24, catSweep: true, catCharge: true }),
+  easy: Object.freeze({ name: 'Easy', health: 0.82, damage: 0.72, waveBonus: 0, rankedOpeningCheese: 30, catHpMultiplier: 10 }),
+  normal: Object.freeze({ name: 'Normal', health: 1, damage: 1, waveBonus: 0, rankedOpeningCheese: 26, catHpMultiplier: 15 }),
+  hard: Object.freeze({ name: 'Hard', health: 1.18, damage: 1.16, waveBonus: 3, rankedOpeningCheese: 25, catHpMultiplier: 22, catSweep: true }),
+  nightmare: Object.freeze({ name: 'Nightmare', health: 1.36, damage: 1.30, waveBonus: 5, rankedOpeningCheese: 24, catHpMultiplier: 30, catSweep: true, catCharge: true }),
 });
 
 const towerDefinitions = {

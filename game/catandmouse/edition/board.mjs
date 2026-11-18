@@ -9,6 +9,7 @@ const sources = {
 };
 const art = {};
 const groundCache = new Map();
+let barricadeArt;
 const tilePixels = 24;
 const waterSwatch = 260;
 const towers = {
@@ -33,6 +34,81 @@ function sprite(ctx, sheet, index, x, y, width, height = width, anchor = .91) {
   const size = sources[sheet];
   ctx.drawImage(art[sheet], index % 4 * size, Math.floor(index / 4) * size, size, size,
     x - width / 2, y - height * anchor, width, height);
+}
+
+function paintBarricades() {
+  const size = art.walls.height;
+  const armor = document.createElement('canvas');
+  armor.width = size * 2;
+  armor.height = size;
+  const ctx = armor.getContext('2d');
+  ctx.filter = 'grayscale(.88) brightness(.88) contrast(1.12)';
+  ctx.drawImage(art.walls, size * 2, 0, size, size, 0, 0, size, size);
+  ctx.drawImage(art.walls, size, 0, size, size, size, 0, size, size);
+  ctx.filter = 'none';
+  ctx.globalCompositeOperation = 'source-atop';
+  ctx.fillStyle = '#45678266';
+  ctx.fillRect(0, 0, armor.width, armor.height);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.scale(size / 128, size / 128);
+
+  // Cast iron surrounds the atlas' painted timbers. Brass reveals its seams at play scale.
+  const straps = new Path2D('M 6 28 H 122 M 6 101 H 122 M 26 39 L 103 92 M 102 39 L 25 92');
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#161e25';
+  ctx.lineWidth = 10;
+  ctx.stroke(straps);
+  ctx.strokeStyle = '#9f7440';
+  ctx.lineWidth = 5;
+  ctx.stroke(straps);
+  ctx.strokeStyle = '#f5ce8a';
+  ctx.lineWidth = 1.75;
+  ctx.stroke(straps);
+  ctx.fillStyle = '#ffe0a3';
+  for (const x of [12, 37, 64, 91, 116]) {
+    ctx.fillRect(x - 2, 25, 4, 5);
+    ctx.fillRect(x - 2, 99, 4, 5);
+  }
+
+  ctx.save();
+  ctx.translate(128, 0);
+  const crown = new Path2D('M 14 16 L 76 0 L 117 10 L 119 26 L 57 44 L 13 33 Z');
+  const metal = ctx.createLinearGradient(35, 3, 65, 44);
+  metal.addColorStop(0, '#9bb8c5');
+  metal.addColorStop(.48, '#526f82');
+  metal.addColorStop(.52, '#243a4d');
+  metal.addColorStop(1, '#111f2c');
+  ctx.fillStyle = metal;
+  ctx.fill(crown);
+  ctx.strokeStyle = '#bc8b4b';
+  ctx.lineWidth = 2.5;
+  ctx.stroke(crown);
+  const crest = new Path2D('M 78 48 L 96 55 L 94 72 L 74 86 L 61 77 L 62 60 Z');
+  ctx.fillStyle = '#152733';
+  ctx.fill(crest);
+  ctx.strokeStyle = '#e3b872';
+  ctx.stroke(crest);
+  ctx.fillStyle = '#f5cf88';
+  ctx.fill(new Path2D('M 79 56 L 87 62 L 76 77 L 74 68 L 68 66 Z'));
+  ctx.restore();
+
+  const worn = document.createElement('canvas');
+  worn.width = armor.width;
+  worn.height = size;
+  const damaged = worn.getContext('2d');
+  damaged.filter = 'saturate(.66) brightness(.72)';
+  damaged.drawImage(armor, 0, 0);
+  damaged.filter = 'none';
+  damaged.scale(size / 128, size / 128);
+  damaged.globalCompositeOperation = 'source-atop';
+  const cracks = new Path2D('M 70 19 L 57 45 L 71 64 L 49 91 L 53 119 M 70 64 L 94 73 L 116 62 M 218 31 L 205 51 L 222 68 L 205 87 L 208 105 M 222 68 L 242 59');
+  damaged.strokeStyle = '#ba8050';
+  damaged.lineWidth = 6;
+  damaged.stroke(cracks);
+  damaged.strokeStyle = '#121b22';
+  damaged.lineWidth = 3;
+  damaged.stroke(cracks);
+  return { armor, worn };
 }
 
 function pattern(ctx, column, row, pixelSpan) {
@@ -417,15 +493,17 @@ export class Battlefield {
   wall(entity, point, walls, ghost = false, plannedWalls) {
     const ctx = this.ctx;
     const [x, y] = this.project(point.x, point.y);
-    const thick = entity.type === 'barricade';
-    const height = (thick ? 39 : 29) * this.camera.zoom;
-    const size = art.walls.height;
-    const cell = thick ? 2 : 0;
+    const reinforced = entity.type === 'barricade';
+    const damaged = entity.hp < entity.maxHp * .38;
+    if (reinforced) barricadeArt ??= paintBarricades();
+    const texture = reinforced ? (damaged ? barricadeArt.worn : barricadeArt.armor) : art.walls;
+    const height = (reinforced ? 45 : 29) * this.camera.zoom;
+    const size = texture.height;
     const arms = wallConnections(entity, walls);
     const previewArms = plannedWalls ? wallConnections(entity, plannedWalls).filter(direction => !arms.includes(direction)) : [];
     ctx.save();
     if (ghost || entity.readyAt > this.state.time) ctx.globalAlpha = .57;
-    if (entity.hp < entity.maxHp * .38) ctx.filter = 'saturate(.68) brightness(.75)';
+    if (!reinforced && damaged) ctx.filter = 'saturate(.68) brightness(.75)';
     const arm = direction => {
       const [toX, toY] = this.project(point.x + direction.x * .51, point.y + direction.y * .51);
       const left = toX < x;
@@ -434,7 +512,7 @@ export class Battlefield {
       const endY = left ? y : toY;
       ctx.save();
       ctx.transform(Math.abs(toX - x) + .5, endY - startY, 0, 1, startX, startY);
-      ctx.drawImage(art.walls, cell * size, 0, size, size, 0, -height, 1, height);
+      ctx.drawImage(texture, 0, 0, size, size, 0, -height, 1, height);
       ctx.restore();
     };
     if (previewArms.length) {
@@ -445,9 +523,9 @@ export class Battlefield {
     }
     arms.forEach(arm);
     const postWidth = height * (arms.length ? .66 : .84);
-    ctx.drawImage(art.walls, size, 0, size, size, x - postWidth / 2, y - height * 1.12, postWidth, height * 1.19);
+    ctx.drawImage(texture, size, 0, size, size, x - postWidth / 2, y - height * 1.12, postWidth, height * 1.19);
     ctx.restore();
-    if (!ghost) this.health(x, y - height * 1.18, entity.hp, entity.maxHp, '#e5b161');
+    if (!ghost) this.health(x, y - height * 1.18, entity.hp, entity.maxHp, reinforced && damaged ? '#e08354' : '#e5b161');
   }
 
   structure(entity, point, settings, elapsed) {

@@ -5,16 +5,22 @@ export { DIFFICULTIES, ENEMIES, MAPS, SHOTS, STARTER_LOADOUT, STARTING_WAVES, ST
 
 const STEP_SECONDS = STEP_MS / 1000;
 const WAVE_SIZES = Object.freeze([2, 5, 8, 12, 17, 24, 26]);
-const STARTING_TIERS = Object.freeze({
-  1: { catHealth: 1, cheese: 0 },
-  5: { catHealth: 1.65, cheese: 8 },
-  10: { catHealth: 2.45, cheese: 18 },
-});
+const STARTING_CAT_HEALTH = Object.freeze({ 1: 1, 5: 1.65, 10: 2.45 });
+const OPENING_CHEESE = 10;
+const PREPARATION_TIME = 30_000;
+const EARLY_WAVE_INTERVALS = Object.freeze([45_000, 40_000, 35_000]);
 const CAT_GROWTH_INTERVAL = 60_000;
 const CAT_GROWTH_FACTOR = 1.05;
 const CAT_MAX_HEALTH = Number.MAX_SAFE_INTEGER;
 const CAT_RECOVERY_DELAY = 14_000;
 const CAT_HEAL_INTERVAL = 10_000;
+const CAT_OPENING_SPEED = 1.15;
+const CAT_SPEED_RAMP_TIME = 180_000;
+const CAT_SKILL_UNLOCKS = Object.freeze({
+  pounce: { wave: 6, time: 180_000 },
+  'tail-sweep': { wave: 8, time: 240_000 },
+  'cat-charge': { wave: 10, time: 300_000 },
+});
 const RANKED_CAT_HP = 288;
 const CAT_TEAM_HP = 110;
 const MAX_STRUCTURES = 420;
@@ -147,7 +153,6 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
 
   const map = MAPS[mapId];
   const rules = DIFFICULTIES[difficulty];
-  const tier = STARTING_TIERS[startingWave];
   if (players.some(({ id }) => /^(?:structure|enemy|ally|shot|cheese)-\d+$/.test(id))) {
     throw new TypeError('A player ID conflicts with a battlefield entity.');
   }
@@ -158,7 +163,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     const actor = {
       id, name: String(name || `Mouse ${index + 1}`), color: index,
       ...spawn, spawn, facing: -Math.PI / 2, vx: 0, vy: 0, inputX: 0, inputY: 0,
-      maxHp: 62, hp: 62, cheese: rules.openingCheese + tier.cheese, loadout: normalizeLoadout(loadout),
+      maxHp: 62, hp: 62, cheese: ranked ? rules.rankedOpeningCheese : OPENING_CHEESE, loadout: normalizeLoadout(loadout),
       reviveAt: 0, lastHitAt: -1000000, path: [], destination: null,
     };
     return [id, actor];
@@ -177,7 +182,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
   let status = 'active';
   let resultAt = null;
   let wave = startingWave - 1;
-  let nextWaveAt = 12500;
+  let nextWaveAt = ranked ? 12_500 : PREPARATION_TIME;
   let field = null;
   let mouseCells = '';
 
@@ -346,7 +351,8 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     const finalRankedWave = ranked && wave === WAVE_SIZES.length;
     if (finalRankedWave) schedule('cat', 3400, firstLane);
     pendingSpawns.sort((a, b) => a.time - b.time);
-    nextWaveAt = finalRankedWave ? null : time + (wave < 3 ? 27000 : 30000);
+    const interval = ranked ? (wave < 3 ? 27_000 : 30_000) : EARLY_WAVE_INTERVALS[wave - 1] ?? 30_000;
+    nextWaveAt = finalRankedWave ? null : time + interval;
     for (const mouse of team.values()) mouse.cheese += Math.min(14, 2 + Math.floor(wave / 2));
     const countByEntrance = Object.fromEntries(map.spawns.map((spawn, lane) =>
       [spawn.id, pendingSpawns.filter(entry => entry.lane === lane).length],
@@ -360,7 +366,9 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     const def = ENEMIES[type];
     const boss = type === 'cat';
     const teamBonus = CAT_TEAM_HP * (team.size - 1);
-    const normalHp = boss ? (def.hp + teamBonus) * tier.catHealth : def.hp * (1 + (spawnWave - 1) * 0.08);
+    const normalHp = boss
+      ? (def.hp + teamBonus) * STARTING_CAT_HEALTH[startingWave] * rules.catHpMultiplier
+      : def.hp * (1 + (spawnWave - 1) * 0.08);
     const rankedHp = boss ? RANKED_CAT_HP + teamBonus : def.hp;
     const hp = Math.round(rules.health * (ranked ? rankedHp : normalHp));
     const laneOffsetX = (random() - 0.5) * 0.72;
@@ -495,17 +503,23 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     return bestWithin(enemy, team.values(), range, null, target => isAlive(target) && clearPath(enemy, target));
   }
 
+  function catSkillUnlocked(kind) {
+    const unlock = CAT_SKILL_UNLOCKS[kind];
+    return ranked || (wave >= unlock.wave && time >= unlock.time);
+  }
+
   function chooseSpecial(enemy) {
     if (time < enemy.nextAttackAt) return false;
     if (enemy.type === 'cat') {
       const charge = SPECIAL_MOVES['cat-charge'];
       const sweep = SPECIAL_MOVES['tail-sweep'];
-      if (rules.catCharge) {
+      if (rules.catCharge && catSkillUnlocked('cat-charge')) {
         const target = visibleMouse(enemy, charge.range);
         if (target && distanceSquared(enemy, target) >= 2.45 ** 2 && startSpecial(enemy, 'cat-charge', target)) return true;
       }
-      if (rules.catSweep && visibleMouse(enemy, sweep.range) && startSpecial(enemy, 'tail-sweep', position(enemy))) return true;
-      return startSpecial(enemy, 'pounce', visibleMouse(enemy, SPECIAL_MOVES.pounce.range));
+      if (rules.catSweep && catSkillUnlocked('tail-sweep')
+        && visibleMouse(enemy, sweep.range) && startSpecial(enemy, 'tail-sweep', position(enemy))) return true;
+      return catSkillUnlocked('pounce') && startSpecial(enemy, 'pounce', visibleMouse(enemy, SPECIAL_MOVES.pounce.range));
     }
     if (enemy.type === 'sapper') {
       const def = SPECIAL_MOVES['powder-blast'];
@@ -626,6 +640,12 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     if (time >= enemy.nextAttackAt) armAttack(enemy, MELEE_MOVES[enemy.type], target, ENEMIES[enemy.type].windup);
   }
 
+  function catSpeed() {
+    if (ranked) return 2.05;
+    const progress = Math.min(1, time / CAT_SPEED_RAMP_TIME);
+    return CAT_OPENING_SPEED + (ENEMIES.cat.speed - CAT_OPENING_SPEED) * progress;
+  }
+
   function stepEnemies() {
     const targets = [...team.values()].filter(isAlive).map(mouse => ({
       x: Math.round(mouse.x), y: Math.round(mouse.y),
@@ -663,7 +683,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       const nearbyMouse = visibleMouse(enemy, mouseRange);
       const nearbyAlly = bestWithin(enemy, allies.values(), 1.2);
       const localTarget = nearbyMouse ?? nearbyAlly;
-      const speed = (ranked && enemy.type === 'cat' ? 2.05 : def.speed) * (enemy.slowUntil > time ? 0.52 : 1);
+      const speed = (enemy.type === 'cat' ? catSpeed() : def.speed) * (enemy.slowUntil > time ? 0.52 : 1);
       if (localTarget && distanceSquared(enemy, localTarget) <= (def.reach + 0.19) ** 2) {
         windup(enemy, localTarget);
         continue;
