@@ -40,7 +40,7 @@ const flourMill = Object.freeze({
   id: 'flour-mill',
   name: 'The Flour Mill',
   size: millSize,
-  description: 'Defend the millstone, flour sacks and hoist at the crossroads of four rat approaches.',
+  description: 'Outrun the Cat and survive the rat waves in a mill with four entrances.',
   tiles: Object.freeze(millTiles.map(row => row.join(''))),
   spawns: Object.freeze([
     { id: 'west', name: 'Mill Race', x: 1, y: 23 },
@@ -50,11 +50,6 @@ const flourMill = Object.freeze({
   ].map(Object.freeze)),
   playerSpawns: Object.freeze([
     { x: 23, y: 26 }, { x: 25, y: 25 }, { x: 22, y: 24 }, { x: 25, y: 22 },
-  ].map(Object.freeze)),
-  objectives: Object.freeze([
-    { id: 'millstone', name: 'Millstone', x: 23, y: 23, maxHp: 105 },
-    { id: 'sacks', name: 'Flour Sacks', x: 20, y: 27, maxHp: 85 },
-    { id: 'hoist', name: 'Sack Hoist', x: 27, y: 26, maxHp: 85 },
   ].map(Object.freeze)),
   cheese: Object.freeze([
     { x: 21, y: 25 }, { x: 24, y: 21 }, { x: 25, y: 28 }, { x: 28, y: 24 },
@@ -91,7 +86,7 @@ const towerDefinitions = {
       cluster: { name: 'Cluster Warhead', cost: 12, cooldown: 1800, damage: 23, splash: 2.7, description: 'Wider blast radius against packed waves.' },
     },
   },
-  repair: { name: 'Repair Station', role: 'Support', cost: 7, hp: 24, range: 4, cooldown: 1200, description: 'Repairs nearby structures and shared objectives.' },
+  repair: { name: 'Repair Station', role: 'Support', cost: 7, hp: 24, range: 4, cooldown: 1200, description: 'Repairs nearby structures.' },
   acorn: { name: 'Acorn Tower', role: 'Attack', cost: 8, hp: 21, range: 7.6, cooldown: 1350, windup: 280, kind: 'acorn', damage: 19, description: 'Lobs heavy acorns over terrain and defensive walls.' },
   web: { name: 'Web Launcher', role: 'Control', cost: 6, hp: 19, range: 6.8, cooldown: 2050, windup: 245, kind: 'web', damage: 1, description: 'Traps a target before briefly slowing it.' },
   rabbit: { name: 'Rabbit Den', role: 'Producer', cost: 8, hp: 27, cooldown: 7500, description: 'Produces one rabbit that helps defend the mill.' },
@@ -144,7 +139,7 @@ export const ENEMIES = Object.freeze({
   king: Object.freeze({ hp: 92, speed: 1.57, damage: 10, reach: 1, windup: 430, cooldown: 1250, radius: 0.53, cheese: 6 }),
   sapper: Object.freeze({ hp: 59, speed: 1.77, damage: 5, reach: 0.83, windup: 360, cooldown: 1200, radius: 0.45, cheese: 5 }),
   mender: Object.freeze({ hp: 42, speed: 1.86, damage: 4, reach: 0.83, windup: 330, cooldown: 1225, radius: 0.43, cheese: 4 }),
-  cat: Object.freeze({ hp: 288, speed: 2.05, damage: 15, reach: 1.15, windup: 560, cooldown: 1410, radius: 0.67, cheese: 10 }),
+  cat: Object.freeze({ hp: 128, speed: 2.55, damage: 15, reach: 1.15, windup: 560, cooldown: 1410, radius: 0.67, cheese: 0 }),
 });
 
 export const SHOTS = Object.freeze({
