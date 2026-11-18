@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the signed release after multiplayer acceptance
+        description: Publish tested Windows files to the Catnmice download page
         type: boolean
         default: false
       truth_revision:
@@ -11,7 +11,8 @@ on:
         required: false
   push:
     branches: [main]
-    paths: ['desktop-hub/**','lobby/**','hub/**','game/**','.github/workflows/catnmice-game-hub.yml']
+  schedule:
+    - cron: '17 */6 * * *'
   pull_request:
     paths: ['desktop-hub/**','.github/workflows/catnmice-game-hub.yml']
   repository_dispatch:
@@ -19,29 +20,50 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: catnmice-windows-release
+  group: catnmice-windows-${{ github.event.pull_request.number || 'release' }}
   cancel-in-progress: false
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.revisions.outputs.build }}
+      publish: ${{ steps.revisions.outputs.publish }}
+      truth: ${{ steps.revisions.outputs.truth }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: desktop-hub/build
+      - name: Check Magic and Truth for new revisions
+        id: revisions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MANUAL_PUBLISH: ${{ inputs.publish }}
+          AUTO_PUBLISH: ${{ vars.CATNMICE_AUTO_PUBLISH }}
+          TRUTH_REVISION: ${{ inputs.truth_revision || github.event.client_payload.truth_sha }}
+        run: node desktop-hub/build/plan-release.cjs
   windows:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
     runs-on: windows-2025
     defaults:
       run:
         working-directory: desktop-hub
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: Sean-Pereksta/Truth
-          ref: ${{ inputs.truth_revision || github.event.client_payload.truth_sha || 'main' }}
+          ref: ${{ needs.plan.outputs.truth }}
           path: truth-source
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24.19.0'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
       - name: Build library and games from the release commits
@@ -58,6 +80,8 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm ci --prefix desktop/provenance --omit=dev --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node node_modules/electron/install.js
       - name: Test launcher and services
         run: |
@@ -71,22 +95,25 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $env:HUB_LONG_MATCH='1'
           node --test services/service.test.mjs services/desktop-authorization.test.mjs services/engine.test.mjs services/complete-match.test.mjs
-      - name: Build signed component channel
-        if: (inputs.publish || (github.event_name != 'workflow_dispatch' && vars.CATNMICE_AUTO_PUBLISH == 'true')) && github.ref == 'refs/heads/main'
+      - name: Build the GitHub update manifest
+        if: needs.plan.outputs.publish == 'true'
         env:
+          TRUTH_SHA: ${{ needs.plan.outputs.truth }}
           HUB_UPDATE_PRIVATE_KEY: ${{ secrets.HUB_UPDATE_PRIVATE_KEY }}
         run: |
           python build/component_archives.py channel
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          node build/release.cjs channel signed-config.json
+          node build/release.cjs channel release-config.json
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          "HUB_RELEASE_CONFIG=$pwd/signed-config.json" >> $env:GITHUB_ENV
-      - name: Select Windows code-signing identity
-        if: (inputs.publish || (github.event_name != 'workflow_dispatch' && vars.CATNMICE_AUTO_PUBLISH == 'true')) && github.ref == 'refs/heads/main'
+          "HUB_RELEASE_CONFIG=$pwd/release-config.json" >> $env:GITHUB_ENV
+      - name: Use the optional Windows publisher certificate
+        if: needs.plan.outputs.publish == 'true'
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
+          if (!$env:WINDOWS_CERTIFICATE -and !$env:WINDOWS_CERTIFICATE_PASSWORD) { return }
+          if (!$env:WINDOWS_CERTIFICATE -or !$env:WINDOWS_CERTIFICATE_PASSWORD) { throw 'Complete the optional Windows certificate configuration.' }
           $certFile = Join-Path $env:RUNNER_TEMP 'catnmice-signing.pfx'
           [IO.File]::WriteAllBytes($certFile,[Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
           $pass = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
@@ -107,7 +134,7 @@ jobs:
           node build/check-online.cjs "$install/Catnmice Game Hub.exe" "$env:RUNNER_TEMP/hub-qa-online"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           if ($env:CATNMICE_SIGN_THUMBPRINT -and (Get-AuthenticodeSignature dist/Catnmice-Game-Hub-Setup.exe).Status -ne 'Valid') { throw 'Invalid setup signature.' }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Catnmice-Game-Hub-Windows-x64
           path: |
@@ -116,25 +143,51 @@ jobs:
             desktop-hub/channel/
           if-no-files-found: error
   release:
-    if: (inputs.publish || (github.event_name != 'workflow_dispatch' && vars.CATNMICE_AUTO_PUBLISH == 'true')) && github.ref == 'refs/heads/main'
-    needs: windows
+    needs: [plan, windows]
+    if: needs.plan.outputs.publish == 'true' && github.ref == 'refs/heads/main' && github.repository == 'Sean-Pereksta/Magic'
     environment: catnmice-production
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      attestations: write
+      id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            desktop-hub/build
+            desktop-hub/desktop/provenance
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: Catnmice-Game-Hub-Windows-x64
           path: publish
-      - name: Publish immutable components and refresh the website channel
+      - name: Attest the update manifest with GitHub
+        id: manifest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: publish/channel/github-stable.json
+          create-storage-record: false
+      - name: Attest the Windows installer with GitHub
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: publish/dist/Catnmice-Game-Hub-Setup.exe
+          create-storage-record: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.19.0'
+      - name: Install the launcher's release verifier
+        run: npm ci --prefix desktop-hub/desktop/provenance --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Verify provenance and publish the Windows download
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          TRUTH_SHA: ${{ needs.plan.outputs.truth }}
+          MANIFEST_BUNDLE: ${{ steps.manifest.outputs.bundle-path }}
         run: |
-          tag="catnmice-hub-${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:8}"
-          gh release create "$tag" --target "$GITHUB_SHA" --title "Catnmice Game Hub build $GITHUB_RUN_NUMBER" --notes "Windows x64. Source revision $GITHUB_SHA." --latest=false publish/channel/*.zip publish/dist/Catnmice-Game-Hub-Setup.exe
-          if ! gh release view catnmice-hub-channel >/dev/null 2>&1; then
-            gh release create catnmice-hub-channel --target "$GITHUB_SHA" --title "Catnmice Game Hub for Windows" --notes "Current signed Windows release." --latest=false
-          fi
-          gh release upload catnmice-hub-channel publish/dist/Catnmice-Game-Hub-Setup.exe publish/channel/stable.json --clobber
+          cp "$MANIFEST_BUNDLE" publish/channel/github-stable.sigstore.json
+          node desktop-hub/desktop/provenance/verify.cjs publish/channel/github-stable.json "$MANIFEST_BUNDLE"
+          gh attestation verify publish/channel/github-stable.json --bundle "$MANIFEST_BUNDLE" \
+            --repo "$GH_REPO" --signer-workflow "$GH_REPO/.github/workflows/catnmice-game-hub.yml" \
+            --source-ref refs/heads/main --source-digest "$GITHUB_SHA" --deny-self-hosted-runners
+          bash desktop-hub/build/publish-release.sh

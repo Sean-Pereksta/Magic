@@ -7,7 +7,9 @@ const {promisify}=require('node:util');
 const {pipeline}=require('node:stream/promises');
 const {Transform}=require('node:stream');
 const {writeJson}=require('./storage.cjs');
-const FEED='https://github.com/Sean-Pereksta/Magic/releases/download/catnmice-hub-channel/stable.json';
+const RELEASES='https://github.com/Sean-Pereksta/Magic/releases/download/';
+const CHANNEL=RELEASES+'catnmice-hub-channel/';
+const FEED=CHANNEL+'stable.json';
 const HASH=/^[a-f0-9]{64}$/;
 const COMPONENT=/^[a-z0-9][a-z0-9_-]{0,79}$/;
 const stages=new Map();
@@ -15,12 +17,24 @@ function verifyFeed(envelope,key){
   if(!key)throw Error('Automatic updates are available in publisher-signed builds.');
   const body=Buffer.from(envelope.payload,'base64');
   if(!crypto.verify(null,body,key,Buffer.from(envelope.signature,'base64')))throw Error('Publisher signature could not be verified.');
-  const manifest=JSON.parse(body);
+  return validateManifest(JSON.parse(body));
+}
+function validateManifest(manifest){
   if(manifest.schema!==1 || !Number.isSafeInteger(manifest.sequence) || manifest.sequence<=0 || !Array.isArray(manifest.items))throw Error('Unsupported release manifest.');
   const seen=new Set();
   for(const item of manifest.items){
     if(!COMPONENT.test(item.id)||Object.hasOwn(Object.prototype,item.id)||seen.has(item.id)||!/^[a-z0-9_.-]{1,80}$/i.test(item.version)||item.version==='.'||item.version==='..'||!HASH.test(item.sha256)||!Number.isSafeInteger(item.size)||item.size<=0||new URL(item.url).protocol!=='https:')throw Error('Invalid release component.');
     seen.add(item.id);
+  }
+  return manifest;
+}
+function validateGitHubManifest(manifest){
+  validateManifest(manifest);
+  if(!['magic','truth'].every(name=>/^[a-f0-9]{40}$/.test(manifest.source?.[name]||'')))throw Error('The update is missing its Magic or Truth source revision.');
+  const tag='catnmice-hub-'+manifest.sequence+'-'+manifest.source.magic.slice(0,8);
+  if(!manifest.items.some(item=>item.id==='hub')||!manifest.items.some(item=>item.id==='catalog'))throw Error('The release is missing its launcher or catalog.');
+  for(const item of manifest.items){
+    if(item.version!==tag||item.url!==RELEASES+tag+'/'+item.id+'.zip')throw Error('This package does not belong to the verified Catnmice release.');
   }
   return manifest;
 }
@@ -80,13 +94,33 @@ async function extractItem(item,dir,fetchImpl){
   }
   return dest;
 }
-async function getFeed(key,sequence,fetchImpl=fetch){
-  if(!key)throw Error('This preview has no publisher update key. Use a signed release to receive updates.');
-  const r=await fetchImpl(FEED,{signal:AbortSignal.timeout(12000),cache:'no-store'});
-  if(!r.ok)throw Error('The release channel is unavailable.');
-  const m=verifyFeed(await r.json(),key);
-  if(m.sequence<sequence)throw Error('This release channel is older than the installed channel.');
-  return m;
+async function channelFile(url,fetchImpl){
+  const response=await fetchImpl(url,{signal:AbortSignal.timeout(30000),cache:'no-store'});
+  if(!response.ok)throw Error('Could not reach the Catnmice release on GitHub. Check your connection and try again.');
+  const chunks=[];
+  let size=0;
+  for await(const chunk of response.body){
+    size+=chunk.length;
+    if(size>1024*1024)throw Error('The release information exceeds its size limit.');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+async function getFeed(release,sequence,fetchImpl=fetch){
+  if(typeof release==='string'||release instanceof crypto.KeyObject)release={key:release};
+  release??={};
+  let manifest;
+  if(release.provider==='github'){
+    const [bytes,proof]=await Promise.all(['github-stable.json','github-stable.sigstore.json'].map(name=>channelFile(CHANNEL+name,fetchImpl)));
+    await require('./provenance/verify.cjs').verifyManifestProvenance(bytes,proof);
+    manifest=validateGitHubManifest(JSON.parse(bytes));
+  }else if(release.key){
+    manifest=verifyFeed(JSON.parse(await channelFile(FEED,fetchImpl)),release.key);
+  }else{
+    throw Error('Install the current Catnmice Game Hub from the lobby to enable updates.');
+  }
+  if(manifest.sequence<Math.max(sequence,release.sequence||0))throw Error('This release channel is older than the installed channel.');
+  return manifest;
 }
 function rejectionFile(data,id,hash){
   if(!COMPONENT.test(id)||!HASH.test(hash))throw Error('Invalid update identity.');
@@ -133,4 +167,4 @@ function prepareSaveDirectory(base,version,previous,touched=new Set()){
   touched.add(next);
   return next;
 }
-module.exports={getFeed,verifyFeed,download,stageItem,sha,FEED,markRejectedUpdate,isRejectedUpdate,prepareSaveDirectory};
+module.exports={getFeed,verifyFeed,validateGitHubManifest,download,stageItem,sha,FEED,markRejectedUpdate,isRejectedUpdate,prepareSaveDirectory};

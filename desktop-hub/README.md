@@ -14,6 +14,7 @@ Use 64-bit Node 24, Python 3.12 and full checkouts of Magic and Truth. For the r
 
 ```powershell
 npm ci
+npm ci --prefix desktop/provenance --ignore-scripts
 node node_modules/electron/install.js
 node content/build-catalog.mjs .. C:/src/Truth
 python content/build-packs.py .. C:/src/Truth
@@ -28,9 +29,11 @@ Setup is written to `dist/Catnmice-Game-Hub-Setup.exe`. It includes the Chromium
 
 Magic hosts the Windows download page at `/hub/download.html`, the featured download panel in the lobby, the desktop sources and the official match-service code. The paired Truth changes add browser gameplay reporting and a ranked Bannerlands entry. The download page checks the stable GitHub release for the installer before displaying its download button.
 
-The Windows workflow builds both game source trees, records their revisions, runs the launcher checks, and packages the result. A Truth push can dispatch its SHA to Magic using the scoped repository secret `CATNMICE_MAGIC_DISPATCH_TOKEN`. In its absence, dispatch Magic’s Windows workflow with a Truth revision. Set `CATNMICE_AUTO_PUBLISH` to `true` after configuring production release approval and signing to publish matching builds automatically.
+Publish your game changes to the main branch of Magic or Truth. Changes to the relevant Magic files start the Windows workflow. Every six hours, Magic also checks both repositories for changes since the last published build. An existing Truth dispatch can bring a check forward. The scheduled check works without a cross-repository token. Each build records the exact commit from both repositories so they can be inspected together.
 
-Signed release jobs use `WINDOWS_CERTIFICATE` (base64 PFX), `WINDOWS_CERTIFICATE_PASSWORD` and `HUB_UPDATE_PRIVATE_KEY` (Ed25519 PEM). These are inputs to the proposed workflow. A certificate or signing service already held by the operator can be wired into the Windows signing step. Publisher keys belong in the release environment. Component updates use immutable HTTPS archives, a signed manifest and per-file SHA-256. Pending updates wait for active games. Versioned game files and save generations allow restoration after a failed update. A change to the bundled Chromium runtime uses full Setup.
+After the Windows tests pass, GitHub publishes the full installer and the component packages. GitHub signs the release manifest using the identity of Magic's release workflow. This works on the public repository without a paid certificate, a personal signing key, or an account for each player. Windows may show **Unknown publisher** when a player opens Setup. A maintainer can set `CATNMICE_AUTO_PUBLISH` to `false` to pause automatic publication.
+
+Players who installed the early preview must run the new Setup once. With **Automatic updates** enabled, the hub then checks GitHub at startup and every four hours. **Check for updates** runs the same check immediately. The hub verifies the workflow signature and each downloaded package, updates changed installed games, and waits for an active game to close before switching files. Versioned game files and saves support recovery after a failed update. An update to the bundled Chromium runtime requires the latest full Setup.
 
 ## Verification
 
