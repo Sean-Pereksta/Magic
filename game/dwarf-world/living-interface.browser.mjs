@@ -14,7 +14,9 @@ const checks=[];
 try {
   for(const mobile of [false,true]) {
     const context=await browser.newContext(mobile?{viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1}:{viewport:{width:1440,height:900}});
-    if(process.env.DWARFWORLD_OFFLINE==='1')await context.route(new URL(target).origin+'/**',route=>{
+    const origin=new URL(target).origin;
+    await context.route(url=>url.origin!==origin,route=>route.abort());
+    if(process.env.DWARFWORLD_OFFLINE==='1')await context.route(origin+'/**',route=>{
       const local=path.resolve(new URL('../..',import.meta.url).pathname.replace(/^\/(\w:)/,'$1'),'.'+new URL(route.request().url()).pathname);
       try{return route.fulfill({status:200,contentType:local.endsWith('.html')?'text/html':local.endsWith('.js')?'text/javascript':local.endsWith('.png')?'image/png':local.endsWith('.webp')?'image/webp':'text/plain',body:readFileSync(local)});}catch{return route.fulfill({status:404,body:'Not found'});}
     });
@@ -30,7 +32,7 @@ try {
     assert.equal(await frame.locator('#lmPanel').isVisible(),false,'No permanent panel on initial map');
     assert.equal(await frame.locator('#panelLeft').isVisible(),false);
     assert.equal(await frame.locator('#panelInv').isVisible(),false);
-    assert.equal(await frame.locator('#lmDock button:visible').count(),mobile?5:7);
+    assert.equal(await frame.locator('#lmDock button:visible').count(),5);
     assert.equal(await page.locator('body').evaluate(el=>el.scrollWidth>innerWidth),false,'Shell fits viewport');
     assert.equal(await game.evaluate(()=>document.body.scrollWidth>innerWidth),false,'Game fits viewport');
     const before=await game.evaluate(()=>DwarfWorldLiving.dwarves.map(d=>[d.x,d.y]));
@@ -38,6 +40,9 @@ try {
     const after=await game.evaluate(()=>DwarfWorldLiving.dwarves.map(d=>[d.x,d.y]));
     assert.notDeepEqual(before,after,'Dwarves continue moving after boot');
     await page.screenshot({path:path.join(output,mobile?'mobile-map.png':'desktop-map.png')});
+    await frame.locator('#lmQuickDig').click();
+    assert.equal(await game.evaluate(()=>DwarfWorldInterface.placement.kind),'dig');
+    await frame.locator('#lmCancelPlace').click();
     await frame.locator('#lmDock [data-lm-open="build"]').click();
     assert.equal(await frame.locator('#lmPanel').isVisible(),true);
     assert.equal(await page.locator('#cloudDock').isVisible(),false,'Cloud dock yields to contextual panel');
@@ -46,22 +51,48 @@ try {
     assert.ok(bounds.width<=(mobile?390:365),'One narrow panel');
     if(mobile)assert.ok(bounds.height<=844*.55,'Ordinary mobile sheet leaves the world visible');
     await page.screenshot({path:path.join(output,mobile?'mobile-build.png':'desktop-build.png')});
-    await frame.locator('#lmRoomType').selectOption('garden');
-    await frame.locator('#lmRoomDesignate').click();
+    assert.equal(await frame.locator('#lmRoomType').isVisible(),false,'Advanced room options start collapsed');
+    await frame.locator('[data-lm-build="smelter"]').click();
     assert.equal(await frame.locator('#lmPanel').isVisible(),false);
     assert.equal(await frame.locator('#lmPlacement').isVisible(),true);
-    const spot=await game.evaluate(()=>{const api=DwarfWorldLiving,f=api.fortress;for(let y=f.y-10;y<=f.y+10;y++)for(let x=f.x-10;x<=f.x+10;x++)if(api.preview('garden',x,y,3,3).ok)return{x,y};return null;});
+    const spot=await game.evaluate(()=>{const api=DwarfWorldLiving,f=api.fortress;for(let y=f.y-10;y<=f.y+10;y++)for(let x=f.x-10;x<=f.x+10;x++)if(api.preview('smelter',x,y,3,3).ok)return{x,y};return null;});
     assert.ok(spot,'Starting fortress contains connected room space');
     const screen=await game.evaluate(({x,y})=>{const c=DwarfWorldInterface.camera;return{x:innerWidth/2+(x+1-c.x)*c.tileSize,y:innerHeight/2+(y+1-c.y)*c.tileSize};},spot);
     if(mobile)await page.touchscreen.tap(screen.x,screen.y);else await page.mouse.click(screen.x,screen.y);
     assert.equal(await game.evaluate(()=>DwarfWorldLiving.state.rooms.length),1,'Pointer/touch room designation reaches real simulation');
     assert.equal(await frame.locator('#lmPlacement').isVisible(),false,'Successful room placement exits tool mode');
+    const roomId=await game.evaluate(()=>{
+      const state=DwarfWorldLiving.state,room=state.rooms[0];
+      document.querySelector('#btnPause').click();
+      // Keep one completed, ore-starved Smelter on screen during the status checks.
+      room.active=true;room.progress=1;
+      for(const location of [...state.rooms,...state.stores,...state.infrastructure,...state.deposits]){
+        if(location.inventory)location.inventory.ore=0;
+      }
+      DwarfWorldInterface.refresh();
+      return room.id;
+    });
+    const badge=frame.locator(`#lmMapBadges [data-lm-room="${roomId}"]`);
+    await badge.waitFor({state:'visible'});
+    assert.match(await badge.getAttribute('aria-label'),/Smelter.*Missing 3 ore/i);
+    await badge.click();
+    assert.equal(await frame.locator('#lmPanelTitle').innerText(),'Smelter');
+    assert.match(await frame.locator('.lm-building-status:visible').innerText(),/Missing 3 ore/i);
+    await frame.getByRole('button',{name:'Dig for supplies'}).click();
+    assert.equal(await game.evaluate(()=>DwarfWorldInterface.placement.kind),'dig');
+    await frame.locator('#lmCancelPlace').click();
+    await frame.locator('#lmHudProblems').click();
+    assert.match(await frame.locator('#lmProblemList').innerText(),/Smelter.*Missing 3 ore/is);
+    await frame.locator(`#lmProblemList [data-lm-room="${roomId}"]`).click();
+    assert.equal(await frame.locator('#lmPanelTitle').innerText(),'Smelter');
+    await game.evaluate(()=>document.querySelector('#btnPause').click());
     await frame.locator('#lmDock [data-lm-open="dwarves"]').click();
     await frame.locator('[data-dwarf-id]').first().click();
     await frame.locator('#lmProfession').selectOption('farmer');
     assert.equal(await game.evaluate(()=>DwarfWorldLiving.dwarves[0].living.profession),'farmer');
     assert.equal(await frame.locator('#slotWeapon').isVisible(),true,'Existing equipment controls remain accessible');
-    await frame.locator('#lmDock [data-lm-open="inventory"]').click();
+    await frame.locator('#lmDock [data-lm-open="more"]').click();
+    await frame.locator('[data-lm-view="more"] [data-lm-open="inventory"]').click();
     assert.equal(await frame.locator('#invSearch').isVisible(),true);
     await frame.locator('#lmDock [data-lm-open="more"]').click();
     await frame.locator('[data-lm-view="more"] [data-lm-open="forge"]').click();

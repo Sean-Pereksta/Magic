@@ -10,6 +10,8 @@
   const VERSION = 1;
   const ROLES = ['miner','hauler','mason','smith','farmer','cook','healer','soldier','engineer','explorer'];
   const MATERIALS = ['stone','ore','ingot','equipment','mushroom','meal','block','medicine','knowledge'];
+  const OUTPUT_CAPACITY = 64, STORAGE_CAPACITY = 256;
+  const STORAGE_TYPES = new Set(['vault','depot','hauling','market','granary']);
   const ROOMS = {
     quarters: {name:'Residential Quarters',profession:null,cost:12,color:'#bfa273'},
     dining: {name:'Dining Hall',profession:null,cost:14,color:'#d9b46f'},
@@ -77,7 +79,8 @@
   function create(host, raw) {
     let state=migrate(raw,host.base(),host.width,host.height);
     const reservations=new Map(), tileClaims=new Map(), infraMap=new Map(), roomMap=new Map(), blocked=new Map();
-    const reservedAmounts=new Map(),reservedByDwarf=new Map(),locationIndex=new Map(),depositTiles=new Map(),sourceBuckets=new Map(),bucketOffsets=new Map();
+    const reservedAmounts=new Map(),incomingAmounts=new Map(),reservedByDwarf=new Map();
+    const locationIndex=new Map(),depositTiles=new Map(),sourceBuckets=new Map(),bucketOffsets=new Map();
     const SUPPLY_CELL=16,LOCAL_SOURCES=96,REMOTE_SOURCES=32;
     let stockpiles=[],supplySources=[],supplyDirty=true,sourceCursor=0;
     const diagnostics={haulQueries:0,sourceChecks:0,maxSourceCandidates:0,supplyRebuilds:0};
@@ -114,8 +117,25 @@
       diagnostics.haulQueries++;diagnostics.sourceChecks+=result.length;diagnostics.maxSourceCandidates=Math.max(diagnostics.maxSourceCandidates,result.length);return result;
     }
     const reserveKey=(source,resource)=>source+'\u0000'+resource;
-    function releaseHaul(d){const held=reservedByDwarf.get(d.id);if(!held)return;const remaining=(reservedAmounts.get(held.key)||0)-held.amount;if(remaining>0)reservedAmounts.set(held.key,remaining);else reservedAmounts.delete(held.key);reservedByDwarf.delete(d.id)}
-    function reserveHaul(d,j){if(j.kind!=='haul'||d.living?.cargo)return;const k=reserveKey(j.source,j.resource),amount=Math.max(0,finite(j.amount));if(!amount)return;reservedAmounts.set(k,(reservedAmounts.get(k)||0)+amount);reservedByDwarf.set(d.id,{key:k,amount})}
+    function adjustReservation(map,k,delta){const amount=(map.get(k)||0)+delta;if(amount>0)map.set(k,amount);else map.delete(k)}
+    function releaseHaul(d){
+      const held=reservedByDwarf.get(d.id);if(!held)return;
+      if(held.source)adjustReservation(reservedAmounts,held.source,-held.amount);
+      adjustReservation(incomingAmounts,held.destination,-held.amount);
+      reservedByDwarf.delete(d.id);
+    }
+    function reserveHaul(d,j){
+      if(j.kind!=='haul'&&j.kind!=='deliver')return;
+      const cargo=d.living?.cargo;
+      const amount=Math.max(0,finite(j.kind==='deliver'?j.amount??cargo?.amount:cargo?.amount??j.amount));
+      if(!amount)return;
+      const resource=cargo?.resource??j.resource,destination=reserveKey(j.dest,resource);
+      const source=cargo?null:reserveKey(j.source,resource);
+      if(source)adjustReservation(reservedAmounts,source,amount);
+      adjustReservation(incomingAmounts,destination,amount);
+      reservedByDwarf.set(d.id,{source,destination,amount});
+    }
+    const incoming=(destination,resource)=>incomingAmounts.get(reserveKey(destination,resource))||0;
     function person(d){
       if(!d.living) d.living={profession:d.guardPostId?'soldier':'miner',hunger:15,fatigue:10,morale:75,skill:0,history:['Arrived at the mountain.'],relationships:{},activity:'Exploring',shift:hash(d.id)%3};
       const p=d.living;
@@ -187,7 +207,13 @@
       return Math.max(0,(source.inventory?.[res]||0)-keep-(reservedAmounts.get(reserveKey(source.id,res))||0));
     }
     function bestStore(d,predicate){let best=null,score=Infinity;for(const s of stores()){if(!predicate(s)||(blocked.get(d.id+':'+s.id)||0)>=state.time)continue;const cost=distance(d,center(s));if(cost<score){best=s;score=cost}}return best}
-    function needJobs(d){const p=person(d);if(p.cargo){const dst=bestStore(d,s=>['vault','granary','depot','hauling','market'].includes(s.type));if(dst)return claim(d,{kind:'deliver',dest:dst.id,goal:center(dst)});return false}
+    function acceptsStorage(s,resource){return STORAGE_TYPES.has(s.type)&&(s.type!=='granary'||resource==='mushroom'||resource==='meal')}
+    function storageSpace(s,resource){return Math.max(0,STORAGE_CAPACITY-s.inventory[resource]-incoming(s.id,resource))}
+    function needJobs(d){const p=person(d);if(p.cargo){
+        const {resource,amount}=p.cargo;
+        const dst=bestStore(d,s=>acceptsStorage(s,resource)&&storageSpace(s,resource)>0);
+        return dst?claim(d,{kind:'deliver',dest:dst.id,goal:center(dst),amount:Math.min(amount,storageSpace(dst,resource))}):false;
+      }
       if(state.readiness==='lockdown'&&p.profession!=='soldier'){const r=bestStore(d,s=>s.type==='quarters'||s.type==='guardroom')||state.stores[0];if(r)return claim(d,{kind:'shelter',dest:r.id,goal:center(r)});}
       if(d.hp<d.maxHp*.65){const r=bestStore(d,s=>s.type==='medical'&&(s.inventory.medicine||0)>0);if(r)return claim(d,{kind:'recover',dest:r.id,goal:center(r)})}
       if(p.hunger>58){const r=bestStore(d,s=>(s.inventory.meal||0)>0);if(r)return claim(d,{kind:'eat',dest:r.id,goal:center(r)})}
@@ -198,42 +224,111 @@
       return false;
     }
     function priorityFor(r){return state.priorities[!r.active?'construction':['garden','kitchen','dining','granary'].includes(r.type)?'food':['smelter','smithy','armory','guardroom'].includes(r.type)?'defense':r.type==='medical'?'rescue':r.type==='library'?'exploration':'construction']||0}
-    function haulJob(d){
-      const inputs=[];for(const r of state.rooms){if(!r.active)inputs.push({r,res:'stone',desired:r.stoneNeeded});else {const recipe=ROOMS[r.type].recipe;for(const [res,n]of Object.entries(recipe?.input||{}))inputs.push({r,res,desired:n*3});if(r.type==='dining')inputs.push({r,res:'meal',desired:12});if(r.type==='armory')inputs.push({r,res:'equipment',desired:6});if(r.type==='medical')inputs.push({r,res:'medicine',desired:6});if(r.type!=='stoneworks'&&r.level<3)inputs.push({r,res:'block',desired:4});}}
+    function inputTargets(r){
+      if(!r.active)return [['stone',r.stoneNeeded]];
+      const inputs=Object.entries(ROOMS[r.type].recipe?.input||{}).map(([resource,amount])=>[resource,amount*3]);
+      if(r.type==='dining')inputs.push(['meal',12]);
+      if(r.type==='armory')inputs.push(['equipment',6]);
+      if(r.type==='medical')inputs.push(['medicine',6]);
+      if(r.type!=='stoneworks'&&r.level<3)inputs.push(['block',4]);
+      return inputs;
+    }
+    const haulRoute=(source,destination,resource)=>source+'>'+destination+':'+resource;
+    function haulJob(d,essentialOnly=false){
+      const inputs=[];
+      for(const r of state.rooms){
+        const priority=priorityFor(r);if(!priority)continue;
+        if(essentialOnly&&r.active&&r.type!=='smelter')continue;
+        for(const [res,desired] of inputTargets(r)){
+          if(essentialOnly&&res==='block')continue;
+          const gap=desired-r.inventory[res]-incoming(r.id,res);
+          if(gap>0)inputs.push({r,res,gap,priority});
+        }
+      }
       const sources=candidateSources(d),byResource=new Map(MATERIALS.map(k=>[k,[]])),capacity=person(d).profession==='hauler'?8:3;let best=null,score=Infinity;
       for(const source of sources){const goal=center(source),travel=distance(d,goal);for(const resource of MATERIALS){const amount=available(source,resource);if(amount>0)byResource.get(resource).push({source,goal,travel,amount})}}
-      for(const {r,res,desired}of inputs){const gap=desired-r.inventory[res],priority=priorityFor(r);if(gap<=0||!priority)continue;const destination=center(r);for(const entry of byResource.get(res)){const{source,goal,travel,amount}=entry;if(source.id===r.id)continue;const routeKey=source.id+'>'+r.id+':'+res;if(!own(routeKey,d)||(blocked.get(routeKey)||0)>state.time)continue;const cost=(4+travel+distance(goal,destination))/priority;if(cost<score){score=cost;best={kind:'haul',source:source.id,dest:r.id,resource:res,amount:Math.min(gap,amount,capacity),goal,claim:routeKey}}}}
-      // Collect loose quarry output into a real stockpile; nothing moves until pickup and delivery.
-      if(!best){const r=bestStore(d,s=>['vault','granary','depot','hauling'].includes(s.type));if(r)for(const [res,entries]of byResource)for(const {source,goal,travel,amount}of entries){if(depositTiles.get(key(source.x,source.y))!==source)continue;const c=source.id+'>'+r.id+':'+res;if(own(c,d)&&(blocked.get(c)||0)<=state.time&&travel<score){score=travel;best={kind:'haul',source:source.id,dest:r.id,resource:res,amount:Math.min(amount,8),goal,claim:c}}}}
+      for(const {r,res,gap,priority}of inputs){const destination=center(r);for(const {source,goal,travel,amount}of byResource.get(res)){if(source.id===r.id)continue;const routeKey=haulRoute(source.id,r.id,res);if(!own(routeKey,d)||(blocked.get(routeKey)||0)>state.time)continue;const cost=(4+travel+distance(goal,destination))/priority;if(cost<score){score=cost;best={kind:'haul',source:source.id,dest:r.id,resource:res,amount:Math.min(gap,amount,capacity),goal,claim:routeKey}}}}
+      // Send loose goods and finished output to storage when no room needs it.
+      // Input buffers and contents already stored are never cycled through depots.
+      if(!best){
+        for(const [res,entries] of byResource){
+          const receivers=stores().filter(s=>acceptsStorage(s,res)&&storageSpace(s,res)>0);
+          if(!receivers.length)continue;
+          for(const {source,goal,travel,amount} of entries){
+            const output=source.active&&ROOMS[source.type]?.recipe?.output?.[res];
+            const loose=depositTiles.get(key(source.x,source.y))===source;
+            if(essentialOnly?(source.type!=='smelter'||!output):!output&&!loose)continue;
+            for(const r of receivers){
+              if(r===source)continue;
+              const routeKey=haulRoute(source.id,r.id,res),cost=4+travel+distance(goal,center(r));
+              if(cost>=score||!own(routeKey,d)||(blocked.get(routeKey)||0)>state.time)continue;
+              score=cost;best={kind:'haul',source:source.id,dest:r.id,resource:res,amount:Math.min(storageSpace(r,res),amount,capacity),goal,claim:routeKey};
+            }
+          }
+        }
+      }
       return best&&claim(d,best);
     }
     function digJob(d){for(const v of state.designations){if(!own('dig:'+v.id,d)||(blocked.get(d.id+':'+v.id)||0)>state.time)continue;const stands=[[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dy])=>({x:v.x+dx,y:v.y+dy})).filter(s=>open(s.x,s.y)&&(blocked.get(d.id+':'+v.id+':'+key(s.x,s.y))||0)<=state.time).sort((a,b)=>distance(d,a)-distance(d,b));if(stands.length)return claim(d,{kind:'dig',dest:v.id,goal:stands[0],claim:'dig:'+v.id})}return false}
-    function choose(d){const p=person(d);if(needJobs(d))return true;
-      if(p.profession==='miner'&&d.pickaxe&&state.priorities.mining>state.priorities.construction&&digJob(d))return true;
-      const builders=p.profession==='mason'||p.profession==='engineer'||p.profession==='miner';
-      if(state.priorities.construction&&builders){const room=state.rooms.filter(r=>!r.active&&r.inventory.stone>=r.stoneNeeded&&own('work:'+r.id,d)&&(blocked.get(d.id+':'+r.id)||0)<=state.time).sort((a,b)=>distance(d,center(a))-distance(d,center(b)))[0];if(room)return claim(d,{kind:'construct',dest:room.id,goal:center(room),claim:'work:'+room.id})}
-      if(p.profession==='hauler'||p.profession==='engineer'||p.profession==='miner'&&state.rooms.some(r=>!r.active))if(haulJob(d))return true;
-      if(p.profession==='miner'&&d.pickaxe&&state.priorities.mining&&digJob(d))return true;
-      const workplaces=state.rooms.filter(r=>r.active&&ROOMS[r.type].profession===p.profession&&priorityFor(r)).sort((a,b)=>(distance(d,center(a))+4)/priorityFor(a)-(distance(d,center(b))+4)/priorityFor(b));
-      for(const r of workplaces){if(!own('work:'+r.id,d)||(blocked.get(d.id+':'+r.id)||0)>state.time)continue;const def=ROOMS[r.type],recipe=def.recipe;
-        if(def.profession!==p.profession||!recipe)continue;
-        if(['garden','kitchen'].includes(r.type)&&!state.priorities.food)continue;
-        if(r.type==='library'&&!state.priorities.exploration)continue;
-        if(Object.keys(recipe.output).some(k=>r.inventory[k]>=64)){r.shortage='Output full — assign a hauler';continue}
-        const missing=Object.entries(recipe.input).find(([k,n])=>r.inventory[k]<n);if(missing){r.shortage='Needs '+missing[0];continue}r.shortage='';return claim(d,{kind:'produce',dest:r.id,goal:center(r),claim:'work:'+r.id});
+    const workerRole=d=>d.living?.profession||(d.guardPostId?'soldier':'miner');
+    const builderRole=role=>role==='mason'||role==='engineer'||role==='miner';
+    const haulerRole=role=>role==='hauler'||role==='engineer';
+    const hasEquipment=s=>s.inventory.equipment>(reservedAmounts.get(reserveKey(s.id,'equipment'))||0);
+    const hasWorker=predicate=>dwarves().some(d=>d.hp>0&&predicate(workerRole(d)));
+    const outputSpace=(r,recipe,multiplier=1)=>Object.entries(recipe.output).every(([k,n])=>r.inventory[k]+n*multiplier<=OUTPUT_CAPACITY);
+    function productionJob(d,starterOnly=false){
+      const p=person(d),workplaces=state.rooms.filter(r=>{
+        const def=ROOMS[r.type];
+        return r.active&&def.recipe&&priorityFor(r)&&(starterOnly?r.type==='smelter':def.profession===p.profession);
+      }).sort((a,b)=>(distance(d,center(a))+4)/priorityFor(a)-(distance(d,center(b))+4)/priorityFor(b));
+      for(const r of workplaces){
+        if(!own('work:'+r.id,d)||(blocked.get(d.id+':'+r.id)||0)>state.time)continue;
+        const recipe=ROOMS[r.type].recipe;
+        if(!outputSpace(r,recipe,(p.skill+1)%20===0?2:1))continue;
+        if(Object.entries(recipe.input).some(([k,n])=>r.inventory[k]<n))continue;
+        return claim(d,{kind:'produce',dest:r.id,goal:center(r),claim:'work:'+r.id});
       }
-      if(p.profession==='soldier'&&state.priorities.defense){const r=bestStore(d,s=>s.type==='armory'&&s.inventory.equipment>0);if(r&&(!d.armor||!d.weapon))return claim(d,{kind:'equip',dest:r.id,goal:center(r)});const posts=state.rooms.filter(r=>r.type==='guardroom'&&r.active);if(posts.length){const r=posts[hash(d.id)%posts.length];return claim(d,{kind:'patrol',dest:r.id,goal:center(r)})}}
+      return false;
+    }
+    function choose(d){const p=person(d);if(needJobs(d))return true;
+      if(p.cargo)return false;
+      if(p.profession==='miner'&&d.pickaxe&&state.priorities.mining>state.priorities.construction&&digJob(d))return true;
+      if(state.priorities.construction&&builderRole(p.profession)){const room=state.rooms.filter(r=>!r.active&&r.inventory.stone>=r.stoneNeeded&&own('work:'+r.id,d)&&(blocked.get(d.id+':'+r.id)||0)<=state.time).sort((a,b)=>distance(d,center(a))-distance(d,center(b)))[0];if(room)return claim(d,{kind:'construct',dest:room.id,goal:center(room),claim:'work:'+room.id})}
+      if(haulerRole(p.profession)||p.profession==='miner'&&state.rooms.some(r=>!r.active))if(haulJob(d))return true;
+      if(p.profession==='miner'&&d.pickaxe&&state.priorities.mining&&digJob(d))return true;
+      if(p.profession==='miner'){
+        if(!hasWorker(role=>role==='smith')&&productionJob(d,true))return true;
+        if(!hasWorker(haulerRole)&&state.rooms.some(r=>r.active&&r.type==='smelter')&&haulJob(d,true))return true;
+      }
+      if(productionJob(d))return true;
+      if(p.profession==='soldier'&&state.priorities.defense){
+        if(!d.armor||!d.weapon){
+          const armory=bestStore(d,s=>s.type==='armory'&&hasEquipment(s));
+          const r=armory||bestStore(d,s=>hasEquipment(s)&&(acceptsStorage(s,'equipment')||s.type==='smithy'));
+          if(r)return claim(d,{kind:'equip',dest:r.id,goal:center(r)});
+        }
+        const posts=state.rooms.filter(r=>r.type==='guardroom'&&r.active);if(posts.length){const r=posts[hash(d.id)%posts.length];return claim(d,{kind:'patrol',dest:r.id,goal:center(r)})}
+      }
       if(p.profession==='healer'&&state.priorities.rescue){const patient=dwarves().filter(v=>v!==d&&v.hp>0&&v.hp<v.maxHp*.5&&own('rescue:'+v.id,d)).sort((a,b)=>distance(d,a)-distance(d,b))[0];if(patient)return claim(d,{kind:'rescue',patient:patient.id,goal:{x:Math.round(patient.x),y:Math.round(patient.y)},claim:'rescue:'+patient.id})}
       if(p.profession==='explorer'&&state.priorities.exploration){const target=state.settlements.find(s=>!s.discovered&&host.explored(s.x,s.y)&&(blocked.get(d.id+':'+s.id)||0)<state.time);if(target)return claim(d,{kind:'explore',dest:target.id,goal:center(target)})}
       return false;
     }
-    function stalled(d,j){
-      if(j.stalledSince===undefined)j.stalledSince=state.time;
+    function jobRouteKey(d,j){
+      const cargo=d.living?.cargo;
+      if(j.kind==='haul')return j.claim;
+      if(j.kind==='deliver'&&cargo?.origin)return haulRoute(cargo.origin,j.dest,cargo.resource);
+      return d.id+':'+j.dest;
+    }
+    function stalled(d,j,reason='route'){
+      if(j.stallReason!==reason||j.stalledSince===undefined){j.stallReason=reason;j.stalledSince=state.time;}
       if(state.time-j.stalledSince<=12)return;
       // Try another side of the same rock before giving up the designation.
       // Other workers can still reach it from their side of the fortress.
       if(j.kind==='dig')blocked.set(d.id+':'+j.dest+':'+key(j.goal.x,j.goal.y),state.time+60);
-      else {blocked.set(j.claim||d.id+':'+j.dest,state.time+12);blocked.set(d.id+':'+j.dest,state.time+12)}
+      else {
+        blocked.set(j.claim||d.id+':'+j.dest,state.time+12);blocked.set(d.id+':'+j.dest,state.time+12);
+        if(reason==='route')blocked.set('path:'+jobRouteKey(d,j),state.time+30);
+      }
       cancel(d);
     }
     function walk(d,dt,j){const p=person(d),goal=j.goal;if(distance(d,goal)<.08){d.x=goal.x;d.y=goal.y;delete j.stalledSince;return true}
@@ -245,9 +340,10 @@
         if(!p.path.length){if(Math.round(d.x)===goal.x&&Math.round(d.y)===goal.y&&open(goal.x,goal.y))p.path=[{x:goal.x,y:goal.y}];else {stalled(d,j);return false}}
       }
       const next=p.path[0];if(!open(next.x,next.y)){p.path=null;p.retry=state.time+.2;stalled(d,j);return false}
-      const k=key(next.x,next.y),claimant=tileClaims.get(k);if(claimant&&claimant!==d.id){p.congestion=(p.congestion||0)+dt;if(p.congestion>2){p.path=null;p.congestion=0}stalled(d,j);return false}tileClaims.set(k,d.id);p.congestion=0;delete j.stalledSince;
+      const k=key(next.x,next.y),claimant=tileClaims.get(k);if(claimant&&claimant!==d.id){p.congestion=(p.congestion||0)+dt;if(p.congestion>2){p.path=null;p.congestion=0}stalled(d,j,'traffic');return false}tileClaims.set(k,d.id);p.congestion=0;delete j.stalledSince;
       const track=infraMap.get(key(Math.round(d.x),Math.round(d.y))),boost=track?.type==='rail'&&p.cargo?2.1:track?.type==='road'?1.35:track?.type==='lift'?1.5:1;
       const dx=next.x-d.x,dy=next.y-d.y,len=Math.hypot(dx,dy),speed=Math.max(.5,d.speed||2)*(1+p.skill*.0005)*boost*(p.hunger>90?.8:1),step=speed*dt;
+      if(j.kind!=='haul'||p.cargo)blocked.delete('path:'+jobRouteKey(d,j));
       if(len<=step){d.x=next.x;d.y=next.y;p.path.shift()}else {d.x+=dx/len*step;d.y+=dy/len*step}return false;
     }
     function updateDwarf(d,dt){const p=person(d);p.hunger=Math.min(100,p.hunger+dt*.10);p.fatigue=Math.min(100,p.fatigue+dt*.055);
@@ -258,27 +354,52 @@
       if(d.carrying){p.activity='Returning treasure';return false}
       if(!danger&&!p.job&&(p.celebrateUntil||0)>state.time){p.activity='Celebrating';return true}
       if(!p.job){p.nextThink=finite(p.nextThink)-dt;if(p.nextThink<=0){p.nextThink=.6+hash(d.id)%7*.03;choose(d)}}
-      const j=p.job;if(!j){p.activity=p.profession==='miner'&&state.priorities.mining?'Mining frontier':'Awaiting work';return p.profession==='miner'?!state.priorities.mining:p.profession==='explorer'?!state.priorities.exploration:p.profession!=='soldier'}
+      const j=p.job;if(!j){if(p.cargo){p.activity='Waiting to store '+p.cargo.resource;return true}p.activity=p.profession==='miner'&&state.priorities.mining?'Mining frontier':'Awaiting work';return p.profession==='miner'?!state.priorities.mining:p.profession==='explorer'?!state.priorities.exploration:p.profession!=='soldier'}
       if(!walk(d,dt,j))return true;
       const dst=location(j.dest);j.elapsed+=dt;
       if(j.kind==='haul'){
-        if(!p.cargo){const source=location(j.source);if(!source){cancel(d);return true}const amount=Math.min(j.amount,source.inventory[j.resource]||0);if(amount<=0){cancel(d);return true}releaseHaul(d);source.inventory[j.resource]-=amount;p.cargo={resource:j.resource,amount};j.goal=center(dst||state.stores[0]);p.path=null;j.elapsed=0;return true}
-        if(dst){dst.inventory[p.cargo.resource]+=p.cargo.amount;state.stats.hauled+=p.cargo.amount;p.cargo=null}cancel(d);return true;
+        if(!p.cargo){
+          const source=location(j.source);if(!source||!dst){cancel(d);return true}
+          const amount=Math.min(j.amount,source.inventory[j.resource]||0);if(amount<=0){cancel(d);return true}
+          releaseHaul(d);source.inventory[j.resource]-=amount;p.cargo={resource:j.resource,amount};
+          if(source.active&&ROOMS[source.type]?.recipe?.output?.[j.resource])p.cargo.origin=source.id;
+          reserveHaul(d,j);
+          j.goal=center(dst);p.path=null;j.elapsed=0;return true;
+        }
+        if(dst&&(!acceptsStorage(dst,p.cargo.resource)||dst.inventory[p.cargo.resource]+p.cargo.amount<=STORAGE_CAPACITY)){
+          dst.inventory[p.cargo.resource]+=p.cargo.amount;state.stats.hauled+=p.cargo.amount;p.cargo=null;
+        }
+        cancel(d);return true;
       }
-      if(j.kind==='deliver'){if(dst&&p.cargo){dst.inventory[p.cargo.resource]+=p.cargo.amount;p.cargo=null}cancel(d);return true}
+      if(j.kind==='deliver'){
+        if(dst&&p.cargo){
+          const resource=p.cargo.resource;
+          const amount=Math.min(p.cargo.amount,j.amount??p.cargo.amount,Math.max(0,STORAGE_CAPACITY-dst.inventory[resource]));
+          dst.inventory[resource]+=amount;p.cargo.amount-=amount;
+          if(!p.cargo.amount)p.cargo=null;
+        }
+        cancel(d);return true;
+      }
       if(j.kind==='dig'){const target=state.designations.find(v=>v.id===j.dest);if(!target||!host.diggable(target.x,target.y)){state.designations=state.designations.filter(v=>v.id!==j.dest);cancel(d);return true}p.activity='Mining';if(j.elapsed>=1/Math.max(.3,d.miningRate||1)){j.elapsed=0;host.mine?.(target.x,target.y,d.miningPower||4,d)}return true}
       if(j.kind==='construct'){if(!dst){cancel(d);return true}p.activity='Constructing';if(dst.inventory.stone<dst.stoneNeeded){cancel(d);return true}dst.progress=Math.min(1,dst.progress+dt/Math.max(4,dst.w*dst.h*.7));if(dst.progress>=1){dst.inventory.stone-=dst.stoneNeeded;dst.active=true;dst.shortage='';supplyDirty=true;remember(d,'Completed '+ROOMS[dst.type].name+'.');cancel(d)}return true}
       if(j.kind==='produce'){
         if(!dst){cancel(d);return true}const recipe=ROOMS[dst.type].recipe;p.activity=({smithy:'Smithing',smelter:'Smelting',garden:'Farming',kitchen:'Cooking',stoneworks:'Stoneworking',medical:'Preparing medicine',library:'Studying'})[dst.type];
         if(!j.started){if(Object.entries(recipe.input).some(([k,n])=>dst.inventory[k]<n)){cancel(d);return true}j.inputs={...recipe.input};for(const[k,n]of Object.entries(recipe.input))dst.inventory[k]-=n;j.started=true}
         const talent=(d.trait?.id==='hard_worker'||d.trait?.id==='strong')?0.08:0;
-        if(j.elapsed>=recipe.seconds/(1+p.skill*.003+researchBoost+talent+(dst.level-1)*.1)){for(const[k,n]of Object.entries(recipe.output))dst.inventory[k]+=n;p.skill++;dst.produced++;state.stats.produced++;p.morale=Math.min(100,p.morale+1);if(p.skill%20===0){state.stats.masterworks++;remember(d,'Created a masterwork in the '+ROOMS[dst.type].name+'.');for(const[k,n]of Object.entries(recipe.output))dst.inventory[k]+=n;p.celebrateUntil=state.time+3}j.completed=true;cancel(d)}return true;
+        const masterwork=(p.skill+1)%20===0,multiplier=masterwork?2:1;
+        if(j.elapsed>=recipe.seconds/(1+p.skill*.003+researchBoost+talent+(dst.level-1)*.1)&&outputSpace(dst,recipe,multiplier)){
+          for(const[k,n]of Object.entries(recipe.output))dst.inventory[k]+=n*multiplier;
+          p.skill++;dst.produced++;state.stats.produced++;p.morale=Math.min(100,p.morale+1);
+          if(masterwork){state.stats.masterworks++;remember(d,'Created a masterwork in the '+ROOMS[dst.type].name+'.');p.celebrateUntil=state.time+3}
+          j.completed=true;cancel(d);
+        }
+        return true;
       }
       if(j.kind==='eat'){p.activity='Eating';if(j.elapsed>=2){if(dst?.inventory.meal>0){dst.inventory.meal--;p.hunger=Math.max(0,p.hunger-75);p.morale=Math.min(100,p.morale+(dst.type==='dining'?12:4))}cancel(d)}return true}
       if(j.kind==='sleep'){p.activity='Sleeping';p.fatigue=Math.max(0,p.fatigue-dt*5);if(p.fatigue<10)cancel(d);return true}
       if(j.kind==='social'){p.activity='Socializing';p.morale=Math.min(100,p.morale+dt*3);if(j.elapsed>=7){const other=dwarves().find(v=>v!==d&&distance(v,d)<4);if(other){p.relationships[other.id]=clamp(finite(p.relationships[other.id])+1,-10,10);if(p.relationships[other.id]===3)remember(d,'Became friends with '+other.name+'.')}p.socialAfter=state.time+120+hash(d.id)%60;cancel(d)}return true}
       if(j.kind==='recover'){p.activity='Recovering';if(j.elapsed>=3){if(dst?.inventory.medicine>0){dst.inventory.medicine--;d.hp=Math.min(d.maxHp,d.hp+d.maxHp*.35)}cancel(d)}return true}
-      if(j.kind==='equip'){p.activity='Equipping';if(dst?.inventory.equipment>0&&host.equip?.(d)){dst.inventory.equipment--;remember(d,'Collected equipment from the armory.')}cancel(d);return true}
+      if(j.kind==='equip'){p.activity='Equipping';if(dst&&hasEquipment(dst)&&host.equip?.(d)){dst.inventory.equipment--;remember(d,'Collected forged equipment.')}cancel(d);return true}
       if(j.kind==='patrol'){p.activity='Patrolling';if(j.elapsed>4)cancel(d);return true}
       if(j.kind==='rescue'){const patient=dwarves().find(v=>v.id===j.patient);if(!patient||distance(d,patient)>2){cancel(d);return true}p.activity='Tending wounded';if(j.elapsed>4){patient.hp=Math.min(patient.maxHp,patient.hp+patient.maxHp*.2);state.stats.rescues++;remember(d,'Stabilized '+patient.name+' in the tunnels.');cancel(d)}return true}
       if(j.kind==='explore'){if(dst&&!dst.discovered){dst.discovered=true;remember(d,'Discovered '+dst.name+'.')}cancel(d);return true}
@@ -299,13 +420,112 @@
       for(const r of state.rooms){if(!r.active)r.shortage=r.inventory.stone<r.stoneNeeded?'Needs '+(r.stoneNeeded-r.inventory.stone)+' stone':'Waiting for a builder';}
       ensureSupplies();
     }
+    function hasExit(r){
+      for(let x=r.x;x<r.x+r.w;x++)if(open(x,r.y-1)||open(x,r.y+r.h))return true;
+      for(let y=r.y;y<r.y+r.h;y++)if(open(r.x-1,y)||open(r.x+r.w,y))return true;
+      return false;
+    }
+    function statusContext(){
+      ensureSupplies();
+      const workers=dwarves().filter(d=>d.hp>0),work=new Map(),outgoing=new Map(),held=new Map(),supplies=new Map();
+      for(const d of workers){
+        const j=d.living?.job,cargo=d.living?.cargo;
+        if(j?.kind==='produce'||j?.kind==='construct')work.set(j.dest,d);
+        if((j?.kind==='haul'||j?.kind==='deliver'&&cargo?.origin)&&!pathBlocked(jobRouteKey(d,j))){
+          const k=reserveKey(j.source??cargo.origin,j.resource??cargo.resource),prior=outgoing.get(k);
+          outgoing.set(k,{amount:(prior?.amount||0)+(j.kind==='deliver'?j.amount??cargo.amount:cargo?.amount??j.amount),dest:prior?.dest||j.dest});
+        }else if(cargo?.origin){
+          const k=reserveKey(cargo.origin,cargo.resource);
+          held.set(k,(held.get(k)||0)+cargo.amount);
+        }
+      }
+      const storage=stockpiles.filter(s=>STORAGE_TYPES.has(s.type));
+      return {workers,work,outgoing,held,storage,has:condition=>workers.some(d=>condition(workerRole(d))),sources:resource=>{
+        if(!supplies.has(resource))supplies.set(resource,supplySources.filter(s=>available(s,resource)>0));
+        return supplies.get(resource);
+      }};
+    }
+    const pathBlocked=k=>(blocked.get('path:'+k)||0)>state.time;
+    const usable=(worker,room)=>!pathBlocked(worker.id+':'+room.id);
+    function missingInput(r,context,resource,quantity){
+      const amount=quantity-r.inventory[resource];
+      const enRoute=incoming(r.id,resource);
+      if(enRoute)return {code:'delivery-incoming',resource,amount,incoming:enRoute};
+      let sourceFound=false;
+      for(const source of context.sources(resource)){
+        if(source===r)continue;
+        sourceFound=true;
+        const point=center(source);
+        if(pathBlocked(haulRoute(source.id,r.id,resource))||!open(point.x,point.y))continue;
+        if(context.has(haulerRole)||(!r.active||r.type==='smelter')&&context.has(role=>role==='miner'))return {code:'waiting-haul',resource,amount};
+        return {code:'needs-worker',role:'hauler',resource,amount};
+      }
+      return {code:sourceFound?'no-access':'needs-input',activity:'delivery',resource,amount};
+    }
+    function outputStatus(r,context,resource){
+      const k=reserveKey(r.id,resource),outputAmount=r.inventory[resource],job=context.outgoing.get(k),heldAmount=context.held.get(k)||0;
+      const details={outputResource:resource,outputAmount,heldAmount};
+      if(job)return {...details,code:'output-in-transit',outgoing:job.amount,destinationId:job.dest};
+      if(!outputAmount&&!heldAmount)return {...details,code:'idle'};
+      const storage=context.storage.filter(s=>s!==r&&acceptsStorage(s,resource));
+      const consumers=state.rooms.filter(s=>s!==r&&priorityFor(s)&&inputTargets(s).some(([k,wanted])=>k===resource&&s.inventory[k]+incoming(s.id,k)<wanted));
+      const receivers=consumers.concat(storage.filter(s=>storageSpace(s,resource)>0));
+      if(!receivers.length)return {...details,code:storage.length?'storage-full':'no-destination'};
+      const receiver=receivers.find(s=>{
+        const point=center(s);
+        return open(point.x,point.y)&&!pathBlocked(haulRoute(r.id,s.id,resource));
+      });
+      if(!receiver)return {...details,code:'no-access',activity:'output'};
+      if(context.has(haulerRole)||r.type==='smelter'&&context.has(role=>role==='miner'))return {...details,code:'waiting-haul',activity:'output',destinationId:receiver.id};
+      return {...details,code:'needs-worker',activity:'output',role:'hauler',destinationId:receiver.id};
+    }
+    function evaluateRoom(r,context){
+      if(!priorityFor(r))return {code:'paused'};
+      const point=center(r);
+      if(!open(point.x,point.y)||!hasExit(r))return {code:'no-access',activity:'room'};
+      const dwarf=context.work.get(r.id);
+      const job=dwarf?.living.job;
+      if(!r.active){
+        if(r.inventory.stone<r.stoneNeeded)return missingInput(r,context,'stone',r.stoneNeeded);
+        if(dwarf)return {code:'building'};
+        const builders=context.workers.filter(d=>builderRole(workerRole(d)));
+        if(!builders.length)return {code:'needs-worker',role:'builder'};
+        return builders.some(d=>usable(d,r))?{code:'ready',role:'builder'}:{code:'no-access',activity:'worker',role:'builder'};
+      }
+      const def=ROOMS[r.type],recipe=def.recipe;
+      if(!recipe){
+        if(r.type==='armory'&&!r.inventory.equipment&&context.workers.some(d=>workerRole(d)==='soldier'&&(!d.armor||!d.weapon)))return missingInput(r,context,'equipment',1);
+        if(r.type==='dining'&&!r.inventory.meal&&context.workers.some(d=>d.living?.hunger>58))return missingInput(r,context,'meal',1);
+        return {code:'idle'};
+      }
+      const resource=Object.keys(recipe.output)[0],output=outputStatus(r,context,resource);
+      const serious=['no-destination','storage-full','no-access','needs-worker'].includes(output.code);
+      const producers=context.workers.filter(d=>workerRole(d)===def.profession);
+      if(r.type==='smelter'&&!producers.length)producers.push(...context.workers.filter(d=>workerRole(d)==='miner'));
+      const masterwork=d=>(finite(d.living?.skill,0)+1)%20===0;
+      const multiplier=(dwarf?masterwork(dwarf):producers.length&&producers.every(masterwork))?2:1;
+      if(!outputSpace(r,recipe,multiplier))return {...output,code:serious?output.code:'output-full'};
+      if(serious)return output;
+      if(job?.started)return {...output,code:'working'};
+      const missing=Object.entries(recipe.input).find(([k,n])=>r.inventory[k]<n);
+      if(missing)return {...output,...missingInput(r,context,...missing)};
+      if(job)return {...output,code:'working'};
+      if(!producers.length)return {...output,code:'needs-worker',role:def.profession};
+      if(!producers.some(d=>usable(d,r)))return {...output,code:'no-access',activity:'worker',role:def.profession};
+      return {...output,code:output.code==='idle'?'ready':output.code};
+    }
+    function roomStatus(roomId){
+      const r=state.rooms.find(room=>room.id===roomId);
+      return r?evaluateRoom(r,statusContext()):null;
+    }
+    function roomStatuses(){const context=statusContext();return new Map(state.rooms.map(r=>[r.id,evaluateRoom(r,context)]));}
     function serialize(){return JSON.parse(JSON.stringify(state))}
-    function restoreReservations(){reservations.clear();reservedAmounts.clear();reservedByDwarf.clear();for(const d of dwarves()){const p=person(d);p.path=null;p.retry=0;p.nextThink=0;if(p.job?.claim){if(reservations.has(p.job.claim))p.job=null;else reservations.set(p.job.claim,d.id)}if(p.job)reserveHaul(d,p.job)}}
+    function restoreReservations(){reservations.clear();reservedAmounts.clear();incomingAmounts.clear();reservedByDwarf.clear();for(const d of dwarves()){const p=person(d);p.path=null;p.retry=0;p.nextThink=0;if(p.job?.claim){if(reservations.has(p.job.claim))p.job=null;else reservations.set(p.job.claim,d.id)}if(p.job)reserveHaul(d,p.job)}}
     function restore(raw){state=migrate(raw,host.base(),host.width,host.height);blocked.clear();reindex();rebuildSupplies();restoreReservations();return state}
     function removeRoom(roomId){const r=state.rooms.find(v=>v.id===roomId);if(!r)return false;const contents={...r.inventory};for(const d of dwarves()){const j=d.living?.job;if(j?.kind==='produce'&&j.dest===roomId&&j.started&&!j.completed)for(const[k,n]of Object.entries(j.inputs||ROOMS[r.type].recipe?.input||{}))contents[k]=(contents[k]||0)+n}const point=center(r);if(Object.values(contents).some(n=>n>0)&&!canDeposit(point.x,point.y,contents))return false;for(const d of dwarves())if(d.living?.job?.dest===roomId||d.living?.job?.source===roomId)cancel(d);for(const k of MATERIALS)if(r.inventory[k])deposit(point.x,point.y,k,r.inventory[k]);state.rooms=state.rooms.filter(v=>v!==r);reindex();log(ROOMS[r.type].name+' dismantled; supplies left on site.');return true}
     function upgrade(roomId){const r=state.rooms.find(v=>v.id===roomId);if(!r||!r.active||r.level>=3)return{ok:false,reason:'Select a completed room below level 3.'};if(r.inventory.block<4)return{ok:false,reason:'Needs 4 stone blocks delivered to this room.'};if(!host.spend(ROOMS[r.type].cost*r.level))return{ok:false,reason:'Not enough gold.'};r.inventory.block-=4;r.level++;r.style=r.level===3?'royal':'mosaic';log(ROOMS[r.type].name+' upgraded to level '+r.level+'.');return{ok:true}}
     reindex();rebuildSupplies();restoreReservations();
-    return {get state(){return state},get revision(){return revision},get diagnostics(){return {...diagnostics}},person,log,begin,updateDwarf,deposit,canDeposit,preview,designate,placeInfrastructure,removeInfrastructure,digArea,setProfession,setReadiness,setPriority,canWalk,infraAt:(x,y)=>infraMap.get(key(x,y)),roomAt:(x,y)=>roomMap.get(key(x,y)),cancel,dropCargo,serialize,restore,removeRoom,upgrade,reindex,center,stores};
+    return {get state(){return state},get revision(){return revision},get diagnostics(){return {...diagnostics}},person,log,begin,updateDwarf,deposit,canDeposit,preview,designate,placeInfrastructure,removeInfrastructure,digArea,setProfession,setReadiness,setPriority,canWalk,infraAt:(x,y)=>infraMap.get(key(x,y)),roomAt:(x,y)=>roomMap.get(key(x,y)),cancel,dropCargo,serialize,restore,removeRoom,upgrade,reindex,center,stores,roomStatus,roomStatuses};
   }
   return {VERSION,ROOMS,ROLES,INFRA,MATERIALS,fresh,migrate,create,center};
 });

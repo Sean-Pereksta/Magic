@@ -31,6 +31,7 @@ function lmPlaceInfrastructure(...args){return lmEngine.placeInfrastructure(...a
 function lmRemoveInfrastructure(...args){return lmEngine.removeInfrastructure(...args)}
 function lmRemoveRoom(...args){return lmEngine.removeRoom(...args)}
 function lmUpgradeRoom(...args){return lmEngine.upgrade(...args)}
+function lmRoomStatus(id){return lmEngine.roomStatus(id)}
 function lmChronicle(text){lmEngine.log(text)}
 const lmBaseCanBuildAt=canBuildAt;
 canBuildAt=function(x,y){return !lmEngine.roomAt(x,y)&&!lmEngine.infraAt(x,y)&&lmBaseCanBuildAt(x,y)};
@@ -93,15 +94,112 @@ removeDead=function(){
 const lmBaseCombat=updateSpawnersAndCombat;
 updateSpawnersAndCombat=function(dt){lmEngine.begin(dt);lmWorldTick(dt);lmBaseCombat(dt)};
 
+const lmShortRoomNames={quarters:'Quarters',dining:'Dining',garden:'Garden',stoneworks:'Stoneworks',vault:'Vault',medical:'Clinic',market:'Market',throne:'Throne Hall'};
+const lmSupplyMarks={stone:['stone','#a7a7a0'],ore:['ore','#d7a268'],ingot:['metal','#a4c3d4'],equipment:['metal','#dfc394'],mushroom:['food','#b4be83'],meal:['food','#e1b576'],block:['stone','#9ea8ad'],medicine:['food','#a4cfb7'],knowledge:['inventory','#c3afe2']};
+const lmRoomOutputs=Object.fromEntries(Object.entries(LM_ROOMS).filter(([,def])=>def.recipe).map(([type,def])=>[type,Object.keys(def.recipe.output)[0]]));
+const lmRoomMotion=matchMedia('(prefers-reduced-motion: reduce)');
+const lmRoomCoarse=matchMedia('(pointer: coarse)');
+const lmActiveProduction=new Map();
+const lmLabelWidths=new Map();
+
+function lmSupplyGraphic(x,y,size,resource,crated=false){
+  const [icon,color]=lmSupplyMarks[resource]||lmSupplyMarks.stone;
+  const art=window.DWARF_ART;
+  const name=crated?'decorations.crates':'ui.'+icon;
+  if(art?.drawFrame?.(ctx,name,x,y,size))return;
+  ctx.fillStyle='#121715';
+  ctx.fillRect(x+size*.12,y+size*.30,size*.76,size*.60);
+  ctx.fillStyle=color;
+  ctx.fillRect(x+size*.22,y+size*.36,size*.56,size*.43);
+}
+
+function lmDrawRoom(r,p,ts,job,hot){
+  const def=LM_ROOMS[r.type],w=r.w*ts,h=r.h*ts;
+  const cx=r.x+Math.floor(r.w/2),cy=r.y+Math.floor(r.h/2);
+  if(!inBounds(cx,cy)||!tSeen[idx(cx,cy)])return;
+  const seen=tVis[idx(cx,cy)]===visMark;
+  const alpha=seen?1:.52,art=window.DWARF_ART;
+  const margin=Math.max(2,Math.min(5,ts*.12));
+  const fixture=Math.min(w*.85,h*.81,ts*3.15);
+  const fx=p.x+(w-fixture)*.5,fy=p.y+(h-fixture)*.55;
+
+  ctx.globalAlpha=alpha*(r.active ? .25 : .16);
+  ctx.fillStyle='#111814';ctx.fillRect(p.x+1,p.y+1,w-2,h-2);
+  ctx.fillStyle=def.color;ctx.fillRect(p.x+2,p.y+2,w-4,h-4);
+  ctx.globalAlpha=alpha*.68;
+  ctx.strokeStyle='#161b19';ctx.lineWidth=Math.max(2,ts*.10);
+  ctx.strokeRect(p.x+1.5,p.y+1.5,w-3,h-3);
+  ctx.globalAlpha=alpha*(r.active ? .72 : .55);
+  ctx.strokeStyle=def.color;ctx.lineWidth=1;
+  if(!r.active)ctx.setLineDash([4,4]);
+  ctx.strokeRect(p.x+2.5,p.y+2.5,w-5,h-5);
+  if(!r.active)ctx.setLineDash([]);
+
+  if(job&&seen&&hot){
+    ctx.globalAlpha=.48;
+    art?.drawFrame?.(ctx,'lighting.forge',fx,fy,fixture);
+  }
+  ctx.globalAlpha=alpha*(r.active?1:.34);
+  if(!art?.drawFrame?.(ctx,'interiors.'+r.type,fx,fy,fixture)){
+    ctx.fillStyle='#212723';
+    ctx.fillRect(fx+fixture*.22,fy+fixture*.44,fixture*.56,fixture*.29);
+    ctx.fillStyle=def.color;
+    ctx.fillRect(fx+fixture*.28,fy+fixture*.47,fixture*.44,fixture*.13);
+  }
+  if(job&&seen&&hot&&!lmRoomMotion.matches){
+    // Derive the frame from elapsed job time so sparks stop with the workshop.
+    ctx.globalAlpha=.86;
+    const spark=Math.floor((job.elapsed||0)*7)%4;
+    art?.drawFrame?.(ctx,'effects.sparks_'+spark,fx+fixture*.28,fy+fixture*.13,fixture*.44);
+  }
+
+  if(r.active&&seen&&ts>=16){
+    const output=lmRoomOutputs[r.type];
+    if(output&&r.inventory?.[output]>0){
+      ctx.globalAlpha=.95;
+      const size=ts*.87;
+      lmSupplyGraphic(p.x+w-size-margin,p.y+h-size-margin,size,output);
+    }
+  }
+  if(ts>=15){
+    const name=lmShortRoomNames[r.type]||def.name;
+    const font=Math.round(Math.max(9,Math.min(13,ts*.48)));
+    const x=p.x+margin+1,y=p.y+margin+1;
+    ctx.font=`600 ${font}px system-ui`;
+    ctx.textAlign='left';ctx.textBaseline='top';
+    const key=r.type+':'+font;
+    if(!lmLabelWidths.has(key))lmLabelWidths.set(key,ctx.measureText(name).width+9);
+    const maxWidth=Math.min(w-2*margin-2,lmLabelWidths.get(key));
+    ctx.globalAlpha=alpha*.92;ctx.fillStyle='#0e1716';
+    ctx.fillRect(x,y,maxWidth,font+5);
+    ctx.globalAlpha=alpha;ctx.fillStyle='#fff0d8';
+    ctx.fillText(name,x+4,y+2,maxWidth-8);
+  }
+  if(!r.active){
+    ctx.globalAlpha=alpha;ctx.fillStyle='#17201c';
+    ctx.fillRect(p.x+margin,p.y+h-margin-3,w-2*margin,3);
+    ctx.fillStyle='#e9bf78';
+    ctx.fillRect(p.x+margin,p.y+h-margin-3,(w-2*margin)*r.progress,3);
+  }
+  ctx.globalAlpha=1;
+}
+
 function lmDrawFloor(){
   const ts=BASE_TILE_PX*cam.zoom;
   ctx.save();
-  for(const r of lm.rooms){const p=worldToScreen(r.x,r.y),w=r.w*ts,h=r.h*ts;if(p.x+w<0||p.y+h<0||p.x>innerWidth||p.y>innerHeight)continue;
-    ctx.fillStyle=LM_ROOMS[r.type].color;ctx.globalAlpha=r.active?.16:.08;ctx.fillRect(p.x,p.y,w,h);ctx.globalAlpha=.7;ctx.strokeStyle=LM_ROOMS[r.type].color;ctx.lineWidth=Math.max(1,ts*.035);ctx.setLineDash(r.active?[]:[4,4]);ctx.strokeRect(p.x+1,p.y+1,w-2,h-2);ctx.setLineDash([]);ctx.globalAlpha=1;
-    const c=worldToScreen(r.x+Math.floor(r.w/2),r.y+Math.floor(r.h/2));
-    if(r.active&&!window.DWARF_ART?.drawInterior?.(ctx,r,c,ts)){ctx.fillStyle=LM_ROOMS[r.type].color;ctx.globalAlpha=.55;ctx.fillRect(c.x+ts*.18,c.y+ts*.30,ts*.64,ts*.38);ctx.globalAlpha=1}
-    if(ts>13){ctx.font=Math.max(9,Math.min(12,ts*.4))+'px system-ui';ctx.fillStyle='#eedab1';ctx.textAlign='left';ctx.fillText(LM_ROOMS[r.type].name,p.x+4,p.y+12,w-8)}
-    if(!r.active){ctx.fillStyle='#1e2525';ctx.fillRect(p.x+4,p.y+h-7,w-8,3);ctx.fillStyle='#e3bd75';ctx.fillRect(p.x+4,p.y+h-7,(w-8)*r.progress,3)}
+  lmActiveProduction.clear();
+  for(const d of dwarves){
+    const job=d.living?.job;
+    if(d.hp>0&&job?.kind==='produce'&&job.started&&!job.completed)lmActiveProduction.set(job.dest,job);
+  }
+  let smelterLights=lmRoomCoarse.matches?2:5;
+  for(const r of lm.rooms){
+    const p=worldToScreen(r.x,r.y),w=r.w*ts,h=r.h*ts;
+    if(p.x+w<0||p.y+h<0||p.x>innerWidth||p.y>innerHeight)continue;
+    const job=r.type==='smelter'?lmActiveProduction.get(r.id):null;
+    const hot=!!job&&smelterLights>0;
+    if(hot)smelterLights--;
+    lmDrawRoom(r,p,ts,job,hot);
   }
   for(const v of lm.infrastructure){const p=worldToScreen(v.x,v.y),s=p.s;if(p.x< -s||p.y< -s||p.x>innerWidth||p.y>innerHeight)continue;if(window.DWARF_ART?.drawInfrastructure?.(ctx,v,p,s))continue;ctx.strokeStyle=v.type==='rail'?'#b9a387':'#8c8778';ctx.lineWidth=Math.max(1,s*.1);
     if(v.type==='rail'){ctx.beginPath();ctx.moveTo(p.x,p.y+s*.3);ctx.lineTo(p.x+s,p.y+s*.3);ctx.moveTo(p.x,p.y+s*.7);ctx.lineTo(p.x+s,p.y+s*.7);ctx.stroke();for(let i=0;i<3;i++){ctx.fillStyle='#745c46';ctx.fillRect(p.x+i*s/3,p.y+s*.15,s*.1,s*.7)}}
@@ -109,10 +207,34 @@ function lmDrawFloor(){
     else {ctx.fillStyle=v.type==='gate'?'#ac834e':v.type==='trap'?'#84677a':'#6b7378';if(v.type==='gate'&&lm.readiness==='normal'){ctx.fillRect(p.x+s*.12,p.y+s*.15,s*.2,s*.7);ctx.fillRect(p.x+s*.68,p.y+s*.15,s*.2,s*.7)}else{ctx.fillRect(p.x+s*.12,p.y+s*.15,s*.76,s*.7);ctx.strokeRect(p.x+s*.12,p.y+s*.15,s*.76,s*.7)}}
   }
   for(const v of lm.designations){const p=worldToScreen(v.x,v.y);if(p.x< -ts||p.y< -ts||p.x>innerWidth||p.y>innerHeight)continue;ctx.strokeStyle='#d7b164';ctx.lineWidth=1;ctx.strokeRect(p.x+3,p.y+3,ts-6,ts-6)}
-  for(const v of lm.deposits){const p=worldToScreen(v.x,v.y);if(p.x< -ts||p.y< -ts||p.x>innerWidth||p.y>innerHeight||!tSeen[idx(v.x,v.y)])continue;ctx.fillStyle=v.inventory.ore?'#d2a765':'#8e9294';ctx.fillRect(p.x+ts*.55,p.y+ts*.6,ts*.22,ts*.16)}
+  for(const v of lm.deposits){
+    const p=worldToScreen(v.x,v.y);
+    if(p.x< -ts||p.y< -ts||p.x>innerWidth||p.y>innerHeight||!tSeen[idx(v.x,v.y)])continue;
+    const resource=v.inventory.ore?'ore':v.inventory.ingot?'ingot':v.inventory.equipment?'equipment':v.inventory.meal?'meal':'stone';
+    ctx.globalAlpha=tVis[idx(v.x,v.y)]===visMark ? .9 : .35;
+    lmSupplyGraphic(p.x+ts*.32,p.y+ts*.37,ts*.72,resource,ts<15);
+  }
   ctx.restore();
 }
-function lmDrawOverlay(){ctx.save();for(const d of dwarves){if(!d.living?.cargo)continue;const point=typeof livingRenderPosition==='function'?livingRenderPosition(d):d,p=worldToScreen(point.x,point.y);if(p.x<0||p.y<0||p.x>innerWidth||p.y>innerHeight)continue;ctx.fillStyle='#d6aa67';ctx.fillRect(p.x+p.s*.68,p.y+p.s*.2,p.s*.22,p.s*.3)}lmDrawWorld();ctx.restore()}
+function lmDrawOverlay(){
+  ctx.save();
+  for(const store of lm.stores){
+    const p=worldToScreen(store.x,store.y),s=p.s;
+    if(p.x<-s||p.y<-s||p.x>innerWidth||p.y>innerHeight||!inBounds(store.x,store.y)||!tSeen[idx(store.x,store.y)])continue;
+    ctx.globalAlpha=tVis[idx(store.x,store.y)]===visMark ? .95 : .40;
+    lmSupplyGraphic(p.x+s*.62,p.y+s*.52,s*.60,'stone',true);
+  }
+  ctx.globalAlpha=1;
+  for(const d of dwarves){
+    const cargo=d.living?.cargo;
+    if(!cargo||d.hp<=0)continue;
+    const point=typeof livingRenderPosition==='function'?livingRenderPosition(d):d;
+    const p=worldToScreen(point.x,point.y),s=p.s;
+    if(p.x<-s||p.y<-s||p.x>innerWidth||p.y>innerHeight)continue;
+    lmSupplyGraphic(p.x+s*.64,p.y+s*.13,s*.50,cargo.resource,s<15);
+  }
+  lmDrawWorld();ctx.restore();
+}
 
 // One atomic compressed payload. localStorage.setItem leaves the previous save
 // intact if quota is exceeded. No remove-first or second expansion write.
@@ -144,7 +266,7 @@ function lmValidateRestore(save,mountain){
     const p=d.living;if(p==null)continue;if(!record(p))fail('dwarf living state');
     if(p.history!==undefined&&(!Array.isArray(p.history)||p.history.some(v=>typeof v!=='string')))fail('dwarf history');
     if(p.relationships!==undefined&&(!record(p.relationships)||Object.values(p.relationships).some(v=>!Number.isFinite(v))))fail('dwarf relationships');
-    if(p.cargo!=null&&(!record(p.cargo)||!material(p.cargo.resource)||!quantity(p.cargo.amount)))fail('dwarf cargo');
+    if(p.cargo!=null&&(!record(p.cargo)||!material(p.cargo.resource)||!quantity(p.cargo.amount)||p.cargo.origin!==undefined&&!ref(p.cargo.origin)))fail('dwarf cargo');
     const j=p.job;if(j==null)continue;
     if(!record(j)||!['haul','deliver','dig','construct','produce','eat','sleep','social','recover','equip','patrol','rescue','explore','shelter'].includes(j.kind)||!point(j.goal)||!Number.isInteger(j.goal.x)||!Number.isInteger(j.goal.y))fail('dwarf job');
     if(j.elapsed!==undefined&&(!Number.isFinite(j.elapsed)||j.elapsed<0)||j.claim!==undefined&&typeof j.claim!=='string')fail('dwarf job progress');
@@ -203,7 +325,7 @@ loadGameAsync=async function(){if(lmLoading)return false;if(lmSaving)await lmSav
 window.DwarfWorldLiving={
   get state(){return lm},get dwarves(){return dwarves},get enemies(){return enemies},get fortress(){return fortress},
   rooms:LM_ROOMS,roles:LM_ROLES,infrastructure:window.DwarfLivingSimulation.INFRA,
-  preview:lmPreview,designate:lmDesignate,digArea:lmDigArea,setProfession:lmSetProfession,setPriority:lmSetPriority,setReadiness:lmSetReadiness,placeInfrastructure:lmPlaceInfrastructure,removeInfrastructure:lmRemoveInfrastructure,removeRoom:lmRemoveRoom,upgradeRoom:lmUpgradeRoom,
+  preview:lmPreview,designate:lmDesignate,digArea:lmDigArea,setProfession:lmSetProfession,setPriority:lmSetPriority,setReadiness:lmSetReadiness,placeInfrastructure:lmPlaceInfrastructure,removeInfrastructure:lmRemoveInfrastructure,removeRoom:lmRemoveRoom,upgradeRoom:lmUpgradeRoom,roomStatus:lmRoomStatus,
   canWalk:(x,y,enemy)=>lmEngine.canWalk(x,y,enemy),drawFloor:lmDrawFloor,drawOverlay:lmDrawOverlay,save:()=>saveGameAsync(),load:()=>loadGameAsync(),
   populationBonus:()=>{const meals=lmEngine.stores().reduce((n,s)=>n+(s.inventory.meal||0),0);return meals>=dwarves.length?Math.min(64,lm.rooms.filter(r=>r.active&&r.type==='quarters').reduce((n,r)=>n+Math.floor(r.w*r.h/6)*r.level,0)):0},
   get metrics(){return {rooms:lm.rooms.length,production:lm.stats.produced,haulDeliveries:lm.stats.hauled,activeJobs:dwarves.filter(d=>d.living?.job).length}}

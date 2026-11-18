@@ -1,12 +1,66 @@
 // Living Mountain world: known locations, capped camp populations, visible
 // caravans, sight-based tactical memory and telegraphed boss abilities.
-const LM_FACTIONS={goblin:{name:'Goblin Warren',units:['goblin','runner','bomber','shaman'],boss:'Goblin King'},orc:{name:'Orc Warband',units:['orc','armored','bomber','troll'],boss:'Stone Colossus'},undead:{name:'Undead Crypt',units:['skeleton','necromancer','armored'],boss:'Ancient Lich'},brood:{name:'Deepwild Brood',units:['bat','splitter','troll'],boss:'Brood Mother'},abyss:{name:'Abyssal Enclave',units:['phaser','shaman','troll'],boss:'Deepfire Wyrm'}};
+const LM_FACTIONS={
+  goblin:{name:'Goblin Warren',boss:'Goblin King',bossType:'goblin',warning:'Fast scouts and raiders',counter:'Cover the tunnel with a watch post and a tower.',opening:[['runner','scout'],['goblin'],['goblin']],raid:[['runner','scout'],['bomber','sapper'],['goblin'],['runner'],['shaman','healer']]},
+  orc:{name:'Orc Warband',boss:'Stone Colossus',bossType:'troll',warning:'Armored front line and breachers',counter:'Slow the front line with traps and back the gate with a tower.',opening:[['armored'],['orc'],['orc']],raid:[['armored'],['orc','commander'],['bomber','sapper'],['orc'],['troll']]},
+  undead:{name:'Undead Crypt',boss:'Ancient Lich',bossType:'necromancer',warning:'Necromancers behind an advancing swarm',counter:'Use ranged defenses to reach the summoners.',opening:[['necromancer'],['skeleton'],['skeleton']],raid:[['skeleton'],['necromancer'],['skeleton'],['armored'],['necromancer']]},
+  brood:{name:'Deepwild Brood',boss:'Brood Mother',bossType:'splitter',warning:'Fast bats and splitting creatures',counter:'Cover narrow corridors with defenses that hit multiple enemies.',opening:[['splitter'],['bat'],['bat']],raid:[['bat'],['splitter'],['bat'],['troll'],['splitter']]},
+  abyss:{name:'Abyssal Enclave',boss:'Deepfire Wyrm',bossType:'phaser',warning:'Phasing stalkers and ranged support',counter:'Use a closed gate or solid walls to break their line of sight.',opening:[['phaser'],['shaman','healer'],['phaser']],raid:[['phaser'],['shaman','healer'],['phaser'],['troll'],['shaman','healer']]}
+};
+const LM_ENEMY_GUIDES={
+  scout:{name:'Scout',behavior:'Reports your position after reaching its camp.',counter:'Intercept it with a tower before it retreats.'},
+  sapper:{name:'Sapper',behavior:'Stops beside a defense and winds up a breach.',counter:'Put a tower behind the gate or use a trap to interrupt the breach.'},
+  healer:{name:'Healer',behavior:'Restores injured allies it can see and charges ranged shots.',counter:'Break line of sight with a wall or a closed gate.'},
+  commander:{name:'Commander',behavior:'Boosts the damage of nearby allies it can see.',counter:'Use successive defenses to separate it from other attackers.'},
+  armored:{name:'Shieldbearer',behavior:'Armor reduces incoming damage.',counter:'Slow it with a frost tower so your defenses can fire longer.'},
+  bomber:{name:'Bomber',behavior:'Explodes when defeated.',counter:'Use a tower to defeat it before it reaches your dwarves.'},
+  splitter:{name:'Splitter',behavior:'Breaks into two smaller attackers when defeated.',counter:'Cover the approach with traps or a cannon tower.'},
+  shaman:{name:'Shaman',behavior:'Heals nearby allies and charges ranged shots.',counter:'Use solid walls or a closed gate to break line of sight.'},
+  necromancer:{name:'Necromancer',behavior:'Stays behind a growing group of skeletons.',counter:'Fight from a defended corridor and use ranged towers to reach it.'},
+  phaser:{name:'Phaser',behavior:'Periodically becomes untargetable and charges ranged shots.',counter:'Hold a closed gate and let towers attack when it reappears.'}
+};
+const LM_BOSS_ATTACKS={
+  'Goblin King':{name:'War Cry',shape:'circle',radius:2,behavior:'Marks a circle where it will strike.',counter:'Move your dwarves or shelter behind a solid wall.'},
+  'Stone Colossus':{name:'Quake Stomp',shape:'stomp',radius:3,behavior:'Stomps the ground around itself.',counter:'Pull dwarves out of the marked ring.'},
+  'Ancient Lich':{name:'Raise Skeletons',shape:'summon',radius:1.6,minion:'skeleton',behavior:'Summons skeletons in a marked circle around itself.',counter:'Cover its approach with towers before its group grows.'},
+  'Brood Mother':{name:'Hatch Brood',shape:'summon',radius:1.6,minion:'imp',behavior:'Hatches two attackers near itself.',counter:'Cover the hatch area with a cannon or several nearby defenses.'},
+  'Deepfire Wyrm':{name:'Fire Breath',shape:'lane',length:6,halfWidth:1.1,behavior:'Breathes fire down a marked lane.',counter:'Move sideways out of the lane or shelter behind a solid wall.'}
+};
+function lmEnemyGuide(enemy){
+  const boss=LM_BOSS_ATTACKS[enemy.lmBoss];
+  if(boss)return{name:enemy.lmBoss,behavior:boss.behavior,counter:boss.counter};
+  return LM_ENEMY_GUIDES[enemy.lmRole]||LM_ENEMY_GUIDES[enemy.type]||{name:enemy.name||enemy.type,behavior:'Moves toward nearby dwarves and defenses.',counter:'Use a tower to cover the approach.'};
+}
+function lmRaidGuide(type){return LM_FACTIONS[type]||null}
 let lmWorldClock=0,lmWorldCursor=0;
 function lmNearbyDwarves(x,y,r){return typeof dwarfSpatial!=='undefined'?dwarfSpatial.query(x,y,r):dwarves}
 function lmNearbyEnemies(x,y,r){return typeof enemySpatial!=='undefined'?enemySpatial.query(x,y,r):enemies}
-function lmWorldReset(){lmWorldClock=0;lmWorldCursor=0;for(const e of enemies){e.lmMemory=null;e.lmTacticalClock=0}}
+function lmWorldReset(){
+  lmWorldClock=0;
+  lmWorldCursor=0;
+  for(const e of enemies){
+    e.lmMemory=null;
+    e.lmTacticalClock=0;
+    e.lmTell=null;
+    e.lmBreach=null;
+    e.lmShot=null;
+    e.lmScoutReport=null;
+    e.lmRetreatUntil=0;
+  }
+}
 function lmSetEnemyType(e,type){const t=ENEMY_TYPES.find(v=>v.type===type);if(!t)return;const scale=1+Math.min(4,(e.sourceDepth||0)*.005);e.type=type;e.hp=e.maxHp=Math.round(t.hp*scale);e.dmg=Math.max(1,Math.round(t.dmg*(1+Math.min(2,(e.sourceDepth||0)*.002))));e.speed=e.baseSpeed=t.speed;e.size=t.size;for(const k of ['armorPct','auraRegen','auraRange','phaseEvery','phaseDur','summonEvery','summonCount','summonCap','splitCount'])e[k]=t[k]||0;e.phaseCd=e.phaseEvery;e.summonCd=e.summonEvery;e.summonType=t.summonType||null;e.splitsInto=t.splitsInto||null;e.explodeOnDeath=t.explodeOnDeath||null;e.isMinion=!!t.isMinion;e.noLoot=!!t.noLoot}
-function lmCamp(s){let camp=lm.factions.find(v=>v.id===s.id);if(camp)return camp;const depth=depthAt(s.x,s.y),names=depth>620?['abyss','undead','orc']:depth>260?['orc','undead','brood']:['goblin','brood'];const type=names[Math.abs(s.x*13+s.y*7)%names.length];camp={id:s.id,type,x:s.x,y:s.y,phase:'gathering',population:0,stock:0,nextRaid:lm.time+18,raids:0,discovered:true,knowledge:null};if(lm.factions.length<256)lm.factions.push(camp);lmChronicle(LM_FACTIONS[type].name+' uncovered at depth '+depth+'. Listen for its raid warning.');return camp}
+function lmCamp(s){
+  const known=lm.factions.find(v=>v.id===s.id);
+  if(known)return known;
+  if(lm.factions.length>=256||!tSeen[idx(s.x,s.y)])return null;
+  const depth=depthAt(s.x,s.y);
+  const names=depth>620?['abyss','undead','orc']:depth>260?['orc','undead','brood']:['goblin','brood'];
+  const type=names[Math.abs(s.x*13+s.y*7)%names.length];
+  const camp={id:s.id,type,x:s.x,y:s.y,phase:'gathering',population:0,stock:0,nextRaid:lm.time+18,raids:0,discovered:true,knowledge:null};
+  lm.factions.push(camp);
+  lmChronicle(LM_FACTIONS[type].name+' uncovered at depth '+depth+'.');
+  return camp;
+}
 // Preserve spawner health/progression, but schedule ecology rather than unlimited
 // per-frame births. The first wave is always announced and delayed.
 updateSpawners=function(dt){
@@ -14,9 +68,19 @@ updateSpawners=function(dt){
 };
 function lmSpawnCamp(camp,s){const def=LM_FACTIONS[camp.type],members=enemies.filter(e=>e.lmCamp===camp.id&&e.hp>0);if(members.length>=18||enemies.length>=240)return;
   const count=Math.min(3+Math.floor(camp.raids/3),6,18-members.length,240-enemies.length);
-  for(let n=0;n<count;n++){const e=makeEnemy(s.x,s.y,depthAt(s.x,s.y));lmSetEnemyType(e,def.units[(camp.raids+n)%def.units.length]);e.lmCamp=camp.id;e.lmHome={x:s.x,y:s.y};e.lmRole=n===0?'scout':e.type==='bomber'?'sapper':e.type==='shaman'?'healer':n===count-1?'commander':'raider';e.lmMemory=camp.knowledge?{...camp.knowledge,until:lm.time+45}:null;enemies.push(e)}
+  const formation=camp.raids===0?def.opening:def.raid;
+  for(let n=0;n<count;n++){
+    const [type,role='raider']=formation[n%formation.length];
+    const enemy=makeEnemy(s.x,s.y,depthAt(s.x,s.y));
+    lmSetEnemyType(enemy,type);
+    enemy.lmCamp=camp.id;
+    enemy.lmHome={x:s.x,y:s.y};
+    enemy.lmRole=role;
+    enemy.lmMemory=camp.knowledge?.until>lm.time?{...camp.knowledge}:null;
+    enemies.push(enemy);
+  }
   camp.raids++;camp.population=members.length+count;camp.phase='raiding';camp.nextRaid=lm.time+45+Math.min(45,camp.raids*3);
-  if(camp.raids===4&&!camp.bossSpawned&&enemies.length<240){const e=makeEnemy(s.x,s.y,depthAt(s.x,s.y));lmSetEnemyType(e,camp.type==='undead'?'necromancer':camp.type==='brood'?'splitter':camp.type==='abyss'?'phaser':camp.type==='orc'?'troll':'goblin');e.lmCamp=camp.id;e.lmHome={x:s.x,y:s.y};e.lmBoss=def.boss;e.name=def.boss;e.maxHp=Math.round(e.maxHp*1.7);e.hp=e.maxHp;e.size=1.7;e.lmAbilityAt=lm.time+10;e.lmRole='commander';enemies.push(e);camp.bossSpawned=true;lmChronicle(def.boss+' has emerged. Watch the marked ground before its attacks.');toast(def.boss+' approaches!')}
+  if(camp.raids>=4&&!camp.bossSpawned&&camp.population<18&&enemies.length<240){const e=makeEnemy(s.x,s.y,depthAt(s.x,s.y));lmSetEnemyType(e,def.bossType);e.lmCamp=camp.id;e.lmHome={x:s.x,y:s.y};e.lmBoss=def.boss;e.name=def.boss;e.maxHp=Math.round(e.maxHp*1.7);e.hp=e.maxHp;e.size=1.7;e.lmAbilityAt=lm.time+10;e.lmRole='commander';enemies.push(e);camp.population++;camp.bossSpawned=true;lmChronicle(def.boss+' has emerged. '+LM_BOSS_ATTACKS[def.boss].counter);toast(def.boss+' approaches!')}
 }
 function lmSeedSettlement(){if(lm.settlements.length>=12)return;const n=lm.settlements.length,attempt=lm.settlementSearch||0;lm.settlementSearch=attempt+1;const a=attempt*2.399963,r=45+Math.floor((attempt%48)/3)*20;const cx=Math.round(fortress.x+Math.cos(a)*r),cy=Math.round(fortress.y+Math.sin(a)*r);let spot=null;
   for(let dy=-12;dy<=12&&!spot;dy++)for(let dx=-12;dx<=12;dx++){const x=cx+dx,y=cy+dy;if(inBounds(x,y)&&isWalkable(tType[idx(x,y)])&&depthAt(x,y)>35&&!lm.settlements.some(s=>dist2(x,y,s.x,s.y)<400)){spot={x,y};break}}
@@ -42,7 +106,18 @@ function lmWorldTick(dt){
   if(lm.settlements.length<12)lmSeedSettlement();
   for(const s of lm.settlements){if(!s.discovered&&tSeen[idx(s.x,s.y)]){s.discovered=true;lmChronicle('Discovered '+s.name+(s.type==='ruin'?' — an ancient dwarven ruin.':' — merchants offer '+s.trade+'.'));toast('Discovered '+s.name)} }
   const count=Math.min(8,spawners.length);
-  for(let n=0;n<count;n++){if(!spawners.length)break;const s=spawners[lmWorldCursor++%spawners.length],camp=lmCamp(s);if(!dwarves.some(d=>dist2(d.x,d.y,s.x,s.y)<90*90)){camp.stock=Math.min(20,(camp.stock||0)+1);continue}if(lm.time<camp.nextRaid)continue;if(camp.phase!=='warning'){camp.phase='warning';camp.nextRaid=lm.time+9;lmChronicle('Drums from '+LM_FACTIONS[camp.type].name+': a raid is gathering.');toast('Raid warning: '+LM_FACTIONS[camp.type].name)}else lmSpawnCamp(camp,s)}
+  for(let n=0;n<count;n++){
+    const s=spawners[lmWorldCursor++%spawners.length],camp=lmCamp(s);
+    if(!camp)continue;
+    if(!dwarves.some(d=>dist2(d.x,d.y,s.x,s.y)<90*90)){camp.stock=Math.min(20,(camp.stock||0)+1);continue}
+    if(lm.time<camp.nextRaid)continue;
+    if(camp.phase==='warning'){lmSpawnCamp(camp,s);continue}
+    const def=LM_FACTIONS[camp.type];
+    camp.phase='warning';
+    camp.nextRaid=lm.time+9;
+    lmChronicle(`${def.name} is preparing a raid. ${def.warning}. ${def.counter}`);
+    toast('Raid warning: '+def.name);
+  }
   for(const s of lm.factions)if(!spawners.some(p=>p.id===s.id))s.phase='defeated';
 }
 // Enemies know only what they or their scouts have observed along clear sight.
@@ -50,41 +125,169 @@ nearestEnemyTarget=function(e){
   const range=e.lmRole==='scout'?18:13,r2=range*range;
   const candidates=[...lmNearbyDwarves(e.x,e.y,range+1).filter(d=>d.hp>0).map(ref=>({kind:'dwarf',x:Math.round(ref.x),y:Math.round(ref.y),ref})),...towers.map(ref=>({kind:'tower',x:ref.x,y:ref.y,ref})),...depots.map(ref=>({kind:'depot',x:ref.x,y:ref.y,ref})),{kind:'fortress',x:fortress.x,y:fortress.y,ref:fortress}];
   let best=null,bd=Infinity;for(const t of candidates){const q=dist2(e.x,e.y,t.x,t.y);if(q>r2||!lmSight(e.x,e.y,t.x,t.y))continue;const score=q*(e.lmRole==='sapper'&&t.kind!=='dwarf'?.5:1);if(score<bd){bd=score;best=t}}
-  if(best){e.lmMemory={x:best.x,y:best.y,until:lm.time+25};const camp=lm.factions.find(c=>c.id===e.lmCamp);if(camp&&e.lmRole==='scout')camp.knowledge={x:best.x,y:best.y,until:lm.time+60};return best}
+  if(best){
+    e.lmMemory={x:best.x,y:best.y,until:lm.time+25};
+    if(e.lmRole==='scout'&&e.lmHome&&!e.lmScoutReport&&(e.lmScoutAgainAt||0)<=lm.time){
+      e.lmScoutReport={x:best.x,y:best.y,readyAt:lm.time+1.2};
+      e.lmRetreatUntil=lm.time+8;
+      return{kind:'retreat',x:e.lmHome.x,y:e.lmHome.y,ref:null};
+    }
+    return best;
+  }
   if(e.lmMemory?.until>lm.time)return{kind:'memory',x:e.lmMemory.x,y:e.lmMemory.y,ref:null};
   if(e.lmHome){const dx=((Math.floor(lm.time/8)+String(e.id).length)%3)-1,dy=dx===0?1:0;const x=e.lmHome.x+dx,y=e.lmHome.y+dy;if(inBounds(x,y)&&isWalkable(tType[idx(x,y)]))return{kind:'patrol',x,y,ref:null}}
   return null;
 };
+const LM_SAPPER_DIRECTIONS=[[0,0],[0,-1],[1,0],[0,1],[-1,0]];
+const LM_BREACHABLE=new Set(['gate','wall','barricade','slit']);
+function lmSapperTick(enemy){
+  const x=Math.round(enemy.x),y=Math.round(enemy.y);
+  const breach=enemy.lmBreach;
+  if(breach){
+    const defense=lmEngine.infraAt(breach.x,breach.y);
+    if(!defense||defense.id!==breach.id||Math.abs(x-breach.x)+Math.abs(y-breach.y)>1){enemy.lmBreach=null;return false}
+    if(lm.time<breach.until)return true;
+    enemy.lmBreach=null;
+    enemy.lmBreachAt=lm.time+1;
+    defense.hp-=enemy.dmg*4;
+    fxText(defense.x,defense.y,'BREACH','#ffb06c');
+    if(defense.hp<=0){
+      lm.infrastructure=lm.infrastructure.filter(item=>item!==defense);
+      lmEngine.reindex();
+      window.dispatchEvent(new CustomEvent('dwarfworld:terrain',{detail:{x:defense.x,y:defense.y}}));
+      lmChronicle('A sapper breached a '+defense.type+'.');
+    }
+    return true;
+  }
+  if((enemy.lmBreachAt||0)>lm.time)return false;
+  for(const [dx,dy] of LM_SAPPER_DIRECTIONS){
+    if(!inBounds(x+dx,y+dy))continue;
+    const defense=lmEngine.infraAt(x+dx,y+dy);
+    if(!defense||!LM_BREACHABLE.has(defense.type))continue;
+    enemy.path=null;
+    enemy.lmBreach={id:defense.id,x:defense.x,y:defense.y,until:lm.time+1.8};
+    return true;
+  }
+  return false;
+}
 const lmBaseEnemy=updateEnemy;
 updateEnemy=function(e,dt){if(!e||e.hp<=0)return;
   const infra=lmEngine.infraAt(Math.round(e.x),Math.round(e.y));if(infra?.type==='trap'&&(infra.readyAt||0)<lm.time){infra.readyAt=lm.time+12;applyEnemyDamage(e,Math.max(10,e.maxHp*.15));e.stunLeft=Math.max(e.stunLeft||0,1.2)}
-  if(e.lmRole==='sapper'){const gate=lm.infrastructure.find(v=>['gate','wall','barricade','slit'].includes(v.type)&&Math.abs(v.x-Math.round(e.x))+Math.abs(v.y-Math.round(e.y))<=1);if(gate){e.path=null;gate.hp-=dt*e.dmg*1.4;if(gate.hp<=0){lm.infrastructure=lm.infrastructure.filter(v=>v!==gate);lmEngine.reindex();window.dispatchEvent(new CustomEvent('dwarfworld:terrain',{detail:{x:gate.x,y:gate.y}}));lmChronicle('A sapper breached a '+gate.type+'.')}return}}
-  // Scouts retreat from unfavorable fights and carry observations back home.
+  if(e.hp<=0)return;
+  if(e.stunLeft>0){
+    if(e.lmBreach)e.lmBreachAt=lm.time+1;
+    if(e.lmTell)e.lmAbilityAt=lm.time+2;
+    if(e.lmShot)e.lmShotAt=lm.time+2;
+    e.lmBreach=null;
+    e.lmTell=null;
+    e.lmShot=null;
+    lmBaseEnemy(e,dt);
+    return;
+  }
+  if(e.lmRole==='sapper'&&lmSapperTick(e))return;
   e.lmTacticalClock=(e.lmTacticalClock||0)-dt;
-  if(e.lmTacticalClock<=0){e.lmTacticalClock=1.5;const nearby=lmNearbyDwarves(e.x,e.y,7).filter(d=>d.hp>0&&dist2(e.x,e.y,d.x,d.y)<49&&lmSight(e.x,e.y,d.x,d.y));if(e.lmHome&&(e.hp<e.maxHp*.25||e.lmRole==='scout'&&nearby.length>=3))e.lmRetreatUntil=lm.time+5;
+  if(e.lmTacticalClock<=0){e.lmTacticalClock=1.5;if(e.lmHome&&!e.lmBoss&&e.hp<e.maxHp*.25&&!(e.lmRetreatUntil>lm.time)){e.lmRetreatUntil=lm.time+5;e.path=null}
     if(e.lmRole==='commander')for(const ally of lmNearbyEnemies(e.x,e.y,6))if(ally!==e&&dist2(e.x,e.y,ally.x,ally.y)<36&&lmSight(e.x,e.y,ally.x,ally.y))ally.lmCommandUntil=lm.time+2;
   }
-  if(e.lmRetreatUntil>lm.time&&e.lmHome){if(!e.path?.length)e.path=typeof bfsToPoint==='function'?bfsToPoint(Math.round(e.x),Math.round(e.y),e.lmHome.x,e.lmHome.y,0,true):null;stepAlongPath(e,dt);if(dist2(e.x,e.y,e.lmHome.x,e.lmHome.y)<2)e.hp=Math.min(e.maxHp,e.hp+dt*2);return}
-  if(e.lmBoss)lmBossTick(e,dt);
+  if(e.lmRetreatUntil>lm.time&&e.lmHome){
+    const home=e.lmHome;
+    if(dist2(e.x,e.y,home.x,home.y)<1){
+      e.path=null;
+      e.hp=Math.min(e.maxHp,e.hp+dt*2);
+      if(e.lmScoutReport?.readyAt<=lm.time){
+        const camp=lm.factions.find(c=>c.id===e.lmCamp);
+        if(camp){const {x,y}=e.lmScoutReport;camp.knowledge={x,y,until:lm.time+60}}
+        e.lmScoutReport=null;
+        e.lmScoutAgainAt=lm.time+12;
+        e.lmRetreatUntil=0;
+      }
+    }else{
+      if(!e.path?.length&&(e.lmReturnPathAt||0)<=lm.time){
+        e.lmReturnPathAt=lm.time+.6;
+        e.path=bfsToPoint(Math.round(e.x),Math.round(e.y),home.x,home.y,0,true);
+      }
+      stepAlongPath(e,dt);
+    }
+    return;
+  }
+  e.lmScoutReport=null;
+  if(e.lmBoss&&lmBossTick(e))return;
   // Ranged support takes a clear firing position and spends time charging;
   // the sight test is repeated at impact so a newly shut gate protects dwarves.
-  if(e.type==='shaman'||e.type==='phaser'){
+  if(!e.lmBoss&&!(e.phasedLeft>0)&&(e.type==='shaman'||e.type==='phaser')){
     e.lmShotAt=e.lmShotAt||lm.time+3;
-    if(e.lmShot){if(lm.time>=e.lmShot.until){const d=dwarves.find(d=>d.id===e.lmShot.id);if(d&&d.hp>0&&dist2(e.x,e.y,d.x,d.y)<64&&lmSight(e.x,e.y,d.x,d.y)){d.hp-=Math.max(1,Math.round(e.dmg*(1-(d.defense||0))));fxBeam(e.x,e.y,d.x,d.y,'rgba(166,190,255,.9)');markUI('selected','dwarves')}e.lmShot=null;e.lmShotAt=lm.time+4}}
-    else if(lm.time>=e.lmShotAt){const d=dwarves.find(d=>d.hp>0&&dist2(e.x,e.y,d.x,d.y)>5&&dist2(e.x,e.y,d.x,d.y)<64&&lmSight(e.x,e.y,d.x,d.y));if(d){e.lmShot={id:d.id,until:lm.time+1};e.path=null;fxBurst(e.x,e.y,'rgba(166,190,255,.7)',.7)}else e.lmShotAt=lm.time+1}
+    if(e.lmShot){if(lm.time<e.lmShot.until)return;const d=dwarves.find(d=>d.id===e.lmShot.id);if(d&&d.hp>0&&dist2(e.x,e.y,d.x,d.y)<64&&lmSight(e.x,e.y,d.x,d.y)){d.hp-=Math.max(1,Math.round(e.dmg*(1-(d.defense||0))));fxBeam(e.x,e.y,d.x,d.y,'rgba(166,190,255,.9)');markUI('selected','dwarves','hud')}e.lmShot=null;e.lmShotAt=lm.time+4}
+    else if(lm.time>=e.lmShotAt){const d=lmNearbyDwarves(e.x,e.y,8).find(d=>d.hp>0&&dist2(e.x,e.y,d.x,d.y)>5&&dist2(e.x,e.y,d.x,d.y)<64&&lmSight(e.x,e.y,d.x,d.y));if(d){e.lmShot={id:d.id,until:lm.time+1.2};e.path=null;return}e.lmShotAt=lm.time+1}
   }
   const dmg=e.dmg;if(e.lmCommandUntil>lm.time)e.dmg=Math.round(dmg*1.15);try{lmBaseEnemy(e,dt)}finally{e.dmg=dmg}
 };
 // Reuse existing enemy special types, with solid-wall checks and a global cap.
 const lmBaseSpecial=tickEnemySpecials;
-tickEnemySpecials=function(e,dt){const aura=e.auraRegen,cap=e.summonCap,start=enemies.length;e.auraRegen=0;e.summonCap=Math.min(cap||0,Math.max(0,240-enemies.length+countMinionsOwnedBy(e.id)));try{lmBaseSpecial(e,dt)}finally{e.auraRegen=aura;e.summonCap=cap}for(let n=start;n<enemies.length;n++){enemies[n].lmCamp=e.lmCamp;enemies[n].lmHome=e.lmHome}if(aura>0)for(const ally of enemies)if(ally!==e&&ally.hp<ally.maxHp&&dist2(e.x,e.y,ally.x,ally.y)<e.auraRange**2&&lmSight(e.x,e.y,ally.x,ally.y))ally.hp=Math.min(ally.maxHp,ally.hp+aura*dt)};
-function lmBossTick(e,dt){
-  if(e.lmTell){const tell=e.lmTell;if(lm.time<tell.until)return;e.lmTell=null;e.lmAbilityAt=lm.time+11;
-    if(e.lmBoss==='Brood Mother'||e.lmBoss==='Ancient Lich'){for(let i=0;i<2&&enemies.length<240&&countMinionsOwnedBy(e.id)<6;i++){const child=makeEnemy(Math.round(e.x),Math.round(e.y),e.sourceDepth);lmSetEnemyType(child,e.lmBoss==='Ancient Lich'?'skeleton':'imp');child.summonerId=e.id;child.isMinion=true;child.noLoot=true;child.lmHome=e.lmHome;child.lmCamp=e.lmCamp;enemies.push(child)}}
-    else for(const d of dwarves)if(dist2(d.x,d.y,tell.x,tell.y)<tell.r**2&&lmSight(e.x,e.y,d.x,d.y)){d.hp-=Math.max(1,Math.round(e.dmg*1.4*(1-(d.defense||0))));fxText(d.x,d.y,'IMPACT','#ffb06c')}
-    return;
+tickEnemySpecials=function(e,dt){
+  const aura=e.auraRegen,cap=e.summonCap,start=enemies.length;
+  e.auraRegen=0;
+  if(e.type==='necromancer'&&(e.summonCd<=dt||e.lmBoss)){
+    e.summonCap=e.lmBoss?0:Math.min(cap||0,Math.max(0,240-start+countMinionsOwnedBy(e.id)));
   }
-  if(lm.time<(e.lmAbilityAt||0))return;const target=nearestEnemyTarget(e);if(!target||target.kind==='patrol')return;e.lmTell={x:target.x,y:target.y,r:e.lmBoss==='Deepfire Wyrm'?3:2,until:lm.time+2.5};e.path=null;
+  try{lmBaseSpecial(e,dt)}finally{e.auraRegen=aura;e.summonCap=cap}
+  for(let n=start;n<enemies.length;n++){
+    enemies[n].lmCamp=e.lmCamp;
+    enemies[n].lmHome=e.lmHome;
+  }
+  if(!(aura>0))return;
+  for(const ally of lmNearbyEnemies(e.x,e.y,e.auraRange)){
+    if(ally!==e&&ally.hp>0&&ally.hp<ally.maxHp&&dist2(e.x,e.y,ally.x,ally.y)<e.auraRange**2&&lmSight(e.x,e.y,ally.x,ally.y)){
+      ally.hp=Math.min(ally.maxHp,ally.hp+aura*dt);
+    }
+  }
+};
+function lmTellHits(tell,attack,unit){
+  const dx=unit.x-tell.x,dy=unit.y-tell.y;
+  if(attack.shape!=='lane')return dx*dx+dy*dy<=attack.radius**2;
+  const forward=dx*tell.dx+dy*tell.dy;
+  const side=dx*tell.dy-dy*tell.dx;
+  return forward>=0&&forward<=attack.length&&Math.abs(side)<=attack.halfWidth;
+}
+function lmBossTick(enemy){
+  const attack=LM_BOSS_ATTACKS[enemy.lmBoss];
+  if(!attack)return false;
+  const tell=enemy.lmTell;
+  if(tell){
+    if(lm.time<tell.until)return true;
+    enemy.lmTell=null;
+    enemy.lmAbilityAt=lm.time+11;
+    if(attack.minion){
+      let slots=Math.min(2,240-enemies.length,6-countMinionsOwnedBy(enemy.id));
+      while(slots-->0){
+        const child=makeEnemy(Math.round(enemy.x),Math.round(enemy.y),enemy.sourceDepth);
+        lmSetEnemyType(child,attack.minion);
+        child.summonerId=enemy.id;
+        child.isMinion=true;
+        child.noLoot=true;
+        child.lmHome=enemy.lmHome;
+        child.lmCamp=enemy.lmCamp;
+        enemies.push(child);
+      }
+    }else{
+      for(const dwarf of lmNearbyDwarves(tell.x,tell.y,(attack.length||attack.radius)+1)){
+        if(dwarf.hp<=0||!lmTellHits(tell,attack,dwarf)||!lmSight(enemy.x,enemy.y,dwarf.x,dwarf.y))continue;
+        const damage=Math.max(1,Math.round(enemy.dmg*1.4*(1-(dwarf.defense||0))));
+        dwarf.hp-=damage;
+        fxText(dwarf.x,dwarf.y,`-${damage}`,'#ffb06c');
+        markUI('selected','dwarves','hud');
+      }
+    }
+    return true;
+  }
+  if(lm.time<(enemy.lmAbilityAt||0))return false;
+  const target=nearestEnemyTarget(enemy);
+  if(!target?.ref){enemy.lmAbilityAt=lm.time+1;return false}
+  const onTarget=attack.shape==='circle';
+  const x=onTarget?target.x:enemy.x,y=onTarget?target.y:enemy.y;
+  const dx=target.x-enemy.x,dy=target.y-enemy.y,distance=Math.hypot(dx,dy);
+  enemy.lmTell={x,y,dx:distance?dx/distance:1,dy:distance?dy/distance:0,until:lm.time+2.5};
+  enemy.path=null;
+  return true;
 }
 const lmBaseEnemyDeath=handleEnemyDeath;
 handleEnemyDeath=function(e){if(!e||e.deadHandled)return;lmBaseEnemyDeath(e);if(e.lmBoss){lmChronicle(e.lmBoss+' was defeated. Its hoard has been recovered.');const def=DWX_RELICS.find(r=>!dwx.relicsFound.includes(r.id));if(def){const it=dwxMakeRelic(def);dwx.relicsFound.push(def.id);groundLoot.push({id:uuid(),x:Math.round(e.x),y:Math.round(e.y),payload:{kind:'item',item:it}})}lmEngine.deposit(Math.round(e.x),Math.round(e.y),'ingot',12)}};
@@ -92,9 +295,93 @@ const lmBaseOnEnemyDeath=onEnemyDeath;
 onEnemyDeath=function(e){const count=e.splitCount,blast=e.explodeOnDeath,start=enemies.length;e.splitCount=Math.min(count||0,Math.max(0,240-enemies.length));e.explodeOnDeath=null;try{lmBaseOnEnemyDeath(e)}finally{e.splitCount=count;e.explodeOnDeath=blast}for(let n=start;n<enemies.length;n++){enemies[n].lmCamp=e.lmCamp;enemies[n].lmHome=e.lmHome}
   if(blast){for(const actor of [...dwarves,...towers])if(dist2(e.x,e.y,actor.x,actor.y)<=blast.radius**2&&lmSight(e.x,e.y,actor.x,actor.y))actor.hp-=blast.dmg;markUI('hud','dwarves','selected')}
 };
+function lmDrawCombatLabel(text,x,y,color){
+  ctx.font='bold 11px system-ui';
+  ctx.textAlign='center';
+  ctx.lineWidth=3;
+  ctx.strokeStyle='#16141c';
+  ctx.strokeText(text,x,y);
+  ctx.fillStyle=color;
+  ctx.fillText(text,x,y);
+}
+function lmDrawBossTell(tell,attack){
+  const point=worldToScreen(tell.x,tell.y);
+  const s=point.s,x=point.x+s*.5,y=point.y+s*.5;
+  const summon=attack.shape==='summon';
+  ctx.fillStyle=summon?'rgba(175,132,255,.24)':'rgba(238,94,48,.25)';
+  ctx.strokeStyle=summon?'#dcc4ff':'#ffbe8a';
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  if(attack.shape==='lane'){
+    const endX=x+tell.dx*attack.length*s,endY=y+tell.dy*attack.length*s;
+    const sideX=-tell.dy*attack.halfWidth*s,sideY=tell.dx*attack.halfWidth*s;
+    ctx.moveTo(x+sideX,y+sideY);
+    ctx.lineTo(endX+sideX,endY+sideY);
+    ctx.lineTo(endX-sideX,endY-sideY);
+    ctx.lineTo(x-sideX,y-sideY);
+    ctx.closePath();
+  }else ctx.arc(x,y,attack.radius*s,0,Math.PI*2);
+  ctx.fill();
+  ctx.stroke();
+  if(attack.shape==='stomp'||summon){
+    ctx.beginPath();
+    ctx.arc(x,y,attack.radius*s*.72,0,Math.PI*2);
+    ctx.setLineDash(summon?[2,4]:[6,3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  const remaining=Math.max(0,Math.min(1,(tell.until-lm.time)/2.5));
+  ctx.fillStyle='#16141c';
+  ctx.fillRect(x-16,y-5,32,5);
+  ctx.fillStyle=summon?'#dcc4ff':'#ffbe8a';
+  ctx.fillRect(x-15,y-4,30*remaining,3);
+}
+function lmDrawEnemyWarnings(){
+  let drawn=0;
+  for(const enemy of enemies){
+    if(enemy.hp<=0||!(enemy.lmBoss||enemy.lmBreach||enemy.lmShot||enemy.lmScoutReport))continue;
+    if(!enemy.lmBoss&&drawn>=14)continue;
+    const x=Math.round(enemy.x),y=Math.round(enemy.y);
+    if(!inBounds(x,y)||tVis[idx(x,y)]!==visMark)continue;
+    const rendered=typeof livingRenderPosition==='function'?livingRenderPosition(enemy):enemy;
+    const p=worldToScreen(rendered.x,rendered.y);
+    if(p.x<-p.s*2||p.y<-p.s*2||p.x>innerWidth||p.y>innerHeight)continue;
+    drawn++;
+    const attack=LM_BOSS_ATTACKS[enemy.lmBoss];
+    if(attack){
+      if(enemy.lmTell)lmDrawBossTell(enemy.lmTell,attack);
+      lmDrawCombatLabel(enemy.lmTell?attack.name:enemy.lmBoss,p.x+p.s*.5,p.y-8,'#ffd5aa');
+    }
+    if(enemy.lmBreach){
+      const q=worldToScreen(enemy.lmBreach.x,enemy.lmBreach.y);
+      ctx.strokeStyle='#ffbe8a';
+      ctx.lineWidth=2;
+      ctx.setLineDash([4,3]);
+      ctx.strokeRect(q.x+1,q.y+1,q.s-2,q.s-2);
+      ctx.setLineDash([]);
+      lmDrawCombatLabel('Breach',q.x+q.s*.5,q.y-4,'#ffd5aa');
+    }
+    if(enemy.lmShot){
+      const target=dwarves.find(d=>d.id===enemy.lmShot.id&&d.hp>0);
+      if(target&&lmSight(enemy.x,enemy.y,target.x,target.y)){
+        const q=worldToScreen(target.x,target.y);
+        ctx.strokeStyle='#d8d0ff';
+        ctx.lineWidth=2;
+        ctx.setLineDash([4,4]);
+        ctx.beginPath();
+        ctx.moveTo(p.x+p.s*.5,p.y+p.s*.5);
+        ctx.lineTo(q.x+q.s*.5,q.y+q.s*.5);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      lmDrawCombatLabel('Charging',p.x+p.s*.5,p.y-4,'#d8d0ff');
+    }
+    if(enemy.lmScoutReport)lmDrawCombatLabel('Reporting',p.x+p.s*.5,p.y-4,'#ffe3a8');
+  }
+}
 function lmDrawWorld(){
   for(const s of lm.settlements){if(!s.discovered)continue;const p=worldToScreen(s.x,s.y);if(p.x<-p.s*2||p.y<-p.s*2||p.x>innerWidth||p.y>innerHeight)continue;const art=s.type==='ruin'?'decorations.arch':s.type==='outpost'?'buildings.depot':'interiors.market';if(!window.DWARF_ART?.drawFrame?.(ctx,art,p.x-p.s*.25,p.y-p.s*.65,p.s*1.5)){ctx.strokeStyle=s.type==='ruin'?'#c0b6a7':'#75cdb7';ctx.lineWidth=2;ctx.strokeRect(p.x,p.y,p.s,p.s)}ctx.fillStyle=s.type==='ruin'?'#c0b6a7':'#75cdb7';ctx.font='10px system-ui';ctx.fillText(s.name,p.x,p.y-p.s*.65-4)}
   for(const c of lm.caravans){const p=worldToScreen(c.x,c.y);if(p.x<-p.s||p.y<-p.s||p.x>innerWidth||p.y>innerHeight||!tSeen[idx(Math.round(c.x),Math.round(c.y))])continue;if(window.DWARF_ART?.drawFrame?.(ctx,'interiors.hauling',p.x-p.s*.1,p.y-p.s*.3,p.s*1.2))continue;ctx.fillStyle='#c8a36e';ctx.fillRect(p.x+p.s*.1,p.y+p.s*.2,p.s*.8,p.s*.55);ctx.fillStyle='#403b36';ctx.fillRect(p.x+p.s*.2,p.y+p.s*.65,p.s*.15,p.s*.2);ctx.fillRect(p.x+p.s*.65,p.y+p.s*.65,p.s*.15,p.s*.2)}
-  for(const e of enemies){if(!e.lmBoss)continue;const p=worldToScreen(e.x,e.y);if(p.x<-p.s||p.y<-p.s||p.x>innerWidth||p.y>innerHeight||tVis[idx(Math.round(e.x),Math.round(e.y))]!==visMark)continue;ctx.fillStyle='#f0bb85';ctx.font='bold 11px system-ui';ctx.fillText(e.lmBoss,p.x,p.y-6);if(e.lmTell){const q=worldToScreen(e.lmTell.x,e.lmTell.y);ctx.fillStyle='rgba(240,110,55,.18)';ctx.strokeStyle='#ffae73';ctx.lineWidth=2;ctx.beginPath();ctx.arc(q.x+q.s*.5,q.y+q.s*.5,e.lmTell.r*q.s,0,Math.PI*2);ctx.fill();ctx.stroke()}}
+  lmDrawEnemyWarnings();
 }
 window.DwarfWorldLiving.trade=lmTrade;

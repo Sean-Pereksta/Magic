@@ -143,6 +143,67 @@ test('haulers leave scarce workplace ingredients in place and transfer only surp
   a.inventory.ore=14;f.tick(40);assert.equal(a.inventory.ore,9);assert.equal(b.inventory.ore,5);assert.equal(f.engine.state.stats.hauled,5);
 });
 
+test('a miner can build, supply and operate a single Smelter',()=>{
+  const f=fixture(['miner']);
+  const room=f.room('smelter',7,5,false);
+  f.engine.deposit(5,5,'ore',9);
+  f.tick(90);
+  assert.equal(room.active,true);
+  assert.ok(f.engine.state.stores[0].inventory.ingot>=6);
+  assert.equal(f.dwarves[0].living.profession,'miner');
+  assert.equal(f.engine.state.rooms.length,1);
+});
+
+test('a full stockpile leaves the Smelter output intact until room opens',()=>{
+  const f=fixture(['smith','hauler']);
+  const room=f.room('smelter',7,5);
+  const stockpile=f.engine.state.stores[0];
+  stockpile.inventory.ingot=256;
+  room.inventory.ore=9;
+  assert.equal(f.engine.roomStatus(room.id).code,'ready');
+  f.tick(45);
+  assert.equal(room.inventory.ingot,6);
+  assert.equal(f.engine.roomStatus(room.id).code,'storage-full');
+  stockpile.inventory.ingot=254;
+  f.tick(30);
+  assert.equal(stockpile.inventory.ingot,256);
+  assert.equal(room.inventory.ingot,4);
+});
+
+test('the Smelter reports complete incoming reservations before and after restoring a save',()=>{
+  const f=fixture(['hauler','smith']);
+  const room=f.room('smelter',15,5);
+  f.engine.deposit(5,5,'ore',2);
+  assert.equal(f.engine.roomStatus(room.id).code,'waiting-haul');
+  f.tick(.2);
+  const status=f.engine.roomStatus(room.id);
+  assert.equal(status.code,'delivery-incoming');
+  assert.equal(status.incoming,2);
+  assert.equal(status.amount,3);
+  f.engine.restore(f.engine.serialize());
+  assert.deepEqual(f.engine.roomStatus(room.id),status);
+  f.tick(20);
+  const shortage=f.engine.roomStatus(room.id);
+  assert.equal(shortage.code,'needs-input');
+  assert.equal(shortage.amount,1);
+});
+
+test('an unreachable depot leaves carried output associated with the Smelter',()=>{
+  const f=fixture(['hauler']);
+  const room=f.room('smelter',24,5);
+  [f.dwarves[0].x,f.dwarves[0].y]=[25,6];
+  for(let y=1;y<29;y++)f.wall.add('20,'+y);
+  room.inventory.ingot=2;
+  f.tick(27);
+  const status=f.engine.roomStatus(room.id);
+  assert.equal(status.code,'no-access');
+  assert.equal(status.activity,'output');
+  assert.equal(status.heldAmount+status.outputAmount,2);
+  f.wall.delete('20,6');
+  f.tick(40);
+  assert.equal(f.engine.state.stores[0].inventory.ingot,2);
+});
+
 test('full pile capacity preserves carried goods, construction contents and unfinished ingredients',()=>{
   const base={x:3,y:3},d={id:'carrier',name:'Carrier',x:3,y:3,speed:2,hp:100,maxHp:100},raw=sim.fresh(base);
   for(let i=0;i<8192;i++)raw.deposits.push({id:'capacity-'+i,x:100+i%128,y:50+Math.floor(i/128),inventory:{knowledge:1}});

@@ -151,17 +151,31 @@
     else if(action==='construct')activityEffect(ctx,'dust',p,s);
   };
   const bossNames={'Goblin King':'goblin_king','Stone Colossus':'stone_colossus','Brood Mother':'brood_mother','Ancient Lich':'ancient_lich','Deepfire Wyrm':'deepfire_wyrm'};
+  const roleSprites={scout:'runner',sapper:'sapper',healer:'healer',commander:'commander'};
+  const typeSprites={imp:'abyssal_stalker',minion:'skeleton',tank:'armored'};
   const baseEnemy=drawEnemySprite;
   drawEnemySprite=function(e,p,s){
     if(!visible(p,s))return;
-    const key=bossNames[e.lmBoss]||({minion:'skeleton',tank:'armored'}[e.type]||e.type);
+    const key=bossNames[e.lmBoss]||roleSprites[e.lmRole]||typeSprites[e.type]||e.type;
     const name='enemies.'+key;
     if(!frame(name)){baseEnemy(e,p,s);return}
     const scale=Math.min(1.85,Math.max(.8,(e.size||1)*(e.lmBoss?1.2:1)));
-    const bob=reduced?0:Math.sin(performance.now()*.004+phase(e)*8)*s*.025;
+    const next=e.path?.[0];
+    const reverse=next&&next.x<e.x-.05;
+    const charging=e.lmTell||e.lmBreach||e.lmShot;
+    const bob=reduced||charging?0:Math.sin(performance.now()*(next ? 0.009 : 0.004)+phase(e)*8)*s*(next ? 0.035 : 0.015);
     ctx.save();ctx.shadowBlur=0;
     if(e.type==='phaser'&&e.phasedLeft>0)ctx.globalAlpha*=.55;
-    paint(ctx,name,p.x+s*(1-scale)*.5,p.y+s*(1-scale)-s*.1+bob,s*scale);ctx.restore();
+    const top=p.y+s*(1-scale)-s*.1+bob;
+    if(charging){
+      ctx.fillStyle=e.lmShot?'rgba(179,155,247,.28)':'rgba(248,137,79,.28)';
+      ctx.beginPath();
+      ctx.ellipse(p.x+s*.5,p.y+s*.74,s*.33,s*.16,0,0,Math.PI*2);
+      ctx.fill();
+    }
+    if(reverse){ctx.translate(p.x+s*.5,0);ctx.scale(-1,1);paint(ctx,name,-s*scale*.5,top,s*scale)}
+    else paint(ctx,name,p.x+s*(1-scale)*.5,top,s*scale);
+    ctx.restore();
   };
   function drawBuilding(g,type,b,p,s){
     if(!visible(p,s))return true;

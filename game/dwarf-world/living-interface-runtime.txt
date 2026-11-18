@@ -13,10 +13,22 @@
   const roles = ["miner","hauler","mason","smith","farmer","cook","healer","soldier","engineer","explorer"];
   const priorities = {mining:"Expand mines",construction:"Construction",food:"Food production",defense:"Defend the halls",rescue:"Recover wounded",exploration:"Explore ruins"};
   const infraNames = {road:"Stone road",rail:"Minecart rail",depot:"Supply depot",hauling:"Hauling station",gate:"Reinforced gate",wall:"Defensive wall",slit:"Arrow slit",barricade:"Barricade",trap:"Trap corridor",watch:"Watch post",lift:"Lift connection"};
-  const viewNames = {build:"Carve your kingdom",dwarves:"People of the mountain",character:"Dwarf",military:"Defend the halls",economy:"Supplies & work",exploration:"Beyond the fortress",inventory:"Equipment & relics",forge:"Forge",more:"Fortress commands",chronicle:"Chronicle",building:"Building",room:"Room",inspect:"World detail"};
+  const viewNames = {build:"Build",dwarves:"Dwarves",character:"Dwarf",military:"Defend",economy:"Supplies & work",exploration:"Explore & trade",inventory:"Equipment & relics",forge:"Forge",more:"Fortress commands",problems:"Building problems",chronicle:"Chronicle",building:"Building",room:"Room",inspect:"World detail"};
+  const buildChoices = [
+    ["smelter","Smelt ore","3 ore makes 2 ingots."],
+    ["garden","Grow food","Produces mushrooms for eating or cooking."],
+    ["kitchen","Cook meals","Turns mushrooms into meals."],
+    ["stockpile","Store supplies","Creates a local drop-off for goods."],
+    ["quarters","Make beds","Gives tired dwarves somewhere to rest."],
+    ["smithy","Make equipment","Optional. Turns ingots into weapons and armor."]
+  ];
   let activeView = null, returnFocus = null, placement = null, gesture = null, inspected = null;
-  let lastRefresh = 0, seenHistory = null, longPress = 0, touchOrigin = null, suppressTouch = false;
+  let lastRefresh = 0, longPress = 0, touchOrigin = null, suppressTouch = false;
   const views = {}, fingerprints = new Map();
+  const roomProblems = new Map(), mapBadges = new Map();
+  const badgeLimit = 12;
+  let roomStatuses = new Map();
+  let focusRing = null;
   const css = document.createElement("style");
   css.id = "lmInterfaceStyles";
   css.textContent = `
@@ -44,6 +56,23 @@
     }
     @media(max-height:500px) and (orientation:landscape){#lmPanel{left:auto;right:8px;top:49px;bottom:66px;width:330px;max-height:none}#lmPanelBody{padding:8px}#lmDock button{min-height:40px}#lmDock{max-width:520px;margin:auto}}
     #lmPanel .hud-right button{display:block!important;width:auto!important;min-width:0;padding:7px;font-size:12px!important}#lmPanel .hud-right #btnPause::before,#lmPanel .hud-right #btnFullscreen::before{display:none}#toast{top:auto!important}#lmDock [data-dw-art-icon]{display:block;width:22px;height:22px;line-height:22px}
+    #lmHudProblems[aria-pressed=true],#lmHudProblems.has-problems{border-color:#edbb765d;color:#ffddaa;background:#5d3b2a85}
+    #lmHudProblems{white-space:nowrap}
+    #lmPanel .lm-build-choices{margin-bottom:10px}
+    #lmPanel .lm-build-choices button{min-height:67px;background:linear-gradient(145deg,#252b24,#141d17);border:1px solid #b0956152;border-radius:9px;padding:9px 10px}
+    .lm-build-choices button b,.lm-build-choices button small{display:block}.lm-build-choices button small{margin-top:4px;line-height:1.33;color:#bcc9bc}
+    #lmPanel .lm-build-choices button:hover{border-color:#efc77e;background:#3c3528}
+    .lm-build-options{margin:8px 0;border-top:1px solid #ceb57830;padding-top:4px}
+    .lm-build-options>summary{cursor:pointer;padding:11px 4px;color:#decba8;font-weight:600;font-size:12px}
+    .lm-building-status{display:grid;gap:5px;margin-bottom:11px;padding:10px 11px;border:1px solid #a4d6b24d;border-radius:9px;background:#22382c66}
+    .lm-building-status[data-problem=true]{border-color:#f3b77466;background:#5c3b2966}
+    .lm-building-status strong{color:#f4e3c6;font-size:14px}.lm-building-status small{color:#e0d4b9;line-height:1.45}
+    .lm-building-status button{justify-self:start;margin-top:3px}.lm-building-status progress{width:100%;height:8px;accent-color:#f0b973;margin-top:3px}
+    #lmMapBadges{position:fixed;inset:0;z-index:40;pointer-events:none;overflow:hidden}
+    #lmMapBadges button{pointer-events:auto;position:absolute;left:0;top:0;width:35px;height:35px;padding:0;display:grid;place-items:center;border:1px solid #f4c380;color:#fff0cd;background:#342418;box-shadow:0 2px 7px #000c;border-radius:8px;touch-action:manipulation}
+    #lmMapBadges button:hover,#lmMapBadges button:focus-visible{background:#694629;outline:2px solid #fff1bd;outline-offset:2px}
+    #lmMapBadges svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    @media(pointer:coarse){#lmMapBadges button{width:44px;height:44px}}
     @media(prefers-reduced-motion:reduce){#lmPanel{animation:none}}
   `;
   document.head.appendChild(css);
@@ -58,6 +87,143 @@
     section.dataset.lmView = name; section.hidden = true; views[name] = section; body.appendChild(section);
     return section;
   }
+
+  const materialLabels = {
+    stone:["stone","stone"],ore:["ore","ore"],ingot:["ingot","ingots"],
+    equipment:["piece of equipment","pieces of equipment"],mushroom:["mushroom","mushrooms"],
+    meal:["meal","meals"],block:["block","blocks"],medicine:["medicine","medicine"],knowledge:["knowledge","knowledge"]
+  };
+  function quantity(amount, resource){
+    const n=Math.ceil(amount||0);
+    return `${n} ${materialLabels[resource]?.[n===1?0:1]||label(resource)}`;
+  }
+  function supplyDestination(id){
+    if(id==="founders-store")return "the starting stockpile";
+    const room=findRoom(id);
+    if(room)return `the ${LM_ROOMS[room.type].name}`;
+    const target=lm.infrastructure.find(item=>item.id===id);
+    return target?target.type==="depot"?"a stockpile":`the ${infraNames[target.type]||label(target.type)}`:"";
+  }
+  const statusIcons={
+    material:'<path d="m3 15 4-7 9-4 5 8-3 7H7zM7 8l3 5 8 6M10 13l11-1"/>',
+    worker:'<circle cx="12" cy="7" r="3"/><path d="M5 21v-3a7 7 0 0 1 14 0v3"/>',
+    path:'<path d="M4 20h4l3-5m2-5 3-6h4M9 7l6 6m0-6-6 6"/>',
+    destination:'<path d="M3 11h13m-4-4 4 4-4 4M18 4h3v16h-3"/>',
+    full:'<path d="M3 8h18v12H3zM3 8l3-4h12l3 4m-9 3v4m0 2v.1"/>'
+  };
+  function describeStatus(s){
+    const code=s?.code, resource=s?.resource||"stone", amount=s?.amount||0;
+    const output=s?.outputResource||resource;
+    const role=label(s?.role||"worker");
+    const needs=quantity(amount,resource);
+    const undelivered=quantity((s?.outputAmount||0)+(s?.heldAmount||0),output);
+    const where=s?.heldAmount?s.outputAmount?"in the building or with a hauler":"held by a hauler":"in the building";
+    switch(code){
+      case "needs-input":
+        return {problem:"material",title:`Missing ${needs}`,detail:s?.detail||`Needs ${needs} to start the next job.`,action:resource==="ore"||resource==="stone"?["dig","Dig for supplies"]:resource==="mushroom"?["garden","Build a Garden"]:resource==="ingot"?["smelter","Build a Smelter"]:null};
+      case "delivery-incoming":
+        return {title:`Delivery on the way`,detail:`${quantity(s.incoming||amount,resource)} reserved for this building.`};
+      case "needs-worker":
+        return {problem:"worker",title:`Needs a ${role}`,detail:s.role==="builder"?"Assign a Miner, Mason, or Engineer to build this room.":`Assign a ${role} in Dwarves${s.resource?` to deliver ${needs}`:" to continue this work"}.`,action:["dwarves","Open Dwarves"]};
+      case "no-access":
+        return {problem:"path",title:s.activity==="room"||s.activity==="worker"?"Workers cannot reach this building":"No open delivery route",detail:s.activity==="output"?`There are ${undelivered} ${where}. Open a route to storage or a workshop.`:"Connect the building and its supplies with an open tunnel. Check closed gates and blocked entrances.",action:["dig","Dig a passage"]};
+      case "no-destination":
+        return {problem:"destination",title:`No drop-off for ${materialLabels[output]?.[1]||label(output)}`,detail:`There are ${undelivered} ${where}. Place a reachable stockpile to accept the goods.`,action:["stockpile","Place a Stockpile"]};
+      case "storage-full":
+        return {problem:"full",title:"Stockpiles are full",detail:`There is no space to deliver ${undelivered} ${where}. Add reachable storage or use stored supplies to free space.`,action:["stockpile","Place a Stockpile"]};
+      case "output-full":
+        return {problem:"full",title:"Building output is full",detail:"The next batch needs room. Have a hauler clear the goods or place a closer stockpile.",action:["dwarves","Open Dwarves"]};
+      case "output-in-transit":
+        return {title:"Goods assigned for delivery",detail:`${quantity(s.outgoing,output)} reserved for ${supplyDestination(s.destinationId)||"delivery from this building"}.`};
+      case "waiting-haul":
+        return {title:"Waiting for pickup",detail:`${s.resource?needs:quantity(s.outputAmount,output)} ready for a worker to carry.`};
+      case "working":
+        return {title:s.activity||"Working",detail:"A dwarf is working on site."};
+      case "building":
+        return {title:"Under construction",detail:"Workers will build this room after stone arrives."};
+      case "ready":
+        return {title:"Ready to work",detail:"Supplies are available. A worker will start the next job."};
+      case "paused":
+        return {title:"Work paused",detail:"Resume this work in Supplies & priorities.",action:["economy","Open priorities"]};
+      default:
+        return {title:"Available",detail:"Ready to use."};
+    }
+  }
+  function findRoom(id){return lm.rooms.find(r=>String(r.id)===String(id));}
+  function inspectRoom(room,focus=false){
+    inspected={kind:"room",id:room.id};
+    openPanel("room");
+    if(!focus)return;
+    const x=room.x+room.w*.5,y=room.y+room.h*.5;
+    const panelTop=panel.getBoundingClientRect().top;
+    const tileSize=BASE_TILE_PX*cam.zoom;
+    cam.x=x;
+    cam.y=y+(panelTop>innerHeight*.28?Math.max(0,innerHeight*.5-panelTop*.52)/tileSize:0);
+    focusRing={id:room.id,until:performance.now()+1200};
+  }
+  function resolveRoomProblem(action){
+    if(action==="dig")startPlacement({kind:"dig",size:1});
+    else if(views[action])openPanel(action);
+    else quickPlace(action);
+  }
+  function updateProblems(){
+    roomStatuses=lmEngine.roomStatuses();
+    roomProblems.clear();
+    for(const room of lm.rooms){
+      const status=describeStatus(roomStatuses.get(room.id));
+      if(status.problem)roomProblems.set(String(room.id),{room,status});
+    }
+    const count=roomProblems.size;
+    const hud=$("lmHudProblems");
+    hud.classList.toggle("has-problems",count>0);
+    text("lmHudProblems",count?`Problems ${count}`:"Problems");
+  }
+  function renderProblems(){
+    html("lmProblemList",[...roomProblems.values()].map(({room,status})=>
+      `<div class="lm-row"><span><b>${esc(LM_ROOMS[room.type].name)}</b><small class="lm-shortage">${esc(status.title)}</small></span><button type="button" data-lm-room="${esc(room.id)}">Find</button></div>`
+    ).join("")||'<p class="lm-empty">No building problems.</p>');
+  }
+  function updateMapBadges(){
+    const hide=placement||buildMode!==BUILD_NONE||dwxBuildType||focusPlacing||isGameOver;
+    badgeLayer.hidden=!!hide;
+    if(hide)return;
+    const shown=new Set(), positions=[];
+    const size=coarseBadges.matches?44:35;
+    for(const [id,{room,status}] of roomProblems){
+      const p=worldToScreen(room.x+room.w*.5,room.y);
+      const x=Math.round(p.x-size*.5),y=Math.round(p.y-size-3);
+      if(x<0||x+size>innerWidth||y<49||y+size>innerHeight-62)continue;
+      if(positions.some(b=>Math.abs(b.x-x)<size+3&&Math.abs(b.y-y)<size+3))continue;
+      let button=mapBadges.get(id);
+      if(!button){
+        button=document.createElement("button");
+        button.type="button";
+        button.dataset.lmRoom=id;
+        badgeLayer.appendChild(button);
+        mapBadges.set(id,button);
+      }
+      if(button.dataset.icon!==status.problem){
+        button.dataset.icon=status.problem;
+        button.innerHTML=`<svg aria-hidden="true" viewBox="0 0 24 24">${statusIcons[status.problem]}</svg>`;
+      }
+      const name=`${LM_ROOMS[room.type].name} — ${status.title}`;
+      if(button.title!==name){
+        button.title=name;
+        button.setAttribute("aria-label",name);
+      }
+      const transform=`translate(${x}px,${y}px)`;
+      if(button.style.transform!==transform)button.style.transform=transform;
+      shown.add(id);
+      positions.push({x,y});
+      if(shown.size>=badgeLimit)break;
+    }
+    for(const [id,button] of mapBadges){
+      if(shown.has(id))continue;
+      button.remove();
+      mapBadges.delete(id);
+    }
+  }
+  const coarseBadges=matchMedia("(pointer:coarse)");
   addView("build", UI.tabBuild); addView("dwarves", UI.tabDwarves); addView("forge", UI.tabForge);
   addView("inventory").appendChild(UI.panelInv);
   const character = addView("character"), selectedCard = UI.selInfo.closest(".card");
@@ -65,23 +231,27 @@
   const life = document.createElement("div"); life.className = "lm-card";
   life.innerHTML = `<p class="lm-eyebrow">A life beneath the mountain</p><div id="lmDwarfLife"></div><label class="lm-field">Profession<select id="lmProfession">${roles.map(r=>`<option value="${r}">${label(r)}</option>`).join("")}</select></label><div class="lm-flex"><button type="button" data-lm-open="inventory">Equipment</button><button type="button" id="lmDwarfFocus">Find dwarf</button><button type="button" data-lm-open="dwarves">Roster</button></div>`;
   character.prepend(life);
-  ["military","economy","exploration","more","chronicle","room","inspect"].forEach(name => addView(name));
+  ["military","economy","exploration","more","problems","chronicle","room","inspect"].forEach(name => addView(name));
   addView("building").appendChild($("dwxBuildingPanel"));
   UI.panelInv.classList.remove("collapsed", "open");
   UI.invSearch.setAttribute("aria-label","Search equipment"); UI.invCat.setAttribute("aria-label","Equipment category"); UI.invRarity.setAttribute("aria-label","Equipment rarity");
   UI.tabDwarves.firstElementChild.appendChild(UI.btnRecruit);
-  views.more.innerHTML = `<p class="lm-eyebrow">The Living Mountain</p><div class="lm-grid"><button type="button" data-lm-open="economy">Supplies & priorities</button><button type="button" data-lm-open="exploration">Exploration & trade</button><button type="button" data-lm-open="forge">Forge equipment</button><button type="button" data-lm-open="chronicle">Fortress chronicle</button><button type="button" id="lmMapMore">Underground map</button><button type="button" id="lmHome">Return to fortress</button></div><div class="lm-card" style="margin-top:12px"><p class="lm-eyebrow">World controls</p><div id="lmOriginalCommands" class="hud-right"></div><div id="lmCloudCommands" class="lm-flex" style="margin-top:6px"><button type="button" id="lmCloudSave">Save to cloud</button><button type="button" id="lmCloudManage">Cloud save settings</button></div></div><p class="lm-copy">Tap a dwarf, room, building or enemy to inspect. Drag with one finger to pan, pinch to zoom; hold a tile for details. On desktop, use WASD, the mouse wheel and right-drag. In a designation mode, drag to brush an area. Escape closes the panel or cancels the tool.</p>`;
+  views.more.innerHTML = `<p class="lm-eyebrow">The Living Mountain</p><div class="lm-grid"><button type="button" data-lm-open="economy">Supplies & priorities</button><button type="button" data-lm-open="exploration">Exploration & trade</button><button type="button" data-lm-open="inventory">Equipment &amp; relics</button><button type="button" data-lm-open="forge">Forge equipment</button><button type="button" data-lm-open="chronicle">Fortress chronicle</button><button type="button" id="lmMapMore">Underground map</button><button type="button" id="lmHome">Return to fortress</button></div><div class="lm-card" style="margin-top:12px"><p class="lm-eyebrow">World controls</p><div id="lmOriginalCommands" class="hud-right"></div><div id="lmCloudCommands" class="lm-flex" style="margin-top:6px"><button type="button" id="lmCloudSave">Save to cloud</button><button type="button" id="lmCloudManage">Cloud save settings</button></div></div><p class="lm-copy">Tap a dwarf, room, building or enemy to inspect. Drag with one finger to pan, pinch to zoom; hold a tile for details. On desktop, use WASD, the mouse wheel and right-drag. In a designation mode, drag to brush an area. Escape closes the panel or cancels the tool.</p>`;
   const oldHud = document.querySelector("#hud .hud-right");
   while (oldHud.firstChild) $("lmOriginalCommands").appendChild(oldHud.firstChild);
-  oldHud.innerHTML = `<button id="lmMapButton" type="button" aria-label="Toggle underground map" title="Underground map">Map</button><button id="lmAlerts" type="button" aria-label="Open fortress chronicle" title="Chronicle and alerts">History</button>`;
+  oldHud.innerHTML = `<button id="lmMapButton" type="button" aria-label="Toggle underground map" title="Underground map">Map</button><button id="lmHudProblems" type="button" aria-controls="lmPanel" aria-pressed="false">Problems</button>`;
   for (const id of ["hudEn","hudSp"]) $(id)?.closest(".stat")?.classList.add("lm-secondary-stat");
   const statbar = document.querySelector("#hud .statbar");
   const food = document.createElement("div"); food.className="stat"; food.title="Food stored in the fortress"; food.innerHTML=`<span class="lbl" aria-hidden="true">♧</span><b id="lmFoodHud" aria-label="Stored food">0</b>`; statbar.appendChild(food);
   const day = document.createElement("span"); day.id="lmDay"; day.className="stat lm-secondary-stat"; statbar.appendChild(day);
   for (const [id,name] of [["hudFortHp","Fortress health"],["hudGold","Gold"],["hudDw","Dwarves"],["hudEn","Enemies"],["hudSp","Nests"]]) $(id)?.setAttribute("aria-label",name);
   const dock=document.createElement("nav");dock.id="lmDock";dock.setAttribute("aria-label","Fortress commands");
-  dock.innerHTML = [["build","⌂","Build"],["dwarves","♟","Dwarves"],["military","⚔","Military"],["economy","⚒","Economy"],["exploration","◇","Explore"],["inventory","▣","Inventory"],["more","•••","More"]].map(([key,icon,text])=>`<button type="button" data-lm-open="${key}" aria-controls="lmPanel" aria-pressed="false"${["economy","exploration"].includes(key)?' class="lm-desktop"':""}><b aria-hidden="true" data-dw-art-icon="${key==="more"?"settings":key}">${icon}</b><span>${text}</span></button>`).join("");
+  dock.innerHTML = [["dig","⛏","Dig","dig"],["build","+","Build","build"],["dwarves","♟","Dwarves","dwarves"],["military","⚔","Defend","military"],["more","⋯","More","settings"]].map(([key,icon,name,art])=>`<button type="button" ${key==="dig"?'id="lmQuickDig"':`data-lm-open="${key}" aria-controls="lmPanel" aria-pressed="false"`}><b aria-hidden="true" data-dw-art-icon="${art}">${icon}</b><span>${name}</span></button>`).join("");
   document.body.appendChild(dock);
+  const badgeLayer=document.createElement("div");
+  badgeLayer.id="lmMapBadges";
+  badgeLayer.setAttribute("aria-label","Building problems on the map");
+  document.body.appendChild(badgeLayer);
   const placementBar=document.createElement("div");placementBar.id="lmPlacement";placementBar.hidden=true;
   placementBar.innerHTML=`<span id="lmPlacementLabel" role="status"></span><button type="button" id="lmPlaceCenter" title="Place at the center of the visible map">Place here</button><button type="button" id="lmCancelPlace">Cancel</button>`;
   document.body.appendChild(placementBar);
@@ -91,6 +261,7 @@
     if(window.parent!==window)window.parent.postMessage({type:"dwarfworld-interface",panelOpen:false},parentOrigin);
     Object.values(views).forEach(v=>v.hidden=true);
     dock.querySelectorAll("[data-lm-open]").forEach(b=>b.setAttribute("aria-pressed","false"));
+    $("lmHudProblems").setAttribute("aria-pressed","false");
     if(restoreFocus&&returnFocus?.isConnected)returnFocus.focus({preventScroll:true});
   }
   function openPanel(name, toggle=false, focus=false) {
@@ -103,6 +274,7 @@
     $("lmPanelTitle").textContent=viewNames[name]||label(name);
     body.scrollTop=0;
     dock.querySelectorAll("[data-lm-open]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.lmOpen===name)));
+    $("lmHudProblems").setAttribute("aria-pressed",String(name==="problems"));
     markUI("dwarves","selected","inv","forge");refresh(true);
     if(name==="inventory")requestAnimationFrame(()=>{ensureRowPool();renderInv();});
     if(focus)$("lmPanelClose").focus({preventScroll:true});
@@ -121,7 +293,8 @@
   $("lmMapButton").onclick=()=>dwxToggleMap(); $("lmMapMore").onclick=()=>{dwxToggleMap(true);closePanel();};
   $("dwxMapToggle")?.setAttribute("aria-label","Collapse underground map");
   $("lmHome").onclick=()=>{cam.x=fortress.x;cam.y=fortress.y;closePanel();};
-  $("lmAlerts").onclick=()=>openPanel("chronicle",true);
+  $("lmHudProblems").onclick=()=>openPanel("problems",true,true);
+  $("lmQuickDig").onclick=()=>startPlacement({kind:"dig",size:1});
   $("lmCloudCommands").hidden=window.parent===window;
   $("lmCloudSave").onclick=()=>window.parent.postMessage({type:"dwarfworld-interface",action:"cloud-save"},parentOrigin);
   $("lmCloudManage").onclick=()=>window.parent.postMessage({type:"dwarfworld-interface",action:"cloud-manager"},parentOrigin);
@@ -129,30 +302,59 @@
   $("lmProfession").onchange=e=>{const d=getSelectedDwarf();if(d){lmSetProfession(d.id,e.target.value);refresh(true);}};
 
   const roomControls=document.createElement("div");roomControls.className="lm-card";
+  const legacyBuildControls=Array.from(UI.tabBuild.childNodes);
+  const quickBuild=document.createElement("div");
+  quickBuild.className="lm-grid lm-build-choices";
+  quickBuild.innerHTML=buildChoices.map(([type,name,description])=>`<button type="button" data-lm-build="${type}"><b>${name}</b><small>${description}</small></button>`).join("");
   roomControls.innerHTML=`<p class="lm-eyebrow">Rooms & architecture</p><p class="lm-copy">Designate clear, connected floor. Workers construct and supply each room through your tunnels.</p><label class="lm-field">Room purpose<select id="lmRoomType">${Object.entries(LM_ROOMS).map(([key,def])=>`<option value="${esc(key)}">${esc(def.name)}</option>`).join("")}</select></label><div class="lm-flex"><label class="lm-field">Layout<select id="lmRoomSize"><option value="3">Compact · 3 × 3</option><option value="5">Hall · 5 × 5</option><option value="7">Grand · 7 × 7</option></select></label><label class="lm-field">Stonework<select id="lmRoomStyle"><option value="carved">Carved stone</option><option value="mosaic">Mosaic floors</option><option value="royal">Royal banners</option></select></label></div><div id="lmRoomHint" class="lm-copy"></div><div class="lm-flex"><button type="button" id="lmRoomDesignate" class="btn primary">Designate room</button><button type="button" id="lmDigDesignate">Dig area</button></div></div>`;
-  UI.tabBuild.prepend(roomControls);
+  const moreRooms=document.createElement("details");
+  moreRooms.className="lm-build-options";
+  moreRooms.innerHTML="<summary>All rooms &amp; layouts</summary>";
+  moreRooms.appendChild(roomControls);
+  UI.tabBuild.prepend(quickBuild,moreRooms);
   const infrastructure=document.createElement("div");infrastructure.className="lm-card";
   infrastructure.innerHTML=`<p class="lm-eyebrow">Roads, logistics & defenses</p><p class="lm-copy">Brush connected infrastructure across explored tunnels. Roads and rails shorten real journeys.</p><div class="lm-grid">${Object.entries(infraNames).map(([key,name])=>`<button type="button" data-lm-infra="${key}">${name}</button>`).join("")}</div>`;
-  roomControls.after(infrastructure);
+  const moreStructures=document.createElement("details");
+  moreStructures.className="lm-build-options";
+  moreStructures.innerHTML="<summary>Roads, defenses &amp; other buildings</summary>";
+  moreStructures.append(infrastructure,...legacyBuildControls);
+  moreRooms.after(moreStructures);
   function roomHint(){const d=LM_ROOMS[$("lmRoomType").value],size=Number($("lmRoomSize").value);$("lmRoomHint").textContent=`${(d?.cost||0)+Math.max(0,size*size-9)}g · ${Math.ceil(size*size/3)} stone delivered · ${d?.profession?label(d.profession):"Communal room"}.`;}
   roomHint();$("lmRoomType").onchange=roomHint;$("lmRoomSize").onchange=roomHint;
   $("lmRoomDesignate").onclick=()=>startPlacement({kind:"room",type:$("lmRoomType").value,size:Number($("lmRoomSize").value),style:$("lmRoomStyle").value});
   $("lmDigDesignate").onclick=()=>startPlacement({kind:"dig",size:1});
   document.addEventListener("click",e=>{const b=e.target.closest("[data-lm-infra]");if(b)startPlacement({kind:"infrastructure",type:b.dataset.lmInfra,size:1});});
+  function quickPlace(type){
+    if(type==="stockpile")startPlacement({kind:"infrastructure",type:"depot",size:1,single:true});
+    else if(LM_ROOMS[type])startPlacement({kind:"room",type,size:3,style:"carved"});
+  }
+  quickBuild.addEventListener("click",e=>{
+    const button=e.target.closest("[data-lm-build]");
+    if(button)quickPlace(button.dataset.lmBuild);
+  });
   const baseBuildMode=setBuildMode;
   setBuildMode=function(mode){baseBuildMode(mode);if(mode!==BUILD_NONE){cancelPlacement();dwxBuildType=null;closePanel();}};
   UI.tabBuild.addEventListener("click",e=>{if(e.target.closest("[data-type]")){cancelPlacement();closePanel();}});
 
-  views.economy.innerHTML=`<p class="lm-eyebrow">Real supplies, real journeys</p><div id="lmSupplyTotals" class="lm-grid"></div><p class="lm-copy">Ore → smelter → smithy → armory. Gardens → granary → kitchen → dining. Supplies stay at their location until a dwarf hauls them.</p><div class="lm-card"><p class="lm-eyebrow">Work priorities</p>${Object.entries(priorities).map(([key,name])=>`<label class="lm-row"><span>${name}</span><select data-lm-priority="${key}" aria-label="${name} priority"><option value="0">Paused</option><option value="1">Normal</option><option value="2">High</option><option value="3">Urgent</option></select></label>`).join("")}</div><div class="lm-card"><p class="lm-eyebrow">Work in progress</p><div id="lmJobList"></div></div><div class="lm-card"><p class="lm-eyebrow">Rooms & shortages</p><div id="lmRoomList"></div></div>`;
+  views.economy.innerHTML=`<p class="lm-eyebrow">Stored supplies</p><div id="lmSupplyTotals" class="lm-grid"></div><p class="lm-copy">Mine ore and build a Smelter. Workers deliver ore and move ingots to available storage or a Smithy. The Smelter can hold output on site.</p><div class="lm-card"><p class="lm-eyebrow">Work priorities</p>${Object.entries(priorities).map(([key,name])=>`<label class="lm-row"><span>${name}</span><select data-lm-priority="${key}" aria-label="${name} priority"><option value="0">Paused</option><option value="1">Normal</option><option value="2">High</option><option value="3">Urgent</option></select></label>`).join("")}</div><div class="lm-card"><p class="lm-eyebrow">Work in progress</p><div id="lmJobList"></div></div><div class="lm-card"><p class="lm-eyebrow">Rooms</p><div id="lmRoomList"></div></div>`;
   views.economy.addEventListener("change",e=>{const key=e.target.dataset.lmPriority;if(key){lmSetPriority(key,Number(e.target.value));refresh(true);}});
   views.military.innerHTML=`<p class="lm-eyebrow">Fortress readiness</p><p class="lm-copy">Keep the halls working normally, warn the guard, or shelter civilians during an invasion.</p><label class="lm-field">Readiness<select id="lmReadiness"><option value="normal">Normal · daily work</option><option value="alert">Alert · prepare defenses</option><option value="lockdown">Lockdown · shelter civilians</option></select></label><div id="lmMilitaryStatus" class="lm-grid" style="margin:12px 0"></div><div class="lm-card"><p class="lm-eyebrow">Fortify the approaches</p><div class="lm-grid">${["gate","wall","slit","barricade","trap","watch"].map(key=>`<button type="button" data-lm-infra="${key}">${infraNames[key]}</button>`).join("")}</div></div><div class="lm-flex"><button type="button" data-lm-open="dwarves">Assign soldiers</button><button type="button" data-lm-open="build">Towers & barracks</button></div><div id="lmThreatList" class="lm-card" style="margin-top:10px"></div>`;
   $("lmReadiness").onchange=e=>{lmSetReadiness(e.target.value);refresh(true);};
   views.exploration.innerHTML=`<p class="lm-eyebrow">The underground realm</p><p class="lm-copy">Explore connected tunnels to meet settlements, discover trade routes and reveal rival territories. Trade requires a traversable route.</p><div class="lm-flex"><button type="button" id="lmExploreMap">Show map</button><button type="button" id="lmExploreFocus">Focus expedition</button></div><div class="lm-card" style="margin-top:12px"><p class="lm-eyebrow">Discovered settlements</p><div id="lmSettlementList"></div></div><div class="lm-card"><p class="lm-eyebrow">Known territories</p><div id="lmFactionList"></div></div>`;
   $("lmExploreMap").onclick=()=>{dwxToggleMap(true);closePanel();};
   $("lmExploreFocus").onclick=()=>{UI.btnFocus.click();closePanel();};
-  views.chronicle.innerHTML=`<p class="lm-eyebrow">The mountain remembers</p><p class="lm-copy">Discoveries, masterworks, friendships and defenses become the history of your fortress.</p><ol id="lmChronicle" class="lm-history" aria-label="Fortress history"></ol>`;
+  views.problems.innerHTML='<div id="lmProblemList"></div>';
+  views.chronicle.innerHTML='<ol id="lmChronicle" class="lm-history" aria-label="Fortress history"></ol>';
   document.addEventListener("click",e=>{
-    const room=e.target.closest("[data-lm-room]");if(room){inspected={kind:"room",id:room.dataset.lmRoom};openPanel("room");}
+    const button=e.target.closest("[data-lm-room]");
+    if(button){const room=findRoom(button.dataset.lmRoom);if(room)inspectRoom(room,true);}
+    const action=e.target.closest("[data-lm-status-action]");
+    if(action)resolveRoomProblem(action.dataset.lmStatusAction);
+    const raid=e.target.closest("[data-lm-raid]");
+    if(raid){
+      const faction=lm.factions.find(f=>String(f.id)===raid.dataset.lmRaid);
+      if(faction){cam.x=faction.x;cam.y=faction.y;closePanel();}
+    }
     const find=e.target.closest("[data-lm-find]");if(find){const d=dwarves.find(d=>String(d.id)===find.dataset.lmFind);if(d)setSelected("dwarf",d.id);}
     const trade=e.target.closest("[data-lm-trade]");if(trade){report(lmTrade(trade.dataset.lmTrade),"Caravan trade arranged.");refresh(true);}
     const dismantle=e.target.closest("[data-lm-remove-infra]");if(dismantle){report(lmRemoveInfrastructure(dismantle.dataset.lmRemoveInfra),"Infrastructure dismantled; supplies remain on site.");refresh(true);}
@@ -166,7 +368,9 @@
   function refresh(force=false){
     const now=performance.now();if(!force&&now-lastRefresh<650)return;lastRefresh=now;
     const supplies=totals();text("lmFoodHud",Math.floor((supplies.meal||0)+(supplies.mushroom||0)));text("lmDay",`Day ${Math.floor((lm.time||0)/240)+1}`);
-    const history=lm.chronicle||[],seenIndex=seenHistory?history.findIndex(entry=>entry.id===seenHistory):-1,unread=history.length-seenIndex-1;text("lmAlerts",unread?`History · ${Math.min(99,unread)}`:"History");
+    updateProblems();
+    const history=lm.chronicle||[];
+    if(activeView==="problems")renderProblems();
     if(activeView==="character"){
       const d=getSelectedDwarf();if(!d)return;const l=d.living||{};
       text("lmPanelTitle",d.name||"Dwarf");
@@ -177,22 +381,29 @@
       html("lmSupplyTotals",["ore","ingot","equipment","mushroom","meal","stone","block","medicine","knowledge"].map(k=>`<div class="lm-stat">${label(k)}<b>${Math.floor(supplies[k]||0)}</b></div>`).join(""));
       views.economy.querySelectorAll("[data-lm-priority]").forEach(s=>{if(document.activeElement!==s)s.value=String(lm.priorities?.[s.dataset.lmPriority]??1);});
       const workers=dwarves.filter(d=>d.living?.job||d.living?.activity);
-      html("lmJobList",workers.slice(0,24).map(d=>`<div class="lm-row"><span>${esc(d.name)}<small>${esc(d.living.activity||label(d.living.job?.kind))}</small></span><button type="button" data-lm-find="${esc(d.id)}">Inspect</button></div>`).join("")||'<p class="lm-empty">Designate a room and give dwarves matching professions to start a production chain.</p>');
-      html("lmRoomList",(lm.rooms||[]).map(r=>`<div class="lm-row"><span>${esc(LM_ROOMS[r.type]?.name||label(r.type))}<small class="${r.shortage?"lm-shortage":""}">${esc(r.shortage||((r.progress||0)<1&&!r.active?"Under construction":"Operating"))}</small></span><button type="button" data-lm-room="${esc(r.id)}">View</button></div>`).join("")||'<p class="lm-empty">No rooms yet. Open Build to designate your first room.</p>');
+      html("lmJobList",workers.slice(0,24).map(d=>`<div class="lm-row"><span>${esc(d.name)}<small>${esc(d.living.activity||label(d.living.job?.kind))}</small></span><button type="button" data-lm-find="${esc(d.id)}">Inspect</button></div>`).join("")||'<p class="lm-empty">Use Build to start a room. Current work will appear here.</p>');
+      html("lmRoomList",lm.rooms.map(room=>{
+        const status=describeStatus(roomStatuses.get(room.id));
+        return `<div class="lm-row"><span>${esc(LM_ROOMS[room.type].name)}<small class="${status.problem?"lm-shortage":""}">${esc(status.title)}</small></span><button type="button" data-lm-room="${esc(room.id)}">Find</button></div>`;
+      }).join("")||'<p class="lm-empty">No rooms yet. Open Build to place your first room.</p>');
     }
     if(activeView==="military"){
       if(document.activeElement!==$("lmReadiness"))$("lmReadiness").value=lm.readiness||"normal";
       const soldiers=dwarves.filter(d=>d.living?.profession==="soldier").length;
       html("lmMilitaryStatus",`<div class="lm-stat">Soldiers<b>${soldiers}</b></div><div class="lm-stat">Visible enemies<b>${enemies.filter(e=>inBounds(Math.round(e.x),Math.round(e.y))&&tVis[idx(Math.round(e.x),Math.round(e.y))]===visMark).length}</b></div>`);
       const factions=(lm.factions||[]).filter(f=>f.discovered||inBounds(Math.round(f.x),Math.round(f.y))&&tSeen[idx(Math.round(f.x),Math.round(f.y))]);
-      html("lmThreatList",`<p class="lm-eyebrow">Known threats</p>${factions.map(f=>`<div class="lm-row"><span>${esc(f.name||LM_FACTIONS[f.type]?.name||label(f.type||f.kind))}<small>${esc(f.warning||f.activity||f.phase||f.state||"Territory discovered")}</small></span></div>`).join("")||'<p class="lm-empty">No enemy territory discovered. Protect corridors as the fortress expands.</p>'}`);
+      html("lmThreatList",`<p class="lm-eyebrow">Known threats</p>${factions.map(f=>{
+        const name=f.name||LM_FACTIONS[f.type]?.name||label(f.type||f.kind);
+        const warning=f.warning||f.activity||f.phase||f.state;
+        const guide=typeof lmRaidGuide==="function"?lmRaidGuide(f.type):"";
+        return `<div class="lm-row"><span>${esc(name)}<small>${esc(warning||"Territory discovered")}</small>${guide?`<small>${esc(guide.counter||guide.warning)}</small>`:""}</span>${f.discovered?`<button type="button" data-lm-raid="${esc(f.id)}">Find</button>`:""}</div>`;
+      }).join("")||'<p class="lm-empty">No enemy territory discovered.</p>'}`);
     }
     if(activeView==="exploration"){
       html("lmSettlementList",(lm.settlements||[]).filter(s=>s.discovered).map(s=>`<div class="lm-row"><span>${esc(s.name)}<small>${esc(s.relation||"Neutral")} · ${esc(typeof s.trade==="string"?s.trade:"Trade by connected caravan")}</small></span><button type="button" data-lm-trade="${esc(s.id)}">Trade</button></div>`).join("")||'<p class="lm-empty">No other settlements discovered. Assign an explorer and open new tunnels.</p>');
       html("lmFactionList",(lm.factions||[]).filter(f=>f.discovered).map(f=>`<div class="lm-row"><span>${esc(f.name||LM_FACTIONS[f.type]?.name||label(f.type||f.kind))}<small>${esc(f.warning||f.phase||f.state||"Watch the approaches")}</small></span></div>`).join("")||'<p class="lm-empty">The deeper realm remains uncharted.</p>');
     }
     if(activeView==="chronicle"){
-      seenHistory=history[history.length-1]?.id||null;
       html("lmChronicle",history.slice(-80).reverse().map(entry=>`<li><time>Day ${Math.floor((entry.time||0)/240)+1}</time>${esc(entry.text||entry.message||entry)}</li>`).join("")||'<li>Your fortress story begins here. Designate your first room to leave a mark on the mountain.</li>');
     }
     if(activeView==="room")renderRoom();
@@ -200,10 +411,27 @@
   }
 
   function renderRoom(){
-    const r=(lm.rooms||[]).find(r=>String(r.id)===String(inspected?.id));if(!r){views.room.textContent="This room is no longer present.";return;}
-    const def=LM_ROOMS[r.type]||{};text("lmPanelTitle",def.name||label(r.type));
-    const content=`<p class="lm-eyebrow">${r.w} × ${r.h} · ${esc(label(r.style))} · Level ${r.level||1}</p><p class="lm-copy">${esc(r.shortage||((r.progress||0)<1&&!r.active?"Workers are constructing this room.":"Connected workers carry supplies to and from this room."))}</p><div class="lm-grid">${Object.entries(r.inventory||{}).map(([k,n])=>`<div class="lm-stat">${label(k)}<b>${Math.floor(n||0)}</b></div>`).join("")||'<p class="lm-empty">No supplies stored here yet.</p>'}</div><div class="lm-flex" style="margin-top:12px"><button id="lmRoomFocus" type="button">Find room</button><button id="lmRoomUpgrade" type="button">Improve room</button></div><div class="lm-flex" style="margin-top:6px"><button data-lm-open="economy" type="button">Supply network</button><button id="lmRoomRemove" type="button">Remove designation</button></div>`;
-    if(views.room._html!==content){views.room.innerHTML=content;views.room._html=content;
+    const r=findRoom(inspected?.id);
+    if(!r){views.room.textContent="This room is no longer present.";views.room._html=null;return;}
+    const def=LM_ROOMS[r.type];
+    text("lmPanelTitle",def.name);
+    const status=describeStatus(roomStatuses.get(r.id));
+    const supplies=Object.entries(r.inventory||{}).filter(([,amount])=>amount>0);
+    const contents=supplies.map(([key,amount])=>`<div class="lm-stat">${esc(label(key))}<b>${Math.floor(amount)}</b></div>`).join("");
+    const fix=status.action?`<button type="button" data-lm-status-action="${status.action[0]}">${status.action[1]}</button>`:"";
+    const progress=!r.active?`<progress value="${r.progress||0}" max="1" aria-label="Construction progress"></progress>`:"";
+    const content=`<div class="lm-building-status" data-problem="${!!status.problem}"><strong>${esc(status.title)}</strong><small>${esc(status.detail)}</small>${progress}${fix}</div>
+      ${def.recipe?`<p class="lm-copy">${Object.entries(def.recipe.input).map(([key,amount])=>quantity(amount,key)).join(" + ")||"Produces"} → ${Object.entries(def.recipe.output).map(([key,amount])=>quantity(amount,key)).join(" + ")}</p>`:""}
+      ${contents?`<div class="lm-grid">${contents}</div>`:'<p class="lm-empty">No supplies stored here.</p>'}
+      <details class="lm-build-options"><summary>Room details</summary><p class="lm-copy">${r.w} × ${r.h} · ${esc(label(r.style))} · Level ${r.level||1}</p>
+      <div class="lm-flex"><button id="lmRoomFocus" type="button">Find room</button><button id="lmRoomUpgrade" type="button">Improve room</button></div>
+      <div class="lm-flex"><button data-lm-open="economy" type="button">Supply network</button><button id="lmRoomRemove" type="button">Remove room</button></div></details>`;
+    if(views.room._html!==content){
+      const wasOpen=views.room.dataset.roomId===String(r.id)&&views.room.querySelector("details")?.open;
+      const focusedId=views.room.contains(document.activeElement)&&document.activeElement.id;
+      views.room.innerHTML=content;views.room._html=content;views.room.dataset.roomId=String(r.id);
+      views.room.querySelector("details").open=!!wasOpen;
+      if(focusedId)$(focusedId)?.focus({preventScroll:true});
       $("lmRoomFocus").onclick=()=>{cam.x=r.x+r.w/2;cam.y=r.y+r.h/2;closePanel();};
       $("lmRoomUpgrade").onclick=()=>{report(lmUpgradeRoom(r.id),"Room improved.");refresh(true);};
       $("lmRoomRemove").onclick=()=>{report(lmRemoveRoom(r.id),"Room designation removed.");openPanel("economy");};
@@ -211,12 +439,12 @@
   }
   function inspectAt(x,y){
     if(!inBounds(x,y)||!tSeen[idx(x,y)])return;
-    const d=dwarves.find(d=>Math.hypot(d.x-x,d.y-y)<1);if(d){setSelected("dwarf",d.id);return;}
     const e=enemies.find(e=>Math.hypot(e.x-x,e.y-y)<1&&tVis[idx(x,y)]===visMark);
     if(e){inspected={kind:"enemy",id:e.id,x,y};openPanel("inspect");return;}
     const b=dwx.buildings.find(b=>b.x===x&&b.y===y);if(b){dwxOpenBuildingPanel(b);return;}
-    const r=(lm.rooms||[]).find(r=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h);
-    if(r){inspected={kind:"room",id:r.id};openPanel("room");return;}
+    const r=lmEngine.roomAt(x,y);
+    if(r){inspectRoom(r);return;}
+    const d=dwarves.find(d=>Math.hypot(d.x-x,d.y-y)<1);if(d){setSelected("dwarf",d.id);return;}
     if(forge&&forge.x===x&&forge.y===y){openPanel("forge");return;}
     inspected={kind:"tile",x,y};openPanel("inspect");
   }
@@ -225,9 +453,11 @@
     if(inspected.kind==="enemy"){
       const e=enemies.find(e=>e.id===inspected.id),visible=e&&inBounds(Math.round(e.x),Math.round(e.y))&&tVis[idx(Math.round(e.x),Math.round(e.y))]===visMark;
       if(!visible){views.inspect.textContent="This creature has left sight.";views.inspect._html=null;return;}
-      text("lmPanelTitle",e.name||label(e.type));
-      const abilities=[e.armorPct?`Armor ${Math.round(e.armorPct*100)}%`:"",e.auraRegen?"Heals nearby allies":"",e.summonEvery?"Summons defenders":"",e.phaseEvery?"Phases out of reach":"",e.explodeOnDeath?"Explodes on defeat":"",e.splitsInto?"Splits into smaller creatures":""].filter(Boolean);
-      const content=`<div class="lm-stat">Health<b>${Math.max(0,Math.round(e.hp))} / ${Math.round(e.maxHp||e.hp)}</b></div><p class="lm-copy">${esc(label(e.lmRole||e.role||e.type))} · ${e.lmBoss?"Legendary threat":e.maxHp>100?"High threat":"Local threat"}</p><p class="lm-copy">${abilities.map(esc).join(" · ")||"Uses the connected tunnels to reach its targets."}</p>`;
+      const guide=typeof lmEnemyGuide==="function"?lmEnemyGuide(e):null;
+      text("lmPanelTitle",guide?.name||e.name||label(e.type));
+      const content=`<div class="lm-stat">Health<b>${Math.max(0,Math.round(e.hp))} / ${Math.round(e.maxHp||e.hp)}</b></div>
+        <p class="lm-copy">${esc(guide?.behavior||"Moves through tunnels to reach its targets.")}</p>
+        ${guide?.counter?`<div class="lm-building-status"><strong>How to defend</strong><small>${esc(guide.counter)}</small></div>`:""}`;
       if(views.inspect._html!==content){views.inspect.innerHTML=content;views.inspect._html=content;}
     }else{
       text("lmPanelTitle",`Tunnel · ${inspected.x}, ${inspected.y}`);
@@ -240,18 +470,32 @@
   function report(result,success){if(result===false||result?.ok===false){toast(result?.reason||"This action is not available here.");return false;}if(result?.reason)toast(result.reason);else if(success)toast(success);return true;}
   function startPlacement(spec){
     baseBuildMode(BUILD_NONE);dwxBuildType=null;focusPlacing=false;placement=spec;gesture=null;closePanel();
-    placementBar.hidden=false;$("lmPlacementLabel").innerHTML=`<b>${esc(spec.kind==="room"?LM_ROOMS[spec.type]?.name:spec.kind==="dig"?"Excavate tunnels":infraNames[spec.type])}</b><small>${spec.kind==="room"?"Tap a clear floor for a preset; drag for a custom room.":"Tap or drag to designate. Pinch to reposition the map."}</small>`;
+    previewResult=null;previewAt=-Infinity;
+    const title=spec.kind==="room"?LM_ROOMS[spec.type]?.name:spec.kind==="dig"?"Excavate tunnels":spec.single?"Stockpile":infraNames[spec.type];
+    const help=spec.kind==="room"?"Tap clear floor to place the room, or drag to resize it.":spec.single?"Tap one empty corridor tile.":"Tap or drag to designate.";
+    placementBar.hidden=false;
+    $("lmPlacementLabel").innerHTML=`<b>${esc(title)}</b><small>${help}</small>`;
   }
   function cancelPlacement(){placement=null;gesture=null;placementBar.hidden=true;}
   $("lmCancelPlace").onclick=cancelPlacement;
   function worldPoint(clientX,clientY){const r=canvas.getBoundingClientRect(),w=screenToWorld(clientX-r.left,clientY-r.top);return {x:Math.round(w.x),y:Math.round(w.y)};}
-  function bounds(g){const moved=g.x!==g.ex||g.y!==g.ey;if(!moved&&placement?.kind==="room"){const s=placement.size||3;return{x:g.x-Math.floor(s/2),y:g.y-Math.floor(s/2),w:s,h:s};}const cap=placement?.kind==="room"?12:placement?.kind==="dig"?48:24;return{x:Math.min(g.x,g.ex),y:Math.min(g.y,g.ey),w:Math.min(cap,Math.abs(g.ex-g.x)+1),h:Math.min(cap,Math.abs(g.ey-g.y)+1)};}
+  function bounds(g){
+    if(placement?.single)return {x:g.ex,y:g.ey,w:1,h:1};
+    const moved=g.x!==g.ex||g.y!==g.ey;
+    if(!moved&&placement?.kind==="room"){
+      const s=placement.size||3;
+      return{x:g.x-Math.floor(s/2),y:g.y-Math.floor(s/2),w:s,h:s};
+    }
+    const cap=placement?.kind==="room"?12:placement?.kind==="dig"?48:24;
+    return{x:Math.min(g.x,g.ex),y:Math.min(g.y,g.ey),w:Math.min(cap,Math.abs(g.ex-g.x)+1),h:Math.min(cap,Math.abs(g.ey-g.y)+1)};
+  }
   function commit(g){
     if(!placement||!g)return;const b=bounds(g),spec=placement;let result;
     if(spec.kind==="room")result=lmDesignate(spec.type,b.x,b.y,b.w,b.h,spec.style);
     else if(spec.kind==="dig")result=lmDigArea(b.x,b.y,b.w,b.h);
     else{let count=0,last=null;for(let y=b.y;y<b.y+b.h;y++)for(let x=b.x;x<b.x+b.w;x++){const r=lmPlaceInfrastructure(spec.type,x,y);if(r===false||r?.ok===false)last=r;else count++;}result=count?{ok:true,reason:`${count} ${infraNames[spec.type].toLowerCase()} tile${count===1?"":"s"} placed.`}:last||{ok:false,reason:"Choose a clear connected tunnel."};}
-    if(report(result,spec.kind==="room"?"Room designated. Workers will begin construction.":"Excavation designated.")){if(spec.kind==="room")cancelPlacement();}gesture=null;refresh(true);
+    if(report(result,spec.kind==="room"?"Room designated. Workers will begin construction.":"Excavation designated.")&&(spec.kind==="room"||spec.single))cancelPlacement();
+    gesture=null;refresh(true);
   }
   $("lmPlaceCenter").onclick=()=>commit({x:Math.round(cam.x),y:Math.round(cam.y),ex:Math.round(cam.x),ey:Math.round(cam.y)});
   function block(e){e.preventDefault();e.stopImmediatePropagation();}
@@ -292,6 +536,16 @@
   const drawBase=draw;
   draw=function(){
     drawBase();
+    updateMapBadges();
+    if(focusRing){
+      const room=findRoom(focusRing.id);
+      if(!room||performance.now()>focusRing.until)focusRing=null;
+      else {
+        const p=worldToScreen(room.x,room.y);
+        ctx.save();ctx.strokeStyle="#ffe2a3";ctx.lineWidth=2;
+        ctx.strokeRect(p.x-2,p.y-2,room.w*p.s+4,room.h*p.s+4);ctx.restore();
+      }
+    }
     const selectedDwarf=getSelectedDwarf(),route=selectedDwarf?.living?.path?.length?selectedDwarf.living.path:selectedDwarf?.path;
     if(selectedDwarf&&route?.length){
       const start=worldToScreen(selectedDwarf.x,selectedDwarf.y);ctx.save();ctx.strokeStyle="#e4d09b99";ctx.lineWidth=1.5;ctx.setLineDash([4,5]);ctx.beginPath();ctx.moveTo(start.x+start.s*.5,start.y+start.s*.5);
@@ -303,7 +557,7 @@
     if(performance.now()-previewAt>140){
       previewAt=performance.now();previewResult=placement.kind==="room"?lmPreview(placement.type,b.x,b.y,b.w,b.h):null;
       const cost=previewResult?.cost??((window.DwarfLivingSimulation.INFRA[placement.type]?.cost||0)*b.w*b.h);
-      const detail=previewResult?(previewResult.ok?`${cost}g · ${previewResult.stone} stone · ${gold<cost?"Not enough gold":previewResult.reason}`:previewResult.reason):placement.kind==="dig"?`${b.w} × ${b.h} area · Drag visible rock to excavate.`:`Up to ${cost}g · ${b.w*b.h} tiles · Drag to brush a corridor.`;
+      const detail=previewResult?(previewResult.ok?`${cost}g · ${previewResult.stone} stone · ${gold<cost?"Not enough gold":previewResult.reason}`:previewResult.reason):placement.kind==="dig"?`${b.w} × ${b.h} area · Drag visible rock to excavate.`:placement.single?`${cost}g · Tap one empty corridor tile.`:`Up to ${cost}g · ${b.w*b.h} tiles · Drag to brush a corridor.`;
       const small=$("lmPlacementLabel").querySelector("small");if(small)small.textContent=detail;
     }
     if(previewResult&&placement.kind==="room")valid=previewResult.ok&&gold>=previewResult.cost;
