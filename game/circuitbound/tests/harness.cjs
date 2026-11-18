@@ -5,6 +5,9 @@ const E = require('../engineering.js');
 const S = require('../survival.js');
 const Workshop = require('../workshop.js');
 const RoboticsCatalog = require('../robotics-catalog.js');
+const DeepIndustry = require('../deep-industry.js');
+const FoundryAutomation = require('../foundry-automation.js');
+const FoundryCombat = require('../foundry-combat.js');
 
 const root = path.join(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
@@ -12,7 +15,8 @@ const html = fs.readFileSync(path.join(root, '../circuitbound.html'), 'utf8');
 
 function fixture(width = 40, height = 24) {
   const context = vm.createContext({
-    E, CircuitSurvival: S, CircuitWorkshop: Workshop, CircuitRoboticsCatalog: RoboticsCatalog
+    E, CircuitSurvival: S, CircuitWorkshop: Workshop, CircuitRoboticsCatalog: RoboticsCatalog,
+    CircuitDeepIndustry: DeepIndustry, CircuitFoundryAutomation: FoundryAutomation, CircuitFoundryCombat: FoundryCombat
   });
   const catalog = source.slice(source.indexOf('  const T='), source.indexOf('  const palette='));
   vm.runInContext(catalog + '\nglobalThis.catalog = { T, defs, items, recipes };', context);
@@ -181,7 +185,7 @@ function game(saved) {
   const { document, ids } = documentFixture(), listeners = {};
   const storage = new Map(saved ? [['circuitbound-save-v1', JSON.stringify(saved)]] : []);
   const env = {
-    console, URL, structuredClone, Image: class {}, Uint8Array, Map, Set, Math, Date, JSON,
+    console, URL, structuredClone, Image: class {}, Uint8Array, Map, Set, Math, Date, JSON, btoa, atob,
     innerWidth: 1280, innerHeight: 800, devicePixelRatio: 1,
     document, navigator: { maxTouchPoints: 0 }, location: { href: 'https://fixture.invalid/game/circuitbound.html' },
     matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
@@ -201,7 +205,14 @@ function game(saved) {
     get meta(){return meta},get world(){return world},get pointer(){return pointer},get linkDrag(){return linkDrag},set linkDrag(value){linkDrag=value},set linkMode(value){linkMode=value},set selectedAssembly(value){selectedAssembly=value},get paused(){return paused}};})();`);
   vm.runInContext(instrumented, context, { filename: 'app.js' });
   if (ids.get('welcomePanel').classList.contains('show')) ids.get('startBtn').click();
-  return { ...context.api, api: context.api, document, ids, storage, listeners, context, run: code => vm.runInContext(code, context) };
+  function clearTerrain(){
+    const world = context.api.world;
+    world.natural = () => context.api.T.AIR;
+    world.features.clear();
+    world.chunks.clear();
+    world.edits.clear();
+  }
+  return { ...context.api, api: context.api, document, ids, storage, listeners, context, clearTerrain, run: code => vm.runInContext(code, context) };
 }
 
 module.exports = { fixture, game, E };

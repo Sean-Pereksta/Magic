@@ -231,6 +231,8 @@
   }
 
   function icon(key, fallback = '') {
+    const foundryIcon = globalThis.CircuitboundFoundryArt?.icon?.(key, fallback);
+    if (foundryIcon) return foundryIcon;
     const host = document.createElement('span');
     host.className = 'cb-art-icon';
     host.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:1.35em;height:1.35em;flex:none;vertical-align:middle';
@@ -307,7 +309,9 @@
   }
 
   function player(ctx, player, x, y, {time = 0, mining = false, climbing = false, attack = 0, miningProgress = null, weapon = null, attackAngle = 0, charging = false} = {}) {
-    const visibleWeapon = weaponSprites.has(weapon + ':0');
+    const foundry = globalThis.CircuitboundFoundryArt;
+    const newWeapon = globalThis.CircuitFoundryCombat?.CATALOG[weapon] && foundry?.ready?.(weapon);
+    const visibleWeapon = newWeapon || weaponSprites.has(weapon + ':0');
     const step = Math.sin(player.walk) < 0;
     let pose = 'idle';
     if (attack && !visibleWeapon) pose = attack < .095 ? 'attackStrike' : 'attackWindup';
@@ -330,7 +334,10 @@
       const width=weapon==='sunspikeLaser'?40:weapon==='phaseBlade'?27:33;
       ctx.translate(3,h*.51);
       ctx.rotate(localAngle);
-      frame(ctx,weapon,charging?'charge':attack?'fire':'idle',-4,-7,width,14);
+      if (newWeapon) {
+        const recoil = attack ? Math.min(4, attack * 20) : 0;
+        foundry.draw(ctx, weapon, -5 - recoil, -13, 32, 26, {time, working: !!attack || charging, phase: charging ? 'charge' : attack ? 'fire' : 'idle'});
+      } else frame(ctx,weapon,charging?'charge':attack?'fire':'idle',-4,-7,width,14);
     }
     ctx.restore();
     return true;

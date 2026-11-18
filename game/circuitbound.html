@@ -24,6 +24,7 @@
         <button id="pauseBtn" class="icon-btn" aria-label="Pause game">Ⅱ</button>
         <div id="utilityMenu" class="utility-menu panel" hidden>
           <button id="journalBtn" class="icon-btn">Journal <kbd>J</kbd></button>
+          <button id="foundryMapBtn" class="icon-btn" aria-keyshortcuts="M">Expedition map <kbd>M</kbd></button>
           <button id="blueprintBtn" class="icon-btn">Blueprints <kbd>B</kbd></button>
           <button id="manualBtn" class="icon-btn">Field manual <kbd>H</kbd></button>
           <button id="lensBtn" class="icon-btn" aria-label="Toggle Engineer's Lens" aria-pressed="false">Engineer’s Lens <kbd>C</kbd></button>
@@ -43,6 +44,7 @@
       <div id="inspectProps"></div><div id="machineActions" class="machine-actions"></div>
     </aside>
     <div id="survivalReadout" class="survival-readout"><span id="regionReadout">Surface Scrapyards</span><span id="equipmentReadout">Basic Pickaxe</span><span id="energyReadout" hidden>Energy 100</span></div>
+    <div id="foundryWaypoint" class="foundry-waypoint panel" hidden></div>
     <div id="raidReadout" class="raid-readout" role="status" hidden></div><div id="toast" role="status"></div><div id="cursorLabel" class="crosshair-label"></div>
     <div id="blueprintActive" class="blueprint-active panel" hidden><span id="blueprintActiveText"></span><button id="blueprintCancel" class="subtle-btn" aria-label="Cancel blueprint preview">Cancel ×</button></div>
     <div id="flightStatus" class="flight-status panel" hidden>
@@ -67,6 +69,24 @@
     <section id="blueprintPanel" class="panel modal" role="dialog" aria-modal="true" aria-labelledby="blueprintTitle" tabindex="-1">
       <div class="modal-head"><div><div class="eyebrow">Machine workshop</div><h2 id="blueprintTitle">Blueprints</h2><p>Preview a real assembly. Placement uses the components in your inventory.</p></div><button class="close" data-close="blueprintPanel">Close [B]</button></div>
       <div class="blueprint-layout"><div id="blueprintList" class="blueprint-list" aria-label="Machine blueprints"></div><div id="blueprintDetail" class="blueprint-detail"></div></div>
+    </section>
+    <section id="foundryMapPanel" class="panel modal foundry-map" role="dialog" aria-modal="true" aria-labelledby="foundryMapTitle" tabindex="-1">
+      <div class="modal-head"><div><h2 id="foundryMapTitle">Expedition map</h2><p id="foundryMapReadout"></p></div><button class="close" data-close="foundryMapPanel">Close [M]</button></div>
+      <div class="foundry-map-tools">
+        <label>Range <select id="foundryZoom"><option value="0">Local</option><option value="1">Regional</option><option value="2">World</option></select></label>
+        <button id="foundryRecenter" class="icon-btn" type="button">Find me</button>
+        <button id="foundryScan" class="icon-btn" type="button" title="Craft a Handheld Scanner at a Field Workbench">Scan nearby</button>
+      </div>
+      <canvas width="1024" height="320" aria-label="Map of explored terrain"></canvas>
+      <div class="foundry-map-tools">
+        <span id="foundrySelection" class="foundry-selection"></span>
+        <button id="foundryPin" class="icon-btn" type="button">Pin route</button>
+        <button id="foundryTravel" class="icon-btn" type="button" hidden>Ride freight line</button>
+        <button id="foundryRemove" class="icon-btn" type="button" hidden>Remove outpost</button>
+      </div>
+      <div id="foundryLocations" class="foundry-locations" aria-label="Discovered locations"></div>
+      <div class="foundry-map-tools"><input id="foundryOutpostName" aria-label="Outpost name" placeholder="Outpost name" maxlength="36"><button id="foundryAddOutpost" class="icon-btn" type="button">Mark this outpost</button></div>
+      <p id="foundryMapStatus" class="foundry-map-status" role="status"></p>
     </section>
     <section id="pausePanel" class="panel modal" role="dialog" aria-modal="true" aria-labelledby="pauseTitle" tabindex="-1">
       <div class="modal-head"><div><div class="eyebrow">Workshop suspended</div><h2 id="pauseTitle">Paused</h2><p>Your world saves automatically on this device.</p></div><button class="close" data-close="pausePanel">Close</button></div>
@@ -97,6 +117,7 @@
           <button class="touch-btn touch-utility" data-touch="aim" aria-label="Toggle smart cursor" aria-pressed="false">Aim</button>
           <button class="touch-btn touch-utility" data-touch="rotate" aria-label="Rotate selected component" hidden>Turn</button>
           <button class="touch-btn touch-utility" data-touch="interact" aria-label="Interact with target">Use</button>
+          <button class="touch-btn touch-utility" data-touch="dodge" aria-label="Dodge" hidden>Dodge</button>
         </div>
         <div class="touch-row">
           <button class="touch-btn context-action" data-touch="attack" aria-label="Attack" hidden>Attack</button>
@@ -110,6 +131,9 @@
 <script src="./circuitbound/engineering.js"></script>
 <script src="./circuitbound/vertical.js"></script>
 <script src="./circuitbound/art.js"></script>
+<script src="./circuitbound/foundry-art.js"></script>
+<script src="./circuitbound/deep-world.js"></script>
+<script src="./circuitbound/foundry-combat.js"></script>
 <script src="./circuitbound/survival.js"></script>
 <script src="./circuitbound/interface.js"></script>
 <script src="./circuitbound/workshop.js"></script>
@@ -118,6 +142,9 @@
 <script src="./circuitbound/robotics-world.js"></script>
 <script src="./circuitbound/robotics.js"></script>
 <script src="./circuitbound/starship.js"></script>
+<script src="./circuitbound/deep-industry.js"></script>
+<script src="./circuitbound/foundry-automation.js"></script>
+<script src="./circuitbound/foundry-map.js"></script>
 <script src="./circuitbound/app.js"></script>
 </body>
 </html>

@@ -15,13 +15,21 @@
     return contacts;
   }
   function hasGuide(group,get,T){return guideContacts(group,get,T).length>0;}
+  function cableReach(x,y,get,T){
+    if(T.MAGNETIC_RAIL===undefined)return 50;
+    for(const side of [-1,1])for(let offset=1;offset<=3;offset++){
+      if(get(x+side,y+offset)===T.MAGNETIC_RAIL)return 480;
+    }
+    return 50;
+  }
   function findCounterweight(engine,group,x,y){
     engine.rebuild();const own=new Set(group.map(p=>engine.key(...p))),candidates=[];
     const source=engine.key(x,y),metadata=engine.getMeta(),claimed=new Set(engine.active.filter(k=>k!==source&&engine.id(k)===engine.T.WINCH).map(k=>metadata.get(k)?.counterweightAssembly).filter(Boolean));
+    const reach=cableReach(x,y,engine.get,engine.T);
     for(const [assembly,keys] of engine.assemblies){
       if(claimed.has(assembly)||!keys.length||keys.some(k=>own.has(k)))continue;
       const coordinates=keys.map(k=>engine.xy(k));
-      if(!coordinates.every(([gx,gy])=>Math.abs(gx-x)<=12&&gy>y&&gy<=y+50))continue;
+      if(!coordinates.every(([gx,gy])=>Math.abs(gx-x)<=12&&gy>y&&gy<=y+reach))continue;
       if(!keys.some(k=>engine.defs[engine.id(k)]?.counterweight))continue;
       const distance=Math.min(...coordinates.map(([gx,gy])=>Math.abs(gx-x)+Math.abs(gy-y)));
       candidates.push({assembly,coordinates,distance});
@@ -59,8 +67,11 @@
     const moving=[...group.map(([gx,gy])=>({x:gx,y:gy,dy,side:0})),...counterGroup.map(([gx,gy])=>({x:gx,y:gy,dy:-dy,side:1}))];
     const mainGuides=guideContacts(group,get,T),counterGuides=guideContacts(counterGroup,get,T);
     m.guided=mainGuides.length+counterGuides.length>0;
+    const reach=cableReach(x,y,get,T);
     for(const [gx,gy] of mainGuides)if(!isGuide(get(gx,gy+dy),T))return fail('GUIDE RAIL ENDS BEFORE THE NEXT LOAD POSITION');
     for(const [gx,gy] of counterGuides)if(!isGuide(get(gx,gy-dy),T))return fail('COUNTERWEIGHT GUIDE RAIL ENDS');
+    const onMagneticTrack=(guides,direction)=>guides.some(([gx,gy])=>get(gx,gy)===T.MAGNETIC_RAIL&&get(gx,gy+direction)===T.MAGNETIC_RAIL);
+    const longTrack=[onMagneticTrack(mainGuides,dy),onMagneticTrack(counterGuides,-dy)];
 
     const riderOn=coordinates=>!!player&&coordinates.some(([gx,gy])=>Math.abs(player.y+player.h-gy*tile)<5&&player.x+player.w>gx*tile&&player.x<(gx+1)*tile);
     const mainRider=riderOn(group),counterRider=riderOn(counterGroup);
@@ -79,7 +90,7 @@
     const destinations=new Set();
     for(const part of moving){const nx=part.x,ny=part.y+part.dy,k=key(nx,ny);
       if(!inside(nx,ny))return fail('LIFT REACHES WORLD BOUNDARY');
-      if(ny<=y||ny>y+50||Math.abs(nx-x)>12)return fail(part.side?'COUNTERWEIGHT REACHES WINCH CABLE LIMIT':'LIFT REACHES WINCH CABLE LIMIT');
+      if(ny<=y||ny>y+reach||Math.abs(nx-x)>12||ny>y+50&&!longTrack[part.side])return fail(part.side?'COUNTERWEIGHT REACHES WINCH CABLE LIMIT':'LIFT REACHES WINCH CABLE LIMIT');
       // Even non-solid wire/ladder construction must not be overwritten and silently lost.
       if(!own.has(k)&&get(nx,ny)!==T.AIR)return fail(part.side?'COUNTERWEIGHT PATH BLOCKED':'LIFT PATH BLOCKED');
       if(destinations.has(k))return fail('LOAD AND COUNTERWEIGHT DESTINATIONS INTERSECT');destinations.add(k);
@@ -116,5 +127,5 @@
     if(player&&riding>=0)player.y+=riderDy*tile;
     m.fault='';m.counterbalanced=counterGroup.length>0;return true;
   }
-  return {moveLift,hasGuide,findCounterweight};
+  return {moveLift,hasGuide,findCounterweight,cableReach};
 });

@@ -2,6 +2,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const S=require('../survival.js');
 const E=require('../engineering.js');
+const Foundry=require('../foundry-combat.js');
 
 function fixture(){
   const width=110,height=84,tile=24,T={AIR:0,GRASS:1,DIRT:2,STONE:3,WOOD:4,COPPER:5,IRON:6,CRYSTAL:7,OBSIDIAN:8,PLATFORM:9,COPPER_BLOCK:10,IRON_BLOCK:11,WIRE:12,SIGNAL:13,GENERATOR:14,SWITCH:15,SENSOR:16,MOTOR:17,SHAFT:18,GEAR:19,PISTON:20,LAMP:21,CONVEYOR:22,CORE:25,LADDER:26,STORAGE:27};
@@ -76,6 +77,72 @@ test('ranged combat consumes real ammunition and energy; projectiles cannot pass
   assert.equal(s.attack(1000,700),false,'cooldown blocks extra ammunition consumption');assert.equal(f.inventory.ammo,1);
   f.set(62,29,f.T.STONE);s.projectiles=[{x:61.5*f.tile,y:29.5*f.tile,vx:460,vy:0,life:2,owner:'player',damage:100}];f.advance(.1);assert.equal(s.projectiles.length,0);
   f.inventory.energyRifle=1;s.selectWeapon('energyRifle');s.attackCooldown=0;s.energy=6;assert.equal(s.attack(1000,700),false);s.energy=50;assert.equal(s.attack(1000,700),true);assert.equal(s.energy,43);
+});
+
+test('the sixteen Foundry weapons use their own schematic and deep material',()=>{
+  const f=fixture(),s=f.survival,items=[],recipes=[];
+  S.install(f.T,f.defs,items,recipes);
+  const keys=Object.keys(Foundry.CATALOG);
+  const materials=['osmiumIngot','graviteIngot','nullQuartz','starcoreIngot'];
+  assert.equal(keys.length,16);
+  for(const [index,key] of keys.entries()){
+    const recipe=recipes.find(r=>r.key===key);
+    assert.ok(recipe.cost[materials[Math.floor(index/4)]]>0);
+    assert.ok(items.some(item=>item.key===key&&item.weapon));
+    f.stats.schematics=[];
+    assert.equal(s.canCraft(recipe),false);
+    f.stats.schematics=[key];
+    assert.equal(s.canCraft(recipe),true);
+  }
+});
+
+test('Foundry charge only spends energy after its windup, and an Orbit Disc hits on both legs',()=>{
+  const f=fixture(),s=f.survival,p=s.center();
+  f.inventory.starcoreLance=1;
+  f.player.onGround=true;
+  assert.equal(s.selectWeapon('starcoreLance'),true);
+  assert.equal(s.attack(p.x+300,p.y),true);
+  f.advance(.4);
+  assert.equal(s.energy,100);
+  f.player.vx=100;
+  f.advance(.1);
+  assert.equal(s.energy,100);
+  assert.equal(s.foundryCharge,null);
+  f.player.vx=0;
+  f.inventory.orbitDisc=1;
+  const target=f.enemy('sentinel',95);
+  target.hp=300;
+  target.stun=2;
+  assert.equal(s.selectWeapon('orbitDisc'),true);
+  assert.equal(s.attack(target.x,target.y),true);
+  f.advance(1.6);
+  assert.equal(target.hp,300-S.WEAPONS.orbitDisc.damage*2);
+  const energy=s.energy;
+  assert.equal(s.selectWeapon('starcoreLance'),true);
+  assert.equal(s.attack(p.x+300,p.y),true);
+  f.advance(1);
+  assert.equal(s.energy,energy-S.WEAPONS.starcoreLance.energy);
+});
+
+test('a Singularity cannot pull a burrower before it is exposed',()=>{
+  const f=fixture(),s=f.survival;
+  f.inventory.singularityLauncher=1;
+  const target=f.enemy('burrower',55);
+  target.x=63*f.tile-8;
+  s.grid.rebuild(s.enemies);
+  f.set(63,29,f.T.STONE);
+  assert.equal(s.canHit(target),false);
+  assert.equal(s.selectWeapon('singularityLauncher'),true);
+  assert.equal(s.attack(target.x,target.y),true);
+  for(let i=0;i<50;i++)Foundry.tick(s,.05);
+  assert.equal(target.foundryMotion,undefined);
+  assert.equal(target.hp,target.maxHealth);
+  f.set(63,29,f.T.AIR);
+  assert.equal(s.canHit(target),true);
+  s.attackCooldown=0;
+  assert.equal(s.attack(target.x,target.y),true);
+  Foundry.tick(s,.05);
+  assert.ok(target.foundryMotion.vx<0);
 });
 
 test('exotic recipes require both Chapter Five and their own recovered plans',()=>{

@@ -140,8 +140,8 @@
   function compatible(a,b) {return a.type===b.type && a.mode!=='in' && b.mode!=='out';}
   function strengthColor(ratio) {return ratio<.25?'#64a9ff':ratio<.6?'#8ee36c':ratio<.85?'#ffe365':ratio<1?'#ff9d46':'#ff5b5b';}
   class Simulation {
-    constructor({width,height,get,set,meta,defs,T}) {
-      Object.assign(this,{width,height,get,set,getMeta:meta,defs,T});
+    constructor({width,height,get,set,meta,defs,T,placedKeys}) {
+      Object.assign(this,{width,height,get,set,getMeta:meta,defs,T,placedKeys});
       this.nodes=new Set();this.revision=0;this.built=-1;this.rebuilds=0;
       this.drops=[];this.nextDrop=1;this.nextAssembly=1;this.nextNode=1;this.elapsed=0;
       this.metrics={mined:0,produced:0,shots:0,healed:0};
@@ -156,11 +156,15 @@
       if(id&&(this.defs[id]?.ports||m?.assembly))this.nodes.add(k);else this.nodes.delete(k);
       this.revision++;
     }
+    *resetKeys(){
+      if(this.placedKeys){yield* new Set([...this.placedKeys(),...this.getMeta().keys()]);return;}
+      for(let k=0;k<this.width*this.height;k++)yield k;
+    }
     reset(){
       this.nodes.clear();this.drops=[];this.nextDrop=1;this.nextAssembly=1;this.nextNode=1;this.elapsed=0;
       this.metrics={mined:0,produced:0,shots:0,healed:0};
-      for(let y=0;y<this.height;y++)for(let x=0;x<this.width;x++){
-        const id=this.get(x,y),k=this.key(x,y),m=this.getMeta().get(k);
+      for(const k of this.resetKeys()){
+        const id=this.id(k),m=this.getMeta().get(k);
         if(id&&(this.defs[id]?.ports||m?.linked||m?.assembly))this.nodes.add(k);
         if(m?.assembly)this.nextAssembly=Math.max(this.nextAssembly,m.assembly+1);
         if(m?.nodeId)this.nextNode=Math.max(this.nextNode,m.nodeId+1);
@@ -410,9 +414,10 @@
         return {x:tx,y:ty,id,key:this.defs[id]?.drop};
       }return null;
     }
-    production(dt,{set=this.set,onMined,onProduced}={}){
+    production(dt,{set=this.set,onMined,onProduced,budgetFor}={}){
       this.rebuild();dt=Math.max(0,Math.min(Number(dt)||0,2));
       for(const k of this.active){const d=this.defs[this.id(k)];if(!d?.producer)continue;
+        const workDt=budgetFor?budgetFor(k):dt;if(!workDt)continue;
         const m=this.data(k),machine=d.machine,recipe=this.recipe(k);m.machineFault='';m.working=false;m.efficiency=0;
         if(m.disabled||m.signalOK===false){m.machineFault='DISABLED BY CONTROL SIGNAL';continue;}
         if(!m.powered){m.machineFault=m.overload?'POWER CABLE OVERLOADED':'CONNECT POWER TO PWR INPUT';continue;}
@@ -425,7 +430,7 @@
           if(m.miningTarget!==targetKey){m.miningTarget=targetKey;m.progress=0;}
           if(typeof set!=='function'){m.machineFault='WORLD MINING CONNECTION UNAVAILABLE';continue;}
           if(this.outputRoom(k)<1||this.outputConnection(k,target.key)===null){m.machineFault='OUTPUT BLOCKED: CONNECT A HOPPER WITH SPACE';continue;}
-          m.working=true;m.efficiency=speed;m.progress=(m.progress||0)+dt*speed/(machine.time*Math.max(.3,this.defs[target.id].hard||1));
+          m.working=true;m.efficiency=speed;m.progress=(m.progress||0)+workDt*speed/(machine.time*Math.max(.3,this.defs[target.id].hard||1));
           if(m.progress+1e-8<1)continue;
           // Commit only after a real tile is removed. A refused edit produces no resources.
           set(target.x,target.y,this.T.AIR);
@@ -439,7 +444,7 @@
         if(missing()){const [key,n]=missing();m.machineFault=`NEEDS ${n} ${key}`;continue;}
         const amount=Object.values(recipe.out).reduce((n,v)=>n+v,0);
         if(this.outputRoom(k)<amount){m.machineFault='OUTPUT BUFFER FULL — EMPTY OR CONNECT LOGISTICS';continue;}
-        m.working=true;m.efficiency=speed;m.progress=(m.progress||0)+dt*speed/machine.time;
+        m.working=true;m.efficiency=speed;m.progress=(m.progress||0)+workDt*speed/machine.time;
         for(let cycle=0;cycle<16&&m.progress+1e-8>=1&&!missing()&&this.outputRoom(k)>=amount;cycle++){
           // Ingredients and output capacity are checked together, then committed as one inventory operation.
           for(const [key,n] of Object.entries(recipe.cost)){m.contents[key]-=n;if(!m.contents[key])delete m.contents[key];}
@@ -492,14 +497,20 @@
         if(score>best){best=score;candidates=[rot];}else if(score===best)candidates.push(rot);
       }return candidates.length===1?candidates[0]:fallback;
     }
-    logistics(dt){
+    logistics(dt,{budgetFor}={}){
       this.rebuild();const T=this.T;
-      // Each item crosses at most one component per tick, independent of tile iteration order.
-      const ready=new Map(this.transport.map(k=>[k,{...((this.defs[this.id(k)].producer?this.data(k).outputs:this.data(k).contents)||{})}]));
-      for(const k of this.transport){const m=this.data(k);m.itemClock=(m.itemClock||0)+dt;
+      // Snapshot each due component's next item before moving any cargo.
+      const ready=[];
+      for(const k of this.transport){
+        const workDt=budgetFor?budgetFor(k):dt;if(!workDt)continue;
+        const m=this.data(k);m.itemClock=(m.itemClock||0)+workDt;
         if(m.itemClock<.25)continue;m.itemClock%=.25;m.logisticsFault='';
         const id=this.id(k);if(id===T.CONVEYOR&&!m.running){m.logisticsFault='NO ROTATION';continue;}
-        const key=Object.keys(ready.get(k)).find(key=>ready.get(k)[key]>0);if(!key)continue;
+        const inventory=(this.defs[id].producer?m.outputs:m.contents)||{};
+        const key=Object.keys(inventory).find(key=>inventory[key]>0);if(!key)continue;
+        ready.push({k,m,id,key,inventory});
+      }
+      for(const {k,m,id,key,inventory} of ready){
         if(id===T.FILTER&&key!==(m.filter||'iron')){m.logisticsFault='FILTER CHANGED — withdraw incompatible contents';continue;}
         const outs=this.pp(k,'item').filter(p=>p.mode==='out');
         const p=outs[id===T.SPLITTER?(m.route||0)%outs.length:0];if(!p)continue;
@@ -510,7 +521,7 @@
           // hoppers may intentionally unload physical items onto the ground.
           if(!nid&&id!==T.STORAGE&&!this.defs[id].producer&&!this.defs[id].retainItems)moved=this.spawn(key,1,nx+.5,ny+.5)?1:0;
         }
-        if(moved){const inventory=this.defs[id].producer?m.outputs:m.contents;inventory[key]--;if(!inventory[key])delete inventory[key];if(id===T.SPLITTER)m.route=((m.route||0)+1)%2;}
+        if(moved){inventory[key]--;if(!inventory[key])delete inventory[key];if(id===T.SPLITTER)m.route=((m.route||0)+1)%2;}
         else m.logisticsFault='OUTPUT BLOCKED / FULL / FILTERED';
       }
       for(const drop of this.drops){drop.age+=dt;const x=Math.floor(drop.x),y=Math.floor(drop.y),k=this.key(x,y);
