@@ -1,6 +1,6 @@
 # Trash Tactics
 
-The **High Ground update** adds Rain Gutter Run and Carton Works, raised starting bases on all nine battlegrounds, painted terrain and prop textures, particle effects, and a map loading screen. Choose **Online PvP** for live 1v1 matches with a lobby browser, invitations, and reconnects. The [Windows host and ranked service guide](ONLINE.md) covers community hosting and Catnmice profiles.
+The **High Ground update** adds Rain Gutter Run and Carton Works, raised starting bases on all nine battlegrounds, painted terrain and prop textures, particle effects, and a map loading screen. Choose **Multiplayer** for live 1v1 matches with a lobby browser, invitations, and reconnects. The [Windows host and ranked service guide](ONLINE.md) covers community hosting and Catnmice profiles.
 
 The **Command & Intel update** adds mixed building plans for workers, red minimap attack alerts, frozen last-seen scouting information, and an interactive post-match report. See [construction, intelligence and match analysis](COMMAND-INTEL.md).
 

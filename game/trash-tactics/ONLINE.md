@@ -1,6 +1,6 @@
 # Online PvP
 
-Open **Online PvP** from Trash Tactics or **Browse Lobbies** from the Catnmice Game Hub. Choose an open lobby to join. On Catnmice, players with a verified profile can also select **Create ranked 1v1 lobby**. The host starts the match when both seats are filled. Both players finish loading the artwork before the match timer begins. Guests play in their browsers.
+Choose **Multiplayer** in Trash Tactics or **Browse Lobbies** in the Catnmice Game Hub. Select **Host Lobby** or join an open lobby. On Catnmice, players with a verified profile can also select **Create ranked 1v1 lobby**. The host starts the match when both seats are filled. Both players finish loading the artwork before the match timer begins. Guests play in their browsers.
 
 ## Host on Windows
 

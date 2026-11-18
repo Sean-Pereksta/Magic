@@ -5,6 +5,7 @@ import {renderLeaderboard,renderRankProfile} from './rank-ui.mjs';
 
 export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResult,onRating,onStatus,onClosed}) {
   const find=id=>root.querySelector('#'+id);
+  const menu=find('mainMenu'), solo=find('soloLobby'), singleplayer=find('singleplayerOpen');
   const pane=find('onlineLobby'), status=find('onlineStatus'), form=find('onlineCreate'), rows=find('onlineRooms');
   const play=find('onlineStart'), roster=find('onlineRoster'), invite=find('onlineInvite'), rank=find('onlineRanked');
   const hostStatus=find('onlineHostStatus'), titleInput=find('onlineTitle');
@@ -204,20 +205,19 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
       client.open({...payload,name});
     } catch (error) {connecting=false;reportError(error.message);}
   }
-  function open() {
-    pane.hidden=false;
-    find('soloLobby').hidden=true;
+  function show(panel,focusTarget) {
+    for (const view of [menu,solo,pane]) view.hidden=view!==panel;
+    focusTarget.focus();
+  }
+  function open(focusTarget=find('onlineHeading')) {
     mapSelect.value=selectedMap();
     showMapIcon();
     hostStatus.textContent='';
     setControls();
+    show(pane,focusTarget);
     clearInterval(poll);
     poll=setInterval(()=>void refresh(),4000);
     void refresh();
-  }
-  function openHostForm() {
-    open();
-    titleInput.focus();
   }
   function leave(message='',notify=true) {
     connection?.close(notify);connection=null;
@@ -228,11 +228,13 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     if (message) note(message);
     setTimeout(()=>void refresh(),3000);
   }
-  launch.addEventListener('click',open);
-  find('hostFromSolo').addEventListener('click',openHostForm);
+  singleplayer.addEventListener('click',()=>show(solo,find('soloHeading')));
+  find('soloBack').addEventListener('click',()=>show(menu,singleplayer));
+  launch.addEventListener('click',()=>open());
   find('onlineBack').addEventListener('click',()=>{
     if (room || connecting) leave();
-    pane.hidden=true;find('soloLobby').hidden=false;clearInterval(poll);
+    clearInterval(poll);
+    show(menu,launch);
   });
   find('onlineLeave').addEventListener('click',()=>leave('You left the lobby.'));
   find('onlineRefresh').addEventListener('click',()=>void refresh());
@@ -260,7 +262,7 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     try {renderRankProfile(card,(await request('/api/profile?username='+encodeURIComponent(username),OFFICIAL_ORIGIN)).player);}
     catch {card.textContent='No ranked profile found. Check the Catnmice username.';}
   });
-  if (!inviteCode && current.searchParams.get('host')==='1') openHostForm();
+  if (!inviteCode && current.searchParams.get('host')==='1') open(titleInput);
   else if (token || inviteCode || current.searchParams.has('online')) open();
   return {open,leave};
 }

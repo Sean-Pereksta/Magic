@@ -24,6 +24,17 @@ try{
  page.on('pageerror',e=>errors.push(e.message));
  await page.goto(url);
  await page.waitForFunction(()=>!!window.trashTactics);
+ assert(await page.locator('#mainMenu').isVisible());
+ assert.equal(await page.locator('#mapSelect').isVisible(),false);
+ assert.equal(await page.locator('#onlineHost').isVisible(),false);
+ await page.getByRole('button',{name:'Multiplayer',exact:true}).click();
+ assert(await page.locator('#onlineHost').isVisible());
+ await page.locator('#onlineBack').click();
+ await page.getByRole('button',{name:'Singleplayer',exact:true}).click();
+ assert(await page.locator('#mapSelect').isVisible());
+ await page.locator('#soloBack').click();
+ assert(await page.locator('#mainMenu').isVisible());
+ await page.locator('#singleplayerOpen').click();
  assert.equal(await page.locator('#mapSelect option').count(),9);
  const mapOptions=page.locator('#mapSelect');
  const terrainPreview=page.locator('#mapScenePreview');
@@ -76,10 +87,11 @@ try{
  await page.locator('#art-gallery').evaluate(e=>e.remove());
  const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1});
  mobile.on('pageerror',e=>errors.push(e.message));await mobile.goto(url);await mobile.waitForFunction(()=>!!window.trashTactics);
+ await mobile.locator('#singleplayerOpen').tap();
  assert.equal(await mobile.locator('#mapSelect option').count(),9);await mobile.locator('#mapSelect').selectOption('canyon');await mobile.locator('#startButton').tap();
  await mobile.locator('#lobby').waitFor({state:'hidden'});
  await mobile.screenshot({path:path.join(output,'mobile-canyon.png')});
  assert(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'mobile layout fits viewport');
  assert.deepEqual(errors,[],'desktop and touch screens have no runtime errors');
- console.log(JSON.stringify({ok:true,checks:['all nine screenshots and tactical layout toggles','canyon and conveyor render','live specialist production','all eight new artwork icons','mobile map selection and layout'],output}));
+ console.log(JSON.stringify({ok:true,checks:['Singleplayer and Multiplayer navigation','all nine screenshots and tactical layout toggles','canyon and conveyor render','live specialist production','all eight new artwork icons','mobile map selection and layout'],output}));
 }finally{await browser.close();server?.kill();}
