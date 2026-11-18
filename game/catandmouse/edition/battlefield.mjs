@@ -40,7 +40,7 @@ const flourMill = Object.freeze({
   id: 'flour-mill',
   name: 'The Flour Mill',
   size: millSize,
-  description: 'Outrun the Cat and survive the rat waves in a mill with four entrances.',
+  description: 'Outrun the Cat, build up your defenses, and take him down as successive rat waves get stronger.',
   tiles: Object.freeze(millTiles.map(row => row.join(''))),
   spawns: Object.freeze([
     { id: 'west', name: 'Mill Race', x: 1, y: 23 },
@@ -59,6 +59,7 @@ const flourMill = Object.freeze({
 });
 
 export const MAPS = Object.freeze({ [flourMill.id]: flourMill });
+export const STARTING_WAVES = Object.freeze([1, 5, 10]);
 
 export const DIFFICULTIES = Object.freeze({
   easy: Object.freeze({ name: 'Easy', health: 0.82, damage: 0.72, waveBonus: 0, openingCheese: 30 }),
@@ -139,7 +140,7 @@ export const ENEMIES = Object.freeze({
   king: Object.freeze({ hp: 92, speed: 1.57, damage: 10, reach: 1, windup: 430, cooldown: 1250, radius: 0.53, cheese: 6 }),
   sapper: Object.freeze({ hp: 59, speed: 1.77, damage: 5, reach: 0.83, windup: 360, cooldown: 1200, radius: 0.45, cheese: 5 }),
   mender: Object.freeze({ hp: 42, speed: 1.86, damage: 4, reach: 0.83, windup: 330, cooldown: 1225, radius: 0.43, cheese: 4 }),
-  cat: Object.freeze({ hp: 128, speed: 2.55, damage: 15, reach: 1.15, windup: 560, cooldown: 1410, radius: 0.67, cheese: 0 }),
+  cat: Object.freeze({ hp: 550, speed: 2.55, damage: 15, reach: 1.15, windup: 560, cooldown: 1410, radius: 0.67, cheese: 0 }),
 });
 
 export const SHOTS = Object.freeze({
