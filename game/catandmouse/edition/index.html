@@ -33,17 +33,29 @@
         <span id="objective"></span>
         <span id="threat-hint" hidden></span>
       </section>
-      <section class="hud-group overview">
-        <canvas id="minimap" width="132" height="132" aria-label="Battlefield overview"></canvas>
-        <div class="camera-controls"><button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button><button id="camera" title="Toggle camera lock" aria-label="Toggle camera lock">◎</button><button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button></div>
-        <div id="teammates" aria-label="Teammates"></div>
-      </section>
+      <details id="battle-overview" class="hud-group overview" open>
+        <summary id="overview-toggle" aria-label="Map and teammates">Map</summary>
+        <div id="overview-body">
+          <canvas id="minimap" width="132" height="132" aria-label="Battlefield overview"></canvas>
+          <div class="camera-controls"><button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button><button id="camera" title="Toggle camera lock" aria-label="Toggle camera lock">◎</button><button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button></div>
+          <div id="teammates" aria-label="Teammates"></div>
+        </div>
+      </details>
     </div>
     <button id="battle-menu" class="battle-menu secondary">Menu</button>
     <div id="network-status" class="network-status" role="status" hidden></div>
     <div class="hud-bottom">
-      <p id="build-info">WASD or arrow keys to move · tap the floor to walk</p>
-      <div id="build-bar" class="build-bar" aria-label="Build loadout"></div>
+      <div id="build-aim">
+        <p id="build-info" role="status">WASD or arrow keys to move · tap the floor to walk</p>
+        <div class="build-aim-actions">
+          <button id="build-cancel" class="secondary" type="button">Cancel</button>
+          <button id="build-place" type="button" disabled>Place</button>
+        </div>
+      </div>
+      <button id="build-toggle" type="button" aria-expanded="false" aria-controls="build-tray">Build</button>
+      <div id="build-tray">
+        <div id="build-bar" class="build-bar" aria-label="Build loadout"></div>
+      </div>
     </div>
   </main>
   <dialog id="overlay">
