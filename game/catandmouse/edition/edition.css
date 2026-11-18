@@ -95,6 +95,7 @@ input[type=checkbox] { accent-color: var(--gold); }
 #threat-hint { color: #b5decd; font-size: .72rem; }
 .difficulty-note { margin: .3rem 0 .65rem; font-size: .86rem; }
 .overview { pointer-events: auto; padding: .35rem; }
+#overview-toggle { display: none; }
 #minimap { display: block; width: clamp(66px, 15vw, 132px); height: auto; cursor: crosshair; }
 .camera-controls { display: flex; gap: 2px; justify-content: space-between; }
 .camera-controls button { padding: .1rem .45rem; min-height: 28px; background: #25362c; border: 0; color: var(--cream); }
@@ -107,7 +108,11 @@ input[type=checkbox] { accent-color: var(--gold); }
 .build-bar .hotkey { position: absolute; top: .15rem; left: .2rem; color: var(--muted); font-size: .6rem; }
 .build-bar .kit-art { width: clamp(20px,5.3vw,43px); height: clamp(20px,5.3vw,43px); }
 .build-bar small { color: var(--gold); }
+.build-bar .unaffordable small { color: #f7a593; }
 .build-bar button[aria-pressed=true] { border-color: var(--gold); background: #493820; }
+#build-toggle, .build-aim-actions { display: none; }
+.touch-aim .build-aim-actions { display: flex; justify-content: flex-end; gap: .35rem; margin-bottom: .35rem; }
+.touch-aim .build-aim-actions button { min-height: 44px; touch-action: manipulation; }
 .network-status { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); max-width: 90%; }
 dialog { width: min(550px,calc(100% - 2rem)); color: var(--cream); background: var(--panel); border: 1px solid var(--border); border-radius: 7px; padding: 1.4rem; max-height: 85dvh; }
 dialog::backdrop { background: #061110ba; }
@@ -117,13 +122,134 @@ dialog::backdrop { background: #061110ba; }
   .menu-footer, .masthead { font-size: .61rem; }
   .title-view h1 { font-size: clamp(3.7rem,16vw,5.5rem); }
   .title-actions { max-width: 15rem; }
-  .hud-group { padding: .3rem; }
-  #wave-title { font-size: .95rem; }
-  #objective { font-size: .63rem; }
-  #threat-hint { max-width: 11em; font-size: .63rem; }
-  .player-meter { gap: .1rem .25rem; }
-  .player-meter .hud-label { font-size: .55rem; letter-spacing: .06em; }
-  .build-bar button { font-size: .56rem; }
-  .battle-menu { top: 3.8rem; }
+}
+@media (pointer: coarse), (max-width: 570px) {
+  .battle {
+    --hud-top: max(.45rem, env(safe-area-inset-top));
+    --hud-right: max(.45rem, env(safe-area-inset-right));
+    --hud-bottom: max(.45rem, env(safe-area-inset-bottom));
+    --hud-left: max(.45rem, env(safe-area-inset-left));
+  }
+  .hud-top {
+    inset: var(--hud-top) calc(var(--hud-right) + 3.6rem) auto var(--hud-left);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: .35rem;
+  }
+  .hud-group { min-height: 44px; padding: .28rem .4rem; }
+  .player-meter { gap: .15rem .3rem; font-size: .8rem; }
+  .player-meter .hud-label { font-size: .56rem; letter-spacing: .05em; }
+  .wave { gap: .1rem; line-height: 1.15; }
+  #wave-title { font: 700 .79rem 'Segoe UI', system-ui, sans-serif; }
+  #wave-clock { font-size: .72rem; }
+  #objective, #threat-hint { font-size: .65rem; }
+  #objective:empty { display: none; }
+  .overview { position: relative; padding: 0; z-index: 2; }
+  #overview-toggle, .battle-menu {
+    display: grid;
+    place-items: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: .3rem .45rem;
+    font-size: .8rem;
+    font-weight: 700;
+    touch-action: manipulation;
+  }
+  #overview-toggle {
+    list-style: none;
+    cursor: pointer;
+  }
+  #overview-toggle::-webkit-details-marker { display: none; }
+  .overview[open] #overview-toggle { color: var(--gold); }
+  #overview-body {
+    position: absolute;
+    top: calc(100% + .3rem);
+    right: 0;
+    width: 9.75rem;
+    max-height: min(55dvh, 19rem);
+    padding: .45rem;
+    overflow: auto;
+    background: #111e1bf5;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+  }
+  #minimap { width: 100%; }
+  .camera-controls button {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+    touch-action: manipulation;
+  }
+  .battle-menu { inset: var(--hud-top) var(--hud-right) auto auto; }
+  .hud-bottom {
+    inset: auto var(--hud-right) var(--hud-bottom) var(--hud-left);
+    transform: none;
+    display: grid;
+    justify-items: end;
+    width: auto;
+    max-width: 34rem;
+    margin-left: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    pointer-events: none;
+  }
+  #build-toggle, #build-tray, #build-aim { pointer-events: auto; }
+  #build-toggle {
+    display: inline-flex;
+    justify-content: center;
+    min-width: 5.25rem;
+    min-height: 48px;
+    touch-action: manipulation;
+  }
+  #build-tray, #build-aim {
+    width: 100%;
+    padding: .45rem;
+    background: #111e1bf5;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+  }
+  #build-tray {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + .35rem);
+  }
+  #build-toggle[aria-expanded=false] ~ #build-tray,
+  #build-aim,
+  .touch-aim #build-toggle,
+  .touch-aim #build-tray { display: none; }
+  .touch-aim #build-aim {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: .4rem;
+  }
+  .action-status #build-aim {
+    display: block;
+    position: absolute;
+    bottom: calc(100% + .35rem);
+    right: 0;
+    width: auto;
+    max-width: 100%;
+    pointer-events: none;
+  }
+  .touch-aim .build-aim-actions { margin: 0; }
+  .build-aim-actions button { justify-content: center; padding: .4rem .6rem; }
+  #build-info { margin: 0; text-align: left; }
+  .build-bar { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .3rem; }
+  .build-bar button {
+    min-width: 0;
+    min-height: 60px;
+    padding: .3rem .15rem;
+    font-size: .68rem;
+    overflow-wrap: anywhere;
+    touch-action: manipulation;
+  }
+  .build-bar .hotkey { display: none; }
+  .build-bar .kit-art { width: 30px; height: 30px; }
+  .build-bar small { font-size: .63rem; }
+}
+@media (pointer: coarse) and (min-width: 600px) and (orientation: landscape) {
+  .build-bar { grid-template-columns: repeat(8, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
