@@ -1365,6 +1365,19 @@
       .classic-touch-match #leftRail:has(#upgradeMenu[style*="block"]) > :not(#upgradeMenu) { display:none!important; }
       .classic-touch-match #upgradeMenu { pointer-events:auto; }
     }
+    .starting-wave-field {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin:10px 0 0;
+    }
+    .starting-wave-field select {
+      min-height:44px;
+      margin:0;
+      padding:6px 10px;
+      font:inherit;
+      border-radius:8px;
+    }
   </style>
 </head>
 
@@ -1426,6 +1439,14 @@
               <button class="difficulty-vote difficulty-card difficulty-hard" data-diff="hard"></button>
               <button class="difficulty-vote difficulty-card difficulty-nightmare" data-diff="insane"></button>
             </div>
+            <label class="starting-wave-field" for="startingWave">Starting wave
+              <select id="startingWave" disabled>
+                <option value="1">Wave 1</option>
+                <option value="5">Wave 5</option>
+                <option value="10">Wave 10</option>
+              </select>
+            </label>
+            <p id="startingWaveNote" class="lobby-meta-line">The Cat hunts from the start. Defeat him to win.</p>
           </section>
 
           <section class="war-room-section loadout-section">
@@ -1927,6 +1948,8 @@
       if (data.cat){
         catPos = { x:data.cat.x ?? catPos.x, y:data.cat.y ?? catPos.y };
         if (typeof data.cat.health === "number") catHealth = data.cat.health;
+        if (typeof data.cat.maxHealth === "number") maxCatHealth = data.cat.maxHealth;
+        if (typeof data.cat.nextHealAt === "number") nextCatHealAt = data.cat.nextHealAt;
         if (data.cat.facing) catFacingDir = data.cat.facing;
       }
       if (typeof data.catPower === "number") catPower = data.catPower;
@@ -2158,6 +2181,11 @@
   let maxCatHealth = 1000;
   let catPower  = 0;
   let ratPower  = 1;
+  let startingWave = 1;
+  let pendingStartingWave = null;
+  let ratWave = 0;
+  let nextCatGrowthAt = 0;
+  let nextCatHealAt = 0;
   let currentDifficulty = "medium";
   let myDifficultyVote = "";
   let difficultyVotes = {};
@@ -2175,6 +2203,26 @@
     hard:   { label:"Hard",   catStartHealth:2000, ratBaseHealth:6, oxBaseHealth:34, ratSpawnBonus:3 },
     insane: { label:"Insane", catStartHealth:3000, ratBaseHealth:8, oxBaseHealth:44, ratSpawnBonus:3 }
   };
+  const CAT_START_HEALTH_TIERS = Object.freeze({ 1:1, 5:1.65, 10:2.45 });
+  const CAT_GROWTH_INTERVAL = 60000;
+  const CAT_HEAL_INTERVAL = 10000;
+  const CAT_PRESSURE_INTERVAL = 20000;
+  const RAT_WAVE_INTERVAL = 32000;
+
+  function normalizeStartingWave(value){
+    return Number.isInteger(value) && Object.hasOwn(CAT_START_HEALTH_TIERS, value) ? value : 1;
+  }
+
+  function startingCatHealth(difficulty, wave){
+    return Math.round(DIFFICULTY_SETTINGS[difficulty].catStartHealth * CAT_START_HEALTH_TIERS[normalizeStartingWave(wave)]);
+  }
+
+  function healCat(ratio, now = Date.now()){
+    if (catHealth <= 0 || catHealth >= maxCatHealth || now < nextCatHealAt || now < catWeakenedUntil) return false;
+    catHealth = Math.min(maxCatHealth, catHealth + Math.min(35, Math.ceil(maxCatHealth * ratio)));
+    nextCatHealAt = now + CAT_HEAL_INTERVAL;
+    return true;
+  }
 
   let canMove = true;
   let canBuild = true;
@@ -2970,9 +3018,10 @@
   function updateCatHealthBar(){
     const bar  = document.getElementById("catHealthFill");
     const text = document.getElementById("catHealthText");
-    const percent = Math.min(100, (catHealth / Math.max(1, maxCatHealth)) * 100);
+    const current = Math.max(0, catHealth);
+    const percent = Math.min(100, (current / Math.max(1, maxCatHealth)) * 100);
     bar.style.width = percent + "%";
-    text.textContent = `❤️ ${catHealth}`;
+    text.textContent = `Cat ${current.toLocaleString()} / ${maxCatHealth.toLocaleString()}`;
   }
 
   function toggleMobileMode(){
@@ -3095,11 +3144,18 @@
     return !!(p && p.online !== false && (Date.now() - (p.lastSeen || 0)) <= staleAfter);
   }
 
-  function applyDifficulty(mode){
+  function applyDifficulty(mode, state = {}){
     const resolved = DIFFICULTY_SETTINGS[mode] ? mode : "medium";
     currentDifficulty = resolved;
-    const cfg = DIFFICULTY_SETTINGS[resolved];
-    maxCatHealth = cfg.catStartHealth;
+    startingWave = normalizeStartingWave(state.startingWave ?? startingWave);
+    if (Number.isSafeInteger(state.ratWave)) ratWave = Math.max(0, ratWave, state.ratWave);
+    else if (state.phase === "playing" && !ratWave) ratWave = Math.floor(catPower / 5);
+    if (Number.isFinite(state.nextCatGrowthAt)) nextCatGrowthAt = Math.max(nextCatGrowthAt, state.nextCatGrowthAt);
+    if (Number.isFinite(state.cat?.nextHealAt)) nextCatHealAt = Math.max(nextCatHealAt, state.cat.nextHealAt);
+    const startHealth = startingCatHealth(resolved, startingWave);
+    maxCatHealth = state.phase === "playing"
+      ? Math.max(startHealth, gameStarted ? maxCatHealth : 0, state.cat?.maxHealth ?? 0, state.cat?.health ?? 0)
+      : startHealth;
     catHealth = Math.min(catHealth, maxCatHealth);
     updateCatHealthBar();
     updateDifficultyUI();
@@ -3150,6 +3206,13 @@
       if (voteEl) voteEl.textContent = `Votes: ${counts[key] || 0}`;
       btn.disabled = gameStarted;
     });
+    const waveSelect = document.getElementById("startingWave");
+    if (waveSelect){
+      waveSelect.value = String(startingWave);
+      waveSelect.disabled = !isHost || gameStarted || Boolean(pendingStartingWave);
+      document.getElementById("startingWaveNote").textContent =
+        `The Cat starts with ${startingCatHealth(currentDifficulty, startingWave).toLocaleString()} HP. His max HP grows every minute. Defeat him to win.${isHost ? "" : " The host chooses the wave."}`;
+    }
   }
 
   async function castDifficultyVote(mode){
@@ -3169,12 +3232,31 @@
     if (gameStarted) return;
     const selected = computeDifficultyFromVotes(difficultyVotes);
     if (selected === currentDifficulty) return;
-    const nextHealth = DIFFICULTY_SETTINGS[selected].catStartHealth;
-    await updateDoc(ccRef(ID.STATE), {
-      difficulty: selected,
-      cat: { x: catPos.x, y: catPos.y, health: nextHealth },
-      updatedAt: Date.now()
+    await patchHostSelection(state => {
+      const health = startingCatHealth(selected, state.startingWave);
+      return { difficulty:selected, cat:{ ...state.cat, health, maxHealth:health } };
     });
+  }
+
+  async function patchHostSelection(createPatch){
+    if (!isHost || gameStarted) return false;
+    const ref = ccRef(ID.STATE);
+    return runTransaction(db, async tx => {
+      const snapshot = await tx.get(ref);
+      const state = snapshot.data();
+      if (state?.hostUid !== uid || (state.phase ?? "selection") !== "selection") return false;
+      tx.update(ref, { ...createPatch(state), updatedAt:Date.now() });
+      return true;
+    });
+  }
+
+  async function changeStartingWave(wave){
+    if (normalizeStartingWave(wave) !== wave || wave === startingWave) return;
+    if (await patchHostSelection(state => {
+      const difficulty = DIFFICULTY_SETTINGS[state.difficulty] ? state.difficulty : currentDifficulty;
+      const health = startingCatHealth(difficulty, wave);
+      return { startingWave:wave, cat:{ ...state.cat, health, maxHealth:health } };
+    })) startingWave = wave;
   }
 
 
@@ -5509,8 +5591,10 @@
     }
 
     // kill players on cat tile
+    let caughtMouse = false;
     for (const [pu, p] of Object.entries(players)){
       if ((p.alive ?? true) && catPos.x===p.x && catPos.y===p.y){
+        caughtMouse = true;
         const capture={alive:false,killedBy:"cat",killedAt:Date.now(),updatedAt:Date.now()};
         Object.assign(p,capture);presentMouseCapture(pu,p);
         writes.push({type:"update",ref:ccRef(ID.player(pu)),data:capture});
@@ -5521,8 +5605,10 @@
       }
     }
 
+    // A capture restores a little health once, even if several mice share the tile.
+    if (caughtMouse) healCat(0.01);
     // write cat state
-    writes.push({type:"update",ref:ccRef(ID.STATE),data:{cat:{x:catPos.x,y:catPos.y,health:catHealth,facing:catFacingDir,pouncePending:catAbilityState.pouncePending},updatedAt:Date.now()}});
+    writes.push({type:"update",ref:ccRef(ID.STATE),data:{cat:{x:catPos.x,y:catPos.y,health:catHealth,nextHealAt:nextCatHealAt,facing:catFacingDir,pouncePending:catAbilityState.pouncePending},updatedAt:Date.now()}});
 
     updateCatHealthBar();
     requestRender("catBehaviorEnd");
@@ -5538,7 +5624,7 @@
   // Host spawning
   // ============================================================
   async function spawnRatWave(){
-    if (!isHost || catPower <= 0) return;
+    if (!isHost) return;
     if (!canSpawnEnemy("rat", 1) && !canSpawnEnemy("ox", 1) && !canSpawnEnemy("stinkrat", 1)) return;
 
     const waveTag = Date.now();
@@ -6210,10 +6296,11 @@
     if (isHost) await hostSyncDifficultyVote();
 
     if (isHost && typeof nextRatWaveAt === "number" && now >= nextRatWaveAt){
+      ratWave = Math.max(startingWave, ratWave + 1);
+      ratPower = Math.max(ratPower, 1 + Math.floor((ratWave - 1) / 4));
+      nextRatWaveAt = now + RAT_WAVE_INTERVAL;
+      await runtimeUpdateDoc(ccRef(ID.STATE), { ratWave, ratPower, nextRatWave:nextRatWaveAt, updatedAt:now });
       await spawnRatWave();
-      const nextTime = now + 32000;
-      nextRatWaveAt = nextTime;
-      await runtimeUpdateDoc(ccRef(ID.STATE), { nextRatWave: nextTime, updatedAt: now });
     }
 
     const secondsLeft = (typeof nextRatWaveAt === "number") ? Math.max(0, Math.floor((nextRatWaveAt - now)/1000)) : "?";
@@ -6672,11 +6759,6 @@
           if (wasHost && !isHost) {stateWriter.cancel();tacticalAI.reset();delayedEnemySteps.clear();}
           if (!ch.doc.metadata.hasPendingWrites) stateWriter.observe(stateFieldPatch(data));
           if (wasHost && !isHost && catMoveInterval){ clearInterval(catMoveInterval); catMoveInterval = null; }
-          if (!wasHost && isHost && gameStarted){
-            if (!hostInitialized) startHostLoops();
-            else startCatBehaviorLoop();
-          }
-
           catPower = data.catPower ?? catPower;
           ratPower = data.ratPower ?? ratPower;
           nextRatWaveAt = (typeof data.nextRatWave === "number") ? data.nextRatWave : nextRatWaveAt;
@@ -6688,18 +6770,22 @@
             objectiveState.repair = data.objectives.repair || objectiveState.repair;
             objectiveState.rescue = data.objectives.rescue || objectiveState.rescue;
           }
-          applyDifficulty(data.difficulty || currentDifficulty || "medium");
+          applyDifficulty(data.difficulty || currentDifficulty || "medium", data);
 
           const cat = data.cat || {};
           catPos = { x: (cat.x ?? catPos.x), y: (cat.y ?? catPos.y) };
           if (typeof cat.health === "number") catHealth = cat.health;
           if (previousCatHealth > 0 && catHealth <= 0) handleCatDefeated().catch(()=>{});
+          if (!wasHost && isHost && gameStarted && catHealth > 0){
+            if (!hostInitialized) startHostLoops();
+            else startCatBehaviorLoop();
+          }
           catFacingDir = cat.facing || catFacingDir;
           if(!isHost && Object.prototype.hasOwnProperty.call(cat,"pouncePending"))catAbilityState.pouncePending=cat.pouncePending;
           battlePresentation.moveEntity("cat",{...catPos,facing:catFacingDir},{duration:enemyMovementCadence("cat")*.94});
           if (Object.prototype.hasOwnProperty.call(data, "selectionDeadline")) selectionDeadlineAt = typeof data.selectionDeadline === "number" ? data.selectionDeadline : null;
           if (Object.prototype.hasOwnProperty.call(data, "selectionAssetsReadyAt")) selectionAssetsReadyAt = typeof data.selectionAssetsReadyAt === "number" ? data.selectionAssetsReadyAt : null;
-          if (data.phase === "playing"){
+          if (data.phase === "playing" && catHealth > 0 && !handleCatDefeated.done){
             ensureLocalBuildControls("statePlaying");
             if (!gameStarted){
               gameStarted = true;
@@ -6970,7 +7056,9 @@
           hostName: username,
           hostHeartbeatAt: Date.now(),
           difficulty: "medium",
-          cat: { x: gridSize-1, y: gridSize-1, health: DIFFICULTY_SETTINGS.medium.catStartHealth },
+          startingWave: 1,
+          ratWave: 0,
+          cat: { x: gridSize-1, y: gridSize-1, health: startingCatHealth("medium", 1), maxHealth:startingCatHealth("medium", 1), nextHealAt:0 },
           catPower: 0,
           ratPower: 1,
           nextRatWave: Date.now() + 22000,
@@ -7001,7 +7089,7 @@
       catPower = s.catPower ?? 0;
       ratPower = s.ratPower ?? 1;
       nextRatWaveAt = (typeof s.nextRatWave === "number") ? s.nextRatWave : nextRatWaveAt;
-      applyDifficulty(s.difficulty || "medium");
+      applyDifficulty(s.difficulty || "medium", s);
       const cat = s.cat || {};
       catPos = { x: cat.x ?? catPos.x, y: cat.y ?? catPos.y };
       catHealth = (typeof cat.health === "number") ? cat.health : catHealth;
@@ -7010,7 +7098,7 @@
       selectionAssetsReadyAt = (typeof s.selectionAssetsReadyAt === "number") ? s.selectionAssetsReadyAt : null;
       soloMode = s.runtimeMode === "solo";
       matchId = typeof s.matchId === "string" ? s.matchId : matchId;
-      gameStarted = s.phase === "playing";
+      gameStarted = s.phase === "playing" && catHealth > 0;
       if (gameStarted) ensureLocalBuildControls("initialPlayingState");
       updateHostDisplay(s.hostName);
       updateCatHealthBar();
@@ -7228,7 +7316,8 @@
   }
 
   async function tryHostFinalizeSelection(force=false){
-    if (!isHost) return;
+    if (!isHost || gameStarted) return;
+    if (pendingStartingWave) await pendingStartingWave.catch(() => {});
     const activeParticipants = getActiveSelectionParticipants();
     if (!activeParticipants.length || activeParticipants.some(([,p]) => p.assetsReady !== true)) return;
     const participantIds = activeParticipants.map(([pu]) => pu);
@@ -7236,14 +7325,23 @@
     if (allDone || force){
       const finalDifficulty = computeDifficultyFromVotes(difficultyVotes);
       const nextMatchId = crypto.randomUUID();
-      await updateDoc(ccRef(ID.STATE), {
-        difficulty:finalDifficulty,
-        cat:{ x:catPos.x, y:catPos.y, health:DIFFICULTY_SETTINGS[finalDifficulty].catStartHealth, facing:catFacingDir },
-        phase:"playing",
-        matchId:nextMatchId,
-        runtimeMode:participantIds.length === 1 ? "solo" : "multiplayer",
-        nextRatWave:Date.now() + 22000,
-        updatedAt:Date.now()
+      await patchHostSelection(state => {
+        const wave = normalizeStartingWave(state.startingWave);
+        const health = startingCatHealth(finalDifficulty, wave);
+        const now = Date.now();
+        return {
+          difficulty:finalDifficulty,
+          startingWave:wave,
+          ratWave:wave - 1,
+          catPower:Math.floor((wave - 1) * RAT_WAVE_INTERVAL / CAT_PRESSURE_INTERVAL),
+          ratPower:1 + Math.floor((wave - 1) / 4),
+          cat:{ x:catPos.x, y:catPos.y, health, maxHealth:health, nextHealAt:0, facing:catFacingDir },
+          phase:"playing",
+          matchId:nextMatchId,
+          runtimeMode:participantIds.length === 1 ? "solo" : "multiplayer",
+          nextRatWave:now + 22000,
+          nextCatGrowthAt:now + CAT_GROWTH_INTERVAL
+        };
       });
     }
   }
@@ -7337,6 +7435,20 @@
       const meta = DIFFICULTY_UI_META[btn.dataset.diff] || { icon:"🎚️", label:btn.dataset.diff, subtitle:"Vote" };
       btn.innerHTML = `<div><span class="difficulty-icon">${meta.icon}</span><strong>${meta.label}</strong></div><div style="font-size:12px;opacity:.9">${meta.subtitle}</div><div class="vote-count">Votes: 0</div>`;
       btn.onclick = () => castDifficultyVote(btn.dataset.diff).catch(()=>{});
+    });
+    document.getElementById("startingWave")?.addEventListener("change", async event => {
+      const waveSelect = event.currentTarget;
+      waveSelect.disabled = true;
+      pendingStartingWave = changeStartingWave(Number(waveSelect.value));
+      try {
+        await pendingStartingWave;
+      } catch (error){
+        reportSyncError(error);
+        showToast("Couldn't change the starting wave.", "warn");
+      } finally {
+        pendingStartingWave = null;
+        updateDifficultyUI();
+      }
     });
     updateDifficultyUI();
 
@@ -7514,7 +7626,7 @@
   // Host loops (cat AI + spawns + enemy sim)
   // ============================================================
   function canRunHostSimulation(){
-    return (soloMode || (isHost && syncEnabled())) && !pageSuspended && gameStarted && hostInitialized;
+    return (soloMode || (isHost && syncEnabled())) && !pageSuspended && gameStarted && hostInitialized && catHealth > 0;
   }
 
   async function scrubGhostEnemies() {
@@ -7561,6 +7673,32 @@
     await batch.commit();
   }
 
+  async function advanceCatPressure(now = Date.now()){
+    if (!canRunHostSimulation()) return;
+    catPower++;
+
+    if (now >= nextCatGrowthAt){
+      const nextMax = Math.min(Number.MAX_SAFE_INTEGER, Math.ceil(maxCatHealth * 1.05));
+      catHealth = Math.max(1, Math.round(nextMax * (catHealth / maxCatHealth)));
+      maxCatHealth = nextMax;
+      nextCatGrowthAt += CAT_GROWTH_INTERVAL;
+      if (nextCatGrowthAt <= now) nextCatGrowthAt = now + CAT_GROWTH_INTERVAL;
+    }
+
+    const ratKingNearby = ratKings.some(king => isLivingEnemy(king)
+      && Math.abs(king.x - catPos.x) + Math.abs(king.y - catPos.y) <= 2);
+    if (ratKingNearby && healCat(0.0075, now)) addCombatVfx(catPos.x, catPos.y, "+", "vfx-pop", 420, 15);
+
+    await runtimeUpdateDoc(ccRef(ID.STATE), {
+      catPower, nextCatGrowthAt,
+      cat:{ health:catHealth, maxHealth:maxCatHealth, nextHealAt:nextCatHealAt },
+      updatedAt:now
+    });
+    updateCatHealthBar();
+    requestRender("cat pressure");
+    startCatBehaviorLoop();
+  }
+
   function startHostLoops(){
     if ((!isHost && !soloMode) || hostInitialized) return;
     hostInitialized = true;
@@ -7568,25 +7706,11 @@
     gameStarted = true;
     playGameMusic();
     initializeCatAbilityLoadout(currentDifficulty);
+    if (!nextCatGrowthAt) nextCatGrowthAt = Date.now() + CAT_GROWTH_INTERVAL;
     startCatBehaviorLoop();
     spawnCheese({ forceMinimum:true });
 
-    // power ramp
-    setInterval(async () => {
-      if (!canRunHostSimulation()) return;
-
-      catPower++;
-      const playerCount = Object.keys(players).length;
-      catHealth += 15 * playerCount;
-
-      await runtimeUpdateDoc(ccRef(ID.STATE), {
-        catPower,
-        cat: { x: catPos.x, y: catPos.y, health: catHealth, facing: catFacingDir },
-        updatedAt: Date.now()
-      });
-
-      startCatBehaviorLoop();
-    }, 20000);
+    setInterval(() => advanceCatPressure().catch(reportSyncError), CAT_PRESSURE_INTERVAL);
 
     // turret + rocket
     setInterval(() => { if (!canRunHostSimulation()) return; turretAttack().catch(()=>{}); }, 1500);
@@ -7594,12 +7718,6 @@
     setInterval(() => { if (!canRunHostSimulation()) return; repairStationTick().catch(()=>{}); }, 3000);
     setInterval(() => { if (!canRunHostSimulation()) return; specialStructureTick().catch(()=>{}); }, 1000);
     setInterval(() => { if (!canRunHostSimulation()) return; rabbitDenTick().catch(()=>{}); }, 2000);
-
-    // rat power ramp
-    setInterval(async () => {
-      ratPower++;
-      await runtimeUpdateDoc(ccRef(ID.STATE), { ratPower, updatedAt: Date.now() });
-    }, 120000);
 
     setInterval(() => {
       if (!canRunHostSimulation()) return;
@@ -7746,6 +7864,7 @@
   }
 
   catBehavior = lockAsyncTask("cat", catBehavior);
+  advanceCatPressure = lockAsyncTask("catPressure", advanceCatPressure);
   hostMoveRats = lockAsyncTask("rats", hostMoveRats);
   hostMoveOxen = lockAsyncTask("oxen", hostMoveOxen);
   hostMoveRatKings = lockAsyncTask("ratKings", hostMoveRatKings);
@@ -7871,7 +7990,7 @@
         }
       }
 
-      const wave = Math.max(1, Math.floor(catPower / 5) + 1);
+      const wave = Math.max(startingWave, ratWave);
       const waveHud = document.getElementById("hudWave");
       if (waveHud) waveHud.textContent = `🌊 Wave ${wave}`;
     }, 300);
