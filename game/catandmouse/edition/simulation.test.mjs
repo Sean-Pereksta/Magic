@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
-  MAPS, STARTER_LOADOUT, STEP_MS, createSimulation, getPlacementError, isCompleteLoadout, normalizeLoadout,
+  ENEMIES, MAPS, STARTER_LOADOUT, STARTING_WAVES, STEP_MS, createSimulation, getPlacementError, isCompleteLoadout, normalizeLoadout,
 } from './simulation.mjs';
 import { buildEnemyField, distanceSquared, interceptPoint, movingCircleHit, terrainHit, tileAt } from './navigation.mjs';
 
@@ -40,6 +40,7 @@ function dodgeCat(sim, state, step) {
   if (step % 4 !== 0) return;
   const player = state.players[0];
   const cat = state.enemies.find(enemy => enemy.type === 'cat');
+  if (!cat) return;
   const windup = cat.windupUntil > state.time;
   const danger = windup ? { x: cat.attackX, y: cat.attackY } : cat;
   const base = { x: 23.5, y: 25.5 };
@@ -61,6 +62,26 @@ function dodgeCat(sim, state, step) {
     }
   }
   if (destination) sim.command(mouse.id, { type: 'move', ...destination });
+}
+
+function runPerimeter(sim, ticks, onStep) {
+  const route = [{ x: 24, y: 4 }, { x: 42, y: 4 }, { x: 44, y: 21 }, { x: 43, y: 35 }, { x: 43, y: 44 },
+    { x: 26, y: 44 }, { x: 9, y: 44 }, { x: 9, y: 25 }, { x: 4, y: 22 }, { x: 18, y: 22 }];
+  let state = sim.snapshot();
+  let waypoint = 0;
+  let lastEvent = state.events.at(-1)?.id ?? 0;
+  for (let step = 0; step < ticks && state.status === 'active'; step++) {
+    if (step % 400 === 0 || distanceSquared(state.players[0], route[waypoint]) < 4) {
+      waypoint = (waypoint + 1) % route.length;
+      sim.command(mouse.id, { type: 'move', ...route[waypoint] });
+    }
+    sim.step();
+    state = sim.snapshot();
+    const recent = state.events.filter(event => event.id > lastEvent);
+    if (recent.length) lastEvent = recent.at(-1).id;
+    onStep(state, recent);
+  }
+  return state;
 }
 
 test('loadouts preserve legal slots, fill vacancies and reject repeated towers', () => {
@@ -182,14 +203,12 @@ test('projectiles sweep through moving targets and collide with the leading terr
   assert.deepEqual(predicted, { x: 4, y: 0 });
 });
 
-test('a seeded offline battle can be won with the same Cat still hunting throughout', () => {
+test('the opening Cat hunts until a normal battle is won by dealing the killing blow', () => {
   const sim = createSimulation({ matchId: 'wintry', difficulty: 'normal', players: [mouse] });
   const launches = new Map();
   const impacts = new Map();
   const simultaneousHits = new Map();
   const defeatingHits = new Set();
-  const waveSizes = new Map();
-  const lateEnemies = new Set();
   let seenLiveFlight = false;
   let latest = 0;
   let results = 0;
@@ -197,16 +216,16 @@ test('a seeded offline battle can be won with the same Cat still hunting through
   const cat = state.enemies.find(enemy => enemy.type === 'cat');
   assert.ok(cat && distanceSquared(cat, state.players[0]) > 18 ** 2);
   assert.equal(state.objectives.length, 0);
-  let catStaggered = false;
   for (let step = 0; step < 4700 && state.status === 'active'; step++) {
     dodgeCat(sim, state, step);
     reinforce(sim, state, step);
     sim.step();
     state = sim.snapshot();
     const pursuingCat = state.enemies.find(enemy => enemy.type === 'cat');
-    assert.equal(pursuingCat?.id, cat.id);
-    assert.ok(pursuingCat.hp > 0);
-    if (pursuingCat.trapUntil > state.time) catStaggered = true;
+    if (state.status === 'active') {
+      assert.equal(pursuingCat?.id, cat.id);
+      assert.ok(pursuingCat.hp > 0);
+    }
     for (const projectile of state.projectiles) {
       const previous = launches.get(projectile.id);
       if (previous && (previous.x !== projectile.x || previous.y !== projectile.y)) seenLiveFlight = true;
@@ -216,10 +235,6 @@ test('a seeded offline battle can be won with the same Cat still hunting through
       latest = event.id;
       assert.notEqual(event.kind, 'tail-sweep');
       assert.notEqual(event.kind, 'cat-charge');
-      if (event.type === 'spawn' && (event.kind === 'sapper' || event.kind === 'mender')) {
-        assert.ok(state.wave >= 6);
-        lateEnemies.add(event.kind);
-      }
       if (event.type === 'shot') launches.set(event.projectileId, event);
       if (event.type === 'impact') {
         assert.equal(impacts.has(event.projectileId), false);
@@ -238,16 +253,14 @@ test('a seeded offline battle can be won with the same Cat still hunting through
         assert.equal(defeatingHits.has(event.entityId), false);
         defeatingHits.add(event.entityId);
       }
-      if (event.type === 'wave') waveSizes.set(event.wave, event.count);
       if (event.type === 'result') results++;
     }
   }
   assert.equal(state.status, 'won');
-  assert.equal(state.wave, 7);
-  assert.deepEqual(state.enemies.map(enemy => enemy.type), ['cat']);
-  assert.ok(catStaggered);
-  assert.deepEqual([...lateEnemies].sort(), ['mender', 'sapper']);
-  assert.ok(waveSizes.get(7) >= 24);
+  assert.ok(state.wave >= 1);
+  assert.ok(state.nextWaveAt > state.time);
+  assert.equal(state.enemies.some(enemy => enemy.type === 'cat'), false);
+  assert.ok(defeatingHits.has(cat.id));
   assert.ok(results === 1 && seenLiveFlight && launches.size > 50);
   assert.ok([...impacts.values()].some(impact => impact.reason === 'target'));
   assert.ok([...simultaneousHits.values()].some(shooters => shooters.size > 1));
@@ -256,8 +269,8 @@ test('a seeded offline battle can be won with the same Cat still hunting through
   assert.deepEqual(sim.snapshot(), finished);
 });
 
-test('harder battles telegraph real special attacks and support actions', () => {
-  const skills = new Set(['powder-blast', 'mend', 'tail-sweep', 'cat-charge']);
+test('harder battles telegraph real Cat attacks', () => {
+  const skills = new Set(['tail-sweep', 'cat-charge']);
   for (const difficulty of ['hard', 'nightmare']) {
     const sim = createSimulation({ matchId: 'combat-balance', difficulty, players: [mouse] });
     const warnings = new Map();
@@ -300,7 +313,6 @@ test('harder battles telegraph real special attacks and support actions', () => 
           assert.ok(resolved.has(event.kind));
           assert.ok(event.value > 0);
           effects.add(event.kind);
-          if (event.kind === 'mend') assert.ok(event.value <= 10);
           if (event.kind === 'cat-charge') {
             assert.equal(chargedTargets.has(event.entityId), false);
             chargedTargets.add(event.entityId);
@@ -315,6 +327,104 @@ test('harder battles telegraph real special attacks and support actions', () => 
       assert.deepEqual([...effects].sort(), [...skills].sort());
     }
   }
+});
+
+test('later starts give the Cat more initial health and schedule stronger rats beyond wave seven', () => {
+  const create = startingWave => createSimulation({ matchId: 'start-tier', startingWave, players: [mouse] });
+  for (const invalid of [0, 7, 11, '5', null, NaN]) assert.throws(() => create(invalid), TypeError);
+  const ratHealth = [];
+  const bossHealth = [];
+  for (const startingWave of STARTING_WAVES) {
+    const sim = create(startingWave);
+    const before = sim.snapshot();
+    assert.equal(before.startingWave, startingWave);
+    assert.equal(before.wave, startingWave - 1);
+    const cat = before.enemies.find(enemy => enemy.type === 'cat');
+    assert.equal(cat.hp, cat.maxHp);
+    bossHealth.push(cat.maxHp);
+    tick(sim, before.nextWaveAt / STEP_MS);
+    const after = sim.snapshot();
+    assert.equal(after.status, 'active');
+    assert.equal(after.wave, startingWave);
+    assert.ok(after.nextWaveAt > after.time);
+    assert.ok(after.events.find(event => event.type === 'wave' && event.count > 0));
+    ratHealth.push(after.enemies.find(enemy => enemy.type === 'rat').maxHp);
+  }
+  assert.deepEqual(bossHealth, [550, 908, 1348]);
+  assert.equal(ratHealth[0], ENEMIES.rat.hp);
+  assert.ok(ratHealth[0] < ratHealth[1] && ratHealth[1] < ratHealth[2]);
+});
+
+test('an active Cat grows five percent per minute and recovers small amounts after a lull', () => {
+  const sim = createSimulation({ matchId: 'combat-balance', players: [mouse] });
+  assert.equal(sim.command(mouse.id, { type: 'build', slot: 1, x: 24, y: 24 }).ok, true);
+  const firstCat = sim.snapshot().enemies[0];
+  const recoveries = [];
+  const growths = [];
+  let lastDamage = -Infinity;
+  const state = runPerimeter(sim, 72_000 / STEP_MS, (_, events) => {
+    for (const event of events) {
+      if (event.entityId !== firstCat.id) continue;
+      if (event.type === 'damage') lastDamage = event.time;
+      if (event.type === 'heal') {
+        assert.equal(event.kind, 'cat-recover');
+        assert.ok(event.time - lastDamage >= 14_000);
+        assert.ok(event.time - (recoveries.at(-1)?.time ?? -Infinity) >= 10_000);
+        assert.ok(event.value > 0 && event.value <= 8);
+        recoveries.push(event);
+      }
+      if (event.type === 'cat-growth') growths.push(event);
+    }
+  });
+  assert.equal(state.status, 'active');
+  assert.ok(recoveries.length > 1);
+  assert.equal(growths.length, 1);
+  assert.equal(growths[0].time, 60_000);
+  const current = state.enemies.find(enemy => enemy.type === 'cat');
+  assert.equal(current.id, firstCat.id);
+  assert.equal(current.maxHp, Math.ceil(firstCat.maxHp * 1.05));
+  assert.ok(current.hp > 0 && current.hp <= current.maxHp);
+});
+
+test('nearby Menders can heal a wounded Cat a little during a high-wave fight', () => {
+  const sim = createSimulation({ matchId: 'prolonged-chase', startingWave: 10, players: [mouse] });
+  assert.equal(sim.command(mouse.id, { type: 'build', slot: 1, x: 24, y: 24 }).ok, true);
+  const cat = sim.snapshot().enemies[0];
+  const heals = [];
+  runPerimeter(sim, 26_000 / STEP_MS, (_, events) => {
+    for (const event of events) {
+      if (event.type === 'heal' && event.kind === 'mend' && event.entityId === cat.id) heals.push(event);
+    }
+  });
+  assert.equal(heals.length, 1);
+  assert.ok(heals[0].value > 0 && heals[0].value <= 5 && heals[0].sourceId !== cat.id);
+});
+
+test('ranked survival keeps the fixed late Cat and scores completed waves and match time', () => {
+  const create = options => createSimulation({ matchId: 'ranked-survival', ranked: true, players: [mouse], ...options });
+  assert.throws(() => create({ startingWave: 5 }), TypeError);
+  const sim = create();
+  let state = sim.snapshot();
+  assert.equal(state.enemies.length, 0);
+  assert.deepEqual(sim.rankedScore, { waves: 0, timeMs: 0 });
+  let bossAt;
+  for (let i = 0; i < 4700 && sim.status === 'active'; i++) {
+    reinforce(sim, state, i);
+    dodgeCat(sim, state, i);
+    sim.step();
+    state = sim.snapshot();
+    const cat = state.enemies.find(enemy => enemy.type === 'cat');
+    if (cat && !bossAt) {
+      bossAt = state.wave;
+      assert.equal(state.nextWaveAt, null);
+      assert.equal(cat.maxHp, 288);
+    }
+    assert.ok(sim.rankedScore.waves <= state.wave);
+  }
+  assert.equal(bossAt, 7);
+  assert.equal(state.status, 'won');
+  assert.equal(sim.rankedScore.timeMs, state.resultAt);
+  assert.ok(sim.rankedScore.waves >= 6 && sim.rankedScore.waves <= 7);
 });
 
 test('an ignored match defeats the team and produces identical state for the same seed', () => {
