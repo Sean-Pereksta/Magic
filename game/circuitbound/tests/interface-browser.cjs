@@ -38,9 +38,17 @@ const server=http.createServer((request,response)=>{
       const regionDrawn=art.drawRegion(ctx,'starcoreMantle',0,0,96,96);
       function pixels(time){ctx.clearRect(0,0,96,96);art.draw(ctx,'freightDrone',0,0,96,96,{time,working:true});return ctx.getImageData(0,0,96,96).data;}
       const idle=pixels(0),moving=pixels(.12);
-      return {count:keys.length,drawn,regionDrawn,animated:idle.some((value,i)=>value!==moving[i])};
+      const groundKeys=[...CircuitDeepIndustry.rigs.map(rig=>rig.key),...Object.keys(CircuitFoundryAutomation.roles).filter(key=>CircuitFoundryAutomation.roles[key].ground)];
+      const grounded=groundKeys.every(key=>[0,.12].every(time=>{
+        ctx.clearRect(0,0,96,96);
+        art.draw(ctx,key,6,6,72,72,{time,working:true,grounded:true});
+        const atBaseline=ctx.getImageData(0,77,96,1).data;
+        const belowBaseline=ctx.getImageData(0,78,96,1).data;
+        return atBaseline.some((alpha,i)=>i%4===3&&alpha>=32)&&belowBaseline.every((alpha,i)=>i%4!==3||alpha===0);
+      }));
+      return {count:keys.length,drawn,regionDrawn,grounded,animated:idle.some((value,i)=>value!==moving[i])};
     });
-    assert.deepEqual(painted,{count:36,drawn:true,regionDrawn:true,animated:true});
+    assert.deepEqual(painted,{count:36,drawn:true,regionDrawn:true,grounded:true,animated:true});
     await page.waitForTimeout(300);
     let moveRight=true;
     async function assertMovement(label){

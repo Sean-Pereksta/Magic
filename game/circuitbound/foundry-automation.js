@@ -32,6 +32,7 @@
   const dist = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
   const same = (a,b) => !!a&&!!b&&a.x===b.x&&a.y===b.y;
   const dockCapacity = 4;
+  const RAIL_TOP = 19 / 24;
   const flyingTypes = new Set(['wisp','leech','drone','stinger','watcher','scout']);
   const railIntervals = [5,15,30,60];
   const DEFAULT_BLUEPRINTS = [
@@ -364,7 +365,7 @@
       const missing=Object.keys(cost).find(key=>(supplied[key]||0)<cost[key]);
       if (missing) return wait(unit,'Out of '+textName(missing).toLowerCase());
       for (const [key,n] of Object.entries(cost)) take(supplied,key,n);
-      for (const p of cells) set(p.x,p.y,p.id,{rot:p.rot});
+      for (const p of cells) set(p.x,p.y,p.id,{rot:p.rot,placedItem:p.key});
       for (const group of links) engine.link(group.map(([x,y])=>engine.key(target.x+x,target.y+y)));
       stats.built=(stats.built||0)+cells.length;
       unit.done=true;unit.result=unit.blueprint.name+' built';
@@ -742,16 +743,19 @@
 
     function draw(ctx,camera,w,h,size,time,painted) {
       for (const unit of units) {
-        const role=roles[unit.key], x=(unit.x+.5)*size-camera.x, floorY=(unit.y+.5)*size-camera.y;
-        if (x<-40||x>w+40||floorY<-40||floorY>h+40) continue;
+        const role=roles[unit.key], x=(unit.x+.5)*size-camera.x;
+        const surface=role.rail?RAIL_TOP:role.ground?1:.5;
+        const contactY=(unit.y+surface)*size-camera.y, spriteSize=size*(role.ground?1.65:1.45);
+        if (x<-40||x>w+40||contactY<-40||contactY>h+40) continue;
         const moving=unit.path.length>0;
         const hover=role.ground?0:Math.sin(time*(moving?12:6)+unit.id)*(moving?1.7:2.6);
-        const y=floorY+hover;
+        const y=role.ground?contactY-spriteSize/2:contactY+hover;
         ctx.save();
-        if (!painted?.(ctx,unit.key,x,y,size*(role.ground?1.65:1.45),unit.facing,unit.phase)) {
+        if (!painted?.(ctx,unit.key,x,y,spriteSize,unit.facing,unit.phase,!!role.ground)) {
+          const baseY=role.ground?contactY-8:y-4;
           ctx.fillStyle=role.color;ctx.globalAlpha=.9;
-          ctx.fillRect(x-6,y-4,12,8);
-          ctx.fillStyle='#20343e';ctx.fillRect(x-4,y-2,8,4);
+          ctx.fillRect(x-6,baseY,12,8);
+          ctx.fillStyle='#20343e';ctx.fillRect(x-4,baseY+2,8,4);
           ctx.globalAlpha=1;
         }
         if (unit.phase==='Shield projected') {
@@ -813,5 +817,5 @@
     return {tick,draw,describe,appendControls,controlsKey,canDismantle,recoverNearby,selectTarget,cancelTarget,
       reset,restore,export:exported,stations,routeBetween};
   }
-  return {install,create,roles};
+  return {install,create,roles,RAIL_TOP};
 });

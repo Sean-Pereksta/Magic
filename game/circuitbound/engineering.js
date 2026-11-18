@@ -5,6 +5,8 @@
 })(typeof globalThis === 'object' ? globalThis : this, function () {
   'use strict';
   const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+  const DROP_HALF = .25;
+  const DROP_LIMIT = 512;
   const COLORS = {power:'#ffe365', signal:'#ff7789', mechanical:'#63e9de', item:'#a9e878', fluid:'#69adff', structure:'#d3a4ff'};
   const DELAYS = [.25, .5, 1, 2, 5, 10];
   const CATALOG = [
@@ -367,13 +369,26 @@
       if(failure!==null){const m=this.data(failure),id=m.assembly;m.assembly=null;m.linked=false;m.strikes=0;this.splitAssembly(id);}
       return failure;
     }
-    spawn(key,count,x,y){
-      if(typeof key!=='string'||!key||!Number.isFinite(count)||count<=0||!Number.isFinite(x)||!Number.isFinite(y))return false;
-      const stack=this.drops.find(d=>d.key===key&&Math.abs(d.x-x)<.4&&Math.abs(d.y-y)<.4);
-      if(stack){stack.count+=count;return true;}
-      // Refuse mining rather than destroying resources when the entity budget is exhausted.
-      if(this.drops.length>=512)return false;
-      this.drops.push({id:this.nextDrop++,key,count,x,y,age:0});return true;
+    spawn(key,count,x,y,options){return this.spawnBatch([[key,count]],x,y,options);}
+    spawnBatch(entries,x,y,{manual=false}={}){
+      if(!Number.isFinite(x)||!Number.isFinite(y))return false;
+      const piles=new Map();
+      for(const [key,count] of entries){
+        if(typeof key!=='string'||!key||!Number.isFinite(count)||count<=0)return false;
+        piles.set(key,(piles.get(key)||0)+count);
+      }
+      const pending=[...piles].map(([key,count])=>({
+        key,count,stack:this.drops.find(d=>d.key===key&&!!d.manual===manual&&Math.abs(d.x-x)<.4&&Math.abs(d.y-y)<.4)
+      }));
+      if(this.drops.length+pending.filter(p=>!p.stack).length>DROP_LIMIT)return false;
+      for(const {key,count,stack} of pending){
+        if(stack)stack.count+=count;
+        else this.drops.push({id:this.nextDrop++,key,count,x,y,age:0,...(manual?{manual:true}:{})});
+      }
+      return true;
+    }
+    dropSolid(x,y){
+      return !this.inside(x,y)||!!(this.defs[this.get(x,y)]?.solid&&!this.getMeta().get(this.key(x,y))?.open);
     }
     capacity(k){return this.defs[this.id(k)]?.inventoryCapacity||(this.id(k)===this.T.STORAGE?64:8);}
     stored(k){return Object.values(this.data(k).contents||{}).reduce((a,b)=>a+b,0);}
@@ -529,18 +544,34 @@
         const below=this.key(x,y+1),same=this.inside(x,y)&&this.transportSet.has(k);
         const target=same?k:this.inside(x,y+1)&&this.pp(below,'item').some(p=>p.side===3&&p.mode!=='out')?below:null;
         if(target!==null){const amount=this.insert(target,drop.key,drop.count);drop.count-=amount;if(!drop.count)continue;}
+        if(this.dropSolid(x,y)){
+          // Loaded worlds can have loose items inside blocked bins or newly built walls.
+          for(const side of [3,2,0,1]){
+            const [dx,dy]=DIRS[side],nx=x+dx,ny=y+dy;
+            if(this.dropSolid(nx,ny))continue;
+            drop.x=nx+.5;drop.y=ny+.5;break;
+          }
+          continue;
+        }
         const support=this.get(x,y+1),sm=this.getMeta().get(below);
-        if(support===T.CONVEYOR&&sm?.running){const [dx,dy]=DIRS[sm.rot||0];const next=drop.x+dx*Math.abs(sm.speed||1)*dt*2;
-          if(!this.defs[this.get(Math.floor(next),y)]?.solid)drop.x=next;if(dy)drop.y+=dy*dt;}
-        if(!this.defs[support]?.solid&&target===null)drop.y=Math.min(this.height-1.2,drop.y+dt*4);
+        if(support===T.CONVEYOR&&sm?.running){
+          const [dx,dy]=DIRS[sm.rot||0],nx=drop.x+dx*Math.abs(sm.speed||1)*dt*2,ny=drop.y+dy*dt;
+          if(!this.dropSolid(Math.floor(nx),Math.floor(ny))){drop.x=nx;drop.y=ny;}
+        }
+        const column=Math.floor(drop.x);
+        let nextY=Math.min(this.height-DROP_HALF,drop.y+dt*4);
+        for(let row=Math.floor(drop.y)+1;row<=Math.floor(nextY+DROP_HALF);row++){
+          if(this.dropSolid(column,row)){nextY=Math.min(nextY,row-DROP_HALF);break;}
+        }
+        drop.y=nextY;
       }
       this.drops=this.drops.filter(d=>d.count>0);
     }
     export(){return {version:3,drops:this.drops,nextDrop:this.nextDrop,nextAssembly:this.nextAssembly,metrics:this.metrics,elapsed:this.elapsed};}
-    restore(d){if(!d)return;this.drops=(d.drops||[]).filter(v=>typeof v.key==='string'&&Number.isFinite(v.count)&&v.count>0&&Number.isFinite(v.x)&&Number.isFinite(v.y)).slice(0,512);
-      this.nextDrop=Math.max(d.nextDrop||1,...this.drops.map(v=>v.id+1));this.nextAssembly=Math.max(this.nextAssembly,d.nextAssembly||1);
+    restore(d){if(!d)return;this.drops=(Array.isArray(d.drops)?d.drops:[]).filter(v=>v&&typeof v.key==='string'&&Number.isFinite(v.count)&&v.count>0&&Number.isFinite(v.x)&&Number.isFinite(v.y)).slice(0,DROP_LIMIT).map(v=>({...v,age:Number.isFinite(v.age)?Math.max(0,v.age):0}));
+      this.nextDrop=Math.max(Number.isInteger(d.nextDrop)?d.nextDrop:1,...this.drops.map(v=>Number.isInteger(v.id)?v.id+1:1));this.nextAssembly=Math.max(this.nextAssembly,d.nextAssembly||1);
       if(Number.isFinite(d.elapsed))this.elapsed=Math.max(0,d.elapsed);
       for(const key of Object.keys(this.metrics))if(Number.isFinite(d.metrics?.[key]))this.metrics[key]=Math.max(0,d.metrics[key]);}
   }
-  return {install,Simulation,ports,compatible,DIRS,COLORS,DELAYS,CATALOG,MACHINES,GOODS,strengthColor};
+  return {install,Simulation,ports,compatible,DIRS,DROP_HALF,COLORS,DELAYS,CATALOG,MACHINES,GOODS,strengthColor};
 });

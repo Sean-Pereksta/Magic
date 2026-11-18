@@ -214,7 +214,7 @@
   const loaded=loadGame();if(!loaded)generate();
   engine=new E.Simulation({width:WORLD_W,height:WORLD_H,get,set,meta:()=>meta,defs,T,placedKeys:()=>world.placedKeys()});
   engine.reset();engine.restore(savedEngineering);
-  industry=CircuitDeepIndustry.create({T,defs,get,set,engine,inventory,stats,player,tile:TILE,inside,placementBlock,notify:showToast});
+  industry=CircuitDeepIndustry.create({T,defs,get,set,engine,inventory,stats,player,tile:TILE,inside,placementBlock,recoverItems,notify:showToast});
   if(typeof CircuitSurvival!=='undefined'){survival=new CircuitSurvival.Survival({T,defs,get,set,meta:()=>meta,engine,player,inventory,stats,width:WORLD_W,height:WORLD_H,tile:TILE,notify:showToast,placedKeys:()=>world.placedKeys(),campaignHeight:DEEP.LEGACY_HEIGHT,regionForDepth:DEEP.regionAt});survival.restore(savedSurvival);survival.setDifficulty(settings.difficulty);}
   setupEngineeringUI();
 
@@ -242,16 +242,16 @@
     if(defs[id]?.deepOre&&rockArt)deepArt?.draw(ctx,rockArt,0,0,TILE,TILE);
     const artKey=defs[id]?.deepOre?defs[id].drop:id===T.STONE?rockArt:null;
     const painted=drawFoundryTile(id,m,x,y)||(artKey&&deepArt?.draw(ctx,artKey,0,0,TILE,TILE,{time:gameTime,working:!!defs[id]?.deepOre}))||art?.tile(ctx,id,m,gameTime);
-    if(painted){} else if(id===T.WORKBENCH){machineBox('#9e7046');ctx.fillStyle='#e2b57b';ctx.fillRect(2,7,20,4);ctx.fillRect(4,12,3,10);ctx.fillRect(17,12,3,10);}
+    if(painted){} else if(id===T.WORKBENCH){machineBox('#9e7046');ctx.fillStyle='#e2b57b';ctx.fillRect(2,7,20,4);ctx.fillRect(4,12,3,12);ctx.fillRect(17,12,3,12);}
     else if(id===T.GRASS){ctx.fillStyle='#725038';ctx.fillRect(0,0,TILE,TILE);ctx.fillStyle='#5b9a55';ctx.fillRect(0,0,TILE,6);ctx.fillStyle='#86be62';for(let i=0;i<4;i++)ctx.fillRect((n*97+i*7)%22,1,2,4)}
     else if(id===T.DIRT){ctx.fillStyle='#755139';ctx.fillRect(0,0,TILE,TILE);ctx.fillStyle='#916645';ctx.fillRect(3+(n*11)%10,5,3,3);ctx.fillRect(15,16,2,2)}
     else if(id===T.STONE){ctx.fillStyle='#5d6b70';ctx.fillRect(0,0,TILE,TILE);ctx.fillStyle='#76858a';ctx.fillRect(3,4,7,3);ctx.fillRect(14,14,6,4);ctx.fillStyle='#46545a';ctx.fillRect(1,18,8,2);ctx.fillRect(17,5,4,3)}
     else if(id===T.WOOD){ctx.fillStyle='#926136';ctx.fillRect(0,0,TILE,TILE);ctx.fillStyle='#ba7c43';ctx.fillRect(3,0,3,TILE);ctx.fillRect(15,0,2,TILE);ctx.fillStyle='#6d462b';ctx.fillRect(7,8,5,2);ctx.fillRect(17,17,4,2)}
     else if(id>=T.COPPER&&id<=T.OBSIDIAN){drawOre(id,n)}
-    else if(id===T.PLANK||id===T.PLATFORM){ctx.fillStyle='#9b6a3e';ctx.fillRect(0,6,TILE,12);ctx.fillStyle='#d19a58';ctx.fillRect(0,6,TILE,3);ctx.fillStyle='#65452d';ctx.fillRect(5,9,2,9);ctx.fillRect(18,9,2,9)}
+    else if(id===T.PLANK||id===T.PLATFORM){ctx.fillStyle='#9b6a3e';ctx.fillRect(0,0,TILE,12);ctx.fillStyle='#d19a58';ctx.fillRect(0,0,TILE,3);ctx.fillStyle='#65452d';ctx.fillRect(5,3,2,9);ctx.fillRect(18,3,2,9)}
     else if(id===T.COPPER_BLOCK||id===T.IRON_BLOCK){ctx.fillStyle=id===T.COPPER_BLOCK?'#b76f42':'#778b8f';ctx.fillRect(0,0,TILE,TILE);ctx.fillStyle=id===T.COPPER_BLOCK?'#e1a06b':'#a8b7b7';ctx.fillRect(2,2,20,3);ctx.fillRect(2,2,3,20);ctx.fillStyle='#27373b';ctx.fillRect(3,3,3,3);ctx.fillRect(18,3,3,3);ctx.fillRect(3,18,3,3);ctx.fillRect(18,18,3,3)}
     else if(id===T.WIRE||id===T.SIGNAL){const powered=m&&m.powered;ctx.strokeStyle=id===T.WIRE?(powered?'#fff06a':'#c87842'):(m&&m.active?'#ff8376':'#b63e45');ctx.lineWidth=powered?4:3;ctx.beginPath();ctx.moveTo(0,12);ctx.lineTo(24,12);ctx.moveTo(12,0);ctx.lineTo(12,24);ctx.stroke();ctx.fillStyle=ctx.strokeStyle;ctx.fillRect(9,9,6,6)}
-    else if(id===T.GENERATOR){ctx.fillStyle='#2c454a';ctx.fillRect(1,3,22,19);ctx.fillStyle='#d29b3f';ctx.fillRect(4,6,16,12);ctx.fillStyle='#15272d';ctx.fillRect(8,8,8,8);ctx.fillStyle='#fff09c';ctx.fillRect(11,6,3,5);ctx.fillRect(9,10,3,5)}
+    else if(id===T.GENERATOR){ctx.fillStyle='#2c454a';ctx.fillRect(1,3,22,21);ctx.fillStyle='#d29b3f';ctx.fillRect(4,6,16,12);ctx.fillStyle='#15272d';ctx.fillRect(8,8,8,8);ctx.fillStyle='#fff09c';ctx.fillRect(11,6,3,5);ctx.fillRect(9,10,3,5)}
     else if(id===T.SWITCH){ctx.fillStyle='#273b3e';ctx.fillRect(4,7,16,13);ctx.strokeStyle=m&&m.on?'#95ef75':'#d2cec1';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(12,13);ctx.lineTo(m&&m.on?18:7,5);ctx.stroke()}
     else if(id===T.SENSOR){ctx.fillStyle='#28444a';ctx.fillRect(3,8,18,12);ctx.strokeStyle=m&&m.active?'#74fff1':'#64918f';ctx.lineWidth=2;ctx.beginPath();ctx.arc(12,12,6,Math.PI,0);ctx.stroke();ctx.fillStyle=m&&m.active?'#d9fff8':'#496b6d';ctx.fillRect(10,10,4,4)}
     else if(id===T.MOTOR){machineBox('#2a6063');ctx.strokeStyle=m&&m.running?'#82fff2':'#8cadac';ctx.lineWidth=3;ctx.beginPath();ctx.arc(12,12,6,0,Math.PI*2);ctx.stroke();ctx.save();ctx.translate(12,12);ctx.rotate((m&&m.running?gameTime*.15:0));ctx.fillStyle=ctx.strokeStyle;ctx.fillRect(-1,-8,2,16);ctx.fillRect(-8,-1,16,2);ctx.restore()}
@@ -259,18 +259,19 @@
     else if(id===T.GEAR){machineBox(m&&m.mode===0?'#6d5940':m&&m.mode===2?'#5d446d':'#455e61');ctx.save();ctx.translate(12,12);ctx.rotate((m&&m.running?gameTime*.12:0));ctx.strokeStyle=m&&m.running?'#ffe68a':'#a9b5ae';ctx.lineWidth=4;ctx.beginPath();ctx.arc(0,0,m&&m.mode===0?7:m&&m.mode===2?4:6,0,Math.PI*2);ctx.stroke();for(let a=0;a<8;a++){ctx.rotate(Math.PI/4);ctx.fillStyle=ctx.strokeStyle;ctx.fillRect(5,-2,6,4)}ctx.restore()}
     else if(id===T.PISTON){ctx.save();ctx.translate(12,12);ctx.rotate(((m&&m.rot)||0)*Math.PI/2);ctx.translate(-12,-12);ctx.fillStyle='#3b5054';ctx.fillRect(2,3,14,18);ctx.fillStyle=m&&m.running?'#82dcd2':'#87989a';ctx.fillRect(15,9,m&&m.extended?9:6,6);ctx.fillStyle='#d4b665';ctx.fillRect(m&&m.extended?20:17,6,4,12);ctx.restore()}
     else if(id===T.LAMP){ctx.fillStyle='#263c41';ctx.fillRect(7,16,10,6);const on=m&&m.powered&&m.signalOK;if(on){const g=ctx.createRadialGradient(12,10,1,12,10,18);g.addColorStop(0,'#fff9b5');g.addColorStop(1,'rgba(255,214,70,0)');ctx.fillStyle=g;ctx.fillRect(-8,-10,40,40)}ctx.fillStyle=on?'#fff172':'#71888a';ctx.fillRect(6,4,12,13);ctx.fillStyle=on?'#fffbd2':'#9bb0ad';ctx.fillRect(9,6,6,8)}
-    else if(id===T.CONVEYOR){ctx.fillStyle='#354b50';ctx.fillRect(0,7,24,13);ctx.fillStyle=m&&m.running?'#63d6c7':'#789092';ctx.fillRect(0,5,24,5);ctx.fillStyle='#18292e';for(let q=3;q<24;q+=7)ctx.fillRect(q,12,3,5)}
+    else if(id===T.CONVEYOR){ctx.fillStyle='#354b50';ctx.fillRect(0,2,24,13);ctx.fillStyle=m&&m.running?'#63d6c7':'#789092';ctx.fillRect(0,0,24,5);ctx.fillStyle='#18292e';for(let q=3;q<24;q+=7)ctx.fillRect(q,7,3,5)}
+    else if(id===T.FREIGHT_RAIL){const railTop=CircuitFoundryAutomation.RAIL_TOP*TILE;ctx.fillStyle='#453e39';ctx.fillRect(0,railTop,TILE,TILE-railTop);ctx.fillStyle='#b8b0a2';ctx.fillRect(0,railTop,TILE,2);ctx.fillStyle='#70645a';for(let x=2;x<TILE;x+=8)ctx.fillRect(x,railTop+2,3,3);}
     else if(id===T.WINCH){machineBox('#4b5552');ctx.strokeStyle=m&&m.running?'#f0cf70':'#a1aeaa';ctx.lineWidth=3;ctx.beginPath();ctx.arc(12,12,7,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#33291f';ctx.fillRect(10,10,4,14)}
     else if(id===T.DOOR){ctx.fillStyle='#503724';ctx.fillRect(1,1,22,22);if(m&&m.open){ctx.fillStyle='#b97b43';ctx.fillRect(18,2,4,20);ctx.fillStyle='#f0c36c';ctx.fillRect(18,11,2,2)}else{ctx.fillStyle='#a96f3e';ctx.fillRect(3,2,18,20);ctx.fillStyle='#754925';ctx.fillRect(6,5,11,5);ctx.fillRect(6,13,11,6);ctx.fillStyle='#f0c36c';ctx.fillRect(17,11,2,2)}}
     else if(defs[id]?.ladder){ctx.fillStyle=defs[id].rope?'#d6bd83':'#b57b42';if(id===T.ROPE||id===T.MECHANICAL_ROPE){ctx.fillRect(10,0,3,24);ctx.fillStyle='#8e7854';for(let q=1;q<24;q+=6)ctx.fillRect(9,q,5,2)}else{ctx.fillRect(4,0,3,24);ctx.fillRect(17,0,3,24);ctx.fillStyle=id===T.REINFORCED_LADDER?'#bdcbd1':'#d8a65d';for(let q=3;q<24;q+=6)ctx.fillRect(5,q,14,2)}}
-    else if([T.SCAFFOLD,T.METAL_SCAFFOLD,T.BRIDGE].includes(id)){ctx.strokeStyle=id===T.METAL_SCAFFOLD?'#9fbecb':'#b78c5e';ctx.lineWidth=3;ctx.strokeRect(2,3,20,20);ctx.beginPath();ctx.moveTo(2,23);ctx.lineTo(22,4);ctx.stroke();ctx.fillStyle='#d6bb84';ctx.fillRect(0,3,24,4)}
+    else if([T.SCAFFOLD,T.METAL_SCAFFOLD,T.BRIDGE].includes(id)){ctx.strokeStyle=id===T.METAL_SCAFFOLD?'#9fbecb':'#b78c5e';ctx.lineWidth=3;ctx.strokeRect(2,3,20,19);ctx.beginPath();ctx.moveTo(2,22);ctx.lineTo(22,4);ctx.stroke();ctx.fillStyle='#d6bb84';ctx.fillRect(0,0,24,4)}
     else if(id===T.COUNTERWEIGHT){ctx.strokeStyle='#c2cfd0';ctx.lineWidth=2;ctx.beginPath();ctx.arc(12,4,3,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#5f727b';ctx.fillRect(2,7,20,16);ctx.fillStyle='#a7b8bc';ctx.fillRect(3,8,18,3);ctx.fillStyle='#293e46';for(let q=5;q<20;q+=5)ctx.fillRect(q,13,3,7);}
     else if(id===T.ANCHOR||id===T.RAIL){ctx.strokeStyle='#a8bac0';ctx.lineWidth=3;ctx.strokeRect(id===T.RAIL?7:4,1,id===T.RAIL?10:16,22)}
-    else if(id===T.LEDGE){ctx.fillStyle='#644327';ctx.fillRect(0,7,24,5);ctx.fillStyle='#d5a260';ctx.fillRect(0,5,24,3);ctx.fillStyle='#9b6838';ctx.fillRect(3,12,3,4);ctx.fillRect(18,12,3,4)}
+    else if(id===T.LEDGE){ctx.fillStyle='#644327';ctx.fillRect(0,2,24,5);ctx.fillStyle='#d5a260';ctx.fillRect(0,0,24,3);ctx.fillStyle='#9b6838';ctx.fillRect(3,7,3,4);ctx.fillRect(18,7,3,4)}
     else if(id===T.CORE){ctx.fillStyle='#172f35';ctx.fillRect(0,0,24,24);ctx.strokeStyle=m&&m.powered?'#fff174':'#5de4df';ctx.lineWidth=2;ctx.strokeRect(3,3,18,18);ctx.save();ctx.translate(12,12);ctx.rotate(gameTime*.04);ctx.fillStyle=m&&m.powered?'#fff5a2':'#5de4df';ctx.fillRect(-3,-9,6,18);ctx.fillRect(-9,-3,18,6);ctx.restore()}
     if(!painted&&id>=26&&defs[id].kind&&id!==T.WORKBENCH){machineBox(E.COLORS[defs[id].kind]||'#8fcab8');ctx.fillStyle='#10212b';ctx.font='bold 12px monospace';ctx.textAlign='center';ctx.fillText(defs[id].icon,12,16);ctx.textAlign='left';if(m?.working||m?.firing){ctx.strokeStyle='#fff3a4';ctx.lineWidth=2;ctx.strokeRect(2,2,20,20)}if(m?.progress){ctx.fillStyle='#8cf0bd';ctx.fillRect(2,20,20*Math.min(1,m.progress),2)}}
     if(m&&m.linked&&lens){ctx.strokeStyle=assemblyColor(m.assembly);ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.strokeRect(1,1,22,22);ctx.setLineDash([])}if(lens&&m){if(m.powered){ctx.strokeStyle='#fff26a';ctx.lineWidth=2;ctx.strokeRect(2,2,20,20)}if(m.active){ctx.fillStyle='#ff5454';ctx.fillRect(9,1,6,3)}if(m.running){ctx.fillStyle='#5ff1dc';ctx.fillRect(1,19,22,3)}if(m.overload){ctx.fillStyle=gameTime%4<2?'#ff4d35':'#fff';ctx.fillRect(2,2,4,4);ctx.fillRect(18,17,3,3)}}drawEngineeringOverlay(id,m||{},x,y,painted);ctx.restore();
-    function machineBox(c){ctx.fillStyle=c;ctx.fillRect(1,2,22,20);ctx.fillStyle='#12272d';ctx.fillRect(3,4,3,3);ctx.fillRect(18,4,3,3);ctx.fillRect(3,17,3,3);ctx.fillRect(18,17,3,3)}
+    function machineBox(c){ctx.fillStyle=c;ctx.fillRect(1,2,22,defs[id]?.solid?22:20);ctx.fillStyle='#12272d';ctx.fillRect(3,4,3,3);ctx.fillRect(18,4,3,3);ctx.fillRect(3,17,3,3);ctx.fillRect(18,17,3,3)}
   }
   function drawFoundryTile(id,m,x,y){
     const d=defs[id],rig=d?.foundryRig,atlas=globalThis.CircuitboundFoundryArt;
@@ -283,7 +284,7 @@
       return true;
     }
     if(!rig)return false;
-    return atlas?.draw(ctx,rig.key,-TILE,-TILE,TILE*3,TILE*3,{time:gameTime,working:!!m?.working});
+    return atlas?.draw(ctx,rig.key,-TILE,-TILE,TILE*3,TILE*3,{time:gameTime,working:!!m?.working,grounded:true});
   }
   function drawFoundryOverlays(){
     const focused=inspected&&industry?.describe(inspected.x,inspected.y)?.focus;
@@ -362,9 +363,9 @@
     const freightYard=depth<46&&player.x/TILE>=220&&world?.sites?.some(site=>site.kind==='surface'&&Math.abs(site.x-player.x/TILE)<27);
     if(!deepArt?.drawRegion(ctx,region?.start>=84?region.id:freightYard?'freightYard':'',0,0,vw,vh)&&!art?.scenery(ctx,camera,vw,vh,TILE,gameTime)){drawSky();drawUnderground();}
     drawWorld();drawFoundryOverlays();drawMiningCracks();drawDrops();robotics?.draw(ctx,camera,vw,vh,TILE,gameTime,art);
-    fleet?.draw(ctx,camera,vw,vh,TILE,gameTime,(context,key,x,y,size,facing,phase)=>
+    fleet?.draw(ctx,camera,vw,vh,TILE,gameTime,(context,key,x,y,size,facing,phase,grounded)=>
       globalThis.CircuitboundFoundryArt?.draw(context,key,x-size/2,y-size/2,size,size,
-        {time:gameTime,facing,phase,working:phase!=='Ready'&&phase!=='Waiting'&&!phase.startsWith('Docked')}));
+        {time:gameTime,facing,phase,grounded,working:phase!=='Ready'&&phase!=='Waiting'&&!phase.startsWith('Docked')}));
     survival?.draw(ctx,camera,vw,vh);starship?.draw(ctx,camera,vw,vh,art,gameTime);
     if(!starship?.active)drawPlayer();
     if(!modalOpen){
@@ -389,7 +390,7 @@
     if(rigPlan){
       const origin=tileRect(pointer.tx-1,pointer.ty-1);
       ctx.save();ctx.globalAlpha=.62;
-      paintedRig=globalThis.CircuitboundFoundryArt?.draw(ctx,item.key,origin.x,origin.y,TILE*3,TILE*3,{time:gameTime});
+      paintedRig=globalThis.CircuitboundFoundryArt?.draw(ctx,item.key,origin.x,origin.y,TILE*3,TILE*3,{time:gameTime,grounded:true});
       ctx.restore();
     }
     for(const cell of plan){
@@ -428,6 +429,8 @@
   function updateAimLabel(info){
     const el=document.getElementById('cursorLabel');
     if(inspected||!pointer.aimed){el.style.display='none';return;}
+    const ground=aimedGroundDrop();
+    if(ground)info={label:'Pick up '+ground.count+' '+itemLabel(ground.key)+' · '+(touchAim?'Use':'F'),x:pointer.tx,y:pointer.ty};
     if(!info){
       const {tx:x,ty:y}=pointer,id=get(x,y),d=defs[id];
       const deepRig=(d?.foundryRig||d?.foundryPart)&&distanceToTile(x,y)<=6?industry.controller(x,y):null;
@@ -445,7 +448,7 @@
   function blueprintStatus(plan){const missing=Object.entries(plan.cost||{}).filter(([key,n])=>(inventory[key]||0)<n);return {canBuild:missing.length===0,reason:missing.length?'Missing '+missing.map(([k,n])=>`${n-(inventory[k]||0)} ${k}`).join(', '):'Aim at clear space within reach. Every component uses your inventory.'};}
   function placeBlueprint(){if(!blueprint)return false;const status=blueprintStatus(blueprint);if(!status.canBuild){showToast(status.reason);return false}const cells=blueprintCells(blueprint,pointer.tx,pointer.ty);if(cells.some(p=>p.id<0||!placementValid(p.x,p.y,p.id))){showToast('Blueprint blocked or out of reach. Clear terrain and stand near its center.');return false}
     for(const [key,n] of Object.entries(blueprint.cost))inventory[key]-=n;
-    for(const p of cells)set(p.x,p.y,p.id,{...defaultMeta(p.id),rot:p.rot||0,...p.meta});
+    for(const p of cells)set(p.x,p.y,p.id,{...defaultMeta(p.id),rot:p.rot||0,...p.meta,placedItem:p.key});
     for(const group of blueprint.links||[])engine.link(group.map(([x,y])=>idx(pointer.tx+x,pointer.ty+y)));
     stats.built=(stats.built||0)+cells.length;for(const p of cells)guides?.placed(p.key,p.x,p.y);showToast(`${blueprint.name} built. Inspect its ports to finish connections and supply materials.`);blueprint=null;renderHotbar();simulateNetworks();saveGame();return true;
   }
@@ -677,7 +680,7 @@
   }
   function commitPlacement(x,y,item,rot,extra={}){
     if(placementBlock(x,y,item)||(inventory[item.key]||0)<=0)return false;
-    set(x,y,item.tile,{...defaultMeta(item.tile),rot,...extra});
+    set(x,y,item.tile,{...defaultMeta(item.tile),rot,...extra,placedItem:item.key});
     inventory[item.key]--;stats.built=(stats.built||0)+1;
     if(defs[item.tile]?.ladder)stats.laddersBuilt=(stats.laddersBuilt||0)+1;
     guides?.placed(item.key,x,y);sound('build');return true;
@@ -703,7 +706,7 @@
   function interactAtPointer(){
     const {tx:x,ty:y}=pointer,id=get(x,y),k=idx(x,y),d=defs[id];
     if(starship&&(starship.active||starship.hitTest(x,y))){starship.interact(x,y);clearActions();return;}
-    if(fleet?.selectTarget(x,y)||fleet?.recoverNearby(x,y))return;
+    if(fleet?.selectTarget(x,y)||pickUpAimedDrop()||fleet?.recoverNearby(x,y))return;
     if(!inside(x,y)||distanceToTile(x,y)>6)return showToast('Move within reach.');
     if(id===T.WORKBENCH){
       guides?.benchOpened();
@@ -736,17 +739,22 @@
     if(mining.progress<(defs[id]?.hard||1))return;
     const rig=industry?.dismantle(x,y);
     if(rig){
-      if(rig.ok){burst(x*TILE+12,y*TILE+12,'#afcbc4');collectDrops(true);renderHotbar();simulateNetworks();saveGame();}
+      if(rig.ok){burst(x*TILE+12,y*TILE+12,'#afcbc4');renderHotbar();simulateNetworks();saveGame();}
       mining.key='';mining.progress=0;showToast(rig.message);return;
     }
-    const drop=defs[id].drop,m=meta.get(idx(x,y))||{},cargo=[...Object.entries(m.contents||{}),...Object.entries(m.outputs||{})].filter(([,n])=>n>0);
-    // Reserve capacity before removing anything, so a full item budget never loses a mined block or its cargo.
-    if(engine.drops.length+cargo.length+1>512){showToast('Collect loose items before mining more');return}
-    if(drop)engine.spawn(drop,1,x+.5,y+.5);
-    for(const [key,n] of cargo)engine.spawn(key,n,x+.5,y+.5);
+    const m=meta.get(idx(x,y))||{};
+    const placedItem=itemByKey.get(m.placedItem)?.item.tile===id?m.placedItem:
+      Object.hasOwn(m,'linked')&&Object.hasOwn(m,'on')?items.find(item=>item.tile===id)?.key:null;
+    const drop=placedItem||defs[id].drop;
+    const cargo=[...(drop?[[drop,1]]:[]),...Object.entries(m.contents||{}),...Object.entries(m.outputs||{})].filter(([,n])=>n>0);
+    const recovered=placedItem?recoverItems(cargo,x,y):engine.spawnBatch(cargo,x+.5,y+.5);
+    if(!recovered){showToast('Make room in your backpack or collect a nearby pile first.');return;}
     if(id===T.COPPER)stats.copperMined++;if(id===T.IRON)stats.ironMined=(stats.ironMined||0)+1;stats.mined=(stats.mined||0)+1;
     discoverSchematic(m);const old=m.assembly;set(x,y,T.AIR);if(old)engine.splitAssembly(old);
-    burst(x*TILE+12,y*TILE+12,palette[drop]||'#b6d1c8');sound(drop||'stone');mining.key='';mining.progress=0;camera.shake=4;collectDrops(true);renderHotbar();simulateNetworks();showToast(`${defs[id].name} recovered`);
+    burst(x*TILE+12,y*TILE+12,palette[drop]||'#b6d1c8');sound(drop||'stone');mining.key='';mining.progress=0;camera.shake=4;
+    if(!placedItem)collectDrops(true);
+    renderHotbar();simulateNetworks();
+    showToast(defs[id].name+(recovered.loose?' recovered · '+recovered.loose+' left on the ground':' recovered'));
   }
   function finishLink(){
     const minX=Math.max(0,Math.min(linkDrag.x0,linkDrag.x1)),maxX=Math.min(WORLD_W-1,Math.max(linkDrag.x0,linkDrag.x1));
@@ -903,16 +911,59 @@
     }
     m.fault='';return true;
   }
-  function collectDrops(immediate=false){
-    let collected=false;
-    for(const d of engine.drops)if((immediate||d.age>.15)&&Math.hypot(d.x-(player.x+player.w/2)/TILE,d.y-(player.y+player.h/2)/TILE)<2.6){
-      // Never pick through a solid wall.
-      const tx=Math.floor(d.x),ty=Math.floor(d.y);if(defs[get(tx,ty)]?.solid||!lineOfSight((player.x+player.w/2)/TILE,(player.y+player.h/2)/TILE,d.x,d.y))continue;
-      const amount=Math.min(d.count,inventoryRoom());if(!amount)continue;inventory[d.key]=(inventory[d.key]||0)+amount;d.count-=amount;collected=true;
-    }
-    if(collected){engine.drops=engine.drops.filter(d=>d.count>0);renderHotbar()}
-  }
   function inventoryRoom(){return Math.max(0,2048-Object.values(inventory).reduce((n,v)=>n+(Number.isFinite(v)?v:0),0));}
+  function recoverItems(entries,x,y){
+    const carried=[],overflow=[];
+    let room=inventoryRoom(),loose=0;
+    for(const [key,count] of entries){
+      const take=Math.min(count,room);
+      if(take>0){carried.push([key,take]);room-=take;}
+      if(count>take){overflow.push([key,count-take]);loose+=count-take;}
+    }
+    if(!engine.spawnBatch(overflow,x+.5,y+.5))return null;
+    for(const [key,count] of carried)inventory[key]=(inventory[key]||0)+count;
+    return {loose};
+  }
+  function itemLabel(key){return itemByKey.get(key)?.item.name||key;}
+  function canReachDrop(drop,px,py){
+    return !engine.dropSolid(Math.floor(drop.x),Math.floor(drop.y))&&lineOfSight(px,py,drop.x,drop.y);
+  }
+  function putDropInPack(drop,room){
+    const count=Math.min(drop.count,room);
+    if(count<=0)return 0;
+    inventory[drop.key]=(inventory[drop.key]||0)+count;drop.count-=count;
+    return count;
+  }
+  function collectDrops(immediate=false){
+    const px=(player.x+player.w/2)/TILE,py=(player.y+player.h/2)/TILE;
+    let room=inventoryRoom(),collected=0;
+    for(const drop of engine.drops){
+      const distance=Math.hypot(drop.x-px,drop.y-py);
+      if(drop.manual){
+        if(distance>3)delete drop.manual;
+        continue;
+      }
+      if(!room||distance>=2.6||!immediate&&drop.age<=.15||!canReachDrop(drop,px,py))continue;
+      const count=putDropInPack(drop,room);
+      collected+=count;room-=count;
+    }
+    if(collected){engine.drops=engine.drops.filter(d=>d.count>0);renderHotbar();}
+  }
+  function aimedGroundDrop(){
+    if(!pointer.aimed||!engine?.drops.length)return null;
+    const px=(player.x+player.w/2)/TILE,py=(player.y+player.h/2)/TILE;
+    return engine.drops.find(d=>Math.floor(d.x)===pointer.tx&&Math.floor(d.y)===pointer.ty
+      &&Math.hypot(d.x-px,d.y-py)<=6&&canReachDrop(d,px,py));
+  }
+  function pickUpAimedDrop(){
+    const drop=aimedGroundDrop();
+    if(!drop)return false;
+    const count=putDropInPack(drop,inventoryRoom());
+    if(!count){showToast('Backpack full.');return true;}
+    if(!drop.count)engine.drops=engine.drops.filter(item=>item!==drop);
+    renderHotbar();saveGame();showToast('Picked up '+count+' '+itemLabel(drop.key)+'.');
+    return true;
+  }
   function interactItems(){
     if(paused||craftOpen||manualOpen)return;
     const k=idx(pointer.tx,pointer.ty),id=get(pointer.tx,pointer.ty),m=meta.get(k);
@@ -925,17 +976,29 @@
   function discoverSchematic(m){if(!m?.schematic||m.schematicClaimed)return;const known=Array.isArray(stats.schematics)?stats.schematics:[];if(!known.includes(m.schematic)){known.push(m.schematic);stats.schematics=known;showToast(`Schematic discovered: ${m.schematic}. Related fabrication is now unlocked.`);sound('crystal');}m.schematicClaimed=true;}
   function dropHeldItem(){
     if(paused||craftOpen||manualOpen)return;
-    const item=items[selected];if(!item||item.key==='link'||(inventory[item.key]||0)<1)return;
-    const x=pointer.tx,y=pointer.ty;if(distanceToTile(x,y)>6||!inside(x,y)){showToast('Drop within reach');return}
-    if(defs[get(x,y)]?.solid&&!defs[get(x,y)]?.transport&&get(x,y)!==T.CONVEYOR){showToast('Aim at empty space or item machinery');return}
-    if(engine.spawn(item.key,1,x+.5,y+.5)){inventory[item.key]--;renderHotbar();showToast(`${item.name} dropped`)}
+    const item=selectedItem();if(!item||item.permanent||(inventory[item.key]||0)<1)return;
+    const x=pointer.tx,y=pointer.ty;if(!pointer.aimed||distanceToTile(x,y)>6||!inside(x,y)){showToast('Aim at a spot within reach.');return}
+    const id=get(x,y),def=defs[id],transport=def?.transport||id===T.CONVEYOR;
+    if(transport){
+      if(!engine.insert(idx(x,y),item.key,1)){showToast('That machine is full or cannot take this item.');return;}
+    }else{
+      const onSurface=engine.dropSolid(x,y),dropY=onSurface?y-E.DROP_HALF:y+.5;
+      const px=(player.x+player.w/2)/TILE,py=(player.y+player.h/2)/TILE;
+      if(engine.dropSolid(x,Math.floor(dropY))||!lineOfSight(px,py,x+.5,dropY)){
+        showToast('Aim at an open spot or the top of a surface.');return;
+      }
+      if(!engine.spawn(item.key,1,x+.5,dropY,{manual:true})){showToast('Collect a loose pile before dropping more items.');return;}
+    }
+    inventory[item.key]--;renderHotbar();saveGame();
+    showToast(transport?`${item.name} loaded into ${def.name}.`:`${item.name} dropped. Aim at it and press F to pick it up.`);
   }
   function drawDrops(){
+    const half=TILE*E.DROP_HALF;
     for(const d of engine.drops){const x=d.x*TILE-camera.x,y=d.y*TILE-camera.y;if(x<-10||y<-10||x>vw+10||y>vh+10)continue;
-      const bob=Math.sin(gameTime*4+(d.id||0))*1.4;
-      if(!art?.item(ctx,d.key,x-6,y-6+bob,12)){
-        ctx.fillStyle=palette[d.key]||itemByKey.get(d.key)?.item.color||'#dfdca9';ctx.fillRect(x-3,y-3,7,7);
-        ctx.strokeStyle='#17262b';ctx.strokeRect(x-3,y-3,7,7);
+      const base=y+half;
+      if(!art?.item(ctx,d.key,x-half,y-half,half*2,true)){
+        ctx.fillStyle=palette[d.key]||itemByKey.get(d.key)?.item.color||'#dfdca9';ctx.fillRect(x-3,base-7,7,7);
+        ctx.strokeStyle='#17262b';ctx.strokeRect(x-2.5,base-6.5,6,6);
       }
       if(lens&&d.count>1){ctx.fillStyle='#fff';ctx.font='9px monospace';ctx.fillText(d.count,x+4,y)}
     }
@@ -946,9 +1009,10 @@
     if(cargo){
       const [key,count]=cargo,[dx,dy]=E.DIRS[m.rot||0];
       const offset=id===T.CONVEYOR&&m.running?((m.itemClock||0)/.25-.5)*14:0;
+      const cargoX=8+dx*offset,cargoY=(id===T.CONVEYOR?-8:4)+dy*offset;
       ctx.fillStyle=palette[key]||items.find(i=>i.key===key)?.color||'#e4dfa3';
-      if(!art?.item(ctx,key,8+dx*offset,4+dy*offset,8))ctx.fillRect(9+dx*offset,5+dy*offset,6,6);
-      if(count>1)ctx.fillRect(15+dx*offset,7+dy*offset,3,3);
+      if(!art?.item(ctx,key,cargoX,cargoY,8,id===T.CONVEYOR))ctx.fillRect(cargoX+1,cargoY+2,6,6);
+      if(count>1)ctx.fillRect(cargoX+7,cargoY+3,3,3);
     }
     if(defs[id].kind==='signal'){ctx.fillStyle=m.active?'#fff79c':'#173139';ctx.fillRect(3,3,4,3)}
     if(!painted&&id>=26&&defs[id].mechanical&&m.running){
@@ -988,7 +1052,7 @@
         card('Joints and load','A piston pushes one block-length; a powered piston with a low enable signal retracts. Winches lift loads below repeatedly. Line a deep shaft with Magnetic Guide Rail starting beside the winch to extend its reach from 50 to 480 tiles. Bearings rotate separately linked loads at their front; hinges swing 0-90° using a top signal. Sweeps stop at obstacles or the player. Joint mounts stay anchored. Heavy or long arms need torque gearing.'),
       card('Strength and failures','Structural Lens: blue low stress, green normal, yellow high, orange danger, red failure risk. Heavy lifting and long rotating arms raise stress. Three extreme overload attempts can detach a weak connection, without deleting the block. Inspector shows required and available torque, blocked paths and power shortages.'),
       card('Physical logistics','Conveyors need rear or bottom shaft drive. Items enter at the rear or fall from above; front is output. Hoppers collect above/rear and output front. Storage holds 64 items; attach a hopper to its front to extract. Splitters alternate front/bottom output and wait if the selected route blocks. Filters pass only the selected material. Filter settings cycle raw materials. Hold Shift while changing settings to select the held component.'),
-      card('Load and recover','Aim at item machinery: F takes its contents; Shift+F inserts one held part. X drops a held part into the world. Mining a container drops all cargo. Full outputs block instead of destroying items. Machines keep their contents, counters, configuration and links when moved and saved.'),
+      card('Load and recover','X drops one held item. Aim at a loose pile and press F, right-click, or tap Use to pick it up. You can also collect it by walking away and coming back. Aim at a machine and press F to collect its contents or Shift+F to load one held item. Dismantling a placed part returns it and its cargo to your backpack, with any overflow left on the ground.'),
       card('Try a sensor door','Lay a generator behind a motor, then a shaft into a piston. Place a sensor above the motor, rotated downward to face its enable port. Link a lightweight door in front of the piston, separately from the drive. For automatic return, power the motor continuously and connect the sensor to the piston enable instead.'),
       card('Automate and defend','B opens real component blueprints. A drill needs side power, rear drive and an output hopper; it removes terrain and stops when output fills. Feed ore through a driven crusher, powered smelter and assembler. F recovers goods; Shift+F inserts the selected material. Ammunition fabricators feed real rounds to powered turrets. Enemy sensors connect through signal wires; loss of power or ammunition stops the defense.'),
       card('Survive the depths','Q attacks, Tab cycles owned weapons, Z consumes a healing item. Selecting a weapon makes the primary action attack. Enemies show a warning before striking. Defend walls and machinery during warned raids. J tracks five chapters and unlocks. Equipment and progression survive death; marked caches retain dropped resources. Recovery stations establish checkpoints near power.'),
@@ -1363,6 +1427,7 @@
       case 'KeyL':cycleLink();break;
       case 'KeyF':
         if(fleet?.selectTarget(pointer.tx,pointer.ty))break;
+        if(!starship?.active&&!e.shiftKey&&pickUpAimedDrop())break;
         if(starship?.active||industry?.controller(pointer.tx,pointer.ty))interactAtPointer();
         else if(e.shiftKey||defs[get(pointer.tx,pointer.ty)]?.transport)interactItems();
         else interactAtPointer();
