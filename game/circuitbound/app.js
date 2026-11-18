@@ -1,19 +1,26 @@
 (() => {
   'use strict';
   const canvas=document.getElementById('game'),ctx=canvas.getContext('2d',{alpha:false});
+  canvas.tabIndex=-1;
   const TILE=24,WORLD_W=220,WORLD_H=84,SAVE_KEY='circuitbound-save-v1';
   let vw=innerWidth,vh=innerHeight,dpr=Math.min(devicePixelRatio||1,2),world,meta=new Map(),seed=0,gameTime=0,paused=false,craftOpen=false,manualOpen=false,lens=false,last=0,accum=0,toastTimer=0,selected=0,rotation=0,pointer={x:0,y:0,wx:0,wy:0,tx:0,ty:0,down:false,button:0},mining={key:'',progress:0},linkDrag=null;
   const E=CircuitEngineering;
   const V=typeof CircuitVertical==='undefined'?null:CircuitVertical;
   let engine=null, savedEngineering=null, survival=null, savedSurvival=null, ui=null, lensMode='ports', linkMode='new', selectedAssembly=null;
-  let inputMode='mine',buildDrag=null,blueprint=null,smartPlacement=true,manualRotation=false,modalOpen=false,ropeDismount=0;
-  const settings={difficulty:'standard',soundVolume:.35,musicVolume:.15,smartPlacement:true},particles=[];
+  const STARTER_SLOTS=['pickaxe','tool','dirt','platform','ladder','wire','generator','workbench','stone','link'];
+  let hotbar=STARTER_SLOTS.slice(),activeSlot=0,buildDrag=null,touchAim=null,touchLine=null,touchStart=null;
+  let blueprint=null,smartPlacement=true,manualRotation=false,modalOpen=false,ropeDismount=0;
+  let workshop=null,guides=null,robotics=null,starship=null,loadedGuide=null,loadedRobotics=null,loadedStarship=null,inspected=null,activePointer=null,pendingClick=null,touchConfirm=null;
+  const settings={difficulty:'standard',soundVolume:.35,musicVolume:.15,smartPlacement:true,smartCursor:false},particles=[];
   let audioContext=null,musicNode=null,musicGain=null,lastAmbient=0,gridFaults=0,activeSounds=0;
   const camera={x:0,y:0,shake:0},keys={};
+  const tileMotions=new Map();
+  const MOVE_DURATION=.16;
+  let riderMotion=null;
   let ledgeDrop=0;
   const player={x:9*TILE,y:20*TILE,w:15,h:34,vx:0,vy:0,onGround:false,facing:1,health:100,walk:0};
   const stats={copperMined:0,crafted:0,motionEvents:0,coreFound:false,coreReached:false,started:Date.now()};
-  const STARTING={dirt:28,stone:24,wood:18,copper:12,iron:10,crystal:5,copperBlock:6,ironBlock:4,wire:16,signal:12,generator:1,switch:1,sensor:1,motor:1,shaft:8,gear:2,piston:1,lamp:2,conveyor:6,winch:1,platform:12,door:2,ladder:8,ledge:8};
+  const STARTING={dirt:28,stone:0,wood:0,copper:12,iron:10,crystal:5,copperBlock:6,ironBlock:4,wire:16,signal:12,generator:1,switch:1,sensor:1,motor:1,shaft:8,gear:2,piston:1,lamp:2,conveyor:6,winch:1,platform:12,door:2,ladder:8,ledge:8};
   const inventory={...STARTING};
   const T={AIR:0,GRASS:1,DIRT:2,STONE:3,WOOD:4,COPPER:5,IRON:6,CRYSTAL:7,OBSIDIAN:8,PLANK:9,COPPER_BLOCK:10,IRON_BLOCK:11,WIRE:12,SIGNAL:13,GENERATOR:14,SWITCH:15,SENSOR:16,MOTOR:17,SHAFT:18,GEAR:19,PISTON:20,LAMP:21,CONVEYOR:22,WINCH:23,PLATFORM:24,CORE:25};
   const defs={
@@ -76,27 +83,34 @@
   for(const key of ['wood','copper','iron','crystal','obsidian'])if(!items.some(i=>i.key===key))items.push({key,tile:-2,name:key[0].toUpperCase()+key.slice(1),icon:'◆',color:'#c3b087',resource:true});
   recipes.push({key:'ironIngot',name:'Hand-forged Iron',icon:'▰',out:1,cost:{iron:3,stone:1},desc:'Manual forging. A powered crusher and smelter use one ore per ingot.',category:'resources'},
     {key:'copperIngot',name:'Hand-forged Copper',icon:'▰',out:1,cost:{copper:3,stone:1},desc:'Manual forging. Automate for better material efficiency.',category:'resources'});
+  CircuitRoboticsCatalog.install(T,defs,items,recipes);
+  CircuitWorkshop.install(T,defs,items,recipes);
+  const itemByKey=new Map(items.map((item,index)=>[item.key,{item,index}]));
+  const initialPickaxe=itemByKey.get('pickaxe').index;
+  selected=initialPickaxe;
+  const art=globalThis.CircuitArt?.create(T,defs,items);
   const palette={dirt:'#78543a',stone:'#647176',wood:'#a67240',copper:'#c77743',iron:'#8fa0a1',crystal:'#62e2e0',obsidian:'#352d49'};
   const missionDefs=[['copperMined','Mine 8 copper ore'],['crafted','Fabricate any machine part'],['grid','Power a crystal lamp'],['motionEvents','Move a linked structure'],['coreReached','Power the eastern Foundry Core']];
 
   function resize(){vw=innerWidth;vh=innerHeight;dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.floor(vw*dpr);canvas.height=Math.floor(vh*dpr);canvas.style.width=vw+'px';canvas.style.height=vh+'px';ctx.setTransform(dpr,0,0,dpr,0,0);ctx.imageSmoothingEnabled=false}
   addEventListener('resize',resize);resize();
   const idx=(x,y)=>x+y*WORLD_W,inside=(x,y)=>x>=0&&y>=0&&x<WORLD_W&&y<WORLD_H,get=(x,y)=>inside(x,y)?world[idx(x,y)]:T.STONE;
-  function set(x,y,v,m){if(!inside(x,y))return;world[idx(x,y)]=v;const k=idx(x,y);if(v===0)meta.delete(k);else if(m)meta.set(k,{...m});engine?.changed(x,y)}
+  function set(x,y,v,m){if(!inside(x,y))return;world[idx(x,y)]=v;const k=idx(x,y);tileMotions.delete(k);if(v===0)meta.delete(k);else if(m)meta.set(k,{...m});engine?.changed(x,y)}
   function hash(x,y,s=seed){let n=x*374761393+y*668265263+s*1442695041;n=(n^(n>>13))*1274126177;return((n^(n>>16))>>>0)/4294967295}
   function groundAt(x){return 31+Math.floor(Math.sin(x*.12)*2+Math.sin(x*.035)*5+hash(x,1)*2)}
-  function generate(){savedEngineering=null;seed=Math.floor(Math.random()*999999);world=new Uint8Array(WORLD_W*WORLD_H);meta=new Map();
+  function generate(){savedEngineering=null;seed=Math.floor(Math.random()*999999);world=new Uint8Array(WORLD_W*WORLD_H);meta=new Map();tileMotions.clear();riderMotion=null;
     for(let x=0;x<WORLD_W;x++){const g=groundAt(x);for(let y=g;y<WORLD_H;y++){let id=y===g?T.GRASS:y<g+5?T.DIRT:T.STONE;const r=hash(x,y);if(y>g+5&&r>.93)id=T.COPPER;if(y>g+9&&r<.045)id=T.IRON;if(y>g+14&&r>.973)id=T.CRYSTAL;if(y>WORLD_H-7&&r>.45)id=T.OBSIDIAN;world[idx(x,y)]=id}}
     for(let c=0;c<34;c++){const cx=12+Math.floor(hash(c,60)*198),cy=37+Math.floor(hash(c,61)*36),rx=3+Math.floor(hash(c,62)*7),ry=2+Math.floor(hash(c,63)*4);for(let x=cx-rx;x<=cx+rx;x++)for(let y=cy-ry;y<=cy+ry;y++)if(((x-cx)/rx)**2+((y-cy)/ry)**2<1&&inside(x,y))set(x,y,T.AIR)}
     for(let x=4;x<14;x++)set(x,29,T.PLATFORM);set(5,28,T.GENERATOR,{rot:0});set(6,28,T.WIRE,{});set(7,28,T.WIRE,{});set(8,28,T.LAMP,{});
     for(const x of [18,43,78,119,151,183]){const g=groundAt(x);for(let y=g-1;y>g-5;y--)set(x,y,T.WOOD);for(let tx=x-2;tx<=x+2;tx++)for(let ty=g-8;ty<=g-4;ty++)if(Math.abs(tx-x)+Math.abs(ty-(g-6))<4&&get(tx,ty)===T.AIR)set(tx,ty,T.WOOD)}
     const coreX=205,base=groundAt(coreX);for(let x=201;x<=209;x++)for(let y=base-7;y<base;y++)if(x===201||x===209||y===base-7)set(x,y,T.IRON_BLOCK);set(coreX,base-3,T.CORE,{});for(let x=203;x<=207;x++)set(x,base-2,T.WIRE,{});
     prepareExpedition();
-    player.x=9*TILE;player.y=29*TILE-player.h;player.vx=player.vy=0;player.health=100;gameTime=0;accum=0;selectedAssembly=null;selected=0;rotation=0;inputMode='mine';blueprint=null;buildDrag=null;
+    player.x=9*TILE;player.y=29*TILE-player.h;player.vx=player.vy=0;player.health=100;gameTime=0;accum=0;selectedAssembly=null;selected=initialPickaxe;activeSlot=0;hotbar=STARTER_SLOTS.slice();rotation=0;blueprint=null;touchAim=null;clearActions();closeInspector();guides?.reset();robotics?.reset();starship?.reset();
     for(const key of Object.keys(inventory))delete inventory[key];Object.assign(inventory,STARTING,{medkit:2});
     for(const key of Object.keys(stats))delete stats[key];Object.assign(stats,{copperMined:0,crafted:0,motionEvents:0,coreFound:false,coreReached:false,started:Date.now()});
+    installRareGeology();
     survival?.reset();survival?.setDifficulty(settings.difficulty);if(engine){engine.reset();simulateNetworks();renderHotbar();renderMissions()}
-    camera.x=0;camera.y=Math.max(0,player.y-vh*.55);showToast('Repair the outpost: mine 8 copper, fabricate a tool, then drive a machine.');saveGame()}
+    camera.x=0;camera.y=Math.max(0,player.y-vh*.55);showToast('Mine wood and stone near the outpost to craft a Field Workbench.');if(engine)saveGame()}
   function prepareExpedition(){
     // A walkable entrance joins the starter deck to real ore and the natural cave network.
     for(let x=14;x<=27;x++)for(let y=27;y<=42;y++)if(x<20||y>33)set(x,y,T.AIR);
@@ -111,6 +125,9 @@
     for(let y=24;y<=27;y++)set(10,y,T.WIRE,{});set(10,23,T.CORE,{});
     set(10,28,T.AIR);set(11,28,T.AIR);set(12,28,T.MOTOR,{rot:0});
     set(14,28,T.STORAGE,{rot:0,contents:{wood:8}});
+    // Reachable scrap wood and exposed stone introduce mining without a trip below the outpost.
+    for(const [x,y] of [[7,24],[8,24],[7,25],[8,25],[7,26],[8,26]])set(x,y,T.WOOD);
+    for(const [x,y] of [[9,25],[9,26],[11,25],[11,26]])set(x,y,T.STONE);
     for(let y=44;y<79;y++)for(let x=32;x<36;x++)set(x,y,T.AIR);
     for(const [cx,cy,kind,schematic] of [[35,49,T.IRON,'refining'],[76,58,T.CRYSTAL,'electrical'],[128,68,T.IRON,'fabrication'],[180,77,T.OBSIDIAN,'reactor']]){
       for(let x=cx-7;x<=cx+7;x++)for(let y=cy-3;y<=cy+3;y++)if(inside(x,y)&&((x-cx)/7)**2+((y-cy)/3)**2<1)set(x,y,T.AIR);
@@ -123,6 +140,9 @@
     set(172,81,T.STORAGE,{rot:0,contents:{crystal:6,advancedComponent:2},discovery:true,schematic:'reactor'});
     if(hash(92,91)>.82){const cx=92+Math.floor(hash(91,92)*26),cy=61;for(let x=cx-4;x<=cx+4;x++)for(let y=cy-3;y<=cy+1;y++)set(x,y,T.AIR);for(let x=cx-4;x<=cx+4;x++)set(x,cy+2,T.IRON_BLOCK);set(cx,cy+1,T.STORAGE,{rot:0,contents:{steel:6,circuit:3,repairKit:2},discovery:true,schematic:'fabrication'});}
   }
+  function installRareGeology(){
+    CircuitRoboticsWorld.install({T,get,set,inside,getMeta:(x,y)=>meta.get(idx(x,y)),hash,stats});
+  }
   function validSave(raw){
     const d=JSON.parse(raw);if(!d||!Array.isArray(d.world)||d.world.length!==WORLD_W*WORLD_H||d.world.some(id=>!Number.isInteger(id)||!defs[id]))return null;
     if(d.meta===undefined)d.meta=[];
@@ -131,7 +151,7 @@
     if(!d.player||!Number.isFinite(d.player.x)||!Number.isFinite(d.player.y)||d.player.x<0||d.player.x>WORLD_W*TILE||d.player.y<0||d.player.y>(WORLD_H+2)*TILE)return null;return d;
   }
   function saveGame(){try{
-    const data={seed,world:Array.from(world),meta:Array.from(meta.entries()),player:{x:player.x,y:player.y,health:player.health},inventory,stats,gameTime,version:3,engineering:engine?.export(),survival:survival?.export(),settings};
+    const data={seed,world:Array.from(world),meta:Array.from(meta.entries()),player:{x:player.x,y:player.y,health:player.health},inventory,stats,gameTime,version:5,hotbar,activeSlot,guide:guides?.export(),robotics:robotics?.export(),starship:starship?.export(),engineering:engine?.export(),survival:survival?.export(),settings};
     const previous=localStorage.getItem(SAVE_KEY);if(previous){try{if(validSave(previous))localStorage.setItem(SAVE_KEY+'-backup',previous)}catch{}}
     localStorage.setItem(SAVE_KEY,JSON.stringify(data));return true;
   }catch{showToast('World could not be saved: device storage is full or unavailable.');return false}}
@@ -139,8 +159,17 @@
     const raw=localStorage.getItem(key);if(!raw)continue;const d=validSave(raw);if(!d)continue;
     seed=d.seed||0;world=Uint8Array.from(d.world);meta=new Map(d.meta);Object.assign(player,d.player);player.vx=player.vy=0;player.health=Math.max(0,Math.min(100,Number(player.health)||100));
     for(const k of Object.keys(inventory))delete inventory[k];for(const [k,n] of Object.entries(d.inventory||{}))if(Number.isFinite(n)&&n>=0)inventory[k]=Math.floor(n);
-    Object.assign(stats,d.stats||{});gameTime=Math.max(0,Number(d.gameTime)||0);savedEngineering=d.engineering;savedSurvival=d.survival;
-    if(d.settings){settings.difficulty=['casual','standard','hardcore'].includes(d.settings.difficulty)?d.settings.difficulty:'standard';for(const k of ['soundVolume','musicVolume'])if(Number.isFinite(d.settings[k]))settings[k]=Math.max(0,Math.min(1,d.settings[k]));if(typeof d.settings.smartPlacement==='boolean')settings.smartPlacement=smartPlacement=d.settings.smartPlacement;}
+    Object.assign(stats,d.stats||{});
+    CircuitWorkshop.migrate(inventory,stats,d.version);
+    loadedGuide=d.guide;loadedRobotics=d.robotics;loadedStarship=d.starship;
+    if(Array.isArray(d.hotbar)&&d.hotbar.length===STARTER_SLOTS.length){
+      hotbar=d.hotbar.map(key=>itemByKey.has(key)?key:null);
+      const slot=Number.isInteger(d.activeSlot)?Math.max(0,Math.min(hotbar.length-1,d.activeSlot)):0;
+      activeSlot=slot;selected=itemByKey.get(hotbar[slot])?.index??-1;
+    }
+    gameTime=Math.max(0,Number(d.gameTime)||0);savedEngineering=d.engineering;savedSurvival=d.survival;
+    if(d.settings){settings.difficulty=['casual','standard','hardcore'].includes(d.settings.difficulty)?d.settings.difficulty:'standard';for(const k of ['soundVolume','musicVolume'])if(Number.isFinite(d.settings[k]))settings[k]=Math.max(0,Math.min(1,d.settings[k]));if(typeof d.settings.smartPlacement==='boolean')settings.smartPlacement=smartPlacement=d.settings.smartPlacement;settings.smartCursor=d.settings.smartCursor===true;}
+    installRareGeology();
     if(key!==SAVE_KEY)showToast('Recovered the last valid backup of your world.');return true;
   }catch{}}return false}
   const loaded=loadGame();if(!loaded)generate();
@@ -150,10 +179,28 @@
   setupEngineeringUI();
 
   function tileRect(x,y){return{x:x*TILE-camera.x,y:y*TILE-camera.y}}
+  function motionRemaining(start){return Math.max(0,1-(gameTime-start)/MOVE_DURATION);}
+  function tileMotion(x,y){
+    const motion=tileMotions.get(idx(x,y));
+    if(!motion)return {x,y,angle:0};
+    const left=motionRemaining(motion.start);
+    if(motion.pivot){
+      const angle=-motion.turn*Math.PI/2*left,[cx,cy]=motion.pivot,dx=x-cx,dy=y-cy;
+      return {x:cx+dx*Math.cos(angle)-dy*Math.sin(angle),y:cy+dx*Math.sin(angle)+dy*Math.cos(angle),angle};
+    }
+    return {x:x+motion.dx*left,y:y+motion.dy*left,angle:0};
+  }
   function drawSky(){const day=(Math.sin(gameTime*.012)+1)/2,top=mixColor('#071221','#24536a',day),bot=mixColor('#17303d','#79a8a0',day),g=ctx.createLinearGradient(0,0,0,vh);g.addColorStop(0,top);g.addColorStop(1,bot);ctx.fillStyle=g;ctx.fillRect(0,0,vw,vh);ctx.fillStyle=day>.3?'#ffe6a1':'#d9efff';const sunX=((gameTime*.9)%(vw+180))-90;ctx.fillRect(Math.floor(sunX),55,24,24);for(let i=0;i<45;i++){const x=(hash(i,8)*vw*1.4-camera.x*.03)%(vw+20),y=20+hash(i,9)*vh*.45;if(day<.35){ctx.fillStyle=`rgba(220,245,255,${.2+(1-day)*.6})`;ctx.fillRect(x,y,hash(i,10)>.7?2:1,hash(i,10)>.7?2:1)}}ctx.fillStyle='rgba(18,45,57,.58)';ctx.beginPath();ctx.moveTo(0,vh*.72);for(let x=0;x<=vw;x+=70){const wx=x+camera.x*.16;ctx.lineTo(x,vh*.57+Math.sin(wx*.006)*42+hash(Math.floor(wx/70),23)*50)}ctx.lineTo(vw,vh);ctx.lineTo(0,vh);ctx.fill();ctx.fillStyle='rgba(9,29,39,.72)';ctx.beginPath();ctx.moveTo(0,vh*.8);for(let x=0;x<=vw;x+=55){const wx=x+camera.x*.28;ctx.lineTo(x,vh*.68+Math.sin(wx*.009)*30+hash(Math.floor(wx/55),25)*40)}ctx.lineTo(vw,vh);ctx.lineTo(0,vh);ctx.fill()}
   function mixColor(a,b,t){const pa=parseInt(a.slice(1),16),pb=parseInt(b.slice(1),16),ar=pa>>16,ag=pa>>8&255,ab=pa&255,br=pb>>16,bg=pb>>8&255,bb=pb&255;return`rgb(${ar+(br-ar)*t|0},${ag+(bg-ag)*t|0},${ab+(bb-ab)*t|0})`}
-  function drawTile(id,x,y,m){const p=tileRect(x,y),sx=Math.floor(p.x),sy=Math.floor(p.y);if(sx<-TILE||sy<-TILE||sx>vw||sy>vh)return;const n=hash(x,y);ctx.save();ctx.translate(sx,sy);
-    if(id===T.GRASS){ctx.fillStyle='#725038';ctx.fillRect(0,0,TILE,TILE);ctx.fillStyle='#5b9a55';ctx.fillRect(0,0,TILE,6);ctx.fillStyle='#86be62';for(let i=0;i<4;i++)ctx.fillRect((n*97+i*7)%22,1,2,4)}
+  function drawTile(id,x,y,m){
+    const animated=tileMotions.has(idx(x,y))?tileMotion(x,y):null;
+    const p=animated?tileRect(animated.x,animated.y):tileRect(x,y),sx=Math.floor(p.x),sy=Math.floor(p.y);
+    if(sx<-TILE||sy<-TILE||sx>vw||sy>vh)return;
+    const n=hash(x,y);ctx.save();ctx.translate(sx,sy);
+    if(animated?.angle){ctx.translate(TILE/2,TILE/2);ctx.rotate(animated.angle);ctx.translate(-TILE/2,-TILE/2);}
+    const painted=art?.tile(ctx,id,m,gameTime);
+    if(painted){} else if(id===T.WORKBENCH){machineBox('#9e7046');ctx.fillStyle='#e2b57b';ctx.fillRect(2,7,20,4);ctx.fillRect(4,12,3,10);ctx.fillRect(17,12,3,10);}
+    else if(id===T.GRASS){ctx.fillStyle='#725038';ctx.fillRect(0,0,TILE,TILE);ctx.fillStyle='#5b9a55';ctx.fillRect(0,0,TILE,6);ctx.fillStyle='#86be62';for(let i=0;i<4;i++)ctx.fillRect((n*97+i*7)%22,1,2,4)}
     else if(id===T.DIRT){ctx.fillStyle='#755139';ctx.fillRect(0,0,TILE,TILE);ctx.fillStyle='#916645';ctx.fillRect(3+(n*11)%10,5,3,3);ctx.fillRect(15,16,2,2)}
     else if(id===T.STONE){ctx.fillStyle='#5d6b70';ctx.fillRect(0,0,TILE,TILE);ctx.fillStyle='#76858a';ctx.fillRect(3,4,7,3);ctx.fillRect(14,14,6,4);ctx.fillStyle='#46545a';ctx.fillRect(1,18,8,2);ctx.fillRect(17,5,4,3)}
     else if(id===T.WOOD){ctx.fillStyle='#926136';ctx.fillRect(0,0,TILE,TILE);ctx.fillStyle='#ba7c43';ctx.fillRect(3,0,3,TILE);ctx.fillRect(15,0,2,TILE);ctx.fillStyle='#6d462b';ctx.fillRect(7,8,5,2);ctx.fillRect(17,17,4,2)}
@@ -178,24 +225,112 @@
     else if(id===T.ANCHOR||id===T.RAIL){ctx.strokeStyle='#a8bac0';ctx.lineWidth=3;ctx.strokeRect(id===T.RAIL?7:4,1,id===T.RAIL?10:16,22)}
     else if(id===T.LEDGE){ctx.fillStyle='#644327';ctx.fillRect(0,7,24,5);ctx.fillStyle='#d5a260';ctx.fillRect(0,5,24,3);ctx.fillStyle='#9b6838';ctx.fillRect(3,12,3,4);ctx.fillRect(18,12,3,4)}
     else if(id===T.CORE){ctx.fillStyle='#172f35';ctx.fillRect(0,0,24,24);ctx.strokeStyle=m&&m.powered?'#fff174':'#5de4df';ctx.lineWidth=2;ctx.strokeRect(3,3,18,18);ctx.save();ctx.translate(12,12);ctx.rotate(gameTime*.04);ctx.fillStyle=m&&m.powered?'#fff5a2':'#5de4df';ctx.fillRect(-3,-9,6,18);ctx.fillRect(-9,-3,18,6);ctx.restore()}
-    if(id>=26&&defs[id].kind){machineBox(E.COLORS[defs[id].kind]||'#8fcab8');ctx.fillStyle='#10212b';ctx.font='bold 12px monospace';ctx.textAlign='center';ctx.fillText(defs[id].icon,12,16);ctx.textAlign='left';if(m?.working||m?.firing){ctx.strokeStyle='#fff3a4';ctx.lineWidth=2;ctx.strokeRect(2,2,20,20)}if(m?.progress){ctx.fillStyle='#8cf0bd';ctx.fillRect(2,20,20*Math.min(1,m.progress),2)}}
-    if(m&&m.linked&&lens){ctx.strokeStyle=assemblyColor(m.assembly);ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.strokeRect(1,1,22,22);ctx.setLineDash([])}if(lens&&m){if(m.powered){ctx.strokeStyle='#fff26a';ctx.lineWidth=2;ctx.strokeRect(2,2,20,20)}if(m.active){ctx.fillStyle='#ff5454';ctx.fillRect(9,1,6,3)}if(m.running){ctx.fillStyle='#5ff1dc';ctx.fillRect(1,19,22,3)}if(m.overload){ctx.fillStyle=gameTime%4<2?'#ff4d35':'#fff';ctx.fillRect(2,2,4,4);ctx.fillRect(18,17,3,3)}}drawEngineeringOverlay(id,m||{},x,y);ctx.restore();
+    if(!painted&&id>=26&&defs[id].kind&&id!==T.WORKBENCH){machineBox(E.COLORS[defs[id].kind]||'#8fcab8');ctx.fillStyle='#10212b';ctx.font='bold 12px monospace';ctx.textAlign='center';ctx.fillText(defs[id].icon,12,16);ctx.textAlign='left';if(m?.working||m?.firing){ctx.strokeStyle='#fff3a4';ctx.lineWidth=2;ctx.strokeRect(2,2,20,20)}if(m?.progress){ctx.fillStyle='#8cf0bd';ctx.fillRect(2,20,20*Math.min(1,m.progress),2)}}
+    if(m&&m.linked&&lens){ctx.strokeStyle=assemblyColor(m.assembly);ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.strokeRect(1,1,22,22);ctx.setLineDash([])}if(lens&&m){if(m.powered){ctx.strokeStyle='#fff26a';ctx.lineWidth=2;ctx.strokeRect(2,2,20,20)}if(m.active){ctx.fillStyle='#ff5454';ctx.fillRect(9,1,6,3)}if(m.running){ctx.fillStyle='#5ff1dc';ctx.fillRect(1,19,22,3)}if(m.overload){ctx.fillStyle=gameTime%4<2?'#ff4d35':'#fff';ctx.fillRect(2,2,4,4);ctx.fillRect(18,17,3,3)}}drawEngineeringOverlay(id,m||{},x,y,painted);ctx.restore();
     function machineBox(c){ctx.fillStyle=c;ctx.fillRect(1,2,22,20);ctx.fillStyle='#12272d';ctx.fillRect(3,4,3,3);ctx.fillRect(18,4,3,3);ctx.fillRect(3,17,3,3);ctx.fillRect(18,17,3,3)}
   }
   function drawOre(id,n){ctx.fillStyle=id===T.OBSIDIAN?'#29243a':'#515f64';ctx.fillRect(0,0,24,24);const c=id===T.COPPER?'#d27d45':id===T.IRON?'#aab8b7':id===T.CRYSTAL?'#58dfdc':'#5a4b76';ctx.fillStyle=c;for(let i=0;i<4;i++){const x=3+((n*131+i*7)%16),y=3+((n*79+i*11)%16);ctx.fillRect(x,y,id===T.CRYSTAL?3:5,id===T.CRYSTAL?8:4)}}
-  function drawWorld(){const x0=Math.max(0,Math.floor(camera.x/TILE)-1),x1=Math.min(WORLD_W-1,Math.ceil((camera.x+vw)/TILE)+1),y0=Math.max(0,Math.floor(camera.y/TILE)-1),y1=Math.min(WORLD_H-1,Math.ceil((camera.y+vh)/TILE)+1);for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){const id=get(x,y);if(id)drawTile(id,x,y,meta.get(idx(x,y)))}if(linkDrag){const a=tileRect(Math.min(linkDrag.x0,linkDrag.x1),Math.min(linkDrag.y0,linkDrag.y1)),w=(Math.abs(linkDrag.x1-linkDrag.x0)+1)*TILE,h=(Math.abs(linkDrag.y1-linkDrag.y0)+1)*TILE;ctx.fillStyle='rgba(72,255,223,.13)';ctx.fillRect(a.x,a.y,w,h);ctx.strokeStyle='#6affdf';ctx.lineWidth=2;ctx.strokeRect(a.x,a.y,w,h)}if(mining.key){const [x,y]=mining.key.split(',').map(Number),p=tileRect(x,y),id=get(x,y),hard=defs[id]?.hard||1,progress=Math.min(1,mining.progress/hard);ctx.strokeStyle='#fff1a4';ctx.lineWidth=3;ctx.strokeRect(p.x+2,p.y+2,20,20);ctx.fillStyle='#ffcf52';ctx.fillRect(p.x+2,p.y+18,20*progress,3)}}
-  function drawPlayer(){const x=Math.round(player.x-camera.x),y=Math.round(player.y-camera.y),step=Math.sin(player.walk)*3;ctx.save();ctx.translate(x+player.w/2,y);ctx.scale(player.facing,1);ctx.fillStyle='#1b2d32';ctx.fillRect(-8,2,16,11);ctx.fillStyle='#e3bd83';ctx.fillRect(-6,7,12,11);ctx.fillStyle='#e5ad4f';ctx.fillRect(-8,0,16,7);ctx.fillStyle='#f9d46a';ctx.fillRect(-6,-3,12,4);ctx.fillStyle='#112126';ctx.fillRect(2,9,2,3);ctx.fillStyle='#327a79';ctx.fillRect(-7,18,14,10);ctx.fillStyle='#c9873d';ctx.fillRect(-9,19,3,12);ctx.fillStyle='#243d47';ctx.fillRect(-6,28,5,7+step);ctx.fillRect(1,28,5,7-step);ctx.restore()}
-  function drawTarget(){if(craftOpen||manualOpen||paused)return;const p=tileRect(pointer.tx,pointer.ty),reachable=distanceToTile(pointer.tx,pointer.ty)<6;ctx.strokeStyle=reachable?'rgba(255,245,180,.9)':'rgba(255,90,70,.7)';ctx.lineWidth=1;ctx.strokeRect(Math.floor(p.x)+.5,Math.floor(p.y)+.5,TILE-1,TILE-1)}
-  function render(){drawSky();drawUnderground();drawWorld();drawMiningCracks();drawOutpostHints();drawDrops();survival?.draw(ctx,camera);drawPlayer();drawBuildPreview();drawTarget();drawParticles();if(camera.shake>0)camera.shake*=.88}
+  function drawWorld(){
+    const x0=Math.max(0,Math.floor(camera.x/TILE)-1),x1=Math.min(WORLD_W-1,Math.ceil((camera.x+vw)/TILE)+1);
+    const y0=Math.max(0,Math.floor(camera.y/TILE)-1),y1=Math.min(WORLD_H-1,Math.ceil((camera.y+vh)/TILE)+1);
+    for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+      const id=get(x,y);if(id)drawTile(id,x,y,meta.get(idx(x,y)));
+    }
+    for(const key of tileMotions.keys()){
+      const x=key%WORLD_W,y=Math.floor(key/WORLD_W);
+      if(x<x0||x>x1||y<y0||y>y1)drawTile(world[key],x,y,meta.get(key));
+    }
+    if(linkDrag){const a=tileRect(Math.min(linkDrag.x0,linkDrag.x1),Math.min(linkDrag.y0,linkDrag.y1)),w=(Math.abs(linkDrag.x1-linkDrag.x0)+1)*TILE,h=(Math.abs(linkDrag.y1-linkDrag.y0)+1)*TILE;ctx.fillStyle='rgba(72,255,223,.13)';ctx.fillRect(a.x,a.y,w,h);ctx.strokeStyle='#6affdf';ctx.lineWidth=2;ctx.strokeRect(a.x,a.y,w,h)}if(mining.key){const [x,y]=mining.key.split(',').map(Number),p=tileRect(x,y),id=get(x,y),hard=defs[id]?.hard||1,progress=Math.min(1,mining.progress/hard);ctx.strokeStyle='#fff1a4';ctx.lineWidth=3;ctx.strokeRect(p.x+2,p.y+2,20,20);ctx.fillStyle='#ffcf52';ctx.fillRect(p.x+2,p.y+18,20*progress,3)}}
+  function drawPlayer(){
+    const left=riderMotion?motionRemaining(riderMotion.start):0;
+    const x=Math.round(player.x-camera.x+(riderMotion?.dx||0)*left),y=Math.round(player.y-camera.y+(riderMotion?.dy||0)*left),step=Math.sin(player.walk)*3;
+    const target=mining.key?.split(',').map(Number);
+    const miningProgress=target?.length===2?Math.min(1,mining.progress/(defs[get(...target)]?.hard||1)):0;
+    if(art?.player(ctx,player,x,y,{time:gameTime,mining:!!mining.key,miningProgress,climbing:!!player.climbing,attack:survival?.attackAnimation||0,weapon:selectedItem()?.weapon||survival?.attackAnimation?survival?.weapon:null,attackAngle:survival?.beam?.angle??survival?.attackAngle??0,charging:!!survival?.beam?.charge}))return;
+    ctx.save();ctx.translate(x+player.w/2,y);ctx.scale(player.facing,1);ctx.fillStyle='#1b2d32';ctx.fillRect(-8,2,16,11);ctx.fillStyle='#e3bd83';ctx.fillRect(-6,7,12,11);ctx.fillStyle='#e5ad4f';ctx.fillRect(-8,0,16,7);ctx.fillStyle='#f9d46a';ctx.fillRect(-6,-3,12,4);ctx.fillStyle='#112126';ctx.fillRect(2,9,2,3);ctx.fillStyle='#327a79';ctx.fillRect(-7,18,14,10);ctx.fillStyle='#c9873d';ctx.fillRect(-9,19,3,12);ctx.fillStyle='#243d47';ctx.fillRect(-6,28,5,7+step);ctx.fillRect(1,28,5,7-step);ctx.restore()}
+  function drawTarget(){
+    if(modalOpen||inspected||!pointer.aimed||blueprint||selectedAction()==='build'||guides?.isPlacing())return;
+    const [x,y]=selectedAction()==='mine'?miningTarget():[pointer.tx,pointer.ty];
+    const p=tileRect(x,y),reachable=inside(x,y)&&distanceToTile(x,y)<=6;
+    ctx.strokeStyle=reachable?'#fff5b4de':'#ff5a46b3';ctx.lineWidth=1;
+    ctx.strokeRect(Math.floor(p.x)+.5,Math.floor(p.y)+.5,TILE-1,TILE-1);
+    if(selectedAction()==='mine'&&reachable&&get(x,y)){
+      const m=meta.get(idx(x,y));
+      if(m?.assembly||Object.values(m?.contents||{}).some(Boolean)||Object.values(m?.outputs||{}).some(Boolean)){
+        ctx.fillStyle='#ffd68b';ctx.font='bold 11px system-ui';
+        ctx.fillText(m.assembly?'Linked assembly':'Contains cargo',p.x+TILE+7,p.y+TILE/2);
+      }
+    }
+  }
+  function render(){
+    for(const [key,motion] of tileMotions)if(!motionRemaining(motion.start))tileMotions.delete(key);
+    if(riderMotion&&!motionRemaining(riderMotion.start))riderMotion=null;
+    if(!art?.scenery(ctx,camera,vw,vh,TILE,gameTime)){drawSky();drawUnderground();}
+    drawWorld();drawMiningCracks();drawDrops();robotics?.draw(ctx,camera,vw,vh,TILE,gameTime,art);
+    survival?.draw(ctx,camera,vw,vh);starship?.draw(ctx,camera,vw,vh,art,gameTime);
+    if(!starship?.active)drawPlayer();
+    if(!modalOpen){
+      guides?.draw(ctx,tileRect,pointer);
+      const info=drawBuildPreview();drawTarget();updateAimLabel(info);
+    }
+    drawParticles();if(camera.shake>0)camera.shake*=.88;
+  }
   function drawMiningCracks(){if(!mining.key)return;const [x,y]=mining.key.split(',').map(Number),p=tileRect(x,y),fraction=Math.min(1,mining.progress/(defs[get(x,y)]?.hard||1));ctx.strokeStyle='#10252ce0';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(p.x+4,p.y+3);ctx.lineTo(p.x+12,p.y+10);ctx.lineTo(p.x+9,p.y+17);if(fraction>.25){ctx.moveTo(p.x+12,p.y+10);ctx.lineTo(p.x+19,p.y+6);}if(fraction>.5){ctx.moveTo(p.x+9,p.y+17);ctx.lineTo(p.x+17,p.y+22);ctx.moveTo(p.x+10,p.y+12);ctx.lineTo(p.x+2,p.y+18);}if(fraction>.75){ctx.moveTo(p.x+12,p.y+10);ctx.lineTo(p.x+22,p.y+16);}ctx.stroke();}
-  function drawOutpostHints(){if(get(10,23)!==T.CORE||survival?.chapter>1)return;ctx.font='11px monospace';ctx.fillStyle='#ffe0a0';if(!stats.coreReached){const p=tileRect(9,27);ctx.strokeStyle='#ffcf69';ctx.setLineDash([3,3]);ctx.strokeRect(p.x,p.y,TILE,TILE);ctx.setLineDash([]);ctx.fillText('Bridge with wire ↓',p.x-48,p.y-8);}if(!meta.get(idx(12,28))?.running){const p=tileRect(11,28);ctx.strokeStyle='#7fdbcf';ctx.strokeRect(p.x+1,p.y+1,22,22);ctx.fillStyle='#9defdb';ctx.fillText('Generator ↓',p.x,p.y-7);}if(stats.copperMined<8){const p=tileRect(17,30);ctx.fillStyle='#e9bf87';ctx.fillText('Copper below ↓',p.x+18,p.y+12);}}
   function drawUnderground(){const y0=Math.max(0,Math.floor(camera.y/TILE)),y1=Math.min(WORLD_H,Math.ceil((camera.y+vh)/TILE));for(let y=y0;y<y1;y++){if(y<33)continue;ctx.fillStyle=y<44?'#172b31':y<55?'#1d2934':y<66?'#1f233a':y<75?'#24232c':'#2b1825';ctx.fillRect(0,y*TILE-camera.y,vw,TILE);ctx.fillStyle='#ffffff08';for(let x=Math.max(0,Math.floor(camera.x/TILE));x<Math.min(WORLD_W,(camera.x+vw)/TILE);x++)if(hash(x,y)>.85)ctx.fillRect(x*TILE-camera.x+4,y*TILE-camera.y+5,9,2);}}
   function burst(x,y,color){for(let i=0;i<8&&particles.length<96;i++)particles.push({x,y,vx:(Math.random()-.5)*100,vy:-30-Math.random()*80,life:.6,color});}
   function drawParticles(){for(const p of particles){ctx.fillStyle=p.color;ctx.globalAlpha=Math.max(0,p.life/.6);ctx.fillRect(p.x-camera.x,p.y-camera.y,3,3)}ctx.globalAlpha=1;}
   function updateParticles(dt){for(const p of particles){p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=180*dt;}for(let i=particles.length-1;i>=0;i--)if(particles[i].life<=0)particles.splice(i,1);}
   function drawBuildPreview(){
-    const plan=blueprint?blueprintCells(blueprint,pointer.tx,pointer.ty):buildDrag?lineCells().map(([x,y])=>({x,y,id:items[selected]?.tile})):inputMode==='build'?[{x:pointer.tx,y:pointer.ty,id:items[selected]?.tile}]:[];
-    for(const p of plan){if(!defs[p.id])continue;const r=tileRect(p.x,p.y),valid=placementValid(p.x,p.y,p.id);ctx.fillStyle=valid?'#74edc044':'#ff676755';ctx.fillRect(r.x,r.y,TILE,TILE);ctx.strokeStyle=valid?'#7ff5cd':'#ff7979';ctx.strokeRect(r.x+1,r.y+1,22,22);ctx.fillStyle='#fff';ctx.font='12px monospace';ctx.fillText(defs[p.id].icon||'▥',r.x+6,r.y+16);}
+    const item=selectedItem();
+    if(!pointer.aimed||inspected||guides?.isPlacing()&&!blueprint)return null;
+    const drag=buildDrag||touchLine;
+    const plan=blueprint?blueprintCells(blueprint,pointer.tx,pointer.ty).map(p=>({...p,reason:!placementValid(p.x,p.y,p.id)?'Blocked or out of reach.':!blueprintStatus(blueprint).canBuild?'Missing components.':null})):
+      item?.tile>=0?placementPlan(drag?lineCells(drag,item):[[pointer.tx,pointer.ty]],item).cells:[];
+    for(const cell of plan){
+      if(!defs[cell.id])continue;
+      const r=tileRect(cell.x,cell.y),valid=!cell.reason;
+      ctx.save();ctx.translate(r.x,r.y);ctx.globalAlpha=valid?.67:.35;
+      if(!art?.tile(ctx,cell.id,{rot:cell.rot},gameTime)){
+        ctx.fillStyle=item?.color||'#8bd7bb';ctx.fillRect(3,3,18,18);
+      }
+      ctx.restore();
+      ctx.fillStyle=valid?'#74edc027':'#ff676747';ctx.fillRect(r.x,r.y,TILE,TILE);
+      ctx.strokeStyle=valid?'#7ff5cd':'#ff7979';ctx.lineWidth=1;ctx.strokeRect(r.x+1,r.y+1,22,22);
+      if(valid)drawProposedPorts(cell,r);
+    }
+    if(blueprint||!plan.length)return null;
+    const count=plan.filter(p=>!p.reason).length,reason=plan.find(p=>p.reason)?.reason,first=plan[0],last=plan[Math.max(0,count-1)];
+    const direction=E.ports(defs[item.tile],{rot:first.rot}).length?' · '+directions[first.rot]:'';
+    const cost=count?count+' '+item.name+direction:'';
+    return {label:[cost,reason].filter(Boolean).join(' · '),x:last.x,y:last.y};
+  }
+  function drawProposedPorts(cell,r){
+    const ports=E.ports(defs[cell.id],{rot:cell.rot||0});
+    for(const p of ports){
+      const [dx,dy]=E.DIRS[p.side],x=cell.x+dx,y=cell.y+dy;
+      if(!inside(x,y))continue;
+      const matching=E.ports(defs[get(x,y)],meta.get(idx(x,y))||{}).find(other=>other.side===(p.side+2)%4&&(E.compatible(p,other)||E.compatible(other,p)));
+      if(!matching)continue;
+      const startX=r.x+12,startY=r.y+12,endX=startX+dx*20,endY=startY+dy*20;
+      const sign=E.compatible(p,matching)?1:-1,ax=startX+dx*15,ay=startY+dy*15;
+      ctx.strokeStyle=ctx.fillStyle=E.COLORS[p.type];ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(startX,startY);ctx.lineTo(endX,endY);ctx.stroke();
+      if(p.mode==='both'&&matching.mode==='both')ctx.fillRect(ax-3,ay-3,6,6);
+      else{ctx.beginPath();ctx.moveTo(ax+dx*sign*4,ay+dy*sign*4);ctx.lineTo(ax-dx*sign*3+dy*4,ay-dy*sign*3-dx*4);ctx.lineTo(ax-dx*sign*3-dy*4,ay-dy*sign*3+dx*4);ctx.fill();}
+    }
+  }
+  function updateAimLabel(info){
+    const el=document.getElementById('cursorLabel');
+    if(inspected||!pointer.aimed){el.style.display='none';return;}
+    if(!info){
+      const {tx:x,ty:y}=pointer,id=get(x,y),d=defs[id];
+      if(inside(x,y)&&id&&d&&(lens||distanceToTile(x,y)<=6&&(d.door||id===T.WORKBENCH||d.transport)))
+        info={label:d.name+(lens?'':' · '+(touchAim?'Use':'Right-click')),x,y};
+    }
+    if(!info?.label){el.style.display='none';return;}
+    const target=tileRect(info.x,info.y);
+    el.style.display='block';
+    if(el.textContent!==info.label)el.textContent=info.label;
+    el.style.left=Math.max(7,Math.min(vw-190,target.x+25))+'px';el.style.top=Math.max(9,target.y-18)+'px';
   }
   function blueprintCells(plan,x,y){return (plan.placements||[]).map(p=>({...p,x:x+p.x,y:y+p.y,id:items.find(i=>i.key===p.key)?.tile}));}
   function blueprintStatus(plan){const missing=Object.entries(plan.cost||{}).filter(([key,n])=>(inventory[key]||0)<n);return {canBuild:missing.length===0,reason:missing.length?'Missing '+missing.map(([k,n])=>`${n-(inventory[k]||0)} ${k}`).join(', '):'Aim at clear space within reach. Every component uses your inventory.'};}
@@ -203,7 +338,7 @@
     for(const [key,n] of Object.entries(blueprint.cost))inventory[key]-=n;
     for(const p of cells)set(p.x,p.y,p.id,{...defaultMeta(p.id),rot:p.rot||0,...p.meta});
     for(const group of blueprint.links||[])engine.link(group.map(([x,y])=>idx(pointer.tx+x,pointer.ty+y)));
-    stats.built=(stats.built||0)+cells.length;showToast(`${blueprint.name} built. Inspect its ports to finish connections and supply materials.`);blueprint=null;renderHotbar();simulateNetworks();return true;
+    stats.built=(stats.built||0)+cells.length;for(const p of cells)guides?.placed(p.key,p.x,p.y);showToast(`${blueprint.name} built. Inspect its ports to finish connections and supply materials.`);blueprint=null;renderHotbar();simulateNetworks();saveGame();return true;
   }
   function lineOfSight(x1,y1,x2,y2){const n=Math.ceil(Math.hypot(x2-x1,y2-y1)*4),sx=Math.floor(x1),sy=Math.floor(y1);for(let i=1;i<n;i++){const x=Math.floor(x1+(x2-x1)*i/n),y=Math.floor(y1+(y2-y1)*i/n);if(x===sx&&y===sy)continue;const id=get(x,y);if(defs[id]?.solid&&!defs[id]?.platform&&!meta.get(idx(x,y))?.open)return false;}return true;}
   function unlockAudio(){if(audioContext)return;const AC=globalThis.AudioContext||globalThis.webkitAudioContext;if(!AC)return;try{audioContext=new AC();musicGain=audioContext.createGain();musicGain.gain.value=settings.musicVolume*.025;musicGain.connect(audioContext.destination);musicNode=audioContext.createOscillator();musicNode.type='sine';musicNode.frequency.value=82.4;musicNode.connect(musicGain);musicNode.start();}catch{audioContext=null;}}
@@ -237,6 +372,7 @@
     const left=keys.KeyA||keys.ArrowLeft||keys.touchleft,right=keys.KeyD||keys.ArrowRight||keys.touchright;
     const up=keys.KeyW||keys.ArrowUp||keys.touchjump,down=keys.KeyS||keys.ArrowDown||keys.touchdown;
     const dir=(left?-1:0)+(right?1:0),onLadder=ropeDismount<=0&&playerTouchesLadder(),accel=player.onGround?1150:650;
+    player.climbing=onLadder&&!player.onGround;
     ropeDismount=Math.max(0,ropeDismount-dt);
     ledgeDrop=Math.max(0,ledgeDrop-dt);
     if(down&&player.onGround&&!onLadder&&standingOnPlatform()){ledgeDrop=.22;player.onGround=false;player.y+=3;player.vy=Math.max(player.vy,70)}
@@ -258,50 +394,220 @@
     if(player.y>WORLD_H*TILE){player.health-=10;if(survival){if(player.health<=0)survival.respawn();else Object.assign(player,survival.safeCheckpoint(),{vx:0,vy:0});}else{player.x=9*TILE;player.y=(groundAt(9)-4)*TILE;player.vy=0;}showToast('Recovered at your base checkpoint')}
     player.x=Math.max(TILE,Math.min(WORLD_W*TILE-player.w-TILE,player.x));
     if(Math.abs(player.x/TILE-205)<4&&!stats.coreFound){stats.coreFound=true;showToast('Foundry Core found — connect a 6-power grid')}
-    applyConveyors(dt);camera.x+=(player.x+player.w/2-vw*.5-camera.x)*Math.min(1,dt*6);camera.y+=(player.y+player.h/2-vh*.55-camera.y)*Math.min(1,dt*5);camera.x=Math.max(0,Math.min(WORLD_W*TILE-vw,camera.x));camera.y=Math.max(0,Math.min(WORLD_H*TILE-vh,camera.y))
+    applyConveyors(dt);followPlayer(dt);
+  }
+  function followPlayer(dt){camera.x+=(player.x+player.w/2-vw*.5-camera.x)*Math.min(1,dt*6);camera.y+=(player.y+player.h/2-vh*.55-camera.y)*Math.min(1,dt*5);camera.x=Math.max(0,Math.min(WORLD_W*TILE-vw,camera.x));camera.y=Math.max(0,Math.min(WORLD_H*TILE-vh,camera.y))
   }
   function applyConveyors(dt){const footX=Math.floor((player.x+player.w/2)/TILE),footY=Math.floor((player.y+player.h+2)/TILE),m=meta.get(idx(footX,footY));if(get(footX,footY)===T.CONVEYOR&&m&&m.running){const nx=player.x+((m.rot||0)===2?-1:1)*Math.abs(m.speed||1)*75*dt;if(!rectCollides(nx,player.y,player.w,player.h))player.x=nx}}
   function distanceToTile(x,y){return Math.hypot(x+.5-(player.x+player.w/2)/TILE,y+.5-(player.y+player.h/2)/TILE)}
-  function updatePointer(e){const r=canvas.getBoundingClientRect();pointer.x=(e.clientX-r.left)*vw/r.width;pointer.y=(e.clientY-r.top)*vh/r.height;pointer.wx=pointer.x+camera.x;pointer.wy=pointer.y+camera.y;pointer.tx=Math.floor(pointer.wx/TILE);pointer.ty=Math.floor(pointer.wy/TILE);updateInspector()}
-  canvas.addEventListener('pointermove',e=>{updatePointer(e);if(linkDrag){linkDrag.x1=pointer.tx;linkDrag.y1=pointer.ty}if(buildDrag){buildDrag.x1=pointer.tx;buildDrag.y1=pointer.ty}});
-  canvas.addEventListener('pointerdown',e=>{
-    if(modalOpen)return;updatePointer(e);unlockAudio();pointer.down=true;pointer.button=e.button;canvas.setPointerCapture?.(e.pointerId);
-    if(e.button===0&&blueprint){placeBlueprint();pointer.down=false;return}
-    if(e.button===0&&items[selected]?.key==='link'&&distanceToTile(pointer.tx,pointer.ty)<9){linkDrag={x0:pointer.tx,y0:pointer.ty,x1:pointer.tx,y1:pointer.ty};return}
-    if(e.button===0&&inputMode==='inspect'){if(!lens)toggleLens();updateInspector();pointer.down=false;return}
-    if(e.button===0&&inputMode==='interact'){interactAtPointer();pointer.down=false;return}
-    if(e.button===0&&inputMode==='combat'){survival?.attack(pointer.wx,pointer.wy);pointer.down=false;return}
-    if(e.button===2||inputMode==='build'){
-      e.preventDefault();if(isLinePart(items[selected]?.tile)&&get(pointer.tx,pointer.ty)===T.AIR){buildDrag={x0:pointer.tx,y0:pointer.ty,x1:pointer.tx,y1:pointer.ty};pointer.down=false;return}
-      useOrPlace();pointer.down=false;
+  const directions=['right','down','left','up'];
+  function selectedItem(){return items[selected];}
+  function selectedAction(){
+    const item=selectedItem();
+    if(item?.tool==='mining')return 'mine';
+    if(item?.weapon)return 'combat';
+    if(item?.key==='link'||item?.tile>=0)return 'build';
+    return 'interact';
+  }
+  function targetAt(x,y){
+    pointer.tx=x;pointer.ty=y;
+    pointer.wx=(x+.5)*TILE;pointer.wy=(y+.5)*TILE;
+    pointer.aimed=true;
+  }
+  function updatePointer(e){
+    const r=canvas.getBoundingClientRect();
+    pointer.x=(e.clientX-r.left)*vw/r.width;pointer.y=(e.clientY-r.top)*vh/r.height;
+    const wx=pointer.x+camera.x,wy=pointer.y+camera.y;
+    targetAt(Math.floor(wx/TILE),Math.floor(wy/TILE));
+    if(e.pointerType!=='touch'){pointer.wx=wx;pointer.wy=wy;touchAim=null;}
+  }
+  function miningTarget(){
+    const {tx:x,ty:y}=pointer;
+    if(!settings.smartCursor||get(x,y)!==T.AIR)return [x,y];
+    const candidates=[];
+    for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
+      const tx=x+dx,ty=y+dy,id=get(tx,ty);
+      if(inside(tx,ty)&&id&&id!==T.CORE&&distanceToTile(tx,ty)<=6)
+        candidates.push({x:tx,y:ty,score:Math.hypot(dx,dy)+distanceToTile(tx,ty)*.08});
     }
+    candidates.sort((a,b)=>a.score-b.score);
+    return candidates.length?[candidates[0].x,candidates[0].y]:[x,y];
+  }
+  function makeDrag(){return {x0:pointer.tx,y0:pointer.ty,x1:pointer.tx,y1:pointer.ty};}
+  function doPrimary(touch=false){
+    if(!pointer.aimed||inspected||starship?.active)return;
+    if(blueprint){placeBlueprint();return;}
+    if(guides?.act(pointer.tx,pointer.ty))return;
+    const item=selectedItem(),action=selectedAction();
+    if(action==='mine'){pointer.down=true;pointer.button=0;return;}
+    if(action==='combat'){
+      survival?.selectWeapon(item.key);
+      if(survival?.attack(pointer.wx,pointer.wy))sound('iron');
+      return;
+    }
+    if(item?.key==='link'){
+      if(distanceToTile(pointer.tx,pointer.ty)>=9)return showToast('Aim at blocks within reach.');
+      if(!touch||!linkDrag){linkDrag=makeDrag();if(touch)showToast('Aim at the opposite corner, then tap Link.');}
+      else{Object.assign(linkDrag,{x1:pointer.tx,y1:pointer.ty});finishLink();linkDrag=null;}
+      return;
+    }
+    if(action==='build'){
+      if(touch&&touchLine){placeLine(touchLine);touchLine=null;return;}
+      if(!touch&&isLinePart(item.tile)){buildDrag=makeDrag();return;}
+      placeAtAim();
+    }
+  }
+  canvas.addEventListener('pointermove',e=>{
+    if(modalOpen||(activePointer!==null&&activePointer!==e.pointerId))return;
+    if(e.pointerType==='touch'&&!touchStart)return;
+    updatePointer(e);
+    if(e.pointerType==='touch')touchAim=[pointer.tx,pointer.ty];
+    if(linkDrag&&e.pointerType!=='touch'){linkDrag.x1=pointer.tx;linkDrag.y1=pointer.ty;}
+    if(buildDrag){buildDrag.x1=pointer.tx;buildDrag.y1=pointer.ty;}
+    if(touchStart&&isLinePart(selectedItem()?.tile)&&!blueprint&&!guides?.isPlacing())
+      touchLine={...touchStart,x1:pointer.tx,y1:pointer.ty};
   });
-  function releasePointer(commit=true){pointer.down=false;if(linkDrag&&commit)finishLink();linkDrag=null;if(buildDrag&&commit)placeLine();buildDrag=null;mining.key='';mining.progress=0;}
-  canvas.addEventListener('pointerup',()=>releasePointer());canvas.addEventListener('pointercancel',()=>releasePointer(false));canvas.addEventListener('lostpointercapture',()=>{pointer.down=false});canvas.addEventListener('contextmenu',e=>e.preventDefault());
-  function isLinePart(id){return defs[id]?.ladder||defs[id]?.platform||[T.WIRE,T.SIGNAL,T.CONVEYOR,T.RAIL].includes(id)}
-  function lineCells(){if(!buildDrag)return [];const id=items[selected]?.tile,vertical=defs[id]?.ladder||id===T.RAIL||Math.abs(buildDrag.y1-buildDrag.y0)>Math.abs(buildDrag.x1-buildDrag.x0),cells=[],amount=Math.min(50,Math.abs(vertical?buildDrag.y1-buildDrag.y0:buildDrag.x1-buildDrag.x0));for(let i=0;i<=amount;i++)cells.push([buildDrag.x0+(vertical?0:Math.sign(buildDrag.x1-buildDrag.x0)*i),buildDrag.y0+(vertical?Math.sign(buildDrag.y1-buildDrag.y0)*i:0)]);return cells;}
-  function supportedRope(x,y,id){if(!defs[id]?.rope)return true;for(let yy=y-1;yy>=Math.max(0,y-60);yy--){const above=get(x,yy);if(defs[above]?.rope)continue;return !!(defs[above]?.solid||defs[above]?.anchor||defs[above]?.ladder||[T.WINCH,T.BEAM].includes(above));}return false;}
-  function placementValid(x,y,id){return inside(x,y)&&get(x,y)===T.AIR&&distanceToTile(x,y)<=6&&(!defs[id]?.solid||!playerOverlapsTile(x,y))&&supportedRope(x,y,id)}
-  function placeLine(){const old={tx:pointer.tx,ty:pointer.ty},cells=lineCells();let count=0;for(const [x,y] of cells){if(!placementValid(x,y,items[selected].tile))break;pointer.tx=x;pointer.ty=y;if(placeSelected(x,y))count++;else break;}Object.assign(pointer,old);renderHotbar();simulateNetworks();showToast(count?`${count} sections placed`:'Line blocked, unsupported or outside reach.');}
-  function placeSelected(x,y){const item=items[selected];if(!item||item.tile<0||(inventory[item.key]||0)<=0||!placementValid(x,y,item.tile))return false;const m=defaultMeta(item.tile);if(smartPlacement&&!manualRotation&&engine.smartRotation)m.rot=engine.smartRotation(x,y,item.tile,rotation);set(x,y,item.tile,m);inventory[item.key]--;stats.built=(stats.built||0)+1;if(defs[item.tile]?.ladder)stats.laddersBuilt=(stats.laddersBuilt||0)+1;sound('build');return true;}
-  function interactAtPointer(){const id=get(pointer.tx,pointer.ty),k=idx(pointer.tx,pointer.ty);if(distanceToTile(pointer.tx,pointer.ty)>6)return showToast('Too far away');if(defs[id]?.transport){if(!lens)toggleLens();updateInspector();showToast('Use the inspector to load materials, select a recipe, or collect items.');return;}if(configureComponent(id,k,meta.get(k)||{}))return;showToast('Aim at a machine, door or storage.');}
-  function useOrPlace(){
-    const x=pointer.tx,y=pointer.ty,id=get(x,y),k=idx(x,y),m=meta.get(k)||{};
-    if(distanceToTile(x,y)>6){showToast('Too far away');return}
-    if(id && configureComponent(id,k,m))return;
-    const item=items[selected];if(item.tile<0)return;
-    if(id!==T.AIR){showToast('That space is occupied');return}
-    if((inventory[item.key]||0)<=0){showToast(`No ${item.name} left — press E to fabricate`);return}
-    if(defs[item.tile].solid&&playerOverlapsTile(x,y)){showToast('Cannot build inside yourself');return}
-    if(!supportedRope(x,y,item.tile)){showToast('Rope needs a ceiling, wall anchor or supported rope above it.');return}
-    if(!placeSelected(x,y))return;renderHotbar();
-    showToast(`${item.name} placed — ${['right','down','left','up'][rotation]}`);simulateNetworks();
+  canvas.addEventListener('pointerdown',e=>{
+    if(modalOpen||activePointer!==null||![0,2].includes(e.button))return;
+    updatePointer(e);unlockAudio();
+    if(e.pointerType==='touch'){
+      activePointer=e.pointerId;canvas.setPointerCapture?.(e.pointerId);
+      touchAim=[pointer.tx,pointer.ty];touchStart=makeDrag();touchLine=null;return;
+    }
+    if(e.button===2){e.preventDefault();interactAtPointer();return;}
+    activePointer=e.pointerId;canvas.setPointerCapture?.(e.pointerId);
+    const item=selectedItem();
+    if(blueprint||guides?.isPlacing()||item?.tile>=0&&!isLinePart(item.tile))
+      pendingClick=[pointer.tx,pointer.ty];
+    else doPrimary();
+  });
+  function releasePointer(commit=true){
+    pointer.down=false;
+    const captured=activePointer;
+    activePointer=null;
+    if(captured!==null&&canvas.hasPointerCapture?.(captured))canvas.releasePointerCapture(captured);
+    if(touchStart){
+      if(!commit)touchLine=null;
+      if(touchLine&&touchLine.x0===touchLine.x1&&touchLine.y0===touchLine.y1)touchLine=null;
+      touchStart=null;
+    }else{
+      if(commit&&pendingClick?.[0]===pointer.tx&&pendingClick?.[1]===pointer.ty)doPrimary();
+      if(linkDrag&&commit)finishLink();
+      linkDrag=null;
+      if(buildDrag&&commit)placeLine(buildDrag);
+    }
+    pendingClick=null;buildDrag=null;mining.key='';mining.progress=0;
+  }
+  function clearActions(){
+    releasePointer(false);touchLine=null;linkDrag=null;touchConfirm=null;
+    for(const k of Object.keys(keys))keys[k]=false;
+  }
+  canvas.addEventListener('pointerup',e=>{
+    if(activePointer!==e.pointerId)return;
+    updatePointer(e);
+    if(buildDrag){buildDrag.x1=pointer.tx;buildDrag.y1=pointer.ty;}
+    if(linkDrag&&!touchStart){linkDrag.x1=pointer.tx;linkDrag.y1=pointer.ty;}
+    if(touchStart)touchAim=[pointer.tx,pointer.ty];
+    releasePointer();
+  });
+  for(const name of ['pointercancel','lostpointercapture'])canvas.addEventListener(name,e=>{
+    if(activePointer===e.pointerId)releasePointer(false);
+  });
+  canvas.addEventListener('contextmenu',e=>e.preventDefault());
+  function isLinePart(id){
+    return defs[id]?.ladder||defs[id]?.platform||[T.DIRT,T.STONE,T.COPPER_BLOCK,T.IRON_BLOCK,T.FRAME,T.BEAM,T.WIRE,T.SIGNAL,T.RAIL,T.SUPER_CABLE,T.FIBER_WIRE].includes(id)||defs[id]?.lineBuild;
+  }
+  function lineCells(drag,item){
+    const id=item.tile,dx=drag.x1-drag.x0,dy=drag.y1-drag.y0;
+    const vertical=defs[id]?.ladder||defs[id]?.rail||Math.abs(dy)>Math.abs(dx);
+    const cells=[],amount=Math.min(50,Math.abs(vertical?dy:dx));
+    for(let i=0;i<=amount;i++)cells.push([drag.x0+(vertical?0:Math.sign(dx)*i),drag.y0+(vertical?Math.sign(dy)*i:0)]);
+    return cells;
+  }
+  function supportedRope(x,y,id,planned){
+    if(!defs[id]?.rope)return true;
+    for(let yy=y-1;yy>=Math.max(0,y-60);yy--){
+      const above=planned?.get(idx(x,yy))?.id??get(x,yy);
+      if(defs[above]?.rope)continue;
+      return !!(defs[above]?.solid||defs[above]?.anchor||defs[above]?.ladder||[T.WINCH,T.BEAM].includes(above));
+    }
+    return false;
+  }
+  function placementBlock(x,y,item,planned){
+    const id=item?.tile;
+    if(id==null||id<0)return 'Choose a building part.';
+    if(!inside(x,y)||distanceToTile(x,y)>6)return 'Out of reach.';
+    if(starship?.hitTest(x,y))return 'Tile occupied by the starship.';
+    if(get(x,y)!==T.AIR||planned?.has(idx(x,y)))return 'Tile occupied.';
+    if(defs[id]?.solid&&playerOverlapsTile(x,y))return 'Move clear of the tile.';
+    if(!supportedRope(x,y,id,planned))return 'Rope needs support above.';
+    return null;
+  }
+  function placementValid(x,y,id){return !placementBlock(x,y,{tile:id});}
+  function placementRotation(x,y,item){
+    return smartPlacement&&!manualRotation?engine.smartRotation(x,y,item.tile,rotation):rotation;
+  }
+  function placementPlan(cells,item){
+    const plan=[],placed=new Map();
+    let count=0,reason=null;
+    for(const [x,y] of cells){
+      const rot=placementRotation(x,y,item);
+      reason=reason||placementBlock(x,y,item,placed)||((inventory[item.key]||0)<=count?'Out of '+item.name+'.':null);
+      const cell={x,y,id:item.tile,rot,reason};
+      plan.push(cell);
+      if(!reason){placed.set(idx(x,y),cell);count++;}
+    }
+    return {item,cells:plan,count,reason};
+  }
+  function commitPlacement(x,y,item,rot,extra={}){
+    if(placementBlock(x,y,item)||(inventory[item.key]||0)<=0)return false;
+    set(x,y,item.tile,{...defaultMeta(item.tile),rot,...extra});
+    inventory[item.key]--;stats.built=(stats.built||0)+1;
+    if(defs[item.tile]?.ladder)stats.laddersBuilt=(stats.laddersBuilt||0)+1;
+    guides?.placed(item.key,x,y);sound('build');return true;
+  }
+  function placeLine(drag){
+    const item=selectedItem();if(!item||item.tile<0)return;
+    const plan=placementPlan(lineCells(drag,item),item);
+    let count=0;
+    for(const cell of plan.cells){if(cell.reason||!commitPlacement(cell.x,cell.y,item,cell.rot))break;count++;}
+    if(count){renderHotbar();simulateNetworks();}
+    showToast(count?[count+' '+(count===1?'tile':'tiles')+' placed',plan.reason].filter(Boolean).join(' · '):plan.reason||'Line blocked.');
+  }
+  function placeAtAim(){
+    const item=selectedItem();if(!item||item.tile<0)return;
+    const {tx:x,ty:y}=pointer,plan=placementPlan([[x,y]],item),cell=plan.cells[0];
+    if(plan.reason)return showToast(plan.reason);
+    if(commitPlacement(x,y,item,cell.rot)){renderHotbar();simulateNetworks();}
+  }
+  function interactAtPointer(){
+    const {tx:x,ty:y}=pointer,id=get(x,y),k=idx(x,y),d=defs[id];
+    if(starship&&(starship.active||starship.hitTest(x,y))){starship.interact(x,y);clearActions();return;}
+    if(!inside(x,y)||distanceToTile(x,y)>6)return showToast('Move within reach.');
+    if(id===T.WORKBENCH){
+      guides?.benchOpened();
+      workshop?.open('craft','workbench');
+      return;
+    }
+    if(id===T.DOOR||id===T.SWITCH){configureComponent(id,k,meta.get(k)||{});return;}
+    if(id&&d&&(d.ports?.length||d.transport||d.producer||d.mechanical||d.electric||d.signal)){
+      inspected={x,y,id,k,node:meta.get(k)?.nodeId};
+      document.getElementById('lensPanel').classList.add('show');
+      clearActions();updateInspector();document.getElementById('inspectorClose')?.focus({preventScroll:true});return;
+    }
+    showToast('Aim at a nearby machine, door, or switch.');
   }
   function defaultMeta(id){const m={rot:rotation,on:false,powered:false,active:false,running:false,linked:false};if(id===T.GEAR)m.mode=1;if(id===T.DOOR)m.open=false;return m}
   function playerOverlapsTile(x,y){return player.x<x*TILE+TILE&&player.x+player.w>x*TILE&&player.y<y*TILE+TILE&&player.y+player.h>y*TILE}
   function mineStep(dt){
-    if(!pointer.down||pointer.button!==0||items[selected]?.key==='link'||modalOpen||!['mine'].includes(inputMode))return;
-    const x=pointer.tx,y=pointer.ty;if(!inside(x,y)||distanceToTile(x,y)>6)return;const id=get(x,y);if(!id||id===T.CORE)return;
+    if(!pointer.down||pointer.button!==0||modalOpen||inspected||starship?.active||selectedAction()!=='mine')return;
+    const [x,y]=miningTarget(),id=get(x,y);
+    if(!inside(x,y)||distanceToTile(x,y)>6||!id||id===T.CORE){mining.key='';mining.progress=0;return;}
+    const requirement=defs[id].miningTier||0;
+    const carriedTool=inventory.poweredMiningTool&&survival?.energy>1?3:inventory.steelDrillTool?2:inventory.reinforcedPickaxe?1:0;
+    const issue=robotics?.canDismantle(x,y)||starship?.canDismantle(x,y)||
+      (requirement>carriedTool?'Needs '+(['','a reinforced pickaxe','a steel drill tool','a charged powered mining tool','a Plasma Excavator'][requirement]||'stronger equipment')+'.':null);
+    if(issue){showToast(issue);pointer.down=false;mining.key='';mining.progress=0;return;}
     const k=x+','+y;if(mining.key!==k){mining.key=k;mining.progress=0}
     const multiplier=survival?.miningMultiplier(id)||1;mining.progress+=dt*multiplier;survival?.spendToolEnergy(dt);
     if(mining.progress<(defs[id]?.hard||1))return;
@@ -338,8 +644,8 @@
       const id=world[k],x=k%WORLD_W,y=Math.floor(k/WORLD_W);m.machineClock=(m.machineClock||0)+dt;
       if(id===T.PISTON){
         const enabled=m.running&&m.signalOK!==false;
-        if(enabled&&!m.extended){if(operatePiston(x,y,m,1))m.extended=true}
-        else if(!enabled&&m.extended&&m.running){if(operatePiston(x,y,m,-1))m.extended=false}
+        if(enabled&&!m.extended){if(operatePiston(x,y,m,1)){m.extended=true;m.animationTime=gameTime;}}
+        else if(!enabled&&m.extended&&m.running){if(operatePiston(x,y,m,-1)){m.extended=false;m.animationTime=gameTime;}}
       }else if(id===T.WINCH&&m.running&&!m.manualPaused&&m.machineClock>.5/Math.max(.1,Math.abs(m.speed))){
         const direction=Object.prototype.hasOwnProperty.call(m.signalInputs||{},'EN')?(m.signalInputs.EN?-1:1):(m.liftDirection||-1);
         m.machineClock=0;if(operateWinch(x,y,m,direction))stats.motionEvents++;
@@ -356,6 +662,13 @@
   }
   const dirs=[[1,0],[0,1],[-1,0],[0,-1]];
   function collectLinked(x,y){return engine.group(x,y)}
+  function markTranslation(nx,ny,previous){
+    tileMotions.set(idx(nx,ny),{dx:previous.x-nx,dy:previous.y-ny,start:gameTime});
+  }
+  function markRiderMotion(oldX,oldY){
+    const left=riderMotion?motionRemaining(riderMotion.start):0;
+    riderMotion={dx:oldX-player.x+(riderMotion?.dx||0)*left,dy:oldY-player.y+(riderMotion?.dy||0)*left,start:gameTime};
+  }
   function moveGroup(group,dx,dy,torque,machine={}){
     const own=new Set(group.map(p=>idx(...p))),weight=group.reduce((n,[x,y])=>n+(defs[get(x,y)]?.weight??1),0);
     const required=weight*(dy<0?1.25:1);machine.requiredTorque=required;machine.availableTorque=torque||0;
@@ -370,9 +683,11 @@
       if(!riders&&defs[get(x,y)]?.solid&&playerOverlapsTile(nx,ny)){machine.fault='PLAYER IN PATH';return false}
     }
     if(riders&&!canCarryPlayer(dx*TILE,dy*TILE,own)){machine.fault='RIDER PATH BLOCKED';return false}
-    const parts=group.map(([x,y])=>({x,y,id:get(x,y),m:meta.get(idx(x,y))}));
-    for(const p of parts)set(p.x,p.y,T.AIR);for(const p of parts)set(p.x+dx,p.y+dy,p.id,p.m);
-    if(riders){player.x+=dx*TILE;player.y+=dy*TILE}machine.fault='';return true;
+    const parts=group.map(([x,y])=>({x,y,id:get(x,y),m:meta.get(idx(x,y)),visual:tileMotion(x,y)}));
+    for(const p of parts)set(p.x,p.y,T.AIR);
+    for(const p of parts){set(p.x+dx,p.y+dy,p.id,p.m);markTranslation(p.x+dx,p.y+dy,p.visual);}
+    if(riders){const {x,y}=player;player.x+=dx*TILE;player.y+=dy*TILE;markRiderMotion(x,y);}
+    machine.fault='';return true;
   }
   function operatePiston(x,y,m,way){
     const [dx,dy]=dirs[m.rot||0],fx=x+dx*(way>0?1:2),fy=y+dy*(way>0?1:2),id=get(fx,fy);
@@ -390,7 +705,16 @@
   }
   function moveLiftLoad(group,x,y,m,dy){
     if(V){const counterGroup=V.findCounterweight(engine,group,x,y);m.counterweightAssembly=counterGroup.length?meta.get(idx(...counterGroup[0]))?.assembly:null;
-      if(counterGroup.length||m.guided||V.hasGuide(group,get,T))return V.moveLift({group,counterGroup,x,y,m,dy,torque:m.torque,engine,get,set,meta:()=>meta,defs,T,player,tile:TILE,width:WORLD_W,height:WORLD_H});}
+      if(counterGroup.length||m.guided||V.hasGuide(group,get,T)){
+        const oldX=player.x,oldY=player.y;
+        const active=[...group.map(([x,y])=>[x,y+dy,tileMotion(x,y)]),...counterGroup.map(([x,y])=>[x,y-dy,tileMotion(x,y)])];
+        const moved=V.moveLift({group,counterGroup,x,y,m,dy,torque:m.torque,engine,get,set,meta:()=>meta,defs,T,player,tile:TILE,width:WORLD_W,height:WORLD_H});
+        if(moved){
+          for(const [x,ny,previous] of active)markTranslation(x,ny,previous);
+          if(player.y!==oldY)markRiderMotion(oldX,oldY);
+        }
+        return moved;
+      }}
     m.counterbalanced=false;return moveGroup(group,0,dy,m.torque,m);
   }
   function assemblyColor(id){return `hsl(${((id||1)*137.5)%360} 80% 70%)`}
@@ -407,7 +731,7 @@
     if(id===T.TIMER||id===T.PULSE){m.delay=E.DELAYS[(E.DELAYS.indexOf(m.delay||1)+1)%E.DELAYS.length];m.timer=m.phase=0;showToast(`${defs[id].name}: ${m.delay}s`);return mode()}
     if(id===T.COUNTER){m.target=((m.target||3)%15)+1;showToast(`Counter target: ${m.target}; top port resets count`);return mode()}
     if(id===T.FILTER){const choices=['iron','copper','stone','wood','crystal','dirt','obsidian',...items.filter(i=>i.tile>0).map(i=>i.key)];
-      m.filter=keys.ShiftLeft?items[selected].key:choices[(choices.indexOf(m.filter||'iron')+1)%choices.length];showToast(`Filter: ${m.filter} (Shift-right-click: held part)`);return mode()}
+      m.filter=keys.ShiftLeft?(selectedItem()?.key||'iron'):choices[(choices.indexOf(m.filter||'iron')+1)%choices.length];showToast(`Filter: ${m.filter} (Shift-right-click: held part)`);return mode()}
     if(id===T.STORAGE){showToast('F: take contents · Shift+F: store selected part · hopper at front extracts');return true}
     if(id===T.BEARING||id===T.HINGE){showToast('Link the load separately. Rear: shaft drive. Front: attach load. Top: hinge control.');return true}
     return false;
@@ -441,7 +765,11 @@
     }
     const parts=group.map(([gx,gy])=>({x:gx,y:gy,id:get(gx,gy),m:meta.get(idx(gx,gy))||{}}));
     for(const p of parts)set(p.x,p.y,T.AIR);
-    for(const p of parts){const nx=x-turn*(p.y-y),ny=y+turn*(p.x-x);set(nx,ny,p.id,{...p.m,rot:((p.m.rot||0)+turn+4)%4});}
+    for(const p of parts){
+      const nx=x-turn*(p.y-y),ny=y+turn*(p.x-x);
+      set(nx,ny,p.id,{...p.m,rot:((p.m.rot||0)+turn+4)%4});
+      tileMotions.set(idx(nx,ny),{pivot:[x,y],turn,start:gameTime});
+    }
     m.fault='';return true;
   }
   function collectDrops(immediate=false){
@@ -459,7 +787,7 @@
     const k=idx(pointer.tx,pointer.ty),id=get(pointer.tx,pointer.ty),m=meta.get(k);
     if(distanceToTile(pointer.tx,pointer.ty)>6||!m||(!defs[id].transport&&id!==T.CONVEYOR)){showToast('Aim at nearby item machinery');return}
     discoverSchematic(m);
-    if(keys.ShiftLeft||keys.ShiftRight){const key=items[selected].key;if((inventory[key]||0)>0){const n=engine.insert(k,key,1);inventory[key]-=n;showToast(n?`${key} inserted`:'Full or filtered')}}
+    if(keys.ShiftLeft||keys.ShiftRight){const key=selectedItem()?.key;if(key&&(inventory[key]||0)>0){const n=engine.insert(k,key,1);inventory[key]-=n;showToast(n?`${key} inserted`:'Full or filtered')}}
     else {let total=0;const buffers=defs[id].producer?[m.outputs||{},...(keys.ShiftLeft?[]:[m.contents||{}])]:[m.contents||{}];for(const buffer of buffers)for(const [key,n] of Object.entries(buffer)){const take=Math.min(n,inventoryRoom());inventory[key]=(inventory[key]||0)+take;buffer[key]-=take;total+=take;if(!buffer[key])delete buffer[key];}showToast(`Collected ${total} items`)}
     renderHotbar();updateInspector();
   }
@@ -473,32 +801,36 @@
   }
   function drawDrops(){
     for(const d of engine.drops){const x=d.x*TILE-camera.x,y=d.y*TILE-camera.y;if(x<-10||y<-10||x>vw+10||y>vh+10)continue;
-      ctx.fillStyle=palette[d.key]||items.find(i=>i.key===d.key)?.color||'#dfdca9';ctx.fillRect(x-3,y-3,7,7);ctx.strokeStyle='#17262b';ctx.strokeRect(x-3,y-3,7,7);
+      const bob=Math.sin(gameTime*4+(d.id||0))*1.4;
+      if(!art?.item(ctx,d.key,x-6,y-6+bob,12)){
+        ctx.fillStyle=palette[d.key]||itemByKey.get(d.key)?.item.color||'#dfdca9';ctx.fillRect(x-3,y-3,7,7);
+        ctx.strokeStyle='#17262b';ctx.strokeRect(x-3,y-3,7,7);
+      }
       if(lens&&d.count>1){ctx.fillStyle='#fff';ctx.font='9px monospace';ctx.fillText(d.count,x+4,y)}
     }
   }
-  function drawEngineeringOverlay(id,m,x,y){
+  function drawEngineeringOverlay(id,m,x,y,painted){
     const ports=E.ports(defs[id],m);
     const cargo=Object.entries(m.contents||{}).find(([,n])=>n>0);
     if(cargo){
       const [key,count]=cargo,[dx,dy]=E.DIRS[m.rot||0];
       const offset=id===T.CONVEYOR&&m.running?((m.itemClock||0)/.25-.5)*14:0;
       ctx.fillStyle=palette[key]||items.find(i=>i.key===key)?.color||'#e4dfa3';
-      ctx.fillRect(9+dx*offset,5+dy*offset,6,6);
+      if(!art?.item(ctx,key,8+dx*offset,4+dy*offset,8))ctx.fillRect(9+dx*offset,5+dy*offset,6,6);
       if(count>1)ctx.fillRect(15+dx*offset,7+dy*offset,3,3);
     }
     if(defs[id].kind==='signal'){ctx.fillStyle=m.active?'#fff79c':'#173139';ctx.fillRect(3,3,4,3)}
-    if(id>=26&&defs[id].mechanical&&m.running){
+    if(!painted&&id>=26&&defs[id].mechanical&&m.running){
       const angle=gameTime*m.speed*Math.PI/2;ctx.strokeStyle='#fff9d1';ctx.lineWidth=2;
       ctx.beginPath();ctx.moveTo(12,12);ctx.lineTo(12+Math.cos(angle)*7,12+Math.sin(angle)*7);ctx.stroke();
     }
-    if(ports.length&&!lens){ctx.fillStyle='#ffffffbb';const [dx,dy]=E.DIRS[m.rot||0];ctx.beginPath();ctx.moveTo(12+dx*10,12+dy*10);ctx.lineTo(12+dx*5-dy*3,12+dy*5+dx*3);ctx.lineTo(12+dx*5+dy*3,12+dy*5-dx*3);ctx.fill()}
+    if(ports.length&&!lens&&inspected?.x===x&&inspected?.y===y){ctx.fillStyle='#ffffffbb';const [dx,dy]=E.DIRS[m.rot||0];ctx.beginPath();ctx.moveTo(12+dx*10,12+dy*10);ctx.lineTo(12+dx*5-dy*3,12+dy*5+dx*3);ctx.lineTo(12+dx*5+dy*3,12+dy*5-dx*3);ctx.fill()}
     if(m.lastShot&&engine.elapsed-m.lastShot.time<.13){ctx.strokeStyle=id===T.TURRET?'#ffe48f':'#89eeff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(12,12);ctx.lineTo((m.lastShot.x-x)*TILE,(m.lastShot.y-y)*TILE);ctx.stroke();}
-    if(id===T.WINCH){for(const assembly of [m.liftAssembly,m.counterweightAssembly])if(assembly){const info=engine.structureInfo(assembly);if(!info.keys.length)continue;const cells=info.keys.map(k=>engine.xy(k)),cx=cells.reduce((n,p)=>n+p[0],0)/cells.length+.5,cy=Math.min(...cells.map(p=>p[1]));ctx.strokeStyle=m.running?'#b5ded0':'#687e7b';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(12,18);ctx.lineTo((cx-x)*TILE,18);ctx.lineTo((cx-x)*TILE,(cy-y)*TILE);ctx.stroke();}}
-    if(!lens)return;
+    if(id===T.WINCH){for(const assembly of [m.liftAssembly,m.counterweightAssembly])if(assembly){const info=engine.structureInfo(assembly);if(!info.keys.length)continue;const cells=info.keys.map(k=>tileMotion(...engine.xy(k))),cx=cells.reduce((n,p)=>n+p.x,0)/cells.length+.5,cy=Math.min(...cells.map(p=>p.y));ctx.strokeStyle=m.running?'#b5ded0':'#687e7b';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(12,18);ctx.lineTo((cx-x)*TILE,18);ctx.lineTo((cx-x)*TILE,(cy-y)*TILE);ctx.stroke();}}
+    if(!lens&&(inspected?.x!==x||inspected?.y!==y))return;
     if(lensMode==='structure'&&m.assembly){const ratio=(m.stress||0)/((defs[id].strength||8)*4);ctx.fillStyle=E.strengthColor(ratio)+'66';ctx.fillRect(2,2,20,20)}
-    if(lensMode==='ports'||['power','signal','mechanical','item'].includes(lensMode)){
-      const sideCount={};for(const p of ports){if(lensMode!=='ports'&&p.type!==lensMode)continue;
+    if(!lens||lensMode==='ports'||['power','signal','mechanical','item'].includes(lensMode)){
+      const sideCount={};for(const p of ports){if(lens&&lensMode!=='ports'&&p.type!==lensMode)continue;
         const [dx,dy]=E.DIRS[p.side],offset=(sideCount[p.side]||0)*5;sideCount[p.side]=(sideCount[p.side]||0)+1;
         const px=12+dx*10-dy*offset,py=12+dy*10+dx*offset;ctx.fillStyle=E.COLORS[p.type];
         if(p.mode==='both')ctx.fillRect(px-2,py-2,4,4);else{const sign=p.mode==='out'?1:-1;ctx.beginPath();ctx.moveTo(px+dx*3*sign,py+dy*3*sign);ctx.lineTo(px-dx*2*sign-dy*3,py-dy*2*sign+dx*3);ctx.lineTo(px-dx*2*sign+dy*3,py-dy*2*sign-dx*3);ctx.fill()}
@@ -509,149 +841,445 @@
     if(m.fault||m.machineFault||m.defenseFault||m.mechanicalFault||m.logisticsFault||m.logicUnstable){ctx.fillStyle='#ff6b5f';ctx.font='bold 11px monospace';ctx.fillText('!',17,10)}
   }
   function cycleLens(){const modes=['ports','power','signal','mechanical','structure','item'];lensMode=modes[(modes.indexOf(lensMode)+1)%modes.length];if(!lens)toggleLens();document.getElementById('viewBtn').textContent=`View: ${lensMode} [V]`;updateInspector()}
-  function cycleLink(){const modes=['new','add','remove','inspect'];linkMode=modes[(modes.indexOf(linkMode)+1)%modes.length];document.getElementById('linkModeBtn').textContent=`Link: ${linkMode} [L]`;selected=items.findIndex(i=>i.key==='link');renderHotbar();showToast(`Link mode: ${linkMode}`)}
+  function cycleLink(){const modes=['new','add','remove','inspect'];linkMode=modes[(modes.indexOf(linkMode)+1)%modes.length];document.getElementById('linkModeBtn').textContent=`Link: ${linkMode} [L]`;selectItem('link',hotbar.indexOf('link'));showToast(`Link mode: ${linkMode}`)}
   function setupEngineeringUI(){
-    document.querySelector('.tag').textContent='SURVIVAL 03';
     const actions=document.querySelector('.top-actions');
     const view=document.createElement('button');view.id='viewBtn';view.className='icon-btn';view.textContent='View: ports [V]';view.onclick=cycleLens;actions.prepend(view);
     const mode=document.createElement('button');mode.id='linkModeBtn';mode.className='icon-btn';mode.textContent='Link: new [L]';mode.onclick=cycleLink;actions.prepend(mode);
-    const tools=document.createElement('div');tools.className='engineering-tools';
-    for(const [label,action] of [['Rotate held [R]',()=>{rotation=(rotation+1)%4;manualRotation=true;showToast('Placement: '+['right','down','left','up'][rotation])}],['Take items [F]',interactItems],['Drop item [X]',dropHeldItem]]){const b=document.createElement('button');b.className='icon-btn';b.textContent=label;b.onclick=action;tools.append(b)}
-    document.getElementById('hud').append(tools);
     const card=(title,text)=>{const el=document.createElement('div');el.className='manual-card';const h=document.createElement('h3'),p=document.createElement('p');h.textContent=title;p.textContent=text;el.append(h,p);return el};
     const manual=document.querySelector('.manual-grid');manual.replaceChildren(
-      card('Explore and fabricate','A/D moves, Space jumps. W/S climbs ladders. Jump upward through ledges and press S/Down while standing on one to drop through. Right-click a door to open or close it. Left click mines; E opens the categorized, searchable Fabricator. Crafting selects the new part. Right click places; R rotates before placing. Shift+R rotates the block under the cursor.'),
+      card('Explore and build','A/D moves, Space jumps, and W/S climbs. Select a pickaxe to mine, a part to place, or a weapon to attack. Right-click a machine or door to use it. Drag line-buildable parts and release to place the preview. E opens crafting, I opens the backpack. R rotates; G toggles the smart cursor.'),
       card('Read the ports','C equips the Lens. V or the View button changes modes. Arrows show input/output; squares are two-way. Yellow: electricity. Red: signals. Cyan: rotation. Green: items. Purple: joint. Matching ports must face each other. Motor rear = power, top = enable, front = shaft.'),
-      card('Logic and memory','Default gate orientation: rear A, top B, front output. NOT inverts A. Latch: rear SET, top RESET (reset wins). Toggle flips on each rising edge. Counter counts rising edges, top resets. Right-click target 1–15. Unconnected gate inputs are OFF; a NOT with no input outputs ON.'),
-      card('Timing','Timer requires a continuously high input for its selected delay. Pulse Generator repeats once per delay; rear input optionally enables it. Right-click cycles 0.25 / 0.5 / 1 / 2 / 5 / 10 seconds. Simulation uses 50ms steps. Insert a latch/toggle for feedback; unstable combinational loops are flagged.'),
-      card('Drive paths','Shafts run rear to front. Bevel gears turn 90° toward the local bottom. Gearbox right-click: torque / balanced / speed. Small gear doubles speed, halves torque and reverses; large gear does the opposite. Clutch needs a top signal. A Belt Drive reaches a facing pulley or joint across up to six cells. Rotate belt and pulley to send drive vertically. For a full-turn bearing, leave space around the load and belt-drive the mount from a distance; this belt runs behind its own rotating load.'),
+      card('Logic and memory','Default gate orientation: rear A, top B, front output. NOT inverts A. Latch: rear SET, top RESET (reset wins). Toggle flips on each rising edge. Counter counts rising edges, top resets. Open the counter and choose Change settings. Unconnected gate inputs are OFF; a NOT with no input outputs ON.'),
+      card('Timing','Timer requires a continuously high input for its selected delay. Pulse Generator repeats once per delay; rear input optionally enables it. Change settings cycles 0.25 / 0.5 / 1 / 2 / 5 / 10 seconds. Simulation uses 50ms steps. Insert a latch/toggle for feedback; unstable combinational loops are flagged.'),
+      card('Drive paths','Shafts run rear to front. Bevel gears turn 90° toward the local bottom. Gearbox settings cycle torque / balanced / speed. Small gear doubles speed, halves torque and reverses; large gear does the opposite. Clutch needs a top signal. A Belt Drive reaches a facing pulley or joint across up to six cells. Rotate belt and pulley to send drive vertically. For a full-turn bearing, leave space around the load and belt-drive the mount from a distance; this belt runs behind its own rotating load.'),
       card('Link distinct structures','Select Link Tool (0). L cycles New / Add / Remove / Inspect. Drag a rectangle. Each connected selection gets its own colored structure ID. Inspect a block first to choose an existing structure for Add. Removing blocks splits disconnected sections. Keep actuators and mounts separate from their loads.'),
       card('Joints and load','A piston pushes one block-length; a powered piston with a low enable signal retracts. Winches lift loads below repeatedly. Bearings rotate separately linked loads at their front; hinges swing 0–90° using a top signal. This first version uses grid quarter-turns, not free rigid-body rotation. Sweeps stop at obstacles or the player. Joint mounts stay anchored. Heavy or long arms need torque gearing.'),
       card('Strength and failures','Structural Lens: blue low stress, green normal, yellow high, orange danger, red failure risk. Heavy lifting and long rotating arms raise stress. Three extreme overload attempts can detach a weak connection, without deleting the block. Inspector shows required and available torque, blocked paths and power shortages.'),
-      card('Physical logistics','Conveyors need rear or bottom shaft drive. Items enter at the rear or fall from above; front is output. Hoppers collect above/rear and output front. Storage holds 64 items; attach a hopper to its front to extract. Splitters alternate front/bottom output and wait if the selected route blocks. Filters pass only the selected material. Right-click cycles raw materials; Shift-right-click selects the held component.'),
+      card('Physical logistics','Conveyors need rear or bottom shaft drive. Items enter at the rear or fall from above; front is output. Hoppers collect above/rear and output front. Storage holds 64 items; attach a hopper to its front to extract. Splitters alternate front/bottom output and wait if the selected route blocks. Filters pass only the selected material. Filter settings cycle raw materials. Hold Shift while changing settings to select the held component.'),
       card('Load and recover','Aim at item machinery: F takes its contents; Shift+F inserts one held part. X drops a held part into the world. Mining a container drops all cargo. Full outputs block instead of destroying items. Machines keep their contents, counters, configuration and links when moved and saved.'),
       card('Try a sensor door','Lay a generator behind a motor, then a shaft into a piston. Place a sensor above the motor, rotated downward to face its enable port. Link a lightweight door in front of the piston, separately from the drive. For automatic return, power the motor continuously and connect the sensor to the piston enable instead.'),
       card('Automate and defend','B opens real component blueprints. A drill needs side power, rear drive and an output hopper; it removes terrain and stops when output fills. Feed ore through a driven crusher, powered smelter and assembler. F recovers goods; Shift+F inserts the selected material. Ammunition fabricators feed real rounds to powered turrets. Enemy sensors connect through signal wires; loss of power or ammunition stops the defense.'),
-      card('Survive the depths','Q attacks, Tab cycles owned weapons, Z consumes a healing item. Use the Fight mode or touch attack button. Enemies show a warning before striking. Defend walls and machinery during warned raids. J tracks five chapters and unlocks. Equipment and progression survive death; marked caches retain dropped resources. Recovery stations establish checkpoints near power.'),
+      card('Survive the depths','Q attacks, Tab cycles owned weapons, Z consumes a healing item. Selecting a weapon makes the primary action attack. Enemies show a warning before striking. Defend walls and machinery during warned raids. J tracks five chapters and unlocks. Equipment and progression survive death; marked caches retain dropped resources. Recovery stations establish checkpoints near power.'),
       card('Climb and lift','Ladders drag vertically; hold W/S or touch arrows to climb. Jump dismounts. Ropes need a ceiling or anchor above them. Scaffolds and bridges support jump-through and Down to drop. A powered winch lifts a separately linked deck; its connected switch selects raise/lower. Clear the shaft and protect the drive. R keeps manual rotation; Smart placement in Pause is optional.')
     );
-    document.querySelector('.hint').textContent='A/D move · SPACE jump · W/S climb · E fabricate · Q attack · TAB weapon · Z heal · F items · R rotate · C lens';
   }
 
-  function renderHotbar(){const el=document.getElementById('hotbar');el.innerHTML='';items.forEach((it,i)=>{if(i>9&&i!==selected&&!(inventory[it.key]>0))return;const b=document.createElement('button');b.className='slot'+(i===selected?' selected':'');const key=i<9?i+1:i===9?'0':'';b.innerHTML=`<span class="key">${key}</span><span class="mini" style="color:${it.color}">${it.icon}</span><span class="count">${it.key==='link'?'∞':inventory[it.key]||0}</span><span class="name">${it.name}</span>`;b.title=it.name;b.setAttribute('aria-label',it.name);b.onclick=()=>{selected=i;manualRotation=false;renderHotbar();ui?.refresh();showToast(it.name)};el.appendChild(b)})}
-  const craftState={category:'all',query:'',affordable:false};
-  const craftCategories=['all','resources','mining','structure','vertical','power','motion','logic','logistics','weapons','defense','automation'];
-  function recipeCategory(r){
-    if(r.category)return r.category;
-    if(['drill','excavator'].includes(r.key))return 'mining';
-    if(['crusher','smelter','refiner','assembler','ammoFabricator','advancedFabricator','repairStation'].includes(r.key))return 'automation';
-    if(['turret','arcTower','teslaCoil','enemySensor','barrier','trap'].includes(r.key))return 'defense';
-    if(['battery','recoveryStation','autoDoor'].includes(r.key))return 'power';
-    const structure=new Set(['platform','copperBlock','ironBlock','frame','beam','door','ladder','ledge']);
-    const power=new Set(['wire','generator','lamp']);
-    const logic=new Set(['signal','switch','sensor','and','or','not','xor','nand','nor','timer','pulse','toggle','latch','counter','signalSplit']);
-    const motion=new Set(['motor','shaft','gear','piston','winch','clutch','belt','pulley','bevel','smallGear','largeGear','bearing','hinge']);
-    const logistics=new Set(['conveyor','hopper','storage','splitter','filter']);
-    if(structure.has(r.key))return 'structure';if(power.has(r.key))return 'power';if(logic.has(r.key))return 'logic';if(motion.has(r.key))return 'motion';if(logistics.has(r.key))return 'logistics';return 'structure';
+  function renderResearchManual(){
+    const manual=document.querySelector('.manual-grid');if(!manual)return;
+    let card=manual.querySelector('.robotics-research');
+    if(!card){card=document.createElement('article');card.className='manual-card robotics-research';manual.append(card);}
+    const heading=document.createElement('h3');heading.textContent='Deep engineering';
+    const minerals=document.createElement('p');minerals.textContent='Find blue cobalt below the outpost with a steel drill. Powered tools or an Ion Bore reach iridium deeper down. Mine gold-veined aetherium with a Plasma Excavator. Start with an Induction Smelter, then feed rare ingots into a Robotics Foundry.';
+    const machines=document.createElement('p');machines.textContent='Drone docks need power, clear flight corridors, and available bins. Defensive drones take turret rounds. Place a Starship Pad under open air, use Launch with a Starship and Flight Cell, then land before pressing Use or F to exit.';
+    const list=document.createElement('ul');
+    for(const [key,site] of Object.entries(stats.roboticsSites||{})){
+      const li=document.createElement('li');const known=stats.schematics?.includes(key);
+      li.textContent=site.name+' vault · sector '+site.x+', depth '+site.y+(known?' · recovered':'');list.append(li);
+    }
+    card.replaceChildren(heading,minerals,machines,list);
   }
-  function ensureCraftControls(){
-    if(document.getElementById('craftSearch'))return;
-    const controls=document.createElement('div');controls.className='craft-controls';
-    const search=document.createElement('input');search.id='craftSearch';search.type='search';search.placeholder='Search parts, uses, or materials…';search.autocomplete='off';search.addEventListener('input',()=>{craftState.query=search.value.trim().toLowerCase();renderCraft()});
-    const tabs=document.createElement('div');tabs.className='craft-tabs';
-    for(const category of craftCategories){const b=document.createElement('button');b.type='button';b.dataset.craftCategory=category;b.textContent=category==='all'?'All':category[0].toUpperCase()+category.slice(1);b.onclick=()=>{craftState.category=category;renderCraft()};tabs.appendChild(b)}
-    const filter=document.createElement('label');filter.className='craft-affordable';const cb=document.createElement('input');cb.type='checkbox';cb.onchange=()=>{craftState.affordable=cb.checked;renderCraft()};filter.append(cb,document.createTextNode(' Can craft now'));
-    const count=document.createElement('span');count.id='craftResultCount';count.className='craft-result-count';
-    controls.append(search,tabs,filter,count);document.getElementById('recipes').before(controls);
+  function selectItem(key,slot=-1){
+    releasePointer(false);touchLine=null;touchConfirm=null;
+    selected=itemByKey.get(key)?.index??-1;activeSlot=slot;manualRotation=false;
+    if(selectedItem()?.weapon)survival?.selectWeapon(key);
+    renderHotbar();ui?.refresh();
   }
-  function renderCraft(){
-    ensureCraftControls();
-    const resources=Object.keys(inventory).filter(k=>inventory[k]>0&&(palette[k]||['ironIngot','copperIngot','steel','circuit','ammo','medkit'].includes(k)));document.getElementById('resourceChips').innerHTML=resources.map(k=>`<span class="chip" style="color:${palette[k]||'#fff'}">${k.toUpperCase()} ${inventory[k]||0}</span>`).join('');
-    document.querySelectorAll('[data-craft-category]').forEach(b=>b.classList.toggle('active',b.dataset.craftCategory===craftState.category));
-    const query=craftState.query,visible=recipes.filter(r=>{const can=Object.entries(r.cost).every(([k,v])=>(inventory[k]||0)>=v),category=recipeCategory(r),haystack=`${r.name} ${r.desc} ${Object.keys(r.cost).join(' ')} ${category}`.toLowerCase();return(craftState.category==='all'||category===craftState.category)&&(!query||haystack.includes(query))&&(!craftState.affordable||can)});
-    document.getElementById('craftResultCount').textContent=`${visible.length} of ${recipes.length} parts`;
-    const el=document.getElementById('recipes');el.innerHTML='';
-    if(!visible.length){const empty=document.createElement('div');empty.className='craft-empty';empty.textContent='No parts match those filters.';el.appendChild(empty);return}
-    visible.forEach(r=>{const unlocked=!survival?.canCraft||survival.canCraft(r),can=Object.entries(r.cost).every(([k,v])=>(inventory[k]||0)>=v)&&unlocked,b=document.createElement('button'),category=recipeCategory(r);b.className='recipe';b.disabled=!can;b.innerHTML=`<span class="recipe-icon">${r.icon}</span><span><span class="recipe-category">${category}</span><b>${r.name}</b><small>${Object.entries(r.cost).map(([k,v])=>`${v} ${k}`).join(' · ')}<br>${r.desc}${!unlocked?`<br>Unlocks in Chapter ${r.chapter}.`:''}</small></span><span class="make">+${r.out}</span>`;b.onclick=()=>{if(!craft(r))return;const i=items.findIndex(i=>i.key===r.key);if(i>=0){selected=i;manualRotation=false;}renderHotbar()};el.appendChild(b)});
+  function assignToHotbar(key,slot){
+    if(!itemByKey.has(key)||!Number.isInteger(slot)||slot<0||slot>=hotbar.length)return;
+    const old=hotbar.indexOf(key);
+    if(old>=0&&old!==slot)hotbar[old]=hotbar[slot];
+    hotbar[slot]=key;selectItem(key,slot);saveGame();
   }
-  function craft(r){if(!r||!Object.entries(r.cost).every(([k,v])=>(inventory[k]||0)>=v)||survival?.canCraft&&!survival.canCraft(r))return false;if(inventoryRoom()+Object.values(r.cost).reduce((n,v)=>n+v,0)<r.out){showToast('Inventory full. Store some materials first.');return false}for(const [k,v] of Object.entries(r.cost))inventory[k]-=v;inventory[r.key]=(inventory[r.key]||0)+r.out;stats.crafted++;if(r.equipment)survival?.selectWeapon(r.key);sound('craft');renderCraft();renderHotbar();showToast(`${r.name} fabricated ×${r.out}`);return true}
-  function renderMissions(){if(survival){const j=survival.getJournal(),c=j.chapters.find(c=>c.active),list=c?.objectives||[];document.getElementById('missionList').innerHTML=list.map((o,i)=>`<div class="mission ${o.complete?'done':j.current?.id===o.id?'current':''}"><span class="check">${o.complete?'✓':i+1}</span><span>${o.label}${!o.complete?` (${Math.min(o.target,o.current)}/${o.target})`:''}</span></div>`).join('');ui?.refresh();return;}const grid=Array.from(meta.entries()).some(([k,m])=>world[k]===T.LAMP&&m.powered&&m.signalOK);document.getElementById('missionList').textContent=grid?'Mine copper, fabricate a tool, and operate machinery.':'Restore the outpost.';}
+  let barSignature='',barNodes=[];
+  function renderHotbar(){
+    const el=document.getElementById('hotbar');
+    const signature=hotbar.join('|');
+    if(!barNodes.length||signature!==barSignature){
+      barSignature=signature;
+      barNodes=hotbar.map((key,i)=>{
+        const it=itemByKey.get(key)?.item,b=document.createElement('button');
+        const digit=document.createElement('span');digit.className='key';digit.textContent=i===9?'0':i+1;
+        const icon=it&&(art?.icon(it.key,it.icon));
+        const image=icon||document.createElement('span');
+        if(!icon){image.className='mini';image.textContent=it?.icon||'·';if(it?.color)image.style.color=it.color;}
+        const count=document.createElement('span');count.className='count';
+        b.type='button';b.className='slot';b.title=it?.name||'Empty slot';b.dataset.item=key||'';
+        b.setAttribute('aria-label',it?.name||'Empty slot '+(i+1));b.append(digit,image,count);
+        b.onclick=event=>{selectItem(hotbar[i],i);if(event.detail)canvas.focus({preventScroll:true});};
+        return {b,count,it};
+      });
+      el.replaceChildren(...barNodes.map(n=>n.b));
+    }
+    for(const [i,{b,count,it}] of barNodes.entries()){
+      b.classList.toggle('selected',i===activeSlot);b.setAttribute('aria-pressed',String(i===activeSlot));
+      const label=it&&!it.permanent&&it.key!=='link'?String(inventory[it.key]||0):'';
+      if(count.textContent!==label)count.textContent=label;
+    }
+    const item=selectedItem();
+    const action=selectedAction();
+    const hint=blueprint?'Place full blueprint':item?.key==='link'?'Drag to link blocks':
+      action==='mine'?'Hold to mine':action==='combat'?'Attack':action==='build'?'Place · R to rotate':'Use right-click or F';
+    const label=document.getElementById('modeHint');
+    if(label)label.textContent=item?item.name+' · '+hint:'Choose a hotbar item or open your backpack.';
+  }
+  function renderCraft(){workshop?.render();}
+  function renderMissions(){
+    const journal=survival?.getJournal(),guide=guides?.objective();
+    const objective=guide||journal?.current;
+    const el=document.getElementById('missionList');
+    const title=objective?.title||objective?.label||'Keep exploring';
+    const detail=objective?.message||objective?.detail||(objective?.target>1?Math.min(objective.target,objective.current)+' / '+objective.target:'');
+    const current=title+(detail?' · '+detail:'');
+    const recipe=guide?.action==='craft-workbench'?'workbench':guide?.action==='craft-ladder'?'ladder':null;
+    if(el.dataset.objective!==current){
+      el.dataset.objective=current;
+      if(recipe){
+        const button=document.createElement('button');
+        button.type='button';button.className='subtle-btn objective-action';button.textContent=current;
+        button.onclick=()=>workshop.open('craft','hand',recipe);
+        el.replaceChildren(button);
+      }else el.textContent=current;
+    }
+    ui?.refresh();
+  }
   function updatePowerHud(supply,load){const faults=engine.active.filter(k=>{const d=defs[world[k]],m=meta.get(k)||{};return d.load&&!m.disabled&&m.signalOK!==false&&(!m.powered||m.overload);});if(faults.length>gridFaults)sound('failure');gridFaults=faults.length;const label=document.getElementById('powerText');label.textContent=`${load} / ${supply}${faults.length?' ⚠ '+faults.length:''}`;label.title=faults.length?faults.map(k=>defs[world[k]].name+': check input power').join(' · '):'All connected consumers have power';document.getElementById('powerBar').style.width=(supply?Math.min(100,load/supply*100):0)+'%'}
+  const portNames={power:'Power',mechanical:'Rotation',signal:'Signal',item:'Items',structure:'Structure',fluid:'Fluid'};
+  const portSymbols={power:'⚡',mechanical:'↻',signal:'◆',item:'■',structure:'◇',fluid:'●'};
+  function closeInspector(){
+    inspected=null;
+    document.getElementById('lensPanel')?.classList.remove('show');
+  }
+  function machineStatus(d,m,diag){
+    if(m.overload)return ['Wire overloaded · '+diag.load+' load / '+diag.capacity+' capacity','Replace the weakest wire with a higher-capacity conductor or move a consumer to another grid.'];
+    if(m.ruin&&m.disabled)return ['Damaged machine','Repair before connecting power or drive.'];
+    if(m.signalOK===false||m.disabled)return ['Stopped by control','Turn on the connected control signal.'];
+    const fault=m.fault||diag.fault||'';
+    if(/output.*full|receiver.*full|storage.*full|buffer.*full/i.test(fault))return ['Output storage full','Collect output or give the next receiver more room.'];
+    if(/blocked|clearance|obstruct/i.test(fault))return ['Path blocked','Clear the highlighted output or travel path.'];
+    if(d.load&&!diag.powered)return [diag.connections.some(c=>c.type==='power'&&c.count)?'Insufficient power':'Power disconnected','Connect a generator or a live circuit to the power input.'];
+    if(/torque/i.test(fault))return ['Insufficient torque','Use torque gearing or reduce the load.'];
+    if(/drive|rotation/i.test(fault))return ['Drive disconnected or stopped','Connect a running motor or shaft to the rotation input.'];
+    if(/need|missing|required|input|supply/i.test(fault)&&diag.recipe){
+      const material=Object.keys(diag.recipe.cost).find(key=>(m.contents?.[key]||0)<diag.recipe.cost[key]);
+      if(material)return ['Waiting for '+(itemByKey.get(material)?.item.name||material),'Load the ingredient or feed the item input.'];
+    }
+    if(fault)return [fault.charAt(0)+fault.slice(1).toLowerCase(),'Check the matching port or connected component.'];
+    return [m.running||m.working||m.firing||m.active?'Running':diag.powered?'Powered · ready':'Ready',''];
+  }
   function updateInspector(){
-    const box=document.getElementById('cursorLabel');if(!lens){box.style.display='none';return}
-    if(!inside(pointer.tx,pointer.ty)){box.style.display='none';return;}
-    const id=get(pointer.tx,pointer.ty),d=defs[id],m=meta.get(idx(pointer.tx,pointer.ty))||{};
-    const actionTarget=document.getElementById('machineActions');if(!d?.transport){actionTarget?.replaceChildren();if(actionTarget)actionTarget.dataset.signature='';}
-    if(!id||!d){box.style.display='none';document.getElementById('inspectName').textContent='Aim at a block';document.getElementById('inspectProps').textContent='Ports: yellow power · red signals · cyan drive · green items · purple joints. R rotates the held part.';return}
-    box.style.display='block';box.style.left=pointer.x+'px';box.style.top=pointer.y+'px';box.textContent=d.name;
-    document.getElementById('inspectName').textContent=d.name;
-    const props=[['View',lensMode],['Direction',['right','down','left','up'][m.rot||0]],['Weight / strength',`${d.weight||0} / ${d.strength||8}`]];
-    if(d.ports&&lensMode==='ports')for(const p of E.ports(d,m))props.push([`${['→','↓','←','↑'][p.side]} ${p.name}`,`${p.type} ${p.mode}`]);
-    if(d.electric){props.push(['Grid #',m.powerNet||'—'],['Generation / draw',`${m.supply||0} / ${m.load||0}`],['Capacity',m.capacity||'—'],['Power',m.overload?'GRID OVERLOAD':m.powered?'LIVE':'INSUFFICIENT POWER']);}
-    if(E.ports(d,m).some(p=>p.type==='signal')){props.push(['Output',m.active?'ON':'OFF']);for(const [key,value] of Object.entries(m.signalInputs||{}))props.push([key,value?'ON':'OFF']);}
-    if(id===T.COUNTER)props.push(['Count / target',`${m.count||0} / ${m.target||3}`]);
-    if(id===T.TIMER||id===T.PULSE)props.push(['Delay',`${m.delay||1}s`]);
-    if(d.mechanical)props.push(['Signed speed',(m.speed||0).toFixed(2)],['Available torque',(m.torque||0).toFixed(1)],['Required torque',(m.requiredTorque||0).toFixed(1)]);
-    if(id===T.WINCH)props.push(['Lift guide',m.guided?'Rail-guided':'Free vertical travel'],['Load / counterweight',`${m.loadMass||0} / ${m.counterweightMass||0}`]);
-    if(m.assembly){const info=engine.structureInfo(m.assembly);props.push(['Structure #',m.assembly],['Blocks / mass',`${info.keys.length} / ${info.mass}`],['Peak stress',info.stress.toFixed(1)]);
-      const joints=engine.active.filter(k=>meta.get(k)?.jointAssembly===m.assembly);props.push(['Joints',joints.length],['Constraint',joints.length?'Pivot anchored':'Free translation']);}
-    if(d.transport||id===T.CONVEYOR)props.push(['Stored / capacity',`${engine.stored(idx(pointer.tx,pointer.ty))} / ${engine.capacity(idx(pointer.tx,pointer.ty))}`],['Contents',Object.entries(m.contents||{}).filter(([,n])=>n).map(([k,n])=>`${k}: ${n}`).join(', ')||'Empty']);
-    if(id===T.FILTER)props.push(['Filter',m.filter||'iron']);
-    if(d.producer){const recipe=engine.recipe(idx(pointer.tx,pointer.ty));props.push(['Recipe',recipe?recipe.key:'Mine terrain in front'],['Required ingredients',recipe?Object.entries(recipe.cost).map(([k,n])=>`${n} ${k}`).join(', '):'Real ore + motor drive'],['Output',Object.entries(m.outputs||{}).map(([k,n])=>`${n} ${k}`).join(', ')||'Empty'],['Progress',`${Math.floor((m.progress||0)*100)}%`],['Efficiency',`${Math.round((m.efficiency||0)*100)}%`],['Power draw',d.load||0]);}
-    for(const fault of [...new Set([m.fault,m.machineFault,m.defenseFault,m.mechanicalFault,m.logisticsFault,engine.diagnose(idx(pointer.tx,pointer.ty)).fault,m.logicUnstable?'SIGNAL LOOP / >64 GATES — insert memory':''])])if(fault)props.push(['Status',fault]);
-    const el=document.getElementById('inspectProps');el.replaceChildren();for(const [label,value] of props){const row=document.createElement('div');row.className='property';const a=document.createElement('span'),b=document.createElement('span');a.textContent=label;b.textContent=value;row.append(a,b);el.append(row)}
+    if(!inspected)return;
+    const {x,y,id,k,node}=inspected,d=defs[id],m=meta.get(k)||{};
+    if(get(x,y)!==id||(node!=null&&m.nodeId!==node)||distanceToTile(x,y)>6){closeInspector();return;}
+    const diag=engine.diagnose(k),machine=machineStatus(d,m,diag);
+    const drones=robotics?.describe(x,y),pad=starship?.describe(x,y),special=drones||pad;
+    const status=special?.status||machine[0],advice=special?.detail||machine[1];
+    const name=document.getElementById('inspectName');
+    const panelName=m.siteName||d.name;
+    if(name.textContent!==panelName)name.textContent=panelName;
+    const el=document.getElementById('inspectProps'),actions=document.getElementById('machineActions');
+    const ports=E.ports(d,m),recipe=diag.recipe,detailsOpen=el.querySelector('details')?.open;
+    const inputs=recipe?Object.keys(recipe.cost):d.ammo?[d.ammo]:[selectedItem()?.key].filter(Boolean);
+    const stash=Object.entries(m.contents||{}).filter(([,n])=>n);
+    const output=Object.entries(m.outputs||{}).filter(([,n])=>n);
+    const summary=[status,advice,m.rot,ports,diag.connections,diag.torque,diag.supply,diag.load,diag.capacity,
+      m.requiredTorque,m.energy,m.assembly,m.filter,m.mode,m.delay,m.target,m.manualPaused,recipe?.key,stash,output,
+      drones?.deployedRows,m.counterweightMass,m.liftDirection,m.progress?Math.floor(m.progress*20):0];
+    const signature=JSON.stringify([k,id,node,summary]);
+    const element=(tag,label,className)=>{
+      const e=document.createElement(tag);
+      if(label)e.textContent=label;
+      if(className)e.className=className;
+      return e;
+    };
+    const countLabel=([key,n])=>n+' '+(itemByKey.get(key)?.item.name||key);
+    if(el.dataset.signature!==signature){
+      el.dataset.signature=signature;
+      const fragment=document.createDocumentFragment();
+      fragment.append(element('strong',status,'machine-status'));
+      if(advice)fragment.append(element('p',advice,'machine-next'));
+      for(const row of drones?.deployedRows||[]){
+        const cargo=Object.entries(row.counts||row.cargo||{}).map(([key,n])=>n+' '+(itemByKey.get(key)?.item.name||key)).join(', ');
+        const label=typeof row==='string'?row:[row.name,row.phase,row.charge!=null?Math.round(row.charge)+'% charge':'',cargo,row.reason].filter(Boolean).join(' · ');
+        if(label)fragment.append(element('p',label,'machine-next'));
+      }
+      if(stash.length)fragment.append(element('p','Stored · '+stash.map(countLabel).join(', '),'machine-next'));
+      if(output.length)fragment.append(element('p','Output · '+output.map(countLabel).join(', '),'machine-next'));
+      if(recipe)fragment.append(element('p',Object.entries(recipe.cost).map(countLabel).join(' + ')+' → '+Object.entries(recipe.out||{}).map(countLabel).join(' + '),'machine-next'));
+      if(ports.length){
+        const list=element('ul',null,'machine-ports');
+        for(const p of ports){
+          const [dx,dy]=E.DIRS[p.side],nx=x+dx,ny=y+dy;
+          const connected=inside(nx,ny)&&E.ports(defs[get(nx,ny)],meta.get(idx(nx,ny))||{}).some(b=>b.side===(p.side+2)%4&&(E.compatible(p,b)||E.compatible(b,p)));
+          const li=element('li',portSymbols[p.type]+' '+(portNames[p.type]||p.type)+' '+p.mode+' · '+directions[p.side]+(connected?' · linked':''));
+          li.style.setProperty('--port-color',E.COLORS[p.type]);list.append(li);
+        }
+        fragment.append(list);
+      }
+      const detail=element('details',null,'machine-details');detail.open=!!detailsOpen;
+      detail.append(element('summary','Machine details'));
+      const rows=[['Orientation',directions[m.rot||0]],['Grid',String(diag.load)+' load / '+diag.supply+' supply']];
+      if(d.mechanical)rows.push(['Torque',diag.torque.toFixed(1)+' / '+(m.requiredTorque||0).toFixed(1)],['Speed',(m.speed||0).toFixed(2)]);
+      if(id===T.WINCH)rows.push(['Lift',m.guided?'Rail-guided':'Free travel'],['Load / counterweight',(m.loadMass||0)+' / '+(m.counterweightMass||0)]);
+      if(d.transport)rows.push(['Storage',engine.stored(k)+' / '+engine.capacity(k)]);
+      if(d.producer&&recipe)rows.push(['Progress',Math.round(diag.progress*100)+'%']);
+      if(m.assembly)rows.push(['Assembly',m.assembly]);
+      for(const [label,value] of rows){
+        const row=element('div',null,'property');row.append(element('span',label),element('span',value));detail.append(row);
+      }
+      fragment.append(detail);el.replaceChildren(fragment);
+    }
+    const actionSignature=JSON.stringify([k,id,node,m.schematicClaimed,m.ruin,m.disabled,recipe?.key,drones?.role,drones?.deployed,drones?.ready,drones?.recalled,pad?.canLaunch,pad?.canRecall,pad?.canPack,inputs.map(key=>[key,inventory[key]||0])]);
+    if(actions.dataset.signature===actionSignature)return;
+    actions.dataset.signature=actionSignature;actions.replaceChildren();
+    const apply=fn=>()=>{
+      if(inspected?.k!==k||get(x,y)!==id||distanceToTile(x,y)>6)return showToast('Move within reach of the machine.');
+      fn();renderHotbar();simulateNetworks();updateInspector();
+    };
+    const add=(label,fn)=>{const button=element('button',label,'icon-btn');button.type='button';button.onclick=apply(fn);actions.append(button);};
+    const collect=buffer=>{
+      let total=0;
+      for(const [key,n] of Object.entries(buffer)){
+        const count=Math.min(n,inventoryRoom());
+        if(count){inventory[key]=(inventory[key]||0)+count;buffer[key]-=count;total+=count;}
+        if(!buffer[key])delete buffer[key];
+      }
+      showToast(total?'Collected '+total+' items.':inventoryRoom()?'No items to collect.':'Backpack full.');
+    };
+    if(m.schematic&&!m.schematicClaimed)add('Recover schematic',()=>discoverSchematic(m));
+    if(pad){
+      add('Launch starship',()=>{if(starship.launch(x,y)){clearActions();closeInspector();}});
+      if(pad.canRecall)add('Recall starship · 1 Flight Cell',()=>starship.recall(x,y));
+      if(pad.canPack)add('Pack starship',()=>starship.recover());
+    }
+    if(drones?.role){
+      const roleName={miner:'mining',collector:'collection',defense:'defensive'}[drones.role]||drones.role;
+      add('Deploy '+roleName+' drone',()=>robotics.deploy(x,y,drones.role));
+      if(drones.deployed){
+        if(drones.recalled)add('Resume drone operations',()=>robotics.resume(x,y));
+        else add('Recall drones',()=>robotics.recall(x,y));
+        add('Pack docked drone',()=>robotics.retrieve(x,y,drones.role));
+      }
+    }
+    if(m.ruin&&m.disabled)add('Repair machine',()=>configureComponent(id,k,m));
+    if([T.FILTER,T.GEAR,T.WINCH,T.TIMER,T.PULSE,T.COUNTER,T.RECOVERY_STATION].includes(id))
+      add(id===T.RECOVERY_STATION?'Set checkpoint':'Change settings',()=>configureComponent(id,k,m));
+    if(d.machine?.recipes?.length){
+      const choice=CircuitWorkshop.machineRecipes(d.machine.recipes,recipe,items,key=>apply(()=>{
+        if(key!==engine.recipe(k)?.key){m.recipe=key;m.progress=0;meta.set(k,m);}
+      })());
+      if(choice)actions.append(choice);
+    }
     if(d.transport){
-      const x=pointer.tx,y=pointer.ty,k=idx(x,y),actions=document.createElement('div');actions.className='machine-actions';
-      const add=(label,fn)=>{const b=document.createElement('button');b.className='icon-btn';b.textContent=label;b.onclick=()=>{if(distanceToTile(x,y)>6||get(x,y)!==id)return showToast('Move within reach of the machine.');fn();renderHotbar();updateInspector();};actions.append(b);};
-      const recipe=engine.recipe(k),inputs=recipe?Object.keys(recipe.cost):d.ammo?[d.ammo]:[items[selected]?.key];
-      if(m.schematic&&!m.schematicClaimed)add('Recover schematic',()=>discoverSchematic(m));
-      const signature=[k,id,m.nodeId,m.schematicClaimed,recipe?.key,...inputs.map(key=>key+':'+(inventory[key]||0))].join('|');
-      if(actionTarget?.dataset.signature===signature)return;
-      for(const key of inputs.filter(Boolean))add(`Load ${key} (${inventory[key]||0})`,()=>{const amount=engine.insert(k,key,inventory[key]||0);inventory[key]=(inventory[key]||0)-amount;showToast(amount?`Loaded ${amount} ${key}`:'Input full or incompatible.');});
-      if(d.machine?.recipes?.length>1)add('Next recipe',()=>{const choices=d.machine.recipes;m.recipe=choices[(choices.indexOf(engine.recipe(k))+1)%choices.length].key;m.progress=0;});
-      add(d.producer?'Collect finished goods':'Take contents',()=>{const buffer=d.producer?(m.outputs||{}):(m.contents||{});for(const [key,n] of Object.entries(buffer)){const count=Math.min(n,inventoryRoom());inventory[key]=(inventory[key]||0)+count;buffer[key]-=count;if(!buffer[key])delete buffer[key];}});
-      if(d.producer)add('Recover inputs',()=>{for(const [key,n] of Object.entries(m.contents||{})){const count=Math.min(n,inventoryRoom());inventory[key]=(inventory[key]||0)+count;m.contents[key]-=count;if(!m.contents[key])delete m.contents[key];}});
-      if(actionTarget){actionTarget.replaceChildren(actions);actionTarget.dataset.signature=signature;}else el.append(actions);
+      for(const key of inputs)add('Load '+(itemByKey.get(key)?.item.name||key)+' ('+(inventory[key]||0)+')',()=>{
+        const limit=recipe?CircuitWorkshop.loadableInput(engine,k,recipe.cost,key):Infinity;
+        const amount=engine.insert(k,key,Math.min(limit,inventory[key]||0));
+        if(amount)inventory[key]-=amount;
+        showToast(amount?'Loaded '+amount+' '+key+'.':'Input full, incompatible, or missing materials.');
+      });
+      add(d.producer?'Collect output':'Take contents',()=>collect(d.producer?m.outputs||{}:m.contents||{}));
+      if(d.producer)add('Recover inputs',()=>collect(m.contents||{}));
     }
   }
   function showToast(msg){if(/Warning|base under attack/i.test(msg))sound('warning');else if(/Chapter complete|discovered|Core online|Guardian defeated/i.test(msg))sound('discovery');const e=document.getElementById('toast');e.textContent=msg;e.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>e.classList.remove('show'),1800)}
-  function toggleLens(){lens=!lens;document.getElementById('lensBtn').classList.toggle('active',lens);document.getElementById('lensPanel').classList.toggle('show',lens);if(!lens)document.getElementById('cursorLabel').style.display='none';showToast(lens?"Engineer's Lens equipped":"Engineer's Lens stowed")}
-  function toggleModal(id,force){const e=document.getElementById(id);if(!e)return;const open=force??!e.classList.contains('show');for(const q of document.querySelectorAll('.modal'))q.classList.remove('show');if(open)e.classList.add('show');craftOpen=id==='craftPanel'&&open;manualOpen=id==='manual'&&open;modalOpen=open;paused=open;releasePointer(false);for(const k of Object.keys(keys))keys[k]=false;if(musicGain)musicGain.gain.value=open?0:settings.musicVolume*.025;if(id==='craftPanel'&&open)renderCraft()}
+  function toggleLens(){
+    lens=!lens;
+    document.getElementById('lensBtn').classList.toggle('active',lens);
+    document.getElementById('lensBtn').setAttribute('aria-pressed',String(lens));
+    document.body.classList.toggle('lens-active',lens);
+    if(!lens)document.getElementById('cursorLabel').style.display='none';
+  }
+  function toggleModal(id,force){
+    const panel=document.getElementById(id);if(!panel)return;
+    const open=force??!panel.classList.contains('show');
+    if(!open&&!panel.classList.contains('show'))return;
+    for(const other of document.querySelectorAll('.modal.show'))other.classList.remove('show');
+    if(open){closeInspector();panel.classList.add('show');if(id==='manual')renderResearchManual();}
+    craftOpen=id==='craftPanel'&&open;manualOpen=id==='manual'&&open;modalOpen=paused=open;
+    clearActions();document.getElementById('cursorLabel').style.display='none';
+    if(musicGain)musicGain.gain.value=open?0:settings.musicVolume*.025;
+    if(craftOpen)renderCraft();
+  }
+  function openCrafting(){
+    if(craftOpen){toggleModal('craftPanel',false);return;}
+    workshop.open('craft','hand',guides?.objective()?.action==='craft-workbench'?'workbench':undefined);
+  }
+  function rotateHeld(){
+    rotation=(rotation+1)%4;manualRotation=true;
+    showToast('Placement · '+directions[rotation]);
+  }
+  function setSmartCursor(value){
+    settings.smartCursor=!!value;saveGame();ui?.refresh();
+  }
+  function toggleSmartCursor(){
+    setSmartCursor(!settings.smartCursor);showToast(settings.smartCursor?'Smart cursor':'Exact targeting');
+  }
+  function quickAttack(){
+    if(survival?.attack(pointer.aimed?pointer.wx:player.x+player.facing*60,pointer.aimed?pointer.wy:player.y+15))sound('iron');
+  }
+  function cycleWeapon(){
+    survival?.cycleWeapon();
+    if(selectedItem()?.weapon&&survival?.weapon)selectItem(survival.weapon,hotbar.indexOf(survival.weapon));
+    ui?.refresh();
+  }
   addEventListener('keydown',e=>{
-    if(e.target?.matches('input,select,textarea'))return;
-    if(e.repeat&&['KeyE','KeyC','KeyH','KeyR','Escape'].includes(e.code))return;
-    if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
-    if(modalOpen){if(e.code==='Escape'||e.code==='KeyE'&&craftOpen||e.code==='KeyH'&&manualOpen)toggleModal(craftOpen?'craftPanel':manualOpen?'manual':'pausePanel',false);return;}
+    if(e.target?.matches('input,select,textarea,[contenteditable="true"]')||e.metaKey||e.ctrlKey||e.altKey)return;
+    if(e.repeat&&!['KeyA','KeyD','KeyW','KeyS','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code))return;
+    const movement=['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'];
+    if(!modalOpen&&movement.includes(e.code)&&!e.target?.matches('button'))e.preventDefault();
+    if(modalOpen){
+      if(e.code==='KeyE'&&craftOpen||e.code==='KeyH'&&manualOpen)
+        toggleModal(craftOpen?'craftPanel':'manual',false);
+      return;
+    }
+    if(e.target?.matches('button')&&e.code==='Space')return;
     keys[e.code]=true;
-    if(e.code.startsWith('Digit')){const n=Number(e.code.slice(5));selected=n===0?9:n-1;manualRotation=false;renderHotbar();}
-    if(e.code==='KeyE')toggleModal('craftPanel');if(e.code==='KeyH')toggleModal('manual');if(e.code==='KeyC')toggleLens();
-    if(e.code==='KeyR'&&e.shiftKey){const k=idx(pointer.tx,pointer.ty),id=get(pointer.tx,pointer.ty);if(id&&distanceToTile(pointer.tx,pointer.ty)<=6){const m=meta.get(k)||{};m.rot=((m.rot||0)+1)%4;meta.set(k,m);engine.changed(pointer.tx,pointer.ty);simulateNetworks();showToast('Block rotated');}return;}
-    if(e.code==='KeyR'){rotation=(rotation+1)%4;manualRotation=true;showToast('Placement direction: '+['right','down','left','up'][rotation]);}
-    if(e.code==='KeyV')cycleLens();if(e.code==='KeyL')cycleLink();if(e.code==='KeyF')interactItems();if(e.code==='KeyX')dropHeldItem();if(e.code==='Escape')toggleModal('pausePanel',true);
+    if(/^Digit[0-9]$/.test(e.code)){
+      const n=Number(e.code.slice(5)),slot=n===0?9:n-1;
+      selectItem(hotbar[slot],slot);return;
+    }
+    switch(e.code){
+      case 'KeyE':openCrafting();break;
+      case 'KeyH':toggleModal('manual');break;
+      case 'KeyC':toggleLens();break;
+      case 'KeyG':toggleSmartCursor();break;
+      case 'KeyR':
+        if(e.shiftKey){
+          const {tx:x,ty:y}=pointer,k=idx(x,y),id=get(x,y);
+          if(inside(x,y)&&id&&E.ports(defs[id],{}).length&&distanceToTile(x,y)<=6){
+            const m=meta.get(k)||{};m.rot=((m.rot||0)+1)%4;meta.set(k,m);engine.changed(x,y);simulateNetworks();showToast('Block rotated');
+          }
+        }else rotateHeld();
+        break;
+      case 'KeyV':cycleLens();break;
+      case 'KeyL':cycleLink();break;
+      case 'KeyF':
+        if(starship?.active)interactAtPointer();
+        else if(e.shiftKey||defs[get(pointer.tx,pointer.ty)]?.transport)interactItems();
+        else interactAtPointer();
+        break;
+      case 'KeyU':starship?.refuel();break;
+      case 'KeyX':dropHeldItem();break;
+      case 'KeyQ':if(!starship?.active)quickAttack();break;
+      case 'KeyZ':survival?.heal();renderHotbar();ui?.refresh();break;
+      case 'Tab':if(!inspected&&e.target===document.body){e.preventDefault();cycleWeapon();}break;
+      case 'Escape':toggleModal('pausePanel',true);break;
+    }
   });
-  addEventListener('keyup',e=>keys[e.code]=false);addEventListener('blur',()=>{for(const k of Object.keys(keys))keys[k]=false;releasePointer(false);if(!modalOpen)toggleModal('pausePanel',true);});
-  document.getElementById('lensBtn').onclick=toggleLens;document.getElementById('manualBtn').onclick=()=>toggleModal('manual');document.getElementById('pauseBtn').onclick=()=>toggleModal('pausePanel',true);document.getElementById('resumeBtn').onclick=()=>toggleModal('pausePanel',false);document.getElementById('saveBtn').onclick=()=>{saveGame();showToast('World saved')};document.getElementById('newBtn').onclick=()=>{if(confirm('Generate a new world? The current save will be replaced.')){generate();toggleModal('pausePanel',false)}};document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>toggleModal(b.dataset.close,false)));
-  document.querySelectorAll('[data-touch]').forEach(b=>{const k='touch'+b.dataset.touch;b.addEventListener('pointerdown',e=>{e.preventDefault();if(modalOpen)return;unlockAudio();b.setPointerCapture?.(e.pointerId);if(b.dataset.touch==='place'){if(blueprint)placeBlueprint();else useOrPlace();return}if(b.dataset.touch==='attack'){survival?.attack(pointer.wx,pointer.wy);return}if(b.dataset.touch==='interact'){interactAtPointer();return}keys[k]=true;if(b.dataset.touch==='mine'){inputMode='mine';pointer.down=true;pointer.button=0}});const up=e=>{e.preventDefault();keys[k]=false;if(b.dataset.touch==='mine')pointer.down=false};b.addEventListener('pointerup',up);b.addEventListener('pointercancel',up);b.addEventListener('lostpointercapture',up)});
-  addEventListener('keydown',e=>{if(modalOpen||e.target?.matches('input,select,textarea'))return;if(e.code==='KeyQ'){e.preventDefault();survival?.attack(pointer.wx||player.x+player.facing*60,pointer.wy||player.y+15);sound('iron')}if(e.code==='KeyZ')survival?.heal();if(e.code==='Tab'){e.preventDefault();survival?.cycleWeapon();ui?.refresh();}});
-  document.getElementById('weaponBtn').onclick=()=>{if(!modalOpen){survival?.cycleWeapon();ui?.refresh();}};
+  addEventListener('keyup',e=>keys[e.code]=false);
+  addEventListener('pagehide',saveGame);
+  addEventListener('blur',()=>{clearActions();if(!modalOpen)toggleModal('pausePanel',true);});
+  document.getElementById('lensBtn').onclick=toggleLens;
+  document.getElementById('manualBtn').onclick=()=>toggleModal('manual');
+  document.getElementById('pauseBtn').onclick=()=>toggleModal('pausePanel',true);
+  document.getElementById('resumeBtn').onclick=()=>toggleModal('pausePanel',false);
+  document.getElementById('saveBtn').onclick=()=>{saveGame();showToast('World saved');};
+  document.getElementById('newBtn').onclick=()=>{if(confirm('Generate a new world? The current save will be replaced.')){generate();toggleModal('pausePanel',false);}};
+  document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>toggleModal(b.dataset.close,false)));
+  document.querySelectorAll('[data-touch]').forEach(b=>{
+    const action=b.dataset.touch,k='touch'+action;
+    b.addEventListener('pointerdown',e=>{
+      e.preventDefault();if(modalOpen)return;unlockAudio();
+      b.setPointerCapture?.(e.pointerId);
+      if(action==='rotate'){rotateHeld();return;}
+      if(action==='aim'){toggleSmartCursor();return;}
+      if(action==='interact'){interactAtPointer();return;}
+      if(action==='place'){touchConfirm={id:e.pointerId,x:pointer.tx,y:pointer.ty};return;}
+      if(action==='attack'||action==='mine'){
+        if(action==='attack'&&!pointer.aimed){quickAttack();return;}
+        doPrimary(true);return;
+      }
+      keys[k]=true;
+    });
+    const release=e=>{
+      e.preventDefault();keys[k]=false;
+      if(action==='mine'){pointer.down=false;mining.key='';mining.progress=0;}
+      if(action==='place'&&touchConfirm?.id===e.pointerId){
+        const aimed=touchConfirm.x===pointer.tx&&touchConfirm.y===pointer.ty;
+        touchConfirm=null;
+        const rect=b.getBoundingClientRect();
+        if(e.type==='pointerup'&&aimed&&!modalOpen&&e.clientX>=rect.left&&e.clientX<=rect.right&&e.clientY>=rect.top&&e.clientY<=rect.bottom)doPrimary(true);
+      }
+    };
+    for(const name of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(name,release);
+  });
+  document.getElementById('weaponBtn').onclick=()=>{if(!modalOpen)cycleWeapon();};
   document.getElementById('healBtn').onclick=()=>{if(!modalOpen){survival?.heal();renderHotbar();ui?.refresh();}};
-  setInterval(()=>{if(!paused)saveGame()},10000);
+  setInterval(()=>{if(!paused)saveGame();},10000);
   function simulationStep(dt=.05){
     updateSensors();simulateNetworks(dt);updateMachines(dt);
     engine.production?.(dt,{set,onMined:(key,n,x,y)=>{stats.automined=(stats.automined||0)+n;burst(x*TILE+12,y*TILE+12,palette[key]||'#9cbcb9');},onProduced:(key,n)=>{stats.produced=(stats.produced||0)+n;}});
-    engine.logistics(dt);
+    engine.logistics(dt);robotics?.tick(dt);
     if(survival){survival.tick(dt,gameTime);const targets=survival.enemies.map(e=>({id:e.id,x:e.x/TILE,y:e.y/TILE,health:e.hp,enemy:e}));engine.defenses?.(dt,{targets,damage:(t,n,kind)=>{survival.hit(t.enemy,n,kind==='electric'?'defense':kind);t.health=t.enemy.hp;},heal:(x,y,n)=>{if(Math.hypot((player.x+player.w/2)/TILE-x,(player.y+player.h/2)/TILE-y)>3)return 0;const amount=Math.max(0,Math.min(n,100-player.health));player.health+=amount;return amount;},lineOfSight,canClose:(x,y)=>!playerOverlapsTile(x,y)});}
     collectDrops();updateParticles(dt);if(gameTime-lastAmbient>4){lastAmbient=gameTime;if(engine.active.some(k=>meta.get(k)?.working))sound('build');}
   }
   function tick(t){
     const dt=Math.min(.1,(t-last)/1000||0);last=t;
     if(!paused&&!craftOpen&&!manualOpen){
-      gameTime+=dt;for(let remaining=dt;remaining>0;remaining-=.016)movePlayer(Math.min(.016,remaining));mineStep(dt);accum+=dt;
+      gameTime+=dt;
+      if(starship?.active){starship.tick(dt,keys);followPlayer(dt);}
+      else{starship?.tick(dt,{});for(let remaining=dt;remaining>0;remaining-=.016)movePlayer(Math.min(.016,remaining));}
+      if(pointer.aimed&&!touchAim&&!buildDrag&&!linkDrag){
+        pointer.wx=pointer.x+camera.x;pointer.wy=pointer.y+camera.y;
+        pointer.tx=Math.floor(pointer.wx/TILE);pointer.ty=Math.floor(pointer.wy/TILE);
+      }
+      mineStep(dt);accum+=dt;
       while(accum>=.05){accum-=.05;simulationStep(.05);}
-      if(Math.floor(gameTime*4)!==lastHud){lastHud=Math.floor(gameTime*4);renderMissions();updateInspector();document.getElementById('healthText').textContent=Math.max(0,player.health|0);document.getElementById('healthBar').style.width=player.health+'%'}
+      if(Math.floor(gameTime*4)!==lastHud){lastHud=Math.floor(gameTime*4);guides?.tick();renderMissions();renderFlightStatus();updateInspector();document.getElementById('healthText').textContent=Math.max(0,player.health|0);document.getElementById('healthBar').style.width=player.health+'%'}
     }render();requestAnimationFrame(tick);
   }
   let lastHud=-1;
-  if(typeof CircuitInterface!=='undefined')ui=CircuitInterface.create({getState:()=>({mode:inputMode,...settings,smartPlacement,inventory,items,selected:items[selected],progression:survival?.getJournal(),hud:survival?.getHud(),blueprint,firstRun:!loaded}),setMode:mode=>{inputMode=mode;releasePointer(false);if(mode==='inspect'&&!lens)toggleLens();if(mode!=='build')blueprint=null;},setSmartPlacement:value=>{settings.smartPlacement=smartPlacement=!!value;manualRotation=false;saveGame();},setDifficulty:value=>{if(survival?.setDifficulty(value)){settings.difficulty=value;saveGame();}},setAudio:values=>{Object.assign(settings,values);if(musicGain)musicGain.gain.value=paused?0:settings.musicVolume*.025;saveGame();},openModal:toggleModal,selectBlueprint:plan=>{blueprint=plan;inputMode='build';showToast('Aim near clear ground and click to place the blueprint.');},cancelBlueprint:()=>{blueprint=null;},getBlueprintStatus:blueprintStatus,closeInspector:()=>{if(lens)toggleLens();},start:unlockAudio});
+  function renderFlightStatus(){
+    const box=document.getElementById('flightStatus');if(!box)return;
+    const flying=starship?.status();box.hidden=!flying?.nearby&&!flying?.piloted;
+    if(box.hidden)return;
+    document.getElementById('flightReadout').textContent=flying.status+' · Fuel '+flying.fuelPercent+'%';
+    document.getElementById('flightFuelBtn').hidden=!flying.canRefuel;
+    document.getElementById('flightPackBtn').hidden=flying.piloted||!flying.landed;
+  }
+  const vehicleOpts={T,defs,inventory,stats,player,engine,get,set,getMeta:(x,y)=>meta.get(idx(x,y)),inside,
+    notify:showToast,save:saveGame,inventoryRoom,lineOfSight,tile:TILE,width:WORLD_W,height:WORLD_H,cols:WORLD_W,rows:WORLD_H,
+    enemies:()=>survival?.enemies||[],hit:(enemy,n)=>survival?.hit(enemy,n,'defense')};
+  robotics=CircuitRobotics.create(vehicleOpts);
+  robotics.restore(loadedRobotics);
+  starship=CircuitStarship.create(vehicleOpts);
+  starship.restore(loadedStarship);
+  document.getElementById('flightFuelBtn')?.addEventListener('click',()=>{starship.refuel();renderHotbar();renderFlightStatus();});
+  document.getElementById('flightPackBtn')?.addEventListener('click',()=>{starship.recover();renderHotbar();renderFlightStatus();});
+  workshop=CircuitWorkshop.create({inventory,items,recipes,defs,T,player,tile:TILE,get,distanceToTile,
+    getSurvival:()=>survival,getEngine:()=>engine,getHotbar:()=>hotbar,inventoryRoom,stats,assignToHotbar,
+    readyToPlace:key=>{
+      selectItem(key,hotbar.indexOf(key));toggleModal('craftPanel',false);
+      queueMicrotask(()=>canvas.focus({preventScroll:true}));
+    },
+    sound,notify:showToast,refreshHotbar:renderHotbar,openCraft:()=>toggleModal('craftPanel',true),save:saveGame});
+  guides=CircuitGuides.create({T,items,inventory,stats,get,inside,
+    getMeta:(x,y)=>meta.get(idx(x,y)),
+    canPlace:placementBlock,
+    place:(x,y,item,rot,extra)=>{
+      if(!commitPlacement(x,y,item,rot,extra))return false;
+      renderHotbar();simulateNetworks();return true;
+    },
+    link:cells=>engine.link(cells.map(([x,y])=>idx(x,y))),
+    notify:showToast,save:saveGame});
+  guides.restore(loadedGuide,{legacy:loaded&&!loadedGuide});
+  ui=CircuitInterface.create({
+    getState:()=>({
+      mode:starship.active?'interact':blueprint||guides.isPlacing()?'build':selectedAction(),flying:starship.active,
+      ...settings,smartPlacement,inventory,items,selected:selectedItem(),
+      progression:survival?.getJournal(),hud:survival?.getHud(),
+      blueprint,guide:guides.current(),firstRun:!loaded,inspectorOpen:!!inspected
+    }),
+    setSmartCursor,
+    setSmartPlacement:value=>{settings.smartPlacement=smartPlacement=!!value;manualRotation=false;saveGame();},
+    setDifficulty:value=>{if(survival?.setDifficulty(value)){settings.difficulty=value;saveGame();}},
+    setAudio:values=>{Object.assign(settings,values);if(musicGain)musicGain.gain.value=paused?0:settings.musicVolume*.025;saveGame();},
+    openModal:toggleModal,openWorkshop:view=>view==='craft'?openCrafting():workshop.open(view),
+    selectBlueprint:plan=>{blueprint=plan;guides.pause();renderHotbar();showToast('Aim near clear ground to place the assembly.');},
+    cancelBlueprint:()=>{blueprint=null;renderHotbar();},
+    startGuide:plan=>{blueprint=null;guides.start(plan);renderHotbar();},
+    pauseGuide:()=>guides.pause(),resumeGuide:()=>{blueprint=null;guides.resume();},
+    getBlueprintStatus:blueprintStatus,closeInspector,start:unlockAudio
+  });
   renderHotbar();simulateNetworks();renderMissions();requestAnimationFrame(tick);
 })();

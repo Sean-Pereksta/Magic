@@ -180,6 +180,7 @@
         for(const other of this.pp(n,type))if(other.side===(p.side+2)%4&&compatible(p,other))result.push({to:n,fromPort:p,toPort:other});
       }return result;
     }
+    signalCable(id){return id===this.T.SIGNAL||!!this.defs[id]?.signalLine;}
     rebuild(){
       if(this.built===this.revision)return;
       this.built=this.revision;this.rebuilds++;this.active=[...this.nodes].sort((a,b)=>a-b);
@@ -200,15 +201,15 @@
         }this.powerNets.push(q);
       }
       // Only passive wire tiles share a bus. Gate input/output ports never short through the gate.
-      for(const k of this.signalNodes){if(this.id(k)!==this.T.SIGNAL||this.wireNet.has(k))continue;
+      for(const k of this.signalNodes){if(!this.signalCable(this.id(k))||this.wireNet.has(k))continue;
         const net=this.wires.length,q=[k];this.wireNet.set(k,net);
         for(let i=0;i<q.length;i++)for(const e of this.connections(q[i],'signal')){
-          if(this.id(e.to)===this.T.SIGNAL&&!this.wireNet.has(e.to)){this.wireNet.set(e.to,net);q.push(e.to);}}
+          if(this.signalCable(this.id(e.to))&&!this.wireNet.has(e.to)){this.wireNet.set(e.to,net);q.push(e.to);}}
         this.wires.push(q);this.drivers.set(net,new Set());
       }
       for(const k of this.signalNodes){
         for(const e of this.connections(k,'signal')){
-          if(this.id(k)!==this.T.SIGNAL && e.fromPort.mode==='out' && this.wireNet.has(e.to))this.drivers.get(this.wireNet.get(e.to)).add(k);
+          if(!this.signalCable(this.id(k)) && e.fromPort.mode==='out' && this.wireNet.has(e.to))this.drivers.get(this.wireNet.get(e.to)).add(k);
         }
         const ins={};
         for(const p of this.pp(k,'signal').filter(p=>p.mode==='in')){const n=this.neighbor(k,p.side);
@@ -268,7 +269,7 @@
         }values=next;settle();
       }
       const b=this.buses(values);
-      for(const k of this.signalNodes){const m=this.data(k);m.output=!!values.get(k);m.active=this.id(k)===T.SIGNAL?b[this.wireNet.get(k)]:m.output;
+      for(const k of this.signalNodes){const m=this.data(k);m.output=!!values.get(k);m.active=this.signalCable(this.id(k))?b[this.wireNet.get(k)]:m.output;
         m.signalInputs={};for(const name of Object.keys(this.inputs.get(k)||{}))m.signalInputs[name]=this.input(k,name,values,b);
         m.signalOK=!this.inputs.get(k)?.EN||this.input(k,'EN',values,b);
       }
@@ -307,9 +308,11 @@
     mechanics(){const T=this.T;
       for(const k of this.mechanical.keys()){const m=this.data(k);m.running=false;m.torque=0;m.speed=0;m.driveSource=null;m.drivePath=[];m.mechanicalFault='';}
       for(const source of this.mechanical.keys()){
-        if(this.id(source)!==T.MOTOR)continue;const src=this.data(source);
+        const id=this.id(source),drive=this.defs[id];
+        if(id!==T.MOTOR&&!drive?.servoMotor)continue;
+        const src=this.data(source);
         if(src.disabled||!src.powered||src.signalOK===false||src.overload)continue;
-        const q=[{k:source,torque:12,speed:1,path:[]}],seen=new Set();
+        const q=[{k:source,torque:drive.driveTorque||12,speed:drive.driveSpeed||1,path:[]}],seen=new Set();
         for(let i=0;i<q.length;i++){
           const {k,torque,speed,path}=q[i];if(seen.has(k))continue;seen.add(k);const m=this.data(k),id=this.id(k);
           if(m.disabled){m.mechanicalFault='COMPONENT DISABLED';continue;}
@@ -372,7 +375,7 @@
     stored(k){return Object.values(this.data(k).contents||{}).reduce((a,b)=>a+b,0);}
     insert(k,key,count=1){const m=this.data(k),d=this.defs[this.id(k)];
       if(!d?.transport&&this.id(k)!==this.T.CONVEYOR)return 0;
-      if(d.ammo&&key!==d.ammo||d.producer&&!d.machine.recipes)return 0;
+      if(d.ammo&&key!==d.ammo||d.accepts&&!d.accepts.includes(key)||d.producer&&!d.machine.recipes)return 0;
       if(this.id(k)===this.T.FILTER&&(m.filter||'iron')!==key)return 0;
       if(!key||!Number.isFinite(count)||count<=0)return 0;
       const n=Math.max(0,Math.min(count,this.capacity(k)-this.stored(k)));if(!n)return 0;
@@ -386,20 +389,24 @@
       for(const p of this.pp(k,'item').filter(p=>p.mode==='out')){const n=this.neighbor(k,p.side);if(n===null)continue;
         const d=this.defs[this.id(n)],m=this.data(n);
         if(!d?.transport||!this.pp(n,'item').some(b=>b.side===(p.side+2)%4&&compatible(p,b)))continue;
-        if(this.stored(n)>=this.capacity(n)||this.id(n)===this.T.FILTER&&(m.filter||'iron')!==key||d.ammo&&d.ammo!==key)continue;
+        if(this.stored(n)>=this.capacity(n)||this.id(n)===this.T.FILTER&&(m.filter||'iron')!==key||d.ammo&&d.ammo!==key||d.accepts&&!d.accepts.includes(key))continue;
         if(d.producer&&!d.machine?.recipes)continue;return n;
       }return null;
     }
-    miningTarget(k){const m=this.data(k),[x,y]=this.xy(k),[dx,dy]=DIRS[m.rot||0],wide=this.id(k)===this.T.EXCAVATOR;
+    miningTarget(k){const m=this.data(k),[x,y]=this.xy(k),[dx,dy]=DIRS[m.rot||0];
+      const id=this.id(k),machine=this.defs[id]?.machine,wide=id===this.T.EXCAVATOR;
       const allowed=new Set([this.T.GRASS,this.T.DIRT,this.T.STONE,this.T.WOOD,this.T.COPPER,this.T.IRON,this.T.CRYSTAL,this.T.OBSIDIAN]);
-      const blocked=new Set();
-      for(let depth=1;depth<=(wide?10:6);depth++)for(const offset of wide?[0,-1,1]:[0]){
+      const blocked=new Set(),offsets=[0];
+      const width=machine?.width||(wide?3:1),reach=machine?.depth||(wide?10:6),tier=machine?.miningTier||(wide?1:0);
+      for(let lane=1;lane<=(width-1)/2;lane++)offsets.push(-lane,lane);
+      for(let depth=1;depth<=reach;depth++)for(const offset of offsets){
         if(blocked.has(offset))continue;
         const tx=x+dx*depth-dy*offset,ty=y+dy*depth+dx*offset;
         if(!this.inside(tx,ty)){blocked.add(offset);continue;}const id=this.get(tx,ty);
         if(!id)continue;
         // The first obstruction ends this ray; machines never tunnel through protected construction.
-        if(!allowed.has(id)||this.getMeta().get(this.key(tx,ty))?.assembly){blocked.add(offset);continue;}
+        const mineral=this.defs[id];
+        if((!allowed.has(id)&&!(mineral?.rareOre&&tier>=mineral.miningTier))||this.getMeta().get(this.key(tx,ty))?.assembly){blocked.add(offset);continue;}
         return {x:tx,y:ty,id,key:this.defs[id]?.drop};
       }return null;
     }
@@ -501,7 +508,7 @@
           if((id!==T.STORAGE||nid===T.HOPPER)&&this.pp(n,'item').some(b=>b.side===(p.side+2)%4&&compatible(p,b)))moved=this.insert(n,key,1);
           // Manufacturing retains finished goods until a receiver is attached. Transport belts and
           // hoppers may intentionally unload physical items onto the ground.
-          if(!nid&&id!==T.STORAGE&&!this.defs[id].producer)moved=this.spawn(key,1,nx+.5,ny+.5)?1:0;
+          if(!nid&&id!==T.STORAGE&&!this.defs[id].producer&&!this.defs[id].retainItems)moved=this.spawn(key,1,nx+.5,ny+.5)?1:0;
         }
         if(moved){const inventory=this.defs[id].producer?m.outputs:m.contents;inventory[key]--;if(!inventory[key])delete inventory[key];if(id===T.SPLITTER)m.route=((m.route||0)+1)%2;}
         else m.logisticsFault='OUTPUT BLOCKED / FULL / FILTERED';

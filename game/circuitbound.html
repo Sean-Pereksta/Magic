@@ -4,7 +4,7 @@
 <script type="module" src="/hub/play-signal.mjs" data-catnmice-game="circuitbound"></script>
 
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#07111a" />
   <title>Circuitbound — Engineering Survival</title>
   <link rel="stylesheet" href="./circuitbound/styles.css">
@@ -12,24 +12,48 @@
 <body>
   <canvas id="game" aria-label="Circuitbound game world"></canvas>
   <div id="hud">
-    <div class="topbar panel">
-      <div class="brand"><div class="logo" aria-hidden="true">⚙</div><div class="wordmark"><b>Circuitbound</b><div class="eyebrow">The world is your machine</div></div><span class="tag">SURVIVAL 03</span></div>
-      <div class="bars">
-        <div class="meter"><div class="meter-label"><span>VITALITY</span><span id="healthText">100</span></div><div class="track"><div id="healthBar" class="fill health" style="width:100%"></div></div></div>
-        <div class="meter"><div class="meter-label"><span>GRID OUTPUT</span><span id="powerText">0 / 0</span></div><div class="track"><div id="powerBar" class="fill energy" style="width:0%"></div></div></div>
+    <div class="topbar">
+      <div class="bars panel">
+        <div class="meter"><div class="meter-label"><span>Health</span><span id="healthText">100</span></div><div class="track"><div id="healthBar" class="fill health" style="width:100%"></div></div></div>
+        <div class="meter grid-meter"><div class="meter-label"><span>Grid load</span><span id="powerText">0 / 0</span></div><div class="track"><div id="powerBar" class="fill energy" style="width:0%"></div></div></div>
       </div>
-      <div class="top-actions"><button id="lensBtn" class="icon-btn" aria-label="Toggle Engineer's Lens">Lens [C]</button><button id="journalBtn" class="icon-btn">Journal [J]</button><button id="blueprintBtn" class="icon-btn">Blueprints [B]</button><button id="manualBtn" class="icon-btn" aria-label="Open field manual">Manual [H]</button><button id="weaponBtn" class="icon-btn combat-action" aria-label="Cycle equipped weapon" title="Cycle weapon" hidden>↻</button><button id="healBtn" class="icon-btn combat-action" aria-label="Use a healing item" title="Heal" hidden>✚</button><button id="pauseBtn" class="icon-btn" aria-label="Pause game">Ⅱ</button></div>
+      <nav class="top-actions" aria-label="Workshop and expedition">
+        <button id="craftBtn" class="icon-btn" aria-keyshortcuts="E">Craft</button>
+        <button id="backpackBtn" class="icon-btn" aria-label="Open backpack" aria-keyshortcuts="I">Pack</button>
+        <button id="utilityBtn" class="icon-btn" aria-expanded="false" aria-controls="utilityMenu">Menu</button>
+        <button id="pauseBtn" class="icon-btn" aria-label="Pause game">Ⅱ</button>
+        <div id="utilityMenu" class="utility-menu panel" hidden>
+          <button id="journalBtn" class="icon-btn">Journal <kbd>J</kbd></button>
+          <button id="blueprintBtn" class="icon-btn">Blueprints <kbd>B</kbd></button>
+          <button id="manualBtn" class="icon-btn">Field manual <kbd>H</kbd></button>
+          <button id="lensBtn" class="icon-btn" aria-label="Toggle Engineer's Lens" aria-pressed="false">Engineer’s Lens <kbd>C</kbd></button>
+          <button id="weaponBtn" class="icon-btn combat-action" aria-label="Cycle equipped weapon" hidden>Cycle weapon <kbd>Tab</kbd></button>
+          <button id="healBtn" class="icon-btn combat-action" aria-label="Use a healing item" hidden>Heal <kbd>Z</kbd></button>
+        </div>
+      </nav>
     </div>
-    <aside id="missions" class="panel"><div class="mission-head"><div class="eyebrow">Field commission</div><button id="missionToggle" class="subtle-btn" aria-label="Collapse objectives" aria-expanded="true">−</button></div><div id="missionTitle" class="mission-title">Wake the Foundry</div><div id="missionList"></div></aside>
-    <aside id="lensPanel" class="panel"><div class="mission-head"><div class="eyebrow">Engineer's Lens</div><button id="inspectorClose" class="subtle-btn" aria-label="Close inspector">×</button></div><div class="mission-title" id="inspectName">Aim at a block</div><div id="inspectProps"><p class="muted">Aim at a machine to inspect its connections and operating state.</p></div><div id="machineActions" class="machine-actions"></div></aside>
-    <div id="survivalReadout" class="survival-readout" aria-live="polite"><span id="regionReadout">Surface Scrapyards</span><span id="equipmentReadout">Basic Pickaxe</span><span id="energyReadout">Energy 100</span></div>
+    <aside id="missions" class="panel" aria-label="Pinned objective">
+      <div id="missionTitle" class="visually-hidden">Wake the Foundry</div>
+      <div id="missionList"></div>
+      <span id="guideActive" class="guide-action" hidden><button id="guideToggle" class="subtle-btn">Pause</button></span>
+      <button id="missionToggle" class="subtle-btn" aria-label="Hide pinned objective" aria-expanded="true" aria-controls="missionList">−</button>
+    </aside>
+    <aside id="lensPanel" class="panel drawer" aria-labelledby="inspectName">
+      <div class="mission-head"><h2 id="inspectName">Machine</h2><button id="inspectorClose" class="close" aria-label="Close machine controls">Close</button></div>
+      <div id="inspectProps"></div><div id="machineActions" class="machine-actions"></div>
+    </aside>
+    <div id="survivalReadout" class="survival-readout"><span id="regionReadout">Surface Scrapyards</span><span id="equipmentReadout">Basic Pickaxe</span><span id="energyReadout" hidden>Energy 100</span></div>
     <div id="raidReadout" class="raid-readout" role="status" hidden></div><div id="toast" role="status"></div><div id="cursorLabel" class="crosshair-label"></div>
-    <nav id="modeBar" class="modebar panel" aria-label="World action mode"><button data-mode="mine" class="active" aria-pressed="true"><span aria-hidden="true">⛏</span> Mine</button><button data-mode="build" aria-pressed="false"><span aria-hidden="true">＋</span> Build</button><button data-mode="combat" aria-pressed="false"><span aria-hidden="true">⚔</span> Fight</button><button data-mode="interact" aria-pressed="false"><span aria-hidden="true">↔</span> Interact</button><button data-mode="inspect" aria-pressed="false"><span aria-hidden="true">⌕</span> Inspect</button><span id="modeHint">Hold on a block to mine</span></nav>
     <div id="blueprintActive" class="blueprint-active panel" hidden><span id="blueprintActiveText"></span><button id="blueprintCancel" class="subtle-btn" aria-label="Cancel blueprint preview">Cancel ×</button></div>
+    <div id="flightStatus" class="flight-status panel" hidden>
+      <span id="flightReadout" role="status"></span>
+      <button id="flightFuelBtn" class="subtle-btn" aria-keyshortcuts="U" hidden>Refuel</button>
+      <button id="flightPackBtn" class="subtle-btn" hidden>Pack starship</button>
+    </div>
+    <div id="modeHint" class="tool-hint">Basic Pickaxe · Hold to mine</div>
     <div id="hotbar" class="panel" aria-label="Build hotbar"></div>
-    <div class="hint">A/D move · SPACE jump · W/S climb · E fabricate · Q attack · TAB weapon · Z heal · F interact · R rotate · C lens</div>
-    <section id="craftPanel" class="panel modal" role="dialog" aria-modal="true" aria-label="Fabricator" tabindex="-1">
-      <div class="modal-head"><div><div class="eyebrow">Portable workbench</div><h2>Fabricator</h2><p>Craft a component to select it for building. The Lens shows what its connections need.</p></div><button class="close" data-close="craftPanel">Close [E]</button></div>
+    <section id="craftPanel" class="panel modal drawer" role="dialog" aria-modal="true" aria-labelledby="workshopTitle" tabindex="-1">
+      <div class="modal-head"><div><h2 id="workshopTitle">Hand crafting</h2><p id="workshopIntro">Craft a component from materials in your backpack.</p></div><button class="close" data-close="craftPanel">Close</button></div>
       <div id="resourceChips" class="resources"></div><div id="recipes" class="recipes"></div>
     </section>
     <section id="manual" class="panel modal" role="dialog" aria-modal="true" aria-label="Field manual" tabindex="-1">
@@ -47,23 +71,53 @@
     <section id="pausePanel" class="panel modal" role="dialog" aria-modal="true" aria-labelledby="pauseTitle" tabindex="-1">
       <div class="modal-head"><div><div class="eyebrow">Workshop suspended</div><h2 id="pauseTitle">Paused</h2><p>Your world saves automatically on this device.</p></div><button class="close" data-close="pausePanel">Close</button></div>
       <label class="setting-field" for="difficultySelect"><span>Difficulty</span><select id="difficultySelect"><option value="casual">Casual</option><option value="standard" selected>Standard</option><option value="hardcore">Hardcore</option></select></label><p id="difficultyDescription" class="setting-help">A steady survival challenge with recoverable equipment.</p>
-      <label class="setting-check" for="smartPlacement"><input id="smartPlacement" type="checkbox" checked><span>Smart placement<small>Automatically face compatible adjacent ports. R keeps your chosen direction.</small></span></label><label class="setting-field" for="soundVolume"><span>Sound <output id="soundValue" for="soundVolume">65%</output></span><input id="soundVolume" type="range" min="0" max="100" value="65"></label>
+      <label class="setting-check" for="smartPlacement"><input id="smartPlacement" type="checkbox" checked><span>Smart rotation<small>Face compatible nearby ports automatically. Rotate to choose a direction yourself.</small></span></label>
+      <label class="setting-check" for="smartCursor"><input id="smartCursor" type="checkbox"><span>Smart cursor<small>Find a reachable mining target near your aim. Switch to exact targeting at any time.</small></span></label>
+      <label class="setting-field" for="soundVolume"><span>Sound <output id="soundValue" for="soundVolume">65%</output></span><input id="soundVolume" type="range" min="0" max="100" value="65"></label>
       <label class="setting-field" for="musicVolume"><span>Music <output id="musicValue" for="musicVolume">20%</output></span><input id="musicVolume" type="range" min="0" max="100" value="20"></label>
       <div class="big-actions"><button id="resumeBtn" class="primary">Return to the world</button><button id="saveBtn">Save world</button><button id="newBtn" class="danger-btn">Generate new world</button></div>
     </section>
     <section id="welcomePanel" class="panel modal" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle" tabindex="-1">
       <div class="modal-head"><div><div class="eyebrow">An engineer’s expedition</div><h2 id="welcomeTitle">Wake the Foundry</h2></div><button class="close" data-close="welcomePanel">Close</button></div>
-      <p class="welcome-copy">Your outpost has light, tools, and a machine waiting for repairs. Mine the nearby copper, craft useful equipment, and turn this shelter into a working factory.</p>
-      <div class="welcome-loop"><span>Explore</span><span>Mine</span><span>Build</span><span>Automate</span><span>Defend</span></div>
+      <p class="welcome-copy">Gather wood and stone beside your outpost, then craft a Field Workbench. Use it to make the parts you need to get your first machine running.</p>
       <label class="setting-field" for="welcomeDifficulty"><span>Choose difficulty</span><select id="welcomeDifficulty"><option value="casual">Casual — forgiving exploration</option><option value="standard" selected>Standard — engineer to survive</option><option value="hardcore">Hardcore — relentless machinery</option></select></label>
-      <p class="welcome-controls">A/D to move · Space to jump · W/S to climb<br>Hold to mine · E to craft · Q to attack</p><button id="startBtn" class="primary start-btn">Enter the outpost →</button>
+      <p class="welcome-controls"><span class="desktop-controls">A/D to move · Space to jump · W/S to climb<br>Select a hotbar item to mine, attack or build. Right-click to use machinery.</span><span class="mobile-controls">Tap the world to aim, then use the action button. Select another hotbar item to switch tools.</span></p>
+      <button id="startBtn" class="primary start-btn">Enter the outpost →</button>
     </section>
-    <div id="touch"><div class="touch-pad left"><button class="touch-btn" data-touch="left" aria-label="Move left">◀</button><button class="touch-btn" data-touch="right" aria-label="Move right">▶</button><button class="touch-btn" data-touch="down" aria-label="Climb down or drop through platform">↓</button></div><div class="touch-pad right"><button class="touch-btn" data-touch="jump" aria-label="Jump or climb up">↑</button><button class="touch-btn" data-touch="attack" aria-label="Attack">⚔</button><button class="touch-btn context-action" data-touch="mine" aria-label="Mine target">⛏</button><button class="touch-btn context-action" data-touch="place" aria-label="Place selected component">＋</button><button class="touch-btn context-action" data-touch="interact" aria-label="Interact with target">↔</button></div></div>
+    <div id="touch">
+      <div class="touch-pad left">
+        <button class="touch-btn" data-touch="down" aria-label="Climb down or drop through platform">↓</button>
+        <div class="touch-row">
+          <button class="touch-btn" data-touch="left" aria-label="Move left">◀</button>
+          <button class="touch-btn" data-touch="right" aria-label="Move right">▶</button>
+        </div>
+      </div>
+      <div class="touch-pad right">
+        <div class="touch-row">
+          <button class="touch-btn touch-utility" data-touch="aim" aria-label="Toggle smart cursor" aria-pressed="false">Aim</button>
+          <button class="touch-btn touch-utility" data-touch="rotate" aria-label="Rotate selected component" hidden>Turn</button>
+          <button class="touch-btn touch-utility" data-touch="interact" aria-label="Interact with target">Use</button>
+        </div>
+        <div class="touch-row">
+          <button class="touch-btn context-action" data-touch="attack" aria-label="Attack" hidden>Attack</button>
+          <button class="touch-btn context-action" data-touch="mine" aria-label="Mine target">Mine</button>
+          <button class="touch-btn context-action" data-touch="place" aria-label="Place selected component" hidden>Place</button>
+          <button class="touch-btn" data-touch="jump" aria-label="Jump or climb up">↑</button>
+        </div>
+      </div>
+    </div>
   </div>
 <script src="./circuitbound/engineering.js"></script>
 <script src="./circuitbound/vertical.js"></script>
+<script src="./circuitbound/art.js"></script>
 <script src="./circuitbound/survival.js"></script>
 <script src="./circuitbound/interface.js"></script>
+<script src="./circuitbound/workshop.js"></script>
+<script src="./circuitbound/guides.js"></script>
+<script src="./circuitbound/robotics-catalog.js"></script>
+<script src="./circuitbound/robotics-world.js"></script>
+<script src="./circuitbound/robotics.js"></script>
+<script src="./circuitbound/starship.js"></script>
 <script src="./circuitbound/app.js"></script>
 </body>
 </html>

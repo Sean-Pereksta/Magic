@@ -3,19 +3,19 @@ const assert=require('node:assert/strict');
 const {game}=require('./harness.cjs');
 const {blueprints}=require('../interface.js');
 function clean(g){g.api.world.fill(0);g.api.meta.clear();g.engine.reset();g.survival.reset();g.player.x=9*24;g.player.y=10*24;}
-function aim(g,x,y){Object.assign(g.api.pointer,{tx:x,ty:y,wx:x*24+12,wy:y*24+12});}
+function aim(g,x,y){Object.assign(g.api.pointer,{tx:x,ty:y,wx:x*24+12,wy:y*24+12,aimed:true});}
 function step(g,seconds){for(let t=0;t<seconds;t+=.05)g.simulationStep(.05);}
-function select(g,key){g.api.selected=g.items.findIndex(i=>i.key===key);}
+function select(g,key){g.selectItem(key);}
 
 test('outpost repair uses a real missing wire and an isolated motor supply within cable capacity',()=>{
   const g=game();assert.equal(g.api.meta.get(g.idx(10,23)).powered,false);assert.equal(g.api.meta.get(g.idx(12,28)).running,false);
-  select(g,'wire');aim(g,9,27);g.useOrPlace();assert.equal(g.api.meta.get(g.idx(10,23)).powered,true);
-  select(g,'generator');aim(g,11,28);g.useOrPlace();assert.equal(g.api.meta.get(g.idx(12,28)).running,true);
+  select(g,'wire');aim(g,9,27);g.placeAtAim();assert.equal(g.api.meta.get(g.idx(10,23)).powered,true);
+  select(g,'generator');aim(g,11,28);g.placeAtAim();assert.equal(g.api.meta.get(g.idx(12,28)).running,true);
   assert.equal(g.api.meta.get(g.idx(8,28)).powered,true);assert.equal(g.api.meta.get(g.idx(10,23)).overload,false);
 });
 
 test('mining nearby copper or iron immediately adds the real material without a second collection action',()=>{
-  const g=game();clean(g);select(g,'stone');
+  const g=game();clean(g);select(g,'pickaxe');
   for(const [id,key] of [[g.T.COPPER,'copper'],[g.T.IRON,'iron']]){
     g.set(10,10,id);aim(g,10,10);g.api.pointer.down=true;const before=g.inventory[key]||0;
     g.mineStep(3);assert.equal(g.get(10,10),g.T.AIR);assert.equal(g.inventory[key],before+1);
@@ -43,8 +43,8 @@ test('reinforced barriers use their displayed durability and recover their compo
 test('ropes require an anchor and drag construction debits only valid sections',()=>{
   const g=game();clean(g);select(g,'rope');g.inventory.rope=10;
   assert.equal(g.placementValid(10,10,g.T.ROPE),false);g.set(10,7,g.T.ANCHOR,{});
-  g.player.x=10*24;g.player.y=9*24;g.api.buildDrag={x0:10,y0:8,x1:10,y1:13};
-  g.placeLine();assert.equal(g.inventory.rope,4);for(let y=8;y<=13;y++)assert.equal(g.get(10,y),g.T.ROPE);
+  g.player.x=10*24;g.player.y=9*24;
+  g.placeLine({x0:10,y0:8,x1:10,y1:13});assert.equal(g.inventory.rope,4);for(let y=8;y<=13;y++)assert.equal(g.get(10,y),g.T.ROPE);
   g.player.y=12*24;g.keys.KeyW=true;const start=g.player.y;for(let i=0;i<90;i++)g.movePlayer(.016);assert.ok(g.player.y<start-100);
   g.player.y=10*24;g.keys.KeyW=false;g.keys.Space=true;g.movePlayer(.016);assert.ok(g.player.vy<0,'Jump dismounts from the rope');
 });
@@ -122,9 +122,10 @@ test('integrated fixed steps perform mining, logistics, manufacturing and powere
 
 test('machine inspector provides touch-friendly material loading and finished-output collection',()=>{
   const g=game();clean(g);g.set(11,10,g.T.SMELTER,{recipe:'rawIron'});g.set(11,11,g.T.GENERATOR,{});g.inventory.iron=2;aim(g,11,10);
-  g.interactAtPointer();const buttons=()=>g.ids.get('machineActions').children.flatMap(e=>e.children||[]).filter(e=>e.onclick);
-  const load=buttons().find(b=>b.textContent.startsWith('Load iron'));assert.ok(load);load.onclick();assert.equal(g.inventory.iron,0);assert.equal(g.api.meta.get(g.idx(11,10)).contents.iron,2);
-  step(g,3);const collect=buttons().find(b=>b.textContent==='Collect finished goods');assert.ok(collect);collect.onclick();assert.equal(g.inventory.ironIngot,1);assert.equal(g.api.meta.get(g.idx(11,10)).outputs.ironIngot,undefined);
+  g.interactAtPointer();const buttons=()=>g.ids.get('machineActions').querySelectorAll('button');
+  aim(g,10,10);
+  const load=buttons().find(b=>b.textContent.startsWith('Load'));assert.ok(load);load.click();assert.equal(g.inventory.iron,0);assert.equal(g.api.meta.get(g.idx(11,10)).contents.iron,2);
+  step(g,3);const collect=buttons().find(b=>b.textContent==='Collect output');assert.ok(collect);collect.click();assert.equal(g.inventory.ironIngot,1);assert.equal(g.api.meta.get(g.idx(11,10)).outputs.ironIngot,undefined);
 });
 
 test('exploration schematics unlock real fabrication early and survive save/reload without duplicate rewards',()=>{
@@ -136,4 +137,48 @@ test('exploration schematics unlock real fabrication early and survive save/relo
 test('abandoned machinery repairs consume materials and leave it requiring a real drive connection',()=>{
   const g=game();clean(g);g.set(10,10,g.T.WINCH,{disabled:true,ruin:true});const m=g.api.meta.get(g.idx(10,10)),iron=g.inventory.iron,copper=g.inventory.copper;
   g.configureComponent(g.T.WINCH,g.idx(10,10),m);assert.equal(m.disabled,false);assert.equal(g.inventory.iron,iron-3);assert.equal(g.inventory.copper,copper-2);assert.equal(m.running,false);
+});
+
+test('a fresh outpost supplies enough wood and stone to build and open the first workbench',()=>{
+  const g=game();
+  assert.equal(g.inventory.wood,0);assert.equal(g.inventory.stone,0);
+  for(const [x,y] of [[7,26],[8,26],[7,25],[8,25],[7,24],[8,24],[9,26],[9,25],[11,26],[11,25]]){
+    aim(g,x,y);g.doPrimary();g.mineStep(2);g.clearActions();assert.equal(g.get(x,y),g.T.AIR);
+  }
+  step(g,1);
+  const recipe=key=>g.recipes.find(r=>r.key===key);
+  assert.equal(g.inventory.wood,6);assert.equal(g.inventory.stone,4);
+  assert.equal(g.workshop.craft(recipe('timer')),false);
+  assert.equal(g.workshop.craft(recipe('workbench')),true);
+  select(g,'workbench');aim(g,10,28);g.doPrimary();
+  assert.equal(g.get(10,28),g.T.WORKBENCH);assert.equal(g.inventory.workbench,0);
+  g.interactAtPointer();
+  assert.equal(g.ids.get('craftPanel').classList.contains('show'),true);
+  assert.match(g.ids.get('workshopIntro').textContent,/Field Workbench in reach/);
+  assert.equal(g.workshop.craft(recipe('timer')),true);
+});
+
+test('line placement spends only for tiles through the first obstacle and a cancelled drag spends nothing',()=>{
+  const g=game();clean(g);select(g,'wire');g.inventory.wire=5;
+  g.set(12,10,g.T.STONE);
+  const canvas=g.ids.get('game');
+  const worldPointer=(event,x,y)=>{for(const listener of canvas.listeners[event]||[])listener({pointerId:1,pointerType:'mouse',button:0,clientX:x*24+12-g.camera.x,clientY:y*24+12-g.camera.y,preventDefault(){}});};
+  worldPointer('pointerdown',10,10);worldPointer('pointermove',13,10);worldPointer('pointercancel',13,10);
+  assert.equal(g.inventory.wire,5);assert.equal(g.get(10,10),g.T.AIR);
+  worldPointer('pointerdown',10,10);worldPointer('pointermove',13,10);worldPointer('pointerup',13,10);
+  assert.equal(g.inventory.wire,3);assert.equal(g.get(10,10),g.T.WIRE);assert.equal(g.get(11,10),g.T.WIRE);assert.equal(g.get(13,10),g.T.AIR);
+});
+
+test('legacy saves gain one workbench and preserve existing inventory and construction',()=>{
+  const g=game();g.set(20,24,g.T.STORAGE,{contents:{copper:7},rot:2});g.saveGame();
+  const legacy=JSON.parse(g.storage.get('circuitbound-save-v1'));legacy.version=3;
+  delete legacy.inventory.workbench;delete legacy.guide;
+  const restored=game(legacy);
+  assert.equal(restored.inventory.workbench,1);
+  assert.equal(restored.inventory.copper,legacy.inventory.copper);
+  assert.equal(restored.get(20,24),g.T.STORAGE);
+  assert.equal(restored.api.meta.get(restored.idx(20,24)).contents.copper,7);
+  restored.saveGame();
+  const next=game(JSON.parse(restored.storage.get('circuitbound-save-v1')));
+  assert.equal(next.inventory.workbench,1);
 });
