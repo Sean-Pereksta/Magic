@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
 const {boot,selectHub} = require('../desktop/bootstrap.cjs');
-const {getFeed,stageItem,prepareSaveDirectory,markRejectedUpdate,isRejectedUpdate} = require('../desktop/updates.cjs');
+const {getFeed,stageItem,prepareSaveDirectory,markRejectedUpdate,isRejectedUpdate,canUseReleaseOverlay} = require('../desktop/updates.cjs');
 const {writeJson} = require('../desktop/storage.cjs');
 
 const a='a'.repeat(64), b='b'.repeat(64), c='c'.repeat(64);
@@ -41,6 +41,26 @@ test('an interrupted hub startup returns to bundled files when its predecessor a
   assert.deepEqual(selectHub(data),{active:null,previous:null});
   assert.equal(isRejectedUpdate(data,{id:'hub',sha256:c}),true);
   assert.equal(isRejectedUpdate(data,{id:'cat',sha256:c}),false);
+});
+test('a fresh installer takes precedence over a stale hub and catalog',async t=>{
+  const data=sandbox(t);
+  const bundled={provider:'github',sequence:30,components:{hub:c,catalog:c}};
+  for(const id of ['hub','catalog']){
+    writeJson(path.join(data,'versions',id,a,'.complete'),{sha256:a,version:'catnmice-hub-29-a1b2c3d4'});
+    writeJson(path.join(data,'versions',id,c,'.complete'),{sha256:c,version:'catnmice-hub-30-a1b2c3d4'});
+    assert.equal(canUseReleaseOverlay(data,id,a,bundled),false);
+    assert.equal(canUseReleaseOverlay(data,id,c,bundled),false);
+  }
+  writeJson(path.join(data,'hub-version.json'),{active:a,previous:null});
+  assert.equal(selectHub(data,bundled).active,null);
+  assert.equal(isRejectedUpdate(data,{id:'hub',sha256:a}),false);
+
+  await stageItem({id:'hub',sha256:a,version:'catnmice-hub-31-e5f6a7b8'},data,async()=>{throw Error('Unexpected download');});
+  assert.equal(selectHub(data,bundled).active,a);
+  writeJson(path.join(data,'hub-version.json'),{active:a,previous:c});
+  writeJson(path.join(data,'startup.json'),{active:a});
+  assert.equal(selectHub(data,bundled).active,null);
+  assert.equal(isRejectedUpdate(data,{id:'hub',sha256:a}),true);
 });
 test('profile saves survive skipped versions and failed upgrades without copying a failed generation back',t=>{
   const data=sandbox(t);

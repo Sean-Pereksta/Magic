@@ -242,10 +242,15 @@ async function loadRankings() {
 }
 function downloads() {
   const downloadState = Array.isArray(state.downloads) ? state.downloads : [];
+  const buildInfo = state.hubBuild > 0 ? 'Running build '+esc(state.hubBuild)+'. ' :
+    state.version ? 'Installed version '+esc(state.version)+'. ' : '';
   const updateInfo = state.publisherUpdates === false
     ? 'Install the latest Windows launcher from catnmice.com/hub/download.html to enable updates.'
     : 'Check for published updates from Magic and Truth for the launcher, game catalog and your installed games.';
-  return `<section class="intro-art"><img src="art/bannerlands-hero.webp" alt=""><h2>Launcher updates</h2><p>${state.version ? 'Installed version '+esc(state.version)+'. ' : ''}${updateInfo}</p>${state.publisherUpdates === false ? '' : `<div class="controls">${btn('Check for updates','update',{},'gold','refresh')}</div>`}</section>
+  const updateControls = state.publisherUpdates === false ? '' :
+    btn('Check for updates','update',{},state.restartPending?'glass':'gold','refresh');
+  const restart = state.restartPending ? btn('Restart launcher','restart',{},'gold','refresh') : '';
+  return `<section class="intro-art"><img src="art/bannerlands-hero.webp" alt=""><h2>Launcher updates</h2><p>${buildInfo}${state.restartPending ? 'The update is ready to apply.' : updateInfo}</p>${restart || updateControls ? `<div class="controls">${restart}${updateControls}</div>` : ''}</section>
     ${downloadState.length ? `<section class="panel"><h2>Download activity</h2><div class="line-list">${downloadState.map(d=>`<div class="list-item"><div class="item-main"><strong>${esc(d.title || (d.id==='hub'?'Game Hub':d.id==='catalog'?'Game catalog':title(matches(d.id) || {id:d.id,title:d.id})) || 'Update')}</strong><small>${esc([d.status,d.message].filter(Boolean).join(' · ') || 'In progress')}${Number.isFinite(d.progress)?' · '+Math.round(d.progress)+'%':''}</small></div></div>`).join('')}</div></section>` : ''}
     <section class="panel"><div class="section-title">${titleLine('Game packs',packs().length)}</div><div class="line-list">${packs().length ? packs().map(g=>`<div class="list-item"><img src="${attr(imageFor(g))}" alt=""><div class="item-main"><strong>${esc(title(g))}</strong><small>${installed(g.id)?'Installed':'Available to install'}${g.offline.bytes ? ' · '+fmt(Math.ceil(g.offline.bytes/1048576))+' MB':''}</small></div>${installed(g.id)?btn(playsLocally(g) ? 'Play' : 'Play Offline','play',{id:g.id,mode:'offline'},'','play'):btn('Install','install',{id:g.id},'','downloads')}${ids(state.rollbackAvailable).includes(g.id) ? btn('Restore previous version','rollback',{id:g.id}) : ''}</div>`).join(''):'<p>No game packs are available in this catalog.</p>'}</div></section>`;
 }
@@ -279,6 +284,7 @@ function cleanError(error) {
   return String(error?.message || error || 'The action could not be completed.').replace(/^Error invoking remote method ['"][^'"]+['"]:\s*(Error:\s*)?/, '').slice(0,500);
 }
 function updateSummary(result) {
+  if (result?.restartPending) return 'The launcher update is ready. Select Restart launcher to apply it.';
   if (result?.changed === 0) return 'No new updates to apply.';
   if (Number.isInteger(result?.changed) && result.changed > 0) {
     return result.changed + (result.changed === 1 ? ' update found.' : ' updates found.') + ' See Download activity for details.';
@@ -339,6 +345,7 @@ function onAction(el) {
     case 'play': dispatch('play',{id,mode,action:kind});break;
     case 'install': dispatch('install',{id},'Game pack installation completed.');break;
     case 'update': dispatch('update',id ? {id} : {},updateSummary);break;
+    case 'restart': dispatch('restart',{});break;
     case 'rollback': dispatch('rollback',{id},'Previous game version restored.');break;
     case 'previous': case 'next': case 'slide': {
       const total = spotlights.filter(matches).length;

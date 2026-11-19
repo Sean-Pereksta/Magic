@@ -11,19 +11,20 @@ function nativeWindow(pid,title){
   const probe="$game=Get-Process -Id "+pid+" -ErrorAction Stop; try {$limit=(Get-Date).AddSeconds(25); do {$game.Refresh(); if($game.HasExited){throw 'Game exited before menu'}; if($game.MainWindowTitle -like 'Last Signal*"+title+"*'){exit 0}; Start-Sleep -Milliseconds 150} while((Get-Date) -lt $limit); throw 'Game menu did not open'} finally {if(!$game.HasExited){$null=$game.CloseMainWindow(); if(!$game.WaitForExit(3000)){$game.Kill()}}}";
   execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',probe],{windowsHide:true,timeout:35000});
 }
-async function localSelector(app,selector){
-  await app.evaluate(async({webContents},selector)=>{
-    const until=Date.now()+25000;
+async function localSelector(app,selector,id){
+  await app.evaluate(async({webContents},{selector,id})=>{
+    const until=Date.now()+(id==='bannerlands'?55000:25000);
     while(Date.now()<until){
       const wc=webContents.getAllWebContents().find(w=>w.getURL().startsWith('http://127.0.0.1:'));
       if(wc && !wc.isLoadingMainFrame()){
-        const visible=await wc.executeJavaScript('!!document.querySelector('+JSON.stringify(selector)+')?.getClientRects().length').catch(()=>false);
-        if(visible)return;
+        const result=await wc.executeJavaScript('({visible:!!document.querySelector('+JSON.stringify(selector)+')?.getClientRects().length,artReady:!!performance.getEntriesByName("bannerlands-battle-art-ready").length,artError:document.querySelector("#startButton")?.textContent.includes("RETRY BATTLE ART")?document.querySelector("#chosenTrait")?.textContent:null})').catch(()=>null);
+        if(id==='bannerlands' && result?.artError)throw Error(result.artError);
+        if(result?.visible && (id!=='bannerlands'||result.artReady))return;
       }
       await new Promise(r=>setTimeout(r,150));
     }
     throw Error('Local game did not open '+selector);
-  },selector);
+  },{selector,id});
 }
 const closeGames=app=>app.evaluate(({BrowserWindow})=>{for(const w of BrowserWindow.getAllWindows())if(w.webContents.getURL().includes('toolbar.html'))w.close();});
 (async()=>{
@@ -73,7 +74,7 @@ const closeGames=app=>app.evaluate(({BrowserWindow})=>{for(const w of BrowserWin
       for(const {id,mode,selector} of controls){
         try{
           const launched=await lib.evaluate(data=>window.hub.invoke('play',data),{id,mode});
-          if(selector)await localSelector(app,selector);
+          if(selector)await localSelector(app,selector,id);
           else nativeWindow(launched?.nativePid,'OnlineLobby');
           report.hostControls.push(id);
         }catch(e){report.errors.push({game:id,mode,reason:e.message});}

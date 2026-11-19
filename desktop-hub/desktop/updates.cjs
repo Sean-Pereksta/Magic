@@ -70,9 +70,31 @@ function stageItem(item,dir,fetchImpl){
   if(!stages.has(key))stages.set(key,extractItem(item,dir,fetchImpl).finally(()=>stages.delete(key)));
   return stages.get(key);
 }
+function releaseSequence(version){
+  const value=Number(/^catnmice-hub-(\d+)-[a-f0-9]{8}$/.exec(version||'')?.[1]);
+  return Number.isSafeInteger(value)&&value>0?value:0;
+}
+function stagedReleaseSequence(data,id,hash){
+  if(!HASH.test(hash||''))return 0;
+  try{
+    const marker=JSON.parse(fs.readFileSync(path.join(data,'versions',id,hash,'.complete'),'utf8'));
+    return marker.sha256===hash?releaseSequence(marker.version):0;
+  }catch{return 0;}
+}
+function canUseReleaseOverlay(data,id,hash,release){
+  if(!HASH.test(hash||''))return false;
+  if(release?.provider!=='github'||!Number.isSafeInteger(release.sequence)||release.sequence<1)return true;
+  return hash!==release.components?.[id]&&stagedReleaseSequence(data,id,hash)>release.sequence;
+}
 async function extractItem(item,dir,fetchImpl){
   const dest=path.join(dir,'versions',item.id,item.sha256);
-  try{if(JSON.parse(await fsp.readFile(path.join(dest,'.complete'),'utf8')).sha256===item.sha256)return dest;}catch{}
+  const markerPath=path.join(dest,'.complete');
+  let marker;
+  try{marker=JSON.parse(await fsp.readFile(markerPath,'utf8'));}catch{}
+  if(marker?.sha256===item.sha256){
+    if(releaseSequence(item.version)>releaseSequence(marker.version))writeJson(markerPath,{sha256:item.sha256,version:item.version});
+    return dest;
+  }
   const archive=path.join(dir,'downloads',item.id+'-'+item.sha256+'.zip');
   await download(item,archive,fetchImpl);
   await fsp.mkdir(path.dirname(dest),{recursive:true});
@@ -167,4 +189,4 @@ function prepareSaveDirectory(base,version,previous,touched=new Set()){
   touched.add(next);
   return next;
 }
-module.exports={getFeed,verifyFeed,validateGitHubManifest,download,stageItem,sha,FEED,markRejectedUpdate,isRejectedUpdate,prepareSaveDirectory};
+module.exports={getFeed,verifyFeed,validateGitHubManifest,download,stageItem,sha,FEED,markRejectedUpdate,isRejectedUpdate,prepareSaveDirectory,stagedReleaseSequence,canUseReleaseOverlay};

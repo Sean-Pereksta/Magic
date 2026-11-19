@@ -12,7 +12,7 @@ const {supportsSaveSync,configureSaveSession}=require('./save-sync.cjs');
 const {gameOnPage}=require('./gameplay.cjs');
 const {authorizeDesktop}=require('./verified.cjs');
 const {createGames,busy,focusGame}=require('./windows.cjs');
-const {getFeed,stageItem,isRejectedUpdate,markRejectedUpdate,prepareSaveDirectory}=require('./updates.cjs');
+const {getFeed,stageItem,isRejectedUpdate,markRejectedUpdate,prepareSaveDirectory,stagedReleaseSequence,canUseReleaseOverlay}=require('./updates.cjs');
 const importLocal=filename=>import(pathToFileURL(filename).href);
 protocol.registerSchemesAsPrivileged([{scheme:'catnmice',privileges:{standard:true,secure:true,supportFetchAPI:true}}]);
 function start({root,bundled,data,ready,startupFailed}){
@@ -26,7 +26,7 @@ function start({root,bundled,data,ready,startupFailed}){
   const bundledDir=id=>path.join(baseContent,'packs',id);
   const bundledSpec=id=>original.games.find(g=>g.id===id)?.offline;
   const installedDir=id=>{const p=state.packs[id];return p?.active?versionDir(id,p.active):path.join(baseContent,'packs',id);};
-  const contentDir=()=>state.packs.catalog?.active?installedDir('catalog'):baseContent;
+  const contentDir=()=>canUseReleaseOverlay(data,'catalog',state.packs.catalog?.active,release)?installedDir('catalog'):baseContent;
   let catalog;
   function refreshCatalog(){
     const value=JSON.parse(fs.readFileSync(path.join(contentDir(),'catalog.json'),'utf8'));
@@ -125,11 +125,19 @@ function start({root,bundled,data,ready,startupFailed}){
   }
   function getState(){
     const c=state.counts;
-    const rollbackAvailable=Object.keys(state.packs).filter(id=>state.packs[id].canRollback);
+    const rollbackAvailable=Object.keys(state.packs).filter(id=>state.packs[id].canRollback&&(id!=='catalog'||contentDir()!==baseContent));
     const saveSyncGames=catalog.games.filter(g=>supportsSaveSync(g.id)&&installed(g)).map(g=>g.id);
-    return {version:app.getVersion(),catalog,profile:publicProfile(profile()),profiles:state.profiles.map(publicProfile),online,installed:catalog.games.filter(installed).map(g=>g.id),recent:profile().recent,favorites:profile().favorites,settings:state.settings,counts:c.hub?{...c,hub:{...c.hub,asOf:c.asOf},games:Object.fromEntries(Object.entries(c.games).map(([id,row])=>[id,{...row,asOf:c.asOf}]))}:{},downloads:state.downloads,rollbackAvailable,saveSyncGames,publisherUpdates};
+    const hubBuild=root===bundled?release.sequence:stagedReleaseSequence(data,'hub',currentHash('hub'));
+    return {version:app.getVersion(),hubBuild,restartPending:restartPending(),catalog,profile:publicProfile(profile()),profiles:state.profiles.map(publicProfile),online,installed:catalog.games.filter(installed).map(g=>g.id),recent:profile().recent,favorites:profile().favorites,settings:state.settings,counts:c.hub?{...c,hub:{...c.hub,asOf:c.asOf},games:Object.fromEntries(Object.entries(c.games).map(([id,row])=>[id,{...row,asOf:c.asOf}]))}:{},downloads:state.downloads,rollbackAvailable,saveSyncGames,publisherUpdates};
   }
-  function currentHash(id){if(id==='hub')return root===bundled?null:path.basename(root);return state.packs[id]?.active;}
+  function currentHash(id){if(id==='hub')return root===bundled?null:path.basename(root);if(id==='catalog'&&contentDir()===baseContent)return null;return state.packs[id]?.active;}
+  function restartPending(){
+    try{
+      const {active}=JSON.parse(fs.readFileSync(path.join(data,'hub-version.json'),'utf8'));
+      return active!==currentHash('hub')&&canUseReleaseOverlay(data,'hub',active,release)&&
+        !isRejectedUpdate(data,{id:'hub',sha256:active});
+    }catch{return false;}
+  }
   function pointer(item){
     if(item.id==='hub'){writeJson(path.join(data,'hub-version.json'),{active:item.sha256,previous:currentHash('hub')});return;}
     state.packs[item.id]={active:item.sha256,previous:currentHash(item.id),canRollback:true};save();
@@ -186,7 +194,7 @@ function start({root,bundled,data,ready,startupFailed}){
       await apply(item);
       changed++;
     }
-    return {changed,source:feed.source};
+    return {changed,source:feed.source,restartPending:restartPending()};
   }
   function install(id){
     if(!installing.has(id)){
@@ -373,6 +381,10 @@ function start({root,bundled,data,ready,startupFailed}){
       case 'favorite':return favorite(d.id);
       case 'install':return install(d.id);
       case 'update':return check(d.id);
+      case 'restart':
+        if(!restartPending())return;
+        if(gameBusy()||launching.size||inFlight.size||installing.size)throw Error('Close your games and let active downloads finish before restarting.');
+        setImmediate(()=>{app.relaunch();app.quit();});return;
       case 'rollback':return rollback(d.id);
       case 'settings':for(const k of ['autoUpdate','reducedMotion'])if(typeof d[k]==='boolean')state.settings[k]=d[k];save();notify();return;
       case 'rankings':{

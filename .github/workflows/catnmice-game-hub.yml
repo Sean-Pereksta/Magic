@@ -142,6 +142,10 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node build/smoke.cjs "$install/Catnmice Game Hub.exe" "$env:RUNNER_TEMP/hub-qa-profile" --offline-all
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node build/cat-host-smoke.mjs "$install"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node build/trash-host-smoke.mjs "$install"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node build/check-online.cjs "$install/Catnmice Game Hub.exe" "$env:RUNNER_TEMP/hub-qa-online"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           if ($env:CATNMICE_SIGN_THUMBPRINT -and (Get-AuthenticodeSignature dist/Catnmice-Game-Hub-Setup.exe).Status -ne 'Valid') { throw 'Invalid setup signature.' }
