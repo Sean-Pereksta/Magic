@@ -18,11 +18,12 @@ const argument = name => {
 const appPort = Number(argument('app-port') ?? 38471);
 const localOnly = process.argv.includes('--local-only');
 const noOpen = process.argv.includes('--no-open');
+const noReuse = process.argv.includes('--no-reuse');
 const directoryUrl = (process.env.CAT_MOUSE_DIRECTORY_URL ?? CAT_DIRECTORY_URL).trim().replace(/\/+$/, '');
 const cloudflared = argument('cloudflared') ?? join(editionRoot, 'runtime', 'cloudflared.exe');
 const data = argument('data-dir') ?? join(process.env.LOCALAPPDATA || editionRoot, 'CatMouseLocal');
 await mkdir(data, { recursive: true });
-const sessionFile = join(data, 'desktop-' + appPort + '.json');
+const sessionPath = port => join(data, 'desktop-' + port + '.json');
 const desktop = randomBytes(32).toString('base64url');
 const authorization = Buffer.from('Bearer ' + desktop);
 const bind = (server, port = 0) => new Promise((done, reject) => {
@@ -34,8 +35,8 @@ const app = createServer(serveEdition);
 try {
   await bind(app, appPort);
 } catch (error) {
-  if (error.code !== 'EADDRINUSE') throw error;
-  const existing = JSON.parse(await readFile(sessionFile, 'utf8'));
+  if (error.code !== 'EADDRINUSE' || noReuse) throw error;
+  const existing = JSON.parse(await readFile(sessionPath(appPort), 'utf8'));
   if (!Number.isInteger(existing.control) || !/^[\w-]{43}$/.test(existing.desktop)) throw error;
   const current = await fetch('http://127.0.0.1:' + existing.control + '/host', {
     headers: { Authorization: 'Bearer ' + existing.desktop }, signal: AbortSignal.timeout(1_500)
@@ -288,6 +289,7 @@ control = createServer(async (request, response) => {
 });
 await bind(control);
 const session = { desktop, control: control.address().port };
+const sessionFile = sessionPath(app.address().port);
 await writeFile(sessionFile, JSON.stringify(session), { mode: 0o600 });
 openApp(app.address().port, session);
 
@@ -306,3 +308,8 @@ async function shutdown() {
 }
 process.once('SIGINT', shutdown);
 process.once('SIGTERM', shutdown);
+process.once('disconnect', shutdown);
+process.on('message', message => {
+  if (message?.type === 'stop') void shutdown();
+});
+if (process.connected === false) void shutdown();

@@ -19,6 +19,7 @@ const localHost = ['127.0.0.1', 'localhost'].includes(location.hostname);
 const controlPort = Number(controlParams.get('control'));
 const desktop = localHost && controlPort > 0 && controlPort < 65536 && controlParams.get('desktop');
 const wantsToHost = new URLSearchParams(location.search).get('host') === '1';
+const wantsMultiplayer = new URLSearchParams(location.search).get('online') === '1';
 const hostConnectionError = 'Could not connect to the lobby host service. Open Cat & Mouse Local Edition from the Windows Start menu and choose Multiplayer → Host Lobby.';
 const expectedRoom = controlParams.get('room');
 const inviteCode = controlParams.get('invite');
@@ -1066,6 +1067,8 @@ if (expectedRoom) {
 } else if (wantsToHost) {
   multiplayer();
   void openHost();
+} else if (wantsMultiplayer) {
+  multiplayer();
 } else {
   title();
   if (desktop) control().then(status => {

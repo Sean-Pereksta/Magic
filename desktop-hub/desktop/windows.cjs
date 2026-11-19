@@ -1,4 +1,4 @@
-const {BrowserWindow,WebContentsView,ipcMain,shell}=require('electron');
+const {BrowserWindow,WebContentsView,dialog,ipcMain,shell}=require('electron');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {isLobby,onLobby,snapshot,SITE,validInvite}=require('./official.cjs');
@@ -12,8 +12,8 @@ function createGames({library,root,icon,played,resolveGame,onClosed}) {
       if(game){row.counted=true;played(game,row.player);}
     }
   });
-  return async function open({title,url,game,player,offline,session,mode,onProfile,action,initial,close}) {
-    const localEdition=game?.hostRoute && game.localEditionRoute
+  return async function open({title,url,game,player,offline,localHost,guestInvite,requestHost,session,mode,onProfile,action,initial,close}) {
+    const localEdition=!localHost && game?.hostRoute && game.localEditionRoute
       ? validInvite(new URL(game.localEditionRoute,SITE).href) : null;
     const w=new BrowserWindow({title,width:1360,height:850,minWidth:650,minHeight:410,backgroundColor:'#11171d',icon,autoHideMenuBar:true,webPreferences:{preload:path.join(root,'desktop/toolbar-preload.cjs'),sandbox:true}});
     const view=new WebContentsView({webPreferences:{session,preload:path.join(root,'desktop/play-preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webviewTag:false}});
@@ -30,6 +30,10 @@ function createGames({library,root,icon,played,resolveGame,onClosed}) {
       status('Could not open the Local Edition page. Try opening it from the Catnmice website.',true);
     });
     const safe=raw=>{try{const u=new URL(raw);return offline?u.origin===new URL(url).origin:(u.protocol==='https:'&&!u.username&&!u.password);}catch{return false;}};
+    const openGuest=target=>{
+      const invite=guestInvite?.(target);
+      if(invite)void shell.openExternal(invite).catch(()=>status('Could not open the guest invitation.'));
+    };
     const control=a=>{
       if(a==='back'){w.close();return;}
       if(a==='full'){w.setFullScreen(!w.isFullScreen());return;}
@@ -44,7 +48,7 @@ function createGames({library,root,icon,played,resolveGame,onClosed}) {
     const row={w,game,mode,player,control,armed:false,counted:false};windows.set(w.webContents.id,row);byGame.set(wc.id,row);
     function failure(message){
       shown=false;layout();row.failed=true;
-      if(mode==='host'){
+      if(mode==='host' && !localHost){
         status('Could not connect to online hosting. Select Reload to try again, or try the game’s Local Edition.',!!localEdition);
       }else status(message+'  Select Reload to try again or Library to return.');
     }
@@ -54,9 +58,16 @@ function createGames({library,root,icon,played,resolveGame,onClosed}) {
     wc.setWindowOpenHandler(({url:target})=>{
       if(offline && localEdition && target===localEdition)setImmediate(openLocalEdition);
       else if(safe(target))setImmediate(()=>load(target));
+      else openGuest(target);
       return {action:'deny'};
     });
-    wc.on('will-navigate',(e,href)=>{if(!safe(href))e.preventDefault();});
+    wc.on('will-navigate',(e,href)=>{
+      if(requestHost && href===new URL('/__catnmice/start-host',url).href){
+        e.preventDefault();
+        w.close();
+        void requestHost().catch(error=>dialog.showErrorBox('Trash Tactics · Host Lobby',error.message));
+      }else if(!safe(href)){e.preventDefault();openGuest(href);}
+    });
     wc.on('will-redirect',(e,href)=>{if(!safe(href))e.preventDefault();});
     wc.on('did-fail-load',(_,code,desc,href,main)=>{if(main && code!==-3)failure('Page unavailable. '+desc);});
     wc.on('render-process-gone',()=>failure('The game closed unexpectedly.'));

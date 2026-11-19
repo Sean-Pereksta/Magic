@@ -67,11 +67,20 @@ jobs:
         with:
           python-version: '3.12'
       - name: Build library and games from the release commits
+        env:
+          CAT_MOUSE_DIRECTORY_URL: ${{ vars.CAT_MOUSE_DIRECTORY_URL }}
         run: |
           git config --global core.autocrlf false
           node content/build-catalog.mjs .. ../truth-source
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python content/build-packs.py .. ../truth-source
+          $lastSignal = Join-Path $env:RUNNER_TEMP 'last-signal-build'
+          & ../truth-source/games/last-signal/Build-Windows.ps1 -Destination $lastSignal
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & ../truth-source/games/last-signal/tests/Install-SoftwareGraphics.ps1 -GameDirectory $lastSignal
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $cloudflared = Join-Path $env:RUNNER_TEMP 'catnmice-cloudflared.exe'
+          Invoke-WebRequest -Uri 'https://github.com/cloudflare/cloudflared/releases/download/2026.11.0/cloudflared-windows-amd64.exe' -OutFile $cloudflared
+          python content/build-packs.py .. ../truth-source --last-signal-build "$lastSignal" --cloudflared "$cloudflared"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node content/build-catalog.mjs .. ../truth-source
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

@@ -2,6 +2,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {execFileSync}=require('node:child_process');
 const {getMakeNsisPath,getRceditBundle}=require('app-builder-lib/out/toolsets/windows');
+const {usesLocalHost,hasLocalHostPack}=require('../desktop/local-host.cjs');
 const root=path.join(__dirname,'..');
 const output=path.resolve(process.env.HUB_DIST||path.join(root,'dist'));
 const stage=path.join(output,'app'),app=path.join(stage,'resources/app');
@@ -38,7 +39,13 @@ async function main(){
   for(const game of catalog.games.filter(g=>g.offline)){
     const src=path.join(content,'packs',game.id);
     if(!fs.existsSync(path.join(src,game.offline.entry.split(/[?#]/)[0])))throw Error('Missing '+game.id+' pack entry');
-    sections.push('Section "'+nsis(game.title)+'"','  ${If} $OnePack == ""','  ${OrIf} $OnePack == "'+game.id+'"','    SetOutPath "$INSTDIR\\resources\\app\\content\\packs\\'+game.id+'"','    ClearErrors','    File /r "'+nsis(src)+'\\*.*"','    IfErrors 0 +2','      Abort "Could not install the game files."','  ${EndIf}','SectionEnd');
+    const localHost=usesLocalHost(game.id);
+    if(localHost && !hasLocalHostPack(game.id,game.offline,src))throw Error('Incomplete '+game.id+' Windows hosting pack');
+    if(game.id==='lastsignal' && (game.offline.type!=='native-windows'||
+        !['Hosting/cloudflared.exe','Assets/models.bin','Mobile/index.html'].every(file=>fs.existsSync(path.join(src,file)))))throw Error('Incomplete Last Signal Windows hosting pack');
+    sections.push('Section "'+nsis(game.title)+'"');
+    if(localHost || game.id==='lastsignal')sections.push('  SectionIn RO');
+    sections.push('  ${If} $OnePack == ""','  ${OrIf} $OnePack == "'+game.id+'"','    SetOutPath "$INSTDIR\\resources\\app\\content\\packs\\'+game.id+'"','    ClearErrors','    File /r "'+nsis(src)+'\\*.*"','    IfErrors 0 +2','      Abort "Could not install the game files."','  ${EndIf}','SectionEnd');
   }
   const nsi=path.join(output,'packs.nsh');fs.writeFileSync(nsi,'\uFEFF'+sections.join('\r\n'));
   const compiler=await getMakeNsisPath();

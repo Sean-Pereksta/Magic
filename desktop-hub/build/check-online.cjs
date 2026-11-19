@@ -16,7 +16,8 @@ if (fs.existsSync(profile)) throw Error('Choose a new directory for this isolate
 fs.mkdirSync(profile, {recursive:true});
 
 const official = 'https://www.catnmice.com';
-const report = {titles:0, actions:0, routes:[], representative:[], errors:[]};
+const localGames = ['bannerlands','lastsignal','trashtactics','cat'];
+const report = {titles:0, actions:0, routes:[], representative:[], localControls:[], errors:[]};
 const contractFields = [
   'route','singleRoute','multiplayerRoute','dmRoute','downloadRoute','localEditionRoute',
   'modes','requiresUser','autoUsername','autoRedirect','launchMode','realmId','liveLobbyGame',
@@ -75,6 +76,9 @@ function checkMatrix(games, model) {
     const actual=live.get(g.id);
     if (!actual) {report.errors.push(g.id+' is missing from the live game registry.');continue;}
     for (const field of contractFields) {
+      // The native Last Signal launch ignores website routes. Pages can serve
+      // the previous lobby registry while the installer build is in progress.
+      if (g.id==='lastsignal' && ['route','multiplayerRoute','localEditionRoute','joinLabel'].includes(field)) continue;
       if (!isDeepStrictEqual(actual[field],g[field])) report.errors.push(g.id+' differs from the live registry for '+field+'.');
     }
     for (const action of g.actions) {
@@ -127,13 +131,34 @@ function checkScreen() {
     login:Boolean(visible(document.querySelector('#accountGateModal')) && document.querySelector('#accountGateModal')?.innerText.includes('Log In'))
   };
 }
-async function checkGuest(app, lib, id, action, accepts) {
+async function checkGuest(app, lib, id, action, accepts, invocation = ['play',{id,action,mode:'online'}]) {
   try {
-    await lib.evaluate(data => window.hub.invoke('play',data),{id,action,mode:'online'});
+    await lib.evaluate(([method,data]) => window.hub.invoke(method,data),invocation);
     const actual=await waitFor(async () => (await readViews(app,checkScreen)).find(row => row.value && accepts(row)), id+' '+action+' destination');
     report.representative.push({id,action,url:actual.url,directoryStatus:id==='cat'?actual.value.directoryStatus:undefined});
   } catch(error) {report.errors.push(id+' '+action+': '+error.message);}
   finally {await closeGames(app);}
+}
+async function checkLocalControls(lib, state) {
+  const controls = locator => locator.evaluateAll(buttons => buttons.map(button => [
+    button.textContent.trim(),button.dataset.mode,button.dataset.id
+  ]));
+  for (const id of localGames) {
+    if (!state.installed.includes(id)) throw Error('Setup did not install the local '+id+' game.');
+    await lib.locator('.art-button[data-id="'+id+'"]').click();
+    const detail = await controls(lib.locator('.hero-body [data-action="play"]'));
+    const expected = [['Play','offline',id],['Multiplayer','online',id],['Host Lobby','host',id]];
+    if (!isDeepStrictEqual(detail,expected)) throw Error(id+' game details do not default to local play and hosting.');
+    await lib.locator('.back-line[data-go="Library"]').click();
+  }
+  await lib.locator('.nav-link[data-go="Live Lobbies"]').click();
+  for (const id of localGames) {
+    const lobby = await controls(lib.locator('[data-action="play"][data-id="'+id+'"]'));
+    const expected = [['Multiplayer','online',id],['Host Lobby','host',id]];
+    if (!isDeepStrictEqual(lobby,expected)) throw Error(id+' live lobby controls should open the local game.');
+    report.localControls.push(id);
+  }
+  await lib.locator('.nav-link[data-go="Library"]').click();
 }
 async function main() {
   const args = flags.includes('--dev') ? [path.resolve(__dirname,'..')] : [];
@@ -146,19 +171,20 @@ async function main() {
     await lib.waitForSelector('.game-card',{timeout:45000});
     const state=await lib.evaluate(() => window.hub.invoke('state'));
     if (!state.profile.guest) throw Error('The isolated account must be a guest.');
+    await checkLocalControls(lib,state);
     await lib.evaluate(() => window.hub.invoke('community',{section:'lobbies'}));
     const model=await waitFor(async () => (await readViews(app,openLibraryView)).find(row => row.value?.controls.length)?.value,'published game registry');
     checkMatrix(state.catalog.games,model);
     await closeGames(app);
     await checkRoutes(state.catalog.games);
     await checkGuest(app,lib,'balatlesolo','single',row => row.url.startsWith(official+'/game/balatlesolo.html') && row.value.playable);
-    await checkGuest(app,lib,'cat','live',row => row.url.startsWith(official+'/lobby/lobby.html') && row.value.catDirectorySelected);
+    await checkGuest(app,lib,'cat','live',row => row.url.startsWith(official+'/lobby/lobby.html') && row.value.catDirectorySelected,['community',{section:'lobbies',id:'cat'}]);
     await checkGuest(app,lib,'village','single',row => row.url.startsWith(official+'/lobby/lobby.html') && row.value.gated && row.value.login);
   } finally {await app.close();}
 }
 main().catch(error => report.errors.push(error.message)).finally(() => {
   const output=path.join(profile,'online-release-check.json');
   fs.writeFileSync(output,JSON.stringify(report,null,2)+'\n');
-  console.log(JSON.stringify({titles:report.titles,actions:report.actions,routes:report.routes.length,representative:report.representative,errors:report.errors,report:output},null,2));
+  console.log(JSON.stringify({titles:report.titles,actions:report.actions,routes:report.routes.length,representative:report.representative,localControls:report.localControls,errors:report.errors,report:output},null,2));
   if (report.errors.length) process.exitCode=1;
 });

@@ -2,18 +2,22 @@
 import argparse
 import hashlib
 import json
+import os
 import re
+from functools import cache
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
 from zipfile import ZipFile
+from urllib.parse import urlsplit
 
 parser = argparse.ArgumentParser()
 parser.add_argument('magic', type=Path)
 parser.add_argument('truth', type=Path)
 parser.add_argument('--only', nargs='+', help='Rebuild specific catalog keys in an existing release tree')
 parser.add_argument('--last-signal-build', type=Path, help='Package the Windows executable built from the selected Truth source')
+parser.add_argument('--cloudflared', type=Path, help='Pinned Windows x64 Cloudflare runtime for the local multiplayer packs')
 args = parser.parse_args()
 magic, truth = args.magic.resolve(), args.truth.resolve()
 out = Path(__file__).resolve().parent
@@ -23,6 +27,10 @@ manifest = json.loads((out/'pack-index.json').read_text(encoding='utf8')) if arg
 excluded = {'source', 'tests', 'docs', 'scripts', 'tools', 'node_modules',
             'desktop', 'hosting', 'server', 'directory', '.git', 'art-pack'}
 text_types = {'.html','.js','.mjs','.css','.svg','.json','.txt','.md'}
+runtime_hashes = {
+    'node.exe': '3602f2bb1a10f2cbab4c36886218a33c1ab3db87290e73b033c46c77147d0237',
+    'cloudflared.exe': 'd5c1d82031da6253dcdcff64c944cd0fe063016edeb2e4fd088075fc9bd52d0a',
+}
 
 def copy(source, target):
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -46,12 +54,17 @@ def copy_tree(source, target):
         ):
             copy(item,target/rel)
 
-def build(key, repo, entry, files=(), folders=(), edition=None):
+def build(key, repo, entry, files=(), folders=(), edition=None, hosting=None):
     if args.only and key not in args.only:
         return
     if key not in records or 'single' not in records[key]['modes']:
         raise ValueError('Pack for missing solo catalog entry '+key)
     root = out/'packs'/key
+    if root.exists():
+        pack_root = root.resolve()
+        if root.is_symlink() or pack_root.parent != (out/'packs').resolve():
+            raise ValueError('Invalid pack directory '+str(root))
+        shutil.rmtree(pack_root)
     root.mkdir(parents=True, exist_ok=True)
     for rel in files:
         copy(repo/rel,root/rel)
@@ -72,11 +85,72 @@ def build(key, repo, entry, files=(), folders=(), edition=None):
         'bytes':sum(p.stat().st_size for p in files),
         'version':catalog['source']['magic' if repo==magic else 'truth'],
         'digest':digest.hexdigest()}
+    if hosting:
+        server, runtime_folder = hosting
+        runtime = runtime_folder+'/node.exe'
+        tunnel = runtime_folder+'/cloudflared.exe'
+        if not all((root/item).is_file() for item in (server, runtime, tunnel)):
+            raise ValueError('Missing local hosting files for '+key)
+        manifest[key].update(hosting=True, server=server, runtime=runtime, tunnel=tunnel)
+
+@cache
+def host_runtimes():
+    node = shutil.which('node.exe')
+    if not node or not args.cloudflared:
+        raise ValueError('Use the pinned Windows x64 Node and pass --cloudflared for the local multiplayer packs')
+    binaries = {'node.exe':Path(node), 'cloudflared.exe':args.cloudflared.resolve()}
+    for name, file in binaries.items():
+        with file.open('rb') as stream:
+            if hashlib.file_digest(stream,'sha256').hexdigest() != runtime_hashes[name]:
+                raise ValueError(name+' does not match the pinned Windows x64 runtime')
+    return binaries
+
+def install_host(root, folder, *, locked):
+    for name, file in host_runtimes().items():
+        copy(file,root/'hub-runtime'/name)
+    copy_tree(truth/'games/bannerlands/source/hosting/licenses',root/'notices')
+    npm = shutil.which('npm.cmd' if os.name == 'nt' else 'npm')
+    if not npm:
+        raise ValueError('npm is required to package the local match server')
+    if locked:
+        copy(magic/folder/'package-lock.json',root/folder/'package-lock.json')
+    subprocess.run([npm,'ci' if locked else 'install','--omit=dev','--omit=optional',
+                    '--ignore-scripts','--no-audit','--no-fund','--package-lock=' + str(locked).lower()],
+                   cwd=root/folder,check=True)
+    package = json.loads((root/folder/'package.json').read_text(encoding='utf8'))
+    installed = json.loads((root/folder/'node_modules/ws/package.json').read_text(encoding='utf8'))
+    if installed['version'] != package['dependencies']['ws']:
+        raise ValueError('Incorrect WebSocket runtime version for '+str(folder))
+
+cat_folder = Path('game/catandmouse/edition')
+trash_folder = Path('game/trash-tactics')
+
+def cat_edition(root):
+    copy_tree(magic/cat_folder/'server',root/cat_folder/'server')
+    install_host(root,cat_folder,locked=False)
+    directory_url = os.environ.get('CAT_MOUSE_DIRECTORY_URL','').strip().rstrip('/')
+    if directory_url:
+        url = urlsplit(directory_url)
+        if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment:
+            raise ValueError('CAT_MOUSE_DIRECTORY_URL must be an HTTPS service URL')
+        config = root/cat_folder/'directory-config.mjs'
+        current = config.read_text(encoding='utf8')
+        config_text, count = re.subn(r'^export const CAT_DIRECTORY_URL = .+;$',
+                                     lambda _: 'export const CAT_DIRECTORY_URL = '+json.dumps(directory_url)+';',
+                                     current, flags=re.MULTILINE)
+        if count != 1:
+            raise ValueError('Review the Cat & Mouse directory configuration')
+        config.write_text(config_text,encoding='utf8',newline='\n')
+
+def trash_edition(root):
+    for name in ('launch.mjs','tunnel.mjs','quick-tunnel.yml'):
+        copy(magic/trash_folder/'hosting'/name,root/trash_folder/'hosting'/name)
+    install_host(root,trash_folder,locked=True)
 
 def bannerlands(root):
-    with tempfile.TemporaryDirectory() as tmp:
-        subprocess.run(['node',str(truth/'games/bannerlands/source/build-standalone.mjs'),tmp],check=True)
-        copy(Path(tmp)/'Bannerlands.html',root/'Bannerlands.html')
+    binaries = host_runtimes()
+    subprocess.run([str(binaries['node.exe']),str(truth/'games/bannerlands/source/build-host.mjs'),
+                    '--hub','--output',str(root),'--cloudflared',str(binaries['cloudflared.exe'])],check=True)
 
 def last_signal(root):
     source = truth/'games'/'last-signal'
@@ -155,9 +229,12 @@ def local_three(entry):
         target.write_text(source.replace(original,'./vendor/three.min.js'),encoding='utf8',newline='\n')
     return apply
 
-build('cat',magic,'game/catandmouse/edition/index.html',folders=['game/catandmouse/edition'])
-build('trashtactics',magic,'game/trash-tactics/index.html',folders=['game/trash-tactics'])
-build('bannerlands',truth,'Bannerlands.html',edition=bannerlands)
+build('cat',magic,'game/catandmouse/edition/index.html',folders=[cat_folder],edition=cat_edition,
+      hosting=('game/catandmouse/edition/server/launcher.mjs','hub-runtime'))
+build('trashtactics',magic,'game/trash-tactics/index.html',folders=[trash_folder],edition=trash_edition,
+      hosting=('game/trash-tactics/hosting/launch.mjs','hub-runtime'))
+build('bannerlands',truth,'game/index.html',edition=bannerlands,
+      hosting=('game/source/desktop/launcher.mjs','runtime'))
 build('lastsignal',truth,'Last Signal.exe',edition=last_signal)
 if not args.only or 'lastsignal' in args.only:
     manifest['lastsignal']['type']='native-windows'

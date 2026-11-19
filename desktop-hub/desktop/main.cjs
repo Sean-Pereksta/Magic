@@ -5,7 +5,8 @@ const {pathToFileURL}=require('node:url');
 const {spawn}=require('node:child_process');
 const {newProfile,writeJson,readState,inDir}=require('./storage.cjs');
 const {SITE,LOBBY,isLobby,cardScript,onLobby,validInvite,snapshot,pause}=require('./official.cjs');
-const {startOffline}=require('./offline.cjs');
+const {portFor,startOffline}=require('./offline.cjs');
+const {usesLocalHost,hasLocalHostPack,startLocalHost,catGuestInvite,joinGuestInvite}=require('./local-host.cjs');
 const {createArenaReader}=require('./arena-rooms.cjs');
 const {supportsSaveSync,configureSaveSession}=require('./save-sync.cjs');
 const {gameOnPage}=require('./gameplay.cjs');
@@ -22,6 +23,8 @@ function start({root,bundled,data,ready,startupFailed}){
   const baseContent=path.join(bundled,'content');
   const original=JSON.parse(fs.readFileSync(path.join(baseContent,'catalog.json'),'utf8'));
   const versionDir=(id,hash)=>path.join(data,'versions',id,hash);
+  const bundledDir=id=>path.join(baseContent,'packs',id);
+  const bundledSpec=id=>original.games.find(g=>g.id===id)?.offline;
   const installedDir=id=>{const p=state.packs[id];return p?.active?versionDir(id,p.active):path.join(baseContent,'packs',id);};
   const contentDir=()=>state.packs.catalog?.active?installedDir('catalog'):baseContent;
   let catalog;
@@ -34,19 +37,41 @@ function start({root,bundled,data,ready,startupFailed}){
   const known=id=>{const g=catalog.games.find(g=>g.id===id);if(!g)throw Error('This game is not in the current catalog.');return g;};
   const profile=()=>state.profiles.find(p=>p.id===state.active);
   function packSpec(id){
-    if(!state.packs[id]?.active)return original.games.find(g=>g.id===id)?.offline;
+    if(!state.packs[id]?.active)return bundledSpec(id);
     const info=path.join(installedDir(id),'hub-pack.json');
     return fs.existsSync(info)?JSON.parse(fs.readFileSync(info,'utf8')):state.packs[id].spec;
   }
-  const installed=g=>{const spec=packSpec(g.id);return !!spec && fs.existsSync(inDir(installedDir(g.id),spec.entry.split(/[?#]/)[0]));};
+  function validPack(id,spec,folder){
+    if(usesLocalHost(id))return hasLocalHostPack(id,spec,folder);
+    if(id==='lastsignal'){
+      return spec?.type==='native-windows' && spec.entry==='Last Signal.exe' &&
+        ['Last Signal.exe','Hosting/cloudflared.exe','Assets/models.bin','Mobile/index.html']
+          .every(file=>fs.statSync(path.join(folder,file),{throwIfNoEntry:false})?.isFile());
+    }
+    return typeof spec?.entry==='string' && fs.statSync(inDir(folder,spec.entry.split(/[?#]/)[0]),{throwIfNoEntry:false})?.isFile();
+  }
+  function localPack(id){
+    const active=state.packs[id]?.active;
+    if(active){
+      const root=installedDir(id),spec=packSpec(id);
+      if(validPack(id,spec,root))return {root,spec,version:active};
+    }
+    const root=bundledDir(id),spec=bundledSpec(id);
+    if(validPack(id,spec,root))return {root,spec,version:'bundled'};
+    return null;
+  }
+  // Older downloadable packs can still cover ordinary offline titles. For host
+  // games, a stale static download must never hide the new bundled edition.
+  const installed=g=>usesLocalHost(g.id)||g.id==='lastsignal'
+    ? !!localPack(g.id) : !!validPack(g.id,packSpec(g.id),installedDir(g.id));
   const publicProfile=({id,name,guest,avatar,username})=>({id,name,guest,avatar,username});
   let lib,open,model,clientFactory,online=false,updateCheck=null;
   const notify=()=>{if(lib && !lib.isDestroyed())lib.webContents.send('changed');};
   const snapshots=new Map(),openingSessions=new Map(),activities=new Map(),inFlight=new Map(),launching=new Set(),touched=new Set();
-  const nativeGames=new Map();
+  const nativeGames=new Map(),localGames=new Map(),installing=new Map();
   const readPublicArenas=createArenaReader();
   function gameBusy(id){
-    return busy(id)||Array.from(nativeGames.values()).some(entry=>!id||entry.id===id);
+    return busy(id)||(id?localGames.has(id):localGames.size>0)||Array.from(nativeGames.values()).some(entry=>!id||entry.id===id);
   }
   function profileChanged(p,s){
     p.username=s.username;p.name=s.name||s.username;p.guest=false;p.avatar=s.avatar;
@@ -125,9 +150,9 @@ function start({root,bundled,data,ready,startupFailed}){
       const game=catalog.games.find(g=>g.id===item.id);
       if(game){
         const descriptor=JSON.parse(fs.readFileSync(path.join(staged,'hub-pack.json'),'utf8'));
-        const native=game.id==='lastsignal'&&game.offline?.type==='native-windows'&&descriptor.type==='native-windows'&&descriptor.entry==='Last Signal.exe';
-        const web=['static','node'].includes(descriptor.type)&&game.offline?.type!=='native-windows'&&typeof descriptor.entry==='string';
-        if((!native&&!web)||!fs.statSync(inDir(staged,descriptor.entry.split(/[?#]/)[0]),{throwIfNoEntry:false})?.isFile())throw Error('This update does not contain its game entry point.');
+        const type=descriptor.type;
+        if(!['static','node','native-windows'].includes(type) || (type==='native-windows' && game.id!=='lastsignal') ||
+            !validPack(game.id,descriptor,staged))throw Error('This update does not contain the complete local game.');
       }
       if((item.id==='hub'||item.id==='catalog')?gameBusy():gameBusy(item.id)){
         state.deferred??={};state.deferred[item.id]=item;row(item.id,'queued','Ready when the game closes');return;
@@ -163,22 +188,39 @@ function start({root,bundled,data,ready,startupFailed}){
     }
     return {changed,source:feed.source};
   }
-  async function install(id){
-    const g=known(id);if(!g.offline)throw Error('This game is online only.');
+  function install(id){
+    if(!installing.has(id)){
+      const game=known(id);
+      installing.set(id,installGame(id).catch(error=>{
+        row(game.id,'paused',error.message);
+        throw error;
+      }).finally(()=>installing.delete(id)));
+    }
+    return installing.get(id);
+  }
+  async function installGame(id){
+    const g=known(id);if(!g.offline&&!usesLocalHost(id)&&id!=='lastsignal')throw Error('This game is online only.');
     if(installed(g))return;
-    if(!original.games.some(item=>item.id===id&&item.offline))return check(id);
+    const bundled=bundledSpec(id);
+    const compatibleSetup=usesLocalHost(id)?bundled?.hosting===true:!!bundled;
+    if(!compatibleSetup)return check(id);
     const sourceFile=path.join(path.dirname(process.execPath),'setup-source.txt');
     if(!fs.existsSync(sourceFile))return check(id);
     const exe=fs.readFileSync(sourceFile,'utf16le').replace(/^\uFEFF/,'').trim();
     if(!path.isAbsolute(exe)||path.extname(exe).toLowerCase()!=='.exe'||!fs.existsSync(exe))return check(id);
     row(id,'installing','Installing the bundled pack');
-    await new Promise((resolve,reject)=>{const child=spawn(exe,['/S','/PACK='+id],{windowsHide:true});child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(Error('Setup returned '+code)));});
+    try{
+      await new Promise((resolve,reject)=>{const child=spawn(exe,['/S','/PACK='+id],{windowsHide:true});child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(Error('Setup returned '+code)));});
+    }catch(error){
+      if(!usesLocalHost(id)&&id!=='lastsignal')throw error;
+    }
+    if(!installed(g) && (usesLocalHost(id)||id==='lastsignal'))await check(id);
     if(!installed(g))throw Error('Setup could not restore this pack. Run the full installer to repair it.');
     row(id,'ready','Installed');
   }
-  function saveSession(g,p){
+  function saveSession(g,p,version){
     const base=path.join(data,'saves',p.id,g.id);
-    const v=currentHash(g.id)||'bundled';
+    const v=version||currentHash(g.id)||'bundled';
     const next=prepareSaveDirectory(base,v,state.packs[g.id]?.previous||'bundled',touched);
     touched.add(next);
     return session.fromPath(next);
@@ -188,9 +230,17 @@ function start({root,bundled,data,ready,startupFailed}){
       const url=new URL(value);
       const publicHost=url.protocol==='https:' && !url.port && /^[a-z0-9-]+\.trycloudflare\.com$/i.test(url.hostname);
       const localHost=url.protocol==='http:' && url.hostname==='127.0.0.1' && !!url.port;
-      if((publicHost||localHost) && !url.username && !url.password && !url.search && url.pathname==='/' && /^#[A-Za-z0-9_-]{24}$/.test(url.hash))return url.href;
+      if((publicHost||localHost) && !url.username && !url.password && !url.search &&
+          ['/','/mobile','/mobile/','/ws'].includes(url.pathname) && /^#[A-Za-z0-9_-]{24}$/.test(url.hash)){
+        return url.origin+'/'+url.hash;
+      }
     }catch{}
     return null;
+  }
+  async function playWeb(game,p,action,mode='online'){
+    const chosen=action||game.actions.find(a=>a.type!=='single')?.type||game.actions[0].type;
+    if(!game.actions.some(a=>a.type===chosen))throw Error('The website does not support this action.');
+    await open({title:game.title,game,mode,player:p,url:LOBBY,session:session.fromPartition(p.partition),action:chosen,initial:cardScript(game.id,chosen),onProfile:s=>{if(p.username===s.username)profileChangedIfNeeded(p,s);}});
   }
   async function play({id,mode,action,invite}){
     const game=known(id),p=profile();
@@ -199,11 +249,11 @@ function start({root,bundled,data,ready,startupFailed}){
     let server,disconnect;
     const closeLocal=()=>{disconnect?.();server?.close();};
     try{
-      if(id==='lastsignal' && game.offline?.type==='native-windows'){
+      if(id==='lastsignal'){
         if(!['offline','online','host','join'].includes(mode))throw Error('Choose Play, Multiplayer or Host for Last Signal.');
         if(!installed(game))await install(id);
-        const spec=packSpec(id);
-        if(!spec || spec.type!=='native-windows' || spec.entry!=='Last Signal.exe' || !installed(game))throw Error('Install the Last Signal Windows pack to play.');
+        const pack=localPack(id);
+        if(!pack)throw Error('Install the Last Signal Windows pack to play.');
         const command=mode==='host'?['--host']:mode==='online' && action!=='single'?['--multiplayer']:[];
         if(mode==='join'){
           const address=arenaInvite(invite);
@@ -215,8 +265,7 @@ function start({root,bundled,data,ready,startupFailed}){
           if(mode==='join' && existing.invite!==invite)throw Error('Close the previous invited arena before joining another.');
           return {nativePid:existing.child.pid};
         }
-        const folder=installedDir(id);
-        const child=spawn(inDir(folder,spec.entry),command,{cwd:folder,stdio:'ignore',shell:false,detached:true});
+        const child=spawn(inDir(pack.root,pack.spec.entry),command,{cwd:pack.root,stdio:'ignore',shell:false,detached:true});
         await new Promise((resolve,reject)=>{
           child.once('error',reject);
           child.once('spawn',()=>{
@@ -232,6 +281,28 @@ function start({root,bundled,data,ready,startupFailed}){
         });
         played(game,p);
         return {nativePid:child.pid};
+      }
+      if(usesLocalHost(id)){
+        if(!['offline','online','host'].includes(mode))throw Error('Choose Play, Multiplayer or Host Lobby.');
+        await localGames.get(id)?.closed;
+        if(!installed(game))await install(id);
+        const pack=localPack(id);
+        if(!pack)throw Error('Install this game’s Windows hosting pack from Downloads or run the latest Catnmice Setup.');
+        server=startLocalHost({id,mode,root:pack.root,spec:pack.spec,port:portFor(id),
+          data:path.join(data,'hosting',p.id,id),onExit:()=>{localGames.delete(id);afterClose(id,false);}});
+        localGames.set(id,server);
+        const {url}=await server.ready;
+        const ses=saveSession(game,p,pack.version);
+        const origin=new URL(url).origin;
+        ses.setPermissionRequestHandler((_contents,permission,callback,details)=>{
+          callback(permission==='fullscreen'||(permission==='clipboard-sanitized-write'&&
+            details.isMainFrame&&URL.canParse(details.requestingUrl)&&new URL(details.requestingUrl).origin===origin));
+        });
+        const title=mode==='host'?game.title+' · Host Lobby':game.title;
+        await open({title,game,mode,player:p,url,session:ses,offline:true,localHost:true,
+          guestInvite:id==='cat'?catGuestInvite:undefined,close:closeLocal,
+          requestHost:id==='trashtactics'&&mode!=='host'?()=>play({id,mode:'host'}):undefined});
+        return;
       }
       if(mode==='offline'||mode==='save-sync'){
         if(mode==='save-sync' && (!online||!supportsSaveSync(id)))throw Error('Connect to Catnmice to use the game’s cloud save.');
@@ -249,9 +320,7 @@ function start({root,bundled,data,ready,startupFailed}){
         const url=validInvite(new URL(game.hostRoute,SITE).href);
         await open({title:game.title+' · Host Lobby',game,mode,player:p,url,session:session.fromPartition(p.partition),action:'host'});
       }else{
-        const chosen=action||game.actions.find(a=>a.type!=='single')?.type||game.actions[0].type;
-        if(!game.actions.some(a=>a.type===chosen))throw Error('The website does not support this action.');
-        await open({title:game.title,game,mode:'online',player:p,url:LOBBY,session:session.fromPartition(p.partition),action:chosen,initial:cardScript(id,chosen),onProfile:s=>{if(p.username===s.username)profileChangedIfNeeded(p,s);}});
+        await playWeb(game,p,action);
       }
     }catch(e){closeLocal();throw e;}finally{launching.delete(id);}
   }
@@ -313,14 +382,16 @@ function start({root,bundled,data,ready,startupFailed}){
       case 'invite':{
         const arena=arenaInvite(d.url);
         if(arena)return play({id:'lastsignal',mode:'join',invite:arena});
-        return open({title:'Catnmice invitation',url:validInvite(d.url),player:profile(),session:session.fromPartition(profile().partition)}).then(()=>undefined);
+        const guest=joinGuestInvite(d.url);
+        const ses=guest?session.fromPartition('persist:catnmice-guest-invites'):session.fromPartition(profile().partition);
+        return open({title:'Catnmice invitation',url:guest||validInvite(d.url),player:profile(),session:ses}).then(()=>undefined);
       }
       case 'community':{
         let url=LOBBY,initial;
         if(d.section==='profile')initial='(()=>{const el=document.querySelector(\'[data-view="profile"]\');if(!el)return false;el.click();return true})()';
         else if(d.section==='ranked' && ['bannerlands','cat','catandmouse'].includes(d.id))url=SITE+'/hub/ranked.html?game='+(d.id==='cat'?'catandmouse':d.id);
-        else if(d.section==='rankings' && d.id==='trashtactics')return play({id:d.id,mode:'online'});
-        else if(d.section==='lobbies'&&d.id)return play({id:d.id,mode:'online'});
+        else if(['ranked','rankings'].includes(d.section) && d.id==='trashtactics')return playWeb(known(d.id),profile(),'online','web');
+        else if(d.section==='lobbies'&&d.id)return playWeb(known(d.id),profile(),undefined,'web');
         else if(d.section==='lobbies')url=LOBBY+'#live-lobbies';
         else if(d.section!=='rankings')throw Error('Unknown community destination.');
         await open({title:'Catnmice · '+d.section,url,initial,player:profile(),session:session.fromPartition(profile().partition)});return;
@@ -354,10 +425,17 @@ function start({root,bundled,data,ready,startupFailed}){
     open=createGames({root,icon,library:lib,played,resolveGame:(url,id)=>gameOnPage(catalog,url,id),onClosed:afterClose});
     ipcMain.handle('hub',(e,name,d={})=>{if(e.sender!==lib.webContents||e.senderFrame!==lib.webContents.mainFrame||e.senderFrame.url!=='catnmice://hub/ui/index.html')throw Error('Untrusted launcher window.');return handle(name,d);});
     lib.once('ready-to-show',()=>{lib.show();});lib.on('closed',()=>app.quit());app.on('second-instance',()=>{if(!lib.isDestroyed()){lib.restore();lib.focus();}});
+    app.on('before-quit',()=>{for(const game of localGames.values())game.close();});
     await lib.loadURL('catnmice://hub/ui/index.html');
     const usable=await lib.webContents.executeJavaScript(`(async()=>{const deadline=Date.now()+12000;while(Date.now()<deadline){if(document.querySelector('.game-card') && (await window.hub.invoke('state')).catalog.games.length===${catalog.games.length})return true;await new Promise(r=>setTimeout(r,120))}return false})()`);
     if(!usable)throw Error('The launcher interface did not load.');
-    ready();afterClose();void networkTick();setInterval(networkTick,60000).unref();
+    ready();
+    for(const item of state.downloads.filter(item=>item.status==='installing' && (usesLocalHost(item.id)||item.id==='lastsignal'))){
+      const game=catalog.games.find(game=>game.id===item.id);
+      if(game && installed(game))row(item.id,'ready','Installed');
+      else row(item.id,'paused','Installation was interrupted. Choose Install to retry.');
+    }
+    afterClose();void networkTick();setInterval(networkTick,60000).unref();
     const automatic=()=>{if(state.settings.autoUpdate && publisherUpdates)check().catch(e=>row('hub','paused',e.message));};
     automatic();setInterval(automatic,4*3600*1000).unref();
   }).catch(e=>{if(startupFailed?.(e))return;dialog.showErrorBox('Catnmice Game Hub',e.message);app.exit(1);});

@@ -7,9 +7,15 @@ import { startTunnel } from './tunnel.mjs';
 const gameRoot = fileURLToPath(new URL('../', import.meta.url));
 const isWindows = process.platform === 'win32';
 const bundledCloudflared = fileURLToPath(new URL('./runtime/cloudflared.exe', import.meta.url));
+const localOnly = process.argv.includes('--local-only');
+const noOpen = process.argv.includes('--no-open');
 const controller = new AbortController();
 let gameProcess;
 let shuttingDown = false;
+
+function disconnectHub() {
+  if (process.connected) process.disconnect();
+}
 
 function stopHosting(error) {
   if (shuttingDown) return;
@@ -20,18 +26,23 @@ function stopHosting(error) {
   }
   controller.abort(error);
   if (gameProcess?.connected) {
+    gameProcess.once('exit', disconnectHub);
     gameProcess.send({ type: 'trash-tactics:stop' }, error => {
       if (error && gameProcess.exitCode === null) gameProcess.kill();
     });
     setTimeout(() => {
       if (gameProcess.exitCode === null) gameProcess.kill();
     }, 3500).unref();
-  }
+  } else disconnectHub();
 }
 
 for (const signal of ['SIGINT', 'SIGTERM', ...(isWindows ? ['SIGBREAK'] : [])]) {
   process.once(signal, () => stopHosting());
 }
+process.once('disconnect', () => stopHosting());
+process.on('message', message => {
+  if (message?.type === 'stop') stopHosting();
+});
 
 try {
   const port = process.env.TRASH_TACTICS_HOST_PORT ?? '0';
@@ -42,7 +53,7 @@ try {
   const hostToken = randomBytes(32).toString('base64url');
   const gameEnv = {
     ...process.env,
-    TRASH_TACTICS_COMMUNITY_HOST: '1',
+    TRASH_TACTICS_COMMUNITY_HOST: localOnly ? '0' : '1',
     TRASH_TACTICS_HOST_TOKEN: hostToken,
     TRASH_TACTICS_INSTANCE: instance,
   };
@@ -83,22 +94,28 @@ try {
     gameProcess.on('message', listening);
   });
   const localUrl = 'http://127.0.0.1:' + actualPort;
-  console.log('Opening a Cloudflare connection. The browser opens when guests can reach the game.');
-  const tunnel = await startTunnel({
-    executable, localUrl, instance, signal: controller.signal, onExit: stopHosting,
-  });
-  await new Promise((resolve, reject) => {
-    gameProcess.send({ type: 'trash-tactics:public-url', url: tunnel.url }, error => error ? reject(error) : resolve());
-  });
-  console.log('Connection open. Keep this window running while players are in your lobby.');
+  if (!localOnly) {
+    console.log('Opening a Cloudflare connection. The game opens when guests can reach it.');
+    const tunnel = await startTunnel({
+      executable, localUrl, instance, signal: controller.signal, onExit: stopHosting,
+    });
+    await new Promise((resolve, reject) => {
+      gameProcess.send({ type: 'trash-tactics:public-url', url: tunnel.url }, error => error ? reject(error) : resolve());
+    });
+    console.log('Connection open. Keep this window running while players are in your lobby.');
+  }
 
-  const hostUrl = localUrl + '/#host=' + hostToken;
-  const openCommand = { win32: 'rundll32.exe', darwin: 'open' }[process.platform] ?? 'xdg-open';
-  const openArgs = isWindows ? ['url.dll,FileProtocolHandler', hostUrl] : [hostUrl];
-  const browser = spawn(openCommand, openArgs, { stdio: 'ignore', windowsHide: true });
-  const showLink = () => console.log('Open this private host link on this computer only:\n' + hostUrl);
-  browser.once('error', showLink);
-  browser.once('exit', code => { if (code) showLink(); });
+  const bootstrapUrl = localUrl + (localOnly ? '/' : '/#host=' + hostToken);
+  if (noOpen) {
+    console.log(JSON.stringify({ bootstrapUrl }));
+  } else {
+    const openCommand = { win32: 'rundll32.exe', darwin: 'open' }[process.platform] ?? 'xdg-open';
+    const openArgs = isWindows ? ['url.dll,FileProtocolHandler', bootstrapUrl] : [bootstrapUrl];
+    const browser = spawn(openCommand, openArgs, { stdio: 'ignore', windowsHide: true });
+    const showLink = () => console.log('Open this game link on this computer only:\n' + bootstrapUrl);
+    browser.once('error', showLink);
+    browser.once('exit', code => { if (code) showLink(); });
+  }
 } catch (error) {
   if (!shuttingDown) stopHosting(error);
 }

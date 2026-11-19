@@ -21,6 +21,7 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
   } catch {}
   const inviteCode=current.searchParams.get('room')?.toUpperCase() || '';
   if (token) {current.hash='';history.replaceState(history.state,'',current);}
+  const hubLocal=local && current.searchParams.get('hub')==='1' && !token;
   const handle=find('onlineName');
   const launch=find('onlineOpen');
   const matchBox=find('onlineMatch');
@@ -37,6 +38,12 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
   mapSelect.addEventListener('change',showMapIcon);
   let connection,room,health,poll,link,loading=0,connecting=false,running=false;
   try {handle.value=localStorage.getItem('trash-tactics-multiplayer-name') || '';} catch {}
+  if (hubLocal) {
+    find('onlineCreateDetails').hidden=true;
+    find('onlineHost').textContent='Host a public lobby';
+    pane.querySelector('.online-download').hidden=true;
+    find('onlineDirectory').textContent='Catnmice Game Hub starts the public connection and opens your host controls.';
+  }
   const note=message=>{status.textContent=message;};
   const button=(text,listener)=>{
     const node=document.createElement('button');
@@ -241,6 +248,11 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
   play.addEventListener('click',()=>connection?.send({type:'start'}));
   form.addEventListener('submit',event=>{
     event.preventDefault();
+    if (hubLocal) {
+      try {localStorage.setItem('trash-tactics-multiplayer-name',handle.value.trim());} catch {}
+      location.assign(new URL('/__catnmice/start-host',location.origin));
+      return;
+    }
     const ranked=event.submitter===rank;
     if (ranked && !canRank()) return;
     void connect({type:'create',map:mapSelect.value,title:titleInput.value,ranked,hostToken:token},ranked);

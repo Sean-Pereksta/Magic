@@ -7,6 +7,7 @@ const spotlights = ['bannerlands','trashtactics','cat'];
 const shortTitles = {bannerlands:'Bannerlands'};
 const filters = ['All games','Installed','Offline Ready','Multiplayer','Favorites'];
 const rankingIds = ['trashtactics','bannerlands','cat'];
+const localLobbyGames = ['trashtactics','bannerlands','cat','lastsignal'];
 const view = $('#view');
 const dialog = $('#dialog');
 let state = {catalog:{games:[]},settings:{}};
@@ -26,6 +27,7 @@ const guest = () => !state.profile || state.profile.guest === true || state.prof
 const multiplayer = (game) => (game.modes || []).includes('multi') || (game.actions || []).some(a => ['lobby','live','online'].includes(a.type));
 const packs = () => games().filter(game => game.offline);
 const supported = (g) => g.offline && (installed(g.id) || g.offline.available !== false);
+const playsLocally = (game) => localLobbyGames.includes(game.id) || game.offline?.type === 'native-windows';
 const normalize = (value) => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 
 function mediaPath(path) {
@@ -107,10 +109,10 @@ function onlinePlay(game) {
   return actions.find(a => a.type !== 'single') || actions[0] || {};
 }
 function hostLobby(game) {
-  return game.hostRoute || game.offline?.type==='native-windows' ? btn('Host Lobby','play',{id:game.id,mode:'host'},'glass','lobbies') : '';
+  return playsLocally(game) || game.hostRoute ? btn('Host Lobby','play',{id:game.id,mode:'host'},'glass','lobbies') : '';
 }
 function launchButton(game, compact = false) {
-  if(game.offline?.type==='native-windows')return btn('Play','play',{id:game.id,mode:'offline'},'gold','play');
+  if (playsLocally(game)) return btn('Play','play',{id:game.id,mode:'offline'},'gold','play');
   const offline = state.online === false && installed(game.id);
   const mode = offline ? 'offline' : 'online';
   const action = (game.actions || []).find(a => a.type === 'single') || onlinePlay(game);
@@ -129,9 +131,9 @@ function hero(game, isDetail = false) {
   </article>`;
 }
 function gameControls(game) {
-  if(game.offline?.type==='native-windows'){
-    const main=installed(game.id)?launchButton(game):btn('Install game','install',{id:game.id},'gold','downloads');
-    return main+btn('Multiplayer','play',{id:game.id,mode:'online'},'glass','play')+hostLobby(game);
+  if (playsLocally(game)) {
+    const main = installed(game.id) ? launchButton(game) : btn('Install game','install',{id:game.id},'gold','downloads');
+    return main + btn('Multiplayer','play',{id:game.id,mode:'online'},'glass','play') + hostLobby(game);
   }
   const out = [];
   const actions = game.actions || [];
@@ -199,19 +201,19 @@ function details(game) {
   return `<button class="text-button back-line" data-go="Library">${icon('back')} Back to library</button>${hero(game,true)}
     <div class="detail-grid"><article class="detail-card"><div class="section-title"><h2>About the game</h2><button class="chip" data-action="favorite" data-id="${attr(game.id)}" aria-pressed="${favorite(game.id)}">${icon('star')} ${favorite(game.id)?'Favorited':'Favorite'}</button></div>
     <div class="tags">${tags.map(label => `<span class="tag">${esc(label)}</span>`).join('')}</div>${game.requiresUser || game.requiresAccount || game.accountRequired ? '<p>A Catnmice account is required to play.</p>':''}
-    ${multiplayer(game) ? '<p>Join the official game or lobby to see available rooms and invites.</p>' : ''}
-    ${game.offline ? '<p>Install the local game pack to play without a connection.</p>' : ''}</article>
+    ${playsLocally(game) ? '<p>Play from the installed game. Open Multiplayer to join a room, or choose Host Lobby to host from this PC.</p>' : multiplayer(game) ? '<p>Join the official game or lobby to see available rooms and invites.</p>' : ''}
+    ${game.offline && !playsLocally(game) ? '<p>Install the local game pack to play without a connection.</p>' : ''}</article>
     <article class="detail-card"><h2>Lifetime players</h2>${lifetime(state.counts?.games?.[game.id],state.counts?.asOf)}
     ${rankingIds.includes(game.id) ? btn('View rankings','show-rank',{id:game.id},'','rankings') : ''}</article></div>
     ${shots.length ? `<section class="section"><div class="section-title">${titleLine('Gameplay',shots.length)}</div><div class="gallery">${shots.map((item,i) => `<button class="shot" data-action="shot" data-src="${attr(mediaPath(item.path || item.src))}" data-title="${attr(title(game))} gameplay screenshot ${i+1}" aria-label="Enlarge gameplay screenshot ${i+1}"><img loading="lazy" src="${attr(mediaPath(item.path || item.src))}" alt="${attr(item.alt || title(game)+' gameplay, screenshot '+(i+1))}"></button>`).join('')}</div></section>` : ''}
   `;
 }
 function lobbies() {
-  const ids = ['trashtactics','bannerlands','cat','lastsignal'].map(matches).filter(Boolean);
-  return `<section class="intro-art"><img src="art/trashtactics-hero.webp" alt=""><h2>Live Lobbies</h2><p>Browse the same rooms as Catnmice browser players. Your game’s lobby handles invites, teams and match starts.</p><div class="controls">${btn('Browse official lobbies','community',{section:'lobbies'},'gold','lobbies')}</div></section>
+  const lobbyGames = localLobbyGames.map(matches).filter(Boolean);
+  return `<section class="intro-art"><img src="art/trashtactics-hero.webp" alt=""><h2>Live Lobbies</h2><p>Browse public rooms, join with an invite, or host a lobby from this PC.</p><div class="controls">${btn('Browse official lobbies','community',{section:'lobbies'},'gold','lobbies')}</div></section>
     <section class="panel"><h2>Join with an invite</h2><form id="invite-form" class="form-row"><input class="field" name="invite" type="url" required placeholder="Paste a Catnmice or game invite link" aria-label="Invite link"><button class="button" type="submit">${icon('link')} Open invite</button></form></section>
     ${matches('lastsignal')?`<section class="panel"><div class="section-title"><h2>Last Signal public arenas</h2>${btn('Refresh','arena-refresh',{},'','refresh')}</div><div id="arena-rooms" role="status">Checking for open arenas…</div></section>`:''}
-    <section class="panel"><h2>Game lobbies</h2><div class="line-list">${ids.map(g => `<div class="list-item"><img src="${attr(imageFor(g))}" alt=""><div class="item-main"><strong>${esc(title(g))}</strong><small>${esc(onlinePlay(g).label || 'Multiplayer')}</small></div><div class="controls">${btn('Open lobby','play',{id:g.id,mode:'online',kind:onlinePlay(g).type},'','arrow')}${hostLobby(g)}</div></div>`).join('')}</div></section>`;
+    <section class="panel"><h2>Game lobbies</h2><div class="line-list">${lobbyGames.map(g => `<div class="list-item"><img src="${attr(imageFor(g))}" alt=""><div class="item-main"><strong>${esc(title(g))}</strong><small>${installed(g.id) ? 'Installed' : 'Available to install'}</small></div><div class="controls">${btn('Multiplayer','play',{id:g.id,mode:'online'},'','arrow')}${hostLobby(g)}</div></div>`).join('')}</div></section>`;
 }
 async function loadPublicArenas(){
   const box=$('#arena-rooms');if(!box||!host)return;
@@ -233,7 +235,7 @@ async function loadRankings() {
     if (number !== rankSequence || !box.isConnected) return;
     if (!result || result.available === false || !Array.isArray(result.players)) throw new Error(result?.message || 'The official leaderboard is unavailable.');
     const table = result.players.length ? `<table class="ranking-table"><thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Elo</th><th scope="col">Matches</th>${id !== 'trashtactics' ? '<th scope="col">Tier</th>':''}</tr></thead><tbody>${result.players.map((p,i) => `<tr><td>${i+1}</td><td>${esc(p.displayName || p.username)}</td><td>${esc(p.rating)}${Number.isFinite(p.change) ? ` (${p.change>0?'+':''}${p.change})`:''}</td><td>${esc(p.games ?? '—')}</td>${id==='trashtactics'?'':`<td>${p.placementsRemaining>0?esc(p.placementsRemaining)+' placements left':esc(p.tier || '—')}</td>`}</tr>`).join('')}</tbody></table>` : '<p>No ranked matches have been recorded for this leaderboard.</p>';
-    box.innerHTML = `<div class="controls"><h2>${id==='cat'?'Ranked Survival Challenge':id==='bannerlands'?'1v1 ranked ladder':'1v1 leaderboard'}</h2></div>${result.season?'<p>Season '+esc(result.season)+'</p>':''}${table}<div class="controls">${id==='trashtactics' ? btn('Open ranked play','play',{id,kind:'online',mode:'online'},'gold','rankings') : btn('Open ranked play','community',{section:'ranked',id},'gold','rankings')}</div>`;
+    box.innerHTML = `<div class="controls"><h2>${id==='cat'?'Ranked Survival Challenge':id==='bannerlands'?'1v1 ranked ladder':'1v1 leaderboard'}</h2></div>${result.season?'<p>Season '+esc(result.season)+'</p>':''}${table}<div class="controls">${btn('Open ranked play','community',{section:'ranked',id},'gold','rankings')}</div>`;
   } catch(error) {
     if (number === rankSequence && box.isConnected) box.innerHTML = `<p>${esc(cleanError(error))}</p><div class="controls">${btn('Refresh leaderboard','refresh-rank',{},'','refresh')}</div>`;
   } finally {box.setAttribute('aria-busy','false');}
@@ -245,7 +247,7 @@ function downloads() {
     : 'Check for published updates from Magic and Truth for the launcher, game catalog and your installed games.';
   return `<section class="intro-art"><img src="art/bannerlands-hero.webp" alt=""><h2>Launcher updates</h2><p>${state.version ? 'Installed version '+esc(state.version)+'. ' : ''}${updateInfo}</p>${state.publisherUpdates === false ? '' : `<div class="controls">${btn('Check for updates','update',{},'gold','refresh')}</div>`}</section>
     ${downloadState.length ? `<section class="panel"><h2>Download activity</h2><div class="line-list">${downloadState.map(d=>`<div class="list-item"><div class="item-main"><strong>${esc(d.title || (d.id==='hub'?'Game Hub':d.id==='catalog'?'Game catalog':title(matches(d.id) || {id:d.id,title:d.id})) || 'Update')}</strong><small>${esc([d.status,d.message].filter(Boolean).join(' · ') || 'In progress')}${Number.isFinite(d.progress)?' · '+Math.round(d.progress)+'%':''}</small></div></div>`).join('')}</div></section>` : ''}
-    <section class="panel"><div class="section-title">${titleLine('Offline game packs',packs().length)}</div><div class="line-list">${packs().length ? packs().map(g=>`<div class="list-item"><img src="${attr(imageFor(g))}" alt=""><div class="item-main"><strong>${esc(title(g))}</strong><small>${installed(g.id)?'Installed':'Available to install'}${g.offline.bytes ? ' · '+fmt(Math.ceil(g.offline.bytes/1048576))+' MB':''}</small></div>${installed(g.id)?btn('Play Offline','play',{id:g.id,mode:'offline'},'','play'):btn('Install','install',{id:g.id},'','downloads')}${ids(state.rollbackAvailable).includes(g.id) ? btn('Restore previous version','rollback',{id:g.id}) : ''}</div>`).join(''):'<p>No offline packs are available in this catalog.</p>'}</div></section>`;
+    <section class="panel"><div class="section-title">${titleLine('Game packs',packs().length)}</div><div class="line-list">${packs().length ? packs().map(g=>`<div class="list-item"><img src="${attr(imageFor(g))}" alt=""><div class="item-main"><strong>${esc(title(g))}</strong><small>${installed(g.id)?'Installed':'Available to install'}${g.offline.bytes ? ' · '+fmt(Math.ceil(g.offline.bytes/1048576))+' MB':''}</small></div>${installed(g.id)?btn(playsLocally(g) ? 'Play' : 'Play Offline','play',{id:g.id,mode:'offline'},'','play'):btn('Install','install',{id:g.id},'','downloads')}${ids(state.rollbackAvailable).includes(g.id) ? btn('Restore previous version','rollback',{id:g.id}) : ''}</div>`).join(''):'<p>No game packs are available in this catalog.</p>'}</div></section>`;
 }
 function settings() {
   return `<section class="panel"><h2>Player profile</h2><p>Playing as <strong>${esc(profileName(state.profile))}</strong>.</p><div class="controls">${btn('Manage profiles','accounts',{},'gold','user')}${guest()?'':btn('View website profile','community',{section:'profile'},'','external')+btn('Link guest activity','ask-link',{},'','link')}</div></section>
@@ -324,6 +326,10 @@ function onAction(el) {
     case 'quickplay': case 'replay': {
       const game = matches(id);
       if (!game) break;
+      if (playsLocally(game)) {
+        dispatch('play',{id,mode:'offline'});
+        break;
+      }
       const last = action==='replay' && state.recent?.find?.(e=>typeof e==='object' && (e.id || e.key)===id);
       if (last?.mode==='offline' && installed(id)) dispatch('play',{id,mode:'offline'});
       else if (installed(id) && state.online===false) dispatch('play',{id,mode:'offline'});

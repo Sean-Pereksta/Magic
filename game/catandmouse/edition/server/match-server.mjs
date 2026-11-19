@@ -481,7 +481,7 @@ export async function createMatchServer(options, { onLobbyChange = () => {}, des
   };
 }
 
-if (process.send) {
+if (process.send && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const match = await createMatchServer(JSON.parse(process.env.CAT_MOUSE_ROOM_OPTIONS), {
     desktopOrigin: process.env.CAT_MOUSE_DESKTOP_ORIGIN,
     onLobbyChange: lobby => process.connected && process.send({ type: 'lobby', lobby })
