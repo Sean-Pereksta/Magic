@@ -302,6 +302,11 @@ function start({root,bundled,data,ready,startupFailed}){
         const {url}=await server.ready;
         const ses=saveSession(game,p,pack.version);
         const origin=new URL(url).origin;
+        if(id==='bannerlands'){
+          // A copied save profile can still have a web worker controlling this origin.
+          // Remove its artwork cache before Chromium starts the first navigation.
+          await ses.clearStorageData({origin,storages:['serviceworkers','cachestorage']});
+        }
         ses.setPermissionRequestHandler((_contents,permission,callback,details)=>{
           callback(permission==='fullscreen'||(permission==='clipboard-sanitized-write'&&
             details.isMainFrame&&URL.canParse(details.requestingUrl)&&new URL(details.requestingUrl).origin===origin));

@@ -27,10 +27,36 @@ async function localSelector(app,selector,id){
   },{selector,id});
 }
 const closeGames=app=>app.evaluate(({BrowserWindow})=>{for(const w of BrowserWindow.getAllWindows())if(w.webContents.getURL().includes('toolbar.html'))w.close();});
+const bannerlandsStorage=(app,script)=>app.evaluate(({webContents},source)=>{
+  const game=webContents.getAllWebContents().find(w=>w.getURL().startsWith('http://127.0.0.1:'));
+  if(!game)throw Error('Bannerlands game window is unavailable.');
+  return game.executeJavaScript(source);
+},script);
+const seedBannerlandsStorage=app=>bannerlandsStorage(app,`(async()=>{
+  let timeout;
+  try{
+    await Promise.race([
+      navigator.serviceWorker.register('/sw.js',{type:'module'}).then(()=>navigator.serviceWorker.ready),
+      new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('Legacy artwork worker did not activate.')),10000);})
+    ]);
+  }finally{clearTimeout(timeout);}
+  const {GAME_VERSION,ASSET_VERSION}=await import('/multiplayer/protocol.js');
+  const cache=await caches.open('bannerlands-art-'+GAME_VERSION+'-'+ASSET_VERSION);
+  await cache.put('/assets/house-emblems.png',new Response('invalid cached PNG',{headers:{'Content-Type':'image/png'}}));
+  localStorage.setItem('catnmice-smoke-bannerlands-save','preserved');
+  return location.origin;
+})()`);
+const checkBannerlandsStorage=(app,origin)=>bannerlandsStorage(app,`(async()=>{
+  if(location.origin!==${JSON.stringify(origin)})throw Error('Bannerlands changed local origins across launch modes.');
+  if(navigator.serviceWorker.controller || await navigator.serviceWorker.getRegistration())throw Error('A stale worker still controls Bannerlands.');
+  if((await caches.keys()).some(key=>key.startsWith('bannerlands-art-')))throw Error('The migrated artwork cache was not cleared.');
+  if(localStorage.getItem('catnmice-smoke-bannerlands-save')!=='preserved')throw Error('Bannerlands save storage was cleared.');
+})()`);
 (async()=>{
   const dev=args.includes('--dev');
   const app=await _electron.launch({executablePath:path.resolve(exe),args:[...(dev?[path.join(__dirname,'..')]:[]),'--user-data-dir='+userDir,'--disable-background-networking'],timeout:45000,env:{...process.env,CATNMICE_TEST_DATA:userDir}});
   const report={games:[],hostControls:[],errors:[]};
+  let seededBannerlandsOrigin;
   try{
     const lib=await app.firstWindow();await lib.waitForFunction(()=>location.protocol==='catnmice:' && document.querySelector('.nav-link'));
     const state=await lib.evaluate(()=>window.hub.invoke('state'));
@@ -55,6 +81,10 @@ const closeGames=app=>app.evaluate(({BrowserWindow})=>{for(const w of BrowserWin
           }
           throw Error('Game did not render: '+id);
         },g.id);
+        if(g.id==='bannerlands' && args.includes('--offline-all')){
+          await localSelector(app,'#startButton',g.id);
+          seededBannerlandsOrigin=await seedBannerlandsStorage(app);
+        }
         report.games.push(g.id);
       }catch(e){report.errors.push({game:g.id,reason:e.message});}
       finally{
@@ -76,6 +106,7 @@ const closeGames=app=>app.evaluate(({BrowserWindow})=>{for(const w of BrowserWin
           const launched=await lib.evaluate(data=>window.hub.invoke('play',data),{id,mode});
           if(selector)await localSelector(app,selector,id);
           else nativeWindow(launched?.nativePid,'OnlineLobby');
+          if(id==='bannerlands')await checkBannerlandsStorage(app,seededBannerlandsOrigin);
           report.hostControls.push(id);
         }catch(e){report.errors.push({game:id,mode,reason:e.message});}
         finally{await closeGames(app);}
