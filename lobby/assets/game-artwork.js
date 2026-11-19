@@ -1521,6 +1521,29 @@
       "heroProvenance": "original-built-in-imagegen",
       "reference": "Cropped from the game’s original art/hero.webp; no interface elements are included.",
       "promptFile": "truth-game-art-prompts.json"
+    },
+    "lastsignal": {
+      "key": "lastsignal",
+      "title": "Last Signal",
+      "emoji": "🏹",
+      "imagePath": "/lobby/assets/game-tiles/lastsignal.jpg",
+      "desc": "Survive a first-person wilderness arena. Hunt, build a fort, or host up to eight players with bots filling the 24 platforms.",
+      "route": "/hub/download.html",
+      "multiplayerRoute": "/hub/download.html",
+      "category": "Survival",
+      "modes": [
+        "single",
+        "multi"
+      ],
+      "featured": false,
+      "originalImagePath": "/lobby/assets/game-tiles/lastsignal.jpg",
+      "tier": "playable",
+      "provenance": "game-artwork",
+      "sourceArtwork": "Artwork from the Last Signal Windows launcher entry.",
+      "tile": "game-tiles/lastsignal.webp",
+      "thumb": "game-thumbnails/lastsignal.webp",
+      "hero": "game-heroes/lastsignal.webp",
+      "ready": true
     }
   },
   "files": {
@@ -2556,6 +2579,24 @@
       "height": 720,
       "bytes": 245984,
       "sha256": "7620f848f481cfb8928bd245da497669100fa9c001ad249f5c72aa78b424454e"
+    },
+    "game-tiles/lastsignal.webp": {
+      "width": 640,
+      "height": 360,
+      "bytes": 44968,
+      "sha256": "dbf33f41f5ceb3af0565f170260cd33f91dac02959afb6138bb9213682c9ccd0"
+    },
+    "game-thumbnails/lastsignal.webp": {
+      "width": 240,
+      "height": 135,
+      "bytes": 8866,
+      "sha256": "27da110001a8e8cf0d270fc150487a4033dab68fece96e5ddf9c10352da76935"
+    },
+    "game-heroes/lastsignal.webp": {
+      "width": 1280,
+      "height": 720,
+      "bytes": 74258,
+      "sha256": "ef13d7febc75d4a6b610574764788ed60213e1b658809a066da2fedc1b38851f"
     }
   },
   "interfaceFiles": {
