@@ -79,20 +79,21 @@ async function readCatLobbies(page) {
   return catRooms(json.rooms, {version: PROTOCOL_VERSION, local});
 }
 
-let bannerlandsDirectory;
-async function readBannerlandsLobbies() {
-  bannerlandsDirectory ??= Promise.all([
+let bannerlandsModules, bannerlandsDirectory;
+async function readBannerlandsLobbies(afterReturn) {
+  bannerlandsModules ??= Promise.all([
     import(new URL("multiplayer/directory.js", BANNERLANDS)),
     import(new URL("multiplayer/protocol.js", BANNERLANDS))
-  ]).then(([{createFirebaseDirectory}, protocol]) => ({
-    directory: createFirebaseDirectory({requestTimeoutMs: 8_000}),
-    compatibility: {protocolVersion: protocol.PROTOCOL_VERSION, gameVersion: protocol.GAME_VERSION, assetVersion: protocol.ASSET_VERSION}
-  })).catch(error => {
-    bannerlandsDirectory = null;
+  ]).catch(error => {
+    bannerlandsModules = null;
     throw error;
   });
-  const {directory, compatibility} = await bannerlandsDirectory;
-  const campaigns = await directory.list({...compatibility, includeUnavailable: true});
+  const [{createFirebaseDirectory}, {PROTOCOL_VERSION, GAME_VERSION, ASSET_VERSION}] = await bannerlandsModules;
+  // A returning player needs the latest directory, even during the reader's polling interval.
+  if (afterReturn || !bannerlandsDirectory) bannerlandsDirectory = createFirebaseDirectory({requestTimeoutMs: 8_000});
+  const campaigns = await bannerlandsDirectory.list({
+    protocolVersion: PROTOCOL_VERSION, gameVersion: GAME_VERSION, assetVersion: ASSET_VERSION, includeUnavailable: true
+  });
   return campaigns.map(room => ({...room, openSeats: room.availableSeats, map: room.map || room.mode || "Conquest"}));
 }
 
@@ -134,7 +135,7 @@ function roomRow(game, room) {
 function mount(section) {
   const results = Object.fromEntries(Object.keys(GAME_NAMES).map(game => [game, {
     section: section.querySelector('[data-live-section="' + game + '"]'),
-    rooms: [], status: "loading", pending: false, signature: ""
+    rooms: [], status: "loading", pending: false, refreshAgain: false, signature: ""
   }]));
   const page = new URL(location.href);
   let inView = false;
@@ -164,24 +165,32 @@ function mount(section) {
     }
   }
 
-  async function refresh(game) {
+  async function refresh(game, afterReturn) {
     const result = results[game];
-    if (result.pending || !inView || document.hidden || result.section.hidden) return;
-    result.pending = true;
-    try {
-      result.rooms = await (game === "catandmouse" ? readCatLobbies(page) : readBannerlandsLobbies());
-      result.status = "ready";
-    } catch {
-      result.rooms = [];
-      result.status = "unavailable";
-    } finally {
-      result.pending = false;
-      render(game);
+    if (!inView || document.hidden || result.section.hidden) return;
+    if (result.pending) {
+      result.refreshAgain ||= afterReturn;
+      return;
     }
+    result.pending = true;
+    let rooms = [];
+    let status = "unavailable";
+    try {
+      rooms = await (game === "catandmouse" ? readCatLobbies(page) : readBannerlandsLobbies(afterReturn));
+      status = "ready";
+    } catch {}
+    result.pending = false;
+    if (result.refreshAgain) {
+      result.refreshAgain = false;
+      return refresh(game, true);
+    }
+    result.rooms = rooms;
+    result.status = status;
+    render(game);
   }
 
-  function refreshVisible() {
-    for (const game of Object.keys(results)) void refresh(game);
+  function refreshVisible(afterReturn = false) {
+    for (const game of Object.keys(results)) void refresh(game, afterReturn);
   }
 
   function select(game) {
@@ -215,7 +224,10 @@ function mount(section) {
     inView = true;
     refreshVisible();
   }
-  document.addEventListener("visibilitychange", refreshVisible);
+  const refreshOnReturn = () => refreshVisible(true);
+  document.addEventListener("visibilitychange", refreshOnReturn);
+  window.addEventListener("pageshow", event => { if (event.persisted) refreshOnReturn(); });
+  window.addEventListener("focus", refreshOnReturn);
   setInterval(refreshVisible, REFRESH_MS);
   setInterval(() => Object.keys(results).forEach(render), 1_000);
 }

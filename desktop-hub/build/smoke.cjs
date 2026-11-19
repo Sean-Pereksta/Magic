@@ -27,12 +27,12 @@ async function localSelector(app,selector,id){
   },{selector,id});
 }
 const closeGames=app=>app.evaluate(({BrowserWindow})=>{for(const w of BrowserWindow.getAllWindows())if(w.webContents.getURL().includes('toolbar.html'))w.close();});
-const bannerlandsStorage=(app,script)=>app.evaluate(({webContents},source)=>{
+const bannerlandsPage=(app,script)=>app.evaluate(({webContents},source)=>{
   const game=webContents.getAllWebContents().find(w=>w.getURL().startsWith('http://127.0.0.1:'));
   if(!game)throw Error('Bannerlands game window is unavailable.');
   return game.executeJavaScript(source);
 },script);
-const seedBannerlandsStorage=app=>bannerlandsStorage(app,`(async()=>{
+const seedBannerlandsStorage=app=>bannerlandsPage(app,`(async()=>{
   let timeout;
   try{
     await Promise.race([
@@ -46,7 +46,13 @@ const seedBannerlandsStorage=app=>bannerlandsStorage(app,`(async()=>{
   localStorage.setItem('catnmice-smoke-bannerlands-save','preserved');
   return location.origin;
 })()`);
-const checkBannerlandsStorage=(app,origin)=>bannerlandsStorage(app,`(async()=>{
+const bannerlandsLocalLobby=app=>bannerlandsPage(app,`(async()=>{
+  const response=await fetch('/api/lobby',{cache:'no-store'});
+  const {lobby}=await response.json();
+  if(!response.ok || !lobby?.id)throw Error('Bannerlands local server did not return a lobby.');
+  return lobby.id;
+})()`);
+const checkBannerlandsStorage=(app,origin)=>bannerlandsPage(app,`(async()=>{
   if(location.origin!==${JSON.stringify(origin)})throw Error('Bannerlands changed local origins across launch modes.');
   if(navigator.serviceWorker.controller || await navigator.serviceWorker.getRegistration())throw Error('A stale worker still controls Bannerlands.');
   if((await caches.keys()).some(key=>key.startsWith('bannerlands-art-')))throw Error('The migrated artwork cache was not cleared.');
@@ -106,7 +112,16 @@ const checkBannerlandsStorage=(app,origin)=>bannerlandsStorage(app,`(async()=>{
           const launched=await lib.evaluate(data=>window.hub.invoke('play',data),{id,mode});
           if(selector)await localSelector(app,selector,id);
           else nativeWindow(launched?.nativePid,'OnlineLobby');
-          if(id==='bannerlands')await checkBannerlandsStorage(app,seededBannerlandsOrigin);
+          if(id==='bannerlands'){
+            await checkBannerlandsStorage(app,seededBannerlandsOrigin);
+            const firstLobby=await bannerlandsLocalLobby(app);
+            const toolbar=app.windows().find(window=>window.url().includes('toolbar.html'));
+            if(!toolbar)throw Error('Bannerlands toolbar did not open.');
+            await Promise.all([toolbar.waitForEvent('close'),toolbar.locator('#back').click()]);
+            await lib.evaluate(data=>window.hub.invoke('play',data),{id,mode});
+            await localSelector(app,selector,id);
+            if(await bannerlandsLocalLobby(app)===firstLobby)throw Error('Bannerlands reopened the previous local lobby.');
+          }
           report.hostControls.push(id);
         }catch(e){report.errors.push({game:id,mode,reason:e.message});}
         finally{await closeGames(app);}
