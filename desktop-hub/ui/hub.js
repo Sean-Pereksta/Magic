@@ -107,9 +107,10 @@ function onlinePlay(game) {
   return actions.find(a => a.type !== 'single') || actions[0] || {};
 }
 function hostLobby(game) {
-  return game.hostRoute ? btn('Host Lobby','play',{id:game.id,mode:'host'},'glass','lobbies') : '';
+  return game.hostRoute || game.offline?.type==='native-windows' ? btn('Host Lobby','play',{id:game.id,mode:'host'},'glass','lobbies') : '';
 }
 function launchButton(game, compact = false) {
+  if(game.offline?.type==='native-windows')return btn('Play','play',{id:game.id,mode:'offline'},'gold','play');
   const offline = state.online === false && installed(game.id);
   const mode = offline ? 'offline' : 'online';
   const action = (game.actions || []).find(a => a.type === 'single') || onlinePlay(game);
@@ -128,6 +129,10 @@ function hero(game, isDetail = false) {
   </article>`;
 }
 function gameControls(game) {
+  if(game.offline?.type==='native-windows'){
+    const main=installed(game.id)?launchButton(game):btn('Install game','install',{id:game.id},'gold','downloads');
+    return main+btn('Multiplayer','play',{id:game.id,mode:'online'},'glass','play')+hostLobby(game);
+  }
   const out = [];
   const actions = game.actions || [];
   if (supported(game)) out.push(installed(game.id) ? btn('Play Offline','play',{id:game.id,mode:'offline'},'gold','disc') : btn('Install offline pack','install',{id:game.id},'gold','downloads'));
@@ -202,10 +207,19 @@ function details(game) {
   `;
 }
 function lobbies() {
-  const ids = ['trashtactics','bannerlands','cat'].map(matches).filter(Boolean);
+  const ids = ['trashtactics','bannerlands','cat','lastsignal'].map(matches).filter(Boolean);
   return `<section class="intro-art"><img src="art/trashtactics-hero.webp" alt=""><h2>Live Lobbies</h2><p>Browse the same rooms as Catnmice browser players. Your game’s lobby handles invites, teams and match starts.</p><div class="controls">${btn('Browse official lobbies','community',{section:'lobbies'},'gold','lobbies')}</div></section>
     <section class="panel"><h2>Join with an invite</h2><form id="invite-form" class="form-row"><input class="field" name="invite" type="url" required placeholder="Paste a Catnmice or game invite link" aria-label="Invite link"><button class="button" type="submit">${icon('link')} Open invite</button></form></section>
+    ${matches('lastsignal')?`<section class="panel"><div class="section-title"><h2>Last Signal public arenas</h2>${btn('Refresh','arena-refresh',{},'','refresh')}</div><div id="arena-rooms" role="status">Checking for open arenas…</div></section>`:''}
     <section class="panel"><h2>Game lobbies</h2><div class="line-list">${ids.map(g => `<div class="list-item"><img src="${attr(imageFor(g))}" alt=""><div class="item-main"><strong>${esc(title(g))}</strong><small>${esc(onlinePlay(g).label || 'Multiplayer')}</small></div><div class="controls">${btn('Open lobby','play',{id:g.id,mode:'online',kind:onlinePlay(g).type},'','arrow')}${hostLobby(g)}</div></div>`).join('')}</div></section>`;
+}
+async function loadPublicArenas(){
+  const box=$('#arena-rooms');if(!box||!host)return;
+  try{
+    const rooms=(await host.invoke('publicArenas')).filter(r=>r.expires>Date.now());
+    if(!box.isConnected)return;
+    box.innerHTML=rooms.length?rooms.map(r=>`<div class="list-item"><div class="item-main"><strong>${esc(r.name)}</strong><small>${esc(r.arena)} · ${r.count}/8 players</small></div>${btn('Join','arena-join',{invite:r.invite,expires:r.expires},'glass','arrow')}</div>`).join(''):'No public arenas are waiting.';
+  }catch{if(box.isConnected)box.textContent='The public arena directory is unavailable. You can still paste a host invitation.';}
 }
 function rankings() {
   return `<section class="panel"><div class="tools" aria-label="Select a ranked game">${rankingIds.filter(matches).map(id => `<button class="chip" data-action="rank" data-id="${id}" aria-pressed="${rankGame===id}">${esc(title(matches(id)))}</button>`).join('')}</div><div id="rank-result" role="status" aria-busy="true"><p>Loading leaderboard…</p></div></section>`;
@@ -249,7 +263,7 @@ function render() {
   }
   if (detailId && matches(detailId)) view.innerHTML = details(matches(detailId));
   else if (page === 'Library') view.innerHTML = library();
-  else if (page === 'Live Lobbies') view.innerHTML = lobbies();
+  else if (page === 'Live Lobbies') {view.innerHTML=lobbies();loadPublicArenas();}
   else if (page === 'Rankings') {view.innerHTML=rankings();loadRankings();}
   else if (page === 'Downloads') view.innerHTML=downloads();
   else if (page === 'Settings') view.innerHTML=settings();
@@ -301,6 +315,11 @@ function browse() {
 function onAction(el) {
   const {action,id,mode,kind,section} = el.dataset;
   switch(action) {
+    case 'arena-refresh':loadPublicArenas();break;
+    case 'arena-join':
+      if(Number(el.dataset.expires)<=Date.now()){loadPublicArenas();message('This listing expired. Choose an open arena.');}
+      else dispatch('invite',{url:el.dataset.invite});
+      break;
     case 'detail': navigate('Library',id);break;
     case 'quickplay': case 'replay': {
       const game = matches(id);

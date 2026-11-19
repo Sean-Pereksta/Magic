@@ -77,6 +77,50 @@ def bannerlands(root):
         subprocess.run(['node',str(truth/'games/bannerlands/source/build-standalone.mjs'),tmp],check=True)
         copy(Path(tmp)/'Bannerlands.html',root/'Bannerlands.html')
 
+def last_signal(root):
+    source = truth/'games'/'last-signal'
+    def extract(archive):
+        with ZipFile(archive) as z:
+            names = set(z.namelist())
+            required = {'Last Signal.exe', 'Assets/models.bin', 'Hosting/cloudflared.exe'}
+            if not required.issubset(names):
+                raise ValueError('Last Signal archive is missing released game files')
+            for entry in z.infolist():
+                if entry.is_dir() or not (entry.filename=='Last Signal.exe' or entry.filename.startswith(('Assets/', 'Hosting/'))):
+                    continue
+                target=(root/entry.filename).resolve()
+                if not target.is_relative_to(root.resolve()):
+                    raise ValueError('Invalid Last Signal archive member')
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with z.open(entry) as reader, target.open('wb') as dest:
+                    shutil.copyfileobj(reader, dest)
+    archive = source/'Last-Signal-Windows-x64.zip'
+    if archive.is_file():
+        extract(archive)
+        return
+    parts = source/'release-parts'
+    meta = json.loads((parts/'manifest.json').read_text(encoding='utf8'))
+    if meta['filename'] != archive.name or not meta['parts']:
+        raise ValueError('Invalid Last Signal release manifest')
+    with tempfile.TemporaryFile() as joined:
+        total = hashlib.sha256()
+        for part in meta['parts']:
+            if not re.fullmatch(r'part-[0-9]+\.bin',part['file']):
+                raise ValueError('Invalid Last Signal part path')
+            path = parts/part['file']
+            digest = hashlib.sha256()
+            with path.open('rb') as stream:
+                while data := stream.read(1024*1024):
+                    joined.write(data)
+                    total.update(data)
+                    digest.update(data)
+            if path.stat().st_size != part['size'] or digest.hexdigest() != part['sha256'].lower():
+                raise ValueError('Last Signal release part failed its integrity check')
+        if joined.tell()!=meta['size'] or total.hexdigest()!=meta['sha256'].lower():
+            raise ValueError('Last Signal release archive failed its integrity check')
+        joined.seek(0)
+        extract(joined)
+
 def hearthmouse(root):
     with ZipFile(magic/'game/hearthmouse/Hearthmouse-Browser.zip') as z:
         for item in z.infolist():
@@ -104,6 +148,9 @@ def local_three(entry):
 build('cat',magic,'game/catandmouse/edition/index.html',folders=['game/catandmouse/edition'])
 build('trashtactics',magic,'game/trash-tactics/index.html',folders=['game/trash-tactics'])
 build('bannerlands',truth,'Bannerlands.html',edition=bannerlands)
+build('lastsignal',truth,'Last Signal.exe',edition=last_signal)
+if not args.only or 'lastsignal' in args.only:
+    manifest['lastsignal']['type']='native-windows'
 build('hearthmouse',magic,'index.html',edition=hearthmouse)
 build('ironfield',magic,'game/ironfield/IRONFIELD.html',['game/ironfield/IRONFIELD.html'])
 for key,slug in [('pirates','pirates'),('monstermallexpanded','monster-mall-expanded'),

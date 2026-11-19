@@ -18,7 +18,15 @@ fs.mkdirSync(userDir,{recursive:true});
     const dirs=state.catalog.games.filter(g=>state.installed.includes(g.id));
     for(const g of (args.includes('--offline-all')?dirs:dirs.slice(0,2))){
       try{
-        await lib.evaluate(id=>window.hub.invoke('play',{id,mode:'offline'}),g.id);
+        const launched=await lib.evaluate(id=>window.hub.invoke('play',{id,mode:'offline'}),g.id);
+        if(g.offline?.type==='native-windows'){
+          const {execFileSync}=require('node:child_process');
+          if(!Number.isInteger(launched?.nativePid)||launched.nativePid<1)throw Error('Native game did not start');
+          const probe="$game=Get-Process -Id "+launched.nativePid+" -ErrorAction Stop; try {$limit=(Get-Date).AddSeconds(25); do {$game.Refresh(); if($game.HasExited){throw 'Game exited before menu'}; if($game.MainWindowTitle -like 'Last Signal*Main Menu*'){exit 0}; Start-Sleep -Milliseconds 150} while((Get-Date) -lt $limit); throw 'Game menu did not open'} finally {if(!$game.HasExited){$null=$game.CloseMainWindow(); if(!$game.WaitForExit(3000)){$game.Kill()}}}";
+          execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',probe],{windowsHide:true,timeout:35000});
+          report.games.push(g.id);
+          continue;
+        }
         await app.evaluate(async({webContents},id)=>{
           const until=Date.now()+25000;
           while(Date.now()<until){
