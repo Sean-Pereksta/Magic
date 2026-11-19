@@ -23,13 +23,17 @@ async function catalog() {
 test('every effective catalog route points to a tracked file or its explicit Truth game', async () => {
   const games = await catalog();
   const tracked = new Set(execFileSync('git', ['ls-tree','-r','--name-only','HEAD'], {cwd:root,encoding:'utf8'}).trim().split('\n'));
-  const truthGames = {acornrally:'acorn-rally',bannerlands:'bannerlands',monstermallexpanded:'monster-mall-expanded',pacmanblackout:'pacman',pirates:'pirates',academystandards:'academy-standards',operationwhiskerfall:'operation-whiskerfall'};
+  const truthGames = {lastsignal:'last-signal',acornrally:'acorn-rally',bannerlands:'bannerlands',monstermallexpanded:'monster-mall-expanded',pacmanblackout:'pacman',pirates:'pirates',academystandards:'academy-standards',operationwhiskerfall:'operation-whiskerfall'};
+  const truthSuffixes = {
+    acornrally: {multiplayerRoute:'?room=join'},
+    lastsignal: {singleRoute:'#play', multiplayerRoute:'#lobbies'}
+  };
   for (const game of games) for (const field of ['route','singleRoute','multiplayerRoute','dmRoute','downloadRoute']) {
     if (!game[field]) continue;
     if (/^https?:\/\//.test(game[field])) {
       assert.ok(Object.hasOwn(truthGames,game.key), `unexpected external game ${game.key}`);
-      const query = game.key === 'acornrally' && field === 'multiplayerRoute' ? '?room=join' : '';
-      assert.equal(game[field],`https://sean-pereksta.github.io/Truth/games/${truthGames[game.key]}/${query}`);
+      const suffix = truthSuffixes[game.key]?.[field] ?? '';
+      assert.equal(game[field],`https://sean-pereksta.github.io/Truth/games/${truthGames[game.key]}/${suffix}`);
       continue;
     }
     const name = decodeURIComponent(game[field].split('?')[0]).replace(/^\//, '');
@@ -37,6 +41,19 @@ test('every effective catalog route points to a tracked file or its explicit Tru
   }
   assert.equal(new Set(games.map(game => game.key)).size, games.length);
   for (const key of ['circuitbound','fantasyfootball','mtgcatalog']) assert.ok(games.some(game => game.key===key));
+});
+
+test('Last Signal opens both browser modes for guests', async () => {
+  const game = (await catalog()).find(game => game.key === 'lastsignal');
+  assert.deepEqual(library.getActions(game), [
+    {type:'single', label:'Play in Browser'},
+    {type:'online', label:'Browse Lobbies'}
+  ]);
+  assert.equal(game.launchMode, 'matchmaking');
+  assert.equal(game.guestMultiplayer, true);
+  assert.notEqual(game.requiresUser, true);
+  assert.ok(game.singleRoute.endsWith('/#play'));
+  assert.ok(game.multiplayerRoute.endsWith('/#lobbies'));
 });
 
 test('editorial configuration references the registry without duplicating gameplay fields', async () => {
