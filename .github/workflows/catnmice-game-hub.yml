@@ -71,7 +71,12 @@ jobs:
           git config --global core.autocrlf false
           node content/build-catalog.mjs .. ../truth-source
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python content/build-packs.py .. ../truth-source
+          $lastSignal = Join-Path $env:RUNNER_TEMP 'last-signal-build'
+          & ../truth-source/games/last-signal/Build-Windows.ps1 -Destination $lastSignal
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & ../truth-source/games/last-signal/tests/Install-SoftwareGraphics.ps1 -GameDirectory $lastSignal
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python content/build-packs.py .. ../truth-source --last-signal-build "$lastSignal"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node content/build-catalog.mjs .. ../truth-source
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

@@ -125,7 +125,9 @@ function start({root,bundled,data,ready,startupFailed}){
       const game=catalog.games.find(g=>g.id===item.id);
       if(game){
         const descriptor=JSON.parse(fs.readFileSync(path.join(staged,'hub-pack.json'),'utf8'));
-        if(!['static','node'].includes(descriptor.type)||!fs.existsSync(inDir(staged,descriptor.entry.split(/[?#]/)[0])))throw Error('This update does not contain its game entry point.');
+        const native=game.id==='lastsignal'&&game.offline?.type==='native-windows'&&descriptor.type==='native-windows'&&descriptor.entry==='Last Signal.exe';
+        const web=['static','node'].includes(descriptor.type)&&game.offline?.type!=='native-windows'&&typeof descriptor.entry==='string';
+        if((!native&&!web)||!fs.statSync(inDir(staged,descriptor.entry.split(/[?#]/)[0]),{throwIfNoEntry:false})?.isFile())throw Error('This update does not contain its game entry point.');
       }
       if((item.id==='hub'||item.id==='catalog')?gameBusy():gameBusy(item.id)){
         state.deferred??={};state.deferred[item.id]=item;row(item.id,'queued','Ready when the game closes');return;
@@ -219,7 +221,11 @@ function start({root,bundled,data,ready,startupFailed}){
           child.once('error',reject);
           child.once('spawn',()=>{
             nativeGames.set(key,{id,child,invite});
-            child.once('exit',()=>{if(nativeGames.get(key)?.child===child)nativeGames.delete(key);});
+            child.once('exit',()=>{
+              if(nativeGames.get(key)?.child!==child)return;
+              nativeGames.delete(key);
+              afterClose(id,false);
+            });
             child.unref();
             resolve();
           });

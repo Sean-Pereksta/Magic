@@ -13,6 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('magic', type=Path)
 parser.add_argument('truth', type=Path)
 parser.add_argument('--only', nargs='+', help='Rebuild specific catalog keys in an existing release tree')
+parser.add_argument('--last-signal-build', type=Path, help='Package the Windows executable built from the selected Truth source')
 args = parser.parse_args()
 magic, truth = args.magic.resolve(), args.truth.resolve()
 out = Path(__file__).resolve().parent
@@ -79,10 +80,19 @@ def bannerlands(root):
 
 def last_signal(root):
     source = truth/'games'/'last-signal'
+    required = {'Last Signal.exe', 'Assets/models.bin', 'Hosting/cloudflared.exe'}
+    if args.last_signal_build:
+        native = args.last_signal_build.resolve()
+        if not all((native/file).is_file() for file in required | {'Mobile/index.html'}):
+            raise ValueError('Last Signal build is missing runtime files')
+        shutil.copyfile(native/'Last Signal.exe', root/'Last Signal.exe')
+        for directory in ('Assets', 'Hosting', 'Mobile'):
+            shutil.copytree(native/directory, root/directory, dirs_exist_ok=True)
+        return
+
     def extract(archive):
         with ZipFile(archive) as z:
             names = set(z.namelist())
-            required = {'Last Signal.exe', 'Assets/models.bin', 'Hosting/cloudflared.exe'}
             if not required.issubset(names):
                 raise ValueError('Last Signal archive is missing released game files')
             for entry in z.infolist():
