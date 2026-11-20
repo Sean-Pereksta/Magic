@@ -3,6 +3,11 @@
 
   const TURNCRAFT_COVER = "https://pub-cb55798f1eeb4f80a85463da3612ed61.r2.dev/effects/ui/turncraft-lobby.webp";
   const turncraftCoverLoads = new WeakMap();
+  const hostedLobbyStates = new WeakMap();
+  const ACORN_LOBBY_SELECTOR = "[data-acorn-hosted-lobby]";
+  const ACORN_LOBBY_URL = "https://rally.catnmice.com/?room=join";
+  const ACORN_LOBBY_DOCUMENT = "https://firestore.googleapis.com/v1/projects/bible-game-246c0/databases/(default)/documents/acornRallyService/public";
+  const ACORN_LOBBY_REFRESH_MS = 30_000;
   const FLAG_FACTIONS = `<div class="fc-factions" aria-label="Three factions: Lumen Brood, Crooked Carnival and Aureate Choir">
     <span class="fc-brood" title="Lumen Brood">✧ Brood</span><span class="fc-carnival" title="Crooked Carnival">◈ Carnival</span><span class="fc-choir" title="Aureate Choir">◎ Choir</span>
   </div>`;
@@ -93,6 +98,68 @@
     return `<a class="btn secondary small" href="${escapeHtml(game.localEditionRoute)}" aria-label="${escapeHtml(`${game.localEditionLabel}: ${game.title}`)}">${escapeHtml(game.localEditionLabel)}</a>`;
   }
 
+  async function readAcornHostedLobby({ fetchLobby = fetch, now = Date.now } = {}) {
+    try {
+      const response = await fetchLobby(ACORN_LOBBY_DOCUMENT, {
+        cache: "no-store", credentials: "omit", signal: AbortSignal.timeout(4_000)
+      });
+      if (!response.ok) return null;
+      const { fields } = await response.json();
+      const expiresAt = Date.parse(fields?.expiresAt?.timestampValue);
+      const currentTime = now();
+      if (fields?.joinUrl?.stringValue !== ACORN_LOBBY_URL ||
+          !Number.isFinite(expiresAt) || expiresAt <= currentTime || expiresAt > currentTime + 120_000) return null;
+      return { href: ACORN_LOBBY_URL, expiresAt };
+    } catch {
+      return null;
+    }
+  }
+
+  function hostedLobbyButton(game) {
+    if (game?.key !== "acornrally") return "";
+    return '<a class="btn small" data-acorn-hosted-lobby aria-label="Join Hosted Lobby: Acorn Rally" target="_top" hidden>Join Hosted Lobby</a>';
+  }
+
+  function activateHostedLobby(card, document) {
+    const link = card.querySelector(ACORN_LOBBY_SELECTOR);
+    if (!link) return;
+    let state = hostedLobbyStates.get(document);
+    if (!state) {
+      let listing = null;
+      let lastCheck = -Infinity;
+      let expiryTimer;
+      const updateLink = anchor => {
+        anchor.hidden = !listing || listing.expiresAt <= Date.now();
+        if (anchor.hidden) anchor.removeAttribute("href");
+        else anchor.href = listing.href;
+      };
+      const updateLinks = () => document.querySelectorAll(ACORN_LOBBY_SELECTOR).forEach(updateLink);
+      const refresh = async () => {
+        const now = Date.now();
+        if (document.hidden || now - lastCheck < ACORN_LOBBY_REFRESH_MS / 2 ||
+            !document.querySelector(ACORN_LOBBY_SELECTOR)) return;
+        lastCheck = now;
+        const next = await readAcornHostedLobby();
+        if (next) listing = next;
+        clearTimeout(expiryTimer);
+        updateLinks();
+        if (listing && listing.expiresAt > Date.now()) {
+          expiryTimer = setTimeout(updateLinks, listing.expiresAt - Date.now());
+        }
+      };
+      state = { updateLink, refresh };
+      hostedLobbyStates.set(document, state);
+      setInterval(refresh, ACORN_LOBBY_REFRESH_MS);
+      document.addEventListener("visibilitychange", refresh);
+    }
+    state.updateLink(link);
+    link.addEventListener("click", event => {
+      state.updateLink(link);
+      if (link.hidden) event.preventDefault();
+    });
+    queueMicrotask(state.refresh);
+  }
+
   function createGameCard(game, hooks) {
     const { document, escapeHtml, gameColor, gameVisual, favorites, gamePlayCounts } = hooks;
     const actions = getActions(game);
@@ -112,6 +179,7 @@
       ? `<a class="btn secondary small download-game-btn" href="${escapeHtml(game.downloadRoute)}" download>Download</a>` : "";
     const host = hostButton(game, escapeHtml);
     const localEdition = localEditionButton(game, escapeHtml);
+    const hostedLobby = hostedLobbyButton(game);
     const buttons = actions.map((action, index) => action.href
       ? `<a class="btn secondary small" data-live-game="${escapeHtml(game.liveLobbyGame)}" href="${action.href}">${escapeHtml(action.label)}</a>`
       : `<button type="button" class="btn small play-game-btn${index === 0 && actions.length > 1 ? " secondary" : ""}" data-game-action="${action.type}" aria-label="${escapeHtml(`${action.label}: ${game.title}`)}">${escapeHtml(action.label)}</button>`
@@ -119,7 +187,8 @@
     card.innerHTML = `
       <div class="game-art">${cover}${isFlagCapture ? '<span class="fc-art-badge">COOLDOWN TACTICS</span>' : ""}<button type="button" class="favorite-btn ${favorite ? "active" : ""}" title="Favorite" aria-label="Favorite ${escapeHtml(game.title)}" aria-pressed="${favorite}">${favorite ? "★" : "☆"}</button></div>
       <div class="game-content">${isTurncraft ? '<p class="tc-card-kicker">Build. Command. Conquer.</p>' : ""}<div class="game-name">${escapeHtml(game.title)}</div>${isFlagCapture ? FLAG_FACTIONS : ""}<div class="game-description">${escapeHtml(game.desc)}</div>${isFlagCapture ? '<p class="fc-features">21 troops <span>·</span> formations <span>·</span> living ground</p>' : ""}${isTurncraft ? TURNCRAFT_FACTIONS : ""}<div class="game-meta"><span class="tag">${escapeHtml(game.category)}</span>${modeTags}</div>
-      <div class="game-bottom"><span class="play-count">🎮 ${Number(gamePlayCounts[game.key]) || 0} plays</span><span class="game-actions">${download}${buttons}${host}${localEdition}</span></div></div>`;
+      <div class="game-bottom"><span class="play-count">🎮 ${Number(gamePlayCounts[game.key]) || 0} plays</span><span class="game-actions">${hostedLobby}${download}${buttons}${host}${localEdition}</span></div></div>`;
+    if (hostedLobby) activateHostedLobby(card, document);
     if (isTurncraft) loadTurncraftCover(card, document);
     card.querySelector(".favorite-btn").addEventListener("click", event => {
       event.stopPropagation();
@@ -172,6 +241,7 @@
     .game-card[data-game-key="crowncouncil"] .favorite-btn{z-index:2}
     .game-card .game-bottom{align-items:flex-start;gap:10px;flex-wrap:wrap}
     .game-card .game-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;min-width:0;max-width:100%}
+    [data-acorn-hosted-lobby][hidden]{display:none}
     .game-card .game-actions .btn{min-height:44px;white-space:normal;text-align:center}
     .game-card .game-actions .btn:focus-visible,.game-card .favorite-btn:focus-visible{outline:3px solid var(--brand);outline-offset:3px}
     @media(max-width:760px){.game-card .game-actions{width:100%}.game-card .game-actions .btn{flex:1 1 120px}}
@@ -230,7 +300,7 @@
     return html;
   }
 
-  const api = Object.freeze({ getActions, runAction, hostButton, localEditionButton, createGameCard, upgradeHtml });
+  const api = Object.freeze({ getActions, runAction, hostButton, localEditionButton, hostedLobbyButton, activateHostedLobby, readAcornHostedLobby, createGameCard, upgradeHtml });
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GameHubLibrary = api;
 })(globalThis);

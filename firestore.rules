@@ -2071,6 +2071,12 @@ service cloud.firestore {
       }
     }
 
+    // The laptop's Admin SDK owns this single lease. Guests can read it while it is fresh.
+    match /acornRallyService/public {
+      allow get: if resource.data.expiresAt is timestamp && resource.data.expiresAt > request.time;
+      allow list, write: if false;
+    }
+
     match /games_basewar/{gameId} {
       allow read, write: if isAuthed();
 
