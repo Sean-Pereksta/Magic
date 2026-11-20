@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { createPatchWriter, stateFieldPatch, eligibleHostCandidate, reconcileKeyedNodes } from './sync.mjs';
-import { createTacticalDirector, findOpenSpawn, stableHash } from './tactics.mjs';
+import { createSiegeNavigator, createTacticalDirector, findOpenSpawn, stableHash } from './tactics.mjs';
 import { createCombatPresentation } from './combat-presentation.mjs';
 import { createStructureQueries } from './structure-queries.mjs';
 import { resolveWinAccount, readWinCount, recordWinTransaction, readPendingWins, savePendingWins } from './wins.mjs';
@@ -40,7 +40,7 @@ export async function createBattleRuntime(reduced=false, {scenarioExtra=""}={}) 
   const context=vm.createContext({window,document,navigator:{onLine:true,userAgent:'fixture'},localStorage:{getItem:()=>null,setItem(){}},URLSearchParams,Date:ClockDate,
     Audio:class{play(){return Promise.resolve();}pause(){}},console:{warn:(...args)=>warnings.push(args),error:(...args)=>warnings.push(args),log(){}},
     setTimeout:()=>++nextId,clearTimeout(){},setInterval:()=>++nextId,clearInterval(){},requestAnimationFrame:fn=>{const id=++nextId;frames.set(id,fn);return id;},cancelAnimationFrame:id=>frames.delete(id),
-    crypto:{randomUUID:()=>String(++nextId)},createPatchWriter,stateFieldPatch,eligibleHostCandidate,reconcileKeyedNodes,createTacticalDirector,findOpenSpawn,stableHash,createCombatPresentation,createStructureQueries,resolveWinAccount,readWinCount,recordWinTransaction,readPendingWins,savePendingWins,
+    crypto:{randomUUID:()=>String(++nextId)},createPatchWriter,stateFieldPatch,eligibleHostCandidate,reconcileKeyedNodes,createSiegeNavigator,createTacticalDirector,findOpenSpawn,stableHash,createCombatPresentation,createStructureQueries,resolveWinAccount,readWinCount,recordWinTransaction,readPendingWins,savePendingWins,
     initializeApp:()=>({}),getAuth:()=>({currentUser:{uid:'test-player'}}),signInAnonymously:async()=>{},getFirestore:()=>({}),doc:(_db,path)=>({id:path.split('/').pop()}),collection:()=>({}),query:()=>({}),where:()=>({}),limit:()=>({}),
     getDoc:async()=>({exists:()=>false}),getDocs:async()=>({docs:[]}),setDoc:unexpected,updateDoc:unexpected,deleteDoc:unexpected,writeBatch:unexpected,onSnapshot:()=>()=>{},runTransaction:unexpected,increment:n=>n
   });

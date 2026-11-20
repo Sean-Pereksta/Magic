@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
-  ENEMIES, MAPS, STARTER_LOADOUT, STARTING_WAVES, STEP_MS, createSimulation, getPlacementError, isCompleteLoadout, normalizeLoadout,
+  ENEMIES, MAPS, STARTER_LOADOUT, STARTING_WAVES, STEP_MS, TOWERS, createSimulation, getPlacementError, isCompleteLoadout, normalizeLoadout,
 } from './simulation.mjs';
 import { buildEnemyField, distanceSquared, interceptPoint, movingCircleHit, terrainHit, tileAt } from './navigation.mjs';
 
@@ -207,7 +207,15 @@ test('projectiles sweep through moving targets and collide with the leading terr
 });
 
 test('the opening Cat hunts until a normal battle is won by dealing the killing blow', () => {
-  const sim = createSimulation({ matchId: 'wintry', difficulty: 'normal', players: [mouse] });
+  const loadout = ['wall', 'turret', 'generator', 'rocket', 'repair', 'ultra-wall', 'shield', 'laser'];
+  const sim = createSimulation({ matchId: 'wintry', difficulty: 'normal', players: [{ ...mouse, loadout }] });
+  const economy = [[21, 26], [24, 27], [22, 28], [23, 28], [24, 28], [25, 28], [24, 26],
+    [25, 26], [23, 27], [26, 27], [26, 26], [24, 29]];
+  const buildOrder = [
+    ...economy.slice(0, 7).map(([x, y]) => [2, x, y]),
+    ...plan.filter(([, x, y]) => !economy.some(([ex, ey]) => ex === x && ey === y))
+      .map(([slot, x, y]) => [slot === 0 && (x === 22 || x === 27) ? 5 : slot, x, y]),
+  ];
   const launches = new Map();
   const impacts = new Map();
   const simultaneousHits = new Map();
@@ -219,9 +227,9 @@ test('the opening Cat hunts until a normal battle is won by dealing the killing 
   const cat = state.enemies.find(enemy => enemy.type === 'cat');
   assert.ok(cat && distanceSquared(cat, state.players[0]) > 18 ** 2);
   assert.equal(state.objectives.length, 0);
-  for (let step = 0; step < 4700 && state.status === 'active'; step++) {
+  for (let step = 0; step < 5800 && state.status === 'active'; step++) {
     dodgeCat(sim, state, step);
-    reinforce(sim, state, step);
+    reinforce(sim, state, step, buildOrder);
     sim.step();
     state = sim.snapshot();
     const pursuingCat = state.enemies.find(enemy => enemy.type === 'cat');
@@ -271,6 +279,53 @@ test('the opening Cat hunts until a normal battle is won by dealing the killing 
   const finished = sim.snapshot();
   tick(sim, 5);
   assert.deepEqual(sim.snapshot(), finished);
+});
+
+test('rats from opposite entrances attack their nearest structure and leave a closer mouse alone', () => {
+  const sim = createSimulation({ matchId: 'closest-2', ranked: true, players: [mouse, { id: 'bait' }] });
+  const west = sim.command(mouse.id, { type: 'build', slot: 0, x: 18, y: 23 });
+  const east = sim.command(mouse.id, { type: 'build', slot: 0, x: 27, y: 24 });
+  assert.ok(west.ok && east.ok);
+  assert.ok(sim.command('bait', { type: 'move', x: 11, y: 23 }).ok);
+  tick(sim, 25_000 / STEP_MS);
+  const state = sim.snapshot();
+  for (const [entrance, structure] of [['west', west], ['east', east]]) {
+    const rat = state.events.find(event => event.type === 'spawn' && event.entrance === entrance);
+    const attack = state.events.find(event => event.type === 'attack' && event.entityId === rat?.entityId);
+    assert.equal(attack?.targetId, structure.id);
+  }
+  assert.equal(state.players.find(player => player.id === 'bait').hp, 62);
+});
+
+test('the Cat patrols independently of distant mouse positions', () => {
+  const stay = createSimulation({ matchId: 'distant-cat', players: [mouse] });
+  const flee = createSimulation({ matchId: 'distant-cat', players: [mouse] });
+  assert.ok(flee.command(mouse.id, { type: 'move', x: 23, y: 35 }).ok);
+  tick(stay, 5_000 / STEP_MS);
+  tick(flee, 5_000 / STEP_MS);
+  assert.deepEqual(stay.snapshot().enemies[0], flee.snapshot().enemies[0]);
+});
+
+test('a dense late wave keeps individual enemies moving through the central lanes', () => {
+  const escape = [[12, 23], [20, 18], [33, 23], [24, 38]];
+  const players = escape.map((_, index) => ({ id: `mouse-${index}` }));
+  const sim = createSimulation({ matchId: 'spread', players, startingWave: 10 });
+  for (const [index, [x, y]] of escape.entries()) {
+    assert.ok(sim.command(players[index].id, { type: 'move', x, y }).ok);
+  }
+  tick(sim, 50_000 / STEP_MS);
+  const enemies = sim.snapshot().enemies.filter(enemy => enemy.type !== 'cat');
+  assert.ok(enemies.length > 50);
+  let neighbors = 0;
+  let overlapping = 0;
+  for (const [index, enemy] of enemies.entries()) {
+    for (const other of enemies.slice(index + 1)) {
+      const squared = distanceSquared(enemy, other);
+      if (squared < 1.2 ** 2) neighbors++;
+      if (squared < 0.36 ** 2) overlapping++;
+    }
+  }
+  assert.ok(neighbors > 100 && overlapping < neighbors / 10);
 });
 
 test('harder ranked battles keep their late Cat attack telegraphs', () => {
@@ -377,14 +432,20 @@ test('the opening Cat stalks slowly and claws without special attacks even on a 
   }
 });
 
-test('an active Cat grows five percent per minute and recovers small amounts after a lull', () => {
+test('an active Cat picks up speed, gains health faster, and recovers small amounts after a lull', () => {
   const sim = createSimulation({ matchId: 'combat-balance', players: [mouse] });
   assert.equal(sim.command(mouse.id, { type: 'build', slot: 1, x: 24, y: 24 }).ok, true);
   const firstCat = sim.snapshot().enemies[0];
   const recoveries = [];
   const growths = [];
+  let openingSpeed = 0;
+  let lateSpeed = 0;
   let lastDamage = -Infinity;
-  const state = runPerimeter(sim, 96_000 / STEP_MS, (_, events) => {
+  const state = runPerimeter(sim, 96_000 / STEP_MS, (snapshot, events) => {
+    const cat = snapshot.enemies.find(enemy => enemy.id === firstCat.id);
+    const speed = Math.hypot(cat.vx, cat.vy);
+    if (snapshot.time < 5_000) openingSpeed = Math.max(openingSpeed, speed);
+    if (snapshot.time > 60_000) lateSpeed = Math.max(lateSpeed, speed);
     for (const event of events) {
       if (event.entityId !== firstCat.id) continue;
       if (event.type === 'damage') lastDamage = event.time;
@@ -399,17 +460,17 @@ test('an active Cat grows five percent per minute and recovers small amounts aft
     }
   });
   assert.equal(state.status, 'active');
+  assert.ok(openingSpeed > 1 && lateSpeed > openingSpeed + 0.75);
   assert.ok(recoveries.length > 1);
-  assert.equal(growths.length, 1);
-  assert.equal(growths[0].time, 60_000);
+  assert.deepEqual(growths.map(growth => growth.time), [60_000]);
   const current = state.enemies.find(enemy => enemy.type === 'cat');
   assert.equal(current.id, firstCat.id);
-  assert.equal(current.maxHp, Math.ceil(firstCat.maxHp * 1.05));
+  assert.equal(current.maxHp, Math.ceil(firstCat.maxHp * 1.06));
   assert.ok(current.hp > 0 && current.hp <= current.maxHp);
 });
 
 test('nearby Menders can heal a wounded Cat a little during a high-wave fight', () => {
-  const sim = createSimulation({ matchId: 'heals20', difficulty: 'easy', startingWave: 10, players: [mouse] });
+  const sim = createSimulation({ matchId: 'heals0', difficulty: 'easy', startingWave: 10, players: [mouse] });
   const opening = [[1, 21, 24], [2, 21, 26], [0, 22, 25], [0, 23, 24], [1, 25, 24], [1, 23, 27], [2, 24, 27]];
   const buildOrder = [...opening, ...plan.filter(slot => !opening.some(preferred => preferred.join() === slot.join()))];
   const heals = [];
@@ -457,7 +518,7 @@ test('ranked survival keeps the fixed late Cat and scores completed waves and ma
   assert.equal(bossAt, 7);
   assert.equal(state.status, 'won');
   assert.equal(sim.rankedScore.timeMs, state.resultAt);
-  assert.ok(sim.rankedScore.waves >= 6 && sim.rankedScore.waves <= 7);
+  assert.equal(sim.rankedScore.waves, 5);
 });
 
 test('an ignored match defeats the team and produces identical state for the same seed', () => {
@@ -504,4 +565,54 @@ test('a surviving teammate keeps co-op active while the Cat changes targets', ()
   const caughtCat = caught.enemies.find(enemy => enemy.type === 'cat');
   const revivedCat = revived.enemies.find(enemy => enemy.type === 'cat');
   assert.ok(distanceSquared(revivedCat, revived.players[1]) < distanceSquared(caughtCat, caught.players[1]));
+});
+
+test('land and cheese govern placement even with hundreds of the same building', () => {
+  const loadout = normalizeLoadout(['generator', 'farm']);
+  const sim = createSimulation({ matchId: 'large-fortress', players: [{ ...mouse, loadout }] });
+  const state = sim.snapshot();
+  state.structures = Array.from({ length: 421 }, (_, index) => ({
+    x: 1 + index % 46, y: 1 + Math.floor(index / 46), ownerId: mouse.id,
+    type: index % 2 ? 'generator' : 'farm',
+  }));
+  assert.equal(getPlacementError(state, mouse.id, 'generator', 22, 26), null);
+  assert.equal(getPlacementError(state, mouse.id, 'farm', 22, 26), null);
+  state.players[0].cheese = 0;
+  assert.equal(getPlacementError(state, mouse.id, 'farm', 22, 26), 'not-enough-cheese');
+});
+
+test('the Ultra Wall uses wall placement rules and has the most health', () => {
+  const type = 'ultra-wall';
+  const loadout = normalizeLoadout([type]);
+  const sim = createSimulation({ matchId: 'ultra-wall', players: [{ ...mouse, loadout }] });
+  const build = axis => sim.command(mouse.id, { type: 'build', slot: 0, x: 22, y: 26, axis });
+  assert.equal(build('x').code, 'not-enough-cheese');
+  assert.equal(sim.command(mouse.id, { type: 'move', x: 21, y: 25 }).ok, true);
+  tick(sim, 20);
+  assert.equal(build('diagonal').code, 'invalid-axis');
+  assert.equal(build('y').ok, true);
+  const { hp, axis } = sim.snapshot().structures[0];
+  assert.equal(axis, 'y');
+  assert.equal(hp, TOWERS[type].hp);
+  assert.ok(hp > TOWERS.barricade.hp && hp > TOWERS.wall.hp);
+  assert.equal(sim.command(mouse.id, { type: 'move', x: 22, y: 26 }).ok, true);
+});
+
+test('map cheese is spread across valid tiles and replenishes after collection', () => {
+  const sim = createSimulation({ matchId: 'cheese-supply', players: [mouse] });
+  const opening = sim.snapshot().pickups;
+  assert.ok(opening.length >= 24);
+  for (const spot of [...opening, ...mill.cheeseRefills]) {
+    assert.ok(!['#', '~'].includes(tileAt(mill, spot.x, spot.y)));
+  }
+  for (const [x, y] of [[21, 25], [19, 23]]) {
+    assert.equal(sim.command(mouse.id, { type: 'move', x, y }).ok, true);
+    tick(sim, 20);
+  }
+  assert.equal(sim.snapshot().pickups.length, opening.length - 2);
+  tick(sim, 60);
+  const refilled = sim.snapshot().pickups;
+  assert.equal(refilled.length, opening.length);
+  assert.equal(new Set(refilled.map(({ x, y }) => `${x},${y}`)).size, refilled.length);
+  assert.equal(refilled.filter(entry => !opening.some(pickup => pickup.id === entry.id)).length, 2);
 });

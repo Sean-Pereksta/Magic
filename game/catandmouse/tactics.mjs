@@ -8,6 +8,76 @@ export function stableHash(text) {
   return result >>> 0;
 }
 
+export function createSiegeNavigator({ size, structures, revision }) {
+  const count = size * size;
+  const distanceToStructure = new Int32Array(count);
+  const targets = new Array(count);
+  const queue = new Int32Array(count);
+  let builtRevision;
+
+  function refresh() {
+    const currentRevision = revision();
+    if (builtRevision === currentRevision) return;
+    builtRevision = currentRevision;
+    distanceToStructure.fill(-1);
+    targets.fill(null);
+    let tail = 0;
+    for (const structure of structures()) {
+      const index = structure.y * size + structure.x;
+      distanceToStructure[index] = 0;
+      targets[index] = structure;
+      queue[tail++] = index;
+    }
+    // Search outward from every structure at once. Each open tile learns its
+    // closest attackable structure by walking distance, independent of unit count.
+    for (let head = 0; head < tail; head++) {
+      const from = queue[head], x = from % size, y = Math.floor(from / size);
+      for (const [dx, dy] of dirs) {
+        const nx = x + dx, ny = y + dy, next = ny * size + nx;
+        if (nx < 0 || ny < 0 || nx >= size || ny >= size || distanceToStructure[next] !== -1) continue;
+        distanceToStructure[next] = distanceToStructure[from] + 1;
+        targets[next] = targets[from];
+        queue[tail++] = next;
+      }
+    }
+  }
+
+  function crowdAt(x, y, occupied) {
+    let crowd = 0;
+    for (const [dx, dy] of dirs) {
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < size && ny < size && occupied.has(ny * size + nx)) crowd++;
+    }
+    return crowd;
+  }
+
+  return {
+    plan(unit, occupied, stagingPoint) {
+      refresh();
+      const index = unit.y * size + unit.x;
+      const remaining = distanceToStructure[index];
+      let target = targets[index], next = null, smallestCrowd = Infinity;
+      if (remaining === 1) return { target, next };
+      const offset = stableHash(unit.key) % dirs.length;
+      for (let i = 0; i < dirs.length; i++) {
+        const [dx, dy] = dirs[(i + offset) % dirs.length];
+        const x = unit.x + dx, y = unit.y + dy, candidate = y * size + x;
+        if (x < 0 || y < 0 || x >= size || y >= size || occupied.has(candidate)) continue;
+        const nextDistance = distanceToStructure[candidate];
+        const approachesStructure = remaining >= 0 && nextDistance === Math.max(1, remaining - 1);
+        const approachesStaging = remaining < 0 && stagingPoint && distance({x,y}, stagingPoint) < distance(unit, stagingPoint);
+        if (!approachesStructure && !approachesStaging) continue;
+        const crowd = crowdAt(x, y, occupied);
+        if (crowd >= smallestCrowd) continue;
+        next = { x, y };
+        target = remaining === 0 ? targets[index] : targets[candidate];
+        smallestCrowd = crowd;
+      }
+      return { target, next };
+    }
+  };
+}
+
 export function findOpenSpawn(origin, { size, passable, occupied = () => false, reserved = () => false, radius = 3, seed = 0 }) {
   // Search only reachable cells in a small ring, never through a wall. All
   // cells are visited at most once; a fully enclosed producer simply retries.

@@ -110,7 +110,10 @@ function title() {
 }
 
 function cardIcon(type) {
-  if (type === 'barricade') return '<span class="kit-art kit-art-super-wall" aria-hidden="true"></span>';
+  if (type === 'barricade' || type === 'ultra-wall') {
+    const wallClass = type === 'ultra-wall' ? 'kit-art-ultra-wall' : 'kit-art-super-wall';
+    return `<span class="kit-art ${wallClass}" aria-hidden="true"></span>`;
+  }
   const cell = towerCell(type);
   return `<span class="kit-art" aria-hidden="true" style="background-position:${cell % 4 * 100 / 3}% ${Math.floor(cell / 4) * 50}%"></span>`;
 }

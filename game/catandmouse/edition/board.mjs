@@ -9,7 +9,7 @@ const sources = {
 };
 const art = {};
 const groundCache = new Map();
-let barricadeArt;
+const reinforcedWallArt = new Map();
 const tilePixels = 24;
 const waterSwatch = 260;
 const towers = {
@@ -36,7 +36,7 @@ function sprite(ctx, sheet, index, x, y, width, height = width, anchor = .91) {
     x - width / 2, y - height * anchor, width, height);
 }
 
-function paintBarricades() {
+function paintReinforcedWalls(ultra) {
   const size = art.walls.height;
   const armor = document.createElement('canvas');
   armor.width = size * 2;
@@ -47,7 +47,7 @@ function paintBarricades() {
   ctx.drawImage(art.walls, size, 0, size, size, size, 0, size, size);
   ctx.filter = 'none';
   ctx.globalCompositeOperation = 'source-atop';
-  ctx.fillStyle = '#45678266';
+  ctx.fillStyle = ultra ? '#5955bda0' : '#45678266';
   ctx.fillRect(0, 0, armor.width, armor.height);
   ctx.globalCompositeOperation = 'source-over';
   ctx.scale(size / 128, size / 128);
@@ -55,16 +55,16 @@ function paintBarricades() {
   // Cast iron surrounds the atlas' painted timbers. Brass reveals its seams at play scale.
   const straps = new Path2D('M 6 28 H 122 M 6 101 H 122 M 26 39 L 103 92 M 102 39 L 25 92');
   ctx.lineJoin = 'round';
-  ctx.strokeStyle = '#161e25';
+  ctx.strokeStyle = ultra ? '#21203a' : '#161e25';
   ctx.lineWidth = 10;
   ctx.stroke(straps);
-  ctx.strokeStyle = '#9f7440';
+  ctx.strokeStyle = ultra ? '#6478b3' : '#9f7440';
   ctx.lineWidth = 5;
   ctx.stroke(straps);
-  ctx.strokeStyle = '#f5ce8a';
+  ctx.strokeStyle = ultra ? '#ccdfff' : '#f5ce8a';
   ctx.lineWidth = 1.75;
   ctx.stroke(straps);
-  ctx.fillStyle = '#ffe0a3';
+  ctx.fillStyle = ultra ? '#eaf7ff' : '#ffe0a3';
   for (const x of [12, 37, 64, 91, 116]) {
     ctx.fillRect(x - 2, 25, 4, 5);
     ctx.fillRect(x - 2, 99, 4, 5);
@@ -74,21 +74,21 @@ function paintBarricades() {
   ctx.translate(128, 0);
   const crown = new Path2D('M 14 16 L 76 0 L 117 10 L 119 26 L 57 44 L 13 33 Z');
   const metal = ctx.createLinearGradient(35, 3, 65, 44);
-  metal.addColorStop(0, '#9bb8c5');
-  metal.addColorStop(.48, '#526f82');
-  metal.addColorStop(.52, '#243a4d');
-  metal.addColorStop(1, '#111f2c');
+  metal.addColorStop(0, ultra ? '#cedeff' : '#9bb8c5');
+  metal.addColorStop(.48, ultra ? '#717eb4' : '#526f82');
+  metal.addColorStop(.52, ultra ? '#323b75' : '#243a4d');
+  metal.addColorStop(1, ultra ? '#18183d' : '#111f2c');
   ctx.fillStyle = metal;
   ctx.fill(crown);
-  ctx.strokeStyle = '#bc8b4b';
+  ctx.strokeStyle = ultra ? '#8ea5e9' : '#bc8b4b';
   ctx.lineWidth = 2.5;
   ctx.stroke(crown);
   const crest = new Path2D('M 78 48 L 96 55 L 94 72 L 74 86 L 61 77 L 62 60 Z');
-  ctx.fillStyle = '#152733';
+  ctx.fillStyle = ultra ? '#242551' : '#152733';
   ctx.fill(crest);
-  ctx.strokeStyle = '#e3b872';
+  ctx.strokeStyle = ultra ? '#a7c2ff' : '#e3b872';
   ctx.stroke(crest);
-  ctx.fillStyle = '#f5cf88';
+  ctx.fillStyle = ultra ? '#c3f4ff' : '#f5cf88';
   ctx.fill(new Path2D('M 79 56 L 87 62 L 76 77 L 74 68 L 68 66 Z'));
   ctx.restore();
 
@@ -493,11 +493,16 @@ export class Battlefield {
   wall(entity, point, walls, ghost = false, plannedWalls) {
     const ctx = this.ctx;
     const [x, y] = this.project(point.x, point.y);
-    const reinforced = entity.type === 'barricade';
+    const ultra = entity.type === 'ultra-wall';
+    const reinforced = ultra || entity.type === 'barricade';
     const damaged = entity.hp < entity.maxHp * .38;
-    if (reinforced) barricadeArt ??= paintBarricades();
-    const texture = reinforced ? (damaged ? barricadeArt.worn : barricadeArt.armor) : art.walls;
-    const height = (reinforced ? 45 : 29) * this.camera.zoom;
+    let texture = art.walls;
+    if (reinforced) {
+      if (!reinforcedWallArt.has(entity.type)) reinforcedWallArt.set(entity.type, paintReinforcedWalls(ultra));
+      const wallArt = reinforcedWallArt.get(entity.type);
+      texture = damaged ? wallArt.worn : wallArt.armor;
+    }
+    const height = (ultra ? 52 : reinforced ? 45 : 29) * this.camera.zoom;
     const size = texture.height;
     const arms = wallConnections(entity, walls);
     const previewArms = plannedWalls ? wallConnections(entity, plannedWalls).filter(direction => !arms.includes(direction)) : [];
@@ -525,7 +530,8 @@ export class Battlefield {
     const postWidth = height * (arms.length ? .66 : .84);
     ctx.drawImage(texture, size, 0, size, size, x - postWidth / 2, y - height * 1.12, postWidth, height * 1.19);
     ctx.restore();
-    if (!ghost) this.health(x, y - height * 1.18, entity.hp, entity.maxHp, reinforced && damaged ? '#e08354' : '#e5b161');
+    const healthColor = reinforced && damaged ? '#e08354' : ultra ? '#a7c2ff' : '#e5b161';
+    if (!ghost) this.health(x, y - height * 1.18, entity.hp, entity.maxHp, healthColor);
   }
 
   structure(entity, point, settings, elapsed) {

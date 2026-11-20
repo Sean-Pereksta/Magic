@@ -1,5 +1,6 @@
 import { DIFFICULTIES, ENEMIES, MAPS, SHOTS, STARTING_WAVES, STEP_MS, TOWERS, normalizeLoadout } from './battlefield.mjs';
 import { DIRECTIONS, buildEnemyField, distanceSquared, findPath, interceptPoint, movingCircleHit, terrainHit, tileAt } from './navigation.mjs';
+import { isWall } from './walls.mjs';
 
 export { DIFFICULTIES, ENEMIES, MAPS, SHOTS, STARTER_LOADOUT, STARTING_WAVES, STEP_MS, TOWERS, isCompleteLoadout, normalizeLoadout } from './battlefield.mjs';
 
@@ -7,15 +8,20 @@ const STEP_SECONDS = STEP_MS / 1000;
 const WAVE_SIZES = Object.freeze([2, 5, 8, 12, 17, 24, 26]);
 const STARTING_CAT_HEALTH = Object.freeze({ 1: 1, 5: 1.65, 10: 2.45 });
 const OPENING_CHEESE = 10;
+const MAP_CHEESE_REFILL_INTERVAL = 5000;
+const MAP_CHEESE_REFILL_COUNT = 2;
 const PREPARATION_TIME = 30_000;
 const EARLY_WAVE_INTERVALS = Object.freeze([45_000, 40_000, 35_000]);
 const CAT_GROWTH_INTERVAL = 60_000;
-const CAT_GROWTH_FACTOR = 1.05;
+const CAT_GROWTH_FACTOR = 1.06;
 const CAT_MAX_HEALTH = Number.MAX_SAFE_INTEGER;
 const CAT_RECOVERY_DELAY = 14_000;
 const CAT_HEAL_INTERVAL = 10_000;
 const CAT_OPENING_SPEED = 1.15;
-const CAT_SPEED_RAMP_TIME = 180_000;
+const CAT_SPEED_RAMP_TIME = 150_000;
+const CAT_CHASE_RANGE = 7.1;
+const CAT_CHASE_STEPS = 8;
+const EMPTY_STRUCTURES = new Map();
 const CAT_SKILL_UNLOCKS = Object.freeze({
   pounce: { wave: 6, time: 180_000 },
   'tail-sweep': { wave: 8, time: 240_000 },
@@ -23,7 +29,6 @@ const CAT_SKILL_UNLOCKS = Object.freeze({
 });
 const RANKED_CAT_HP = 288;
 const CAT_TEAM_HP = 110;
-const MAX_STRUCTURES = 420;
 const MAX_PROJECTILES = 150;
 const MAX_ENEMIES = 75;
 const MAX_ALLIES = 36;
@@ -107,13 +112,9 @@ function structurePlacementError(map, actor, type, x, y, structures, occupants) 
   const spot = { x, y };
   if (map.spawns.some(spawn => distanceSquared(spawn, spot) < 4)
     || map.playerSpawns.some(spawn => distanceSquared(spawn, spot) === 0)) return 'spawn-protected';
-  if (structures.length >= MAX_STRUCTURES) return 'structure-limit';
   if (structures.some(structure => structure.x === x && structure.y === y)
     || bestWithin(spot, occupants, 0.72)) return 'occupied';
   if (actor.cheese < TOWERS[type].cost) return 'not-enough-cheese';
-  if ((type === 'generator' || type === 'farm') && structures.filter(
-    structure => structure.type === type && structure.ownerId === actor.id,
-  ).length >= (type === 'generator' ? 6 : 4)) return 'economy-limit';
   return null;
 }
 
@@ -157,6 +158,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     throw new TypeError('A player ID conflicts with a battlefield entity.');
   }
   const random = createRandom(seed);
+  const cheeseRandom = createRandom(`${seed}:map-cheese`);
   const actors = new Map();
   const team = new Map(players.map(({ id, name, loadout }, index) => {
     const spawn = map.playerSpawns[index];
@@ -183,8 +185,9 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
   let resultAt = null;
   let wave = startingWave - 1;
   let nextWaveAt = ranked ? 12_500 : PREPARATION_TIME;
+  let nextMapCheeseAt = MAP_CHEESE_REFILL_INTERVAL;
   let field = null;
-  let mouseCells = '';
+  const patrolRoutes = buildEnemyField(map, map.playerSpawns, EMPTY_STRUCTURES);
 
   function event(type, source, fields) {
     events.push({ id: nextEventId++, type, tick, time, x: source.x, y: source.y, ...fields });
@@ -229,7 +232,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     if (!Number.isInteger(action.slot) || action.slot < 0 || action.slot >= actor.loadout.length) return refuse('invalid-slot');
     const type = actor.loadout[action.slot];
     const def = TOWERS[type];
-    const hasAxis = type === 'wall' || type === 'barricade';
+    const hasAxis = isWall(type);
     const axis = action.axis === undefined ? 'x' : action.axis;
     if (hasAxis && axis !== 'x' && axis !== 'y') return refuse('invalid-axis');
     const error = structurePlacementError(map, actor, type, action.x, action.y, [...structures.values()], actors.values());
@@ -280,9 +283,28 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
   }
 
   function putCheese(x, y, value, lifespan = 48000) {
-    if (pickups.size >= 90) return;
+    if (Number.isFinite(lifespan) && pickups.size >= 90) return;
     const pickup = { id: `cheese-${nextEntityId++}`, x, y, value, expiresAt: time + lifespan };
     pickups.set(pickup.id, pickup);
+  }
+
+  function refillMapCheese() {
+    if (time < nextMapCheeseAt) return;
+    nextMapCheeseAt += MAP_CHEESE_REFILL_INTERVAL;
+    const occupied = new Set();
+    let mapCheese = 0;
+    for (const pickup of pickups.values()) {
+      occupied.add(cellAt(pickup.x, pickup.y));
+      if (pickup.expiresAt === Infinity) mapCheese++;
+    }
+    const refill = Math.min(MAP_CHEESE_REFILL_COUNT, map.cheese.length - mapCheese);
+    if (refill <= 0) return;
+    const free = [...map.cheese, ...map.cheeseRefills].filter(spot => passable(spot.x, spot.y)
+      && !occupied.has(cellAt(spot.x, spot.y)) && !bestWithin(spot, team.values(), 2));
+    for (let index = 0; index < refill && free.length; index++) {
+      const [spot] = free.splice(Math.floor(cheeseRandom() * free.length), 1);
+      putCheese(spot.x, spot.y, 3, Infinity);
+    }
   }
 
   function advancePlayers() {
@@ -366,11 +388,10 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     const def = ENEMIES[type];
     const boss = type === 'cat';
     const teamBonus = CAT_TEAM_HP * (team.size - 1);
-    const normalHp = boss
-      ? (def.hp + teamBonus) * STARTING_CAT_HEALTH[startingWave] * rules.catHpMultiplier
-      : def.hp * (1 + (spawnWave - 1) * 0.08);
-    const rankedHp = boss ? RANKED_CAT_HP + teamBonus : def.hp;
-    const hp = Math.round(rules.health * (ranked ? rankedHp : normalHp));
+    const catHp = ranked ? RANKED_CAT_HP + teamBonus
+      : (def.hp + teamBonus) * STARTING_CAT_HEALTH[startingWave] * rules.catHpMultiplier;
+    const waveHp = def.hp * (1 + (spawnWave - 1) * 0.16);
+    const hp = Math.round(rules.health * (boss ? catHp : waveHp));
     const laneOffsetX = (random() - 0.5) * 0.72;
     const laneOffsetY = (random() - 0.5) * 0.72;
     const enemy = {
@@ -378,7 +399,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       hp, maxHp: hp, vx: 0, vy: 0, facing: 0,
       spawnedAt: time, lastAttackAt: -1000000, lastHitAt: -1000000, nextAttackAt: 0,
       windupUntil: 0, slowUntil: 0, trapUntil: 0,
-      damageScale: boss || ranked ? 1 : 1 + (spawnWave - 1) * 0.045,
+      damageScale: boss ? 1 : 1 + (spawnWave - 1) * 0.10,
       spawnWave,
       specialTimes: boss ? { pounce: time - 3200 } : {},
       attackTarget: null, attackKind: null, lastAttackKind: null, aiCell: null,
@@ -460,6 +481,9 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
 
   const clearPath = (origin, target) =>
     terrainHit(map, origin.x, origin.y, target.x, target.y, (x, y) => !passable(x, y)) === null;
+  const clearPathToStructure = (origin, target) =>
+    terrainHit(map, origin.x, origin.y, target.x, target.y,
+      (x, y) => (x !== target.x || y !== target.y) && !passable(x, y)) === null;
   const clearTerrain = (origin, target) => terrainHit(map, origin.x, origin.y, target.x, target.y) === null;
 
   function attackFields(entity, kind, targetId = entity.attackTarget) {
@@ -499,8 +523,26 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     return true;
   }
 
-  function visibleMouse(enemy, range) {
-    return bestWithin(enemy, team.values(), range, null, target => isAlive(target) && clearPath(enemy, target));
+  function chaseMouse(enemy) {
+    let chase = null;
+    let nearestDistance = CAT_CHASE_RANGE ** 2;
+    for (const mouse of team.values()) {
+      const distance = distanceSquared(enemy, mouse);
+      if (!mouse.hp || distance > nearestDistance) continue;
+      const direct = clearPath(enemy, mouse);
+      const goal = { x: Math.round(mouse.x), y: Math.round(mouse.y) };
+      const route = direct ? [] : findPath(enemy, goal, map.size, passable, CAT_CHASE_STEPS);
+      if (route === null) continue;
+      chase = { mouse, direct, waypoint: route[0] ?? mouse };
+      nearestDistance = distance;
+    }
+    return chase;
+  }
+
+  function siegeTarget(routes, occupiedCell) {
+    let cell = occupiedCell;
+    while (routes[cell] >= 0 && routes[cell] !== cell) cell = routes[cell];
+    return structures.get(cell);
   }
 
   function catSkillUnlocked(kind) {
@@ -508,25 +550,24 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     return ranked || (wave >= unlock.wave && time >= unlock.time);
   }
 
-  function chooseSpecial(enemy) {
+  function chooseSpecial(enemy, visibleMouse, targetStructure) {
     if (time < enemy.nextAttackAt) return false;
     if (enemy.type === 'cat') {
       const charge = SPECIAL_MOVES['cat-charge'];
       const sweep = SPECIAL_MOVES['tail-sweep'];
-      if (rules.catCharge && catSkillUnlocked('cat-charge')) {
-        const target = visibleMouse(enemy, charge.range);
-        if (target && distanceSquared(enemy, target) >= 2.45 ** 2 && startSpecial(enemy, 'cat-charge', target)) return true;
-      }
+      if (!visibleMouse) return false;
+      const distance = distanceSquared(enemy, visibleMouse);
+      if (rules.catCharge && catSkillUnlocked('cat-charge') && distance >= 2.45 ** 2 && distance <= charge.range ** 2
+        && startSpecial(enemy, 'cat-charge', visibleMouse)) return true;
       if (rules.catSweep && catSkillUnlocked('tail-sweep')
-        && visibleMouse(enemy, sweep.range) && startSpecial(enemy, 'tail-sweep', position(enemy))) return true;
-      return catSkillUnlocked('pounce') && startSpecial(enemy, 'pounce', visibleMouse(enemy, SPECIAL_MOVES.pounce.range));
+        && distance <= sweep.range ** 2 && startSpecial(enemy, 'tail-sweep', position(enemy))) return true;
+      return catSkillUnlocked('pounce') && distance <= SPECIAL_MOVES.pounce.range ** 2
+        && startSpecial(enemy, 'pounce', visibleMouse);
     }
     if (enemy.type === 'sapper') {
       const def = SPECIAL_MOVES['powder-blast'];
-      const target = bestWithin(enemy, structures.values(), def.range,
-        (structure, distance) => distance - (TOWERS[structure.type].role === 'Defense' ? 0 : 0.8),
-        structure => isAlive(structure) && clearTerrain(enemy, structure));
-      return startSpecial(enemy, 'powder-blast', target);
+      return targetStructure && distanceSquared(enemy, targetStructure) <= def.range ** 2
+        && clearPathToStructure(enemy, targetStructure) && startSpecial(enemy, 'powder-blast', targetStructure);
     }
     if (enemy.type === 'mender') {
       const def = SPECIAL_MOVES.mend;
@@ -540,12 +581,11 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
   }
 
   function hurtArea(enemy, center, kind, def) {
-    const targets = [...team.values(), ...structures.values(), ...allies.values()];
+    const targets = kind === 'powder-blast' ? structures.values()
+      : [...team.values(), ...structures.values(), ...allies.values()];
     for (const target of targets) {
       if (distanceSquared(center, target) > def.radius ** 2 || !clearTerrain(center, target)) continue;
-      const structure = structures.get(cellAt(target.x, target.y)) === target;
-      const scale = kind === 'powder-blast' && !structure ? 0.65 : 1;
-      damage(target, Math.ceil(def.damage * scale * rules.damage * enemy.damageScale), enemy, kind);
+      damage(target, Math.ceil(def.damage * rules.damage * enemy.damageScale), enemy, kind);
     }
   }
 
@@ -622,7 +662,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     } else {
       const target = actors.get(enemy.attackTarget);
       const hit = Boolean(target?.hp && distanceSquared(enemy, target) <= (def.reach + 0.46) ** 2
-        && (!team.has(target.id) || clearPath(enemy, target)));
+        && (team.has(target.id) ? clearPath(enemy, target) : clearPathToStructure(enemy, target)));
       if (target) trackAttack(enemy, target);
       event('attack', enemy, { ...attackFields(enemy, kind), hit, duration: 290 });
       if (hit) {
@@ -640,22 +680,53 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     if (time >= enemy.nextAttackAt) armAttack(enemy, MELEE_MOVES[enemy.type], target, ENEMIES[enemy.type].windup);
   }
 
-  function catSpeed() {
-    if (ranked) return 2.05;
-    const progress = Math.min(1, time / CAT_SPEED_RAMP_TIME);
-    return CAT_OPENING_SPEED + (ENEMIES.cat.speed - CAT_OPENING_SPEED) * progress;
+  function catSpeed(enemy) {
+    const opening = ranked ? 2.05 : CAT_OPENING_SPEED;
+    const progress = 1 - Math.exp(-(time - enemy.spawnedAt) / CAT_SPEED_RAMP_TIME);
+    return opening + (ENEMIES.cat.speed - opening) * progress;
+  }
+
+  function separateEnemies() {
+    // Move overlapping enemies apart without blocking the lanes like a wall would.
+    const crowd = [...enemies.values()];
+    const nudgeX = new Float64Array(crowd.length);
+    const nudgeY = new Float64Array(crowd.length);
+    for (let index = 0; index < crowd.length; index++) {
+      const enemy = crowd[index];
+      for (let other = index + 1; other < crowd.length; other++) {
+        const neighbor = crowd[other];
+        const gap = ENEMIES[enemy.type].radius + ENEMIES[neighbor.type].radius + 0.08;
+        const dx = enemy.x - neighbor.x;
+        const dy = enemy.y - neighbor.y;
+        const squared = dx * dx + dy * dy;
+        if (squared >= gap * gap) continue;
+        const distance = Math.sqrt(squared);
+        const overlap = (gap - distance) * 0.42;
+        const pushX = distance ? dx / distance * overlap : overlap;
+        const pushY = distance ? dy / distance * overlap : 0;
+        nudgeX[index] += pushX;
+        nudgeY[index] += pushY;
+        nudgeX[other] -= pushX;
+        nudgeY[other] -= pushY;
+      }
+    }
+    for (let index = 0; index < crowd.length; index++) {
+      const enemy = crowd[index];
+      if (enemy.charge || enemy.windupUntil || enemy.trapUntil > time) continue;
+      const push = Math.hypot(nudgeX[index], nudgeY[index]);
+      if (!push) continue;
+      const fraction = Math.min(1, (enemy.type === 'cat' ? 0.045 : 0.105) / push);
+      const facing = enemy.facing;
+      moveEntity(enemy, nudgeX[index] * fraction, nudgeY[index] * fraction, passable);
+      enemy.vx = (enemy.x - enemy.previousX) / STEP_SECONDS;
+      enemy.vy = (enemy.y - enemy.previousY) / STEP_SECONDS;
+      enemy.facing = facing;
+    }
   }
 
   function stepEnemies() {
-    const targets = [...team.values()].filter(isAlive).map(mouse => ({
-      x: Math.round(mouse.x), y: Math.round(mouse.y),
-    }));
-    const targetCells = [...new Set(targets.map(({ x, y }) => cellAt(x, y)))].sort((a, b) => a - b).join(',');
-    if (targetCells !== mouseCells) {
-      field = null;
-      mouseCells = targetCells;
-    }
-    const routes = field ??= buildEnemyField(map, targets, structures);
+    // Each structure is a destination, so a route naturally ends at the first one in its way.
+    const siegeRoutes = field ??= buildEnemyField(map, structures.values(), EMPTY_STRUCTURES);
     for (const enemy of enemies.values()) {
       const def = ENEMIES[enemy.type];
       enemy.previousX = enemy.x;
@@ -677,33 +748,30 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
         if (enemy.windupUntil <= time) contact(enemy);
         continue;
       }
-      if (chooseSpecial(enemy)) continue;
+      const occupiedCell = cellAt(enemy.x, enemy.y);
+      const chase = enemy.type === 'cat' ? chaseMouse(enemy) : null;
+      const sapperTarget = enemy.type === 'sapper' ? siegeTarget(siegeRoutes, occupiedCell) : null;
+      if (chooseSpecial(enemy, chase?.direct ? chase.mouse : null, sapperTarget)) continue;
 
-      const mouseRange = enemy.type === 'vulture' ? 5.3 : enemy.type === 'cat' ? 4.6 : 2.1;
-      const nearbyMouse = visibleMouse(enemy, mouseRange);
-      const nearbyAlly = bestWithin(enemy, allies.values(), 1.2);
-      const localTarget = nearbyMouse ?? nearbyAlly;
-      const speed = (enemy.type === 'cat' ? catSpeed() : def.speed) * (enemy.slowUntil > time ? 0.52 : 1);
-      if (localTarget && distanceSquared(enemy, localTarget) <= (def.reach + 0.19) ** 2) {
-        windup(enemy, localTarget);
-        continue;
-      }
-      if (nearbyMouse) {
+      const speed = (enemy.type === 'cat' ? catSpeed(enemy) : def.speed) * (enemy.slowUntil > time ? 0.52 : 1);
+      if (chase) {
         enemy.aiCell = null;
-        approach(enemy, nearbyMouse, speed, passable);
+        if (chase.direct && distanceSquared(enemy, chase.mouse) <= (def.reach + 0.19) ** 2) windup(enemy, chase.mouse);
+        else approach(enemy, chase.waypoint, speed, passable);
         continue;
       }
 
       // Finish the current tile before changing axes to prevent corner oscillation.
-      const occupiedCell = cellAt(enemy.x, enemy.y);
-      const destinationCell = enemy.aiCell ?? routes[occupiedCell];
-      if (destinationCell === undefined || destinationCell < 0) continue;
+      const routeCell = siegeRoutes[occupiedCell] >= 0 ? siegeRoutes[occupiedCell] : patrolRoutes[occupiedCell];
+      const destinationCell = enemy.aiCell === occupiedCell ? occupiedCell : routeCell;
+      if (destinationCell < 0) continue;
       const destination = {
         x: destinationCell % map.size + enemy.laneOffsetX,
         y: Math.floor(destinationCell / map.size) + enemy.laneOffsetY,
       };
       const barrier = structures.get(destinationCell);
-      if (barrier?.hp && distanceSquared(enemy, barrier) <= (def.reach + 0.31) ** 2) {
+      if (barrier?.hp && distanceSquared(enemy, barrier) <= (def.reach + 0.31) ** 2
+        && clearPathToStructure(enemy, barrier)) {
         windup(enemy, barrier);
         continue;
       }
@@ -711,6 +779,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       approach(enemy, destination, speed, passable);
       if (distanceSquared(enemy, destination) < 0.000001) enemy.aiCell = null;
     }
+    separateEnemies();
 
     if (tick % 5 === 0) {
       for (const enemy of enemies.values()) {
@@ -1032,6 +1101,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
     time = tick * STEP_MS;
     for (const [id, pickup] of pickups) if (pickup.expiresAt <= time) pickups.delete(id);
     advancePlayers();
+    refillMapCheese();
     spawnEnemies();
     stepEnemies();
     stepStructures();

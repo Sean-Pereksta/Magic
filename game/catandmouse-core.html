@@ -1587,6 +1587,7 @@
           <button data-struct="3">🪳</button>
           <button data-struct="4">🏭</button>
           <button data-struct="5">💎</button>
+          <button data-struct="21" title="Ultra Wall">🧊</button>
           <button data-struct="6">🗼</button>
           <button data-struct="7">🐦‍🔥</button>
           <button data-struct="8">🚀</button>
@@ -1630,7 +1631,7 @@
   // ============================================================
 
   import { createPatchWriter, stateFieldPatch, eligibleHostCandidate, reconcileKeyedNodes } from "./catandmouse/sync.mjs";
-  import { createTacticalDirector, findOpenSpawn, stableHash } from "./catandmouse/tactics.mjs";
+  import { createSiegeNavigator, createTacticalDirector, findOpenSpawn, stableHash } from "./catandmouse/tactics.mjs";
   import { createCombatPresentation } from "./catandmouse/combat-presentation.mjs";
   import { createStructureQueries } from "./catandmouse/structure-queries.mjs";
   import { resolveWinAccount, readWinCount, recordWinTransaction, readPendingWins, savePendingWins } from "./catandmouse/wins.mjs";
@@ -2012,9 +2013,12 @@
     if (id.startsWith("cheese_")){
       const parts = id.split("_");
       const x = Number(data.x ?? parts[1]), y = Number(data.y ?? parts[2]);
-      if (grid[y]) grid[y][x] = kind === "delete" ? "" : CHEESE_PICKUP;
-      if (kind === "delete") delete cheesePickupExpiryByCell[`${x}_${y}`];
-      else if (data.expiresAt) cheesePickupExpiryByCell[`${x}_${y}`] = data.expiresAt;
+      if (kind === "delete"){
+        if (isCheesePickupCell(grid[y]?.[x])) grid[y][x] = "";
+        delete cheesePickupExpiryByCell[`${x}_${y}`];
+      } else {
+        applyCheesePickup(x, y, data.expiresAt);
+      }
       return;
     }
     if (id.startsWith("wallheal_")){
@@ -2208,12 +2212,13 @@
     insane: { label:"Insane", catStartHealth:75000, catOpeningStep:2000, catLateStep:640,  ratBaseHealth:8, oxBaseHealth:44, enemySpeed:1.20, ratSpawnBonus:3 }
   };
   const CAT_START_HEALTH_TIERS = Object.freeze({ 1:1, 5:1.65, 10:2.45 });
-  const CAT_GROWTH_INTERVAL = 60000;
+  const CAT_GROWTH_INTERVAL = 45000;
   const CAT_HEAL_INTERVAL = 10000;
-  const CAT_PRESSURE_INTERVAL = 20000;
+  const CAT_PRESSURE_INTERVAL = 15000;
+  const CAT_CHASE_RANGE = 8;
   const STARTING_CHEESE = 10;
-  const OPENING_RAT_WAVE_INTERVAL = 45000;
-  const RAT_WAVE_INTERVAL = 32000;
+  const OPENING_RAT_WAVE_INTERVAL = 38000;
+  const RAT_WAVE_INTERVAL = 27000;
 
   function normalizeStartingWave(value){
     return Number.isInteger(value) && Object.hasOwn(CAT_START_HEALTH_TIERS, value) ? value : 1;
@@ -2273,8 +2278,6 @@
     structureIndex.all.clear();
     structureIndex.byType.clear();
     structureTopologyRevision++;
-    markBlockedGridDirty();
-    markStructureIndexDirty();
   }
   function addToStructureIndex(x, y, type, health = 1){
     const key = `${x}_${y}`;
@@ -2289,8 +2292,6 @@
     if (!structureIndex.byType.has(type)) structureIndex.byType.set(type, new Map());
     structureIndex.byType.get(type).set(key, item);
     structureTopologyRevision++;
-    markBlockedGridDirty();
-    markStructureIndexDirty();
   }
   function removeFromStructureIndex(x, y){
     const key = `${x}_${y}`;
@@ -2300,8 +2301,6 @@
     const typed = structureIndex.byType.get(existing.type);
     if (typed) typed.delete(key);
     structureTopologyRevision++;
-    markBlockedGridDirty();
-    markStructureIndexDirty();
   }
   function getStructuresByType(type){
     return Array.from(structureIndex.byType.get(type)?.values() || []);
@@ -2358,7 +2357,7 @@
     3:{symbol:"🪳",name:"Flea Nest",cost:5,hp:10,minWins:0},
     4:{symbol:"🏭",name:"Generator",cost:4,hp:5,minWins:0},
     5:{symbol:"💎",name:"Super Wall",cost:6,hp:75,minWins:0},
-    21:{symbol:"🧊",name:"Ultra Wall",cost:18,hp:375,minWins:30},
+    21:{symbol:"🧊",name:"Ultra Wall",cost:18,hp:375,minWins:0,tooltip:"The toughest wall. Blocks enemy paths and benefits from wall repairs and Cheese Beacons."},
     6:{symbol:"🗼",name:"Cheese Beacon",cost:24,hp:25,minWins:0},
     7:{symbol:"🐦‍🔥",name:"Phoenix Cheese",cost:40,hp:20,minWins:0},
     8:{symbol:"🚀",name:"Rocket Tower",cost:30,hp:20,minWins:0},
@@ -2436,9 +2435,6 @@
     wrap.appendChild(shell);
     return wrap;
   }
-  BUILD_DEFS[21].hp = BUILD_DEFS[5].hp * 5;
-  BUILD_DEFS[21].cost = BUILD_DEFS[5].cost * 3;
-
   const BUILD_CATEGORIES = {
     defense: { label: "Defense", icon: "🛡️", ids: [1, 5, 21, 14, 9] },
     damage: { label: "Damage", icon: "🔥", ids: [2, 8, 12, 13, 17] },
@@ -2848,7 +2844,15 @@
   }
   function reserveEnemySpawnSlots(kind, requestedCount = 1){ const k = normalizeEnemyKind(kind); let granted = 0; for (let i=0;i<requestedCount;i++){ if (!canSpawnEnemy(k,1)) break; pendingEnemySpawnReservations.set(k, getPendingEnemyCount(k)+1); granted++; } return { kind:k, count:granted }; }
   function releaseEnemySpawnReservations(reservation){ if (!reservation) return; const k = normalizeEnemyKind(reservation.kind); pendingEnemySpawnReservations.set(k, Math.max(0, getPendingEnemyCount(k) - (reservation.count || 0))); }
-  function getEnemyScaling(waveNumber = Math.max(1, catPower || ratPower || 1)){ return { healthMultiplier:Math.min(3.0, 1 + Math.max(0, waveNumber - 1) * 0.06), damageMultiplier:Math.min(2.25, 1 + Math.max(0, waveNumber - 1) * 0.035), speedMultiplier:Math.min(1.20, 1 + Math.max(0, waveNumber - 1) * 0.0075) }; }
+  function getEnemyScaling(waveNumber = Math.max(1, catPower || ratPower || 1)){
+    const pressure = Math.max(0, waveNumber - 1);
+    const difficultySpeed = DIFFICULTY_SETTINGS[currentDifficulty]?.enemySpeed ?? 1;
+    return {
+      healthMultiplier:Math.min(4.2, 1 + pressure * 0.12),
+      damageMultiplier:Math.min(3, 1 + pressure * 0.07),
+      speedMultiplier:Math.min(1.85, difficultySpeed * (1 + pressure * 0.028))
+    };
+  }
   function scaleEnemyStats(baseHealth, baseDamage = 1, waveNumber = Math.max(1, catPower || 1)){ const s=getEnemyScaling(waveNumber); return { maxHealth:Math.ceil(baseHealth*s.healthMultiplier), health:Math.ceil(baseHealth*s.healthMultiplier), damage:Math.ceil(baseDamage*s.damageMultiplier), speedMultiplier:s.speedMultiplier, scalingWave:waveNumber }; }
 
   function isLivingEnemy(e) {
@@ -2861,30 +2865,11 @@
   function isLivingRat(r) { return isLivingEnemy(r) && (r.health ?? 0) > 0; }
   function isLivingFlea(f) { return isLivingEnemy(f) && (f.lifetime ?? 1) > 0; }
   let structureTargeting = {};
-  let blockedGridCache = null;
-  let blockedGridDirty = true;
-  let tacticalRevision = 0;
   let structureTopologyRevision = 0;
 
   let entitySpatialIndex = createSpatialIndex();
-  let structureSpatialIndex = createSpatialIndex();
-  let structureIndexDirty = true;
-
-  function markStructureIndexDirty(){ structureIndexDirty = true; }
-
-  function rebuildStructureIndexIfNeeded(){
-    if (!structureIndexDirty) return;
-    structureSpatialIndex.clear();
-    for (const s of getAllStructures()){
-      if (!s) continue;
-      s.entityType = "structure";
-      structureSpatialIndex.insert(s);
-    }
-    structureIndexDirty = false;
-  }
 
   function rebuildSpatialIndexes(){
-    rebuildStructureIndexIfNeeded();
     entitySpatialIndex.clear();
 
     for (const p of Object.values(players)){
@@ -2905,21 +2890,6 @@
   }
 
 
-  function markBlockedGridDirty(){ blockedGridDirty = true; tacticalRevision++; }
-  function rebuildBlockedGridFromStructures(){
-    const blocked = Array.from({ length: gridSize }, () => Array(gridSize).fill(false));
-    for (const st of getAllStructures()){
-      if (["🧱","🏭","💎","🧊","🗼"].includes(st.type)) blocked[st.y][st.x] = true;
-    }
-    return blocked;
-  }
-  function getBlockedGrid(){
-    if (!blockedGridDirty && blockedGridCache) return blockedGridCache;
-    blockedGridCache = rebuildBlockedGridFromStructures();
-    blockedGridDirty = false;
-    return blockedGridCache;
-  }
-
   const structureQueries=createStructureQueries({size:gridSize,now:()=>Date.now(),
     lookup:(x,y)=>structureIndex.all.get(`${x}_${y}`),revision:()=>structureTopologyRevision,
     disabledTypes:STINK_DISABLED_TOWERS,hash:hashStinkRatId});
@@ -2929,7 +2899,7 @@
 
   const STRUCTURE_MAX_HP = {
     "🧱": 18, "🔫": 5, "🪳": 10, "🏭": 5,
-    "💎": 75, "🧊": 375, "🗼": 25, "🐦‍🔥": 20, "🚀": 20, "🛠️": 24,
+    "💎": 75, "🧊": BUILD_DEFS[21].hp, "🗼": 25, "🐦‍🔥": 20, "🚀": 20, "🛠️": 24,
     "🧀": 20, "🐇": 20, "⚡": 18, "☄️": 18, "🛡️": 30, "🟢": 20, "🔮": 16, "🌰": 18, "🪭": 20, "🕸️": 20, "🥁": 22
   };
 
@@ -2969,30 +2939,40 @@
     return grid[y][x] === "";
   }
 
-  function tryPlaceCheesePickupAt(x, y, ttlMs = null){
-    if (!canPlaceCheesePickupAt(x, y)) return false;
+  function applyCheesePickup(x, y, expiresAt){
+    const current = grid[y]?.[x];
+    if (current !== "" && !isCheesePickupCell(current)) return false;
     const key = `${x}_${y}`;
-    const expiresAt = ttlMs && ttlMs > 0 ? Date.now() + ttlMs : 0;
     grid[y][x] = CHEESE_PICKUP;
     if (expiresAt) cheesePickupExpiryByCell[key] = expiresAt;
     else delete cheesePickupExpiryByCell[key];
+    return true;
+  }
 
-    // Only the authoritative host creates shared pickup documents.
-    if (isHost){
-      runtimeSetDoc(ccRef(ID.cheese(x, y)), {
-        kind:"cheese",
-        x,
-        y,
-        expiresAt,
-        createdAt:Date.now(),
-        updatedAt:Date.now()
-      }, { merge:true }).catch(err => console.warn("Cheese sync failed", err));
-    }
+  const pendingCheeseSpawns = new Set();
+  function tryPlaceCheesePickupAt(x, y, ttlMs = null){
+    const key = `${x}_${y}`;
+    if (!canRunHostSimulation() || pendingCheeseSpawns.has(key) || !canPlaceCheesePickupAt(x, y)) return false;
+    const now = Date.now();
+    const expiresAt = ttlMs > 0 ? now + ttlMs : 0;
+    if (soloMode) return applyCheesePickup(x, y, expiresAt);
+
+    // Reserve the tile between scheduling and the shared write. The transaction
+    // lets a concurrent building purchase and pickup spawn agree on the tile.
+    const ref = ccRef(ID.cheese(x, y));
+    pendingCheeseSpawns.add(key);
+    runTransaction(db, async tx => {
+      const [pickup, structure, trap] = await Promise.all([
+        tx.get(ref), tx.get(ccRef(ID.structure(x, y))), tx.get(ccRef(ID.trap(x, y)))
+      ]);
+      if (!canRunHostSimulation() || pickup.exists() || structure.exists() || trap.exists()) return;
+      tx.set(ref, { kind:"cheese", x, y, expiresAt, createdAt:now, updatedAt:now });
+    }).catch(err => console.warn("Cheese sync failed", err)).finally(() => pendingCheeseSpawns.delete(key));
     return true;
   }
 
   function cleanupExpiredCheeseDrops(){
-    if (!isHost) return;
+    if (!canRunHostSimulation()) return;
     const now = Date.now();
     let removed = false;
     for (const key of Object.keys(cheesePickupExpiryByCell)){
@@ -4256,7 +4236,7 @@
               if (tx>=0 && tx<gridSize && ty>=0 && ty<gridSize){
                 const tSymbol = grid[ty][tx];
                 if (["🔫","🏭","🪳","🚀"].includes(tSymbol)) beaconBoosted.add(`${tx}_${ty}`);
-                if (["🧱","💎"].includes(tSymbol)) beaconWallBoosted.add(`${tx}_${ty}`);
+                if (["🧱","💎","🧊"].includes(tSymbol)) beaconWallBoosted.add(`${tx}_${ty}`);
                 if (STRUCTURE_SYMBOL_SET.has(tSymbol) && tSymbol !== "🗼") beaconTinted.add(`${tx}_${ty}`);
               }
             }
@@ -4566,27 +4546,29 @@
     return 1 + 0.15 * (count - 1);
   }
 
-  const CHEESE_SPAWN_BASE_INTERVAL_MS = 8000;
+  const CHEESE_SPAWN_BASE_INTERVAL_MS = 4000;
   const CHEESE_SPAWN_MIN_INTERVAL_MS = 2500;
-  const CHEESE_PICKUP_BASE_CAP = 14;
+  const CHEESE_PICKUP_BASE_CAP = 28;
+  const CHEESE_OPENING_PICKUPS = 16;
+  let nextCheeseSpawnAt = 0;
 
   function getCheesePickupCap(){
-    return CHEESE_PICKUP_BASE_CAP + Math.max(0, getActiveParticipantIds().length - 1) * 3;
+    return CHEESE_PICKUP_BASE_CAP + Math.max(0, getActiveParticipantIds().length - 1) * 5;
   }
 
-  function scheduleCheeseSpawnLoop(){
-    if (window.__cheeseSpawnTimer) clearInterval(window.__cheeseSpawnTimer);
+  function tickCheeseSpawns(now = Date.now()){
+    if (!canRunHostSimulation() || now < nextCheeseSpawnAt) return;
+    const forceMinimum = nextCheeseSpawnAt === 0;
     const effectiveInterval = Math.max(CHEESE_SPAWN_MIN_INTERVAL_MS, Math.round(CHEESE_SPAWN_BASE_INTERVAL_MS / getRandomCheeseSpawnMultiplier()));
-    window.__cheeseSpawnTimer = setInterval(spawnCheese, effectiveInterval);
-    window.__cheeseSpawnInterval = effectiveInterval;
-    if (canRunHostSimulation()) spawnCheese({ forceMinimum:true });
+    nextCheeseSpawnAt = now + effectiveInterval;
+    spawnCheese({ forceMinimum });
   }
 
   function countCheesePickups(){
     let total = 0;
     for (let y=0; y<gridSize; y++){
       for (let x=0; x<gridSize; x++){
-        if (isCheesePickupCell(grid[y][x])) total++;
+        if (isCheesePickupCell(grid[y][x]) || pendingCheeseSpawns.has(`${x}_${y}`)) total++;
       }
     }
     return total;
@@ -4609,8 +4591,10 @@
     const maxPickups = getCheesePickupCap();
     if (existingPickups >= maxPickups) return;
 
-    const minimumSpawn = options.forceMinimum ? Math.min(4, maxPickups) : 0;
-    const spawnTarget = Math.min(maxPickups - existingPickups, Math.max(minimumSpawn - existingPickups, 1 + Math.floor(Math.random() * 2)));
+    const openingTarget = CHEESE_OPENING_PICKUPS + Math.max(0, getActiveParticipantIds().length - 1) * 3;
+    const newPickups = options.forceMinimum ? openingTarget - existingPickups : 2 + Math.floor(Math.random() * 2);
+    const spawnTarget = Math.min(maxPickups - existingPickups, newPickups);
+    if (spawnTarget <= 0) return;
     let spawned = 0;
     let attempts = 0;
     while (spawned < spawnTarget && attempts < 120){
@@ -4673,7 +4657,7 @@
       });
       console.debug?.("Pickup claim", { pickupId, type:result?.type || (isRatKingDrop ? "ratKingCheese" : "standardCheese"), playerId:uid, success:!!result?.ok, amountAwarded:result?.amount || 0, reason:result?.reason });
       if (result?.ok){
-        grid[y][x] = "";
+        if (isCheesePickupCell(grid[y]?.[x])) grid[y][x] = "";
         delete cheesePickupExpiryByCell[`${x}_${y}`];
         syncLocalCheese(result.next);
         showCheeseReward(result.amount, x, y);
@@ -4904,7 +4888,7 @@
       const cheeseRef = ccRef(ID.cheese(tx, ty));
       const playerSnap = await tr.get(playerRef);
       const structureSnap = await tr.get(structureRef);
-      const cheeseSnap = isCheesePickupCell(grid[ty]?.[tx]) ? await tr.get(cheeseRef) : null;
+      const cheeseSnap = await tr.get(cheeseRef);
       const player = playerSnap.exists() ? (playerSnap.data() || {}) : {};
       const currentCheese = Number(player.cheese ?? cheeseCount) || 0;
       if (player.alive === false || !isAlive) return { ok:false, reason:"dead" };
@@ -4916,7 +4900,7 @@
       const structureData = { kind:"structure", x:tx, y:ty, type:def.symbol, health:def.hp, placedBy:uid, placedAt:Date.now() };
       tr.set(playerRef, { kind:"player", uid, displayName:username, nameKey:usernameNorm, cheese:nextCheese, online:true, lastSeen:Date.now(), updatedAt:Date.now() }, { merge:true });
       tr.set(structureRef, structureData);
-      if (cheeseSnap?.exists()) tr.delete(cheeseRef);
+      if (cheeseSnap.exists()) tr.delete(cheeseRef);
       return { ok:true, nextCheese, structure:structureData };
     });
   }
@@ -5197,136 +5181,74 @@
     return null;
   }
 
-  function getNearestReachableStructureTarget(startX, startY, passableFn = null){
-    let best = null;
-    for (const s of getAllStructures()){
-      const x = s.x, y = s.y;
-      const symbol = s.type;
-
-        const targetIsWall = (symbol === "🧱" || symbol === "💎" || symbol === "🧊");
-        const passable = passableFn
-          ? ((nx, ny) => (nx===x && ny===y) ? true : passableFn(nx, ny))
-          : targetIsWall;
-
-        const path = findPath(startX, startY, x, y, passable);
-        if (path && (!best || path.length < best.path.length)){
-          best = { x, y, path };
-        }
-    }
-    return best;
-  }
-
-
-
-  function structureTargetCells(x, y){
-    const cells = [];
-    for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
-      const nx = x + dx;
-      const ny = y + dy;
-      if (nx<0 || ny<0 || nx>=gridSize || ny>=gridSize) continue;
-      cells.push({ x:nx, y:ny });
-    }
-    return cells;
-  }
-
-  function getNearestStructureContactTarget(startX, startY, passableFn){
-    let best = null;
-    for (const s of getAllStructures()){
-      const x = s.x, y = s.y;
-
-        for (const cell of structureTargetCells(x,y)){
-          if (grid[cell.y][cell.x] !== "") continue;
-          const path = findPath(startX, startY, cell.x, cell.y, passableFn);
-          if (path && (!best || path.length < best.path.length)){
-            best = { structureX:x, structureY:y, moveX:cell.x, moveY:cell.y, path };
-          }
-        }
-    }
-    return best;
-  }
-
-  function getNearestMouseTarget(startX, startY, passableFn){
-    let best = null;
-    for (const [pu, p] of Object.entries(players)){
-      if ((p.alive ?? true) === false) continue;
-      const pPath = findPath(startX, startY, p.x, p.y, passableFn);
-      if (pPath && (!best || pPath.length < best.path.length)){
-        best = { x:p.x, y:p.y, uid:pu, path:pPath };
-      }
-    }
-    return best;
-  }
-  function getNearestRabbitTarget(startX, startY, passableFn){
-    let best = null;
-    for (const r of rabbits){
-      if ((r.health ?? 0) <= 0) continue;
-      const pPath = findPath(startX, startY, r.x, r.y, passableFn);
-      if (pPath && (!best || pPath.length < best.path.length)){
-        best = { x:r.x, y:r.y, rabbit:r, path:pPath };
-      }
-    }
-    return best;
-  }
-
-  function getNearestHostileObjectiveTarget(startX, startY, passableFn = false){
-    const candidates = [];
-
-    const mouseTarget = getNearestMouseTarget(startX, startY, passableFn);
-    if (mouseTarget){
-      candidates.push({
-        x: mouseTarget.x,
-        y: mouseTarget.y,
-        type: "mouse",
-        uid: mouseTarget.uid,
-        id: mouseTarget.uid,
-        path: mouseTarget.path,
-        distance: mouseTarget.path.length,
-        tiePriority: 2
-      });
-    }
-
-    const rabbitTarget = getNearestRabbitTarget(startX, startY, passableFn);
-    if (rabbitTarget){
-      candidates.push({
-        x: rabbitTarget.x,
-        y: rabbitTarget.y,
-        type: "rabbit",
-        id: rabbitTarget.rabbit.id,
-        rabbit: rabbitTarget.rabbit,
-        path: rabbitTarget.path,
-        distance: rabbitTarget.path.length,
-        tiePriority: 1
-      });
-    }
-
-    const structureTarget = getNearestStructureContactTarget(startX, startY, passableFn);
-    if (structureTarget){
-      candidates.push({
-        x: structureTarget.structureX,
-        y: structureTarget.structureY,
-        type: "structure",
-        path: structureTarget.path,
-        // The route stops beside a structure, so include the final attack step
-        // when comparing it with targets enemies can occupy directly.
-        distance: structureTarget.path.length + 1,
-        tiePriority: 0
-      });
-    }
-
-    candidates.sort((a, b) =>
-      (a.distance - b.distance) ||
-      (a.tiePriority - b.tiePriority) ||
-      (a.y - b.y) ||
-      (a.x - b.x)
-    );
-    return candidates[0] || null;
-  }
   const delayedEnemySteps = new Map();
+  function openingCatPressure(wave){
+    return Math.floor((wave - 1) * RAT_WAVE_INTERVAL / CAT_PRESSURE_INTERVAL);
+  }
+
   function catMovementCadence(){
     const { catOpeningStep, catLateStep } = DIFFICULTY_SETTINGS[currentDifficulty];
     const wavesPlayed = Math.max(0, ratWave - startingWave + 1);
-    const progress = Math.min(1, wavesPlayed / 8);
+    const elapsedPressure = Math.max(0, catPower - openingCatPressure(startingWave));
+    const progress = Math.min(1, Math.max(wavesPlayed / 8, elapsedPressure / 15));
     return Math.round(catOpeningStep + (catLateStep - catOpeningStep) * progress);
+  }
+
+  const siegeNavigator = createSiegeNavigator({size:gridSize,structures:getAllStructures,revision:()=>structureTopologyRevision});
+  const reservedHostileSpawns = new Set();
+  const siegePatrolPoints = [
+    {x:gridSize - 6,y:gridSize - 6}, {x:5,y:gridSize - 6}, {x:5,y:5}, {x:gridSize - 6,y:5},
+    {x:Math.floor(gridSize / 2),y:Math.floor(gridSize / 2)}
+  ];
+  let catPatrolPoint = 0;
+
+  function hostileOccupiedCells(except){
+    const occupied = new Set(reservedHostileSpawns);
+    if (catHealth > 0 && except !== catPos) occupied.add(catPos.y * gridSize + catPos.x);
+    for (const group of [rats,stinkRats,oxen,ratKings,vultures,termites]){
+      for (const enemy of group){
+        if (enemy !== except && isLivingEnemy(enemy)) occupied.add(enemy.y * gridSize + enemy.x);
+      }
+    }
+    return occupied;
+  }
+
+  function hostilePlan(kind, entity){
+    const key = combatUnitKey(kind,entity);
+    let staging;
+    if (kind === "cat"){
+      const waypoint = siegePatrolPoints[catPatrolPoint];
+      if (entity.x === waypoint.x && entity.y === waypoint.y) catPatrolPoint = (catPatrolPoint + 1) % siegePatrolPoints.length;
+      staging = siegePatrolPoints[catPatrolPoint];
+    } else {
+      const hash = stableHash(key), center = Math.floor(gridSize / 2);
+      staging = {x:center + hash % 11 - 5,y:center + Math.floor(hash / 11) % 11 - 5};
+    }
+    return siegeNavigator.plan({...entity,key},hostileOccupiedCells(entity),staging);
+  }
+
+  function reserveHostileSpawn(origin, seed, reservations, radius = 4){
+    const occupied = hostileOccupiedCells();
+    const options = {
+      size:gridSize, seed, radius,
+      passable:(x,y)=>!STRUCTURE_TYPES.has(grid[y][x]),
+      occupied:(x,y)=>occupied.has(y * gridSize + x) || Object.values(players).some(p=>p.alive !== false && p.x === x && p.y === y)
+    };
+    const spaced = (x,y) => options.occupied(x,y) ||
+      ((x > 0 && occupied.has(y * gridSize + x - 1)) ||
+      (x < gridSize - 1 && occupied.has(y * gridSize + x + 1)) ||
+      occupied.has((y - 1) * gridSize + x) || occupied.has((y + 1) * gridSize + x));
+    const spot = findOpenSpawn(origin,{...options,occupied:spaced}) || findOpenSpawn(origin,options);
+    if (spot){
+      const index = spot.y * gridSize + spot.x;
+      reservedHostileSpawns.add(index);
+      reservations.push(index);
+    }
+    return spot;
+  }
+
+  function releaseHostileSpawns(reservations){
+    for (const index of reservations) reservedHostileSpawns.delete(index);
   }
 
   function enemyMovementCadence(kind){
@@ -5335,12 +5257,8 @@
     const profile={rat:[760/RAT_SPEED_MULTIPLIER,190,1.05],ox:[800,430,.88],ratking:[700,390,.95],vulture:[600,300,1.08],stinkrat:[700,360,1.02],termite:[400,220,1.12],flea:[700,360,1.05] }[kind] || [2000,2000,1];
     return Math.max(profile[1],Math.floor(profile[0]/Math.max(.85,scaling*profile[2])));
   }
-  function tacticalPassable(kind,x,y){
-    if(x<0 || y<0 || x>=gridSize || y>=gridSize)return false;
-    const symbol=grid[y][x];
-    if(kind === "rabbit" || kind === "flea" || kind === "termite")return !STRUCTURE_TYPES.has(symbol);
-    if(kind === "rat" || kind === "vulture")return !getBlockedGrid()[y][x];
-    return !["🧱","💎","🧊"].includes(symbol);
+  function tacticalPassable(_kind,x,y){
+    return x>=0 && y>=0 && x<gridSize && y<gridSize && !STRUCTURE_TYPES.has(grid[y][x]);
   }
   function tacticalOccupants(){
     const result=[{...catPos,key:"cat",kind:"cat",team:"enemy"}];
@@ -5351,41 +5269,29 @@
     return result;
   }
   function tacticalTargets(){
-    const hostile=[],friendly=[];
-    const livingPlayers=Object.entries(players).filter(([,p])=>p.alive !== false);
-    for(const [pu,p] of livingPlayers)hostile.push({...p,key:`mouse:${pu}`,id:pu,uid:pu,type:"mouse",value:0});
-    for(const rb of rabbits)if(isLivingEnemy(rb))hostile.push({...rb,key:combatUnitKey("rabbit",rb),type:"rabbit",rabbit:rb,value:0});
-    for(const f of fleas)if(isLivingFlea(f))hostile.push({...f,key:combatUnitKey("flea",f),type:"flea",flea:f,value:0});
-    const allStructures=getAllStructures();
-    for(const st of allStructures) hostile.push({...st,key:`structure:${st.x}_${st.y}`,type:"structure",value:st.type === "🐇" || st.type === "🗼" ? 3 : 0,
-      wall:["🧱","💎","🧊"].includes(st.type),defense:TARGETABLE_STRUCTURES.includes(st.type),support:["🛡️","🥁","🛠️","🗼","🐦‍🔥"].includes(st.type),economy:["🏭","🧀"].includes(st.type),disruptable:STINK_DISABLED_TOWERS.includes(st.type),disabled:isTowerDisabledByStink(st.x,st.y),healthFraction:(structureHealth[st.key] || 1)/(STRUCTURE_MAX_HP[st.type] || 1)});
+    const friendly=[];
+    const livingPlayers=Object.values(players).filter(p=>p.alive !== false);
     if(catHealth>0)friendly.push({...catPos,key:"cat",kind:"cat",type:"enemy",health:catHealth});
     for(const [kind,list] of [["rat",rats],["stinkrat",stinkRats],["ox",oxen],["ratking",ratKings],["vulture",vultures],["termite",termites]])
       for(const e of list)if(isLivingEnemy(e))friendly.push({...e,key:combatUnitKey(kind,e),kind,type:"enemy",enemy:e});
     for(const e of friendly){
-      e.playerThreat=livingPlayers.some(([,p])=>Math.abs(p.x-e.x)+Math.abs(p.y-e.y)<=4);
-      e.infrastructureThreat=allStructures.some(st=>Math.abs(st.x-e.x)+Math.abs(st.y-e.y)<=2);
+      e.playerThreat=livingPlayers.some(p=>Math.abs(p.x-e.x)+Math.abs(p.y-e.y)<=4);
+      e.infrastructureThreat=structureQueries.nearby(e.x,e.y,2).some(st=>Math.abs(st.x-e.x)+Math.abs(st.y-e.y)<=2);
     }
-    return {enemy:hostile,friendly};
+    return {friendly};
   }
   function resolveTacticalTarget(target){
-    let live=null;
-    if(target.type === "structure")return STRUCTURE_TYPES.has(grid[target.y]?.[target.x]) ? target : null;
-    if(target.type === "mouse")live=players[target.uid];
-    else if(target.type === "rabbit")live=rabbits.find(r=>r.id === target.id);
-    else if(target.type === "flea")live=fleas.find(f=>f.id === target.id);
-    else if(target.kind === "cat")return catHealth>0 ? {...target,...catPos,health:catHealth} : null;
-    else live=enemyRegistryEntry(target.kind)?.collection().find(e=>e.id === target.id);
-    if(!live || live.alive === false || !isLivingEnemy(live))return null;
-    return {...target,...live,rabbit:target.type === "rabbit" ? live : target.rabbit,enemy:target.type === "enemy" ? live : target.enemy,flea:target.type === "flea" ? live : target.flea};
+    if(target.kind === "cat")return catHealth>0 ? {...target,...catPos,health:catHealth} : null;
+    const live=enemyRegistryEntry(target.kind)?.collection().find(e=>e.id === target.id);
+    return isLivingEnemy(live) ? {...target,...live,enemy:live} : null;
   }
   const tacticalAI=createTacticalDirector({size:gridSize,now:()=>Date.now(),findPath,passable:tacticalPassable,targets:tacticalTargets,occupants:tacticalOccupants,
-    revision:()=>tacticalRevision,resolveTarget:resolveTacticalTarget,maxDecisions:()=>ENEMIES_AI_PER_FRAME,maxPaths:10});
+    revision:()=>structureTopologyRevision,resolveTarget:resolveTacticalTarget,maxDecisions:()=>ENEMIES_AI_PER_FRAME,maxPaths:10});
   function tacticalPlan(kind,entity,stopRange=kind === "rabbit" ? 4 : 0,reactionMs=600){
     const difficulty={easy:.85,medium:1,hard:1.18,insane:1.35}[currentDifficulty] || 1;
     const pressure=Math.min(1.7,difficulty*(1+Math.max(0,catPower-1)*.01));
-    return tacticalAI.plan({...entity,key:combatUnitKey(kind,entity),kind,team:kind === "rabbit" || kind === "flea" ? "friendly" : "enemy"},
-      {stopRange,pressure,reactionMs:Math.max(260,reactionMs/pressure),holdMs:kind === "ox" || kind === "ratking" ? 2300 : 1500});
+    return tacticalAI.plan({...entity,key:combatUnitKey(kind,entity),kind,team:"friendly"},
+      {stopRange,pressure,reactionMs:Math.max(260,reactionMs/pressure),holdMs:1500});
   }
   function moveAlongPlan(kind,entity,plan,writes){
     if(!plan.next)return false;
@@ -5403,14 +5309,22 @@
   // ============================================================
   // Cat AI
   // ============================================================
-  function canCatLandOnCell(x, y){
-    if (x<0 || y<0 || x>=gridSize || y>=gridSize) return false;
-    if (grid[y][x] !== "") return false;
-    if (rats.some(r => r.x===x && r.y===y && (r.health ?? 0) > 0)) return false;
-    if (oxen.some(o => o.x===x && o.y===y && (o.health ?? 0) > 0)) return false;
-    if (ratKings.some(k => k.x===x && k.y===y && (k.health ?? 0) > 0)) return false;
-    if (vultures.some(v => v.x===x && v.y===y && (v.health ?? 0) > 0)) return false;
-    return true;
+  function getCatMouseRoute(player, occupied){
+    if (!player || player.alive === false || !Number.isInteger(player.x) || !Number.isInteger(player.y)) return null;
+    if (Math.abs(player.x-catPos.x) + Math.abs(player.y-catPos.y) > CAT_CHASE_RANGE) return null;
+    const path = findPath(catPos.x,catPos.y,player.x,player.y,
+      (x,y) => Math.abs(x-catPos.x) + Math.abs(y-catPos.y) <= CAT_CHASE_RANGE &&
+        !STRUCTURE_TYPES.has(grid[y][x]) && !occupied.has(y * gridSize + x));
+    return path && path.length <= CAT_CHASE_RANGE ? path : null;
+  }
+
+  function getNearbyCatMouseTarget(occupied = hostileOccupiedCells(catPos)){
+    let nearest = null;
+    for (const [playerId, player] of Object.entries(players)){
+      const path = getCatMouseRoute(player,occupied);
+      if (path && (!nearest || path.length < nearest.path.length)) nearest = { playerId, path };
+    }
+    return nearest;
   }
 
   function setCatAbilityCooldown(key){
@@ -5440,30 +5354,16 @@
   async function useCatPounce(){
     if (catAbilityState.pouncePending) return false;
 
-    let best = null;
-    for (const p of Object.values(players)){
-      if ((p.alive ?? true) === false) continue;
-      for (let oy=-2; oy<=2; oy++) for (let ox=-2; ox<=2; ox++){
-        const tx = p.x + ox;
-        const ty = p.y + oy;
-        if (!canCatLandOnCell(tx, ty)) continue;
-        const d = Math.abs(tx-catPos.x) + Math.abs(ty-catPos.y);
-        if (!d || d > 8) continue;
-        const path = findPath(catPos.x, catPos.y, tx, ty, false);
-        const blockedByWalls = !path;
-        const score = (blockedByWalls ? 1000 : 0) - d;
-        if (!best || score > best.score) best = { x: tx, y: ty, score, d, blockedByWalls };
-      }
-    }
-
-    if (!best) return false;
+    const target = getNearbyCatMouseTarget();
+    const landing = target?.path.at(-1);
+    if (!landing) return false;
 
     catAbilityState.pouncePending = {
-      x: best.x,
-      y: best.y,
+      ...landing,
+      playerId: target.playerId,
       executeAt: Date.now() + 5000
     };
-    addCombatVfx(best.x, best.y, "🎯", "vfx-pop", 5200, 14);
+    addCombatVfx(landing.x, landing.y, "🎯", "vfx-pop", 5200, 14);
     setCatAbilityCooldown("pounce");
     return true;
   }
@@ -5473,7 +5373,9 @@
     if (!pending) return false;
     if (Date.now() < pending.executeAt) return false;
 
-    if (canCatLandOnCell(pending.x, pending.y)){
+    const occupied = hostileOccupiedCells(catPos);
+    const stillChasing = getCatMouseRoute(players[pending.playerId],occupied);
+    if (stillChasing && getCatMouseRoute(pending,occupied)){
       catFacing = { dx: Math.sign(pending.x - catPos.x) || catFacing.dx || 1, dy: Math.sign(pending.y - catPos.y) || catFacing.dy || 0 };
       catFacingDir = normalizeDirection(catFacing.dx, catFacing.dy) || catFacingDir || "se";
       catPos = { x: pending.x, y: pending.y };
@@ -5497,7 +5399,7 @@
     let didHit = false;
     for (const c of cells){
       if (c.x<0 || c.y<0 || c.x>=gridSize || c.y>=gridSize) continue;
-      if (["🧱","🔫","🪳","🏭","💎","🧊","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[c.y][c.x])){
+      if (STRUCTURE_TYPES.has(grid[c.y][c.x])){
         await damageStructure(c.x, c.y, 30);
         addCombatVfx(c.x, c.y, "🩸", "vfx-claw", 620, 14);
         didHit = true;
@@ -5510,11 +5412,11 @@
 
   async function useCatFatalMeow(){
     const until = Date.now() + 5000;
+    const occupied = hostileOccupiedCells(catPos);
     let changed = false;
     for (const [pu, p] of Object.entries(players)){
-      if ((p.alive ?? true) === false) continue;
-      const d = Math.abs((p.x ?? 0) - catPos.x) + Math.abs((p.y ?? 0) - catPos.y);
-      if (d <= 6){
+      const path = getCatMouseRoute(p,occupied);
+      if (path && path.length <= 6){
         await runtimeUpdateDoc(ccRef(ID.player(pu)), { slowedUntil: until, slowMult: 0.75, updatedAt: Date.now() });
         changed = true;
       }
@@ -5584,7 +5486,6 @@
 
   async function catBehavior(){
     if (!canRunHostSimulation()) return;
-    rebuildSpatialIndexes();
     const writes=[];
     if (Date.now() < catWebTrappedUntil){
       addCombatVfx(catPos.x, catPos.y, "🕸️", "vfx-pop", 260, 14);
@@ -5615,7 +5516,8 @@
       }
     }
 
-    const catPlan=tacticalPlan("cat",catPos);
+    const mouseTarget = getNearbyCatMouseTarget();
+    const catPlan = mouseTarget ? { next:mouseTarget.path[0] } : hostilePlan("cat",catPos);
     if(catPlan.next){
       catFacing={dx:Math.sign(catPlan.next.x-catPos.x),dy:Math.sign(catPlan.next.y-catPos.y)};
       catFacingDir=normalizeDirection(catFacing.dx,catFacing.dy) || catFacingDir;
@@ -5623,22 +5525,9 @@
       battlePresentation.moveEntity("cat",{...catPos,facing:catFacingDir},{duration:enemyMovementCadence("cat")*.94});
     }
 
-    // attack nearby
-    let attacked = false;
-    const nearbyStructures = structureSpatialIndex.query(catPos.x, catPos.y, 1).filter(s => Math.abs(s.x-catPos.x) <= 1 && Math.abs(s.y-catPos.y) <= 1);
-    for (const s of nearbyStructures){
-      if (!attacked && ["🧱","🔫","🪳","🏭","💎","🧊","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[s.y]?.[s.x])){
-        await damageStructure(s.x,s.y,undefined,writes,{key:"cat",kind:"cat"});
-        attacked = true;
-      }
-    }
-
-    for (const rb of rabbits){
-      const d = Math.abs(rb.x-catPos.x)+Math.abs(rb.y-catPos.y);
-      if (d===0){
-        rb.health -= ratPower * 10;
-        writes.push(rb.health<=0 ? {type:"delete",ref:ccRef(ID.rabbit(rb.id))} : {type:"update",ref:ccRef(ID.rabbit(rb.id)),data:{health:rb.health,updatedAt:Date.now()}});
-      }
+    const breach = catPlan.target;
+    if (breach && Math.abs(breach.x-catPos.x) + Math.abs(breach.y-catPos.y) === 1){
+      await damageStructure(breach.x,breach.y,undefined,writes,{key:"cat",kind:"cat"});
     }
 
     // kill players on cat tile
@@ -5675,131 +5564,54 @@
   // Host spawning
   // ============================================================
   async function spawnRatWave(){
-    if (!isHost) return;
-    if (!canSpawnEnemy("rat", 1) && !canSpawnEnemy("ox", 1) && !canSpawnEnemy("stinkrat", 1)) return;
-
+    if (!canRunHostSimulation()) return;
     const waveTag = Date.now();
-    const writes = [];
-    const allOffsets = [
-      { x: 0, y: 0 },  { x: 1, y: 0 },  { x: -1, y: 0 },
-      { x: 0, y: 1 },  { x: 0, y: -1 }, { x: 1, y: 1 },
-      { x: -1, y: -1 },{ x: 1, y: -1 }, { x: -1, y: 1 },
-      { x: 2, y: 0 },  { x: 0, y: 2 },  { x: -2, y: 0 }, { x: 0, y: -2 },
-      { x: 2, y: 1 },  { x: 1, y: 2 },  { x: -1, y: 2 }, { x: -2, y: 1 },
-      { x: -2, y: -1 },{ x: -1, y: -2 },{ x: 1, y: -2 }, { x: 2, y: -1 }
-    ];
+    const writes = [], slots = [], cells = [];
 
-    const availableSpots = allOffsets
-      .map(o => ({x:catPos.x+o.x,y:catPos.y+o.y}))
-      .filter(p =>
-        p.x>=0 && p.x<gridSize && p.y>=0 && p.y<gridSize &&
-        grid[p.y][p.x] === "" &&
-        !rats.some(r => isLivingRat(r) && r.x===p.x && r.y===p.y) &&
-        !oxen.some(o => isLivingEnemy(o) && o.x===p.x && o.y===p.y)
-      );
-
-    const usedKeys = new Set();
-
-    // oxen
-    const oxCount = (catPower>=15) ? (Math.floor((catPower-15)/10)+1) : 0;
-    const oxReservation = reserveEnemySpawnSlots("ox", oxCount);
-    const oxToSpawn = oxReservation.count;
-    let oxSpawned = 0;
-    for (let i=0; i<availableSpots.length && oxSpawned<oxToSpawn; i++){
-      const spot = availableSpots[i];
-      const key = `${spot.x}_${spot.y}`;
-      if (usedKeys.has(key)) continue;
-      usedKeys.add(key);
-
-      const id = `ox_${crypto.randomUUID()}`;
-      writes.push({ type:"set", ref: ccRef(ID.ox(id)), data: {
-        kind: "ox",
-        id,
-        x: spot.x,
-        y: spot.y,
-        ...scaleEnemyStats(getOxHealthForDifficulty(), 3),
-        wave: waveTag,
-        createdAt: Date.now()
-      }});
-      oxSpawned++;
+    function queueWaveEnemies(kind, count, baseHealth, baseDamage){
+      const reservation = reserveEnemySpawnSlots(kind,count);
+      slots.push(reservation);
+      for (let i=0; i<reservation.count; i++){
+        const spot = reserveHostileSpawn(catPos,(waveTag+writes.length)%4,cells);
+        if (!spot) break;
+        const id = kind + "_" + crypto.randomUUID();
+        writes.push({ type:"set", ref:enemyDocRef(kind,id), data:{
+          kind, id, ...spot, ...scaleEnemyStats(baseHealth,baseDamage), wave:waveTag, createdAt:waveTag
+        }});
+      }
     }
 
-
-    let kingReservation = null;
-    // rat king: late rounds random spawn
-    if (catPower >= 22 && Math.random() < 0.35){
-      const livingKings = ratKings.filter(k => (k.health ?? 0) > 0).length;
-      kingReservation = reserveEnemySpawnSlots("ratking", 1);
-      if (livingKings < getEnemyCaps().ratking && kingReservation.count > 0){
-        const openSpot = availableSpots.find(s => !usedKeys.has(`${s.x}_${s.y}`));
-        if (openSpot){
-          usedKeys.add(`${openSpot.x}_${openSpot.y}`);
-          const id = `ratking_${crypto.randomUUID()}`;
-          writes.push({ type:"set", ref: ccRef(ID.ratKing(id)), data: {
-            kind: "ratking",
-            id,
-            x: openSpot.x,
-            y: openSpot.y,
-            ...scaleEnemyStats(Math.max(120, getRatHealthForDifficulty() * 10), 8),
-            wave: waveTag,
-            createdAt: Date.now()
-          }});
-        } else releaseEnemySpawnReservations(kingReservation);
-      } else releaseEnemySpawnReservations(kingReservation);
+    try {
+      const oxCount = catPower >= 15 ? Math.floor((catPower-15)/10)+1 : 0;
+      queueWaveEnemies("ox",oxCount,getOxHealthForDifficulty(),3);
+      if (catPower >= 22 && Math.random() < 0.35){
+        queueWaveEnemies("ratking",1,Math.max(120,getRatHealthForDifficulty()*10),8);
+      }
+      if (catPower >= 10 && Math.random() < 0.25){
+        queueWaveEnemies("stinkrat",1,Math.max(10,getRatHealthForDifficulty()*3),2);
+      }
+      queueWaveEnemies("rat",getRatWaveBudget(),getRatHealthForDifficulty(),1);
+      await commitEnemyBatch(writes);
+    } finally {
+      slots.forEach(releaseEnemySpawnReservations);
+      releaseHostileSpawns(cells);
     }
-
-    let stinkReservation = null;
-    // rats
-    if (catPower >= 10 && Math.random() < 0.25){
-      const sid = `${Date.now()}_${crypto.randomUUID()}`;
-      const sx = Math.max(0, Math.min(gridSize-1, catPos.x + (Math.floor(Math.random()*7)-3)));
-      const sy = Math.max(0, Math.min(gridSize-1, catPos.y + (Math.floor(Math.random()*7)-3)));
-      stinkReservation = reserveEnemySpawnSlots("stinkrat", 1);
-      if (stinkReservation.count > 0) writes.push({ type:"set", ref: ccRef(ID.stinkRat(sid)), data: { kind:"stinkrat", id:sid, x:sx, y:sy, ...scaleEnemyStats(Math.max(10, getRatHealthForDifficulty()*3), 2), createdAt:Date.now() } });
-    }
-
-    const ratReservation = reserveEnemySpawnSlots("rat", getRatWaveBudget());
-    const ratsToSpawn = ratReservation.count;
-    let ratsSpawned = 0;
-    for (let i=0; i<availableSpots.length && ratsSpawned<ratsToSpawn; i++){
-      const spot = availableSpots[i];
-      const key = `${spot.x}_${spot.y}`;
-      if (usedKeys.has(key)) continue;
-      usedKeys.add(key);
-
-      const id = `rat_${crypto.randomUUID()}`;
-      writes.push({ type:"set", ref: ccRef(ID.rat(id)), data: {
-        kind: "rat",
-        id,
-        x: spot.x,
-        y: spot.y,
-        ...scaleEnemyStats(getRatHealthForDifficulty(), 1),
-        wave: waveTag,
-        createdAt: Date.now()
-      }});
-      ratsSpawned++;
-    }
-    try { await commitEnemyBatch(writes); } finally { releaseEnemySpawnReservations(oxReservation); releaseEnemySpawnReservations(ratReservation); releaseEnemySpawnReservations(stinkReservation); releaseEnemySpawnReservations(kingReservation); }
-    requestRender("enemy batch moved");
+    requestRender("enemy wave spawned");
   }
 
   // ============================================================
   // Host enemies movement / logic (kept from your gameplay)
   // ============================================================
-  async function hostMoveRats(){
-    const RAT_THINK_INTERVAL_MS = 350;
-    const RAT_REPATH_JITTER_MS = 200;
-    return hostMoveTacticalGroup(rats,"rat",RAT_THINK_INTERVAL_MS+RAT_REPATH_JITTER_MS);
-  }
+  async function hostMoveRats(){ return hostMoveTacticalGroup(rats,"rat"); }
   async function hostMoveOxen(){ return hostMoveTacticalGroup(oxen,"ox"); }
   async function hostMoveRatKings(){ return hostMoveTacticalGroup(ratKings,"ratking"); }
   async function hostMoveStinkRats(){ return hostMoveTacticalGroup(stinkRats,"stinkrat"); }
   async function hostMoveVultures(){ return hostMoveTacticalGroup(vultures,"vulture"); }
   async function hostMoveTermites(){ return hostMoveTacticalGroup(termites,"termite"); }
 
-  async function hostMoveTacticalGroup(group,kind,reactionMs=600){
+  async function hostMoveTacticalGroup(group,kind){
     if(!canRunHostSimulation())return;
-    const writes=[],now=Date.now();
+    const writes=[],now=Date.now(),scaling=getEnemyScaling();
     for(let i=group.length-1;i>=0;i--){
       const entity=group[i],key=combatUnitKey(kind,entity),ref=enemyDocRef(kind,entity.id,entity);
       if(!isLivingEnemy(entity)){writes.push({type:"delete",ref});group.splice(i,1);delayedEnemySteps.delete(key);continue;}
@@ -5807,50 +5619,30 @@
       const trapped=kind === "rat" && traps.find(t=>t.x === entity.x && t.y === entity.y);
       if(trapped){entity.trappedUntil=now+3000;writes.push({type:"delete",ref:ccRef(ID.trap(entity.x,entity.y))},{type:"update",ref,data:{trappedUntil:entity.trappedUntil,updatedAt:now}});continue;}
       if((entity.slowedUntil || 0)>now && now<(delayedEnemySteps.get(key) || 0))continue;
-      const plan=tacticalPlan(kind,entity,0,reactionMs),target=plan.target;
-      // Structures are attacked from contact range, with no step into them.
+      const plan=hostilePlan(kind,entity),target=plan.target;
       moveAlongPlan(kind,entity,plan,writes);
       if((entity.slowedUntil || 0)>now)delayedEnemySteps.set(key,now+enemyMovementCadence(kind)/Math.max(.25,entity.slowMultiplier || .55));
-      const d=target ? Math.abs(entity.x-target.x)+Math.abs(entity.y-target.y) : Infinity;
-      const inRange=target && ((target.type === "structure" && d === 1) || (target.type !== "structure" && d === 0));
+      const inRange=target && Math.abs(entity.x-target.x)+Math.abs(entity.y-target.y) === 1;
       if(inRange){
         const heavy=kind === "ox" || kind === "ratking";
         const prepared=entity.attackIntent?.key === target.key && entity.attackIntent.executeAt<=now;
         if(heavy){
-          entity.attackIntent={key:target.key,type:target.type,id:target.id || null,x:target.x,y:target.y,executeAt:now+(kind === "ox" ? 180 : 230)};
+          entity.attackIntent={key:target.key,type:"structure",id:null,x:target.x,y:target.y,executeAt:now+(kind === "ox" ? 180 : 230)};
           writes.push({type:"update",ref,data:{attackIntent:entity.attackIntent,updatedAt:now}});
         }
         if(!heavy || prepared){
           const kingNearby=kind === "rat" && ratKings.some(k=>isLivingEnemy(k) && Math.abs(k.x-entity.x)+Math.abs(k.y-entity.y)<=4);
-          const damage=kind === "ox" ? ratPower*10 : kind === "ratking" ? Math.max(10,ratPower*2) : kind === "vulture" ? ratPower*4 : kind === "termite" ? 40 : kind === "stinkrat" ? Math.max(1,ratPower) : kingNearby ? Math.ceil(ratPower*1.8) : ratPower;
-          if(target.type === "structure"){
-            await damageStructure(target.x,target.y,damage,writes,{key,kind});
-            if(kind === "ox"){entity.health--;writes.push({type:"update",ref,data:{health:entity.health,updatedAt:now}});}
-          }else if(target.type === "rabbit"){
-            const rb=target.rabbit;
-            const rabbitDamage=kind === "rat" ? (kingNearby ? Math.ceil(ratPower*5) : ratPower*3) : kind === "stinkrat" ? Math.max(3,ratPower*2) : damage;
-            rb.health-=rabbitDamage;
-            battlePresentation.attack(key,rb,"claw",heavy);
-            writes.push(rb.health<=0 ? {type:"delete",ref:ccRef(ID.rabbit(rb.id))} : {type:"update",ref:ccRef(ID.rabbit(rb.id)),data:{health:rb.health,updatedAt:now}});
-          }else if(target.type === "flea"){
-            target.flea.lifetime=0;writes.push({type:"delete",ref:ccRef(target.flea.docId || ID.flea(target.flea.id))});
-          }else if(target.type === "mouse"){
-            const live=players[target.uid];
-            if(live?.alive !== false && live?.x === entity.x && live?.y === entity.y){
-              const capture={alive:false,killedBy:kind,killedById:entity.id,killedAt:now,updatedAt:now};
-              Object.assign(live,capture);presentMouseCapture(target.uid,live);
-              writes.push({type:"update",ref:ccRef(ID.player(target.uid)),data:capture});
-              if(target.uid === uid){isAlive=false;document.getElementById("status").textContent=`💀 You were killed by: ${kind}`;}
-            }
-          }
-          if(kind === "termite"){writes.push({type:"delete",ref});group.splice(i,1);}
+          const baseDamage=kind === "ox" ? ratPower*10 : kind === "ratking" ? Math.max(10,ratPower*2) : kind === "vulture" ? ratPower*4 : kind === "termite" ? 40 : kingNearby ? Math.ceil(ratPower*1.8) : ratPower;
+          await damageStructure(target.x,target.y,Math.round(baseDamage*scaling.damageMultiplier),writes,{key,kind});
+          if(kind === "ox"){entity.health--;writes.push({type:"update",ref,data:{health:entity.health,updatedAt:now}});}
+          if(kind === "termite"){writes.push({type:"delete",ref});group.splice(i,1);continue;}
         }
       }else if(entity.attackIntent){entity.attackIntent=null;writes.push({type:"update",ref,data:{attackIntent:null,updatedAt:now}});}
       // Stationary attackers still have bounded presence; idle units do not
       // need a timestamp-only write at every tick.
       if(now-(entity.updatedAt || entity.createdAt || 0)>12000){entity.updatedAt=now;writes.push({type:"update",ref,data:{updatedAt:now}});}
     }
-    requestRender("tactical enemies moved");
+    requestRender("hostile enemies moved");
     await commitEnemyBatch(writes);
   }
 
@@ -6921,9 +6713,7 @@
         }
         else if (id.startsWith("cheese_")){
           const x = data.x, y = data.y;
-          if (Number.isInteger(x) && Number.isInteger(y)){
-            grid[y][x] = CHEESE_PICKUP;
-            if (data.expiresAt) cheesePickupExpiryByCell[`${x}_${y}`] = data.expiresAt;
+          if (Number.isInteger(x) && Number.isInteger(y) && applyCheesePickup(x, y, data.expiresAt)){
             snapshotNeedsRender = true;
           }
         }
@@ -7290,6 +7080,7 @@
         <div><strong>${def.symbol} ${def.name}</strong></div>
         <div style="font-size:12px;">Cost: ${def.cost} Cheese</div>
         <div style="font-size:12px;opacity:.9;">Role: ${def.category || "Utility"} • HP: ${def.hp}</div>
+        ${def.tooltip ? `<div style="font-size:12px;opacity:.85;">${def.tooltip}</div>` : ""}
         ${locked ? `<div style="font-size:12px;">🔒 Requires ${requiredWins} win${requiredWins === 1 ? "" : "s"}</div>` : ""}
       `;
       if (locked){
@@ -7397,7 +7188,7 @@
           difficulty:finalDifficulty,
           startingWave:wave,
           ratWave:wave - 1,
-          catPower:Math.floor((wave - 1) * RAT_WAVE_INTERVAL / CAT_PRESSURE_INTERVAL),
+          catPower:openingCatPressure(wave),
           ratPower:1 + Math.floor((wave - 1) / 4),
           cat:{ x:catPos.x, y:catPos.y, health, maxHealth:health, nextHealAt:0, facing:catFacingDir },
           phase:"playing",
@@ -7563,9 +7354,8 @@
 
     // no pre-placed walls on match start
     renderGrid();
-    // Shared host-authoritative cheese spawns, rescheduled by active player count without duplicates.
-    scheduleCheeseSpawnLoop();
-    setInterval(scheduleCheeseSpawnLoop, 5000);
+    // Wait for the host's normal simulation tick so the first shared snapshot is applied.
+    setInterval(tickCheeseSpawns, 500);
     setInterval(cleanupExpiredCheeseDrops, 1000);
 
     // ability cooldown UI
@@ -7792,7 +7582,6 @@
     initializeCatAbilityLoadout(currentDifficulty);
     if (!nextCatGrowthAt) nextCatGrowthAt = Date.now() + CAT_GROWTH_INTERVAL;
     startCatBehaviorLoop();
-    spawnCheese({ forceMinimum:true });
 
     setInterval(() => advanceCatPressure().catch(reportSyncError), CAT_PRESSURE_INTERVAL);
 
@@ -7821,25 +7610,25 @@
       const termitesToSpawn = termiteReservation.count;
       if (termitesToSpawn <= 0) { nextTermiteSpawnAt = Date.now() + TERMITE_SPAWN_INTERVAL_MS; return; }
 
-      let spawned = 0;
-      for (let i=0; i<TERMITE_SPAWN_OFFSETS.length && spawned<termitesToSpawn; i++){
-        const ox = centerX + TERMITE_SPAWN_OFFSETS[i].x;
-        const oy = centerY + TERMITE_SPAWN_OFFSETS[i].y;
-        if (ox<0||oy<0||ox>=gridSize||oy>=gridSize) continue;
-        if (termites.some(t => t.x===ox && t.y===oy)) continue;
-
-        const id = `termite_${Date.now()}_${i}`;
-        await runtimeSetDoc(ccRef(ID.termite(id)), {
-          kind: "termite",
-          id,
-          x: ox,
-          y: oy,
-          createdAt: Date.now()
-        }, { merge:true });
-        spawned++;
+      const cells = [], writes = [];
+      try {
+        for (const offset of TERMITE_SPAWN_OFFSETS){
+          if (writes.length >= termitesToSpawn) break;
+          const x = centerX + offset.x, y = centerY + offset.y, index = y * gridSize + x;
+          if (isCellOccupiedBySharedObject(x,y) || hostileOccupiedCells().has(index)) continue;
+          reservedHostileSpawns.add(index);
+          cells.push(index);
+          const id = `termite_${crypto.randomUUID()}`;
+          writes.push({type:"set",ref:ccRef(ID.termite(id)),data:{
+            kind:"termite", id, x, y, ...scaleEnemyStats(1,40), createdAt:Date.now()
+          }});
+        }
+        await commitEnemyBatch(writes);
+      } finally {
+        releaseEnemySpawnReservations(termiteReservation);
+        releaseHostileSpawns(cells);
+        nextTermiteSpawnAt = Date.now() + TERMITE_SPAWN_INTERVAL_MS;
       }
-      releaseEnemySpawnReservations(termiteReservation);
-      nextTermiteSpawnAt = Date.now() + TERMITE_SPAWN_INTERVAL_MS;
     }, TERMITE_SPAWN_INTERVAL_MS);
 
     setInterval(() => {
@@ -7857,19 +7646,21 @@
       const vulturesToSpawn = vultureReservation.count;
       if (vulturesToSpawn <= 0) return;
 
-      try { for (let i=0; i<vulturesToSpawn; i++){
-        const vx = Math.max(0, Math.min(gridSize-1, catPos.x + (Math.floor(Math.random()*7)-3)));
-        const vy = Math.max(0, Math.min(gridSize-1, catPos.y + (Math.floor(Math.random()*7)-3)));
-        const id = `vulture_${crypto.randomUUID()}`;
-        await runtimeSetDoc(ccRef(ID.vulture(id)), {
-          kind: "vulture",
-          id,
-          x: vx,
-          y: vy,
-          ...scaleEnemyStats(ratPower * 20, 3),
-          createdAt: Date.now()
-        }, { merge:true });
-      } } finally { releaseEnemySpawnReservations(vultureReservation); }
+      const cells = [], writes = [], seed = Math.floor(Math.random()*4);
+      try {
+        for (let i=0; i<vulturesToSpawn; i++){
+          const spot = reserveHostileSpawn(catPos,(seed+i)%4,cells);
+          if (!spot) break;
+          const id = `vulture_${crypto.randomUUID()}`;
+          writes.push({type:"set",ref:ccRef(ID.vulture(id)),data:{
+            kind:"vulture", id, ...spot, ...scaleEnemyStats(ratPower * 20,3), createdAt:Date.now()
+          }});
+        }
+        await commitEnemyBatch(writes);
+      } finally {
+        releaseEnemySpawnReservations(vultureReservation);
+        releaseHostileSpawns(cells);
+      }
     }, 8000);
 
     // enemy sim ticks

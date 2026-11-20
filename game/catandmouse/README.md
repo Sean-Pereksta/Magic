@@ -6,17 +6,16 @@ modules and stylesheet together:
 
 - `sync.mjs`: existing write queues and multiplayer reconciliation.
 - `motion.mjs`: local visual tracks and smooth projectile sampling.
-- `tactics.mjs`: host target commitment, cached routes and tile reservations.
+- `tactics.mjs`: cached siege routes, crowd spacing and friendly target decisions.
 - `structure-queries.mjs`: local support/disruption queries and topology caches.
 - `wins.mjs`: account lookup, atomic match receipts and pending win recovery.
 - `combat-presentation.mjs` and `combat-presentation.css`: persistent units,
   bounded effects, procedural animation and reduced-motion feedback.
 
 The loader's exact/regex replacements are exercised against the real core.
-The optimized patch version is `2026-10-05-late-game-wins-v1`; its validation
-includes the new runtime imports and the existing caps, buffered BFS and
-self-scheduling movement loops. Tests compile both optimized and fallback
-module scripts. No HTML previews are generated.
+The optimized patch version is `2026-11-20-structure-siege-v1`. Validation
+checks the runtime imports, enemy caps and self-scheduling movement loops.
+Tests compile both optimized and fallback module scripts.
 
 ## Movement and decisions
 
@@ -34,22 +33,18 @@ and corrections over five tiles snap rather than gliding through obstacles.
 Travel is mostly linear with slight easing. Oxen and rat kings accelerate
 more heavily, vultures glide, termites crawl, and rabbits and fleas hop.
 
-The host director holds reasonable targets, releases dead targets, reuses
-valid paths, invalidates routes when the grid or destination changes, and
-reconsiders blocked routes. Short-lived origin/destination reservations and
-local alternate steps prevent allies from swapping places and reduce crowd
-oscillation. Unreachable targets get a short cooldown. Ordinary enemy plans
-advance at most one adjacent tile per simulation tick.
+The friendly director reuses valid paths, releases dead targets and
+reconsiders blocked routes. Short-lived tile reservations keep friendly
+units from swapping places. Ordinary enemy plans advance at most one
+adjacent tile per simulation tick.
 
-Rats divide pressure between players, allies and defenses; stink rats favor
-useful towers that are still active; oxen favor breaches; rat kings favor
-defenses/support; vultures favor exposed players and economy; termites favor
-structures, including damaged defenses. Existing rat-king damage support is
-preserved. Difficulty and progression shorten reaction windows; the loader's
-existing speed escalation and bounded enemy populations remain in place.
-Ox/king contact attacks carry a small authoritative windup, and the existing cat
-pounce destination is visible before impact. Core damage and unlock values
-are retained.
+Rats and the other non-cat enemies attack the nearest structure they can reach.
+They spread across approach tiles and cannot stack on the same destination.
+The cat pursues a living mouse only along an open path of up to eight steps.
+Outside chase range it pressures buildings or roams. The cat speeds up as the
+match progresses, and waves arrive sooner with stronger enemies. Ox and rat
+king contact attacks retain their windup. The cat's pounce shows where it will
+land before impact.
 
 ## Rat population by difficulty
 
@@ -70,6 +65,14 @@ difficulty allowance starts with the existing first late tier at cat level
 reserved spawns, available cells and shared population occupancy can reduce
 the actual number spawned. The fallback core uses the same difficulty bonus
 and wave progression with its existing higher base population caps.
+
+## Cheese and defenses
+
+Map cheese starts with 16 pickups for a solo match and replenishes up to 28.
+Multiplayer fills scale with the number of living mice. Build as many copies
+of an equipped structure as you can afford and have legal tiles for. Ultra Wall
+is available from the first match and has 375 HP. It blocks paths and supports
+the same repairs and Cheese Beacon protection as the other wall tiers.
 
 ## Friendly troops
 
@@ -124,11 +127,10 @@ caps. Offscreen effects are skipped, expired effects clean up automatically,
 and sustained slow frames reduce quality from high to medium to low. Recovery
 is slower than degradation; all levels retain important combat cues.
 
-The optimized host shares at most five target decisions and ten path searches
-per 200 ms window, with a 16-target shortlist. AI caches and reservations stay
-host-local. The existing buffered BFS, simulation task locks, enemy/friendly
-caps, spatial structure cache and coalesced rendering remain intact. There
-are no per-frame network writes or extra movement timers.
+The optimized host shares at most five friendly target decisions and ten
+friendly path searches per 200 ms window, with a 16-target shortlist. Hostile
+units share a route field that refreshes when structures change. AI caches
+and tile reservations stay host-local.
 
 Remote damage snapshots show hits and can infer a projectile from the closest
 eligible tower. This is presentation feedback, not an authoritative record
@@ -167,7 +169,7 @@ its tab. Browser timer throttling still applies.
 
 ## Validation
 
-Run `npm run test:catandmouse` (Node 20+; no dependencies). The 105 tests cover
+Run `npm run test:catandmouse` (Node 20+; no dependencies). The tests cover
 sync queues/retries, death/revive safety, host election/listener recovery,
 loader application, interpolation/corrections, target persistence, reachable
 spawns, cap enforcement, failed producer retries, route reuse/reservations,
@@ -180,8 +182,7 @@ offscreen suppression and reduced motion. Runtime tests also execute the full
 optimized core against a deterministic DOM and clock
 fixture with mixed enemies, defensive structures, a den and a nest. They
 enable host simulation and exercise real spawns, movement, tower attacks,
-structure damage and rat/cat captures together; they are not
-browser rendering or live Firebase tests.
+structure damage and cat captures in a deterministic fixture.
 
 Late-game tests run 420 structures, shield recharges, repeated health updates,
 retired slime history and a level-60 four-player battle at the shared population
