@@ -188,6 +188,8 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
   let nextMapCheeseAt = MAP_CHEESE_REFILL_INTERVAL;
   let field = null;
   const patrolRoutes = buildEnemyField(map, map.playerSpawns, EMPTY_STRUCTURES);
+  let rankedMouseCells;
+  let rankedMouseRoutes;
 
   function event(type, source, fields) {
     events.push({ id: nextEventId++, type, tick, time, x: source.x, y: source.y, ...fields });
@@ -727,6 +729,14 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
   function stepEnemies() {
     // Each structure is a destination, so a route naturally ends at the first one in its way.
     const siegeRoutes = field ??= buildEnemyField(map, structures.values(), EMPTY_STRUCTURES);
+    if (ranked) {
+      const targets = [...team.values()].filter(isAlive).map(mouse => ({ x: Math.round(mouse.x), y: Math.round(mouse.y) }));
+      const cells = targets.map(({ x, y }) => cellAt(x, y)).join(',');
+      if (cells !== rankedMouseCells) {
+        rankedMouseCells = cells;
+        rankedMouseRoutes = buildEnemyField(map, targets, EMPTY_STRUCTURES);
+      }
+    }
     for (const enemy of enemies.values()) {
       const def = ENEMIES[enemy.type];
       enemy.previousX = enemy.x;
@@ -749,7 +759,8 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
         continue;
       }
       const occupiedCell = cellAt(enemy.x, enemy.y);
-      const chase = enemy.type === 'cat' ? chaseMouse(enemy) : null;
+      const structureReachable = siegeRoutes[occupiedCell] >= 0;
+      const chase = enemy.type === 'cat' || (ranked && !structureReachable) ? chaseMouse(enemy) : null;
       const sapperTarget = enemy.type === 'sapper' ? siegeTarget(siegeRoutes, occupiedCell) : null;
       if (chooseSpecial(enemy, chase?.direct ? chase.mouse : null, sapperTarget)) continue;
 
@@ -762,7 +773,7 @@ export function createSimulation({ matchId, mapId = 'flour-mill', difficulty = '
       }
 
       // Finish the current tile before changing axes to prevent corner oscillation.
-      const routeCell = siegeRoutes[occupiedCell] >= 0 ? siegeRoutes[occupiedCell] : patrolRoutes[occupiedCell];
+      const routeCell = structureReachable ? siegeRoutes[occupiedCell] : (rankedMouseRoutes ?? patrolRoutes)[occupiedCell];
       const destinationCell = enemy.aiCell === occupiedCell ? occupiedCell : routeCell;
       if (destinationCell < 0) continue;
       const destination = {
