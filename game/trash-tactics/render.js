@@ -45,6 +45,63 @@ function line(c,points,color=INK,width=3){c.beginPath();points.forEach((p,i)=>i?
 function ellipse(c,x,y,rx,ry,fill,stroke=null,width=2){c.beginPath();c.ellipse(x,y,rx,ry,0,0,Math.PI*2);shape(c,fill,stroke,width);}
 function eye(c,x,y){ellipse(c,x,y,1.7,2.5,INK);}
 function limbs(c,type,walk=0,t=0){const sw=Math.sin(walk)*3;line(c,[[-11,6],[-19,12+sw],[-20,7+sw]],INK,2.8);line(c,[[12,6],[19,12-sw],[22,8-sw]],INK,2.8);line(c,[[-6,18],[-7-sw,25],[-12-sw,25]],INK,3);line(c,[[6,18],[7+sw,25],[12+sw,25]],INK,3);}
+// Small HUD marks use a shared 24px drawing grid so their silhouettes stay clear at label size.
+const HUD_MARKS={
+ trash:[
+  ['M7.1 9h9.8l-.8 10.1a1.7 1.7 0 0 1-1.7 1.5H9.6a1.7 1.7 0 0 1-1.7-1.5Z','#91c2ae'],
+  ['M5.5 6.6h13M9.7 6.6V4.3h4.6v2.3M10.5 12v5.5M13.5 12v5.5']
+ ],
+ supply:[
+  ['M8.4 8a3.6 3.6 0 1 0 7.2 0 3.6 3.6 0 1 0-7.2 0Z','#e6b873'],
+  ['M5.4 19.4v-1a5.5 5.5 0 0 1 5.5-5.5h2.2a5.5 5.5 0 0 1 5.5 5.5v1Z','#e6b873'],
+  ['M17.8 5.7a3 3 0 0 1 0 5.9m1.6 2.2a4.9 4.9 0 0 1 2.3 4.2v1.4']
+ ],
+ army:[
+  ['M5 4v16m0-15c5-3 8 3 14 0v9c-6 3-9-3-14 0','#89bba9']
+ ],
+ attack:[
+  ['M5.5 12a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z','#eedab1'],
+  ['M12 3v5m0 8v5M3 12h5m8 0h5'],
+  ['M10.6 12a1.4 1.4 0 1 0 2.8 0 1.4 1.4 0 1 0-2.8 0Z','#38564e']
+ ],
+ stop:[
+  ['M8 4h8l4 4v8l-4 4H8l-4-4V8Z','#e7b29f'],
+  ['M9 9h6v6H9Z','#fff7e8']
+ ],
+ load:[['M5 9v10h14V9M12 15V4m-4 4 4-4 4 4']],
+ drop:[['M5 15V5h14v10M12 9v11m-4-4 4 4 4-4']],
+ queue:[
+  ['M6 4h10v13H6Z','#f0dcae'],
+  ['M9 8h4m-4 4h4m-4 8h10V7']
+ ],
+ menu:[['M5 6h14M5 12h14M5 18h14']],
+ home:[
+  ['M6 10v9h12v-9M3.5 12 12 4l8.5 8','#c1d8c7'],
+  ['M10.5 19v-5h3v5']
+ ],
+ 'zoom-out':[['M5 12h14']],
+ 'zoom-in':[['M5 12h14m-7-7v14']]
+};
+const hudPaths=new Map();
+export function drawHudIcon(canvas,type){
+ const mark=HUD_MARKS[type];
+ if(!mark)return;
+ if(!hudPaths.has(type))hudPaths.set(type,mark.map(([path,fill])=>[new Path2D(path),fill]));
+ const ctx=canvas.getContext('2d');
+ if(!ctx)return;
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+ ctx.save();
+ ctx.scale(canvas.width/24,canvas.height/24);
+ ctx.strokeStyle='#38564e';
+ ctx.lineWidth=1.8;
+ ctx.lineCap='round';
+ ctx.lineJoin='round';
+ for(const [path,fill] of hudPaths.get(type)){
+  if(fill){ctx.fillStyle=fill;ctx.fill(path);}
+  ctx.stroke(path);
+ }
+ ctx.restore();
+}
 /** Paint a cheerful unit or building icon. x/y is its center; size is full nominal width. */
 export function drawIcon(c,type,x,y,size=50,team=0,options={}){
  c.save();c.translate(x,y);c.scale(size/50,size/50);c.lineJoin='round';c.lineCap='round';const tc=teamColor(team);const walk=options.walk||0;

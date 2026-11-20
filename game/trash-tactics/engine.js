@@ -8,7 +8,7 @@ import {updateScoutMemory,getRememberedEntities} from './scout-memory.js';
 import {WALL_TYPE,snapWallPoint,canPlaceWall,wallOverlapsPoint,wallSegmentBlocked,wallPointDistance2,wallBuildPosition,wallBuilderCanReach,structureBuildPosition} from './walls.js';
 import {WARFARE_TYPES,PRODUCTION,familyOf,isCombat,canTransport,familyCanDamage,initializeWarfare,useAbility,tickWarfare,tickSpecialist,specialistCombat,moveAircraft,updateDart,specialistBot} from './warfare.js';
 import {EXPANSION_MAPS,createBattlefield,initBattlefield,updateBattlefield,reverseConveyor,conveyorVelocity,dynamicBarrierBlocked,dynamicBarrierCrossed,divisionBarrierCrossed,divisionShotBlocked} from './battlefields.js';
-export {familyOf,isCombat,canTransport} from './warfare.js';
+export {PRODUCTION,familyOf,isCombat,canTransport} from './warfare.js';
 export {WALL_SIZE,snapWallPoint} from './walls.js';
 export const TYPES = {
   ...WARFARE_TYPES,

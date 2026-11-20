@@ -1,15 +1,19 @@
-import {Game,TYPES,isCombat,canTransport,snapWallPoint,layoutMap} from './engine.js';
+import {Game,TYPES,PRODUCTION,isCombat,canTransport,snapWallPoint,layoutMap} from './engine.js';
 import * as artwork from './render.js';
 import {RemoteGame} from './online-client.mjs';
 import {setupOnlineLobby} from './online-ui.mjs';
-const {Renderer,drawIcon}=artwork;
+const {Renderer,drawIcon,drawHudIcon}=artwork;
 import {abilityIcon} from './ability-icons.js';
 import {MAP_BRIEFS,DIFFICULTY_BRIEFS,paintBattlefieldPreview} from './skirmish-menu.js';
 import {recordAttackAlert} from './minimap-alerts.js';
 import {renderMatchReport} from './match-report.js';
 
 const $=id=>document.getElementById(id), canvas=$('world');
-const COMBAT=['rock','paper','scissors'], BUILDINGS=['desk','cabinet','printer','cdreader','mouse','workshop','laboratory','wall'];
+const COMBAT=['rock','paper','scissors'];
+const BUILD_HOTKEYS={desk:'D',cabinet:'C',wall:'Z',printer:'B',cdreader:'V',mouse:'M',workshop:'N',laboratory:'O'};
+const BUILDINGS=Object.keys(BUILD_HOTKEYS);
+const TRAIN_HOTKEYS=['Q','W','E'];
+const SCISSORS_ALIAS='R';
 const names=Object.fromEntries(Object.entries(MAP_BRIEFS).map(([id,map])=>[id,map.name]));
 const descriptions={twig:'A scrappy little worker with 75 health. Carries 5 trash per trip. Protect workers with reinforcements when raiders drop in.',rock:'A solid choice. Crushes scissors. Watch out for paper.',paper:'A clean sheet with a mean streak. Wraps rocks. Scissors are trouble.',scissors:'Sharp, speedy, and slightly unhinged. Cuts paper. Avoid rocks.',desk:'Home, sweet headquarters. Twigs return their trash here. Train more workers or expand.',printer:'Print a little trouble. Train your army and research a special ability for each troop.',cabinet:'Room for more mischief. Adds 8 supply to your little empire.'};
 descriptions.cdreader='Summon flying CDs to carry your army over the desk. Each CD holds six troops. No twigs aboard.';
@@ -130,7 +134,7 @@ function selectWorkers(){const ws=game.entities.filter(e=>e.team===playerTeam()&
 function result(r,success){if(r?.ok){sound();if(success&&!r.pending)toast(success);}else{sound('hit');toast(r?.reason||'That command is unavailable.');}updateUI(true);return !!r?.ok;}
 function productionSelection(own=ownSelected()){
  const type=own[0]?.type;
- return ['desk','printer','cdreader','workshop','laboratory'].includes(type)&&own.every(e=>e.type===type)?own:[];
+ return Object.hasOwn(PRODUCTION,type)&&own.every(e=>e.type===type)?own:[];
 }
 function nextProductionBuilding(buildings){
  // Exactly one building receives an order; ties are stable regardless of recall order.
@@ -141,6 +145,9 @@ function nextProductionBuilding(buildings){
 }
 function trainSelected(type,announce=false){const b=nextProductionBuilding(productionSelection());return result(b?game.train(b.id,type):{ok:false,reason:'Select matching production buildings first.'},announce?TYPES[type].label+' added to the queue.':null);}
 function researchSelected(type){const b=nextProductionBuilding(productionSelection().filter(e=>e.type==='printer'));return result(b?game.research(b.id,type):{ok:false,reason:'Select a printer first.'},skills[type].name+' research queued.');}
+function researchQueued(type){
+ return game.entities.some(e=>e.team===playerTeam()&&e.type==='printer'&&e.queue?.some(q=>q.kind==='research'&&q.type===type));
+}
 function issue(world,hit=null,forceAttack=false,keepPlacement=false){
  const own=ownSelected();if(!own.length)return;
  if(hit&&!visibleEntity(hit))hit=null;
@@ -202,10 +209,39 @@ function specialistButtons(combat){return Object.entries(specialistSkills).filte
  const status=pending?`Moving into range · ${pending} queued · Stop or a new order cancels. ${skill.desc}`:ready?skill.desc:'Recharging · '+wait+'s';
  return `<button class="ability-button ${mode==='specialist'&&abilityType===name?'active':''}" data-action="specialist" data-type="${name}" aria-keyshortcuts="${skill.key}" aria-label="${skill.name} (${skill.key}) · ${status}" title="${skill.name} (${skill.key}) · ${status}" ${ready?'':'disabled'}><span class="ability-art" aria-hidden="true">${abilityIcon(name)}</span><span class="ability-copy"><b>${skill.name}</b><small>${status}</small></span><kbd>${skill.key}</kbd><span class="ability-status">${pending?'Moving':name==='forcefield'?charges+' '+(charges===1?'charge':'charges'):ready?'Ready':wait+'s'}</span></button>`;
  }).join('');}
-function icons(root=document){root.querySelectorAll('canvas[data-icon]').forEach(c=>{const size=c.width;drawIcon(c.getContext('2d'),c.dataset.icon,size/2,size/2,size*.8,0,{sprite:true});});}
+function icons(root=document){
+ root.querySelectorAll('canvas[data-icon]').forEach(c=>{
+  const size=c.width;
+  drawIcon(c.getContext('2d'),c.dataset.icon,size/2,size/2,size*.76,0,{sprite:true});
+ });
+ root.querySelectorAll('canvas[data-hud-icon]').forEach(c=>drawHudIcon(c,c.dataset.hudIcon));
+}
 function icon(type,size=60){return `<canvas data-icon="${type}" width="${size}" height="${size}" aria-hidden="true"></canvas>`;}
-function actionCard(type,hotkey,action='train'){const cost=TYPES[type].cost;return `<button class="action-card ${action==='build'&&mode===type?'active':''}" data-action="${action}" data-type="${type}" title="${descriptions[type]} Costs ${cost} trash."><span class="hotkey">${hotkey||''}</span>${icon(type,60)}<b>${type==='desk'?'Home desk':TYPES[type].label}</b><span class="cost">♻ ${cost}${TYPES[type].trainTime?' · '+TYPES[type].trainTime+'s · '+TYPES[type].supply+' supply':TYPES[type].buildTime?' · '+TYPES[type].buildTime+'s':''}${type==='wall'?' · 1,200 HP':''}</span></button>`;}
-function queueHtml(e){if(!e.queue?.length)return '';return `<div class="production"><div class="section-label">IN THE QUEUE <small>${e.queue.length} / 6</small></div>${e.queue.map((q,i)=>`<div class="queue-item">${icon(q.type,32)}<div><b>${q.kind==='research'?skills[q.type].name+' research':TYPES[q.type].label}</b><small>${i===0?Math.ceil(q.remaining)+'s':'QUEUED'}</small><div class="queue-bar"><span style="width:${i===0?Math.max(0,100*(1-q.remaining/q.total)):0}%"></span></div></div></div>`).join('')}</div>`;}
+function hudIcon(type){return `<canvas class="hud-icon" data-hud-icon="${type}" width="48" height="48" aria-hidden="true"></canvas>`;}
+function keycap(key){return `<kbd class="hud-key" aria-hidden="true">${key}</kbd>`;}
+function trashPrice(cost){return `<span class="trash-price">${hudIcon('trash')}<span class="hud-sr-only">Trash </span>${cost}</span>`;}
+function actionCard(type,hotkey,action='train'){
+ const {label,cost,trainTime,buildTime,supply,family}=TYPES[type];
+ const building=action==='build',active=building&&mode===type;
+ const shortcut=type==='scissors'&&!building?`${hotkey} ${SCISSORS_ALIAS}`:hotkey;
+ const detail=building?`${buildTime}s${type==='wall'?' · 1,200 HP':''}`:`${trainTime}s · ${supply} supply`;
+ return `<button class="action-card hud-tile${active?' active':''}" data-action="${action}" data-type="${type}" data-tone="${family||(building?'structure':'support')}" aria-keyshortcuts="${shortcut}"${building?` aria-pressed="${active}"`:''} title="${label} (${shortcut.replace(' ',' / ')}) · ${cost} trash. ${descriptions[type]}">
+  <span class="tile-art">${icon(type)}</span>${keycap(hotkey)}
+  <b>${label}</b><span class="cost">${trashPrice(cost)}<span class="tile-detail">${detail}</span></span>
+ </button>`;
+}
+function trainingCards(productionType){
+ return `<div class="action-grid">${PRODUCTION[productionType].map((type,i)=>actionCard(type,TRAIN_HOTKEYS[i])).join('')}</div>`;
+}
+function researchCard(type,researched,pending){
+ const {name,desc,key}=skills[type],shortcut='Shift+'+key;
+ const status=researched?'Researched':pending?'Queued':'';
+ return `<button class="research-card hud-tile${researched?' unlocked':''}" data-action="research" data-type="${type}" aria-keyshortcuts="${shortcut}"${status?' disabled':''} title="Research ${name} (${shortcut}) · 150 trash. ${desc}">
+  <span class="tile-art">${abilityIcon(type)}</span><strong>${name}</strong>${keycap(shortcut)}
+  <span class="research-cost">${status||trashPrice(150)}</span>
+ </button>`;
+}
+function queueHtml(e){if(!e.queue?.length)return '';return `<div class="production"><div class="section-label">IN THE QUEUE <small>${e.queue.length} / 6</small></div>${e.queue.map((q,i)=>`<div class="queue-item">${q.kind==='research'?abilityIcon(q.type):icon(q.type,32)}<div><b>${q.kind==='research'?skills[q.type].name+' research':TYPES[q.type].label}</b><small>${i===0?Math.ceil(q.remaining)+'s':'QUEUED'}</small><div class="queue-bar"><span style="width:${i===0?Math.max(0,100*(1-q.remaining/q.total)):0}%"></span></div></div></div>`).join('')}</div>`;}
 function productionQueueHtml(buildings){
  if(buildings.length===1)return queueHtml(buildings[0]);
  return `<div class="production production-group"><div class="section-label">GROUP QUEUES <small>${buildings.reduce((n,b)=>n+b.queue.length,0)} TOTAL</small></div><p class="action-note">${buildings.map((b,i)=>`${TYPES[b.type].label} ${i+1} · ${b.constructing?'Building · '+Math.ceil(b.constructing)+'s':b.queue.length+' / 6 queued'}`).join('<br>')}</p></div>`;
@@ -217,14 +253,15 @@ function workerPlanHtml(workers){
 }
 function setText(element,value){if(element.textContent!==value)element.textContent=value;}
 function updateUI(force=false){
- const supply=game.getSupply(playerTeam()),team=game.teams[playerTeam()];setText($('trashCount'),Math.floor(team.trash).toLocaleString());setText($('supplyCount'),`${supply.used} / ${supply.cap}`);$('supplyCount').style.color=supply.used>=supply.cap?'#ca7555':'';
+ const supply=game.getSupply(playerTeam()),team=game.teams[playerTeam()];setText($('trashCount'),Math.floor(team.trash).toLocaleString());setText($('supplyCount'),`${supply.used} / ${supply.cap}`);$('supplyCount').classList.toggle('supply-full',supply.used>=supply.cap);
  const seconds=Math.floor(game.time);setText($('timer'),String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0'));
  updateGroups();
  for(const id of selected)if(!game.getEntity(id)||game.getEntity(id).transportedBy)selected.delete(id);
  const own=ownSelected(),e=own[0],structures=own.filter(e=>TYPES[e.type].building),units=own.filter(e=>!TYPES[e.type].building),workers=units.filter(e=>e.type==='twig'),combat=units.filter(e=>isCombat(e.type)),cds=units.filter(e=>e.type==='cd');
  const production=productionSelection(own),productionType=production[0]?.type;
+ const pendingUpgrades=productionType==='printer'?COMBAT.filter(researchQueued):[];
  document.querySelector('.sidebar').classList.toggle('empty',!own.length);document.querySelector('.sidebar').classList.toggle('narrow',own.length===1&&e.type==='cabinet');document.querySelector('.sidebar').dataset.selection=own.length>1?(workers.length===own.length?'twig':'squad'):(e?.type||'none');
- const sig=own.map(e=>[e.id,Math.ceil(e.hp),Math.ceil(e.constructing||0),Math.ceil(e.abilityCooldown||0),e.pendingAbility?.name,e.cargo?.join(','),e.mageCharges,Math.ceil(e.mageRecharge||0),e.aim?.remaining,e.crash?.diving,e.buildQueue?.join(','),e.type==='twig'?(game.getBuildQueue?.(e.id)||[]).map(j=>j.id+':'+Math.ceil(j.remaining)).join(','):'',e.order?.targetId,e.queue?.map(q=>q.type+Math.ceil(q.remaining)).join(',')].join(':')).join('|')+JSON.stringify(team.upgrades)+mode+abilityType+routePoints.length+queueBuildMode;
+ const sig=own.map(e=>[e.id,Math.ceil(e.hp),Math.ceil(e.constructing||0),Math.ceil(e.abilityCooldown||0),e.pendingAbility?.name,e.cargo?.join(','),e.mageCharges,Math.ceil(e.mageRecharge||0),e.aim?.remaining,e.crash?.diving,e.buildQueue?.join(','),e.type==='twig'?(game.getBuildQueue?.(e.id)||[]).map(j=>j.id+':'+Math.ceil(j.remaining)).join(','):'',e.order?.targetId,e.queue?.map(q=>q.type+Math.ceil(q.remaining)).join(',')].join(':')).join('|')+JSON.stringify(team.upgrades)+pendingUpgrades.join(',')+mode+abilityType+routePoints.length+queueBuildMode;
  if(!force&&sig===signature)return;signature=sig;
  $('clearButton').disabled=!own.length;
  let info='',actions='',roster='';
@@ -235,22 +272,27 @@ function updateUI(force=false){
   info=`<div class="selected-heading"><div class="portrait">${icon(e.type)}</div><div style="flex:1"><h2>${title}</h2><p>${subtitle}</p>${own.length===1?`<div class="health-meter"><span style="width:${100*e.hp/e.maxHp}%"></span></div>`:''}</div></div><p class="selection-description">${own.length===1?descriptions[e.type]:production.length?'Each press queues one unit at a ready building with the shortest queue. Right click to set the group’s rally points.':workers.length===own.length?'Many twigs make light work. Spread them across trash cans or build something great.':'Give the squad a destination. They’ll handle the little details.'}</p>`;
   if(own.length>1)roster=own.slice(0,30).map(e=>`<button class="roster-item" data-unit="${e.id}" title="Select this ${TYPES[e.type].label}">${icon(e.type,40)}</button>`).join('');
   if(e.constructing&&own.length===1)actions=`<div class="section-label">UNDER CONSTRUCTION <small>${Math.ceil(e.constructing)}s</small></div><div class="queue-bar"><span style="width:${100*(1-e.constructing/e.buildTotal)}%"></span></div><p class="action-note">Your twig is putting the pieces together.</p>`;
-  else if(productionType==='desk')actions=`<div class="section-label">GROW YOUR ECONOMY <small>4s / TWIG</small></div><div class="action-grid">${actionCard('twig','Q')}</div><p class="action-note">New twigs automatically find a trash can. Right click to set a rally point.</p>${productionQueueHtml(production)}`;
-  else if(productionType==='cdreader')actions=`<div class="section-label">SUMMON A TRANSPORT <small>8s / CD</small></div><div class="action-grid">${actionCard('cd','Q')}</div><p class="action-note">Flying CDs carry six combat troops each. Right click to set a flight rally point.</p>${productionQueueHtml(production)}`;
-  else if(productionType==='printer'){actions=`<div class="section-label">PRINT SOME TROUBLE <small>5s / TROOP</small></div><div class="action-grid">${actionCard('rock','Q')}${actionCard('paper','W')}${actionCard('scissors','E')}</div><div class="section-label" style="margin-top:23px">A LITTLE EXTRA POWER <small>150 TRASH EACH</small></div><div class="research-grid">${COMBAT.map(type=>{const researched=team.upgrades[type],pending=game.entities.some(b=>b.team===playerTeam()&&b.queue?.some(q=>q.kind==='research'&&q.type===type));return `<button class="research-card ${researched?'unlocked':''}" data-action="research" data-type="${type}" ${researched||pending?'disabled':''} title="${skills[type].desc}">${icon(type,44)}<span><strong>${skills[type].name}</strong><small>${skills[type].desc}</small></span><span class="research-cost">${researched?'✓':pending?'…':'♻ 150'}</span></button>`;}).join('')}</div>${productionQueueHtml(production)}`;}
-  else if(['workshop','laboratory'].includes(productionType)){const types=e.type==='workshop'?['sniper','airplane','mage']:['divider','rollingrock','shears'];actions=`<div class="section-label">${e.type==='workshop'?'TIER 2 · SPECIALISTS':'TIER 3 · BATTLE CHANGERS'}</div><div class="action-grid">${types.map((type,i)=>actionCard(type,['Q','W','E'][i])).join('')}</div><p class="action-note">Abilities come ready. Right click to set a rally point. Supply is reserved for queued troops.</p>${productionQueueHtml(production)}`;}
+  else if(productionType==='desk')actions=`<div class="section-label">GROW YOUR ECONOMY <small>4s / TWIG</small></div>${trainingCards(productionType)}<p class="action-note">New twigs automatically find a trash can. Right click to set a rally point.</p>${productionQueueHtml(production)}`;
+  else if(productionType==='cdreader')actions=`<div class="section-label">SUMMON A TRANSPORT <small>8s / CD</small></div>${trainingCards(productionType)}<p class="action-note">Flying CDs carry six combat troops each. Right click to set a flight rally point.</p>${productionQueueHtml(production)}`;
+  else if(productionType==='printer'){
+   actions=`<div class="section-label">PRINT SOME TROUBLE <small>5s / TROOP</small></div>${trainingCards(productionType)}
+    <div class="section-label research-heading">RESEARCH UPGRADES</div>
+    <div class="research-grid" aria-label="Printer upgrades" role="group">${COMBAT.map(type=>researchCard(type,team.upgrades[type],pendingUpgrades.includes(type))).join('')}</div>
+    ${productionQueueHtml(production)}`;
+  }
+  else if(productionType==='workshop'||productionType==='laboratory')actions=`<div class="section-label">${productionType==='workshop'?'TIER 2 · SPECIALISTS':'TIER 3 · BATTLE CHANGERS'}</div>${trainingCards(productionType)}<p class="action-note">Abilities come ready. Right click to set a rally point. Supply is reserved for queued troops.</p>${productionQueueHtml(production)}`;
   else if(e.type==='cabinet'&&own.length===1)actions='<div class="section-label">A PLACE FOR EVERYONE</div><p class="action-note">Your cabinet gives you 8 more supply. Select a twig to build more and grow your army.</p>';
   if(e.type==='mouse'&&own.length===1&&!e.constructing)actions=`<div class="defense-status"><strong>Pointer defense · reinforced</strong><span>${TYPES.mouse.hp} HP · ${TYPES.mouse.range} range</span><small>${TYPES.mouse.impactDamage} impact every ${TYPES.mouse.shotInterval}s + ${TYPES.mouse.clickDps} damage/s for ${TYPES.mouse.clickDuration}s</small></div>`;
   if(e.type==='wall'&&own.length===1)actions+='<div class="fortification-status"><strong>Connected ground barrier</strong><span>1,200 HP · 20 trash per block</span><small>Build adjacent blocks with a Twig. Aircraft fly over.</small><button class="command-button" data-action="dismantleWall" title="Remove this owned block to open a passage. No trash refund.">Dismantle block</button></div>';
   if(workers.length){
-   actions+=`<div class="build-controls"><button class="command-button queue-toggle ${queueBuildMode?'active':''}" data-action="toggleBuildQueue" aria-pressed="${queueBuildMode}" title="Keep building placement active for multiple structures. Shift-click also places another. Busy workers finish their existing jobs first.">Queue builds <small>${queueBuildMode?'On':'Shift'}</small></button>${BUILDINGS.includes(mode)?'<button class="command-button" data-action="cancelTarget">Done placing</button>':''}</div>`;
+   actions+=`<div class="build-controls"><button class="command-button queue-toggle ${queueBuildMode?'active':''}" data-action="toggleBuildQueue" aria-pressed="${queueBuildMode}" title="Keep building placement active for multiple structures. Shift-click also places another. Busy workers finish their existing jobs first.">${hudIcon('queue')} Queue builds <small>${queueBuildMode?'On':'Off'}</small></button>${BUILDINGS.includes(mode)?`<button class="command-button" data-action="cancelTarget" aria-keyshortcuts="Escape">Done placing ${keycap('Esc')}</button>`:''}</div>`;
    actions+=workerPlanHtml(workers);
-   actions+=`<div class="section-label">BUILD YOUR BASE <small>CHOOSE + PLACE</small></div><div class="action-grid">${actionCard('desk','D','build')}${actionCard('cabinet','C','build')}${actionCard('wall','Z','build')}${actionCard('printer','B','build')}${actionCard('cdreader','V','build')}${actionCard('mouse','M','build')}${actionCard('workshop','N','build')}${actionCard('laboratory','O','build')}</div><p class="action-note">Choose and place buildings. Shift or Queue builds keeps placement active; busy workers finish jobs in order.</p>`;
+   actions+=`<div class="section-label">BUILD YOUR BASE <small>CHOOSE + PLACE</small></div><div class="action-grid">${BUILDINGS.map(type=>actionCard(type,BUILD_HOTKEYS[type],'build')).join('')}</div><p class="action-note">Choose and place buildings. Shift or Queue builds keeps placement active; busy workers finish jobs in order.</p>`;
   }
-  if(cds.length){const passengers=cds.reduce((n,e)=>n+(e.cargo?.length||0),0);actions+=`<div class="transport-manifest" role="status"><strong>${passengers} / ${cds.length*6} aboard</strong><span>${cds.length} ${cds.length===1?'CD':'CDs'} · No twigs</span><div class="transport-seats">${cds.map(cd=>`<span title="CD ${cd.id}: ${cd.cargo?.length||0} / 6 troops">${Array.from({length:6},(_,i)=>`<i class="${i<(cd.cargo?.length||0)?'occupied':''}"></i>`).join('')}</span>`).join('')}</div></div><div class="command-grid transport-commands"><button class="command-button" data-action="load" title="Board the nearest combat troops into each selected CD"><span class="command-symbol">↥</span> Load <small>L</small></button><button class="command-button ${mode==='drop'?'active':''}" data-action="drop" ${!passengers?'disabled':''} title="Fly to a chosen location and drop all passengers"><span class="command-symbol">↧</span> Drop <small>U</small></button></div>`;}
+  if(cds.length){const passengers=cds.reduce((n,e)=>n+(e.cargo?.length||0),0);actions+=`<div class="transport-manifest" role="status"><strong>${passengers} / ${cds.length*6} aboard</strong><span>${cds.length} ${cds.length===1?'CD':'CDs'} · No twigs</span><div class="transport-seats">${cds.map(cd=>`<span title="CD ${cd.id}: ${cd.cargo?.length||0} / 6 troops">${Array.from({length:6},(_,i)=>`<i class="${i<(cd.cargo?.length||0)?'occupied':''}"></i>`).join('')}</span>`).join('')}</div></div><div class="command-grid transport-commands"><button class="command-button" data-action="load" aria-keyshortcuts="L" title="Board the nearest combat troops into each selected CD">${hudIcon('load')} Load ${keycap('L')}</button><button class="command-button ${mode==='drop'?'active':''}" data-action="drop" aria-keyshortcuts="U" ${!passengers?'disabled':''} title="Fly to a chosen location and drop all passengers">${hudIcon('drop')} Drop ${keycap('U')}</button></div>`;}
   if(e.type==='station'&&own.length===1)actions+='<button class="command-button" data-action="reverse">⇄ Reverse conveyor</button><p class="action-note">Keep ground troops nearby to hold this control station.</p>';
   if(units.length){
-   actions+=`<div class="section-label">GIVE AN ORDER</div><div class="command-grid">${combat.length||workers.length?`<button class="command-button ${mode==='attack'?'active':''}" data-action="attack" aria-keyshortcuts="A" title="Attack (A), then click an enemy or an area to fight toward"><span class="command-symbol">⌖</span> Attack <kbd>A</kbd></button>`:''}<button class="command-button" data-action="stop"><span class="command-symbol">□</span> Stop <small>S</small></button></div>`;
+   actions+=`<div class="section-label">GIVE AN ORDER</div><div class="command-grid">${combat.length||workers.length?`<button class="command-button ${mode==='attack'?'active':''}" data-action="attack" aria-keyshortcuts="A" title="Attack (A), then click an enemy or an area to fight toward">${hudIcon('attack')} Attack ${keycap('A')}</button>`:''}<button class="command-button" data-action="stop" aria-keyshortcuts="S">${hudIcon('stop')} Stop ${keycap('S')}</button></div>`;
    if(combat.length){
     const abilities=COMBAT.filter(type=>combat.some(e=>e.type===type)).map(type=>{
      const skill=skills[type],unlocked=team.upgrades[type],ready=combat.filter(e=>e.type===type).some(e=>e.abilityCooldown<=0&&!e.leap),wait=Math.max(1,Math.ceil(Math.min(...combat.filter(e=>e.type===type).map(e=>e.abilityCooldown)))),status=!unlocked?'Unlock at a printer':!ready?'Recharging · '+wait+'s':skill.desc;
@@ -264,7 +306,7 @@ function updateUI(force=false){
  const oldPlan=$('actionContent').querySelector('.build-plan'),planScroll=oldPlan?.dataset.workers===workers.map(w=>w.id).join(',')?oldPlan.querySelector('.build-job-list')?.scrollLeft||0:0;
  $('selectionInfo').innerHTML=info;$('actionContent').innerHTML=actions;$('unitRoster').innerHTML=roster;icons($('selectionInfo'));icons($('actionContent'));icons($('unitRoster'));const planList=$('actionContent').querySelector('.build-job-list');if(planList)planList.scrollLeft=planScroll;
 }
-$('actionContent').addEventListener('click',evt=>{const b=evt.target.closest('[data-action]');if(!b||b.disabled||inLobby||paused)return;const own=ownSelected(),e=own[0],type=b.dataset.type;switch(b.dataset.action){case 'train':trainSelected(type,true);break;case 'research':researchSelected(type);break;case 'build':setMode(type);sound();break;case 'toggleBuildQueue':queueBuildMode=!queueBuildMode;updateUI(true);sound();break;case 'load':loadSelected();break;case 'drop':chooseDrop();break;case 'attack':chooseAttack();break;case 'stop':game.command([...selected],{type:'stop'});setMode(null);sound();break;case 'ability':activateAbility(type);break;case 'specialist':activateSpecialist(type);break;case 'finishRoute':finishRoute();break;case 'cancelTarget':setMode(null);break;case 'dismantleWall':if(e)result(game.removeWall(e.id,playerTeam()),'Wall dismantled. The passage is open.');break;case 'reverse':if(e)result(game.reverseConveyor(e.id,playerTeam()),'Conveyor reversed.');break;case 'selectDesk':case 'selectPrinter':{const target=game.entities.find(t=>t.team===playerTeam()&&t.hp>0&&t.type===(b.dataset.action==='selectDesk'?'desk':'printer'));if(target){selectEntities([target]);renderer.centerOn(target.x,target.y);}break;}}});
+$('actionContent').addEventListener('click',evt=>{const b=evt.target.closest('[data-action]');if(!b||b.disabled||!usable())return;const own=ownSelected(),e=own[0],type=b.dataset.type;switch(b.dataset.action){case 'train':trainSelected(type,true);break;case 'research':researchSelected(type);break;case 'build':setMode(type);sound();break;case 'toggleBuildQueue':queueBuildMode=!queueBuildMode;updateUI(true);sound();break;case 'load':loadSelected();break;case 'drop':chooseDrop();break;case 'attack':chooseAttack();break;case 'stop':game.command([...selected],{type:'stop'});setMode(null);sound();break;case 'ability':activateAbility(type);break;case 'specialist':activateSpecialist(type);break;case 'finishRoute':finishRoute();break;case 'cancelTarget':setMode(null);break;case 'dismantleWall':if(e)result(game.removeWall(e.id,playerTeam()),'Wall dismantled. The passage is open.');break;case 'reverse':if(e)result(game.reverseConveyor(e.id,playerTeam()),'Conveyor reversed.');break;case 'selectDesk':case 'selectPrinter':{const target=game.entities.find(t=>t.team===playerTeam()&&t.hp>0&&t.type===(b.dataset.action==='selectDesk'?'desk':'printer'));if(target){selectEntities([target]);renderer.centerOn(target.x,target.y);}break;}}});
 $('unitRoster').addEventListener('click',e=>{const b=e.target.closest('[data-unit]');if(b){const unit=game.getEntity(Number(b.dataset.unit));if(unit)selectEntities([unit],e.shiftKey);}});
 // Selection padding is independent from collision and navigation footprints.
 function workerSelectionBounds(e){const zoom=renderer.camera.zoom;return {x:e.x,y:e.y-5,w:Math.max(e.r+17,26/zoom),h:Math.max(e.r+21,30/zoom)};}
@@ -466,16 +508,25 @@ window.addEventListener('keydown',e=>{
   groupKeyPress=press;return;
  }
  if(key==='enter'&&mode==='specialist'){e.preventDefault();finishRoute();return;}
- const own=ownSelected(),b=productionSelection(own)[0];
- if(['workshop','laboratory'].includes(b?.type)&&['q','w','e'].includes(key)){trainSelected((b.type==='workshop'?['sniper','airplane','mage']:['divider','rollingrock','shears'])[['q','w','e'].indexOf(key)]);return;}
- if(b?.type==='printer'&&['q','w','e','r'].includes(key)){trainSelected({q:'rock',w:'paper',e:'scissors',r:'scissors'}[key]);return;}
- if(b?.type==='desk'&&key==='q'){trainSelected('twig');return;}
- if(b?.type==='cdreader'&&key==='q'){trainSelected('cd');return;}
+ const own=ownSelected(),productionType=productionSelection(own)[0]?.type;
+ const press=key.toUpperCase(),trainingIndex=TRAIN_HOTKEYS.indexOf(press);
+ const unit=PRODUCTION[productionType]?.[trainingIndex];
+ if(productionType==='printer'&&e.shiftKey&&unit){
+  e.preventDefault();
+  if(!game.teams[playerTeam()].upgrades[unit]&&!researchQueued(unit))researchSelected(unit);
+  return;
+ }
+ if(unit){trainSelected(unit);return;}
+ if(productionType==='printer'&&press===SCISSORS_ALIAS){trainSelected('scissors');return;}
  if(own.some(e=>e.type==='cd')&&key==='l'){loadSelected();return;}
  if(own.some(e=>e.type==='cd')&&key==='u'){chooseDrop();return;}
  const special=Object.entries(specialistSkills).find(([,skill])=>skill.key.toLowerCase()===key&&own.some(e=>e.type===skill.type));if(special){activateSpecialist(special[0]);return;}
  if(key==='a'){chooseAttack();return;}if(abilityKeys[key]){activateAbility(abilityKeys[key]);return;}
- if(own.some(e=>e.type==='twig')&&['d','c','b','v','m','n','o','z'].includes(key)){setMode(key==='z'&&mode==='wall'?null:{d:'desk',c:'cabinet',b:'printer',v:'cdreader',m:'mouse',n:'workshop',o:'laboratory',z:'wall'}[key]);return;}
+ const buildType=BUILDINGS.find(type=>BUILD_HOTKEYS[type]===press);
+ if(buildType&&own.some(e=>e.type==='twig')){
+  setMode(buildType==='wall'&&mode==='wall'?null:buildType);
+  return;
+ }
  if(key==='s'&&!e.ctrlKey&&!e.metaKey){game.command([...selected],{type:'stop'});setMode(null);sound();return;}
 });
 window.addEventListener('keyup',e=>{

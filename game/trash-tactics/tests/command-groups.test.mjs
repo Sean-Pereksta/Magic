@@ -18,6 +18,7 @@ class Element {
     for(const fn of this.listeners[type]??[])result=fn(event);
     return result;
   }
+  dispatchEvent(event){return this.dispatch(event.type);}
   setAttribute(name,value){(this.attributes??={})[name]=value;} focus(){} setPointerCapture(){} releasePointerCapture(){}
   hasPointerCapture(){return true;}
   querySelectorAll(){return [];} querySelector(){return null;} closest(){return null;}
@@ -31,7 +32,7 @@ async function harness(){
   const elements=new Map(), element=id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);};
   element('guide').hidden=true;
   element('mapLoading').hidden=true;
-  const document={getElementById:element,querySelector:()=>element('sidebar'),querySelectorAll:()=>[],activeElement:null};
+  const document={documentElement:{dataset:{}},getElementById:element,querySelector:()=>element('sidebar'),querySelectorAll:()=>[],activeElement:null};
   const window=new Element('window');window.innerWidth=1000;window.innerHeight=700;
   let now=10000,nextTimer=1; const timers=new Map();
   function advance(ms){
@@ -40,7 +41,7 @@ async function harness(){
       if(!first)break;now=first[1].at;timers.delete(first[0]);first[1].fn();}
     now=end;
   }
-  Object.assign(globalThis,{document,window,localStorage:{getItem:()=>null,setItem(){}},
+  Object.assign(globalThis,{document,window,location:new URL('http://localhost/'),localStorage:{getItem:()=>null,setItem(){}},
     performance:{now:()=>now},requestAnimationFrame:()=>0,
     setTimeout:(fn,ms)=>{const id=nextTimer++;timers.set(id,{at:now+ms,fn});return id;},
     clearTimeout:id=>timers.delete(id)});
@@ -57,6 +58,7 @@ async function harness(){
     .replace("'./render.js'",JSON.stringify(renderUrl));
   await import('data:text/javascript;base64,'+Buffer.from(source+'\n//# sourceURL=trash-tactics-game-under-test.js').toString('base64'));
   await element('startButton').click();
+  assert.equal(element('lobby').hidden,true,'the skirmish started');
   const state=window.trashTactics;
   const key=(type,key,more={})=>window.dispatch(type,{key,...more});
   const pointer=(slot,type,more={})=>element('group-'+slot).dispatch(type,more);
