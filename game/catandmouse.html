@@ -196,6 +196,16 @@
     return html;
   }
 
+  function showGame(html) {
+    const actionRow = '<div class="war-room-actions premium-actions">';
+    const managedActions = `
+      <button class="secondary-menu-button" onclick="location.assign('./catandmouse/edition/index.html?servers=live')">Live Join</button>
+      <button class="secondary-menu-button" onclick="location.assign('./catandmouse/edition/index.html?servers=browse')">Browse Servers</button>`;
+    document.open();
+    document.write(html.replace(actionRow, actionRow + managedActions));
+    document.close();
+  }
+
   let core = '';
   try {
     status.textContent = 'Loading game core…';
@@ -204,16 +214,12 @@
     core = await response.text();
     status.textContent = 'Applying performance pass…';
     const optimized = applyPerformancePass(core);
-    document.open();
-    document.write(optimized);
-    document.close();
+    showGame(optimized);
   } catch (error) {
     console.error('[CatMouse performance loader]', error);
     if (core) {
       console.warn('[CatMouse performance loader] Falling back to preserved core.');
-      document.open();
-      document.write(core);
-      document.close();
+      showGame(core);
       return;
     }
     status.textContent = 'Unable to start Cat & Mouse: ' + (error?.message || String(error));

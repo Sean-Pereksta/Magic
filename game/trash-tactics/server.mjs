@@ -21,7 +21,7 @@ const json=(res,status,body)=>{
 };
 
 export function createTrashTacticsServer({
-  rankings=null,trusted=false,community=false,hostToken='',instance='',
+  rankings=null,trusted=false,community=false,managed=false,hostToken='',instance='',
   directoryUrl=new URL('/api/lobbies',OFFICIAL_ORIGIN).href
 }={}) {
   const hostInstance=instance || randomBytes(18).toString('base64url');
@@ -32,7 +32,7 @@ export function createTrashTacticsServer({
   server.requestTimeout=12_000;
   server.headersTimeout=10_000;
   const multiplayer=attachMultiplayer(server,{
-    rankings:trusted&&!community ? rankings : null,community,hostToken,
+    rankings:trusted&&!community&&!managed ? rankings : null,community,managed,hostToken,
     publicOrigin:trusted ? OFFICIAL_ORIGIN : '',onRooms:()=>directory.schedule()
   });
   const directory=attachDirectory({community,trusted,directoryUrl,openRooms:multiplayer.openRooms});
@@ -77,6 +77,7 @@ export function createTrashTacticsServer({
   }
   return {
     server,
+    getStatus:multiplayer.managedStatus,
     setPublicUrl(value) {
       const origin=community ? quickTunnelOrigin(value) : null;
       if (!origin) return false;

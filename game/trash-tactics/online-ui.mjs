@@ -10,9 +10,10 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
   const play=find('onlineStart'), roster=find('onlineRoster'), invite=find('onlineInvite'), rank=find('onlineRanked');
   const hostStatus=find('onlineHostStatus'), titleInput=find('onlineTitle');
   const current=new URL(location.href);
+  const managed=current.searchParams.get('managed')==='1';
   const local=location.hostname==='localhost' || location.hostname==='127.0.0.1';
   const hosted=local || location.hostname.endsWith('.trycloudflare.com');
-  const origin=hosted ? location.origin : OFFICIAL_ORIGIN;
+  const origin=hosted || managed ? location.origin : OFFICIAL_ORIGIN;
   const fromSite=SITE_ORIGINS.includes(location.origin) && location.origin!==OFFICIAL_ORIGIN;
   let token=local ? new URLSearchParams(current.hash.slice(1)).get('host') || '' : '';
   if (local) try {
@@ -38,6 +39,12 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
   mapSelect.addEventListener('change',showMapIcon);
   let connection,room,health,poll,link,loading=0,connecting=false,running=false;
   try {handle.value=localStorage.getItem('trash-tactics-multiplayer-name') || '';} catch {}
+  const displayName=managed && current.searchParams.get('name');
+  if (displayName) handle.value=displayName.slice(0,24);
+  if (managed) {
+    pane.querySelector('.online-list-title').hidden=true;
+    pane.querySelector('.online-download').hidden=true;
+  }
   if (hubLocal) {
     find('onlineCreateDetails').hidden=true;
     find('onlineHost').textContent='Host a public lobby';
@@ -64,10 +71,12 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     return response.json();
   }
   function setControls() {
-    form.hidden=!!room;
+    form.hidden=managed || !!room;
+    find('managedRejoin').hidden=!managed || !!room;
+    find('managedRejoin').disabled=connecting;
     rank.hidden=!canRank();
     matchBox.hidden=!room;
-    rows.hidden=!!room;
+    rows.hidden=managed || !!room;
     play.hidden=!room || connection?.seat?.team!==0 || room.phase!=='waiting';
     play.disabled=!room?.seats.every(p=>p?.connected);
     find('onlineBack').hidden=running;
@@ -86,7 +95,8 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
       roster.append(node);
     }
     const url=next.url && new URL(next.url);
-    if (url && (url.origin===OFFICIAL_ORIGIN && fromSite)) {
+    if (managed) link=new URL('/__catnmice/join',location.origin).href;
+    else if (url && (url.origin===OFFICIAL_ORIGIN && fromSite)) {
       const site=new URL(location.href);
       site.search='?room='+next.id; site.hash='';
       link=site.href;
@@ -127,7 +137,7 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     if (!list.length) rows.append(text('li','No open lobbies. Host a lobby or join with an invite.'));
   }
   async function refresh() {
-    if (pane.hidden) return;
+    if (pane.hidden || managed) return;
     try {
       health=await request('/api/health');
       const data=await request('/api/lobbies');
@@ -153,6 +163,7 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
   async function connect(payload,ranked=false) {
     if (connecting || room) return;
     connecting=true;
+    setControls();
     hostStatus.textContent='';
     const hosting=payload.type==='create' && !ranked;
     function reportError(message) {
@@ -205,12 +216,12 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
       bind('closed',data=>leave(data.message,false));
       bind('error',data=>{
         if (data.code==='SESSION_EXPIRED') {leave(data.message,false);return;}
-        if (!room) {connecting=false;client.close(false);}
+        if (!room) {connecting=false;client.close(false);setControls();}
         reportError(data.message);
       });
       note('Connecting to the host…');
       client.open({...payload,name});
-    } catch (error) {connecting=false;reportError(error.message);}
+    } catch (error) {connecting=false;setControls();reportError(error.message);}
   }
   function show(panel,focusTarget) {
     for (const view of [menu,solo,pane]) view.hidden=view!==panel;
@@ -223,7 +234,7 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     setControls();
     show(pane,focusTarget);
     clearInterval(poll);
-    poll=setInterval(()=>void refresh(),4000);
+    if (!managed) poll=setInterval(()=>void refresh(),4000);
     void refresh();
   }
   function leave(message='',notify=true) {
@@ -238,6 +249,35 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
   singleplayer.addEventListener('click',()=>show(solo,find('soloHeading')));
   find('soloBack').addEventListener('click',()=>show(menu,singleplayer));
   launch.addEventListener('click',()=>open());
+  const joinManaged=()=>connect({type:'managedJoin',map:selectedMap()});
+  find('managedRejoin').addEventListener('click',()=>void joinManaged());
+  let discovery;
+  function loadDirectory(src) {
+    return new Promise((resolve,reject)=>{
+      const script=document.createElement('script');
+      script.src=src;
+      script.onload=()=>window.CatnmiceServers ? resolve() : reject(new Error('Directory unavailable'));
+      script.onerror=()=>reject(new Error('Directory unavailable'));
+      document.head.append(script);
+    });
+  }
+  async function browseServers(live) {
+    const feedback=find('managedDiscoveryStatus');
+    feedback.hidden=true;
+    try {
+      if (!window.CatnmiceServers) {
+        discovery ||= loadDirectory('/shared/managed-servers.js').catch(()=>loadDirectory('https://catnmice.com/shared/managed-servers.js'));
+        await discovery;
+      }
+      await window.CatnmiceServers.open('trashtactics',{live});
+    } catch {
+      discovery=null;
+      feedback.textContent='Could not open the server directory. Check your connection and try again.';
+      feedback.hidden=false;
+    }
+  }
+  find('managedLiveJoin').addEventListener('click',()=>void browseServers(true));
+  find('managedBrowse').addEventListener('click',()=>void browseServers(false));
   find('onlineBack').addEventListener('click',()=>{
     if (room || connecting) leave();
     clearInterval(poll);
@@ -274,7 +314,8 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     try {renderRankProfile(card,(await request('/api/profile?username='+encodeURIComponent(username),OFFICIAL_ORIGIN)).player);}
     catch {card.textContent='No ranked profile found. Check the Catnmice username.';}
   });
-  if (!inviteCode && current.searchParams.get('host')==='1') open(titleInput);
+  if (managed) {open();void joinManaged();}
+  else if (!inviteCode && current.searchParams.get('host')==='1') open(titleInput);
   else if (token || inviteCode || current.searchParams.has('online')) open();
   return {open,leave};
 }

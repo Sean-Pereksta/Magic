@@ -2108,6 +2108,36 @@ service cloud.firestore {
       allow delete: if isAuthed() && resource.data.ownerUid == request.auth.uid;
     }
 
+    match /managedGameDirectories/{game}/lobbies/{code} {
+      function supportedGame() {
+        return game in ['bannerlands', 'trashtactics', 'cat', 'lastsignal'];
+      }
+      function validListing() {
+        let d = request.resource.data;
+        return supportedGame() && isAuthed() && code.matches('^[0-9]{4}$')
+          && d.keys().hasOnly(['hostId', 'ownerUid', 'name', 'visibility', 'origin', 'joinUrl', 'phase', 'players', 'capacity', 'queued', 'joinable', 'updatedAt', 'expiresAt'])
+          && d.ownerUid == request.auth.uid && d.hostId is string
+          && d.hostId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+          && d.name is string && d.name.size() >= 1 && d.name.size() <= 40
+          && d.visibility in ['public', 'code'] && d.origin is string
+          && d.origin.matches('^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?[.]trycloudflare[.]com$')
+          && d.joinUrl == d.origin + '/__catnmice/join'
+          && d.phase in ['waiting', 'playing', 'finished']
+          && d.capacity is int && d.capacity >= 1 && d.capacity <= 256
+          && d.players is int && d.players >= 0 && d.players <= d.capacity
+          && d.queued is int && d.queued >= 0 && d.queued <= 1000
+          && d.joinable is bool && (!d.joinable || d.players < d.capacity && d.phase != 'finished')
+          && d.updatedAt == request.time && d.expiresAt is timestamp
+          && d.expiresAt > request.time && d.expiresAt <= request.time + duration.value(120, 's');
+      }
+      allow get: if supportedGame() && code.matches('^[0-9]{4}$')
+        && (isAuthed() || resource.data.expiresAt > request.time);
+      allow list: if supportedGame() && request.query.limit <= 25 && resource.data.visibility == 'public';
+      allow create: if validListing();
+      allow update: if validListing() && (resource.data.ownerUid == request.auth.uid || resource.data.expiresAt <= request.time);
+      allow delete: if supportedGame() && isAuthed() && resource.data.ownerUid == request.auth.uid;
+    }
+
     match /acornRallyHostQueues/{uid} {
       allow get, delete: if isAuthed() && request.auth.uid == uid;
       allow create, update: if isAuthed() && request.auth.uid == uid

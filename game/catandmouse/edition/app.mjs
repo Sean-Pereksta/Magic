@@ -23,6 +23,8 @@ const wantsMultiplayer = new URLSearchParams(location.search).get('online') === 
 const hostConnectionError = 'Could not connect to the lobby host service. Open Cat & Mouse Local Edition from the Windows Start menu and choose Multiplayer → Host Lobby.';
 const expectedRoom = controlParams.get('room');
 const inviteCode = controlParams.get('invite');
+const managedServer = controlParams.get('managed') === '1';
+const managedMenu = new URLSearchParams(location.search).get('servers');
 const browserName = 'Mouse';
 let view = '';
 let network, lobby, host, hostTimer, solo, state, playerId, previousFrame, battleTime, selected, cursor, audio;
@@ -38,6 +40,7 @@ let paused = false;
 let resultsOpen = false;
 let preserveStatus = false;
 let directoryPoll;
+let managerScript;
 let profile = read('cat-mouse-profile-v1', { matches: {} });
 let settings = { volume: .4, quality: 'high', reduced: matchMedia('(prefers-reduced-motion: reduce)').matches, follow: true, touch: true, ...read('cat-mouse-settings-v1', {}) };
 let soloDraft = { difficulty: 'normal', startingWave: 1, kit: [...STARTER_LOADOUT] };
@@ -104,9 +107,28 @@ function title() {
   mount('title', `<section class="title-view"><span class="eyebrow">THE FLOUR MILL</span><h1>Cat <em>&amp;</em><br>Mouse</h1>
     <p class="subtitle">Gather cheese and build defenses to defeat the Cat before he grows stronger.</p>
     <div class="title-actions">${button('Singleplayer <span>→</span>', 'solo-setup', '')}
+      ${button('Live Join <span>→</span>', 'live-join')}${button('Browse Servers <span>→</span>', 'managed-list')}
       ${button('Multiplayer <span>→</span>', 'multiplayer')}${button('Host Lobby <span>→</span>', 'host')}
       <a href="https://www.catnmice.com/hub/ranked.html?game=catandmouse" target="_top">Ranked Survival Challenge</a>${button('Settings <span>→</span>', 'settings')}</div>
-  </section>`);
+    <p id="view-status" role="status"></p></section>`);
+}
+
+async function managedServers(live) {
+  if (!window.CatnmiceServers) {
+    managerScript ??= new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://catnmice.com/shared/managed-servers.js';
+      script.onload = resolve;
+      script.onerror = () => {
+        managerScript = undefined;
+        script.remove();
+        reject(new Error('Server discovery could not load. Check your connection and try again.'));
+      };
+      document.head.append(script);
+    });
+    await managerScript;
+  }
+  return window.CatnmiceServers.open('cat', { live });
 }
 
 function cardIcon(type) {
@@ -140,7 +162,9 @@ function soloSetup() {
 
 function multiplayer() {
   mount('multiplayer', panel('Multiplayer', `<div class="stack">
-    ${button('Browse Lobbies <span>→</span>', 'browse', '')}
+    ${button('Live Join <span>→</span>', 'live-join', '')}
+    ${button('Browse Servers <span>→</span>', 'managed-list')}
+    ${button('Browse Lobbies <span>→</span>', 'browse')}
     ${button('Join by Invite <span>→</span>', 'invite')}
     ${button('Host Lobby <span>→</span>', 'host')}
     </div><p id="view-status" role="status"></p>
@@ -323,7 +347,8 @@ function hostingStatus(starting = false) {
 }
 
 function joinPrompt() {
-  const name = read('cat-mouse-name-v1', browserName);
+  const supplied = managedServer ? new URLSearchParams(location.search).get('name') : null;
+  const name = supplied?.slice(0, 28).trim() || read('cat-mouse-name-v1', browserName);
   mount('join', panel('Enter the waiting room', `<label>Display name<input id="guest-name" value="${escape(name)}" maxlength="30" enterkeyhint="go"></label>
     <div class="actions">${button('Join Room', 'join-room', '')}${link('Return to Live Lobbies', returnToArcade())}</div><p id="view-status" role="status"></p>`, null));
 }
@@ -332,7 +357,8 @@ function updateLobby() {
   const self = lobby?.players.find(entry => entry.id === playerId);
   if (!self || !$('battle').hidden) return;
   const inWaiting = lobby.phase === 'waiting';
-  const invite = self.isHost ? `<p id="host-status" role="status"></p><div class="actions">${button('Copy Invitation', 'copy-invite', 'secondary', !host?.inviteUrl)}
+  const controlsHost = self.isHost && !lobby.managed;
+  const invite = controlsHost ? `<p id="host-status" role="status"></p><div class="actions">${button('Copy Invitation', 'copy-invite', 'secondary', !host?.inviteUrl)}
     ${button('Retry Tunnel', 'host-retry')}${button('Stop Hosting', 'host-stop')}</div>` : '';
   const start = self.isHost ? `${button('Start', 'normal-start', '', !lobby.canStart)}
     ${button('Force Start', 'force-start', 'secondary', !inWaiting)}` : '';
@@ -340,7 +366,7 @@ function updateLobby() {
     mount('waiting', panel(escape(lobby.roomName), `<p id="room-summary"></p><ul class="roster" id="roster"></ul>
       <h2>Your loadout</h2><div id="lobby-kit"></div><div class="actions" id="ready-actions"></div>
       ${invite}<p id="view-status" role="status"></p>`, null));
-    if (self.isHost) {
+    if (controlsHost) {
       screen.querySelector('[data-action="host-retry"]').id = 'retry-tunnel';
       screen.querySelector('[data-action="copy-invite"]').id = 'copy-invite';
     }
@@ -355,7 +381,7 @@ function updateLobby() {
     $('lobby-kit').innerHTML = kitForm(lobbyKit, self.ready || !inWaiting);
   }
   const buttons = `${button(self.ready ? 'Unready' : 'Ready', 'ready', self.ready ? 'secondary' : '', !inWaiting || !isCompleteLoadout(lobbyKit))}
-    ${start}${self.isHost ? '' : button('Leave Room', 'leave-room')}`;
+    ${start}${controlsHost ? '' : button('Leave Room', 'leave-room')}`;
   if ($('ready-actions').dataset.key !== buttons) {
     $('ready-actions').dataset.key = buttons;
     $('ready-actions').innerHTML = buttons;
@@ -429,6 +455,10 @@ function openSocket(connection) {
       else receiveState({ ...state, ...data.changes }, data.events);
     } else if (data.type === 'action-result' && !data.ok) {
       reportCommandError(data.code);
+    } else if (data.type === 'round-ended') {
+      clearSeat(connection);
+      if (resultsOpen) disconnect();
+      else terminal('This match ended. Choose Live Join for the next game.');
     } else if (data.type === 'error') {
       if (!socketHasSeat(connection, socket) || ['room-changed', 'started', 'load-timeout', 'seat-expired'].includes(data.code)) {
         if (data.code === 'seat-expired') clearSeat(connection);
@@ -484,7 +514,8 @@ function terminal(reason) {
   leaveBattle();
   disconnect();
   mount('unavailable', panel('Room unavailable', `<p class="error" role="status">${escape(reason)}</p>
-    <div class="actions">${link('Return to Live Lobbies', returnToArcade(), '')}${button('Main Menu', 'title')}</div>`, null));
+    <div class="actions">${managedServer ? button('Live Join', 'live-join', '') : link('Return to Live Lobbies', returnToArcade(), '')}${button('Main Menu', 'title')}</div>
+    <p id="view-status" role="status"></p>`, null));
 }
 
 function networkNotice(text) {
@@ -781,6 +812,7 @@ async function action(id) {
   if (id === 'multiplayer') multiplayer();
   if (id === 'invite') joinByInvite();
   if (id === 'browse') await browse();
+  if (id === 'live-join' || id === 'managed-list') await managedServers(id === 'live-join');
   if (id === 'settings') renderSettings();
   if (id === 'host') {
     if (view === 'title') multiplayer();
@@ -869,7 +901,7 @@ async function action(id) {
       try { host = await control('DELETE'); } catch { /* The launcher reports shutdown state on next open. */ }
       clearTimeout(hostTimer);
     }
-    if (id === 'leave-room' && expectedRoom) joinPrompt(); else title();
+    if (id === 'leave-room' && expectedRoom && !managedServer) joinPrompt(); else title();
   }
   if (id === 'close-overlay') overlay.close();
 }
@@ -1066,7 +1098,12 @@ window.addEventListener('pointerdown', unlockAudio, { once: true });
 requestAnimationFrame(frame);
 if (expectedRoom) {
   joinPrompt();
-  if (read('cat-mouse-seat:' + location.origin + ':' + expectedRoom, null, sessionStorage)) $('guest-name') && action('join-room');
+  if (managedServer || read('cat-mouse-seat:' + location.origin + ':' + expectedRoom, null, sessionStorage)) {
+    action('join-room').catch(error => message(error.message, true));
+  }
+} else if (managedMenu === 'live' || managedMenu === 'browse') {
+  multiplayer();
+  managedServers(managedMenu === 'live').catch(error => message(error.message, true));
 } else if (wantsToHost) {
   multiplayer();
   void openHost();

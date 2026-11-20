@@ -9,7 +9,7 @@ const key = () => randomBytes(24).toString('base64url');
 const MAX_MATCH_SECONDS = 45*60;
 const profileCard = ({displayName,username,rating,wins,losses,draws,games}) => ({displayName,username,rating,wins,losses,draws,games});
 
-export function attachMultiplayer(server, {rankings=null,community=false,hostToken='',publicOrigin='',onRooms=()=>{}}={}) {
+export function attachMultiplayer(server, {rankings=null,community=false,managed=false,hostToken='',publicOrigin='',onRooms=()=>{}}={}) {
   const rooms = new Map();
   const wss = new WebSocketServer({noServer:true,maxPayload:16*1024,perMessageDeflate:false});
   let tunnelOrigin = publicOrigin;
@@ -28,6 +28,13 @@ export function attachMultiplayer(server, {rankings=null,community=false,hostTok
   const openRooms = () => [...rooms.values()]
     .filter(room => room.phase === 'waiting' && room.seats[0]?.ws && !room.seats[1])
     .map(metadata);
+  // Finished matches keep their result and reconnect grace without occupying the next lobby.
+  const currentMatch = () => [...rooms.values()].find(room => room.phase !== 'finished');
+  function managedStatus() {
+    const room=currentMatch();
+    return {phase:room && room.phase!=='waiting' ? 'playing' : 'waiting',
+      players:room?.seats.filter(Boolean).length || 0,capacity:2,queued:0};
+  }
   function roomView(room) {
     tell(room,{
       type:'room',...metadata(room),phase:room.phase,
@@ -126,12 +133,17 @@ export function attachMultiplayer(server, {rankings=null,community=false,hostTok
     roomView(room);
   }
   async function join(ws,data) {
-    const creating=data.type === 'create';
+    const managedJoin=data.type==='managedJoin';
+    if (managedJoin && !managed) return problem(ws,'This server does not host managed matches.');
+    if (managed && !managedJoin) return problem(ws,'Join through this managed server’s lobby.');
+    const current=managedJoin ? currentMatch() : null;
+    const creating=managedJoin ? !current : data.type === 'create';
     const requestedId=typeof data.room === 'string' ? data.room.toUpperCase() : '';
-    const existing=rooms.get(requestedId);
-    const ranked=creating ? data.ranked === true : existing?.ranked;
-    if (creating && community && (!hostToken || data.hostToken !== hostToken)) return problem(ws,'Open the host window from the launcher to create a lobby.');
-    if (creating && !Object.hasOwn(MAP_BRIEFS,data.map)) return problem(ws,'Choose a battleground.');
+    const existing=current || rooms.get(requestedId);
+    const ranked=!managed && (creating ? data.ranked === true : existing?.ranked);
+    if (creating && community && !managed && (!hostToken || data.hostToken !== hostToken)) return problem(ws,'Open the host window from the launcher to create a lobby.');
+    const map=managed && !Object.hasOwn(MAP_BRIEFS,data.map) ? 'rainyard' : data.map;
+    if (creating && !Object.hasOwn(MAP_BRIEFS,map)) return problem(ws,'Choose a battleground.');
     if (!creating && (!existing || existing.phase !== 'waiting' || existing.seats[1])) return problem(ws,'This lobby no longer has an open seat.');
     if (ranked && !rankings) return problem(ws,'Ranked PvP is currently unavailable.');
     let identity=null;
@@ -143,11 +155,11 @@ export function attachMultiplayer(server, {rankings=null,community=false,hostTok
     if (ws.readyState !== 1 || ws.player) return;
     const name=identity?.displayName || cleanName(data.name) || 'Guest';
     if (creating) {
-      if (rooms.size >= (community ? 1 : 20)) return problem(ws,'This host is full. Try another lobby.');
+      if (!managed && rooms.size >= (community ? 1 : 20)) return problem(ws,'This host is full. Try another lobby.');
       let code;
       do { code=randomBytes(5).toString('hex').toUpperCase(); } while (rooms.has(code));
       const room={
-        id:randomUUID(),code,map:data.map,name:cleanName(data.title) || name+"'s lobby",ranked,
+        id:randomUUID(),code,map,name:(!managed && cleanName(data.title)) || name+"'s lobby",ranked,
         phase:'waiting',seats:[null,null],commands:[],events:[],deadline:Date.now()+30*60_000,
         nextSnapshot:0
       };
@@ -155,7 +167,7 @@ export function attachMultiplayer(server, {rankings=null,community=false,hostTok
       bind(ws,room,0,identity,name);
       return;
     }
-    if (rooms.get(requestedId)!==existing || existing.phase!=='waiting' || existing.seats[1]) return problem(ws,'This lobby no longer has an open seat.');
+    if (rooms.get(existing.code)!==existing || existing.phase!=='waiting' || existing.seats[1]) return problem(ws,'This lobby no longer has an open seat.');
     if (identity && identity.uid === existing.seats[0]?.identity?.uid) return problem(ws,'Ranked matches require two different Catnmice accounts.');
     bind(ws,existing,1,identity,name);
   }
@@ -163,7 +175,7 @@ export function attachMultiplayer(server, {rankings=null,community=false,hostTok
     if (!data || typeof data !== 'object') return;
     const player=ws.player;
     if (!player) {
-      if (data.type === 'create' || data.type === 'join') return join(ws,data);
+      if (data.type === 'create' || data.type === 'join' || data.type === 'managedJoin') return join(ws,data);
       if (data.type === 'resume') {
         const room=rooms.get(data.room);
         const saved=room?.seats.find(p => p && p.session === data.session);
@@ -225,7 +237,7 @@ export function attachMultiplayer(server, {rankings=null,community=false,hostTok
       let data;
       try { data=JSON.parse(raw); } catch { return; }
       if (ws.processing) return;
-      const joining=data?.type==='create' || data?.type==='join';
+      const joining=data?.type==='create' || data?.type==='join' || data?.type==='managedJoin';
       if (joining) ws.processing=true;
       receive(ws,data).catch(()=>problem(ws,'The host could not process this request.')).finally(()=>{
         if (joining) ws.processing=false;
@@ -290,6 +302,7 @@ export function attachMultiplayer(server, {rankings=null,community=false,hostTok
   timer.unref();
   return {
     openRooms,
+    managedStatus,
     setPublicOrigin(origin) { tunnelOrigin=origin; for (const room of rooms.values()) roomView(room); },
     stop() {
       clearInterval(timer);
