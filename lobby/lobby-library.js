@@ -8,6 +8,7 @@
   const ACORN_LOBBY_URL = "https://rally.catnmice.com/?room=join";
   const ACORN_LOBBY_DOCUMENT = "https://firestore.googleapis.com/v1/projects/bible-game-246c0/databases/(default)/documents/acornRallyService/public";
   const ACORN_LOBBY_REFRESH_MS = 30_000;
+  const ACORN_QUEUE_LIMIT = 128;
   const FLAG_FACTIONS = `<div class="fc-factions" aria-label="Three factions: Lumen Brood, Crooked Carnival and Aureate Choir">
     <span class="fc-brood" title="Lumen Brood">✧ Brood</span><span class="fc-carnival" title="Crooked Carnival">◈ Carnival</span><span class="fc-choir" title="Aureate Choir">◎ Choir</span>
   </div>`;
@@ -109,7 +110,14 @@
       const currentTime = now();
       if (fields?.joinUrl?.stringValue !== ACORN_LOBBY_URL ||
           !Number.isFinite(expiresAt) || expiresAt <= currentTime || expiresAt > currentTime + 120_000) return null;
-      return { href: ACORN_LOBBY_URL, expiresAt };
+      const queueEnabled = fields.queueEnabled?.booleanValue === true;
+      const rawWaiting = fields.waiting?.integerValue;
+      const waiting = typeof rawWaiting === "string" && /^\d{1,3}$/.test(rawWaiting) ? Number(rawWaiting) : null;
+      return {
+        href: ACORN_LOBBY_URL, expiresAt, queueEnabled,
+        waiting: queueEnabled && waiting !== null && waiting <= ACORN_QUEUE_LIMIT ? waiting : null,
+        racing: fields.phase?.stringValue === "racing"
+      };
     } catch {
       return null;
     }
@@ -130,8 +138,17 @@
       let expiryTimer;
       const updateLink = anchor => {
         anchor.hidden = !listing || listing.expiresAt <= Date.now();
-        if (anchor.hidden) anchor.removeAttribute("href");
-        else anchor.href = listing.href;
+        if (anchor.hidden) {
+          anchor.removeAttribute("href");
+          return;
+        }
+        anchor.href = listing.href;
+        const action = listing.queueEnabled ? "Join Race Queue" : "Join Hosted Lobby";
+        const detail = listing.queueEnabled && (listing.waiting > 0
+          ? `${listing.waiting} waiting`
+          : listing.racing ? "Next race" : "");
+        anchor.textContent = detail ? `${action} · ${detail}` : action;
+        anchor.setAttribute("aria-label", `${action}: Acorn Rally${detail ? `. ${detail}` : ""}`);
       };
       const updateLinks = () => document.querySelectorAll(ACORN_LOBBY_SELECTOR).forEach(updateLink);
       const refresh = async () => {

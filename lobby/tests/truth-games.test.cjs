@@ -132,6 +132,28 @@ test('Acorn Rally opens its own private rooms as a guest and offers the Windows 
   }
 });
 
+test('Acorn Rally advertises only fresh hosted queues and bounds the public waiting count', async () => {
+  const now = Date.parse('2026-11-20T22:00:00Z');
+  const href = 'https://rally.catnmice.com/?room=join';
+  const expiresAt = now + 60_000;
+  const read = fields => library.readAcornHostedLobby({
+    now: () => now,
+    fetchLobby: async () => ({ ok: true, json: async () => ({ fields: {
+      joinUrl: { stringValue: href },
+      expiresAt: { timestampValue: new Date(expiresAt).toISOString() },
+      ...fields
+    } }) })
+  });
+  const fields = { queueEnabled: { booleanValue: true }, waiting: { integerValue: '6' }, phase: { stringValue: 'racing' } };
+  assert.deepEqual(await read(fields), { href, expiresAt, queueEnabled: true, waiting: 6, racing: true });
+  assert.deepEqual(await read({ waiting: fields.waiting }), { href, expiresAt, queueEnabled: false, waiting: null, racing: false });
+  for (const integerValue of ['-1', '129', '2e1', 'NaN']) {
+    assert.equal((await read({ ...fields, waiting: { integerValue } })).waiting, null);
+  }
+  assert.equal(await read({ ...fields, expiresAt: { timestampValue: new Date(now).toISOString() } }), null);
+  assert.equal(await read({ ...fields, joinUrl: { stringValue: `${href}&invite=other` } }), null);
+});
+
 test('each Truth game has its own generated WebP tile, thumbnail and hero', async () => {
   const games = registry(await load());
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'assets/game-artwork.json'), 'utf8'));
