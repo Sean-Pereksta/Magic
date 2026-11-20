@@ -17,6 +17,7 @@ class Element {
     for(const fn of this.listeners[type]??[])result=fn(event);
     return result;
   }
+  dispatchEvent(event){return this.dispatch(event.type);}
   setAttribute(){}focus(){}setPointerCapture(){}releasePointerCapture(){}
   hasPointerCapture(){return true;}
   querySelectorAll(){return [];}querySelector(){return null;}closest(){return null;}
@@ -33,11 +34,11 @@ async function harness() {
   element('mapLoading').hidden=true;
   const difficulties=['easy','normal','hard','impossible'].map(type=>{const e=element('difficulty-'+type);e.dataset.difficulty=type;return e;});
   const players=[2,3,4].map(count=>{const e=element('players-'+count);e.dataset.players=String(count);return e;});
-  const document={getElementById:element,querySelector:()=>element('sidebar'),querySelectorAll:selector=>selector==='[data-difficulty]'?difficulties:selector==='[data-players]'?players:[],activeElement:null};
+  const document={documentElement:{dataset:{}},getElementById:element,querySelector:()=>element('sidebar'),querySelectorAll:selector=>selector==='[data-difficulty]'?difficulties:selector==='[data-players]'?players:[],activeElement:null};
   const window=new Element('window');window.innerWidth=1000;window.innerHeight=700;
   let now=10000,nextTimer=1,frame;const timers=new Map();
   const advance=ms=>{now+=ms;for(const [id,timer] of [...timers])if(timer.at<=now){timers.delete(id);timer.fn();}};
-  Object.assign(globalThis,{document,window,localStorage:{getItem:()=>null,setItem(){}},performance:{now:()=>now},
+  Object.assign(globalThis,{document,window,location:new URL('http://localhost/'),localStorage:{getItem:()=>null,setItem(){}},performance:{now:()=>now},
     requestAnimationFrame:fn=>{frame=fn;return 1;},
     setTimeout:(fn,ms)=>{const id=nextTimer++;timers.set(id,{at:now+ms,fn});return id;},clearTimeout:id=>timers.delete(id)});
   const fakeRender=`export class Renderer {constructor(canvas,game){this.canvas=canvas;this.game=game;this.camera={zoom:1};this.centers=[];}resize(){}centerOn(x,y){this.centers.push({x,y});}screenToWorld(x,y){return {x,y};}worldToScreen(x,y){return {x,y};}pan(dx,dy){(this.pans??=[]).push({dx,dy});}zoomAt(){}draw(state){this.lastDraw=state;}drawMinimap(){}}export function drawIcon(){}`;
@@ -52,6 +53,7 @@ async function harness() {
     .replace("'./render.js'",JSON.stringify('data:text/javascript;base64,'+Buffer.from(fakeRender).toString('base64')));
   await import('data:text/javascript;base64,'+Buffer.from(source+`\n//# sourceURL=trash-tactics-abilities-under-test-${++harnessId}.js`).toString('base64'));
   await element('startButton').click();
+  assert.equal(element('lobby').hidden,true,'the skirmish started');
   const state=window.trashTactics,game=state.game;
   game._think=Infinity;game.entities=game.entities.filter(e=>e.type==='desk');game._collisionBuildings=null;game.map.obstacles=[];
   const point=(x,y,more={})=>{const event={clientX:x,clientY:y,...more};element('world').dispatch('pointerdown',event);element('world').dispatch('pointerup',event);};
@@ -125,6 +127,49 @@ test('production keys remain contextual and the previous scissors training key s
  assert.deepEqual(printer.queue.map(q=>q.type),['rock','paper','scissors','scissors']);
  const desk=h.game.entities.find(e=>e.type==='desk'&&e.team===0);h.select(desk);h.key('q');
  assert.equal(desk.queue[0].type,'twig');
+});
+
+test('every construction tile has art and the shortcut enters its placement mode',async()=>{
+ const h=await harness(),worker=h.spawn('twig',650,800);
+ h.select(worker);
+ for(const [type,key] of Object.entries({desk:'D',cabinet:'C',wall:'Z',printer:'B',cdreader:'V',mouse:'M',workshop:'N',laboratory:'O'})){
+  const html=h.element('actionContent').innerHTML;
+  const tile=html.match(new RegExp(`<button[^>]*data-action="build"[^>]*data-type="${type}"[^>]*>[\\s\\S]*?</button>`))?.[0];
+  assert.ok(tile,`Found the ${type} tile`);
+  assert.ok(tile.includes(`aria-keyshortcuts="${key}"`));
+  assert.ok(tile.includes(`data-icon="${type}"`));
+  assert.ok(tile.includes(`>${key}</kbd>`));
+  h.key(key.toLowerCase());h.refresh();
+  assert.equal(h.state.renderer.lastDraw.mode,type);
+ }
+});
+
+test('printer upgrade tiles match their Shift shortcuts and report queued and researched states',async()=>{
+ const h=await harness(),printer=h.spawn('printer',700,800),other=h.spawn('printer',900,800);
+ h.game.teams[0].trash=1000;
+ h.select(printer);
+ for(const [type,key] of [['rock','Q'],['paper','W'],['scissors','E']]){
+  const html=h.element('actionContent').innerHTML;
+  const tile=html.match(new RegExp(`<button[^>]*data-action="research"[^>]*data-type="${type}"[^>]*>[\\s\\S]*?</button>`))?.[0];
+  assert.ok(tile,`Found the ${type} upgrade tile`);
+  assert.ok(tile.includes(`aria-keyshortcuts="Shift+${key}"`));
+  assert.ok(tile.includes(`data-ability-icon="${type}"`));
+  assert.ok(tile.includes(`>Shift+${key}</kbd>`));
+  h.key(key,{shiftKey:true});
+ }
+ assert.deepEqual(printer.queue.map(q=>[q.kind,q.type]),[['research','rock'],['research','paper'],['research','scissors']]);
+ h.select(other);
+ assert.match(h.element('actionContent').innerHTML,/data-action="research"[^>]*data-type="rock"[^>]*disabled/);
+ h.key('Q',{shiftKey:true});
+ assert.equal(other.queue.length,0,'an upgrade queued at another printer is unavailable');
+ h.game.teams[0].upgrades.rock=true;
+ printer.queue.shift();h.refresh();
+ assert.match(h.element('actionContent').innerHTML,/Researched/);
+ h.key('Q',{shiftKey:true});
+ assert.equal(other.queue.length,0);
+ h.key('q');
+ assert.deepEqual(other.queue.map(q=>[q.kind,q.type]),[['train','rock']]);
+ assert.equal(h.game.teams[0].trash,500);
 });
 
 test('recalled printer groups distribute one training order per press to the shortest ready queue',async()=>{

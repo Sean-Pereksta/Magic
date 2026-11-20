@@ -16,3 +16,150 @@
 .report-return{display:block;margin:12px auto 0;color:#50735d;font-size:11px;background:none;padding:5px 12px}
 .last-report-button{margin-top:12px;width:100%;padding:9px;border:1px solid #bdcab1;border-radius:6px;color:#537560;background:#edf0e1;font-size:11px}
 @media(max-width:760px){.build-controls .command-button{font-size:9px;padding:5px 6px;min-height:36px}.queue-toggle small{font-size:8px}.build-job{flex-basis:60px}.build-plan-heading{font-size:8px}.build-plan-heading b{font-size:9px}}
+
+/* A shared tile format for construction, production and research. */
+.action-grid,.research-grid{
+ grid-template-columns:repeat(3,minmax(0,1fr));
+ gap:5px;
+}
+.sidebar .hud-tile{
+ --tile-art:#e2ebe3;
+ --tile-edge:#b7c9bc;
+ display:flex;
+ position:relative;
+ flex-direction:column;
+ align-items:center;
+ justify-content:flex-start;
+ gap:3px;
+ min-width:0;
+ height:auto;
+ min-height:76px;
+ padding:5px 3px 6px;
+ color:#304c45;
+ background:#f5f6ee;
+ border:1px solid #c1cec3;
+ border-radius:8px;
+ box-shadow:0 1px 1px #243f3220;
+ text-align:center;
+}
+.hud-tile[data-tone="structure"]{--tile-art:#e5ead8;--tile-edge:#b7c5a2}
+.hud-tile[data-tone="rock"]{--tile-art:#eee4d2;--tile-edge:#d2bf9c}
+.hud-tile[data-tone="paper"]{--tile-art:#dfeee7;--tile-edge:#a9cbbd}
+.hud-tile[data-tone="scissors"]{--tile-art:#eae3ef;--tile-edge:#cbbbd5}
+.sidebar .hud-tile:hover:not(:disabled){background:#fffdf2;border-color:#7e9b89}
+.sidebar .hud-tile.active,.sidebar .hud-tile.active:hover{background:#e7eee1;border-color:#3f7664;box-shadow:inset 0 0 0 1px #3f7664}
+.sidebar .hud-tile:focus-visible{outline:2px solid #a2591f;outline-offset:-2px}
+.hud-tile .tile-art{
+ display:grid;
+ place-items:center;
+ width:39px;
+ height:36px;
+ flex:none;
+ border:1px solid var(--tile-edge);
+ border-radius:8px;
+ background:var(--tile-art);
+}
+.hud-tile .tile-art>canvas,.hud-tile .tile-art>.ability-icon{display:block;width:34px;height:34px}
+.hud-tile .tile-art>canvas{filter:drop-shadow(0 1px 1px #304c4530)}
+.hud-tile .tile-art>.ability-icon{border-radius:6px}
+.hud-tile b,.hud-tile strong{max-width:100%;font-size:10px;line-height:1.15;overflow-wrap:anywhere}
+.hud-tile .cost,.hud-tile .research-cost{
+ display:grid;
+ justify-items:center;
+ gap:2px;
+ margin:0;
+ color:#486356;
+ font-size:9px;
+ font-weight:700;
+ line-height:1.15;
+ white-space:normal;
+}
+.hud-tile .tile-detail{color:#52645a}
+.trash-price{display:inline-flex;align-items:center;gap:2px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.hud-icon,.action-card .trash-price .hud-icon{
+ display:block;
+ flex:none;
+ width:16px;
+ height:16px;
+}
+.hud-tile .trash-price .hud-icon,.action-card .trash-price .hud-icon{width:11px;height:11px}
+.hud-sr-only{
+ position:absolute;
+ width:1px;
+ height:1px;
+ padding:0;
+ margin:-1px;
+ overflow:hidden;
+ clip-path:inset(50%);
+ white-space:nowrap;
+}
+.hud-key{
+ display:inline-block;
+ min-width:16px;
+ padding:1px 3px;
+ margin:0;
+ color:#fffdf0;
+ background:#3a554d;
+ border:1px solid #293e38;
+ border-bottom:2px solid #243932;
+ border-radius:4px;
+ font:800 9px/1.1 'DM Sans',sans-serif;
+ text-align:center;
+ white-space:nowrap;
+}
+.action-card .hud-key{position:absolute;top:4px;right:4px}
+.command-button .hud-key{margin-left:auto}
+.research-heading{
+ display:block;
+ margin:9px 0 4px;
+ color:#486356;
+ font-size:9px;
+ font-weight:800;
+ letter-spacing:.05em;
+}
+.sidebar .research-grid .hud-tile{padding-top:4px}
+.research-grid .hud-tile .tile-art{width:33px;height:33px;border:0;background:transparent}
+.research-grid .hud-tile .tile-art>.ability-icon{width:100%;height:100%}
+.sidebar .research-grid .hud-tile:disabled{opacity:.72}
+.sidebar .research-grid .hud-tile.unlocked{background:#e7efdf;border-color:#aabfa5}
+.queue-item>.ability-icon{width:26px;height:26px;flex:none}
+
+/* Label the live counts and use the same marks on their related commands. */
+.resource-strip{
+ width:max-content;
+ height:auto;
+ min-height:38px;
+ padding:4px 9px;
+ gap:9px;
+}
+.resource-strip>div{min-width:0;gap:6px}
+.resource-strip .hud-icon{width:20px;height:20px}
+.resource-strip b{display:block;line-height:1.05;letter-spacing:0}
+.resource-strip small{
+ display:block;
+ margin:0 0 2px;
+ color:#4c655b;
+ font-size:8px;
+ line-height:1;
+ letter-spacing:.04em;
+ text-transform:uppercase;
+}
+.resource-strip .supply-full{color:#983c2f}
+.field-tools button{display:grid;place-items:center}
+.hud-menu .hud-icon,.field-tools .hud-icon{width:17px;height:17px}
+.quick-select .hud-icon{width:15px;height:15px}
+
+@media(max-width:760px){
+ .sidebar .hud-tile{min-height:70px;padding:4px 2px 5px;border-radius:6px}
+ .hud-tile .tile-art{width:33px;height:31px}
+ .hud-tile .tile-art>canvas{width:29px;height:29px}
+ .hud-tile b,.hud-tile strong{font-size:9px}
+ .hud-tile .cost,.hud-tile .research-cost{font-size:8px}
+ .action-card .hud-key{top:3px;right:3px}
+ .resource-strip{min-height:33px;padding:3px 7px;gap:6px}
+ .resource-strip>div{gap:4px}
+ .resource-strip .hud-icon{width:17px;height:17px}
+}
+@media(max-width:385px){
+ .action-grid,.research-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
