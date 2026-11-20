@@ -119,7 +119,17 @@ test('Acorn Rally opens its own private rooms as a guest and offers the Windows 
   await sandbox.joinOnlineGame(game, true);
   assert.deepEqual(launches, [{url: 'https://sean-pereksta.github.io/Truth/games/acorn-rally/?room=join', reason: 'matchmaking-join'}]);
   assert.equal(game.category, 'Racing');
-  assert.equal(game.localEditionRoute, 'https://sean-pereksta.github.io/Truth/games/acorn-rally/assets/Acorn-Rally-PC.zip');
+  assert.equal(game.localEditionRoute, 'https://sean-pereksta.github.io/Truth/games/acorn-rally/?download=pc');
+  assert.equal(game.localEditionLabel, 'PC Host Download');
+  const pcButton = library.localEditionButton(game, String);
+  assert.equal(pcButton, '<a class="btn secondary small" href="https://sean-pereksta.github.io/Truth/games/acorn-rally/?download=pc" aria-label="PC Host Download: Acorn Rally">PC Host Download</a>');
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'assets/game-artwork.json'), 'utf8'));
+  const artwork = {};
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'assets/game-artwork.js'), 'utf8'), artwork);
+  for (const definition of [manifest.games.acornrally, artwork.GameHubArtworkManifest.games.acornrally]) {
+    assert.equal(definition.localEditionRoute, game.localEditionRoute);
+    assert.equal(definition.localEditionLabel, game.localEditionLabel);
+  }
 });
 
 test('each Truth game has its own generated WebP tile, thumbnail and hero', async () => {
