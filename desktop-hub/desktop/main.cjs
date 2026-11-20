@@ -1,4 +1,4 @@
-const {app,BrowserWindow,dialog,ipcMain,net,protocol,session,Menu}=require('electron');
+const {app,BrowserWindow,clipboard,dialog,ipcMain,net,protocol,session,shell,Menu}=require('electron');
 const fs=require('node:fs');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
@@ -7,6 +7,7 @@ const {newProfile,writeJson,readState,inDir}=require('./storage.cjs');
 const {SITE,LOBBY,isLobby,cardScript,onLobby,validInvite,snapshot,pause}=require('./official.cjs');
 const {portFor,startOffline}=require('./offline.cjs');
 const {usesLocalHost,hasLocalHostPack,startLocalHost,catGuestInvite,joinGuestInvite}=require('./local-host.cjs');
+const {createServerManager,hasServerManagerDescriptor,hasServerManagerPack,supportsServerManager}=require('./server-manager.cjs');
 const {createArenaReader}=require('./arena-rooms.cjs');
 const {supportsSaveSync,configureSaveSession}=require('./save-sync.cjs');
 const {gameOnPage}=require('./gameplay.cjs');
@@ -43,6 +44,7 @@ function start({root,bundled,data,ready,startupFailed}){
   }
   function validPack(id,spec,folder){
     if(usesLocalHost(id))return hasLocalHostPack(id,spec,folder);
+    if(supportsServerManager(id))return hasServerManagerPack(id,spec,folder);
     if(id==='lastsignal'){
       return spec?.type==='native-windows' && spec.entry==='Last Signal.exe' &&
         ['Last Signal.exe','Hosting/cloudflared.exe','Assets/models.bin','Mobile/index.html']
@@ -62,7 +64,7 @@ function start({root,bundled,data,ready,startupFailed}){
   }
   // Older downloadable packs can still cover ordinary offline titles. For host
   // games, a stale static download must never hide the new bundled edition.
-  const installed=g=>usesLocalHost(g.id)||g.id==='lastsignal'
+  const installed=g=>usesLocalHost(g.id)||supportsServerManager(g.id)||g.id==='lastsignal'
     ? !!localPack(g.id) : !!validPack(g.id,packSpec(g.id),installedDir(g.id));
   const publicProfile=({id,name,guest,avatar,username})=>({id,name,guest,avatar,username});
   let lib,open,model,clientFactory,online=false,updateCheck=null;
@@ -70,8 +72,10 @@ function start({root,bundled,data,ready,startupFailed}){
   const snapshots=new Map(),openingSessions=new Map(),activities=new Map(),inFlight=new Map(),launching=new Set(),touched=new Set();
   const nativeGames=new Map(),localGames=new Map(),installing=new Map();
   const readPublicArenas=createArenaReader();
+  const manager=createServerManager({dataDir:data,packFor:localPack,onChange:notify,onExit:id=>afterClose(id)});
+  const serverGames=()=>catalog.games.filter(g=>supportsServerManager(g.id));
   function gameBusy(id){
-    return busy(id)||(id?localGames.has(id):localGames.size>0)||Array.from(nativeGames.values()).some(entry=>!id||entry.id===id);
+    return busy(id)||manager.busy(id)||(id?localGames.has(id):localGames.size>0)||Array.from(nativeGames.values()).some(entry=>!id||entry.id===id);
   }
   function profileChanged(p,s){
     p.username=s.username;p.name=s.name||s.username;p.guest=false;p.avatar=s.avatar;
@@ -128,7 +132,7 @@ function start({root,bundled,data,ready,startupFailed}){
     const rollbackAvailable=Object.keys(state.packs).filter(id=>state.packs[id].canRollback&&(id!=='catalog'||contentDir()!==baseContent));
     const saveSyncGames=catalog.games.filter(g=>supportsSaveSync(g.id)&&installed(g)).map(g=>g.id);
     const hubBuild=root===bundled?release.sequence:stagedReleaseSequence(data,'hub',currentHash('hub'));
-    return {version:app.getVersion(),hubBuild,restartPending:restartPending(),catalog,profile:publicProfile(profile()),profiles:state.profiles.map(publicProfile),online,installed:catalog.games.filter(installed).map(g=>g.id),recent:profile().recent,favorites:profile().favorites,settings:state.settings,counts:c.hub?{...c,hub:{...c.hub,asOf:c.asOf},games:Object.fromEntries(Object.entries(c.games).map(([id,row])=>[id,{...row,asOf:c.asOf}]))}:{},downloads:state.downloads,rollbackAvailable,saveSyncGames,publisherUpdates};
+    return {version:app.getVersion(),hubBuild,restartPending:restartPending(),catalog,profile:publicProfile(profile()),profiles:state.profiles.map(publicProfile),online,installed:catalog.games.filter(installed).map(g=>g.id),recent:profile().recent,favorites:profile().favorites,settings:state.settings,counts:c.hub?{...c,hub:{...c.hub,asOf:c.asOf},games:Object.fromEntries(Object.entries(c.games).map(([id,row])=>[id,{...row,asOf:c.asOf}]))}:{},downloads:state.downloads,rollbackAvailable,saveSyncGames,publisherUpdates,servers:serverGames().map(manager.status)};
   }
   function currentHash(id){if(id==='hub')return root===bundled?null:path.basename(root);if(id==='catalog'&&contentDir()===baseContent)return null;return state.packs[id]?.active;}
   function restartPending(){
@@ -210,7 +214,7 @@ function start({root,bundled,data,ready,startupFailed}){
     const g=known(id);if(!g.offline&&!usesLocalHost(id)&&id!=='lastsignal')throw Error('This game is online only.');
     if(installed(g))return;
     const bundled=bundledSpec(id);
-    const compatibleSetup=usesLocalHost(id)?bundled?.hosting===true:!!bundled;
+    const compatibleSetup=supportsServerManager(id)?hasServerManagerDescriptor(id,bundled):usesLocalHost(id)?bundled?.hosting===true:!!bundled;
     if(!compatibleSetup)return check(id);
     const sourceFile=path.join(path.dirname(process.execPath),'setup-source.txt');
     if(!fs.existsSync(sourceFile))return check(id);
@@ -220,9 +224,9 @@ function start({root,bundled,data,ready,startupFailed}){
     try{
       await new Promise((resolve,reject)=>{const child=spawn(exe,['/S','/PACK='+id],{windowsHide:true});child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(Error('Setup returned '+code)));});
     }catch(error){
-      if(!usesLocalHost(id)&&id!=='lastsignal')throw error;
+      if(!usesLocalHost(id)&&!supportsServerManager(id)&&id!=='lastsignal')throw error;
     }
-    if(!installed(g) && (usesLocalHost(id)||id==='lastsignal'))await check(id);
+    if(!installed(g) && (usesLocalHost(id)||supportsServerManager(id)||id==='lastsignal'))await check(id);
     if(!installed(g))throw Error('Setup could not restore this pack. Run the full installer to repair it.');
     row(id,'ready','Installed');
   }
@@ -381,6 +385,16 @@ function start({root,bundled,data,ready,startupFailed}){
     switch(name){
       case 'state':return getState();
       case 'publicArenas':return readPublicArenas();
+      case 'serverStart':return manager.start(known(d.id),d);
+      case 'serverStop':return manager.stop(known(d.id).id);
+      case 'serverOpen':return shell.openExternal(manager.localLink(known(d.id).id));
+      case 'serverCopy':{
+        const game=known(d.id);
+        if(!supportsServerManager(game.id)||!['link','code'].includes(d.kind))throw Error('Choose a server link or code.');
+        const value=manager.status(game)[d.kind];
+        if(!value)throw Error('The server has not published this invitation yet.');
+        clipboard.writeText(value);return;
+      }
       case 'play':return play(d);
       case 'account':return account(d);
       case 'favorite':return favorite(d.id);
@@ -442,12 +456,20 @@ function start({root,bundled,data,ready,startupFailed}){
     open=createGames({root,icon,library:lib,played,resolveGame:(url,id)=>gameOnPage(catalog,url,id),onClosed:afterClose});
     ipcMain.handle('hub',(e,name,d={})=>{if(e.sender!==lib.webContents||e.senderFrame!==lib.webContents.mainFrame||e.senderFrame.url!=='catnmice://hub/ui/index.html')throw Error('Untrusted launcher window.');return handle(name,d);});
     lib.once('ready-to-show',()=>{lib.show();});lib.on('closed',()=>app.quit());app.on('second-instance',()=>{if(!lib.isDestroyed()){lib.restore();lib.focus();}});
-    app.on('before-quit',()=>{for(const game of localGames.values())game.close();});
+    let stoppingServers=false;
+    app.on('before-quit',event=>{
+      for(const game of localGames.values())game.close();
+      if(!manager.busy())return;
+      event.preventDefault();
+      if(stoppingServers)return;
+      stoppingServers=true;
+      manager.stopAll().finally(()=>app.quit());
+    });
     await lib.loadURL('catnmice://hub/ui/index.html');
     const usable=await lib.webContents.executeJavaScript(`(async()=>{const deadline=Date.now()+12000;while(Date.now()<deadline){if(document.querySelector('.game-card') && (await window.hub.invoke('state')).catalog.games.length===${catalog.games.length})return true;await new Promise(r=>setTimeout(r,120))}return false})()`);
     if(!usable)throw Error('The launcher interface did not load.');
     ready();
-    for(const item of state.downloads.filter(item=>item.status==='installing' && (usesLocalHost(item.id)||item.id==='lastsignal'))){
+    for(const item of state.downloads.filter(item=>item.status==='installing' && (usesLocalHost(item.id)||supportsServerManager(item.id)||item.id==='lastsignal'))){
       const game=catalog.games.find(game=>game.id===item.id);
       if(game && installed(game))row(item.id,'ready','Installed');
       else row(item.id,'paused','Installation was interrupted. Choose Install to retry.');

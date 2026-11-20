@@ -1495,7 +1495,8 @@
       "desc": "Race eight woodland drivers across forest, canyon, and coastal courses. Drift through time trials, share a split screen, or join friends in a private room.",
       "route": "https://sean-pereksta.github.io/Truth/games/acorn-rally/",
       "multiplayerRoute": "https://sean-pereksta.github.io/Truth/games/acorn-rally/?room=join",
-      "localEditionRoute": "https://sean-pereksta.github.io/Truth/games/acorn-rally/assets/Acorn-Rally-PC.zip",
+      "localEditionRoute": "https://sean-pereksta.github.io/Truth/games/acorn-rally/?download=pc",
+      "localEditionLabel": "PC Host Download",
       "category": "Racing",
       "modes": [
         "single",
@@ -1503,8 +1504,8 @@
       ],
       "launchMode": "matchmaking",
       "guestMultiplayer": true,
-      "joinLabel": "Private Rooms",
-      "onlineStatus": "Private racing rooms",
+      "joinLabel": "Multiplayer",
+      "onlineStatus": "Online and local racing",
       "badges": [
         "Up to 8 racers",
         "Windows host"

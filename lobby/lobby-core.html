@@ -227,6 +227,8 @@
     .online-world-badges{display:flex;flex-wrap:wrap;gap:7px}
     .online-world-actions{margin-top:auto;display:flex;justify-content:flex-end}
     .online-world-actions .btn{min-height:48px;min-width:156px}
+    .online-world-card[data-game-key="acornrally"] .online-world-actions{flex-wrap:wrap;gap:8px}
+    .online-world-card[data-game-key="acornrally"] .online-world-actions .btn{flex:1 1 120px;min-width:0}
     .lobby-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
     .lobby-card{
       --game:#267cba;position:relative;overflow:hidden;padding:17px;border:1px solid var(--line);
@@ -412,7 +414,7 @@
     @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
   </style>
 <script src="./lobby-showcase.js?v=6"></script>
-<script src="./assets/game-artwork.js?v=11"></script>
+<script src="./assets/game-artwork.js?v=12"></script>
 <script src="./lobby-artwork.js?v=2"></script>
 </head>
 <body>
@@ -1377,7 +1379,8 @@
       const status=game.onlineStatus||(mode===MULTIPLAYER_LAUNCH_MODES.MATCHMAKING?"Matchmaking Available":"World Available");
       card.className="online-world-card";card.dataset.gameKey=game.key;card.style.setProperty("--game",gameColor(game.key));
       const host = globalThis.GameHubLibrary?.hostButton?.(game, escapeHtml) || "";
-      card.innerHTML=`<div class="online-world-head"><div class="game-mark" style="--game:${gameColor(game.key)}">${gameVisual(game,"mark")}</div><div class="online-world-copy"><div class="online-world-title">${escapeHtml(game.title)}</div><div class="online-world-desc">${escapeHtml(game.desc)}</div></div></div><div class="online-world-status">${escapeHtml(status)}</div><div class="online-world-badges">${badges.map(label=>`<span class="tag">${escapeHtml(label)}</span>`).join("")}</div><div class="online-world-actions"><button type="button" class="btn join-online-world">${escapeHtml(actionLabel)}</button>${host}</div>`;
+      const localEdition = globalThis.GameHubLibrary?.localEditionButton?.(game, escapeHtml) || "";
+      card.innerHTML=`<div class="online-world-head"><div class="game-mark" style="--game:${gameColor(game.key)}">${gameVisual(game,"mark")}</div><div class="online-world-copy"><div class="online-world-title">${escapeHtml(game.title)}</div><div class="online-world-desc">${escapeHtml(game.desc)}</div></div></div><div class="online-world-status">${escapeHtml(status)}</div><div class="online-world-badges">${badges.map(label=>`<span class="tag">${escapeHtml(label)}</span>`).join("")}</div><div class="online-world-actions"><button type="button" class="btn join-online-world">${escapeHtml(actionLabel)}</button>${host}${localEdition}</div>`;
       card.querySelector(".join-online-world").addEventListener("click",()=>joinOnlineGame(game,true));
       return card;
     }
@@ -2183,9 +2186,3 @@
   </script>
 </body>
 </html>
-
-
-
-
-
-

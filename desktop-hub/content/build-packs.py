@@ -44,12 +44,12 @@ def copy(source, target):
     else:
         shutil.copyfile(source,target)
 
-def copy_tree(source, target):
+def copy_tree(source, target, *, skip=()):
     if not source.is_dir():
         raise ValueError(f'Missing game folder {source}')
     for item in source.rglob('*'):
         rel = item.relative_to(source)
-        if item.is_file() and not (set(rel.parts) & excluded) and not item.name.startswith('.') and not any(
+        if item.is_file() and rel.as_posix() not in skip and not (set(rel.parts) & excluded) and not item.name.startswith('.') and not any(
             suffix in item.name for suffix in ('.test.', '-prompt', 'prompts.', 'package-lock.', '.spec.')
         ):
             copy(item,target/rel)
@@ -105,10 +105,13 @@ def host_runtimes():
                 raise ValueError(name+' does not match the pinned Windows x64 runtime')
     return binaries
 
-def install_host(root, folder, *, locked):
+def bundle_host_runtime(root, runtime_folder='hub-runtime'):
     for name, file in host_runtimes().items():
-        copy(file,root/'hub-runtime'/name)
+        copy(file,root/runtime_folder/name)
     copy_tree(truth/'games/bannerlands/source/hosting/licenses',root/'notices')
+
+def install_host(root, folder, *, locked):
+    bundle_host_runtime(root)
     npm = shutil.which('npm.cmd' if os.name == 'nt' else 'npm')
     if not npm:
         raise ValueError('npm is required to package the local match server')
@@ -146,6 +149,22 @@ def trash_edition(root):
     for name in ('launch.mjs','tunnel.mjs','quick-tunnel.yml'):
         copy(magic/trash_folder/'hosting'/name,root/trash_folder/'hosting'/name)
     install_host(root,trash_folder,locked=True)
+
+def acorn_rally(root):
+    source = truth/'games/acorn-rally'
+    copy_tree(source,root,skip={'assets/Acorn-Rally-PC.zip','assets/pc-expansion.bin','pc-download.js'})
+    copy_tree(source/'server',root/'server')
+    bundle_host_runtime(root,'server/runtime')
+    for required in ('server/host.cjs','server/community-host.cjs','server/community-directory.cjs',
+                     'server/community-tunnel.cjs','server/community-poll.cjs','server/race-queue.cjs','race-sim.js','network.js'):
+        if not (root/required).is_file():
+            raise ValueError('Missing Acorn Rally hosting resource '+required)
+    for relative in ('index.html','network.js'):
+        file = root/relative
+        text = file.read_text(encoding='utf8')
+        text = re.sub(r'\s*<script src="pc-download\.js(?:\?[^"]*)?"></script>', '', text)
+        text = text.replace('href="?download=pc"', 'href="https://sean-pereksta.github.io/Truth/games/acorn-rally/?download=pc"')
+        file.write_text(text, encoding='utf8', newline='\n')
 
 def bannerlands(root):
     binaries = host_runtimes()
@@ -235,6 +254,10 @@ build('trashtactics',magic,'game/trash-tactics/index.html',folders=[trash_folder
       hosting=('game/trash-tactics/hosting/launch.mjs','hub-runtime'))
 build('bannerlands',truth,'game/index.html',edition=bannerlands,
       hosting=('game/source/desktop/launcher.mjs','runtime'))
+# Historical Truth checkouts predate Server Manager and still build their original packs.
+if (truth/'games/acorn-rally/server/community-host.cjs').is_file() and 'acornrally' in records:
+    build('acornrally',truth,'index.html',edition=acorn_rally,
+          hosting=('server/lobby-supervisor.cjs','server/runtime'))
 build('lastsignal',truth,'Last Signal.exe',edition=last_signal)
 if not args.only or 'lastsignal' in args.only:
     manifest['lastsignal']['type']='native-windows'

@@ -2,7 +2,7 @@
 
 const $ = (selector) => document.querySelector(selector);
 const host = window.hub;
-const sections = {Library:'library','Live Lobbies':'lobbies',Rankings:'rankings',Downloads:'downloads',Settings:'settings'};
+const sections = {Library:'library','Live Lobbies':'lobbies','Server Manager':'server',Rankings:'rankings',Downloads:'downloads',Settings:'settings'};
 const spotlights = ['bannerlands','trashtactics','cat'];
 const shortTitles = {bannerlands:'Bannerlands'};
 const filters = ['All games','Installed','Offline Ready','Multiplayer','Favorites'];
@@ -14,6 +14,7 @@ let state = {catalog:{games:[]},settings:{}};
 let page = 'Library', detailId = '', filter = 'All games', query = '', feature = 0, rankGame = 'trashtactics';
 let sequence = 0, rankSequence = 0, statusTimeout, snapshotKey = '';
 const inProgress = new Set();
+const serverDrafts = new Map();
 const matches = (id) => games().find(game => game.id === id);
 const games = () => Array.isArray(state.catalog?.games) ? state.catalog.games : [];
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -109,6 +110,7 @@ function onlinePlay(game) {
   return actions.find(a => a.type !== 'single') || actions[0] || {};
 }
 function hostLobby(game) {
+  if ((state.servers || []).some(server => server.id === game.id)) return btn('Host Lobby','server-manager',{},'glass','server');
   return playsLocally(game) || game.hostRoute ? btn('Host Lobby','play',{id:game.id,mode:'host'},'glass','lobbies') : '';
 }
 function launchButton(game, compact = false) {
@@ -209,7 +211,7 @@ function details(game) {
   `;
 }
 function lobbies() {
-  const lobbyGames = localLobbyGames.map(matches).filter(Boolean);
+  const lobbyGames = [...new Set([...localLobbyGames,...(state.servers || []).map(s => s.id)])].map(matches).filter(Boolean);
   return `<section class="intro-art"><img src="art/trashtactics-hero.webp" alt=""><h2>Live Lobbies</h2><p>Browse public rooms, join with an invite, or host a lobby from this PC.</p><div class="controls">${btn('Browse official lobbies','community',{section:'lobbies'},'gold','lobbies')}</div></section>
     <section class="panel"><h2>Join with an invite</h2><form id="invite-form" class="form-row"><input class="field" name="invite" type="url" required placeholder="Paste a Catnmice or game invite link" aria-label="Invite link"><button class="button" type="submit">${icon('link')} Open invite</button></form></section>
     ${matches('lastsignal')?`<section class="panel"><div class="section-title"><h2>Last Signal public arenas</h2>${btn('Refresh','arena-refresh',{},'','refresh')}</div><div id="arena-rooms" role="status">Checking for open arenas…</div></section>`:''}
@@ -254,6 +256,34 @@ function downloads() {
     ${downloadState.length ? `<section class="panel"><h2>Download activity</h2><div class="line-list">${downloadState.map(d=>`<div class="list-item"><div class="item-main"><strong>${esc(d.title || (d.id==='hub'?'Game Hub':d.id==='catalog'?'Game catalog':title(matches(d.id) || {id:d.id,title:d.id})) || 'Update')}</strong><small>${esc([d.status,d.message].filter(Boolean).join(' · ') || 'In progress')}${Number.isFinite(d.progress)?' · '+Math.round(d.progress)+'%':''}</small></div></div>`).join('')}</div></section>` : ''}
     <section class="panel"><div class="section-title">${titleLine('Game packs',packs().length)}</div><div class="line-list">${packs().length ? packs().map(g=>`<div class="list-item"><img src="${attr(imageFor(g))}" alt=""><div class="item-main"><strong>${esc(title(g))}</strong><small>${installed(g.id)?'Installed':'Available to install'}${g.offline.bytes ? ' · '+fmt(Math.ceil(g.offline.bytes/1048576))+' MB':''}</small></div>${installed(g.id)?btn(playsLocally(g) ? 'Play' : 'Play Offline','play',{id:g.id,mode:'offline'},'','play'):btn('Install','install',{id:g.id},'','downloads')}${ids(state.rollbackAvailable).includes(g.id) ? btn('Restore previous version','rollback',{id:g.id}) : ''}</div>`).join(''):'<p>No game packs are available in this catalog.</p>'}</div></section>`;
 }
+function serverManager() {
+  const servers = (state.servers || []).filter(server => matches(server.id));
+  if (!servers.length) return '<section class="panel"><p>No game in this catalog has a server edition.</p></section>';
+  const labels = {offline:'Stopped',starting:'Starting',online:'Online','lan-only':'Local network only',stopping:'Stopping'};
+  return `<p class="server-guide">Keep the launcher open and this PC awake while players are racing.</p>` + servers.map(server => {
+    const game = matches(server.id);
+    const id = attr(server.id);
+    const draft = server.running ? server : serverDrafts.get(server.id) || server;
+    const ready = ['online','lan-only'].includes(server.status);
+    const invitation = server.code
+      ? `<div class="server-invite"><span>Join code <strong class="server-code">${esc(server.code)}</strong></span>${btn('Copy code','server-copy',{id:server.id,kind:'code'},'','link')}</div>`
+      : server.link ? `<div class="server-invite"><label>Join link<input class="field" readonly value="${attr(server.link)}"></label>${btn('Copy link','server-copy',{id:server.id,kind:'link'},'','link')}</div>` : '';
+    const setup = server.installed ? `<form class="server-form" data-server-form="${id}">
+      <fieldset ${server.running ? 'disabled' : ''}><legend class="server-form-legend">Server settings</legend>
+        <label>Server name<input class="field" name="serverName" maxlength="40" value="${attr(draft.name)}" required></label>
+        <label>Visibility<select class="field" name="visibility">
+          <option value="public" ${draft.visibility==='public'?'selected':''}>Public listing</option>
+          <option value="code" ${draft.visibility==='code'?'selected':''}>Four-digit join code</option>
+        </select></label>
+      </fieldset>
+      ${server.running ? `<div class="controls">${btn('Stop server','server-stop',{id:server.id},'','close')}${ready ? btn('Open local lobby','server-open',{id:server.id},'','external') : ''}</div>` : `<button class="button gold" type="submit">${icon('play')}Start server</button>`}
+    </form>` : server.available
+      ? `<div class="controls">${btn('Install hosting pack','install',{id:server.id},'gold','downloads')}</div>`
+      : '<p>The hosting pack is not included in this catalog version.</p>';
+    return `<section class="panel server-panel"><div class="section-title"><h2>${esc(title(game))}</h2><span class="server-status" data-server-status="${attr(server.status)}" role="status">${esc(labels[server.status] || 'Stopped')}</span></div>
+      ${setup}${server.message ? `<p class="server-message" role="status">${esc(server.message)}</p>` : ''}${invitation}</section>`;
+  }).join('');
+}
 function settings() {
   return `<section class="panel"><h2>Player profile</h2><p>Playing as <strong>${esc(profileName(state.profile))}</strong>.</p><div class="controls">${btn('Manage profiles','accounts',{},'gold','user')}${guest()?'':btn('View website profile','community',{section:'profile'},'','external')+btn('Link guest activity','ask-link',{},'','link')}</div></section>
     <section class="panel"><h2>Launcher preferences</h2><label class="preference"><span><strong>Automatic updates</strong><small>${state.publisherUpdates === false ? 'Install the latest Windows launcher to enable updates.' : 'Check GitHub for launcher and installed-game updates when connected.'}</small></span><input type="checkbox" data-setting="autoUpdate" ${state.publisherUpdates === false ? 'disabled' : state.settings.autoUpdate !== false ? 'checked' : ''}></label>
@@ -262,6 +292,9 @@ function settings() {
 function render() {
   const inviteValue = $('#invite-form input')?.value || '';
   const editingInvite = document.activeElement?.matches('#invite-form input');
+  const editingServer = document.activeElement?.closest('[data-server-form]');
+  const serverFocus = editingServer ? {id:editingServer.dataset.serverForm,name:document.activeElement.name,
+    start:document.activeElement.selectionStart,end:document.activeElement.selectionEnd} : null;
   chrome();
   const active = document.activeElement;
   let key = '';
@@ -271,6 +304,7 @@ function render() {
   if (detailId && matches(detailId)) view.innerHTML = details(matches(detailId));
   else if (page === 'Library') view.innerHTML = library();
   else if (page === 'Live Lobbies') {view.innerHTML=lobbies();loadPublicArenas();}
+  else if (page === 'Server Manager') view.innerHTML=serverManager();
   else if (page === 'Rankings') {view.innerHTML=rankings();loadRankings();}
   else if (page === 'Downloads') view.innerHTML=downloads();
   else if (page === 'Settings') view.innerHTML=settings();
@@ -279,6 +313,11 @@ function render() {
   if(invite && inviteValue) invite.value=inviteValue;
   if(invite && editingInvite) invite.focus({preventScroll:true});
   if (key) view.querySelector(key)?.focus({preventScroll:true});
+  if (serverFocus?.name) {
+    const field = view.querySelector('[data-server-form="'+CSS.escape(serverFocus.id)+'"]')?.elements.namedItem(serverFocus.name);
+    field?.focus({preventScroll:true});
+    if (serverFocus.start !== null && serverFocus.start !== undefined) field?.setSelectionRange(serverFocus.start,serverFocus.end);
+  }
 }
 function cleanError(error) {
   return String(error?.message || error || 'The action could not be completed.').replace(/^Error invoking remote method ['"][^'"]+['"]:\s*(Error:\s*)?/, '').slice(0,500);
@@ -343,6 +382,10 @@ function onAction(el) {
       break;
     }
     case 'play': dispatch('play',{id,mode,action:kind});break;
+    case 'server-manager': navigate('Server Manager');break;
+    case 'server-stop': dispatch('serverStop',{id});break;
+    case 'server-open': dispatch('serverOpen',{id});break;
+    case 'server-copy': dispatch('serverCopy',{id,kind},kind==='code'?'Join code copied.':'Join link copied.');break;
     case 'install': dispatch('install',{id},'Game pack installation completed.');break;
     case 'update': dispatch('update',id ? {id} : {},updateSummary);break;
     case 'restart': dispatch('restart',{});break;
@@ -376,8 +419,23 @@ document.addEventListener('click',event => {
   else if(el.dataset.action) onAction(el);
 });
 document.addEventListener('submit',event => {
-  if(event.target.id!=='invite-form') return;
+  const form=event.target;
+  if(form.matches('[data-server-form]')){
+    event.preventDefault();
+    const id=form.dataset.serverForm;
+    const draft=readServerDraft(form);
+    dispatch('serverStart',{id,...draft});
+    return;
+  }
+  if(form.id!=='invite-form') return;
   event.preventDefault();dispatch('invite',{url:event.target.elements.invite.value.trim()});
+});
+function readServerDraft(form){
+  return {name:form.elements.serverName.value,visibility:form.elements.visibility.value};
+}
+document.addEventListener('input',event => {
+  const form=event.target.closest('[data-server-form]');
+  if(form && ['serverName','visibility'].includes(event.target.name)) serverDrafts.set(form.dataset.serverForm,readServerDraft(form));
 });
 document.addEventListener('change',event => {
   const name = event.target.dataset.setting;

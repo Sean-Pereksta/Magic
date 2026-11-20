@@ -3,6 +3,7 @@ const path=require('node:path');
 const {execFileSync}=require('node:child_process');
 const {getMakeNsisPath,getRceditBundle}=require('app-builder-lib/out/toolsets/windows');
 const {usesLocalHost,hasLocalHostPack}=require('../desktop/local-host.cjs');
+const {supportsServerManager,hasServerManagerPack}=require('../desktop/server-manager.cjs');
 const root=path.join(__dirname,'..');
 const output=path.resolve(process.env.HUB_DIST||path.join(root,'dist'));
 const stage=path.join(output,'app'),app=path.join(stage,'resources/app');
@@ -41,6 +42,7 @@ async function main(){
     if(!fs.existsSync(path.join(src,game.offline.entry.split(/[?#]/)[0])))throw Error('Missing '+game.id+' pack entry');
     const localHost=usesLocalHost(game.id);
     if(localHost && !hasLocalHostPack(game.id,game.offline,src))throw Error('Incomplete '+game.id+' Windows hosting pack');
+    if(supportsServerManager(game.id) && !hasServerManagerPack(game.id,game.offline,src))throw Error('Incomplete '+game.id+' Server Manager pack');
     if(game.id==='lastsignal' && (game.offline.type!=='native-windows'||
         !['Hosting/cloudflared.exe','Assets/models.bin','Mobile/index.html'].every(file=>fs.existsSync(path.join(src,file)))))throw Error('Incomplete Last Signal Windows hosting pack');
     sections.push('Section "'+nsis(game.title)+'"');
