@@ -5,6 +5,7 @@ const paths = {
   library: '<path d="M3 4h4v16H3zM10 4h3v16h-3zM15 5l3-1 4 15-3 1z"/>',
   lobbies: '<circle cx="9" cy="8" r="3"/><path d="M3 19v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2M15 5a3 3 0 0 1 0 6m3 2a5 5 0 0 1 3 5v1"/>',
   rankings: '<path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H4v2a4 4 0 0 0 4 4m8-6h4v2a4 4 0 0 1-4 4m-4 2v4m-4 2h8m-6-2h4"/>',
+  server: '<rect x="3.5" y="4" width="17" height="7" rx="1.6"/><rect x="3.5" y="13" width="17" height="7" rx="1.6"/><path d="M7 7.5h.1m0 9h.1m3-9h6m-6 9h6"/>',
   downloads: '<path d="M12 3v11m-4-4 4 4 4-4M4 15v5h16v-5"/>',
   settings: '<path d="m9 3-.5 2-2 .9-2-.5L2.9 8l1.5 1.6-.1 2.5L3 14l1.5 2.8 2-.4 2.1 1 .5 2.2h4l.5-2.2 2-.9 2 .4L19.5 14 18 12l.1-2.4 1.4-1.7L18 5.3l-2 .5-2-1L13.4 3z"/><circle cx="11.3" cy="11.4" r="2.8"/>',
   chevrons: '<path d="m8 9 4-4 4 4m-8 6 4 4 4-4"/>',
