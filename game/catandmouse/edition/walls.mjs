@@ -6,7 +6,7 @@ export const WALL_DIRECTIONS = Object.freeze([
 ]);
 
 export function isWall(type) {
-  return type === 'wall' || type === 'barricade';
+  return type === 'wall' || type === 'barricade' || type === 'ultra-wall';
 }
 
 export function wallKey(x, y) {

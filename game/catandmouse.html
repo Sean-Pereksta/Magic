@@ -67,19 +67,7 @@
   function getPendingEnemyCount`, 'enemy caps');
 
     html = replacePattern(html,
-      /  function getEnemyScaling\(waveNumber = Math\.max\(1, catPower \|\| ratPower \|\| 1\)\)\{[\s\S]*?\n  function scaleEnemyStats/,
-`  function getEnemyScaling(waveNumber = Math.max(1, catPower || ratPower || 1)){
-    const difficultySpeed = DIFFICULTY_SETTINGS[currentDifficulty]?.enemySpeed ?? 1;
-    return {
-      healthMultiplier:Math.min(3.0, 1 + Math.max(0, waveNumber - 1) * 0.06),
-      damageMultiplier:Math.min(2.25, 1 + Math.max(0, waveNumber - 1) * 0.035),
-      speedMultiplier:Math.min(1.75, difficultySpeed * (1 + Math.max(0, waveNumber - 1) * 0.018))
-    };
-  }
-  function scaleEnemyStats`, 'enemy scaling');
-
-    html = replacePattern(html,
-      /  function findPath\(startX, startY, targetX, targetY, allowTargetWallOrPassable = false\)\{[\s\S]*?\n  \}\n\n  function getNearestReachableStructureTarget/,
+      /  function findPath\(startX, startY, targetX, targetY, allowTargetWallOrPassable = false\)\{[\s\S]*?\n  \}\n\n  const delayedEnemySteps/,
 `  let pathQueueBuffer = null;
   let pathParentBuffer = null;
   function ensurePathBuffers(){
@@ -132,28 +120,7 @@
     return reversed;
   }
 
-  const STRUCTURE_PATH_CANDIDATE_LIMIT = 16;
-  function getStructurePathCandidates(startX, startY, limit = STRUCTURE_PATH_CANDIDATE_LIMIT){
-    const candidates = getAllStructures().slice();
-    candidates.sort((a,b) =>
-      (Math.abs(a.x-startX)+Math.abs(a.y-startY)) - (Math.abs(b.x-startX)+Math.abs(b.y-startY)) ||
-      a.y-b.y || a.x-b.x
-    );
-    return candidates.slice(0, Math.max(1, limit));
-  }
-
-  function getNearestReachableStructureTarget`, 'pathfinding engine');
-
-    html = replacePattern(html,
-      /(function getNearestReachableStructureTarget\([^)]*\)\{\s*let best = null;\s*)for \(const s of getAllStructures\(\)\)\{/,
-      '$1for (const s of getStructurePathCandidates(startX, startY)){', 'reachable structure shortlist');
-    html = replacePattern(html,
-      /(function getNearestStructureContactTarget\([^)]*\)\{\s*let best = null;\s*)for \(const s of getAllStructures\(\)\)\{/,
-      '$1for (const s of getStructurePathCandidates(startX, startY)){', 'contact structure shortlist');
-
-    html = replaceExact(html,
-      '    const RAT_THINK_INTERVAL_MS = 350;\n    const RAT_REPATH_JITTER_MS = 200;',
-      '    // Fast movement is separated from expensive thinking/repathing.\n    const RAT_THINK_INTERVAL_MS = 500;\n    const RAT_REPATH_JITTER_MS = 260;', 'rat think budget');
+  const delayedEnemySteps`,'pathfinding engine');
 
     html = replacePattern(html,
       /    \/\/ enemy sim ticks[\s\S]*?\n    \/\/ phoenix revive/,
@@ -205,9 +172,9 @@
     const required = [
       'rat:[0,7,8,9,10][n]+ratBonus',
       'total:[0,15,18,20,22][n]+ratBonus',
-      'const ratReservation = reserveEnemySpawnSlots("rat", getRatWaveBudget());',
-      'speedMultiplier:Math.min(1.75',
-      'STRUCTURE_PATH_CANDIDATE_LIMIT = 16',
+      'queueWaveEnemies("rat",getRatWaveBudget()',
+      'speedMultiplier:Math.min(1.85',
+      'createSiegeNavigator',
       'MAX_FRIENDLY_RABBITS = 12',
       'scheduleEnemyTick(hostMoveRats, 760 / RAT_SPEED_MULTIPLIER, 190, 1.05)',
       'id="menuThreatCap"',
@@ -225,7 +192,7 @@
       if (!html.includes(marker)) throw new Error('Validation marker missing: ' + marker);
     }
 
-    html = html.replace('</body>', '<script>window.__CATMOUSE_PERF_PATCH_VERSION="2026-10-05-late-game-wins-v1";<\/script></body>');
+    html = html.replace('</body>', '<script>window.__CATMOUSE_PERF_PATCH_VERSION="2026-11-20-structure-siege-v1";<\/script></body>');
     return html;
   }
 

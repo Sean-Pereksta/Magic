@@ -50,9 +50,11 @@ test('real structure damage and remote snapshots both produce the emphasized con
   assert.deepEqual(host.warnings,[]);assert.deepEqual(remote.warnings,[]);
 });
 
-test('real rat and cat captures get one fade/caption and animation never changes the resulting authority',async()=>{
-  for(const reduced of [false,true])for(const kind of ['rat','cat']){
-    const h=await runtime(reduced),capture=await h.fixture.captureMouse(kind);assert.equal(capture.alive,false);assert.equal(capture.killedBy,kind);h.frame(30);
+test('rats ignore mice and cat captures get one fade/caption without changing simulation state',async()=>{
+  for(const reduced of [false,true]){
+    const h=await runtime(reduced);
+    assert.equal((await h.fixture.captureMouse('rat')).alive,true);
+    const capture=await h.fixture.captureMouse('cat');assert.equal(capture.alive,false);assert.equal(capture.killedBy,'cat');h.frame(30);
     assert.ok(h.document.getElementById('unitLayer').children.some(n=>n.classList.contains('cm-captured') && n.classList.contains('cm-dying')));
     assert.equal(h.document.getElementById('combatEffectLayer').children.filter(n=>n.textContent==='CAUGHT').length,1);
     const authority=h.fixture.authority();h.frame(1200);assert.equal(h.fixture.authority(),authority);

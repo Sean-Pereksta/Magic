@@ -8,7 +8,7 @@ export function distanceSquared(a, b) {
   return (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
 }
 
-export function findPath(start, goal, size, walkable) {
+export function findPath(start, goal, size, walkable, maxSteps = Infinity) {
   if (!walkable(goal.x, goal.y)) return null;
   const first = Math.round(start.y) * size + Math.round(start.x);
   const last = goal.y * size + goal.x;
@@ -16,10 +16,12 @@ export function findPath(start, goal, size, walkable) {
   const queue = new Int32Array(visited.length);
   let head = 0;
   let tail = 1;
+  let layerEnd = tail;
+  let steps = 0;
   queue[0] = first;
   visited[first] = first;
 
-  while (head < tail && visited[last] === -1) {
+  while (head < tail && visited[last] === -1 && steps < maxSteps) {
     const current = queue[head++];
     const x = current % size;
     const y = Math.floor(current / size);
@@ -30,6 +32,10 @@ export function findPath(start, goal, size, walkable) {
       if (!walkable(nextX, nextY) || visited[next] !== -1) continue;
       visited[next] = current;
       queue[tail++] = next;
+    }
+    if (head === layerEnd) {
+      layerEnd = tail;
+      steps++;
     }
   }
 

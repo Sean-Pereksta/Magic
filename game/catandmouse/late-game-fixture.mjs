@@ -19,7 +19,7 @@ export const lateGameFixture = String.raw`
       }
       stinkRats.push({id:'late-stink',kind:'stinkrat',x:5,y:5,health:100,createdAt:Date.now()});
       catPower=60;ratPower=8;catHealth=maxCatHealth=1000000;
-      markBlockedGridDirty();markStructureIndexDirty();renderGrid();
+      renderGrid();
       return placed;
     },
     draw(){renderGrid();},
@@ -41,7 +41,7 @@ export const lateGameFixture = String.raw`
     firstStructure(){return structureIndex.all.values().next().value;},
     removeStructure(x,y){applyLocalRuntimeMutation('delete',ccRef(ID.structure(x,y)));},
     slimeSize(){return slimeAuraMemory.size;},
-    structureRevision(){return tacticalRevision;},
+    structureRevision(){return structureTopologyRevision;},
     hpUpdate(x,y){const key=x+'_'+y;applyLocalRuntimeMutation('update',ccRef(ID.structure(x,y)),{health:structureHealth[key]-1});},
     stinkKey(){return getStinkRatDisabledTowerKey(stinkRats.at(-1));},
     addSlimeHistory(){for(let i=0;i<5000;i++)slimeAuraMemory.set('retired:'+i,Date.now()-60000);},

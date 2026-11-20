@@ -55,6 +55,15 @@ const flourMill = Object.freeze({
     { x: 21, y: 25 }, { x: 24, y: 21 }, { x: 25, y: 28 }, { x: 28, y: 24 },
     { x: 19, y: 23 }, { x: 23, y: 32 }, { x: 29, y: 28 }, { x: 23, y: 17 },
     { x: 33, y: 24 }, { x: 14, y: 23 }, { x: 24, y: 37 }, { x: 23, y: 10 },
+    { x: 4, y: 4 }, { x: 20, y: 8 }, { x: 14, y: 16 }, { x: 28, y: 4 },
+    { x: 36, y: 7 }, { x: 43, y: 15 }, { x: 36, y: 26 }, { x: 44, y: 36 },
+    { x: 43, y: 44 }, { x: 4, y: 25 }, { x: 11, y: 40 }, { x: 21, y: 37 },
+  ].map(Object.freeze)),
+  cheeseRefills: Object.freeze([
+    { x: 4, y: 20 }, { x: 11, y: 5 }, { x: 21, y: 11 }, { x: 15, y: 17 },
+    { x: 27, y: 11 }, { x: 33, y: 10 }, { x: 42, y: 8 }, { x: 44, y: 20 },
+    { x: 37, y: 26 }, { x: 34, y: 35 }, { x: 44, y: 33 }, { x: 38, y: 44 },
+    { x: 25, y: 42 }, { x: 20, y: 43 }, { x: 4, y: 36 }, { x: 11, y: 29 },
   ].map(Object.freeze)),
 });
 
@@ -93,6 +102,7 @@ const towerDefinitions = {
   rabbit: { name: 'Rabbit Den', role: 'Producer', cost: 8, hp: 27, cooldown: 7500, description: 'Produces one rabbit that helps defend the mill.' },
   flea: { name: 'Flea Nest', role: 'Producer', cost: 5, hp: 19, cooldown: 5700, description: 'Produces a flea that slows rats in close quarters.' },
   barricade: { name: 'Super Wall', role: 'Defense', cost: 6, hp: 88, description: 'Absorbs sustained attacks at crowded entrances.' },
+  'ultra-wall': { name: 'Ultra Wall', role: 'Defense', cost: 11, hp: 170, description: 'The toughest connected wall, with 170 health to hold against heavy enemy waves.' },
   tesla: { name: 'Tesla Tower', role: 'Attack', cost: 11, hp: 22, range: 4.4, cooldown: 1060, windup: 280, damage: 14, description: 'Chains an arc between up to three nearby enemies.' },
   laser: { name: 'Ultra Laser', role: 'Attack', cost: 14, hp: 24, range: 8.7, cooldown: 1660, windup: 450, damage: 34, description: 'Charges and delivers an instant focused beam.' },
   shield: { name: 'Shield Tower', role: 'Support', cost: 8, hp: 26, range: 3.5, cooldown: 300, description: 'Recharges shields on nearby structures.' },
@@ -140,7 +150,7 @@ export const ENEMIES = Object.freeze({
   king: Object.freeze({ hp: 92, speed: 1.57, damage: 10, reach: 1, windup: 430, cooldown: 1250, radius: 0.53, cheese: 6 }),
   sapper: Object.freeze({ hp: 59, speed: 1.77, damage: 5, reach: 0.83, windup: 360, cooldown: 1200, radius: 0.45, cheese: 5 }),
   mender: Object.freeze({ hp: 42, speed: 1.86, damage: 4, reach: 0.83, windup: 330, cooldown: 1225, radius: 0.43, cheese: 4 }),
-  cat: Object.freeze({ hp: 550, speed: 2.55, damage: 15, reach: 1.15, windup: 560, cooldown: 1410, radius: 0.67, cheese: 0 }),
+  cat: Object.freeze({ hp: 550, speed: 3.9, damage: 15, reach: 1.15, windup: 560, cooldown: 1410, radius: 0.67, cheese: 0 }),
 });
 
 export const SHOTS = Object.freeze({

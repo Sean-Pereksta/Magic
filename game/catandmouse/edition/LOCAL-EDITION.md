@@ -6,7 +6,9 @@ Install the Windows x64 setup or extract the portable ZIP, then open **Cat & Mou
 
 Use WASD, the arrow keys, or tap the battlefield to walk. Place a wall beside another wall to extend, turn, or branch the line. The placement preview shows which sides will join.
 
-Gather cheese and use the opening waves to build up income and firepower. Sappers threaten groups of buildings, and Menders heal nearby rats. Leave room to dodge the Cat's marked attacks. Hard adds a tail sweep, and Nightmare adds a charge across the battlefield.
+Gather cheese around the mill throughout the match. You can build as many copies of an equipped structure as you can afford and have room for. Ultra Wall is the strongest wall and joins the other wall types.
+
+Rats head for the closest reachable structure and spread out as they approach. Sappers still threaten groups of buildings, and Menders heal nearby enemies. The Cat chases mice within reach of an open path and gets faster over the match. Leave room to dodge its marked attacks. Hard adds a tail sweep, and Nightmare adds a charge across the battlefield.
 
 To host, choose **Multiplayer → Host Lobby** and set the room, battlefield, difficulty, seat count, and visibility. A public room appears under **Live Lobbies** in the Arcade after its connection verifies. For an invite-only room, copy the guest invitation and share it with the people you want to play with. Guests can use their regular browser.
 

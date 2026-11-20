@@ -29,7 +29,6 @@ const fixture=String.raw`
       for(const path of ASSET_MANIFEST)failedAssetPaths.add(path);
       const placements=[[8,11,'🐇'],[8,13,'🪳'],[10,12,'🥁'],[11,11,'🔫'],[11,13,'🚀'],[11,9,'⚡'],[10,14,'☄️'],[7,10,'🟢'],[7,12,'🕸️'],[7,14,'🪭'],[6,12,'🛡️'],[6,14,'🌰'],[13,13,'🧱'],[13,14,'💎']];
       for(const [x,y,type] of placements){grid[y][x]=type;const hp=STRUCTURE_MAX_HP[type];structureHealth[x+'_'+y]=hp;addToStructureIndex(x,y,type,hp);structures.set(x+'_'+y,{x,y,type,health:hp});}
-      markBlockedGridDirty();markStructureIndexDirty();
       rats=[{id:'a',kind:'rat',x:14,y:10,health:100,createdAt:Date.now()},{id:'b',kind:'rat',x:14,y:11,health:100,createdAt:Date.now()},{id:'c',kind:'rat',x:15,y:10,health:100,createdAt:Date.now()}];
       stinkRats=[{id:'s',kind:'stinkrat',x:15,y:9,health:100,createdAt:Date.now()}];
       oxen=[{id:'o',kind:'ox',x:14,y:13,health:100,createdAt:Date.now()}];
@@ -63,7 +62,7 @@ const fixture=String.raw`
       isHost=false;soloMode=false;
       try{structureHealth['13_13']--;renderGrid();}finally{isHost=true;soloMode=true;}
     },
-    async captureMouse(kind='rat'){
+    async captureMouse(kind='cat'){
       if(kind==='cat'){
         catPos={x:players.remote.x,y:players.remote.y};catAbilityLoadout=[];tacticalAI.reset();await catBehavior();
         renderGrid();return {alive:players.remote.alive,killedBy:players.remote.killedBy};

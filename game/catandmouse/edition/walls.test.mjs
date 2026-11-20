@@ -21,12 +21,13 @@ test('standalone walls have no arms even when an older snapshot provides an axis
   assert.deepEqual(wallConnections({ ...center, axis: undefined }, walls), []);
 });
 
-test('adjacent wall and barricade types form L, T and cross junctions', () => {
+test('adjacent wall tiers form mixed L, T and cross junctions', () => {
   assert.equal(isWall('wall'), true);
   assert.equal(isWall('barricade'), true);
+  assert.equal(isWall('ultra-wall'), true);
   assert.equal(isWall('turret'), false);
-  assert.deepEqual(wallConnections(center, index(center, neighbor(east, 'barricade'), neighbor(south))), [east, south]);
-  assert.deepEqual(wallConnections(center, index(center, neighbor(north), neighbor(east), neighbor(south, 'barricade'))), [north, east, south]);
+  assert.deepEqual(wallConnections(center, index(center, neighbor(east, 'barricade'), neighbor(south, 'ultra-wall'))), [east, south]);
+  assert.deepEqual(wallConnections(center, index(center, neighbor(north), neighbor(east, 'ultra-wall'), neighbor(south, 'barricade'))), [north, east, south]);
   assert.deepEqual(wallConnections(center, index(center, ...WALL_DIRECTIONS.map(direction => neighbor(direction)))), WALL_DIRECTIONS);
 });
 

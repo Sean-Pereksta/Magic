@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findOpenSpawn, createReservations, createTacticalDirector, scoreObjective } from './tactics.mjs';
+import { findOpenSpawn, createReservations, createSiegeNavigator, createTacticalDirector, scoreObjective } from './tactics.mjs';
 
 function harness({blocked=new Set(),maxDecisions=5,maxPaths=10}={}) {
   let time=0,revision=0,objectives=[{key:'mouse:a',type:'mouse',x:8,y:3,value:0}];
@@ -22,6 +22,22 @@ function harness({blocked=new Set(),maxDecisions=5,maxPaths=10}={}) {
   const step=(unit,opts={})=>{const result=director.plan(unit,opts);if(result.next)Object.assign(unit,result.next);return result;};
   return {director,units,blocked,add,step,targets:items=>objectives=items,advance:ms=>time+=ms,dirty:()=>revision++};
 }
+
+test('siege units attack the closest structure and take open routes without stacking',()=>{
+  const near={x:3,y:2,key:'near'},far={x:5,y:4,key:'far'};
+  let targets=[far,near],revision=0,reads=0;
+  const navigator=createSiegeNavigator({size:8,structures:()=>{reads++;return targets;},revision:()=>revision});
+  const rat={x:1,y:1,key:'rat'};
+  const first=navigator.plan(rat,new Set([1*8+2]));
+  assert.deepEqual(first,{target:near,next:{x:1,y:2}});
+  assert.deepEqual(navigator.plan(rat,new Set([1*8+2,2*8+1])),{target:near,next:null});
+  const contact=navigator.plan({x:2,y:2,key:'ox'},new Set());
+  assert.deepEqual(contact,{target:near,next:null});
+  assert.equal(reads,1);
+  targets=[far];revision++;
+  assert.equal(navigator.plan(rat,new Set()).target,far);
+  assert.equal(reads,2);
+});
 
 test('blocked producers return without looping or spawning on their building',()=>{
   let checked=0;

@@ -39,7 +39,7 @@ test('public loader applies every existing patch to the updated core; both modul
   assert.match(output,/rat:\[0,7,8,9,10\]\[n\]\+ratBonus/);
   assert.match(output,/MAX_RATS = 13/);
   assert.match(output,/MAX_TOTAL_ENEMIES = 25/);
-  assert.match(output,/reserveEnemySpawnSlots\("rat", getRatWaveBudget\(\)\)/);
+  assert.match(output,/queueWaveEnemies\("rat",getRatWaveBudget\(\)/);
   assert.match(output,/MAX_FRIENDLY_RABBITS = 12/);
   assert.match(output,/from "\.\/catandmouse\/sync.mjs"/);
   assert.match(output,/from "\.\/catandmouse\/tactics.mjs"/);
@@ -124,10 +124,10 @@ test('fallback core uses the same rat-only difficulty bonus and bounded wave pro
 });
 
 test('real wave spawner consumes the difficulty budget and releases all spawn reservations',async()=>{
-  const {ctx,code}=await ratSpawnHarness();const batches=[];let id=0;
-  Object.assign(ctx,{isHost:true,catPos:{x:10,y:10},gridSize:21,grid:Array.from({length:21},()=>Array(21).fill('')),
-    rats:[],oxen:[],ratKings:[],isLivingRat:()=>true,isLivingEnemy:()=>true,crypto:{randomUUID:()=>String(++id)},
-    Math:Object.assign(Object.create(Math),{random:()=>1}),ccRef:id=>({id}),ID:{rat:id=>`rat_${id}`,ox:id=>`ox_${id}`},
+  const {ctx,code}=await ratSpawnHarness();const batches=[];let id=0,openSpots=0;
+  Object.assign(ctx,{canRunHostSimulation:()=>true,catPos:{x:10,y:10},crypto:{randomUUID:()=>String(++id)},
+    Math:Object.assign(Object.create(Math),{random:()=>1}),enemyDocRef:(kind,id)=>({id:`${kind}_${id}`}),
+    reserveHostileSpawn:(_origin,_seed,cells)=>({x:cells.push(openSpots++),y:0}),releaseHostileSpawns:cells=>{cells.length=0;},
     getRatHealthForDifficulty:()=>4,getOxHealthForDifficulty:()=>18,scaleEnemyStats:health=>({health}),
     commitEnemyBatch:async actions=>batches.push(actions),requestRender(){}});
   vm.runInContext(code('  async function spawnRatWave(){','  // ============================================================\n  // Host enemies movement'),ctx);
@@ -279,7 +279,7 @@ test('only the host can set a starting wave and the committed tier seeds the Cat
     assert.equal(state.ratPower, power);
     assert.equal(state.cat.health, health);
     assert.equal(state.cat.maxHealth, health);
-    assert.equal(state.nextRatWave - state.updatedAt, 45000);
+    assert.equal(state.nextRatWave - state.updatedAt, 38000);
   }
   assert.equal((await fixture.startAt(10, 'another-host')).phase, 'selection');
   assert.equal((await fixture.startAt(100)).startingWave, 1);
@@ -306,25 +306,30 @@ test('new mice start with ten cheese and reconnecting does not refill it', async
 test('the Cat starts slowly and pounces only in late, nearby encounters', async () => {
   const { fixture } = await createBattleRuntime(false, { scenarioExtra: `
     window.__battleFixture.catTier = mode => startingCatHealth(mode, 1);
-    window.__battleFixture.catEncounter = async (mode, start, wave, playerX) => {
+    window.__battleFixture.catEncounter = async (mode, start, wave, playerX, pressure=0, blocked=false) => {
       currentDifficulty = mode;
       startingWave = start;
       ratWave = wave;
+      catPower = openingCatPressure(start) + pressure;
       catPos = { x: 10, y: 10 };
+      rats=[];stinkRats=[];oxen=[];ratKings=[];vultures=[];termites=[];
       players = { [uid]:{ x: playerX, y: 10, alive: true } };
+      if(blocked) for(let y=5;y<=15;y++)grid[y][13]="🧱";
       initializeCatAbilityLoadout(mode);
       await maybeUseCatAbilities();
-      return [catMovementCadence(), catAbilityState.pouncePending];
+      return [catMovementCadence(), catAbilityState.pouncePending, getNearbyCatMouseTarget()?.path.length ?? null];
     };`
   });
   assert.deepEqual(['easy','medium','hard','insane'].map(mode => fixture.catTier(mode)), [10000,22500,44000,75000]);
-  assert.deepEqual([...await fixture.catEncounter('medium',1,0,16)], [2450,null]);
-  assert.deepEqual([...await fixture.catEncounter('insane',10,9,16)], [2000,null]);
+  assert.deepEqual([...await fixture.catEncounter('medium',1,0,16)], [2450,null,6]);
+  assert.deepEqual([...await fixture.catEncounter('insane',10,9,16)], [2000,null,6]);
+  assert.ok((await fixture.catEncounter('medium',1,0,16,6))[0] < 2450);
   assert.equal((await fixture.catEncounter('medium',10,14,16))[1], null);
   assert.equal((await fixture.catEncounter('medium',1,10,26))[1], null);
   const [pace, landing] = await fixture.catEncounter('medium',1,10,16);
   assert.equal(pace, 950);
   assert.ok(landing && Math.abs(landing.x - 10) + Math.abs(landing.y - 10) <= 8);
+  assert.deepEqual([...await fixture.catEncounter('medium',1,10,16,15,true)], [950,null,null]);
 });
 
 test('Classic continues spawning stronger rats after wave 200', async () => {
@@ -343,12 +348,12 @@ test('Classic continues spawning stronger rats after wave 200', async () => {
   });
   fixture.clearForLateWave();
   const opening = await fixture.spawnNext();
-  advance(32000);
+  advance(27000);
   const later = await fixture.spawnNext();
   assert.equal(opening.wave, 200);
   assert.equal(later.wave, 201);
   assert.ok(later.hp > opening.hp);
-  assert.equal(later.next, opening.next + 32000);
+  assert.equal(later.next, opening.next + 27000);
 });
 
 test('Classic Cat max HP grows by five percent and recovery is limited to the living Cat', async () => {
@@ -489,7 +494,7 @@ test('real enemy group takes one step, stores no AI cache in Firebase, and respe
   const writes=[],rat={id:'one',kind:'rat',x:1,y:1,health:20,updatedAt:100000};
   const ctx=vm.createContext({canRunHostSimulation:()=>true,Date:{now:()=>100000},combatUnitKey:(kind,e)=>`${kind}:${e.id}`,
     enemyDocRef:(_kind,id)=>({id:`rat_${id}`}),ccRef:id=>({id}),isLivingEnemy:e=>e.health>0,delayedEnemySteps:new Map(),traps:[],ratKings:[],ratPower:1,
-    tacticalPlan:()=>({next:{x:2,y:1},target:{type:'mouse',key:'m',x:8,y:1,uid:'other'}}),
+    getEnemyScaling:()=>({damageMultiplier:1}),hostilePlan:()=>({next:{x:2,y:1},target:{key:'wall',x:8,y:1}}),
     moveAlongPlan:(_kind,e,plan,out)=>{Object.assign(e,plan.next);out.push({type:'update',ref:{id:e.id},data:{x:e.x,y:e.y}});},
     requestRender(){},commitEnemyBatch:async out=>writes.push(...out)});
   vm.runInContext(section('  async function hostMoveTacticalGroup(', '  async function hostMoveFleas(){'),ctx);
@@ -497,13 +502,13 @@ test('real enemy group takes one step, stores no AI cache in Firebase, and respe
   assert.ok(writes.every(a=>!a.data?.ai));
   ctx.canRunHostSimulation=()=>false;await ctx.hostMoveTacticalGroup([rat],'rat');assert.equal(rat.x,2);
 });
-test('ox damage waits for its authoritative windup, then retains the original attack damage',async()=>{
+test('ox damage waits for its authoritative windup before applying scaled attack damage',async()=>{
   let now=100000,damage=0;const ox={id:'o',x:2,y:1,health:30,updatedAt:now};
   const ctx=vm.createContext({canRunHostSimulation:()=>true,Date:{now:()=>now},combatUnitKey:()=> 'ox:o',enemyDocRef:()=>({id:'ox_o'}),
     isLivingEnemy:e=>e.health>0,delayedEnemySteps:new Map(),traps:[],ratKings:[],ratPower:2,
-    tacticalPlan:()=>({next:null,target:{type:'structure',key:'wall',x:3,y:1}}),moveAlongPlan(){},
+    getEnemyScaling:()=>({damageMultiplier:1.5}),hostilePlan:()=>({next:null,target:{key:'wall',x:3,y:1}}),moveAlongPlan(){},
     damageStructure:async(_x,_y,amount)=>{damage+=amount;},requestRender(){},commitEnemyBatch:async()=>{}});
   vm.runInContext(section('  async function hostMoveTacticalGroup(', '  async function hostMoveFleas(){'),ctx);
   await ctx.hostMoveTacticalGroup([ox],'ox');assert.equal(damage,0);assert.equal(ox.attackIntent.executeAt,100180);
-  now+=500;await ctx.hostMoveTacticalGroup([ox],'ox');assert.equal(damage,20);assert.equal(ox.health,29);
+  now+=500;await ctx.hostMoveTacticalGroup([ox],'ox');assert.equal(damage,30);assert.equal(ox.health,29);
 });
