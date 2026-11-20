@@ -45,7 +45,7 @@ test('Truth games join the shared catalog exactly once', async () => {
       assert.equal(matches[0].route, `https://sean-pereksta.github.io/Truth/games/${slug}/`);
       const actions = key === 'acornrally' ? [
         {type: 'single', label: 'Play in Browser'},
-        {type: 'online', label: 'Private Rooms'}
+        {type: 'online', label: 'Multiplayer'}
       ] : key === 'bannerlands' ? [
         {type: 'single', label: 'Play in Browser'},
         {type: 'live', label: 'Live Multiplayer', href: '#live-lobbies'}
@@ -106,7 +106,7 @@ test('a user Play action navigates directly to every Truth game URL', async () =
   assert.equal(launches.length, Object.keys(expected).length);
 });
 
-test('Acorn Rally opens its own private rooms as a guest and offers the Windows host', async () => {
+test('Acorn Rally opens multiplayer in-game and offers the Windows host download', async () => {
   const html = await load();
   const game = registry(html).find(item => item.key === 'acornrally');
   const launches = [];
@@ -119,6 +119,7 @@ test('Acorn Rally opens its own private rooms as a guest and offers the Windows 
   await sandbox.joinOnlineGame(game, true);
   assert.deepEqual(launches, [{url: 'https://sean-pereksta.github.io/Truth/games/acorn-rally/?room=join', reason: 'matchmaking-join'}]);
   assert.equal(game.category, 'Racing');
+  assert.equal(game.joinLabel, 'Multiplayer');
   assert.equal(game.localEditionRoute, 'https://sean-pereksta.github.io/Truth/games/acorn-rally/?download=pc');
   assert.equal(game.localEditionLabel, 'PC Host Download');
   const pcButton = library.localEditionButton(game, String);
@@ -129,29 +130,8 @@ test('Acorn Rally opens its own private rooms as a guest and offers the Windows 
   for (const definition of [manifest.games.acornrally, artwork.GameHubArtworkManifest.games.acornrally]) {
     assert.equal(definition.localEditionRoute, game.localEditionRoute);
     assert.equal(definition.localEditionLabel, game.localEditionLabel);
+    assert.equal(definition.joinLabel, game.joinLabel);
   }
-});
-
-test('Acorn Rally advertises only fresh hosted queues and bounds the public waiting count', async () => {
-  const now = Date.parse('2026-11-20T22:00:00Z');
-  const href = 'https://rally.catnmice.com/?room=join';
-  const expiresAt = now + 60_000;
-  const read = fields => library.readAcornHostedLobby({
-    now: () => now,
-    fetchLobby: async () => ({ ok: true, json: async () => ({ fields: {
-      joinUrl: { stringValue: href },
-      expiresAt: { timestampValue: new Date(expiresAt).toISOString() },
-      ...fields
-    } }) })
-  });
-  const fields = { queueEnabled: { booleanValue: true }, waiting: { integerValue: '6' }, phase: { stringValue: 'racing' } };
-  assert.deepEqual(await read(fields), { href, expiresAt, queueEnabled: true, waiting: 6, racing: true });
-  assert.deepEqual(await read({ waiting: fields.waiting }), { href, expiresAt, queueEnabled: false, waiting: null, racing: false });
-  for (const integerValue of ['-1', '129', '2e1', 'NaN']) {
-    assert.equal((await read({ ...fields, waiting: { integerValue } })).waiting, null);
-  }
-  assert.equal(await read({ ...fields, expiresAt: { timestampValue: new Date(now).toISOString() } }), null);
-  assert.equal(await read({ ...fields, joinUrl: { stringValue: `${href}&invite=other` } }), null);
 });
 
 test('each Truth game has its own generated WebP tile, thumbnail and hero', async () => {

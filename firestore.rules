@@ -2077,6 +2077,47 @@ service cloud.firestore {
       allow list, write: if false;
     }
 
+    function validAcornRallyLobby(code) {
+      let data = request.resource.data;
+      return isAuthed() && code.matches('^[0-9]{4}$')
+        && data.keys().hasOnly(['ownerUid', 'name', 'visibility', 'origin', 'joinUrl', 'phase', 'players', 'capacity', 'queued', 'updatedAt', 'expiresAt'])
+        && data.ownerUid == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 40
+        && data.visibility in ['public', 'code']
+        && data.origin is string
+        && data.origin.matches('^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?[.]trycloudflare[.]com$')
+        && data.joinUrl == data.origin + '/?room=join'
+        && data.phase in ['waiting', 'racing', 'finished']
+        && data.capacity is int && data.capacity >= 2 && data.capacity <= 8
+        && data.players is int && data.players >= 0 && data.players <= data.capacity
+        && data.queued is int && data.queued >= 0 && data.queued <= 1000
+        && data.updatedAt == request.time
+        && data.expiresAt is timestamp && data.expiresAt > request.time
+        && data.expiresAt <= request.time + duration.value(120, 's');
+    }
+
+    match /acornRallyLobbies/{code} {
+      // A signed-in host also needs to inspect expired and unused codes to claim a lease.
+      allow get: if code.matches('^[0-9]{4}$')
+        && (isAuthed() || resource.data.expiresAt is timestamp && resource.data.expiresAt > request.time);
+      // Public queries must include a visibility filter and an explicit limit.
+      allow list: if request.query.limit <= 25 && resource.data.visibility == 'public';
+      allow create: if validAcornRallyLobby(code);
+      allow update: if validAcornRallyLobby(code)
+        && (resource.data.ownerUid == request.auth.uid || resource.data.expiresAt <= request.time);
+      allow delete: if isAuthed() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    match /acornRallyHostQueues/{uid} {
+      allow get, delete: if isAuthed() && request.auth.uid == uid;
+      allow create, update: if isAuthed() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['payload', 'updatedAt'])
+        && request.resource.data.payload is string
+        && request.resource.data.payload.size() <= 32768
+        && request.resource.data.updatedAt == request.time;
+      allow list: if false;
+    }
+
     match /games_basewar/{gameId} {
       allow read, write: if isAuthed();
 
