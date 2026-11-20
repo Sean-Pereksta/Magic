@@ -110,8 +110,10 @@ function onlinePlay(game) {
   return actions.find(a => a.type !== 'single') || actions[0] || {};
 }
 function hostLobby(game) {
-  if ((state.servers || []).some(server => server.id === game.id)) return btn('Host Lobby','server-manager',{},'glass','server');
-  return playsLocally(game) || game.hostRoute ? btn('Host Lobby','play',{id:game.id,mode:'host'},'glass','lobbies') : '';
+  const managed = (state.servers || []).some(server => server.id === game.id);
+  const local = playsLocally(game) || (!managed && game.hostRoute);
+  return (local ? btn('Host Lobby','play',{id:game.id,mode:'host'},'glass','lobbies') : '') +
+    (managed ? btn(local ? 'Manage server' : 'Host Lobby','server-manager',{id:game.id},'glass','server') : '');
 }
 function launchButton(game, compact = false) {
   if (playsLocally(game)) return btn('Play','play',{id:game.id,mode:'offline'},'gold','play');
@@ -260,7 +262,7 @@ function serverManager() {
   const servers = (state.servers || []).filter(server => matches(server.id));
   if (!servers.length) return '<section class="panel"><p>No game in this catalog has a server edition.</p></section>';
   const labels = {offline:'Stopped',starting:'Starting',online:'Online','lan-only':'Local network only',stopping:'Stopping'};
-  return `<p class="server-guide">Keep the launcher open and this PC awake while players are racing.</p>` + servers.map(server => {
+  return `<p class="server-guide">Keep the launcher open and this PC awake while hosting.</p>` + servers.map(server => {
     const game = matches(server.id);
     const id = attr(server.id);
     const draft = server.running ? server : serverDrafts.get(server.id) || server;
@@ -278,9 +280,9 @@ function serverManager() {
       </fieldset>
       ${server.running ? `<div class="controls">${btn('Stop server','server-stop',{id:server.id},'','close')}${ready ? btn('Open local lobby','server-open',{id:server.id},'','external') : ''}</div>` : `<button class="button gold" type="submit">${icon('play')}Start server</button>`}
     </form>` : server.available
-      ? `<div class="controls">${btn('Install hosting pack','install',{id:server.id},'gold','downloads')}</div>`
+      ? `<div class="controls">${btn('Install hosting pack','server-install',{id:server.id},'gold','downloads')}</div>`
       : '<p>The hosting pack is not included in this catalog version.</p>';
-    return `<section class="panel server-panel"><div class="section-title"><h2>${esc(title(game))}</h2><span class="server-status" data-server-status="${attr(server.status)}" role="status">${esc(labels[server.status] || 'Stopped')}</span></div>
+    return `<section class="panel server-panel" id="server-${id}"><div class="section-title"><h2>${esc(title(game))}</h2><span class="server-status" data-server-status="${attr(server.status)}" role="status">${esc(labels[server.status] || 'Stopped')}</span></div>
       ${setup}${server.message ? `<p class="server-message" role="status">${esc(server.message)}</p>` : ''}${invitation}</section>`;
   }).join('');
 }
@@ -382,7 +384,11 @@ function onAction(el) {
       break;
     }
     case 'play': dispatch('play',{id,mode,action:kind});break;
-    case 'server-manager': navigate('Server Manager');break;
+    case 'server-manager':
+      navigate('Server Manager');
+      if(id)document.getElementById('server-'+id)?.scrollIntoView({block:'start'});
+      break;
+    case 'server-install': dispatch('install',{id,managed:true},'Hosting pack installation completed.');break;
     case 'server-stop': dispatch('serverStop',{id});break;
     case 'server-open': dispatch('serverOpen',{id});break;
     case 'server-copy': dispatch('serverCopy',{id,kind},kind==='code'?'Join code copied.':'Join link copied.');break;

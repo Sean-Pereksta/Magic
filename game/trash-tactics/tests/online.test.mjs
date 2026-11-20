@@ -85,6 +85,43 @@ test('orders cannot target unseen entities and visible enemy production stays pr
   assert.equal(enemy.queue[0].remaining,4);
 });
 
+test('managed host seats exactly two guests, rejects manual creation and reopens after a match',async()=>{
+  const app=createTrashTacticsServer({community:true,managed:true});
+  await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));
+  const origin='http://127.0.0.1:'+app.server.address().port;
+  try {
+    const status=()=>app.getStatus();
+    assert.deepEqual(status(),{phase:'waiting',players:0,capacity:2,queued:0});
+    const bypass=peer(origin,{type:'create',map:'rainyard'});
+    assert.match((await bypass.wait('error')).message,/managed server/);
+    const host=peer(origin,{type:'managedJoin',name:'Birch'});
+    const first=await host.wait('seat');
+    assert.equal(first.team,0);
+    const other=peer(origin,{type:'managedJoin',name:'Pine'});
+    const second=await other.wait('seat');
+    assert.equal(second.room,first.room);
+    assert.equal(second.team,1);
+    assert.equal(status().players,2);
+    const full=peer(origin,{type:'managedJoin'});
+    assert.match((await full.wait('error')).message,/open seat/);
+    host.send({type:'start'});
+    await host.wait('load'); await other.wait('load');
+    host.send({type:'ready'}); other.send({type:'ready'});
+    await host.wait('start');
+    assert.equal(status().phase,'playing');
+    other.send({type:'leave'});
+    assert.equal((await host.wait('result')).reason,'forfeit');
+    assert.equal(status().players,0);
+    const next=peer(origin,{type:'managedJoin',name:'Maple'});
+    const nextSeat=await next.wait('seat');
+    assert.equal(nextSeat.team,0);
+    assert.notEqual(nextSeat.room,first.room);
+    next.send({type:'leave'});
+    await next.wait('closed');
+    assert.equal(status().players,0);
+  } finally {await app.close();}
+});
+
 test('community listings accept exact HTTPS Quick Tunnel origins',()=>{
   assert.equal(quickTunnelOrigin('https://rust-paper-bridge.trycloudflare.com/'),'https://rust-paper-bridge.trycloudflare.com');
   for (const url of [

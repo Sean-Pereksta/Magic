@@ -125,6 +125,38 @@ test('a forced start admits connected unready players with complete starter load
   assert.equal(snapshot.state.players.length, 2);
 });
 
+test('managed room transfers leadership and reopens after the last player leaves a match', { timeout: 10_000 }, async t => {
+  const match = await createMatchServer(options, { managed: true });
+  t.after(() => match.close());
+  const original = match.id;
+  assert.equal(match.getLobby().players.length, 0);
+  const first = await peer(match);
+  first.join({ name: 'Pip' });
+  const leader = await first.next('joined');
+  assert.equal(match.getLobby().players.find(player => player.id === leader.playerId).isHost, true);
+  const second = await peer(match);
+  second.join();
+  const successor = await second.next('joined');
+  second.send('start', { force: true });
+  await second.next('error', message => message.code === 'host-only');
+  first.send('leave');
+  await second.next('lobby', ({ lobby }) => lobby.players.length === 1 && lobby.players[0].isHost);
+  second.send('start', { force: true });
+  const prepared = await second.next('prepare');
+  second.send('loaded', { matchId: prepared.matchId });
+  await second.next('snapshot');
+  second.send('leave');
+  for (let attempt = 0; match.id === original && attempt < 100; attempt++) await delay(25);
+  assert.notEqual(match.id, original);
+  assert.equal(match.getLobby().phase, 'waiting');
+  assert.equal(match.getLobby().players.length, 0);
+  const fresh = await peer(match);
+  fresh.join({ roomId: original, token: successor.token });
+  await fresh.next('error', message => message.code === 'room-changed');
+  fresh.join();
+  assert.notEqual((await fresh.next('joined')).playerId, successor.playerId);
+});
+
 test('force start excludes a guest who misses the bounded loading window', { timeout: 30_000 }, async t => {
   const match = await createMatchServer(options);
   t.after(() => match.close());

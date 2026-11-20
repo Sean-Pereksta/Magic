@@ -46,10 +46,12 @@ Run `node build/check-online.cjs <installed-exe> <fresh-profile-directory>` agai
 
 Before approving a public release, record clean-machine offline saves and installation checks, and complete an official match in each flagship from an installed desktop and a browser on separate networks. Compare both clients’ account, invite, Elo and match receipt, and repeat the offline and update-recovery checks during an outage.
 
-## Acorn Rally Server Manager
+## Server Manager
 
-Open **Server Manager** from the Windows launcher, select Acorn Rally, enter a server name and choose **Public listing** or **Four-digit join code**. If prompted, install the hosting pack. **Start server** runs a dedicated process independently of the game windows. A public server provides a join link. A code server shows its assigned code when discovery is online. Stop the server in Server Manager when you are finished. Closing the Windows launcher stops its managed servers.
+Open **Server Manager** from the Windows launcher and find Acorn Rally, Bannerlands, Trash Tactics, Cat & Mouse or Last Signal. Install the hosting pack if prompted, enter a server name, choose **Public listing** or **Four-digit join code**, and select **Start server**. Players can browse named public servers or use **Live Join** in the game's multiplayer menu. For a private session, share the four-digit code shown in Server Manager.
+
+Each game can run its own server on the same laptop. Other laptops can host additional servers for the same game. Stop an individual server from its panel. Closing the Windows launcher stops all of its managed servers.
 
 The laptop needs to stay on and awake. Run the standalone lobby launcher from Acorn Rally’s PC edition with `--no-open` for a Windows Task Scheduler setup that can run outside the Catnmice launcher. Set the task's execution time limit to indefinite.
 
-The Windows build packages the matching Truth Acorn Rally source and server files alongside the pinned Windows Node and Cloudflare runtimes. Build using a Truth revision with the community host to include the Acorn hosting pack. The signed launcher, catalog, and Acorn pack are required for download-channel installation.
+Build the Windows packs from matching Magic and Truth revisions with the manager adapters and use the freshly compiled Last Signal executable. The signed launcher, catalog and game pack are required for download-channel installation.

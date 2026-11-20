@@ -78,10 +78,10 @@ function fail(socket, code, message) {
   send(socket, { type: 'error', code, message });
 }
 
-export async function createMatchServer(options, { onLobbyChange = () => {}, desktopOrigin, rankedSeed } = {}) {
+export async function createMatchServer(options, { onLobbyChange = () => {}, desktopOrigin, rankedSeed, managed = false } = {}) {
   const ranked = rankedSeed !== undefined;
   const settings = readLobbySettings(ranked ? { ...options, startingWave: 1 } : options);
-  const id = randomUUID();
+  let id = randomUUID();
   const hostToken = secret();
   const invite = secret();
   const listingToken = secret();
@@ -96,19 +96,46 @@ export async function createMatchServer(options, { onLobbyChange = () => {}, des
   let countdownUntil = null;
   let simulation = null;
   let lastSnapshot = null;
+  let resetAfter = 0;
 
-  const host = {
+  let host = managed ? null : {
     id: randomUUID(), name: settings.hostName, token: secret(), isHost: true,
     ready: false, loaded: false, loadout: normalizeLoadout(), socket: null, expiresAt: Infinity
   };
-  players.set(host.id, host);
+  if (host) players.set(host.id, host);
+
+  function chooseLeader() {
+    if (!managed || host?.socket) return;
+    const next = [...players.values()].find(player => player.socket);
+    if (!next) return;
+    if (host) host.isHost = false;
+    host = next;
+    host.isHost = true;
+  }
+
+  function resetRoom() {
+    for (const player of players.values()) {
+      if (!player.socket) continue;
+      send(player.socket, { type: 'round-ended' });
+      player.socket.player = null;
+      player.socket.close(1000, 'Match ended');
+    }
+    players.clear();
+    included.clear();
+    host = null;
+    id = randomUUID();
+    phase = 'waiting';
+    matchId = loadDeadline = countdownUntil = simulation = lastSnapshot = null;
+    resetAfter = 0;
+    broadcastLobby();
+  }
 
   function getLobby() {
     const roster = [...players.values()];
     const canStart = phase === 'waiting' && roster.length === settings.capacity
       && roster.every(player => player.socket && player.ready);
     return {
-      id, ...settings, phase, matchId, loadDeadline, countdownUntil, canStart,
+      id, ...settings, ...(managed && { managed: true }), phase, matchId, loadDeadline, countdownUntil, canStart,
       players: roster.map(({ id, name, isHost, ready, loaded, loadout, socket }) => ({
         id, name, isHost, ready, loaded, loadout, connected: Boolean(socket)
       }))
@@ -241,7 +268,7 @@ export async function createMatchServer(options, { onLobbyChange = () => {}, des
       return;
     }
     const returning = message.token && [...players.values()].find(player => player.token === message.token);
-    let player = returning || (message.hostToken === hostToken ? host : null);
+    let player = returning || (!managed && message.hostToken === hostToken ? host : null);
     if (player && !player.socket && Date.now() >= player.expiresAt) player = null;
 
     if (!player) {
@@ -271,6 +298,7 @@ export async function createMatchServer(options, { onLobbyChange = () => {}, des
     player.socket = socket;
     player.expiresAt = Infinity;
     socket.player = player;
+    chooseLeader();
     send(socket, { type: 'joined', token: player.token, playerId: player.id });
     broadcastLobby();
     if (phase === 'loading' && included.has(player.id)) prepare(player);
@@ -321,7 +349,8 @@ export async function createMatchServer(options, { onLobbyChange = () => {}, des
         break;
       }
       case 'leave':
-        if (phase === 'waiting' && !player.isHost) players.delete(player.id);
+        socket.leftRoom = true;
+        if (phase === 'waiting' && (!player.isHost || managed)) players.delete(player.id);
         socket.close(1000, 'Left lobby');
         break;
       default:
@@ -385,10 +414,12 @@ export async function createMatchServer(options, { onLobbyChange = () => {}, des
       const player = socket.player;
       if (!player || player.socket !== socket) return;
       player.socket = null;
+      chooseLeader();
       if (simulation) simulation.command(player.id, { type: 'move', dx: 0, dy: 0 });
       if (phase === 'waiting') player.ready = false;
       if (['countdown', 'running', 'finished'].includes(phase)) player.expiresAt = Date.now() + battleReconnectMs;
-      else if (!player.isHost) player.expiresAt = Date.now() + lobbyReconnectMs;
+      else if (managed || !player.isHost) player.expiresAt = Date.now() + lobbyReconnectMs;
+      if (managed && socket.leftRoom) player.expiresAt = 0;
       broadcastLobby();
     });
   });
@@ -428,6 +459,7 @@ export async function createMatchServer(options, { onLobbyChange = () => {}, des
     if (!steps) return;
     if (simulation.status !== 'active') {
       phase = 'finished';
+      if (managed) resetAfter = now + 4_000;
       broadcastSimulation(true);
       broadcastLobby();
     } else if (simulation.tick >= lastSnapshot.tick + 4) {
@@ -444,10 +476,16 @@ export async function createMatchServer(options, { onLobbyChange = () => {}, des
     }
   }, 15_000);
   const admissions = setInterval(() => {
+    const now = Date.now();
+    if (managed && phase !== 'waiting' && phase !== 'closed') {
+      const abandoned = [...players.values()].every(player => !player.socket && now >= player.expiresAt);
+      if (abandoned || (resetAfter && now >= resetAfter)) resetRoom();
+      return;
+    }
     if (phase !== 'waiting') return;
     let changed = false;
     for (const player of players.values()) {
-      if (Date.now() < player.expiresAt) continue;
+      if (now < player.expiresAt) continue;
       players.delete(player.id);
       changed = true;
     }
@@ -455,7 +493,7 @@ export async function createMatchServer(options, { onLobbyChange = () => {}, des
   }, 1_000);
 
   return {
-    url: origin, id, hostToken, invite, listingToken, getLobby,
+    url: origin, get id() { return id; }, hostToken, invite, listingToken, getLobby,
     ...(ranked ? { seatToken: host.token } : {}),
     get score() { return ranked && phase === 'finished' ? simulation.rankedScore : null; },
     async close() {

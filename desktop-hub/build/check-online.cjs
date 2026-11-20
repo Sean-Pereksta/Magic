@@ -149,6 +149,9 @@ async function checkLocalControls(lib, state) {
     const detail = await controls(lib.locator('.hero-body [data-action="play"]'));
     const expected = [['Play','offline',id],['Multiplayer','online',id],['Host Lobby','host',id]];
     if (!isDeepStrictEqual(detail,expected)) throw Error(id+' game details do not default to local play and hosting.');
+    if (await lib.locator('.hero-body [data-action="server-manager"][data-id="'+id+'"]').count() !== 1) {
+      throw Error(id+' details are missing the managed server shortcut.');
+    }
     await lib.locator('.back-line[data-go="Library"]').click();
   }
   await lib.locator('.nav-link[data-go="Live Lobbies"]').click();
@@ -157,6 +160,14 @@ async function checkLocalControls(lib, state) {
     const expected = [['Multiplayer','online',id],['Host Lobby','host',id]];
     if (!isDeepStrictEqual(lobby,expected)) throw Error(id+' live lobby controls should open the local game.');
     report.localControls.push(id);
+  }
+  await lib.locator('.nav-link[data-go="Server Manager"]').click();
+  for (const id of localGames) {
+    const panel = lib.locator('#server-'+id);
+    if (await panel.locator('[data-server-status="offline"]').count() !== 1 ||
+        await panel.locator('button[type="submit"]').count() !== 1) {
+      throw Error(id+' managed hosting pack is unavailable in the installed launcher.');
+    }
   }
   await lib.locator('.nav-link[data-go="Library"]').click();
 }

@@ -44,22 +44,22 @@ function start({root,bundled,data,ready,startupFailed}){
   }
   function validPack(id,spec,folder){
     if(usesLocalHost(id))return hasLocalHostPack(id,spec,folder);
-    if(supportsServerManager(id))return hasServerManagerPack(id,spec,folder);
     if(id==='lastsignal'){
       return spec?.type==='native-windows' && spec.entry==='Last Signal.exe' &&
         ['Last Signal.exe','Hosting/cloudflared.exe','Assets/models.bin','Mobile/index.html']
           .every(file=>fs.statSync(path.join(folder,file),{throwIfNoEntry:false})?.isFile());
     }
+    if(supportsServerManager(id))return hasServerManagerPack(id,spec,folder);
     return typeof spec?.entry==='string' && fs.statSync(inDir(folder,spec.entry.split(/[?#]/)[0]),{throwIfNoEntry:false})?.isFile();
   }
-  function localPack(id){
+  function localPack(id,validate=validPack){
     const active=state.packs[id]?.active;
     if(active){
       const root=installedDir(id),spec=packSpec(id);
-      if(validPack(id,spec,root))return {root,spec,version:active};
+      if(validate(id,spec,root))return {root,spec,version:active};
     }
     const root=bundledDir(id),spec=bundledSpec(id);
-    if(validPack(id,spec,root))return {root,spec,version:'bundled'};
+    if(validate(id,spec,root))return {root,spec,version:'bundled'};
     return null;
   }
   // Older downloadable packs can still cover ordinary offline titles. For host
@@ -72,7 +72,8 @@ function start({root,bundled,data,ready,startupFailed}){
   const snapshots=new Map(),openingSessions=new Map(),activities=new Map(),inFlight=new Map(),launching=new Set(),touched=new Set();
   const nativeGames=new Map(),localGames=new Map(),installing=new Map();
   const readPublicArenas=createArenaReader();
-  const manager=createServerManager({dataDir:data,packFor:localPack,onChange:notify,onExit:id=>afterClose(id)});
+  const managedPack=id=>localPack(id,hasServerManagerPack);
+  const manager=createServerManager({dataDir:data,packFor:managedPack,onChange:notify,onExit:id=>afterClose(id)});
   const serverGames=()=>catalog.games.filter(g=>supportsServerManager(g.id));
   function gameBusy(id){
     return busy(id)||manager.busy(id)||(id?localGames.has(id):localGames.size>0)||Array.from(nativeGames.values()).some(entry=>!id||entry.id===id);
@@ -164,7 +165,8 @@ function start({root,bundled,data,ready,startupFailed}){
         const descriptor=JSON.parse(fs.readFileSync(path.join(staged,'hub-pack.json'),'utf8'));
         const type=descriptor.type;
         if(!['static','node','native-windows'].includes(type) || (type==='native-windows' && game.id!=='lastsignal') ||
-            !validPack(game.id,descriptor,staged))throw Error('This update does not contain the complete local game.');
+            !validPack(game.id,descriptor,staged) ||
+            (descriptor.manager && !hasServerManagerPack(game.id,descriptor,staged)))throw Error('This update does not contain the complete local game.');
       }
       if((item.id==='hub'||item.id==='catalog')?gameBusy():gameBusy(item.id)){
         state.deferred??={};state.deferred[item.id]=item;row(item.id,'queued','Ready when the game closes');return;
@@ -200,34 +202,41 @@ function start({root,bundled,data,ready,startupFailed}){
     }
     return {changed,source:feed.source,restartPending:restartPending()};
   }
-  function install(id){
+  function install(id,managed=false){
+    if(managed && !supportsServerManager(id))throw Error('This game has no managed hosting edition.');
+    if(managed && installing.has(id))return installing.get(id).then(()=>{if(!managedPack(id))return install(id,true);});
     if(!installing.has(id)){
       const game=known(id);
-      installing.set(id,installGame(id).catch(error=>{
+      installing.set(id,installGame(id,managed).catch(error=>{
         row(game.id,'paused',error.message);
         throw error;
       }).finally(()=>installing.delete(id)));
     }
     return installing.get(id);
   }
-  async function installGame(id){
+  async function installGame(id,managed){
     const g=known(id);if(!g.offline&&!usesLocalHost(id)&&id!=='lastsignal')throw Error('This game is online only.');
-    if(installed(g))return;
+    const installedEdition=()=>managed ? !!managedPack(id) : installed(g);
+    if(installedEdition())return;
+    const downloadEdition=async()=>{
+      await check(id);
+      if(!installedEdition())throw Error(state.deferred?.[id]?'Close the active game or server to finish installing this pack.':'The current release has no usable pack for this game.');
+    };
     const bundled=bundledSpec(id);
-    const compatibleSetup=supportsServerManager(id)?hasServerManagerDescriptor(id,bundled):usesLocalHost(id)?bundled?.hosting===true:!!bundled;
-    if(!compatibleSetup)return check(id);
+    const compatibleSetup=managed||id==='acornrally'?hasServerManagerDescriptor(id,bundled):usesLocalHost(id)?bundled?.hosting===true:!!bundled;
+    if(!compatibleSetup)return downloadEdition();
     const sourceFile=path.join(path.dirname(process.execPath),'setup-source.txt');
-    if(!fs.existsSync(sourceFile))return check(id);
+    if(!fs.existsSync(sourceFile))return downloadEdition();
     const exe=fs.readFileSync(sourceFile,'utf16le').replace(/^\uFEFF/,'').trim();
-    if(!path.isAbsolute(exe)||path.extname(exe).toLowerCase()!=='.exe'||!fs.existsSync(exe))return check(id);
+    if(!path.isAbsolute(exe)||path.extname(exe).toLowerCase()!=='.exe'||!fs.existsSync(exe))return downloadEdition();
     row(id,'installing','Installing the bundled pack');
     try{
       await new Promise((resolve,reject)=>{const child=spawn(exe,['/S','/PACK='+id],{windowsHide:true});child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(Error('Setup returned '+code)));});
     }catch(error){
       if(!usesLocalHost(id)&&!supportsServerManager(id)&&id!=='lastsignal')throw error;
     }
-    if(!installed(g) && (usesLocalHost(id)||supportsServerManager(id)||id==='lastsignal'))await check(id);
-    if(!installed(g))throw Error('Setup could not restore this pack. Run the full installer to repair it.');
+    if(!installedEdition() && (usesLocalHost(id)||supportsServerManager(id)||id==='lastsignal'))await check(id);
+    if(!installedEdition())throw Error('Setup could not restore this pack. Run the full installer to repair it.');
     row(id,'ready','Installed');
   }
   function saveSession(g,p,version){
@@ -398,7 +407,7 @@ function start({root,bundled,data,ready,startupFailed}){
       case 'play':return play(d);
       case 'account':return account(d);
       case 'favorite':return favorite(d.id);
-      case 'install':return install(d.id);
+      case 'install':return install(d.id,d.managed===true);
       case 'update':return check(d.id);
       case 'restart':
         if(!restartPending())return;

@@ -8,6 +8,63 @@ const { EventEmitter } = require('node:events');
 const { test } = require('node:test');
 const { createServerManager, hasServerManagerPack } = require('../desktop/server-manager.cjs');
 
+test('four independent managed games use their own native pack, port, settings and join endpoint', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'catnmice-managed-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const fixtures = [
+    ['bannerlands','game/index.html','game/source/desktop/launcher.mjs','runtime','adapter.cjs','game/source/multiplayer-server.mjs'],
+    ['trashtactics','game/trash-tactics/index.html','game/trash-tactics/hosting/launch.mjs','hub-runtime','adapter.mjs','game/trash-tactics/server.mjs'],
+    ['cat','game/catandmouse/edition/index.html','game/catandmouse/edition/server/launcher.mjs','hub-runtime','adapter.mjs','game/catandmouse/edition/server/match-server.mjs'],
+    ['lastsignal','Last Signal.exe','manager/supervisor.cjs','Hosting','adapter.mjs','Mobile/index.html'],
+  ];
+  const children = new Map(), packs = new Map(), ports = new Set();
+  const manager = createServerManager({
+    dataDir: path.join(root, 'private'), packFor: id => packs.get(id), onChange() {}, onExit() {},
+    spawnProcess(executable, args, { cwd, env }) {
+      assert.equal(cwd, env.CATNMICE_PACK_ROOT);
+      assert.equal(executable, path.join(cwd, packs.get(env.CATNMICE_GAME_ID).spec.runtime));
+      assert.deepEqual(args, [path.join(cwd, 'manager', 'supervisor.cjs')]);
+      assert.equal(env.CATNMICE_DATA_DIR, path.join(root,'private','servers',env.CATNMICE_GAME_ID));
+      assert.equal(env.CATNMICE_CLOUDFLARED, path.join(cwd, packs.get(env.CATNMICE_GAME_ID).spec.tunnel));
+      ports.add(env.CATNMICE_PORT);
+      const child = new EventEmitter();
+      child.connected = true;
+      child.send = (message, callback) => { assert.equal(message.type, 'stop'); callback(); child.emit('close', 0); };
+      children.set(env.CATNMICE_GAME_ID, child);
+      return child;
+    },
+  });
+  for (const [id,entry,server,folder,adapter,gameFile] of fixtures) {
+    const packRoot = path.join(root, id);
+    const spec = { type: id === 'lastsignal' ? 'native-windows' : 'static', hosting: true,
+      manager: 'manager/supervisor.cjs', entry, server, runtime: folder+'/node.exe', tunnel: folder+'/cloudflared.exe' };
+    for (const rel of [entry, server, spec.runtime, spec.tunnel, spec.manager, gameFile, 'manager/'+adapter,
+      'manager/gateway.cjs','manager/community-tunnel.cjs','manager/community-directory.cjs']) {
+      const file = path.join(packRoot, rel);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, '');
+    }
+    assert.ok(hasServerManagerPack(id, spec, packRoot));
+    assert.equal(hasServerManagerPack(id, { ...spec, manager: undefined }, packRoot), false);
+    packs.set(id, { root: packRoot, spec });
+    const game = { id, title: id, offline: spec };
+    const visibility = id === 'lastsignal' ? 'code' : 'public';
+    manager.start(game, { name: id+' community', visibility });
+    children.get(id).emit('message', { type:'game-host-status', status:'online', origin:'https://'+id+'.trycloudflare.com', code:'0007' });
+    assert.equal(manager.status(game).link, visibility === 'public' ? 'https://'+id+'.trycloudflare.com/__catnmice/join' : undefined);
+    assert.equal(manager.status(game).code, visibility === 'code' ? '0007' : undefined);
+    assert.equal(new URL(manager.localLink(id)).pathname, '/__catnmice/join');
+  }
+  assert.equal(ports.size, 4);
+  children.get('lastsignal').emit('message', { type:'game-host-status',status:'lan-only',code:'0008' });
+  assert.equal(manager.status({id:'lastsignal'}).code,'0008');
+  await manager.stop('cat');
+  assert.equal(manager.busy('cat'), false);
+  assert.equal(manager.busy('bannerlands'), true);
+  await manager.stopAll();
+  assert.equal(manager.busy(), false);
+});
+
 test('the launcher runs the packaged Acorn server and exposes only its assigned join details', async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'catnmice-rally-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

@@ -54,7 +54,7 @@ def copy_tree(source, target, *, skip=()):
         ):
             copy(item,target/rel)
 
-def build(key, repo, entry, files=(), folders=(), edition=None, hosting=None):
+def build(key, repo, entry, files=(), folders=(), edition=None, hosting=None, adapter=None):
     if args.only and key not in args.only:
         return
     if key not in records or 'single' not in records[key]['modes']:
@@ -72,6 +72,14 @@ def build(key, repo, entry, files=(), folders=(), edition=None, hosting=None):
         copy_tree(repo/rel,root/rel)
     if edition:
         edition(root)
+    if adapter:
+        manager = root/'manager'
+        copy_tree(magic/'game/server-manager/host', manager)
+        for module in ('community-directory.cjs', 'community-tunnel.cjs'):
+            copy(truth/'games/acorn-rally/server'/module, manager/module)
+        copy(repo/adapter, manager/('adapter'+Path(adapter).suffix))
+        if not (manager/'supervisor.cjs').is_file():
+            raise ValueError('Missing Server Manager supervisor for '+key)
     if not (root/entry).is_file():
         raise ValueError('Missing offline entry '+entry)
     files = sorted(p for p in root.rglob('*') if p.is_file())
@@ -92,6 +100,8 @@ def build(key, repo, entry, files=(), folders=(), edition=None, hosting=None):
         if not all((root/item).is_file() for item in (server, runtime, tunnel)):
             raise ValueError('Missing local hosting files for '+key)
         manifest[key].update(hosting=True, server=server, runtime=runtime, tunnel=tunnel)
+    if adapter:
+        manifest[key]['manager'] = 'manager/supervisor.cjs'
 
 @cache
 def host_runtimes():
@@ -181,6 +191,7 @@ def last_signal(root):
         shutil.copyfile(native/'Last Signal.exe', root/'Last Signal.exe')
         for directory in ('Assets', 'Hosting', 'Mobile'):
             shutil.copytree(native/directory, root/directory, dirs_exist_ok=True)
+        bundle_host_runtime(root, 'Hosting')
         return
 
     def extract(archive):
@@ -249,16 +260,20 @@ def local_three(entry):
     return apply
 
 build('cat',magic,'game/catandmouse/edition/index.html',folders=[cat_folder],edition=cat_edition,
-      hosting=('game/catandmouse/edition/server/launcher.mjs','hub-runtime'))
+      hosting=('game/catandmouse/edition/server/launcher.mjs','hub-runtime'), adapter=cat_folder/'server/managed.mjs')
 build('trashtactics',magic,'game/trash-tactics/index.html',folders=[trash_folder],edition=trash_edition,
-      hosting=('game/trash-tactics/hosting/launch.mjs','hub-runtime'))
+      hosting=('game/trash-tactics/hosting/launch.mjs','hub-runtime'), adapter=trash_folder/'hosting/manager-adapter.mjs')
 build('bannerlands',truth,'game/index.html',edition=bannerlands,
-      hosting=('game/source/desktop/launcher.mjs','runtime'))
+      hosting=('game/source/desktop/launcher.mjs','runtime'), adapter='games/bannerlands/source/hosting/manager-adapter.cjs')
 # Historical Truth checkouts predate Server Manager and still build their original packs.
 if (truth/'games/acorn-rally/server/community-host.cjs').is_file() and 'acornrally' in records:
     build('acornrally',truth,'index.html',edition=acorn_rally,
           hosting=('server/lobby-supervisor.cjs','server/runtime'))
-build('lastsignal',truth,'Last Signal.exe',edition=last_signal)
+# The archived executable predates the headless host. Only the fresh native
+# build can advertise this edition in a release catalog.
+build('lastsignal',truth,'Last Signal.exe',edition=last_signal,
+      hosting=('manager/supervisor.cjs','Hosting') if args.last_signal_build else None,
+      adapter='games/last-signal/manager/adapter.mjs' if args.last_signal_build else None)
 if not args.only or 'lastsignal' in args.only:
     manifest['lastsignal']['type']='native-windows'
 build('hearthmouse',magic,'index.html',edition=hearthmouse)
