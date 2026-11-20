@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {firebaseConfig} = require('./firebase-config.mjs');
+const {acornHost} = require('./managed-invite.cjs');
 
 const games = new Set(['bramblebound', 'dwarfworld', 'spacetyrants']);
 const database = 'projects/' + firebaseConfig.projectId + '/databases/(default)';
@@ -51,17 +52,30 @@ function configureSaveSession(session, {gameId, origin, sync = false}) {
     throw new Error('A local game server is required to open the save session.');
   }
   let cloud = sync === true && supportsSaveSync(gameId);
+  let acornDirectory = gameId === 'acornrally';
   session.webRequest.onBeforeRequest((details, reply) => {
     let allow = false;
     try {
       const url = new URL(details.url);
       allow = !networkProtocols.has(url.protocol) || url.origin === local.origin ||
         (url.protocol === 'ws:' && url.host === local.host) ||
-        (cloud && allowsCloudRequest(url, details));
+        (cloud && allowsCloudRequest(url, details)) ||
+        (acornDirectory && allowsAcornDirectory(url, details));
     } catch { /* Keep malformed requests blocked. */ }
     reply({cancel: !allow});
   });
-  return () => { cloud = false; };
+  return () => { cloud = false; acornDirectory = false; };
+}
+
+function allowsAcornDirectory(url, { resourceType, method }) {
+  if (!['xhr','other'].includes(resourceType) || url.search || url.protocol !== 'https:' ||
+      url.username || url.password || url.port) return false;
+  if (acornHost(url)) return method === 'GET' && url.pathname === '/api/rooms/status';
+  if (url.hostname !== 'firestore.googleapis.com') return false;
+  const base = '/v1/' + database + '/documents';
+  if (url.pathname === base + ':runQuery') return ['POST','OPTIONS'].includes(method);
+  return method === 'GET' && url.pathname.startsWith(base + '/') &&
+    /^(acornRallyLobbies\/\d{4}|acornRallyService\/public)$/.test(url.pathname.slice(base.length + 1));
 }
 
 // Bramblebound imports the lobby's shared public project configuration by absolute path.
