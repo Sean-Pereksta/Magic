@@ -55,3 +55,23 @@ Each game can run its own server on the same laptop. Other laptops can host addi
 The laptop needs to stay on and awake. Run the standalone lobby launcher from Acorn Rally’s PC edition with `--no-open` for a Windows Task Scheduler setup that can run outside the Catnmice launcher. Set the task's execution time limit to indefinite.
 
 Build the Windows packs from matching Magic and Truth revisions with the manager adapters and use the freshly compiled Last Signal executable. The signed launcher, catalog and game pack are required for download-channel installation.
+
+### Update Acorn Rally’s Firestore permissions
+
+If Server Manager reports that the lobby directory is unavailable after opening
+the public tunnel, check that Anonymous sign-in is enabled and that the active
+Firestore rules include the Acorn Rally lobby and host queue permissions.
+
+Copy the active Firestore rules for the Catnmice project into a local
+`active.rules` file. From the Magic repository root, prepare an update using the
+Acorn Rally rules already checked in.
+
+```powershell
+node desktop-hub/build/prepare-acorn-firestore.cjs active.rules > acorn-production.rules
+```
+
+Review the output and publish it in the Firebase console for `bible-game-246c0`.
+The command uses the active rules as its baseline, adds the missing Acorn Rally
+rules, and checks the 2,000-line limit. After publishing, wait for Server Manager
+to retry and check that the server appears under **Public servers** in Acorn
+Rally’s multiplayer menu.
