@@ -43,7 +43,9 @@ function register(test) {
     for (let i = 0; i < 32; i++) {
       const u = troops[i];
       u.y = 2200 + (i - 15.5) * 17;
-      place(u, i < 7); u.angle = i < 17 ? 0 : Math.PI;
+      place(u, i < 7);
+      const aim = Math.atan2(enemy.y - u.y, enemy.x - u.x);
+      u.angle = i < 17 ? aim + 70 * Math.PI / 180 : Math.PI;
       if (i % 4 === 0) u._vy = 8; // Some files are still dressing their ranks.
     }
     for (const [i,u] of troops.slice(32).entries()) { u.x = 2225 + i * 17; u.y = 2490; }
@@ -62,6 +64,19 @@ function register(test) {
     e._stepMusketVolleys(DT); assert.equal(shots.length, 0);
     for (let tick = 0; tick < 60 && !shots.length; tick++) { e.time += DT; e._stepMusketVolleys(DT); }
     assert.equal(shots.length, 36);
+  });
+  test('Musketeers fire while the last files are still arriving or wheeling', () => {
+    for (const order of ['move', 'face']) {
+      const { e, r, shots } = make();
+      // The turn is long enough that the outer files will still be moving
+      // when the soldiers finish turning their heads toward the enemy.
+      e.command([r.id], order, r.x + 130, r.y + (order === 'face' ? 100 : 0));
+      for (let tick = 0; tick < 300 && !shots.length; tick++) e.step(DT);
+      assert.equal(shots.length, 36, order + ' failed to release the company volley');
+      assert.equal(r.order, order, order + ' waited for the formation to finish');
+      if (order === 'face') assert(r.commandTurnRemaining > 0, 'The wheel had already finished');
+      else assert(Math.hypot(r.x - r.targetX, r.y - r.targetY) <= 28 + r._shapeSpacing);
+    }
   });
   test('Casualties close musket rank numbers without creating phantom fourth ranks', () => {
     const { e, r } = make();
