@@ -15,6 +15,7 @@ let page = 'Library', detailId = '', filter = 'All games', query = '', feature =
 let sequence = 0, rankSequence = 0, statusTimeout, snapshotKey = '';
 const inProgress = new Set();
 const serverDrafts = new Map();
+const serverStatusLabels = {offline:'Stopped',starting:'Starting',online:'Online','lan-only':'Local network only',stopping:'Stopping'};
 const matches = (id) => games().find(game => game.id === id);
 const games = () => Array.isArray(state.catalog?.games) ? state.catalog.games : [];
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -261,7 +262,6 @@ function downloads() {
 function serverManager() {
   const servers = (state.servers || []).filter(server => matches(server.id));
   if (!servers.length) return '<section class="panel"><p>No game in this catalog has a server edition.</p></section>';
-  const labels = {offline:'Stopped',starting:'Starting',online:'Online','lan-only':'Local network only',stopping:'Stopping'};
   return `<p class="server-guide">Keep the launcher open and this PC awake while hosting.</p>` + servers.map(server => {
     const game = matches(server.id);
     const id = attr(server.id);
@@ -282,9 +282,62 @@ function serverManager() {
     </form>` : server.available
       ? `<div class="controls">${btn('Install hosting pack','server-install',{id:server.id},'gold','downloads')}</div>`
       : '<p>The hosting pack is not included in this catalog version.</p>';
-    return `<section class="panel server-panel" id="server-${id}"><div class="section-title"><h2>${esc(title(game))}</h2><span class="server-status" data-server-status="${attr(server.status)}" role="status">${esc(labels[server.status] || 'Stopped')}</span></div>
-      ${setup}${server.message ? `<p class="server-message" role="status">${esc(server.message)}</p>` : ''}${invitation}</section>`;
+    const diagnostics = server.id === 'acornrally' && server.running
+      ? `<div class="controls">${btn('Server diagnostics','server-diagnostics',{id:server.id},'','server')}</div>` : '';
+    return `<section class="panel server-panel" id="server-${id}"><div class="section-title"><h2>${esc(title(game))}</h2><span class="server-status" data-server-status="${attr(server.status)}" role="status">${esc(serverStatusLabels[server.status] || 'Stopped')}</span></div>
+      ${setup}${server.message ? `<p class="server-message" role="status">${esc(server.message)}</p>` : ''}${invitation}${diagnostics}</section>`;
   }).join('');
+}
+const diagnosticValue = (value, unit = '') => Number.isFinite(value) ? fmt(value) + unit : '—';
+const diagnosticLabel = value => value ? value[0].toUpperCase() + value.slice(1) : '—';
+const transportLabels = {websocket:'WebSocket',poll:'Polling',events:'Event stream'};
+function diagnosticRows(rows) {
+  return '<dl class="diagnostic-metrics">' + rows.map(([label, value]) =>
+    `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('') + '</dl>';
+}
+function serverDiagnosticContent(report) {
+  const { status, message: detail, metrics } = report;
+  const summary = `<p class="dialog-copy"><strong>${esc(serverStatusLabels[status] || 'Stopped')}</strong>${detail ? ` · ${esc(detail)}` : ''}</p>`;
+  if (!metrics) {
+    return summary + (status === 'offline' || status === 'stopping' ? '' :
+      '<p class="dialog-copy">Waiting for live diagnostics from the hosting pack.</p>');
+  }
+  const age = Math.max(0, Math.round((Date.now() - metrics.sampledAt) / 1000));
+  const probes = Number.isFinite(metrics.tunnelProbeSamples) && Number.isFinite(metrics.tunnelProbeFailures)
+    ? `${fmt(metrics.tunnelProbeFailures)} of ${fmt(metrics.tunnelProbeSamples)}` : '—';
+  const readiness = Number.isFinite(metrics.expectedPlayers) && Number.isFinite(metrics.readyPlayers)
+    ? `${fmt(metrics.readyPlayers)} of ${fmt(metrics.expectedPlayers)}` : '—';
+  const players = metrics.players || [];
+  const table = players.length ? `<div class="diagnostic-table"><table>
+    <caption>Player connections and track loading</caption>
+    <thead><tr><th scope="col">Player</th><th scope="col">Connection</th><th scope="col">Ping</th><th scope="col">Jitter</th>
+      <th scope="col">Snapshot age</th><th scope="col" title="Percentage of expected server updates the client missed">Snapshot gaps</th>
+      <th scope="col">Backlog</th><th scope="col">FPS</th><th scope="col">Track load</th></tr></thead>
+    <tbody>${players.map((player, index) => `<tr>
+      <th scope="row">${esc(player.name || `Player ${index + 1}`)}</th>
+      <td>${transportLabels[player.transport] || '—'}</td>
+      <td>${diagnosticValue(player.rttMs, ' ms')}</td><td>${diagnosticValue(player.jitterMs, ' ms')}</td>
+      <td>${diagnosticValue(player.snapshotAgeMs, ' ms')}</td><td>${diagnosticValue(player.snapshotGapPct, '%')}</td>
+      <td>${diagnosticValue(player.snapshotBacklog)}</td>
+      <td>${diagnosticValue(player.fps)}</td>
+      <td>${esc(diagnosticLabel(player.loadState))}${Number.isFinite(player.loadMs) ? ` · ${diagnosticValue(player.loadMs, ' ms')}` : ''}</td>
+    </tr>`).join('')}</tbody></table></div>` : '';
+  return summary + `<p class="dialog-copy">Last sample ${age === 0 ? 'just now' : `${age}s ago`}</p>
+    ${diagnosticRows([
+      ['Local host', diagnosticLabel(metrics.localStatus)],
+      ['Public tunnel', diagnosticLabel(metrics.tunnelStatus)],
+      ['Lobby directory', diagnosticLabel(metrics.directoryStatus)],
+      ['Tunnel round-trip', diagnosticValue(metrics.tunnelRttMs, ' ms')],
+      ['Tunnel jitter', diagnosticValue(metrics.tunnelJitterMs, ' ms')],
+      ['Failed tunnel probes', probes],
+      ['Host event-loop delay', diagnosticValue(metrics.eventLoopLagMs, ' ms')],
+      ['Snapshot rate', diagnosticValue(metrics.snapshotRateHz, ' Hz')],
+      ['Snapshot size', diagnosticValue(metrics.snapshotBytes, ' bytes')],
+      ['Skipped sends', diagnosticValue(metrics.skippedSnapshots)],
+      ['Race phase', diagnosticLabel(metrics.phase)],
+      ['Players connected', diagnosticValue(metrics.playerCount)],
+      ['Players ready', readiness],
+    ])}${table}`;
 }
 function settings() {
   return `<section class="panel"><h2>Player profile</h2><p>Playing as <strong>${esc(profileName(state.profile))}</strong>.</p><div class="controls">${btn('Manage profiles','accounts',{},'gold','user')}${guest()?'':btn('View website profile','community',{section:'profile'},'','external')+btn('Link guest activity','ask-link',{},'','link')}</div></section>
@@ -349,6 +402,21 @@ function showDialog(label,content) {
   $('#dialog-body').innerHTML = `<div class="dialog-top"><h2>${esc(label)}</h2><button class="icon-button" aria-label="Close dialog" data-action="dismiss">${icon('close')}</button></div>${content}`;
   if (!dialog.open) dialog.showModal();
 }
+function showServerDiagnostics(id) {
+  showDialog('Acorn Rally server diagnostics', '<div class="server-diagnostics" data-server-diagnostics><p class="dialog-copy">Reading server diagnostics…</p></div>');
+  const panel = dialog.querySelector('[data-server-diagnostics]');
+  async function update() {
+    if (!dialog.open || !panel.isConnected) return;
+    try {
+      const report = await host.invoke('serverDiagnostics', {id});
+      if (dialog.open && panel.isConnected) panel.innerHTML = serverDiagnosticContent(report);
+    } catch (error) {
+      if (dialog.open && panel.isConnected) panel.textContent = cleanError(error);
+    }
+    if (dialog.open && panel.isConnected) setTimeout(update, 3000);
+  }
+  update();
+}
 function accounts() {
   const profiles = Array.isArray(state.profiles) ? state.profiles : [];
   const profilesList = profiles.length ? `<div class="profile-choices"><h3>Local profiles</h3><div class="choice-list">${profiles.map(p=>btn(profileName(p),'account',{mode:'switch',id:p.id},'',p.id===state.profile?.id ? 'check' : 'user')).join('')}</div></div>` : '';
@@ -391,6 +459,7 @@ function onAction(el) {
     case 'server-install': dispatch('install',{id,managed:true},'Hosting pack installation completed.');break;
     case 'server-stop': dispatch('serverStop',{id});break;
     case 'server-open': dispatch('serverOpen',{id});break;
+    case 'server-diagnostics': showServerDiagnostics(id);break;
     case 'server-copy': dispatch('serverCopy',{id,kind},kind==='code'?'Join code copied.':'Join link copied.');break;
     case 'install': dispatch('install',{id},'Game pack installation completed.');break;
     case 'update': dispatch('update',id ? {id} : {},updateSummary);break;

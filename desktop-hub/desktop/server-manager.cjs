@@ -66,6 +66,51 @@ function internetLink(origin, joinPath) {
   return undefined;
 }
 
+const hostMetrics = {
+  tunnelRttMs: 60_000, tunnelJitterMs: 60_000, tunnelProbeFailures: 1_000_000,
+  tunnelProbeSamples: 1_000_000, eventLoopLagMs: 60_000, snapshotRateHz: 240,
+  snapshotBytes: 10_000_000, skippedSnapshots: 1_000_000_000,
+  playerCount: 8, readyPlayers: 8, expectedPlayers: 8,
+};
+const playerMetrics = {
+  rttMs: 60_000, jitterMs: 60_000, snapshotAgeMs: 600_000,
+  snapshotBacklog: 1_000_000_000, snapshotGapPct: 100, loadMs: 600_000, fps: 360,
+};
+
+function readMetrics(data, fields) {
+  const metrics = {};
+  for (const [key, max] of Object.entries(fields)) {
+    const value = data[key];
+    if (Number.isFinite(value) && value >= 0 && value <= max) metrics[key] = Math.round(value * 10) / 10;
+  }
+  return metrics;
+}
+
+function readLabels(data, fields, target) {
+  for (const key of fields) {
+    const value = data[key];
+    if (typeof value === 'string' && /^[a-z][a-z -]{0,30}$/i.test(value)) target[key] = value;
+  }
+}
+
+function readRallyDiagnostics(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const result = readMetrics(data, hostMetrics);
+  readLabels(data, ['phase', 'localStatus', 'tunnelStatus', 'directoryStatus'], result);
+  if (Array.isArray(data.players)) {
+    result.players = data.players.slice(0, 8)
+      .filter(player => player && typeof player === 'object' && !Array.isArray(player))
+      .map(player => {
+        const row = readMetrics(player, playerMetrics);
+        if (typeof player.name === 'string') row.name = player.name.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 40);
+        readLabels(player, ['loadState'], row);
+        if (['websocket', 'poll', 'events'].includes(player.transport)) row.transport = player.transport;
+        return row;
+      });
+  }
+  return { ...result, sampledAt: Date.now() };
+}
+
 function createServerManager({ dataDir, packFor, onChange, onExit, spawnProcess = spawn }) {
   const configPath = path.join(dataDir, 'server-manager.json');
   let stored = {};
@@ -131,7 +176,13 @@ function createServerManager({ dataDir, packFor, onChange, onExit, spawnProcess 
     let launchFailed = false;
     let timeout;
     child.on('message', data => {
-      if (instance.stopping || data?.type !== edition.statusType ||
+      if (instance.stopping) return;
+      if (id === 'acornrally' && data?.type === 'rally-host-diagnostics') {
+        const diagnostics = readRallyDiagnostics(data.diagnostics);
+        if (diagnostics) instance.diagnostics = diagnostics;
+        return;
+      }
+      if (data?.type !== edition.statusType ||
           !['starting', 'online', 'lan-only', 'offline'].includes(data.status)) return;
       const link = data.status === 'online' ? internetLink(data.origin, edition.joinPath) : undefined;
       const usableCode = link || (edition.files.manager && data.status === 'lan-only');
@@ -173,6 +224,15 @@ function createServerManager({ dataDir, packFor, onChange, onExit, spawnProcess 
 
   return {
     status,
+    diagnostics(game) {
+      if (game.id !== 'acornrally') throw Error('Connection diagnostics are available for Acorn Rally.');
+      const instance = running.get(game.id);
+      return {
+        status: instance?.status.status || 'offline',
+        message: instance?.status.message || exitMessage.get(game.id),
+        metrics: instance?.stopping ? undefined : instance?.diagnostics,
+      };
+    },
     start,
     stop: id => running.get(id)?.stop(),
     stopAll: () => Promise.all([...running.values()].map(instance => instance.stop())),

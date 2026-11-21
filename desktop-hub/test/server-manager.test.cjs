@@ -121,16 +121,43 @@ test('the launcher runs the packaged Acorn server and exposes only its assigned 
   assert.equal(manager.status(game).code, '0042');
   assert.equal(manager.status(game).link, undefined);
   assert.equal(manager.localLink(game.id), 'http://127.0.0.1:8791/?room=join');
+  assert.equal(manager.diagnostics(game).metrics, undefined);
+  const changesBeforeSample = changes;
+  child.emit('message', { type: 'rally-host-diagnostics', diagnostics: {
+    tunnelRttMs: 82.24, tunnelJitterMs: -1, eventLoopLagMs: Infinity,
+    tunnelStatus: 'ready', directoryStatus: 'listed', expectedPlayers: 2, readyPlayers: 1, phase: 'loading',
+    code: '0042', origin: 'https://race-abc.trycloudflare.com',
+    players: [{ name: 'Player', loadState: 'ready', loadMs: 1800, rttMs: 105, snapshotGapPct: 2.5,
+      fps: 60, transport: 'websocket', id: 'private-id' },
+      ...Array.from({ length: 9 }, () => ({ name: 'x'.repeat(60), loadState: '<invalid>', snapshotGapPct: 101, transport: 'other' }))],
+  } });
+  const { status, metrics } = manager.diagnostics(game);
+  assert.equal(status, 'online');
+  assert.equal(changes, changesBeforeSample);
+  assert.equal(metrics.tunnelRttMs, 82.2);
+  assert.equal(metrics.tunnelStatus, 'ready');
+  assert.equal(metrics.phase, 'loading');
+  assert.equal(metrics.readyPlayers, 1);
+  assert.equal(metrics.expectedPlayers, 2);
+  assert.ok(Number.isFinite(metrics.sampledAt));
+  for (const key of ['tunnelJitterMs','eventLoopLagMs','code','origin']) assert.equal(metrics[key], undefined);
+  assert.equal(metrics.players.length, 8);
+  assert.deepEqual(metrics.players[0], { name: 'Player', loadState: 'ready', loadMs: 1800, rttMs: 105,
+    snapshotGapPct: 2.5, fps: 60, transport: 'websocket' });
+  assert.deepEqual(metrics.players[1], { name: 'x'.repeat(40) });
   child.emit('message', { type: 'rally-host-status', status: 'lan-only' });
   assert.equal(manager.status(game).code, undefined);
+  assert.equal(manager.diagnostics(game).status, 'lan-only');
   await manager.stop(game.id);
   assert.equal(manager.busy(), false);
   assert.equal(manager.status(game).status, 'offline');
+  assert.equal(manager.diagnostics(game).metrics, undefined);
   assert.equal(createServerManager(options).status(game).name, 'Local cup');
   assert.equal(createServerManager(options).status(game).visibility, 'code');
 
   manager.start(game, { visibility: 'public' });
   const publicChild = processes[1].child;
+  assert.equal(manager.diagnostics(game).metrics, undefined);
   publicChild.emit('message', { type: 'rally-host-status', status: 'online', code: '1234', origin: 'https://race-def.trycloudflare.com' });
   assert.equal(manager.status(game).link, 'https://race-def.trycloudflare.com/?room=join');
   assert.equal(manager.status(game).code, undefined);
