@@ -397,6 +397,7 @@ function start({root,bundled,data,ready,startupFailed}){
       case 'serverStart':return manager.start(known(d.id),d);
       case 'serverStop':return manager.stop(known(d.id).id);
       case 'serverOpen':return shell.openExternal(manager.localLink(known(d.id).id));
+      case 'serverDiagnostics':return manager.diagnostics(known(d.id));
       case 'serverCopy':{
         const game=known(d.id);
         if(!supportsServerManager(game.id)||!['link','code'].includes(d.kind))throw Error('Choose a server link or code.');
