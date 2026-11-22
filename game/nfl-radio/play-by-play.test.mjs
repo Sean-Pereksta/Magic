@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {settingsForGame} from './play-settings.mjs';
 import {
   PLAY_POLL_MS,
   DEFAULT_SCORE_INTERVAL_MINUTES,
@@ -101,6 +102,20 @@ test('older saved settings get score updates every five minutes for rotation gam
   assert.equal(settings.duckRadio,true);
   assert.equal(settings.scoreIntervalMinutes,DEFAULT_SCORE_INTERVAL_MINUTES);
   assert.equal(settings.scoreScope,'rotation');
+});
+test('uses saved player and play-type filters independently for each game',()=>{
+  const storage={getItem:()=>JSON.stringify({
+    mode:'players',modeByGame:{g1:'every',g3:'off',g4:'invalid'},
+    playTypes:['pass','invalid','pass','turnover'],
+    selectedPlayersByGame:{g1:[{id:'gibbs',name:'Jahmyr Gibbs'}],g2:[{id:'cook',name:'James Cook'}]}
+  })};
+  const settings=readPlayByPlaySettings(storage);
+  assert.equal(settingsForGame(settings,'g1').mode,'every');
+  assert.equal(settingsForGame(settings,'g2').mode,'players');
+  assert.deepEqual(settingsForGame(settings,'g2').selectedPlayerIds,['cook']);
+  assert.deepEqual(settingsForGame(settings,'g2').playTypes,['pass','turnover']);
+  assert.equal(settingsForGame(settings,'g3').mode,'off');
+  assert.equal(settingsForGame(settings,'g4').mode,'players');
 });
 
 test('score interval accepts off and clamps excessive values',()=>{

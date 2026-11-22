@@ -4,6 +4,7 @@ import {readPlayByPlaySettings,settingsForGame} from './play-settings.mjs';
 import {setRadioDucked} from './radio-audio-bridge.mjs';
 import {
   browserSpeechAvailable,
+  cancelBrowserSpeech,
   enqueueBrowserSpeech,
   getBrowserSpeechQueueState,
   unlockBrowserSpeech
@@ -131,10 +132,11 @@ async function summaryFor(id){
   try{return await fetchJson(SUMMARY_URL(id),{timeout:9000});}catch{return null;}
 }
 
-export function speakBrowserDefault(text,{onStart,onEnd,onError,key}={}){
+export function speakBrowserDefault(text,{onStart,onEnd,onError,key,shouldPlay}={}){
   return enqueueBrowserSpeech(text,{
     source:'game-update',
     key:key||`game-update:${text}`,
+    shouldPlay,
     rate:1.04,
     onStart:()=>{if(readPlayByPlaySettings().duckRadio)setRadioDucked(true);onStart?.();},
     onEnd:()=>{setRadioDucked(false);onEnd?.();},
@@ -157,6 +159,7 @@ function element(tag,text,attrs={}){
 export function installSpokenUpdates(){
   if(typeof document==='undefined'||!document.querySelector('.toolbar')||document.getElementById('gameUpdatesButton'))return;
   const toolbar=document.querySelector('.toolbar');
+  const shortcut=document.getElementById('gameRecapShortcut');
   const open=element('button','🔊 Game updates',{id:'gameUpdatesButton'});
   toolbar.insertBefore(open,document.getElementById('refresh'));
 
@@ -211,8 +214,10 @@ export function installSpokenUpdates(){
     };
     try{localStorage.setItem(STORAGE_KEY,JSON.stringify(settings));}catch{}
     if(settings.enabled)unlockBrowserSpeech();
+    else cancelBrowserSpeech(item=>item.key.startsWith('game-update:auto:'));
     schedule();
     paint();
+    window.dispatchEvent(new CustomEvent('nfl-radio:recaps',{detail:{enabled:settings.enabled}}));
   };
 
   const hydrate=()=>{
@@ -227,6 +232,10 @@ export function installSpokenUpdates(){
     const count=selectedGameIds().length;
     open.textContent=settings.enabled?`🔊 Updates ON · ${settings.minutes}m`:'🔊 Game updates';
     open.classList.toggle('active',!!settings.enabled);
+    if(shortcut){
+      shortcut.textContent=settings.enabled?`Recaps on · ${settings.minutes}m`:'Game recaps';
+      shortcut.classList.toggle('active',!!settings.enabled);
+    }
     if(message){status.textContent=message;return;}
     if(!browserSpeechAvailable()){
       status.textContent='This browser does not expose text-to-speech.';
@@ -245,7 +254,7 @@ export function installSpokenUpdates(){
   };
 
   const announce=async manual=>{
-    if(fetching)return;
+    if(fetching||(!manual&&!settings.enabled))return;
     const ids=selectedGameIds();
     if(!ids.length){paint('Add games to your rotation first.');return;}
     fetching=true;
@@ -258,30 +267,31 @@ export function installSpokenUpdates(){
       if(!targets.length){paint('None of your selected games are live right now.');return;}
 
       const summaries=await Promise.all(targets.map(event=>settings.scoring?summaryFor(event.id):Promise.resolve(null)));
-      const spoken=[];
+      if(!manual&&!settings.enabled)return;
+      const liveSettings=readPlayByPlaySettings();
+      const onAir=document.getElementById('nowGame')?.dataset.playingGameId;
+      let queued=0;
       targets.forEach((event,index)=>{
-        const seen=seenScores.get(String(event.id))||new Set();
-        const liveSettings=readPlayByPlaySettings();
-        const recapSettings=!manual&&liveSettings.enabled?{...settings,lastPlay:false,scoring:false}:settings;
-        const update=buildGameUpdate(event,summaries[index],{...recapSettings,seenScoreIds:seen,playSettings:settingsForGame(liveSettings,event.id)});
-        if(update.speech)spoken.push(update.speech);
-        seenScores.set(String(event.id),new Set(update.scoreIds));
-      });
-      const text=spoken.join(' Next game. ');
-      if(!text){paint('Live data is temporarily unavailable.');return;}
-
-      const key=`game-update:${targets.map(event=>event.id).join(',')}:${text}`;
-      const queued=speakBrowserDefault(text,{
-        key,
-        onStart:()=>paint(`Speaking ${targets.length} game${targets.length===1?'':'s'}…`),
-        onEnd:()=>paint(`Last spoken update ${new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}.`),
-        onError:()=>paint('Browser voice could not speak that update. Future checks will keep retrying normally.')
+        const id=String(event.id),match=competitors(event).map(teamLabel).join(' and ');
+        const seen=seenScores.get(id)||new Set();
+        const calls=settingsForGame(liveSettings,id);
+        const hasLiveCalls=liveSettings.enabled&&(liveSettings.includeRadioGame||onAir!==id)&&calls.mode!=='off'&&(calls.mode!=='players'||calls.selectedPlayerIds.length>0);
+        const recapSettings=!manual&&hasLiveCalls?{...settings,lastPlay:false,scoring:false}:settings;
+        const update=buildGameUpdate(event,summaries[index],{...recapSettings,seenScoreIds:seen});
+        if(!update.speech)return;
+        if(speakBrowserDefault(update.speech,{
+          key:`game-update:${manual?'manual':'auto'}:${id}`,
+          shouldPlay:()=>manual||(settings.enabled&&selectedGameIds().includes(id)),
+          onStart:()=>paint(`Speaking ${match}…`),
+          onEnd:()=>{seenScores.set(id,new Set(update.scoreIds));paint(`Last spoken update ${new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}.`);},
+          onError:error=>{if(error!=='canceled')paint('Voice is trying to resume. Check the voice status above the games.');}
+        }))queued++;
       });
       if(queued){
         const voice=getBrowserSpeechQueueState();
-        paint(voice.speaking&&voice.queued?`Game update queued. ${voice.queued} item${voice.queued===1?'':'s'} waiting behind the current voice.`:'Game update added to the voice queue.');
+        if(!voice.speaking)paint(voice.blocked?'Tap Resume voice to hear queued recaps.':`${queued} game ${queued===1?'recap':'recaps'} queued.`);
       }else{
-        paint('That exact update is already queued or browser speech is unavailable.');
+        paint('Those recaps may already be queued. Check the voice status above the games.');
       }
     }catch{
       paint('Could not load live game updates. The next scheduled update will retry.');
@@ -298,20 +308,22 @@ export function installSpokenUpdates(){
   document.addEventListener('pointerdown',rearm,{passive:true});
   document.addEventListener('keydown',rearm);
 
-  open.onclick=()=>{
+  const openDialog=()=>{
     settings=readSettings();
     hydrate();
     if(settings.enabled)unlockBrowserSpeech();
     paint();
     dialog.showModal();
   };
+  open.onclick=openDialog;
+  if(shortcut)shortcut.onclick=openDialog;
   document.getElementById('closeGameUpdates').onclick=()=>dialog.close();
   for(const control of controls.querySelectorAll('input,select'))control.onchange=saveSettings;
   speakNow.onclick=()=>{
     unlockBrowserSpeech();
     announce(true);
   };
-  window.addEventListener('pagehide',()=>clearInterval(timer));
+  window.addEventListener('pagehide',event=>{if(!event.persisted)clearInterval(timer);});
 }
 
 if(typeof document!=='undefined')installSpokenUpdates();

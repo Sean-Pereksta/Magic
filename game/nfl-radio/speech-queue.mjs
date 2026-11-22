@@ -18,6 +18,7 @@ export function createBrowserSpeechQueue({
   let current=null;
   let suspended=false;
   let blocked=false;
+  let activated=false;
   let watchdog=null;
   const clearWatchdog=()=>{clearTimeout(watchdog);watchdog=null;};
   const arm=(fn,ms)=>{clearWatchdog();watchdog=setTimeout(fn,ms);watchdog.unref?.();};
@@ -25,7 +26,10 @@ export function createBrowserSpeechQueue({
   const state=()=>({
     available:available(synth,Utterance),
     blocked,
-    speaking:!!current,
+    activated,
+    suspended,
+    starting:!!current&&!current.started,
+    speaking:!!current?.started,
     queued:queue.length,
     current:current?{key:current.key,source:current.source,text:current.text}:null
   });
@@ -46,8 +50,12 @@ export function createBrowserSpeechQueue({
   const unlock=()=>{
     if(getVoicePreferences().engine==='natural')unlockNaturalVoice();
     if(!resume())return false;
-    if(blocked){blocked=false;for(const item of queue)item.retries=0;drain();return true;}
+    const warm=!activated;
+    activated=true;
+    if(blocked){blocked=false;for(const item of queue)item.retries=0;}
     drain();
+    notify();
+    if(!warm)return true;
     try{
       if(synth.speaking||synth.pending||current||queue.length)return true;
       const warmup=new Utterance(' ');
@@ -83,6 +91,7 @@ export function createBrowserSpeechQueue({
     item.cancelNatural?.();item.cancelNatural=null;
     try{synth.cancel?.();}catch{}
     item.utterance=null;
+    if(['voice-unavailable','language-unavailable','synthesis-unavailable','synthesis-failed','network'].includes(error))item.useDeviceDefault=true;
     item.retries=(item.retries||0)+1;
     queue.unshift(item); // Preserve FIFO order and the de-duplication key.
     blocked=error==='not-allowed'||item.retries>1;
@@ -116,19 +125,27 @@ export function createBrowserSpeechQueue({
     if(!item){notify();return;}
 
     current=item;
+    item.started=false;
     notify();
 
     const preferences=getVoicePreferences();
-    if(preferences.engine==='natural'){
+    if(preferences.engine==='natural'&&!item.useDeviceDefault){
       const cancel=renderNatural(item.getText?.()||item.text,{
         voice:preferences.naturalVoice,rate:item.rate||1,
-        onStart:()=>{if(current!==item)return;arm(()=>recover(item,'speech-timeout'),Math.max(minimumSpeechTimeoutMs,item.text.length*110));try{item.onStart?.();}catch{}notify();},
+        onStart:()=>{if(current!==item)return;markStarted(item,item.text.length*110);},
         onEnd:()=>finish(item,true),
         onFallback:()=>{if(current===item){item.cancelNatural=null;speakBrowser(item);}}
       });
       if(cancel){item.cancelNatural=cancel;return;}
     }
     speakBrowser(item);
+  }
+
+  function markStarted(item,estimate){
+    activated=true;item.started=true;
+    arm(()=>recover(item,'speech-timeout'),Math.max(minimumSpeechTimeoutMs,estimate));
+    try{item.onStart?.();}catch{}
+    notify();
   }
 
   function speakBrowser(item){
@@ -139,15 +156,13 @@ export function createBrowserSpeechQueue({
       utterance.rate=Number.isFinite(item.rate)?item.rate:DEFAULT_RATE;
       utterance.pitch=Number.isFinite(item.pitch)?item.pitch:1;
       utterance.volume=Number.isFinite(item.volume)?item.volume:1;
-      const voice=chooseVoice(synth?.getVoices?.()||[],getVoicePreferences().voiceURI);
+      const voice=item.useDeviceDefault?null:chooseVoice(synth?.getVoices?.()||[],getVoicePreferences().voiceURI);
       if(voice){utterance.voice=voice;utterance.lang=item.lang||voice.lang;}
 
       let done=false;
       utterance.onstart=()=>{
         if(done||current!==item||item.utterance!==utterance)return;
-        arm(()=>recover(item,'speech-timeout'),Math.max(minimumSpeechTimeoutMs,utterance.text.length*110/(utterance.rate||1)));
-        try{item.onStart?.();}catch{}
-        notify();
+        markStarted(item,utterance.text.length*110/(utterance.rate||1));
       };
       utterance.onend=()=>{
         if(done||current!==item||item.utterance!==utterance)return;
@@ -224,6 +239,7 @@ export function createBrowserSpeechQueue({
     suspended=!!value;
     if(suspended&&current){const item=current;current=null;clearWatchdog();item.cancelNatural?.();item.cancelNatural=null;queue.unshift(item);try{synth.cancel?.();}catch{}try{item.onError?.('microphone-paused');}catch{}notify();}
     if(!suspended)drain();
+    notify();
   };
 
   const subscribe=listener=>{

@@ -31,7 +31,7 @@ function applyDuck(){
 }
 
 export function registerRadioAudio(audio){
-  if(!audio)return null;
+  if(!audio){restoreDuckedAudio();activeAudio=null;return null;}
   activeAudio=audio;
   if(duckRequested)applyDuck();
   return audio;

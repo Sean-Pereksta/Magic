@@ -24,12 +24,22 @@ try{
  for(const t of Object.values(teams))t.logo=`https://a.espncdn.com/test/${t.abbreviation}.png`;
  const makePlay=(id,text)=>({id:String(id),sequenceNumber:String(id),text,type:{text:'Rush'},period:{number:3},clock:{displayValue:'12:05'},start:{down:1,distance:10,yardsToEndzone:60,shortDownDistanceText:'1st & 10',team:{id:'8'}},end:{down:2,yardsToEndzone:52,team:{id:'8'}}});
  let plays=[makePlay(1,'J.Gibbs left tackle to DET 42 for 8 yards.')],failBoard=false,failSummary=false;
+ const otherPlays=[];
+ let otherState='pre',holdFirstSummary=null;
  const game=(id,away,home,last)=>({id,date:'2026-10-04T17:00:00Z',status:{type:{state:'in',shortDetail:'12:05 - 3rd'},period:3,displayClock:'12:05'},competitions:[{competitors:[{id:away.id,homeAway:'away',team:away,score:'10'},{id:home.id,homeAway:'home',team:home,score:'17'}],situation:{possession:home.id,downDistanceText:'2nd & 2 at DET 42',lastPlay:last}}]});
  await page.route('**/*',async route=>{
   const url=new URL(route.request().url());
   const json=body=>route.fulfill({json:body});
-  if(url.pathname.endsWith('/scoreboard'))return failBoard?route.fulfill({status:503,body:'unavailable'}):json({events:[game('g1',teams[9],teams[8],plays.at(-1)),game('g2',teams[12],teams[2],makePlay(101,'Runner up the middle for 4 yards.'))]});
-  if(url.pathname.endsWith('/summary'))return failSummary?route.fulfill({status:503,body:'unavailable'}):json({drives:{current:{team:teams[8],plays:url.searchParams.get('event')==='g1'?plays:[makePlay(101,'Runner up the middle for 4 yards.')]}},boxscore:{players:url.searchParams.get('event')==='g1'?[{team:teams[8],statistics:[{name:'rushing',labels:['CAR','YDS','TD'],athletes:[{athlete:det[1],stats:['12','85','1']}]},{name:'receiving',labels:['REC','YDS','TD','TGTS'],athletes:[{athlete:det[2],stats:['5','70','1','7']}]}]}]:[]}});
+  if(url.pathname.endsWith('/scoreboard')){
+   const other=game('g2',teams[12],teams[2],otherState==='pre'?undefined:otherPlays.at(-1));
+   other.status.type.state=otherState;
+   return failBoard?route.fulfill({status:503,body:'unavailable'}):json({events:[game('g1',teams[9],teams[8],plays.at(-1)),other]});
+  }
+  if(url.pathname.endsWith('/summary')){
+   const first=url.searchParams.get('event')==='g1';
+   if(first&&holdFirstSummary)await holdFirstSummary;
+   return failSummary?route.fulfill({status:503,body:'unavailable'}):json({drives:{current:{team:first?teams[8]:teams[2],plays:first?plays:otherPlays}},boxscore:{players:first?[{team:teams[8],statistics:[{name:'rushing',labels:['CAR','YDS','TD'],athletes:[{athlete:det[1],stats:['12','85','1']}]},{name:'receiving',labels:['REC','YDS','TD','TGTS'],athletes:[{athlete:det[2],stats:['5','70','1','7']}]}]}]:[]}});
+  }
   if(url.pathname.endsWith('/roster')){const id=url.pathname.split('/').at(-2);return json({team:teams[id],athletes:[{items:id==='8'?det:id==='9'?gb:[athlete(`p${id}`,'Some Runner','S. Runner','RB')]}]});}
   if(url.hostname.endsWith('radio-browser.info'))return json([{stationuuid:'fixture-stream',name:'Fixture radio',url_resolved:'https://stream.example/fixture.mp3',lastcheckok:1,ssl_error:0,codec:'MP3'}]);
   if(url.origin===origin)return route.continue();
@@ -40,10 +50,10 @@ try{
   const interval=window.setInterval.bind(window);window.setInterval=(fn,ms,...args)=>interval(fn,ms===5000?90:ms,...args);
   window.__spoken=[];window.__audios=[];
   window.Audio=function(){const audio=document.createElement('audio');window.__audios.push(audio);return audio;};
-  HTMLMediaElement.prototype.play=function(){queueMicrotask(()=>this.dispatchEvent(new Event('playing')));return Promise.resolve();};
+  HTMLMediaElement.prototype.play=function(){if(!window.__holdRadio)queueMicrotask(()=>this.dispatchEvent(new Event('playing')));return Promise.resolve();};
   HTMLMediaElement.prototype.pause=function(){this.dispatchEvent(new Event('pause'));};HTMLMediaElement.prototype.load=function(){};
   class Utterance{constructor(text){this.text=text;}}
-  const synth=new EventTarget();Object.assign(synth,{speaking:false,pending:false,getVoices:()=>[{name:'English Basic',voiceURI:'basic',lang:'en-US',default:true},{name:'English Natural',voiceURI:'natural',lang:'en-US'}],resume(){},cancel(){this.speaking=false;},speak(u){if(!u.text.trim())return;this.speaking=true;window.__spoken.push(u);u.onstart?.();window.__finishSpeech=()=>{this.speaking=false;u.onend?.();};}});
+  const synth=new EventTarget();Object.assign(synth,{speaking:false,pending:false,getVoices:()=>[{name:'English Basic',voiceURI:'basic',lang:'en-US',default:true},{name:'English Natural',voiceURI:'natural',lang:'en-US'}],resume(){},cancel(){this.speaking=false;},speak(u){if(!u.text.trim())return;if(window.__blockNextSpeech){window.__blockNextSpeech=false;queueMicrotask(()=>u.onerror?.({error:'not-allowed'}));return;}this.speaking=true;window.__spoken.push(u);u.onstart?.();window.__finishSpeech=()=>{this.speaking=false;u.onend?.();};}});
   Object.defineProperty(window,'speechSynthesis',{value:synth,configurable:true});Object.defineProperty(window,'SpeechSynthesisUtterance',{value:Utterance,configurable:true});
  });
  await page.goto(`${origin}/game/nfl-radio.html`);
@@ -51,12 +61,15 @@ try{
  assert.match(await page.locator('#latestPlay').textContent(),/Jahmyr Gibbs runs left for 8 yards/);
  for(const width of [360,390,768,1280]){await page.setViewportSize({width,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`no overflow at ${width}px`);}
  await page.setViewportSize({width:390,height:844});
- await page.locator('#start').click();await page.waitForFunction(()=>document.querySelector('#liveDot').classList.contains('playing'));
+ await page.locator('#start').click();
+ assert.equal(await page.locator('#radioState').textContent(),'BROADCAST OFF');
+ assert.equal(await page.evaluate(()=>window.__audios.length),0,'following games does not start a station');
+ await page.locator('#radioPower').click();await page.waitForFunction(()=>document.querySelector('#liveDot').classList.contains('playing'));
  await page.locator('[data-play-mode=every]').click();
  plays.push(makePlay(2,'J.Gibbs right guard for 5 yards.'));
  await page.waitForFunction(()=>window.__spoken.some(u=>u.text.includes('runs right for 5 yards')));
  assert.equal(await page.evaluate(()=>window.__audios.at(-1).volume),.18,'radio is ducked while speech is active');
- assert.equal(await page.locator('#latestPlay').textContent(),await page.evaluate(()=>window.__spoken.at(-1).text));
+ assert.ok((await page.evaluate(()=>window.__spoken.at(-1).text)).endsWith(await page.locator('#latestPlay').textContent()));
  await page.evaluate(()=>window.__finishSpeech());assert.equal(await page.evaluate(()=>window.__audios.at(-1).volume),1,'radio volume restored');
  await page.locator('[data-play-mode=touchdowns]').click();
  const before=await page.evaluate(()=>window.__spoken.length);
@@ -75,6 +88,7 @@ try{
  await page.locator('#playerSearch').fill('Gibbs');await page.locator('.playerOption').filter({hasText:'Jahmyr'}).click();
  assert.equal(await page.locator('.playerChip').count(),2);
  await page.locator('#playerSearch').fill('');assert.ok(await page.locator('.rosterGroup').filter({hasText:'Green Bay Packers'}).count());
+ await page.locator('#voiceOutputSettings summary').click();
  await page.locator('#voiceSelect').selectOption('basic');await page.locator('#voiceStyle').selectOption('excited');
  await page.locator('#closePlayByPlay').click();
  plays.push(makePlay(6,'J.Bates 43 yard field goal is GOOD.'));
@@ -104,7 +118,7 @@ try{
  for(const width of [360,390,768,1280]){await page.setViewportSize({width,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`visual layout at ${width}px`);}
  plays.push(makePlay(9,'J.Gibbs right tackle for 9 yards.'));
  await page.waitForFunction(()=>window.__spoken.at(-1)?.text.includes('for 9 yards'));
- assert.match(await page.evaluate(()=>window.__spoken.at(-1).text),/^First and 10/);
+ assert.match(await page.evaluate(()=>window.__spoken.at(-1).text),/First and 10/);
  const speakingCount=await page.evaluate(()=>window.__spoken.length);
  plays.push(makePlay(10,'J.Gibbs right tackle for 10 yards.'));
  await page.waitForFunction(()=>document.querySelector('#transcriptCount').textContent==='10');
@@ -135,9 +149,70 @@ try{
  assert.match(await page.locator('#latestPlayStats').textContent(),/Latest game totals/);
  for(const width of [360,390,768,1280]){await page.setViewportSize({width,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`stats layout at ${width}px`);}
  await page.locator('#playByPlayButton').click();
+ await page.locator('#voiceOutputSettings summary').click();
  await page.locator('#loadNaturalVoice').click();
  await page.waitForFunction(()=>!document.querySelector('#loadNaturalVoice').disabled);
  assert.match(await page.locator('#naturalVoiceStatus').textContent(),/Device voice|device voice/);
+ await page.locator('#closePlayByPlay').click();
+ await page.locator('#start').click();
+ await page.locator('#radioPower').click();
+ assert.equal(await page.locator('#radioState').textContent(),'BROADCAST OFF');
+ await page.locator('#playByPlayButton').click();
+ await page.locator('summary').filter({hasText:'Broadcast & score reminders'}).click();
+ await page.locator('#includeRadioGame').uncheck();
+ await page.locator('#closePlayByPlay').click();
+ await page.locator('#radioPower').click();
+ await page.waitForFunction(()=>document.querySelector('#radioState').textContent==='BROADCAST ON AIR');
+ const beforeSuppressed=await page.evaluate(()=>window.__spoken.length);
+ plays.push(makePlay(12,'J.Gibbs right end for 12 yards.'));
+ await page.waitForFunction(()=>document.querySelector('#transcriptCount').textContent==='12');
+ assert.equal(await page.evaluate(()=>window.__spoken.length),beforeSuppressed,'only an on-air broadcast suppresses calls');
+ await page.locator('#pause').click();
+ plays.push(makePlay(13,'J.Gibbs right end for 13 yards.'));
+ await page.waitForFunction(()=>window.__spoken.at(-1)?.text.includes('for 13 yards'));
+ await page.evaluate(()=>window.__finishSpeech());
+ await page.evaluate(()=>{window.__holdRadio=true;});
+ await page.locator('#pause').click();
+ await page.waitForFunction(()=>document.querySelector('#radioState').textContent==='CONNECTING BROADCAST');
+ await page.locator('#radioPower').click();
+ await page.evaluate(()=>{window.__audios.at(-1).dispatchEvent(new Event('playing'));window.__holdRadio=false;});
+ assert.equal(await page.locator('#radioState').textContent(),'BROADCAST OFF');
+ assert.equal(await page.evaluate(()=>window.__audios.at(-1).hasAttribute('src')),false);
+ await page.locator('#next').click();
+ assert.equal(await page.locator('#radioState').textContent(),'BROADCAST OFF','rotating games leaves the broadcast off');
+
+ await page.locator('#editPlayFilters').click();
+ await page.locator('#defaultPlayMode').selectOption('players');
+ await page.locator('#listen-game-g1').selectOption('every');
+ await page.locator('#playTypes input[value="run"]').check();
+ await page.locator('#playerGame').selectOption('g2');
+ await page.locator('#playerPosition').selectOption('RB');
+ await page.locator('#playerSearch').fill('BUF runner');
+ await page.locator('.playerOption').filter({hasText:'Some Runner'}).click();
+ assert.equal(await page.locator('.playerChip').count(),3,'followed players remain visible across games');
+ await page.locator('#closePlayByPlay').click();
+ await page.evaluate(()=>{window.__blockNextSpeech=true;});
+ let releaseSummary;
+ holdFirstSummary=new Promise(resolve=>{releaseSummary=resolve;});
+ plays.push(makePlay(14,'J.Gibbs right end for 25 yards.'));
+ otherState='in';
+ otherPlays.push({...makePlay(102,'S.Runner up the middle for 31 yards.'),participants:[{athlete:{id:'p2'}}]});
+ await page.waitForFunction(()=>document.querySelector('#speechIndicator').textContent.includes('Voice needs a tap'));
+ await page.locator('#resumeVoice').click();
+ await page.waitForFunction(()=>window.__spoken.at(-1)?.text.includes('for 31 yards'));
+ assert.match(await page.locator('#speechIndicator').textContent(),/Speaking/);
+ await page.evaluate(()=>window.__finishSpeech());
+ assert.match(await page.locator('#lastSpoken').textContent(),/Last play call/);
+ holdFirstSummary=null;releaseSummary();
+ await page.waitForFunction(()=>window.__spoken.at(-1)?.text.includes('for 25 yards'));
+ await page.locator('#fieldVoiceToggle').click();
+ assert.match(await page.locator('#speechIndicator').textContent(),/Play calls off/);
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector('#radioState').textContent==='BROADCAST OFF');
+ await page.locator('#playByPlayButton').click();
+ assert.equal(await page.locator('#listen-game-g1').inputValue(),'every');
+ assert.equal(await page.locator('#playTypes input[value="run"]').isChecked(),true);
+ assert.equal(await page.locator('.playerChip').count(),3);
  await page.locator('#closePlayByPlay').click();
  assert.deepEqual(errors,[]);
  console.log('Browser smoke passed: mobile/desktop layout, radio playback/rotation/stations, transcript, filters, player search, voice persistence, duck/restore, corrections and data recovery.');

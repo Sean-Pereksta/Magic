@@ -5,6 +5,7 @@ import {team,parseSchedule,registerCollegeTeam,resolveVoice,playable,feedQueue,c
 import {catalog} from './catalog.mjs';
 import {PROVIDERS,providerCandidates,safeListeningUrl} from './providers.mjs';
 import {discoverTeamStreams,mergeInAppQueues} from './station-discovery.mjs';
+import {registerRadioAudio} from './radio-audio-bridge.mjs';
 
 const $=id=>document.getElementById(id);
 const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(`${storagePrefix}:${key}`))??fallback;}catch{return fallback;}};
@@ -16,6 +17,7 @@ const paragraph=(text,cls='')=>{const p=document.createElement('p');p.textConten
 const badge=(text,kind='free')=>{const s=document.createElement('span');s.className=`sourceBadge ${kind}`;s.textContent=text;return s;};
 
 let games=[],feeds=[],current=null,requestedTeam=null,activeFeed=null,phase='idle',scheduleBusy=false,playbackToken=0;
+let radioEnabled=read('broadcastEnabled',false)===true;
 let selected=new Set(Array.isArray(read('rotation',[]))?read('rotation',[]).filter(v=>typeof v==='string'):[]);
 let preferences=read('preferences',{});if(!preferences||typeof preferences!=='object'||Array.isArray(preferences))preferences={};
 let preferencesPending=null;
@@ -68,13 +70,30 @@ function inAppQueue(g,target,role,preferred){
  return mergeInAppQueues(feedQueue(feeds,g,target,preferred,role),publicQueue(g,target,role));
 }
 
-const player=new RadioPlayer(()=>new Audio(),(state,feed)=>{
- phase=state;activeFeed=feed;
- $('pause').textContent=state==='playing'||state==='loading'?'⏸':'▶';
- $('liveDot').classList.toggle('playing',state==='playing');
+function paintBroadcast(){
+ const playing=radioEnabled&&phase==='playing';
+ const labels={playing:'BROADCAST ON AIR',paused:'BROADCAST PAUSED',searching:'FINDING A STATION',loading:'CONNECTING BROADCAST',buffering:'BROADCAST BUFFERING',fallback:'TRYING ANOTHER STATION',blocked:'BROADCAST NEEDS A TAP',unavailable:'BROADCAST UNAVAILABLE'};
+ $('radioState').textContent=radioEnabled?(labels[phase]||'BROADCAST READY'):'BROADCAST OFF';
+ $('radioPower').textContent=radioEnabled?'Turn radio off':'Turn radio on';
+ $('radioPower').dataset.on=String(radioEnabled);
+ $('pause').textContent=radioEnabled&&canPauseBroadcast()?'⏸':'▶';
+ $('pause').setAttribute('aria-label',radioEnabled&&canPauseBroadcast()?'Pause broadcast':'Play broadcast');
+ $('liveDot').classList.toggle('playing',playing);
+ const nowGame=$('nowGame');
+ const onAir=playing?current:'';
+ if((nowGame.dataset.playingGameId||'')!==onAir){
+  nowGame.dataset.playingGameId=onAir;
+  window.dispatchEvent(new CustomEvent('nfl-radio:broadcast'));
+ }
+ if('mediaSession' in navigator)navigator.mediaSession.playbackState=playing?'playing':radioEnabled?'paused':'none';
+}
+const player=new RadioPlayer(()=>registerRadioAudio(new Audio()),(state,feed)=>{
+ if(!radioEnabled)return;
+ phase=state;activeFeed=feed;paintBroadcast();
  if(feed)$('nowStation').textContent=`${feed.name} · ${feed.gameAudio?'verified game audio':'free station stream'}`;
  const messages={
   loading:'Connecting inside Catnmice…',
+  buffering:'Broadcast interrupted. Waiting for audio to resume…',
   playing:feed?.gameAudio?'Listening to verified game audio in app':'Listening to the station in app · game carriage is controlled by the broadcaster',
   paused:'Paused',
   fallback:'That stream did not play. Trying the next in-app option…',
@@ -86,12 +105,28 @@ const player=new RadioPlayer(()=>new Audio(),(state,feed)=>{
  if(state==='unavailable')showExternalFallback();
  if(state==='playing'&&preferencesPending===feed?.id){preferences[requestedTeam]=feed.id;save('preferences',preferences);preferencesPending=null;}
  if('mediaSession' in navigator){
-  navigator.mediaSession.playbackState=state==='playing'?'playing':'paused';
   if(feed&&typeof MediaMetadata!=='undefined')navigator.mediaSession.metadata=new MediaMetadata({title:currentGame()?label(currentGame()):`${leagueName} Radio Dial`,artist:feed.name,album:'Catnmice'});
  }
 });
 
+function stopBroadcast({turnOff=false}={}){
+ playbackToken++;
+ player.stop();registerRadioAudio(null);
+ activeFeed=null;preferencesPending=null;phase='idle';hideExternalFallback();
+ if(turnOff){
+  radioEnabled=false;save('broadcastEnabled',false);
+  $('nowStation').textContent='Live stations';
+  notice('Radio is off. Spoken updates have their own controls.');
+ }
+ paintBroadcast();
+}
+function enableBroadcast(){
+ radioEnabled=true;save('broadcastEnabled',true);paintBroadcast();
+}
+
 async function routePlayback(g,role,manual=false){
+ if(!radioEnabled||!g)return;
+ stopBroadcast();
  const token=++playbackToken;
  hideExternalFallback();
  const target=role==='home'?g.home:role==='away'?g.away:requestedTeam||g.away;
@@ -104,11 +139,11 @@ async function routePlayback(g,role,manual=false){
   return;
  }
  if(target&&role!=='national'&&role!=='spanish'&&!stationCache.has(target)){
-  phase='searching';activeFeed=null;
+  phase='searching';paintBroadcast();
   $('nowStation').textContent=`Searching free in-app ${team(target)?.nickname||'team'} stations…`;
   notice('Searching every mapped free/no-login station option before showing anything external…');
   const discovered=await warmTeam(target);
-  if(token!==playbackToken||current!==g.id)return;
+  if(token!==playbackToken||!radioEnabled||current!==g.id)return;
   queue=mergeInAppQueues(feedQueue(feeds,g,target,preferences[target],role),discovered);
   if(queue.length){if(manual)preferencesPending=queue[0].id;player.select(queue);return;}
  }
@@ -121,19 +156,21 @@ function selectGame(id,teamId,fromVoice=false){
  current=id;requestedTeam=teamId||g.away;preferencesPending=null;
  $('nowGame').dataset.gameId=id;
  window.dispatchEvent(new CustomEvent('nfl-radio:selection',{detail:{gameId:id}}));
- warmGame(g);
+ if(radioEnabled)warmGame(g);
  $('nowGame').textContent=`${label(g)} · ${g.state==='in'?'LIVE':g.state==='post'?'FINAL':new Date(g.date).toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'})}`;
- void routePlayback(g);
+ if(radioEnabled)void routePlayback(g);
  renderRotation();
 }
 function selectRole(role){
  cancelSpeech();const g=currentGame();if(!g){notice('Choose a game first.');return;}
  if(role==='home'||role==='away')requestedTeam=g[role];
+ enableBroadcast();
  void routePlayback(g,role,true);
 }
 function selectInAppStation(feed){
  cancelSpeech();const g=currentGame();if(!g)return;
  const target=feed.team||requestedTeam;
+ stopBroadcast();enableBroadcast();
  requestedTeam=target;preferencesPending=feed.id;hideExternalFallback();
  let queue;
  if(feed.gameAudio&&playable(feed,g)){
@@ -147,14 +184,23 @@ function selectInAppStation(feed){
  if($('stationDialog').open)$('stationDialog').close();
 }
 function nextGame(direction){const id=cycle(rotation(),current,direction);if(id)selectGame(id);else notice('Add games to your rotation first.');}
+function canPauseBroadcast(){return ['playing','loading','searching','buffering','fallback'].includes(phase);}
+function pauseBroadcast(){
+ if(!radioEnabled||!canPauseBroadcast())return;
+ if(phase==='searching'||!player.audio){stopBroadcast();phase='paused';paintBroadcast();notice('Paused');}
+ else player.pause();
+}
 function toggle(){
  cancelSpeech();
- if(phase==='playing'||phase==='loading')player.pause();
- else if(player.audio)player.resume();
- else if(current)void routePlayback(currentGame());
+ if(radioEnabled&&canPauseBroadcast())pauseBroadcast();
+ else startBroadcast();
+}
+function startBroadcast(){
+ enableBroadcast();
+ if(player.audio&&['paused','blocked'].includes(phase))player.resume();
+ else if(currentGame())void routePlayback(currentGame());
  else nextGame(1);
 }
-function toggleResume(){if(player.audio)player.resume();else if(current)void routePlayback(currentGame());else nextGame(1);}
 
 function renderGames(){
  $('games').replaceChildren();
@@ -242,7 +288,7 @@ async function refresh(){
   if(results[0].status==='rejected')throw results[0].reason;
   games=parseSchedule(results[0].value);window.dispatchEvent(new CustomEvent('nfl-radio:scoreboard',{detail:results[0].value}));save('schedule',{at:Date.now(),games});
   $('scheduleStatus').textContent=`${results[0].value.week?.number?'Week '+results[0].value.week.number+' · ':''}Updated ${new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
-  selected=new Set([...selected].filter(id=>games.some(g=>g.id===id)));save('rotation',[...selected]);warmRotation();
+  warmRotation();
  }catch{
   if(!games.length){const cached=read('schedule',null);if(cached&&Date.now()-cached.at<86400000&&Array.isArray(cached.games))games=cached.games.filter(g=>{if(college&&g?.homeTeam&&g?.awayTeam){registerCollegeTeam(g.homeTeam);registerCollegeTeam(g.awayTeam);}return g&&team(g.home)&&team(g.away)&&Number.isFinite(Date.parse(g.date));});}
   $('scheduleStatus').textContent=games.length?'Offline · showing cached schedule, live status may be outdated':'Schedule unavailable. Check your connection and retry.';
@@ -264,7 +310,7 @@ function cancelSpeech(){commandSerial++;cancelBrowserSpeech(item=>item.source===
 function handleCommand(text){
  cancelSpeech();const token=commandSerial;const result=resolveVoice(text,games,currentGame());notice(`Heard: “${text}”`);
  if(result.kind==='game'){
-  player.pause();const phrase=result.matchup?`${team(result.team).name} versus ${team(result.game.home===result.team?result.game.away:result.game.home).name}`:team(result.team).name;
+  pauseBroadcast();const phrase=result.matchup?`${team(result.team).name} versus ${team(result.game.home===result.team?result.game.away:result.game.home).name}`:team(result.team).name;
   speak(phrase,()=>{if(token===commandSerial)selectGame(result.game.id,result.team,true);});
  }else if(result.kind==='feed')selectRole(result.role);
  else if(result.kind==='cycle')nextGame(result.direction);
@@ -272,19 +318,20 @@ function handleCommand(text){
   const g=currentGame();if(!g)return notice('Choose a game first.');const queue=inAppQueue(g,requestedTeam,undefined,preferences[requestedTeam]);
   if(!queue.length){showExternalFallback();return;}
   const index=queue.findIndex(f=>f.id===activeFeed?.id);selectInAppStation(queue[(index+1+queue.length)%queue.length]);
- }else if(result.kind==='pause')player.pause();
- else if(result.kind==='resume')toggleResume();
+ }else if(result.kind==='pause')pauseBroadcast();
+ else if(result.kind==='resume')startBroadcast();
  else{notice(result.message);speak(result.message);}
 }
 
 for(const role of ['home','away','national','spanish'])$('broadcastRoles').append(button(role.toUpperCase(),()=>selectRole(role)));
-$('start').onclick=()=>{$('setup').hidden=true;$('dial').hidden=false;$('edit').hidden=false;renderRotation();nextGame(1);};
+$('start').onclick=()=>{$('setup').hidden=true;$('dial').hidden=false;$('edit').hidden=false;renderRotation();if(!currentGame())nextGame(1);};
 $('edit').onclick=()=>{$('setup').hidden=false;$('dial').hidden=true;$('edit').hidden=true;};
 $('listening').onclick=()=>{$('listeningDialog').showModal();};
 $('closeListening').onclick=()=>$('listeningDialog').close();
 $('refresh').onclick=refresh;$('stations').onclick=()=>stations(false);$('closeStations').onclick=()=>$('stationDialog').close();
 externalButton.onclick=()=>stations(true);
 $('prev').onclick=()=>nextGame(-1);$('next').onclick=()=>nextGame(1);$('pause').onclick=toggle;
+$('radioPower').onclick=()=>{cancelSpeech();if(radioEnabled)stopBroadcast({turnOff:true});else startBroadcast();};
 $('commandForm').onsubmit=e=>{e.preventDefault();const text=$('command').value.trim();if(text)handleCommand(text);$('command').value='';};
 
 const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -305,8 +352,8 @@ if(!Recognition||!window.isSecureContext){mic.disabled=true;mic.textContent='VOI
 else{
  mic.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();mic.setPointerCapture(e.pointerId);hold();};mic.onpointerup=e=>{e.preventDefault();release();};mic.onpointercancel=()=>{voiceText='';release(true);};mic.oncontextmenu=e=>e.preventDefault();mic.onkeydown=e=>{if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();hold();}};mic.onkeyup=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();release();}};window.addEventListener('blur',()=>{if(held){voiceText='';release(true);}});
 }
-if('mediaSession' in navigator)for(const [action,handler]of Object.entries({play:toggleResume,pause:()=>player.pause(),previoustrack:()=>nextGame(-1),nexttrack:()=>nextGame(1)})){try{navigator.mediaSession.setActionHandler(action,handler);}catch{}}
-window.addEventListener('pagehide',()=>{cancelSpeech();cancelBrowserSpeech();voiceText='';release(true);player.stop();});
+if('mediaSession' in navigator)for(const [action,handler]of Object.entries({play:()=>{if(radioEnabled&&phase!=='playing')startBroadcast();},pause:pauseBroadcast,previoustrack:()=>nextGame(-1),nexttrack:()=>nextGame(1)})){try{navigator.mediaSession.setActionHandler(action,handler);}catch{}}
+window.addEventListener('pagehide',event=>{voiceText='';release(true);if(event.persisted)return;cancelSpeech();cancelBrowserSpeech();stopBroadcast();});
 window.addEventListener('online',refresh);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
 document.title=`${leagueName} Radio · Catnmice`;
 $('leagueHeading').textContent=`${leagueName.toUpperCase()} RADIO COMPANION`;
@@ -316,4 +363,4 @@ $('collegeFilter').value=read('gameFilter','all');
 $('collegeFilter').onchange=()=>{save('gameFilter',$('collegeFilter').value);renderGames();};
 $('playByPlayScoreScope').options[1].textContent=`All started ${leagueName} games`;
 $('command').placeholder=college?'Ohio State / away broadcast':'Lions / away broadcast';
-hideExternalFallback();refresh();setInterval(()=>{if(!document.hidden)refresh();if(activeFeed?.gameAudio&&!playable(activeFeed,currentGame()))void routePlayback(currentGame());},60000);
+hideExternalFallback();paintBroadcast();refresh();setInterval(()=>{if(!document.hidden)refresh();if(radioEnabled&&activeFeed?.gameAudio&&!playable(activeFeed,currentGame()))void routePlayback(currentGame());},60000);
