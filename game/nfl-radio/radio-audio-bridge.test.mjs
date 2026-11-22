@@ -32,3 +32,16 @@ test('moves ducking to a newly registered radio stream without losing either vol
   setRadioDucked(false);
   assert.equal(second.volume,.6);
 });
+
+test('detaching the radio restores the old stream while preserving the current speech request',()=>{
+  const first={volume:.7},next={volume:.9};
+  registerRadioAudio(first);
+  setRadioDucked(true);
+  registerRadioAudio(null);
+  assert.equal(first.volume,.7);
+  assert.equal(getRadioDuckState().hasAudio,false);
+  registerRadioAudio(next);
+  assert.equal(next.volume,.18);
+  setRadioDucked(false);
+  assert.equal(next.volume,.9);
+});

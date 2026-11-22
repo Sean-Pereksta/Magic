@@ -16,3 +16,15 @@ test('tap starts audio synchronously; rapid switch ignores stale errors and stop
 test('stream failure falls forward once and exhausts without a loop',()=>{const created=[],states=[];const p=new RadioPlayer(()=>{const a=new FakeAudio();created.push(a);return a;},s=>states.push(s));p.select([feed('a'),feed('b')]);created[0].emit('error');created[0].emit('error');assert.equal(created.length,2);created[1].emit('error');assert.equal(states.at(-1),'unavailable');p.stop();});
 test('autoplay denial is not mistaken for a broken station',async()=>{const states=[];const p=new RadioPlayer(()=>{const a=new FakeAudio();a.play=()=>Promise.reject(Object.assign(new Error(),{name:'NotAllowedError'}));return a;},s=>states.push(s));p.select([feed('a'),feed('b')]);await Promise.resolve();assert.equal(states.at(-1),'blocked');assert.equal(p.index,0);p.stop();});
 test('pausing prevents a late stall from starting another feed',()=>{const created=[];const p=new RadioPlayer(()=>{const a=new FakeAudio();created.push(a);return a;},()=>{});p.select([feed('a'),feed('b')]);p.pause();created[0].emit('error');created[0].emit('waiting');assert.equal(created.length,1);p.resume();assert.equal(created.length,2);p.stop();});
+test('a waiting broadcast is distinguished from one that is on air',()=>{
+ const audio=new FakeAudio(),states=[];
+ const player=new RadioPlayer(()=>audio,state=>states.push(state));
+ player.select([feed('a')]);
+ audio.emit('waiting');
+ audio.emit('playing');
+ audio.emit('waiting');
+ audio.emit('playing');
+ player.stop();
+ audio.emit('playing');
+ assert.deepEqual(states,['loading','playing','buffering','playing']);
+});

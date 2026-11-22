@@ -112,6 +112,23 @@ test('blocked voice retains all calls until a user unlocks speech',async()=>{
  queue.unlock();assert.equal(spoken[1].text,'first');spoken[1].onend();await sleep(3);
  assert.equal(spoken[2].text,'second');spoken[2].onend();assert.equal(queue.state().blocked,false);
 });
+test('reports audio as speaking only on start and retries a broken saved voice with the device default',async()=>{
+ const spoken=[];
+ const synth={getVoices:()=>[{name:'Premium',voiceURI:'premium',lang:'en-US'}],resume(){},cancel(){},speak:u=>spoken.push(u)};
+ const queue=createBrowserSpeechQueue({synth,Utterance:FakeUtterance,getVoicePreferences:()=>({voiceURI:'premium'})});
+ queue.enqueue('First and ten');
+ assert.equal(queue.state().starting,true);
+ assert.equal(queue.state().speaking,false);
+ assert.equal(spoken[0].voice.voiceURI,'premium');
+ spoken[0].onerror({error:'voice-unavailable'});
+ await sleep(5);
+ assert.equal(spoken[1].voice,undefined);
+ spoken[1].onstart();
+ assert.equal(queue.state().activated,true);
+ assert.equal(queue.state().speaking,true);
+ spoken[1].onend();
+ assert.equal(queue.state().speaking,false);
+});
 test('missing end callback recovers and a queued correction is read rather than dropped',async()=>{
  const spoken=[];let text='old description';
  const synth={getVoices:()=>[],resume(){},cancel(){},speak:u=>spoken.push(u)};

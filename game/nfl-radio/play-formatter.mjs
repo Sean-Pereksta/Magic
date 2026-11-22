@@ -5,6 +5,11 @@ const escape=value=>value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 const list=value=>Array.isArray(value)?value:[];
 export const ANNOUNCEMENT_MODES=['every','touchdowns','players'];
 export const normalizeAnnouncementMode=value=>ANNOUNCEMENT_MODES.includes(value)?value:'every';
+export const PLAY_TYPES={
+  touchdown:'Touchdowns', 'field-goal':'Field goal attempts', turnover:'Turnovers',
+  explosive:'Gains of 20+ yards', sack:'Sacks', pass:'Passes', run:'Runs',
+  penalty:'Penalties', 'special-teams':'Special teams'
+};
 
 export function normalizePlayer(value,team={}){
   const athlete=value?.athlete||value||{};
@@ -187,12 +192,28 @@ export function formatPlay(play,{event=null,players=[]}={}){
   const playerIds=all.filter(p=>ids.has(p.id)||p.aliases.some(a=>usable(p,a)&&nameMatches(raw,a))).map(p=>p.id).filter(Boolean);
   return {text,kind,touchdown,turnover:!!turnover,important:!!(touchdown||turnover||sack||(yards!==null&&yards>=20)),yards,firstDown:!!firstDown,team:teamName,teamAbbr,label:[heading,teamAbbr].filter(Boolean).join(' — '),playerIds};
 }
-export function shouldAnnouncePlay(play,{mode='every',selectedPlayerIds=[]}={},context={}){
+function matchesPlayType(play,formatted,types){
+  const text=clean(play?.text||play?.shortText);
+  const primary=formatted.touchdown?text.replace(/\s*\([^()]*\b(?:kick|conversion)\b[^()]*\)\s*\.?$/i,''):text;
+  const description=`${clean(play?.type?.text)} ${primary}`;
+  const gain=formatted.yards??play?.statYardage??play?.yardsGained??description.match(/\b(\d+) (?:yd|yard) (?:pass|rush|run)\b/i)?.[1];
+  const matches={
+    touchdown:formatted.touchdown,
+    'field-goal':formatted.kind==='field-goal',
+    turnover:formatted.turnover,
+    explosive:Number(gain)>=20&&!/\b(no play|nullified|overturned|reversed)\b/i.test(description),
+    sack:formatted.kind==='sack'||/\bsack(?:ed)?\b/i.test(description),
+    pass:formatted.kind==='pass'||/\bpass(?:es|ed|ing)?\b/i.test(description),
+    run:formatted.kind==='run'||/\b(?:rush(?:es|ed|ing)?|runs?|scrambl\w*)\b/i.test(description),
+    penalty:play?.isPenalty===true||/\bpenalty\b/i.test(description),
+    'special-teams':/\b(?:kick\w*|punt\w*|field goal|extra point)\b/i.test(description)
+  };
+  return types.some(type=>Object.hasOwn(PLAY_TYPES,type)&&matches[type]);
+}
+export function shouldAnnouncePlay(play,{mode='every',selectedPlayerIds=[],playTypes=[]}={},context={}){
   const formatted=context.formatted||formatPlay(play,context);
-  if(!formatted.text)return false;
-  switch(normalizeAnnouncementMode(mode)){
-    case 'touchdowns':return formatted.touchdown;
-    case 'players':return playInvolvesSelectedPlayer(play,selectedPlayerIds,context.players);
-    default:return true;
-  }
+  if(!formatted.text||mode==='off')return false;
+  if(mode==='touchdowns')return formatted.touchdown;
+  if(playTypes.length&&!matchesPlayType(play,formatted,playTypes))return false;
+  return mode!=='players'||playInvolvesSelectedPlayer(play,selectedPlayerIds,context.players);
 }

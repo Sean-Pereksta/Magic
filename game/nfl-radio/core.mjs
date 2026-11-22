@@ -92,15 +92,15 @@ export class RadioPlayer{
   if(serial!==this.serial)return;
   const feed=this.queue[this.index];if(!feed){this.onState('unavailable',null);return;}
   const audio=this.createAudio();this.audio=audio;audio.preload='none';audio.src=feed.streamUrl;
-  let failed=false;
+  let failed=false,hasPlayed=false;
   const valid=()=>serial===this.serial&&this.audio===audio;
   const fail=()=>{if(!valid()||failed)return;failed=true;clearTimeout(this.timer);audio.pause();audio.removeAttribute('src');audio.load();this.index++;this.onState('fallback',feed);this.attempt(serial);};
   const arm=()=>{clearTimeout(this.timer);this.timer=setTimeout(fail,this.timeout);};
   audio.addEventListener('error',fail);
   audio.addEventListener('ended',fail);
-  audio.addEventListener('waiting',()=>{if(valid())arm();});
-  audio.addEventListener('stalled',()=>{if(valid())arm();});
-  audio.addEventListener('playing',()=>{if(valid()){clearTimeout(this.timer);this.onState('playing',feed);}});
+  audio.addEventListener('waiting',()=>{if(valid()&&!audio.paused){if(hasPlayed)this.onState('buffering',feed);arm();}});
+  audio.addEventListener('stalled',()=>{if(valid()&&!audio.paused)arm();});
+  audio.addEventListener('playing',()=>{if(valid()){hasPlayed=true;clearTimeout(this.timer);this.onState('playing',feed);}});
   audio.addEventListener('pause',()=>{if(valid()&&!failed){clearTimeout(this.timer);this.onState('paused',feed);}});
   this.onState('loading',feed);arm();
   // Called synchronously from a tap; never await schedule/network before play().

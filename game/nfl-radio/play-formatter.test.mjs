@@ -52,6 +52,19 @@ test('no-play and overturned scores never pass touchdown-only filtering',()=>{
  assert.equal(shouldAnnouncePlay({text:'Touchdown Detroit!',scoreValue:6},{mode:'touchdowns'}),true);
  assert.equal(shouldAnnouncePlay({text:'J.Bates 43 yard field goal is GOOD.',scoreValue:3},{mode:'touchdowns'}),false);
 });
+test('play types match any checked category and combine with followed-player filters',()=>{
+ const pass={text:'J.Goff pass to A.St. Brown for 25 yards.',type:{text:'Pass Reception'}};
+ const filters={mode:'players',selectedPlayerIds:['brown'],playTypes:['turnover','explosive']};
+ assert.equal(shouldAnnouncePlay(pass,filters,{players}),true);
+ assert.equal(shouldAnnouncePlay({...pass,text:'J.Goff pass to A.St. Brown for 19 yards.'},filters,{players}),false);
+ assert.equal(shouldAnnouncePlay(pass,{...filters,selectedPlayerIds:['gibbs']},{players}),false);
+ assert.equal(shouldAnnouncePlay(pass,{mode:'off'}),false);
+ assert.equal(shouldAnnouncePlay({text:'J.Bates 43 yard field goal is NO GOOD.'},{playTypes:['field-goal']}),true);
+ const touchdown={text:'Amon-Ra St. Brown 22 Yd pass from Jared Goff (Jake Bates Kick)',type:{text:'Passing Touchdown'}};
+ assert.equal(shouldAnnouncePlay(touchdown,{playTypes:['pass']}),true);
+ assert.equal(shouldAnnouncePlay(touchdown,{playTypes:['special-teams']}),false);
+ assert.equal(shouldAnnouncePlay(touchdown,{mode:'touchdowns',playTypes:['run']}),true);
+});
 test('selected players are detected in every role by ID or full, compact, spaced names',()=>{
  for(const [id,text] of [['goff','J.Goff pass to A.St. Brown.'],['brown','J. Goff pass to A. St. Brown.'],['gibbs','J.Gibbs runs left.'],['gary','J.Goff sacked by R.Gary.'],['mckinney','INTERCEPTED by X.McKinney.'],['nixon','K.Nixon returns for 12 yards.'],['bates','J.Bates field goal.'],['fox','J.Fox punts.']]){
   assert.equal(playInvolvesSelectedPlayer({text},[id],players),true,id);
