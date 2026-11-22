@@ -53,23 +53,63 @@ try{
   HTMLMediaElement.prototype.play=function(){if(!window.__holdRadio)queueMicrotask(()=>this.dispatchEvent(new Event('playing')));return Promise.resolve();};
   HTMLMediaElement.prototype.pause=function(){this.dispatchEvent(new Event('pause'));};HTMLMediaElement.prototype.load=function(){};
   class Utterance{constructor(text){this.text=text;}}
-  const synth=new EventTarget();Object.assign(synth,{speaking:false,pending:false,getVoices:()=>[{name:'English Basic',voiceURI:'basic',lang:'en-US',default:true},{name:'English Natural',voiceURI:'natural',lang:'en-US'}],resume(){},cancel(){this.speaking=false;},speak(u){if(!u.text.trim())return;if(window.__blockNextSpeech){window.__blockNextSpeech=false;queueMicrotask(()=>u.onerror?.({error:'not-allowed'}));return;}this.speaking=true;window.__spoken.push(u);u.onstart?.();window.__finishSpeech=()=>{this.speaking=false;u.onend?.();};}});
+  const synth=new EventTarget();Object.assign(synth,{
+   speaking:false,pending:false,
+   getVoices:()=>[{name:'English Basic',voiceURI:'basic',lang:'en-US',default:true,localService:true},{name:'English Natural',voiceURI:'natural',lang:'en-US'}],
+   resume(){},cancel(){this.speaking=false;},
+   speak(u){
+    if(!u.text.trim())return;
+    if(window.__blockNextSpeech){window.__blockNextSpeech=false;queueMicrotask(()=>u.onerror?.({error:'not-allowed'}));return;}
+    this.speaking=true;window.__spoken.push(u);
+    const finish=()=>{this.speaking=false;u.onend?.();};
+    window.__finishSpeech=finish;
+    if(u.text==='Play calls are on.'){
+     window.__activationFromGesture=navigator.userActivation.isActive;
+     if(window.__holdActivation){window.__startSpeech=()=>u.onstart?.();return;}
+     u.onstart?.();queueMicrotask(finish);return;
+    }
+    u.onstart?.();
+   }
+  });
   Object.defineProperty(window,'speechSynthesis',{value:synth,configurable:true});Object.defineProperty(window,'SpeechSynthesisUtterance',{value:Utterance,configurable:true});
  });
  await page.goto(`${origin}/game/nfl-radio.html`);
  await page.waitForFunction(()=>document.querySelector('#transcriptCount').textContent==='1');
  assert.match(await page.locator('#latestPlay').textContent(),/Jahmyr Gibbs runs left for 8 yards/);
+ const firstReplay=page.locator('#transcriptList .replayPlay').first();
+ await firstReplay.press('Enter');
+ assert.equal(await page.evaluate(()=>window.__spoken.at(-1).text),await page.locator('#latestPlay').textContent());
+ assert.match(await firstReplay.getAttribute('aria-label'),/^Stop audio/);
+ assert.match(await page.locator('#speechIndicator').textContent(),/Playing replay/);
+ assert.equal(await page.locator('#announcementsToggle').getAttribute('aria-pressed'),'false');
+ await firstReplay.click();
+ assert.match(await firstReplay.getAttribute('aria-label'),/^Play audio/);
+ await page.locator('#replayLatestCall').click();
+ assert.match(await page.locator('#speechIndicator').textContent(),/Playing replay/);
+ await page.evaluate(()=>window.__finishSpeech());
  for(const width of [360,390,768,1280]){await page.setViewportSize({width,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`no overflow at ${width}px`);}
  await page.setViewportSize({width:390,height:844});
  await page.locator('#start').click();
  assert.equal(await page.locator('#radioState').textContent(),'BROADCAST OFF');
  assert.equal(await page.evaluate(()=>window.__audios.length),0,'following games does not start a station');
  await page.locator('#radioPower').click();await page.waitForFunction(()=>document.querySelector('#liveDot').classList.contains('playing'));
+ await page.evaluate(()=>{window.__holdActivation=true;});
  await page.locator('[data-play-mode=every]').click();
+ assert.equal(await page.evaluate(()=>window.__spoken.at(-1)?.text),'Play calls are on.');
+ assert.equal(await page.evaluate(()=>window.__activationFromGesture),true);
+ assert.match(await page.locator('#speechIndicator').textContent(),/Starting audio/);
+ await page.evaluate(()=>window.__startSpeech());
+ assert.match(await page.locator('#speechIndicator').textContent(),/Speaking/);
+ await page.evaluate(()=>{window.__holdActivation=false;window.__finishSpeech();});
  plays.push(makePlay(2,'J.Gibbs right guard for 5 yards.'));
  await page.waitForFunction(()=>window.__spoken.some(u=>u.text.includes('runs right for 5 yards')));
  assert.equal(await page.evaluate(()=>window.__audios.at(-1).volume),.18,'radio is ducked while speech is active');
  assert.ok((await page.evaluate(()=>window.__spoken.at(-1).text)).endsWith(await page.locator('#latestPlay').textContent()));
+ await page.locator('#transcriptList .transcriptPlay').filter({hasText:'for 8 yards'}).locator('.replayPlay').click();
+ assert.match(await page.evaluate(()=>window.__spoken.at(-1).text),/runs left for 8 yards/);
+ assert.match(await page.locator('#speechIndicator').textContent(),/Playing replay.*1 queued/);
+ await page.evaluate(()=>window.__finishSpeech());
+ await page.waitForFunction(()=>window.__spoken.at(-1)?.text.includes('runs right for 5 yards'));
  await page.evaluate(()=>window.__finishSpeech());assert.equal(await page.evaluate(()=>window.__audios.at(-1).volume),1,'radio volume restored');
  await page.locator('[data-play-mode=touchdowns]').click();
  const before=await page.evaluate(()=>window.__spoken.length);
@@ -96,6 +136,10 @@ try{
  plays.push(makePlay(7,'J.Goff pass short middle to A.St. Brown for 14 yards.'));
  await page.waitForFunction(()=>window.__spoken.at(-1)?.text.includes('for 14 yards'));
  assert.equal(await page.evaluate(()=>window.__spoken.at(-1).voice.voiceURI),'basic');await page.evaluate(()=>window.__finishSpeech());
+ const fieldGoalReplay=page.locator('#transcriptList .transcriptPlay').filter({hasText:'43-yard field goal'}).locator('.replayPlay');
+ await fieldGoalReplay.click();
+ assert.match(await page.evaluate(()=>window.__spoken.at(-1).text),/43-yard field goal/);
+ await page.evaluate(()=>window.__finishSpeech());
  await page.locator('#next').click();assert.equal(await page.locator('#transcriptGame').inputValue(),'g2');
  await page.locator('#prev').click();assert.equal(await page.locator('#transcriptGame').inputValue(),'g1');
  await page.locator('#pause').click();await page.waitForFunction(()=>!document.querySelector('#liveDot').classList.contains('playing'));

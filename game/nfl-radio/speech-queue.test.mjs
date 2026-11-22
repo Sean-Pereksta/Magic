@@ -128,6 +128,62 @@ test('reports audio as speaking only on start and retries a broken saved voice w
  assert.equal(queue.state().speaking,true);
  spoken[1].onend();
  assert.equal(queue.state().speaking,false);
+ queue.enqueue('Another play');
+ assert.equal(spoken[2].voice,undefined,'later calls skip the voice that failed');
+ spoken[2].onend();
+});
+test('a silent unlock never reports voice as active and a real gesture starts audio immediately',()=>{
+ const spoken=[];
+ const synth={speaking:false,pending:false,getVoices:()=>[],resume(){},cancel(){this.pending=false;},speak(utterance){this.pending=true;spoken.push(utterance);}};
+ const queue=createBrowserSpeechQueue({synth,Utterance:FakeUtterance});
+ queue.unlock();
+ assert.equal(spoken[0].text.trim(),'');
+ assert.equal(queue.state().activated,false);
+ queue.playNow('Play calls are on.',{forceDevice:true});
+ assert.equal(spoken[1].text,'Play calls are on.');
+ assert.equal(queue.state().starting,true);
+ assert.equal(queue.state().activated,false);
+ spoken[1].onstart();
+ assert.equal(queue.state().activated,true);
+ spoken[1].onend();
+});
+test('an immediate request that ends without starting retries on the device voice',async()=>{
+ const spoken=[];
+ const synth={getVoices:()=>[],resume(){},cancel(){},speak:u=>spoken.push(u)};
+ const queue=createBrowserSpeechQueue({synth,Utterance:FakeUtterance});
+ queue.playNow('A prior play');
+ spoken[0].onend();
+ assert.equal(queue.state().activated,false);
+ await sleep(5);
+ assert.equal(spoken[1].text,'A prior play');
+ spoken[1].onstart();spoken[1].onend();
+ assert.equal(queue.state().activated,true);
+});
+test('a requested replay starts ahead of blocked or speaking live calls and preserves the backlog',async()=>{
+ const spoken=[];
+ const synth={getVoices:()=>[],resume(){},cancel(){},speak:u=>spoken.push(u)};
+ const queue=createBrowserSpeechQueue({synth,Utterance:FakeUtterance});
+ queue.enqueue('First live play',{key:'one'});
+ spoken[0].onerror({error:'not-allowed'});
+ queue.enqueue('Second live play',{key:'two'});
+ assert.equal(queue.state().queued,2);
+ queue.playNow('Historical play',{key:'replay'});
+ assert.equal(spoken[1].text,'Historical play');
+ spoken[1].onstart();spoken[1].onend();
+ await sleep(5);
+ assert.equal(spoken[2].text,'First live play');
+ spoken[2].onstart();
+ queue.playNow('Another replay',{key:'next-replay'});
+ assert.equal(spoken[3].text,'Another replay');
+ spoken[2].onend();
+ assert.equal(queue.state().current.key,'next-replay');
+ queue.cancel(item=>item.key==='next-replay');
+ await sleep(5);
+ assert.equal(spoken[4].text,'First live play');
+ spoken[4].onend();
+ await sleep(5);
+ assert.equal(spoken[5].text,'Second live play');
+ spoken[5].onend();
 });
 test('missing end callback recovers and a queued correction is read rather than dropped',async()=>{
  const spoken=[];let text='old description';
@@ -157,4 +213,16 @@ test('natural synthesis failure falls back to browser for the same item',async()
  const {synth,events}=fakeSynth();let fail;
  const q=createBrowserSpeechQueue({synth,Utterance:FakeUtterance,getVoicePreferences:()=>({engine:'natural'}),renderNatural:(_text,callbacks)=>{fail=callbacks.onFallback;return ()=>{};}});
  q.enqueue('fallback play');fail();await sleep(20);assert.ok(events.includes('end:fallback play'));assert.equal(q.state().speaking,false);
+});
+test('a natural voice that never starts falls back without losing the play',async()=>{
+ const {synth,events}=fakeSynth();let canceled=0;
+ const queue=createBrowserSpeechQueue({
+  synth,Utterance:FakeUtterance,getVoicePreferences:()=>({engine:'natural'}),startTimeoutMs:15,
+  renderNatural:()=>()=>canceled++
+ });
+ queue.enqueue('Play from the device');
+ await sleep(45);
+ assert.equal(canceled,1);
+ assert.ok(events.includes('end:Play from the device'));
+ assert.equal(queue.state().speaking,false);
 });
