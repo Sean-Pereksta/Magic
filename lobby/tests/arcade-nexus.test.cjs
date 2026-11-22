@@ -23,7 +23,7 @@ async function catalog() {
 test('every effective catalog route points to a tracked file or its explicit Truth game', async () => {
   const games = await catalog();
   const tracked = new Set(execFileSync('git', ['ls-tree','-r','--name-only','HEAD'], {cwd:root,encoding:'utf8'}).trim().split('\n'));
-  const truthGames = {lastsignal:'last-signal',acornrally:'acorn-rally',bannerlands:'bannerlands',monstermallexpanded:'monster-mall-expanded',pacmanblackout:'pacman',pirates:'pirates',academystandards:'academy-standards',operationwhiskerfall:'operation-whiskerfall'};
+  const truthGames = {critteratlas:'critter-atlas',lastsignal:'last-signal',acornrally:'acorn-rally',bannerlands:'bannerlands',monstermallexpanded:'monster-mall-expanded',pacmanblackout:'pacman',pirates:'pirates',academystandards:'academy-standards',operationwhiskerfall:'operation-whiskerfall'};
   const truthSuffixes = {
     acornrally: {multiplayerRoute:'?room=join'},
     lastsignal: {singleRoute:'#play', multiplayerRoute:'#lobbies'}

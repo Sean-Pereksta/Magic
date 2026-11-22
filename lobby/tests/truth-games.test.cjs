@@ -10,6 +10,7 @@ const root = path.join(__dirname, '..');
 const core = fs.readFileSync(path.join(root, 'lobby-core.html'), 'utf8').replace(/\r\n/g, '\n');
 const loader = fs.readFileSync(path.join(root, 'lobby.html'), 'utf8').match(/<script>\s*([\s\S]*?)<\/script>/)[1];
 const expected = {
+  critteratlas: 'critter-atlas',
   acornrally: 'acorn-rally',
   bannerlands: 'bannerlands',
   monstermallexpanded: 'monster-mall-expanded',
