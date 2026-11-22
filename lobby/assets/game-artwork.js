@@ -1545,6 +1545,29 @@
       "thumb": "game-thumbnails/lastsignal.webp",
       "hero": "game-heroes/lastsignal.webp",
       "ready": true
+    },
+    "critteratlas": {
+      "key": "critteratlas",
+      "title": "Critter Atlas",
+      "emoji": "🧭",
+      "imagePath": "/lobby/assets/game-tiles/critter-atlas-v2.webp",
+      "desc": "Explore eight regions with your Critters. Flank wild tribes in turn-based grid battles, capture weakened rivals, and evolve your party.",
+      "route": "https://sean-pereksta.github.io/Truth/games/critter-atlas/",
+      "category": "Adventure",
+      "modes": [
+        "single"
+      ],
+      "featured": false,
+      "originalImagePath": "/lobby/assets/game-tiles/critter-atlas-v2.webp",
+      "tier": "playable",
+      "provenance": "original-built-in-imagegen",
+      "sourceArtwork": "Original Critter Atlas cover art from the Truth game.",
+      "ready": true,
+      "heroProvenance": "original-built-in-imagegen",
+      "promptFile": "truth-game-art-prompts.json",
+      "tile": "game-tiles/critter-atlas-v2.webp",
+      "thumb": "game-thumbnails/critter-atlas-v2.webp",
+      "hero": "game-heroes/critter-atlas-v2.webp"
     }
   },
   "files": {
@@ -2598,6 +2621,24 @@
       "height": 720,
       "bytes": 74258,
       "sha256": "ef13d7febc75d4a6b610574764788ed60213e1b658809a066da2fedc1b38851f"
+    },
+    "game-tiles/critter-atlas-v2.webp": {
+      "width": 640,
+      "height": 360,
+      "bytes": 105114,
+      "sha256": "73a1f5455a94200aa2d13b7dbb62955fbf7ace4afd34e87c98d57e211636c4af"
+    },
+    "game-thumbnails/critter-atlas-v2.webp": {
+      "width": 240,
+      "height": 135,
+      "bytes": 18292,
+      "sha256": "be19907468f9a304a0c3cab17d6eebce4e9e2128fa40868b18b5345e212f9c79"
+    },
+    "game-heroes/critter-atlas-v2.webp": {
+      "width": 1280,
+      "height": 720,
+      "bytes": 312198,
+      "sha256": "652006c6e9b54983b8ff6f3bb517bd027f65208614da5ed53cf8a062aaf42353"
     }
   },
   "interfaceFiles": {

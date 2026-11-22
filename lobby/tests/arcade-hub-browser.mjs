@@ -123,20 +123,26 @@ try{
   await page.context().close();
 
   const rallyUrl='https://sean-pereksta.github.io/Truth/games/acorn-rally/';
-  for(const [width,button,target] of [[360,'Private Rooms',rallyUrl+'?room=join'],[1440,'Play in Browser',rallyUrl]]){
+  const atlasUrl='https://sean-pereksta.github.io/Truth/games/critter-atlas/';
+  for(const [width,mode,genre,title,key,cover,button,target] of [
+    [360,'multi','Racing','Acorn Rally','acornrally','acorn-rally-v2.webp','Multiplayer',rallyUrl+'?room=join'],
+    [1440,'single','Racing','Acorn Rally','acornrally','acorn-rally-v2.webp','Play in Browser',rallyUrl],
+    [360,'single','Adventure','Critter Atlas','critteratlas','critter-atlas-v2.webp','Play',atlasUrl],
+    [1440,'single','Adventure','Critter Atlas','critteratlas','critter-atlas-v2.webp','Play',atlasUrl]
+  ]){
     page=await open({width,saved:'singleplayer'});
-    await page.locator('#gameMode').selectOption(width===360?'multi':'single');
-    await page.locator('#categoryPills .category-btn').filter({hasText:/^Racing$/}).click();
-    await page.locator('#gameSearch').fill('Acorn Rally');
-    assert.deepEqual(await keys(page),['acornrally']);
-    const card=page.locator('#singleGameGrid [data-game-key="acornrally"]');
+    await page.locator('#gameMode').selectOption(mode);
+    await page.locator('#categoryPills').getByRole('button',{name:genre,exact:true}).click();
+    await page.locator('#gameSearch').fill(title);
+    assert.deepEqual(await keys(page),[key]);
+    const card=page.locator(`#singleGameGrid [data-game-key="${key}"]`);
     const image=card.locator('.game-art img').first();
     await image.scrollIntoViewIfNeeded();
     await image.evaluate(img=>img.decode());
-    check(width+'px Acorn Rally tile has its own loaded artwork',await image.evaluate(img=>img.naturalWidth>0&&img.currentSrc.includes('acorn-rally-v2.webp')));
-    check(width+'px Acorn Rally card keeps its accessible favorite button',await card.getByRole('button',{name:'Favorite Acorn Rally'}).isVisible());
-    const action=card.getByRole('button',{name:button+': Acorn Rally',exact:true});
-    await page.route(target,route=>route.fulfill({contentType:'text/html',body:'<title>Acorn Rally launch target</title>'}));
+    check(width+'px '+title+' tile has its own loaded artwork',await image.evaluate((img,file)=>img.naturalWidth>0&&img.currentSrc.includes(file),cover));
+    check(width+'px '+title+' card keeps its accessible favorite button',await card.getByRole('button',{name:'Favorite '+title}).isVisible());
+    const action=card.getByRole('button',{name:button+': '+title,exact:true});
+    await page.route(target,route=>route.fulfill({contentType:'text/html',body:'<title>Game launch target</title>'}));
     await action.focus();
     await page.keyboard.press('Enter');
     await page.waitForURL(target);
