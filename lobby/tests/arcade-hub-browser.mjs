@@ -123,12 +123,14 @@ try{
   await page.context().close();
 
   const rallyUrl='https://sean-pereksta.github.io/Truth/games/acorn-rally/';
+  const goldHousesUrl='https://sean-pereksta.github.io/Truth/games/war-of-the-gold-houses/';
   const atlasUrl='https://sean-pereksta.github.io/Truth/games/critter-atlas/';
   for(const [width,mode,genre,title,key,cover,button,target] of [
     [360,'multi','Racing','Acorn Rally','acornrally','acorn-rally-v2.webp','Multiplayer',rallyUrl+'?room=join'],
     [1440,'single','Racing','Acorn Rally','acornrally','acorn-rally-v2.webp','Play in Browser',rallyUrl],
     [360,'single','Adventure','Critter Atlas','critteratlas','critter-atlas-v2.webp','Play',atlasUrl],
-    [1440,'single','Adventure','Critter Atlas','critteratlas','critter-atlas-v2.webp','Play',atlasUrl]
+    [1440,'single','Adventure','Critter Atlas','critteratlas','critter-atlas-v2.webp','Play',atlasUrl],
+    [1440,'single','Strategy','Red Rising: War of the Gold Houses','warofthegoldhouses','war-of-the-gold-houses-v2.webp','Play',goldHousesUrl]
   ]){
     page=await open({width,saved:'singleplayer'});
     await page.locator('#gameMode').selectOption(mode);
