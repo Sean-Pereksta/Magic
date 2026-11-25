@@ -52,6 +52,21 @@ function checkExpansionUnit(unit,units){
   }
 }
 
+function checkResonanceUnit(unit,time){
+  if(unit.onHitSlow!==undefined){
+    const slow=unit.onHitSlow;
+    if(unit.kind!=='summon'||unit.subtype!=='bear'||!record(slow)||!number(slow.factor,0,1)||!number(slow.duration,0,1000)||typeof slow.itemScaled!=='boolean')fail('invalid summon slow');
+  }
+  if(unit.resonance===undefined)return;
+  const r=unit.resonance;
+  if(!record(r)||unit.kind!=='hero')fail('invalid resonance state');
+  if(unit.heroId==='ferrite'){
+    if(!Number.isInteger(r.scrap)||!number(r.scrap,0,3)||!['pull','push'].includes(r.polarity)||!number(r.scrapReadyAt,0,1e9))fail('invalid magnetic resource');
+  }else if(unit.heroId==='cadence'){
+    if(!Array.isArray(r.notes)||r.notes.length>3||r.notes.some((n,i)=>!record(n)||!Number.isInteger(n.slot)||!number(n.slot,0,2)||!number(n.at,0,time)||(i>0&&n.at<r.notes[i-1].at))||!number(r.chordUntil,0,1e9)||!Number.isInteger(r.finaleNote)||!number(r.finaleNote,0,2)||!Number.isInteger(r.chordNote)||!number(r.chordNote,0,2))fail('invalid musical score');
+  }else fail('unexpected resonance resource');
+}
+
 function validGeometry(effect){
   const shape=effect.shape===undefined?(effect.arc===undefined?'circle':'cone'):effect.shape;
   if(!['circle','cone','line'].includes(shape)||!optionalNumber(effect.angle,-1e6,1e6)||!optionalNumber(effect.arc,0,Math.PI*2)||!optionalNumber(effect.range,0,10000)||!optionalNumber(effect.width,0,10000))return false;
@@ -72,6 +87,7 @@ function checkProjectile(projectile){
   if(projectile.bounceDamages!==undefined&&(!Array.isArray(projectile.bounceDamages)||projectile.bounceDamages.length>2||projectile.bounceDamages.some(d=>!number(d,0,1e8))))fail('invalid ricochet damage');
   if(projectile.bouncedIds!==undefined&&(!Array.isArray(projectile.bouncedIds)||projectile.bouncedIds.length>3||projectile.bouncedIds.some(id=>!entityId(id))))fail('invalid ricochet history');
   if(projectile.pairId!==undefined&&!entityId(projectile.pairId))fail('invalid split shot identity');
+  for(const key of ['resonanceSalvaged','resonanceEchoed','resonanceEchoAvailable'])if(projectile[key]!==undefined&&typeof projectile[key]!=='boolean')fail('invalid resonance projectile');
   for(const key of ['secondDamage','echoDamage','slowDuration','fromX','fromY'])if(!optionalNumber(projectile[key],0,1e8))fail('invalid expansion projectile');
 }
 
@@ -82,6 +98,10 @@ function checkImpact(impact,units){
   for(const key of ['damage','healing','shield','burn','poison'])if(!optionalNumber(impact[key],0,1e8))fail('invalid impact effect');
   for(const key of ['stun','slowDuration','burnDuration','poisonDuration','duration','push'])if(!optionalNumber(impact[key],0,10000))fail('invalid impact duration');
   for(const key of ['slow','guard'])if(!optionalNumber(impact[key],0,1))fail('invalid impact factor');
+  if(['polarity-pulse','lodestone-storm','lodestone-echo'].includes(impact.kind)&&(!['pull','push'].includes(impact.polarity)||!Number.isInteger(impact.scrap)||!number(impact.scrap,0,3)||owner.heroId!=='ferrite'))fail('invalid magnetic impact');
+  if(['grand-finale','finale-echo','note-echo'].includes(impact.kind)&&(!Number.isInteger(impact.finaleNote)||!number(impact.finaleNote,0,2)||owner.heroId!=='cadence'))fail('invalid musical impact');
+  for(const key of ['echoDamage','monolith'])if(!optionalNumber(impact[key],0,1e8))fail('invalid resonance impact damage');
+  for(const key of ['induction','aftershock','charged','cleanse'])if(impact[key]!==undefined&&typeof impact[key]!=='boolean')fail('invalid resonance impact option');
 }
 
 function checkTree(value,depth=0,budget={count:0}){
@@ -149,7 +169,7 @@ export function restoreGame(Game,snapshot){
       for(const [level,id] of Object.entries(unit.talents||{}))if(!HEROES[unit.heroId].talents.some(t=>t.level===Number(level)&&unit.level>=t.level&&t.choices.some(c=>c.id===id)))fail('invalid talent');
     }
     for(const status of Object.values(unit.status))if(!status||!number(status.remaining,-1,1e6)||(status.layers&&(!Array.isArray(status.layers)||status.layers.some(layer=>!number(layer.remaining,-1,1e6)))))fail('invalid status');
-    checkExpansionUnit(unit,state.units);
+    checkExpansionUnit(unit,state.units);checkResonanceUnit(unit,state.time);
   }
   const player=state.units.find(u=>u.id===state.playerId&&u.kind==='hero'&&u.isPlayer&&u.team===0);
   if(!player||state.units.filter(u=>u.isPlayer).length!==1)fail('missing player');
@@ -159,6 +179,7 @@ export function restoreGame(Game,snapshot){
   if(!state.stats||['kills','towers','beasts','damage'].some(key=>!Array.isArray(state.stats[key])||state.stats[key].length!==2||state.stats[key].some(n=>!number(n,0,1e10))))fail('invalid scoreboard');
   for(const projectile of state.projectiles)checkProjectile(projectile);
   for(const zone of state.zones)if(!record(zone)||!number(zone.x,-1000,WORLD.width+1000)||!number(zone.y,-1000,WORLD.height+1000)||!number(zone.r,0,10000)||!number(zone.life,-1,10000)||!number(zone.tickIn,-10,10000)||!validGeometry(zone)||(zone.type==='field'&&!encodedIds(zone.applied)))fail('invalid zone');
+  for(const zone of state.zones)if(zone.type==='resonance-stage'&&(!state.units.some(u=>u.id===zone.ownerId&&u.heroId==='cadence'&&u.team===zone.team)||!number(zone.maxLife,4,6)||zone.life>zone.maxLife||zone.finaleNote!==2||!number(zone.slow,0,1)||!number(zone.slowDuration,0,1000)||typeof zone.itemScaled!=='boolean'))fail('invalid musical stage');
   if(state.teamPlans.length!==2||state.campStates.length>WORLD.camps.length)fail('invalid map state');
   for(const plan of state.teamPlans)if(!plan||!['lanes','push','defend','beast'].includes(plan.type)||![0,1,2].includes(plan.lane))fail('invalid team plan');
   for(const camp of state.campStates)if(!WORLD.camps.some(c=>c.id===camp.id)||typeof camp.spawned!=='boolean'||!number(camp.respawnIn,-10,1e6))fail('invalid camp');
@@ -174,7 +195,11 @@ export function restoreGame(Game,snapshot){
   Object.assign(game,decode(state));
   game.player=game.units.find(u=>u.id===game.playerId);game.grid=new Map();game.navCache=new Map();game.progressionDepth=0;
   // Older saves predate magazines; missing optional expansion state gets a safe default.
-  for(const hero of game.units)if(hero.heroId==='vela')hero.magazine??={rounds:6,reloadRemaining:0,reloadDuration:1.4,openingShots:0};
+  for(const hero of game.units){
+    if(hero.heroId==='vela')hero.magazine??={rounds:6,reloadRemaining:0,reloadDuration:1.4,openingShots:0};
+    if(hero.heroId==='ferrite')hero.resonance??={scrap:0,polarity:'push',scrapReadyAt:0};
+    if(hero.heroId==='cadence')hero.resonance??={notes:[],chordUntil:0,finaleNote:0,chordNote:0};
+  }
   game.rebuildGrid();
   return game;
 }

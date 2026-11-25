@@ -16,8 +16,8 @@ function arena(id){
 function advance(game,seconds){for(let t=0;t<seconds;t+=.05)game.update(Math.min(.05,seconds-t));}
 function resetCast(hero,slot){hero.cooldowns[slot]=0;hero.mana=1000;}
 
-test('twelve selectable heroes keep the knight, assassin and blue angel identities',()=>{
-  assert.equal(Object.keys(HEROES).length,12);
+test('fourteen selectable heroes keep the knight, assassin and blue angel identities',()=>{
+  assert.equal(Object.keys(HEROES).length,14);
   for(const id of ['bulwark','ember','seraph']){
     const game=new Game({hero:id,seed:1}),heroes=game.units.filter(u=>u.kind==='hero');
     assert.equal(game.player.heroId,id);assert.equal(heroes.length,6);
@@ -30,7 +30,7 @@ test('twelve selectable heroes keep the knight, assassin and blue angel identiti
   assert(HEROES.ember.speed>HEROES.dragon.speed);
 });
 
-test('all 252 talents have three exclusive choices per tier with small icon metadata',()=>{
+test('all 294 talents have three exclusive choices per tier with small icon metadata',()=>{
   const ids=new Set();let total=0;
   for(const hero of Object.values(HEROES))for(const tier of hero.talents){
     assert.equal(tier.choices.length,3);
@@ -39,7 +39,7 @@ test('all 252 talents have three exclusive choices per tier with small icon meta
       assert(choice.icon&&choice.color&&choice.description);
     }
   }
-  assert.equal(total,252);
+  assert.equal(total,294);
   const {game,hero}=arena('seraph');
   assert(game.chooseTalent(hero,5,'seraph-duelist'));
   assert(!game.chooseTalent(hero,5,'seraph-tailwind'));

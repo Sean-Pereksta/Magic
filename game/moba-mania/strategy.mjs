@@ -69,12 +69,12 @@ export function assignTeamJobs(game,team,plan){
   const jobs=game.assignments[team]={};
   const heroes=game.units.filter(u=>u.alive&&u.kind==='hero'&&u.team===team);
   const bots=heroes.filter(u=>u.bot);
-  for(const hero of bots)jobs[hero.id]={type:hero.heroId==='rivet'?'defend':hero.heroId==='brinehook'?'catch':hero.heroId==='vela'?'marksman':hero.heroId==='bulwark'?'frontline':hero.heroId==='ember'?'flank':['angel','seraph','solstice'].includes(hero.heroId)?'support':'advance',lane:plan.lane};
+  for(const hero of bots)jobs[hero.id]={type:hero.heroId==='rivet'?'defend':hero.heroId==='brinehook'?'catch':hero.heroId==='vela'?'marksman':['bulwark','ferrite'].includes(hero.heroId)?'frontline':hero.heroId==='ember'?'flank':['angel','seraph','solstice','cadence'].includes(hero.heroId)?'support':'advance',lane:plan.lane};
   // A single strong defender can hold a secondary threatened lane while the others act.
   if(plan.type==='push'||plan.type==='beast'){
     const danger=game.units.filter(u=>u.alive&&u.team===team&&u.kind==='tower'&&u.lane!==plan.lane).map(tower=>({tower,foes:game.units.filter(u=>u.alive&&u.team===1-team&&!structure(u)&&canSee(game,team,u)&&distance(u,tower)<460)})).filter(x=>x.foes.length>=3).sort((a,b)=>b.foes.length-a.foes.length)[0];
     if(danger&&heroes.length>=3){
-      const holder=bots.filter(u=>!['angel','solstice'].includes(u.heroId)).sort((a,b)=>(distance(a,danger.tower)-(a.heroId==='rivet'?300:0))-(distance(b,danger.tower)-(b.heroId==='rivet'?300:0)))[0];
+      const holder=bots.filter(u=>!['angel','solstice','cadence'].includes(u.heroId)).sort((a,b)=>(distance(a,danger.tower)-(a.heroId==='rivet'?300:0))-(distance(b,danger.tower)-(b.heroId==='rivet'?300:0)))[0];
       if(holder)jobs[holder.id]={type:'hold',lane:danger.tower.lane,x:danger.tower.x,y:danger.tower.y};
     }
   }
@@ -82,17 +82,19 @@ export function assignTeamJobs(game,team,plan){
 
 const BUILD_PATHS={
   arc:['starfire-scepter','eternity-hourglass','sovereign-aegis'],
-  dragon:['worldsplitter','crimson-relic','sovereign-aegis'],
+  dragon:['inferno-heart','worldsplitter','sovereign-aegis'],
   druid:['elderwood-staff','phoenix-crown','celestial-font'],
   angel:['phoenix-crown','eternity-hourglass','celestial-font'],
-  ranger:['thunderbolt-crossbow','crimson-relic','tempest-wings'],
+  ranger:['pandemic-engine','thunderbolt-crossbow','tempest-wings'],
   bulwark:['sovereign-aegis','eternity-hourglass','crimson-relic'],
   ember:['worldsplitter','tempest-wings','crimson-relic'],
   seraph:['worldsplitter','sovereign-aegis','tempest-wings'],
   rivet:['elderwood-staff','eternity-hourglass','sovereign-aegis'],
   brinehook:['sovereign-aegis','eternity-hourglass','crimson-relic'],
-  vela:['thunderbolt-crossbow','crimson-relic','tempest-wings'],
+  vela:['kings-ransom','thunderbolt-crossbow','crimson-relic'],
   solstice:['phoenix-crown','eternity-hourglass','sovereign-aegis'],
+  ferrite:['sovereign-aegis','winters-dominion','crimson-relic'],
+  cadence:['ascendant-codex','eternity-hourglass','sovereign-aegis'],
 };
 export function nextBuildItem(hero){
   const owned=new Set(hero.items||[]),path=hero.buildPlan?.length?hero.buildPlan:(BUILD_PATHS[hero.heroId]||BUILD_PATHS.arc);
@@ -109,6 +111,8 @@ export function chooseBotTalent(hero,tier){
     rivet:['rivet-reinforced-casing','rivet-repair-routine','rivet-hot-rivets','rivet-quick-assembly','rivet-crossfire','rivet-shared-tools','rivet-fortified-position'],
     brinehook:['brinehook-thick-coat','brinehook-weatherproof','brinehook-steady-footing','brinehook-iron-captain','brinehook-crew-cover','brinehook-calm-waters','brinehook-safe-harbor'],
     vela:['vela-quick-draw','vela-fast-hands','vela-clean-chambers','vela-field-medic','vela-opening-pair','vela-spare-magazine','vela-perfect-rhythm'],
+    ferrite:['ferrite-tempered-scrap','ferrite-grounding','ferrite-layered-alloy','ferrite-deep-core','ferrite-shared-alloy','ferrite-insulated-core','ferrite-monolith'],
+    cadence:['cadence-soft-chime','cadence-long-phrase','cadence-broad-stage','cadence-fast-measure','cadence-soft-landing','cadence-overtone','cadence-grand-shelter'],
     solstice:['solstice-thicker-glass','solstice-long-reach','solstice-gentle-return','solstice-golden-shelter','solstice-shared-moment','solstice-steady-hour','solstice-golden-interval']
   }[hero.heroId];
   const chosen=expansionPath&&tier.choices.find(c=>c.id===expansionPath[[3,5,8,10,12,15,18].indexOf(tier.level)]);
@@ -117,7 +121,7 @@ export function chooseBotTalent(hero,tier){
   return [...tier.choices].sort((a,b)=>preferred.reduce((n,key)=>n+(b.bonuses?.[key]||0)-(a.bonuses?.[key]||0),0)*5||a.id.localeCompare(b.id))[0];
 }
 
-export const isExpansionHero=hero=>['rivet','brinehook','vela','solstice'].includes(typeof hero==='string'?hero:hero?.heroId);
+export const isExpansionHero=hero=>['rivet','brinehook','vela','solstice','ferrite','cadence'].includes(typeof hero==='string'?hero:hero?.heroId);
 const point=u=>({x:u.x,y:u.y});
 const visibleFoes=(game,hero,r=650)=>game.units.filter(u=>u.alive&&u.team!==hero.team&&!game.isProtected(u)&&distance(hero,u)<r+u.r&&canSee(game,hero.team,u));
 const alliedHeroes=(game,hero)=>game.units.filter(u=>u.alive&&u.kind==='hero'&&u.team===hero.team);
@@ -151,6 +155,8 @@ export function expansionTargetBias(game,hero,target){
     return (victim?-90:0)+(target.range>150?-35:target.hp/target.maxHp>.7?45:0);
   }
   if(hero.heroId==='vela')return (target.kind==='hero'&&target.range<120&&target.hp/target.maxHp>.6?35:0)+(distance(hero,target)<=hero.range+target.r?-25:0);
+  if(hero.heroId==='ferrite')return target.kind==='hero'&&target.range>150?-35:0;
+  if(hero.heroId==='cadence')return alliedHeroes(game,hero).some(a=>a.id!==hero.id&&a.hp/a.maxHp<.65&&target.targetId===a.id)?-60:0;
   if(hero.heroId==='solstice')return alliedHeroes(game,hero).some(a=>a.id!==hero.id&&a.hp/a.maxHp<.65&&target.targetId===a.id)?-65:0;
   return 0;
 }
@@ -166,6 +172,45 @@ export function expansionBotAim(game,hero,a,target,retreat,cfg){
   const lead=target?{x:target.x+(target.vx||0)*.2*cfg.lead,y:target.y+(target.vy||0)*.2*cfg.lead}:point(hero);
   const near=!!target&&distance(hero,target)<=a.range+target.r,close=foes.filter(u=>!structure(u)&&distance(hero,u)<300);
   switch(a.id){
+    case 'rail-spike':case 'piercing-note':return target&&near&&(!retreat||distance(hero,target)<240)?lead:null;
+    case 'scrap-barrier': {
+      // Tower fire is dangerous even after all nearby troops have died. It must
+      // count as pressure rather than disappearing with the non-structure list.
+      const towerFire=foes.some(u=>structure(u)&&(u.targetId===hero.id||u.aggroId===hero.id&&u.aggroUntil>game.time)&&distance(hero,u)<=u.range+hero.r+35);
+      const incoming=game.projectiles.some(p=>p.team!==hero.team&&p.targetId===hero.id&&game.units.some(u=>u.id===p.sourceId&&canSee(game,hero.team,u)));
+      const pressure=close.length>0||towerFire||incoming;
+      return pressure&&(towerFire||incoming||hero.hp/hero.maxHp<.82||threatened(game,hero,hero,foes))&&((hero.resonance?.scrap||0)>0||hero.hp/hero.maxHp<.45)?point(hero):null;
+    }
+    case 'polarity-pulse': {
+      const inside=close.filter(u=>distance(hero,u)<=a.radius+u.r&&!u.stationary&&u.kind!=='beast');
+      if(!inside.length)return null;
+      const peel=retreat||hero.hp/hero.maxHp<.4||friends.some(u=>u.id!==hero.id&&u.hp/u.maxHp<.45&&inside.some(t=>distance(t,u)<130));
+      const desired=peel?'push':'pull';
+      return hero.resonance?.polarity!==desired?point(hero):null;
+    }
+    case 'lodestone-storm':return target&&near&&!retreat&&(hero.resonance?.scrap||0)>=2&&hero.hp/hero.maxHp>.4&&(target.kind==='hero'||target.kind==='beast'||close.length>=3)?lead:null;
+    case 'sheltering-chime': {
+      const ally=friends.filter(u=>distance(hero,u)<=a.range&&threatened(game,hero,u,foes)).sort((x,y)=>x.hp/x.maxHp-y.hp/y.maxHp)[0];
+      return ally?point(ally):null;
+    }
+    case 'skipbeat': {
+      const pursuer=close.filter(u=>u.kind==='hero').sort((x,y)=>distance(hero,x)-distance(hero,y))[0];
+      if(!pursuer)return null;
+      const needsNote=!(hero.resonance?.notes||[]).some(n=>n.slot===2);
+      if(!retreat&&distance(hero,pursuer)>160&&!(needsNote&&close.filter(u=>u.kind==='hero').length>=2))return null;
+      const d=distance(hero,pursuer)||1,side=hero.id%2?1:-1;
+      return safeCastPoint(game,hero,{x:hero.x+(hero.x-pursuer.x)/d*a.range*.65-(hero.y-pursuer.y)/d*a.range*.4*side,y:hero.y+(hero.y-pursuer.y)/d*a.range*.65+(hero.x-pursuer.x)/d*a.range*.4*side},a.range);
+    }
+    case 'grand-finale': {
+      if(retreat)return null;
+      const notes=(hero.resonance?.notes||[]).filter(n=>game.time-n.at<=8+game.bonus(hero,'cadenceNoteWindow'));
+      if(!notes.length)return null;
+      const weak=friends.filter(u=>distance(hero,u)<=a.range&&u.hp/u.maxHp<.6&&threatened(game,hero,u,foes)).sort((x,y)=>x.hp/x.maxHp-y.hp/y.maxHp)[0];
+      const desired=weak?1:close.filter(u=>u.kind==='hero').length>=2?2:0;
+      if(notes.at(-1).slot!==desired&&hero.cooldowns[desired]<=0&&hero.mana>=game.getAbility(hero,desired).mana+a.mana)return null;
+      if(notes.at(-1).slot===1&&weak)return point(weak);
+      return target&&near&&(target.kind==='hero'||target.kind==='beast'||close.length>=3)?lead:null;
+    }
     case 'screwshot':case 'hourhand':return target&&near&&(!retreat||distance(hero,target)<240)?lead:null;
     case 'bolt-sentry': {
       if(!target||distance(hero,target)>420||retreat)return null;

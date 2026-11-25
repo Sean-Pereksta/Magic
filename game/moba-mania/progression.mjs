@@ -1,5 +1,6 @@
 /** Hero identities, late evolutions and equipment effects. State is plain JSON for match resume. */
 import { HEROES, WORLD, segmentDistance } from './data.mjs';
+import { modifyItemStatus } from './items.mjs';
 
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const structure=u=>u?.kind==='tower'||u?.kind==='core';
@@ -63,6 +64,19 @@ function shove(game,target,angle,length){
 
 /** No functions/closures are stored: warnings and future impacts survive JSON save/restore. */
 export function scheduleImpact(game,hero,details){
+  details={...details};
+  if(!details.itemScaled){
+    const hostile={team:1-hero.team};
+    for(const type of ['burn','poison'])if(details[type]){
+      const adjusted=modifyItemStatus(game,hostile,type,details[type+'Duration']||3,{dps:details[type],sourceId:hero.id});
+      details[type]=adjusted.extra.dps;details[type+'Duration']=adjusted.duration;
+    }
+    if(details.slow){
+      const adjusted=modifyItemStatus(game,hostile,'slow',details.slowDuration||3,{factor:details.slow,sourceId:hero.id});
+      details.slow=adjusted.extra.factor;details.slowDuration=adjusted.duration;
+    }
+    details.itemScaled=true;
+  }
   const delay=Math.max(.08,Number(details.delay)||.35);
   const impact={id:game.nextId++,ownerId:hero.id,team:hero.team,x:hero.x,y:hero.y,r:80,shape:'circle',color:color(hero),theme:game.combatTheme(hero,details.damageType||'magic'),
     interruptible:true,...details,delay,executeAt:game.time+delay};
@@ -89,18 +103,24 @@ function resolveImpact(game,hero,impact){
     if(impact.shield)protect(game,hero,impact,impact.r,impact.shield,impact.duration||3);
     return;
   }
-  const visual=impact.kind==='winterfall'?'frost':impact.kind==='royal-quake'?'quake':impact.shape==='line'?'slash':impact.shape==='cone'?'sweep':'ring';
+  const visual=['winterfall','winter-field'].includes(impact.kind)?'frost':impact.kind==='inferno-chain'?'flame':impact.kind==='pandemic-burst'?'poison':impact.kind==='royal-quake'?'quake':impact.shape==='line'?'slash':impact.shape==='cone'?'sweep':'ring';
   game.effect(visual,impact.x,impact.y,impact.r,impact.color,.65,{team:hero.team,ownerId:hero.id,abilityId:impact.kind,theme:impact.theme||game.combatTheme(hero),angle:impact.angle,arc:impact.arc,
     x2:impact.x+Math.cos(impact.angle||0)*(impact.range||impact.r),y2:impact.y+Math.sin(impact.angle||0)*(impact.range||impact.r)});
   const radius=impact.shape==='line'?(impact.range||impact.r)+30:impact.r;
-  for(const target of enemies(game,hero,impact,radius))if(inShape(target,impact)&&game.clearLine(impact,target,4)){
+  let spreadCount=0;
+  const targets=enemies(game,hero,impact,radius).sort((a,b)=>distance(a,impact)-distance(b,impact)||a.id-b.id);
+  for(const target of targets)if(inShape(target,impact)&&game.clearLine(impact,target,4)){
     const deal=()=>game.damage(target,(impact.damage||0)*(structure(target)?.35:1),hero,impact.damageType||'magic',false,{theme:impact.theme,angle:impact.shape==='line'||impact.shape==='cone'?impact.angle:Math.atan2(target.y-impact.y,target.x-impact.x)});
     if(impact.proc)proc(game,deal);else deal();
     if(!target.alive||structure(target))continue;
     if(impact.stun)game.applyStatus(target,'stun',impact.stun,{sourceId:hero.id});
-    if(impact.slow)game.applyStatus(target,'slow',impact.slowDuration||3,{factor:impact.slow,frost:impact.kind==='winterfall',sourceId:hero.id});
-    if(impact.burn)game.applyStatus(target,'burn',impact.burnDuration||3,{dps:impact.burn,sourceId:hero.id,proc:!!impact.proc});
-    if(impact.poison)game.applyStatus(target,'poison',impact.poisonDuration||3,{dps:impact.poison,sourceId:hero.id,proc:!!impact.proc});
+    if(impact.slow)game.applyStatus(target,'slow',impact.slowDuration||3,{factor:impact.slow,frost:['winterfall','winter-field'].includes(impact.kind),sourceId:hero.id,itemScaled:!!impact.itemScaled});
+    const spreadEligible=impact.maxSpread===undefined||(target.id!==impact.primaryId&&spreadCount<impact.maxSpread);
+    if(spreadEligible&&(impact.burn||impact.poison)){
+      if(impact.burn)game.applyStatus(target,'burn',impact.burnDuration||3,{dps:impact.burn,sourceId:hero.id,proc:!!impact.proc,itemScaled:!!impact.itemScaled});
+      if(impact.poison)game.applyStatus(target,'poison',impact.poisonDuration||3,{dps:impact.poison,sourceId:hero.id,proc:!!impact.proc,itemScaled:!!impact.itemScaled});
+      spreadCount++;
+    }
     if(impact.push)shove(game,target,impact.shape==='cone'?impact.angle:Math.atan2(target.y-impact.y,target.x-impact.x),impact.push);
   }
   if(impact.shield)protect(game,hero,impact,impact.r,impact.shield,impact.duration||3);
@@ -130,14 +150,14 @@ export function onCast(game,hero,ability,{at,angle,slot=0,power:spellPower}={}){
   const mobility=ability.mobility||['rift-step','sky-cleave'].includes(ability.id);
   if(mobility){
     state.mobilityReadyUntil=game.time+3.5;
-    if(has(hero,'tempest-wings')){state.tempestReadyUntil=game.time+4;haste(game,hero,hero,0,.12,0,2);}
+    if(has(hero,'tempest-wings')){state.tempestReadyUntil=game.time+4;game.applyStatus(hero,'haste',3,{factor:.25,attack:.15,sourceId:hero.id,color:'#a1efda'});}
   }
   if(has(hero,'eternity-hourglass')&&distinctCasts>=3&&ready(game,hero,'hourglass',12)){
-    hero.cooldowns=hero.cooldowns.map((cd,index)=>Math.max(0,cd-(index===slot?0:1.25)));state.castHistory=[];
-    game.effect('ring',hero.x,hero.y,46,'#8fe3e8',.45);
+    hero.cooldowns=hero.cooldowns.map((cd,index)=>index===slot||cd<=.5?cd:Math.max(.5,cd-2.5));state.castHistory=[];
+    game.effect('ring',hero.x,hero.y,85,'#8fe3e8',.65,{team:hero.team,theme:'time'});game.float(hero,'TIME SURGE','#8fe3e8');
   }
   if(has(hero,'celestial-font')&&castNumber%3===0&&ready(game,hero,'font',5)){
-    hero.mana=Math.min(hero.maxMana,hero.mana+hero.maxMana*.055);healingPulse(game,hero,hero,150,24+hero.level*2);
+    hero.mana=Math.min(hero.maxMana,hero.mana+hero.maxMana*.10);healingPulse(game,hero,hero,190,55+hero.level*4);protect(game,hero,hero,190,45*p,3);
   }
   if(hero.heroId==='arc'){
     if(castNumber%3===0){
@@ -209,8 +229,8 @@ export function onSummon(game,hero,summon,index=0){
   if(!aliveHero(hero)||!summon?.alive)return;
   const b=key=>bonus(game,hero,key),p=power(hero);
   if(index===0&&has(hero,'elderwood-staff')){
-    summon.maxHp*=1.2;summon.hp=summon.maxHp;summon.damage*=1.15;summon.elderGuardian=true;summon.scale=(summon.scale||1)*1.12;
-    ward(game,hero,summon,65*p,5);game.effect('shield',summon.x,summon.y,summon.r+14,'#b8e69d',.7,{followId:summon.id});
+    summon.maxHp*=1.4;summon.hp=summon.maxHp;summon.damage*=1.25;summon.elderGuardian=true;summon.scale=(summon.scale||1)*1.25;
+    ward(game,hero,summon,100*p,6);game.effect('shield',summon.x,summon.y,summon.r+20,'#b8e69d',.85,{followId:summon.id,team:hero.team,theme:'nature'});
   }
   if(hero.heroId==='arc'){
     if(b('arcSummonWard'))ward(game,hero,summon,50*p,5);
@@ -243,23 +263,43 @@ export function onDamage(game,source,target,actual,{basic=false,periodic=false}=
   const hero=owns(game,source);if(!aliveHero(hero)||target.team===hero.team)return;
   const state=ensureEvolution(hero),b=key=>bonus(game,hero,key),p=power(hero),direct=source?.id===hero.id;
   if(source?.kind==='summon'){
+    if(source.elderGuardian&&has(hero,'elderwood-staff')&&basic&&ready(game,hero,'elder-pulse',3)){
+      for(const foe of enemies(game,hero,target,105))if(foe.id!==target.id&&!structure(foe)&&game.clearLine(target,foe,4))hit(game,hero,foe,source.damage*.5,'magic');
+      game.effect('quake',target.x,target.y,105,'#b8e69d',.5,{team:hero.team,theme:'nature'});
+    }
     if(hero.heroId==='arc'&&b('arcSummonSiphon')&&ready(game,hero,'spirit-siphon',2))heal(game,hero,hero,12*p);
     if(hero.heroId==='druid'&&ready(game,hero,'wild-bond',4)){const ally=allies(game,hero,hero,220).filter(u=>u.kind==='hero'&&u.hp<u.maxHp).sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp)[0];if(ally)heal(game,hero,ally,12*p);}
   }
   if(!direct)return;
-  if(has(hero,'starfire-scepter')&&!basic&&!periodic&&ready(game,hero,'starfire',6))scheduleImpact(game,hero,{kind:'starfire',x:target.x,y:target.y,r:95,delay:.38,damage:36*p,proc:true,interruptible:false});
+  if(has(hero,'starfire-scepter')&&!basic&&!periodic&&ready(game,hero,'starfire',5))scheduleImpact(game,hero,{kind:'starfire',x:target.x,y:target.y,r:135,delay:.45,damage:80*p,proc:true,interruptible:false,color:'#c3adff',theme:'arcane'});
+  if(has(hero,'winters-dominion')&&!structure(target)&&!basic&&!periodic&&ready(game,hero,'winter-field',7))scheduleImpact(game,hero,{kind:'winter-field',x:target.x,y:target.y,r:145,delay:.55,damage:45*p,slow:.30,slowDuration:2.5,proc:true,interruptible:false,color:'#b1edff',theme:'frost'});
+  if(periodic&&!structure(target)){
+    for(const [id,type,key,ratio,r,damage,cooldown,theme,ink] of [
+      ['inferno-heart','burn','inferno-chain',.5,135,55,6,'fire','#ffb079'],
+      ['pandemic-engine','poison','pandemic-burst',.6,150,65,7,'poison','#c6e991'],
+    ]){
+      const effect=target.status?.[type];
+      if(has(hero,id)&&effect?.sourceId===hero.id&&!effect.proc&&effect.dps>0&&effect.remaining>0&&ready(game,hero,key,cooldown)){
+        scheduleImpact(game,hero,{kind:key,x:target.x,y:target.y,r,delay:.5,damage:damage*p,damageType:type==='burn'?'fire':'poison',
+          [type]:effect.dps*ratio,[type+'Duration']:Math.min(3,effect.remaining),itemScaled:true,maxSpread:3,primaryId:target.id,
+          proc:true,interruptible:false,color:ink,theme});
+      }
+    }
+  }
   if(basic){
     if(has(hero,'worldsplitter')&&count(hero,'worldsplitter')%3===0){
       const angle=Math.atan2(target.y-hero.y,target.x-hero.x);
-      for(const foe of enemies(game,hero,hero,150))if(foe.id!==target.id&&inShape(foe,{...hero,r:150,shape:'cone',angle,arc:Math.PI*.7})&&game.clearLine(hero,foe,4))hit(game,hero,foe,hero.damage*.45,'physical');
-      game.effect('sweep',hero.x,hero.y,150,'#f6d18b',.4,{angle,arc:Math.PI*.7});
+      hit(game,hero,target,hero.damage*.35,'physical');
+      for(const foe of enemies(game,hero,hero,175))if(foe.id!==target.id&&inShape(foe,{...hero,r:175,shape:'cone',angle,arc:Math.PI*.7})&&game.clearLine(hero,foe,4))hit(game,hero,foe,hero.damage*.75,'physical');
+      game.effect('sweep',hero.x,hero.y,175,'#f6d18b',.55,{angle,arc:Math.PI*.7,team:hero.team,theme:'steel'});
     }
-    if(has(hero,'thunderbolt-crossbow')&&count(hero,'crossbow')%4===0){
-      const chained=enemies(game,hero,target,190).filter(u=>u.id!==target.id&&!structure(u)&&game.clearLine(target,u,4)).sort((a,b)=>distance(target,a)-distance(target,b)).slice(0,2);
-      for(const foe of chained){hit(game,hero,foe,30*p);game.effect('slash',target.x,target.y,15,'#ffd585',.3,{x2:foe.x,y2:foe.y,angle:Math.atan2(foe.y-target.y,foe.x-target.x)});}
+    if(has(hero,'thunderbolt-crossbow')&&count(hero,'crossbow')%3===0){
+      hit(game,hero,target,35*p);
+      const chained=enemies(game,hero,target,230).filter(u=>u.id!==target.id&&!structure(u)&&game.canSee(hero.team,u)&&game.clearLine(target,u,4)).sort((a,b)=>distance(target,a)-distance(target,b)||a.id-b.id).slice(0,3);
+      for(const foe of chained){hit(game,hero,foe,55*p);game.effect('slash',target.x,target.y,15,'#ffd585',.4,{x2:foe.x,y2:foe.y,angle:Math.atan2(foe.y-target.y,foe.x-target.x),team:hero.team,theme:'arcane'});}
     }
-    if(has(hero,'tempest-wings')&&state.tempestReadyUntil>game.time){state.tempestReadyUntil=0;hit(game,hero,target,28*p,'physical');}
-    if(has(hero,'crimson-relic')&&target.kind==='hero'&&hero.hp<hero.maxHp*.5&&ready(game,hero,'crimson',8)){heal(game,hero,hero,hero.maxHp*.055);ward(game,hero,hero,40*p,2);}
+    if(has(hero,'tempest-wings')&&state.tempestReadyUntil>game.time){state.tempestReadyUntil=0;hit(game,hero,target,60*p,'physical');game.applyStatus(target,'slow',2,{factor:.25,sourceId:hero.id});game.effect('explosion',target.x,target.y,58,'#a1efda',.5,{team:hero.team,theme:'tide'});}
+    if(has(hero,'crimson-relic')&&target.kind==='hero'&&hero.hp<hero.maxHp*.6&&ready(game,hero,'crimson',7)){heal(game,hero,hero,hero.maxHp*.10);ward(game,hero,hero,85*p,3);game.effect('ring',hero.x,hero.y,65,'#f59eb4',.6,{team:hero.team,theme:'holy'});}
     if(hero.heroId==='dragon'&&target.status?.burn){
       if(count(hero,'cinder-bite')%3===0)ring(game,hero,target,85,(b('dragonBite')?34:20)*p,'fire');
       if(b('dragonExecute')&&target.hp<target.maxHp*.35&&ready(game,hero,'dragon-execute',4))hit(game,hero,target,28*p,'fire');
@@ -299,7 +339,12 @@ export function onDamage(game,source,target,actual,{basic=false,periodic=false}=
 export function onHeal(game,source,target,actual){
   const hero=owns(game,source);if(!aliveHero(hero)||!(actual>=6)||target.team!==hero.team)return;
   const state=ensureEvolution(hero),p=power(hero),b=key=>bonus(game,hero,key);
-  if(has(hero,'phoenix-crown')&&target.kind==='hero'&&ready(game,hero,'phoenix-crown',5))ward(game,hero,target,40*p,3);
+  if(has(hero,'phoenix-crown')&&target.kind==='hero'&&ready(game,hero,'phoenix-crown',5)){
+    ward(game,hero,target,90*p,4);
+    const ally=allies(game,hero,target,210).filter(u=>u.kind==='hero'&&u.id!==target.id&&u.hp<u.maxHp).sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp||a.id-b.id)[0];
+    if(ally)heal(game,hero,ally,40*p);
+    game.effect('heal',target.x,target.y,95,'#ffba91',.8,{team:hero.team,theme:'holy'});
+  }
   if(hero.heroId==='angel'){
     state.judgementUntil=game.time+4;
     if(count(hero,'devotion')%3===0&&ready(game,hero,'devotion',3)){hero.mana=Math.min(hero.maxMana,hero.mana+10);haste(game,hero,target,110,.12,.08,2);}
@@ -312,11 +357,25 @@ export function onHeal(game,source,target,actual){
 export function onShield(game,source,target,added){
   const hero=owns(game,source);if(!aliveHero(hero)||!(added>=12)||target.team!==hero.team)return;
   const p=power(hero);
-  if(has(hero,'sovereign-aegis')&&ready(game,hero,'sovereign',8)){
-    const ally=allies(game,hero,target,190).filter(u=>u.kind==='hero'&&u.id!==target.id).sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp)[0];
-    if(ally)ward(game,hero,ally,55*p,3);
+  if(has(hero,'sovereign-aegis')&&ready(game,hero,'sovereign',7)){
+    const recipients=allies(game,hero,target,240).filter(u=>u.kind==='hero'&&u.id!==target.id).sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp||a.id-b.id).slice(0,2);
+    for(const ally of recipients){ward(game,hero,ally,90*p,4);if(!ally.status.guard||ally.status.guard.factor>.85)game.applyStatus(ally,'guard',2.5,{factor:.85,sourceId:hero.id});}
+    if(recipients.length)game.effect('shield',target.x,target.y,120,'#d1b1f3',.7,{team:hero.team,theme:'violet'});
   }
   if(hero.heroId==='angel'&&count(hero,'shield-devotion')%3===0&&ready(game,hero,'devotion',3))haste(game,hero,target,110,.12,.08,2);
+}
+/** Kill buffs contain no damage and may safely run for a finisher from an item proc. */
+export function onItemKill(game,hero,target){
+  if(!aliveHero(hero)||target?.kind!=='hero')return;
+  if(has(hero,'ascendant-codex')&&ready(game,hero,'ascension',12)){
+    ward(game,hero,hero,100*power(hero),4);
+    hero.cooldowns=hero.cooldowns.map((cd,slot)=>slot===3||cd<=.5?cd:Math.max(.5,cd-2));
+    game.effect('level',hero.x,hero.y,90,'#b3c4ff',.85,{team:hero.team,theme:'arcane'});game.float(hero,'ASCENSION','#b3c4ff');
+  }
+  if(has(hero,'kings-ransom')&&ready(game,hero,'victors-spoils',10)){
+    game.applyStatus(hero,'haste',4,{factor:.25,attack:.20,sourceId:hero.id,color:'#ffe092'});
+    game.effect('ring',hero.x,hero.y,75,'#ffe092',.75,{team:hero.team,theme:'time'});game.float(hero,'VICTOR\'S SPOILS','#ffe092');
+  }
 }
 export function onKill(game,hero,target){
   if(!aliveHero(hero)||target?.kind!=='hero')return;

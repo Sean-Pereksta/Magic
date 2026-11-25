@@ -41,8 +41,8 @@
       {key:'knightwarfare', label:'Take on the world', color:'#99d5c6'},
       {key:'onehitknight', label:'Make every move count', color:'#c2bcf2'}
     ]),
-    // Keep Flag Capture's existing placement independent of its new display name.
-    experimental: Object.freeze(['flag']),
+    // Keep these games' existing placement independent of their display names.
+    experimental: Object.freeze(['flag','balatle']),
     tools: Object.freeze(['pdfreader','nflradio','mtgcatalog','fantasyfootball','versemem'])
   });
   if (typeof module === 'object' && module.exports) module.exports = config;

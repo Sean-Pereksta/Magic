@@ -36,7 +36,8 @@
   ]);
   const TOOL_TITLES=new Set(["PDF Reader","NFL Radio Dial","MTG Catalog & Deck Builder","Fantasy Football Command Center","Verse Memorizer"]);
   const PROTOTYPE_ALIASES=new Set([
-    "Mountain Blade Skirmish"
+    "Mountain Blade Skirmish",
+    "Felt & Fortune Multiplayer"
   ]);
 
   const cleanTitle=value=>String(value||"")

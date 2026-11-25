@@ -5,7 +5,7 @@
 
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-  <title>Star Realms (Unofficial) — Online 1v1 Turn-Based</title>
+  <title>Orbital Rivals — Online Duel</title>
   <style>
   :root{
     --bg0:#070a12;
@@ -446,125 +446,85 @@
   }
   .field::placeholder{ color:rgba(244,247,255,.45); }
   </style>
+  <link rel="stylesheet" href="cardrealms/cards.css?v=20261125b"/>
 </head>
-<body>
+<body class="cr-game cr-multi">
 <div id="app">
+  <header class="cr-header">
+    <div class="cr-brand-wrap"><span class="cr-brand">Orbital Rivals</span><span class="cr-match-mode" id="modeLine">Online duel</span></div>
+    <div class="cr-score cr-opponent"><span class="cr-score-name" id="oppTitle">Opponent</span><span class="cr-score-health"><i data-cr-icon="authority"></i><strong id="enemyLine">50</strong></span></div>
+    <div class="cr-score cr-player"><span class="cr-score-name" id="youTitle">You</span><span class="cr-score-health"><i data-cr-icon="authority"></i><strong id="youLine">50</strong></span></div>
+    <span id="turnBadge" class="cr-turn-badge">Your turn</span>
+    <button type="button" id="crMenuBtn" aria-label="Open fleet menu" aria-haspopup="dialog" title="Fleet menu">☰</button>
+  </header>
 
-  <div class="topbar">
-    <div class="pill">
-      <h3><span id="oppTitle">Opponent</span> <span id="turnBadge" class="sub">—</span></h3>
-      <div class="sub" id="enemyLine">Authority: —</div>
-      <div class="sub" id="enemyPiles">Deck: — • Discard: — • Scrap: —</div>
-      <div class="sub" id="enemyOutpostHint">Outposts: —</div>
-      <div class="hint" id="netLine">Room: — • Seat: —</div>
-    </div>
-
-    <div class="pill">
-      <h3>
-        <span>Star Realms (Unofficial)</span>
-        <span class="sub" id="modeLine">Online 1v1</span>
-      </h3>
-      <div class="sub">
-        Play ships & bases → generate <b>Trade</b> (💠) and <b>Combat</b> (⚔️). Spend trade to buy, spend combat to destroy bases or hit authority.
-      </div>
-      <div class="sub">
-        Rule: If opponent has any <b>Outposts</b>, you must destroy them before attacking authority.
-      </div>
-      <div class="hint">Turn timer: <b>60s</b>. If a player doesn’t end their turn, it auto-ends.</div>
-    </div>
-
-    <div class="pill">
-      <h3><span id="youTitle">You</span> <span class="sub" id="phaseLine">—</span></h3>
-      <div class="sub" id="youLine">Authority: —</div>
-      <div class="sub" id="youPiles">Deck: — • Discard: — • Scrap: —</div>
-      <div class="miniBtns" style="margin-top:8px;">
-        <div class="miniBtn" id="viewDeckBtn">View Deck</div>
-        <div class="miniBtn" id="viewDiscardBtn">View Discard</div>
-        <div class="miniBtn" id="viewScrapBtn">View Scrap</div>
-      </div>
-      <div class="hint">Ally abilities trigger when you’ve played <b>2+</b> cards of that faction this turn (bases can trigger each of your turns).</div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="hud">
-      <div class="statline">
-        <div class="chip">💠 Trade: <strong id="tradeVal">0</strong></div>
-        <div class="chip">⚔️ Combat: <strong id="combatVal">0</strong></div>
-        <div class="chip">❤️ Authority: <strong id="myAuthVal">50</strong></div>
-        <div class="chip">⏱ Turn: <strong id="turnTimer">—</strong>s</div>
-        <label class="toggle" title="When ON, Play All will be triggered automatically at your turn start.">
-          <input type="checkbox" id="autoplayToggle">
-          Auto Play All
-        </label>
-      </div>
-      <div class="statline">
-        <button class="btn" id="playAllBtn">Play All</button>
-        <button class="btn warn" id="buyExplorerBtn">Buy Explorer (2)</button>
-        <button class="btn bad" id="attackAuthorityBtn">⚔️ Attack Opponent Authority</button>
-        <button class="btn good" id="endTurnBtn">End Turn</button>
-      </div>
-    </div>
-    <div class="hint" id="statusLine">Connecting…</div>
-  </div>
-
-  <div class="row">
-    <div class="side">
-      <div class="sectionTitle">Opponent Bases</div>
+  <main class="cr-table" aria-label="Fleet battle board">
+    <section class="cr-zone cr-enemy" aria-labelledby="cr-enemy-title">
+      <div class="sectionTitle"><span id="cr-enemy-title">Rival bases</span><span data-zone-count="enemyBases">0</span></div>
       <div class="cards" id="enemyBases"></div>
-      <div class="hint">Click a base/outpost to spend your combat on it (on your turn).</div>
+    </section>
+    <section class="cr-zone cr-market" aria-labelledby="cr-market-title">
+      <div class="sectionTitle"><span id="cr-market-title">Market</span><span class="cr-zone-hint">Click to buy</span><span data-zone-count="tradeRow">5</span></div>
+      <div class="cards" id="tradeRow"></div>
+    </section>
+    <section class="cr-zone cr-bases" aria-labelledby="cr-bases-title">
+      <div class="sectionTitle"><span id="cr-bases-title">Your bases</span><span data-zone-count="myBases">0</span></div>
+      <div class="cards" id="myBases"></div>
+    </section>
+    <section class="cr-zone cr-play" aria-labelledby="cr-play-title">
+      <div class="sectionTitle"><span id="cr-play-title">Deployed ships</span><span data-zone-count="inPlay">0</span></div>
+      <div class="cards" id="inPlay"></div>
+    </section>
+    <section class="cr-zone cr-hand" aria-labelledby="cr-hand-title">
+      <div class="sectionTitle"><span id="cr-hand-title">Your hand</span><span class="cr-zone-hint">Click to play · i for rules</span><span data-zone-count="hand">5</span></div>
+      <div class="cards" id="hand"></div>
+    </section>
+  </main>
+
+  <footer class="cr-dock">
+    <div class="cr-resources">
+      <div class="cr-resource cr-trade" title="Trade available to buy cards"><i data-cr-icon="trade"></i><span>Trade</span><strong id="tradeVal">0</strong></div>
+      <div class="cr-resource cr-combat" title="Combat available to attack"><i data-cr-icon="combat"></i><span>Combat</span><strong id="combatVal">0</strong></div>
+      <div class="cr-timer" title="Seconds left this turn">Turn <strong id="turnTimer">—</strong>s</div>
     </div>
-
-    <div class="center">
-      <div class="panel">
-        <div class="sectionTitle">
-          <span>Trade Row (shared)</span>
-          <span class="sub" id="tradeDeckLine">Trade Deck: —</span>
-        </div>
-        <div class="cards" id="tradeRow"></div>
-        <div class="hint">Click a card to buy it (if you can afford it). Purchased cards go to your discard pile.</div>
-      </div>
-
-      <div class="panel">
-        <div class="sectionTitle">
-          <span>Your Bases (persist)</span>
-          <span class="sub">Ally triggers can happen each of your turns</span>
-        </div>
-        <div class="cards" id="myBases"></div>
-      </div>
-
-      <div class="panel">
-        <div class="sectionTitle">
-          <span>Your Hand</span>
-          <span class="sub">Click to play • Ships discard at end</span>
-        </div>
-        <div class="handWrap" id="hand"></div>
-
-        <div class="sectionTitle" style="margin-top:10px;">
-          <span>In Play (ships this turn)</span>
-          <span class="sub">Scrap buttons are optional</span>
-        </div>
-        <div class="cards" id="inPlay"></div>
-      </div>
+    <div class="cr-actions">
+      <button class="btn" id="playAllBtn">Play all</button>
+      <button class="btn" id="buyExplorerBtn" title="Buy an Explorer for 2 trade">Explorer <span>2</span></button>
+      <button class="btn cr-attack" id="attackAuthorityBtn" title="Spend combat to attack opponent health">Attack</button>
+      <button class="btn cr-end-turn" id="endTurnBtn">End turn</button>
     </div>
-
-    <div class="side">
-      <div class="sectionTitle">Game Log</div>
-      <div id="log"></div>
-      <div class="hint" style="margin-top:10px;">
-        Added factions:
-        <br>☀️ <b>Solar Dominion</b> — convert tempo into pressure (combat/trade/hp mix).
-        <br>🕳️ <b>Void Syndicate</b> — disrupt draws + hand pressure.
-        <br><span class="sub">Note: for simplicity, “choose” effects (scrap/discard choices) are auto-resolved by heuristics.</span>
-      </div>
-    </div>
-  </div>
+    <div class="cr-status" id="statusLine" role="status">Connecting…</div>
+  </footer>
 </div>
+
+<dialog id="cr-menu" aria-labelledby="cr-menu-title">
+  <div class="cr-menu-heading"><h2 id="cr-menu-title">Orbital Rivals</h2><button type="button" data-close-menu aria-label="Close fleet menu">×</button></div>
+  <p class="cr-menu-subtitle">Your fleet console</p>
+  <div class="cr-menu-actions">
+    <button class="btn" id="viewDeckBtn" data-board-action>View deck</button>
+    <button class="btn" id="viewDiscardBtn" data-board-action>Discard pile</button>
+    <button class="btn" id="viewScrapBtn" data-board-action>Scrapped cards</button>
+  </div>
+  <label class="toggle"><input type="checkbox" id="autoplayToggle">Automatically play cards at the start of your turn</label>
+  <div class="cr-menu-info">
+    <span>Health: <strong id="myAuthVal">50</strong></span><span id="phaseLine">Main phase</span>
+    <p id="youPiles">Deck: — · Discard: — · Scrap: —</p>
+    <p id="enemyPiles">Rival deck: —</p><p id="enemyOutpostHint">Outposts: —</p><p id="tradeDeckLine">Market deck: —</p>
+    <p id="netLine">Connecting…</p>
+  </div>
+  <details class="cr-help"><summary>How to play &amp; read cards</summary>
+    <div class="cr-legend"><span><i data-cr-icon="trade"></i>Trade</span><span><i data-cr-icon="combat"></i>Combat</span><span><i data-cr-icon="authority"></i>Health</span><span><i data-cr-icon="defense"></i>Defense</span><span><i data-cr-icon="draw"></i>Draw</span><span><i data-cr-icon="ally"></i>Ally</span><span><i data-cr-icon="scrap"></i>Scrap</span></div>
+    <p>Play cards to gain trade and combat. Buy new cards with trade, then spend combat to attack bases or your rival's health. Destroy their outposts before attacking their health.</p>
+    <p>Ally bonuses trigger with two cards of the same faction. Scrapping a card removes it permanently for its bonus. Bases stay in play and repeat their effects each turn.</p>
+    <p>Hover or focus any card for its artwork and rules. Tap i or press I to pin details. Escape closes them. Enter or Space plays, buys, or attacks with the focused card.</p>
+  </details>
+  <details class="cr-log"><summary>Battle log</summary><div id="log"></div></details>
+</dialog>
 
 <!-- Net Overlay -->
 <div id="netOverlay">
   <div class="netBox">
-    <h2>Card Realms Multiplayer Lobby</h2>
+    <h2>Orbital Rivals Multiplayer Lobby</h2>
     <div class="sub" style="margin-bottom:10px;">
       Create a lobby, then have another player join from the live list below. Only open lobbies (1/2 players) are shown.
     </div>
@@ -599,9 +559,12 @@
   </div>
 </div>
 
+<script src="cardrealms/card-art.js?v=20261125b"></script>
+<script src="cardrealms/card-ui.js?v=20261125b"></script>
+<script src="cardrealms/board-layout.js?v=20261125b"></script>
 <script type="module">
 /* ============================================================
-   STAR REALMS (UnoffICIAL) — ONLINE 1v1 TURN-BASED
+   ORBITAL RIVALS — ONLINE 1v1 TURN-BASED
    ✅ 2 players only
    ✅ Shared trade row
    ✅ One player acts at a time; End Turn or auto-end at 60s
@@ -1259,265 +1222,18 @@ function setStatus(s){ els.statusLine.textContent = s; }
 function factionClass(f){ return f && f!=="n" ? f : ""; }
 
 /* ===== Unique icon generator (SVG) ===== */
-const FACTION_COLORS = {
-  tf:"#56d3ff", blob:"#7CFF5B", se:"#ff6ad5", mc:"#b7a6ff",
-  sd:"#ffd36a", vs:"#7a5cff", n:"#cfd6ff"
-};
-const ROLE_COLORS = { trade:"#56d3ff", battle:"#ff5d6c", base:"#aab3ff", outpost:"#ffd166" };
-
-function seedFromString(str){
-  let h = 2166136261 >>> 0;
-  for(let i=0;i<str.length;i++){
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h>>>0;
-}
-function mulberry32(a){
-  return function(){
-    let t = a += 0x6D2B79F5;
-    t = Math.imul(t ^ (t>>>15), t|1);
-    t ^= t + Math.imul(t ^ (t>>>7), t|61);
-    return ((t ^ (t>>>14))>>>0) / 4294967296;
-  };
-}
-function roleOf(card){
-  if(card.type==="base") return card.outpost ? "outpost" : "base";
-  const trade = statSum(card.play,"trade") + statSum(card.play,"authority")*0.35 + statSum(card.play,"draw")*0.90;
-  const combat = statSum(card.play,"combat") + statSum(card.play,"opp_discard")*1.60 + Math.max(0, -statSum(card.play,"opp_next_draw"))*1.20;
-  return trade >= combat ? "trade" : "battle";
-}
-function iconSvg(card){
-  const role = roleOf(card);
-  const fac = FACTION_COLORS[card.faction] || "#cfd6ff";
-  const accent = ROLE_COLORS[role] || fac;
-
-  const seed = seedFromString(card.key + ":" + card.uid);
-  const r = mulberry32(seed);
-
-  const gidA = `gA_${card.uid}`;
-  const gidB = `gB_${card.uid}`;
-  const glow = `gl_${card.uid}`;
-
-  const wing = (r()*5)|0;
-  const fin  = (r()*4)|0;
-  const stripe = (r()*6)|0;
-  const cockpit = (r()*4)|0;
-
-  const ship = ()=>{
-    const nose = 46 + r()*8;
-    const tail = 14 + r()*6;
-    const midY = 32;
-    const width = 10 + r()*10;
-    const wingSpan = 16 + r()*16;
-    const wingY = 22 + r()*14;
-
-    const p1 = `${nose},${midY}`;
-    const p2 = `${32},${midY-width}`;
-    const p3 = `${tail},${midY-(6+r()*6)}`;
-    const p4 = `${tail},${midY+(6+r()*6)}`;
-    const p5 = `${32},${midY+width}`;
-
-    let wings = "";
-    if(wing%2===0){
-      wings = `
-        <polygon points="${34},${wingY} ${28},${wingY} ${24},${midY-2} ${40},${midY-2}"
-                 fill="url(#${gidB})" opacity=".85"/>
-        <polygon points="${34},${64-wingY} ${28},${64-wingY} ${24},${midY+2} ${40},${midY+2}"
-                 fill="url(#${gidB})" opacity=".85"/>
-      `;
-    }else{
-      wings = `
-        <polygon points="${30},${midY-4} ${30-wingSpan/2},${midY-14} ${34},${midY-8} ${40},${midY-4}"
-                 fill="url(#${gidB})" opacity=".85"/>
-        <polygon points="${30},${midY+4} ${30-wingSpan/2},${midY+14} ${34},${midY+8} ${40},${midY+4}"
-                 fill="url(#${gidB})" opacity=".85"/>
-      `;
-    }
-
-    let fins = "";
-    if(fin===1){
-      fins = `<polygon points="${tail+6},${midY} ${tail-2},${midY-10} ${tail-2},${midY+10}"
-               fill="${accent}" opacity=".35"/>`;
-    }else if(fin===2){
-      fins = `<rect x="${tail-1}" y="${midY-12}" width="4" height="24" rx="2"
-               fill="${accent}" opacity=".25"/>`;
-    }else if(fin===3){
-      fins = `<polygon points="${tail+4},${midY-6} ${tail-4},${midY-16} ${tail-8},${midY-6}"
-               fill="${accent}" opacity=".20"/>
-              <polygon points="${tail+4},${midY+6} ${tail-4},${midY+16} ${tail-8},${midY+6}"
-               fill="${accent}" opacity=".20"/>`;
-    }
-
-    const cx = 34 + r()*8;
-    const cy = 32 + (r()*6-3);
-    let glass = "";
-    if(cockpit===0) glass = `<circle cx="${cx}" cy="${cy}" r="3.2" fill="${accent}" opacity=".55"/>`;
-    if(cockpit===1) glass = `<rect x="${cx-3}" y="${cy-2}" width="6" height="4" rx="2" fill="${accent}" opacity=".55"/>`;
-    if(cockpit===2) glass = `<path d="M ${cx-3} ${cy} Q ${cx} ${cy-4} ${cx+3} ${cy} Q ${cx} ${cy+4} ${cx-3} ${cy} Z"
-                              fill="${accent}" opacity=".55"/>`;
-    if(cockpit===3) glass = `<polygon points="${cx-3},${cy-2} ${cx+3},${cy} ${cx-3},${cy+2}"
-                              fill="${accent}" opacity=".55"/>`;
-
-    const flameLen = 8 + r()*6;
-    const flame = `
-      <path d="M ${tail-1} ${midY} Q ${tail-6} ${midY-6} ${tail-flameLen} ${midY}
-               Q ${tail-6} ${midY+6} ${tail-1} ${midY} Z"
-            fill="${accent}" opacity="${role==='battle' ? .65 : .45}"/>
-    `;
-
-    let deco = "";
-    if(stripe<=2) deco = `<path d="M ${tail+4} ${midY-2} L ${nose-6} ${midY-10}" stroke="${accent}" stroke-width="2" opacity=".22" />`;
-    else if(stripe<=4) deco = `<path d="M ${tail+6} ${midY+6} L ${nose-10} ${midY+2}" stroke="${accent}" stroke-width="2" opacity=".22" />`;
-    else deco = `<path d="M ${tail+8} ${midY} L ${nose-12} ${midY}" stroke="${accent}" stroke-width="2" opacity=".22" />`;
-
-    return `
-      <g filter="url(#${glow})">
-        ${wings}
-        <polygon points="${p1} ${p2} ${p3} ${p4} ${p5}" fill="url(#${gidA})"
-                 stroke="rgba(255,255,255,.22)" stroke-width="1"/>
-        ${fins}
-        ${deco}
-        ${glass}
-        ${flame}
-      </g>
-    `;
-  };
-
-  const station = ()=>{
-    const ring = 18 + r()*8;
-    const core = 6 + r()*4;
-    const arm = 10 + r()*8;
-    const panel = 8 + r()*8;
-    const out = role==="outpost";
-
-    const shield = out ? `
-      <path d="M32 6 C 50 12 56 24 56 32 C 56 46 44 56 32 58 C 20 56 8 46 8 32 C 8 24 14 12 32 6 Z"
-            fill="${accent}" opacity=".10"/>
-      <path d="M32 9 C 48 14 53 25 53 32 C 53 44 43 53 32 55 C 21 53 11 44 11 32 C 11 25 16 14 32 9 Z"
-            stroke="${accent}" stroke-width="2" opacity=".45" fill="none"/>
-    ` : "";
-
-    return `
-      <g filter="url(#${glow})">
-        ${shield}
-        <circle cx="32" cy="32" r="${ring}" fill="none" stroke="url(#${gidA})" stroke-width="5" opacity=".95"/>
-        <circle cx="32" cy="32" r="${core}" fill="url(#${gidB})" stroke="rgba(255,255,255,.18)" stroke-width="1"/>
-        <rect x="${32-arm}" y="30" width="${arm*2}" height="4" rx="2" fill="url(#${gidB})" opacity=".9"/>
-        <rect x="30" y="${32-arm}" width="4" height="${arm*2}" rx="2" fill="url(#${gidB})" opacity=".9"/>
-        <rect x="${6+r()*6}" y="${18+r()*6}" width="${panel}" height="${panel/2}" rx="2" fill="${accent}" opacity=".25"/>
-        <rect x="${48-r()*8}" y="${40-r()*6}" width="${panel}" height="${panel/2}" rx="2" fill="${accent}" opacity=".25"/>
-        ${out ? `<path d="M18 46 L32 38 L46 46" stroke="${accent}" stroke-width="2" opacity=".55" fill="none"/>` : ``}
-      </g>
-    `;
-  };
-
-  const bgGlow = role==="battle" ? 0.18 : role==="trade" ? 0.14 : 0.12;
-
-  return `
-  <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <defs>
-      <linearGradient id="${gidA}" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="${fac}" stop-opacity="0.95"/>
-        <stop offset="1" stop-color="${accent}" stop-opacity="0.85"/>
-      </linearGradient>
-      <linearGradient id="${gidB}" x1="1" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="rgba(255,255,255,.95)" stop-opacity=".20"/>
-        <stop offset="1" stop-color="${fac}" stop-opacity=".45"/>
-      </linearGradient>
-      <filter id="${glow}" x="-50%" y="-50%" width="200%" height="200%">
-        <feGaussianBlur stdDeviation="1.6" result="b"/>
-        <feColorMatrix in="b" type="matrix"
-          values="1 0 0 0 0
-                  0 1 0 0 0
-                  0 0 1 0 0
-                  0 0 0 0.9 0"/>
-        <feMerge>
-          <feMergeNode/>
-          <feMergeNode in="SourceGraphic"/>
-        </feMerge>
-      </filter>
-    </defs>
-
-    <circle cx="32" cy="32" r="30" fill="${accent}" opacity="${bgGlow}"/>
-    <circle cx="32" cy="32" r="30" fill="${fac}" opacity=".06"/>
-    ${(role==="base" || role==="outpost") ? station() : ship()}
-  </svg>`;
-}
-
 function renderCardDiv(inst, {context="generic"}={}){
   const card = H(inst);
-  const d = document.createElement("div");
-
-  const role = roleOf(card);
-  d.className = `card ${factionClass(card.faction)} role-${role}`;
-
-  const fac = FACTIONS[card.faction] || FACTIONS.n;
-
-  const cost = document.createElement("div");
-  cost.className = "cost";
-  cost.textContent = card.cost ?? 0;
-
-  const type = document.createElement("div");
-  type.className = "type";
-  type.textContent = (card.type==="base") ? (card.outpost ? "Outpost" : "Base") : (role==="trade" ? "Trade Ship" : "Battle Ship");
-
-  const art = document.createElement("div");
-  art.className = "art";
-  art.innerHTML = iconSvg(card);
-
-  const name = document.createElement("div");
-  name.className = "name";
-  name.textContent = card.name;
-
-  const ftag = document.createElement("div");
-  ftag.className = "factionTag";
-  ftag.innerHTML = `<span style="font-size:12px;">${fac.icon}</span><span>${fac.name}</span>`;
-
-  const icons = document.createElement("div");
-  icons.className = "iconRow";
-  const mk = (txt)=>{ const x=document.createElement("div"); x.className="ico"; x.textContent=txt; return x; };
-
-  const p = card.play||[];
-  const t = statSum(p,"trade"), c = statSum(p,"combat"), h=statSum(p,"authority"), dr=statSum(p,"draw");
-  if(t) icons.appendChild(mk(`${ICON.trade} +${t}`));
-  if(c) icons.appendChild(mk(`${ICON.combat} +${c}`));
-  if(h) icons.appendChild(mk(`${ICON.auth} +${h}`));
-  if(dr) icons.appendChild(mk(`${ICON.draw} +${dr}`));
-  if(card.type==="base") icons.appendChild(mk(`🛡️ ${inst.curDefense ?? card.defense}`));
-
-  const text = document.createElement("div");
-  text.className = "text";
-  text.textContent = card.text || "";
-
-  d.appendChild(cost);
-  d.appendChild(type);
-  d.appendChild(art);
-  d.appendChild(name);
-  d.appendChild(ftag);
-  d.appendChild(icons);
-  d.appendChild(text);
-
-  if(card.type==="base"){
-    const badge = document.createElement("div");
-    badge.className = "baseBadge";
-    badge.textContent = `🛡️ ${inst.curDefense ?? card.defense}`;
-    d.appendChild(badge);
-    if(card.outpost) d.classList.add("outpostGlow");
-  }
-
-  if(context==="inPlay" && card.scrap && card.scrap.length){
-    const sb = document.createElement("div");
-    sb.className = "scrapBtn";
-    sb.textContent = `♻️ Scrap for effect`;
-    sb.onclick = (e)=>{ e.stopPropagation(); sendAction("SCRAP_INPLAY", { uid: inst.uid }); };
-    d.appendChild(sb);
-  }
-
-  return d;
+  return CardRealmsUI.createCard(card, {
+    context,
+    factionName: (FACTIONS[card.faction] || FACTIONS.n).name,
+    canScrap: !!state && state.currentSeat===mySeat && !state.ended,
+    onScrap: ()=>sendAction("SCRAP_INPLAY", {uid:inst.uid})
+  });
 }
 
 function showPile(title, cards){
+  CardRealmsUI.closeInspector();
   const modal = document.getElementById("modal");
   const titleEl = document.getElementById("modalTitle");
   const textEl  = document.getElementById("modalText");
@@ -1537,7 +1253,7 @@ function showPile(title, cards){
   cardsEl.innerHTML = "";
   sorted.forEach(c=>{
     const d = renderCardDiv(c, {context:"modal"});
-    d.classList.add("disabled");
+    CardRealmsUI.setDisabled(d);
     d.style.cursor = "default";
     cardsEl.appendChild(d);
   });
@@ -1545,7 +1261,7 @@ function showPile(title, cards){
   btnCancel.style.display = "inline-block";
   btnConfirm.style.display = "none";
   btnCancel.textContent = "Close";
-  btnCancel.onclick = ()=>{ modal.style.display="none"; };
+  btnCancel.onclick = ()=>{ CardRealmsUI.closeInspector(); modal.style.display="none"; };
 
   modal.style.display = "flex";
 }
@@ -1574,12 +1290,14 @@ function seatLabel(s){ return s===0 ? "P1" : "P2"; }
 function shortUid(u){ return (u||"").slice(0,6); }
 
 function renderAll(){
+  CardRealmsUI.closeInspector();
   if(!state || mySeat===null) return;
 
   const me = state.players[mySeat];
   const op = state.players[1-mySeat];
 
   const myTurn = (state.currentSeat === mySeat) && !state.ended;
+  OrbitalBoard.setTurn(myTurn);
   els.turnBadge.textContent = state.ended ? "Game Over" : (myTurn ? "Your turn" : "Opponent turn");
   els.phaseLine.textContent = state.ended ? "—" : (myTurn ? "Main phase" : "Waiting…");
 
@@ -1596,16 +1314,16 @@ function renderAll(){
   }
 
   // titles + net
-  els.youTitle.textContent = `You (${seatLabel(mySeat)})`;
-  els.oppTitle.textContent = `${op.name} (${seatLabel(1-mySeat)})`;
+  els.youTitle.textContent = "You";
+  els.oppTitle.textContent = op.name || "Rival";
   els.netLine.textContent = `Room: ${roomId} • Seat: ${seatLabel(mySeat)} • ${isHost ? "Host" : "Client"} • You: ${myName}`;
 
   // piles
-  els.enemyLine.textContent = `Authority: ${op.authority}`;
+  els.enemyLine.textContent = op.authority;
   els.enemyPiles.textContent = `Deck: ${op.deck.length} • Discard: ${op.discard.length} • Scrap: ${op.scrap.length}`;
   els.enemyOutpostHint.textContent = `Outposts: ${op.bases.filter(b=>H(b).outpost).length}`;
 
-  els.youLine.textContent = `Authority: ${me.authority} • Trade: ${me.trade} • Combat: ${me.combat}`;
+  els.youLine.textContent = me.authority;
   els.youPiles.textContent = `Deck: ${me.deck.length} • Discard: ${me.discard.length} • Scrap: ${me.scrap.length}`;
 
   els.tradeDeckLine.textContent = `Trade Deck: ${state.tradeDeck.length}`;
@@ -1620,7 +1338,7 @@ function renderAll(){
   els.hand.innerHTML = "";
   me.hand.forEach((inst)=>{
     const d = renderCardDiv(inst, {context:"hand"});
-    if(!myTurn) d.classList.add("disabled");
+    if(!myTurn) CardRealmsUI.setDisabled(d);
     d.onclick = ()=>{ if(myTurn) sendAction("PLAY_CARD", { uid: inst.uid }); };
     els.hand.appendChild(d);
   });
@@ -1644,6 +1362,7 @@ function renderAll(){
   op.bases.forEach(inst=>{
     const d = renderCardDiv(inst, {context:"enemyBase"});
     if(myTurn && me.combat>0) d.classList.add("targetable");
+    else CardRealmsUI.setDisabled(d);
     d.onclick = ()=>{ if(myTurn) sendAction("ATTACK_BASE", { uid: inst.uid }); };
     els.enemyBases.appendChild(d);
   });
@@ -1664,7 +1383,7 @@ function renderAll(){
     const card = H(inst);
     const d = renderCardDiv(inst, {context:"trade"});
     const canBuy = myTurn && (me.trade >= card.cost);
-    if(!canBuy) d.classList.add("disabled");
+    if(!canBuy) CardRealmsUI.setDisabled(d);
     d.onclick = ()=>{ if(canBuy) sendAction("BUY_ROW", { slot:i }); };
     els.tradeRow.appendChild(d);
   });
@@ -1758,6 +1477,7 @@ let stateUnsub = null;
 let actionsUnsub = null;
 
 function showNetOverlay(show){
+  CardRealmsUI.closeInspector();
   netOverlay.style.display = show ? "flex" : "none";
 }
 

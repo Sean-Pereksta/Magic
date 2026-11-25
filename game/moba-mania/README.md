@@ -1,6 +1,6 @@
 # MOBA Mania
 
-A self-contained solo pixel MOBA at `/game/CatLanes.html`. Standard matches have one human hero, two allied bots, and three enemy bots. **Impossible** pits your three-hero team against **four enemy heroes**. Choose among twelve playable heroes: **Arc Rift**, **Red Dragon Warrior**, **Emerald Druid**, **Pink Angel**, **Dark Ranger**, **Purple Knight**, **Orange Assassin**, **Blue Angel**, **Rivet**, **Brinehook**, **Vela**, and **Solstice**. There is no mouse character in the roster.
+A self-contained solo pixel MOBA at `/game/CatLanes.html`. Standard matches have one human hero, two allied bots, and three enemy bots. **Impossible** pits your three-hero team against **four enemy heroes**. Choose among fourteen playable heroes: **Arc Rift**, **Red Dragon Warrior**, **Emerald Druid**, **Pink Angel**, **Dark Ranger**, **Purple Knight**, **Orange Assassin**, **Blue Angel**, **Rivet**, **Brinehook**, **Vela**, **Solstice**, **Ferrite**, and **Cadence**. There is no mouse character in the roster.
 
 ## Four additional playable heroes
 
@@ -8,9 +8,13 @@ A self-contained solo pixel MOBA at `/game/CatLanes.html`. Standard matches have
 
 The selection screen stays inside the viewport. Scroll the hero roster to reach every character; selected-hero details and mastery have their own panel. Difficulty, help, and **Enter the Rift** remain available while either panel scrolls. Selecting a card preserves keyboard focus and the roster scroll position.
 
+## Two heroes built around new resources
+
+[Ferrite and Cadence](HERO-RESONANCE.md) add a magnetic colossus with three orbiting scraps and switchable pull/push polarity, and a moth musician whose Q/E/R note order changes her ultimate. Their eight abilities, 42 talents, readable resource displays, bot decisions, and saved combat state are part of the playable roster.
+
 ## Play
 
-Choose a hero and an AI difficulty, then start a match. Opposing heroes are drafted from the full twelve-hero roster with seeded random variation and complementary roles; enemy teammates do not repeat the same hero. The draft is preserved when saving and resuming. Destroy outer and inner towers to open a route to the enemy crystal. Your own crystal, towers, and healing well need protection. Each lane sends three footmen and two archers per wave. Jungle camps award experience; neutral beasts appear in the river-side pits, and the team that delivers the killing blow summons a siege beast to attack a lane.
+Choose a hero and an AI difficulty, then start a match. Opposing heroes are drafted from the full fourteen-hero roster with seeded random variation and complementary roles; enemy teammates do not repeat the same hero. The draft is preserved when saving and resuming. Destroy outer and inner towers to open a route to the enemy crystal. Your own crystal, towers, and healing well need protection. Each lane sends three footmen and two archers per wave. Jungle camps award experience; neutral beasts appear in the river-side pits, and the team that delivers the killing blow summons a siege beast to attack a lane.
 
 Waves begin after 4 seconds and repeat every 19 seconds. Jungle camps contain three creatures and respawn 44 seconds after the whole camp is cleared. The first river beast appears after 55 seconds; another spawn opportunity occurs every 100 seconds, alternating between the two pits without duplicating a living beast in a pit.
 
@@ -25,7 +29,7 @@ New river beasts gain a tier every 100 seconds of match time. Each additional ti
 
 Later captures therefore create substantially stronger lane pushes as well as tougher jungle fights. The 100-second spawn schedule, alternating pits, and one living neutral beast per pit stay the same; an existing beast keeps the tier it received when spawned.
 
-Abilities unlock at levels 1, 2, 4, and 6. Talent choices at levels **3, 5, 8, 10, 12, 15, and 18** specialize each hero. Every tier offers three exclusive choices with small pixel icons: **48 active abilities and 252 talent options** across the roster. The later choices change existing abilities, summon behavior, defensive responses, and attack combinations while keeping the same four ability buttons. Open the skill tree when its badge lights up. The solo simulation pauses while selecting a talent.
+Abilities unlock at levels 1, 2, 4, and 6. Talent choices at levels **3, 5, 8, 10, 12, 15, and 18** specialize each hero. Every tier offers three exclusive choices with small pixel icons: **56 active abilities and 294 talent options** across the roster. The later choices change existing abilities, summon behavior, defensive responses, and attack combinations while keeping the same four ability buttons. Open the skill tree when its badge lights up. The solo simulation pauses while selecting a talent.
 
 ### Impossible difficulty
 
@@ -39,32 +43,39 @@ XP belongs to the heroes who participate in a kill. The finishing hero receives 
 
 **Gold comes only from your finishing blows.** Assists, nearby kills, time passing, and unowned allied minions or towers do not earn you gold. Your own projectiles, damage-over-time effects, item procs, and personal summons credit their kills to you. A captured river beast is a team lane attacker, so its subsequent kills do not passively pay its capturer. Finishing a target shows a gold-colored `+N GOLD` notice and updates your personal balance. Hero kill streaks add a visible shutdown bounty of 60 gold per kill beyond the second, capped at 300 bonus gold, paid only to the finishing hero.
 
-Open **SHOP** on desktop or mobile, or press **I**, to buy permanent match upgrades. Combat pauses while the shop is open. The three tiers contain ten items each:
+Open **SHOP** on desktop or mobile, or press **I**, to buy permanent match upgrades. Combat pauses while the shop is open. The three tiers contain fifteen items each:
 
 | Tier | Purchase requirements |
 | --- | --- |
 | Basics | Gold only |
 | Upgrades | Gold and one specified basic item |
-| Advanced | Gold, one specified basic item, and one specified upgrade |
+| Epics | Gold, one specified basic item, and one specified upgrade |
 
-All 30 items have pixel icons, visible bonuses, prices, and named prerequisites. Purchases activate immediately and appear in the active inventory. Prerequisites stay active after an upgrade; displayed prices are the additional cost, and every item can be purchased once per match. There is no inventory-slot limit. Items improve health, attacks, ability power, cooldowns, and other supported combat stats. Cooldown reduction from items and talents shares a 50% cap. Items and unspent gold survive death and recall; a new match resets both. Bots earn and spend their own final-hit gold under the same purchase rules.
+All 45 items have pixel icons, visible bonuses, prices, and named prerequisites. Purchases activate immediately and appear in the active inventory. Prerequisites stay active after an upgrade; displayed prices are the additional cost, and every item can be purchased once per match. There is no inventory-slot limit. Items improve health, attacks, ability power, cooldowns, and other supported combat stats. Cooldown reduction from items and talents shares a 50% cap. Items and unspent gold survive death and recall; a new match resets both. Bots earn and spend their own final-hit gold under the same purchase rules.
+
+The new Apprentice Lens path grants up to **60% bonus personal kill XP**; Copper Coin’s path grants up to **45% bonus final-hit gold**. Assists keep their normal XP and earn no gold. Burn and poison paths each add up to **75% damage per second** and **35% duration** to their matching status. Rime Shard’s path adds up to **35% slow strength and duration**, with equipment-enhanced slows capped at **65%**; it never lengthens stuns. Ingredient bonuses add together. These rewards work for attributed summons, damage over time, and posthumous finishing blows, without rewarding unowned lane creatures or team siege beasts.
 
 Buying gear immediately updates your hero's stats and future actions. Existing projectiles, already summoned creatures, and cooldowns already counting down keep their original cast values; the next cast uses the new bonuses.
 
-Every advanced item also adds a distinct passive:
+Every epic also adds a distinct passive. [Item expansion design](ITEM-EXPANSION.md) records the five new recipes, reward/effect caps, costs, and stronger effects:
 
-| Advanced item | Passive |
+| Epic item | Passive |
 | --- | --- |
-| Sovereign Aegis | Share a meaningful shield with another nearby allied hero. |
-| Worldsplitter | Every third basic hit cleaves enemies in front of you. |
-| Starfire Scepter | A direct ability hit calls down a delayed blast. |
-| Eternity Hourglass | Three different abilities in a short sequence refund other cooldowns. |
-| Celestial Font | Every third cast restores mana and releases a healing pulse. |
-| Tempest Wings | A movement ability grants haste and empowers the next basic hit. |
-| Thunderbolt Crossbow | Every fourth basic hit chains lightning to nearby enemies. |
-| Phoenix Crown | Meaningful healing also grants a short ward. |
-| Elderwood Staff | The first summon of each cast becomes a stronger, warded guardian. |
-| Crimson Relic | A basic hit on a hero while wounded restores health and grants a ward. |
+| Sovereign Aegis | **Royal Bulwark:** A meaningful shield wards up to two other allied heroes within 240 for 90 scaled shielding and 15% damage reduction for 2.5s. Recharges in 7s. |
+| Worldsplitter | **Earthcleaver:** Every third basic hit strikes its victim for 35% extra attack damage and cleaves a 175-radius cone for 75% attack damage. |
+| Starfire Scepter | **Falling Star:** A direct ability hit warns a 135-radius impact, then deals 80 level-scaled damage after 0.45s. Recharges in 5s. |
+| Eternity Hourglass | **Time Sequence:** Cast three different abilities within 6s to remove up to 2.5s from other active cooldowns, leaving at least 0.5s. Recharges in 12s. |
+| Celestial Font | **Celestial Overflow:** Every third cast restores 10% maximum mana and heals nearby allies for 55 + 4 per level, with a 45 level-scaled ward. Radius 190; 5s recharge. |
+| Tempest Wings | **Storm Arrival:** Movement abilities grant 25% movement and 15% attack haste for 3s. Your next basic hit within 4s deals 60 level-scaled bonus damage and slows 25% for 2s. |
+| Thunderbolt Crossbow | **Thunder Chain:** Every third basic hit deals 35 level-scaled bonus damage and arcs 55 level-scaled damage to up to three other enemies within 230. |
+| Phoenix Crown | **Rekindling:** A meaningful heal wards its hero recipient for 90 level-scaled shielding for 4s and heals the most injured nearby allied hero for 40 level-scaled health. Recharges in 5s. |
+| Elderwood Staff | **Elder Guardian:** The first summon of each cast gains 40% health, 25% damage and a 100 level-scaled ward. Guardian attacks pulse 50% of their damage to nearby enemies; shared 3s recharge. |
+| Crimson Relic | **Blood Ascendant:** A basic hit on a hero while below 60% health restores 10% health and grants an 85 level-scaled ward for 3s. Recharges in 7s. |
+| Ascendant Codex | **Ascension:** Personal kills earn bonus XP. A hero finishing blow grants a 100 level-scaled ward for 4s and refunds up to 2s from Q/E/R, leaving 0.5s. Recharges in 12s; assists get no bonus. |
+| King's Ransom | **Victor's Spoils:** Personal finishing blows earn bonus gold, including owned summons and damage over time. A hero finishing blow grants 25% movement and 20% attack haste for 4s; 10s recharge. No assist or passive income. |
+| Inferno Heart | **Wildfire:** Your burn damage warns a 135-radius blast that deals 55 level-scaled fire damage and spreads half its DPS for up to 3s to three other enemies. Recharges in 6s; no chain reactions. |
+| Pandemic Engine | **Plague Bloom:** Your poison damage warns a 150-radius burst that deals 65 level-scaled damage and infects three other enemies with 60% of its DPS for up to 3s. Recharges in 7s; no chain reactions. |
+| Winter's Dominion | **Whiteout:** A direct damaging ability creates a warned 145-radius frost burst: 45 level-scaled damage and a 30% slow for 2.5s. Recharges in 7s. Slow bonuses never extend stuns. |
 
 The shop displays each passive and its recharge conditions. Pin an advanced item to see its remaining total cost and the next required ingredient. Expand a comparison to see actual before-and-after stats and all four ability cooldowns, including the shared 50% cooldown cap. Recommendations follow each hero's role; Blue Angel favors sword, attack-speed, and mobility upgrades.
 
@@ -82,8 +93,10 @@ The shop displays each passive and its recharge conditions. Pin an advanced item
 | Brinehook · Teal Corsair | An interceptable anchor, defensive sea foam, converging Undertow, and a broad gathering wave |
 | Vela · Ivory Gunslinger | Twin pistols, a six-round magazine with automatic reload, Sidestep, Steady Aim, and an interruptible Silver Volley |
 | Solstice · Golden Chronomancer | Clock-hand projectiles, a tracked Time Ward, limited cleansing, and delayed refunds for allies’ first three ability cooldowns |
+| Ferrite · Magnetic Colossus | Salvaged orbiting scrap, a resource-powered barrier, switchable pull/push pulses, and a warned magnetic storm |
+| Cadence · Wandering Resonator | Three-note combinations, a charged basic-hit sound burst, and an ultimate with Shatter, Shelter, or Dance forms |
 
-Each hero also starts with a signature passive, shown on the selection screen: Arc Rift builds a third-cast burst; Red Dragon Warrior bursts against burning prey; Emerald Druid wards summons and rewards their attacks with healing; Pink Angel turns effective support into haste and mana; Dark Ranger marks repeated targets; Purple Knight gains a defensive counterattack; Orange Assassin follows movement with an empowered strike; and Blue Angel builds a rhythmic frost strike with allied haste. Rivet repairs his own sentries with landed basic attacks; Brinehook gains protection after successfully pulling a hero; Vela empowers the round that empties her magazine; Solstice rewards a Time Ward that absorbs damage promptly.
+Each hero also starts with a signature passive, shown on the selection screen: Arc Rift builds a third-cast burst; Red Dragon Warrior bursts against burning prey; Emerald Druid wards summons and rewards their attacks with healing; Pink Angel turns effective support into haste and mana; Dark Ranger marks repeated targets; Purple Knight gains a defensive counterattack; Orange Assassin follows movement with an empowered strike; and Blue Angel builds a rhythmic frost strike with allied haste. Rivet repairs his own sentries with landed basic attacks; Brinehook gains protection after successfully pulling a hero; Vela empowers the round that empties her magazine; Solstice rewards a Time Ward that absorbs damage promptly. Ferrite salvages metal from non-structure attacks for his shield or ultimate; Cadence composes three different notes to charge a sound burst and uses her last note to select her finale.
 
 ### Vision, objectives, and combat warnings
 
@@ -105,7 +118,7 @@ These effects follow the actual hit, shield, healing, and buff state. They respe
 
 ### Character motion and the living battlefield
 
-All twelve heroes have distinct attack and casting poses, directional weapon motion, and recovery frames. Knights brace for a bash, the ranger draws the bow, the assassin crouches into thrusts, and both angels use their wings and weapons during their abilities. Small hit reactions offset only the drawn sprite. Immediate attacks show their strike immediately; delayed slams prepare against the real impact deadline. Cosmetic movement does not shift a unit's collision position or add a combat delay.
+All fourteen heroes have distinct attack and casting poses, directional weapon motion, and recovery frames. Knights brace for a bash, the ranger draws the bow, the assassin crouches into thrusts, and both angels use their wings and weapons during their abilities. Small hit reactions offset only the drawn sprite. Immediate attacks show their strike immediately; delayed slams prepare against the real impact deadline. Cosmetic movement does not shift a unit's collision position or add a combat delay.
 
 River Maw opens and snaps its jaw during its bite; Moss Colossus lifts its arm and sends rocks toward the existing impact warnings. Higher beast tiers add plates, spines, and luminous details with a bounded set of art stages. Capturing a beast adds a team-colored transformation. Jungle creatures have idle poses, and permanent camp scenery distinguishes wolf dens, boar mud patches, and golem runestones without revealing whether a concealed camp is occupied.
 
@@ -149,7 +162,7 @@ The results screen records hero and structure damage, effective healing, absorbe
 
 ## Files and hosting
 
-`data.mjs` defines heroes, talents, map geometry, difficulty settings, progression rules, and beast growth. `items.mjs` defines the 30-item catalog, prerequisites, stat bonuses, passive descriptions, purchase validation, and pixel item icons. `engine.mjs` runs deterministic combat, individual rewards, item activation, and AI without browser dependencies; `hero-skills.mjs` implements the knight, assassin, and sword angel abilities. `hero-expansion.mjs` and `solstice-runtime.mjs` implement the four additional heroes’ devices, pulls, ammunition, channels, wards, and cooldown mechanics. `progression.mjs` handles signature passives, late evolutions, item effects, and delayed impacts. `strategy.mjs` handles shared vision, role assignments, build plans, and match metrics. `save-state.mjs` validates and restores the simulation. `profile.mjs` handles local mastery, settings, recipe planning, and shop comparisons. `renderer.mjs` draws the battlefield, fog, warnings, animated pixel sprites, cosmetics, focus markers, and icons. `combat-visuals.mjs` draws bounded pixel bursts, trails, spell accents, and translucent shields; `unit-animation.mjs` selects combat poses and summon motion; `world-visuals.mjs` draws camp scenery, reactive terrain, destruction, spell aftermath, summons, and reward presentations. `expansion-visuals.mjs` supplies the four additional hero silhouettes, icons, devices, and spell presentations. `ui.mjs` connects the simulation to keyboard, pointer, touch, local persistence, and the short victory/defeat finale; `style.css` styles the compact HUD and menus.
+`data.mjs` defines heroes, talents, map geometry, difficulty settings, progression rules, and beast growth. `items.mjs` defines the 45-item catalog, prerequisites, stat bonuses, passive descriptions, purchase validation, and pixel item icons. `engine.mjs` runs deterministic combat, individual rewards, item activation, and AI without browser dependencies; `hero-skills.mjs` implements the knight, assassin, and sword angel abilities. `hero-expansion.mjs` and `solstice-runtime.mjs` implement the four additional heroes’ devices, pulls, ammunition, channels, wards, and cooldown mechanics. `resonance-data.mjs` and `resonance-heroes.mjs` define Ferrite and Cadence’s talents, resources, terrain-safe displacement, musical score, and finale variants. `progression.mjs` handles signature passives, late evolutions, item effects, and delayed impacts. `strategy.mjs` handles shared vision, role assignments, build plans, and match metrics. `save-state.mjs` validates and restores the simulation. `profile.mjs` handles local mastery, settings, recipe planning, and shop comparisons. `renderer.mjs` draws the battlefield, fog, warnings, animated pixel sprites, cosmetics, focus markers, and icons. `combat-visuals.mjs` draws bounded pixel bursts, trails, spell accents, and translucent shields; `unit-animation.mjs` selects combat poses and summon motion; `world-visuals.mjs` draws camp scenery, reactive terrain, destruction, spell aftermath, summons, and reward presentations. `expansion-visuals.mjs` supplies the four additional hero silhouettes, icons, devices, and spell presentations. `ui.mjs` connects the simulation to keyboard, pointer, touch, local persistence, and the short victory/defeat finale; `style.css` styles the compact HUD and menus.
 
 Serve the existing `game/CatLanes.html` alongside the complete `game/moba-mania/` runtime directory. Native JavaScript modules need an HTTP(S) origin; opening the HTML directly from `file://` is not supported. The game has no CDN, font, sprite, or server dependency. Pixel art is defined in code, so there is no separate model download or asset-host configuration.
 
@@ -175,5 +188,5 @@ The browser suite uses the Playwright-managed Chromium installation by default; 
 
 The mechanics suite checks combat behavior, talent restrictions, all signature and advanced-item passives, individual XP/gold attribution, progression through level 18, recipes and real stat effects, structure protection, wave composition, different beast attacks and captures, fair visibility, support assists, crowd-control limits, warning countdowns, deterministic save/resume, corrupt-save recovery, mastery, bot builds and roles, offline dependencies, and completed simulated matches. The browser suite checks desktop and both phone orientations, hero selection, input, multi-touch aimed casting while holding attack, camera following and minimap peeking, display of all seven talent tiers, shop pinning/comparisons/purchases, control settings, save/reload/resume, saved-match replacement, mastery, results/replay, and offline module dependencies. It injects its inspection hooks only into the test-served module; production code has no cheat or test global.
 
-The pacing benchmark reports match duration, level 6/10/12/15/18 timing, first upgrade and advanced item, final inventory, personal gold, combat/travel activity, and contribution metrics as JSON Lines. It uses deterministic bot-led matches and is a regression aid, not a human win-rate or balance estimate. Defaults cover all twelve heroes on normal and hard for up to eighteen minutes; use `--heroes`, `--difficulties`, `--minutes`, and `--seed` to select a sample.
+The pacing benchmark reports match duration, level 6/10/12/15/18 timing, first upgrade and advanced item, final inventory, personal gold, combat/travel activity, and contribution metrics as JSON Lines. It uses deterministic bot-led matches and is a regression aid, not a human win-rate or balance estimate. Defaults cover all fourteen heroes on normal and hard for up to eighteen minutes; use `--heroes`, `--difficulties`, `--minutes`, and `--seed` to select a sample.
 

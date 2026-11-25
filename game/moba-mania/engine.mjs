@@ -1,11 +1,12 @@
 import { HEROES, DIFFICULTIES, WORLD, RULES, lanePoint, segmentDistance, xpToNextLevel, beastScaling } from './data.mjs';
 import { castHeroSkill, botSkillAim } from './hero-skills.mjs';
-import { ITEMS, itemBonus, purchaseState } from './items.mjs';
+import { ITEMS, itemBonus, purchaseState, killRewardBonus, modifyItemStatus } from './items.mjs';
 import { makeMetrics, canSee, updateVision, scoutJungle, strength, assignTeamJobs, nextBuildItem, chooseBotTalent, isExpansionHero, expansionBotAim, expansionTargetBias, expansionBotMovement } from './strategy.mjs';
 import { serializeGame, restoreGame } from './save-state.mjs';
-import { onCast, onDamage, onHeal, onShield, onKill, onSummon, tickProgression, scheduleImpact } from './progression.mjs';
+import { onCast, onDamage, onHeal, onShield, onKill, onItemKill, onSummon, tickProgression, scheduleImpact } from './progression.mjs';
 import { initExpansionHero, adjustExpansionAbility, castExpansionSkill, resolveExpansionImpact, tickExpansionDevice, tickExpansionHero, tickExpansion, expansionAttackPreview, prepareExpansionAttack, expansionProjectileDamage, onExpansionProjectileHit, onExpansionHealthLoss, onExpansionKill, onExpansionDeath, cancelExpansionChannel } from './hero-expansion.mjs';
 import { selectTimeWardTarget, onSolsticeAbsorb, onSolsticeHealthLoss, clearSolsticeWard, solsticeDamageFactor } from './solstice-runtime.mjs';
+import { initResonanceHero, adjustResonanceAbility, castResonanceSkill, resolveResonanceImpact, onResonanceDamage, onResonanceProjectileHit, tickResonanceHero, tickResonance, onResonanceDeath } from './resonance-heroes.mjs';
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -13,8 +14,8 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const structure=u=>u.kind==='tower'||u.kind==='core';
 const hostile=(a,b)=>a.team!==b.team && b.alive;
 const COLORS={physical:'#fff1cf',magic:'#86d8ff',fire:'#ff9e5b',poison:'#a9ee78',heal:'#98f2b8',shield:'#beccff'};
-const COMBAT_COLORS={steel:'#ffe8b5',fire:'#ff9948',arcane:'#69cfff',nature:'#8fe69a',poison:'#b0e86b',holy:'#ffa8d6',frost:'#9deaff',violet:'#bf97ff',stone:'#d7b68c',copper:'#e6a261',tide:'#8fe1ce',ivory:'#f4efdc',time:'#e7b951'};
-const HERO_THEMES={arc:'arcane',dragon:'fire',druid:'nature',angel:'holy',ranger:'poison',bulwark:'violet',ember:'fire',seraph:'frost',rivet:'copper',brinehook:'tide',vela:'ivory',solstice:'time'};
+const COMBAT_COLORS={steel:'#ffe8b5',fire:'#ff9948',arcane:'#69cfff',nature:'#8fe69a',poison:'#b0e86b',holy:'#ffa8d6',frost:'#9deaff',violet:'#bf97ff',stone:'#d7b68c',copper:'#e6a261',tide:'#8fe1ce',ivory:'#f4efdc',time:'#e7b951',magnet:'#ec727e',resonance:'#ffc89c'};
+const HERO_THEMES={arc:'arcane',dragon:'fire',druid:'nature',angel:'holy',ranger:'poison',bulwark:'violet',ember:'fire',seraph:'frost',rivet:'copper',brinehook:'tide',vela:'ivory',solstice:'time',ferrite:'magnet',cadence:'resonance'};
 const PRESENTATION_TYPES=new Set(['ground-mark','structure-collapse','summon-arrive','summon-depart','beast-capture','reward-gold','reward-item','reward-level']);
 const effectPool=type=>type==='combat-burst'?'burst':PRESENTATION_TYPES.has(type)?'presentation':'spell';
 const movementStatus=layers=>{
@@ -38,13 +39,13 @@ export class Game {
     this.grid=new Map(); this.navCache=new Map();
     this.lastSeen=[{},{}];this.assignments=[{},{}];this.pendingBeastChoice=null;this.scheduledImpacts=[];this.progressionDepth=0;
     const chosen=HEROES[hero]?hero:'arc';
-    const partners={arc:['dragon','druid'],dragon:['angel','ranger'],druid:['bulwark','seraph'],angel:['dragon','ember'],ranger:['bulwark','seraph'],bulwark:['arc','ember'],ember:['bulwark','angel'],seraph:['bulwark','ranger'],rivet:['brinehook','solstice'],brinehook:['vela','angel'],vela:['brinehook','solstice'],solstice:['dragon','rivet']};
+    const partners={arc:['dragon','druid'],dragon:['angel','ranger'],druid:['bulwark','seraph'],angel:['dragon','ember'],ranger:['bulwark','seraph'],bulwark:['arc','ember'],ember:['bulwark','angel'],seraph:['bulwark','ranger'],rivet:['brinehook','solstice'],brinehook:['vela','angel'],vela:['brinehook','solstice'],solstice:['dragon','rivet'],ferrite:['cadence','ranger'],cadence:['ferrite','vela']};
     const allies=[chosen,...(partners[chosen]||Object.keys(HEROES).filter(id=>id!==chosen).slice(0,2))];
     const pool=Object.keys(HEROES).filter(id=>!allies.includes(id));
     // A seeded shuffle drafts distinct opposing heroes; Impossible adds one extra opponent.
     for(let i=pool.length-1;i>0;i--){const j=Math.floor(this.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
     const enemies=[],enemyCount=DIFFICULTIES[this.difficulty].enemyHeroes||3;
-    for(const roles of [['bulwark','dragon','seraph','brinehook'],['ranger','ember','arc','vela'],['angel','druid','seraph','solstice','rivet']]){
+    for(const roles of [['bulwark','dragon','seraph','brinehook','ferrite'],['ranger','ember','arc','vela'],['angel','druid','seraph','solstice','rivet','cadence']]){
       const selected=pool.find(id=>!enemies.includes(id)&&roles.includes(id)&&!(id==='druid'&&enemies.includes('arc')));
       if(selected)enemies.push(selected);
     }
@@ -90,7 +91,7 @@ export class Game {
     return Math.max(0,value-(target.shield||0));
   }
   progressionHook(fn,...args){if(this.progressionDepth)return;this.progressionDepth++;try{fn(this,...args);}finally{this.progressionDepth--;}}
-  resolveHeroImpact(hero,impact){return resolveExpansionImpact(this,hero,impact);}
+  resolveHeroImpact(hero,impact){return resolveResonanceImpact(this,hero,impact)||resolveExpansionImpact(this,hero,impact);}
   expansionSummonCreated(hero,summon){this.progressionHook(onSummon,hero,summon,0);}
   addUnit(kind,team,x,y,opts={}) {
     const u={id:this.nextId++,kind,team,x,y,r:12,hp:100,maxHp:100,mana:0,maxMana:0,alive:true,angle:team?Math.PI:0,
@@ -106,7 +107,7 @@ export class Game {
       isPlayer,bot:!isPlayer,slot,lane:slot===0||slot===3?1:slot===1?0:2,role:slot===2?'jungler':heroId==='angel'?'support':'laner',
       xp:0,xpNext:xpToNextLevel(1),level:1,cooldowns:[0,0,0,0],talents:{},kills:0,deaths:0,assists:0,gold:0,goldEarned:0,items:[],lastGoldGain:null,shopIn:1,respawnIn:0,aiState:'departing',
       thinkIn:this.random()*.25,brain:{},lastDamageAt:-100,contributors:{},supportContributors:{},supporters:{},combatTargets:{},metrics:makeMetrics(),streak:0,evolution:{},recallIn:0,baseHp:def.hp,baseMana:def.mana});
-    initExpansionHero(h);return h;
+    initExpansionHero(h);initResonanceHero(h);return h;
   }
   bonus(hero,key){
     if(!hero?.heroId)return 0;
@@ -123,7 +124,7 @@ export class Game {
     if(raw.id==='northern-inspire')radius*=1+this.bonus(hero,'inspireArea');
     if(raw.id==='rampart-rush')range*=1+this.bonus(hero,'rushDistance');
     if(raw.id==='cinder-dash'||raw.id==='flicker-strike')range*=1+this.bonus(hero,'dashDistance');
-    return adjustExpansionAbility(this,hero,{...raw,range,radius,cooldown:raw.cooldown*(1-Math.min(.5,this.bonus(hero,'cooldown')))});
+    return adjustResonanceAbility(this,hero,adjustExpansionAbility(this,hero,{...raw,range,radius,cooldown:raw.cooldown*(1-Math.min(.5,this.bonus(hero,'cooldown')))}));
   }
   availableTalents(hero){return HEROES[hero?.heroId]?.talents.filter(t=>t.level<=hero.level&&!hero.talents[t.level])||[];}
   chooseTalent(hero,tierLevel,choiceId){
@@ -305,6 +306,7 @@ export class Game {
     if(absorbed>0&&(!quiet||target.shield<=0))this.combatBurst(target,source,target.shield>0?'shield-hit':'shield-break',shieldTheme,.6+Math.sqrt(absorbed)/14,{angle:context.angle??Math.atan2(target.y-(source?.y??target.y),target.x-(source?.x??target.x))});
     if(actual>0&&!quiet)this.combatBurst(target,source,'hit',this.combatTheme(source,type,context),.55+Math.sqrt(actual)/13,{angle:context.angle??Math.atan2(target.y-(source?.y??target.y),target.x-(source?.x??target.x))});
     if(target.hp<=0)this.kill(target,source);
+    if(actual>0&&!this.progressionDepth)onResonanceDamage(this,source,target,actual,context);
     if(actual>0)this.progressionHook(onDamage,source,target,actual,context);
     return actual;
   }
@@ -316,7 +318,7 @@ export class Game {
     if(target.kind==='summon')this.presentation('summon-depart',target,.65,{subtype:target.subtype,ownerId:target.ownerId,visibleTo});
     this.combatBurst(target,source,'death',structure(target)?'stone':this.combatTheme(target,'physical'),target.kind==='hero'||structure(target)?1.7:.8);
     target.alive=false;target.hp=0;target.deathTime=.7;target.shield=0;target.shieldLayers=[];delete target.shieldVisual;
-    clearSolsticeWard(this,target);onExpansionDeath(this,target);
+    clearSolsticeWard(this,target);onExpansionDeath(this,target);onResonanceDeath(this,target);
     const owner=this.owner(source),team=owner?.team??source?.team;
     this.effect(target.kind==='core'?'explosion':'ring',target.x,target.y,target.kind==='core'?170:target.r*2.5,target.team===0?'#64caff':target.team===1?'#ff98be':'#e5d698',.7);
     const growth=1+Math.min(3,Math.max(0,this.time-120)/180);
@@ -330,13 +332,14 @@ export class Game {
         const hitAt=Math.max(target.contributors?.[u.id]??-Infinity,target.kind==='hero'?(target.supportContributors?.[u.id]??-Infinity):-Infinity),age=this.time-hitAt;
         return u.kind==='hero'&&u.team===team&&u.team!==target.team&&u.id!==killer?.id&&Number.isFinite(hitAt)&&age>=0&&age<=RULES.assistWindow;
       });
-      if(killer)this.gainXP(killer,xp);
+      if(killer)this.gainXP(killer,xp*(1+killRewardBonus(killer,'xp')));
       for(const hero of assistants)this.gainXP(hero,xp*RULES.assistXpFraction);
     }
     const shutdown=target.kind==='hero'?Math.min(300,Math.max(0,(target.streak||0)-2)*60):0;
-    const gold=(target.kind==='hero'?180+target.level*10:target.kind==='tower'?130:target.kind==='camp'?40:target.kind==='beast'?180+40*((target.tier||1)-1):target.kind==='footman'?18:target.kind==='archer'?24:target.kind==='summon'?6:0)+shutdown;
+    const baseGold=(target.kind==='hero'?180+target.level*10:target.kind==='tower'?130:target.kind==='camp'?40:target.kind==='beast'?180+40*((target.tier||1)-1):target.kind==='footman'?18:target.kind==='archer'?24:target.kind==='summon'?6:0)+shutdown;
+    const bonusGold=killer?Math.floor(baseGold*killRewardBonus(killer,'gold')+1e-9):0,gold=baseGold+bonusGold;
     if(killer&&gold){
-      killer.gold+=gold;killer.goldEarned+=gold;killer.lastGoldGain={amount:gold,time:this.time,x:target.x,y:target.y};
+      killer.gold+=gold;killer.goldEarned+=gold;killer.lastGoldGain={amount:gold,bonus:bonusGold,time:this.time,x:target.x,y:target.y};
       killer.metrics.goldEarned+=gold;killer.metrics.lastHits++;if(shutdown){killer.metrics.shutdowns++;this.announce(HEROES[killer.heroId].name+' claims a '+shutdown+' gold shutdown bonus!','kill');}
       if(target.kind==='footman'||target.kind==='archer')killer.metrics.minionLastHits++;
       if(target.kind==='camp'||target.kind==='beast'&&target.team===-1)killer.metrics.jungleLastHits++;
@@ -376,7 +379,7 @@ export class Game {
     if(target.kind==='core'){
       this.winner=1-target.team;this.announce(this.winner===0?'VICTORY · The Rose Crystal is shattered!':'DEFEAT · The Azure Crystal has fallen.','end');
     }
-    if(killer){onExpansionKill(this,killer,target);this.progressionHook(onKill,killer,target);}
+    if(killer){onExpansionKill(this,killer,target);onItemKill(this,killer,target);this.progressionHook(onKill,killer,target);}
   }
   chooseBeastLane(lane,beastId=this.pendingBeastChoice?.beastId){
     const choice=this.pendingBeastChoice;
@@ -388,6 +391,7 @@ export class Game {
   }
   applyStatus(target,type,duration,extra={}){
     if(!target.alive||structure(target))return;
+    ({duration,extra}=modifyItemStatus(this,target,type,duration,extra));
     if(type==='stun')cancelExpansionChannel(this,target);
     if(type==='guard')extra={visualTheme:this.combatTheme(this.units.find(u=>u.id===extra.sourceId)||this._castSource||target),...extra};
     if(type==='stun'&&target.kind==='hero'){
@@ -398,6 +402,12 @@ export class Game {
       target.ccResilient=chained;
     }
     const old=target.status[type];
+    if((type==='burn'||type==='poison')&&old&&old.sourceId===extra.sourceId){
+      // A smaller item burn cannot replace a full spell burn or extend its
+      // stronger damage beyond the lifetime of the original application.
+      if((old.dps||0)>(extra.dps||0))return;
+      if((extra.dps||0)>(old.dps||0)){target.status[type]={...extra,remaining:duration};return;}
+    }
     if(type==='haste'||type==='slow'){
       // Keep each strength's own lifetime: inspiration cannot weaken or extend a faster dash buff.
       const layers=old?.layers|| (old?[{...old}]:[]);
@@ -465,12 +475,19 @@ export class Game {
       const placement=this.safePoint(at,a.id==='bolt-sentry'?15:12);
       if(dist(hero,placement)>a.range+1||!this.clearLine(hero,placement,4))return false;
     }
-    initExpansionHero(hero);cancelExpansionChannel(this,hero);
+    initExpansionHero(hero);initResonanceHero(hero);cancelExpansionChannel(this,hero);
     hero.mana-=a.mana;hero.cooldowns[slot]=a.cooldown;hero.recallIn=0;hero.angle=angle;hero.attackAnim=.32;
     this.visualAction(hero,'cast',.42,{abilityId:a.id,angle,toX:at.x,toY:at.y});
     hero.revealedUntil=this.time+2;this._castSource=hero;
     const power=(1+(hero.level-1)*.075)*(1+this.bonus(hero,'damage'))*(1+this.bonus(hero,'spellDamage'));
-    const zone=(type,duration,props={})=>this.zones.push({type,x:at.x,y:at.y,r:a.radius,life:duration,maxLife:duration,ownerId:hero.id,team:hero.team,tickIn:0,theme:this.combatTheme(hero),...props});
+    const zone=(type,duration,props={})=>{
+      props={...(type==='field'?{slow:.25,slowDuration:.6}:{}),...props};
+      if(props.slow){
+        const scaled=modifyItemStatus(this,{team:1-hero.team},'slow',props.slowDuration||1.1,{factor:props.slow,sourceId:hero.id});
+        props.slow=scaled.extra.factor;props.slowDuration=scaled.duration;props.itemScaled=true;
+      }
+      return this.zones.push({type,x:at.x,y:at.y,r:a.radius,life:duration,maxLife:duration,ownerId:hero.id,team:hero.team,tickIn:0,theme:this.combatTheme(hero),...props});
+    };
     const area=(center,r,damage,type='magic',status=null)=>{
       for(const target of this.nearby(center.x,center.y,r+55))if(hostile(hero,target)&&dist(center,target)<r+target.r){this.damage(target,damage*(structure(target)?.35:1),hero,type);if(status)this.applyStatus(target,status.type,status.duration,{...status,sourceId:hero.id});}
     };
@@ -507,7 +524,7 @@ export class Game {
         const n=5+this.bonus(hero,'fanCount');for(let i=0;i<n;i++)this.fireSkill(hero,angle+(i-(n-1)/2)*.155,{type:'arrow',color:a.color,r:a.radius,range:a.range,speed:550,damage:52*power,pierce:0,damageType:'physical'});break;}
       case 'stun-bomb':zone('bomb',.6,{delay:.55,tickIn:.55,damage:80*power,stun:1.4+this.bonus(hero,'stunDuration'),color:a.color});this.effect('poison',at.x,at.y,a.radius,a.color,.6,{delay:.55,team:hero.team});break;
       case 'long-shot':this.fireSkill(hero,angle,{type:'longshot',color:a.color,r:a.radius,range:a.range,speed:830,damage:205*power*(1+this.bonus(hero,'longshotDamage')),pierce:3,damageType:'physical'});break;
-      default:if(!castExpansionSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone}))castHeroSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone});break;
+      default:if(!castResonanceSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone})&&!castExpansionSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone}))castHeroSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone});break;
     }
     if(a.mobility||['rift-step','sky-cleave'].includes(a.id)){hero.visualAction.toX=hero.x;hero.visualAction.toY=hero.y;}
     this.combatBurst(hero,hero,'cast',this.combatTheme(hero),.8,{angle,abilityId:a.id});
@@ -524,6 +541,10 @@ export class Game {
     for(let i=0;i<count;i++){
       const angle=i*Math.PI*2/count,p=this.safePoint({x:at.x+Math.cos(angle)*35,y:at.y+Math.sin(angle)*35},config.r);
       const summoned=this.addUnit('summon',hero.team,p.x,p.y,{...config,hp:config.hp*scale,damage:config.damage*scale,subtype,ownerId:hero.id,lifetime,attackRate:.95/(1+this.bonus(hero,'summonHaste')),lane:hero.lane,level:hero.level});
+      if(subtype==='bear'){
+        const scaled=modifyItemStatus(this,{team:1-hero.team},'slow',1.2,{factor:.3,sourceId:hero.id});
+        summoned.onHitSlow={factor:scaled.extra.factor,duration:scaled.duration,itemScaled:true};
+      }
       summoned.visualSpawn={at:this.time,duration:subtype==='treant'?.65:subtype==='bear'?.5:.45,kind:'summon',subtype};
       this.presentation('summon-arrive',summoned,.7,{subtype,ownerId:hero.id,theme:this.combatTheme(hero),r:config.r+22});
       this.progressionHook(onSummon,hero,summoned,i);
@@ -531,6 +552,16 @@ export class Game {
     }
   }
   fireSkill(hero,angle,props){
+    props={...props};
+    for(const type of ['burn','poison'])if(props[type]&&!props.itemScaled){
+      const scaled=modifyItemStatus(this,{team:1-hero.team},type,props[type+'Duration'],{dps:props[type],sourceId:hero.id});
+      props[type]=scaled.extra.dps;props[type+'Duration']=scaled.duration;
+    }
+    if(props.slow&&!props.itemScaled){
+      const scaled=modifyItemStatus(this,{team:1-hero.team},'slow',props.slowDuration||2,{factor:props.slow,sourceId:hero.id});
+      props.slow=scaled.extra.factor;props.slowDuration=scaled.duration;
+    }
+    if(props.burn||props.poison||props.slow)props.itemScaled=true;
     const p={id:this.nextId++,x:hero.x+Math.cos(angle)*(hero.r+8),y:hero.y+Math.sin(angle)*(hero.r+8),prevX:hero.x,prevY:hero.y,angle,
       vx:Math.cos(angle)*props.speed,vy:Math.sin(angle)*props.speed,team:hero.team,ownerId:hero.id,sourceId:hero.id,sourceKind:hero.kind,life:props.range/props.speed,hit:new Set(),theme:this.combatTheme(hero,props.damageType||'magic',{basic:props.type==='arrow'||props.type==='longshot'}),...props};
     this.projectiles.push(p);return p;
@@ -557,7 +588,7 @@ export class Game {
     }else{
       this.effect('slash',unit.x,unit.y,unit.range,'#ffe7b9',.2,{angle:unit.angle,x2:target.x,y2:target.y});
       const dealt=this.damage(target,expansion?.damage??unit.damage,unit,'physical',false,{basic:true});
-      if(unit.subtype==='bear')this.applyStatus(target,'slow',1.2,{factor:.3});
+      if(unit.subtype==='bear')this.applyStatus(target,'slow',unit.onHitSlow?.duration??1.2,{factor:unit.onHitSlow?.factor??.3,sourceId:unit.ownerId??unit.id,itemScaled:!!unit.onHitSlow?.itemScaled});
       if(unit.siege&&structure(target))this.damage(target,unit.damage*(unit.subtype==='colossus'?.6:.2),unit,'physical',true);
       if(unit.siege&&unit.subtype==='maw')for(const other of this.nearby(target.x,target.y,95))if(other.alive&&other.team!==unit.team&&(other.kind==='footman'||other.kind==='archer')&&other.id!==target.id&&dist(other,target)<85)this.damage(other,unit.damage*.8,unit,'physical',true);
       const life=this.bonus(unit,'lifesteal');if(life)this.heal(unit,dealt*life,unit,true);
@@ -583,6 +614,7 @@ export class Game {
       this.tickStatuses(unit,dt);if(!unit.alive)continue;
       if(unit.kind==='hero'){
         tickExpansionHero(this,unit,dt);
+        tickResonanceHero(this,unit,dt);
         for(let i=0;i<4;i++)unit.cooldowns[i]=Math.max(0,unit.cooldowns[i]-dt);
         unit.mana=Math.min(unit.maxMana,unit.mana+(3.7+this.bonus(unit,'manaRegen'))*dt);
         if(this.time-unit.lastDamageAt>6)this.heal(unit,1.5*dt,null,true);
@@ -603,6 +635,7 @@ export class Game {
     }
     tickProgression(this,dt);
     tickExpansion(this,dt);
+    tickResonance(this,dt);
     this.tickProjectiles(dt);this.tickZones(dt);
     for(const e of this.effects){e.life-=dt;if(e.followId){const u=this.units.find(u=>u.id===e.followId);if(u){e.x=u.x;e.y=u.y;}}}
     for(const t of this.texts){t.life-=dt;t.y-=25*dt;}
@@ -800,9 +833,10 @@ export class Game {
         else{
           const actual=this.damage(target,expansionProjectileDamage(this,p,source,target)*(structure(target)&&!p.basic ? .4 : 1),source,p.damageType||'physical',false,{basic:!!p.basic,theme:p.theme,angle:p.angle,abilityId:p.abilityId});
           onExpansionProjectileHit(this,p,source,target,actual);
+          onResonanceProjectileHit(this,p,source,target,actual);
           if(actual>0&&!p.basic&&(p.poison||p.burn))this.groundMark(p.poison?'poison':'scorch',{x:target.x,y:target.y},Math.min(32,p.r+14),p.poison?'poison':'fire',{ownerId:p.ownerId,team:p.team,visibilityId:target.id,visibleTo:target.alive?this.visualAudience(target):target.visualDeath?.visibleTo||[]});
-          if(p.burn)this.applyStatus(target,'burn',p.burnDuration,{dps:p.burn,sourceId:p.ownerId});
-          if(p.poison)this.applyStatus(target,'poison',p.poisonDuration,{dps:p.poison,sourceId:p.ownerId});
+          if(p.burn)this.applyStatus(target,'burn',p.burnDuration,{dps:p.burn,sourceId:p.ownerId,itemScaled:!!p.itemScaled});
+          if(p.poison)this.applyStatus(target,'poison',p.poisonDuration,{dps:p.poison,sourceId:p.ownerId,itemScaled:!!p.itemScaled});
           if(p.basic&&source?.heroId&&this.bonus(source,'lifesteal'))this.heal(source,actual*this.bonus(source,'lifesteal'),source,true);
           p.pierce--;if(p.pierce<0){p.life=0;break;}
         }
@@ -832,10 +866,10 @@ export class Game {
         this.effect('explosion',z.x,z.y,z.r,z.color,.4,{theme:z.theme||this.combatTheme(source)});z.tickIn=.7;
       }else if(z.type==='field'){
         for(const t of units)if(t.team===z.team){if(!z.applied.has(t.id)){this.shield(t,z.shield,5,source);z.applied.add(t.id);}if(z.healing)this.heal(t,z.healing*.5,source);}
-        else this.applyStatus(t,'slow',.6,{factor:.25});z.tickIn=.5;
+        else this.applyStatus(t,'slow',z.slowDuration??.6,{factor:z.slow??.25,sourceId:source.id,itemScaled:!!z.itemScaled});z.tickIn=.5;
       }else if(z.type==='tree'||z.type==='heal'){
         for(const t of units)if(t.team===z.team)this.heal(t,z.healing,source);
-        else {if(z.damage)this.damage(t,z.damage*(structure(t)?.35:1),source,'magic',false,{periodic:true});if(z.slow)this.applyStatus(t,'slow',1.1,{factor:z.slow});}
+        else {if(z.damage)this.damage(t,z.damage*(structure(t)?.35:1),source,'magic',false,{periodic:true});if(z.slow)this.applyStatus(t,'slow',z.slowDuration??1.1,{factor:z.slow,sourceId:source.id,itemScaled:!!z.itemScaled});}
         z.tickIn=1;
       }
     }

@@ -565,7 +565,7 @@
     "mobamania": {
       "key": "mobamania",
       "title": "MOBA Mania",
-      "desc": "A pixel-art MOBA: master twelve heroes, battle 3v3 or Impossible 3v4, and summon captured beasts.",
+      "desc": "A pixel-art MOBA: master fourteen heroes, build 45 items with powerful epics, and battle 3v3 or Impossible 3v4.",
       "route": "/game/CatLanes.html",
       "category": "Action",
       "modes": [
@@ -620,38 +620,38 @@
     },
     "cardrealms": {
       "key": "cardrealms",
-      "title": "Card Realms (Incomplete)",
-      "desc": "Build a deck and battle through card realms.",
+      "title": "Orbital Rivals",
+      "desc": "Build a painted starship fleet, chain faction abilities, and challenge a rival AI or the solo Gauntlet.",
       "route": "/game/cardrealms.html",
       "category": "Cards",
       "modes": [
         "single"
       ],
-      "originalImagePath": null,
+      "originalImagePath": "/lobby/assets/game-tiles/orbital-rivals.webp",
       "tier": "experimental",
       "provenance": "original-built-in-imagegen",
-      "sourceArtwork": "exec-a3a3e4dd-687a-467d-9837-5930939078e6.png",
-      "tile": "game-tiles/cardrealms.webp",
-      "thumb": "game-thumbnails/cardrealms.webp",
-      "hero": "game-tiles/cardrealms.webp",
+      "sourceArtwork": "/game/cardrealms/assets/orbital-rivals-cover.webp",
+      "tile": "game-tiles/orbital-rivals.webp",
+      "thumb": "game-thumbnails/orbital-rivals.webp",
+      "hero": "game-tiles/orbital-rivals.webp",
       "ready": true
     },
     "cardrealmsmulti": {
       "key": "cardrealmsmulti",
-      "title": "Card Realms Multiplayer (Incomplete)",
-      "desc": "Direct two-player card matchmaking.",
+      "title": "Orbital Rivals — Online",
+      "desc": "Duel another captain in a two-player fleet deckbuilder with illustrated ships and a compact tactical board.",
       "route": "/game/cardrealmsmulti.html",
       "category": "Cards",
       "modes": [
         "multi"
       ],
-      "originalImagePath": null,
+      "originalImagePath": "/lobby/assets/game-tiles/orbital-rivals.webp",
       "tier": "experimental",
       "provenance": "original-built-in-imagegen",
-      "sourceArtwork": "exec-161a0795-bfdd-49e3-8020-a1e06b9bbd1f.png",
-      "tile": "game-tiles/cardrealmsmulti.webp",
-      "thumb": "game-thumbnails/cardrealmsmulti.webp",
-      "hero": "game-tiles/cardrealmsmulti.webp",
+      "sourceArtwork": "/game/cardrealms/assets/orbital-rivals-cover.webp",
+      "tile": "game-tiles/orbital-rivals.webp",
+      "thumb": "game-thumbnails/orbital-rivals.webp",
+      "hero": "game-tiles/orbital-rivals.webp",
       "ready": true
     },
     "rogueworld": {
@@ -819,38 +819,38 @@
     },
     "balatle": {
       "key": "balatle",
-      "title": "Balatle (Incomplete)",
-      "desc": "An eight-player battle mode.",
+      "title": "Felt & Fortune Multiplayer",
+      "desc": "Build poker hands, stack Joker combos, and chase the highest score across five timed rounds with up to eight players.",
       "route": "/game/balatle.html",
       "category": "Cards",
       "modes": [
         "multi"
       ],
-      "originalImagePath": null,
+      "originalImagePath": "/lobby/assets/game-tiles/felt-and-fortune.webp",
       "tier": "experimental",
       "provenance": "original-built-in-imagegen",
-      "sourceArtwork": "exec-69d1c630-f6fc-41ef-b7ee-f14386cfa3f5.png",
-      "tile": "game-tiles/balatle.webp",
-      "thumb": "game-thumbnails/balatle.webp",
-      "hero": "game-tiles/balatle.webp",
+      "sourceArtwork": "exec-51373cf3-e566-4e0c-922a-7b1452761e8d.png",
+      "tile": "game-tiles/felt-and-fortune.webp",
+      "thumb": "game-thumbnails/felt-and-fortune.webp",
+      "hero": "game-tiles/felt-and-fortune.webp",
       "ready": true
     },
     "balatlesolo": {
       "key": "balatlesolo",
-      "title": "Balatle Solo",
-      "desc": "Single-player Balatle with difficulty levels.",
+      "title": "Felt & Fortune Solo",
+      "desc": "Build a poker deck, stack Joker combos, and conquer eight rising antes before an endless run.",
       "route": "/game/balatlesolo.html",
       "category": "Cards",
       "modes": [
         "single"
       ],
-      "originalImagePath": null,
+      "originalImagePath": "/lobby/assets/game-tiles/felt-and-fortune.webp",
       "tier": "in-production",
       "provenance": "original-built-in-imagegen",
-      "sourceArtwork": "exec-9be5a217-8930-46a8-ae61-b63095ec45c4.png",
-      "tile": "game-tiles/balatlesolo.webp",
-      "thumb": "game-thumbnails/balatlesolo.webp",
-      "hero": "game-tiles/balatlesolo.webp",
+      "sourceArtwork": "exec-51373cf3-e566-4e0c-922a-7b1452761e8d.png",
+      "tile": "game-tiles/felt-and-fortune.webp",
+      "thumb": "game-thumbnails/felt-and-fortune.webp",
+      "hero": "game-tiles/felt-and-fortune.webp",
       "ready": true
     },
     "dwarfworld": {
@@ -2700,6 +2700,30 @@
       "height": 720,
       "bytes": 370270,
       "sha256": "f316aa83d4c1f61ccdabc17d56ca3989c20e076485bbce55ecdc95b508821b17"
+    },
+    "game-tiles/orbital-rivals.webp": {
+      "width": 640,
+      "height": 360,
+      "bytes": 82556,
+      "sha256": "6ff3cf8e480221f5fc70a37a99f1f2dee90124f522c075016a2923fbf1c5ddbd"
+    },
+    "game-thumbnails/orbital-rivals.webp": {
+      "width": 240,
+      "height": 135,
+      "bytes": 15822,
+      "sha256": "b2580f4730dd918b496f9925acd2d6edfc8a1ee1109783ddf9f82284b6057d0f"
+    },
+    "game-tiles/felt-and-fortune.webp": {
+      "width": 640,
+      "height": 360,
+      "bytes": 77430,
+      "sha256": "690bcc34fc58e7784e60f20a81c3796c80d7f7ffa3f9ee70a0b0a06147bc9617"
+    },
+    "game-thumbnails/felt-and-fortune.webp": {
+      "width": 240,
+      "height": 135,
+      "bytes": 13432,
+      "sha256": "5c8a4c891e877535c1b88b3b8c4d273b40fc3d8571fe3c5c9300c5d6e2eafd20"
     }
   },
   "interfaceFiles": {

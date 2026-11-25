@@ -69,7 +69,7 @@ test('anticipation only appears for a valid imminent attack, including player or
   u.recallIn=0;u.status.stun={remaining:1};assert.equal(unitPose(u,game).stage,0);
 });
 
-test('all twelve heroes have distinct bounded body motion and drawing cannot move collision positions',()=>{
+test('all heroes have distinct bounded body motion and drawing cannot move collision positions',()=>{
   const signatures=[];
   for(const heroId of Object.keys(HEROES)){
     const u=hero({heroId,visualAction:action(),visualHit:{at:9,angle:.5}}),game=gameFor(u),before=JSON.stringify(u);
@@ -86,7 +86,7 @@ test('all twelve heroes have distinct bounded body motion and drawing cannot mov
     }
     u.visualAction.angle=0;assert.equal(JSON.stringify(u),before);
   }
-  assert.equal(new Set(signatures).size,12);
+  assert.equal(new Set(signatures).size,Object.keys(HEROES).length);
 });
 
 test('summons rise, assemble or leap by species and reduced motion removes large entrance movement',()=>{
