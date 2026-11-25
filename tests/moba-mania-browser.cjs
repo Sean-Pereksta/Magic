@@ -55,40 +55,16 @@ async function finishMatch(page) {
   await page.locator('#end-dialog').waitFor({state:'visible'});
   assert.equal(await page.evaluate(()=>__mobaTest.game.winner),0,'destroying enemy crystal wins');
 }
-async function clickBattlefield(page,device,unitId=null,offset=null) {
+async function clickBattlefield(page,device,unitId=null,offset=null,button='left') {
   const point=await page.evaluate(({unitId,offset})=>{
     const g=__mobaTest.game;
     const target=unitId?g.units.find(u=>u.id===unitId):{x:g.player.x+offset.x,y:g.player.y+offset.y,r:0};
     return __mobaTest.renderer.worldToScreen(target.x,target.y-target.r*.45);
   },{unitId,offset});
   if(device.touch)await page.touchscreen.tap(point.x,point.y);
-  else await page.mouse.click(point.x,point.y);
+  else await page.mouse.click(point.x,point.y,{button});
 }
-async function verifyAttackOrders(page,context,device) {
-  const targets=await page.evaluate(()=>{
-    const g=__mobaTest.game,h=g.player;
-    g.cancelPlayerOrder();g.waveIn=g.beastIn=10000;
-    for(const u of g.units)if(u!==h){u.status.stun={remaining:10000};if(u.kind==='hero')u.bot=false;}
-    Object.assign(h,{x:1600,y:1100,attackTimer:0,status:{}});
-    const near=g.addUnit('footman',1,h.x+90,h.y+25,{name:'Near target',hp:5000,speed:0,damage:0,status:{stun:{remaining:10000}}});
-    const far=g.addUnit('footman',1,h.x+160,h.y-30,{name:'Focus target',hp:5000,speed:0,damage:0,status:{stun:{remaining:10000}}});
-    g.rebuildGrid();return {near:near.id,far:far.id};
-  });
-  await page.waitForTimeout(300);
-  // Aim away from both targets; basic attacks must be selected by distance.
-  await page.mouse.move(device.width*.15,device.height*.45);
-  if(device.touch)await page.locator('#attack-button').tap();
-  else await page.keyboard.press('Space');
-  await page.waitForFunction(id=>__mobaTest.game.player.targetId===id,targets.near);
-  await page.waitForFunction(id=>__mobaTest.game.units.find(u=>u.id===id).hp<5000,targets.near);
-  assert(await page.evaluate(()=>!!__mobaTest.game.attackOrder),'attack persists after the control is released');
-  assert.equal(await page.locator('#attack-button').getAttribute('aria-pressed'),'true');
-  await clickBattlefield(page,device,targets.far);
-  await page.waitForTimeout(200);
-  assert.equal(await page.evaluate(()=>__mobaTest.game.player.targetId),targets.far,'enemy click/tap overrides a nearer enemy');
-  await page.evaluate(id=>{const g=__mobaTest.game;g.damage(g.units.find(u=>u.id===id),1e6,g.player);},targets.far);
-  await page.waitForFunction(id=>__mobaTest.game.player.targetId===id,targets.near);
-  assert(await page.evaluate(()=>!!__mobaTest.game.attackOrder),'defeating a focused enemy continues the attack order');
+async function moveManually(page,context,device) {
   if(device.touch){
     const box=await page.locator('#joystick').boundingBox(),session=await context.newCDPSession(page);
     const touch={x:box.x+box.width/2,y:box.y+box.height/2,id:11};
@@ -97,20 +73,77 @@ async function verifyAttackOrders(page,context,device) {
     await page.waitForTimeout(100);
     await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await session.detach();
   }else{await page.keyboard.down('a');await page.waitForTimeout(100);await page.keyboard.up('a');}
+}
+async function verifyAttackOrders(page,context,device) {
+  const origin=await page.evaluate(()=>{
+    const g=__mobaTest.game,h=g.player;
+    __mobaTest.attackFixture={units:g.units,campStates:g.campStates,waveIn:g.waveIn,beastIn:g.beastIn,planIn:g.planIn};
+    g.cancelPlayerOrder();g.units=[h];g.campStates=[];g.waveIn=g.beastIn=g.planIn=10000;g.projectiles=[];
+    Object.assign(h,{x:1600,y:1100,attackTimer:0,status:{}});
+    const tower=g.addUnit('tower',1,2600,1100,{name:'Distant tower',r:28,hp:5000,tier:0,lane:1,status:{stun:{remaining:10000}}});
+    g.rebuildGrid();__mobaTest.refreshHUD();
+    return {x:h.x,y:h.y,towerVisible:g.canSee(h.team,tower)};
+  });
+  assert(origin.towerVisible,'the regression requires a known distant structure');
+  await page.waitForTimeout(300);
+  if(device.touch)await page.locator('#attack-button').tap();else await page.locator('#attack-button').click();
+  await page.waitForFunction(()=>!!__mobaTest.game.attackOrder);
+  await page.waitForTimeout(250);
+  assert.deepEqual(await page.evaluate(()=>({x:__mobaTest.game.player.x,y:__mobaTest.game.player.y,target:__mobaTest.game.player.targetId,move:__mobaTest.game.moveTarget})),
+    {x:origin.x,y:origin.y,target:null,move:null},'actual Attack button must not walk toward a distant tower');
+  await page.waitForFunction(()=>document.querySelector('#attack-button small').textContent==='READY');
+  assert.match(await page.locator('#target-status').textContent(),/No nearby enemy/);
+  await page.evaluate(()=>{__mobaTest.game.cancelPlayerOrder();__mobaTest.refreshHUD();});
+  await clickBattlefield(page,device,null,{x:-130,y:60});
+  await page.waitForFunction(()=>!!__mobaTest.game.attackOrder);
+  await page.waitForTimeout(200);
+  assert.deepEqual(await page.evaluate(()=>({x:__mobaTest.game.player.x,y:__mobaTest.game.player.y,target:__mobaTest.game.player.targetId,move:__mobaTest.game.moveTarget})),
+    {x:origin.x,y:origin.y,target:null,move:null},'empty primary click/tap arms Attack without a movement order');
+  const targets=await page.evaluate(()=>{
+    const g=__mobaTest.game,h=g.player;g.cancelPlayerOrder();
+    const near=g.addUnit('footman',1,h.x+90,h.y+25,{name:'Near target',hp:5000,speed:0,damage:0,status:{stun:{remaining:10000}}});
+    const far=g.addUnit('footman',1,h.x+160,h.y-30,{name:'Focus target',hp:5000,speed:0,damage:0,status:{stun:{remaining:10000}}});
+    g.rebuildGrid();__mobaTest.refreshHUD();return {near:near.id,far:far.id};
+  });
+  // Aim away from both targets; basic attacks must be selected by distance.
+  await page.mouse.move(device.width*.15,device.height*.45);
+  await clickBattlefield(page,device,null,{x:-130,y:60});
+  await page.waitForFunction(id=>__mobaTest.game.player.targetId===id,targets.near);
+  await page.waitForFunction(id=>__mobaTest.game.units.find(u=>u.id===id).hp<5000,targets.near);
+  assert.equal(await page.evaluate(()=>__mobaTest.game.moveTarget),null,'a primary click/tap attacks instead of moving to the cursor');
+  assert(await page.evaluate(()=>!!__mobaTest.game.attackOrder),'attack persists after the control is released');
+  assert.equal(await page.locator('#attack-button').getAttribute('aria-pressed'),'true');
+  await clickBattlefield(page,device,targets.far);
+  await page.waitForTimeout(200);
+  assert.equal(await page.evaluate(()=>__mobaTest.game.player.targetId),targets.far,'enemy click/tap overrides a nearer enemy');
+  if(device.touch)await page.locator('#attack-button').tap();else await page.keyboard.press('Space');
+  await page.waitForFunction(id=>__mobaTest.game.player.targetId===id&&!__mobaTest.game.attackOrder.explicit,targets.near);
+  await clickBattlefield(page,device,targets.far);
+  await page.waitForFunction(id=>__mobaTest.game.player.targetId===id&&__mobaTest.game.attackOrder.explicit,targets.far);
+  await page.evaluate(id=>{const g=__mobaTest.game;g.damage(g.units.find(u=>u.id===id),1e6,g.player);},targets.far);
+  await page.waitForFunction(id=>__mobaTest.game.player.targetId===id,targets.near);
+  assert(await page.evaluate(()=>!!__mobaTest.game.attackOrder),'defeating a focused enemy continues the attack order');
+  await moveManually(page,context,device);
   await page.waitForTimeout(150);
   assert.equal(await page.evaluate(()=>__mobaTest.game.attackOrder),null,'manual movement cancels the attack order after release');
   assert.equal(await page.evaluate(()=>__mobaTest.game.player.targetId),null,'manual movement clears focus');
   await clickBattlefield(page,device,targets.near);
   await page.waitForFunction(id=>__mobaTest.game.player.targetId===id,targets.near);
   await clickBattlefield(page,device,null,{x:-130,y:60});
-  await page.waitForFunction(()=>!__mobaTest.game.attackOrder&&!!__mobaTest.game.moveTarget);
-  assert.equal(await page.evaluate(()=>__mobaTest.game.player.targetId),null,'ground tap/click replaces focused attack with movement');
-  await page.evaluate(ids=>{
+  await page.waitForFunction(id=>__mobaTest.game.player.targetId===id&&!__mobaTest.game.attackOrder.explicit,targets.near);
+  assert.equal(await page.evaluate(()=>__mobaTest.game.moveTarget),null,'ground tap/click reselects a nearby enemy without a move order');
+  if(device.touch){
+    await moveManually(page,context,device);
+    await page.waitForFunction(()=>!__mobaTest.game.attackOrder);
+  }else{
+    await clickBattlefield(page,device,null,{x:-130,y:60},'right');
+    await page.waitForFunction(()=>!__mobaTest.game.attackOrder&&!!__mobaTest.game.moveTarget);
+  }
+  assert.equal(await page.evaluate(()=>__mobaTest.game.player.targetId),null,'right-click or joystick movement replaces focused attack');
+  await page.evaluate(()=>{
     const g=__mobaTest.game;g.cancelPlayerOrder();
-    g.units=g.units.filter(u=>!ids.includes(u.id));
-    for(const u of g.units){delete u.status.stun;if(u.kind==='hero')u.bot=!u.isPlayer;}
-    g.waveIn=19;g.beastIn=55;g.rebuildGrid();
-  },[targets.near,targets.far]);
+    Object.assign(g,__mobaTest.attackFixture);delete __mobaTest.attackFixture;g.projectiles=[];g.rebuildGrid();
+  });
 }
 async function verifyShop(page,device,items) {
   // Earn the first coins through actual combat. Assist XP must never mint gold.
@@ -341,7 +374,7 @@ async function main(){
       assert.equal(await page.evaluate(()=>__mobaTest.game.player.level),1,'replay resets progression');
       assert.deepEqual(await page.evaluate(()=>({gold:__mobaTest.game.player.gold,items:__mobaTest.game.player.items})),{gold:0,items:[]},'replay resets gold and inventory');
       assert.deepEqual(errors,[],device.name+' must not emit runtime errors');
-      console.log(JSON.stringify({device:device.name,hero:device.hero,move:true,camera:true,nearestAttack:true,enemyFocus:true,autoRetarget:true,moveCancelsAttack:true,talentIcons:HEROES[device.hero].talents.reduce((n,t)=>n+t.choices.length,0),saveResume:true,pinnedBuild:true,controlSettings:true,minimapPeek:true,mastery:true,shopItems:30,prerequisites:true,purchases:true,personalRewards:true,maxLevel:18,replay:true,errors:0}));
+      console.log(JSON.stringify({device:device.name,hero:device.hero,move:true,camera:true,nearestAttack:true,primaryClickAttacks:true,noDistantChase:true,enemyFocus:true,autoRetarget:true,moveCancelsAttack:true,talentIcons:HEROES[device.hero].talents.reduce((n,t)=>n+t.choices.length,0),saveResume:true,pinnedBuild:true,controlSettings:true,minimapPeek:true,mastery:true,shopItems:30,prerequisites:true,purchases:true,personalRewards:true,maxLevel:18,replay:true,errors:0}));
       await context.close();
     }
     const context=await browser.newContext({viewport:{width:1280,height:800}}),page=await context.newPage(),errors=[];

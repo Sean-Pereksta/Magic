@@ -74,9 +74,11 @@ Bots hold threatened secondary lanes, peel for wounded allies, flank when approp
 
 ### Attack orders and tower pressure
 
-Press **ATTACK** or **Space** to select the nearest visible living enemy, then automatically approach to your hero's melee or ranged attack distance and keep fighting. Automatic attacks keep checking the nearest valid visible enemy as units move. Enemy heroes, minions, neutral creatures, captured beasts, and exposed structures are valid targets. Click or tap a visible enemy to explicitly focus it, even when another enemy is closer; when that target becomes invalid, the hero resumes nearest-target attacks. Protected inner towers/crystals are excluded until their prerequisites fall.
+**Primary click, tap the battlefield, ATTACK, or Space** selects the nearest visible living enemy nearby, then automatically approaches to your hero's melee or ranged attack distance and keeps fighting. Clicking or tapping directly on an enemy focuses that enemy instead, even when another enemy is closer. Enemy heroes, minions, neutral creatures, captured beasts, and exposed structures are valid targets. Protected inner towers/crystals are excluded until their prerequisites fall.
 
-Releasing ATTACK does not stop the order. A new movement order, successful ability cast, recall, team command, or death clears the previous pursuit. Pressing ATTACK again chooses the nearest enemy anew. Ground clicks/taps and right clicks issue movement; keyboard and joystick movement take immediate priority. Moving the aim pointer alone never changes a basic-attack target or auto-aims an ability.
+Automatic selection searches within 360 world units, or your current attack range plus 140 units if that is larger, measured to the enemy's collision edge. It keeps selecting the nearest valid enemy within that area as units move. If none is nearby, the hero stays put with a **READY / No nearby enemy** indicator and engages when an enemy approaches. Shared vision of a remote tower or jungle camp never starts an automatic cross-map chase. An explicitly clicked visible enemy stays focused and can be pursued farther until it becomes invalid or you issue another order.
+
+Releasing ATTACK does not stop the order. A new movement order, successful ability cast, recall, team command, or death clears the previous pursuit. Pressing ATTACK again chooses the nearest nearby enemy anew. **Right click** issues ground movement; keyboard and joystick movement take immediate priority. A primary click or tap on empty ground attacks rather than moving to that location. When a skill is armed, a battlefield click or tap casts it at your aim. Moving the aim pointer alone never changes a basic-attack target or auto-aims an ability.
 
 Towers and crystals fire visible homing bolts. They retain a valid target, usually engage an incoming wave first, and retaliate against enemy heroes who attack a hero they protect. Consecutive shots against one hero grow stronger; leaving range breaks the focus. Bots check the whole route and mobility-skill destination before entering hostile tower range. They escort healthy frontliners and wait for a wave, or commit to a brief finishing attack only when the health, defenders, distance, and likely escape justify it.
 
@@ -85,11 +87,11 @@ Early fortification and reduced creature/summon damage to structures give heroes
 ### Controls
 
 - **WASD / arrow keys:** move.
-- **Mouse:** aim spells. Click an enemy to focus it; click the ground or right click to move. **Space / ATTACK:** engage the nearest enemy until another order.
+- **Mouse:** aim spells. Primary click attacks a clicked enemy or the nearest nearby enemy; right click moves. **Space / ATTACK:** engage the nearest nearby enemy until another order.
 - **Q, E, R, F:** hold to aim and release to cast the four abilities; the ability bar shows unlock levels, mana, and cooldowns.
 - **B:** channel a recall to the healing well. Moving or taking damage interrupts it.
 - **I / SHOP:** open the item store and view personal gold, prices, prerequisites, and active upgrades. Escape or the close button returns to combat.
-- **Touch:** left thumbstick or ground tap to move, tap an enemy to focus it, ATTACK to engage the nearest enemy, and ability buttons to aim and release a skill shot.
+- **Touch:** left thumbstick to move, tap an enemy to focus it, tap the battlefield or ATTACK to engage the nearest nearby enemy, and ability buttons to aim and release a skill shot.
 - **Hold/drag the minimap:** temporarily inspect another location; release to return to the hero. This does not move the hero or change spell aim.
 - **Controls:** adjust touch-button size, height, inset, and handedness; preferences are saved on this browser. The normal camera follows your hero and looks slightly ahead while aiming a selected ability.
 - Use the skill-tree, pause, beast-lane, and team-command controls on the HUD.

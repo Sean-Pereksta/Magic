@@ -538,10 +538,13 @@ export class Game {
     if(h.isPlayer)this.cancelPlayerOrder();this.effect('level',h.x,h.y,60,HEROES[h.heroId].color,.9);
   }
   validPlayerTarget(target){return !!target&&target.alive&&hostile(this.player,target)&&!this.isProtected(target)&&this.canSee(this.player.team,target);}
+  playerAttackSearchRadius(){return Math.max(360,this.player.range+140);}
   nearestPlayerEnemy(){
-    let nearest=null,distance=Infinity;
+    // Team vision includes distant structures. Automatic attacks only engage
+    // locally; explicitly clicking a target is the command to pursue it farther.
+    let nearest=null,distance=Infinity;const radius=this.playerAttackSearchRadius();
     for(const target of this.units)if(this.validPlayerTarget(target)){
-      const d=dist(this.player,target);if(d<distance){nearest=target;distance=d;}
+      const d=dist(this.player,target);if(d<=radius+target.r&&d<distance){nearest=target;distance=d;}
     }
     return nearest;
   }
