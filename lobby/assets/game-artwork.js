@@ -620,38 +620,38 @@
     },
     "cardrealms": {
       "key": "cardrealms",
-      "title": "Card Realms (Incomplete)",
-      "desc": "Build a deck and battle through card realms.",
+      "title": "Orbital Rivals",
+      "desc": "Build a painted starship fleet, chain faction abilities, and challenge a rival AI or the solo Gauntlet.",
       "route": "/game/cardrealms.html",
       "category": "Cards",
       "modes": [
         "single"
       ],
-      "originalImagePath": null,
+      "originalImagePath": "/lobby/assets/game-tiles/orbital-rivals.webp",
       "tier": "experimental",
       "provenance": "original-built-in-imagegen",
-      "sourceArtwork": "exec-a3a3e4dd-687a-467d-9837-5930939078e6.png",
-      "tile": "game-tiles/cardrealms.webp",
-      "thumb": "game-thumbnails/cardrealms.webp",
-      "hero": "game-tiles/cardrealms.webp",
+      "sourceArtwork": "/game/cardrealms/assets/orbital-rivals-cover.webp",
+      "tile": "game-tiles/orbital-rivals.webp",
+      "thumb": "game-thumbnails/orbital-rivals.webp",
+      "hero": "game-tiles/orbital-rivals.webp",
       "ready": true
     },
     "cardrealmsmulti": {
       "key": "cardrealmsmulti",
-      "title": "Card Realms Multiplayer (Incomplete)",
-      "desc": "Direct two-player card matchmaking.",
+      "title": "Orbital Rivals — Online",
+      "desc": "Duel another captain in a two-player fleet deckbuilder with illustrated ships and a compact tactical board.",
       "route": "/game/cardrealmsmulti.html",
       "category": "Cards",
       "modes": [
         "multi"
       ],
-      "originalImagePath": null,
+      "originalImagePath": "/lobby/assets/game-tiles/orbital-rivals.webp",
       "tier": "experimental",
       "provenance": "original-built-in-imagegen",
-      "sourceArtwork": "exec-161a0795-bfdd-49e3-8020-a1e06b9bbd1f.png",
-      "tile": "game-tiles/cardrealmsmulti.webp",
-      "thumb": "game-thumbnails/cardrealmsmulti.webp",
-      "hero": "game-tiles/cardrealmsmulti.webp",
+      "sourceArtwork": "/game/cardrealms/assets/orbital-rivals-cover.webp",
+      "tile": "game-tiles/orbital-rivals.webp",
+      "thumb": "game-thumbnails/orbital-rivals.webp",
+      "hero": "game-tiles/orbital-rivals.webp",
       "ready": true
     },
     "rogueworld": {
@@ -2700,6 +2700,18 @@
       "height": 720,
       "bytes": 370270,
       "sha256": "f316aa83d4c1f61ccdabc17d56ca3989c20e076485bbce55ecdc95b508821b17"
+    },
+    "game-tiles/orbital-rivals.webp": {
+      "width": 640,
+      "height": 360,
+      "bytes": 82556,
+      "sha256": "6ff3cf8e480221f5fc70a37a99f1f2dee90124f522c075016a2923fbf1c5ddbd"
+    },
+    "game-thumbnails/orbital-rivals.webp": {
+      "width": 240,
+      "height": 135,
+      "bytes": 15822,
+      "sha256": "b2580f4730dd918b496f9925acd2d6edfc8a1ee1109783ddf9f82284b6057d0f"
     }
   },
   "interfaceFiles": {
