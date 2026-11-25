@@ -64,7 +64,7 @@ function createGames({library,root,icon,played,resolveGame,onClosed}) {
       if(k.key==='F11'||(k.key==='Escape'&&w.isFullScreen())){e.preventDefault();control('full');}
       if(k.alt && k.key==='ArrowLeft'){e.preventDefault();control('back');}
     }
-    const row={w,game,mode,player,control,armed:false,counted:false};windows.set(w.webContents.id,row);byGame.set(wc.id,row);
+    const row={w,game,mode,action,player,control,armed:false,counted:false};windows.set(w.webContents.id,row);byGame.set(wc.id,row);
     function failure(message){
       shown=false;layout();row.failed=true;
       if(mode==='host' && !localHost){
@@ -118,5 +118,5 @@ function createGames({library,root,icon,played,resolveGame,onClosed}) {
   };
 }
 function busy(id){return [...windows.values()].some(r=>!id||r.game?.id===id);}
-function focusGame(id,mode){const row=[...windows.values()].find(r=>r.game?.id===id);if(row){if(row.mode!==mode)throw Error('Close this game window before switching play modes.');row.w.show();row.w.focus();return true;}return false;}
+function focusGame(id,mode,action){const row=[...windows.values()].find(r=>r.game?.id===id);if(row){if(row.mode!==mode || (action && row.action && row.action!==action))throw Error('Close this game window before switching play modes.');row.w.show();row.w.focus();return true;}return false;}
 module.exports={createGames,busy,focusGame};

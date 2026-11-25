@@ -109,7 +109,7 @@ function navigate(to,id = '') {
 }
 function onlinePlay(game) {
   const actions = game.actions || [];
-  return actions.find(a => a.type !== 'single') || actions[0] || {};
+  return actions.find(a => ['lobby','online','live'].includes(a.type)) || actions.find(a => a.type === 'single') || actions[0] || {};
 }
 function hostLobby(game) {
   const managed = (state.servers || []).some(server => server.id === game.id);
@@ -119,7 +119,7 @@ function hostLobby(game) {
 }
 function launchButton(game, compact = false) {
   if (playsLocally(game)) return btn('Play','play',{id:game.id,mode:'offline'},'gold','play');
-  const offline = state.online === false && installed(game.id);
+  const offline = installed(game.id) && (state.online === false || Boolean(game.hotseatRoute));
   const mode = offline ? 'offline' : 'online';
   const action = (game.actions || []).find(a => a.type === 'single') || onlinePlay(game);
   return btn(compact ? 'Play' : offline ? 'Play Offline' : 'Play', 'play', {id:game.id,mode,kind:action.type || ''}, 'gold','play');
@@ -143,13 +143,14 @@ function gameControls(game) {
   }
   const out = [];
   const actions = game.actions || [];
-  if (supported(game)) out.push(installed(game.id) ? btn('Play Offline','play',{id:game.id,mode:'offline'},'gold','disc') : btn('Install offline pack','install',{id:game.id},'gold','downloads'));
+  if (supported(game)) out.push(installed(game.id) ? btn(game.hotseatRoute ? 'Solo' : 'Play Offline','play',{id:game.id,mode:'offline',kind:'single'},'gold','disc') : btn('Install offline pack','install',{id:game.id},'gold','downloads'));
+  if (game.hotseatRoute && installed(game.id)) out.push(btn('Hot Seat','play',{id:game.id,mode:'offline',kind:'hotseat'},'glass','play'));
   const onlineAction = onlinePlay(game);
   if (onlineAction.type) {
     const label = (game.offline || onlineAction.type !== 'single') ? 'Play Online' : 'Play';
     out.push(btn(label,'play',{id:game.id,mode:'online',kind:onlineAction.type},out.length ? 'glass':'gold','play'));
     for (const action of actions) {
-      if (action.type === onlineAction.type) continue;
+      if (action.type === onlineAction.type || (game.hotseatRoute && installed(game.id) && ['single','hotseat'].includes(action.type))) continue;
       const label = action.type === 'single' ? 'Play solo online' : action.label;
       out.push(btn(label,'play',{id:game.id,mode:'online',kind:action.type},'glass'));
     }
@@ -489,7 +490,7 @@ function onAction(el) {
       }
       const last = action==='replay' && state.recent?.find?.(e=>typeof e==='object' && (e.id || e.key)===id);
       if (last?.mode==='offline' && installed(id)) dispatch('play',{id,mode:'offline'});
-      else if (installed(id) && state.online===false) dispatch('play',{id,mode:'offline'});
+      else if (installed(id) && (state.online===false || game.hotseatRoute)) dispatch('play',{id,mode:'offline',action:'single'});
       else dispatch('play',{id,mode:'online',action:(game.actions || [])[0]?.type || ''});
       break;
     }

@@ -19,11 +19,11 @@ const official = 'https://www.catnmice.com';
 const localGames = ['bannerlands','lastsignal','trashtactics','cat'];
 const report = {titles:0, actions:0, routes:[], representative:[], localControls:[], errors:[]};
 const contractFields = [
-  'route','singleRoute','multiplayerRoute','dmRoute','downloadRoute','localEditionRoute',
+  'route','singleRoute','hotseatRoute','multiplayerRoute','dmRoute','downloadRoute','localEditionRoute',
   'modes','requiresUser','autoUsername','autoRedirect','launchMode','realmId','liveLobbyGame',
-  'minPlayers','maxPlayers','joinLabel','multiTitle'
+  'minPlayers','maxPlayers','joinLabel','hotseatLabel','multiTitle'
 ];
-const routeFields = ['route','singleRoute','multiplayerRoute','dmRoute','localEditionRoute','downloadRoute'];
+const routeFields = ['route','singleRoute','hotseatRoute','multiplayerRoute','dmRoute','localEditionRoute','downloadRoute'];
 
 async function waitFor(probe, description, timeout = 30000) {
   const end = Date.now()+timeout;
