@@ -1,4 +1,4 @@
-import { HEROES, WORLD } from './data.mjs';
+import { HEROES, WORLD, segmentDistance } from './data.mjs';
 import { ITEM_BY_ID } from './items.mjs';
 
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -14,7 +14,7 @@ export function canSee(game,team,unit){
   if(structure(unit))return true;
   const brush=brushAt(unit),revealed=(unit.revealedUntil||0)>game.time;
   return game.units.some(observer=>{
-    if(!observer.alive||observer.team!==team)return false;
+    if(!observer.alive||observer.team!==team||observer.noVision)return false;
     const radius=observer.kind==='hero'?580:structure(observer)?520:observer.kind==='summon'?360:observer.siege?430:300;
     const d=distance(observer,unit);
     if(d>radius+unit.r)return false;
@@ -69,12 +69,12 @@ export function assignTeamJobs(game,team,plan){
   const jobs=game.assignments[team]={};
   const heroes=game.units.filter(u=>u.alive&&u.kind==='hero'&&u.team===team);
   const bots=heroes.filter(u=>u.bot);
-  for(const hero of bots)jobs[hero.id]={type:hero.heroId==='bulwark'?'frontline':hero.heroId==='ember'?'flank':hero.heroId==='angel'||hero.heroId==='seraph'?'support':'advance',lane:plan.lane};
+  for(const hero of bots)jobs[hero.id]={type:hero.heroId==='rivet'?'defend':hero.heroId==='brinehook'?'catch':hero.heroId==='vela'?'marksman':hero.heroId==='bulwark'?'frontline':hero.heroId==='ember'?'flank':['angel','seraph','solstice'].includes(hero.heroId)?'support':'advance',lane:plan.lane};
   // A single strong defender can hold a secondary threatened lane while the others act.
   if(plan.type==='push'||plan.type==='beast'){
     const danger=game.units.filter(u=>u.alive&&u.team===team&&u.kind==='tower'&&u.lane!==plan.lane).map(tower=>({tower,foes:game.units.filter(u=>u.alive&&u.team===1-team&&!structure(u)&&canSee(game,team,u)&&distance(u,tower)<460)})).filter(x=>x.foes.length>=3).sort((a,b)=>b.foes.length-a.foes.length)[0];
     if(danger&&heroes.length>=3){
-      const holder=bots.filter(u=>u.heroId!=='angel').sort((a,b)=>distance(a,danger.tower)-distance(b,danger.tower))[0];
+      const holder=bots.filter(u=>!['angel','solstice'].includes(u.heroId)).sort((a,b)=>(distance(a,danger.tower)-(a.heroId==='rivet'?300:0))-(distance(b,danger.tower)-(b.heroId==='rivet'?300:0)))[0];
       if(holder)jobs[holder.id]={type:'hold',lane:danger.tower.lane,x:danger.tower.x,y:danger.tower.y};
     }
   }
@@ -89,6 +89,10 @@ const BUILD_PATHS={
   bulwark:['sovereign-aegis','eternity-hourglass','crimson-relic'],
   ember:['worldsplitter','tempest-wings','crimson-relic'],
   seraph:['worldsplitter','sovereign-aegis','tempest-wings'],
+  rivet:['elderwood-staff','eternity-hourglass','sovereign-aegis'],
+  brinehook:['sovereign-aegis','eternity-hourglass','crimson-relic'],
+  vela:['thunderbolt-crossbow','crimson-relic','tempest-wings'],
+  solstice:['phoenix-crown','eternity-hourglass','sovereign-aegis'],
 };
 export function nextBuildItem(hero){
   const owned=new Set(hero.items||[]),path=hero.buildPlan?.length?hero.buildPlan:(BUILD_PATHS[hero.heroId]||BUILD_PATHS.arc);
@@ -101,6 +105,143 @@ export function nextBuildItem(hero){
 }
 
 export function chooseBotTalent(hero,tier){
+  const expansionPath={
+    rivet:['rivet-reinforced-casing','rivet-repair-routine','rivet-hot-rivets','rivet-quick-assembly','rivet-crossfire','rivet-shared-tools','rivet-fortified-position'],
+    brinehook:['brinehook-thick-coat','brinehook-weatherproof','brinehook-steady-footing','brinehook-iron-captain','brinehook-crew-cover','brinehook-calm-waters','brinehook-safe-harbor'],
+    vela:['vela-quick-draw','vela-fast-hands','vela-clean-chambers','vela-field-medic','vela-opening-pair','vela-spare-magazine','vela-perfect-rhythm'],
+    solstice:['solstice-thicker-glass','solstice-long-reach','solstice-gentle-return','solstice-golden-shelter','solstice-shared-moment','solstice-steady-hour','solstice-golden-interval']
+  }[hero.heroId];
+  const chosen=expansionPath&&tier.choices.find(c=>c.id===expansionPath[[3,5,8,10,12,15,18].indexOf(tier.level)]);
+  if(chosen)return chosen;
   const preferred=hero.heroId==='bulwark'?['hp','shield','knightStun']:hero.heroId==='angel'?['healing','shield','cooldown']:hero.heroId==='druid'?['summonPower','summonHaste','bearCount','wolfCount']:hero.heroId==='seraph'?['sweepDamage','sweepRadius','attackSpeed','winterDamage']:hero.heroId==='ember'?['executionDamage','heartseekerDamage','damage','speed']:hero.heroId==='ranger'?['damage','attackSpeed','poisonDamage']:['spellDamage','cooldown','stormDamage'];
   return [...tier.choices].sort((a,b)=>preferred.reduce((n,key)=>n+(b.bonuses?.[key]||0)-(a.bonuses?.[key]||0),0)*5||a.id.localeCompare(b.id))[0];
+}
+
+export const isExpansionHero=hero=>['rivet','brinehook','vela','solstice'].includes(typeof hero==='string'?hero:hero?.heroId);
+const point=u=>({x:u.x,y:u.y});
+const visibleFoes=(game,hero,r=650)=>game.units.filter(u=>u.alive&&u.team!==hero.team&&!game.isProtected(u)&&distance(hero,u)<r+u.r&&canSee(game,hero.team,u));
+const alliedHeroes=(game,hero)=>game.units.filter(u=>u.alive&&u.kind==='hero'&&u.team===hero.team);
+const ownedDevices=(game,hero,subtype)=>game.units.filter(u=>u.alive&&u.ownerId===hero.id&&u.kind==='summon'&&u.subtype===subtype);
+function firstVisibleOnLine(game,hero,at,range,width){
+  const angle=Math.atan2(at.y-hero.y,at.x-hero.x),dx=Math.cos(angle),dy=Math.sin(angle),end={x:hero.x+dx*range,y:hero.y+dy*range};
+  return visibleFoes(game,hero,range+50).filter(u=>{
+    const projection=(u.x-hero.x)*dx+(u.y-hero.y)*dy;
+    return projection>=0&&projection<=range+u.r&&segmentDistance(u.x,u.y,hero,end)<=width+u.r&&game.clearLine(hero,u,4);
+  }).sort((a,b)=>((a.x-hero.x)*dx+(a.y-hero.y)*dy)-((b.x-hero.x)*dx+(b.y-hero.y)*dy)||a.id-b.id)[0]||null;
+}
+function safeCastPoint(game,hero,at,range){
+  const d=distance(hero,at),p=d>range?{x:hero.x+(at.x-hero.x)*range/d,y:hero.y+(at.y-hero.y)*range/d}:point(at);
+  const safe=game.safePoint(p,hero.r);
+  return distance(hero,safe)<=range+1&&game.clearLine(hero,safe,hero.r)&&!game.towerThreatOnPath(hero,safe,null,false)?safe:null;
+}
+function threatened(game,hero,ally,foes){
+  if(foes.some(u=>!structure(u)&&(u.targetId===ally.id||u.kind==='hero'&&distance(u,ally)<u.range+ally.r+55)))return true;
+  return game.projectiles.some(p=>p.team!==hero.team&&p.targetId===ally.id&&game.units.some(u=>u.id===p.sourceId&&canSee(game,hero.team,u)));
+}
+function refundValue(game,ally){
+  return (ally.cooldowns||[]).slice(0,3).reduce((sum,cooldown,slot)=>sum+Math.max(0,Math.min(2,HEROES[ally.heroId].abilities[slot].cooldown*.25,cooldown-.6)),0);
+}
+
+/** Additive target preference: inputs are visible candidates, never hidden state. */
+export function expansionTargetBias(game,hero,target){
+  if(!isExpansionHero(hero)||!target?.alive||!canSee(game,hero.team,target))return 0;
+  if(hero.heroId==='rivet')return ownedDevices(game,hero,'sentry').some(u=>distance(u,target)<=u.range+target.r)?-45:0;
+  if(hero.heroId==='brinehook'&&target.kind==='hero'){
+    const victim=alliedHeroes(game,hero).find(a=>a.id!==hero.id&&a.id===target.targetId&&a.hp/a.maxHp<.7);
+    return (victim?-90:0)+(target.range>150?-35:target.hp/target.maxHp>.7?45:0);
+  }
+  if(hero.heroId==='vela')return (target.kind==='hero'&&target.range<120&&target.hp/target.maxHp>.6?35:0)+(distance(hero,target)<=hero.range+target.r?-25:0);
+  if(hero.heroId==='solstice')return alliedHeroes(game,hero).some(a=>a.id!==hero.id&&a.hp/a.maxHp<.65&&target.targetId===a.id)?-65:0;
+  return 0;
+}
+
+/** Expansion casts use current shared sight and the same difficulty reaction gate. */
+export function expansionBotAim(game,hero,a,target,retreat,cfg){
+  if(!isExpansionHero(hero))return null;
+  // Do not casually interrupt a committed volley with a newly ready attack spell.
+  // A defensive Sidestep may still abandon it when a visible enemy closes in.
+  if(hero.channel?.kind==='silver-volley'&&a.id!=='sidestep')return null;
+  if(target&&(!target.alive||!canSee(game,hero.team,target)))target=null;
+  const foes=visibleFoes(game,hero),friends=alliedHeroes(game,hero).filter(u=>distance(hero,u)<=Math.max(350,a.range+a.radius));
+  const lead=target?{x:target.x+(target.vx||0)*.2*cfg.lead,y:target.y+(target.vy||0)*.2*cfg.lead}:point(hero);
+  const near=!!target&&distance(hero,target)<=a.range+target.r,close=foes.filter(u=>!structure(u)&&distance(hero,u)<300);
+  switch(a.id){
+    case 'screwshot':case 'hourhand':return target&&near&&(!retreat||distance(hero,target)<240)?lead:null;
+    case 'bolt-sentry': {
+      if(!target||distance(hero,target)>420||retreat)return null;
+      const devices=ownedDevices(game,hero,'sentry');
+      if(devices.filter(u=>distance(u,target)<u.range+80&&u.lifetime>4).length>=2)return null;
+      const angle=Math.atan2(target.y-hero.y,target.x-hero.x),front=game.units.filter(u=>u.alive&&u.team===hero.team&&u.id!==hero.id&&!u.stationary&&!structure(u)&&distance(hero,u)<260&&distance(u,target)<distance(hero,target)).sort((x,y)=>distance(x,target)-distance(y,target))[0];
+      const anchor=front||hero;
+      for(const offset of [0,1,-1]){
+        const at={x:anchor.x-Math.cos(angle)*55+Math.cos(angle+Math.PI/2)*offset*110,y:anchor.y-Math.sin(angle)*55+Math.sin(angle+Math.PI/2)*offset*110};
+        const safe=safeCastPoint(game,hero,at,a.range);
+        if(!safe||devices.some(u=>distance(u,safe)<90))continue;
+        const warned=(game.scheduledImpacts||[]).some(z=>z.team!==hero.team&&z.executeAt>game.time&&distance(safe,z)<z.r+35&&game.units.some(u=>u.id===z.ownerId&&canSee(game,hero.team,u)));
+        if(!warned)return safe;
+      }
+      return null;
+    }
+    case 'shock-mine': {
+      const pursuer=close.filter(u=>u.kind==='hero').sort((x,y)=>distance(hero,x)-distance(hero,y))[0];
+      if(!pursuer&&(!target||target.kind!=='beast'||cfg.coordination<.8))return null;
+      if(!retreat&&pursuer&&distance(hero,pursuer)>280)return null;
+      const toward=pursuer||target,d=distance(hero,toward)||1;
+      const at={x:hero.x+(toward.x-hero.x)/d*Math.min(95,d*.5),y:hero.y+(toward.y-hero.y)/d*Math.min(95,d*.5)};
+      return ownedDevices(game,hero,'mine').some(u=>distance(u,at)<105)?null:safeCastPoint(game,hero,at,a.range);
+    }
+    case 'overclock':return close.length>0&&(ownedDevices(game,hero,'sentry').some(u=>distance(hero,u)<=a.radius&&foes.some(t=>distance(u,t)<u.range+t.r))||target&&distance(hero,target)<=hero.range+target.r)?point(hero):null;
+    case 'anchorline': {
+      if(!target||!near||structure(target)||target.siege||target.kind==='beast'||(target.status?.stun?.remaining||0)>.3)return null;
+      if(firstVisibleOnLine(game,hero,lead,a.range,a.radius)?.id!==target.id)return null;
+      const peel=friends.some(u=>u.id!==hero.id&&u.hp/u.maxHp<.7&&distance(u,target)<220);
+      const enemyPower=close.reduce((sum,u)=>sum+strength(game,u),0),friendlyPower=friends.filter(u=>distance(hero,u)<330).reduce((sum,u)=>sum+strength(game,u),0);
+      if(!peel&&enemyPower>friendlyPower*1.25)return null;
+      if(!peel&&target.kind==='hero'&&target.range<120&&target.hp/target.maxHp>.6&&friends.some(u=>u.id!==hero.id&&u.range>150&&u.hp/u.maxHp<.65&&distance(hero,u)<190))return null;
+      return !retreat||peel?lead:null;
+    }
+    case 'sea-legs':return close.length&&(hero.hp/hero.maxHp<.88||hero.status?.slow||friends.some(u=>u.hp/u.maxHp<.65&&distance(hero,u)<130))?point(hero):null;
+    case 'undertow':return target&&near&&(target.status?.stun?.remaining||0)<.3&&(!retreat||target.kind==='hero')?lead:null;
+    case 'captains-wake':return target&&near&&!retreat&&(target.status?.stun?.remaining||0)<.3&&(target.kind==='hero'||close.length>=2)?lead:null;
+    case 'split-shot':return target&&near&&(!retreat||distance(hero,target)<230)?lead:null;
+    case 'sidestep': {
+      const threat=close.filter(u=>u.kind==='hero').sort((x,y)=>distance(hero,x)-distance(hero,y))[0];
+      if(threat&&(retreat||distance(hero,threat)<170||hero.magazine?.reloadRemaining>0&&distance(hero,threat)<240)){
+        const d=distance(hero,threat)||1;
+        return safeCastPoint(game,hero,{x:hero.x+(hero.x-threat.x)*a.range/d,y:hero.y+(hero.y-threat.y)*a.range/d},a.range);
+      }
+      if(!retreat&&target?.kind==='hero'&&target.hp/target.maxHp<.2&&hero.hp/hero.maxHp>.7&&distance(hero,target)>hero.range+target.r&&foes.filter(u=>u.kind==='hero').length===1)return safeCastPoint(game,hero,lead,a.range);
+      return null;
+    }
+    case 'steady-aim':return target&&!retreat&&distance(hero,target)<=hero.range*1.15+target.r&&hero.hp/hero.maxHp>.48&&!close.some(u=>u.kind==='hero'&&distance(hero,u)<140)?point(hero):null;
+    case 'silver-volley':return target&&near&&!retreat&&(target.kind==='hero'||target.kind==='beast'||target.siege)&&!close.some(u=>u.kind==='hero'&&distance(hero,u)<175)&&firstVisibleOnLine(game,hero,lead,a.range,a.radius)?.id===target.id?lead:null;
+    case 'time-ward': {
+      const candidate=friends.filter(u=>distance(hero,u)<=a.range&&(!u.timeWard||u.timeWard.expiresAt<=game.time+.25)&&threatened(game,hero,u,foes)).sort((x,y)=>x.hp/x.maxHp-y.hp/y.maxHp||x.id-y.id)[0];
+      return candidate?point(candidate):null;
+    }
+    case 'unwind': {
+      const impaired=friends.filter(u=>distance(hero,u)<=a.range&&((u.status?.stun?.remaining||0)>.1||u.status?.slow)).sort((x,y)=>(y.status?.stun?.remaining||0)-(x.status?.stun?.remaining||0)||x.hp/x.maxHp-y.hp/y.maxHp)[0];
+      return impaired?point(impaired):null;
+    }
+    case 'borrowed-seconds': {
+      if(retreat)return null;
+      const positions=[...friends.filter(u=>distance(hero,u)<=a.range&&refundValue(game,u)>=1.2),...(target&&near?[target]:[])];
+      const scored=positions.map(at=>({at,score:friends.filter(u=>distance(at,u)<=a.radius&&refundValue(game,u)>=1.2).reduce((n,u)=>n+refundValue(game,u),0)+foes.filter(u=>!structure(u)&&distance(at,u)<=a.radius).reduce((n,u)=>n+(u.kind==='hero'?2.5:.4),0)})).sort((x,y)=>y.score-x.score);
+      const best=scored[0];return best&&best.score>=2.5?point(best.at):null;
+    }
+    default:return null;
+  }
+}
+
+/** A fixed volley stands still; an empty magazine creates a real spacing window. */
+export function expansionBotMovement(game,hero,target,cfg,dt){
+  if(hero.heroId!=='vela')return false;
+  if(hero.channel?.kind==='silver-volley')return true;
+  if(!(hero.magazine?.reloadRemaining>0)||!target?.alive||!canSee(game,hero.team,target))return false;
+  if(cfg.coordination<=.6)return true;
+  const dx=hero.x-target.x,dy=hero.y-target.y,d=Math.hypot(dx,dy)||1,side=hero.id%2?1:-1;
+  const point={x:hero.x+dx/d*85-dy/d*side*65,y:hero.y+dy/d*85+dx/d*side*65};
+  const safe=safeCastPoint(game,hero,point,120);
+  if(safe)game.moveToward(hero,safe,dt);
+  hero.aiState='spacing during reload';return true;
 }

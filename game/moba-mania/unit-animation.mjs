@@ -11,6 +11,10 @@ const motion = Object.freeze({
   bulwark: { back:4, strike:6, crouch:3, tilt:.06 },
   ember: { back:3, strike:6, crouch:3, tilt:.12 },
   seraph: { back:4, strike:5, crouch:1, tilt:.09 },
+  rivet: { back:2, strike:3, crouch:2, tilt:.025 },
+  brinehook: { back:5, strike:7, crouch:2, tilt:.07 },
+  vela: { back:4, strike:-2, crouch:1, tilt:.055 },
+  solstice: { back:1, strike:1, crouch:0, tilt:.015 },
 });
 
 export function unitPose(unit, game, time = game.time || 0, reducedMotion = false) {
@@ -34,14 +38,20 @@ export function unitPose(unit, game, time = game.time || 0, reducedMotion = fals
     // a strike-first recovery instead of replaying a false windup after damage.
     const t = 1 - clamp(unit.attackAnim / .32, 0, 1);
     stage = t < .22 ? 2 : t < .6 ? 3 : 4;
-  } else if (!unit.status?.stun && !unit.recallIn && unit.attackTimer > 0 && unit.attackTimer < .16 && (!unit.isPlayer || game.attackOrder || game.attackHeld)) {
+  } else if (!unit.status?.stun && !unit.recallIn && !(unit.magazine?.reloadRemaining>0) && !unit.channel && unit.attackTimer > 0 && unit.attackTimer < .16 && (!unit.isPlayer || game.attackOrder || game.attackHeld)) {
     const target = (game.units || []).find(t => t.id === unit.targetId);
     if (live(target) && target.team !== unit.team && !game.isProtected?.(target) && Math.hypot(target.x - unit.x, target.y - unit.y) <= (unit.range || 40) + (target.r || 12) + (unit.r || 12) * .35 && (unit.team < 0 || !game.canSee || game.canSee(unit.team, target))) {
       stage = 1; angle = Math.atan2(target.y - unit.y, target.x - unit.x);
     }
   }
   const phase = Number.isFinite(unit.id) ? unit.id : 0;
-  const frame = reducedMotion ? 0 : unit.moving ? Math.floor(time * (unit.kind === 'hero' ? 9 : 7) + phase) % 4 : Math.floor(time * 1.8 + phase) % 4;
+  let frame = reducedMotion ? 0 : unit.moving ? Math.floor(time * (unit.kind === 'hero' ? 9 : 7) + phase) % 4 : Math.floor(time * 1.8 + phase) % 4;
+  if(unit.heroId==='vela'&&unit.channel?.kind==='silver-volley'&&unit.channel.endsAt>time&&!unit.status?.stun){
+    stage=time<unit.channel.fireAt?1:6;cast=true;angle=unit.channel.angle;
+    frame=reducedMotion?0:Math.floor(Math.max(0,time-unit.channel.fireAt)*10)%2;
+  }else if(unit.heroId==='vela'&&unit.magazine?.reloadRemaining>0&&!active){
+    stage=5;frame=reducedMotion?0:clamp(Math.floor((1-unit.magazine.reloadRemaining/Math.max(.01,unit.magazine.reloadDuration||1.4))*4),0,3);
+  }
   const direction = ((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8;
   const shape = motion[unit.heroId] || {back:2,strike:3,crouch:1,tilt:.04};
   const strength = stage === 1 ? -shape.back : stage === 2 ? shape.strike : stage === 3 ? shape.strike * .55 : stage === 4 ? 1 : 0;
@@ -50,6 +60,7 @@ export function unitPose(unit, game, time = game.time || 0, reducedMotion = fals
   const idle = !unit.moving && !stage && !unit.status?.stun;
   return {
     stage, frame, direction, angle, cast, active:!!active,
+    variant:cast&&['bolt-sentry','shock-mine'].includes(action?.abilityId)?'build':unit.heroId==='vela'?(unit.status?.steadyAim?'aim':'')+(unit.magazine?.rounds%2===1?'offhand':''):'',
     dx: reducedMotion ? 0 : Math.round(Math.cos(angle) * strength + Math.cos(hitAngle) * hit * 3),
     dy: reducedMotion ? 0 : Math.round(Math.sin(angle) * strength * .35 + (stage === 1 || stage === 2 ? shape.crouch : 0) + Math.sin(hitAngle) * hit * 2),
     tilt: reducedMotion ? 0 : (stage === 1 ? -1 : stage === 2 ? 1 : stage === 3 ? .5 : 0) * shape.tilt * (Math.cos(angle) < 0 ? -1 : 1),

@@ -89,7 +89,7 @@ export function itemPlan(hero,goalId) {
   return {goal,remaining,cost:remaining.reduce((sum,item)=>sum+item.cost,0),next,affordable:!!next&&purchaseState(hero,next.id).ok};
 }
 export function recommendedItems(hero) {
-  const weights={bulwark:{hp:8,shield:7,healing:2},dragon:{hp:5,damage:6,lifesteal:8},ember:{damage:9,speed:6,lifesteal:7},ranger:{attackSpeed:9,damage:7,speed:3},druid:{summonPower:10,summonHaste:8,healing:5},angel:{healing:10,shield:8,cooldown:7},seraph:{damage:8,attackSpeed:7,cooldown:4,shield:3,speed:4},arc:{spellDamage:10,cooldown:8,mana:2}}[hero?.heroId]||{};
+  const weights={bulwark:{hp:8,shield:7,healing:2},dragon:{hp:5,damage:6,lifesteal:8},ember:{damage:9,speed:6,lifesteal:7},ranger:{attackSpeed:9,damage:7,speed:3},druid:{summonPower:10,summonHaste:8,healing:5},angel:{healing:10,shield:8,cooldown:7},seraph:{damage:8,attackSpeed:7,cooldown:4,shield:3,speed:4},arc:{spellDamage:10,cooldown:8,mana:2},rivet:{summonPower:12,summonHaste:9,cooldown:7,shield:3,hp:2},brinehook:{hp:8,shield:9,cooldown:6},vela:{attackSpeed:10,damage:7,lifesteal:10,speed:5},solstice:{shield:10,healing:8,cooldown:10,mana:2}}[hero?.heroId]||{};
   return ITEMS.filter(item=>item.tier===3).sort((a,b)=>{
     const score=item=>Object.entries(weights).reduce((n,[key,weight])=>n+(item.bonuses[key]||0)*weight,0);
     return score(b)-score(a)||a.cost-b.cost;

@@ -25,6 +25,33 @@ function checkEvolution(evolution,time){
   if(evolution.lastMarkedId!==undefined&&!entityId(evolution.lastMarkedId))fail('invalid marked target');
 }
 
+function checkExpansionUnit(unit,units){
+  if(!optionalNumber(unit.displacementRecoveryUntil,0,1e9)||!optionalNumber(unit.overclockUntil,0,1e9))fail('invalid expansion timer');
+  if(unit.magazine!==undefined){
+    const m=unit.magazine;
+    if(unit.heroId!=='vela'||!record(m)||!Number.isInteger(m.rounds)||!number(m.rounds,0,6)||!number(m.reloadRemaining,0,2)||!number(m.reloadDuration,.1,2)||!Number.isInteger(m.openingShots)||!number(m.openingShots,0,2))fail('invalid magazine');
+  }
+  if(unit.channel!==undefined){
+    const c=unit.channel;
+    if(unit.heroId!=='vela'||!record(c)||c.kind!=='silver-volley'||c.shotCount!==6||!Number.isInteger(c.nextShot)||!number(c.nextShot,0,6)||!number(c.startedAt,0,1e9)||!number(c.fireAt,c.startedAt,1e9)||!number(c.endsAt,c.fireAt,1e9)||!number(c.x,0,WORLD.width)||!number(c.y,0,WORLD.height)||!number(c.angle,-1e6,1e6)||!number(c.range,1,10000)||!number(c.width,1,1000)||!number(c.damage,0,1e8))fail('invalid volley channel');
+  }
+  if(unit.timeWard!==undefined){
+    const w=unit.timeWard;
+    if(unit.kind!=='hero'||!record(w)||!units.some(u=>u.id===w.ownerId&&u.heroId==='solstice')||typeof w.shieldId!=='string'||w.shieldId.length>120||!number(w.startedAt,0,1e9)||!number(w.expiresAt,w.startedAt,1e9)||!number(w.absorbed,0,1e10)||!number(w.healthLost,0,1e10)||typeof w.triggered!=='boolean'||!number(w.shieldPower,0,1000)||!number(w.healPower,0,1000)||!number(w.healCap,0,1e8)||!number(w.guardFactor,0,1))fail('invalid time ward');
+  }
+  if(unit.expansion!==undefined){
+    const s=unit.expansion;
+    if(!record(s)||!record(s.readyAt)||Object.keys(s.readyAt).length>32||Object.values(s.readyAt).some(t=>!number(t,0,1e9)))fail('invalid expansion state');
+    for(const key of ['heavyLandingUntil','heavyLandingDamage'])if(!optionalNumber(s[key],0,1e9))fail('invalid landing state');
+    if(s.heavyLandingCast!==undefined&&!entityId(s.heavyLandingCast))fail('invalid landing identity');
+    if(s.splitPairs!==undefined&&(!Array.isArray(s.splitPairs)||s.splitPairs.length>4||s.splitPairs.some(p=>!record(p)||!entityId(p.id)||!number(p.expiresAt,0,1e9)||!Array.isArray(p.hits)||p.hits.length>2||p.hits.some(id=>!entityId(id))||typeof p.firstHit!=='boolean')))fail('invalid split shot state');
+  }
+  if(unit.stationary){
+    if(unit.kind!=='summon'||!['sentry','mine'].includes(unit.subtype)||!units.some(u=>u.id===unit.ownerId&&u.heroId==='rivet')||unit.noCollision!==true||(unit.subtype==='mine'&&unit.noVision!==true)||!number(unit.createdAt,0,1e9)||!number(unit.assembleUntil,0,1e9)||!number(unit.armAt,0,1e9)||!number(unit.lifetime,-1,1000)||!number(unit.maxLifetime,0,1000))fail('invalid device');
+    for(const key of ['crossfireReadyAt','overclockDamage','emergencyShield','crossfireDamage','triggerRadius','blastRadius'])if(!optionalNumber(unit[key],0,1e8))fail('invalid device statistic');
+  }
+}
+
 function validGeometry(effect){
   const shape=effect.shape===undefined?(effect.arc===undefined?'circle':'cone'):effect.shape;
   if(!['circle','cone','line'].includes(shape)||!optionalNumber(effect.angle,-1e6,1e6)||!optionalNumber(effect.arc,0,Math.PI*2)||!optionalNumber(effect.range,0,10000)||!optionalNumber(effect.width,0,10000))return false;
@@ -42,6 +69,10 @@ function checkProjectile(projectile){
   for(const key of ['healing','burn','poison'])if(!optionalNumber(projectile[key],0,1e8))fail('invalid projectile effect');
   for(const key of ['burnDuration','poisonDuration'])if(!optionalNumber(projectile[key],0,10000))fail('invalid projectile duration');
   if((projectile.burn&&!number(projectile.burnDuration,0,10000))||(projectile.poison&&!number(projectile.poisonDuration,0,10000)))fail('missing projectile duration');
+  if(projectile.bounceDamages!==undefined&&(!Array.isArray(projectile.bounceDamages)||projectile.bounceDamages.length>2||projectile.bounceDamages.some(d=>!number(d,0,1e8))))fail('invalid ricochet damage');
+  if(projectile.bouncedIds!==undefined&&(!Array.isArray(projectile.bouncedIds)||projectile.bouncedIds.length>3||projectile.bouncedIds.some(id=>!entityId(id))))fail('invalid ricochet history');
+  if(projectile.pairId!==undefined&&!entityId(projectile.pairId))fail('invalid split shot identity');
+  for(const key of ['secondDamage','echoDamage','slowDuration','fromX','fromY'])if(!optionalNumber(projectile[key],0,1e8))fail('invalid expansion projectile');
 }
 
 function checkImpact(impact,units){
@@ -118,6 +149,7 @@ export function restoreGame(Game,snapshot){
       for(const [level,id] of Object.entries(unit.talents||{}))if(!HEROES[unit.heroId].talents.some(t=>t.level===Number(level)&&unit.level>=t.level&&t.choices.some(c=>c.id===id)))fail('invalid talent');
     }
     for(const status of Object.values(unit.status))if(!status||!number(status.remaining,-1,1e6)||(status.layers&&(!Array.isArray(status.layers)||status.layers.some(layer=>!number(layer.remaining,-1,1e6)))))fail('invalid status');
+    checkExpansionUnit(unit,state.units);
   }
   const player=state.units.find(u=>u.id===state.playerId&&u.kind==='hero'&&u.isPlayer&&u.team===0);
   if(!player||state.units.filter(u=>u.isPlayer).length!==1)fail('missing player');
@@ -141,6 +173,8 @@ export function restoreGame(Game,snapshot){
   const game=new Game({hero:player.heroId,difficulty:state.difficulty,seed:state.seed});
   Object.assign(game,decode(state));
   game.player=game.units.find(u=>u.id===game.playerId);game.grid=new Map();game.navCache=new Map();game.progressionDepth=0;
+  // Older saves predate magazines; missing optional expansion state gets a safe default.
+  for(const hero of game.units)if(hero.heroId==='vela')hero.magazine??={rounds:6,reloadRemaining:0,reloadDuration:1.4,openingShots:0};
   game.rebuildGrid();
   return game;
 }

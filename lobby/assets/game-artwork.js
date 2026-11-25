@@ -565,7 +565,7 @@
     "mobamania": {
       "key": "mobamania",
       "title": "MOBA Mania",
-      "desc": "A pixel-art 3v3 MOBA: master eight heroes, choose talents, raid jungles, and summon captured beasts.",
+      "desc": "A pixel-art MOBA: master twelve heroes, battle 3v3 or Impossible 3v4, and summon captured beasts.",
       "route": "/game/CatLanes.html",
       "category": "Action",
       "modes": [

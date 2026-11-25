@@ -17,8 +17,8 @@ test('mouse and touch can select every hero at the face and planted feet through
   }
 });
 
-test('visible staffs, hammer, scarf, and wide angel wings remain selectable outside the old body ellipse',()=>{
-  const parts=[['arc',27,-48],['bulwark',31,-49],['ember',-31,-36],['seraph',43,-31],['seraph',-43,-31]];
+test('visible weapons, tools, hourglass, and wide angel wings remain selectable outside the old body ellipse',()=>{
+  const parts=[['arc',27,-48],['bulwark',31,-49],['ember',-31,-36],['seraph',43,-31],['seraph',-43,-31],['brinehook',43,-20],['vela',43,-26],['vela',-42,-26],['rivet',32,-28],['solstice',32,-36]];
   for (const [heroId,x,y] of parts) for (const pointerType of ['mouse','touch']) {
     const unit=hero(1,heroId);
     assert.equal(pick([unit],{x:unit.x+x,y:unit.y+y},{pointerType,zoom:1.6}),unit,`${heroId} fringe`);
@@ -30,6 +30,13 @@ test('a small troop body wins over an overlapping angel wing regardless of unit 
   const point={x:troop.x,y:troop.y-17};
   for (const units of [[angel,troop],[troop,angel]]) for (const pointerType of ['mouse','touch']) {
     assert.equal(pick(units,point,{pointerType,zoom:1.6}),troop);
+  }
+});
+
+test('small troop bodies win over anchor and pistol fringes',()=>{
+  for(const id of ['brinehook','vela']){
+    const owner=hero(1,id),troop={...hero(2),kind:'footman',x:owner.x+43,y:owner.y-8,r:12};
+    for(const units of [[owner,troop],[troop,owner]])assert.equal(pick(units,{x:troop.x,y:troop.y-17},{pointerType:'touch'}),troop);
   }
 });
 

@@ -2,6 +2,7 @@ import { WORLD, HEROES } from './data.mjs';
 import { createEffectBudget, resetEffectBudget, drawCombatBurst, drawShieldShell, drawProjectileTrail, drawSpellAccent, isEffectVisible, EFFECT_PALETTES } from './combat-visuals.mjs';
 import { unitPose, summonPose, drawHitGlint, drawMonsterRocks } from './unit-animation.mjs';
 import { drawCampScenery, drawReactiveTerrain, drawStructureDamage, isWorldEffect, drawWorldEffect, drawGoldFlight } from './world-visuals.mjs';
+import { EXPANSION_HEROES, drawExpansionHero, drawDevice, drawMagazine, drawExpansionUnitAccents, drawExpansionIcon, drawExpansionWarning, drawExpansionAim, drawExpansionProjectile, drawExpansionEffect, drawExpansionZones } from './expansion-visuals.mjs';
 
 // All artwork is authored here in pixels. No remote textures, fonts or image
 // decoding are needed: the same sprites work in the site and the offline pack.
@@ -83,16 +84,22 @@ function diamond(c, x, y, w, h, color, highlight = '#e5fcff') {
   line(c, '#ffffffaa', x, y - h / 2 + 6, x + w / 3, y - 1, 2);
 }
 
-function heroSprite(id, frame, facing, attacking, cosmetics = {}, poseStage = 0, aimDirection = 0, casting = false) {
-  frame=poseStage?0:frame%4;aimDirection=poseStage?aimDirection:0;casting=poseStage?casting:false;
+function heroSprite(id, frame, facing, attacking, cosmetics = {}, poseStage = 0, aimDirection = 0, casting = false, variant = '') {
+  frame=poseStage&&poseStage<5?0:frame%4;aimDirection=poseStage?aimDirection:0;casting=poseStage?casting:false;
   const tint = cosmeticColor(cosmetics?.armorTint);
-  const key = ['hero', id, frame, facing, attacking, poseStage, aimDirection, casting, tint || 'classic'].join(':');
+  const key = ['hero', id, frame, facing, attacking, poseStage, aimDirection, casting, variant, tint || 'classic'].join(':');
   if (spriteCache.has(key)) return spriteCache.get(key);
   const expanded = id === 'bulwark' || id === 'ember' || id === 'seraph';
   // Leave room for wings, shields and the greatsword at the end of its swing.
-  const spriteWidth = id === 'druid' ? 88 : id === 'arc' || id === 'seraph' ? 80 : id === 'ranger' ? 72 : expanded ? 64 : 60;
+  const spriteWidth = id==='brinehook'?96:id==='vela'?88:EXPANSION_HEROES[id]?80:id === 'druid' ? 88 : id === 'arc' || id === 'seraph' ? 80 : id === 'ranger' ? 72 : expanded ? 64 : 60;
   const out = makeCanvas(spriteWidth, 68), c = out.getContext('2d');
   out.groundPadding = 12; out.bodyTop = 12;
+  if(EXPANSION_HEROES[id]){
+    if(facing===2){c.translate(spriteWidth,0);c.scale(-1,1);}
+    c.translate((spriteWidth-40)/2,12);
+    drawExpansionHero(c,id,{frame,stage:poseStage,direction:aimDirection,back:facing===3,casting,variant,tint});
+    return cacheSprite(key,out);
+  }
   if (tint) {
     const palettes = {
       arc:['#bd8738','#ffe18a','#dfab42','#ffc75f','#ca9336','#ffe398','#8b6530','#ffda85'],
@@ -774,6 +781,7 @@ export class Renderer {
     this.drawWater(c, time);
     this.drawWells(c, time);
     drawReactiveTerrain(c,game,time,u=>this.visible(u.x,u.y,100),this.effectBudget);
+    drawExpansionZones(c,game,time,(x,y,r)=>this.visible(x,y,r||100),this.effectBudget);
     this.drawObjectiveGround(c, game);
     this.drawCombatIndicators(c, game);
     for (const e of effects) if (!finalCore(e)) this.effect(c, e, isWorldEffect(e)?presentationTime:time, true);
@@ -790,7 +798,7 @@ export class Renderer {
         tree(c, o, time); c.restore();
       } else this.unit(c, item.unit, game);
     }
-    for (const p of game.projectiles || []) if (this.visible(p.x, p.y, 140) && seenPoint(p.x, p.y)) this.projectile(c, p, time);
+    for (const p of game.projectiles || []) if (this.visible(p.x, p.y, 140) && seenPoint(p.x, p.y)) this.projectile(c, p, time, game);
     drawMonsterRocks(c,game,time,(x,y)=>this.visible(x,y,100),this.effectBudget);
     for (const e of effects) if (e.type !== 'combat-burst' && !finalCore(e)) this.effect(c, e, isWorldEffect(e)?presentationTime:time, false);
     // Fresh impacts win the cosmetic allowance when a crowded fight reaches its
@@ -866,6 +874,7 @@ export class Renderer {
       c.globalAlpha = .13 + progress * .16; c.fill(); c.globalAlpha = .9; c.stroke(); c.setLineDash([]);
       c.lineWidth = 4; c.beginPath(); c.arc(z.x, z.y, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress); c.stroke();
       this.label(c, z.team === team ? 'CAST' : '!', z.x, z.y + 4, color, 10); c.restore();
+      drawExpansionWarning(c,z,progress,game.time,this.effectBudget);
     }
   }
   drawWater(c, time) {
@@ -948,6 +957,7 @@ export class Renderer {
     const dx = aim.x - p.x, dy = aim.y - p.y, distance = Math.hypot(dx, dy), angle = Math.atan2(dy, dx);
     const tx = p.x + Math.cos(angle) * Math.min(distance, range), ty = p.y + Math.sin(angle) * Math.min(distance, range);
     c.save(); c.globalAlpha = 0.22; ring(c, color, p.x, p.y, range, 2, true);
+    if(drawExpansionAim(c,game,p,a,{angle,tx,ty,range,color})){c.restore();return;}
     const type = String(a.type || a.target || '');
     if (a.id === 'glacial-sweep' || a.id === 'shield-bash') {
       const arc = a.arc || Math.PI * (a.id === 'glacial-sweep' ? .85 : .58);
@@ -985,14 +995,17 @@ export class Renderer {
     }
     if (u.kind === 'core') { crystal(c, u, game.time); drawStructureDamage(c,u,game.time,this.effectBudget); return; }
     if (u.kind === 'tower') { tower(c, u, game.time); drawStructureDamage(c,u,game.time,this.effectBudget); return; }
+    if(u.subtype==='sentry'||u.subtype==='mine'){
+      drawShieldShell(c,u,game.time,50,44,false,this.effectBudget);drawDevice(c,u,game.time,this.effectBudget);drawShieldShell(c,u,game.time,50,44,true,this.effectBudget);return;
+    }
     const pose = unitPose(u,game,game.time,this.effectBudget?.reducedMotion);
     const frame = pose.frame, attack = pose.stage > 0, attackFrame = attack ? pose.stage % 4 : frame;
     const flip = Math.cos(pose.angle) < -0.15;
     let sprite, width, height, scale;
     if (u.kind === 'hero') {
       const facing = flip ? 2 : Math.sin(pose.angle) < -0.55 ? 3 : 0;
-      sprite = heroSprite(u.heroId || u.subtype || 'arc',frame,facing,attack,u.cosmetics,pose.stage,pose.direction,pose.cast);
-      scale=1.5; width=(u.heroId==='seraph'?72:['bulwark','ember'].includes(u.heroId)?48:40)*scale;
+      sprite = heroSprite(u.heroId || u.subtype || 'arc',frame,facing,attack,u.cosmetics,pose.stage,pose.direction,pose.cast,pose.variant);
+      scale=1.5; width=(u.heroId==='seraph'?72:['brinehook','vela'].includes(u.heroId)?60:['bulwark','ember','rivet','solstice'].includes(u.heroId)?48:40)*scale;
       height=(['bulwark','ember','seraph'].includes(u.heroId)?48:44)*scale;
       c.save(); c.globalAlpha = u.id === game.playerId || u === game.player ? 0.9 : 0.45;
       ring(c, TEAM[u.team], u.x, u.y + 1, 21, u.id === game.playerId || u === game.player ? 3 : 2); c.restore();
@@ -1019,7 +1032,8 @@ export class Renderer {
     const originY=u.y-drawHeight+7+(sprite.groundPadding||0)*scale;
     const birth=summonPose(u,game.time,this.effectBudget?.reducedMotion);
     const action=u.visualAction;
-    if(u.heroId==='ember'&&!this.effectBudget?.reducedMotion&&action?.kind==='cast'&&['cinder-dash','flicker-strike'].includes(action.abilityId)&&game.time>=action.startedAt&&game.time-action.startedAt<.34&&Math.hypot(action.toX-action.fromX,action.toY-action.fromY)>30){
+    const dashPose=u.heroId==='ember'&&['cinder-dash','flicker-strike'].includes(action?.abilityId)||u.heroId==='vela'&&action?.abilityId==='sidestep';
+    if(dashPose&&!this.effectBudget?.reducedMotion&&action?.kind==='cast'&&game.time>=action.startedAt&&game.time-action.startedAt<.34&&Math.hypot(action.toX-action.fromX,action.toY-action.fromY)>30){
       c.save();
       for(const amount of [.3,.65]){
         const xx=action.fromX+(action.toX-action.fromX)*amount,yy=action.fromY+(action.toY-action.fromY)*amount;
@@ -1046,6 +1060,7 @@ export class Renderer {
     c.drawImage(sprite,Math.round(-drawWidth/2),Math.round(originY-u.y+birth.rise*height),drawWidth,drawHeight); c.restore();
     drawHitGlint(c,u,pose,width,height,this.effectBudget);
     drawShieldShell(c, u, game.time, width, height, true, this.effectBudget);
+    drawExpansionUnitAccents(c,u,game.time,this.effectBudget);
     if (u.recallIn > 0 || u.recalling || u.recallTime > 0) {
       c.save(); c.globalAlpha = 0.7;
       ring(c, '#9befff', u.x, u.y, 30, 3, true);
@@ -1130,10 +1145,12 @@ export class Renderer {
       if (u !== game.player && u.id !== game.playerId) this.label(c, HEROES[u.heroId]?.name || u.name || '', u.x, y - 8, u.team === 0 ? '#d4e9dc' : '#ffd1c0', 9);
       const bounty = u.shutdownBounty ?? Math.min(300, Math.max(0, (u.streak || 0) - 2) * 60);
       if (bounty > 0) this.label(c, `+${bounty} BOUNTY`, u.x, y - 22, '#ffd37d', 9);
+      drawMagazine(c,u,x+w+8,y+1,game.time);
     }
   }
-  projectile(c, p, time) {
+  projectile(c, p, time, game) {
     drawProjectileTrail(c, p, time, this.effectBudget);
+    if(drawExpansionProjectile(c,p,time,this.effectBudget,game))return;
     const a = p.angle ?? Math.atan2((p.vy || 0), (p.vx || 1)), color = p.color || TEAM[p.team] || '#e1dc9a';
     const type = String(p.type || 'bolt'), len = /arrow|shot/.test(type) ? 19 : /dragon/.test(type) ? 50 : 12;
     c.save(); c.translate(p.x, p.y); c.rotate(a);
@@ -1163,6 +1180,7 @@ export class Renderer {
   effect(c, e, time, ground) {
     if (isWorldEffect(e)) { drawWorldEffect(c,e,time,ground,this.effectBudget,this.worldEffectOptions); return; }
     if (e.type === 'combat-burst') { drawCombatBurst(c, e, time, ground, this.effectBudget); return; }
+    if(drawExpansionEffect(c,e,time,ground,this.effectBudget))return;
     drawSpellAccent(c, e, time, ground, this.effectBudget);
     if (e.type === 'flame') return;
     const type = String(e.type || ''), life = e.maxLife ? clamp(e.life / e.maxLife, 0, 1) : 0.65;
@@ -1284,6 +1302,7 @@ export class Renderer {
     c.restore();
   }
   departingSummon(c,e,alpha) {
+    if(e.subtype==='sentry'||e.subtype==='mine'){drawDevice(c,e,this.presentationTime||0,this.effectBudget,alpha);return;}
     const sprite=creatureSprite(e.subtype||'spirit',0,e.team??0,Math.cos(e.angle||0)<-.15);
     const bodyWidth=Math.max(48,Math.max(12,(e.r||32)-18)*2.5),scale=bodyWidth/48;
     const rise=/spirit/.test(e.subtype||'')&&!this.effectBudget?.reducedMotion?(1-alpha)*20:0;
@@ -1366,7 +1385,7 @@ export function drawPortrait(canvas, heroId, size = 64, cosmetics = {}) {
   const sprite = heroSprite(heroId, 0, 0, false, cosmetics);
   // The combat frame reserves space for a full sword swing. Crop only that
   // empty margin in the idle portrait so the angel's face stays legible.
-  const sourceWidth=heroId==='seraph'?64:['bulwark','ember'].includes(heroId)?48:40,sourceX=(sprite.width-sourceWidth)/2,sourceHeight=44;
+  const sourceWidth=['seraph','vela'].includes(heroId)?64:heroId==='brinehook'?60:['bulwark','ember','rivet','solstice'].includes(heroId)?48:40,sourceX=(sprite.width-sourceWidth)/2,sourceHeight=44;
   const scale = Math.min(size * .94 / sourceWidth, size * .97 / sourceHeight);
   const width = Math.round(sourceWidth * scale), height = Math.round(sourceHeight * scale);
   c.drawImage(sprite, sourceX, sprite.bodyTop||0, sourceWidth, sourceHeight, Math.round((size-width)/2), Math.round((size-height)/2), width, height);
@@ -1388,7 +1407,9 @@ export function drawIcon(canvas, ability = {}, size = 32) {
   box(c, '#172d3b', 0, 0, 32, 32);
   box(c, '#25404b', 2, 2, 28, 28); box(c, '#1b3340', 3, 3, 26, 26);
   c.globalAlpha = 0.15; disc(c, color, 16, 16, 13); c.globalAlpha = 1;
-  if (/^bash$|^charge$/.test(id)) {
+  if (drawExpansionIcon(c,id)) {
+    // The expansion icons have their own authored silhouettes.
+  } else if (/^bash$|^charge$/.test(id)) {
     box(c, color, 4, 7, 12, 16); box(c, color, 7, 22, 6, 5);
     box(c, '#4c456a', 7, 10, 6, 11); box(c, '#eedefc', 9, 11, 2, 9);
     line(c, '#fff3d3', 18, 16, 28, 16, 3); line(c, color, 23, 10, 29, 16, 3); line(c, color, 29, 16, 23, 22, 3);

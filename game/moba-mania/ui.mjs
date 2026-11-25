@@ -90,7 +90,9 @@ function rewardPulse(element, className) {
   element.classList.add(className);
 }
 function drawMenu() {
-  $('hero-grid').replaceChildren();
+  const grid=$('hero-grid'),scrollTop=grid.scrollTop,firstDraw=!grid.children.length;
+  const focusedHero=document.activeElement?.dataset.hero,focusedCosmetic=document.activeElement?.dataset.cosmetic;
+  grid.replaceChildren();$('hero-count').textContent=`${Object.keys(HEROES).length} HEROES`;
   Object.values(HEROES).forEach(hero=>{
     const button = document.createElement('button');
     button.className = `hero-card${hero.id === selectedHero ? ' selected' : ''}`;
@@ -102,7 +104,7 @@ function drawMenu() {
     const role = document.createElement('small'); role.textContent=hero.role;
     button.append(portrait,name,role);
     button.addEventListener('click',()=>{selectedHero=hero.id;drawMenu();savePreferences();unlockAudio();tone('cast');});
-    $('hero-grid').append(button);
+    grid.append(button);
     drawPortrait(portrait,hero.id,96,heroCosmetics(profile,hero.id));
   });
   const hero = HEROES[selectedHero];
@@ -120,6 +122,16 @@ function drawMenu() {
     item.append(icon,label);skills.append(item);drawIcon(icon,ability);
   });
   detail.append(info,skills);renderMastery();
+  grid.scrollTop=scrollTop;
+  // Replacing a card must not lose keyboard focus or jump the independent roster.
+  if(focusedHero)grid.querySelector(`[data-hero="${focusedHero}"]`)?.focus({preventScroll:true});
+  else if(focusedCosmetic)$('mastery-options').querySelector(`[data-cosmetic="${focusedCosmetic}"]`)?.focus({preventScroll:true});
+  if(firstDraw)requestAnimationFrame(()=>{
+    const card=grid.querySelector(`[data-hero="${selectedHero}"]`);if(!card)return;
+    const bounds=grid.getBoundingClientRect(),selected=card.getBoundingClientRect();
+    if(selected.bottom>bounds.bottom-5)grid.scrollTop+=selected.bottom-bounds.bottom+5;
+    else if(selected.top<bounds.top+5)grid.scrollTop+=selected.top-bounds.top-5;
+  });
 }
 function renderMastery(){
   const entry=profile.heroes[selectedHero],next=COSMETICS.find(c=>c.xp>entry.xp);
@@ -148,7 +160,12 @@ Object.values(DIFFICULTIES).forEach(difficulty=>{
   const option=document.createElement('option');option.value=difficulty.id;option.textContent=difficulty.name;$('difficulty').append(option);
 });
 $('difficulty').value=DIFFICULTIES[saved.difficulty] ? saved.difficulty : 'normal';
-function updateDifficulty() { $('difficulty-description').textContent=DIFFICULTIES[$('difficulty').value].description;savePreferences(); }
+function updateDifficulty() {
+  const difficulty=DIFFICULTIES[$('difficulty').value];
+  $('difficulty-description').textContent=difficulty.description;
+  $('match-format').textContent=`3 vs ${difficulty.enemyHeroes||3}`;
+  savePreferences();
+}
 $('difficulty').addEventListener('change',updateDifficulty);
 updateDifficulty();
 drawMenu();refreshSavedMenu();applyControls();

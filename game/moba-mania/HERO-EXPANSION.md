@@ -1,10 +1,10 @@
-# MOBA Mania: four proposed heroes
+# MOBA Mania: Rivet, Brinehook, Vela, and Solstice
 
-**Status: design proposal. These four heroes are not yet playable.** This document specifies a possible expansion from the current eight heroes to twelve. The accompanying lobby artwork is a separate visual update; changing that artwork does not implement these kits.
+**Status: playable expansion.** All four heroes are selectable, expanding the roster from eight to twelve. This document records their abilities, talent trees, visual identities, and implementation contracts.
 
 ## Fit with the current game
 
-The current roster in [data.mjs](data.mjs) already covers a control mage, burning bruiser, creature summoner, sustaining support, poison marksman, displacement tank, mobile assassin, and frost swordsman. The additions below give players four different decisions: where to establish a defensive position, which enemy to pull out of formation, when to spend a magazine, and when to protect an ally or accelerate a combination.
+The original eight heroes in [data.mjs](data.mjs) cover a control mage, burning bruiser, creature summoner, sustaining support, poison marksman, displacement tank, mobile assassin, and frost swordsman. The additions below give players four different decisions: where to establish a defensive position, which enemy to pull out of formation, when to spend a magazine, and when to protect an ally or accelerate a combination.
 
 | Hero | Role and distinctive contribution | Main tradeoff |
 | --- | --- | --- |
@@ -17,7 +17,7 @@ All four are human characters. Their silhouettes remain readable beside the exis
 
 ### Shared rules and seed values
 
-These are starting values for implementation and playtesting, not measured balance results. Distances are world units and times are seconds. Active-ability damage uses the existing cast multiplier in [engine.mjs](engine.mjs): level growth, general damage, and ability damage. Shields and healing use their existing dedicated scaling. Values explicitly written as a percentage of basic-attack damage use that damage once, without multiplying by spell power again. Device stats are snapshotted when created, as with current summons.
+These are baseline tuning values. Automated checks establish mechanical behavior; human playtesting is still needed to judge balance. Distances are world units and times are seconds. Active-ability damage uses the existing cast multiplier in [engine.mjs](engine.mjs): level growth, general damage, and ability damage. Shields and healing use their existing dedicated scaling. Values explicitly written as a percentage of basic-attack damage use that damage once, without multiplying by spell power again. Device stats are snapshotted when created, as with current summons.
 
 Use the existing **Q / E / R / F** controls, including touch aim-and-release. Slots unlock at levels **1 / 2 / 4 / 6**. There are no extra recast keys, pet-selection modes, mandatory double taps, or separate ultimate meters. All four keep level 18 progression and one choice from each talent tier at **3, 5, 8, 10, 12, 15, and 18**. The three table columns describe build directions; players may mix columns freely.
 
@@ -196,13 +196,13 @@ Damage contribution, effective healing, and shields that actually absorb damage 
 
 All targeting obeys the current nearest-valid-target, explicit-focus, visibility, protected-structure, and collision rules. Warning graphics do not reveal hidden heroes. Devices, bots, hooks, ricochets, and delayed blasts must never acquire hidden units through an omniscient search. Mines have no vision source; sentries use ordinary summon sight. New displacement cannot cross obstacles, displace structures or river beasts, or move ordinary camps outside their leash.
 
-Use `applyStatus` for all stuns. The current implementation caps tenacity contribution at 35%, shortens a chained hero stun to 55% during its recovery window, and maintains that window for two seconds after the applied stun. Preserve those rules rather than assigning a raw status object. These kits propose no stun longer than 0.9 s before shared modifiers. New pulls should share a 0.5 s per-target displacement recovery so a simultaneous hook and pool cannot repeatedly move a helpless hero. This is a proposed addition and needs explicit implementation and tests; it is not claimed as an existing engine rule. Slow/haste layers keep their own strength and lifetime. Talent and item cooldown reduction retain the shared 50% cap.
+Use `applyStatus` for all stuns. The current implementation caps tenacity contribution at 35%, shortens a chained hero stun to 55% during its recovery window, and maintains that window for two seconds after the applied stun. Preserve those rules rather than assigning a raw status object. These kits propose no stun longer than 0.9 s before shared modifiers. New pulls should share a 0.5 s per-target displacement recovery so a simultaneous hook and pool cannot repeatedly move a helpless hero. This recovery applies to the new pulls and is covered by the expansion regressions. Slow/haste layers keep their own strength and lifetime. Talent and item cooldown reduction retain the shared 50% cap.
 
 Devices must respect early structure fortification, reduced summon damage, tower retaliation, and protected inner towers/cores. Brinehook cannot relocate a tower or river boss; Vela cannot dash through terrain or use an attack-speed buff to skip reload. Solstice cannot reset the stun-chain history, refund fourth-slot abilities, or reverse a completed kill. All bots apply the current tower-risk and shared-vision rules on every difficulty.
 
 ### Implementation map and acceptance criteria
 
-| Existing file | Work required when these designs are implemented |
+| Runtime area | Responsibilities |
 | --- | --- |
 | [data.mjs](data.mjs) | Add four definitions, passives, icon identities, and all 84 mutually exclusive talent choices; keep seven tiers and four slots per hero. |
 | [engine.mjs](engine.mjs), [hero-skills.mjs](hero-skills.mjs) | Add stationary device behavior, traced pulls, Vela's magazine/channel state, Solstice's tracked ward and controlled cooldown refund; reuse damage, ownership, support, and status APIs. |
