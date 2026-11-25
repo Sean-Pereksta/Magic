@@ -5,7 +5,7 @@ const {pathToFileURL}=require('node:url');
 const {spawn}=require('node:child_process');
 const {newProfile,writeJson,readState,inDir}=require('./storage.cjs');
 const {SITE,LOBBY,isLobby,cardScript,onLobby,validInvite,snapshot,pause}=require('./official.cjs');
-const {portFor,startOffline}=require('./offline.cjs');
+const {portFor,startOffline,offlineLaunchUrl}=require('./offline.cjs');
 const {usesLocalHost,hasLocalHostPack,startLocalHost,catGuestInvite,joinGuestInvite}=require('./local-host.cjs');
 const {createServerManager,hasServerManagerDescriptor,hasServerManagerPack,supportsServerManager}=require('./server-manager.cjs');
 const {createArenaReader}=require('./arena-rooms.cjs');
@@ -259,13 +259,14 @@ function start({root,bundled,data,ready,startupFailed}){
     return null;
   }
   async function playWeb(game,p,action,mode='online'){
-    const chosen=action||game.actions.find(a=>a.type!=='single')?.type||game.actions[0].type;
+    const chosen=action||game.actions.find(a=>['lobby','online','live'].includes(a.type))?.type||game.actions[0].type;
     if(!game.actions.some(a=>a.type===chosen))throw Error('The website does not support this action.');
     await open({title:game.title,game,mode,player:p,url:LOBBY,session:session.fromPartition(p.partition),action:chosen,initial:cardScript(game.id,chosen),onProfile:s=>{if(p.username===s.username)profileChangedIfNeeded(p,s);}});
   }
   async function play({id,mode,action,invite}){
     const game=known(id),p=profile();
-    if(focusGame(id,mode)||launching.has(id))return;
+    const requestedAction=game.hotseatRoute ? action || (mode==='offline' ? 'single' : game.actions.find(a=>['lobby','online','live'].includes(a.type))?.type || 'single') : undefined;
+    if(focusGame(id,mode,requestedAction)||launching.has(id))return;
     launching.add(id);
     let server,disconnect;
     const closeLocal=()=>{disconnect?.();server?.close();};
@@ -340,7 +341,7 @@ function start({root,bundled,data,ready,startupFailed}){
         server=await startOffline({...game,offline:packSpec(id)},installedDir(id),undefined,{sync:mode==='save-sync'});
         const origin=new URL(server.url).origin;
         disconnect=configureSaveSession(ses,{gameId:id,origin,sync:mode==='save-sync'});
-        await open({title:mode==='save-sync'?game.title+' · Cloud saves':game.title,game,mode,player:p,url:server.url,session:ses,offline:true,close:closeLocal});
+        await open({title:mode==='save-sync'?game.title+' · Cloud saves':game.title,game,mode,player:p,url:offlineLaunchUrl(game,server.url,action||'single'),session:ses,offline:true,action:requestedAction,close:closeLocal});
       }else if(mode==='host'){
         if(!game.hostRoute)throw Error('This game does not have a Host Lobby action.');
         const url=validInvite(new URL(game.hostRoute,SITE).href);

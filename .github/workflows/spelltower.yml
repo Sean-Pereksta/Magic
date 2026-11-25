@@ -1,0 +1,76 @@
+name: Spell Tower
+
+on:
+  pull_request:
+    paths:
+      - 'game/spelltower.html'
+      - 'game/spelltower/**'
+      - 'lobby/lobby-library.js'
+      - 'desktop-hub/desktop/offline.cjs'
+      - 'desktop-hub/desktop/official.cjs'
+      - 'desktop-hub/desktop/windows.cjs'
+      - 'desktop-hub/content/build-packs.py'
+      - 'desktop-hub/test/spelltower-launch.test.cjs'
+      - '.github/workflows/spelltower.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'game/spelltower.html'
+      - 'game/spelltower/**'
+      - '.github/workflows/spelltower.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spelltower-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  elemental-defense:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /game/spelltower.html
+            /game/spelltower/
+            /game/apes-together-strong.html
+            /lobby/*.html
+            /lobby/*.js
+            /lobby/*.mjs
+            /lobby/tests/solo-launch.test.cjs
+            /lobby/tests/lobby-library.test.cjs
+            /desktop-hub/desktop/
+            /desktop-hub/ui/hub.js
+            /desktop-hub/content/build-packs.py
+            /desktop-hub/content/catalog.json
+            /desktop-hub/content/pack-index.json
+            /desktop-hub/test/spelltower-launch.test.cjs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check spell rules and synchronized sessions
+        run: node --test game/spelltower/tests/*.test.mjs
+      - name: Check lobby and launcher modes
+        run: node --experimental-vm-modules --test lobby/tests/solo-launch.test.cjs lobby/tests/lobby-library.test.cjs desktop-hub/test/spelltower-launch.test.cjs
+      - name: Install browser runtime
+        run: |
+          npm install --prefix "$RUNNER_TEMP/spelltower-browser" --no-save --package-lock=false --ignore-scripts playwright@1.62.1
+          node "$RUNNER_TEMP/spelltower-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Play desktop, touch, hot-seat, online, and offline-pack flows
+        env:
+          NODE_PATH: ${{ runner.temp }}/spelltower-browser/node_modules
+          SPELLTOWER_QA_OUTPUT: ${{ runner.temp }}/spelltower-qa
+        run: node game/spelltower/tests/browser.cjs
+      - name: Keep layout evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spelltower-layout-checks
+          path: ${{ runner.temp }}/spelltower-qa
+          if-no-files-found: ignore
+          retention-days: 7

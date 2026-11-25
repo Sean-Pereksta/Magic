@@ -10,6 +10,7 @@ const apes = registry.find(game => game.key === 'apestogetherstrong');
 const forge = registry.find(game => game.key === 'crowncouncil');
 const turncraft = registry.find(game => game.key === 'turncraft');
 const splinters = registry.find(game => game.key === 'splinters');
+const spelltower = registry.find(game => game.key === 'spelltower');
 
 function harness({username = '', write = () => new Promise(() => {}), rememberedLobby = null} = {}) {
   const saved = new Map(), launches = [], modals = [], warnings = [], lobbyCalls = [];
@@ -136,3 +137,59 @@ test('Splinters has only a solo action and launches without touching a remembere
 });
 
 
+
+
+test('Spell Tower exposes distinct solo, hot-seat and online cooperative actions', () => {
+  assert.deepEqual(Array.from(spelltower.modes), ['single', 'multi']);
+  assert.equal(spelltower.minPlayers, 1);
+  assert.equal(spelltower.maxPlayers, 8);
+  assert.deepEqual(library.getActions(spelltower), [
+    {type:'single', label:'Solo'}, {type:'hotseat', label:'Hot Seat'}, {type:'lobby', label:'Create Lobby'}
+  ]);
+});
+
+for (const action of ['single', 'hotseat']) {
+  for (const username of ['', 'Mage & Friend']) {
+    test(`Spell Tower ${action} starts for ${username || 'guest'} without reusing an online lobby`, async () => {
+      const h = harness({username, rememberedLobby: {id:'old-spell-room', gameType:'spelltower', status:'started'}});
+      await library.runAction(spelltower, action, {playSingle: h.context.playSingle});
+      const mode = action === 'single' ? 'solo' : 'hotseat';
+      const suffix = username ? '&username=Mage%20%26%20Friend' : '';
+      assert.deepEqual(h.launches, [{url:`/game/spelltower.html?mode=${mode}${suffix}`, reason:'single-play'}]);
+      assert.deepEqual(h.lobbyCalls, []);
+      assert.equal(h.saved.get('lastLobby'), 'old-spell-room');
+      assert.equal(h.saved.get('lastGame'), 'spelltower');
+    });
+  }
+}
+
+test('Spell Tower online action opens the existing shared lobby creator', async () => {
+  const calls=[];
+  await library.runAction(spelltower, 'lobby', {
+    openCreateLobby: key=>calls.push(['lobby',key]),
+    playSingle: ()=>calls.push(['local']), joinOnlineGame: ()=>calls.push(['direct'])
+  });
+  assert.deepEqual(calls, [['lobby','spelltower']]);
+});
+
+test('a started Spell Tower room launches the correct online session and encoded player', () => {
+  const launches=[];
+  const context = vm.createContext({
+    username:'Mage & Friend', currentLobbyId:'spell-room',
+    stopCurrentLobbySafetyPolling(){}, getGame:()=>spelltower,
+    SK:{lastGame:'game',lastLobby:'room'}, save(){},
+    launchGameUrl:(url,reason)=>launches.push({url,reason})
+  });
+  const start=core.indexOf('    function redirectStartedGame(');
+  const end=core.indexOf('\n    }',start)+'\n    }'.length;
+  vm.runInContext(core.slice(start,end),context);
+  const data={gameType:'spelltower',status:'started',players:['Mage & Friend','Other Mage']};
+  context.redirectStartedGame('spell-room',data);
+  assert.deepEqual(launches,[{
+    url:'/game/spelltower.html?gameId=spell-room&username=Mage%20%26%20Friend',reason:'lobby-started'
+  }]);
+  context.redirectStartedGame('other-room',data);
+  context.redirectStartedGame('spell-room',{...data,status:'waiting'});
+  context.redirectStartedGame('spell-room',{...data,players:['Other Mage']});
+  assert.equal(launches.length,1,'unstarted rooms, other rooms and nonmembers cannot launch');
+});

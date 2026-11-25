@@ -13,7 +13,7 @@ async function onLobby(wc,js,ms=24000) {
   throw Error('The website could not open that control. Reload or use the Catnmice lobby in this window.');
 }
 function cardScript(id,kind) {
-  if(!/^[a-z0-9_-]+$/i.test(id) || !['single','online','live','lobby','favorite'].includes(kind))throw Error('Unknown game action.');
+  if(!/^[a-z0-9_-]+$/i.test(id) || !['single','hotseat','online','live','lobby','favorite'].includes(kind))throw Error('Unknown game action.');
   const selector='[data-game-key="'+id+'"] '+ (kind==='live'?'[data-live-game]':kind==='favorite'?'.favorite-btn':'[data-game-action="'+kind+'"]');
   return '(()=>{let el=document.querySelector('+JSON.stringify(selector)+');if(el && !el.disabled){el.click();return true}document.querySelector(\'[data-view="singleplayer"]\')?.click();return false})()';
 }

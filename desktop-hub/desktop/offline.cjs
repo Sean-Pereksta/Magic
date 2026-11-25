@@ -55,4 +55,21 @@ async function startOffline(game,root,port=portFor(game.id),{sync=false}={}) {
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});
   return {url:new URL(spec.entry,base).href,close:()=>{server.close();server.closeAllConnections();}};
 }
-module.exports={portFor,serve,startOffline};
+// Local cooperative games share one installed entry but need an explicit mode.
+// Preserve the loopback origin and installed entry; copy only the trusted mode
+// query, so an online lobby ID can never leak into an offline session.
+function offlineLaunchUrl(game, serverUrl, action='single') {
+  if (!game.hotseatRoute) return serverUrl;
+  if (!['single','hotseat'].includes(action) || !game.actions?.some(item=>item.type===action)) {
+    throw Error('Choose Solo or Hot Seat for local play.');
+  }
+  const route = action==='hotseat' ? game.hotseatRoute : game.singleRoute;
+  const target = new URL(serverUrl);
+  if (route) {
+    const selected = new URL(route,'https://catnmice.com');
+    target.search = selected.search;
+    target.hash = selected.hash;
+  }
+  return target.href;
+}
+module.exports={portFor,serve,startOffline,offlineLaunchUrl};

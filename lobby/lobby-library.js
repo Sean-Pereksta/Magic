@@ -55,6 +55,7 @@
     const multi = modes.includes("multi");
     const actions = [];
     if (single) actions.push({ type: "single", label: game.singleLabel || (game.liveLobbyGame ? "Play in Browser" : multi ? "Play Offline" : "Play") });
+    if (single && game.hotseatRoute) actions.push({ type: "hotseat", label: game.hotseatLabel || "Hot Seat" });
     if (game.liveLobbyGame) {
       actions.push({ type: "live", label: "Live Multiplayer", href: "#live-lobbies" });
     } else if (multi) {
@@ -78,6 +79,7 @@
       throw new Error("This game does not support the selected action.");
     }
     if (action === "single") return hooks.playSingle(game, true);
+    if (action === "hotseat") return hooks.playSingle({ ...game, singleRoute: game.hotseatRoute }, true);
     if (action === "live") return hooks.openLiveLobbies(game.liveLobbyGame);
     if (action === "lobby") return hooks.openCreateLobby(game.key);
     return hooks.joinOnlineGame(game, true);
@@ -118,7 +120,7 @@
     ).join("");
     card.innerHTML = `
       <div class="game-art">${cover}${isFlagCapture ? '<span class="fc-art-badge">COOLDOWN TACTICS</span>' : ""}<button type="button" class="favorite-btn ${favorite ? "active" : ""}" title="Favorite" aria-label="Favorite ${escapeHtml(game.title)}" aria-pressed="${favorite}">${favorite ? "★" : "☆"}</button></div>
-      <div class="game-content">${isTurncraft ? '<p class="tc-card-kicker">Build. Command. Conquer.</p>' : ""}<div class="game-name">${escapeHtml(game.title)}</div>${isFlagCapture ? FLAG_FACTIONS : ""}<div class="game-description">${escapeHtml(game.desc)}</div>${isFlagCapture ? '<p class="fc-features">21 troops <span>·</span> formations <span>·</span> living ground</p>' : ""}${isTurncraft ? TURNCRAFT_FACTIONS : ""}<div class="game-meta"><span class="tag">${escapeHtml(game.category)}</span>${modeTags}</div>
+      <div class="game-content">${isTurncraft ? '<p class="tc-card-kicker">Build. Command. Conquer.</p>' : ""}<div class="game-name">${escapeHtml(game.title)}</div>${isFlagCapture ? FLAG_FACTIONS : ""}<div class="game-description">${escapeHtml(game.desc)}</div>${isFlagCapture ? '<p class="fc-features">21 troops <span>·</span> formations <span>·</span> living ground</p>' : ""}${isTurncraft ? TURNCRAFT_FACTIONS : ""}<div class="game-meta"><span class="tag">${escapeHtml(game.category)}</span>${modeTags}${game.hotseatRoute ? '<span class="tag">Hot Seat</span>' : ""}</div>
       <div class="game-bottom"><span class="play-count">🎮 ${Number(gamePlayCounts[game.key]) || 0} plays</span><span class="game-actions">${download}${buttons}${host}${localEdition}</span></div></div>`;
     if (isTurncraft) loadTurncraftCover(card, document);
     card.querySelector(".favorite-btn").addEventListener("click", event => {
