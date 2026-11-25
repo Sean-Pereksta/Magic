@@ -37,9 +37,9 @@ These entries have either explicit flagship/premium placement in the user's brie
 
 All 24 belong above the lower-maturity groups in the complete library. Discover keeps the four flagships most prominent, then the eight premium experiences, then the twelve additional built-out games. A title need not be one of the original four or eight to qualify for the top library tier.
 
-## In Production — 17 games
+## In Production — 18 games
 
-`grass`, `spelltower`, `historyrush`, `matchwars`, `microwars4`, `border`, `rogueworld`, `village`, `warspan`, `balatlesolo`, `stoneyrelic`, `starcraft2`, `goofywizard`, `forgeflight`, `deepsea`, `circuitbound`, `splinters`.
+`grass`, `spelltower`, `historyrush`, `matchwars`, `microwars4`, `border`, `rogueworld`, `village`, `warspan`, `balatlesolo`, `stoneyrelic`, `starcraft2`, `goofywizard`, `forgeflight`, `deepsea`, `circuitbound`, `splinters`, `mobamania`.
 
 Splinters was rebuilt on 2026-11-04 as a single-player 3D card game against three creature opponents. Its registry now uses Cards and Solo, without the incomplete label or a multiplayer-room action. This updates its default tier without changing the curated Best Games collection.
 
@@ -56,9 +56,9 @@ Specific evidence informs the boundary:
 
 Promote any of these after reviewing its actual game loop/content, controls and continuation where relevant, and applying the owner's editorial judgment. Promotion requires only moving/adding the existing key in centralized curation, not changing gameplay definitions.
 
-## Experimental — 22 games
+## Experimental — 21 games
 
-`estate`, `mountain`, `mountonline`, `crownlands`, `rock`, `stockkings`, `dutchblitz`, `zombiezone`, `thegame`, `catmobile`, `flag`, `microwars`, `microwars2`, `swarm`, `mobamania`, `trials`, `cardrealms`, `cardrealmsmulti`, `rogueduel`, `castledefense`, `trumprev`, `balatle`.
+`estate`, `mountain`, `mountonline`, `crownlands`, `rock`, `stockkings`, `dutchblitz`, `zombiezone`, `thegame`, `catmobile`, `flag`, `microwars`, `microwars2`, `swarm`, `trials`, `cardrealms`, `cardrealmsmulti`, `rogueduel`, `castledefense`, `trumprev`, `balatle`.
 
 These entries are explicitly marked `(Incomplete)` in the original registry. The key-based curation system can override that default when the owner intentionally reclassifies a game; it must not infer maturity from an attractive new image. Experimental entries are grouped lower and remain available through expansion/search and their correct solo/room/world/matchmaking actions.
 
@@ -74,6 +74,8 @@ These are intentional utility/learning experiences: PDF reading, authorized radi
 
 ## Coverage and preservation
 
-The recommended partition covers all **68 unique effective registry keys exactly once**: **24 Built Out + 17 In Production + 22 Experimental + 5 Tools**. Primary/promotional placement is independent of gameplay category and supported modes. No solo mode, multiplayer permission, start requirement, ranking, save system, route or analytics behavior changes with a tier.
+The recommended partition covers all **68 unique effective registry keys exactly once**: **24 Built Out + 18 In Production + 21 Experimental + 5 Tools**. Primary/promotional placement is independent of gameplay category and supported modes. No solo mode, multiplayer permission, start requirement, ranking, save system, route or analytics behavior changes with a tier.
 
 Curation is configurable editorial metadata, not a runtime score calculated from file size, tests, play counts, source dates or artwork. New games default lower until intentionally promoted. Future review can move a key without deleting its game, duplicating its definition or breaking persisted favorites/history.
+
+The 2026-11-24 MOBA Mania rebuild replaces its single-lane prototype with a three-lane, 3v3 solo match, five selectable heroes, talent trees, jungle camps, siege beasts, and keyboard/touch controls. Its registry no longer uses the incomplete suffix, so its current default placement is In Production. This change does not add it to the curated Best Games collection.
