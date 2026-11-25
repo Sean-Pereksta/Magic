@@ -1,4 +1,5 @@
 import { WORLD, HEROES } from './data.mjs';
+import { createEffectBudget, resetEffectBudget, drawCombatBurst, drawShieldShell, drawProjectileTrail, drawSpellAccent, isEffectVisible, EFFECT_PALETTES } from './combat-visuals.mjs';
 
 // All artwork is authored here in pixels. No remote textures, fonts or image
 // decoding are needed: the same sprites work in the site and the offline pack.
@@ -652,6 +653,8 @@ export class Renderer {
     this.terrain = buildTerrain();
     this.camera = { x: 0, y: 0, width: 960, height: 540, zoom: 1 };
     this.lastTime = null; this.hasCamera = false; this.width = 1280; this.height = 720;
+    this.motionPreference = typeof globalThis.matchMedia === 'function' ? globalThis.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    this.effectBudget = createEffectBudget(); this.visibleEffects = [];
     this.resize(canvas.clientWidth || 1280, canvas.clientHeight || 720);
   }
   resize(width, height) {
@@ -708,6 +711,9 @@ export class Renderer {
     const shown = u => !game.canSee || game.canSee(team, u);
     const seenPoint = (x, y) => !game.pointVisible || game.pointVisible(team, x, y);
     const c = this.ctx, cam = this.camera, time = game.time || 0;
+    resetEffectBudget(this.effectBudget, this.width, this.motionPreference?.matches || false);
+    const effects = this.visibleEffects; effects.length = 0;
+    for (const e of game.effects || []) if (this.visible(e.x, e.y, (e.r || 80) + 150) && isEffectVisible(game, team, e)) effects.push(e);
     c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1;
     c.fillStyle = '#142c31'; c.fillRect(0, 0, this.canvas.width, this.canvas.height);
     const sx = this.canvas.width / cam.width, sy = this.canvas.height / cam.height;
@@ -717,7 +723,7 @@ export class Renderer {
     this.drawWells(c, time);
     this.drawObjectiveGround(c, game);
     this.drawCombatIndicators(c, game);
-    for (const e of game.effects || []) if (this.visible(e.x, e.y, (e.r || 80) + 150) && seenPoint(e.x, e.y)) this.effect(c, e, time, true);
+    for (const e of effects) this.effect(c, e, time, true);
     const sorted = [];
     for (const o of WORLD.obstacles || []) if (this.visible(o.x, o.y)) sorted.push({ y: o.y, obstacle: o });
     for (const u of game.units || []) if (this.visible(u.x, u.y, 160) && shown(u)) sorted.push({ y: u.y, unit: u });
@@ -731,8 +737,11 @@ export class Renderer {
         tree(c, o, time); c.restore();
       } else this.unit(c, item.unit, game);
     }
-    for (const p of game.projectiles || []) if (this.visible(p.x, p.y, 50) && seenPoint(p.x, p.y)) this.projectile(c, p, time);
-    for (const e of game.effects || []) if (this.visible(e.x, e.y, (e.r || 80) + 150) && seenPoint(e.x, e.y)) this.effect(c, e, time, false);
+    for (const p of game.projectiles || []) if (this.visible(p.x, p.y, 140) && seenPoint(p.x, p.y)) this.projectile(c, p, time);
+    for (const e of effects) if (e.type !== 'combat-burst') this.effect(c, e, time, false);
+    // Fresh impacts win the cosmetic allowance when a crowded fight reaches its
+    // budget. Ambient motes cannot starve the hit that just landed.
+    for (let i = effects.length - 1; i >= 0; i--) if (effects[i].type === 'combat-burst') this.effect(c, effects[i], time, false);
     this.drawFog(c, game);
     this.drawTelegraphs(c, game);
     this.drawAim(c, game, view);
@@ -944,14 +953,10 @@ export class Renderer {
       c.restore();
     }
     const status = u.status || {}, invisible = status.stealth || status.invisible;
+    drawShieldShell(c, u, game.time, width, height, false, this.effectBudget);
     c.save(); if (invisible) c.globalAlpha = 0.5;
     c.drawImage(sprite, Math.round(u.x - width / 2), Math.round(u.y - height + 7), width, height); c.restore();
-    if (u.shield > 0 || status.shield || status.guard) {
-      c.save(); c.globalAlpha = 0.4;
-      ring(c, status.guard ? '#ffc77d' : '#afe7ff', u.x, u.y - 22, width * 0.52, 3);
-      for (let k = 0; k < 3; k++) box(c, '#d6f9ff', u.x - width * 0.43 + k * width * 0.35, u.y - 35 - k * 5, 3, 6);
-      c.restore();
-    }
+    drawShieldShell(c, u, game.time, width, height, true, this.effectBudget);
     if (u.recallIn > 0 || u.recalling || u.recallTime > 0) {
       c.save(); c.globalAlpha = 0.7;
       ring(c, '#9befff', u.x, u.y, 30, 3, true);
@@ -1039,6 +1044,7 @@ export class Renderer {
     }
   }
   projectile(c, p, time) {
+    drawProjectileTrail(c, p, time, this.effectBudget);
     const a = p.angle ?? Math.atan2((p.vy || 0), (p.vx || 1)), color = p.color || TEAM[p.team] || '#e1dc9a';
     const type = String(p.type || 'bolt'), len = /arrow|shot/.test(type) ? 19 : /dragon/.test(type) ? 50 : 12;
     c.save(); c.translate(p.x, p.y); c.rotate(a);
@@ -1066,6 +1072,9 @@ export class Renderer {
     c.restore();
   }
   effect(c, e, time, ground) {
+    if (e.type === 'combat-burst') { drawCombatBurst(c, e, time, ground, this.effectBudget); return; }
+    drawSpellAccent(c, e, time, ground, this.effectBudget);
+    if (e.type === 'flame') return;
     const type = String(e.type || ''), life = e.maxLife ? clamp(e.life / e.maxLife, 0, 1) : 0.65;
     const progress = 1 - life, color = e.color || '#a9dded', radius = e.r || e.radius || 45;
     const isGround = /field|storm|heal|poison|tree|shield|ring|splash|recall|telegraph|frost|quake/.test(type);
@@ -1176,7 +1185,7 @@ export class Renderer {
         const a = k * Math.PI * 2 / n + hash(k, e.x) * 0.5;
         const rr = radius * (0.12 + progress * (0.65 + hash(k, e.y) * 0.35));
         const x = e.x + Math.cos(a) * rr, y = e.y + Math.sin(a) * rr - Math.sin(progress * Math.PI) * 24;
-        box(c, k % 3 ? color : '#fff3b0', x, y, Math.max(2, 7 * life), Math.max(2, /level/.test(type) ? 12 * life : 7 * life));
+        box(c, k % 3 ? color : EFFECT_PALETTES[e.theme]?.light || '#fff3b0', x, y, Math.max(2, 7 * life), Math.max(2, /level/.test(type) ? 12 * life : 7 * life));
       }
       if (/explosion|blink/.test(type) && progress < 0.25) {
         c.globalAlpha = (0.25 - progress) * 2; disc(c, '#fff7c7', e.x, e.y, radius * 0.3);
