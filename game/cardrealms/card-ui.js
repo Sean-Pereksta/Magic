@@ -1,4 +1,4 @@
-/* Shared presentation for Card Realms. Game rules stay in each game's engine. */
+/* Shared presentation for Orbital Rivals. Game rules stay in each game's engine. */
 (function (root) {
   "use strict";
 
@@ -113,7 +113,9 @@
   let inspector = null;
   let backdrop = null;
   let active = null;
+  let dismissedAnchor = null;
   let closeTimer = null;
+  let hoverTimer = null;
   let suppressFocus = false;
   let touchInput = false;
   let listenersInstalled = false;
@@ -123,13 +125,20 @@
     closeTimer = null;
   }
 
+  function clearHoverTimer() {
+    if (hoverTimer !== null) root.clearTimeout(hoverTimer);
+    hoverTimer = null;
+  }
+
   function closeInspector(restoreFocus = false) {
     clearCloseTimer();
+    clearHoverTimer();
     const previous = active;
     active = null;
     if (inspector) inspector.hidden = true;
     if (backdrop) backdrop.hidden = true;
     if (previous) {
+      if (restoreFocus) dismissedAnchor = previous.anchor;
       previous.anchor.removeAttribute("aria-describedby");
       previous.anchor.querySelector(".cr-primary")?.removeAttribute("aria-describedby");
       previous.info.setAttribute("aria-expanded", "false");
@@ -158,12 +167,48 @@
     const width = root.innerWidth || root.document.documentElement.clientWidth;
     const height = root.innerHeight || root.document.documentElement.clientHeight;
     const margin = 10;
-    inspector.style.width = `${Math.min(328, Math.max(0, width - margin * 2))}px`;
-    inspector.style.maxHeight = `${Math.max(0, height - margin * 2)}px`;
-    const panel = inspector.getBoundingClientRect();
     const anchor = active.anchor.getBoundingClientRect();
+    let panelWidth = Math.min(328, Math.max(0, width - margin * 2));
+    let panelHeight = Math.max(0, height - margin * 2);
+    let hoverSide = null;
+    let groupLeft = anchor.left, groupRight = anchor.right;
+    if (!active.pinned) {
+      // Put hover details outside the whole card group, so moving to another
+      // card never requires clicking through its neighbor's inspector.
+      const siblings = active.anchor.parentElement?.children || [];
+      for (const sibling of siblings) {
+        if (!sibling.classList.contains("cr-card")) continue;
+        const rect = sibling.getBoundingClientRect();
+        groupLeft = Math.min(groupLeft, rect.left);
+        groupRight = Math.max(groupRight, rect.right);
+      }
+      const leftSpace = groupLeft - margin * 2;
+      const rightSpace = width - groupRight - margin * 2;
+      if (Math.max(leftSpace, rightSpace) >= 220) {
+        hoverSide = rightSpace >= leftSpace ? "right" : "left";
+        panelWidth = Math.min(panelWidth, Math.max(leftSpace, rightSpace));
+      } else {
+        // Narrow screens have room above or below a card. Bound the panel to
+        // that space and let its details scroll instead of covering the card.
+        const above = anchor.top - margin * 2;
+        const below = height - anchor.bottom - margin * 2;
+        hoverSide = below >= above ? "below" : "above";
+        panelHeight = Math.max(0, Math.max(above, below));
+      }
+    }
+    inspector.style.width = `${panelWidth}px`;
+    inspector.style.maxHeight = `${panelHeight}px`;
+    const panel = inspector.getBoundingClientRect();
     let left, top;
-    if (active.pinned && width <= 600) {
+    if (hoverSide) {
+      if (hoverSide === "left" || hoverSide === "right") {
+        left = hoverSide === "right" ? groupRight + margin : groupLeft - panel.width - margin;
+        top = anchor.top;
+      } else {
+        left = anchor.left + (anchor.width - panel.width) / 2;
+        top = hoverSide === "above" ? anchor.top - panel.height - margin : anchor.bottom + margin;
+      }
+    } else if (active.pinned && width <= 600) {
       left = (width - panel.width) / 2;
       top = height - panel.height - margin;
     } else {
@@ -205,7 +250,10 @@
     inspector.tabIndex = -1;
     inspector.style.position = "fixed";
     inspector.style.overflowY = "auto";
-    inspector.addEventListener("pointerenter", clearCloseTimer);
+    inspector.addEventListener("pointerenter", () => {
+      clearCloseTimer();
+      clearHoverTimer();
+    });
     inspector.addEventListener("pointerleave", scheduleClose);
     inspector.addEventListener("focusin", clearCloseTimer);
     inspector.addEventListener("focusout", scheduleClose);
@@ -223,6 +271,7 @@
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopImmediatePropagation();
+        dismissedAnchor = active.anchor;
         closeInspector(active.pinned);
       } else if (event.key === "Tab" && active.pinned) {
         // The inspector has a single control. Keep keyboard focus in the pinned
@@ -250,8 +299,11 @@
   function openInspector(anchor, card, options, info, pinned = false, returnFocus = info) {
     ensureInspector();
     clearCloseTimer();
+    clearHoverTimer();
+    if (!pinned && dismissedAnchor === anchor) return;
     if (active && active.pinned && !pinned) return;
     if (active && active.anchor === anchor && active.pinned === pinned) return;
+    dismissedAnchor = null;
     closeInspector();
     const context = options.context || "generic";
     const faction = options.factionName || FACTION_NAMES[card.faction] || FACTION_NAMES.n;
@@ -276,7 +328,10 @@
     close.title = "Close card details";
     close.setAttribute("aria-label", "Close card details");
     close.append(artIcon("close"));
-    close.addEventListener("click", () => closeInspector(pinned));
+    close.addEventListener("click", () => {
+      dismissedAnchor = anchor;
+      closeInspector(pinned);
+    });
     header.append(heading, close);
     const art = el("div", "cr-inspector-art");
     art.innerHTML = root.CardRealmsArt.illustration(card);
@@ -424,14 +479,28 @@
     });
     node.addEventListener("pointerenter", event => {
       if (event.pointerType === "touch") return;
-      openInspector(node, card, options, info);
+      clearCloseTimer();
+      clearHoverTimer();
+      // A small intent delay lets the pointer cross neighboring cards on its
+      // way into the inspector without replacing the details being read.
+      hoverTimer = root.setTimeout(() => {
+        hoverTimer = null;
+        openInspector(node, card, options, info);
+      }, 160);
     });
     node.addEventListener("pointerdown", event => { touchInput = event.pointerType === "touch"; }, true);
-    node.addEventListener("pointerleave", scheduleClose);
+    node.addEventListener("pointerleave", () => {
+      clearHoverTimer();
+      if (dismissedAnchor === node) dismissedAnchor = null;
+      scheduleClose();
+    });
     node.addEventListener("focusin", () => {
       if (!suppressFocus && !touchInput) openInspector(node, card, options, info);
     });
-    node.addEventListener("focusout", scheduleClose);
+    node.addEventListener("focusout", event => {
+      if (dismissedAnchor === node && !node.contains(event.relatedTarget)) dismissedAnchor = null;
+      scheduleClose();
+    });
     return node;
   }
 

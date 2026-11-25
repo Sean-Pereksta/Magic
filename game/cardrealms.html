@@ -5,7 +5,7 @@
 
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-  <title>Card Realms — Solo &amp; Gauntlet</title>
+  <title>Orbital Rivals — Solo &amp; Gauntlet</title>
   <style>
   :root{
     /* ===== Core palette ===== */
@@ -444,126 +444,82 @@
     .card{ width:100%; }
   }
 </style>
-  <link rel="stylesheet" href="cardrealms/cards.css?v=20261125a"/>
+  <link rel="stylesheet" href="cardrealms/cards.css?v=20261125b"/>
 </head>
 <body class="cr-game cr-solo">
 <div id="app">
+  <header class="cr-header">
+    <div class="cr-brand-wrap"><span class="cr-brand">Orbital Rivals</span><span class="cr-match-mode" id="modeLine">Solo fleet duel</span></div>
+    <div class="cr-score cr-opponent"><span class="cr-score-name" id="oppTitle">Rival AI</span><span class="cr-score-health"><i data-cr-icon="authority"></i><strong id="enemyLine">50</strong></span></div>
+    <div class="cr-score cr-player"><span class="cr-score-name" id="youTitle">You</span><span class="cr-score-health"><i data-cr-icon="authority"></i><strong id="youLine">50</strong></span></div>
+    <span id="turnBadge" class="cr-turn-badge">Your turn</span>
+    <button type="button" id="crMenuBtn" aria-label="Open fleet menu" aria-haspopup="dialog" title="Fleet menu">☰</button>
+  </header>
 
-  <div class="topbar">
-    <div class="pill">
-      <h3><span>Opponent (AI)</span> <span id="turnBadge" class="sub">—</span></h3>
-      <div class="sub" id="enemyLine">Authority: —</div>
-      <div class="sub" id="enemyPiles">Deck: — • Discard: — • Scrap: —</div>
-      <div class="sub" id="enemyOutpostHint">Outposts: —</div>
-      <div class="hint" id="aiPowerLine">AI Power: —</div>
+  <main class="cr-table" aria-label="Fleet battle board">
+    <section class="cr-zone cr-enemy" aria-labelledby="cr-enemy-title">
+      <div class="sectionTitle"><span id="cr-enemy-title">Rival bases</span><span data-zone-count="enemyBases">0</span></div>
+      <div class="cards" id="enemyBases"></div>
+    </section>
+    <section class="cr-zone cr-market" aria-labelledby="cr-market-title">
+      <div class="sectionTitle"><span id="cr-market-title">Market</span><span class="cr-zone-hint">Click to buy</span><span data-zone-count="tradeRow">5</span></div>
+      <div class="cards" id="tradeRow"></div>
+    </section>
+    <section class="cr-zone cr-bases" aria-labelledby="cr-bases-title">
+      <div class="sectionTitle"><span id="cr-bases-title">Your bases</span><span data-zone-count="myBases">0</span></div>
+      <div class="cards" id="myBases"></div>
+    </section>
+    <section class="cr-zone cr-play" aria-labelledby="cr-play-title">
+      <div class="sectionTitle"><span id="cr-play-title">Deployed ships</span><span data-zone-count="inPlay">0</span></div>
+      <div class="cards" id="inPlay"></div>
+    </section>
+    <section class="cr-zone cr-hand" aria-labelledby="cr-hand-title">
+      <div class="sectionTitle"><span id="cr-hand-title">Your hand</span><span class="cr-zone-hint">Click to play · i for rules</span><span data-zone-count="hand">5</span></div>
+      <div class="cards" id="hand"></div>
+    </section>
+  </main>
+
+  <footer class="cr-dock">
+    <div class="cr-resources">
+      <div class="cr-resource cr-trade" title="Trade available to buy cards"><i data-cr-icon="trade"></i><span>Trade</span><strong id="tradeVal">0</strong></div>
+      <div class="cr-resource cr-combat" title="Combat available to attack"><i data-cr-icon="combat"></i><span>Combat</span><strong id="combatVal">0</strong></div>
     </div>
-
-    <div class="pill cr-intro">
-      <h3>
-        <span class="cr-brand">Card Realms</span>
-        <span class="sub" id="modeLine">Mode: —</span>
-      </h3>
-      <div class="cr-legend" aria-label="Card icon legend">
-        <span><i data-cr-icon="trade"></i>Trade</span>
-        <span><i data-cr-icon="combat"></i>Combat</span>
-        <span><i data-cr-icon="authority"></i>Health</span>
-        <span><i data-cr-icon="defense"></i>Defense</span>
-        <span><i data-cr-icon="draw"></i>Draw</span>
-      </div>
-      <details class="cr-help">
-        <summary>How to play &amp; read cards</summary>
-        <p>Play cards to gain trade and combat. Spend trade to buy cards; spend combat to attack bases or your opponent's health (authority). Outposts protect their owner's health until destroyed.</p>
-        <p><b>Ally</b> bonuses trigger with 2+ cards of the same faction. <b>Scrap</b> permanently removes that card for its bonus. Base effects repeat each turn.</p>
-        <p>Hover or focus a card for its rules. Tap its <b>i</b> button to inspect safely. Press <b>I</b> to keep details open, <b>Esc</b> to close, and <b>Enter</b> or <b>Space</b> to use a focused card.</p>
-      </details>
-      <div class="hint" id="gauntletLine">—</div>
+    <div class="cr-actions">
+      <button class="btn" id="playAllBtn">Play all</button>
+      <button class="btn" id="buyExplorerBtn" title="Buy an Explorer for 2 trade">Explorer <span>2</span></button>
+      <button class="btn cr-attack" id="attackAuthorityBtn" title="Spend combat to attack opponent health">Attack</button>
+      <button class="btn cr-end-turn" id="endTurnBtn">End turn</button>
     </div>
-
-    <div class="pill">
-      <h3><span>You</span> <span class="sub" id="phaseLine">—</span></h3>
-      <div class="sub" id="youLine">Authority: —</div>
-      <div class="sub" id="youPiles">Deck: — • Discard: — • Scrap: —</div>
-      <div class="miniBtns" style="margin-top:8px;">
-        <button type="button" class="miniBtn" id="viewDeckBtn">Deck</button>
-        <button type="button" class="miniBtn" id="viewDiscardBtn">Discard</button>
-        <button type="button" class="miniBtn" id="viewScrapBtn">Scrap</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="panel cr-controls">
-    <div class="hud">
-      <div class="statline">
-        <div class="chip cr-resource cr-trade"><i data-cr-icon="trade"></i> Trade: <strong id="tradeVal">0</strong></div>
-        <div class="chip cr-resource cr-combat"><i data-cr-icon="combat"></i> Combat: <strong id="combatVal">0</strong></div>
-        <div class="chip cr-resource cr-health"><i data-cr-icon="authority"></i> Health: <strong id="myAuthVal">50</strong></div>
-        <label class="toggle" title="When ON, your turn will automatically play all cards (bases first).">
-          <input type="checkbox" id="autoplayToggle">
-          Autoplay Ships
-        </label>
-      </div>
-      <div class="statline">
-        <button class="btn" id="playAllBtn">Play All</button>
-        <button class="btn warn" id="buyExplorerBtn">Buy Explorer (2)</button>
-        <button class="btn bad" id="attackAuthorityBtn">Attack Opponent</button>
-        <button class="btn good" id="endTurnBtn">End Turn</button>
-        <button class="btn bad" id="newDuelBtn">New Duel</button>
-        <button class="btn warn" id="startGauntletBtn">Start Gauntlet</button>
-        <button class="btn" id="fullscreenBtn">⛶ Full Screen</button>
-      </div>
-    </div>
-    <div class="hint" id="statusLine">—</div>
-  </div>
-
-  <div class="row">
-    <div class="center">
-      <div class="panel cr-zone cr-market">
-        <div class="sectionTitle">
-          <span>Trade Row</span>
-          <span class="sub" id="tradeDeckLine">Trade Deck: —</span>
-        </div>
-        <div class="cards" id="tradeRow"></div>
-        <div class="hint">Click to buy · Goes to discard · Hover or tap i for rules</div>
-      </div>
-
-      <div class="panel cr-zone cr-enemy">
-        <div class="sectionTitle">Enemy Bases</div>
-        <div class="cards" id="enemyBases"></div>
-        <div class="hint">Click a base to attack · Shield = defense remaining</div>
-      </div>
-
-      <div class="panel cr-zone cr-bases">
-        <div class="sectionTitle">
-          <span>Your Bases</span>
-          <span class="sub">Effects repeat each turn</span>
-        </div>
-        <div class="cards" id="myBases"></div>
-      </div>
-
-      <div class="panel cr-zone cr-hand">
-        <div class="sectionTitle">
-          <span>Your Hand</span>
-          <span class="sub">Click to play · Tap i to inspect</span>
-        </div>
-        <div class="handWrap" id="hand"></div>
-      </div>
-
-      <div class="panel cr-zone cr-play">
-        <div class="sectionTitle">
-          <span>Played This Turn</span>
-          <span class="sub">Scrap is optional &amp; permanent</span>
-        </div>
-        <div class="cards" id="inPlay"></div>
-      </div>
-    </div>
-
-    <details class="side cr-log">
-      <summary>Battle log <span class="sub">Recent actions</span></summary>
-      <div id="log"></div>
-    </details>
-  </div>
-
+    <div class="cr-status" id="statusLine" role="status">Play cards, build your fleet, and defeat your rival.</div>
+  </footer>
 </div>
+
+<dialog id="cr-menu" aria-labelledby="cr-menu-title">
+  <div class="cr-menu-heading"><h2 id="cr-menu-title">Orbital Rivals</h2><button type="button" data-close-menu aria-label="Close fleet menu">×</button></div>
+  <p class="cr-menu-subtitle">Your fleet console</p>
+  <div class="cr-menu-actions">
+    <button class="btn" id="viewDeckBtn" data-board-action>View deck</button>
+    <button class="btn" id="viewDiscardBtn" data-board-action>Discard pile</button>
+    <button class="btn" id="viewScrapBtn" data-board-action>Scrapped cards</button>
+    <button class="btn" id="newDuelBtn" data-board-action>New Duel</button>
+    <button class="btn" id="startGauntletBtn" data-board-action>Gauntlet</button>
+    <button class="btn" id="fullscreenBtn" data-board-action>Full Screen</button>
+  </div>
+  <label class="toggle"><input type="checkbox" id="autoplayToggle">Automatically play cards at the start of your turn</label>
+  <div class="cr-menu-info">
+    <span>Health: <strong id="myAuthVal">50</strong></span><span id="phaseLine">Main phase</span>
+    <p id="youPiles">Deck: — · Discard: — · Scrap: —</p>
+    <p id="enemyPiles">Rival deck: —</p><p id="enemyOutpostHint">Outposts: —</p><p id="tradeDeckLine">Market deck: —</p>
+    <p id="gauntletLine">Duel</p><p id="aiPowerLine">AI Power: 1</p>
+  </div>
+  <details class="cr-help"><summary>How to play &amp; read cards</summary>
+    <div class="cr-legend"><span><i data-cr-icon="trade"></i>Trade</span><span><i data-cr-icon="combat"></i>Combat</span><span><i data-cr-icon="authority"></i>Health</span><span><i data-cr-icon="defense"></i>Defense</span><span><i data-cr-icon="draw"></i>Draw</span><span><i data-cr-icon="ally"></i>Ally</span><span><i data-cr-icon="scrap"></i>Scrap</span></div>
+    <p>Play cards to gain trade and combat. Buy new cards with trade, then spend combat to attack bases or your rival's health. Destroy their outposts before attacking their health.</p>
+    <p>Ally bonuses trigger with two cards of the same faction. Scrapping a card removes it permanently for its bonus. Bases stay in play and repeat their effects each turn.</p>
+    <p>Hover or focus any card for its artwork and rules. Tap i or press I to pin details. Escape closes them. Enter or Space plays, buys, or attacks with the focused card.</p>
+  </details>
+  <details class="cr-log"><summary>Battle log</summary><div id="log"></div></details>
+</dialog>
 
 <!-- Modal -->
 <div id="modal">
@@ -578,12 +534,13 @@
   </div>
 </div>
 
-<script src="cardrealms/card-art.js?v=20261125a"></script>
-<script src="cardrealms/card-ui.js?v=20261125a"></script>
+<script src="cardrealms/card-art.js?v=20261125b"></script>
+<script src="cardrealms/card-ui.js?v=20261125b"></script>
+<script src="cardrealms/board-layout.js?v=20261125b"></script>
 <script>
 /* ============================================================
-   STAR REALMS (UnoffICIAL) — SINGLE FILE, FULLY PLAYABLE
-   ✅ Scrollable screen (no overflow lock)
+   ORBITAL RIVALS — SOLO & GAUNTLET
+   ✅ Compact viewport-sized board with inspectable cards
    ✅ Solo mode vs AI (default)
    ✅ Gauntlet: escalating AI power across stages
    ✅ Deck viewer (Deck/Discard/Scrap)
@@ -1591,16 +1548,7 @@ function resetPlayerPiles(pl, deckKeys){
 }
 
 function announceFactions(){
-  const list = game.activeFactions.map(k=>`${FACTIONS[k].icon} ${FACTIONS[k].name}`).join("\n");
   log(`Factions in this run: ${game.activeFactions.map(k=>FACTIONS[k].name).join(", ")}.`);
-  showMessageModal(
-    "Factions in this run",
-    `${list}\n\n⚙️ Neutral cards are always included.`,
-    "Begin",
-    "Close",
-    ()=>closeModal(),
-    ()=>closeModal()
-  );
 }
 
 function resetOpponentForStage(stage){
@@ -2643,12 +2591,13 @@ function renderAll(){
   els.combatVal.textContent = me.combat;
   els.myAuthVal.textContent = me.authority;
 
-  els.turnBadge.textContent = game.current===0 ? "Your turn" : "AI turn";
+  els.turnBadge.textContent = game.current===0 ? "Your turn" : "Rival turn";
+  OrbitalBoard.setTurn(game.current===0 && !game.gauntlet.cleared);
   els.phaseLine.textContent = game.current===0 ? "Main phase" : "Waiting…";
 
   // Mode lines
-  const facIcons = (game.activeFactions||[]).map(k=>FACTIONS[k].icon).join(" ");
-  els.modeLine.textContent = `Mode: ${game.mode==="gauntlet" ? "Gauntlet" : "Duel (Solo AI)"} • Factions: ${facIcons}`;
+  els.modeLine.textContent = game.mode==="gauntlet" ? `Gauntlet · stage ${game.gauntlet.stage}` : "Solo fleet duel";
+  els.modeLine.title = `Factions: ${(game.activeFactions||[]).map(k=>FACTIONS[k].name).join(", ")}`;
   if(game.mode==="gauntlet"){
     els.gauntletLine.textContent = `Stage ${game.gauntlet.stage}/${game.gauntlet.maxStage} — AI ramps each stage.`;
   }else{
@@ -2657,12 +2606,12 @@ function renderAll(){
   els.aiPowerLine.textContent = `AI Power: ${game.mode==="gauntlet" ? game.gauntlet.aiPower : 1}`;
 
   // Enemy info
-  els.enemyLine.textContent = `Authority: ${op.authority}`;
+  els.enemyLine.textContent = op.authority;
   els.enemyPiles.textContent = `Deck: ${op.deck.length} • Discard: ${op.discard.length} • Scrap: ${op.scrap.length}`;
   els.enemyOutpostHint.textContent = `Outposts: ${op.bases.filter(b=>b.outpost).length}`;
 
   // You info
-  els.youLine.textContent = `Authority: ${me.authority} • Trade: ${me.trade} • Combat: ${me.combat}`;
+  els.youLine.textContent = me.authority;
   els.youPiles.textContent = `Deck: ${me.deck.length} • Discard: ${me.discard.length} • Scrap: ${me.scrap.length}`;
 
   els.tradeDeckLine.textContent = `Trade Deck: ${game.tradeDeck.length}`;

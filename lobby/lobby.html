@@ -17,6 +17,11 @@
         if(!response.ok)throw new Error(`Could not load Game Hub core (${response.status}).`);
         let html=await response.text();
         const gamesMarker='const GAMES = [';
+        const orbitalRivalsArtwork="/lobby/assets/game-tiles/orbital-rivals.webp";
+        const orbitalRivalsEditions={
+          cardrealms:{title:"Orbital Rivals",desc:"Build a painted starship fleet, chain faction abilities, and challenge a rival AI or the solo Gauntlet.",imagePath:orbitalRivalsArtwork},
+          cardrealmsmulti:{title:"Orbital Rivals — Online",desc:"Duel another captain in a two-player fleet deckbuilder with illustrated ships and a compact tactical board.",imagePath:orbitalRivalsArtwork}
+        };
         const catEdition={title:"Cat & Mouse",hostRoute:"/game/catandmouse/edition/?host=1",localEditionRoute:"/game/catandmouse/edition/download.html"};
         const truthGames=[
           {key:"warofthegoldhouses",title:"Red Rising: War of the Gold Houses",emoji:"⚔️",imagePath:"/lobby/assets/game-tiles/war-of-the-gold-houses-v2.webp",desc:"Lead a Gold House across all eight planets and three moons. Command squads in live battles, build around each world's economy, and earn larger rewards by controlling the Core or Outer Rim.",route:"https://sean-pereksta.github.io/Truth/games/war-of-the-gold-houses/",category:"Strategy",modes:["single"],featured:false},
@@ -69,6 +74,16 @@
         }
         html=html.replace(/const GAMES = \[([\s\S]*?)\n\s*\];/,gamesBlock=>{
           return gamesBlock.replace(/\{key:"([^"]+)"[^\n]*\}/g,(entry,key)=>{
+            // Keep existing routes, matchmaking IDs, and saved favorites while
+            // applying the new fleet identity before the library draws tiles.
+            const edition=orbitalRivalsEditions[key];
+            if(edition){
+              for(const [field,value] of Object.entries(edition)){
+                const property=new RegExp(`${field}:"[^"]*"`);
+                const replacement=`${field}:${JSON.stringify(value)}`;
+                entry=property.test(entry)?entry.replace(property,replacement):entry.replace(/\}$/,`,${replacement}}`);
+              }
+            }
             const shouldFeature=featuredGameKeys.has(key);
             if(/featured:(?:true|false)/.test(entry)){
               return entry.replace(/featured:(?:true|false)/,`featured:${shouldFeature}`);

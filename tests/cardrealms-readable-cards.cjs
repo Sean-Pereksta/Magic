@@ -24,7 +24,7 @@ globalThis.__cardRealmsTest = {
     state = initMatchState({seatUid0:uid, seatName0:'Test', seatUid1:'test-opponent', seatName1:'Opponent'});
     state.currentSeat = 0; state.ended = false; actionsRef = {path:'test-actions'};
     const me = state.players[0];
-    me.trade = 10; me.combat = 4; me.hand = ['scout','viper','explorer'].map(k=>mkInst(state,k));
+    me.trade = 10; me.combat = 4; me.hand = ['scout','viper','explorer','tf_courier','se_infiltrator'].map(k=>mkInst(state,k));
     me.bases = [mkInst(state,'relay')]; me.bases[0].curDefense = 2;
     me.inPlay = []; me.discard = []; me.scrap = [];
     state.players[1].bases = [mkInst(state,'tf_sanctuary')];
@@ -64,10 +64,15 @@ function serve(req, res) {
     let data = fs.readFileSync(filename);
     if (pathname === '/game/cardrealmsmulti.html') {
       const html = data.toString();
-      const end = html.lastIndexOf('</script>');
-      data = Buffer.from(html.slice(0, end) + multiplayerHooks + html.slice(end));
+      let injected = false;
+      data = Buffer.from(html.replace(/<script([^>]*)>([\s\S]*?)<\/script>/g, (script, attributes, body) => {
+        if (!attributes.includes('module') || !body.includes('function renderCardDiv(inst')) return script;
+        injected = true;
+        return `<script${attributes}>${body}${multiplayerHooks}</script>`;
+      }));
+      if (!injected) throw new Error('Could not locate the multiplayer engine module for the test fixture');
     }
-    const type = ({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.svg':'image/svg+xml'})[path.extname(filename)] || 'application/octet-stream';
+    const type = ({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.webp':'image/webp','.png':'image/png'})[path.extname(filename)] || 'application/octet-stream';
     res.writeHead(200, {'Content-Type':type, 'Cache-Control':'no-store'}).end(data);
   } catch { res.writeHead(404).end('Not found'); }
 }
@@ -107,7 +112,7 @@ async function resetSolo(page) {
     game.settings.autoplay = false;
     const me = game.players[0];
     me.trade = 10; me.combat = 4;
-    me.hand = ['scout','viper','explorer'].map(makeCardInstance);
+    me.hand = ['scout','viper','explorer','tf_courier','se_infiltrator'].map(makeCardInstance);
     me.deck = ['scout','viper','scout'].map(makeCardInstance);
     me.bases = [makeCardInstance('relay')]; me.bases[0].curDefense = 2;
     game.players[1].bases = [makeCardInstance('tf_sanctuary')];
@@ -118,7 +123,7 @@ async function resetSolo(page) {
 
 async function soloSnapshot(page) {
   return page.evaluate(() => ({
-    trade:game.players[0].trade, combat:game.players[0].combat,
+    current:game.current, trade:game.players[0].trade, combat:game.players[0].combat,
     hand:game.players[0].hand.map(c=>c.uid),
     discard:game.players[0].discard.map(c=>c.uid),
     inPlay:game.players[0].inPlay.map(c=>c.uid),
@@ -137,16 +142,140 @@ async function closeInspector(page) {
   await page.locator('#cr-inspector').waitFor({state:'hidden'});
 }
 
+async function settleLayout(page) {
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+}
+
+async function activateCard(card, touch = false) {
+  const primary = card.locator('.cr-primary');
+  const box = await primary.boundingBox();
+  assert(box && box.width > 0 && box.height > 0, 'card has a visible primary control');
+  const position = {x:box.width / 2, y:Math.min(35, box.height * .28)};
+  if (await primary.getAttribute('aria-disabled') === 'true') {
+    // Playwright deliberately refuses locator clicks on aria-disabled controls.
+    // Use actual pointer input to verify the game's guard still rejects them,
+    // while checking that no overlay makes this a click on the wrong target.
+    const point = {x:box.x + position.x, y:box.y + position.y};
+    assert(await primary.evaluate((node,point)=>node.contains(document.elementFromPoint(point.x,point.y)),point),'disabled card action is unobstructed');
+    if (touch) await primary.page().touchscreen.tap(point.x,point.y);
+    else await primary.page().mouse.click(point.x,point.y);
+  } else if (touch) await primary.tap({position});
+  else await primary.click({position});
+}
+
 async function screenshot(page, name) {
   if (!process.env.CARDREALMS_SCREENSHOTS) return;
   fs.mkdirSync(process.env.CARDREALMS_SCREENSHOTS, {recursive:true});
   await page.screenshot({path:path.join(process.env.CARDREALMS_SCREENSHOTS, name + '.png'), fullPage:true});
 }
 
+async function boardFitSnapshot(page) {
+  return page.evaluate(() => {
+    const rectangle = node => {
+      if (!node) return null;
+      const {x,y,width,height,right,bottom} = node.getBoundingClientRect();
+      return {x,y,width,height,right,bottom};
+    };
+    const areas = ['enemyBases','tradeRow','myBases','hand','inPlay'].map(id => {
+      const node = document.getElementById(id);
+      return {id,rect:rectangle(node),zone:rectangle(node.closest('.cr-zone')),scrollWidth:node.scrollWidth,clientWidth:node.clientWidth,
+        cards:[...node.querySelectorAll('.cr-card')].map(card => ({
+          key:card.dataset.cardKey,rect:rectangle(card),name:rectangle(card.querySelector('.cr-name')),
+          art:rectangle(card.querySelector('.cr-art')),effects:rectangle(card.querySelector('.cr-effects')),
+          stats:[...card.querySelectorAll('.cr-effects .cr-stat')].map(rectangle),scrap:rectangle(card.querySelector('.cr-scrap'))
+        }))};
+    });
+    return {width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,
+      scrollHeight:document.documentElement.scrollHeight,areas,
+      controls:['playAllBtn','buyExplorerBtn','attackAuthorityBtn','endTurnBtn'].map(id => {
+        const node=document.getElementById(id), rect=rectangle(node);
+        return {id,rect,uncovered:node.contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2))};
+      })};
+  });
+}
+
+function assertFitsBoard(snapshot, {allCards = true} = {}) {
+  const within = rect => rect.width > 0 && rect.height > 0 && rect.x >= -1 && rect.y >= -1 && rect.right <= snapshot.width + 1 && rect.bottom <= snapshot.height + 1;
+  const contained = (inner,outer) => inner && inner.width > 0 && inner.height > 0 && inner.x >= outer.x - 1 && inner.y >= outer.y - 1 && inner.right <= outer.right + 1 && inner.bottom <= outer.bottom + 1;
+  assert(snapshot.scrollWidth <= snapshot.width + 1, JSON.stringify(snapshot));
+  assert(snapshot.scrollHeight <= snapshot.height + 1, JSON.stringify(snapshot));
+  for (const area of snapshot.areas) {
+    assert(within(area.zone), `${area.id} zone fits viewport: ${JSON.stringify(area)}`);
+    assert(within(area.rect), `${area.id} card area fits viewport: ${JSON.stringify(area)}`);
+    for (const card of area.cards) {
+      const detail=`${area.id}/${card.key}: ${JSON.stringify(card)}`;
+      assert(card.art && card.art.height >= 20, `actual card artwork retains visible height: ${detail}`);
+      assert(contained(card.name,card.rect), `card name stays inside its face: ${detail}`);
+      assert(contained(card.effects,card.rect), `primary actions and health stay inside the card face: ${detail}`);
+      assert(card.effects.y >= card.name.bottom - 1, `primary actions do not overlap the card name: ${detail}`);
+      for (const stat of card.stats) assert(contained(stat,card.rect), `each primary icon and value stays visible: ${detail}`);
+      if (card.scrap) {
+        assert(contained(card.scrap,card.rect), `Scrap control stays inside the card face: ${detail}`);
+        assert(card.scrap.y >= card.name.bottom - 1 && card.scrap.y >= card.effects.bottom - 1, `Scrap control does not overlap the name or primary effects: ${detail}`);
+      }
+    }
+    if (allCards) {
+      for (const card of area.cards) {
+        assert(within(card.rect), `${area.id}/${card.key} is on screen: ${JSON.stringify(card)}`);
+        assert(card.rect.x >= area.rect.x - 1 && card.rect.y >= area.rect.y - 1 && card.rect.right <= area.rect.right + 1 && card.rect.bottom <= area.rect.bottom + 1,
+          `${area.id}/${card.key} is fully visible within its own area: ${JSON.stringify({card,area:area.rect})}`);
+      }
+      assert(area.scrollWidth <= area.clientWidth + 1, `${area.id} does not hide cards beyond a horizontal scroller`);
+    }
+  }
+  for (const control of snapshot.controls) {
+    assert(within(control.rect), `${control.id} remains fully visible: ${JSON.stringify(control)}`);
+    assert(control.uncovered, `${control.id} is not covered by another board area`);
+  }
+}
+
+async function viewportChecks(browser, base) {
+  const sizes = [[1366,768],[1280,720],[390,844],[375,667],[844,390]];
+  for (const [width,height] of sizes) {
+    const {context,page,errors} = await pageFor(browser, base, {viewport:{width,height},isMobile:width<900,hasTouch:width<900});
+    await page.goto(base + '/game/cardrealms.html');
+    await resetSolo(page);
+    await page.evaluate(() => {
+      game.players[0].inPlay = ['explorer','tf_courier','viper'].map(makeCardInstance);
+      game.players[0].bases.push(makeCardInstance('sd_yard'));
+      game.players[1].bases.push(makeCardInstance('vs_shroud'));
+      renderAll();
+    });
+    await settleLayout(page);
+    await check(`${width}×${height} shows the full board, five market cards, and five hand cards together`, async () => {
+      const snapshot = await boardFitSnapshot(page);
+      await screenshot(page, `orbital-rivals-${width}x${height}`);
+      assertFitsBoard(snapshot);
+      assert.equal(snapshot.areas.find(a=>a.id==='tradeRow').cards.length,5);
+      assert.equal(snapshot.areas.find(a=>a.id==='hand').cards.length,5);
+      const marketCards = snapshot.areas.find(a=>a.id==='tradeRow').cards;
+      assert(marketCards.every(card=>card.rect.width <= (width < 600 ? 80 : 110)),JSON.stringify(marketCards));
+      assert((await page.title()).includes('Orbital Rivals'));
+    });
+    if (width === 390 || width === 1280) {
+      await check(`${width}×${height} contains a ten-card hand without pushing turn controls off screen`, async () => {
+        await page.evaluate(() => {
+          game.players[0].hand = Array.from({length:10},(_,i)=>makeCardInstance(['scout','viper','explorer','tf_courier','se_infiltrator'][i%5]));
+          renderAll();
+        });
+        await settleLayout(page);
+        const snapshot=await boardFitSnapshot(page);
+        assertFitsBoard(snapshot,{allCards:false});
+        const hand=snapshot.areas.find(area=>area.id==='hand');
+        assert.equal(hand.cards.length,10);
+        assert(hand.scrollWidth<=hand.clientWidth+1,'a large hand remains within its board column');
+      });
+    }
+    assert.deepEqual(errors,[],`page errors at ${width}×${height}`);
+    await context.close();
+  }
+}
+
 async function desktopChecks(browser, base) {
-  const {context,page,errors} = await pageFor(browser, base, {viewport:{width:1440,height:1000}});
+  const {context,page,errors} = await pageFor(browser, base, {viewport:{width:1366,height:768}});
   await page.goto(base + '/game/cardrealms.html');
   await resetSolo(page);
+  await settleLayout(page);
 
   await check('desktop cards stay compact and retain unique artwork', async () => {
     const sizes = await page.locator('#tradeRow .cr-card').evaluateAll(cards => cards.map(card => {
@@ -154,8 +283,26 @@ async function desktopChecks(browser, base) {
       return {width:rect.width,height:rect.height,svg:!!card.querySelector('svg')};
     }));
     assert.equal(sizes.length, 5);
-    assert(sizes.every(s=>s.width<=170 && s.width>=100 && s.height<=260 && s.svg), JSON.stringify(sizes));
+    assert(sizes.every(s=>s.width<=110 && s.width>=54 && s.height<=165 && s.svg), JSON.stringify(sizes));
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  });
+
+  await check('card faces use a successfully decoded painted artwork asset', async () => {
+    const artwork = await page.evaluate(async () => {
+      const nodes = [...document.querySelectorAll('#tradeRow .cr-painted-art')];
+      return Promise.all(nodes.map(async node => {
+        const css = getComputedStyle(node);
+        const source = node.currentSrc || node.src || node.querySelector('image')?.getAttribute('href') || css.backgroundImage.match(/url\(["']?([^"')]+)["']?\)/)?.[1];
+        if (!source) return {source:null};
+        const image = new Image();
+        image.src = source;
+        await image.decode();
+        return {source,width:image.naturalWidth,height:image.naturalHeight,position:node.getAttribute('viewBox') || css.backgroundPosition};
+      }));
+    });
+    assert.equal(artwork.length,5,'every market card has painted artwork');
+    assert(artwork.every(art=>art.width>=512 && art.height>=512 && !art.source.startsWith('data:image/svg')),JSON.stringify(artwork));
+    assert(new Set(artwork.map(art=>`${art.source}:${art.position}`)).size>1,'different factions use different artwork cells');
   });
 
   await check('card actions and inspection controls have separate native button semantics', async () => {
@@ -212,7 +359,7 @@ async function desktopChecks(browser, base) {
 
   await check('clicking a playable market card still purchases exactly once', async () => {
     const before = await soloSnapshot(page);
-    await page.locator('#tradeRow [data-card-key="freighter"]').click({position:{x:55,y:65}});
+    await activateCard(page.locator('#tradeRow [data-card-key="freighter"]'));
     const after = await soloSnapshot(page);
     assert.equal(after.trade, before.trade - 3);
     assert.equal(after.discard.length, before.discard.length + 1);
@@ -240,7 +387,7 @@ async function desktopChecks(browser, base) {
     await visibleInspector(page);
     assert.deepEqual(await soloSnapshot(page), before);
     await closeInspector(page);
-    await card.click({position:{x:55,y:65}});
+    await activateCard(card);
     assert.deepEqual(await soloSnapshot(page), before);
     await card.locator('.cr-primary').focus();
     await page.keyboard.press('Enter');
@@ -269,7 +416,7 @@ async function desktopChecks(browser, base) {
         .then(picked=>{globalThis.__selectionDone=true;globalThis.__selectionPicked=picked?.map(c=>c.key);});
     });
     const choose = page.locator('#modalCards [data-card-key="scout"]');
-    await choose.click({position:{x:55,y:65}});
+    await activateCard(choose);
     assert.equal(await page.locator('#modalConfirm').isDisabled(), false);
     await choose.locator('.cr-info').click();
     await visibleInspector(page);
@@ -299,6 +446,20 @@ async function desktopChecks(browser, base) {
     await page.locator('#modalConfirm').click();
   });
 
+  await check('the compact menu opens pile details without leaving a blocking dialog', async () => {
+    await resetSolo(page);
+    await page.locator('#crMenuBtn').click();
+    assert.equal(await page.locator('#cr-menu').evaluate(menu=>menu.open),true);
+    await page.locator('#viewDeckBtn').click();
+    assert.equal(await page.locator('#cr-menu').evaluate(menu=>menu.open),false);
+    assert.equal(await page.locator('#modal').isVisible(),true);
+    await page.locator('#modalCards .cr-info').first().click();
+    await visibleInspector(page);
+    await closeInspector(page);
+    await page.locator('#modalConfirm').click();
+    assert.equal(await page.locator('#modal').isVisible(),false);
+  });
+
   await resetSolo(page);
   await screenshot(page, 'cardrealms-desktop');
   assert.deepEqual(errors, [], 'solo page errors');
@@ -312,7 +473,7 @@ async function touchChecks(browser, base) {
   await check('390px touch layout fits the viewport and keeps inspection buttons tappable', async () => {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     const rect = await page.locator('#tradeRow .cr-info').first().boundingBox();
-    assert(rect && rect.width>=32 && rect.height>=32, JSON.stringify(rect));
+    assert(rect && rect.width>=24 && rect.height>=24, JSON.stringify(rect));
     const before=await soloSnapshot(page);
     await page.locator('#tradeRow [data-card-key="vs_shroud"] .cr-info').tap();
     const inspector=await visibleInspector(page);
@@ -324,7 +485,7 @@ async function touchChecks(browser, base) {
   });
   await check('a direct touch on a hand card still plays it', async () => {
     const before=await soloSnapshot(page);
-    await page.locator('#hand [data-card-key="scout"]').tap({position:{x:55,y:65}});
+    await activateCard(page.locator('#hand [data-card-key="scout"]'), true);
     await page.waitForFunction(() => !game.busy);
     assert.equal((await soloSnapshot(page)).hand.length,before.hand.length-1);
   });
@@ -334,7 +495,7 @@ async function touchChecks(browser, base) {
 }
 
 async function multiplayerChecks(browser, base) {
-  const {context,page,errors}=await pageFor(browser,base,{viewport:{width:1280,height:900}});
+  const {context,page,errors}=await pageFor(browser,base,{viewport:{width:1280,height:720}});
   await page.goto(base + '/game/cardrealmsmulti.html');
   await page.waitForFunction(() => !!globalThis.__cardRealmsTest);
   await page.evaluate(() => __cardRealmsTest.reset());
@@ -351,7 +512,7 @@ async function multiplayerChecks(browser, base) {
     await closeInspector(page);
   });
   await check('multiplayer buy and keyboard play still enqueue their original actions', async () => {
-    await page.locator('#tradeRow [data-card-key="freighter"]').click({position:{x:55,y:65}});
+    await activateCard(page.locator('#tradeRow [data-card-key="freighter"]'));
     await page.locator('#hand [data-card-key="scout"] .cr-primary').focus();
     await page.keyboard.press('Enter');
     assert.deepEqual(await page.evaluate(() => __firebaseWrites.map(w=>w.value.type)),['BUY_ROW','PLAY_CARD']);
@@ -360,7 +521,7 @@ async function multiplayerChecks(browser, base) {
     await page.evaluate(() => {__firebaseWrites=[];__cardRealmsTest.setTrade(0);});
     await page.locator('#tradeRow [data-card-key="vs_shroud"] .cr-info').click();
     await visibleInspector(page);await closeInspector(page);
-    await page.locator('#tradeRow [data-card-key="vs_shroud"]').click({position:{x:55,y:65}});
+    await activateCard(page.locator('#tradeRow [data-card-key="vs_shroud"]'));
     assert.equal(await page.evaluate(() => __firebaseWrites.length),0);
     await page.evaluate(() => __cardRealmsTest.showPile());
     await page.locator('#modalCards .cr-info').first().click();
@@ -382,10 +543,13 @@ async function multiplayerChecks(browser, base) {
   let browser;
   try {
     browser=await playwright().chromium.launch({headless:true,executablePath,args:['--no-sandbox']});
-    await desktopChecks(browser,base);
-    await touchChecks(browser,base);
-    await multiplayerChecks(browser,base);
-    console.log(`Passed ${checks} Card Realms browser checks.`);
+    if (!process.argv.includes('--interactions')) await viewportChecks(browser,base);
+    if (!process.argv.includes('--layout')) {
+      await desktopChecks(browser,base);
+      await touchChecks(browser,base);
+      await multiplayerChecks(browser,base);
+    }
+    console.log(`Passed ${checks} Orbital Rivals browser checks.`);
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve=>server.close(resolve));
