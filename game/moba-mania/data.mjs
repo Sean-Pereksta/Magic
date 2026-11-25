@@ -1,7 +1,8 @@
 /** MOBA Mania: all tunable rules and original, code-drawn hero identities. */
 const ability = (id, name, description, icon, color, unlock, mana, cooldown, range, radius, type) =>
   ({ id, name, description, icon, color, unlock, mana, cooldown, range, radius, type });
-const choice = (id, name, description, bonuses) => ({ id, name, description, bonuses });
+const talentIcons = {stormDamage:'storm',fieldHeal:'heal',range:'range',mana:'mana',manaRegen:'mana',spiritCount:'spirit',cooldown:'cooldown',damage:'damage',shield:'shield',hp:'health',burnDuration:'flame',burnDamage:'flame',jungleDamage:'hunt',speed:'speed',attackSpeed:'haste',flameRadius:'flame',guardDuration:'fortress',castHeal:'heal',treeSlow:'tree',healing:'heal',summonPower:'treant',bearCount:'bear',treeDuration:'tree',wolfCount:'wolf',spellDamage:'storm',poisonDuration:'poison',fanCount:'arrows',bombRadius:'bomb',longshotDamage:'arrow',lifesteal:'lifesteal'};
+const choice = (id, name, description, bonuses, icon) => ({ id, name, description, bonuses, icon:icon||talentIcons[Object.keys(bonuses)[0]]||'shield', color:'#c4dcff' });
 const tier = (level, a, b) => ({ level, choices: [a, b] });
 export const HEROES = {
   arc: {
@@ -88,8 +89,118 @@ export const HEROES = {
       tier(8,choice('ranger-volley','Thorn Barrage','Fan of Arrows fires two additional arrows.',{fanCount:2}),choice('ranger-trap','Concussive Powder','Stun Bomb radius increases 30%; stun lasts 0.6s longer.',{bombRadius:.3,stunDuration:.6})),
       tier(10,choice('ranger-deadeye','Deadeye','Long Shot deals 45% more damage.',{longshotDamage:.45}),choice('ranger-siphon','Night Siphon','Heal for 16% of basic-attack damage dealt.',{lifesteal:.16}))
     ]
+  },
+  bulwark: {
+    id:'bulwark', name:'Purple Knight', title:'The Amethyst Bulwark', role:'Tank · displacement', aiRole:'laner', color:'#b394ff',
+    description:'A towering purple knight who protects allies, shoves enemies aside and locks down the frontline.',
+    hp:1220, mana:300, speed:159, range:64, damage:50, attackRate:1.02,
+    abilities:[
+      {...ability('shield-bash','Shield Bash','Sweep your shield forward: damage, push enemies back and stun them for 0.8s.','bash','#c2a3ff',1,32,7,115,115,'cone'),arc:Math.PI*.58},
+      ability('amethyst-guard','Amethyst Guard','Gain a strong shield and 40% damage reduction for 5s. Nearby allies receive half the shield.','fortress','#d1bcff',2,48,15,0,150,'self'),
+      {...ability('rampart-rush','Rampart Rush','Charge forward, damaging and pushing enemies in your path. Stops at terrain.','charge','#9f82ed',4,45,12,235,38,'line'),mobility:true},
+      ability('royal-quake','Royal Quake','Slam the ground: push nearby enemies, stun for 1.25s, then leave them slowed.','quake','#d9b4ff',6,70,22,0,165,'self')
+    ],
+    talents:[
+      tier(3,choice('bulwark-granite','Granite Heart','Gain 18% maximum health.',{hp:.18},'health'),choice('bulwark-impact','Crushing Impact','Shield Bash pushes 55 farther; your stuns last 0.3s longer.',{bashPush:55,knightStun:.3},'bash')),
+      tier(5,choice('bulwark-shelter','Royal Shelter','Amethyst Guard shares 80% of its shield with allies.',{allyBarrier:.3},'fortress'),choice('bulwark-march','Relentless March','Move 12% faster; Rampart Rush travels 20% farther.',{speed:.12,rushDistance:.2},'charge')),
+      tier(8,choice('bulwark-fault','Fault Line','Royal Quake covers 25% more area and deals 25% more damage.',{quakeRadius:.25,quakeDamage:.25},'quake'),choice('bulwark-bastion','Living Bastion','Shields are 35% stronger; Amethyst Guard lasts 2s longer.',{shield:.35,guardDuration:2},'shield')),
+      tier(10,choice('bulwark-crown','Unbroken Crown','Gain 22% maximum health and 12% shorter cooldowns.',{hp:.22,cooldown:.12},'fortress'),choice('bulwark-avalanche','Purple Avalanche','All damage rises 20%; your stuns last 0.35s longer.',{damage:.2,knightStun:.35},'quake'))
+    ]
+  },
+  ember: {
+    id:'ember', name:'Orange Assassin', title:'The Cinderblade', role:'Assassin · mobility', aiRole:'jungler', color:'#ffad56',
+    description:'An orange-cloaked duelist who darts through openings, lands precise single-target hits and finishes wounded foes.',
+    hp:660, mana:300, speed:204, range:53, damage:64, attackRate:.7,
+    abilities:[
+      ability('heartseeker','Heartseeker','Thrust at the first enemy along your aim for heavy single-target damage.','dagger','#ffc879',1,30,5.5,150,19,'line'),
+      {...ability('cinder-dash','Cinder Dash','Dash toward your aim. Cut the first enemy you cross and gain 40% speed for 2s.','dash','#ff9b43',2,35,10,275,25,'line'),mobility:true},
+      ability('execution-cut','Execution Cut','A precise single-target cut. Damage increases as the victim loses health.','execute','#ffce8f',4,48,10,165,24,'line'),
+      {...ability('flicker-strike','Flicker Strike','Rush to the first enemy along your aim and strike hard. A kill immediately refreshes Cinder Dash.','ambush','#ffe0a4',6,65,18,310,28,'line'),mobility:true}
+    ],
+    talents:[
+      tier(3,choice('ember-edge','Keen Edge','Heartseeker deals 30% more damage.',{heartseekerDamage:.3},'dagger'),choice('ember-siphon','Ember Siphon','Basic attacks heal for 12% of damage dealt.',{lifesteal:.12},'lifesteal')),
+      tier(5,choice('ember-dancer','Cinder Dancer','Movement skills travel 15% farther; Cinder Dash speed lasts 1s longer.',{dashDistance:.15,dashDuration:1},'dash'),choice('ember-hunter','Solitary Hunter','Deal 35% more damage to jungle creatures and beasts; gain 10% health.',{jungleDamage:.35,hp:.1},'hunt')),
+      tier(8,choice('ember-finish','Merciless Finish','Execution Cut deals 30% more damage.',{executionDamage:.3},'execute'),choice('ember-tempo','Dancing Blades','Attack 25% faster; ability cooldowns are 12% shorter.',{attackSpeed:.25,cooldown:.12},'haste')),
+      tier(10,choice('ember-vanish','Flickering Death','Flicker Strike deals 30% more damage and grants a shield on a kill.',{flickerDamage:.3,killBarrier:160},'ambush'),choice('ember-survivor','Last Ember','Gain 25% health and heal 5% maximum health after each cast.',{hp:.25,castHeal:.05},'health'))
+    ]
+  },
+  seraph: {
+    id:'seraph', name:'Blue Angel', title:'The Winterwing', role:'Sword · inspire · frost', aiRole:'support', color:'#79caff',
+    description:'A blue-winged warrior with a massive sword, sweeping frost attacks, swift movement and inspiring battle cries.',
+    hp:840, mana:350, speed:190, range:79, damage:55, attackRate:.78,
+    abilities:[
+      {...ability('glacial-sweep','Glacial Sweep','Swing your greatsword in a wide forward arc. Enemies take damage and are slowed 35% for 2.6s.','frostblade','#b5e8ff',1,34,7,150,150,'cone'),arc:Math.PI*.85},
+      {...ability('wingburst','Wingburst','Surge toward your aim, gain a shield and move 45% faster for 3.5s. Stops at terrain.','wing','#8bd5ff',2,40,12,240,70,'line'),mobility:true},
+      ability('northern-inspire','Northern Inspire','Inspire allies around your aim: 25% movement speed, 30% attack speed and a small shield for 5s.','rally','#b9edff',4,55,15,280,175,'ground'),
+      ability('winterfall','Winterfall','Freeze a circle at your aim: damage and briefly stun enemies, then slow them by 50% for 4s.','snowflake','#d4f4ff',6,72,20,320,140,'ground')
+    ],
+    talents:[
+      tier(3,choice('seraph-edge','Frozen Edge','Glacial Sweep deals 25% more damage and slows for 1s longer.',{sweepDamage:.25,frostDuration:1},'frostblade'),choice('seraph-plume','Azure Plume','Gain 15% maximum health and 15% stronger shields.',{hp:.15,shield:.15},'wing')),
+      tier(5,choice('seraph-tailwind','Tailwind','Move 12% faster; Wingburst haste lasts 1.5s longer.',{speed:.12,wingDuration:1.5},'wing'),choice('seraph-choir','Northern Choir','Northern Inspire covers 25% more area and lasts 2s longer.',{inspireArea:.25,inspireDuration:2},'rally')),
+      tier(8,choice('seraph-deepfreeze','Deep Freeze','Winterfall stuns for 0.35s longer and slows 15% more.',{freezeStun:.35,frostSlow:.15},'snowflake'),choice('seraph-broadblade','Greatsword Mastery','Glacial Sweep covers 20% more area; gain 15% attack speed.',{sweepRadius:.2,attackSpeed:.15},'frostblade')),
+      tier(10,choice('seraph-blizzard','Blizzard Heart','Winterfall deals 30% more damage; all cooldowns are 12% shorter.',{winterDamage:.3,cooldown:.12},'snowflake'),choice('seraph-vanguard','Heavenly Vanguard','Gain 20% health and 30% stronger shields.',{hp:.2,shield:.3},'shield'))
+    ]
   }
 };
+// Each tier offers three mutually exclusive specializations. Icons are shared by
+// menu previews, active abilities and the talent tree, without external assets.
+const extraTalents = {
+  arc:[
+    choice('arc-spark','Focused Spark','Gain 18% ability damage and 1 extra mana regeneration.',{spellDamage:.18,manaRegen:1},'storm'),
+    choice('arc-ward','Warden Training','Gain 16% health and 15% stronger shields.',{hp:.16,shield:.15},'shield'),
+    choice('arc-leech','Siphoning Current','Basic attacks heal for 12% of damage; attack 12% faster.',{lifesteal:.12,attackSpeed:.12},'lifesteal'),
+    choice('arc-riftmaster','Rift Master','Cooldowns are 12% shorter; attacks and spells reach 15% farther.',{cooldown:.12,range:.15},'blink')
+  ],
+  dragon:[
+    choice('dragon-cleave','Battle Claws','Deal 12% more damage and attack 10% faster.',{damage:.12,attackSpeed:.1},'slash'),
+    choice('dragon-recovery','Kindled Vitality','Heal 3.5% maximum health after casting an ability.',{castHeal:.035},'heal'),
+    choice('dragon-pursuit','Winged Pursuit','Move 10% faster; attacks and aimed abilities reach 15% farther.',{speed:.1,range:.15},'wing'),
+    choice('dragon-colossus','Cinder Colossus','Gain 25% health and 20% stronger shields.',{hp:.25,shield:.2},'fortress')
+  ],
+  druid:[
+    choice('druid-bark','Ironbark','Gain 16% maximum health and 1 extra mana regeneration.',{hp:.16,manaRegen:1},'tree'),
+    choice('druid-forage','Wild Forager','Deal 35% more jungle damage and 10% more damage overall.',{jungleDamage:.35,damage:.1},'hunt'),
+    choice('druid-spores','Restoring Spores','Cooldowns are 13% shorter and healing is 15% stronger.',{cooldown:.13,healing:.15},'heal'),
+    choice('druid-guardians','Eternal Guardians','Summons gain 22% health and damage and live 4s longer.',{summonPower:.22,summonDuration:4},'treant')
+  ],
+  angel:[
+    choice('angel-focus','Quiet Devotion','Gain 20% maximum mana and 1.5 extra mana regeneration.',{mana:.2,manaRegen:1.5},'mana'),
+    choice('angel-vow','Guardian Vow','Gain 18% health and 15% stronger shields.',{hp:.18,shield:.15},'shield'),
+    choice('angel-dawn','Dawn Herald','Ability damage rises 20%; aimed abilities reach 12% farther.',{spellDamage:.2,range:.12},'lance'),
+    choice('angel-renew','Renewing Faith','Heal 5% health after each cast; cooldowns are 10% shorter.',{castHeal:.05,cooldown:.1},'heal')
+  ],
+  ranger:[
+    choice('ranger-fangs','Sharpened Fangs','Deal 15% more damage and attack 8% faster.',{damage:.15,attackSpeed:.08},'arrow'),
+    choice('ranger-alchemy','Field Alchemy','Gain 25% maximum mana and 2 extra mana regeneration.',{mana:.25,manaRegen:2},'mana'),
+    choice('ranger-tracker','Relentless Tracker','Poison deals 25% more damage; cooldowns are 10% shorter.',{poisonDamage:.25,cooldown:.1},'poison'),
+    choice('ranger-sentinel','Shadow Sentinel','Gain 20% health; attacks and aimed abilities reach 15% farther.',{hp:.2,range:.15},'range')
+  ],
+  bulwark:[
+    choice('bulwark-discipline','Shield Discipline','All cooldowns are 10% shorter; gain 10% stronger shields.',{cooldown:.1,shield:.1},'shield'),
+    choice('bulwark-stamina','Deep Stamina','Gain 25% mana and 2 extra mana regeneration.',{mana:.25,manaRegen:2},'mana'),
+    choice('bulwark-recover','Second Wind','Heal 5% maximum health after every cast.',{castHeal:.05},'heal'),
+    choice('bulwark-thunder','Thunder March','Rampart Rush deals 45% more damage; move 12% faster.',{rushDamage:.45,speed:.12},'charge')
+  ],
+  ember:[
+    choice('ember-opportunist','Opportunist','Move 10% faster and attack 12% faster.',{speed:.1,attackSpeed:.12},'speed'),
+    choice('ember-reserve','Hidden Reserve','Gain 25% mana and 2 extra mana regeneration.',{mana:.25,manaRegen:2},'mana'),
+    choice('ember-flow','Searing Flow','Heartseeker and Cinder Dash deal 20% more damage; gain 12% health.',{heartseekerDamage:.2,dashDamage:.2,hp:.12},'dagger'),
+    choice('ember-flurry','Endless Flurry','Deal 18% more damage; move 12% faster.',{damage:.18,speed:.12},'dash')
+  ],
+  seraph:[
+    choice('seraph-reserve','Crystal Focus','Gain 20% mana and 2 extra mana regeneration.',{mana:.2,manaRegen:2},'mana'),
+    choice('seraph-duelist','Sky Duelist','Deal 12% more damage and attack 12% faster.',{damage:.12,attackSpeed:.12},'frostblade'),
+    choice('seraph-cadence','Battle Hymn','Cooldowns are 15% shorter; Inspire shields are 40% stronger.',{cooldown:.15,inspireShield:.4},'rally'),
+    choice('seraph-horizon','Endless Horizon','Attacks and spells reach 20% farther; move 10% faster.',{range:.2,speed:.1},'wing')
+  ]
+};
+for (const hero of Object.values(HEROES)) {
+  hero.talents.forEach((talent,index)=> {
+    talent.choices.push(extraTalents[hero.id][index]);
+    for (const option of talent.choices) option.color=hero.color;
+  });
+}
+
 export const DIFFICULTIES = {
   easy:{id:'easy',name:'Relaxed',description:'Forgiving bots. Slower reactions, simple lane plans and generous retreats.',think:0.9,lead:0,retreat:.27,coordination:.4,aimError:85,dodge:false},
   normal:{id:'normal',name:'Standard',description:'Bots rotate, farm the jungle, defend towers and contest beasts.',think:.48,lead:.45,retreat:.3,coordination:.72,aimError:35,dodge:false},

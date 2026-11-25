@@ -1,4 +1,5 @@
 import { HEROES, DIFFICULTIES, WORLD, RULES, lanePoint, segmentDistance } from './data.mjs';
+import { castHeroSkill, botSkillAim } from './hero-skills.mjs';
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -6,6 +7,11 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const structure=u=>u.kind==='tower'||u.kind==='core';
 const hostile=(a,b)=>a.team!==b.team && b.alive;
 const COLORS={physical:'#fff1cf',magic:'#86d8ff',fire:'#ff9e5b',poison:'#a9ee78',heal:'#98f2b8',shield:'#beccff'};
+const movementStatus=layers=>{
+  const strongest=layers.reduce((best,s)=>(s.factor||0)>(best.factor||0)?s:best,layers[0]);
+  return {...strongest,layers,remaining:Math.max(...layers.map(s=>s.remaining)),factor:Math.max(...layers.map(s=>s.factor||0)),
+    attack:Math.max(...layers.map(s=>s.attack||0)),frost:layers.some(s=>s.frost)};
+};
 
 /** Deterministic, DOM-free battle simulation; all durations are seconds. */
 export class Game {
@@ -17,13 +23,16 @@ export class Game {
     this.stats={kills:[0,0],towers:[0,0],beasts:[0,0],damage:[0,0]};
     this.waveIn=RULES.firstWave; this.waveNumber=0; this.beastIn=RULES.firstBeast; this.beastIndex=0;
     this.teamPlans=[{type:'lanes',lane:1,until:20},{type:'lanes',lane:1,until:20}];
-    this.planIn=1; this.order=null; this.aim={x:600,y:1100}; this.moveTarget=null;
+    this.planIn=1; this.order=null; this.aim={x:600,y:1100}; this.moveTarget=null;this.attackOrder=null;this.attackHeld=false;
     this.campStates=WORLD.camps.map(c=>({...c,respawnIn:0,spawned:false}));
     this.grid=new Map(); this.navCache=new Map();
     const chosen=HEROES[hero]?hero:'arc';
-    const allies=[chosen,...({arc:['dragon','druid'],dragon:['angel','ranger'],druid:['dragon','angel'],angel:['dragon','ranger'],ranger:['dragon','druid']}[chosen])];
-    const enemies=Object.keys(HEROES).filter(id=>!allies.includes(id));
-    for(const id of ['dragon','arc','ranger','druid','angel'])if(!enemies.includes(id)&&enemies.length<3)enemies.push(id);
+    const partners={arc:['dragon','druid'],dragon:['angel','ranger'],druid:['bulwark','seraph'],angel:['dragon','ember'],ranger:['bulwark','seraph'],bulwark:['arc','ember'],ember:['bulwark','angel'],seraph:['bulwark','ranger']};
+    const allies=[chosen,...(partners[chosen]||Object.keys(HEROES).filter(id=>id!==chosen).slice(0,2))];
+    const pool=Object.keys(HEROES).filter(id=>!allies.includes(id));
+    // A seeded shuffle varies the opposing lineup while retaining exactly three heroes per side.
+    for(let i=pool.length-1;i>0;i--){const j=Math.floor(this.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+    const enemies=pool.slice(0,3);
     for(let team=0;team<2;team++) {
       const base=WORLD.bases[team];
       this.addUnit('core',team,base.x,base.y,{r:48,hp:4000,range:270,damage:58,attackRate:1.25,name:team?'Rose Crystal':'Azure Crystal'});
@@ -32,10 +41,10 @@ export class Game {
         this.addUnit('tower',team,p.x,p.y,{r:28,hp:tier===0?1950:2350,range:255,damage:tier===0?55:68,attackRate:1.05,lane,tier,name:WORLD.lanes[lane].name+' '+(tier?'inner':'outer')+' tower'});
       }
       const roster=team?enemies:allies;
-      const jungleSlot=roster.findIndex(id=>id==='druid'||id==='ranger');
+      const jungleSlot=roster.findIndex(id=>HEROES[id].aiRole==='jungler'||id==='druid'||id==='ranger'||id==='ember');
       roster.forEach((id,slot)=> {
         const h=this.makeHero(id,team,slot,team===0&&slot===0);
-        h.role=slot===jungleSlot?'jungler':id==='angel'?'support':'laner';
+        h.role=slot===jungleSlot?'jungler':HEROES[id].aiRole==='support'||id==='angel'?'support':'laner';
         if(h.isPlayer){this.player=h;this.playerId=h.id;}
       });
     }
@@ -67,10 +76,15 @@ export class Game {
   }
   getAbility(hero,slot){
     const raw=HEROES[hero?.heroId]?.abilities[slot];if(!raw)return null;
-    let radius=raw.radius*(1+this.bonus(hero,'area'));
+    let radius=raw.radius*(1+this.bonus(hero,'area')),range=raw.range*(1+this.bonus(hero,'range'));
     if(raw.id==='flame-ring')radius*=1+this.bonus(hero,'flameRadius');
     if(raw.id==='stun-bomb')radius*=1+this.bonus(hero,'bombRadius');
-    return {...raw,range:raw.range*(1+this.bonus(hero,'range')),radius,cooldown:raw.cooldown*(1-Math.min(.5,this.bonus(hero,'cooldown')))};
+    if(raw.id==='royal-quake')radius*=1+this.bonus(hero,'quakeRadius');
+    if(raw.id==='glacial-sweep'){radius*=1+this.bonus(hero,'sweepRadius');range*=1+this.bonus(hero,'sweepRadius');}
+    if(raw.id==='northern-inspire')radius*=1+this.bonus(hero,'inspireArea');
+    if(raw.id==='rampart-rush')range*=1+this.bonus(hero,'rushDistance');
+    if(raw.id==='cinder-dash'||raw.id==='flicker-strike')range*=1+this.bonus(hero,'dashDistance');
+    return {...raw,range,radius,cooldown:raw.cooldown*(1-Math.min(.5,this.bonus(hero,'cooldown')))};
   }
   availableTalents(hero){return HEROES[hero?.heroId]?.talents.filter(t=>t.level<=hero.level&&!hero.talents[t.level])||[];}
   chooseTalent(hero,tierLevel,choiceId){
@@ -129,8 +143,10 @@ export class Game {
     target.lastDamageAt=this.time;target.recallIn=0;
     if(target.team===-1&&source){target.aggroId=source.id;target.aggroUntil=this.time+7;}
     if(owner?.heroId){target.contributors??={};target.contributors[owner.id]=this.time;if(target.team>=0)this.stats.damage[owner.team]+=Math.min(target.hp,amount);}
-    if(target.kind==='hero'&&source?.team>=0){
-      for(const tower of this.nearby(target.x,target.y,300))if(tower.kind==='tower'&&tower.team===target.team&&tower.alive&&dist(tower,source)<tower.range){tower.aggroId=source.id;tower.aggroUntil=this.time+3;}
+    if(target.kind==='hero'&&owner?.kind==='hero'&&owner.alive&&owner.team!==target.team){
+      for(const tower of this.units)if(structure(tower)&&tower.team===target.team&&tower.alive&&dist(tower,target)<=tower.range+target.r&&dist(tower,owner)<=tower.range+owner.r){
+        tower.aggroId=owner.id;tower.aggroUntil=this.time+3;tower.targetId=owner.id;
+      }
     }
     const actual=Math.min(target.hp,amount);target.hp-=amount;
     if(actual>1&&!quiet)this.float(target,Math.round(actual),COLORS[type]||type);
@@ -148,6 +164,7 @@ export class Game {
       for(const h of recipients)this.gainXP(h,xp);
     }
     if(target.kind==='hero'){
+      if(target.isPlayer)this.cancelPlayerOrder();
       target.deaths++;target.respawnIn=7+target.level*1.25+Math.min(8,this.time/120);target.recallIn=0;target.status={};
       if(team===0||team===1){this.stats.kills[team]++;if(owner?.kind==='hero')owner.kills++;
         for(const h of this.units)if(h.kind==='hero'&&h.team===team&&h.id!==owner?.id&&this.time-(target.contributors?.[h.id]??-100)<10)h.assists++;
@@ -177,7 +194,14 @@ export class Game {
   }
   applyStatus(target,type,duration,extra={}){
     if(!target.alive||structure(target))return;
-    const old=target.status[type];target.status[type]={...old,...extra,remaining:Math.max(duration,old?.remaining||0)};
+    const old=target.status[type];
+    if(type==='haste'||type==='slow'){
+      // Keep each strength's own lifetime: inspiration cannot weaken or extend a faster dash buff.
+      const layers=old?.layers|| (old?[{...old}]:[]);
+      const same=layers.find(s=>['factor','attack','frost','color'].every(key=>s[key]===extra[key]));
+      if(same)same.remaining=Math.max(same.remaining,duration);else layers.push({...extra,remaining:duration});
+      target.status[type]=movementStatus(layers);
+    }else target.status[type]={...old,...extra,remaining:Math.max(duration,old?.remaining||0)};
   }
   spawnWave(team){
     const scaling=1+Math.floor(this.time/105)*.12;
@@ -215,11 +239,13 @@ export class Game {
   }
   recall(hero){
     if(!hero?.alive||hero.kind!=='hero'||hero.recallIn>0||this.winner!==null||this.paused)return false;
+    if(hero.isPlayer)this.cancelPlayerOrder();
     hero.recallIn=RULES.recallTime;hero.recallStart={x:hero.x,y:hero.y};hero.targetId=null;
     if(hero.isPlayer){this.moveTarget=null;this.announce('Recalling · stay still for '+RULES.recallTime+' seconds.','recall');}return true;
   }
   command(type,lane=1){
     if(!['push','defend','beast'].includes(type)||this.winner!==null)return false;
+    this.cancelPlayerOrder();
     this.order={type,lane:clamp(Number(lane)||0,0,2),until:this.time+22};
     this.teamPlans[0]={...this.order};
     this.announce(type==='beast'?'Team: contest the river beast!':'Team: '+(type==='push'?'push ':'defend ')+WORLD.lanes[this.order.lane].name.toLowerCase()+' lane.','ping');return true;
@@ -270,7 +296,9 @@ export class Game {
         const n=5+this.bonus(hero,'fanCount');for(let i=0;i<n;i++)this.fireSkill(hero,angle+(i-(n-1)/2)*.155,{type:'arrow',color:a.color,r:a.radius,range:a.range,speed:550,damage:52*power,pierce:0,damageType:'physical'});break;}
       case 'stun-bomb':zone('bomb',.6,{delay:.55,tickIn:.55,damage:80*power,stun:1.4+this.bonus(hero,'stunDuration'),color:a.color});this.effect('poison',at.x,at.y,a.radius,a.color,.6,{delay:.55,team:hero.team});break;
       case 'long-shot':this.fireSkill(hero,angle,{type:'longshot',color:a.color,r:a.radius,range:a.range,speed:830,damage:205*power*(1+this.bonus(hero,'longshotDamage')),pierce:3,damageType:'physical'});break;
+      default:castHeroSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone});break;
     }
+    if(hero.isPlayer)this.cancelPlayerOrder();
     const restore=this.bonus(hero,'castHeal');if(restore)this.heal(hero,hero.maxHp*restore,hero);
     return true;
   }
@@ -291,13 +319,20 @@ export class Game {
     this.projectiles.push(p);return p;
   }
   basicAttack(unit,target){
-    if(!target?.alive||unit.attackTimer>0||unit.status.stun||unit.recallIn)return false;
+    if(!unit?.alive||!target?.alive||!hostile(unit,target)||this.isProtected(target)||unit.attackTimer>0||unit.status.stun||unit.recallIn)return false;
     const d=dist(unit,target);if(d>unit.range+target.r+unit.r*.35)return false;
     unit.attackTimer=unit.attackRate/(1+(unit.status.haste?.attack||0));unit.attackAnim=.26;unit.angle=Math.atan2(target.y-unit.y,target.x-unit.x);
     if(unit.range>100){
       const color=unit.kind==='tower'||unit.kind==='core'?(unit.team?'#ff98bc':'#87d5ff'):HEROES[unit.heroId]?.color||'#edd8a0';
+      let attackDamage=unit.damage;
+      if(structure(unit)){
+        const continuing=unit.focusId===target.id&&this.time-(unit.lastShotAt??-100)<3.2;
+        unit.focusShots=target.kind==='hero'?(continuing?Math.min(3,(unit.focusShots||0)+1):0):0;
+        unit.focusId=target.id;unit.lastShotAt=this.time;
+        if(target.kind==='hero')attackDamage*=1.35*(1+unit.focusShots*.25);
+      }
       this.projectiles.push({id:this.nextId++,x:unit.x,y:unit.y-8,prevX:unit.x,prevY:unit.y-8,angle:unit.angle,team:unit.team,ownerId:unit.ownerId??unit.id,sourceId:unit.id,
-        targetId:target.id,speed:unit.kind==='archer'?400:520,life:2.5,type:unit.heroId==='ranger'||unit.kind==='archer'?'arrow':'bolt',color,r:4,damage:unit.damage,pierce:0,hit:new Set(),basic:true});
+        targetId:target.id,speed:structure(unit)?650:unit.kind==='archer'?400:520,life:2.5,type:unit.heroId==='ranger'||unit.kind==='archer'?'arrow':'bolt',color,r:structure(unit)?6:4,damage:attackDamage,pierce:0,hit:new Set(),basic:true});
     }else{
       this.effect('slash',unit.x,unit.y,unit.range,'#ffe7b9',.2,{angle:unit.angle,x2:target.x,y2:target.y});
       const dealt=this.damage(target,unit.damage,unit,'physical');
@@ -309,6 +344,7 @@ export class Game {
   }
   update(dt,input={}){
     if(this.paused||this.winner!==null||!Number.isFinite(dt)||dt<=0)return;
+    this.playerCommands(input);
     let left=Math.min(dt,2);while(left>1e-8&&this.winner===null){const step=Math.min(.05,left);this.step(step,input);left-=step;}
   }
   step(dt,input){
@@ -347,6 +383,12 @@ export class Game {
   tickStatuses(u,dt){
     if(u.shieldTime>0){u.shieldTime-=dt;if(u.shieldTime<=0)u.shield=0;}
     for(const [key,s] of Object.entries(u.status)){
+      if(s.layers){
+        for(const layer of s.layers)layer.remaining-=dt;
+        const active=s.layers.filter(layer=>layer.remaining>0);
+        if(active.length)u.status[key]=movementStatus(active);else delete u.status[key];
+        continue;
+      }
       s.remaining-=dt;
       if((key==='burn'||key==='poison')&&s.dps){
         const source=this.units.find(v=>v.id===s.sourceId);this.damage(u,s.dps*dt,source,key==='burn'?'fire':'poison',true);
@@ -358,31 +400,74 @@ export class Game {
   respawn(h){
     const well=WORLD.bases[h.team].well;h.x=well.x+(h.team?-36:36);h.y=well.y+(h.slot-1)*30;h.hp=h.maxHp;h.mana=h.maxMana;h.alive=true;h.status={};h.shield=0;h.recallIn=0;
     h.cooldowns=h.cooldowns.map(c=>Math.min(c,3));h.contributors={};h.brain={};h.path=null;h.pathGoal=null;h.targetId=null;h.thinkIn=0;h.aiState='departing';
-    if(h.isPlayer)this.moveTarget=null;this.effect('level',h.x,h.y,60,HEROES[h.heroId].color,.9);
+    if(h.isPlayer)this.cancelPlayerOrder();this.effect('level',h.x,h.y,60,HEROES[h.heroId].color,.9);
+  }
+  validPlayerTarget(target){return !!target&&target.alive&&hostile(this.player,target)&&!this.isProtected(target);}
+  nearestPlayerEnemy(){
+    let nearest=null,distance=Infinity;
+    for(const target of this.units)if(this.validPlayerTarget(target)){
+      const d=dist(this.player,target);if(d<distance){nearest=target;distance=d;}
+    }
+    return nearest;
+  }
+  cancelPlayerOrder(){
+    this.attackOrder=null;this.moveTarget=null;
+    if(this.player){this.player.targetId=null;this.player.path=null;this.player.pathGoal=null;this.player.navPath=null;this.player.navGoal=null;this.player.navTime=0;}
+  }
+  attackNearest(){
+    if(!this.player?.alive||this.paused||this.winner!==null)return false;
+    this.cancelPlayerOrder();this.player.recallIn=0;
+    const target=this.nearestPlayerEnemy();
+    this.attackOrder={type:'attack',targetId:target?.id??null,explicit:false};
+    this.player.targetId=this.attackOrder.targetId;return true;
+  }
+  attackTarget(targetId){
+    const target=this.units.find(u=>u.id===targetId);
+    if(!this.player?.alive||this.paused||this.winner!==null||!this.validPlayerTarget(target))return false;
+    this.cancelPlayerOrder();this.player.recallIn=0;
+    this.attackOrder={type:'attack',targetId:target.id,explicit:true};this.player.targetId=target.id;return true;
+  }
+  movePlayerTo(point){
+    if(!this.player?.alive||this.paused||this.winner!==null||!Number.isFinite(point?.x)||!Number.isFinite(point?.y))return false;
+    this.cancelPlayerOrder();this.player.recallIn=0;this.moveTarget=this.safePoint(point,this.player.r);return true;
+  }
+  playerCommands(input){
+    const pressed=!!input.attack&&!this.attackHeld;this.attackHeld=!!input.attack;
+    if(!this.player.alive)return;
+    // A move has priority even during a stun; releasing it must not revive an old chase.
+    if(Math.hypot(Number(input.move?.x)||0,Number(input.move?.y)||0)>.05){this.cancelPlayerOrder();this.player.recallIn=0;}
+    else if(Number.isFinite(input.moveTo?.x)&&Number.isFinite(input.moveTo?.y))this.movePlayerTo(input.moveTo);
+    else if(pressed)this.attackNearest();
   }
   tickPlayer(h,dt,input){
     if(input.aim&&Number.isFinite(input.aim.x)&&Number.isFinite(input.aim.y)){this.aim=input.aim;h.angle=Math.atan2(input.aim.y-h.y,input.aim.x-h.x);}
     const mx=Number(input.move?.x)||0,my=Number(input.move?.y)||0;
-    if(Math.hypot(mx,my)>.05){this.moveTarget=null;this.moveDirect(h,mx,my,dt);}
-    else{
-      if(input.moveTo&&Number.isFinite(input.moveTo.x)&&Number.isFinite(input.moveTo.y))this.moveTarget={...input.moveTo};
-      if(this.moveTarget){if(dist(h,this.moveTarget)<12)this.moveTarget=null;else this.moveToward(h,this.moveTarget,dt);}
+    if(Math.hypot(mx,my)>.05){this.moveDirect(h,mx,my,dt);return;}
+    if(this.moveTarget){if(dist(h,this.moveTarget)<12)this.moveTarget=null;else this.moveToward(h,this.moveTarget,dt);return;}
+    if(!this.attackOrder)return;
+    let target=this.units.find(u=>u.id===this.attackOrder.targetId);
+    if(!this.validPlayerTarget(target)){
+      target=this.nearestPlayerEnemy();this.attackOrder.targetId=target?.id??null;this.attackOrder.explicit=false;
+      h.path=null;h.pathGoal=null;h.navPath=null;h.navGoal=null;h.navTime=0;
     }
-    if(input.attack){
-      const candidates=this.nearby(h.x,h.y,h.range+75).filter(t=>hostile(h,t)&&dist(h,t)<=h.range+t.r+h.r*.35&&!this.isProtected(t));
-      // Aim near a target to focus it; otherwise choose the nearest threat in reach.
-      candidates.sort((a,b)=>((dist(a,this.aim)*.65+dist(a,h))-(dist(b,this.aim)*.65+dist(b,h))));
-      if(candidates[0])this.basicAttack(h,candidates[0]);
+    h.targetId=target?.id??null;
+    if(target){
+      h.angle=Math.atan2(target.y-h.y,target.x-h.x);
+      if(dist(h,target)>h.range+target.r+h.r*.35)this.moveToward(h,target,dt);
+      this.basicAttack(h,target);
     }
   }
   tickStructure(u){
-    if(u.attackTimer>0)return;
-    let target=this.units.find(t=>t.id===u.aggroId&&t.alive&&u.aggroUntil>this.time&&dist(u,t)<=u.range+t.r);
+    const valid=t=>t?.alive&&t.team>=0&&t.team!==u.team&&!structure(t)&&dist(u,t)<=u.range+t.r;
+    let target=this.units.find(t=>t.id===u.aggroId&&u.aggroUntil>this.time&&valid(t));
+    if(!target)target=this.units.find(t=>t.id===u.targetId&&valid(t));
     if(!target){
-      const options=this.nearby(u.x,u.y,u.range+40).filter(t=>t.alive&&t.team>=0&&t.team!==u.team&&!structure(t)&&dist(t,u)<=u.range+t.r);
+      const options=this.nearby(u.x,u.y,u.range+50).filter(valid);
       options.sort((a,b)=>((a.kind==='hero'?160:0)+dist(a,u))-((b.kind==='hero'?160:0)+dist(b,u)));target=options[0];
     }
+    u.targetId=target?.id??null;
     if(target)this.basicAttack(u,target);
+    else{u.focusId=null;u.focusShots=0;}
   }
   tickLaneUnit(u,dt){
     let target=this.units.find(v=>v.id===u.targetId&&v.alive&&v.team!==u.team&&v.team>=0&&dist(v,u)<290&&!this.isProtected(v));
@@ -482,7 +567,12 @@ export class Game {
   clearLine(a,b,r=17){return !WORLD.obstacles.some(o=>Math.abs(o.x-(a.x+b.x)/2)<Math.abs(a.x-b.x)/2+o.r+r&&Math.abs(o.y-(a.y+b.y)/2)<Math.abs(a.y-b.y)/2+o.r+r&&segmentDistance(o.x,o.y,a,b)<o.r+r+3);}
   moveDirect(u,dx,dy,dt){
     const length=Math.hypot(dx,dy);if(length<.01)return;dx/=length;dy/=length;const speed=this.speed(u),oldX=u.x,oldY=u.y;
-    const p=this.safePoint({x:u.x+dx*speed*dt,y:u.y+dy*speed*dt},u.r);u.x=p.x;u.y=p.y;
+    const p=this.safePoint({x:u.x+dx*speed*dt,y:u.y+dy*speed*dt},u.r);
+    if(u.bot){
+      const target=u.brain?.action!=='retreat'&&this.units.find(v=>v.id===u.brain?.targetId&&v.alive);
+      if(this.towerThreatOnPath(u,p,target||null,false)){u.aiState='waiting for wave';return;}
+    }
+    u.x=p.x;u.y=p.y;
     u.vx=(u.x-oldX)/dt;u.vy=(u.y-oldY)/dt;u.moving=Math.hypot(u.vx,u.vy)>3;if(u.moving){u.angle=Math.atan2(u.vy,u.vx);u.recallIn=0;}
     if(u.moving&&u.splashIn<=0&&WORLD.river.slice(1).some((p,i)=>segmentDistance(u.x,u.y,WORLD.river[i],p)<WORLD.riverWidth/2)){u.splashIn=.22;this.effect('splash',u.x,u.y,15,'#a1e6ef',.38);}
   }
@@ -493,6 +583,16 @@ export class Game {
       if(!u.navPath||!u.navGoal||dist(u.navGoal,goal)>95||u.navTime<this.time){u.navPath=this.findPath(u,goal,u.r);u.navGoal={x:goal.x,y:goal.y};u.navTime=this.time+2.5;}
       while(u.navPath?.length&&dist(u,u.navPath[0])<24)u.navPath.shift();if(u.navPath?.length)target=u.navPath[0];
     }else{u.navPath=null;u.navGoal=null;}
+    if(u.bot){
+      const combatTarget=u.brain?.action!=='retreat'&&this.units.find(v=>v.id===u.brain?.targetId&&v.alive);
+      const danger=this.towerThreatOnPath(u,target,combatTarget||null,false);
+      if(danger){
+        // A terrain detour can cross a tower even when the requested straight route is safe.
+        u.navPath=null;u.navGoal=null;u.navTime=0;u.aiState='waiting for wave';
+        if(dist(u,danger)<danger.range+u.r+70)this.moveDirect(u,u.x-danger.x|| (u.team?1:-1),u.y-danger.y,dt);
+        return;
+      }
+    }
     if(dist(u,target)<5)return;
     let dx=target.x-u.x,dy=target.y-u.y;
     // Small local repulsion preserves the readable five-unit formation.
@@ -555,6 +655,53 @@ export class Game {
   }
   nextStructure(team,lane){return this.units.find(u=>u.alive&&u.kind==='tower'&&u.team!==team&&u.lane===lane&&u.tier===0)||this.units.find(u=>u.alive&&u.kind==='tower'&&u.team!==team&&u.lane===lane&&u.tier===1)||this.units.find(u=>u.alive&&u.kind==='core'&&u.team!==team);}
   botConfig(hero){return hero.team===0&&this.difficulty==='easy'?DIFFICULTIES.normal:DIFFICULTIES[this.difficulty];}
+  canDiveTower(h,tower,target){
+    if(!target?.alive||target.team===h.team||target.team===-1||this.isProtected(target))return false;
+    const cfg=this.botConfig(h),health=h.hp/h.maxHp;
+    const local=this.units.filter(u=>u.alive&&!structure(u)&&dist(u,tower)<tower.range+140);
+    const defenders=local.filter(u=>u.kind==='hero'&&u.team===tower.team);
+    const friends=local.filter(u=>u.kind==='hero'&&u.team===h.team);
+    const shields=h.shield||0,guard=h.status.guard?.factor||1;
+    const towerDamage=tower.damage*1.35*1.75*guard;
+    const exitTime=Math.max(0,tower.range+60-dist(h,tower))/Math.max(1,this.speed(h));
+    const defenderDamage=defenders.reduce((sum,u)=>sum+u.damage/Math.max(.3,u.attackRate),0);
+    const exposure=towerDamage*(2+Math.ceil(exitTime/tower.attackRate))+defenderDamage*1.5;
+    const survives=h.hp+shields-exposure>h.maxHp*.35;
+    if(structure(target)&&target.hp<=h.damage*2.2&&health>.55&&survives)return true;
+    if(target.kind==='hero'){
+      // A wave does not excuse attacking a hero: retaliation redirects the tower onto the attacker.
+      const close=dist(h,target)<=h.range+target.r+this.speed(h)*1.1;
+      const finishable=target.hp<=h.damage*2.1&&target.hp/target.maxHp<.22;
+      const backing=friends.some(u=>u.id!==h.id&&u.hp/u.maxHp>.55)||defenders.length===1;
+      return cfg.coordination>.9&&health>.72&&close&&finishable&&backing&&friends.length>=defenders.length&&survives;
+    }
+    const aggro=tower.aggroId===h.id&&tower.aggroUntil>this.time||tower.targetId===h.id;
+    if(aggro||health<Math.max(.48,cfg.retreat+.12)||defenders.length>friends.length+1)return false;
+    // Escort real, healthy frontliners already inside range; nearby units outside range cannot tank.
+    const frontline=local.filter(u=>u.team===h.team&&u.id!==h.id&&u.kind!=='hero'&&dist(u,tower)<=tower.range+u.r&&u.hp>tower.damage*1.25);
+    const tank=local.find(u=>u.id===tower.targetId&&u.team===h.team&&u.id!==h.id&&u.hp+(u.shield||0)>tower.damage*3);
+    return frontline.reduce((sum,u)=>sum+u.hp,0)>tower.damage*3||!!tank;
+  }
+  towerThreatOnPath(h,goal,target=null,stopAtReach=true){
+    if(!goal||!Number.isFinite(goal.x)||!Number.isFinite(goal.y))return null;
+    const d=dist(h,goal),reach=stopAtReach&&target?h.range+target.r+h.r*.3:0;
+    const travel=Math.max(0,d-reach),end={x:h.x+(goal.x-h.x)/(d||1)*travel,y:h.y+(goal.y-h.y)/(d||1)*travel};
+    const threats=this.units.filter(u=>u.alive&&structure(u)&&u.team===1-h.team&&segmentDistance(u.x,u.y,h,end)<u.range+h.r+30);
+    threats.sort((a,b)=>dist(h,a)-dist(h,b));
+    return threats.find(tower=>{
+      // Moving out of danger is always allowed; avoid blocking a retreat with its own safety check.
+      const now=dist(h,tower),after=dist(end,tower);
+      if(now<tower.range+h.r+30&&after>now+.01&&(end.x-h.x)*(h.x-tower.x)+(end.y-h.y)*(h.y-tower.y)>0)return false;
+      return !this.canDiveTower(h,tower,target);
+    })||null;
+  }
+  waitOutsideTower(h,tower,dt){
+    const dx=h.x-tower.x,dy=h.y-tower.y,d=Math.hypot(dx,dy)||1;
+    const away=d>1?{x:dx/d,y:dy/d}:{x:h.team?1:-1,y:0};
+    const goal={x:tower.x+away.x*(tower.range+h.r+85),y:tower.y+away.y*(tower.range+h.r+85)};
+    h.targetId=null;h.aiState=dist(h,tower)<tower.range+h.r?'leaving tower fire':'waiting for wave';
+    if(dist(h,goal)>10)this.moveToward(h,goal,dt);
+  }
   tickBot(h,dt){
     const cfg=this.botConfig(h);h.thinkIn-=dt;
     if(h.thinkIn<=0){h.thinkIn=cfg.think;this.thinkBot(h,cfg);}
@@ -570,27 +717,28 @@ export class Game {
     }
     const target=this.units.find(u=>u.id===brain.targetId&&u.alive);
     if(target){
-      h.targetId=target.id;const d=dist(h,target),reach=h.range+target.r;
+      const dangerous=this.towerThreatOnPath(h,target,target);
+      if(dangerous){this.waitOutsideTower(h,dangerous,dt);this.botCast(h,cfg,null,true);return;}
+      h.targetId=target.id;
       this.botCast(h,cfg,target,false);
       if(!target.alive)return;
-      const dangerous=this.units.find(u=>u.alive&&structure(u)&&u.team===1-h.team&&dist(u,h)<u.range+80&&dist(u,target)<u.range+120);
-      const friendlyTank=dangerous&&this.nearby(dangerous.x,dangerous.y,dangerous.range).some(u=>u.alive&&u.team===h.team&&u.id!==h.id&&u.kind!=='hero'&&dist(u,dangerous)<dangerous.range);
-      const dive=cfg.coordination>.9&&target.kind==='hero'&&target.hp/target.maxHp<.2&&h.hp/h.maxHp>.72;
-      if(dangerous&&!friendlyTank&&!dive&&dist(h,dangerous)<dangerous.range+38){
-        this.moveToward(h,{x:h.x+(h.x-dangerous.x)*.9,y:h.y+(h.y-dangerous.y)*.9},dt);h.aiState='waiting for wave';return;
-      }
+      const d=dist(h,target),reach=h.range+target.r;
       if(d<=reach+h.r*.35){
         this.basicAttack(h,target);
         if(h.range>150&&d<115&&target.kind==='hero'&&cfg.coordination>.65)this.moveToward(h,{x:h.x+(h.x-target.x)*1.1,y:h.y+(h.y-target.y)*1.1},dt);
       }else this.moveToward(h,target,dt);
-    }else if(brain.goal){h.targetId=null;this.moveToward(h,brain.goal,dt);}
+    }else if(brain.goal){
+      h.targetId=null;const dangerous=this.towerThreatOnPath(h,brain.goal);
+      if(dangerous){this.waitOutsideTower(h,dangerous,dt);return;}
+      this.moveToward(h,brain.goal,dt);
+    }
     if(cfg.dodge&&h.aiState!=='retreating'){
       const danger=this.zones.find(z=>z.team!==h.team&&(z.type==='storm'||z.type==='bomb'||z.type==='wild-slam')&&z.tickIn>0.13&&dist(h,z)<z.r+15);
       if(danger){const dx=h.x-danger.x||1,dy=h.y-danger.y;this.moveDirect(h,dx,dy,dt*.7);h.aiState='dodging';}
     }
   }
   thinkBot(h,cfg){
-    for(const tier of this.availableTalents(h))this.chooseTalent(h,tier.level,tier.choices[(h.slot+Math.floor(tier.level/3))%2].id);
+    for(const tier of this.availableTalents(h))this.chooseTalent(h,tier.level,tier.choices[(h.slot+Math.floor(tier.level/3))%tier.choices.length].id);
     const health=h.hp/h.maxHp;
     if(health<cfg.retreat||(h.brain?.action==='retreat'&&(health<.88||h.mana/h.maxMana<.65))){h.brain={action:'retreat'};h.aiState='retreating';return;}
     if(h.mana<15&&health<.7){h.brain={action:'retreat'};h.aiState='recovering';return;}
@@ -643,7 +791,9 @@ export class Game {
       const a=this.getAbility(h,slot);if(h.level<a.unlock||h.cooldowns[slot]>0||h.mana<a.mana)continue;
       let aim=target?{x:target.x+(target.vx||0)*.35*cfg.lead,y:target.y+(target.vy||0)*.35*cfg.lead}:{x:h.x,y:h.y};
       let should=false;
-      switch(a.id){
+      if(['bulwark','ember','seraph'].includes(h.heroId)){
+        const customAim=botSkillAim(this,h,a,target,retreat,cfg);should=!!customAim;if(customAim)aim={...customAim};
+      }else switch(a.id){
         case 'healing-tree':case 'rose-light':should=!!hurt&&hurt.hp/hurt.maxHp<.82||a.id==='rose-light'&&foes.length>=2;aim=hurt&&hurt.hp/hurt.maxHp<.85?{x:hurt.x,y:hurt.y}:aim;break;
         case 'forcefield':case 'sanctuary':should=foes.length>0&&friends.some(u=>u.kind==='hero'&&u.hp/u.maxHp<.78);aim=hurt?{x:hurt.x,y:hurt.y}:aim;break;
         case 'inspire':should=!!target&&friends.length>=2&&dist(h,target)<320;aim=hurt?{x:hurt.x,y:hurt.y}:aim;break;
@@ -656,6 +806,10 @@ export class Game {
       if(!should)continue;
       if(a.type==='line'||a.type==='cone'||a.type==='ground'&&!['healing-tree','rose-light','forcefield','sanctuary','inspire'].includes(a.id)){
         aim.x+=(this.random()-.5)*cfg.aimError;aim.y+=(this.random()-.5)*cfg.aimError;
+      }
+      if(a.mobility||a.id==='rift-step'||a.id==='sky-cleave'){
+        const d=dist(h,aim),end={x:h.x+(aim.x-h.x)/(d||1)*Math.min(d,a.range),y:h.y+(aim.y-h.y)/(d||1)*Math.min(d,a.range)};
+        if(this.towerThreatOnPath(h,end,target,false))continue;
       }
       if(this.cast(h,slot,aim))break;
     }

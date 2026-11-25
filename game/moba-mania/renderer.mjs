@@ -70,9 +70,13 @@ function diamond(c, x, y, w, h, color, highlight = '#e5fcff') {
 function heroSprite(id, frame, facing, attacking) {
   const key = ['hero', id, frame, facing, attacking].join(':');
   if (spriteCache.has(key)) return spriteCache.get(key);
-  const out = makeCanvas(40, 44), c = out.getContext('2d');
+  const expanded = id === 'bulwark' || id === 'ember' || id === 'seraph';
+  // Leave room for wings, shields and the greatsword at the end of its swing.
+  const spriteWidth = id === 'seraph' ? 72 : expanded ? 48 : 40;
+  const out = makeCanvas(spriteWidth, expanded ? 48 : 44), c = out.getContext('2d');
   const back = facing === 3, left = facing === 2;
-  if (left) { c.translate(40, 0); c.scale(-1, 1); }
+  if (left) { c.translate(spriteWidth, 0); c.scale(-1, 1); }
+  c.translate((spriteWidth - 40) / 2, expanded ? 2 : 0);
   const walk = [0, 1, 0, -1][frame % 4], bob = frame % 2;
   const strike = attacking ? [0, 3, 5, 2][frame % 4] : 0;
   c.translate(0, -bob);
@@ -83,6 +87,9 @@ function heroSprite(id, frame, facing, attacking) {
     druid: ['#175540', '#25835b', '#83c966', '#cff394'],
     angel: ['#a04a85', '#e38cb4', '#ffd1e0', '#fff4d7'],
     ranger: ['#25283d', '#45435e', '#9a75a7', '#a7ed8d'],
+    bulwark: ['#38295b', '#63428c', '#a580d6', '#e4c8ff'],
+    ember: ['#69372b', '#b65b2e', '#f39b43', '#ffe2a1'],
+    seraph: ['#1c4177', '#356cb2', '#8ac9ed', '#e6f9ff'],
   }[id] || ['#375064', '#547b8a', '#8fc6d1', '#e4f7df'];
   box(c, INK, 9, 19, 18, 18);
   box(c, colors[0], 10, 19, 16, 16);
@@ -109,6 +116,23 @@ function heroSprite(id, frame, facing, attacking) {
     box(c, '#f2bed9', 26, 20 + flap, 5, 10);
     box(c, '#fff5e7', 34, 10 + flap, 4, 13);
     box(c, '#f3cee1', 36, 9 + flap, 3, 8);
+  }
+  if (id === 'seraph') {
+    const flap = walk * 2;
+    // A broader, layered feather silhouette distinguishes the sword angel
+    // from the rose support, including folded feather tips on the back view.
+    for (const side of [-1, 1]) {
+      const anchor = side < 0 ? 11 : 27;
+      for (let feather = 0; feather < 4; feather++) {
+        const x = anchor + side * (5 + feather * 4);
+        const y = 12 + feather * 2 + flap;
+        box(c, '#163451', x - 2, y - 3, 7, 18 - feather * 2);
+        box(c, '#5b98d2', x - 1, y - 2, 5, 15 - feather * 2);
+        box(c, feather % 2 ? '#d0f1ff' : '#f0fcff', x, y - 2, 3, 11 - feather);
+        box(c, '#92caf1', x + (side < 0 ? -2 : 2), y - 5, 3, 7);
+      }
+      box(c, '#d4f2ff', anchor, 19 + flap, 4, 11);
+    }
   }
   box(c, INK, 10, 17, 17, 13);
   box(c, colors[2], 12, 18, 13, 9);
@@ -211,6 +235,66 @@ function heroSprite(id, frame, facing, attacking) {
     box(c, '#ffdab4', 28 + strike, 24, 4, 3);
     box(c, '#e086d0', 30 + strike, 17, 4, 4);
     box(c, '#ffe4fa', 31 + strike, 16, 2, 5);
+  } else if (id === 'bulwark') {
+    // Broad pauldrons, a closed helm and a shield almost as tall as the body.
+    box(c, INK, 7, 17, 24, 14);
+    box(c, '#734d9e', 8, 18, 23, 11);
+    box(c, '#b99ce9', 8, 17, 8, 5); box(c, '#e1c9fa', 9, 18, 5, 2);
+    box(c, '#ac84d7', 24, 17, 8, 6); box(c, '#e6cbff', 25, 18, 5, 2);
+    box(c, '#4e3674', 13, 21, 14, 9); box(c, '#b094d8', 14, 22, 11, 4);
+    box(c, '#edddff', 18, 22, 3, 6); box(c, '#694887', 13, 30, 13, 4);
+    box(c, INK, 10, 6, 18, 14); box(c, '#795799', 11, 6, 16, 13);
+    box(c, '#c2a2eb', 12, 6, 10, 4); box(c, '#e9d4ff', 13, 7, 6, 2);
+    box(c, '#482f65', 12, 12, 14, 4);
+    if (!back) box(c, '#d0f6ff', 15, 13, 9, 1);
+    box(c, '#b9a0dc', 18, 11, 3, 9); box(c, '#e9d4ff', 19, 11, 1, 7);
+    box(c, '#7e4fbb', 16, 1, 7, 5); box(c, '#cab0ed', 17, 0, 5, 3);
+    const shieldX = 1 + (attacking ? strike : 0);
+    box(c, INK, shieldX, 19, 13, 18); box(c, INK, shieldX + 3, 35, 7, 5);
+    box(c, '#bda2e6', shieldX + 1, 20, 11, 16); box(c, '#a785d7', shieldX + 4, 35, 5, 3);
+    box(c, '#5a3e83', shieldX + 3, 22, 7, 12); box(c, '#805cae', shieldX + 4, 23, 5, 9);
+    diamond(c, shieldX + 6, 28, 5, 9, '#9975cf', '#f1dcff');
+    // Square-headed hammer rotates with the heavy attack, remaining in frame.
+    c.save(); c.translate(31, 25); c.rotate(attacking ? -0.7 + strike * 0.19 : 0.18);
+    box(c, INK, -2, -14, 5, 24); box(c, '#b6a2c8', -1, -11, 2, 20);
+    box(c, INK, -6, -18, 13, 8); box(c, '#947ab7', -5, -17, 11, 6);
+    box(c, '#e3d1f5', -4, -17, 8, 2); box(c, '#c6abf1', 3, -15, 3, 3);
+    c.restore();
+  } else if (id === 'ember') {
+    // Lean wrapped torso and bright cowl; both daggers have independent arcs.
+    box(c, '#6c382e', 13, 21, 12, 10); box(c, '#df8035', 12, 19, 12, 5);
+    box(c, '#ffbd6a', 12, 19, 5, 2); box(c, '#f4b45a', 17, 25, 4, 7);
+    box(c, INK, 10, 5, 18, 14); box(c, '#a34c2c', 11, 6, 16, 11);
+    box(c, '#ed8736', 12, 6, 13, 5); box(c, '#ffc273', 13, 6, 8, 2);
+    box(c, '#e59345', 10, 11, 5, 10); box(c, '#6b392e', 14, 15, 13, 6);
+    if (!back) { box(c, '#ffd782', 18, 12, 7, 2); box(c, '#fff4c9', 21, 12, 3, 1); }
+    const scarf = 6 + (attacking ? 3 : walk * 2);
+    box(c, '#b45331', 7 - scarf, 17, scarf + 7, 4); box(c, '#f3a34f', 7 - scarf, 17, scarf + 2, 2);
+    for (const side of [-1, 1]) {
+      c.save(); c.translate(side < 0 ? 10 : 29, side < 0 ? 26 : 23);
+      c.rotate(side * (attacking ? .9 - strike * .27 : .35));
+      box(c, INK, -2, -10, 5, 17); box(c, '#e9f0e5', -1, -10, 3, 11);
+      box(c, '#82a3a8', 1, -7, 1, 8); box(c, '#ffba64', -4, 0, 9, 2);
+      box(c, '#9b5734', -1, 2, 3, 5); box(c, '#ffe1ac', -1, -10, 1, 9); c.restore();
+    }
+    if (attacking) { box(c, '#ffd89b', 32 + strike, 12, 2, 2); box(c, '#ffad56', 4, 31, 3, 2); }
+  } else if (id === 'seraph') {
+    box(c, '#1e4d85', 11, 8, 17, 6); box(c, '#95cdeb', 12, 7, 14, 5);
+    box(c, '#effcff', 13, 7, 9, 2); box(c, '#3977bd', 10, 11, 5, 8);
+    box(c, '#a8ddf9', 11, 12, 2, 5); box(c, '#4f94d6', 24, 10, 3, 8);
+    box(c, '#87c7ff', 13, 1, 13, 2); box(c, '#d9f7ff', 11, 2, 3, 3);
+    box(c, '#d9f7ff', 25, 2, 3, 3); box(c, '#edfaff', 14, 4, 11, 1);
+    box(c, '#bfddeb', 9, 18, 7, 5); box(c, '#effbff', 9, 18, 5, 2);
+    box(c, '#a6d2e8', 24, 18, 7, 6); box(c, '#ebf9ff', 25, 18, 5, 2);
+    box(c, '#27518d', 14, 26, 10, 9); box(c, '#7cb9e1', 14, 28, 3, 7);
+    // The oversized greatsword is drawn in full across the entire swing.
+    c.save(); c.translate(29, 27); c.rotate(attacking ? -.85 + strike * .36 : .17);
+    box(c, INK, -4, -25, 10, 35); box(c, '#4387b9', -3, -25, 7, 25);
+    box(c, '#c5eaf6', -2, -24, 5, 23); box(c, '#f5fdff', -2, -24, 2, 22);
+    box(c, '#72bce9', 2, -20, 2, 18); box(c, '#dff7ff', -1, -27, 3, 4);
+    box(c, '#b8def0', -7, -1, 15, 4); box(c, '#effcff', -5, -1, 11, 1);
+    box(c, '#2e5488', -1, 3, 4, 7); box(c, '#d3efff', -2, 9, 6, 3);
+    c.restore();
   } else {
     box(c, INK, 10, 5, 17, 12);
     box(c, '#3a354d', 11, 6, 15, 7);
@@ -599,6 +683,7 @@ export class Renderer {
     this.drawWater(c, time);
     this.drawWells(c, time);
     this.drawObjectiveGround(c, game);
+    this.drawCombatIndicators(c, game);
     for (const e of game.effects || []) if (this.visible(e.x, e.y, (e.r || 80) + 150)) this.effect(c, e, time, true);
     this.drawAim(c, game, view);
     const sorted = [];
@@ -663,6 +748,38 @@ export class Renderer {
       this.label(c, active ? 'CLAIM THE BEAST' : 'BEAST SHRINE', pit.x, pit.y + 116, active ? '#ffe3a1' : '#a9c4b8', 10);
     }
   }
+  drawCombatIndicators(c, game) {
+    const player = game.player;
+    if (!player || !alive(player)) return;
+    const selected = game.units.find(u => u.id === player.targetId && alive(u));
+    if (selected && this.visible(selected.x, selected.y)) {
+      const locked = game.attackOrder?.explicit, color = locked ? '#ffe194' : '#ffb88d';
+      const radius = (selected.r || 17) + 10 + Math.sin(game.time * 5) * 2;
+      c.save(); c.globalAlpha = .9;
+      ring(c, color, selected.x, selected.y + 2, radius, 2, !locked);
+      for (let i = 0; i < 4; i++) {
+        const angle = i * Math.PI / 2 + Math.PI / 4, x = selected.x + Math.cos(angle) * (radius + 7), y = selected.y + Math.sin(angle) * (radius + 7);
+        line(c, color, x, y, x - Math.cos(angle - .5) * 9, y - Math.sin(angle - .5) * 9, 3);
+        line(c, color, x, y, x - Math.cos(angle + .5) * 9, y - Math.sin(angle + .5) * 9, 3);
+      }
+      c.restore();
+      this.label(c, locked ? 'FOCUS' : 'ATTACKING', selected.x, selected.y + radius + 18, color, 9);
+    }
+    for (const u of game.units) {
+      if (u.kind !== 'tower' || !alive(u) || !this.visible(u.x, u.y, (u.range || 255) + 40)) continue;
+      const enemy = u.team !== player.team, targeted = u.targetId === player.id;
+      if (enemy && (targeted || selected?.id === u.id || Math.hypot(player.x-u.x, player.y-u.y) < u.range + 135)) {
+        c.save(); c.globalAlpha = targeted ? .5 : .2;
+        ring(c, targeted ? '#ff765e' : '#ffd0a1', u.x, u.y, u.range, targeted ? 3 : 2, !targeted); c.restore();
+      }
+      const victim = game.units.find(t => t.id === u.targetId && alive(t));
+      if (victim && (targeted || u.attackAnim > 0)) {
+        c.save(); c.globalAlpha = u.attackAnim > 0 ? .65 : .2;
+        line(c, enemy ? '#ffbc86' : '#b4edff', u.x, u.y - 87, victim.x, victim.y - 15, u.attackAnim > 0 ? 3 : 1); c.restore();
+      }
+      if (targeted) this.label(c, 'TOWER TARGET', player.x, player.y + 45, '#ffbc91', 10);
+    }
+  }
   drawAim(c, game, view) {
     const p = game.player, slot = view.selectedSlot;
     if (!p || !alive(p) || slot == null || slot < 0) return;
@@ -674,7 +791,12 @@ export class Renderer {
     const tx = p.x + Math.cos(angle) * Math.min(distance, range), ty = p.y + Math.sin(angle) * Math.min(distance, range);
     c.save(); c.globalAlpha = 0.22; ring(c, color, p.x, p.y, range, 2, true);
     const type = String(a.type || a.target || '');
-    if (/line|projectile|cone|fan|shot|dash/.test(type)) {
+    if (a.id === 'glacial-sweep' || a.id === 'shield-bash') {
+      const arc = a.arc || Math.PI * (a.id === 'glacial-sweep' ? .85 : .58);
+      c.globalAlpha = .17; c.fillStyle = color; c.beginPath(); c.moveTo(p.x, p.y);
+      c.arc(p.x, p.y, range, angle - arc / 2, angle + arc / 2); c.closePath(); c.fill();
+      c.globalAlpha = .85; c.strokeStyle = color; c.lineWidth = 2; c.stroke();
+    } else if (/line|projectile|cone|fan|shot|dash/.test(type)) {
       c.globalAlpha = 0.15;
       line(c, color, p.x, p.y, p.x + Math.cos(angle) * range, p.y + Math.sin(angle) * range, Math.max(10, (a.radius || 14) * 2));
       c.globalAlpha = 0.9;
@@ -713,7 +835,7 @@ export class Renderer {
     if (u.kind === 'hero') {
       const facing = flip ? 2 : Math.sin(u.angle || 0) < -0.55 ? 3 : 0;
       sprite = heroSprite(u.heroId || u.subtype || 'arc', attackFrame, facing, attack);
-      width = 60; height = 66;
+      width = sprite.width * 1.5; height = sprite.height * 1.5;
       c.save(); c.globalAlpha = u.id === game.playerId || u === game.player ? 0.9 : 0.45;
       ring(c, TEAM[u.team], u.x, u.y + 1, 21, u.id === game.playerId || u === game.player ? 3 : 2); c.restore();
     } else if (u.kind === 'footman' || u.kind === 'archer') {
@@ -753,9 +875,20 @@ export class Renderer {
       const a = game.time * 4 + k * Math.PI * 2 / 3;
       box(c, '#ffe7a3', u.x + Math.cos(a) * 15, u.y - height - 1 + Math.sin(a) * 5, 4, 4);
     }
+    if (statusOn(status.slow)) {
+      c.save(); c.globalAlpha = .75;
+      ring(c, status.slow.frost ? '#a4e5ff' : '#c2c5de', u.x, u.y + 2, 17, 2, true);
+      if (status.slow.frost) for (let k = 0; k < 4; k++) {
+        const a = k * Math.PI / 2 + Math.PI / 4, x = u.x + Math.cos(a) * 16, y = u.y + Math.sin(a) * 9;
+        diamond(c, x, y - 5, 5, 14, '#64b3e8', '#d7f7ff');
+      }
+      c.restore();
+    }
     if (statusOn(status.haste)) {
       c.save(); c.globalAlpha = 0.65;
-      for (let k = 0; k < 3; k++) line(c, '#ffb8df', u.x - 24, u.y - 7 - k * 5, u.x - 33 - k * 3, u.y - 7 - k * 5, 2); c.restore();
+      const color = status.haste.color || (u.heroId === 'seraph' ? '#a3e2ff' : '#ffb8df');
+      const direction = Math.cos(u.angle || 0) < 0 ? -1 : 1;
+      for (let k = 0; k < 3; k++) line(c, color, u.x - direction * 24, u.y - 7 - k * 5, u.x - direction * (33 + k * 3), u.y - 7 - k * 5, 2); c.restore();
     }
   }
   unitBars(c, u, game) {
@@ -820,11 +953,34 @@ export class Renderer {
   effect(c, e, time, ground) {
     const type = String(e.type || ''), life = e.maxLife ? clamp(e.life / e.maxLife, 0, 1) : 0.65;
     const progress = 1 - life, color = e.color || '#a9dded', radius = e.r || e.radius || 45;
-    const isGround = /field|storm|heal|poison|tree|shield|ring|splash|recall|telegraph/.test(type);
-    if (isGround !== ground && !/explosion|level|blink|tree/.test(type)) return;
+    const isGround = /field|storm|heal|poison|tree|shield|ring|splash|recall|telegraph|frost|quake/.test(type);
+    if (isGround !== ground && !/explosion|level|blink|tree|frost|quake/.test(type)) return;
     c.save();
     if (ground) {
-      if (/field|shield/.test(type)) {
+      if (/frost/.test(type)) {
+        c.globalAlpha = .2 * life; disc(c, '#b4e9ff', e.x, e.y, radius);
+        c.globalAlpha = .85 * life; ring(c, color, e.x, e.y, radius * (.45 + progress * .55), 3);
+        for (let k = 0; k < 6; k++) {
+          const angle = k * Math.PI / 3, length = radius * (.3 + progress * .6);
+          line(c, '#e2f9ff', e.x, e.y, e.x + Math.cos(angle) * length, e.y + Math.sin(angle) * length, 2);
+          for (const turn of [-1,1]) {
+            const x = e.x + Math.cos(angle) * length * .62, y = e.y + Math.sin(angle) * length * .62;
+            line(c, color, x, y, x + Math.cos(angle + turn * .8) * length * .22, y + Math.sin(angle + turn * .8) * length * .22, 2);
+          }
+        }
+      } else if (/quake/.test(type)) {
+        c.globalAlpha = life * .8;
+        ring(c, color, e.x, e.y, radius * (.22 + progress * .78), 5);
+        ring(c, '#eddaff', e.x, e.y, radius * (.1 + progress * .5), 2);
+        for (let k = 0; k < 8; k++) {
+          const a = k * Math.PI / 4 + .2, reach = radius * progress, points = [];
+          for (let j = 0; j < 5; j++) {
+            const length = reach * (j / 4), offset = j % 2 ? .12 : -.08;
+            points.push({x:e.x + Math.cos(a + offset) * length, y:e.y + Math.sin(a + offset) * length});
+          }
+          path(c, points, '#211e3f', 6); path(c, points, color, 2);
+        }
+      } else if (/field|shield/.test(type)) {
         c.globalAlpha = 0.12 * Math.min(1, life * 5); disc(c, color, e.x, e.y, radius);
         c.globalAlpha = 0.75 * Math.min(1, life * 4); ring(c, color, e.x, e.y, radius, 3);
         for (let k = 0; k < 12; k++) { const a = k * Math.PI / 6 + time * 0.2; box(c, '#d8f6fb', e.x + Math.cos(a) * radius, e.y + Math.sin(a) * radius - 4, 3, 8); }
@@ -860,6 +1016,37 @@ export class Renderer {
       tree(c, { x: e.x, y: e.y, r: 24, type: 'tree' }, time);
       box(c, '#c3f7a6', e.x - 3, e.y - 18, 6, 3);
       box(c, '#c3f7a6', e.x - 1, e.y - 20, 2, 7);
+    } else if (/sweep/.test(type)) {
+      const arc = e.arc || Math.PI * .85, start = (e.angle || 0) - arc / 2;
+      const end = start + arc * Math.min(1, .2 + progress * 1.5);
+      c.globalAlpha = life * .8; c.strokeStyle = color; c.lineWidth = 9;
+      c.beginPath(); c.arc(e.x, e.y - 10, radius * .88, start, end); c.stroke();
+      c.strokeStyle = '#f1fbff'; c.lineWidth = 3; c.stroke();
+      for (let k = 0; k < 7; k++) {
+        const a = start + arc * k / 6, r = radius * (.75 + progress * .23);
+        box(c, k % 2 ? color : '#f4fcff', e.x + Math.cos(a) * r, e.y - 10 + Math.sin(a) * r, 3, 5);
+      }
+    } else if (/dash/.test(type)) {
+      const x2 = Number.isFinite(e.x2) ? e.x2 : e.x, y2 = Number.isFinite(e.y2) ? e.y2 : e.y;
+      c.globalAlpha = life * .3; line(c, color, e.x, e.y - 18, x2, y2 - 18, 18);
+      c.globalAlpha = life * .85;
+      for (let k = 0; k < 4; k++) {
+        const offset = (k - 1.5) * 7;
+        line(c, k % 2 ? color : '#f4f5dd', e.x + (x2 - e.x) * progress, e.y + (y2 - e.y) * progress - 18 + offset, x2, y2 - 18 + offset, 2);
+      }
+    } else if (/frost/.test(type)) {
+      c.globalAlpha = life;
+      for (let k = 0; k < 10; k++) {
+        const a = k * Math.PI / 5 + .2, r = radius * (.25 + hash(k,e.x) * .65);
+        const x = e.x + Math.cos(a) * r, y = e.y + Math.sin(a) * r;
+        diamond(c, x, y - Math.sin(progress * Math.PI) * 17, 8 * life + 3, 18 * life + 6, '#69afdf', '#d3f5ff');
+      }
+    } else if (/quake/.test(type)) {
+      c.globalAlpha = life;
+      for (let k = 0; k < 10; k++) {
+        const a = k * 2.4, r = radius * (.2 + progress * .65);
+        box(c, k % 2 ? color : '#ded2ed', e.x + Math.cos(a) * r, e.y + Math.sin(a) * r - Math.sin(progress * Math.PI) * (12 + k * 2), 5, 8);
+      }
     } else if (/slash|arc/.test(type)) {
       c.globalAlpha = life;
       c.strokeStyle = color; c.lineWidth = 7;
@@ -940,19 +1127,96 @@ export function drawPortrait(canvas, heroId, size = 64) {
   const color = HEROES[heroId]?.color || '#77bfd6';
   c.globalAlpha = 0.2; disc(c, color, size / 2, size * 0.55, size * 0.44); c.globalAlpha = 1;
   const sprite = heroSprite(heroId, 0, 0, false);
-  c.drawImage(sprite, 0, 0, 40, 42, Math.round(size * 0.05), Math.round(size * 0.03), Math.round(size * 0.9), Math.round(size * 0.945));
+  // The combat frame reserves space for a full sword swing. Crop only that
+  // empty margin in the idle portrait so the angel's face stays legible.
+  const sourceX = heroId === 'seraph' ? 8 : 0, sourceWidth = sprite.width - sourceX * 2;
+  const scale = Math.min(size * .94 / sourceWidth, size * .97 / sprite.height);
+  const width = Math.round(sourceWidth * scale), height = Math.round(sprite.height * scale);
+  c.drawImage(sprite, sourceX, 0, sourceWidth, sprite.height, Math.round((size-width)/2), Math.round((size-height)/2), width, height);
 }
 
 export function drawIcon(canvas, ability = {}, size = 32) {
   canvas.width = size; canvas.height = size;
   const c = canvas.getContext('2d'); c.imageSmoothingEnabled = false;
   c.clearRect(0, 0, size, size); c.save(); c.scale(size / 32, size / 32);
-  const id = [ability.icon, ability.id, ability.name].filter(Boolean).join(' ').toLowerCase();
+  // An explicit icon key takes precedence over flavor text: e.g. a dragon's
+  // mana talent must show mana, rather than accidentally matching "dragon".
+  const id = String(ability.icon || ability.id || ability.name || 'storm').toLowerCase();
   const color = ability.color || '#8ce4f2';
   box(c, '#172d3b', 0, 0, 32, 32);
   box(c, '#25404b', 2, 2, 28, 28); box(c, '#1b3340', 3, 3, 26, 26);
   c.globalAlpha = 0.15; disc(c, color, 16, 16, 13); c.globalAlpha = 1;
-  if (/shield|field|ward|barrier|aegis/.test(id)) {
+  if (/^bash$|^charge$/.test(id)) {
+    box(c, color, 4, 7, 12, 16); box(c, color, 7, 22, 6, 5);
+    box(c, '#4c456a', 7, 10, 6, 11); box(c, '#eedefc', 9, 11, 2, 9);
+    line(c, '#fff3d3', 18, 16, 28, 16, 3); line(c, color, 23, 10, 29, 16, 3); line(c, color, 29, 16, 23, 22, 3);
+    if (id === 'charge') { box(c, color, 2, 12, 3, 2); box(c, color, 1, 18, 4, 2); }
+    else { box(c, '#f8e3a6', 24, 5, 2, 4); box(c, '#f8e3a6', 24, 24, 2, 4); }
+  } else if (/fortress/.test(id)) {
+    box(c, '#5d456d', 5, 11, 22, 17); box(c, color, 6, 12, 20, 14);
+    box(c, color, 5, 5, 5, 9); box(c, color, 14, 5, 4, 9); box(c, color, 22, 5, 5, 9);
+    box(c, '#f0ddff', 6, 6, 3, 5); box(c, '#f0ddff', 23, 6, 3, 5);
+    box(c, '#433d68', 13, 19, 6, 9); box(c, '#433d68', 8, 15, 3, 3); box(c, '#433d68', 21, 15, 3, 3);
+  } else if (/quake/.test(id)) {
+    box(c, '#b29bc1', 14, 10, 4, 13); box(c, color, 8, 6, 17, 8); box(c, '#f3e5ff', 9, 6, 13, 2);
+    line(c, color, 4, 27, 10, 23, 2); line(c, color, 10, 23, 13, 27, 2);
+    line(c, color, 19, 27, 22, 23, 2); line(c, color, 22, 23, 28, 27, 2);
+    box(c, '#fff0b9', 15, 24, 3, 5); box(c, '#fff0b9', 3, 18, 3, 3); box(c, '#fff0b9', 26, 17, 3, 3);
+  } else if (/^dagger$|execute|frostblade|^sword$|^damage$/.test(id)) {
+    const execute = /execute/.test(id), frost = /frost/.test(id);
+    if (execute) { ring(c, '#dc835f', 20, 11, 8, 2); line(c, '#dc835f', 20, 2, 20, 20, 1); }
+    line(c, '#e9f4e9', 10, 22, 24, 6, /dagger/.test(id) ? 4 : 6);
+    line(c, color, 12, 22, 26, 6, 2); line(c, '#f2c888', 6, 17, 17, 27, 3); line(c, '#946747', 6, 28, 11, 22, 4);
+    if (frost) { box(c, '#dbfaff', 4, 8, 2, 9); box(c, '#dbfaff', 1, 11, 8, 2); box(c, '#97d9ff', 23, 24, 3, 5); box(c, '#97d9ff', 21, 26, 7, 2); }
+    if (/dagger/.test(id)) { box(c, color, 22, 22, 2, 6); box(c, '#ffe0a4', 23, 25, 3, 3); }
+  } else if (/^dash$/.test(id)) {
+    box(c, '#dda76f', 9, 12, 7, 10); box(c, color, 10, 19, 13, 6); box(c, '#ffe4ac', 11, 20, 9, 2);
+    box(c, color, 3, 13, 5, 2); box(c, color, 1, 18, 6, 2); box(c, color, 2, 24, 6, 2);
+    line(c, '#fff2c9', 23, 7, 28, 12, 2); line(c, '#fff2c9', 28, 12, 23, 17, 2);
+  } else if (/ambush/.test(id)) {
+    box(c, color, 9, 6, 14, 4); box(c, color, 7, 10, 18, 13); box(c, '#543c3b', 10, 12, 12, 9);
+    box(c, '#ffe4ac', 12, 14, 3, 2); box(c, '#ffe4ac', 18, 14, 3, 2);
+    line(c, '#ecf8ee', 5, 28, 10, 21, 3); line(c, '#ecf8ee', 27, 28, 22, 21, 3);
+    box(c, '#fbc481', 3, 24, 6, 2); box(c, '#fbc481', 23, 24, 6, 2); box(c, color, 4, 4, 3, 3);
+  } else if (/snowflake|^frost$|freeze/.test(id)) {
+    for (let k = 0; k < 6; k++) {
+      const a = k * Math.PI / 3;
+      line(c, color, 16, 16, 16 + Math.cos(a) * 12, 16 + Math.sin(a) * 12, 2);
+      for (const side of [-1,1]) {
+        const x = 16 + Math.cos(a) * 8, y = 16 + Math.sin(a) * 8;
+        line(c, '#e3f8ff', x, y, x + Math.cos(a + side) * 4, y + Math.sin(a + side) * 4, 2);
+      }
+    }
+    box(c, '#f1fdff', 14, 14, 4, 4);
+  } else if (/^wing$/.test(id)) {
+    for (const side of [-1,1]) for (let feather = 0; feather < 3; feather++) {
+      const x = 14 + side * (3 + feather * 4), y = 8 + feather * 2;
+      box(c, color, x, y, 4, 14 - feather * 2); box(c, '#eefbff', x, y, 2, 10 - feather);
+    }
+    box(c, '#c9efff', 14, 11, 4, 14); box(c, color, 10, 26, 12, 2);
+  } else if (/rally/.test(id)) {
+    box(c, '#d9ebf1', 7, 5, 3, 24); box(c, color, 10, 6, 17, 12); box(c, '#e7f8ff', 11, 7, 10, 2);
+    box(c, '#376494', 21, 13, 7, 5); box(c, '#e7f8ff', 15, 10, 3, 5); box(c, '#e7f8ff', 13, 11, 7, 2);
+    line(c, color, 14, 24, 18, 20, 2); line(c, color, 18, 20, 22, 24, 2);
+  } else if (/health|heart|vigor|lifesteal/.test(id)) {
+    box(c, color, 5, 8, 9, 10); box(c, color, 18, 8, 9, 10); box(c, color, 8, 14, 16, 8); box(c, color, 12, 21, 8, 4); box(c, color, 15, 25, 3, 3);
+    box(c, '#fff4df', 7, 10, 5, 3);
+    if (/lifesteal/.test(id)) { box(c, '#fff4df', 10, 14, 3, 7); box(c, '#fff4df', 20, 14, 3, 7); }
+    else { box(c, '#eaffeb', 15, 12, 3, 10); box(c, '#eaffeb', 12, 15, 9, 3); }
+  } else if (/mana|reserve/.test(id)) {
+    diamond(c, 16, 15, 15, 22, color, '#d9f6ff'); box(c, color, 7, 28, 18, 2);
+    box(c, '#d9f6ff', 4, 7, 3, 3); box(c, '#d9f6ff', 26, 20, 3, 3);
+  } else if (/cooldown|tempo|clock/.test(id)) {
+    ring(c, color, 16, 16, 11, 3); line(c, '#e9f8e5', 16, 8, 16, 16, 3); line(c, '#e9f8e5', 16, 16, 22, 19, 2);
+    box(c, color, 23, 4, 5, 3); box(c, color, 25, 5, 3, 7);
+  } else if (/range|eye|reach|hunt/.test(id)) {
+    ring(c, color, 16, 16, 9, 2); box(c, '#f0f9dc', 14, 14, 4, 4);
+    line(c, color, 16, 2, 16, 10, 2); line(c, color, 16, 22, 16, 30, 2);
+    line(c, color, 2, 16, 10, 16, 2); line(c, color, 22, 16, 30, 16, 2);
+  } else if (/area/.test(id)) {
+    ring(c, color, 16, 16, 10, 2, true); disc(c, '#e6f6e5', 16, 16, 3);
+    for (const angle of [0,Math.PI/2,Math.PI,Math.PI*1.5]) line(c, color, 16+Math.cos(angle)*5, 16+Math.sin(angle)*5, 16+Math.cos(angle)*13, 16+Math.sin(angle)*13, 2);
+  } else if (/shield|field|ward|barrier|aegis|armor/.test(id)) {
     c.fillStyle = color; c.beginPath(); c.moveTo(6, 7); c.lineTo(16, 4); c.lineTo(26, 7); c.lineTo(24, 20); c.lineTo(16, 28); c.lineTo(8, 20); c.closePath(); c.fill();
     c.fillStyle = '#294e66'; c.beginPath(); c.moveTo(9, 9); c.lineTo(16, 7); c.lineTo(23, 9); c.lineTo(21, 19); c.lineTo(16, 24); c.lineTo(11, 19); c.closePath(); c.fill();
     box(c, '#effddd', 14, 10, 3, 10); box(c, '#effddd', 11, 13, 9, 3);
@@ -968,7 +1232,7 @@ export function drawIcon(canvas, ability = {}, size = 32) {
     const type = /wolf|pack/.test(id) ? 'wolf' : /bear/.test(id) ? 'bear' : /treant/.test(id) ? 'treant' : 'spirit';
     c.drawImage(creatureSprite(type, 0, -1, false), 2, 2, 30, 29);
   } else if (/arrow|shot|fan|long|poison|venom/.test(id)) {
-    if (/fan/.test(id)) for (const off of [-7, 7]) { line(c, color, 7, 25, 24 + off * 0.3, 7 + off, 2); box(c, '#e5f6c1', 22 + off * 0.3, 5 + off, 4, 4); }
+    if (/fan|arrows/.test(id)) for (const off of [-7, 7]) { line(c, color, 7, 25, 24 + off * 0.3, 7 + off, 2); box(c, '#e5f6c1', 22 + off * 0.3, 5 + off, 4, 4); }
     line(c, '#d5c28b', 7, 25, 24, 8, 3); box(c, color, 19, 5, 9, 4); box(c, color, 24, 5, 4, 9);
     box(c, '#edf5c5', 6, 21, 6, 3); box(c, '#edf5c5', 8, 23, 3, 5);
     if (/poison|venom/.test(id)) { box(c, '#adf06a', 8, 9, 3, 5); box(c, '#adf06a', 5, 13, 3, 3); }

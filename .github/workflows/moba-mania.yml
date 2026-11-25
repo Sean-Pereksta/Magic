@@ -1,6 +1,14 @@
 name: MOBA Mania
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'game/CatLanes.html'
+      - 'game/moba-mania/**'
+      - 'tests/moba-mania*'
+      - 'desktop-hub/content/build-packs.py'
+      - '.github/workflows/moba-mania.yml'
   pull_request:
     paths:
       - 'game/CatLanes.html'
@@ -39,7 +47,7 @@ jobs:
         with:
           node-version: '22'
       - name: Verify battle mechanics
-        run: node --test tests/moba-mania.test.mjs
+        run: node --test tests/moba-mania.test.mjs tests/moba-mania-targeting.test.mjs tests/moba-mania-heroes.test.mjs
       - name: Install browser test runtime
         run: |
           npm install --prefix "$RUNNER_TEMP/moba-browser" --no-save --package-lock=false --ignore-scripts playwright@1.62.1
