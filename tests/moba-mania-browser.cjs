@@ -10,7 +10,7 @@ const {chromium} = require('playwright');
 const repo = path.resolve(__dirname, '..');
 const qaOutput = process.env.MOBA_QA_OUTPUT;
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'moba-pack-test-'));
-const hooks = '\nwindow.__mobaTest={get game(){return game},get renderer(){return renderer},get aim(){return aim},get pinnedGoal(){return pinnedGoal},get profile(){return profile},get controls(){return controls},startMatch,openTalents,openShop,renderShop,refreshHUD,saveCurrent,itemPlan,writeProfile,storage};\n';
+const hooks = '\nwindow.__mobaTest={get game(){return game},get renderer(){return renderer},get aim(){return aim},get pinnedGoal(){return pinnedGoal},get profile(){return profile},get controls(){return controls},get endSequence(){return endSequence},battleView,startMatch,openTalents,openShop,renderShop,refreshHUD,saveCurrent,itemPlan,writeProfile,storage};\n';
 const mime = {'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.json':'application/json'};
 const missing = [];
 function buildOfflinePack() {
@@ -19,7 +19,7 @@ function buildOfflinePack() {
   const pack = path.join(temp,'packs/mobamania');
   const entry = fs.readFileSync(path.join(pack,'index.html'),'utf8');
   assert(!entry.includes('/hub/play-signal.mjs'),'offline pack must not call the web hub');
-  for(const module of ['data.mjs','items.mjs','profile.mjs','engine.mjs','hero-skills.mjs','renderer.mjs','combat-visuals.mjs','ui.mjs','style.css']) assert(fs.existsSync(path.join(pack,'moba-mania',module)),`offline pack missing ${module}`);
+  for(const module of ['data.mjs','items.mjs','profile.mjs','engine.mjs','hero-skills.mjs','renderer.mjs','combat-visuals.mjs','unit-animation.mjs','world-visuals.mjs','ui.mjs','style.css']) assert(fs.existsSync(path.join(pack,'moba-mania',module)),`offline pack missing ${module}`);
   assert(!fs.existsSync(path.join(pack,'moba-mania/CONTRACT.md')),'implementation coordination notes are not shipped');
   return pack;
 }
@@ -45,15 +45,26 @@ async function inspectBounds(page, selectors) {
   for(const r of report){assert(r.visible,r.selector+' should be visible');assert(r.x>=-1&&r.y>=-1&&r.x+r.w<=r.vw+1&&r.y+r.h<=r.vh+1,r.selector+' escapes viewport: '+JSON.stringify(r));}
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'no horizontal page overflow');
 }
-async function finishMatch(page) {
-  await page.evaluate(()=>{
+async function finishMatch(page,tag='') {
+  const early=await page.evaluate(()=>{
     const g=__mobaTest.game;
     for(const u of g.units)if(u.kind==='tower'&&u.team===1){u.alive=false;u.hp=0;}
     const core=g.units.find(u=>u.kind==='core'&&u.team===1);
     g.damage(core,1e7,g.player,'test');
+    __mobaTest.refreshHUD();
+    return {time:g.time,sequence:__mobaTest.endSequence?.game===g,endOpen:document.querySelector('#end-dialog').open,
+      saved:localStorage.getItem('moba-mania.match.v1'),mastery:__mobaTest.profile.heroes[g.player.heroId].xp};
   });
+  assert(early.sequence&&!early.endOpen,'core destruction plays before the results dialog');
+  assert.equal(early.saved,null,'completed match is cleared immediately, even during destruction');
+  await page.waitForTimeout(160);
+  const during=await page.evaluate(()=>({time:__mobaTest.game.time,elapsed:__mobaTest.battleView().presentationTime-__mobaTest.game.time}));
+  assert.equal(during.time,early.time,'the finale does not advance combat');
+  assert(during.elapsed>0&&during.elapsed<=1.201,'only the presentation clock advances');
+  if(qaOutput&&tag){fs.mkdirSync(qaOutput,{recursive:true});await page.screenshot({path:path.join(qaOutput,tag+'-core-finale.png')});}
   await page.locator('#end-dialog').waitFor({state:'visible'});
   assert.equal(await page.evaluate(()=>__mobaTest.game.winner),0,'destroying enemy crystal wins');
+  assert.equal(await page.evaluate(()=>__mobaTest.profile.heroes[__mobaTest.game.player.heroId].xp),early.mastery,'the finale awards mastery only once');
 }
 async function clickBattlefield(page,device,unitId=null,offset=null,button='left') {
   const point=await page.evaluate(({unitId,offset})=>{
@@ -278,6 +289,53 @@ async function verifyExperience(page,context,device){
   await page.locator('#resume-match').click();
   await page.locator('#pause-button').click();await page.locator('#pause-controls').click();await page.locator('[data-control-preset="default"]').click();await page.locator('#control-handed').selectOption('right');await page.locator('#close-controls').click();await page.locator('#resume-match').click();
 }
+async function verifyLivingBattlefield(page,device,heroes) {
+  const report=await page.evaluate(heroIds=>{
+    const original=__mobaTest.game,r=__mobaTest.renderer,Game=original.constructor;
+    const saved={camera:{...r.camera},lastTime:r.lastTime,hasCamera:r.hasCamera,peek:r.peek};
+    let frames=0,bites=0,rocks=0,departures=0,collapses=0;
+    const fixture=(hero='dragon')=>{
+      const g=new Game({hero,seed:91}),h=g.player;
+      g.units=[h];g.campStates=[];g.waveIn=g.beastIn=g.planIn=10000;g.time=10;
+      Object.assign(h,{x:1600,y:1100,level:8,attackTimer:0});g.refreshStats(h);h.mana=h.maxMana;
+      return g;
+    };
+    const draw=g=>{
+      const before=JSON.stringify(g.serialize());r.hasCamera=false;r.peek=null;r.draw(g);
+      if(JSON.stringify(g.serialize())!==before)throw Error('Living-world rendering altered battle state');
+      if(r.effectBudget.remaining<0)throw Error('Living-world decorations exceeded their allowance');frames++;
+    };
+    try{
+      for(const hero of heroIds){
+        const g=fixture(hero),h=g.player,target=g.addUnit('footman',1,h.x+45,h.y,{hp:10000,damage:0,speed:0});
+        g.rebuildGrid();if(!g.basicAttack(h,target))throw Error(hero+' basic attack failed');
+        for(const dt of [0,.1,.2]){if(dt)g.update(dt);draw(g);}
+      }
+      for(const index of [0,1]){
+        const g=fixture(),h=g.player;g.time=600;const beast=g.spawnBeast(index);
+        h.x=beast.x-120;h.y=beast.y;h.hp=h.maxHp=10000;beast.aggroId=h.id;beast.aggroUntil=g.time+10;beast.slamIn=0;
+        g.rebuildGrid();g.tickNeutral(beast,1/60);
+        if(beast.tier!==7||beast.maxHp!==4914)throw Error('Late beast strength did not reach its new tier');
+        if(index===0){if(!g.zones.some(z=>z.type==='maw-bite'))throw Error('Missing bite warning');bites++;}
+        else{rocks=g.zones.filter(z=>z.type==='colossus-rock').length;if(rocks!==3)throw Error('Missing staggered rock warnings');}
+        for(const dt of [0,.3,.5,.65]){if(dt)g.update(dt);draw(g);}
+      }
+      for(const subtype of ['treant','wolf','bear','spirit']){
+        const g=fixture(subtype==='spirit'?'arc':'druid'),h=g.player;
+        g.summon(h,subtype,1,{x:h.x+55,y:h.y},1.2);
+        for(const dt of [0,.2,.55,.55]){if(dt)g.update(dt);draw(g);}
+        if(!g.effects.some(e=>e.type==='summon-depart'&&e.subtype===subtype))throw Error('Missing summon departure: '+subtype);departures++;
+      }
+      const g=fixture(),h=g.player,tower=g.addUnit('tower',1,h.x+140,h.y,{hp:5200,tier:0,lane:1,r:28});
+      for(const health of [1,.45,.2]){tower.hp=tower.maxHp*health;draw(g);}
+      g.damage(tower,1e7,h);if(!g.effects.some(e=>e.type==='structure-collapse'))throw Error('Tower failed to collapse');collapses++;
+      for(const dt of [0,.25,.55]){if(dt)g.update(dt);draw(g);}
+    }finally{Object.assign(r.camera,saved.camera);r.lastTime=saved.lastTime;r.hasCamera=saved.hasCamera;r.peek=saved.peek;r.draw(original);}
+    return {frames,bites,rocks,departures,collapses};
+  },Object.keys(heroes));
+  assert.equal(report.frames,54);assert.equal(report.bites,1);assert.equal(report.rocks,3);assert.equal(report.departures,4);assert.equal(report.collapses,1);
+  console.log(JSON.stringify({device:device.name,livingBattlefield:report}));
+}
 async function verifyCombatVisuals(page,device,heroes) {
   const report=await page.evaluate(async heroes=>{
     const fx=await import(new URL('./moba-mania/combat-visuals.mjs',location.href).href);
@@ -417,8 +475,9 @@ async function main(){
       await verifyShop(page,device,ITEMS);
       await verifyExperience(page,context,device);
       await verifyCombatVisuals(page,device,HEROES);
+      await verifyLivingBattlefield(page,device,HEROES);
       if(qaOutput){fs.mkdirSync(qaOutput,{recursive:true});await page.screenshot({path:path.join(qaOutput,device.name+'.png')});}
-      await finishMatch(page);
+      await finishMatch(page,device.name);
       assert.equal(await page.locator('#end-stats > div').count(),16,'all personal contribution metrics are shown');
       assert(await page.locator('#end-badges > span').count()>0,'match badges are visible');
       assert.match(await page.locator('#end-mastery').textContent(),/mastery XP/);
@@ -428,6 +487,14 @@ async function main(){
       assert.equal(await page.evaluate(()=>__mobaTest.game.winner),null,'replay starts fresh match');
       assert.equal(await page.evaluate(()=>__mobaTest.game.player.level),1,'replay resets progression');
       assert.deepEqual(await page.evaluate(()=>({gold:__mobaTest.game.player.gold,items:__mobaTest.game.player.items})),{gold:0,items:[]},'replay resets gold and inventory');
+      const rewards=await page.evaluate(()=>{
+        const g=__mobaTest.game,h=g.player;g.gainXP(h,h.xpNext);__mobaTest.refreshHUD();
+        const target=g.addUnit('footman',1,h.x+40,h.y,{hp:1});g.damage(target,100,h);__mobaTest.refreshHUD();
+        return {unlock:document.querySelector('[data-slot="1"]').classList.contains('ability-unlocked'),
+          level:document.querySelector('#hero-level').classList.contains('level-pulse'),gold:document.querySelector('#shop-button').classList.contains('gold-pulse'),target:__mobaTest.battleView().rewardTarget};
+      });
+      assert(rewards.unlock&&rewards.level&&rewards.gold,'earned levels, new abilities and finishing-blow gold animate their HUD controls');
+      assert(rewards.target&&rewards.target.x>=0&&rewards.target.x<=device.width&&rewards.target.y>=0&&rewards.target.y<=device.height,'gold flies toward the visible shop counter');
       assert.deepEqual(errors,[],device.name+' must not emit runtime errors');
       console.log(JSON.stringify({device:device.name,hero:device.hero,move:true,camera:true,nearestAttack:true,primaryClickAttacks:true,noDistantChase:true,enemyFocus:true,autoRetarget:true,moveCancelsAttack:true,talentIcons:HEROES[device.hero].talents.reduce((n,t)=>n+t.choices.length,0),saveResume:true,pinnedBuild:true,controlSettings:true,minimapPeek:true,mastery:true,shopItems:30,prerequisites:true,purchases:true,personalRewards:true,maxLevel:18,replay:true,errors:0}));
       await context.close();

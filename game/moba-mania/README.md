@@ -12,7 +12,16 @@ Choose a hero and an AI difficulty, then start a match. Destroy outer and inner 
 
 Waves begin after 4 seconds and repeat every 19 seconds. Jungle camps contain three creatures and respawn 44 seconds after the whole camp is cleared. The first river beast appears after 55 seconds; another spawn opportunity occurs every 100 seconds, alternating between the two pits without duplicating a living beast in a pit.
 
-New river beasts gain a tier every 100 seconds of match time. Each additional tier adds 22% of base health and 16% of base attack damage. The captured lane attacker inherits the defeated beast’s tier, with 24% more base health and 17% more base attack damage per additional tier. Later captures therefore create stronger lane pushes as well as tougher jungle fights.
+New river beasts gain a tier every 100 seconds of match time. Each additional tier now adds **44% of base health and 30% of base attack damage**. The captured lane attacker inherits the defeated beast’s tier, with **46% more base health and 32% more base attack damage** per additional tier. Neutral special attacks add 30% of base damage per tier, and the captured Colossus's shared wards add 25% of their base shield per tier. Growth is linear and the first tier keeps its original strength.
+
+| Beast stage | Neutral health / attack damage | Captured health / attack damage |
+| --- | --- | --- |
+| Tier 1 | 1.00× / 1.00× base | 1.00× / 1.00× base |
+| Tier 3 | 1.88× / 1.60× base | 1.92× / 1.64× base |
+| Tier 5 | 2.76× / 2.20× base | 2.84× / 2.28× base |
+| Tier 10 | 4.96× / 3.70× base | 5.14× / 3.88× base |
+
+Later captures therefore create substantially stronger lane pushes as well as tougher jungle fights. The 100-second spawn schedule, alternating pits, and one living neutral beast per pit stay the same; an existing beast keeps the tier it received when spawned.
 
 Abilities unlock at levels 1, 2, 4, and 6. Talent choices at levels **3, 5, 8, 10, 12, 15, and 18** specialize each hero. Every tier offers three exclusive choices with small pixel icons: **32 active abilities and 168 talent options** across the roster. The later choices change existing abilities, summon behavior, defensive responses, and attack combinations while keeping the same four ability buttons. Open the skill tree when its badge lights up. The solo simulation pauses while selecting a talent.
 
@@ -84,6 +93,18 @@ Active shields surround the protected unit with a translucent, faceted shell. Th
 
 These effects follow the actual hit, shield, healing, and buff state. They respect shared vision and concealed units. Pixel bursts are capped separately from persistent spell fields, and the renderer limits extra particles per frame, with smaller budgets on compact screens and when the browser requests reduced motion. Combat warnings, aim guides, and health bars stay above the decorative effects. Cosmetic scatter uses deterministic math without consuming the combat random sequence or changing damage, cooldowns, targeting, or rewards.
 
+### Character motion and the living battlefield
+
+All eight heroes have distinct attack and casting poses, directional weapon motion, and recovery frames. Knights brace for a bash, the ranger draws the bow, the assassin crouches into thrusts, and both angels use their wings and weapons during their abilities. Small hit reactions offset only the drawn sprite. Immediate attacks show their strike immediately; delayed slams prepare against the real impact deadline. Cosmetic movement does not shift a unit's collision position or add a combat delay.
+
+River Maw opens and snaps its jaw during its bite; Moss Colossus lifts its arm and sends rocks toward the existing impact warnings. Higher beast tiers add plates, spines, and luminous details with a bounded set of art stages. Capturing a beast adds a team-colored transformation. Jungle creatures have idle poses, and permanent camp scenery distinguishes wolf dens, boar mud patches, and golem runestones without revealing whether a concealed camp is occupied.
+
+Towers develop cracks below half health and deeper damage below quarter health, shed chips when hit, and collapse into rubble. A destroyed core breaks into floating crystal fragments before the results appear. That 1.2-second finale uses a presentation clock while combat remains finished; the completed match is cleared and mastery is recorded as soon as the core falls.
+
+Resolved heavy attacks leave subdued, harmless ground marks: fire scorches, melting frost, quake cracks, impact stones, and poison droplets. Marks fade within a few seconds and have a separate bounded presentation pool. Visible units raise dust on lanes, bend brush, and disturb the river; heavy beasts make broader wakes. Nearby foliage reacts to visible heavy impacts.
+
+Treants rise through roots, wolves leap into view, bears land heavily, and spirits assemble from blue fragments. Departing summons dissolve with matching details. Finishing-blow gold travels toward your shop counter, level-ups pulse around your hero, newly unlocked abilities highlight briefly, and advanced item purchases display their icon above the hero. These presentations follow actual progression events and do not grant additional rewards.
+
 ### Attack orders and tower pressure
 
 **Primary click, tap the battlefield, ATTACK, or Space** selects the nearest visible living enemy nearby, then automatically approaches to your hero's melee or ranged attack distance and keeps fighting. Clicking or tapping directly on an enemy focuses that enemy instead, even when another enemy is closer. Enemy heroes, minions, neutral creatures, captured beasts, and exposed structures are valid targets. Protected inner towers/crystals are excluded until their prerequisites fall.
@@ -118,7 +139,7 @@ The results screen records hero and structure damage, effective healing, absorbe
 
 ## Files and hosting
 
-`data.mjs` defines heroes, talents, map geometry, difficulty settings, and progression rules. `items.mjs` defines the 30-item catalog, prerequisites, stat bonuses, passive descriptions, purchase validation, and pixel item icons. `engine.mjs` runs deterministic combat, individual rewards, item activation, and AI without browser dependencies; `hero-skills.mjs` implements the knight, assassin, and sword angel abilities. `progression.mjs` handles signature passives, late evolutions, item effects, and delayed impacts. `strategy.mjs` handles shared vision, role assignments, build plans, and match metrics. `save-state.mjs` validates and restores the simulation. `profile.mjs` handles local mastery, settings, recipe planning, and shop comparisons. `renderer.mjs` draws the battlefield, fog, warnings, animated pixel sprites, cosmetics, focus markers, and icons; `combat-visuals.mjs` draws bounded pixel bursts, trails, spell accents, and translucent shields. `ui.mjs` connects the simulation to keyboard, pointer, touch, and local persistence; `style.css` styles the compact HUD and menus.
+`data.mjs` defines heroes, talents, map geometry, difficulty settings, progression rules, and beast growth. `items.mjs` defines the 30-item catalog, prerequisites, stat bonuses, passive descriptions, purchase validation, and pixel item icons. `engine.mjs` runs deterministic combat, individual rewards, item activation, and AI without browser dependencies; `hero-skills.mjs` implements the knight, assassin, and sword angel abilities. `progression.mjs` handles signature passives, late evolutions, item effects, and delayed impacts. `strategy.mjs` handles shared vision, role assignments, build plans, and match metrics. `save-state.mjs` validates and restores the simulation. `profile.mjs` handles local mastery, settings, recipe planning, and shop comparisons. `renderer.mjs` draws the battlefield, fog, warnings, animated pixel sprites, cosmetics, focus markers, and icons. `combat-visuals.mjs` draws bounded pixel bursts, trails, spell accents, and translucent shields; `unit-animation.mjs` selects combat poses and summon motion; `world-visuals.mjs` draws camp scenery, reactive terrain, destruction, spell aftermath, summons, and reward presentations. `ui.mjs` connects the simulation to keyboard, pointer, touch, local persistence, and the short victory/defeat finale; `style.css` styles the compact HUD and menus.
 
 Serve the existing `game/CatLanes.html` alongside the complete `game/moba-mania/` runtime directory. Native JavaScript modules need an HTTP(S) origin; opening the HTML directly from `file://` is not supported. The game has no CDN, font, sprite, or server dependency. Pixel art is defined in code, so there is no separate model download or asset-host configuration.
 

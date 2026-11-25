@@ -28,6 +28,8 @@ let pointer = { x:innerWidth / 2, y:innerHeight / 2, valid:false };
 let lastFrame = 0, accumulator = 0, hudTimer = 0;
 let lastEventId = null, lastLevel = 1, lastHealth = 1, lastShield=0, lastGoldSound=null;
 let announcementUntil = 0, ended = false;
+let endSequence = null;
+const finaleSeconds = 1.2;
 let helpReturn = null;
 let audioContext = null, lastToneAt = 0;
 let shopTier = 1, shopRenderKey = '', pinnedGoal=null;
@@ -80,6 +82,12 @@ function notify(message, duration=3000) {
   $('announcement').textContent = message;
   $('announcement').classList.add('visible');
   announcementUntil = performance.now() + duration;
+}
+function rewardPulse(element, className) {
+  element.classList.remove(className);
+  // Restart the brief CSS cue only on an earned reward, never every HUD frame.
+  void element.offsetWidth;
+  element.classList.add(className);
 }
 function drawMenu() {
   $('hero-grid').replaceChildren();
@@ -188,7 +196,7 @@ function buildAbilities() {
 }
 function playing() { return !!game && !game.paused && game.winner==null && !$('hud').hidden; }
 function clearInput() {
-  renderer.peek=null;minimapDrag=null;$('peek-hint').hidden=true;
+  renderer.peek=endSequence?.game===game&&!ended?endSequence.focus:null;minimapDrag=null;$('peek-hint').hidden=true;
   keys.clear();touchAttack=false;moveTo=null;castDrag=null;
   if(game)game.cancelPlayerOrder();
   joystick.x=joystick.y=0;joystick.pointerId=null;
@@ -210,7 +218,7 @@ function beginMatch(restored=null,ui={},replace=false) {
   game=restored||new Game({hero:selectedHero,difficulty:$('difficulty').value,seed:Math.floor(Math.random()*0x7fffffff)});
   if(!game.matchId)game.matchId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`;
   game.player.cosmetics=heroCosmetics(profile,selectedHero);
-  ended=false;lastEventId=null;lastLevel=game.player.level;lastHealth=game.player.hp;lastShield=game.player.shield||0;lastGoldSound=game.player.lastGoldGain?.time??null;accumulator=0;hudTimer=0;saveTimer=0;lastFrame=performance.now();
+  ended=false;endSequence=null;document.body.classList.remove('core-finale');$('shop-button').classList.remove('gold-pulse');$('hero-level').classList.remove('level-pulse');lastEventId=null;lastLevel=game.player.level;lastHealth=game.player.hp;lastShield=game.player.shield||0;lastGoldSound=game.player.lastGoldGain?.time??null;accumulator=0;hudTimer=0;saveTimer=0;lastFrame=performance.now();
   shopTier=1;shopRenderKey='';pinnedGoal=ITEM_BY_ID[ui.pinnedGoal]?.tier===3?ui.pinnedGoal:null;$('shop-owned').open=false;
   $('menu-screen').hidden=true;$('hud').hidden=false;
   $('hero-name').textContent=HEROES[selectedHero].name;
@@ -370,12 +378,13 @@ function setPaused(paused) {
   clearInput();accumulator=0;lastFrame=performance.now();
 }
 function openDialog(id) {
+  if(game?.winner!=null&&id!=='end-dialog')return;
   setPaused(true);
   const dialog=$(id);if(!dialog.open)dialog.showModal();
 }
 function closeDialog(id) { $(id).close(); }
 function afterDialogClosed() {
-  if(game && !ended && !$('hud').hidden && !document.querySelector('dialog[open]')){setPaused(false);canvas.focus({preventScroll:true});}
+  if(game && game.winner==null && !ended && !$('hud').hidden && !document.querySelector('dialog[open]')){setPaused(false);canvas.focus({preventScroll:true});}
 }
 for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener('close',afterDialogClosed);
 function openPause(){if(game&&!ended&&!$('hud').hidden){$('pause-message').textContent='Your next great play can wait a moment.';openDialog('pause-dialog');saveCurrent();}}
@@ -652,7 +661,7 @@ function refreshHUD() {
   $('shop-button').title=`Item shop (I) · ${gold} gold · Final hits earn gold`;
   const goldGain=hero.lastGoldGain,showGold=goldGain&&game.time-goldGain.time>=0&&game.time-goldGain.time<2;
   $('gold-earned').hidden=!showGold;
-  if(showGold){$('gold-earned').textContent=`+${goldGain.amount} GOLD`;if(goldGain.time!==lastGoldSound){lastGoldSound=goldGain.time;tone('gold');}}
+  if(showGold){$('gold-earned').textContent=`+${goldGain.amount} GOLD`;if(goldGain.time!==lastGoldSound){lastGoldSound=goldGain.time;tone('gold');rewardPulse($('shop-button'),'gold-pulse');}}
   if((hero.shield||0)<lastShield-5&&game.time-(hero.lastDamageAt??-100)<.2)tone('block');lastShield=hero.shield||0;
   if($('shop-dialog').open&&shopRenderKey!==shopStateKey(hero))renderShop();
   $('blue-score').textContent=String(game.stats?.kills?.[0]||0);$('red-score').textContent=String(game.stats?.kills?.[1]||0);$('match-clock').textContent=formatTime(game.time);
@@ -673,17 +682,33 @@ function refreshHUD() {
   $('target-status').textContent=target?`ATTACKING · ${target.name||({footman:'Footman',archer:'Archer',summon:'Summon'}[target.kind])||'Enemy'}`:'ATTACK · No nearby enemy';
   $('respawn-status').hidden=hero.alive;
   if(!hero.alive){$('respawn-status').replaceChildren();const headline=document.createElement('span');headline.textContent=`Return in ${Math.ceil(hero.respawnIn||0)}s`;const caption=document.createElement('small');caption.textContent='Your allies are still fighting.';$('respawn-status').append(headline,caption);}
-  if(hero.level>lastLevel){tone('level');notify(`LEVEL ${hero.level}${points?' · Choose a new talent ✦':' · More power, new possibilities'}`,3400);lastLevel=hero.level;}
+  if(hero.level>lastLevel){
+    tone('level');rewardPulse($('hero-level'),'level-pulse');
+    for(const {button,ability} of abilities)if(ability.unlock>lastLevel&&ability.unlock<=hero.level)rewardPulse(button,'ability-unlocked');
+    notify(`LEVEL ${hero.level}${points?' · Choose a new talent ✦':' · More power, new possibilities'}`,3400);lastLevel=hero.level;
+  }
   if(hero.hp<lastHealth-28&&hero.alive)tone('hurt');lastHealth=hero.hp;
   const events=game.events||[];
   const latest=events[events.length-1];
   if(latest&&latest.id!==lastEventId){lastEventId=latest.id;if(latest.text)notify(latest.text,latest.type==='beast'?3500:2600);}
   refreshBeastChoice();
   refreshAbilityHUD();renderer.drawMinimap($('minimap'),game);
-  if(game.winner!=null&&!ended)endMatch();
+  if(game.winner!=null&&!ended)beginEndSequence();
+}
+function beginEndSequence(now=performance.now()) {
+  if(!game||game.winner==null||ended||endSequence?.game===game)return;
+  setPaused(true);
+  const core=game.units.find(u=>u.kind==='core'&&!u.alive&&u.team!==game.winner);
+  // Resolve persistence immediately, even if the tab closes during the finale.
+  const reward=recordMatch(profile,game),persisted=writeProfile(storage,profile);
+  clearSavedMatch(storage,game.matchId);
+  endSequence={game,startedAt:now,coreId:core?.id,focus:core?{x:core.x,y:core.y}:null,reward,persisted};
+  document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());
+  document.body.classList.add('core-finale');
+  if(core){renderer.peek=endSequence.focus;renderer.hasCamera=false;}
 }
 function endMatch() {
-  ended=true;setPaused(true);cancelAim();clearSavedMatch(storage,game.matchId);
+  ended=true;document.body.classList.remove('core-finale');setPaused(true);cancelAim();clearSavedMatch(storage,game.matchId);
   const won=game.winner===game.player.team,hero=game.player,m=hero.metrics||{},variant=hero.cosmetics?.victory||'classic';
   $('end-dialog').dataset.victory=variant;
   $('end-title').textContent=won?'Victory!':'Defeat';
@@ -694,13 +719,13 @@ function endMatch() {
     const block=document.createElement('div'),strong=document.createElement('strong'),small=document.createElement('small');strong.textContent=String(value);small.textContent=label;block.append(strong,small);$('end-stats').append(block);
   }
   $('end-badges').replaceChildren();for(const text of matchBadges(hero)){const badge=document.createElement('span');badge.textContent=text;$('end-badges').append(badge);}
-  const reward=recordMatch(profile,game),persisted=writeProfile(storage,profile);
+  const reward=endSequence?.game===game?endSequence.reward:recordMatch(profile,game),persisted=endSequence?.game===game?endSequence.persisted:writeProfile(storage,profile);
   $('end-mastery').textContent=`+${reward.earned} ${HEROES[hero.heroId].name} mastery XP · ${profile.heroes[hero.heroId].xp} total${reward.unlocks.length?` · Unlocked ${reward.unlocks.join(', ')}`:''}${persisted?'':' · Available this session; browser storage is unavailable.'}`;
   $('end-dialog').showModal();if(won)tone('win');
 }
 $('play-again').addEventListener('click',startMatch);
 $('change-hero').addEventListener('click',()=>{
-  game=null;clearInput();$('hud').hidden=true;$('menu-screen').hidden=false;$('end-dialog').close();drawMenu();refreshSavedMenu();delete document.documentElement.dataset.catnmicePlaying;
+  game=null;endSequence=null;clearInput();$('hud').hidden=true;$('menu-screen').hidden=false;$('end-dialog').close();drawMenu();refreshSavedMenu();delete document.documentElement.dataset.catnmicePlaying;
 });
 $('end-dialog').addEventListener('cancel',event=>event.preventDefault());
 function input() {
@@ -712,7 +737,15 @@ function input() {
   // reselect targets or resurrect an order canceled by movement or a spell.
   return {move:{x,y},aim,...(moveTo?{moveTo}: {})};
 }
-function resize(){applyControls();renderer.resize(innerWidth,innerHeight);if(game)renderer.draw(game,{aim,selectedSlot,cameraAim:selectedSlot>=0?aim:null});}
+function battleView(now=performance.now()) {
+  const view={aim,selectedSlot,cameraAim:selectedSlot>=0?aim:null};
+  if(endSequence?.game===game)view.presentationTime=game.time+Math.min(finaleSeconds,Math.max(0,(now-endSequence.startedAt)/1000));
+  if(game?.effects.some(e=>e.type==='reward-gold'&&e.ownerId===game.playerId)){
+    const rect=$('shop-gold').getBoundingClientRect();view.rewardTarget={x:rect.left+rect.width/2,y:rect.top+rect.height/2};
+  }
+  return view;
+}
+function resize(){applyControls();renderer.resize(innerWidth,innerHeight);if(game)renderer.draw(game,battleView());}
 window.addEventListener('resize',resize);resize();
 function frame(now) {
   animationFrame=requestAnimationFrame(frame);
@@ -724,7 +757,9 @@ function frame(now) {
     if(pointer.valid&&!castDrag)aim=renderer.screenToWorld(pointer.x,pointer.y);
     while(accumulator>=1/30){game.update(1/30,input());accumulator-=1/30;if(game.winner!=null)break;}
   }
-  renderer.draw(game,{aim,selectedSlot,cameraAim:selectedSlot>=0?aim:null});
+  if(game.winner!=null&&!ended)beginEndSequence(now);
+  renderer.draw(game,battleView(now));
+  if(endSequence?.game===game&&!ended&&now-endSequence.startedAt>=finaleSeconds*1000)endMatch();
   if(!ended){saveTimer+=delta;if(saveTimer>=10)saveCurrent();}
   hudTimer+=delta;if(hudTimer>.09){hudTimer=0;refreshHUD();}
   if(announcementUntil&&now>announcementUntil){$('announcement').classList.remove('visible');announcementUntil=0;}

@@ -66,6 +66,9 @@ export function scheduleImpact(game,hero,details){
   const delay=Math.max(.08,Number(details.delay)||.35);
   const impact={id:game.nextId++,ownerId:hero.id,team:hero.team,x:hero.x,y:hero.y,r:80,shape:'circle',color:color(hero),theme:game.combatTheme(hero,details.damageType||'magic'),
     interruptible:true,...details,delay,executeAt:game.time+delay};
+  if(hero.visualAction?.kind==='cast'&&hero.visualAction.startedAt===game.time&&hero.visualAction.abilityId===impact.kind){
+    hero.visualAction.impactAt=impact.executeAt;hero.visualAction.duration=delay+.3;
+  }
   (game.scheduledImpacts??=[]).push(impact);return impact;
 }
 function inShape(target,impact){
@@ -86,7 +89,7 @@ function resolveImpact(game,hero,impact){
     return;
   }
   const visual=impact.kind==='winterfall'?'frost':impact.kind==='royal-quake'?'quake':impact.shape==='line'?'slash':impact.shape==='cone'?'sweep':'ring';
-  game.effect(visual,impact.x,impact.y,impact.r,impact.color,.65,{team:hero.team,theme:impact.theme||game.combatTheme(hero),angle:impact.angle,arc:impact.arc,
+  game.effect(visual,impact.x,impact.y,impact.r,impact.color,.65,{team:hero.team,ownerId:hero.id,abilityId:impact.kind,theme:impact.theme||game.combatTheme(hero),angle:impact.angle,arc:impact.arc,
     x2:impact.x+Math.cos(impact.angle||0)*(impact.range||impact.r),y2:impact.y+Math.sin(impact.angle||0)*(impact.range||impact.r)});
   const radius=impact.shape==='line'?(impact.range||impact.r)+30:impact.r;
   for(const target of enemies(game,hero,impact,radius))if(inShape(target,impact)&&game.clearLine(impact,target,4)){
