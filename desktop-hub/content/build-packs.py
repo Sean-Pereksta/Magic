@@ -286,6 +286,7 @@ for key in ['apestogetherstrong','balatlesolo','cardrealms','deepsea','microwars
     build(key,magic,entry,[entry])
 for key, folder, extras in [('bramblebound','bramblebound',[]),('flag','flag-capture',[]),
        ('matchwars','matchwars',[]),('circuitbound','circuitbound',[]),
+       ('spelltower','spelltower',[]),
        ('splinters','splinters',['game/receiver-window-qb/vendor/three.min.js','game/receiver-window-qb/vendor/THREE-LICENSE.txt','lobby/assets/game-tiles/splinters.webp']),
        ('spacetyrants','space-tyrants',['game/space-tyrants-core.html']),
        ('dwarfworld','dwarf-world',['game/DwarfWorld-core.html'])]:
