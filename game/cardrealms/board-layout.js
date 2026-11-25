@@ -1,13 +1,14 @@
-/* Fits the five public tabletop zones without changing cards or game rules. */
+/* Keeps each fleet zone readable and independently scrollable. */
 (function (root) {
   "use strict";
-  const ids = ["enemyBases", "tradeRow", "myBases", "inPlay", "hand"];
+  const ids = ["enemyBases", "tradeRow", "myBases", "enemyInPlay", "inPlay", "hand"];
   const doc = root.document;
   if (!doc) return;
   const zones = ids.map(id => doc.getElementById(id)).filter(Boolean);
   const resize = typeof root.ResizeObserver === "function" ? new root.ResizeObserver(schedule) : null;
   const mutations = typeof root.MutationObserver === "function" ? new root.MutationObserver(schedule) : null;
   let pending = 0;
+  const scrollPositions = new WeakMap();
 
   function measure(node) {
     const style = root.getComputedStyle(node);
@@ -26,35 +27,38 @@
     const { width, height, gap } = measure(node);
     if (!count || width < 1 || height < 1) {
       node.dataset.overflow = "false";
+      node.closest(".cr-zone")?.setAttribute("data-scrollable", "false");
+      node.tabIndex = -1;
       return;
     }
     const portrait = root.innerWidth < 900 && root.innerHeight > 500;
     const short = root.innerHeight <= 500;
+    const deployed = node.id === "inPlay" || node.id === "enemyInPlay";
+    const mainZone = node.id === "tradeRow" || node.id === "hand";
     const maxWidth = portrait ? 86 : short ? 84 : 104;
-    const minWidth = portrait || short ? 52 : 60;
+    const minWidth = portrait || short ? 52 : 72;
     const ratio = 1.5;
-    let best = { width: 0, columns: 1, rows: count };
-    // Try every row/column arrangement and retain the biggest legible cards.
-    for (let columns = 1; columns <= count; columns++) {
-      const rows = Math.ceil(count / columns);
-      const candidate = Math.min(maxWidth, (width - gap * (columns - 1)) / columns, (height - gap * (rows - 1)) / rows / ratio);
-      if (candidate > best.width + .1 || (Math.abs(candidate - best.width) <= .1 && rows < best.rows)) best = { width: candidate, columns, rows };
-    }
-    const overflow = best.width < minWidth;
-    if (overflow) {
-      // A late-game pile can exceed a screen. Keep the whole board visible and
-      // scroll just that pile instead of crushing text or moving the footer.
-      const columns = Math.max(1, Math.floor((width + gap) / (minWidth + gap)));
-      best = { width: Math.min(maxWidth, (width - gap * (columns - 1)) / columns), columns, rows: Math.ceil(count / columns) };
-    }
-    const cardWidth = Math.floor(Math.max(1, best.width) * 2) / 2;
-    const cardHeight = Math.floor(cardWidth * ratio);
+    // Size from the viewport, never the size of a player's collection. A new
+    // base adds another row instead of making every existing card smaller.
+    const preferredColumns = mainZone ? 5 : deployed ? 3 : 2;
+    const columns = Math.max(1, Math.min(preferredColumns, Math.floor((width + gap) / (minWidth + gap))));
+    const availableWidth = Math.max(1, (width - gap * (columns - 1)) / columns);
+    const oneRowWidth = Math.max(minWidth, height / ratio);
+    const cardWidth = Math.floor(Math.min(maxWidth, availableWidth, oneRowWidth) * 2) / 2;
+    // Deployed ships can have several primary gains plus a real Scrap button.
+    // Keep those controls inside the face even at the narrowest phone width.
+    const cardHeight = Math.max(node.id === "inPlay" ? 92 : 0, Math.floor(cardWidth * ratio));
+    const rows = Math.ceil(count / columns);
+    const overflow = rows * cardHeight + Math.max(0, rows - 1) * gap > height + 1;
     node.style.setProperty("--cr-card-w", `${cardWidth}px`);
     node.style.setProperty("--cr-card-h", `${cardHeight}px`);
-    node.style.setProperty("--cr-cols", String(best.columns));
+    node.style.setProperty("--cr-cols", String(Math.min(count, columns)));
     node.dataset.cardDensity = cardWidth < 80 ? "compact" : "normal";
     node.dataset.cardDetail = cardHeight < 110 ? "minimal" : "full";
     node.dataset.overflow = String(overflow);
+    node.closest(".cr-zone")?.setAttribute("data-scrollable", String(overflow));
+    node.tabIndex = overflow ? 0 : -1;
+    if (overflow) node.scrollTop = scrollPositions.get(node) || 0;
   }
 
   function schedule() {
@@ -66,6 +70,10 @@
   }
 
   zones.forEach(node => {
+    const title = node.closest(".cr-zone")?.getAttribute("aria-labelledby");
+    node.setAttribute("role", "region");
+    if (title) node.setAttribute("aria-labelledby", title);
+    node.addEventListener("scroll", () => scrollPositions.set(node, node.scrollTop), { passive: true });
     resize?.observe(node);
     mutations?.observe(node, { childList: true });
   });
@@ -76,6 +84,7 @@
   const menuButton = doc.getElementById("crMenuBtn");
   function closeMenu() { if (menu?.open) menu.close(); }
   function openMenu() {
+    if (doc.body.classList.contains("cr-private-board") || doc.getElementById("hotseatHandoff")?.open) return;
     root.CardRealmsUI?.closeInspector();
     if (menu && !menu.open) menu.showModal();
   }
