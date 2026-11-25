@@ -1,6 +1,7 @@
 import { HEROES, DIFFICULTIES, WORLD, RULES } from './data.mjs';
 import { Game } from './engine.mjs';
 import { Renderer, drawPortrait, drawIcon } from './renderer.mjs';
+import { pickEnemyAt } from './input.mjs';
 import { ITEMS, ITEM_BY_ID, purchaseState, describeBonuses, drawItemIcon } from './items.mjs';
 import { PROFILE_KEY, SAVE_KEY, COSMETICS, readProfile, writeProfile, heroCosmetics, equipCosmetic, recordMatch, readSavedMatch, saveMatch, clearSavedMatch, itemPlan, recommendedItems, previewItem, normalizeControls, matchBadges } from './profile.mjs';
 
@@ -273,19 +274,9 @@ canvas.addEventListener('pointermove',event=>{
   if(!castDrag)aim=renderer.screenToWorld(event.clientX,event.clientY);
 });
 function enemyAt(clientX,clientY,pointerType) {
-  // Sprites rise above their ground anchor. Include heads and tower crystals,
-  // then add a screen-space touch margin that stays useful at every zoom.
   const zoom=canvas.getBoundingClientRect().width/renderer.camera.width;
-  const padding=pointerType==='touch'?14:7;
-  return game.units.filter(unit=>unit.alive&&unit.team!==game.player.team&&(!game.canSee||game.canSee(game.player.team,unit)))
-    .map(unit=>{
-      const [width,height,lift]=({hero:[22,35,31],tower:[32,55,48],core:[64,80,42],footman:[17,23,17],archer:[17,23,17]})[unit.kind]
-        ||[Math.max(22,unit.r*1.35),Math.max(26,unit.r*1.5),Math.max(20,unit.r*1.2)];
-      const point=renderer.worldToScreen(unit.x,unit.y-lift);
-      const distance=Math.hypot((clientX-point.x)/(width*zoom+padding),(clientY-point.y)/(height*zoom+padding));
-      return {unit,distance};
-    }).filter(hit=>hit.distance<=1)
-    .sort((a,b)=>a.distance-b.distance||a.unit.id-b.unit.id)[0]?.unit;
+  return pickEnemyAt({units:game.units,team:game.player.team,point:{x:clientX,y:clientY},zoom,pointerType,
+    worldToScreen:(x,y)=>renderer.worldToScreen(x,y),canSee:unit=>!game.canSee||game.canSee(game.player.team,unit)});
 }
 function attackNearest() {
   if(!playing()||!game.player.alive)return;
@@ -314,7 +305,7 @@ canvas.addEventListener('pointerdown',event=>{
     }else game.attackTarget(target.id);
     refreshHUD();
   }
-  else movePlayerTo({...aim});
+  else attackNearest();
 });
 window.addEventListener('keydown',event=>{
   if(event.target.matches('input,select,textarea'))return;
@@ -676,10 +667,10 @@ function refreshHUD() {
   const target=attacking&&game.units.find(unit=>unit.alive&&unit.id===hero.targetId);
   $('attack-button').classList.toggle('held',attacking||touchAttack);
   $('attack-button').setAttribute('aria-pressed',String(attacking));
-  $('attack-button').setAttribute('aria-label',attacking?'Attacking automatically. Press to select the nearest enemy.':'Attack the nearest enemy');
-  $('attack-button').querySelector('small').textContent=attacking?'ACTIVE':'ATTACK';
+  $('attack-button').setAttribute('aria-label',target?'Attacking automatically. Press to select the nearest nearby enemy.':attacking?'Ready to attack. No nearby enemy.':'Attack the nearest nearby enemy');
+  $('attack-button').querySelector('small').textContent=target?'ACTIVE':attacking?'READY':'ATTACK';
   $('target-status').hidden=!attacking;
-  $('target-status').textContent=target?`ATTACKING · ${target.name||({footman:'Footman',archer:'Archer',summon:'Summon'}[target.kind])||'Enemy'}`:'ATTACK · Looking for an enemy';
+  $('target-status').textContent=target?`ATTACKING · ${target.name||({footman:'Footman',archer:'Archer',summon:'Summon'}[target.kind])||'Enemy'}`:'ATTACK · No nearby enemy';
   $('respawn-status').hidden=hero.alive;
   if(!hero.alive){$('respawn-status').replaceChildren();const headline=document.createElement('span');headline.textContent=`Return in ${Math.ceil(hero.respawnIn||0)}s`;const caption=document.createElement('small');caption.textContent='Your allies are still fighting.';$('respawn-status').append(headline,caption);}
   if(hero.level>lastLevel){tone('level');notify(`LEVEL ${hero.level}${points?' · Choose a new talent ✦':' · More power, new possibilities'}`,3400);lastLevel=hero.level;}

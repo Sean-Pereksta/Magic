@@ -43,6 +43,50 @@ test('a fresh attack press replaces a tap focus with the nearest enemy',()=>{
   game.attackNearest();assert.equal(player.targetId,near.id);assert.equal(game.attackOrder.explicit,false);
 });
 
+test('Attack waits locally instead of walking toward distant structures or shared team vision',()=>{
+  const {game,player}=arena(),distantTower=tower(game,1,2400);
+  const ally=game.makeHero('angel',0,1);Object.assign(ally,{x:2300,y:1100,bot:false,speed:0});
+  const distantEnemy=enemy(game,2250);
+  assert(game.canSee(player.team,distantTower),'known structures are visible across the map');
+  assert(game.canSee(player.team,distantEnemy),'the teammate reveals a distant enemy');
+  const start={x:player.x,y:player.y};
+  assert(game.attackNearest());advance(game,1);
+  assert(game.attackOrder,'Attack remains armed for a nearby enemy');
+  assert.equal(player.targetId,null,'shared visibility alone must not start a chase');
+  assert.equal(game.moveTarget,null);
+  assert.deepEqual({x:player.x,y:player.y},start,'pressing Attack without a local enemy stays put');
+});
+
+test('an idle Attack order acquires and damages an enemy that enters nearby',()=>{
+  const {game,player}=arena(),foe=enemy(game,2400);
+  game.attackNearest();advance(game,.2);assert.equal(player.targetId,null);
+  foe.x=player.x+120;game.rebuildGrid();advance(game,.7);
+  assert.equal(player.targetId,foe.id);assert(foe.hp<foe.maxHp);
+});
+
+test('a defeated local target cannot chain an automatic chase across the map',()=>{
+  const {game,player}=arena(),chosen=enemy(game,1550);tower(game,1,2400);
+  game.attackTarget(chosen.id);game.kill(chosen,player);
+  const start={x:player.x,y:player.y};advance(game,.5);
+  assert.equal(player.targetId,null);assert.equal(game.attackOrder.explicit,false);
+  assert.deepEqual({x:player.x,y:player.y},start);
+});
+
+test('an automatically selected enemy escaping the local area ends its chase',()=>{
+  const {game,player}=arena(),foe=enemy(game,1600);
+  game.attackNearest();advance(game,.1);assert.equal(player.targetId,foe.id);
+  foe.x=2400;game.rebuildGrid();const start={x:player.x,y:player.y};advance(game,.5);
+  assert.equal(player.targetId,null);assert(game.attackOrder);
+  assert.deepEqual({x:player.x,y:player.y},start);
+});
+
+test('explicitly selecting a distant visible target still authorizes an approach',()=>{
+  const {game,player}=arena(),chosen=tower(game,1,2400);
+  assert(game.attackTarget(chosen.id));advance(game,.3);
+  assert.equal(player.targetId,chosen.id);assert.equal(game.attackOrder.explicit,true);
+  assert(player.x>1450,'explicit target focus can pursue beyond automatic acquisition range');
+});
+
 test('movement and new orders cancel pursuit; a held attack cannot restart it',()=>{
   const {game,player}=arena(),foe=enemy(game,1700);
   game.update(.05,{attack:true});assert.equal(player.targetId,foe.id);
