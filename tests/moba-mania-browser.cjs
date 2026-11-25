@@ -10,7 +10,7 @@ const {chromium} = require('playwright');
 const repo = path.resolve(__dirname, '..');
 const qaOutput = process.env.MOBA_QA_OUTPUT;
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'moba-pack-test-'));
-const hooks = '\nwindow.__mobaTest={get game(){return game},get renderer(){return renderer},get aim(){return aim},startMatch,openTalents,refreshHUD};\n';
+const hooks = '\nwindow.__mobaTest={get game(){return game},get renderer(){return renderer},get aim(){return aim},startMatch,openTalents,openShop,renderShop,refreshHUD};\n';
 const mime = {'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.json':'application/json'};
 const missing = [];
 function buildOfflinePack() {
@@ -19,7 +19,7 @@ function buildOfflinePack() {
   const pack = path.join(temp,'packs/mobamania');
   const entry = fs.readFileSync(path.join(pack,'index.html'),'utf8');
   assert(!entry.includes('/hub/play-signal.mjs'),'offline pack must not call the web hub');
-  for(const module of ['data.mjs','engine.mjs','hero-skills.mjs','renderer.mjs','ui.mjs','style.css']) assert(fs.existsSync(path.join(pack,'moba-mania',module)),`offline pack missing ${module}`);
+  for(const module of ['data.mjs','items.mjs','engine.mjs','hero-skills.mjs','renderer.mjs','ui.mjs','style.css']) assert(fs.existsSync(path.join(pack,'moba-mania',module)),`offline pack missing ${module}`);
   assert(!fs.existsSync(path.join(pack,'moba-mania/CONTRACT.md')),'implementation coordination notes are not shipped');
   return pack;
 }
@@ -112,7 +112,88 @@ async function verifyAttackOrders(page,context,device) {
     g.waveIn=19;g.beastIn=55;g.rebuildGrid();
   },[targets.near,targets.far]);
 }
+async function verifyShop(page,device,items) {
+  // Earn the first coins through actual combat. Assist XP must never mint gold.
+  const earned=await page.evaluate(()=>{
+    const g=__mobaTest.game,h=g.player;
+    g.cancelPlayerOrder();
+    const helper=g.units.find(u=>u.kind==='hero'&&u.team===h.team&&u!==h);
+    const bystander=g.units.find(u=>u.kind==='hero'&&u.team===h.team&&u!==h&&u!==helper);
+    const total=u=>({level:u.level,xp:u.xp});
+    const before=total(h),idleBefore=total(bystander),gold=h.gold;
+    const assisted=g.addUnit('footman',1,h.x+70,h.y,{hp:100});
+    g.damage(assisted,10,h);g.damage(assisted,200,helper);
+    const assistGold=h.gold,after=total(h);
+    const finished=g.addUnit('footman',1,h.x+80,h.y,{hp:20});
+    g.damage(finished,100,h);__mobaTest.refreshHUD();
+    return {gold,assistGold,afterGold:h.gold,before,after,idleBefore,idleAfter:total(bystander),gain:h.lastGoldGain,
+      floating:g.texts.some(t=>/GOLD/.test(t.text))};
+  });
+  assert.equal(earned.assistGold,earned.gold,'an actual assist earns no gold');
+  assert(earned.after.level>earned.before.level||earned.after.xp>earned.before.xp,'an actual contributor earns personal XP');
+  assert.deepEqual(earned.idleAfter,earned.idleBefore,'uninvolved nearby teammate gets no XP');
+  assert(earned.afterGold>earned.gold&&earned.gain.amount>0&&earned.floating,'a final hit earns visible gold');
+  await inspectBounds(page,['#shop-button','#shop-gold']);
+  if(device.touch)await page.locator('#shop-button').tap();else await page.keyboard.press('i');
+  await page.locator('#shop-dialog').waitFor({state:'visible'});
+  const paused=await page.evaluate(()=>__mobaTest.game.time);
+  await page.waitForTimeout(120);
+  assert.equal(await page.evaluate(()=>__mobaTest.game.time),paused,'shopping pauses combat');
+  await inspectBounds(page,['#shop-dialog','#shop-balance','#close-shop']);
+  for(const tier of [1,2,3]) {
+    await page.locator(`[data-shop-tier="${tier}"]`).click();
+    assert.equal(await page.locator('#shop-items [data-item-id]').count(),10,`tier ${tier} has ten items`);
+    assert.equal(await page.locator('#shop-items .shop-item-heading > canvas').count(),10,`tier ${tier} has ten item icons`);
+  }
+  const legendary=items.find(i=>i.tier===3);
+  const upgrade=items.find(i=>i.id===legendary.requires.find(id=>items.find(i=>i.id===id)?.tier===2));
+  const foundation=items.find(i=>i.tier===1&&i.bonuses.hp);
+  await page.evaluate(()=>{__mobaTest.game.player.gold=10000;__mobaTest.renderShop();__mobaTest.refreshHUD();});
+  await page.locator('[data-shop-tier="2"]').click();
+  assert(await page.locator(`[data-buy-item="${upgrade.id}"]`).isDisabled(),'gold alone cannot bypass upgrade prerequisites');
+  await page.locator('[data-shop-tier="3"]').click();
+  assert(await page.locator(`[data-buy-item="${legendary.id}"]`).isDisabled(),'advanced items require both ingredients');
+  const buyIds=[...new Set([foundation.id,...upgrade.requires,...legendary.requires.filter(id=>id!==upgrade.id),upgrade.id,legendary.id])];
+  let expectedGold=10000;
+  const originalHp=await page.evaluate(()=>__mobaTest.game.player.maxHp);
+  for(const id of buyIds) {
+    const item=items.find(i=>i.id===id);
+    await page.locator(`[data-shop-tier="${item.tier}"]`).click();
+    const buy=page.locator(`[data-buy-item="${id}"]`);
+    assert(await buy.isEnabled(),item.name+' becomes buyable with its prerequisites');
+    await buy.click();expectedGold-=item.cost;
+    const state=await page.evaluate(()=>({gold:__mobaTest.game.player.gold,items:[...__mobaTest.game.player.items]}));
+    assert.equal(state.gold,expectedGold,'purchase charges the displayed additional cost exactly once');
+    assert(state.items.includes(id),'purchase immediately activates '+item.name);
+    assert(await buy.isDisabled(),'owned upgrade cannot be bought again');
+    if(device.height<550&&device.width>560)await page.waitForFunction(id=>{
+      const list=document.getElementById('shop-items').getBoundingClientRect();
+      const card=document.querySelector(`#shop-items [data-item-id="${id}"]`);
+      const heading=card.querySelector('.shop-item-heading').getBoundingClientRect();
+      const action=card.querySelector('[data-buy-item]').getBoundingClientRect();
+      return heading.top>=list.top-1&&action.bottom<=list.bottom+1;
+    },id,{timeout:3000});
+  }
+  assert(await page.evaluate(()=>__mobaTest.game.player.maxHp)>originalHp,'buying health changes actual maximum health');
+  assert.deepEqual(await page.evaluate(()=>__mobaTest.game.player.items),buyIds,'prerequisites remain active after advanced upgrades');
+  assert((await page.locator('#shop-inventory').textContent()).length>0,'owned items appear in inventory');
+  if(qaOutput){fs.mkdirSync(qaOutput,{recursive:true});await page.screenshot({path:path.join(qaOutput,device.name+'-shop.png')});}
+  await page.evaluate(()=>{__mobaTest.game.player.gold=0;__mobaTest.renderShop();});
+  await page.locator('[data-shop-tier="1"]').click();
+  const unaffordable=items.find(i=>i.tier===1&&!buyIds.includes(i.id));
+  assert(await page.locator(`[data-buy-item="${unaffordable.id}"]`).isDisabled(),'unaffordable purchases are disabled');
+  if(device.touch)await page.locator('#close-shop').tap();else await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>!document.getElementById('shop-dialog').open&&!__mobaTest.game.paused);
+  await page.locator('#shop-button').click();
+  assert.deepEqual(await page.evaluate(()=>__mobaTest.game.player.items),buyIds,'closing and reopening retains purchases');
+  await page.locator('#close-shop').click();
+  await page.waitForFunction(()=>!__mobaTest.game.paused);
+  await page.evaluate(()=>{const g=__mobaTest.game;g.gainXP(g.player,1e7);__mobaTest.refreshHUD();});
+  assert.equal(await page.evaluate(()=>__mobaTest.game.player.level),18,'level cap is eighteen');
+  assert.equal(await page.locator('#xp-fill').evaluate(el=>el.style.width),'100%','max-level XP bar is complete');
+}
 async function main(){
+  const {ITEMS}=await import('../game/moba-mania/items.mjs');
   buildOfflinePack();
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   const origin='http://127.0.0.1:'+server.address().port;
@@ -136,7 +217,7 @@ async function main(){
       await page.locator('#hud').waitFor({state:'visible'});
       const setup=await page.evaluate(()=>({hero:__mobaTest.game.player.heroId,count:__mobaTest.game.units.filter(u=>u.kind==='hero').length}));
       assert.equal(setup.hero,device.hero);assert.equal(setup.count,6);
-      await inspectBounds(page,['#health-fill','#mana-fill','#xp-fill','#ability-bar','#pause-button','#talent-button']);
+      await inspectBounds(page,['#health-fill','#mana-fill','#xp-fill','#ability-bar','#pause-button','#talent-button','#shop-button']);
       await page.evaluate(()=>{const g=__mobaTest.game;g.player.x=1600;g.player.y=1100;});
       await page.waitForTimeout(350);
       const before=await page.evaluate(()=>({x:__mobaTest.game.player.x,camera:__mobaTest.renderer.camera.x}));
@@ -192,14 +273,16 @@ async function main(){
       if(await page.locator('#close-talents').isVisible())await page.locator('#close-talents').click();
       await page.waitForFunction(()=>__mobaTest.game.paused===false,{},{timeout:3000});
       assert.equal(await page.evaluate(()=>__mobaTest.game.paused),false,'closing tree resumes');
+      await verifyShop(page,device,ITEMS);
       if(qaOutput){fs.mkdirSync(qaOutput,{recursive:true});await page.screenshot({path:path.join(qaOutput,device.name+'.png')});}
       await finishMatch(page);
       await page.locator('#play-again').click();
       await page.locator('#hud').waitFor({state:'visible'});
       assert.equal(await page.evaluate(()=>__mobaTest.game.winner),null,'replay starts fresh match');
       assert.equal(await page.evaluate(()=>__mobaTest.game.player.level),1,'replay resets progression');
+      assert.deepEqual(await page.evaluate(()=>({gold:__mobaTest.game.player.gold,items:__mobaTest.game.player.items})),{gold:0,items:[]},'replay resets gold and inventory');
       assert.deepEqual(errors,[],device.name+' must not emit runtime errors');
-      console.log(JSON.stringify({device:device.name,hero:device.hero,move:true,camera:true,nearestAttack:true,enemyFocus:true,autoRetarget:true,moveCancelsAttack:true,talentIcons:12,replay:true,errors:0}));
+      console.log(JSON.stringify({device:device.name,hero:device.hero,move:true,camera:true,nearestAttack:true,enemyFocus:true,autoRetarget:true,moveCancelsAttack:true,talentIcons:12,shopItems:30,prerequisites:true,purchases:true,personalRewards:true,maxLevel:18,replay:true,errors:0}));
       await context.close();
     }
     const context=await browser.newContext({viewport:{width:1280,height:800}}),page=await context.newPage(),errors=[];
@@ -209,6 +292,9 @@ async function main(){
       await page.locator(`#hero-grid [data-hero="${hero}"]`).click();await page.locator('#start-match').click();
       await page.locator('#hud').waitFor({state:'visible'});assert.equal(await page.evaluate(()=>__mobaTest.game.player.heroId),hero);
       assert.equal(await page.locator('#ability-bar canvas').count(),4,'every hero has four skill icons');
+      await page.locator('#shop-button').click();await page.locator('#shop-dialog').waitFor({state:'visible'});
+      assert.equal(await page.locator('#shop-items canvas').count(),10,'offline item icons load without extra assets');
+      await page.locator('#close-shop').click();await page.waitForFunction(()=>!__mobaTest.game.paused);
       await finishMatch(page);await page.locator('#change-hero').click();await page.locator('#menu-screen').waitFor({state:'visible'});
     }
     assert.deepEqual(errors,[]);await context.close();assert.deepEqual(missing,[],'no missing static modules/resources');

@@ -261,7 +261,7 @@ test('offline pack builder copies the complete runtime and resolves every local 
         if(/\.(?:mjs|js|html)$/.test(dependency))queue.push(dependency);
       }
     }
-    for(const name of ['data.mjs','engine.mjs','hero-skills.mjs','renderer.mjs','ui.mjs'])assert(seen.has(path.join(pack,'moba-mania',name)),name+' reachable from entry');
+    for(const name of ['data.mjs','items.mjs','engine.mjs','hero-skills.mjs','renderer.mjs','ui.mjs'])assert(seen.has(path.join(pack,'moba-mania',name)),name+' reachable from entry');
     assert(!fs.existsSync(path.join(pack,'moba-mania/CONTRACT.md')),'coordination notes not shipped');
   }finally{fs.rmSync(temp,{recursive:true,force:true});}
 });
