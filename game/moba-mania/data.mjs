@@ -241,4 +241,11 @@ export const WORLD={width:3200,height:2200,lanes,river:[point(1560,110),point(16
   obstacles,brush:[{x:1300,y:710,r:72},{x:1900,y:1490,r:72},{x:1420,y:990,r:65},{x:1780,y:1210,r:65},{x:1100,y:570,r:65},{x:2100,y:1630,r:65}],
   bases:[{x:260,y:1100,well:{x:115,y:1100}},{x:2940,y:1100,well:{x:3085,y:1100}}],camps,
   beastPits:[{id:'river-maw',x:1610,y:705,lane:0,type:'maw'},{id:'moss-colossus',x:1590,y:1495,lane:2,type:'colossus'}]};
-export const RULES={waveInterval:19,firstWave:4,firstBeast:55,beastInterval:100,campRespawn:44,maxLevel:12,recallTime:4,wellRadius:120};
+export const RULES={waveInterval:19,firstWave:4,firstBeast:55,beastInterval:100,campRespawn:44,maxLevel:18,assistWindow:10,assistXpFraction:.5,recallTime:4,wellRadius:120};
+
+/** Personal progression: the cost of advancing from this level, with no XP beyond the cap. */
+export function xpToNextLevel(level){
+  if(level>=RULES.maxLevel)return 0;
+  const rank=Math.max(0,Math.floor(level)-1);
+  return 150+50*rank+3*rank*rank;
+}

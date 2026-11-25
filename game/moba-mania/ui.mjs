@@ -1,6 +1,7 @@
-import { HEROES, DIFFICULTIES, WORLD } from './data.mjs';
+import { HEROES, DIFFICULTIES, WORLD, RULES } from './data.mjs';
 import { Game } from './engine.mjs';
 import { Renderer, drawPortrait, drawIcon } from './renderer.mjs';
+import { ITEMS, ITEM_BY_ID, purchaseState, describeBonuses, drawItemIcon } from './items.mjs';
 
 const $ = id => document.getElementById(id);
 const canvas = $('battlefield');
@@ -25,6 +26,7 @@ let lastEventId = null, lastLevel = 1, lastHealth = 1;
 let announcementUntil = 0, ended = false;
 let helpReturn = null;
 let audioContext = null, lastToneAt = 0;
+let shopTier = 1, shopRenderKey = '';
 const abilities = [];
 let animationFrame = 0;
 
@@ -168,6 +170,7 @@ function startMatch() {
   selectedHero=HEROES[selectedHero] ? selectedHero : 'arc';
   game=new Game({hero:selectedHero,difficulty:$('difficulty').value,seed:Math.floor(Math.random()*0x7fffffff)});
   ended=false;lastEventId=null;lastLevel=1;lastHealth=game.player.hp;accumulator=0;hudTimer=0;lastFrame=performance.now();
+  shopTier=1;shopRenderKey='';$('shop-owned').open=false;
   $('menu-screen').hidden=true;$('hud').hidden=false;
   $('hero-name').textContent=HEROES[selectedHero].name;
   drawPortrait($('hero-portrait'),selectedHero,48);
@@ -267,7 +270,7 @@ window.addEventListener('keydown',event=>{
     if(game&&!ended&&!$('hud').hidden){event.preventDefault();openPause();}return;
   }
   if(!playing())return;
-  const controlled=['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyQ','KeyE','KeyR','KeyF','KeyB','KeyT','Tab'];
+  const controlled=['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyQ','KeyE','KeyR','KeyF','KeyB','KeyT','KeyI','Tab'];
   if(!controlled.includes(event.code))return;
   event.preventDefault();unlockAudio();
   if(event.repeat)return;
@@ -275,6 +278,7 @@ window.addEventListener('keydown',event=>{
   const slot=hotkeys.indexOf(event.code);
   if(slot>=0&&canArm(slot))armAbility(slot);
   if(event.code==='KeyT')openTalents();
+  if(event.code==='KeyI')openShop();
   if(event.code==='KeyB')recall();
   if(event.code==='Tab')openMap();
   if(event.code==='Space')attackNearest();
@@ -348,6 +352,87 @@ $('sound-button').addEventListener('click',()=>{soundEnabled=!soundEnabled;updat
 function updateSoundButton(){$('sound-button').textContent=soundEnabled?'♪':'×♪';$('sound-button').setAttribute('aria-label',soundEnabled?'Mute sound':'Enable sound');}
 updateSoundButton();
 
+function shopStateKey(hero) {
+  return [hero.gold,(hero.items||[]).join(','),hero.level,Object.values(hero.talents).join(',')].join('|');
+}
+function itemIcon(item, size=40) {
+  const icon=document.createElement('canvas');icon.width=size;icon.height=size;icon.setAttribute('aria-hidden','true');
+  drawItemIcon(icon.getContext('2d'),item,0,0,size);return icon;
+}
+function openShop() {
+  if(!game||ended||$('hud').hidden)return;
+  $('shop-message').textContent='Choose an item. Its bonuses become active as soon as you buy it.';
+  renderShop();openDialog('shop-dialog');
+}
+function showShopTier(tier, focusItem=null) {
+  shopTier=tier;renderShop();
+  if(focusItem){
+    const card=[...$('shop-items').children].find(el=>el.dataset.itemId===focusItem);
+    card?.scrollIntoView({block:'nearest'});card?.focus({preventScroll:true});
+  }else $('shop-items').scrollTop=0;
+}
+function renderShop() {
+  if(!game)return;
+  const hero=game.player,owned=new Set(hero.items||[]);
+  shopRenderKey=shopStateKey(hero);
+  $('shop-balance').textContent=String(Math.floor(hero.gold||0));
+  const stats=$('shop-stats');stats.replaceChildren();
+  const spellBoost=((1+game.bonus(hero,'damage'))*(1+game.bonus(hero,'spellDamage'))-1)*100;
+  for(const [value,label] of [[Math.round(hero.maxHp),'MAX HEALTH'],[hero.damage.toFixed(1),'ATTACK DAMAGE'],[`+${Math.round(spellBoost)}%`,'SPELL DAMAGE'],[`${Math.round(Math.min(.5,game.bonus(hero,'cooldown'))*100)}%`,'COOLDOWN CUT']]){
+    const stat=document.createElement('div'),amount=document.createElement('strong'),caption=document.createElement('small');
+    amount.textContent=String(value);caption.textContent=label;stat.append(amount,caption);stats.append(stat);
+  }
+  document.querySelectorAll('[data-shop-tier]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.shopTier)===shopTier)));
+  const list=$('shop-items'),scrollTop=list.scrollTop;list.replaceChildren();list.setAttribute('aria-label',`Tier ${shopTier} items`);
+  for(const item of ITEMS.filter(item=>item.tier===shopTier)){
+    const state=purchaseState(hero,item.id),isOwned=owned.has(item.id);
+    const card=document.createElement('article');card.className=`shop-item ${isOwned?'owned':state.ok?'ready':state.missing.length?'locked':'short'}`;
+    card.dataset.itemId=item.id;card.dataset.itemState=isOwned?'owned':state.ok?'ready':state.missing.length?'locked':'short';card.tabIndex=-1;
+    card.style.setProperty('--item-color',item.color);
+    const heading=document.createElement('div');heading.className='shop-item-heading';
+    const title=document.createElement('h3');title.textContent=item.name;
+    const price=document.createElement('span');price.className='shop-price';price.textContent=`${item.cost} gold`;
+    const titleBlock=document.createElement('div');titleBlock.append(title,price);heading.append(itemIcon(item),titleBlock);
+    const bonuses=document.createElement('p');bonuses.className='shop-bonuses';bonuses.textContent=describeBonuses(item);
+    const description=document.createElement('p');description.className='shop-description';description.textContent=item.description;
+    const requirements=document.createElement('div');requirements.className='shop-requirements';
+    if(item.requires.length){
+      const label=document.createElement('small');label.textContent='REQUIRES';requirements.append(label);
+      for(const id of item.requires){
+        const required=ITEM_BY_ID[id],hasItem=owned.has(id),button=document.createElement('button');
+        button.className=`shop-requirement ${hasItem?'met':'missing'}`;button.dataset.requiresItem=id;
+        button.title=`${required.name} · ${hasItem?'owned and active':'view required item'}`;button.setAttribute('aria-label',`${required.name}: ${hasItem?'owned':'required'}. View item.`);
+        const name=document.createElement('span');name.textContent=`${hasItem?'✓ ':''}${required.name}`;
+        button.append(itemIcon(required,24),name);button.addEventListener('click',()=>showShopTier(required.tier,id));requirements.append(button);
+      }
+    }else{const label=document.createElement('small');label.textContent='NO REQUIREMENTS';requirements.append(label);}
+    const action=document.createElement('button');action.className='shop-buy';action.dataset.buyItem=item.id;action.disabled=!state.ok;
+    action.textContent=isOwned?'✓ ACTIVE':state.ok?`BUY · ${item.cost} GOLD`:state.missing.length?'REQUIRES ITEMS':`NEED ${state.goldNeeded} MORE GOLD`;
+    action.setAttribute('aria-label',isOwned?`${item.name} is owned and active`:`Buy ${item.name} for ${item.cost} gold. ${state.ok?'Ready to buy.':state.reason}`);
+    action.title=state.ok?`${describeBonuses(item)} · Activates immediately`:state.reason;
+    action.addEventListener('click',()=>{
+      if(!game.buyItem(hero,item.id)){$('shop-message').textContent=purchaseState(hero,item.id).reason;renderShop();return;}
+      tone('level');$('shop-message').textContent=`${item.name} is active. ${describeBonuses(item)}.`;
+      renderShop();refreshHUD();
+      // Keep keyboard focus near the purchased item after its button becomes disabled.
+      [...$('shop-items').children].find(el=>el.dataset.itemId===item.id)?.focus({preventScroll:true});
+    });
+    card.append(heading,bonuses,description,requirements,action);list.append(card);
+  }
+  list.scrollTop=scrollTop;
+  $('shop-owned-count').textContent=`${owned.size} / ${ITEMS.length}`;
+  const inventory=$('shop-inventory');inventory.replaceChildren();
+  for(const item of ITEMS.filter(item=>owned.has(item.id))){
+    const badge=document.createElement('div');badge.className='shop-owned-item';badge.dataset.ownedItem=item.id;
+    badge.title=`${item.name} · ${describeBonuses(item)}`;
+    const name=document.createElement('span');name.textContent=item.name;badge.append(itemIcon(item,28),name);inventory.append(badge);
+  }
+  if(!owned.size){const empty=document.createElement('p');empty.textContent='Your purchased items will appear here. All of them stay active.';inventory.append(empty);}
+}
+$('shop-button').addEventListener('click',openShop);
+$('close-shop').addEventListener('click',()=>closeDialog('shop-dialog'));
+for(const button of document.querySelectorAll('[data-shop-tier]'))button.addEventListener('click',()=>showShopTier(Number(button.dataset.shopTier)));
+
 function openTalents() {
   if(!game||ended)return;
   renderTalents();openDialog('talent-dialog');
@@ -404,8 +489,18 @@ function refreshHUD() {
   const percent=(v,max)=>`${Math.max(0,Math.min(100,v/(max||1)*100))}%`;
   $('health-fill').style.width=percent(hero.hp,hero.maxHp);$('health-text').textContent=`${Math.max(0,Math.ceil(hero.hp))} / ${Math.ceil(hero.maxHp)}`;
   $('mana-fill').style.width=percent(hero.mana,hero.maxMana);$('mana-text').textContent=`${Math.floor(hero.mana)} / ${Math.floor(hero.maxMana)}`;
-  $('xp-fill').style.width=hero.level>=12?'100%':percent(hero.xp,hero.xpNext);$('xp-fill').parentElement.title=`Level ${hero.level} · ${Math.floor(hero.xp)} / ${hero.xpNext} XP`;
+  const maxLevel=hero.level>=RULES.maxLevel;
+  $('xp-fill').style.width=maxLevel?'100%':percent(hero.xp,hero.xpNext);
+  $('xp-fill').parentElement.title=maxLevel?`Level ${RULES.maxLevel} · MAX LEVEL`:`Level ${hero.level} · ${Math.floor(hero.xp)} / ${hero.xpNext} XP · Personal kills and assists`;
+  $('hero-level').title=maxLevel?'Maximum level reached':`Level ${hero.level} of ${RULES.maxLevel}`;
   $('hero-level').textContent=String(hero.level);$('kda').textContent=`${hero.kills||0} / ${hero.deaths||0} / ${hero.assists||0}`;
+  const gold=Math.floor(hero.gold||0);$('shop-gold').textContent=String(gold);
+  $('shop-button').setAttribute('aria-label',`Open item shop, ${gold} gold`);
+  $('shop-button').title=`Item shop (I) · ${gold} gold · Final hits earn gold`;
+  const goldGain=hero.lastGoldGain,showGold=goldGain&&game.time-goldGain.time>=0&&game.time-goldGain.time<2;
+  $('gold-earned').hidden=!showGold;
+  if(showGold)$('gold-earned').textContent=`+${goldGain.amount} GOLD`;
+  if($('shop-dialog').open&&shopRenderKey!==shopStateKey(hero))renderShop();
   $('blue-score').textContent=String(game.stats?.kills?.[0]||0);$('red-score').textContent=String(game.stats?.kills?.[1]||0);$('match-clock').textContent=formatTime(game.time);
   const cores=game.units.filter(unit=>unit.kind==='core');
   for(const core of cores)$(core.team===0?'ally-core':'enemy-core').style.setProperty('--hp',percent(core.hp,core.maxHp));

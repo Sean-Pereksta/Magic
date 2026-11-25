@@ -1,5 +1,6 @@
-import { HEROES, DIFFICULTIES, WORLD, RULES, lanePoint, segmentDistance } from './data.mjs';
+import { HEROES, DIFFICULTIES, WORLD, RULES, lanePoint, segmentDistance, xpToNextLevel } from './data.mjs';
 import { castHeroSkill, botSkillAim } from './hero-skills.mjs';
+import { ITEMS, itemBonus, purchaseState } from './items.mjs';
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -65,13 +66,13 @@ export class Game {
     const h=this.addUnit('hero',team,well.x+(team?-45:45),well.y+(slot-1)*38,{heroId,name:isPlayer?def.name:def.name+' · '+(team?'Rose':'Azure'),
       hp:def.hp,mana:def.mana,speed:def.speed,range:def.range,damage:def.damage,attackRate:def.attackRate,r:17,
       isPlayer,bot:!isPlayer,slot,lane:slot===0?1:slot===1?0:2,role:slot===2?'jungler':heroId==='angel'?'support':'laner',
-      xp:0,xpNext:90,level:1,cooldowns:[0,0,0,0],talents:{},kills:0,deaths:0,assists:0,respawnIn:0,aiState:'departing',
+      xp:0,xpNext:xpToNextLevel(1),level:1,cooldowns:[0,0,0,0],talents:{},kills:0,deaths:0,assists:0,gold:0,goldEarned:0,items:[],lastGoldGain:null,shopIn:1,respawnIn:0,aiState:'departing',
       thinkIn:this.random()*.25,brain:{},lastDamageAt:-100,contributors:{},recallIn:0,baseHp:def.hp,baseMana:def.mana});
     return h;
   }
   bonus(hero,key){
     if(!hero?.heroId)return 0;
-    let value=0;for(const t of HEROES[hero.heroId].talents){const selected=t.choices.find(c=>c.id===hero.talents[t.level]);value+=selected?.bonuses?.[key]||0;}
+    let value=itemBonus(hero,key);for(const t of HEROES[hero.heroId].talents){const selected=t.choices.find(c=>c.id===hero.talents[t.level]);value+=selected?.bonuses?.[key]||0;}
     return value;
   }
   getAbility(hero,slot){
@@ -102,17 +103,27 @@ export class Game {
     hero.range=def.range*(1+this.bonus(hero,'range'));hero.speed=def.speed*(1+this.bonus(hero,'speed'));
     hero.attackRate=def.attackRate/(1+this.bonus(hero,'attackSpeed'));
   }
+  buyItem(hero,itemId){
+    if(hero?.kind!=='hero'||!this.units.includes(hero)||this.winner!==null)return false;
+    const state=purchaseState(hero,itemId);if(!state.ok)return false;
+    const oldHp=hero.maxHp,oldMana=hero.maxMana;
+    hero.gold-=state.item.cost;hero.items.push(state.item.id);this.refreshStats(hero);
+    // A health upgrade adds its new capacity once; it never heals a dead hero or refills missing HP.
+    if(hero.alive){hero.hp=Math.min(hero.maxHp,hero.hp+hero.maxHp-oldHp);hero.mana=Math.min(hero.maxMana,hero.mana+hero.maxMana-oldMana);}
+    if(hero.isPlayer)this.announce(state.item.name+' equipped. Its bonuses are active.','purchase');
+    return true;
+  }
   gainXP(hero,amount){
     if(hero?.kind!=='hero'||!Number.isFinite(amount)||amount<=0||hero.level>=RULES.maxLevel)return;
     hero.xp+=amount;
     while(hero.level<RULES.maxLevel&&hero.xp>=hero.xpNext){
-      hero.xp-=hero.xpNext;hero.level++;hero.xpNext=90+(hero.level-1)*42;
+      hero.xp-=hero.xpNext;hero.level++;hero.xpNext=xpToNextLevel(hero.level);
       const oldHp=hero.maxHp,oldMana=hero.maxMana;this.refreshStats(hero);
-      hero.hp=Math.min(hero.maxHp,hero.hp+(hero.maxHp-oldHp)+65);hero.mana=Math.min(hero.maxMana,hero.mana+(hero.maxMana-oldMana)+35);
+      if(hero.alive){hero.hp=Math.min(hero.maxHp,hero.hp+(hero.maxHp-oldHp)+65);hero.mana=Math.min(hero.maxMana,hero.mana+(hero.maxMana-oldMana)+35);}
       this.effect('level',hero.x,hero.y,60,'#ffe38e',.9);this.float(hero,'LEVEL '+hero.level,'#ffe38e');
       if(hero.isPlayer)this.announce('Level '+hero.level+(this.availableTalents(hero).length?' · choose a talent':' · growing stronger'),'level');
     }
-    if(hero.level===RULES.maxLevel)hero.xp=0;
+    if(hero.level===RULES.maxLevel){hero.xp=0;hero.xpNext=0;}
   }
   announce(text,type='info'){this.events.push({id:this.eventId++,text,time:this.time,type});if(this.events.length>60)this.events.shift();}
   effect(type,x,y,r,color,life=0.6,extra={}){const e={type,x,y,r,color,life,maxLife:life,...extra};this.effects.push(e);if(this.effects.length>400)this.effects.splice(0,this.effects.length-400);return e;}
@@ -139,10 +150,11 @@ export class Game {
     const owner=this.owner(source);
     if((target.kind==='camp'||(target.kind==='beast'&&target.team===-1))&&owner?.heroId)amount*=1+this.bonus(owner,'jungleDamage');
     if(target.status.guard)amount*=target.status.guard.factor;
+    const impact=amount;
     if(target.shield>0){const absorbed=Math.min(target.shield,amount);target.shield-=absorbed;amount-=absorbed;if(absorbed>8&&!quiet)this.float(target,Math.round(absorbed),'#b8caff');}
     target.lastDamageAt=this.time;target.recallIn=0;
     if(target.team===-1&&source){target.aggroId=source.id;target.aggroUntil=this.time+7;}
-    if(owner?.heroId){target.contributors??={};target.contributors[owner.id]=this.time;if(target.team>=0)this.stats.damage[owner.team]+=Math.min(target.hp,amount);}
+    if(owner?.kind==='hero'&&owner.team!==target.team&&impact>0){target.contributors??={};target.contributors[owner.id]=this.time;if(target.team>=0)this.stats.damage[owner.team]+=Math.min(target.hp,amount);}
     if(target.kind==='hero'&&owner?.kind==='hero'&&owner.alive&&owner.team!==target.team){
       for(const tower of this.units)if(structure(tower)&&tower.team===target.team&&tower.alive&&dist(tower,target)<=tower.range+target.r&&dist(tower,owner)<=tower.range+owner.r){
         tower.aggroId=owner.id;tower.aggroUntil=this.time+3;tower.targetId=owner.id;
@@ -154,20 +166,33 @@ export class Game {
     return actual;
   }
   kill(target,source){
-    if(!target.alive)return;
+    if(!target?.alive||source?.team===target.team)return;
     target.alive=false;target.hp=0;target.deathTime=.7;target.shield=0;
     const owner=this.owner(source),team=owner?.team??source?.team;
     this.effect(target.kind==='core'?'explosion':'ring',target.x,target.y,target.kind==='core'?170:target.r*2.5,target.team===0?'#64caff':target.team===1?'#ff98be':'#e5d698',.7);
     const xp=target.kind==='hero'?150+target.level*12:target.kind==='tower'?115:target.kind==='camp'?55:target.kind==='beast'?200+40*((target.tier||1)-1):target.kind==='footman'?22:target.kind==='archer'?28:target.kind==='summon'?9:0;
+    // Only an actual hero finisher and its recent combat partners receive personal rewards.
+    // Proximity, an allied objective capture, and owning an ordinary lane unit grant nothing.
+    const killer=owner?.kind==='hero'&&owner.team!==target.team&&(team===0||team===1)?owner:null;
+    let assistants=[];
     if(team===0||team===1){
-      const recipients=this.units.filter(u=>u.kind==='hero'&&u.team===team&&u.alive&&(dist(u,target)<680||u.id===owner?.id||target.kind==='tower'||target.kind==='beast'));
-      for(const h of recipients)this.gainXP(h,xp);
+      assistants=this.units.filter(u=>{
+        const hitAt=target.contributors?.[u.id],age=this.time-hitAt;
+        return u.kind==='hero'&&u.team===team&&u.team!==target.team&&u.id!==killer?.id&&Number.isFinite(hitAt)&&age>=0&&age<=RULES.assistWindow;
+      });
+      if(killer)this.gainXP(killer,xp);
+      for(const hero of assistants)this.gainXP(hero,xp*RULES.assistXpFraction);
+    }
+    const gold=target.kind==='hero'?180+target.level*10:target.kind==='tower'?130:target.kind==='camp'?40:target.kind==='beast'?180+40*((target.tier||1)-1):target.kind==='footman'?18:target.kind==='archer'?24:target.kind==='summon'?6:0;
+    if(killer&&gold){
+      killer.gold+=gold;killer.goldEarned+=gold;killer.lastGoldGain={amount:gold,time:this.time,x:target.x,y:target.y};
+      if(killer.isPlayer)this.float(killer,'+'+gold+' GOLD','#ffd76b');
     }
     if(target.kind==='hero'){
       if(target.isPlayer)this.cancelPlayerOrder();
       target.deaths++;target.respawnIn=7+target.level*1.25+Math.min(8,this.time/120);target.recallIn=0;target.status={};
-      if(team===0||team===1){this.stats.kills[team]++;if(owner?.kind==='hero')owner.kills++;
-        for(const h of this.units)if(h.kind==='hero'&&h.team===team&&h.id!==owner?.id&&this.time-(target.contributors?.[h.id]??-100)<10)h.assists++;
+      if(team===0||team===1){this.stats.kills[team]++;if(killer)killer.kills++;
+        for(const hero of assistants)hero.assists++;
       }
       this.announce((owner?.heroId?HEROES[owner.heroId].name:source?.name||'The wilds')+' defeated '+HEROES[target.heroId].name+'.','kill');
     }
@@ -183,7 +208,7 @@ export class Game {
       this.stats.beasts[team]++;
       const lane=this.teamPlans[team]?.lane??target.lane,p=lanePoint(lane,.5);
       const tier=target.tier||1;
-      const allied=this.addUnit('beast',team,p.x,p.y,{subtype:target.subtype,name:target.name,tier,level:tier,scale:1+Math.min(.3,(tier-1)*.04),r:34,hp:1350*(1+(tier-1)*.24),damage:90*(1+(tier-1)*.17),speed:106,range:58,attackRate:1.15,lane,ownerId:owner?.id,waypoint:0,siege:true});
+      const allied=this.addUnit('beast',team,p.x,p.y,{subtype:target.subtype,name:target.name,tier,level:tier,scale:1+Math.min(.3,(tier-1)*.04),r:34,hp:1350*(1+(tier-1)*.24),damage:90*(1+(tier-1)*.17),speed:106,range:58,attackRate:1.15,lane,waypoint:0,siege:true});
       allied.path=this.lanePath(lane,team,allied);allied.waypoint=0;
       this.effect('level',p.x,p.y,120,team?'#ff98be':'#66d8ff',1.3);
       this.announce((team===0?'Azure':'Rose')+' claimed tier '+tier+' '+target.name+'! It marches '+WORLD.lanes[lane].name.toLowerCase()+'.','beast');
@@ -446,9 +471,9 @@ export class Game {
     if(this.moveTarget){if(dist(h,this.moveTarget)<12)this.moveTarget=null;else this.moveToward(h,this.moveTarget,dt);return;}
     if(!this.attackOrder)return;
     let target=this.units.find(u=>u.id===this.attackOrder.targetId);
-    if(!this.validPlayerTarget(target)){
-      target=this.nearestPlayerEnemy();this.attackOrder.targetId=target?.id??null;this.attackOrder.explicit=false;
-      h.path=null;h.pathGoal=null;h.navPath=null;h.navGoal=null;h.navTime=0;
+    if(!this.attackOrder.explicit||!this.validPlayerTarget(target)){
+      const previousId=target?.id;target=this.nearestPlayerEnemy();this.attackOrder.targetId=target?.id??null;this.attackOrder.explicit=false;
+      if(target?.id!==previousId){h.path=null;h.pathGoal=null;h.navPath=null;h.navGoal=null;h.navTime=0;}
     }
     h.targetId=target?.id??null;
     if(target){
@@ -496,6 +521,7 @@ export class Game {
         u.slamIn-=dt;if(u.slamIn<=0){u.slamIn=5.5;this.zones.push({type:'wild-slam',x:u.x,y:u.y,r:120,life:.85,maxLife:.85,delay:.7,tickIn:.7,ownerId:u.id,team:-1,damage:70,color:'#e6c878'});this.effect('storm',u.x,u.y,120,'#dfbb75',.85,{delay:.7,team:-1});}
       }
     }else{
+      if(u.aggroId)u.contributors={};
       u.aggroId=null;if(dist(u,home)>20)this.moveToward(u,home,dt);
       if(u.hp<u.maxHp)u.hp=Math.min(u.maxHp,u.hp+u.maxHp*.09*dt);
     }
@@ -703,6 +729,7 @@ export class Game {
     if(dist(h,goal)>10)this.moveToward(h,goal,dt);
   }
   tickBot(h,dt){
+    h.shopIn-=dt;if(h.shopIn<=0){h.shopIn=2;this.botShop(h);}
     const cfg=this.botConfig(h);h.thinkIn-=dt;
     if(h.thinkIn<=0){h.thinkIn=cfg.think;this.thinkBot(h,cfg);}
     const brain=h.brain||{};
@@ -736,6 +763,13 @@ export class Game {
       const danger=this.zones.find(z=>z.team!==h.team&&(z.type==='storm'||z.type==='bomb'||z.type==='wild-slam')&&z.tickIn>0.13&&dist(h,z)<z.r+15);
       if(danger){const dx=h.x-danger.x||1,dy=h.y-danger.y;this.moveDirect(h,dx,dy,dt*.7);h.aiState='dodging';}
     }
+  }
+  botShop(hero){
+    if(!hero?.bot||!hero.alive)return false;
+    const preferred=hero.heroId==='bulwark'?['hp','shield']:hero.heroId==='druid'?['summonPower','healing']:hero.heroId==='angel'||hero.heroId==='seraph'?['healing','shield']:hero.heroId==='ranger'||hero.heroId==='ember'?['damage','attackSpeed']:['spellDamage','cooldown'];
+    const score=item=>item.tier*2+preferred.reduce((n,key)=>n+(item.bonuses[key]||0)*12,0)+(item.bonuses.hp||0)*4;
+    const options=ITEMS.filter(item=>purchaseState(hero,item.id).ok).sort((a,b)=>score(b)-score(a)||a.cost-b.cost);
+    return options.length?this.buyItem(hero,options[0].id):false;
   }
   thinkBot(h,cfg){
     for(const tier of this.availableTalents(h))this.chooseTalent(h,tier.level,tier.choices[(h.slot+Math.floor(tier.level/3))%tier.choices.length].id);
