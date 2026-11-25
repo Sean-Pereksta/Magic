@@ -67,13 +67,18 @@ function internetLink(origin, joinPath) {
 }
 
 const hostMetrics = {
-  tunnelRttMs: 60_000, tunnelJitterMs: 60_000, tunnelProbeFailures: 1_000_000,
+  tunnelRttMs: 60_000, tunnelJitterMs: 60_000, tunnelLatencyAgeMs: 1_000_000_000, tunnelProbeFailures: 1_000_000,
   tunnelProbeSamples: 1_000_000, eventLoopLagMs: 60_000, snapshotRateHz: 240,
   snapshotBytes: 10_000_000, skippedSnapshots: 1_000_000_000,
-  playerCount: 8, readyPlayers: 8, expectedPlayers: 8,
+  playerCount: 8, connectedPlayers: 8, readyPlayers: 8, expectedPlayers: 8, maxPlayers: 8,
+  queuedPlayers: 1_000, uptimeSeconds: 1_000_000_000,
 };
+// The host normally sends a sample every three seconds. Allow brief scheduling
+// delays, but do not present a stalled stream as live or wait forever on old packs.
+const DIAGNOSTICS_STALE_MS = 12_000;
+const DIAGNOSTICS_STARTUP_MS = 15_000;
 const playerMetrics = {
-  rttMs: 60_000, jitterMs: 60_000, snapshotAgeMs: 600_000,
+  rttMs: 60_000, jitterMs: 60_000, latencyAgeMs: 60_000, snapshotAgeMs: 600_000,
   snapshotBacklog: 1_000_000_000, snapshotGapPct: 100, loadMs: 600_000, fps: 360,
 };
 
@@ -93,7 +98,7 @@ function readLabels(data, fields, target) {
   }
 }
 
-function readRallyDiagnostics(data) {
+function readRallyDiagnostics(data, sampledAt) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
   const result = readMetrics(data, hostMetrics);
   readLabels(data, ['phase', 'localStatus', 'tunnelStatus', 'directoryStatus'], result);
@@ -105,13 +110,14 @@ function readRallyDiagnostics(data) {
         if (typeof player.name === 'string') row.name = player.name.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 40);
         readLabels(player, ['loadState'], row);
         if (['websocket', 'poll', 'events'].includes(player.transport)) row.transport = player.transport;
+        if (typeof player.connected === 'boolean') row.connected = player.connected;
         return row;
       });
   }
-  return { ...result, sampledAt: Date.now() };
+  return Object.keys(result).length ? { ...result, sampledAt } : null;
 }
 
-function createServerManager({ dataDir, packFor, onChange, onExit, spawnProcess = spawn }) {
+function createServerManager({ dataDir, packFor, onChange, onExit, spawnProcess = spawn, now = Date.now }) {
   const configPath = path.join(dataDir, 'server-manager.json');
   let stored = {};
   try {
@@ -170,7 +176,7 @@ function createServerManager({ dataDir, packFor, onChange, onExit, spawnProcess 
     const child = spawnProcess(inDir(pack.root, pack.spec.runtime), [inDir(pack.root, edition.files.manager || edition.files.server)], {
       cwd: pack.root, env, windowsHide: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
     });
-    const instance = { child, status: { status: 'starting' }, stopping: false, closed: null };
+    const instance = { child, status: { status: 'starting' }, startedAt: now(), stopping: false, closed: null };
     running.set(id, instance);
     exitMessage.delete(id);
     let launchFailed = false;
@@ -178,12 +184,15 @@ function createServerManager({ dataDir, packFor, onChange, onExit, spawnProcess 
     child.on('message', data => {
       if (instance.stopping) return;
       if (id === 'acornrally' && data?.type === 'rally-host-diagnostics') {
-        const diagnostics = readRallyDiagnostics(data.diagnostics);
+        const diagnostics = readRallyDiagnostics(data.diagnostics, now());
         if (diagnostics) instance.diagnostics = diagnostics;
         return;
       }
       if (data?.type !== edition.statusType ||
           !['starting', 'online', 'lan-only', 'offline'].includes(data.status)) return;
+      // A supervisor can restart its game host without exiting itself. Never
+      // carry the previous host's player roster into the replacement process.
+      if (data.status === 'offline') delete instance.diagnostics;
       const link = data.status === 'online' ? internetLink(data.origin, edition.joinPath) : undefined;
       const usableCode = link || (edition.files.manager && data.status === 'lan-only');
       const code = usableCode && config.visibility === 'code' && typeof data.code === 'string' && /^\d{4}$/.test(data.code)
@@ -227,10 +236,21 @@ function createServerManager({ dataDir, packFor, onChange, onExit, spawnProcess 
     diagnostics(game) {
       if (game.id !== 'acornrally') throw Error('Connection diagnostics are available for Acorn Rally.');
       const instance = running.get(game.id);
+      const timestamp = now();
+      const status = instance?.status.status || 'offline';
+      const active = Boolean(instance && !instance.stopping && status !== 'offline');
+      const metrics = active ? instance.diagnostics : undefined;
+      const elapsedMs = instance ? Math.max(0, timestamp - instance.startedAt) : 0;
+      const sampleAgeMs = metrics ? Math.max(0, timestamp - metrics.sampledAt) : undefined;
+      const diagnosticsState = !active ? 'offline'
+        : metrics ? (sampleAgeMs > DIAGNOSTICS_STALE_MS ? 'delayed' : 'live')
+        : elapsedMs >= DIAGNOSTICS_STARTUP_MS ? 'unavailable' : 'starting';
       return {
-        status: instance?.status.status || 'offline',
+        status,
         message: instance?.status.message || exitMessage.get(game.id),
-        metrics: instance?.stopping ? undefined : instance?.diagnostics,
+        diagnosticsState, sampleAgeMs,
+        uptimeSeconds: instance ? Math.floor(elapsedMs / 1_000) : undefined,
+        metrics,
       };
     },
     start,

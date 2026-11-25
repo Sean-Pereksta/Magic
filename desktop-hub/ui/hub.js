@@ -13,6 +13,7 @@ const dialog = $('#dialog');
 let state = {catalog:{games:[]},settings:{}};
 let page = 'Library', detailId = '', filter = 'All games', query = '', feature = 0, rankGame = 'trashtactics';
 let sequence = 0, rankSequence = 0, statusTimeout, snapshotKey = '';
+let stopServerDiagnostics = () => {};
 const inProgress = new Set();
 const serverDrafts = new Map();
 const serverStatusLabels = {offline:'Stopped',starting:'Starting',online:'Online','lan-only':'Local network only',stopping:'Stopping'};
@@ -291,23 +292,51 @@ function serverManager() {
 const diagnosticValue = (value, unit = '') => Number.isFinite(value) ? fmt(value) + unit : '—';
 const diagnosticLabel = value => value ? value[0].toUpperCase() + value.slice(1) : '—';
 const transportLabels = {websocket:'WebSocket',poll:'Polling',events:'Event stream'};
-function diagnosticRows(rows) {
-  return '<dl class="diagnostic-metrics">' + rows.map(([label, value]) =>
+function diagnosticRows(rows, prominent = false) {
+  return `<dl class="diagnostic-metrics${prominent ? ' diagnostic-highlights' : ''}">` + rows.map(([label, value]) =>
     `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('') + '</dl>';
 }
-function serverDiagnosticContent(report) {
+function diagnosticUptime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '—';
+  const total = Math.floor(seconds);
+  const hours = Math.floor(total / 3600), minutes = Math.floor(total % 3600 / 60);
+  return [hours ? `${fmt(hours)}h` : '', minutes ? `${minutes}m` : '', `${total % 60}s`].filter(Boolean).join(' ');
+}
+function serverDiagnosticContent(report = {}) {
   const { status, message: detail, metrics } = report;
   const summary = `<p class="dialog-copy"><strong>${esc(serverStatusLabels[status] || 'Stopped')}</strong>${detail ? ` · ${esc(detail)}` : ''}</p>`;
-  if (!metrics) {
-    return summary + (status === 'offline' || status === 'stopping' ? '' :
-      '<p class="dialog-copy">Waiting for live diagnostics from the hosting pack.</p>');
+  if (status === 'offline' || status === 'stopping') {
+    return summary + `<p class="dialog-copy">${status === 'stopping' ? 'The server is stopping. Live updates have ended.' : 'Start this server to view its statistics.'}</p>`;
   }
-  const age = Math.max(0, Math.round((Date.now() - metrics.sampledAt) / 1000));
+  const ageMs = Number.isFinite(report.sampleAgeMs) ? report.sampleAgeMs
+    : Number.isFinite(metrics?.sampledAt) ? Date.now() - metrics.sampledAt : undefined;
+  const age = Number.isFinite(ageMs) ? Math.max(0, Math.floor(ageMs / 1000)) : undefined;
+  const diagnosticState = report.diagnosticsState || (metrics ? ageMs > 12_000 ? 'delayed' : 'live' : 'starting');
+  const stateLabels = {starting:'Connecting to host statistics',live:'Live statistics',delayed:'Updates delayed',unavailable:'Statistics unavailable'};
+  const freshness = `<p class="diagnostic-freshness" data-diagnostics-state="${attr(diagnosticState)}"><strong>${esc(stateLabels[diagnosticState] || 'Statistics unavailable')}</strong>${age === undefined ? '' : ` · Last sample ${age === 0 ? 'just now' : `${age}s ago`}`}</p>`;
+  const players = Array.isArray(metrics?.players) ? metrics.players : [];
+  const pings = players.filter(player => player.connected !== false).map(player => player.rttMs).filter(value => Number.isFinite(value) && value >= 0);
+  const averagePing = pings.length ? Math.round(pings.reduce((sum, value) => sum + value, 0) / pings.length * 10) / 10 : undefined;
+  const playerCount = Number.isFinite(metrics?.playerCount) ? fmt(metrics.playerCount) : '—';
+  const capacity = Number.isFinite(metrics?.maxPlayers) ? ` / ${fmt(metrics.maxPlayers)}` : '';
+  const highlights = diagnosticRows([
+    ['Players on server', playerCount + capacity],
+    ['Average player ping', diagnosticValue(averagePing, ' ms')],
+    ['Public tunnel latency', diagnosticValue(metrics?.tunnelRttMs, ' ms')],
+    ['Host uptime', diagnosticUptime(metrics?.uptimeSeconds ?? report.uptimeSeconds)],
+  ], true);
+  if (!metrics) {
+    const guidance = diagnosticState === 'unavailable'
+      ? 'The hosting pack has not sent any statistics. Update the Acorn Rally hosting pack in Downloads, then stop and restart its server. This panel will keep checking.'
+      : 'Connecting to the host’s live statistics. Player counts and latency will appear as measurements arrive.';
+    return summary + freshness + highlights + `<p class="dialog-copy">${guidance}</p>`;
+  }
+  const delayed = diagnosticState === 'delayed'
+    ? '<p class="dialog-copy diagnostic-warning">These are the last reported values. If updates do not resume, stop and restart the server.</p>' : '';
   const probes = Number.isFinite(metrics.tunnelProbeSamples) && Number.isFinite(metrics.tunnelProbeFailures)
     ? `${fmt(metrics.tunnelProbeFailures)} of ${fmt(metrics.tunnelProbeSamples)}` : '—';
   const readiness = Number.isFinite(metrics.expectedPlayers) && Number.isFinite(metrics.readyPlayers)
     ? `${fmt(metrics.readyPlayers)} of ${fmt(metrics.expectedPlayers)}` : '—';
-  const players = metrics.players || [];
   const table = players.length ? `<div class="diagnostic-table"><table>
     <caption>Player connections and track loading</caption>
     <thead><tr><th scope="col">Player</th><th scope="col">Connection</th><th scope="col">Ping</th><th scope="col">Jitter</th>
@@ -315,19 +344,18 @@ function serverDiagnosticContent(report) {
       <th scope="col">Backlog</th><th scope="col">FPS</th><th scope="col">Track load</th></tr></thead>
     <tbody>${players.map((player, index) => `<tr>
       <th scope="row">${esc(player.name || `Player ${index + 1}`)}</th>
-      <td>${transportLabels[player.transport] || '—'}</td>
-      <td>${diagnosticValue(player.rttMs, ' ms')}</td><td>${diagnosticValue(player.jitterMs, ' ms')}</td>
+      <td>${player.connected === false ? 'Reconnecting' : transportLabels[player.transport] || '—'}</td>
+      <td${Number.isFinite(player.latencyAgeMs) ? ` title="Latency measured ${attr(diagnosticValue(Math.round(player.latencyAgeMs / 100) / 10, ' s'))} ago"` : ''}>${diagnosticValue(player.rttMs, ' ms')}</td><td>${diagnosticValue(player.jitterMs, ' ms')}</td>
       <td>${diagnosticValue(player.snapshotAgeMs, ' ms')}</td><td>${diagnosticValue(player.snapshotGapPct, '%')}</td>
       <td>${diagnosticValue(player.snapshotBacklog)}</td>
       <td>${diagnosticValue(player.fps)}</td>
       <td>${esc(diagnosticLabel(player.loadState))}${Number.isFinite(player.loadMs) ? ` · ${diagnosticValue(player.loadMs, ' ms')}` : ''}</td>
-    </tr>`).join('')}</tbody></table></div>` : '';
-  return summary + `<p class="dialog-copy">Last sample ${age === 0 ? 'just now' : `${age}s ago`}</p>
+    </tr>`).join('')}</tbody></table></div>` : `<p class="dialog-copy">${metrics.playerCount === 0 ? 'No players connected. Player ping appears after someone joins.' : 'Player connection details have not arrived yet.'}</p>`;
+  return summary + freshness + delayed + highlights + `<p class="dialog-copy diagnostic-help">Player ping is the average of measured player connections. Public tunnel latency is the host’s round trip through its public URL. A dash means no measurement is available yet.</p>
     ${diagnosticRows([
       ['Local host', diagnosticLabel(metrics.localStatus)],
       ['Public tunnel', diagnosticLabel(metrics.tunnelStatus)],
       ['Lobby directory', diagnosticLabel(metrics.directoryStatus)],
-      ['Tunnel round-trip', diagnosticValue(metrics.tunnelRttMs, ' ms')],
       ['Tunnel jitter', diagnosticValue(metrics.tunnelJitterMs, ' ms')],
       ['Failed tunnel probes', probes],
       ['Host event-loop delay', diagnosticValue(metrics.eventLoopLagMs, ' ms')],
@@ -335,7 +363,8 @@ function serverDiagnosticContent(report) {
       ['Snapshot size', diagnosticValue(metrics.snapshotBytes, ' bytes')],
       ['Skipped sends', diagnosticValue(metrics.skippedSnapshots)],
       ['Race phase', diagnosticLabel(metrics.phase)],
-      ['Players connected', diagnosticValue(metrics.playerCount)],
+      ['Connected now', diagnosticValue(metrics.connectedPlayers)],
+      ['Players queued', diagnosticValue(metrics.queuedPlayers)],
       ['Players ready', readiness],
     ])}${table}`;
 }
@@ -399,21 +428,34 @@ async function dispatch(action, payload, success) {
   finally {inProgress.delete(key);}
 }
 function showDialog(label,content) {
+  stopServerDiagnostics();
   $('#dialog-body').innerHTML = `<div class="dialog-top"><h2>${esc(label)}</h2><button class="icon-button" aria-label="Close dialog" data-action="dismiss">${icon('close')}</button></div>${content}`;
   if (!dialog.open) dialog.showModal();
 }
 function showServerDiagnostics(id) {
   showDialog('Acorn Rally server diagnostics', '<div class="server-diagnostics" data-server-diagnostics><p class="dialog-copy">Reading server diagnostics…</p></div>');
   const panel = dialog.querySelector('[data-server-diagnostics]');
+  let active = true, timer;
+  const isActive = () => active && dialog.open && panel.isConnected;
+  const stop = () => {
+    active = false;
+    clearTimeout(timer);
+    dialog.removeEventListener('close', onClose);
+    if (stopServerDiagnostics === stop) stopServerDiagnostics = () => {};
+  };
+  const onClose = () => { if (!dialog.open) stop(); };
+  stopServerDiagnostics = stop;
+  dialog.addEventListener('close', onClose);
   async function update() {
-    if (!dialog.open || !panel.isConnected) return;
+    if (!isActive()) { stop(); return; }
     try {
       const report = await host.invoke('serverDiagnostics', {id});
-      if (dialog.open && panel.isConnected) panel.innerHTML = serverDiagnosticContent(report);
+      if (isActive()) panel.innerHTML = serverDiagnosticContent(report);
     } catch (error) {
-      if (dialog.open && panel.isConnected) panel.textContent = cleanError(error);
+      if (isActive()) panel.innerHTML = `<p class="dialog-copy diagnostic-warning">Could not read server statistics: ${esc(cleanError(error))}</p><p class="dialog-copy">This panel will retry automatically.</p>`;
     }
-    if (dialog.open && panel.isConnected) setTimeout(update, 3000);
+    if (isActive()) timer = setTimeout(update, 3000);
+    else stop();
   }
   update();
 }

@@ -56,6 +56,27 @@ The laptop needs to stay on and awake. Run the standalone lobby launcher from Ac
 
 Build the Windows packs from matching Magic and Truth revisions with the manager adapters and use the freshly compiled Last Signal executable. The signed launcher, catalog and game pack are required for download-channel installation.
 
+### Acorn Rally server diagnostics
+
+While the server is running, select **Server diagnostics** for player occupancy
+and capacity, connected players, the waiting queue, measured player ping, public
+tunnel round-trip time, uptime, and host performance. The player table shows
+connection type, reconnecting seats, jitter, snapshot delivery, FPS, and track
+loading. Player ping measures each player's connection; tunnel round-trip time
+measures the host's request through its public Cloudflare address. Missing or
+expired measurements appear as **—**, including player ping on an empty server.
+
+The host sends statistics every three seconds and the open panel refreshes every
+three seconds. Samples older than 12 seconds are marked as delayed. If no sample
+arrives within 15 seconds of starting, the panel explains that statistics are
+unavailable instead of waiting indefinitely. Close the dialog to stop polling.
+
+This requires both the updated launcher and the Acorn Rally hosting pack from
+Truth with the diagnostics relay in `server/lobby-supervisor.cjs`. Stop the
+server, use **Downloads → Check for updates**, restart the launcher if prompted,
+and start the server again after the pack update finishes. Updating only the
+launcher cannot repair an older pack that drops the host's diagnostic messages.
+
 ### Update Acorn Rally’s Firestore permissions
 
 If Server Manager reports that the lobby directory is unavailable after opening
