@@ -30,7 +30,7 @@ test('eight selectable heroes keep six combatants and include all three new iden
   assert(HEROES.ember.speed>HEROES.dragon.speed);
 });
 
-test('all 96 talents have three exclusive choices per tier with small icon metadata',()=>{
+test('all 168 talents have three exclusive choices per tier with small icon metadata',()=>{
   const ids=new Set();let total=0;
   for(const hero of Object.values(HEROES))for(const tier of hero.talents){
     assert.equal(tier.choices.length,3);
@@ -39,7 +39,7 @@ test('all 96 talents have three exclusive choices per tier with small icon metad
       assert(choice.icon&&choice.color&&choice.description);
     }
   }
-  assert.equal(total,96);
+  assert.equal(total,168);
   const {game,hero}=arena('seraph');
   assert(game.chooseTalent(hero,5,'seraph-duelist'));
   assert(!game.chooseTalent(hero,5,'seraph-tailwind'));
@@ -72,7 +72,7 @@ test('Purple Knight rush hits its actual route and quake adds lasting slow after
   assert(game.cast(hero,2,{x:x+230,y:hero.y}));
   assert(hero.x>x+200);assert(enemy.hp<hp);assert(enemy.status.stun);
   enemy.x=hero.x+65;enemy.y=hero.y;enemy.status={};game.rebuildGrid();
-  assert(game.cast(hero,3,aim(hero)));assert(enemy.status.stun);assert(enemy.status.slow);
+  assert(game.cast(hero,3,aim(hero)));assert(!enemy.status.stun,'quake has a visible wind-up');advance(game,.46);assert(enemy.status.stun);assert(enemy.status.slow);
   game.tickStatuses(enemy,1.3);assert(!enemy.status.stun);assert(enemy.status.slow);
 });
 
@@ -139,6 +139,7 @@ test('Northern Inspire buffs nearby allies, including minions, with attack speed
 test('Winterfall briefly freezes enemies then leaves an icy slow without disabling structures',()=>{
   const {game,hero,enemy,add}=arena('seraph'),tower=add(100,20,1,'tower');tower.tier=0;
   assert(game.cast(hero,3,aim(enemy)));
+  assert(!enemy.status.stun,'winterfall can be avoided during its warning');advance(game,.51);
   assert(enemy.status.stun);assert.equal(enemy.status.slow.factor,.5);assert(enemy.status.slow.frost);
   assert(!tower.status.stun);assert(!tower.status.slow);
   game.tickStatuses(enemy,.7);assert(!enemy.status.stun);assert(enemy.status.slow.remaining>3);
@@ -175,7 +176,7 @@ test('new talents alter real defensive, displacement, execution and frost behavi
   }
   {
     const {game,hero,enemy}=arena('seraph');assert(game.chooseTalent(hero,8,'seraph-deepfreeze'));
-    game.cast(hero,3,aim(enemy));assert.equal(enemy.status.slow.factor,.65);assert(enemy.status.stun.remaining>=1);
+    game.cast(hero,3,aim(enemy));advance(game,.5);assert.equal(enemy.status.slow.factor,.65);assert(enemy.status.stun.remaining>=.99);
   }
   {
     const base=arena('ember'),boost=arena('ember');assert(boost.game.chooseTalent(boost.hero,8,'ember-finish'));
@@ -211,6 +212,7 @@ test('Blue Angel can combine inspiration, flight and frost without weakening act
   assert.equal(hero.status.haste.attack,.3,'inspiration adds its attack speed');
   game.cast(hero,3,aim(enemy));
   game.cast(hero,0,aim(enemy));
+  advance(game,.5);
   assert.equal(enemy.status.slow.factor,.5,'the sword sweep preserves stronger winter freeze');
   assert(enemy.status.slow.frost);
   game.tickStatuses(hero,3.6);
@@ -230,3 +232,4 @@ test('precise thrusts and sword or shield sweeps do not hit through solid jungle
     assert(!enemy.status.stun);assert(!enemy.status.slow);
   }
 });
+

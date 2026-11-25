@@ -1,7 +1,19 @@
 // Permanent match upgrades. Buying a recipe never consumes its prerequisites:
 // every purchased item remains active, and its listed cost is an additional cost.
+export const ITEM_PASSIVES=Object.freeze({
+  'sovereign-aegis':Object.freeze({name:'Shared Aegis',description:'Granting a meaningful shield also wards another nearby allied hero. Recharges in 8s.'}),
+  'worldsplitter':Object.freeze({name:'Third Strike',description:'Every third basic hit cleaves other enemies in front of you for 45% attack damage.'}),
+  'starfire-scepter':Object.freeze({name:'Falling Star',description:'A direct ability hit calls a small delayed blast at its victim. Recharges in 6s.'}),
+  'eternity-hourglass':Object.freeze({name:'Time Sequence',description:'Cast three different abilities within 6s to remove 1.25s from other active cooldowns. Recharges in 12s.'}),
+  'celestial-font':Object.freeze({name:'Overflow',description:'Every third cast restores 5.5% maximum mana and releases a small nearby healing pulse. Recharges in 5s.'}),
+  'tempest-wings':Object.freeze({name:'Arrival Strike',description:'Movement abilities grant brief haste and empower your next basic hit within 4s.'}),
+  'thunderbolt-crossbow':Object.freeze({name:'Chain Spark',description:'Every fourth basic hit arcs lightning to up to two other nearby enemies.'}),
+  'phoenix-crown':Object.freeze({name:'Healing Ward',description:'A meaningful heal also grants its hero recipient a brief protective ward. Recharges in 5s.'}),
+  'elderwood-staff':Object.freeze({name:'Elder Guardian',description:'The first summon of each cast gains 20% health, 15% damage, a ward and a larger guardian form.'}),
+  'crimson-relic':Object.freeze({name:'Lasting Duel',description:'A basic hit on a hero while below half health restores 5.5% health and grants a brief ward. Recharges in 8s.'})
+});
 const item = (id,name,tier,cost,requires,bonuses,description,color,icon) => Object.freeze({
-  id,name,tier,cost,requires:Object.freeze(requires),bonuses:Object.freeze(bonuses),description,color,icon,
+  id,name,tier,cost,requires:Object.freeze(requires),bonuses:Object.freeze(bonuses),description,color,icon,passive:ITEM_PASSIVES[id]||null,
 });
 
 export const ITEMS = Object.freeze([
@@ -166,3 +178,4 @@ export function drawItemIcon(ctx,value,x=0,y=0,size=32) {
   for(let i=0;i<selected.tier;i++)p(light,2+i*3,17,2,1);
   ctx.restore();
 }
+
