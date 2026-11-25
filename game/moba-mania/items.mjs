@@ -1,16 +1,21 @@
 // Permanent match upgrades. Buying a recipe never consumes its prerequisites:
 // every purchased item remains active, and its listed cost is an additional cost.
 export const ITEM_PASSIVES=Object.freeze({
-  'sovereign-aegis':Object.freeze({name:'Shared Aegis',description:'Granting a meaningful shield also wards another nearby allied hero. Recharges in 8s.'}),
-  'worldsplitter':Object.freeze({name:'Third Strike',description:'Every third basic hit cleaves other enemies in front of you for 45% attack damage.'}),
-  'starfire-scepter':Object.freeze({name:'Falling Star',description:'A direct ability hit calls a small delayed blast at its victim. Recharges in 6s.'}),
-  'eternity-hourglass':Object.freeze({name:'Time Sequence',description:'Cast three different abilities within 6s to remove 1.25s from other active cooldowns. Recharges in 12s.'}),
-  'celestial-font':Object.freeze({name:'Overflow',description:'Every third cast restores 5.5% maximum mana and releases a small nearby healing pulse. Recharges in 5s.'}),
-  'tempest-wings':Object.freeze({name:'Arrival Strike',description:'Movement abilities grant brief haste and empower your next basic hit within 4s.'}),
-  'thunderbolt-crossbow':Object.freeze({name:'Chain Spark',description:'Every fourth basic hit arcs lightning to up to two other nearby enemies.'}),
-  'phoenix-crown':Object.freeze({name:'Healing Ward',description:'A meaningful heal also grants its hero recipient a brief protective ward. Recharges in 5s.'}),
-  'elderwood-staff':Object.freeze({name:'Elder Guardian',description:'The first summon of each cast gains 20% health, 15% damage, a ward and a larger guardian form.'}),
-  'crimson-relic':Object.freeze({name:'Lasting Duel',description:'A basic hit on a hero while below half health restores 5.5% health and grants a brief ward. Recharges in 8s.'})
+  'sovereign-aegis':Object.freeze({name:'Royal Bulwark',description:'A meaningful shield wards up to two other allied heroes within 240 for 90 scaled shielding and 15% damage reduction for 2.5s. Recharges in 7s.'}),
+  'worldsplitter':Object.freeze({name:'Earthcleaver',description:'Every third basic hit strikes its victim for 35% extra attack damage and cleaves a 175-radius cone for 75% attack damage.'}),
+  'starfire-scepter':Object.freeze({name:'Falling Star',description:'A direct ability hit warns a 135-radius impact, then deals 80 level-scaled damage after 0.45s. Recharges in 5s.'}),
+  'eternity-hourglass':Object.freeze({name:'Time Sequence',description:'Cast three different abilities within 6s to remove up to 2.5s from other active cooldowns, leaving at least 0.5s. Recharges in 12s.'}),
+  'celestial-font':Object.freeze({name:'Celestial Overflow',description:'Every third cast restores 10% maximum mana and heals nearby allies for 55 + 4 per level, with a 45 level-scaled ward. Radius 190; 5s recharge.'}),
+  'tempest-wings':Object.freeze({name:'Storm Arrival',description:'Movement abilities grant 25% movement and 15% attack haste for 3s. Your next basic hit within 4s deals 60 level-scaled bonus damage and slows 25% for 2s.'}),
+  'thunderbolt-crossbow':Object.freeze({name:'Thunder Chain',description:'Every third basic hit deals 35 level-scaled bonus damage and arcs 55 level-scaled damage to up to three other enemies within 230.'}),
+  'phoenix-crown':Object.freeze({name:'Rekindling',description:'A meaningful heal wards its hero recipient for 90 level-scaled shielding for 4s and heals the most injured nearby allied hero for 40 level-scaled health. Recharges in 5s.'}),
+  'elderwood-staff':Object.freeze({name:'Elder Guardian',description:'The first summon of each cast gains 40% health, 25% damage and a 100 level-scaled ward. Guardian attacks pulse 50% of their damage to nearby enemies; shared 3s recharge.'}),
+  'crimson-relic':Object.freeze({name:'Blood Ascendant',description:'A basic hit on a hero while below 60% health restores 10% health and grants an 85 level-scaled ward for 3s. Recharges in 7s.'}),
+  'ascendant-codex':Object.freeze({name:'Ascension',description:'Personal kills earn bonus XP. A hero finishing blow grants a 100 level-scaled ward for 4s and refunds up to 2s from Q/E/R, leaving 0.5s. Recharges in 12s; assists get no bonus.'}),
+  'kings-ransom':Object.freeze({name:'Victor\'s Spoils',description:'Personal finishing blows earn bonus gold, including owned summons and damage over time. A hero finishing blow grants 25% movement and 20% attack haste for 4s; 10s recharge. No assist or passive income.'}),
+  'inferno-heart':Object.freeze({name:'Wildfire',description:'Your burn damage warns a 135-radius blast that deals 55 level-scaled fire damage and spreads half its DPS for up to 3s to three other enemies. Recharges in 6s; no chain reactions.'}),
+  'pandemic-engine':Object.freeze({name:'Plague Bloom',description:'Your poison damage warns a 150-radius burst that deals 65 level-scaled damage and infects three other enemies with 60% of its DPS for up to 3s. Recharges in 7s; no chain reactions.'}),
+  'winters-dominion':Object.freeze({name:'Whiteout',description:'A direct damaging ability creates a warned 145-radius frost burst: 45 level-scaled damage and a 30% slow for 2.5s. Recharges in 7s. Slow bonuses never extend stuns.'})
 });
 const item = (id,name,tier,cost,requires,bonuses,description,color,icon) => Object.freeze({
   id,name,tier,cost,requires:Object.freeze(requires),bonuses:Object.freeze(bonuses),description,color,icon,passive:ITEM_PASSIVES[id]||null,
@@ -27,6 +32,11 @@ export const ITEMS = Object.freeze([
   item('sun-charm','Sun Charm',1,90,[],{healing:.10,shield:.06},'Strengthen your healing and shielding skills.','#f3d589','sun'),
   item('oak-idol','Oak Idol',1,90,[],{summonPower:.10},'Give your summoned allies more health and damage.','#8cce83','seed'),
   item('blood-fang','Blood Fang',1,130,[],{lifesteal:.025},'Basic-attack damage restores a little health.','#eb879f','fang'),
+  item('apprentice-lens','Apprentice Lens',1,140,[],{killXp:.15},'Learn faster from your own finishing blows. Assists keep their normal XP.','#99bff7','lens'),
+  item('copper-coin','Copper Coin',1,150,[],{killGold:.10},'Earn extra gold only when you land the finishing blow.','#e9b669','coin'),
+  item('ember-wick','Ember Wick',1,120,[],{burnPower:.15},'Make every second of your burns hurt more.','#ff9a65','wick'),
+  item('venom-vial','Venom Vial',1,120,[],{poisonPower:.15},'Concentrated venom strengthens your poison damage over time.','#a8df6f','vial'),
+  item('rime-shard','Rime Shard',1,120,[],{slowPower:.10},'Strengthen movement slows without extending stuns.','#9de5ef','rime'),
 
   item('guardian-plate','Guardian Plate',2,240,['ruby-heart'],{hp:.16,shield:.08},'A heavy breastplate for heroes who hold the line.','#b397e2','plate'),
   item('tempered-blade','Tempered Blade',2,240,['iron-edge'],{damage:.14},'A broad blade that makes every strike count.','#e4d5ad','blade'),
@@ -38,6 +48,11 @@ export const ITEMS = Object.freeze([
   item('dawn-censer','Dawn Censer',2,240,['sun-charm'],{healing:.18,shield:.12},'Carry a brighter blessing into the frontline.','#f0bfaa','censer'),
   item('grove-totem','Grove Totem',2,260,['oak-idol'],{summonPower:.18,summonHaste:.10},'Your summons grow stronger and strike faster.','#9ad28d','totem'),
   item('reaper-sickle','Reaper Sickle',2,300,['blood-fang'],{lifesteal:.04,damage:.08},'Turn sharper basic attacks into stolen health.','#e191b8','sickle'),
+  item('hunters-journal','Hunter\'s Journal',2,290,['apprentice-lens'],{killXp:.20,mana:.08},'Record your victories for more personal kill XP and a deeper mana reserve.','#b1bef2','journal'),
+  item('bounty-contract','Bounty Contract',2,320,['copper-coin'],{killGold:.15,damage:.04},'A better reward for each personal last hit. Components remain active.','#f1ce84','contract'),
+  item('cinder-brazier','Cinder Brazier',2,290,['ember-wick'],{burnPower:.25,burnDurationPct:.15},'Burns hit harder and persist longer. This does not create a burn by itself.','#f1a166','brazier'),
+  item('plague-mask','Plague Mask',2,290,['venom-vial'],{poisonPower:.25,poisonDurationPct:.15},'More potent, longer-lasting poison; requires an ability that poisons.','#b9d981','mask'),
+  item('frost-compass','Frost Compass',2,280,['rime-shard'],{slowPower:.15,slowDurationPct:.15},'Keep enemies in reach with stronger, longer slows. No stun bonus.','#a5e4ef','compass'),
 
   item('sovereign-aegis','Sovereign Aegis',3,560,['guardian-plate','sun-charm'],{hp:.24,shield:.22},'A royal shield for a lasting frontline.','#d1b1f3','aegis'),
   item('worldsplitter','Worldsplitter',3,600,['tempered-blade','feather-bow'],{damage:.23,attackSpeed:.12},'A greatsword with the speed to match its weight.','#f6d18b','greatsword'),
@@ -49,6 +64,11 @@ export const ITEMS = Object.freeze([
   item('phoenix-crown','Phoenix Crown',3,560,['dawn-censer','ruby-heart'],{healing:.26,shield:.24,hp:.12},'Empower your protection and survive to use it.','#ffba91','crown'),
   item('elderwood-staff','Elderwood Staff',3,610,['grove-totem','spark-crystal'],{summonPower:.28,summonHaste:.18,hp:.08},'Awaken a stronger, faster summoned host.','#b8e69d','staff'),
   item('crimson-relic','Crimson Relic',3,620,['reaper-sickle','ruby-heart'],{lifesteal:.06,damage:.16,hp:.12},'A durable duelist feeds on every basic strike.','#f59eb4','relic'),
+  item('ascendant-codex','Ascendant Codex',3,660,['hunters-journal','spark-crystal'],{killXp:.25,spellDamage:.15},'Turn personal kills into faster levels and a protected second spell rotation. Full path grants 60% bonus kill XP.','#b3c4ff','codex'),
+  item('kings-ransom','King\'s Ransom',3,700,['bounty-contract','swift-boots'],{killGold:.20,attackSpeed:.12},'Your victories finance a richer build. Full path grants 45% bonus final-hit gold.','#ffe092','ransom'),
+  item('inferno-heart','Inferno Heart',3,650,['cinder-brazier','spark-crystal'],{burnPower:.35,burnDurationPct:.20,spellDamage:.12},'An explosive burn build: the full path adds 75% burn DPS and 35% duration.','#ffb079','inferno'),
+  item('pandemic-engine','Pandemic Engine',3,650,['plague-mask','spark-crystal'],{poisonPower:.35,poisonDurationPct:.20,spellDamage:.12},'Make poison spread through clustered opponents. Full path: 75% poison DPS and 35% duration.','#c6e991','pandemic'),
+  item('winters-dominion','Winter\'s Dominion',3,640,['frost-compass','blue-flask'],{slowPower:.10,slowDurationPct:.20,hp:.10},'Control ground with frost bursts. Full path adds 35% slow strength and duration; boosted slows cap at 65%.','#b1edff','dominion'),
 ]);
 
 export const ITEM_BY_ID = Object.freeze(Object.assign(Object.create(null),Object.fromEntries(ITEMS.map(value=>[value.id,value]))));
@@ -62,6 +82,33 @@ export function itemBonus(hero,key) {
     if(Number.isFinite(value))total+=value;
   }
   return total;
+}
+
+/** Added fractions stack across retained ingredients, never multiplicatively. */
+export const ITEM_BONUS_CAPS=Object.freeze({killXp:.60,killGold:.45,burnPower:.75,burnDurationPct:.35,poisonPower:.75,poisonDurationPct:.35,slowPower:.35,slowDurationPct:.35});
+export function killRewardBonus(hero,kind) {
+  const key=kind==='xp'?'killXp':kind==='gold'?'killGold':null;
+  return key?Math.max(0,Math.min(ITEM_BONUS_CAPS[key],itemBonus(hero,key))):0;
+}
+
+/** Snapshot outgoing item amplification once. Talent scaling is already in the base values. */
+export function modifyItemStatus(game,target,type,duration,extra={}) {
+  if(extra.itemScaled||!['burn','poison','slow'].includes(type))return {duration,extra};
+  const source=game.units.find(unit=>unit.id===extra.sourceId);
+  const hero=source?.kind==='hero'?source:game.units.find(unit=>unit.kind==='hero'&&unit.id===source?.ownerId);
+  if(!hero||target?.team===hero.team||['tower','core'].includes(target?.kind))return {duration,extra};
+  const b=key=>Math.max(0,Math.min(ITEM_BONUS_CAPS[key],itemBonus(hero,key)));
+  const scaled={...extra,itemScaled:true};
+  if(type==='slow'){
+    const factor=Number(extra.factor)||0;
+    // Existing abilities stronger than the equipment cap keep their native strength.
+    scaled.factor=factor+Math.min(Math.max(0,.65-factor),factor*b('slowPower'));
+    duration*=1+b('slowDurationPct');
+  }else{
+    scaled.dps=(Number(extra.dps)||0)*(1+b(type==='burn'?'burnPower':'poisonPower'));
+    duration*=1+b(type==='burn'?'burnDurationPct':'poisonDurationPct');
+  }
+  return {duration,extra:scaled};
 }
 
 /** Read-only purchase validation shared by the engine and the shop. */
@@ -85,6 +132,8 @@ const BONUS_LABELS=Object.freeze({
   hp:'health',damage:'damage',spellDamage:'ability damage',cooldown:'cooldown reduction',mana:'mana',
   manaRegen:'mana/sec',speed:'move speed',attackSpeed:'attack speed',healing:'healing',shield:'shields',
   summonPower:'summon health & damage',summonHaste:'summon attack speed',area:'ability area',lifesteal:'lifesteal',
+  killXp:'personal kill XP',killGold:'final-hit gold',burnPower:'burn damage/sec',burnDurationPct:'burn duration',
+  poisonPower:'poison damage/sec',poisonDurationPct:'poison duration',slowPower:'slow strength',slowDurationPct:'slow duration',
 });
 export function describeBonuses(value) {
   const selected=typeof value==='string'?ITEM_BY_ID[value]:value;
@@ -173,6 +222,36 @@ export function drawItemIcon(ctx,value,x=0,y=0,size=32) {
       line('#c09b66',9,17,10,7,2);line(main,10,7,5,5,2);line(main,10,7,14,4,2);p(main,4,4,4,3);p(main,12,3,5,3);p(white,13,3,2,1);p(main,12,8,3,2);p(light,9,11,3,1);p(main,6,13,3,2);p(light,8,17,4,1);break;
     case 'relic':
       p(light,5,4,10,2);p(main,4,6,12,2);p(main,5,8,10,4);p(main,7,12,6,2);p(light,9,14,2,2);p(light,6,16,8,2);diamond('#a1375a',10,9,3);p(white,8,8,2,2);p(main,3,7,1,4);p(main,16,7,1,4);break;
+    case 'lens':
+      diamond(dark,8,8,6);diamond(main,8,8,5);diamond('#345b8b',8,8,3);p(white,6,6,3,2);line(light,11,12,15,16,3);p(main,14,15,3,2);p(light,4,8,1,3);break;
+    case 'coin':
+      p(main,6,4,8,12);p(main,4,6,12,8);p(light,6,4,7,1);p(white,5,6,1,7);p('#946839',7,7,6,6);p(light,9,6,2,8);p(light,7,8,6,1);p(light,7,11,6,1);break;
+    case 'wick':
+      p('#795037',7,12,6,5);p(light,7,12,6,2);p(white,8,14,1,2);p(main,9,4,2,9);p(main,6,8,7,4);p(main,12,6,2,5);p('#f35d42',7,9,5,3);p(light,9,9,2,3);p(main,10,3,1,3);break;
+    case 'vial':
+      p(light,4,4,6,2);line(dark,7,6,13,15,5);line(main,7,6,13,15,3);line(white,7,7,11,13);p('#59924c',11,12,3,4);p(light,10,15,4,2);p(main,14,4,2,3);p(main,13,6,4,1);break;
+    case 'rime':
+      line(main,5,6,14,14,2);line(main,14,5,5,14,2);p(main,9,3,2,14);p(main,3,9,14,2);p(white,9,6,2,8);p(white,6,9,8,2);diamond(light,10,10,2);p(main,3,5,3,1);p(main,14,14,3,1);break;
+    case 'journal':
+      p(main,4,5,12,12);p(light,5,4,10,1);p('#4a567c',4,5,3,12);p(light,9,6,5,2);p(white,9,10,4,1);p(white,9,12,4,1);p(light,14,8,3,5);p(main,5,16,11,1);p(light,3,7,3,1);p(light,3,13,3,1);break;
+    case 'contract':
+      p(light,5,3,10,13);p(main,4,4,2,13);p(main,14,3,2,12);p('#a67645',7,6,6,1);p('#a67645',7,8,5,1);p('#a67645',7,10,6,1);diamond('#b86648',12,13,3);p(white,11,12,2,2);p(main,11,15,1,3);p(main,13,15,2,2);break;
+    case 'brazier':
+      p(main,3,10,14,2);p(main,5,12,10,2);p(light,8,14,4,2);p(main,5,17,10,1);p(main,9,15,2,2);p('#ff6e47',6,6,3,4);p(main,9,3,3,8);p('#ff6e47',12,6,3,4);p(light,9,7,2,3);p(white,6,11,6,1);break;
+    case 'mask':
+      p('#517548',4,5,12,9);p(main,5,4,10,10);p(light,5,5,4,4);p(light,11,5,4,4);p('#1b2a3d',6,6,2,2);p('#1b2a3d',12,6,2,2);p(main,8,10,4,7);p(light,9,11,2,4);p('#517548',6,12,2,3);p('#517548',12,12,2,3);break;
+    case 'compass':
+      p(light,8,2,4,2);diamond(main,10,10,7);diamond('#3f7589',10,10,5);line(white,10,5,8,12,2);line(light,10,15,12,8,2);p(white,4,9,2,2);p(white,14,9,2,2);p(main,9,17,2,1);break;
+    case 'codex':
+      p(dark,3,7,14,10);p(main,4,7,6,9);p(main,11,7,5,9);p(light,9,7,2,10);p(white,5,9,3,1);p(white,5,12,3,1);p(white,12,9,3,1);p(white,12,12,3,1);star(10,4);p(main,2,5,2,6);p(main,16,5,2,6);break;
+    case 'ransom':
+      p('#8d693b',4,9,12,8);p(main,4,8,12,3);p(light,5,10,10,1);p(light,9,11,3,4);p(main,3,5,3,3);p(main,8,3,4,5);p(main,14,5,3,3);p(white,9,4,2,2);p(main,4,16,12,1);p('#ffb266',6,12,2,2);p('#ffb266',13,12,2,2);break;
+    case 'inferno':
+      p('#ac4d42',5,6,10,7);p(main,4,7,3,5);p(main,13,7,3,5);p(main,7,12,6,3);p(main,9,15,2,2);p(main,8,4,4,3);p(main,10,2,2,4);p('#ff6841',7,8,6,5);p(light,9,7,2,7);p(white,9,10,2,2);p(main,3,4,2,4);p(main,15,3,2,4);break;
+    case 'pandemic':
+      p('#526245',5,5,10,12);p(main,4,4,12,2);p(main,4,15,12,2);p(light,8,3,4,2);p(main,3,8,3,5);p(main,14,8,3,5);p(main,7,7,6,7);diamond('#496941',10,10,3);diamond(light,10,10,2);p(white,9,9,1,1);p(main,1,10,3,1);p(main,16,10,3,1);break;
+    case 'dominion':
+      p(main,4,11,12,5);p(light,5,15,10,2);p(main,3,6,3,6);p(main,14,6,3,6);p(main,8,3,4,9);p(white,9,4,2,7);p('#4b839d',6,12,8,2);diamond(light,10,12,2);line(main,4,4,7,7);line(main,16,4,13,7);p(white,4,6,1,4);p(white,15,6,1,4);break;
   }
   // Tier pips remain visible even where differently colored equipment is similar.
   for(let i=0;i<selected.tier;i++)p(light,2+i*3,17,2,1);

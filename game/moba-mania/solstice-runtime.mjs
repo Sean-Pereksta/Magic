@@ -1,6 +1,7 @@
 /** Solstice's tracked protection and one-shot cooldown refunds. All state is JSON. */
 import { HEROES } from './data.mjs';
 import { scheduleImpact, ensureEvolution } from './progression.mjs';
+import { modifyItemStatus } from './items.mjs';
 
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const structure=u=>u?.kind==='tower'||u?.kind==='core';
@@ -36,11 +37,14 @@ export function clearSolsticeWard(game,target){
 export function castSolsticeSkill(game,hero,a,{at,angle,power,shieldAmount}){
   if(hero.heroId!=='solstice')return false;
   switch(a.id){
-    case 'hourhand':
+    case 'hourhand':{
+      const sand=modifyItemStatus(game,{team:1-hero.team},'slow',.15,{factor:.2,sourceId:hero.id});
       game.fireSkill(hero,angle,{type:'hourhand',abilityId:a.id,expansion:true,visibleOnly:true,terrainCollision:true,theme:'time',color:a.color,
         r:a.radius,range:a.range,speed:560,damage:90*power*(1+b(game,hero,'solsticeHourDamage')),damageType:'magic',pierce:0,
-        slow:.25,slowDuration:2+b(game,hero,'solsticeSandDuration'),echoDamage:45*power,lingeringSand:!!b(game,hero,'solsticeLingeringSand'),glassEcho:!!b(game,hero,'solsticeGlassEcho')});
+        slow:.25,slowDuration:2+b(game,hero,'solsticeSandDuration'),echoDamage:45*power,lingeringSand:!!b(game,hero,'solsticeLingeringSand'),glassEcho:!!b(game,hero,'solsticeGlassEcho'),
+        sandSlow:sand.extra.factor,sandDuration:sand.duration,sandItemScaled:true});
       return true;
+    }
     case 'time-ward': {
       const target=selectTimeWardTarget(game,hero,at);if(!target)return false;
       clearSolsticeWard(game,target); // An overwritten ward never pays its delayed heal.
@@ -87,7 +91,7 @@ export function resolveSolsticeImpact(game,hero,impact){
       if(impact.kind==='glass-echo')game.progressionDepth=(game.progressionDepth||0)+1;
       try{game.damage(target,impact.damage*(structure(target)?.35:1),hero,'magic',false,context);}
       finally{if(impact.kind==='glass-echo')game.progressionDepth--;}
-      if(target.alive&&impact.slow)game.applyStatus(target,'slow',impact.slowDuration,{factor:impact.slow,sourceId:hero.id});
+      if(target.alive&&impact.slow)game.applyStatus(target,'slow',impact.slowDuration,{factor:impact.slow,sourceId:hero.id,itemScaled:!!impact.itemScaled});
     }else if(impact.kind==='borrowed-seconds'&&target.kind==='hero'){
       for(let slot=0;slot<3;slot++){
         const remaining=target.cooldowns[slot],raw=HEROES[target.heroId].abilities[slot];
@@ -102,13 +106,13 @@ export function resolveSolsticeImpact(game,hero,impact){
 
 export function onSolsticeProjectileHit(game,p,source,target,actual){
   if(p.abilityId!=='hourhand'||source?.heroId!=='solstice'||target.team===source.team)return;
-  if(target.alive&&!structure(target))game.applyStatus(target,'slow',p.slowDuration||2,{factor:p.slow||.25,sourceId:source.id});
+  if(target.alive&&!structure(target))game.applyStatus(target,'slow',p.slowDuration||2,{factor:p.slow||.25,sourceId:source.id,itemScaled:!!p.itemScaled});
   if(p.lingeringSand){
     // A normal cooldown cannot fill this pool; the cap also bounds forced debug casts.
     const owned=game.zones.filter(z=>z.type==='time-sand'&&z.ownerId===source.id);
     if(owned.length>=3)game.zones=game.zones.filter(z=>z!==owned[0]);
     game.zones.push({type:'time-sand',x:target.x,y:target.y,r:85,ownerId:source.id,team:source.team,createdAt:game.time,expiresAt:game.time+2,
-      life:2,maxLife:2,tickIn:2,nextPulseAt:game.time,slow:.2,theme:'time',color:'#bfa5e2'});
+      life:2,maxLife:2,tickIn:2,nextPulseAt:game.time,slow:p.sandSlow??.2,slowDuration:p.sandDuration??.15,itemScaled:!!p.sandItemScaled,theme:'time',color:'#bfa5e2'});
   }
   if(p.glassEcho)scheduleImpact(game,source,{kind:'glass-echo',x:target.x,y:target.y,r:60,shape:'circle',color:'#f4dea0',theme:'time',delay:.6,
     interruptible:false,damage:p.echoDamage||0,proc:true});
@@ -166,6 +170,6 @@ export function tickSolstice(game,dt){
     field.nextPulseAt=game.time+.1;
     const hero=game.units.find(u=>u.id===field.ownerId);if(!hero)continue;
     for(const target of game.units)if(!structure(target)&&visibleEnemy(game,hero,target)&&distance(target,field)<=field.r+target.r&&game.clearLine(field,target,4))
-      game.applyStatus(target,'slow',.15,{factor:.2,sourceId:hero.id});
+      game.applyStatus(target,'slow',field.slowDuration??.15,{factor:field.slow??.2,sourceId:hero.id,itemScaled:!!field.itemScaled});
   }
 }

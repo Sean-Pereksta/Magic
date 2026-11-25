@@ -2,7 +2,7 @@ import { WORLD, HEROES } from './data.mjs';
 import { createEffectBudget, resetEffectBudget, drawCombatBurst, drawShieldShell, drawProjectileTrail, drawSpellAccent, isEffectVisible, EFFECT_PALETTES } from './combat-visuals.mjs';
 import { unitPose, summonPose, drawHitGlint, drawMonsterRocks } from './unit-animation.mjs';
 import { drawCampScenery, drawReactiveTerrain, drawStructureDamage, isWorldEffect, drawWorldEffect, drawGoldFlight } from './world-visuals.mjs';
-import { EXPANSION_HEROES, drawExpansionHero, drawDevice, drawMagazine, drawExpansionUnitAccents, drawExpansionIcon, drawExpansionWarning, drawExpansionAim, drawExpansionProjectile, drawExpansionEffect, drawExpansionZones } from './expansion-visuals.mjs';
+import { EXPANSION_HEROES, drawExpansionHero, drawDevice, drawMagazine, drawResonanceResource, drawExpansionUnitAccents, drawExpansionIcon, drawExpansionWarning, drawExpansionAim, drawExpansionProjectile, drawExpansionEffect, drawExpansionZones } from './expansion-visuals.mjs';
 
 // All artwork is authored here in pixels. No remote textures, fonts or image
 // decoding are needed: the same sprites work in the site and the offline pack.
@@ -1005,7 +1005,7 @@ export class Renderer {
     if (u.kind === 'hero') {
       const facing = flip ? 2 : Math.sin(pose.angle) < -0.55 ? 3 : 0;
       sprite = heroSprite(u.heroId || u.subtype || 'arc',frame,facing,attack,u.cosmetics,pose.stage,pose.direction,pose.cast,pose.variant);
-      scale=1.5; width=(u.heroId==='seraph'?72:['brinehook','vela'].includes(u.heroId)?60:['bulwark','ember','rivet','solstice'].includes(u.heroId)?48:40)*scale;
+      scale=1.5; width=(u.heroId==='seraph'?72:u.heroId==='cadence'?64:['brinehook','vela','ferrite'].includes(u.heroId)?60:['bulwark','ember','rivet','solstice'].includes(u.heroId)?48:40)*scale;
       height=(['bulwark','ember','seraph'].includes(u.heroId)?48:44)*scale;
       c.save(); c.globalAlpha = u.id === game.playerId || u === game.player ? 0.9 : 0.45;
       ring(c, TEAM[u.team], u.x, u.y + 1, 21, u.id === game.playerId || u === game.player ? 3 : 2); c.restore();
@@ -1032,7 +1032,7 @@ export class Renderer {
     const originY=u.y-drawHeight+7+(sprite.groundPadding||0)*scale;
     const birth=summonPose(u,game.time,this.effectBudget?.reducedMotion);
     const action=u.visualAction;
-    const dashPose=u.heroId==='ember'&&['cinder-dash','flicker-strike'].includes(action?.abilityId)||u.heroId==='vela'&&action?.abilityId==='sidestep';
+    const dashPose=u.heroId==='ember'&&['cinder-dash','flicker-strike'].includes(action?.abilityId)||u.heroId==='vela'&&action?.abilityId==='sidestep'||u.heroId==='cadence'&&action?.abilityId==='skipbeat';
     if(dashPose&&!this.effectBudget?.reducedMotion&&action?.kind==='cast'&&game.time>=action.startedAt&&game.time-action.startedAt<.34&&Math.hypot(action.toX-action.fromX,action.toY-action.fromY)>30){
       c.save();
       for(const amount of [.3,.65]){
@@ -1146,6 +1146,7 @@ export class Renderer {
       const bounty = u.shutdownBounty ?? Math.min(300, Math.max(0, (u.streak || 0) - 2) * 60);
       if (bounty > 0) this.label(c, `+${bounty} BOUNTY`, u.x, y - 22, '#ffd37d', 9);
       drawMagazine(c,u,x+w+8,y+1,game.time);
+      drawResonanceResource(c,u,x+w+8,y+1,game.time);
     }
   }
   projectile(c, p, time, game) {
@@ -1385,10 +1386,10 @@ export function drawPortrait(canvas, heroId, size = 64, cosmetics = {}) {
   const sprite = heroSprite(heroId, 0, 0, false, cosmetics);
   // The combat frame reserves space for a full sword swing. Crop only that
   // empty margin in the idle portrait so the angel's face stays legible.
-  const sourceWidth=['seraph','vela'].includes(heroId)?64:heroId==='brinehook'?60:['bulwark','ember','rivet','solstice'].includes(heroId)?48:40,sourceX=(sprite.width-sourceWidth)/2,sourceHeight=44;
+  const sourceWidth=['seraph','vela','cadence'].includes(heroId)?64:['brinehook','ferrite'].includes(heroId)?60:['bulwark','ember','rivet','solstice'].includes(heroId)?48:40,sourceX=(sprite.width-sourceWidth)/2,sourceHeight=heroId==='cadence'?49:44,sourceY=Math.max(0,(sprite.bodyTop||0)-(heroId==='cadence'?5:0));
   const scale = Math.min(size * .94 / sourceWidth, size * .97 / sourceHeight);
   const width = Math.round(sourceWidth * scale), height = Math.round(sourceHeight * scale);
-  c.drawImage(sprite, sourceX, sprite.bodyTop||0, sourceWidth, sourceHeight, Math.round((size-width)/2), Math.round((size-height)/2), width, height);
+  c.drawImage(sprite, sourceX, sourceY, sourceWidth, sourceHeight, Math.round((size-width)/2), Math.round((size-height)/2), width, height);
   const frameColor = {verdant:'#86c99c',astral:'#b49ce8',sovereign:'#ead28f'}[cosmetics?.portrait];
   if (frameColor) {
     c.strokeStyle = frameColor; c.lineWidth = Math.max(2, Math.floor(size / 32)); c.strokeRect(2, 2, size - 4, size - 4);

@@ -18,8 +18,10 @@ export const EFFECT_PALETTES = Object.freeze({
   tide: Object.freeze({ main:'#3fb8ac', light:'#d0f2e3', dark:'#153c53' }),
   ivory: Object.freeze({ main:'#f4efdc', light:'#ffffff', dark:'#806e9a' }),
   time: Object.freeze({ main:'#e7b951', light:'#f4dea0', dark:'#9d91c4' }),
+  magnet: Object.freeze({ main:'#65d9e6', light:'#e9ffff', dark:'#e96b76' }),
+  resonance: Object.freeze({ main:'#ef9da8', light:'#ffedbf', dark:'#67465e' }),
 });
-const HERO_THEME = Object.freeze({ arc:'arcane', dragon:'fire', druid:'nature', angel:'holy', ranger:'poison', bulwark:'violet', ember:'fire', seraph:'frost',rivet:'copper',brinehook:'tide',vela:'ivory',solstice:'time' });
+const HERO_THEME = Object.freeze({ arc:'arcane', dragon:'fire', druid:'nature', angel:'holy', ranger:'poison', bulwark:'violet', ember:'fire', seraph:'frost',rivet:'copper',brinehook:'tide',vela:'ivory',solstice:'time',ferrite:'magnet',cadence:'resonance' });
 const palette = theme => EFFECT_PALETTES[theme] || EFFECT_PALETTES.steel;
 function noise(seed, index) {
   let n = (seed ^ Math.imul(index + 1, 0x9e3779b1)) >>> 0;
@@ -204,6 +206,11 @@ export function drawShieldShell(c, unit, time, width, height, front = true, budg
         pixel(c,colors.main,xx-4,yy-6,8,2);pixel(c,colors.main,xx-4,yy+5,8,2);
       } else if(theme==='ivory'){
         pixel(c,colors.light,xx-4,yy-4,3,9);pixel(c,colors.main,xx+2,yy-4,3,9);
+      } else if(theme==='magnet'){
+        pixel(c,k%2?colors.main:colors.dark,xx-5,yy-4,10,8);stroke(c,colors.light,xx-2,yy,xx+2,yy,2);
+        if(k%2===0)stroke(c,colors.light,xx,yy-2,xx,yy+2,2);
+      } else if(theme==='resonance'){
+        contour(c,xx,yy,5,7,Math.PI,TAU);stroke(c,colors.light,xx-5,yy,xx+5,yy,2);pixel(c,colors.main,xx-1,yy+2,3,3);
       } else {
         pixel(c, colors.light, xx - 4, yy - 2, 8, 2);
         pixel(c, colors.main, xx - 1, yy - 5, 2, 8);

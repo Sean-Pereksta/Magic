@@ -1,6 +1,7 @@
 /** Four expansion kits. Persistent mechanics use bounded, ordinary JSON state. */
 import { WORLD, segmentDistance } from './data.mjs';
 import { scheduleImpact } from './progression.mjs';
+import { modifyItemStatus } from './items.mjs';
 import { castSolsticeSkill, resolveSolsticeImpact, onSolsticeProjectileHit, tickSolstice } from './solstice-runtime.mjs';
 
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -12,6 +13,10 @@ const power=(game,h)=>(1+(h.level-1)*.075)*(1+bonus(game,h,'damage'))*(1+bonus(g
 const shieldPower=(game,h,n)=>n*(1+bonus(game,h,'shield'))*(1+(h.level-1)*.08);
 const foe=(game,hero,u)=>u.alive&&u.team!==hero.team&&!game.isProtected(u)&&game.canSee(hero.team,u);
 const expansionId=id=>['rivet','brinehook','vela','solstice'].includes(id);
+function slowSnapshot(game,hero,factor,duration){
+  const scaled=modifyItemStatus(game,{team:1-hero.team},'slow',duration,{factor,sourceId:hero.id});
+  return {slow:scaled.extra.factor,slowDuration:scaled.duration,itemScaled:true};
+}
 function state(hero){const s=hero.expansion??={};s.readyAt??={};return s;}
 function ready(game,hero,key,seconds){const s=state(hero);if((s.readyAt[key]||0)>game.time)return false;s.readyAt[key]=game.time+seconds;return true;}
 function effect(game,hero,type,at,r,life=.6,extra={}){
@@ -88,7 +93,7 @@ function placeDevice(game,hero,a,at,spellPower,shieldAmount){
     speed:0,range:sentry?250:0,attackRate:sentry?.9/(1+bonus(game,hero,'summonHaste')+bonus(game,hero,'rivetSentryHaste')):1,
     createdAt:game.time,assembleUntil:game.time+(sentry?.6:0),armAt:game.time+(sentry?.6:.8),lifetime,maxLifetime:lifetime,
     triggerRadius:a.triggerRadius||65,blastRadius:a.radius,lane:hero.lane,level:hero.level,deviceScale:scale,
-    emergencyShield:shieldAmount(45),crossfireDamage:30*scale,overclockUntil:0});
+    emergencyShield:shieldAmount(45),crossfireDamage:30*scale,overclockUntil:0,...(sentry?{}:slowSnapshot(game,hero,.35,2))});
   device.visualSpawn={at:game.time,duration:sentry?.6:.8,kind:'summon',subtype};
   game.presentation('summon-arrive',device,sentry?.65:.8,{subtype,ownerId:hero.id,theme:'copper',r:r+22});
   // Equipment still treats a sentry as a real owned summon. Mines do not receive creature-entry bonuses.
@@ -113,7 +118,7 @@ export function tickExpansionDevice(game,device,dt){
     const targets=validEnemies(game,device,device,device.blastRadius);
     for(const target of targets){
       game.damage(target,device.damage*(structure(target)?.35:1),device,'magic',false,{theme:'copper',abilityId:'shock-mine'});
-      if(target.alive&&!structure(target))game.applyStatus(target,'slow',2,{factor:.35,sourceId:hero.id});
+      if(target.alive&&!structure(target))game.applyStatus(target,'slow',device.slowDuration??2,{factor:device.slow??.35,sourceId:hero.id,itemScaled:!!device.itemScaled});
       if(target.alive&&target.kind==='hero'&&bonus(game,hero,'rivetSurvey'))target.revealedUntil=Math.max(target.revealedUntil||0,game.time+2);
     }
     visibleEffect(game,hero,'shock-mine',device,device.blastRadius,.65,{abilityId:'shock-mine'});
@@ -200,13 +205,16 @@ export function castExpansionSkill(game,hero,a,{at,angle,power:spellPower,shield
       delete hero.status.slow;game.shield(hero,shieldAmount(180)*(1+b('brineSeaShield')),4,hero);
       if(b('brineCrewCover'))for(const ally of game.units)if(ally.alive&&ally.kind==='hero'&&ally.id!==hero.id&&ally.team===hero.team&&distance(hero,ally)<=130+ally.r)game.shield(ally,shieldAmount(60),3,hero);
       effect(game,hero,'sea-legs',hero,hero.r+25,.7,{abilityId:a.id,followId:hero.id});return true;
-    case 'undertow':
-      scheduleImpact(game,hero,{kind:a.id,x:at.x,y:at.y,r:a.radius,delay:.6,damage:80*spellPower*(1+b('brineUndertowDamage')),color:a.color,damageType:'magic'});return true;
+    case 'undertow':{
+      const rough=slowSnapshot(game,hero,.2,.1);
+      scheduleImpact(game,hero,{kind:a.id,x:at.x,y:at.y,r:a.radius,delay:.6,damage:80*spellPower*(1+b('brineUndertowDamage')),color:a.color,damageType:'magic',slow:.3,slowDuration:2.5,
+        roughSlow:rough.slow,roughSlowDuration:rough.slowDuration,roughItemScaled:true});return true;
+    }
     case 'captains-wake':
       scheduleImpact(game,hero,{kind:a.id,shape:'line',x:hero.x,y:hero.y,r:a.range,range:a.range,width:a.radius,angle,delay:.75,damage:145*spellPower,color:a.color,damageType:'magic',safeHarbor:b('brineSafeHarbor')?shieldAmount(110):0});return true;
     case 'split-shot':{
       const s=state(hero),pair={id:game.nextId,expiresAt:game.time+2,hits:[],firstHit:false};s.splitPairs??=[];s.splitPairs=s.splitPairs.filter(p=>p.expiresAt>game.time).slice(-3);s.splitPairs.push(pair);
-      for(const offset of [-.055,.055])game.fireSkill(hero,angle+offset,{type:'silver-bullet',abilityId:a.id,expansion:true,visibleOnly:true,terrainCollision:true,color:a.color,theme:'ivory',r:a.radius,range:a.range,speed:700,damage:65*spellPower*(1+b('velaSplitDamage')),secondDamage:35*spellPower*(1+b('velaSplitDamage')),pairId:pair.id,pierce:0,damageType:'physical'});
+      for(const offset of [-.055,.055])game.fireSkill(hero,angle+offset,{type:'silver-bullet',abilityId:a.id,expansion:true,visibleOnly:true,terrainCollision:true,color:a.color,theme:'ivory',r:a.radius,range:a.range,speed:700,damage:65*spellPower*(1+b('velaSplitDamage')),secondDamage:35*spellPower*(1+b('velaSplitDamage')),pairId:pair.id,pierce:0,damageType:'physical',coveringShot:!!b('velaCoveringShot'),slow:b('velaCoveringShot')?.2:0,slowDuration:1.5});
       return true;
     }
     case 'sidestep':{
@@ -247,10 +255,10 @@ export function resolveExpansionImpact(game,hero,impact){
       pullToward(game,hero,target,{x:impact.x+Math.cos(impact.angle)*along,y:impact.y+Math.sin(impact.angle)*along},90,impact.id);
       game.applyStatus(target,'stun',.9,{sourceId:hero.id});
     }else{
-      pullToward(game,hero,target,impact,65,impact.id);game.applyStatus(target,'slow',2.5,{factor:.3,sourceId:hero.id});
+      pullToward(game,hero,target,impact,65,impact.id);game.applyStatus(target,'slow',impact.slowDuration??2.5,{factor:impact.slow??.3,sourceId:hero.id,itemScaled:!!impact.itemScaled});
     }
   }
-  if(!wave&&bonus(game,hero,'brineRoughCurrent'))game.zones.push({type:'rough-current',x:impact.x,y:impact.y,r:impact.r,life:2,maxLife:2,tickIn:0,createdAt:game.time,ownerId:hero.id,team:hero.team,color:impact.color,theme:'tide'});
+  if(!wave&&bonus(game,hero,'brineRoughCurrent'))game.zones.push({type:'rough-current',x:impact.x,y:impact.y,r:impact.r,life:2,maxLife:2,tickIn:0,createdAt:game.time,ownerId:hero.id,team:hero.team,color:impact.color,theme:'tide',slow:impact.roughSlow??.2,slowDuration:impact.roughSlowDuration??.1,itemScaled:!!impact.roughItemScaled});
   if(wave&&heroHit&&bonus(game,hero,'brineBoardingParty'))for(const ally of game.units)if(ally.alive&&ally.team===hero.team&&!structure(ally)&&distance(hero,ally)<=300+ally.r)game.applyStatus(ally,'haste',4,{factor:0,attack:.2,sourceId:hero.id,color:impact.color});
   effect(game,hero,impact.kind,impact,wave?impact.width:impact.r,.75,{abilityId:impact.kind,shape:impact.shape,range:impact.range,width:impact.width,angle:impact.angle,x2:wave?impact.x+Math.cos(impact.angle)*impact.range:impact.x,y2:wave?impact.y+Math.sin(impact.angle)*impact.range:impact.y});
   return true;
@@ -286,7 +294,7 @@ export function onExpansionProjectileHit(game,p,source,target,actual){
   if(p.abilityId==='split-shot'){
     const pair=hero.expansion?.splitPairs?.find(pair=>pair.id===p.pairId);
     if(pair){
-      if(!pair.firstHit&&target.alive&&bonus(game,hero,'velaCoveringShot'))game.applyStatus(target,'slow',1.5,{factor:.2,sourceId:hero.id});
+      if(!pair.firstHit&&target.alive&&(p.coveringShot??!!bonus(game,hero,'velaCoveringShot')))game.applyStatus(target,'slow',p.slowDuration??1.5,{factor:p.slow??.2,sourceId:hero.id,itemScaled:!!p.itemScaled});
       pair.firstHit=true;if(!pair.hits.includes(target.id))pair.hits.push(target.id);
     }
   }
@@ -331,7 +339,7 @@ export function tickExpansion(game,dt){
     if(channel.nextShot>=channel.shotCount)delete hero.channel;
   }
   for(const zone of game.zones)if(zone.type==='rough-current'){
-    const hero=game.units.find(h=>h.id===zone.ownerId);if(hero&&zone.life>0)for(const target of validEnemies(game,hero,zone,zone.r))if(!structure(target))game.applyStatus(target,'slow',.1,{factor:.2,sourceId:hero.id});
+    const hero=game.units.find(h=>h.id===zone.ownerId);if(hero&&zone.life>0)for(const target of validEnemies(game,hero,zone,zone.r))if(!structure(target))game.applyStatus(target,'slow',zone.slowDuration??.1,{factor:zone.slow??.2,sourceId:hero.id,itemScaled:!!zone.itemScaled});
   }
   tickSolstice(game,dt);
 }

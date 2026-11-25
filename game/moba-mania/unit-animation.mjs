@@ -15,6 +15,8 @@ const motion = Object.freeze({
   brinehook: { back:5, strike:7, crouch:2, tilt:.07 },
   vela: { back:4, strike:-2, crouch:1, tilt:.055 },
   solstice: { back:1, strike:1, crouch:0, tilt:.015 },
+  ferrite: { back:3, strike:4, crouch:0, tilt:.025 },
+  cadence: { back:2, strike:2, crouch:-1, tilt:.065 },
 });
 
 export function unitPose(unit, game, time = game.time || 0, reducedMotion = false) {
@@ -60,7 +62,7 @@ export function unitPose(unit, game, time = game.time || 0, reducedMotion = fals
   const idle = !unit.moving && !stage && !unit.status?.stun;
   return {
     stage, frame, direction, angle, cast, active:!!active,
-    variant:cast&&['bolt-sentry','shock-mine'].includes(action?.abilityId)?'build':unit.heroId==='vela'?(unit.status?.steadyAim?'aim':'')+(unit.magazine?.rounds%2===1?'offhand':''):'',
+    variant:cast&&['bolt-sentry','shock-mine'].includes(action?.abilityId)?'build':unit.heroId==='vela'?(unit.status?.steadyAim?'aim':'')+(unit.magazine?.rounds%2===1?'offhand':''):unit.heroId==='ferrite'?(unit.resonance?.polarity==='push'?'push':'pull'):unit.heroId==='cadence'?(action?.abilityId==='sheltering-chime'?'chime':action?.abilityId==='skipbeat'?'tempo':''):'',
     dx: reducedMotion ? 0 : Math.round(Math.cos(angle) * strength + Math.cos(hitAngle) * hit * 3),
     dy: reducedMotion ? 0 : Math.round(Math.sin(angle) * strength * .35 + (stage === 1 || stage === 2 ? shape.crouch : 0) + Math.sin(hitAngle) * hit * 2),
     tilt: reducedMotion ? 0 : (stage === 1 ? -1 : stage === 2 ? 1 : stage === 3 ? .5 : 0) * shape.tilt * (Math.cos(angle) < 0 ? -1 : 1),
