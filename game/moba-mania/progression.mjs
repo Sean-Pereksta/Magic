@@ -32,23 +32,23 @@ function hit(game,hero,target,amount,type='magic'){
 function heal(game,hero,target,amount){return proc(game,()=>game.heal(target,amount,hero,true));}
 function ward(game,hero,target,amount,seconds=3){return proc(game,()=>game.shield(target,amount,seconds,hero));}
 function ring(game,hero,at,r,amount,type='magic'){
-  game.effect('ring',at.x,at.y,r,color(hero),.45,{team:hero.team});
+  game.effect('ring',at.x,at.y,r,color(hero),.45,{team:hero.team,theme:game.combatTheme(hero,type)});
   for(const target of enemies(game,hero,at,r))hit(game,hero,target,amount,type);
 }
 function protect(game,hero,at,r,amount,seconds=3){
   for(const ally of allies(game,hero,at,r))ward(game,hero,ally,amount,seconds);
-  game.effect('shield',at.x,at.y,r,color(hero),.5,{team:hero.team});
+  game.effect('shield',at.x,at.y,r,color(hero),.5,{team:hero.team,theme:game.combatTheme(hero)});
 }
 function healingPulse(game,hero,at,r,amount){
   for(const ally of allies(game,hero,at,r))heal(game,hero,ally,amount);
-  game.effect('heal',at.x,at.y,r,color(hero),.65,{team:hero.team});
+  game.effect('heal',at.x,at.y,r,color(hero),.65,{team:hero.team,theme:game.combatTheme(hero)});
 }
 function haste(game,hero,at,r,factor,attack,duration){
   for(const ally of allies(game,hero,at,r))game.applyStatus(ally,'haste',duration,{factor,attack,sourceId:hero.id,color:color(hero)});
 }
 function slowRing(game,hero,at,r,factor,duration){
   for(const target of enemies(game,hero,at,r))if(!structure(target))game.applyStatus(target,'slow',duration,{factor,sourceId:hero.id,frost:hero.heroId==='seraph'});
-  game.effect(hero.heroId==='seraph'?'frost':'ring',at.x,at.y,r,color(hero),.6,{team:hero.team});
+  game.effect(hero.heroId==='seraph'?'frost':'ring',at.x,at.y,r,color(hero),.6,{team:hero.team,theme:game.combatTheme(hero)});
 }
 function shove(game,target,angle,length){
   if(!target.alive||structure(target))return;
@@ -64,7 +64,7 @@ function shove(game,target,angle,length){
 /** No functions/closures are stored: warnings and future impacts survive JSON save/restore. */
 export function scheduleImpact(game,hero,details){
   const delay=Math.max(.08,Number(details.delay)||.35);
-  const impact={id:game.nextId++,ownerId:hero.id,team:hero.team,x:hero.x,y:hero.y,r:80,shape:'circle',color:color(hero),
+  const impact={id:game.nextId++,ownerId:hero.id,team:hero.team,x:hero.x,y:hero.y,r:80,shape:'circle',color:color(hero),theme:game.combatTheme(hero,details.damageType||'magic'),
     interruptible:true,...details,delay,executeAt:game.time+delay};
   (game.scheduledImpacts??=[]).push(impact);return impact;
 }
@@ -86,11 +86,11 @@ function resolveImpact(game,hero,impact){
     return;
   }
   const visual=impact.kind==='winterfall'?'frost':impact.kind==='royal-quake'?'quake':impact.shape==='line'?'slash':impact.shape==='cone'?'sweep':'ring';
-  game.effect(visual,impact.x,impact.y,impact.r,impact.color,.65,{team:hero.team,angle:impact.angle,arc:impact.arc,
+  game.effect(visual,impact.x,impact.y,impact.r,impact.color,.65,{team:hero.team,theme:impact.theme||game.combatTheme(hero),angle:impact.angle,arc:impact.arc,
     x2:impact.x+Math.cos(impact.angle||0)*(impact.range||impact.r),y2:impact.y+Math.sin(impact.angle||0)*(impact.range||impact.r)});
   const radius=impact.shape==='line'?(impact.range||impact.r)+30:impact.r;
   for(const target of enemies(game,hero,impact,radius))if(inShape(target,impact)&&game.clearLine(impact,target,4)){
-    const deal=()=>game.damage(target,(impact.damage||0)*(structure(target)?.35:1),hero,impact.damageType||'magic');
+    const deal=()=>game.damage(target,(impact.damage||0)*(structure(target)?.35:1),hero,impact.damageType||'magic',false,{theme:impact.theme,angle:impact.shape==='line'||impact.shape==='cone'?impact.angle:Math.atan2(target.y-impact.y,target.x-impact.x)});
     if(impact.proc)proc(game,deal);else deal();
     if(!target.alive||structure(target))continue;
     if(impact.stun)game.applyStatus(target,'stun',impact.stun,{sourceId:hero.id});

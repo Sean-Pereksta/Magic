@@ -19,7 +19,7 @@ function buildOfflinePack() {
   const pack = path.join(temp,'packs/mobamania');
   const entry = fs.readFileSync(path.join(pack,'index.html'),'utf8');
   assert(!entry.includes('/hub/play-signal.mjs'),'offline pack must not call the web hub');
-  for(const module of ['data.mjs','items.mjs','profile.mjs','engine.mjs','hero-skills.mjs','renderer.mjs','ui.mjs','style.css']) assert(fs.existsSync(path.join(pack,'moba-mania',module)),`offline pack missing ${module}`);
+  for(const module of ['data.mjs','items.mjs','profile.mjs','engine.mjs','hero-skills.mjs','renderer.mjs','combat-visuals.mjs','ui.mjs','style.css']) assert(fs.existsSync(path.join(pack,'moba-mania',module)),`offline pack missing ${module}`);
   assert(!fs.existsSync(path.join(pack,'moba-mania/CONTRACT.md')),'implementation coordination notes are not shipped');
   return pack;
 }
@@ -278,6 +278,60 @@ async function verifyExperience(page,context,device){
   await page.locator('#resume-match').click();
   await page.locator('#pause-button').click();await page.locator('#pause-controls').click();await page.locator('[data-control-preset="default"]').click();await page.locator('#control-handed').selectOption('right');await page.locator('#close-controls').click();await page.locator('#resume-match').click();
 }
+async function verifyCombatVisuals(page,device,heroes) {
+  const report=await page.evaluate(async heroes=>{
+    const fx=await import(new URL('./moba-mania/combat-visuals.mjs',location.href).href);
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=128;
+    const c=canvas.getContext('2d'),shells=[];
+    // Inspect actual Canvas alpha, not just shield metadata or a mock context.
+    for(const theme of ['fire','arcane','violet','holy','frost','nature']){
+      c.clearRect(0,0,128,128);
+      const unit={id:1,x:64,y:100,hp:500,alive:true,shield:100,shieldTime:4,status:{},shieldVisual:{theme,startedAt:9,amount:100}};
+      fx.drawShieldShell(c,unit,10,80,88,true,fx.createEffectBudget(innerWidth));
+      shells.push({theme,center:[...c.getImageData(64,61,1,1).data]});
+      unit.shield=0;c.clearRect(0,0,128,128);
+      if(fx.drawShieldShell(c,unit,10,80,88,true,fx.createEffectBudget(innerWidth)))throw Error('Expired shield still drawn');
+      if(c.getImageData(64,61,1,1).data[3])throw Error('Expired shield left opaque pixels');
+    }
+    const original=__mobaTest.game,r=__mobaTest.renderer,Game=original.constructor;
+    const camera={...r.camera},lastTime=r.lastTime,hasCamera=r.hasCamera,peek=r.peek;
+    let casts=0,frames=0;
+    try{
+      for(const hero of heroes)for(let slot=0;slot<4;slot++){
+        const g=new Game({hero,seed:73}),h=g.player;
+        g.units=[h];g.campStates=[];g.waveIn=g.beastIn=g.planIn=10000;g.time=10;
+        Object.assign(h,{x:1600,y:1100,level:8});g.refreshStats(h);h.hp=h.maxHp*.7;h.mana=h.maxMana;
+        g.addUnit('footman',1,1680,1100,{hp:10000,damage:0,speed:0,status:{stun:{remaining:100}}});
+        g.addUnit('footman',0,1620,1150,{hp:1000,maxHp:2000,damage:0,speed:0,status:{stun:{remaining:100}}});
+        g.rebuildGrid();
+        if(!g.cast(h,slot,{x:1680,y:1100}))throw Error(hero+' ability '+slot+' did not cast');
+        if(!g.effects.some(e=>e.type==='combat-burst'&&e.fx==='cast'))throw Error('Missing successful-cast burst');
+        r.hasCamera=false;r.peek=null;
+        for(const ticks of [0,9,30]){
+          for(let i=0;i<ticks;i++)g.update(1/60);
+          const state=JSON.stringify(g.serialize());r.draw(g);
+          if(JSON.stringify(g.serialize())!==state)throw Error('Rendering changed battle state');
+          if(r.effectBudget.remaining<0||r.effectBudget.remaining>r.effectBudget.limit)throw Error('Particle budget exceeded');
+          frames++;
+        }
+        casts++;
+      }
+    }finally{
+      Object.assign(r.camera,camera);r.lastTime=lastTime;r.hasCamera=hasCamera;r.peek=peek;r.draw(original);
+    }
+    return {shells,casts,frames,limit:r.effectBudget.limit};
+  },Object.keys(heroes));
+  assert.equal(report.casts,32,'all playable abilities render in the browser');
+  assert.equal(report.frames,96,'cast, flight, and impact phases render');
+  assert.equal(report.limit,device.width<900?260:480,'compact viewports use the smaller particle allowance');
+  for(const shell of report.shells)assert(shell.center[3]>0&&shell.center[3]<40,shell.theme+' shield interior stays translucent');
+  assert.equal(new Set(report.shells.map(s=>s.center.slice(0,3).join(','))).size,6,'shield sources have distinct rendered colors');
+  await page.emulateMedia({reducedMotion:'reduce'});
+  const reduced=await page.evaluate(()=>{__mobaTest.renderer.draw(__mobaTest.game);return __mobaTest.renderer.effectBudget.limit;});
+  assert.equal(reduced,100,'runtime motion-preference changes reduce the effect budget');
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  console.log(JSON.stringify({device:device.name,pixelAbilityCasts:report.casts,pixelAbilityFrames:report.frames,translucentShieldThemes:6,reducedMotion:true}));
+}
 async function main(){
   const {ITEMS}=await import('../game/moba-mania/items.mjs');
   const {HEROES}=await import('../game/moba-mania/data.mjs');
@@ -362,6 +416,7 @@ async function main(){
       assert.equal(await page.evaluate(()=>__mobaTest.game.paused),false,'closing tree resumes');
       await verifyShop(page,device,ITEMS);
       await verifyExperience(page,context,device);
+      await verifyCombatVisuals(page,device,HEROES);
       if(qaOutput){fs.mkdirSync(qaOutput,{recursive:true});await page.screenshot({path:path.join(qaOutput,device.name+'.png')});}
       await finishMatch(page);
       assert.equal(await page.locator('#end-stats > div').count(),16,'all personal contribution metrics are shown');

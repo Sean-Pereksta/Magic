@@ -11,6 +11,8 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const structure=u=>u.kind==='tower'||u.kind==='core';
 const hostile=(a,b)=>a.team!==b.team && b.alive;
 const COLORS={physical:'#fff1cf',magic:'#86d8ff',fire:'#ff9e5b',poison:'#a9ee78',heal:'#98f2b8',shield:'#beccff'};
+const COMBAT_COLORS={steel:'#ffe8b5',fire:'#ff9948',arcane:'#69cfff',nature:'#8fe69a',poison:'#b0e86b',holy:'#ffa8d6',frost:'#9deaff',violet:'#bf97ff',stone:'#d7b68c'};
+const HERO_THEMES={arc:'arcane',dragon:'fire',druid:'nature',angel:'holy',ranger:'poison',bulwark:'violet',ember:'fire',seraph:'frost'};
 const movementStatus=layers=>{
   const strongest=layers.reduce((best,s)=>(s.factor||0)>(best.factor||0)?s:best,layers[0]);
   return {...strongest,layers,remaining:Math.max(...layers.map(s=>s.remaining)),factor:Math.max(...layers.map(s=>s.factor||0)),
@@ -156,7 +158,39 @@ export class Game {
     if(hero.level===RULES.maxLevel){hero.xp=0;hero.xpNext=0;}
   }
   announce(text,type='info'){this.events.push({id:this.eventId++,text,time:this.time,type});if(this.events.length>60)this.events.shift();}
-  effect(type,x,y,r,color,life=0.6,extra={}){const e={type,x,y,r,color,life,maxLife:life,...extra};this.effects.push(e);if(this.effects.length>400)this.effects.splice(0,this.effects.length-400);return e;}
+  effect(type,x,y,r,color,life=0.6,extra={}){
+    const e={type,x,y,r,color,life,maxLife:life,...(this._castSource?{theme:this.combatTheme(this._castSource)}:{}),...extra};
+    this.effects.push(e);
+    // Brief cosmetic bursts have their own budget; a busy fight cannot push out
+    // long-lived fields, healing trees or other gameplay-readable spell effects.
+    const burst=type==='combat-burst',limit=burst?96:400;
+    if(this.effects.length>limit){
+      let count=0,oldest=-1;
+      for(let i=0;i<this.effects.length;i++)if((this.effects[i].type==='combat-burst')===burst){count++;if(oldest<0)oldest=i;}
+      if(count>limit)this.effects.splice(oldest,1);
+    }
+    return e;
+  }
+  combatTheme(source,type='magic',context={}){
+    if(COMBAT_COLORS[context.theme])return context.theme;
+    if(type==='fire')return 'fire';
+    if(type==='poison')return 'poison';
+    if(source?.kind==='beast'||source?.kind==='camp')return 'stone';
+    if(context.basic&&(source?.range<=100||source?.heroId==='ranger'||source?.kind==='archer'))return 'steel';
+    return HERO_THEMES[this.owner(source)?.heroId]||(structure(source||{})?'arcane':type==='physical'?'steel':'arcane');
+  }
+  combatBurst(target,source,fx,theme,power=1,extra={}){
+    if(!target||!Number.isFinite(target.x)||!Number.isFinite(target.y))return null;
+    theme=COMBAT_COLORS[theme]?theme:'steel';
+    const interval=fx==='hit'?.055:fx==='heal'?.18:fx==='shield-hit'?.09:0;
+    if(interval&&this.effects.some(e=>e.type==='combat-burst'&&e.fx===fx&&e.theme===theme&&e.visibilityId===target.id&&e.maxLife-e.life<interval))return null;
+    const life=fx==='death'||fx==='shield-break'?.65:fx==='heal'?.6:fx==='cast'?.4:.38;
+    // Visual scatter must never consume the battle RNG or an entity/event ID.
+    const seed=(Math.imul(target.id||0,73856093)^Math.imul(source?.id||0,19349663)^Math.imul(Math.round(this.time*1000),83492791)^Math.imul(Math.round(target.x),31)^Math.round(target.y)^Math.imul(fx.length,2654435761))>>>0;
+    const visibleTo=[0,1].filter(team=>this.canSee(team,target));
+    return this.effect('combat-burst',target.x,target.y,clamp((target.r||12)+18,18,60),COMBAT_COLORS[theme],life,
+      {...extra,fx,theme,power:clamp(Number.isFinite(power)?power:1,.5,2),angle:Number.isFinite(extra.angle)?extra.angle:source&&Number.isFinite(source.x)&&Number.isFinite(source.y)?Math.atan2(target.y-source.y,target.x-source.x):target.angle||0,seed,visibilityId:target.id,visibleTo});
+  }
   float(unit,text,color='#fff1cf'){this.texts.push({x:unit.x+(this.random()-.5)*18,y:unit.y-unit.r-8,text:String(text),color,life:1,maxLife:1});if(this.texts.length>100)this.texts.shift();}
   heal(target,amount,source=null,quiet=false){
     if(!target?.alive||structure(target)||amount<=0)return 0;
@@ -166,12 +200,15 @@ export class Game {
       owner.metrics.healingDone+=n;this.recordSupport(owner,target);
       this.progressionHook(onHeal,owner,target,n);
     }
-    if(n>=6&&!quiet)this.float(target,'+'+Math.round(n),COLORS.heal);return n;
+    if(n>=6&&!quiet){this.float(target,'+'+Math.round(n),COLORS.heal);this.combatBurst(target,source,'heal',HERO_THEMES[owner?.heroId]||'nature',.6+Math.sqrt(n)/15);}return n;
   }
   shield(target,amount,duration=5,source=this._castSource||null){
     if(!target.alive||structure(target))return;
     const added=Math.max(0,amount-target.shield),owner=this.owner(source);
-    if(added>0){target.shieldLayers??=[];target.shieldLayers.push({sourceId:owner?.kind==='hero'?owner.id:null,amount:added});}
+    if(added>0){
+      target.shieldLayers??=[];target.shieldLayers.push({sourceId:owner?.kind==='hero'?owner.id:null,amount:added});
+      target.shieldVisual={theme:this.combatTheme(source||target),startedAt:this.time,amount};
+    }
     target.shield=Math.max(target.shield,amount);target.shieldTime=Math.max(target.shieldTime,duration);
     if(added>0&&owner?.kind==='hero')this.progressionHook(onShield,owner,target,added);
   }
@@ -215,8 +252,9 @@ export class Game {
     if(source?.kind==='hero'&&['bulwark','angel'].includes(source.heroId)&&['footman','archer','camp'].includes(target.kind))amount*=1.65;
     if((target.kind==='camp'||(target.kind==='beast'&&target.team===-1))&&owner?.heroId)amount*=1+this.bonus(owner,'jungleDamage');
     if(target.status.guard)amount*=target.status.guard.factor;
-    const impact=amount;
-    if(target.shield>0){const absorbed=this.absorbShield(target,amount,owner);amount-=absorbed;if(absorbed>8&&!quiet)this.float(target,Math.round(absorbed),'#b8caff');}
+    const impact=amount,shieldTheme=target.shieldVisual?.theme||target.status.guard?.visualTheme||this.combatTheme(target);
+    let absorbed=0;
+    if(target.shield>0){absorbed=this.absorbShield(target,amount,owner);amount-=absorbed;if(absorbed>8&&!quiet)this.float(target,Math.round(absorbed),'#b8caff');}
     target.lastDamageAt=this.time;target.recallIn=0;
     if(target.team===-1&&source){target.aggroId=source.id;target.aggroUntil=this.time+7;}
     if(owner?.kind==='hero'&&owner.team!==target.team&&impact>0){target.contributors??={};target.contributors[owner.id]=this.time;if(target.team>=0)this.stats.damage[owner.team]+=Math.min(target.hp,amount);}
@@ -234,13 +272,16 @@ export class Game {
     if(owner?.kind==='hero'){owner.metrics.damageDealt+=actual;if(target.kind==='hero')owner.metrics.damageToHeroes+=actual;if(structure(target))owner.metrics.damageToStructures+=actual;}
     if(target.kind==='hero')target.metrics.damageTaken+=actual;
     if(actual>1&&!quiet)this.float(target,Math.round(actual),COLORS[type]||type);
+    if(absorbed>0&&(!quiet||target.shield<=0))this.combatBurst(target,source,target.shield>0?'shield-hit':'shield-break',shieldTheme,.6+Math.sqrt(absorbed)/14,{angle:context.angle??Math.atan2(target.y-(source?.y??target.y),target.x-(source?.x??target.x))});
+    if(actual>0&&!quiet)this.combatBurst(target,source,'hit',this.combatTheme(source,type,context),.55+Math.sqrt(actual)/13,{angle:context.angle??Math.atan2(target.y-(source?.y??target.y),target.x-(source?.x??target.x))});
     if(target.hp<=0)this.kill(target,source);
     if(actual>0)this.progressionHook(onDamage,source,target,actual,context);
     return actual;
   }
   kill(target,source){
     if(!target?.alive||source?.team===target.team)return;
-    target.alive=false;target.hp=0;target.deathTime=.7;target.shield=0;target.shieldLayers=[];
+    this.combatBurst(target,source,'death',structure(target)?'stone':this.combatTheme(target,'physical'),target.kind==='hero'||structure(target)?1.7:.8);
+    target.alive=false;target.hp=0;target.deathTime=.7;target.shield=0;target.shieldLayers=[];delete target.shieldVisual;
     const owner=this.owner(source),team=owner?.team??source?.team;
     this.effect(target.kind==='core'?'explosion':'ring',target.x,target.y,target.kind==='core'?170:target.r*2.5,target.team===0?'#64caff':target.team===1?'#ff98be':'#e5d698',.7);
     const growth=1+Math.min(3,Math.max(0,this.time-120)/180);
@@ -310,6 +351,7 @@ export class Game {
   }
   applyStatus(target,type,duration,extra={}){
     if(!target.alive||structure(target))return;
+    if(type==='guard')extra={visualTheme:this.combatTheme(this.units.find(u=>u.id===extra.sourceId)||this._castSource||target),...extra};
     if(type==='stun'&&target.kind==='hero'){
       duration*=1-Math.min(.35,this.bonus(target,'tenacity'));
       const chained=(target.ccRecoveryUntil||0)>this.time;
@@ -383,7 +425,7 @@ export class Game {
     hero.mana-=a.mana;hero.cooldowns[slot]=a.cooldown;hero.recallIn=0;hero.angle=angle;hero.attackAnim=.32;
     hero.revealedUntil=this.time+2;this._castSource=hero;
     const power=(1+(hero.level-1)*.075)*(1+this.bonus(hero,'damage'))*(1+this.bonus(hero,'spellDamage'));
-    const zone=(type,duration,props={})=>this.zones.push({type,x:at.x,y:at.y,r:a.radius,life:duration,maxLife:duration,ownerId:hero.id,team:hero.team,tickIn:0,...props});
+    const zone=(type,duration,props={})=>this.zones.push({type,x:at.x,y:at.y,r:a.radius,life:duration,maxLife:duration,ownerId:hero.id,team:hero.team,tickIn:0,theme:this.combatTheme(hero),...props});
     const area=(center,r,damage,type='magic',status=null)=>{
       for(const target of this.nearby(center.x,center.y,r+55))if(hostile(hero,target)&&dist(center,target)<r+target.r){this.damage(target,damage*(structure(target)?.35:1),hero,type);if(status)this.applyStatus(target,status.type,status.duration,{...status,sourceId:hero.id});}
     };
@@ -422,6 +464,7 @@ export class Game {
       case 'long-shot':this.fireSkill(hero,angle,{type:'longshot',color:a.color,r:a.radius,range:a.range,speed:830,damage:205*power*(1+this.bonus(hero,'longshotDamage')),pierce:3,damageType:'physical'});break;
       default:castHeroSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone});break;
     }
+    this.combatBurst(hero,hero,'cast',this.combatTheme(hero),.8,{angle,abilityId:a.id});
     if(hero.isPlayer)this.cancelPlayerOrder();
     const restore=this.bonus(hero,'castHeal');if(restore)this.heal(hero,hero.maxHp*restore,hero);
     this.progressionHook(onCast,hero,a,{at,angle,power,slot});this._castSource=null;
@@ -441,7 +484,7 @@ export class Game {
   }
   fireSkill(hero,angle,props){
     const p={id:this.nextId++,x:hero.x+Math.cos(angle)*(hero.r+8),y:hero.y+Math.sin(angle)*(hero.r+8),prevX:hero.x,prevY:hero.y,angle,
-      vx:Math.cos(angle)*props.speed,vy:Math.sin(angle)*props.speed,team:hero.team,ownerId:hero.id,sourceId:hero.id,sourceKind:hero.kind,life:props.range/props.speed,hit:new Set(),...props};
+      vx:Math.cos(angle)*props.speed,vy:Math.sin(angle)*props.speed,team:hero.team,ownerId:hero.id,sourceId:hero.id,sourceKind:hero.kind,life:props.range/props.speed,hit:new Set(),theme:this.combatTheme(hero,props.damageType||'magic',{basic:props.type==='arrow'||props.type==='longshot'}),...props};
     this.projectiles.push(p);return p;
   }
   basicAttack(unit,target){
@@ -459,7 +502,7 @@ export class Game {
         if(target.kind==='hero')attackDamage*=1.35*(1+unit.focusShots*.25);
       }
       this.projectiles.push({id:this.nextId++,x:unit.x,y:unit.y-8,prevX:unit.x,prevY:unit.y-8,angle:unit.angle,team:unit.team,ownerId:unit.ownerId??unit.id,sourceId:unit.id,sourceKind:unit.kind,
-        targetId:target.id,speed:structure(unit)?650:unit.kind==='archer'?400:520,life:2.5,type:unit.heroId==='ranger'||unit.kind==='archer'?'arrow':'bolt',color,r:structure(unit)?6:4,damage:attackDamage,pierce:0,hit:new Set(),basic:true});
+        targetId:target.id,speed:structure(unit)?650:unit.kind==='archer'?400:520,life:2.5,type:unit.heroId==='ranger'||unit.kind==='archer'?'arrow':'bolt',color,r:structure(unit)?6:4,damage:attackDamage,pierce:0,hit:new Set(),basic:true,theme:this.combatTheme(unit,'physical',{basic:true})});
     }else{
       this.effect('slash',unit.x,unit.y,unit.range,'#ffe7b9',.2,{angle:unit.angle,x2:target.x,y2:target.y});
       const dealt=this.damage(target,unit.damage,unit,'physical',false,{basic:true});
@@ -514,7 +557,7 @@ export class Game {
     updateVision(this);
   }
   tickStatuses(u,dt){
-    if(u.shieldTime>0){u.shieldTime-=dt;if(u.shieldTime<=0){u.shield=0;u.shieldLayers=[];}}
+    if(u.shieldTime>0){u.shieldTime-=dt;if(u.shieldTime<=0){u.shield=0;u.shieldLayers=[];delete u.shieldVisual;}}
     for(const [key,s] of Object.entries(u.status)){
       if(s.layers){
         for(const layer of s.layers)layer.remaining-=dt;
@@ -534,7 +577,7 @@ export class Game {
   }
   respawn(h){
     const well=WORLD.bases[h.team].well;h.x=well.x+(h.team?-36:36);h.y=well.y+(h.slot-1)*30;h.hp=h.maxHp;h.mana=h.maxMana;h.alive=true;h.status={};h.shield=0;h.recallIn=0;
-    h.cooldowns=h.cooldowns.map(c=>Math.min(c,3));h.contributors={};h.supportContributors={};h.supporters={};h.combatTargets={};h.shieldLayers=[];h.brain={};h.path=null;h.pathGoal=null;h.targetId=null;h.thinkIn=0;h.aiState='departing';h.ccRecoveryUntil=0;
+    h.cooldowns=h.cooldowns.map(c=>Math.min(c,3));h.contributors={};h.supportContributors={};h.supporters={};h.combatTargets={};h.shieldLayers=[];delete h.shieldVisual;h.brain={};h.path=null;h.pathGoal=null;h.targetId=null;h.thinkIn=0;h.aiState='departing';h.ccRecoveryUntil=0;
     if(h.isPlayer)this.cancelPlayerOrder();this.effect('level',h.x,h.y,60,HEROES[h.heroId].color,.9);
   }
   validPlayerTarget(target){return !!target&&target.alive&&hostile(this.player,target)&&!this.isProtected(target)&&this.canSee(this.player.team,target);}
@@ -686,13 +729,12 @@ export class Game {
         p.hit.add(target.id);
         if(target.team===p.team&&p.healing)this.heal(target,p.healing,source);
         else{
-          const actual=this.damage(target,p.damage*(structure(target)&&!p.basic ? .4 : 1),source,p.damageType||'physical',false,{basic:!!p.basic});
+          const actual=this.damage(target,p.damage*(structure(target)&&!p.basic ? .4 : 1),source,p.damageType||'physical',false,{basic:!!p.basic,theme:p.theme,angle:p.angle});
           if(p.burn)this.applyStatus(target,'burn',p.burnDuration,{dps:p.burn,sourceId:p.ownerId});
           if(p.poison)this.applyStatus(target,'poison',p.poisonDuration,{dps:p.poison,sourceId:p.ownerId});
           if(p.basic&&source?.heroId&&this.bonus(source,'lifesteal'))this.heal(source,actual*this.bonus(source,'lifesteal'),source,true);
           p.pierce--;if(p.pierce<0){p.life=0;break;}
         }
-        this.effect('ring',target.x,target.y,Math.min(35,target.r+8),p.color,.2);
       }
       if(p.x<0||p.y<0||p.x>WORLD.width||p.y>WORLD.height)p.life=0;
     }
@@ -709,13 +751,13 @@ export class Game {
           this.damage(t,z.damage,source,'physical',false,{periodic:true});this.applyStatus(t,'slow',1.2,{factor:z.slow||.25});
         }
         if(z.charge){const p=this.safePoint({x:source.x+Math.cos(z.angle)*z.charge,y:source.y+Math.sin(z.angle)*z.charge},source.r);source.x=p.x;source.y=p.y;}
-        this.effect('explosion',z.x,z.y,z.r,z.color,.6);z.life=0;
+        this.effect('explosion',z.x,z.y,z.r,z.color,.6,{theme:z.theme||this.combatTheme(source,'physical')});z.life=0;
       }else if(z.type==='bomb'||z.type==='wild-slam'){
         for(const t of units)if(t.team!==z.team){this.damage(t,z.damage*(structure(t)?.35:1),source,z.type==='bomb'?'magic':'physical',false,{periodic:true});if(z.stun)this.applyStatus(t,'stun',z.stun);else this.applyStatus(t,'slow',1.5,{factor:.35});}
-        this.effect('explosion',z.x,z.y,z.r,z.color,.6);z.life=0;
+        this.effect('explosion',z.x,z.y,z.r,z.color,.6,{theme:z.theme||this.combatTheme(source,'physical')});z.life=0;
       }else if(z.type==='storm'){
         const damage=z.damage*(z.detonated?1:1.65);z.detonated=true;for(const t of units)if(t.team!==z.team)this.damage(t,damage*(structure(t)?.35:1),source,'magic',false,{periodic:true});
-        this.effect('explosion',z.x,z.y,z.r,z.color,.4);z.tickIn=.7;
+        this.effect('explosion',z.x,z.y,z.r,z.color,.4,{theme:z.theme||this.combatTheme(source)});z.tickIn=.7;
       }else if(z.type==='field'){
         for(const t of units)if(t.team===z.team){if(!z.applied.has(t.id)){this.shield(t,z.shield,5,source);z.applied.add(t.id);}if(z.healing)this.heal(t,z.healing*.5,source);}
         else this.applyStatus(t,'slow',.6,{factor:.25});z.tickIn=.5;
