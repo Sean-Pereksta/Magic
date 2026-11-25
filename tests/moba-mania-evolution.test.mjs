@@ -214,6 +214,12 @@ test('warned impact state survives JSON serialization and damages each victim ex
   game.time=.46;const before=target.hp;tickProgression(game,.46);assert(target.hp<before);
   const after=target.hp;tickProgression(game,.1);assert.equal(target.hp,after);assert.equal(game.scheduledImpacts.length,0);
 });
+test('an already released item blast can finish a target after its owner dies without reviving them',()=>{
+  const {game,hero,target,add}=arena('ember'),secondary=add(target.x+20,target.y+25);
+  equip(game,hero,'starfire-scepter');hero.gold=0;hero.goldEarned=0;
+  cast(game,hero,0,target);secondary.hp=1;game.kill(hero,target);
+  advance(game,.4);assert(!secondary.alive);assert.equal(hero.gold,18);assert(!hero.alive);assert.equal(hero.hp,0);
+});
 test('equipment proc final hits retain personal gold and never generate chain income or assist gold',()=>{
   const {game,hero,target,add}=arena('dragon'),secondary=add(hero.x+95,hero.y+35),helper=add(hero.x-10,hero.y,0,'hero');
   equip(game,hero,'worldsplitter');hero.gold=0;hero.goldEarned=0;secondary.hp=1;

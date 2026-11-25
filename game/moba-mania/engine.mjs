@@ -1,7 +1,7 @@
 import { HEROES, DIFFICULTIES, WORLD, RULES, lanePoint, segmentDistance, xpToNextLevel } from './data.mjs';
 import { castHeroSkill, botSkillAim } from './hero-skills.mjs';
 import { ITEMS, itemBonus, purchaseState } from './items.mjs';
-import { makeMetrics, canSee, updateVision, strength, assignTeamJobs, nextBuildItem, chooseBotTalent } from './strategy.mjs';
+import { makeMetrics, canSee, updateVision, scoutJungle, strength, assignTeamJobs, nextBuildItem, chooseBotTalent } from './strategy.mjs';
 import { serializeGame, restoreGame } from './save-state.mjs';
 import { onCast, onDamage, onHeal, onShield, onKill, onSummon, tickProgression, scheduleImpact } from './progression.mjs';
 
@@ -28,7 +28,7 @@ export class Game {
     this.waveIn=RULES.firstWave; this.waveNumber=0; this.beastIn=RULES.firstBeast; this.beastIndex=0;
     this.teamPlans=[{type:'lanes',lane:1,until:20},{type:'lanes',lane:1,until:20}];
     this.planIn=1; this.order=null; this.aim={x:600,y:1100}; this.moveTarget=null;this.attackOrder=null;this.attackHeld=false;
-    this.campStates=WORLD.camps.map(c=>({...c,respawnIn:0,spawned:false}));
+    this.campStates=WORLD.camps.map(c=>({...c,respawnIn:0,spawned:false,scoutedEmptyUntil:[0,0]}));
     this.grid=new Map(); this.navCache=new Map();
     this.lastSeen=[{},{}];this.assignments=[{},{}];this.pendingBeastChoice=null;this.scheduledImpacts=[];this.progressionDepth=0;
     const chosen=HEROES[hero]?hero:'arc';
@@ -37,13 +37,19 @@ export class Game {
     const pool=Object.keys(HEROES).filter(id=>!allies.includes(id));
     // A seeded shuffle varies the opposing lineup while retaining exactly three heroes per side.
     for(let i=pool.length-1;i>0;i--){const j=Math.floor(this.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
-    const enemies=pool.slice(0,3);
+    const enemies=[];
+    for(const roles of [['bulwark','dragon','seraph'],['ranger','ember','arc'],['angel','druid','seraph']]){
+      const selected=pool.find(id=>!enemies.includes(id)&&roles.includes(id)&&!(id==='druid'&&enemies.includes('arc')));
+      if(selected)enemies.push(selected);
+    }
+    for(const id of pool)if(enemies.length<3&&!enemies.includes(id)&&!(['arc','druid'].includes(id)&&enemies.some(h=>['arc','druid'].includes(h))))enemies.push(id);
+    for(const id of pool)if(enemies.length<3&&!enemies.includes(id))enemies.push(id);
     for(let team=0;team<2;team++) {
       const base=WORLD.bases[team];
-      this.addUnit('core',team,base.x,base.y,{r:48,hp:4000,range:270,damage:58,attackRate:1.25,name:team?'Rose Crystal':'Azure Crystal'});
+      this.addUnit('core',team,base.x,base.y,{r:48,hp:7200,range:290,damage:90,attackRate:1.15,name:team?'Rose Crystal':'Azure Crystal'});
       for(let lane=0;lane<3;lane++)for(let tier=0;tier<2;tier++) {
         const p=lanePoint(lane,team?1-(tier===0?.31:.13):(tier===0?.31:.13));
-        this.addUnit('tower',team,p.x,p.y,{r:28,hp:tier===0?1950:2350,range:255,damage:tier===0?55:68,attackRate:1.05,lane,tier,name:WORLD.lanes[lane].name+' '+(tier?'inner':'outer')+' tower'});
+        this.addUnit('tower',team,p.x,p.y,{r:28,hp:tier===0?5200:6500,range:270,damage:tier===0?82:98,attackRate:1.05,lane,tier,name:WORLD.lanes[lane].name+' '+(tier?'inner':'outer')+' tower'});
       }
       const roster=team?enemies:allies;
       const jungleSlot=roster.findIndex(id=>HEROES[id].aiRole==='jungler'||id==='druid'||id==='ranger'||id==='ember');
@@ -66,6 +72,13 @@ export class Game {
   lastHitDamage(attacker,target){
     if(!attacker?.alive||!target?.alive||attacker.team===target.team||this.isProtected(target))return 0;
     let value=attacker.damage;
+    if(structure(target)){
+      if(attacker.kind==='footman'||attacker.kind==='archer')value*=.32;
+      if(attacker.kind==='summon')value*=.22;
+      value*=.55+Math.min(.45,this.time/600*.45);
+      if(target.kind==='core')value*=1-this.units.filter(u=>u.alive&&u.kind==='tower'&&u.tier===1&&u.team===target.team).length*.22;
+    }
+    if(['bulwark','angel'].includes(attacker.heroId)&&['footman','archer','camp'].includes(target.kind))value*=1.65;
     if(target.team===-1)value*=1+this.bonus(attacker,'jungleDamage');
     if(target.status.guard)value*=target.status.guard.factor;
     return Math.max(0,value-(target.shield||0));
@@ -190,6 +203,16 @@ export class Game {
     if(source&&source.team===target.team)return 0;
     if(this.isProtected(target)){if(!quiet&&source?.isPlayer&&(!target.protectTextAt||this.time-target.protectTextAt>1)){this.float(target,'SHIELDED','#a6b7f0');target.protectTextAt=this.time;}return 0;}
     const owner=this.owner(source);
+    if(structure(target)){
+      if(source&&(source.kind==='footman'||source.kind==='archer'))amount*=.32;
+      if(source?.kind==='summon')amount*=.22;
+      // Early fortification leaves room to farm; a core is sturdier while side defenses survive.
+      amount*=.55+Math.min(.45,this.time/600*.45);
+      if(target.kind==='core')amount*=1-this.units.filter(u=>u.alive&&u.kind==='tower'&&u.tier===1&&u.team===target.team).length*.22;
+    }
+    if(source?.kind==='summon'&&target.kind==='hero')amount*=.65;
+    if(structure(source)&&target.kind==='summon')amount*=1.5;
+    if(source?.kind==='hero'&&['bulwark','angel'].includes(source.heroId)&&['footman','archer','camp'].includes(target.kind))amount*=1.65;
     if((target.kind==='camp'||(target.kind==='beast'&&target.team===-1))&&owner?.heroId)amount*=1+this.bonus(owner,'jungleDamage');
     if(target.status.guard)amount*=target.status.guard.factor;
     const impact=amount;
@@ -220,7 +243,8 @@ export class Game {
     target.alive=false;target.hp=0;target.deathTime=.7;target.shield=0;target.shieldLayers=[];
     const owner=this.owner(source),team=owner?.team??source?.team;
     this.effect(target.kind==='core'?'explosion':'ring',target.x,target.y,target.kind==='core'?170:target.r*2.5,target.team===0?'#64caff':target.team===1?'#ff98be':'#e5d698',.7);
-    const xp=target.kind==='hero'?150+target.level*12:target.kind==='tower'?115:target.kind==='camp'?55:target.kind==='beast'?200+40*((target.tier||1)-1):target.kind==='footman'?22:target.kind==='archer'?28:target.kind==='summon'?9:0;
+    const growth=1+Math.min(3,Math.max(0,this.time-120)/180);
+    const xp=(target.kind==='hero'?150+target.level*12:target.kind==='tower'?115:target.kind==='camp'?55:target.kind==='beast'?200+40*((target.tier||1)-1):target.kind==='footman'?22:target.kind==='archer'?28:target.kind==='summon'?9:0)*(['footman','archer','camp','beast'].includes(target.kind)?growth:1);
     // Only an actual hero finisher and its recent combat partners receive personal rewards.
     // Proximity, an allied objective capture, and owning an ordinary lane unit grant nothing.
     const killer=owner?.kind==='hero'&&owner.team!==target.team&&(team===0||team===1)?owner:null;
@@ -440,7 +464,7 @@ export class Game {
       this.effect('slash',unit.x,unit.y,unit.range,'#ffe7b9',.2,{angle:unit.angle,x2:target.x,y2:target.y});
       const dealt=this.damage(target,unit.damage,unit,'physical',false,{basic:true});
       if(unit.subtype==='bear')this.applyStatus(target,'slow',1.2,{factor:.3});
-      if(unit.siege&&structure(target))this.damage(target,unit.damage*(unit.subtype==='colossus'?1.1:.35),unit,'physical',true);
+      if(unit.siege&&structure(target))this.damage(target,unit.damage*(unit.subtype==='colossus'?.6:.2),unit,'physical',true);
       if(unit.siege&&unit.subtype==='maw')for(const other of this.nearby(target.x,target.y,95))if(other.alive&&other.team!==unit.team&&(other.kind==='footman'||other.kind==='archer')&&other.id!==target.id&&dist(other,target)<85)this.damage(other,unit.damage*.8,unit,'physical',true);
       const life=this.bonus(unit,'lifesteal');if(life)this.heal(unit,dealt*life,unit,true);
     }
@@ -872,6 +896,7 @@ export class Game {
       if(!target.alive)return;
       const d=dist(h,target),reach=h.range+target.r;
       if(d<=reach+h.r*.35){
+        if(brain.action==='farm'&&target.hp>this.lastHitDamage(h,target)&&this.units.some(u=>u.alive&&u.team===h.team&&u.id!==h.id&&u.targetId===target.id&&dist(u,target)<u.range+target.r+30))return;
         this.basicAttack(h,target);
         if(h.range>150&&d<115&&target.kind==='hero'&&cfg.coordination>.65)this.moveToward(h,{x:h.x+(h.x-target.x)*1.1,y:h.y+(h.y-target.y)*1.1},dt);
       }else if(brain.action==='support'&&brain.goal)this.moveToward(h,brain.goal,dt);
@@ -900,6 +925,8 @@ export class Game {
     const plan=this.teamPlans[h.team],job=this.assignments[h.team][h.id],foes=this.nearby(h.x,h.y,380).filter(u=>u.alive&&u.team===1-h.team&&!structure(u)&&dist(u,h)<380&&this.canSee(h.team,u)),allies=this.nearby(h.x,h.y,430).filter(u=>u.alive&&u.team===h.team&&dist(u,h)<430);
     const enemyPower=foes.reduce((n,u)=>n+strength(this,u),0),allyPower=allies.reduce((n,u)=>n+strength(this,u),0);
     if(cfg.coordination>.6&&enemyPower>allyPower*1.65&&health<.72){h.brain={action:'retreat'};h.aiState='outnumbered';return;}
+    const lastHit=foes.filter(u=>['footman','archer'].includes(u.kind)&&dist(h,u)<=h.range+u.r+115&&u.hp<=this.lastHitDamage(h,u)*1.8&&!this.towerThreatOnPath(h,u,u)).sort((a,b)=>a.hp-b.hp)[0];
+    if(lastHit&&health>.45&&h.attackTimer<.35){h.brain={action:'farm',targetId:lastHit.id};h.aiState='securing last hit';return;}
     if(plan.type==='defend'||job?.type==='hold'){
       const assignment=job?.type==='hold'?job:plan;
       h.lane=assignment.lane;const pos={x:assignment.x??lanePoint(assignment.lane,h.team?.75:.25).x,y:assignment.y??lanePoint(assignment.lane,h.team?.75:.25).y};
@@ -927,10 +954,12 @@ export class Game {
       const beast=this.units.find(u=>u.id===plan.beastId&&u.alive)||this.units.find(u=>u.alive&&u.team===-1&&u.kind==='beast');
       if(beast){const pit=WORLD.beastPits.find(p=>p.id===beast.pitId)||beast;h.brain={action:'beast',targetId:this.canSee(h.team,beast)?beast.id:null,goal:{x:pit.x,y:pit.y}};h.aiState='contesting beast';h.lane=beast.lane;return;}
     }
-    const shouldJungle=h.role==='jungler'&&(this.time<90||plan.type==='lanes'||(h.level<5&&this.time%80<35));
+    const teammates=this.units.filter(u=>u.kind==='hero'&&u.team===h.team&&u.id!==h.id),behind=teammates.length&&h.level+1.5<teammates.reduce((n,u)=>n+u.level,0)/teammates.length;
+    const directed=h.team===0&&this.order?.until>this.time;
+    const shouldJungle=!directed&&((h.role==='jungler'&&(this.time<150||plan.type==='lanes'||(h.level<12&&this.time%100<45)))||(!foes.some(u=>u.kind==='hero')&&health>.6&&plan.type!=='defend'&&(behind||h.level<8&&this.time%90<25)));
     if(shouldJungle){
-      const camps=this.units.filter(u=>u.alive&&u.kind==='camp'&&(h.team===0?u.x<1600:u.x>1600)).sort((a,b)=>dist(h,a)-dist(h,b));
-      if(camps[0]){h.brain={action:'jungle',targetId:this.canSee(h.team,camps[0])?camps[0].id:null,goal:{x:camps[0].homeX,y:camps[0].homeY}};h.aiState='clearing jungle';return;}
+      const site=scoutJungle(this,h.team).sort((a,b)=>dist(h,a)-dist(h,b))[0];
+      if(site){const target=site.targets.sort((a,b)=>dist(h,a)-dist(h,b))[0];h.brain={action:'jungle',targetId:target?.id??null,goal:{x:site.x,y:site.y}};h.aiState=target?'clearing jungle':'scouting jungle';return;}
     }
     if(plan.type==='push'&&cfg.coordination>.5)h.lane=plan.lane;
     const laneUnits=this.units.filter(u=>u.alive&&u.team===1-h.team&&u.lane===h.lane&&!structure(u)&&u.team>=0&&this.canSee(h.team,u));
@@ -950,7 +979,7 @@ export class Game {
     if(dist(h,goal)>520){
       const path=this.lanePath(h.lane,h.team,h);goal=path[0]||goal;
       h.brain={action:'push',goal};
-    }else h.brain={action:'push',targetId:target?.id,goal};
+    }else h.brain={action:'push',targetId:target?.id,goal:{x:goal.x,y:goal.y}};
     h.aiState='pushing '+WORLD.lanes[h.lane].name.toLowerCase();
   }
   botCast(h,cfg,target,retreat){

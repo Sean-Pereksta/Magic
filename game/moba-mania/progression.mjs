@@ -107,12 +107,12 @@ export function tickProgression(game,dt){
   const due=[],pending=[];
   for(const impact of game.scheduledImpacts){
     const hero=game.units.find(u=>u.id===impact.ownerId);
-    if(!hero?.alive||(impact.interruptible&&hero.status.stun))continue;
+    if(!hero||(impact.interruptible&&(!hero.alive||hero.status.stun)))continue;
     (impact.executeAt<=game.time+1e-8?due:pending).push(impact);
   }
   game.scheduledImpacts=pending;
   for(const impact of due){
-    const hero=game.units.find(u=>u.id===impact.ownerId&&u.alive);
+    const hero=game.units.find(u=>u.id===impact.ownerId);
     if(hero&&game.winner===null)resolveImpact(game,hero,impact);
   }
 }
@@ -251,7 +251,7 @@ export function onDamage(game,source,target,actual,{basic=false,periodic=false}=
       game.effect('sweep',hero.x,hero.y,150,'#f6d18b',.4,{angle,arc:Math.PI*.7});
     }
     if(has(hero,'thunderbolt-crossbow')&&count(hero,'crossbow')%4===0){
-      const chained=enemies(game,hero,target,190).filter(u=>u.id!==target.id&&!structure(u)).sort((a,b)=>distance(target,a)-distance(target,b)).slice(0,2);
+      const chained=enemies(game,hero,target,190).filter(u=>u.id!==target.id&&!structure(u)&&game.clearLine(target,u,4)).sort((a,b)=>distance(target,a)-distance(target,b)).slice(0,2);
       for(const foe of chained){hit(game,hero,foe,30*p);game.effect('slash',target.x,target.y,15,'#ffd585',.3,{x2:foe.x,y2:foe.y,angle:Math.atan2(foe.y-target.y,foe.x-target.x)});}
     }
     if(has(hero,'tempest-wings')&&state.tempestReadyUntil>game.time){state.tempestReadyUntil=0;hit(game,hero,target,28*p,'physical');}

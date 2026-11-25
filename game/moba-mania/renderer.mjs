@@ -772,7 +772,7 @@ export class Renderer {
     const team = game.player?.team ?? 0;
     const pending = [
       ...(game.scheduledImpacts || []).map(z => ({...z, remaining:z.executeAt - game.time, total:z.delay || .5})),
-      ...(game.zones || []).filter(z => z.delay > 0 && (z.damage || z.shape)).map(z => ({...z, remaining:z.delay, total:z.maxDelay || z.windup || z.delay}))
+      ...(game.zones || []).filter(z => z.delay > 0 && !z.detonated && (z.damage || z.shape)).map(z => ({...z, remaining:z.tickIn, total:z.maxDelay || z.windup || z.delay}))
     ];
     for (const z of pending) {
       if (!(z.remaining > 0) || !this.visible(z.x, z.y, (z.range || z.r || 160) + 100)) continue;
@@ -828,7 +828,7 @@ export class Renderer {
   drawObjectiveGround(c, game) {
     for (const pit of WORLD.beastPits || []) {
       if (!this.visible(pit.x, pit.y, 110)) continue;
-      const active = (game.units || []).some(u => u.kind === 'beast' && u.team === -1 && alive(u) && Math.hypot(u.x - pit.x, u.y - pit.y) < 150);
+      const active = (game.units || []).some(u => u.kind === 'beast' && u.team === -1 && alive(u) && Math.hypot(u.x - pit.x, u.y - pit.y) < 150 && (!game.canSee || game.canSee(game.player?.team ?? 0, u)));
       c.save(); c.globalAlpha = active ? 0.55 : 0.25;
       ring(c, active ? '#f4d18a' : '#9bbcb0', pit.x, pit.y, 95 + Math.sin(game.time * 2) * 2, 3); c.restore();
       this.label(c, active ? 'CLAIM THE BEAST' : 'BEAST SHRINE', pit.x, pit.y + 116, active ? '#ffe3a1' : '#a9c4b8', 10);
@@ -979,7 +979,7 @@ export class Renderer {
       this.label(c, `${remaining.toFixed(1)}s`, u.x, u.y - height - 19, '#ffebbd', 9);
     }
     if (u.kind === 'beast' && u.team >= 0) this.label(c, u.subtype === 'maw' ? 'LANE HUNTER' : 'TOWER GUARDIAN', u.x, u.y + 24, TEAM[u.team], 9);
-    if (u.guardian) { c.save(); c.globalAlpha = .8; ring(c, '#c8edb2', u.x, u.y - 15, width * .45, 3); c.restore(); }
+    if (u.guardian || u.elderGuardian) { c.save(); c.globalAlpha = .8; ring(c, '#c8edb2', u.x, u.y - 15, width * .45, 3); c.restore(); }
     if (statusOn(status.slow)) {
       c.save(); c.globalAlpha = .75;
       ring(c, status.slow.frost ? '#a4e5ff' : '#c2c5de', u.x, u.y + 2, 17, 2, true);

@@ -32,6 +32,27 @@ export function updateVision(game){
   }
 }
 
+/** Camp locations are public; occupancy is learned only by scouting their clearings. */
+export function scoutJungle(game,team){
+  const sight=game.visionSources(team);
+  const visible=game.units.filter(u=>u.alive&&u.kind==='camp'&&canSee(game,team,u));
+  return WORLD.camps.filter(site=>site.team===team).flatMap(site=>{
+    const state=game.campStates.find(c=>c.id===site.id),targets=visible.filter(u=>u.campId===site.id);
+    // The camp spawn clearings have no brush. Require sight of the whole clearing,
+    // rather than one edge, before remembering that there was nothing to fight.
+    const emptySeen=!targets.length&&sight.some(observer=>distance(observer,site)+60<=observer.r);
+    let until=state?.scoutedEmptyUntil?.[team];
+    if(!Number.isFinite(until)||until>game.time+10)until=0;
+    if(targets.length)until=0;
+    else if(emptySeen)until=game.time+10;
+    if(state){
+      if(!Array.isArray(state.scoutedEmptyUntil)||state.scoutedEmptyUntil.length!==2)state.scoutedEmptyUntil=[0,0];
+      state.scoutedEmptyUntil[team]=until;
+    }
+    return emptySeen||until>game.time?[]:[{...site,targets}];
+  });
+}
+
 /** A compact fighting-strength estimate uses the actual build and currently ready kit. */
 export function strength(game,unit){
   if(!unit?.alive)return 0;
