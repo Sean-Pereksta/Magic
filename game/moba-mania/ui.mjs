@@ -2,6 +2,7 @@ import { HEROES, DIFFICULTIES, WORLD, RULES } from './data.mjs';
 import { Game } from './engine.mjs';
 import { Renderer, drawPortrait, drawIcon } from './renderer.mjs';
 import { ITEMS, ITEM_BY_ID, purchaseState, describeBonuses, drawItemIcon } from './items.mjs';
+import { PROFILE_KEY, SAVE_KEY, COSMETICS, readProfile, writeProfile, heroCosmetics, equipCosmetic, recordMatch, readSavedMatch, saveMatch, clearSavedMatch, itemPlan, recommendedItems, previewItem, normalizeControls, matchBadges } from './profile.mjs';
 
 const $ = id => document.getElementById(id);
 const canvas = $('battlefield');
@@ -9,6 +10,8 @@ const keys = new Set();
 const hotkeys = ['KeyQ','KeyE','KeyR','KeyF'];
 const preferenceKey = 'moba-mania.preferences.v2';
 let saved = {};
+let storage=null;try{storage=window.localStorage;}catch{/* Storage is optional. */}
+let profile=readProfile(storage);
 try { saved = JSON.parse(localStorage.getItem(preferenceKey) || '{}') || {}; } catch { /* Storage may be unavailable in private tabs. */ }
 let selectedHero = HEROES[saved.hero] ? saved.hero : 'arc';
 let soundEnabled = saved.sound !== false;
@@ -22,16 +25,19 @@ let joystick = { x:0, y:0, pointerId:null };
 let castDrag = null;
 let pointer = { x:innerWidth / 2, y:innerHeight / 2, valid:false };
 let lastFrame = 0, accumulator = 0, hudTimer = 0;
-let lastEventId = null, lastLevel = 1, lastHealth = 1;
+let lastEventId = null, lastLevel = 1, lastHealth = 1, lastShield=0, lastGoldSound=null;
 let announcementUntil = 0, ended = false;
 let helpReturn = null;
 let audioContext = null, lastToneAt = 0;
-let shopTier = 1, shopRenderKey = '';
+let shopTier = 1, shopRenderKey = '', pinnedGoal=null;
+let controls=normalizeControls(saved.controls),controlsReturn=null;
+let saveTimer=0,savedMatchState={status:'empty'};
+let minimapDrag=null,ignoreMapClick=false;
 const abilities = [];
 let animationFrame = 0;
 
 function savePreferences() {
-  try { localStorage.setItem(preferenceKey, JSON.stringify({hero:selectedHero, difficulty:$('difficulty').value, sound:soundEnabled})); } catch { /* The game does not require storage. */ }
+  try { localStorage.setItem(preferenceKey, JSON.stringify({hero:selectedHero, difficulty:$('difficulty').value, sound:soundEnabled,controls})); } catch { /* The game does not require storage. */ }
 }
 function formatTime(seconds) {
   const value = Math.max(0, Math.floor(seconds || 0));
@@ -39,7 +45,7 @@ function formatTime(seconds) {
 }
 function setTouch() { document.body.classList.add('touch'); }
 if (matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0) setTouch();
-window.addEventListener('pointerdown', event => { if (event.pointerType === 'touch') setTouch(); }, {passive:true});
+window.addEventListener('pointerdown', event => { if (event.pointerType === 'touch') {setTouch();applyControls();} }, {passive:true});
 
 function unlockAudio() {
   if (!soundEnabled) return;
@@ -55,11 +61,11 @@ function tone(kind='cast', slot=0) {
   const now = audioContext.currentTime;
   if (now-lastToneAt < .055) return;
   lastToneAt = now;
-  const notes = kind === 'level' ? [523,659,784] : kind === 'win' ? [392,523,659,784] : kind === 'hurt' ? [110] : kind === 'error' ? [164] : [330 + slot*85, 495 + slot*65];
+  const notes = kind === 'gold' ? [880,1320] : kind === 'block' ? [235,315] : kind === 'heavy' ? [125,78] : kind === 'frost' ? [988,740,1110] : kind === 'level' ? [523,659,784] : kind === 'win' ? [392,523,659,784] : kind === 'hurt' ? [110] : kind === 'error' ? [164] : [330 + slot*85, 495 + slot*65];
   notes.forEach((frequency,index)=>{
     const osc = audioContext.createOscillator();
     const gain = audioContext.createGain();
-    osc.type = kind === 'hurt' ? 'triangle' : 'square';
+    osc.type = ['hurt','heavy','block'].includes(kind) ? 'triangle' : kind==='frost'||kind==='gold'?'sine':'square';
     osc.frequency.setValueAtTime(frequency, now+index*.06);
     gain.gain.setValueAtTime(0,now+index*.06);
     gain.gain.linearRampToValueAtTime(kind === 'hurt' ? .017 : .014,now+index*.06+.008);
@@ -88,7 +94,7 @@ function drawMenu() {
     button.append(portrait,name,role);
     button.addEventListener('click',()=>{selectedHero=hero.id;drawMenu();savePreferences();unlockAudio();tone('cast');});
     $('hero-grid').append(button);
-    drawPortrait(portrait,hero.id,96);
+    drawPortrait(portrait,hero.id,96,heroCosmetics(profile,hero.id));
   });
   const hero = HEROES[selectedHero];
   const detail = $('hero-detail'); detail.replaceChildren();
@@ -96,6 +102,7 @@ function drawMenu() {
   const title=document.createElement('h3');title.textContent=hero.title;
   const desc=document.createElement('p');desc.textContent=hero.description;
   info.append(title,desc);
+  if(hero.passive){const passive=document.createElement('p');passive.className='hero-passive';passive.textContent=`${hero.passive.name} · ${hero.passive.description}`;info.append(passive);}
   const skills=document.createElement('div');skills.className='hero-skills';
   hero.abilities.forEach(ability=>{
     const item=document.createElement('div');item.className='hero-skill';item.title=`Level ${ability.unlock}: ${ability.description}`;
@@ -103,8 +110,31 @@ function drawMenu() {
     const label=document.createElement('span');label.textContent=ability.name;
     item.append(icon,label);skills.append(item);drawIcon(icon,ability);
   });
-  detail.append(info,skills);
+  detail.append(info,skills);renderMastery();
 }
+function renderMastery(){
+  const entry=profile.heroes[selectedHero],next=COSMETICS.find(c=>c.xp>entry.xp);
+  $('mastery-title').textContent=`${HEROES[selectedHero].name} mastery`;
+  $('mastery-progress').textContent=`${entry.xp} XP · ${entry.matches} matches${next?` · ${next.xp-entry.xp} to ${next.name}`:' · All cosmetics unlocked'}`;
+  const options=$('mastery-options');options.replaceChildren();
+  for(const cosmetic of COSMETICS){
+    const button=document.createElement('button'),unlocked=entry.xp>=cosmetic.xp;
+    button.dataset.cosmetic=cosmetic.id;button.disabled=!unlocked;button.setAttribute('aria-pressed',String(entry.equipped===cosmetic.id));
+    button.textContent=`${entry.equipped===cosmetic.id?'✓ ':''}${cosmetic.name}${unlocked?'':` · ${cosmetic.xp} XP`}`;
+    button.title=unlocked?'Equip armor color, trail, portrait frame and victory crest':`Finish matches with ${HEROES[selectedHero].name} to unlock this cosmetic set`;
+    button.style.setProperty('--cosmetic-color',cosmetic.armorTint||HEROES[selectedHero].color);
+    button.addEventListener('click',()=>{if(equipCosmetic(profile,selectedHero,cosmetic.id)){writeProfile(storage,profile);drawMenu();}});options.append(button);
+  }
+}
+function refreshSavedMenu(){
+  savedMatchState=readSavedMatch(storage,snapshot=>Game.restore(snapshot));
+  const ready=savedMatchState.status==='ready';
+  $('saved-match-panel').hidden=['empty','unavailable'].includes(savedMatchState.status);
+  $('resume-saved-match').hidden=!ready;
+  $('saved-match-title').textContent=ready?`${HEROES[savedMatchState.record.heroId].name} · Level ${savedMatchState.game.player.level}`:'Saved match needs a fresh start';
+  $('saved-match-description').textContent=ready?`${formatTime(savedMatchState.game.time)} played · Resume safely paused. Saved only on this device.`:'This save could not be loaded. Starting a new match will ask before replacing it. Your mastery is safe.';
+}
+
 Object.values(DIFFICULTIES).forEach(difficulty=>{
   const option=document.createElement('option');option.value=difficulty.id;option.textContent=difficulty.name;$('difficulty').append(option);
 });
@@ -112,7 +142,7 @@ $('difficulty').value=DIFFICULTIES[saved.difficulty] ? saved.difficulty : 'norma
 function updateDifficulty() { $('difficulty-description').textContent=DIFFICULTIES[$('difficulty').value].description;savePreferences(); }
 $('difficulty').addEventListener('change',updateDifficulty);
 updateDifficulty();
-drawMenu();
+drawMenu();refreshSavedMenu();applyControls();
 
 function buildAbilities() {
   $('ability-bar').replaceChildren();abilities.length=0;
@@ -157,6 +187,7 @@ function buildAbilities() {
 }
 function playing() { return !!game && !game.paused && game.winner==null && !$('hud').hidden; }
 function clearInput() {
+  renderer.peek=null;minimapDrag=null;$('peek-hint').hidden=true;
   keys.clear();touchAttack=false;moveTo=null;castDrag=null;
   if(game)game.cancelPlayerOrder();
   joystick.x=joystick.y=0;joystick.pointerId=null;
@@ -165,24 +196,47 @@ function clearInput() {
   cancelAim();
 }
 function startMatch() {
+  let hasSave=false;try{hasSave=!!storage?.getItem(SAVE_KEY);}catch{/* No storage. */}
+  if(hasSave&&(!game||ended)){
+    $('replace-save-dialog').showModal();return;
+  }
+  beginMatch();
+}
+function beginMatch(restored=null,ui={},replace=false) {
   document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());
   clearInput();
-  selectedHero=HEROES[selectedHero] ? selectedHero : 'arc';
-  game=new Game({hero:selectedHero,difficulty:$('difficulty').value,seed:Math.floor(Math.random()*0x7fffffff)});
-  ended=false;lastEventId=null;lastLevel=1;lastHealth=game.player.hp;accumulator=0;hudTimer=0;lastFrame=performance.now();
-  shopTier=1;shopRenderKey='';$('shop-owned').open=false;
+  selectedHero=restored?.player.heroId||(HEROES[selectedHero]?selectedHero:'arc');
+  game=restored||new Game({hero:selectedHero,difficulty:$('difficulty').value,seed:Math.floor(Math.random()*0x7fffffff)});
+  if(!game.matchId)game.matchId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  game.player.cosmetics=heroCosmetics(profile,selectedHero);
+  ended=false;lastEventId=null;lastLevel=game.player.level;lastHealth=game.player.hp;lastShield=game.player.shield||0;lastGoldSound=game.player.lastGoldGain?.time??null;accumulator=0;hudTimer=0;saveTimer=0;lastFrame=performance.now();
+  shopTier=1;shopRenderKey='';pinnedGoal=ITEM_BY_ID[ui.pinnedGoal]?.tier===3?ui.pinnedGoal:null;$('shop-owned').open=false;
   $('menu-screen').hidden=true;$('hud').hidden=false;
   $('hero-name').textContent=HEROES[selectedHero].name;
-  drawPortrait($('hero-portrait'),selectedHero,48);
+  drawPortrait($('hero-portrait'),selectedHero,48,game.player.cosmetics);
   aim={x:game.player.x+300,y:game.player.y};pointer.valid=false;
-  buildAbilities();renderer.hasCamera=false;renderer.lastTime=null;renderer.resize(innerWidth,innerHeight);
-  refreshHUD();savePreferences();unlockAudio();
-  notify('Stay with your wave. The river beasts awaken soon.',4200);
-  document.documentElement.dataset.catnmicePlaying='true';
-  window.dispatchEvent(new Event('catnmice-game-started'));
-  canvas.focus({preventScroll:true});
+  buildAbilities();renderer.hasCamera=false;renderer.lastTime=null;renderer.peek=null;renderer.resize(innerWidth,innerHeight);
+  refreshHUD();savePreferences();unlockAudio();applyControls();
+  document.documentElement.dataset.catnmicePlaying='true';window.dispatchEvent(new Event('catnmice-game-started'));
+  if(restored){
+    setPaused(true);$('pause-message').textContent='Saved match restored. Press Back to the battle when you are ready.';$('pause-dialog').showModal();
+  }else{
+    game.paused=false;saveCurrent(false,replace);notify('Stay with your wave. The river beasts awaken soon.',4200);canvas.focus({preventScroll:true});
+  }
+}
+function saveCurrent(manual=false,replace=false){
+  if(!game||ended||game.winner!=null)return false;
+  const result=saveMatch(storage,game,{pinnedGoal},replace);saveTimer=0;
+  if(manual)$('pause-message').textContent=result.ok?'Match saved on this device. It will resume paused.':result.reason;
+  return result.ok;
 }
 $('start-match').addEventListener('click',startMatch);
+$('keep-saved-match').addEventListener('click',()=>closeDialog('replace-save-dialog'));
+$('replace-saved-match').addEventListener('click',()=>beginMatch(null,{},true));
+$('resume-saved-match').addEventListener('click',()=>{
+  refreshSavedMenu();if(savedMatchState.status==='ready')beginMatch(savedMatchState.game,savedMatchState.record.ui||{});
+});
+$('save-match').addEventListener('click',()=>saveCurrent(true));
 
 function canArm(slot,quiet=false) {
   const hero=game?.player;
@@ -207,7 +261,7 @@ function cancelAim() {
 function castSelected() {
   if(selectedSlot<0 || !playing())return;
   const slot=selectedSlot;
-  if(game.cast(game.player,slot,aim)) { tone('cast',slot); moveTo=null; }
+  if(game.cast(game.player,slot,aim)) {const id=HEROES[game.player.heroId].abilities[slot].id;tone(['winterfall','glacial-sweep'].includes(id)?'frost':['royal-quake','sky-cleave','execution-cut','shield-bash'].includes(id)?'heavy':'cast',slot);moveTo=null; }
   else if(canArm(slot)) notify('Cannot cast while stunned or recalling.',1500);
   cancelAim();refreshHUD();
 }
@@ -223,7 +277,7 @@ function enemyAt(clientX,clientY,pointerType) {
   // then add a screen-space touch margin that stays useful at every zoom.
   const zoom=canvas.getBoundingClientRect().width/renderer.camera.width;
   const padding=pointerType==='touch'?14:7;
-  return game.units.filter(unit=>unit.alive&&unit.team!==game.player.team)
+  return game.units.filter(unit=>unit.alive&&unit.team!==game.player.team&&(!game.canSee||game.canSee(game.player.team,unit)))
     .map(unit=>{
       const [width,height,lift]=({hero:[22,35,31],tower:[32,55,48],core:[64,80,42],footman:[17,23,17],archer:[17,23,17]})[unit.kind]
         ||[Math.max(22,unit.r*1.35),Math.max(26,unit.r*1.5),Math.max(20,unit.r*1.2)];
@@ -289,15 +343,16 @@ window.addEventListener('keyup',event=>{
   const slot=hotkeys.indexOf(event.code);
   if(slot>=0 && selectedSlot===slot && playing()){event.preventDefault();castSelected();}
 });
-window.addEventListener('blur',()=>{if(playing())openPause();else clearInput();});
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&playing())openPause();});
+window.addEventListener('blur',()=>{if(playing())openPause();else clearInput();saveCurrent();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){if(playing())openPause();saveCurrent();}});
 
 const stick=$('joystick');
 function updateStick(event) {
   const rect=stick.getBoundingClientRect(),radius=rect.width*.34;
   const dx=event.clientX-rect.left-rect.width/2,dy=event.clientY-rect.top-rect.height/2,distance=Math.hypot(dx,dy),scale=Math.min(1,distance/radius);
   joystick.x=distance>5?dx/(distance||1)*scale:0;joystick.y=distance>5?dy/(distance||1)*scale:0;
-  $('joystick-knob').style.transform=`translate(${joystick.x*radius}px,${joystick.y*radius}px)`;
+  const drawRadius=stick.offsetWidth*.34;
+  $('joystick-knob').style.transform=`translate(${joystick.x*drawRadius}px,${joystick.y*drawRadius}px)`;
   moveTo=null;
   if(Math.hypot(joystick.x,joystick.y)>.05)game.cancelPlayerOrder();
 }
@@ -332,12 +387,13 @@ function afterDialogClosed() {
   if(game && !ended && !$('hud').hidden && !document.querySelector('dialog[open]')){setPaused(false);canvas.focus({preventScroll:true});}
 }
 for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener('close',afterDialogClosed);
-function openPause(){if(game&&!ended&&!$('hud').hidden)openDialog('pause-dialog');}
+function openPause(){if(game&&!ended&&!$('hud').hidden){$('pause-message').textContent='Your next great play can wait a moment.';openDialog('pause-dialog');saveCurrent();}}
 $('pause-button').addEventListener('click',openPause);
 $('resume-match').addEventListener('click',()=>closeDialog('pause-dialog'));
 $('quit-match').addEventListener('click',()=>{
+  if(!saveCurrent(true))return;
   $('hud').hidden=true;$('menu-screen').hidden=false;game=null;clearInput();
-  document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());drawMenu();
+  document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());drawMenu();refreshSavedMenu();
   delete document.documentElement.dataset.catnmicePlaying;
 });
 $('fullscreen-button').addEventListener('click',async()=>{
@@ -352,8 +408,34 @@ $('sound-button').addEventListener('click',()=>{soundEnabled=!soundEnabled;updat
 function updateSoundButton(){$('sound-button').textContent=soundEnabled?'♪':'×♪';$('sound-button').setAttribute('aria-label',soundEnabled?'Mute sound':'Enable sound');}
 updateSoundButton();
 
+function applyControls(){
+  controls=normalizeControls(controls);
+  const touch=document.body.classList.contains('touch'),bar=$('bottom-controls'),stick=$('joystick');
+  const baseWidth=bar.offsetWidth||174,stickWidth=stick.offsetWidth||96;
+  const scale=touch?Math.max(.65,Math.min(controls.scale,(innerWidth-32)/(baseWidth+stickWidth+12))):1;
+  const inset=Math.max(0,Math.min(controls.inset,(innerWidth-(baseWidth+stickWidth)*scale-32)/2));
+  document.documentElement.style.setProperty('--control-scale',String(scale));
+  document.documentElement.style.setProperty('--control-lift',`${Math.min(controls.height,Math.max(0,innerHeight-(innerWidth>560?160:210)-Math.max(bar.offsetHeight||122,stick.offsetHeight||108)*scale-32))}px`);
+  document.documentElement.style.setProperty('--control-inset',`${inset}px`);
+  document.body.classList.toggle('left-controls',controls.handed==='left');
+  $('control-size').value=String(Math.round(controls.scale*100));$('control-size-value').textContent=`${Math.round(controls.scale*100)}%`;
+  $('control-height').value=String(controls.height);$('control-height-value').textContent=`${controls.height}px`;
+  $('control-inset').value=String(controls.inset);$('control-inset-value').textContent=`${controls.inset}px`;
+  $('control-handed').value=controls.handed;
+}
+function openControls(from=null){controlsReturn=from;if(from)$(from).close();applyControls();openDialog('controls-dialog');}
+$('menu-controls').addEventListener('click',()=>openControls());
+$('pause-controls').addEventListener('click',()=>openControls('pause-dialog'));
+$('close-controls').addEventListener('click',()=>closeDialog('controls-dialog'));
+$('controls-dialog').addEventListener('close',()=>{if(controlsReturn){const target=controlsReturn;controlsReturn=null;openDialog(target);}});
+for(const id of ['control-size','control-height','control-inset','control-handed'])$(id).addEventListener('input',()=>{
+  controls={scale:Number($('control-size').value)/100,height:Number($('control-height').value),inset:Number($('control-inset').value),handed:$('control-handed').value};applyControls();savePreferences();
+});
+for(const button of document.querySelectorAll('[data-control-preset]'))button.addEventListener('click',()=>{
+  controls={...controls,...({default:{scale:1,height:0,inset:0},compact:{scale:.85,height:0,inset:0},large:{scale:1.2,height:30,inset:4}}[button.dataset.controlPreset])};applyControls();savePreferences();
+});
 function shopStateKey(hero) {
-  return [hero.gold,(hero.items||[]).join(','),hero.level,Object.values(hero.talents).join(',')].join('|');
+  return [pinnedGoal,hero.gold,(hero.items||[]).join(','),hero.level,Object.values(hero.talents).join(',')].join('|');
 }
 function itemIcon(item, size=40) {
   const icon=document.createElement('canvas');icon.width=size;icon.height=size;icon.setAttribute('aria-hidden','true');
@@ -383,6 +465,8 @@ function renderShop() {
     amount.textContent=String(value);caption.textContent=label;stat.append(amount,caption);stats.append(stat);
   }
   document.querySelectorAll('[data-shop-tier]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.shopTier)===shopTier)));
+  renderBuildGoal();
+  const recommended=new Set(recommendedItems(hero).map(item=>item.id));
   const list=$('shop-items'),scrollTop=list.scrollTop;list.replaceChildren();list.setAttribute('aria-label',`Tier ${shopTier} items`);
   for(const item of ITEMS.filter(item=>item.tier===shopTier)){
     const state=purchaseState(hero,item.id),isOwned=owned.has(item.id);
@@ -393,8 +477,16 @@ function renderShop() {
     const title=document.createElement('h3');title.textContent=item.name;
     const price=document.createElement('span');price.className='shop-price';price.textContent=`${item.cost} gold`;
     const titleBlock=document.createElement('div');titleBlock.append(title,price);heading.append(itemIcon(item),titleBlock);
+    if(item.tier===3){
+      const pin=document.createElement('button');pin.className='shop-pin';pin.dataset.pinItem=item.id;pin.textContent=pinnedGoal===item.id?'◆':'◇';
+      pin.setAttribute('aria-pressed',String(pinnedGoal===item.id));pin.setAttribute('aria-label',`${pinnedGoal===item.id?'Unpin':'Pin'} ${item.name} as build goal`);
+      pin.addEventListener('click',()=>{pinnedGoal=pinnedGoal===item.id?null:item.id;renderShop();refreshHUD();saveCurrent();});heading.append(pin);
+      if(recommended.has(item.id)){const tag=document.createElement('small');tag.className='shop-recommended';tag.textContent='RECOMMENDED';titleBlock.append(tag);}
+    }
     const bonuses=document.createElement('p');bonuses.className='shop-bonuses';bonuses.textContent=describeBonuses(item);
     const description=document.createElement('p');description.className='shop-description';description.textContent=item.description;
+    if(item.passive)description.textContent=`${item.passive.name} · ${item.passive.description}`;
+    const compare=createItemComparison(hero,item);
     const requirements=document.createElement('div');requirements.className='shop-requirements';
     if(item.requires.length){
       const label=document.createElement('small');label.textContent='REQUIRES';requirements.append(label);
@@ -413,12 +505,12 @@ function renderShop() {
     action.addEventListener('click',()=>{
       if(!game.buyItem(hero,item.id)){$('shop-message').textContent=purchaseState(hero,item.id).reason;renderShop();return;}
       tone('level');$('shop-message').textContent=`${item.name} is active. ${describeBonuses(item)}.`;
-      renderShop();refreshHUD();
+      renderShop();refreshHUD();saveCurrent();
       // Keep keyboard focus near the purchased item after its button becomes disabled.
       const purchased=[...$('shop-items').children].find(el=>el.dataset.itemId===item.id);
       purchased?.scrollIntoView({block:'nearest',inline:'nearest'});purchased?.focus({preventScroll:true});
     });
-    card.append(heading,bonuses,description,requirements,action);list.append(card);
+    card.append(heading,bonuses,description,requirements,compare,action);list.append(card);
   }
   list.scrollTop=scrollTop;
   $('shop-owned-count').textContent=`${owned.size} / ${ITEMS.length}`;
@@ -430,6 +522,43 @@ function renderShop() {
   }
   if(!owned.size){const empty=document.createElement('p');empty.textContent='Your purchased items will appear here. All of them stay active.';inventory.append(empty);}
 }
+function renderBuildGoal(){
+  const plan=itemPlan(game.player,pinnedGoal);
+  $('shop-goal').hidden=!plan.goal;$('shop-recommendations').hidden=!!plan.goal;
+  if(plan.goal){
+    $('shop-goal-title').textContent=`◆ ${plan.goal.name}`;
+    $('shop-goal-cost').textContent=plan.remaining.length?`${plan.cost} gold remaining · ${plan.remaining.length} purchases`:'Build complete · all items active';
+    const next=$('shop-goal-next');next.hidden=!plan.next;
+    if(plan.next){next.textContent=`${plan.affordable?'BUYABLE':'NEXT'} · ${plan.next.name} · ${plan.next.cost}G`;next.dataset.goalNext=plan.next.id;next.classList.toggle('affordable',plan.affordable);}
+  }else{
+    const recommendations=$('shop-recommendations');recommendations.replaceChildren();
+    const label=document.createElement('span');label.textContent=`${HEROES[game.player.heroId].name} builds`;recommendations.append(label);
+    for(const item of recommendedItems(game.player)){
+      const button=document.createElement('button');button.dataset.recommendItem=item.id;button.textContent=item.name;button.title=`Pin this relic as your build goal. ${describeBonuses(item)}`;
+      button.addEventListener('click',()=>{pinnedGoal=item.id;renderShop();refreshHUD();saveCurrent();});recommendations.append(button);
+    }
+  }
+}
+function createItemComparison(hero,item){
+  const preview=previewItem(game,hero,item.id),details=document.createElement('details');details.className='shop-compare';
+  const summary=document.createElement('summary');summary.textContent='Compare actual stats';details.append(summary);
+  const table=document.createElement('table');table.setAttribute('aria-label',`${item.name} before and after stats`);
+  const heading=document.createElement('tr');for(const text of ['Stat','Now','With item']){const cell=document.createElement('th');cell.textContent=text;heading.append(cell);}table.append(heading);
+  const rows=[['Health','hp',0],['Mana','mana',0],['Attack','damage',1],['Move speed','speed',1],['Attack interval','attackInterval',2],['Spell power ×','spellMultiplier',2]];
+  for(const [label,key,digits] of rows){
+    const row=document.createElement('tr');for(const value of [label,preview.before[key].toFixed(digits),preview.after[key].toFixed(digits)]){const cell=document.createElement('td');cell.textContent=value;row.append(cell);}table.append(row);
+  }
+  preview.before.abilities.forEach((ability,index)=>{
+    const row=document.createElement('tr');for(const value of [ability.name,`${ability.cooldown.toFixed(2)}s`,`${preview.after.abilities[index].cooldown.toFixed(2)}s`]){const cell=document.createElement('td');cell.textContent=value;row.append(cell);}table.append(row);
+  });details.append(table);
+  const cooldown=document.createElement('p');cooldown.textContent=`Cooldown reduction: ${(preview.before.cooldownCut*100).toFixed(0)}% → ${(preview.after.cooldownCut*100).toFixed(0)}%.`;
+  if(preview.capped){cooldown.className='cap-warning';cooldown.textContent+=' 50% cap reached; extra reduction adds no benefit.';}details.append(cooldown);
+  if(item.passive){const passive=document.createElement('p');passive.textContent=`${item.passive.name}: ${item.passive.description}`;details.append(passive);}
+  const note=document.createElement('p');note.className='muted';note.textContent='Shows this item at your current level. Other missing ingredients add their own bonuses. Active cooldowns and existing casts keep their original values.';details.append(note);
+  return details;
+}
+$('shop-goal-next').addEventListener('click',()=>{const next=itemPlan(game.player,pinnedGoal).next;if(next)showShopTier(next.tier,next.id);});
+$('shop-goal-clear').addEventListener('click',()=>{pinnedGoal=null;renderShop();refreshHUD();saveCurrent();});
 $('shop-button').addEventListener('click',openShop);
 $('close-shop').addEventListener('click',()=>closeDialog('shop-dialog'));
 for(const button of document.querySelectorAll('[data-shop-tier]'))button.addEventListener('click',()=>showShopTier(Number(button.dataset.shopTier)));
@@ -458,7 +587,7 @@ function renderTalents() {
       heading.append(icon,name);
       const desc=document.createElement('small');desc.textContent=choice.description;
       button.append(heading,desc);drawIcon(icon,{...choice,color:choice.color||definition.color});
-      button.addEventListener('click',()=>{if(game.chooseTalent(hero,tier.level,choice.id)){tone('level');renderTalents();refreshHUD();}});
+      button.addEventListener('click',()=>{if(game.chooseTalent(hero,tier.level,choice.id)){tone('level');renderTalents();refreshHUD();saveCurrent();}});
       choices.append(button);
     });section.append(title,choices);tree.append(section);
   });
@@ -466,7 +595,37 @@ function renderTalents() {
 $('talent-button').addEventListener('click',openTalents);
 $('close-talents').addEventListener('click',()=>closeDialog('talent-dialog'));
 function openMap(){if(!game||ended)return;renderer.drawMinimap($('tactical-map'),game);openDialog('map-dialog');}
-$('map-button').addEventListener('click',openMap);
+$('map-button').addEventListener('click',event=>{if(ignoreMapClick){ignoreMapClick=false;event.preventDefault();return;}openMap();});
+$('map-orders-button').addEventListener('click',openMap);
+function peekAt(event){
+  pointer.valid=false;
+  const rect=$('minimap').getBoundingClientRect();
+  renderer.peek={x:Math.max(0,Math.min(WORLD.width,(event.clientX-rect.left)/rect.width*WORLD.width)),y:Math.max(0,Math.min(WORLD.height,(event.clientY-rect.top)/rect.height*WORLD.height))};
+  $('peek-hint').hidden=false;
+}
+$('map-button').addEventListener('pointerdown',event=>{
+  if(!playing())return;event.preventDefault();$('map-button').setPointerCapture(event.pointerId);
+  minimapDrag={id:event.pointerId,x:event.clientX,y:event.clientY,started:performance.now(),active:false};
+});
+$('map-button').addEventListener('pointermove',event=>{
+  if(!minimapDrag||event.pointerId!==minimapDrag.id)return;
+  if(Math.hypot(event.clientX-minimapDrag.x,event.clientY-minimapDrag.y)>5||performance.now()-minimapDrag.started>160){minimapDrag.active=true;peekAt(event);}
+  minimapDrag.x=event.clientX;minimapDrag.y=event.clientY;
+});
+function releasePeek(event){
+  if(!minimapDrag||event.pointerId!==minimapDrag.id)return;
+  ignoreMapClick=minimapDrag.active;minimapDrag=null;renderer.peek=null;$('peek-hint').hidden=true;setTimeout(()=>{ignoreMapClick=false;},350);
+}
+$('map-button').addEventListener('pointerup',releasePeek);$('map-button').addEventListener('pointercancel',releasePeek);
+function refreshBeastChoice(){
+  const pending=game.pendingBeastChoice,visible=pending&&pending.team===game.player.team&&pending.expiresAt>game.time;
+  $('beast-choice').hidden=!visible;if(!visible)return;
+  $('beast-choice-label').textContent=`BEAST LANE · ${Math.ceil(pending.expiresAt-game.time)}s`;
+  for(const button of document.querySelectorAll('[data-beast-lane]'))button.setAttribute('aria-pressed',String(Number(button.dataset.beastLane)===pending.lane));
+}
+for(const button of document.querySelectorAll('[data-beast-lane]'))button.addEventListener('click',()=>{
+  if(game?.chooseBeastLane(Number(button.dataset.beastLane))){notify(`Your beast marches ${WORLD.lanes[Number(button.dataset.beastLane)].name}.`);refreshHUD();saveCurrent();}
+});
 $('close-map').addEventListener('click',()=>closeDialog('map-dialog'));
 for(const button of document.querySelectorAll('[data-command]'))button.addEventListener('click',()=>{
   game.command(button.dataset.command,Number($('order-lane').value));
@@ -496,11 +655,14 @@ function refreshHUD() {
   $('hero-level').title=maxLevel?'Maximum level reached':`Level ${hero.level} of ${RULES.maxLevel}`;
   $('hero-level').textContent=String(hero.level);$('kda').textContent=`${hero.kills||0} / ${hero.deaths||0} / ${hero.assists||0}`;
   const gold=Math.floor(hero.gold||0);$('shop-gold').textContent=String(gold);
+  const plan=itemPlan(hero,pinnedGoal);$('shop-ready').hidden=!plan.affordable;$('shop-button').classList.toggle('goal-ready',plan.affordable);
+  $('shop-ready').title=plan.next?`${plan.next.name} is affordable`:'';
   $('shop-button').setAttribute('aria-label',`Open item shop, ${gold} gold`);
   $('shop-button').title=`Item shop (I) · ${gold} gold · Final hits earn gold`;
   const goldGain=hero.lastGoldGain,showGold=goldGain&&game.time-goldGain.time>=0&&game.time-goldGain.time<2;
   $('gold-earned').hidden=!showGold;
-  if(showGold)$('gold-earned').textContent=`+${goldGain.amount} GOLD`;
+  if(showGold){$('gold-earned').textContent=`+${goldGain.amount} GOLD`;if(goldGain.time!==lastGoldSound){lastGoldSound=goldGain.time;tone('gold');}}
+  if((hero.shield||0)<lastShield-5&&game.time-(hero.lastDamageAt??-100)<.2)tone('block');lastShield=hero.shield||0;
   if($('shop-dialog').open&&shopRenderKey!==shopStateKey(hero))renderShop();
   $('blue-score').textContent=String(game.stats?.kills?.[0]||0);$('red-score').textContent=String(game.stats?.kills?.[1]||0);$('match-clock').textContent=formatTime(game.time);
   const cores=game.units.filter(unit=>unit.kind==='core');
@@ -525,24 +687,29 @@ function refreshHUD() {
   const events=game.events||[];
   const latest=events[events.length-1];
   if(latest&&latest.id!==lastEventId){lastEventId=latest.id;if(latest.text)notify(latest.text,latest.type==='beast'?3500:2600);}
+  refreshBeastChoice();
   refreshAbilityHUD();renderer.drawMinimap($('minimap'),game);
   if(game.winner!=null&&!ended)endMatch();
 }
 function endMatch() {
-  ended=true;setPaused(true);cancelAim();
-  const won=game.winner===0;
+  ended=true;setPaused(true);cancelAim();clearSavedMatch(storage,game.matchId);
+  const won=game.winner===game.player.team,hero=game.player,m=hero.metrics||{},variant=hero.cosmetics?.victory||'classic';
+  $('end-dialog').dataset.victory=variant;
   $('end-title').textContent=won?'Victory!':'Defeat';
-  $('end-crest').textContent=won?'✦':'◇';
+  $('end-crest').textContent=({classic:won?'✦':'◇',verdant:'❧',astral:'✧',sovereign:'♛'})[variant]||'✦';
   $('end-description').textContent=won?'Their crystal is shattered. The Wild Rift belongs to your team.':'Your crystal has fallen. A new strategy awaits in the next rift.';
   $('end-stats').replaceChildren();
-  for(const [value,label] of [[`${game.player.kills||0} / ${game.player.deaths||0}`,'KILLS / DEATHS'],[game.player.level,'HERO LEVEL'],[formatTime(game.time),'MATCH TIME']]){
+  for(const [value,label] of [[`${hero.kills||0}/${hero.deaths||0}/${hero.assists||0}`,'KILLS / DEATHS / ASSISTS'],[hero.level,'HERO LEVEL'],[formatTime(game.time),'MATCH TIME'],[Math.round(m.damageDealt||0),'TOTAL DAMAGE'],[Math.round(m.damageToHeroes||0),'HERO DAMAGE'],[Math.round(m.damageToStructures||0),'STRUCTURE DAMAGE'],[Math.round(m.healingDone||0),'HEALING'],[Math.round(m.shieldingDone||0),'SHIELDING'],[Math.round(m.goldEarned??hero.goldEarned??0),'GOLD EARNED'],[m.lastHits||0,'FINAL HITS'],[m.minionLastHits||0,'MINION FINAL HITS'],[m.jungleLastHits||0,'JUNGLE FINAL HITS'],[m.towersDestroyed||0,'TOWERS'],[m.beastsCaptured||0,'BEASTS CAPTURED'],[m.bestStreak||0,'BEST STREAK'],[m.shutdowns||0,'SHUTDOWNS']]){
     const block=document.createElement('div'),strong=document.createElement('strong'),small=document.createElement('small');strong.textContent=String(value);small.textContent=label;block.append(strong,small);$('end-stats').append(block);
   }
+  $('end-badges').replaceChildren();for(const text of matchBadges(hero)){const badge=document.createElement('span');badge.textContent=text;$('end-badges').append(badge);}
+  const reward=recordMatch(profile,game),persisted=writeProfile(storage,profile);
+  $('end-mastery').textContent=`+${reward.earned} ${HEROES[hero.heroId].name} mastery XP · ${profile.heroes[hero.heroId].xp} total${reward.unlocks.length?` · Unlocked ${reward.unlocks.join(', ')}`:''}${persisted?'':' · Available this session; browser storage is unavailable.'}`;
   $('end-dialog').showModal();if(won)tone('win');
 }
 $('play-again').addEventListener('click',startMatch);
 $('change-hero').addEventListener('click',()=>{
-  game=null;clearInput();$('hud').hidden=true;$('menu-screen').hidden=false;$('end-dialog').close();drawMenu();delete document.documentElement.dataset.catnmicePlaying;
+  game=null;clearInput();$('hud').hidden=true;$('menu-screen').hidden=false;$('end-dialog').close();drawMenu();refreshSavedMenu();delete document.documentElement.dataset.catnmicePlaying;
 });
 $('end-dialog').addEventListener('cancel',event=>event.preventDefault());
 function input() {
@@ -554,21 +721,24 @@ function input() {
   // reselect targets or resurrect an order canceled by movement or a spell.
   return {move:{x,y},aim,...(moveTo?{moveTo}: {})};
 }
-function resize(){renderer.resize(innerWidth,innerHeight);if(game)renderer.draw(game,{aim,selectedSlot});}
+function resize(){applyControls();renderer.resize(innerWidth,innerHeight);if(game)renderer.draw(game,{aim,selectedSlot,cameraAim:selectedSlot>=0?aim:null});}
 window.addEventListener('resize',resize);resize();
 function frame(now) {
   animationFrame=requestAnimationFrame(frame);
   const delta=Math.min(.1,Math.max(0,(now-lastFrame)/1000));lastFrame=now;
   if(!game)return;
+  if(minimapDrag&&!minimapDrag.active&&now-minimapDrag.started>=160){minimapDrag.active=true;peekAt({clientX:minimapDrag.x,clientY:minimapDrag.y});}
   if(playing()) {
     accumulator=Math.min(.15,accumulator+delta);
     if(pointer.valid&&!castDrag)aim=renderer.screenToWorld(pointer.x,pointer.y);
     while(accumulator>=1/30){game.update(1/30,input());accumulator-=1/30;if(game.winner!=null)break;}
   }
-  renderer.draw(game,{aim,selectedSlot});
+  renderer.draw(game,{aim,selectedSlot,cameraAim:selectedSlot>=0?aim:null});
+  if(!ended){saveTimer+=delta;if(saveTimer>=10)saveCurrent();}
   hudTimer+=delta;if(hudTimer>.09){hudTimer=0;refreshHUD();}
   if(announcementUntil&&now>announcementUntil){$('announcement').classList.remove('visible');announcementUntil=0;}
 }
 requestAnimationFrame(frame);
-window.addEventListener('pagehide',()=>{cancelAnimationFrame(animationFrame);audioContext?.suspend().catch(()=>{});});
+window.addEventListener('pagehide',()=>{saveCurrent();cancelAnimationFrame(animationFrame);audioContext?.suspend().catch(()=>{});});
 window.addEventListener('pageshow',event=>{if(event.persisted){lastFrame=performance.now();animationFrame=requestAnimationFrame(frame);if(game)openPause();}});
+

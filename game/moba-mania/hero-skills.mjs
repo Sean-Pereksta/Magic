@@ -1,5 +1,6 @@
 /** New frontline kits. Uses the same combat, status and effect primitives as the engine. */
 import { WORLD, segmentDistance } from './data.mjs';
+import { scheduleImpact } from './progression.mjs';
 
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const structure=u=>u.kind==='tower'||u.kind==='core';
@@ -49,20 +50,20 @@ export function castHeroSkill(game,hero,a,{angle,at,power,shieldAmount}){
   const bonus=key=>game.bonus(hero,key);
   switch(a.id){
     case 'shield-bash': {
-      const arc=a.arc??Math.PI*.58,targets=enemies(game,hero).filter(u=>inArc(hero,u,angle,a.radius,arc)&&game.clearLine(hero,u,4));
+      const arc=(a.arc??Math.PI*.58)*(bonus('bulwarkWideBash')?1.3:1),targets=enemies(game,hero).filter(u=>inArc(hero,u,angle,a.radius,arc)&&game.clearLine(hero,u,4));
       game.effect('sweep',hero.x,hero.y,a.radius,a.color,.4,{angle,arc});
       for(const target of targets){
         hit(game,hero,target,85*power);
-        game.applyStatus(target,'stun',.8+bonus('knightStun'));
+        game.applyStatus(target,'stun',.8+bonus('knightStun'),{sourceId:hero.id});
         push(game,target,angle,105+bonus('bashPush'));
       }
       return true;
     }
     case 'amethyst-guard': {
       const duration=5+bonus('guardDuration'),shield=shieldAmount(210);
-      game.shield(hero,shield,duration);game.applyStatus(hero,'guard',duration,{factor:.6});
+      game.shield(hero,shield,duration,hero);game.applyStatus(hero,'guard',duration,{factor:.6,sourceId:hero.id});
       for(const ally of game.units)if(ally.alive&&ally.team===hero.team&&ally.id!==hero.id&&!structure(ally)&&distance(hero,ally)<=a.radius+ally.r){
-        game.shield(ally,shield*(.5+bonus('allyBarrier')),duration);
+        game.shield(ally,shield*(.5+bonus('allyBarrier')),duration,hero);
         game.effect('shield',ally.x,ally.y,ally.r+14,a.color,.65,{followId:ally.id});
       }
       game.effect('shield',hero.x,hero.y,hero.r+28,a.color,1,{followId:hero.id});
@@ -75,20 +76,16 @@ export function castHeroSkill(game,hero,a,{angle,at,power,shieldAmount}){
       const targets=lineTargets(game,hero,movement.start,angle,movement.travelled,a.radius);
       for(const target of targets){
         hit(game,hero,target,105*power*(1+bonus('rushDamage')));
-        game.applyStatus(target,'stun',.5+bonus('knightStun'));
+        game.applyStatus(target,'stun',.5+bonus('knightStun'),{sourceId:hero.id});
         push(game,target,angle,90);
       }
       return true;
     }
     case 'royal-quake': {
-      game.effect('quake',hero.x,hero.y,a.radius,a.color,.9);
-      for(const target of enemies(game,hero).filter(u=>distance(hero,u)<=a.radius+u.r)){
-        const away=Math.atan2(target.y-hero.y,target.x-hero.x);
-        hit(game,hero,target,135*power*(1+bonus('quakeDamage')));
-        game.applyStatus(target,'stun',1.25+bonus('knightStun'));
-        game.applyStatus(target,'slow',3.5+bonus('knightStun'),{factor:.3});
-        push(game,target,away,80);
-      }
+      const fissure=!!bonus('bulwarkFissure'),fortress=!!bonus('bulwarkFortress');
+      scheduleImpact(game,hero,{kind:'royal-quake',x:hero.x,y:hero.y,r:fissure?a.radius*1.7:a.radius,shape:fissure?'cone':'circle',angle,arc:Math.PI*.55,
+        color:a.color,delay:.45,damage:135*power*(1+bonus('quakeDamage')),damageType:'physical',stun:1.25+bonus('knightStun'),slow:.3,
+        slowDuration:3.5+bonus('knightStun'),push:fissure?125:80,shield:fortress?shieldAmount(90):0,guard:fortress?.82:0,duration:2.5});
       return true;
     }
     case 'heartseeker': {
@@ -127,7 +124,7 @@ export function castHeroSkill(game,hero,a,{angle,at,power,shieldAmount}){
         game.effect('sweep',hero.x,hero.y,95,a.color,.45,{angle,arc:Math.PI*.45});
         if(!target.alive){
           hero.cooldowns[1]=0;
-          if(bonus('killBarrier'))game.shield(hero,shieldAmount(bonus('killBarrier')),4);
+          if(bonus('killBarrier'))game.shield(hero,shieldAmount(bonus('killBarrier')),4,hero);
           if(hero.isPlayer)game.float(hero,'DASH READY',a.color);
         }
       }
@@ -138,7 +135,7 @@ export function castHeroSkill(game,hero,a,{angle,at,power,shieldAmount}){
       game.effect('sweep',hero.x,hero.y,a.radius,a.color,.6,{angle,arc});
       for(const target of enemies(game,hero).filter(u=>inArc(hero,u,angle,a.radius,arc)&&game.clearLine(hero,u,4))){
         hit(game,hero,target,100*power*(1+bonus('sweepDamage')),'magic');
-        game.applyStatus(target,'slow',2.6+bonus('frostDuration'),{factor:.35,frost:true});
+        game.applyStatus(target,'slow',2.6+bonus('frostDuration'),{factor:.35,frost:true,sourceId:hero.id});
       }
       return true;
     }
@@ -147,7 +144,7 @@ export function castHeroSkill(game,hero,a,{angle,at,power,shieldAmount}){
       dashEffect(game,movement,a.color,angle);
       const duration=3.5+bonus('wingDuration');
       game.applyStatus(hero,'haste',duration,{factor:.45,attack:0,color:a.color});
-      game.shield(hero,shieldAmount(90),duration);
+      game.shield(hero,shieldAmount(90),duration,hero);
       game.effect('shield',hero.x,hero.y,hero.r+16,a.color,.7,{followId:hero.id});
       return true;
     }
@@ -156,18 +153,14 @@ export function castHeroSkill(game,hero,a,{angle,at,power,shieldAmount}){
       game.effect('ring',at.x,at.y,a.radius,a.color,1.1);
       for(const ally of game.units)if(ally.alive&&ally.team===hero.team&&!structure(ally)&&distance(at,ally)<=a.radius+ally.r){
         game.applyStatus(ally,'haste',duration,{factor:.25,attack:.3,color:a.color});
-        game.shield(ally,shieldAmount(65)*(1+bonus('inspireShield')),duration);
+        game.shield(ally,shieldAmount(65)*(1+bonus('inspireShield')),duration,hero);
         game.effect('shield',ally.x,ally.y,ally.r+10,a.color,.6,{followId:ally.id});
       }
       return true;
     }
     case 'winterfall': {
-      game.effect('frost',at.x,at.y,a.radius,a.color,1.2);
-      for(const target of enemies(game,hero).filter(u=>distance(at,u)<=a.radius+u.r)){
-        hit(game,hero,target,140*power*(1+bonus('winterDamage')),'magic');
-        game.applyStatus(target,'stun',.65+bonus('freezeStun'));
-        game.applyStatus(target,'slow',4+bonus('frostDuration'),{factor:.5+bonus('frostSlow'),frost:true});
-      }
+      scheduleImpact(game,hero,{kind:'winterfall',x:at.x,y:at.y,r:a.radius,color:a.color,delay:.5,damage:140*power*(1+bonus('winterDamage')),
+        stun:.65+bonus('freezeStun'),slow:.5+bonus('frostSlow'),slowDuration:4+bonus('frostDuration')});
       return true;
     }
     default:return false;
@@ -177,7 +170,8 @@ export function castHeroSkill(game,hero,a,{angle,at,power,shieldAmount}){
 /** New bots preserve their combat target and use escape skills toward their well. */
 export function botSkillAim(game,hero,a,target,retreat,cfg){
   const friends=game.units.filter(u=>u.alive&&u.team===hero.team&&!structure(u)&&distance(hero,u)<350);
-  const foes=enemies(game,hero).filter(u=>!structure(u)&&distance(hero,u)<350);
+  const foes=enemies(game,hero).filter(u=>!structure(u)&&distance(hero,u)<350&&(!game.canSee||game.canSee(hero.team,u)));
+  if(target&&game.canSee&&!game.canSee(hero.team,target))target=null;
   const lead=target?{x:target.x+(target.vx||0)*.15*cfg.lead,y:target.y+(target.vy||0)*.15*cfg.lead}:point(hero);
   const near=!!target&&target.alive&&distance(hero,target)<=a.range+target.r;
   switch(a.id){
@@ -196,3 +190,4 @@ export function botSkillAim(game,hero,a,target,retreat,cfg){
     default:return null;
   }
 }
+

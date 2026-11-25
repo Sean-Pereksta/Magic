@@ -10,6 +10,13 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const fract = v => v - Math.floor(v);
 const hash = (x, y = 0) => fract(Math.sin(x * 127.1 + y * 311.7) * 43758.5453);
 const alive = u => u.alive !== false && u.hp > 0;
+const cosmeticColor = value => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : null;
+function blendColor(base, tint, weight = .36) {
+  if (!cosmeticColor(tint)) return base;
+  const rgb = color => [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16));
+  const a = rgb(base), b = rgb(tint);
+  return '#' + a.map((v, i) => Math.round(v * (1 - weight) + b[i] * weight).toString(16).padStart(2, '0')).join('');
+}
 const makeCanvas = (w, h) => {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
@@ -17,7 +24,7 @@ const makeCanvas = (w, h) => {
   return c;
 };
 function box(c, color, x, y, w, h) {
-  c.fillStyle = color;
+  c.fillStyle = c._mobaArmorColors?.has(color) ? blendColor(color, c._mobaArmorTint, .62) : color;
   c.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
 }
 function line(c, color, x, y, x2, y2, width = 2) {
@@ -67,13 +74,27 @@ function diamond(c, x, y, w, h, color, highlight = '#e5fcff') {
   line(c, '#ffffffaa', x, y - h / 2 + 6, x + w / 3, y - 1, 2);
 }
 
-function heroSprite(id, frame, facing, attacking) {
-  const key = ['hero', id, frame, facing, attacking].join(':');
+function heroSprite(id, frame, facing, attacking, cosmetics = {}) {
+  const tint = cosmeticColor(cosmetics?.armorTint);
+  const key = ['hero', id, frame, facing, attacking, tint || 'classic'].join(':');
   if (spriteCache.has(key)) return spriteCache.get(key);
   const expanded = id === 'bulwark' || id === 'ember' || id === 'seraph';
   // Leave room for wings, shields and the greatsword at the end of its swing.
   const spriteWidth = id === 'seraph' ? 72 : expanded ? 48 : 40;
   const out = makeCanvas(spriteWidth, expanded ? 48 : 44), c = out.getContext('2d');
+  if (tint) {
+    const palettes = {
+      arc:['#bd8738','#ffe18a','#dfab42','#ffc75f','#ca9336','#ffe398','#8b6530','#ffda85'],
+      dragon:['#ae3b47','#ef785d','#c34647','#ff9d68','#782b38','#ef805d'],
+      druid:['#124e3b','#3d9f62','#83d880','#a9d9a0','#275e42','#82c86a','#69b970','#a0da83'],
+      angel:['#8f487e','#e58db2','#ffc9db','#e8a4b6','#f3d2cd','#d37f9f'],
+      ranger:['#3a354d','#5c4d73','#45435e','#9a75a7'],
+      bulwark:['#734d9e','#b99ce9','#e1c9fa','#ac84d7','#e6cbff','#4e3674','#b094d8','#694887','#795799','#c2a2eb','#e9d4ff','#482f65','#b9a0dc','#7e4fbb','#cab0ed','#bda2e6','#a785d7','#5a3e83','#805cae'],
+      ember:['#6c382e','#df8035','#ffbd6a','#f4b45a','#a34c2c','#ed8736','#ffc273','#e59345','#6b392e','#b45331','#f3a34f'],
+      seraph:['#1e4d85','#95cdeb','#3977bd','#a8ddf9','#4f94d6','#87c7ff','#bfddeb','#a6d2e8','#27518d','#7cb9e1'],
+    };
+    c._mobaArmorColors = new Set(palettes[id] || []); c._mobaArmorTint = tint;
+  }
   const back = facing === 3, left = facing === 2;
   if (left) { c.translate(spriteWidth, 0); c.scale(-1, 1); }
   c.translate((spriteWidth - 40) / 2, expanded ? 2 : 0);
@@ -91,6 +112,7 @@ function heroSprite(id, frame, facing, attacking) {
     ember: ['#69372b', '#b65b2e', '#f39b43', '#ffe2a1'],
     seraph: ['#1c4177', '#356cb2', '#8ac9ed', '#e6f9ff'],
   }[id] || ['#375064', '#547b8a', '#8fc6d1', '#e4f7df'];
+  if (tint) for (let i = 0; i < colors.length; i++) colors[i] = blendColor(colors[i], tint);
   box(c, INK, 9, 19, 18, 18);
   box(c, colors[0], 10, 19, 16, 16);
   box(c, colors[1], 11 + walk, 22, 5, 12);
@@ -642,6 +664,7 @@ export class Renderer {
     this.camera.width = this.width / cssZoom;
     this.camera.height = this.height / cssZoom;
     this.camera.zoom = this.canvas.width / this.camera.width;
+    this.fogCanvas = null;
   }
   screenToWorld(clientX, clientY) {
     const rect = this.canvas.getBoundingClientRect();
@@ -659,21 +682,31 @@ export class Renderer {
     const cam = this.camera;
     return x > cam.x - margin && x < cam.x + cam.width + margin && y > cam.y - margin && y < cam.y + cam.height + margin;
   }
-  follow(game) {
+  follow(game, view = {}) {
     const p = game.player || game.units?.find(u => u.id === game.playerId);
     if (!p) return;
     const cam = this.camera;
-    const targetX = clamp(p.x - cam.width / 2, 0, Math.max(0, WORLD.width - cam.width));
-    const targetY = clamp(p.y - cam.height * 0.49, 0, Math.max(0, WORLD.height - cam.height));
+    let focus = p;
+    if (this.peek && Number.isFinite(this.peek.x) && Number.isFinite(this.peek.y)) focus = this.peek;
+    else if (alive(p) && view.cameraAim && Number.isFinite(view.cameraAim.x) && Number.isFinite(view.cameraAim.y)) {
+      const dx = view.cameraAim.x - p.x, dy = view.cameraAim.y - p.y, distance = Math.hypot(dx, dy) || 1;
+      const look = Math.min(distance * .22, cam.width * .16, 150);
+      focus = {x:p.x + dx / distance * look, y:p.y + dy / distance * look};
+    }
+    const targetX = clamp(focus.x - cam.width / 2, 0, Math.max(0, WORLD.width - cam.width));
+    const targetY = clamp(focus.y - cam.height * 0.49, 0, Math.max(0, WORLD.height - cam.height));
     const dt = this.lastTime == null ? 1 : clamp(game.time - this.lastTime, 0, 0.1);
     const snap = !this.hasCamera || Math.hypot(targetX - cam.x, targetY - cam.y) > 800;
-    const f = snap ? 1 : 1 - Math.exp(-11 * dt);
+    const f = snap ? 1 : 1 - Math.exp(-11 * Math.max(dt, 1 / 60));
     cam.x += (targetX - cam.x) * f; cam.y += (targetY - cam.y) * f;
     this.hasCamera = true; this.lastTime = game.time;
   }
   draw(game, view = {}) {
     if (!game) return;
-    this.follow(game);
+    this.follow(game, view);
+    const team = game.player?.team ?? 0;
+    const shown = u => !game.canSee || game.canSee(team, u);
+    const seenPoint = (x, y) => !game.pointVisible || game.pointVisible(team, x, y);
     const c = this.ctx, cam = this.camera, time = game.time || 0;
     c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1;
     c.fillStyle = '#142c31'; c.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -684,11 +717,10 @@ export class Renderer {
     this.drawWells(c, time);
     this.drawObjectiveGround(c, game);
     this.drawCombatIndicators(c, game);
-    for (const e of game.effects || []) if (this.visible(e.x, e.y, (e.r || 80) + 150)) this.effect(c, e, time, true);
-    this.drawAim(c, game, view);
+    for (const e of game.effects || []) if (this.visible(e.x, e.y, (e.r || 80) + 150) && seenPoint(e.x, e.y)) this.effect(c, e, time, true);
     const sorted = [];
     for (const o of WORLD.obstacles || []) if (this.visible(o.x, o.y)) sorted.push({ y: o.y, obstacle: o });
-    for (const u of game.units || []) if (this.visible(u.x, u.y, 160)) sorted.push({ y: u.y, unit: u });
+    for (const u of game.units || []) if (this.visible(u.x, u.y, 160) && shown(u)) sorted.push({ y: u.y, unit: u });
     sorted.sort((a, b) => a.y - b.y);
     for (const item of sorted) {
       if (item.obstacle) {
@@ -699,15 +731,69 @@ export class Renderer {
         tree(c, o, time); c.restore();
       } else this.unit(c, item.unit, game);
     }
-    for (const p of game.projectiles || []) if (this.visible(p.x, p.y, 50)) this.projectile(c, p, time);
-    for (const e of game.effects || []) if (this.visible(e.x, e.y, (e.r || 80) + 150)) this.effect(c, e, time, false);
-    for (const u of game.units || []) if (alive(u) && this.visible(u.x, u.y, 90)) this.unitBars(c, u, game);
-    for (const t of (game.texts || []).slice(-110)) this.floatText(c, t);
+    for (const p of game.projectiles || []) if (this.visible(p.x, p.y, 50) && seenPoint(p.x, p.y)) this.projectile(c, p, time);
+    for (const e of game.effects || []) if (this.visible(e.x, e.y, (e.r || 80) + 150) && seenPoint(e.x, e.y)) this.effect(c, e, time, false);
+    this.drawFog(c, game);
+    this.drawTelegraphs(c, game);
+    this.drawAim(c, game, view);
+    for (const u of game.units || []) if (alive(u) && this.visible(u.x, u.y, 90) && shown(u)) this.unitBars(c, u, game);
+    for (const t of (game.texts || []).slice(-110)) if (seenPoint(t.x, t.y)) this.floatText(c, t);
     this.playerMarker(c, game);
     c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1;
     if (game.player && game.player.hp / game.player.maxHp < 0.25 && alive(game.player)) {
       c.strokeStyle = '#b9445766'; c.lineWidth = 6;
       c.strokeRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+  }
+  drawFog(c, game) {
+    if (!game.visionSources) return;
+    const team = game.player?.team ?? 0;
+    // A small world-space mask follows camera peeks without being rebuilt on
+    // every animation frame. Enemy visibility itself always uses live rules.
+    const fresh = !this.fogCanvas;
+    const fog = this.fogCanvas ||= makeCanvas(Math.ceil(WORLD.width / 8), Math.ceil(WORLD.height / 8));
+    if (fresh || this.fogGame !== game || this.fogTeam !== team || game.time - (this.fogAt ?? -1) >= .14) {
+      const f = fog.getContext('2d');
+      f.setTransform(1, 0, 0, 1, 0, 0); f.globalCompositeOperation = 'source-over';
+      f.clearRect(0, 0, fog.width, fog.height); f.fillStyle = '#08192588'; f.fillRect(0, 0, fog.width, fog.height);
+      f.globalCompositeOperation = 'destination-out';
+      for (const source of game.visionSources(team)) {
+        const x = source.x / 8, y = source.y / 8, r = (source.r || source.radius || 1) / 8;
+        const gradient = f.createRadialGradient(x, y, r * .86, x, y, r);
+        gradient.addColorStop(0, '#000'); gradient.addColorStop(1, '#0000'); f.fillStyle = gradient;
+        f.beginPath(); f.arc(x, y, r, 0, Math.PI * 2); f.fill();
+      }
+      f.globalCompositeOperation = 'source-over';
+      this.fogAt = game.time; this.fogTeam = team; this.fogGame = game;
+    }
+    c.drawImage(fog, 0, 0, WORLD.width, WORLD.height);
+  }
+  drawTelegraphs(c, game) {
+    const team = game.player?.team ?? 0;
+    const pending = [
+      ...(game.scheduledImpacts || []).map(z => ({...z, remaining:z.executeAt - game.time, total:z.delay || .5})),
+      ...(game.zones || []).filter(z => z.delay > 0 && !z.detonated && (z.damage || z.shape)).map(z => ({...z, remaining:z.tickIn, total:z.maxDelay || z.windup || z.delay}))
+    ];
+    for (const z of pending) {
+      if (!(z.remaining > 0) || !this.visible(z.x, z.y, (z.range || z.r || 160) + 100)) continue;
+      if (game.pointVisible && !game.pointVisible(team, z.x, z.y) && z.team !== team) continue;
+      const color = z.team === team ? '#8ce9ff' : z.team === -1 ? '#ffd077' : '#ff816f';
+      const progress = clamp(1 - z.remaining / Math.max(.01, z.total), 0, 1), radius = z.r || 130;
+      const shape = z.shape || (z.arc ? 'cone' : 'circle');
+      c.save(); c.fillStyle = color; c.strokeStyle = color; c.lineWidth = 3;
+      c.setLineDash(z.team === team ? [] : [8, 5]); c.beginPath();
+      if (shape === 'line') {
+        const angle = z.angle || 0, length = z.range || radius * 2, width = z.width || radius / 3;
+        const dx = Math.cos(angle), dy = Math.sin(angle), nx = -dy * width, ny = dx * width;
+        c.moveTo(z.x + nx, z.y + ny); c.lineTo(z.x + dx * length + nx, z.y + dy * length + ny);
+        c.lineTo(z.x + dx * length - nx, z.y + dy * length - ny); c.lineTo(z.x - nx, z.y - ny); c.closePath();
+      } else if (shape === 'cone') {
+        const arc = z.arc || Math.PI * .65, angle = z.angle || 0;
+        c.moveTo(z.x, z.y); c.arc(z.x, z.y, z.range || radius, angle - arc / 2, angle + arc / 2); c.closePath();
+      } else c.arc(z.x, z.y, radius, 0, Math.PI * 2);
+      c.globalAlpha = .13 + progress * .16; c.fill(); c.globalAlpha = .9; c.stroke(); c.setLineDash([]);
+      c.lineWidth = 4; c.beginPath(); c.arc(z.x, z.y, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress); c.stroke();
+      this.label(c, z.team === team ? 'CAST' : '!', z.x, z.y + 4, color, 10); c.restore();
     }
   }
   drawWater(c, time) {
@@ -742,7 +828,7 @@ export class Renderer {
   drawObjectiveGround(c, game) {
     for (const pit of WORLD.beastPits || []) {
       if (!this.visible(pit.x, pit.y, 110)) continue;
-      const active = (game.units || []).some(u => u.kind === 'beast' && u.team === -1 && alive(u) && Math.hypot(u.x - pit.x, u.y - pit.y) < 150);
+      const active = (game.units || []).some(u => u.kind === 'beast' && u.team === -1 && alive(u) && Math.hypot(u.x - pit.x, u.y - pit.y) < 150 && (!game.canSee || game.canSee(game.player?.team ?? 0, u)));
       c.save(); c.globalAlpha = active ? 0.55 : 0.25;
       ring(c, active ? '#f4d18a' : '#9bbcb0', pit.x, pit.y, 95 + Math.sin(game.time * 2) * 2, 3); c.restore();
       this.label(c, active ? 'CLAIM THE BEAST' : 'BEAST SHRINE', pit.x, pit.y + 116, active ? '#ffe3a1' : '#a9c4b8', 10);
@@ -752,7 +838,7 @@ export class Renderer {
     const player = game.player;
     if (!player || !alive(player)) return;
     const selected = game.units.find(u => u.id === player.targetId && alive(u));
-    if (selected && this.visible(selected.x, selected.y)) {
+    if (selected && this.visible(selected.x, selected.y) && (!game.canSee || game.canSee(player.team, selected))) {
       const locked = game.attackOrder?.explicit, color = locked ? '#ffe194' : '#ffb88d';
       const radius = (selected.r || 17) + 10 + Math.sin(game.time * 5) * 2;
       c.save(); c.globalAlpha = .9;
@@ -773,7 +859,7 @@ export class Renderer {
         ring(c, targeted ? '#ff765e' : '#ffd0a1', u.x, u.y, u.range, targeted ? 3 : 2, !targeted); c.restore();
       }
       const victim = game.units.find(t => t.id === u.targetId && alive(t));
-      if (victim && (targeted || u.attackAnim > 0)) {
+      if (victim && (targeted || u.attackAnim > 0) && (!game.canSee || game.canSee(player.team, victim))) {
         c.save(); c.globalAlpha = u.attackAnim > 0 ? .65 : .2;
         line(c, enemy ? '#ffbc86' : '#b4edff', u.x, u.y - 87, victim.x, victim.y - 15, u.attackAnim > 0 ? 3 : 1); c.restore();
       }
@@ -834,7 +920,8 @@ export class Renderer {
     let sprite, width, height;
     if (u.kind === 'hero') {
       const facing = flip ? 2 : Math.sin(u.angle || 0) < -0.55 ? 3 : 0;
-      sprite = heroSprite(u.heroId || u.subtype || 'arc', attackFrame, facing, attack);
+      const preparing = (game.scheduledImpacts || []).some(e => e.ownerId === u.id && e.executeAt > game.time);
+      sprite = heroSprite(u.heroId || u.subtype || 'arc', preparing ? 2 : attackFrame, facing, attack || preparing, u.cosmetics);
       width = sprite.width * 1.5; height = sprite.height * 1.5;
       c.save(); c.globalAlpha = u.id === game.playerId || u === game.player ? 0.9 : 0.45;
       ring(c, TEAM[u.team], u.x, u.y + 1, 21, u.id === game.playerId || u === game.player ? 3 : 2); c.restore();
@@ -846,6 +933,16 @@ export class Renderer {
       width = big ? Math.min(140, Math.max(94, r * 2.8) + Math.min(6, (u.tier || 1) - 1) * 2) : Math.max(48, r * 2.5) * (u.scale || 1); height = width * 44 / 48;
     }
     shadow(c, u.x, u.y + 2, width * 0.3, 0.29);
+    const trail = cosmeticColor(u.cosmetics?.trail);
+    if (trail && (u.moving || attack)) {
+      c.save();
+      for (let k = 1; k <= 4; k++) {
+        c.globalAlpha = .48 * (1 - k / 5);
+        const angle = (u.angle || 0) + Math.PI, distance = k * 10;
+        box(c, trail, u.x + Math.cos(angle) * distance - 2, u.y + Math.sin(angle) * distance - 4 - (k % 2) * 5, 4, 4);
+      }
+      c.restore();
+    }
     const status = u.status || {}, invisible = status.stealth || status.invisible;
     c.save(); if (invisible) c.globalAlpha = 0.5;
     c.drawImage(sprite, Math.round(u.x - width / 2), Math.round(u.y - height + 7), width, height); c.restore();
@@ -875,6 +972,14 @@ export class Renderer {
       const a = game.time * 4 + k * Math.PI * 2 / 3;
       box(c, '#ffe7a3', u.x + Math.cos(a) * 15, u.y - height - 1 + Math.sin(a) * 5, 4, 4);
     }
+    if (statusOn(status.stun) && u.kind === 'hero') {
+      const remaining = status.stun.remaining || 0, duration = status.stun.duration || status.stun.maxDuration || Math.max(1, remaining);
+      box(c, '#332e40', u.x - 17, u.y - height - 14, 34, 4);
+      box(c, '#ffe7a3', u.x - 17, u.y - height - 14, 34 * clamp(remaining / duration, 0, 1), 4);
+      this.label(c, `${remaining.toFixed(1)}s`, u.x, u.y - height - 19, '#ffebbd', 9);
+    }
+    if (u.kind === 'beast' && u.team >= 0) this.label(c, u.subtype === 'maw' ? 'LANE HUNTER' : 'TOWER GUARDIAN', u.x, u.y + 24, TEAM[u.team], 9);
+    if (u.guardian || u.elderGuardian) { c.save(); c.globalAlpha = .8; ring(c, '#c8edb2', u.x, u.y - 15, width * .45, 3); c.restore(); }
     if (statusOn(status.slow)) {
       c.save(); c.globalAlpha = .75;
       ring(c, status.slow.frost ? '#a4e5ff' : '#c2c5de', u.x, u.y + 2, 17, 2, true);
@@ -902,6 +1007,14 @@ export class Renderer {
     const color = u.team < 0 ? '#e3c777' : u === game.player || u.id === game.playerId ? '#b8e67d' : TEAM[u.team];
     box(c, color, x, y, Math.max(0, w * clamp(u.hp / u.maxHp, 0, 1)), h);
     if (u.shield > 0) box(c, '#e5f3ff', x, y, Math.min(w, w * u.shield / u.maxHp), 2);
+    const player = game.player;
+    if (player?.alive && u.id === player.targetId && u.team !== player.team && !game.isProtected?.(u)) {
+      const hit = game.lastHitDamage ? game.lastHitDamage(player, u) : player.damage * (u.status?.guard?.factor ?? 1);
+      if (u.hp + (u.shield || 0) <= hit) {
+        diamond(c, x + w + 10, y + h / 2, 8, 10, '#ffce69', '#fff4c2');
+        this.label(c, 'LAST HIT', u.x, y - 8, '#ffe49a', 9);
+      }
+    }
     if (structure && game.isProtected?.(u)) {
       box(c, '#a8c5d8', x + w + 6, y + 1, 8, 7);
       c.strokeStyle = '#c8dde4'; c.lineWidth = 2;
@@ -921,6 +1034,8 @@ export class Renderer {
       box(c, '#172d3c', x - 17, y - 2, 14, 13);
       this.label(c, String(u.level || 1), x - 10, y + 8, '#eff4c7', 10);
       if (u !== game.player && u.id !== game.playerId) this.label(c, HEROES[u.heroId]?.name || u.name || '', u.x, y - 8, u.team === 0 ? '#d4e9dc' : '#ffd1c0', 9);
+      const bounty = u.shutdownBounty ?? Math.min(300, Math.max(0, (u.streak || 0) - 2) * 60);
+      if (bounty > 0) this.label(c, `+${bounty} BOUNTY`, u.x, y - 22, '#ffd37d', 9);
     }
   }
   projectile(c, p, time) {
@@ -1089,7 +1204,7 @@ export class Renderer {
     c.lineWidth = 3; c.strokeStyle = '#1a3039'; c.strokeText(text, Math.round(x), Math.round(y));
     c.fillStyle = color; c.fillText(text, Math.round(x), Math.round(y));
   }
-  drawPortrait(canvas, heroId, size = 64) { drawPortrait(canvas, heroId, size); }
+  drawPortrait(canvas, heroId, size = 64, cosmetics = {}) { drawPortrait(canvas, heroId, size, cosmetics); }
   drawIcon(canvas, ability, size = 32) { drawIcon(canvas, ability, size); }
   drawMinimap(canvas, game) {
     const c = canvas.getContext('2d'), width = canvas.width || 180, height = canvas.height || 124;
@@ -1098,9 +1213,25 @@ export class Renderer {
     c.drawImage(this.terrain, 0, 0, width, height);
     c.save(); c.fillStyle = '#10242b66'; c.fillRect(0, 0, width, height);
     const sx = width / WORLD.width, sy = height / WORLD.height;
+    const team = game.player?.team ?? 0;
+    if (game.visionSources) {
+      c.save(); c.beginPath();
+      for (const source of game.visionSources(team)) {
+        const x = source.x * sx, y = source.y * sy, r = (source.r || source.radius) * sx;
+        c.moveTo(x + r, y); c.arc(x, y, r, 0, Math.PI * 2);
+      }
+      c.clip(); c.drawImage(this.terrain, 0, 0, width, height); c.restore();
+    }
+    for (const ghost of Object.values(game.lastSeen?.[team] || {})) {
+      const unit = game.units.find(u => u.id === ghost.id), age = game.time - ghost.time;
+      if (ghost.team === team || !ghost.heroId || age <= .1 || age > 8 || (unit && game.canSee?.(team, unit))) continue;
+      c.save(); c.globalAlpha = .5 * (1 - age / 8); c.strokeStyle = TEAM[ghost.team] || '#ffa5a0'; c.lineWidth = 1;
+      c.strokeRect(Math.round(ghost.x * sx) - 3, Math.round(ghost.y * sy) - 3, 6, 6); c.restore();
+    }
     for (const u of game.units || []) {
       if (!alive(u)) continue;
       if (!['hero', 'tower', 'core', 'beast', 'camp'].includes(u.kind)) continue;
+      if (game.canSee && !game.canSee(team, u)) continue;
       const x = Math.round(u.x * sx), y = Math.round(u.y * sy), hero = u.kind === 'hero';
       const r = u.kind === 'core' ? 4 : hero || u.kind === 'beast' ? 3 : 2;
       c.fillStyle = '#10242d'; c.fillRect(x - r - 1, y - r - 1, r * 2 + 2, r * 2 + 2);
@@ -1119,20 +1250,25 @@ export class Renderer {
   }
 }
 
-export function drawPortrait(canvas, heroId, size = 64) {
+export function drawPortrait(canvas, heroId, size = 64, cosmetics = {}) {
   canvas.width = size; canvas.height = size;
   const c = canvas.getContext('2d'); c.imageSmoothingEnabled = false;
   c.clearRect(0, 0, size, size);
   c.fillStyle = '#142c39'; c.fillRect(0, 0, size, size);
   const color = HEROES[heroId]?.color || '#77bfd6';
   c.globalAlpha = 0.2; disc(c, color, size / 2, size * 0.55, size * 0.44); c.globalAlpha = 1;
-  const sprite = heroSprite(heroId, 0, 0, false);
+  const sprite = heroSprite(heroId, 0, 0, false, cosmetics);
   // The combat frame reserves space for a full sword swing. Crop only that
   // empty margin in the idle portrait so the angel's face stays legible.
   const sourceX = heroId === 'seraph' ? 8 : 0, sourceWidth = sprite.width - sourceX * 2;
   const scale = Math.min(size * .94 / sourceWidth, size * .97 / sprite.height);
   const width = Math.round(sourceWidth * scale), height = Math.round(sprite.height * scale);
   c.drawImage(sprite, sourceX, 0, sourceWidth, sprite.height, Math.round((size-width)/2), Math.round((size-height)/2), width, height);
+  const frameColor = {verdant:'#86c99c',astral:'#b49ce8',sovereign:'#ead28f'}[cosmetics?.portrait];
+  if (frameColor) {
+    c.strokeStyle = frameColor; c.lineWidth = Math.max(2, Math.floor(size / 32)); c.strokeRect(2, 2, size - 4, size - 4);
+    for (const [x, y] of [[5,5],[size-5,5],[5,size-5],[size-5,size-5]]) diamond(c, x, y, Math.max(4,size/16), Math.max(6,size/12), frameColor);
+  }
 }
 
 export function drawIcon(canvas, ability = {}, size = 32) {
@@ -1271,3 +1407,4 @@ export function drawIcon(canvas, ability = {}, size = 32) {
   }
   c.restore();
 }
+

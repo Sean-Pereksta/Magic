@@ -30,7 +30,7 @@ export const HEROES = {
       ability('dragon-flight','Dragon Flight','Send a flaming dragon in a straight line. It pierces and burns.','dragon','#ff9451',1,38,7.5,470,27,'line'),
       ability('flame-ring','Flame Ring','Ignite the area around you and burn nearby enemies.','flame','#ffbd59',2,42,9,0,125,'self'),
       ability('dragon-shield','Dragon Shield','Reduce incoming damage by 50% for 5s and gain a shield.','shield','#ffd481',4,48,16,0,90,'self'),
-      ability('sky-cleave','Sky Cleave','Charge along your aim, then slam and stun enemies for 1s.','slash','#ff674b',6,62,16,255,100,'line')
+      ability('sky-cleave','Sky Cleave','Charge along your aim, warn for 0.35s, then slam and stun enemies for 1s.','slash','#ff674b',6,62,16,255,100,'line')
     ],
     talents:[
       tier(3,choice('dragon-embers','Endless Embers','Burning lasts 2s longer and deals 35% more damage.',{burnDuration:2,burnDamage:.35}),choice('dragon-vigor','Drake Vigor','Gain 20% maximum health.',{hp:.2})),
@@ -98,7 +98,7 @@ export const HEROES = {
       {...ability('shield-bash','Shield Bash','Sweep your shield forward: damage, push enemies back and stun them for 0.8s.','bash','#c2a3ff',1,32,7,115,115,'cone'),arc:Math.PI*.58},
       ability('amethyst-guard','Amethyst Guard','Gain a strong shield and 40% damage reduction for 5s. Nearby allies receive half the shield.','fortress','#d1bcff',2,48,15,0,150,'self'),
       {...ability('rampart-rush','Rampart Rush','Charge forward, damaging and pushing enemies in your path. Stops at terrain.','charge','#9f82ed',4,45,12,235,38,'line'),mobility:true},
-      ability('royal-quake','Royal Quake','Slam the ground: push nearby enemies, stun for 1.25s, then leave them slowed.','quake','#d9b4ff',6,70,22,0,165,'self')
+      ability('royal-quake','Royal Quake','Warn for 0.45s, then slam: push nearby enemies, stun for 1.25s and leave them slowed.','quake','#d9b4ff',6,70,22,0,165,'self')
     ],
     talents:[
       tier(3,choice('bulwark-granite','Granite Heart','Gain 18% maximum health.',{hp:.18},'health'),choice('bulwark-impact','Crushing Impact','Shield Bash pushes 55 farther; your stuns last 0.3s longer.',{bashPush:55,knightStun:.3},'bash')),
@@ -132,7 +132,7 @@ export const HEROES = {
       {...ability('glacial-sweep','Glacial Sweep','Swing your greatsword in a wide forward arc. Enemies take damage and are slowed 35% for 2.6s.','frostblade','#b5e8ff',1,34,7,150,150,'cone'),arc:Math.PI*.85},
       {...ability('wingburst','Wingburst','Surge toward your aim, gain a shield and move 45% faster for 3.5s. Stops at terrain.','wing','#8bd5ff',2,40,12,240,70,'line'),mobility:true},
       ability('northern-inspire','Northern Inspire','Inspire allies around your aim: 25% movement speed, 30% attack speed and a small shield for 5s.','rally','#b9edff',4,55,15,280,175,'ground'),
-      ability('winterfall','Winterfall','Freeze a circle at your aim: damage and briefly stun enemies, then slow them by 50% for 4s.','snowflake','#d4f4ff',6,72,20,320,140,'ground')
+      ability('winterfall','Winterfall','Mark a circle at your aim. After 0.5s, damage and briefly freeze enemies, then slow them by 50% for 4s.','snowflake','#d4f4ff',6,72,20,320,140,'ground')
     ],
     talents:[
       tier(3,choice('seraph-edge','Frozen Edge','Glacial Sweep deals 25% more damage and slows for 1s longer.',{sweepDamage:.25,frostDuration:1},'frostblade'),choice('seraph-plume','Azure Plume','Gain 15% maximum health and 15% stronger shields.',{hp:.15,shield:.15},'wing')),
@@ -201,6 +201,66 @@ for (const hero of Object.values(HEROES)) {
   });
 }
 
+// Late choices keep the original four controls and create three distinct build directions.
+const lateTier=(level,...choices)=>({level,choices});
+const evolve=(id,name,description,key,icon,extra={})=>choice(id,name,description,{[key]:1,...extra},icon);
+const lateTalents={
+  arc:[
+    lateTier(12,evolve('arc-echo','Echoing Storm','Blue Storm leaves a smaller delayed second blast.','arcEcho','storm'),evolve('arc-mobile-ward','Mobile Ward','Forcefield briefly speeds allies and their attacks.','arcWardHaste','field'),evolve('arc-armored-legion','Armored Legion','New spirits arrive with a protective ward.','arcSummonWard','spirit')),
+    lateTier(15,evolve('arc-conduit','Overcharged Conduit','Your third-cast Conduit blast is stronger.','arcConduit','storm'),evolve('arc-living-ward','Living Ward','Forcefield also releases an immediate healing pulse.','arcWardHeal','heal'),evolve('arc-soul-circuit','Soul Circuit','Spirit hits restore your health, at most once every 2s.','arcSummonSiphon','spirit')),
+    lateTier(18,evolve('arc-cataclysm','Rift Cataclysm','Rift Step warns of a second, larger slowing nova.','arcCataclysm','blink'),evolve('arc-sanctum','Eternal Sanctum','Forcefield and Conduit blasts also ward allies.','arcSanctum','shield'),evolve('arc-captain','Spirit Captain','The first spirit becomes a durable ranged captain.','arcCaptain','spirit'))
+  ],
+  dragon:[
+    lateTier(12,evolve('dragon-trail','Trailing Embers','Sky Cleave leaves a delayed burning impact.','dragonTrail','flame'),evolve('dragon-ward','Ash Guard','Dragon Shield also wards nearby allies.','dragonWard','shield'),evolve('dragon-bite','Cinder Bite','Every third attack against burning foes causes a stronger burst.','dragonBite','dragon')),
+    lateTier(15,evolve('dragon-execute','Searing Finish','Striking a wounded burning hero causes bonus fire damage, once per 4s.','dragonExecute','flame'),evolve('dragon-hearth','Hearth Call','Casting heals nearby allies, at most once every 6s.','dragonHeal','heal'),evolve('dragon-commander','Wing Commander','Sky Cleave briefly speeds nearby allies and their attacks.','dragonHaste','wing')),
+    lateTier(18,evolve('dragon-worldfire','Worldfire Surge','Dragon Flight and Sky Cleave call a delayed burning nova at their aim.','dragonWorldfire','dragon'),evolve('dragon-phoenix','Phoenix Scales','Surviving damage below 30% health grants a ward and healing pulse; 32s recharge.','dragonPhoenix','fortress'),evolve('dragon-meteor','Meteor Claws','The first basic attack after a cast explodes in a small fire burst.','dragonMeteor','slash'))
+  ],
+  druid:[
+    lateTier(12,evolve('druid-network','Root Network','Growing a Healing Tree immediately slows nearby enemies.','druidRoot','tree'),evolve('druid-guardian','Elder Guardian','The first summon from each cast gains health and a larger ward.','druidGuardian','treant'),evolve('druid-hunt','Pack Hunt','New wolves arrive with temporary movement and attack speed.','druidHunt','wolf')),
+    lateTier(15,evolve('druid-cycle-grove','Grove Cycle','Every summon cast removes 1.5s from Healing Tree cooldown.','druidCycle','cooldown'),evolve('druid-bark-blessing','Bark Blessing','Growing a Healing Tree immediately wards its allies.','druidBark','shield'),evolve('druid-moon','Moon Stalk','Wolves live 4s longer, creating a wider hunting window.','druidMoon','wolf')),
+    lateTier(18,evolve('druid-ancient-grove','Ancient Grove','Healing Tree blooms after 1s, healing and shielding a wider area.','druidAncient','tree'),evolve('druid-sovereign','Bear Sovereign','The first Ancient Bear becomes a larger, tougher guardian with stronger attacks.','druidSovereign','bear'),evolve('druid-convergence','Wild Convergence','All new summons gain temporary haste and 3s extra lifetime.','druidConvergence','treant'))
+  ],
+  angel:[
+    lateTier(12,evolve('angel-grace-ward','Grace Ward','A meaningful heal adds a small shield, once every 4s.','angelWard','shield'),evolve('angel-battle-chorus','Battle Chorus','Inspire grants stronger attack speed.','angelChorus','haste'),evolve('angel-piercing-grace','Piercing Grace','Seraph Lance leaves a delayed healing bloom at its aim.','angelLance','lance')),
+    lateTier(15,evolve('angel-tender-echo','Tender Echo','Healing can echo to another wounded hero; 5s recharge.','angelEcho','heal'),evolve('angel-shelter','Gentle Shelter','Sanctuary briefly reduces damage taken by protected allies.','angelShelter','fortress'),evolve('angel-judgement','Rose Judgement','Healing empowers your next basic attack within 4s.','angelJudgement','lance')),
+    lateTier(18,evolve('angel-sanctum','Rose Sanctum','Sanctuary immediately restores health as it shields allies.','angelSanctum','shield'),evolve('angel-dawn-refrain','Dawn Refrain','Every third cast pulses healing to allies and damage to foes.','angelDawn','heal'),evolve('angel-choir','Celestial Choir','Inspire gains a healing pulse and stronger movement and attack speed.','angelChoir','haste'))
+  ],
+  ranger:[
+    lateTier(12,evolve('ranger-venom-tip','Venom Tip','Attacking poisoned foes briefly slows them; 4s recharge.','rangerVenomSlow','poison'),evolve('ranger-phantom','Phantom Arrow','Long Shot is followed by a delayed, weaker piercing line.','rangerPierce','arrow'),evolve('ranger-scout','Marked Quarry','Your third-hit mark reveals its victim for 5s.','rangerScout','hunt')),
+    lateTier(15,evolve('ranger-toxic-chain','Toxic Chain','Damage to poisoned prey spreads poison to one nearby foe; 5s recharge.','rangerToxicChain','poison'),evolve('ranger-predator','Patient Predator','Basic hits on wounded heroes deal extra damage, once per 4s.','rangerPredator','arrow'),evolve('ranger-smoke-step','Smoke Step','Throwing Stun Bomb grants a short burst of movement speed.','rangerEscape','haste')),
+    lateTier(18,evolve('ranger-deadfall','Deadfall','Long Shot releases a quicker, stronger phantom follow-up.','rangerDeadfall','arrow'),evolve('ranger-night-hunter','Night Hunter','Third hits on the same target deal bonus damage and restore health.','rangerNightHunter','lifesteal'),evolve('ranger-blight','Blighted Ground','Venom Arrow warns of a poisoning, slowing bloom at its aim.','rangerBlight','poison'))
+  ],
+  bulwark:[
+    lateTier(12,evolve('bulwark-wide-bash','Sheltering Bash','Shield Bash has a wider arc and wards nearby allies.','bulwarkWideBash','bash'),evolve('bulwark-kindness','Knightly Kindness','Amethyst Guard also heals nearby allies.','bulwarkKindness','heal'),evolve('bulwark-crushing-rush','Crushing Rush','Rampart Rush slows enemies around its landing.','bulwarkRushSlow','charge')),
+    lateTier(15,evolve('bulwark-retaliation','Royal Retaliation','Your defensive counterattack grants a stronger shield.','bulwarkRetaliation','shield'),evolve('bulwark-sheltering-line','Sheltering Line','Amethyst Guard briefly reduces damage to nearby allies.','bulwarkShelter','fortress'),evolve('bulwark-resolve','Crushing Resolve','Your defensive counterattack also deals bonus damage.','bulwarkResolve','bash')),
+    lateTier(18,evolve('bulwark-fortress','Walking Fortress','Royal Quake shields nearby allies and briefly reduces their damage taken.','bulwarkFortress','fortress'),evolve('bulwark-fissure','Royal Fissure','Royal Quake becomes a long forward cone with a stronger push.','bulwarkFissure','quake'),evolve('bulwark-unbroken','Unbroken Oath','Guard can rescue you with a ward and heal when surviving below 35% health; 30s recharge.','bulwarkUnbroken','shield',{tenacity:.15}))
+  ],
+  ember:[
+    lateTier(12,evolve('ember-afterimage','Cinder Afterimage','Movement abilities grant a brief protective ward.','emberAfterimage','dash'),evolve('ember-isolation','Isolated Prey','Basic hits deal bonus damage to isolated enemy heroes; 3s recharge.','emberIsolation','dagger'),evolve('ember-quickstep','Execution Footwork','Casting Execution Cut grants brief movement speed.','emberQuickstep','haste')),
+    lateTier(15,evolve('ember-smoke','Arrival Smoke','Movement abilities briefly slow nearby enemies on arrival.','emberSmoke','ambush'),evolve('ember-execution','Closing Cut','Direct damage against a hero below 25% health triggers a bonus cut; 6s recharge.','emberExecution','execute'),evolve('ember-rhythm','Blade Rhythm','Using three different skills within 6s removes 2s from Cinder Dash cooldown.','emberRhythm','cooldown')),
+    lateTier(18,evolve('ember-reset','Fresh Opening','A hero finishing blow resets Cinder Dash and halves Execution Cut cooldown.','emberReset','execute'),evolve('ember-dance','Cinder Dance','Your first attack after moving with a skill releases an additional small burst.','emberDance','dash'),evolve('ember-survival','Last Cinder','Surviving damage below 30% health grants a ward and haste; 28s recharge.','emberSurvival','shield'))
+  ],
+  seraph:[
+    lateTier(12,evolve('seraph-ice-trail','Icy Landing','Wingburst slows enemies near its landing point.','seraphIceTrail','wing'),evolve('seraph-rally-guard','Rally Guard','Northern Inspire briefly reduces damage to affected allies.','seraphRallyGuard','shield'),evolve('seraph-sword-echo','Sword Echo','Glacial Sweep leaves a delayed smaller frost sweep.','seraphSwordEcho','frostblade')),
+    lateTier(15,evolve('seraph-aurora','Aurora Call','Northern Inspire also restores nearby allies health.','seraphAurora','heal'),evolve('seraph-frostblade','Frostblade Rhythm','Every third basic attack has a stronger frost strike.','seraphFrostblade','frostblade'),evolve('seraph-triumph','Winter Triumph','Hero finishing blows release a healing pulse for nearby allies.','seraphTriumph','rally')),
+    lateTier(18,evolve('seraph-winter-king','Winter Sovereign','Winterfall leaves a second delayed slowing burst.','seraphWinterKing','snowflake'),evolve('seraph-heaven','Heavenly March','Northern Inspire gains a stronger ward and faster movement and attack speed.','seraphHeaven','rally'),evolve('seraph-glacial-crown','Glacial Crown','Every third basic attack also wards nearby allies.','seraphGlacialCrown','shield'))
+  ]
+};
+const heroPassives={
+  arc:{name:'Azure Conduit',description:'Every third successful cast bursts at its aim and restores 14 mana.',icon:'storm'},
+  dragon:{name:'Kindled Claws',description:'Every third basic hit against burning enemies creates a small fire burst.',icon:'flame'},
+  druid:{name:'Wild Bond',description:'The first summon of each cast arrives warded and heals you; summon attacks can heal a wounded nearby hero.',icon:'treant'},
+  angel:{name:'Devotion',description:'Repeated meaningful healing or shielding briefly speeds nearby allies; healing devotion also restores mana.',icon:'heal'},
+  ranger:{name:'Marked Quarry',description:'Every third basic hit on the same target poisons and briefly reveals it.',icon:'hunt'},
+  bulwark:{name:'Resolute Counter',description:'After taking damage, your next basic attack grants a ward. Recharges in 7s.',icon:'shield'},
+  ember:{name:'Cinder Opening',description:'Your first basic hit within 3.5s of a movement skill deals bonus damage and grants brief haste.',icon:'dagger'},
+  seraph:{name:'Winter Rhythm',description:'Every third basic hit adds frost damage, slows its victim and briefly hastens nearby allies.',icon:'frostblade'}
+};
+for(const hero of Object.values(HEROES)){
+  hero.passive=heroPassives[hero.id];
+  for(const talent of lateTalents[hero.id]){for(const option of talent.choices)option.color=hero.color;hero.talents.push(talent);}
+}
+
 export const DIFFICULTIES = {
   easy:{id:'easy',name:'Relaxed',description:'Forgiving bots. Slower reactions, simple lane plans and generous retreats.',think:0.9,lead:0,retreat:.27,coordination:.4,aimError:85,dodge:false},
   normal:{id:'normal',name:'Standard',description:'Bots rotate, farm the jungle, defend towers and contest beasts.',think:.48,lead:.45,retreat:.3,coordination:.72,aimError:35,dodge:false},
@@ -249,3 +309,4 @@ export function xpToNextLevel(level){
   const rank=Math.max(0,Math.floor(level)-1);
   return 150+50*rank+3*rank*rank;
 }
+

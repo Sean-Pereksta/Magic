@@ -10,7 +10,7 @@ const {chromium} = require('playwright');
 const repo = path.resolve(__dirname, '..');
 const qaOutput = process.env.MOBA_QA_OUTPUT;
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'moba-pack-test-'));
-const hooks = '\nwindow.__mobaTest={get game(){return game},get renderer(){return renderer},get aim(){return aim},startMatch,openTalents,openShop,renderShop,refreshHUD};\n';
+const hooks = '\nwindow.__mobaTest={get game(){return game},get renderer(){return renderer},get aim(){return aim},get pinnedGoal(){return pinnedGoal},get profile(){return profile},get controls(){return controls},startMatch,openTalents,openShop,renderShop,refreshHUD,saveCurrent,itemPlan,writeProfile,storage};\n';
 const mime = {'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.json':'application/json'};
 const missing = [];
 function buildOfflinePack() {
@@ -19,7 +19,7 @@ function buildOfflinePack() {
   const pack = path.join(temp,'packs/mobamania');
   const entry = fs.readFileSync(path.join(pack,'index.html'),'utf8');
   assert(!entry.includes('/hub/play-signal.mjs'),'offline pack must not call the web hub');
-  for(const module of ['data.mjs','items.mjs','engine.mjs','hero-skills.mjs','renderer.mjs','ui.mjs','style.css']) assert(fs.existsSync(path.join(pack,'moba-mania',module)),`offline pack missing ${module}`);
+  for(const module of ['data.mjs','items.mjs','profile.mjs','engine.mjs','hero-skills.mjs','renderer.mjs','ui.mjs','style.css']) assert(fs.existsSync(path.join(pack,'moba-mania',module)),`offline pack missing ${module}`);
   assert(!fs.existsSync(path.join(pack,'moba-mania/CONTRACT.md')),'implementation coordination notes are not shipped');
   return pack;
 }
@@ -192,8 +192,62 @@ async function verifyShop(page,device,items) {
   assert.equal(await page.evaluate(()=>__mobaTest.game.player.level),18,'level cap is eighteen');
   assert.equal(await page.locator('#xp-fill').evaluate(el=>el.style.width),'100%','max-level XP bar is complete');
 }
+async function verifyExperience(page,context,device){
+  await page.locator('#shop-button').click();
+  const recommended=page.locator('[data-recommend-item]').first();
+  const goal=await recommended.getAttribute('data-recommend-item');await recommended.click();
+  const plan=await page.evaluate(()=>__mobaTest.itemPlan(__mobaTest.game.player,__mobaTest.pinnedGoal));
+  assert.equal(await page.evaluate(()=>__mobaTest.pinnedGoal),goal);
+  assert.match(await page.locator('#shop-goal-cost').textContent(),new RegExp(String(plan.cost)+' gold'));
+  if(plan.next){
+    await page.locator('#shop-goal-next').click();
+    assert.equal(await page.locator(`[data-item-id="${plan.next.id}"]`).count(),1,'goal opens the next missing ingredient');
+    await page.evaluate(cost=>{__mobaTest.game.player.gold=cost;__mobaTest.refreshHUD();},plan.next.cost);
+    assert(await page.locator('#shop-ready').isVisible(),'affordable next component lights the HUD badge');
+  }
+  await page.locator('#shop-items .shop-compare summary').first().click();
+  assert.equal(await page.locator('#shop-items .shop-compare[open] table tr').count(),11,'actual stats and all four cooldowns are compared');
+  await page.locator('#close-shop').click();
+  await page.locator('#pause-button').click();await page.locator('#pause-controls').click();
+  await page.locator('#controls-dialog').waitFor({state:'visible'});
+  await page.locator('[data-control-preset="large"]').click();
+  await page.locator('#control-handed').selectOption('left');
+  assert.equal(await page.evaluate(()=>__mobaTest.controls.handed),'left');
+  await page.locator('#close-controls').click();await page.locator('#pause-dialog').waitFor({state:'visible'});await page.locator('#resume-match').click();
+  if(device.touch)await inspectBounds(page,['#joystick','#bottom-controls','#attack-button','#ability-bar']);
+  const map=await page.locator('#minimap').boundingBox();
+  if(device.touch){
+    const session=await context.newCDPSession(page),touch={x:map.x+map.width*.7,y:map.y+map.height*.3,id:22};
+    await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[touch]});await page.waitForTimeout(250);
+    assert(await page.evaluate(()=>!!__mobaTest.renderer.peek),'holding minimap peeks at that position');
+    await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await session.detach();
+  }else{
+    await page.mouse.move(map.x+map.width*.7,map.y+map.height*.3);await page.mouse.down();await page.waitForTimeout(250);
+    assert(await page.evaluate(()=>!!__mobaTest.renderer.peek));await page.mouse.up();
+  }
+  assert.equal(await page.evaluate(()=>__mobaTest.renderer.peek),null,'releasing minimap returns camera to hero');
+  assert.equal(await page.locator('#map-dialog').evaluate(el=>el.open),false,'peek release does not also open orders');
+  await page.evaluate(()=>{const g=__mobaTest.game;g.cancelPlayerOrder();const beast=g.addUnit('beast',-1,g.player.x+45,g.player.y,{name:'Test beast',hp:100,tier:1,lane:1});g.damage(beast,10000,g.player);__mobaTest.refreshHUD();});
+  await page.locator('#beast-choice').waitFor({state:'visible'});await page.locator('[data-beast-lane="0"]').click();
+  assert(await page.evaluate(()=>__mobaTest.game.units.some(u=>u.kind==='beast'&&u.team===__mobaTest.game.player.team&&u.lane===0)),'captured beast accepts selected lane');
+  await page.locator('#pause-button').click();await page.locator('#save-match').click();
+  assert.match(await page.locator('#pause-message').textContent(),/saved/i);
+  const snapshot=await page.evaluate(()=>({time:__mobaTest.game.time,hero:__mobaTest.game.player.heroId,level:__mobaTest.game.player.level,items:[...__mobaTest.game.player.items],gold:__mobaTest.game.player.gold,pinned:__mobaTest.pinnedGoal}));
+  await page.locator('#quit-match').click();await page.locator('#menu-screen').waitFor({state:'visible'});
+  await page.locator('#start-match').click();await page.locator('#replace-save-dialog').waitFor({state:'visible'});await page.locator('#keep-saved-match').click();
+  assert(await page.locator('#resume-saved-match').isVisible(),'declining replacement keeps the saved match');
+  await page.reload();await page.waitForFunction(()=>!!window.__mobaTest);await page.locator('#resume-saved-match').click();
+  await page.locator('#pause-dialog').waitFor({state:'visible'});await page.waitForTimeout(150);
+  const restored=await page.evaluate(()=>({time:__mobaTest.game.time,hero:__mobaTest.game.player.heroId,level:__mobaTest.game.player.level,items:[...__mobaTest.game.player.items],gold:__mobaTest.game.player.gold,pinned:__mobaTest.pinnedGoal}));
+  assert.deepEqual(restored,snapshot,'reload restores complete personal progression and build target');
+  assert.equal(await page.evaluate(()=>__mobaTest.game.paused),true,'resumed match waits for explicit player input');
+  assert.equal(await page.evaluate(()=>__mobaTest.controls.handed),'left','control preferences survive reload');
+  await page.locator('#resume-match').click();
+  await page.locator('#pause-button').click();await page.locator('#pause-controls').click();await page.locator('[data-control-preset="default"]').click();await page.locator('#control-handed').selectOption('right');await page.locator('#close-controls').click();await page.locator('#resume-match').click();
+}
 async function main(){
   const {ITEMS}=await import('../game/moba-mania/items.mjs');
+  const {HEROES}=await import('../game/moba-mania/data.mjs');
   buildOfflinePack();
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   const origin='http://127.0.0.1:'+server.address().port;
@@ -266,7 +320,7 @@ async function main(){
       await page.locator('#talent-dialog').waitFor({state:'visible'});
       assert.equal(await page.evaluate(()=>__mobaTest.game.paused),true,'talent choices pause solo match');
       assert.equal(await page.locator('[data-talent-choice][data-tier="3"]').count(),3,'every tier offers three talent paths');
-      assert.equal(await page.locator('.talent-option canvas').count(),12,'all twelve talent choices have icons');
+      assert.equal(await page.locator('.talent-option canvas').count(),HEROES[device.hero].talents.reduce((n,t)=>n+t.choices.length,0),'every talent choice has an icon');
       const talent=page.locator('[data-talent-choice][data-tier="3"]').first();
       const choice=await talent.getAttribute('data-talent-choice');await talent.click();
       assert.equal(await page.evaluate(()=>__mobaTest.game.player.talents[3]),choice,'talent choice reaches simulation');
@@ -274,15 +328,20 @@ async function main(){
       await page.waitForFunction(()=>__mobaTest.game.paused===false,{},{timeout:3000});
       assert.equal(await page.evaluate(()=>__mobaTest.game.paused),false,'closing tree resumes');
       await verifyShop(page,device,ITEMS);
+      await verifyExperience(page,context,device);
       if(qaOutput){fs.mkdirSync(qaOutput,{recursive:true});await page.screenshot({path:path.join(qaOutput,device.name+'.png')});}
       await finishMatch(page);
+      assert.equal(await page.locator('#end-stats > div').count(),16,'all personal contribution metrics are shown');
+      assert(await page.locator('#end-badges > span').count()>0,'match badges are visible');
+      assert.match(await page.locator('#end-mastery').textContent(),/mastery XP/);
+      assert.equal(await page.evaluate(()=>localStorage.getItem('moba-mania.match.v1')),null,'completed match clears its save slot');
       await page.locator('#play-again').click();
       await page.locator('#hud').waitFor({state:'visible'});
       assert.equal(await page.evaluate(()=>__mobaTest.game.winner),null,'replay starts fresh match');
       assert.equal(await page.evaluate(()=>__mobaTest.game.player.level),1,'replay resets progression');
       assert.deepEqual(await page.evaluate(()=>({gold:__mobaTest.game.player.gold,items:__mobaTest.game.player.items})),{gold:0,items:[]},'replay resets gold and inventory');
       assert.deepEqual(errors,[],device.name+' must not emit runtime errors');
-      console.log(JSON.stringify({device:device.name,hero:device.hero,move:true,camera:true,nearestAttack:true,enemyFocus:true,autoRetarget:true,moveCancelsAttack:true,talentIcons:12,shopItems:30,prerequisites:true,purchases:true,personalRewards:true,maxLevel:18,replay:true,errors:0}));
+      console.log(JSON.stringify({device:device.name,hero:device.hero,move:true,camera:true,nearestAttack:true,enemyFocus:true,autoRetarget:true,moveCancelsAttack:true,talentIcons:HEROES[device.hero].talents.reduce((n,t)=>n+t.choices.length,0),saveResume:true,pinnedBuild:true,controlSettings:true,minimapPeek:true,mastery:true,shopItems:30,prerequisites:true,purchases:true,personalRewards:true,maxLevel:18,replay:true,errors:0}));
       await context.close();
     }
     const context=await browser.newContext({viewport:{width:1280,height:800}}),page=await context.newPage(),errors=[];
@@ -295,6 +354,7 @@ async function main(){
       await page.locator('#shop-button').click();await page.locator('#shop-dialog').waitFor({state:'visible'});
       assert.equal(await page.locator('#shop-items canvas').count(),10,'offline item icons load without extra assets');
       await page.locator('#close-shop').click();await page.waitForFunction(()=>!__mobaTest.game.paused);
+      if(hero==='druid'){await page.locator('#pause-button').click();await page.locator('#quit-match').click();await page.locator('#resume-saved-match').click();await page.locator('#pause-dialog').waitFor({state:'visible'});assert.equal(await page.evaluate(()=>__mobaTest.game.paused),true);await page.locator('#resume-match').click();}
       await finishMatch(page);await page.locator('#change-hero').click();await page.locator('#menu-screen').waitFor({state:'visible'});
     }
     assert.deepEqual(errors,[]);await context.close();assert.deepEqual(missing,[],'no missing static modules/resources');
@@ -302,3 +362,4 @@ async function main(){
   }finally{await browser.close();await new Promise(r=>server.close(r));}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;server.close();}).finally(()=>fs.rmSync(temp,{recursive:true,force:true}));
+
