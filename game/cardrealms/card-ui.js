@@ -309,7 +309,7 @@
     const faction = options.factionName || FACTION_NAMES[card.faction] || FACTION_NAMES.n;
     const type = card.type === "base" ? (card.outpost ? "Outpost" : "Base") : "Ship";
     const defense = defenseSummary(card, context);
-    const hasTriggered = card.allyTriggered && ["inPlay", "myBase", "enemyBase"].includes(context);
+    const hasTriggered = card.allyTriggered && ["inPlay", "enemyInPlay", "myBase", "enemyBase"].includes(context);
     active = { anchor, card, options, info, pinned, returnFocus };
     inspector.replaceChildren();
     inspector.dataset.pinned = String(pinned);
@@ -424,7 +424,7 @@
       if (!card[trigger] || !card[trigger].length) continue;
       const effects = effectSummary(card[trigger]);
       const row = el("div", `cr-trigger ${trigger === "ally" ? "cr-ally" : "cr-scrap-effect"}`);
-      const triggered = trigger === "ally" && card.allyTriggered && ["inPlay", "myBase", "enemyBase"].includes(context);
+      const triggered = trigger === "ally" && card.allyTriggered && ["inPlay", "enemyInPlay", "myBase", "enemyBase"].includes(context);
       if (trigger === "ally") row.dataset.triggered = String(!!triggered);
       if (triggered) row.classList.add("is-triggered");
       const label = trigger === "ally" ? (triggered ? "Ally resolved" : "Ally with 2+ same faction") : "Optional scrap of this card";

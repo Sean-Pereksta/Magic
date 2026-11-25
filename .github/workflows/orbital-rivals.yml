@@ -1,0 +1,50 @@
+name: Orbital Rivals gameplay and interface
+
+on:
+  pull_request:
+    paths:
+      - 'game/cardrealms.html'
+      - 'game/cardrealmsmulti.html'
+      - 'game/cardrealms/**'
+      - 'tests/cardrealms-*.cjs'
+      - 'package.json'
+      - '.github/workflows/orbital-rivals.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'game/cardrealms.html'
+      - 'game/cardrealmsmulti.html'
+      - 'game/cardrealms/**'
+      - 'tests/cardrealms-*.cjs'
+      - 'package.json'
+      - '.github/workflows/orbital-rivals.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  browser-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /game/cardrealms.html
+            /game/cardrealmsmulti.html
+            /game/cardrealms/
+            /tests/cardrealms-readable-cards.cjs
+            /tests/cardrealms-hotseat.cjs
+            /package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser runner
+        run: npm install --prefix "$RUNNER_TEMP/orbital-browser" --no-save --package-lock=false --ignore-scripts playwright@1.62.1
+      - name: Install Chromium
+        run: node "$RUNNER_TEMP/orbital-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Check cards, hotseat privacy, opponent turns, and board controls
+        env:
+          NODE_PATH: ${{ runner.temp }}/orbital-browser/node_modules
+        run: npm run test:cardrealms

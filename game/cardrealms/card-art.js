@@ -80,7 +80,9 @@
     } else {
       const combat = (card.play || []).reduce((sum, effect) => sum + (effect.t === "combat" ? Number(effect.n) || 0 : 0), 0);
       const name = `${card.key || ""} ${card.name || ""}`;
-      const capital = Number(card.cost) >= 5 || combat >= 3 || /battleship|carrier|dreadnought|titan|cruiser|gunship|frigate|destroyer|flagship|bomber|behemoth|leviathan/i.test(name);
+      // The two starter ships must read differently even before their stats:
+      // Scouts use the round cargo shuttle; Vipers use the armed gunship.
+      const capital = card.key === "viper" || Number(card.cost) >= 5 || combat >= 3 || /battleship|carrier|dreadnought|titan|cruiser|gunship|frigate|destroyer|flagship|bomber|behemoth|leviathan/i.test(name);
       role = capital ? "capital" : "scout";
     }
     const [x, y, width, height] = FRAMES[faction][role];
@@ -91,10 +93,14 @@
     return String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[char]);
   }
 
+  let illustrationId = 0;
   function illustration(card) {
     card = card || {};
     const frame = artFrame(card);
-    return `<svg class="cr-painted-art cr-illustration" viewBox="${frame.x} ${frame.y} ${frame.width} ${frame.height}" width="160" height="88" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><title>${escapeXML(card.name || "Orbital Rivals spacecraft")}</title><image href="${escapeXML(ATLAS_URL)}" x="0" y="0" width="1254" height="1254" preserveAspectRatio="none"/></svg>`;
+    const clipId = `cr-art-frame-${++illustrationId}`;
+    // Fit the complete scene instead of zooming it to fill a tall card. The
+    // explicit clip also keeps neighboring atlas scenes out of letterboxing.
+    return `<svg class="cr-painted-art cr-illustration" viewBox="${frame.x} ${frame.y} ${frame.width} ${frame.height}" width="160" height="88" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><title>${escapeXML(card.name || "Orbital Rivals spacecraft")}</title><defs><clipPath id="${clipId}"><rect x="${frame.x}" y="${frame.y}" width="${frame.width}" height="${frame.height}"/></clipPath></defs><image clip-path="url(#${clipId})" href="${escapeXML(ATLAS_URL)}" x="0" y="0" width="1254" height="1254" preserveAspectRatio="none"/></svg>`;
   }
 
   const api = Object.freeze({ illustration, artFrame, icon, factionColor, factionMark });

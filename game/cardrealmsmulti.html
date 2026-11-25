@@ -446,13 +446,13 @@
   }
   .field::placeholder{ color:rgba(244,247,255,.45); }
   </style>
-  <link rel="stylesheet" href="cardrealms/cards.css?v=20261125b"/>
+  <link rel="stylesheet" href="cardrealms/cards.css?v=20261125c"/>
 </head>
 <body class="cr-game cr-multi">
 <div id="app">
   <header class="cr-header">
-    <div class="cr-brand-wrap"><span class="cr-brand">Orbital Rivals</span><span class="cr-match-mode" id="modeLine">Online duel</span></div>
-    <div class="cr-score cr-opponent"><span class="cr-score-name" id="oppTitle">Opponent</span><span class="cr-score-health"><i data-cr-icon="authority"></i><strong id="enemyLine">50</strong></span></div>
+    <div class="cr-brand-wrap"><span class="cr-brand" aria-label="Orbital Rivals"><span class="cr-wordmark-orbital">Orbital</span><span class="cr-wordmark-rivals">Rivals</span></span><span class="cr-match-mode" id="modeLine">Online duel</span></div>
+    <button type="button" id="opponentPortraitBtn" class="cr-score cr-opponent cr-commander-target" title="Click to attack your rival when you have combat"><span class="cr-commander-icon" aria-hidden="true">✦</span><span class="cr-score-name" id="oppTitle">Opponent</span><span class="cr-score-health"><i data-cr-icon="authority"></i><strong id="enemyLine">50</strong></span></button>
     <div class="cr-score cr-player"><span class="cr-score-name" id="youTitle">You</span><span class="cr-score-health"><i data-cr-icon="authority"></i><strong id="youLine">50</strong></span></div>
     <span id="turnBadge" class="cr-turn-badge">Your turn</span>
     <button type="button" id="crMenuBtn" aria-label="Open fleet menu" aria-haspopup="dialog" title="Fleet menu">☰</button>
@@ -464,7 +464,7 @@
       <div class="cards" id="enemyBases"></div>
     </section>
     <section class="cr-zone cr-market" aria-labelledby="cr-market-title">
-      <div class="sectionTitle"><span id="cr-market-title">Market</span><span class="cr-zone-hint">Click to buy</span><span data-zone-count="tradeRow">5</span></div>
+      <div class="sectionTitle"><span id="cr-market-title">Market</span><button type="button" id="explorerPileBtn" class="cr-explorer-pile" title="Buy an Explorer for 2 trade. Unlimited supply; bought cards go to your discard pile."><span class="cr-explorer-stack" aria-hidden="true">✦</span><span class="cr-explorer-label">Explorer <small>2 trade · Supply</small></span></button><span data-zone-count="tradeRow">5</span></div>
       <div class="cards" id="tradeRow"></div>
     </section>
     <section class="cr-zone cr-bases" aria-labelledby="cr-bases-title">
@@ -474,6 +474,11 @@
     <section class="cr-zone cr-play" aria-labelledby="cr-play-title">
       <div class="sectionTitle"><span id="cr-play-title">Deployed ships</span><span data-zone-count="inPlay">0</span></div>
       <div class="cards" id="inPlay"></div>
+    </section>
+    <section class="cr-zone cr-rival" aria-labelledby="cr-rival-title">
+      <div class="sectionTitle"><span id="cr-rival-title">Rival ships</span><span id="enemyTurnStats" class="cr-zone-hint"></span><span data-zone-count="enemyInPlay">0</span></div>
+      <div class="cards" id="enemyInPlay"></div>
+      <p id="turnActivity" class="cr-turn-activity" role="status">Your rival's public plays appear here.</p>
     </section>
     <section class="cr-zone cr-hand" aria-labelledby="cr-hand-title">
       <div class="sectionTitle"><span id="cr-hand-title">Your hand</span><span class="cr-zone-hint">Click to play · i for rules</span><span data-zone-count="hand">5</span></div>
@@ -559,9 +564,9 @@
   </div>
 </div>
 
-<script src="cardrealms/card-art.js?v=20261125b"></script>
-<script src="cardrealms/card-ui.js?v=20261125b"></script>
-<script src="cardrealms/board-layout.js?v=20261125b"></script>
+<script src="cardrealms/card-art.js?v=20261125c"></script>
+<script src="cardrealms/card-ui.js?v=20261125c"></script>
+<script src="cardrealms/board-layout.js?v=20261125c"></script>
 <script type="module">
 /* ============================================================
    ORBITAL RIVALS — ONLINE 1v1 TURN-BASED
@@ -781,6 +786,9 @@ function mkPlayerState(uid, name){
     discard: [],
     hand: [],
     inPlay: [],
+    turnShips: [],
+    lastTurnShips: [],
+    lastTurnLog: [],
     bases: [],
     scrap: [],
     playedFactionCounts: {},
@@ -788,8 +796,26 @@ function mkPlayerState(uid, name){
   };
 }
 
+function normalizeMatchState(snapshot){
+  if(!snapshot) return null;
+  // Realtime Database omits empty arrays. Reconstitute collections so empty
+  // deployed zones and older rooms remain usable after a network round trip.
+  const list = value => Array.isArray(value) ? value : value ? Object.values(value) : [];
+  snapshot.players = list(snapshot.players);
+  snapshot.log = list(snapshot.log);
+  snapshot.tradeDeck = list(snapshot.tradeDeck);
+  snapshot.tradeRow = Array.from({length:5}, (_, index) => snapshot.tradeRow?.[index] || null);
+  for(const player of snapshot.players){
+    for(const key of ["deck", "discard", "hand", "inPlay", "bases", "scrap", "turnShips", "lastTurnShips", "lastTurnLog"]){
+      player[key] = list(player[key]);
+    }
+    player.playedFactionCounts ||= {};
+  }
+  return snapshot;
+}
+
 function stLog(st, msg, muted=false){
-  st.log.unshift({ msg, muted, t: now() });
+  st.log.unshift({ msg, muted, t: now(), seat: st.currentSeat, turn: st.turnCount || 1 });
   if(st.log.length > 80) st.log.pop();
 }
 
@@ -941,6 +967,7 @@ function startTurn(st, seat){
   pl.trade = 0;
   pl.combat = 0;
   pl.playedFactionCounts = {};
+  pl.turnShips = [];
   pl.bases.forEach(b=> b.allyTriggered = false);
 
   // apply draw penalty (stored as negative)
@@ -995,6 +1022,9 @@ function endTurnInternal(st, reason="endTurn"){
   const seat = st.currentSeat;
   const pl = st.players[seat];
 
+  // Keep only public cards and events for the opponent's readable turn recap.
+  pl.lastTurnShips = (pl.turnShips?.length ? pl.turnShips : pl.inPlay).map(card => ({...card}));
+  pl.lastTurnLog = (st.log || []).filter(entry => entry.seat === seat && entry.turn === st.turnCount).slice(0, 8);
   while(pl.hand.length) pl.discard.push(pl.hand.pop());
   while(pl.inPlay.length) pl.discard.push(pl.inPlay.pop());
 
@@ -1004,11 +1034,11 @@ function endTurnInternal(st, reason="endTurn"){
     if(!st.tradeRow[i]) refillTradeRowSlot(st, i);
   }
 
+  stLog(st, `${st.players[seat].name} ends turn${reason==="timeout" ? " (timeout)" : ""}.`, true);
+
   st.currentSeat = 1 - st.currentSeat;
   st.turnEndsAt = now() + 60_000;
   st.turnCount = (st.turnCount||0) + 1;
-
-  stLog(st, `${st.players[seat].name} ends turn${reason==="timeout" ? " (timeout)" : ""}.`, true);
 
   startTurn(st, st.currentSeat);
   isTerminal(st);
@@ -1074,6 +1104,7 @@ function playCardByUid(st, seat, uid){
     applyEffects(st, pl, op, inst, "play");
   } else {
     pl.inPlay.push(inst);
+    (pl.turnShips ||= []).push({...inst});
     addFactionCount(pl, card.faction);
     stLog(st, `${pl.name} plays: ${card.name}.`);
     applyEffects(st, pl, op, inst, "play");
@@ -1193,6 +1224,11 @@ const els = {
   inPlay: document.getElementById("inPlay"),
   myBases: document.getElementById("myBases"),
   enemyBases: document.getElementById("enemyBases"),
+  enemyInPlay: document.getElementById("enemyInPlay"),
+  enemyTurnStats: document.getElementById("enemyTurnStats"),
+  turnActivity: document.getElementById("turnActivity"),
+  opponentPortraitBtn: document.getElementById("opponentPortraitBtn"),
+  explorerPileBtn: document.getElementById("explorerPileBtn"),
   tradeRow: document.getElementById("tradeRow"),
   tradeDeckLine: document.getElementById("tradeDeckLine"),
   enemyLine: document.getElementById("enemyLine"),
@@ -1331,8 +1367,15 @@ function renderAll(){
   // buttons
   els.playAllBtn.disabled = (!myTurn || me.hand.length===0);
   els.buyExplorerBtn.disabled = (!myTurn || me.trade<2);
+  els.explorerPileBtn.disabled = els.buyExplorerBtn.disabled;
+  els.explorerPileBtn.setAttribute("aria-label", me.trade >= 2 && myTurn ? "Buy Explorer for 2 trade from unlimited supply" : "Explorer supply. Costs 2 trade. Available on your turn with enough trade");
   els.endTurnBtn.disabled = (!myTurn);
   els.attackAuthorityBtn.disabled = (!myTurn || me.combat<=0 || enemyHasOutposts(state, 1-mySeat));
+  els.opponentPortraitBtn.disabled = els.attackAuthorityBtn.disabled;
+  els.opponentPortraitBtn.classList.toggle("targetable", !els.opponentPortraitBtn.disabled);
+  const attackHint = enemyHasOutposts(state, 1-mySeat) ? "Destroy rival outposts before attacking their health" : (!myTurn ? "Your rival is taking their turn" : me.combat > 0 ? `Attack ${op.name || "rival"} for ${me.combat} damage` : "Play combat cards, then click this commander to attack");
+  els.opponentPortraitBtn.title = attackHint;
+  els.opponentPortraitBtn.setAttribute("aria-label", `${op.name || "Opponent"}, ${op.authority} health. ${attackHint}`);
 
   // Hand
   els.hand.innerHTML = "";
@@ -1349,6 +1392,20 @@ function renderAll(){
     const d = renderCardDiv(inst, {context:"inPlay"});
     els.inPlay.appendChild(d);
   });
+
+  // An opponent's hand remains private; their played ships and resolved public
+  // actions stay visible during the turn and as a recap after they end it.
+  const rivalActing = !state.ended && state.currentSeat !== mySeat;
+  const rivalShips = rivalActing ? op.inPlay : (op.lastTurnShips || op.inPlay);
+  document.getElementById("cr-rival-title").textContent = rivalActing ? "Rival ships · live" : "Rival ships · last turn";
+  els.enemyTurnStats.textContent = rivalActing ? `${op.trade} trade · ${op.combat} combat` : "Public recap";
+  els.enemyInPlay.replaceChildren();
+  rivalShips.forEach(inst => els.enemyInPlay.appendChild(renderCardDiv(inst, {context:"enemyInPlay"})));
+  const rivalEvents = rivalActing
+    ? (state.log || []).filter(entry => entry.seat === 1-mySeat && entry.turn === state.turnCount)
+    : (op.lastTurnLog || []);
+  const latestEvent = rivalEvents.find(entry => !entry.muted) || rivalEvents[0];
+  els.turnActivity.textContent = latestEvent?.msg || (rivalActing ? `${op.name || "Your rival"} is choosing their next move…` : "Your rival's public plays appear here.");
 
   // Bases (mine)
   els.myBases.innerHTML = "";
@@ -1405,14 +1462,14 @@ function renderAll(){
   } else if(myTurn){
     setStatus("Your turn. Play ships, buy cards, attack, then End Turn.");
   } else {
-    setStatus("Waiting for opponent…");
+    setStatus(`${op.name || "Opponent"} is taking their turn — watch their ships and activity above.`);
   }
 }
 
 function sendAction(type, payload={}){
   if(!uid || !roomId || mySeat===null) return;
   // client-side turn guard (host validates too)
-  if(state && !state.ended && state.currentSeat !== mySeat) return;
+  if(!state || state.ended || state.currentSeat !== mySeat) return;
 
   const aRef = push(actionsRef);
   set(aRef, {
@@ -1613,7 +1670,7 @@ async function joinRoom(room){
   });
 
   stateUnsub = onValue(stateRef, (s)=>{
-    state = s.val();
+    state = normalizeMatchState(s.val());
     if(!state){
       setStatus("Waiting for opponent to join…");
       showNetOverlay(true);
@@ -1655,9 +1712,12 @@ async function joinRoom(room){
 /* =========================
    UI events
    ========================= */
+document.querySelector("#explorerPileBtn .cr-explorer-stack").innerHTML = CardRealmsArt.illustration(tplByKey("explorer"));
 els.playAllBtn.onclick = ()=> sendAction("PLAY_ALL", {});
 els.buyExplorerBtn.onclick = ()=> sendAction("BUY_EXPLORER", {});
+els.explorerPileBtn.onclick = ()=> sendAction("BUY_EXPLORER", {});
 els.attackAuthorityBtn.onclick = ()=> sendAction("ATTACK_AUTH", {});
+els.opponentPortraitBtn.onclick = ()=> sendAction("ATTACK_AUTH", {});
 els.endTurnBtn.onclick = ()=> sendAction("END_TURN", {});
 
 els.viewDeckBtn.onclick = ()=>{ if(state && mySeat!==null) showPile("Your Deck", state.players[mySeat].deck); };

@@ -5,7 +5,7 @@
 
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-  <title>Orbital Rivals — Solo &amp; Gauntlet</title>
+  <title>Orbital Rivals — Solo, Hotseat &amp; Gauntlet</title>
   <style>
   :root{
     /* ===== Core palette ===== */
@@ -444,15 +444,16 @@
     .card{ width:100%; }
   }
 </style>
-  <link rel="stylesheet" href="cardrealms/cards.css?v=20261125b"/>
+  <link rel="stylesheet" href="cardrealms/cards.css?v=20261125c"/>
 </head>
 <body class="cr-game cr-solo">
 <div id="app">
   <header class="cr-header">
-    <div class="cr-brand-wrap"><span class="cr-brand">Orbital Rivals</span><span class="cr-match-mode" id="modeLine">Solo fleet duel</span></div>
-    <div class="cr-score cr-opponent"><span class="cr-score-name" id="oppTitle">Rival AI</span><span class="cr-score-health"><i data-cr-icon="authority"></i><strong id="enemyLine">50</strong></span></div>
+    <div class="cr-brand-wrap"><span class="cr-brand" aria-label="Orbital Rivals"><span class="cr-wordmark-orbital">ORBITAL</span><span class="cr-wordmark-rivals">RIVALS</span></span><span class="cr-match-mode" id="modeLine">Solo fleet duel</span></div>
+    <button type="button" class="cr-score cr-opponent cr-commander-target" id="opponentPortraitBtn" title="Attack your rival with your available combat" aria-label="Attack rival commander"><span class="cr-commander-icon" aria-hidden="true">◈</span><span class="cr-score-name" id="oppTitle">Rival AI</span><span class="cr-score-health"><i data-cr-icon="authority"></i><strong id="enemyLine">50</strong></span></button>
     <div class="cr-score cr-player"><span class="cr-score-name" id="youTitle">You</span><span class="cr-score-health"><i data-cr-icon="authority"></i><strong id="youLine">50</strong></span></div>
     <span id="turnBadge" class="cr-turn-badge">Your turn</span>
+    <button type="button" id="quickHotseatBtn" class="cr-mode-button" title="Two players on this device">Hotseat</button>
     <button type="button" id="crMenuBtn" aria-label="Open fleet menu" aria-haspopup="dialog" title="Fleet menu">☰</button>
   </header>
 
@@ -462,8 +463,13 @@
       <div class="cards" id="enemyBases"></div>
     </section>
     <section class="cr-zone cr-market" aria-labelledby="cr-market-title">
-      <div class="sectionTitle"><span id="cr-market-title">Market</span><span class="cr-zone-hint">Click to buy</span><span data-zone-count="tradeRow">5</span></div>
+      <div class="sectionTitle"><span id="cr-market-title">Market</span><span class="cr-zone-hint">Click to buy</span><span data-zone-count="tradeRow">5</span><button type="button" id="explorerPileBtn" class="cr-explorer-pile" title="Buy an Explorer for 2 trade"><span class="cr-explorer-stack" aria-hidden="true">✦</span><span class="cr-explorer-label">Explorer <small>2 trade · Supply</small></span></button></div>
       <div class="cards" id="tradeRow"></div>
+    </section>
+    <section class="cr-zone cr-rival" aria-labelledby="cr-rival-title">
+      <div class="sectionTitle"><span id="cr-rival-title">Rival ships</span><span data-zone-count="enemyInPlay">0</span></div>
+      <p class="cr-turn-activity" id="turnActivity" role="status">Your rival's played ships appear here.</p>
+      <div class="cards" id="enemyInPlay"></div>
     </section>
     <section class="cr-zone cr-bases" aria-labelledby="cr-bases-title">
       <div class="sectionTitle"><span id="cr-bases-title">Your bases</span><span data-zone-count="myBases">0</span></div>
@@ -503,6 +509,7 @@
     <button class="btn" id="viewScrapBtn" data-board-action>Scrapped cards</button>
     <button class="btn" id="newDuelBtn" data-board-action>New Duel</button>
     <button class="btn" id="startGauntletBtn" data-board-action>Gauntlet</button>
+    <button class="btn" id="startHotseatBtn" data-board-action>Two-player hotseat</button>
     <button class="btn" id="fullscreenBtn" data-board-action>Full Screen</button>
   </div>
   <label class="toggle"><input type="checkbox" id="autoplayToggle">Automatically play cards at the start of your turn</label>
@@ -517,8 +524,17 @@
     <p>Play cards to gain trade and combat. Buy new cards with trade, then spend combat to attack bases or your rival's health. Destroy their outposts before attacking their health.</p>
     <p>Ally bonuses trigger with two cards of the same faction. Scrapping a card removes it permanently for its bonus. Bases stay in play and repeat their effects each turn.</p>
     <p>Hover or focus any card for its artwork and rules. Tap i or press I to pin details. Escape closes them. Enter or Space plays, buys, or attacks with the focused card.</p>
+    <p>Hotseat: share one device. End your turn, pass it over, and let the next player reveal their hand. Your rival's public ships remain visible as a turn recap. Click the rival commander to attack their health, or click a base to attack it.</p>
   </details>
   <details class="cr-log"><summary>Battle log</summary><div id="log"></div></details>
+</dialog>
+
+<dialog id="hotseatHandoff" aria-labelledby="handoffTitle" aria-describedby="handoffText">
+  <div class="cr-handoff-emblem" aria-hidden="true">◎</div>
+  <p class="cr-handoff-kicker">LOCAL HOTSEAT</p>
+  <h2 id="handoffTitle">Pass to Player 1</h2>
+  <p id="handoffText">Your hand stays hidden until you are ready.</p>
+  <button type="button" class="btn cr-end-turn" id="handoffReadyBtn">I'm ready — reveal my hand</button>
 </dialog>
 
 <!-- Modal -->
@@ -534,12 +550,12 @@
   </div>
 </div>
 
-<script src="cardrealms/card-art.js?v=20261125b"></script>
-<script src="cardrealms/card-ui.js?v=20261125b"></script>
-<script src="cardrealms/board-layout.js?v=20261125b"></script>
+<script src="cardrealms/card-art.js?v=20261125c"></script>
+<script src="cardrealms/card-ui.js?v=20261125c"></script>
+<script src="cardrealms/board-layout.js?v=20261125c"></script>
 <script>
 /* ============================================================
-   ORBITAL RIVALS — SOLO & GAUNTLET
+   ORBITAL RIVALS — SOLO, HOTSEAT & GAUNTLET
    ✅ Compact viewport-sized board with inspectable cards
    ✅ Solo mode vs AI (default)
    ✅ Gauntlet: escalating AI power across stages
@@ -1424,17 +1440,23 @@ function tplByKey(k){ return TEMPLATES.find(t=>t.key===k); }
 ----------------------------*/
 const game = {
   started:false,
-  current:0,        // 0 = human, 1 = AI
+  current:0,        // Both seats are human in local hotseat.
+  session:0,
+  ended:false,
+  winner:null,
+  handoff:false,
+  privateBoard:false,
+  lastAction:null,
   idCounter:1,
   busy:false,
   tradeRow:[],
   tradeDeck:[],
   log:[],
 
-  mode:"duel",      // "duel" | "gauntlet"
+  mode:"duel",      // "duel" | "gauntlet" | "hotseat"
   activeFactions:[],
   gauntlet:{ stage:1, maxStage:6, cleared:false, aiPower:1 },
-  settings:{ autoplay:false },
+  settings:{ autoplay:false, aiDelay:420 },
 
   players:[ mkPlayer("You"), mkPlayer("AI") ]
 };
@@ -1449,12 +1471,101 @@ function mkPlayer(name){
     discard:[],
     hand:[],
     inPlay:[],   // ships this turn
+    lastPlayed:[], // Public recap only; never contains unplayed hand cards.
     bases:[],    // persistent
     scrap:[],
     playedFactionCounts:{},
     copyNextShip:0,
     oppNextDrawMod:0 // affects this player's next draw
   };
+}
+
+function humanSeat(){ return game.mode==="hotseat" ? game.current : 0; }
+function humanPlayer(){ return game.players[humanSeat()]; }
+function humanOpponent(){ return game.players[1-humanSeat()]; }
+function isAiPlayer(pl){ return game.mode!=="hotseat" && pl===game.players[1]; }
+function sameMatch(session){ return session===game.session; }
+function canHumanAct(){
+  return game.started && !game.ended && !game.handoff && !game.privateBoard && !game.busy && !game.gauntlet.cleared && (game.mode==="hotseat" || game.current===0);
+}
+function canInspectPiles(){ return !game.handoff && !game.privateBoard && !modalResolver; }
+function playerLabel(pl){ return game.mode==="hotseat" ? pl.name : pl===game.players[0] ? "You" : "AI"; }
+function publicAction(pl, text, card=null){
+  pl.lastAction = text;
+  game.lastAction = {seat:game.players.indexOf(pl), text, uid:card?.uid || null};
+  setStatus(text);
+}
+function rememberPlayed(pl, card){
+  pl.lastPlayed.push(JSON.parse(JSON.stringify(card)));
+}
+
+let handoffResolver = null;
+let modalResolver = null;
+function setPrivateBoard(locked){
+  game.privateBoard = locked;
+  document.body.classList.toggle("cr-private-board", locked);
+  const app = document.getElementById("app");
+  app.inert = locked;
+  if(locked) app.setAttribute("aria-hidden", "true");
+  else app.removeAttribute("aria-hidden");
+  if(locked){
+    CardRealmsUI.closeInspector();
+    OrbitalBoard.closeMenu();
+    document.getElementById("hand").replaceChildren();
+  }
+}
+function cancelHandoff(){
+  const resolve = handoffResolver;
+  handoffResolver = null;
+  const dialog = document.getElementById("hotseatHandoff");
+  if(dialog.open) dialog.close();
+  game.handoff = false;
+  setPrivateBoard(false);
+  if(resolve) resolve(false);
+}
+function handoffTo(seat, {text="Pass the device before continuing. Your hand stays hidden until you are ready.", readyLabel="I'm ready — reveal my hand", retainPrivacy=false}={}){
+  const session = game.session;
+  closeModal();
+  CardRealmsUI.closeInspector();
+  game.handoff = true;
+  setPrivateBoard(true);
+  renderAll();
+  const dialog = document.getElementById("hotseatHandoff");
+  const ready = document.getElementById("handoffReadyBtn");
+  document.getElementById("handoffTitle").textContent = `Pass to ${game.players[seat].name}`;
+  document.getElementById("handoffText").textContent = text;
+  ready.textContent = readyLabel;
+  return new Promise(resolve=>{
+    handoffResolver = resolve;
+    ready.onclick = ()=>{
+      if(!sameMatch(session) || handoffResolver!==resolve) return;
+      handoffResolver = null;
+      dialog.close();
+      game.handoff = false;
+      if(!retainPrivacy) setPrivateBoard(false);
+      renderAll();
+      resolve(true);
+    };
+    if(!dialog.open) dialog.showModal();
+    ready.focus({preventScroll:true});
+  });
+}
+function prepareMatch(mode){
+  game.session++;
+  closeModal();
+  cancelHandoff();
+  OrbitalBoard.closeMenu();
+  game.started=true;
+  game.busy=false;
+  game.ended=false;
+  game.winner=null;
+  game.lastAction=null;
+  game.idCounter=1;
+  game.log=[];
+  game.mode=mode;
+  game.marketScrap=[];
+  game.gauntlet={stage:1,maxStage:6,cleared:false,aiPower:1};
+  game.activeFactions=pickRandomFactions(4);
 }
 
 function makeCardInstance(templateKey){
@@ -1539,6 +1650,8 @@ function resetPlayerPiles(pl, deckKeys){
   pl.discard = [];
   pl.hand = [];
   pl.inPlay = [];
+  pl.lastPlayed = [];
+  pl.lastAction = "";
   pl.bases = [];
   pl.scrap = [];
   pl.playedFactionCounts = {};
@@ -1569,13 +1682,7 @@ function resetOpponentForStage(stage){
    New Duel / New Gauntlet
 ----------------------------*/
 function startDuel(){
-  game.started=true;
-  game.busy=false;
-  game.idCounter=1;
-  game.log=[];
-  game.mode="duel";
-  game.gauntlet = { stage:1, maxStage:6, cleared:false, aiPower:1 };
-  game.activeFactions = pickRandomFactions(4);
+  prepareMatch("duel");
 
   game.players = [mkPlayer("You"), mkPlayer("AI")];
   buildMarket();
@@ -1592,13 +1699,7 @@ function startDuel(){
 }
 
 function startGauntlet(){
-  game.started=true;
-  game.busy=false;
-  game.idCounter=1;
-  game.log=[];
-  game.mode="gauntlet";
-  game.gauntlet = { stage:1, maxStage:6, cleared:false, aiPower:1 };
-  game.activeFactions = pickRandomFactions(4);
+  prepareMatch("gauntlet");
 
   game.players = [mkPlayer("You"), mkPlayer("AI")];
   buildMarket();
@@ -1614,7 +1715,27 @@ function startGauntlet(){
   startTurn(0);
 }
 
+async function startHotseat(){
+  prepareMatch("hotseat");
+  const session = game.session;
+  game.settings.autoplay = false;
+  els.autoplayToggle.checked = false;
+  game.players = [mkPlayer("Player 1"), mkPlayer("Player 2")];
+  buildMarket();
+  game.players.forEach(pl=>resetPlayerPiles(pl, buildStartingDeck()));
+  game.current = 0;
+  game.busy = true;
+  log("Local hotseat started. Player 1 goes first.");
+  announceFactions();
+  if(!await handoffTo(0) || !sameMatch(session)) return;
+  setStatus("Player 1's turn. Play cards, build your fleet, and attack your rival.");
+  await startTurn(0);
+}
+
 function continueGauntlet(){
+  if(game.mode!=="gauntlet" || !game.gauntlet.cleared) return;
+  game.session++;
+  game.ended = false;
   // Between stages: keep your deck/piles, just reset your turn state and spawn a stronger AI.
   const me = game.players[0];
   const stage = game.gauntlet.stage + 1;
@@ -1671,6 +1792,7 @@ function addFactionCount(pl, factionKey){
 }
 
 async function applyEffects(actor, opponent, card, trigger){
+  const session = game.session;
   let steps = [];
   if(trigger==="play") steps = card.play || [];
   if(trigger==="ally") steps = card.ally || [];
@@ -1680,11 +1802,13 @@ async function applyEffects(actor, opponent, card, trigger){
 
   for(const step of steps){
     await resolveStep(actor, opponent, step);
+    if(!sameMatch(session)) return;
     if(isTerminal()) return;
   }
 }
 
 async function resolveStep(actor, opponent, step){
+  const session = game.session;
   switch(step.t){
     case "trade": actor.trade += step.n; log(`${actor.name} gains ${ICON.trade}${step.n}.`, true); break;
     case "combat": actor.combat += step.n; log(`${actor.name} gains ${ICON.combat}${step.n}.`, true); break;
@@ -1717,10 +1841,11 @@ async function resolveStep(actor, opponent, step){
       log(`${opponent.name} will draw ${Math.abs(step.n)} fewer next turn.`, true);
       break;
   }
-  renderAll();
+  if(sameMatch(session)) renderAll();
 }
 
 async function checkAllies(pl, op){
+  const session = game.session;
   const active = [...pl.inPlay, ...pl.bases];
   for(const c of active){
     if(c.allyTriggered) continue;
@@ -1730,11 +1855,14 @@ async function checkAllies(pl, op){
       c.allyTriggered = true;
       log(`${pl.name} triggers Ally on ${c.name}.`);
       await applyEffects(pl, op, c, "ally");
+      if(!sameMatch(session) || game.ended) return;
     }
   }
 }
 
-function startTurn(pIdx){
+async function startTurn(pIdx, {keepBusy=false}={}){
+  const session = game.session;
+  game.busy=true;
   const pl = game.players[pIdx];
   const op = game.players[1-pIdx];
 
@@ -1742,12 +1870,13 @@ function startTurn(pIdx){
   pl.combat=0;
   pl.playedFactionCounts={};
   pl.copyNextShip = 0;
+  pl.lastPlayed = [];
 
   // reset allyTriggered for bases each turn
   pl.bases.forEach(b=>b.allyTriggered=false);
 
   // Gauntlet/AI power bonus (AI only)
-  if(pIdx===1){
+  if(isAiPlayer(pl)){
     const power = (game.mode==="gauntlet") ? game.gauntlet.aiPower : 1;
     const bonusTrade = Math.floor((power-1)/2);     // 0,0,1,1,2,2...
     const bonusCombat = Math.floor((power-1)/3);    // 0,0,0,1,1,1...
@@ -1773,25 +1902,25 @@ function startTurn(pIdx){
     }
   }
 
-  // base "play" effects each turn
-  (async ()=>{
-    game.busy=true;
-    for(const b of pl.bases){
-      await applyEffects(pl, op, b, "turn");
-    }
-    await checkAllies(pl, op);
-    game.busy=false;
-    renderAll();
-
-    // ✅ autoplay after turn setup (human only)
-    if(pIdx===0 && game.settings.autoplay){
-      await autoplayHuman();
-    }
-  })();
+  // Resolve base choices before accepting input or letting the AI play ships.
+  for(const b of pl.bases){
+    await applyEffects(pl, op, b, "turn");
+    if(!sameMatch(session) || game.ended) return;
+    if(keepBusy && isAiPlayer(pl) && !await aiBeat(pl, `AI activated ${b.name}.`, b, session)) return;
+  }
+  await checkAllies(pl, op);
+  if(!sameMatch(session) || game.ended) return;
+  game.busy=keepBusy;
+  renderAll();
+  if(!isAiPlayer(pl) && game.settings.autoplay && !keepBusy){
+    await autoplayHuman();
+  }
 }
 
-function endTurn(){
-  if(game.busy) return;
+async function endTurn(){
+  if(!canHumanAct()) return;
+  const session = game.session;
+  game.busy=true;
   const pl = game.players[game.current];
 
   // discard hand
@@ -1808,20 +1937,29 @@ function endTurn(){
 
   // switch
   game.current = 1 - game.current;
-  renderAll();
 
   if(isTerminal()) return;
 
+  if(game.mode==="hotseat"){
+    if(!await handoffTo(game.current) || !sameMatch(session)) return;
+    setStatus(`${game.players[game.current].name}'s turn. Play cards, buy ships, and attack your rival.`);
+    await startTurn(game.current);
+    return;
+  }
+  renderAll();
+
   if(game.current===1){
     setStatus("AI turn…");
-    aiTurn().catch(err=>{
+    await aiTurn().catch(err=>{
+      if(!sameMatch(session)) return;
       console.error(err);
       setStatus("AI errored. Start a new duel/gauntlet.");
       game.busy=false;
+      renderAll();
     });
   }else{
     setStatus("Your turn. Play ships, buy cards, attack, then end turn.");
-    startTurn(0);
+    await startTurn(0);
   }
 }
 
@@ -1829,10 +1967,24 @@ function endTurn(){
    Win/Lose + Gauntlet stage logic
 ----------------------------*/
 function isTerminal(){
+  if(game.ended) return true;
   const me = game.players[0].authority;
   const ai = game.players[1].authority;
 
+  if(game.mode==="hotseat" && (me<=0 || ai<=0)){
+    game.ended=true;
+    game.busy=false;
+    game.winner=me<=0 ? 1 : 0;
+    const message = `${game.players[game.winner].name} wins the orbital duel!`;
+    setStatus(message);
+    log(message);
+    renderAll();
+    return true;
+  }
   if(me<=0){
+    game.ended=true;
+    game.busy=false;
+    game.winner=1;
     setStatus("Game Over — AI wins!");
     log("Game Over — AI wins!");
     renderAll();
@@ -1855,6 +2007,9 @@ function isTerminal(){
         }
         return true; // pause actions until modal resolves
       }else{
+        game.ended=true;
+        game.busy=false;
+        game.winner=0;
         setStatus("Gauntlet Complete — You win!");
         log("Gauntlet Complete — You win!");
         renderAll();
@@ -1865,6 +2020,9 @@ function isTerminal(){
         return true;
       }
     }else{
+      game.ended=true;
+      game.busy=false;
+      game.winner=0;
       setStatus("Game Over — You win!");
       log("Game Over — You win!");
       renderAll();
@@ -1878,6 +2036,9 @@ function isTerminal(){
    Modal / prompts
 ----------------------------*/
 function showModal({title, text, cards, min=1, max=1, confirmLabel="Confirm", cancelLabel="Cancel", allowCancel=true, selectable=true}){
+  closeModal();
+  OrbitalBoard.closeMenu();
+  const session = game.session;
   CardRealmsUI.closeInspector();
   return new Promise((resolve)=>{
     const modal = document.getElementById("modal");
@@ -1886,6 +2047,15 @@ function showModal({title, text, cards, min=1, max=1, confirmLabel="Confirm", ca
     const cardsEl = document.getElementById("modalCards");
     const btnCancel = document.getElementById("modalCancel");
     const btnConfirm = document.getElementById("modalConfirm");
+    const settle = picked=>{
+      if(modalResolver!==settle) return;
+      modalResolver=null;
+      CardRealmsUI.closeInspector();
+      modal.style.display="none";
+      cardsEl.replaceChildren();
+      resolve(picked);
+    };
+    modalResolver=settle;
 
     titleEl.textContent = title;
     textEl.textContent = text;
@@ -1899,6 +2069,7 @@ function showModal({title, text, cards, min=1, max=1, confirmLabel="Confirm", ca
         if(selectable){
           d.classList.add("targetable");
           d.onclick = ()=>{
+            CardRealmsUI.closeInspector();
             if(selected.has(c.uid)){
               selected.delete(c.uid);
               d.style.outlineColor = "rgba(255,255,255,.25)";
@@ -1924,15 +2095,12 @@ function showModal({title, text, cards, min=1, max=1, confirmLabel="Confirm", ca
     };
 
     btnCancel.onclick = ()=>{
-      CardRealmsUI.closeInspector();
-      modal.style.display = "none";
-      resolve(null);
+      if(allowCancel && sameMatch(session)) settle(null);
     };
     btnConfirm.onclick = ()=>{
-      CardRealmsUI.closeInspector();
+      if(!sameMatch(session) || (selectable && selected.size<min)) return;
       const picked = selectable ? cards.filter(c=>selected.has(c.uid)) : [];
-      modal.style.display = "none";
-      resolve(picked);
+      settle(picked);
     };
 
     drawCards();
@@ -1942,10 +2110,13 @@ function showModal({title, text, cards, min=1, max=1, confirmLabel="Confirm", ca
 
 function closeModal(){
   CardRealmsUI.closeInspector();
+  if(modalResolver){ modalResolver(null); return; }
   document.getElementById("modal").style.display = "none";
+  document.getElementById("modalCards").replaceChildren();
 }
 
 function showMessageModal(title, text, okLabel, cancelLabel, onOk, onCancel){
+  closeModal();
   const modal = document.getElementById("modal");
   const titleEl = document.getElementById("modalTitle");
   const textEl = document.getElementById("modalText");
@@ -1975,13 +2146,14 @@ function showMessageModal(title, text, okLabel, cancelLabel, onOk, onCancel){
 }
 
 async function forceDiscard(target, n, sourceName){
+  const session = game.session;
   if(n<=0) return;
   if(target.hand.length===0){
     log(`${target.name} has no cards to discard.`, true);
     return;
   }
 
-  if(target.name==="AI"){
+  if(isAiPlayer(target)){
     for(let i=0;i<n;i++){
       if(target.hand.length===0) break;
       let bestIdx = 0, bestScore = Infinity;
@@ -1996,10 +2168,19 @@ async function forceDiscard(target, n, sourceName){
     return;
   }
 
+  const privateChoice = game.mode==="hotseat" && target!==humanPlayer();
+  const wasBusy = game.busy;
+  if(privateChoice){
+    game.busy=true;
+    if(!await handoffTo(game.players.indexOf(target), {
+      text:`${sourceName} forces a discard. Only ${target.name} may view and choose their cards.`,
+      readyLabel:"I'm ready — choose my discard", retainPrivacy:true
+    }) || !sameMatch(session)) return;
+  }
   const take = Math.min(n, target.hand.length);
   const picked = await showModal({
-    title:`Discard (${take})`,
-    text:`You must discard ${take} card(s).`,
+    title:`${game.mode==="hotseat" ? target.name+": " : ""}Discard (${take})`,
+    text:`Choose ${take} card(s) to discard.`,
     cards: target.hand,
     min: take,
     max: take,
@@ -2007,24 +2188,33 @@ async function forceDiscard(target, n, sourceName){
     cancelLabel:"(forced)",
     allowCancel:false
   });
+  if(!sameMatch(session) || !picked) return;
   for(const c of picked){
     const idx = target.hand.findIndex(x=>x.uid===c.uid);
     if(idx>=0){
       const gone = target.hand.splice(idx,1)[0];
       target.discard.push(gone);
-      log(`You discard ${gone.name}.`);
+      log(`${playerLabel(target)} discard ${gone.name}.`);
     }
+  }
+  if(privateChoice){
+    if(!await handoffTo(game.current, {
+      text:`The discard is complete. Return the device to ${game.players[game.current].name} to continue the turn.`,
+      readyLabel:"I'm ready — resume my turn"
+    }) || !sameMatch(session)) return;
+    game.busy=wasBusy;
   }
 }
 
 async function scrapFromHand(pl, n){
+  const session = game.session;
   if(n<=0) return;
   if(pl.hand.length===0){
     log(`${pl.name} has no cards to scrap.`, true);
     return;
   }
 
-  if(pl.name==="AI"){
+  if(isAiPlayer(pl)){
     for(let i=0;i<n;i++){
       if(pl.hand.length===0) break;
       let bestIdx=0, bestScore=Infinity;
@@ -2050,7 +2240,7 @@ async function scrapFromHand(pl, n){
     cancelLabel:"Skip",
     allowCancel:true
   });
-  if(!picked) return;
+  if(!sameMatch(session) || !picked) return;
   for(const c of picked){
     const idx = pl.hand.findIndex(x=>x.uid===c.uid);
     if(idx>=0){
@@ -2062,13 +2252,14 @@ async function scrapFromHand(pl, n){
 }
 
 async function scrapFromDiscard(pl, n){
+  const session = game.session;
   if(n<=0) return;
   if(pl.discard.length===0){
     log(`${pl.name} has no discard to scrap.`, true);
     return;
   }
 
-  if(pl.name==="AI"){
+  if(isAiPlayer(pl)){
     for(let i=0;i<n;i++){
       if(pl.discard.length===0) break;
       let bestIdx=0, bestScore=Infinity;
@@ -2094,7 +2285,7 @@ async function scrapFromDiscard(pl, n){
     cancelLabel:"Skip",
     allowCancel:true
   });
-  if(!picked) return;
+  if(!sameMatch(session) || !picked) return;
   for(const c of picked){
     const idx = pl.discard.findIndex(x=>x.uid===c.uid);
     if(idx>=0){
@@ -2106,6 +2297,7 @@ async function scrapFromDiscard(pl, n){
 }
 
 async function scrapFromTradeRow(actor, n){
+  const session = game.session;
   const picks = Math.max(0, n|0);
   if(picks<=0) return;
 
@@ -2116,7 +2308,7 @@ async function scrapFromTradeRow(actor, n){
   }
 
   const take = Math.min(picks, rowCards.length);
-  if(actor.name==="AI"){
+  if(isAiPlayer(actor)){
     rowCards.sort((a,b)=>aiCardValue(a.c)-aiCardValue(b.c));
     const chosen = rowCards.slice(0, take);
     for(const {c,i} of chosen){
@@ -2141,7 +2333,7 @@ async function scrapFromTradeRow(actor, n){
     cancelLabel:"Skip",
     allowCancel:true
   });
-  if(!picked) return;
+  if(!sameMatch(session) || !picked) return;
 
   for(const pc of picked){
     const slot = game.tradeRow.findIndex(x=>x && x.uid===pc.uid);
@@ -2150,7 +2342,7 @@ async function scrapFromTradeRow(actor, n){
       game.tradeRow[slot]=null;
       game.marketScrap = game.marketScrap || [];
       game.marketScrap.push(gone);
-      log(`You scrap trade row card: ${gone.name}.`);
+      log(`${playerLabel(actor)} scrap trade row card: ${gone.name}.`);
       refillTradeRowSlot(slot);
     }
   }
@@ -2161,46 +2353,52 @@ async function scrapFromTradeRow(actor, n){
    Play / Buy / Scrap
 ----------------------------*/
 async function playCardFromHand(idx){
-  if(game.busy) return;
-  if(game.current!==0) return;
-  const pl = game.players[0];
-  const op = game.players[1];
+  if(!canHumanAct()) return;
+  const session = game.session;
+  const pl = humanPlayer();
+  const op = humanOpponent();
   const c = pl.hand[idx];
   if(!c) return;
 
   game.busy=true;
 
   pl.hand.splice(idx,1);
+  rememberPlayed(pl, c);
+  publicAction(pl, `${pl.name} played ${c.name}.`, c);
 
   if(c.type==="base"){
     c.curDefense = c.defense;
     pl.bases.push(c);
-    log(`You deploy base: ${c.name}.`);
+    log(`${playerLabel(pl)} deploy base: ${c.name}.`);
     addFactionCount(pl, c.faction);
     await applyEffects(pl, op, c, "play");
   }else{
     pl.inPlay.push(c);
     addFactionCount(pl, c.faction);
-    log(`You play: ${c.name}.`);
+    log(`${playerLabel(pl)} play: ${c.name}.`);
     await applyEffects(pl, op, c, "play");
+    if(!sameMatch(session) || game.ended) return;
     if(pl.copyNextShip>0){
       pl.copyNextShip--;
       log(`Copy triggers on ${c.name} — resolve play effects again.`, true);
       await applyEffects(pl, op, c, "copy");
+      if(!sameMatch(session) || game.ended) return;
     }
   }
 
+  if(!sameMatch(session) || game.ended) return;
   await checkAllies(pl, op);
+  if(!sameMatch(session) || game.ended) return;
 
   game.busy=false;
   renderAll();
 }
 
 async function scrapInPlay(uid){
-  if(game.busy) return;
-  if(game.current!==0) return;
-  const pl = game.players[0];
-  const op = game.players[1];
+  if(!canHumanAct()) return;
+  const session = game.session;
+  const pl = humanPlayer();
+  const op = humanOpponent();
 
   const idx = pl.inPlay.findIndex(c=>c.uid===uid);
   if(idx<0) return;
@@ -2210,17 +2408,19 @@ async function scrapInPlay(uid){
   game.busy=true;
   pl.inPlay.splice(idx,1);
   pl.scrap.push(c);
-  log(`You scrap ${c.name} for its scrap effect.`);
+  log(`${playerLabel(pl)} scrap ${c.name} for its scrap effect.`);
+  publicAction(pl, `${pl.name} scrapped ${c.name}.`, c);
   await applyEffects(pl, op, c, "scrap");
+  if(!sameMatch(session) || game.ended) return;
   await checkAllies(pl, op);
+  if(!sameMatch(session) || game.ended) return;
   game.busy=false;
   renderAll();
 }
 
 function buyFromTradeRow(slot){
-  if(game.busy) return;
-  if(game.current!==0) return;
-  const pl = game.players[0];
+  if(!canHumanAct()) return;
+  const pl = humanPlayer();
   const c = game.tradeRow[slot];
   if(!c) return;
   if(pl.trade < c.cost) return;
@@ -2229,18 +2429,19 @@ function buyFromTradeRow(slot){
   pl.discard.push(c);
   game.tradeRow[slot] = null;
   refillTradeRowSlot(slot);
-  log(`You buy ${c.name} for ${ICON.trade}${c.cost}.`);
+  log(`${playerLabel(pl)} buy ${c.name} for ${ICON.trade}${c.cost}.`);
+  publicAction(pl, `${pl.name} bought ${c.name} for ${c.cost} trade.`);
   renderAll();
 }
 
 function buyExplorer(){
-  if(game.busy) return;
-  if(game.current!==0) return;
-  const pl = game.players[0];
+  if(!canHumanAct()) return;
+  const pl = humanPlayer();
   if(pl.trade < 2) return;
   pl.trade -= 2;
   pl.discard.push(makeCardInstance("explorer"));
-  log(`You buy Explorer for ${ICON.trade}2.`);
+  log(`${playerLabel(pl)} buy Explorer for ${ICON.trade}2.`);
+  publicAction(pl, `${pl.name} bought an Explorer for 2 trade.`);
   renderAll();
 }
 
@@ -2248,15 +2449,14 @@ function buyExplorer(){
    Combat spending
 ----------------------------*/
 function enemyHasOutposts(){
-  const op = game.players[1];
+  const op = humanOpponent();
   return op.bases.some(b=>b.outpost);
 }
 
 function attackAuthority(){
-  if(game.busy) return;
-  if(game.current!==0) return;
-  const pl = game.players[0];
-  const op = game.players[1];
+  if(!canHumanAct()) return;
+  const pl = humanPlayer();
+  const op = humanOpponent();
   if(pl.combat<=0) return;
 
   if(enemyHasOutposts()){
@@ -2267,16 +2467,16 @@ function attackAuthority(){
   const dmg = pl.combat;
   pl.combat = 0;
   op.authority -= dmg;
-  log(`You hit opponent authority for ${ICON.combat}${dmg}.`);
+  log(`${playerLabel(pl)} hit opponent authority for ${ICON.combat}${dmg}.`);
+  publicAction(pl, `${pl.name} hit ${op.name} for ${dmg} damage.`);
   renderAll();
   isTerminal();
 }
 
 function attackEnemyBase(baseUid){
-  if(game.busy) return;
-  if(game.current!==0) return;
-  const pl = game.players[0];
-  const op = game.players[1];
+  if(!canHumanAct()) return;
+  const pl = humanPlayer();
+  const op = humanOpponent();
   if(pl.combat<=0) return;
 
   const bIdx = op.bases.findIndex(b=>b.uid===baseUid);
@@ -2287,12 +2487,14 @@ function attackEnemyBase(baseUid){
   pl.combat -= spend;
   base.curDefense -= spend;
 
-  log(`You deal ${ICON.combat}${spend} to ${base.name}.`);
+  log(`${playerLabel(pl)} deal ${ICON.combat}${spend} to ${base.name}.`);
+  publicAction(pl, `${pl.name} hit ${base.name} for ${spend} damage.`);
 
   if(base.curDefense<=0){
     op.bases.splice(bIdx,1);
     op.discard.push(base);
-    log(`You destroy ${base.name}!`);
+    log(`${playerLabel(pl)} destroy ${base.name}!`);
+    publicAction(pl, `${pl.name} destroyed ${base.name}!`);
   }
   renderAll();
   isTerminal();
@@ -2302,18 +2504,19 @@ function attackEnemyBase(baseUid){
    Autoplay (human)
 ----------------------------*/
 async function autoplayHuman(){
-  if(game.current!==0) return;
-  if(game.busy) return;
+  if(!canHumanAct()) return;
+  const session = game.session;
+  const seat = game.current;
   // Keep playing until hand is empty (bases first each loop)
-  while(game.players[0].hand.length){
+  while(humanPlayer().hand.length){
     if(!game.settings.autoplay) break;
-    if(game.busy) break;
-    const me = game.players[0];
+    if(!canHumanAct() || game.current!==seat || !sameMatch(session)) break;
+    const me = humanPlayer();
     let idx = me.hand.findIndex(c=>c.type==="base");
     if(idx<0) idx = 0;
     await playCardFromHand(idx);
     // playCardFromHand handles busy toggling
-    if(isTerminal()) return;
+    if(!sameMatch(session) || isTerminal()) return;
   }
 }
 
@@ -2375,16 +2578,27 @@ function aiBuyScore(pl, card){
   return s;
 }
 
+async function aiBeat(pl, text, card, session){
+  if(!sameMatch(session) || game.ended) return false;
+  publicAction(pl, text, card);
+  renderAll();
+  const delay = Math.max(0, Math.min(2000, Number(game.settings.aiDelay ?? 420) || 0));
+  await new Promise(resolve=>setTimeout(resolve, delay));
+  return sameMatch(session) && !game.ended;
+}
+
 async function aiTurn(){
-  if(isTerminal()) return;
+  if(game.mode==="hotseat" || game.current!==1 || isTerminal()) return;
+  const session = game.session;
   game.busy=true;
   const pl = game.players[1];
   const op = game.players[0];
 
-  startTurn(1);
+  await startTurn(1, {keepBusy:true});
+  if(!sameMatch(session) || game.ended) return;
   renderAll();
 
-  // Play everything in hand (bases first)
+  // Play cards one at a time so the rival's public fleet and gains can be read.
   const bases = pl.hand.filter(c=>c.type==="base");
   const ships = pl.hand.filter(c=>c.type!=="base");
   pl.hand = [];
@@ -2397,22 +2611,27 @@ async function aiTurn(){
     }else{
       pl.inPlay.push(c);
     }
+    rememberPlayed(pl, c);
     addFactionCount(pl, c.faction);
+    publicAction(pl, `AI played ${c.name}.`, c);
     log(`AI plays ${c.type==="base" ? "base" : "ship"}: ${c.name}.`);
     await applyEffects(pl, op, c, "play");
+    if(!sameMatch(session) || game.ended) return;
     if(c.type!=="base" && pl.copyNextShip>0){
       pl.copyNextShip--;
       log(`AI copy triggers on ${c.name}.`, true);
       await applyEffects(pl, op, c, "copy");
+      if(!sameMatch(session) || game.ended) return;
     }
     await checkAllies(pl, op);
-    if(isTerminal()){ game.busy=false; renderAll(); return; }
+    if(!sameMatch(session) || isTerminal()) return;
+    if(!await aiBeat(pl, `AI played ${c.name} · ${pl.trade} trade · ${pl.combat} combat`, c, session)) return;
   }
 
-  // Opportunistic scrap
+  // Keep the existing AI's purchase and combat choices, with a visible beat.
   for(let i=pl.inPlay.length-1;i>=0;i--){
     const c = pl.inPlay[i];
-    if(!c.scrap || !c.scrap.length) continue;
+    if(!c.scrap || c.scrap.length===0) continue;
     const givesCombat = c.scrap.some(x=>x.t==="combat");
     const givesDraw = c.scrap.some(x=>x.t==="draw");
     if((givesCombat && Math.random()<0.28) || (givesDraw && Math.random()<0.20)){
@@ -2420,25 +2639,24 @@ async function aiTurn(){
       pl.scrap.push(c);
       log(`AI scraps ${c.name} for effect.`);
       await applyEffects(pl, op, c, "scrap");
+      if(!sameMatch(session) || game.ended) return;
       await checkAllies(pl, op);
-      if(isTerminal()){ game.busy=false; renderAll(); return; }
+      if(!sameMatch(session) || isTerminal()) return;
+      if(!await aiBeat(pl, `AI scrapped ${c.name} for its bonus.`, c, session)) return;
     }
   }
 
-  // Buy phase: up to 2 buys
   let buys = 0;
   while(buys < 2){
     const options = game.tradeRow.filter(Boolean).filter(c=>c.cost<=pl.trade);
     if(pl.trade>=2) options.push(makeCardInstance("explorer"));
     if(options.length===0) break;
-
     options.sort((a,b)=>aiBuyScore(pl,b)-aiBuyScore(pl,a));
     const pick = options[0];
-
     if(pick.key==="explorer"){
       pl.trade -= 2;
       pl.discard.push(pick);
-      log(`AI buys Explorer.`);
+      log("AI buys Explorer.");
     }else{
       const slot = game.tradeRow.findIndex(x=>x && x.uid===pick.uid);
       if(slot>=0){
@@ -2450,9 +2668,9 @@ async function aiTurn(){
       }
     }
     buys++;
+    if(!await aiBeat(pl, `AI bought ${pick.name} for ${pick.cost} trade.`, null, session)) return;
   }
 
-  // Attack phase
   while(pl.combat>0){
     const outposts = op.bases.filter(b=>b.outpost);
     if(outposts.length){
@@ -2462,59 +2680,54 @@ async function aiTurn(){
       pl.combat -= spend;
       target.curDefense -= spend;
       log(`AI hits your outpost ${target.name} for ${ICON.combat}${spend}.`);
+      let message=`AI hit ${target.name} for ${spend} damage.`;
       if(target.curDefense<=0){
         const idx = op.bases.findIndex(b=>b.uid===target.uid);
         if(idx>=0){
           const gone = op.bases.splice(idx,1)[0];
           op.discard.push(gone);
           log(`AI destroys your outpost ${gone.name}!`);
+          message=`AI destroyed ${gone.name}!`;
         }
       }
+      if(!await aiBeat(pl, message, null, session)) return;
       continue;
     }
-
-    // if no outposts, destroy killable base if possible
     if(op.bases.length){
       const killable = op.bases.filter(b=>b.curDefense<=pl.combat);
       if(killable.length){
-        killable.sort((a,b)=>(b.defense - a.defense));
+        killable.sort((a,b)=>(b.defense-a.defense));
         const target = killable[0];
-        const spend = target.curDefense;
-        pl.combat -= spend;
-        target.curDefense = 0;
+        pl.combat -= target.curDefense;
+        target.curDefense=0;
         const idx = op.bases.findIndex(b=>b.uid===target.uid);
         const gone = op.bases.splice(idx,1)[0];
         op.discard.push(gone);
         log(`AI destroys your base ${gone.name}!`);
+        if(!await aiBeat(pl, `AI destroyed ${gone.name}!`, null, session)) return;
         continue;
       }
     }
-
-    // hit authority
     const dmg = pl.combat;
-    pl.combat = 0;
-    op.authority -= dmg;
+    pl.combat=0;
+    op.authority-=dmg;
     log(`AI hits your authority for ${ICON.combat}${dmg}.`);
-    break;
+    publicAction(pl, `AI hit your commander for ${dmg} damage.`);
+    renderAll();
+    if(isTerminal()) return;
+    if(!await aiBeat(pl, `AI hit your commander for ${dmg} damage.`, null, session)) return;
   }
 
-  renderAll();
-  if(isTerminal()){ game.busy=false; return; }
-
-  // End AI turn cleanup
+  if(!sameMatch(session) || isTerminal()) return;
   while(pl.hand.length) pl.discard.push(pl.hand.pop());
   while(pl.inPlay.length) pl.discard.push(pl.inPlay.pop());
   pl.trade=0; pl.combat=0; pl.playedFactionCounts={};
-
   for(let i=0;i<game.tradeRow.length;i++){
     if(!game.tradeRow[i]) refillTradeRowSlot(i);
   }
-
   game.current=0;
-  game.busy=false;
-  renderAll();
   setStatus("Your turn. Play ships, buy cards, attack, then end turn.");
-  startTurn(0);
+  await startTurn(0);
 }
 
 /* ---------------------------
@@ -2528,6 +2741,12 @@ const els = {
   inPlay: document.getElementById("inPlay"),
   myBases: document.getElementById("myBases"),
   enemyBases: document.getElementById("enemyBases"),
+  enemyInPlay: document.getElementById("enemyInPlay"),
+  turnActivity: document.getElementById("turnActivity"),
+  opponentPortraitBtn: document.getElementById("opponentPortraitBtn"),
+  explorerPileBtn: document.getElementById("explorerPileBtn"),
+  startHotseatBtn: document.getElementById("startHotseatBtn"),
+  quickHotseatBtn: document.getElementById("quickHotseatBtn"),
   tradeRow: document.getElementById("tradeRow"),
   tradeDeckLine: document.getElementById("tradeDeckLine"),
   enemyLine: document.getElementById("enemyLine"),
@@ -2574,36 +2793,49 @@ function statSum(steps, t){
 }
 /* Shared compact card presentation. Game effects and actions remain local. */
 function renderCardDiv(card, {context="generic"}={}){
-  return CardRealmsUI.createCard(card, {
+  const face = CardRealmsUI.createCard(card, {
     context,
     factionName: (FACTIONS[card.faction] || FACTIONS.n).name,
-    canScrap: game.current===0 && !game.busy && !game.gauntlet.cleared,
+    canScrap: canHumanAct(),
     onScrap: ()=>scrapInPlay(card.uid)
   });
+  if(game.lastAction?.uid===card.uid) face.classList.add("cr-latest-play");
+  return face;
 }
 
 function renderAll(){
   CardRealmsUI.closeInspector();
-  const me = game.players[0];
-  const op = game.players[1];
+  const seat = humanSeat();
+  const me = humanPlayer();
+  const op = humanOpponent();
+  const canAct = canHumanAct();
+  const yourTurn = game.mode==="hotseat" || game.current===0;
+  document.body.dataset.mode=game.mode;
+  document.body.dataset.activeSeat=String(game.current+1);
 
   els.tradeVal.textContent = me.trade;
   els.combatVal.textContent = me.combat;
   els.myAuthVal.textContent = me.authority;
 
-  els.turnBadge.textContent = game.current===0 ? "Your turn" : "Rival turn";
-  OrbitalBoard.setTurn(game.current===0 && !game.gauntlet.cleared);
-  els.phaseLine.textContent = game.current===0 ? "Main phase" : "Waiting…";
+  els.turnBadge.textContent = game.ended ? "Match complete" : game.handoff ? "Pass the device" : game.mode==="hotseat" ? `${me.name}'s turn` : yourTurn ? "Your turn" : "Rival turn";
+  OrbitalBoard.setTurn(yourTurn && !game.gauntlet.cleared && !game.ended && !game.handoff);
+  els.phaseLine.textContent = game.ended ? "Match complete" : yourTurn ? "Main phase" : "Rival is playing…";
+  document.getElementById("youTitle").textContent=me.name;
+  document.getElementById("oppTitle").textContent=op.name==="AI" ? "Rival AI" : op.name;
+  document.getElementById("cr-hand-title").textContent=game.mode==="hotseat" ? `${me.name}'s hand` : "Your hand";
+  document.getElementById("cr-bases-title").textContent=game.mode==="hotseat" ? `${me.name}'s bases` : "Your bases";
+  document.getElementById("cr-enemy-title").textContent=game.mode==="hotseat" ? `${op.name}'s bases` : "Rival bases";
+  document.getElementById("cr-rival-title").textContent=game.current===1-seat && !game.ended ? "Rival is playing" : "Rival's last turn";
 
   // Mode lines
-  els.modeLine.textContent = game.mode==="gauntlet" ? `Gauntlet · stage ${game.gauntlet.stage}` : "Solo fleet duel";
+  els.modeLine.textContent = game.mode==="gauntlet" ? `Gauntlet · stage ${game.gauntlet.stage}` : game.mode==="hotseat" ? "Two-player local hotseat" : "Solo fleet duel";
   els.modeLine.title = `Factions: ${(game.activeFactions||[]).map(k=>FACTIONS[k].name).join(", ")}`;
   if(game.mode==="gauntlet"){
     els.gauntletLine.textContent = `Stage ${game.gauntlet.stage}/${game.gauntlet.maxStage} — AI ramps each stage.`;
   }else{
-    els.gauntletLine.textContent = "Duel: single match vs AI.";
+    els.gauntletLine.textContent = game.mode==="hotseat" ? "Hotseat: two humans share this device. Pass after each turn." : "Duel: single match vs AI.";
   }
-  els.aiPowerLine.textContent = `AI Power: ${game.mode==="gauntlet" ? game.gauntlet.aiPower : 1}`;
+  els.aiPowerLine.textContent = game.mode==="hotseat" ? "Both commanders start with 50 health and the same starter deck." : `AI Power: ${game.mode==="gauntlet" ? game.gauntlet.aiPower : 1}`;
 
   // Enemy info
   els.enemyLine.textContent = op.authority;
@@ -2617,16 +2849,22 @@ function renderAll(){
   els.tradeDeckLine.textContent = `Trade Deck: ${game.tradeDeck.length}`;
 
   // Buttons
-  els.playAllBtn.disabled = (game.current!==0 || game.busy || me.hand.length===0 || game.gauntlet.cleared);
-  els.buyExplorerBtn.disabled = (game.current!==0 || game.busy || me.trade<2 || game.gauntlet.cleared);
-  els.endTurnBtn.disabled = (game.current!==0 || game.busy || game.gauntlet.cleared);
-  els.attackAuthorityBtn.disabled = (game.current!==0 || game.busy || me.combat<=0 || enemyHasOutposts() || game.gauntlet.cleared);
+  els.playAllBtn.disabled = !canAct || me.hand.length===0;
+  els.buyExplorerBtn.disabled = !canAct || me.trade<2;
+  els.explorerPileBtn.disabled = els.buyExplorerBtn.disabled;
+  els.endTurnBtn.disabled = !canAct;
+  els.attackAuthorityBtn.disabled = !canAct || me.combat<=0 || enemyHasOutposts();
+  els.opponentPortraitBtn.disabled = els.attackAuthorityBtn.disabled;
+  const attackHint = enemyHasOutposts() ? "Destroy rival outposts before attacking their commander" : me.combat>0 ? `Attack ${op.name} for ${me.combat} damage` : "Play cards to gain combat, then click this commander to attack";
+  els.opponentPortraitBtn.title=attackHint;
+  els.opponentPortraitBtn.setAttribute("aria-label", `${op.name}, ${Math.max(0,op.authority)} health. ${attackHint}.`);
+  els.quickHotseatBtn.textContent = game.mode==="hotseat" ? "New hotseat" : "Hotseat";
 
   // Hand
   els.hand.innerHTML = "";
-  me.hand.forEach((c, idx)=>{
+  (game.privateBoard || game.handoff ? [] : me.hand).forEach((c, idx)=>{
     const d = renderCardDiv(c, {context:"hand"});
-    if(game.current!==0 || game.busy || game.gauntlet.cleared) CardRealmsUI.setDisabled(d);
+    if(!canAct) CardRealmsUI.setDisabled(d);
     d.onclick = ()=> playCardFromHand(idx);
     els.hand.appendChild(d);
   });
@@ -2638,6 +2876,16 @@ function renderAll(){
     els.inPlay.appendChild(d);
   });
 
+  // Only already-public cards appear here. Opponent hands are never rendered.
+  els.enemyInPlay.innerHTML="";
+  const rivalCards = game.current===1-seat ? op.inPlay : (op.lastPlayed || []).filter(c=>c.type!=="base");
+  rivalCards.forEach(c=>{
+    const d=renderCardDiv(c, {context:"enemyInPlay"});
+    CardRealmsUI.setDisabled(d);
+    els.enemyInPlay.appendChild(d);
+  });
+  els.turnActivity.textContent = op.lastAction || "Played ships, purchases, and attacks appear here.";
+
   // Bases
   els.myBases.innerHTML = "";
   me.bases.forEach(c=>{
@@ -2648,7 +2896,7 @@ function renderAll(){
   els.enemyBases.innerHTML = "";
   op.bases.forEach(c=>{
     const d = renderCardDiv(c, {context:"enemyBase"});
-    if(game.current===0 && !game.busy && game.players[0].combat>0 && !game.gauntlet.cleared) d.classList.add("targetable");
+    if(canAct && me.combat>0) d.classList.add("targetable");
     else CardRealmsUI.setDisabled(d);
     d.onclick = ()=> attackEnemyBase(c.uid);
     els.enemyBases.appendChild(d);
@@ -2668,7 +2916,7 @@ function renderAll(){
       return;
     }
     const d = renderCardDiv(c, {context:"trade"});
-    const canBuy = (game.current===0 && !game.busy && !game.gauntlet.cleared && game.players[0].trade >= c.cost);
+    const canBuy = canAct && me.trade >= c.cost;
     if(!canBuy) CardRealmsUI.setDisabled(d);
     d.onclick = ()=> buyFromTradeRow(i);
     els.tradeRow.appendChild(d);
@@ -2692,6 +2940,7 @@ function renderLog(){
    Deck viewer
 ----------------------------*/
 function showPile(title, cards){
+  if(!canInspectPiles()) return;
   CardRealmsUI.closeInspector();
   const sorted = [...cards].sort((a,b)=>{
     if(a.faction!==b.faction) return (a.faction||"").localeCompare(b.faction||"");
@@ -2716,31 +2965,39 @@ function showPile(title, cards){
 ----------------------------*/
 els.newDuelBtn.onclick = ()=> startDuel();
 els.startGauntletBtn.onclick = ()=> startGauntlet();
+els.startHotseatBtn.onclick = ()=> startHotseat();
+els.quickHotseatBtn.onclick = ()=> startHotseat();
 
 els.endTurnBtn.onclick = ()=> endTurn();
 els.buyExplorerBtn.onclick = ()=> buyExplorer();
+els.explorerPileBtn.onclick = ()=> buyExplorer();
+document.querySelector("#explorerPileBtn .cr-explorer-stack").innerHTML=CardRealmsArt.illustration(tplByKey("explorer"));
 els.attackAuthorityBtn.onclick = ()=> attackAuthority();
+els.opponentPortraitBtn.onclick = ()=> attackAuthority();
 els.playAllBtn.onclick = async ()=>{
-  if(game.current!==0 || game.busy || game.gauntlet.cleared) return;
+  if(!canHumanAct()) return;
+  const session=game.session;
+  const seat=game.current;
   // play until hand empty (bases first each loop)
-  while(game.players[0].hand.length){
-    let idx = game.players[0].hand.findIndex(c=>c.type==="base");
+  while(humanPlayer().hand.length && canHumanAct() && game.current===seat){
+    let idx = humanPlayer().hand.findIndex(c=>c.type==="base");
     if(idx<0) idx = 0;
     await playCardFromHand(idx);
-    if(isTerminal()) return;
+    if(!sameMatch(session) || isTerminal()) return;
   }
 };
 
 els.autoplayToggle.onchange = ()=>{
   game.settings.autoplay = !!els.autoplayToggle.checked;
-  if(game.settings.autoplay && game.current===0 && !game.busy && !game.gauntlet.cleared){
+  if(game.settings.autoplay && canHumanAct()){
     autoplayHuman();
   }
 };
 
-els.viewDeckBtn.onclick = ()=> showPile("Your Deck", game.players[0].deck);
-els.viewDiscardBtn.onclick = ()=> showPile("Your Discard", game.players[0].discard);
-els.viewScrapBtn.onclick = ()=> showPile("Your Scrap", game.players[0].scrap);
+els.viewDeckBtn.onclick = ()=> showPile(`${humanPlayer().name}: Deck`, humanPlayer().deck);
+els.viewDiscardBtn.onclick = ()=> showPile(`${humanPlayer().name}: Discard`, humanPlayer().discard);
+els.viewScrapBtn.onclick = ()=> showPile(`${humanPlayer().name}: Scrapped cards`, humanPlayer().scrap);
+document.getElementById("hotseatHandoff").addEventListener("cancel", event=>event.preventDefault());
 
 els.fullscreenBtn.onclick = async ()=>{
   try{
@@ -2761,7 +3018,8 @@ updateFullscreenButton();
 /* ---------------------------
    Start
 ----------------------------*/
-startDuel();
+if(new URLSearchParams(location.search).get("mode")==="hotseat") startHotseat();
+else startDuel();
 
 // (Optional) clicking the dim background does nothing (prevents accidental close mid-choice)
 document.getElementById("modal").addEventListener("click",(e)=>{
