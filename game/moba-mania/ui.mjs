@@ -16,7 +16,6 @@ let renderer = new Renderer(canvas);
 let selectedSlot = -1;
 let aim = { x: WORLD.width / 2, y: WORLD.height / 2 };
 let moveTo = null;
-let mouseAttack = false;
 let touchAttack = false;
 let joystick = { x:0, y:0, pointerId:null };
 let castDrag = null;
@@ -156,8 +155,8 @@ function buildAbilities() {
 }
 function playing() { return !!game && !game.paused && game.winner==null && !$('hud').hidden; }
 function clearInput() {
-  keys.clear(); mouseAttack=false;touchAttack=false;moveTo=null;castDrag=null;
-  if(game)game.moveTarget=null;
+  keys.clear();touchAttack=false;moveTo=null;castDrag=null;
+  if(game)game.cancelPlayerOrder();
   joystick.x=joystick.y=0;joystick.pointerId=null;
   $('joystick-knob').style.transform='translate(0px,0px)';
   $('attack-button').classList.remove('held');
@@ -216,19 +215,50 @@ canvas.addEventListener('pointermove',event=>{
   pointer={x:event.clientX,y:event.clientY,valid:true};
   if(!castDrag)aim=renderer.screenToWorld(event.clientX,event.clientY);
 });
+function enemyAt(clientX,clientY,pointerType) {
+  // Sprites rise above their ground anchor. Include heads and tower crystals,
+  // then add a screen-space touch margin that stays useful at every zoom.
+  const zoom=canvas.getBoundingClientRect().width/renderer.camera.width;
+  const padding=pointerType==='touch'?14:7;
+  return game.units.filter(unit=>unit.alive&&unit.team!==game.player.team)
+    .map(unit=>{
+      const [width,height,lift]=({hero:[22,35,31],tower:[32,55,48],core:[64,80,42],footman:[17,23,17],archer:[17,23,17]})[unit.kind]
+        ||[Math.max(22,unit.r*1.35),Math.max(26,unit.r*1.5),Math.max(20,unit.r*1.2)];
+      const point=renderer.worldToScreen(unit.x,unit.y-lift);
+      const distance=Math.hypot((clientX-point.x)/(width*zoom+padding),(clientY-point.y)/(height*zoom+padding));
+      return {unit,distance};
+    }).filter(hit=>hit.distance<=1)
+    .sort((a,b)=>a.distance-b.distance||a.unit.id-b.unit.id)[0]?.unit;
+}
+function attackNearest() {
+  if(!playing()||!game.player.alive)return;
+  moveTo=null;
+  game.attackNearest();
+  refreshHUD();
+}
+function movePlayerTo(point) {
+  moveTo=null;
+  game.movePlayerTo(point);
+  refreshHUD();
+}
 canvas.addEventListener('pointerdown',event=>{
-  if(!playing())return;
+  if(!playing()||!game.player.alive||![0,2].includes(event.button))return;
   event.preventDefault();unlockAudio();canvas.focus({preventScroll:true});
   aim=renderer.screenToWorld(event.clientX,event.clientY);
   pointer={x:event.clientX,y:event.clientY,valid:event.pointerType!=='touch'};
-  if(event.button===2){cancelAim();moveTo={...aim};mouseAttack=false;return;}
+  if(event.button===2){cancelAim();movePlayerTo({...aim});return;}
   if(selectedSlot>=0){castSelected();return;}
-  if(event.pointerType==='touch') { moveTo={...aim};return; }
-  mouseAttack=true;moveTo=null;canvas.setPointerCapture(event.pointerId);
+  const target=enemyAt(event.clientX,event.clientY,event.pointerType);
+  if(target){
+    moveTo=null;
+    if(game.isProtected(target)){
+      game.cancelPlayerOrder();
+      notify(target.kind==='core'?'Break an inner tower to expose this crystal.':"Destroy this lane's outer tower first.");
+    }else game.attackTarget(target.id);
+    refreshHUD();
+  }
+  else movePlayerTo({...aim});
 });
-canvas.addEventListener('pointerup',()=>{mouseAttack=false;});
-canvas.addEventListener('pointercancel',()=>{mouseAttack=false;});
-window.addEventListener('pointerup',()=>{mouseAttack=false;});
 window.addEventListener('keydown',event=>{
   if(event.target.matches('input,select,textarea'))return;
   if(event.code==='Escape'){
@@ -247,7 +277,8 @@ window.addEventListener('keydown',event=>{
   if(event.code==='KeyT')openTalents();
   if(event.code==='KeyB')recall();
   if(event.code==='Tab')openMap();
-  if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.code))moveTo=null;
+  if(event.code==='Space')attackNearest();
+  if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.code)){moveTo=null;game.cancelPlayerOrder();}
 });
 window.addEventListener('keyup',event=>{
   keys.delete(event.code);
@@ -264,6 +295,7 @@ function updateStick(event) {
   joystick.x=distance>5?dx/(distance||1)*scale:0;joystick.y=distance>5?dy/(distance||1)*scale:0;
   $('joystick-knob').style.transform=`translate(${joystick.x*radius}px,${joystick.y*radius}px)`;
   moveTo=null;
+  if(Math.hypot(joystick.x,joystick.y)>.05)game.cancelPlayerOrder();
 }
 stick.addEventListener('pointerdown',event=>{
   if(!playing()||joystick.pointerId!=null)return;
@@ -273,11 +305,12 @@ stick.addEventListener('pointermove',event=>{if(event.pointerId===joystick.point
 function releaseStick(event){if(event.pointerId!==joystick.pointerId)return;joystick.x=joystick.y=0;joystick.pointerId=null;$('joystick-knob').style.transform='translate(0px,0px)';}
 stick.addEventListener('pointerup',releaseStick);stick.addEventListener('pointercancel',releaseStick);
 $('attack-button').addEventListener('pointerdown',event=>{
-  if(!playing())return;event.preventDefault();unlockAudio();cancelAim();moveTo=null;touchAttack=true;
+  if(!playing())return;event.preventDefault();unlockAudio();touchAttack=true;attackNearest();
   $('attack-button').setPointerCapture(event.pointerId);
 });
 $('attack-button').addEventListener('pointerup',()=>{touchAttack=false;});
 $('attack-button').addEventListener('pointercancel',()=>{touchAttack=false;});
+$('attack-button').addEventListener('click',event=>{if(event.detail===0){unlockAudio();attackNearest();}});
 function recall(){if(playing()&&game.recall(game.player)){clearInput();notify('Recalling… stay still for 4 seconds.',2500);}else if(game?.player.alive)notify('Recall needs a safe moment.');}
 $('recall-button').addEventListener('click',recall);
 
@@ -334,8 +367,11 @@ function renderTalents() {
       const button=document.createElement('button');button.className=`talent-option${chosen===choice.id?' chosen':''}`;
       button.dataset.talentChoice=choice.id;button.dataset.tier=String(tier.level);button.disabled=!unlocked||!!chosen;
       const name=document.createElement('strong');name.textContent=choice.name;
+      const heading=document.createElement('span');heading.className='talent-heading';
+      const icon=document.createElement('canvas');icon.width=32;icon.height=32;icon.setAttribute('aria-hidden','true');
+      heading.append(icon,name);
       const desc=document.createElement('small');desc.textContent=choice.description;
-      button.append(name,desc);
+      button.append(heading,desc);drawIcon(icon,{...choice,color:choice.color||definition.color});
       button.addEventListener('click',()=>{if(game.chooseTalent(hero,tier.level,choice.id)){tone('level');renderTalents();refreshHUD();}});
       choices.append(button);
     });section.append(title,choices);tree.append(section);
@@ -378,6 +414,14 @@ function refreshHUD() {
   $('talent-button').setAttribute('aria-label',points?`Skill tree: ${points} talent choices available`:'View skill tree');
   const river=game.units.filter(unit=>unit.alive&&unit.kind==='beast'&&unit.team===-1);
   $('objective-status').textContent=river.length?`✦ RIVER BEAST${river.length>1?'S':''} · TIER ${Math.max(...river.map(b=>b.tier||b.level||1))}`:`✦ Beasts in ${formatTime(game.beastIn)} · Wave ${Math.ceil(game.waveIn||0)}s`;
+  const attacking=!!game.attackOrder&&hero.alive;
+  const target=attacking&&game.units.find(unit=>unit.alive&&unit.id===hero.targetId);
+  $('attack-button').classList.toggle('held',attacking||touchAttack);
+  $('attack-button').setAttribute('aria-pressed',String(attacking));
+  $('attack-button').setAttribute('aria-label',attacking?'Attacking automatically. Press to select the nearest enemy.':'Attack the nearest enemy');
+  $('attack-button').querySelector('small').textContent=attacking?'ACTIVE':'ATTACK';
+  $('target-status').hidden=!attacking;
+  $('target-status').textContent=target?`ATTACKING · ${target.name||({footman:'Footman',archer:'Archer',summon:'Summon'}[target.kind])||'Enemy'}`:'ATTACK · Looking for an enemy';
   $('respawn-status').hidden=hero.alive;
   if(!hero.alive){$('respawn-status').replaceChildren();const headline=document.createElement('span');headline.textContent=`Return in ${Math.ceil(hero.respawnIn||0)}s`;const caption=document.createElement('small');caption.textContent='Your allies are still fighting.';$('respawn-status').append(headline,caption);}
   if(hero.level>lastLevel){tone('level');notify(`LEVEL ${hero.level}${points?' · Choose a new talent ✦':' · More power, new possibilities'}`,3400);lastLevel=hero.level;}
@@ -409,14 +453,10 @@ function input() {
   let x=Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'))+joystick.x;
   let y=Number(keys.has('KeyS')||keys.has('ArrowDown'))-Number(keys.has('KeyW')||keys.has('ArrowUp'))+joystick.y;
   const length=Math.hypot(x,y);if(length>1){x/=length;y/=length;}
-  if(touchAttack&&selectedSlot<0&&!castDrag&&game.player.alive){
-    // Basic attacks are single-target; aimed abilities never inherit this assist.
-    const hero=game.player;
-    const target=game.units.filter(u=>u.alive&&u.team!==hero.team&&Math.hypot(u.x-hero.x,u.y-hero.y)<(hero.range||HEROES[hero.heroId].range)+100).sort((a,b)=>Math.hypot(a.x-hero.x,a.y-hero.y)-Math.hypot(b.x-hero.x,b.y-hero.y))[0];
-    if(target)aim={x:target.x,y:target.y};
-  }
   if(moveTo&&Math.hypot(game.player.x-moveTo.x,game.player.y-moveTo.y)<12)moveTo=null;
-  return {move:{x,y},aim,attack:mouseAttack||touchAttack||keys.has('Space'),...(moveTo?{moveTo}: {})};
+  // Attack is a persistent command issued on press; holding a control must not
+  // reselect targets or resurrect an order canceled by movement or a spell.
+  return {move:{x,y},aim,...(moveTo?{moveTo}: {})};
 }
 function resize(){renderer.resize(innerWidth,innerHeight);if(game)renderer.draw(game,{aim,selectedSlot});}
 window.addEventListener('resize',resize);resize();
