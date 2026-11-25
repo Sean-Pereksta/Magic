@@ -2,6 +2,10 @@
 
 A self-contained solo 3v3 pixel MOBA at `/game/CatLanes.html`. Every match has one human hero, two allied bots, and three enemy bots. Choose among eight playable heroes: **Arc Rift**, **Red Dragon Warrior**, **Emerald Druid**, **Pink Angel**, **Dark Ranger**, **Purple Knight**, **Orange Assassin**, and **Blue Angel**. There is no mouse character in the roster.
 
+## Hero expansion designs
+
+[Four proposed heroes](HERO-EXPANSION.md) add an emplacement engineer, an anchor-wielding initiator, a mobile gunslinger, and a time-magic support. The design includes abilities, all seven talent tiers, pixel silhouettes, animation cues, counterplay, and bot behavior. These are future roster designs; the eight heroes above remain the playable roster.
+
 ## Play
 
 Choose a hero and an AI difficulty, then start a match. Destroy outer and inner towers to open a route to the enemy crystal. Your own crystal, towers, and healing well need protection. Each lane sends three footmen and two archers per wave. Jungle camps award experience; neutral beasts appear in the river-side pits, and the team that delivers the killing blow summons a siege beast to attack a lane.

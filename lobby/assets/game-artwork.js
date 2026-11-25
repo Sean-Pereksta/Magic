@@ -574,11 +574,13 @@
       "originalImagePath": null,
       "tier": "in-production",
       "provenance": "original-built-in-imagegen",
-      "sourceArtwork": "exec-ca13f50f-c307-474f-8930-a13b188c8eb1.png",
-      "tile": "game-tiles/mobamania.webp",
-      "thumb": "game-thumbnails/mobamania.webp",
-      "hero": "game-tiles/mobamania.webp",
-      "ready": true
+      "sourceArtwork": "exec-9034afdc-8fc0-4878-a6e0-846af25653ca.png",
+      "tile": "game-tiles/mobamania-v2.webp",
+      "thumb": "game-thumbnails/mobamania-v2.webp",
+      "hero": "game-heroes/mobamania-v2.webp",
+      "ready": true,
+      "imagePath": "/lobby/assets/game-tiles/mobamania-v2.webp",
+      "promptFile": "generation-prompts.json"
     },
     "trials": {
       "key": "trials",
@@ -2680,6 +2682,24 @@
       "height": 720,
       "bytes": 134432,
       "sha256": "e1017025cef5b72dba9fb0ac24a66d8e85382ba5f5135d0886333b772bda2875"
+    },
+    "game-tiles/mobamania-v2.webp": {
+      "width": 640,
+      "height": 360,
+      "bytes": 139028,
+      "sha256": "63d1da0922721bbc0ceb033ef5ab155016bc0c028b229603473cfdd1dc6bed6d"
+    },
+    "game-thumbnails/mobamania-v2.webp": {
+      "width": 240,
+      "height": 135,
+      "bytes": 25806,
+      "sha256": "87c6f29147b8d296122a35a6fbd2e4d0c480ed4ef748e52b4cc4843943a54789"
+    },
+    "game-heroes/mobamania-v2.webp": {
+      "width": 1280,
+      "height": 720,
+      "bytes": 370270,
+      "sha256": "f316aa83d4c1f61ccdabc17d56ca3989c20e076485bbce55ecdc95b508821b17"
     }
   },
   "interfaceFiles": {
