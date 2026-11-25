@@ -60,6 +60,7 @@ async function main(){
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   const origin='http://127.0.0.1:'+server.address().port;
   const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),args:['--no-sandbox']});
+  let activePage=null,activeDevice='setup';
   try{
     for(const device of [
       {name:'desktop',width:1280,height:800,touch:false,hero:'arc'},
@@ -67,7 +68,7 @@ async function main(){
       {name:'phone-landscape',width:844,height:390,touch:true,hero:'ranger'}
     ]){
       const context=await browser.newContext({viewport:{width:device.width,height:device.height},hasTouch:device.touch,isMobile:device.touch});
-      const page=await context.newPage(),errors=[];page.setDefaultTimeout(15000);
+      const page=await context.newPage(),errors=[];page.setDefaultTimeout(15000);activePage=page;activeDevice=device.name;
       page.on('pageerror',e=>errors.push(e.message));
       await page.goto(origin+'/game/CatLanes.html');
       await page.waitForFunction(()=>!!window.__mobaTest);
@@ -130,6 +131,7 @@ async function main(){
       const choice=await talent.getAttribute('data-talent-choice');await talent.click();
       assert.equal(await page.evaluate(()=>__mobaTest.game.player.talents[3]),choice,'talent choice reaches simulation');
       if(await page.locator('#close-talents').isVisible())await page.locator('#close-talents').click();
+      await page.waitForFunction(()=>__mobaTest.game.paused===false,{},{timeout:3000});
       assert.equal(await page.evaluate(()=>__mobaTest.game.paused),false,'closing tree resumes');
       if(qaOutput){fs.mkdirSync(qaOutput,{recursive:true});await page.screenshot({path:path.join(qaOutput,device.name+'.png')});}
       await finishMatch(page);
@@ -141,7 +143,7 @@ async function main(){
       console.log(JSON.stringify({device:device.name,hero:device.hero,move:true,camera:true,talent:true,replay:true,errors:0}));
       await context.close();
     }
-    const context=await browser.newContext({viewport:{width:1280,height:800}}),page=await context.newPage(),errors=[];
+    const context=await browser.newContext({viewport:{width:1280,height:800}}),page=await context.newPage(),errors=[];activePage=page;activeDevice='offline';
     page.on('pageerror',e=>errors.push(e.message));
     await page.goto(origin+'/offline/index.html');await page.waitForFunction(()=>!!window.__mobaTest);
     for(const hero of ['druid','angel']){
@@ -151,6 +153,13 @@ async function main(){
     }
     assert.deepEqual(errors,[]);await context.close();assert.deepEqual(missing,[],'no missing static modules/resources');
     console.log(JSON.stringify({offlinePack:true,otherHeroes:['druid','angel'],missingResources:0,errors:0}));
+  }catch(error){
+    if(activePage&&!activePage.isClosed()){
+      if(qaOutput){fs.mkdirSync(qaOutput,{recursive:true});await activePage.screenshot({path:path.join(qaOutput,'failure-'+activeDevice+'.png')}).catch(()=>{});}
+      const state=await activePage.evaluate(()=>({dialogs:[...document.querySelectorAll('dialog[open]')].map(el=>el.id),hidden:document.hidden,focused:document.hasFocus(),paused:window.__mobaTest?.game?.paused,time:window.__mobaTest?.game?.time})).catch(()=>null);
+      console.error(JSON.stringify({device:activeDevice,state}));
+    }
+    throw error;
   }finally{await browser.close();await new Promise(r=>server.close(r));}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;server.close();}).finally(()=>fs.rmSync(temp,{recursive:true,force:true}));
