@@ -261,11 +261,105 @@ for(const hero of Object.values(HEROES)){
   for(const talent of lateTalents[hero.id]){for(const option of talent.choices)option.color=hero.color;hero.talents.push(talent);}
 }
 
+// The expansion keeps four controls and seven three-way talent tiers. Ability IDs
+// also name their code-drawn icons; hero-specific bonus keys are shared with the
+// expansion runtime. Basic-only and aimed-ability bonuses do not widen each other.
+const expansionAbility=(id,name,description,color,unlock,mana,cooldown,range,radius,type,extra={})=>
+  ({...ability(id,name,description,id,color,unlock,mana,cooldown,range,radius,type),...extra});
+Object.assign(HEROES,{
+  rivet:{
+    id:'rivet',name:'Rivet',title:'The Copper Engineer',role:'Defender · devices',aiRole:'laner',color:'#c97a45',
+    description:'Establish a firing position with repairable sentries, visible shock mines and a timed overclock.',
+    hp:740,mana:330,speed:174,range:245,damage:36,attackRate:.9,
+    passive:{name:'Field Mechanic',description:'A basic hit repairs your most damaged sentry within 260 for 10 + your level health, once per second.',icon:'bolt-sentry'},
+    abilities:[
+      expansionAbility('screwshot','Screwshot','Fire a 95-damage bolt; it ricochets to one different visible enemy for 45.','#c97a45',1,30,6,430,13,'line',{theme:'copper'}),
+      expansionAbility('bolt-sentry','Bolt Sentry','Assemble a stationary sentry after 0.6s. It lasts 18s; at most two can stand.','#f4d7a1',2,45,10,220,24,'ground',{theme:'copper'}),
+      expansionAbility('shock-mine','Shock Mine','Place a targetable mine. After 0.8s it arms, then explodes and slows a visible nearby foe. Maximum two.','#8be8e5',4,40,12,300,85,'ground',{theme:'copper',triggerRadius:65}),
+      expansionAbility('overclock','Overclock','For 6s, existing nearby sentries attack 50% faster. Gain 20% attack speed and a 90 shield.','#ffc774',6,70,24,0,300,'self',{theme:'copper'})
+    ],
+    talents:[
+      lateTier(3,choice('rivet-deep-threads','Deep Threads','Screwshot’s first hit deals 20% more damage.',{rivetScrewDamage:.2},'screwshot'),choice('rivet-reinforced-casing','Reinforced Casing','Sentries gain 20% maximum health.',{rivetSentryHealth:.2},'bolt-sentry'),choice('rivet-rubber-soles','Rubber Soles','Gain 10% movement speed.',{speed:.1},'speed')),
+      lateTier(5,choice('rivet-long-barrel','Long Barrel','Gain 12% basic-attack range.',{basicRange:.12},'range'),choice('rivet-repair-routine','Repair Routine','Field Mechanic repairs 40% more health.',{rivetRepairPower:.4},'heal'),choice('rivet-spare-cells','Spare Cells','Gain 20% mana and 1.5 mana regeneration.',{mana:.2,manaRegen:1.5},'mana')),
+      lateTier(8,choice('rivet-hot-rivets','Hot Rivets','Sentries gain 15% attack speed.',{rivetSentryHaste:.15},'bolt-sentry'),choice('rivet-portable-workshop','Portable Workshop','Sentries live 5s longer; the maximum stays two.',{rivetSentryDuration:5},'cooldown'),choice('rivet-wide-tripwire','Wide Tripwire','Mines trigger within 80 and explode in a 100-radius area.',{rivetMineRadius:1},'shock-mine')),
+      lateTier(10,choice('rivet-master-gunsmith','Master Gunsmith','Gain 15% general damage.',{damage:.15},'damage'),choice('rivet-insulated-apron','Insulated Apron','Gain 18% health and 15% shield strength.',{hp:.18,shield:.15},'shield'),choice('rivet-quick-assembly','Quick Assembly','Reduce ability cooldowns by 12%.',{cooldown:.12},'cooldown')),
+      lateTier(12,choice('rivet-crossfire','Crossfire','Each sentry adds 30 damage to a hit on your explicitly focused foe, once every 5s.',{rivetCrossfire:1},'screwshot'),choice('rivet-emergency-patch','Emergency Patch','Each sentry gains a 45 shield for 3s the first time it survives below 35% health.',{rivetEmergencyPatch:1},'shield'),choice('rivet-survey-charge','Survey Charge','A mine’s explosion reveals struck enemy heroes for 2s.',{rivetSurvey:1},'shock-mine')),
+      lateTier(15,choice('rivet-double-thread','Double Thread','Screwshot bounces a second time for 30 damage to a different visible enemy.',{rivetDoubleThread:1},'screwshot'),choice('rivet-shared-tools','Shared Tools','A successful repair grants you a 20 shield for 2s; 3s recharge.',{rivetSharedTools:1},'shield'),choice('rivet-exit-plan','Exit Plan','A triggered mine within 300 grants you 20% speed for 2s; 6s recharge.',{rivetExitPlan:1},'speed')),
+      lateTier(18,choice('rivet-redline','Redline','Overclock also gives affected sentries 20% damage.',{rivetRedline:1},'overclock'),choice('rivet-fortified-position','Fortified Position','Overclock also grants affected sentries a 100 shield for 6s.',{rivetFortified:1},'bolt-sentry'),choice('rivet-rapid-relocation','Rapid Relocation','Overclock removes up to 4s from Bolt Sentry’s cooldown and grants 20% speed for 3s.',{rivetRelocation:1},'speed'))
+    ]
+  },
+  brinehook:{
+    id:'brinehook',name:'Brinehook',title:'The Teal Corsair',role:'Tank · catch',aiRole:'laner',color:'#3fb8ac',
+    description:'Thread an anchor through an opening, pull an exposed enemy toward your crew and weather the reply.',
+    hp:1090,mana:310,speed:165,range:68,damage:52,attackRate:1,
+    passive:{name:'Saltwater Resolve',description:'Successfully moving an enemy hero with a pull grants an 80 shield for 3s; 8s recharge.',icon:'sea-legs'},
+    abilities:[
+      expansionAbility('anchorline','Anchorline','Wind up for 0.25s, then throw an anchor. Its first visible hit takes 90 damage, a short pull and a 0.55s stun.','#3fb8ac',1,38,9,440,18,'line',{theme:'tide'}),
+      expansionAbility('sea-legs','Sea Legs','Gain a 180 shield for 4s and remove current slows. New slows and stuns still apply.','#d0f2e3',2,42,14,0,130,'self',{theme:'tide'}),
+      expansionAbility('undertow','Undertow','Warn for 0.6s, then deal 80 damage, pull foes toward the pool center and slow them 30% for 2.5s.','#65d7c2',4,48,13,300,110,'ground',{theme:'tide'}),
+      expansionAbility('captains-wake','Captain’s Wake','Warn for 0.75s, then send a broad wave: 145 damage, a 0.9s stun and a pull toward its center line.','#d0f2e3',6,75,24,360,50,'line',{theme:'tide',width:100})
+    ],
+    talents:[
+      lateTier(3,choice('brinehook-barbed-anchor','Barbed Anchor','Anchorline deals 25% more damage.',{brineAnchorDamage:.25},'anchorline'),choice('brinehook-thick-coat','Thick Coat','Gain 18% maximum health.',{hp:.18},'health'),choice('brinehook-deck-fighter','Deck Fighter','Gain 12% basic-attack damage.',{basicDamage:.12},'damage')),
+      lateTier(5,choice('brinehook-long-cable','Long Cable','Anchorline reaches 15% farther; pull distance stays the same.',{brineAnchorRange:.15},'anchorline'),choice('brinehook-weatherproof','Weatherproof','Sea Legs shields 25% more.',{brineSeaShield:.25},'sea-legs'),choice('brinehook-sea-stride','Sea Stride','Gain 10% movement speed.',{speed:.1},'speed')),
+      lateTier(8,choice('brinehook-tight-formation','Tight Formation','Undertow’s radius increases from 110 to 130.',{brinePoolRadius:20},'undertow'),choice('brinehook-steady-footing','Steady Footing','Gain 15% tenacity, subject to the shared cap.',{tenacity:.15},'fortress'),choice('brinehook-raking-tide','Raking Tide','Undertow deals 25% more damage.',{brineUndertowDamage:.25},'undertow')),
+      lateTier(10,choice('brinehook-seasoned-hunter','Seasoned Hunter','Reduce ability cooldowns by 12%.',{cooldown:.12},'cooldown'),choice('brinehook-iron-captain','Iron Captain','Gain 15% health and 20% shield strength.',{hp:.15,shield:.2},'shield'),choice('brinehook-boarding-axe','Boarding Axe','Gain 18% attack speed.',{attackSpeed:.18},'haste')),
+      lateTier(12,choice('brinehook-marked-catch','Marked Catch','Anchorline reveals its successfully struck target for 3s.',{brineMarkedCatch:1},'anchorline'),choice('brinehook-crew-cover','Crew Cover','Sea Legs also grants allied heroes within 130 a 60 shield for 3s.',{brineCrewCover:1},'sea-legs'),choice('brinehook-heavy-landing','Heavy Landing','After pulling an enemy, your next basic attack within 3s adds 35 damage; once per cast.',{brineHeavyLanding:1},'damage')),
+      lateTier(15,choice('brinehook-follow-rope','Follow the Rope','Anchorline grants 15% speed for 2s after hitting a hero.',{brineFollowRope:1},'anchorline'),choice('brinehook-calm-waters','Calm Waters','Saltwater Resolve also heals you for 35, with its existing 8s recharge.',{brineCalmWaters:1},'heal'),choice('brinehook-rough-current','Rough Current','Undertow leaves a 2s pool that slows occupants 20%, without extra pulls or damage.',{brineRoughCurrent:1},'undertow')),
+      lateTier(18,choice('brinehook-grand-wake','Grand Wake','Captain’s Wake becomes 20% wider; stun and movement are unchanged.',{brineGrandWake:.2},'captains-wake'),choice('brinehook-safe-harbor','Safe Harbor','Captain’s Wake grants allied heroes in its warning area a 110 shield for 4s at launch.',{brineSafeHarbor:1},'shield'),choice('brinehook-boarding-party','Boarding Party','A Captain’s Wake hero hit hastens nearby allies’ attacks by 20% for 4s.',{brineBoardingParty:1},'haste'))
+    ]
+  },
+  vela:{
+    id:'vela',name:'Vela',title:'The Ivory Gunslinger',role:'Marksman · rhythm',aiRole:'laner',color:'#f4efdc',
+    description:'Keep your distance, spend a six-round magazine and reposition through its readable reload window.',
+    hp:650,mana:285,speed:193,range:280,damage:42,attackRate:.66,
+    passive:{name:'Six-Round Rhythm',description:'Six basic rounds, then a 1.4s reload. The shot that empties your magazine deals 120% damage. You can move and cast while reloading.',icon:'silver-volley'},
+    abilities:[
+      expansionAbility('split-shot','Split Shot','Fire two bullets in a narrow fan. Each deals 65 damage; a second hit on the same enemy deals 35. Uses no ammunition.','#f4efdc',1,30,6,360,10,'cone',{theme:'ivory',arc:.16}),
+      expansionAbility('sidestep','Sidestep','Dash up to 165, stopping at terrain. Restore one round, or shorten an active reload by up to 0.45s.','#c8d8eb',2,35,11,165,20,'line',{theme:'ivory',mobility:true}),
+      expansionAbility('steady-aim','Steady Aim','For 4s gain 15% basic range and 20% attack speed, but move 15% slower. Reloads still occur.','#f4efdc',4,45,14,0,90,'self',{theme:'ivory'}),
+      expansionAbility('silver-volley','Silver Volley','Warn for 0.4s, then channel six 45-damage bullets along a fixed line over 1.2s. Moving, stun or another cast interrupts.','#cfcae6',6,70,24,480,24,'line',{theme:'ivory'})
+    ],
+    talents:[
+      lateTier(3,choice('vela-fine-powder','Fine Powder','Split Shot deals 20% more damage, including its reduced second hit.',{velaSplitDamage:.2},'split-shot'),choice('vela-quick-draw','Quick Draw','Gain 12% attack speed.',{attackSpeed:.12},'haste'),choice('vela-travel-coat','Travel Coat','Gain 15% maximum health.',{hp:.15},'health')),
+      lateTier(5,choice('vela-long-sights','Long Sights','Gain 10% basic-attack range.',{basicRange:.1},'range'),choice('vela-fast-hands','Fast Hands','Reload takes 1.2s instead of 1.4s.',{velaFastHands:.2},'silver-volley'),choice('vela-light-steps','Light Steps','Gain 10% movement speed.',{speed:.1},'speed')),
+      lateTier(8,choice('vela-measured-fire','Measured Fire','Steady Aim lasts 1s longer.',{velaAimDuration:1},'steady-aim'),choice('vela-clean-chambers','Clean Chambers','Sidestep restores two rounds. Its active-reload reduction stays 0.45s.',{velaCleanChambers:1},'sidestep'),choice('vela-long-stride','Long Stride','Sidestep travels 15% farther.',{velaStride:.15},'sidestep')),
+      lateTier(10,choice('vela-silver-pressure','Silver Pressure','Gain 15% basic-attack damage.',{basicDamage:.15},'damage'),choice('vela-field-medic','Field Medic','Basic attacks heal for 10% of damage dealt.',{lifesteal:.1},'lifesteal'),choice('vela-escape-artist','Escape Artist','Reduce ability cooldowns by 12%.',{cooldown:.12},'cooldown')),
+      lateTier(12,choice('vela-heavy-sixth','Heavy Sixth','The round that empties your magazine deals 140% instead of 120% damage.',{velaHeavySixth:.2},'silver-volley'),choice('vela-opening-pair','Opening Pair','The first two attacks after a completed reload have 15% shorter intervals.',{velaOpeningPair:1},'haste'),choice('vela-safe-landing','Safe Landing','Sidestep grants a 60 shield for 2s.',{velaSafeLanding:1},'shield')),
+      lateTier(15,choice('vela-patient-aim','Patient Aim','Steady Aim’s movement penalty becomes 5%.',{velaPatientAim:1},'steady-aim'),choice('vela-spare-magazine','Spare Magazine','A hero finishing blow shortens an active reload by up to 0.5s; 6s recharge.',{velaSpareMagazine:1},'silver-volley'),choice('vela-covering-shot','Covering Shot','Split Shot’s first hit slows its victim 20% for 1.5s; no second-bullet slow.',{velaCoveringShot:1},'split-shot')),
+      lateTier(18,choice('vela-silver-storm','Silver Storm','Silver Volley deals 20% more damage with unchanged warnings and bullet count.',{velaVolleyDamage:.2},'silver-volley'),choice('vela-perfect-rhythm','Perfect Rhythm','A sixth-round hit on an enemy hero grants a 70 shield for 2s.',{velaPerfectRhythm:1},'shield'),choice('vela-never-cornered','Never Cornered','Surviving damage below 30% health grants 25% speed for 2s and removes up to 3s from Sidestep; 30s recharge.',{velaNeverCornered:1},'sidestep'))
+    ]
+  },
+  solstice:{
+    id:'solstice',name:'Solstice',title:'The Golden Chronomancer',role:'Support · timing',aiRole:'support',color:'#e7b951',
+    description:'Ward the dangerous moment, unwind current control and bring your allies’ next spells a little closer.',
+    hp:700,mana:390,speed:180,range:235,damage:35,attackRate:.85,
+    passive:{name:'Perfect Timing',description:'When Time Ward absorbs 30 damage in its first second, regain 8 mana and remove up to 1s from Hourhand; 6s recharge.',icon:'time-ward'},
+    abilities:[
+      expansionAbility('hourhand','Hourhand','Fire a rotating clock hand for 90 damage and a 25% slow lasting 2s.','#e7b951',1,30,6,410,14,'line',{theme:'time'}),
+      expansionAbility('time-ward','Time Ward','Shield the allied hero nearest your aim for 120 over 3s. At expiry heal 25% of health lost during the ward, up to 70.','#f4dea0',2,45,11,330,75,'ally',{theme:'time'}),
+      expansionAbility('unwind','Unwind','Remove current allied slows, shorten current stuns by up to 0.5s and grant a 60 shield for 2s.','#bfb0ed',4,60,16,320,125,'ground',{theme:'time'}),
+      expansionAbility('borrowed-seconds','Borrowed Seconds','After 0.7s deal 90 damage and slow enemies. Allies receive a limited refund on their first three ability cooldowns.','#e7b951',6,75,26,320,150,'ground',{theme:'time'})
+    ],
+    talents:[
+      lateTier(3,choice('solstice-measured-reserves','Measured Reserves','Gain 20% mana and 1.5 mana regeneration.',{mana:.2,manaRegen:1.5},'mana'),choice('solstice-thicker-glass','Thicker Glass','Time Ward’s shield is 25% stronger.',{solsticeWardPower:.25},'time-ward'),choice('solstice-sharpened-hand','Sharpened Hand','Hourhand deals 25% more damage.',{solsticeHourDamage:.25},'hourhand')),
+      lateTier(5,choice('solstice-long-reach','Long Reach','Targeted ability range increases 12%.',{abilityRange:.12},'range'),choice('solstice-careful-steps','Careful Steps','Gain 15% maximum health.',{hp:.15},'health'),choice('solstice-clockwork-pace','Clockwork Pace','Gain 12% movement speed.',{speed:.12},'speed')),
+      lateTier(8,choice('solstice-precise-timing','Precise Timing','Perfect Timing restores 12 mana instead of 8.',{solsticePreciseTiming:4},'time-ward'),choice('solstice-gentle-return','Gentle Return','Time Ward’s delayed-heal cap rises from 70 to 100.',{solsticeHealCap:30},'heal'),choice('solstice-heavy-sand','Heavy Sand','Hourhand’s slow lasts 0.75s longer.',{solsticeSandDuration:.75},'hourhand')),
+      lateTier(10,choice('solstice-balanced-mechanism','Balanced Mechanism','Reduce ability cooldowns by 12%.',{cooldown:.12},'cooldown'),choice('solstice-golden-shelter','Golden Shelter','Gain 20% shield strength and 15% healing strength.',{shield:.2,healing:.15},'shield'),choice('solstice-bright-hour','Bright Hour','Gain 18% ability damage.',{spellDamage:.18},'damage')),
+      lateTier(12,choice('solstice-second-hand','Second Hand','Perfect Timing removes up to 1.5s from Hourhand instead of 1s.',{solsticeSecondHand:.5},'cooldown'),choice('solstice-shared-moment','Shared Moment','Perfect Timing grants a different allied hero within 160 of the protected hero a 35 shield for 2s.',{solsticeSharedMoment:1},'shield'),choice('solstice-lingering-sand','Lingering Sand','Hourhand leaves an 85-radius, 2s field that slows occupants 20%, with no extra damage.',{solsticeLingeringSand:1},'hourhand')),
+      lateTier(15,choice('solstice-quick-recovery','Quick Recovery','Unwind grants affected allies 15% movement speed for 2s.',{solsticeQuickRecovery:1},'unwind'),choice('solstice-steady-hour','Steady Hour','Time Ward also reduces damage by 10% during its first second.',{solsticeSteadyHour:1},'time-ward'),choice('solstice-glass-echo','Glass Echo','Hourhand warns of a second 45-damage burst at its actual impact point after 0.6s, radius60.',{solsticeGlassEcho:1},'hourhand')),
+      lateTier(18,choice('solstice-generous-seconds','Generous Seconds','Borrowed Seconds refunds up to 2.5s, retaining the 25% limit, 0.6s floor and first-three-slots rule.',{solsticeGenerousSeconds:.5},'borrowed-seconds'),choice('solstice-golden-interval','Golden Interval','Borrowed Seconds also grants allied heroes a 100 shield for 3s at impact.',{solsticeGoldenInterval:1},'shield'),choice('solstice-sunset-dial','Sunset Dial','Borrowed Seconds deals 25% more damage and slows 40% for its existing duration.',{solsticeSunsetDial:1},'borrowed-seconds'))
+    ]
+  }
+});
+for(const id of ['rivet','brinehook','vela','solstice'])for(const talent of HEROES[id].talents)for(const option of talent.choices)option.color=HEROES[id].color;
+
 export const DIFFICULTIES = {
   easy:{id:'easy',name:'Relaxed',description:'Forgiving bots. Slower reactions, simple lane plans and generous retreats.',think:0.9,lead:0,retreat:.27,coordination:.4,aimError:85,dodge:false},
   normal:{id:'normal',name:'Standard',description:'Bots rotate, farm the jungle, defend towers and contest beasts.',think:.48,lead:.45,retreat:.3,coordination:.72,aimError:35,dodge:false},
   hard:{id:'hard',name:'Veteran',description:'Fast rotations, predictive skill shots, focus fire and careful tower dives.',think:.27,lead:.8,retreat:.34,coordination:.93,aimError:13,dodge:true},
-  ultimate:{id:'ultimate',name:'Legend',description:'Sharp reactions, objective control and coordinated commitments. No hidden stat bonuses.',think:.15,lead:1,retreat:.38,coordination:1,aimError:3,dodge:true}
+  ultimate:{id:'ultimate',name:'Legend',description:'Sharp reactions, objective control and coordinated commitments. No hidden stat bonuses.',think:.15,lead:1,retreat:.38,coordination:1,aimError:3,dodge:true},
+  impossible:{id:'impossible',name:'Impossible · 3 vs 4',description:'Four coordinated enemy heroes with fast reactions, precise aim and careful dives. Your team still has three; everyone uses normal sight and equal stats.',enemyHeroes:4,think:.1,lead:1,retreat:.4,coordination:1,aimError:1,dodge:true}
 };
 const point = (x,y) => ({x,y});
 const lanes = [

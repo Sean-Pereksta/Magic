@@ -83,6 +83,7 @@ function inShape(target,impact){
   return Math.abs(difference)<=(impact.arc||Math.PI*.65)/2+Math.asin(Math.min(1,target.r/Math.max(target.r,distance(target,impact))));
 }
 function resolveImpact(game,hero,impact){
+  if(game.resolveHeroImpact?.(hero,impact))return;
   if(impact.kind==='heal-bloom'){
     healingPulse(game,hero,impact,impact.r,impact.healing||0);
     if(impact.shield)protect(game,hero,impact,impact.r,impact.shield,impact.duration||3);

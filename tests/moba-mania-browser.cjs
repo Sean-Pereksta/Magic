@@ -19,7 +19,7 @@ function buildOfflinePack() {
   const pack = path.join(temp,'packs/mobamania');
   const entry = fs.readFileSync(path.join(pack,'index.html'),'utf8');
   assert(!entry.includes('/hub/play-signal.mjs'),'offline pack must not call the web hub');
-  for(const module of ['data.mjs','items.mjs','profile.mjs','engine.mjs','hero-skills.mjs','renderer.mjs','combat-visuals.mjs','unit-animation.mjs','world-visuals.mjs','ui.mjs','style.css']) assert(fs.existsSync(path.join(pack,'moba-mania',module)),`offline pack missing ${module}`);
+  for(const module of ['data.mjs','items.mjs','profile.mjs','engine.mjs','hero-skills.mjs','hero-expansion.mjs','solstice-runtime.mjs','renderer.mjs','combat-visuals.mjs','unit-animation.mjs','world-visuals.mjs','expansion-visuals.mjs','ui.mjs','style.css']) assert(fs.existsSync(path.join(pack,'moba-mania',module)),`offline pack missing ${module}`);
   assert(!fs.existsSync(path.join(pack,'moba-mania/CONTRACT.md')),'implementation coordination notes are not shipped');
   return pack;
 }
@@ -45,6 +45,46 @@ async function inspectBounds(page, selectors) {
   for(const r of report){assert(r.visible,r.selector+' should be visible');assert(r.x>=-1&&r.y>=-1&&r.x+r.w<=r.vw+1&&r.y+r.h<=r.vh+1,r.selector+' escapes viewport: '+JSON.stringify(r));}
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'no horizontal page overflow');
 }
+async function verifyHeroMenu(page,context,device,saved=false) {
+  const initial=await page.locator('#hero-grid [aria-pressed="true"]').getAttribute('data-hero');
+  await inspectBounds(page,['.menu-heading','#hero-grid','.hero-loadout','#difficulty','#start-match','.menu-footer']);
+  const before=await page.evaluate(()=>{
+    const grid=document.querySelector('#hero-grid'),menu=document.querySelector('#menu-screen'),start=document.querySelector('#start-match').getBoundingClientRect();
+    return {overflow:grid.scrollHeight>grid.clientHeight+1,startY:start.y,gridHeight:grid.clientHeight,menuHeight:menu.clientHeight,menuContent:menu.scrollHeight};
+  });
+  assert(before.gridHeight>=70,'hero roster retains a usable independent viewport');
+  assert(before.menuContent<=before.menuHeight+1,'the entire menu fits the viewport');
+  await page.locator('#hero-grid').evaluate(el=>el.scrollTop=0);
+  const box=await page.locator('#hero-grid').boundingBox();
+  if(device.touch&&before.overflow){
+    const session=await context.newCDPSession(page),x=box.x+box.width*.5,y=box.y+box.height-15;
+    await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});
+    for(let n=1;n<=6;n++){await session.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y-(box.height-30)*n/6,id:1}]});await page.waitForTimeout(18);}
+    await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await session.detach();
+  }else{
+    await page.mouse.move(box.x+box.width*.5,box.y+box.height*.5);await page.mouse.wheel(0,800);
+  }
+  if(before.overflow)await page.waitForFunction(()=>document.querySelector('#hero-grid').scrollTop>0);
+  const last=page.locator('#hero-grid [data-hero]').last(),lastId=await last.getAttribute('data-hero');
+  await last.focus();await page.keyboard.press('Space');
+  const selected=await page.evaluate(()=>{
+    const grid=document.querySelector('#hero-grid'),button=grid.querySelector('[aria-pressed="true"]'),r=button.getBoundingClientRect(),g=grid.getBoundingClientRect();
+    return {id:button.dataset.hero,focus:document.activeElement.dataset.hero,top:grid.scrollTop,inView:r.top>=g.top-1&&r.bottom<=g.bottom+1};
+  });
+  assert.equal(selected.id,lastId,'the final hero can be selected from the scrollable roster');
+  assert.equal(selected.focus,lastId,'selection preserves keyboard focus after rebuilding cards');
+  assert(selected.inView,'the selected final card remains inside the roster viewport');
+  if(before.overflow)assert(selected.top>0,'selecting a hero does not reset the roster to its first row');
+  await page.locator('.hero-loadout').evaluate(el=>el.scrollTop=el.scrollHeight);
+  await inspectBounds(page,['#difficulty','#start-match','.menu-footer']);
+  if(saved)await inspectBounds(page,['#resume-saved-match']);
+  const after=await page.evaluate(()=>({menu:document.querySelector('#menu-screen').scrollTop,page:document.scrollingElement.scrollTop,startY:document.querySelector('#start-match').getBoundingClientRect().y}));
+  assert.equal(after.menu,0,'hero selection never scrolls the whole menu');assert.equal(after.page,0);
+  assert(Math.abs(after.startY-before.startY)<1,'start button stays anchored while both panels scroll');
+  if(qaOutput){fs.mkdirSync(qaOutput,{recursive:true});await page.screenshot({path:path.join(qaOutput,device.name+(saved?'-saved':'')+'-hero-menu.png')});}
+  await page.locator(`#hero-grid [data-hero="${initial}"]`).click();
+  await page.locator('.hero-loadout').evaluate(el=>el.scrollTop=0);
+}
 async function finishMatch(page,tag='') {
   const early=await page.evaluate(()=>{
     const g=__mobaTest.game;
@@ -65,6 +105,37 @@ async function finishMatch(page,tag='') {
   await page.locator('#end-dialog').waitFor({state:'visible'});
   assert.equal(await page.evaluate(()=>__mobaTest.game.winner),0,'destroying enemy crystal wins');
   assert.equal(await page.evaluate(()=>__mobaTest.profile.heroes[__mobaTest.game.player.heroId].xp),early.mastery,'the finale awards mastery only once');
+}
+async function verifyNewHeroSessions(page,device) {
+  await finishMatch(page);await page.locator('#change-hero').click();
+  for(const id of ['rivet','brinehook','vela','solstice']){
+    await page.locator(`#hero-grid [data-hero="${id}"]`).click();await page.locator('#start-match').click();
+    await page.locator('#hud').waitFor({state:'visible'});
+    assert.equal(await page.evaluate(()=>__mobaTest.game.player.heroId),id);
+    assert.equal(await page.locator('#ability-bar canvas').count(),4);
+    await inspectBounds(page,['#ability-bar','#shop-button','#pause-button']);
+    if(device.touch)await inspectBounds(page,['#joystick','#attack-button']);
+    await page.locator('#pause-button').click();await page.locator('#quit-match').click();
+    await page.reload();await page.waitForFunction(()=>!!window.__mobaTest);
+    await page.locator('#resume-saved-match').click();await page.locator('#pause-dialog').waitFor({state:'visible'});
+    assert.deepEqual(await page.evaluate(()=>({id:__mobaTest.game.player.heroId,paused:__mobaTest.game.paused})),{id,paused:true});
+    await page.locator('#resume-match').click();
+    await finishMatch(page);await page.locator('#change-hero').click();
+  }
+  console.log(JSON.stringify({device:device.name,newHeroSessions:['rivet','brinehook','vela','solstice'],startSaveResumeFinish:true}));
+}
+async function verifyImpossibleMatch(page,device) {
+  await page.locator('#difficulty').selectOption('impossible');
+  assert.equal(await page.locator('#match-format').textContent(),'3 vs 4','the menu makes Impossible’s uneven teams explicit');
+  await page.locator('#start-match').click();await page.locator('#hud').waitFor({state:'visible'});
+  const roster=()=>page.evaluate(()=>{const g=__mobaTest.game,heroes=g.units.filter(u=>u.kind==='hero');return {difficulty:g.difficulty,allies:heroes.filter(u=>u.team===0).length,enemies:heroes.filter(u=>u.team===1).map(u=>u.heroId),humans:heroes.filter(u=>u.isPlayer).length};});
+  const started=await roster();assert.equal(started.difficulty,'impossible');assert.equal(started.allies,3);assert.equal(started.enemies.length,4);assert.equal(new Set(started.enemies).size,4);assert.equal(started.humans,1);
+  await page.locator('#pause-button').click();await page.locator('#quit-match').click();
+  await page.reload();await page.waitForFunction(()=>!!window.__mobaTest);assert.equal(await page.locator('#match-format').textContent(),'3 vs 4');
+  await page.locator('#resume-saved-match').click();await page.locator('#pause-dialog').waitFor({state:'visible'});assert.deepEqual(await roster(),started,'Impossible resumes the exact seven-hero draft');
+  await page.locator('#resume-match').click();await finishMatch(page);await page.locator('#change-hero').click();
+  await page.locator('#difficulty').selectOption('hard');assert.equal(await page.locator('#match-format').textContent(),'3 vs 3');
+  console.log(JSON.stringify({device:device.name,impossible:true,allies:3,enemies:started.enemies,startSaveResumeFinish:true}));
 }
 async function clickBattlefield(page,device,unitId=null,offset=null,button='left') {
   const point=await page.evaluate(({unitId,offset})=>{
@@ -278,6 +349,7 @@ async function verifyExperience(page,context,device){
   assert.match(await page.locator('#pause-message').textContent(),/saved/i);
   const snapshot=await page.evaluate(()=>({time:__mobaTest.game.time,hero:__mobaTest.game.player.heroId,level:__mobaTest.game.player.level,items:[...__mobaTest.game.player.items],gold:__mobaTest.game.player.gold,pinned:__mobaTest.pinnedGoal}));
   await page.locator('#quit-match').click();await page.locator('#menu-screen').waitFor({state:'visible'});
+  await verifyHeroMenu(page,context,device,true);
   await page.locator('#start-match').click();await page.locator('#replace-save-dialog').waitFor({state:'visible'});await page.locator('#keep-saved-match').click();
   assert(await page.locator('#resume-saved-match').isVisible(),'declining replacement keeps the saved match');
   await page.reload();await page.waitForFunction(()=>!!window.__mobaTest);await page.locator('#resume-saved-match').click();
@@ -333,7 +405,7 @@ async function verifyLivingBattlefield(page,device,heroes) {
     }finally{Object.assign(r.camera,saved.camera);r.lastTime=saved.lastTime;r.hasCamera=saved.hasCamera;r.peek=saved.peek;r.draw(original);}
     return {frames,bites,rocks,departures,collapses};
   },Object.keys(heroes));
-  assert.equal(report.frames,54);assert.equal(report.bites,1);assert.equal(report.rocks,3);assert.equal(report.departures,4);assert.equal(report.collapses,1);
+  assert.equal(report.frames,Object.keys(heroes).length*3+30);assert.equal(report.bites,1);assert.equal(report.rocks,3);assert.equal(report.departures,4);assert.equal(report.collapses,1);
   console.log(JSON.stringify({device:device.name,livingBattlefield:report}));
 }
 async function verifyCombatVisuals(page,device,heroes) {
@@ -342,7 +414,7 @@ async function verifyCombatVisuals(page,device,heroes) {
     const canvas=document.createElement('canvas');canvas.width=canvas.height=128;
     const c=canvas.getContext('2d'),shells=[];
     // Inspect actual Canvas alpha, not just shield metadata or a mock context.
-    for(const theme of ['fire','arcane','violet','holy','frost','nature']){
+    for(const theme of ['fire','arcane','violet','holy','frost','nature','copper','tide','ivory','time']){
       c.clearRect(0,0,128,128);
       const unit={id:1,x:64,y:100,hp:500,alive:true,shield:100,shieldTime:4,status:{},shieldVisual:{theme,startedAt:9,amount:100}};
       fx.drawShieldShell(c,unit,10,80,88,true,fx.createEffectBudget(innerWidth));
@@ -361,6 +433,7 @@ async function verifyCombatVisuals(page,device,heroes) {
         Object.assign(h,{x:1600,y:1100,level:8});g.refreshStats(h);h.hp=h.maxHp*.7;h.mana=h.maxMana;
         g.addUnit('footman',1,1680,1100,{hp:10000,damage:0,speed:0,status:{stun:{remaining:100}}});
         g.addUnit('footman',0,1620,1150,{hp:1000,maxHp:2000,damage:0,speed:0,status:{stun:{remaining:100}}});
+        const ally=g.makeHero('dragon',0,1);Object.assign(ally,{x:1660,y:1110,bot:false,hp:300,status:{stun:{remaining:100}}});
         g.rebuildGrid();
         if(!g.cast(h,slot,{x:1680,y:1100}))throw Error(hero+' ability '+slot+' did not cast');
         if(!g.effects.some(e=>e.type==='combat-burst'&&e.fx==='cast'))throw Error('Missing successful-cast burst');
@@ -379,16 +452,16 @@ async function verifyCombatVisuals(page,device,heroes) {
     }
     return {shells,casts,frames,limit:r.effectBudget.limit};
   },Object.keys(heroes));
-  assert.equal(report.casts,32,'all playable abilities render in the browser');
-  assert.equal(report.frames,96,'cast, flight, and impact phases render');
+  assert.equal(report.casts,Object.keys(heroes).length*4,'all playable abilities render in the browser');
+  assert.equal(report.frames,Object.keys(heroes).length*12,'cast, flight, and impact phases render');
   assert.equal(report.limit,device.width<900?260:480,'compact viewports use the smaller particle allowance');
   for(const shell of report.shells)assert(shell.center[3]>0&&shell.center[3]<40,shell.theme+' shield interior stays translucent');
-  assert.equal(new Set(report.shells.map(s=>s.center.slice(0,3).join(','))).size,6,'shield sources have distinct rendered colors');
+  assert.equal(new Set(report.shells.map(s=>s.center.slice(0,3).join(','))).size,10,'shield sources have distinct rendered colors');
   await page.emulateMedia({reducedMotion:'reduce'});
   const reduced=await page.evaluate(()=>{__mobaTest.renderer.draw(__mobaTest.game);return __mobaTest.renderer.effectBudget.limit;});
   assert.equal(reduced,100,'runtime motion-preference changes reduce the effect budget');
   await page.emulateMedia({reducedMotion:'no-preference'});
-  console.log(JSON.stringify({device:device.name,pixelAbilityCasts:report.casts,pixelAbilityFrames:report.frames,translucentShieldThemes:6,reducedMotion:true}));
+  console.log(JSON.stringify({device:device.name,pixelAbilityCasts:report.casts,pixelAbilityFrames:report.frames,translucentShieldThemes:10,reducedMotion:true}));
 }
 async function main(){
   const {ITEMS}=await import('../game/moba-mania/items.mjs');
@@ -408,8 +481,9 @@ async function main(){
       page.on('pageerror',e=>errors.push(e.message));
       await page.goto(origin+'/game/CatLanes.html');
       await page.waitForFunction(()=>!!window.__mobaTest);
-      assert.equal(await page.locator('#hero-grid [data-hero]').count(),8,'all eight heroes are selectable');
+      assert.equal(await page.locator('#hero-grid [data-hero]').count(),12,'all twelve heroes are selectable');
       assert.equal(await page.locator('#hero-grid [data-hero="mouse"]').count(),0,'mouse removed from roster');
+      await verifyHeroMenu(page,context,device);
       await page.locator(`#hero-grid [data-hero="${device.hero}"]`).click();
       await page.locator('#difficulty').selectOption('hard');
       await page.locator('#start-match').click();
@@ -497,23 +571,37 @@ async function main(){
       assert(rewards.target&&rewards.target.x>=0&&rewards.target.x<=device.width&&rewards.target.y>=0&&rewards.target.y<=device.height,'gold flies toward the visible shop counter');
       assert.deepEqual(errors,[],device.name+' must not emit runtime errors');
       console.log(JSON.stringify({device:device.name,hero:device.hero,move:true,camera:true,nearestAttack:true,primaryClickAttacks:true,noDistantChase:true,enemyFocus:true,autoRetarget:true,moveCancelsAttack:true,talentIcons:HEROES[device.hero].talents.reduce((n,t)=>n+t.choices.length,0),saveResume:true,pinnedBuild:true,controlSettings:true,minimapPeek:true,mastery:true,shopItems:30,prerequisites:true,purchases:true,personalRewards:true,maxLevel:18,replay:true,errors:0}));
+      await verifyNewHeroSessions(page,device);assert.deepEqual(errors,[],device.name+' new hero sessions have no runtime errors');
+      await verifyImpossibleMatch(page,device);assert.deepEqual(errors,[],device.name+' Impossible has no runtime errors');
       await context.close();
+    }
+    {
+      const device={name:'small-phone',width:320,height:568,touch:true},context=await browser.newContext({viewport:{width:device.width,height:device.height},hasTouch:true,isMobile:true}),page=await context.newPage();
+      await page.goto(origin+'/game/CatLanes.html');await page.waitForFunction(()=>!!window.__mobaTest);
+      await verifyHeroMenu(page,context,device);await context.close();
     }
     const context=await browser.newContext({viewport:{width:1280,height:800}}),page=await context.newPage(),errors=[];
     page.on('pageerror',e=>errors.push(e.message));
     await page.goto(origin+'/offline/index.html');await page.waitForFunction(()=>!!window.__mobaTest);
-    for(const hero of ['druid','angel','bulwark','ember','seraph']){
+    const additionalHeroes=Object.keys(HEROES).filter(id=>!['arc','dragon','ranger'].includes(id));
+    for(const hero of additionalHeroes){
       await page.locator(`#hero-grid [data-hero="${hero}"]`).click();await page.locator('#start-match').click();
       await page.locator('#hud').waitFor({state:'visible'});assert.equal(await page.evaluate(()=>__mobaTest.game.player.heroId),hero);
       assert.equal(await page.locator('#ability-bar canvas').count(),4,'every hero has four skill icons');
       await page.locator('#shop-button').click();await page.locator('#shop-dialog').waitFor({state:'visible'});
       assert.equal(await page.locator('#shop-items canvas').count(),10,'offline item icons load without extra assets');
       await page.locator('#close-shop').click();await page.waitForFunction(()=>!__mobaTest.game.paused);
-      if(hero==='druid'){await page.locator('#pause-button').click();await page.locator('#quit-match').click();await page.locator('#resume-saved-match').click();await page.locator('#pause-dialog').waitFor({state:'visible'});assert.equal(await page.evaluate(()=>__mobaTest.game.paused),true);await page.locator('#resume-match').click();}
+      if(['druid','rivet','brinehook','vela','solstice'].includes(hero)){
+        await page.locator('#pause-button').click();await page.locator('#quit-match').click();
+        await page.reload();await page.waitForFunction(()=>!!window.__mobaTest);
+        await page.locator('#resume-saved-match').click();await page.locator('#pause-dialog').waitFor({state:'visible'});
+        assert.equal(await page.evaluate(()=>__mobaTest.game.paused),true);assert.equal(await page.evaluate(()=>__mobaTest.game.player.heroId),hero);
+        await page.locator('#resume-match').click();
+      }
       await finishMatch(page);await page.locator('#change-hero').click();await page.locator('#menu-screen').waitFor({state:'visible'});
     }
     assert.deepEqual(errors,[]);await context.close();assert.deepEqual(missing,[],'no missing static modules/resources');
-    console.log(JSON.stringify({offlinePack:true,otherHeroes:['druid','angel','bulwark','ember','seraph'],missingResources:0,errors:0}));
+    console.log(JSON.stringify({offlinePack:true,otherHeroes:additionalHeroes,missingResources:0,errors:0}));
   }finally{await browser.close();await new Promise(r=>server.close(r));}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;server.close();}).finally(()=>fs.rmSync(temp,{recursive:true,force:true}));

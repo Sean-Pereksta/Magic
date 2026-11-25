@@ -1,9 +1,11 @@
 import { HEROES, DIFFICULTIES, WORLD, RULES, lanePoint, segmentDistance, xpToNextLevel, beastScaling } from './data.mjs';
 import { castHeroSkill, botSkillAim } from './hero-skills.mjs';
 import { ITEMS, itemBonus, purchaseState } from './items.mjs';
-import { makeMetrics, canSee, updateVision, scoutJungle, strength, assignTeamJobs, nextBuildItem, chooseBotTalent } from './strategy.mjs';
+import { makeMetrics, canSee, updateVision, scoutJungle, strength, assignTeamJobs, nextBuildItem, chooseBotTalent, isExpansionHero, expansionBotAim, expansionTargetBias, expansionBotMovement } from './strategy.mjs';
 import { serializeGame, restoreGame } from './save-state.mjs';
 import { onCast, onDamage, onHeal, onShield, onKill, onSummon, tickProgression, scheduleImpact } from './progression.mjs';
+import { initExpansionHero, adjustExpansionAbility, castExpansionSkill, resolveExpansionImpact, tickExpansionDevice, tickExpansionHero, tickExpansion, expansionAttackPreview, prepareExpansionAttack, expansionProjectileDamage, onExpansionProjectileHit, onExpansionHealthLoss, onExpansionKill, onExpansionDeath, cancelExpansionChannel } from './hero-expansion.mjs';
+import { selectTimeWardTarget, onSolsticeAbsorb, onSolsticeHealthLoss, clearSolsticeWard, solsticeDamageFactor } from './solstice-runtime.mjs';
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -11,8 +13,8 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const structure=u=>u.kind==='tower'||u.kind==='core';
 const hostile=(a,b)=>a.team!==b.team && b.alive;
 const COLORS={physical:'#fff1cf',magic:'#86d8ff',fire:'#ff9e5b',poison:'#a9ee78',heal:'#98f2b8',shield:'#beccff'};
-const COMBAT_COLORS={steel:'#ffe8b5',fire:'#ff9948',arcane:'#69cfff',nature:'#8fe69a',poison:'#b0e86b',holy:'#ffa8d6',frost:'#9deaff',violet:'#bf97ff',stone:'#d7b68c'};
-const HERO_THEMES={arc:'arcane',dragon:'fire',druid:'nature',angel:'holy',ranger:'poison',bulwark:'violet',ember:'fire',seraph:'frost'};
+const COMBAT_COLORS={steel:'#ffe8b5',fire:'#ff9948',arcane:'#69cfff',nature:'#8fe69a',poison:'#b0e86b',holy:'#ffa8d6',frost:'#9deaff',violet:'#bf97ff',stone:'#d7b68c',copper:'#e6a261',tide:'#8fe1ce',ivory:'#f4efdc',time:'#e7b951'};
+const HERO_THEMES={arc:'arcane',dragon:'fire',druid:'nature',angel:'holy',ranger:'poison',bulwark:'violet',ember:'fire',seraph:'frost',rivet:'copper',brinehook:'tide',vela:'ivory',solstice:'time'};
 const PRESENTATION_TYPES=new Set(['ground-mark','structure-collapse','summon-arrive','summon-depart','beast-capture','reward-gold','reward-item','reward-level']);
 const effectPool=type=>type==='combat-burst'?'burst':PRESENTATION_TYPES.has(type)?'presentation':'spell';
 const movementStatus=layers=>{
@@ -36,18 +38,18 @@ export class Game {
     this.grid=new Map(); this.navCache=new Map();
     this.lastSeen=[{},{}];this.assignments=[{},{}];this.pendingBeastChoice=null;this.scheduledImpacts=[];this.progressionDepth=0;
     const chosen=HEROES[hero]?hero:'arc';
-    const partners={arc:['dragon','druid'],dragon:['angel','ranger'],druid:['bulwark','seraph'],angel:['dragon','ember'],ranger:['bulwark','seraph'],bulwark:['arc','ember'],ember:['bulwark','angel'],seraph:['bulwark','ranger']};
+    const partners={arc:['dragon','druid'],dragon:['angel','ranger'],druid:['bulwark','seraph'],angel:['dragon','ember'],ranger:['bulwark','seraph'],bulwark:['arc','ember'],ember:['bulwark','angel'],seraph:['bulwark','ranger'],rivet:['brinehook','solstice'],brinehook:['vela','angel'],vela:['brinehook','solstice'],solstice:['dragon','rivet']};
     const allies=[chosen,...(partners[chosen]||Object.keys(HEROES).filter(id=>id!==chosen).slice(0,2))];
     const pool=Object.keys(HEROES).filter(id=>!allies.includes(id));
-    // A seeded shuffle varies the opposing lineup while retaining exactly three heroes per side.
+    // A seeded shuffle drafts distinct opposing heroes; Impossible adds one extra opponent.
     for(let i=pool.length-1;i>0;i--){const j=Math.floor(this.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
-    const enemies=[];
-    for(const roles of [['bulwark','dragon','seraph'],['ranger','ember','arc'],['angel','druid','seraph']]){
+    const enemies=[],enemyCount=DIFFICULTIES[this.difficulty].enemyHeroes||3;
+    for(const roles of [['bulwark','dragon','seraph','brinehook'],['ranger','ember','arc','vela'],['angel','druid','seraph','solstice','rivet']]){
       const selected=pool.find(id=>!enemies.includes(id)&&roles.includes(id)&&!(id==='druid'&&enemies.includes('arc')));
       if(selected)enemies.push(selected);
     }
-    for(const id of pool)if(enemies.length<3&&!enemies.includes(id)&&!(['arc','druid'].includes(id)&&enemies.some(h=>['arc','druid'].includes(h))))enemies.push(id);
-    for(const id of pool)if(enemies.length<3&&!enemies.includes(id))enemies.push(id);
+    for(const id of pool)if(enemies.length<enemyCount&&!enemies.includes(id)&&!(['arc','druid'].includes(id)&&enemies.some(h=>['arc','druid'].includes(h))))enemies.push(id);
+    for(const id of pool)if(enemies.length<enemyCount&&!enemies.includes(id))enemies.push(id);
     for(let team=0;team<2;team++) {
       const base=WORLD.bases[team];
       this.addUnit('core',team,base.x,base.y,{r:48,hp:7200,range:290,damage:90,attackRate:1.15,name:team?'Rose Crystal':'Azure Crystal'});
@@ -71,11 +73,11 @@ export class Game {
   serialize(){return serializeGame(this);}
   static restore(snapshot){return restoreGame(Game,snapshot);}
   canSee(team,unit){return canSee(this,team,unit);}
-  visionSources(team){return this.units.filter(u=>u.alive&&u.team===team).map(u=>({x:u.x,y:u.y,r:u.kind==='hero'?580:structure(u)?520:u.kind==='summon'?360:u.siege?430:300}));}
+  visionSources(team){return this.units.filter(u=>u.alive&&u.team===team&&!u.noVision).map(u=>({x:u.x,y:u.y,r:u.kind==='hero'?580:structure(u)?520:u.kind==='summon'?360:u.siege?430:300}));}
   pointVisible(team,x,y){return this.visionSources(team).some(s=>Math.hypot(x-s.x,y-s.y)<=s.r);}
   lastHitDamage(attacker,target){
     if(!attacker?.alive||!target?.alive||attacker.team===target.team||this.isProtected(target))return 0;
-    let value=attacker.damage;
+    let value=expansionAttackPreview(this,attacker);
     if(structure(target)){
       if(attacker.kind==='footman'||attacker.kind==='archer')value*=.32;
       if(attacker.kind==='summon')value*=.22;
@@ -88,6 +90,8 @@ export class Game {
     return Math.max(0,value-(target.shield||0));
   }
   progressionHook(fn,...args){if(this.progressionDepth)return;this.progressionDepth++;try{fn(this,...args);}finally{this.progressionDepth--;}}
+  resolveHeroImpact(hero,impact){return resolveExpansionImpact(this,hero,impact);}
+  expansionSummonCreated(hero,summon){this.progressionHook(onSummon,hero,summon,0);}
   addUnit(kind,team,x,y,opts={}) {
     const u={id:this.nextId++,kind,team,x,y,r:12,hp:100,maxHp:100,mana:0,maxMana:0,alive:true,angle:team?Math.PI:0,
       moving:false,attackAnim:0,attackTimer:.1,status:{},shield:0,shieldTime:0,level:1,speed:120,range:42,damage:20,attackRate:1,
@@ -99,10 +103,10 @@ export class Game {
     const def=HEROES[heroId],well=WORLD.bases[team].well;
     const h=this.addUnit('hero',team,well.x+(team?-45:45),well.y+(slot-1)*38,{heroId,name:isPlayer?def.name:def.name+' · '+(team?'Rose':'Azure'),
       hp:def.hp,mana:def.mana,speed:def.speed,range:def.range,damage:def.damage,attackRate:def.attackRate,r:17,
-      isPlayer,bot:!isPlayer,slot,lane:slot===0?1:slot===1?0:2,role:slot===2?'jungler':heroId==='angel'?'support':'laner',
+      isPlayer,bot:!isPlayer,slot,lane:slot===0||slot===3?1:slot===1?0:2,role:slot===2?'jungler':heroId==='angel'?'support':'laner',
       xp:0,xpNext:xpToNextLevel(1),level:1,cooldowns:[0,0,0,0],talents:{},kills:0,deaths:0,assists:0,gold:0,goldEarned:0,items:[],lastGoldGain:null,shopIn:1,respawnIn:0,aiState:'departing',
       thinkIn:this.random()*.25,brain:{},lastDamageAt:-100,contributors:{},supportContributors:{},supporters:{},combatTargets:{},metrics:makeMetrics(),streak:0,evolution:{},recallIn:0,baseHp:def.hp,baseMana:def.mana});
-    return h;
+    initExpansionHero(h);return h;
   }
   bonus(hero,key){
     if(!hero?.heroId)return 0;
@@ -111,7 +115,7 @@ export class Game {
   }
   getAbility(hero,slot){
     const raw=HEROES[hero?.heroId]?.abilities[slot];if(!raw)return null;
-    let radius=raw.radius*(1+this.bonus(hero,'area')),range=raw.range*(1+this.bonus(hero,'range'));
+    let radius=raw.radius*(1+this.bonus(hero,'area')),range=raw.range*(1+this.bonus(hero,'range')+this.bonus(hero,'abilityRange'));
     if(raw.id==='flame-ring')radius*=1+this.bonus(hero,'flameRadius');
     if(raw.id==='stun-bomb')radius*=1+this.bonus(hero,'bombRadius');
     if(raw.id==='royal-quake')radius*=1+this.bonus(hero,'quakeRadius');
@@ -119,7 +123,7 @@ export class Game {
     if(raw.id==='northern-inspire')radius*=1+this.bonus(hero,'inspireArea');
     if(raw.id==='rampart-rush')range*=1+this.bonus(hero,'rushDistance');
     if(raw.id==='cinder-dash'||raw.id==='flicker-strike')range*=1+this.bonus(hero,'dashDistance');
-    return {...raw,range,radius,cooldown:raw.cooldown*(1-Math.min(.5,this.bonus(hero,'cooldown')))};
+    return adjustExpansionAbility(this,hero,{...raw,range,radius,cooldown:raw.cooldown*(1-Math.min(.5,this.bonus(hero,'cooldown')))});
   }
   availableTalents(hero){return HEROES[hero?.heroId]?.talents.filter(t=>t.level<=hero.level&&!hero.talents[t.level])||[];}
   chooseTalent(hero,tierLevel,choiceId){
@@ -133,8 +137,8 @@ export class Game {
   refreshStats(hero){
     const def=HEROES[hero.heroId];hero.maxHp=Math.round((def.hp+(hero.level-1)*62)*(1+this.bonus(hero,'hp')));
     hero.maxMana=Math.round((def.mana+(hero.level-1)*18)*(1+this.bonus(hero,'mana')));
-    hero.damage=(def.damage+(hero.level-1)*4.2)*(1+this.bonus(hero,'damage'));
-    hero.range=def.range*(1+this.bonus(hero,'range'));hero.speed=def.speed*(1+this.bonus(hero,'speed'));
+    hero.damage=(def.damage+(hero.level-1)*4.2)*(1+this.bonus(hero,'damage'))*(1+this.bonus(hero,'basicDamage'));
+    hero.range=def.range*(1+this.bonus(hero,'range')+this.bonus(hero,'basicRange'))*(1+(hero.status.steadyAim?.rangeBonus||0));hero.speed=def.speed*(1+this.bonus(hero,'speed'));
     hero.attackRate=def.attackRate/(1+this.bonus(hero,'attackSpeed'));
   }
   buyItem(hero,itemId){
@@ -247,6 +251,7 @@ export class Game {
       const value=Math.min(layer.amount,remaining);layer.amount-=value;remaining-=value;
       const source=this.units.find(u=>u.id===layer.sourceId&&u.kind==='hero');
       if(source&&value>0){source.metrics.shieldingDone+=value;this.recordSupport(source,target,attacker);}
+      if(value>0)onSolsticeAbsorb(this,target,layer,value,attacker);
       if(remaining<=0)break;
     }
     target.shieldLayers=(target.shieldLayers||[]).filter(layer=>layer.amount>0);return absorbed;
@@ -274,6 +279,7 @@ export class Game {
     if(source?.kind==='hero'&&['bulwark','angel'].includes(source.heroId)&&['footman','archer','camp'].includes(target.kind))amount*=1.65;
     if((target.kind==='camp'||(target.kind==='beast'&&target.team===-1))&&owner?.heroId)amount*=1+this.bonus(owner,'jungleDamage');
     if(target.status.guard)amount*=target.status.guard.factor;
+    amount*=solsticeDamageFactor(this,target);
     const impact=amount,shieldTheme=target.shieldVisual?.theme||target.status.guard?.visualTheme||this.combatTheme(target);
     let absorbed=0;
     if(target.shield>0){absorbed=this.absorbShield(target,amount,owner);amount-=absorbed;if(absorbed>8&&!quiet)this.float(target,Math.round(absorbed),'#b8caff');}
@@ -291,6 +297,7 @@ export class Game {
       }
     }
     const actual=Math.min(target.hp,amount);target.hp-=amount;
+    onSolsticeHealthLoss(this,target,source,actual);onExpansionHealthLoss(this,target,source,actual);
     if(owner?.kind==='hero'){owner.metrics.damageDealt+=actual;if(target.kind==='hero')owner.metrics.damageToHeroes+=actual;if(structure(target))owner.metrics.damageToStructures+=actual;}
     if(target.kind==='hero')target.metrics.damageTaken+=actual;
     if(actual>1&&!quiet)this.float(target,Math.round(actual),COLORS[type]||type);
@@ -309,6 +316,7 @@ export class Game {
     if(target.kind==='summon')this.presentation('summon-depart',target,.65,{subtype:target.subtype,ownerId:target.ownerId,visibleTo});
     this.combatBurst(target,source,'death',structure(target)?'stone':this.combatTheme(target,'physical'),target.kind==='hero'||structure(target)?1.7:.8);
     target.alive=false;target.hp=0;target.deathTime=.7;target.shield=0;target.shieldLayers=[];delete target.shieldVisual;
+    clearSolsticeWard(this,target);onExpansionDeath(this,target);
     const owner=this.owner(source),team=owner?.team??source?.team;
     this.effect(target.kind==='core'?'explosion':'ring',target.x,target.y,target.kind==='core'?170:target.r*2.5,target.team===0?'#64caff':target.team===1?'#ff98be':'#e5d698',.7);
     const growth=1+Math.min(3,Math.max(0,this.time-120)/180);
@@ -368,7 +376,7 @@ export class Game {
     if(target.kind==='core'){
       this.winner=1-target.team;this.announce(this.winner===0?'VICTORY · The Rose Crystal is shattered!':'DEFEAT · The Azure Crystal has fallen.','end');
     }
-    if(killer)this.progressionHook(onKill,killer,target);
+    if(killer){onExpansionKill(this,killer,target);this.progressionHook(onKill,killer,target);}
   }
   chooseBeastLane(lane,beastId=this.pendingBeastChoice?.beastId){
     const choice=this.pendingBeastChoice;
@@ -380,6 +388,7 @@ export class Game {
   }
   applyStatus(target,type,duration,extra={}){
     if(!target.alive||structure(target))return;
+    if(type==='stun')cancelExpansionChannel(this,target);
     if(type==='guard')extra={visualTheme:this.combatTheme(this.units.find(u=>u.id===extra.sourceId)||this._castSource||target),...extra};
     if(type==='stun'&&target.kind==='hero'){
       duration*=1-Math.min(.35,this.bonus(target,'tenacity'));
@@ -433,7 +442,7 @@ export class Game {
   }
   recall(hero){
     if(!hero?.alive||hero.kind!=='hero'||hero.recallIn>0||this.winner!==null||this.paused)return false;
-    if(hero.isPlayer)this.cancelPlayerOrder();
+    cancelExpansionChannel(this,hero);if(hero.isPlayer)this.cancelPlayerOrder();
     hero.recallIn=RULES.recallTime;hero.recallStart={x:hero.x,y:hero.y};hero.targetId=null;
     if(hero.isPlayer){this.moveTarget=null;this.announce('Recalling · stay still for '+RULES.recallTime+' seconds.','recall');}return true;
   }
@@ -451,6 +460,12 @@ export class Game {
     this.rebuildGrid();
     const dx=aim.x-hero.x,dy=aim.y-hero.y,d=Math.hypot(dx,dy)||1,angle=d>1?Math.atan2(dy,dx):hero.angle;
     const at={x:clamp(hero.x+dx/d*Math.min(d,a.range),28,WORLD.width-28),y:clamp(hero.y+dy/d*Math.min(d,a.range),28,WORLD.height-28)};
+    if(a.id==='time-ward'&&!selectTimeWardTarget(this,hero,at))return false;
+    if(a.id==='bolt-sentry'||a.id==='shock-mine'){
+      const placement=this.safePoint(at,a.id==='bolt-sentry'?15:12);
+      if(dist(hero,placement)>a.range+1||!this.clearLine(hero,placement,4))return false;
+    }
+    initExpansionHero(hero);cancelExpansionChannel(this,hero);
     hero.mana-=a.mana;hero.cooldowns[slot]=a.cooldown;hero.recallIn=0;hero.angle=angle;hero.attackAnim=.32;
     this.visualAction(hero,'cast',.42,{abilityId:a.id,angle,toX:at.x,toY:at.y});
     hero.revealedUntil=this.time+2;this._castSource=hero;
@@ -492,7 +507,7 @@ export class Game {
         const n=5+this.bonus(hero,'fanCount');for(let i=0;i<n;i++)this.fireSkill(hero,angle+(i-(n-1)/2)*.155,{type:'arrow',color:a.color,r:a.radius,range:a.range,speed:550,damage:52*power,pierce:0,damageType:'physical'});break;}
       case 'stun-bomb':zone('bomb',.6,{delay:.55,tickIn:.55,damage:80*power,stun:1.4+this.bonus(hero,'stunDuration'),color:a.color});this.effect('poison',at.x,at.y,a.radius,a.color,.6,{delay:.55,team:hero.team});break;
       case 'long-shot':this.fireSkill(hero,angle,{type:'longshot',color:a.color,r:a.radius,range:a.range,speed:830,damage:205*power*(1+this.bonus(hero,'longshotDamage')),pierce:3,damageType:'physical'});break;
-      default:castHeroSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone});break;
+      default:if(!castExpansionSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone}))castHeroSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone});break;
     }
     if(a.mobility||['rift-step','sky-cleave'].includes(a.id)){hero.visualAction.toX=hero.x;hero.visualAction.toY=hero.y;}
     this.combatBurst(hero,hero,'cast',this.combatTheme(hero),.8,{angle,abilityId:a.id});
@@ -523,12 +538,14 @@ export class Game {
   basicAttack(unit,target){
     if(!unit?.alive||!target?.alive||!hostile(unit,target)||this.isProtected(target)||unit.attackTimer>0||unit.status.stun||unit.recallIn||(unit.team>=0&&!this.canSee(unit.team,target)))return false;
     const d=dist(unit,target);if(d>unit.range+target.r+unit.r*.35)return false;
-    unit.attackTimer=unit.attackRate/(1+(unit.status.haste?.attack||0));unit.attackAnim=.26;unit.angle=Math.atan2(target.y-unit.y,target.x-unit.x);
+    const expansion=prepareExpansionAttack(this,unit);if(expansion===false)return false;
+    unit.attackTimer=unit.attackRate/(1+(unit.status.haste?.attack||0))*(expansion?.intervalFactor||1);unit.attackAnim=.26;unit.angle=Math.atan2(target.y-unit.y,target.x-unit.x);
     if(!(unit.visualAction?.impactAt>this.time))this.visualAction(unit,'attack',.32,{toX:target.x,toY:target.y});
+    if(expansion?.sixthRound&&unit.visualAction)unit.visualAction.sixthRound=true;
     unit.revealedUntil=this.time+2;
     if(unit.range>100){
       const color=unit.kind==='tower'||unit.kind==='core'?(unit.team?'#ff98bc':'#87d5ff'):HEROES[unit.heroId]?.color||'#edd8a0';
-      let attackDamage=unit.damage;
+      let attackDamage=expansion?.damage??unit.damage;
       if(structure(unit)){
         const continuing=unit.focusId===target.id&&this.time-(unit.lastShotAt??-100)<3.2;
         unit.focusShots=target.kind==='hero'?(continuing?Math.min(3,(unit.focusShots||0)+1):0):0;
@@ -536,10 +553,10 @@ export class Game {
         if(target.kind==='hero')attackDamage*=1.35*(1+unit.focusShots*.25);
       }
       this.projectiles.push({id:this.nextId++,x:unit.x,y:unit.y-8,prevX:unit.x,prevY:unit.y-8,angle:unit.angle,team:unit.team,ownerId:unit.ownerId??unit.id,sourceId:unit.id,sourceKind:unit.kind,
-        targetId:target.id,speed:structure(unit)?650:unit.kind==='archer'?400:520,life:2.5,type:unit.heroId==='ranger'||unit.kind==='archer'?'arrow':'bolt',color,r:structure(unit)?6:4,damage:attackDamage,pierce:0,hit:new Set(),basic:true,theme:this.combatTheme(unit,'physical',{basic:true})});
+        targetId:target.id,speed:structure(unit)?650:unit.kind==='archer'?400:520,life:2.5,type:unit.heroId==='ranger'||unit.kind==='archer'?'arrow':'bolt',color,r:structure(unit)?6:4,damage:attackDamage,pierce:0,hit:new Set(),basic:true,theme:this.combatTheme(unit,'physical',{basic:true}),...expansion?.projectile});
     }else{
       this.effect('slash',unit.x,unit.y,unit.range,'#ffe7b9',.2,{angle:unit.angle,x2:target.x,y2:target.y});
-      const dealt=this.damage(target,unit.damage,unit,'physical',false,{basic:true});
+      const dealt=this.damage(target,expansion?.damage??unit.damage,unit,'physical',false,{basic:true});
       if(unit.subtype==='bear')this.applyStatus(target,'slow',1.2,{factor:.3});
       if(unit.siege&&structure(target))this.damage(target,unit.damage*(unit.subtype==='colossus'?.6:.2),unit,'physical',true);
       if(unit.siege&&unit.subtype==='maw')for(const other of this.nearby(target.x,target.y,95))if(other.alive&&other.team!==unit.team&&(other.kind==='footman'||other.kind==='archer')&&other.id!==target.id&&dist(other,target)<85)this.damage(other,unit.damage*.8,unit,'physical',true);
@@ -562,9 +579,10 @@ export class Game {
     this.rebuildGrid();this.planIn-=dt;if(this.planIn<=0){this.planIn=1.6;this.planTeams();}
     for(const unit of this.units){
       unit.moving=false;unit.vx=unit.vy=0;unit.attackAnim=Math.max(0,unit.attackAnim-dt);unit.attackTimer=Math.max(0,unit.attackTimer-dt);unit.splashIn=Math.max(0,unit.splashIn-dt);
-      if(!unit.alive){unit.deathTime-=dt;if(unit.kind==='hero'){unit.respawnIn=Math.max(0,unit.respawnIn-dt);if(unit.respawnIn===0)this.respawn(unit);}continue;}
+      if(!unit.alive){unit.deathTime=Math.max(0,unit.deathTime-dt);if(unit.kind==='hero'){unit.respawnIn=Math.max(0,unit.respawnIn-dt);if(unit.respawnIn===0)this.respawn(unit);}continue;}
       this.tickStatuses(unit,dt);if(!unit.alive)continue;
       if(unit.kind==='hero'){
+        tickExpansionHero(this,unit,dt);
         for(let i=0;i<4;i++)unit.cooldowns[i]=Math.max(0,unit.cooldowns[i]-dt);
         unit.mana=Math.min(unit.maxMana,unit.mana+(3.7+this.bonus(unit,'manaRegen'))*dt);
         if(this.time-unit.lastDamageAt>6)this.heal(unit,1.5*dt,null,true);
@@ -575,7 +593,8 @@ export class Game {
         if(unit.status.stun)continue;
         if(unit.isPlayer)this.tickPlayer(unit,dt,input);
         else if(unit.bot)this.tickBot(unit,dt);
-      }else if(unit.status.stun)continue;
+      }else if(unit.kind==='summon'&&unit.stationary)this.tickSummon(unit,dt);
+      else if(unit.status.stun)continue;
       else if(structure(unit))this.tickStructure(unit);
       else if(unit.team===-1)this.tickNeutral(unit,dt);
       else if(unit.kind==='summon')this.tickSummon(unit,dt);
@@ -583,6 +602,7 @@ export class Game {
       else this.tickLaneUnit(unit,dt);
     }
     tickProgression(this,dt);
+    tickExpansion(this,dt);
     this.tickProjectiles(dt);this.tickZones(dt);
     for(const e of this.effects){e.life-=dt;if(e.followId){const u=this.units.find(u=>u.id===e.followId);if(u){e.x=u.x;e.y=u.y;}}}
     for(const t of this.texts){t.life-=dt;t.y-=25*dt;}
@@ -612,6 +632,7 @@ export class Game {
   respawn(h){
     const well=WORLD.bases[h.team].well;h.x=well.x+(h.team?-36:36);h.y=well.y+(h.slot-1)*30;h.hp=h.maxHp;h.mana=h.maxMana;h.alive=true;h.status={};h.shield=0;h.recallIn=0;
     h.cooldowns=h.cooldowns.map(c=>Math.min(c,3));h.contributors={};h.supportContributors={};h.supporters={};h.combatTargets={};h.shieldLayers=[];delete h.shieldVisual;delete h.visualAction;delete h.visualHit;delete h.visualDeath;delete h.visualSpawn;h.brain={};h.path=null;h.pathGoal=null;h.targetId=null;h.thinkIn=0;h.aiState='departing';h.ccRecoveryUntil=0;
+    delete h.timeWard;delete h.displacementRecoveryUntil;if(h.heroId==='vela'){initExpansionHero(h);this.refreshStats(h);}
     if(h.isPlayer)this.cancelPlayerOrder();this.effect('level',h.x,h.y,60,HEROES[h.heroId].color,.9);
   }
   validPlayerTarget(target){return !!target&&target.alive&&hostile(this.player,target)&&!this.isProtected(target)&&this.canSee(this.player.team,target);}
@@ -644,13 +665,13 @@ export class Game {
   }
   movePlayerTo(point){
     if(!this.player?.alive||this.paused||this.winner!==null||!Number.isFinite(point?.x)||!Number.isFinite(point?.y))return false;
-    this.cancelPlayerOrder();this.player.recallIn=0;this.moveTarget=this.safePoint(point,this.player.r);return true;
+    cancelExpansionChannel(this,this.player);this.cancelPlayerOrder();this.player.recallIn=0;this.moveTarget=this.safePoint(point,this.player.r);return true;
   }
   playerCommands(input){
     const pressed=!!input.attack&&!this.attackHeld;this.attackHeld=!!input.attack;
     if(!this.player.alive)return;
     // A move has priority even during a stun; releasing it must not revive an old chase.
-    if(Math.hypot(Number(input.move?.x)||0,Number(input.move?.y)||0)>.05){this.cancelPlayerOrder();this.player.recallIn=0;}
+    if(Math.hypot(Number(input.move?.x)||0,Number(input.move?.y)||0)>.05){cancelExpansionChannel(this,this.player);this.cancelPlayerOrder();this.player.recallIn=0;}
     else if(Number.isFinite(input.moveTo?.x)&&Number.isFinite(input.moveTo?.y))this.movePlayerTo(input.moveTo);
     else if(pressed)this.attackNearest();
   }
@@ -695,6 +716,7 @@ export class Game {
     }
   }
   tickSummon(u,dt){
+    if(tickExpansionDevice(this,u,dt))return;
     u.lifetime-=dt;if(u.lifetime<=0){this.presentation('summon-depart',u,.65,{subtype:u.subtype,ownerId:u.ownerId});u.alive=false;u.deathTime=.4;this.effect('ring',u.x,u.y,35,'#a9e1cc',.4);return;}
     const owner=this.units.find(v=>v.id===u.ownerId),ownerTarget=this.units.find(v=>v.id===owner?.targetId&&v.alive&&this.canSee(u.team,v));
     let target=ownerTarget&&dist(u,ownerTarget)<460?ownerTarget:this.findTarget(u,300,true);
@@ -750,22 +772,34 @@ export class Game {
   targetScore(u,t){
     let score=dist(u,t);if(t.kind==='hero')score-=55;if(structure(t))score+=80;if(t.team===-1)score+=60;
     if(u.kind==='hero'){score-=Math.max(0,1-t.hp/t.maxHp)*75;const focus=this.teamPlans[u.team]?.focusId;if(t.id===focus)score-=100;}
-    return score;
+    return score+expansionTargetBias(this,u,t);
   }
   tickProjectiles(dt){
     for(const p of this.projectiles){
       p.life-=dt;if(p.life<=0)continue;p.prevX=p.x;p.prevY=p.y;
-      if(p.targetId){const target=this.units.find(u=>u.id===p.targetId&&u.alive);if(!target){p.life=0;continue;}p.angle=Math.atan2(target.y-p.y,target.x-p.x);p.vx=Math.cos(p.angle)*p.speed;p.vy=Math.sin(p.angle)*p.speed;}
+      if(p.targetId){const target=this.units.find(u=>u.id===p.targetId&&u.alive);if(!target||(p.visibleOnly&&!this.canSee(p.team,target))){p.life=0;continue;}p.angle=Math.atan2(target.y-p.y,target.x-p.x);p.vx=Math.cos(p.angle)*p.speed;p.vy=Math.sin(p.angle)*p.speed;}
       p.x+=p.vx*dt;p.y+=p.vy*dt;
+      let terrainHit=false;
+      if(p.terrainCollision&&!this.clearLine({x:p.prevX,y:p.prevY},p,Math.min(8,p.r))){
+        const length=Math.hypot(p.x-p.prevX,p.y-p.prevY),dx=(p.x-p.prevX)/(length||1),dy=(p.y-p.prevY)/(length||1);let traveled=0;
+        p.x=p.prevX;p.y=p.prevY;
+        while(traveled<length){
+          const step=Math.min(4,length-traveled),next={x:p.x+dx*step,y:p.y+dy*step};
+          if(!this.clearLine(p,next,Math.min(8,p.r)))break;
+          p.x=next.x;p.y=next.y;traveled+=step;
+        }
+        terrainHit=true;
+      }
       const source=this.units.find(u=>u.id===p.sourceId)||(p.sourceId!==p.ownerId?{id:p.sourceId,kind:p.sourceKind||'summon',team:p.team,ownerId:p.ownerId}:this.units.find(u=>u.id===p.ownerId))||{id:p.sourceId,kind:p.sourceKind,team:p.team,ownerId:p.ownerId};
       const candidates=this.nearby((p.prevX+p.x)/2,(p.prevY+p.y)/2,Math.hypot(p.x-p.prevX,p.y-p.prevY)/2+70).filter(u=>u.alive&&!p.hit.has(u.id)&&u.id!==p.sourceId&&
-        (p.targetId?u.id===p.targetId:(u.team!==p.team||p.healing&&!structure(u)))&&segmentDistance(u.x,u.y,{x:p.prevX,y:p.prevY},{x:p.x,y:p.y})<u.r+p.r);
+        (p.targetId?u.id===p.targetId:(u.team!==p.team||p.healing&&!structure(u)))&&(!p.expansion||!this.isProtected(u))&&(!p.visibleOnly||this.canSee(p.team,u))&&(!p.terrainCollision||this.clearLine({x:p.prevX,y:p.prevY},u,Math.min(8,p.r)))&&segmentDistance(u.x,u.y,{x:p.prevX,y:p.prevY},{x:p.x,y:p.y})<u.r+p.r);
       candidates.sort((a,b)=>Math.hypot(a.x-p.prevX,a.y-p.prevY)-Math.hypot(b.x-p.prevX,b.y-p.prevY));
       for(const target of candidates){
         p.hit.add(target.id);
         if(target.team===p.team&&p.healing)this.heal(target,p.healing,source);
         else{
-          const actual=this.damage(target,p.damage*(structure(target)&&!p.basic ? .4 : 1),source,p.damageType||'physical',false,{basic:!!p.basic,theme:p.theme,angle:p.angle});
+          const actual=this.damage(target,expansionProjectileDamage(this,p,source,target)*(structure(target)&&!p.basic ? .4 : 1),source,p.damageType||'physical',false,{basic:!!p.basic,theme:p.theme,angle:p.angle,abilityId:p.abilityId});
+          onExpansionProjectileHit(this,p,source,target,actual);
           if(actual>0&&!p.basic&&(p.poison||p.burn))this.groundMark(p.poison?'poison':'scorch',{x:target.x,y:target.y},Math.min(32,p.r+14),p.poison?'poison':'fire',{ownerId:p.ownerId,team:p.team,visibilityId:target.id,visibleTo:target.alive?this.visualAudience(target):target.visualDeath?.visibleTo||[]});
           if(p.burn)this.applyStatus(target,'burn',p.burnDuration,{dps:p.burn,sourceId:p.ownerId});
           if(p.poison)this.applyStatus(target,'poison',p.poisonDuration,{dps:p.poison,sourceId:p.ownerId});
@@ -773,6 +807,7 @@ export class Game {
           p.pierce--;if(p.pierce<0){p.life=0;break;}
         }
       }
+      if(terrainHit)p.life=0;
       if(p.x<0||p.y<0||p.x>WORLD.width||p.y>WORLD.height)p.life=0;
     }
     this.projectiles=this.projectiles.filter(p=>p.life>0);
@@ -808,7 +843,7 @@ export class Game {
   }
   rebuildGrid(){this.grid.clear();for(const u of this.units)if(u.alive){const key=(Math.floor(u.x/160))+','+(Math.floor(u.y/160));let list=this.grid.get(key);if(!list)this.grid.set(key,list=[]);list.push(u);}}
   nearby(x,y,r){const result=[];for(let gx=Math.floor((x-r)/160);gx<=Math.floor((x+r)/160);gx++)for(let gy=Math.floor((y-r)/160);gy<=Math.floor((y+r)/160);gy++){const list=this.grid.get(gx+','+gy);if(list)result.push(...list);}return result;}
-  speed(u){return u.speed*(1-(u.status.slow?.factor||0))*(1+(u.status.haste?.factor||0));}
+  speed(u){return u.speed*(1-(u.status.slow?.factor||0))*(1+(u.status.haste?.factor||0))*(1-(u.status.steadyAim?.penalty||0));}
   safePoint(p,r=17){
     const out={x:clamp(p.x,r+15,WORLD.width-r-15),y:clamp(p.y,r+15,WORLD.height-r-15)};
     for(let pass=0;pass<3;pass++)for(const o of WORLD.obstacles){const dx=out.x-o.x,dy=out.y-o.y,d=Math.hypot(dx,dy),min=r+o.r;if(d<min){const a=d?Math.atan2(dy,dx):0;out.x=o.x+Math.cos(a)*(min+1);out.y=o.y+Math.sin(a)*(min+1);}}
@@ -823,6 +858,7 @@ export class Game {
       if(this.towerThreatOnPath(u,p,target||null,false)){u.aiState='waiting for wave';return;}
     }
     u.x=p.x;u.y=p.y;
+    if(Math.hypot(u.x-oldX,u.y-oldY)>.001)cancelExpansionChannel(this,u);
     u.vx=(u.x-oldX)/dt;u.vy=(u.y-oldY)/dt;u.moving=Math.hypot(u.vx,u.vy)>3;if(u.moving){u.angle=Math.atan2(u.vy,u.vx);u.recallIn=0;}
     if(u.moving&&u.splashIn<=0&&WORLD.river.slice(1).some((p,i)=>segmentDistance(u.x,u.y,WORLD.river[i],p)<WORLD.riverWidth/2)){u.splashIn=.22;this.effect('splash',u.x,u.y,15,'#a1e6ef',.38);}
   }
@@ -846,7 +882,7 @@ export class Game {
     if(dist(u,target)<5)return;
     let dx=target.x-u.x,dy=target.y-u.y;
     // Small local repulsion preserves the readable five-unit formation.
-    let sx=0,sy=0;for(const other of this.nearby(u.x,u.y,50)){if(other===u||structure(other)||!other.alive)continue;const d=dist(u,other),min=u.r+other.r+3;if(d>0&&d<min){sx+=(u.x-other.x)/d*(min-d)*2;sy+=(u.y-other.y)/d*(min-d)*2;}}
+    let sx=0,sy=0;for(const other of this.nearby(u.x,u.y,50)){if(other===u||structure(other)||!other.alive||other.noCollision)continue;const d=dist(u,other),min=u.r+other.r+3;if(d>0&&d<min){sx+=(u.x-other.x)/d*(min-d)*2;sy+=(u.y-other.y)/d*(min-d)*2;}}
     const len=Math.hypot(dx,dy)||1;dx=dx/len*100+sx;dy=dy/len*100+sy;this.moveDirect(u,dx,dy,dt);
   }
   findPath(from,to,r=17){
@@ -968,6 +1004,7 @@ export class Game {
       this.botCast(h,cfg,null,true);return;
     }
     const target=this.units.find(u=>u.id===brain.targetId&&u.alive&&this.canSee(h.team,u));
+    if(h.channel&&expansionBotMovement(this,h,target,cfg,dt))return;
     if(!target&&brain.targetId){const seen=this.lastSeen[h.team][brain.targetId];if(seen&&this.time-seen.time<4)brain.goal={x:seen.x,y:seen.y};brain.targetId=null;}
     if(target){
       const dangerous=this.towerThreatOnPath(h,target,target);
@@ -976,6 +1013,7 @@ export class Game {
       if(brain.action==='flank'&&brain.goal&&dist(h,brain.goal)>45&&dist(h,target)>150){this.moveToward(h,brain.goal,dt);return;}
       this.botCast(h,cfg,target,false);
       if(!target.alive)return;
+      if(expansionBotMovement(this,h,target,cfg,dt))return;
       const d=dist(h,target),reach=h.range+target.r;
       if(d<=reach+h.r*.35){
         if(brain.action==='farm'&&target.hp>this.lastHitDamage(h,target)&&this.units.some(u=>u.alive&&u.team===h.team&&u.id!==h.id&&u.targetId===target.id&&dist(u,target)<u.range+target.r+30))return;
@@ -1074,7 +1112,9 @@ export class Game {
       const a=this.getAbility(h,slot);if(h.level<a.unlock||h.cooldowns[slot]>0||h.mana<a.mana)continue;
       let aim=target?{x:target.x+(target.vx||0)*.35*cfg.lead,y:target.y+(target.vy||0)*.35*cfg.lead}:{x:h.x,y:h.y};
       let should=false;
-      if(['bulwark','ember','seraph'].includes(h.heroId)){
+      if(isExpansionHero(h)){
+        const customAim=expansionBotAim(this,h,a,target,retreat,cfg);should=!!customAim;if(customAim)aim={...customAim};
+      }else if(['bulwark','ember','seraph'].includes(h.heroId)){
         const customAim=botSkillAim(this,h,a,target,retreat,cfg);should=!!customAim;if(customAim)aim={...customAim};
       }else switch(a.id){
         case 'healing-tree':case 'rose-light':should=!!hurt&&hurt.hp/hurt.maxHp<.82||a.id==='rose-light'&&foes.length>=2;aim=hurt&&hurt.hp/hurt.maxHp<.85?{x:hurt.x,y:hurt.y}:aim;break;

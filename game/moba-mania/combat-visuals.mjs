@@ -14,8 +14,12 @@ export const EFFECT_PALETTES = Object.freeze({
   frost: Object.freeze({ main:'#8ad8ff', light:'#e2fbff', dark:'#548fcf' }),
   violet: Object.freeze({ main:'#bf94ef', light:'#f2ddff', dark:'#7857a9' }),
   stone: Object.freeze({ main:'#c3b18a', light:'#f4e0b2', dark:'#776b65' }),
+  copper: Object.freeze({ main:'#c97a45', light:'#f4d7a1', dark:'#744a37' }),
+  tide: Object.freeze({ main:'#3fb8ac', light:'#d0f2e3', dark:'#153c53' }),
+  ivory: Object.freeze({ main:'#f4efdc', light:'#ffffff', dark:'#806e9a' }),
+  time: Object.freeze({ main:'#e7b951', light:'#f4dea0', dark:'#9d91c4' }),
 });
-const HERO_THEME = Object.freeze({ arc:'arcane', dragon:'fire', druid:'nature', angel:'holy', ranger:'poison', bulwark:'violet', ember:'fire', seraph:'frost' });
+const HERO_THEME = Object.freeze({ arc:'arcane', dragon:'fire', druid:'nature', angel:'holy', ranger:'poison', bulwark:'violet', ember:'fire', seraph:'frost',rivet:'copper',brinehook:'tide',vela:'ivory',solstice:'time' });
 const palette = theme => EFFECT_PALETTES[theme] || EFFECT_PALETTES.steel;
 function noise(seed, index) {
   let n = (seed ^ Math.imul(index + 1, 0x9e3779b1)) >>> 0;
@@ -189,6 +193,17 @@ export function drawShieldShell(c, unit, time, width, height, front = true, budg
         contour(c, xx, yy, 5, 7, 0, TAU);
       } else if (theme === 'nature' || theme === 'poison') {
         pixel(c, colors.main, xx - 3, yy - 4, 4, 8); pixel(c, colors.light, xx + 1, yy - 6, 3, 5);
+      } else if(theme==='tide'){
+        stroke(c,colors.light,xx-5,yy+2,xx,yy-2);stroke(c,colors.light,xx,yy-2,xx+5,yy+2);
+        const fraction=unit.shield/Math.max(1,unit.shieldVisual?.amount||unit.shield);
+        if(fraction<.6){stroke(c,colors.dark,xx,yy-5,xx-2,yy+1);stroke(c,colors.dark,xx-2,yy+1,xx+2,yy+6);}
+      } else if(theme==='copper'){
+        pixel(c,colors.main,xx-5,yy-4,10,8);pixel(c,colors.light,xx-4,yy-3,3,2);pixel(c,'#8be8e5',xx+2,yy+1,2,2);
+      } else if(theme==='time'){
+        stroke(c,colors.light,xx-4,yy-5,xx+4,yy+5);stroke(c,colors.light,xx+4,yy-5,xx-4,yy+5);
+        pixel(c,colors.main,xx-4,yy-6,8,2);pixel(c,colors.main,xx-4,yy+5,8,2);
+      } else if(theme==='ivory'){
+        pixel(c,colors.light,xx-4,yy-4,3,9);pixel(c,colors.main,xx+2,yy-4,3,9);
       } else {
         pixel(c, colors.light, xx - 4, yy - 2, 8, 2);
         pixel(c, colors.main, xx - 1, yy - 5, 2, 8);

@@ -7,7 +7,7 @@ function spriteBounds(unit) {
   if (unit.kind === 'hero') {
     const id=unit.heroId||unit.subtype||'arc';
     const expanded=['bulwark','ember','seraph'].includes(id);
-    width=(id==='seraph'?72:expanded?48:40)*1.5;
+    width=(id==='seraph'?72:['brinehook','vela'].includes(id)?60:['rivet','solstice'].includes(id)?48:expanded?48:40)*1.5;
     height=(expanded?48:44)*1.5;
   } else if (unit.kind === 'footman' || unit.kind === 'archer') {
     width=34;height=42;
