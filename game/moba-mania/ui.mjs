@@ -1,6 +1,7 @@
 import { HEROES, DIFFICULTIES, WORLD, RULES } from './data.mjs';
 import { Game } from './engine.mjs';
 import { Renderer, drawPortrait, drawIcon } from './renderer.mjs';
+import { resonanceResource } from './expansion-visuals.mjs';
 import { pickEnemyAt } from './input.mjs';
 import { ITEMS, ITEM_BY_ID, purchaseState, describeBonuses, drawItemIcon } from './items.mjs';
 import { PROFILE_KEY, SAVE_KEY, COSMETICS, readProfile, writeProfile, heroCosmetics, equipCosmetic, recordMatch, readSavedMatch, saveMatch, clearSavedMatch, itemPlan, recommendedItems, previewItem, normalizeControls, matchBadges } from './profile.mjs';
@@ -481,13 +482,17 @@ function renderShop() {
     const stat=document.createElement('div'),amount=document.createElement('strong'),caption=document.createElement('small');
     amount.textContent=String(value);caption.textContent=label;stat.append(amount,caption);stats.append(stat);
   }
-  document.querySelectorAll('[data-shop-tier]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.shopTier)===shopTier)));
+  document.querySelectorAll('[data-shop-tier]').forEach(button=>{
+    const tier=Number(button.dataset.shopTier),count=ITEMS.filter(item=>item.tier===tier).length;
+    button.setAttribute('aria-pressed',String(tier===shopTier));
+    button.querySelector('small').textContent=`${count} items · ${tier===1?'no requirements':tier===2?'needs a starter':'needs both tiers'}`;
+  });
   renderBuildGoal();
   const recommended=new Set(recommendedItems(hero).map(item=>item.id));
   const list=$('shop-items'),scrollTop=list.scrollTop;list.replaceChildren();list.setAttribute('aria-label',`Tier ${shopTier} items`);
   for(const item of ITEMS.filter(item=>item.tier===shopTier)){
     const state=purchaseState(hero,item.id),isOwned=owned.has(item.id);
-    const card=document.createElement('article');card.className=`shop-item ${isOwned?'owned':state.ok?'ready':state.missing.length?'locked':'short'}`;
+    const card=document.createElement('article');card.className=`shop-item ${item.tier===3?'epic ':''}${isOwned?'owned':state.ok?'ready':state.missing.length?'locked':'short'}`;
     card.dataset.itemId=item.id;card.dataset.itemState=isOwned?'owned':state.ok?'ready':state.missing.length?'locked':'short';card.tabIndex=-1;
     card.style.setProperty('--item-color',item.color);
     const heading=document.createElement('div');heading.className='shop-item-heading';
@@ -495,6 +500,7 @@ function renderShop() {
     const price=document.createElement('span');price.className='shop-price';price.textContent=`${item.cost} gold`;
     const titleBlock=document.createElement('div');titleBlock.append(title,price);heading.append(itemIcon(item),titleBlock);
     if(item.tier===3){
+      const rarity=document.createElement('small');rarity.className='shop-rarity';rarity.textContent='EPIC';titleBlock.append(rarity);
       const pin=document.createElement('button');pin.className='shop-pin';pin.dataset.pinItem=item.id;pin.textContent=pinnedGoal===item.id?'◆':'◇';
       pin.setAttribute('aria-pressed',String(pinnedGoal===item.id));pin.setAttribute('aria-label',`${pinnedGoal===item.id?'Unpin':'Pin'} ${item.name} as build goal`);
       pin.addEventListener('click',()=>{pinnedGoal=pinnedGoal===item.id?null:item.id;renderShop();refreshHUD();saveCurrent();});heading.append(pin);
@@ -502,7 +508,7 @@ function renderShop() {
     }
     const bonuses=document.createElement('p');bonuses.className='shop-bonuses';bonuses.textContent=describeBonuses(item);
     const description=document.createElement('p');description.className='shop-description';description.textContent=item.description;
-    if(item.passive)description.textContent=`${item.passive.name} · ${item.passive.description}`;
+    if(item.passive){const passiveName=document.createElement('strong');passiveName.textContent=item.passive.name;description.replaceChildren(passiveName,document.createTextNode(` · ${item.passive.description}`));}
     const compare=createItemComparison(hero,item);
     const requirements=document.createElement('div');requirements.className='shop-requirements';
     if(item.requires.length){
@@ -534,7 +540,7 @@ function renderShop() {
   const inventory=$('shop-inventory');inventory.replaceChildren();
   for(const item of ITEMS.filter(item=>owned.has(item.id))){
     const badge=document.createElement('div');badge.className='shop-owned-item';badge.dataset.ownedItem=item.id;
-    badge.title=`${item.name} · ${describeBonuses(item)}`;
+    badge.title=`${item.name} · ${describeBonuses(item)}${item.passive?` · ${item.passive.name}: ${item.passive.description}`:''}`;
     const name=document.createElement('span');name.textContent=item.name;badge.append(itemIcon(item,28),name);inventory.append(badge);
   }
   if(!owned.size){const empty=document.createElement('p');empty.textContent='Your purchased items will appear here. All of them stay active.';inventory.append(empty);}
@@ -551,7 +557,7 @@ function renderBuildGoal(){
     const recommendations=$('shop-recommendations');recommendations.replaceChildren();
     const label=document.createElement('span');label.textContent=`${HEROES[game.player.heroId].name} builds`;recommendations.append(label);
     for(const item of recommendedItems(game.player)){
-      const button=document.createElement('button');button.dataset.recommendItem=item.id;button.textContent=item.name;button.title=`Pin this relic as your build goal. ${describeBonuses(item)}`;
+      const button=document.createElement('button');button.dataset.recommendItem=item.id;button.textContent=item.name;button.title=`Pin this epic as your build goal. ${describeBonuses(item)}`;
       button.addEventListener('click',()=>{pinnedGoal=item.id;renderShop();refreshHUD();saveCurrent();});recommendations.append(button);
     }
   }
@@ -565,11 +571,19 @@ function createItemComparison(hero,item){
   for(const [label,key,digits] of rows){
     const row=document.createElement('tr');for(const value of [label,preview.before[key].toFixed(digits),preview.after[key].toFixed(digits)]){const cell=document.createElement('td');cell.textContent=value;row.append(cell);}table.append(row);
   }
+  const specialRows=[['Final-hit XP','killXp'],['Final-hit gold','killGold'],['Burn damage','burnPower'],['Burn duration','burnDurationPct'],['Poison damage','poisonPower'],['Poison duration','poisonDurationPct'],['Slow strength','slowPower'],['Slow duration','slowDurationPct']];
+  let hasSpecial=false;
+  for(const [label,key] of specialRows){
+    const before=preview.before[key]||0,after=preview.after[key]||0;
+    if(!(before>0||after>0))continue;hasSpecial=true;
+    const row=document.createElement('tr');for(const value of [label,`+${Math.round(before*100)}%`,`+${Math.round(after*100)}%`]){const cell=document.createElement('td');cell.textContent=value;row.append(cell);}table.append(row);
+  }
   preview.before.abilities.forEach((ability,index)=>{
     const row=document.createElement('tr');for(const value of [ability.name,`${ability.cooldown.toFixed(2)}s`,`${preview.after.abilities[index].cooldown.toFixed(2)}s`]){const cell=document.createElement('td');cell.textContent=value;row.append(cell);}table.append(row);
   });details.append(table);
   const cooldown=document.createElement('p');cooldown.textContent=`Cooldown reduction: ${(preview.before.cooldownCut*100).toFixed(0)}% → ${(preview.after.cooldownCut*100).toFixed(0)}%.`;
   if(preview.capped){cooldown.className='cap-warning';cooldown.textContent+=' 50% cap reached; extra reduction adds no benefit.';}details.append(cooldown);
+  if(hasSpecial){const limits=document.createElement('p');limits.className='muted';limits.textContent='Item bonuses are capped: kill XP 60%, kill gold 45%, burn/poison damage 75%, effect duration 35%, slow strength 35%. Reward bonuses apply to your finishing blows; assists keep their ordinary XP.';details.append(limits);}
   if(item.passive){const passive=document.createElement('p');passive.textContent=`${item.passive.name}: ${item.passive.description}`;details.append(passive);}
   const note=document.createElement('p');note.className='muted';note.textContent='Shows this item at your current level. Other missing ingredients add their own bonuses. Active cooldowns and existing casts keep their original values.';details.append(note);
   return details;
@@ -658,11 +672,19 @@ function refreshAbilityHUD() {
     button.setAttribute('aria-disabled',String(!ready));
     cooldown.textContent=locked?`LV ${ability.unlock}`:remaining>=1?String(Math.ceil(remaining)):remaining>0?remaining.toFixed(1):'';
     button.setAttribute('aria-label',`${ability.name}. ${locked?`Unlocks at level ${ability.unlock}`:remaining>0?`${Math.ceil(remaining)} second cooldown`:hero.mana<ability.mana?'Not enough mana':'Ready'}. ${ability.description}`);
+    if(ability.id==='polarity-pulse'||ability.id==='grand-finale'){
+      const suffix=ability.id==='polarity-pulse'?(hero.resonance?.polarity==='pull'?'PUSH':'PULL'):['SHATTER','SHELTER','DANCE'][resonanceResource(hero,game.time)?.last||0];
+      button.querySelector('.ability-name').textContent=ability.id==='polarity-pulse'?`Pulse · ${suffix}`:`Finale · ${suffix}`;
+      button.setAttribute('aria-label',button.getAttribute('aria-label')+` Next cast: ${suffix.toLowerCase()}.`);
+    }
   });
 }
 function refreshHUD() {
   if(!game)return;
   const hero=game.player;
+  const resource=resonanceResource(hero,game.time),heroName=HEROES[hero.heroId].name;
+  $('hero-name').textContent=resource?`${heroName} · ${resource.short}`:heroName;
+  $('hero-name').title=resource?.detail||heroName;
   const percent=(v,max)=>`${Math.max(0,Math.min(100,v/(max||1)*100))}%`;
   $('health-fill').style.width=percent(hero.hp,hero.maxHp);$('health-text').textContent=`${Math.max(0,Math.ceil(hero.hp))} / ${Math.ceil(hero.maxHp)}`;
   $('mana-fill').style.width=percent(hero.mana,hero.maxMana);$('mana-text').textContent=`${Math.floor(hero.mana)} / ${Math.floor(hero.maxMana)}`;

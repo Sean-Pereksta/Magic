@@ -19,7 +19,7 @@ function buildOfflinePack() {
   const pack = path.join(temp,'packs/mobamania');
   const entry = fs.readFileSync(path.join(pack,'index.html'),'utf8');
   assert(!entry.includes('/hub/play-signal.mjs'),'offline pack must not call the web hub');
-  for(const module of ['data.mjs','items.mjs','profile.mjs','engine.mjs','hero-skills.mjs','hero-expansion.mjs','solstice-runtime.mjs','renderer.mjs','combat-visuals.mjs','unit-animation.mjs','world-visuals.mjs','expansion-visuals.mjs','ui.mjs','style.css']) assert(fs.existsSync(path.join(pack,'moba-mania',module)),`offline pack missing ${module}`);
+  for(const module of ['data.mjs','items.mjs','profile.mjs','engine.mjs','hero-skills.mjs','hero-expansion.mjs','solstice-runtime.mjs','resonance-data.mjs','resonance-heroes.mjs','renderer.mjs','combat-visuals.mjs','unit-animation.mjs','world-visuals.mjs','expansion-visuals.mjs','ui.mjs','style.css']) assert(fs.existsSync(path.join(pack,'moba-mania',module)),`offline pack missing ${module}`);
   assert(!fs.existsSync(path.join(pack,'moba-mania/CONTRACT.md')),'implementation coordination notes are not shipped');
   return pack;
 }
@@ -108,7 +108,7 @@ async function finishMatch(page,tag='') {
 }
 async function verifyNewHeroSessions(page,device) {
   await finishMatch(page);await page.locator('#change-hero').click();
-  for(const id of ['rivet','brinehook','vela','solstice']){
+  for(const id of ['rivet','brinehook','vela','solstice','ferrite','cadence']){
     await page.locator(`#hero-grid [data-hero="${id}"]`).click();await page.locator('#start-match').click();
     await page.locator('#hud').waitFor({state:'visible'});
     assert.equal(await page.evaluate(()=>__mobaTest.game.player.heroId),id);
@@ -122,7 +122,7 @@ async function verifyNewHeroSessions(page,device) {
     await page.locator('#resume-match').click();
     await finishMatch(page);await page.locator('#change-hero').click();
   }
-  console.log(JSON.stringify({device:device.name,newHeroSessions:['rivet','brinehook','vela','solstice'],startSaveResumeFinish:true}));
+  console.log(JSON.stringify({device:device.name,newHeroSessions:['rivet','brinehook','vela','solstice','ferrite','cadence'],startSaveResumeFinish:true}));
 }
 async function verifyImpossibleMatch(page,device) {
   await page.locator('#difficulty').selectOption('impossible');
@@ -257,8 +257,8 @@ async function verifyShop(page,device,items) {
   await inspectBounds(page,['#shop-dialog','#shop-balance','#close-shop']);
   for(const tier of [1,2,3]) {
     await page.locator(`[data-shop-tier="${tier}"]`).click();
-    assert.equal(await page.locator('#shop-items [data-item-id]').count(),10,`tier ${tier} has ten items`);
-    assert.equal(await page.locator('#shop-items .shop-item-heading > canvas').count(),10,`tier ${tier} has ten item icons`);
+    assert.equal(await page.locator('#shop-items [data-item-id]').count(),15,`tier ${tier} has fifteen items`);
+    assert.equal(await page.locator('#shop-items .shop-item-heading > canvas').count(),15,`tier ${tier} has fifteen item icons`);
   }
   const legendary=items.find(i=>i.tier===3);
   const upgrade=items.find(i=>i.id===legendary.requires.find(id=>items.find(i=>i.id===id)?.tier===2));
@@ -321,7 +321,7 @@ async function verifyExperience(page,context,device){
     assert(await page.locator('#shop-ready').isVisible(),'affordable next component lights the HUD badge');
   }
   await page.locator('#shop-items .shop-compare summary').first().click();
-  assert.equal(await page.locator('#shop-items .shop-compare[open] table tr').count(),11,'actual stats and all four cooldowns are compared');
+  assert(await page.locator('#shop-items .shop-compare[open] table tr').count()>=11,'actual stats and all four cooldowns are compared, with relevant effect bonuses');
   await page.locator('#close-shop').click();
   await page.locator('#pause-button').click();await page.locator('#pause-controls').click();
   await page.locator('#controls-dialog').waitFor({state:'visible'});
@@ -360,6 +360,37 @@ async function verifyExperience(page,context,device){
   assert.equal(await page.evaluate(()=>__mobaTest.controls.handed),'left','control preferences survive reload');
   await page.locator('#resume-match').click();
   await page.locator('#pause-button').click();await page.locator('#pause-controls').click();await page.locator('[data-control-preset="default"]').click();await page.locator('#control-handed').selectOption('right');await page.locator('#close-controls').click();await page.locator('#resume-match').click();
+}
+async function verifyEpicExpansion(page,device,items){
+  await page.locator('#shop-button').click();
+  await page.evaluate(()=>{__mobaTest.game.player.gold=20000;__mobaTest.renderShop();});
+  const goals=['ascendant-codex','kings-ransom','inferno-heart','pandemic-engine','winters-dominion'];
+  for(const goal of goals){
+    const plan=await page.evaluate(id=>__mobaTest.itemPlan(__mobaTest.game.player,id),goal);
+    for(const item of plan.remaining){
+      await page.locator(`[data-shop-tier="${item.tier}"]`).click();
+      const buy=page.locator(`[data-buy-item="${item.id}"]`);
+      assert(await buy.isEnabled(),`${item.name} recipe is buyable in the real shop`);
+      await buy.click();
+    }
+    await page.locator('[data-shop-tier="3"]').click();
+    const card=page.locator(`[data-item-id="${goal}"]`),item=items.find(i=>i.id===goal);
+    assert((await card.textContent()).includes(item.passive.name),'epic shows its gameplay passive');
+    await card.locator('.shop-compare summary').click();
+    assert((await card.locator('.shop-compare').textContent()).toLowerCase().includes('kill'),'expanded comparison shows personal reward bonuses');
+    await inspectBounds(page,['#shop-dialog','#shop-balance','#close-shop']);
+    await card.locator('.shop-compare summary').click();
+  }
+  const report=await page.evaluate(async()=>{
+    const {killRewardBonus,itemBonus}=await import(new URL('./moba-mania/items.mjs',location.href).href);
+    const h=__mobaTest.game.player;
+    return {xp:killRewardBonus(h,'xp'),gold:killRewardBonus(h,'gold'),burn:itemBonus(h,'burnPower'),poison:itemBonus(h,'poisonPower'),slow:itemBonus(h,'slowPower'),items:[...h.items]};
+  });
+  assert(Math.abs(report.xp-.6)<1e-9&&Math.abs(report.gold-.45)<1e-9,'real purchases reach the documented personal reward caps');
+  assert(Math.abs(report.burn-.75)<1e-9&&Math.abs(report.poison-.75)<1e-9&&Math.abs(report.slow-.35)<1e-9,'retained components produce documented effect build totals');
+  for(const goal of goals)assert(report.items.includes(goal),'new epic stays equipped');
+  await page.locator('#close-shop').click();await page.waitForFunction(()=>!__mobaTest.game.paused);
+  console.log(JSON.stringify({device:device.name,newEpicRecipes:goals.length,personalKillXpBonus:report.xp,personalKillGoldBonus:report.gold}));
 }
 async function verifyLivingBattlefield(page,device,heroes) {
   const report=await page.evaluate(heroIds=>{
@@ -414,7 +445,7 @@ async function verifyCombatVisuals(page,device,heroes) {
     const canvas=document.createElement('canvas');canvas.width=canvas.height=128;
     const c=canvas.getContext('2d'),shells=[];
     // Inspect actual Canvas alpha, not just shield metadata or a mock context.
-    for(const theme of ['fire','arcane','violet','holy','frost','nature','copper','tide','ivory','time']){
+    for(const theme of ['fire','arcane','violet','holy','frost','nature','copper','tide','ivory','time','magnet','resonance']){
       c.clearRect(0,0,128,128);
       const unit={id:1,x:64,y:100,hp:500,alive:true,shield:100,shieldTime:4,status:{},shieldVisual:{theme,startedAt:9,amount:100}};
       fx.drawShieldShell(c,unit,10,80,88,true,fx.createEffectBudget(innerWidth));
@@ -456,12 +487,12 @@ async function verifyCombatVisuals(page,device,heroes) {
   assert.equal(report.frames,Object.keys(heroes).length*12,'cast, flight, and impact phases render');
   assert.equal(report.limit,device.width<900?260:480,'compact viewports use the smaller particle allowance');
   for(const shell of report.shells)assert(shell.center[3]>0&&shell.center[3]<40,shell.theme+' shield interior stays translucent');
-  assert.equal(new Set(report.shells.map(s=>s.center.slice(0,3).join(','))).size,10,'shield sources have distinct rendered colors');
+  assert.equal(new Set(report.shells.map(s=>s.center.slice(0,3).join(','))).size,12,'shield sources have distinct rendered colors');
   await page.emulateMedia({reducedMotion:'reduce'});
   const reduced=await page.evaluate(()=>{__mobaTest.renderer.draw(__mobaTest.game);return __mobaTest.renderer.effectBudget.limit;});
   assert.equal(reduced,100,'runtime motion-preference changes reduce the effect budget');
   await page.emulateMedia({reducedMotion:'no-preference'});
-  console.log(JSON.stringify({device:device.name,pixelAbilityCasts:report.casts,pixelAbilityFrames:report.frames,translucentShieldThemes:10,reducedMotion:true}));
+  console.log(JSON.stringify({device:device.name,pixelAbilityCasts:report.casts,pixelAbilityFrames:report.frames,translucentShieldThemes:12,reducedMotion:true}));
 }
 async function main(){
   const {ITEMS}=await import('../game/moba-mania/items.mjs');
@@ -481,7 +512,7 @@ async function main(){
       page.on('pageerror',e=>errors.push(e.message));
       await page.goto(origin+'/game/CatLanes.html');
       await page.waitForFunction(()=>!!window.__mobaTest);
-      assert.equal(await page.locator('#hero-grid [data-hero]').count(),12,'all twelve heroes are selectable');
+      assert.equal(await page.locator('#hero-grid [data-hero]').count(),14,'all fourteen heroes are selectable');
       assert.equal(await page.locator('#hero-grid [data-hero="mouse"]').count(),0,'mouse removed from roster');
       await verifyHeroMenu(page,context,device);
       await page.locator(`#hero-grid [data-hero="${device.hero}"]`).click();
@@ -548,6 +579,7 @@ async function main(){
       assert.equal(await page.evaluate(()=>__mobaTest.game.paused),false,'closing tree resumes');
       await verifyShop(page,device,ITEMS);
       await verifyExperience(page,context,device);
+      await verifyEpicExpansion(page,device,ITEMS);
       await verifyCombatVisuals(page,device,HEROES);
       await verifyLivingBattlefield(page,device,HEROES);
       if(qaOutput){fs.mkdirSync(qaOutput,{recursive:true});await page.screenshot({path:path.join(qaOutput,device.name+'.png')});}
@@ -570,7 +602,7 @@ async function main(){
       assert(rewards.unlock&&rewards.level&&rewards.gold,'earned levels, new abilities and finishing-blow gold animate their HUD controls');
       assert(rewards.target&&rewards.target.x>=0&&rewards.target.x<=device.width&&rewards.target.y>=0&&rewards.target.y<=device.height,'gold flies toward the visible shop counter');
       assert.deepEqual(errors,[],device.name+' must not emit runtime errors');
-      console.log(JSON.stringify({device:device.name,hero:device.hero,move:true,camera:true,nearestAttack:true,primaryClickAttacks:true,noDistantChase:true,enemyFocus:true,autoRetarget:true,moveCancelsAttack:true,talentIcons:HEROES[device.hero].talents.reduce((n,t)=>n+t.choices.length,0),saveResume:true,pinnedBuild:true,controlSettings:true,minimapPeek:true,mastery:true,shopItems:30,prerequisites:true,purchases:true,personalRewards:true,maxLevel:18,replay:true,errors:0}));
+      console.log(JSON.stringify({device:device.name,hero:device.hero,move:true,camera:true,nearestAttack:true,primaryClickAttacks:true,noDistantChase:true,enemyFocus:true,autoRetarget:true,moveCancelsAttack:true,talentIcons:HEROES[device.hero].talents.reduce((n,t)=>n+t.choices.length,0),saveResume:true,pinnedBuild:true,controlSettings:true,minimapPeek:true,mastery:true,shopItems:45,prerequisites:true,purchases:true,personalRewards:true,maxLevel:18,replay:true,errors:0}));
       await verifyNewHeroSessions(page,device);assert.deepEqual(errors,[],device.name+' new hero sessions have no runtime errors');
       await verifyImpossibleMatch(page,device);assert.deepEqual(errors,[],device.name+' Impossible has no runtime errors');
       await context.close();
@@ -589,9 +621,9 @@ async function main(){
       await page.locator('#hud').waitFor({state:'visible'});assert.equal(await page.evaluate(()=>__mobaTest.game.player.heroId),hero);
       assert.equal(await page.locator('#ability-bar canvas').count(),4,'every hero has four skill icons');
       await page.locator('#shop-button').click();await page.locator('#shop-dialog').waitFor({state:'visible'});
-      assert.equal(await page.locator('#shop-items canvas').count(),10,'offline item icons load without extra assets');
+      assert.equal(await page.locator('#shop-items canvas').count(),15,'offline item icons load without extra assets');
       await page.locator('#close-shop').click();await page.waitForFunction(()=>!__mobaTest.game.paused);
-      if(['druid','rivet','brinehook','vela','solstice'].includes(hero)){
+      if(['druid','rivet','brinehook','vela','solstice','ferrite','cadence'].includes(hero)){
         await page.locator('#pause-button').click();await page.locator('#quit-match').click();
         await page.reload();await page.waitForFunction(()=>!!window.__mobaTest);
         await page.locator('#resume-saved-match').click();await page.locator('#pause-dialog').waitFor({state:'visible'});

@@ -16,8 +16,8 @@ function arena(id){
 function addHero(game,id,team,x,y=1100){const h=game.makeHero(id,team,1);Object.assign(h,{x,y,bot:false,level:18});game.refreshStats(h);h.hp=h.maxHp;game.rebuildGrid();return h;}
 const aim=(game,hero,slot,target=null,retreat=false)=>expansionBotAim(game,hero,game.getAbility(hero,slot),target,retreat,DIFFICULTIES.hard);
 
-test('the expansion supplies four complete identities and84 exclusive talents without changing controls',()=>{
-  assert.equal(Object.keys(HEROES).length,12);
+test('the expansion supplies four complete identities and 84 exclusive talents without changing controls',()=>{
+  assert.equal(Object.keys(HEROES).length,14);
   const abilityIds=new Set(),talentIds=new Set();let count=0;
   for(const hero of Object.values(HEROES)){
     assert.deepEqual(hero.abilities.map(a=>a.unlock),[1,2,4,6]);
@@ -29,7 +29,7 @@ test('the expansion supplies four complete identities and84 exclusive talents wi
     for(const a of hero.abilities){assert.equal(a.icon,a.id);assert(['copper','tide','ivory','time'].includes(a.theme));assert(a.cooldown>0&&a.mana>0);}
     count+=hero.talents.reduce((n,t)=>n+t.choices.length,0);
   }
-  assert.equal(count,84);assert.equal(talentIds.size,252);assert.equal(abilityIds.size,48);
+  assert.equal(count,84);assert.equal(talentIds.size,294);assert.equal(abilityIds.size,56);
   assert.equal(HEROES.solstice.abilities[1].type,'ally');
   assert(HEROES.vela.abilities[1].mobility);assert(!HEROES.brinehook.abilities.some(a=>a.mobility));
 });
@@ -52,7 +52,7 @@ test('old mastery profiles retain progress while adding clean cosmetic identitie
 });
 
 test('new bot builds complete valid dependency-first recipes and choose coherent talents',()=>{
-  const cores={rivet:'elderwood-staff',brinehook:'sovereign-aegis',vela:'thunderbolt-crossbow',solstice:'phoenix-crown'};
+  const cores={rivet:'elderwood-staff',brinehook:'sovereign-aegis',vela:'kings-ransom',solstice:'phoenix-crown'};
   for(const id of expansion){
     const hero={heroId:id,items:[]};
     for(let i=0;i<16&&!hero.items.includes(cores[id]);i++){

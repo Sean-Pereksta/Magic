@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ITEMS,ITEM_BY_ID,itemBonus,purchaseState,describeBonuses,drawItemIcon} from '../game/moba-mania/items.mjs';
 
-test('thirty permanent upgrades have ten items per tier and valid recipes without cycles',()=>{
-  assert.equal(ITEMS.length,30);
-  assert.equal(new Set(ITEMS.map(item=>item.id)).size,30);
-  const implementedBonuses=new Set(['hp','damage','spellDamage','cooldown','mana','manaRegen','speed','attackSpeed','healing','shield','summonPower','summonHaste','area','lifesteal']);
-  for(const tier of [1,2,3])assert.equal(ITEMS.filter(item=>item.tier===tier).length,10);
+test('forty-five permanent upgrades have fifteen items per tier and valid recipes without cycles',()=>{
+  assert.equal(ITEMS.length,45);
+  assert.equal(new Set(ITEMS.map(item=>item.id)).size,45);
+  const implementedBonuses=new Set(['hp','damage','spellDamage','cooldown','mana','manaRegen','speed','attackSpeed','healing','shield','summonPower','summonHaste','area','lifesteal','killXp','killGold','burnPower','burnDurationPct','poisonPower','poisonDurationPct','slowPower','slowDurationPct']);
+  for(const tier of [1,2,3])assert.equal(ITEMS.filter(item=>item.tier===tier).length,15);
   for(const item of ITEMS){
     assert(Number.isInteger(item.cost)&&item.cost>0,item.id+' has a usable price');
     assert(item.name&&item.description&&item.color&&item.icon);
@@ -71,7 +71,7 @@ test('active ingredients stack with upgrades and duplicate inventory entries can
   assert.equal(describeBonuses('missing'),'');
 });
 
-test('all thirty icons rasterize as distinct nonblank pixel art inside their requested bounds',()=>{
+test('all forty-five icons rasterize as distinct nonblank pixel art inside their requested bounds',()=>{
   const fingerprints=new Set(),silhouettes=new Set();
   for(const item of ITEMS){
     const pixels=Array.from({length:40},()=>Array(40).fill(''));
@@ -89,6 +89,6 @@ test('all thirty icons rasterize as distinct nonblank pixel art inside their req
     assert(art.length>60,item.id+' has substantial visible equipment artwork');
     silhouettes.add(interior.map(row=>row.map(color=>['#132331','#243348','#1b2a3d','#35445b'].includes(color)?'.':'#').join('')).join('\n'));
   }
-  assert.equal(fingerprints.size,30,'all thirty icons have distinct color artwork');
-  assert.equal(silhouettes.size,30,'all thirty items also differ by silhouette');
+  assert.equal(fingerprints.size,45,'all forty-five icons have distinct color artwork');
+  assert.equal(silhouettes.size,45,'all forty-five items also differ by silhouette');
 });

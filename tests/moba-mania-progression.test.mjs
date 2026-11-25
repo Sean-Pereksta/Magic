@@ -182,7 +182,7 @@ test('item stats affect real basic damage, spell damage, and ability cooldowns',
 test('all purchases survive death, keep cooldown reductions capped, and reset only in a new match',()=>{
   const {game,player}=arena();player.gold=100000;
   for(const item of ITEMS){buyRequirements(game,player,item);if(!player.items.includes(item.id))assert(game.buyItem(player,item.id));}
-  assert.equal(player.items.length,30);const owned=[...player.items],gold=player.gold,maxHp=player.maxHp;
+  assert.equal(player.items.length,45);const owned=[...player.items],gold=player.gold,maxHp=player.maxHp;
   assert(game.getAbility(player,0).cooldown>=HEROES.arc.abilities[0].cooldown*.5);
   const foe=hero(game);game.kill(player,foe);game.respawn(player);
   assert.deepEqual(player.items,owned);assert.equal(player.gold,gold);assert.equal(player.maxHp,maxHp);assert.equal(player.hp,maxHp);

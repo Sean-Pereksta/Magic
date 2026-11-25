@@ -113,7 +113,7 @@ test('Starfire Scepter leaves a dodgeable delayed blast and its own blast cannot
   const {game,hero,target,add}=arena('ember'),side=add(target.x,target.y+45);
   equip(game,hero,'starfire-scepter');cast(game,hero,0,target);
   assert.equal(side.hp,side.maxHp);assert(game.scheduledImpacts.some(i=>i.kind==='starfire'));
-  advance(game,.4);assert(side.hp<side.maxHp);assert(!game.scheduledImpacts.some(i=>i.kind==='starfire'));assert.equal(game.progressionDepth,0);
+  advance(game,.5);assert(side.hp<side.maxHp);assert(!game.scheduledImpacts.some(i=>i.kind==='starfire'));assert.equal(game.progressionDepth,0);
 });
 test('Eternity Hourglass rewards three different abilities and respects its proc cooldown',()=>{
   const {game,hero}=arena('arc');equip(game,hero,'eternity-hourglass');
@@ -133,10 +133,10 @@ test('Tempest Wings empower one basic hit after mobility and retain recipe ingre
   const next=geared.target.hp;basic(geared.game,geared.hero,geared.target);assert(first>next-geared.target.hp);
   assert(ITEM_BY_ID['tempest-wings'].requires.every(id=>geared.hero.items.includes(id)));
 });
-test('Thunderbolt Crossbow chains to at most two additional nearby foes every fourth hit',()=>{
+test('Thunderbolt Crossbow chains to at most three additional nearby foes every third hit',()=>{
   const {game,hero,target,add}=arena('dragon'),one=add(target.x+45,target.y),two=add(target.x+80,target.y+35),third=add(target.x+120,target.y+40);
-  equip(game,hero,'thunderbolt-crossbow');for(let i=0;i<3;i++)basic(game,hero,target);assert.equal(one.hp,one.maxHp);
-  basic(game,hero,target);assert(one.hp<one.maxHp);assert(two.hp<two.maxHp);assert.equal(third.hp,third.maxHp);
+  equip(game,hero,'thunderbolt-crossbow');for(let i=0;i<2;i++)basic(game,hero,target);assert.equal(one.hp,one.maxHp);
+  basic(game,hero,target);assert(one.hp<one.maxHp);assert(two.hp<two.maxHp);assert(third.hp<third.maxHp);
 });
 test('Phoenix Crown wards actual healing and never activates on an empty heal',()=>{
   const {game,hero,add}=arena('angel'),ally=add(hero.x+30,hero.y,0,'hero');equip(game,hero,'phoenix-crown');
@@ -150,7 +150,7 @@ test('Elderwood Staff empowers only the first new summon and recasting keeps arm
   assert(summons[0].elderGuardian);assert(!summons[1].elderGuardian);assert(summons[0].maxHp>summons[1].maxHp);assert(summons[0].damage>summons[1].damage);
   cast(game,hero,1,hero);summons=game.units.filter(u=>u.kind==='summon'&&u.alive);assert.equal(summons.length,2);assert.equal(summons.filter(u=>u.elderGuardian).length,1);
 });
-test('Crimson Relic requires a hero hit below half health and does not retrigger during cooldown',()=>{
+test('Crimson Relic requires a hero hit below 60% health and does not retrigger during cooldown',()=>{
   const {game,hero,add}=arena('dragon'),enemy=add(hero.x+50,hero.y,1,'hero');equip(game,hero,'crimson-relic');hero.hp=hero.maxHp*.3;
   const before=hero.hp;basic(game,hero,enemy);assert(hero.hp>before);assert(hero.shield>0);
   hero.shield=0;basic(game,hero,enemy);assert.equal(hero.shield,0);
@@ -218,7 +218,7 @@ test('an already released item blast can finish a target after its owner dies wi
   const {game,hero,target,add}=arena('ember'),secondary=add(target.x+20,target.y+25);
   equip(game,hero,'starfire-scepter');hero.gold=0;hero.goldEarned=0;
   cast(game,hero,0,target);secondary.hp=1;game.kill(hero,target);
-  advance(game,.4);assert(!secondary.alive);assert.equal(hero.gold,18);assert(!hero.alive);assert.equal(hero.hp,0);
+  advance(game,.5);assert(!secondary.alive);assert.equal(hero.gold,18);assert(!hero.alive);assert.equal(hero.hp,0);
 });
 test('equipment proc final hits retain personal gold and never generate chain income or assist gold',()=>{
   const {game,hero,target,add}=arena('dragon'),secondary=add(hero.x+95,hero.y+35),helper=add(hero.x-10,hero.y,0,'hero');
