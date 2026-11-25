@@ -166,6 +166,13 @@ async function verifyShop(page,device,items) {
     assert.equal(state.gold,expectedGold,'purchase charges the displayed additional cost exactly once');
     assert(state.items.includes(id),'purchase immediately activates '+item.name);
     assert(await buy.isDisabled(),'owned upgrade cannot be bought again');
+    if(device.height<550&&device.width>560)await page.waitForFunction(id=>{
+      const list=document.getElementById('shop-items').getBoundingClientRect();
+      const card=document.querySelector(`#shop-items [data-item-id="${id}"]`);
+      const heading=card.querySelector('.shop-item-heading').getBoundingClientRect();
+      const action=card.querySelector('[data-buy-item]').getBoundingClientRect();
+      return heading.top>=list.top-1&&action.bottom<=list.bottom+1;
+    },id,{timeout:3000});
   }
   assert(await page.evaluate(()=>__mobaTest.game.player.maxHp)>originalHp,'buying health changes actual maximum health');
   assert.deepEqual(await page.evaluate(()=>__mobaTest.game.player.items),buyIds,'prerequisites remain active after advanced upgrades');

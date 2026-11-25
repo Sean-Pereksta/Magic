@@ -30,6 +30,8 @@ Open **SHOP** on desktop or mobile, or press **I**, to buy permanent match upgra
 
 All 30 items have pixel icons, visible bonuses, prices, and named prerequisites. Purchases activate immediately and appear in the active inventory. Prerequisites stay active after an upgrade; displayed prices are the additional cost, and every item can be purchased once per match. There is no inventory-slot limit. Items improve health, attacks, ability power, cooldowns, and other supported combat stats. Cooldown reduction from items and talents shares a 50% cap. Items and unspent gold survive death and recall; a new match resets both. Bots earn and spend their own final-hit gold under the same purchase rules.
 
+Buying gear immediately updates your hero's stats and future actions. Existing projectiles, already summoned creatures, and cooldowns already counting down keep their original cast values; the next cast uses the new bonuses.
+
 | Hero | Theme |
 | --- | --- |
 | Arc Rift | Golden armor, ranged staff, blue storms, forcefields, and spirit warriors |

@@ -415,7 +415,8 @@ function renderShop() {
       tone('level');$('shop-message').textContent=`${item.name} is active. ${describeBonuses(item)}.`;
       renderShop();refreshHUD();
       // Keep keyboard focus near the purchased item after its button becomes disabled.
-      [...$('shop-items').children].find(el=>el.dataset.itemId===item.id)?.focus({preventScroll:true});
+      const purchased=[...$('shop-items').children].find(el=>el.dataset.itemId===item.id);
+      purchased?.scrollIntoView({block:'nearest',inline:'nearest'});purchased?.focus({preventScroll:true});
     });
     card.append(heading,bonuses,description,requirements,action);list.append(card);
   }
