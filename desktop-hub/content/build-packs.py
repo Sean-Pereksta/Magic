@@ -283,7 +283,7 @@ for key,slug in [('pirates','pirates'),('monstermallexpanded','monster-mall-expa
     build(key,truth,'index.html',edition=lambda p:copy_tree(truth/'games'/slug,p))
 for key in ['apestogetherstrong','balatlesolo','cardrealms','deepsea','microwars4','mountain','starcraft2','swarm']:
     entry = records[key]['route'].lstrip('/')
-    build(key,magic,entry,[entry])
+    build(key,magic,entry,[entry],['game/balatle'] if key == 'balatlesolo' else [])
 for key, folder, extras in [('bramblebound','bramblebound',[]),('flag','flag-capture',[]),
        ('matchwars','matchwars',[]),('circuitbound','circuitbound',[]),
        ('spelltower','spelltower',[]),

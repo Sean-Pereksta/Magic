@@ -5,492 +5,86 @@
 
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-  <title>🃏 Balatle — Multiplayer (Firebase Live Scores)</title>
-  <style>
-    :root{
-      --bg:#0b1020;
-      --panel:rgba(255,255,255,.08);
-      --panel2:rgba(255,255,255,.06);
-      --line:rgba(255,255,255,.12);
-      --ink:#eaf2ff;
-      --muted:rgba(234,242,255,.75);
-      --good:#31d07f;
-      --warn:#f4c84a;
-      --bad:#ff5b6b;
-      --accent:#57b2ff;
-      --shadow:0 16px 46px rgba(0,0,0,.55);
-      --r:16px;
-    }
-    *{ box-sizing:border-box; }
-    html,body{
-      height:100%; margin:0;
-      background:radial-gradient(1200px 900px at 20% 10%, #1a2a55 0%, #0b1020 60%, #050713 100%);
-      color:var(--ink);
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
-    }
-    button{ font:inherit; cursor:pointer; }
-    .wrap{ max-width:1180px; margin:0 auto; padding:14px; }
-    .top{
-      display:grid; gap:12px;
-      grid-template-columns: 1.2fr 1fr;
-      align-items:stretch;
-    }
-    @media (max-width: 980px){ .top{ grid-template-columns: 1fr; } }
-
-    .panel{
-      background:linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.06));
-      border:1px solid var(--line);
-      border-radius:var(--r);
-      box-shadow:var(--shadow);
-      overflow:hidden;
-    }
-    .ph{
-      padding:12px 14px;
-      border-bottom:1px solid var(--line);
-      display:flex;
-      gap:10px;
-      align-items:center;
-      justify-content:space-between;
-      flex-wrap:wrap;
-    }
-    .ph h2{
-      margin:0;
-      font-size:14px;
-      letter-spacing:.4px;
-      text-transform:uppercase;
-      color:var(--muted);
-    }
-    .pillRow{ display:flex; gap:8px; flex-wrap:wrap; }
-    .pill{
-      padding:7px 10px; border-radius:999px; border:1px solid var(--line);
-      background:rgba(0,0,0,.22); color:var(--ink);
-      display:inline-flex; gap:8px; align-items:center; white-space:nowrap;
-    }
-    .pill b{ font-weight:900; }
-    .dot{ width:9px; height:9px; border-radius:50%; display:inline-block; background:var(--accent); box-shadow:0 0 0 2px rgba(87,178,255,.22); }
-    .dot.good{ background:var(--good); box-shadow:0 0 0 2px rgba(49,208,127,.22); }
-    .dot.warn{ background:var(--warn); box-shadow:0 0 0 2px rgba(244,200,74,.22); }
-    .dot.bad{ background:var(--bad); box-shadow:0 0 0 2px rgba(255,91,107,.22); }
-
-    .content{ padding:12px 14px; }
-    .grid2{ display:grid; gap:12px; grid-template-columns: 1.5fr 1fr; }
-    @media (max-width: 980px){ .grid2{ grid-template-columns:1fr; } }
-
-    .bigScore{ display:flex; gap:12px; align-items:stretch; flex-wrap:wrap; }
-    .scoreBox{
-      flex:1; min-width:220px;
-      border:1px solid var(--line);
-      background:rgba(0,0,0,.18);
-      border-radius:14px;
-      padding:12px;
-    }
-    .scoreBox .label{ color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.4px; }
-    .scoreBox .val{ font-size:24px; font-weight:1000; margin-top:4px; }
-    .bar{
-      height:10px; border-radius:999px;
-      border:1px solid var(--line);
-      background:rgba(255,255,255,.06);
-      overflow:hidden;
-      margin-top:10px;
-    }
-    .bar > i{ display:block; height:100%; width:0%; background:linear-gradient(90deg, var(--accent), rgba(87,178,255,.25)); }
-    .bar.good > i{ background:linear-gradient(90deg, var(--good), rgba(49,208,127,.25)); }
-    .bar.bad > i{ background:linear-gradient(90deg, var(--bad), rgba(255,91,107,.25)); }
-
-    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-    .btn{
-      border-radius:12px; padding:10px 12px;
-      border:1px solid var(--line);
-      background:rgba(0,0,0,.22); color:var(--ink);
-      transition:transform .05s ease, filter .12s ease;
-    }
-    .btn:hover{ filter:brightness(1.08); }
-    .btn:active{ transform:translateY(1px); }
-    .btn.primary{ background:linear-gradient(180deg, rgba(87,178,255,.30), rgba(87,178,255,.12)); border-color:rgba(87,178,255,.45); }
-    .btn.good{ background:linear-gradient(180deg, rgba(49,208,127,.30), rgba(49,208,127,.12)); border-color:rgba(49,208,127,.45); }
-    .btn.warn{ background:linear-gradient(180deg, rgba(244,200,74,.30), rgba(244,200,74,.12)); border-color:rgba(244,200,74,.45); }
-    .btn.bad{ background:linear-gradient(180deg, rgba(255,91,107,.30), rgba(255,91,107,.12)); border-color:rgba(255,91,107,.45); }
-    .btn:disabled{ opacity:.45; cursor:not-allowed; }
-
-    .hand{
-      display:flex; gap:10px; flex-wrap:wrap;
-      padding:10px;
-      border:1px dashed rgba(255,255,255,.18);
-      border-radius:14px;
-      background:rgba(0,0,0,.12);
-      min-height:116px;
-      align-content:flex-start;
-    }
-    .card{
-      width:84px; height:112px;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,.18);
-      background:linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.06));
-      box-shadow:0 10px 24px rgba(0,0,0,.35);
-      position:relative;
-      padding:10px;
-      user-select:none;
-      cursor:pointer;
-      touch-action:manipulation;
-      -webkit-tap-highlight-color:transparent;
-      transition:transform .08s ease, filter .12s ease, outline .12s ease;
-      outline:2px solid transparent;
-    }
-    .card:hover{ filter:brightness(1.08); }
-    .card.sel{ outline:2px solid rgba(87,178,255,.8); transform:translateY(-3px); }
-    .card.red .suit, .card.red .rank{ color:#ff6b6b; }
-    .card .rank{ font-weight:1000; font-size:20px; }
-    .card .suit{ font-size:20px; margin-left:2px; }
-    .card .chips{
-      position:absolute; bottom:8px; left:10px; right:10px;
-      display:flex; justify-content:space-between; align-items:center;
-      color:rgba(234,242,255,.8);
-      font-size:12px;
-    }
-    .tag{
-      display:inline-flex; gap:8px; align-items:center;
-      padding:6px 10px; border-radius:999px;
-      border:1px solid rgba(244,200,74,.35);
-      background:rgba(244,200,74,.10);
-      color:rgba(255,255,255,.92);
-      font-size:12px;
-    }
-    .list{ display:flex; flex-direction:column; gap:8px; }
-    .item{
-      border:1px solid var(--line);
-      background:rgba(0,0,0,.18);
-      border-radius:14px;
-      padding:10px;
-    }
-    .itemTop{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
-    .itemName{ font-weight:1000; }
-    .itemMeta{ color:var(--muted); font-size:12px; margin-top:4px; line-height:1.35; }
-    .itemBtns{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
-    .mini{ font-size:12px; padding:7px 9px; border-radius:10px; }
-    .sep{ height:1px; background:var(--line); margin:10px 0; }
-
-    .toast{
-      position:fixed; left:50%; bottom:18px; transform:translateX(-50%);
-      background:rgba(0,0,0,.72); border:1px solid rgba(255,255,255,.16);
-      color:var(--ink); padding:10px 12px; border-radius:14px;
-      box-shadow:0 18px 46px rgba(0,0,0,.6);
-      max-width:min(760px, calc(100vw - 24px));
-      opacity:0; pointer-events:none; transition:opacity .18s ease, transform .18s ease;
-      z-index:50;
-    }
-    .toast.show{ opacity:1; transform:translateX(-50%) translateY(-2px); }
-
-    .modalBack{
-      position:fixed; inset:0; display:none; place-items:center;
-      background:rgba(0,0,0,.55); padding:14px;
-      z-index:60;
-    }
-    .modalBack.show{ display:grid; }
-    .modal{
-      width:min(980px, 100%);
-      border-radius:18px;
-      border:1px solid rgba(255,255,255,.16);
-      background:linear-gradient(180deg, rgba(20,28,54,.94), rgba(10,14,32,.94));
-      box-shadow:0 22px 70px rgba(0,0,0,.65);
-      overflow:hidden;
-    }
-    .modal .ph{ background:rgba(0,0,0,.18); }
-    .kbd{ padding:2px 7px; border-radius:8px; border:1px solid var(--line); background:rgba(0,0,0,.24); font-size:12px; color:rgba(255,255,255,.85); }
-    .note{ color:var(--muted); font-size:12px; line-height:1.45; }
-    .tight{ margin:6px 0 0 0; }
-    .small{ font-size:12px; color:var(--muted); }
-    .rightAlign{ text-align:right; }
-
-    /* Multiplayer scoreboard */
-    .mpBox{
-      border:1px solid var(--line);
-      background:rgba(0,0,0,.18);
-      border-radius:14px;
-      padding:10px;
-      margin-bottom:10px;
-    }
-    .mpHead{
-      display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;
-      margin-bottom:8px;
-    }
-    .mpTitle{ font-weight:1000; display:flex; gap:8px; align-items:center; }
-    .mpTitle .badge{
-      font-size:11px;
-      padding:4px 8px;
-      border-radius:999px;
-      border:1px solid rgba(87,178,255,.35);
-      background:rgba(87,178,255,.10);
-      color:rgba(234,242,255,.92);
-    }
-    .mpList{ display:flex; flex-direction:column; gap:8px; }
-    .mpRow{
-      display:flex;
-      justify-content:space-between;
-      gap:10px;
-      padding:9px 10px;
-      border-radius:12px;
-      border:1px solid rgba(255,255,255,.10);
-      background:rgba(255,255,255,.04);
-      align-items:center;
-    }
-    .mpLeft{ display:flex; align-items:center; gap:10px; min-width:0; }
-    .mpName{
-      font-weight:1000;
-      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-      max-width:180px;
-    }
-    .mpSub{ font-size:11px; color:var(--muted); margin-top:2px; }
-    .mpMeta{ display:flex; flex-direction:column; min-width:0; }
-    .mpScore{ font-weight:1000; text-align:right; }
-    .mpStatus{
-      font-size:11px;
-      color:var(--muted);
-      text-align:right;
-      margin-top:2px;
-    }
-    .mpRow.me{
-      border-color: rgba(87,178,255,.35);
-      box-shadow: 0 0 0 2px rgba(87,178,255,.12);
-      background: rgba(87,178,255,.06);
-    }
-    .mpRow.elim{
-      opacity:.70;
-      border-color: rgba(255,91,107,.28);
-      background: rgba(255,91,107,.06);
-    }
-    .mpRow.winner{
-      border-color: rgba(49,208,127,.35);
-      box-shadow: 0 0 0 2px rgba(49,208,127,.10);
-      background: rgba(49,208,127,.06);
-    }
-    .mpDot{
-      width:10px; height:10px; border-radius:50%;
-      background:var(--accent);
-      box-shadow: 0 0 0 2px rgba(87,178,255,.18);
-      flex:0 0 auto;
-    }
-    .mpDot.play{ background:var(--good); box-shadow:0 0 0 2px rgba(49,208,127,.16); }
-    .mpDot.buy{ background:var(--warn); box-shadow:0 0 0 2px rgba(244,200,74,.16); }
-    .mpDot.ready{ background:var(--accent); box-shadow:0 0 0 2px rgba(87,178,255,.16); }
-    .mpDot.elim{ background:var(--bad); box-shadow:0 0 0 2px rgba(255,91,107,.16); }
-
-    .mobileHudTop,.mobileActions,.mobileResource{ display:none; }
-    .fullBtn{ display:none; }
-    .moreRow{ display:flex; gap:8px; flex-wrap:wrap; }
-    .mobileDrawerHandle,.drawerBack{ display:none; }
-
-    .shopModal{ max-height:min(92vh,900px); display:flex; flex-direction:column; }
-    .shopModalHead{ position:sticky; top:0; z-index:2; background:rgba(8,12,28,.94); padding-top:calc(8px + env(safe-area-inset-top)); }
-    .shopModalBody{ padding:12px 14px 14px; overflow:auto; }
-
-    .winnerBack{ position:fixed; inset:0; display:none; z-index:85; background:rgba(2,5,14,.9); padding:20px; }
-    .winnerBack.show{ display:flex; align-items:center; justify-content:center; }
-    .winnerCard{ width:min(640px,100%); text-align:center; border:1px solid var(--line); border-radius:20px; background:linear-gradient(180deg, rgba(87,178,255,.14), rgba(0,0,0,.4)); padding:28px 16px; }
-
-    @media (max-width: 780px){
-      html,body{ height:auto; min-height:100%; overflow-y:auto; }
-      .wrap{ padding:calc(8px + env(safe-area-inset-top)) 8px calc(88px + env(safe-area-inset-bottom)); }
-      .top{ grid-template-columns:1fr; }
-      .fullBtn{ display:inline-flex; }
-      .ph .pillRow{ display:none; }
-      .mobileHudTop{ display:block; position:sticky; top:0; z-index:20; background:rgba(8,12,28,.95); margin:-12px -14px 8px; padding:8px 14px 10px; border-bottom:1px solid var(--line); }
-      .mobileMeta{ font-size:12px; color:var(--muted); margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-      .mobileResource{ display:block; font-size:14px; color:var(--ink); margin:8px 0; }
-      .bigScore{ gap:8px; }
-      .scoreBox{ min-width:0; padding:10px; }
-      .scoreBox:last-child{ display:none; }
-      .mobileActions{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; position:sticky; bottom:calc(env(safe-area-inset-bottom) + 8px); z-index:25; background:rgba(8,12,28,.95); padding:8px; border:1px solid var(--line); border-radius:12px; }
-      .mobileActions.hasFinish{ grid-template-columns:repeat(4,minmax(0,1fr)); }
-      .mobileActions .btn{ padding:12px 6px; font-size:13px; }
-      .moreRow{ display:none; }
-      .moreRow.show{ display:flex; }
-      .hand{ min-height:88px; padding:6px; gap:6px; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); overflow:visible; }
-      .card{ width:100%; height:auto; min-height:92px; aspect-ratio:66/92; padding:8px; }
-      .card .rank,.card .suit{ font-size:16px; }
-      .card .chips{ font-size:10px; left:6px; right:6px; }
-
-      #statsPanel{ position:fixed; top:0; right:0; height:100vh; width:min(84vw,360px); transform:translateX(105%); transition:transform .2s ease; z-index:72; overflow:auto; padding-top:calc(env(safe-area-inset-top) + 8px); padding-bottom:calc(env(safe-area-inset-bottom) + 10px); background:#0b1020; border-left:1px solid rgba(255,255,255,.2); }
-      body.drawerOpen #statsPanel{ transform:translateX(0); }
-      body.drawerOpen{ overflow:hidden; }
-      .mobileDrawerHandle{ display:block; position:fixed; right:0; top:40%; z-index:73; border-radius:14px 0 0 14px; border:1px solid var(--line); border-right:0; background:rgba(8,12,28,.95); color:var(--ink); padding:10px 8px; }
-      .drawerBack{ position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:71; }
-      body.drawerOpen .drawerBack{ display:block; }
-    }
-  </style>
+  <title>Felt &amp; Fortune — Multiplayer Card Table</title>
+  <link rel="stylesheet" href="./balatle/table.css"/>
+  <script src="./balatle/core.js"></script>
+  <script src="./balatle/table.js"></script>
 </head>
 
-<body>
-  <div class="wrap">
-    <div class="top">
-      <!-- LEFT: Gameplay -->
-      <div class="panel" id="sidePanel">
-        <div class="ph">
-          <h2>Round</h2>
-          <button class="btn mini fullBtn" id="btnFullscreen">⛶ Full</button>
-          <div class="pillRow">
-            <div class="pill"><span class="dot" id="blindDot"></span> <span id="blindName">—</span></div>
-            <div class="pill">Round <b id="roundNum">—</b>/5</div>
-            <div class="pill">⏳ <b id="roundTimer">—</b></div>
-            <div class="pill">Phase <b id="phasePill">—</b></div>
-            <div class="pill">Conn <b id="connPill">—</b></div>
-            <div class="pill">👤 <b id="youName">—</b></div>
-          </div>
+<body class="balatle-table multiplayer-table">
+  <div class="table-shell">
+    <header class="table-header">
+      <a class="brand" href="/lobby/lobby.html" aria-label="Felt &amp; Fortune — return to game lobby"><span class="brand-mark" aria-hidden="true">♠</span><span class="brand-copy"><strong class="brand-name fortune-wordmark">FELT &amp; FORTUNE</strong><small>THE MULTIPLAYER TABLE</small></span></a>
+      <nav class="header-actions" aria-label="Table controls">
+        <button class="btn mini" id="btnHow">Hand guide</button>
+        <button class="btn mini" id="btnSound" aria-pressed="false">Sound off</button>
+        <button class="btn mini" id="btnFullscreen" aria-label="Toggle fullscreen">⛶</button>
+        <button class="btn mini" id="btnDrawer" aria-controls="statsPanel" aria-expanded="false">Scores &amp; build</button>
+      </nav>
+    </header>
+    <div class="table-layout">
+      <aside class="run-rail" aria-label="Round information">
+        <section class="rail-card blind-card">
+          <div class="rail-topline"><span class="eyebrow">ROUND <b id="roundNum">1</b> / 5</span><span class="timer-pill" id="roundTimer">2:00</span></div>
+          <div class="blind-heading"><span class="dot" id="blindDot"></span><h1 class="rail-title" id="blindName">Small</h1><span class="eyebrow">BLIND</span></div>
+          <div class="rail-target"><span class="eyebrow">SCORE AT LEAST</span><strong class="target-value rail-score" id="target">300</strong></div>
+          <div class="round-total"><span>Round score</span><strong id="blindScore">0</strong></div>
+          <div class="bar" id="targetBar" role="progressbar" aria-label="Round target progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
+          <div class="small tight" id="blindProgressText"></div>
+          <div class="boss-rule" id="bossRuleLine"></div>
+          <div class="small" id="finishHint"></div>
+          <div class="small" id="tagLine"></div>
+        </section>
+        <section class="resource-grid" aria-label="Remaining resources">
+          <div class="resource-stat hands"><span>Hands</span><strong id="handsCount">4</strong></div>
+          <div class="resource-stat discards"><span>Discards</span><strong id="discardsCount">3</strong></div>
+          <div class="resource-stat money"><span>Cash</span><strong id="money">$10</strong></div>
+        </section>
+        <section class="rail-card run-card">
+          <div class="round-total"><span>Total score</span><strong id="yourTotal">0</strong></div>
+          <div class="blind-path" id="blindPath" aria-label="Match progression"></div>
+          <div class="small" id="nextGoalLine"></div>
+          <div class="rail-connection"><span id="youName">Player</span><span id="connPill">Connecting</span><b id="phasePill">PLAY</b></div>
+        </section>
+        <div id="waitBlock" class="rail-card" style="display:none;"><div class="itemName" id="waitTitle"></div><div class="itemMeta" id="waitText"></div><div class="small tight" id="readyCountLine">Ready: 0/0</div><div class="list" id="readyList"></div></div>
+        <div id="runEndBlock" class="rail-card" style="display:none;"><div class="itemName" id="runEndTitle"></div><div class="itemMeta" id="runEndText"></div></div>
+      </aside>
+      <main class="table-main" id="sidePanel">
+        <div class="table-toolbar"><span class="eyebrow">YOUR JOKERS <b id="jokerCount">0</b>/5</span><span class="small">Triggers resolve left to right</span></div>
+        <div class="joker-rack" id="jokerRack" aria-label="Active jokers"></div>
+        <section class="score-stage" id="scoreStage" aria-label="Scoring table">
+          <div class="stage-heading"><span class="eyebrow">HAND PREVIEW</span><h2 id="selectionName">Choose your cards</h2></div>
+          <div class="played-cards" id="playedCards" aria-label="Scoring cards"><span class="table-watermark">♠ ♥ ♣ ♦</span></div>
+          <div class="score-equation"><div class="chip-counter score-number chips"><small>CHIPS</small><strong id="scoreChips">0</strong></div><span class="multiply-sign" aria-hidden="true">×</span><div class="mult-counter score-number mult"><small>MULT</small><strong id="scoreMult">0</strong></div><span class="equals-sign" aria-hidden="true">=</span><div class="score-preview"><span>SCORE</span><strong id="scorePreview">0</strong></div></div>
+          <p id="scoreCaption" class="score-caption" aria-live="polite">Make a poker hand. Only cards that form the hand add their chips.</p>
+        </section>
+        <section class="hand-zone" aria-label="Your hand">
+          <div class="hand-label"><span id="selectionHint">Select up to 5 cards</span><span class="small" id="deckCount">52 cards</span></div>
+          <div class="hand" id="hand" aria-label="Your playing cards"></div>
+        </section>
+        <div class="table-actions">
+          <button class="btn primary" id="btnPlay">Play hand</button>
+          <button class="btn bad" id="btnDiscard">Discard</button>
+          <button class="btn" id="btnClear">Clear</button>
+          <button class="btn good" id="btnFinish" title="Finish when you reach the target">Cash out</button>
+          <button class="btn good" id="btnOpenShop" hidden>Open shop</button>
         </div>
-
-        <div class="content">
-          <div class="mobileHudTop">
-            <div class="row" style="justify-content:space-between; align-items:center;">
-              <div><b>Target:</b> <span id="mTarget">—</span></div>
-              <div><b>Score:</b> <span id="mScore">0</span></div>
-            </div>
-            <div class="bar" id="mTargetBar"><i></i></div>
-            <div class="mobileMeta" id="mobileMetaLine">—</div>
-          </div>
-
-          <div class="bigScore">
-            <div class="scoreBox">
-              <div class="label">Target (survive this round)</div>
-              <div class="val" id="target">—</div>
-              <div class="bar" id="targetBar"><i></i></div>
-              <div class="small tight" id="bossRuleLine"></div>
-              <div class="small tight" id="tagLine"></div>
-              <div class="small tight" id="nextGoalLine"></div>
-            </div>
-            <div class="scoreBox">
-              <div class="label">Your score (this round)</div>
-              <div class="val" id="blindScore">0</div>
-              <div class="small tight" id="blindProgressText"></div>
-              <div class="small tight" id="finishHint"></div>
-            </div>
-            <div class="scoreBox">
-              <div class="label">Last played hand</div>
-              <div class="val" id="lastHand">—</div>
-              <div class="small tight" id="lastMath">—</div>
-            </div>
-          </div>
-
-          <div class="sep"></div>
-
-          <div class="mobileResource" id="mobileResourceLine">🖐 Hands: — • 🗑 Discards: —</div>
-
-          <div class="mobileActions" id="mobileActions">
-            <button class="btn primary" id="btnPlayM">Play Selected</button>
-            <button class="btn" id="btnDiscardM">Discard Selected</button>
-            <button class="btn good" id="btnFinishM" style="display:none;" title="Enabled once you reach the target">Finish Round</button>
-            <button class="btn" id="btnClearM">Clear</button>
-          </div>
-
-          <div class="row">
-            <button class="btn primary" id="btnPlay">Play Selected</button>
-            <button class="btn" id="btnDiscard">Discard Selected</button>
-            <button class="btn" id="btnClear">Clear Selection</button>
-            <button class="btn mini" id="btnMore">⋯ More</button>
-            <div class="moreRow" id="moreRow">
-              <button class="btn" id="btnSortRank">Sort: Rank</button>
-              <button class="btn" id="btnSortSuit">Sort: Suit</button>
-              <button class="btn good" id="btnFinish" title="Enabled once you reach the target">Finish Round</button>
-              <button class="btn mini" id="btnHow">How this works</button>
-            </div>
-            <span class="note">Select 1–5 cards, then <span class="kbd">Play</span>. Beat the target to survive.</span>
-          </div>
-
-          <div class="sep"></div>
-
-          <div class="row" style="justify-content:space-between; align-items:flex-end;">
-            <div style="flex:1">
-              <div class="small">Your hand (click cards to select):</div>
-              <div class="hand" id="hand"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- RIGHT: Multiplayer + Jokers + Shop -->
-      <div class="panel" id="statsPanel">
-        <div class="ph">
-          <h2>Multiplayer / Shop</h2>
-          <div class="pillRow">
-            <button class="btn mini bad" id="btnReset" title="Local reset only (does not affect match)">Reset (local)</button>
-          </div>
-        </div>
-
-        <div class="content">
-          <div class="mpBox">
-            <div class="mpHead">
-              <div class="mpTitle">👥 Players <span class="badge" id="matchBadge">—</span></div>
-              <div class="pill" title="Your total score across completed rounds">
-                🧮 Total <b id="yourTotal">0</b>
-              </div>
-            </div>
-            <div class="mpList" id="mpList"></div>
-            <div class="small tight" id="mpFooter"></div>
-          </div>
-
-          <div class="row" style="justify-content:space-between; align-items:center;">
-            <div class="pill">Jokers <b id="jokerCount">0</b>/5</div>
-            <div class="pill">Consumables <b id="consCount">0</b>/3</div>
-            <div class="pill">Vouchers <b id="voucherCount">0</b></div>
-            <div class="pill" style="margin-left:auto">💰 <b id="money">—</b></div>
-          </div>
-
-          <div class="sep"></div>
-
-          <div class="grid2">
-            <div>
-              <div class="small">Active jokers (apply every hand):</div>
-              <div class="list" id="jokerList"></div>
-              <div class="small tight">Tip: ×Mult jokers scale fast.</div>
-            </div>
-            <div>
-              <div class="small">Consumables (one-time uses):</div>
-              <div class="list" id="consList"></div>
-              <div class="small tight">Use only during Play phase.</div>
-            </div>
-          </div>
-
-          <div class="sep"></div>
-
-          
-
-          <div id="waitBlock" style="display:none;">
-            <div class="item">
-              <div class="itemName" id="waitTitle">—</div>
-              <div class="itemMeta" id="waitText">—</div>
-              <div class="small tight" id="readyCountLine">Ready: 0/0</div>
-              <div class="list" id="readyList"></div>
-            </div>
-          </div>
-
-          <div id="runEndBlock" style="display:none;">
-            <div class="item">
-              <div class="itemName" id="runEndTitle">—</div>
-              <div class="itemMeta" id="runEndText">—</div>
-            </div>
-          </div>
-
-
-          <div class="sep"></div>
-          <div class="item">
-            <div class="itemName">Owned Build Summary</div>
-            <div class="itemMeta" id="ownedSummary">No purchases yet.</div>
-          </div>
-
-          <div class="item">
-            <div class="itemName">Scoring (demo)</div>
-            <div class="itemMeta">
-              Score per play = <b>(Chips)</b> × <b>(Mult)</b><br/>
-              Chips = base hand chips + sum of selected card chip values + joker chip bonuses<br/>
-              Mult = (base hand mult + joker +mult) × joker ×mult effects
-              <div class="small tight">Inspired by Balatro, simplified for learning. Multiplayer syncs scores only.</div>
-            </div>
-          </div>
-
-        </div>
-      </div>
+        <div class="table-secondary"><div class="row"><span class="small">Sort</span><button class="btn mini" id="btnSortRank">Rank</button><button class="btn mini" id="btnSortSuit">Suit</button></div><span class="small keyboard-hint">1–9 select · Enter play · D discard</span></div>
+      </main>
     </div>
   </div>
 
-  <button class="mobileDrawerHandle" id="btnDrawer" aria-label="Toggle scores and stats" aria-expanded="false">☰ Scores</button>
+  <aside class="panel details-drawer" id="statsPanel" aria-label="Live scores and build" aria-hidden="true" inert>
+    <div class="ph"><h2>Scores &amp; build</h2><button class="btn mini" id="btnCloseDrawer" aria-label="Close scores and build">Close</button></div>
+    <div class="content">
+      <div class="mpBox"><div class="mpHead"><div class="mpTitle">Live table <span class="badge" id="matchBadge">—</span></div></div><div class="mpList" id="mpList"></div><div class="small tight" id="mpFooter"></div></div>
+      <div class="row"><span class="pill">Consumables <b id="consCount">0</b>/3</span><span class="pill">Vouchers <b id="voucherCount">0</b></span></div>
+      <h3>Jokers</h3><div class="list" id="jokerList"></div>
+      <h3>Consumables</h3><div class="list" id="consList"></div>
+      <details class="item"><summary>Run upgrades</summary><div class="itemMeta" id="ownedSummary">No purchases yet.</div></details>
+      <details class="item"><summary>Last scoring breakdown</summary><div class="itemName" id="lastHand">—</div><div class="itemMeta" id="lastMath">—</div></details>
+    </div>
+  </aside>
   <div class="drawerBack" id="drawerBack"></div>
 
   <div class="modalBack" id="shopBack" aria-hidden="true">
@@ -505,7 +99,8 @@
         </div>
       </div>
       <div class="shopModalBody">
-        <div class="small tight">Buys are local-only (they help your run, not others). Next round starts when all survivors are Ready.</div>
+        <div class="payout-strip" id="payoutLine"></div>
+        <div class="small tight">Build your next scoring combo. The next round starts when every survivor is ready.</div>
         <div class="sep"></div>
         <div class="small">Shop Offers</div>
         <div class="list" id="shopList"></div>
@@ -530,7 +125,7 @@
   <div class="modalBack" id="howBack" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true">
       <div class="ph">
-        <h2>How this multiplayer demo works</h2>
+        <h2>Hand guide &amp; match rules</h2>
         <button class="btn mini" id="btnCloseHow">Close</button>
       </div>
       <div class="content" id="howContent">
@@ -541,15 +136,17 @@
               <li>There are <b>5 rounds</b>. Rounds <b>4</b> and <b>5</b> are <b>Boss</b> rounds.</li>
               <li>Each round has a <b>2:00</b> play timer. If time expires and you’re below target, you’re <b>eliminated</b>.</li>
               <li>Once you reach target, you can keep scoring for a bigger total, or click <b>Finish Round</b> to enter Buy.</li>
-              <li>Buy Phase lasts <b>0:30</b> (or less if the match advances early). Buys only affect <b>your</b> run.</li>
+              <li>Buy Phase lasts <b>1:00</b> (or less if the match advances early). Buys only affect <b>your</b> run.</li>
               <li>Next round starts when all surviving players are <b>Ready</b> (or timeouts force it).</li>
               <li>End of Round 5: highest <b>Total</b> among survivors wins. If only one player remains, they win immediately.</li>
             </ol>
           </div>
         </div>
         <div class="item">
-          <div class="itemName">Keyboard</div>
-          <div class="itemMeta">Press <span class="kbd">Esc</span> to close this window.</div>
+          <div class="itemName">Make every card count</div>
+          <div class="itemMeta">A Pair always starts at 10 chips × 2 Mult, whether you play two cards or five. Only the cards making the poker hand add their chip values. Extra cards still activate jokers that explicitly reward cards played. Jokers trigger from left to right: move a ×Mult joker after your +Mult jokers to grow your score.</div>
+          <div class="hand-guide" id="handGuide"></div>
+          <div class="itemMeta">Use <span class="kbd">1–9</span> to select cards, <span class="kbd">Enter</span> to play, <span class="kbd">D</span> to discard, and <span class="kbd">Esc</span> to clear or close.</div>
         </div>
       </div>
     </div>
@@ -682,18 +279,10 @@
   // ---------------------------
   // Firestore refs
   // ---------------------------
-  if(!gameId){
-    $("connPill").textContent = "NO gameId";
-    $("runEndBlock").style.display = "block";
-    $("runEndTitle").textContent = "Missing gameId";
-    $("runEndText").textContent = "Launch from the lobby so the URL includes ?gameId=...&username=...";
-    throw new Error("Missing gameId");
-  }
-
-  const lobbyRef  = doc(db, "lobbies", gameId);
-  const stateRef  = doc(db, "lobbies", gameId, "balatro", "state");
-  const playersCol= collection(db, "lobbies", gameId, "balatroPlayers");
-  const meRef     = doc(db, "lobbies", gameId, "balatroPlayers", username);
+  const lobbyRef  = gameId ? doc(db, "lobbies", gameId) : null;
+  const stateRef  = gameId ? doc(db, "lobbies", gameId, "balatro", "state") : null;
+  const playersCol= gameId ? collection(db, "lobbies", gameId, "balatroPlayers") : null;
+  const meRef     = gameId ? doc(db, "lobbies", gameId, "balatroPlayers", username) : null;
 
   // ---------------------------
   // Match + player mirrors (live)
@@ -716,11 +305,16 @@
 
   function setDrawer(open){
     const next = !!open;
+    if(next === document.body.classList.contains("drawerOpen")) return;
     document.body.classList.toggle("drawerOpen", next);
+    $("statsPanel").inert = !next;
+    $("statsPanel").setAttribute("aria-hidden", String(!next));
+    if(next) $("btnCloseDrawer").focus();
+    else $("btnDrawer").focus();
     const drawerBtn = $("btnDrawer");
     if(drawerBtn){
       drawerBtn.setAttribute("aria-expanded", next ? "true" : "false");
-      drawerBtn.textContent = next ? "✕ Close" : "☰ Scores";
+      drawerBtn.textContent = next ? "Close scores" : "Scores & build";
     }
   }
 
@@ -886,70 +480,11 @@
     return rng.shuffle(d);
   }
 
-  // Hand evaluation
-  function isStraight(values){
-    if(values.length !== 5) return false;
-    let ok=true;
-    for(let i=1;i<5;i++){
-      if(values[i] !== values[0]+i) { ok=false; break; }
-    }
-    if(ok) return true;
-    const wheel = [2,3,4,5,14];
-    for(let i=0;i<5;i++) if(values[i]!==wheel[i]) return false;
-    return true;
-  }
-
-  function evalHand(cards){
-    const n = cards.length;
-    const ranks = cards.map(c=>c.rv).sort((a,b)=>a-b);
-    const suits = cards.map(c=>c.suit);
-    const countR = new Map();
-    const countS = new Map();
-    for(const c of cards){
-      countR.set(c.rv, (countR.get(c.rv)||0)+1);
-      countS.set(c.suit, (countS.get(c.suit)||0)+1);
-    }
-    const groups = [...countR.entries()].map(([rv,ct])=>({rv,ct})).sort((a,b)=>b.ct-a.ct || b.rv-a.rv);
-    const isFlush = (n===5) && ([...countS.values()].some(v=>v===5));
-    const uniq = [...new Set(ranks)];
-    const straight = (n===5) && isStraight(uniq);
-
-    if(n===5){
-      if(straight && isFlush) return {name:"Straight Flush", tier:9, baseChips:100, baseMult:8, detail:"(5 cards)"};
-      if(groups[0].ct===4)     return {name:"Four of a Kind", tier:8, baseChips:60,  baseMult:7, detail:"(4 same rank)"};
-      if(groups[0].ct===3 && groups[1]?.ct===2) return {name:"Full House", tier:7, baseChips:40, baseMult:4, detail:"(3+2)"};
-      if(isFlush)              return {name:"Flush", tier:6, baseChips:35, baseMult:4, detail:"(same suit)"};
-      if(straight)             return {name:"Straight", tier:5, baseChips:30, baseMult:4, detail:"(5 in a row)"};
-      if(groups[0].ct===3)     return {name:"Three of a Kind", tier:4, baseChips:30, baseMult:3, detail:"(3 same rank)"};
-      if(groups[0].ct===2 && groups[1]?.ct===2) return {name:"Two Pair", tier:3, baseChips:20, baseMult:2, detail:"(2+2)"};
-      if(groups[0].ct===2)     return {name:"Pair", tier:2, baseChips:10, baseMult:2, detail:"(2 same rank)"};
-      return {name:"High Card", tier:1, baseChips:5, baseMult:1, detail:"(no combo)"};
-    }
-
-    if(n===4){
-      if(groups[0].ct===4)     return {name:"Four of a Kind", tier:8, baseChips:45, baseMult:6, detail:"(4 cards)"};
-      if(groups[0].ct===3)     return {name:"Three of a Kind", tier:4, baseChips:22, baseMult:3, detail:"(4 cards)"};
-      if(groups[0].ct===2 && groups[1]?.ct===2) return {name:"Two Pair", tier:3, baseChips:16, baseMult:2, detail:"(4 cards)"};
-      if(groups[0].ct===2)     return {name:"Pair", tier:2, baseChips:8, baseMult:2, detail:"(4 cards)"};
-      return {name:"High Card", tier:1, baseChips:4, baseMult:1, detail:"(4 cards)"};
-    }
-
-    if(n===3){
-      if(groups[0].ct===3)     return {name:"Three of a Kind", tier:4, baseChips:16, baseMult:3, detail:"(3 cards)"};
-      if(groups[0].ct===2)     return {name:"Pair", tier:2, baseChips:6, baseMult:2, detail:"(3 cards)"};
-      return {name:"High Card", tier:1, baseChips:3, baseMult:1, detail:"(3 cards)"};
-    }
-
-    if(n===2){
-      if(groups[0].ct===2)     return {name:"Pair", tier:2, baseChips:5, baseMult:2, detail:"(2 cards)"};
-      return {name:"High Card", tier:1, baseChips:2, baseMult:1, detail:"(2 cards)"};
-    }
-
-    return {name:"High Card", tier:1, baseChips:1, baseMult:1, detail:"(1 card)"};
-  }
+  // Shared canonical evaluation keeps short hands and scoring kickers consistent.
+  function evalHand(cards){ return BalatleCore.evaluateHand(cards); }
 
   // Demo-specific: base hand upgrades
-  const HAND_KEYS = ["High Card","Pair","Two Pair","Three of a Kind","Straight","Flush","Full House","Four of a Kind","Straight Flush"];
+  const HAND_KEYS = ["High Card","Pair","Two Pair","Three of a Kind","Straight","Flush","Full House","Four of a Kind","Straight Flush","Five of a Kind","Flush House","Flush Five"];
   const handUp = {};
   for(const k of HAND_KEYS) handUp[k] = {chips:0, mult:0};
 
@@ -998,7 +533,7 @@
     { kind:"voucher", name:"Bigger Hand", cost:9, desc:"+1 hand size (permanent).", applyBuy(){ game.perma.handSize += 1; }, revertSell(){ game.perma.handSize = Math.max(0, game.perma.handSize-1); } },
     { kind:"voucher", name:"Coupon Book", cost:10, desc:"First shop purchase each round costs -$2.", applyBuy(){ game.perma.coupon = (game.perma.coupon||0)+1; }, revertSell(){ game.perma.coupon = Math.max(0,(game.perma.coupon||0)-1); } },
     { kind:"voucher", name:"Free Reroll", cost:8, desc:"First reroll each Buy phase is free.", applyBuy(){ game.perma.freeReroll = (game.perma.freeReroll||0)+1; }, revertSell(){ game.perma.freeReroll = Math.max(0,(game.perma.freeReroll||0)-1); } },
-    { kind:"voucher", name:"Bigger Wallet", cost:11, desc:"Interest gives +1 extra per $10.", applyBuy(){ game.perma.interestBoost = (game.perma.interestBoost||0)+1; }, revertSell(){ game.perma.interestBoost = Math.max(0,(game.perma.interestBoost||0)-1); } },
+    { kind:"voucher", name:"Bigger Wallet", cost:11, desc:"Double interest: earn $2 per $5 saved, up to $10.", applyBuy(){ game.perma.interestBoost = (game.perma.interestBoost||0)+1; }, revertSell(){ game.perma.interestBoost = Math.max(0,(game.perma.interestBoost||0)-1); } },
     { kind:"voucher", name:"Sixth Joker Slot", cost:13, desc:"Increase joker cap from 5 to 6.", applyBuy(){ game.perma.jokerCap = Math.min(6,(game.perma.jokerCap||5)+1); }, revertSell(){ game.perma.jokerCap = Math.max(5,(game.perma.jokerCap||5)-1); } },
   ];
 
@@ -1045,7 +580,12 @@
 
     pendingUse:null,
 
-    last:{ hand:"—", math:"—" }
+    last:{ hand:"—", math:"—" },
+    lastResult:null,
+    scoring:false,
+    scoreEpoch:0,
+    shopPaidRound:0,
+    payout:null
   };
 
   // Multiplayer-local status
@@ -1110,7 +650,7 @@
   }
 
   function sellJoker(jid){
-    if(game.mode==="end") return;
+    if(game.mode==="end" || game.scoring) return;
     const i = game.jokers.findIndex(j=>j.jid===jid);
     if(i<0) return;
     const j = game.jokers[i];
@@ -1143,13 +683,31 @@
     renderAll();
   }
 
-  function useConsumable(index){
-    if(game.mode!=="play"){ toast("Use only during Play."); return; }
-    const c = game.cons[index];
-    if(!c) return;
-    game.cons.splice(index,1);
+  let activeConsumable = null;
+  let closePicker = null;
+  function completeConsumable(){
+    if(!activeConsumable) return;
+    const index=game.cons.indexOf(activeConsumable);
+    if(index>=0) game.cons.splice(index,1);
+    activeConsumable=null;
+    game.pendingUse=null;
     renderRight();
+  }
+  function cancelConsumable(){
+    activeConsumable=null;
+    game.pendingUse=null;
+  }
+  function useConsumable(index){
+    if(game.scoring || activeConsumable || game.pendingUse) return;
+    if(game.mode!=="play" || me.status!=="play"){ toast("Use only during Play."); return; }
+    const c=game.cons[index];
+    if(!c) return;
+    activeConsumable=c;
+    setDrawer(false);
     c.use();
+    if(!game.pendingUse) completeConsumable();
+    game.sel.clear();
+    renderAll();
   }
 
   function rerollShop(){
@@ -1178,15 +736,18 @@
   function drawToHand(){
     const size = 8 + game.perma.handSize;
     while(game.hand.length < size){
-      if(game.deck.length===0){
-        if(game.discard.length===0) break;
-        game.deck = rng.shuffle(game.discard.splice(0));
-      }
+      if(game.deck.length===0) break;
       game.hand.push(game.deck.pop());
     }
   }
 
   function startNewRunLocal(){
+    game.scoreEpoch++;
+    BalatleTable.cancelPlayback();
+    game.scoring = false;
+    game.lastResult = null;
+    game.shopPaidRound = 0;
+    game.payout = null;
     game.mode="play";
     game.deck = makeDeck();
     game.discard = [];
@@ -1219,6 +780,15 @@
   }
 
   function applyRoundConfig(roundIdx, cfg){
+    game.scoreEpoch++;
+    BalatleTable.cancelPlayback();
+    game.scoring = false;
+    game.lastResult = null;
+    hideHow();
+    cancelConsumable();
+    game.deck = rng.shuffle([...game.deck, ...game.hand, ...game.discard]);
+    game.hand = [];
+    game.discard = [];
     game.round = roundIdx;
     game.blindType = cfg.type;
     game.target = cfg.target;
@@ -1265,10 +835,67 @@
     renderHand();
   }
 
+  function canPlaySelection(cards){
+    return game.mode === "play" && !game.scoring && !game.pendingUse && !me.eliminated && !me.finished && me.status === "play" && game.handsLeft > 0 && cards.length > 0 && cards.length <= 5 && (!game.boss.exactFive || cards.length === 5);
+  }
+
+  function scoreSelection(cards, preview=true){
+    const raw = evalHand(cards);
+    if(!raw) return null;
+    const h = applyBossOverrides(raw);
+    const scoring = BalatleCore.scoringCards(cards, h.name);
+    const up = handUp[h.name] || {chips:0,mult:0};
+    const baseChips = h.baseChips + up.chips;
+    const baseMult = h.baseMult + up.mult;
+    const cardChips = scoring.reduce((sum,c)=>sum + c.baseChip + (c.bonusChip||0),0);
+    let chips = baseChips + cardChips;
+    let mult = baseMult;
+    const onAfter = [], onPayout = [], triggers = [];
+    for(const joker of game.jokers){
+      const j = preview ? {...joker, state:{...joker.state}} : joker;
+      const ctx = {handName:h.name,cards,scoringCards:scoring,addChips:0,addMult:0,mulMult:1,log:[],onAfter:[],onPayout:[]};
+      try { j.apply.call(j,ctx); } catch(e) { console.warn("Joker error", j.name, e); }
+      chips = Math.max(0,chips + ctx.addChips);
+      mult = Math.max(0,mult + ctx.addMult) * ctx.mulMult;
+      onAfter.push(...ctx.onAfter); onPayout.push(...ctx.onPayout);
+      if(ctx.addChips || ctx.addMult || ctx.mulMult !== 1 || ctx.onPayout.length){
+        const parts = [];
+        if(ctx.addChips) parts.push(`+${ctx.addChips} chips`);
+        if(ctx.addMult) parts.push(`+${ctx.addMult} Mult`);
+        if(ctx.mulMult !== 1) parts.push(`×${ctx.mulMult} Mult`);
+        if(ctx.onPayout.length) parts.push("+$");
+        triggers.push({id:j.jid,jid:j.jid,name:j.name,label:parts.join(" · "),chips:ctx.addChips,mult:ctx.addMult,xMult:ctx.mulMult});
+      }
+    }
+    return {h,baseChips,baseMult,cardChips,chips:Math.max(0,chips),mult:Math.max(0,mult),gained:Math.floor(Math.max(0,chips*mult)),scoringIds:scoring.map(c=>c.id),triggers,onAfter,onPayout};
+  }
+
+  function renderSelection(){
+    const cards = selectedCards();
+    const showingLast = !cards.length && !!game.lastResult && !game.pendingUse;
+    const result = cards.length ? scoreSelection(cards) : showingLast ? game.lastResult : null;
+    const shownCards = cards.length ? cards : showingLast ? game.lastResult.cards : [];
+    const playable = canPlaySelection(cards);
+    $("btnPlay").disabled = !playable;
+    $("btnDiscard").disabled = game.mode !== "play" || game.scoring || !!game.pendingUse || me.status !== "play" || me.eliminated || me.finished || !cards.length || !game.deck.length || game.discardsLeft <= 0 || !!game.boss.noDiscards;
+    $("btnClear").disabled = !cards.length || game.scoring;
+    $("selectionHint").textContent = game.pendingUse ? "Choose a card to apply your consumable" : `${cards.length} / 5 selected`;
+    $("deckCount").textContent = `${game.deck.length} in deck · ${game.discard.length} used`;
+    if(game.scoring) return;
+    $("selectionName").textContent = result ? result.h.name : "Choose your cards";
+    $("scoreChips").textContent = result ? fmt(result.chips) : "0";
+    $("scoreMult").textContent = result ? Number(result.mult.toFixed(2)).toLocaleString() : "0";
+    $("scorePreview").textContent = result ? fmt(result.gained) : "0";
+    $("scoreCaption").textContent = game.pendingUse ? "Tap a card in your hand to apply the selected upgrade." : showingLast ? `Last hand +${fmt(result.gained)} · Choose your next cards` : result ? (game.boss.exactFive && cards.length !== 5 ? "This boss requires exactly 5 cards." : `${result.scoringIds.length} scoring card${result.scoringIds.length === 1 ? "" : "s"} · ${fmt(result.baseChips)} base chips + ${fmt(result.cardChips)} card chips${result.triggers.length ? ` · ${result.triggers.length} joker trigger${result.triggers.length===1?"":"s"}` : ""}`) : "Make a poker hand. Only cards that form the hand add their chips.";
+    $("playedCards").innerHTML = shownCards.length ? shownCards.map(c=>`<div class="card preview-card${c.red?" red":""}${result.scoringIds.includes(c.id)?" scoring":" non-scoring"}" aria-label="${c.rank} ${c.suitSym}">${BalatleTable.cardMarkup(c,{small:true,scoring:result.scoringIds.includes(c.id)})}</div>`).join("") : '<span class="table-watermark" aria-hidden="true">♠ ♥ ♣ ♦</span>';
+  }
+
   function discardSelected(){
+    if(game.scoring || game.pendingUse || me.status !== "play") return;
     if(game.mode!=="play"){ toast("Not during buy."); return; }
     if(me.eliminated || me.finished){ return; }
     if(game.discardsLeft<=0){ toast("No discards left."); return; }
+    if(!game.deck.length){ toast("No cards left to draw."); return; }
     if(game.boss.noDiscards){ toast("Boss: no discards."); return; }
 
     const cards = selectedCards();
@@ -1284,6 +911,15 @@
 
     renderAll();
     scheduleScoreSync(true);
+    checkDeckExhausted();
+  }
+
+  function checkDeckExhausted(){
+    if(game.mode!=="play" || me.status!=="play" || game.scoring || game.deck.length) return;
+    if(!game.hand.length || (game.boss.exactFive && game.hand.length<5)){
+      if(game.blindScore>=game.target) finishRound(false);
+      else eliminate("deck_exhausted");
+    }
   }
 
   // Play selected
@@ -1297,25 +933,11 @@
     if(cards.length>5){ toast("Max 5 cards."); return; }
     if(game.boss.exactFive && cards.length!==5){ toast("Boss: play exactly 5 cards."); return; }
 
-    let h = evalHand(cards);
-    h = applyBossOverrides(h);
-
-    const up = handUp[h.name] || {chips:0,mult:0};
-    const baseChips = h.baseChips + up.chips;
-    const baseMult  = h.baseMult  + up.mult;
-
-    const cardChips = cards.reduce((a,c)=>a + (c.baseChip + c.bonusChip), 0);
-
-    const ctx = { handName:h.name, cards, addChips:0, addMult:0, mulMult:1, log:[], onAfter:[], onPayout:[] };
-
-    for(const j of game.jokers){
-      try{ j.apply.call(j, ctx); }catch(e){ console.warn("Joker error", j, e); }
-    }
-
-    const chips = Math.max(0, baseChips + cardChips + ctx.addChips);
-    const multAdd = Math.max(0, baseMult + ctx.addMult);
-    const mult = multAdd * ctx.mulMult;
-    const gained = chips * mult;
+    if(game.scoring || game.pendingUse || me.status !== "play") return;
+    const result = scoreSelection(cards, false);
+    const {h,baseChips,baseMult,cardChips,chips,mult,gained} = result;
+    game.scoring = true;
+    const scoreEpoch=++game.scoreEpoch;
 
     game.blindScore += gained;
     game.handsLeft -= 1;
@@ -1326,48 +948,54 @@
     game.sel.clear();
     drawToHand();
 
-    for(const fn of ctx.onAfter) fn();
+    for(const fn of result.onAfter) fn();
     game.lastHandType = h.name;
-    for(const fn of ctx.onPayout) fn();
+    for(const fn of result.onPayout) fn();
 
     game.last.hand = `${h.name} ${h.detail}`;
-    game.last.math = `(${fmt(baseChips)} base + ${fmt(cardChips)} cards + ${fmt(ctx.addChips)} jokers) = ${fmt(chips)} chips; ` +
-                     `(${baseMult.toFixed(2)} base + ${ctx.addMult.toFixed(2)} jokers) × ${ctx.mulMult.toFixed(2)} = ${mult.toFixed(2)}; ` +
-                     `Score +${fmt(gained)}`;
-    $("lastHand").textContent = game.last.hand;
-    $("lastMath").textContent = game.last.math;
-
-    // If you're out of hands: resolve immediately
-    if(game.handsLeft<=0){
-      if(game.blindScore >= game.target){
-        toast("Target met and no hands left — auto-finishing.");
-        finishRound(false);
-      } else {
-        eliminate("out_of_hands");
-      }
-    } else if(game.blindScore >= game.target){
-      // just a hint; player can keep scoring or finish
-      toast("Target met! You can Finish Round (or keep scoring).");
-    }
-
+    game.last.math = `${fmt(baseChips)} base + ${fmt(cardChips)} card chips; jokers resolve left to right. ${fmt(chips)} chips × ${Number(mult.toFixed(2))} Mult = ${fmt(gained)}.`;
+    game.lastResult = {...result,cards:cards.map(c=>({...c}))};
+    const scoredRound = game.round;
     renderAll();
     scheduleScoreSync(true);
+    return BalatleTable.scorePlayback({cards,scoringIds:result.scoringIds,baseChips,baseMult,chips,mult,gained,handName:h.name,triggers:result.triggers}).then(playback=>{
+      if(playback?.cancelled || game.round !== scoredRound || scoreEpoch!==game.scoreEpoch) return;
+      game.scoring = false;
+      if(game.mode !== "play" || me.status !== "play" || me.eliminated || me.finished){ renderAll(); return; }
+      if(game.handsLeft<=0 || !game.hand.length){
+        if(game.blindScore >= game.target) finishRound(false);
+        else eliminate(game.handsLeft<=0 ? "out_of_hands" : "deck_exhausted");
+      } else if(game.blindScore >= game.target){
+        toast("Target met! Cash out, or keep playing for the leaderboard.");
+      }
+      checkDeckExhausted();
+      renderAll();
+    });
   }
 
   // Buy phase enter (local)
   function enterBuyPhase(reward){
+    hideHow();
+    cancelConsumable();
+    setDrawer(false);
+    game.sel.clear();
+    game.scoreEpoch++;
     game.mode="shop";
+    game.scoring=false;
+    BalatleTable.cancelPlayback();
     $("waitBlock").style.display="none";
     toggleShopModal(true);
     $("runEndBlock").style.display="none";
-
-    // payout model (local)
-    game.money += reward;
-    const interest = Math.floor(game.money/10) + Math.floor(game.money/10) * (game.perma.interestBoost||0);
-    game.money += interest;
-    game.shopRoundPurchaseCount = 0;
-    game.shopRoundRerollCount = 0;
-    rollShopOffers();
+    // Local snapshots may enter here before finishRound's write resolves.
+    // Award and roll once per round, even if both paths arrive.
+    if(game.shopPaidRound !== game.round){
+      game.shopPaidRound = game.round;
+      game.payout = BalatleCore.settlement({money:game.money,reward,handsLeft:game.handsLeft,interestBoost:game.perma.interestBoost});
+      game.money += game.payout.total;
+      game.shopRoundPurchaseCount=0;
+      game.shopRoundRerollCount=0;
+      rollShopOffers();
+    }
     renderAll();
   }
 
@@ -1376,6 +1004,7 @@
     if(me.eliminated || me.finished) return;
     if(me.status !== "play") return;
 
+    const finishingRound = game.round;
     const cfg = (match?.rounds && match.rounds[game.round-1]) ? match.rounds[game.round-1] : null;
     const target = cfg?.target ?? game.target;
 
@@ -1428,6 +1057,8 @@
     }
 
     me.status = "buy";
+    game.mode = "wait";
+    renderTop();
     me.buyStartAt = now;
     me.buyDeadlineAt = now + BUY_MS;
 
@@ -1438,6 +1069,8 @@
       buyReady: false
     }, { merge:true }).catch(()=>{});
 
+    // A remote round transition can arrive before this write finishes.
+    if(game.round!==finishingRound || me.status!=="buy" || me.eliminated || me.finished) return;
     // Local buy
     const reward = (game.blindType==="Small") ? 6 : (game.blindType==="Big") ? 8 : 11;
     enterBuyPhase(reward);
@@ -1451,6 +1084,7 @@
 
     const now = nowMs();
     me.status = "ready";
+    game.mode = "wait";
     toggleShopModal(false);
     $("waitBlock").style.display="block";
     $("waitTitle").textContent = "🕒 Ready";
@@ -1474,7 +1108,12 @@
     me.status = "eliminated";
     const now = nowMs();
 
+    hideHow();
+    cancelConsumable();
     game.mode = "end";
+    game.scoreEpoch++;
+    game.scoring = false;
+    BalatleTable.cancelPlayback();
     toggleShopModal(false);
     $("waitBlock").style.display="none";
     $("runEndBlock").style.display="block";
@@ -1502,108 +1141,69 @@
   function renderTop(){
     $("roundNum").textContent = game.round;
     $("blindName").textContent = game.blindType;
-    $("money").textContent = fmt(game.money);
-    if($("shopMoney")) $("shopMoney").textContent = fmt(game.money);
-
+    $("money").textContent = "$"+fmt(game.money);
+    $("shopMoney").textContent = fmt(game.money);
+    $("handsCount").textContent = game.handsLeft;
+    $("discardsCount").textContent = game.discardsLeft;
     $("target").textContent = fmt(game.target);
     $("blindScore").textContent = fmt(game.blindScore);
     $("lastHand").textContent = game.last.hand;
     $("lastMath").textContent = game.last.math;
-
     const pct = clamp(game.blindScore / Math.max(1, game.target), 0, 1);
-    $("targetBar").classList.toggle("good", pct>=1);
-    $("targetBar").classList.toggle("bad", pct<.35);
+    $("targetBar").classList.toggle("good",pct>=1);
+    $("targetBar").setAttribute("aria-valuenow",String(Math.round(pct*100)));
     $("targetBar").querySelector("i").style.width = (pct*100).toFixed(1)+"%";
-    $("blindProgressText").textContent = `${(pct*100).toFixed(1)}% of target`;
-    $("mTarget").textContent = fmt(game.target);
-    $("mScore").textContent = fmt(game.blindScore);
-    $("mTargetBar").classList.toggle("good", pct>=1);
-    $("mTargetBar").querySelector("i").style.width = (pct*100).toFixed(1)+"%";
-    $("mobileMetaLine").textContent = `Round ${game.round}/5 • ${game.blindType} • ${$("roundTimer").textContent} • ${$("phasePill").textContent}`;
-    $("mobileResourceLine").textContent = `🖐 Hands: ${game.handsLeft} • 🗑 Discards: ${game.discardsLeft}`;
-
-    const dot = $("blindDot");
-    dot.className = "dot";
-    if(game.blindType==="Boss") dot.classList.add("bad");
-    else if(game.blindType==="Big") dot.classList.add("warn");
-    else dot.classList.add("good");
-
-    // boss rule line
-    if(game.bossRule){
-      $("bossRuleLine").innerHTML = `<span class="tag">⚠ ${game.bossRule.name}</span> <span class="small">${game.bossRule.desc}</span>`;
-    } else {
-      $("bossRuleLine").textContent = "";
-    }
-
+    $("blindProgressText").textContent = game.target ? (pct>=1 ? "Blind beaten" : `${fmt(Math.max(0,game.target-game.blindScore))} points to go`) : "Waiting for the table";
+    $("blindDot").className = "dot " + (game.blindType==="Boss" ? "bad" : game.blindType==="Big" ? "warn" : "good");
+    $("bossRuleLine").textContent = game.bossRule ? `${game.bossRule.name}: ${game.bossRule.desc}` : "";
     $("tagLine").textContent = "";
-
-    const nextRound = game.round + 1;
-    const nextCfg = (Array.isArray(match?.rounds) ? match.rounds[nextRound-1] : null);
-    if(nextCfg){
-      $("nextGoalLine").textContent = `Next Goal: Round ${nextRound} target ${fmt(nextCfg.target||0)} (${nextCfg.type||"Blind"})`;
-    } else {
-      $("nextGoalLine").textContent = "Next Goal: Final round in progress";
-    }
-
-    // finish hint + button state
-    const canFinish = (game.mode==="play" && !me.eliminated && !me.finished && game.blindScore >= game.target);
+    const nextCfg = match?.rounds?.[game.round];
+    $("nextGoalLine").textContent = nextCfg ? `Next: ${nextCfg.type} · ${fmt(nextCfg.target)} points` : (game.round===ROUND_COUNT ? "Final blind · highest total wins" : "Five rounds. One winner.");
+    const canFinish = game.mode==="play" && me.status==="play" && !game.scoring && !me.eliminated && !me.finished && game.target>0 && game.blindScore>=game.target;
     $("btnFinish").disabled = !canFinish;
-    if($("btnFinishM")){
-      $("btnFinishM").disabled = !canFinish;
-      $("btnFinishM").style.display = canFinish ? "" : "none";
-      $("mobileActions").classList.toggle("hasFinish", canFinish);
-    }
-    $("finishHint").innerHTML = canFinish
-      ? `<span class="tag">✅ Target met</span> <span class="small">Finish now for Buy, or keep scoring.</span>`
-      : (game.mode==="play" ? `<span class="small">Beat target to unlock Finish.</span>` : "");
-
-    // gameplay buttons
-    const playEnabled = (game.mode==="play" && !me.eliminated && !me.finished);
-    $("btnPlay").disabled = !playEnabled;
-    $("btnDiscard").disabled = !(playEnabled && game.discardsLeft>0 && !game.boss.noDiscards);
-    $("btnClear").disabled = !playEnabled;
-    $("btnSortRank").disabled = !playEnabled;
-    $("btnSortSuit").disabled = !playEnabled;
-    if($("btnPlayM")){ $("btnPlayM").disabled = $("btnPlay").disabled; $("btnDiscardM").disabled = $("btnDiscard").disabled; $("btnClearM").disabled = $("btnClear").disabled; }
-
-    $("phasePill").textContent =
-      me.eliminated ? "OBSERVE" :
-      me.finished ? "DONE" :
-      (me.status==="buy") ? "BUY" :
-      (me.status==="ready") ? "WAIT" :
-      (game.mode==="play") ? "PLAY" :
-      (game.mode==="shop") ? "BUY" :
-      (game.mode==="wait") ? "WAIT" : "—";
-    $("mobileMetaLine").textContent = `Round ${game.round}/5 • ${game.blindType} • ${$("roundTimer").textContent} • ${$("phasePill").textContent}`;
+    $("btnFinish").hidden = !canFinish;
+    $("finishHint").textContent = canFinish ? "Cash out now, or push your total higher." : "";
+    const canAct = game.mode==="play" && me.status==="play" && !me.eliminated && !me.finished && !game.scoring;
+    $("btnSortRank").disabled = !canAct;
+    $("btnSortSuit").disabled = !canAct;
+    $("btnOpenShop").hidden = game.mode!=="shop";
+    $("phasePill").textContent = me.eliminated ? "OBSERVE" : me.finished ? "DONE" : me.status==="buy" ? "SHOP" : me.status==="ready" ? "READY" : game.mode==="play" ? "PLAY" : "WAIT";
+    $("blindPath").innerHTML = Array.from({length:ROUND_COUNT},(_,i)=>`<span class="blind-step ${i+1===game.round?"active":i+1<game.round?"complete":""}" title="Round ${i+1}">${i+1<game.round?"✓":i+1}</span>`).join("");
+    if(game.payout) $("payoutLine").textContent = `Blind +$${game.payout.reward} · Spare hands +$${game.payout.handBonus} · Interest +$${game.payout.interest} · Earned $${game.payout.total}`;
+    renderSelection();
   }
 
   function renderHand(){
     const el = $("hand");
     el.innerHTML = "";
+    const preview = selectedCards().length ? scoreSelection(selectedCards()) : null;
     for(const c of game.hand){
-      const d = document.createElement("div");
-      d.className = "card" + (c.red ? " red":"") + (game.sel.has(c.id) ? " sel":"");
-      d.innerHTML = `
-        <div><span class="rank">${c.rank}</span><span class="suit">${c.suitSym}</span></div>
-        <div class="chips">
-          <span>🟦 ${c.baseChip + c.bonusChip}</span>
-          <span style="opacity:.85">${c.suit}</span>
-        </div>
-      `;
+      const selected = game.sel.has(c.id);
+      const scores = selected && preview?.scoringIds.includes(c.id);
+      const d = document.createElement("button");
+      d.type = "button";
+      d.className = "card" + (c.red ? " red":"") + (selected ? " sel":"") + (scores ? " scoring":"");
+      d.dataset.cardId = c.id;
+      d.setAttribute("aria-pressed",String(selected));
+      d.setAttribute("aria-label",`${c.rank} of ${{S:"Spades",H:"Hearts",D:"Diamonds",C:"Clubs"}[c.suit]}, ${c.baseChip+(c.bonusChip||0)} chips${selected?", selected":""}${scores?", scores":""}`);
+      d.title = `${c.rank}${c.suitSym} · ${c.baseChip+(c.bonusChip||0)} chips${scores?" · scoring card":""}`;
+      d.disabled = game.mode!=="play" || game.scoring || me.status!=="play" || me.eliminated || me.finished;
+      d.innerHTML = BalatleTable.cardMarkup(c,{scoring:scores});
       d.addEventListener("click", ()=>{
+        if(game.scoring || me.status!=="play") return;
         if(game.mode!=="play") return;
         if(me.eliminated || me.finished) return;
 
         if(game.pendingUse?.type==="chipPaint"){
           c.bonusChip += 5;
-          game.pendingUse = null;
+          completeConsumable();
           toast(`Chip Paint: ${c.rank}${c.suitSym} now ${c.baseChip+c.bonusChip} chips`);
           renderHand();
           return;
         }
         if(game.pendingUse?.type==="rankPolish"){
           c.bonusChip += 8;
-          game.pendingUse = null;
+          completeConsumable();
           toast("Rank Polish applied (+8 chips)");
           renderHand();
           return;
@@ -1612,15 +1212,16 @@
           const next = {S:"H",H:"D",D:"C",C:"S"}[c.suit] || "H";
           const suitObj = SUITS.find(x=>x.k===next);
           c.suit = suitObj.k; c.suitSym = suitObj.sym; c.red = suitObj.red;
-          game.pendingUse = null;
+          completeConsumable();
           toast("Suit Paint applied.");
           renderHand();
           return;
         }
         if(game.pendingUse?.type==="duplicate"){
           game.discard.push({ ...c, id:`dup_${Math.random().toString(16).slice(2)}` });
-          game.pendingUse = null;
+          completeConsumable();
           toast("Card duplicated into discard.");
+          renderAll();
           return;
         }
 
@@ -1631,12 +1232,43 @@
           game.sel.add(c.id);
         }
         renderHand();
+        el.querySelector(`[data-card-id="${c.id}"]`)?.focus({preventScroll:true});
       });
       el.appendChild(d);
+    }
+    renderSelection();
+  }
+
+  function moveJoker(index, direction){
+    if(game.scoring || me.eliminated || me.finished) return;
+    const next = index+direction;
+    if(next<0 || next>=game.jokers.length) return;
+    [game.jokers[index],game.jokers[next]]=[game.jokers[next],game.jokers[index]];
+    renderAll();
+  }
+
+  function renderJokerRack(){
+    const rack=$("jokerRack");
+    rack.innerHTML="";
+    game.jokers.forEach((j,index)=>{
+      const tile=document.createElement("div");
+      tile.className="joker-tile";
+      tile.dataset.jokerId=j.jid;
+      tile.tabIndex=0;
+      tile.title=`${j.name}: ${j.desc}${j.state?.bonus ? ` Current bonus: ${j.state.bonus}.` : ""} Use arrow buttons to reorder.`;
+      tile.innerHTML=`<div class="item-art">${BalatleTable.itemArt(j)}</div><div class="item-title">${BalatleTable.escapeHTML(j.name)}</div><div class="joker-tooltip">${BalatleTable.escapeHTML(j.desc)}</div><div class="joker-order"><button type="button" class="joker-shift" aria-label="Move ${BalatleTable.escapeHTML(j.name)} left" ${index===0||game.scoring?"disabled":""}>‹</button><span>${index+1}</span><button type="button" class="joker-shift" aria-label="Move ${BalatleTable.escapeHTML(j.name)} right" ${index===game.jokers.length-1||game.scoring?"disabled":""}>›</button></div>`;
+      const buttons=tile.querySelectorAll("button");
+      buttons[0].addEventListener("click",()=>moveJoker(index,-1));
+      buttons[1].addEventListener("click",()=>moveJoker(index,1));
+      rack.appendChild(tile);
+    });
+    for(let i=game.jokers.length;i<(game.perma.jokerCap||5);i++){
+      const empty=document.createElement("div");empty.className="joker-slot";empty.innerHTML='<small>Joker slot</small>';rack.appendChild(empty);
     }
   }
 
   function renderRight(){
+    renderJokerRack();
     $("jokerCount").textContent = game.jokers.length;
     $("consCount").textContent = game.cons.length;
     $("voucherCount").textContent = game.vouchers.length;
@@ -1715,11 +1347,12 @@
     for(const o of shopOffers){
       const typeLabel = (o._kind==="joker") ? "Joker" : (o._kind==="voucher") ? "Voucher" : "Consumable";
       const it = document.createElement("div");
-      it.className = "item";
+      it.className = "item shop-card";
       it.innerHTML = `
+        <div class="item-art">${BalatleTable.itemArt(o)}</div>
         <div class="itemTop">
           <div>
-            <div class="itemName">${o.name} <span class="small">(${typeLabel})</span></div>
+            <div class="itemName item-title">${o.name} <span class="small">(${typeLabel})</span></div>
             <div class="itemMeta">${o.desc}</div>
           </div>
           <div class="rightAlign">
@@ -1731,6 +1364,7 @@
           </div>
         </div>
       `;
+      it.querySelector("[data-buy]").disabled = game.money < effectiveOfferCost(o) || (o._kind==="joker" && game.jokers.length>=(game.perma.jokerCap||5)) || (o._kind==="cons" && game.cons.length>=3);
       it.querySelector("[data-buy]").addEventListener("click", ()=>buyOffer(o._id));
       sl.appendChild(it);
     }
@@ -1764,9 +1398,13 @@
 
   // Consumable picker (planet)
   function showHow(){ $("howBack").classList.add("show"); $("howBack").setAttribute("aria-hidden","false"); }
-  function hideHow(){ $("howBack").classList.remove("show"); $("howBack").setAttribute("aria-hidden","true"); }
+  function hideHow(){
+    if(closePicker){ const cleanup=closePicker; closePicker=null; cleanup(); }
+    $("howBack").classList.remove("show"); $("howBack").setAttribute("aria-hidden","true");
+  }
 
   function openHandTypePicker(plus=false){
+    game.pendingUse={type:"handType"};
     const back = $("howBack");
     const modal = back.querySelector(".modal");
     const ph = modal.querySelector(".ph h2");
@@ -1795,24 +1433,26 @@
       </div>
     `;
 
-    function cleanup(){
-      content.innerHTML = original;
-      ph.textContent = oldTitle;
-      hideHow();
-    }
+    closePicker = ()=>{
+      content.innerHTML=original;
+      ph.textContent=oldTitle;
+      cancelConsumable();
+    };
 
     content.querySelectorAll("button[data-hand]").forEach(btn=>{
       btn.addEventListener("click", ()=>{
         const k = btn.getAttribute("data-hand");
         if(plus){ handUp[k].chips += 10; handUp[k].mult += 0.25; toast(`Upgraded ${k}: +10 chips and +0.25 mult`); }
         else { handUp[k].mult += 0.5; toast(`Upgraded ${k}: +0.5 base Mult`); }
+        completeConsumable();
+        hideHow();
         renderAll();
-        cleanup();
       });
     });
     content.querySelector("#btnCancelPick").addEventListener("click", ()=>{
-      toast("Cancelled.");
-      cleanup();
+      toast("Upgrade kept for later.");
+      hideHow();
+      renderAll();
     });
 
     showHow();
@@ -2195,7 +1835,7 @@
     }
 
     // connection pill
-    $("connPill").textContent = authUser ? "OK" : "…";
+    $("connPill").textContent = authUser ? "Online" : "Connecting";
 
     // round play timer
     const now = nowMs();
@@ -2377,13 +2017,11 @@
 
   $("btnReady").addEventListener("click", markReady);
 
-  $("btnPlayM").addEventListener("click", playSelected);
-  $("btnDiscardM").addEventListener("click", discardSelected);
-  $("btnFinishM").addEventListener("click", ()=>finishRound(false));
-  $("btnClearM").addEventListener("click", clearSelection);
-  $("btnMore").addEventListener("click", ()=> $("moreRow").classList.toggle("show"));
   $("btnDrawer").addEventListener("click", ()=>setDrawer(!document.body.classList.contains("drawerOpen")));
+  $("btnCloseDrawer").addEventListener("click", ()=>setDrawer(false));
   $("drawerBack").addEventListener("click", ()=>setDrawer(false));
+  $("btnOpenShop").addEventListener("click", ()=>{if(game.mode==="shop") toggleShopModal(true);});
+  $("btnSound").addEventListener("click",()=>{BalatleTable.toggleSound();const enabled=BalatleTable.isSoundOn();$("btnSound").textContent=enabled?"Sound on":"Sound off";$("btnSound").setAttribute("aria-pressed",String(enabled));});
   $("btnFullscreen").addEventListener("click", async ()=>{
     try{
       if(!document.fullscreenElement && document.documentElement.requestFullscreen){ await document.documentElement.requestFullscreen(); }
@@ -2397,27 +2035,45 @@
   $("btnCloseHow").addEventListener("click", hideHow);
   $("howBack").addEventListener("click", (e)=>{ if(e.target === $("howBack")) hideHow(); });
 
-  $("btnReset").addEventListener("click", ()=>{
-    // Local reset only; does not change multiplayer state
-    startNewRunLocal();
-    toast("Local run reset.");
+  window.addEventListener("keydown", e=>{
+    if(e.key==="Escape"){
+      if(document.querySelector(".modalBack.show") || document.body.classList.contains("drawerOpen") || $("winnerBack").classList.contains("show")){
+        hideHow();toggleShopModal(false);setDrawer(false);$("winnerBack").classList.remove("show");
+      } else {cancelConsumable();clearSelection();}
+      renderSelection();
+      return;
+    }
+    if(e.repeat || e.ctrlKey || e.metaKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || document.querySelector(".modalBack.show") || document.body.classList.contains("drawerOpen") || $("winnerBack").classList.contains("show")) return;
+    if(/^[1-9]$/.test(e.key)){const card=$("hand").children[Number(e.key)-1];if(card){e.preventDefault();card.click();}}
+    else if(e.key==="Enter" && e.target.tagName!=="BUTTON"){e.preventDefault();playSelected();}
+    else if(e.key.toLowerCase()==="d"){e.preventDefault();discardSelected();}
   });
-
-  window.addEventListener("keydown", (e)=>{ if(e.key==="Escape"){ hideHow(); toggleShopModal(false); setDrawer(false); $("winnerBack").classList.remove("show"); } });
 
   // ---------------------------
   // Boot
   // ---------------------------
   async function boot(){
-    $("connPill").textContent = "…";
+    $("handGuide").innerHTML = HAND_KEYS.map(name=>{const h=BalatleCore.HANDS[name];return `<div class="hand-guide-row"><span>${name}</span><b>${h.baseChips} × ${h.baseMult}</b></div>`;}).join("");
+    if(!gameId){
+      startNewRunLocal();
+      game.mode="wait";
+      me.status="ready";
+      $("connPill").textContent="Lobby needed";
+      $("runEndBlock").style.display="block";
+      $("runEndTitle").textContent="Take a seat";
+      $("runEndText").innerHTML='<p>Join a Felt &amp; Fortune room from the lobby to play with friends.</p><a class="btn primary" href="/lobby/lobby.html">Find a table</a> <a class="btn" href="./balatlesolo.html">Play solo</a>';
+      renderAll();
+      return;
+    }
+    $("connPill").textContent = "Connecting";
     try{
       authUser = await ensureAuthed();
-      $("connPill").textContent = "OK";
+      $("connPill").textContent = "Online";
     }catch(e){
-      $("connPill").textContent = "AUTH FAIL";
+      $("connPill").textContent = "Offline";
       $("runEndBlock").style.display = "block";
-      $("runEndTitle").textContent = "Auth failed";
-      $("runEndText").textContent = "Enable anonymous sign-in in Firebase Authentication.";
+      $("runEndTitle").textContent = "Could not connect";
+      $("runEndText").innerHTML = 'The table is unavailable. Try refreshing, or <a href="./balatlesolo.html">play solo</a>.';
       return;
     }
 

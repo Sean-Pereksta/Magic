@@ -1,0 +1,28 @@
+name: Balatle table and scoring
+on:
+  pull_request:
+    paths:
+      - 'game/balatle.html'
+      - 'game/balatlesolo.html'
+      - 'game/balatle/**'
+      - 'tests/balatle-*'
+      - '.github/workflows/balatle.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'game/balatle.html'
+      - 'game/balatlesolo.html'
+      - 'game/balatle/**'
+      - 'tests/balatle-*'
+      - '.github/workflows/balatle.yml'
+permissions:
+  contents: read
+jobs:
+  scoring:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run test:balatle
