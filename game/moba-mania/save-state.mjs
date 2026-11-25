@@ -4,7 +4,7 @@ import { makeMetrics } from './strategy.mjs';
 
 const VERSION=1,MAX_BYTES=3_000_000;
 const TRANSIENT=new Set(['player','grid','navCache','progressionDepth','_castSource']);
-const COLLECTION_LIMITS={units:2500,projectiles:3000,zones:1000,effects:500,texts:150,events:100,scheduledImpacts:200,progressionQueue:200};
+const COLLECTION_LIMITS={units:2500,projectiles:3000,zones:1000,effects:600,texts:150,events:100,scheduledImpacts:200,progressionQueue:200};
 const fail=message=>{throw new Error('Invalid saved match: '+message);};
 const number=(value,min,max)=>typeof value==='number'&&Number.isFinite(value)&&value>=min&&value<=max;
 const record=value=>!!value&&typeof value==='object'&&!Array.isArray(value);

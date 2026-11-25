@@ -1,5 +1,7 @@
 import { WORLD, HEROES } from './data.mjs';
 import { createEffectBudget, resetEffectBudget, drawCombatBurst, drawShieldShell, drawProjectileTrail, drawSpellAccent, isEffectVisible, EFFECT_PALETTES } from './combat-visuals.mjs';
+import { unitPose, summonPose, drawHitGlint, drawMonsterRocks } from './unit-animation.mjs';
+import { drawCampScenery, drawReactiveTerrain, drawStructureDamage, isWorldEffect, drawWorldEffect, drawGoldFlight } from './world-visuals.mjs';
 
 // All artwork is authored here in pixels. No remote textures, fonts or image
 // decoding are needed: the same sprites work in the site and the offline pack.
@@ -7,6 +9,12 @@ const TEAM = ['#67dfef', '#ff8f87'];
 const TEAM_DARK = ['#236d97', '#983f58'];
 const INK = '#152838';
 const spriteCache = new Map();
+function cacheSprite(key, sprite) {
+  // Quantized poses and a hard ceiling keep long sessions and cosmetic changes
+  // from retaining an unlimited collection of little canvases.
+  if (spriteCache.size >= 1200) spriteCache.delete(spriteCache.keys().next().value);
+  spriteCache.set(key, sprite); return sprite;
+}
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const fract = v => v - Math.floor(v);
 const hash = (x, y = 0) => fract(Math.sin(x * 127.1 + y * 311.7) * 43758.5453);
@@ -75,14 +83,16 @@ function diamond(c, x, y, w, h, color, highlight = '#e5fcff') {
   line(c, '#ffffffaa', x, y - h / 2 + 6, x + w / 3, y - 1, 2);
 }
 
-function heroSprite(id, frame, facing, attacking, cosmetics = {}) {
+function heroSprite(id, frame, facing, attacking, cosmetics = {}, poseStage = 0, aimDirection = 0, casting = false) {
+  frame=poseStage?0:frame%4;aimDirection=poseStage?aimDirection:0;casting=poseStage?casting:false;
   const tint = cosmeticColor(cosmetics?.armorTint);
-  const key = ['hero', id, frame, facing, attacking, tint || 'classic'].join(':');
+  const key = ['hero', id, frame, facing, attacking, poseStage, aimDirection, casting, tint || 'classic'].join(':');
   if (spriteCache.has(key)) return spriteCache.get(key);
   const expanded = id === 'bulwark' || id === 'ember' || id === 'seraph';
   // Leave room for wings, shields and the greatsword at the end of its swing.
-  const spriteWidth = id === 'seraph' ? 72 : expanded ? 48 : 40;
-  const out = makeCanvas(spriteWidth, expanded ? 48 : 44), c = out.getContext('2d');
+  const spriteWidth = id === 'druid' ? 88 : id === 'arc' || id === 'seraph' ? 80 : id === 'ranger' ? 72 : expanded ? 64 : 60;
+  const out = makeCanvas(spriteWidth, 68), c = out.getContext('2d');
+  out.groundPadding = 12; out.bodyTop = 12;
   if (tint) {
     const palettes = {
       arc:['#bd8738','#ffe18a','#dfab42','#ffc75f','#ca9336','#ffe398','#8b6530','#ffda85'],
@@ -98,9 +108,12 @@ function heroSprite(id, frame, facing, attacking, cosmetics = {}) {
   }
   const back = facing === 3, left = facing === 2;
   if (left) { c.translate(spriteWidth, 0); c.scale(-1, 1); }
-  c.translate((spriteWidth - 40) / 2, expanded ? 2 : 0);
-  const walk = [0, 1, 0, -1][frame % 4], bob = frame % 2;
-  const strike = attacking ? [0, 3, 5, 2][frame % 4] : 0;
+  c.translate((spriteWidth - 40) / 2, 12);
+  const walk = poseStage ? 0 : [0, 1, 0, -1][frame % 4], bob = poseStage ? 0 : frame % 2;
+  const strike = poseStage ? [0,-3,7,4,1][poseStage] : attacking ? [0, 3, 5, 2][frame % 4] : 0;
+  const aimAngle = aimDirection * Math.PI / 4;
+  const weaponAim = Math.atan2(Math.sin(aimAngle), Math.abs(Math.cos(aimAngle))) + Math.PI / 2;
+  const swing = poseStage === 1 ? weaponAim - 1.8 : poseStage === 2 ? weaponAim : poseStage === 3 ? weaponAim + .45 : poseStage === 4 ? .45 : .15;
   c.translate(0, -bob);
   // Mantle, outlined boots and alternately planted feet.
   const colors = {
@@ -124,9 +137,11 @@ function heroSprite(id, frame, facing, attacking, cosmetics = {}) {
   box(c, '#3f5361', 22, 32 - walk, 3, 3);
   box(c, '#263748', 12, 37 + walk, 7, 2);
   box(c, '#263748', 21, 37 - walk, 7, 2);
+  if (poseStage === 1 || poseStage === 2) { box(c, INK, 10, 37, 10, 2); box(c, INK, 22, 37, 10, 2); }
+  c.save(); c.translate(poseStage === 1 ? -1 : poseStage === 2 ? 2 : poseStage === 3 ? 1 : 0, poseStage === 1 ? 1 : 0);
   if (id === 'angel') {
     // Three articulated feather rows visibly beat during travel.
-    const flap = walk * 2;
+    const flap = poseStage ? [0,-3,-7,-4,-1][poseStage] : walk * 2;
     box(c, INK, 2, 13 + flap, 9, 17);
     box(c, '#ac76a0', 3, 15 + flap, 7, 14);
     box(c, '#fff0e6', 4, 14 + flap, 4, 12);
@@ -141,11 +156,11 @@ function heroSprite(id, frame, facing, attacking, cosmetics = {}) {
     box(c, '#f3cee1', 36, 9 + flap, 3, 8);
   }
   if (id === 'seraph') {
-    const flap = walk * 2;
+    const flap = poseStage ? [0,3,-5,-2,0][poseStage] : walk * 2;
     // A broader, layered feather silhouette distinguishes the sword angel
     // from the rose support, including folded feather tips on the back view.
     for (const side of [-1, 1]) {
-      const anchor = side < 0 ? 11 : 27;
+      const anchor = (side < 0 ? 11 : 27) + (poseStage === 2 ? side * 3 : 0);
       for (let feather = 0; feather < 4; feather++) {
         const x = anchor + side * (5 + feather * 4);
         const y = 12 + feather * 2 + flap;
@@ -186,15 +201,13 @@ function heroSprite(id, frame, facing, attacking, cosmetics = {}) {
     box(c, '#ffe398', 8, 17, 6, 2);
     box(c, '#8b6530', 26, 19, 4, 8);
     box(c, '#ffda85', 25, 18, 5, 4);
-    const sx = 31 + strike;
-    box(c, INK, sx, 6, 3, 29);
-    box(c, '#c59b55', sx + 1, 10, 1, 24);
-    box(c, '#ffe8a1', sx - 2, 10, 7, 2);
-    box(c, '#287fc7', sx - 2, 3 + bob, 7, 7);
-    box(c, '#6ce1ff', sx - 1, 4, 5, 4);
-    box(c, '#e0fcff', sx + 1, 3, 2, 4);
-    box(c, '#3687e5', sx + 1, 0, 2, 3);
-    box(c, '#4094e4', sx - 3, 5 - bob, 2, 4);
+    c.save(); c.translate(31,23); c.rotate(poseStage ? swing * .82 : 0);
+    box(c, INK, 0, -17, 3, 29); box(c, '#c59b55', 1, -13, 1, 24);
+    box(c, '#ffe8a1', -2, -13, 7, 2); box(c, '#287fc7', -2, -20 + bob, 7, 7);
+    box(c, '#6ce1ff', -1, -19, 5, 4); box(c, '#e0fcff', 1, -20, 2, 4);
+    box(c, '#3687e5', 1, -23, 2, 3); box(c, '#4094e4', -3, -18 - bob, 2, 4);
+    if (poseStage === 1 || poseStage === 2) { box(c, '#e7fcff', -4, -22, 2, 7); box(c, '#7ce3ff', 6, -21, 3, 5); }
+    c.restore();
   } else if (id === 'dragon') {
     box(c, INK, 11, 6, 16, 7);
     box(c, '#ae3b47', 12, 7, 14, 5);
@@ -210,7 +223,7 @@ function heroSprite(id, frame, facing, attacking, cosmetics = {}) {
     box(c, '#f0c484', 7, 16, 2, 3);
     box(c, '#f0c484', 10, 15, 2, 4);
     // Wide dragon blade arcs away from the body during the strike.
-    c.save(); c.translate(30, 26); c.rotate(attacking ? -0.8 + strike * 0.24 : 0.15);
+    c.save(); c.translate(30, 26); c.rotate(poseStage ? swing : attacking ? -0.8 + strike * 0.24 : 0.15);
     box(c, INK, -3, -17, 7, 25);
     box(c, '#a95743', -1, 1, 3, 7);
     box(c, '#ffcb7c', -5, -1, 10, 3);
@@ -218,6 +231,7 @@ function heroSprite(id, frame, facing, attacking, cosmetics = {}) {
     box(c, '#edf3dd', -2, -17, 2, 15);
     box(c, '#fa8458', 2, -13, 2, 9);
     c.restore();
+    if (casting && poseStage) { box(c, '#ffc97d', 13, 22, 2, 5); box(c, '#ffad55', 20, 20, 5, 2); box(c, '#ffe4a1', 9, 18, 4, 2); }
   } else if (id === 'druid') {
     box(c, '#124e3b', 11, 6, 16, 7);
     box(c, '#3d9f62', 12, 7, 14, 4);
@@ -233,13 +247,18 @@ function heroSprite(id, frame, facing, attacking, cosmetics = {}) {
     box(c, '#b99b60', 30, 0, 2, 3);
     box(c, '#275e42', 8, 18, 6, 8);
     box(c, '#82c86a', 8, 18, 5, 2);
-    const sx = 32 + strike;
+    const sx = 32 + (poseStage === 1 ? -3 : poseStage === 2 ? 0 : strike);
+    c.save(); c.translate(sx, 32); c.rotate(casting ? (poseStage === 1 ? -.22 : poseStage === 2 ? 0 : .1) : poseStage ? swing * .65 : 0);
+    const rootX = sx;
+    c.translate(-rootX, -32);
     box(c, INK, sx, 8, 3, 28);
     box(c, '#967449', sx + 1, 10, 2, 25);
     box(c, '#b29b58', sx - 2, 8, 5, 3);
     box(c, '#21573f', sx - 4, 4, 9, 5);
     box(c, '#63c76c', sx - 3, 3, 7, 4);
     box(c, '#b1f0a2', sx - 1, 3, 3, 2);
+    if (casting && poseStage === 2) { box(c, '#b4f59c', sx - 4, 36, 12, 2); box(c, '#76d38b', sx - 6, 38, 16, 2); }
+    c.restore();
     box(c, '#69b970', 10, 26, 4, 6);
     box(c, '#a0da83', 11, 27, 2, 3);
   } else if (id === 'angel') {
@@ -255,9 +274,11 @@ function heroSprite(id, frame, facing, attacking, cosmetics = {}) {
     box(c, '#f3d2cd', 14, 30, 11, 6);
     box(c, '#fff1e4', 14, 30, 4, 5);
     box(c, '#d37f9f', 25, 20, 4, 7);
-    box(c, '#ffdab4', 28 + strike, 24, 4, 3);
-    box(c, '#e086d0', 30 + strike, 17, 4, 4);
-    box(c, '#ffe4fa', 31 + strike, 16, 2, 5);
+    const handY = poseStage === 1 ? 16 : poseStage === 2 ? 12 : poseStage === 3 ? 16 : 24;
+    box(c, '#ffdab4', 27 + Math.max(0,strike), handY, 4, 3);
+    box(c, '#e086d0', 29 + Math.max(0,strike), handY - 7, 4, 4);
+    box(c, '#ffe4fa', 30 + Math.max(0,strike), handY - 8, 2, 5);
+    if (casting && poseStage) { box(c, '#fff1c1', 7, handY, 4, 3); box(c, '#ffb9e2', 5, handY - 7, 5, 5); }
   } else if (id === 'bulwark') {
     // Broad pauldrons, a closed helm and a shield almost as tall as the body.
     box(c, INK, 7, 17, 24, 14);
@@ -272,13 +293,13 @@ function heroSprite(id, frame, facing, attacking, cosmetics = {}) {
     if (!back) box(c, '#d0f6ff', 15, 13, 9, 1);
     box(c, '#b9a0dc', 18, 11, 3, 9); box(c, '#e9d4ff', 19, 11, 1, 7);
     box(c, '#7e4fbb', 16, 1, 7, 5); box(c, '#cab0ed', 17, 0, 5, 3);
-    const shieldX = 1 + (attacking ? strike : 0);
+    const shieldX = poseStage === 1 ? 0 : poseStage === 2 ? 22 : poseStage === 3 ? 16 : poseStage === 4 ? 5 : 1;
     box(c, INK, shieldX, 19, 13, 18); box(c, INK, shieldX + 3, 35, 7, 5);
     box(c, '#bda2e6', shieldX + 1, 20, 11, 16); box(c, '#a785d7', shieldX + 4, 35, 5, 3);
     box(c, '#5a3e83', shieldX + 3, 22, 7, 12); box(c, '#805cae', shieldX + 4, 23, 5, 9);
     diamond(c, shieldX + 6, 28, 5, 9, '#9975cf', '#f1dcff');
     // Square-headed hammer rotates with the heavy attack, remaining in frame.
-    c.save(); c.translate(31, 25); c.rotate(attacking ? -0.7 + strike * 0.19 : 0.18);
+    c.save(); c.translate(31, 25); c.rotate(poseStage ? swing * .75 : attacking ? -0.7 + strike * 0.19 : 0.18);
     box(c, INK, -2, -14, 5, 24); box(c, '#b6a2c8', -1, -11, 2, 20);
     box(c, INK, -6, -18, 13, 8); box(c, '#947ab7', -5, -17, 11, 6);
     box(c, '#e3d1f5', -4, -17, 8, 2); box(c, '#c6abf1', 3, -15, 3, 3);
@@ -294,8 +315,8 @@ function heroSprite(id, frame, facing, attacking, cosmetics = {}) {
     const scarf = 6 + (attacking ? 3 : walk * 2);
     box(c, '#b45331', 7 - scarf, 17, scarf + 7, 4); box(c, '#f3a34f', 7 - scarf, 17, scarf + 2, 2);
     for (const side of [-1, 1]) {
-      c.save(); c.translate(side < 0 ? 10 : 29, side < 0 ? 26 : 23);
-      c.rotate(side * (attacking ? .9 - strike * .27 : .35));
+      c.save(); c.translate(side < 0 ? 10 : 29 + Math.max(0,strike), side < 0 ? 26 : 23);
+      c.rotate(poseStage ? side < 0 ? -.35 - poseStage * .08 : swing : side * (attacking ? .9 - strike * .27 : .35));
       box(c, INK, -2, -10, 5, 17); box(c, '#e9f0e5', -1, -10, 3, 11);
       box(c, '#82a3a8', 1, -7, 1, 8); box(c, '#ffba64', -4, 0, 9, 2);
       box(c, '#9b5734', -1, 2, 3, 5); box(c, '#ffe1ac', -1, -10, 1, 9); c.restore();
@@ -311,7 +332,8 @@ function heroSprite(id, frame, facing, attacking, cosmetics = {}) {
     box(c, '#a6d2e8', 24, 18, 7, 6); box(c, '#ebf9ff', 25, 18, 5, 2);
     box(c, '#27518d', 14, 26, 10, 9); box(c, '#7cb9e1', 14, 28, 3, 7);
     // The oversized greatsword is drawn in full across the entire swing.
-    c.save(); c.translate(29, 27); c.rotate(attacking ? -.85 + strike * .36 : .17);
+    box(c, '#e0edeb', poseStage === 1 ? 23 : 27, 24, 5, 3);
+    c.save(); c.translate(29, 27); c.rotate(poseStage ? swing : attacking ? -.85 + strike * .36 : .17);
     box(c, INK, -4, -25, 10, 35); box(c, '#4387b9', -3, -25, 7, 25);
     box(c, '#c5eaf6', -2, -24, 5, 23); box(c, '#f5fdff', -2, -24, 2, 22);
     box(c, '#72bce9', 2, -20, 2, 18); box(c, '#dff7ff', -1, -27, 3, 4);
@@ -327,19 +349,21 @@ function heroSprite(id, frame, facing, attacking, cosmetics = {}) {
     if (!back) { box(c, '#91db7e', 20, 13, 5, 2); box(c, '#e1ffba', 21, 13, 2, 1); }
     box(c, '#788552', 8, 17, 5, 7);
     box(c, '#a1b975', 8, 17, 4, 2);
-    const bx = 31 + strike;
+    const bx = 31 + (poseStage === 1 ? 0 : poseStage === 2 ? 3 : poseStage === 3 ? 2 : 0);
+    c.save(); c.translate(bx,24); c.rotate(poseStage ? weaponAim - Math.PI / 2 : 0); c.translate(-bx,-24);
     line(c, INK, bx, 13, bx + 5, 19, 3);
     line(c, INK, bx + 5, 19, bx + 5, 28, 3);
     line(c, INK, bx + 5, 28, bx, 34, 3);
     line(c, '#bca071', bx, 13, bx + 5, 19, 1);
     line(c, '#bca071', bx + 5, 19, bx + 5, 28, 1);
     line(c, '#bca071', bx + 5, 28, bx, 34, 1);
-    line(c, '#dbdfc2', bx, 13, bx - (attacking ? 4 : 0), 24, 1);
-    line(c, '#dbdfc2', bx - (attacking ? 4 : 0), 24, bx, 34, 1);
-    box(c, '#dec593', bx - 7, 23, 14, 1);
-    box(c, '#8bef6e', bx + 6, 22, 3, 3);
+    const draw = poseStage === 1 ? 9 : poseStage === 4 ? 3 : 0;
+    line(c, '#dbdfc2', bx, 13, bx - draw, 24, 1);
+    line(c, '#dbdfc2', bx - draw, 24, bx, 34, 1);
+    if (poseStage !== 2 && poseStage !== 3) { box(c, '#dec593', bx - 7 - draw, 23, 14 + draw, 1); box(c, '#8bef6e', bx + 6, 22, 3, 3); }
+    box(c, '#e6bb91', bx - draw - 3, 23, 4, 3); c.restore();
   }
-  spriteCache.set(key, out); return out;
+  c.restore(); return cacheSprite(key, out);
 }
 
 function soldierSprite(kind, team, frame, flip = false) {
@@ -370,15 +394,19 @@ function soldierSprite(kind, team, frame, flip = false) {
     line(c, '#ede4ba', 21, 10, 21, 27, 1);
     box(c, '#ebd5a6', 17, 18, 8, 1);
   }
-  spriteCache.set(key, out); return out;
+  return cacheSprite(key, out);
 }
 
-function creatureSprite(type, frame, team, flip) {
-  const key = ['creature', type, frame, team, flip].join(':');
+function creatureSprite(type, frame, team, flip, poseStage = 0, tier = 1, idleFrame = 0) {
+  frame=poseStage?0:frame%4;idleFrame=poseStage?0:idleFrame;
+  const artTier = Math.min(5,Math.max(0,Math.floor(((tier || 1)-1)/2)));
+  const key = ['creature', type, frame, team, flip, poseStage, artTier, idleFrame].join(':');
   if (spriteCache.has(key)) return spriteCache.get(key);
-  const out = makeCanvas(48, 44), c = out.getContext('2d');
-  if (flip) { c.translate(48, 0); c.scale(-1, 1); }
-  const w = [0, 2, 0, -2][frame % 4], t = String(type || '').toLowerCase();
+  const out = makeCanvas(64, 68), c = out.getContext('2d');
+  out.groundPadding = 12; out.bodyTop = 12;
+  if (flip) { c.translate(64, 0); c.scale(-1, 1); }
+  c.translate(8,12);
+  const w = poseStage ? 0 : [0, 2, 0, -2][frame % 4], t = String(type || '').toLowerCase();
   const spirit = /spirit|warrior|wisp/.test(t), tree = /tree|treant|bloom/.test(t);
   const stone = /golem|stone|titan|sentinel|warden|colossus/.test(t), wolf = /wolf|fox|fang/.test(t);
   const bear = /bear|boar|brute/.test(t), dragon = /dragon|drake|wyrm/.test(t);
@@ -407,11 +435,23 @@ function creatureSprite(type, frame, team, flip) {
     box(c, '#84928b', 17, 33 + w, 5, 3); box(c, '#667d80', 29, 33 - w, 6, 3);
     box(c, '#304d59', 17, 5, 18, 10); box(c, '#83978b', 18, 4, 16, 8);
     box(c, '#b3bd9d', 19, 4, 9, 3); box(c, '#b8f5cc', 25, 10, 2, 2);
-    box(c, '#b8f5cc', 31, 10, 2, 2); box(c, '#354f59', 3, 17 - w, 10, 15);
-    box(c, '#80938a', 4, 18 - w, 7, 7); box(c, '#4b676b', 38, 17 + w, 8, 16);
-    box(c, '#718c87', 39, 18 + w, 6, 5); box(c, '#74b888', 12, 10, 8, 4);
+    box(c, '#b8f5cc', 31, 10, 2, 2);
+    const leftLift = poseStage === 1 ? -9 : poseStage === 2 ? 4 : poseStage === 3 ? -3 : -w;
+    const rightLift = poseStage === 1 ? -24 : poseStage === 2 ? 5 : poseStage === 3 ? -4 : w;
+    const reach = poseStage === 2 || poseStage === 3 ? 5 : 0;
+    box(c, '#354f59', 3, 17 + leftLift, 10, 15); box(c, '#80938a', 4, 18 + leftLift, 7, 7);
+    box(c, '#4b676b', 38 + reach, 17 + rightLift, 8, 16); box(c, '#718c87', 39 + reach, 18 + rightLift, 6, 5);
+    if (poseStage === 1) { box(c, INK, 33, -12, 19, 12); box(c, '#8ca381', 35, -11, 15, 9); box(c, '#c2d5a1', 35, -11, 9, 3); }
+    box(c, '#74b888', 12, 10, 8, 4);
     box(c, '#a8d478', 15, 9, 4, 3); box(c, '#62bcd0', 25, 21, 6, 7);
     box(c, '#c4f5e0', 27, 22, 2, 3);
+    for (let n = 0; n < artTier; n++) {
+      const xx = 11 + n * 5;
+      box(c, '#263e44', xx - 1, 8 - (n % 2) * 3, 7, 10);
+      box(c, '#9eae8b', xx, 8 - (n % 2) * 3, 5, 7); box(c, '#d9e8b1', xx, 8 - (n % 2) * 3, 3, 2);
+      box(c, '#8ae8c1', 15 + n * 4, 21 + (n % 2) * 5, 2, 6);
+    }
+    if (idleFrame === 2 && !poseStage) { box(c, '#749d87', 4, 31, 4, 3); box(c, '#badb9e', 38, 30, 3, 2); }
   } else if (dragon) {
     box(c, '#683b56', 10, 17, 25, 15); box(c, '#a15c6c', 12, 16, 20, 12);
     box(c, '#da9b85', 15, 17, 12, 4); box(c, '#63334c', 7, 29 + w, 8, 8);
@@ -427,17 +467,28 @@ function creatureSprite(type, frame, team, flip) {
     box(c, '#488f91', 10, 15, 23, 12); box(c, '#7db7a6', 12, 16, 14, 4);
     box(c, '#285363', 10, 31 + w, 8, 8); box(c, '#285363', 28, 30 - w, 8, 9);
     box(c, '#87b8a4', 10, 37 + w, 7, 2); box(c, '#87b8a4', 28, 37 - w, 7, 2);
-    box(c, '#355f70', 2, 24, 9, 8); box(c, '#539793', 1, 23, 8, 4);
+    const tail = poseStage === 1 ? -3 : poseStage === 2 ? 2 : poseStage === 3 ? 1 : idleFrame - 1;
+    box(c, '#355f70', 2, 24 + tail, 9, 8); box(c, '#539793', 1, 23 + tail, 8, 4);
     for (let k = 0; k < 4; k++) {
       box(c, '#b9cd9b', 9 + k * 6, 10 + (k % 2) * 2, 3, 7);
       box(c, '#e1ddae', 9 + k * 6, 9 + (k % 2) * 2, 2, 3);
     }
-    box(c, INK, 29, 12, 17, 18); box(c, '#42878b', 30, 12, 15, 16);
+    const lunge = poseStage === 1 ? -2 : poseStage === 2 ? 5 : poseStage === 3 ? 3 : 0;
+    const gape = poseStage === 1 ? 10 : poseStage === 2 ? 1 : poseStage === 3 ? 3 : idleFrame === 1 ? 5 : 3;
+    c.save(); c.translate(lunge,poseStage === 1 ? -2 : 0);
+    box(c, INK, 29, 12, 17, 15); box(c, '#42878b', 30, 12, 15, 13);
     box(c, '#83b9a4', 31, 11, 10, 4); box(c, '#d2e7b4', 36, 15, 4, 3);
     box(c, '#233a48', 38, 15, 2, 2);
-    box(c, '#213744', 34, 21, 13, 7); box(c, '#b2c8a0', 32, 28, 14, 4);
-    for (let k = 0; k < 3; k++) { box(c, '#fff0c2', 35 + k * 4, 21, 2, 4); box(c, '#fff0c2', 36 + k * 4, 26, 2, 3); }
+    box(c, '#213744', 34, 21, 13, 5 + gape); box(c, '#b2c8a0', 32, 26 + gape, 14, 4);
+    for (let k = 0; k < 3; k++) { box(c, '#fff0c2', 35 + k * 4, 21, 2, 4); box(c, '#fff0c2', 36 + k * 4, 24 + gape, 2, 3); }
     box(c, '#244a5e', 31, 5, 3, 8); box(c, '#96c6ab', 31, 5, 2, 3);
+    c.restore();
+    for (let n = 0; n < artTier; n++) {
+      const xx = 7 + n * 5;
+      box(c, '#244555', xx - 1, 6 - n % 2 * 2, 5, 10); box(c, '#a5d4b1', xx, 6 - n % 2 * 2, 3, 8);
+      box(c, '#cdefb1', xx, 5 - n % 2 * 2, 2, 3);
+      box(c, '#72c9bd', 11 + n * 4, 21, 3, 3);
+    }
   } else {
     const dark = wolf ? '#434d65' : bear ? '#65513d' : '#305968';
     const mid = wolf ? '#81899e' : bear ? '#9c7951' : '#5e9b9b';
@@ -446,6 +497,9 @@ function creatureSprite(type, frame, team, flip) {
     box(c, mid, 10, 18, 23, 9); box(c, light, 13, 18, 14, 3);
     box(c, INK, 10, 31 + w, 6, 8); box(c, dark, 11, 31 + w, 5, 6);
     box(c, INK, 28, 31 - w, 6, 8); box(c, dark, 29, 31 - w, 5, 6);
+    const sniff = !poseStage ? (idleFrame === 1 ? 3 : idleFrame === 2 ? 1 : 0) : poseStage === 1 ? -2 : poseStage === 2 ? 1 : 0;
+    const reach = poseStage === 2 ? 4 : poseStage === 3 ? 2 : 0;
+    c.save(); c.translate(reach,sniff);
     box(c, INK, 30, 9, 13, 18); box(c, mid, 31, 10, 11, 15);
     box(c, light, 33, 10, 7, 4); box(c, dark, 41, 17, 5, 7);
     box(c, INK, 35, 16, 3, 2); box(c, '#e0f8bc', 36, 16, 1, 1);
@@ -456,9 +510,11 @@ function creatureSprite(type, frame, team, flip) {
       box(c, '#dbcf9b', 33, 4, 2, 6); box(c, '#dbcf9b', 39, 3, 2, 7);
       box(c, '#f3df9d', 30, 3, 3, 2); box(c, '#f3df9d', 41, 2, 3, 2);
     }
+    if (poseStage === 2) { box(c, INK, 42, 23, 7, 4); box(c, '#f1e7bf', 42, 23, 2, 2); }
+    c.restore();
   }
   if (team >= 0) { box(c, TEAM_DARK[team], 19, 18, 8, 5); box(c, TEAM[team], 20, 18, 7, 2); }
-  spriteCache.set(key, out); return out;
+  return cacheSprite(key, out);
 }
 
 function shadow(c, x, y, r, opacity = 0.28) {
@@ -585,15 +641,7 @@ function buildTerrain() {
       }
     }
   }
-  for (const camp of WORLD.camps || []) {
-    disc(c, '#2b513d', camp.x, camp.y, 95);
-    disc(c, '#68794f', camp.x, camp.y, 76);
-    disc(c, '#83845a', camp.x, camp.y, 64);
-    for (let i = 0; i < 10; i++) {
-      const a = i * 1.3;
-      box(c, '#ab9b69', camp.x + Math.cos(a) * 49, camp.y + Math.sin(a) * 42, 6, 3);
-    }
-  }
+  for (const camp of WORLD.camps || []) drawCampScenery(c,camp);
   for (const patch of WORLD.brush || []) {
     disc(c, '#24523d', patch.x, patch.y, patch.r || 50);
     for (let i = 0; i < 35; i++) {
@@ -655,6 +703,7 @@ export class Renderer {
     this.lastTime = null; this.hasCamera = false; this.width = 1280; this.height = 720;
     this.motionPreference = typeof globalThis.matchMedia === 'function' ? globalThis.matchMedia('(prefers-reduced-motion: reduce)') : null;
     this.effectBudget = createEffectBudget(); this.visibleEffects = [];
+    this.worldEffectOptions = {drawUnit:(c,e,alpha)=>this.departingSummon(c,e,alpha)};
     this.resize(canvas.clientWidth || 1280, canvas.clientHeight || 720);
   }
   resize(width, height) {
@@ -708,12 +757,15 @@ export class Renderer {
     if (!game) return;
     this.follow(game, view);
     const team = game.player?.team ?? 0;
-    const shown = u => !game.canSee || game.canSee(team, u);
+    const shown = u => !game.canSee || game.canSee(team, u) || (!alive(u) && (u.kind==='tower'||u.kind==='core') && (!game.pointVisible || game.pointVisible(team,u.x,u.y)));
     const seenPoint = (x, y) => !game.pointVisible || game.pointVisible(team, x, y);
     const c = this.ctx, cam = this.camera, time = game.time || 0;
+    const presentationTime = Number.isFinite(view.presentationTime) ? clamp(view.presentationTime,time,time+2) : time;
+    this.presentationTime = presentationTime;
     resetEffectBudget(this.effectBudget, this.width, this.motionPreference?.matches || false);
     const effects = this.visibleEffects; effects.length = 0;
-    for (const e of game.effects || []) if (this.visible(e.x, e.y, (e.r || 80) + 150) && isEffectVisible(game, team, e)) effects.push(e);
+    const finalCore = e => game.winner != null && e.type === 'structure-collapse' && e.kind === 'core';
+    for (const e of game.effects || []) if (this.visible(e.x, e.y, (e.r || 80) + 150) && (isEffectVisible(game, team, e) || finalCore(e))) effects.push(e);
     c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1;
     c.fillStyle = '#142c31'; c.fillRect(0, 0, this.canvas.width, this.canvas.height);
     const sx = this.canvas.width / cam.width, sy = this.canvas.height / cam.height;
@@ -721,9 +773,10 @@ export class Renderer {
     c.drawImage(this.terrain, 0, 0, WORLD.width, WORLD.height);
     this.drawWater(c, time);
     this.drawWells(c, time);
+    drawReactiveTerrain(c,game,time,u=>this.visible(u.x,u.y,100),this.effectBudget);
     this.drawObjectiveGround(c, game);
     this.drawCombatIndicators(c, game);
-    for (const e of effects) this.effect(c, e, time, true);
+    for (const e of effects) if (!finalCore(e)) this.effect(c, e, isWorldEffect(e)?presentationTime:time, true);
     const sorted = [];
     for (const o of WORLD.obstacles || []) if (this.visible(o.x, o.y)) sorted.push({ y: o.y, obstacle: o });
     for (const u of game.units || []) if (this.visible(u.x, u.y, 160) && shown(u)) sorted.push({ y: u.y, unit: u });
@@ -738,17 +791,27 @@ export class Renderer {
       } else this.unit(c, item.unit, game);
     }
     for (const p of game.projectiles || []) if (this.visible(p.x, p.y, 140) && seenPoint(p.x, p.y)) this.projectile(c, p, time);
-    for (const e of effects) if (e.type !== 'combat-burst') this.effect(c, e, time, false);
+    drawMonsterRocks(c,game,time,(x,y)=>this.visible(x,y,100),this.effectBudget);
+    for (const e of effects) if (e.type !== 'combat-burst' && !finalCore(e)) this.effect(c, e, isWorldEffect(e)?presentationTime:time, false);
     // Fresh impacts win the cosmetic allowance when a crowded fight reaches its
     // budget. Ambient motes cannot starve the hit that just landed.
     for (let i = effects.length - 1; i >= 0; i--) if (effects[i].type === 'combat-burst') this.effect(c, effects[i], time, false);
     this.drawFog(c, game);
+    // Once the match is decided, the shattered objective is public information.
+    // Its short presentation remains visible even when a distant bot finished it.
+    for (const e of effects) if (finalCore(e)) { this.effect(c,e,presentationTime,true); this.effect(c,e,presentationTime,false); }
     this.drawTelegraphs(c, game);
     this.drawAim(c, game, view);
     for (const u of game.units || []) if (alive(u) && this.visible(u.x, u.y, 90) && shown(u)) this.unitBars(c, u, game);
     for (const t of (game.texts || []).slice(-110)) if (seenPoint(t.x, t.y)) this.floatText(c, t);
     this.playerMarker(c, game);
     c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1;
+    if (view.rewardTarget) {
+      const rect = this.canvas.getBoundingClientRect?.() || {left:0,top:0};
+      const target = {x:view.rewardTarget.x-rect.left,y:view.rewardTarget.y-rect.top};
+      const viewport = {width:this.canvas.width,height:this.canvas.height,cssWidth:this.width,cssHeight:this.height};
+      for (const e of effects) if (e.type==='reward-gold' && e.ownerId===game.playerId) drawGoldFlight(c,e,presentationTime,cam,viewport,target,this.effectBudget);
+    }
     if (game.player && game.player.hp / game.player.maxHp < 0.25 && alive(game.player)) {
       c.strokeStyle = '#b9445766'; c.lineWidth = 6;
       c.strokeRect(0, 0, this.canvas.width, this.canvas.height);
@@ -920,26 +983,25 @@ export class Renderer {
       }
       return;
     }
-    if (u.kind === 'core') { crystal(c, u, game.time); return; }
-    if (u.kind === 'tower') { tower(c, u, game.time); return; }
-    const phase = typeof u.id === 'number' ? u.id : String(u.id || '').length;
-    const frame = u.moving ? Math.floor(game.time * (u.kind === 'hero' ? 9 : 7) + phase) % 4 : Math.floor(game.time * 2) % 2;
-    const attack = (u.attackAnim || 0) > 0, attackFrame = attack ? Math.floor((u.attackAnim || 0) * 14) % 4 : frame;
-    const flip = Math.cos(u.angle || 0) < -0.15;
-    let sprite, width, height;
+    if (u.kind === 'core') { crystal(c, u, game.time); drawStructureDamage(c,u,game.time,this.effectBudget); return; }
+    if (u.kind === 'tower') { tower(c, u, game.time); drawStructureDamage(c,u,game.time,this.effectBudget); return; }
+    const pose = unitPose(u,game,game.time,this.effectBudget?.reducedMotion);
+    const frame = pose.frame, attack = pose.stage > 0, attackFrame = attack ? pose.stage % 4 : frame;
+    const flip = Math.cos(pose.angle) < -0.15;
+    let sprite, width, height, scale;
     if (u.kind === 'hero') {
-      const facing = flip ? 2 : Math.sin(u.angle || 0) < -0.55 ? 3 : 0;
-      const preparing = (game.scheduledImpacts || []).some(e => e.ownerId === u.id && e.executeAt > game.time);
-      sprite = heroSprite(u.heroId || u.subtype || 'arc', preparing ? 2 : attackFrame, facing, attack || preparing, u.cosmetics);
-      width = sprite.width * 1.5; height = sprite.height * 1.5;
+      const facing = flip ? 2 : Math.sin(pose.angle) < -0.55 ? 3 : 0;
+      sprite = heroSprite(u.heroId || u.subtype || 'arc',frame,facing,attack,u.cosmetics,pose.stage,pose.direction,pose.cast);
+      scale=1.5; width=(u.heroId==='seraph'?72:['bulwark','ember'].includes(u.heroId)?48:40)*scale;
+      height=(['bulwark','ember','seraph'].includes(u.heroId)?48:44)*scale;
       c.save(); c.globalAlpha = u.id === game.playerId || u === game.player ? 0.9 : 0.45;
       ring(c, TEAM[u.team], u.x, u.y + 1, 21, u.id === game.playerId || u === game.player ? 3 : 2); c.restore();
     } else if (u.kind === 'footman' || u.kind === 'archer') {
-      sprite = soldierSprite(u.kind, u.team, attackFrame, flip); width = 34; height = 42;
+      sprite = soldierSprite(u.kind, u.team, attackFrame, flip); width = 34; height = 42; scale=width/sprite.width;
     } else {
-      sprite = creatureSprite(u.subtype || u.heroId || u.kind, frame, u.team, flip);
+      sprite = creatureSprite(u.subtype || u.heroId || u.kind,frame,u.team,flip,pose.stage,u.kind==='beast'?u.tier:1,pose.idleFrame);
       const big = u.kind === 'beast', r = u.r || (big ? 35 : 20);
-      width = big ? Math.min(140, Math.max(94, r * 2.8) + Math.min(6, (u.tier || 1) - 1) * 2) : Math.max(48, r * 2.5) * (u.scale || 1); height = width * 44 / 48;
+      width = big ? Math.min(140, Math.max(94, r * 2.8) + Math.min(6, (u.tier || 1) - 1) * 2) : Math.max(48, r * 2.5) * (u.scale || 1); height = width * 44 / 48; scale=width/48;
     }
     shadow(c, u.x, u.y + 2, width * 0.3, 0.29);
     const trail = cosmeticColor(u.cosmetics?.trail);
@@ -953,9 +1015,36 @@ export class Renderer {
       c.restore();
     }
     const status = u.status || {}, invisible = status.stealth || status.invisible;
+    const drawWidth=sprite.width*scale,drawHeight=sprite.height*scale;
+    const originY=u.y-drawHeight+7+(sprite.groundPadding||0)*scale;
+    const birth=summonPose(u,game.time,this.effectBudget?.reducedMotion);
+    const action=u.visualAction;
+    if(u.heroId==='ember'&&!this.effectBudget?.reducedMotion&&action?.kind==='cast'&&['cinder-dash','flicker-strike'].includes(action.abilityId)&&game.time>=action.startedAt&&game.time-action.startedAt<.34&&Math.hypot(action.toX-action.fromX,action.toY-action.fromY)>30){
+      c.save();
+      for(const amount of [.3,.65]){
+        const xx=action.fromX+(action.toX-action.fromX)*amount,yy=action.fromY+(action.toY-action.fromY)*amount;
+        if(game.pointVisible&&!game.pointVisible(game.player?.team??0,xx,yy))continue;
+        if(this.effectBudget&&(this.effectBudget.remaining<1||this.effectBudget.accentRemaining<1))break;
+        if(this.effectBudget){this.effectBudget.remaining--;this.effectBudget.accentRemaining--;}
+        c.globalAlpha=.22*(1-clamp((game.time-action.startedAt)/.34,0,1));
+        c.drawImage(sprite,Math.round(xx-drawWidth/2),Math.round(originY+yy-u.y),drawWidth,drawHeight);
+      }c.restore();
+    }
     drawShieldShell(c, u, game.time, width, height, false, this.effectBudget);
-    c.save(); if (invisible) c.globalAlpha = 0.5;
-    c.drawImage(sprite, Math.round(u.x - width / 2), Math.round(u.y - height + 7), width, height); c.restore();
+    c.save(); c.globalAlpha=(invisible?.5:1)*birth.alpha;
+    if(birth.active&&(birth.rise||birth.assemble)){
+      c.beginPath();
+      if(birth.assemble){
+        for(let row=0;row<8;row++){
+          const threshold=(row*3%8)/8;
+          if(birth.progress>=threshold)c.rect(u.x-drawWidth/2,originY+row*drawHeight/8,drawWidth,drawHeight/8+1);
+        }
+      }else c.rect(u.x-drawWidth/2-8,u.y-height-35,drawWidth+16,height+43);
+      c.clip();
+    }
+    c.translate(u.x+pose.dx,u.y+pose.dy-birth.lift); c.rotate(pose.tilt);
+    c.drawImage(sprite,Math.round(-drawWidth/2),Math.round(originY-u.y+birth.rise*height),drawWidth,drawHeight); c.restore();
+    drawHitGlint(c,u,pose,width,height,this.effectBudget);
     drawShieldShell(c, u, game.time, width, height, true, this.effectBudget);
     if (u.recallIn > 0 || u.recalling || u.recallTime > 0) {
       c.save(); c.globalAlpha = 0.7;
@@ -1072,6 +1161,7 @@ export class Renderer {
     c.restore();
   }
   effect(c, e, time, ground) {
+    if (isWorldEffect(e)) { drawWorldEffect(c,e,time,ground,this.effectBudget,this.worldEffectOptions); return; }
     if (e.type === 'combat-burst') { drawCombatBurst(c, e, time, ground, this.effectBudget); return; }
     drawSpellAccent(c, e, time, ground, this.effectBudget);
     if (e.type === 'flame') return;
@@ -1193,6 +1283,13 @@ export class Renderer {
     }
     c.restore();
   }
+  departingSummon(c,e,alpha) {
+    const sprite=creatureSprite(e.subtype||'spirit',0,e.team??0,Math.cos(e.angle||0)<-.15);
+    const bodyWidth=Math.max(48,Math.max(12,(e.r||32)-18)*2.5),scale=bodyWidth/48;
+    const rise=/spirit/.test(e.subtype||'')&&!this.effectBudget?.reducedMotion?(1-alpha)*20:0;
+    c.save();c.globalAlpha=alpha;
+    c.drawImage(sprite,Math.round(e.x-sprite.width*scale/2),Math.round(e.y-(sprite.height-sprite.groundPadding)*scale+7-rise),sprite.width*scale,sprite.height*scale);c.restore();
+  }
   floatText(c, t) {
     if (!this.visible(t.x, t.y, 10)) return;
     const life = t.maxLife ? clamp(t.life / t.maxLife, 0, 1) : clamp(t.life, 0, 1);
@@ -1269,10 +1366,10 @@ export function drawPortrait(canvas, heroId, size = 64, cosmetics = {}) {
   const sprite = heroSprite(heroId, 0, 0, false, cosmetics);
   // The combat frame reserves space for a full sword swing. Crop only that
   // empty margin in the idle portrait so the angel's face stays legible.
-  const sourceX = heroId === 'seraph' ? 8 : 0, sourceWidth = sprite.width - sourceX * 2;
-  const scale = Math.min(size * .94 / sourceWidth, size * .97 / sprite.height);
-  const width = Math.round(sourceWidth * scale), height = Math.round(sprite.height * scale);
-  c.drawImage(sprite, sourceX, 0, sourceWidth, sprite.height, Math.round((size-width)/2), Math.round((size-height)/2), width, height);
+  const sourceWidth=heroId==='seraph'?64:['bulwark','ember'].includes(heroId)?48:40,sourceX=(sprite.width-sourceWidth)/2,sourceHeight=44;
+  const scale = Math.min(size * .94 / sourceWidth, size * .97 / sourceHeight);
+  const width = Math.round(sourceWidth * scale), height = Math.round(sourceHeight * scale);
+  c.drawImage(sprite, sourceX, sprite.bodyTop||0, sourceWidth, sourceHeight, Math.round((size-width)/2), Math.round((size-height)/2), width, height);
   const frameColor = {verdant:'#86c99c',astral:'#b49ce8',sovereign:'#ead28f'}[cosmetics?.portrait];
   if (frameColor) {
     c.strokeStyle = frameColor; c.lineWidth = Math.max(2, Math.floor(size / 32)); c.strokeRect(2, 2, size - 4, size - 4);
@@ -1375,7 +1472,8 @@ export function drawIcon(canvas, ability = {}, size = 32) {
     }
   } else if (/wolf|bear|treant|spirit|summon|pack|legion/.test(id)) {
     const type = /wolf|pack/.test(id) ? 'wolf' : /bear/.test(id) ? 'bear' : /treant/.test(id) ? 'treant' : 'spirit';
-    c.drawImage(creatureSprite(type, 0, -1, false), 2, 2, 30, 29);
+    const sprite=creatureSprite(type,0,-1,false);
+    c.drawImage(sprite,(sprite.width-48)/2,sprite.bodyTop||0,48,44,2,2,30,29);
   } else if (/arrow|shot|fan|long|poison|venom/.test(id)) {
     if (/fan|arrows/.test(id)) for (const off of [-7, 7]) { line(c, color, 7, 25, 24 + off * 0.3, 7 + off, 2); box(c, '#e5f6c1', 22 + off * 0.3, 5 + off, 4, 4); }
     line(c, '#d5c28b', 7, 25, 24, 8, 3); box(c, color, 19, 5, 9, 4); box(c, color, 24, 5, 4, 9);

@@ -303,6 +303,14 @@ export const WORLD={width:3200,height:2200,lanes,river:[point(1560,110),point(16
   beastPits:[{id:'river-maw',x:1610,y:705,lane:0,type:'maw'},{id:'moss-colossus',x:1590,y:1495,lane:2,type:'colossus'}]};
 export const RULES={waveInterval:19,firstWave:4,firstBeast:55,beastInterval:100,campRespawn:44,maxLevel:18,assistWindow:10,assistXpFraction:.5,recallTime:4,wellRadius:120};
 
+// Linear growth keeps the first river contest approachable while later captures
+// become substantially stronger objectives. A captured beast keeps its spawn tier.
+export const BEAST_GROWTH=Object.freeze({neutralHealth:.44,neutralDamage:.30,capturedHealth:.46,capturedDamage:.32,specialDamage:.30,guardianShield:.25});
+export function beastScaling(tier=1,captured=false){
+  const steps=Math.max(0,Math.floor(Number(tier)||1)-1);
+  return {health:1+steps*(captured?BEAST_GROWTH.capturedHealth:BEAST_GROWTH.neutralHealth),damage:1+steps*(captured?BEAST_GROWTH.capturedDamage:BEAST_GROWTH.neutralDamage),special:1+steps*BEAST_GROWTH.specialDamage,ward:1+steps*BEAST_GROWTH.guardianShield};
+}
+
 /** Personal progression: the cost of advancing from this level, with no XP beyond the cap. */
 export function xpToNextLevel(level){
   if(level>=RULES.maxLevel)return 0;

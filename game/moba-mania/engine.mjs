@@ -1,4 +1,4 @@
-import { HEROES, DIFFICULTIES, WORLD, RULES, lanePoint, segmentDistance, xpToNextLevel } from './data.mjs';
+import { HEROES, DIFFICULTIES, WORLD, RULES, lanePoint, segmentDistance, xpToNextLevel, beastScaling } from './data.mjs';
 import { castHeroSkill, botSkillAim } from './hero-skills.mjs';
 import { ITEMS, itemBonus, purchaseState } from './items.mjs';
 import { makeMetrics, canSee, updateVision, scoutJungle, strength, assignTeamJobs, nextBuildItem, chooseBotTalent } from './strategy.mjs';
@@ -13,6 +13,8 @@ const hostile=(a,b)=>a.team!==b.team && b.alive;
 const COLORS={physical:'#fff1cf',magic:'#86d8ff',fire:'#ff9e5b',poison:'#a9ee78',heal:'#98f2b8',shield:'#beccff'};
 const COMBAT_COLORS={steel:'#ffe8b5',fire:'#ff9948',arcane:'#69cfff',nature:'#8fe69a',poison:'#b0e86b',holy:'#ffa8d6',frost:'#9deaff',violet:'#bf97ff',stone:'#d7b68c'};
 const HERO_THEMES={arc:'arcane',dragon:'fire',druid:'nature',angel:'holy',ranger:'poison',bulwark:'violet',ember:'fire',seraph:'frost'};
+const PRESENTATION_TYPES=new Set(['ground-mark','structure-collapse','summon-arrive','summon-depart','beast-capture','reward-gold','reward-item','reward-level']);
+const effectPool=type=>type==='combat-burst'?'burst':PRESENTATION_TYPES.has(type)?'presentation':'spell';
 const movementStatus=layers=>{
   const strongest=layers.reduce((best,s)=>(s.factor||0)>(best.factor||0)?s:best,layers[0]);
   return {...strongest,layers,remaining:Math.max(...layers.map(s=>s.remaining)),factor:Math.max(...layers.map(s=>s.factor||0)),
@@ -143,33 +145,53 @@ export class Game {
     // A health upgrade adds its new capacity once; it never heals a dead hero or refills missing HP.
     if(hero.alive){hero.hp=Math.min(hero.maxHp,hero.hp+hero.maxHp-oldHp);hero.mana=Math.min(hero.maxMana,hero.mana+hero.maxMana-oldMana);}
     if(hero.isPlayer)this.announce(state.item.name+' equipped. Its bonuses are active.','purchase');
+    if(state.item.tier===3)this.presentation('reward-item',hero,2.1,{ownerId:hero.id,itemId:state.item.id,name:state.item.name,followId:hero.id});
     return true;
   }
   gainXP(hero,amount){
     if(hero?.kind!=='hero'||!Number.isFinite(amount)||amount<=0||hero.level>=RULES.maxLevel)return;
     hero.xp+=amount;
     while(hero.level<RULES.maxLevel&&hero.xp>=hero.xpNext){
-      hero.xp-=hero.xpNext;hero.level++;hero.xpNext=xpToNextLevel(hero.level);
+      const fromLevel=hero.level;hero.xp-=hero.xpNext;hero.level++;hero.xpNext=xpToNextLevel(hero.level);
       const oldHp=hero.maxHp,oldMana=hero.maxMana;this.refreshStats(hero);
       if(hero.alive){hero.hp=Math.min(hero.maxHp,hero.hp+(hero.maxHp-oldHp)+65);hero.mana=Math.min(hero.maxMana,hero.mana+(hero.maxMana-oldMana)+35);}
       this.effect('level',hero.x,hero.y,60,'#ffe38e',.9);this.float(hero,'LEVEL '+hero.level,'#ffe38e');
+      this.presentation('reward-level',hero,1.1,{ownerId:hero.id,fromLevel,toLevel:hero.level,level:hero.level,followId:hero.id});
       if(hero.isPlayer)this.announce('Level '+hero.level+(this.availableTalents(hero).length?' · choose a talent':' · growing stronger'),'level');
     }
     if(hero.level===RULES.maxLevel){hero.xp=0;hero.xpNext=0;}
   }
   announce(text,type='info'){this.events.push({id:this.eventId++,text,time:this.time,type});if(this.events.length>60)this.events.shift();}
   effect(type,x,y,r,color,life=0.6,extra={}){
-    const e={type,x,y,r,color,life,maxLife:life,...(this._castSource?{theme:this.combatTheme(this._castSource)}:{}),...extra};
+    const e={type,x,y,r,color,life,maxLife:life,createdAt:this.time,...(this._castSource?{theme:this.combatTheme(this._castSource),ownerId:this._castSource.id,abilityId:this._castSource.visualAction?.abilityId}:{}),...extra};
     this.effects.push(e);
     // Brief cosmetic bursts have their own budget; a busy fight cannot push out
     // long-lived fields, healing trees or other gameplay-readable spell effects.
-    const burst=type==='combat-burst',limit=burst?96:400;
+    const pool=effectPool(type),limit=pool==='burst'?96:pool==='presentation'?48:400;
     if(this.effects.length>limit){
       let count=0,oldest=-1;
-      for(let i=0;i<this.effects.length;i++)if((this.effects[i].type==='combat-burst')===burst){count++;if(oldest<0)oldest=i;}
+      for(let i=0;i<this.effects.length;i++)if(effectPool(this.effects[i].type)===pool){count++;if(oldest<0)oldest=i;}
       if(count>limit)this.effects.splice(oldest,1);
     }
+    // Stamps describe resolved magic, never the windup warning. They do not deal
+    // damage and live in the small presentation pool rather than the spell pool.
+    const mark=type==='flame'?'scorch':type==='frost'?'frost':type==='quake'?'quake':e.abilityId==='sky-cleave'&&type==='ring'?'scorch':type==='explosion'&&r>=40?(e.theme==='fire'?'scorch':e.theme==='poison'?'poison':e.theme==='stone'?'slam':null):null;
+    if(mark)this.groundMark(mark,{x,y},r,e.theme||'stone',{team:e.team,ownerId:e.ownerId});
     return e;
+  }
+  visualAudience(subject){return [0,1].filter(team=>subject.id!=null?this.canSee(team,subject):this.pointVisible(team,subject.x,subject.y));}
+  presentation(type,subject,life=1,extra={}){
+    if(!PRESENTATION_TYPES.has(type)||!subject||!Number.isFinite(subject.x)||!Number.isFinite(subject.y))return null;
+    const theme=extra.theme||this.combatTheme(subject),seed=(Math.imul(subject.id||0,73856093)^Math.imul(Math.round(this.time*1000),83492791)^Math.imul(Math.round(subject.x),19349663)^Math.round(subject.y)^Math.imul(type.length,2654435761))>>>0;
+    return this.effect(type,subject.x,subject.y,extra.r??((subject.r||16)+18),extra.color||COMBAT_COLORS[theme]||'#d7b68c',life,
+      {theme,seed,team:subject.team,visibilityId:subject.id,visibleTo:this.visualAudience(subject),...extra});
+  }
+  groundMark(mark,at,r,theme,extra={}){
+    if(this.effects.some(e=>e.type==='ground-mark'&&e.mark===mark&&this.time-e.createdAt<.7&&Math.hypot(e.x-at.x,e.y-at.y)<Math.min(40,r*.35)))return null;
+    return this.presentation('ground-mark',at,mark==='poison'?3.5:mark==='frost'?4.5:6,{...extra,mark,theme,r:clamp(r,16,180)});
+  }
+  visualAction(unit,kind,duration,extra={}){
+    unit.visualAction={kind,startedAt:this.time,impactAt:this.time,duration,angle:unit.angle||0,fromX:unit.x,fromY:unit.y,toX:unit.x,toY:unit.y,...extra};
   }
   combatTheme(source,type='magic',context={}){
     if(COMBAT_COLORS[context.theme])return context.theme;
@@ -272,6 +294,7 @@ export class Game {
     if(owner?.kind==='hero'){owner.metrics.damageDealt+=actual;if(target.kind==='hero')owner.metrics.damageToHeroes+=actual;if(structure(target))owner.metrics.damageToStructures+=actual;}
     if(target.kind==='hero')target.metrics.damageTaken+=actual;
     if(actual>1&&!quiet)this.float(target,Math.round(actual),COLORS[type]||type);
+    if(!quiet&&(actual>0||absorbed>0))target.visualHit={at:this.time,angle:context.angle??Math.atan2(target.y-(source?.y??target.y),target.x-(source?.x??target.x)),power:clamp(Math.sqrt(actual+absorbed)/15,.3,1.5)};
     if(absorbed>0&&(!quiet||target.shield<=0))this.combatBurst(target,source,target.shield>0?'shield-hit':'shield-break',shieldTheme,.6+Math.sqrt(absorbed)/14,{angle:context.angle??Math.atan2(target.y-(source?.y??target.y),target.x-(source?.x??target.x))});
     if(actual>0&&!quiet)this.combatBurst(target,source,'hit',this.combatTheme(source,type,context),.55+Math.sqrt(actual)/13,{angle:context.angle??Math.atan2(target.y-(source?.y??target.y),target.x-(source?.x??target.x))});
     if(target.hp<=0)this.kill(target,source);
@@ -280,6 +303,10 @@ export class Game {
   }
   kill(target,source){
     if(!target?.alive||source?.team===target.team)return;
+    const visibleTo=this.visualAudience(target);
+    target.visualDeath={at:this.time,kind:target.kind,visibleTo};
+    if(structure(target))this.presentation('structure-collapse',target,target.kind==='core'?1.3:1.05,{kind:target.kind,visibleTo,theme:target.kind==='core'?'arcane':'stone',color:target.team===0?'#64caff':'#ff98be',r:target.kind==='core'?125:58});
+    if(target.kind==='summon')this.presentation('summon-depart',target,.65,{subtype:target.subtype,ownerId:target.ownerId,visibleTo});
     this.combatBurst(target,source,'death',structure(target)?'stone':this.combatTheme(target,'physical'),target.kind==='hero'||structure(target)?1.7:.8);
     target.alive=false;target.hp=0;target.deathTime=.7;target.shield=0;target.shieldLayers=[];delete target.shieldVisual;
     const owner=this.owner(source),team=owner?.team??source?.team;
@@ -305,7 +332,7 @@ export class Game {
       killer.metrics.goldEarned+=gold;killer.metrics.lastHits++;if(shutdown){killer.metrics.shutdowns++;this.announce(HEROES[killer.heroId].name+' claims a '+shutdown+' gold shutdown bonus!','kill');}
       if(target.kind==='footman'||target.kind==='archer')killer.metrics.minionLastHits++;
       if(target.kind==='camp'||target.kind==='beast'&&target.team===-1)killer.metrics.jungleLastHits++;
-      if(killer.isPlayer)this.float(killer,'+'+gold+' GOLD','#ffd76b');
+      if(killer.isPlayer){this.float(killer,'+'+gold+' GOLD','#ffd76b');this.presentation('reward-gold',target,1.05,{amount:gold,ownerId:killer.id,visibleTo,theme:'holy',color:'#ffd76b'});}
     }
     if(target.kind==='hero'){
       if(target.isPlayer)this.cancelPlayerOrder();
@@ -329,8 +356,10 @@ export class Game {
       if(killer)killer.metrics.beastsCaptured++;
       const lane=this.teamPlans[team]?.lane??target.lane,p=lanePoint(lane,.5);
       const tier=target.tier||1;
-      const colossus=target.subtype==='colossus';
-      const allied=this.addUnit('beast',team,p.x,p.y,{subtype:target.subtype,name:target.name,tier,level:tier,scale:1+Math.min(.3,(tier-1)*.04),r:34,hp:(colossus?1600:1250)*(1+(tier-1)*.24),damage:(colossus?105:85)*(1+(tier-1)*.17),speed:colossus?88:116,range:colossus?72:58,attackRate:colossus?1.4:1.05,lane,waypoint:0,siege:true,siegeIn:1,dispatchIn:team===0?4:0});
+      const colossus=target.subtype==='colossus',power=beastScaling(tier,true);
+      const allied=this.addUnit('beast',team,p.x,p.y,{subtype:target.subtype,name:target.name,tier,level:tier,scale:1+Math.min(.3,(tier-1)*.04),r:34,hp:(colossus?1600:1250)*power.health,damage:(colossus?105:85)*power.damage,speed:colossus?88:116,range:colossus?72:58,attackRate:colossus?1.4:1.05,lane,waypoint:0,siege:true,siegeIn:1,dispatchIn:team===0?4:0});
+      allied.visualSpawn={at:this.time,duration:1.1,kind:'capture',subtype:allied.subtype};
+      this.presentation('beast-capture',allied,1.1,{subtype:allied.subtype,tier,theme:'arcane',color:team?'#ff98be':'#66d8ff',fromX:target.x,fromY:target.y,r:95});
       allied.path=this.lanePath(lane,team,allied);allied.waypoint=0;
       if(team===0)this.pendingBeastChoice={beastId:allied.id,team:0,lane,expiresAt:this.time+4};
       this.effect('level',p.x,p.y,120,team?'#ff98be':'#66d8ff',1.3);
@@ -397,8 +426,8 @@ export class Game {
   spawnBeast(index=0){
     const pit=WORLD.beastPits[index%WORLD.beastPits.length];
     if(this.units.some(u=>u.alive&&u.kind==='beast'&&u.team===-1&&u.pitId===pit.id))return null;
-    const tier=1+Math.floor(this.time/100);
-    const u=this.addUnit('beast',-1,pit.x,pit.y,{subtype:pit.type,pitId:pit.id,tier,level:tier,scale:1+Math.min(.3,(tier-1)*.04),name:pit.type==='maw'?'River Maw':'Moss Colossus',hp:1350*(1+(tier-1)*.22),damage:50*(1+(tier-1)*.16),
+    const tier=1+Math.floor(this.time/RULES.beastInterval),power=beastScaling(tier);
+    const u=this.addUnit('beast',-1,pit.x,pit.y,{subtype:pit.type,pitId:pit.id,tier,level:tier,scale:1+Math.min(.3,(tier-1)*.04),name:pit.type==='maw'?'River Maw':'Moss Colossus',hp:1350*power.health,damage:50*power.damage,
       speed:95,range:65,r:36,attackRate:1.2,lane:pit.lane,homeX:pit.x,homeY:pit.y,aggroUntil:0,slamIn:4});
     this.effect('explosion',u.x,u.y,150,'#e8ca77',1.2);this.announce('Tier '+tier+' '+u.name+' awakens between the lanes! Defeat it to summon a siege beast.','beast');return u;
   }
@@ -423,6 +452,7 @@ export class Game {
     const dx=aim.x-hero.x,dy=aim.y-hero.y,d=Math.hypot(dx,dy)||1,angle=d>1?Math.atan2(dy,dx):hero.angle;
     const at={x:clamp(hero.x+dx/d*Math.min(d,a.range),28,WORLD.width-28),y:clamp(hero.y+dy/d*Math.min(d,a.range),28,WORLD.height-28)};
     hero.mana-=a.mana;hero.cooldowns[slot]=a.cooldown;hero.recallIn=0;hero.angle=angle;hero.attackAnim=.32;
+    this.visualAction(hero,'cast',.42,{abilityId:a.id,angle,toX:at.x,toY:at.y});
     hero.revealedUntil=this.time+2;this._castSource=hero;
     const power=(1+(hero.level-1)*.075)*(1+this.bonus(hero,'damage'))*(1+this.bonus(hero,'spellDamage'));
     const zone=(type,duration,props={})=>this.zones.push({type,x:at.x,y:at.y,r:a.radius,life:duration,maxLife:duration,ownerId:hero.id,team:hero.team,tickIn:0,theme:this.combatTheme(hero),...props});
@@ -464,6 +494,7 @@ export class Game {
       case 'long-shot':this.fireSkill(hero,angle,{type:'longshot',color:a.color,r:a.radius,range:a.range,speed:830,damage:205*power*(1+this.bonus(hero,'longshotDamage')),pierce:3,damageType:'physical'});break;
       default:castHeroSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone});break;
     }
+    if(a.mobility||['rift-step','sky-cleave'].includes(a.id)){hero.visualAction.toX=hero.x;hero.visualAction.toY=hero.y;}
     this.combatBurst(hero,hero,'cast',this.combatTheme(hero),.8,{angle,abilityId:a.id});
     if(hero.isPlayer)this.cancelPlayerOrder();
     const restore=this.bonus(hero,'castHeal');if(restore)this.heal(hero,hero.maxHp*restore,hero);
@@ -472,12 +503,14 @@ export class Game {
   }
   summon(hero,subtype,count,at,lifetime){
     // A fresh cast replaces that owner's old same-species summons; no unbounded army stacking.
-    for(const old of this.units)if(old.alive&&old.kind==='summon'&&old.ownerId===hero.id&&old.subtype===subtype){old.alive=false;old.deathTime=.25;}
+    for(const old of this.units)if(old.alive&&old.kind==='summon'&&old.ownerId===hero.id&&old.subtype===subtype){this.presentation('summon-depart',old,.65,{subtype,ownerId:hero.id});old.alive=false;old.deathTime=.25;}
     const config={spirit:{hp:240,damage:28,speed:184,range:43,r:13},treant:{hp:420,damage:27,speed:124,range:46,r:19},bear:{hp:740,damage:61,speed:151,range:50,r:23},wolf:{hp:200,damage:31,speed:218,range:37,r:12}}[subtype];
     const scale=(1+(hero.level-1)*.08)*(1+this.bonus(hero,'summonPower'));
     for(let i=0;i<count;i++){
       const angle=i*Math.PI*2/count,p=this.safePoint({x:at.x+Math.cos(angle)*35,y:at.y+Math.sin(angle)*35},config.r);
       const summoned=this.addUnit('summon',hero.team,p.x,p.y,{...config,hp:config.hp*scale,damage:config.damage*scale,subtype,ownerId:hero.id,lifetime,attackRate:.95/(1+this.bonus(hero,'summonHaste')),lane:hero.lane,level:hero.level});
+      summoned.visualSpawn={at:this.time,duration:subtype==='treant'?.65:subtype==='bear'?.5:.45,kind:'summon',subtype};
+      this.presentation('summon-arrive',summoned,.7,{subtype,ownerId:hero.id,theme:this.combatTheme(hero),r:config.r+22});
       this.progressionHook(onSummon,hero,summoned,i);
       this.effect('level',p.x,p.y,40,HEROES[hero.heroId].color,.6);
     }
@@ -491,6 +524,7 @@ export class Game {
     if(!unit?.alive||!target?.alive||!hostile(unit,target)||this.isProtected(target)||unit.attackTimer>0||unit.status.stun||unit.recallIn||(unit.team>=0&&!this.canSee(unit.team,target)))return false;
     const d=dist(unit,target);if(d>unit.range+target.r+unit.r*.35)return false;
     unit.attackTimer=unit.attackRate/(1+(unit.status.haste?.attack||0));unit.attackAnim=.26;unit.angle=Math.atan2(target.y-unit.y,target.x-unit.x);
+    if(!(unit.visualAction?.impactAt>this.time))this.visualAction(unit,'attack',.32,{toX:target.x,toY:target.y});
     unit.revealedUntil=this.time+2;
     if(unit.range>100){
       const color=unit.kind==='tower'||unit.kind==='core'?(unit.team?'#ff98bc':'#87d5ff'):HEROES[unit.heroId]?.color||'#edd8a0';
@@ -577,7 +611,7 @@ export class Game {
   }
   respawn(h){
     const well=WORLD.bases[h.team].well;h.x=well.x+(h.team?-36:36);h.y=well.y+(h.slot-1)*30;h.hp=h.maxHp;h.mana=h.maxMana;h.alive=true;h.status={};h.shield=0;h.recallIn=0;
-    h.cooldowns=h.cooldowns.map(c=>Math.min(c,3));h.contributors={};h.supportContributors={};h.supporters={};h.combatTargets={};h.shieldLayers=[];delete h.shieldVisual;h.brain={};h.path=null;h.pathGoal=null;h.targetId=null;h.thinkIn=0;h.aiState='departing';h.ccRecoveryUntil=0;
+    h.cooldowns=h.cooldowns.map(c=>Math.min(c,3));h.contributors={};h.supportContributors={};h.supporters={};h.combatTargets={};h.shieldLayers=[];delete h.shieldVisual;delete h.visualAction;delete h.visualHit;delete h.visualDeath;delete h.visualSpawn;h.brain={};h.path=null;h.pathGoal=null;h.targetId=null;h.thinkIn=0;h.aiState='departing';h.ccRecoveryUntil=0;
     if(h.isPlayer)this.cancelPlayerOrder();this.effect('level',h.x,h.y,60,HEROES[h.heroId].color,.9);
   }
   validPlayerTarget(target){return !!target&&target.alive&&hostile(this.player,target)&&!this.isProtected(target)&&this.canSee(this.player.team,target);}
@@ -661,7 +695,7 @@ export class Game {
     }
   }
   tickSummon(u,dt){
-    u.lifetime-=dt;if(u.lifetime<=0){u.alive=false;u.deathTime=.4;this.effect('ring',u.x,u.y,35,'#a9e1cc',.4);return;}
+    u.lifetime-=dt;if(u.lifetime<=0){this.presentation('summon-depart',u,.65,{subtype:u.subtype,ownerId:u.ownerId});u.alive=false;u.deathTime=.4;this.effect('ring',u.x,u.y,35,'#a9e1cc',.4);return;}
     const owner=this.units.find(v=>v.id===u.ownerId),ownerTarget=this.units.find(v=>v.id===owner?.targetId&&v.alive&&this.canSee(u.team,v));
     let target=ownerTarget&&dist(u,ownerTarget)<460?ownerTarget:this.findTarget(u,300,true);
     if(target){u.targetId=target.id;if(!this.basicAttack(u,target)&&dist(u,target)>u.range+target.r)this.moveToward(u,target,dt);}
@@ -676,15 +710,17 @@ export class Game {
       if(u.kind==='beast'){
         u.slamIn-=dt;
         if(u.slamIn<=0){
-          const scale=1+((u.tier||1)-1)*.14;
+          const scale=beastScaling(u.tier).special;
           if(u.subtype==='maw'){
             u.slamIn=5.5;const angle=Math.atan2(target.y-u.y,target.x-u.x),delay=.75;
-            this.zones.push({type:'maw-bite',shape:'cone',x:u.x,y:u.y,r:195,range:195,angle,arc:Math.PI*.58,life:delay+.1,maxLife:delay+.1,delay,maxDelay:delay,tickIn:delay,ownerId:u.id,team:-1,damage:95*scale,color:'#e8b170',charge:120});
+            this.visualAction(u,'maw-bite',delay+.3,{impactAt:this.time+delay,angle,toX:target.x,toY:target.y});
+            this.zones.push({type:'maw-bite',shape:'cone',x:u.x,y:u.y,r:195,range:195,angle,arc:Math.PI*.58,life:delay+.1,maxLife:delay+.1,delay,maxDelay:delay,tickIn:delay,ownerId:u.id,team:-1,damage:95*scale,color:'#e8b170',charge:120,createdAt:this.time,fromX:u.x,fromY:u.y});
           }else{
             u.slamIn=6.5;const angle=Math.atan2(target.y-u.y,target.x-u.x);
+            this.visualAction(u,'colossus-rock',1.66,{impactAt:this.time+.8,angle,toX:target.x,toY:target.y});
             for(let i=0;i<3;i++){
               const p=this.safePoint({x:u.x+Math.cos(angle)*(80+i*80),y:u.y+Math.sin(angle)*(80+i*80)},12),delay=.8+i*.28;
-              this.zones.push({type:'colossus-rock',shape:'circle',x:p.x,y:p.y,r:67,life:delay+.1,maxLife:delay+.1,delay,maxDelay:delay,tickIn:delay,ownerId:u.id,team:-1,damage:75*scale,color:'#b1d783',slow:.4});
+              this.zones.push({type:'colossus-rock',shape:'circle',x:p.x,y:p.y,r:67,life:delay+.1,maxLife:delay+.1,delay,maxDelay:delay,tickIn:delay,ownerId:u.id,team:-1,damage:75*scale,color:'#b1d783',slow:.4,createdAt:this.time,fromX:u.x,fromY:u.y});
             }
           }
         }
@@ -701,7 +737,7 @@ export class Game {
       u.siegeIn=(u.siegeIn||0)-dt;
       if(u.siegeIn<=0){
         u.siegeIn=3;
-        for(const ally of this.nearby(u.x,u.y,155))if(ally.alive&&ally.team===u.team&&(ally.kind==='footman'||ally.kind==='archer')&&dist(u,ally)<145)this.shield(ally,45*(1+(u.tier-1)*.15),3.2,u);
+        for(const ally of this.nearby(u.x,u.y,155))if(ally.alive&&ally.team===u.team&&(ally.kind==='footman'||ally.kind==='archer')&&dist(u,ally)<145)this.shield(ally,45*beastScaling(u.tier,true).ward,3.2,u);
         this.effect('ring',u.x,u.y,145,'#b6d987',.55,{team:u.team});
       }
     }
@@ -730,6 +766,7 @@ export class Game {
         if(target.team===p.team&&p.healing)this.heal(target,p.healing,source);
         else{
           const actual=this.damage(target,p.damage*(structure(target)&&!p.basic ? .4 : 1),source,p.damageType||'physical',false,{basic:!!p.basic,theme:p.theme,angle:p.angle});
+          if(actual>0&&!p.basic&&(p.poison||p.burn))this.groundMark(p.poison?'poison':'scorch',{x:target.x,y:target.y},Math.min(32,p.r+14),p.poison?'poison':'fire',{ownerId:p.ownerId,team:p.team,visibilityId:target.id,visibleTo:target.alive?this.visualAudience(target):target.visualDeath?.visibleTo||[]});
           if(p.burn)this.applyStatus(target,'burn',p.burnDuration,{dps:p.burn,sourceId:p.ownerId});
           if(p.poison)this.applyStatus(target,'poison',p.poisonDuration,{dps:p.poison,sourceId:p.ownerId});
           if(p.basic&&source?.heroId&&this.bonus(source,'lifesteal'))this.heal(source,actual*this.bonus(source,'lifesteal'),source,true);
