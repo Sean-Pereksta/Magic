@@ -296,9 +296,16 @@ build('gateguard',magic,'game/gateguard.html',['game/gateguard.html','game/gateg
 build('goofywizard',magic,'game/Goofy Wizard.html',['game/Goofy Wizard.html'],edition=local_three('game/Goofy Wizard.html'))
 build('basketball2',magic,'game/basketball2/index.html',folders=['game/basketball2'],edition=local_three('game/basketball2/index.html'))
 def catlanes(root):
-    # The two case-distinct filenames collide in a Windows checkout.
-    data=subprocess.check_output(['git','-C',str(magic),'show','HEAD:game/CatLanes.html'])
-    (root/'index.html').write_bytes(data)
+    # Read current edits where both case-distinct entries can coexist. Windows
+    # checkouts collapse CatLanes.html/catlanes.html; git preserves the exact case.
+    names = {p.name for p in (magic/'game').iterdir()}
+    if {'CatLanes.html', 'catlanes.html'} <= names:
+        data = (magic/'game/CatLanes.html').read_bytes()
+    else:
+        data = subprocess.check_output(['git','-C',str(magic),'show','HEAD:game/CatLanes.html'])
+    data = re.sub(rb'<script type="module" src="/(?:Truth/)?hub/play-signal\.mjs"[^>]*></script>', b'', data)
+    (root/'index.html').write_bytes(data.replace(b'\r\n', b'\n'))
+    copy_tree(magic/'game/moba-mania', root/'moba-mania', skip={'README.md', 'CONTRACT.md'})
 build('mobamania',magic,'index.html',edition=catlanes)
 (out/'pack-index.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf8')
 print(f'{len(manifest)} offline packs, {sum(g["bytes"] for g in manifest.values()):,} bytes')

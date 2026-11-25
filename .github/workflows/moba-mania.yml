@@ -1,0 +1,59 @@
+name: MOBA Mania
+
+on:
+  pull_request:
+    paths:
+      - 'game/CatLanes.html'
+      - 'game/moba-mania/**'
+      - 'tests/moba-mania*'
+      - 'desktop-hub/content/build-packs.py'
+      - '.github/workflows/moba-mania.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: moba-mania-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  combat-and-controls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /game/CatLanes.html
+            /game/catlanes.html
+            /game/moba-mania/
+            /tests/moba-mania*
+            /lobby/lobby-core.html
+            /lobby/assets/game-artwork.json
+            /desktop-hub/content/build-packs.py
+            /desktop-hub/content/catalog.json
+            /desktop-hub/content/pack-index.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify battle mechanics
+        run: node --test tests/moba-mania.test.mjs
+      - name: Install browser test runtime
+        run: |
+          npm install --prefix "$RUNNER_TEMP/moba-browser" --no-save --package-lock=false --ignore-scripts playwright@1.62.1
+          node "$RUNNER_TEMP/moba-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Verify desktop, touch, replay, and offline pack
+        env:
+          NODE_PATH: ${{ runner.temp }}/moba-browser/node_modules
+          MOBA_QA_OUTPUT: ${{ runner.temp }}/moba-qa
+        run: node tests/moba-mania-browser.cjs
+      - name: Keep test screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: moba-mania-controls
+          path: ${{ runner.temp }}/moba-qa
+          if-no-files-found: ignore
+          retention-days: 7
