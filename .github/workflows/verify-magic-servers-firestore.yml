@@ -93,7 +93,9 @@ jobs:
                 const directory = createFirebaseDirectory({
                   dataDir, fetchImpl: publisherFetch, timeoutMs: 8000, listingCollection,
                   joinPath: acorn ? '/?room=join' : '/__catnmice/join',
-                  listingExtras: () => acorn ? {} : { hostId: { stringValue: hostId }, joinable: { booleanValue: true } }
+                  listingExtras: listing => acorn ? {} : {
+                    hostId: { stringValue: hostId }, joinable: { booleanValue: listing.phase === 'waiting' }
+                  }
                 });
                 const record = { origin: quickTunnel, name: verificationName, visibility: 'code', phase: 'waiting',
                   players: 1, capacity: 4, queued: 0 };
@@ -112,10 +114,19 @@ jobs:
                   assert.ok(renewed, 'The host can renew its lease');
                   lease = renewed;
                   assert.equal((await guestDirectory.byCode(game, lease.code))?.players, 2, 'Renewal updates the directory');
+                  const publicLease = await directory.renew({
+                    ...record, visibility: 'public', phase: 'finished', queued: acorn ? 128 : 0
+                  }, lease);
+                  assert.ok(publicLease, 'The host can publish a public listing');
+                  lease = publicLease;
+                  const browse = await guestDirectory.publicServers(game);
+                  const publicEntry = browse.find(room => room.code === lease.code && room.name === verificationName);
+                  assert.equal(publicEntry?.phase, 'finished', 'The public listing appears in guest browse results');
+                  assert.equal(publicEntry.joinable, false, 'The verification listing has no playable seat');
                   await directory.release(lease);
                   assert.equal(await guestDirectory.byCode(game, lease.code), null, 'The host can remove its listing');
                   lease = undefined;
-                  console.log(game + ' host registration, guest lookup, renewal, and cleanup passed.');
+                  console.log(game + ' host registration, guest lookup, renewal, public browse, and cleanup passed.');
                 } catch (err) {
                   if (authFailure) throw new Error(game + ' anonymous authentication failed: ' + authFailure);
                   if (err.status) throw new Error(game + ' host Firestore operation returned HTTP ' + err.status);
