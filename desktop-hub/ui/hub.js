@@ -35,6 +35,7 @@ const multiplayer = (game) => (game.modes || []).includes('multi') || (game.acti
 const packs = () => games().filter(game => game.offline);
 const supported = (g) => g.offline && (installed(g.id) || g.offline.available !== false);
 const playsLocally = (game) => localLobbyGames.includes(game.id) || game.offline?.type === 'native-windows';
+const usesSeparateOnlineEdition = (game) => game.id === 'mobamania' && Boolean(game.multiplayerRoute);
 const normalize = (value) => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 
 function mediaPath(path) {
@@ -123,7 +124,7 @@ function hostLobby(game) {
 }
 function launchButton(game, compact = false) {
   if (playsLocally(game)) return btn('Play','play',{id:game.id,mode:'offline'},'gold','play');
-  const offline = installed(game.id) && (state.online === false || Boolean(game.hotseatRoute));
+  const offline = installed(game.id) && (state.online === false || game.hotseatRoute || usesSeparateOnlineEdition(game));
   const mode = offline ? 'offline' : 'online';
   const action = (game.actions || []).find(a => a.type === 'single') || onlinePlay(game);
   return btn(compact ? 'Play' : offline ? 'Play Offline' : 'Play', 'play', {id:game.id,mode,kind:action.type || ''}, 'gold','play');
@@ -151,14 +152,16 @@ function gameControls(game) {
   if (game.hotseatRoute && installed(game.id)) out.push(btn('Hot Seat','play',{id:game.id,mode:'offline',kind:'hotseat'},'glass','play'));
   const onlineAction = onlinePlay(game);
   if (onlineAction.type) {
-    const label = (game.offline || onlineAction.type !== 'single') ? 'Play Online' : 'Play';
+    const label = usesSeparateOnlineEdition(game) ? game.joinLabel || 'Online Lobbies' : (game.offline || onlineAction.type !== 'single') ? 'Play Online' : 'Play';
     out.push(btn(label,'play',{id:game.id,mode:'online',kind:onlineAction.type},out.length ? 'glass':'gold','play'));
     for (const action of actions) {
       if (action.type === onlineAction.type || (game.hotseatRoute && installed(game.id) && ['single','hotseat'].includes(action.type))) continue;
+      if (usesSeparateOnlineEdition(game) && (action.type === 'live' || installed(game.id) && action.type === 'single')) continue;
       const label = action.type === 'single' ? 'Play solo online' : action.label;
       out.push(btn(label,'play',{id:game.id,mode:'online',kind:action.type},'glass'));
     }
   } else out.push(launchButton(game));
+  if (usesSeparateOnlineEdition(game) && game.liveLobbyGame) out.push(btn(game.liveJoinLabel || 'Live Join','game-lobbies',{id:game.liveLobbyGame},'glass','lobbies'));
   out.push(hostLobby(game));
   if (state.online && ids(state.saveSyncGames).includes(game.id)) out.push(btn('Sync game saves','play',{id:game.id,mode:'save-sync'},'glass','disc'));
   return out.join('');
@@ -569,6 +572,7 @@ function onAction(el) {
       if(Number(el.dataset.expires)<=Date.now()){loadPublicServers();message('This listing expired. Choose an open server.');}
       else dispatch('joinPublicServer',{id,code:el.dataset.code});
       break;
+    case 'game-lobbies':lobbyGame=id;navigate('Live Lobbies');break;
     case 'detail': navigate('Library',id);break;
     case 'quickplay': case 'replay': {
       const game = matches(id);
@@ -579,7 +583,7 @@ function onAction(el) {
       }
       const last = action==='replay' && state.recent?.find?.(e=>typeof e==='object' && (e.id || e.key)===id);
       if (last?.mode==='offline' && installed(id)) dispatch('play',{id,mode:'offline'});
-      else if (installed(id) && (state.online===false || game.hotseatRoute)) dispatch('play',{id,mode:'offline',action:'single'});
+      else if (installed(id) && (state.online===false || game.hotseatRoute || usesSeparateOnlineEdition(game))) dispatch('play',{id,mode:'offline',action:'single'});
       else dispatch('play',{id,mode:'online',action:(game.actions || [])[0]?.type || ''});
       break;
     }

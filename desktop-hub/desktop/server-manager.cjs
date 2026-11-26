@@ -36,6 +36,8 @@ const editions = {
     'hub-runtime', 'manager/adapter.mjs', 'game/catandmouse/edition/server/match-server.mjs'),
   lastsignal: managedEdition(8795, 'native-windows', 'Last Signal.exe', 'manager/supervisor.cjs',
     'Hosting', 'manager/adapter.mjs', 'Mobile/index.html'),
+  mobamania: managedEdition(8796, 'static', 'index.html', 'moba-mania/server/host.mjs',
+    'hub-runtime', 'manager/adapter.mjs', 'moba-mania/online-match.mjs'),
 };
 const supportsServerManager = id => Object.hasOwn(editions, id);
 

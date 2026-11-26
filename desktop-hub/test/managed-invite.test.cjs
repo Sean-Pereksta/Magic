@@ -66,7 +66,7 @@ function allowed(session,url,resourceType='xhr',method='GET') {
 
 test('desktop game handoffs open only scoped multiplayer invitations in an isolated guest session', async () => {
   const origin='https://chosen-host.trycloudflare.com', join=origin+'/__catnmice/join';
-  for (const id of ['bannerlands','trashtactics','cat','acornrally']) {
+  for (const id of ['bannerlands','trashtactics','cat','acornrally','mobamania']) {
     const { open,views,sessions,external,windows,ipc }=windowsHarness();
     const local='http://127.0.0.1:43125/', localSession={persisted:true};
     let hostStarts=0;
@@ -127,6 +127,9 @@ test('invite validation keeps game-specific routes, leading zeroes and bounded n
     assert.equal(managedInvite('cat',base+suffix),null);
   }
   assert.equal(managedInvite('lastsignal',base),base);
+  assert.equal(managedInvite('mobamania',base+'?name=Player+1#code=0007'),base+'?name=Player+1#code=0007');
+  assert.equal(managedInvite('mobamania',base+'#code=0007'),base+'#code=0007');
+  assert.equal(managedInvite('mobamania',base+'?name=one&name=two'),null);
   assert.equal(managedInvite('acornrally',base),null);
   assert.equal(managedInvite('other',base),null);
   const official='https://rally.catnmice.com/?room=join#join=1';
@@ -156,4 +159,31 @@ test('Acorn desktop discovery can read its listing and probe a host while retain
   assert.equal(allowed(ses,origin+'/api/rooms/status'),false);
   configureSaveSession(ses,{gameId:'other',origin:local});
   assert.equal(allowed(ses,directory+':runQuery','xhr','POST'),false);
+});
+
+test('MOBA Mania’s local menu can read its directory and probe lobby status in its own save session', () => {
+  const directory = 'https://firestore.googleapis.com/v1/projects/magic-servers-1ca0c/databases/(default)/documents';
+  const moba = directory + '/managedGameDirectories/mobamania';
+  const local = 'http://127.0.0.1:43125', host = 'https://one-host.trycloudflare.com';
+  const ses = { webRequest: { onBeforeRequest(callback) { ses.filter = callback; } } };
+  const close = configureSaveSession(ses, { gameId: 'mobamania', origin: local });
+  assert.ok(allowed(ses, local + '/moba-mania/managed-servers.js', 'script'));
+  assert.ok(allowed(ses, moba + ':runQuery', 'xhr', 'POST'));
+  assert.ok(allowed(ses, moba + ':runQuery', 'xhr', 'OPTIONS'));
+  for (const url of [moba + '/lobbies/0009', host + '/__catnmice/status']) {
+    assert.ok(allowed(ses, url));
+    assert.equal(allowed(ses, url, 'mainFrame'), false);
+    assert.equal(allowed(ses, url, 'xhr', 'PATCH'), false);
+  }
+  assert.equal(allowed(ses, directory + ':runQuery', 'xhr', 'POST'), false);
+  assert.equal(allowed(ses, directory + '/managedGameDirectories/cat:runQuery', 'xhr', 'POST'), false);
+  assert.equal(allowed(ses, directory + '/managedGameDirectories/cat/lobbies/0009'), false);
+  assert.equal(allowed(ses, moba + '/lobbies'), false);
+  assert.equal(allowed(ses, moba + '/lobbies/009'), false);
+  assert.equal(allowed(ses, host + '/__catnmice/join'), false);
+  assert.equal(allowed(ses, host + '/__catnmice/status?unexpected=1'), false);
+  assert.equal(allowed(ses, 'https://evil.example/__catnmice/status'), false);
+  close();
+  assert.equal(allowed(ses, host + '/__catnmice/status'), false);
+  assert.equal(allowed(ses, moba + ':runQuery', 'xhr', 'POST'), false);
 });

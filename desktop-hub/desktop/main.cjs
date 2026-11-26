@@ -50,7 +50,8 @@ function start({root,bundled,data,ready,startupFailed}){
         ['Last Signal.exe','Hosting/cloudflared.exe','Assets/models.bin','Mobile/index.html']
           .every(file=>fs.statSync(path.join(folder,file),{throwIfNoEntry:false})?.isFile());
     }
-    if(supportsServerManager(id))return hasServerManagerPack(id,spec,folder);
+    if(supportsServerManager(id)&&id!=='mobamania')return hasServerManagerPack(id,spec,folder);
+    // MOBA Mania's existing solo pack remains playable while hosting is installed separately.
     return typeof spec?.entry==='string' && fs.statSync(inDir(folder,spec.entry.split(/[?#]/)[0]),{throwIfNoEntry:false})?.isFile();
   }
   function localPack(id,validate=validPack){
@@ -263,11 +264,25 @@ function start({root,bundled,data,ready,startupFailed}){
   async function playWeb(game,p,action,mode='online'){
     const chosen=action||game.actions.find(a=>['lobby','online','live'].includes(a.type))?.type||game.actions[0].type;
     if(!game.actions.some(a=>a.type===chosen))throw Error('The website does not support this action.');
+    if(game.id==='mobamania'&&chosen==='online'&&game.multiplayerRoute){
+      const url=new URL(game.multiplayerRoute,SITE);
+      if(url.origin!==SITE||url.pathname!=='/game/CatLanes.html'||url.searchParams.get('online')!=='1')throw Error('Invalid MOBA Mania online route.');
+      const browser=session.fromPartition('catnmice-moba-online-'+randomUUID(),{cache:false});
+      await open({title:game.title,game,mode,player:p,url:url.href,session:browser,action:chosen});
+      return;
+    }
     await open({title:game.title,game,mode,player:p,url:LOBBY,session:session.fromPartition(p.partition),action:chosen,initial:cardScript(game.id,chosen),onProfile:s=>{if(p.username===s.username)profileChangedIfNeeded(p,s);}});
+  }
+  async function openManagedGuest(title,url){
+    const origin=new URL(url).origin;
+    const isolated=session.fromPartition('catnmice-guest-'+randomUUID(),{cache:false});
+    restrictGuestSession(isolated,origin);
+    await open({title,url,session:isolated,mode:'join',guestOrigin:origin});
   }
   async function play({id,mode,action,invite}){
     const game=known(id),p=profile();
-    const requestedAction=game.hotseatRoute ? action || (mode==='offline' ? 'single' : game.actions.find(a=>['lobby','online','live'].includes(a.type))?.type || 'single') : undefined;
+    const distinctActions=game.hotseatRoute||id==='mobamania';
+    const requestedAction=distinctActions ? action || (mode==='offline' ? 'single' : game.actions.find(a=>['lobby','online','live'].includes(a.type))?.type || 'single') : undefined;
     if(focusGame(id,mode,requestedAction)||launching.has(id))return;
     launching.add(id);
     let server,disconnect;
@@ -339,8 +354,9 @@ function start({root,bundled,data,ready,startupFailed}){
           rollback(id);row(id,'restored','Restored the previous game pack and its saves');
         }
         if(!installed(game))await install(id);
-        const ses=saveSession(game,p);
-        server=await startOffline({...game,offline:packSpec(id)},installedDir(id),undefined,{sync:mode==='save-sync'});
+        const pack=id==='mobamania'?localPack(id):null;
+        const ses=saveSession(game,p,pack?.version);
+        server=await startOffline({...game,offline:pack?.spec??packSpec(id)},pack?.root??installedDir(id),undefined,{sync:mode==='save-sync'});
         const origin=new URL(server.url).origin;
         disconnect=configureSaveSession(ses,{gameId:id,origin,sync:mode==='save-sync'});
         await open({title:mode==='save-sync'?game.title+' · Cloud saves':game.title,game,mode,player:p,url:offlineLaunchUrl(game,server.url,action||'single'),session:ses,offline:true,action:requestedAction,close:closeLocal});
@@ -414,10 +430,7 @@ function start({root,bundled,data,ready,startupFailed}){
         if(!server)throw Error('This server has no seat available or has gone offline.');
         const url=managedInvite(d.id,directory.joinUrl(server));
         if(!url)throw Error('Invalid game server invitation.');
-        const origin=new URL(url).origin;
-        const isolated=session.fromPartition('catnmice-guest-'+randomUUID(),{cache:false});
-        restrictGuestSession(isolated,origin);
-        await open({title:directory.titles[d.id]+' Multiplayer',url,session:isolated,mode:'join',guestOrigin:origin});
+        await openManagedGuest(directory.titles[d.id]+' Multiplayer',url);
         return;
       }
       case 'serverStart':return manager.start(known(d.id),d);
@@ -449,6 +462,8 @@ function start({root,bundled,data,ready,startupFailed}){
       case 'invite':{
         const arena=arenaInvite(d.url);
         if(arena)return play({id:'lastsignal',mode:'join',invite:arena});
+        const managed=Object.keys(directory.titles).map(id=>managedInvite(id,d.url)).find(Boolean);
+        if(managed)return openManagedGuest('Catnmice server invitation',managed);
         const guest=joinGuestInvite(d.url);
         const ses=guest?session.fromPartition('persist:catnmice-guest-invites'):session.fromPartition(profile().partition);
         return open({title:'Catnmice invitation',url:guest||validInvite(d.url),player:profile(),session:ses}).then(()=>undefined);

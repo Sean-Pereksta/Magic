@@ -8,7 +8,7 @@ const { EventEmitter } = require('node:events');
 const { test } = require('node:test');
 const { createServerManager, hasServerManagerPack } = require('../desktop/server-manager.cjs');
 
-test('four independent managed games use their own native pack, port, settings and join endpoint', async t => {
+test('managed games use their own pack, port, settings and join endpoint', async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'catnmice-managed-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const fixtures = [
@@ -16,6 +16,7 @@ test('four independent managed games use their own native pack, port, settings a
     ['trashtactics','game/trash-tactics/index.html','game/trash-tactics/hosting/launch.mjs','hub-runtime','adapter.mjs','game/trash-tactics/server.mjs'],
     ['cat','game/catandmouse/edition/index.html','game/catandmouse/edition/server/launcher.mjs','hub-runtime','adapter.mjs','game/catandmouse/edition/server/match-server.mjs'],
     ['lastsignal','Last Signal.exe','manager/supervisor.cjs','Hosting','adapter.mjs','Mobile/index.html'],
+    ['mobamania','index.html','moba-mania/server/host.mjs','hub-runtime','adapter.mjs','moba-mania/online-match.mjs'],
   ];
   const children = new Map(), packs = new Map(), ports = new Set();
   const manager = createServerManager({
@@ -26,6 +27,7 @@ test('four independent managed games use their own native pack, port, settings a
       assert.deepEqual(args, [path.join(cwd, 'manager', 'supervisor.cjs')]);
       assert.equal(env.CATNMICE_DATA_DIR, path.join(root,'private','servers',env.CATNMICE_GAME_ID));
       assert.equal(env.CATNMICE_CLOUDFLARED, path.join(cwd, packs.get(env.CATNMICE_GAME_ID).spec.tunnel));
+      if (env.CATNMICE_GAME_ID === 'mobamania') assert.equal(env.CATNMICE_PORT, '8796');
       ports.add(env.CATNMICE_PORT);
       const child = new EventEmitter();
       child.connected = true;
@@ -55,18 +57,19 @@ test('four independent managed games use their own native pack, port, settings a
     assert.equal(manager.status(game).code, visibility === 'code' ? '0007' : undefined);
     assert.equal(new URL(manager.localLink(id)).pathname, '/__catnmice/join');
     assert.equal(manager.diagnostics(game).diagnosticsState, 'starting');
+    const maxPlayers = id === 'mobamania' ? 6 : 4;
     children.get(id).emit('message', { type:'game-host-diagnostics', diagnostics: {
-      playerCount: 3, maxPlayers: 4, tunnelRttMs: 121.4, directoryStatus: 'listed',
+      playerCount: 3, maxPlayers, tunnelRttMs: 121.4, directoryStatus: 'listed',
     } });
     assert.equal(manager.diagnostics(game).diagnosticsState, 'live');
     assert.equal(manager.diagnostics(game).metrics.playerCount, 3);
-    assert.equal(manager.diagnostics(game).metrics.maxPlayers, 4);
+    assert.equal(manager.diagnostics(game).metrics.maxPlayers, maxPlayers);
     assert.equal(manager.diagnostics(game).metrics.tunnelRttMs, 121.4);
     assert.equal(manager.diagnostics(game).metrics.directoryStatus, 'listed');
     children.get(id).emit('message', { type:'game-host-status', status:'starting', resetDiagnostics:true });
     assert.equal(manager.diagnostics(game).metrics, undefined);
   }
-  assert.equal(ports.size, 4);
+  assert.equal(ports.size, fixtures.length);
   children.get('lastsignal').emit('message', { type:'game-host-status',status:'lan-only',code:'0008' });
   assert.equal(manager.status({id:'lastsignal'}).code,'0008');
   await manager.stop('cat');
