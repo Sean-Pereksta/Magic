@@ -31,8 +31,9 @@ function listing(game, code, label, players = 0, visibility = 'public', phase = 
   const fields = Object.fromEntries(Object.entries(info).map(([key, val]) => [key, { stringValue: val }]));
   fields.players = { integerValue: String(players) };
   fields.queued = { integerValue: '0' };
-  fields.joinable = { booleanValue: players < 4 && phase === 'waiting' };
-  fields.capacity = { integerValue: '4' };
+  const capacity = game === 'mobamania' ? 6 : 4;
+  fields.joinable = { booleanValue: players < capacity && phase === 'waiting' };
+  fields.capacity = { integerValue: String(capacity) };
   fields.updatedAt = { timestampValue: new Date().toISOString() };
   fields.expiresAt = { timestampValue: new Date(Date.now() + 90000).toISOString() };
   const collection = acorn ? '/acornRallyLobbies/' : '/managedGameDirectories/' + game + '/lobbies/';
@@ -70,7 +71,7 @@ function setup(game, docs, statuses = {}) {
     const route = acorn ? {game: 'acorn-rally', waiting: 0, queueEnabled: true} :
       {game, hostId: f.hostId.stringValue, queued: 0, joinable: true};
     return reply({ ...route, phase: f.phase.stringValue,
-      visibility: f.visibility.stringValue, players: Number(f.players.integerValue), capacity: 4, ...overrides });
+      visibility: f.visibility.stringValue, players: Number(f.players.integerValue), capacity: Number(f.capacity.integerValue), ...overrides });
   }
   vm.runInNewContext(script, { window, document, URL, URLSearchParams, AbortController, fetch, setTimeout, clearTimeout });
   return { requests, navigations, open: options => {
@@ -80,11 +81,11 @@ function setup(game, docs, statuses = {}) {
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
-for (const game of ['bannerlands', 'trashtactics', 'cat', 'lastsignal']) {
+for (const game of ['bannerlands', 'trashtactics', 'cat', 'lastsignal', 'mobamania']) {
   test(game + ' Live Join verifies the host and prefers an available lobby', async () => {
     const docs = [listing(game, '0001', 'expired'), listing(game, '0002', 'wrong-host'),
       listing(game, '0003', 'playing', 0, 'public', 'playing'), listing(game, '0004', 'locked'),
-      listing(game, '0005', 'offline'), listing(game, '0006', 'full', 4),
+      listing(game, '0005', 'offline'), listing(game, '0006', 'full', game === 'mobamania' ? 6 : 4),
       listing(game, '0007', 'waiting', 2), listing(game, '0008', 'private', 0, 'code')];
     docs[0].fields.expiresAt.timestampValue = new Date(0).toISOString();
     const app = setup(game, docs, { 'wrong-host': { hostId: 'other' }, locked: { joinable: false }, offline: false });

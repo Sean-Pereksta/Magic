@@ -28,7 +28,7 @@ const movementStatus=layers=>{
 
 /** Deterministic, DOM-free battle simulation; all durations are seconds. */
 export class Game {
-  constructor({hero='arc',difficulty='normal',seed=Date.now()}={}) {
+  constructor({hero='arc',difficulty='normal',seed=Date.now(),teams=null}={}) {
     this.difficulty=DIFFICULTIES[difficulty]?difficulty:'normal';
     this.seed=Number(seed)>>>0||1; this.randomState=this.seed;
     this.time=0; this.paused=false; this.winner=null; this.units=[]; this.projectiles=[];
@@ -40,6 +40,30 @@ export class Game {
     this.campStates=WORLD.camps.map(c=>({...c,respawnIn:0,spawned:false,scoutedEmptyUntil:[0,0]}));
     this.grid=new Map(); this.navCache=new Map();
     this.lastSeen=[{},{}];this.assignments=[{},{}];this.pendingBeastChoice=null;this.scheduledImpacts=[];this.progressionDepth=0;
+    if(teams){
+      this.online=true;this.humanControls=new Map();this.teamOrders=[null,null];this.pendingBeastChoices=[null,null];
+    }
+    const rosters=teams||this.soloRosters(hero);
+    for(let team=0;team<2;team++) {
+      const base=WORLD.bases[team];
+      this.addUnit('core',team,base.x,base.y,{r:48,hp:7200,range:290,damage:90,attackRate:1.15,name:team?'Rose Crystal':'Azure Crystal'});
+      for(let lane=0;lane<3;lane++)for(let tier=0;tier<2;tier++) {
+        const p=lanePoint(lane,team?1-(tier===0?.31:.13):(tier===0?.31:.13));
+        this.addUnit('tower',team,p.x,p.y,{r:28,hp:tier===0?5200:6500,range:270,damage:tier===0?82:98,attackRate:1.05,lane,tier,name:WORLD.lanes[lane].name+' '+(tier?'inner':'outer')+' tower'});
+      }
+      const roster=rosters[team];
+      const jungleSlot=roster.findIndex(id=>HEROES[id].aiRole==='jungler'||id==='druid'||id==='ranger'||id==='ember');
+      roster.forEach((id,slot)=> {
+        const h=this.makeHero(id,team,slot,!this.online&&team===0&&slot===0);
+        h.role=slot===jungleSlot?'jungler':HEROES[id].aiRole==='support'||id==='angel'?'support':'laner';
+        if(h.isPlayer){this.player=h;this.playerId=h.id;}
+      });
+    }
+    for(const camp of this.campStates)this.spawnCamp(camp);
+    this.rebuildGrid();
+    this.announce('Protect your crystal. Break a lane, then destroy theirs.','start');
+  }
+  soloRosters(hero){
     const chosen=HEROES[hero]?hero:'arc';
     const partners={arc:['dragon','druid'],dragon:['angel','ranger'],druid:['bulwark','seraph'],angel:['dragon','ember'],ranger:['bulwark','seraph'],bulwark:['arc','ember'],ember:['bulwark','angel'],seraph:['bulwark','ranger'],rivet:['brinehook','solstice'],brinehook:['vela','angel'],vela:['brinehook','solstice'],solstice:['dragon','rivet'],ferrite:['cadence','ranger'],cadence:['ferrite','vela'],mirelle:['knell','zephyr'],knell:['prism','mirelle'],zephyr:['prism','knell'],prism:['zephyr','mirelle']};
     const allies=[chosen,...(partners[chosen]||Object.keys(HEROES).filter(id=>id!==chosen).slice(0,2))];
@@ -53,24 +77,24 @@ export class Game {
     }
     for(const id of pool)if(enemies.length<enemyCount&&!enemies.includes(id)&&!(['arc','druid'].includes(id)&&enemies.some(h=>['arc','druid'].includes(h))))enemies.push(id);
     for(const id of pool)if(enemies.length<enemyCount&&!enemies.includes(id))enemies.push(id);
-    for(let team=0;team<2;team++) {
-      const base=WORLD.bases[team];
-      this.addUnit('core',team,base.x,base.y,{r:48,hp:7200,range:290,damage:90,attackRate:1.15,name:team?'Rose Crystal':'Azure Crystal'});
-      for(let lane=0;lane<3;lane++)for(let tier=0;tier<2;tier++) {
-        const p=lanePoint(lane,team?1-(tier===0?.31:.13):(tier===0?.31:.13));
-        this.addUnit('tower',team,p.x,p.y,{r:28,hp:tier===0?5200:6500,range:270,damage:tier===0?82:98,attackRate:1.05,lane,tier,name:WORLD.lanes[lane].name+' '+(tier?'inner':'outer')+' tower'});
-      }
-      const roster=team?enemies:allies;
-      const jungleSlot=roster.findIndex(id=>HEROES[id].aiRole==='jungler'||id==='druid'||id==='ranger'||id==='ember');
-      roster.forEach((id,slot)=> {
-        const h=this.makeHero(id,team,slot,team===0&&slot===0);
-        h.role=slot===jungleSlot?'jungler':HEROES[id].aiRole==='support'||id==='angel'?'support':'laner';
-        if(h.isPlayer){this.player=h;this.playerId=h.id;}
-      });
-    }
-    for(const camp of this.campStates)this.spawnCamp(camp);
-    this.rebuildGrid();
-    this.announce('Protect your crystal. Break a lane, then destroy theirs.','start');
+    return [allies,enemies];
+  }
+  controlFor(hero){return this.humanControls?this.humanControls.get(hero?.id):this;}
+  setHumanControl(hero,human){
+    if(!this.humanControls||hero?.kind!=='hero'||!this.units.includes(hero))return false;
+    if(hero.isPlayer===human)return false;
+    cancelExpansionChannel(this,hero);
+    if(human)this.humanControls.set(hero.id,{aim:null,moveTarget:null,attackOrder:null,attackHeld:false,input:{}});
+    this.cancelPlayerOrder(hero);
+    if(!human)this.humanControls.delete(hero.id);
+    hero.isPlayer=human;hero.bot=!human;hero.thinkIn=0;hero.recallIn=0;hero.brain={};
+    return true;
+  }
+  teamOrder(team){return this.online?this.teamOrders[team]:team===0?this.order:null;}
+  beastChoice(team){return this.online?this.pendingBeastChoices[team]:team===0?this.pendingBeastChoice:null;}
+  setBeastChoice(team,choice){
+    if(this.online)this.pendingBeastChoices[team]=choice;
+    else if(team===0)this.pendingBeastChoice=choice;
   }
   random(){let x=this.randomState;x^=x<<13;x^=x>>>17;x^=x<<5;this.randomState=x>>>0;return this.randomState/4294967296;}
   serialize(){return serializeGame(this);}
@@ -80,7 +104,7 @@ export class Game {
   pointVisible(team,x,y){return this.visionSources(team).some(s=>Math.hypot(x-s.x,y-s.y)<=s.r);}
   lastHitDamage(attacker,target){
     if(!attacker?.alive||!target?.alive||attacker.team===target.team||this.isProtected(target))return 0;
-    let value=expansionAttackPreview(this,attacker);
+    let value=expansionAttackPreview(this,attacker)*this.heroDamageMultiplier(attacker,target);
     if(structure(target)){
       if(attacker.kind==='footman'||attacker.kind==='archer')value*=.32;
       if(attacker.kind==='summon')value*=.22;
@@ -135,7 +159,7 @@ export class Game {
     const oldHp=hero.maxHp,oldMana=hero.maxMana;hero.talents[tierLevel]=choiceId;this.refreshStats(hero);
     hero.hp=Math.min(hero.maxHp,hero.hp+hero.maxHp-oldHp);hero.mana=Math.min(hero.maxMana,hero.mana+hero.maxMana-oldMana);
     this.effect('level',hero.x,hero.y,52,HEROES[hero.heroId].color,.75);
-    if(hero.isPlayer)this.announce(choice.name+' learned.','talent');return true;
+    if(hero.isPlayer)this.announceFor(hero,choice.name+' learned.','talent');return true;
   }
   refreshStats(hero){
     const def=HEROES[hero.heroId];hero.maxHp=Math.round((def.hp+(hero.level-1)*62)*(1+this.bonus(hero,'hp')));
@@ -151,7 +175,7 @@ export class Game {
     hero.gold-=state.item.cost;hero.items.push(state.item.id);this.refreshStats(hero);
     // A health upgrade adds its new capacity once; it never heals a dead hero or refills missing HP.
     if(hero.alive){hero.hp=Math.min(hero.maxHp,hero.hp+hero.maxHp-oldHp);hero.mana=Math.min(hero.maxMana,hero.mana+hero.maxMana-oldMana);}
-    if(hero.isPlayer)this.announce(state.item.name+' equipped. Its bonuses are active.','purchase');
+    if(hero.isPlayer)this.announceFor(hero,state.item.name+' equipped. Its bonuses are active.','purchase');
     if(state.item.tier===3)this.presentation('reward-item',hero,2.1,{ownerId:hero.id,itemId:state.item.id,name:state.item.name,followId:hero.id});
     return true;
   }
@@ -164,11 +188,12 @@ export class Game {
       if(hero.alive){hero.hp=Math.min(hero.maxHp,hero.hp+(hero.maxHp-oldHp)+65);hero.mana=Math.min(hero.maxMana,hero.mana+(hero.maxMana-oldMana)+35);}
       this.effect('level',hero.x,hero.y,60,'#ffe38e',.9);this.float(hero,'LEVEL '+hero.level,'#ffe38e');
       this.presentation('reward-level',hero,1.1,{ownerId:hero.id,fromLevel,toLevel:hero.level,level:hero.level,followId:hero.id});
-      if(hero.isPlayer)this.announce('Level '+hero.level+(this.availableTalents(hero).length?' · choose a talent':' · growing stronger'),'level');
+      if(hero.isPlayer)this.announceFor(hero,'Level '+hero.level+(this.availableTalents(hero).length?' · choose a talent':' · growing stronger'),'level');
     }
     if(hero.level===RULES.maxLevel){hero.xp=0;hero.xpNext=0;}
   }
-  announce(text,type='info'){this.events.push({id:this.eventId++,text,time:this.time,type});if(this.events.length>60)this.events.shift();}
+  announce(text,type='info',audience){this.events.push({id:this.eventId++,text,time:this.time,type,...audience});if(this.events.length>60)this.events.shift();}
+  announceFor(hero,text,type){this.announce(text,type,this.online?{heroId:hero.id}:undefined);}
   effect(type,x,y,r,color,life=0.6,extra={}){
     const e={type,x,y,r,color,life,maxLife:life,createdAt:this.time,...(this._castSource?{theme:this.combatTheme(this._castSource),ownerId:this._castSource.id,abilityId:this._castSource.visualAction?.abilityId}:{}),...extra};
     this.effects.push(e);
@@ -223,8 +248,8 @@ export class Game {
   float(unit,text,color='#fff1cf',importance){this.texts.push({importance,x:unit.x+(this.random()-.5)*18,y:unit.y-unit.r-8,text:String(text),color,life:1,maxLife:1});if(this.texts.length>100)this.texts.shift();}
   heal(target,amount,source=null,quiet=false){
     if(!target?.alive||structure(target)||amount<=0)return 0;
-    const n=Math.min(target.maxHp-target.hp,amount*(1+this.bonus(source,'healing')));target.hp+=n;
     const owner=this.owner(source);
+    const n=Math.min(target.maxHp-target.hp,amount*(1+this.bonus(source,'healing'))*this.allyProtectionMultiplier(owner,target));target.hp+=n;
     if(n>0&&owner?.kind==='hero'){
       owner.metrics.healingDone+=n;this.recordSupport(owner,target);
       this.progressionHook(onHeal,owner,target,n);
@@ -233,7 +258,9 @@ export class Game {
   }
   shield(target,amount,duration=5,source=this._castSource||null){
     if(!target.alive||structure(target))return;
-    const added=Math.max(0,amount-target.shield),owner=this.owner(source);
+    const owner=this.owner(source);
+    amount*=this.allyProtectionMultiplier(owner,target);
+    const added=Math.max(0,amount-target.shield);
     if(added>0){
       target.shieldLayers??=[];target.shieldLayers.push({sourceId:owner?.kind==='hero'?owner.id:null,amount:added});
       target.shieldVisual={theme:this.combatTheme(source||target),startedAt:this.time,amount};
@@ -260,6 +287,15 @@ export class Game {
     target.shieldLayers=(target.shieldLayers||[]).filter(layer=>layer.amount>0);return absorbed;
   }
   owner(source){return source?.kind==='hero'?source:this.units.find(u=>u.id===source?.ownerId)||source;}
+  heroDamageMultiplier(source,target){
+    if(!this.online||source?.kind!=='hero'||target.kind!=='hero'||source.team===target.team)return 1;
+    const attacker=HEROES[source.heroId]?.specialty, defender=HEROES[target.heroId]?.specialty;
+    return (attacker?.outgoingHeroDamage??1)*(defender?.incomingHeroDamage??1);
+  }
+  allyProtectionMultiplier(source,target){
+    if(!this.online||source?.kind!=='hero'||target.kind!=='hero'||source.id===target.id||source.team!==target.team)return 1;
+    return HEROES[source.heroId]?.specialty?.allyProtection??1;
+  }
   isProtected(unit){
     if(unit.kind==='tower'&&unit.tier===1)return this.units.some(u=>u.alive&&u.kind==='tower'&&u.team===unit.team&&u.lane===unit.lane&&u.tier===0);
     if(unit.kind==='core')return [0,1,2].every(lane=>this.units.some(u=>u.alive&&u.kind==='tower'&&u.team===unit.team&&u.lane===lane&&u.tier===1));
@@ -270,6 +306,7 @@ export class Game {
     if(source&&source.team===target.team)return 0;
     if(this.isProtected(target)){if(!quiet&&source?.isPlayer&&(!target.protectTextAt||this.time-target.protectTextAt>1)){this.float(target,'SHIELDED','#a6b7f0');target.protectTextAt=this.time;}return 0;}
     const owner=this.owner(source);
+    amount*=this.heroDamageMultiplier(owner,target);
     if(structure(target)){
       if(source&&(source.kind==='footman'||source.kind==='archer'))amount*=.32;
       if(source?.kind==='summon')amount*=.22;
@@ -307,7 +344,11 @@ export class Game {
     if(actual>1&&!quiet)this.float(target,Math.round(actual),COLORS[type]||type,heavy?'heavy':target.isPlayer||owner?.isPlayer?'direct':'ambient');
     if(!quiet&&(target.isPlayer||owner?.isPlayer)&&(actual>0||absorbed>0)&&(target.kind==='hero'||structure(target)||heavy)){
       const kind=absorbed>0?'block':heavy?'heavy':'impact';
-      if(this.combatCue?.at!==this.time||kind==='block'||kind==='heavy'&&this.combatCue.kind==='impact')this.combatCue={at:this.time,kind};
+      const players=[target,owner].filter(hero=>hero?.isPlayer);
+      for(const hero of players){
+        const control=this.controlFor(hero);
+        if(control&&(control.combatCue?.at!==this.time||kind==='block'||kind==='heavy'&&control.combatCue.kind==='impact'))control.combatCue={at:this.time,kind};
+      }
     }
     if(!quiet&&(actual>0||absorbed>0))target.visualHit={at:this.time,angle:context.angle??Math.atan2(target.y-(source?.y??target.y),target.x-(source?.x??target.x)),power:clamp(Math.sqrt(actual+absorbed)/15,.3,1.5)};
     if(absorbed>0&&(!quiet||target.shield<=0))this.combatBurst(target,source,target.shield>0?'shield-hit':'shield-break',shieldTheme,.6+Math.sqrt(absorbed)/14,{angle:context.angle??Math.atan2(target.y-(source?.y??target.y),target.x-(source?.x??target.x))});
@@ -353,7 +394,7 @@ export class Game {
       if(killer.isPlayer){this.float(killer,'+'+gold+' GOLD','#ffd76b');this.presentation('reward-gold',target,1.05,{amount:gold,ownerId:killer.id,visibleTo,theme:'holy',color:'#ffd76b'});}
     }
     if(target.kind==='hero'){
-      if(target.isPlayer)this.cancelPlayerOrder();
+      if(target.isPlayer)this.cancelPlayerOrder(target);
       target.deaths++;target.metrics.deaths++;target.streak=0;target.respawnIn=7+target.level*1.25+Math.min(8,this.time/120);target.recallIn=0;target.status={};
       if(team===0||team===1){this.stats.kills[team]++;if(killer){killer.kills++;killer.streak++;killer.metrics.heroKills++;killer.metrics.bestStreak=Math.max(killer.metrics.bestStreak,killer.streak);}
         for(const hero of assistants){hero.assists++;hero.metrics.assists++;}
@@ -367,7 +408,7 @@ export class Game {
     }
     if(target.kind==='camp'){
       const camp=this.campStates.find(c=>c.id===target.campId);
-      if(camp&&!this.units.some(u=>u.alive&&u.kind==='camp'&&u.campId===camp.id)){camp.respawnIn=RULES.campRespawn;camp.spawned=false;if(owner?.isPlayer)this.announce('Camp cleared · returns in '+RULES.campRespawn+'s.','camp');}
+      if(camp&&!this.units.some(u=>u.alive&&u.kind==='camp'&&u.campId===camp.id)){camp.respawnIn=RULES.campRespawn;camp.spawned=false;if(owner?.isPlayer)this.announceFor(owner,'Camp cleared · returns in '+RULES.campRespawn+'s.','camp');}
     }
     if(target.kind==='beast'&&target.team===-1&&(team===0||team===1)){
       this.stats.beasts[team]++;
@@ -375,30 +416,39 @@ export class Game {
       const lane=this.teamPlans[team]?.lane??target.lane,p=lanePoint(lane,.5);
       const tier=target.tier||1;
       const colossus=target.subtype==='colossus',power=beastScaling(tier,true);
-      const allied=this.addUnit('beast',team,p.x,p.y,{subtype:target.subtype,name:target.name,tier,level:tier,scale:1+Math.min(.3,(tier-1)*.04),r:34,hp:(colossus?1600:1250)*power.health,damage:(colossus?105:85)*power.damage,speed:colossus?88:116,range:colossus?72:58,attackRate:colossus?1.4:1.05,lane,waypoint:0,siege:true,siegeIn:1,dispatchIn:team===0?4:0});
+      const dispatch=team===0&&!this.online||this.online&&this.units.some(u=>u.team===team&&u.isPlayer);
+      const allied=this.addUnit('beast',team,p.x,p.y,{subtype:target.subtype,name:target.name,tier,level:tier,scale:1+Math.min(.3,(tier-1)*.04),r:34,hp:(colossus?1600:1250)*power.health,damage:(colossus?105:85)*power.damage,speed:colossus?88:116,range:colossus?72:58,attackRate:colossus?1.4:1.05,lane,waypoint:0,siege:true,siegeIn:1,dispatchIn:dispatch?4:0});
       allied.visualSpawn={at:this.time,duration:1.1,kind:'capture',subtype:allied.subtype};
       this.presentation('beast-capture',allied,1.1,{subtype:allied.subtype,tier,theme:'arcane',color:team?'#ff98be':'#66d8ff',fromX:target.x,fromY:target.y,r:95});
       allied.path=this.lanePath(lane,team,allied);allied.waypoint=0;
-      if(team===0)this.pendingBeastChoice={beastId:allied.id,team:0,lane,expiresAt:this.time+4};
+      if(dispatch)this.setBeastChoice(team,{beastId:allied.id,team,lane,expiresAt:this.time+4});
       this.effect('level',p.x,p.y,120,team?'#ff98be':'#66d8ff',1.3);
       this.announce((team===0?'Azure':'Rose')+' claimed tier '+tier+' '+target.name+'! It marches '+WORLD.lanes[lane].name.toLowerCase()+'.','beast');
     }
     if(target.kind==='core'){
-      this.winner=1-target.team;this.announce(this.winner===0?'VICTORY · The Rose Crystal is shattered!':'DEFEAT · The Azure Crystal has fallen.','end');
+      this.winner=1-target.team;this.announce(this.online?(this.winner===0?'Azure wins!':'Rose wins!'):this.winner===0?'VICTORY · The Rose Crystal is shattered!':'DEFEAT · The Azure Crystal has fallen.','end');
     }
     if(killer){onExpansionKill(this,killer,target);onItemKill(this,killer,target);this.progressionHook(onKill,killer,target);}
   }
-  chooseBeastLane(lane,beastId=this.pendingBeastChoice?.beastId){
-    const choice=this.pendingBeastChoice;
-    if(!choice||choice.team!==0||choice.beastId!==beastId||this.time>choice.expiresAt||!Number.isInteger(lane)||lane<0||lane>2)return false;
-    const beast=this.units.find(u=>u.id===beastId&&u.alive&&u.siege&&u.team===0);
+  chooseBeastLane(lane,beastId,hero=this.player){
+    const team=hero?.team??0,choice=this.beastChoice(team);
+    if(!choice||choice.beastId!==(beastId??choice.beastId)||this.time>choice.expiresAt||!Number.isInteger(lane)||lane<0||lane>2)return false;
+    const beast=this.units.find(u=>u.id===choice.beastId&&u.alive&&u.siege&&u.team===team);
     if(!beast||beast.dispatchIn<=0)return false;
     const p=lanePoint(lane,.5);Object.assign(beast,{x:p.x,y:p.y,lane,waypoint:0,dispatchIn:0,navPath:null,navGoal:null});beast.path=this.lanePath(lane,beast.team,beast);
-    this.pendingBeastChoice=null;this.announce(beast.name+' marches '+WORLD.lanes[lane].name.toLowerCase()+'.','beast');return true;
+    this.setBeastChoice(team,null);this.announce(beast.name+' marches '+WORLD.lanes[lane].name.toLowerCase()+'.','beast');return true;
   }
   applyStatus(target,type,duration,extra={}){
     if(!target.alive||structure(target))return;
     ({duration,extra}=modifyItemStatus(this,target,type,duration,extra));
+    if(this.online&&target.kind==='hero'&&(type==='stun'||type==='slow')){
+      const source=(extra.sourceId==null?this._castSource:this.units.find(unit=>unit.id===extra.sourceId));
+      const specialty=HEROES[source?.heroId]?.specialty;
+      if(source?.team!==target.team&&specialty?.controlDuration){
+        duration*=specialty.controlDuration;
+        if(type==='slow'&&extra.factor<.85)extra={...extra,factor:Math.min(.85,extra.factor*specialty.slowStrength)};
+      }
+    }
     if(type==='stun')cancelExpansionChannel(this,target);
     if(type==='guard')extra={visualTheme:this.combatTheme(this.units.find(u=>u.id===extra.sourceId)||this._castSource||target),...extra};
     if(type==='stun'&&target.kind==='hero'){
@@ -459,16 +509,18 @@ export class Game {
   }
   recall(hero){
     if(!hero?.alive||hero.kind!=='hero'||hero.recallIn>0||this.winner!==null||this.paused)return false;
-    cancelExpansionChannel(this,hero);if(hero.isPlayer)this.cancelPlayerOrder();
+    cancelExpansionChannel(this,hero);if(hero.isPlayer)this.cancelPlayerOrder(hero);
     hero.recallIn=RULES.recallTime;hero.recallStart={x:hero.x,y:hero.y};hero.targetId=null;
-    if(hero.isPlayer){this.moveTarget=null;this.announce('Recalling · stay still for '+RULES.recallTime+' seconds.','recall');}return true;
+    if(hero.isPlayer)this.announceFor(hero,'Recalling · stay still for '+RULES.recallTime+' seconds.','recall');return true;
   }
-  command(type,lane=1){
+  command(type,lane=1,hero=this.player){
     if(!['push','defend','beast'].includes(type)||this.winner!==null)return false;
-    this.cancelPlayerOrder();
-    this.order={type,lane:clamp(Number(lane)||0,0,2),until:this.time+22};
-    this.teamPlans[0]={...this.order};
-    this.announce(type==='beast'?'Team: contest the river beast!':'Team: '+(type==='push'?'push ':'defend ')+WORLD.lanes[this.order.lane].name.toLowerCase()+' lane.','ping');return true;
+    this.cancelPlayerOrder(hero);
+    const team=hero?.team??0,order={type,lane:clamp(Number(lane)||0,0,2),until:this.time+22};
+    if(this.online)this.teamOrders[team]=order;
+    else this.order=order;
+    this.teamPlans[team]={...order};
+    this.announce(type==='beast'?'Team: contest the river beast!':'Team: '+(type==='push'?'push ':'defend ')+WORLD.lanes[order.lane].name.toLowerCase()+' lane.','ping',this.online?{team}:undefined);return true;
   }
   cast(hero,slot,aim){
     const a=this.getAbility(hero,slot);
@@ -535,12 +587,13 @@ export class Game {
     }
     if(a.mobility||['rift-step','sky-cleave'].includes(a.id)){hero.visualAction.toX=hero.x;hero.visualAction.toY=hero.y;hero.visualAction.snapMotion=true;}
     this.combatBurst(hero,hero,'cast',this.combatTheme(hero),.8,{angle,abilityId:a.id});
-    if(hero.isPlayer){
-      this.moveTarget=null;
-      if(this.attackOrder)hero.attackTimer=Math.max(hero.attackTimer,.16);
+    const control=hero.isPlayer?this.controlFor(hero):null;
+    if(control){
+      control.moveTarget=null;
+      if(control.attackOrder)hero.attackTimer=Math.max(hero.attackTimer,.16);
       if(a.mobility||['rift-step','sky-cleave'].includes(a.id)){
         // A deliberate dash disengages. Ordinary spells preserve the attack order.
-        this.cancelPlayerOrder();
+        this.cancelPlayerOrder(hero);
       }
     }
     const restore=this.bonus(hero,'castHeal');if(restore)this.heal(hero,hero.maxHp*restore,hero);
@@ -611,13 +664,13 @@ export class Game {
   }
   update(dt,input={}){
     if(this.paused||this.winner!==null||!Number.isFinite(dt)||dt<=0)return;
-    this.playerCommands(input);
+    if(!this.online)this.playerCommands(input);
     let left=Math.min(dt,2);while(left>1e-8&&this.winner===null){const step=Math.min(.05,left);this.step(step,input);left-=step;}
   }
   step(dt,input){
     this.time+=dt;this.waveIn-=dt;this.beastIn-=dt;
     if(this.beastIn<=15&&this.beastIn>0&&this.warnedBeastIndex!==this.beastIndex){this.warnedBeastIndex=this.beastIndex;this.announce('River beast awakens in '+Math.ceil(this.beastIn)+' seconds. Prepare the river!','beast');}
-    if(this.pendingBeastChoice&&this.time>=this.pendingBeastChoice.expiresAt)this.pendingBeastChoice=null;
+    for(const team of [0,1]){const choice=this.beastChoice(team);if(choice&&this.time>=choice.expiresAt)this.setBeastChoice(team,null);}
     if(this.waveIn<=0){this.spawnWave(0);this.spawnWave(1);this.waveNumber++;this.waveIn+=RULES.waveInterval;}
     if(this.beastIn<=0){this.spawnBeast(this.beastIndex++);this.beastIn+=RULES.beastInterval;}
     for(const camp of this.campStates)if(!camp.spawned){camp.respawnIn-=dt;if(camp.respawnIn<=0)this.spawnCamp(camp);}
@@ -634,10 +687,12 @@ export class Game {
         if(this.time-unit.lastDamageAt>6)this.heal(unit,1.5*dt,null,true);
         const well=WORLD.bases[unit.team].well;
         if(dist(unit,well)<RULES.wellRadius){this.heal(unit,unit.maxHp*.17*dt,null,true);unit.mana=Math.min(unit.maxMana,unit.mana+unit.maxMana*.2*dt);}
-        if(unit.isPlayer&&unit.recallIn>0&&(Math.hypot(input.move?.x||0,input.move?.y||0)>.05||input.moveTo||input.attack)){unit.recallIn=0;}
-        if(unit.recallIn>0){unit.recallIn-=dt;if(unit.recallIn<=0){unit.x=well.x;unit.y=well.y;unit.path=null;unit.targetId=null;this.effect('blink',unit.x,unit.y,70,HEROES[unit.heroId].color,.8);if(unit.isPlayer)this.moveTarget=null;}continue;}
+        const control=unit.isPlayer?this.controlFor(unit):null;
+        const playerInput=this.online?control?.input:input;
+        if(control&&unit.recallIn>0&&(Math.hypot(playerInput.move?.x||0,playerInput.move?.y||0)>.05||playerInput.moveTo||playerInput.attack)){unit.recallIn=0;}
+        if(unit.recallIn>0){unit.recallIn-=dt;if(unit.recallIn<=0){unit.x=well.x;unit.y=well.y;unit.path=null;unit.targetId=null;this.effect('blink',unit.x,unit.y,70,HEROES[unit.heroId].color,.8);if(control)control.moveTarget=null;}continue;}
         if(unit.status.stun)continue;
-        if(unit.isPlayer)this.tickPlayer(unit,dt,input);
+        if(control)this.tickPlayer(unit,dt,playerInput,control);
         else if(unit.bot)this.tickBot(unit,dt);
       }else if(unit.kind==='summon'&&unit.stationary)this.tickSummon(unit,dt);
       else if(unit.status.stun)continue;
@@ -680,61 +735,66 @@ export class Game {
     const well=WORLD.bases[h.team].well;h.x=well.x+(h.team?-36:36);h.y=well.y+(h.slot-1)*30;h.hp=h.maxHp;h.mana=h.maxMana;h.alive=true;h.status={};h.shield=0;h.recallIn=0;
     h.cooldowns=h.cooldowns.map(c=>Math.min(c,3));h.contributors={};h.supportContributors={};h.supporters={};h.combatTargets={};h.shieldLayers=[];delete h.shieldVisual;delete h.visualAction;delete h.visualHit;delete h.visualDeath;delete h.visualSpawn;h.brain={};h.path=null;h.pathGoal=null;h.targetId=null;h.thinkIn=0;h.aiState='departing';h.ccRecoveryUntil=0;
     delete h.timeWard;delete h.displacementRecoveryUntil;if(h.heroId==='vela'){initExpansionHero(h);this.refreshStats(h);}
-    if(h.isPlayer)this.cancelPlayerOrder();this.effect('level',h.x,h.y,60,HEROES[h.heroId].color,.9);
+    if(h.isPlayer)this.cancelPlayerOrder(h);this.effect('level',h.x,h.y,60,HEROES[h.heroId].color,.9);
   }
-  validPlayerTarget(target){return !!target&&target.alive&&hostile(this.player,target)&&!this.isProtected(target)&&this.canSee(this.player.team,target);}
-  playerAttackSearchRadius(){return Math.max(360,this.player.range+140);}
-  nearestPlayerEnemy(){
-    // Team vision includes distant structures. Automatic attacks only engage
-    // locally; explicitly clicking a target is the command to pursue it farther.
-    let nearest=null,distance=Infinity;const radius=this.playerAttackSearchRadius();
-    for(const target of this.units)if(this.validPlayerTarget(target)){
-      const d=dist(this.player,target);if(d<=radius+target.r&&d-target.r<distance){nearest=target;distance=d-target.r;}
+  validPlayerTarget(target,hero=this.player){return !!target&&target.alive&&hostile(hero,target)&&!this.isProtected(target)&&this.canSee(hero.team,target);}
+  playerAttackSearchRadius(hero=this.player){return Math.max(360,hero.range+140);}
+  nearestPlayerEnemy(hero=this.player){
+    // Automatic attacks engage locally. Explicit orders can pursue targets farther.
+    let nearest=null,distance=Infinity;const radius=this.playerAttackSearchRadius(hero);
+    for(const target of this.units)if(this.validPlayerTarget(target,hero)){
+      const d=dist(hero,target);if(d<=radius+target.r&&d-target.r<distance){nearest=target;distance=d-target.r;}
     }
     return nearest;
   }
-  cancelPlayerOrder(){
-    this.attackOrder=null;this.moveTarget=null;
-    if(this.player){this.player.targetId=null;this.player.path=null;this.player.pathGoal=null;this.player.navPath=null;this.player.navGoal=null;this.player.navTime=0;}
+  cancelPlayerOrder(hero=this.player){
+    const control=this.controlFor(hero);
+    if(control){control.attackOrder=null;control.moveTarget=null;}
+    if(hero){hero.targetId=null;hero.path=null;hero.pathGoal=null;hero.navPath=null;hero.navGoal=null;hero.navTime=0;}
   }
-  attackNearest(){
-    if(!this.player?.alive||this.paused||this.winner!==null)return false;
-    this.cancelPlayerOrder();this.player.recallIn=0;
-    const target=this.nearestPlayerEnemy();
-    this.attackOrder={type:'attack',targetId:target?.id??null,explicit:false};
-    this.player.targetId=this.attackOrder.targetId;return true;
+  attackNearest(hero=this.player){
+    const control=this.controlFor(hero);
+    if(!control||!hero?.alive||this.paused||this.winner!==null)return false;
+    this.cancelPlayerOrder(hero);hero.recallIn=0;
+    const target=this.nearestPlayerEnemy(hero);
+    control.attackOrder={type:'attack',targetId:target?.id??null,explicit:false};
+    hero.targetId=control.attackOrder.targetId;return true;
   }
-  attackTarget(targetId){
-    const target=this.units.find(u=>u.id===targetId);
-    if(!this.player?.alive||this.paused||this.winner!==null||!this.validPlayerTarget(target))return false;
-    this.cancelPlayerOrder();this.player.recallIn=0;
-    this.attackOrder={type:'attack',targetId:target.id,explicit:true};this.player.targetId=target.id;return true;
+  attackTarget(targetId,hero=this.player){
+    const target=this.units.find(u=>u.id===targetId),control=this.controlFor(hero);
+    if(!control||!hero?.alive||this.paused||this.winner!==null||!this.validPlayerTarget(target,hero))return false;
+    this.cancelPlayerOrder(hero);hero.recallIn=0;
+    control.attackOrder={type:'attack',targetId:target.id,explicit:true};hero.targetId=target.id;return true;
   }
-  movePlayerTo(point){
-    if(!this.player?.alive||this.paused||this.winner!==null||!Number.isFinite(point?.x)||!Number.isFinite(point?.y))return false;
-    cancelExpansionChannel(this,this.player);this.cancelPlayerOrder();this.player.recallIn=0;this.moveTarget=this.safePoint(point,this.player.r);return true;
+  movePlayerTo(point,hero=this.player){
+    const control=this.controlFor(hero);
+    if(!control||!hero?.alive||this.paused||this.winner!==null||!Number.isFinite(point?.x)||!Number.isFinite(point?.y))return false;
+    cancelExpansionChannel(this,hero);this.cancelPlayerOrder(hero);hero.recallIn=0;control.moveTarget=this.safePoint(point,hero.r);return true;
   }
-  playerCommands(input){
-    const pressed=!!input.attack&&!this.attackHeld;this.attackHeld=!!input.attack;
-    if(!this.player.alive)return;
-    // A move has priority even during a stun; releasing it must not revive an old chase.
-    if(Math.hypot(Number(input.move?.x)||0,Number(input.move?.y)||0)>.05){cancelExpansionChannel(this,this.player);this.cancelPlayerOrder();this.player.recallIn=0;}
-    else if(Number.isFinite(input.moveTo?.x)&&Number.isFinite(input.moveTo?.y))this.movePlayerTo(input.moveTo);
-    else if(pressed)this.attackNearest();
+  playerCommands(input,hero=this.player){
+    const control=this.controlFor(hero);
+    if(!control||!hero)return;
+    const pressed=!!input.attack&&!control.attackHeld;control.attackHeld=!!input.attack;
+    if(!hero.alive)return;
+    // Moving cancels a chase even while stunned.
+    if(Math.hypot(Number(input.move?.x)||0,Number(input.move?.y)||0)>.05){cancelExpansionChannel(this,hero);this.cancelPlayerOrder(hero);hero.recallIn=0;}
+    else if(Number.isFinite(input.moveTo?.x)&&Number.isFinite(input.moveTo?.y))this.movePlayerTo(input.moveTo,hero);
+    else if(pressed)this.attackNearest(hero);
   }
-  tickPlayer(h,dt,input){
-    if(input.aim&&Number.isFinite(input.aim.x)&&Number.isFinite(input.aim.y)){this.aim=input.aim;h.angle=Math.atan2(input.aim.y-h.y,input.aim.x-h.x);}
+  tickPlayer(h,dt,input,control=this.controlFor(h)){
+    if(input.aim&&Number.isFinite(input.aim.x)&&Number.isFinite(input.aim.y)){control.aim=input.aim;h.angle=Math.atan2(input.aim.y-h.y,input.aim.x-h.x);}
     const mx=Number(input.move?.x)||0,my=Number(input.move?.y)||0;
     if(Math.hypot(mx,my)>.05){this.moveDirect(h,mx,my,dt);return;}
-    if(this.moveTarget){if(dist(h,this.moveTarget)<12)this.moveTarget=null;else this.moveToward(h,this.moveTarget,dt);return;}
-    if(!this.attackOrder||h.channel)return;
-    let target=this.units.find(u=>u.id===this.attackOrder.targetId);
-    if(!this.attackOrder.explicit||!this.validPlayerTarget(target)){
-      const previousId=target?.id, nearest=this.nearestPlayerEnemy();
+    if(control.moveTarget){if(dist(h,control.moveTarget)<12)control.moveTarget=null;else this.moveToward(h,control.moveTarget,dt);return;}
+    const order=control.attackOrder;
+    if(!order||h.channel)return;
+    let target=this.units.find(u=>u.id===order.targetId);
+    if(!order.explicit||!this.validPlayerTarget(target,h)){
+      const previousId=target?.id, nearest=this.nearestPlayerEnemy(h);
       const edge=u=>dist(h,u)-u.r;
-      if(!this.validPlayerTarget(target)||edge(target)>this.playerAttackSearchRadius()||
+      if(!this.validPlayerTarget(target,h)||edge(target)>this.playerAttackSearchRadius(h)||
         (nearest&&edge(nearest)+18<edge(target)))target=nearest;
-      this.attackOrder.targetId=target?.id??null;this.attackOrder.explicit=false;
+      order.targetId=target?.id??null;order.explicit=false;
       if(target?.id!==previousId){h.path=null;h.pathGoal=null;h.navPath=null;h.navGoal=null;h.navTime=0;}
     }
     h.targetId=target?.id??null;
@@ -877,7 +937,7 @@ export class Game {
         if(z.charge){const p=this.safePoint({x:source.x+Math.cos(z.angle)*z.charge,y:source.y+Math.sin(z.angle)*z.charge},source.r);source.x=p.x;source.y=p.y;}
         this.effect('explosion',z.x,z.y,z.r,z.color,.6,{theme:z.theme||this.combatTheme(source,'physical')});z.life=0;
       }else if(z.type==='bomb'||z.type==='wild-slam'){
-        for(const t of units)if(t.team!==z.team){this.damage(t,z.damage*(structure(t)?.35:1),source,z.type==='bomb'?'magic':'physical',false,{periodic:true});if(z.stun)this.applyStatus(t,'stun',z.stun);else this.applyStatus(t,'slow',1.5,{factor:.35});}
+        for(const t of units)if(t.team!==z.team){this.damage(t,z.damage*(structure(t)?.35:1),source,z.type==='bomb'?'magic':'physical',false,{periodic:true});if(z.stun)this.applyStatus(t,'stun',z.stun,{sourceId:source.id});else this.applyStatus(t,'slow',1.5,{factor:.35,sourceId:source.id});}
         this.effect('explosion',z.x,z.y,z.r,z.color,.6,{theme:z.theme||this.combatTheme(source,'physical')});z.life=0;
       }else if(z.type==='storm'){
         const damage=z.damage*(z.detonated?1:1.65);z.detonated=true;for(const t of units)if(t.team!==z.team)this.damage(t,damage*(structure(t)?.35:1),source,'magic',false,{periodic:true});
@@ -974,7 +1034,8 @@ export class Game {
       const core=structures.find(s=>s.kind==='core');
       const coreThreat=core&&this.nearby(core.x,core.y,400).some(u=>u.alive&&u.team===1-team&&!structure(u)&&dist(core,u)<370);
       if(coreThreat){this.teamPlans[team]={type:'defend',lane:1,x:core.x,y:core.y,until:this.time+5};continue;}
-      if(team===0&&this.order?.until>this.time){this.teamPlans[0]={...this.order};continue;}
+      const order=this.teamOrder(team);
+      if(order?.until>this.time){this.teamPlans[team]={...order};continue;}
       if(danger&&best>=3){this.teamPlans[team]={type:'defend',lane:danger.lane??1,x:danger.x,y:danger.y,until:this.time+5};continue;}
       const beast=this.units.find(u=>u.alive&&u.kind==='beast'&&u.team===-1);
       if(beast&&heroes.filter(h=>h.hp/h.maxHp>.55).length>=2&&this.time>60&&cfg.coordination>.5&&(!old||old.type==='beast'||this.time%75<40)){
@@ -1106,13 +1167,14 @@ export class Game {
       h.brain={action:'defend',targetId:defense?.id,goal:pos};h.aiState=(job?.type==='hold'?'holding ':'defending ')+WORLD.lanes[h.lane].name.toLowerCase();return;
     }
     const vulnerable=allies.filter(u=>u.kind==='hero'&&u.id!==h.id).sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp)[0];
-    if(h.heroId==='bulwark'&&vulnerable&&vulnerable.hp/vulnerable.maxHp<.7){
+    const specialty=this.online?HEROES[h.heroId].specialty?.id:null;
+    if((h.heroId==='bulwark'||specialty==='tank')&&vulnerable&&vulnerable.hp/vulnerable.maxHp<.7){
       const aggressor=foes.filter(u=>u.kind==='hero'&&dist(u,vulnerable)<220).sort((a,b)=>dist(a,vulnerable)-dist(b,vulnerable))[0];
       if(aggressor){h.brain={action:'peel',targetId:aggressor.id};h.aiState='protecting '+HEROES[vulnerable.heroId].name;return;}
     }
-    if((h.heroId==='angel'||h.heroId==='seraph')&&cfg.coordination>.6&&vulnerable&&foes.length){
+    if((h.heroId==='angel'||h.heroId==='seraph'||specialty==='support')&&cfg.coordination>.6&&vulnerable&&foes.length){
       const target=foes.filter(u=>u.kind==='hero').sort((a,b)=>dist(a,vulnerable)-dist(b,vulnerable))[0]||foes[0];
-      const angle=Math.atan2(vulnerable.y-target.y,vulnerable.x-target.x),gap=h.heroId==='angel'?115:55;
+      const angle=Math.atan2(vulnerable.y-target.y,vulnerable.x-target.x),gap=h.heroId==='angel'||specialty==='support'?115:55;
       h.brain={action:'support',targetId:target.id,goal:this.safePoint({x:vulnerable.x+Math.cos(angle)*gap,y:vulnerable.y+Math.sin(angle)*gap},h.r)};
       h.aiState='supporting '+HEROES[vulnerable.heroId].name;return;
     }
@@ -1127,7 +1189,7 @@ export class Game {
       if(beast){const pit=WORLD.beastPits.find(p=>p.id===beast.pitId)||beast;h.brain={action:'beast',targetId:this.canSee(h.team,beast)?beast.id:null,goal:{x:pit.x,y:pit.y}};h.aiState='contesting beast';h.lane=beast.lane;return;}
     }
     const teammates=this.units.filter(u=>u.kind==='hero'&&u.team===h.team&&u.id!==h.id),behind=teammates.length&&h.level+1.5<teammates.reduce((n,u)=>n+u.level,0)/teammates.length;
-    const directed=h.team===0&&this.order?.until>this.time;
+    const directed=this.teamOrder(h.team)?.until>this.time;
     const shouldJungle=!directed&&((h.role==='jungler'&&(this.time<150||plan.type==='lanes'||(h.level<12&&this.time%100<45)))||(!foes.some(u=>u.kind==='hero')&&health>.6&&plan.type!=='defend'&&(behind||h.level<8&&this.time%90<25)));
     if(shouldJungle){
       const site=scoutJungle(this,h.team).sort((a,b)=>dist(h,a)-dist(h,b))[0];

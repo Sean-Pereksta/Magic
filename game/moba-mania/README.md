@@ -1,12 +1,12 @@
 # MOBA Mania
 
-A self-contained solo pixel MOBA at `/game/CatLanes.html`. Standard matches have one human hero, two allied bots, and three enemy bots. **Impossible** pits your three-hero team against **four enemy heroes**. Choose among eighteen playable heroes: **Arc Rift**, **Red Dragon Warrior**, **Emerald Druid**, **Pink Angel**, **Dark Ranger**, **Purple Knight**, **Orange Assassin**, **Blue Angel**, **Rivet**, **Brinehook**, **Vela**, **Solstice**, **Ferrite**, **Cadence**, **Mirelle**, **Knell**, **Zephyr**, and **Prism**. There is no mouse character in the roster.
+A pixel MOBA with solo and online play at `/game/CatLanes.html`. Standard solo matches have one human hero, two allied bots, and three enemy bots. **Impossible** pits your three-hero team against **four enemy heroes**. Choose among eighteen playable heroes: **Arc Rift**, **Red Dragon Warrior**, **Emerald Druid**, **Pink Angel**, **Dark Ranger**, **Purple Knight**, **Orange Assassin**, **Blue Angel**, **Rivet**, **Brinehook**, **Vela**, **Solstice**, **Ferrite**, **Cadence**, **Mirelle**, **Knell**, **Zephyr**, and **Prism**. There is no mouse character in the roster.
 
 ## Four additional playable heroes
 
 [Rivet, Brinehook, Vela, and Solstice](HERO-EXPANSION.md) add a sentry engineer, an anchor-wielding initiator, a gunslinger with a six-round magazine, and a time-magic support. Each has four abilities, a signature passive, all seven talent tiers, distinct pixel portraits and combat animations, bot behavior, and cosmetic mastery.
 
-The selection screen stays inside the viewport. Scroll the hero roster to reach every character; selected-hero details and mastery have their own panel. Difficulty, help, and **Enter the Rift** remain available while either panel scrolls. Selecting a card preserves keyboard focus and the roster scroll position.
+The selection screen stays inside the viewport. Scroll the hero roster to reach every character; selected-hero details and mastery have their own panel. Difficulty, help, and **Solo Match** remain available while either panel scrolls. Selecting a card preserves keyboard focus and the roster scroll position.
 
 ## Two heroes built around new resources
 
@@ -15,6 +15,14 @@ The selection screen stays inside the viewport. Scroll the hero roster to reach 
 ## Four battlefield specialists
 
 Mirelle fights with poison, slowing brambles and area healing. Knell shields allies and sets up a warned crowd-control strike. Zephyr vaults around enemies and throws a returning quill. Prism fires a spread of bolts and creates a two-beam crossfire. Each has a unique pixel portrait, abilities, a passive and seven talent tiers.
+
+## Online 3v3
+
+In Catnmice Server Manager, select **MOBA Mania** and start a public or private lobby. Join through **Online Lobbies** or **Live Join** in MOBA Mania, or through **Live Lobbies** in the web or Windows launcher. Private lobbies use a four-digit code.
+
+Choose a seat on Azure or Rose and pick a hero. The lobby shows each player's selection as it changes. The host can start with any number of players, and bots fill the open seats. During a match, a live join takes over an available bot with its current hero and progress. A departing player's seat returns to bot control.
+
+In online matches, tanks resist hero damage, damage dealers hit heroes harder, supports strengthen healing and shields for teammates, and control heroes apply stronger or longer slows and stuns. Shops, skill trees, and the match menu leave the online match running. Solo saves remain local.
 
 ## Play
 
@@ -47,7 +55,7 @@ XP belongs to the heroes who participate in a kill. The finishing hero receives 
 
 **Gold comes only from your finishing blows.** Assists, nearby kills, time passing, and unowned allied minions or towers do not earn you gold. Your own projectiles, damage-over-time effects, item procs, and personal summons credit their kills to you. A captured river beast is a team lane attacker, so its subsequent kills do not passively pay its capturer. Finishing a target shows a gold-colored `+N GOLD` notice and updates your personal balance. Hero kill streaks add a visible shutdown bounty of 60 gold per kill beyond the second, capped at 300 bonus gold, paid only to the finishing hero.
 
-Open **SHOP** on desktop or mobile, or press **I**, to buy permanent match upgrades. Combat pauses while the shop is open. The three tiers contain fifteen items each:
+Open **SHOP** on desktop or mobile, or press **I**, to buy permanent match upgrades. Solo combat pauses while the shop is open. The three tiers contain fifteen items each:
 
 | Tier | Purchase requirements |
 | --- | --- |
@@ -160,7 +168,7 @@ The difficulty selector changes bot decisions, teamwork, reaction timing, aim, a
 
 ### Resume and mastery
 
-An unfinished match saves locally every ten seconds and when pausing or leaving the page. **Resume match** restores the simulation in a paused state, including items, talents, cooldowns, projectiles, summons, warnings, bot plans, and random state. Starting over asks before replacing a different saved match. Invalid or incompatible saves offer a recovery path. Autosaves check the saved match ID and refuse to overwrite a different match unless replacement is confirmed.
+An unfinished solo match saves locally every ten seconds and when pausing or leaving the page. **Resume match** restores the simulation in a paused state, including items, talents, cooldowns, projectiles, summons, warnings, bot plans, and random state. Starting over asks before replacing a different saved match. Invalid or incompatible saves offer a recovery path. Autosaves check the saved match ID and refuse to overwrite a different match unless replacement is confirmed.
 
 The results screen records hero and structure damage, effective healing, absorbed shielding, personal gold, lane/jungle last hits, assists, objectives, shutdowns, and streaks. Match badges highlight those contributions. Completing a match earns per-hero mastery that unlocks armor tints, trails, portrait treatments, and victory colors. Mastery never changes combat stats, and each completed match is credited once. Saves, settings, and mastery belong to the current browser/origin; they are not cloud-synced. When browser storage is unavailable, the game remains playable and reports the persistence limitation.
 
@@ -168,7 +176,7 @@ The results screen records hero and structure damage, effective healing, absorbe
 
 `data.mjs` defines heroes, talents, map geometry, difficulty settings, progression rules, and beast growth. `items.mjs` defines the 45-item catalog, prerequisites, stat bonuses, passive descriptions, purchase validation, and pixel item icons. `engine.mjs` runs deterministic combat, individual rewards, item activation, and AI without browser dependencies; `hero-skills.mjs` implements the knight, assassin, and sword angel abilities. `hero-expansion.mjs` and `solstice-runtime.mjs` implement the four additional heroes’ devices, pulls, ammunition, channels, wards, and cooldown mechanics. `resonance-data.mjs` and `resonance-heroes.mjs` define Ferrite and Cadence’s talents, resources, terrain-safe displacement, musical score, and finale variants. `progression.mjs` handles signature passives, late evolutions, item effects, and delayed impacts. `strategy.mjs` handles shared vision, role assignments, build plans, and match metrics. `save-state.mjs` validates and restores the simulation. `profile.mjs` handles local mastery, settings, recipe planning, and shop comparisons. `renderer.mjs` draws the battlefield, fog, warnings, animated pixel sprites, cosmetics, focus markers, and icons. `combat-visuals.mjs` draws bounded pixel bursts, trails, spell accents, and translucent shields; `unit-animation.mjs` selects combat poses and summon motion; `world-visuals.mjs` draws camp scenery, reactive terrain, destruction, spell aftermath, summons, and reward presentations. `expansion-visuals.mjs` supplies the four additional hero silhouettes, icons, devices, and spell presentations. `ui.mjs` connects the simulation to keyboard, pointer, touch, local persistence, and the short victory/defeat finale; `style.css` styles the compact HUD and menus.
 
-Serve the existing `game/CatLanes.html` alongside the complete `game/moba-mania/` runtime directory. Native JavaScript modules need an HTTP(S) origin; opening the HTML directly from `file://` is not supported. The game has no CDN, font, sprite, or server dependency. Pixel art is defined in code, so there is no separate model download or asset-host configuration.
+Serve the existing `game/CatLanes.html` alongside the complete `game/moba-mania/` runtime directory. Native JavaScript modules need an HTTP(S) origin; opening the HTML directly from `file://` is not supported. Solo play runs without a multiplayer server or external art assets. Pixel art is defined in code, so there is no separate model download or asset-host configuration.
 
 The website's existing `/hub/play-signal.mjs` integration remains on the normal route. The desktop pack builder removes that script and copies the complete adjacent runtime to `packs/mobamania/moba-mania/`, keeping `index.html` as the pack entry. On file systems where the historical `CatLanes.html` and `catlanes.html` names collide, it reads the exact uppercase entry from Git.
 

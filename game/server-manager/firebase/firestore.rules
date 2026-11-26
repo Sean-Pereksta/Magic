@@ -48,10 +48,10 @@ service cloud.firestore {
     }
 
     function managedGame(game) {
-      return game in ['bannerlands', 'trashtactics', 'cat', 'lastsignal'];
+      return game in ['bannerlands', 'trashtactics', 'cat', 'lastsignal', 'mobamania'];
     }
 
-    function validManagedListing(code) {
+    function validManagedListing(game, code) {
       let data = request.resource.data;
       return data.keys().hasOnly(['ownerUid', 'hostId', 'name', 'visibility', 'origin', 'joinUrl',
         'phase', 'players', 'capacity', 'queued', 'joinable', 'updatedAt', 'expiresAt'])
@@ -60,6 +60,7 @@ service cloud.firestore {
         && data.hostId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
         && data.joinUrl == data.origin + '/__catnmice/join'
         && data.phase in ['waiting', 'playing', 'finished']
+        && (game != 'mobamania' || (data.capacity == 6 && data.queued == 0))
         && data.joinable is bool
         && (!data.joinable || (data.players < data.capacity && data.phase != 'finished'));
     }
@@ -75,8 +76,8 @@ service cloud.firestore {
     match /managedGameDirectories/{game}/lobbies/{code} {
       allow get: if managedGame(game) && canReadCode(code);
       allow list: if managedGame(game) && publicQuery();
-      allow create: if managedGame(game) && validManagedListing(code);
-      allow update: if managedGame(game) && validManagedListing(code) && canReplaceListing();
+      allow create: if managedGame(game) && validManagedListing(game, code);
+      allow update: if managedGame(game) && validManagedListing(game, code) && canReplaceListing();
       allow delete: if managedGame(game) && ownedByCaller(resource.data);
     }
   }
