@@ -76,8 +76,8 @@
   function mount(hooks){
     if(context)return;context=hooks;const doc=hooks.document;doc.body.classList.add('arcade-hub');
     doc.querySelector('.brand-mark').innerHTML='<img src="./assets/catnmice-mark.svg" width="44" height="44" alt="">';
-    const navIcons={discover:'compass',singleplayer:'grid',multiplayer:'people',mygames:'star',profile:'user'};
-    for(const button of doc.querySelectorAll('.main-nav [data-view],.mobile-nav [data-view]')){const labels={discover:'Discover',singleplayer:'All games',multiplayer:'Multiplayer',mygames:'My games',profile:'Profile'};button.innerHTML=icon(navIcons[button.dataset.view])+`<span>${labels[button.dataset.view]}</span>`;button.type='button';}
+    const navIcons={discover:'compass',singleplayer:'grid',livelobbies:'bolt',multiplayer:'people',mygames:'star',profile:'user'};
+    for(const button of doc.querySelectorAll('.main-nav [data-view],.mobile-nav [data-view]')){const labels={discover:'Discover',singleplayer:'Library',livelobbies:'Live Lobbies',multiplayer:'Multiplayer',mygames:'My games',profile:'Profile'};button.innerHTML=icon(navIcons[button.dataset.view])+`<span>${labels[button.dataset.view]}</span>`;button.type='button';}
     for(const [id,name,label]of [['inviteToggle','mail','Invites'],['memberToggle','people','Members'],['accountButton','user','Account']]){const button=doc.getElementById(id);button.childNodes[0].textContent='';button.insertAdjacentHTML('afterbegin',icon(name));button.setAttribute('aria-label',label);}
     for(const [id,panel]of [['inviteToggle','invitePanel'],['memberToggle','memberPanel']]){const button=doc.getElementById(id),node=doc.getElementById(panel);button.setAttribute('aria-controls',panel);const sync=()=>button.setAttribute('aria-expanded',String(!node.hidden));new MutationObserver(sync).observe(node,{attributes:true,attributeFilter:['hidden']});sync();}
     doc.addEventListener('keydown',event=>{if(event.key==='Escape'){for(const id of ['invitePanel','memberPanel']){const panel=doc.getElementById(id);if(!panel.hidden){panel.hidden=true;doc.getElementById(id==='invitePanel'?'inviteToggle':'memberToggle').focus();}}}});

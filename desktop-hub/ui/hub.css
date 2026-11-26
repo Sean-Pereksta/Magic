@@ -18,6 +18,47 @@ dialog{background:#202029;color:var(--white);border:1px solid #494650;border-rad
 
 .server-guide,.server-message{color:var(--soft);line-height:1.4}
 .server-panel{max-width:800px}
+.lobby-filters {
+  display:grid;
+  grid-template-columns:minmax(9rem,1fr) minmax(12rem,2fr);
+  gap:12px;
+  margin:16px 0 10px;
+}
+.lobby-filters label { display:grid; gap:5px; color:var(--soft); font-size:.875rem; }
+.lobby-filters .field { width:100%; min-width:0; }
+.lobby-list { display:grid; gap:0; list-style:none; margin:12px 0 0; padding:0; }
+.lobby-list-row {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(6.75rem,auto) minmax(7rem,auto) auto;
+  align-items:center;
+  gap:12px;
+  border-top:1px solid var(--line);
+  padding:12px 0;
+}
+.lobby-identity { display:grid; gap:3px; min-width:0; overflow-wrap:anywhere; }
+.lobby-identity small,.lobby-players { color:var(--soft); }
+.lobby-players { font-variant-numeric:tabular-nums; }
+.lobby-phase {
+  justify-self:start;
+  padding:4px 9px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  color:var(--soft);
+  font-size:.85rem;
+}
+.lobby-phase[data-phase="waiting"] { color:#b4efc2; border-color:#446352; }
+.lobby-phase[data-phase="playing"],.lobby-phase[data-phase="racing"] { color:var(--gold); }
+.lobby-list-row .button { justify-self:end; white-space:nowrap; }
+@media(max-width:690px) {
+  .lobby-list-row { grid-template-columns:minmax(0,1fr) auto auto; }
+  .lobby-identity { grid-column:1/-1; }
+}
+@media(max-width:530px) {
+  .lobby-filters { grid-template-columns:1fr; }
+  .lobby-list-row { grid-template-columns:minmax(0,1fr) auto; }
+  .lobby-list-row .button { grid-column:2; }
+}
+
 .server-form{display:grid;gap:16px;justify-items:start}
 .server-form fieldset{display:grid;grid-template-columns:minmax(200px,1fr) minmax(170px,.8fr);gap:14px;padding:0;margin:0;border:0;min-width:0;width:100%}
 .server-form fieldset:disabled{opacity:.7}

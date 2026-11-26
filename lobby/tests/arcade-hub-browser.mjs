@@ -43,15 +43,51 @@ const origin=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{})});
 const checks=[],contexts=[],errors=[];
 const check=(message,value=true)=>{assert.ok(value,message);checks.push(message);};
-async function open({width=1440,user='',saved='discover',recent=[],favorites=[],reduced=false,missingArt=false,missingCatalog=false,failedArcadeUpgrade=false,missingFirebase=false,query=''}={}){
+const lobbyDocuments='projects/magic-servers-1ca0c/databases/(default)/documents';
+const fixtureHostId='90000000-0000-4000-9000-000000000001';
+const managedRooms={
+  acornrally:{title:'Acorn Rally',name:'Forest Racers',phase:'racing',players:4},
+  bannerlands:{title:'Bannerlands',name:'Castle Watch',phase:'waiting',players:2},
+  trashtactics:{title:'Trash Tactics',name:'Scrap Crew',phase:'playing',players:3},
+  lastsignal:{title:'Last Signal',name:'Northern Beacon',phase:'finished',players:1},
+  cat:{title:'Cat & Mouse',name:'Cheese Brigade',phase:'waiting',players:5}
+};
+const roomOrigin=game=>'https://arcade-fixture-'+game+'.trycloudflare.com';
+function managedListingResponse(game){
+  const room=managedRooms[game];
+  const acorn=game==='acornrally';
+  const collection=acorn?'acornRallyLobbies':'managedGameDirectories/'+game+'/lobbies';
+  const now=Date.now();
+  return [{document:{name:lobbyDocuments+'/'+collection+'/1234',fields:{
+    ownerUid:{stringValue:'fixture-host'},hostId:{stringValue:fixtureHostId},
+    name:{stringValue:room.name},visibility:{stringValue:'public'},phase:{stringValue:room.phase},
+    origin:{stringValue:roomOrigin(game)},joinUrl:{stringValue:roomOrigin(game)+(acorn?'/?room=join':'/__catnmice/join')},
+    players:{integerValue:String(room.players)},capacity:{integerValue:'8'},queued:{integerValue:'0'},
+    joinable:{booleanValue:room.phase==='waiting'},
+    updatedAt:{timestampValue:new Date(now).toISOString()},expiresAt:{timestampValue:new Date(now+90000).toISOString()}
+  }}}];
+}
+async function open({width=1440,user='',saved='discover',recent=[],favorites=[],reduced=false,missingArt=false,missingCatalog=false,failedArcadeUpgrade=false,missingFirebase=false,liveDirectory=false,query=''}={}){
   const context=await browser.newContext({viewport:{width,height:1000},reducedMotion:reduced?'reduce':'no-preference'});contexts.push(context);context.setDefaultTimeout(12000);
   await context.addInitScript(({user,saved,recent,favorites})=>{
     globalThis.__fixture={data:{'users/Tester':{username:'Tester',password:'fixture-password',displayName:'Tester',favoriteGames:favorites,recentlyPlayed:recent,gamePlayCounts:{warrealms:99,cat:20}},'users/Friend':{username:'Friend',password:'fixture-password'},'gameStats/warrealms':{plays:99},'gameStats/cat':{plays:20},'lobbies/friend-room':{name:'Friend room',gameType:'cat',status:'waiting',players:['Friend'],host:'Friend',visibility:'public',createdAt:Date.now()}},listeners:[],sequence:0};
     localStorage.setItem('gh.lastTab',saved);localStorage.setItem('gh.profilePromptSeen','1');localStorage.setItem('gh.recentGames',JSON.stringify(recent));localStorage.setItem('gh.favorites',JSON.stringify(favorites));if(user)localStorage.setItem('gh.username',user);
   },{user,saved,recent,favorites});
   await context.route('**/*',route=>{
-    const url=new URL(route.request().url());
+    const request=route.request(),url=new URL(request.url());
     if(url.hostname==='www.gstatic.com'&&url.pathname.includes('/firebasejs/'))return missingFirebase?route.abort():route.fulfill({contentType:'text/javascript',body:firebase});
+    if(liveDirectory&&url.hostname==='firestore.googleapis.com'&&url.pathname.startsWith('/v1/'+lobbyDocuments)){
+      const headers={'access-control-allow-origin':'*','access-control-allow-headers':'content-type'};
+      if(request.method()==='OPTIONS')return route.fulfill({status:204,headers});
+      const game=url.pathname==='/v1/'+lobbyDocuments+':runQuery'?'acornrally':url.pathname.match(/\/managedGameDirectories\/([a-z]+):runQuery$/)?.[1];
+      return game&&Object.hasOwn(managedRooms,game)?route.fulfill({headers,json:managedListingResponse(game)}):route.abort();
+    }
+    if(liveDirectory&&url.origin===roomOrigin('bannerlands')){
+      if(url.pathname==='/__catnmice/status')return route.fulfill({headers:{'access-control-allow-origin':'*'},json:{
+        game:'bannerlands',hostId:fixtureHostId,visibility:'public',phase:'waiting',players:2,capacity:8,queued:0,joinable:true
+      }});
+      if(url.pathname==='/__catnmice/join')return route.fulfill({contentType:'text/html',body:'<main id="launched">Matched server reached</main>'});
+    }
     if(url.origin!==origin)return route.abort();
     if(missingCatalog&&url.pathname==='/lobby/lobby-catalog-organization.js')return route.abort();
     if(failedArcadeUpgrade&&url.pathname==='/lobby/lobby-arcade.js')return route.fulfill({contentType:'text/javascript',body:fs.readFileSync(path.join(root,'lobby/lobby-arcade.js'),'utf8')+'\nglobalThis.GameHubArcade={...globalThis.GameHubArcade,upgradeHtml(){throw new Error("Fixture: arcade transformation unavailable");}};'});
@@ -152,17 +188,53 @@ try{
     await page.context().close();
   }
 
-  page=await open({missingFirebase:true});
+  page=await open({missingFirebase:true,query:'#live-lobbies'});
+  const hosting=page.locator('details.live-lobbies-hosting');
+  const showHosting=async()=>{if(!await hosting.evaluate(details=>details.open))await hosting.locator('summary').click();};
   for(const [section, destination] of [['catandmouse',hostRoutes.cat], ['bannerlands',hostRoutes.bannerlands]]){
+    await showHosting();
     const host=page.locator(`[data-live-section="${section}"]`).getByRole('link', {name:/Host Lobby/});
     await checkHostRoute(page, host, destination);
     check(`${section}: Host Lobby opens the game's hosting screen when Firebase cannot load`);
   }
+  await showHosting();
   for(const section of ['acornrally','trashtactics','lastsignal']){
     const host=page.locator(`[data-live-section="${section}"]`).getByRole('link', {name:'Get Windows Game Hub'});
     check(`${section}: Windows Game Hub download is available when Firebase cannot load`,
       await host.getAttribute('href')==='/hub/download.html'&&await host.isVisible());
   }
+  await page.context().close();
+
+  page=await open({width:360,liveDirectory:true});
+  await nav(page,'singleplayer');
+  await nav(page,'livelobbies');
+  const livePage=page.locator('#view-livelobbies');
+  const liveRows=livePage.locator('[data-live-rooms] > [data-room-id]:visible');
+  await liveRows.nth(4).waitFor();
+  check('Live Lobbies shows active servers from every managed game',await liveRows.count()===5);
+  for(const room of Object.values(managedRooms)){
+    const row=liveRows.filter({has:page.getByRole('heading',{name:room.name,exact:true})});
+    check(`Live Lobbies identifies ${room.title} and its player count`,
+      await row.locator('.live-lobbies-game').innerText()===room.title&&
+      new RegExp(`${room.players}\\s*/\\s*8`).test(await row.locator('.live-lobbies-players').innerText()));
+  }
+  check('Live Lobbies separates playing games from waiting lobbies',
+    /in game/i.test(await liveRows.filter({hasText:'Scrap Crew'}).locator('.live-lobbies-status').innerText())&&
+    /in lobby/i.test(await liveRows.filter({hasText:'Castle Watch'}).locator('.live-lobbies-status').innerText()));
+  const liveSearch=livePage.locator('[data-live-search]');
+  await liveSearch.fill('cheese');
+  check('Lobby search filters by server name',await liveRows.count()===1&&/Cheese Brigade/.test(await liveRows.first().innerText()));
+  await liveSearch.fill('acorn rally');
+  check('Lobby search also matches a game title',await liveRows.count()===1&&/Forest Racers/.test(await liveRows.first().innerText()));
+  await liveSearch.fill('');
+  await livePage.locator('[data-live-filter="bannerlands"]').click();
+  check('Game filter keeps only the selected game',await liveRows.count()===1&&/Castle Watch/.test(await liveRows.first().innerText()));
+  check('Live Lobbies has no mobile horizontal overflow',await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+  await Promise.all([
+    page.waitForURL(url=>url.origin===roomOrigin('bannerlands')&&url.pathname==='/__catnmice/join'),
+    liveRows.first().getByRole('button',{name:/Join Castle Watch in Bannerlands/i}).click()
+  ]);
+  check('Join opens the verified server from its visible row',await page.locator('#launched').isVisible());
   await page.context().close();
 
   page=await open({user:'Tester',recent:[{key:'cat',playedAt:Date.now()},'warrealms','cat','deleted'],favorites:['warrealms']});
