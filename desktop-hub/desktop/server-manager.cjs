@@ -38,6 +38,8 @@ const editions = {
     'Hosting', 'manager/adapter.mjs', 'Mobile/index.html'),
   mobamania: managedEdition(8796, 'static', 'index.html', 'moba-mania/server/host.mjs',
     'hub-runtime', 'manager/adapter.mjs', 'moba-mania/online-match.mjs'),
+  orbitbloom: managedEdition(8797, 'static', 'game/index.html', 'game/server/host.cjs',
+    'hub-runtime', 'manager/adapter.cjs', 'game/sim.mjs'),
 };
 const supportsServerManager = id => Object.hasOwn(editions, id);
 

@@ -1,8 +1,9 @@
-import "../shared/managed-servers.js?v=magic-servers-2";
+import "../shared/managed-servers.js?v=magic-servers-3";
 
 const REFRESH_MS = 30_000;
 const VIEW = "livelobbies";
 const HASH = "#live-lobbies";
+const onLobbyHash = () => location.hash === HASH || location.hash.startsWith(HASH + "/");
 const PHASE_LABELS = {waiting: "In lobby", playing: "In game", racing: "Racing", finished: "Match finished"};
 const roomKey = room => room.game + ":" + room.code;
 
@@ -142,7 +143,10 @@ function mount(section, directory) {
 
   const navButton = document.querySelector('[data-view="livelobbies"]');
   function openHash() {
-    if (location.hash === HASH) navButton?.click();
+    if (!onLobbyHash()) return;
+    const game = location.hash.slice(HASH.length + 1);
+    navButton?.click();
+    if (game) select(game);
   }
 
   document.addEventListener("click", event => {
@@ -151,9 +155,9 @@ function mount(section, directory) {
       // The ordinary hub view handler runs first. The directory also works
       // while the hub's unrelated Firebase SDK is unavailable.
       if (!view.classList.contains("active")) activateWithoutHub();
-      if (location.hash !== HASH) history.replaceState(history.state, "", location.pathname + location.search + HASH);
+      if (!onLobbyHash()) history.replaceState(history.state, "", location.pathname + location.search + HASH);
       void refresh();
-    } else if (nav && location.hash === HASH) {
+    } else if (nav && onLobbyHash()) {
       history.replaceState(history.state, "", location.pathname + location.search);
     }
     const gameLink = event.target.closest("[data-live-game]");

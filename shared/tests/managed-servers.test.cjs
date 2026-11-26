@@ -81,7 +81,7 @@ function setup(game, docs, statuses = {}) {
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
-for (const game of ['bannerlands', 'trashtactics', 'cat', 'lastsignal', 'mobamania']) {
+for (const game of ['bannerlands', 'trashtactics', 'cat', 'lastsignal', 'mobamania', 'orbitbloom']) {
   test(game + ' Live Join verifies the host and prefers an available lobby', async () => {
     const docs = [listing(game, '0001', 'expired'), listing(game, '0002', 'wrong-host'),
       listing(game, '0003', 'playing', 0, 'public', 'playing'), listing(game, '0004', 'locked'),
@@ -94,6 +94,21 @@ for (const game of ['bannerlands', 'trashtactics', 'cat', 'lastsignal', 'mobaman
     assert.ok(!app.requests.some(url => /\/\/(private|expired)\./.test(url)));
   });
 }
+
+test('Orbit Bloom Live Join admits a four-seat shift in progress and rejects unsupported listings', async () => {
+  const game = 'orbitbloom';
+  const big = listing(game, '0010', 'too-large');
+  big.fields.capacity.integerValue = '6';
+  const queued = listing(game, '0011', 'queue');
+  queued.fields.queued.integerValue = '1';
+  const active = listing(game, '0012', 'active', 2, 'public', 'playing');
+  active.fields.joinable.booleanValue = true;
+  const app = setup(game, [big, queued, active]);
+  app.open({ live: true });
+  await settle();
+  assert.deepEqual(app.navigations, ['https://active.trycloudflare.com/__catnmice/join']);
+  assert.ok(!app.requests.some(url => /\/\/(too-large|queue)\./.test(url)));
+});
 
 test('selection and private code preserve the chosen host and player name', async () => {
   const game = 'lastsignal', app = setup(game, [

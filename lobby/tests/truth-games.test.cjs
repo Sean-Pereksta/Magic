@@ -59,6 +59,22 @@ test('Truth games join the shared catalog exactly once', async () => {
   }
 });
 
+test('Orbit Bloom has a Truth game, original tile, and four-player Live Join action', async () => {
+  const html = await load();
+  const orbit = registry(html).filter(game => game.key === 'orbitbloom');
+  assert.equal(orbit.length, 1);
+  assert.equal(orbit[0].route, 'https://sean-pereksta.github.io/Truth/games/orbit-bloom/');
+  assert.equal(orbit[0].maxPlayers, 4);
+  assert.deepEqual(library.getActions(orbit[0]), [
+    {type: 'single', label: 'Play in Browser'},
+    {type: 'live', label: 'Live Join', href: '#live-lobbies'}
+  ]);
+  const tile = fs.readFileSync(path.join(root, 'assets/game-tiles/orbit-bloom.png'));
+  assert.equal(tile.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  assert.equal(tile.readUInt32BE(16), 528);
+  assert.equal(tile.readUInt32BE(20), 297);
+});
+
 test('Windows host editions preserve guest routes and include MOBA Mania in Live Lobbies', async () => {
   const html = await load();
   const games = registry(html);
@@ -90,12 +106,12 @@ test('Windows host editions preserve guest routes and include MOBA Mania in Live
     assert.ok(output.includes(`href="${cat.hostRoute}"`));
     assert.ok(output.includes(`href="${banner.hostRoute}"`));
     assert.match(output, /data-live-filter="all"/);
-    for (const id of ['acornrally', 'bannerlands', 'trashtactics', 'lastsignal', 'mobamania', 'catandmouse']) {
+    for (const id of ['acornrally', 'bannerlands', 'trashtactics', 'lastsignal', 'mobamania', 'orbitbloom', 'catandmouse']) {
       assert.ok(output.includes(`data-live-filter="${id}"`));
       assert.ok(output.includes(`data-live-section="${id}"`));
     }
     const hostHelp = [...output.matchAll(/<li data-live-section="([^"]+)">[^<]*<span>[^<]*<\/span><a[^>]*href="\/hub\/download\.html">Get Windows Game Hub<\/a><\/li>/g)];
-    assert.deepEqual(hostHelp.map(([, id]) => id), ['acornrally', 'trashtactics', 'lastsignal', 'mobamania']);
+    assert.deepEqual(hostHelp.map(([, id]) => id), ['acornrally', 'trashtactics', 'lastsignal', 'mobamania', 'orbitbloom']);
   }
 });
 

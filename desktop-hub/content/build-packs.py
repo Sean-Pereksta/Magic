@@ -316,5 +316,15 @@ def catlanes(root):
 build('mobamania', magic, 'index.html', edition=catlanes,
       hosting=('moba-mania/server/host.mjs', 'hub-runtime') if args.cloudflared else None,
       adapter='game/moba-mania/server/manager-adapter.mjs' if args.cloudflared else None)
+def orbit_bloom(root):
+    source = truth/'games/orbit-bloom'
+    copy_tree(source, root/'game')
+    if args.cloudflared:
+        copy(source/'server/host.cjs', root/'game/server/host.cjs')
+        bundle_host_runtime(root)
+
+build('orbitbloom', truth, 'game/index.html', edition=orbit_bloom,
+      hosting=('game/server/host.cjs', 'hub-runtime') if args.cloudflared else None,
+      adapter='games/orbit-bloom/server/manager-adapter.cjs' if args.cloudflared else None)
 (out/'pack-index.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf8')
 print(f'{len(manifest)} offline packs, {sum(g["bytes"] for g in manifest.values()):,} bytes')

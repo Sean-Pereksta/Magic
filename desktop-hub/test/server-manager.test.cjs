@@ -17,6 +17,7 @@ test('managed games use their own pack, port, settings and join endpoint', async
     ['cat','game/catandmouse/edition/index.html','game/catandmouse/edition/server/launcher.mjs','hub-runtime','adapter.mjs','game/catandmouse/edition/server/match-server.mjs'],
     ['lastsignal','Last Signal.exe','manager/supervisor.cjs','Hosting','adapter.mjs','Mobile/index.html'],
     ['mobamania','index.html','moba-mania/server/host.mjs','hub-runtime','adapter.mjs','moba-mania/online-match.mjs'],
+    ['orbitbloom','game/index.html','game/server/host.cjs','hub-runtime','adapter.cjs','game/sim.mjs'],
   ];
   const children = new Map(), packs = new Map(), ports = new Set();
   const manager = createServerManager({
@@ -28,6 +29,7 @@ test('managed games use their own pack, port, settings and join endpoint', async
       assert.equal(env.CATNMICE_DATA_DIR, path.join(root,'private','servers',env.CATNMICE_GAME_ID));
       assert.equal(env.CATNMICE_CLOUDFLARED, path.join(cwd, packs.get(env.CATNMICE_GAME_ID).spec.tunnel));
       if (env.CATNMICE_GAME_ID === 'mobamania') assert.equal(env.CATNMICE_PORT, '8796');
+      if (env.CATNMICE_GAME_ID === 'orbitbloom') assert.equal(env.CATNMICE_PORT, '8797');
       ports.add(env.CATNMICE_PORT);
       const child = new EventEmitter();
       child.connected = true;

@@ -66,7 +66,7 @@ function allowed(session,url,resourceType='xhr',method='GET') {
 
 test('desktop game handoffs open only scoped multiplayer invitations in an isolated guest session', async () => {
   const origin='https://chosen-host.trycloudflare.com', join=origin+'/__catnmice/join';
-  for (const id of ['bannerlands','trashtactics','cat','acornrally','mobamania']) {
+  for (const id of ['bannerlands','trashtactics','cat','acornrally','mobamania','orbitbloom']) {
     const { open,views,sessions,external,windows,ipc }=windowsHarness();
     const local='http://127.0.0.1:43125/', localSession={persisted:true};
     let hostStarts=0;
@@ -186,4 +186,20 @@ test('MOBA Mania’s local menu can read its directory and probe lobby status in
   close();
   assert.equal(allowed(ses, host + '/__catnmice/status'), false);
   assert.equal(allowed(ses, moba + ':runQuery', 'xhr', 'POST'), false);
+});
+
+test('Orbit Bloom can browse and verify lobbies from its installed solo pack', () => {
+  const directory = 'https://firestore.googleapis.com/v1/projects/magic-servers-1ca0c/databases/(default)/documents';
+  const orbit = directory + '/managedGameDirectories/orbitbloom';
+  const host = 'https://one-host.trycloudflare.com';
+  const ses = { webRequest: { onBeforeRequest(callback) { ses.filter = callback; } } };
+  const close = configureSaveSession(ses, { gameId: 'orbitbloom', origin: 'http://127.0.0.1:43127' });
+  assert.ok(allowed(ses, orbit + ':runQuery', 'xhr', 'POST'));
+  assert.ok(allowed(ses, orbit + '/lobbies/0007'));
+  assert.ok(allowed(ses, host + '/__catnmice/status'));
+  assert.equal(allowed(ses, orbit + '/lobbies/0007', 'xhr', 'PATCH'), false);
+  assert.equal(allowed(ses, directory + '/managedGameDirectories/mobamania:runQuery', 'xhr', 'POST'), false);
+  assert.equal(allowed(ses, host + '/__catnmice/join'), false);
+  close();
+  assert.equal(allowed(ses, orbit + '/lobbies/0007'), false);
 });
