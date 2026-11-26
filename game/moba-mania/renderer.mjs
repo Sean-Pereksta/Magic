@@ -1,4 +1,6 @@
 import { WORLD, HEROES } from './data.mjs';
+import { FRONTIER_HEROES } from './hero-frontier-data.mjs';
+import { drawFrontierHero, drawLaneEdges, drawLaneCrossings, LANE_PALETTES } from './frontier-art.mjs';
 import { createEffectBudget, resetEffectBudget, drawCombatBurst, drawShieldShell, drawProjectileTrail, drawSpellAccent, isEffectVisible, EFFECT_PALETTES } from './combat-visuals.mjs';
 import { unitPose, summonPose, drawHitGlint, drawMonsterRocks } from './unit-animation.mjs';
 import { drawCampScenery, drawReactiveTerrain, drawStructureDamage, isWorldEffect, drawWorldEffect, drawGoldFlight } from './world-visuals.mjs';
@@ -91,9 +93,16 @@ function heroSprite(id, frame, facing, attacking, cosmetics = {}, poseStage = 0,
   if (spriteCache.has(key)) return spriteCache.get(key);
   const expanded = id === 'bulwark' || id === 'ember' || id === 'seraph';
   // Leave room for wings, shields and the greatsword at the end of its swing.
-  const spriteWidth = id==='brinehook'?96:id==='vela'?88:EXPANSION_HEROES[id]?80:id === 'druid' ? 88 : id === 'arc' || id === 'seraph' ? 80 : id === 'ranger' ? 72 : expanded ? 64 : 60;
+  const spriteWidth = id==='brinehook'?96:id==='vela'?88:(EXPANSION_HEROES[id]||FRONTIER_HEROES[id])?80:id === 'druid' ? 88 : id === 'arc' || id === 'seraph' ? 80 : id === 'ranger' ? 72 : expanded ? 64 : 60;
   const out = makeCanvas(spriteWidth, 68), c = out.getContext('2d');
   out.groundPadding = 12; out.bodyTop = 12;
+  if(FRONTIER_HEROES[id]){
+    if(facing===2){c.translate(spriteWidth,0);c.scale(-1,1);}
+    c.translate((spriteWidth-40)/2,12);
+    const palette=FRONTIER_HEROES[id].palette.map(color=>tint?blendColor(color,tint):color);
+    drawFrontierHero(c,id,{frame,stage:poseStage,back:facing===3,palette},{box,line,diamond,ring});
+    return cacheSprite(key,out);
+  }
   if(EXPANSION_HEROES[id]){
     if(facing===2){c.translate(spriteWidth,0);c.scale(-1,1);}
     c.translate((spriteWidth-40)/2,12);
@@ -634,20 +643,22 @@ function buildTerrain() {
   // Broad, clear lanes are bordered by moss. Their imperfect paving is small
   // enough to read as ground texture, never giant checkerboard battlefield tiles.
   for (const lane of WORLD.lanes || []) {
-    path(c, lane.points, '#294b3c', 146);
-    path(c, lane.points, '#6b7951', 124);
-    path(c, lane.points, '#a1a06f', 108);
-    path(c, lane.points, '#b9b080', 92);
+    const [shadow,edge,border,surface,tile,darkTile]=LANE_PALETTES[lane.id];
+    path(c, lane.points, shadow, 146);
+    path(c, lane.points, edge, 124);
+    path(c, lane.points, border, 108);
+    path(c, lane.points, surface, 92);
     for (let j = 1; j < lane.points.length; j++) {
       const a = lane.points[j - 1], b = lane.points[j], dx = b.x - a.x, dy = b.y - a.y;
       const len = Math.hypot(dx, dy), nx = -dy / len, ny = dx / len;
       for (let d = 7; d < len; d += 21) {
         const h = hash(d + j * 91, lane.id), xx = a.x + dx * d / len, yy = a.y + dy * d / len;
-        box(c, h < 0.5 ? '#c7bd8c' : '#a6a476', xx + nx * (h - 0.5) * 72, yy + ny * (h - 0.5) * 72, 9 + h * 10, 4);
+        box(c, h < 0.5 ? tile : darkTile, xx + nx * (h - 0.5) * 72, yy + ny * (h - 0.5) * 72, 9 + h * 10, 4);
         if (h < 0.4) box(c, '#758556', xx + nx * 54, yy + ny * 54, 5, 3);
       }
     }
   }
+  for (const lane of WORLD.lanes) drawLaneEdges(c,lane,{box,line,hash});
   for (const camp of WORLD.camps || []) drawCampScenery(c,camp);
   for (const patch of WORLD.brush || []) {
     disc(c, '#24523d', patch.x, patch.y, patch.r || 50);
@@ -669,14 +680,16 @@ function buildTerrain() {
       box(c, '#4099a5', x + hash(i, d) * rw * 0.6 - rw * 0.3, y + 10, 7, 2);
     }
   }
+  drawLaneCrossings(c,{box});
   for (const pit of WORLD.beastPits || []) {
+    const maw=pit.type==='maw';
     disc(c, '#233d3e', pit.x, pit.y, 102);
-    disc(c, '#566f69', pit.x, pit.y, 89);
+    disc(c, maw?'#4d7474':'#747653', pit.x, pit.y, 89);
     disc(c, '#314e50', pit.x, pit.y, 76);
-    ring(c, '#8eaa8b', pit.x, pit.y, 85, 4);
+    ring(c, maw?'#83aeb2':'#aab07d', pit.x, pit.y, 85, 4);
     for (let k = 0; k < 8; k++) {
       const a = k * Math.PI / 4;
-      diamond(c, pit.x + Math.cos(a) * 90, pit.y + Math.sin(a) * 90, 8, 13, '#bda875', '#e6cf91');
+      diamond(c, pit.x + Math.cos(a) * 90, pit.y + Math.sin(a) * 90, 8, maw?17:11, maw?'#74aeb3':'#a1a26c', maw?'#b4d7d7':'#d6c98c');
     }
     for (let k = -1; k <= 1; k++) line(c, '#899983', pit.x - 17 + k * 12, pit.y - 21, pit.x + k * 12, pit.y + 20, 3);
   }
@@ -754,9 +767,9 @@ export class Renderer {
     }
     const targetX = clamp(focus.x - cam.width / 2, 0, Math.max(0, WORLD.width - cam.width));
     const targetY = clamp(focus.y - cam.height * 0.49, 0, Math.max(0, WORLD.height - cam.height));
-    const dt = this.lastTime == null ? 1 : clamp(game.time - this.lastTime, 0, 0.1);
+    const dt = Number.isFinite(view.frameDelta) ? clamp(view.frameDelta,0,.1) : this.lastTime == null ? 0 : clamp(game.time-this.lastTime,0,.1);
     const snap = !this.hasCamera || Math.hypot(targetX - cam.x, targetY - cam.y) > 800;
-    const f = snap ? 1 : 1 - Math.exp(-11 * Math.max(dt, 1 / 60));
+    const f = snap ? 1 : 1 - Math.exp(-11 * dt);
     cam.x += (targetX - cam.x) * f; cam.y += (targetY - cam.y) * f;
     this.hasCamera = true; this.lastTime = game.time;
   }
@@ -770,6 +783,7 @@ export class Renderer {
     const presentationTime = Number.isFinite(view.presentationTime) ? clamp(view.presentationTime,time,time+2) : time;
     this.presentationTime = presentationTime;
     resetEffectBudget(this.effectBudget, this.width, this.motionPreference?.matches || false);
+    this.effectBudget.viewerTeam=team;
     const effects = this.visibleEffects; effects.length = 0;
     const finalCore = e => game.winner != null && e.type === 'structure-collapse' && e.kind === 'core';
     for (const e of game.effects || []) if (this.visible(e.x, e.y, (e.r || 80) + 150) && (isEffectVisible(game, team, e) || finalCore(e))) effects.push(e);
@@ -808,6 +822,7 @@ export class Renderer {
     // Once the match is decided, the shattered objective is public information.
     // Its short presentation remains visible even when a distant bot finished it.
     for (const e of effects) if (finalCore(e)) { this.effect(c,e,presentationTime,true); this.effect(c,e,presentationTime,false); }
+    this.drawTowerFocus(c,game);
     this.drawTelegraphs(c, game);
     this.drawAim(c, game, view);
     for (const u of game.units || []) if (alive(u) && this.visible(u.x, u.y, 90) && shown(u)) this.unitBars(c, u, game);
@@ -884,7 +899,7 @@ export class Renderer {
       for (let i = 0; i < len; i += 38) {
         const d = (i + (time * 12) % 38) / len;
         const x = a.x + dx * d + (hash(i, j) - 0.5) * width * 0.62, y = a.y + dy * d;
-        if (!this.visible(x, y, 10)) continue;
+        if (!this.visible(x, y, 10) || [330,1100,1870].some(crossing=>Math.abs(y-crossing)<43)) continue;
         c.globalAlpha = 0.35 + Math.sin(time * 1.5 + i) * 0.15;
         box(c, '#c0e4c9', x, y, 7 + hash(j, i) * 9, 2);
       }
@@ -915,6 +930,22 @@ export class Renderer {
       this.label(c, active ? 'CLAIM THE BEAST' : 'BEAST SHRINE', pit.x, pit.y + 116, active ? '#ffe3a1' : '#a9c4b8', 10);
     }
   }
+  drawTowerFocus(c, game) {
+    const player=game.player;
+    if(!player||!alive(player))return;
+    let locked=false;
+    for(const tower of game.units){
+      if(!['tower','core'].includes(tower.kind)||!alive(tower)||tower.team===player.team||tower.targetId!==player.id||
+        (game.canSee&&!game.canSee(player.team,tower)))continue;
+      locked=true;
+      c.save();
+      line(c,'#3f2231',tower.x,tower.y-76,player.x,player.y-12,7);
+      c.setLineDash([12,7]);
+      line(c,'#ff825d',tower.x,tower.y-76,player.x,player.y-12,3);
+      c.restore();
+    }
+    if(locked)this.label(c,'TOWER FOCUS',player.x,player.y+42,'#ffd19b',11);
+  }
   drawCombatIndicators(c, game) {
     const player = game.player;
     if (!player || !alive(player)) return;
@@ -940,11 +971,10 @@ export class Renderer {
         ring(c, targeted ? '#ff765e' : '#ffd0a1', u.x, u.y, u.range, targeted ? 3 : 2, !targeted); c.restore();
       }
       const victim = game.units.find(t => t.id === u.targetId && alive(t));
-      if (victim && (targeted || u.attackAnim > 0) && (!game.canSee || game.canSee(player.team, victim))) {
-        c.save(); c.globalAlpha = u.attackAnim > 0 ? .65 : .2;
-        line(c, enemy ? '#ffbc86' : '#b4edff', u.x, u.y - 87, victim.x, victim.y - 15, u.attackAnim > 0 ? 3 : 1); c.restore();
+      if (victim && !targeted && u.attackAnim > 0 && (!game.canSee || game.canSee(player.team, victim))) {
+        c.save(); c.globalAlpha = .65;
+        line(c, enemy ? '#ffbc86' : '#b4edff', u.x, u.y - 87, victim.x, victim.y - 15, 3); c.restore();
       }
-      if (targeted) this.label(c, 'TOWER TARGET', player.x, player.y + 45, '#ffbc91', 10);
     }
   }
   drawAim(c, game, view) {
@@ -1079,7 +1109,7 @@ export class Renderer {
     }
     if (statusOn(status.stun)) for (let k = 0; k < 3; k++) {
       const a = game.time * 4 + k * Math.PI * 2 / 3;
-      box(c, '#ffe7a3', u.x + Math.cos(a) * 15, u.y - height - 1 + Math.sin(a) * 5, 4, 4);
+      diamond(c,u.x+Math.cos(a)*15,u.y-height-1+Math.sin(a)*5,7,12,'#ffe7a3','#fff6bb');
     }
     if (statusOn(status.stun) && u.kind === 'hero') {
       const remaining = status.stun.remaining || 0, duration = status.stun.duration || status.stun.maxDuration || Math.max(1, remaining);
@@ -1313,8 +1343,8 @@ export class Renderer {
   floatText(c, t) {
     if (!this.visible(t.x, t.y, 10)) return;
     const life = t.maxLife ? clamp(t.life / t.maxLife, 0, 1) : clamp(t.life, 0, 1);
-    c.save(); c.globalAlpha = Math.min(1, life * 2.8);
-    const text = String(t.text ?? t.value ?? ''), size = /CRIT|LEVEL|!/.test(text) ? 16 : 13;
+    c.save(); c.globalAlpha = Math.min(1, life * 2.8)*(t.importance==='ambient'?.43:1);
+    const text = String(t.text ?? t.value ?? ''), size = t.importance==='heavy'||/CRIT|LEVEL|!/.test(text) ? 17 : t.importance==='ambient'?11:13;
     c.font = 'bold ' + size + 'px monospace'; c.textAlign = 'center';
     c.lineWidth = 4; c.strokeStyle = '#172a37'; c.strokeText(text, Math.round(t.x), Math.round(t.y));
     c.fillStyle = t.color || '#fff0c6'; c.fillText(text, Math.round(t.x), Math.round(t.y)); c.restore();
@@ -1386,7 +1416,7 @@ export function drawPortrait(canvas, heroId, size = 64, cosmetics = {}) {
   const sprite = heroSprite(heroId, 0, 0, false, cosmetics);
   // The combat frame reserves space for a full sword swing. Crop only that
   // empty margin in the idle portrait so the angel's face stays legible.
-  const sourceWidth=['seraph','vela','cadence'].includes(heroId)?64:['brinehook','ferrite'].includes(heroId)?60:['bulwark','ember','rivet','solstice'].includes(heroId)?48:40,sourceX=(sprite.width-sourceWidth)/2,sourceHeight=heroId==='cadence'?49:44,sourceY=Math.max(0,(sprite.bodyTop||0)-(heroId==='cadence'?5:0));
+  const sourceWidth=['seraph','vela','cadence','zephyr','knell','prism','mirelle'].includes(heroId)?64:['brinehook','ferrite'].includes(heroId)?60:['bulwark','ember','rivet','solstice'].includes(heroId)?48:40,sourceX=(sprite.width-sourceWidth)/2,sourceHeight=heroId==='cadence'?49:44,sourceY=Math.max(0,(sprite.bodyTop||0)-(heroId==='cadence'?5:0));
   const scale = Math.min(size * .94 / sourceWidth, size * .97 / sourceHeight);
   const width = Math.round(sourceWidth * scale), height = Math.round(sourceHeight * scale);
   c.drawImage(sprite, sourceX, sourceY, sourceWidth, sourceHeight, Math.round((size-width)/2), Math.round((size-height)/2), width, height);

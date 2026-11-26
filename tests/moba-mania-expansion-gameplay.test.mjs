@@ -34,7 +34,7 @@ test('all four heroes draft deterministically, and Impossible has four distinct 
     lineups.add(enemies.map(u=>u.heroId).join(','));
     if(seed===1)assert.equal(Game.restore(game.serialize()).units.filter(u=>u.kind==='hero').length,7);
   }
-  assert.equal(seen.size,14);assert(lineups.size>30);
+  assert.equal(seen.size,Object.keys(HEROES).length);assert(lineups.size>30);
   for(const difficulty of Object.keys(DIFFICULTIES).filter(d=>d!=='impossible'))assert.equal(new Game({difficulty,seed:2}).units.filter(u=>u.kind==='hero').length,6);
 });
 

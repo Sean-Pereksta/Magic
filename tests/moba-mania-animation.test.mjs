@@ -165,7 +165,7 @@ test('renderer passes visible units into reactive terrain and keeps discovered t
   const draw=visible=>{
     const {c,calls}=context(),drawn=[];
     const renderer={ctx:c,canvas:{width:1000,height:700},width:1000,height:700,camera:{x:0,y:0,width:1000,height:700},terrain:{},visibleEffects:[],effectBudget:createEffectBudget(),
-      follow(){},visible(x,y){return visible&&Number.isFinite(x)&&Number.isFinite(y);},drawWater(){},drawWells(){},drawObjectiveGround(){},drawCombatIndicators(){},unit(c,v){drawn.push(v.id);},projectile(){},effect(){},drawFog(){},drawTelegraphs(){},drawAim(){},unitBars(){},floatText(){},playerMarker(){}};
+      follow(){},visible(x,y){return visible&&Number.isFinite(x)&&Number.isFinite(y);},drawWater(){},drawWells(){},drawObjectiveGround(){},drawCombatIndicators(){},unit(c,v){drawn.push(v.id);},projectile(){},effect(){},drawFog(){},drawTowerFocus(){},drawTelegraphs(){},drawAim(){},unitBars(){},floatText(){},playerMarker(){}};
     Renderer.prototype.draw.call(renderer,game);return {calls,drawn};
   };
   const hidden=draw(false),shown=draw(true);

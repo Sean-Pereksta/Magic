@@ -1,4 +1,6 @@
 import { HEROES, DIFFICULTIES, WORLD, RULES, lanePoint, segmentDistance, xpToNextLevel, beastScaling } from './data.mjs';
+import { FRONTIER_HEROES } from './hero-frontier-data.mjs';
+import { castFrontierSkill, frontierBotAim } from './hero-frontier.mjs';
 import { castHeroSkill, botSkillAim } from './hero-skills.mjs';
 import { ITEMS, itemBonus, purchaseState, killRewardBonus, modifyItemStatus } from './items.mjs';
 import { makeMetrics, canSee, updateVision, scoutJungle, strength, assignTeamJobs, nextBuildItem, chooseBotTalent, isExpansionHero, expansionBotAim, expansionTargetBias, expansionBotMovement } from './strategy.mjs';
@@ -15,7 +17,7 @@ const structure=u=>u.kind==='tower'||u.kind==='core';
 const hostile=(a,b)=>a.team!==b.team && b.alive;
 const COLORS={physical:'#fff1cf',magic:'#86d8ff',fire:'#ff9e5b',poison:'#a9ee78',heal:'#98f2b8',shield:'#beccff'};
 const COMBAT_COLORS={steel:'#ffe8b5',fire:'#ff9948',arcane:'#69cfff',nature:'#8fe69a',poison:'#b0e86b',holy:'#ffa8d6',frost:'#9deaff',violet:'#bf97ff',stone:'#d7b68c',copper:'#e6a261',tide:'#8fe1ce',ivory:'#f4efdc',time:'#e7b951',magnet:'#ec727e',resonance:'#ffc89c'};
-const HERO_THEMES={arc:'arcane',dragon:'fire',druid:'nature',angel:'holy',ranger:'poison',bulwark:'violet',ember:'fire',seraph:'frost',rivet:'copper',brinehook:'tide',vela:'ivory',solstice:'time',ferrite:'magnet',cadence:'resonance'};
+const HERO_THEMES={arc:'arcane',dragon:'fire',druid:'nature',angel:'holy',ranger:'poison',bulwark:'violet',ember:'fire',seraph:'frost',rivet:'copper',brinehook:'tide',vela:'ivory',solstice:'time',ferrite:'magnet',cadence:'resonance',mirelle:'nature',knell:'copper',zephyr:'tide',prism:'violet'};
 const PRESENTATION_TYPES=new Set(['ground-mark','structure-collapse','summon-arrive','summon-depart','beast-capture','reward-gold','reward-item','reward-level']);
 const effectPool=type=>type==='combat-burst'?'burst':PRESENTATION_TYPES.has(type)?'presentation':'spell';
 const movementStatus=layers=>{
@@ -39,13 +41,13 @@ export class Game {
     this.grid=new Map(); this.navCache=new Map();
     this.lastSeen=[{},{}];this.assignments=[{},{}];this.pendingBeastChoice=null;this.scheduledImpacts=[];this.progressionDepth=0;
     const chosen=HEROES[hero]?hero:'arc';
-    const partners={arc:['dragon','druid'],dragon:['angel','ranger'],druid:['bulwark','seraph'],angel:['dragon','ember'],ranger:['bulwark','seraph'],bulwark:['arc','ember'],ember:['bulwark','angel'],seraph:['bulwark','ranger'],rivet:['brinehook','solstice'],brinehook:['vela','angel'],vela:['brinehook','solstice'],solstice:['dragon','rivet'],ferrite:['cadence','ranger'],cadence:['ferrite','vela']};
+    const partners={arc:['dragon','druid'],dragon:['angel','ranger'],druid:['bulwark','seraph'],angel:['dragon','ember'],ranger:['bulwark','seraph'],bulwark:['arc','ember'],ember:['bulwark','angel'],seraph:['bulwark','ranger'],rivet:['brinehook','solstice'],brinehook:['vela','angel'],vela:['brinehook','solstice'],solstice:['dragon','rivet'],ferrite:['cadence','ranger'],cadence:['ferrite','vela'],mirelle:['knell','zephyr'],knell:['prism','mirelle'],zephyr:['prism','knell'],prism:['zephyr','mirelle']};
     const allies=[chosen,...(partners[chosen]||Object.keys(HEROES).filter(id=>id!==chosen).slice(0,2))];
     const pool=Object.keys(HEROES).filter(id=>!allies.includes(id));
     // A seeded shuffle drafts distinct opposing heroes; Impossible adds one extra opponent.
     for(let i=pool.length-1;i>0;i--){const j=Math.floor(this.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
     const enemies=[],enemyCount=DIFFICULTIES[this.difficulty].enemyHeroes||3;
-    for(const roles of [['bulwark','dragon','seraph','brinehook','ferrite'],['ranger','ember','arc','vela'],['angel','druid','seraph','solstice','rivet','cadence']]){
+    for(const roles of [['bulwark','dragon','seraph','brinehook','ferrite','knell'],['ranger','ember','arc','vela','zephyr','prism'],['angel','druid','seraph','solstice','rivet','cadence','mirelle']]){
       const selected=pool.find(id=>!enemies.includes(id)&&roles.includes(id)&&!(id==='druid'&&enemies.includes('arc')));
       if(selected)enemies.push(selected);
     }
@@ -216,9 +218,9 @@ export class Game {
     const seed=(Math.imul(target.id||0,73856093)^Math.imul(source?.id||0,19349663)^Math.imul(Math.round(this.time*1000),83492791)^Math.imul(Math.round(target.x),31)^Math.round(target.y)^Math.imul(fx.length,2654435761))>>>0;
     const visibleTo=[0,1].filter(team=>this.canSee(team,target));
     return this.effect('combat-burst',target.x,target.y,clamp((target.r||12)+18,18,60),COMBAT_COLORS[theme],life,
-      {...extra,fx,theme,power:clamp(Number.isFinite(power)?power:1,.5,2),angle:Number.isFinite(extra.angle)?extra.angle:source&&Number.isFinite(source.x)&&Number.isFinite(source.y)?Math.atan2(target.y-source.y,target.x-source.x):target.angle||0,seed,visibilityId:target.id,visibleTo});
+      {team:source?.team,...extra,fx,theme,power:clamp(Number.isFinite(power)?power:1,.5,2),angle:Number.isFinite(extra.angle)?extra.angle:source&&Number.isFinite(source.x)&&Number.isFinite(source.y)?Math.atan2(target.y-source.y,target.x-source.x):target.angle||0,seed,visibilityId:target.id,visibleTo});
   }
-  float(unit,text,color='#fff1cf'){this.texts.push({x:unit.x+(this.random()-.5)*18,y:unit.y-unit.r-8,text:String(text),color,life:1,maxLife:1});if(this.texts.length>100)this.texts.shift();}
+  float(unit,text,color='#fff1cf',importance){this.texts.push({importance,x:unit.x+(this.random()-.5)*18,y:unit.y-unit.r-8,text:String(text),color,life:1,maxLife:1});if(this.texts.length>100)this.texts.shift();}
   heal(target,amount,source=null,quiet=false){
     if(!target?.alive||structure(target)||amount<=0)return 0;
     const n=Math.min(target.maxHp-target.hp,amount*(1+this.bonus(source,'healing')));target.hp+=n;
@@ -301,7 +303,12 @@ export class Game {
     onSolsticeHealthLoss(this,target,source,actual);onExpansionHealthLoss(this,target,source,actual);
     if(owner?.kind==='hero'){owner.metrics.damageDealt+=actual;if(target.kind==='hero')owner.metrics.damageToHeroes+=actual;if(structure(target))owner.metrics.damageToStructures+=actual;}
     if(target.kind==='hero')target.metrics.damageTaken+=actual;
-    if(actual>1&&!quiet)this.float(target,Math.round(actual),COLORS[type]||type);
+    const heavy=actual>=120||context.heavy===true;
+    if(actual>1&&!quiet)this.float(target,Math.round(actual),COLORS[type]||type,heavy?'heavy':target.isPlayer||owner?.isPlayer?'direct':'ambient');
+    if(!quiet&&(target.isPlayer||owner?.isPlayer)&&(actual>0||absorbed>0)&&(target.kind==='hero'||structure(target)||heavy)){
+      const kind=absorbed>0?'block':heavy?'heavy':'impact';
+      if(this.combatCue?.at!==this.time||kind==='block'||kind==='heavy'&&this.combatCue.kind==='impact')this.combatCue={at:this.time,kind};
+    }
     if(!quiet&&(actual>0||absorbed>0))target.visualHit={at:this.time,angle:context.angle??Math.atan2(target.y-(source?.y??target.y),target.x-(source?.x??target.x)),power:clamp(Math.sqrt(actual+absorbed)/15,.3,1.5)};
     if(absorbed>0&&(!quiet||target.shield<=0))this.combatBurst(target,source,target.shield>0?'shield-hit':'shield-break',shieldTheme,.6+Math.sqrt(absorbed)/14,{angle:context.angle??Math.atan2(target.y-(source?.y??target.y),target.x-(source?.x??target.x))});
     if(actual>0&&!quiet)this.combatBurst(target,source,'hit',this.combatTheme(source,type,context),.55+Math.sqrt(actual)/13,{angle:context.angle??Math.atan2(target.y-(source?.y??target.y),target.x-(source?.x??target.x))});
@@ -524,11 +531,18 @@ export class Game {
         const n=5+this.bonus(hero,'fanCount');for(let i=0;i<n;i++)this.fireSkill(hero,angle+(i-(n-1)/2)*.155,{type:'arrow',color:a.color,r:a.radius,range:a.range,speed:550,damage:52*power,pierce:0,damageType:'physical'});break;}
       case 'stun-bomb':zone('bomb',.6,{delay:.55,tickIn:.55,damage:80*power,stun:1.4+this.bonus(hero,'stunDuration'),color:a.color});this.effect('poison',at.x,at.y,a.radius,a.color,.6,{delay:.55,team:hero.team});break;
       case 'long-shot':this.fireSkill(hero,angle,{type:'longshot',color:a.color,r:a.radius,range:a.range,speed:830,damage:205*power*(1+this.bonus(hero,'longshotDamage')),pierce:3,damageType:'physical'});break;
-      default:if(!castResonanceSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone})&&!castExpansionSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone}))castHeroSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone});break;
+      default:if(!castFrontierSkill(this,hero,a,{at,angle,power,area,shieldAmount,zone})&&!castResonanceSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone})&&!castExpansionSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone}))castHeroSkill(this,hero,a,{aim,angle,at,power,area,shieldAmount,zone});break;
     }
-    if(a.mobility||['rift-step','sky-cleave'].includes(a.id)){hero.visualAction.toX=hero.x;hero.visualAction.toY=hero.y;}
+    if(a.mobility||['rift-step','sky-cleave'].includes(a.id)){hero.visualAction.toX=hero.x;hero.visualAction.toY=hero.y;hero.visualAction.snapMotion=true;}
     this.combatBurst(hero,hero,'cast',this.combatTheme(hero),.8,{angle,abilityId:a.id});
-    if(hero.isPlayer)this.cancelPlayerOrder();
+    if(hero.isPlayer){
+      this.moveTarget=null;
+      if(this.attackOrder)hero.attackTimer=Math.max(hero.attackTimer,.16);
+      if(a.mobility||['rift-step','sky-cleave'].includes(a.id)){
+        // A deliberate dash disengages. Ordinary spells preserve the attack order.
+        this.cancelPlayerOrder();
+      }
+    }
     const restore=this.bonus(hero,'castHeal');if(restore)this.heal(hero,hero.maxHp*restore,hero);
     this.progressionHook(onCast,hero,a,{at,angle,power,slot});this._castSource=null;
     return true;
@@ -675,7 +689,7 @@ export class Game {
     // locally; explicitly clicking a target is the command to pursue it farther.
     let nearest=null,distance=Infinity;const radius=this.playerAttackSearchRadius();
     for(const target of this.units)if(this.validPlayerTarget(target)){
-      const d=dist(this.player,target);if(d<=radius+target.r&&d<distance){nearest=target;distance=d;}
+      const d=dist(this.player,target);if(d<=radius+target.r&&d-target.r<distance){nearest=target;distance=d-target.r;}
     }
     return nearest;
   }
@@ -713,10 +727,14 @@ export class Game {
     const mx=Number(input.move?.x)||0,my=Number(input.move?.y)||0;
     if(Math.hypot(mx,my)>.05){this.moveDirect(h,mx,my,dt);return;}
     if(this.moveTarget){if(dist(h,this.moveTarget)<12)this.moveTarget=null;else this.moveToward(h,this.moveTarget,dt);return;}
-    if(!this.attackOrder)return;
+    if(!this.attackOrder||h.channel)return;
     let target=this.units.find(u=>u.id===this.attackOrder.targetId);
     if(!this.attackOrder.explicit||!this.validPlayerTarget(target)){
-      const previousId=target?.id;target=this.nearestPlayerEnemy();this.attackOrder.targetId=target?.id??null;this.attackOrder.explicit=false;
+      const previousId=target?.id, nearest=this.nearestPlayerEnemy();
+      const edge=u=>dist(h,u)-u.r;
+      if(!this.validPlayerTarget(target)||edge(target)>this.playerAttackSearchRadius()||
+        (nearest&&edge(nearest)+18<edge(target)))target=nearest;
+      this.attackOrder.targetId=target?.id??null;this.attackOrder.explicit=false;
       if(target?.id!==previousId){h.path=null;h.pathGoal=null;h.navPath=null;h.navGoal=null;h.navTime=0;}
     }
     h.targetId=target?.id??null;
@@ -1146,7 +1164,10 @@ export class Game {
       const a=this.getAbility(h,slot);if(h.level<a.unlock||h.cooldowns[slot]>0||h.mana<a.mana)continue;
       let aim=target?{x:target.x+(target.vx||0)*.35*cfg.lead,y:target.y+(target.vy||0)*.35*cfg.lead}:{x:h.x,y:h.y};
       let should=false;
-      if(isExpansionHero(h)){
+      if(FRONTIER_HEROES[h.heroId]){
+        const customAim=frontierBotAim(this,h,a,aim,target,retreat);should=!!customAim;
+        if(customAim)aim={x:customAim.x,y:customAim.y};
+      }else if(isExpansionHero(h)){
         const customAim=expansionBotAim(this,h,a,target,retreat,cfg);should=!!customAim;if(customAim)aim={...customAim};
       }else if(['bulwark','ember','seraph'].includes(h.heroId)){
         const customAim=botSkillAim(this,h,a,target,retreat,cfg);should=!!customAim;if(customAim)aim={...customAim};
@@ -1162,7 +1183,7 @@ export class Game {
       }
       if(!should)continue;
       if(h.heroId==='bulwark'&&target?.status.stun&&[0,2,3].includes(slot)&&target.status.stun.remaining>.3)continue;
-      if(a.type==='line'||a.type==='cone'||a.type==='ground'&&!['healing-tree','rose-light','forcefield','sanctuary','inspire'].includes(a.id)){
+      if(a.type==='line'||a.type==='cone'||a.type==='ground'&&!['healing-tree','rose-light','forcefield','sanctuary','inspire','marsh-remedy'].includes(a.id)){
         aim.x+=(this.random()-.5)*cfg.aimError;aim.y+=(this.random()-.5)*cfg.aimError;
       }
       if(a.mobility||a.id==='rift-step'||a.id==='sky-cleave'){

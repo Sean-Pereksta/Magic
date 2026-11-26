@@ -69,7 +69,7 @@ export function assignTeamJobs(game,team,plan){
   const jobs=game.assignments[team]={};
   const heroes=game.units.filter(u=>u.alive&&u.kind==='hero'&&u.team===team);
   const bots=heroes.filter(u=>u.bot);
-  for(const hero of bots)jobs[hero.id]={type:hero.heroId==='rivet'?'defend':hero.heroId==='brinehook'?'catch':hero.heroId==='vela'?'marksman':['bulwark','ferrite'].includes(hero.heroId)?'frontline':hero.heroId==='ember'?'flank':['angel','seraph','solstice','cadence'].includes(hero.heroId)?'support':'advance',lane:plan.lane};
+  for(const hero of bots)jobs[hero.id]={type:hero.heroId==='rivet'?'defend':hero.heroId==='brinehook'?'catch':hero.heroId==='vela'?'marksman':['bulwark','ferrite','knell'].includes(hero.heroId)?'frontline':hero.heroId==='ember'?'flank':['angel','seraph','solstice','cadence','mirelle'].includes(hero.heroId)?'support':'advance',lane:plan.lane};
   // A single strong defender can hold a secondary threatened lane while the others act.
   if(plan.type==='push'||plan.type==='beast'){
     const danger=game.units.filter(u=>u.alive&&u.team===team&&u.kind==='tower'&&u.lane!==plan.lane).map(tower=>({tower,foes:game.units.filter(u=>u.alive&&u.team===1-team&&!structure(u)&&canSee(game,team,u)&&distance(u,tower)<460)})).filter(x=>x.foes.length>=3).sort((a,b)=>b.foes.length-a.foes.length)[0];
@@ -95,6 +95,10 @@ const BUILD_PATHS={
   solstice:['phoenix-crown','eternity-hourglass','sovereign-aegis'],
   ferrite:['sovereign-aegis','winters-dominion','crimson-relic'],
   cadence:['ascendant-codex','eternity-hourglass','sovereign-aegis'],
+  mirelle:['pandemic-engine','phoenix-crown','celestial-font'],
+  knell:['sovereign-aegis','worldsplitter','crimson-relic'],
+  zephyr:['tempest-wings','thunderbolt-crossbow','crimson-relic'],
+  prism:['starfire-scepter','eternity-hourglass','celestial-font'],
 };
 export function nextBuildItem(hero){
   const owned=new Set(hero.items||[]),path=hero.buildPlan?.length?hero.buildPlan:(BUILD_PATHS[hero.heroId]||BUILD_PATHS.arc);

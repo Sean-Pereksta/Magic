@@ -99,11 +99,13 @@ test('movement and new orders cancel pursuit; a held attack cannot restart it',(
   game.update(.05,{moveTo:{x:1350,y:1100}});assert.equal(game.attackOrder,null);
 });
 
-test('casts, recall, team commands, death, and movement during stun clear old attack orders',()=>{
+test('ordinary casts retain focus while dashes, recall, team commands, death and movement clear it',()=>{
   const {game,player}=arena(),foe=enemy(game,1650);
   game.attackTarget(foe.id);assert.equal(game.cast(player,3,{x:1700,y:1100}),false);
   assert(game.attackOrder,'an unavailable ability does not cancel focus');
-  assert(game.cast(player,0,{x:1650,y:1100}));assert.equal(game.attackOrder,null);
+  assert(game.cast(player,0,{x:1650,y:1100}));assert.equal(game.attackOrder.targetId,foe.id);
+  advance(game,.4);assert(game.projectiles.some(p=>p.basic&&p.targetId===foe.id),'ordinary cast resumes basic attacks');
+  player.level=6;assert(game.cast(player,3,{x:1570,y:1100}));assert.equal(game.attackOrder,null);
   game.attackTarget(foe.id);assert(game.recall(player));assert.equal(game.attackOrder,null);
   game.attackTarget(foe.id);assert.equal(player.recallIn,0);assert(game.command('push',1));assert.equal(game.attackOrder,null);
   game.attackTarget(foe.id);game.applyStatus(player,'stun',1);game.update(.05,{move:{x:1,y:0}});
@@ -203,4 +205,11 @@ test('obstacle detours and local steering cannot route a bot through tower fire'
   const y=bot.y;game.moveDirect(bot,0,-1,.1);assert.equal(bot.y,y,'last-step steering cannot enter the danger perimeter');
   defense.x=1600;defense.y=1100;bot.x=1600;bot.y=1280;
   game.moveDirect(bot,0,1,.01);assert(bot.y>1280,'even short outward escape steps remain allowed');
+});
+
+test('automatic targeting only switches to a meaningfully closer collision edge',()=>{
+  const {game,player}=arena(),first=enemy(game,1510),second=enemy(game,1520);
+  game.attackNearest();assert.equal(player.targetId,first.id);
+  second.x=1504;advance(game,.15);assert.equal(player.targetId,first.id);
+  second.x=1480;advance(game,.15);assert.equal(player.targetId,second.id);
 });

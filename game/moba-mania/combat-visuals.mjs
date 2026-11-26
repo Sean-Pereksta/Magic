@@ -89,6 +89,8 @@ export function drawCombatBurst(c, e, time, ground = false, budget) {
   if (!Number.isFinite(e.x) || !Number.isFinite(e.y) || !(e.life > 0)) return 0;
   const life = clamp(e.life / Math.max(.01, e.maxLife || .5), 0, 1), t = 1 - life;
   const theme = e.theme || 'steel', colors = palette(theme), fx = e.fx || 'hit';
+  const quietAlly=e.team!=null&&e.team===budget?.viewerTeam&&(fx==='cast'||fx==='hit'&&e.power<1.4);
+  const opacity=quietAlly?.55:1;
   const power = clamp(e.power || 1, .5, 2), radius = clamp(e.r || 32, 12, 90);
   const seed = seedOf(e), reduced = budget?.reducedMotion, travel = reduced ? .42 : 1;
   const color = validColor(e.color) ? e.color : colors.main;
@@ -102,11 +104,19 @@ export function drawCombatBurst(c, e, time, ground = false, budget) {
     c.restore(); return emitted;
   }
   const healing = fx === 'heal', cast = fx === 'cast', shatter = fx === 'shield-break', death = fx === 'death';
+  if(shatter&&t<.66&&take(budget)){
+    c.globalAlpha=life*.85;c.strokeStyle=colors.light;c.lineWidth=3;
+    for(const side of [-1,1]){
+      const x=e.x+side*(10+t*radius);
+      c.beginPath();c.moveTo(x, e.y-48+t*11);c.lineTo(x+side*8,e.y-32);c.lineTo(x,e.y-16-t*6);c.stroke();
+    }
+    emitted++;
+  }
   const total = reduced ? (shatter || death ? 7 : 4) : Math.round((shatter ? 21 : death ? 20 : healing ? 8 : cast ? 9 : fx === 'shield-hit' ? 10 : 12) * Math.sqrt(power));
   const cy = e.y - Math.min(29, radius * .53), angle = Number.isFinite(e.angle) ? e.angle : -Math.PI / 2;
   // The central glint is small and local; no full-screen flashes or shake.
   if (!healing && !cast && t < .24 && take(budget)) {
-    c.globalAlpha = (1 - t / .24) * .85;
+    c.globalAlpha = (1 - t / .24) * .85 * opacity;
     const size = (shatter ? 10 : 6) * power;
     pixel(c, colors.light, e.x - size, cy - 2, size * 2, 4);
     pixel(c, color, e.x - 2, cy - size, 4, size * 2); emitted++;
@@ -124,7 +134,7 @@ export function drawCombatBurst(c, e, time, ground = false, budget) {
     } else y -= Math.sin(t * Math.PI) * (shatter || death ? 25 : 15) * travel;
     const size = Math.max(2, (shatter || death ? 5 : 4) * (.6 + noise(seed, k + 9) * .6) * (1 - t * .5));
     const tint = k % 3 ? color : colors.light;
-    c.globalAlpha = fade * (healing || cast ? .8 : .95);
+    c.globalAlpha = opacity * fade * (healing || cast ? .8 : .95);
     if (shatter || theme === 'frost') {
       crystal(c, tint, colors.light, x, y, size);
     } else if (healing || theme === 'holy') {
