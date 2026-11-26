@@ -6,6 +6,7 @@ on:
       - 'lobby/**'
       - 'shared/managed-servers.js'
       - 'shared/tests/managed-servers.test.cjs'
+      - 'shared/tests/live-lobbies.test.mjs'
       - 'index.html'
       - '.github/workflows/lobby-library-tests.yml'
   push:
@@ -14,6 +15,7 @@ on:
       - 'lobby/**'
       - 'shared/managed-servers.js'
       - 'shared/tests/managed-servers.test.cjs'
+      - 'shared/tests/live-lobbies.test.mjs'
       - 'index.html'
       - '.github/workflows/lobby-library-tests.yml'
 
@@ -32,6 +34,7 @@ jobs:
             /lobby/
             /shared/managed-servers.js
             /shared/tests/managed-servers.test.cjs
+            /shared/tests/live-lobbies.test.mjs
             /index.html
             /game/apes-together-strong.html
             /game/trash-tactics/rank-tiers.mjs
@@ -39,7 +42,7 @@ jobs:
         with:
           node-version: '22'
       - name: Test real hub source and game launch actions
-        run: node --experimental-vm-modules --test lobby/tests/*.test.cjs lobby/tests/*.test.mjs shared/tests/managed-servers.test.cjs
+        run: node --experimental-vm-modules --test lobby/tests/*.test.cjs lobby/tests/*.test.mjs shared/tests/managed-servers.test.cjs shared/tests/live-lobbies.test.mjs
       - name: Install isolated browser test runtime
         run: npm install --prefix "$RUNNER_TEMP/arcade-browser" --no-save --package-lock=false --ignore-scripts playwright@1.62.1
       - name: Prepare test browser

@@ -10,8 +10,9 @@ function element(tag, value) {
 
 function mount(section, directory) {
   const results = new Map([...section.querySelectorAll("[data-live-section]")].map(node => {
-    const game = node.dataset.liveSection;
-    return [game, {node, rooms: [], message: "Checking the directory…"}];
+    const key = node.dataset.liveSection;
+    const game = key === "catandmouse" ? "cat" : key;
+    return [key, {game, node, rooms: [], message: "Checking the directory…"}];
   }));
   let inView = false;
   let joining = false;
@@ -65,11 +66,11 @@ function mount(section, directory) {
     status.hidden = !status.textContent;
   }
 
-  async function refresh(game, result) {
+  async function refresh(result) {
     if (!inView || document.hidden || result.node.hidden || result.pending) return;
     result.pending = true;
     try {
-      result.rooms = await directory.publicServers(game);
+      result.rooms = await directory.publicServers(result.game);
       result.message = "";
     } catch {
       result.message = "Could not refresh the directory. You can still use a host invitation.";
@@ -80,7 +81,7 @@ function mount(section, directory) {
   }
 
   function refreshVisible() {
-    for (const [game, result] of results) void refresh(game, result);
+    for (const result of results.values()) void refresh(result);
   }
 
   function select(game) {

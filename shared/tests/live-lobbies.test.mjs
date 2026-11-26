@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import directory from "../../shared/managed-servers.js";
+import directory from "../managed-servers.js";
 
 const origin = "https://lobby-one.trycloudflare.com";
 

@@ -78,11 +78,14 @@ test('the three Windows host editions preserve their guest routes and open hosti
   for (const output of [html, await load(html)]) {
     assert.equal(output.match(/id="live-lobbies"/g).length, 1);
     assert.equal(output.match(/src="\.\/live-lobbies\.mjs\?v=\d+"/g).length, 1);
+    assert.ok(output.includes(`href="${cat.hostRoute}"`));
+    assert.ok(output.includes(`href="${banner.hostRoute}"`));
     assert.match(output, /data-live-filter="all"/);
-    for (const id of ['acornrally', 'bannerlands', 'trashtactics', 'lastsignal', 'cat']) {
+    for (const id of ['acornrally', 'bannerlands', 'trashtactics', 'lastsignal', 'catandmouse']) {
       assert.ok(output.includes(`data-live-filter="${id}"`));
       assert.ok(output.includes(`data-live-section="${id}"`));
     }
+    assert.equal(output.match(/href="\/hub\/download\.html">Get Windows Game Hub/g).length, 3);
   }
 });
 

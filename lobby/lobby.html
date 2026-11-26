@@ -98,7 +98,7 @@
         });
         html=html.replace(/\{key:"cat",[^\n]*\}/,record=>record
           .replace('desc:"Classic multiplayer chase."','desc:"Gather cheese, build a fortress, and survive the Cat in painted battlefields."')
-          .replace('modes:["multi"]',`modes:["single","multi"],liveLobbyGame:"cat",paintedTile:"/game/catandmouse/edition/art/title-v1.webp",singleRoute:"/game/catandmouse/edition/index.html",hostRoute:"${catEdition.hostRoute}",localEditionRoute:"${catEdition.localEditionRoute}"`));
+          .replace('modes:["multi"]',`modes:["single","multi"],liveLobbyGame:"catandmouse",paintedTile:"/game/catandmouse/edition/art/title-v1.webp",singleRoute:"/game/catandmouse/edition/index.html",hostRoute:"${catEdition.hostRoute}",localEditionRoute:"${catEdition.localEditionRoute}"`));
         // Run inside the existing loader so every injected game participates.
         html=globalThis.GameHubLibrary.upgradeHtml(html);
         // A presentation failure must not prevent the existing hub from opening.
@@ -113,11 +113,11 @@
         const escapeHtml=value=>value.replace(/[&"<>]/g,c=>({"&":"&amp;",'"':"&quot;","<":"&lt;",">":"&gt;"}[c]));
         const hostButton=game=>globalThis.GameHubLibrary.hostButton(game,escapeHtml);
         const managedGames=[
-          {key:"acornrally",name:"Acorn Rally",hostRoute:"/hub/download.html"},
-          {key:"bannerlands",name:"Bannerlands",hostRoute:"/hub/download.html"},
-          {key:"trashtactics",name:"Trash Tactics",hostRoute:"/hub/download.html"},
-          {key:"lastsignal",name:"Last Signal",hostRoute:"/hub/download.html"},
-          {key:"cat",name:"Cat & Mouse",hostRoute:"/hub/download.html"}
+          {key:"acornrally",name:"Acorn Rally"},
+          {key:"bannerlands",name:"Bannerlands",hostRoute:truthGames.find(game=>game.key==="bannerlands").hostRoute},
+          {key:"trashtactics",name:"Trash Tactics"},
+          {key:"lastsignal",name:"Last Signal"},
+          {key:"catandmouse",name:"Cat & Mouse",hostRoute:catEdition.hostRoute}
         ];
         const liveLobbies=`<section id="live-lobbies" class="card live-lobbies" aria-labelledby="live-lobbies-title">
           <div class="live-lobbies-head">
@@ -128,7 +128,7 @@
             </div>
           </div>
           <div class="live-lobbies-games">
-            ${managedGames.map(({key,name,hostRoute})=>`<section data-live-section="${key}" aria-labelledby="live-lobbies-${key}"><div class="live-lobbies-game-head"><h3 id="live-lobbies-${key}">${escapeHtml(name)}</h3>${hostButton({title:name,hostRoute})}</div><p data-live-status role="status">Checking the directory…</p><ul data-live-rooms></ul></section>`).join("")}
+            ${managedGames.map(({key,name,hostRoute})=>`<section data-live-section="${key}" aria-labelledby="live-lobbies-${key}"><div class="live-lobbies-game-head"><h3 id="live-lobbies-${key}">${escapeHtml(name)}</h3>${hostRoute ? hostButton({title:name,hostRoute}) : '<a class="btn secondary small" href="/hub/download.html">Get Windows Game Hub</a>'}</div><p data-live-status role="status">Checking the directory…</p><ul data-live-rooms></ul></section>`).join("")}
           </div>
         </section>`;
         const main='<main class="shell" id="mainContent" tabindex="-1">';
