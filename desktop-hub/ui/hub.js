@@ -8,12 +8,16 @@ const shortTitles = {bannerlands:'Bannerlands'};
 const filters = ['All games','Installed','Offline Ready','Multiplayer','Favorites'];
 const rankingIds = ['trashtactics','bannerlands','cat'];
 const localLobbyGames = ['trashtactics','bannerlands','cat','lastsignal'];
+const lobbyRefreshMs = 30000;
+const lobbyPhases = {waiting:'In lobby',playing:'In game',racing:'Racing',finished:'Match finished'};
 const view = $('#view');
 const dialog = $('#dialog');
 let state = {catalog:{games:[]},settings:{}};
 let page = 'Library', detailId = '', filter = 'All games', query = '', feature = 0, rankGame = 'trashtactics';
 let sequence = 0, rankSequence = 0, statusTimeout, snapshotKey = '';
 let stopServerDiagnostics = () => {};
+let lobbyGame = '', lobbyQuery = '', lobbyGroups = [], lobbyLoaded = false, lobbyFailed = false, lobbyPending = false;
+let lobbyRefreshTimer, lobbyExpiryTimer;
 const inProgress = new Set();
 const serverDrafts = new Map();
 const serverStatusLabels = {offline:'Stopped',starting:'Starting',online:'Online','lan-only':'Local network only',stopping:'Stopping'};
@@ -215,26 +219,88 @@ function details(game) {
     ${shots.length ? `<section class="section"><div class="section-title">${titleLine('Gameplay',shots.length)}</div><div class="gallery">${shots.map((item,i) => `<button class="shot" data-action="shot" data-src="${attr(mediaPath(item.path || item.src))}" data-title="${attr(title(game))} gameplay screenshot ${i+1}" aria-label="Enlarge gameplay screenshot ${i+1}"><img loading="lazy" src="${attr(mediaPath(item.path || item.src))}" alt="${attr(item.alt || title(game)+' gameplay, screenshot '+(i+1))}"></button>`).join('')}</div></section>` : ''}
   `;
 }
-function lobbies() {
-  const lobbyGames = [...new Set([...localLobbyGames,...(state.servers || []).map(s => s.id)])].map(matches).filter(Boolean);
-  return `<section class="intro-art"><img src="art/trashtactics-hero.webp" alt=""><h2>Live Lobbies</h2><p>Browse public rooms, join with an invite, or host a lobby from this PC.</p><div class="controls">${btn('Browse official lobbies','community',{section:'lobbies'},'gold','lobbies')}</div></section>
-    <section class="panel"><h2>Join with an invite</h2><form id="invite-form" class="form-row"><input class="field" name="invite" type="url" required placeholder="Paste a Catnmice or game invite link" aria-label="Invite link"><button class="button" type="submit">${icon('link')} Open invite</button></form></section>
-    <section class="panel"><div class="section-title"><h2>Public servers</h2>${btn('Refresh','server-list-refresh',{},'','refresh')}</div><div id="public-servers" aria-live="polite">Checking Magic Servers…</div></section>
-    <section class="panel"><h2>Game lobbies</h2><div class="line-list">${lobbyGames.map(g => `<div class="list-item"><img src="${attr(imageFor(g))}" alt=""><div class="item-main"><strong>${esc(title(g))}</strong><small>${installed(g.id) ? 'Installed' : 'Available to install'}</small></div><div class="controls">${btn('Multiplayer','play',{id:g.id,mode:'online'},'','arrow')}${hostLobby(g)}</div></div>`).join('')}</div></section>`;
+function lobbyGames() {
+  return [...new Set([...localLobbyGames,...(state.servers || []).map(server => server.id)])].map(matches).filter(Boolean);
 }
-async function loadPublicServers(){
-  const box=$('#public-servers');if(!box||!host)return;
-  const attempt=String(Number(box.dataset.request||0)+1);
-  box.dataset.request=attempt;
-  try{
-    const groups=await host.invoke('publicServers');
-    if(!box.isConnected||box.dataset.request!==attempt)return;
-    box.innerHTML=groups.map(group=>{
-      const rooms=group.rooms.filter(room=>room.expires>Date.now());
-      const list=rooms.map(room=>`<div class="list-item"><div class="item-main"><strong>${esc(room.name)}</strong><small>${esc(room.summary)}</small></div>${btn('Join','server-list-join',{id:group.id,code:room.code,expires:room.expires},'glass','arrow')}</div>`).join('');
-      return `<div><h3>${esc(group.title)}</h3>${list||`<p>${group.failed?'Could not read the directory.':'No public servers are online.'}</p>`}</div>`;
-    }).join('');
-  }catch{if(box.isConnected&&box.dataset.request===attempt)box.textContent='The public server directory is unavailable. Try Refresh or use a host invitation.';}
+function lobbyGameOptions() {
+  const titles = new Map(lobbyGames().map(game => [game.id,title(game)]));
+  for (const group of lobbyGroups) titles.set(group.id,group.title);
+  const entries = [...titles].sort((a,b) => a[1].localeCompare(b[1]));
+  return '<option value="">All games</option>' + entries.map(([id,name]) =>
+    `<option value="${attr(id)}" ${id === lobbyGame ? 'selected' : ''}>${esc(name)}</option>`).join('');
+}
+function lobbies() {
+  return `<section class="panel"><div class="section-title"><h2>Public servers</h2>${btn('Refresh','server-list-refresh',{},'','refresh')}</div>
+    <div class="lobby-filters">
+      <label for="lobby-game">Game<select id="lobby-game" class="field">${lobbyGameOptions()}</select></label>
+      <label for="lobby-search">Search servers<input id="lobby-search" class="field" type="search" value="${attr(lobbyQuery)}" placeholder="Game or server name" autocomplete="off"></label>
+    </div>
+    <p id="public-servers-status" role="status"></p><div id="public-servers"></div></section>
+    <section class="panel"><div class="section-title"><h2>Join with an invite</h2>${btn('Open website lobbies','community',{section:'lobbies'},'','external')}</div>
+    <form id="invite-form" class="form-row"><input class="field" name="invite" type="url" required placeholder="Paste a Catnmice or game invite link" aria-label="Invite link"><button class="button" type="submit">${icon('link')} Open invite</button></form></section>
+    <section class="panel"><h2>Game lobbies</h2><div class="line-list">${lobbyGames().map(g => `<div class="list-item"><img src="${attr(imageFor(g))}" alt=""><div class="item-main"><strong>${esc(title(g))}</strong><small>${installed(g.id) ? 'Installed' : 'Available to install'}</small></div><div class="controls">${btn('Multiplayer','play',{id:g.id,mode:'online'},'','arrow')}${hostLobby(g)}</div></div>`).join('')}</div></section>`;
+}
+function lobbyRow(group,room) {
+  return `<li class="lobby-list-row"><div class="lobby-identity"><small>${esc(group.title)}</small><strong>${esc(room.name)}</strong></div>
+    <span class="lobby-players">${fmt(room.players)} / ${fmt(room.capacity)} players</span>
+    <span class="lobby-phase" data-phase="${attr(room.phase)}">${esc(lobbyPhases[room.phase] || 'Unknown status')}</span>
+    ${btn(room.joinable ? 'Join' : 'Check for seat','server-list-join',{id:group.id,code:room.code,expires:room.expires},'glass','arrow')}</li>`;
+}
+function renderPublicServers() {
+  const box = $('#public-servers');
+  if (!box) return;
+  clearTimeout(lobbyExpiryTimer);
+  const now = Date.now(), search = normalize(lobbyQuery.trim());
+  const groups = lobbyGroups.filter(group => !lobbyGame || group.id === lobbyGame);
+  const rooms = groups.flatMap(group => group.rooms
+    .filter(room => room.expires > now && normalize(`${group.title} ${room.name}`).includes(search))
+    .map(room => ({group,room})));
+  const failed = lobbyFailed || groups.some(group => group.failed);
+  const status = $('#public-servers-status');
+  const info = !host ? 'Open the Windows launcher to browse public servers.' : !lobbyLoaded ? 'Checking Magic Servers…'
+    : rooms.length ? `${fmt(rooms.length)} ${rooms.length === 1 ? 'server' : 'servers'}${failed ? ' · Some listings could not be refreshed.' : ''}`
+    : failed ? 'The server directory is unavailable. Try Refresh or use a host invitation.'
+    : lobbyGame || search ? 'No public servers match these filters.' : 'No public servers are online.';
+  if (status.textContent !== info) status.textContent = info;
+  const focused = document.activeElement;
+  const activeJoin = box.contains(focused) ? focused.dataset : null;
+  box.innerHTML = rooms.length ? `<ul class="lobby-list">${rooms.map(({group,room}) => lobbyRow(group,room)).join('')}</ul>` : '';
+  if (activeJoin) {
+    const selector = `[data-id="${CSS.escape(activeJoin.id)}"][data-code="${CSS.escape(activeJoin.code)}"]`;
+    (box.querySelector(selector) || $('#lobby-search'))?.focus({preventScroll:true});
+  }
+  const nextExpiry = rooms.reduce((earliest,{room}) => Math.min(earliest,room.expires),Infinity);
+  if (Number.isFinite(nextExpiry)) lobbyExpiryTimer = setTimeout(renderPublicServers,Math.max(1,nextExpiry-Date.now()));
+}
+async function loadPublicServers() {
+  if (!host || lobbyPending || !$('#public-servers')) return;
+  clearTimeout(lobbyRefreshTimer);
+  lobbyRefreshTimer = undefined;
+  lobbyPending = true;
+  try {
+    lobbyGroups = await host.invoke('publicServers');
+    lobbyFailed = false;
+  } catch {
+    lobbyFailed = true;
+  } finally {
+    lobbyLoaded = true;
+    lobbyPending = false;
+    const gameSelect = $('#lobby-game');
+    if (gameSelect) {
+      const options = lobbyGameOptions();
+      if (gameSelect.dataset.options !== options) {
+        gameSelect.innerHTML = options;
+        gameSelect.dataset.options = options;
+      }
+      renderPublicServers();
+      lobbyRefreshTimer = setTimeout(loadPublicServers,lobbyRefreshMs);
+    }
+  }
+}
+function stopPublicServers() {
+  clearTimeout(lobbyRefreshTimer);
+  clearTimeout(lobbyExpiryTimer);
+  lobbyRefreshTimer = undefined;
 }
 function rankings() {
   return `<section class="panel"><div class="tools" aria-label="Select a ranked game">${rankingIds.filter(matches).map(id => `<button class="chip" data-action="rank" data-id="${id}" aria-pressed="${rankGame===id}">${esc(title(matches(id)))}</button>`).join('')}</div><div id="rank-result" role="status" aria-busy="true"><p>Loading leaderboard…</p></div></section>`;
@@ -387,6 +453,7 @@ function settings() {
 function render() {
   const inviteValue = $('#invite-form input')?.value || '';
   const editingInvite = document.activeElement?.matches('#invite-form input');
+  const lobbyField = document.activeElement?.matches('#lobby-game, #lobby-search') ? document.activeElement : null;
   const editingServer = document.activeElement?.closest('[data-server-form]');
   const serverFocus = editingServer ? {id:editingServer.dataset.serverForm,name:document.activeElement.name,
     start:document.activeElement.selectionStart,end:document.activeElement.selectionEnd} : null;
@@ -396,9 +463,14 @@ function render() {
   if (active && view.contains(active)) {
     key = active.dataset.action ? Object.keys(active.dataset).map(k => '[data-'+k.replace(/[A-Z]/g,m=>'-'+m.toLowerCase())+'="'+CSS.escape(active.dataset[k])+'"]').join('') : '';
   }
+  if (page !== 'Live Lobbies') stopPublicServers();
   if (detailId && matches(detailId)) view.innerHTML = details(matches(detailId));
   else if (page === 'Library') view.innerHTML = library();
-  else if (page === 'Live Lobbies') {view.innerHTML=lobbies();loadPublicServers();}
+  else if (page === 'Live Lobbies') {
+    view.innerHTML = lobbies();
+    renderPublicServers();
+    if (!lobbyRefreshTimer) void loadPublicServers();
+  }
   else if (page === 'Server Manager') view.innerHTML=serverManager();
   else if (page === 'Rankings') {view.innerHTML=rankings();loadRankings();}
   else if (page === 'Downloads') view.innerHTML=downloads();
@@ -407,6 +479,11 @@ function render() {
   const invite = $('#invite-form input');
   if(invite && inviteValue) invite.value=inviteValue;
   if(invite && editingInvite) invite.focus({preventScroll:true});
+  if (lobbyField) {
+    const field = document.getElementById(lobbyField.id);
+    field?.focus({preventScroll:true});
+    if (lobbyField.id === 'lobby-search') field?.setSelectionRange(lobbyField.selectionStart,lobbyField.selectionEnd);
+  }
   if (key) view.querySelector(key)?.focus({preventScroll:true});
   if (serverFocus?.name) {
     const field = view.querySelector('[data-server-form="'+CSS.escape(serverFocus.id)+'"]')?.elements.namedItem(serverFocus.name);
@@ -564,10 +641,18 @@ function readServerDraft(form){
   return {name:form.elements.serverName.value,visibility:form.elements.visibility.value};
 }
 document.addEventListener('input',event => {
+  if (event.target.id === 'lobby-search') {
+    lobbyQuery = event.target.value;
+    renderPublicServers();
+  }
   const form=event.target.closest('[data-server-form]');
   if(form && ['serverName','visibility'].includes(event.target.name)) serverDrafts.set(form.dataset.serverForm,readServerDraft(form));
 });
 document.addEventListener('change',event => {
+  if (event.target.id === 'lobby-game') {
+    lobbyGame = event.target.value;
+    renderPublicServers();
+  }
   const name = event.target.dataset.setting;
   if(name) dispatch('settings',{[name]:event.target.checked},'Preference saved.');
 });

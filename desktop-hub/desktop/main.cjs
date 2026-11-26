@@ -402,7 +402,8 @@ function start({root,bundled,data,ready,startupFailed}){
         return results.map((result,index)=>{
           const id=ids[index],failed=result.status==='rejected';
           return {id,title:directory.titles[id],failed,rooms:failed?[]:result.value.map(room=>({
-            code:room.code,name:room.name,summary:directory.summary(room),expires:room.expires
+            code:room.code,name:room.name,players:room.players,capacity:room.capacity,phase:room.phase,
+            joinable:room.joinable,expires:room.expires
           }))};
         });
       }

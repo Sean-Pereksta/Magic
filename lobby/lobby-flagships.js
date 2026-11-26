@@ -31,7 +31,7 @@
   }
   function initialView(saved, invitation) {
     if (invitation) return 'multiplayer';
-    return ['discover','singleplayer','multiplayer','mygames','profile'].includes(saved) ? saved : 'discover';
+    return ['discover','singleplayer','livelobbies','multiplayer','mygames','profile'].includes(saved) ? saved : 'discover';
   }
   function selectPicks(games, picks = PICKS) {
     const byKey = new Map(games.map(game => [game.key, game]));
@@ -168,8 +168,8 @@
     const heading=[...library.children].find(node=>node.classList.contains('section-head')),toolbar=doc.getElementById('gameSearch').closest('.toolbar'),categories=doc.getElementById('categoryPills');
     if(heading&&toolbar&&categories){heading.after(toolbar);toolbar.after(categories);categories.after(picks);}
     // Navigation controls are shared by desktop and mobile, retaining saved IDs.
-    for(const nav of doc.querySelectorAll('.main-nav,.mobile-nav'))for(const view of ['discover','singleplayer','multiplayer','mygames','profile']){const button=nav.querySelector(`[data-view="${view}"]`);if(button)nav.appendChild(button);}
-    doc.querySelectorAll('.main-nav [data-view="singleplayer"],.mobile-nav [data-view="singleplayer"]').forEach(button=>{const icon=button.querySelector('span');if(icon){button.lastChild.textContent='All games';}else button.textContent='▦ All games';});
+    for(const nav of doc.querySelectorAll('.main-nav,.mobile-nav'))for(const view of ['discover','singleplayer','livelobbies','multiplayer','mygames','profile']){const button=nav.querySelector(`[data-view="${view}"]`);if(button)nav.appendChild(button);}
+    doc.querySelectorAll('.main-nav [data-view="singleplayer"],.mobile-nav [data-view="singleplayer"]').forEach(button=>{const icon=button.querySelector('span');if(icon){button.lastChild.textContent='Library';}else button.textContent='▦ Library';});
     doc.getElementById('cnmCatalogCount').textContent=String(hooks.games.length);
     doc.getElementById('cnmSearchForm').addEventListener('submit',event=>{event.preventDefault();hooks.browse(doc.getElementById('cnmSearch').value.trim());});
     doc.getElementById('cnmSearch').addEventListener('input',showSuggestions);

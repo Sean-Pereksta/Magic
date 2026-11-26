@@ -6,8 +6,8 @@
   <title>Cat’N Mice · Arcade Nexus</title>
   <script src="./lobby-showcase.js?v=7-fortune"></script>
   <script src="./lobby-library.js?v=12"></script>
-  <script src="./lobby-flagships.js?v=3"></script>
-  <script src="./lobby-arcade.js?v=2"></script>
+  <script src="./lobby-flagships.js?v=4"></script>
+  <script src="./lobby-arcade.js?v=3"></script>
 </head>
 <body>
   <script>
@@ -119,22 +119,34 @@
           {key:"lastsignal",name:"Last Signal"},
           {key:"catandmouse",name:"Cat & Mouse",hostRoute:catEdition.hostRoute}
         ];
-        const liveLobbies=`<section id="live-lobbies" class="card live-lobbies" aria-labelledby="live-lobbies-title">
-          <div class="live-lobbies-head">
-            <div><h2 id="live-lobbies-title">Live Lobbies</h2><p>Join a public server hosted by another player.</p></div>
-            <div class="live-lobbies-filters" role="group" aria-label="Filter live lobbies">
-              <button type="button" data-live-filter="all" aria-pressed="true">All Games</button>
-              ${managedGames.map(({key,name})=>`<button type="button" data-live-filter="${key}" aria-pressed="false">${escapeHtml(name)}</button>`).join("")}
+        const liveLobbies=`<section id="view-livelobbies" class="view" aria-labelledby="live-lobbies-title">
+          <div id="live-lobbies" class="card live-lobbies">
+            <div class="live-lobbies-head">
+              <h1 id="live-lobbies-title">Live Lobbies</h1>
+              <button type="button" class="btn secondary small" data-live-refresh>Refresh</button>
             </div>
-          </div>
-          <div class="live-lobbies-games">
-            ${managedGames.map(({key,name,hostRoute})=>`<section data-live-section="${key}" aria-labelledby="live-lobbies-${key}"><div class="live-lobbies-game-head"><h3 id="live-lobbies-${key}">${escapeHtml(name)}</h3>${hostRoute ? hostButton({title:name,hostRoute}) : '<a class="btn secondary small" href="/hub/download.html">Get Windows Game Hub</a>'}</div><p data-live-status role="status">Checking the directory…</p><ul data-live-rooms></ul></section>`).join("")}
+            <div class="live-lobbies-controls">
+              <label for="live-lobbies-search">Search games or servers</label>
+              <input id="live-lobbies-search" data-live-search type="search" autocomplete="off" />
+              <div class="live-lobbies-filters" role="group" aria-label="Filter live lobbies by game">
+                <button type="button" data-live-filter="all" aria-pressed="true">All Games</button>
+                ${managedGames.map(({key,name})=>`<button type="button" data-live-filter="${key}" aria-pressed="false">${escapeHtml(name)}</button>`).join("")}
+              </div>
+            </div>
+            <p data-live-status role="status">Checking the directory…</p>
+            <p data-live-feedback role="status" hidden></p>
+            <ul class="live-lobbies-rooms" data-live-rooms aria-label="Public servers"></ul>
+            <details class="live-lobbies-hosting">
+              <summary>Host a server</summary>
+              <ul>${managedGames.map(({key,name,hostRoute})=>`<li data-live-section="${key}"><span>${escapeHtml(name)}</span>${hostRoute ? hostButton({title:name,hostRoute}) : '<a class="btn secondary small" href="/hub/download.html">Get Windows Game Hub</a>'}</li>`).join("")}</ul>
+            </details>
           </div>
         </section>`;
         const main='<main class="shell" id="mainContent" tabindex="-1">';
         if(!html.includes('id="live-lobbies"')){
           html=html.replace(main,main+liveLobbies)
-            .replace("</head>",'<link rel="stylesheet" href="./live-lobbies.css?v=4"><script type="module" src="./live-lobbies.mjs?v=4"><\/script></head>');
+            .replace(/<nav class="(?:main|mobile)-nav"[^>]*>[\s\S]*?<\/nav>/g, nav=>nav.replace('</nav>','<button class="nav-btn" type="button" data-view="livelobbies"><span aria-hidden="true">◎</span>Live Lobbies</button></nav>'))
+            .replace("</head>",'<link rel="stylesheet" href="./live-lobbies.css?v=5"><script type="module" src="./live-lobbies.mjs?v=5"><\/script></head>');
         }
         const desktopDownload=`<aside class="desktop-hub-download" aria-labelledby="desktop-hub-heading">
           <img src="/lobby/assets/catnmice-mark.svg" alt="" width="52" height="52">
