@@ -3,7 +3,7 @@
   if (typeof window !== 'undefined' && window.CatnmiceServers) return;
   const titles = Object.freeze({
     acornrally: 'Acorn Rally', bannerlands: 'Bannerlands', trashtactics: 'Trash Tactics',
-    cat: 'Cat & Mouse', lastsignal: 'Last Signal', mobamania: 'MOBA Mania'
+    cat: 'Cat & Mouse', lastsignal: 'Last Signal', mobamania: 'MOBA Mania', orbitbloom: 'Orbit Bloom'
   });
   const projectId = 'magic-servers-1ca0c';
   const documents = 'projects/' + projectId + '/databases/(default)/documents';
@@ -28,6 +28,7 @@
   function countsValid(game, players, capacity, queued) {
     const acorn = game === 'acornrally';
     if (game === 'mobamania' && (capacity !== 6 || queued !== 0)) return false;
+    if (game === 'orbitbloom' && (capacity !== 4 || queued !== 0)) return false;
     return Number.isInteger(capacity) && capacity >= (acorn ? 2 : 1) && capacity <= (acorn ? 8 : 256) &&
       Number.isInteger(players) && players >= 0 && players <= capacity &&
       Number.isInteger(queued) && queued >= 0 && queued <= 1000;

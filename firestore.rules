@@ -2110,7 +2110,7 @@ service cloud.firestore {
 
     match /managedGameDirectories/{game}/lobbies/{code} {
       function supportedGame() {
-        return game in ['bannerlands', 'trashtactics', 'cat', 'lastsignal', 'mobamania'];
+        return game in ['bannerlands', 'trashtactics', 'cat', 'lastsignal', 'mobamania', 'orbitbloom'];
       }
       function validListing() {
         let d = request.resource.data;
@@ -2127,6 +2127,7 @@ service cloud.firestore {
           && d.players is int && d.players >= 0 && d.players <= d.capacity
           && d.queued is int && d.queued >= 0 && d.queued <= 1000
           && (game != 'mobamania' || (d.capacity == 6 && d.queued == 0))
+          && (game != 'orbitbloom' || (d.capacity == 4 && d.queued == 0))
           && d.joinable is bool && (!d.joinable || d.players < d.capacity && d.phase != 'finished')
           && d.updatedAt == request.time && d.expiresAt is timestamp
           && d.expiresAt > request.time && d.expiresAt <= request.time + duration.value(120, 's');

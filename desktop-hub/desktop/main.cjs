@@ -50,8 +50,8 @@ function start({root,bundled,data,ready,startupFailed}){
         ['Last Signal.exe','Hosting/cloudflared.exe','Assets/models.bin','Mobile/index.html']
           .every(file=>fs.statSync(path.join(folder,file),{throwIfNoEntry:false})?.isFile());
     }
-    if(supportsServerManager(id)&&id!=='mobamania')return hasServerManagerPack(id,spec,folder);
-    // MOBA Mania's existing solo pack remains playable while hosting is installed separately.
+    if(supportsServerManager(id)&&!['mobamania','orbitbloom'].includes(id))return hasServerManagerPack(id,spec,folder);
+    // These solo packs can be built without an optional hosting runtime.
     return typeof spec?.entry==='string' && fs.statSync(inDir(folder,spec.entry.split(/[?#]/)[0]),{throwIfNoEntry:false})?.isFile();
   }
   function localPack(id,validate=validPack){
@@ -354,7 +354,7 @@ function start({root,bundled,data,ready,startupFailed}){
           rollback(id);row(id,'restored','Restored the previous game pack and its saves');
         }
         if(!installed(game))await install(id);
-        const pack=id==='mobamania'?localPack(id):null;
+        const pack=['mobamania','orbitbloom'].includes(id)?localPack(id):null;
         const ses=saveSession(game,p,pack?.version);
         server=await startOffline({...game,offline:pack?.spec??packSpec(id)},pack?.root??installedDir(id),undefined,{sync:mode==='save-sync'});
         const origin=new URL(server.url).origin;

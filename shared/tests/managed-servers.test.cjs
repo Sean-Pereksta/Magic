@@ -81,7 +81,7 @@ function setup(game, docs, statuses = {}) {
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
-for (const game of ['bannerlands', 'trashtactics', 'cat', 'lastsignal', 'mobamania']) {
+for (const game of ['bannerlands', 'trashtactics', 'cat', 'lastsignal', 'mobamania', 'orbitbloom']) {
   test(game + ' Live Join verifies the host and prefers an available lobby', async () => {
     const docs = [listing(game, '0001', 'expired'), listing(game, '0002', 'wrong-host'),
       listing(game, '0003', 'playing', 0, 'public', 'playing'), listing(game, '0004', 'locked'),

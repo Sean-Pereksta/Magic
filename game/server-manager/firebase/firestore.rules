@@ -48,7 +48,7 @@ service cloud.firestore {
     }
 
     function managedGame(game) {
-      return game in ['bannerlands', 'trashtactics', 'cat', 'lastsignal', 'mobamania'];
+      return game in ['bannerlands', 'trashtactics', 'cat', 'lastsignal', 'mobamania', 'orbitbloom'];
     }
 
     function validManagedListing(game, code) {
@@ -61,6 +61,7 @@ service cloud.firestore {
         && data.joinUrl == data.origin + '/__catnmice/join'
         && data.phase in ['waiting', 'playing', 'finished']
         && (game != 'mobamania' || (data.capacity == 6 && data.queued == 0))
+        && (game != 'orbitbloom' || (data.capacity == 4 && data.queued == 0))
         && data.joinable is bool
         && (!data.joinable || (data.players < data.capacity && data.phase != 'finished'));
     }

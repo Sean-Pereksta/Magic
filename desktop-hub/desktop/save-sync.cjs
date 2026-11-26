@@ -7,7 +7,7 @@ const games = new Set(['bramblebound', 'dwarfworld', 'spacetyrants']);
 const database = 'projects/' + firebaseConfig.projectId + '/databases/(default)';
 const documents = '/v1/' + database + '/documents:';
 const directoryDocuments = '/v1/projects/magic-servers-1ca0c/databases/(default)/documents';
-const mobaDirectoryPath = directoryDocuments + '/managedGameDirectories/mobamania';
+const managedDirectories = new Set(['mobamania', 'orbitbloom']);
 const communityHost = /^[a-z0-9]+(?:-[a-z0-9]+)*\.trycloudflare\.com$/;
 const sdkModules = new Set(['firebase-app.js', 'firebase-auth.js', 'firebase-firestore.js']
   .map(name => '/firebasejs/10.7.1/' + name));
@@ -56,7 +56,7 @@ function configureSaveSession(session, {gameId, origin, sync = false}) {
   }
   let cloud = sync === true && supportsSaveSync(gameId);
   let acornDirectory = gameId === 'acornrally';
-  let mobaDirectory = gameId === 'mobamania';
+  let managedDirectory = managedDirectories.has(gameId) ? directoryDocuments + '/managedGameDirectories/' + gameId : null;
   session.webRequest.onBeforeRequest((details, reply) => {
     let allow = false;
     try {
@@ -65,11 +65,11 @@ function configureSaveSession(session, {gameId, origin, sync = false}) {
         (url.protocol === 'ws:' && url.host === local.host) ||
         (cloud && allowsCloudRequest(url, details)) ||
         (acornDirectory && allowsAcornDirectory(url, details)) ||
-        (mobaDirectory && allowsMobaDirectory(url, details));
+        (managedDirectory && allowsManagedDirectory(url, details, managedDirectory));
     } catch { /* Keep malformed requests blocked. */ }
     reply({cancel: !allow});
   });
-  return () => { cloud = false; acornDirectory = false; mobaDirectory = false; };
+  return () => { cloud = false; acornDirectory = false; managedDirectory = null; };
 }
 
 function allowsAcornDirectory(url, { resourceType, method }) {
@@ -83,14 +83,14 @@ function allowsAcornDirectory(url, { resourceType, method }) {
     (url.pathname.startsWith(base + '/') && /^acornRallyLobbies\/\d{4}$/.test(url.pathname.slice(base.length + 1))));
 }
 
-function allowsMobaDirectory(url, { resourceType, method }) {
+function allowsManagedDirectory(url, { resourceType, method }, base) {
   if (!['xhr','other'].includes(resourceType) || url.search || url.protocol !== 'https:' ||
       url.username || url.password || url.port) return false;
   if (communityHost.test(url.hostname)) return method === 'GET' && url.pathname === '/__catnmice/status';
   if (url.hostname !== 'firestore.googleapis.com') return false;
-  if (url.pathname === mobaDirectoryPath + ':runQuery') return ['POST','OPTIONS'].includes(method);
-  return method === 'GET' && url.pathname.startsWith(mobaDirectoryPath + '/') &&
-    /^lobbies\/\d{4}$/.test(url.pathname.slice(mobaDirectoryPath.length + 1));
+  if (url.pathname === base + ':runQuery') return ['POST','OPTIONS'].includes(method);
+  return method === 'GET' && url.pathname.startsWith(base + '/') &&
+    /^lobbies\/\d{4}$/.test(url.pathname.slice(base.length + 1));
 }
 
 // Bramblebound imports the lobby's shared public project configuration by absolute path.
