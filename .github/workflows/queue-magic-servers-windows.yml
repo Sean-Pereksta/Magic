@@ -1,0 +1,17 @@
+name: Queue the paired Server Manager Windows build
+on:
+  push:
+    branches: [verify/magic-servers-firestore]
+    paths: [.github/workflows/queue-magic-servers-windows.yml]
+permissions:
+  actions: write
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: Sean-Pereksta/Magic
+    steps:
+      - name: Start the release build from both merged revisions
+        run: gh workflow run catnmice-game-hub.yml --ref main -f publish=true -f truth_revision=12e7c6cd72e35421ef7b9f7038941ed3638a70ef
