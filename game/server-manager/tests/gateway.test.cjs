@@ -142,13 +142,34 @@ test('a successful listing adopts its reserved code and releases its lease on st
   assert.equal(released,lease);
 });
 
+test('the supervisor gives actionable directory errors and preserves same-Wi-Fi play', async () => {
+  for (const [error, guidance] of [
+    [{status: 400, code: 'OPERATION_NOT_ALLOWED'}, /Enable Anonymous sign-in/],
+    [{status: 403}, /Check the active Firestore rules/],
+    [{status: 429}, /limiting listing requests/],
+  ]) {
+    const stop = new AbortController();
+    const reports = [];
+    await assert.rejects(advertise({ config: {name: 'Server', visibility: 'public'},
+      directory: { async reserve() { throw error; } }, hostId: 'host',
+      getStatus: async () => ({phase: 'waiting', players: 0, capacity: 4}),
+      getCode: () => '0001', origin: 'https://a.trycloudflare.com', signal: stop.signal,
+      report(status, detail) { reports.push({status, ...detail}); stop.abort(); },
+    }));
+    assert.equal(reports.length, 1);
+    assert.equal(reports[0].status, 'lan-only');
+    assert.match(reports[0].message, guidance);
+    assert.match(reports[0].message, /Same-Wi-Fi play is available/);
+  }
+});
+
 test('the supervisor monitors the right game instance, publishes a private code and stops its native game', async t => {
   const pipe = socketPath(), original = net.Server.prototype.listen, stop = new AbortController();
   t.mock.method(net.Server.prototype, 'listen', function (port, bind) {
     assert.equal(port,8793); assert.equal(bind,'0.0.0.0'); return original.call(this,pipe);
   });
   let closed = 0, removed = 0;
-  const statuses = [], leased = {code:'0050',updateTime:'r1'}, tunnelAbort = new AbortController();
+  const statuses = [], samples = [], leased = {code:'0050',updateTime:'r1'}, tunnelAbort = new AbortController();
   const config = {gameId:'trashtactics',name:'Paper Cup',visibility:'code',publicPort:8793,
     packRoot:__dirname,dataDir:__dirname,cloudflared:process.execPath};
   const dependencies = {
@@ -163,6 +184,7 @@ test('the supervisor monitors the right game instance, publishes a private code 
       assert.equal(opts.matchesProbe({game:config.gameId,hostId:'other host'}),false);
       assert.equal(opts.matchesProbe({game:config.gameId,hostId:opts.probeId}),true);
       return {ready:Promise.resolve('https://example.trycloudflare.com'),signal:tunnelAbort.signal,
+        diagnostics:()=>({tunnelRttMs:129, tunnelProbeSamples:7}),
         close:()=>tunnelAbort.abort()};
     },
     directoryFactory(opts) {
@@ -175,9 +197,19 @@ test('the supervisor monitors the right game instance, publishes a private code 
     }
   };
   await assert.rejects(runHost(config,stop.signal,update=>{
-    statuses.push(update.status);
-    if(update.status==='online'){assert.equal(update.code,leased.code);stop.abort();}
+    if (update.type === 'game-host-diagnostics') samples.push(update.diagnostics);
+    else {
+      statuses.push(update.status);
+      if (update.status === 'online') assert.equal(update.code, leased.code);
+    }
+    if (statuses.includes('online') && samples.length) stop.abort();
   },dependencies));
   assert.deepEqual(statuses,['starting','online']);
+  assert.equal(samples[0].phase, 'waiting');
+  assert.equal(samples[0].playerCount, 1);
+  assert.equal(samples[0].maxPlayers, 4);
+  assert.equal(samples[0].localStatus, 'ready');
+  assert.equal(samples[0].tunnelRttMs, 129);
+  assert.equal(samples[0].tunnelProbeSamples, 7);
   assert.equal(closed,1); assert.equal(removed,1);
 });

@@ -54,6 +54,17 @@ test('four independent managed games use their own native pack, port, settings a
     assert.equal(manager.status(game).link, visibility === 'public' ? 'https://'+id+'.trycloudflare.com/__catnmice/join' : undefined);
     assert.equal(manager.status(game).code, visibility === 'code' ? '0007' : undefined);
     assert.equal(new URL(manager.localLink(id)).pathname, '/__catnmice/join');
+    assert.equal(manager.diagnostics(game).diagnosticsState, 'starting');
+    children.get(id).emit('message', { type:'game-host-diagnostics', diagnostics: {
+      playerCount: 3, maxPlayers: 4, tunnelRttMs: 121.4, directoryStatus: 'listed',
+    } });
+    assert.equal(manager.diagnostics(game).diagnosticsState, 'live');
+    assert.equal(manager.diagnostics(game).metrics.playerCount, 3);
+    assert.equal(manager.diagnostics(game).metrics.maxPlayers, 4);
+    assert.equal(manager.diagnostics(game).metrics.tunnelRttMs, 121.4);
+    assert.equal(manager.diagnostics(game).metrics.directoryStatus, 'listed');
+    children.get(id).emit('message', { type:'game-host-status', status:'starting', resetDiagnostics:true });
+    assert.equal(manager.diagnostics(game).metrics, undefined);
   }
   assert.equal(ports.size, 4);
   children.get('lastsignal').emit('message', { type:'game-host-status',status:'lan-only',code:'0008' });

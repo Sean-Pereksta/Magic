@@ -117,7 +117,7 @@ async function managedServers(live) {
   if (!window.CatnmiceServers) {
     managerScript ??= new Promise((resolve, reject) => {
       const script = document.createElement('script');
-      script.src = 'https://catnmice.com/shared/managed-servers.js';
+      script.src = 'https://catnmice.com/shared/managed-servers.js?v=magic-servers-1';
       script.onload = resolve;
       script.onerror = () => {
         managerScript = undefined;

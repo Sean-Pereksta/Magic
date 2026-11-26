@@ -1,12 +1,14 @@
 'use strict';
 (() => {
-  if (window.CatnmiceServers) return;
-  const titles = {
-    bannerlands: 'Bannerlands', trashtactics: 'Trash Tactics', cat: 'Cat & Mouse', lastsignal: 'Last Signal'
-  };
-  const documents = 'projects/bible-game-246c0/databases/(default)/documents';
+  if (typeof window !== 'undefined' && window.CatnmiceServers) return;
+  const titles = Object.freeze({
+    acornrally: 'Acorn Rally', bannerlands: 'Bannerlands', trashtactics: 'Trash Tactics',
+    cat: 'Cat & Mouse', lastsignal: 'Last Signal'
+  });
+  const projectId = 'magic-servers-1ca0c';
+  const documents = 'projects/' + projectId + '/databases/(default)/documents';
   const firestore = 'https://firestore.googleapis.com/v1/' + documents;
-  const phases = { waiting: 'In lobby', playing: 'In match', finished: 'Match finished' };
+  const phases = Object.freeze({ waiting: 'In lobby', playing: 'In match', racing: 'Racing', finished: 'Match finished' });
   const allowedOrigin = /^https:\/\/[a-z0-9]+(?:-[a-z0-9]+)*\.trycloudflare\.com$/;
   let active;
 
@@ -23,13 +25,21 @@
     } finally { clearTimeout(timer); }
   }
 
-  function countsValid(players, capacity, queued) {
-    return Number.isInteger(capacity) && capacity > 0 && capacity <= 256 &&
+  function countsValid(game, players, capacity, queued) {
+    const acorn = game === 'acornrally';
+    return Number.isInteger(capacity) && capacity >= (acorn ? 2 : 1) && capacity <= (acorn ? 8 : 256) &&
       Number.isInteger(players) && players >= 0 && players <= capacity &&
       Number.isInteger(queued) && queued >= 0 && queued <= 1000;
   }
 
-  function collection(game) { return '/managedGameDirectories/' + game + '/lobbies'; }
+  function collection(game) {
+    if (!Object.hasOwn(titles, game)) throw Error('Unknown game');
+    return game === 'acornrally' ? '/acornRallyLobbies' : '/managedGameDirectories/' + game + '/lobbies';
+  }
+
+  function phaseValid(game, phase) {
+    return phase === 'waiting' || phase === 'finished' || phase === (game === 'acornrally' ? 'racing' : 'playing');
+  }
 
   function parseListing(game, doc) {
     const prefix = documents + collection(game) + '/';
@@ -37,18 +47,21 @@
     const code = doc.name.slice(prefix.length), f = doc.fields;
     if (!/^\d{4}$/.test(code) || !f) return null;
     const name = f.name?.stringValue, visibility = f.visibility?.stringValue, origin = f.origin?.stringValue;
-    const url = f.joinUrl?.stringValue, hostId = f.hostId?.stringValue, phase = f.phase?.stringValue;
+    const acorn = game === 'acornrally';
+    const url = f.joinUrl?.stringValue, phase = f.phase?.stringValue;
+    const hostId = acorn ? f.ownerUid?.stringValue : f.hostId?.stringValue;
     const expires = Date.parse(f.expiresAt?.timestampValue), updated = Date.parse(f.updatedAt?.timestampValue);
     const now = Date.now();
     const players = Number(f.players?.integerValue), capacity = Number(f.capacity?.integerValue), queued = Number(f.queued?.integerValue);
     if (typeof name !== 'string' || !name.trim() || name.length > 40 ||
         !['code', 'public'].includes(visibility) || typeof origin !== 'string' || !allowedOrigin.test(origin) ||
-        url !== origin + '/__catnmice/join' || !hostId || typeof hostId !== 'string' || hostId.length > 128 ||
-        !Object.hasOwn(phases, phase) || !countsValid(players, capacity, queued) ||
+        url !== origin + (acorn ? '/?room=join' : '/__catnmice/join') ||
+        !hostId || typeof hostId !== 'string' || hostId.length > 128 ||
+        !phaseValid(game, phase) || !countsValid(game, players, capacity, queued) ||
         !Number.isFinite(updated) || !Number.isFinite(expires) || expires <= now || updated > now + 30000 ||
-        now - updated > 180000 || expires <= updated || expires > now + 180000) return null;
+        now - updated > (acorn ? 120000 : 180000) || expires <= updated || expires > now + 180000) return null;
     return { game, name, visibility, origin, url, hostId, code, phase, players, capacity, queued, expires,
-      joinable: f.joinable?.booleanValue === true };
+      joinable: acorn ? queued < 128 : f.joinable?.booleanValue === true };
   }
 
   function rank(a, b) {
@@ -57,17 +70,20 @@
       a.queued - b.queued || a.name.localeCompare(b.name) || a.code.localeCompare(b.code);
   }
 
-  async function directory(game) {
+  async function publicServers(game) {
+    const listing = collection(game);
+    const parent = listing.slice(0, listing.lastIndexOf('/'));
+    const collectionId = listing.slice(listing.lastIndexOf('/') + 1);
     let cursor;
     const result = [], deadline = Date.now() + 10000;
     do {
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw Error('Directory timed out');
-      const query = { from: [{ collectionId: 'lobbies' }], where: { fieldFilter: {
+      const query = { from: [{ collectionId }], where: { fieldFilter: {
         field: { fieldPath: 'visibility' }, op: 'EQUAL', value: { stringValue: 'public' }
       } }, orderBy: [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }], limit: 25 };
       if (cursor) query.startAt = { values: [{ referenceValue: cursor }], before: false };
-      const rows = await getJson(firestore + '/managedGameDirectories/' + game + ':runQuery', {
+      const rows = await getJson(firestore + parent + ':runQuery', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ structuredQuery: query })
       }, remaining);
       if (!Array.isArray(rows)) throw Error('Invalid directory response');
@@ -83,15 +99,53 @@
     } while (true);
   }
 
-  async function probe(server, timeout) {
-    if (server.expires <= Date.now()) return null;
+  async function byCode(game, code) {
+    if (typeof code !== 'string' || !/^\d{4}$/.test(code)) return null;
     try {
-      const live = await getJson(server.origin + '/__catnmice/status', {}, timeout);
-      if (live.game !== server.game || live.hostId !== server.hostId || live.visibility !== server.visibility ||
-          !Object.hasOwn(phases, live.phase) || !countsValid(live.players, live.capacity, live.queued) ||
+      const doc = await getJson(firestore + collection(game) + '/' + code, {}, 5000);
+      const server = parseListing(game, doc);
+      return server?.code === code ? server : null;
+    } catch (error) {
+      if (error.status === 403 || error.status === 404) return null;
+      throw error;
+    }
+  }
+
+  async function probe(server, timeout = 3500) {
+    if (server.expires <= Date.now()) return null;
+    const acorn = server.game === 'acornrally';
+    try {
+      const live = await getJson(server.origin + (acorn ? '/api/rooms/status' : '/__catnmice/status'), {}, timeout);
+      const queued = acorn ? live.waiting : live.queued;
+      if (live.visibility !== server.visibility || !phaseValid(server.game, live.phase) ||
+          !countsValid(server.game, live.players, live.capacity, queued)) return null;
+      if (acorn) {
+        if (live.game !== 'acorn-rally' || live.queueEnabled !== true || queued >= 128) return null;
+      } else if (live.game !== server.game || live.hostId !== server.hostId ||
           live.joinable !== true || live.players >= live.capacity) return null;
-      return { ...server, phase: live.phase, players: live.players, capacity: live.capacity, queued: live.queued, joinable: true };
+      if (server.expires <= Date.now()) return null;
+      return { ...server, phase: live.phase, players: live.players, capacity: live.capacity, queued, joinable: true };
     } catch { return null; }
+  }
+
+  function joinUrl(server, name = '') {
+    const dest = new URL(server.url);
+    const displayName = name.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 22);
+    const handoff = new URLSearchParams();
+    if (server.game === 'acornrally') {
+      handoff.set('join', '1');
+      if (displayName) handoff.set('name', displayName);
+    } else if (displayName) {
+      dest.searchParams.set('name', displayName);
+    }
+    if (server.visibility === 'code') handoff.set('code', server.code);
+    dest.hash = handoff.toString();
+    return dest.href;
+  }
+
+  function summary(server) {
+    const players = server.players + '/' + server.capacity + ' players';
+    return phases[server.phase] + ' · ' + players + (server.queued ? ' · ' + server.queued + ' queued' : '');
   }
 
   async function best(servers, current) {
@@ -150,12 +204,9 @@
     const feedback = message => { el('[role="status"]').textContent = message; };
     async function enter(server, id) {
       if (!current(id)) return;
-      const dest = new URL(server.url);
-      const displayName = player.value.trim().slice(0, 22);
-      if (displayName) dest.searchParams.set('name', displayName);
-      if (server.visibility === 'code') dest.hash = new URLSearchParams({ code: server.code }).toString();
-      if (onJoin) { await onJoin({ ...server, url: dest.href }); if (current(id)) close(); }
-      else window.location.assign(dest.href);
+      const destination = joinUrl(server, player.value);
+      if (onJoin) { await onJoin({ ...server, url: destination }); if (current(id)) close(); }
+      else window.location.assign(destination);
     }
     async function join(server, id = ++request) {
       feedback('Checking ' + server.name + '…');
@@ -171,7 +222,7 @@
         const row = document.createElement('li'), info = document.createElement('div');
         const name = document.createElement('strong'), detail = document.createElement('small');
         name.textContent = server.name;
-        detail.textContent = phases[server.phase] + ' · ' + server.players + '/' + server.capacity + ' players';
+        detail.textContent = summary(server);
         const button = document.createElement('button');
         button.type = 'button'; button.textContent = server.joinable ? 'Join' : 'Check for seat';
         button.setAttribute('aria-label', button.textContent + ' · ' + server.name);
@@ -183,7 +234,7 @@
       const id = ++request;
       feedback(autoJoin ? 'Looking for an open seat…' : 'Loading public servers…');
       try {
-        const servers = await directory(game);
+        const servers = await publicServers(game);
         if (!current(id)) return;
         draw(servers);
         if (!servers.length) { feedback('No public servers are online.'); return; }
@@ -203,17 +254,18 @@
       const id = ++request;
       feedback('Looking up the server…');
       try {
-        const doc = await getJson(firestore + collection(game) + '/' + code, {}, 5000);
+        const server = await byCode(game, code);
         if (!current(id)) return;
-        const server = parseListing(game, doc);
-        if (server?.code === code) await join(server, id);
+        if (server) await join(server, id);
         else feedback('No active server has that code.');
-      } catch (error) {
-        if (current(id)) feedback([403, 404].includes(error.status) ? 'No active server has that code.' : 'Could not look up that code.');
+      } catch {
+        if (current(id)) feedback('Could not look up that code.');
       }
     };
     void load(live);
     return { close };
   }
-  window.CatnmiceServers = { open };
+  const api = Object.freeze({ projectId, titles, publicServers, byCode, probe, joinUrl, summary, open });
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else window.CatnmiceServers = api;
 })();

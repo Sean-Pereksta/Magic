@@ -26,6 +26,7 @@ async function main(){
   fs.rmSync(path.join(stage,'resources/default_app.asar'),{force:true});
   fs.mkdirSync(app,{recursive:true});
   for(const dir of ['ui','desktop'])cp(path.join(root,dir),path.join(app,dir));
+  cp(path.join(root,'../shared/managed-servers.js'),path.join(app,'desktop/managed-servers.js'));
   for(const file of ['services/read-model.mjs','services/web/activity.mjs','build/icon.ico','content/catalog.json','package.json']){
     const dest=path.join(app,file);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.copyFileSync(path.join(root,file),dest);
   }

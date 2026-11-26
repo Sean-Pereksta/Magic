@@ -1,6 +1,6 @@
 'use strict';
 
-const managedGames = new Set(['bannerlands', 'trashtactics', 'cat']);
+const managedGames = new Set(['bannerlands', 'trashtactics', 'cat', 'lastsignal']);
 const tunnel = /^[a-z0-9]+(?:-[a-z0-9]+)*\.trycloudflare\.com$/;
 const nameOK = name => typeof name === 'string' && name.length <= 22 && !/[\x00-\x1f\x7f]/.test(name);
 const codeOK = code => /^\d{4}$/.test(code);

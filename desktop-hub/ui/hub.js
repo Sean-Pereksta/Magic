@@ -219,16 +219,22 @@ function lobbies() {
   const lobbyGames = [...new Set([...localLobbyGames,...(state.servers || []).map(s => s.id)])].map(matches).filter(Boolean);
   return `<section class="intro-art"><img src="art/trashtactics-hero.webp" alt=""><h2>Live Lobbies</h2><p>Browse public rooms, join with an invite, or host a lobby from this PC.</p><div class="controls">${btn('Browse official lobbies','community',{section:'lobbies'},'gold','lobbies')}</div></section>
     <section class="panel"><h2>Join with an invite</h2><form id="invite-form" class="form-row"><input class="field" name="invite" type="url" required placeholder="Paste a Catnmice or game invite link" aria-label="Invite link"><button class="button" type="submit">${icon('link')} Open invite</button></form></section>
-    ${matches('lastsignal')?`<section class="panel"><div class="section-title"><h2>Last Signal public arenas</h2>${btn('Refresh','arena-refresh',{},'','refresh')}</div><div id="arena-rooms" role="status">Checking for open arenas…</div></section>`:''}
+    <section class="panel"><div class="section-title"><h2>Public servers</h2>${btn('Refresh','server-list-refresh',{},'','refresh')}</div><div id="public-servers" aria-live="polite">Checking Magic Servers…</div></section>
     <section class="panel"><h2>Game lobbies</h2><div class="line-list">${lobbyGames.map(g => `<div class="list-item"><img src="${attr(imageFor(g))}" alt=""><div class="item-main"><strong>${esc(title(g))}</strong><small>${installed(g.id) ? 'Installed' : 'Available to install'}</small></div><div class="controls">${btn('Multiplayer','play',{id:g.id,mode:'online'},'','arrow')}${hostLobby(g)}</div></div>`).join('')}</div></section>`;
 }
-async function loadPublicArenas(){
-  const box=$('#arena-rooms');if(!box||!host)return;
+async function loadPublicServers(){
+  const box=$('#public-servers');if(!box||!host)return;
+  const attempt=String(Number(box.dataset.request||0)+1);
+  box.dataset.request=attempt;
   try{
-    const rooms=(await host.invoke('publicArenas')).filter(r=>r.expires>Date.now());
-    if(!box.isConnected)return;
-    box.innerHTML=rooms.length?rooms.map(r=>`<div class="list-item"><div class="item-main"><strong>${esc(r.name)}</strong><small>${esc(r.arena)} · ${r.count}/8 players</small></div>${btn('Join','arena-join',{invite:r.invite,expires:r.expires},'glass','arrow')}</div>`).join(''):'No public arenas are waiting.';
-  }catch{if(box.isConnected)box.textContent='The public arena directory is unavailable. You can still paste a host invitation.';}
+    const groups=await host.invoke('publicServers');
+    if(!box.isConnected||box.dataset.request!==attempt)return;
+    box.innerHTML=groups.map(group=>{
+      const rooms=group.rooms.filter(room=>room.expires>Date.now());
+      const list=rooms.map(room=>`<div class="list-item"><div class="item-main"><strong>${esc(room.name)}</strong><small>${esc(room.summary)}</small></div>${btn('Join','server-list-join',{id:group.id,code:room.code,expires:room.expires},'glass','arrow')}</div>`).join('');
+      return `<div><h3>${esc(group.title)}</h3>${list||`<p>${group.failed?'Could not read the directory.':'No public servers are online.'}</p>`}</div>`;
+    }).join('');
+  }catch{if(box.isConnected&&box.dataset.request===attempt)box.textContent='The public server directory is unavailable. Try Refresh or use a host invitation.';}
 }
 function rankings() {
   return `<section class="panel"><div class="tools" aria-label="Select a ranked game">${rankingIds.filter(matches).map(id => `<button class="chip" data-action="rank" data-id="${id}" aria-pressed="${rankGame===id}">${esc(title(matches(id)))}</button>`).join('')}</div><div id="rank-result" role="status" aria-busy="true"><p>Loading leaderboard…</p></div></section>`;
@@ -284,7 +290,7 @@ function serverManager() {
     </form>` : server.available
       ? `<div class="controls">${btn('Install hosting pack','server-install',{id:server.id},'gold','downloads')}</div>`
       : '<p>The hosting pack is not included in this catalog version.</p>';
-    const diagnostics = server.id === 'acornrally' && server.running
+    const diagnostics = server.running
       ? `<div class="controls">${btn('Server diagnostics','server-diagnostics',{id:server.id},'','server')}</div>` : '';
     return `<section class="panel server-panel" id="server-${id}"><div class="section-title"><h2>${esc(title(game))}</h2><span class="server-status" data-server-status="${attr(server.status)}" role="status">${esc(serverStatusLabels[server.status] || 'Stopped')}</span></div>
       ${setup}${server.message ? `<p class="server-message" role="status">${esc(server.message)}</p>` : ''}${invitation}${diagnostics}</section>`;
@@ -303,7 +309,8 @@ function diagnosticUptime(seconds) {
   const hours = Math.floor(total / 3600), minutes = Math.floor(total % 3600 / 60);
   return [hours ? `${fmt(hours)}h` : '', minutes ? `${minutes}m` : '', `${total % 60}s`].filter(Boolean).join(' ');
 }
-function serverDiagnosticContent(report = {}) {
+function serverDiagnosticContent(report = {}, id = 'acornrally') {
+  const rally = id === 'acornrally';
   const { status, message: detail, metrics } = report;
   const summary = `<p class="dialog-copy"><strong>${esc(serverStatusLabels[status] || 'Stopped')}</strong>${detail ? ` · ${esc(detail)}` : ''}</p>`;
   if (status === 'offline' || status === 'stopping') {
@@ -322,13 +329,13 @@ function serverDiagnosticContent(report = {}) {
   const capacity = Number.isFinite(metrics?.maxPlayers) ? ` / ${fmt(metrics.maxPlayers)}` : '';
   const highlights = diagnosticRows([
     ['Players on server', playerCount + capacity],
-    ['Average player ping', diagnosticValue(averagePing, ' ms')],
+    ...(rally ? [['Average player ping', diagnosticValue(averagePing, ' ms')]] : []),
     ['Public tunnel latency', diagnosticValue(metrics?.tunnelRttMs, ' ms')],
     ['Host uptime', diagnosticUptime(metrics?.uptimeSeconds ?? report.uptimeSeconds)],
   ], true);
   if (!metrics) {
     const guidance = diagnosticState === 'unavailable'
-      ? 'The hosting pack has not sent any statistics. Update the Acorn Rally hosting pack in Downloads, then stop and restart its server. This panel will keep checking.'
+      ? `The hosting pack has not sent any statistics. Update the ${rally ? 'Acorn Rally' : 'game'} hosting pack in Downloads, then stop and restart its server. This panel will keep checking.`
       : 'Connecting to the host’s live statistics. Player counts and latency will appear as measurements arrive.';
     return summary + freshness + highlights + `<p class="dialog-copy">${guidance}</p>`;
   }
@@ -338,7 +345,8 @@ function serverDiagnosticContent(report = {}) {
     ? `${fmt(metrics.tunnelProbeFailures)} of ${fmt(metrics.tunnelProbeSamples)}` : '—';
   const readiness = Number.isFinite(metrics.expectedPlayers) && Number.isFinite(metrics.readyPlayers)
     ? `${fmt(metrics.readyPlayers)} of ${fmt(metrics.expectedPlayers)}` : '—';
-  const table = players.length ? `<div class="diagnostic-table"><table>
+  let table = '';
+  if (rally) table = players.length ? `<div class="diagnostic-table"><table>
     <caption>Player connections and track loading</caption>
     <thead><tr><th scope="col">Player</th><th scope="col">Connection</th><th scope="col">Ping</th><th scope="col">Jitter</th>
       <th scope="col">Snapshot age</th><th scope="col" title="Percentage of expected server updates the client missed">Snapshot gaps</th>
@@ -352,7 +360,7 @@ function serverDiagnosticContent(report = {}) {
       <td>${diagnosticValue(player.fps)}</td>
       <td>${esc(diagnosticLabel(player.loadState))}${Number.isFinite(player.loadMs) ? ` · ${diagnosticValue(player.loadMs, ' ms')}` : ''}</td>
     </tr>`).join('')}</tbody></table></div>` : `<p class="dialog-copy">${metrics.playerCount === 0 ? 'No players connected. Player ping appears after someone joins.' : 'Player connection details have not arrived yet.'}</p>`;
-  return summary + freshness + delayed + highlights + `<p class="dialog-copy diagnostic-help">Player ping is the average of measured player connections. Public tunnel latency is the host’s round trip through its public URL. A dash means no measurement is available yet.</p>
+  return summary + freshness + delayed + highlights + `<p class="dialog-copy diagnostic-help">${rally ? 'Player ping is the average of measured player connections. ' : ''}Public tunnel latency is the host’s round trip through its public URL. A dash means no measurement is available yet.</p>
     ${diagnosticRows([
       ['Local host', diagnosticLabel(metrics.localStatus)],
       ['Public tunnel', diagnosticLabel(metrics.tunnelStatus)],
@@ -360,13 +368,15 @@ function serverDiagnosticContent(report = {}) {
       ['Tunnel jitter', diagnosticValue(metrics.tunnelJitterMs, ' ms')],
       ['Failed tunnel probes', probes],
       ['Host event-loop delay', diagnosticValue(metrics.eventLoopLagMs, ' ms')],
-      ['Snapshot rate', diagnosticValue(metrics.snapshotRateHz, ' Hz')],
-      ['Snapshot size', diagnosticValue(metrics.snapshotBytes, ' bytes')],
-      ['Skipped sends', diagnosticValue(metrics.skippedSnapshots)],
-      ['Race phase', diagnosticLabel(metrics.phase)],
-      ['Connected now', diagnosticValue(metrics.connectedPlayers)],
+      [rally ? 'Race phase' : 'Match phase', diagnosticLabel(metrics.phase)],
       ['Players queued', diagnosticValue(metrics.queuedPlayers)],
-      ['Players ready', readiness],
+      ...(rally ? [
+        ['Connected now', diagnosticValue(metrics.connectedPlayers)],
+        ['Players ready', readiness],
+        ['Snapshot rate', diagnosticValue(metrics.snapshotRateHz, ' Hz')],
+        ['Snapshot size', diagnosticValue(metrics.snapshotBytes, ' bytes')],
+        ['Skipped sends', diagnosticValue(metrics.skippedSnapshots)],
+      ] : []),
     ])}${table}`;
 }
 function settings() {
@@ -388,7 +398,7 @@ function render() {
   }
   if (detailId && matches(detailId)) view.innerHTML = details(matches(detailId));
   else if (page === 'Library') view.innerHTML = library();
-  else if (page === 'Live Lobbies') {view.innerHTML=lobbies();loadPublicArenas();}
+  else if (page === 'Live Lobbies') {view.innerHTML=lobbies();loadPublicServers();}
   else if (page === 'Server Manager') view.innerHTML=serverManager();
   else if (page === 'Rankings') {view.innerHTML=rankings();loadRankings();}
   else if (page === 'Downloads') view.innerHTML=downloads();
@@ -434,7 +444,9 @@ function showDialog(label,content) {
   if (!dialog.open) dialog.showModal();
 }
 function showServerDiagnostics(id) {
-  showDialog('Acorn Rally server diagnostics', '<div class="server-diagnostics" data-server-diagnostics><p class="dialog-copy">Reading server diagnostics…</p></div>');
+  const game = matches(id);
+  const heading = game ? title(game) : id === 'acornrally' ? 'Acorn Rally' : 'Game';
+  showDialog(heading + ' server diagnostics', '<div class="server-diagnostics" data-server-diagnostics><p class="dialog-copy">Reading server diagnostics…</p></div>');
   const panel = dialog.querySelector('[data-server-diagnostics]');
   let active = true, timer;
   const isActive = () => active && dialog.open && panel.isConnected;
@@ -451,7 +463,7 @@ function showServerDiagnostics(id) {
     if (!isActive()) { stop(); return; }
     try {
       const report = await host.invoke('serverDiagnostics', {id});
-      if (isActive()) panel.innerHTML = serverDiagnosticContent(report);
+      if (isActive()) panel.innerHTML = serverDiagnosticContent(report, id);
     } catch (error) {
       if (isActive()) panel.innerHTML = `<p class="dialog-copy diagnostic-warning">Could not read server statistics: ${esc(cleanError(error))}</p><p class="dialog-copy">This panel will retry automatically.</p>`;
     }
@@ -475,10 +487,10 @@ function browse() {
 function onAction(el) {
   const {action,id,mode,kind,section} = el.dataset;
   switch(action) {
-    case 'arena-refresh':loadPublicArenas();break;
-    case 'arena-join':
-      if(Number(el.dataset.expires)<=Date.now()){loadPublicArenas();message('This listing expired. Choose an open arena.');}
-      else dispatch('invite',{url:el.dataset.invite});
+    case 'server-list-refresh':loadPublicServers();break;
+    case 'server-list-join':
+      if(Number(el.dataset.expires)<=Date.now()){loadPublicServers();message('This listing expired. Choose an open server.');}
+      else dispatch('joinPublicServer',{id,code:el.dataset.code});
       break;
     case 'detail': navigate('Library',id);break;
     case 'quickplay': case 'replay': {

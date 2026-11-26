@@ -1,101 +1,6 @@
-const BANNERLANDS = "https://sean-pereksta.github.io/Truth/games/bannerlands/";
-const ROOM_ID = /^[a-z0-9_-]{1,100}$/i;
+import "../shared/managed-servers.js?v=magic-servers-1";
+
 const REFRESH_MS = 30_000;
-const GAME_NAMES = {catandmouse: "Cat & Mouse", bannerlands: "Bannerlands"};
-
-function isLoopback(hostname) {
-  return ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
-}
-
-function hostOrigin(value, local) {
-  try {
-    const url = new URL(value);
-    if (url.username || url.password || url.search || url.hash || url.pathname !== "/") return null;
-    if (isLoopback(url.hostname)) return local && url.protocol === "http:" ? url.origin : null;
-    const isPublicHost = url.hostname.includes(".") && !/^[\d.]+$/.test(url.hostname) &&
-      !/\.(localhost|local|internal|invalid|test)$/.test(url.hostname);
-    return url.protocol === "https:" && !url.port && isPublicHost ? url.origin : null;
-  } catch {
-    return null;
-  }
-}
-
-function roomText(value, fallback, length = 80) {
-  const info = typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/g, "").trim() : "";
-  return info.slice(0, length) || fallback;
-}
-
-export function catRooms(records, {version, now = Date.now(), local = false}) {
-  if (!Array.isArray(records)) throw new Error("Invalid lobby directory response.");
-  return records.slice(0, 100).flatMap(room => {
-    const origin = hostOrigin(room?.serverUrl, local);
-    const expiresAt = Date.parse(room?.expiresAt);
-    if (room?.game !== "catandmouse" || typeof room.id !== "string" || !ROOM_ID.test(room.id) ||
-        !origin || room.public === false || !(expiresAt > now) ||
-        !Number.isInteger(room.capacity) || room.capacity < 1 || room.capacity > 4 ||
-        !Number.isInteger(room.openSeats) || room.openSeats < 0 || room.openSeats >= room.capacity) return [];
-    const compatible = room.version === version;
-    return [{
-      id: room.id, origin, name: roomText(room.roomName, "Cat & Mouse room"),
-      hostName: roomText(room.hostName, "Host", 40), map: roomText(room.map, "Survival"),
-      difficulty: roomText(room.difficulty, "Standard", 24), openSeats: room.openSeats,
-      expiresAt, compatible, joinable: compatible && room.openSeats > 0
-    }];
-  });
-}
-
-export function joinHref(game, room, arcadeUrl, bannerlands = BANNERLANDS) {
-  const arcade = new URL(arcadeUrl);
-  const localOverride = isLoopback(arcade.hostname) && arcade.searchParams.get("catDirectory");
-  arcade.search = "";
-  if (localOverride) arcade.searchParams.set("catDirectory", localOverride);
-  arcade.hash = "live-lobbies";
-
-  const params = new URLSearchParams({room: room.id, returnUrl: arcade.href});
-  const guest = new URL("/", room.origin);
-  if (game === "bannerlands") {
-    params.set("host", room.origin);
-    return new URL("#" + params, bannerlands).href;
-  }
-  guest.hash = params;
-  return guest.href;
-}
-
-async function readCatLobbies(page) {
-  const {CAT_DIRECTORY_URL, PROTOCOL_VERSION} = await import("../game/catandmouse/edition/directory-config.mjs");
-  const local = isLoopback(page.hostname);
-  const base = (local && page.searchParams.get("catDirectory")) || CAT_DIRECTORY_URL;
-  if (!base) throw new Error("Cat & Mouse discovery has no directory address.");
-  const directory = new URL(base);
-  if (directory.username || directory.password || directory.search || directory.hash ||
-      !(directory.protocol === "https:" || local && isLoopback(directory.hostname) && directory.protocol === "http:")) {
-    throw new Error("Invalid Cat & Mouse directory address.");
-  }
-  const response = await fetch(new URL("rooms", directory.href.replace(/\/?$/, "/")), {
-    cache: "no-store", credentials: "omit", signal: AbortSignal.timeout(8_000)
-  });
-  if (!response.ok) throw new Error("Could not read the Cat & Mouse directory.");
-  const json = await response.json();
-  return catRooms(json.rooms, {version: PROTOCOL_VERSION, local});
-}
-
-let bannerlandsModules, bannerlandsDirectory;
-async function readBannerlandsLobbies(afterReturn) {
-  bannerlandsModules ??= Promise.all([
-    import(new URL("multiplayer/directory.js", BANNERLANDS)),
-    import(new URL("multiplayer/protocol.js", BANNERLANDS))
-  ]).catch(error => {
-    bannerlandsModules = null;
-    throw error;
-  });
-  const [{createFirebaseDirectory}, {PROTOCOL_VERSION, GAME_VERSION, ASSET_VERSION}] = await bannerlandsModules;
-  // A returning player needs the latest directory, even during the reader's polling interval.
-  if (afterReturn || !bannerlandsDirectory) bannerlandsDirectory = createFirebaseDirectory({requestTimeoutMs: 8_000});
-  const campaigns = await bannerlandsDirectory.list({
-    protocolVersion: PROTOCOL_VERSION, gameVersion: GAME_VERSION, assetVersion: ASSET_VERSION, includeUnavailable: true
-  });
-  return campaigns.map(room => ({...room, openSeats: room.availableSeats, map: room.map || room.mode || "Conquest"}));
-}
 
 function element(tag, value) {
   const node = document.createElement(tag);
@@ -103,105 +8,87 @@ function element(tag, value) {
   return node;
 }
 
-function roomRow(game, room) {
-  const row = document.createElement("li");
-  const heading = element("h4", room.name);
-  const details = element("p", GAME_NAMES[game] + " · Hosted by " + room.hostName + " · " + room.map + " · " + (room.difficulty || "Standard"));
-  const space = room.openSeats + (room.openSeats === 1 ? " open seat" : " open seats");
-  const facts = element("p", room.compatible ? space : space + " · Update required");
-  const info = document.createElement("div");
-  info.append(heading, details, facts);
-  const join = element(room.joinable ? "a" : "button", "Join");
-  join.className = "live-lobbies-join";
-  join.setAttribute("aria-label", "Join " + room.name + " in " + GAME_NAMES[game]);
-  if (room.joinable) {
-    join.href = joinHref(game, room, location.href);
-    join.rel = "noreferrer";
-    join.addEventListener("click", event => {
-      if (room.expiresAt > Date.now()) return;
-      event.preventDefault();
-      join.removeAttribute("href");
-      join.setAttribute("aria-disabled", "true");
-      facts.textContent = "This listing expired. Choose another room.";
-    });
-  } else {
-    join.type = "button";
-    join.disabled = true;
-  }
-  row.append(info, join);
-  return row;
-}
-
-function mount(section) {
-  const results = Object.fromEntries(Object.keys(GAME_NAMES).map(game => [game, {
-    section: section.querySelector('[data-live-section="' + game + '"]'),
-    rooms: [], status: "loading", pending: false, refreshAgain: false, signature: ""
-  }]));
-  const page = new URL(location.href);
+function mount(section, directory) {
+  const results = new Map([...section.querySelectorAll("[data-live-section]")].map(node => {
+    const game = node.dataset.liveSection;
+    return [game, {node, rooms: [], message: "Checking the directory…"}];
+  }));
   let inView = false;
-  let filter = "all";
+  let joining = false;
 
-  function render(game) {
-    const result = results[game];
-    const fresh = result.rooms.filter(room => room.expiresAt > Date.now());
-    const status = result.section.querySelector("[data-live-status]");
-    const rooms = result.section.querySelector("[data-live-rooms]");
-    const message = result.status === "loading" ? "Checking the directory…" :
-      result.status === "unavailable" ? "The directory is unavailable. Try an invitation from your host." :
-      fresh.length ? "" : "No public rooms are open right now.";
-    if (status.textContent !== message) status.textContent = message;
-    status.hidden = !message;
+  function roomRow(room, listStatus) {
+    const row = document.createElement("li");
+    const info = document.createElement("div");
+    const heading = element("h4", room.name);
+    const facts = element("p", directory.summary(room));
+    const join = element("button", room.joinable ? "Join" : "Check for seat");
+    info.append(heading, facts);
+    join.type = "button";
+    join.className = "live-lobbies-join";
+    join.setAttribute("aria-label", "Join " + room.name + " in " + directory.titles[room.game]);
+    join.addEventListener("click", async () => {
+      if (joining) return;
+      joining = true;
+      join.disabled = true;
+      listStatus.hidden = false;
+      listStatus.textContent = "Checking " + room.name + "…";
+      const available = await directory.probe(room);
+      joining = false;
+      join.disabled = false;
+      if (available) {
+        location.assign(directory.joinUrl(available));
+      } else {
+        listStatus.textContent = "This server has no seat available or has gone offline.";
+      }
+    });
+    row.append(info, join);
+    return row;
+  }
+
+  function render(result) {
+    const status = result.node.querySelector("[data-live-status]");
+    const list = result.node.querySelector("[data-live-rooms]");
+    const fresh = result.rooms.filter(room => room.expires > Date.now());
     const signature = JSON.stringify(fresh);
-    if (signature !== result.signature) {
-      const activeRoom = document.activeElement?.closest("[data-room-id]")?.dataset.roomId;
+    if (result.signature !== signature) {
+      const activeCode = document.activeElement?.closest("[data-room-id]")?.dataset.roomId;
       const rows = fresh.map(room => {
-        const row = roomRow(game, room);
-        row.dataset.roomId = room.id;
+        const row = roomRow(room, status);
+        row.dataset.roomId = room.code;
         return row;
       });
-      rooms.replaceChildren(...rows);
-      rows.find(row => row.dataset.roomId === activeRoom)?.querySelector("a")?.focus({preventScroll: true});
+      list.replaceChildren(...rows);
+      rows.find(row => row.dataset.roomId === activeCode)?.querySelector("button")?.focus({preventScroll: true});
       result.signature = signature;
     }
+    status.textContent = result.message || (fresh.length ? "" : "No public servers are online.");
+    status.hidden = !status.textContent;
   }
 
-  async function refresh(game, afterReturn) {
-    const result = results[game];
-    if (!inView || document.hidden || result.section.hidden) return;
-    if (result.pending) {
-      result.refreshAgain ||= afterReturn;
-      return;
-    }
+  async function refresh(game, result) {
+    if (!inView || document.hidden || result.node.hidden || result.pending) return;
     result.pending = true;
-    let rooms = [];
-    let status = "unavailable";
     try {
-      rooms = await (game === "catandmouse" ? readCatLobbies(page) : readBannerlandsLobbies(afterReturn));
-      status = "ready";
-    } catch {}
-    result.pending = false;
-    if (result.refreshAgain) {
-      result.refreshAgain = false;
-      return refresh(game, true);
+      result.rooms = await directory.publicServers(game);
+      result.message = "";
+    } catch {
+      result.message = "Could not refresh the directory. You can still use a host invitation.";
+    } finally {
+      result.pending = false;
+      render(result);
     }
-    result.rooms = rooms;
-    result.status = status;
-    render(game);
   }
 
-  function refreshVisible(afterReturn = false) {
-    for (const game of Object.keys(results)) void refresh(game, afterReturn);
+  function refreshVisible() {
+    for (const [game, result] of results) void refresh(game, result);
   }
 
   function select(game) {
-    if (game !== "all" && !(game in GAME_NAMES)) return;
-    filter = game;
+    if (game !== "all" && !results.has(game)) return;
     section.querySelectorAll("[data-live-filter]").forEach(button => {
-      button.setAttribute("aria-pressed", String(button.dataset.liveFilter === filter));
+      button.setAttribute("aria-pressed", String(button.dataset.liveFilter === game));
     });
-    for (const [name, result] of Object.entries(results)) {
-      result.section.hidden = filter !== "all" && filter !== name;
-    }
+    for (const [name, result] of results) result.node.hidden = game !== "all" && game !== name;
     refreshVisible();
   }
 
@@ -224,15 +111,11 @@ function mount(section) {
     inView = true;
     refreshVisible();
   }
-  const refreshOnReturn = () => refreshVisible(true);
-  document.addEventListener("visibilitychange", refreshOnReturn);
-  window.addEventListener("pageshow", event => { if (event.persisted) refreshOnReturn(); });
-  window.addEventListener("focus", refreshOnReturn);
+  document.addEventListener("visibilitychange", refreshVisible);
+  window.addEventListener("pageshow", refreshVisible);
+  window.addEventListener("focus", refreshVisible);
   setInterval(refreshVisible, REFRESH_MS);
-  setInterval(() => Object.keys(results).forEach(render), 1_000);
 }
 
-if (typeof document !== "undefined") {
-  const section = document.getElementById("live-lobbies");
-  if (section) mount(section);
-}
+const section = globalThis.document?.getElementById("live-lobbies");
+if (section && window.CatnmiceServers) mount(section, window.CatnmiceServers);

@@ -8,14 +8,15 @@ catalog=json.loads((root/'content/catalog.json').read_text(encoding='utf8'))
 components=[]
 def files(folder):
     return sorted(p for p in folder.rglob('*') if p.is_file())
-def pack(key, base, paths, descriptor=None):
+def pack(key, base, paths, descriptor=None, extra=()):
     target=out/(key+'.zip')
     with zipfile.ZipFile(target,'w',allowZip64=True) as archive:
         if descriptor:
             info=zipfile.ZipInfo('hub-pack.json',date_time=(2000,1,1,0,0,0))
             archive.writestr(info,json.dumps(descriptor,sort_keys=True))
-        for p in sorted(paths):
-            info=zipfile.ZipInfo(p.relative_to(base).as_posix(),date_time=(2000,1,1,0,0,0))
+        entries=[(p.relative_to(base).as_posix(), p) for p in paths]
+        for name, p in sorted(entries + list(extra)):
+            info=zipfile.ZipInfo(name,date_time=(2000,1,1,0,0,0))
             info.compress_type=zipfile.ZIP_DEFLATED
             info.external_attr=0o644<<16
             with p.open('rb') as src, archive.open(info,'w') as dest:
@@ -25,7 +26,8 @@ def pack(key, base, paths, descriptor=None):
     with target.open('rb') as f:
         for chunk in iter(lambda:f.read(1<<20),b''):digest.update(chunk)
     components.append({'id':key,'sha256':digest.hexdigest(),'size':target.stat().st_size})
-pack('hub',root, files(root/'desktop')+files(root/'ui')+[root/'services/read-model.mjs',root/'services/web/activity.mjs'])
+pack('hub',root, files(root/'desktop')+files(root/'ui')+[root/'services/read-model.mjs',root/'services/web/activity.mjs'],
+     extra=[('desktop/managed-servers.js',root.parent/'shared/managed-servers.js')])
 content=root/'content'
 pack('catalog',content,[content/'catalog.json']+files(content/'art'))
 for game in catalog['games']:

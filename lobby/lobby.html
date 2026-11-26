@@ -98,7 +98,7 @@
         });
         html=html.replace(/\{key:"cat",[^\n]*\}/,record=>record
           .replace('desc:"Classic multiplayer chase."','desc:"Gather cheese, build a fortress, and survive the Cat in painted battlefields."')
-          .replace('modes:["multi"]',`modes:["single","multi"],liveLobbyGame:"catandmouse",paintedTile:"/game/catandmouse/edition/art/title-v1.webp",singleRoute:"/game/catandmouse/edition/index.html",hostRoute:"${catEdition.hostRoute}",localEditionRoute:"${catEdition.localEditionRoute}"`));
+          .replace('modes:["multi"]',`modes:["single","multi"],liveLobbyGame:"cat",paintedTile:"/game/catandmouse/edition/art/title-v1.webp",singleRoute:"/game/catandmouse/edition/index.html",hostRoute:"${catEdition.hostRoute}",localEditionRoute:"${catEdition.localEditionRoute}"`));
         // Run inside the existing loader so every injected game participates.
         html=globalThis.GameHubLibrary.upgradeHtml(html);
         // A presentation failure must not prevent the existing hub from opening.
@@ -112,24 +112,29 @@
         }
         const escapeHtml=value=>value.replace(/[&"<>]/g,c=>({"&":"&amp;",'"':"&quot;","<":"&lt;",">":"&gt;"}[c]));
         const hostButton=game=>globalThis.GameHubLibrary.hostButton(game,escapeHtml);
+        const managedGames=[
+          {key:"acornrally",name:"Acorn Rally",hostRoute:"/hub/download.html"},
+          {key:"bannerlands",name:"Bannerlands",hostRoute:"/hub/download.html"},
+          {key:"trashtactics",name:"Trash Tactics",hostRoute:"/hub/download.html"},
+          {key:"lastsignal",name:"Last Signal",hostRoute:"/hub/download.html"},
+          {key:"cat",name:"Cat & Mouse",hostRoute:"/hub/download.html"}
+        ];
         const liveLobbies=`<section id="live-lobbies" class="card live-lobbies" aria-labelledby="live-lobbies-title">
           <div class="live-lobbies-head">
-            <div><h2 id="live-lobbies-title">Live Lobbies</h2><p>Join a room hosted by another player.</p></div>
+            <div><h2 id="live-lobbies-title">Live Lobbies</h2><p>Join a public server hosted by another player.</p></div>
             <div class="live-lobbies-filters" role="group" aria-label="Filter live lobbies">
               <button type="button" data-live-filter="all" aria-pressed="true">All Games</button>
-              <button type="button" data-live-filter="catandmouse" aria-pressed="false">Cat &amp; Mouse</button>
-              <button type="button" data-live-filter="bannerlands" aria-pressed="false">Bannerlands</button>
+              ${managedGames.map(({key,name})=>`<button type="button" data-live-filter="${key}" aria-pressed="false">${escapeHtml(name)}</button>`).join("")}
             </div>
           </div>
           <div class="live-lobbies-games">
-            <section data-live-section="catandmouse" aria-labelledby="live-lobbies-cat"><div class="live-lobbies-game-head"><h3 id="live-lobbies-cat">Cat &amp; Mouse</h3>${hostButton(catEdition)}</div><p data-live-status role="status">Checking the directory…</p><ul data-live-rooms></ul></section>
-            <section data-live-section="bannerlands" aria-labelledby="live-lobbies-banner"><div class="live-lobbies-game-head"><h3 id="live-lobbies-banner">Bannerlands</h3>${hostButton(truthGames.find(game=>game.key==="bannerlands"))}</div><p data-live-status role="status">Checking the directory…</p><ul data-live-rooms></ul></section>
+            ${managedGames.map(({key,name,hostRoute})=>`<section data-live-section="${key}" aria-labelledby="live-lobbies-${key}"><div class="live-lobbies-game-head"><h3 id="live-lobbies-${key}">${escapeHtml(name)}</h3>${hostButton({title:name,hostRoute})}</div><p data-live-status role="status">Checking the directory…</p><ul data-live-rooms></ul></section>`).join("")}
           </div>
         </section>`;
         const main='<main class="shell" id="mainContent" tabindex="-1">';
         if(!html.includes('id="live-lobbies"')){
           html=html.replace(main,main+liveLobbies)
-            .replace("</head>",'<link rel="stylesheet" href="./live-lobbies.css?v=3"><script type="module" src="./live-lobbies.mjs?v=3"><\/script></head>');
+            .replace("</head>",'<link rel="stylesheet" href="./live-lobbies.css?v=4"><script type="module" src="./live-lobbies.mjs?v=4"><\/script></head>');
         }
         const desktopDownload=`<aside class="desktop-hub-download" aria-labelledby="desktop-hub-heading">
           <img src="/lobby/assets/catnmice-mark.svg" alt="" width="52" height="52">

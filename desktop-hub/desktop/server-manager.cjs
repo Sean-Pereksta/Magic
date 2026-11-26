@@ -7,7 +7,7 @@ const { inDir, writeJson } = require('./storage.cjs');
 
 function managedEdition(port, type, entry, server, runtimeDir, adapter, nativeServer) {
   return {
-    type, port, statusType: 'game-host-status', joinPath: '/__catnmice/join',
+    type, port, statusType: 'game-host-status', diagnosticsType: 'game-host-diagnostics', joinPath: '/__catnmice/join',
     files: {
       entry, server, manager: 'manager/supervisor.cjs',
       runtime: runtimeDir + '/node.exe', tunnel: runtimeDir + '/cloudflared.exe',
@@ -18,7 +18,7 @@ function managedEdition(port, type, entry, server, runtimeDir, adapter, nativeSe
 
 const editions = {
   acornrally: {
-    type: 'static', port: 8791, statusType: 'rally-host-status', joinPath: '/?room=join',
+    type: 'static', port: 8791, statusType: 'rally-host-status', diagnosticsType: 'rally-host-diagnostics', joinPath: '/?room=join',
     files: {
       entry: 'index.html',
       server: 'server/lobby-supervisor.cjs',
@@ -73,6 +73,7 @@ const hostMetrics = {
   playerCount: 8, connectedPlayers: 8, readyPlayers: 8, expectedPlayers: 8, maxPlayers: 8,
   queuedPlayers: 1_000, uptimeSeconds: 1_000_000_000,
 };
+const genericHostMetrics = { ...hostMetrics, playerCount: 256, maxPlayers: 256 };
 // The host normally sends a sample every three seconds. Allow brief scheduling
 // delays, but do not present a stalled stream as live or wait forever on old packs.
 const DIAGNOSTICS_STALE_MS = 12_000;
@@ -98,9 +99,9 @@ function readLabels(data, fields, target) {
   }
 }
 
-function readRallyDiagnostics(data, sampledAt) {
+function readHostDiagnostics(data, sampledAt, gameId) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
-  const result = readMetrics(data, hostMetrics);
+  const result = readMetrics(data, gameId === 'acornrally' ? hostMetrics : genericHostMetrics);
   readLabels(data, ['phase', 'localStatus', 'tunnelStatus', 'directoryStatus'], result);
   if (Array.isArray(data.players)) {
     result.players = data.players.slice(0, 8)
@@ -183,8 +184,8 @@ function createServerManager({ dataDir, packFor, onChange, onExit, spawnProcess 
     let timeout;
     child.on('message', data => {
       if (instance.stopping) return;
-      if (id === 'acornrally' && data?.type === 'rally-host-diagnostics') {
-        const diagnostics = readRallyDiagnostics(data.diagnostics, now());
+      if (data?.type === edition.diagnosticsType) {
+        const diagnostics = readHostDiagnostics(data.diagnostics, now(), id);
         if (diagnostics) instance.diagnostics = diagnostics;
         return;
       }
@@ -192,7 +193,10 @@ function createServerManager({ dataDir, packFor, onChange, onExit, spawnProcess 
           !['starting', 'online', 'lan-only', 'offline'].includes(data.status)) return;
       // A supervisor can restart its game host without exiting itself. Never
       // carry the previous host's player roster into the replacement process.
-      if (data.status === 'offline') delete instance.diagnostics;
+      if (data.status === 'offline' || (data.status === 'starting' && data.resetDiagnostics === true)) {
+        delete instance.diagnostics;
+        instance.startedAt = now();
+      }
       const link = data.status === 'online' ? internetLink(data.origin, edition.joinPath) : undefined;
       const usableCode = link || (edition.files.manager && data.status === 'lan-only');
       const code = usableCode && config.visibility === 'code' && typeof data.code === 'string' && /^\d{4}$/.test(data.code)
@@ -234,7 +238,7 @@ function createServerManager({ dataDir, packFor, onChange, onExit, spawnProcess 
   return {
     status,
     diagnostics(game) {
-      if (game.id !== 'acornrally') throw Error('Connection diagnostics are available for Acorn Rally.');
+      if (!supportsServerManager(game.id)) throw Error('This game does not support Server Manager diagnostics.');
       const instance = running.get(game.id);
       const timestamp = now();
       const status = instance?.status.status || 'offline';

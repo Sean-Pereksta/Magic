@@ -126,6 +126,7 @@ test('invite validation keeps game-specific routes, leading zeroes and bounded n
   for(const suffix of ['#code=12','#code=0007&code=7777','?host=1','?name='+('a'.repeat(23)),'?name=a%0Db']) {
     assert.equal(managedInvite('cat',base+suffix),null);
   }
+  assert.equal(managedInvite('lastsignal',base),base);
   assert.equal(managedInvite('acornrally',base),null);
   assert.equal(managedInvite('other',base),null);
   const official='https://rally.catnmice.com/?room=join#join=1';
@@ -134,12 +135,13 @@ test('invite validation keeps game-specific routes, leading zeroes and bounded n
 });
 
 test('Acorn desktop discovery can read its listing and probe a host while retaining offline save isolation', () => {
-  const directory='https://firestore.googleapis.com/v1/projects/bible-game-246c0/databases/(default)/documents';
+  const official='https://firestore.googleapis.com/v1/projects/bible-game-246c0/databases/(default)/documents';
+  const directory=official.replace('bible-game-246c0','magic-servers-1ca0c');
   const local='http://127.0.0.1:43125', origin='https://one-host.trycloudflare.com';
   const ses={webRequest:{onBeforeRequest(callback){ses.filter=callback;}}};
   const close=configureSaveSession(ses,{gameId:'acornrally',origin:local});
   assert.ok(allowed(ses,directory+':runQuery','xhr','POST'));
-  for(const url of [directory+'/acornRallyService/public',directory+'/acornRallyLobbies/0009',origin+'/api/rooms/status']) {
+  for(const url of [official+'/acornRallyService/public',directory+'/acornRallyLobbies/0009',origin+'/api/rooms/status']) {
     assert.ok(allowed(ses,url));
     assert.equal(allowed(ses,url,'mainFrame'),false);
     assert.equal(allowed(ses,url,'xhr','PATCH'),false);
@@ -147,6 +149,9 @@ test('Acorn desktop discovery can read its listing and probe a host while retain
   assert.equal(allowed(ses,origin+'/api/desktop/control'),false);
   assert.equal(allowed(ses,directory+'/unrelated/game'),false);
   assert.equal(allowed(ses,directory+':commit','xhr','POST'),false);
+  assert.equal(allowed(ses,official+':runQuery','xhr','POST'),false);
+  assert.equal(allowed(ses,official+'/acornRallyLobbies/0009'),false);
+  assert.equal(allowed(ses,directory+'/acornRallyService/public'),false);
   close();
   assert.equal(allowed(ses,origin+'/api/rooms/status'),false);
   configureSaveSession(ses,{gameId:'other',origin:local});

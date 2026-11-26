@@ -112,6 +112,19 @@ test('zero players are explicit and absent measurements never become zero latenc
   assert.doesNotMatch(html, /<dd>0 ms<\/dd>/);
 });
 
+test('managed game diagnostics show tunnel and slot metrics for a non-racing game', () => {
+  const ui = createUI();
+  const html = ui.serverDiagnosticContent({status: 'online', diagnosticsState: 'live', metrics: {
+    phase: 'waiting', playerCount: 2, maxPlayers: 4, queuedPlayers: 0, tunnelRttMs: 140,
+    directoryStatus: 'listed', localStatus: 'ready', tunnelStatus: 'ready',
+  }}, 'bannerlands');
+  metric(html, 'Players on server', '2 / 4');
+  metric(html, 'Public tunnel latency', '140 ms');
+  metric(html, 'Lobby directory', 'Listed');
+  metric(html, 'Match phase', 'Waiting');
+  assert.doesNotMatch(html, /Track load|Average player ping|Race phase/);
+});
+
 test('old or missing host packets show actionable states without fabricating occupancy', () => {
   const ui = createUI();
   const unavailable = ui.serverDiagnosticContent({status: 'online', diagnosticsState: 'unavailable', uptimeSeconds: 23});
