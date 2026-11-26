@@ -124,7 +124,8 @@ function checkScreen() {
   const selected = document.querySelector('[data-live-filter="catandmouse"][aria-pressed="true"]');
   const catSection=document.querySelector('[data-live-section="catandmouse"]');
   return {
-    playable:document.body?.innerText?.includes('Play Selected') && document.body?.innerText?.includes('TARGET'),
+    playable:Boolean(visible(document.querySelector('#btnPlay')) && visible(document.querySelector('#target')) &&
+      document.querySelector('#hand .card')),
     catDirectorySelected:Boolean(selected && visible(catSection)),
     directoryStatus:catSection?.querySelector('[data-live-status]')?.textContent,
     gated:Boolean(visible(document.querySelector('#accountGateModal'))),

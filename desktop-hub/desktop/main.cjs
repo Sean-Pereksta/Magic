@@ -8,7 +8,8 @@ const {SITE,LOBBY,isLobby,cardScript,onLobby,validInvite,snapshot,pause}=require
 const {portFor,startOffline,offlineLaunchUrl}=require('./offline.cjs');
 const {usesLocalHost,hasLocalHostPack,startLocalHost,catGuestInvite,joinGuestInvite}=require('./local-host.cjs');
 const {createServerManager,hasServerManagerDescriptor,hasServerManagerPack,supportsServerManager}=require('./server-manager.cjs');
-const {createArenaReader}=require('./arena-rooms.cjs');
+const {randomUUID}=require('node:crypto');
+const {managedInvite,restrictGuestSession}=require('./managed-invite.cjs');
 const {supportsSaveSync,configureSaveSession}=require('./save-sync.cjs');
 const {gameOnPage}=require('./gameplay.cjs');
 const {authorizeDesktop}=require('./verified.cjs');
@@ -71,7 +72,8 @@ function start({root,bundled,data,ready,startupFailed}){
   const notify=()=>{if(lib && !lib.isDestroyed())lib.webContents.send('changed');};
   const snapshots=new Map(),openingSessions=new Map(),activities=new Map(),inFlight=new Map(),launching=new Set(),touched=new Set();
   const nativeGames=new Map(),localGames=new Map(),installing=new Map();
-  const readPublicArenas=createArenaReader();
+  const shippedDirectory=path.join(root,'desktop','managed-servers.js');
+  const directory=require(fs.existsSync(shippedDirectory) ? shippedDirectory : path.join(bundled,'../shared/managed-servers.js'));
   const managedPack=id=>localPack(id,hasServerManagerPack);
   const manager=createServerManager({dataDir:data,packFor:managedPack,onChange:notify,onExit:id=>afterClose(id)});
   const serverGames=()=>catalog.games.filter(g=>supportsServerManager(g.id));
@@ -394,7 +396,29 @@ function start({root,bundled,data,ready,startupFailed}){
   async function handle(name,d){
     switch(name){
       case 'state':return getState();
-      case 'publicArenas':return readPublicArenas();
+      case 'publicServers':{
+        const ids=Object.keys(directory.titles);
+        const results=await Promise.allSettled(ids.map(id=>directory.publicServers(id)));
+        return results.map((result,index)=>{
+          const id=ids[index],failed=result.status==='rejected';
+          return {id,title:directory.titles[id],failed,rooms:failed?[]:result.value.map(room=>({
+            code:room.code,name:room.name,summary:directory.summary(room),expires:room.expires
+          }))};
+        });
+      }
+      case 'joinPublicServer':{
+        if(!Object.hasOwn(directory.titles,d.id))throw Error('Unknown game.');
+        const listing=await directory.byCode(d.id,d.code);
+        const server=listing?.visibility==='public' && await directory.probe(listing);
+        if(!server)throw Error('This server has no seat available or has gone offline.');
+        const url=managedInvite(d.id,directory.joinUrl(server));
+        if(!url)throw Error('Invalid game server invitation.');
+        const origin=new URL(url).origin;
+        const isolated=session.fromPartition('catnmice-guest-'+randomUUID(),{cache:false});
+        restrictGuestSession(isolated,origin);
+        await open({title:directory.titles[d.id]+' Multiplayer',url,session:isolated,mode:'join',guestOrigin:origin});
+        return;
+      }
       case 'serverStart':return manager.start(known(d.id),d);
       case 'serverStop':return manager.stop(known(d.id).id);
       case 'serverOpen':return shell.openExternal(manager.localLink(known(d.id).id));

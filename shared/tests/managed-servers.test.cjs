@@ -5,7 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 const script = fs.readFileSync(path.join(__dirname, '../managed-servers.js'), 'utf8');
-const base = 'projects/bible-game-246c0/databases/(default)/documents/managedGameDirectories/';
+const base = 'projects/magic-servers-1ca0c/databases/(default)/documents';
 
 class Element {
   constructor() {
@@ -25,7 +25,9 @@ class Element {
 
 function listing(game, code, label, players = 0, visibility = 'public', phase = 'waiting') {
   const origin = 'https://' + label + '.trycloudflare.com';
-  const info = { origin, name: label, hostId: 'id-' + label, visibility, phase, joinUrl: origin + '/__catnmice/join' };
+  const acorn = game === 'acornrally';
+  const info = { origin, name: label, [acorn ? 'ownerUid' : 'hostId']: 'id-' + label, visibility, phase,
+    joinUrl: origin + (acorn ? '/?room=join' : '/__catnmice/join') };
   const fields = Object.fromEntries(Object.entries(info).map(([key, val]) => [key, { stringValue: val }]));
   fields.players = { integerValue: String(players) };
   fields.queued = { integerValue: '0' };
@@ -33,7 +35,8 @@ function listing(game, code, label, players = 0, visibility = 'public', phase = 
   fields.capacity = { integerValue: '4' };
   fields.updatedAt = { timestampValue: new Date().toISOString() };
   fields.expiresAt = { timestampValue: new Date(Date.now() + 90000).toISOString() };
-  return { name: base + game + '/lobbies/' + code, fields };
+  const collection = acorn ? '/acornRallyLobbies/' : '/managedGameDirectories/' + game + '/lobbies/';
+  return { name: base + collection + code, fields };
 }
 
 function setup(game, docs, statuses = {}) {
@@ -44,9 +47,13 @@ function setup(game, docs, statuses = {}) {
   async function fetch(url, options) {
     requests.push(url);
     if (url.endsWith(':runQuery')) {
-      assert.ok(url.endsWith('/managedGameDirectories/' + game + ':runQuery'));
+      const acorn = game === 'acornrally';
+      const parent = acorn ? '' : '/managedGameDirectories/' + game;
+      assert.equal(new URL(url).pathname, '/v1/' + base + parent + ':runQuery');
       const query = JSON.parse(options.body).structuredQuery;
+      assert.equal(query.from[0].collectionId, acorn ? 'acornRallyLobbies' : 'lobbies');
       assert.equal(query.where.fieldFilter.value.stringValue, 'public');
+      assert.equal(query.limit, 25);
       const offset = query.startAt ? docs.findIndex(doc => doc.name === query.startAt.values[0].referenceValue) + 1 : 0;
       return reply(docs.slice(offset, offset + 25).map(document => ({ document })));
     }
@@ -54,13 +61,16 @@ function setup(game, docs, statuses = {}) {
       const doc = docs.find(doc => url.endsWith(doc.name));
       return reply(doc, doc ? 200 : 404);
     }
-    const doc = docs.find(doc => url === doc.fields.origin.stringValue + '/__catnmice/status');
+    const acorn = game === 'acornrally';
+    const statusPath = acorn ? '/api/rooms/status' : '/__catnmice/status';
+    const doc = docs.find(doc => url === doc.fields.origin.stringValue + statusPath);
     if (!doc) return reply({}, 404);
     const f = doc.fields, overrides = statuses[f.name.stringValue];
     if (overrides === false) return reply({}, 502);
-    return reply({ game, phase: f.phase.stringValue, hostId: f.hostId.stringValue,
-      visibility: f.visibility.stringValue, players: Number(f.players.integerValue), capacity: 4,
-      queued: 0, joinable: true, ...overrides });
+    const route = acorn ? {game: 'acorn-rally', waiting: 0, queueEnabled: true} :
+      {game, hostId: f.hostId.stringValue, queued: 0, joinable: true};
+    return reply({ ...route, phase: f.phase.stringValue,
+      visibility: f.visibility.stringValue, players: Number(f.players.integerValue), capacity: 4, ...overrides });
   }
   vm.runInNewContext(script, { window, document, URL, URLSearchParams, AbortController, fetch, setTimeout, clearTimeout });
   return { requests, navigations, open: options => {
@@ -107,4 +117,19 @@ test('closing while querying suppresses navigation', async () => {
   app.open({ live: true }).controls.close();
   await settle();
   assert.deepEqual(app.navigations, []);
+});
+
+test('Acorn uses the native join handoff and can queue for a race in progress', async () => {
+  const game = 'acornrally', app = setup(game, [
+    listing(game, '0001', 'paused', 4, 'public', 'racing'),
+    listing(game, '0002', 'running', 4, 'public', 'racing'),
+    listing(game, '0012', 'friends', 3, 'code', 'waiting')
+  ], { paused: {waiting: 128} });
+  const { el } = app.open({live: true});
+  await settle();
+  assert.deepEqual(app.navigations, ['https://running.trycloudflare.com/?room=join#join=1']);
+  el('input[name=player]').value = 'Red Fox';
+  el('input[name=code]').value = '0012';
+  await el('form').onsubmit({preventDefault() {}});
+  assert.equal(app.navigations[1], 'https://friends.trycloudflare.com/?room=join#join=1&name=Red+Fox&code=0012');
 });

@@ -56,43 +56,38 @@ The laptop needs to stay on and awake. Run the standalone lobby launcher from Ac
 
 Build the Windows packs from matching Magic and Truth revisions with the manager adapters and use the freshly compiled Last Signal executable. The signed launcher, catalog and game pack are required for download-channel installation.
 
-### Acorn Rally server diagnostics
+### Server diagnostics
 
-While the server is running, select **Server diagnostics** for player occupancy
-and capacity, connected players, the waiting queue, measured player ping, public
-tunnel round-trip time, uptime, and host performance. The player table shows
-connection type, reconnecting seats, jitter, snapshot delivery, FPS, and track
-loading. Player ping measures each player's connection; tunnel round-trip time
-measures the host's request through its public Cloudflare address. Missing or
-expired measurements appear as **—**, including player ping on an empty server.
+While a server is running, select **Server diagnostics** to see player occupancy,
+capacity, match phase, queue length, public tunnel round-trip time, uptime, and
+the status of the local host, tunnel, and lobby directory. Acorn Rally also
+reports measured player ping, connection type, reconnecting seats, jitter,
+snapshot delivery, FPS, and track loading. Tunnel round-trip time measures a
+request from the host through its public Cloudflare address. A dash marks an
+unavailable measurement.
 
-The host sends statistics every three seconds and the open panel refreshes every
-three seconds. Samples older than 12 seconds are marked as delayed. If no sample
-arrives within 15 seconds of starting, the panel explains that statistics are
-unavailable instead of waiting indefinitely. Close the dialog to stop polling.
+The panel refreshes every three seconds and marks samples older than 12 seconds
+as delayed. If the host has sent no samples after 15 seconds, the panel prompts
+you to update its hosting pack.
 
-This requires both the updated launcher and the Acorn Rally hosting pack from
-Truth with the diagnostics relay in `server/lobby-supervisor.cjs`. Stop the
-server, use **Downloads → Check for updates**, restart the launcher if prompted,
-and start the server again after the pack update finishes. Updating only the
-launcher cannot repair an older pack that drops the host's diagnostic messages.
+Install both the signed launcher and updated hosting packs from **Downloads →
+Check for updates**. Stop running hosts before updating their packs and start
+the hosts again to publish to the new directory.
 
-### Update Acorn Rally’s Firestore permissions
+### Magic Servers Firestore permissions
 
-If Server Manager reports that the lobby directory is unavailable after opening
-the public tunnel, check that Anonymous sign-in is enabled and that the active
-Firestore rules include the Acorn Rally lobby and host queue permissions.
-
-Copy the active Firestore rules for the Catnmice project into a local
-`active.rules` file. From the Magic repository root, prepare an update using the
-Acorn Rally rules already checked in.
+Magic Servers (`magic-servers-1ca0c`) stores the five games' Server Manager
+listings. In that project's Firebase Authentication settings, enable the
+**Anonymous** sign-in provider. Publish the [Magic Servers rules](../game/server-manager/firebase/firestore.rules)
+from the Firebase console or from the Magic repository root.
 
 ```powershell
-node desktop-hub/build/prepare-acorn-firestore.cjs active.rules > acorn-production.rules
+firebase deploy --only firestore:rules --project magic-servers-1ca0c --config game/server-manager/firebase/firebase.json
 ```
 
-Review the output and publish it in the Firebase console for `bible-game-246c0`.
-The command uses the active rules as its baseline, adds the missing Acorn Rally
-rules, and checks the 2,000-line limit. After publishing, wait for Server Manager
-to retry and check that the server appears under **Public servers** in Acorn
-Rally’s multiplayer menu.
+Keep the existing rules and sign-in configuration in `bible-game-246c0` for
+Acorn Rally's durable queue, official service, and the other Catnmice services.
+If diagnostics show a ready public tunnel and an unavailable directory, check
+Magic Servers' sign-in provider and active rules. Once the directory shows
+**Listed**, check the same game's **Live Join** on a device outside the host's
+network. Test a public listing and then a private four-digit code.

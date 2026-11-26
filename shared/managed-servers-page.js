@@ -4,7 +4,7 @@
   const game = query.get('game');
   const button = document.querySelector('button');
   const status = document.querySelector('[role=status]');
-  if (!window.CatnmiceServers || !['bannerlands', 'trashtactics', 'cat', 'lastsignal'].includes(game)) {
+  if (!window.CatnmiceServers || !Object.hasOwn(window.CatnmiceServers.titles, game)) {
     status.textContent = 'Open multiplayer from the game menu to find its servers.';
     return;
   }

@@ -72,10 +72,10 @@ function allowsAcornDirectory(url, { resourceType, method }) {
       url.username || url.password || url.port) return false;
   if (acornHost(url)) return method === 'GET' && url.pathname === '/api/rooms/status';
   if (url.hostname !== 'firestore.googleapis.com') return false;
-  const base = '/v1/' + database + '/documents';
+  const base = '/v1/projects/magic-servers-1ca0c/databases/(default)/documents';
   if (url.pathname === base + ':runQuery') return ['POST','OPTIONS'].includes(method);
-  return method === 'GET' && url.pathname.startsWith(base + '/') &&
-    /^(acornRallyLobbies\/\d{4}|acornRallyService\/public)$/.test(url.pathname.slice(base.length + 1));
+  return method === 'GET' && (url.pathname === '/v1/' + database + '/documents/acornRallyService/public' ||
+    (url.pathname.startsWith(base + '/') && /^acornRallyLobbies\/\d{4}$/.test(url.pathname.slice(base.length + 1))));
 }
 
 // Bramblebound imports the lobby's shared public project configuration by absolute path.

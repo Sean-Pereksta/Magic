@@ -158,6 +158,11 @@ try{
     await checkHostRoute(page, host, destination);
     check(`${section}: Host Lobby opens the game's hosting screen when Firebase cannot load`);
   }
+  for(const section of ['acornrally','trashtactics','lastsignal']){
+    const host=page.locator(`[data-live-section="${section}"]`).getByRole('link', {name:'Get Windows Game Hub'});
+    check(`${section}: Windows Game Hub download is available when Firebase cannot load`,
+      await host.getAttribute('href')==='/hub/download.html'&&await host.isVisible());
+  }
   await page.context().close();
 
   page=await open({user:'Tester',recent:[{key:'cat',playedAt:Date.now()},'warrealms','cat','deleted'],favorites:['warrealms']});

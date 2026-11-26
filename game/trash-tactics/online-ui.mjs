@@ -266,7 +266,7 @@ export function setupOnlineLobby(root,{selectedMap,onLoad,onStart,onState,onResu
     feedback.hidden=true;
     try {
       if (!window.CatnmiceServers) {
-        discovery ||= loadDirectory('/shared/managed-servers.js').catch(()=>loadDirectory('https://catnmice.com/shared/managed-servers.js'));
+        discovery ||= loadDirectory('/shared/managed-servers.js?v=magic-servers-1').catch(()=>loadDirectory('https://catnmice.com/shared/managed-servers.js?v=magic-servers-1'));
         await discovery;
       }
       await window.CatnmiceServers.open('trashtactics',{live});

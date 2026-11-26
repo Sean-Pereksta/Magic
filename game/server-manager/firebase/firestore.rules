@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function fourDigitCode(code) {
+      return code.matches('^[0-9]{4}$');
+    }
+
+    function ownedByCaller(data) {
+      return request.auth != null && data.ownerUid == request.auth.uid;
+    }
+
+    function fresh(data) {
+      return data.expiresAt is timestamp && data.expiresAt > request.time;
+    }
+
+    function canReadCode(code) {
+      return fourDigitCode(code) && (request.auth != null || fresh(resource.data));
+    }
+
+    function publicQuery() {
+      return request.query.limit <= 25 && resource.data.visibility == 'public';
+    }
+
+    function canReplaceListing() {
+      return ownedByCaller(resource.data) || resource.data.expiresAt <= request.time;
+    }
+
+    function validListing(code, data, minimumCapacity, maximumCapacity) {
+      return fourDigitCode(code) && ownedByCaller(data)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 40
+        && data.visibility in ['public', 'code']
+        && data.origin is string
+        && data.origin.matches('^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?[.]trycloudflare[.]com$')
+        && data.capacity is int && data.capacity >= minimumCapacity && data.capacity <= maximumCapacity
+        && data.players is int && data.players >= 0 && data.players <= data.capacity
+        && data.queued is int && data.queued >= 0 && data.queued <= 1000
+        && data.updatedAt == request.time && fresh(data)
+        && data.expiresAt <= request.time + duration.value(120, 's');
+    }
+
+    function validAcornListing(code) {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['ownerUid', 'name', 'visibility', 'origin', 'joinUrl',
+        'phase', 'players', 'capacity', 'queued', 'updatedAt', 'expiresAt'])
+        && validListing(code, data, 2, 8)
+        && data.joinUrl == data.origin + '/?room=join'
+        && data.phase in ['waiting', 'racing', 'finished'];
+    }
+
+    function managedGame(game) {
+      return game in ['bannerlands', 'trashtactics', 'cat', 'lastsignal'];
+    }
+
+    function validManagedListing(code) {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['ownerUid', 'hostId', 'name', 'visibility', 'origin', 'joinUrl',
+        'phase', 'players', 'capacity', 'queued', 'joinable', 'updatedAt', 'expiresAt'])
+        && validListing(code, data, 1, 256)
+        && data.hostId is string
+        && data.hostId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+        && data.joinUrl == data.origin + '/__catnmice/join'
+        && data.phase in ['waiting', 'playing', 'finished']
+        && data.joinable is bool
+        && (!data.joinable || (data.players < data.capacity && data.phase != 'finished'));
+    }
+
+    match /acornRallyLobbies/{code} {
+      allow get: if canReadCode(code);
+      allow list: if publicQuery();
+      allow create: if validAcornListing(code);
+      allow update: if validAcornListing(code) && canReplaceListing();
+      allow delete: if ownedByCaller(resource.data);
+    }
+
+    match /managedGameDirectories/{game}/lobbies/{code} {
+      allow get: if managedGame(game) && canReadCode(code);
+      allow list: if managedGame(game) && publicQuery();
+      allow create: if managedGame(game) && validManagedListing(code);
+      allow update: if managedGame(game) && validManagedListing(code) && canReplaceListing();
+      allow delete: if managedGame(game) && ownedByCaller(resource.data);
+    }
+  }
+}
