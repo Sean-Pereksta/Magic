@@ -59,12 +59,13 @@ test('Truth games join the shared catalog exactly once', async () => {
   }
 });
 
-test('the three Windows host editions preserve their guest routes and open hosting directly', async () => {
+test('Windows host editions preserve guest routes and include MOBA Mania in Live Lobbies', async () => {
   const html = await load();
   const games = registry(html);
   const cat = games.find(game => game.key === 'cat');
   const banner = games.find(game => game.key === 'bannerlands');
   const trash = games.find(game => game.key === 'trashtactics');
+  const moba = games.find(game => game.key === 'mobamania');
   assert.equal(cat.singleRoute, '/game/catandmouse/edition/index.html');
   assert.equal(cat.route, '/game/catandmouse.html');
   assert.match(cat.paintedTile, /\/game\/catandmouse\/edition\/art\/.*\.webp$/);
@@ -75,17 +76,26 @@ test('the three Windows host editions preserve their guest routes and open hosti
   assert.equal(cat.hostRoute, '/game/catandmouse/edition/?host=1');
   assert.equal(banner.hostRoute, 'https://sean-pereksta.github.io/Truth/games/bannerlands/?host=1');
   assert.equal(trash.hostRoute, '/game/trash-tactics/?online=1&host=1');
+  assert.equal(moba.multiplayerRoute, '/game/CatLanes.html?online=1');
+  assert.equal(moba.guestMultiplayer, true);
+  assert.equal(moba.maxPlayers, 6);
+  assert.deepEqual(library.getActions(moba), [
+    {type: 'single', label: 'Play in Browser'},
+    {type: 'online', label: 'Online Lobbies'},
+    {type: 'live', label: 'Live Join', href: '#live-lobbies'}
+  ]);
   for (const output of [html, await load(html)]) {
     assert.equal(output.match(/id="live-lobbies"/g).length, 1);
     assert.equal(output.match(/src="\.\/live-lobbies\.mjs\?v=\d+"/g).length, 1);
     assert.ok(output.includes(`href="${cat.hostRoute}"`));
     assert.ok(output.includes(`href="${banner.hostRoute}"`));
     assert.match(output, /data-live-filter="all"/);
-    for (const id of ['acornrally', 'bannerlands', 'trashtactics', 'lastsignal', 'catandmouse']) {
+    for (const id of ['acornrally', 'bannerlands', 'trashtactics', 'lastsignal', 'mobamania', 'catandmouse']) {
       assert.ok(output.includes(`data-live-filter="${id}"`));
       assert.ok(output.includes(`data-live-section="${id}"`));
     }
-    assert.equal(output.match(/href="\/hub\/download\.html">Get Windows Game Hub/g).length, 3);
+    const hostHelp = [...output.matchAll(/<li data-live-section="([^"]+)">[^<]*<span>[^<]*<\/span><a[^>]*href="\/hub\/download\.html">Get Windows Game Hub<\/a><\/li>/g)];
+    assert.deepEqual(hostHelp.map(([, id]) => id), ['acornrally', 'trashtactics', 'lastsignal', 'mobamania']);
   }
 });
 
