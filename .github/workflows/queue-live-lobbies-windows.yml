@@ -1,0 +1,17 @@
+name: Queue the current signed Windows launcher
+on:
+  push:
+    branches: [verify/live-lobbies-windows]
+    paths: [.github/workflows/queue-live-lobbies-windows.yml]
+permissions:
+  actions: write
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: Sean-Pereksta/Magic
+    steps:
+      - name: Start the signed launcher build from current main revisions
+        run: gh workflow run catnmice-game-hub.yml --ref main -f publish=true
