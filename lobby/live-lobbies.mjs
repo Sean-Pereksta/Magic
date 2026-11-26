@@ -1,4 +1,4 @@
-import "../shared/managed-servers.js?v=magic-servers-1";
+import "../shared/managed-servers.js?v=magic-servers-2";
 
 const REFRESH_MS = 30_000;
 const VIEW = "livelobbies";

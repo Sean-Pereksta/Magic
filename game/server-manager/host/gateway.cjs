@@ -6,7 +6,8 @@ const { randomBytes, timingSafeEqual } = require('node:crypto');
 const join = '/__catnmice/join';
 const status = '/__catnmice/status';
 const access = '/__catnmice/access';
-const sockets = { cat: ['/socket'], trashtactics: ['/api/play'], lastsignal: ['/mobile/ws', '/ws'] };
+const sockets = { cat: ['/socket'], trashtactics: ['/api/play'], lastsignal: ['/mobile/ws', '/ws'],
+  mobamania: ['/api/moba/online'] };
 
 function equal(a, b) {
   const left = Buffer.from(a), right = Buffer.from(b);

@@ -8,7 +8,7 @@ const { monitorEventLoopDelay, performance } = require('node:perf_hooks');
 const { setTimeout: delay } = require('node:timers/promises');
 const { createGateway, join, status } = require('./gateway.cjs');
 
-const games = new Set(['bannerlands', 'trashtactics', 'cat', 'lastsignal']);
+const games = new Set(['bannerlands', 'trashtactics', 'cat', 'lastsignal', 'mobamania']);
 const wait = (ms, signal) => delay(ms, undefined, { signal });
 
 function readConfig(env) {

@@ -6,6 +6,8 @@ on:
     paths:
       - 'game/CatLanes.html'
       - 'game/moba-mania/**'
+      - 'game/server-manager/host/gateway.cjs'
+      - 'shared/managed-servers.js'
       - 'tests/moba-mania*'
       - 'desktop-hub/content/build-packs.py'
       - '.github/workflows/moba-mania.yml'
@@ -13,6 +15,8 @@ on:
     paths:
       - 'game/CatLanes.html'
       - 'game/moba-mania/**'
+      - 'game/server-manager/host/gateway.cjs'
+      - 'shared/managed-servers.js'
       - 'tests/moba-mania*'
       - 'desktop-hub/content/build-packs.py'
       - '.github/workflows/moba-mania.yml'
@@ -37,6 +41,8 @@ jobs:
             /game/CatLanes.html
             /game/catlanes.html
             /game/moba-mania/
+            /game/server-manager/host/gateway.cjs
+            /shared/managed-servers.js
             /tests/moba-mania*
             /lobby/lobby-core.html
             /lobby/assets/game-artwork.json
@@ -48,6 +54,10 @@ jobs:
           node-version: '22'
       - name: Verify battle mechanics
         run: node --test tests/moba-mania*.test.mjs
+      - name: Verify online lobby and managed joins
+        run: |
+          npm install --prefix game/moba-mania --no-save --package-lock=false --ignore-scripts --no-audit --no-fund
+          node --test game/moba-mania/tests/online-host.test.mjs
       - name: Install browser test runtime
         run: |
           npm install --prefix "$RUNNER_TEMP/moba-browser" --no-save --package-lock=false --ignore-scripts playwright@1.62.1
@@ -57,6 +67,10 @@ jobs:
           NODE_PATH: ${{ runner.temp }}/moba-browser/node_modules
           MOBA_QA_OUTPUT: ${{ runner.temp }}/moba-qa
         run: node tests/moba-mania-browser.cjs
+      - name: Verify online draft and live join in Chromium
+        env:
+          NODE_PATH: ${{ runner.temp }}/moba-browser/node_modules
+        run: node --test tests/moba-mania-online-browser.cjs
       - name: Keep test screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -65,4 +79,3 @@ jobs:
           path: ${{ runner.temp }}/moba-qa
           if-no-files-found: ignore
           retention-days: 7
-

@@ -57,7 +57,10 @@
     if (single) actions.push({ type: "single", label: game.singleLabel || (game.liveLobbyGame ? "Play in Browser" : multi ? "Play Offline" : "Play") });
     if (single && game.hotseatRoute) actions.push({ type: "hotseat", label: game.hotseatLabel || "Hot Seat" });
     if (game.liveLobbyGame) {
-      actions.push({ type: "live", label: "Live Multiplayer", href: "#live-lobbies" });
+      if (multi && game.multiplayerRoute && game.liveJoinLabel) {
+        actions.push({ type: "online", label: game.joinLabel || "Browse Lobbies" });
+      }
+      actions.push({ type: "live", label: game.liveJoinLabel || "Live Multiplayer", href: "#live-lobbies" });
     } else if (multi) {
       if (game.multiplayerRoute) {
         actions.push({ type: "online", label: game.joinLabel || "Join Match" });

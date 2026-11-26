@@ -102,7 +102,8 @@ function placeDevice(game,hero,a,at,spellPower,shieldAmount){
 }
 function focusedTarget(game,hero){
   if(!hero?.alive)return null;
-  const id=hero.isPlayer?(game.attackOrder?.explicit?game.attackOrder.targetId:null):(hero.brain?.targetId??hero.targetId);
+  const order=game.controlFor(hero)?.attackOrder;
+  const id=hero.isPlayer?(order?.explicit?order.targetId:null):(hero.brain?.targetId??hero.targetId);
   return game.units.find(u=>u.id===id&&foe(game,hero,u))||null;
 }
 export function tickExpansionDevice(game,device,dt){

@@ -4,6 +4,8 @@ import { Renderer, drawPortrait, drawIcon } from './renderer.mjs';
 import { resonanceResource } from './expansion-visuals.mjs';
 import { pickEnemyAt } from './input.mjs';
 import { captureMotion, renderMotion } from './render-motion.mjs';
+import { applyOnlineSnapshot } from './online-match.mjs';
+import { createOnlineLobby } from './online-ui.mjs';
 import { ITEMS, ITEM_BY_ID, purchaseState, describeBonuses, drawItemIcon } from './items.mjs';
 import { PROFILE_KEY, SAVE_KEY, COSMETICS, readProfile, writeProfile, heroCosmetics, equipCosmetic, recordMatch, readSavedMatch, saveMatch, clearSavedMatch, itemPlan, recommendedItems, previewItem, normalizeControls, matchBadges } from './profile.mjs';
 
@@ -41,6 +43,16 @@ let saveTimer=0,savedMatchState={status:'empty'};
 let minimapDrag=null,ignoreMapClick=false;
 const abilities = [];
 let animationFrame = 0;
+let onlineMatch = false, snapshotAt = 0, snapshotSpan = 75, lastMoveSent = 0, lastNetworkInput = '';
+let talentRenderKey = '';
+let pendingPurchase = null;
+const online = createOnlineLobby({
+  getHero: () => selectedHero,
+  onSnapshot: receiveOnline,
+  onLobby: () => !onlineMatch,
+  onStatus: showOnlineStatus,
+  onExit: exitOnline
+});
 
 function savePreferences() {
   try { localStorage.setItem(preferenceKey, JSON.stringify({hero:selectedHero, difficulty:$('difficulty').value, sound:soundEnabled,controls})); } catch { /* The game does not require storage. */ }
@@ -116,6 +128,13 @@ function drawMenu() {
   const title=document.createElement('h3');title.textContent=hero.title;
   const desc=document.createElement('p');desc.textContent=hero.description;
   info.append(title,desc);
+  if(hero.specialty){
+    const role=document.createElement('p');
+    role.className='online-specialty';
+    role.style.setProperty('--role-color',hero.specialty.color);
+    role.textContent=hero.role+' · '+hero.specialty.description;
+    info.append(role);
+  }
   if(hero.passive){const passive=document.createElement('p');passive.className='hero-passive';passive.textContent=`${hero.passive.name} · ${hero.passive.description}`;info.append(passive);}
   const skills=document.createElement('div');skills.className='hero-skills';
   hero.abilities.forEach(ability=>{
@@ -214,12 +233,18 @@ function buildAbilities() {
     button.addEventListener('click',event=>{if(event.detail===0 && playing() && canArm(slot))armAbility(slot);});
   });
 }
-function playing() { return !!game && !game.paused && game.winner==null && !$('hud').hidden; }
+function playing() { return !!game && !game.paused && game.winner==null && !$('hud').hidden && (!onlineMatch || online.connected); }
+function order(action, local) {
+  return onlineMatch ? online.command(action) : local();
+}
 function clearInput() {
   renderer.peek=endSequence?.game===game&&!ended?endSequence.focus:null;minimapDrag=null;$('peek-hint').hidden=true;
   keys.clear();touchAttack=false;moveTo=null;castDrag=null;
-  if(game)game.cancelPlayerOrder();
   joystick.x=joystick.y=0;joystick.pointerId=null;
+  if(onlineMatch){
+    sendOnlineMove(performance.now(),true);
+    if(game?.winner==null)online.command({type:'cancel'});
+  }else if(game)game.cancelPlayerOrder();
   $('joystick-knob').style.transform='translate(0px,0px)';
   $('attack-button').classList.remove('held');
   cancelAim();
@@ -231,18 +256,31 @@ function startMatch() {
   }
   beginMatch();
 }
-function beginMatch(restored=null,ui={},replace=false) {
+function beginMatch(restored=null,ui={},replace=false,networkGame=null) {
   document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());
   clearInput();
-  selectedHero=restored?.player.heroId||(HEROES[selectedHero]?selectedHero:'arc');
-  game=restored||new Game({hero:selectedHero,difficulty:$('difficulty').value,seed:Math.floor(Math.random()*0x7fffffff)});
+  onlineMatch=Boolean(networkGame);
+  if(!networkGame)selectedHero=restored?.player.heroId||(HEROES[selectedHero]?selectedHero:'arc');
+  game=networkGame||restored||new Game({hero:selectedHero,difficulty:$('difficulty').value,seed:Math.floor(Math.random()*0x7fffffff)});
   if(!game.matchId)game.matchId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  game.player.cosmetics=heroCosmetics(profile,selectedHero);
+  const heroId=game.player.heroId;
+  game.player.cosmetics=heroCosmetics(profile,heroId);
   ended=false;endSequence=null;document.body.classList.remove('core-finale');$('shop-button').classList.remove('gold-pulse');$('hero-level').classList.remove('level-pulse');lastEventId=null;lastLevel=game.player.level;lastHealth=game.player.hp;lastShield=game.player.shield||0;lastGoldSound=game.player.lastGoldGain?.time??null;accumulator=0;hudTimer=0;saveTimer=0;lastFrame=performance.now();
-  shopTier=1;shopRenderKey='';pinnedGoal=ITEM_BY_ID[ui.pinnedGoal]?.tier===3?ui.pinnedGoal:null;$('shop-owned').open=false;
+  shopTier=1;shopRenderKey='';pendingPurchase=null;pinnedGoal=ITEM_BY_ID[ui.pinnedGoal]?.tier===3?ui.pinnedGoal:null;$('shop-owned').open=false;
   $('menu-screen').hidden=true;$('hud').hidden=false;
-  $('hero-name').textContent=HEROES[selectedHero].name;
-  drawPortrait($('hero-portrait'),selectedHero,48,game.player.cosmetics);
+  $('save-match').hidden=onlineMatch;
+  $('quit-match').textContent=onlineMatch?'Leave online lobby':'Save & return to heroes';
+  $('pause-title').textContent=onlineMatch?'Match options':'Rift paused';
+  $('pause-button').setAttribute('aria-label',onlineMatch?'Match options':'Pause match');
+  $('pause-button').title=onlineMatch?'Match options (Esc)':'Pause (Esc)';
+  $('play-again').textContent=onlineMatch?'Return to lobby':'PLAY AGAIN';
+  $('change-hero').textContent=onlineMatch?'Leave online lobby':'CHOOSE ANOTHER HERO';
+  const captions=document.querySelectorAll('.map-caption span');
+  captions[0].textContent=onlineMatch?'AZURE':'DAWN';
+  captions[1].textContent=onlineMatch?'ROSE':'DUSK';
+  showOnlineStatus('');
+  $('hero-name').textContent=HEROES[heroId].name;
+  drawPortrait($('hero-portrait'),heroId,48,game.player.cosmetics);
   aim={x:game.player.x+300,y:game.player.y};pointer.valid=false;
   buildAbilities();renderer.hasCamera=false;renderer.lastTime=null;renderer.peek=null;renderer.resize(innerWidth,innerHeight);
   refreshHUD();savePreferences();unlockAudio();applyControls();
@@ -254,10 +292,50 @@ function beginMatch(restored=null,ui={},replace=false) {
   }
 }
 function saveCurrent(manual=false,replace=false){
-  if(!game||ended||game.winner!=null)return false;
+  if(onlineMatch||!game||ended||game.winner!=null)return false;
   const result=saveMatch(storage,game,{pinnedGoal},replace);saveTimer=0;
   if(manual)$('pause-message').textContent=result.ok?'Match saved on this device. It will resume paused.':result.reason;
   return result.ok;
+}
+
+function receiveOnline(state) {
+  const now=performance.now();
+  if(!onlineMatch || game.matchId!==state.matchId){
+    const view=new Game({hero:'arc',seed:1});
+    if(!applyOnlineSnapshot(view,state))return;
+    previousMotion=null;
+    snapshotSpan=75;
+    snapshotAt=now;
+    lastMoveSent=0;
+    lastNetworkInput='';
+    beginMatch(null,{},false,view);
+    return;
+  }
+  const oldMotion=captureMotion(game);
+  if(!applyOnlineSnapshot(game,state))return;
+  previousMotion=oldMotion;
+  snapshotSpan=Math.min(150,Math.max(33,now-snapshotAt));
+  snapshotAt=now;
+  game.player.cosmetics=heroCosmetics(profile,game.player.heroId);
+}
+
+function showOnlineStatus(message,notice=false) {
+  if(notice && onlineMatch){notify(message);return;}
+  const status=$('online-match-status');
+  $('match-reconnect').hidden=!onlineMatch || online.connected;
+  status.hidden=!message || !onlineMatch;
+  status.textContent=message;
+}
+
+function exitOnline() {
+  if(!onlineMatch)return;
+  onlineMatch=false;
+  game=null;endSequence=null;ended=false;previousMotion=null;
+  document.body.classList.remove('core-finale');
+  $('hud').hidden=true;$('menu-screen').hidden=false;
+  document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());
+  clearInput();drawMenu();refreshSavedMenu();
+  delete document.documentElement.dataset.catnmicePlaying;
 }
 $('start-match').addEventListener('click',startMatch);
 $('keep-saved-match').addEventListener('click',()=>closeDialog('replace-save-dialog'));
@@ -290,7 +368,7 @@ function cancelAim() {
 function castSelected() {
   if(selectedSlot<0 || !playing())return;
   const slot=selectedSlot;
-  if(game.cast(game.player,slot,aim)) {const id=HEROES[game.player.heroId].abilities[slot].id;tone(['winterfall','glacial-sweep'].includes(id)?'frost':['royal-quake','sky-cleave','execution-cut','shield-bash'].includes(id)?'heavy':'cast',slot);moveTo=null; }
+  if(order({type:'cast',slot,x:aim.x,y:aim.y},()=>game.cast(game.player,slot,aim))) {const id=HEROES[game.player.heroId].abilities[slot].id;tone(['winterfall','glacial-sweep'].includes(id)?'frost':['royal-quake','sky-cleave','execution-cut','shield-bash'].includes(id)?'heavy':'cast',slot);moveTo=null; }
   else if(canArm(slot)) notify('Cannot cast while stunned or recalling.',1500);
   cancelAim();refreshHUD();
 }
@@ -309,12 +387,12 @@ function enemyAt(clientX,clientY,pointerType) {
 function attackNearest() {
   if(!playing()||!game.player.alive)return;
   moveTo=null;
-  game.attackNearest();
+  order({type:'attack'},()=>game.attackNearest());
   refreshHUD();
 }
 function movePlayerTo(point) {
   moveTo=null;
-  game.movePlayerTo(point);
+  order({type:'moveTo',x:point.x,y:point.y},()=>game.movePlayerTo(point));
   refreshHUD();
 }
 canvas.addEventListener('pointerdown',event=>{
@@ -328,9 +406,9 @@ canvas.addEventListener('pointerdown',event=>{
   if(target){
     moveTo=null;
     if(game.isProtected(target)){
-      game.cancelPlayerOrder();
+      order({type:'cancel'},()=>game.cancelPlayerOrder());
       notify(target.kind==='core'?'Break an inner tower to expose this crystal.':"Destroy this lane's outer tower first.");
-    }else game.attackTarget(target.id);
+    }else order({type:'attackTarget',targetId:target.id},()=>game.attackTarget(target.id));
     refreshHUD();
   }
   else attackNearest();
@@ -355,10 +433,15 @@ window.addEventListener('keydown',event=>{
   if(event.code==='KeyB')recall();
   if(event.code==='Tab')openMap();
   if(event.code==='Space')attackNearest();
-  if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.code)){moveTo=null;game.cancelPlayerOrder();}
+  if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.code)){
+    moveTo=null;
+    if(onlineMatch)sendOnlineMove(performance.now(),true);
+    else game.cancelPlayerOrder();
+  }
 });
 window.addEventListener('keyup',event=>{
   keys.delete(event.code);
+  if(onlineMatch&&playing())sendOnlineMove(performance.now());
   const slot=hotkeys.indexOf(event.code);
   if(slot>=0 && selectedSlot===slot && playing()){event.preventDefault();castSelected();}
 });
@@ -373,7 +456,7 @@ function updateStick(event) {
   const drawRadius=stick.offsetWidth*.34;
   $('joystick-knob').style.transform=`translate(${joystick.x*drawRadius}px,${joystick.y*drawRadius}px)`;
   moveTo=null;
-  if(Math.hypot(joystick.x,joystick.y)>.05)game.cancelPlayerOrder();
+  if(!onlineMatch&&Math.hypot(joystick.x,joystick.y)>.05)game.cancelPlayerOrder();
 }
 stick.addEventListener('pointerdown',event=>{
   if(!playing()||joystick.pointerId!=null)return;
@@ -389,7 +472,7 @@ $('attack-button').addEventListener('pointerdown',event=>{
 $('attack-button').addEventListener('pointerup',()=>{touchAttack=false;});
 $('attack-button').addEventListener('pointercancel',()=>{touchAttack=false;});
 $('attack-button').addEventListener('click',event=>{if(event.detail===0){unlockAudio();attackNearest();}});
-function recall(){if(playing()&&game.recall(game.player)){clearInput();notify('Recalling… stay still for 4 seconds.',2500);}else if(game?.player.alive)notify('Recall needs a safe moment.');}
+function recall(){if(playing()&&order({type:'recall'},()=>game.recall(game.player))){clearInput();notify('Recalling… stay still for 4 seconds.',2500);}else if(game?.player.alive)notify('Recall needs a safe moment.');}
 $('recall-button').addEventListener('click',recall);
 
 function setPaused(paused) {
@@ -407,10 +490,18 @@ function afterDialogClosed() {
   if(game && game.winner==null && !ended && !$('hud').hidden && !document.querySelector('dialog[open]')){setPaused(false);canvas.focus({preventScroll:true});}
 }
 for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener('close',afterDialogClosed);
-function openPause(){if(game&&!ended&&!$('hud').hidden){$('pause-message').textContent='Your next great play can wait a moment.';openDialog('pause-dialog');saveCurrent();}}
+function openPause(){
+  if(!game||ended||$('hud').hidden)return;
+  $('pause-message').textContent=onlineMatch?'The match continues while this menu is open.':'Your next great play can wait a moment.';
+  $('match-reconnect').hidden=!onlineMatch||online.connected;
+  openDialog('pause-dialog');
+  saveCurrent();
+}
 $('pause-button').addEventListener('click',openPause);
+$('match-reconnect').addEventListener('click',()=>{online.reconnect();$('match-reconnect').hidden=true;});
 $('resume-match').addEventListener('click',()=>closeDialog('pause-dialog'));
 $('quit-match').addEventListener('click',()=>{
+  if(onlineMatch){online.leave();return;}
   if(!saveCurrent(true))return;
   $('hud').hidden=true;$('menu-screen').hidden=false;game=null;clearInput();
   document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());drawMenu();refreshSavedMenu();
@@ -528,6 +619,13 @@ function renderShop() {
     action.setAttribute('aria-label',isOwned?`${item.name} is owned and active`:`Buy ${item.name} for ${item.cost} gold. ${state.ok?'Ready to buy.':state.reason}`);
     action.title=state.ok?`${describeBonuses(item)} · Activates immediately`:state.reason;
     action.addEventListener('click',()=>{
+      if(onlineMatch){
+        if(online.command({type:'buy',id:item.id})){
+          pendingPurchase={id:item.id,deadline:performance.now()+2500};
+          $('shop-message').textContent='Purchase requested.';
+        }else $('shop-message').textContent='Reconnecting to the host.';
+        return;
+      }
       if(!game.buyItem(hero,item.id)){$('shop-message').textContent=purchaseState(hero,item.id).reason;renderShop();return;}
       tone('level');$('shop-message').textContent=`${item.name} is active. ${describeBonuses(item)}.`;
       renderShop();refreshHUD();saveCurrent();
@@ -602,6 +700,7 @@ function openTalents() {
 }
 function renderTalents() {
   const hero=game.player,definition=HEROES[hero.heroId];
+  talentRenderKey=[hero.level,...Object.values(hero.talents)].join('|');
   $('talent-title').textContent=`${definition.name} · Skill tree`;
   const tree=$('talent-tree');tree.replaceChildren();
   definition.talents.forEach(tier=>{
@@ -620,7 +719,10 @@ function renderTalents() {
       heading.append(icon,name);
       const desc=document.createElement('small');desc.textContent=choice.description;
       button.append(heading,desc);drawIcon(icon,{...choice,color:choice.color||definition.color});
-      button.addEventListener('click',()=>{if(game.chooseTalent(hero,tier.level,choice.id)){tone('level');renderTalents();refreshHUD();saveCurrent();}});
+      button.addEventListener('click',()=>{
+        if(onlineMatch){online.command({type:'talent',level:tier.level,id:choice.id});return;}
+        if(game.chooseTalent(hero,tier.level,choice.id)){tone('level');renderTalents();refreshHUD();saveCurrent();}
+      });
       choices.append(button);
     });section.append(title,choices);tree.append(section);
   });
@@ -657,11 +759,13 @@ function refreshBeastChoice(){
   for(const button of document.querySelectorAll('[data-beast-lane]'))button.setAttribute('aria-pressed',String(Number(button.dataset.beastLane)===pending.lane));
 }
 for(const button of document.querySelectorAll('[data-beast-lane]'))button.addEventListener('click',()=>{
+  if(onlineMatch){online.command({type:'beastLane',lane:Number(button.dataset.beastLane),beastId:game.pendingBeastChoice?.beastId});return;}
   if(game?.chooseBeastLane(Number(button.dataset.beastLane))){notify(`Your beast marches ${WORLD.lanes[Number(button.dataset.beastLane)].name}.`);refreshHUD();saveCurrent();}
 });
 $('close-map').addEventListener('click',()=>closeDialog('map-dialog'));
 for(const button of document.querySelectorAll('[data-command]'))button.addEventListener('click',()=>{
-  game.command(button.dataset.command,Number($('order-lane').value));
+  const lane=Number($('order-lane').value),command=button.dataset.command;
+  order({type:'ping',order:command,lane},()=>game.command(command,lane));
   closeDialog('map-dialog');notify(button.dataset.command==='beast'?'Called a river beast hunt.':`Called ${button.dataset.command} on ${$('order-lane').selectedOptions[0].textContent}.`,2500);
 });
 
@@ -708,10 +812,26 @@ function refreshHUD() {
   if(game.combatCue&&game.combatCue!==lastCombatCue){lastCombatCue=game.combatCue;tone(game.combatCue.kind);}
   else if((hero.shield||0)<lastShield-5&&game.time-(hero.lastDamageAt??-100)<.2)tone('block');
   lastShield=hero.shield||0;
+  if(pendingPurchase){
+    const item=ITEM_BY_ID[pendingPurchase.id];
+    if(hero.items?.includes(item.id)){
+      tone('level');
+      $('shop-message').textContent=item.name+' is active. '+describeBonuses(item)+'.';
+      pendingPurchase=null;
+    }else if(performance.now()>=pendingPurchase.deadline){
+      $('shop-message').textContent=purchaseState(hero,item.id).reason||'Purchase could not be confirmed. Try again.';
+      pendingPurchase=null;
+    }
+  }
   if($('shop-dialog').open&&shopRenderKey!==shopStateKey(hero))renderShop();
+  if(onlineMatch&&$('talent-dialog').open&&talentRenderKey!==[hero.level,...Object.values(hero.talents)].join('|'))renderTalents();
   $('blue-score').textContent=String(game.stats?.kills?.[0]||0);$('red-score').textContent=String(game.stats?.kills?.[1]||0);$('match-clock').textContent=formatTime(game.time);
   const cores=game.units.filter(unit=>unit.kind==='core');
-  for(const core of cores)$(core.team===0?'ally-core':'enemy-core').style.setProperty('--hp',percent(core.hp,core.maxHp));
+  for(const core of cores){
+    const bar=$(core.team===0?'ally-core':'enemy-core');
+    bar.style.setProperty('--hp',percent(core.hp,core.maxHp));
+    bar.title=core.team===hero.team?'Your crystal':'Enemy crystal';
+  }
   const tiers=game.availableTalents(hero),points=tiers.length;
   $('talent-count').hidden=points===0;$('talent-count').textContent=String(points);$('talent-button').classList.toggle('available',points>0);
   $('talent-button').setAttribute('aria-label',points?`Skill tree: ${points} talent choices available`:'View skill tree');
@@ -768,8 +888,13 @@ function endMatch() {
   $('end-mastery').textContent=`+${reward.earned} ${HEROES[hero.heroId].name} mastery XP · ${profile.heroes[hero.heroId].xp} total${reward.unlocks.length?` · Unlocked ${reward.unlocks.join(', ')}`:''}${persisted?'':' · Available this session; browser storage is unavailable.'}`;
   $('end-dialog').showModal();if(won)tone('win');
 }
-$('play-again').addEventListener('click',startMatch);
+$('play-again').addEventListener('click',()=>{
+  if(!onlineMatch){startMatch();return;}
+  exitOnline();
+  online.returnToLobby();
+});
 $('change-hero').addEventListener('click',()=>{
+  if(onlineMatch){online.leave();return;}
   game=null;endSequence=null;clearInput();$('hud').hidden=true;$('menu-screen').hidden=false;$('end-dialog').close();drawMenu();refreshSavedMenu();delete document.documentElement.dataset.catnmicePlaying;
 });
 $('end-dialog').addEventListener('cancel',event=>event.preventDefault());
@@ -781,6 +906,14 @@ function input() {
   // Attack is a persistent command issued on press; holding a control must not
   // reselect targets or resurrect an order canceled by movement or a spell.
   return {move:{x,y},aim,...(moveTo?{moveTo}: {})};
+}
+function sendOnlineMove(now,force=false) {
+  if(!game||game.winner!=null)return;
+  const {move:{x,y}}=input();
+  const signature=x.toFixed(2)+'|'+y.toFixed(2);
+  if(!force&&signature===lastNetworkInput&&((!x&&!y)||now-lastMoveSent<100))return;
+  if(!force&&(x||y)&&now-lastMoveSent<40)return;
+  if(online.command({type:'move',x,y,aim})){lastNetworkInput=signature;lastMoveSent=now;}
 }
 function battleView(now=performance.now()) {
   const view={aim,selectedSlot,cameraAim:selectedSlot>=0?aim:null};
@@ -798,7 +931,12 @@ function frame(now) {
   if(!game)return;
   if(minimapDrag&&!minimapDrag.active&&now-minimapDrag.started>=160){minimapDrag.active=true;peekAt({clientX:minimapDrag.x,clientY:minimapDrag.y});}
   if(lastMotionGame!==game){lastMotionGame=game;previousMotion=null;accumulator=0;lastCombatCue=null;}
-  if(playing()) {
+  if(onlineMatch){
+    if(playing()){
+      if(pointer.valid&&!castDrag)aim=renderer.screenToWorld(pointer.x,pointer.y);
+      sendOnlineMove(now);
+    }
+  }else if(playing()) {
     accumulator=Math.min(.15,accumulator+delta);
     if(pointer.valid&&!castDrag)aim=renderer.screenToWorld(pointer.x,pointer.y);
     while(accumulator>=1/30){
@@ -807,13 +945,15 @@ function frame(now) {
     }
   }else{previousMotion=null;accumulator=0;}
   if(game.winner!=null&&!ended)beginEndSequence(now);
-  renderer.draw(renderMotion(game,previousMotion,accumulator*30),{...battleView(now),frameDelta:delta});
+  const interpolation=onlineMatch?Math.min(1,(now-snapshotAt)/snapshotSpan):accumulator*30;
+  renderer.draw(renderMotion(game,previousMotion,interpolation),{...battleView(now),frameDelta:delta});
   if(endSequence?.game===game&&!ended&&now-endSequence.startedAt>=finaleSeconds*1000)endMatch();
   if(!ended){saveTimer+=delta;if(saveTimer>=10)saveCurrent();}
   hudTimer+=delta;if(hudTimer>.09){hudTimer=0;refreshHUD();}
   if(announcementUntil&&now>announcementUntil){$('announcement').classList.remove('visible');announcementUntil=0;}
 }
 requestAnimationFrame(frame);
-window.addEventListener('pagehide',()=>{saveCurrent();cancelAnimationFrame(animationFrame);audioContext?.suspend().catch(()=>{});});
+online.launch();
+window.addEventListener('pagehide',()=>{if(onlineMatch)clearInput();saveCurrent();cancelAnimationFrame(animationFrame);audioContext?.suspend().catch(()=>{});});
 window.addEventListener('pageshow',event=>{if(event.persisted){lastFrame=performance.now();animationFrame=requestAnimationFrame(frame);if(game)openPause();}});
 
