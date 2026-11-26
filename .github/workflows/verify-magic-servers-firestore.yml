@@ -1,0 +1,147 @@
+name: Verify deployed Magic Servers Firestore
+
+on:
+  push:
+    branches: [verify/magic-servers-firestore]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: /shared/managed-servers.js
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: Sean-Pereksta/Truth
+          ref: e18b927e433ea3ee9f58a8428780bdc27ff9db2f
+          path: truth-publisher
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: /games/acorn-rally/server/community-directory.cjs
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - name: Exercise the real host publisher and guest directory
+        shell: bash
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const { randomUUID } = require('node:crypto');
+          const fs = require('node:fs/promises');
+          const os = require('node:os');
+          const path = require('node:path');
+          const guestDirectory = require('./shared/managed-servers.js');
+          const { createFirebaseDirectory } = require('./truth-publisher/games/acorn-rally/server/community-directory.cjs');
+
+          const project = 'magic-servers-1ca0c';
+          const firestore = 'https://firestore.googleapis.com/v1/projects/' + project + '/databases/(default)/documents';
+          const gameIds = ['acornrally', 'bannerlands', 'trashtactics', 'cat', 'lastsignal'];
+          const verificationName = 'Directory check ' + randomUUID().slice(0, 8);
+          const quickTunnel = 'https://directory-verification-placeholder.trycloudflare.com';
+          let testIdentity;
+          let authFailure;
+
+          async function publisherFetch(input, init) {
+            const url = new URL(input);
+            const response = await fetch(input, init);
+            if (url.hostname === 'identitytoolkit.googleapis.com' && url.pathname === '/v1/accounts:signUp') {
+              const data = await response.clone().json();
+              if (response.ok) {
+                testIdentity = { key: url.searchParams.get('key'), token: data.idToken };
+              } else {
+                const allowed = ['OPERATION_NOT_ALLOWED', 'CONFIGURATION_NOT_FOUND', 'API_KEY_SERVICE_BLOCKED'];
+                const message = data.error?.message?.split(' ')[0];
+                authFailure = allowed.includes(message) ? message : 'HTTP ' + response.status;
+              }
+            }
+            return response;
+          }
+
+          async function status(url, init, expected, description) {
+            const response = await fetch(url, { ...init, signal: AbortSignal.timeout(8000) });
+            assert.equal(response.status, expected, description);
+          }
+
+          async function main() {
+            assert.equal(guestDirectory.projectId, project);
+            await status(firestore + '/magicServersVerification/guest-denied', {}, 403, 'Unrelated guest reads are denied');
+            await status(firestore + ':runQuery', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'acornRallyLobbies' }], limit: 25 } })
+            }, 403, 'Unfiltered Acorn lobby queries are denied');
+            console.log('Verified that test-mode guest access is closed.');
+
+            for (const game of gameIds) {
+              const rooms = await guestDirectory.publicServers(game);
+              console.log(game + ' public query passed (' + rooms.length + ' active listings).');
+            }
+
+            const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'magic-directory-smoke-'));
+            const hostId = randomUUID();
+            try {
+              for (const game of gameIds) {
+                const acorn = game === 'acornrally';
+                const listingCollection = acorn ? 'acornRallyLobbies' : 'managedGameDirectories/' + game + '/lobbies';
+                const directory = createFirebaseDirectory({
+                  dataDir, fetchImpl: publisherFetch, timeoutMs: 8000, listingCollection,
+                  joinPath: acorn ? '/?room=join' : '/__catnmice/join',
+                  listingExtras: () => acorn ? {} : { hostId: { stringValue: hostId }, joinable: { booleanValue: true } }
+                });
+                const record = { origin: quickTunnel, name: verificationName, visibility: 'code', phase: 'waiting',
+                  players: 1, capacity: 4, queued: 0 };
+                let lease;
+                try {
+                  lease = await directory.reserve(record);
+                  const entry = await guestDirectory.byCode(game, lease.code);
+                  assert.equal(entry?.name, verificationName, 'The new lease resolves by exact code');
+                  assert.equal(entry.visibility, 'code');
+                  assert.equal(entry.players, 1);
+                  assert.equal((await guestDirectory.publicServers(game)).some(room => room.name === verificationName), false,
+                    'Code-only listings stay out of public results');
+                  await status(firestore + '/' + listingCollection + '/' + lease.code, { method: 'DELETE' }, 403,
+                    'Guests cannot delete the temporary host lease');
+                  const renewed = await directory.renew({ ...record, players: 2 }, lease);
+                  assert.ok(renewed, 'The host can renew its lease');
+                  lease = renewed;
+                  assert.equal((await guestDirectory.byCode(game, lease.code))?.players, 2, 'Renewal updates the directory');
+                  await directory.release(lease);
+                  assert.equal(await guestDirectory.byCode(game, lease.code), null, 'The host can remove its listing');
+                  lease = undefined;
+                  console.log(game + ' host registration, guest lookup, renewal, and cleanup passed.');
+                } catch (err) {
+                  if (authFailure) throw new Error(game + ' anonymous authentication failed: ' + authFailure);
+                  if (err.status) throw new Error(game + ' host Firestore operation returned HTTP ' + err.status);
+                  throw err;
+                } finally {
+                  if (lease) await directory.release(lease);
+                }
+              }
+            } finally {
+              try {
+                if (testIdentity) {
+                  await status('https://identitytoolkit.googleapis.com/v1/accounts:delete?key=' + encodeURIComponent(testIdentity.key), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ idToken: testIdentity.token })
+                  }, 200, 'The temporary anonymous account was removed');
+                  console.log('Temporary Firebase Auth account removed.');
+                }
+              } finally {
+                await fs.rm(dataDir, { recursive: true, force: true });
+              }
+            }
+          }
+
+          main().catch(error => {
+            console.error(error.message);
+            process.exitCode = 1;
+          });
+          NODE
