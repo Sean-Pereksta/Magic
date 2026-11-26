@@ -1,4 +1,6 @@
 import { RESONANCE_HEROES } from './resonance-data.mjs';
+import { FRONTIER_HEROES } from './hero-frontier-data.mjs';
+import { addLateTalents } from './late-talents.mjs';
 /** MOBA Mania: all tunable rules and original, code-drawn hero identities. */
 const ability = (id, name, description, icon, color, unlock, mana, cooldown, range, radius, type) =>
   ({ id, name, description, icon, color, unlock, mana, cooldown, range, radius, type });
@@ -355,7 +357,8 @@ Object.assign(HEROES,{
 });
 for(const id of ['rivet','brinehook','vela','solstice'])for(const talent of HEROES[id].talents)for(const option of talent.choices)option.color=HEROES[id].color;
 
-Object.assign(HEROES, RESONANCE_HEROES);
+Object.assign(HEROES, RESONANCE_HEROES, FRONTIER_HEROES);
+addLateTalents(HEROES);
 
 export const DIFFICULTIES = {
   easy:{id:'easy',name:'Relaxed',description:'Forgiving bots. Slower reactions, simple lane plans and generous retreats.',think:0.9,lead:0,retreat:.27,coordination:.4,aimError:85,dodge:false},

@@ -24,7 +24,7 @@ test('Ferrite and Cadence have complete independent kits, talent trees and safe 
   for(const id of ['ferrite','cadence']){
     const h=HEROES[id],game=new Game({hero:id,difficulty:'impossible',seed:8});
     assert.equal(h.abilities.length,4);assert.deepEqual(h.talents.map(t=>t.level),[3,5,8,10,12,15,18]);
-    assert(h.talents.every(t=>t.choices.length===3));assert.equal(new Set(h.talents.flatMap(t=>t.choices.map(c=>c.id))).size,21);
+    assert(h.talents.every(t=>t.choices.length===(t.level>10?4:3)));assert.equal(new Set(h.talents.flatMap(t=>t.choices.map(c=>c.id))).size,24);
     for(const row of h.talents)assert(row.choices.includes(chooseBotTalent(game.player,row)));
     assert(nextBuildItem(game.player));assert.equal(game.units.filter(u=>u.kind==='hero'&&u.team===1).length,4);
     assert.equal(Game.restore(game.serialize()).player.heroId,id);

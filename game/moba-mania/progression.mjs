@@ -1,6 +1,7 @@
 /** Hero identities, late evolutions and equipment effects. State is plain JSON for match resume. */
 import { HEROES, WORLD, segmentDistance } from './data.mjs';
 import { modifyItemStatus } from './items.mjs';
+import { LATE_EFFECTS } from './late-talents.mjs';
 
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const structure=u=>u?.kind==='tower'||u?.kind==='core';
@@ -141,10 +142,41 @@ export function tickProgression(game,dt){
   }
 }
 
+function applyLateTalent(game,hero,ability,slot,at,spellPower) {
+  for(const tier of HEROES[hero.heroId].talents){
+    if(tier.level<12)continue;
+    const evolution=tier.choices.find(choice=>choice.id===hero.talents[tier.level])?.evolution;
+    if(evolution?.slot!==slot)continue;
+    const effect=LATE_EFFECTS[evolution.effect];
+    const point=evolution.centered||ability.type==='self'?hero:at;
+    const p=Number.isFinite(spellPower)?spellPower:power(hero);
+    if(effect.shield)protect(game,hero,point,120,effect.shield*p);
+    if(effect.healing)healingPulse(game,hero,point,120,effect.healing*p);
+    if(effect.haste){
+      haste(game,hero,point,120,effect.haste,0,2);
+      game.effect('ring',point.x,point.y,120,color(hero),.55,{team:hero.team});
+    }
+    if(effect.guard){
+      for(const ally of allies(game,hero,point,120))game.applyStatus(ally,'guard',2,{factor:effect.guard,sourceId:hero.id});
+      game.effect('shield',point.x,point.y,120,color(hero),.55,{team:hero.team});
+    }
+    if(effect.damage||effect.slow){
+      const {damageType,burnDuration,poisonDuration,slow,slowDuration,stun}=effect;
+      scheduleImpact(game,hero,{kind:'talent-followup',x:point.x,y:point.y,r:92,
+        delay:(evolution.effect==='echo'||stun) ? .85 : .5,damage:(effect.damage||0)*p,
+        burn:effect.burn&&effect.burn*p,poison:effect.poison&&effect.poison*p,
+        damageType,burnDuration,poisonDuration,slow,slowDuration,stun,interruptible:false,proc:true});
+    }
+  }
+}
+
 export function onCast(game,hero,ability,{at,angle,slot=0,power:spellPower}={}){
   if(!aliveHero(hero))return;
   const state=ensureEvolution(hero),b=key=>bonus(game,hero,key),p=power(hero),point=at||hero;
   const castNumber=count(hero,'casts');
+  applyLateTalent(game,hero,ability,slot,point,spellPower);
+  if(hero.heroId==='knell'&&castNumber%3===0)ward(game,hero,hero,65*p,3);
+  if(hero.heroId==='prism'&&castNumber%3===0)hero.mana=Math.min(hero.maxMana,hero.mana+16);
   state.castHistory=state.castHistory.filter(c=>game.time-c.time<=6).slice(-15);state.castHistory.push({slot,time:game.time});
   const distinctCasts=new Set(state.castHistory.map(c=>c.slot)).size;
   const mobility=ability.mobility||['rift-step','sky-cleave'].includes(ability.id);
@@ -261,6 +293,18 @@ export function onDamage(game,source,target,actual,{basic=false,periodic=false}=
     if(target.heroId==='ember'&&vb('emberSurvival')&&target.hp<target.maxHp*.3&&ready(game,target,'last-cinder',28)){ward(game,target,target,85*vp,3);haste(game,target,target,0,.25,0,2);}
   }
   const hero=owns(game,source);if(!aliveHero(hero)||target.team===hero.team)return;
+  if(basic&&hero.heroId==='mirelle'&&target.status?.poison){
+    const ally=allies(game,hero,hero,235).filter(u=>u.kind==='hero'&&u.hp<u.maxHp)
+      .sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp)[0];
+    if(ally&&ready(game,hero,'field-remedy',5))heal(game,hero,ally,44*power(hero));
+  }
+  if(basic&&hero.heroId==='zephyr'){
+    const state=ensureEvolution(hero);
+    if(state.mobilityReadyUntil-.5>game.time){
+      state.mobilityReadyUntil=0;
+      game.applyStatus(hero,'haste',1.8,{factor:.22,sourceId:hero.id});
+    }
+  }
   const state=ensureEvolution(hero),b=key=>bonus(game,hero,key),p=power(hero),direct=source?.id===hero.id;
   if(source?.kind==='summon'){
     if(source.elderGuardian&&has(hero,'elderwood-staff')&&basic&&ready(game,hero,'elder-pulse',3)){

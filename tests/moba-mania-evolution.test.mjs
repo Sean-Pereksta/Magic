@@ -36,7 +36,7 @@ test('every hero has meaningful late choice milestones with enforced locks and e
     assert.deepEqual(HEROES[id].talents.map(t=>t.level),[3,5,8,10,12,15,18]);
     for(const level of [12,15,18]){
       const tier=HEROES[id].talents.find(t=>t.level===level);
-      assert.equal(tier.choices.length,3);
+      assert.equal(tier.choices.length,4);
       assert(!game.chooseTalent(hero,level,tier.choices[0].id));
       while(hero.level<level)game.gainXP(hero,hero.xpNext);
       assert(game.chooseTalent(hero,level,tier.choices[0].id));

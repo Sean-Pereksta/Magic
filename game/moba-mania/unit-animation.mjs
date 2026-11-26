@@ -17,6 +17,10 @@ const motion = Object.freeze({
   solstice: { back:1, strike:1, crouch:0, tilt:.015 },
   ferrite: { back:3, strike:4, crouch:0, tilt:.025 },
   cadence: { back:2, strike:2, crouch:-1, tilt:.065 },
+  mirelle: { back:1, strike:4, crouch:-1, tilt:.03 },
+  knell: { back:6, strike:7, crouch:3, tilt:.05 },
+  zephyr: { back:3, strike:8, crouch:-3, tilt:.12 },
+  prism: { back:1, strike:0, crouch:-2, tilt:.045 },
 });
 
 export function unitPose(unit, game, time = game.time || 0, reducedMotion = false) {

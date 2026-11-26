@@ -16,20 +16,20 @@ function arena(id){
 function addHero(game,id,team,x,y=1100){const h=game.makeHero(id,team,1);Object.assign(h,{x,y,bot:false,level:18});game.refreshStats(h);h.hp=h.maxHp;game.rebuildGrid();return h;}
 const aim=(game,hero,slot,target=null,retreat=false)=>expansionBotAim(game,hero,game.getAbility(hero,slot),target,retreat,DIFFICULTIES.hard);
 
-test('the expansion supplies four complete identities and 84 exclusive talents without changing controls',()=>{
-  assert.equal(Object.keys(HEROES).length,14);
+test('the expansion supplies four complete identities and 96 exclusive talents without changing controls',()=>{
+  assert.equal(Object.keys(HEROES).length,18);
   const abilityIds=new Set(),talentIds=new Set();let count=0;
   for(const hero of Object.values(HEROES)){
     assert.deepEqual(hero.abilities.map(a=>a.unlock),[1,2,4,6]);
     assert.deepEqual(hero.talents.map(t=>t.level),[3,5,8,10,12,15,18]);
     for(const a of hero.abilities){assert(!abilityIds.has(a.id));abilityIds.add(a.id);}
-    for(const tier of hero.talents){assert.equal(tier.choices.length,3);for(const choice of tier.choices){assert(!talentIds.has(choice.id));talentIds.add(choice.id);assert(Object.values(choice.bonuses).every(n=>Number.isFinite(n)&&n>0));}}
+    for(const tier of hero.talents){assert.equal(tier.choices.length,tier.level>10?4:3);for(const choice of tier.choices){assert(!talentIds.has(choice.id));talentIds.add(choice.id);assert(Object.values(choice.bonuses).every(n=>Number.isFinite(n)&&n>0));}}
     if(!expansion.includes(hero.id))continue;
     assert(hero.passive.name&&hero.passive.description&&hero.description&&hero.title);
     for(const a of hero.abilities){assert.equal(a.icon,a.id);assert(['copper','tide','ivory','time'].includes(a.theme));assert(a.cooldown>0&&a.mana>0);}
     count+=hero.talents.reduce((n,t)=>n+t.choices.length,0);
   }
-  assert.equal(count,84);assert.equal(talentIds.size,294);assert.equal(abilityIds.size,56);
+  assert.equal(count,96);assert.equal(talentIds.size,432);assert.equal(abilityIds.size,72);
   assert.equal(HEROES.solstice.abilities[1].type,'ally');
   assert(HEROES.vela.abilities[1].mobility);assert(!HEROES.brinehook.abilities.some(a=>a.mobility));
 });

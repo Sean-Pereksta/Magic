@@ -19,7 +19,7 @@ function buildOfflinePack() {
   const pack = path.join(temp,'packs/mobamania');
   const entry = fs.readFileSync(path.join(pack,'index.html'),'utf8');
   assert(!entry.includes('/hub/play-signal.mjs'),'offline pack must not call the web hub');
-  for(const module of ['data.mjs','items.mjs','profile.mjs','engine.mjs','hero-skills.mjs','hero-expansion.mjs','solstice-runtime.mjs','resonance-data.mjs','resonance-heroes.mjs','renderer.mjs','combat-visuals.mjs','unit-animation.mjs','world-visuals.mjs','expansion-visuals.mjs','ui.mjs','style.css']) assert(fs.existsSync(path.join(pack,'moba-mania',module)),`offline pack missing ${module}`);
+  for(const module of ['data.mjs','items.mjs','profile.mjs','engine.mjs','hero-skills.mjs','hero-expansion.mjs','solstice-runtime.mjs','resonance-data.mjs','resonance-heroes.mjs','hero-frontier-data.mjs','hero-frontier.mjs','late-talents.mjs','frontier-art.mjs','render-motion.mjs','renderer.mjs','combat-visuals.mjs','unit-animation.mjs','world-visuals.mjs','expansion-visuals.mjs','ui.mjs','style.css']) assert(fs.existsSync(path.join(pack,'moba-mania',module)),`offline pack missing ${module}`);
   assert(!fs.existsSync(path.join(pack,'moba-mania/CONTRACT.md')),'implementation coordination notes are not shipped');
   return pack;
 }
@@ -512,7 +512,7 @@ async function main(){
       page.on('pageerror',e=>errors.push(e.message));
       await page.goto(origin+'/game/CatLanes.html');
       await page.waitForFunction(()=>!!window.__mobaTest);
-      assert.equal(await page.locator('#hero-grid [data-hero]').count(),14,'all fourteen heroes are selectable');
+      assert.equal(await page.locator('#hero-grid [data-hero]').count(),18,'all eighteen heroes are selectable');
       assert.equal(await page.locator('#hero-grid [data-hero="mouse"]').count(),0,'mouse removed from roster');
       await verifyHeroMenu(page,context,device);
       await page.locator(`#hero-grid [data-hero="${device.hero}"]`).click();

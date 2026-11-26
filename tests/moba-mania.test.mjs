@@ -23,8 +23,8 @@ function arena(hero='arc'){
 const aim=u=>({x:u.x,y:u.y});
 function summons(game,subtype){return game.units.filter(u=>u.kind==='summon'&&(!subtype||u.subtype===subtype));}
 
-test('fourteen playable hero types fill exactly six heroes, one human and five bots',()=>{
-  assert.deepEqual(Object.keys(HEROES).sort(),['angel','arc','brinehook','bulwark','cadence','dragon','druid','ember','ferrite','ranger','rivet','seraph','solstice','vela']);
+test('eighteen playable hero types fill exactly six heroes, one human and five bots',()=>{
+  assert.deepEqual(Object.keys(HEROES).sort(),['angel','arc','brinehook','bulwark','cadence','dragon','druid','ember','ferrite','knell','mirelle','prism','ranger','rivet','seraph','solstice','vela','zephyr']);
   for(const hero of Object.keys(HEROES)){
     const game=gameFor(hero),units=game.units.filter(u=>u.kind==='hero');
     assert.equal(units.length,6);assert.equal(units.filter(u=>u.bot).length,5);
@@ -238,7 +238,7 @@ test('published catalogs keep the same entry route and describe the new game',()
   const source=fs.readFileSync(new URL('../lobby/lobby-core.html',import.meta.url),'utf8');
   const row=source.split('\n').find(s=>s.includes('key:"mobamania"'));assert(row);assert(row.includes('/game/CatLanes.html'));assert(row.includes('3v3'));assert(!row.includes('Incomplete'));
   const art=JSON.parse(fs.readFileSync(new URL('../lobby/assets/game-artwork.json',import.meta.url),'utf8')).games.mobamania;
-  assert.equal(art.title,'MOBA Mania');assert(art.desc.includes('fourteen heroes'));assert.equal(art.route,'/game/CatLanes.html');
+  assert.equal(art.title,'MOBA Mania');assert(art.desc.includes('eighteen heroes'));assert.equal(art.route,'/game/CatLanes.html');
 });
 
 test('offline pack builder copies the complete runtime and resolves every local dependency',()=>{
@@ -261,7 +261,7 @@ test('offline pack builder copies the complete runtime and resolves every local 
         if(/\.(?:mjs|js|html)$/.test(dependency))queue.push(dependency);
       }
     }
-    for(const name of ['data.mjs','items.mjs','engine.mjs','hero-skills.mjs','hero-expansion.mjs','solstice-runtime.mjs','resonance-data.mjs','resonance-heroes.mjs','renderer.mjs','combat-visuals.mjs','unit-animation.mjs','world-visuals.mjs','expansion-visuals.mjs','ui.mjs'])assert(seen.has(path.join(pack,'moba-mania',name)),name+' reachable from entry');
+    for(const name of ['data.mjs','items.mjs','engine.mjs','hero-skills.mjs','hero-expansion.mjs','solstice-runtime.mjs','resonance-data.mjs','resonance-heroes.mjs','hero-frontier-data.mjs','hero-frontier.mjs','late-talents.mjs','frontier-art.mjs','render-motion.mjs','renderer.mjs','combat-visuals.mjs','unit-animation.mjs','world-visuals.mjs','expansion-visuals.mjs','ui.mjs'])assert(seen.has(path.join(pack,'moba-mania',name)),name+' reachable from entry');
     assert(!fs.existsSync(path.join(pack,'moba-mania/CONTRACT.md')),'coordination notes not shipped');
   }finally{fs.rmSync(temp,{recursive:true,force:true});}
 });

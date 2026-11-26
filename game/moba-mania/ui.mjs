@@ -3,6 +3,7 @@ import { Game } from './engine.mjs';
 import { Renderer, drawPortrait, drawIcon } from './renderer.mjs';
 import { resonanceResource } from './expansion-visuals.mjs';
 import { pickEnemyAt } from './input.mjs';
+import { captureMotion, renderMotion } from './render-motion.mjs';
 import { ITEMS, ITEM_BY_ID, purchaseState, describeBonuses, drawItemIcon } from './items.mjs';
 import { PROFILE_KEY, SAVE_KEY, COSMETICS, readProfile, writeProfile, heroCosmetics, equipCosmetic, recordMatch, readSavedMatch, saveMatch, clearSavedMatch, itemPlan, recommendedItems, previewItem, normalizeControls, matchBadges } from './profile.mjs';
 
@@ -23,6 +24,7 @@ let selectedSlot = -1;
 let aim = { x: WORLD.width / 2, y: WORLD.height / 2 };
 let moveTo = null;
 let touchAttack = false;
+let previousMotion=null, lastCombatCue=null, lastMotionGame=null;
 let joystick = { x:0, y:0, pointerId:null };
 let castDrag = null;
 let pointer = { x:innerWidth / 2, y:innerHeight / 2, valid:false };
@@ -65,11 +67,11 @@ function tone(kind='cast', slot=0) {
   const now = audioContext.currentTime;
   if (now-lastToneAt < .055) return;
   lastToneAt = now;
-  const notes = kind === 'gold' ? [880,1320] : kind === 'block' ? [235,315] : kind === 'heavy' ? [125,78] : kind === 'frost' ? [988,740,1110] : kind === 'level' ? [523,659,784] : kind === 'win' ? [392,523,659,784] : kind === 'hurt' ? [110] : kind === 'error' ? [164] : [330 + slot*85, 495 + slot*65];
+  const notes = kind === 'impact' ? [205,154] : kind === 'gold' ? [880,1320] : kind === 'block' ? [235,315] : kind === 'heavy' ? [125,78] : kind === 'frost' ? [988,740,1110] : kind === 'level' ? [523,659,784] : kind === 'win' ? [392,523,659,784] : kind === 'hurt' ? [110] : kind === 'error' ? [164] : [330 + slot*85, 495 + slot*65];
   notes.forEach((frequency,index)=>{
     const osc = audioContext.createOscillator();
     const gain = audioContext.createGain();
-    osc.type = ['hurt','heavy','block'].includes(kind) ? 'triangle' : kind==='frost'||kind==='gold'?'sine':'square';
+    osc.type = ['hurt','heavy','block','impact'].includes(kind) ? 'triangle' : kind==='frost'||kind==='gold'?'sine':'square';
     osc.frequency.setValueAtTime(frequency, now+index*.06);
     gain.gain.setValueAtTime(0,now+index*.06);
     gain.gain.linearRampToValueAtTime(kind === 'hurt' ? .017 : .014,now+index*.06+.008);
@@ -671,7 +673,9 @@ function refreshAbilityHUD() {
     button.classList.toggle('locked',locked);button.classList.toggle('cooling',!locked&&remaining>0);button.classList.toggle('ready',ready);button.classList.toggle('selected',selectedSlot===slot);
     button.setAttribute('aria-disabled',String(!ready));
     cooldown.textContent=locked?`LV ${ability.unlock}`:remaining>=1?String(Math.ceil(remaining)):remaining>0?remaining.toFixed(1):'';
-    button.setAttribute('aria-label',`${ability.name}. ${locked?`Unlocks at level ${ability.unlock}`:remaining>0?`${Math.ceil(remaining)} second cooldown`:hero.mana<ability.mana?'Not enough mana':'Ready'}. ${ability.description}`);
+    const evolution=HEROES[hero.heroId].talents.flatMap(tier=>tier.choices.filter(choice=>choice.id===hero.talents[tier.level]&&choice.evolution?.slot===slot));
+    button.title=[ability.description,...evolution.map(choice=>choice.description)].join('\n');
+    button.setAttribute('aria-label',`${ability.name}. ${locked?`Unlocks at level ${ability.unlock}`:remaining>0?`${Math.ceil(remaining)} second cooldown`:hero.mana<ability.mana?'Not enough mana':'Ready'}. ${button.title}`);
     if(ability.id==='polarity-pulse'||ability.id==='grand-finale'){
       const suffix=ability.id==='polarity-pulse'?(hero.resonance?.polarity==='pull'?'PUSH':'PULL'):['SHATTER','SHELTER','DANCE'][resonanceResource(hero,game.time)?.last||0];
       button.querySelector('.ability-name').textContent=ability.id==='polarity-pulse'?`Pulse · ${suffix}`:`Finale · ${suffix}`;
@@ -701,7 +705,9 @@ function refreshHUD() {
   const goldGain=hero.lastGoldGain,showGold=goldGain&&game.time-goldGain.time>=0&&game.time-goldGain.time<2;
   $('gold-earned').hidden=!showGold;
   if(showGold){$('gold-earned').textContent=`+${goldGain.amount} GOLD`;if(goldGain.time!==lastGoldSound){lastGoldSound=goldGain.time;tone('gold');rewardPulse($('shop-button'),'gold-pulse');}}
-  if((hero.shield||0)<lastShield-5&&game.time-(hero.lastDamageAt??-100)<.2)tone('block');lastShield=hero.shield||0;
+  if(game.combatCue&&game.combatCue!==lastCombatCue){lastCombatCue=game.combatCue;tone(game.combatCue.kind);}
+  else if((hero.shield||0)<lastShield-5&&game.time-(hero.lastDamageAt??-100)<.2)tone('block');
+  lastShield=hero.shield||0;
   if($('shop-dialog').open&&shopRenderKey!==shopStateKey(hero))renderShop();
   $('blue-score').textContent=String(game.stats?.kills?.[0]||0);$('red-score').textContent=String(game.stats?.kills?.[1]||0);$('match-clock').textContent=formatTime(game.time);
   const cores=game.units.filter(unit=>unit.kind==='core');
@@ -791,13 +797,17 @@ function frame(now) {
   const delta=Math.min(.1,Math.max(0,(now-lastFrame)/1000));lastFrame=now;
   if(!game)return;
   if(minimapDrag&&!minimapDrag.active&&now-minimapDrag.started>=160){minimapDrag.active=true;peekAt({clientX:minimapDrag.x,clientY:minimapDrag.y});}
+  if(lastMotionGame!==game){lastMotionGame=game;previousMotion=null;accumulator=0;lastCombatCue=null;}
   if(playing()) {
     accumulator=Math.min(.15,accumulator+delta);
     if(pointer.valid&&!castDrag)aim=renderer.screenToWorld(pointer.x,pointer.y);
-    while(accumulator>=1/30){game.update(1/30,input());accumulator-=1/30;if(game.winner!=null)break;}
-  }
+    while(accumulator>=1/30){
+      previousMotion=captureMotion(game);
+      game.update(1/30,input());accumulator-=1/30;if(game.winner!=null)break;
+    }
+  }else{previousMotion=null;accumulator=0;}
   if(game.winner!=null&&!ended)beginEndSequence(now);
-  renderer.draw(game,battleView(now));
+  renderer.draw(renderMotion(game,previousMotion,accumulator*30),{...battleView(now),frameDelta:delta});
   if(endSequence?.game===game&&!ended&&now-endSequence.startedAt>=finaleSeconds*1000)endMatch();
   if(!ended){saveTimer+=delta;if(saveTimer>=10)saveCurrent();}
   hudTimer+=delta;if(hudTimer>.09){hudTimer=0;refreshHUD();}
