@@ -13,7 +13,7 @@ const actions = require('../../lobby/lobby-library.js').getActions(source);
 const game = {...source, id:source.key, actions, offline:{type:'static',entry:'game/spelltower.html'}};
 const ui = fs.readFileSync(path.join(__dirname, '../ui/hub.js'), 'utf8');
 
-function controls(installed, online = true) {
+function controls(installed, online = true, title = game) {
   const buttons = [];
   const context = vm.createContext({
     state:{online,servers:[],saveSyncGames:[]},
@@ -21,12 +21,13 @@ function controls(installed, online = true) {
     ids:items=>items, hostLobby:()=>'',
     btn:(label,action,data)=>{buttons.push({label,action,data});return label;}
   });
+  vm.runInContext(ui.match(/^const usesSeparateOnlineEdition = .+;$/m)[0], context);
   for (const name of ['onlinePlay','gameControls']) {
     const start = ui.indexOf(`function ${name}(`);
     const end = ui.indexOf('\nfunction ', start + 1);
     vm.runInContext(ui.slice(start,end),context);
   }
-  return {buttons, render:()=>context.gameControls(game), onlineAction:()=>context.onlinePlay(game)};
+  return {buttons, render:()=>context.gameControls(title), onlineAction:()=>context.onlinePlay(title)};
 }
 
 test('installed Spell Tower exposes local solo and hot seat beside its online lobby', () => {
@@ -45,6 +46,18 @@ test('uninstalled Spell Tower keeps browser actions available and offers its loc
   assert.deepEqual(h.buttons.filter(b=>b.action==='play').map(b=>[b.data.mode,b.data.kind]), [
     ['online','lobby'], ['online','single'], ['online','hotseat']
   ]);
+});
+
+test('MOBA Mania offers separate solo, online browser and Live Lobbies entries', () => {
+  const moba = require('../content/catalog.json').games.find(item => item.id === 'mobamania');
+  const h = controls(true, true, moba);
+  h.render();
+  assert.deepEqual(h.buttons.map(({label, action, data})=>[label, action, data.mode, data.kind]), [
+    ['Play Offline', 'play', 'offline', 'single'],
+    ['Online Lobbies', 'play', 'online', 'online'],
+    ['Live Join', 'game-lobbies', undefined, undefined]
+  ]);
+  assert.equal(h.buttons.at(-1).data.id, 'mobamania');
 });
 
 for (const [action,mode] of [['single','solo'],['hotseat','hotseat']]) {
