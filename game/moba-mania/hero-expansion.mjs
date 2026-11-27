@@ -106,12 +106,26 @@ function focusedTarget(game,hero){
   const id=hero.isPlayer?(order?.explicit?order.targetId:null):(hero.brain?.targetId??hero.targetId);
   return game.units.find(u=>u.id===id&&foe(game,hero,u))||null;
 }
+function overclockSentry(game,hero,sentry,radius){
+  const remaining=hero.overclockUntil-game.time;
+  if(remaining<=0||sentry.overclockUntil>=hero.overclockUntil||distance(hero,sentry)>radius)return;
+  game.applyStatus(sentry,'haste',remaining,{factor:0,attack:.5,sourceId:hero.id,color:'#ffc774'});
+  sentry.overclockUntil=hero.overclockUntil;
+  sentry.overclockDamage=bonus(game,hero,'rivetRedline')?.2:0;
+  if(bonus(game,hero,'rivetFortified')){
+    const amount=100*(1+bonus(game,hero,'shield'))*(1+(hero.level-1)*.08);
+    game.shield(sentry,amount,remaining,hero);
+  }
+}
 export function tickExpansionDevice(game,device,dt){
   if(!device.stationary||!['sentry','mine'].includes(device.subtype))return false;
   if(device.subtype==='sentry'&&game.time<device.assembleUntil)return true;
+  const hero=game.units.find(h=>h.id===device.ownerId&&h.kind==='hero');
+  if(device.subtype==='sentry'&&device.lifetime===device.maxLifetime&&hero?.alive&&hero.overclockUntil>game.time){
+    overclockSentry(game,hero,device,game.getAbility(hero,3).radius);
+  }
   device.lifetime-=dt;if(device.lifetime<=0){expireDevice(game,device);return true;}
   if(device.status.stun)return true;
-  const hero=game.units.find(h=>h.id===device.ownerId&&h.kind==='hero');
   if(device.subtype==='mine'){
     if(game.time<device.armAt||!hero)return true;
     const trigger=validEnemies(game,device,device,device.triggerRadius).sort((a,b)=>distance(a,device)-distance(b,device)||a.id-b.id)[0];
@@ -134,6 +148,11 @@ export function tickExpansionDevice(game,device,dt){
 
 export function cancelExpansionChannel(game,hero){
   if(hero?.channel?.kind!=='silver-volley')return;
+  if(hero.alive&&hero.channel.nextShot===0){
+    const refund=Math.min(6,hero.cooldowns[3]);
+    hero.cooldowns[3]-=refund;
+    if(hero.isPlayer&&refund>0)game.float(hero,'VOLLEY −'+refund.toFixed(1)+'s','#e0d7ff');
+  }
   delete hero.channel;
   game.scheduledImpacts=game.scheduledImpacts.filter(i=>i.ownerId!==hero.id||i.kind!=='silver-volley');
   if(hero.visualAction?.abilityId==='silver-volley')hero.visualAction.duration=Math.min(hero.visualAction.duration,Math.max(0,game.time-hero.visualAction.startedAt));
@@ -193,12 +212,9 @@ export function castExpansionSkill(game,hero,a,{at,angle,power:spellPower,shield
     case 'overclock':{
       hero.overclockUntil=game.time+6;
       game.applyStatus(hero,'haste',6,{factor:0,attack:.2,sourceId:hero.id,color:a.color});game.shield(hero,shieldAmount(90),6,hero);
-      for(const sentry of game.units)if(sentry.alive&&sentry.subtype==='sentry'&&sentry.ownerId===hero.id&&distance(hero,sentry)<=300){
-        game.applyStatus(sentry,'haste',6,{factor:0,attack:.5,sourceId:hero.id,color:a.color});sentry.overclockUntil=game.time+6;sentry.overclockDamage=b('rivetRedline')?.2:0;
-        if(b('rivetFortified'))game.shield(sentry,shieldAmount(100),6,hero);
-      }
+      for(const sentry of game.units)if(sentry.alive&&sentry.subtype==='sentry'&&sentry.ownerId===hero.id)overclockSentry(game,hero,sentry,a.radius);
       if(b('rivetRelocation')){hero.cooldowns[1]=Math.max(0,hero.cooldowns[1]-4);game.applyStatus(hero,'haste',3,{factor:.2,attack:0,sourceId:hero.id});}
-      effect(game,hero,'overclock',hero,300,.8,{abilityId:a.id});return true;
+      effect(game,hero,'overclock',hero,a.radius,.8,{abilityId:a.id});return true;
     }
     case 'anchorline':
       scheduleImpact(game,hero,{kind:a.id,shape:'line',x:hero.x,y:hero.y,r:a.range,range:a.range,width:a.radius,angle,delay:.25,color:a.color,damage:90*spellPower*(1+b('brineAnchorDamage')),damageType:'physical'});return true;

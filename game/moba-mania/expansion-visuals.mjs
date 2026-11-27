@@ -451,7 +451,13 @@ export function drawExpansionAim(c,game,u,a,{angle,tx,ty,range,color}){
     c.globalAlpha=.1;ring(c,color,tx,ty,r,r,1,0,TAU,true);c.globalAlpha=.8;ring(c,color,tx,ty,r,r,2);inward(c,tx,ty,r,color);
   }else if(id==='borrowed-seconds')clockFace(c,tx,ty,r,color,.25);
   else if(id==='unwind'){ring(c,color,tx,ty,r,r,2);for(let k=0;k<4;k++){const aa=k*TAU/4;chevron(c,color,tx+Math.cos(aa)*r*.7,ty+Math.sin(aa)*r*.7,aa-Math.PI/2,12);}}
-  else if(id==='overclock'){ring(c,color,u.x,u.y,range||300,range||300,2);gear(c,u.x,u.y-25,20,THEMES.copper.main,THEMES.copper.accent);}
+  else if(id==='overclock'){
+    ring(c,color,u.x,u.y,r,r,2);gear(c,u.x,u.y-25,20,THEMES.copper.main,THEMES.copper.accent);
+    for(const sentry of game.units||[])if(sentry.alive&&sentry.subtype==='sentry'&&sentry.ownerId===u.id&&Math.hypot(sentry.x-u.x,sentry.y-u.y)<=r){
+      ring(c,'#ffe19e',sentry.x,sentry.y,sentry.r+12,sentry.r+12,3);
+      line(c,color,u.x,u.y,sentry.x,sentry.y,1.5);
+    }
+  }
   else if(id==='sea-legs'){ring(c,color,u.x,u.y,31,20,3);for(let k=0;k<4;k++)px(c,THEMES.tide.light,u.x-25+k*15,u.y+8,10,3);}
   else if(id==='steady-aim'){ring(c,color,u.x,u.y,30,30,2);for(const side of [-1,1]){line(c,color,u.x+side*20,u.y-20,u.x+side*35,u.y-20);line(c,color,u.x+side*35,u.y-20,u.x+side*35,u.y-6);}}
   c.restore();return true;

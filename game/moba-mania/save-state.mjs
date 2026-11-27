@@ -46,9 +46,19 @@ function checkExpansionUnit(unit,units){
     if(s.heavyLandingCast!==undefined&&!entityId(s.heavyLandingCast))fail('invalid landing identity');
     if(s.splitPairs!==undefined&&(!Array.isArray(s.splitPairs)||s.splitPairs.length>4||s.splitPairs.some(p=>!record(p)||!entityId(p.id)||!number(p.expiresAt,0,1e9)||!Array.isArray(p.hits)||p.hits.length>2||p.hits.some(id=>!entityId(id))||typeof p.firstHit!=='boolean')))fail('invalid split shot state');
   }
-  if(unit.stationary){
+  if(unit.subtype==='prism-pylon'){
+    if(unit.kind!=='summon'||unit.stationary!==true||unit.noCollision!==true||unit.noVision!==true
+      ||!units.some(owner=>owner.id===unit.ownerId&&owner.heroId==='prism'&&owner.team===unit.team)
+      ||!number(unit.lifetime,-1,24))fail('invalid mirror pylon');
+  }else if(unit.stationary){
     if(unit.kind!=='summon'||!['sentry','mine'].includes(unit.subtype)||!units.some(u=>u.id===unit.ownerId&&u.heroId==='rivet')||unit.noCollision!==true||(unit.subtype==='mine'&&unit.noVision!==true)||!number(unit.createdAt,0,1e9)||!number(unit.assembleUntil,0,1e9)||!number(unit.armAt,0,1e9)||!number(unit.lifetime,-1,1000)||!number(unit.maxLifetime,0,1000))fail('invalid device');
     for(const key of ['crossfireReadyAt','overclockDamage','emergencyShield','crossfireDamage','triggerRadius','blastRadius'])if(!optionalNumber(unit[key],0,1e8))fail('invalid device statistic');
+  }
+  if(unit.huntTargetId!==undefined&&(unit.subtype!=='wolf'||!entityId(unit.huntTargetId)||!number(unit.huntUntil,0,1e9)))fail('invalid wolf hunt');
+  if(unit.cooldownRefunds!==undefined){
+    const refund=unit.cooldownRefunds;
+    if(unit.kind!=='hero'||!record(refund)||!number(refund.at,0,1e9)||!Array.isArray(refund.amounts)
+      ||refund.amounts.length!==3||refund.amounts.some(amount=>!number(amount,0,2.5)))fail('invalid cooldown refund');
   }
 }
 
@@ -87,6 +97,7 @@ function checkProjectile(projectile){
   if(projectile.bounceDamages!==undefined&&(!Array.isArray(projectile.bounceDamages)||projectile.bounceDamages.length>2||projectile.bounceDamages.some(d=>!number(d,0,1e8))))fail('invalid ricochet damage');
   if(projectile.bouncedIds!==undefined&&(!Array.isArray(projectile.bouncedIds)||projectile.bouncedIds.length>3||projectile.bouncedIds.some(id=>!entityId(id))))fail('invalid ricochet history');
   if(projectile.pairId!==undefined&&!entityId(projectile.pairId))fail('invalid split shot identity');
+  if(projectile.prismRelay!==undefined&&(projectile.type!=='prism-shard'||typeof projectile.prismRelay!=='boolean'))fail('invalid refraction projectile');
   for(const key of ['resonanceSalvaged','resonanceEchoed','resonanceEchoAvailable'])if(projectile[key]!==undefined&&typeof projectile[key]!=='boolean')fail('invalid resonance projectile');
   for(const key of ['secondDamage','echoDamage','slowDuration','fromX','fromY'])if(!optionalNumber(projectile[key],0,1e8))fail('invalid expansion projectile');
 }
@@ -101,6 +112,8 @@ function checkImpact(impact,units){
   if(['polarity-pulse','lodestone-storm','lodestone-echo'].includes(impact.kind)&&(!['pull','push'].includes(impact.polarity)||!Number.isInteger(impact.scrap)||!number(impact.scrap,0,3)||owner.heroId!=='ferrite'))fail('invalid magnetic impact');
   if(['grand-finale','finale-echo','note-echo'].includes(impact.kind)&&(!Number.isInteger(impact.finaleNote)||!number(impact.finaleNote,0,2)||owner.heroId!=='cadence'))fail('invalid musical impact');
   for(const key of ['echoDamage','monolith'])if(!optionalNumber(impact[key],0,1e8))fail('invalid resonance impact damage');
+  if(impact.pylonId!==undefined&&(!entityId(impact.pylonId)||owner.heroId!=='prism'||!['prism-cross-ray','prism-echo'].includes(impact.kind)))fail('invalid mirror impact');
+  if(!optionalNumber(impact.cancelMana,0,500)||!optionalNumber(impact.cancelCooldown,0,60))fail('invalid cast refund');
   for(const key of ['induction','aftershock','charged','cleanse'])if(impact[key]!==undefined&&typeof impact[key]!=='boolean')fail('invalid resonance impact option');
 }
 
