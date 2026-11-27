@@ -1014,12 +1014,20 @@ function rebuildOccluderSpatialIndex(engine, expansion) {
   }
 }
 
-function occluderCandidatesForRay(expansion, start, end) {
+function occluderCandidatesForSight(expansion, start, probes, count) {
+  let minX = start.x, maxX = start.x;
+  let minZ = start.z, maxZ = start.z;
+  for (let index = 0; index < count; index++) {
+    const probe = probes[index];
+    minX = Math.min(minX, probe.x);
+    maxX = Math.max(maxX, probe.x);
+    minZ = Math.min(minZ, probe.z);
+    maxZ = Math.max(maxZ, probe.z);
+  }
+  // The sight rays are only centimeters apart. Share their conservative
+  // broad-phase list and let each ray still test its own exact geometry.
   const objects = expansion.spatial.occluders.queryAabb(
-    Math.min(start.x, end.x),
-    Math.min(start.z, end.z),
-    Math.max(start.x, end.x),
-    Math.max(start.z, end.z),
+    minX, minZ, maxX, maxZ,
     expansion.scratch.occluderObjects,
   );
   const fallbacks = expansion.scratch.occluderFallbacks;
@@ -1286,6 +1294,7 @@ function targetVisibilityExact(engine, expansion, cat, targetId, targetPosition)
         // a changed door. Retry on the next scheduled sample without caching 0.
         return !shouldInvalidateLosSample(sample, current) && current.time - sample.time < 0.08 ? sample.visible : 0;
       }
+      const occluders = occluderCandidatesForSight(expansion, sight.eye, probes, probeCount);
       for (let index = 0; index < probeCount; index++) {
         const probe = probes[index];
         sight.rayDirection.copy(probe).sub(sight.eye);
@@ -1294,7 +1303,6 @@ function targetVisibilityExact(engine, expansion, cat, targetId, targetPosition)
         engine.raycaster.set(sight.eye, sight.rayDirection);
         engine.raycaster.near = 0.01;
         engine.raycaster.far = Math.max(0.01, distance - 0.014);
-        const occluders = occluderCandidatesForRay(expansion, sight.eye, probe);
         sight.hits.length = 0;
         performanceManager.record("losRaycasts");
         engine.raycaster.intersectObjects(occluders, true, sight.hits);
@@ -2897,4 +2905,3 @@ function mountColonyControls(engine) {
 }
 
 if (typeof window !== "undefined") waitForGame();
-

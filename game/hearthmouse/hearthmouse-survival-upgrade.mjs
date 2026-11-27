@@ -1,8 +1,9 @@
 import "./hearthmouse-static-batching.mjs";
 import "./hearthmouse-predator-upgrade.mjs";
+import { applyCatDifficulty, catDifficultyProfile } from "./hearthmouse-cat-difficulty.mjs";
 import { foodLoad, HabitMemory, clamp, distance, darknessVisibility, sweptPawHit } from "./hearthmouse-survival-core.mjs";
 import { roomForPoint, stableHash, registerFrameVisualStage, registerCharacterVisualStage } from "./hearthmouse-performance-manager.mjs";
-import { rebuildFoodIndexes } from "./hearthmouse-expansion-core.mjs";
+import { computePounceWindup, rebuildFoodIndexes } from "./hearthmouse-expansion-core.mjs";
 import { buildTraversal, moveTraversingPlayer, startContextClimb, advanceTraversal } from "./hearthmouse-survival-traversal.mjs";
 import { updateHouseholdEvents, resetHouseholdEvents, roomIllumination } from "./hearthmouse-survival-events.mjs";
 
@@ -13,7 +14,10 @@ function stateFor(engine, I) {
 function memoryFor(engine, cat, I) {
   const state = stateFor(engine, I);
   let memory = state.memories.get(cat.id);
-  if (!memory) state.memories.set(cat.id, memory = new HabitMemory(0.85 + (stableHash(cat.id) % 30) / 100));
+  if (!memory) {
+    const temperament = 0.85 + (stableHash(cat.id) % 30) / 100;
+    state.memories.set(cat.id, memory = new HabitMemory(temperament * catDifficultyProfile(engine).habitRate));
+  }
   return memory;
 }
 function observedRecently(engine, cat, position) {
@@ -45,6 +49,7 @@ export function dropPlayerFood(engine, I) {
   try { engine.emitNoise(position, 0.38 + foodLoad(food).bulk * 1.6); }
   finally { engine.__distractionKind = null; }
   engine.showMessage?.("Food dropped. Run—or come back for it.", 1.5);
+  const profile = catDifficultyProfile(engine);
   for (const cat of engine.cats) {
     const memory = memoryFor(engine, cat, I), key = `distraction:${food.kind}`;
     const inEarshot = distance(cat.rig.root.position, position) < 2.4;
@@ -53,7 +58,7 @@ export function dropPlayerFood(engine, I) {
     if (!inEarshot || (cat.state === "chase" && !witnessed)) continue;
     memory.observe(key, position, engine.time, true);
     const edible = /cheese|cereal|cracker|nut/i.test(food.kind ?? "");
-    const chance = (cat.personality === "kitten" ? 0.65 : 0.32) / (1 + repeats * 0.7);
+    const chance = (cat.personality === "kitten" ? 0.65 : 0.32) * profile.distractionChance / (1 + repeats * 0.7);
     const roll = (stableHash(`${cat.id}:${engine.time.toFixed(1)}:${food.kind}`) % 1000) / 1000;
     if (edible && roll < chance && cat.pouncePhase === "none") {
       cat.__foodSniff = { until: engine.time + 0.65, position: position.clone() };
@@ -70,10 +75,10 @@ function pounceFor(cat, I) {
 }
 
 export function updatePhysicalPounce(engine, cat, delta, I, followChase) {
-  const p = pounceFor(cat, I), now = engine.time;
+  const p = pounceFor(cat, I), now = engine.time, profile = catDifficultyProfile(engine);
   if (cat.pouncePhase === "recover") {
     cat.pounceTimer -= delta;
-    if (cat.pounceTimer <= 0) { cat.pouncePhase = "none"; p.cooldown = now + 0.5; cat.pathTimer = 0; }
+    if (cat.pounceTimer <= 0) { cat.pouncePhase = "none"; p.cooldown = now + profile.recovery * 0.8; cat.pathTimer = 0; }
     return { speed: 0, pounce: 0 };
   }
   const target = engine.targetPosition(cat.targetId);
@@ -82,7 +87,7 @@ export function updatePhysicalPounce(engine, cat, delta, I, followChase) {
     if (!p.locked && target && engine.targetVisibility(cat, cat.targetId, target) > 0) {
       p.goal.copy(target);
       // Prediction comes only from observed velocity; freeze aim before launch.
-      const h = cat.hunt, lead = cat.personality === "hunter" ? 0.1 : 0.045;
+      const h = cat.hunt, lead = profile.pounceLead * (cat.personality === "kitten" ? 0.7 : 1);
       if (h && now - h.seenAt < 0.25) { p.goal.x += h.vx * lead; p.goal.z += h.vz * lead; }
     }
     cat.pounceTimer -= delta;
@@ -90,7 +95,7 @@ export function updatePhysicalPounce(engine, cat, delta, I, followChase) {
     cat.yaw = engine.yawToward(cat.rig.root.position, p.goal); cat.rig.root.rotation.y = cat.yaw;
     if (cat.pounceTimer <= 0) {
       p.direction.copy(p.goal).sub(cat.rig.root.position).setY(0).normalize();
-      p.travel = clamp(distance(cat.rig.root.position, p.goal) + 0.22, 0.38, 1.75);
+      p.travel = clamp(distance(cat.rig.root.position, p.goal) + 0.22, 0.38, profile.pounceRange + 0.27);
       p.elapsed = 0; cat.pouncePhase = "flight"; cat.pounceTimer = 0.34;
     }
     return { speed: 0, pounce: 0.02 };
@@ -102,7 +107,7 @@ export function updatePhysicalPounce(engine, cat, delta, I, followChase) {
   I.moveActor(cat.rig.root.position, p.motion, 0.205, engine.world.colliders, "cat");
   p.elapsed += dt; cat.pounceTimer -= delta; cat.pounceVisual = clamp(p.elapsed / 0.34, 0, 1);
   // Swept front-paw volumes catch fast crossings without a proximity kill.
-  if (target && engine.targetPosition(cat.targetId)) {
+  if (target) {
     p.target.copy(target); p.target.y = cat.targetId === "player" ? 0.065 + (engine.playerElevation ?? 0) + Math.max(0, engine.playerEyeY - 0.066 - (engine.playerElevation ?? 0)) : target.y + 0.05;
     for (const side of [-1, 1]) {
       const sx = p.direction.z * side * 0.09, sz = -p.direction.x * side * 0.09;
@@ -117,7 +122,7 @@ export function updatePhysicalPounce(engine, cat, delta, I, followChase) {
   }
   const blocked = distance(p.previous, cat.rig.root.position) < p.motion.length() * 0.45;
   if (cat.pounceTimer <= 0 || blocked) {
-    cat.pouncePhase = "recover"; cat.pounceTimer = blocked ? 0.82 : 0.62;
+    cat.pouncePhase = "recover"; cat.pounceTimer = profile.recovery + (blocked ? 0.24 : 0);
     cat.pounceVisual = 0; cat.path = []; cat.pathIndex = 0; p.locked = false;
     engine.emitNoise(cat.rig.root.position, blocked ? 0.65 : 0.32);
   }
@@ -129,10 +134,11 @@ export function installSurvivalUpgrade(I = globalThis.window?.HearthmouseInterna
   if (!p?.__livingPredatorsInstalled) return false;
   if (p.__survivalUpgradeInstalled) return true;
   Object.defineProperty(p, "__survivalUpgradeInstalled", { value: true });
-  const methods = ["beginNight", "restartCampaign", "updatePlayer", "updateCamera", "updateGame", "updateCatChase", "checkCatCatch", "processCatVision", "targetVisibility", "updateCatPatrol", "emitNoise", "playerTakeFood", "followMousePath", "dispose", "interact", "endNight"];
+  const methods = ["beginNight", "restartNight", "restartCampaign", "updatePlayer", "updateCamera", "updateGame", "updateCatChase", "checkCatCatch", "processCatVision", "targetVisibility", "updateCatPatrol", "emitNoise", "playerTakeFood", "followMousePath", "dispose", "interact", "endNight"];
   const base = Object.fromEntries(methods.map(k => [k, p[k]]));
 
   p.beginNight = function survivalNight(...args) {
+    applyCatDifficulty(this);
     const state = stateFor(this, I); resetHouseholdEvents(this, state);
     state.memories.clear(); state.lastRoom = state.lastCell = null;
     state.nextEvent = this.time + 24; state.eventIndex = 0;
@@ -141,6 +147,13 @@ export function installSurvivalUpgrade(I = globalThis.window?.HearthmouseInterna
     const result = base.beginNight.apply(this, args);
     state.traversal ??= buildTraversal(this, I);
     return result;
+  };
+  p.restartNight = function survivalRetry(...args) {
+    if (this.snapshot.phase === "caught") {
+      applyCatDifficulty(this);
+      this.__survival?.memories.clear();
+    }
+    return base.restartNight.apply(this, args);
   };
   p.endNight = function survivalDawn(...args) {
     if (this.__survival) resetHouseholdEvents(this, this.__survival);
@@ -206,7 +219,7 @@ export function installSurvivalUpgrade(I = globalThis.window?.HearthmouseInterna
   p.distractionResponse = function learnedDistraction(cat) {
     if (!this.__distractionKind) return 1;
     const repeats = memoryFor(this, cat, I).score(`distraction:${this.__distractionKind}`, this.time);
-    return 1 / (1 + repeats * 0.5);
+    return catDifficultyProfile(this).distractionChance / (1 + repeats * 0.5);
   };
   p.emitNoise = function weightedNoise(position, strength) {
     let adjusted = strength;
@@ -254,20 +267,20 @@ export function installSurvivalUpgrade(I = globalThis.window?.HearthmouseInterna
     return base.targetVisibility.call(this, cat, id, position) * factor;
   };
   p.updateCatPatrol = function learnedApproaches(cat, delta, speed) {
-    const now = this.time;
+    const now = this.time, profile = catDifficultyProfile(this);
     if (cat.__habitWatch?.until > now && cat.state === "relaxed") {
       if (distance(cat.rig.root.position, cat.__habitWatch.goal) < 0.45) return 0;
       return this.followCatPath(cat, delta, 0.62);
     }
     if (cat.__habitWatch) { cat.__habitWatch = null; cat.path = []; cat.pathIndex = 0; }
-    if (cat.state === "relaxed" && now > (cat.__habitDecision ?? 12)) {
-      cat.__habitDecision = now + 13 + stableHash(cat.id) % 7;
+    if (profile.watchTime > 0 && cat.state === "relaxed" && now > (cat.__habitDecision ?? 12)) {
+      cat.__habitDecision = now + 10 + stableHash(cat.id) % 7;
       const known = memoryFor(this, cat, I).best(now, (key, entry) => !key.startsWith("distraction:") && distance(entry, this.world.nestCenter) > 3);
       const roll = stableHash(`${cat.id}:${Math.floor(now)}`) % 100;
       if (known && roll < Math.min(65, known.score * 13) && !this.cats.some(c => c !== cat && c.__habitWatch?.until > now)) {
         const goal = new I.Vector3(known.x, 0, known.z);
         this.planCatPath(cat, goal);
-        if (cat.pathReachable) { cat.__habitWatch = { goal, until: now + 4 }; cat.leisureMode = null; cat.leisureTimer = 0; }
+        if (cat.pathReachable) { cat.__habitWatch = { goal, until: now + profile.watchTime }; cat.leisureMode = null; cat.leisureTimer = 0; }
       }
     }
     return base.updateCatPatrol.call(this, cat, delta, speed);
@@ -285,17 +298,31 @@ export function installSurvivalUpgrade(I = globalThis.window?.HearthmouseInterna
       return { speed: this.followCatPath(cat, delta, 0.7), pounce: 0 };
     }
     const result = base.updateCatChase.call(this, cat, delta);
+    if (cat.state !== "chase") return result;
     const target = this.targetPosition(cat.targetId);
-    // The old touch-catch is gone, so point-blank cats also need a short swat windup.
-    if (cat.state === "chase" && cat.pouncePhase === "none" && target && distance(cat.rig.root.position, target) < 0.49 &&
-        this.targetVisibility(cat, cat.targetId, target) > 0 && I.lineClear(cat.rig.root.position, target, 0.205, this.world.colliders, "cat")) {
-      cat.pouncePhase = "windup"; cat.pounceTimer = cat.pounceWindupDuration = 0.22;
+    const profile = catDifficultyProfile(this);
+    if (!target || cat.lostSightTimer > 0) {
+      if (cat.pouncePhase === "windup") { cat.pouncePhase = "none"; cat.pathTimer = 0; }
+      return result;
     }
-    if (cat.pouncePhase === "windup") {
-      physical.goal.copy(cat.lastSeen); physical.locked = false;
-      this.__expansion?.performanceManager?.promoteActor(cat, 1);
+    const range = distance(cat.rig.root.position, target);
+    // The base chase covers the regular lunge range. Handle point-blank swats
+    // and the longer reaches available on the tougher profiles here.
+    if (cat.pouncePhase !== "windup" && (range >= profile.pounceRange ||
+        !I.lineClear(cat.rig.root.position, target, 0.205, this.world.colliders, "cat"))) return result;
+
+    const windup = range < 0.49 ? 0.25 : computePounceWindup(this.snapshot.night, cat.personality);
+    cat.pouncePhase = "windup";
+    cat.pounceTimer = cat.pounceWindupDuration = Math.max(0.2, windup * profile.windupScale);
+    cat.path = []; cat.pathIndex = 0;
+    physical.goal.copy(cat.lastSeen); physical.locked = false;
+    this.__expansion?.performanceManager?.promoteActor(cat, 1);
+    if (cat.targetId === "player") {
+      this.audio?.noise?.(0.19, 0.115, 1700);
+      this.audio?.tone?.(96, 0.23, 0.075, "triangle", 51);
+      this.showMessage?.("The cat crouches. Dodge!", 0.9);
     }
-    return result;
+    return { speed: 0, pounce: 0.02 };
   };
   p.updateGame = function livingSurvival(delta) {
     const state = stateFor(this, I);

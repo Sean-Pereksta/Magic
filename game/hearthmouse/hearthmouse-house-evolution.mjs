@@ -191,17 +191,18 @@ function ensureNestEvolution(engine, state, I) {
   group.name = "hearthmouse-evolving-nest";
   engine.world.root.add(group);
 
-  addBox(I, group, { name: "nest-warm-cloth-a", x: n.x - 0.12, y: 0.045, z: n.z - 0.12, w: 0.48, h: 0.035, d: 0.31, color: 0x84545d, stage: 1, rotationY: -0.14 });
-  addBox(I, group, { name: "nest-warm-cloth-b", x: n.x + 0.18, y: 0.055, z: n.z + 0.05, w: 0.42, h: 0.028, d: 0.26, color: 0xb08d78, stage: 2, rotationY: 0.19 });
-  addBox(I, group, { name: "nest-storage-crate", x: n.x - 0.42, y: 0.12, z: n.z + 0.34, w: 0.24, h: 0.24, d: 0.28, color: 0x6e4c32, stage: 2 });
-  addBox(I, group, { name: "nest-nursery-divider", x: n.x + 0.43, y: 0.115, z: n.z + 0.16, w: 0.07, h: 0.23, d: 0.55, color: 0x6a4a35, stage: 3 });
-  addBox(I, group, { name: "nest-nursery-bedding", x: n.x + 0.26, y: 0.04, z: n.z + 0.34, w: 0.3, h: 0.035, d: 0.28, color: 0xc0a987, stage: 3, rotationY: -0.12 });
-  addBox(I, group, { name: "nest-reinforced-beam-a", x: n.x - 0.48, y: 0.21, z: n.z - 0.28, w: 0.08, h: 0.42, d: 0.08, color: 0x493223, stage: 4 });
-  addBox(I, group, { name: "nest-reinforced-beam-b", x: n.x + 0.48, y: 0.21, z: n.z - 0.28, w: 0.08, h: 0.42, d: 0.08, color: 0x493223, stage: 4 });
-  addBox(I, group, { name: "nest-map-scrap", x: n.x - 0.03, y: 0.205, z: n.z + 0.47, w: 0.46, h: 0.012, d: 0.26, color: 0xd1bd8d, stage: 5, rotationY: 0.08 });
-  addBox(I, group, { name: "nest-insulation-layer", x: n.x + 0.02, y: 0.075, z: n.z - 0.32, w: 0.92, h: 0.06, d: 0.18, color: 0x90766c, upgrade: "insulation" });
-  addBox(I, group, { name: "nest-scout-board", x: n.x - 0.56, y: 0.21, z: n.z + 0.02, w: 0.04, h: 0.34, d: 0.42, color: 0xbca77a, upgrade: "scouts" });
-  addBox(I, group, { name: "nest-tunnel-marker", x: n.x - 0.58, y: 0.11, z: n.z - 0.43, w: 0.22, h: 0.22, d: 0.1, color: 0x4e3828, upgrade: "tunnel" });
+  // Bedding along the back wall, nursery to the south, pantry on the opposite shelf.
+  // Keep the center and the eastern entrance clear of furniture.
+  addBox(I, group, { name: "nest-warm-cloth-a", x: n.x - 0.12, y: 0.042, z: n.z - 0.17, w: 0.35, h: 0.019, d: 0.21, color: 0x936057, stage: 1, rotationY: -0.08 });
+  addBox(I, group, { name: "nest-warm-cloth-b", x: n.x - 0.12, y: 0.054, z: n.z - 0.25, w: 0.30, h: 0.012, d: 0.058, color: 0xc5aa82, stage: 2, rotationY: -0.08 });
+  addBox(I, group, { name: "nest-nursery-divider", x: n.x + 0.23, y: 0.031, z: n.z - 0.32, w: 0.30, h: 0.035, d: 0.027, color: 0x846044, stage: 3 });
+  addBox(I, group, { name: "nest-nursery-bedding", x: n.x + 0.23, y: 0.031, z: n.z - 0.43, w: 0.28, h: 0.018, d: 0.16, color: 0xc0a987, stage: 3 });
+  addBox(I, group, { name: "nest-reinforced-beam-a", x: n.x - 0.42, y: 0.15, z: n.z - 0.46, w: 0.046, h: 0.30, d: 0.055, color: 0x74513a, stage: 4 });
+  addBox(I, group, { name: "nest-reinforced-beam-b", x: n.x - 0.42, y: 0.15, z: n.z + 0.47, w: 0.046, h: 0.30, d: 0.055, color: 0x74513a, stage: 4 });
+  addBox(I, group, { name: "nest-map-scrap", x: n.x - 0.418, y: 0.215, z: n.z + 0.21, w: 0.014, h: 0.125, d: 0.205, color: 0xd1bd8d, stage: 5 });
+  addBox(I, group, { name: "nest-insulation-layer", x: n.x - 0.414, y: 0.082, z: n.z - 0.18, w: 0.024, h: 0.165, d: 0.37, color: 0x90766c, upgrade: "insulation" });
+  addBox(I, group, { name: "nest-scout-board", x: n.x - 0.401, y: 0.207, z: n.z - 0.105, w: 0.024, h: 0.145, d: 0.24, color: 0xbca77a, upgrade: "scouts" });
+  addBox(I, group, { name: "nest-tunnel-marker", x: n.x - 0.19, y: 0.142, z: n.z - 0.584, w: 0.13, h: 0.10, d: 0.021, color: 0x926c4f, upgrade: "tunnel" });
   addNestHabitat(engine, I, group);
   state.nestGroup = group;
   return group;
@@ -227,9 +228,9 @@ function updateNestEvolution(engine, state, I) {
   state.nestSignature = signature;
   group.traverse?.((object) => {
     if (!object?.isMesh) return;
-    const neededStage = object.userData.__nestStage ?? 0;
-    const upgrade = object.userData.__upgrade;
-    let visible = neededStage <= stage;
+    const { __nestStage: neededStage, __upgrade: upgrade } = object.userData;
+    if (neededStage == null && !upgrade) return;
+    let visible = (neededStage ?? 0) <= stage;
     if (upgrade === "tunnel") visible = !!upgrades.tunnel;
     else if (upgrade === "scouts") visible = (upgrades.scouts ?? 0) > 0;
     else if (upgrade === "insulation") visible = (upgrades.insulation ?? 0) > 0;

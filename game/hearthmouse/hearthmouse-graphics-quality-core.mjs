@@ -215,6 +215,13 @@ export function applyGraphicsQuality(engine, requestedQuality) {
   const renderer = engine?.renderer;
   if (!renderer) return quality;
 
+  const governor = engine.__hearthmousePerformanceGovernor;
+  if (governor?.running) {
+    governor.setQuality(quality);
+    if (typeof document !== "undefined") document.body?.setAttribute("data-hearthmouse-graphics-quality", quality);
+    return quality;
+  }
+
   const baseline = getRendererBaseline(renderer);
   const pixelRatio = targetPixelRatioForQuality(quality, baseline.pixelRatio);
   if (typeof renderer.setPixelRatio === "function" && renderer.getPixelRatio?.() !== pixelRatio) {

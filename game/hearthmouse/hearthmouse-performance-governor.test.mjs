@@ -3,10 +3,12 @@ import test from "node:test";
 
 import {
   HEARTHMOUSE_RENDER_BUDGETS,
+  HearthmousePerformanceGovernor,
   cappedPixelRatio,
   nextAdaptivePixelRatio,
   renderBudgetForQuality,
 } from "./hearthmouse-performance-governor.mjs";
+import { installRendererGuard } from "./hearthmouse-renderer-budget-guard.mjs";
 
 test("medium and high use conservative DPR caps", () => {
   assert.equal(cappedPixelRatio("medium", 3), 1.12);
@@ -74,4 +76,44 @@ test("medium and high throttle shadow-map refreshes", () => {
   assert.equal(HEARTHMOUSE_RENDER_BUDGETS.medium.shadowRefreshIntervalMs, 160);
   assert.equal(HEARTHMOUSE_RENDER_BUDGETS.high.shadowRefreshIntervalMs, 90);
   assert.equal(Number.isFinite(HEARTHMOUSE_RENDER_BUDGETS.low.shadowRefreshIntervalMs), false);
+});
+
+test("the governor uses rendered-frame timing even when the simulation step is capped", () => {
+  const governor = Object.assign(Object.create(HearthmousePerformanceGovernor.prototype), {
+    engine: { hearthmousePerformance: { stats: { averageFps: 60 } } },
+    quality: "high",
+    devicePixelRatio: 2,
+    effectivePixelRatio: 1.2,
+    healthyWindows: 0,
+    renderWindow: { frames: 0, seconds: 0, worstFrameTimeMs: 0 },
+    renderTiming: { averageFps: 0, worstFrameTimeMs: 0 },
+  });
+  for (let frame = 0; frame < 20; frame++) governor.recordRenderedFrame(0.06);
+  governor.sampleAdaptive(1200);
+  assert.ok(governor.renderTiming.averageFps < 17);
+  assert.equal(governor.renderTiming.worstFrameTimeMs, 60);
+  assert.ok(governor.effectivePixelRatio < 1.2);
+
+  governor.recordRenderedFrame(2);
+  governor.sampleAdaptive(3200);
+  assert.equal(governor.lastAdaptiveSample, 1200);
+});
+
+test("capped pixel ratio requests resize the canvas only when the effective ratio changes", () => {
+  let pixelRatio = 1.2;
+  const changes = [];
+  const engine = {
+    __hearthmousePerformanceGovernor: { effectivePixelRatio: 1.2 },
+    renderer: {
+      getPixelRatio: () => pixelRatio,
+      setPixelRatio(value) { changes.push(value); pixelRatio = value; },
+    },
+  };
+  assert.equal(installRendererGuard(engine), true);
+  engine.renderer.setPixelRatio(2);
+  engine.renderer.setPixelRatio(1.2);
+  engine.__hearthmousePerformanceGovernor.effectivePixelRatio = 1;
+  engine.renderer.setPixelRatio(2);
+  engine.renderer.setPixelRatio(2);
+  assert.deepEqual(changes, [1]);
 });

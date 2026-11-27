@@ -64,7 +64,7 @@ function managerState(manager) {
 }
 
 function collectTopLevelStructures(root, output) {
-  for (const child of [...(root?.children ?? [])]) {
+  for (const child of root?.children ?? []) {
     if (!child || child.userData?.__hearthmousePersistentStructure) continue;
     if (isPersistentStructureName(child.name)) {
       output.push(child);
@@ -77,9 +77,8 @@ function collectTopLevelStructures(root, output) {
 function reparentPreservingTransform(node, targetParent) {
   if (!node || !targetParent || node.parent === targetParent) return false;
   try {
-    node.parent?.updateWorldMatrix?.(true, true);
-    targetParent.updateWorldMatrix?.(true, true);
     if (typeof targetParent.attach === "function") {
+      // Three.js attach refreshes both parents and this subtree itself.
       targetParent.attach(node);
       return true;
     }
@@ -153,9 +152,9 @@ export function applyPersistentStructureVisibility(manager) {
   const state = persistentStructureState.get(manager);
   if (!state) return 0;
   let visible = 0;
-  for (const [roomId, nodes] of state.nodesByRoom) {
+  for (const nodes of state.nodesByRoom.values()) {
     // Locked rooms still need opaque shells; only decor follows unlock state.
-    for (const node of [...nodes]) {
+    for (const node of nodes) {
       if (!node?.parent) {
         nodes.delete(node);
         continue;
@@ -216,29 +215,6 @@ export function batchPersistentStructures(manager, I = globalThis.window?.Hearth
   return batches.length;
 }
 
-function enforceStableShadowMaps(governor) {
-  const quality = normalizeGraphicsQuality(governor?.quality ?? "high");
-  const limit = HEARTHMOUSE_STABLE_SHADOW_LIMITS[quality];
-  let resized = 0;
-  for (const source of governor?.sceneCache?.shadowSources ?? []) {
-    const shadow = source?.shadow;
-    if (!shadow?.mapSize) continue;
-    const x = Math.min(Number(shadow.mapSize.x) || limit, limit);
-    const y = Math.min(Number(shadow.mapSize.y) || limit, limit);
-    if (shadow.mapSize.x === x && shadow.mapSize.y === y) continue;
-    shadow.mapSize.set?.(x, y);
-    if (!shadow.mapSize.set) {
-      shadow.mapSize.x = x;
-      shadow.mapSize.y = y;
-    }
-    shadow.map?.dispose?.();
-    shadow.map = null;
-    shadow.needsUpdate = true;
-    resized++;
-  }
-  return resized;
-}
-
 function installManagerPatch() {
   const prototype = HearthmousePerformanceManager?.prototype;
   if (!prototype || prototype[MANAGER_PATCH_FLAG]) return false;
@@ -263,10 +239,9 @@ function installManagerPatch() {
 function installGovernorPatch() {
   const prototype = HearthmousePerformanceGovernor?.prototype;
   if (!prototype || prototype[GOVERNOR_PATCH_FLAG]) return false;
-  const originalApplyBudgets = prototype.applyBudgets;
   const originalRefreshShadowMap = prototype.refreshShadowMap;
   const originalSampleAdaptive = prototype.sampleAdaptive;
-  if (typeof originalApplyBudgets !== "function" || typeof originalRefreshShadowMap !== "function") return false;
+  if (typeof originalRefreshShadowMap !== "function") return false;
 
   prototype.applyResolution = function hearthmouseStableResolution(force = false) {
     const renderer = this.engine?.renderer;
@@ -287,9 +262,7 @@ function installGovernorPatch() {
       const quality = normalizeGraphicsQuality(this.quality);
       const cap = stablePixelRatioCap(quality, this.devicePixelRatio);
       const floor = Math.min(cap, HEARTHMOUSE_STABLE_PIXEL_RATIO_FLOORS[quality]);
-      const manager = this.engine?.hearthmousePerformance ?? this.engine?.__expansion?.performanceManager;
-      const fps = Number(manager?.stats?.averageFps) || 60;
-      const worst = Number(manager?.stats?.worstFrameTimeMs) || 16.7;
+      const { averageFps: fps, worstFrameTimeMs: worst } = this.renderTiming;
       const underPressure = fps < 49 || worst > 38;
       if (underPressure) {
         const severe = fps < 38 || worst > 52;
@@ -314,10 +287,8 @@ function installGovernorPatch() {
     return result;
   };
 
-  prototype.applyBudgets = function hearthmouseStableBudgets() {
-    const result = Reflect.apply(originalApplyBudgets, this, arguments);
-    enforceStableShadowMaps(this);
-    return result;
+  prototype.shadowMapLimit = function hearthmouseStableShadowMapLimit() {
+    return HEARTHMOUSE_STABLE_SHADOW_LIMITS[this.quality];
   };
 
   Object.defineProperty(prototype, GOVERNOR_PATCH_FLAG, { value: true });
@@ -332,4 +303,3 @@ export function installHearthmouseRenderStability() {
 }
 
 installHearthmouseRenderStability();
-
