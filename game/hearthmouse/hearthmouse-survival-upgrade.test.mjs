@@ -139,9 +139,12 @@ test("real indexed raycasts obey the frame budget and invalidate sight when a do
     e.world.occluders=[];e.world.colliders=[];rebuildStaticSpatialIndexes(e,e.__expansion);
     for(let i=0;i<6;i++) {const c={id:`cat-${i}`,state:"chase",targetId:"player",pouncePhase:"none",rig:r.cat(),yaw:0,lookYaw:0};c.rig.root.position.set(-4,0,3);e.world.root.add(c.rig.root);e.cats.push(c);}
     e.raycaster=new r.Raycaster();let casts=0;const cast=e.raycaster.intersectObjects.bind(e.raycaster);e.raycaster.intersectObjects=(...args)=>{casts++;return cast(...args);};
+    const occluders=e.__expansion.spatial.occluders;
+    let queries=0;const query=occluders.queryAabb.bind(occluders);occluders.queryAabb=(...args)=>{queries++;return query(...args);};
     const m=e.__expansion.performanceManager;m.beginFrame(1/60);
     for(const c of e.cats)e.targetVisibility(c,"player",e.playerPosition);
     assert.equal(casts,20);assert.equal(m.sightBudget.used,20);
+    assert.equal(queries,4);
     const wall=new J.Mesh(new J.BoxGeometry(2,2,.15),new J.MeshStandardMaterial());wall.position.set(-4,1,2.5);e.world.root.add(wall);e.world.occluders.push(wall);
     e.__expansion.routeRevision++;rebuildStaticSpatialIndexes(e,e.__expansion);e.time+=.1;m.beginFrame(.1);
     assert.equal(e.targetVisibility(e.cats[0],"player",e.playerPosition),0);

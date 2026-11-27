@@ -118,3 +118,26 @@ test("patched governor clamps an existing high-quality renderer without touching
   assert.equal(fakeGovernor.effectivePixelRatio, 1.2);
 });
 
+test("a route revision keeps the existing shadow texture at the active quality limit", () => {
+  let disposals = 0;
+  const scene = sceneNode("scene");
+  const light = sceneNode("room light");
+  const texture = { dispose() { disposals++; } };
+  light.isLight = true;
+  light.shadow = { mapSize: { x: 1024, y: 1024 }, map: texture };
+  scene.add(light);
+  const governor = Object.assign(Object.create(HearthmousePerformanceGovernor.prototype), {
+    quality: "high",
+    engine: { scene, __expansion: { routeRevision: 1 } },
+    lastRouteRevision: -1,
+  });
+  governor.applyBudgets(true);
+  assert.equal(disposals, 1);
+  assert.equal(light.shadow.mapSize.x, 512);
+
+  light.shadow.map = texture;
+  governor.engine.__expansion.routeRevision++;
+  governor.applyBudgets();
+  assert.equal(disposals, 1);
+  assert.equal(light.shadow.map, texture);
+});

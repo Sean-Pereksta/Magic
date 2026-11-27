@@ -160,17 +160,20 @@ function rememberLight(light) {
 }
 
 function buildSceneCache(engine) {
-  const objects = [], lights = [], shadowSources = [], seen = new Set();
+  const lights = [], shadowSources = [], seen = new Set();
   const roots = [engine?.scene, engine?.world?.root, ...(engine?.world?.lights ?? []), ...(engine?.lights ?? [])].filter(Boolean);
   const visit = (object) => {
     if (!object || seen.has(object)) return;
     seen.add(object);
-    objects.push(object);
     if (object.isLight || object.shadow?.mapSize) lights.push(object);
     if (object.shadow?.mapSize) shadowSources.push(object);
   };
-  for (const root of roots) typeof root.traverse === "function" ? root.traverse(visit) : visit(root);
-  const cache = { objects, lights, shadowSources, routeRevision: engine?.__expansion?.routeRevision ?? 0 };
+  for (const root of roots) {
+    if (seen.has(root)) continue;
+    if (typeof root.traverse === "function") root.traverse(visit);
+    else visit(root);
+  }
+  const cache = { objectCount: seen.size, lights, shadowSources, routeRevision: engine?.__expansion?.routeRevision ?? 0 };
   sceneCaches.set(engine, cache);
   return cache;
 }
@@ -227,8 +230,7 @@ function rememberShadowSize(shadow) {
   return baseline;
 }
 
-export function enforceShadowMapLimit(engine, quality, cache = getSceneCache(engine)) {
-  const limit = renderBudgetForQuality(quality).shadowMapLimit;
+export function enforceShadowMapLimit(engine, quality, cache = getSceneCache(engine), limit = renderBudgetForQuality(quality).shadowMapLimit) {
   let resized = 0;
   for (const object of cache.shadowSources) {
     const shadow = object?.shadow;
@@ -266,19 +268,28 @@ export class HearthmousePerformanceGovernor {
     this.effectivePixelRatio = cappedPixelRatio(this.quality, this.devicePixelRatio);
     this.healthyWindows = 0;
     this.lastAdaptiveSample = -Infinity;
-    this.lastBudgetPass = -Infinity;
+    this.lastBudgetPass = window.performance.now();
     this.lastShadowRefresh = -Infinity;
     this.lastRouteRevision = -1;
     this.activeShadowedLights = 0;
     this.shadowCastingActors = 0;
     this.running = true;
-    this.raf = 0;
-    this.tick = this.tick.bind(this);
-    this.sceneCache = getSceneCache(engine, true);
+    this.renderTiming = { averageFps: 0, worstFrameTimeMs: 0 };
+    this.renderWindow = { frames: 0, seconds: 0, worstFrameTimeMs: 0 };
+    this.baseMonitorPerformance = engine.monitorPerformance;
+    this.monitorPerformance = (delta) => {
+      try {
+        this.recordRenderedFrame(delta);
+        this.tick(window.performance.now());
+      } catch (error) {
+        this.dispose();
+        console.warn("Hearthmouse could not update its graphics budget.", error);
+      }
+    };
     this.configureShadowRenderer();
     this.applyResolution(true);
     this.applyBudgets(true);
-    this.raf = window.requestAnimationFrame(this.tick);
+    engine.monitorPerformance = this.monitorPerformance;
   }
   setQuality(value) {
     const next = normalizeGraphicsQuality(value);
@@ -317,14 +328,34 @@ export class HearthmousePerformanceGovernor {
     const desired = clamp(this.effectivePixelRatio, Math.min(renderBudgetForQuality(this.quality).minPixelRatio, cappedPixelRatio(this.quality, this.devicePixelRatio)), cappedPixelRatio(this.quality, this.devicePixelRatio));
     if (force || Math.abs((renderer.getPixelRatio?.() ?? 1) - desired) > 0.001) renderer.setPixelRatio(desired);
   }
+  recordRenderedFrame(delta) {
+    const timing = this.renderWindow;
+    if (globalThis.document?.hidden || !Number.isFinite(delta) || delta <= 0 || delta > 1) {
+      timing.frames = 0;
+      timing.seconds = 0;
+      timing.worstFrameTimeMs = 0;
+      return;
+    }
+    timing.frames++;
+    timing.seconds += delta;
+    timing.worstFrameTimeMs = Math.max(timing.worstFrameTimeMs, delta * 1000);
+  }
   sampleAdaptive(now) {
-    if (now - this.lastAdaptiveSample < 1000) return;
+    const timing = this.renderWindow;
+    if (timing.seconds < 1) return;
     this.lastAdaptiveSample = now;
+    this.renderTiming.averageFps = timing.frames / timing.seconds;
+    this.renderTiming.worstFrameTimeMs = timing.worstFrameTimeMs;
+    timing.frames = 0;
+    timing.seconds = 0;
+    timing.worstFrameTimeMs = 0;
     const manager = this.engine?.hearthmousePerformance ?? this.engine?.__expansion?.performanceManager;
-    const stats = manager?.stats ?? {};
-    const next = nextAdaptivePixelRatio({ quality: this.quality, currentPixelRatio: this.effectivePixelRatio, devicePixelRatio: this.devicePixelRatio, averageFps: stats.averageFps || 60, worstFrameTimeMs: stats.worstFrameTimeMs || 16.7, isTouchDevice: !!manager?.isTouchDevice, healthyWindows: this.healthyWindows });
+    const next = nextAdaptivePixelRatio({ quality: this.quality, currentPixelRatio: this.effectivePixelRatio, devicePixelRatio: this.devicePixelRatio, ...this.renderTiming, isTouchDevice: !!manager?.isTouchDevice, healthyWindows: this.healthyWindows });
     this.healthyWindows = next.healthyWindows;
     if (next.changed) this.effectivePixelRatio = next.pixelRatio;
+  }
+  shadowMapLimit() {
+    return renderBudgetForQuality(this.quality).shadowMapLimit;
   }
   applyBudgets(forceSceneRefresh = false) {
     const routeRevision = this.engine?.__expansion?.routeRevision ?? 0;
@@ -332,7 +363,7 @@ export class HearthmousePerformanceGovernor {
     if (sceneChanged) {
       this.sceneCache = getSceneCache(this.engine, true);
       this.lastRouteRevision = routeRevision;
-      enforceShadowMapLimit(this.engine, this.quality, this.sceneCache);
+      enforceShadowMapLimit(this.engine, this.quality, this.sceneCache, this.shadowMapLimit());
     }
     this.shadowCastingActors = applyActorShadowBudget(this.engine, this.quality);
     const lights = applyLightBudget(this.engine, this.quality, this.sceneCache);
@@ -341,7 +372,7 @@ export class HearthmousePerformanceGovernor {
   snapshot() {
     const manager = this.engine?.hearthmousePerformance ?? this.engine?.__expansion?.performanceManager;
     const shadowInterval = renderBudgetForQuality(this.quality).shadowRefreshIntervalMs;
-    return { quality: this.quality, effectivePixelRatio: Number((this.engine?.renderer?.getPixelRatio?.() ?? this.effectivePixelRatio).toFixed(2)), pixelRatioCap: cappedPixelRatio(this.quality, this.devicePixelRatio), shadowRefreshHz: Number.isFinite(shadowInterval) ? Math.round(1000 / shadowInterval) : 0, cachedSceneObjects: this.sceneCache?.objects?.length ?? 0, cachedLights: this.sceneCache?.lights?.length ?? 0, shadowCastingActors: this.shadowCastingActors, activeShadowedLights: this.activeShadowedLights, activeRenderRooms: manager?.stats?.activeRenderRooms ?? 0, averageFps: manager?.stats?.averageFps ?? 0, worstFrameTimeMs: manager?.stats?.worstFrameTimeMs ?? 0, ...rendererDiagnostics(this.engine) };
+    return { quality: this.quality, effectivePixelRatio: Number((this.engine?.renderer?.getPixelRatio?.() ?? this.effectivePixelRatio).toFixed(2)), pixelRatioCap: cappedPixelRatio(this.quality, this.devicePixelRatio), shadowRefreshHz: Number.isFinite(shadowInterval) ? Math.round(1000 / shadowInterval) : 0, cachedSceneObjects: this.sceneCache?.objectCount ?? 0, cachedLights: this.sceneCache?.lights?.length ?? 0, shadowCastingActors: this.shadowCastingActors, activeShadowedLights: this.activeShadowedLights, activeRenderRooms: manager?.stats?.activeRenderRooms ?? 0, ...this.renderTiming, ...rendererDiagnostics(this.engine) };
   }
   tick(now) {
     if (!this.running || !this.engine || this.engine.disposed) return;
@@ -355,11 +386,10 @@ export class HearthmousePerformanceGovernor {
       this.lastBudgetPass = now;
       this.applyBudgets();
     }
-    this.raf = window.requestAnimationFrame(this.tick);
   }
   dispose() {
     this.running = false;
-    if (this.raf) window.cancelAnimationFrame(this.raf);
+    if (this.engine.monitorPerformance === this.monitorPerformance) this.engine.monitorPerformance = this.baseMonitorPerformance;
   }
 }
 

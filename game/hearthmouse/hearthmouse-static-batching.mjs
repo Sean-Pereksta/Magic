@@ -42,9 +42,9 @@ export function batchStaticScenery(engine, I) {
     batch.name = "static-furniture-visual-batch"; batch.userData.__staticVisualBatch = true;
     batch.castShadow = first.castShadow; batch.receiveShadow = first.receiveShadow;
     batch.renderOrder = first.renderOrder; batch.layers.mask = first.layers.mask;
-    // A batch inherits only its own parent's visibility. Base house geometry is
-    // permanently on; expanded decor retains room visibility/unlock semantics.
-    batch.frustumCulled = false; batch.updateMatrix(); batch.matrixAutoUpdate = false;
+    // Merged geometry has fresh bounds in parent space. The renderer can skip
+    // invisible furniture batches while room unlock visibility still comes from the parent.
+    batch.updateMatrix(); batch.matrixAutoUpdate = false;
     next.set(key, { batch, nodes, parent });
   }
   for (const { batch, nodes } of state.groups.values()) {

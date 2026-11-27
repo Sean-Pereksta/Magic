@@ -23,8 +23,66 @@ export function mergeBoxes(I, boxes) {
   return geometry;
 }
 
+const installedStockpiles = new WeakSet();
+
+function organizeStockpile(engine, I, parent) {
+  const world = engine.world;
+  if (installedStockpiles.has(world) || typeof world.setStockpile !== "function") return;
+  const legacy = world.root.getObjectByName("visible-winter-stockpile");
+  if (!legacy) return;
+  world.setStockpile(0);
+  installedStockpiles.add(world);
+
+  const rack = new I.Group();
+  rack.name = "nest-pantry-trays";
+  rack.position.copy(legacy.position);
+  rack.updateMatrix();
+  rack.matrixAutoUpdate = false;
+  parent.add(rack);
+  const rails = [];
+  for (const x of [-0.245, -0.122, 0, 0.122, 0.245]) rails.push({ x, y: 0.026, w: 0.009, h: 0.024, d: 0.215 });
+  for (const z of [-0.105, 0.105]) rails.push({ z, y: 0.026, w: 0.50, h: 0.024, d: 0.009 });
+  const railMesh = new I.Mesh(mergeBoxes(I, rails), new I.MeshStandardMaterial({ color: 0xa47749, roughness: 0.89 }));
+  railMesh.name = "nest-pantry-wood-dividers";
+  railMesh.matrixAutoUpdate = false;
+  railMesh.receiveShadow = true;
+  rack.add(railMesh);
+
+  const colors = [0xd8ad50, 0xaf734c, 0x84914c, 0xcba366];
+  const trays = colors.map((color, column) => {
+    const pieces = Array.from({ length: 12 }, (_, index) => ({
+      x: (column - 1.5) * 0.122 + (index % 3 - 1) * 0.03,
+      y: 0.022,
+      z: (Math.floor(index / 3) - 1.5) * 0.041,
+      w: index % 3 === 0 ? 0.022 : 0.017,
+      h: index % 2 === 0 ? 0.019 : 0.013,
+      d: index % 3 === 0 ? 0.023 : 0.018,
+      rotationY: index * 0.52,
+    }));
+    const geometry = mergeBoxes(I, pieces);
+    const material = new I.MeshStandardMaterial({ color, roughness: 0.84 });
+    const tray = new I.Mesh(geometry, material);
+    tray.name = "nest-pantry-food";
+    tray.matrixAutoUpdate = false;
+    tray.receiveShadow = true;
+    rack.add(tray);
+    return { tray, verticesPerPiece: geometry.attributes.position.count / pieces.length };
+  });
+  world.setStockpile = value => {
+    const pieces = Math.max(0, Math.min(48, Math.floor((Number(value) || 0) / 2)));
+    for (let column = 0; column < trays.length; column++) {
+      const { tray, verticesPerPiece } = trays[column];
+      const shown = Math.floor((pieces + trays.length - 1 - column) / trays.length);
+      tray.visible = shown > 0;
+      tray.geometry.setDrawRange(0, shown * verticesPerPiece);
+    }
+  };
+  world.setStockpile(engine.snapshot?.stockpile);
+}
+
 export function addNestHabitat(engine, I, parent) {
   const n = engine.world.nestCenter;
+  organizeStockpile(engine, I, parent);
   const batches = new Map();
   const add = (color, stage, box) => {
     const key = `${color}:${stage}`;
@@ -32,22 +90,19 @@ export function addNestHabitat(engine, I, parent) {
     if (!batch) batches.set(key, batch = { color, stage, boxes: [] });
     batch.boxes.push(box);
   };
-  for (let i = 0; i < 42; i++) {
-    const a = i * 2.39996, radius = 0.22 + (i % 5) * 0.039;
+  for (let i = 0; i < 28; i++) {
+    const a = i * 2.39996, radius = 0.28 + (i % 4) * 0.019;
     add(i % 3 ? 0x9e8161 : 0xc7b491, 0, {
-      x: n.x + Math.cos(a) * radius - 0.08, y: 0.035 + (i % 3) * 0.009,
-      z: n.z + Math.sin(a) * radius * 0.65 - 0.06,
+      x: n.x + Math.cos(a) * radius - 0.12, y: 0.034,
+      z: n.z + Math.sin(a) * radius * 0.65 - 0.17,
       w: 0.105, h: 0.006, d: i % 3 ? 0.009 : 0.025, rotationY: -a + 0.8,
     });
   }
-  for (let i = 0; i < 12; i++) {
-    add(0xb8a88c, 0, { x: n.x - 0.24 + (i % 4) * 0.11, y: 0.026 + (i % 3) * 0.003,
-      z: n.z - 0.23 + Math.floor(i / 4) * 0.12, w: 0.09, h: 0.005, d: 0.045, rotationY: i * 0.71 });
-  }
-  // A tiny sheltered nursery arch behind the bedding, away from the nest exit.
-  for (const side of [-1, 1]) add(0x66513e, 0, { x: n.x - 0.34 + side * 0.09, y: 0.07, z: n.z + 0.28, w: 0.025, h: 0.14, d: 0.19 });
-  add(0x66513e, 0, { x: n.x - 0.34, y: 0.143, z: n.z + 0.28, w: 0.21, h: 0.018, d: 0.19 });
-  add(0x403026, 0, { x: n.x - 0.34, y: 0.06, z: n.z + 0.37, w: 0.16, h: 0.12, d: 0.009 });
+  add(0x8e6353, 0, { x: n.x - 0.12, y: 0.027, z: n.z - 0.17, w: 0.43, h: 0.007, d: 0.25, rotationY: -0.08 });
+  // A sheltered nursery nook against the wall, facing the clear center.
+  for (const side of [-1, 1]) add(0x66513e, 0, { x: n.x + 0.23 + side * 0.16, y: 0.056, z: n.z - 0.49, w: 0.023, h: 0.112, d: 0.164 });
+  add(0x66513e, 0, { x: n.x + 0.23, y: 0.114, z: n.z - 0.49, w: 0.345, h: 0.014, d: 0.164 });
+  add(0x403026, 0, { x: n.x + 0.23, y: 0.05, z: n.z - 0.57, w: 0.30, h: 0.10, d: 0.009 });
   for (const { color, stage, boxes } of batches.values()) {
     const material = new I.MeshStandardMaterial({ color, roughness: 0.98, emissive: 0x4b2911, emissiveIntensity: 0.12 });
     const mesh = new I.Mesh(mergeBoxes(I, boxes), material);

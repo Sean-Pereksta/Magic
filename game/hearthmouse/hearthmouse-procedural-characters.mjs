@@ -1,5 +1,6 @@
 import { foodLoad } from "./hearthmouse-survival-core.mjs";
 import { registerCharacterVisualStage, registerFrameVisualStage } from "./hearthmouse-performance-manager.mjs";
+import "./hearthmouse-cat-bite.mjs";
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const angle = (v) => Math.atan2(Math.sin(v), Math.cos(v));
