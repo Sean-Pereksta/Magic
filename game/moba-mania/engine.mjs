@@ -2,10 +2,11 @@ import { HEROES, DIFFICULTIES, WORLD, RULES, lanePoint, segmentDistance, xpToNex
 import { FRONTIER_HEROES } from './hero-frontier-data.mjs';
 import { castFrontierSkill, frontierBotAim } from './hero-frontier.mjs';
 import { castHeroSkill, botSkillAim } from './hero-skills.mjs';
+import { prismPlacement, refractPrismBolt, tickPrismPylon } from './prism.mjs';
 import { ITEMS, itemBonus, purchaseState, killRewardBonus, modifyItemStatus } from './items.mjs';
 import { makeMetrics, canSee, updateVision, scoutJungle, strength, assignTeamJobs, nextBuildItem, chooseBotTalent, isExpansionHero, expansionBotAim, expansionTargetBias, expansionBotMovement } from './strategy.mjs';
 import { serializeGame, restoreGame } from './save-state.mjs';
-import { onCast, onDamage, onHeal, onShield, onKill, onItemKill, onSummon, tickProgression, scheduleImpact } from './progression.mjs';
+import { onCast, onDamage, onHeal, onShield, onKill, onItemKill, onSummon, tickProgression, scheduleImpact, interruptGreatSilence } from './progression.mjs';
 import { initExpansionHero, adjustExpansionAbility, castExpansionSkill, resolveExpansionImpact, tickExpansionDevice, tickExpansionHero, tickExpansion, expansionAttackPreview, prepareExpansionAttack, expansionProjectileDamage, onExpansionProjectileHit, onExpansionHealthLoss, onExpansionKill, onExpansionDeath, cancelExpansionChannel } from './hero-expansion.mjs';
 import { selectTimeWardTarget, onSolsticeAbsorb, onSolsticeHealthLoss, clearSolsticeWard, solsticeDamageFactor } from './solstice-runtime.mjs';
 import { initResonanceHero, adjustResonanceAbility, castResonanceSkill, resolveResonanceImpact, onResonanceDamage, onResonanceProjectileHit, tickResonanceHero, tickResonance, onResonanceDeath } from './resonance-heroes.mjs';
@@ -25,6 +26,11 @@ const movementStatus=layers=>{
   return {...strongest,layers,remaining:Math.max(...layers.map(s=>s.remaining)),factor:Math.max(...layers.map(s=>s.factor||0)),
     attack:Math.max(...layers.map(s=>s.attack||0)),frost:layers.some(s=>s.frost)};
 };
+const guardStatus=layers=>{
+  const strongest=layers.reduce((best,layer)=>layer.factor<best.factor?layer:best,layers[0]);
+  return {...strongest,layers,remaining:Math.max(...layers.map(layer=>layer.remaining))};
+};
+const hasMovement=move=>Math.hypot(Number(move?.x)||0,Number(move?.y)||0)>.05;
 
 /** Deterministic, DOM-free battle simulation; all durations are seconds. */
 export class Game {
@@ -449,7 +455,10 @@ export class Game {
         if(type==='slow'&&extra.factor<.85)extra={...extra,factor:Math.min(.85,extra.factor*specialty.slowStrength)};
       }
     }
-    if(type==='stun')cancelExpansionChannel(this,target);
+    if(type==='stun'){
+      cancelExpansionChannel(this,target);
+      interruptGreatSilence(this,target);
+    }
     if(type==='guard')extra={visualTheme:this.combatTheme(this.units.find(u=>u.id===extra.sourceId)||this._castSource||target),...extra};
     if(type==='stun'&&target.kind==='hero'){
       duration*=1-Math.min(.35,this.bonus(target,'tenacity'));
@@ -465,12 +474,13 @@ export class Game {
       if((old.dps||0)>(extra.dps||0))return;
       if((extra.dps||0)>(old.dps||0)){target.status[type]={...extra,remaining:duration};return;}
     }
-    if(type==='haste'||type==='slow'){
-      // Keep each strength's own lifetime: inspiration cannot weaken or extend a faster dash buff.
+    if(type==='haste'||type==='slow'||type==='guard'){
+      // Each strength keeps its own lifetime.
       const layers=old?.layers|| (old?[{...old}]:[]);
-      const same=layers.find(s=>['factor','attack','frost','color'].every(key=>s[key]===extra[key]));
+      const fields=type==='guard'?['factor','sourceId']:['factor','attack','frost','color'];
+      const same=layers.find(s=>fields.every(key=>s[key]===extra[key]));
       if(same)same.remaining=Math.max(same.remaining,duration);else layers.push({...extra,remaining:duration});
-      target.status[type]=movementStatus(layers);
+      target.status[type]=type==='guard'?guardStatus(layers):movementStatus(layers);
     }else target.status[type]={...old,...extra,remaining:Math.max(duration,old?.remaining||0)};
   }
   spawnWave(team){
@@ -528,11 +538,15 @@ export class Game {
     if(!aim||!Number.isFinite(aim.x)||!Number.isFinite(aim.y))return false;
     this.rebuildGrid();
     const dx=aim.x-hero.x,dy=aim.y-hero.y,d=Math.hypot(dx,dy)||1,angle=d>1?Math.atan2(dy,dx):hero.angle;
-    const at={x:clamp(hero.x+dx/d*Math.min(d,a.range),28,WORLD.width-28),y:clamp(hero.y+dy/d*Math.min(d,a.range),28,WORLD.height-28)};
+    let at={x:clamp(hero.x+dx/d*Math.min(d,a.range),28,WORLD.width-28),y:clamp(hero.y+dy/d*Math.min(d,a.range),28,WORLD.height-28)};
     if(a.id==='time-ward'&&!selectTimeWardTarget(this,hero,at))return false;
     if(a.id==='bolt-sentry'||a.id==='shock-mine'){
       const placement=this.safePoint(at,a.id==='bolt-sentry'?15:12);
       if(dist(hero,placement)>a.range+1||!this.clearLine(hero,placement,4))return false;
+    }
+    if(a.id==='mirror-veil'){
+      at=prismPlacement(this,hero,at,a.range);
+      if(!at)return false;
     }
     initExpansionHero(hero);initResonanceHero(hero);cancelExpansionChannel(this,hero);
     hero.mana-=a.mana;hero.cooldowns[slot]=a.cooldown;hero.recallIn=0;hero.angle=angle;hero.attackAnim=.32;
@@ -571,7 +585,13 @@ export class Game {
       case 'healing-tree':zone('tree',8+this.bonus(hero,'treeDuration'),{healing:22+hero.level*2.5,slow:this.bonus(hero,'treeSlow'),color:a.color});this.effect('tree',at.x,at.y,a.radius,a.color,8+this.bonus(hero,'treeDuration'),{team:hero.team});break;
       case 'treants':this.summon(hero,'treant',2,at,16+this.bonus(hero,'summonDuration'));break;
       case 'bear':this.summon(hero,'bear',1+this.bonus(hero,'bearCount'),at,18+this.bonus(hero,'summonDuration'));break;
-      case 'wolves':this.summon(hero,'wolf',3+this.bonus(hero,'wolfCount'),at,15+this.bonus(hero,'summonDuration'));break;
+      case 'wolves':{
+        const target=this.nearby(at.x,at.y,132).filter(u=>u.kind==='hero'&&hostile(hero,u)&&this.canSee(hero.team,u)&&dist(at,u)<=105+u.r)
+          .sort((a,b)=>dist(at,a)-dist(at,b)||a.id-b.id)[0];
+        const hunt=target?{huntTargetId:target.id,huntUntil:this.time+3}:{};
+        this.summon(hero,'wolf',3+this.bonus(hero,'wolfCount'),at,15+this.bonus(hero,'summonDuration'),hunt);
+        if(target)this.effect('wolf-hunt',target.x,target.y,target.r+12,a.color,3,{followId:target.id,team:hero.team,ownerId:hero.id});
+        break;}
       case 'rose-light':zone('heal',3.2,{healing:35+hero.level*3,damage:27*power,color:a.color});this.effect('heal',at.x,at.y,a.radius,a.color,3.2,{team:hero.team});break;
       case 'inspire':
         this.effect('ring',at.x,at.y,a.radius,a.color,1);for(const ally of this.nearby(at.x,at.y,a.radius+45))if(ally.alive&&ally.team===hero.team&&!structure(ally)&&dist(ally,at)<a.radius+ally.r)this.applyStatus(ally,'haste',5+this.bonus(hero,'inspireDuration'),{factor:.3,attack:.25});break;
@@ -600,14 +620,14 @@ export class Game {
     this.progressionHook(onCast,hero,a,{at,angle,power,slot});this._castSource=null;
     return true;
   }
-  summon(hero,subtype,count,at,lifetime){
+  summon(hero,subtype,count,at,lifetime,options={}){
     // A fresh cast replaces that owner's old same-species summons; no unbounded army stacking.
     for(const old of this.units)if(old.alive&&old.kind==='summon'&&old.ownerId===hero.id&&old.subtype===subtype){this.presentation('summon-depart',old,.65,{subtype,ownerId:hero.id});old.alive=false;old.deathTime=.25;}
     const config={spirit:{hp:240,damage:28,speed:184,range:43,r:13},treant:{hp:420,damage:27,speed:124,range:46,r:19},bear:{hp:740,damage:61,speed:151,range:50,r:23},wolf:{hp:200,damage:31,speed:218,range:37,r:12}}[subtype];
     const scale=(1+(hero.level-1)*.08)*(1+this.bonus(hero,'summonPower'));
     for(let i=0;i<count;i++){
       const angle=i*Math.PI*2/count,p=this.safePoint({x:at.x+Math.cos(angle)*35,y:at.y+Math.sin(angle)*35},config.r);
-      const summoned=this.addUnit('summon',hero.team,p.x,p.y,{...config,hp:config.hp*scale,damage:config.damage*scale,subtype,ownerId:hero.id,lifetime,attackRate:.95/(1+this.bonus(hero,'summonHaste')),lane:hero.lane,level:hero.level});
+      const summoned=this.addUnit('summon',hero.team,p.x,p.y,{...config,hp:config.hp*scale,damage:config.damage*scale,subtype,ownerId:hero.id,lifetime,attackRate:.95/(1+this.bonus(hero,'summonHaste')),lane:hero.lane,level:hero.level,...options});
       if(subtype==='bear'){
         const scaled=modifyItemStatus(this,{team:1-hero.team},'slow',1.2,{factor:.3,sourceId:hero.id});
         summoned.onHitSlow={factor:scaled.extra.factor,duration:scaled.duration,itemScaled:true};
@@ -718,7 +738,7 @@ export class Game {
       if(s.layers){
         for(const layer of s.layers)layer.remaining-=dt;
         const active=s.layers.filter(layer=>layer.remaining>0);
-        if(active.length)u.status[key]=movementStatus(active);else delete u.status[key];
+        if(active.length)u.status[key]=key==='guard'?guardStatus(active):movementStatus(active);else delete u.status[key];
         continue;
       }
       s.remaining-=dt;
@@ -777,17 +797,25 @@ export class Game {
     const pressed=!!input.attack&&!control.attackHeld;control.attackHeld=!!input.attack;
     if(!hero.alive)return;
     // Moving cancels a chase even while stunned.
-    if(Math.hypot(Number(input.move?.x)||0,Number(input.move?.y)||0)>.05){cancelExpansionChannel(this,hero);this.cancelPlayerOrder(hero);hero.recallIn=0;}
+    const moving=hasMovement(input.move),freshMovement=moving&&!control.movementHeld;
+    control.movementHeld=moving;
+    if(moving){
+      if(hero.channel&&!freshMovement)return;
+      cancelExpansionChannel(this,hero);this.cancelPlayerOrder(hero);hero.recallIn=0;
+    }
     else if(Number.isFinite(input.moveTo?.x)&&Number.isFinite(input.moveTo?.y))this.movePlayerTo(input.moveTo,hero);
     else if(pressed)this.attackNearest(hero);
   }
   tickPlayer(h,dt,input,control=this.controlFor(h)){
-    if(input.aim&&Number.isFinite(input.aim.x)&&Number.isFinite(input.aim.y)){control.aim=input.aim;h.angle=Math.atan2(input.aim.y-h.y,input.aim.x-h.x);}
+    const hasAim=Number.isFinite(input.aim?.x)&&Number.isFinite(input.aim?.y);
+    if(hasAim)control.aim=input.aim;
+    if(h.channel){h.angle=h.channel.angle;return;}
+    if(hasAim)h.angle=Math.atan2(input.aim.y-h.y,input.aim.x-h.x);
     const mx=Number(input.move?.x)||0,my=Number(input.move?.y)||0;
     if(Math.hypot(mx,my)>.05){this.moveDirect(h,mx,my,dt);return;}
     if(control.moveTarget){if(dist(h,control.moveTarget)<12)control.moveTarget=null;else this.moveToward(h,control.moveTarget,dt);return;}
     const order=control.attackOrder;
-    if(!order||h.channel)return;
+    if(!order)return;
     let target=this.units.find(u=>u.id===order.targetId);
     if(!order.explicit||!this.validPlayerTarget(target,h)){
       const previousId=target?.id, nearest=this.nearestPlayerEnemy(h);
@@ -827,10 +855,12 @@ export class Game {
     }
   }
   tickSummon(u,dt){
+    if(tickPrismPylon(this,u,dt))return;
     if(tickExpansionDevice(this,u,dt))return;
     u.lifetime-=dt;if(u.lifetime<=0){this.presentation('summon-depart',u,.65,{subtype:u.subtype,ownerId:u.ownerId});u.alive=false;u.deathTime=.4;this.effect('ring',u.x,u.y,35,'#a9e1cc',.4);return;}
     const owner=this.units.find(v=>v.id===u.ownerId),ownerTarget=this.units.find(v=>v.id===owner?.targetId&&v.alive&&this.canSee(u.team,v));
-    let target=ownerTarget&&dist(u,ownerTarget)<460?ownerTarget:this.findTarget(u,300,true);
+    const hunted=u.huntUntil>this.time?this.units.find(v=>v.id===u.huntTargetId&&hostile(u,v)&&this.canSee(u.team,v)&&dist(u,v)<460):null;
+    const target=hunted||(ownerTarget&&dist(u,ownerTarget)<460?ownerTarget:this.findTarget(u,300,true));
     if(target){u.targetId=target.id;if(!this.basicAttack(u,target)&&dist(u,target)>u.range+target.r)this.moveToward(u,target,dt);}
     else if(owner?.alive&&dist(u,owner)>65)this.moveToward(u,{x:owner.x+Math.cos(u.id)*42,y:owner.y+Math.sin(u.id)*42},dt);
     else if(!owner?.alive)this.tickLaneUnit(u,dt);
@@ -903,9 +933,12 @@ export class Game {
       }
       const source=this.units.find(u=>u.id===p.sourceId)||(p.sourceId!==p.ownerId?{id:p.sourceId,kind:p.sourceKind||'summon',team:p.team,ownerId:p.ownerId}:this.units.find(u=>u.id===p.ownerId))||{id:p.sourceId,kind:p.sourceKind,team:p.team,ownerId:p.ownerId};
       const candidates=this.nearby((p.prevX+p.x)/2,(p.prevY+p.y)/2,Math.hypot(p.x-p.prevX,p.y-p.prevY)/2+70).filter(u=>u.alive&&!p.hit.has(u.id)&&u.id!==p.sourceId&&
-        (p.targetId?u.id===p.targetId:(u.team!==p.team||p.healing&&!structure(u)))&&(!p.expansion||!this.isProtected(u))&&(!p.visibleOnly||this.canSee(p.team,u))&&(!p.terrainCollision||this.clearLine({x:p.prevX,y:p.prevY},u,Math.min(8,p.r)))&&segmentDistance(u.x,u.y,{x:p.prevX,y:p.prevY},{x:p.x,y:p.y})<u.r+p.r);
+        (p.targetId?u.id===p.targetId:(u.team!==p.team||p.healing&&!structure(u)||p.prismRelay&&u.subtype==='prism-pylon'&&u.ownerId===p.ownerId))&&(!p.expansion||!this.isProtected(u))&&(!p.visibleOnly||this.canSee(p.team,u))&&(!p.terrainCollision||this.clearLine({x:p.prevX,y:p.prevY},u,Math.min(8,p.r)))&&segmentDistance(u.x,u.y,{x:p.prevX,y:p.prevY},{x:p.x,y:p.y})<u.r+p.r);
       candidates.sort((a,b)=>Math.hypot(a.x-p.prevX,a.y-p.prevY)-Math.hypot(b.x-p.prevX,b.y-p.prevY));
       for(const target of candidates){
+        if(p.prismRelay&&target.team===p.team&&target.subtype==='prism-pylon'){
+          refractPrismBolt(this,target,p,source);p.life=0;break;
+        }
         p.hit.add(target.id);
         if(target.team===p.team&&p.healing)this.heal(target,p.healing,source);
         else{

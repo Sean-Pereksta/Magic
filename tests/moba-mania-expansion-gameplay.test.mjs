@@ -92,7 +92,12 @@ test('Rivet sentry talents and all three Overclock capstones modify real existin
     if(capstone==='rivetRedline')assert.equal(first.overclockDamage,.2);
     if(capstone==='rivetFortified')close(first.shield,shieldPower(game,hero,100));
     if(capstone==='rivetRelocation'){close(hero.cooldowns[1],5);assert.equal(hero.status.haste.factor,.2);}
-    cast(game,hero,1,{x:hero.x-30,y:hero.y});const newer=game.units.filter(u=>u.subtype==='sentry').at(-1);assert(!newer.status.haste);assert.equal(newer.overclockUntil,0);
+    cast(game,hero,1,{x:hero.x-30,y:hero.y});const newer=game.units.filter(u=>u.subtype==='sentry').at(-1);
+    advance(game,.5);assert(!newer.status.haste);
+    advance(game,.15);assert.equal(newer.status.haste.attack,.5);assert.equal(newer.overclockUntil,hero.overclockUntil);
+    assert(newer.status.haste.remaining<5.5,'late sentries inherit the remaining time');
+    if(capstone==='rivetRedline')assert.equal(newer.overclockDamage,.2);
+    if(capstone==='rivetFortified')close(newer.shield,shieldPower(game,hero,100));
   }
   const {game,hero,add}=arena('rivet');talent(game,hero,'rivetEmergencyPatch');cast(game,hero,1,hero);const sentry=game.units.find(u=>u.subtype==='sentry'),enemy=add(70);
   game.damage(sentry,sentry.maxHp*.7,enemy);assert(sentry.emergencyPatchUsed);assert(sentry.shield>0);sentry.shield=0;sentry.shieldLayers=[];game.damage(sentry,1,enemy);assert.equal(sentry.shield,0);

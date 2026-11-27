@@ -1,4 +1,5 @@
 import { HEROES, DIFFICULTIES, WORLD, RULES } from './data.mjs';
+import { prismAimPoint, prismPlacement, prismPylons } from './prism.mjs';
 import { Game } from './engine.mjs';
 import { Renderer, drawPortrait, drawIcon } from './renderer.mjs';
 import { resonanceResource } from './expansion-visuals.mjs';
@@ -204,8 +205,9 @@ function buildAbilities() {
     const name=document.createElement('span');name.className='ability-name';name.textContent=ability.name;
     const cost=document.createElement('span');cost.className='ability-cost';cost.textContent=`${ability.mana} MP`;
     const cooldown=document.createElement('span');cooldown.className='ability-cooldown';cooldown.setAttribute('aria-hidden','true');
-    button.append(key,icon,name,cost,cooldown);$('ability-bar').append(button);drawIcon(icon,ability);
-    abilities.push({button,cooldown,ability});
+    const status=document.createElement('span');status.className='ability-status';status.hidden=true;status.setAttribute('aria-hidden','true');
+    button.append(key,icon,name,cost,cooldown,status);$('ability-bar').append(button);drawIcon(icon,ability);
+    abilities.push({button,cooldown,status,ability});
     button.addEventListener('pointerdown',event=>{
       if(!playing() || !canArm(slot))return;
       event.preventDefault();unlockAudio();button.setPointerCapture(event.pointerId);
@@ -368,6 +370,10 @@ function cancelAim() {
 function castSelected() {
   if(selectedSlot<0 || !playing())return;
   const slot=selectedSlot;
+  const ability=game.getAbility(game.player,slot);
+  if(ability.id==='mirror-veil'&&!prismPlacement(game,game.player,prismAimPoint(game.player,aim,ability.range),ability.range)){
+    notify('Aim at open ground away from you and your other mirror.',1800);return;
+  }
   if(order({type:'cast',slot,x:aim.x,y:aim.y},()=>game.cast(game.player,slot,aim))) {const id=HEROES[game.player.heroId].abilities[slot].id;tone(['winterfall','glacial-sweep'].includes(id)?'frost':['royal-quake','sky-cleave','execution-cut','shield-bash'].includes(id)?'heavy':'cast',slot);moveTo=null; }
   else if(canArm(slot)) notify('Cannot cast while stunned or recalling.',1500);
   cancelAim();refreshHUD();
@@ -772,7 +778,7 @@ for(const button of document.querySelectorAll('[data-command]'))button.addEventL
 function refreshAbilityHUD() {
   if(!game)return;
   const hero=game.player;
-  abilities.forEach(({button,cooldown,ability},slot)=>{
+  abilities.forEach(({button,cooldown,status,ability},slot)=>{
     const remaining=hero.cooldowns[slot]||0,locked=hero.level<ability.unlock,ready=!locked&&remaining<=0&&hero.mana>=ability.mana&&hero.alive;
     button.classList.toggle('locked',locked);button.classList.toggle('cooling',!locked&&remaining>0);button.classList.toggle('ready',ready);button.classList.toggle('selected',selectedSlot===slot);
     button.setAttribute('aria-disabled',String(!ready));
@@ -780,6 +786,14 @@ function refreshAbilityHUD() {
     const evolution=HEROES[hero.heroId].talents.flatMap(tier=>tier.choices.filter(choice=>choice.id===hero.talents[tier.level]&&choice.evolution?.slot===slot));
     button.title=[ability.description,...evolution.map(choice=>choice.description)].join('\n');
     button.setAttribute('aria-label',`${ability.name}. ${locked?`Unlocks at level ${ability.unlock}`:remaining>0?`${Math.ceil(remaining)} second cooldown`:hero.mana<ability.mana?'Not enough mana':'Ready'}. ${button.title}`);
+    const recent=hero.cooldownRefunds,refund=recent&&game.time-recent.at<1.7?recent.amounts[slot]||0:0;
+    const volley=ability.id==='silver-volley'?hero.channel:null;
+    const pylonCount=ability.id==='mirror-veil'&&!locked?prismPylons(game,hero).length:null;
+    status.textContent=volley?`${volley.nextShot}/${volley.shotCount}`:refund>=.05?`−${refund.toFixed(1)}s`:pylonCount!==null?`${pylonCount}/2`:'';
+    status.hidden=!status.textContent;
+    if(volley)button.setAttribute('aria-label',button.getAttribute('aria-label')+` ${volley.nextShot} of ${volley.shotCount} rounds fired.`);
+    if(refund>=.05)button.setAttribute('aria-label',button.getAttribute('aria-label')+` ${refund.toFixed(1)} seconds refunded.`);
+    if(pylonCount!==null)button.setAttribute('aria-label',button.getAttribute('aria-label')+` ${pylonCount} of two pylons deployed.`);
     if(ability.id==='polarity-pulse'||ability.id==='grand-finale'){
       const suffix=ability.id==='polarity-pulse'?(hero.resonance?.polarity==='pull'?'PUSH':'PULL'):['SHATTER','SHELTER','DANCE'][resonanceResource(hero,game.time)?.last||0];
       button.querySelector('.ability-name').textContent=ability.id==='polarity-pulse'?`Pulse · ${suffix}`:`Finale · ${suffix}`;

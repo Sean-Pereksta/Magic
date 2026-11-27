@@ -93,11 +93,19 @@ export function resolveSolsticeImpact(game,hero,impact){
       finally{if(impact.kind==='glass-echo')game.progressionDepth--;}
       if(target.alive&&impact.slow)game.applyStatus(target,'slow',impact.slowDuration,{factor:impact.slow,sourceId:hero.id,itemScaled:!!impact.itemScaled});
     }else if(impact.kind==='borrowed-seconds'&&target.kind==='hero'){
+      const ready=target.cooldowns.slice(0,3).every((remaining,slot)=>
+        remaining<=0&&target.level>=HEROES[target.heroId].abilities[slot].unlock);
+      const refund=[0,0,0];
       for(let slot=0;slot<3;slot++){
         const remaining=target.cooldowns[slot],raw=HEROES[target.heroId].abilities[slot];
-        if(remaining>.6)target.cooldowns[slot]=Math.max(.6,remaining-Math.min(impact.refundLimit,raw.cooldown*.25));
+        if(remaining>.6){
+          refund[slot]=Math.min(impact.refundLimit,raw.cooldown*.25,remaining-.6);
+          target.cooldowns[slot]=Math.max(.6,remaining-refund[slot]);
+        }
       }
+      if(refund.some(amount=>amount>=.05))target.cooldownRefunds={at:game.time,amounts:refund};
       if(impact.shield)game.shield(target,impact.shield,impact.duration,hero);
+      else if(ready)game.shield(target,55*(1+b(game,hero,'shield'))*(1+(hero.level-1)*.08),2.5,hero);
       wardEffect(game,hero,target,impact.kind,'ring',target.r+18);
     }
   }

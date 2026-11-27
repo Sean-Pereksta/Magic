@@ -37,7 +37,7 @@ export const FRONTIER_HEROES = {
     ability('bronze-peal','Bronze Peal','Ring a short cone that damages and slows enemies.','cone',37,6,200,200,'cone'),
     ability('bell-guard','Bell Guard','Shield nearby allied heroes and reduce their damage taken briefly.','shield',55,14,0,135,'self'),
     ability('clapper-charge','Clapper Charge','Charge until terrain stops you, then damage enemies around your landing point.','charge',55,13,260,78,'line',true),
-    ability('great-silence','Great Silence','Warn a wide strike around you that damages and stuns enemies after 0.75s.','quake',95,40,0,190,'self')
+    ability('great-silence','Great Silence','Ring out after 0.75s to damage and stun nearby enemies. An enemy stun during the windup refunds half the cost and cooldown.','quake',95,40,0,190,'self')
   ]),
   zephyr:hero('zephyr','Zephyr','The Gale Falcon','Mobile skirmisher','Throws a returning blade, vaults across fights, and cuts through grouped enemies.','#73e2c8',['#244553','#439d9d','#ffe3a0'],[620,345,196,178,44,.93],
     ['Tailwind','Your first basic hit within 3s of Wing Vault grants brief movement speed.','speed'],[
@@ -46,11 +46,11 @@ export const FRONTIER_HEROES = {
     ability('slipstream','Slipstream','Gain attack and movement speed for 3s.','haste',48,15,0,0,'self'),
     ability('gale-cross','Gale Cross','A warned cone strikes and pushes enemies away.','cone',85,31,245,245,'cone')
   ]),
-  prism:hero('prism','Prism','The Glass Artillerist','Ranged artillery','Splits light into crossfire and marks ground for delayed detonations.','#d1a5fa',['#493660','#9374bf','#ebdcff'],[595,445,166,265,40,1.15],
+  prism:hero('prism','Prism','The Glass Artillerist','Ranged artillery','Builds a network of mirror pylons that split shots, echo detonations and bend a cross of light.','#d1a5fa',['#493660','#9374bf','#ebdcff'],[595,445,166,265,40,1.15],
     ['Refraction','Your third successful cast refunds 16 mana.','mana'],[
-    ability('facet-bolt','Facet Bolt','Fire three spreading bolts. Each bolt stops at the first enemy it hits.','arrows',43,6,480,8,'line'),
-    ability('mirror-veil','Mirror Veil','Gain a shield and briefly gain movement speed.','shield',52,13,0,0,'self'),
-    ability('glass-fault','Glass Fault','Mark a circle that detonates and slows after 0.55s.','area',60,12,525,105,'ground'),
-    ability('spectrum-cross','Spectrum Cross','Warn two intersecting beams centered on the target point. Enemies in both beams take both hits.','storm',105,42,515,180,'ground')
+    ability('facet-bolt','Facet Bolt','Fire three bolts. Aim the center bolt through a Mirror Pylon to split it into two new shots that fan toward visible foes.','arrows',43,6,480,8,'line'),
+    ability('mirror-veil','Mirror Pylon','Deploy a breakable mirror for 24s and gain a brief shield and speed boost. Up to two mirrors can stand at once.','prism-mirror',44,10,350,17,'ground'),
+    ability('glass-fault','Glass Fault','Detonate the marked circle and slow enemies. Linked pylons echo with a smaller burst around themselves.','area',60,12,525,105,'ground'),
+    ability('spectrum-cross','Spectrum Cross','Fire two intersecting beams at your aim. Linked pylons send additional rays into the center. Enemies can take multiple hits.','storm',105,42,515,180,'ground')
   ])
 };

@@ -46,7 +46,7 @@ const specialties = {
   mirelle: ['support', 'combat medic', 'Poison enemies to trigger Field Remedy and heal several teammates with Marsh Remedy.'],
   knell: ['tank', 'team guard', 'Move alongside teammates to cover them with Bell Guard and stun enemies who group up.'],
   zephyr: ['damage', 'mobile skirmisher', 'Hit on both passes of Returning Quill and vault into position for the next attack.'],
-  prism: ['damage', 'ranged artillery', 'Force foes to move with Glass Fault and catch them at the center of Spectrum Cross.']
+  prism: ['damage', 'ranged artillery', 'Place mirrors on separate angles to split Facet Bolt, echo Glass Fault and converge on Spectrum Cross.']
 };
 
 export function applyHeroSpecialties(heroes) {

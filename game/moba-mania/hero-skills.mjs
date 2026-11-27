@@ -25,7 +25,7 @@ function travel(game,unit,angle,length){
   return {start,end:point(unit),travelled};
 }
 function push(game,target,angle,length){
-  if(!target.alive||structure(target))return;
+  if(!target.alive||structure(target)||target.stationary)return;
   travel(game,target,angle,length);
 }
 function inArc(hero,target,angle,radius,arc){
@@ -38,6 +38,11 @@ function lineTargets(game,hero,start,angle,range,width){
     const projection=(u.x-start.x)*dx+(u.y-start.y)*dy;
     return projection>=0&&projection<=range+u.r&&segmentDistance(u.x,u.y,start,end)<=width+u.r&&game.clearLine(start,u,4);
   }).sort((a,b)=>((a.x-start.x)*dx+(a.y-start.y)*dy)-((b.x-start.x)*dx+(b.y-start.y)*dy));
+}
+export function assassinTarget(game,hero,ability,angle){
+  const targets=lineTargets(game,hero,hero,angle,ability.range,ability.radius)
+    .filter(target=>game.canSee(hero.team,target));
+  return targets.find(target=>target.kind==='hero')||targets[0];
 }
 function hit(game,hero,target,amount,type='physical'){
   return game.damage(target,amount*(structure(target)?.35:1),hero,type);
@@ -71,13 +76,16 @@ export function castHeroSkill(game,hero,a,{angle,at,power,shieldAmount}){
       return true;
     }
     case 'rampart-rush': {
-      const movement=travel(game,hero,angle,Math.min(a.range,distance(hero,at)));
+      const reach=Math.min(a.range,distance(hero,at));
+      const frontline=lineTargets(game,hero,hero,angle,reach,a.radius).find(target=>target.kind==='hero');
+      const contact=frontline?(frontline.x-hero.x)*Math.cos(angle)+(frontline.y-hero.y)*Math.sin(angle)-10:reach;
+      const movement=travel(game,hero,angle,Math.min(reach,Math.max(0,contact)));
       dashEffect(game,movement,a.color,angle);
       const targets=lineTargets(game,hero,movement.start,angle,movement.travelled,a.radius);
       for(const target of targets){
         hit(game,hero,target,105*power*(1+bonus('rushDamage')));
         game.applyStatus(target,'stun',.5+bonus('knightStun'),{sourceId:hero.id});
-        push(game,target,angle,90);
+        push(game,target,angle,target.kind==='hero'?20:60);
       }
       return true;
     }
@@ -104,7 +112,7 @@ export function castHeroSkill(game,hero,a,{angle,at,power,shieldAmount}){
       return true;
     }
     case 'execution-cut': {
-      const target=lineTargets(game,hero,hero,angle,a.range,a.radius)[0];
+      const target=assassinTarget(game,hero,a,angle);
       const end=target||{x:hero.x+Math.cos(angle)*a.range,y:hero.y+Math.sin(angle)*a.range};
       game.effect('slash',hero.x,hero.y,45,a.color,.4,{angle,x2:end.x,y2:end.y});
       if(target){
@@ -115,7 +123,7 @@ export function castHeroSkill(game,hero,a,{angle,at,power,shieldAmount}){
       return true;
     }
     case 'flicker-strike': {
-      const target=lineTargets(game,hero,hero,angle,a.range,a.radius)[0];
+      const target=assassinTarget(game,hero,a,angle);
       const approach=target?Math.max(0,((target.x-hero.x)*Math.cos(angle)+(target.y-hero.y)*Math.sin(angle))-hero.r-target.r-8):distance(hero,at);
       const movement=travel(game,hero,angle,Math.min(a.range,approach));
       dashEffect(game,movement,a.color,angle);

@@ -1,5 +1,7 @@
 import { WORLD, HEROES } from './data.mjs';
 import { FRONTIER_HEROES } from './hero-frontier-data.mjs';
+import { assassinTarget } from './hero-skills.mjs';
+import { prismAimPoint, prismCrossBeams, prismGlassRings, prismPlacement, prismPylons, prismRelayOnLine } from './prism.mjs';
 import { drawFrontierHero, drawLaneEdges, drawLaneCrossings, LANE_PALETTES } from './frontier-art.mjs';
 import { createEffectBudget, resetEffectBudget, drawCombatBurst, drawShieldShell, drawProjectileTrail, drawSpellAccent, isEffectVisible, EFFECT_PALETTES } from './combat-visuals.mjs';
 import { unitPose, summonPose, drawHitGlint, drawMonsterRocks } from './unit-animation.mjs';
@@ -871,8 +873,9 @@ export class Renderer {
     ];
     for (const z of pending) {
       if (!(z.remaining > 0) || !this.visible(z.x, z.y, (z.range || z.r || 160) + 100)) continue;
+      if(z.pylonId&&z.team===team&&!game.units.some(unit=>unit.id===z.pylonId&&alive(unit)))continue;
       if (game.pointVisible && !game.pointVisible(team, z.x, z.y) && z.team !== team) continue;
-      const color = z.team === team ? '#8ce9ff' : z.team === -1 ? '#ffd077' : '#ff816f';
+      const color = z.team === team ? (z.pylonId?'#e7b3ff':'#8ce9ff') : z.team === -1 ? '#ffd077' : '#ff816f';
       const progress = clamp(1 - z.remaining / Math.max(.01, z.total), 0, 1), radius = z.r || 130;
       const shape = z.shape || (z.arc ? 'cone' : 'circle');
       c.save(); c.fillStyle = color; c.strokeStyle = color; c.lineWidth = 3;
@@ -987,6 +990,7 @@ export class Renderer {
     const dx = aim.x - p.x, dy = aim.y - p.y, distance = Math.hypot(dx, dy), angle = Math.atan2(dy, dx);
     const tx = p.x + Math.cos(angle) * Math.min(distance, range), ty = p.y + Math.sin(angle) * Math.min(distance, range);
     c.save(); c.globalAlpha = 0.22; ring(c, color, p.x, p.y, range, 2, true);
+    if(p.heroId==='prism'&&this.drawPrismAim(c,game,p,a,aim,angle)){c.restore();return;}
     if(drawExpansionAim(c,game,p,a,{angle,tx,ty,range,color})){c.restore();return;}
     const type = String(a.type || a.target || '');
     if (a.id === 'glacial-sweep' || a.id === 'shield-bash') {
@@ -1009,7 +1013,64 @@ export class Renderer {
       c.globalAlpha = 0.8; ring(c, color, x, y, a.radius || 65, 3);
       line(c, '#ecffeb', x - 7, y, x + 7, y, 2); line(c, '#ecffeb', x, y - 7, x, y + 7, 2);
     }
+    if(['execution-cut','flicker-strike'].includes(a.id)){
+      const target=assassinTarget(game,p,a,distance>1?angle:p.angle);
+      if(target){
+        c.globalAlpha=1;
+        ring(c,target.kind==='hero'?'#ffe089':'#f5b47e',target.x,target.y,target.r+10,3,true);
+        diamond(c,target.x,target.y-target.r-25,9,13,'#ffc779','#fff3c1');
+      }
+    }
     c.restore();
+  }
+  drawPrismAim(c,game,hero,ability,aim,angle){
+    const at=prismAimPoint(hero,aim,ability.range),color=ability.color;
+    const heading=Math.hypot(aim.x-hero.x,aim.y-hero.y)>1?angle:hero.angle;
+    const circle=(point,r,tint)=>{
+      c.globalAlpha=.15;disc(c,tint,point.x,point.y,r);
+      c.globalAlpha=.9;ring(c,tint,point.x,point.y,r,2);
+    };
+    switch(ability.id){
+      case 'mirror-veil': {
+        const valid=prismPlacement(game,hero,at,ability.range);
+        circle(at,ability.radius+5,valid?'#a1f5ff':'#ff847e');
+        if(valid){
+          diamond(c,at.x,at.y-16,18,31,color);
+          const pylons=prismPylons(game,hero);
+          if(pylons.length===2)ring(c,'#ffb48b',pylons[0].x,pylons[0].y,pylons[0].r+8,2,true);
+        }
+        return true;}
+      case 'facet-bolt': {
+        const relay=prismRelayOnLine(game,hero,heading,ability.range,ability.radius);
+        c.globalAlpha=.8;
+        for(const offset of [-.19,0,.19]){
+          const end=offset===0&&relay?relay:{x:hero.x+Math.cos(heading+offset)*ability.range,y:hero.y+Math.sin(heading+offset)*ability.range};
+          line(c,offset===0?'#eadcff':color,hero.x,hero.y,end.x,end.y,offset===0?3:1.5);
+        }
+        if(relay){
+          circle(relay,relay.r+9,'#a1f5ff');
+          diamond(c,relay.x,relay.y-41,11,17,'#a1f5ff');
+        }
+        return true;}
+      case 'glass-fault':
+        circle(at,ability.radius,color);
+        for(const pylon of prismGlassRings(game,hero,at)){
+          c.globalAlpha=.6;line(c,'#a1f5ff',pylon.x,pylon.y,at.x,at.y,2);
+          circle(pylon,68,'#a1f5ff');
+        }
+        return true;
+      case 'spectrum-cross':
+        for(const beam of prismCrossBeams(game,hero,at,heading,ability.radius)){
+          const {start,length,width}=beam,tint=beam.pylonId?'#a1f5ff':color;
+          const x2=start.x+Math.cos(beam.angle)*length,y2=start.y+Math.sin(beam.angle)*length;
+          c.globalAlpha=.23;line(c,tint,start.x,start.y,x2,y2,width*2);
+          c.globalAlpha=.95;line(c,tint,start.x,start.y,x2,y2,2.5);
+        }
+        circle(at,24,'#fff1ff');
+        diamond(c,at.x,at.y,12,17,'#f3d3ff');
+        return true;
+      default:return false;
+    }
   }
   unit(c, u, game) {
     if (!alive(u)) {
@@ -1025,6 +1086,18 @@ export class Renderer {
     }
     if (u.kind === 'core') { crystal(c, u, game.time); drawStructureDamage(c,u,game.time,this.effectBudget); return; }
     if (u.kind === 'tower') { tower(c, u, game.time); drawStructureDamage(c,u,game.time,this.effectBudget); return; }
+    if(u.subtype==='prism-pylon'){
+      const age=game.time-(u.visualSpawn?.at??game.time-.45);
+      const glint=this.effectBudget?.reducedMotion?0:Math.floor(Math.sin(game.time*4+u.id)*3);
+      c.save();c.globalAlpha=clamp(.42+age*3,.42,1);
+      shadow(c,u.x,u.y+2,18,.48);
+      disc(c,'#251e42',u.x,u.y,17);ring(c,TEAM[u.team],u.x,u.y,16,2);
+      box(c,'#534679',u.x-9,u.y-15,18,14);box(c,'#a27ace',u.x-5,u.y-20,10,12);
+      diamond(c,u.x,u.y-29+glint,22,39,'#8d65c9','#c6f7ff');
+      line(c,'#e7eaff',u.x-5,u.y-30+glint,u.x+4,u.y-42+glint,2.5);
+      box(c,'#a1f5ff',u.x-13,u.y-8,4,4);box(c,'#f3bfff',u.x+9,u.y-8,4,4);
+      c.restore();return;
+    }
     if(u.subtype==='sentry'||u.subtype==='mine'){
       drawShieldShell(c,u,game.time,50,44,false,this.effectBudget);drawDevice(c,u,game.time,this.effectBudget);drawShieldShell(c,u,game.time,50,44,true,this.effectBudget);return;
     }
@@ -1185,7 +1258,12 @@ export class Renderer {
     const a = p.angle ?? Math.atan2((p.vy || 0), (p.vx || 1)), color = p.color || TEAM[p.team] || '#e1dc9a';
     const type = String(p.type || 'bolt'), len = /arrow|shot/.test(type) ? 19 : /dragon/.test(type) ? 50 : 12;
     c.save(); c.translate(p.x, p.y); c.rotate(a);
-    if (/dragon/.test(type)) {
+    if(type==='prism-shard'){
+      const head=p.prismRelay?'#fff1ff':color;
+      c.globalAlpha=.52;line(c,color,-25,0,1,0,6);
+      c.globalAlpha=1;diamond(c,0,0,18,9,color,head);
+      box(c,head,-13,-1,10,2);
+    } else if (/dragon/.test(type)) {
       for (let i = 5; i >= 0; i--) {
         box(c, i % 2 ? '#e36640' : '#ffad59', -i * 10, -8 + Math.sin(time * 13 - i) * 3, 15, 13);
         box(c, '#ffd783', -i * 10, -3 + Math.sin(time * 13 - i) * 2, 13, 4);
@@ -1216,6 +1294,29 @@ export class Renderer {
     if (e.type === 'flame') return;
     const type = String(e.type || ''), life = e.maxLife ? clamp(e.life / e.maxLife, 0, 1) : 0.65;
     const progress = 1 - life, color = e.color || '#a9dded', radius = e.r || e.radius || 45;
+    if(['prism-flare','prism-beam','bell-crack','wolf-hunt'].includes(type)){
+      if(ground)return;
+      c.save();
+      if(type==='prism-beam'){
+        c.globalAlpha=.33*life;line(c,color,e.x,e.y,e.x2,e.y2,22);
+        c.globalAlpha=life;line(c,color,e.x,e.y,e.x2,e.y2,7);
+        line(c,'#fff6ff',e.x,e.y,e.x2,e.y2,2);
+      }else if(type==='wolf-hunt'){
+        c.globalAlpha=.92;
+        const y=e.y-radius-27;
+        c.fillStyle='#eaffd7';c.beginPath();
+        c.arc(e.x,y,10,-1.25,1.7,true);c.quadraticCurveTo(e.x-1,y+6,e.x+3,y-9);c.fill();
+        box(c,color,e.x+8,y-2,3,3);
+      }else{
+        c.globalAlpha=life;ring(c,color,e.x,e.y,radius*(.35+progress*.65),3);
+        if(type==='bell-crack')path(c,[{x:e.x+5,y:e.y-60},{x:e.x-6,y:e.y-44},{x:e.x+3,y:e.y-37},{x:e.x-8,y:e.y-24}],'#fff0dc',5);
+        for(let index=0;index<8;index++){
+          const theta=index*Math.PI/4,reach=radius*(.22+progress*.7);
+          diamond(c,e.x+Math.cos(theta)*reach,e.y+Math.sin(theta)*reach-8,4+life*5,7+life*9,color,'#e9f7ff');
+        }
+      }
+      c.restore();return;
+    }
     const isGround = /field|storm|heal|poison|tree|shield|ring|splash|recall|telegraph|frost|quake/.test(type);
     if (isGround !== ground && !/explosion|level|blink|tree|frost|quake/.test(type)) return;
     c.save();
@@ -1440,6 +1541,12 @@ export function drawIcon(canvas, ability = {}, size = 32) {
   c.globalAlpha = 0.15; disc(c, color, 16, 16, 13); c.globalAlpha = 1;
   if (drawExpansionIcon(c,id)) {
     // The expansion icons have their own authored silhouettes.
+  } else if(id==='prism-mirror'){
+    line(c,'#d7befb',4,22,15,15,2);
+    line(c,'#a1f5ff',15,15,28,7,2);
+    line(c,'#f8b8fc',15,15,28,23,2);
+    box(c,'#7760a2',11,25,10,3);
+    diamond(c,16,15,11,21,color,'#e7fdff');
   } else if (/^bash$|^charge$/.test(id)) {
     box(c, color, 4, 7, 12, 16); box(c, color, 7, 22, 6, 5);
     box(c, '#4c456a', 7, 10, 6, 11); box(c, '#eedefc', 9, 11, 2, 9);

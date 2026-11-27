@@ -1,5 +1,6 @@
 import { FRONTIER_HEROES } from './hero-frontier-data.mjs';
 import { scheduleImpact } from './progression.mjs';
+import { castPrismSkill, prismBotAim } from './prism.mjs';
 
 const distance = (a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const inRange = (a,b,range)=>distance(a,b)<=range+(b.r||0);
@@ -21,6 +22,7 @@ function travel(game, hero, at) {
 
 export function castFrontierSkill(game,hero,ability,{at,angle,power,zone,area,shieldAmount}) {
   if(!FRONTIER_HEROES[hero.heroId])return false;
+  if(hero.heroId==='prism')return castPrismSkill(game,hero,ability,{at,angle,power,shieldAmount});
   const {id,color,range,radius}=ability;
   const impact=(point,details)=>scheduleImpact(game,hero,{
     kind:id,x:point.x,y:point.y,r:radius,color,...details
@@ -60,7 +62,7 @@ export function castFrontierSkill(game,hero,ability,{at,angle,power,zone,area,sh
       game.effect('quake',hero.x,hero.y,radius,color,.55,{team:hero.team});
       break;
     case 'great-silence':
-      impact(hero,{delay:.75,damage:142*power,stun:1.1});
+      impact(hero,{delay:.75,damage:142*power,stun:1.1,cancelMana:ability.mana*.5,cancelCooldown:ability.cooldown*.5});
       break;
     case 'returning-quill': {
       const length=Math.max(35,Math.min(range,distance(hero,at)));
@@ -83,29 +85,13 @@ export function castFrontierSkill(game,hero,ability,{at,angle,power,zone,area,sh
     case 'gale-cross':
       impact(hero,{shape:'cone',angle,arc:1.5,r:Math.min(range,radius),delay:.45,damage:125*power,push:82,damageType:'physical'});
       break;
-    case 'facet-bolt':
-      for(const offset of [-.19,0,.19])fire(angle+offset,{damage:48*power});
-      break;
-    case 'mirror-veil':
-      game.shield(hero,shieldAmount(108),3,hero);
-      status(hero,'haste',1.6,{factor:.22});
-      game.effect('shield',hero.x,hero.y,65,color,.5,{team:hero.team,followId:hero.id});
-      break;
-    case 'glass-fault':
-      impact(at,{delay:.55,damage:105*power,slow:.3,slowDuration:1.4});
-      break;
-    case 'spectrum-cross':
-      for(const heading of [angle,angle+Math.PI/2]){
-        const start={x:at.x-Math.cos(heading)*radius,y:at.y-Math.sin(heading)*radius};
-        impact(start,{shape:'line',angle:heading,range:radius*2,r:radius*2,width:24,delay:.8,damage:92*power});
-      }
-      break;
     default:return false;
   }
   return true;
 }
 
 export function frontierBotAim(game, hero, ability, aim, target, retreat) {
+  if(hero.heroId==='prism')return prismBotAim(game,hero,ability,aim,target,retreat);
   const adjacent=game.units.some(unit=>unit.alive&&unit.team!==hero.team&&unit.kind!=='tower'&&unit.kind!=='core'&&
     inRange(hero,unit,ability.radius||235)&&game.canSee(hero.team,unit));
   const injured=heroesNear(game,hero,hero,ability.range||ability.radius)
@@ -113,7 +99,6 @@ export function frontierBotAim(game, hero, ability, aim, target, retreat) {
   switch(ability.id){
     case 'marsh-remedy':return injured;
     case 'bell-guard':return injured&&adjacent?hero:null;
-    case 'mirror-veil':return injured&&adjacent?hero:null;
     case 'great-silence':return adjacent&&!retreat?hero:null;
     case 'slipstream':return adjacent?hero:null;
     case 'clapper-charge':case 'wing-vault':

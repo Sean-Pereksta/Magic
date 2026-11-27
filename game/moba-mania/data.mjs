@@ -51,7 +51,7 @@ export const HEROES = {
       ability('healing-tree','Healing Tree','Grow a tree for 8s. Allies in its grove recover health each second.','tree','#9af0af',1,40,12,340,115,'ground'),
       ability('treants','Treant Guardians','Call two treants at your aim to fight and soak damage for 16s.','treant','#a9c876',2,52,16,250,65,'ground'),
       ability('bear','Ancient Bear','Summon a powerful bear for 18s. Its blows slow enemies.','bear','#d3b57a',4,65,22,200,70,'ground'),
-      ability('wolves','Moonlit Pack','Summon three swift wolves for 15s to chase and surround foes.','wolf','#b3ecd2',6,70,22,260,75,'ground')
+      ability('wolves','Moonlit Pack','Summon three wolves for 15s. Cast near a visible enemy hero to make the pack hunt them for 3s.','wolf','#b3ecd2',6,70,22,260,75,'ground')
     ],
     talents:[
       tier(3,choice('druid-roots','Living Roots','Healing trees also slow enemies by 30%.',{treeSlow:.3}),choice('druid-bloom','Deep Bloom','Healing is 40% stronger.',{healing:.4})),
@@ -101,7 +101,7 @@ export const HEROES = {
     abilities:[
       {...ability('shield-bash','Shield Bash','Sweep your shield forward: damage, push enemies back and stun them for 0.8s.','bash','#c2a3ff',1,32,7,115,115,'cone'),arc:Math.PI*.58},
       ability('amethyst-guard','Amethyst Guard','Gain a strong shield and 40% damage reduction for 5s. Nearby allies receive half the shield.','fortress','#d1bcff',2,48,15,0,150,'self'),
-      {...ability('rampart-rush','Rampart Rush','Charge forward, damaging and pushing enemies in your path. Stops at terrain.','charge','#9f82ed',4,45,12,235,38,'line'),mobility:true},
+      {...ability('rampart-rush','Rampart Rush','Charge forward, damaging and pushing enemies. Brace at the first enemy hero you reach, close enough to follow up. Terrain stops the charge.','charge','#9f82ed',4,45,12,235,38,'line'),mobility:true},
       ability('royal-quake','Royal Quake','Warn for 0.45s, then slam: push nearby enemies, stun for 1.25s and leave them slowed.','quake','#d9b4ff',6,70,22,0,165,'self')
     ],
     talents:[
@@ -118,8 +118,8 @@ export const HEROES = {
     abilities:[
       ability('heartseeker','Heartseeker','Thrust at the first enemy along your aim for heavy single-target damage.','dagger','#ffc879',1,30,5.5,150,19,'line'),
       {...ability('cinder-dash','Cinder Dash','Dash toward your aim. Cut the first enemy you cross and gain 40% speed for 2s.','dash','#ff9b43',2,35,10,275,25,'line'),mobility:true},
-      ability('execution-cut','Execution Cut','A precise single-target cut. Damage increases as the victim loses health.','execute','#ffce8f',4,48,10,165,24,'line'),
-      {...ability('flicker-strike','Flicker Strike','Rush to the first enemy along your aim and strike hard. A kill immediately refreshes Cinder Dash.','ambush','#ffe0a4',6,65,18,310,28,'line'),mobility:true}
+      ability('execution-cut','Execution Cut','Strike one enemy along your aim, prioritizing visible heroes. Damage increases as the victim loses health.','execute','#ffce8f',4,48,10,165,24,'line'),
+      {...ability('flicker-strike','Flicker Strike','Rush to and strike one enemy along your aim, prioritizing visible heroes. A kill immediately refreshes Cinder Dash.','ambush','#ffe0a4',6,65,18,310,28,'line'),mobility:true}
     ],
     talents:[
       tier(3,choice('ember-edge','Keen Edge','Heartseeker deals 30% more damage.',{heartseekerDamage:.3},'dagger'),choice('ember-siphon','Ember Siphon','Basic attacks heal for 12% of damage dealt.',{lifesteal:.12},'lifesteal')),
@@ -280,7 +280,7 @@ Object.assign(HEROES,{
       expansionAbility('screwshot','Screwshot','Fire a 95-damage bolt; it ricochets to one different visible enemy for 45.','#c97a45',1,30,6,430,13,'line',{theme:'copper'}),
       expansionAbility('bolt-sentry','Bolt Sentry','Assemble a stationary sentry after 0.6s. It lasts 18s; at most two can stand.','#f4d7a1',2,45,10,220,24,'ground',{theme:'copper'}),
       expansionAbility('shock-mine','Shock Mine','Place a targetable mine. After 0.8s it arms, then explodes and slows a visible nearby foe. Maximum two.','#8be8e5',4,40,12,300,85,'ground',{theme:'copper',triggerRadius:65}),
-      expansionAbility('overclock','Overclock','For 6s, existing nearby sentries attack 50% faster. Gain 20% attack speed and a 90 shield.','#ffc774',6,70,24,0,300,'self',{theme:'copper'})
+      expansionAbility('overclock','Overclock','For 6s, nearby sentries attack 50% faster. Sentries assembled nearby join for the remaining time. Gain 20% attack speed and a 90 shield.','#ffc774',6,70,24,0,300,'self',{theme:'copper'})
     ],
     talents:[
       lateTier(3,choice('rivet-deep-threads','Deep Threads','Screwshot’s first hit deals 20% more damage.',{rivetScrewDamage:.2},'screwshot'),choice('rivet-reinforced-casing','Reinforced Casing','Sentries gain 20% maximum health.',{rivetSentryHealth:.2},'bolt-sentry'),choice('rivet-rubber-soles','Rubber Soles','Gain 10% movement speed.',{speed:.1},'speed')),
@@ -322,7 +322,7 @@ Object.assign(HEROES,{
       expansionAbility('split-shot','Split Shot','Fire two bullets in a narrow fan. Each deals 65 damage; a second hit on the same enemy deals 35. Uses no ammunition.','#f4efdc',1,30,6,360,10,'cone',{theme:'ivory',arc:.16}),
       expansionAbility('sidestep','Sidestep','Dash up to 165, stopping at terrain. Restore one round, or shorten an active reload by up to 0.45s.','#c8d8eb',2,35,11,165,20,'line',{theme:'ivory',mobility:true}),
       expansionAbility('steady-aim','Steady Aim','For 4s gain 15% basic range and 20% attack speed, but move 15% slower. Reloads still occur.','#f4efdc',4,45,14,0,90,'self',{theme:'ivory'}),
-      expansionAbility('silver-volley','Silver Volley','Warn for 0.4s, then channel six 45-damage bullets along a fixed line over 1.2s. Moving, stun or another cast interrupts.','#cfcae6',6,70,24,480,24,'line',{theme:'ivory'})
+      expansionAbility('silver-volley','Silver Volley','Plant your feet and fire six 45-damage bullets. Release and press movement again to cancel. A stun or another cast also stops it. Get 6s back if stopped before firing.','#cfcae6',6,70,24,480,24,'line',{theme:'ivory'})
     ],
     talents:[
       lateTier(3,choice('vela-fine-powder','Fine Powder','Split Shot deals 20% more damage, including its reduced second hit.',{velaSplitDamage:.2},'split-shot'),choice('vela-quick-draw','Quick Draw','Gain 12% attack speed.',{attackSpeed:.12},'haste'),choice('vela-travel-coat','Travel Coat','Gain 15% maximum health.',{hp:.15},'health')),
@@ -343,7 +343,7 @@ Object.assign(HEROES,{
       expansionAbility('hourhand','Hourhand','Fire a rotating clock hand for 90 damage and a 25% slow lasting 2s.','#e7b951',1,30,6,410,14,'line',{theme:'time'}),
       expansionAbility('time-ward','Time Ward','Shield the allied hero nearest your aim for 120 over 3s. At expiry heal 25% of health lost during the ward, up to 70.','#f4dea0',2,45,11,330,75,'ally',{theme:'time'}),
       expansionAbility('unwind','Unwind','Remove current allied slows, shorten current stuns by up to 0.5s and grant a 60 shield for 2s.','#bfb0ed',4,60,16,320,125,'ground',{theme:'time'}),
-      expansionAbility('borrowed-seconds','Borrowed Seconds','After 0.7s deal 90 damage and slow enemies. Allies receive a limited refund on their first three ability cooldowns.','#e7b951',6,75,26,320,150,'ground',{theme:'time'})
+      expansionAbility('borrowed-seconds','Borrowed Seconds','After 0.7s, damage and slow enemies. Refund up to 2s on allies’ first three abilities. Allies with all three ready get a short shield.','#e7b951',6,75,26,320,150,'ground',{theme:'time'})
     ],
     talents:[
       lateTier(3,choice('solstice-measured-reserves','Measured Reserves','Gain 20% mana and 1.5 mana regeneration.',{mana:.2,manaRegen:1.5},'mana'),choice('solstice-thicker-glass','Thicker Glass','Time Ward’s shield is 25% stronger.',{solsticeWardPower:.25},'time-ward'),choice('solstice-sharpened-hand','Sharpened Hand','Hourhand deals 25% more damage.',{solsticeHourDamage:.25},'hourhand')),

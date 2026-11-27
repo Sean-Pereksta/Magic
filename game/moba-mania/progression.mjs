@@ -53,7 +53,7 @@ function slowRing(game,hero,at,r,factor,duration){
   game.effect(hero.heroId==='seraph'?'frost':'ring',at.x,at.y,r,color(hero),.6,{team:hero.team,theme:game.combatTheme(hero)});
 }
 function shove(game,target,angle,length){
-  if(!target.alive||structure(target))return;
+  if(!target.alive||structure(target)||target.stationary)return;
   const dx=Math.cos(angle),dy=Math.sin(angle);
   for(let left=length;left>0;){
     const step=Math.min(8,left),x=target.x+dx*step,y=target.y+dy*step;
@@ -98,13 +98,16 @@ function inShape(target,impact){
   return Math.abs(difference)<=(impact.arc||Math.PI*.65)/2+Math.asin(Math.min(1,target.r/Math.max(target.r,distance(target,impact))));
 }
 function resolveImpact(game,hero,impact){
+  if(impact.pylonId&&!game.units.some(unit=>unit.id===impact.pylonId&&unit.alive&&unit.subtype==='prism-pylon'&&unit.ownerId===hero.id))return;
   if(game.resolveHeroImpact?.(hero,impact))return;
   if(impact.kind==='heal-bloom'){
     healingPulse(game,hero,impact,impact.r,impact.healing||0);
     if(impact.shield)protect(game,hero,impact,impact.r,impact.shield,impact.duration||3);
     return;
   }
-  const visual=['winterfall','winter-field'].includes(impact.kind)?'frost':impact.kind==='inferno-chain'?'flame':impact.kind==='pandemic-burst'?'poison':impact.kind==='royal-quake'?'quake':impact.shape==='line'?'slash':impact.shape==='cone'?'sweep':'ring';
+  let visual=['winterfall','winter-field'].includes(impact.kind)?'frost':impact.kind==='inferno-chain'?'flame':impact.kind==='pandemic-burst'?'poison':impact.kind==='royal-quake'?'quake':impact.shape==='line'?'slash':impact.shape==='cone'?'sweep':'ring';
+  if(['spectrum-cross','prism-cross-ray'].includes(impact.kind))visual='prism-beam';
+  if(['glass-fault','prism-echo'].includes(impact.kind))visual='prism-flare';
   game.effect(visual,impact.x,impact.y,impact.r,impact.color,.65,{team:hero.team,ownerId:hero.id,abilityId:impact.kind,theme:impact.theme||game.combatTheme(hero),angle:impact.angle,arc:impact.arc,
     x2:impact.x+Math.cos(impact.angle||0)*(impact.range||impact.r),y2:impact.y+Math.sin(impact.angle||0)*(impact.range||impact.r)});
   const radius=impact.shape==='line'?(impact.range||impact.r)+30:impact.r;
@@ -126,6 +129,17 @@ function resolveImpact(game,hero,impact){
   }
   if(impact.shield)protect(game,hero,impact,impact.r,impact.shield,impact.duration||3);
   if(impact.guard)for(const ally of allies(game,hero,impact,impact.r))game.applyStatus(ally,'guard',impact.duration||2,{factor:impact.guard,sourceId:hero.id});
+}
+export function interruptGreatSilence(game,hero){
+  if(hero.heroId!=='knell')return;
+  const impact=game.scheduledImpacts?.find(impact=>impact.ownerId===hero.id&&impact.kind==='great-silence');
+  if(!impact)return;
+  game.scheduledImpacts=game.scheduledImpacts.filter(other=>other!==impact);
+  const ability=game.getAbility(hero,3);
+  hero.mana=Math.min(hero.maxMana,hero.mana+(impact.cancelMana??ability.mana*.5));
+  hero.cooldowns[3]=Math.max(0,hero.cooldowns[3]-(impact.cancelCooldown??ability.cooldown*.5));
+  game.effect('bell-crack',hero.x,hero.y,65,impact.color,.6,{team:hero.team,followId:hero.id});
+  if(hero.isPlayer)game.float(hero,'BELL INTERRUPTED',impact.color);
 }
 export function tickProgression(game,dt){
   if(!game.scheduledImpacts?.length)return;

@@ -20,7 +20,7 @@ const UNIT_FIELDS = [
 const PLAYER_FIELDS = [
   'mana', 'maxMana', 'cooldowns', 'talents', 'kills', 'deaths', 'assists', 'gold', 'goldEarned',
   'items', 'lastGoldGain', 'metrics', 'evolution', 'xp', 'xpNext', 'lastDamageAt', 'damage',
-  'attackRate', 'speed', 'baseHp', 'baseMana', 'expansion', 'cosmetics',
+  'attackRate', 'speed', 'baseHp', 'baseMana', 'expansion', 'cosmetics', 'cooldownRefunds',
 ];
 const SNAPSHOT_FIELDS = [
   'matchId', 'time', 'winner', 'stats', 'playerId', 'waveIn', 'waveNumber', 'beastIn', 'beastIndex',
@@ -99,6 +99,7 @@ export class OnlineMatch {
         if (game.time >= control.moveUntil) {
           delete control.input.move;
           delete control.moveUntil;
+          control.movementHeld = false;
         }
       }
       game.update(SIM_STEP);
@@ -124,6 +125,7 @@ export class OnlineMatch {
       }
       case 'cancel':
         delete control.input.move;
+        control.movementHeld = false;
         game.cancelPlayerOrder(hero);
         return true;
       case 'moveTo':
