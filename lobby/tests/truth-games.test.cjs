@@ -59,6 +59,19 @@ test('Truth games join the shared catalog exactly once', async () => {
   }
 });
 
+test('Cinder Relay opens one guest route for solo and same-screen co-op', async () => {
+  const html = await load();
+  for (const output of [html, await load(html)]) {
+    const matches = registry(output).filter(game => game.key === 'cinderrelay');
+    assert.equal(matches.length, 1);
+    const [game] = matches;
+    assert.deepEqual(library.getActions(game), [{type: 'single', label: 'Play Solo / Local Co-op'}]);
+    assert.ok(!game.requiresUser);
+    assert.equal(game.route, 'https://sean-pereksta.github.io/Truth/games/cinder-relay/');
+    assert.doesNotMatch(output, /data-live-filter="cinderrelay"/);
+  }
+});
+
 test('Orbit Bloom has a Truth game, original tile, and four-player Live Join action', async () => {
   const html = await load();
   const orbit = registry(html).filter(game => game.key === 'orbitbloom');

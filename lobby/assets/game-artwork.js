@@ -562,6 +562,27 @@
       "hero": "game-tiles/gateguard.webp",
       "ready": true
     },
+    "cinderrelay": {
+      "key": "cinderrelay",
+      "title": "Cinder Relay",
+      "emoji": "☄️",
+      "imagePath": "/lobby/assets/game-tiles/cinder-relay.webp",
+      "desc": "Fight through shifting labyrinths in a bullet-hell roguelite. Collect 36 guns, dodge seven bosses, and take on endless gates solo or with a second pilot on the same screen.",
+      "route": "https://sean-pereksta.github.io/Truth/games/cinder-relay/",
+      "category": "Arcade",
+      "modes": [
+        "single"
+      ],
+      "singleLabel": "Play Solo / Local Co-op",
+      "featured": false,
+      "tier": "library",
+      "provenance": "original-game-pixel-art",
+      "sourceArtwork": "https://sean-pereksta.github.io/Truth/games/cinder-relay/art/hero.png",
+      "tile": "game-tiles/cinder-relay.webp",
+      "thumb": "game-thumbnails/cinder-relay.webp",
+      "hero": "game-heroes/cinder-relay.webp",
+      "ready": true
+    },
     "orbitbloom": {
       "key": "orbitbloom",
       "title": "Orbit Bloom",
