@@ -71,7 +71,10 @@
           <div id="scoreBreakdown" class="small">Build a poker hand. Beat the blind.</div>
         </section>
         <section class="hand-area" aria-label="Your hand">
-          <div class="hand-heading"><span class="eyebrow">Your hand <span class="selection-count" id="selectionCount">0 / 5 selected</span></span><div class="row"><button class="btn mini" id="btnSortRank" aria-pressed="true">Rank</button><button class="btn mini" id="btnSortSuit" aria-pressed="false">Suit</button><button class="btn mini" id="btnDeck">Deck <span id="deckCount">44</span></button></div></div>
+          <div class="hand-heading">
+            <div class="hand-identity"><span class="player-avatar" id="youAvatar" aria-hidden="true"></span><span class="eyebrow">Your hand <span class="selection-count" id="selectionCount">0 / 5 selected</span></span></div>
+            <div class="row"><button class="btn mini" id="btnSortRank" aria-pressed="true">Rank</button><button class="btn mini" id="btnSortSuit" aria-pressed="false">Suit</button><button class="btn mini" id="btnDeck"><span class="deal-source" id="deckDealSource" aria-hidden="true"></span>Deck <span id="deckCount">44</span></button></div>
+          </div>
           <div class="hand" id="hand" aria-label="Select cards to play or discard"></div>
         </section>
         <div class="table-actions">
@@ -572,7 +575,11 @@
   }
 
   function drawToHand(){
-    while(game.hand.length < currentHandSize() && game.deck.length) game.hand.push(game.deck.pop());
+    while(game.hand.length < currentHandSize() && game.deck.length){
+      const card = game.deck.pop();
+      game.hand.push(card);
+      Table.queueDraw?.(card.id);
+    }
     sortCards();
   }
   function sortCards(){
@@ -759,6 +766,7 @@
   function applyRoundConfig(roundIdx){
     cancelPendingConsumable();
     game.scoring = false;
+    Table.beginShuffle?.();
     game.deck = rng.shuffle([...game.deck, ...game.hand, ...game.discard]);
     game.hand = [];
     game.discard = [];
@@ -848,7 +856,6 @@
     game.last.math="—";
 
     applyRoundConfig(1);
-    renderAll();
   }
 
   // ---------------------------
@@ -1314,6 +1321,7 @@
     renderPreview();
     renderTop();
     if(focusId) [...el.children].find(node=>node.dataset.cardId===focusId)?.focus({preventScroll:true});
+    Table.renderDeal?.(el, game.mode==="play");
   }
 
   function moveJoker(kind,index,delta){
@@ -1524,13 +1532,16 @@
   // ---------------------------
   function boot(){
     const n = (localStorage.getItem("balatle_solo_name") || "Player").slice(0,22);
+    $("deckDealSource").innerHTML = Table.cardBackMarkup?.() || "";
     $("youName").textContent = n;
+    Table.paintAvatar?.($("youAvatar"), n);
     $("youName").style.cursor="pointer";
     $("youName").title="Tap to rename";
     $("youName").addEventListener("click", ()=>{
       const next = prompt("Name:", (localStorage.getItem("balatle_solo_name") || "Player")) || "Player";
       localStorage.setItem("balatle_solo_name", next.slice(0,22));
       $("youName").textContent = next.slice(0,22);
+      Table.paintAvatar?.($("youAvatar"), next.slice(0,22));
     });
 
     $("handGuide").innerHTML=HAND_KEYS.map(key=>`<div class="hand-guide-row"><b>${key}</b><span>${Core.HANDS[key].baseChips} × ${Core.HANDS[key].baseMult}</span><small>${Core.HANDS[key].detail}</small></div>`).join("");
