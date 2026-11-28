@@ -1,21 +1,45 @@
-/* Original vector card art and the shared scoring presentation for Balatle. */
+/* Original card art and the shared scoring presentation for Balatle. */
 (function (root) {
   "use strict";
 
   const SUITS = { S: "♠", H: "♥", D: "♦", C: "♣" };
   const SUIT_PATHS = {
-    S: "M0-12C-3-7-11-4-11 2A6 6 0 0 0-1 6L-4 12H4L1 6A6 6 0 0 0 11 2C11-4 3-7 0-12Z",
-    H: "M0 11C-4 7-12 1-12-5C-12-13-3-14 0-7C3-14 12-13 12-5C12 1 4 7 0 11Z",
-    D: "M0-13L10 0L0 13L-10 0Z",
-    C: "M-3 4A6 6 0 1 1-5-6A6 6 0 1 1 5-6A6 6 0 1 1 3 4L4 12H-4Z"
+    S: ["M5 0H7V1H8V2H9V3H10V4H11V5H12V8H11V9H7V10H8V11H9V12H3V11H4V10H5V9H1V8H0V5H1V4H2V3H3V2H4V1H5Z", "M4 3H5V4H4V5H3V6H2V5H3V4H4Z"],
+    H: ["M1 1H4V2H5V3H7V2H8V1H11V2H12V6H11V7H10V8H9V9H8V10H7V11H5V10H4V9H3V8H2V7H1V6H0V2H1Z", "M1 3H3V4H2V5H1Z"],
+    D: ["M5 0H7V1H8V2H9V3H10V4H11V5H12V7H11V8H10V9H9V10H8V11H7V12H5V11H4V10H3V9H2V8H1V7H0V5H1V4H2V3H3V2H4V1H5Z", "M4 3H6V4H5V5H4V6H2V5H3V4H4Z"],
+    C: ["M4 0H8V1H9V4H8V5H9V4H11V5H12V8H11V9H7V10H8V11H9V12H3V11H4V10H5V9H1V8H0V5H1V4H3V5H4V4H3V1H4Z", "M5 1H6V2H5V3H4V2H5ZM1 6H3V7H1Z"]
   };
+  const PIP_ART = Object.fromEntries(Object.entries(SUIT_PATHS).map(([suit, [silhouette, gleam]]) => [
+    suit, `<path d="${silhouette}" fill="currentColor"/><path d="${gleam}" fill="var(--pip-shine, #fff5c5)"/>`
+  ]));
+
+  // Pixel rows are grouped by color so portraits only need a handful of SVG paths.
+  function pixelPaths(rows, palette) {
+    const paths = {};
+    rows.forEach((row, y) => {
+      for (let x = 0; x < row.length;) {
+        const pixel = row[x];
+        let end = x + 1;
+        while (row[end] === pixel) end++;
+        if (palette[pixel]) paths[pixel] = (paths[pixel] || "") + `M${x} ${y}h${end - x}v1H${x}z`;
+        x = end;
+      }
+    });
+    return Object.entries(paths).map(([pixel, d]) => `<path d="${d}" fill="${palette[pixel]}"/>`).join("");
+  }
+
   const esc = value => String(value == null ? "" : value).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const hash = value => Array.from(String(value || "Balatle")).reduce((n, c) => ((n * 31) + c.charCodeAt(0)) >>> 0, 7);
   const finite = (n, fallback = 0) => Number.isFinite(Number(n)) ? Number(n) : fallback;
   const number = n => finite(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
-  function pip(suit, x, y, size = 1, rotation = 0, color = "currentColor") {
-    return `<path d="${SUIT_PATHS[suit] || SUIT_PATHS.S}" fill="${color}" transform="translate(${x} ${y}) rotate(${rotation}) scale(${size})"/>`;
+  function pip(suit, x, y, size = 1, rotation = 0, color) {
+    const tint = color ? ` color="${color}"` : "";
+    return `<g${tint} transform="translate(${x} ${y}) rotate(${rotation}) scale(${size * 2}) translate(-6 -6)">${PIP_ART[suit]}</g>`;
+  }
+
+  function cornerPip(suit) {
+    return `<svg class="suit" viewBox="0 0 12 12" aria-hidden="true" focusable="false">${PIP_ART[suit]}</svg>`;
   }
 
   function numberArtwork(rank, suit) {
@@ -31,42 +55,77 @@
       9: [[19, 18], [61, 18], [19, 48], [61, 48], [40, 64], [19, 80, 180], [61, 80, 180], [19, 110, 180], [61, 110, 180]],
       10: [[19, 18], [61, 18], [40, 34], [19, 48], [61, 48], [19, 80, 180], [61, 80, 180], [40, 94, 180], [19, 110, 180], [61, 110, 180]]
     };
-    return (positions[n] || [[40, 64]]).map(([x, y, rotation]) => pip(suit, x, y, n >= 9 ? .78 : .88, rotation || 0)).join("");
+    const pips = positions[n].map(([x, y, rotation]) => pip(suit, x, y, n >= 9 ? .72 : .82, rotation || 0)).join("");
+    return `<path d="M8 7H24V10H13V21H8ZM72 7H56V10H67V21H72ZM8 121H24V118H13V107H8ZM72 121H56V118H67V107H72Z" fill="var(--card-trim)"/>
+      <path d="M3 62H7V66H3ZM73 62H77V66H73Z" fill="var(--card-trim)"/>${pips}`;
   }
 
   function aceArtwork(suit) {
-    return `<path d="M40 11L68 36V91L40 117L12 91V36Z" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".4"/>
-      <path d="M40 18L62 40V86L40 109L18 86V40Z" fill="none" stroke="#ba9454" stroke-width="1.2"/>
-      ${pip(suit, 40, 63, 2.05)}
-      <path d="M40 21L43 27L40 33L37 27ZM40 95L43 101L40 107L37 101ZM17 59L21 64L17 69ZM63 59L59 64L63 69Z" fill="#ba9454"/>
-      <path d="M24 91Q16 76 25 73M56 91Q64 76 55 73M25 40Q17 50 24 54M55 40Q63 50 56 54" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".6"/>`;
+    return `<path d="M30 12H50V19H60V27H68V39H73V89H68V101H60V109H50V116H30V109H20V101H12V89H7V39H12V27H20V19H30Z" fill="var(--card-trim)"/>
+      <path d="M32 17H48V24H57V32H64V43H68V85H64V96H57V104H48V111H32V104H23V96H16V85H12V43H16V32H23V24H32Z" fill="var(--card-field)"/>
+      <path d="M37 26H43V33H50V39H43V46H37V39H30V33H37ZM37 83H43V90H50V96H43V103H37V96H30V90H37Z" fill="var(--card-accent)"/>
+      <path d="M17 47H21V51H17ZM59 77H63V81H59ZM20 78H24V82H20ZM56 46H60V50H56Z" fill="var(--card-trim)"/>
+      ${pip(suit, 40, 64, 1.83)}`;
   }
 
+  const ROYAL_PIXELS = {
+    J: [
+      ".............go..", ".......oooo.ggo..", ".....oocccooggo..",
+      "....occccccoog...", "...occgggccoo....", "..ooooooooooo....",
+      "....ohssshhoo....", "....ososoosho....", "....ossssssho....",
+      ".....ossgsho.....", ".....oohshoe.....", "...ooocssocooe...",
+      "..ooccoggooccoe..", ".oaccccoocccaco..", ".oaccac.cccacao..",
+      "ooccacggggcacooo."
+    ],
+    Q: [
+      "........g........", "....g..gag..g....", "....ogogagogo....",
+      ".....gagggag.....", "....oogggggoo....", "...oohsssshoo....",
+      "...ohsossohho....", "...ohssssshho....", "...ohgssgshho....",
+      "..oohoososhoo....", "..ohhosssohho....", "..oohggsgghoo....",
+      "..oacocgocoao....", ".occaccocccaco...", ".occcacacaccco...",
+      "oocccogagocccoo.."
+    ],
+    K: [
+      "...g....g....g...", "...og..ogo..go...", "....gggagaggg....",
+      "....ogggggggo....", "....ooooooooo..e.", "....ohsssssho..e.",
+      "....ohosossho..g.", "....ohsssssho..g.", "....oohohooho..g.",
+      ".....ohsshho..ggg", "...ooohhhhho...o.", "..oocccoooccoo.o.",
+      ".occoaccgccaoco..", ".occcaccgccacoo..", "occccaccgccacco..",
+      "oocccoggagocccoo."
+    ]
+  };
+  const ROYAL_ART = Object.fromEntries(Object.entries(ROYAL_PIXELS).map(([rank, rows]) => [
+    rank, pixelPaths(rows, {
+      o: "#27203a", g: "#ffd66f", a: "var(--card-accent)", c: "currentColor",
+      s: "#f5bd88", h: "#9b5370", e: "#9feadf"
+    })
+  ]));
+
   function faceArtwork(rank, suit) {
-    const isQueen = rank === "Q", isKing = rank === "K";
-    const crown = isQueen
-      ? `<path d="M25 23L21 10L32 16L40 7L48 16L59 10L55 23Z" fill="#d0a553" stroke="currentColor" stroke-width="1.6"/><circle cx="40" cy="17" r="2.3" fill="#ba4f3e"/>`
-      : isKing
-        ? `<path d="M24 24L21 10L31 15L40 6L49 15L59 10L56 24Z" fill="#d0a553" stroke="currentColor" stroke-width="1.8"/><path d="M27 20H53" stroke="#f6e4ac" stroke-width="2"/>`
-        : `<path d="M21 23Q28 5 47 10L59 19L52 25Z" fill="currentColor"/><path d="M48 16Q60 0 65 8Q65 17 50 20" fill="#c9a151"/><path d="M24 23H54" stroke="#d0a553" stroke-width="4"/>`;
-    const hair = isQueen
-      ? `<path d="M25 22Q17 36 23 50L31 47L30 26M54 22Q63 35 56 50L49 48L50 26" fill="currentColor"/>`
-      : `<path d="M25 23L23 40L29 43L29 25M54 23L57 40L51 42L51 25" fill="currentColor"/>`;
-    const beard = isKing
-      ? `<path d="M29 39L34 43L40 42L47 40L51 37L49 48L40 55L31 49Z" fill="currentColor"/><path d="M37 45H44" stroke="#f6e3ae" stroke-width="1.5"/>`
-      : `<path d="M35 42Q40 45 45 41" fill="none" stroke="#a64b3b" stroke-width="1.4"/>`;
-    const shoulder = isQueen
-      ? `<path d="M12 65L18 52L29 47L40 57L51 47L62 52L69 65Z" fill="currentColor"/><path d="M23 52L40 63L57 52" fill="none" stroke="#d3ac5a" stroke-width="3"/><circle cx="40" cy="59" r="3" fill="#f5dc95"/>`
-      : `<path d="M10 66L16 52L28 47L40 55L52 47L65 53L70 66Z" fill="currentColor"/><path d="M20 53L30 64M29 50L41 64M49 51L57 64" stroke="#cfa553" stroke-width="5"/>`;
-    const half = `${shoulder}${hair}<path d="M28 23H52L51 39L46 47L39 50L31 45L27 35Z" fill="#e7c88c" stroke="currentColor" stroke-width="1.5"/>
-      <path d="M30 30H36M43 30H49" stroke="currentColor" stroke-width="1.5"/>
-      <circle cx="34" cy="32" r="1.2" fill="currentColor"/><circle cx="45" cy="32" r="1.2" fill="currentColor"/>
-      <path d="M40 31L38 39H42" fill="none" stroke="#aa8151" stroke-width="1.3"/>${beard}${crown}
-      ${isQueen ? `<path d="M10 53V32M10 32L6 27L10 22L14 27Z" fill="#cfa553" stroke="currentColor" stroke-width="1.4"/>` : `<path d="M67 52V20L70 13L73 20V52M63 40H76" fill="#ebdfbd" stroke="currentColor" stroke-width="1.6"/>`}`;
-    return `<rect x="6" y="4" width="68" height="120" rx="2" fill="#e4d9b7" stroke="currentColor" stroke-width="1.5"/>
-      <path d="M6 4L74 124M74 4L6 124" stroke="#bb995b" stroke-width=".9" opacity=".4"/>
+    const half = `<path d="M10 7H70V12H75V62H5V12H10Z" fill="var(--card-field)"/>
+      <path d="M16 15H20V19H16ZM59 22H63V26H59ZM12 35H16V39H12ZM64 41H68V45H64Z" fill="var(--card-trim)"/>
+      <g transform="translate(9 8) scale(3.65 3.45)">${ROYAL_ART[rank]}</g>`;
+    return `<path d="M9 3H71V8H77V120H71V125H9V120H3V8H9Z" fill="var(--card-trim)"/>
       ${half}<g transform="rotate(180 40 64)">${half}</g>
-      <path d="M6 63L74 65" stroke="#dec790" stroke-width="3"/>${pip(suit, 11, 66, .35)}${pip(suit, 69, 62, .35, 180)}`;
+      <path d="M3 62H77V66H3Z" fill="var(--card-accent)"/>
+      ${pip(suit, 9, 64, .43)}${pip(suit, 71, 64, .43, 180)}`;
+  }
+
+  const CARD_BACK = `<svg class="card-back-art" viewBox="0 0 56 78" preserveAspectRatio="none" shape-rendering="crispEdges" aria-hidden="true" focusable="false">
+    <path d="M4 0H52V4H56V74H52V78H4V74H0V4H4Z" fill="#f8dca1"/>
+    <path d="M6 4H50V8H52V70H50V74H6V70H4V8H6Z" fill="#302951"/>
+    <path d="M8 9H48V13H50V65H48V69H8V65H6V13H8Z" fill="#7760a0"/>
+    <path d="M10 12H46V16H47V62H46V66H10V62H9V16H10Z" fill="#483766"/>
+    <path d="M12 14H16V18H12ZM40 14H44V18H40ZM12 60H16V64H12ZM40 60H44V64H40Z" fill="#6ed0cb"/>
+    <path d="M24 14H32V18H36V22H40V28H44V50H40V56H36V60H32V64H24V60H20V56H16V50H12V28H16V22H20V18H24Z" fill="#b75d9b"/>
+    <path d="M26 20H30V24H34V28H38V34H40V44H38V50H34V54H30V58H26V54H22V50H18V44H16V34H18V28H22V24H26Z" fill="#302951"/>
+    <path d="M26 24H30V30H32V34H36V37H40V41H36V44H32V48H30V54H26V48H24V44H20V41H16V37H20V34H24V30H26Z" fill="#ffd476"/>
+    <path d="M26 36H30V42H26Z" fill="#fff3c7"/>
+    <path d="M18 20H20V22H18ZM36 20H38V22H36ZM18 56H20V58H18ZM36 56H38V58H36Z" fill="#f4a3c4"/>
+  </svg>`;
+
+  function cardBackMarkup() {
+    return CARD_BACK;
   }
 
   function cardMarkup(card, options = {}) {
@@ -80,27 +139,28 @@
       card.glass ? '<span class="enhancement glass" title="Glass">◇</span>' : "",
       card.wax ? `<span class="enhancement" title="Wax seal">${finite(card.wax)}✦</span>` : ""
     ].join("");
-    return `<span class="card-inner${card.glass ? " glass-art" : ""}">
-      <span class="card-corner corner-top" aria-hidden="true"><b class="rank">${rank}</b><span class="suit">${SUITS[suit]}</span></span>
-      <svg class="card-art" viewBox="0 0 80 128" aria-hidden="true" focusable="false">${artwork}</svg>
-      <span class="card-corner corner-bottom" aria-hidden="true"><b class="rank">${rank}</b><span class="suit">${SUITS[suit]}</span></span>
+    const corner = `<b class="rank">${rank}</b>${cornerPip(suit)}`;
+    return `<span class="card-inner${card.glass ? " glass-art" : ""}" data-suit="${suit}">
+      <span class="card-corner corner-top" aria-hidden="true">${corner}</span>
+      <svg class="card-art" viewBox="0 0 80 128" shape-rendering="crispEdges" aria-hidden="true" focusable="false">${artwork}</svg>
+      <span class="card-corner corner-bottom" aria-hidden="true">${corner}</span>
       ${options.small ? "" : `<span class="card-value" aria-hidden="true">${number(chips)}</span>`}
       ${enhancements ? `<span class="card-enhancements">${enhancements}</span>` : ""}
     </span>`;
   }
 
-  // Every illustration is drawn here, not fetched. Motifs follow each item's effect;
-  // a name-derived palette keeps large collections recognizable at table size.
+  // Motifs follow each item's effect. A name-derived palette keeps collections
+  // recognizable at table size.
   function itemArt(item) {
     const name = String(item.name || "Joker"), lower = name.toLowerCase();
     const kind = item.kind || item._kind || item._type || "joker";
     const palettes = [
-      ["#263b59", "#5b85ac", "#e9c071", "#f2e6c0"],
-      ["#52354e", "#a45b70", "#e4ad63", "#f1dac8"],
-      ["#22504b", "#4c9a81", "#dbbe70", "#e5efd7"],
-      ["#683d30", "#cb7151", "#e6c276", "#f6e5c1"],
-      ["#3d365c", "#8b7eae", "#c8b677", "#eee1cd"],
-      ["#3f4c32", "#8b9a57", "#e8c077", "#f0e6be"]
+      ["#293763", "#689ed0", "#ffd079", "#eff9f0"],
+      ["#633256", "#c26799", "#ffcb82", "#ffe4d5"],
+      ["#205759", "#57b9a1", "#f0cb77", "#eff9d5"],
+      ["#79434c", "#e77a73", "#ffcf7f", "#fff0d6"],
+      ["#47346c", "#9a82cc", "#efd27a", "#f4eafa"],
+      ["#44543a", "#98b866", "#f9ce7b", "#f5f6ce"]
     ];
     const palette = palettes[hash(name) % palettes.length];
     const [bg, mid, gold, light] = palette;
@@ -124,7 +184,12 @@
     else if (/clutch|dynamo|overkill|waste|burn/.test(lower)) motif = "flame";
     const stroke = `stroke="${ink}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"`;
     const motifs = {
-      mask: `<path d="M25 47L18 19L37 32L50 13L62 32L82 19L75 47Z" fill="${gold}" ${stroke}/><circle cx="18" cy="19" r="4" fill="${light}" ${stroke}/><circle cx="50" cy="13" r="4" fill="${light}" ${stroke}/><circle cx="82" cy="19" r="4" fill="${light}" ${stroke}/><path d="M25 43H75L72 74L50 93L28 74Z" fill="${light}" ${stroke}/><path d="M50 44H75L72 74L50 93Z" fill="${mid}"/><path d="M33 57L43 53L40 64ZM67 57L57 53L60 64Z" fill="${ink}"/><path d="M36 74Q50 87 64 73Q50 77 36 74Z" fill="${ink}"/><path d="M29 44H71" stroke="${ink}" stroke-width="3"/>`,
+      mask: `<path d="M14 26H30V32H38V20H45V13H55V20H62V32H70V26H86V39H79V51H75V75H69V83H61V91H39V83H31V75H25V51H21V39H14Z" fill="${ink}"/>
+        <path d="M18 30H28V36H36V43H40V27H47V20H53V27H60V43H64V36H72V30H82V39H75V48H25V39H18Z" fill="${gold}"/>
+        <path d="M30 53H70V73H64V81H58V86H42V81H36V73H30Z" fill="${light}"/>
+        <path d="M50 53H70V73H64V81H58V86H50Z" fill="${mid}"/>
+        <path d="M36 59H45V64H42V68H36ZM55 59H64V68H58V64H55ZM39 73H44V77H56V73H61V79H56V82H44V79H39Z" fill="${ink}"/>
+        <path d="M14 24H22V32H14ZM46 13H54V21H46ZM78 24H86V32H78Z" fill="${light}"/>`,
       chips: `<g ${stroke}><ellipse cx="43" cy="82" rx="28" ry="9" fill="${gold}"/><path d="M15 72V82Q43 96 71 82V72" fill="${gold}"/><ellipse cx="43" cy="72" rx="28" ry="9" fill="${light}"/><path d="M15 62V72Q43 86 71 72V62" fill="${mid}"/><ellipse cx="43" cy="62" rx="28" ry="9" fill="${gold}"/><path d="M15 52V62Q43 76 71 62V52" fill="${gold}"/><ellipse cx="43" cy="52" rx="28" ry="9" fill="${light}"/><circle cx="65" cy="36" r="21" fill="${mid}"/><circle cx="65" cy="36" r="14" fill="${gold}"/><path d="M65 15V21M65 51V57M44 36H50M80 36H86" stroke="${light}" stroke-width="4"/></g>`,
       coins: `<g ${stroke}><path d="M22 72V84Q48 98 74 84V72" fill="${gold}"/><ellipse cx="48" cy="72" rx="26" ry="9" fill="${light}"/><path d="M22 61V72Q48 86 74 72V61" fill="${gold}"/><ellipse cx="48" cy="61" rx="26" ry="9" fill="${light}"/><circle cx="54" cy="39" r="25" fill="${gold}"/><circle cx="54" cy="39" r="18" fill="none" stroke="${light}"/><path d="M61 29Q46 24 46 34Q46 40 56 40Q66 42 60 49Q54 54 45 48M54 23V55" fill="none" stroke="${ink}" stroke-width="4"/></g>`,
       heart: `<path d="M50 88C33 75 12 56 15 39C18 20 42 20 50 38C59 20 82 20 86 38C90 55 69 76 50 88Z" fill="${mid}" ${stroke}/><path d="M50 80C37 68 23 54 24 42Q26 29 39 33" fill="none" stroke="${light}" stroke-width="5"/><path d="M50 22V12M79 29L87 21M21 29L13 21" stroke="${gold}" stroke-width="3"/>`,
@@ -142,10 +207,13 @@
       ticket: `<path d="M16 25H84V44Q68 51 84 60V85H16V60Q32 51 16 44Z" fill="${gold}" ${stroke}/><path d="M27 34H73V76H27Z" fill="none" stroke="${ink}" stroke-width="1.5"/><path d="M50 40L54 49L64 50L57 57L59 67L50 62L41 67L43 57L36 50L46 49Z" fill="${mid}" ${stroke}/><path d="M34 20V14M66 20V14M34 91V98M66 91V98" stroke="${light}" stroke-width="3"/>`,
       ghost: `<path d="M22 91V48Q22 16 50 16Q78 16 78 48V91L65 82L55 94L44 83L32 94Z" fill="${light}" ${stroke}/><ellipse cx="39" cy="49" rx="6" ry="9" fill="${bg}"/><ellipse cx="62" cy="49" rx="6" ry="9" fill="${bg}"/><ellipse cx="50" cy="69" rx="5" ry="7" fill="${mid}"/><path d="M13 34L10 26M86 34L91 27M16 72L8 77" stroke="${gold}" stroke-width="3"/>`
     };
-    const rays = Array.from({ length: 12 }, (_, i) => `<path d="M50 55L50 -12L56 -12Z" fill="${light}" opacity=".055" transform="rotate(${i * 30} 50 55)"/>`).join("");
     return `<svg viewBox="0 0 100 110" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${esc(name)} illustration" focusable="false">
-      <rect width="100" height="110" rx="4" fill="${bg}"/>${rays}<rect x="5" y="5" width="90" height="100" rx="2" fill="none" stroke="${gold}" stroke-width=".8" opacity=".65"/>
-      <path d="M11 11H18M11 11V18M89 11H82M89 11V18M11 99H18M11 99V92M89 99H82M89 99V92" fill="none" stroke="${gold}" stroke-width="1.3"/>
+      <g shape-rendering="crispEdges">
+        <rect width="100" height="110" fill="${bg}"/>
+        <path d="M20 23H80V33H90V73H80V87H20V77H10V37H20Z" fill="${mid}" opacity=".25"/>
+        <path d="M8 8H22V11H11V23H8ZM92 8H78V11H89V23H92ZM8 102H22V99H11V87H8ZM92 102H78V99H89V87H92Z" fill="${gold}"/>
+        <path d="M21 18H25V22H21ZM73 20H77V24H73ZM20 79H24V83H20ZM74 84H78V88H74ZM12 53H16V57H12ZM84 53H88V57H84Z" fill="${light}" opacity=".64"/>
+      </g>
       ${motifs[motif] || motifs.mask}
     </svg>`;
   }
@@ -189,6 +257,152 @@
     return soundOn;
   }
 
+  const pendingDraws = new Set();
+  let shufflePending = false;
+  let activeDeal = null;
+
+  function stopDealMotion() {
+    const deal = activeDeal;
+    if (!deal) return;
+    activeDeal = null;
+    deal.listeners.abort();
+    for (const animation of deal.animations) animation.cancel();
+    for (const card of deal.cards.values()) card.classList.remove("is-dealing");
+    deal.layer.remove();
+  }
+
+  function beginShuffle() {
+    stopDealMotion();
+    pendingDraws.clear();
+    shufflePending = true;
+  }
+
+  function queueDraw(id) {
+    pendingDraws.add(String(id));
+  }
+
+  function flyingBack(layer, rect, className = "deal-flyer") {
+    const back = layer.ownerDocument.createElement("div");
+    back.className = className;
+    Object.assign(back.style, {
+      left: `${rect.left}px`,
+      top: `${rect.top}px`,
+      width: `${rect.width}px`,
+      height: `${rect.height}px`
+    });
+    back.innerHTML = cardBackMarkup();
+    layer.appendChild(back);
+    return back;
+  }
+
+  function renderDeal(hand, playing) {
+    if (!playing) {
+      stopDealMotion();
+      pendingDraws.clear();
+      shufflePending = false;
+      return;
+    }
+
+    if (!pendingDraws.size) {
+      if (activeDeal) {
+        // Selection and network updates may replace the button during its flight.
+        for (const card of hand.children) {
+          const id = card.dataset.cardId;
+          if (!activeDeal.cards.has(id)) continue;
+          activeDeal.cards.set(id, card);
+          card.classList.add("is-dealing");
+        }
+      }
+      return;
+    }
+
+    const drawnIds = [...pendingDraws];
+    const shuffled = shufflePending;
+    pendingDraws.clear();
+    shufflePending = false;
+    stopDealMotion();
+
+    const document = hand.ownerDocument;
+    const source = document.getElementById("deckDealSource");
+    const motion = root.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (!source?.animate || motion?.matches) return;
+
+    const origin = source.getBoundingClientRect();
+    if (!origin.width || !origin.height) return;
+    const byId = new Map([...hand.children].map(card => [card.dataset.cardId, card]));
+    const targets = drawnIds.flatMap(id => {
+      const card = byId.get(id);
+      return card ? [{id, card, rect: card.getBoundingClientRect()}] : [];
+    });
+    if (!targets.length) return;
+
+    const layer = document.createElement("div");
+    layer.className = "deal-effects";
+    layer.setAttribute("aria-hidden", "true");
+    document.body.appendChild(layer);
+
+    const listeners = new AbortController();
+    const deal = { layer, listeners, cards: new Map(), animations: new Set() };
+    activeDeal = deal;
+    const interrupt = { capture: true, signal: listeners.signal };
+    document.addEventListener("pointerdown", stopDealMotion, interrupt);
+    document.addEventListener("keydown", stopDealMotion, interrupt);
+    hand.addEventListener("focusin", stopDealMotion, interrupt);
+    document.addEventListener("scroll", stopDealMotion, interrupt);
+    root.addEventListener("resize", stopDealMotion, interrupt);
+    motion?.addEventListener?.("change", stopDealMotion, { signal: listeners.signal });
+
+    const originX = origin.left + origin.width / 2;
+    const originY = origin.top + origin.height / 2;
+    const shuffleTime = 370;
+    const track = (back, frames, timing, onLand) => {
+      const animation = back.animate(frames, {fill: "both", ...timing});
+      deal.animations.add(animation);
+      animation.finished.then(() => {
+        deal.animations.delete(animation);
+        back.remove();
+        onLand?.();
+        if (activeDeal === deal && !deal.animations.size) stopDealMotion();
+      }, () => {}); // Interruptions reveal the cards and remove the overlay immediately.
+    };
+
+    if (shuffled) {
+      const rect = {left: originX - 17, top: originY - 23, width: 34, height: 46};
+      const edgeOffset = Math.min(0, root.innerWidth - originX - 68) + Math.max(0, 68 - originX);
+      for (const [index, spread] of [-43, 44, -29, 27, 0].entries()) {
+        const back = flyingBack(layer, rect, "deal-flyer shuffle-flyer");
+        track(back, [
+          {transform: "scale(.48)", opacity: 0},
+          {transform: `translate(${edgeOffset + spread}px, ${-19 - index * 4}px) rotate(${spread * .64}deg) scale(1.08)`, opacity: 1, offset: .43},
+          {transform: `translate(${edgeOffset * .46 - spread * .26}px, -7px) rotate(${spread * -.22}deg) scale(.83)`, opacity: 1, offset: .75},
+          {transform: "scale(.48)", opacity: 0}
+        ], {duration: 310, delay: index * 12, easing: "ease-in-out"});
+      }
+    }
+
+    const stagger = Math.min(42, 300 / Math.max(1, targets.length - 1));
+    targets.forEach(({id, card, rect}, index) => {
+      deal.cards.set(id, card);
+      card.classList.add("is-dealing");
+      const back = flyingBack(layer, rect);
+      const x = originX - rect.left - rect.width / 2;
+      const y = originY - rect.top - rect.height / 2;
+      const scale = origin.width / rect.width;
+      const spin = x < 0 ? -18 : 18;
+      const start = `translate(${x}px, ${y}px) rotate(${spin}deg) scale(${scale})`;
+      track(back, [
+        {transform: start, opacity: 0},
+        {transform: start, opacity: 1, offset: .1},
+        {transform: `translate(${x * .38}px, ${y * .38 - 26}px) rotate(${spin * -.6}deg) scale(.88)`, opacity: 1, offset: .55},
+        {transform: "translateY(-3px) rotateY(38deg)", opacity: 1, offset: .88},
+        {transform: "rotateY(90deg)", opacity: 0}
+      ], {duration: 300, delay: (shuffled ? shuffleTime : 0) + index * stagger, easing: "ease-out"}, () => {
+        deal.cards.get(id)?.classList.remove("is-dealing");
+        deal.cards.delete(id);
+      });
+    });
+  }
+
   let activePlayback = null;
   function cancelPlayback() {
     if (activePlayback) activePlayback.finish(true);
@@ -210,7 +424,7 @@
       completed = true;
       for (const timer of timers) root.clearTimeout(timer);
       stage?.classList.remove("is-scoring");
-      stage?.querySelectorAll(".score-burst").forEach(el => el.remove());
+      stage?.querySelectorAll(".score-burst, .chip-pop").forEach(el => el.remove());
       document?.querySelectorAll(".joker-tile.triggered").forEach(el => el.classList.remove("triggered"));
       if (activePlayback?.finish === finish) activePlayback = null;
       const outcome = { cancelled: !!cancelled };
@@ -256,12 +470,20 @@
     scoringCards.forEach((card, index) => {
       later(cursor, () => {
         const node = [...(played?.querySelectorAll("[data-scoring-card]") || [])].find(el => el.dataset.scoringCard === String(card.id));
-        node?.classList.add("card-trigger");
-        displayedChips += finite(card.baseChip) + finite(card.bonusChip);
+        const value = finite(card.baseChip) + finite(card.bonusChip);
+        if (node) {
+          node.classList.add("card-trigger");
+          const pop = document.createElement("span");
+          pop.className = "chip-pop";
+          pop.setAttribute("aria-hidden", "true");
+          pop.textContent = `+${number(value)}`;
+          node.appendChild(pop);
+        }
+        displayedChips += value;
         if (card.crowned) displayedMult += 1;
         setText("scoreChips", number(displayedChips));
         setText("scoreMult", number(displayedMult));
-        setCaption(`${card.rank}${SUITS[card.suit] || ""}  +${number(finite(card.baseChip) + finite(card.bonusChip))} chips`);
+        setCaption(`${card.rank}${SUITS[card.suit] || ""}  +${number(value)} chips`);
         tone(380 + index * 70, .075);
       });
       cursor += 100;
@@ -293,9 +515,10 @@
       const burst = document.createElement("div");
       burst.className = "score-burst";
       burst.setAttribute("aria-hidden", "true");
-      burst.innerHTML = Array.from({ length: 10 }, (_, i) => {
-        const angle = i / 10 * Math.PI * 2;
-        return `<i class="score-spark" style="--spark-x:${Math.round(Math.cos(angle) * (85 + i * 8))}px;--spark-y:${Math.round(Math.sin(angle) * 60 - 35)}px"></i>`;
+      burst.innerHTML = Array.from({ length: 16 }, (_, i) => {
+        const angle = i / 16 * Math.PI * 2;
+        const radius = 63 + (i % 4) * 22;
+        return `<i class="score-spark" style="--spark-x:${Math.round(Math.cos(angle) * radius)}px;--spark-y:${Math.round(Math.sin(angle) * radius * .58 - 15)}px;--spark-turn:${i % 2 ? 135 : -90}deg"></i>`;
       }).join("");
       stage.appendChild(burst);
       later(650, () => burst.remove());
@@ -307,8 +530,21 @@
     return promise;
   }
 
+  const avatarFields = ["#775185", "#435b88", "#a96078", "#367c7c", "#753f71", "#8c6744", "#4e7871", "#534981"];
+
+  function paintAvatar(node, name) {
+    if (!node) return null;
+    const key = hash(name);
+    node.classList.add("player-avatar");
+    node.setAttribute("aria-hidden", "true");
+    node.style.setProperty("--avatar-frame", `${(key % 8) * 100 / 7}%`);
+    node.style.setProperty("--avatar-field", avatarFields[(key >>> 4) % avatarFields.length]);
+    return node;
+  }
+
   root.BalatleTable = Object.freeze({
-    cardMarkup, itemArt, scorePlayback, cancelPlayback, toggleSound,
+    cardMarkup, cardBackMarkup, itemArt, paintAvatar,
+    beginShuffle, queueDraw, renderDeal, scorePlayback, cancelPlayback, toggleSound,
     isSoundOn: () => soundOn, escapeHTML: esc
   });
 })(typeof window !== "undefined" ? window : globalThis);

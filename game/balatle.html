@@ -59,7 +59,10 @@
           <p id="scoreCaption" class="score-caption" aria-live="polite">Make a poker hand. Only cards that form the hand add their chips.</p>
         </section>
         <section class="hand-zone" aria-label="Your hand">
-          <div class="hand-label"><span id="selectionHint">Select up to 5 cards</span><span class="small" id="deckCount">52 cards</span></div>
+          <div class="hand-label">
+            <div class="hand-identity"><span class="player-avatar" id="youAvatar" aria-hidden="true"></span><span id="selectionHint">Select up to 5 cards</span></div>
+            <div class="deck-indicator"><span class="deal-source" id="deckDealSource" aria-hidden="true"></span><span class="small" id="deckCount">52 cards</span></div>
+          </div>
           <div class="hand" id="hand" aria-label="Your playing cards"></div>
         </section>
         <div class="table-actions">
@@ -194,7 +197,9 @@
   const username = (usernameRaw.length ? usernameRaw : "Player").slice(0, 22);
 
   const $ = (id)=>document.getElementById(id);
+  $("deckDealSource").innerHTML = BalatleTable.cardBackMarkup?.() || "";
   $("youName").textContent = username;
+  BalatleTable.paintAvatar?.($("youAvatar"), username);
 
   // ---------------------------
   // Match constants
@@ -735,9 +740,10 @@
   // Round setup
   function drawToHand(){
     const size = 8 + game.perma.handSize;
-    while(game.hand.length < size){
-      if(game.deck.length===0) break;
-      game.hand.push(game.deck.pop());
+    while(game.hand.length < size && game.deck.length){
+      const card = game.deck.pop();
+      game.hand.push(card);
+      BalatleTable.queueDraw?.(card.id);
     }
   }
 
@@ -786,6 +792,7 @@
     game.lastResult = null;
     hideHow();
     cancelConsumable();
+    BalatleTable.beginShuffle?.();
     game.deck = rng.shuffle([...game.deck, ...game.hand, ...game.discard]);
     game.hand = [];
     game.discard = [];
@@ -1237,6 +1244,7 @@
       el.appendChild(d);
     }
     renderSelection();
+    BalatleTable.renderDeal?.(el, game.mode==="play" && !me.eliminated && !me.finished);
   }
 
   function moveJoker(index, direction){
@@ -1533,7 +1541,13 @@
     survivors.forEach(p=>{
       const it=document.createElement("div"); it.className="item";
       const ok = (p.status==="ready"||p.status==="finished") ? "✅" : "⌛";
-      it.innerHTML = `<div class="itemMeta">${ok} ${p.name} — ${statusLabel(p)}</div>`;
+      const meta = document.createElement("div");
+      meta.className = "itemMeta hand-identity";
+      if(BalatleTable.paintAvatar) meta.appendChild(BalatleTable.paintAvatar(document.createElement("span"), p.name));
+      const label = document.createElement("span");
+      label.textContent = `${ok} ${p.name} — ${statusLabel(p)}`;
+      meta.appendChild(label);
+      it.appendChild(meta);
       list.appendChild(it);
     });
   }
@@ -1581,6 +1595,7 @@
       meta.appendChild(nm);
       meta.appendChild(sub);
 
+      if(BalatleTable.paintAvatar) left.appendChild(BalatleTable.paintAvatar(document.createElement("span"), p.name));
       left.appendChild(dot);
       left.appendChild(meta);
 
