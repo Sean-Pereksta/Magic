@@ -104,11 +104,20 @@ test('Blind targets climb within each ante and each blind type grows through eig
   }
   assert.equal(Core.targetForRound(22), 50000);
   assert.equal(Core.targetForRound(24), 100000);
-  assert.equal(Core.targetForRound(25), 125000);
+  assert.ok(Core.targetForRound(25) > Core.targetForRound(22));
   assert.equal(Core.targetForRound(1, 'easy'), 264);
   assert.equal(Core.targetForRound(1, 'hard'), 366);
   assert.equal(Core.targetForRound(0), 300);
   assert.ok(Number.isSafeInteger(Core.targetForRound(999999)));
+});
+
+test('Endless targets keep rising long after normal antes', () => {
+  for (const round of [25, 97, 301, 3001]) {
+    assert.ok(Core.targetForRound(round + 1) > Core.targetForRound(round));
+    assert.ok(Core.targetForRound(round + 2) > Core.targetForRound(round + 1));
+    assert.ok(Core.targetForRound(round + 3) > Core.targetForRound(round));
+    assert.ok(Core.targetForRound(round, 'hard') > Core.targetForRound(round));
+  }
 });
 
 test('Cash-out rewards unused hands and calculates capped interest before rewards', () => {

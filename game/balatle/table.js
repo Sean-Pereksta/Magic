@@ -146,7 +146,57 @@
       <span class="card-corner corner-bottom" aria-hidden="true">${corner}</span>
       ${options.small ? "" : `<span class="card-value" aria-hidden="true">${number(chips)}</span>`}
       ${enhancements ? `<span class="card-enhancements">${enhancements}</span>` : ""}
+      ${card.editionMark ? `<span class="card-edition" title="${esc(card.editionName || "Special edition")}" aria-hidden="true">${esc(card.editionMark)}</span>` : ""}
     </span>`;
+  }
+
+  const JESTER_STYLES = {
+    bell: `<path d="M33 18H43V24H49V37H54V26H60V20H73V26H83V39H74V45H29V38H20V24H33Z" fill="currentColor"/>
+      <path d="M17 19H27V27H17ZM44 14H53V22H44ZM76 18H86V26H76Z" fill="var(--jest-gold)"/>`,
+    crown: `<path d="M23 22H34V30H42V17H47V10H54V17H59V30H66V22H77V45H23Z" fill="var(--jest-gold)"/>
+      <path d="M26 38H74V45H26ZM46 26H54V34H46Z" fill="currentColor"/>`,
+    veil: `<path d="M39 14H59V21H68V29H75V39H82V57H70V43H31V61H19V39H26V27H34V21H39Z" fill="currentColor"/>
+      <path d="M30 32H42V29H63V33H70V37H34V43H29Z" fill="var(--jest-gold)"/>`,
+    comet: `<path d="M43 16H56V22H64V28H72V34H79V46H22V37H29V28H36V22H43Z" fill="currentColor"/>
+      <path d="M53 19H60V24H67V29H73V35H65V32H58V28H53ZM40 27H47V32H52V39H45V35H40V39H34V33H40Z" fill="var(--jest-gold)"/>`,
+    plumes: `<path d="M26 19H35V23H43V29H48V34H52V29H58V23H66V19H76V31H71V43H29V33H26Z" fill="currentColor"/>
+      <path d="M24 14H30V26H24ZM39 19H44V31H39ZM58 19H63V31H58ZM72 14H78V26H72Z" fill="var(--jest-gold)"/>`,
+    moon: `<path d="M25 27H34V18H54V24H65V36H79V45H21V36H25Z" fill="currentColor"/>
+      <path d="M43 20H50V24H46V32H52V36H43V33H39V25H43ZM68 25H73V30H68Z" fill="var(--jest-gold)"/>`
+  };
+  const JESTER_EMBLEMS = {
+    chips: "M46 89H54V92H58V97H54V100H46V97H42V92H46Z",
+    mult: "M44 88H49V92H52V88H57V92H54V96H57V100H52V96H49V100H44V96H47V92H44Z",
+    cash: "M48 86H52V89H56V93H49V94H56V100H52V103H48V100H44V96H51V95H44V89H48Z",
+    cards: "M44 87H53V90H57V101H47V98H43V90H44ZM48 93V97H53V93Z",
+    suit: "M48 87H52V91H56V95H52V99H48V95H44V91H48Z",
+    star: "M48 85H52V90H58V95H53V101H47V95H42V90H48Z"
+  };
+  const JESTER_DESIGNS = {
+    key: ["veil", "cards"], lantern: ["bell", "chips"], thread: ["plumes", "cards"],
+    mask: ["moon", "suit"], bells: ["bell", "mult"], music: ["plumes", "mult"],
+    crystal: ["veil", "star"], moth: ["moon", "star"], clock: ["comet", "mult"],
+    ticket: ["veil", "cash"], coins: ["plumes", "cash"], crown: ["crown", "suit"],
+    sundial: ["comet", "chips"], flame: ["crown", "chips"], planet: ["moon", "star"],
+    diamond: ["veil", "suit"], cards: ["bell", "cards"]
+  };
+
+  function jesterPortrait(name, emblem, variant, palette) {
+    const [bg, mid, gold, light] = palette;
+    const styles = Object.keys(JESTER_STYLES);
+    const [style, detail] = JESTER_DESIGNS[variant] || [styles[hash(name) % styles.length], emblem];
+    const hat = JESTER_STYLES[style];
+    const charm = JESTER_EMBLEMS[detail] || JESTER_EMBLEMS.star;
+    return `<g shape-rendering="crispEdges" color="${mid}" style="--jest-gold:${gold}">
+      <path d="M23 14H77V20H83V26H90V84H83V92H77V99H23V92H17V84H10V26H17V20H23Z" fill="${light}" opacity=".16"/>
+      <path d="M23 34H77V41H82V68H76V79H65V85H76V92H81V102H19V92H24V85H35V79H24V68H18V41H23Z" fill="#20182d"/>
+      ${hat}
+      <path d="M29 47H71V70H66V76H60V81H40V76H34V70H29Z" fill="${light}"/>
+      <path d="M60 47H71V70H66V76H58V79H54V53H60Z" fill="${gold}" opacity=".66"/>
+      <path d="M35 54H46V58H41V63H35ZM54 58H65V54H54ZM60 58H65V63H60ZM41 69H46V73H55V69H61V74H55V77H46V75H41Z" fill="${bg}"/>
+      <path d="M25 89H39V83H45V88H55V83H61V89H75V94H79V101H21V94H25Z" fill="${mid}"/>
+      <path d="${charm}" fill="${gold}"/>
+    </g>`;
   }
 
   // Motifs follow each item's effect. A name-derived palette keeps collections
@@ -182,8 +232,9 @@
     else if (/grow|grind|infinite|spiral|stair|streak/.test(lower)) motif = "growth";
     else if (/lens|arcane|professor|strateg/.test(lower)) motif = "eye";
     else if (/clutch|dynamo|overkill|waste|burn/.test(lower)) motif = "flame";
+    const portrait = kind === "jester" ? jesterPortrait(name, item.emblem || motif, item.art, palette) : "";
     const stroke = `stroke="${ink}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"`;
-    const motifs = {
+    const motifs = portrait ? null : {
       mask: `<path d="M14 26H30V32H38V20H45V13H55V20H62V32H70V26H86V39H79V51H75V75H69V83H61V91H39V83H31V75H25V51H21V39H14Z" fill="${ink}"/>
         <path d="M18 30H28V36H36V43H40V27H47V20H53V27H60V43H64V36H72V30H82V39H75V48H25V39H18Z" fill="${gold}"/>
         <path d="M30 53H70V73H64V81H58V86H42V81H36V73H30Z" fill="${light}"/>
@@ -214,7 +265,7 @@
         <path d="M8 8H22V11H11V23H8ZM92 8H78V11H89V23H92ZM8 102H22V99H11V87H8ZM92 102H78V99H89V87H92Z" fill="${gold}"/>
         <path d="M21 18H25V22H21ZM73 20H77V24H73ZM20 79H24V83H20ZM74 84H78V88H74ZM12 53H16V57H12ZM84 53H88V57H84Z" fill="${light}" opacity=".64"/>
       </g>
-      ${motifs[motif] || motifs.mask}
+      ${portrait || motifs[motif] || motifs.mask}
     </svg>`;
   }
 
@@ -255,6 +306,28 @@
     try { root.localStorage?.setItem("balatle_sound_v1", String(soundOn)); } catch (_) { /* Optional setting. */ }
     if (soundOn) tone(660, .06, .025);
     return soundOn;
+  }
+
+  const PURCHASE_CUES = {
+    card: ["#85e6dc", 720],
+    jester: ["#f3ace0", 805],
+    joker: ["#bbacee", 660],
+    cons: ["#9dcdfa", 580],
+    voucher: ["#f9d383", 540]
+  };
+  let shopFlash = null;
+
+  function purchaseFeedback(kind) {
+    const [color, frequency] = PURCHASE_CUES[kind] || PURCHASE_CUES.voucher;
+    const header = root.document?.querySelector(".shopModalHead");
+    tone(frequency, .1, .025);
+    if (!header?.animate || root.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    shopFlash?.cancel();
+    shopFlash = header.animate([
+      { boxShadow: "inset 0 -3px transparent" },
+      { boxShadow: `inset 0 -3px ${color}`, offset: .2 },
+      { boxShadow: "inset 0 -3px transparent" }
+    ], { duration: 540, easing: "ease-out" });
   }
 
   const pendingDraws = new Set();
@@ -414,17 +487,21 @@
     const cards = Array.isArray(result.cards) ? result.cards : [];
     const scoringIds = new Set(result.scoringIds || cards.map(c => c.id));
     const triggers = Array.isArray(result.triggers) ? result.triggers : [];
-    const reduced = !!root.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const modifiers = Array.isArray(result.modifiers) ? result.modifiers : [];
+    const motion = root.matchMedia?.("(prefers-reduced-motion: reduce)");
     let resolvePromise;
     const promise = new Promise(resolve => { resolvePromise = resolve; });
     const timers = [];
+    const flashes = new Map();
     let completed = false;
     const finish = cancelled => {
       if (completed) return;
       completed = true;
       for (const timer of timers) root.clearTimeout(timer);
       stage?.classList.remove("is-scoring");
+      delete stage?.dataset.scoreEffect;
       stage?.querySelectorAll(".score-burst, .chip-pop").forEach(el => el.remove());
+      for (const animation of flashes.values()) animation.cancel();
       document?.querySelectorAll(".joker-tile.triggered").forEach(el => el.classList.remove("triggered"));
       if (activePlayback?.finish === finish) activePlayback = null;
       const outcome = { cancelled: !!cancelled };
@@ -437,11 +514,25 @@
       setText("scoreCaption", text);
       setText("scoreBreakdown", text);
     };
+    const chipsDisplay = document?.getElementById("scoreChips");
+    const multDisplay = document?.getElementById("scoreMult");
+    const flash = (value, tint) => {
+      const counter = value?.parentElement;
+      if (!counter?.animate || motion?.matches) return;
+      flashes.get(counter)?.cancel();
+      flashes.set(counter, counter.animate([
+        { transform: "scale(1)", boxShadow: "0 0 0 0 transparent" },
+        { transform: "scale(1.05)", boxShadow: `0 0 0 3px ${tint}`, offset: .26 },
+        { transform: "scale(1)", boxShadow: "0 0 0 6px transparent" }
+      ], { duration: 280, easing: "ease-out" }));
+    };
     const setFinal = () => {
       setText("scoreChips", number(result.chips));
       setText("scoreMult", number(result.mult));
       setText("scorePreview", `+${number(Math.floor(finite(result.gained)))}`);
     };
+    const detail = `${result.handName || "Hand"}: ${number(result.chips)} chips × ${number(result.mult)} Mult`;
+    const summary = result.clearsBlind ? `Blind cleared · ${detail}` : detail;
     setText("selectionName", result.handName || "Your hand");
     setText("stageLabel", "Scoring your hand");
     stage?.classList.add("is-scoring");
@@ -449,9 +540,9 @@
     if (played) {
       played.innerHTML = cards.map(c => `<div class="card${c.red || c.suit === "H" || c.suit === "D" ? " red" : ""}${scoringIds.has(c.id) ? " scoring" : " non-scoring"}" data-scoring-card="${esc(c.id)}">${cardMarkup(c, { small: true })}</div>`).join("");
     }
-    if (!stage || reduced) {
+    if (!stage || motion?.matches) {
       setFinal();
-      setCaption(`${result.handName || "Hand"}: ${number(result.chips)} chips × ${number(result.mult)} Mult`);
+      setCaption(summary);
       timers.push(root.setTimeout(() => finish(false), 30));
       return promise;
     }
@@ -464,34 +555,51 @@
     setText("scoreMult", number(initialMult));
     setText("scorePreview", "Scoring…");
     const scoringCards = cards.filter(c => scoringIds.has(c.id));
+    const playedById = new Map([...played?.querySelectorAll("[data-scoring-card]") || []].map(node => [node.dataset.scoringCard, node]));
+    const jokersById = new Map([...document.querySelectorAll("[data-joker-id]")].map(node => [node.dataset.jokerId, node]));
     let displayedChips = initialChips;
     let displayedMult = initialMult;
     let cursor = 60;
     scoringCards.forEach((card, index) => {
       later(cursor, () => {
-        const node = [...(played?.querySelectorAll("[data-scoring-card]") || [])].find(el => el.dataset.scoringCard === String(card.id));
-        const value = finite(card.baseChip) + finite(card.bonusChip);
+        const node = playedById.get(String(card.id));
+        const effect = result.cardEffects?.[card.id];
+        const value = finite(effect?.chips, finite(card.baseChip) + finite(card.bonusChip));
+        const mult = finite(effect?.mult, card.crowned ? 1 : 0);
+        const cash = result.payoutMuted ? 0 : finite(effect?.cash);
+        const parts = [`+${number(value)} chips`];
+        if (mult) parts.push(`+${number(mult)} Mult`);
+        if (cash) parts.push(`+$${number(cash)}`);
         if (node) {
           node.classList.add("card-trigger");
           const pop = document.createElement("span");
           pop.className = "chip-pop";
+          if (cash) pop.dataset.effect = "coin";
+          else if (mult || card.editionMark) pop.dataset.effect = "magic";
           pop.setAttribute("aria-hidden", "true");
-          pop.textContent = `+${number(value)}`;
+          pop.textContent = cash ? `+$${number(cash)}` : mult ? `+${number(mult)} Mult` : `+${number(value)}`;
           node.appendChild(pop);
         }
         displayedChips += value;
-        if (card.crowned) displayedMult += 1;
+        displayedMult += mult;
         setText("scoreChips", number(displayedChips));
         setText("scoreMult", number(displayedMult));
-        setCaption(`${card.rank}${SUITS[card.suit] || ""}  +${number(value)} chips`);
-        tone(380 + index * 70, .075);
+        const source = `${card.rank}${SUITS[card.suit] || ""}`;
+        setCaption([source, effect?.label, ...parts].filter(Boolean).join(" · "));
+        if (value) flash(chipsDisplay, "#78e3ef");
+        if (mult) flash(multDisplay, "#f8a3dd");
+        tone((cash ? 540 : 380) + index * 70, .075);
       });
       cursor += 100;
     });
     triggers.forEach((trigger, index) => {
       later(cursor, () => {
-        const node = [...document.querySelectorAll("[data-joker-id]")].find(el => el.dataset.jokerId === String(trigger.id));
-        node?.classList.add("triggered");
+        const node = jokersById.get(String(trigger.id));
+        if (node) {
+          node.classList.remove("triggered");
+          void node.offsetWidth;
+          node.classList.add("triggered");
+        }
         const effects = [];
         displayedChips = Math.max(0, displayedChips + finite(trigger.chips));
         displayedMult = Math.max(0, displayedMult + finite(trigger.mult)) * finite(trigger.xMult, 1);
@@ -500,34 +608,286 @@
         if (finite(trigger.chips)) effects.push(`${finite(trigger.chips) > 0 ? "+" : ""}${number(trigger.chips)} chips`);
         if (finite(trigger.mult)) effects.push(`${finite(trigger.mult) > 0 ? "+" : ""}${number(trigger.mult)} Mult`);
         if (finite(trigger.xMult, 1) !== 1) effects.push(`×${number(trigger.xMult)} Mult`);
+        if (trigger.label) effects.push(String(trigger.label));
         setCaption(`${trigger.name || "Joker"}${effects.length ? "  ·  " + effects.join(" · ") : " activated"}`);
-        tone(620 + index * 65, .1, .035);
+        if (finite(trigger.chips)) flash(chipsDisplay, "#78e3ef");
+        if (finite(trigger.mult) || finite(trigger.xMult, 1) !== 1) flash(multDisplay, "#f8a3dd");
+        tone((trigger.kind === "jester" ? 730 : 620) + index * 49, .1, .035);
       });
       cursor += Math.max(60, Math.min(105, 450 / Math.max(1, triggers.length)));
     });
+    if (modifiers.length) {
+      later(cursor, () => {
+        stage.dataset.scoreEffect = "boss";
+        setCaption(modifiers.map(({name, label}) => `${name} · ${label}`).join(" · "));
+        flash(multDisplay, "#f0879c");
+        tone(290, .12, .025);
+      });
+      cursor += 250;
+    }
     later(cursor + 25, () => {
       setFinal();
-      setCaption(`${result.handName || "Hand"}: ${number(result.chips)} chips × ${number(result.mult)} Mult`);
+      setCaption(summary);
       stage.classList.remove("is-scoring");
       void stage.offsetWidth;
       stage.classList.add("is-scoring");
+      stage.dataset.scoreEffect = result.clearsBlind ? "clear" : "scored";
       tone(880, .16, .045);
+      if (result.clearsBlind) later(88, () => tone(1320, .14, .032));
       const burst = document.createElement("div");
       burst.className = "score-burst";
       burst.setAttribute("aria-hidden", "true");
-      burst.innerHTML = Array.from({ length: 16 }, (_, i) => {
-        const angle = i / 16 * Math.PI * 2;
-        const radius = 63 + (i % 4) * 22;
+      const particles = result.clearsBlind ? 26 : 16;
+      burst.innerHTML = Array.from({ length: particles }, (_, i) => {
+        const angle = i / particles * Math.PI * 2;
+        const radius = (result.clearsBlind ? 91 : 63) + (i % 4) * 22;
         return `<i class="score-spark" style="--spark-x:${Math.round(Math.cos(angle) * radius)}px;--spark-y:${Math.round(Math.sin(angle) * radius * .58 - 15)}px;--spark-turn:${i % 2 ? 135 : -90}deg"></i>`;
       }).join("");
       stage.appendChild(burst);
-      later(650, () => burst.remove());
     });
     later(cursor + 430, () => {
-      stage.querySelectorAll(".score-burst").forEach(el => el.remove());
       finish(false);
     });
     return promise;
+  }
+
+  // Each boss has a hand-drawn sprite. The five colors after the backdrop
+  // correspond to shade, main, highlight, accent, and eye pixels.
+  const BOSS_SPRITES = {
+    noDiscards: {
+      colors: ["#344769", "#3d4972", "#8193a8", "#d9e5d6", "#eeb96b", "#9effdc"],
+      rows: [
+        "......oooo", ".....ohhhoo", "....ohhmmsoo", "....ohmssmso",
+        "...ohmmssmsoo", "...ohhoeoemso", "...ohhmssseso", "....oshmmmsso",
+        "....oohhmsooo", "...ossoooosso", "..ommsgggsmso", "..ohmsgegsmso",
+        "..omsogggomso", "...oommmsso", "....osssso", ".....oooo"
+      ]
+    },
+    exactFive: {
+      colors: ["#254b64", "#36638a", "#5898a9", "#b3ebe4", "#fed986", "#ff9189"],
+      rows: [
+        ".......oo", "......oggo", "......oggoog", ".....oggmogo",
+        "...oohhggsoo", "..ohhhhommmsso", "..ohhmmmmmssso", "..ohmmmooossso",
+        "..ohmoessesosso", "..ohmosssomso", "..ommosssomso", "...omsmmmmsso",
+        "....oohmmsoo", "...ommogomsso", "..oshmmgmmssso", "..oooooooooooo"
+      ]
+    },
+    noPairs: {
+      colors: ["#572f62", "#814c8f", "#c36db0", "#f7b8d5", "#ffdc84", "#fff5c8"],
+      rows: [
+        ".....o....o", ".....om..mo", ".ooo..o..o..ooo", "ohhmoo.oo.oomhho",
+        "ohhgmsoeeosmgmho", "ohggmsoemoohggho", "ohggmsoeeosmgmho", ".ommmmoohommmmo",
+        "..osmsoshossmo", "...oohoshomoo", "..osmmoshommmso", "..ohmmsosommmho",
+        "...ommsooosmmo", "....ooo..ooo", ".......ss", ".......oo"
+      ]
+    },
+    noStraights: {
+      colors: ["#53374f", "#815342", "#c88b55", "#f7d49a", "#0bd1a9", "#ffe68e"],
+      rows: [
+        "......oo.g", ".....ohhoog", ".....ohhho", "....oooooo",
+        "....ohhhho", "...ohmhmhho", "..ohhmohmhso", "..ohhhohhhso",
+        "..ohmhooogso", "..ohhhhhhmso", "...ohghhhso", "....oooooo",
+        ".....omso", ".....omsoo", "....ohhmso", "...ooooooo"
+      ]
+    },
+    noFace: {
+      colors: ["#51314f", "#63628a", "#c6cad8", "#fff4de", "#ef758e", "#98f7d5"],
+      rows: [
+        "..ooo.......oo", "..ohho.....ohho", "..ohhhoo.ooohho", "..ohhggmmmmsso",
+        "..ohhggmmmmsso", "..ohghhggmmsso", "...ohoohoosso", "...oheehessso",
+        "...oohhmmsooo", "....ohgmssoo", "....ohhgsso", ".....ohmso",
+        "....osogoso", "...ossogosso", "..osssogossso", "..ooooooo"
+      ]
+    },
+    suitDemand: {
+      colors: ["#392f68", "#7753ae", "#b974cf", "#e9bdf8", "#ffc166", "#9ceed4"],
+      rows: [
+        "........oo", ".......oggo", "......ogmmoo", ".....ogmmsso",
+        "....oghmmssso", "....ohhmmssso", "..oohhmmmmsssoo", ".ohhmmoggommssso",
+        "..ooooeeemsooo", "....osooooo", "...omsggmsso.oo", "..ohmsgghmso.ogo",
+        ".oooosmmssso.ogo", ".ogo.mmosssooogo", ".ogoohmssso..oo", "..ooooooooo"
+      ]
+    },
+    handTight: {
+      colors: ["#294d51", "#356b58", "#67a366", "#a7ce74", "#ffd371", "#fff6ba"],
+      rows: [
+        "........g", ".....oo.g", "....ohhogo", "....ohmhgo",
+        "..g.ohmgooo", "...gogmmssoo", "...oghememso.g", "..gohhmmsso.g",
+        "...ohmmsssoo", "..ooohgggsooo", ".ommoogggomso", ".ohmssgggmsso",
+        "..osmsgggoso", ".....omso", "....ohmmso", "....oooooo"
+      ]
+    },
+    discardTax: {
+      colors: ["#593f3c", "#8c513f", "#ca8060", "#ffe2ae", "#ebbf55", "#fff2ba"],
+      rows: [
+        ".......oooo", "......osssso", "......ommmso", "......oggggo",
+        "....oohhhgsooo", "...oggggggggggo", "....ooooooo", ".....ohhhso",
+        ".....oheeso", ".....ohhhso", "......ohso", ".....osgoso",
+        "....ossgmssoo", "..oogoosgoosso", "..oggoohhmmso", "...oooooooooo"
+      ]
+    },
+    scorePenalty: {
+      colors: ["#2d475b", "#396877", "#65a195", "#b9e7b5", "#e69861", "#fff2c8"],
+      rows: [
+        "................", ".....oo..oo", "....ohhoohho", "....ohmmmmso",
+        "...ohhmmmmmso", "..ohhmmmmsmsso", ".ohhheomoeossso", ".ohhhmmmhmmssso",
+        ".ohhhmhhhhmssso", "..ohhmogomssso", "...ohmgegmsoo", "....ommmmso",
+        "...omsshsssso", "..ossssggsssso", "..ommmgggmmmso", "..oooooooooooo"
+      ]
+    },
+    noFlushes: {
+      colors: ["#402f68", "#7452ac", "#a273d8", "#e1c6fc", "#ef86b3", "#c8eeff"],
+      rows: [
+        ".......ooo", ".....oohhso", "....ohhmmssso", "....ohmmsssooo",
+        "...ohhmmssso", "...ohhmeoeso", "...ohhmsssso", "...ohhmmesoo",
+        "..ohmmmmsso", "..ohmmsssooo", "..ohhmmmsssoo", "...ohhssmmmsso",
+        "....oossoossmso", "...........ooso", "............oso", ".............o"
+      ]
+    },
+    outerHands: {
+      colors: ["#3c3b55", "#6f6d91", "#aca9b5", "#f2e6d3", "#e77c90", "#ffcf78"],
+      rows: [
+        "...o....o....o", "...oh..oho..ho", "...oh.ohoho.ho", "...ohmhgohmho",
+        "...ohmogoogho", "...ohhhhhhhho", "...ogmogogmgo", "....ooooooo",
+        ".....osssso", "....oheoseoso", "....ohhmmsso", ".....ohmso",
+        ".....osso", "...ooshmsoo", "..osogmgososso", "..ooooooooooo"
+      ]
+    },
+    lowRank: {
+      colors: ["#5d3d53", "#945643", "#ce8b58", "#ffd0a1", "#e57185", "#fff6ca"],
+      rows: [
+        "..g...gg..g..g", "..g...g...g..g", "..g..ooo..g..g", "..g.ohhso.g..g",
+        "..gohhmmso...g", "..gohmeemso..g", "..g.ohhmssso.g", "..gooohmsso..g",
+        "..omooogoo...g", "..os.ohhso..os", "...oohgmso.oso", "...ohmgmsooso",
+        "....oommsooo", "....os..os", "...oss..os", "...oo...oo"
+      ]
+    },
+    wideSuits: {
+      colors: ["#292b60", "#45427a", "#7768a7", "#bbb6e6", "#fac278", "#ffdca2"],
+      rows: [
+        ".............g", "...........g", "......oooo", ".....ohhhmo",
+        "....ohmemoso", "....ohmmmmsoo", "......osmmgggo", "......ohmmggoo",
+        ".go..ohmmssoo", "..g.oohmmmsso", "...gmhmmsssoo", "...ohgmsssoo...g",
+        "....oshggooo..g", "....oooggggggg", ".....osoo", ".....oo"
+      ]
+    },
+    slowStart: {
+      colors: ["#653554", "#a45545", "#df804a", "#ffc273", "#ff656d", "#fff5b8"],
+      rows: [
+        ".......oo", "......ohho", "......ohho", ".....ohhhmo",
+        "....ohhmmmso", "....ohhmmmso", "...ohhmmmsmso", "...ohmmememso",
+        "...ohmmssmmso", "..ohhmmmmmmsso", "..ohhheeehmso", "..oooooooooooo",
+        "......ommog", "....gg.oo..gg", "...gmg....gmg", "...gmgg..ggmg"
+      ]
+    },
+    repeatHand: {
+      colors: ["#50366f", "#7d4c9c", "#c168aa", "#ffd3bd", "#7edbd8", "#fff1ab"],
+      rows: [
+        "...g.......g", "..ogo.....ogo", "...ommo..ommo", "...ogmmoogmso",
+        "....ohhmmhsso", "...ohhmmmmmsso", "...ohhemoemso", "...ohhmmmmmso",
+        "....ohmgmsoo", ".....ohmsoo", "...ogoomoooo", "..oggmgggmggso",
+        "..oggmgggmggso", "...ossmmmssoo", ".....oogoo", ".......g"
+      ]
+    },
+    alternating: {
+      colors: ["#62424d", "#936057", "#d39662", "#ffdc8d", "#74d4d3", "#e8ffde"],
+      rows: [
+        "....o..oo..o", "....oh.ogohho", "....ohhggghho", "....ohhmhhmho",
+        "....ooooooo", "...ohhmhmmmso", "...ohhegegmso", "...ohhmhmmmso",
+        "...ohgogogmso", "....ohmmsoo", "....oogoogo", "..ogmggmggmgo",
+        "..ogomgggmogo", "..omoghgggmso", "...osgmgmsoo", "....ooooooo"
+      ]
+    },
+    pureHand: {
+      colors: ["#543447", "#734c72", "#9c72a9", "#e7c9e2", "#e381a4", "#ffd5a9"],
+      rows: [
+        "..oo........oo", "..oho......oho", "...omo....omo", "....og.ooggo",
+        "..h.oohhhog.oh", "...hommmmmsoh", "...ohmeemso", "...ohhggmso",
+        "..ohommmsoso", ".oho.ossso.oho", "oh..ooogo...oh", "h...ohmso....h",
+        "...ohmmmso", "...ommssso", "....ossso", ".....ooo"
+      ]
+    },
+    lessons: {
+      colors: ["#2b5351", "#53937f", "#8fbd99", "#d0ecba", "#f2c480", "#f7ffbf"],
+      rows: [
+        "....oo....oo", "....oho..oho", "....ohmggmho", "....ohggggho",
+        "...ohhmmmmsso", "...ohheomeoso", "...ohhmmmmoso", "....ohhggso",
+        "....ogggggo", "....ohhmmso", "...ohhmmmmsoo", "..ohhmmmmsmsso",
+        "..ohmmgggmmsso", "..ohmgmmmmgso", "...omoommsoo", "...oooooooo"
+      ]
+    },
+    payoutMute: {
+      colors: ["#263b5b", "#455d78", "#77a49e", "#aeddc6", "#ffbf66", "#fff0a3"],
+      rows: [
+        "...........oo", "..........oggo", "..........ogeo", "..........oggo",
+        ".......oo.oooo", "......ohhogo", ".....ohmmsgo", "....ohmgmsoo",
+        "...ohmmgmso", "...ohmeemso", "...ohmmmso", "....ohmsoo",
+        ".....ohmsoo", "..oo..ohmssoo", "..osooohmssso", "...ooooooooo"
+      ]
+    },
+    suitTaboo: {
+      colors: ["#583844", "#8b5455", "#b67665", "#e9a279", "#f5c773", "#b7efd5"],
+      rows: [
+        ".....oo", ".....ohho..g", "....ohmso.ggg", "...ohmsoo..gg",
+        "...ohhmmsso..gg", "..ohhmeommsog", "..ohhmmhmmmmsso", "..ohhmmgmgmgmso",
+        "..ohhmmmmmsoo", "..ohhmmssso", "...ohmmmssoo", "....ohmmmmssoo",
+        "....omhmmmsmso", "...osgmgmmsso", "...osoooosso", "....ooooooo"
+      ]
+    },
+    twoDiscard: {
+      colors: ["#2f4e75", "#4a72a3", "#79aad0", "#cbf0f5", "#fde1a4", "#fff7d4"],
+      rows: [
+        ".....ooo....g", "....ohhho..ggg", "...ohhhmho..g", "...ohmmmmso",
+        "...oggggggo", "..ohhhhmmsoo", "..ohmheemo", "..ohhhmmso",
+        "...ohhhmso", "....ohmso..oo", "....ohoo....og", "...ohmmso...g",
+        "..ohmmmmssoo.g", "..ommmmsmsso.g", "...ohmmsso...g", "...oooooooo"
+      ]
+    },
+    suitTithe: {
+      colors: ["#3c5142", "#677a52", "#9cad64", "#cadc91", "#ebb778", "#f5efb3"],
+      rows: [
+        "..g.......g", "..gg.oo..gg", "...ggogogg", "....ohohoo",
+        "....ohmgho", "....ohmgmo", "...ohhmmsso", "...ohmeemso",
+        "...ohhmmmso", "....ohmmso", "....oogoo", "...ohmgmso",
+        "..ohmmgmsso", "..ohmggggsso", "..ohmmgmmmso", "..oooooooooo"
+      ]
+    },
+    lastReserve: {
+      colors: ["#493c69", "#706d93", "#aba4b4", "#dcd5ca", "#b683c4", "#ffca86"],
+      rows: [
+        "oo............oo", "oho..........oho", "ohho..oo.oo.ohho", "ohmho.ohohoohmho",
+        "ohmshoohmhohmsho", "ohmmsooheeehmsho", ".ommsohmmmhmmsso", "..omsohmhmsmso",
+        "...ooohhmsoo", "....ohhhmsoo", "...ohmhmmmsso", "..ohmmmmmsmsso",
+        "..ohmgmmmgmsso", "..ommmmmmmmsso", "...oooommsoo", ".......ooo"
+      ]
+    },
+    playTax: {
+      colors: ["#504857", "#8a7b8e", "#c0b0b5", "#f3dcc3", "#f3ab64", "#ffe8b4"],
+      rows: [
+        ".....oooooo", "....ohhhmmso", "....ohmmhmso", "....ohmggmso",
+        "...ohhmggmsoo", "...oheeheeso", "...ohhmmmmsso", "...ohmhhmmso",
+        "....ohmgmso", ".....ooooo", "..ooohhmsoo", ".ohhmhhmhosooo",
+        ".ohmmmhmoomhhso", ".ohmgmhmommmso", "..omsommmomgso", "...ooooooooooo"
+      ]
+    }
+  };
+
+  const bossPortraits = new Map();
+  function bossPortraitMarkup(key) {
+    if (bossPortraits.has(key)) return bossPortraits.get(key);
+    if (!Object.prototype.hasOwnProperty.call(BOSS_SPRITES, key)) return "";
+    const sprite = BOSS_SPRITES[key];
+    const [backdrop, s, m, h, g, e] = sprite.colors;
+    const portrait = `<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false" shape-rendering="crispEdges" data-boss-portrait="${key}">
+      <path d="M2 0H18V2H20V18H18V20H2V18H0V2H2Z" fill="${g}"/>
+      <path d="M2 2H18V18H2Z" fill="#1c142c"/>
+      <path d="M3 2H17V17H3Z" fill="${backdrop}"/>
+      <path d="M7 2H13V4H15V6H17V12H15V14H13V16H7V14H5V12H3V6H5V4H7Z" fill="${h}" opacity=".12"/>
+      <path d="M3 3H5V4H3ZM16 3H17V5H16ZM3 16H4V17H3ZM16 16H17V17H16Z" fill="${g}" opacity=".7"/>
+      <g transform="translate(2 2)">${pixelPaths(sprite.rows, { o: "#161425", s, m, h, g, e })}</g>
+    </svg>`;
+    bossPortraits.set(key, portrait);
+    return portrait;
   }
 
   const avatarFields = ["#775185", "#435b88", "#a96078", "#367c7c", "#753f71", "#8c6744", "#4e7871", "#534981"];
@@ -543,8 +903,8 @@
   }
 
   root.BalatleTable = Object.freeze({
-    cardMarkup, cardBackMarkup, itemArt, paintAvatar,
-    beginShuffle, queueDraw, renderDeal, scorePlayback, cancelPlayback, toggleSound,
+    cardMarkup, cardBackMarkup, itemArt, paintAvatar, bossPortraitMarkup,
+    beginShuffle, queueDraw, renderDeal, scorePlayback, cancelPlayback, toggleSound, purchaseFeedback,
     isSoundOn: () => soundOn, escapeHTML: esc
   });
 })(typeof window !== "undefined" ? window : globalThis);

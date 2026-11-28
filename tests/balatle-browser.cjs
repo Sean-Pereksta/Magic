@@ -13,7 +13,7 @@ const server = http.createServer((req,res) => {
   if(!file.startsWith(root+path.sep) || !fs.existsSync(file)){res.writeHead(404);res.end();return;}
   let data=fs.readFileSync(file);
   if(pathname==='/game/balatlesolo.html'){
-    data=data.toString().replace('\n  boot();', '\n  window.__balatleTest={game,options,handUp,startNewRun,applyRoundConfig,calculateScore,renderAll,useConsumable,FULL_CONSUME_POOL,FULL_JOKER_POOL,mkJoker};\n  boot();');
+    data=data.toString().replace('\n  boot();', '\n  window.__balatleTest={game,options,handUp,startNewRun,applyRoundConfig,calculateScore,renderAll,useConsumable,FULL_CONSUME_POOL,FULL_JOKER_POOL,mkJoker,pickBossRuleForRound,drawToHand};\n  boot();');
   }
   res.writeHead(200,{'content-type':mime[path.extname(file)]||'application/octet-stream'});res.end(data);
 });
@@ -63,13 +63,18 @@ async function fit(page,label){
       t.game.sel=new Set(t.game.hand.slice(0,5).map(c=>c.id));t.renderAll();
     });
     await page.locator('#btnPlay').click();await page.waitForSelector('#shopBack.show');
-    check(await page.locator('.shop-card').count()===6,'Winning a blind opens six illustrated shop offers');
+    check(await page.locator('.shop-card').count()===8,'Winning a blind opens eight illustrated shop offers');
+    check(await page.locator('#shopList .shop-playing-card .card-inner').count()===2,'The shop previews both playable cards');
     check((await page.locator('#cashoutLine').textContent()).includes('unused hands $3'),'Cashout shows unused-hand reward');
     await page.locator('#btnCloseShop').click();await page.locator('#btnOpenShop').click();
     check(await page.locator('#shopBack').evaluate(el=>el.classList.contains('show')),'Shop can be reopened after viewing the table');
-    await page.locator('#shopList [data-buy]:not(:disabled)').first().click();
+    await page.locator('#shopList .shop-playing-card [data-buy]:not(:disabled)').first().click();
+    const purchasedCardId = await page.evaluate(() => window.__balatleTest.game.discard.find(card => card.editionName)?.id);
+    check(purchasedCardId,'A shop card purchase adds the illustrated edition to the run deck');
     await page.locator('#btnNextRound').click();
     check(await page.locator('#blindName').textContent()==='Big','Shop advances to the Big blind');
+    check(await page.locator('#hand .card').evaluateAll((cards, id) => cards.some(card => card.dataset.cardId === id), purchasedCardId),
+      'The purchased card appears in the next opening hand');
     await page.evaluate(()=>{
       const t=window.__balatleTest;t.game.cons=[{...t.FULL_CONSUME_POOL.find(c=>c.name==='Tarot: Chip Paint')},{...t.FULL_CONSUME_POOL.find(c=>c.name==='Tarot: Cash Burst')}];t.renderAll();
     });
@@ -91,6 +96,55 @@ async function fit(page,label){
       await fit(page,`${viewport.width}×${viewport.height} after scoring`);
       if(process.env.BALATLE_SCREENSHOTS) await page.screenshot({path:path.join(process.env.BALATLE_SCREENSHOTS,`solo-${viewport.width}.png`)});
     }
+    await page.setViewportSize({width:360,height:740});
+    await page.evaluate(()=>{
+      const {game,applyRoundConfig,pickBossRuleForRound}=window.__balatleTest;
+      const candidates = Array.from({length:200}, (_, index) => Math.imul(index + 1, 0x9e3779b9));
+      game.seed=candidates.find(seed=>pickBossRuleForRound(seed,3).key==='suitTaboo');
+      if (game.seed === undefined) throw new Error('Could not instrument the illustrated boss encounter');
+      applyRoundConfig(3);
+    });
+    await page.waitForSelector('#bossEncounter', {state:'visible'});
+    check((await page.locator('#bossName').textContent()).length>0,'The mobile Boss blind names its encounter');
+    check((await page.locator('#bossRuleLine').textContent()).length>0,'The Boss blind explains its rule');
+    check(await page.locator('#bossPortrait').locator('svg').count()===1,'The Boss blind renders pixel portrait art');
+    await fit(page,'360×740 Boss encounter');
+    await page.evaluate(()=>{
+      const {game,renderAll}=window.__balatleTest;
+      game.blindScore=game.target;renderAll();
+    });
+    await page.locator('#btnFinish').click();
+    await page.waitForSelector('#shopBack.show');
+    await page.locator('#btnCloseShop').click();
+    await page.locator('#btnDrawer').click();
+    await page.locator('#btnLegacy').click();
+    check(await page.locator('#legacyBalance').textContent()==='4','One Small blind and one Boss bank four Medallions');
+    check(await page.locator('[data-legacy-upgrade="pocket-change"]').isDisabled(),'The Lodge is read-only during a run');
+    await page.locator('#btnLegacyClose').click();
+    if (await page.locator('#btnDrawer').isVisible()) await page.locator('#btnDrawer').click();
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('#btnReset').click();
+    await page.waitForSelector('#legacyBack.show');
+    await page.locator('[data-legacy-upgrade="pocket-change"]').click();
+    check(await page.locator('#legacyBalance').textContent()==='2','Purchasing a Lodge upgrade spends the shown Medallions');
+    await page.locator('#btnLegacyStart').click();
+    check(await page.locator('#money').textContent()==='13','The permanent upgrade applies to the next run');
+    await page.reload();
+    check(await page.locator('#money').textContent()==='13','The permanent upgrade persists after reloading');
+    await page.setViewportSize({width:320,height:740});
+    const crowdedHand=await page.evaluate(()=>{
+      const {game,drawToHand,renderAll}=window.__balatleTest;
+      game.perma.handSize=8;
+      drawToHand();renderAll();
+      const hand=document.getElementById('hand');
+      const before=hand.getBoundingClientRect();
+      hand.scrollLeft=hand.scrollWidth;
+      const last=hand.lastElementChild.getBoundingClientRect();
+      return {cards:hand.children.length, handRight:before.right, lastRight:last.right,
+        scroll:hand.scrollLeft, width:innerWidth, pageWidth:document.documentElement.scrollWidth};
+    });
+    check(crowdedHand.cards===16 && crowdedHand.pageWidth===crowdedHand.width && crowdedHand.scroll>0 &&
+      crowdedHand.lastRight<=crowdedHand.handRight+1,'An expanded hand scrolls inside the table on a 320px phone');
     check(errors.length===0,`No browser exceptions (${errors.join('; ')})`);
     await context.close();
   }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

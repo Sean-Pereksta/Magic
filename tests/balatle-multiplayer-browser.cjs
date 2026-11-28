@@ -64,6 +64,13 @@ async function main() {
     await page.locator('#btnFinish').click();
     await page.waitForFunction(() => window.__multi.game.mode === 'shop');
     assert.ok(await page.locator('.shop-card').count() > 0, 'Shop offers are visible');
+    assert.equal(await page.locator('.playing-card-offer .playing-card-art .card-inner').count(), 1,
+      'An illustrated playable card is available in the multiplayer shop');
+    const buyCard = page.locator('.playing-card-offer [data-buy]');
+    assert.equal(await buyCard.isEnabled(), true, 'The offered card can be purchased');
+    await buyCard.click();
+    const purchasedCardId = await page.evaluate(() => window.__multi.game.discard.find(card => card.editionName)?.id);
+    assert.ok(purchasedCardId, 'A shop card purchase adds the illustrated edition to the run deck');
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('#btnOpenShop').isVisible(), true, 'Shop can be reopened');
     await page.locator('#btnOpenShop').click();
@@ -74,6 +81,10 @@ async function main() {
       window.__multi.me.status = 'play';
       window.__multi.applyRoundConfig(2, { type: 'Big', target: 500 });
     });
+    assert.equal(await page.evaluate(id => {
+      const { game } = window.__multi;
+      return [...game.hand, ...game.deck].filter(card => card.id === id).length;
+    }, purchasedCardId), 1, 'The purchased card is in the next blind without duplicates');
 
     const layouts = [];
     for (const viewport of [{ width: 1366, height: 768 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
