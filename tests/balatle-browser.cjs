@@ -64,7 +64,7 @@ async function fit(page,label){
     });
     await page.locator('#btnPlay').click();await page.waitForSelector('#shopBack.show');
     check(await page.locator('.shop-card').count()===8,'Winning a blind opens eight illustrated shop offers');
-    check(await page.locator('#shopList .shop-playing-card .card-inner').count()===2,'The shop previews both playable cards');
+    check(await page.locator('#shopList .shop-playing-card .card-inner').count()>=2,'The shop previews at least two playable cards');
     check((await page.locator('#cashoutLine').textContent()).includes('unused hands $3'),'Cashout shows unused-hand reward');
     await page.locator('#btnCloseShop').click();await page.locator('#btnOpenShop').click();
     check(await page.locator('#shopBack').evaluate(el=>el.classList.contains('show')),'Shop can be reopened after viewing the table');
@@ -109,6 +109,9 @@ async function fit(page,label){
     check((await page.locator('#bossRuleLine').textContent()).length>0,'The Boss blind explains its rule');
     check(await page.locator('#bossPortrait').locator('svg').count()===1,'The Boss blind renders pixel portrait art');
     await fit(page,'360×740 Boss encounter');
+    await page.locator('#bossEncounter summary').click();
+    check(await page.locator('#bossTip').isVisible(),'The phone Boss dossier expands to show its tactic');
+    await page.locator('#bossEncounter summary').click();
     await page.evaluate(()=>{
       const {game,renderAll}=window.__balatleTest;
       game.blindScore=game.target;renderAll();

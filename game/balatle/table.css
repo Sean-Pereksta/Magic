@@ -893,6 +893,8 @@ details[open] > summary { margin-bottom: 10px; }
 .solo-table .boss-dossier .boss-rule,
 .solo-table .boss-dossier details,
 .solo-table .boss-dossier-preview .eyebrow { grid-column: 1 / -1; margin: 0; }
+.solo-table .boss-dossier details { padding: 0; border: 0; }
+.solo-table .boss-dossier details[open] > summary { margin-bottom: 4px; }
 .solo-table .boss-dossier .boss-rule { color: #ffdfe3; font-size: 11px; line-height: 1.35; }
 .solo-table .boss-dossier summary { cursor: pointer; color: #eac8af; font-size: 10px; line-height: 1.35; }
 .solo-table .boss-rule-label, .solo-table .boss-rule-expanded { display: none; }
@@ -901,6 +903,8 @@ details[open] > summary { margin-bottom: 10px; }
 .solo-table .boss-dossier-cleansed { border-color: #659486; }
 .solo-table .boss-dossier-cleansed .boss-rule { color: #bae1d1; }
 @media (max-width: 740px), (max-height: 480px) {
+  .solo-table .blind-card:has(#bossEncounter:not([hidden])) > h1 { display: none; }
+  .solo-table .blind-card:has(#bossEncounter:not([hidden])) > .blind-path { display: none; }
   .solo-table .boss-dossier {
     position: relative; grid-template-columns: 30px minmax(0,1fr); margin-top: 5px; padding: 5px; gap: 3px 5px;
   }
@@ -920,6 +924,15 @@ details[open] > summary { margin-bottom: 10px; }
   .solo-table .boss-dossier-preview .eyebrow { display: block; }
   .solo-table .boss-name, .solo-table .boss-dossier .boss-rule { font-size: 10px; }
 }
-@media (max-width: 740px) {
-  .solo-table .blind-card:has(#bossEncounter:not([hidden])) > .blind-path { display: none; }
+@media (max-width: 340px) {
+  .solo-table .table-layout:has(#bossEncounter:not([hidden])) .score-stage { min-height: 87px; }
+  .solo-table .table-layout:has(#bossEncounter:not([hidden])) .table-main { gap: 5px; }
+  .solo-table .table-actions .kbd { display: none; }
+  .solo-table .table-actions .btn { white-space: nowrap; }
+}
+@media (min-width: 741px) and (min-height: 481px) {
+  .solo-table .run-rail:has(#bossEncounter:not([hidden]), #bossPreview:not([hidden])) {
+    align-self: start; max-height: calc(100svh - 98px);
+    overflow-y: auto; padding-bottom: 5px; scrollbar-width: thin; scrollbar-color: #a687ba #1e1933;
+  }
 }
