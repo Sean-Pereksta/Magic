@@ -106,11 +106,13 @@ function harness() {
     renderScoreboard = function () {};
     scheduleAdvanceCheck = function () {};
     globalThis.__multi = {
-      game, me, handUp, mkJoker, JOKER_POOL, CONSUME_POOL,
+      game, me, handUp, mkJoker, JOKER_POOL, JESTER_POOL, CONSUME_POOL,
       scoreSelection, playSelected, discardSelected, drawToHand,
       startNewRunLocal, applyRoundConfig, enterBuyPhase, finishRound,
       markReady, tickTimers, checkDeckExhausted,
       useConsumable, cancelConsumable, hideHow,
+      buyOffer, effectiveOfferCost,
+      offers: () => shopOffers,
       drawCards: originalRenderHand,
       setMatch(value) { match = value; }
     };
@@ -146,6 +148,47 @@ test('Multiplayer previews do not pay money, grow jokers, or mutate hand upgrade
   const before = JSON.stringify({ money: api.game.money, jokers: api.game.jokers, upgrades: api.handUp, score: api.game.blindScore });
   for (let i = 0; i < 8; i++) api.scoreSelection(cards);
   assert.equal(JSON.stringify({ money: api.game.money, jokers: api.game.jokers, upgrades: api.handUp, score: api.game.blindScore }), before);
+});
+
+test('Multiplayer shops stock a Jester and an illustrated card that joins the next blind', () => {
+  const { api } = harness();
+  api.game.blindScore = api.game.target;
+  api.enterBuyPhase();
+  const offers = [...api.offers()];
+  const jokers = offers.filter(offer => offer._kind === 'joker');
+  assert.equal(new Set(jokers.map(offer => offer.name)).size, 2);
+  assert.deepEqual(offers.map(offer => offer._kind).sort(), ['cons', 'jester', 'joker', 'joker', 'playing', 'voucher']);
+  const offer = offers.find(item => item._kind === 'playing');
+  const jester = offers.find(item => item._kind === 'jester');
+  api.game.money = 100;
+  const price = api.effectiveOfferCost(offer) + api.effectiveOfferCost(jester);
+  api.buyOffer(jester._id);
+  api.buyOffer(offer._id);
+  api.buyOffer(offer._id);
+  assert.equal(api.game.money, 100 - price);
+  assert.equal(api.game.jokers.length, 1);
+  assert.equal(api.game.jokers[0].name, jester.name);
+  assert.equal(api.game.discard.length, 1);
+  const bought = api.game.discard[0];
+  assert.equal(bought.editionName, offer.name);
+  api.applyRoundConfig(2, { type: 'Big', target: 500 });
+  const cards = [...api.game.hand, ...api.game.deck];
+  assert.equal(cards.filter(item => item.id === bought.id).length, 1);
+  assert.equal(cards.find(item => item.id === bought.id).editionName, offer.name);
+});
+
+test('Multiplayer Jester payouts apply on commit and use the scored poker hand', async () => {
+  const { api } = harness();
+  const oddsBroker = api.JESTER_POOL.find(item => item.name.includes('Odds Broker'));
+  assert.ok(oddsBroker);
+  api.game.jokers = [api.mkJoker(oddsBroker)];
+  const cards = [card(9, 'H'), card(9, 'C'), card('K', 'D'), card('K', 'S'), card('A', 'S')];
+  select(api, cards);
+  const before = api.game.money;
+  for (let i = 0; i < 5; i++) assert.equal(api.scoreSelection(cards).h.name, 'Two Pair');
+  assert.equal(api.game.money, before);
+  await api.playSelected();
+  assert.equal(api.game.money, before + 2);
 });
 
 test('A Pair scores only its pair cards while still discarding the selected kicker', async () => {

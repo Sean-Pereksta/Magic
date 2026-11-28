@@ -51,9 +51,8 @@ class Element {
   remove() {}
 }
 
-function harness() {
+function harness(storage = new Map()) {
   const elements = new Map();
-  const storage = new Map();
   const document = {
     body: new Element('body'),
     documentElement: new Element('html'),
@@ -112,9 +111,11 @@ function harness() {
     calculateScore: typeof calculateScore === 'function' ? calculateScore : null,
     playSelected, discardSelected, startNewRun, applyRoundConfig,
     finishRound, enterBuyPhase, nextRound, drawToHand,
-    useConsumable,
+    useConsumable, pickBossRuleForRound, roundBossRules, BOSS_RULES,
+    buyOffer, effectiveOfferCost, buyLegacyUpgrade, endRun,
+    offers: () => shopOffers,
     cancelPendingConsumable: typeof cancelPendingConsumable === 'function' ? cancelPendingConsumable : null,
-    FULL_JOKER_POOL, FULL_JESTER_POOL, FULL_CONSUME_POOL, mkJoker
+    FULL_JOKER_POOL, FULL_JESTER_POOL, FULL_CONSUME_POOL, SHOP_CARD_CATALOG, mkJoker
   };
 `;
   vm.runInContext(script.slice(0, boot) + expose + script.slice(boot + '\n  boot();'.length), context, { filename: 'balatlesolo.html' });
@@ -122,7 +123,7 @@ function harness() {
   api.startNewRun();
   api.options.autoFinishOnTarget = false;
   api.game.target = 1_000_000;
-  return { api, elements, context, animation };
+  return { api, elements, context, animation, storage };
 }
 
 function card(rank, suit, id, extra) {
@@ -281,4 +282,120 @@ test('A boss-only consumable is retained if used outside a Boss blind', () => {
   assert.equal(api.game.cons.length, 1);
   assert.equal(api.game.cons[0].name, cleanse.name);
   assert.equal(api.game.pendingUse, null);
+});
+
+test('Boss encounters cover the roster in a repeatable order and vary across endless cycles', () => {
+  const { api } = harness();
+  const rosterSize = api.BOSS_RULES.length;
+  assert.ok(rosterSize >= 20);
+  const schedule = seed => Array.from({ length: rosterSize * 3 }, (_, index) => api.pickBossRuleForRound(seed, (index + 1) * 3).key);
+  const bosses = schedule(3381);
+  assert.deepEqual(bosses, schedule(3381));
+  assert.notDeepEqual(bosses, schedule(9818));
+  for (let start = 0; start < bosses.length; start += rosterSize) {
+    assert.equal(new Set(bosses.slice(start, start + rosterSize)).size, rosterSize);
+  }
+  for (let i = 1; i < bosses.length; i++) assert.notEqual(bosses[i], bosses[i - 1]);
+  api.game.seed = 3381;
+  api.applyRoundConfig(rosterSize * 3 + 3);
+  assert.equal(api.game.blindType, 'Boss');
+  assert.equal(api.game.bossRule.key, bosses[rosterSize]);
+});
+
+test('Echo Jester penalizes repeated hand types only after a committed play', async () => {
+  const { api } = harness();
+  api.game.blindType = 'Boss';
+  api.game.bossRule = api.BOSS_RULES.find(boss => boss.key === 'repeatHand');
+  api.game.boss = api.roundBossRules(api.game.bossRule, api.game.seed, 3, api.game.target);
+  const firstPair = selectFixture(api, [card(8, 'H', 'first-pair-1'), card(8, 'D', 'first-pair-2')]);
+  const secondPair = [card(9, 'H', 'next-pair-1'), card(9, 'C', 'next-pair-2')];
+  for (let i = 0; i < 3; i++) assert.equal(api.calculateScore(firstPair).mult, 2);
+  assert.equal(api.game.boss.plays, 0);
+  await api.playSelected();
+  assert.equal(api.game.boss.plays, 1);
+  assert.equal(api.calculateScore(secondPair).mult, 2 * 0.55);
+  assert.equal(api.calculateScore([secondPair[0]]).mult, 1);
+  assert.equal(api.game.boss.plays, 1);
+});
+
+test('Clearing a blind awards legacy medallions once and a new run can earn more', () => {
+  const { api, storage } = harness();
+  const balance = () => JSON.parse(storage.get('balatle_solo_legacy_v1')).medallions;
+  api.game.blindScore = api.game.target - 1;
+  api.finishRound();
+  assert.equal(api.game.mode, 'play');
+  api.game.blindScore = api.game.target;
+  api.finishRound();
+  assert.equal(balance(), 1);
+  api.finishRound();
+  api.enterBuyPhase();
+  assert.equal(balance(), 1);
+  api.applyRoundConfig(3);
+  api.game.blindScore = api.game.target;
+  api.finishRound();
+  assert.equal(balance(), 4);
+  api.endRun('Run finished.');
+  api.buyLegacyUpgrade('pocket-change');
+  assert.equal(balance(), 2);
+  assert.equal(JSON.parse(storage.get('balatle_solo_legacy_v1')).upgrades['pocket-change'], 1);
+  api.startNewRun();
+  assert.equal(api.game.money, 13);
+  api.game.blindScore = api.game.target;
+  api.finishRound();
+  assert.equal(balance(), 3);
+  assert.equal(harness(storage).api.game.money, 13, 'Purchased upgrades survive a browser reload');
+});
+
+test('A purchased shop card enters the next hand once and persists across later blinds', () => {
+  const { api } = harness();
+  api.game.blindScore = api.game.target;
+  api.finishRound();
+  const cards = api.offers().filter(offer => offer._kind === 'card');
+  assert.ok(cards.length >= 2, 'The shop provides distinct playable card options');
+  assert.equal(new Set(cards.map(offer => offer.name)).size, cards.length);
+  const offer = cards[0];
+  const cost = api.effectiveOfferCost(offer);
+  api.game.money = 0;
+  api.buyOffer(offer._id);
+  assert.equal(api.game.discard.length, 0);
+  api.game.money = 100;
+  api.buyOffer(offer._id);
+  api.buyOffer(offer._id);
+  assert.equal(api.game.money, 100 - cost);
+  assert.equal(api.game.discard.length, 1);
+  const bought = api.game.discard[0];
+  assert.equal(bought.editionName, offer.name);
+  api.nextRound();
+  assert.equal(api.game.hand.filter(card => card.id === bought.id).length, 1);
+  api.applyRoundConfig(4);
+  const cardsAfterShuffle = [...api.game.hand, ...api.game.deck, ...api.game.discard];
+  assert.equal(cardsAfterShuffle.filter(card => card.id === bought.id).length, 1);
+  assert.equal(cardsAfterShuffle.find(card => card.id === bought.id).editionName, offer.name);
+});
+
+test('Three-Bell Acrobat counts scoring cards and ignores unrelated cards', () => {
+  const { api } = harness();
+  const jester = api.FULL_JESTER_POOL.find(item => item.name.includes('Three-Bell Acrobat'));
+  assert.ok(jester);
+  const trip = [card(8, 'H'), card(8, 'C'), card(8, 'D'), card('A', 'S')];
+  const pair = [trip[0], trip[1], trip[3]];
+  const beforeTrip = api.calculateScore(trip);
+  const beforePair = api.calculateScore(pair);
+  api.game.jesters = [api.mkJoker(jester)];
+  assert.equal(api.calculateScore(trip).mult, beforeTrip.mult * 1.9);
+  assert.equal(api.calculateScore(pair).mult, beforePair.mult);
+});
+
+test('Gilded Ace never pays from a preview or from an unscored kicker', async () => {
+  const { api } = harness();
+  const gilded = { ...api.SHOP_CARD_CATALOG.find(offer => offer.name === 'Gilded Ace').card, id: 'gilded' };
+  const pairWithKicker = [card(8, 'D'), card(8, 'C'), gilded];
+  const before = api.game.money;
+  assert.equal(api.calculateScore(pairWithKicker).scoringIds.includes(gilded.id), false);
+  assert.equal(api.calculateScore(pairWithKicker).payout.length, 0);
+  assert.equal(api.calculateScore([gilded]).payout.length, 1);
+  assert.equal(api.game.money, before);
+  selectFixture(api, [gilded]);
+  await api.playSelected();
+  assert.equal(api.game.money, before + 2);
 });

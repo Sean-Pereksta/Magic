@@ -34,8 +34,30 @@
           <div class="eyebrow">Score at least</div>
           <div class="rail-score" id="target">300</div>
           <div class="blind-path" id="blindPath" aria-label="Blinds in this ante"></div>
-          <div id="bossRuleLine" class="boss-rule"></div>
+          <div class="boss-dossier" id="bossEncounter" hidden>
+            <span class="boss-portrait" id="bossPortrait" aria-hidden="true"></span>
+            <div class="boss-dossier-copy">
+              <strong class="boss-name" id="bossName"></strong>
+              <p class="boss-rule" id="bossRuleLine"></p>
+              <details>
+                <summary><span class="boss-tactic-label">Tactic</span><span class="boss-rule-label">Boss rule &amp; tactic</span></summary>
+                <div class="boss-detail-box"><p class="boss-rule-expanded"></p><p class="boss-tip" id="bossTip"></p></div>
+              </details>
+            </div>
+          </div>
           <div class="small" id="nextGoalLine"></div>
+          <div class="boss-dossier boss-dossier-preview" id="bossPreview" hidden>
+            <small class="eyebrow">Next boss</small>
+            <span class="boss-portrait" aria-hidden="true"></span>
+            <div class="boss-dossier-copy">
+              <strong class="boss-name"></strong>
+              <p class="boss-rule"></p>
+              <details>
+                <summary><span class="boss-tactic-label">Tactic</span><span class="boss-rule-label">Rule &amp; tactic</span></summary>
+                <div class="boss-detail-box"><p class="boss-rule-expanded"></p><p class="boss-tip"></p></div>
+              </details>
+            </div>
+          </div>
         </section>
         <section class="rail-card score-card">
           <div class="eyebrow">Round score</div>
@@ -79,7 +101,7 @@
         </section>
         <div class="table-actions">
           <div class="action-main"><button class="btn primary" id="btnPlay" disabled>Play hand <span class="kbd">↵</span></button><button class="btn bad" id="btnDiscard" disabled>Discard <span class="kbd">D</span></button><button class="btn" id="btnClear" disabled>Clear</button></div>
-          <div class="action-secondary"><button class="btn good" id="btnFinish" hidden>Cash out</button><button class="btn good" id="btnOpenShop" hidden>Return to shop</button><button class="btn good" id="btnRestartOut" hidden>New run</button></div>
+          <div class="action-secondary"><button class="btn good" id="btnFinish" hidden>Cash out</button><button class="btn good" id="btnOpenShop" hidden>Return to shop</button><button class="btn good" id="btnRestartOut" hidden>Fortune Lodge</button></div>
         </div>
         <footer class="table-footer"><span id="tableHint">Select cards to see your score before you play.</span><span class="small">No timers. Take your time.</span></footer>
       </section>
@@ -94,7 +116,7 @@
         <div class="list" id="jokerList"></div><h3>Consumables</h3><div class="list" id="consList"></div>
         <details><summary>Hand upgrades &amp; vouchers</summary><div class="itemMeta" id="ownedSummary"></div></details>
         <div class="sep"></div><div class="small" id="runSummaryLine"></div><div class="row"><span>Best this run <b id="bestRun">0</b></span><span id="hiScoreLine"></span></div>
-        <button class="btn mini bad" id="btnReset">Start a new run</button>
+        <div class="row run-build-actions"><button class="btn mini" id="btnLegacy" aria-controls="legacyBack">Fortune Lodge</button><button class="btn mini bad" id="btnReset">End this run</button></div>
       </div>
     </section>
   </div>
@@ -111,6 +133,8 @@
         <p>Pick 1–5 cards. Only the cards forming your poker hand contribute their chip values. The blue Chips × red Mult is your score; jokers activate from left to right.</p>
         <div id="handGuide" class="hand-guide"></div>
         <p>Beat the Small, Big and Boss blinds to advance an ante. Clear ante 8, then continue into endless play. Each blind reshuffles your remaining deck, including permanent card upgrades.</p>
+        <p>The shop sells playable cards that join your deck for the rest of the run. An edition badge marks a special effect. Jokers trigger first, then your Jesters, each from left to right.</p>
+        <p>Read each boss's rule before playing. Cash out to earn Medallions you can spend at Fortune Lodge between runs.</p>
         <p>Earn the blind reward, $1 for each unused hand, and $1 interest per $5 saved (up to $5 before upgrades). You have two lives, four hands and three discards by default.</p>
         <p class="note">Enter: play · D: discard · 1–8: select cards · R: sort rank · S: sort suit · Escape: clear selection or close.</p>
       </div>
@@ -128,6 +152,23 @@
   </div>
   <div class="modalBack" id="deckBack" aria-hidden="true">
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="deckTitle"><div class="ph"><h2 id="deckTitle">Your deck</h2><button class="btn mini" id="btnCloseDeck">Close</button></div><div class="content"><p id="deckSummary"></p><div id="deckGrid" class="deck-grid"></div></div></section>
+  </div>
+  <div class="modalBack" id="legacyBack" aria-hidden="true">
+    <section class="modal legacy-modal" role="dialog" aria-modal="true" aria-labelledby="legacyTitle">
+      <div class="ph">
+        <div><h2 id="legacyTitle">Fortune Lodge</h2><p class="note">Buy permanent upgrades for future solo runs.</p></div>
+        <div class="row legacy-actions"><button class="btn mini" id="btnLegacyClose">Close</button><button class="btn good" id="btnLegacyStart">Start next run</button></div>
+      </div>
+      <div class="content">
+        <div class="legacy-wallet">
+          <div><span class="legacy-medallion" aria-hidden="true"></span><strong id="legacyBalance">0</strong> Medallions</div>
+          <p id="legacySummary" class="note"></p>
+        </div>
+        <p id="legacyRule" class="small"></p>
+        <div id="legacyPaths" class="legacy-paths"></div>
+        <div id="legacyFeedback" class="small" role="status" aria-live="polite"></div>
+      </div>
+    </section>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>
@@ -235,6 +276,61 @@
   }
   function showOpt(){ setDialog("optBack", true); renderOptionsUI(); }
   function hideOpt(){ setDialog("optBack", false); }
+  function canShopLegacy(){
+    return !game.scoring && (game.mode==="end" || (game.mode==="play" && game.round===1 && !game.legacyRun.started));
+  }
+  function renderLegacy(){
+    const profile=loadLegacyProfile();
+    const shopping=canShopLegacy();
+    $("legacyBalance").textContent=fmt(profile.medallions);
+    $("legacySummary").textContent=game.mode==="end"
+      ? `${game.legacyRun.endReason} Earned ${fmt(game.legacyRun.earned)} Medallions this run.`
+      : `${fmt(profile.earned)} earned · ${fmt(profile.clears)} blinds cleared across all runs.`;
+    const availability=shopping ? "Upgrades take effect in your next run." : "Finish this run to buy an upgrade.";
+    $("legacyRule").textContent=`Clear a blind for 1 Medallion. Bosses award 3, or 4 on Hard. ${availability}${legacyStorageAvailable ? "" : " Browser storage is unavailable. Progress stays in this tab."}`;
+    $("btnLegacyStart").hidden=!shopping;
+    $("legacyPaths").innerHTML=LEGACY_PATHS.map(path=>`<section class="legacy-path">
+      <h3>${path.name}</h3>
+      ${path.upgrades.map(upgrade=>{
+        const level=profile.upgrades[upgrade.id]||0;
+        const cost=upgrade.costs[level];
+        const [requiredId,requiredLevel]=upgrade.requires||[];
+        const locked=requiredId && (profile.upgrades[requiredId]||0)<requiredLevel;
+        const unavailable=cost===undefined || !shopping || locked || cost>profile.medallions;
+        const state=locked ? `Requires ${legacyById.get(requiredId).name} rank ${requiredLevel}` : `Rank ${level} / ${upgrade.costs.length}`;
+        return `<article class="legacy-upgrade">
+          <div><h4>${upgrade.name}</h4><p>${upgrade.desc}</p></div>
+          <div class="legacy-upgrade-footer"><span>${state}</span><button class="btn mini" type="button" aria-label="${cost===undefined ? `${upgrade.name} fully upgraded` : `Buy ${upgrade.name} rank ${level+1} for ${cost} Medallions`}" data-legacy-upgrade="${upgrade.id}" ${unavailable?"disabled":""}>${cost===undefined?"Maxed":`Buy · ${cost}`}</button></div>
+        </article>`;
+      }).join("")}
+    </section>`).join("");
+  }
+  function showLegacy(){
+    if(game.scoring) return;
+    if($("buildBack").classList.contains("show")) setDrawer(false);
+    $("legacyFeedback").textContent="";
+    renderLegacy();
+    setDialog("legacyBack",true);
+  }
+  function buyLegacyUpgrade(id){
+    if(!canShopLegacy()) return false;
+    const upgrade=legacyById.get(id);
+    if(!upgrade) return false;
+    const profile=loadLegacyProfile();
+    const level=profile.upgrades[id]||0;
+    const cost=upgrade.costs[level];
+    if(cost===undefined || cost>profile.medallions) return false;
+    if(upgrade.requires){
+      const [requiredId,requiredLevel]=upgrade.requires;
+      if((profile.upgrades[requiredId]||0)<requiredLevel) return false;
+    }
+    saveLegacyProfile({...profile,medallions:profile.medallions-cost,upgrades:{...profile.upgrades,[id]:level+1}});
+    renderLegacy();
+    $("legacyFeedback").textContent=`${upgrade.name} rank ${level+1} purchased.`;
+    const button=$("legacyPaths").querySelector(`[data-legacy-upgrade="${id}"]:not(:disabled)`);
+    (button || $("btnLegacyStart")).focus({preventScroll:true});
+    return true;
+  }
 
   // ---------------------------
   // Cards / Deck
@@ -282,35 +378,200 @@
   // Boss rules (every 3rd round)
   // ---------------------------
   const BOSS_RULES = [
-    { key:"noDiscards", name:"Boss: No Discards", desc:"Discards are disabled this round.", apply(g){ g.boss.noDiscards = true; } },
-    { key:"exactFive", name:"Boss: Exactly 5 Cards", desc:"You must play exactly 5 cards each hand.", apply(g){ g.boss.exactFive = true; } },
-    { key:"noPairs", name:"Boss: No Pairs", desc:"Pairs / Two Pair score as High Card.", apply(g){ g.boss.noPairs = true; } },
-    { key:"noStraights", name:"Boss: No Straights", desc:"Straights score as High Card; Straight Flush becomes Flush.", apply(g){ g.boss.noStraights = true; } },
-    { key:"noFace", name:"Boss: No Face Cards", desc:"Hands containing J/Q/K cannot be played.", apply(g){ g.boss.noFace = true; } },
-    { key:"suitDemand", name:"Boss: Suit Demand", desc:"Each play must include ≥3 cards of the demanded suit.", apply(g){ g.boss.suitDemand = true; g.boss.demandSuit = rng.pick(["S","H","D","C"]); g.boss.demandCount = 3; } },
-    { key:"handTight", name:"Boss: Tight Hands", desc:"-1 hand this round and hand size -1.", apply(g){ g.boss.handsDelta = -1; g.boss.handSizeDelta = -1; } },
-    { key:"discardTax", name:"Boss: Discard Tax", desc:"Each discard costs $1.", apply(g){ g.boss.discardTax = 1; } },
-    { key:"scorePenalty", name:"Boss: Toll Collector", desc:"Each play loses 80 score (after scoring).", apply(g){ g.boss.scorePenalty = 80; } },
+    {
+      key:"noDiscards", name:"The Sealed Curator", settings:{noDiscards:true},
+      desc:"Discards are locked for the entire blind.",
+      tip:"Play a small hand with the cards you can spare. Even a single card draws a replacement."
+    },
+    {
+      key:"exactFive", name:"Fivefold Knight", settings:{exactFive:true},
+      desc:"Play five cards whenever possible. If your build lowers the cap, play exactly that many.",
+      tip:"Only cards in the poker combination add Chips. Use extra slots to cycle weak cards."
+    },
+    {
+      key:"noPairs", name:"Mirror Moth", settings:{noPairs:true},
+      desc:"Pair and Two Pair score as High Card.",
+      tip:"Three of a Kind and Full House still work. Save a third matching rank."
+    },
+    {
+      key:"noStraights", name:"The Crooked Clock", settings:{noStraights:true},
+      desc:"Straight becomes High Card. Straight Flush becomes Flush.",
+      tip:"Collect a single suit or matching ranks. The clock bends rank sequences."
+    },
+    {
+      key:"noFace", name:"Mask Collector", settings:{noFace:true},
+      desc:"Jacks, Queens, and Kings cannot be played.",
+      tip:"Discard face cards and use low-rank upgrades. Aces are allowed."
+    },
+    {
+      key:"suitDemand", name:"The Suitbinder",
+      settings:({ante,suit})=>({suitDemand:true,demandSuit:suit,demandCount:ante>8 ? 3 : 2}),
+      desc:rules=>`Every play requires ${rules.demandCount} cards of ${bossSuitName(rules.demandSuit)}. Wild cards count.`,
+      tip:"Sort by suit, keep Wild cards, and discard cards that fall outside the demand."
+    },
+    {
+      key:"handTight", name:"Needle Warden", settings:{handsDelta:-1,handSizeDelta:-1},
+      desc:"Start with one fewer play and draw one fewer card into your hand.",
+      tip:"Use discards to build stronger combinations before spending a play."
+    },
+    {
+      key:"discardTax", name:"Gilded Usher",
+      settings:({ante})=>({discardTax:ante>8 ? 3 : 1}),
+      desc:rules=>`Every discard costs $${rules.discardTax}. A low balance can block discarding.`,
+      tip:"Set aside cash in the previous shop. Plays still let you cycle cards for free."
+    },
+    {
+      key:"scorePenalty", name:"Bridge Troll",
+      settings:({ante,target})=>({scorePenalty:Math.floor(target * (ante>8 ? .07 : .05))}),
+      desc:rules=>`The troll takes ${fmt(rules.scorePenalty)} points from each scored hand.`,
+      tip:"Combine Chips and Mult in a few larger plays to lose less of your score."
+    },
+    {
+      key:"noFlushes", name:"Velvet Phantom", settings:{noFlushes:true},
+      desc:"Flush becomes High Card. Straight Flush, Flush House, and Flush Five lose their flush bonuses.",
+      tip:"A Straight or a rank-based combination can still score."
+    },
+    {
+      key:"outerHands", name:"Iron Crown", settings:{outerHands:true},
+      desc:"Play a single card or fill every available selection slot.",
+      tip:"Use single cards to draw replacements, then make one full play for points."
+    },
+    {
+      key:"lowRank", name:"Ragged Marionette", settings:{lowRank:true},
+      desc:"Every play must include at least one card ranked 2 through 7.",
+      tip:"A low kicker can satisfy the rule while the main poker combination scores."
+    },
+    {
+      key:"wideSuits", name:"Orbit Raven", settings:{wideSuits:3},
+      desc:"Every play must represent three suits. Each Wild card can stand for one missing suit.",
+      tip:"Keep at least three suit colors in hand. A suit can count even if its card does not score."
+    },
+    {
+      key:"slowStart", name:"Ember Bell", settings:{firstMult:.5},
+      desc:"The first play has half its final Mult.",
+      tip:"Use a low-cost first play to draw the cards for your biggest combination."
+    },
+    {
+      key:"repeatHand", name:"Echo Jester", settings:{repeatMult:.55},
+      desc:"Playing the same scored hand type twice in a row reduces its final Mult to 55%.",
+      tip:"Alternate between two upgraded hand types. The first play is always safe."
+    },
+    {
+      key:"alternating", name:"Clockwork Emperor", settings:{evenMult:.65},
+      desc:"Every second play has 65% of its final Mult.",
+      tip:"Plan to score your best hands on plays 1, 3, and 5."
+    },
+    {
+      key:"pureHand", name:"Scissor Widow", settings:{fillerMult:.65},
+      desc:"A hand with any card outside its scoring combination keeps 65% of its final Mult.",
+      tip:"Play a Pair as two cards or a High Card alone. Use discards to clear the rest."
+    },
+    {
+      key:"lessons", name:"Mint Sphinx", settings:{muteLevels:true},
+      desc:"Hand level upgrades from Planets and run effects are suppressed for this blind.",
+      tip:"Card enhancements, Jokers, and Jesters still score. Invest in cards or your rack before this blind."
+    },
+    {
+      key:"payoutMute", name:"Lantern Leech", settings:{payoutMute:true},
+      desc:"Playing cards awards no cash from score bonuses.",
+      tip:"You still earn your blind payout, spare-hand bonus, and interest after the win."
+    },
+    {
+      key:"suitTaboo", name:"The Smoked Dragon",
+      settings:({suit})=>({bannedSuit:suit}),
+      desc:rules=>`Cards printed in ${bossSuitName(rules.bannedSuit)} cannot be played, including Wild cards of that printed suit.`,
+      tip:"Discard the forbidden suit or repaint those cards. The other three suits are safe."
+    },
+    {
+      key:"twoDiscard", name:"Frost Fisher", settings:{discardsDelta:-2},
+      desc:"Start with two fewer discards.",
+      tip:"A small play can help draw the right cards after your discards run out."
+    },
+    {
+      key:"suitTithe", name:"Briar Bishop",
+      settings:({suit})=>({titheSuit:suit,titheMult:.7}),
+      desc:rules=>`A hand keeps 70% of its final Mult unless a scoring card is in ${bossSuitName(rules.titheSuit)} or Wild.`,
+      tip:"A card outside the scoring combination cannot pay the tithe. Make the suit part of the hand itself."
+    },
+    {
+      key:"lastReserve", name:"Gutter Gargoyle", settings:{finalMult:.5},
+      desc:"If you have one play remaining, that play has half its final Mult.",
+      tip:"Save a discard for early setup. Try to clear the blind before your last play."
+    },
+    {
+      key:"playTax", name:"Marble Colossus",
+      settings:({ante})=>({playTax:ante>8 ? 3 : 2}),
+      desc:rules=>`Each play takes up to $${rules.playTax} from your cash before any scoring rewards. You can play at $0.`,
+      tip:"Cash out once you clear the blind. Extra plays can cost your shop budget."
+    }
   ];
 
+  function shuffleBossRoster(seed, cycle){
+    const random = xorshift32(seed ^ Math.imul(cycle + 1, 0x9e3779b9));
+    const roster = BOSS_RULES.slice();
+    for(let i=roster.length-1; i>0; i--){
+      const j=Math.floor(random() * (i+1));
+      [roster[i],roster[j]]=[roster[j],roster[i]];
+    }
+    return roster;
+  }
+
   function pickBossRuleForRound(seed, round){
-    const bossIndex = Math.floor(round/3);
-    const r = xorshift32((seed ^ (bossIndex*1103515245))|0);
-    return BOSS_RULES[Math.floor(r()*BOSS_RULES.length)];
+    const index = Math.max(0, Math.floor(round/3)-1);
+    const cycle = Math.floor(index/BOSS_RULES.length);
+    const roster = shuffleBossRoster(seed,cycle);
+    if(cycle && roster[0]===shuffleBossRoster(seed,cycle-1).at(-1)){
+      [roster[0],roster[1]]=[roster[1],roster[0]];
+    }
+    return roster[index % roster.length];
+  }
+
+  function roundBossRules(boss, seed, round, target){
+    const ante=Math.ceil(round/3);
+    const random=xorshift32(seed ^ Math.imul(ante,0x85ebca6b));
+    const suit=SUITS[Math.floor(random()*SUITS.length)].k;
+    const settings=typeof boss.settings==="function" ? boss.settings({ante,suit,target}) : boss.settings;
+    return { ...settings, plays:0 };
+  }
+
+  function bossSuitName(suit){
+    return {H:"Hearts",D:"Diamonds",S:"Spades",C:"Clubs"}[suit] || "the marked suit";
   }
 
   function applyBossOverrides(handEval, g){
     if(g.blindType!=="Boss") return handEval;
-    if(g.boss.noStraights){
-      if(handEval.name==="Straight") return { ...handEval, name:"High Card", tier:1, baseChips:5, baseMult:1, detail:"(boss: straight nullified)", bossNullified:true };
-      if(handEval.name==="Straight Flush") return { ...handEval, name:"Flush", tier:6, baseChips:35, baseMult:4, detail:"(boss: straight nullified → flush)", bossNullified:true };
-    }
-    if(g.boss.noPairs){
-      if(handEval.name==="Pair" || handEval.name==="Two Pair"){
-        return { ...handEval, name:"High Card", tier:1, baseChips:5, baseMult:1, detail:"(boss: pairs nullified)", bossNullified:true };
-      }
-    }
-    return handEval;
+    const name=handEval.name;
+    let downgraded=null;
+    if(g.boss.noStraights) downgraded={Straight:"High Card","Straight Flush":"Flush"}[name];
+    if(g.boss.noPairs && (name==="Pair" || name==="Two Pair")) downgraded="High Card";
+    if(g.boss.noFlushes) downgraded={Flush:"High Card","Straight Flush":"Straight","Flush House":"Full House","Flush Five":"Five of a Kind"}[name];
+    return downgraded ? {...handEval, ...Core.HANDS[downgraded], name:downgraded, bossNullified:true} : handEval;
+  }
+
+  function bossScoreModifiers(cards, hand, scoring, payoutCount){
+    const rules=game.boss;
+    const boss=game.bossRule;
+    const modifiers=[];
+    if(game.blindType!=="Boss") return {scale:1,penalty:0,modifiers};
+    if(!boss || rules.cleansed) return {scale:1,penalty:rules.scorePenalty||0,modifiers};
+
+    const add=label=>modifiers.push({name:boss.name,label});
+    let scale=1;
+    if(!rules.plays && rules.firstMult) scale=rules.firstMult;
+    if(rules.repeatMult && rules.lastHand===hand.name) scale=rules.repeatMult;
+    if(rules.evenMult && rules.plays%2===1) scale=rules.evenMult;
+    if(rules.fillerMult && cards.length>scoring.length) scale=rules.fillerMult;
+    if(rules.titheMult && !scoring.some(c=>c.wild || c.suit===rules.titheSuit)) scale=rules.titheMult;
+    if(rules.finalMult && game.handsLeft===1) scale=rules.finalMult;
+    if(scale!==1) add(`×${scale} final Mult`);
+
+    const penalty=rules.scorePenalty||0;
+    if(penalty) add(`−${fmt(penalty)} score`);
+    if(hand.bossNullified) add(`Downgraded to ${hand.name}`);
+    if(rules.muteLevels) add("Hand levels suppressed");
+    if(rules.payoutMute && payoutCount) add("Score cash blocked");
+    if(rules.playTax && game.money>0) add(`−$${Math.min(game.money,rules.playTax)}`);
+    return {scale,penalty,modifiers};
   }
 
   // ---------------------------
@@ -437,6 +698,74 @@
     { kind:"jester", rarity:"legendary", name:"🃏 King of Fools", cost:18, desc:"×2.6 Mult, but you must always play exactly 5 cards (all rounds).", apply(ctx){ ctx.mulMult *= 2.6; }, applyBuy(){ game.perma.forceExactlyFive = true; }, revertSell(){ game.perma.forceExactlyFive = false; } },
   ];
 
+  const MARKET_JESTERS = [
+    { kind:"jester", rarity:"common", art:"key", name:"Spare Key", cost:7, desc:"+32 Chips when exactly one card scores.",
+      apply(ctx){ if(ctx.scoringCards.length===1) ctx.addChips += 32; } },
+    { kind:"jester", rarity:"uncommon", art:"lantern", name:"Lantern Keeper", cost:9, desc:"+2.5 Mult when an enhanced card scores. Otherwise, −0.5 Mult.",
+      apply(ctx){ ctx.addMult += ctx.scoringCards.some(isEnhancedCard) ? 2.5 : -0.5; } },
+    { kind:"jester", rarity:"uncommon", art:"thread", name:"Silk Stitcher", cost:9, desc:"+18 Chips per scoring Wax Seal. +2 Mult if a Wax Seal and Crown both score.",
+      apply(ctx){
+        const waxed = ctx.scoringCards.filter(card=>card.wax).length;
+        ctx.addChips += 18 * waxed;
+        if(waxed && ctx.scoringCards.some(card=>card.crowned)) ctx.addMult += 2;
+      } },
+    { kind:"jester", rarity:"common", art:"mask", name:"Turncoat", cost:8, desc:"+2.5 Mult when your hand type changes from your last play. Repeats lose 0.5 Mult.",
+      apply(ctx){
+        if(game.lastHandType) ctx.addMult += game.lastHandType===ctx.handName ? -0.5 : 2.5;
+      } },
+    { kind:"jester", rarity:"uncommon", art:"bells", name:"Three-Bell Acrobat", cost:10, desc:"×1.9 Mult when exactly three cards score.",
+      apply(ctx){ if(ctx.scoringCards.length===3) ctx.mulMult *= 1.9; } },
+    { kind:"jester", rarity:"rare", art:"music", name:"Pocket Conductor", cost:12, desc:"Learns each hand type when played. +0.5 Mult per learned type, up to +4.",
+      initState(){ return { learned:[], bonus:0 }; },
+      apply(ctx){
+        ctx.addMult += this.state.bonus;
+        if(!this.state.learned.includes(ctx.handName)){
+          ctx.note = "Learns " + ctx.handName;
+          ctx.onAfter.push(()=>{
+            this.state.learned = [...this.state.learned, ctx.handName];
+            this.state.bonus = Math.min(4, this.state.learned.length * 0.5);
+          });
+        }
+      } },
+    { kind:"jester", rarity:"uncommon", art:"crystal", name:"Alley Oracle", cost:10, desc:"+26 Chips for a straight or better when all scoring cards have distinct ranks.",
+      apply(ctx){
+        const ranks = new Set(ctx.scoringCards.map(card=>card.rank));
+        if(HAND_KEYS.indexOf(ctx.handName)>=HAND_KEYS.indexOf("Straight") && ranks.size===ctx.scoringCards.length) ctx.addChips += 26;
+      } },
+    { kind:"jester", rarity:"rare", art:"moth", name:"Moth of Midnight", cost:12, desc:"×2.1 Mult on your final available hand. Other hands multiply by ×0.9.",
+      apply(ctx){ ctx.mulMult *= game.handsLeft===1 ? 2.1 : 0.9; } },
+    { kind:"jester", rarity:"rare", art:"clock", name:"Clockwork Harlequin", cost:12, desc:"Every third hand gets ×2.4 Mult. Counts across blinds.",
+      initState(){ return { hands:0 }; },
+      status(){ return this.state.hands===2 ? "Next hand is charged." : `${2-this.state.hands} more before the charged hand.`; },
+      apply(ctx){
+        if(this.state.hands===2) ctx.mulMult *= 2.4;
+        ctx.onAfter.push(()=>{ this.state.hands = (this.state.hands + 1) % 3; });
+      } },
+    { kind:"jester", rarity:"legendary", art:"ticket", name:"Velvet Usher", cost:15, desc:"+1.5 Mult when two market cards score. Three or more also multiply by ×1.7.",
+      apply(ctx){
+        const featured = ctx.scoringCards.filter(card=>card.editionName).length;
+        if(featured>=2) ctx.addMult += 1.5;
+        if(featured>=3) ctx.mulMult *= 1.7;
+      } },
+    { kind:"jester", rarity:"common", art:"coins", name:"Odds Broker", cost:8, desc:"Collect $2 after scoring Two Pair or a Full House.",
+      apply(ctx){ if(ctx.handName==="Two Pair" || ctx.handName==="Full House") ctx.onPayout.push(()=>{ game.money += 2; }); } },
+    { kind:"jester", rarity:"common", art:"crown", name:"Paper Crown", cost:8, desc:"+1 Mult per face card that scores.",
+      apply(ctx){ ctx.addMult += ctx.scoringCards.filter(card=>["J","Q","K"].includes(card.rank)).length; } },
+    { kind:"jester", rarity:"rare", art:"sundial", name:"Sun-Dial Scribe", cost:12, desc:"Your first hand each blind trains its poker hand type for +12 base Chips for this run.",
+      apply(ctx){
+        if(!game.lastResult){
+          ctx.note = `${ctx.handName} gains +12 base Chips`;
+          ctx.onAfter.push(()=>{ handUp[ctx.handName].chips += 12; });
+        }
+      } },
+    { kind:"jester", rarity:"uncommon", art:"flame", name:"Hearth Clown", cost:9, desc:"+8 Chips per scoring card ranked 2 through 6. +1 Mult when at least three score.",
+      apply(ctx){
+        const lowCards = ctx.scoringCards.filter(card=>card.rv<=6).length;
+        ctx.addChips += lowCards * 8;
+        if(lowCards>=3) ctx.addMult += 1;
+      } },
+  ];
+
   const VOUCHER_POOL = [
     { kind:"voucher", name:"Extra Discard", cost:8, desc:"+1 Discard each round (permanent).", applyBuy(){ game.perma.discards += 1; }, revertSell(){ game.perma.discards = Math.max(0, game.perma.discards-1); } },
     { kind:"voucher", name:"Extra Hand", cost:10, desc:"+1 Hand each round (permanent).", applyBuy(){ game.perma.hands += 1; }, revertSell(){ game.perma.hands = Math.max(0, game.perma.hands-1); } },
@@ -485,14 +814,120 @@
     { kind:"cons", rarity:"uncommon", family:"spectral", name:"Spectral: Haunt", cost:8, desc:"Next hand played gets ×2.0 Mult, then this effect disappears.", use(){ if(game.mode!=="play") return toast("Use during Play."); game.perma.nextHandMult = (game.perma.nextHandMult||1) * 2.0; toast("Haunt armed: next play ×2.0"); } },
     { kind:"cons", rarity:"uncommon", family:"spectral", name:"Spectral: Duplicate+", cost:9, desc:"Tap a card: duplicate it directly into your hand (if space), else into discard.", use(){ if(game.mode!=="play") return toast("Use during Play."); game.pendingUse={type:"dupIntoHand"}; toast("Tap a card to duplicate into hand."); } },
     { kind:"cons", rarity:"rare", family:"spectral", name:"Spectral: Time Skip", cost:9, desc:"Gain +2 hands immediately this round.", use(){ if(game.mode!=="play") return toast("Use during Play."); game.handsLeft += 2; renderAll(); toast("+2 hands"); } },
-    { kind:"cons", rarity:"rare", family:"spectral", name:"Spectral: Cleanse", cost:9, desc:"Remove the current Boss limitation (this round only).", use(){ if(game.mode!=="play") return toast("Use during Play."); if(game.blindType!=="Boss") return toast("Only on Boss rounds."); if(game.boss.noDiscards) game.discardsLeft += Math.max(0,3+game.perma.discards); game.handsLeft -= Math.min(0,game.boss.handsDelta||0); game.boss={}; game.bossRule=null; drawToHand(); renderAll(); toast("Boss rule cleansed."); } },
+    { kind:"cons", rarity:"rare", family:"spectral", name:"Spectral: Cleanse", cost:9, desc:"Remove the current Boss limitation and restore the plays or discards it withheld.", use(){
+      game.handsLeft += game.boss.lockedHands||0;
+      game.discardsLeft += game.boss.lockedDiscards||0;
+      game.boss={cleansed:true};
+      drawToHand();
+      renderAll();
+      toast("Boss rule cleansed.");
+    } },
     { kind:"cons", rarity:"legendary", family:"spectral", name:"Spectral: Ascension", cost:12, desc:"Permanently +1 joker slot and +1 jester slot.", use(){ game.perma.jokerCap = Math.min(8,(game.perma.jokerCap||5)+1); game.perma.jesterCap = Math.min(4,(game.perma.jesterCap||2)+1); renderAll(); toast("Ascension: +slots"); } },
   ];
 
   const FULL_JOKER_POOL = [...JOKER_POOL, ...EXTRA_JOKERS];
-  const FULL_JESTER_POOL = [...JESTER_POOL, ...EXTRA_JESTERS];
+  const FULL_JESTER_POOL = [...JESTER_POOL, ...EXTRA_JESTERS, ...MARKET_JESTERS];
   const FULL_VOUCHER_POOL = [...VOUCHER_POOL, ...EXTRA_VOUCHERS];
   const FULL_CONSUME_POOL = [...CONSUME_POOL, ...EXTRA_CONSUMABLES];
+
+  const LEGACY_KEY = "balatle_solo_legacy_v1";
+  const LEGACY_PATHS = [
+    { name:"Cardcraft", upgrades:[
+      { id:"practiced-cuts", name:"Practiced Cuts", costs:[2,5], desc:"+4 starting chips per rank for High Card, Pair and Two Pair.",
+        apply(level){ for(const hand of ["High Card","Pair","Two Pair"]) handUp[hand].chips+=4*level; } },
+      { id:"sharp-corners", name:"Sharp Corners", costs:[5], requires:["practiced-cuts",1], desc:"Every starting face card and ace gains +3 chips.",
+        apply(){ for(const card of game.deck) if(card.rv>=11) card.bonusChip+=3; } },
+      { id:"wider-grip", name:"Wider Grip", costs:[9], requires:["sharp-corners",1], desc:"+1 card in your hand each blind.",
+        apply(){ game.perma.handSize+=1; } },
+      { id:"house-ace", name:"House Ace", costs:[14], requires:["wider-grip",1], desc:"Start with an extra Ace of Spades worth +8 bonus chips.",
+        apply(){
+          const ace=game.deck.find(card=>card.rank==="A" && card.suit==="S");
+          game.deck.push({...ace,id:`legacy_ace_${ace.id}`,bonusChip:8});
+        } }
+    ] },
+    { name:"Fortune", upgrades:[
+      { id:"pocket-change", name:"Pocket Change", costs:[2,5], desc:"+$3 starting cash per rank.",
+        apply(level){ game.perma.startMoneyBonus+=3*level; } },
+      { id:"market-scout", name:"Market Scout", costs:[4,8], requires:["pocket-change",1], desc:"+1 item offer in every shop per rank.",
+        apply(level){ game.perma.shopSlots+=level; } },
+      { id:"shop-credit", name:"Shop Credit", costs:[8], requires:["market-scout",1], desc:"Save $2 on your first purchase each shop.",
+        apply(){ game.perma.coupon+=1; } },
+      { id:"market-pass", name:"Market Pass", costs:[12], requires:["shop-credit",1], desc:"Your first reroll in each shop is free.",
+        apply(){ game.perma.freeReroll+=1; } }
+    ] },
+    { name:"Resolve", upgrades:[
+      { id:"spare-draw", name:"Spare Draw", costs:[3], desc:"+1 discard each blind.",
+        apply(){ game.perma.discards+=1; } },
+      { id:"calculated-play", name:"Calculated Play", costs:[6], requires:["spare-draw",1], desc:"+1 hand each blind.",
+        apply(){ game.perma.hands+=1; } },
+      { id:"boss-bounty", name:"Boss Bounty", costs:[9], requires:["calculated-play",1], desc:"Earn an extra $4 when you beat a boss.",
+        apply(){ game.perma.bossRewardBonus+=4; } },
+      { id:"second-wind", name:"Second Wind", costs:[14], requires:["boss-bounty",1], desc:"Start each run with an extra life.",
+        apply(){ game.livesLeft+=1; } }
+    ] }
+  ];
+  const LEGACY_UPGRADES = LEGACY_PATHS.flatMap(path=>path.upgrades);
+  const legacyById = new Map(LEGACY_UPGRADES.map(upgrade=>[upgrade.id,upgrade]));
+  let legacyProfile = {version:1,medallions:0,earned:0,clears:0,upgrades:{},credits:{}};
+  let legacyStorageAvailable = true;
+  let legacyRunCounter = 0;
+
+  function legacyCount(value){
+    return Number.isSafeInteger(value) && value>=0 ? value : 0;
+  }
+  function loadLegacyProfile(){
+    if(!legacyStorageAvailable) return legacyProfile;
+    try{
+      const saved=JSON.parse(localStorage.getItem(LEGACY_KEY));
+      if(saved?.version!==1) return legacyProfile;
+      const upgrades={};
+      for(const upgrade of LEGACY_UPGRADES){
+        upgrades[upgrade.id]=Math.min(upgrade.costs.length,legacyCount(saved.upgrades?.[upgrade.id]));
+      }
+      const credits=Object.fromEntries(Object.entries(saved.credits||{})
+        .filter(([id,round])=>/^[a-zA-Z0-9_-]{1,100}$/.test(id) && legacyCount(round)>0).slice(-32));
+      legacyProfile={version:1,medallions:legacyCount(saved.medallions),earned:legacyCount(saved.earned),clears:legacyCount(saved.clears),upgrades,credits};
+    }catch(error){
+      if(!(error instanceof SyntaxError)) legacyStorageAvailable=false;
+    }
+    return legacyProfile;
+  }
+  function saveLegacyProfile(profile){
+    legacyProfile=profile;
+    if(!legacyStorageAvailable) return;
+    try{ localStorage.setItem(LEGACY_KEY,JSON.stringify(profile)); }
+    catch(error){ legacyStorageAvailable=false; }
+  }
+  function newLegacyRun(){
+    const id=globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${game.seed}-${++legacyRunCounter}`;
+    return {id,started:false,credited:0,earned:0,lastReward:0};
+  }
+  function earnLegacy(round=game.round){
+    const run=game.legacyRun;
+    const profile=loadLegacyProfile();
+    if(round<=Math.max(run.credited,profile.credits[run.id]||0)) return 0;
+    const reward=game.blindType==="Boss" ? (game.difficulty==="hard" ? 4 : 3) : 1;
+    run.started=true;
+    run.credited=round;
+    run.earned+=reward;
+    const credits={...profile.credits};
+    delete credits[run.id];
+    credits[run.id]=round;
+    saveLegacyProfile({
+      ...profile, medallions:Math.min(Number.MAX_SAFE_INTEGER,profile.medallions+reward),
+      earned:Math.min(Number.MAX_SAFE_INTEGER,profile.earned+reward),
+      clears:Math.min(Number.MAX_SAFE_INTEGER,profile.clears+1),
+      credits:Object.fromEntries(Object.entries(credits).slice(-32))
+    });
+    return reward;
+  }
+  function applyLegacyUpgrades(){
+    const {upgrades}=loadLegacyProfile();
+    for(const upgrade of LEGACY_UPGRADES){
+      const level=upgrades[upgrade.id]||0;
+      if(level) upgrade.apply(level);
+    }
+  }
 
   // ---------------------------
   // Game state
@@ -503,7 +938,7 @@
   const game = {
     mode:"play", // play | shop | end
     scoring:false, sortMode:"rank", difficulty:options.difficulty,
-    lastSettlement:null, settledRound:0,
+    lastSettlement:null, settledRound:0, legacyRun:null,
     seed: (Math.random()*2_000_000_000)|0,
 
     deck:[], discard:[], hand:[], sel:new Set(),
@@ -577,6 +1012,7 @@
   function drawToHand(){
     while(game.hand.length < currentHandSize() && game.deck.length){
       const card = game.deck.pop();
+      delete card.freshFromShop;
       game.hand.push(card);
       Table.queueDraw?.(card.id);
     }
@@ -590,28 +1026,112 @@
   // ---------------------------
   // Shop
   // ---------------------------
+  const SHOP_CARD_CATALOG = [
+    { name:"Copper Five", rank:"5", suit:"H", cost:6, rarity:"common", mark:"+", bonusChip:14, desc:"+14 Chips whenever it scores." },
+    { name:"Springstep Three", rank:"3", suit:"D", cost:7, rarity:"common", mark:"↑", effect:"pair", desc:"+14 Chips when another scoring Three joins it." },
+    { name:"Mirror Nine", rank:"9", suit:"S", cost:8, rarity:"common", mark:"Ⅱ", effect:"pair", desc:"+14 Chips when another scoring Nine joins it." },
+    { name:"Waxwing Seven", rank:"7", suit:"C", cost:7, rarity:"common", mark:"◆", bonusChip:3, wax:1, desc:"+3 Chips now and +3 permanent Chips each time you play it." },
+    { name:"Festival Six", rank:"6", suit:"D", cost:8, rarity:"uncommon", mark:"★", effect:"festival", desc:"+1.5 Mult when it scores with another market card." },
+    { name:"Ember Jack", rank:"J", suit:"H", cost:9, rarity:"uncommon", mark:"F", bonusChip:6, effect:"ember", desc:"+6 Chips, plus another +18 when a second Heart scores." },
+    { name:"Last-Light Ten", rank:"10", suit:"H", cost:9, rarity:"uncommon", mark:"L", effect:"last", desc:"+2 Mult when it scores on your last available hand of the blind." },
+    { name:"Wayfarer Two", rank:"2", suit:"C", cost:8, rarity:"uncommon", mark:"W", bonusChip:7, wild:true, desc:"Wild suit. +7 Chips whenever it scores." },
+    { name:"Glass Comet", rank:"8", suit:"D", cost:9, rarity:"uncommon", mark:"G", bonusChip:25, glass:true, desc:"+25 Chips. A 10% chance to shatter when played." },
+    { name:"Ruby Crown", rank:"Q", suit:"H", cost:10, rarity:"rare", mark:"C", bonusChip:4, crowned:true, desc:"+4 Chips and +1 Mult whenever it scores." },
+    { name:"Echo Queen", rank:"Q", suit:"S", cost:11, rarity:"rare", mark:"E", effect:"echo", desc:"Doubles its own Chips, including permanent boosts, when it scores." },
+    { name:"Gilded Ace", rank:"A", suit:"D", cost:11, rarity:"rare", mark:"$", bonusChip:5, effect:"cash", desc:"+5 Chips and $2 whenever it scores." },
+    { name:"Lucky Eight", rank:"8", suit:"C", cost:10, rarity:"rare", mark:"$", bonusChip:4, effect:"cash", desc:"+4 Chips and $2 whenever it scores." },
+    { name:"Oathbound King", rank:"K", suit:"C", cost:11, rarity:"rare", mark:"O", effect:"first", desc:"+2 Mult when it scores on your first played hand of the blind." },
+    { name:"Star Crown", rank:"K", suit:"S", cost:12, rarity:"rare", mark:"C", bonusChip:7, crowned:true, desc:"+7 Chips and +1 Mult whenever it scores." },
+    { name:"Moonstone Ace", rank:"A", suit:"C", cost:13, rarity:"legendary", mark:"W", bonusChip:4, wild:true, desc:"Wild suit. +4 Chips whenever it scores." },
+    { name:"Velvet King", rank:"K", suit:"H", cost:15, rarity:"legendary", mark:"V", wild:true, crowned:true, desc:"Wild suit. +1 Mult whenever it scores." },
+  ].map(({rank, suit, mark, bonusChip=0, effect, ...offer})=>{
+    const r = RANKS.find(item=>item.k===rank);
+    const s = SUITS.find(item=>item.k===suit);
+    const {name, desc, cost, rarity, ...enhancements} = offer;
+    return {kind:"card", name, desc, cost, rarity, card:{
+      rank, rv:r.v, suit, suitSym:s.sym, red:s.red, baseChip:r.chip, bonusChip,
+      editionName:name, editionMark:mark, editionDesc:desc, editionEffect:effect, ...enhancements,
+    }};
+  });
+
+  const SHOP_CARD_EFFECTS = {
+    pair(card, scoring, value){
+      if(scoring.some(other=>other!==card && other.rank===card.rank)){
+        value.chips += 14;
+        return "Matching rank";
+      }
+    },
+    festival(card, scoring, value){
+      if(scoring.some(other=>other!==card && other.editionName)){
+        value.mult += 1.5;
+        return "Festival";
+      }
+    },
+    ember(card, scoring, value){
+      if(scoring.some(other=>other!==card && other.suit==="H")){
+        value.chips += 18;
+        return "Ember";
+      }
+    },
+    last(card, scoring, value){
+      if(game.handsLeft===1){
+        value.mult += 2;
+        return "Last light";
+      }
+    },
+    echo(card, scoring, value){
+      value.chips *= 2;
+      return "Echo";
+    },
+    cash(card, scoring, value){
+      value.cash += 2;
+      return "Gold";
+    },
+    first(card, scoring, value){
+      if(!game.lastResult){
+        value.mult += 2;
+        return "First hand";
+      }
+    },
+  };
+
+  function isEnhancedCard(card){
+    return !!(card.editionName || card.bonusChip > 0 || card.wild || card.crowned || card.glass || card.wax);
+  }
+
+  function scoreCard(card, scoring){
+    const value = {chips:card.baseChip+(card.bonusChip||0), mult:card.crowned ? 1 : 0, cash:0};
+    value.label = SHOP_CARD_EFFECTS[card.editionEffect]?.(card, scoring, value);
+    return value;
+  }
+
+  let nextShopCardId = 1;
+  let nextShopOfferId = 1;
   let shopOffers = [];
 
   function rollShopOffers(){
-    shopOffers = [];
-    const picks = [
-      rng.pick(FULL_JOKER_POOL),
-      rng.pick(FULL_JOKER_POOL),
-      rng.pick(FULL_JESTER_POOL),
-      rng.pick(FULL_VOUCHER_POOL),
-      rng.pick(FULL_CONSUME_POOL),
-      rng.pick([rng.pick(FULL_JOKER_POOL), rng.pick(FULL_JESTER_POOL), rng.pick(FULL_VOUCHER_POOL), rng.pick(FULL_CONSUME_POOL)])
-    ];
-    const slots = Math.max(1, game.perma.shopSlots||6);
-    while(picks.length < slots){
-      picks.push(rng.pick([rng.pick(FULL_JOKER_POOL), rng.pick(FULL_JESTER_POOL), rng.pick(FULL_VOUCHER_POOL), rng.pick(FULL_CONSUME_POOL)]));
+    const allPools = [FULL_JOKER_POOL, FULL_JESTER_POOL, FULL_VOUCHER_POOL, FULL_CONSUME_POOL, SHOP_CARD_CATALOG];
+    const affordableCards = SHOP_CARD_CATALOG.filter(offer=>offer.cost<=9);
+    const picks = [];
+    const offered = new Set();
+    const available = pool=>pool.filter(item=>!offered.has(item.name));
+    const stock = pool=>{
+      const offer = rng.pick(available(pool));
+      picks.push(offer);
+      offered.add(offer.name);
+    };
+    for(const pool of [affordableCards, SHOP_CARD_CATALOG, FULL_JESTER_POOL, FULL_JOKER_POOL, FULL_JOKER_POOL, FULL_VOUCHER_POOL, FULL_CONSUME_POOL]){
+      stock(pool);
     }
-
-    picks.forEach((pick, i)=>{
-      let obj;
-      if(pick.kind==="joker" || pick.kind==="jester") obj = mkJoker(pick);
-      else obj = { ...pick };
-      shopOffers.push({ ...pick, _id:"o"+(i+1), _kind:pick.kind, _obj: obj });
+    const slots = Math.max(picks.length, (game.perma.shopSlots||6)+2);
+    while(picks.length<slots){
+      const pools = allPools.filter(pool=>available(pool).length);
+      if(!pools.length) break;
+      stock(rng.pick(pools));
+    }
+    shopOffers = picks.map(pick=>{
+      const obj = pick.kind==="joker" || pick.kind==="jester" ? mkJoker(pick) : {...pick};
+      return {...pick, _id:"o"+nextShopOfferId++, _kind:pick.kind, _obj:obj};
     });
 
     renderShop();
@@ -625,6 +1145,21 @@
     return c;
   }
 
+  function offerBlockReason(offer){
+    if(offer._kind==="joker" && game.jokers.length>=(game.perma.jokerCap||5)) return "Joker slots full";
+    if(offer._kind==="jester"){
+      if(game.jesters.length>=(game.perma.jesterCap||2)) return "Jester slots full";
+      if(game.jesters.some(jester=>jester.name===offer.name)) return "Already owned";
+      if((offer.name.endsWith("Backwards Jester") && game.perma.forceExactlyFive) ||
+         (offer.name.endsWith("King of Fools") && game.perma.maxPlayCards<5)) return "Conflicting jester";
+    }
+    if(offer._kind==="cons"){
+      if(game.perma.lockConsumables) return "Consumables locked";
+      if(game.cons.length>=3) return "Consumable slots full";
+    }
+    return "";
+  }
+
   function buyOffer(offerId){
     if(game.mode!=="shop"){ toast("Not in buy phase."); return; }
     const idx = shopOffers.findIndex(o=>o._id===offerId);
@@ -633,35 +1168,33 @@
     const o = shopOffers[idx];
     const cost = effectiveOfferCost(o);
     if(game.money < cost){ toast("Not enough money."); return; }
+    const blocked = offerBlockReason(o);
+    if(blocked){ toast(blocked + "."); return; }
 
     if(o._kind==="joker"){
-      const cap = Number(game.perma.jokerCap||5);
-      if(game.jokers.length>=cap){ toast(`Joker slots full (${cap}).`); return; }
-      game.money -= cost;
       game.jokers.push(o._obj);
     } else if(o._kind==="jester"){
-      const cap = Number(game.perma.jesterCap||2);
-      if(game.jesters.length>=cap){ toast(`Jester slots full (${cap}).`); return; }
-      game.money -= cost;
       const j = o._obj;
       j.applyBuy?.();
       game.jesters.push(j);
     } else if(o._kind==="voucher"){
-      game.money -= cost;
       const v = { ...o._obj, vid: "V"+Math.random().toString(16).slice(2), kind:"voucher" };
       v.applyBuy?.();
       game.vouchers.push(v);
     } else if(o._kind==="cons"){
-      if(game.perma.lockConsumables){ toast("Consumables are locked."); return; }
-      if(game.cons.length>=3){ toast("Consumable slots full (3)."); return; }
-      game.money -= cost;
       game.cons.push({ ...o._obj });
+    } else if(o._kind==="card"){
+      game.discard.push({...o.card, id:"market-"+nextShopCardId++, freshFromShop:true});
+    } else {
+      return;
     }
 
+    game.money -= cost;
     game.shopRoundPurchaseCount += 1;
-    toast(`Bought ${o.name}`);
+    toast(o._kind==="card" ? `${o.name} added to your deck.` : `Bought ${o.name}`);
     shopOffers.splice(idx,1);
     renderAll();
+    Table.purchaseFeedback?.(o._kind);
   }
 
 
@@ -735,7 +1268,7 @@
     if(pendingConsumable){ toast("Finish or cancel your current card choice first."); return; }
     const c=game.cons[index];
     if(!c) return;
-    if(c.name==="Spectral: Cleanse" && game.blindType!=="Boss") return toast("Save Cleanse for a Boss blind.");
+    if(c.name==="Spectral: Cleanse" && (!game.bossRule || game.boss.cleansed)) return toast("Save Cleanse for an active Boss rule.");
     if(!game.hand.length && /Tap|Choose a card/.test(c.desc)) return toast("No cards available to change.");
     if(c.name==="Tarot: Swap" && game.hand.length<2) return toast("Swap needs two cards.");
     pendingConsumable=c;
@@ -768,6 +1301,8 @@
     game.scoring = false;
     Table.beginShuffle?.();
     game.deck = rng.shuffle([...game.deck, ...game.hand, ...game.discard]);
+    const fresh = game.deck.filter(card=>card.freshFromShop);
+    if(fresh.length) game.deck = [...game.deck.filter(card=>!card.freshFromShop), ...fresh];
     game.hand = [];
     game.discard = [];
     game.round = roundIdx;
@@ -787,9 +1322,11 @@
     if(game.blindType==="Boss"){
       const br = pickBossRuleForRound(game.seed, roundIdx);
       game.bossRule = br;
-      br.apply(game);
+      game.boss = roundBossRules(br, game.seed, roundIdx, game.target);
       game.handsLeft = Math.max(1, baseHands + (game.boss.handsDelta||0));
-      game.discardsLeft = game.boss.noDiscards ? 0 : Math.max(0, baseDiscards);
+      game.discardsLeft = game.boss.noDiscards ? 0 : Math.max(0, baseDiscards + (game.boss.discardsDelta||0));
+      game.boss.lockedHands = Math.max(1,baseHands) - game.handsLeft;
+      game.boss.lockedDiscards = Math.max(0,baseDiscards) - game.discardsLeft;
     } else {
       game.handsLeft = Math.max(1, baseHands);
       game.discardsLeft = Math.max(0, baseDiscards);
@@ -804,7 +1341,7 @@
 
     renderAll();
     checkStuckState();
-    toast(`Round ${roundIdx}: ${game.blindType}`);
+    if(game.mode==="play" && game.round===roundIdx) toast(`Round ${roundIdx} · ${game.bossRule?.name || game.blindType}`);
   }
 
   function startNewRun(){
@@ -812,13 +1349,14 @@
     Table.cancelPlayback();
     hideHow();
     cancelPendingConsumable();
-    for(const id of ["buildBack","optBack","deckBack"]) setDialog(id,false);
+    for(const id of ["buildBack","optBack","deckBack","legacyBack"]) setDialog(id,false);
     game.scoring = false;
     game.difficulty = ["easy","normal","hard"].includes(options.difficulty) ? options.difficulty : "normal";
     game.settledRound = 0;
     game.lastSettlement = null;
     game.mode="play";
     game.seed = (Math.random()*2_000_000_000)|0;
+    game.legacyRun = newLegacyRun();
 
     game.deck = makeDeck();
     game.discard = [];
@@ -841,8 +1379,6 @@
       ruinDiscards:false, smallBigRewardPenalty:0,
     };
 
-    game.money = 10 + (game.perma.startMoneyBonus||0);
-
     game.jokers = [];
     game.jesters = [];
     game.cons = [];
@@ -850,6 +1386,8 @@
     game.lastHandType = null;
 
     for(const k of HAND_KEYS) handUp[k] = {chips:0, mult:0};
+    applyLegacyUpgrades();
+    game.money = 10 + game.perma.startMoneyBonus;
 
     game.pendingUse = null;
     game.last.hand="—";
@@ -873,48 +1411,49 @@
   }
 
   function canPlaySelection(cards){
-    const maxCards = Math.min(5, game.perma.maxPlayCards||5);
-    if(cards.length===0 || cards.length>maxCards) return false;
-    if((game.boss.exactFive || game.perma.forceExactlyFive) && cards.length!==5) return false;
-    if(game.boss.noFace && cards.some(c=>["J","Q","K"].includes(c.rank))) return false;
-    if(game.boss.suitDemand){
-      const suit = game.boss.demandSuit;
-      const need = game.boss.demandCount||3;
-      const have = cards.filter(c=>c.suit===suit || c.wild).length;
-      if(have < need) return false;
+    return !selectionProblem(cards);
+  }
+
+  function isBossBlockedCard(card){
+    return (game.boss.noFace && card.rv>=11 && card.rv<=13) || card.suit===game.boss.bannedSuit;
+  }
+
+  function bossCardRequirement(cards, count){
+    const boss=game.boss;
+    if(boss.suitDemand && Math.min(count,cards.filter(c=>c.suit===boss.demandSuit || c.wild).length)<boss.demandCount){
+      return `Include ${boss.demandCount} ${bossSuitName(boss.demandSuit)}. Wild cards count.`;
     }
-    return true;
+    if(boss.lowRank && !cards.some(c=>c.rv>=2 && c.rv<=7)) return "Add a card ranked 2 through 7.";
+    if(boss.wideSuits){
+      const suits=new Set(cards.filter(c=>!c.wild).map(c=>c.suit));
+      const wilds=cards.filter(c=>c.wild).length;
+      if(Math.min(count,suits.size+wilds)<boss.wideSuits) return `Play at least ${boss.wideSuits} suits. Wild cards can cover different suits.`;
+    }
+    return "";
   }
 
   function hasAnyPlayableSelection(){
-    const cards = game.hand;
-    const maxCards = Math.min(cards.length, Math.min(5, game.perma.maxPlayCards||5));
-    for(let take=1; take<=maxCards; take++){
-      if((game.boss.exactFive || game.perma.forceExactlyFive) && take!==5) continue;
-      const pick = [];
-      const dfs = (idx)=>{
-        if(pick.length===take) return canPlaySelection(pick);
-        for(let i=idx; i<cards.length; i++){
-          pick.push(cards[i]);
-          if(dfs(i+1)) return true;
-          pick.pop();
-        }
-        return false;
-      };
-      if(dfs(0)) return true;
-    }
-    return false;
+    const cards=game.hand.filter(card=>!isBossBlockedCard(card));
+    const cap=Math.min(5, game.perma.maxPlayCards||5);
+    const max=Math.min(cap,cards.length);
+    if(!max || ((game.boss.exactFive || game.perma.forceExactlyFive) && max<cap)) return false;
+    const count=game.boss.outerHands && max<cap ? 1 : max;
+    return !bossCardRequirement(cards,count);
+  }
+
+  function hasDiscardAvailable(){
+    return game.discardsLeft>0 && game.deck.length>0 && !game.boss.noDiscards && game.money>=(game.boss.discardTax||0);
   }
 
   function checkStuckState(){
     if(game.mode!=="play" || game.scoring) return false;
     if(game.handsLeft<=0) return false;
-    if(game.discardsLeft>0 && game.deck.length>0) return false;
+    if(hasDiscardAvailable()) return false;
     if(game.blindScore>=game.target) return false;
     if(hasAnyPlayableSelection()) return false;
 
     game.livesLeft = Math.max(0, game.livesLeft-1);
-    const lostMsg = `No discards and no legal plays left. Life lost (${game.livesLeft} remaining).`;
+    const lostMsg = `No legal play or discard left. Life lost (${game.livesLeft} remaining).`;
 
     if(game.livesLeft<=0){
       endRun("Out of lives.");
@@ -960,6 +1499,7 @@
       game.money -= tax;
     }
 
+    game.legacyRun.started=true;
     const set = new Set(cards.map(c=>c.id));
     game.hand = game.hand.filter(c=>!set.has(c.id));
     if(game.perma.ruinDiscards){
@@ -989,12 +1529,16 @@
     if(!evaluated) return null;
     const h=applyBossOverrides(evaluated,game);
     const scoring=Core.scoringCards(cards,h.name);
-    const up=h.bossNullified ? {chips:0,mult:0} : (handUp[h.name] || {chips:0,mult:0});
+    const up=(h.bossNullified || game.boss.muteLevels) ? {chips:0,mult:0} : (handUp[h.name] || {chips:0,mult:0});
     const baseChips=h.baseChips+up.chips, baseMult=h.baseMult+up.mult;
-    const cardChips=scoring.reduce((sum,c)=>sum+c.baseChip+(c.bonusChip||0),0);
+    const cardEffects=Object.fromEntries(scoring.map(card=>[card.id,scoreCard(card,scoring)]));
+    const scoredValues=Object.values(cardEffects);
+    const cardChips=scoredValues.reduce((sum,value)=>sum+value.chips,0);
     let chips=baseChips+cardChips;
-    let mult=baseMult+scoring.reduce((sum,c)=>sum+(c.crowned?1:0),0);
+    let mult=baseMult+scoredValues.reduce((sum,value)=>sum+value.mult,0);
     const after=[],payout=[],triggers=[];
+    const cardCash=scoredValues.reduce((sum,value)=>sum+value.cash,0);
+    if(cardCash) payout.push(()=>{game.money+=cardCash;});
     for(const joker of [...game.jokers,...game.jesters]){
       const ctx={handName:h.name,cards,scoringCards:scoring,addChips:0,addMult:0,mulMult:1,onAfter:[],onPayout:[]};
       const instance=commit ? joker : {...joker,state:{...joker.state}};
@@ -1002,15 +1546,15 @@
       chips+=ctx.addChips;
       mult=Math.max(0,mult+ctx.addMult)*ctx.mulMult;
       after.push(...ctx.onAfter); payout.push(...ctx.onPayout);
-      if(ctx.addChips || ctx.addMult || ctx.mulMult!==1 || ctx.onPayout.length){
-        triggers.push({id:joker.jid,name:joker.name,chips:ctx.addChips,mult:ctx.addMult,xMult:ctx.mulMult});
+      if(ctx.addChips || ctx.addMult || ctx.mulMult!==1 || ctx.onPayout.length || ctx.note){
+        triggers.push({id:joker.jid,name:joker.name,kind:joker.kind,chips:ctx.addChips,mult:ctx.addMult,xMult:ctx.mulMult,label:ctx.note});
       }
     }
-    chips=Math.max(0,chips);
-    mult*=game.perma.nextHandMult||1;
-    const penalty=game.blindType==="Boss" ? (game.boss.scorePenalty||0) : 0;
-    const gained=Math.max(0,Math.floor(chips*mult-penalty));
-    return {h,handName:h.name,cards,scoringIds:scoring.map(c=>c.id),scoringCards:scoring,baseChips,baseMult,cardChips,chips,mult,gained,penalty,triggers,after,payout};
+    const {scale,penalty,modifiers}=bossScoreModifiers(cards,h,scoring,payout.length);
+    chips=Core.capScore(chips);
+    mult=Core.capScore(mult * (game.perma.nextHandMult||1) * scale);
+    const gained=Math.floor(Core.capScore(Core.capScore(chips*mult)-penalty));
+    return {h,handName:h.name,cards,scoringIds:scoring.map(c=>c.id),scoringCards:scoring,cardEffects,baseChips,baseMult,cardChips,chips,mult,gained,penalty,modifiers,payoutMuted:!!game.boss.payoutMute,triggers,after,payout};
   }
 
   async function playSelected(){
@@ -1019,6 +1563,8 @@
     const cards=selectedCards();
     if(!canPlaySelection(cards)) return toast(selectionProblem(cards));
     const result=calculateScore(cards,{commit:true});
+    result.clearsBlind=game.blindScore<game.target && game.blindScore+result.gained>=game.target;
+    game.legacyRun.started=true;
     const token=runToken;
     game.scoring=true;
     renderTop();
@@ -1027,7 +1573,7 @@
     try { await Table.scorePlayback(result); }
     catch(error){ console.warn("Score animation unavailable",error); }
     if(token!==runToken) return;
-    game.blindScore+=result.gained;
+    game.blindScore=Core.capScore(game.blindScore+result.gained);
     game.handsLeft--;
     game.perma.nextHandMult=1;
     const played=new Set(cards.map(c=>c.id));
@@ -1037,15 +1583,20 @@
       if(c.glass && Math.random()<0.10) toast(`${c.rank}${c.suitSym} shattered.`);
       else game.discard.push(c);
     }
+    if(game.boss.playTax) game.money=Math.max(0,game.money-game.boss.playTax);
     for(const fn of result.after) fn();
     game.lastHandType=result.handName;
-    for(const fn of result.payout) fn();
+    if(!game.boss.payoutMute) for(const fn of result.payout) fn();
+    if(game.bossRule && !game.boss.cleansed){
+      game.boss.plays=(game.boss.plays||0)+1;
+      game.boss.lastHand=result.handName;
+    }
     game.lastResult=result;
     game.last={hand:result.handName,math:`${fmt(result.chips)} chips × ${multFmt(result.mult)} mult = ${fmt(result.gained)}`};
     game.sel.clear();
     drawToHand();
     game.scoring=false;
-    game.bestThisRun=Math.max(game.bestThisRun,Math.floor(game.totalScore+game.blindScore));
+    game.bestThisRun=Math.max(game.bestThisRun,Math.floor(Core.capScore(game.totalScore+game.blindScore)));
     if(game.blindScore>=game.target && (options.autoFinishOnTarget || game.handsLeft<=0)) finishRound();
     else if(game.handsLeft<=0) loseLifeAndRestartRound("Out of hands below target.");
     else if(game.blindScore>=game.target) toast("Blind cleared. Cash out to collect your reward.");
@@ -1054,11 +1605,16 @@
   }
   function multFmt(value){ return Number(value.toFixed(2)).toLocaleString(); }
   function selectionProblem(cards){
-    if(!cards.length) return "Select 1–5 cards.";
-    if((game.boss.exactFive || game.perma.forceExactlyFive) && cards.length!==5) return "This blind requires exactly 5 cards.";
-    if(game.boss.noFace && cards.some(c=>["J","Q","K"].includes(c.rank))) return "This boss blocks face cards. Discard them or choose another hand.";
-    if(game.boss.suitDemand) return `Include at least ${game.boss.demandCount||3} ${SUITS.find(s=>s.k===game.boss.demandSuit)?.sym||"required-suit"} cards.`;
-    return "Choose up to 5 cards.";
+    const cap=Math.min(5,game.perma.maxPlayCards||5);
+    if(!cards.length) return `Select 1–${cap} cards.`;
+    if(cards.length>cap) return `Choose up to ${cap} cards.`;
+    if((game.boss.exactFive || game.perma.forceExactlyFive) && cards.length!==cap) return `Play exactly ${cap} cards.`;
+    if(game.boss.outerHands && cards.length!==1 && cards.length!==cap) return `Play one card or all ${cap} cards.`;
+    if(cards.some(isBossBlockedCard)){
+      if(game.boss.noFace) return "Set aside Jacks, Queens, and Kings.";
+      return `Set aside cards printed in ${bossSuitName(game.boss.bannedSuit)}.`;
+    }
+    return bossCardRequirement(cards,cards.length);
   }
 
   // ---------------------------
@@ -1068,6 +1624,7 @@
     if(game.settledRound===game.round) return;
     game.settledRound=game.round;
     game.mode="shop";
+    game.legacyRun.lastReward=earnLegacy();
     game.lastSettlement=Core.settlement({money:game.money,reward:rewardForRound(game.round,game.blindType),handsLeft:game.handsLeft,interestBoost:game.perma.interestBoost,halveInterest:game.perma.halveInterest});
     game.money+=game.lastSettlement.total;
     game.shopRoundPurchaseCount=0;
@@ -1081,7 +1638,7 @@
     if(game.mode!=="play" || game.scoring || game.settledRound===game.round) return;
     if(game.blindScore<game.target) return toast("Beat the target to cash out.");
     cancelPendingConsumable();
-    game.totalScore+=Math.floor(game.blindScore);
+    game.totalScore=Core.capScore(game.totalScore+Math.floor(game.blindScore));
     game.bestThisRun=Math.max(game.bestThisRun,game.totalScore);
     enterBuyPhase();
   }
@@ -1095,19 +1652,44 @@
   }
 
   function endRun(reason){
+    if(game.mode==="end") return;
     game.mode="end";
     game.scoring=false;
     cancelPendingConsumable();
     toggleShopModal(false);
-    game.bestThisRun=Math.max(game.bestThisRun,game.totalScore+game.blindScore);
+    game.bestThisRun=Math.max(game.bestThisRun,Core.capScore(game.totalScore+game.blindScore));
     if(game.bestThisRun>hiScore){ hiScore=Math.floor(game.bestThisRun);saveHighScore(hiScore); }
+    game.legacyRun.endReason=reason;
     toast(reason);
     renderAll();
+    showLegacy();
   }
 
   // ---------------------------
   // Rendering
   // ---------------------------
+  function paintBossPanel(panel,boss,rules){
+    panel.hidden=!boss;
+    if(!boss){
+      delete panel.dataset.bossKey;
+      return;
+    }
+    if(panel.dataset.bossKey!==boss.key){
+      panel.dataset.bossKey=boss.key;
+      panel.querySelector(".boss-portrait").innerHTML=Table.bossPortraitMarkup?.(boss.key)||"";
+      panel.querySelector(".boss-name").textContent=boss.name;
+      panel.querySelector(".boss-tip").textContent=boss.tip;
+      panel.querySelector("details").open=false;
+    }
+    panel.classList.toggle("boss-dossier-cleansed",!!rules.cleansed);
+    panel.querySelector("details").hidden=!!rules.cleansed;
+    const rule=rules.cleansed
+      ? "Rule cleansed."
+      : typeof boss.desc==="function" ? boss.desc(rules) : boss.desc;
+    panel.querySelector(".boss-rule").textContent=rule;
+    panel.querySelector(".boss-rule-expanded").textContent=rule;
+  }
+
   function renderTop(){
     const ante=Math.ceil(game.round/3), targetMet=game.blindScore>=game.target;
     const ready=game.mode==="play" && !game.scoring;
@@ -1128,13 +1710,17 @@
     $("blindProgressText").textContent=targetMet ? "Blind cleared" : `${fmt(game.target-game.blindScore)} to go`;
     $("blindDot").className=`dot ${game.blindType==="Boss" ? "bad" : game.blindType==="Big" ? "warn" : "good"}`;
     $("blindPath").innerHTML=["Small","Big","Boss"].map((type,index)=>`<span class="blind-step ${index<(game.round-1)%3 ? "complete" : index===(game.round-1)%3 ? "active" : ""}" ${index===(game.round-1)%3 ? 'aria-current="step"' : ''}>${type}</span>`).join("");
-    const demanded=game.boss.suitDemand ? ` · ${SUITS.find(s=>s.k===game.boss.demandSuit)?.sym} ×${game.boss.demandCount||3}` : "";
-    $("bossRuleLine").textContent=game.bossRule ? game.bossRule.desc+demanded : "";
-    $("nextGoalLine").textContent=`Next: ${roundTypeFor(game.round+1)} · ${fmt(targetForRound(game.round+1))}`;
-    if(game.perma.previewBoss && roundTypeFor(game.round+1)==="Boss") $("nextGoalLine").textContent+=` · ${pickBossRuleForRound(game.seed,game.round+1).name}`;
+    paintBossPanel($("bossEncounter"),game.bossRule,game.boss);
+    const nextRound=game.round+1;
+    const nextType=roundTypeFor(nextRound);
+    const nextTarget=targetForRound(nextRound);
+    $("nextGoalLine").textContent=`Next: ${nextType} · ${fmt(nextTarget)}`;
+    const upcoming=game.perma.previewBoss && nextType==="Boss" ? pickBossRuleForRound(game.seed,nextRound) : null;
+    paintBossPanel($("bossPreview"),upcoming,upcoming ? roundBossRules(upcoming,game.seed,nextRound,nextTarget) : null);
     $("tagLine").textContent=game.difficulty;
     $("btnPlay").disabled=!(ready && game.handsLeft>0 && canPlaySelection(cards) && !pendingConsumable);
-    $("btnDiscard").disabled=!(ready && cards.length && game.discardsLeft>0 && !game.boss.noDiscards && game.deck.length && !pendingConsumable);
+    $("btnDiscard").disabled=!(ready && cards.length && hasDiscardAvailable() && !pendingConsumable);
+    $("btnDiscard").title=game.boss.discardTax ? `Discards cost $${game.boss.discardTax} during this blind.` : "";
     $("btnClear").disabled=!ready || (!game.sel.size && !pendingConsumable);
     for(const id of ["btnSortRank","btnSortSuit"]) $(id).disabled=!ready;
     $("btnSortRank").setAttribute("aria-pressed",String(game.sortMode==="rank"));
@@ -1162,8 +1748,19 @@
       $("scoreChips").textContent=fmt(result.chips);
       $("scoreMult").textContent=multFmt(result.mult);
       $("scorePreview").textContent=`${fmt(result.gained)} points`;
-      $("stageLabel").textContent=canPlaySelection(cards) ? "Hand preview" : "Boss restriction";
-      $("scoreBreakdown").textContent=canPlaySelection(cards) ? `${fmt(result.baseChips)} base + ${fmt(result.cardChips)} card chips${result.triggers.length ? ` · ${result.triggers.length} joker triggers` : ""}${result.penalty ? ` · −${result.penalty} boss penalty` : ""}` : selectionProblem(cards);
+      const problem=selectionProblem(cards);
+      const modifiers=result.modifiers.map(({label})=>label);
+      const effects=Object.values(result.cardEffects);
+      const cardBonuses=[...new Set(effects.filter(effect=>effect.label && !effect.cash).map(effect=>effect.label))];
+      const cardCash=effects.reduce((sum,effect)=>sum+effect.cash,0);
+      if(cardCash && !result.payoutMuted) cardBonuses.push(`+$${cardCash} from cards`);
+      $("stageLabel").textContent=problem ? "Play restriction" : "Hand preview";
+      $("scoreBreakdown").textContent=problem || [
+        `${fmt(result.baseChips)} base + ${fmt(result.cardChips)} card chips`,
+        ...(result.triggers.length ? [`${result.triggers.length} rack triggers`] : []),
+        ...cardBonuses,
+        ...modifiers
+      ].join(" · ");
       $("playedCards").innerHTML="";
     } else if(game.lastResult){
       const last=game.lastResult;
@@ -1186,13 +1783,16 @@
     const focusId=document.activeElement?.dataset?.cardId;
     el.innerHTML = "";
     el.style.setProperty("--hand-count",game.hand.length);
+    el.classList.toggle("wide-hand", game.hand.length>9);
+    el.classList.toggle("long-hand", game.hand.length>12);
     for(const c of game.hand){
       const d = document.createElement("button");
       d.type="button";
       d.className = "card" + (c.red ? " red":"") + (game.sel.has(c.id) ? " sel":"");
       d.dataset.cardId=c.id;
       d.setAttribute("aria-pressed",String(game.sel.has(c.id)));
-      d.setAttribute("aria-label",`${c.rank} of ${{S:"Spades",H:"Hearts",D:"Diamonds",C:"Clubs"}[c.suit]}, ${c.baseChip+c.bonusChip} chips${c.wild?", wild suit":""}${c.crowned?", crowned":""}${c.glass?", glass":""}${c.wax?", wax seal":""}`);
+      const edition = c.editionName ? `${c.editionName}, ` : "";
+      d.setAttribute("aria-label",`${edition}${c.rank} of ${{S:"Spades",H:"Hearts",D:"Diamonds",C:"Clubs"}[c.suit]}, ${c.baseChip+c.bonusChip} chips${c.wild?", wild suit":""}${c.crowned?", crowned":""}${c.glass?", glass":""}${c.wax?", wax seal":""}${c.editionDesc ? `. ${c.editionDesc}` : ""}`);
       d.title=d.getAttribute("aria-label");
       d.disabled=game.mode!=="play" || game.scoring;
       d.innerHTML=Table.cardMarkup(c);
@@ -1341,10 +1941,11 @@
     const rack=$("jokerRack");rack.innerHTML="";
     for(const j of active){
       const tile=document.createElement("button");
-      tile.className=`joker-tile ${j.rarity||"common"}`;
+      tile.className=`joker-tile ${j.kind} ${j.rarity||"common"}`;
       tile.dataset.jokerId=j.jid;
       tile.innerHTML=`<span class="item-art">${Table.itemArt(j)}</span><span class="item-title">${esc(j.name.replace(/^[^A-Za-z]+/,""))}</span>`;
-      tile.title=`${j.name}: ${j.desc}${j.state?.bonus ? ` Current bonus +${j.state.bonus}.` : ""}`;
+      const detail=j.status?.() || (j.state?.bonus ? `Current bonus +${j.state.bonus}.` : "");
+      tile.title=`${j.name}: ${j.desc}${detail ? " "+detail : ""}`;
       tile.setAttribute("aria-label",tile.title);
       tile.addEventListener("click",()=>setDrawer(true));
       rack.appendChild(tile);
@@ -1378,17 +1979,27 @@
   function renderShop(){
     if(game.mode!=="shop") return;
     const paid=game.lastSettlement;
-    $("cashoutLine").textContent=paid ? `Blind $${paid.reward} + unused hands $${paid.handBonus} + interest $${paid.interest} = $${paid.total} earned` : "";
+    const legacyReward=game.legacyRun.lastReward;
+    const legacyReceipt=legacyReward ? ` · +${legacyReward} Medallion${legacyReward===1?"":"s"}` : "";
+    $("cashoutLine").textContent=paid ? `Blind $${paid.reward} + unused hands $${paid.handBonus} + interest $${paid.interest} = $${paid.total} earned${legacyReceipt}` : "";
     const price=game.shopRoundRerollCount===0 && game.perma.freeReroll ? 0 : (game.perma.rerollBase??2)+(game.perma.rerollTax||0)+game.shopRoundRerollCount;
     $("btnReroll").textContent=`Reroll $${price}`;$("btnReroll").disabled=game.money<price;
     $("btnNextRound").textContent=`${roundTypeFor(game.round+1)} blind →`;
+    $("shopHelpLine").textContent="Market cards stay in your deck for this run and are drawn first next blind.";
     const offers=$("shopList");offers.innerHTML="";
     if(!shopOffers.length) offers.innerHTML='<p class="note">All sold out. Reroll or take on the next blind.</p>';
     for(const o of shopOffers){
       const cost=effectiveOfferCost(o);
-      const full=o._kind==="joker" ? game.jokers.length>=(game.perma.jokerCap||5) : o._kind==="jester" ? game.jesters.length>=(game.perma.jesterCap||2) : o._kind==="cons" ? game.cons.length>=3||game.perma.lockConsumables : false;
-      const item=document.createElement("article");item.className=`shop-card ${o.rarity||"common"}`;
-      item.innerHTML=`<div class="item-art">${Table.itemArt(o)}</div><span class="rarity">${esc(o._kind==="cons" ? o.family||o.name.split(":")[0] : o._kind)} · ${esc(o.rarity||"common")}</span><h3 class="item-title">${esc(o.name.replace(/^[^A-Za-z]+/,""))}</h3><p class="item-desc">${esc(o.desc)}</p><button class="btn primary" data-buy ${game.money<cost||full ? "disabled" : ""}>${full ? "Slots full" : `Buy $${cost}`}</button>`;
+      const blocked=offerBlockReason(o);
+      const item=document.createElement("article");
+      const card=o._kind==="card" ? o.card : null;
+      item.className=`shop-card ${o.rarity||"common"}${card ? " shop-playing-card playing-card-offer" : ""}`;
+      if(card) item.dataset.deckCard=o.name;
+      const art=card
+        ? `<div class="playing-card-art"><div class="card${card.red?" red":""}" role="img" aria-label="${card.rank} of ${{S:"Spades",H:"Hearts",D:"Diamonds",C:"Clubs"}[card.suit]}">${Table.cardMarkup(card)}</div></div>`
+        : `<div class="item-art">${Table.itemArt(o)}</div>`;
+      const type=card ? "Deck card" : o._kind==="cons" ? o.family||o.name.split(":")[0] : o._kind;
+      item.innerHTML=`${art}<span class="rarity">${esc(type)} · ${esc(o.rarity||"common")}</span><h3 class="item-title">${esc(o.name.replace(/^[^A-Za-z]+/,""))}</h3><p class="item-desc">${esc(o.desc)}</p><button class="btn primary" data-buy ${game.money<cost||blocked ? "disabled" : ""}>${blocked || `Buy $${cost}`}</button>`;
       item.querySelector("[data-buy]").addEventListener("click",()=>buyOffer(o._id));offers.appendChild(item);
     }
     const owned=$("ownedShopList");owned.innerHTML="";
@@ -1444,6 +2055,16 @@
     const total=[...game.deck,...game.hand,...game.discard];
     $("deckSummary").textContent=`${game.deck.length} to draw · ${game.hand.length} in hand · ${game.discard.length} played/discarded · ${total.length} in your deck`;
     $("deckGrid").innerHTML=SUITS.map(suit=>`<section class="deck-suit"><h3 class="${suit.red?"red":""}">${suit.sym} ${{S:"Spades",H:"Hearts",D:"Diamonds",C:"Clubs"}[suit.k]}</h3><div class="deck-ranks">${[...RANKS].reverse().map(rank=>{const remaining=game.deck.filter(c=>c.suit===suit.k && c.rv===rank.v).length; const all=total.filter(c=>c.suit===suit.k && c.rv===rank.v).length;return `<span class="deck-rank ${remaining?"":"spent"}" title="${rank.k}${suit.sym}: ${remaining} remaining of ${all}"><b>${rank.k}</b><small>${remaining}/${all}</small></span>`;}).join("")}</div></section>`).join("");
+    const featured=total.filter(card=>card.editionName);
+    if(featured.length){
+      const byName=new Map();
+      for(const card of featured){
+        const owned=byName.get(card.editionName) || {card,count:0};
+        owned.count++;
+        byName.set(card.editionName, owned);
+      }
+      $("deckGrid").insertAdjacentHTML("beforeend", `<section><h3>Market cards</h3><div class="list">${[...byName.values()].map(({card,count})=>`<div class="item"><b>${esc(card.editionName)} · ${card.rank}${card.suitSym}${count>1 ? ` ×${count}` : ""}</b><div class="itemMeta">${esc(card.editionDesc)}</div></div>`).join("")}</div></section>`);
+    }
   }
 
   // ---------------------------
@@ -1463,8 +2084,8 @@
   }
   function restartWithConfirmation(){
     if(game.scoring) return;
-    if((game.round>1 || game.blindScore>0 || game.jokers.length) && !confirm("Start a new run? Your current run will end.")) return;
-    startNewRun();
+    if(canShopLegacy()) return showLegacy();
+    if(confirm("End this run and visit the Fortune Lodge?")) endRun("Run ended.");
   }
   $("btnPlay").addEventListener("click",playSelected);
   $("btnDiscard").addEventListener("click",discardSelected);
@@ -1476,6 +2097,13 @@
   $("btnCloseShop").addEventListener("click",()=>toggleShopModal(false));
   $("btnDrawer").addEventListener("click",()=>setDrawer(true));
   $("btnCloseBuild").addEventListener("click",()=>setDrawer(false));
+  $("btnLegacy").addEventListener("click",showLegacy);
+  $("btnLegacyClose").addEventListener("click",()=>setDialog("legacyBack",false));
+  $("btnLegacyStart").addEventListener("click",()=>{if(canShopLegacy()) startNewRun();});
+  $("legacyPaths").addEventListener("click",event=>{
+    const button=event.target.closest("[data-legacy-upgrade]");
+    if(button) buyLegacyUpgrade(button.dataset.legacyUpgrade);
+  });
   $("btnFullscreen").addEventListener("click",async()=>{
     try{if(document.fullscreenElement) await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch(e){toast("Fullscreen is unavailable here.");}
   });
@@ -1488,7 +2116,7 @@
   $("btnCloseOpt").addEventListener("click",hideOpt);
   $("btnDeck").addEventListener("click",()=>{renderDeck();setDialog("deckBack",true);});
   $("btnCloseDeck").addEventListener("click",()=>setDialog("deckBack",false));
-  for(const id of ["buildBack","howBack","optBack","shopBack","deckBack"]){
+  for(const id of ["buildBack","howBack","optBack","shopBack","deckBack","legacyBack"]){
     $(id).addEventListener("click",event=>{
       if(event.target!==$(id)) return;
       if(id==="howBack"){hideHow();renderAll();}else if(id==="buildBack") setDrawer(false);else setDialog(id,false);
@@ -1499,7 +2127,7 @@
   $("optClearHi").addEventListener("click",()=>{hiScore=0;saveHighScore(0);renderAll();toast("Personal best cleared.");});
   $("optResetOptions").addEventListener("click",()=>{options={...defaultOptions};saveOptions();renderOptionsUI();});
   $("btnReset").addEventListener("click",restartWithConfirmation);
-  $("btnRestartOut").addEventListener("click",startNewRun);
+  $("btnRestartOut").addEventListener("click",showLegacy);
   $("btnReroll").addEventListener("click",rerollShop);
   $("btnNextRound").addEventListener("click",nextRound);
   window.addEventListener("keydown",event=>{
@@ -1530,18 +2158,22 @@
   // ---------------------------
   // Boot
   // ---------------------------
+  function loadSoloName(){
+    try{ return (localStorage.getItem("balatle_solo_name") || "Player").slice(0,22); }
+    catch(error){ return "Player"; }
+  }
   function boot(){
-    const n = (localStorage.getItem("balatle_solo_name") || "Player").slice(0,22);
+    const n = loadSoloName();
     $("deckDealSource").innerHTML = Table.cardBackMarkup?.() || "";
     $("youName").textContent = n;
     Table.paintAvatar?.($("youAvatar"), n);
     $("youName").style.cursor="pointer";
     $("youName").title="Tap to rename";
     $("youName").addEventListener("click", ()=>{
-      const next = prompt("Name:", (localStorage.getItem("balatle_solo_name") || "Player")) || "Player";
-      localStorage.setItem("balatle_solo_name", next.slice(0,22));
-      $("youName").textContent = next.slice(0,22);
-      Table.paintAvatar?.($("youAvatar"), next.slice(0,22));
+      const next = (prompt("Name:", $("youName").textContent) || "Player").slice(0,22);
+      try{ localStorage.setItem("balatle_solo_name",next); }catch(error){}
+      $("youName").textContent = next;
+      Table.paintAvatar?.($("youAvatar"),next);
     });
 
     $("handGuide").innerHTML=HAND_KEYS.map(key=>`<div class="hand-guide-row"><b>${key}</b><span>${Core.HANDS[key].baseChips} × ${Core.HANDS[key].baseMult}</span><small>${Core.HANDS[key].detail}</small></div>`).join("");

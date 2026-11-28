@@ -109,9 +109,16 @@
     const safeRound = Number.isFinite(Number(round)) ? Math.max(1, Math.floor(Number(round))) : 1;
     const ante = Math.ceil(safeRound / 3);
     const blindIndex = (safeRound - 1) % 3;
-    const base = ante <= ANTE_BASES.length ? ANTE_BASES[ante - 1] : ANTE_BASES[7] * Math.pow(2.5, ante - 8);
+    const endless = Math.max(0, ante - ANTE_BASES.length);
+    const base = endless
+      ? ANTE_BASES[ANTE_BASES.length - 1] * (1 + endless * (0.44 + 0.055 * endless))
+      : ANTE_BASES[ante - 1];
     const difficultyScale = difficulty === "easy" ? 0.88 : difficulty === "hard" ? 1.22 : 1;
-    return Math.floor(Math.min(Number.MAX_SAFE_INTEGER, base * [1, 1.5, 2][blindIndex] * difficultyScale));
+    return Math.floor(capScore(base * [1, 1.5, 2][blindIndex] * difficultyScale));
+  }
+
+  function capScore(value) {
+    return Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, value || 0));
   }
 
   function nonnegativeInteger(value) {
@@ -139,6 +146,7 @@
     evaluateHand: evaluateHand,
     scoringCards: scoringCards,
     targetForRound: targetForRound,
+    capScore: capScore,
     settlement: settlement
   });
 });
